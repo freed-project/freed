@@ -49,7 +49,7 @@ When product work changes any `docs/PHASE-*.md` file:
 
 ## Publish and close out
 
-1. Publish with `./scripts/worktree-publish.sh --title "<conventional title>" --summary "<change>" --test "<focused check>"` using the caller's existing GitHub authentication. When provider-visible paths changed, publish the draft first. The helper posts a review comment bound to the provider-only diff. After a CODEOWNER adds a GitHub thumbs-up reaction to that comment, rerun the helper with `--ready`. A valid signed control-task approval may authorize an unattended ready transition.
+1. Publish with `./scripts/worktree-publish.sh --title "<conventional title>" --summary "<change>" --test "<focused check>"` using the caller's existing GitHub authentication. When provider-visible paths changed, first write the approved Gate 1 decision as a healthy `provider-risk-review` stability artifact, then publish the draft with `--provider-risk-review-artifact <path>`. The helper posts a review comment bound to both that artifact and the provider-only diff. After a CODEOWNER adds a GitHub thumbs-up reaction to that exact comment, rerun the helper with the same artifact and `--ready`. A valid signed control-task approval may authorize an unattended ready transition.
    A host that deliberately provisions `FREED_TRUSTED_PUBLISHER` may invoke the
    same helper through its capability and lease handoff for unattended work.
    Missing optional broker provisioning does not block the normal publication

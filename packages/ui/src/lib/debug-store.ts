@@ -46,7 +46,7 @@ export interface SyncEvent {
 }
 
 export interface DocSnapshot {
-  deviceId: string;
+  documentId: string;
   itemCount: number;
   feedCount: number;
   binarySize: number;

@@ -41,6 +41,7 @@ import {
   assertEventCountZero,
   assertFootprintSlope,
   assertGuardedCounters,
+  assertRequestSurfaceContracts,
   assertWorkerIdleTerminationContract,
   assertWorkerInitRate,
   assertWebkitReturnsToBaseline,
@@ -54,11 +55,13 @@ import {
   computeNativeMemoryPressureCoverage,
   computeRuntimeHealthCoverage,
   footprintSlopeMbPerHour,
+  isMetricRelevantRuntimeEntry,
   parseCollectorEventsJsonl,
   parseMetricsTsv,
   readHealthLines,
   runtimeHealthEvidenceFingerprint,
   runtimeIdentityFromHealthLines,
+  summarizeRequestSurfaceEvents,
   summarizeWorkerIdleTerminations,
 } from "./soak-assert.mjs";
 
@@ -1774,6 +1777,112 @@ test("cloud churn stays inconclusive without connected and eligible coverage", (
   assert.match(upload.detail, /no valid cloud_sync_coverage interval/);
 });
 
+test("request-surface summaries group events and enforce hard retry budgets", () => {
+  const events = [
+    {
+      event: "cloud_upload_attempt",
+      cause: "startup-repair",
+      provider: "gdrive",
+      appSessionId: "session-1",
+    },
+    {
+      event: "cloud_upload_attempt",
+      cause: "startup-repair",
+      provider: "gdrive",
+      appSessionId: "session-1",
+    },
+    {
+      event: "cloud_upload_attempt",
+      cause: "startup-repair",
+      provider: "dropbox",
+      appSessionId: "session-1",
+    },
+    {
+      event: "social_outbox_attempt",
+      provider: "x",
+      action: "like",
+      attempt: 1,
+      maxAttempts: 3,
+    },
+    {
+      event: "social_outbox_attempt",
+      provider: "x",
+      action: "like",
+      attempt: 4,
+      maxAttempts: 4,
+    },
+    {
+      event: "facebook_group_discovery_update",
+      source: "group_scrape",
+      changedCount: 2,
+      removedCount: 1,
+    },
+    { event: "rss_pull_attempt", trigger: "scheduled" },
+    {
+      event: "ai_request_attempt",
+      provider: "openai",
+      purpose: "summarize",
+    },
+    {
+      event: "reader_article_fetch_attempt",
+      source: "reader-open",
+      pin: true,
+    },
+  ].map((entry, index) => ({
+    entry,
+    line: index + 1,
+    raw: JSON.stringify(entry),
+  }));
+  const summary = summarizeRequestSurfaceEvents(events);
+  assert.deepEqual(summary.startupRepairUploads.byProvider, {
+    dropbox: 1,
+    gdrive: 2,
+  });
+  assert.equal(summary.startupRepairUploads.maxPerProviderSession, 2);
+  assert.equal(summary.startupRepairUploads.overBudgetGroupCount, 1);
+  assert.deepEqual(summary.socialOutboxAttempts.byProviderAction, {
+    x: { like: 2 },
+  });
+  assert.equal(summary.socialOutboxAttempts.invalidContractCount, 1);
+  assert.deepEqual(summary.facebookGroupDiscoveryUpdates, {
+    total: 1,
+    bySource: { group_scrape: 1 },
+    changedCount: 2,
+    removedCount: 1,
+  });
+  assert.deepEqual(summary.rssPullAttempts.byTrigger, { scheduled: 1 });
+  assert.deepEqual(summary.aiRequestAttempts.byProviderPurpose, {
+    openai: { summarize: 1 },
+  });
+  assert.deepEqual(summary.readerArticleFetchAttempts.bySourcePin, {
+    "reader-open": { pinned: 1 },
+  });
+
+  const assertions = assertRequestSurfaceContracts(
+    events,
+    "runtime-health.jsonl",
+  );
+  assert.deepEqual(
+    assertions.map(({ id, status }) => [id, status]),
+    [
+      ["startup_repair_upload_budget", "fail"],
+      ["social_outbox_retry_budget", "fail"],
+    ],
+  );
+  assert.equal(assertions[0].violations.length, 2);
+  assert.equal(assertions[1].violations[0].line, 5);
+
+  const withinBudget = events.filter(
+    ({ line }) => line !== 2 && line !== 5,
+  );
+  assert.deepEqual(
+    assertRequestSurfaceContracts(withinBudget, "runtime-health.jsonl").map(
+      ({ status }) => status,
+    ),
+    ["pass", "pass"],
+  );
+});
+
 test("worker INIT rate enforces the exclusive scorecard target", () => {
   const workerInitLines = Array.from({ length: 10 }, (_, index) => ({
     entry: { event: "worker_init", tsMs: index + 1 },
@@ -2122,6 +2231,23 @@ test("runtime attribution rejects untagged and mixed metric evidence", () => {
   );
 });
 
+test("request-surface counters are attributable runtime evidence", () => {
+  for (const event of [
+    "social_outbox_attempt",
+    "facebook_group_discovery_update",
+    "rss_pull_attempt",
+    "ai_request_attempt",
+    "reader_article_fetch_attempt",
+  ]) {
+    assert.equal(isMetricRelevantRuntimeEntry({ event }), true, event);
+    assert.equal(
+      runtimeIdentityFromHealthLines([{ entry: { event } }]).status,
+      "incomplete",
+      event,
+    );
+  }
+});
+
 test("composite evidence fingerprints bind collector data and denominators", () => {
   const metricsText = metricsFixture([
     { tsMs: 1, appPid: 1 },
@@ -2326,7 +2452,7 @@ test("buildVerdict produces a machine-readable verdict with real numbers", () =>
   assert.equal(verdict.schemaVersion, 1);
   assert.equal(verdict.windowStart, new Date(measurementStartMs).toISOString());
   assert.equal(verdict.windowEnd, new Date(measurementEndMs).toISOString());
-  assert.equal(verdict.metricRegistryVersion, 4);
+  assert.equal(verdict.metricRegistryVersion, 5);
   assert.equal(verdict.pass, true);
   assert.equal(verdict.status, "pass");
   assert.equal(verdict.failures, 0);
@@ -2363,6 +2489,12 @@ test("buildVerdict produces a machine-readable verdict with real numbers", () =>
     verdict.assertions.map((item) => [item.id, item.status]),
   );
   assert.equal(byId.main_footprint_slope, "pass");
+  assert.equal(byId.startup_repair_upload_budget, "pass");
+  assert.equal(byId.social_outbox_retry_budget, "pass");
+  assert.equal(
+    verdict.eventSummaries.requestSurface.rssPullAttempts.total,
+    0,
+  );
   assert.equal(byId.renderer_recoveries, "pass");
   assert.equal(byId.stale_heartbeats, "pass");
   assert.equal(byId.worker_init_rate, "pass");

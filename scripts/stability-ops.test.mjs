@@ -211,6 +211,43 @@ function canaryEntries(uploadsUnchanged) {
     },
     { event: "cloud_upload_skipped", provider: "gdrive", tsMs: start + 8000 },
     {
+      event: "cloud_upload_attempt",
+      provider: "gdrive",
+      cause: "startup-repair",
+      headsUnchanged: false,
+      tsMs: start + 8_100,
+    },
+    {
+      event: "social_outbox_attempt",
+      provider: "x",
+      action: "like",
+      attempt: 1,
+      maxAttempts: 3,
+      tsMs: start + 8_200,
+    },
+    {
+      event: "facebook_group_discovery_update",
+      source: "group_scrape",
+      observedCount: 2,
+      storedCount: 2,
+      changedCount: 2,
+      removedCount: 0,
+      tsMs: start + 8_300,
+    },
+    { event: "rss_pull_attempt", trigger: "scheduled", tsMs: start + 8_400 },
+    {
+      event: "ai_request_attempt",
+      provider: "openai",
+      purpose: "summarize",
+      tsMs: start + 8_500,
+    },
+    {
+      event: "reader_article_fetch_attempt",
+      source: "reader-open",
+      pin: true,
+      tsMs: start + 8_600,
+    },
+    {
       event: "native_runtime_memory_sample",
       tsMs: start + 9000,
       appResidentBytes: 500 * 1024 * 1024,
@@ -590,9 +627,31 @@ test("computeCanarySummary folds counters into per-release metrics", () => {
     bounds,
   );
   assert.equal(summary.version, "26.7.800");
-  assert.equal(summary.metricRegistryVersion, 4);
+  assert.equal(summary.metricRegistryVersion, 5);
   assert.equal(summary.spanHours, 6);
   assert.equal(summary.metrics.uploadsUnchangedPerHour, 2);
+  assert.equal(summary.metrics.startupRepairUploadsPerHour, 0.17);
+  assert.equal(summary.metrics.socialOutboxAttemptsPerHour, 0.17);
+  assert.equal(summary.metrics.facebookGroupDiscoveryUpdatesPerHour, 0.17);
+  assert.equal(summary.metrics.rssPullAttemptsPerHour, 0.17);
+  assert.equal(summary.metrics.aiRequestAttemptsPerHour, 0.17);
+  assert.equal(summary.metrics.readerArticleFetchAttemptsPerHour, 0.17);
+  assert.deepEqual(summary.metrics.startupRepairUploadsByProvider, {
+    gdrive: 1,
+  });
+  assert.deepEqual(summary.metrics.socialOutboxAttemptsByProviderAction, {
+    x: { like: 1 },
+  });
+  assert.deepEqual(summary.metrics.facebookGroupDiscoveryUpdatesBySource, {
+    group_scrape: 1,
+  });
+  assert.deepEqual(summary.metrics.rssPullAttemptsByTrigger, { scheduled: 1 });
+  assert.deepEqual(summary.metrics.aiRequestAttemptsByProviderPurpose, {
+    openai: { summarize: 1 },
+  });
+  assert.deepEqual(summary.metrics.readerArticleFetchAttemptsBySourcePin, {
+    "reader-open": { pinned: 1 },
+  });
   assert.equal(
     summary.metrics.recoveriesPerDay,
     4,

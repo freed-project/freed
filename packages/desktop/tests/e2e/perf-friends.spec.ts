@@ -400,17 +400,14 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   const afterInteraction = await readGraphDebug(page);
   expect(afterInteraction).not.toBeNull();
   const pinnedNodeCount = await page.evaluate(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-      getState: () => {
-        persons: Record<string, { graphPinned?: boolean }>;
-        accounts: Record<string, { graphPinned?: boolean }>;
-      };
-    };
-    const state = store.getState();
-    return [
-      ...Object.values(state.persons),
-      ...Object.values(state.accounts),
-    ].filter((node) => node.graphPinned === true).length;
+    const layout = JSON.parse(
+      localStorage.getItem("freed-device-graph-layout-v1") ?? "null",
+    ) as {
+      persons?: Record<string, unknown>;
+      accounts?: Record<string, unknown>;
+    } | null;
+    return Object.keys(layout?.persons ?? {}).length
+      + Object.keys(layout?.accounts ?? {}).length;
   });
   const p95Budget = process.env.CI
     ? Math.max(CI_FRAME_P95_BUDGET_MS, idleFrames.p95Ms + 34)

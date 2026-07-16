@@ -1746,7 +1746,7 @@ html.freed-mobile-sidebar-open body {
 .theme-toolbar-reader-layout-button {
   display: inline-flex;
   box-sizing: border-box;
-  height: 2rem;
+  height: var(--freed-top-toolbar-height, 100%);
   width: 2rem;
   flex-shrink: 0;
   align-items: center;

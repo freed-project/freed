@@ -9,6 +9,7 @@ import os from "node:os";
 import {
   CAPTURE_PROVIDER_CONTACT_FILE_PATTERN,
   isProviderVisiblePath,
+  PROVIDER_VISIBLE_EXACT_SCOPES,
   PROVIDER_VISIBLE_EXTRA_FILES,
   PROVIDER_VISIBLE_EXTRA_PACKAGE_PREFIXES,
   PROVIDER_VISIBLE_ORCHESTRATION_FILES,
@@ -22,6 +23,67 @@ import {
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const cliPath = path.join(moduleDir, "provider-visible-paths.mjs");
 const repoRoot = path.resolve(moduleDir, "../..");
+
+const ALL_SOCIAL_PROVIDER_SCOPES = [
+  "facebook",
+  "instagram",
+  "linkedin",
+  "medium",
+  "substack",
+  "x",
+  "youtube",
+];
+const ALL_PROVIDER_SCOPES = [
+  "facebook",
+  "instagram",
+  "linkedin",
+  "medium",
+  "other",
+  "substack",
+  "x",
+  "youtube",
+];
+
+const CRITICAL_EXACT_SCOPE_CASES = [
+  ["packages/desktop/src-tauri/src/lib.rs", ALL_PROVIDER_SCOPES],
+  ["packages/desktop/src/App.tsx", ALL_PROVIDER_SCOPES],
+  [
+    "packages/desktop/src/components/ProviderSyncActionButton.tsx",
+    ALL_SOCIAL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/desktop/src/lib/provider-auth-lifecycle.ts",
+    ALL_SOCIAL_PROVIDER_SCOPES,
+  ],
+  ["packages/desktop/src/lib/provider-health.ts", ALL_SOCIAL_PROVIDER_SCOPES],
+  [
+    "packages/desktop/src/lib/social-auth-transient-errors.ts",
+    ["facebook", "instagram", "linkedin", "medium", "substack", "youtube"],
+  ],
+  ["packages/desktop/src/lib/store.ts", ALL_PROVIDER_SCOPES],
+  ["packages/shared/src/schema.ts", ALL_PROVIDER_SCOPES],
+  ["packages/shared/src/sync-write-policy.ts", ALL_PROVIDER_SCOPES],
+  ["packages/ui/src/components/SettingsDialog.tsx", ALL_PROVIDER_SCOPES],
+  [
+    "packages/ui/src/components/feed/ReaderView.tsx",
+    ["facebook", "instagram", "medium", "other", "substack", "x"],
+  ],
+  ["packages/ui/src/lib/factory-reset.ts", ALL_PROVIDER_SCOPES],
+];
+
+test("state, reset, and request boundaries have exact provider scopes", () => {
+  for (const [filePath, providers] of PROVIDER_VISIBLE_EXACT_SCOPES) {
+    assert.equal(isProviderVisiblePath(filePath), true, filePath);
+    assert.ok(providers.length > 0, filePath);
+    assert.deepEqual(providers, [...providers].sort(), filePath);
+    assert.equal(new Set(providers).size, providers.length, filePath);
+    assert.deepEqual(providerIdsForPath(filePath), providers, filePath);
+  }
+  for (const [filePath, providers] of CRITICAL_EXACT_SCOPE_CASES) {
+    assert.equal(isProviderVisiblePath(filePath), true, filePath);
+    assert.deepEqual(providerIdsForPath(filePath), providers, filePath);
+  }
+});
 
 test("desktop capture, auth, and extractor files are provider-visible", () => {
   assert.equal(
@@ -74,9 +136,23 @@ test("desktop capture, auth, and extractor files are provider-visible", () => {
     ),
     true,
   );
+  assert.deepEqual(
+    providerIdsForPath(
+      "packages/desktop/src/lib/authenticated-essay-poller.ts",
+    ),
+    ["medium", "substack"],
+  );
   assert.equal(
     isProviderVisiblePath("packages/desktop/src/lib/substack-auth.ts"),
     true,
+  );
+  assert.deepEqual(
+    providerIdsForPath("packages/desktop/src/lib/substack-auth.ts"),
+    ["substack"],
+  );
+  assert.deepEqual(
+    providerIdsForPath("packages/desktop/src/lib/medium-auth.ts"),
+    ["medium"],
   );
   assert.equal(
     isProviderVisiblePath("packages/desktop/src-tauri/src/medium-extract.js"),
@@ -372,26 +448,33 @@ test("non-provider paths are not provider-visible", () => {
 test("focused-surface exports stay aligned with the risk predicate", () => {
   for (const filePath of SOCIAL_PROVIDER_DESKTOP_FILES) {
     assert.equal(isProviderVisiblePath(filePath), true, filePath);
+    assert.ok(providerIdsForPath(filePath).length > 0, filePath);
   }
   for (const filePath of PROVIDER_VISIBLE_EXTRA_FILES) {
     assert.equal(isProviderVisiblePath(filePath), true, filePath);
+    assert.ok(providerIdsForPath(filePath).length > 0, filePath);
   }
   for (const filePath of PROVIDER_VISIBLE_ORCHESTRATION_FILES) {
     assert.equal(isProviderVisiblePath(filePath), true, filePath);
+    assert.ok(providerIdsForPath(filePath).length > 0, filePath);
   }
   for (const prefix of SOCIAL_PROVIDER_PACKAGE_PREFIXES) {
+    const filePath = `${prefix}src/anything.ts`;
     assert.equal(
-      isProviderVisiblePath(`${prefix}src/anything.ts`),
+      isProviderVisiblePath(filePath),
       true,
       prefix,
     );
+    assert.ok(providerIdsForPath(filePath).length > 0, prefix);
   }
   for (const prefix of PROVIDER_VISIBLE_EXTRA_PACKAGE_PREFIXES) {
+    const filePath = `${prefix}provider-contact.ts`;
     assert.equal(
-      isProviderVisiblePath(`${prefix}src/anything.ts`),
+      isProviderVisiblePath(filePath),
       true,
       prefix,
     );
+    assert.ok(providerIdsForPath(filePath).length > 0, prefix);
   }
 });
 
@@ -417,6 +500,7 @@ test("every canonical provider-visible surface has an owner review rule", () => 
     ...SOCIAL_PROVIDER_DESKTOP_FILES,
     ...PROVIDER_VISIBLE_EXTRA_FILES,
     ...PROVIDER_VISIBLE_ORCHESTRATION_FILES,
+    ...PROVIDER_VISIBLE_EXACT_SCOPES.keys(),
     ...PROVIDER_VISIBLE_EXTRA_PACKAGE_PREFIXES.map(
       (prefix) => `${prefix}provider-contact.ts`,
     ),
@@ -480,17 +564,17 @@ test("the governance trust base has owner review coverage", () => {
 function validApproval(overrides = {}) {
   return {
     schemaVersion: 1,
-    approvalId: "provider-risk-2026-07-10-facebook-lifecycle",
+    approvalId: "provider-risk-2026-07-10-native-provider-lifecycle",
     approvedBy: "AubreyF",
     ownerApprovalReference: "Owner confirmation in task 019f",
     approvalSource: { kind: "control-task", reference: "P1-04" },
     approvedAt: "2026-07-10T16:00:00.000Z",
     expiresAt: "2026-07-17T16:00:00.000Z",
-    providers: ["facebook"],
+    providers: ALL_PROVIDER_SCOPES,
     observableBehavior:
-      "Changes when the existing Facebook scraper window is recycled.",
+      "Changes when existing provider work is coordinated by the native runtime.",
     fingerprintingRisk:
-      "A more regular recycle interval could make the Facebook session pattern easier to distinguish.",
+      "A more regular provider lifecycle could make the session pattern easier to distinguish.",
     lowestProfileAlternative:
       "Keep the current lifecycle and collect passive diagnostics.",
     diffSha: "a".repeat(40),
@@ -498,7 +582,7 @@ function validApproval(overrides = {}) {
     pathScopes: [
       {
         path: "packages/desktop/src-tauri/src/lib.rs",
-        providers: ["facebook"],
+        providers: ALL_PROVIDER_SCOPES,
       },
     ],
     ...overrides,
@@ -587,7 +671,7 @@ test("structured provider approval validates exact path scope and expiry", () =>
   );
 
   assert.equal(approval.schemaVersion, 1);
-  assert.deepEqual(approval.providers, ["facebook"]);
+  assert.deepEqual(approval.providers, ALL_PROVIDER_SCOPES);
   assert.deepEqual(approval.paths, ["packages/desktop/src-tauri/src/lib.rs"]);
   assert.match(approval.authorizationDigest, /^sha256:[0-9a-f]{64}$/);
 });
@@ -848,7 +932,7 @@ test("provider-specific paths infer the provider used to validate approval scope
   ]);
   assert.deepEqual(
     providerIdsForPath("packages/desktop/src-tauri/src/lib.rs"),
-    [],
+    ALL_PROVIDER_SCOPES,
   );
 });
 
@@ -1006,6 +1090,35 @@ test("CLI filters stdin to provider-visible paths only", () => {
   assert.deepEqual(result.stdout.split("\n").filter(Boolean), [
     "packages/desktop/src-tauri/src/fb-extract.js",
     "packages/capture-linkedin/src/browser.ts",
+  ]);
+});
+
+test("CLI prints the sorted provider union for provider-visible paths", () => {
+  const input = [
+    "packages/desktop/src-tauri/src/fb-extract.js",
+    "packages/desktop/src/lib/authenticated-essay-auth.ts",
+    "packages/pwa/src/lib/sync.ts",
+    "packages/desktop/src/lib/x-capture.ts",
+    "docs/STABILITY-PROGRAM.md",
+    "",
+  ].join("\n");
+
+  const result = spawnSync(
+    process.execPath,
+    [cliPath, "--stdin", "--provider-ids"],
+    {
+      input,
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(result.stdout.split("\n").filter(Boolean), [
+    "facebook",
+    "medium",
+    "other",
+    "substack",
+    "x",
   ]);
 });
 

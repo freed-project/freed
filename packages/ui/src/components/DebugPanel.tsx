@@ -528,8 +528,8 @@ function DocumentTab() {
       {/* Summary grid */}
       <div className="grid grid-cols-2 gap-2">
         <div className={DEBUG_CARD_CLASS}>
-          <p className={DEBUG_LABEL_CLASS}>Device ID</p>
-          <p className="font-mono text-xs text-[var(--theme-text-muted)]">...{docSnapshot.deviceId.slice(-8)}</p>
+          <p className={DEBUG_LABEL_CLASS}>Document ID</p>
+          <p className="font-mono text-xs text-[var(--theme-text-muted)]">...{docSnapshot.documentId.slice(-8)}</p>
         </div>
         <div className={DEBUG_CARD_CLASS}>
           <p className={DEBUG_LABEL_CLASS}>Doc Size</p>

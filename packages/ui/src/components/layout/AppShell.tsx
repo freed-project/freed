@@ -12,6 +12,7 @@ import {
 import { Sidebar } from "./Sidebar.js";
 import { Header } from "./Header.js";
 import { DebugPanel } from "../DebugPanel.js";
+import { toast } from "../Toast.js";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { SavedContentDialog } from "../SavedContentDialog.js";
 import { LibraryDialog } from "../LibraryDialog.js";
@@ -43,6 +44,9 @@ import {
   resolveAnimationIntensity,
 } from "../../lib/animation-preferences.js";
 import { applyInterfaceZoomToDocument } from "../../lib/interface-zoom.js";
+import {
+  useDeviceDisplayPreferences,
+} from "../../lib/device-display-preferences.js";
 import { MapView } from "../map/MapView.js";
 import { BackgroundAtmosphere } from "./BackgroundAtmosphere.js";
 import {
@@ -133,13 +137,10 @@ export function AppShell({ children }: AppShellProps) {
   // interval and focus listener run regardless of which view is active.
   const contactSync = useContactSync();
   const [showContactReview, setShowContactReview] = useState(false);
-  const persistedDebugWidth =
-    useAppStore((s) => s.preferences.display.debugPanelWidth) ?? DEFAULT_DEBUG_WIDTH;
-  const persistedDesktopSidebarMode =
-    useAppStore((s) => s.preferences.display.sidebarMode) ?? "expanded";
-  const friendsSidebarOpen =
-    useAppStore((s) => s.preferences.display.friendsSidebarOpen) ?? true;
-  const updatePreferences = useAppStore((s) => s.updatePreferences);
+  const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
+  const persistedDebugWidth = deviceDisplay.debugPanelWidth ?? DEFAULT_DEBUG_WIDTH;
+  const persistedDesktopSidebarMode = deviceDisplay.sidebarMode;
+  const friendsSidebarOpen = deviceDisplay.friendsSidebarOpen;
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const [committedDebugWidth, setCommittedDebugWidth] = useState(persistedDebugWidth);
   const [desktopSidebarMode, setDesktopSidebarMode] = useState<SidebarMode>(persistedDesktopSidebarMode);
@@ -154,8 +155,6 @@ export function AppShell({ children }: AppShellProps) {
       : "px-[var(--feed-card-gap,8px)] pb-[var(--feed-card-gap,8px)]";
   const [desktopSidebarDisplayMode, setDesktopSidebarDisplayMode] = useState<SidebarMode>(persistedDesktopSidebarMode);
   const dragging = useRef(false);
-  const pendingPersistedDebugWidth = useRef<number | null>(null);
-  const pendingPersistedDesktopSidebarMode = useRef<SidebarMode | null>(null);
   const lastNonClosedDesktopSidebarModeRef = useRef<SidebarMode>(
     persistedDesktopSidebarMode === "closed" ? "expanded" : persistedDesktopSidebarMode,
   );
@@ -212,20 +211,10 @@ export function AppShell({ children }: AppShellProps) {
 
   useEffect(() => {
     if (dragging.current || dragWidth !== null) return;
-    if (pendingPersistedDebugWidth.current !== null) {
-      if (persistedDebugWidth !== pendingPersistedDebugWidth.current) return;
-      pendingPersistedDebugWidth.current = null;
-    }
     setCommittedDebugWidth(persistedDebugWidth);
   }, [dragWidth, persistedDebugWidth]);
 
   useEffect(() => {
-    if (pendingPersistedDesktopSidebarMode.current !== null) {
-      if (persistedDesktopSidebarMode !== pendingPersistedDesktopSidebarMode.current) {
-        return;
-      }
-      pendingPersistedDesktopSidebarMode.current = null;
-    }
     setDesktopSidebarMode(persistedDesktopSidebarMode);
     setDesktopSidebarDisplayMode(persistedDesktopSidebarMode);
     if (persistedDesktopSidebarMode !== "closed") {
@@ -289,18 +278,16 @@ export function AppShell({ children }: AppShellProps) {
   }, [activeView, debugVisible, debugWidth, desktopSidebarMode, effectiveDesktopSidebarDisplayMode, isMobileDevice]);
 
   const persistDesktopSidebarMode = useCallback((nextMode: SidebarMode) => {
+    if (!setDeviceDisplay({ sidebarMode: nextMode })) {
+      toast.error("Freed could not save the sidebar layout on this device.");
+      return;
+    }
     setDesktopSidebarMode(nextMode);
     setDesktopSidebarDisplayMode(nextMode);
     if (nextMode !== "closed") {
       lastNonClosedDesktopSidebarModeRef.current = nextMode;
     }
-    pendingPersistedDesktopSidebarMode.current = nextMode;
-    void updatePreferences({ display: { sidebarMode: nextMode } } as Parameters<typeof updatePreferences>[0]).catch(() => {
-      if (pendingPersistedDesktopSidebarMode.current === nextMode) {
-        pendingPersistedDesktopSidebarMode.current = null;
-      }
-    });
-  }, [updatePreferences]);
+  }, [setDeviceDisplay]);
 
   const handleDesktopSidebarToggle = useCallback(() => {
     const nextMode = desktopSidebarToggleMode === "closed"
@@ -312,12 +299,10 @@ export function AppShell({ children }: AppShellProps) {
   }, [desktopSidebarToggleMode, persistDesktopSidebarMode]);
 
   const handleFriendsSidebarOpenChange = useCallback((open: boolean) => {
-    void updatePreferences({
-      display: {
-        friendsSidebarOpen: open,
-      },
-    } as Parameters<typeof updatePreferences>[0]);
-  }, [updatePreferences]);
+    if (!setDeviceDisplay({ friendsSidebarOpen: open })) {
+      toast.error("Freed could not save the sidebar layout on this device.");
+    }
+  }, [setDeviceDisplay]);
 
   const handleDebugDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -340,14 +325,13 @@ export function AppShell({ children }: AppShellProps) {
       const onUp = (ev: MouseEvent) => {
         dragging.current = false;
         const final = Math.min(MAX_DEBUG_WIDTH, Math.max(MIN_DEBUG_WIDTH, startW - (ev.clientX - startX)));
-        pendingPersistedDebugWidth.current = final;
-        setCommittedDebugWidth(final);
+        if (setDeviceDisplay({ debugPanelWidth: final })) {
+          setCommittedDebugWidth(final);
+        } else {
+          setCommittedDebugWidth(persistedDebugWidth);
+          toast.error("Freed could not save the panel width on this device.");
+        }
         setDragWidth(null);
-        void updatePreferences({ display: { debugPanelWidth: final } } as Parameters<typeof updatePreferences>[0]).catch(() => {
-          if (pendingPersistedDebugWidth.current === final) {
-            pendingPersistedDebugWidth.current = null;
-          }
-        });
         document.body.style.cursor = previousCursor;
         document.body.style.userSelect = previousUserSelect;
         document.removeEventListener("mousemove", onMove);
@@ -356,7 +340,7 @@ export function AppShell({ children }: AppShellProps) {
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     },
-    [debugWidth, updatePreferences],
+    [debugWidth, persistedDebugWidth, setDeviceDisplay],
   );
 
   // Keyboard shortcuts: Cmd/Ctrl+Shift+D to toggle, Escape to close

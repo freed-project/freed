@@ -1,4 +1,8 @@
-import { readNativeJsonFile, writeNativeJsonFile } from "./native-json-store";
+import {
+  readNativeJsonFile,
+  removeNativeJsonFile,
+  writeNativeJsonFile,
+} from "./native-json-store";
 
 const STORE_FILE = "clipboard-save-shortcut.json";
 const MAC_DEFAULT_SHORTCUT = "Control+Option+Command+S";
@@ -92,6 +96,11 @@ export async function persistClipboardSaveShortcutConfig(
   config: ClipboardSaveShortcutConfig,
 ): Promise<void> {
   await writeNativeJsonFile(STORE_FILE, { ...config }, "clipboard-save-shortcut");
+}
+
+/** Remove the device shortcut override during a destructive local reset. */
+export async function clearClipboardSaveShortcutConfig(): Promise<void> {
+  await removeNativeJsonFile(STORE_FILE, "clipboard-save-shortcut-reset");
 }
 
 export function normalizeClipboardUrl(text: string | null | undefined): string | null {

@@ -121,7 +121,7 @@ describe("feed item sanitization", () => {
 });
 
 describe("reconcileFollowRosterCapture", () => {
-  it("preserves person links, graph placement, and feed interaction state", () => {
+  it("preserves person links and feed interaction state without syncing graph placement", () => {
     const person: Person = {
       id: "person:ada",
       name: "Ada Lovelace",
@@ -155,7 +155,6 @@ describe("reconcileFollowRosterCapture", () => {
 
     expect(doc.accounts[account().id]).toMatchObject({
       personId: person.id,
-      graphX: 42,
       displayName: "Augusta Ada King",
       discoveredFrom: "follow_roster",
       firstSeenAt: now - 10_000,
@@ -163,6 +162,7 @@ describe("reconcileFollowRosterCapture", () => {
       followRosterSyncedAt: now + 5_000,
       updatedAt: now + 5_000,
     });
+    expect(doc.accounts[account().id]?.graphX).toBeUndefined();
     expect(doc.feedItems[item().globalId]?.content.text).toBe("Fresh text");
     expect(doc.feedItems[item().globalId]?.userState).toMatchObject({
       saved: true,

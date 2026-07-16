@@ -141,8 +141,7 @@ function createDeterministicDoc(): FreedDoc {
       draft.accounts = {};
       draft.preferences = createDefaultPreferences();
       draft.meta = {
-        deviceId: "automerge-memory-fixture",
-        lastSync: 0,
+        documentId: "automerge-memory-fixture",
         version: 1,
       };
     },

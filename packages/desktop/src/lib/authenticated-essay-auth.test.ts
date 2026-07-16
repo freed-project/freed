@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -18,6 +18,7 @@ vi.mock("./user-agent", () => ({
 import {
   checkSubstackAuth,
   disconnectSubstack,
+  disconnectSubstackForFactoryReset,
   initSubstackAuth,
   showSubstackLogin,
   storeSubstackAuthState,
@@ -25,17 +26,27 @@ import {
 import {
   checkMediumAuth,
   disconnectMedium,
+  disconnectMediumForFactoryReset,
   initMediumAuth,
   storeMediumAuthState,
 } from "./medium-auth";
+import {
+  quiesceDesktopProviderAuthForFactoryReset,
+  resetDesktopProviderAuthLifecycleForTests,
+} from "./provider-auth-lifecycle";
 
 beforeEach(() => {
+  resetDesktopProviderAuthLifecycleForTests();
   localStorage.clear();
   mocks.invoke.mockReset().mockResolvedValue(null);
   mocks.listen.mockReset();
   mocks.unlisten.mockReset();
   mocks.clearPlatformUA.mockReset();
   mocks.getPlatformUA.mockClear();
+});
+
+afterEach(() => {
+  resetDesktopProviderAuthLifecycleForTests();
 });
 
 describe("authenticated essay auth", () => {
@@ -75,7 +86,7 @@ describe("authenticated essay auth", () => {
     expect(initMediumAuth()).toEqual({
       isAuthenticated: true,
       lastCheckedAt: 300,
-      lastCaptureError: "Needs attention",
+      lastCaptureError: "The last provider sync failed.",
       captureCooldownUntil: 350,
     });
   });
@@ -131,6 +142,52 @@ describe("authenticated essay auth", () => {
     await expect(disconnectSubstack()).rejects.toThrow("WebView cleanup failed");
     expect(initSubstackAuth()).toEqual({ isAuthenticated: false });
     expect(mocks.clearPlatformUA).toHaveBeenCalledWith("substack");
+  });
+
+  it("factory reset persists disconnected auth state without rotating provider identities", async () => {
+    storeSubstackAuthState({
+      isAuthenticated: true,
+      lastCapturedAt: 200,
+      pausedUntil: 300,
+      pauseReason: "Provider cooldown",
+      pauseLevel: 2,
+    });
+    storeMediumAuthState({
+      isAuthenticated: true,
+      lastCapturedAt: 400,
+      captureCooldownUntil: 500,
+    });
+
+    await disconnectSubstackForFactoryReset();
+    await disconnectMediumForFactoryReset();
+
+    expect(mocks.invoke).toHaveBeenNthCalledWith(1, "substack_disconnect");
+    expect(mocks.invoke).toHaveBeenNthCalledWith(2, "medium_disconnect");
+    expect(initSubstackAuth()).toMatchObject({
+      isAuthenticated: false,
+      lastCheckedAt: expect.any(Number),
+      lastCapturedAt: 200,
+      pausedUntil: 300,
+      pauseReason: "Provider work is temporarily paused.",
+      pauseLevel: 2,
+    });
+    expect(initMediumAuth()).toMatchObject({
+      isAuthenticated: false,
+      lastCheckedAt: expect.any(Number),
+      lastCapturedAt: 400,
+      captureCooldownUntil: 500,
+    });
+    expect(mocks.clearPlatformUA).not.toHaveBeenCalled();
+  });
+
+  it("rejects late auth-state persistence once provider auth is quiesced", async () => {
+    await quiesceDesktopProviderAuthForFactoryReset();
+
+    storeSubstackAuthState({ isAuthenticated: true, lastCheckedAt: 100 });
+    storeMediumAuthState({ isAuthenticated: true, lastCheckedAt: 200 });
+
+    expect(initSubstackAuth()).toEqual({ isAuthenticated: false });
+    expect(initMediumAuth()).toEqual({ isAuthenticated: false });
   });
 
   it("returns false when the Medium hidden auth check fails", async () => {

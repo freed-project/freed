@@ -52,6 +52,9 @@ use objc2_web_kit::WKWebViewConfiguration;
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
 const DEFAULT_SYNC_RELAY_PORT: u16 = 8765;
+const FACTORY_RESET_RELAY_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
+const FACTORY_RESET_RELAY_DRAIN_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const SYNC_RELAY_DOC_SEND_TIMEOUT: Duration = Duration::from_secs(2);
 const MAIN_WINDOW_LABEL: &str = "main";
 const MAIN_WINDOW_RECOVERY_KEEPALIVE_LABEL: &str = "main-recovery-keepalive";
 const PRIMARY_MENU_ITEM_SHOW: &str = "show";
@@ -1495,12 +1498,20 @@ impl InvariantAlarmState {
         ready
     }
 
-    fn observe_cloud_upload(&mut self, payload: &serde_json::Value, ts: u64, out: &mut Vec<InvariantAlarm>) {
+    fn observe_cloud_upload(
+        &mut self,
+        payload: &serde_json::Value,
+        ts: u64,
+        out: &mut Vec<InvariantAlarm>,
+    ) {
         if payload.get("headsUnchanged").and_then(|v| v.as_bool()) != Some(true) {
             return;
         }
         self.cloud_unchanged_uploads.push_back(ts);
-        prune_before(&mut self.cloud_unchanged_uploads, ts.saturating_sub(ALARM_CLOUD_LOOP_WINDOW_MS));
+        prune_before(
+            &mut self.cloud_unchanged_uploads,
+            ts.saturating_sub(ALARM_CLOUD_LOOP_WINDOW_MS),
+        );
         let count = self.cloud_unchanged_uploads.len();
         if count >= ALARM_CLOUD_LOOP_THRESHOLD && self.take_refire_slot("cloud_loop", ts) {
             out.push(InvariantAlarm {
@@ -1516,8 +1527,16 @@ impl InvariantAlarmState {
         }
     }
 
-    fn observe_scrape_outcome(&mut self, payload: &serde_json::Value, ts: u64, out: &mut Vec<InvariantAlarm>) {
-        let provider = payload.get("provider").and_then(|v| v.as_str()).unwrap_or("unknown");
+    fn observe_scrape_outcome(
+        &mut self,
+        payload: &serde_json::Value,
+        ts: u64,
+        out: &mut Vec<InvariantAlarm>,
+    ) {
+        let provider = payload
+            .get("provider")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
         let extracted = payload.get("itemsExtracted").and_then(|v| v.as_u64());
         let persisted = payload.get("itemsPersisted").and_then(|v| v.as_u64());
         let stage = payload.get("stage").and_then(|v| v.as_str()).unwrap_or("");
@@ -1544,7 +1563,10 @@ impl InvariantAlarmState {
         // then this is a coarse tripwire and the escalation to needs-reconnect
         // stays observation-only.
         if stage == "ok" {
-            let streak = self.auth_empty_streak.entry(provider.to_string()).or_insert(0);
+            let streak = self
+                .auth_empty_streak
+                .entry(provider.to_string())
+                .or_insert(0);
             if extracted == Some(0) {
                 *streak += 1;
                 let streak = *streak;
@@ -1573,13 +1595,22 @@ impl InvariantAlarmState {
         }
     }
 
-    fn observe_window_destroyed(&mut self, payload: &serde_json::Value, ts: u64, out: &mut Vec<InvariantAlarm>) {
-        let reason = payload.get("reasonEnum").and_then(|v| v.as_str()).unwrap_or("");
-        let session_held = payload.get("scraperSessionHeld").and_then(|v| v.as_bool()).unwrap_or(false);
+    fn observe_window_destroyed(
+        &mut self,
+        payload: &serde_json::Value,
+        ts: u64,
+        out: &mut Vec<InvariantAlarm>,
+    ) {
+        let reason = payload
+            .get("reasonEnum")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let session_held = payload
+            .get("scraperSessionHeld")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let is_preflight_or_login = matches!(reason, "preflight_recycle" | "login_flow");
-        if (session_held || is_preflight_or_login)
-            && self.take_refire_slot("preflight_kill", ts)
-        {
+        if (session_held || is_preflight_or_login) && self.take_refire_slot("preflight_kill", ts) {
             out.push(InvariantAlarm {
                 name: "preflight_kill",
                 provider: None,
@@ -1593,9 +1624,13 @@ impl InvariantAlarmState {
 
     fn observe_main_recovery(&mut self, ts: u64, out: &mut Vec<InvariantAlarm>) {
         self.main_recoveries.push_back(ts);
-        prune_before(&mut self.main_recoveries, ts.saturating_sub(ALARM_WATCHDOG_THRASH_WINDOW_MS));
+        prune_before(
+            &mut self.main_recoveries,
+            ts.saturating_sub(ALARM_WATCHDOG_THRASH_WINDOW_MS),
+        );
         let count = self.main_recoveries.len();
-        if count >= ALARM_WATCHDOG_THRASH_THRESHOLD && self.take_refire_slot("watchdog_thrash", ts) {
+        if count >= ALARM_WATCHDOG_THRASH_THRESHOLD && self.take_refire_slot("watchdog_thrash", ts)
+        {
             out.push(InvariantAlarm {
                 name: "watchdog_thrash",
                 provider: None,
@@ -1651,7 +1686,11 @@ fn observe_invariant_alarm_event(data_dir: &Path, payload: &serde_json::Value) {
         });
         if let Ok(line) = serde_json::to_string(&record) {
             if let Err(error) = append_runtime_health_line(data_dir, &line) {
-                warn!("[invariant-alarm] failed to append in {}: {}", data_dir.display(), error);
+                warn!(
+                    "[invariant-alarm] failed to append in {}: {}",
+                    data_dir.display(),
+                    error
+                );
             } else {
                 warn!("[invariant-alarm] {} {}", alarm.name, record["detail"]);
             }
@@ -1717,7 +1756,11 @@ mod invariant_alarm_tests {
         for i in 0..5 {
             state.observe_cloud_upload(&upload(true), base + i, &mut out);
         }
-        assert_eq!(names(&out), vec!["cloud_loop"], "refires after cooldown with a fresh window");
+        assert_eq!(
+            names(&out),
+            vec!["cloud_loop"],
+            "refires after cooldown with a fresh window"
+        );
     }
 
     #[test]
@@ -1727,7 +1770,10 @@ mod invariant_alarm_tests {
         state.observe_scrape_outcome(&scrape("facebook", "ok", 7, 4), 10, &mut out);
         assert!(out.is_empty(), "persisted>0 is fine");
         state.observe_scrape_outcome(&scrape("facebook", "ok", 3, 0), 20, &mut out);
-        assert!(out.is_empty(), "extracted<5 is below the signature threshold");
+        assert!(
+            out.is_empty(),
+            "extracted<5 is below the signature threshold"
+        );
         state.observe_scrape_outcome(&scrape("facebook", "ok", 9, 0), 30, &mut out);
         assert_eq!(names(&out), vec!["scrape_zero_persist"]);
     }
@@ -1740,7 +1786,11 @@ mod invariant_alarm_tests {
         state.observe_scrape_outcome(&scrape("instagram", "ok", 0, 0), 20, &mut out);
         assert!(out.is_empty(), "two empties is below the recheck streak");
         state.observe_scrape_outcome(&scrape("instagram", "ok", 0, 0), 30, &mut out);
-        assert_eq!(names(&out), vec!["auth_zombie"], "third consecutive ok-empty fires recheck");
+        assert_eq!(
+            names(&out),
+            vec!["auth_zombie"],
+            "third consecutive ok-empty fires recheck"
+        );
         out.clear();
         // A real extract resets the streak.
         state.observe_scrape_outcome(&scrape("instagram", "ok", 5, 5), 40, &mut out);
@@ -2796,10 +2846,18 @@ fn prune_snapshots(snapshot_dir: &std::path::Path, now_secs: u64) {
 
 struct SyncRelayState {
     port: u16,
+    /// Serializes token snapshots and document exchange against relay reset.
+    epoch_gate: RwLock<()>,
     /// Broadcast channel — sends doc bytes to all connected clients.
     broadcast_tx: broadcast::Sender<Arc<Vec<u8>>>,
     /// Latest doc binary, served to new joiners immediately on connect.
     current_doc: RwLock<Option<Arc<Vec<u8>>>>,
+    /// Disconnect signal for every connection authenticated before a factory reset.
+    disconnect_tx: broadcast::Sender<u64>,
+    /// Incremented before factory-reset relay state is cleared.
+    generation: std::sync::atomic::AtomicU64,
+    /// Blocks renderer and mobile writes until local document deletion completes.
+    accepting_doc_updates: std::sync::atomic::AtomicBool,
     /// Live connection count (displayed in tray / sync indicator).
     client_count: RwLock<usize>,
     /// Pairing token — must appear as `?t=<token>` in the WS upgrade URI.
@@ -4917,6 +4975,107 @@ fn get_platform() -> String {
     std::env::consts::OS.to_string()
 }
 
+fn hash_desktop_installation_witness(machine_id: &str, user_id: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"freed-desktop-installation-witness-v1\0");
+    hasher.update(machine_id.trim().as_bytes());
+    hasher.update(b"\0");
+    hasher.update(user_id.trim().as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+#[cfg(target_os = "macos")]
+fn platform_machine_identifier() -> Result<String, String> {
+    let output = Command::new("/usr/sbin/ioreg")
+        .args(["-rd1", "-c", "IOPlatformExpertDevice"])
+        .output()
+        .map_err(|error| format!("failed to read the macOS platform identifier: {error}"))?;
+    if !output.status.success() {
+        return Err("macOS did not return a platform identifier".to_string());
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout
+        .lines()
+        .find(|line| line.contains("\"IOPlatformUUID\""))
+        .and_then(|line| line.split('"').nth(3))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| "macOS returned an invalid platform identifier".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn platform_machine_identifier() -> Result<String, String> {
+    let output = Command::new("reg")
+        .args([
+            "query",
+            r"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Cryptography",
+            "/v",
+            "MachineGuid",
+        ])
+        .output()
+        .map_err(|error| format!("failed to read the Windows machine identifier: {error}"))?;
+    if !output.status.success() {
+        return Err("Windows did not return a machine identifier".to_string());
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout
+        .lines()
+        .find(|line| line.contains("MachineGuid"))
+        .and_then(|line| line.split_whitespace().last())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| "Windows returned an invalid machine identifier".to_string())
+}
+
+#[cfg(target_os = "linux")]
+fn platform_machine_identifier() -> Result<String, String> {
+    ["/etc/machine-id", "/var/lib/dbus/machine-id"]
+        .iter()
+        .find_map(|path| {
+            std::fs::read_to_string(path)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+        .ok_or_else(|| "Linux did not return a machine identifier".to_string())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+fn platform_machine_identifier() -> Result<String, String> {
+    hostname::get()
+        .map_err(|error| format!("failed to read the machine hostname: {error}"))?
+        .into_string()
+        .map_err(|_| "the machine hostname is not valid UTF-8".to_string())
+}
+
+#[cfg(unix)]
+fn platform_user_identifier() -> String {
+    format!("uid:{}", unsafe { libc::geteuid() })
+}
+
+#[cfg(windows)]
+fn platform_user_identifier() -> String {
+    std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("USERNAME"))
+        .unwrap_or_else(|_| "unknown-user".to_string())
+}
+
+#[cfg(not(any(unix, windows)))]
+fn platform_user_identifier() -> String {
+    std::env::var("USER").unwrap_or_else(|_| "unknown-user".to_string())
+}
+
+#[tauri::command]
+fn get_desktop_installation_witness() -> Result<String, String> {
+    let machine_id = platform_machine_identifier()?;
+    Ok(hash_desktop_installation_witness(
+        &machine_id,
+        &platform_user_identifier(),
+    ))
+}
+
 #[tauri::command]
 fn get_updater_target() -> String {
     let os = match std::env::consts::OS {
@@ -5324,14 +5483,14 @@ fn get_all_local_ips() -> Vec<serde_json::Value> {
 /// This URL is encoded into the QR code shown in the Mobile Sync tab.
 /// Only devices that scan the QR code (i.e. know the token) can connect.
 #[tauri::command]
-fn get_sync_url(state: tauri::State<'_, RelayState>) -> String {
+async fn get_sync_url(state: tauri::State<'_, RelayState>) -> Result<String, String> {
+    let _epoch = state.epoch_gate.read().await;
     let port = state.port;
-    // StdRwLock guard is held briefly and dropped before any await — safe.
     let token = state.pairing_token.read().unwrap().clone();
     let ip = local_ip_address::local_ip()
         .map(|ip| ip.to_string())
         .unwrap_or_else(|_| "localhost".to_string());
-    format!("ws://{}:{}?t={}", ip, port, token)
+    Ok(format!("ws://{}:{}?t={}", ip, port, token))
 }
 
 /// Rotates the pairing token and persists the new value to disk.
@@ -5347,9 +5506,126 @@ async fn reset_pairing_token(
     let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let new_token = generate_token();
     std::fs::write(data_dir.join("pairing-token"), &new_token).map_err(|e| e.to_string())?;
+    let _epoch = state.epoch_gate.write().await;
     *state.pairing_token.write().unwrap() = new_token.clone();
     info!("[Sync] Pairing token rotated");
     Ok(new_token)
+}
+
+async fn factory_reset_sync_relay_in(
+    data_dir: &Path,
+    state: &RelayState,
+) -> Result<String, String> {
+    let new_token = generate_token();
+    std::fs::write(data_dir.join("pairing-token"), &new_token).map_err(|e| e.to_string())?;
+
+    let _epoch = state.epoch_gate.write().await;
+    state
+        .accepting_doc_updates
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    let generation = state
+        .generation
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        + 1;
+    *state.current_doc.write().await = None;
+    *state.pairing_token.write().unwrap() = new_token.clone();
+    let _ = state.disconnect_tx.send(generation);
+    Ok(new_token)
+}
+
+async fn wait_for_relay_clients_to_disconnect(
+    state: &RelayState,
+    drain_timeout: Duration,
+) -> Result<(), String> {
+    let deadline = Instant::now() + drain_timeout;
+    loop {
+        let client_count = *state.client_count.read().await;
+        if client_count == 0 {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(format!(
+                "sync relay still has {} client(s) after factory reset drain",
+                client_count
+            ));
+        }
+        tokio::time::sleep(FACTORY_RESET_RELAY_DRAIN_POLL_INTERVAL).await;
+    }
+}
+
+/// Revoke existing mobile sessions, clear held bytes, and drain old connections.
+#[tauri::command]
+async fn factory_reset_sync_relay(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, RelayState>,
+) -> Result<String, String> {
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let token = factory_reset_sync_relay_in(&data_dir, &state).await?;
+    wait_for_relay_clients_to_disconnect(&state, FACTORY_RESET_RELAY_DRAIN_TIMEOUT).await?;
+    info!("[Sync] Relay reset and old mobile clients drained for factory reset");
+    Ok(token)
+}
+
+/// Resume relay document updates only after the local Automerge document is cleared.
+#[tauri::command]
+async fn resume_sync_relay_after_factory_reset(
+    state: tauri::State<'_, RelayState>,
+) -> Result<(), String> {
+    let _epoch = state.epoch_gate.write().await;
+    state
+        .accepting_doc_updates
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
+}
+
+fn remove_factory_reset_file(path: &Path) -> Result<(), String> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("failed to remove {}: {error}", path.display())),
+    }
+}
+
+fn clear_factory_reset_runtime_artifacts_in(data_dir: &Path) -> Result<(), String> {
+    let mut paths = vec![
+        startup_recovery_state_path(data_dir),
+        runtime_health_path(data_dir),
+        runtime_diagnostics_path(data_dir),
+        dev_sync_trigger_path(data_dir),
+        dev_sync_trigger_result_path(data_dir),
+    ];
+
+    let entries = std::fs::read_dir(data_dir)
+        .map_err(|error| format!("failed to inspect {}: {error}", data_dir.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            format!(
+                "failed to inspect an entry in {}: {error}",
+                data_dir.display()
+            )
+        })?;
+        let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+            continue;
+        };
+        if runtime_health_dated_file_date(&name).is_some() {
+            paths.push(entry.path());
+        }
+    }
+
+    for path in paths {
+        remove_factory_reset_file(&path)?;
+    }
+    *RUNTIME_HEALTH_ACTIVE_DATE.lock().unwrap() = None;
+    Ok(())
+}
+
+#[tauri::command]
+fn clear_factory_reset_runtime_artifacts(app: tauri::AppHandle) -> Result<(), String> {
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    clear_factory_reset_runtime_artifacts_in(&data_dir)
 }
 
 #[tauri::command]
@@ -7412,9 +7688,25 @@ async fn broadcast_doc(
     state: tauri::State<'_, RelayState>,
     doc_bytes: Vec<u8>,
 ) -> Result<(), String> {
+    let _epoch = state.epoch_gate.read().await;
+    if !state
+        .accepting_doc_updates
+        .load(std::sync::atomic::Ordering::SeqCst)
+    {
+        return Err("sync relay is being factory reset".to_string());
+    }
     let byte_len = doc_bytes.len() as u64;
     let doc_bytes = Arc::new(doc_bytes);
-    *state.current_doc.write().await = Some(doc_bytes.clone());
+    {
+        let mut current_doc = state.current_doc.write().await;
+        if !state
+            .accepting_doc_updates
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            return Err("sync relay is being factory reset".to_string());
+        }
+        *current_doc = Some(doc_bytes.clone());
+    }
     let _ = state.broadcast_tx.send(doc_bytes);
     let client_count = *state.client_count.read().await as u64;
     note_relay_broadcast(&app, byte_len, client_count);
@@ -10658,15 +10950,62 @@ fn normalized_surface_path(url: &url::Url) -> &str {
     }
 }
 
+fn normalized_surface_host(url: &url::Url) -> Option<&str> {
+    url.host_str()
+        .map(|host| host.strip_prefix("www.").unwrap_or(host))
+}
+
+fn essay_surface_origin_matches(current_url: &url::Url, target_url: &url::Url) -> bool {
+    current_url.scheme() == target_url.scheme()
+        && current_url.scheme() == "https"
+        && normalized_surface_host(current_url) == normalized_surface_host(target_url)
+        && current_url.port_or_known_default() == target_url.port_or_known_default()
+}
+
+fn essay_provider_auth_surface_matches(
+    current_url: &url::Url,
+    provider: EssayProviderConfig,
+) -> bool {
+    let Ok(target_url) = url::Url::parse(provider.auth_check_url) else {
+        return false;
+    };
+    essay_surface_origin_matches(current_url, &target_url)
+        && normalized_surface_path(current_url) == normalized_surface_path(&target_url)
+}
+
+fn essay_login_auth_probe_script(provider: EssayProviderConfig) -> Result<String, String> {
+    Ok(format!(
+        r#"
+        (function() {{
+          var attemptsRemaining = 20;
+          function proveAuthenticatedSession() {{
+            try {{
+              if (window.__FREED_ESSAY_LOGIN_AUTH_EMITTED) return;
+              var loggedIn = Boolean({});
+              if (loggedIn) {{
+                window.__FREED_ESSAY_LOGIN_AUTH_EMITTED = true;
+                window.__TAURI__.event.emit({}, {{ loggedIn: true }});
+                return;
+              }}
+            }} catch (_) {{}}
+            attemptsRemaining -= 1;
+            if (attemptsRemaining > 0) window.setTimeout(proveAuthenticatedSession, 250);
+          }}
+          window.setTimeout(proveAuthenticatedSession, 250);
+        }})();
+        "#,
+        provider.auth_expression,
+        serde_json::to_string(provider.auth_event).map_err(|error| error.to_string())?,
+    ))
+}
+
 fn essay_capture_surface_matches(
     current_url: &url::Url,
     target_url: &url::Url,
-    page: &EssayScrapePage,
+    _page: &EssayScrapePage,
 ) -> bool {
-    if let Some(tab) = page.substack_profile_tab {
-        return normalized_surface_path(current_url).ends_with(&format!("/{}", tab));
-    }
-    normalized_surface_path(current_url) == normalized_surface_path(target_url)
+    essay_surface_origin_matches(current_url, target_url)
+        && normalized_surface_path(current_url) == normalized_surface_path(target_url)
 }
 
 async fn resolve_substack_profile_root(
@@ -10918,8 +11257,7 @@ async fn show_essay_provider_login(
         "login restart",
     );
 
-    let app_handle = app.clone();
-    let auth_emitted = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let auth_probe_script = essay_login_auth_probe_script(provider)?;
     let login_window = WebviewWindowBuilder::new(
         &app,
         provider.login_window_label,
@@ -10940,14 +11278,12 @@ async fn show_essay_provider_login(
     )
     .center()
     .visible(true)
-    .on_navigation(move |url| {
-        if provider_host_matches(url.host_str().unwrap_or_default(), provider.host)
-            && !provider_page_requires_login(url, provider.host)
-            && !auth_emitted.swap(true, std::sync::atomic::Ordering::SeqCst)
+    .on_page_load(move |window, payload| {
+        if payload.event() == tauri::webview::PageLoadEvent::Finished
+            && essay_provider_auth_surface_matches(payload.url(), provider)
         {
-            let _ = app_handle.emit(provider.auth_event, serde_json::json!({ "loggedIn": true }));
+            let _ = window.eval(&auth_probe_script);
         }
-        true
     })
     .build()
     .map_err(|e| e.to_string())?;
@@ -11610,6 +11946,42 @@ async fn medium_scrape_essays(
 // WebSocket relay
 // ---------------------------------------------------------------------------
 
+fn relay_connection_can_exchange_docs(state: &RelayState, connection_generation: u64) -> bool {
+    state
+        .accepting_doc_updates
+        .load(std::sync::atomic::Ordering::SeqCst)
+        && connection_generation == state.generation.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+fn relay_request_token_matches(query: Option<&str>, expected_token: &str) -> bool {
+    query
+        .and_then(|query| {
+            query.split('&').find_map(|pair| {
+                let mut fields = pair.splitn(2, '=');
+                (fields.next() == Some("t"))
+                    .then(|| fields.next())
+                    .flatten()
+            })
+        })
+        .map(|token| token == expected_token)
+        .unwrap_or(false)
+}
+
+async fn store_relay_client_doc_if_current(
+    state: &RelayState,
+    connection_generation: u64,
+    bytes: Arc<Vec<u8>>,
+) -> bool {
+    let _epoch = state.epoch_gate.read().await;
+    let mut current_doc = state.current_doc.write().await;
+    if !relay_connection_can_exchange_docs(state, connection_generation) {
+        return false;
+    }
+    *current_doc = Some(bytes.clone());
+    let _ = state.broadcast_tx.send(bytes);
+    true
+}
+
 /// Authenticate and handle a single WebSocket connection.
 ///
 /// The client must include `?t=<token>` in the upgrade URI.  Any connection
@@ -11624,25 +11996,20 @@ async fn handle_connection(
 ) {
     info!("[Sync] New connection from: {}", addr);
 
-    // Snapshot the token now. The StdRwLock guard is dropped here, so it is
-    // never held across an .await point.
-    let expected_token = state.pairing_token.read().unwrap().clone();
+    let (expected_token, connection_generation) = {
+        let _epoch = state.epoch_gate.read().await;
+        (
+            state.pairing_token.read().unwrap().clone(),
+            state.generation.load(std::sync::atomic::Ordering::SeqCst),
+        )
+    };
+    let handshake_token = expected_token.clone();
+    let mut disconnect_rx = state.disconnect_tx.subscribe();
 
     let ws_stream = match accept_hdr_async(
         stream,
         move |req: &WsRequest, resp: WsResponse| -> Result<WsResponse, ErrorResponse> {
-            let token_ok = req
-                .uri()
-                .query()
-                .and_then(|q| {
-                    // Parse ?t=<value> from the query string
-                    q.split('&').find_map(|pair| {
-                        let mut kv = pair.splitn(2, '=');
-                        (kv.next() == Some("t")).then(|| kv.next()).flatten()
-                    })
-                })
-                .map(|t| t == expected_token.as_str())
-                .unwrap_or(false);
+            let token_ok = relay_request_token_matches(req.uri().query(), &handshake_token);
 
             if token_ok {
                 Ok(resp)
@@ -11668,37 +12035,63 @@ async fn handle_connection(
     };
 
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
+    let mut broadcast_rx = state.broadcast_tx.subscribe();
 
-    // Increment client count and notify frontend
-    {
+    let connected_count = {
+        let _epoch = state.epoch_gate.read().await;
+        let token_is_current =
+            state.pairing_token.read().unwrap().as_str() == expected_token.as_str();
+        if !token_is_current || !relay_connection_can_exchange_docs(&state, connection_generation) {
+            let _ = timeout(
+                SYNC_RELAY_DOC_SEND_TIMEOUT,
+                ws_sender.send(Message::Close(None)),
+            )
+            .await;
+            info!("[Sync] Client {} rejected during relay reset", addr);
+            return;
+        }
+
+        if let Some(doc) = state.current_doc.read().await.clone() {
+            match timeout(
+                SYNC_RELAY_DOC_SEND_TIMEOUT,
+                ws_sender.send(Message::Binary(doc.as_ref().clone().into())),
+            )
+            .await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    error!("[Sync] Failed to send initial doc: {}", error);
+                    return;
+                }
+                Err(_) => {
+                    error!("[Sync] Timed out sending initial doc to {}", addr);
+                    return;
+                }
+            }
+        }
+
         let mut count = state.client_count.write().await;
         *count += 1;
-        let new_count = *count;
-        info!("[Sync] Client connected. Total: {}", new_count);
-        let _ = app.emit("sync-client-count", new_count);
-    }
-
-    // Push current doc to the new client immediately
-    if let Some(doc) = state.current_doc.read().await.clone() {
-        if let Err(e) = ws_sender
-            .send(Message::Binary(doc.as_ref().clone().into()))
-            .await
-        {
-            error!("[Sync] Failed to send initial doc: {}", e);
-        }
-    }
-
-    let mut broadcast_rx = state.broadcast_tx.subscribe();
+        *count
+    };
+    info!("[Sync] Client connected. Total: {}", connected_count);
+    let _ = app.emit("sync-client-count", connected_count);
 
     loop {
         tokio::select! {
             msg = ws_receiver.next() => {
                 match msg {
                     Some(Ok(Message::Binary(data))) => {
-                        // Client pushed a doc update. Store and rebroadcast.
+                        // The client pushed a document update. Store and rebroadcast it.
                         let bytes = Arc::new(data.to_vec());
-                        *state.current_doc.write().await = Some(bytes.clone());
-                        let _ = state.broadcast_tx.send(bytes);
+                        if !store_relay_client_doc_if_current(
+                            &state,
+                            connection_generation,
+                            bytes,
+                        ).await {
+                            info!("[Sync] Ignored stale client update after relay reset");
+                            break;
+                        }
                     }
                     Some(Ok(Message::Close(_))) | None => {
                         info!("[Sync] Client {} disconnected", addr);
@@ -11716,10 +12109,36 @@ async fn handle_connection(
             }
             broadcast = broadcast_rx.recv() => {
                 if let Ok(doc) = broadcast {
-                    if let Err(e) = ws_sender.send(Message::Binary(doc.as_ref().clone().into())).await {
-                        error!("[Sync] Failed to send to {}: {}", addr, e);
+                    let _epoch = state.epoch_gate.read().await;
+                    if !relay_connection_can_exchange_docs(&state, connection_generation) {
+                        let _ = timeout(
+                            SYNC_RELAY_DOC_SEND_TIMEOUT,
+                            ws_sender.send(Message::Close(None)),
+                        ).await;
+                        info!("[Sync] Client {} rejected a broadcast after relay reset", addr);
                         break;
                     }
+                    match timeout(
+                        SYNC_RELAY_DOC_SEND_TIMEOUT,
+                        ws_sender.send(Message::Binary(doc.as_ref().clone().into())),
+                    ).await {
+                        Ok(Ok(())) => {}
+                        Ok(Err(error)) => {
+                            error!("[Sync] Failed to send to {}: {}", addr, error);
+                            break;
+                        }
+                        Err(_) => {
+                            error!("[Sync] Timed out sending to {}", addr);
+                            break;
+                        }
+                    }
+                }
+            }
+            reset = disconnect_rx.recv() => {
+                if reset.is_ok() {
+                    let _ = ws_sender.send(Message::Close(None)).await;
+                    info!("[Sync] Client {} disconnected by factory reset", addr);
+                    break;
                 }
             }
         }
@@ -12835,11 +13254,16 @@ pub fn run() {
     }
 
     let (broadcast_tx, _) = broadcast::channel::<Arc<Vec<u8>>>(16);
+    let (disconnect_tx, _) = broadcast::channel::<u64>(16);
 
     let relay_state = Arc::new(SyncRelayState {
         port: sync_relay_port(),
+        epoch_gate: RwLock::new(()),
         broadcast_tx,
         current_doc: RwLock::new(None),
+        disconnect_tx,
+        generation: std::sync::atomic::AtomicU64::new(0),
+        accepting_doc_updates: std::sync::atomic::AtomicBool::new(true),
         client_count: RwLock::new(0),
         // Populated from disk in .setup() before the relay starts accepting connections.
         pairing_token: StdRwLock::new(String::new()),
@@ -14040,6 +14464,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_version,
             get_platform,
+            get_desktop_installation_witness,
             get_updater_target,
             retry_startup_after_crash,
             export_startup_diagnostics,
@@ -14066,7 +14491,10 @@ pub fn run() {
             get_social_provider_cookie_state,
             prepare_social_scrape_memory,
             broadcast_doc,
+            clear_factory_reset_runtime_artifacts,
             reset_pairing_token,
+            factory_reset_sync_relay,
+            resume_sync_relay_after_factory_reset,
             show_window,
             open_x_login_window,
             check_x_login_cookies,
@@ -14138,6 +14566,193 @@ pub fn run() {
 mod tests {
     use super::*;
 
+    #[test]
+    fn desktop_installation_witness_is_scoped_to_machine_and_user() {
+        let first = hash_desktop_installation_witness("machine-a", "user-a");
+        assert_eq!(first.len(), 64);
+        assert_eq!(
+            first,
+            hash_desktop_installation_witness("machine-a", "user-a")
+        );
+        assert_ne!(
+            first,
+            hash_desktop_installation_witness("machine-b", "user-a")
+        );
+        assert_ne!(
+            first,
+            hash_desktop_installation_witness("machine-a", "user-b")
+        );
+    }
+
+    #[test]
+    fn factory_reset_clears_runtime_artifacts_but_preserves_installation_state() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let cleared_files = [
+            STARTUP_RECOVERY_STATE_FILE,
+            RUNTIME_HEALTH_FILE,
+            RUNTIME_DIAGNOSTICS_FILE,
+            DEV_SYNC_TRIGGER_FILE,
+            DEV_SYNC_TRIGGER_RESULT_FILE,
+            "runtime-health-20260712.jsonl",
+            "runtime-health-20260713.jsonl",
+        ];
+        for name in cleared_files {
+            std::fs::write(data_dir.path().join(name), "private runtime state").unwrap();
+        }
+        let preserved_files = [
+            "release-channel.json",
+            "desktop-client-registration.json",
+            "pairing-token",
+            "scraper-window-preferences.json",
+            "user-agent.json",
+        ];
+        for name in preserved_files {
+            std::fs::write(data_dir.path().join(name), "installation state").unwrap();
+        }
+
+        clear_factory_reset_runtime_artifacts_in(data_dir.path()).unwrap();
+
+        for name in cleared_files {
+            assert!(
+                !data_dir.path().join(name).exists(),
+                "{name} should be cleared"
+            );
+        }
+        for name in preserved_files {
+            assert_eq!(
+                std::fs::read_to_string(data_dir.path().join(name)).unwrap(),
+                "installation state"
+            );
+        }
+        clear_factory_reset_runtime_artifacts_in(data_dir.path()).unwrap();
+    }
+
+    #[tokio::test]
+    async fn factory_reset_relay_rejects_old_clients_and_clears_held_document() {
+        let data_dir = tempfile::tempdir().unwrap();
+        std::fs::write(data_dir.path().join("pairing-token"), "old-token").unwrap();
+        let (broadcast_tx, _) = broadcast::channel::<Arc<Vec<u8>>>(16);
+        let (disconnect_tx, _) = broadcast::channel::<u64>(16);
+        let mut disconnect_rx = disconnect_tx.subscribe();
+        let state = Arc::new(SyncRelayState {
+            port: DEFAULT_SYNC_RELAY_PORT,
+            epoch_gate: RwLock::new(()),
+            broadcast_tx,
+            current_doc: RwLock::new(Some(Arc::new(vec![1, 2, 3]))),
+            disconnect_tx,
+            generation: std::sync::atomic::AtomicU64::new(7),
+            accepting_doc_updates: std::sync::atomic::AtomicBool::new(true),
+            client_count: RwLock::new(1),
+            pairing_token: StdRwLock::new("old-token".to_string()),
+        });
+
+        let mut broadcast_rx = state.broadcast_tx.subscribe();
+        assert!(store_relay_client_doc_if_current(&state, 7, Arc::new(vec![4, 5, 6]),).await);
+        assert_eq!(broadcast_rx.recv().await.unwrap().as_slice(), &[4, 5, 6]);
+
+        let epoch = state.epoch_gate.read().await;
+        let reset_state = state.clone();
+        let reset_data_dir = data_dir.path().to_path_buf();
+        let reset = tokio::spawn(async move {
+            factory_reset_sync_relay_in(&reset_data_dir, &reset_state).await
+        });
+        tokio::task::yield_now().await;
+        assert!(!reset.is_finished());
+        drop(epoch);
+        let new_token = reset.await.unwrap().unwrap();
+
+        assert_ne!(new_token, "old-token");
+        assert_eq!(
+            std::fs::read_to_string(data_dir.path().join("pairing-token")).unwrap(),
+            new_token
+        );
+        assert_eq!(state.pairing_token.read().unwrap().as_str(), new_token);
+        assert!(state.current_doc.read().await.is_none());
+        assert_eq!(
+            state.generation.load(std::sync::atomic::Ordering::SeqCst),
+            8
+        );
+        assert!(!state
+            .accepting_doc_updates
+            .load(std::sync::atomic::Ordering::SeqCst));
+        assert_eq!(disconnect_rx.recv().await.unwrap(), 8);
+
+        assert!(!store_relay_client_doc_if_current(&state, 7, Arc::new(vec![9, 9, 9])).await);
+        assert!(!store_relay_client_doc_if_current(&state, 8, Arc::new(vec![8, 8, 8])).await);
+        assert!(!relay_connection_can_exchange_docs(&state, 7));
+        assert!(!relay_connection_can_exchange_docs(&state, 8));
+        assert!(state.current_doc.read().await.is_none());
+
+        let drain_state = state.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            *drain_state.client_count.write().await = 0;
+        });
+        wait_for_relay_clients_to_disconnect(&state, Duration::from_millis(100))
+            .await
+            .unwrap();
+
+        state
+            .accepting_doc_updates
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(!relay_connection_can_exchange_docs(&state, 7));
+        assert!(relay_connection_can_exchange_docs(&state, 8));
+        assert!(!relay_request_token_matches(
+            Some("t=old-token"),
+            &new_token
+        ));
+        let new_query = format!("t={new_token}");
+        assert!(relay_request_token_matches(Some(&new_query), &new_token));
+    }
+
+    #[tokio::test]
+    async fn factory_reset_relay_persistence_failure_preserves_state_and_sessions() {
+        let data_dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(data_dir.path().join("pairing-token")).unwrap();
+        let (broadcast_tx, _) = broadcast::channel::<Arc<Vec<u8>>>(16);
+        let (disconnect_tx, _) = broadcast::channel::<u64>(16);
+        let mut disconnect_rx = disconnect_tx.subscribe();
+        let state = Arc::new(SyncRelayState {
+            port: DEFAULT_SYNC_RELAY_PORT,
+            epoch_gate: RwLock::new(()),
+            broadcast_tx,
+            current_doc: RwLock::new(Some(Arc::new(vec![1, 2, 3]))),
+            disconnect_tx,
+            generation: std::sync::atomic::AtomicU64::new(7),
+            accepting_doc_updates: std::sync::atomic::AtomicBool::new(true),
+            client_count: RwLock::new(1),
+            pairing_token: StdRwLock::new("old-token".to_string()),
+        });
+
+        assert!(factory_reset_sync_relay_in(data_dir.path(), &state)
+            .await
+            .is_err());
+
+        assert_eq!(state.pairing_token.read().unwrap().as_str(), "old-token");
+        assert_eq!(
+            state.generation.load(std::sync::atomic::Ordering::SeqCst),
+            7
+        );
+        assert!(state
+            .accepting_doc_updates
+            .load(std::sync::atomic::Ordering::SeqCst));
+        assert_eq!(
+            state
+                .current_doc
+                .read()
+                .await
+                .as_deref()
+                .map(|bytes| bytes.as_slice()),
+            Some(&[1, 2, 3][..])
+        );
+        assert_eq!(*state.client_count.read().await, 1);
+        assert!(relay_connection_can_exchange_docs(&state, 7));
+        assert!(matches!(
+            disconnect_rx.try_recv(),
+            Err(broadcast::error::TryRecvError::Empty)
+        ));
+    }
+
     #[cfg(unix)]
     #[test]
     fn runtime_health_rotation_migrates_legacy_file_and_prunes_old_days() {
@@ -14205,21 +14820,13 @@ mod tests {
     #[test]
     fn runtime_health_recent_days_concatenates_newest_files_oldest_first() {
         let temp = tempfile::tempdir().unwrap();
-        std::fs::write(
-            runtime_health_dated_path(temp.path(), "20260630"),
-            "old\n",
-        )
-        .unwrap();
+        std::fs::write(runtime_health_dated_path(temp.path(), "20260630"), "old\n").unwrap();
         std::fs::write(
             runtime_health_dated_path(temp.path(), "20260701"),
             "middle\n",
         )
         .unwrap();
-        std::fs::write(
-            runtime_health_dated_path(temp.path(), "20260702"),
-            "new\n",
-        )
-        .unwrap();
+        std::fs::write(runtime_health_dated_path(temp.path(), "20260702"), "new\n").unwrap();
 
         assert_eq!(
             read_runtime_health_recent_days(temp.path(), 2),
@@ -14336,12 +14943,10 @@ mod tests {
         let start = Instant::now();
 
         assert!(relay_broadcast_aggregate_update(&mut slot, start, 100).is_none());
-        assert!(relay_broadcast_aggregate_update(
-            &mut slot,
-            start + Duration::from_secs(10),
-            200
-        )
-        .is_none());
+        assert!(
+            relay_broadcast_aggregate_update(&mut slot, start + Duration::from_secs(10), 200)
+                .is_none()
+        );
         {
             let aggregate = slot.as_ref().unwrap();
             assert_eq!(aggregate.count, 2);
@@ -15449,6 +16054,46 @@ mod tests {
     }
 
     #[test]
+    fn essay_login_auth_requires_the_configured_canonical_surface() {
+        let substack_home = url::Url::parse("https://substack.com/home?redirected=1").unwrap();
+        let substack_www_home = url::Url::parse("https://www.substack.com/home").unwrap();
+        let substack_help = url::Url::parse("https://substack.com/help").unwrap();
+        let substack_article = url::Url::parse("https://substack.com/p/example").unwrap();
+        let substack_tenant_home = url::Url::parse("https://example.substack.com/home").unwrap();
+        let insecure_home = url::Url::parse("http://substack.com/home").unwrap();
+
+        assert!(essay_provider_auth_surface_matches(
+            &substack_home,
+            SUBSTACK_ESSAY_PROVIDER
+        ));
+        assert!(essay_provider_auth_surface_matches(
+            &substack_www_home,
+            SUBSTACK_ESSAY_PROVIDER
+        ));
+        assert!(!essay_provider_auth_surface_matches(
+            &substack_help,
+            SUBSTACK_ESSAY_PROVIDER
+        ));
+        assert!(!essay_provider_auth_surface_matches(
+            &substack_article,
+            SUBSTACK_ESSAY_PROVIDER
+        ));
+        assert!(!essay_provider_auth_surface_matches(
+            &substack_tenant_home,
+            SUBSTACK_ESSAY_PROVIDER
+        ));
+        assert!(!essay_provider_auth_surface_matches(
+            &insecure_home,
+            SUBSTACK_ESSAY_PROVIDER
+        ));
+
+        let script = essay_login_auth_probe_script(SUBSTACK_ESSAY_PROVIDER).unwrap();
+        assert!(script.contains(SUBSTACK_ESSAY_PROVIDER.auth_expression));
+        assert!(script.contains(SUBSTACK_ESSAY_PROVIDER.auth_event));
+        assert!(!script.contains("loggedIn: false"));
+    }
+
+    #[test]
     fn essay_provider_configurations_keep_sessions_and_events_isolated() {
         for provider in [SUBSTACK_ESSAY_PROVIDER, MEDIUM_ESSAY_PROVIDER] {
             let login_url = url::Url::parse(provider.login_url).unwrap();
@@ -15532,6 +16177,8 @@ mod tests {
     fn essay_capture_rejects_redirects_to_the_wrong_provider_surface() {
         let medium_followers = url::Url::parse("https://medium.com/me/followers").unwrap();
         let medium_home = url::Url::parse("https://medium.com/").unwrap();
+        let medium_wrong_host =
+            url::Url::parse("https://publication.medium.com/me/followers").unwrap();
         assert!(essay_capture_surface_matches(
             &medium_followers,
             &medium_followers,
@@ -15542,18 +16189,36 @@ mod tests {
             &medium_followers,
             &MEDIUM_GRAPH_PAGES[1]
         ));
+        assert!(!essay_capture_surface_matches(
+            &medium_wrong_host,
+            &medium_followers,
+            &MEDIUM_GRAPH_PAGES[1]
+        ));
 
-        let substack_profile =
-            url::Url::parse("https://substack.com/@ada/following/").unwrap();
+        let substack_profile = url::Url::parse("https://substack.com/@ada/following/").unwrap();
+        let wrong_substack_profile =
+            url::Url::parse("https://substack.com/@grace/following").unwrap();
         let substack_home = url::Url::parse("https://substack.com/home").unwrap();
+        let substack_wrong_host =
+            url::Url::parse("https://ada.substack.com/@ada/following").unwrap();
         assert!(essay_capture_surface_matches(
             &substack_profile,
-            &substack_home,
+            &substack_profile,
             &SUBSTACK_GRAPH_PAGES[2]
         ));
         assert!(!essay_capture_surface_matches(
             &substack_home,
-            &substack_home,
+            &substack_profile,
+            &SUBSTACK_GRAPH_PAGES[2]
+        ));
+        assert!(!essay_capture_surface_matches(
+            &wrong_substack_profile,
+            &substack_profile,
+            &SUBSTACK_GRAPH_PAGES[2]
+        ));
+        assert!(!essay_capture_surface_matches(
+            &substack_wrong_host,
+            &substack_profile,
             &SUBSTACK_GRAPH_PAGES[2]
         ));
     }

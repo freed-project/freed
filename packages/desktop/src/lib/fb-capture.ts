@@ -27,7 +27,11 @@ import { getFbScraperWindowMode } from "./scraper-prefs";
 import { storeFbAuthState } from "./fb-auth";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
-import { recordScrapeOutcome, type SocialScrapeTrigger } from "./runtime-health-events";
+import {
+  recordScrapeOutcome,
+  type FacebookGroupDiscoverySource,
+  type SocialScrapeTrigger,
+} from "./runtime-health-events";
 import {
   formatBytesForMemoryLog,
   formatScrapeMemoryPressureDetails,
@@ -52,12 +56,21 @@ import {
 import {
   facebookGroupsFromFeedItems,
   isMissingFacebookGroupName,
-  mergeFacebookGroupRecords,
 } from "./facebook-groups";
 import {
   loadSocialProviderCookieState,
   socialProviderMissingAuthCookieMessage,
 } from "./social-auth-cookie-state";
+import {
+  getFacebookGroupDiscovery,
+  removeFacebookGroupDiscovery,
+  updateFacebookGroupDiscovery,
+} from "./facebook-group-discovery";
+import {
+  assertFactoryResetEpoch,
+  isFactoryResetEpochCurrent,
+  runFactoryResetSensitiveDesktopOperation,
+} from "./factory-reset-guard";
 
 // =============================================================================
 // Rate Limiting
@@ -345,22 +358,15 @@ function filterExcludedGroups(
 
 async function updateKnownFacebookGroups(
   groups: readonly FbGroupInfo[],
-): Promise<ReturnType<typeof mergeFacebookGroupRecords>> {
-  const store = useAppStore.getState();
-  const merge = mergeFacebookGroupRecords(
-    store.preferences.fbCapture?.knownGroups ?? {},
-    groups,
-  );
-
-  if (merge.changedCount > 0) {
-    await store.updatePreferences({
-      fbCapture: {
-        knownGroups: merge.knownGroups,
-        excludedGroupIds: store.preferences.fbCapture?.excludedGroupIds ?? {},
-      },
-    });
+  source: FacebookGroupDiscoverySource,
+): Promise<ReturnType<typeof updateFacebookGroupDiscovery>> {
+  const merge = updateFacebookGroupDiscovery(groups, source);
+  if (merge.changedCount > 0 && !merge.persisted) {
+    addDebugEvent(
+      "error",
+      "[FB] group discovery update stayed in recovery mode because local storage was unavailable or newer",
+    );
   }
-
   return merge;
 }
 
@@ -370,15 +376,15 @@ export async function repairStoredFacebookGroupNamesFromItems(
   const groups = facebookGroupsFromFeedItems(items);
   if (groups.length === 0) return 0;
 
-  const merge = await updateKnownFacebookGroups(groups);
-  if (merge.repairedNameCount > 0) {
+  const merge = await updateKnownFacebookGroups(groups, "feed_items");
+  if (merge.persisted && merge.repairedNameCount > 0) {
     addDebugEvent(
       "change",
       `[FB] repaired ${merge.repairedNameCount.toLocaleString()} stored group name${merge.repairedNameCount === 1 ? "" : "s"} from captured posts`,
     );
   }
 
-  return merge.repairedNameCount;
+  return merge.persisted ? merge.repairedNameCount : 0;
 }
 
 // =============================================================================
@@ -394,7 +400,11 @@ export async function repairStoredFacebookGroupNamesFromItems(
  * 3. Wait for the extraction script to emit results via the event
  * 4. Normalize raw posts to FeedItem[]
  */
-export async function fetchFbFeed(): Promise<FbSyncResult> {
+export function fetchFbFeed(): Promise<FbSyncResult> {
+  return runFactoryResetSensitiveDesktopOperation(fetchFbFeedInternal);
+}
+
+async function fetchFbFeedInternal(resetEpoch: number): Promise<FbSyncResult> {
   const diag = createEmptyFbSyncDiag();
 
   const cookieState = await loadSocialProviderCookieState("facebook");
@@ -528,6 +538,7 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
       },
     );
 
+    assertFactoryResetEpoch(resetEpoch);
     await runBackgroundJob({
       kind: "social-scrape",
       source: "facebook:feed",
@@ -536,8 +547,11 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
       waitForActiveJobKinds: SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
       run: () => invoke("fb_scrape_feed", { windowMode: getFbScraperWindowMode() }),
     });
+    assertFactoryResetEpoch(resetEpoch);
     await waitForSocialScrapeEvents();
+    assertFactoryResetEpoch(resetEpoch);
   } catch (err) {
+    if (!isFactoryResetEpochCurrent(resetEpoch)) throw err;
     if (!diag.errorStage) {
       if (applyRuntimeDeferredDiag(diag, err)) {
         return { items: [], diag };
@@ -613,11 +627,21 @@ interface CaptureFbGroupsOptions {
   onCheckingGroup?: (groupId: string | null) => void;
 }
 
-export async function captureFbGroups(
+export function captureFbGroups(
   options: CaptureFbGroupsOptions = {},
+): Promise<FbGroupInfo[]> {
+  return runFactoryResetSensitiveDesktopOperation((resetEpoch) =>
+    captureFbGroupsInternal(options, resetEpoch)
+  );
+}
+
+async function captureFbGroupsInternal(
+  options: CaptureFbGroupsOptions,
+  resetEpoch: number,
 ): Promise<FbGroupInfo[]> {
   addDebugEvent("change", "[FB] group refresh started");
   const memoryPrep = await prepareSocialScrapeMemory("facebook", "groups scrape");
+  assertFactoryResetEpoch(resetEpoch);
   if (!memoryPrep.mayProceed) {
     addDebugEvent(
       "change",
@@ -629,57 +653,72 @@ export async function captureFbGroups(
   const groups = await invoke<FbGroupInfo[]>("fb_scrape_groups", {
     windowMode: getFbScraperWindowMode(),
   });
+  assertFactoryResetEpoch(resetEpoch);
 
-  const merge = await updateKnownFacebookGroups(groups);
-  const hydrated = await hydrateMissingFacebookGroupNames(options);
+  const merge = await updateKnownFacebookGroups(groups, "group_scrape");
+  assertFactoryResetEpoch(resetEpoch);
+  const hydrated = await hydrateMissingFacebookGroupNames(options, resetEpoch);
+  assertFactoryResetEpoch(resetEpoch);
+  const repairedFromScrape = merge.persisted ? merge.repairedNameCount : 0;
 
   addDebugEvent(
     "change",
-    `[FB] groups refreshed: ${groups.length.toLocaleString()} group${groups.length === 1 ? "" : "s"}${merge.repairedNameCount + hydrated.repairedNameCount > 0 ? `, repaired ${(merge.repairedNameCount + hydrated.repairedNameCount).toLocaleString()} stored name${merge.repairedNameCount + hydrated.repairedNameCount === 1 ? "" : "s"}` : ""}${hydrated.removedCount > 0 ? `, removed ${hydrated.removedCount.toLocaleString()} stale group${hydrated.removedCount === 1 ? "" : "s"}` : ""}`,
+    `[FB] groups refreshed: ${groups.length.toLocaleString()} group${groups.length === 1 ? "" : "s"}${repairedFromScrape + hydrated.repairedNameCount > 0 ? `, repaired ${(repairedFromScrape + hydrated.repairedNameCount).toLocaleString()} stored name${repairedFromScrape + hydrated.repairedNameCount === 1 ? "" : "s"}` : ""}${hydrated.removedCount > 0 ? `, removed ${hydrated.removedCount.toLocaleString()} stale group${hydrated.removedCount === 1 ? "" : "s"}` : ""}`,
   );
 
   return groups;
 }
 
-async function checkFacebookGroupMembership(group: FbGroupInfo): Promise<FbGroupMembershipCheck> {
+async function checkFacebookGroupMembership(
+  group: FbGroupInfo,
+  resetEpoch: number,
+): Promise<FbGroupMembershipCheck> {
   const groupUrl =
     group.url.trim() || `https://www.facebook.com/groups/${encodeURIComponent(group.id)}`;
-  return invoke<FbGroupMembershipCheck>("fb_check_group_membership", {
+  assertFactoryResetEpoch(resetEpoch);
+  const result = await invoke<FbGroupMembershipCheck>("fb_check_group_membership", {
     groupId: group.id,
     groupUrl,
     windowMode: getFbScraperWindowMode(),
   });
+  assertFactoryResetEpoch(resetEpoch);
+  return result;
 }
 
 async function removeKnownFacebookGroup(groupId: string): Promise<boolean> {
   const store = useAppStore.getState();
-  const knownGroups = { ...(store.preferences.fbCapture?.knownGroups ?? {}) };
   const excludedGroupIds = { ...(store.preferences.fbCapture?.excludedGroupIds ?? {}) };
-  const existed = Boolean(knownGroups[groupId] || excludedGroupIds[groupId]);
-  delete knownGroups[groupId];
+  const discoveryRemoval = removeFacebookGroupDiscovery(groupId);
+  if (!discoveryRemoval.persisted) {
+    addDebugEvent(
+      "error",
+      "[FB] group removal stayed in recovery mode because local storage was unavailable or newer",
+    );
+    return false;
+  }
+  const removedExclusion = Boolean(excludedGroupIds[groupId]);
   delete excludedGroupIds[groupId];
 
-  if (existed) {
+  if (removedExclusion) {
     await store.updatePreferences({
       fbCapture: {
-        knownGroups,
         excludedGroupIds,
-      },
+      } as typeof store.preferences.fbCapture,
     });
   }
 
-  return existed;
+  return discoveryRemoval.existed || removedExclusion;
 }
 
 async function hydrateMissingFacebookGroupNames(
-  options: CaptureFbGroupsOptions = {},
+  options: CaptureFbGroupsOptions,
+  resetEpoch: number,
 ): Promise<{
   checkedCount: number;
   repairedNameCount: number;
   removedCount: number;
 }> {
-  const store = useAppStore.getState();
-  const missingGroups = Object.values(store.preferences.fbCapture?.knownGroups ?? {}).filter(
+  const missingGroups = Object.values(getFacebookGroupDiscovery()).filter(
     isMissingFacebookGroupName,
   );
 
@@ -687,10 +726,12 @@ async function hydrateMissingFacebookGroupNames(
   let removedCount = 0;
 
   for (const group of missingGroups) {
+    assertFactoryResetEpoch(resetEpoch);
     options.onCheckingGroup?.(group.id);
     try {
-      const check = await checkFacebookGroupMembership(group);
+      const check = await checkFacebookGroupMembership(group, resetEpoch);
       if (check.stillJoined === false) {
+        assertFactoryResetEpoch(resetEpoch);
         if (await removeKnownFacebookGroup(group.id)) {
           removedCount += 1;
         }
@@ -711,9 +752,11 @@ async function hydrateMissingFacebookGroupNames(
           name: check.name,
           url: check.url || group.url,
         },
-      ]);
-      repairedNameCount += merge.repairedNameCount;
+      ], "membership_check");
+      assertFactoryResetEpoch(resetEpoch);
+      if (merge.persisted) repairedNameCount += merge.repairedNameCount;
     } catch (err) {
+      if (!isFactoryResetEpochCurrent(resetEpoch)) throw err;
       addDebugEvent(
         "error",
         `[FB] group name repair failed for ...${group.id.slice(-8)}: ${err instanceof Error ? err.message : String(err)}`,
@@ -730,20 +773,31 @@ async function hydrateMissingFacebookGroupNames(
   };
 }
 
-export async function verifyFacebookGroupLeave(
+export function verifyFacebookGroupLeave(
   group: FbGroupInfo,
 ): Promise<FbGroupLeaveVerification> {
-  const check = await checkFacebookGroupMembership(group);
+  return runFactoryResetSensitiveDesktopOperation((resetEpoch) =>
+    verifyFacebookGroupLeaveInternal(group, resetEpoch)
+  );
+}
+
+async function verifyFacebookGroupLeaveInternal(
+  group: FbGroupInfo,
+  resetEpoch: number,
+): Promise<FbGroupLeaveVerification> {
+  const check = await checkFacebookGroupMembership(group, resetEpoch);
   let repairedNameCount = 0;
   if (check.name && check.stillJoined !== false) {
+    assertFactoryResetEpoch(resetEpoch);
     const merge = await updateKnownFacebookGroups([
       {
         id: group.id,
         name: check.name,
         url: check.url || group.url,
       },
-    ]);
-    repairedNameCount = merge.repairedNameCount;
+    ], "membership_check");
+    assertFactoryResetEpoch(resetEpoch);
+    repairedNameCount = merge.persisted ? merge.repairedNameCount : 0;
   }
 
   if (check.stillJoined !== false) {
@@ -754,7 +808,9 @@ export async function verifyFacebookGroupLeave(
     return { check, removed: false, repairedNameCount };
   }
 
+  assertFactoryResetEpoch(resetEpoch);
   const existed = await removeKnownFacebookGroup(group.id);
+  assertFactoryResetEpoch(resetEpoch);
 
   addDebugEvent(
     "change",
@@ -772,35 +828,41 @@ export async function verifyFacebookGroupLeave(
  * Capture Facebook feed and add items to the store.
  * Respects rate limiting to avoid triggering Facebook's anti-bot measures.
  */
-export async function captureFbFeed(
+export function captureFbFeed(
   trigger: SocialScrapeTrigger = "unknown",
 ): Promise<FbSyncResult> {
-  const scrapeStartedAt = Date.now();
-  try {
-    const result = await captureFbFeedInternal();
-    recordScrapeOutcome({
-      provider: "facebook",
-      trigger,
-      itemsExtracted: result.diag.postsExtracted,
-      itemsPersisted: result.diag.itemsAdded,
-      stage: result.diag.errorStage ?? "ok",
-      durationMs: Date.now() - scrapeStartedAt,
-    });
-    return result;
-  } catch (error) {
-    recordScrapeOutcome({
-      provider: "facebook",
-      trigger,
-      itemsExtracted: 0,
-      itemsPersisted: 0,
-      stage: "exception",
-      durationMs: Date.now() - scrapeStartedAt,
-    });
-    throw error;
-  }
+  return runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
+    const scrapeStartedAt = Date.now();
+    try {
+      const result = await captureFbFeedInternal(resetEpoch);
+      assertFactoryResetEpoch(resetEpoch);
+      recordScrapeOutcome({
+        provider: "facebook",
+        trigger,
+        itemsExtracted: result.diag.postsExtracted,
+        itemsPersisted: result.diag.itemsAdded,
+        stage: result.diag.errorStage ?? "ok",
+        durationMs: Date.now() - scrapeStartedAt,
+      });
+      return result;
+    } catch (error) {
+      if (isFactoryResetEpochCurrent(resetEpoch)) {
+        recordScrapeOutcome({
+          provider: "facebook",
+          trigger,
+          itemsExtracted: 0,
+          itemsPersisted: 0,
+          stage: "exception",
+          durationMs: Date.now() - scrapeStartedAt,
+        });
+      }
+      throw error;
+    }
+  });
 }
 
-async function captureFbFeedInternal(): Promise<FbSyncResult> {
+async function captureFbFeedInternal(resetEpoch: number): Promise<FbSyncResult> {
+  assertFactoryResetEpoch(resetEpoch);
   const startedAt = Date.now();
   const providerPause = getProviderPause("facebook");
   if (providerPause) {
@@ -847,6 +909,7 @@ async function captureFbFeedInternal(): Promise<FbSyncResult> {
     addDebugEvent("change", "[FB] sync started");
     const fetchStartedAt = performance.now();
     const result = await fetchFbFeed();
+    assertFactoryResetEpoch(resetEpoch);
     log.info(
       `[FB] fetch finished duration=${formatSocialCaptureDuration(socialCaptureDurationMs(fetchStartedAt))} ` +
         `items=${result.items.length.toLocaleString()} stage=${result.diag.errorStage ?? "ok"}`,
@@ -873,6 +936,7 @@ async function captureFbFeedInternal(): Promise<FbSyncResult> {
         store.setFbAuth(errState);
         storeFbAuthState(errState);
       }
+      assertFactoryResetEpoch(resetEpoch);
       await recordProviderHealthEvent({
         provider: "facebook",
         outcome: "error",
@@ -888,7 +952,9 @@ async function captureFbFeedInternal(): Promise<FbSyncResult> {
 
     recordScrape();
     if (result.items.length > 0) {
+      assertFactoryResetEpoch(resetEpoch);
       await repairStoredFacebookGroupNamesFromItems(result.items);
+      assertFactoryResetEpoch(resetEpoch);
       const excludedGroupIds =
         useAppStore.getState().preferences.fbCapture?.excludedGroupIds ?? {};
       const filteredItems = filterExcludedGroups(result.items, excludedGroupIds);
@@ -906,6 +972,7 @@ async function captureFbFeedInternal(): Promise<FbSyncResult> {
       const before = beforeFacebookItems.length;
       const writeStartedAt = performance.now();
       await store.addItems(filteredItems);
+      assertFactoryResetEpoch(resetEpoch);
       const writeDurationMs = socialCaptureDurationMs(writeStartedAt);
       const after = useAppStore
         .getState()
@@ -916,10 +983,12 @@ async function captureFbFeedInternal(): Promise<FbSyncResult> {
       );
       const mediaStartedAt = performance.now();
       await upsertMediaVaultRosterFromItems("facebook", filteredItems);
+      assertFactoryResetEpoch(resetEpoch);
       const archivedCount = await archiveRecentProviderMedia(
         "facebook",
         filteredItems,
       );
+      assertFactoryResetEpoch(resetEpoch);
       const mediaDurationMs = socialCaptureDurationMs(mediaStartedAt);
       const archivedTotal = archivedCount ?? 0;
       log.info(
@@ -945,6 +1014,7 @@ async function captureFbFeedInternal(): Promise<FbSyncResult> {
       };
       store.setFbAuth(emptyState);
       storeFbAuthState(emptyState);
+      assertFactoryResetEpoch(resetEpoch);
       await recordProviderHealthEvent({
         provider: "facebook",
         outcome: "empty",
@@ -962,6 +1032,7 @@ async function captureFbFeedInternal(): Promise<FbSyncResult> {
     const successState = { ...useAppStore.getState().fbAuth, lastCapturedAt: Date.now(), lastCaptureError: undefined };
     store.setFbAuth(successState);
     storeFbAuthState(successState);
+    assertFactoryResetEpoch(resetEpoch);
     await recordProviderHealthEvent({
       provider: "facebook",
       outcome: result.diag.postsExtracted > 0 ? "success" : "empty",
@@ -980,6 +1051,7 @@ async function captureFbFeedInternal(): Promise<FbSyncResult> {
 
     return result;
   } catch (error) {
+    if (!isFactoryResetEpochCurrent(resetEpoch)) throw error;
     const message =
       error instanceof Error ? error.message : "Failed to capture Facebook feed";
     store.setError(message);
@@ -997,6 +1069,6 @@ async function captureFbFeedInternal(): Promise<FbSyncResult> {
     });
     throw error;
   } finally {
-    store.setLoading(false);
+    if (isFactoryResetEpochCurrent(resetEpoch)) store.setLoading(false);
   }
 }

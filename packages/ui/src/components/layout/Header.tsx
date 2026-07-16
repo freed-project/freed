@@ -14,8 +14,6 @@ import {
   applyFeedSignalModesToFilter,
   FEED_SIGNAL_FILTER_PRESETS,
   filterFeedItems,
-  resolveFeedSignalModesFromDisplay,
-  type DisplayPreferences,
   type FeedSignalMode,
   type MapMode,
   type SavedContentSortMode,
@@ -24,6 +22,7 @@ import {
   resolveMapMode,
 } from "@freed/shared";
 import { Tooltip } from "../Tooltip.js";
+import { toast } from "../Toast.js";
 import { BackgroundActivityPopover } from "../BackgroundActivityPopover.js";
 import {
   ArchiveIcon,
@@ -44,12 +43,12 @@ import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
   MACOS_TRAFFIC_LIGHT_INSET,
-  MACOS_TRAFFIC_LIGHT_ROW_CENTER_Y,
   useAppStore,
   usePlatform,
 } from "../../context/PlatformContext.js";
 import { getFilterLabel, getRetentionLabel } from "../../lib/feed-view-labels.js";
 import { useFeedCardDensity } from "../../lib/feed-card-density.js";
+import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
 import {
   normalizeInterfaceZoom,
   scaleInterfaceChromePx,
@@ -370,21 +369,20 @@ export function Header({
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const setFilter = useAppStore((s) => s.setFilter);
   const display = useAppStore((s) => s.preferences.display);
+  const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
   const activeSearchQuery = searchQuery.trim();
   const [feedCardDensity, setFeedCardDensity] = useFeedCardDensity();
   const [interfaceZoom, setInterfaceZoom] = useInterfaceZoom();
   const topToolbarHeightPx = scaleInterfaceChromePx(TOP_TOOLBAR_HEIGHT_PX, interfaceZoom);
   const toolbarGapHalfPx = scaleInterfaceChromePx(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2, interfaceZoom);
   const toolbarSlotPaddingRightPx = scaleInterfaceChromePx(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX, interfaceZoom);
-  const toolbarControlCenterYPx =
-    MACOS_TRAFFIC_LIGHT_ROW_CENTER_Y + Math.round((topToolbarHeightPx - TOP_TOOLBAR_HEIGHT_PX) / 2);
 
   const { filteredItems, isSearching, resultCount } = useSearchResults(
     items,
     searchQuery,
     activeFilter,
     searchCorpusVersion,
-    display.friendsMode ?? "all_content",
+    deviceDisplay.friendsMode,
     persons,
     accounts,
     friends,
@@ -415,11 +413,11 @@ export function Header({
     [items],
   );
   const effectiveMapMode = resolveMapMode(
-    display.mapMode,
+    deviceDisplay.mapMode,
     mappedFriendCount,
     mappedAllContentCount,
   );
-  const effectiveFriendsMode = display.friendsMode ?? "all_content";
+  const effectiveFriendsMode = deviceDisplay.friendsMode;
   const [isBelowLargeToolbar, setIsBelowLargeToolbar] = useState(
     () => typeof window !== "undefined" && window.innerWidth < TOOLBAR_COLLAPSE_BREAKPOINT_PX,
   );
@@ -642,16 +640,14 @@ export function Header({
   const handleSignalFilterZoomDragEnd = useCallback(() => {
     setSignalFilterMenuZoomDrag(null);
   }, []);
-  const updateDisplayPreference = useCallback((patch: Partial<DisplayPreferences>) => {
-    void updatePreferences({
-      display: patch,
-    } as Parameters<typeof updatePreferences>[0]);
-  }, [updatePreferences]);
-
-  const activeFeedSignalModes = useMemo(
-    () => resolveFeedSignalModesFromDisplay(display),
-    [display],
-  );
+  const activeFeedSignalModes = deviceDisplay.feedSignalModes;
+  useEffect(() => {
+    const nextFilter = applyFeedSignalModesToFilter(activeFilter, activeFeedSignalModes);
+    const currentSignals = activeFilter.signals ?? [];
+    const nextSignals = nextFilter.signals ?? [];
+    if (currentSignals.join(",") === nextSignals.join(",")) return;
+    setFilter(nextFilter);
+  }, [activeFeedSignalModes, activeFilter, setFilter]);
   const activeFeedSignalModeSet = useMemo(
     () => new Set(activeFeedSignalModes),
     [activeFeedSignalModes],
@@ -673,7 +669,7 @@ export function Header({
     : activeFeedSignalModes.length === 1
       ? FEED_SIGNAL_FILTER_PRESETS.find((preset) => preset.mode === activeFeedSignalModes[0])?.label ?? "Custom"
       : `${activeFeedSignalModes.length.toLocaleString()} filters`;
-  const savedContentSortMode = display.savedContentSortMode ?? "date_saved";
+  const savedContentSortMode = deviceDisplay.savedContentSortMode;
   const contextualListTitle = useMemo(() => {
     if (activeView !== "feed") return currentListTitle;
     return contextualFeedTitle({
@@ -723,7 +719,6 @@ export function Header({
   }, [feedSignalCountBaseFilter, items, selectableFeedSignalPresets]);
 
   const handleFeedSignalModeChange = useCallback((mode: FeedSignalMode) => {
-    setSignalFilterFeedback({ mode, tick: Date.now() });
     const nextModes = (() => {
       if (mode === "all") return [];
       const currentModes = allFeedSignalsSelected
@@ -734,18 +729,19 @@ export function Header({
         : [...currentModes, mode];
       return next.length === selectableFeedSignalModes.length ? [] : next;
     })();
+    if (!setDeviceDisplay({ feedSignalModes: nextModes })) {
+      toast.error("Freed could not save the feed filter on this device.");
+      return;
+    }
+    setSignalFilterFeedback({ mode, tick: Date.now() });
     setFilter(applyFeedSignalModesToFilter(activeFilter, nextModes));
-    updateDisplayPreference({
-      feedSignalMode: nextModes.length === 1 ? nextModes[0] : "all",
-      feedSignalModes: nextModes,
-    });
   }, [
     activeFeedSignalModes,
     activeFilter,
     allFeedSignalsSelected,
     selectableFeedSignalModes,
     setFilter,
-    updateDisplayPreference,
+    setDeviceDisplay,
   ]);
 
   const updateSignalFilterMenuPosition = useCallback(() => {
@@ -788,8 +784,10 @@ export function Header({
   }, []);
 
   const handleIdentityModeChange = useCallback((key: "friendsMode" | "mapMode", mode: MapMode) => {
-    updateDisplayPreference({ [key]: mode });
-  }, [updateDisplayPreference]);
+    const saved = setDeviceDisplay({ [key]: mode });
+    if (!saved) toast.error("Freed could not save the map layout on this device.");
+    return saved;
+  }, [setDeviceDisplay]);
 
   const handleFriendsToolbarModeChange = useCallback((mode: FriendsToolbarMode) => {
     if (mode === "details") {
@@ -799,24 +797,27 @@ export function Header({
       return;
     }
     flushSync(() => {
-      handleIdentityModeChange("friendsMode", mode);
-      onFriendsMobileSurfaceChange("graph");
+      if (handleIdentityModeChange("friendsMode", mode)) {
+        onFriendsMobileSurfaceChange("graph");
+      }
     });
   }, [handleIdentityModeChange, onFriendsMobileSurfaceChange]);
 
   const handleSavedContentSortModeChange = useCallback((mode: SavedContentSortMode) => {
-    updateDisplayPreference({ savedContentSortMode: mode });
-  }, [updateDisplayPreference]);
+    if (!setDeviceDisplay({ savedContentSortMode: mode })) {
+      toast.error("Freed could not save the sort order on this device.");
+    }
+  }, [setDeviceDisplay]);
 
   const handleCloseReader = useCallback(() => {
-    if (display.reading.dualColumnMode && !isMobile && selectedItemId) {
+    if (deviceDisplay.dualColumnMode && !isMobile && selectedItemId) {
       runFeedLayoutTransition(() => {
         setSelectedItem(null);
       });
       return;
     }
     setSelectedItem(null);
-  }, [display.reading.dualColumnMode, isMobile, selectedItemId, setSelectedItem]);
+  }, [deviceDisplay.dualColumnMode, isMobile, selectedItemId, setSelectedItem]);
 
   const handleToggleReaderSaved = useCallback(() => {
     if (!selectedItem) return;
@@ -835,28 +836,22 @@ export function Header({
   const handleToggleFocusMode = useCallback(() => {
     void updatePreferences({
       display: {
-        ...display,
         reading: {
-          ...display.reading,
           focusMode: !display.reading.focusMode,
         },
       },
+    } as Parameters<typeof updatePreferences>[0]).catch(() => {
+      toast.error("Freed could not save the focus setting.");
     });
-  }, [display, updatePreferences]);
+  }, [display.reading.focusMode, updatePreferences]);
 
   const handleToggleDualColumn = useCallback(() => {
     runFeedLayoutTransition(() => {
-      void updatePreferences({
-        display: {
-          ...display,
-          reading: {
-            ...display.reading,
-            dualColumnMode: !display.reading.dualColumnMode,
-          },
-        },
-      });
+      if (!setDeviceDisplay({ dualColumnMode: !deviceDisplay.dualColumnMode })) {
+        toast.error("Freed could not save the reader layout on this device.");
+      }
     });
-  }, [display, updatePreferences]);
+  }, [deviceDisplay.dualColumnMode, setDeviceDisplay]);
 
   const [deleteConfirmArmed, setDeleteConfirmArmed] = useState(false);
   const deleteConfirmTimerRef = useRef<number | null>(null);
@@ -1112,25 +1107,22 @@ export function Header({
     ...(headerDragRegion ? noDrag : {}),
   } as CSSProperties;
   const sidebarTogglePositionStyle = {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
     left: px(layoutControlMetrics.sidebarToggleLeftPx),
     pointerEvents: "auto",
     ...(headerDragRegion ? noDrag : {}),
   } as CSSProperties;
   const previewTogglePositionStyle = {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
     left: px(layoutControlMetrics.previewToggleLeftPx),
     pointerEvents: "auto",
     ...(headerDragRegion ? noDrag : {}),
   } as CSSProperties;
-  const layoutControlCenterlineStyle = headerDragRegion
-    ? ({
-        position: "absolute",
-        top: px(toolbarControlCenterYPx),
-        transform: "translateY(-50%)",
-      } as CSSProperties)
-    : undefined;
-  const layoutControlWrapperClass = headerDragRegion
-    ? "absolute inline-flex"
-    : "absolute top-1/2 inline-flex -translate-y-1/2";
+  const layoutControlWrapperClass = "absolute inset-y-0 inline-flex items-center";
   const toolbarContainerStyle = {
     ...(headerDragRegion ? dragStyle : {}),
     boxSizing: "border-box",
@@ -1139,7 +1131,6 @@ export function Header({
     width: "100%",
     maxWidth: "100%",
     ["--freed-top-toolbar-height" as string]: px(topToolbarHeightPx),
-    ["--freed-toolbar-control-center-y" as string]: px(toolbarControlCenterYPx),
   } as CSSProperties;
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -1511,7 +1502,7 @@ export function Header({
                   <Tooltip
                     label={desktopSidebarToggleLabel}
                     className={layoutControlWrapperClass}
-                    triggerStyle={{ ...sidebarTogglePositionStyle, ...layoutControlCenterlineStyle }}
+                    triggerStyle={sidebarTogglePositionStyle}
                   >
                     <button
                       onClick={onDesktopSidebarToggle}
@@ -1530,19 +1521,19 @@ export function Header({
 
                   {showDesktopReaderLayoutToggle ? (
                     <Tooltip
-                      label={display.reading.dualColumnMode ? "Hide Previews" : "Show Previews"}
+                      label={deviceDisplay.dualColumnMode ? "Hide Previews" : "Show Previews"}
                       className={layoutControlWrapperClass}
-                      triggerStyle={{ ...previewTogglePositionStyle, ...layoutControlCenterlineStyle }}
+                      triggerStyle={previewTogglePositionStyle}
                     >
                       <button
                         ref={handlePreviewToggleButtonRef}
                         onClick={handleToggleDualColumn}
                         {...getToolbarControlProps()}
                         className={TOOLBAR_READER_LAYOUT_TOGGLE_BUTTON_CLASS}
-                        aria-pressed={display.reading.dualColumnMode}
-                        aria-label={display.reading.dualColumnMode ? "Hide Previews" : "Show Previews"}
+                        aria-pressed={deviceDisplay.dualColumnMode}
+                        aria-label={deviceDisplay.dualColumnMode ? "Hide Previews" : "Show Previews"}
                       >
-                        {display.reading.dualColumnMode ? (
+                        {deviceDisplay.dualColumnMode ? (
                           <ReaderRailHideIcon className="h-5 w-5" />
                         ) : (
                           <ReaderRailShowIcon className="h-5 w-5" />

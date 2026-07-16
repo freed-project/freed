@@ -27,6 +27,11 @@ import { socialProviderCopy } from "./social-provider-copy";
 import { useAppStore } from "./store";
 import type { AuthenticatedEssayAuthState } from "./authenticated-essay-auth";
 import { getPlatformUA } from "./user-agent";
+import {
+  assertFactoryResetEpoch,
+  isFactoryResetEpochCurrent,
+  runFactoryResetSensitiveDesktopOperation,
+} from "./factory-reset-guard";
 
 export type { AuthenticatedEssayAuthState } from "./authenticated-essay-auth";
 
@@ -86,6 +91,11 @@ const INTERVAL_JITTER_MS = 6 * 60 * 1000;
 const MAX_RAW_RECORDS = 2_000;
 const COOLDOWN_STORAGE_PREFIX = "freed.capture-cooldown";
 const cooldownUntil: Partial<Record<AuthenticatedEssayProvider, number>> = {};
+
+export function resetAuthenticatedEssayCaptureRuntimeForTests(): void {
+  delete cooldownUntil.substack;
+  delete cooldownUntil.medium;
+}
 
 function createEmptyResult(capturedAt = Date.now()): AuthenticatedEssaySyncResult {
   return {
@@ -190,14 +200,18 @@ function authWithoutCaptureError(
 async function fetchAuthenticatedEssayData<Entry, Profile>(
   config: AuthenticatedEssayCaptureConfig<Entry, Profile>,
   onProviderContact: () => void,
+  resetEpoch: number,
 ): Promise<AuthenticatedEssaySyncResult> {
+  assertFactoryResetEpoch(resetEpoch);
   const result = createEmptyResult();
   const { diag } = result;
   if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") return result;
 
   if (await applyLockedSessionDeferredDiag(diag)) return result;
+  assertFactoryResetEpoch(resetEpoch);
 
   const memoryPrep = await prepareSocialScrapeMemory(config.provider, "authenticated essay capture");
+  assertFactoryResetEpoch(resetEpoch);
   if (!memoryPrep.mayProceed) {
     diag.errorStage = "memory_pressure";
     diag.errorMessage =
@@ -211,6 +225,7 @@ async function fetchAuthenticatedEssayData<Entry, Profile>(
   let unlisten: UnlistenFn | null = null;
 
   try {
+    assertFactoryResetEpoch(resetEpoch);
     unlisten = await listen<ExtractionPayload<Entry, Profile>>(config.eventName, (event) => {
       const payload = event.payload;
       const entries = Array.isArray(payload.entries) ? payload.entries : [];
@@ -257,17 +272,22 @@ async function fetchAuthenticatedEssayData<Entry, Profile>(
       waitForActiveJobMs: SOCIAL_SCRAPE_WAIT_FOR_LOCAL_WORK_MS,
       waitForActiveJobKinds: SOCIAL_SCRAPE_WAIT_FOR_JOB_KINDS,
       run: async () => {
+        assertFactoryResetEpoch(resetEpoch);
         onProviderContact();
         const userAgent = getPlatformUA(config.provider);
         for (const command of config.commands) {
+          assertFactoryResetEpoch(resetEpoch);
           await invoke(command, {
             windowMode: config.getWindowMode(),
             userAgent,
           });
+          assertFactoryResetEpoch(resetEpoch);
         }
       },
     });
+    assertFactoryResetEpoch(resetEpoch);
     await waitForSocialScrapeEvents();
+    assertFactoryResetEpoch(resetEpoch);
   } catch (error) {
     if (!diag.errorStage) {
       if (applyRuntimeDeferredDiag(diag, error)) return result;
@@ -316,154 +336,178 @@ async function fetchAuthenticatedEssayData<Entry, Profile>(
   }
 }
 
-export async function captureAuthenticatedEssayProvider<Entry, Profile>(
+export function captureAuthenticatedEssayProvider<Entry, Profile>(
   config: AuthenticatedEssayCaptureConfig<Entry, Profile>,
   trigger: SocialScrapeTrigger = "unknown",
 ): Promise<AuthenticatedEssaySyncResult> {
-  if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") {
-    addDebugEvent("change", `[${providerPrefix(config.provider)}] browser preview skips native capture`);
-    return createEmptyResult();
-  }
-
-  const scrapeStartedAt = Date.now();
-  let persistedRecords = 0;
-  let attemptCooldownUntil = 0;
-  let result = createEmptyResult(scrapeStartedAt);
-  try {
-    if (!(await hasAcceptedProviderRisk(config.provider))) {
-      const message = `${providerPrefix(config.provider)} capture requires provider risk consent.`;
-      await recordProviderHealthEvent({
-        provider: config.provider,
-        outcome: "error",
-        stage: "consent_required",
-        reason: message,
-        startedAt: scrapeStartedAt,
-        finishedAt: Date.now(),
-      });
-      result = resultWithError("consent_required", message);
-      return result;
+  return runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
+    assertFactoryResetEpoch(resetEpoch);
+    if (!isTauri() && import.meta.env.VITE_TEST_TAURI !== "1") {
+      addDebugEvent("change", `[${providerPrefix(config.provider)}] browser preview skips native capture`);
+      return createEmptyResult();
     }
 
-    const pause = getProviderPause(config.provider);
-    if (pause) {
-      addDebugEvent(
-        "change",
-        `[${providerPrefix(config.provider)}] paused until ${formatClockTime(pause.pausedUntil)}`,
-      );
-      result = resultWithError("provider_rate_limit", pause.pauseReason);
-      return result;
-    }
-
-    const coolingDown = currentCooldown(
-      config.provider,
-      config.getAuth().captureCooldownUntil,
-    );
-    if (coolingDown) {
-      await recordProviderHealthEvent({
-        provider: config.provider,
-        outcome: "cooldown",
-        stage: "cooldown",
-        reason: coolingDown.message,
-        startedAt: scrapeStartedAt,
-        finishedAt: Date.now(),
-      });
-      result = resultWithError("cooldown", coolingDown.message);
-      result.diag.retryAfterMs = Math.max(1_000, coolingDown.deadline - Date.now());
-      return result;
-    }
-
-    const store = useAppStore.getState();
-    store.setLoading(true);
-    store.setError(null);
+    const scrapeStartedAt = Date.now();
+    let persistedRecords = 0;
+    let attemptCooldownUntil = 0;
+    let result = createEmptyResult(scrapeStartedAt);
     try {
-      addDebugEvent("change", `[${providerPrefix(config.provider)}] sync started`);
-      result = await fetchAuthenticatedEssayData(config, () => {
-        if (attemptCooldownUntil === 0) {
-          attemptCooldownUntil = markCooldown(config.provider);
-        }
-      });
-      if (result.diag.errorStage) {
-        const transient =
-          isRuntimeDeferredStage(result.diag.errorStage) || result.diag.errorStage === "memory_pressure";
-        const message = result.diag.errorMessage ?? result.diag.errorStage;
-        if (!transient) {
-          store.setError(message);
-          const nextAuth = {
-            ...config.getAuth(),
-            ...(result.diag.errorStage === "auth" ? { isAuthenticated: false } : {}),
-            ...(attemptCooldownUntil > 0
-              ? { captureCooldownUntil: attemptCooldownUntil }
-              : {}),
-            lastCaptureError: message,
-          };
-          config.setAuth(nextAuth);
-          config.storeAuth(nextAuth);
-        }
+      const providerRiskAccepted = await hasAcceptedProviderRisk(config.provider);
+      assertFactoryResetEpoch(resetEpoch);
+      if (!providerRiskAccepted) {
+        const message = `${providerPrefix(config.provider)} capture requires provider risk consent.`;
         await recordProviderHealthEvent({
           provider: config.provider,
           outcome: "error",
-          stage: result.diag.errorStage,
+          stage: "consent_required",
           reason: message,
           startedAt: scrapeStartedAt,
           finishedAt: Date.now(),
-          itemsSeen: result.diag.entriesExtracted + result.diag.profilesExtracted,
-          itemsAdded: 0,
         });
+        result = resultWithError("consent_required", message);
         return result;
       }
 
-      const beforeItemCount = store.items.length;
-      const beforeAccountCount = Object.keys(store.accounts).length;
-      await docReconcileFollowRosterCapture(result.accounts, result.items, {
-        provider: config.provider,
-        capturedAt: result.diag.capturedAt,
-      });
-      const reconciledState = useAppStore.getState();
-      result.diag.itemsAdded = Math.max(0, reconciledState.items.length - beforeItemCount);
-      result.diag.accountsAdded = Math.max(
-        0,
-        Object.keys(reconciledState.accounts).length - beforeAccountCount,
-      );
-      persistedRecords = result.diag.itemsAdded + result.diag.accountsAdded;
-      const captureCooldownUntil =
-        attemptCooldownUntil > 0
-          ? attemptCooldownUntil
-          : markCooldown(config.provider);
+      const pause = getProviderPause(config.provider);
+      if (pause) {
+        addDebugEvent(
+          "change",
+          `[${providerPrefix(config.provider)}] paused until ${formatClockTime(pause.pausedUntil)}`,
+        );
+        result = resultWithError("provider_rate_limit", pause.pauseReason);
+        return result;
+      }
 
-      const successAuth = authWithoutCaptureError(
-        config.getAuth(),
-        result.diag.capturedAt,
-        captureCooldownUntil,
+      const coolingDown = currentCooldown(
+        config.provider,
+        config.getAuth().captureCooldownUntil,
       );
-      config.setAuth(successAuth);
-      config.storeAuth(successAuth);
-      const recordsSeen = result.diag.entriesExtracted + result.diag.profilesExtracted;
-      await recordProviderHealthEvent({
-        provider: config.provider,
-        outcome: recordsSeen > 0 ? "success" : "empty",
-        stage: recordsSeen > 0 ? undefined : "empty",
-        reason: recordsSeen > 0 ? undefined : `No visible ${providerPrefix(config.provider)} records pulled`,
-        startedAt: scrapeStartedAt,
-        finishedAt: Date.now(),
-        itemsSeen: recordsSeen,
-        itemsAdded: result.diag.itemsAdded + result.diag.accountsAdded,
-      });
-      addDebugEvent(
-        "change",
-        `[${providerPrefix(config.provider)}] synced: ${recordsSeen.toLocaleString()} visible records, ${(result.diag.itemsAdded + result.diag.accountsAdded).toLocaleString()} new records`,
-      );
-      return result;
+      if (coolingDown) {
+        await recordProviderHealthEvent({
+          provider: config.provider,
+          outcome: "cooldown",
+          stage: "cooldown",
+          reason: coolingDown.message,
+          startedAt: scrapeStartedAt,
+          finishedAt: Date.now(),
+        });
+        result = resultWithError("cooldown", coolingDown.message);
+        result.diag.retryAfterMs = Math.max(1_000, coolingDown.deadline - Date.now());
+        return result;
+      }
+
+      assertFactoryResetEpoch(resetEpoch);
+      const store = useAppStore.getState();
+      store.setLoading(true);
+      store.setError(null);
+      try {
+        addDebugEvent("change", `[${providerPrefix(config.provider)}] sync started`);
+        result = await fetchAuthenticatedEssayData(
+          config,
+          () => {
+            assertFactoryResetEpoch(resetEpoch);
+            if (attemptCooldownUntil === 0) {
+              attemptCooldownUntil = markCooldown(config.provider);
+            }
+          },
+          resetEpoch,
+        );
+        assertFactoryResetEpoch(resetEpoch);
+        if (result.diag.errorStage) {
+          const transient =
+            isRuntimeDeferredStage(result.diag.errorStage) ||
+            result.diag.errorStage === "memory_pressure";
+          const message = result.diag.errorMessage ?? result.diag.errorStage;
+          if (!transient) {
+            store.setError(message);
+            const nextAuth = {
+              ...config.getAuth(),
+              ...(result.diag.errorStage === "auth" ? { isAuthenticated: false } : {}),
+              ...(attemptCooldownUntil > 0
+                ? { captureCooldownUntil: attemptCooldownUntil }
+                : {}),
+              lastCaptureError: message,
+            };
+            config.setAuth(nextAuth);
+            config.storeAuth(nextAuth);
+          }
+          await recordProviderHealthEvent({
+            provider: config.provider,
+            outcome: "error",
+            stage: result.diag.errorStage,
+            reason: message,
+            startedAt: scrapeStartedAt,
+            finishedAt: Date.now(),
+            itemsSeen: result.diag.entriesExtracted + result.diag.profilesExtracted,
+            itemsAdded: 0,
+          });
+          return result;
+        }
+
+        const beforeItemCount = store.items.length;
+        const beforeAccountCount = Object.keys(store.accounts).length;
+        assertFactoryResetEpoch(resetEpoch);
+        await docReconcileFollowRosterCapture(result.accounts, result.items, {
+          provider: config.provider,
+          capturedAt: result.diag.capturedAt,
+        });
+        assertFactoryResetEpoch(resetEpoch);
+        const reconciledState = useAppStore.getState();
+        result.diag.itemsAdded = Math.max(
+          0,
+          reconciledState.items.length - beforeItemCount,
+        );
+        result.diag.accountsAdded = Math.max(
+          0,
+          Object.keys(reconciledState.accounts).length - beforeAccountCount,
+        );
+        persistedRecords = result.diag.itemsAdded + result.diag.accountsAdded;
+        assertFactoryResetEpoch(resetEpoch);
+        const captureCooldownUntil =
+          attemptCooldownUntil > 0
+            ? attemptCooldownUntil
+            : markCooldown(config.provider);
+
+        const successAuth = authWithoutCaptureError(
+          config.getAuth(),
+          result.diag.capturedAt,
+          captureCooldownUntil,
+        );
+        config.setAuth(successAuth);
+        config.storeAuth(successAuth);
+        const recordsSeen = result.diag.entriesExtracted + result.diag.profilesExtracted;
+        await recordProviderHealthEvent({
+          provider: config.provider,
+          outcome: recordsSeen > 0 ? "success" : "empty",
+          stage: recordsSeen > 0 ? undefined : "empty",
+          reason:
+            recordsSeen > 0
+              ? undefined
+              : `No visible ${providerPrefix(config.provider)} records pulled`,
+          startedAt: scrapeStartedAt,
+          finishedAt: Date.now(),
+          itemsSeen: recordsSeen,
+          itemsAdded: result.diag.itemsAdded + result.diag.accountsAdded,
+        });
+        addDebugEvent(
+          "change",
+          `[${providerPrefix(config.provider)}] synced: ${recordsSeen.toLocaleString()} visible records, ${(result.diag.itemsAdded + result.diag.accountsAdded).toLocaleString()} new records`,
+        );
+        return result;
+      } finally {
+        if (isFactoryResetEpochCurrent(resetEpoch)) {
+          store.setLoading(false);
+        }
+      }
     } finally {
-      store.setLoading(false);
+      recordScrapeOutcome({
+        provider: config.provider,
+        trigger,
+        itemsExtracted: result.diag.entriesExtracted + result.diag.profilesExtracted,
+        itemsPersisted: persistedRecords,
+        stage: result.diag.errorStage ?? "ok",
+        durationMs: Date.now() - scrapeStartedAt,
+      });
     }
-  } finally {
-    recordScrapeOutcome({
-      provider: config.provider,
-      trigger,
-      itemsExtracted: result.diag.entriesExtracted + result.diag.profilesExtracted,
-      itemsPersisted: persistedRecords,
-      stage: result.diag.errorStage ?? "ok",
-      durationMs: Date.now() - scrapeStartedAt,
-    });
-  }
+  });
 }

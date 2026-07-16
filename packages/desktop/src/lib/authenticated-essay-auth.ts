@@ -1,7 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { clearPlatformUA, getPlatformUA } from "./user-agent";
-import { safeUnlisten } from "./safe-unlisten";
+import {
+  isDesktopProviderAuthAllowed,
+  requestDesktopProviderAuthCheck,
+  runDesktopProviderAuthRequest,
+} from "./provider-auth-lifecycle";
+import {
+  persistDisconnectedSocialAuthStateForFactoryReset,
+  readStoredSocialAuthState,
+  serializeSocialAuthStateForStorage,
+} from "./social-auth-transient-errors";
 
 type AuthenticatedEssayAuthProvider = "substack" | "medium";
 
@@ -18,6 +26,7 @@ export interface AuthenticatedEssayAuthState {
 
 interface AuthenticatedEssayAuthConfig {
   provider: AuthenticatedEssayAuthProvider;
+  providerLabel: "Substack" | "Medium";
   storageKey: string;
   authEvent: `${AuthenticatedEssayAuthProvider}-auth-result`;
   showLoginCommand: `${AuthenticatedEssayAuthProvider}_show_login`;
@@ -25,70 +34,25 @@ interface AuthenticatedEssayAuthConfig {
   disconnectCommand: `${AuthenticatedEssayAuthProvider}_disconnect`;
 }
 
-function finiteNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function parseStoredAuthState(value: string | null): AuthenticatedEssayAuthState {
-  if (!value) return { isAuthenticated: false };
-  try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
-    const pauseLevel = parsed.pauseLevel;
-    return {
-      isAuthenticated: parsed.isAuthenticated === true,
-      lastCheckedAt: finiteNumber(parsed.lastCheckedAt),
-      lastCapturedAt: finiteNumber(parsed.lastCapturedAt),
-      lastCaptureError:
-        typeof parsed.lastCaptureError === "string" ? parsed.lastCaptureError : undefined,
-      captureCooldownUntil: finiteNumber(parsed.captureCooldownUntil),
-      pausedUntil: finiteNumber(parsed.pausedUntil),
-      pauseReason: typeof parsed.pauseReason === "string" ? parsed.pauseReason : undefined,
-      pauseLevel:
-        pauseLevel === 1 || pauseLevel === 2 || pauseLevel === 3 ? pauseLevel : undefined,
-    };
-  } catch {
-    return { isAuthenticated: false };
-  }
-}
-
 export function createAuthenticatedEssayAuth(config: AuthenticatedEssayAuthConfig) {
   const showLogin = async (): Promise<void> => {
-    const userAgent = getPlatformUA(config.provider);
-    await invoke(config.showLoginCommand, { userAgent });
+    if (!isDesktopProviderAuthAllowed()) return;
+    await runDesktopProviderAuthRequest(async () => {
+      const userAgent = getPlatformUA(config.provider);
+      await invoke(config.showLoginCommand, { userAgent });
+    });
   };
 
-  const checkAuth = async (): Promise<boolean> =>
-    new Promise<boolean>((resolve) => {
-      let unlisten: UnlistenFn | null = null;
-      let settled = false;
-      const settle = (loggedIn: boolean, label: string) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeout);
-        safeUnlisten(unlisten, label);
-        resolve(loggedIn);
-      };
-      const timeout = setTimeout(() => {
-        settle(false, `${config.authEvent}:timeout`);
-      }, 15_000);
-
-      void listen<{ loggedIn: boolean }>(config.authEvent, (event) => {
-        settle(event.payload.loggedIn, config.authEvent);
-      })
-        .then((fn) => {
-          unlisten = fn;
-          if (settled) {
-            safeUnlisten(unlisten, `${config.authEvent}:late-listener`);
-            return;
-          }
-          return invoke(config.checkAuthCommand, {
-            userAgent: getPlatformUA(config.provider),
-          });
-        })
-        .catch(() => {
-          settle(false, `${config.authEvent}:error`);
-        });
+  const checkAuth = async (): Promise<boolean> => {
+    if (!isDesktopProviderAuthAllowed()) return false;
+    return requestDesktopProviderAuthCheck<{ loggedIn: boolean }>({
+      eventName: config.authEvent,
+      command: config.checkAuthCommand,
+      invokeArgs: { userAgent: getPlatformUA(config.provider) },
+      timeoutMs: 15_000,
+      isLoggedIn: (payload) => payload.loggedIn,
     });
+  };
 
   const disconnect = async (): Promise<void> => {
     try {
@@ -99,12 +63,32 @@ export function createAuthenticatedEssayAuth(config: AuthenticatedEssayAuthConfi
     }
   };
 
-  const storeAuthState = (state: AuthenticatedEssayAuthState): void => {
-    localStorage.setItem(config.storageKey, JSON.stringify(state));
+  const disconnectForFactoryReset = async (): Promise<void> => {
+    persistDisconnectedSocialAuthStateForFactoryReset(
+      config.storageKey,
+      config.providerLabel,
+    );
+    await invoke(config.disconnectCommand);
   };
 
-  const initAuth = (): AuthenticatedEssayAuthState =>
-    parseStoredAuthState(localStorage.getItem(config.storageKey));
+  const storeAuthState = (state: AuthenticatedEssayAuthState): void => {
+    if (!isDesktopProviderAuthAllowed()) return;
+    localStorage.setItem(config.storageKey, serializeSocialAuthStateForStorage(state));
+  };
 
-  return { showLogin, checkAuth, disconnect, storeAuthState, initAuth };
+  const initAuth = (): AuthenticatedEssayAuthState => {
+    const stored = readStoredSocialAuthState<AuthenticatedEssayAuthState>(config.storageKey);
+    return stored.status === "supported"
+      ? stored.state
+      : { isAuthenticated: false };
+  };
+
+  return {
+    showLogin,
+    checkAuth,
+    disconnect,
+    disconnectForFactoryReset,
+    storeAuthState,
+    initAuth,
+  };
 }

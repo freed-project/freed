@@ -21,77 +21,363 @@ import type {
   SampleDataClearSummary,
   UserPreferences,
 } from "@freed/shared";
-import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
+import type {
+  DocState,
+  DocumentHistoryRelation,
+  WorkerRequest,
+  WorkerResponse,
+} from "./automerge-types";
+import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
 import { persistWorkerDebugEvent } from "./automerge-worker-debug";
+import {
+  capturePwaRuntimeLifecycle,
+  registerPwaFactoryResetQuiesceHandler,
+  type PwaRuntimeLifecycle,
+} from "./factory-reset-coordinator";
 export type { DocState } from "./automerge-types";
 
 // ---------------------------------------------------------------------------
 // Worker lifecycle
 // ---------------------------------------------------------------------------
 
-const worker = new Worker(new URL("./automerge.worker.ts", import.meta.url), {
-  type: "module",
-});
+const WORKER_START_TIMEOUT_MS = 15_000;
+const WORKER_INIT_TIMEOUT_MS = 180_000;
+const WORKER_QUIESCE_TIMEOUT_MS = 10_000;
+const WORKER_REQUEST_TIMEOUT_MS = 180_000;
 
-// In Vite dev mode, module workers drop messages sent before module evaluation
-// completes. The worker posts a READY message once its onmessage handler is
-// installed. We gate all outbound postMessage calls behind this promise.
-const workerReady = new Promise<void>((resolve, reject) => {
-  const timeout = setTimeout(() => {
-    reject(new Error("Automerge worker failed to start within 15 seconds"));
-  }, 15_000);
+class WorkerLifecycleError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WorkerLifecycleError";
+  }
+}
 
-  const onReady = (event: MessageEvent<WorkerResponse>) => {
-    if (event.data.type === "READY") {
-      clearTimeout(timeout);
-      worker.removeEventListener("message", onReady);
-      resolve();
-    }
-  };
-  worker.addEventListener("message", onReady);
-});
+class InitDataError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InitDataError";
+  }
+}
+
+interface WorkerGeneration {
+  id: number;
+  worker: Worker;
+  ready: Promise<void>;
+  rejectReady: (error: WorkerLifecycleError) => void;
+  cleanupReady: () => void;
+  failed: boolean;
+  failure: WorkerLifecycleError | null;
+  documentInitialized: boolean;
+}
+
+interface GenerationOwnedRequest<T> {
+  generationId: number;
+  resolve: (value: T) => void;
+  reject: (error: Error) => void;
+}
+
+interface PendingInitialization {
+  generationId: number;
+  rejectLifecycle: (error: WorkerLifecycleError) => void;
+}
+
+let activeGeneration: WorkerGeneration | null = null;
+let nextGenerationId = 1;
+let pendingInitialization: PendingInitialization | null = null;
+let appDocumentInitialized = false;
+let automergeQuiesced = false;
+let automergeQuiescePromise: Promise<void> | null = null;
 
 // ---------------------------------------------------------------------------
 // Request/response plumbing
 // ---------------------------------------------------------------------------
 
 let nextReqId = 1;
-const pending = new Map<number, { resolve: () => void; reject: (err: Error) => void }>();
+const pending = new Map<number, GenerationOwnedRequest<void>>();
 const pendingContentSignalBackfill = new Map<
   number,
-  {
-    resolve: (summary: ContentSignalBackfillSummary) => void;
-    reject: (err: Error) => void;
-  }
+  GenerationOwnedRequest<ContentSignalBackfillSummary>
 >();
 const pendingSampleDataClear = new Map<
   number,
-  {
-    resolve: (summary: SampleDataClearSummary) => void;
-    reject: (err: Error) => void;
-  }
+  GenerationOwnedRequest<SampleDataClearSummary>
 >();
 const pendingDocBinary = new Map<
   number,
-  {
-    resolve: (binary: Uint8Array) => void;
-    reject: (err: Error) => void;
-  }
+  GenerationOwnedRequest<Uint8Array>
 >();
 const pendingDocHeads = new Map<
   number,
-  {
-    resolve: (heads: string[] | null) => void;
-    reject: (err: Error) => void;
-  }
+  GenerationOwnedRequest<string[] | null>
+>();
+const pendingDocRelationship = new Map<
+  number,
+  GenerationOwnedRequest<DocumentHistoryRelation>
+>();
+const pendingLegacyHtml = new Map<
+  number,
+  GenerationOwnedRequest<string | null>
 >();
 
-async function request(msg: WorkerRequest): Promise<void> {
-  await workerReady;
-  return new Promise((resolve, reject) => {
-    pending.set(msg.reqId, { resolve, reject });
-    worker.postMessage(msg);
+const pendingMaps: Array<Map<number, GenerationOwnedRequest<unknown>>> = [
+  pending as Map<number, GenerationOwnedRequest<unknown>>,
+  pendingContentSignalBackfill as Map<number, GenerationOwnedRequest<unknown>>,
+  pendingSampleDataClear as Map<number, GenerationOwnedRequest<unknown>>,
+  pendingDocBinary as Map<number, GenerationOwnedRequest<unknown>>,
+  pendingDocHeads as Map<number, GenerationOwnedRequest<unknown>>,
+  pendingDocRelationship as Map<number, GenerationOwnedRequest<unknown>>,
+  pendingLegacyHtml as Map<number, GenerationOwnedRequest<unknown>>,
+];
+
+function lifecycleError(message: string): WorkerLifecycleError {
+  return new WorkerLifecycleError(message);
+}
+
+function workerErrorMessage(event: ErrorEvent | MessageEvent): string {
+  const message = (event as { message?: unknown }).message;
+  return typeof message === "string" && message.length > 0
+    ? message
+    : "Automerge worker message could not be decoded";
+}
+
+function rejectGenerationRequests(generationId: number, error: WorkerLifecycleError): void {
+  if (pendingInitialization?.generationId === generationId) {
+    const initialization = pendingInitialization;
+    pendingInitialization = null;
+    initialization.rejectLifecycle(error);
+  }
+
+  for (const pendingMap of pendingMaps) {
+    for (const [reqId, request] of pendingMap) {
+      if (request.generationId !== generationId) continue;
+      pendingMap.delete(reqId);
+      request.reject(error);
+    }
+  }
+}
+
+function failWorkerGeneration(
+  generation: WorkerGeneration,
+  error: WorkerLifecycleError,
+  phase: string,
+): void {
+  if (generation.failed) return;
+  generation.failed = true;
+  generation.failure = error;
+  generation.documentInitialized = false;
+  generation.cleanupReady();
+  generation.rejectReady(error);
+  generation.worker.onmessage = null;
+  generation.worker.onerror = null;
+  generation.worker.onmessageerror = null;
+  generation.worker.terminate();
+
+  if (activeGeneration === generation) {
+    activeGeneration = null;
+    lastBinary = null;
+    lastDocState = null;
+  }
+
+  rejectGenerationRequests(generation.id, error);
+  const detail = `worker_lifecycle_failed phase=${phase} generation=${generation.id.toLocaleString()} message=${error.message}`;
+  console.error(`[AutomergeWorker] ${detail}`);
+  addDebugEvent("error", detail);
+  persistWorkerDebugEvent({ kind: "worker_lifecycle_failed", detail });
+}
+
+function createWorkerGeneration(): WorkerGeneration {
+  const worker = new Worker(new URL("./automerge.worker.ts", import.meta.url), {
+    type: "module",
   });
+  let rejectReady: (error: WorkerLifecycleError) => void = () => {};
+  let cleanupReady = () => {};
+  const generation: WorkerGeneration = {
+    id: nextGenerationId++,
+    worker,
+    ready: Promise.resolve(),
+    rejectReady: (error) => rejectReady(error),
+    cleanupReady: () => cleanupReady(),
+    failed: false,
+    failure: null,
+    documentInitialized: false,
+  };
+
+  generation.ready = new Promise<void>((resolve, reject) => {
+    rejectReady = reject;
+    const timeout = setTimeout(() => {
+      failWorkerGeneration(
+        generation,
+        lifecycleError(
+          `Automerge worker failed to start within ${(WORKER_START_TIMEOUT_MS / 1_000).toLocaleString()} seconds`,
+        ),
+        "startup_timeout",
+      );
+    }, WORKER_START_TIMEOUT_MS);
+
+    const onReady = (event: MessageEvent<WorkerResponse>) => {
+      if (event.data.type !== "READY" || generation.failed) return;
+      cleanupReady();
+      resolve();
+    };
+
+    cleanupReady = () => {
+      clearTimeout(timeout);
+      worker.removeEventListener("message", onReady);
+    };
+    generation.cleanupReady = () => cleanupReady();
+    worker.addEventListener("message", onReady);
+  });
+  void generation.ready.catch(() => {});
+
+  worker.onmessage = (event) => handleWorkerMessage(generation, event);
+  worker.onerror = (event) => {
+    failWorkerGeneration(
+      generation,
+      lifecycleError(workerErrorMessage(event)),
+      "runtime_error",
+    );
+  };
+  worker.onmessageerror = (event) => {
+    failWorkerGeneration(
+      generation,
+      lifecycleError(workerErrorMessage(event)),
+      "runtime_message_error",
+    );
+  };
+
+  activeGeneration = generation;
+  return generation;
+}
+
+async function getReadyGeneration(): Promise<WorkerGeneration> {
+  const generation = activeGeneration?.failed
+    ? createWorkerGeneration()
+    : activeGeneration ?? createWorkerGeneration();
+  await generation.ready;
+  if (generation.failed || activeGeneration !== generation) {
+    throw generation.failure ?? lifecycleError("Automerge worker generation is no longer active");
+  }
+  return generation;
+}
+
+async function getReadyGenerationWithStartupRetry(): Promise<WorkerGeneration> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await getReadyGeneration();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+function postToGeneration(generation: WorkerGeneration, message: WorkerRequest): void {
+  if (generation.failed || activeGeneration !== generation) {
+    throw generation.failure ?? lifecycleError("Automerge worker generation is no longer active");
+  }
+  try {
+    generation.worker.postMessage(message);
+  } catch (error) {
+    const failure = lifecycleError(
+      `Automerge worker postMessage failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    failWorkerGeneration(generation, failure, "post_message_error");
+    throw failure;
+  }
+}
+
+function requestOnGeneration<T>(
+  generation: WorkerGeneration,
+  pendingMap: Map<number, GenerationOwnedRequest<T>>,
+  message: WorkerRequest,
+  runtimeLifecycle?: PwaRuntimeLifecycle,
+): Promise<T> {
+  return new Promise<T>((resolvePromise, rejectPromise) => {
+    try {
+      runtimeLifecycle?.assertCurrent();
+    } catch (error) {
+      rejectPromise(error instanceof Error ? error : new Error(String(error)));
+      return;
+    }
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      failWorkerGeneration(
+        generation,
+        lifecycleError(
+          `Automerge worker request ${message.type} timed out after ${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()} milliseconds`,
+        ),
+        "request_timeout",
+      );
+    }, WORKER_REQUEST_TIMEOUT_MS);
+    const request: GenerationOwnedRequest<T> = {
+      generationId: generation.id,
+      resolve: (value) => {
+        if (settled) return;
+        try {
+          runtimeLifecycle?.assertCurrent();
+        } catch (error) {
+          settled = true;
+          clearTimeout(timeout);
+          rejectPromise(error instanceof Error ? error : new Error(String(error)));
+          return;
+        }
+        settled = true;
+        clearTimeout(timeout);
+        resolvePromise(value);
+      },
+      reject: (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        rejectPromise(error);
+      },
+    };
+    pendingMap.set(message.reqId, request);
+    try {
+      postToGeneration(generation, message);
+    } catch (error) {
+      if (pendingMap.get(message.reqId) === request) {
+        pendingMap.delete(message.reqId);
+        request.reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    }
+  });
+}
+
+async function getGenerationForRequest(type: WorkerRequest["type"]): Promise<WorkerGeneration> {
+  if (automergeQuiesced) {
+    throw lifecycleError("Automerge worker is quiesced for factory reset");
+  }
+  const generation = await getReadyGenerationWithStartupRetry();
+  if (
+    type !== "INIT" &&
+    type !== "CLEAR_LOCAL" &&
+    appDocumentInitialized &&
+    !generation.documentInitialized
+  ) {
+    await initDoc();
+    return getReadyGeneration();
+  }
+  return generation;
+}
+
+async function request(msg: WorkerRequest): Promise<void> {
+  const runtimeLifecycle = capturePwaRuntimeLifecycle();
+  runtimeLifecycle.assertCurrent();
+  const generation = await getGenerationForRequest(msg.type);
+  return requestOnGeneration(generation, pending, msg, runtimeLifecycle);
+}
+
+async function requestResult<T>(
+  pendingMap: Map<number, GenerationOwnedRequest<T>>,
+  message: WorkerRequest,
+): Promise<T> {
+  const runtimeLifecycle = capturePwaRuntimeLifecycle();
+  runtimeLifecycle.assertCurrent();
+  const generation = await getGenerationForRequest(message.type);
+  return requestOnGeneration(generation, pendingMap, message, runtimeLifecycle);
 }
 
 // Latest binary fetched from the worker for the debug escape hatch.
@@ -103,7 +389,11 @@ let initPromise: Promise<DocState> | null = null;
 // Subscriber model
 // ---------------------------------------------------------------------------
 
-type Subscriber = (state: DocState) => void;
+interface DocChangeEvent {
+  mutation?: WorkerRequest["type"];
+}
+
+type Subscriber = (state: DocState, event: DocChangeEvent) => void;
 const subscribers = new Set<Subscriber>();
 
 export function subscribe(callback: Subscriber): () => void {
@@ -115,7 +405,20 @@ export function subscribe(callback: Subscriber): () => void {
 // Inbound worker message handler
 // ---------------------------------------------------------------------------
 
-worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+function getOwnedRequest<T>(
+  pendingMap: Map<number, GenerationOwnedRequest<T>>,
+  reqId: number,
+  generationId: number,
+): GenerationOwnedRequest<T> | null {
+  const request = pendingMap.get(reqId);
+  return request?.generationId === generationId ? request : null;
+}
+
+function handleWorkerMessage(
+  generation: WorkerGeneration,
+  event: MessageEvent<WorkerResponse>,
+): void {
+  if (generation.failed || activeGeneration !== generation) return;
   const msg = event.data;
 
   if (msg.type === "READY") return;
@@ -123,12 +426,12 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   if (msg.type === "STATE_UPDATE") {
     if (msg.binary) lastBinary = msg.binary;
     lastDocState = msg.state;
-    for (const sub of subscribers) sub(msg.state);
+    for (const sub of subscribers) sub(msg.state, { mutation: msg.mutation });
     return;
   }
 
   if (msg.type === "DOC_BINARY") {
-    const pendingBinary = pendingDocBinary.get(msg.reqId);
+    const pendingBinary = getOwnedRequest(pendingDocBinary, msg.reqId, generation.id);
     if (!pendingBinary) return;
     pendingDocBinary.delete(msg.reqId);
     lastBinary = msg.binary;
@@ -137,10 +440,26 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   }
 
   if (msg.type === "DOC_HEADS") {
-    const pendingHeads = pendingDocHeads.get(msg.reqId);
+    const pendingHeads = getOwnedRequest(pendingDocHeads, msg.reqId, generation.id);
     if (!pendingHeads) return;
     pendingDocHeads.delete(msg.reqId);
     pendingHeads.resolve(msg.heads);
+    return;
+  }
+
+  if (msg.type === "DOC_RELATIONSHIP") {
+    const pendingRelationship = getOwnedRequest(pendingDocRelationship, msg.reqId, generation.id);
+    if (!pendingRelationship) return;
+    pendingDocRelationship.delete(msg.reqId);
+    pendingRelationship.resolve(msg.relation);
+    return;
+  }
+
+  if (msg.type === "ITEM_LEGACY_HTML") {
+    const pendingHtml = getOwnedRequest(pendingLegacyHtml, msg.reqId, generation.id);
+    if (!pendingHtml) return;
+    pendingLegacyHtml.delete(msg.reqId);
+    pendingHtml.resolve(msg.html);
     return;
   }
 
@@ -161,7 +480,7 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
 
   if (msg.type === "DEBUG_SNAPSHOT") {
     setDocSnapshot({
-      deviceId: msg.deviceId,
+      documentId: msg.documentId,
       itemCount: msg.itemCount,
       feedCount: msg.feedCount,
       binarySize: msg.binarySize,
@@ -171,7 +490,11 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   }
 
   if (msg.type === "CONTENT_SIGNAL_BACKFILL_RESULT") {
-    const pendingBackfill = pendingContentSignalBackfill.get(msg.reqId);
+    const pendingBackfill = getOwnedRequest(
+      pendingContentSignalBackfill,
+      msg.reqId,
+      generation.id,
+    );
     if (!pendingBackfill) return;
     pendingContentSignalBackfill.delete(msg.reqId);
     pendingBackfill.resolve(msg.summary);
@@ -179,7 +502,7 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   }
 
   if (msg.type === "SAMPLE_DATA_CLEAR_RESULT") {
-    const pendingClear = pendingSampleDataClear.get(msg.reqId);
+    const pendingClear = getOwnedRequest(pendingSampleDataClear, msg.reqId, generation.id);
     if (!pendingClear) return;
     pendingSampleDataClear.delete(msg.reqId);
     pendingClear.resolve(msg.summary);
@@ -187,28 +510,57 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   }
 
   // ACK — resolve or reject the pending promise
-  const pendingBackfill = pendingContentSignalBackfill.get(msg.reqId);
+  const pendingBackfill = getOwnedRequest(
+    pendingContentSignalBackfill,
+    msg.reqId,
+    generation.id,
+  );
   if (pendingBackfill && msg.error) {
     pendingContentSignalBackfill.delete(msg.reqId);
     pendingBackfill.reject(new Error(msg.error));
     return;
   }
 
-  const pendingClear = pendingSampleDataClear.get(msg.reqId);
+  const pendingClear = getOwnedRequest(pendingSampleDataClear, msg.reqId, generation.id);
   if (pendingClear && msg.error) {
     pendingSampleDataClear.delete(msg.reqId);
     pendingClear.reject(new Error(msg.error));
     return;
   }
 
-  const pendingBinary = pendingDocBinary.get(msg.reqId);
+  const pendingBinary = getOwnedRequest(pendingDocBinary, msg.reqId, generation.id);
   if (pendingBinary && msg.error) {
     pendingDocBinary.delete(msg.reqId);
     pendingBinary.reject(new Error(msg.error));
     return;
   }
 
-  const p = pending.get(msg.reqId);
+  const pendingHeads = getOwnedRequest(pendingDocHeads, msg.reqId, generation.id);
+  if (pendingHeads && msg.error) {
+    pendingDocHeads.delete(msg.reqId);
+    pendingHeads.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingRelationship = getOwnedRequest(
+    pendingDocRelationship,
+    msg.reqId,
+    generation.id,
+  );
+  if (pendingRelationship && msg.error) {
+    pendingDocRelationship.delete(msg.reqId);
+    pendingRelationship.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingHtml = getOwnedRequest(pendingLegacyHtml, msg.reqId, generation.id);
+  if (pendingHtml && msg.error) {
+    pendingLegacyHtml.delete(msg.reqId);
+    pendingHtml.reject(new Error(msg.error));
+    return;
+  }
+
+  const p = getOwnedRequest(pending, msg.reqId, generation.id);
   if (!p) return;
   pending.delete(msg.reqId);
   if (msg.error) {
@@ -216,11 +568,9 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   } else {
     p.resolve();
   }
-};
+}
 
-worker.onerror = (err) => {
-  console.error("[AutomergeWorker] Unhandled error:", err);
-};
+createWorkerGeneration();
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -231,18 +581,41 @@ worker.onerror = (err) => {
  * Returns the initial hydrated state (equivalent to the old FreedDoc return,
  * but already processed into plain JS — no WASM on the main thread).
  */
-function sendInit(): Promise<DocState> {
+function sendInit(generation: WorkerGeneration): Promise<DocState> {
   return new Promise((resolve, reject) => {
     const reqId = nextReqId++;
-
     let initialState: DocState | null = null;
     let initAcked = false;
+    let settled = false;
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      generation.worker.removeEventListener("message", stateHandler);
+      if (pendingInitialization?.generationId === generation.id) {
+        pendingInitialization = null;
+      }
+    };
 
     function tryResolve() {
-      if (initialState && initAcked) resolve(initialState);
+      if (!initialState || !initAcked || settled) return;
+      settled = true;
+      cleanup();
+      generation.documentInitialized = true;
+      appDocumentInitialized = true;
+      try {
+        registerDocAccessors(
+          () => null,
+          () => "(doc lives in worker, not directly accessible)",
+          () => lastBinary ?? new Uint8Array(0),
+        );
+      } catch (error) {
+        console.error("[AutomergeWorker] Failed to register debug document accessors", error);
+      }
+      resolve(initialState);
     }
 
-    const stateHandler = (event: MessageEvent<WorkerResponse>) => {
+    function stateHandler(event: MessageEvent<WorkerResponse>) {
+      if (generation.failed || activeGeneration !== generation || settled) return;
       const msg = event.data;
       if (msg.type === "STATE_UPDATE" && !initialState) {
         if (msg.binary) lastBinary = msg.binary;
@@ -250,48 +623,101 @@ function sendInit(): Promise<DocState> {
         initialState = msg.state;
         tryResolve();
       } else if (msg.type === "ACK" && msg.reqId === reqId) {
-        registerDocAccessors(
-          () => null,
-          () => "(doc lives in worker — not directly accessible)",
-          () => lastBinary ?? new Uint8Array(0),
-        );
-        worker.removeEventListener("message", stateHandler);
         if (msg.error) {
-          reject(new Error(msg.error));
+          settled = true;
+          cleanup();
+          generation.documentInitialized = false;
+          lastBinary = null;
+          lastDocState = null;
+          reject(
+            msg.errorCode === "CORRUPT_DOCUMENT"
+              ? new InitDataError(msg.error)
+              : new Error(msg.error),
+          );
         } else {
           initAcked = true;
           tryResolve();
         }
       }
-    };
+    }
 
-    worker.addEventListener("message", stateHandler);
-    worker.postMessage({ reqId, type: "INIT" } satisfies WorkerRequest);
+    const timeout = setTimeout(() => {
+      failWorkerGeneration(
+        generation,
+        lifecycleError(
+          `Automerge worker INIT timed out after ${WORKER_INIT_TIMEOUT_MS.toLocaleString()} milliseconds`,
+        ),
+        "runtime_init_timeout",
+      );
+    }, WORKER_INIT_TIMEOUT_MS);
+
+    pendingInitialization = {
+      generationId: generation.id,
+      rejectLifecycle: (error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      },
+    };
+    generation.worker.addEventListener("message", stateHandler);
+    try {
+      postToGeneration(generation, { reqId, type: "INIT" } satisfies WorkerRequest);
+    } catch (error) {
+      if (!settled) {
+        settled = true;
+        cleanup();
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    }
   });
 }
 
-export async function initDoc(): Promise<DocState> {
-  await workerReady;
-  if (lastDocState) return lastDocState;
-  if (initPromise) return initPromise;
+async function initializeDocument(): Promise<DocState> {
+  let lifecycleRetries = 0;
+  while (true) {
+    try {
+      const generation = await getReadyGeneration();
+      return await sendInit(generation);
+    } catch (error) {
+      if (error instanceof WorkerLifecycleError && lifecycleRetries < 1) {
+        lifecycleRetries += 1;
+        continue;
+      }
+      throw error;
+    }
+  }
+}
 
-  initPromise = sendInit().catch(async () => {
-    await clearLocalDoc();
-    return sendInit();
+export function initDoc(): Promise<DocState> {
+  const runtimeLifecycle = capturePwaRuntimeLifecycle();
+  runtimeLifecycle.assertCurrent();
+  if (initPromise) return initPromise;
+  if (
+    lastDocState &&
+    activeGeneration?.documentInitialized &&
+    !activeGeneration.failed
+  ) {
+    return Promise.resolve(lastDocState);
+  }
+
+  const initialization = initializeDocument().then((state) => {
+    runtimeLifecycle.assertCurrent();
+    return state;
   }).finally(() => {
-    initPromise = null;
+    if (initPromise === initialization) initPromise = null;
   });
-  return initPromise;
+  initPromise = initialization;
+  return initialization;
 }
 
 /** Binary snapshot of the current doc — used by sync.ts for relay/cloud upload. */
 export async function getDocBinary(): Promise<Uint8Array> {
-  await workerReady;
   const reqId = nextReqId++;
-  return new Promise((resolve, reject) => {
-    pendingDocBinary.set(reqId, { resolve, reject });
-    worker.postMessage({ reqId, type: "GET_DOC_BINARY" } satisfies WorkerRequest);
-  });
+  return requestResult(
+    pendingDocBinary,
+    { reqId, type: "GET_DOC_BINARY" } satisfies WorkerRequest,
+  );
 }
 
 /**
@@ -299,12 +725,34 @@ export async function getDocBinary(): Promise<Uint8Array> {
  * Null before the first INIT completes.
  */
 export async function getDocHeads(): Promise<string[] | null> {
-  await workerReady;
   const reqId = nextReqId++;
-  return new Promise((resolve, reject) => {
-    pendingDocHeads.set(reqId, { resolve, reject });
-    worker.postMessage({ reqId, type: "GET_HEADS" } satisfies WorkerRequest);
-  });
+  return requestResult(
+    pendingDocHeads,
+    { reqId, type: "GET_HEADS" } satisfies WorkerRequest,
+  );
+}
+
+/** Compare incoming Automerge history with the current local document. */
+export async function compareDoc(
+  incoming: Uint8Array,
+): Promise<DocumentHistoryRelation> {
+  const reqId = nextReqId++;
+  return requestResult(
+    pendingDocRelationship,
+    {
+      reqId,
+      type: "COMPARE_DOC",
+      binary: incoming,
+    } satisfies WorkerRequest,
+  );
+}
+
+export async function getItemLegacyHtml(globalId: string): Promise<string | null> {
+  const reqId = nextReqId++;
+  return requestResult(
+    pendingLegacyHtml,
+    { reqId, type: "GET_ITEM_LEGACY_HTML", globalId } satisfies WorkerRequest,
+  );
 }
 
 /** Merge incoming sync binary into the doc (relay / cloud download). */
@@ -318,6 +766,73 @@ export async function clearLocalDoc(): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "CLEAR_LOCAL" });
 }
+
+/** Stop the worker after all requests already accepted by it have settled. */
+export function quiescePwaAutomergeForFactoryReset(): Promise<void> {
+  if (automergeQuiescePromise) return automergeQuiescePromise;
+  automergeQuiesced = true;
+  automergeQuiescePromise = (async () => {
+    const generation = activeGeneration;
+    if (!generation || generation.failed) return;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    let quiesceFailure: unknown = null;
+    try {
+      await Promise.race([
+        (async () => {
+          await generation.ready;
+          const reqId = nextReqId++;
+          await requestOnGeneration(
+            generation,
+            pending,
+            { reqId, type: "QUIESCE" } satisfies WorkerRequest,
+          );
+        })(),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(
+            () => reject(lifecycleError(
+              `Automerge worker did not quiesce within ${WORKER_QUIESCE_TIMEOUT_MS.toLocaleString()} milliseconds`,
+            )),
+            WORKER_QUIESCE_TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } catch (error) {
+      quiesceFailure = error;
+    } finally {
+      if (timeout) clearTimeout(timeout);
+      generation.cleanupReady();
+      generation.worker.onmessage = null;
+      generation.worker.onerror = null;
+      generation.worker.onmessageerror = null;
+      generation.worker.terminate();
+      if (activeGeneration === generation) activeGeneration = null;
+      rejectGenerationRequests(
+        generation.id,
+        lifecycleError("Automerge worker stopped for factory reset"),
+      );
+      lastBinary = null;
+      lastDocState = null;
+      initPromise = null;
+      appDocumentInitialized = false;
+    }
+    if (quiesceFailure) throw quiesceFailure;
+  })();
+  return automergeQuiescePromise;
+}
+
+/** Clear IndexedDB only after every tab has acknowledged worker quiescence. */
+export async function clearLocalDocAfterPwaQuiesce(): Promise<void> {
+  if (!automergeQuiesced) {
+    throw new Error("Automerge must be quiesced before factory reset clears IndexedDB");
+  }
+  await new IndexedDBStorage().clear();
+}
+
+registerPwaFactoryResetQuiesceHandler(
+  "automerge-worker",
+  quiescePwaAutomergeForFactoryReset,
+  30,
+);
 
 // ---------------------------------------------------------------------------
 // Document mutations — one function per schema operation
@@ -356,12 +871,11 @@ export async function docRemoveFeedItem(globalId: string): Promise<void> {
 }
 
 export async function docClearSampleData(): Promise<SampleDataClearSummary> {
-  await workerReady;
-  return new Promise((resolve, reject) => {
-    const reqId = nextReqId++;
-    pendingSampleDataClear.set(reqId, { resolve, reject });
-    worker.postMessage({ reqId, type: "CLEAR_SAMPLE_DATA" } satisfies WorkerRequest);
-  });
+  const reqId = nextReqId++;
+  return requestResult(
+    pendingSampleDataClear,
+    { reqId, type: "CLEAR_SAMPLE_DATA" } satisfies WorkerRequest,
+  );
 }
 
 export async function docUpdateFeedItem(globalId: string, updates: Partial<FeedItem>): Promise<void> {
@@ -372,12 +886,11 @@ export async function docUpdateFeedItem(globalId: string, updates: Partial<FeedI
 export async function docBackfillContentSignals(
   batchSize: number = 200,
 ): Promise<ContentSignalBackfillSummary> {
-  await workerReady;
-  return new Promise((resolve, reject) => {
-    const reqId = nextReqId++;
-    pendingContentSignalBackfill.set(reqId, { resolve, reject });
-    worker.postMessage({ reqId, type: "BACKFILL_CONTENT_SIGNALS", batchSize } satisfies WorkerRequest);
-  });
+  const reqId = nextReqId++;
+  return requestResult(
+    pendingContentSignalBackfill,
+    { reqId, type: "BACKFILL_CONTENT_SIGNALS", batchSize } satisfies WorkerRequest,
+  );
 }
 
 export async function docMarkAsRead(globalId: string): Promise<void> {
@@ -473,11 +986,6 @@ export async function docRemoveAllFeeds(includeItems: boolean): Promise<void> {
 export async function docUpdatePreferences(updates: Partial<UserPreferences>): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "UPDATE_PREFERENCES", updates });
-}
-
-export async function docUpdateLastSync(): Promise<void> {
-  const reqId = nextReqId++;
-  return request({ reqId, type: "UPDATE_LAST_SYNC" });
 }
 
 export async function docAddPerson(person: Person): Promise<void> {

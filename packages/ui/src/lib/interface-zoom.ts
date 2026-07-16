@@ -58,6 +58,14 @@ export function setInterfaceZoom(nextZoom: number): void {
   window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: zoom }));
 }
 
+export function resetInterfaceZoom(): void {
+  if (typeof window === "undefined") return;
+
+  window.localStorage.removeItem(STORAGE_KEY);
+  applyInterfaceZoomToDocument(INTERFACE_ZOOM_DEFAULT);
+  window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: INTERFACE_ZOOM_DEFAULT }));
+}
+
 export function useInterfaceZoom(): [number, (nextZoom: number) => void] {
   const [zoom, setZoomState] = useState<number>(() => getInterfaceZoom());
 

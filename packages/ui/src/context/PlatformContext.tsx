@@ -349,11 +349,16 @@ export interface PlatformConfig {
 
   /**
    * Perform a factory reset on this device.
-   * Wipes IndexedDB + localStorage. When `deleteFromCloud` is true, also
-   * deletes the sync file from the active cloud provider before clearing.
-   * Always ends with `location.reload()`.
+   * Clears the local library and selected device preferences, then disconnects
+   * active accounts. Request safeguards and certain downloaded files remain local.
+   * Cloud data stays available for restoration after reconnecting unless
+   * `deleteFromCloud` is true.
+   * A successful reset ends with a process or page reload.
    */
   factoryReset?: (deleteFromCloud: boolean) => Promise<void>;
+
+  /** Whether a factory reset revokes existing mobile reader pairings. */
+  factoryResetRevokesMobilePairing?: boolean;
 
   /**
    * Return a human-readable label for the currently active cloud provider
@@ -454,6 +459,9 @@ export interface PlatformConfig {
 
   /** Device-local optional model downloads for offline AI. */
   localAIModels?: LocalAIModelControls;
+
+  /** Check the configured Ollama endpoint through the host telemetry boundary. */
+  checkOllamaReachable?: (ollamaUrl: string) => Promise<boolean>;
 
   /** Import an Instagram Accounts Center export into the device-local media vault. */
   importInstagramStoryWallArchive?: (files: FileList) => Promise<StoryWallImportSummary>;

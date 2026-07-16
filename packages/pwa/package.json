@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node ../../node_modules/playwright/cli.js test",
     "test:unit": "vitest run --maxWorkers=1",
+    "test:perf": "FREED_PWA_PERF=1 vitest run src/lib/identity-graph-v2.test.ts --maxWorkers=1",
     "test:unit:watch": "vitest",
     "test:ui": "node ../../node_modules/playwright/cli.js test --ui",
     "test:headed": "node ../../node_modules/playwright/cli.js test --headed"

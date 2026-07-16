@@ -55,7 +55,7 @@ const testStoreState = {
   },
   toggleSaved: vi.fn(),
   toggleArchived: vi.fn(),
-  updatePreferences: vi.fn(),
+  updatePreferences: vi.fn(async () => {}),
 };
 
 const basePlatformConfig = {
@@ -130,6 +130,7 @@ describe("ReaderView cache-first hydration", () => {
   afterEach(() => {
     document.body.innerHTML = "";
     window.localStorage.clear();
+    vi.useRealTimers();
     vi.clearAllMocks();
     vi.restoreAllMocks();
   });
@@ -382,5 +383,33 @@ describe("ReaderView cache-first hydration", () => {
     expect(container.textContent).not.toContain("Adding to Freed Offline");
 
     await act(async () => root.unmount());
+  });
+
+  it("persists only the changed focus mode and cancels a pending save on unmount", async () => {
+    vi.useFakeTimers();
+    const platform = {
+      ...basePlatformConfig,
+      getLocalContent: vi.fn(async () => null),
+    } as unknown as PlatformConfig;
+    const { container, root } = await renderReaderView(platform);
+    const focusButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Toggle focus reading mode"]',
+    );
+    expect(focusButton).not.toBeNull();
+
+    await act(async () => {
+      focusButton?.click();
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(testStoreState.updatePreferences).toHaveBeenCalledOnce();
+    expect(testStoreState.updatePreferences).toHaveBeenCalledWith({
+      display: { reading: { focusMode: true } },
+    });
+
+    testStoreState.updatePreferences.mockClear();
+    await act(async () => focusButton?.click());
+    await act(async () => root.unmount());
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(testStoreState.updatePreferences).not.toHaveBeenCalled();
   });
 });

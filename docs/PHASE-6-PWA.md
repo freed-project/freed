@@ -22,7 +22,7 @@ Mobile companion to Freed Desktop for on-the-go reading. Timeline-focused, minim
 - **Cloud sync diagnostics:** PWA Settings shows local item count, local document size, Drive stage, last download, last merge, last upload, remote bytes, the last cloud error, why upload is waiting, recent Drive activity, and a manual `Sync now` action. Cloud-only PWA sessions now wait for the local document to initialize, then subscribe to local document changes and upload them without needing a LAN relay.
 - **Blank-state testing escape hatch** — PWA empty states now include a secondary sample-data section below the main handoff prompt for quick local testing
 - **Archived saved-item repair control** — Archived views now surface a one-click `Unarchive Saved Content` action when legacy or imported items end up both saved and archived
-- **Safe optimistic user mutations:** Feed actions, read marks, item edits, feed renames, person edits, account edits, and preference changes update visible UI state immediately before Automerge worker reconciliation
+- **Safe optimistic user mutations:** Feed actions, read marks, item edits, feed renames, person edits, account edits, and synced preference changes update visible UI state immediately before Automerge worker reconciliation. Device display controls and Friends graph pins persist locally without an Automerge round trip. Concurrent startup effects share one initialization and one permanent worker subscription.
 - **Mobile chrome polish:** The PWA mobile toolbar uses balanced menu and format controls, the mobile drawer starts with search, Settings stacks compact sections, and the reader keeps fixed menus plus sane article spacing
 
 ---
@@ -247,8 +247,9 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] Ranking weights affect item order
 - [x] Platform/author filters work (sidebar filter by platform/feed)
 - [x] RSS source accordion pages subscriptions in the sidebar and top search moves matching feeds into the first page
-- [x] RSS subscriptions, polling, and OPML management stay in Freed Desktop while the PWA shows synced feed and item status
+- [x] RSS subscriptions, polling, and OPML management stay in Freed Desktop while the PWA shows synced feed and item status. Only the last successful refresh syncs. Retry timing and failures remain local to the polling device. Deprecated synchronized HTTP validators are ignored because the current Desktop transport does not persist them.
 - [x] First launch is blocked behind a local-only legal clickwrap gate
+- [x] PWA factory reset fences every open tab before clearing device preferences, the selected relay and cloud credentials, worker diagnostics, and the local document. A durable cleanup barrier keeps automatic cloud sync paused after failed cloud deletion until reset succeeds or the user explicitly reconnects. OAuth handoff values, reader caches, and geocoding caches remain on the device. OAuth callbacks started before reset are rejected by their installation generation. Legal acceptance, release channel, and install prompt dismissal remain installation state.
 - [x] Active view, feed filters, and reader selection round-trip through the URL for browser back/forward navigation
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] Bug report actions now label whether they download a public-safe or private bundle, and private diagnostics can be toggled as one group before emailing a report
@@ -268,6 +269,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] Private diagnostics stay opt-in and are clearly separated from public GitHub sharing
 - [x] PWA installable on mobile (add to homescreen) — manifest ids and scope set, browser install notice shipped, iOS Safari homescreen guidance shipped, Playwright coverage added
 - [x] Offline access works (service worker + image cache), article HTML and cacheable reader images are warmed locally for offline reading
+- [x] Legacy synced reader HTML remains available through an on-demand worker fallback, stays out of hydrated feed lists, and is cached locally when opened without deleting another device's only compatibility copy
 - [x] The article proxy resolves and pins public addresses, revalidates every bounded redirect, rejects non-HTML responses, and stops oversized response bodies before they exhaust server memory
 - [x] Saved reader content uses the permanent pinned cache tier by default, with local cache modes for Saved Only, Everything Opened, Recent Feed, and Manual Only
 

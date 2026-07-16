@@ -19,6 +19,9 @@ import type {
   SampleDataClearSummary,
   UserPreferences,
 } from "@freed/shared";
+import type { DocumentHistoryRelation } from "@freed/shared/schema";
+
+export type { DocumentHistoryRelation } from "@freed/shared/schema";
 
 // ---------------------------------------------------------------------------
 // Hydrated state posted to the main thread after every doc mutation.
@@ -52,6 +55,7 @@ export interface DocState {
 
 export type WorkerRequest =
   | { reqId: number; type: "INIT" }
+  | { reqId: number; type: "QUIESCE" }
   | { reqId: number; type: "MARK_AS_READ"; globalId: string }
   | { reqId: number; type: "MARK_ITEMS_AS_READ"; globalIds: string[] }
   | { reqId: number; type: "MARK_ALL_AS_READ"; platform?: string }
@@ -83,7 +87,6 @@ export type WorkerRequest =
   | { reqId: number; type: "UPDATE_RSS_FEED"; url: string; updates: Partial<RssFeed> }
   | { reqId: number; type: "REMOVE_ALL_FEEDS"; includeItems: boolean }
   | { reqId: number; type: "UPDATE_PREFERENCES"; updates: Partial<UserPreferences> }
-  | { reqId: number; type: "UPDATE_LAST_SYNC" }
   | { reqId: number; type: "ADD_PERSON"; person: Person }
   | { reqId: number; type: "ADD_PERSONS"; persons: Person[] }
   | { reqId: number; type: "UPDATE_PERSON"; personId: string; updates: Partial<Person> }
@@ -99,26 +102,38 @@ export type WorkerRequest =
   | { reqId: number; type: "MERGE_DOC"; binary: Uint8Array }
   | { reqId: number; type: "GET_DOC_BINARY" }
   | { reqId: number; type: "GET_HEADS" }
+  | { reqId: number; type: "COMPARE_DOC"; binary: Uint8Array }
+  | { reqId: number; type: "GET_ITEM_LEGACY_HTML"; globalId: string }
   | { reqId: number; type: "CLEAR_LOCAL" };
 
 // ---------------------------------------------------------------------------
 // Worker → main thread
 // ---------------------------------------------------------------------------
 
+export type WorkerErrorCode = "CORRUPT_DOCUMENT";
+
 export type WorkerResponse =
   /** Simple acknowledgement for mutations that return void */
-  | { reqId: number; type: "ACK"; error?: string }
+  | { reqId: number; type: "ACK"; error?: string; errorCode?: WorkerErrorCode }
   /** Broadcast on every doc mutation — main thread uses this to update UI */
-  | { type: "STATE_UPDATE"; state: DocState; binary?: Uint8Array }
+  | {
+      type: "STATE_UPDATE";
+      state: DocState;
+      binary?: Uint8Array;
+      mutation?: WorkerRequest["type"];
+    }
   | { reqId: number; type: "DOC_BINARY"; binary: Uint8Array }
   /** Current Automerge heads for upload-loop accounting; null before INIT. */
   | { reqId: number; type: "DOC_HEADS"; heads: string[] | null }
+  /** Automerge history containment of an incoming document relative to local. */
+  | { reqId: number; type: "DOC_RELATIONSHIP"; relation: DocumentHistoryRelation }
+  | { reqId: number; type: "ITEM_LEGACY_HTML"; globalId: string; html: string | null }
   /** Sent once per INIT with its cost, for the worker-INIT debug counter. */
   | { type: "INIT_STATS"; durationMs: number; docBytes: number }
   /** Debug panel event forwarding */
   | { type: "DEBUG_EVENT"; kind: string; detail?: string; bytes?: number }
   /** Doc size snapshot for the debug panel */
-  | { type: "DEBUG_SNAPSHOT"; deviceId: string; itemCount: number; feedCount: number; binarySize: number }
+  | { type: "DEBUG_SNAPSHOT"; documentId: string; itemCount: number; feedCount: number; binarySize: number }
   /** One-batch content signal backfill summary. */
   | { reqId: number; type: "CONTENT_SIGNAL_BACKFILL_RESULT"; summary: ContentSignalBackfillSummary }
   | { reqId: number; type: "SAMPLE_DATA_CLEAR_RESULT"; summary: SampleDataClearSummary }

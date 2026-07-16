@@ -21,6 +21,10 @@ import {
   recordScrapeOutcome,
   type SocialScrapeTrigger,
 } from "./runtime-health-events";
+import {
+  assertFactoryResetEpoch,
+  runFactoryResetSensitiveDesktopOperation,
+} from "./factory-reset-guard";
 
 const CAPTURE_TIMEOUT_MS = 275_000;
 let captureOperationChain: Promise<void> = Promise.resolve();
@@ -253,6 +257,7 @@ async function cancelYouTubeCapture(captureId: string): Promise<void> {
 
 async function fetchYouTubeCaptureOnce(
   includeRoster: boolean = true,
+  resetEpoch?: number,
 ): Promise<YouTubeSyncResult> {
   const result = emptyResult();
   const captureId = globalThis.crypto.randomUUID();
@@ -369,6 +374,7 @@ async function fetchYouTubeCaptureOnce(
       applyCapturePayload(event.payload, false);
     });
 
+    if (resetEpoch !== undefined) assertFactoryResetEpoch(resetEpoch);
     const commandResult = await Promise.race([
       invoke<YouTubeCaptureCommandResult>("yt_capture", { includeRoster, captureId }),
       new Promise<never>((_resolve, reject) => {
@@ -378,6 +384,7 @@ async function fetchYouTubeCaptureOnce(
         );
       }),
     ]);
+    if (resetEpoch !== undefined) assertFactoryResetEpoch(resetEpoch);
     for (const payload of commandResult?.stages ?? []) {
       applyCapturePayload(payload, true);
     }
@@ -450,121 +457,141 @@ async function fetchYouTubeCaptureOnce(
 export function fetchYouTubeCapture(
   includeRoster: boolean = true,
 ): Promise<YouTubeSyncResult> {
-  return enqueueCaptureOperation(() => fetchYouTubeCaptureOnce(includeRoster));
+  return runFactoryResetSensitiveDesktopOperation((resetEpoch) =>
+    fetchYouTubeCaptureForEpoch(includeRoster, resetEpoch)
+  );
+}
+
+function fetchYouTubeCaptureForEpoch(
+  includeRoster: boolean,
+  resetEpoch: number,
+): Promise<YouTubeSyncResult> {
+  return enqueueCaptureOperation(async () => {
+    assertFactoryResetEpoch(resetEpoch);
+    const result = await fetchYouTubeCaptureOnce(includeRoster, resetEpoch);
+    assertFactoryResetEpoch(resetEpoch);
+    return result;
+  });
 }
 
 /** Persist one authenticated YouTube roster and subscriptions-page refresh. */
-export async function captureYouTube(
+export function captureYouTube(
   trigger: SocialScrapeTrigger = "manual",
 ): Promise<YouTubeSyncResult> {
-  const startedAt = Date.now();
-  const store = useAppStore.getState();
-  const result = await fetchYouTubeCapture(trigger !== "scheduled");
+  return runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
+    const startedAt = Date.now();
+    const store = useAppStore.getState();
+    const result = await fetchYouTubeCapture(trigger !== "scheduled");
+    assertFactoryResetEpoch(resetEpoch);
 
-  if (result.diag.errorStage) {
-    const authLost = result.diag.errorStage === "auth";
+    if (result.diag.errorStage) {
+      const authLost = result.diag.errorStage === "auth";
+      const auth = {
+        ...useAppStore.getState().ytAuth,
+        ...(authLost ? { isAuthenticated: false, lastCheckedAt: Date.now() } : {}),
+        lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage,
+      };
+      store.setYtAuth(auth);
+      storeYouTubeAuthState(auth);
+      if (authLost) clearYouTubePlaylistState();
+      addDebugEvent("error", `[YouTube] ${auth.lastCaptureError}`);
+      const finishedAt = Date.now();
+      await recordProviderHealthEvent({
+        provider: "youtube",
+        outcome: "error",
+        stage: result.diag.errorStage,
+        reason: result.diag.errorMessage ?? undefined,
+        startedAt,
+        finishedAt,
+        itemsSeen: result.diag.videosExtracted,
+        itemsAdded: 0,
+      });
+      assertFactoryResetEpoch(resetEpoch);
+      recordScrapeOutcome({
+        provider: "youtube",
+        trigger,
+        itemsExtracted: result.diag.videosExtracted,
+        itemsPersisted: 0,
+        stage: result.diag.errorStage,
+        durationMs: finishedAt - startedAt,
+      });
+      recordRuntimeHealthEvent({
+        event: "youtube_roster_outcome",
+        trigger,
+        result: "error",
+        resolvedCount: result.diag.accountsNormalized,
+        unresolvedCount: result.diag.unresolvedCount,
+        complete: result.diag.rosterComplete,
+        scrollPasses: result.diag.scrollPasses,
+        stage: result.diag.errorStage,
+        durationMs: finishedAt - startedAt,
+      });
+      return result;
+    }
+
+    const before = useAppStore.getState();
+    const existingAccountIds = new Set(Object.keys(before.accounts));
+    const existingItemIds = new Set(before.items.map((item) => item.globalId));
+    result.diag.accountsAdded = result.accounts.filter(
+      (account) => !existingAccountIds.has(account.id),
+    ).length;
+    result.diag.itemsAdded = result.items.filter(
+      (item) => !existingItemIds.has(item.globalId),
+    ).length;
+
+    await docReconcileYouTubeCapture(result.accounts, result.items, {
+      rosterComplete: result.diag.rosterComplete,
+      capturedAt: result.capturedAt,
+    });
+    assertFactoryResetEpoch(resetEpoch);
+
     const auth = {
       ...useAppStore.getState().ytAuth,
-      ...(authLost ? { isAuthenticated: false, lastCheckedAt: Date.now() } : {}),
-      lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage,
+      isAuthenticated: true,
+      lastCheckedAt: Date.now(),
+      lastCapturedAt: Date.now(),
+      lastCaptureError: undefined,
     };
     store.setYtAuth(auth);
     storeYouTubeAuthState(auth);
-    if (authLost) clearYouTubePlaylistState();
-    addDebugEvent("error", `[YouTube] ${auth.lastCaptureError}`);
+    addDebugEvent(
+      "change",
+      `[YouTube] synced channels=${result.diag.channelsExtracted.toLocaleString()} videos=${result.diag.videosExtracted.toLocaleString()} added=${result.diag.itemsAdded.toLocaleString()}`,
+    );
     const finishedAt = Date.now();
+    const outcome = result.diag.videosExtracted > 0 || result.diag.channelsExtracted > 0
+      ? "success"
+      : "empty";
     await recordProviderHealthEvent({
       provider: "youtube",
-      outcome: "error",
-      stage: result.diag.errorStage,
-      reason: result.diag.errorMessage ?? undefined,
+      outcome,
+      stage: outcome === "empty" ? "empty" : "extract",
+      reason: result.diag.stopReason ?? undefined,
       startedAt,
       finishedAt,
       itemsSeen: result.diag.videosExtracted,
-      itemsAdded: 0,
+      itemsAdded: result.diag.itemsAdded,
     });
+    assertFactoryResetEpoch(resetEpoch);
     recordScrapeOutcome({
       provider: "youtube",
       trigger,
       itemsExtracted: result.diag.videosExtracted,
-      itemsPersisted: 0,
-      stage: result.diag.errorStage,
+      itemsPersisted: result.items.length,
+      stage: outcome,
       durationMs: finishedAt - startedAt,
     });
     recordRuntimeHealthEvent({
       event: "youtube_roster_outcome",
       trigger,
-      result: "error",
+      result: outcome,
       resolvedCount: result.diag.accountsNormalized,
       unresolvedCount: result.diag.unresolvedCount,
       complete: result.diag.rosterComplete,
       scrollPasses: result.diag.scrollPasses,
-      stage: result.diag.errorStage,
+      stage: result.diag.stopReason ?? "complete",
       durationMs: finishedAt - startedAt,
     });
     return result;
-  }
-
-  const before = useAppStore.getState();
-  const existingAccountIds = new Set(Object.keys(before.accounts));
-  const existingItemIds = new Set(before.items.map((item) => item.globalId));
-  result.diag.accountsAdded = result.accounts.filter(
-    (account) => !existingAccountIds.has(account.id),
-  ).length;
-  result.diag.itemsAdded = result.items.filter(
-    (item) => !existingItemIds.has(item.globalId),
-  ).length;
-
-  await docReconcileYouTubeCapture(result.accounts, result.items, {
-    rosterComplete: result.diag.rosterComplete,
-    capturedAt: result.capturedAt,
   });
-
-  const auth = {
-    ...useAppStore.getState().ytAuth,
-    isAuthenticated: true,
-    lastCheckedAt: Date.now(),
-    lastCapturedAt: Date.now(),
-    lastCaptureError: undefined,
-  };
-  store.setYtAuth(auth);
-  storeYouTubeAuthState(auth);
-  addDebugEvent(
-    "change",
-    `[YouTube] synced channels=${result.diag.channelsExtracted.toLocaleString()} videos=${result.diag.videosExtracted.toLocaleString()} added=${result.diag.itemsAdded.toLocaleString()}`,
-  );
-  const finishedAt = Date.now();
-  const outcome = result.diag.videosExtracted > 0 || result.diag.channelsExtracted > 0
-    ? "success"
-    : "empty";
-  await recordProviderHealthEvent({
-    provider: "youtube",
-    outcome,
-    stage: outcome === "empty" ? "empty" : "extract",
-    reason: result.diag.stopReason ?? undefined,
-    startedAt,
-    finishedAt,
-    itemsSeen: result.diag.videosExtracted,
-    itemsAdded: result.diag.itemsAdded,
-  });
-  recordScrapeOutcome({
-    provider: "youtube",
-    trigger,
-    itemsExtracted: result.diag.videosExtracted,
-    itemsPersisted: result.items.length,
-    stage: outcome,
-    durationMs: finishedAt - startedAt,
-  });
-  recordRuntimeHealthEvent({
-    event: "youtube_roster_outcome",
-    trigger,
-    result: outcome,
-    resolvedCount: result.diag.accountsNormalized,
-    unresolvedCount: result.diag.unresolvedCount,
-    complete: result.diag.rosterComplete,
-    scrollPasses: result.diag.scrollPasses,
-    stage: result.diag.stopReason ?? "complete",
-    durationMs: finishedAt - startedAt,
-  });
-  return result;
 }

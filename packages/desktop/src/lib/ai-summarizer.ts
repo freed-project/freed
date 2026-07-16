@@ -12,11 +12,12 @@
  * Security model: API keys are passed in as arguments -- they come from
  * `secureStorage.getApiKey()` in the calling code and are never stored here.
  *
- * The sync-safe AI preferences (provider, model, toggles) live in Automerge.
- * The secrets (keys) live in tauri-plugin-store only.
+ * Provider, model, and endpoint stay device-local. Intent toggles may sync.
+ * Secrets live in tauri-plugin-store only.
  */
 
 import type { AIPreferences } from "@freed/shared";
+import { recordAiRequestAttempt } from "./runtime-health-events";
 
 export interface AISummary {
   summary: string;
@@ -172,9 +173,11 @@ export async function summarize(
   apiKey?: string | null,
   options: SummarizeOptions = {},
 ): Promise<AISummary | null> {
+  const provider = prefs.provider;
   if (
-    prefs.provider === "none" ||
-    prefs.provider === "integrated" ||
+    !provider ||
+    provider === "none" ||
+    provider === "integrated" ||
     !prefs.autoSummarize ||
     !text.trim()
   ) {
@@ -183,16 +186,18 @@ export async function summarize(
 
   try {
     let raw: string;
-    const model = prefs.model;
+    const model = prefs.model ?? "";
 
-    switch (prefs.provider) {
+    switch (provider) {
       case "ollama": {
         const baseUrl = `${prefs.ollamaUrl ?? "http://localhost:11434"}/v1`;
+        recordAiRequestAttempt({ provider, purpose: "summarize" });
         raw = await callOpenAICompatible(baseUrl, model, text, "Bearer ollama", options.signal);
         break;
       }
       case "openai": {
         if (!apiKey) return null;
+        recordAiRequestAttempt({ provider, purpose: "summarize" });
         raw = await callOpenAICompatible(
           "https://api.openai.com/v1",
           model,
@@ -204,16 +209,18 @@ export async function summarize(
       }
       case "anthropic": {
         if (!apiKey) return null;
+        recordAiRequestAttempt({ provider, purpose: "summarize" });
         raw = await callAnthropic(model, text, apiKey, options.signal);
         break;
       }
       case "gemini": {
         if (!apiKey) return null;
+        recordAiRequestAttempt({ provider, purpose: "summarize" });
         raw = await callGemini(model, text, apiKey, options.signal);
         break;
       }
       default: {
-        const _exhaustive: never = prefs.provider;
+        const _exhaustive: never = provider;
         return _exhaustive;
       }
     }
@@ -236,6 +243,7 @@ export async function checkOllamaReachable(
   ollamaUrl = "http://localhost:11434",
 ): Promise<boolean> {
   try {
+    recordAiRequestAttempt({ provider: "ollama", purpose: "reachability" });
     const resp = await fetch(`${ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(2_000) });
     return resp.ok;
   } catch {

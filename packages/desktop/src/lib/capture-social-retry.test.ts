@@ -106,7 +106,8 @@ describe("scheduled social capture retries", () => {
     mocks.captureYouTube.mockReset();
     mocks.captureXTimeline.mockReset();
     mocks.docBatchRefreshFeeds.mockReset();
-    mocks.isProviderPaused.mockClear();
+    mocks.isProviderPaused.mockReset();
+    mocks.isProviderPaused.mockReturnValue(false);
     mocks.recordProviderHealthEvent.mockClear();
     mocks.withProviderSyncing.mockClear();
     mocks.state.setSyncing.mockClear();
@@ -214,6 +215,21 @@ describe("scheduled social capture retries", () => {
       provider: "facebook",
       status: "ignored",
       stage: "auth",
+    });
+  });
+
+  it("does not start automatic capture when provider health fails closed", async () => {
+    mocks.isProviderPaused.mockReturnValue(true);
+
+    const { refreshSocialProvider } = await import("./capture");
+    const result = await refreshSocialProvider("facebook", "scheduled");
+
+    expect(mocks.captureFbFeed).not.toHaveBeenCalled();
+    expect(mocks.withProviderSyncing).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      provider: "facebook",
+      status: "ignored",
+      stage: "paused",
     });
   });
 

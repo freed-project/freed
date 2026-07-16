@@ -162,6 +162,240 @@ export const PROVIDER_VISIBLE_ORCHESTRATION_FILES = new Set([
   "packages/desktop/src-tauri/src/lib.rs",
 ]);
 
+// Exact state, reset, and request boundaries whose provider scope is known.
+// These files may not name a provider in their path, but a change can still
+// alter whether provider work starts, retries, commits, or survives reset.
+// Keep the values sorted because approval packets compare exact scopes.
+const ALL_SOCIAL_PROVIDER_SCOPES = Object.freeze([
+  "facebook",
+  "instagram",
+  "linkedin",
+  "medium",
+  "substack",
+  "x",
+  "youtube",
+]);
+const ALL_PROVIDER_SCOPES = Object.freeze([
+  "facebook",
+  "instagram",
+  "linkedin",
+  "medium",
+  "other",
+  "substack",
+  "x",
+  "youtube",
+]);
+
+export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
+  ["packages/capture-rss/src/discovery.ts", ["other"]],
+  ["packages/capture-save/src/extract.ts", ["other"]],
+  ["packages/desktop/src-tauri/src/webkit-mask.js", ALL_SOCIAL_PROVIDER_SCOPES],
+  [
+    "packages/desktop/src-tauri/src/lib.rs",
+    ALL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/desktop/src/App.tsx",
+    ALL_PROVIDER_SCOPES,
+  ],
+  ["packages/desktop/src/components/CloudProviderCard.tsx", ["other"]],
+  ["packages/desktop/src/components/CloudSyncNudge.tsx", ["other"]],
+  ["packages/desktop/src/components/FacebookFeedEmptyState.tsx", ["facebook"]],
+  [
+    "packages/desktop/src/components/FacebookSettingsSection.tsx",
+    ["facebook"],
+  ],
+  ["packages/desktop/src/components/InstagramFeedEmptyState.tsx", ["instagram"]],
+  [
+    "packages/desktop/src/components/InstagramSettingsSection.tsx",
+    ["instagram"],
+  ],
+  [
+    "packages/desktop/src/components/LinkedInSettingsSection.tsx",
+    ["linkedin"],
+  ],
+  ["packages/desktop/src/components/MediumSettingsSection.tsx", ["medium"]],
+  ["packages/desktop/src/components/MobileSyncTab.tsx", ["other"]],
+  [
+    "packages/desktop/src/components/ProviderSyncActionButton.tsx",
+    ALL_SOCIAL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/desktop/src/components/ScraperWindowModeControl.tsx",
+    ["facebook", "instagram", "linkedin", "medium", "substack"],
+  ],
+  [
+    "packages/desktop/src/components/SyncProviderSectionSurface.tsx",
+    ALL_SOCIAL_PROVIDER_SCOPES,
+  ],
+  ["packages/desktop/src/components/XFeedEmptyState.tsx", ["x"]],
+  ["packages/desktop/src/components/XSettingsSection.tsx", ["x"]],
+  [
+    "packages/desktop/src/components/YouTubeSettingsSection.tsx",
+    ["youtube"],
+  ],
+  ["packages/desktop/src/hooks/useCloudProviders.ts", ["other"]],
+  [
+    "packages/desktop/src/hooks/usePostLoginAutoSync.ts",
+    ["facebook", "instagram", "linkedin"],
+  ],
+  [
+    "packages/desktop/src/hooks/useProviderRiskGate.tsx",
+    ALL_SOCIAL_PROVIDER_SCOPES,
+  ],
+  ["packages/desktop/src/lib/ai-summarizer.ts", ["other"]],
+  [
+    "packages/desktop/src/lib/background-runtime-coordinator.ts",
+    ALL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/desktop/src/lib/automerge-types.ts",
+    ALL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/desktop/src/lib/automerge.ts",
+    ALL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/desktop/src/lib/automerge.worker.ts",
+    ALL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/desktop/src/lib/capture.ts",
+    ALL_PROVIDER_SCOPES,
+  ],
+  ["packages/desktop/src/lib/contact-sync-storage.ts", ["other"]],
+  ["packages/desktop/src/lib/content-fetcher.ts", ["other"]],
+  [
+    "packages/desktop/src/lib/dev-sync-triggers.ts",
+    ["facebook", "instagram", "linkedin", "youtube"],
+  ],
+  ["packages/desktop/src/lib/facebook-group-discovery.ts", ["facebook"]],
+  [
+    "packages/desktop/src/lib/factory-reset-guard.ts",
+    ALL_PROVIDER_SCOPES,
+  ],
+  ["packages/desktop/src/lib/local-ai-models.ts", ["other"]],
+  [
+    "packages/desktop/src/lib/media-vault.ts",
+    ALL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/desktop/src/lib/memory-monitor.ts",
+    ["facebook", "instagram", "linkedin", "medium", "substack"],
+  ],
+  [
+    "packages/desktop/src/lib/native-json-store.ts",
+    ALL_SOCIAL_PROVIDER_SCOPES,
+  ],
+  ["packages/desktop/src/lib/outbox.ts", ["facebook", "instagram", "x"]],
+  ["packages/desktop/src/lib/platform-actions.ts", ALL_PROVIDER_SCOPES],
+  [
+    "packages/desktop/src/lib/provider-auth-errors.ts",
+    ALL_SOCIAL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/desktop/src/lib/provider-auth-lifecycle.ts",
+    ALL_SOCIAL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/desktop/src/lib/provider-health.ts",
+    ALL_SOCIAL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/desktop/src/lib/reader-hydration.ts",
+    ["facebook", "instagram", "other", "x"],
+  ],
+  ["packages/desktop/src/lib/rss-poller.ts", ["other"]],
+  ["packages/desktop/src/lib/rss-refresh-plan.ts", ["other"]],
+  ["packages/desktop/src/lib/rss-runtime-state.ts", ["other"]],
+  [
+    "packages/desktop/src/lib/scraper-media-diag.ts",
+    ["facebook", "instagram", "linkedin"],
+  ],
+  [
+    "packages/desktop/src/lib/scraper-prefs.ts",
+    ["facebook", "instagram", "linkedin", "medium", "substack", "x"],
+  ],
+  ["packages/desktop/src/lib/secure-storage.ts", ["other"]],
+  [
+    "packages/desktop/src/lib/semantic-classifier.ts",
+    ALL_PROVIDER_SCOPES,
+  ],
+  ["packages/desktop/src/lib/side-effect-scheduler.ts", ALL_PROVIDER_SCOPES],
+  [
+    "packages/desktop/src/lib/social-auth-cookie-state.ts",
+    ["facebook", "instagram", "linkedin"],
+  ],
+  [
+    "packages/desktop/src/lib/social-auth-transient-errors.ts",
+    ["facebook", "instagram", "linkedin", "medium", "substack", "youtube"],
+  ],
+  [
+    "packages/desktop/src/lib/social-capture-runtime.ts",
+    ["facebook", "instagram", "linkedin", "medium", "substack"],
+  ],
+  [
+    "packages/desktop/src/lib/social-comment-hydration.ts",
+    ["facebook", "instagram"],
+  ],
+  [
+    "packages/desktop/src/lib/social-outbox-state.ts",
+    ["facebook", "instagram", "x"],
+  ],
+  [
+    "packages/desktop/src/lib/social-provider-copy.ts",
+    ["facebook", "instagram", "linkedin", "medium", "substack", "x"],
+  ],
+  [
+    "packages/desktop/src/lib/store.ts",
+    ALL_PROVIDER_SCOPES,
+  ],
+  ["packages/desktop/src/lib/sync.ts", ["other"]],
+  [
+    "packages/desktop/src/lib/user-agent.ts",
+    ["facebook", "instagram", "linkedin", "medium", "substack", "x"],
+  ],
+  ["packages/desktop/src/lib/x-login-reset-controller.ts", ["x"]],
+  ["packages/pwa/src/App.tsx", ["other"]],
+  ["packages/pwa/src/lib/automerge-types.ts", ["other"]],
+  ["packages/pwa/src/lib/automerge.ts", ["other"]],
+  ["packages/pwa/src/lib/automerge.worker.ts", ["other"]],
+  ["packages/pwa/src/lib/factory-reset-coordinator.ts", ["other"]],
+  ["packages/pwa/src/lib/reader-cache.ts", ["other"]],
+  ["packages/pwa/src/lib/store.ts", ["other"]],
+  ["packages/shared/src/contact-sync-state.ts", ["other"]],
+  ["packages/shared/src/preferences.ts", ["other"]],
+  [
+    "packages/shared/src/schema.ts",
+    ALL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/shared/src/sync-write-policy.ts",
+    ALL_PROVIDER_SCOPES,
+  ],
+  ["packages/sync/src/storage/indexeddb.ts", ["other"]],
+  [
+    "packages/ui/src/components/SettingsDialog.tsx",
+    ALL_PROVIDER_SCOPES,
+  ],
+  [
+    "packages/ui/src/components/feed/ReaderView.tsx",
+    ["facebook", "instagram", "medium", "other", "substack", "x"],
+  ],
+  ["packages/ui/src/components/settings/AISection.tsx", ["other"]],
+  ["packages/ui/src/hooks/useContactSync.ts", ["other"]],
+  ["packages/ui/src/lib/device-ai-preferences.ts", ["other"]],
+  [
+    "packages/ui/src/lib/factory-reset.ts",
+    ALL_PROVIDER_SCOPES,
+  ],
+  [
+    "scripts/dev-sync-trigger.mjs",
+    ["facebook", "instagram", "linkedin", "youtube"],
+  ],
+]);
+
 export const PROVIDER_VISIBLE_EXTRA_PACKAGE_PREFIXES = [
   "packages/desktop/src-tauri/capabilities/",
   "packages/capture-linkedin/",
@@ -187,7 +421,8 @@ export function isProviderVisiblePath(filePath) {
   if (
     SOCIAL_PROVIDER_DESKTOP_FILES.has(normalizedPath) ||
     PROVIDER_VISIBLE_EXTRA_FILES.has(normalizedPath) ||
-    PROVIDER_VISIBLE_ORCHESTRATION_FILES.has(normalizedPath)
+    PROVIDER_VISIBLE_ORCHESTRATION_FILES.has(normalizedPath) ||
+    PROVIDER_VISIBLE_EXACT_SCOPES.has(normalizedPath)
   ) {
     return true;
   }
@@ -259,16 +494,11 @@ export function providerApprovalAuthorizationDigest(record) {
 }
 
 export function providerIdsForPath(filePath) {
-  const normalizedPath = normalizeProviderPath(filePath).toLowerCase();
-  const allSocialProviders = [
-    "facebook",
-    "instagram",
-    "linkedin",
-    "medium",
-    "substack",
-    "x",
-    "youtube",
-  ];
+  const canonicalPath = normalizeProviderPath(filePath);
+  const exactScope = PROVIDER_VISIBLE_EXACT_SCOPES.get(canonicalPath);
+  if (exactScope) return [...exactScope];
+  const normalizedPath = canonicalPath.toLowerCase();
+  const allSocialProviders = ALL_SOCIAL_PROVIDER_SCOPES;
   if (
     normalizedPath === "packages/desktop/src-tauri/capabilities/default.json" ||
     normalizedPath === "packages/desktop/src-tauri/gen/schemas/capabilities.json"
@@ -324,6 +554,10 @@ export function providerIdsForPath(filePath) {
     normalizedPath.includes("youtube")
   )
     return ["youtube"];
+  if (
+    normalizedPath.startsWith("packages/desktop/src-tauri/capabilities/")
+  )
+    return ["other"];
   if (
     normalizedPath.startsWith("packages/desktop/src/lib/bug-report") ||
     normalizedPath.startsWith("packages/pwa/api/security-report") ||
@@ -788,11 +1022,13 @@ function readRecoveredControlState(stateRoot) {
 // CLI: print the provider-visible subset of the given paths, one per line.
 //   node scripts/lib/provider-visible-paths.mjs <path>...
 //   git diff --name-only ... | node scripts/lib/provider-visible-paths.mjs --stdin
+// Add --provider-ids to print the sorted provider union for those paths.
 const isMain =
   process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isMain) {
   const args = process.argv.slice(2);
+  const providerIdsMode = args.includes("--provider-ids");
   const approvalDigestFlagIndex = args.indexOf("--approval-digest");
   const approvalDigestFile =
     approvalDigestFlagIndex >= 0 ? args[approvalDigestFlagIndex + 1] : null;
@@ -806,6 +1042,14 @@ if (isMain) {
     controlStateRootFlagIndex >= 0 ? args[controlStateRootFlagIndex + 1] : null;
   if (approvalDigestFlagIndex >= 0 && !approvalDigestFile) {
     throw new Error("--approval-digest requires a JSON file path.");
+  }
+  if (
+    providerIdsMode &&
+    (approvalDigestFlagIndex >= 0 || approvalFlagIndex >= 0)
+  ) {
+    throw new Error(
+      "--provider-ids cannot be combined with approval validation flags.",
+    );
   }
   if (approvalDigestFile) {
     const record = JSON.parse(readFileSync(approvalDigestFile, "utf8"));
@@ -832,7 +1076,7 @@ if (isMain) {
   }
 
   const pathArgs = args.filter((arg, index) => {
-    if (arg === "--stdin") return false;
+    if (arg === "--stdin" || arg === "--provider-ids") return false;
     if (
       approvalFlagIndex >= 0 &&
       (index === approvalFlagIndex || index === approvalFlagIndex + 1)
@@ -859,6 +1103,24 @@ if (isMain) {
     .map((line) => line.trim())
     .filter(Boolean)
     .filter(isProviderVisiblePath);
+
+  if (providerIdsMode) {
+    const unresolvedPaths = matches.filter(
+      (filePath) => providerIdsForPath(filePath).length === 0,
+    );
+    if (unresolvedPaths.length > 0) {
+      throw new Error(
+        `Provider-visible paths are missing inferred provider scopes:\n- ${unresolvedPaths.join("\n- ")}`,
+      );
+    }
+    const providers = [
+      ...new Set(matches.flatMap((filePath) => providerIdsForPath(filePath))),
+    ].sort();
+    if (providers.length > 0) {
+      process.stdout.write(`${providers.join("\n")}\n`);
+    }
+    process.exit(0);
+  }
 
   if (approvalFile) {
     const record = JSON.parse(readFileSync(approvalFile, "utf8"));

@@ -28,6 +28,10 @@ import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
 import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
 import { ProviderHealthSectionSummary } from "./ProviderHealthSectionSummary";
 import { clearProviderPause, resetProviderPauseState } from "../lib/provider-health";
+import {
+  isDesktopProviderAuthAllowed,
+  registerDesktopProviderAuthQuiesceHandler,
+} from "../lib/provider-auth-lifecycle";
 
 export function YouTubeSettingsSection({
   surface = "settings",
@@ -51,6 +55,7 @@ export function YouTubeSettingsSection({
   const playlistAbortRef = useRef<AbortController | null>(null);
 
   const applyAuthResult = useCallback((loggedIn: boolean) => {
+    if (!isDesktopProviderAuthAllowed()) return;
     const current = useAppStore.getState().ytAuth;
     const next = {
       ...current,
@@ -68,6 +73,7 @@ export function YouTubeSettingsSection({
     setLastDiag(null);
     if (healthSnapshot?.status === "paused") await clearProviderPause("youtube");
     const result = await withProviderSyncing("youtube", () => captureYouTube(trigger));
+    if (!isDesktopProviderAuthAllowed()) return result;
     setLastDiag(result.diag);
     if (result.diag.errorStage) {
       throw new Error(result.diag.errorMessage ?? "YouTube sync failed.");
@@ -76,9 +82,18 @@ export function YouTubeSettingsSection({
   }, [healthSnapshot?.status]);
 
   useEffect(() => subscribeYouTubePlaylistState(setPlaylist), []);
+  useEffect(
+    () => registerDesktopProviderAuthQuiesceHandler(() => {
+      loginPendingRef.current = false;
+      playlistAbortRef.current?.abort();
+      playlistAbortRef.current = null;
+    }),
+    [],
+  );
 
   useEffect(() => {
     const authUnlisten = listen<{ loggedIn: boolean }>("yt-auth-result", (event) => {
+      if (!isDesktopProviderAuthAllowed()) return;
       const loggedIn = event.payload.loggedIn;
       applyAuthResult(loggedIn);
       if (!loggedIn || !loginPendingRef.current) return;
@@ -89,14 +104,17 @@ export function YouTubeSettingsSection({
         .catch(() => {})
         .then(() => runSync("post_login"))
         .then(() => {
+          if (!isDesktopProviderAuthAllowed()) return;
           setMessage("Connected. Subscription sync finished.");
         })
         .catch((error) => {
+          if (!isDesktopProviderAuthAllowed()) return;
           setMessage(null);
           setActionError(error instanceof Error ? error.message : String(error));
         });
     });
     const closeUnlisten = listen<{ closed: boolean }>("yt-login-window-closed", (event) => {
+      if (!isDesktopProviderAuthAllowed()) return;
       if (!event.payload.closed) return;
       const wasPending = loginPendingRef.current;
       loginPendingRef.current = false;
@@ -111,6 +129,7 @@ export function YouTubeSettingsSection({
 
   const handleLogin = useCallback(async () => {
     await confirm(async () => {
+      if (!isDesktopProviderAuthAllowed()) return;
       setActionError(null);
       setMessage(null);
       loginPendingRef.current = true;
@@ -118,6 +137,7 @@ export function YouTubeSettingsSection({
       try {
         await showYouTubeLogin();
       } catch (error) {
+        if (!isDesktopProviderAuthAllowed()) return;
         loginPendingRef.current = false;
         setActionError(error instanceof Error ? error.message : "Could not open YouTube.");
       }
@@ -126,14 +146,16 @@ export function YouTubeSettingsSection({
 
   const handleCheck = useCallback(async () => {
     await confirm(async () => {
+      if (!isDesktopProviderAuthAllowed()) return;
       setChecking(true);
       setActionError(null);
       try {
         const loggedIn = await checkYouTubeAuth();
+        if (!isDesktopProviderAuthAllowed()) return;
         applyAuthResult(loggedIn);
         if (!loggedIn) setActionError("YouTube did not find a signed-in website session.");
       } finally {
-        setChecking(false);
+        if (isDesktopProviderAuthAllowed()) setChecking(false);
       }
     });
   }, [applyAuthResult, confirm]);
@@ -151,6 +173,7 @@ export function YouTubeSettingsSection({
 
   const handlePlaylistSync = useCallback(async () => {
     await confirm(async () => {
+      if (!isDesktopProviderAuthAllowed()) return;
       setPlaylistSyncing(true);
       setActionError(null);
       const controller = new AbortController();

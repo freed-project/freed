@@ -21,6 +21,8 @@ const NOW = 1_717_000_000_000;
 const IS_CI = process.env.CI === "true";
 const BENCHMARK_MODEL_BUDGET_MS = IS_CI ? 1_000 : 500;
 const BENCHMARK_LAYOUT_BUDGET_MS = 3_500;
+const RUN_PERFORMANCE_BENCHMARKS = process.env.FREED_PWA_PERF === "1";
+const performanceIt = RUN_PERFORMANCE_BENCHMARKS ? it : it.skip;
 
 function createPerson(overrides: Partial<Person>): Person {
   return {
@@ -339,7 +341,7 @@ describe("identity graph v2 model", () => {
     expect(layout.nodes.length).toBe(model.nodes.length);
   });
 
-  it("rebuilds model and layout within budget for the benchmark graph", () => {
+  performanceIt("rebuilds model and layout within budget for the benchmark graph", () => {
     const benchmarkPeople = 1_000;
     const benchmarkAccounts = 5_000;
     const personEntries = Array.from({ length: benchmarkPeople }, (_, index) =>

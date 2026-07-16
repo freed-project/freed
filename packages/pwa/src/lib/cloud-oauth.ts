@@ -2,7 +2,9 @@ import {
   createGoogleOAuthState,
   getGoogleOAuthRedirectUri,
   storeGoogleOAuthRedirectUri,
+  storePwaOAuthRuntimeGeneration,
 } from "./oauth-redirect";
+import { capturePwaRuntimeLifecycle } from "./factory-reset-coordinator";
 
 const GDRIVE_CLIENT_ID = import.meta.env.VITE_GDRIVE_CLIENT_ID ?? "";
 
@@ -25,9 +27,13 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
 }
 
 export async function initiateGDriveOAuth(): Promise<void> {
+  const runtimeLifecycle = capturePwaRuntimeLifecycle();
+  runtimeLifecycle.assertCurrent();
   const verifier = generateCodeVerifier();
   const challenge = await generateCodeChallenge(verifier);
+  runtimeLifecycle.assertCurrent();
   const redirectUri = getGoogleOAuthRedirectUri();
+  storePwaOAuthRuntimeGeneration(runtimeLifecycle.generation);
   sessionStorage.setItem("freed_pkce_verifier", verifier);
   sessionStorage.setItem("freed_pkce_provider", "gdrive");
   storeGoogleOAuthRedirectUri(redirectUri);

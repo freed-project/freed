@@ -1,8 +1,15 @@
 import * as A from "@automerge/automerge";
-import type { FreedDoc } from "@freed/shared/schema";
+import {
+  addFeedItem,
+  addRssFeed,
+  createEmptyDoc,
+  getRegisteredDesktopClientIds,
+  registerDesktopClient,
+  type FreedDoc,
+} from "@freed/shared/schema";
+import type { FeedItem } from "@freed/shared";
 import {
   afterEach,
-  beforeAll,
   beforeEach,
   describe,
   expect,
@@ -19,6 +26,7 @@ const storageHarness = vi.hoisted(() => ({
   binary: null as Uint8Array | null,
   saveBytes: [] as number[],
   clearCount: 0,
+  failSave: false,
 }));
 
 vi.mock("@freed/sync/storage/indexeddb", () => ({
@@ -28,6 +36,7 @@ vi.mock("@freed/sync/storage/indexeddb", () => ({
     }
 
     async save(binary: Uint8Array): Promise<void> {
+      if (storageHarness.failSave) throw new Error("forced storage save failure");
       storageHarness.binary = binary.slice();
       storageHarness.saveBytes.push(binary.byteLength);
     }
@@ -110,22 +119,53 @@ function debugDetails(posts: CapturedWorkerPost[]): string[] {
   );
 }
 
+function createSmallCompatibilityDoc(legacyHtml?: string): FreedDoc {
+  const item: FeedItem = {
+    globalId: "saved:worker-compatibility",
+    platform: "saved",
+    contentType: "article",
+    capturedAt: 1_000,
+    publishedAt: 1_000,
+    author: { id: "author", handle: "author", displayName: "Author" },
+    content: {
+      text: "Worker compatibility fixture",
+      mediaUrls: [],
+      mediaTypes: [],
+    },
+    preservedContent: {
+      text: "Preserved text",
+      wordCount: 2,
+      readingTime: 1,
+      preservedAt: 1_000,
+    },
+    userState: { hidden: false, saved: true, archived: false, tags: [] },
+    topics: [],
+  };
+  let doc = A.change(createEmptyDoc(), "Add compatibility item", (draft) => {
+    addFeedItem(draft, item);
+  });
+  if (legacyHtml) {
+    doc = A.change(doc, "Restore compatibility HTML", (draft) => {
+      const preservedContent = draft.feedItems[item.globalId].preservedContent;
+      if (!preservedContent) throw new Error("Compatibility fixture is missing preserved content");
+      preservedContent.html = legacyHtml;
+    });
+  }
+  return doc;
+}
+
 describe("real Automerge worker module", () => {
-  let fixture: LargeAutomergeFixture;
   let posts: CapturedWorkerPost[];
   let scope: WorkerScopeHarness;
-
-  beforeAll(() => {
-    fixture = createLargeAutomergeFixture();
-  }, 60_000);
 
   beforeEach(async () => {
     vi.resetModules();
     posts = [];
     scope = createWorkerScope(posts);
-    storageHarness.binary = fixture.binary.slice();
+    storageHarness.binary = A.save(createSmallCompatibilityDoc());
     storageHarness.saveBytes = [];
     storageHarness.clearCount = 0;
+    storageHarness.failSave = false;
     vi.stubGlobal("self", scope);
     await import("./automerge.worker");
   });
@@ -134,7 +174,160 @@ describe("real Automerge worker module", () => {
     vi.unstubAllGlobals();
   });
 
+  it("reports corrupt bytes explicitly and waits for an explicit clear request", async () => {
+    storageHarness.binary = new Uint8Array([1, 2, 3, 4]);
+
+    sendRequest(scope, { reqId: 90, type: "INIT" });
+    const failure = await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 90,
+    );
+
+    expect(failure.message).toMatchObject({
+      type: "ACK",
+      errorCode: "CORRUPT_DOCUMENT",
+    });
+    expect(storageHarness.clearCount).toBe(0);
+    expect(storageHarness.binary).toEqual(new Uint8Array([1, 2, 3, 4]));
+
+    sendRequest(scope, { reqId: 91, type: "CLEAR_LOCAL" });
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 91,
+    );
+    expect(storageHarness.clearCount).toBe(1);
+    expect(storageHarness.binary).toBeNull();
+  });
+
+  it("preserves a valid stored document when INIT persistence fails", async () => {
+    const original = A.save(createSmallCompatibilityDoc());
+    storageHarness.binary = original.slice();
+    storageHarness.failSave = true;
+
+    sendRequest(scope, {
+      reqId: 92,
+      type: "INIT",
+      desktopClientRegistration: { id: "desktop-save-failure", registeredAt: 1_000 },
+    });
+    const failure = await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 92,
+    );
+
+    expect(failure.message).toMatchObject({
+      type: "ACK",
+      error: "forced storage save failure",
+    });
+    expect(failure.message).not.toHaveProperty("errorCode");
+    expect(storageHarness.clearCount).toBe(0);
+    expect(storageHarness.binary).toEqual(original);
+  });
+
+  it("preserves valid Automerge bytes when a loaded-data migration throws", async () => {
+    const malformedLegacyDoc = A.change(
+      createEmptyDoc(),
+      "Add malformed legacy data",
+      (draft) => {
+        const root = draft as unknown as Record<string, unknown>;
+        root.friends = {
+          broken: {
+            id: "broken",
+            name: "Broken",
+            sources: [null],
+            careLevel: "medium",
+            reachOutLog: [],
+            tags: [],
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        };
+      },
+    );
+    const original = A.save(malformedLegacyDoc);
+    storageHarness.binary = original.slice();
+
+    sendRequest(scope, { reqId: 93, type: "INIT" });
+    const failure = await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 93,
+    );
+
+    expect(failure.message).toMatchObject({ type: "ACK" });
+    expect(failure.message).toHaveProperty("error");
+    expect(failure.message).not.toHaveProperty("errorCode");
+    expect(storageHarness.clearCount).toBe(0);
+    expect(storageHarness.binary).toEqual(original);
+  });
+
+  it("drains accepted work before quiescing and rejects every later mutation", async () => {
+    sendRequest(scope, { reqId: 94, type: "INIT" });
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 94,
+    );
+
+    const queuedItem: FeedItem = {
+      globalId: "saved:accepted-before-quiesce",
+      platform: "saved",
+      contentType: "article",
+      capturedAt: 2_000,
+      publishedAt: 2_000,
+      author: { id: "author", handle: "author", displayName: "Author" },
+      content: { text: "Accepted before quiesce", mediaUrls: [], mediaTypes: [] },
+      userState: { hidden: false, saved: true, archived: false, tags: [] },
+      topics: [],
+    };
+    const rejectedItem: FeedItem = {
+      ...queuedItem,
+      globalId: "saved:rejected-after-quiesce",
+      content: { ...queuedItem.content, text: "Rejected after quiesce" },
+    };
+
+    sendRequest(scope, { reqId: 95, type: "ADD_FEED_ITEM", item: queuedItem });
+    sendRequest(scope, { reqId: 96, type: "QUIESCE" });
+    sendRequest(scope, { reqId: 97, type: "ADD_FEED_ITEM", item: rejectedItem });
+
+    const rejected = await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 97,
+    );
+    expect(rejected.message).toMatchObject({
+      type: "ACK",
+      error: "Automerge worker is quiesced for factory reset",
+    });
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 95,
+    );
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 96,
+    );
+
+    const acceptedIndex = posts.findIndex(
+      ({ message }) => message.type === "ACK" && message.reqId === 95,
+    );
+    const quiesceIndex = posts.findIndex(
+      ({ message }) => message.type === "ACK" && message.reqId === 96,
+    );
+    expect(acceptedIndex).toBeGreaterThanOrEqual(0);
+    expect(quiesceIndex).toBeGreaterThan(acceptedIndex);
+    const persisted = A.load<FreedDoc>(storageHarness.binary!);
+    expect(persisted.feedItems[queuedItem.globalId]).toBeDefined();
+    expect(persisted.feedItems[rejectedItem.globalId]).toBeUndefined();
+
+    sendRequest(scope, { reqId: 98, type: "CLEAR_LOCAL" });
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 98,
+    );
+    expect(storageHarness.binary).toBeNull();
+  });
+
   it("loads a representative document, releases it, reloads once, and characterizes binary transport", async () => {
+    const fixture: LargeAutomergeFixture = createLargeAutomergeFixture();
+    storageHarness.binary = fixture.binary.slice();
+
     expect(fixture.manifest.binaryBytes).toBeGreaterThanOrEqual(
       fixture.manifest.targetBytes,
     );
@@ -304,4 +497,253 @@ describe("real Automerge worker module", () => {
       true,
     );
   });
+
+  it("makes replacement authoritative while re-registering the current Desktop", async () => {
+    const currentRegistration = { id: "desktop-current", registeredAt: 1_000 };
+    let previous = registerDesktopClient(
+      createSmallCompatibilityDoc(),
+      { id: "desktop-previous", registeredAt: 500 },
+    );
+    previous = A.change(previous, "Add future root", (draft) => {
+      (draft as unknown as Record<string, unknown>).futureLibraryState = {
+        shouldStayDeleted: true,
+      };
+    });
+    storageHarness.binary = A.save(previous);
+    sendRequest(scope, {
+      reqId: 101,
+      type: "INIT",
+      desktopClientRegistration: currentRegistration,
+    });
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 101,
+    );
+    await waitForPost(
+      posts,
+      (message) =>
+        message.type === "DEBUG_EVENT" &&
+        message.detail?.startsWith("[automerge-worker] released idle document") === true,
+    );
+
+    const legacyItemId = "saved:worker-compatibility";
+    let replacement = registerDesktopClient(
+      createSmallCompatibilityDoc("<article>legacy reader copy</article>"),
+      { id: "desktop-snapshot", registeredAt: 2_000 },
+    );
+
+    const replaceStart = posts.length;
+    sendRequest(scope, {
+      reqId: 102,
+      type: "REPLACE_DOC",
+      binary: A.save(replacement),
+      desktopClientRegistration: currentRegistration,
+    });
+    const statePost = await waitForPost(
+      posts,
+      (message) => message.type === "STATE_UPDATE",
+      replaceStart,
+    );
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 102,
+      replaceStart,
+    );
+    if (statePost.message.type !== "STATE_UPDATE") {
+      throw new Error("Expected replacement state");
+    }
+    expect(statePost.message.mutation).toBe("REPLACE_DOC");
+    expect(statePost.message.state.desktopClientIds).toEqual([
+      "desktop-current",
+      "desktop-snapshot",
+    ]);
+    expect(
+      statePost.message.state.items.find((item) => item.globalId === legacyItemId)
+        ?.preservedContent,
+    ).not.toHaveProperty("html");
+
+    const htmlStart = posts.length;
+    sendRequest(scope, {
+      reqId: 103,
+      type: "GET_ITEM_LEGACY_HTML",
+      globalId: legacyItemId,
+    });
+    const htmlPost = await waitForPost(
+      posts,
+      (message) => message.type === "ITEM_LEGACY_HTML" && message.reqId === 103,
+      htmlStart,
+    );
+    expect(htmlPost.message).toMatchObject({
+      type: "ITEM_LEGACY_HTML",
+      html: "<article>legacy reader copy</article>",
+    });
+
+    const saved = A.load<FreedDoc>(storageHarness.binary!);
+    expect(getRegisteredDesktopClientIds(saved)).toEqual([
+      "desktop-current",
+      "desktop-snapshot",
+    ]);
+    expect(
+      (A.toJS(saved) as unknown as Record<string, unknown>).futureLibraryState,
+    ).toBeUndefined();
+    expect(saved.feedItems[legacyItemId].preservedContent?.html).toBe(
+      "<article>legacy reader copy</article>",
+    );
+  }, 30_000);
+
+  it("keeps local RSS and preferences without resurrecting a deleted feed item", async () => {
+    let base = A.change(
+      createSmallCompatibilityDoc(),
+      "Seed shared future root",
+      (draft) => {
+        const root = draft as unknown as Record<string, unknown>;
+        root.futureLibraryState = {
+          localValue: 0,
+          incomingValue: 0,
+        };
+        root.futureRemovedState = { values: ["restore", "me"] };
+      },
+    );
+    base = registerDesktopClient(base, {
+      id: "desktop-shared",
+      registeredAt: 1_000,
+    });
+    const populated = A.change(A.clone(base), "Update future root locally", (draft) => {
+      const future = (draft as unknown as Record<string, unknown>)
+        .futureLibraryState as Record<string, number>;
+      future.localValue = 1;
+    });
+    const staleEmpty = A.change(A.clone(base), "Delete feed and update future root", (draft) => {
+      for (const id of Object.keys(draft.feedItems)) delete draft.feedItems[id];
+      addRssFeed(draft, {
+        url: "https://local.example/feed.xml",
+        title: "Local only",
+        enabled: true,
+        trackUnread: false,
+      });
+      draft.preferences.display.themeId = "midas";
+      draft.preferences.display.showEngagementCounts = true;
+      draft.preferences.weights.recency = 73;
+      const root = draft as unknown as Record<string, unknown>;
+      delete root.futureRemovedState;
+      delete root["desktopClient:desktop-shared"];
+      const future = root.futureLibraryState as Record<string, number>;
+      future.incomingValue = 1;
+    });
+    base = populated;
+    storageHarness.binary = A.save(base);
+
+    sendRequest(scope, { reqId: 301, type: "INIT" });
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 301,
+    );
+
+    const mergeStart = posts.length;
+    sendRequest(scope, {
+      reqId: 302,
+      type: "MERGE_DOC",
+      binary: A.save(staleEmpty),
+    });
+    const mergeStatePost = await waitForPost(
+      posts,
+      (message) => message.type === "STATE_UPDATE" && message.mutation === "MERGE_DOC",
+      mergeStart,
+    );
+    expect(mergeStatePost.message).toMatchObject({
+      type: "STATE_UPDATE",
+      mutation: "MERGE_DOC",
+    });
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 302,
+      mergeStart,
+    );
+
+    const saved = A.load<FreedDoc>(storageHarness.binary!);
+    expect(Object.keys(saved.feedItems)).toHaveLength(0);
+    expect(
+      (A.toJS(saved) as unknown as Record<string, unknown>).futureLibraryState,
+    ).toEqual({ localValue: 1, incomingValue: 1 });
+    expect(
+      (A.toJS(saved) as unknown as Record<string, unknown>).futureRemovedState,
+    ).toBeUndefined();
+    expect(saved.rssFeeds["https://local.example/feed.xml"]?.title).toBe("Local only");
+    expect(saved.preferences.display.themeId).toBe("midas");
+    expect(saved.preferences.display.showEngagementCounts).toBe(true);
+    expect(saved.preferences.weights.recency).toBe(73);
+    expect(getRegisteredDesktopClientIds(saved)).toEqual([]);
+
+    const compareStart = posts.length;
+    sendRequest(scope, {
+      reqId: 303,
+      type: "COMPARE_DOC",
+      binary: A.save(saved),
+    });
+    await waitForPost(
+      posts,
+      (message) =>
+        message.type === "DOC_RELATIONSHIP" &&
+        message.reqId === 303 &&
+        message.relation === "equal",
+      compareStart,
+    );
+
+    const incomingAhead = A.change(A.clone(saved), "Add incoming change", (draft) => {
+      draft.preferences.weights.recency = 74;
+    });
+    sendRequest(scope, {
+      reqId: 304,
+      type: "COMPARE_DOC",
+      binary: A.save(incomingAhead),
+    });
+    await waitForPost(
+      posts,
+      (message) =>
+        message.type === "DOC_RELATIONSHIP" &&
+        message.reqId === 304 &&
+        message.relation === "incoming-ahead",
+      compareStart,
+    );
+  }, 30_000);
+
+  it("strips device-local fields from new preference update patches", async () => {
+    sendRequest(scope, { reqId: 201, type: "INIT" });
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 201,
+    );
+
+    const updateStart = posts.length;
+    sendRequest(scope, {
+      reqId: 202,
+      type: "UPDATE_PREFERENCES",
+      updates: {
+        display: {
+          sidebarMode: "closed",
+          themeId: "midas",
+        },
+      } as never,
+    });
+    const patchPost = await waitForPost(
+      posts,
+      (message) => message.type === "PREFERENCES_PATCH",
+      updateStart,
+    );
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 202,
+      updateStart,
+    );
+    if (patchPost.message.type !== "PREFERENCES_PATCH") {
+      throw new Error("Expected preference patch");
+    }
+    expect(patchPost.message.updates).toEqual({
+      display: { themeId: "midas" },
+    });
+
+    const saved = A.load<FreedDoc>(storageHarness.binary!);
+    expect(saved.preferences.display.themeId).toBe("midas");
+    expect(saved.preferences.display.sidebarMode).toBeUndefined();
+  }, 30_000);
 });

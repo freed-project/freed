@@ -14,7 +14,7 @@ import {
 } from "./lib/stability-metrics.mjs";
 
 test("the stability metric registry has unique ids and a version", () => {
-  assert.equal(STABILITY_METRIC_REGISTRY_VERSION, 4);
+  assert.equal(STABILITY_METRIC_REGISTRY_VERSION, 5);
   assert.equal(
     new Set(STABILITY_METRICS.map((metric) => metric.id)).size,
     STABILITY_METRICS.length,
@@ -65,15 +65,58 @@ test("cloud soak, triage, and canary surfaces share one rate contract", () => {
     minHours: 1,
   });
   assert.deepEqual(metricSignalsForBucket("cloud-loop"), {
-    assertions: ["uploads_unchanged_heads"],
+    assertions: ["uploads_unchanged_heads", "startup_repair_upload_budget"],
     alarms: ["cloud_loop"],
-    canaryMetrics: ["uploadsUnchangedPerHour", "uploadsPerHour"],
+    canaryMetrics: [
+      "uploadsUnchangedPerHour",
+      "uploadsPerHour",
+      "startupRepairUploadsPerHour",
+    ],
   });
   assert.deepEqual(canaryRegressionTolerances().uploadsUnchangedPerHour, {
     kind: "ratio",
     allowance: 1.5,
     direction: "lower",
   });
+});
+
+test("request-surface metrics share explicit denominators and retry budgets", () => {
+  assert.deepEqual(
+    metricContractForAssertion("startup_repair_upload_budget").target,
+    {
+      kind: "max_group_count",
+      groupBy: ["appSessionId", "provider"],
+      value: 1,
+    },
+  );
+  assert.deepEqual(
+    metricContractForAssertion("social_outbox_retry_budget").target,
+    {
+      kind: "max_event_fields",
+      fields: ["attempt", "maxAttempts"],
+      value: 3,
+    },
+  );
+  for (const metricName of [
+    "socialOutboxAttemptsPerHour",
+    "facebookGroupDiscoveryUpdatesPerHour",
+    "rssPullAttemptsPerHour",
+    "aiRequestAttemptsPerHour",
+    "readerArticleFetchAttemptsPerHour",
+  ]) {
+    assert.equal(
+      STABILITY_METRICS.flatMap((metric) => metric.canaryMetrics).find(
+        (metric) => metric.name === metricName,
+      ).denominator,
+      "appAliveHours",
+    );
+  }
+  assert.equal(
+    STABILITY_METRICS.flatMap((metric) => metric.canaryMetrics).find(
+      (metric) => metric.name === "startupRepairUploadsPerHour",
+    ).denominator,
+    "cloudEligibleHours",
+  );
 });
 
 test("worker soak, triage, and canary surfaces share one rate contract", () => {

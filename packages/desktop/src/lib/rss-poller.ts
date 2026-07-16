@@ -16,12 +16,14 @@ import {
   SCHEDULED_RSS_MAX_FEEDS,
   SCHEDULED_RSS_STALE_AFTER_MS,
 } from "./rss-refresh-plan";
+import { waitForFactoryResetDrain } from "@freed/ui/lib/factory-reset";
 
 /** Default poll interval: 30 minutes */
 const DEFAULT_INTERVAL_MS = 30 * 60 * 1000;
 const DEFAULT_STARTUP_POLL_DELAY_MS = 5 * 60 * 1000;
 const DEFERRED_RETRY_BASE_MS = 60_000;
 const DEFERRED_RETRY_MAX_MS = 30 * 60_000;
+const FACTORY_RESET_DRAIN_TIMEOUT_MS = 180_000;
 const SCHEDULED_REFRESH_OPTIONS = {
   maxFeeds: SCHEDULED_RSS_MAX_FEEDS,
   staleAfterMs: SCHEDULED_RSS_STALE_AFTER_MS,
@@ -36,6 +38,16 @@ let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
 let startupTimeoutId: ReturnType<typeof setTimeout> | null = null;
 let isPolling = false;
 let deferredRetryCount = 0;
+let pollerAcceptingWork = false;
+let factoryResetDrainInProgress = false;
+const activeResetSensitiveOperations = new Set<Promise<unknown>>();
+
+function trackResetSensitiveOperation<T>(operation: Promise<T>): Promise<T> {
+  let tracked: Promise<T>;
+  tracked = operation.finally(() => activeResetSensitiveOperations.delete(tracked));
+  activeResetSensitiveOperations.add(tracked);
+  return tracked;
+}
 
 function clearDeferredRetry(): void {
   if (retryTimeoutId !== null) {
@@ -71,7 +83,7 @@ function nextDeferredRetryMs(reason: string): number {
 }
 
 function scheduleDeferredRetry(reason: string): void {
-  if (retryTimeoutId !== null) return;
+  if (!pollerAcceptingWork || retryTimeoutId !== null) return;
   const retryMs = nextDeferredRetryMs(reason);
   deferredRetryCount += 1;
   const displayReason = formatBackgroundRuntimeDeferredReason(reason);
@@ -95,7 +107,8 @@ export function startRssPoller(
   intervalMs = DEFAULT_INTERVAL_MS,
   options: RssPollerOptions = {},
 ): void {
-  if (pollIntervalId !== null) return; // Already running
+  if (pollIntervalId !== null || factoryResetDrainInProgress) return; // Already running
+  pollerAcceptingWork = true;
 
   const startupDelayMs =
     options.startupDelayMs ?? DEFAULT_STARTUP_POLL_DELAY_MS;
@@ -122,6 +135,7 @@ export function startRssPoller(
  * Stop background RSS polling.
  */
 export function stopRssPoller(): void {
+  pollerAcceptingWork = false;
   clearStartupPoll();
   clearDeferredRetry();
   if (pollIntervalId !== null) {
@@ -131,11 +145,22 @@ export function stopRssPoller(): void {
   }
 }
 
+/** Stop future polls and wait for an already-started feed refresh to settle. */
+export async function stopRssPollerAndDrain(): Promise<void> {
+  factoryResetDrainInProgress = true;
+  stopRssPoller();
+  await waitForFactoryResetDrain(
+    () => Array.from(activeResetSensitiveOperations),
+    "RSS poller",
+    FACTORY_RESET_DRAIN_TIMEOUT_MS,
+  );
+}
+
 /**
  * Trigger a single poll (no-op if one is already in flight).
  */
 async function triggerPoll(): Promise<void> {
-  if (isPolling) return;
+  if (!pollerAcceptingWork || isPolling) return;
   isPolling = true;
 
   try {
@@ -143,7 +168,9 @@ async function triggerPoll(): Promise<void> {
       kind: "rss-poll",
       source: "rss-poller",
       timeoutMs: 180_000,
-      run: () => refreshAllFeeds(SCHEDULED_REFRESH_OPTIONS),
+      run: () => trackResetSensitiveOperation(
+        Promise.resolve().then(() => refreshAllFeeds(SCHEDULED_REFRESH_OPTIONS)),
+      ),
     });
     clearDeferredRetry();
   } catch (err) {

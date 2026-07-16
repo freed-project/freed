@@ -489,6 +489,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     applyUpdate,
     headerDragRegion,
     factoryReset,
+    factoryResetRevokesMobilePairing,
     activeCloudProviderLabel,
     openUrl,
     seedSocialConnections,
@@ -612,12 +613,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   const handleDisplayChange = useCallback(
     (update: Partial<typeof display>) => {
-      setDisplay((prev) => {
-        const next = { ...prev, ...update };
-        void updatePreferences({ display: next }).catch(() => {
-          toast.error("Could not save settings");
-        });
-        return next;
+      setDisplay((prev) => ({ ...prev, ...update }));
+      void updatePreferences({ display: update } as Parameters<typeof updatePreferences>[0]).catch(() => {
+        toast.error("Could not save settings");
       });
     },
     [updatePreferences],
@@ -625,10 +623,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   const handleReadingChange = useCallback(
     (update: Partial<typeof display.reading>) => {
-      setDisplay((prev) => {
-        const next = { ...prev, reading: { ...prev.reading, ...update } };
-        updatePreferences({ display: next });
-        return next;
+      setDisplay((prev) => ({
+        ...prev,
+        reading: { ...prev.reading, ...update },
+      }));
+      void updatePreferences({
+        display: { reading: update },
+      } as Parameters<typeof updatePreferences>[0]).catch(() => {
+        toast.error("Could not save settings");
       });
     },
     [updatePreferences],
@@ -2266,8 +2268,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               <div>
                 <p className="text-sm font-semibold text-text-primary">Reset this device?</p>
                 <p className="mt-0.5 text-xs text-text-secondary">
-                  Clears all local data on this device only.
-                  {!deleteFromCloud && " Cloud sync will re-download your data on next launch."}
+                  Clears this device's Freed library and disconnects active accounts. Freed keeps local request history and downloaded files so reconnecting doesn't repeat work.
+                  {factoryResetRevokesMobilePairing &&
+                    " Connected mobile readers will need to scan the pairing QR code again after reset."}
+                  {!deleteFromCloud &&
+                    " Your cloud data remains available. Reconnect cloud sync after reset to restore it."}
                 </p>
               </div>
             </div>

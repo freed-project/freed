@@ -24,14 +24,30 @@ import { captureYouTube } from "./youtube-capture";
 import { docBatchRefreshFeeds } from "./automerge";
 import { useAppStore, withProviderSyncing } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
+import { isFactoryResetInProgress } from "@freed/ui/lib/factory-reset";
 import { isProviderPaused, recordProviderHealthEvent } from "./provider-health";
 import {
   selectRssFeedsForRefresh,
   type RssRefreshPlanOptions,
 } from "./rss-refresh-plan";
 import { isRuntimeDeferredStage } from "./social-capture-runtime";
-import type { SocialScrapeTrigger } from "./runtime-health-events";
+import {
+  recordRssPullAttempt,
+  type RssPullTrigger,
+  type SocialScrapeTrigger,
+} from "./runtime-health-events";
+import {
+  setRssRuntimeState,
+  withRssRuntimeState,
+  withRssRuntimeStates,
+} from "./rss-runtime-state";
+import {
+  assertFactoryResetEpoch,
+  isFactoryResetEpochCurrent,
+  runFactoryResetSensitiveDesktopOperation,
+} from "./factory-reset-guard";
 import { cacheRssEssayBodies } from "./rss-essay-cache";
+import type { RssFeedRefreshUpdate } from "./automerge-types";
 
 export type SocialProviderRefreshStatus =
   | "success"
@@ -79,7 +95,11 @@ interface FetchedFeed {
  * Returns feed-level metadata alongside items so the refresh pipeline can heal
  * "Untitled Feed" sentinels even when the feed currently has zero items.
  */
-async function fetchRssFeed(feedUrl: string): Promise<FetchedFeed> {
+async function fetchRssFeed(
+  feedUrl: string,
+  trigger: RssPullTrigger,
+): Promise<FetchedFeed> {
+  recordRssPullAttempt({ trigger });
   const xml = await fetchUrl(feedUrl);
   const parsed = await parseFeedXml(xml, feedUrl);
   return {
@@ -106,35 +126,47 @@ async function preserveRssEssayBodies(
 /**
  * Add a new RSS feed subscription and fetch its initial items
  */
-export async function addRssFeed(feedUrl: string): Promise<void> {
-  const store = useAppStore.getState();
+export function addRssFeed(feedUrl: string): Promise<void> {
+  return runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
+    const store = useAppStore.getState();
 
-  store.setLoading(true);
-  store.setError(null);
+    store.setLoading(true);
+    store.setError(null);
 
-  try {
-    const xml = await fetchUrl(feedUrl);
-    const parsed = await parseFeedXml(xml, feedUrl);
+    try {
+      assertFactoryResetEpoch(resetEpoch);
+      recordRssPullAttempt({ trigger: "subscription" });
+      const xml = await fetchUrl(feedUrl);
+      assertFactoryResetEpoch(resetEpoch);
+      const parsed = await parseFeedXml(xml, feedUrl);
+      assertFactoryResetEpoch(resetEpoch);
 
-    if (parsed.items.length === 0) {
-      throw new Error("No items found in feed");
+      if (parsed.items.length === 0) {
+        throw new Error("No items found in feed");
+      }
+
+      // feedToRssFeed derives title, siteUrl, imageUrl from the parsed feed
+      const feed = feedToRssFeed(parsed);
+      const items = feedToFeedItems(parsed);
+
+      await preserveRssEssayBodies(items, store.items);
+      assertFactoryResetEpoch(resetEpoch);
+      await store.addFeed(feed);
+      assertFactoryResetEpoch(resetEpoch);
+      await store.addItems(items);
+    } catch (error) {
+      if (isFactoryResetEpochCurrent(resetEpoch)) {
+        store.setError(
+          error instanceof Error ? error.message : "Failed to add feed",
+        );
+      }
+      throw error;
+    } finally {
+      if (isFactoryResetEpochCurrent(resetEpoch)) {
+        store.setLoading(false);
+      }
     }
-
-    // feedToRssFeed derives title, siteUrl, imageUrl from the parsed feed
-    const feed = feedToRssFeed(parsed);
-    const items = feedToFeedItems(parsed);
-
-    await preserveRssEssayBodies(items, store.items);
-    await store.addFeed(feed);
-    await store.addItems(items);
-  } catch (error) {
-    store.setError(
-      error instanceof Error ? error.message : "Failed to add feed",
-    );
-    throw error;
-  } finally {
-    store.setLoading(false);
-  }
+  });
 }
 
 /** Max concurrent feed fetches — avoids saturating Tauri's HTTP layer. */
@@ -176,24 +208,26 @@ function nextFailedFeedRetryMs(feed: RssFeed): number {
 }
 
 function markFeedFetchSucceeded(feed: RssFeed, now: number): RssFeed {
-  return {
-    ...feed,
-    lastFetched: now,
+  setRssRuntimeState(feed.url, {
     lastFetchAttemptedAt: now,
     nextFetchAfter: 0,
     consecutiveFailures: 0,
     lastFetchError: "",
+  });
+  return {
+    ...feed,
+    lastFetched: now,
   };
 }
 
-function markFeedFetchFailed(feed: RssFeed, message: string, now: number): RssFeed {
-  return {
-    ...feed,
+function markFeedFetchFailed(feed: RssFeed, message: string, now: number): void {
+  const runtimeFeed = withRssRuntimeState(feed);
+  setRssRuntimeState(feed.url, {
     lastFetchAttemptedAt: now,
-    nextFetchAfter: now + nextFailedFeedRetryMs(feed),
-    consecutiveFailures: (feed.consecutiveFailures ?? 0) + 1,
+    nextFetchAfter: now + nextFailedFeedRetryMs(runtimeFeed),
+    consecutiveFailures: (runtimeFeed.consecutiveFailures ?? 0) + 1,
     lastFetchError: message.slice(0, 500),
-  };
+  });
 }
 
 function shouldRetrySocialStage(stage: string | null): boolean {
@@ -264,6 +298,16 @@ export async function refreshSocialProvider(
   provider: RetriableSocialProvider,
   trigger: SocialScrapeTrigger = "unknown",
 ): Promise<SocialProviderRefreshResult> {
+  if (isFactoryResetInProgress()) {
+    clearSocialDeferredRetry(provider);
+    return {
+      provider,
+      status: "ignored",
+      stage: "factory_reset",
+      detail: "Factory reset is in progress.",
+    };
+  }
+
   if (!isTauri()) {
     clearSocialDeferredRetry(provider);
     return {
@@ -411,13 +455,14 @@ function summarizeSocialRefreshResult(
 async function refreshEnabledRssFeeds(
   store: ReturnType<typeof useAppStore.getState>,
   feeds: RssFeed[],
+  trigger: Extract<RssPullTrigger, "manual" | "scheduled">,
 ): Promise<void> {
-  if (feeds.length === 0) return;
+  if (feeds.length === 0 || isFactoryResetInProgress()) return;
   try {
     await withProviderSyncing("rss", async () => {
       const allNewItems: FeedItem[] = [];
       const fetchedFeeds: RssFeed[] = [];
-      const feedUpdates: RssFeed[] = [];
+      const feedUpdates: RssFeedRefreshUpdate[] = [];
       const feedErrors: string[] = [];
       const rssStartedAt = Date.now();
       const rssBefore = store.items.filter(
@@ -426,11 +471,13 @@ async function refreshEnabledRssFeeds(
       let rssSeen = 0;
 
       for (let i = 0; i < feeds.length; i += FETCH_CONCURRENCY) {
+        if (isFactoryResetInProgress()) break;
         const batch = feeds.slice(i, i + FETCH_CONCURRENCY);
         const results = await Promise.allSettled(
           batch.map(async (feed) => {
             const { items, liveTitle, liveSiteUrl } = await fetchRssFeed(
               feed.url,
+              trigger,
             );
             const isUntitled =
               feed.title === "Untitled Feed" || feed.title === feed.url;
@@ -465,7 +512,14 @@ async function refreshEnabledRssFeeds(
         for (const [resultIndex, result] of results.entries()) {
           if (result.status === "fulfilled") {
             fetchedFeeds.push(result.value.feed);
-            feedUpdates.push(result.value.feed);
+            feedUpdates.push({
+              url: result.value.feed.url,
+              lastFetched: result.value.feed.lastFetched,
+              title: result.value.feed.title,
+              ...(result.value.feed.siteUrl
+                ? { siteUrl: result.value.feed.siteUrl }
+                : {}),
+            });
             allNewItems.push(...result.value.items);
             rssSeen += result.value.items.length;
             await recordProviderHealthEvent({
@@ -492,7 +546,7 @@ async function refreshEnabledRssFeeds(
             addDebugEvent("error", `[RSS] feed fetch failed: ${msg}`);
             const failedFeed = batch[resultIndex];
             if (failedFeed) {
-              feedUpdates.push(markFeedFetchFailed(failedFeed, msg, Date.now()));
+              markFeedFetchFailed(failedFeed, msg, Date.now());
               await recordProviderHealthEvent({
                 provider: "rss",
                 scope: "rss_feed",
@@ -567,6 +621,7 @@ async function refreshEnabledRssFeeds(
 export async function refreshRssFeeds(
   options: RssRefreshPlanOptions = {},
 ): Promise<void> {
+  if (isFactoryResetInProgress()) return;
   if (!isTauri()) {
     addDebugEvent(
       "change",
@@ -575,15 +630,18 @@ export async function refreshRssFeeds(
     return;
   }
   const store = useAppStore.getState();
-  const enabledFeeds = Object.values(store.feeds).filter((f) => f.enabled);
-  const feeds = selectRssFeedsForRefresh(enabledFeeds, options);
+  const enabledFeeds = withRssRuntimeStates(Object.values(store.feeds).filter((f) => f.enabled));
+  const feeds = selectRssFeedsForRefresh(enabledFeeds, {
+    ...options,
+    respectRetryWindow: false,
+  });
   if (feeds.length === 0) return;
 
   store.setSyncing(true);
   store.setError(null);
 
   try {
-    await refreshEnabledRssFeeds(store, feeds);
+    await refreshEnabledRssFeeds(store, feeds, "manual");
   } finally {
     store.setSyncing(false);
   }
@@ -595,6 +653,7 @@ export async function refreshRssFeeds(
 export async function refreshAllFeeds(
   options: RssRefreshPlanOptions = {},
 ): Promise<void> {
+  if (isFactoryResetInProgress()) return;
   if (!isTauri()) {
     addDebugEvent(
       "change",
@@ -603,8 +662,11 @@ export async function refreshAllFeeds(
     return;
   }
   const store = useAppStore.getState();
-  const enabledFeeds = Object.values(store.feeds).filter((f) => f.enabled);
-  const feeds = selectRssFeedsForRefresh(enabledFeeds, options);
+  const enabledFeeds = withRssRuntimeStates(Object.values(store.feeds).filter((f) => f.enabled));
+  const feeds = selectRssFeedsForRefresh(enabledFeeds, {
+    ...options,
+    respectRetryWindow: true,
+  });
   const tauriAvailable = isTauri();
   const hasNativeSocialRefresh =
     tauriAvailable &&
@@ -620,7 +682,8 @@ export async function refreshAllFeeds(
   store.setError(null);
 
   try {
-    await refreshEnabledRssFeeds(store, feeds);
+    await refreshEnabledRssFeeds(store, feeds, "scheduled");
+    if (isFactoryResetInProgress()) return;
 
     // ── X timeline ────────────────────────────────────────────────────────────
     // Always runs, fully independent of RSS outcome.
@@ -645,9 +708,13 @@ export async function refreshAllFeeds(
       }
     }
 
+    if (isFactoryResetInProgress()) return;
     await refreshSocialProvider("facebook", "scheduled");
+    if (isFactoryResetInProgress()) return;
     await refreshSocialProvider("instagram", "scheduled");
+    if (isFactoryResetInProgress()) return;
     await refreshSocialProvider("linkedin", "scheduled");
+    if (isFactoryResetInProgress()) return;
 
     const { ytAuth } = useAppStore.getState();
     if (ytAuth?.isAuthenticated && !isProviderPaused("youtube")) {

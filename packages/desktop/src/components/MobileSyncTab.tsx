@@ -32,8 +32,14 @@ import {
 import { useCloudProviders } from "../hooks/useCloudProviders";
 import { CloudProviderCard } from "./CloudProviderCard";
 import { DesktopSnapshotsSection } from "./DesktopSnapshotsSection";
+import { useAppStore } from "../lib/store";
+import {
+  acknowledgeDesktopClientWarning,
+  desktopClientWarningSignature,
+  isDesktopClientWarningAcknowledged,
+} from "../lib/desktop-client-warning";
 
-/** Parse the LAN IP from a ws://ip:port?t=token URL. */
+/** Parse the LAN IP from a relay pairing URL. */
 function parseIp(url: string): string {
   try {
     return new URL(url).hostname;
@@ -115,6 +121,11 @@ export function MobileSyncTab() {
   const [mdnsActive, setMdnsActive] = useState<boolean | null>(null);
   const docSnapshot = useDebugStore((s) => s.docSnapshot);
   const cloudProviders = useDebugStore((s) => s.cloudProviders);
+  const desktopClientIds = useAppStore((s) => s.desktopClientIds);
+  const desktopWarningSignatureValue = desktopClientWarningSignature(desktopClientIds);
+  const [desktopWarningDismissed, setDesktopWarningDismissed] = useState(() =>
+    isDesktopClientWarningAcknowledged(desktopWarningSignatureValue),
+  );
 
   const { providers, connect, cancelConnect, disconnect } = useCloudProviders();
   const [cancelProvider, setCancelProvider] = useState<CloudProvider | null>(null);
@@ -123,6 +134,17 @@ export function MobileSyncTab() {
   const [manualSyncError, setManualSyncError] = useState<string | null>(null);
   const [allIPs, setAllIPs] = useState<NetworkInterface[]>([]);
   const [showIPPicker, setShowIPPicker] = useState(false);
+
+  useEffect(() => {
+    setDesktopWarningDismissed(
+      isDesktopClientWarningAcknowledged(desktopWarningSignatureValue),
+    );
+  }, [desktopWarningSignatureValue]);
+
+  const dismissDesktopWarning = useCallback(() => {
+    acknowledgeDesktopClientWarning(desktopWarningSignatureValue);
+    setDesktopWarningDismissed(true);
+  }, [desktopWarningSignatureValue]);
 
   // Independent copy-flash state for each copyable field
   const [copiedIp, setCopiedIp] = useState(false);
@@ -251,6 +273,31 @@ export function MobileSyncTab() {
       {/* Cloud Sync tab */}
       {activeTab === "cloud" && (
         <div className="space-y-3 mb-4">
+          {desktopClientIds.length > 1 && !desktopWarningDismissed && (
+            <div
+              role="alert"
+              data-testid="multiple-desktop-client-warning"
+              className="rounded-xl border border-[rgb(var(--theme-feedback-warning-rgb)/0.35)] bg-[rgb(var(--theme-feedback-warning-rgb)/0.08)] px-4 py-3"
+            >
+              <p className="text-sm font-semibold text-[var(--theme-text-primary)]">
+                Multiple Freed Desktop clients detected
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-[var(--theme-text-secondary)]">
+                {desktopClientIds.length.toLocaleString()} Freed Desktop clients are registered with this library.
+                If more than one is signed in to the same provider account, each installation can poll RSS and contact that provider independently. This can duplicate request traffic for the account. Use one Freed Desktop for polling and your PWA devices for reading whenever possible.
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-[var(--theme-text-soft)]">
+                Registrations are durable, not live presence. A retired installation may remain listed.
+              </p>
+              <button
+                type="button"
+                onClick={dismissDesktopWarning}
+                className="btn-secondary mt-3 px-3 py-1.5 text-xs font-semibold"
+              >
+                Got it
+              </button>
+            </div>
+          )}
           {(["dropbox", "gdrive"] as const).map((provider) => (
             <CloudProviderCard
               key={provider}

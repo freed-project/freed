@@ -1,4 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  beginFactoryResetBoundary,
+  resetFactoryResetStateForTests,
+} from "@freed/ui/lib/factory-reset";
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -81,6 +85,7 @@ vi.mock("./user-agent", () => ({
 
 import {
   captureAuthenticatedEssayProvider,
+  resetAuthenticatedEssayCaptureRuntimeForTests,
   type AuthenticatedEssayAuthState,
   type AuthenticatedEssayCaptureConfig,
 } from "./authenticated-essay-capture";
@@ -114,6 +119,8 @@ function createConfig(authOverrides: Partial<AuthenticatedEssayAuthState> = {}) 
 }
 
 beforeEach(() => {
+  resetFactoryResetStateForTests();
+  resetAuthenticatedEssayCaptureRuntimeForTests();
   vi.clearAllMocks();
   localStorage.clear();
   mocks.hasAcceptedProviderRisk.mockResolvedValue(true);
@@ -128,6 +135,11 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => {
+  resetAuthenticatedEssayCaptureRuntimeForTests();
+  resetFactoryResetStateForTests();
+});
+
 describe("authenticated essay capture safety gates", () => {
   it("stops before native work when provider consent is not current", async () => {
     mocks.hasAcceptedProviderRisk.mockResolvedValue(false);
@@ -139,6 +151,19 @@ describe("authenticated essay capture safety gates", () => {
     expect(mocks.getProviderPause).not.toHaveBeenCalled();
     expect(mocks.prepareSocialScrapeMemory).not.toHaveBeenCalled();
     expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
+  it("rejects provider work that starts after factory reset", async () => {
+    beginFactoryResetBoundary();
+    const { config } = createConfig();
+
+    await expect(
+      captureAuthenticatedEssayProvider(config, "scheduled"),
+    ).rejects.toThrow("Factory reset is in progress");
+
+    expect(mocks.hasAcceptedProviderRisk).not.toHaveBeenCalled();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(mocks.docReconcileFollowRosterCapture).not.toHaveBeenCalled();
   });
 
   it("stops before native work while the provider is paused", async () => {
@@ -279,5 +304,23 @@ describe("authenticated essay extraction events", () => {
     expect(deferred.diag.errorStage).toBe("cooldown");
     expect(deferred.diag.retryAfterMs).toBeGreaterThan(29 * 60 * 1000);
     expect(mocks.invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops an active provider sequence when factory reset begins", async () => {
+    mocks.listen.mockResolvedValue(vi.fn());
+    mocks.runBackgroundJob.mockImplementation(async ({ run }) => run());
+    mocks.invoke.mockImplementationOnce(async () => {
+      beginFactoryResetBoundary();
+      return null;
+    });
+    const { config, storeAuth } = createConfig();
+
+    await expect(
+      captureAuthenticatedEssayProvider(config, "manual"),
+    ).rejects.toThrow("Factory reset is in progress");
+
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+    expect(mocks.docReconcileFollowRosterCapture).not.toHaveBeenCalled();
+    expect(storeAuth).not.toHaveBeenCalled();
   });
 });

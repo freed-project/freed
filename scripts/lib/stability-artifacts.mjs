@@ -271,7 +271,9 @@ function validatePayload(kind, status, payload, errors) {
       "facebook",
       "instagram",
       "linkedin",
+      "medium",
       "other",
+      "substack",
       "x",
       "youtube",
     ]);

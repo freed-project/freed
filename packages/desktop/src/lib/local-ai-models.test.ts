@@ -187,8 +187,6 @@ describe("local AI model manager", () => {
     const models = await service.listModels();
 
     expect(createDefaultPreferences().ai).toEqual({
-      provider: "none",
-      model: "",
       autoSummarize: false,
       extractTopics: false,
     });
@@ -508,8 +506,6 @@ describe("local AI model manager", () => {
     expect(serialized).not.toContain("vector");
     expect(serialized).not.toContain("localAI");
     expect((plain.preferences as Record<string, unknown>).ai).toEqual({
-      provider: "none",
-      model: "",
       autoSummarize: false,
       extractTopics: false,
     });

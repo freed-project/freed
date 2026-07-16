@@ -31,12 +31,53 @@ function createMockAppState() {
   return state;
 }
 
+const TEST_PROVIDER_IDS = [
+  "rss",
+  "x",
+  "facebook",
+  "instagram",
+  "linkedin",
+  "substack",
+  "medium",
+  "youtube",
+  "gdrive",
+  "dropbox",
+] as const;
+
+type TestProviderId = (typeof TEST_PROVIDER_IDS)[number];
+
+function createValidPersistedProvider(provider: TestProviderId) {
+  return {
+    provider,
+    dailyBuckets: [],
+    hourlyBuckets: [],
+    latestAttempts: [] as Record<string, unknown>[],
+    pause: null as Record<string, unknown> | null,
+  };
+}
+
+function createValidPersistedHealthRecord(updatedAt: number) {
+  const providers = Object.fromEntries(
+    TEST_PROVIDER_IDS.map((provider) => [
+      provider,
+      createValidPersistedProvider(provider),
+    ]),
+  ) as Record<TestProviderId, ReturnType<typeof createValidPersistedProvider>>;
+  return {
+    version: 1,
+    providers,
+    rssFeeds: {} as Record<string, unknown>,
+    updatedAt,
+  };
+}
+
 async function loadProviderHealthModule(options: { native?: boolean } = {}) {
   vi.resetModules();
   localStorage.clear();
 
   const nativeFiles = new Map<string, string>();
   const nativeWrites: Array<{ path: string; contents: string }> = [];
+  const nativeFs = { readError: null as Error | null };
   const toastInfo = vi.fn();
   const openTo = vi.fn();
   const storeState = createMockAppState();
@@ -49,6 +90,7 @@ async function loadProviderHealthModule(options: { native?: boolean } = {}) {
   }));
   vi.doMock("@tauri-apps/plugin-fs", () => ({
     readTextFile: vi.fn(async (path: string) => {
+      if (nativeFs.readError) throw nativeFs.readError;
       const value = nativeFiles.get(path);
       if (value === undefined) throw new Error(`ENOENT: ${path}`);
       return value;
@@ -62,6 +104,9 @@ async function loadProviderHealthModule(options: { native?: boolean } = {}) {
       if (value === undefined) throw new Error(`ENOENT: ${oldPath}`);
       nativeFiles.set(newPath, value);
       nativeFiles.delete(oldPath);
+    }),
+    remove: vi.fn(async (path: string) => {
+      if (!nativeFiles.delete(path)) throw new Error(`ENOENT: ${path}`);
     }),
   }));
   vi.doMock("@freed/ui/components/Toast", () => ({
@@ -104,6 +149,7 @@ async function loadProviderHealthModule(options: { native?: boolean } = {}) {
   return {
     mod,
     nativeFiles,
+    nativeFs,
     nativeWrites,
     toastInfo,
     openTo,
@@ -149,6 +195,31 @@ describe("provider health", () => {
       provider?.hourlyBuckets.find((bucket) => bucket.hourKey === "2026-04-02T19")
         ?.itemsSeen,
     ).toBe(12);
+  });
+
+  it("normalizes attempt scope to the provider request surface", async () => {
+    const { mod } = await loadProviderHealthModule();
+
+    const rssAttempt = await mod.recordProviderHealthEvent({
+      provider: "rss",
+      outcome: "empty",
+    });
+    const socialAttempt = await mod.recordProviderHealthEvent({
+      provider: "x",
+      scope: "rss_feed",
+      feedUrl: "https://example.com/not-an-rss-request",
+      outcome: "error",
+    });
+
+    expect(rssAttempt).toMatchObject({
+      provider: "rss",
+      scope: "rss_feed",
+      feedUrl: undefined,
+    });
+    expect(socialAttempt).toMatchObject({
+      provider: "x",
+      scope: "provider",
+    });
   });
 
   it("persists native health state through the filesystem and debounces RSS feed writes", async () => {
@@ -197,38 +268,43 @@ describe("provider health", () => {
     vi.setSystemTime(now);
 
     const { mod, nativeFiles, debugStore } = await loadProviderHealthModule({ native: true });
+    const persisted = createValidPersistedHealthRecord(now.getTime());
+    persisted.providers.x.latestAttempts = [
+      {
+        id: "existing",
+        provider: "x",
+        scope: "provider",
+        outcome: "error",
+        reason: "Rate limit exceeded",
+        startedAt: now.getTime() - 1_000,
+        finishedAt: now.getTime(),
+        durationMs: 1_000,
+        itemsSeen: 0,
+        itemsAdded: 0,
+        bytesMoved: 0,
+        signalType: "explicit",
+      },
+    ];
+    persisted.providers.rss.latestAttempts = [
+      {
+        id: "existing-rss-batch",
+        provider: "rss",
+        scope: "provider",
+        outcome: "empty",
+        reason: "No feeds were due",
+        startedAt: now.getTime() - 500,
+        finishedAt: now.getTime(),
+        durationMs: 500,
+        itemsSeen: 0,
+        itemsAdded: 0,
+        bytesMoved: 0,
+        signalType: "none",
+      },
+    ];
     nativeFiles.set(
       "/mock/app-data/sync-health.json",
       JSON.stringify({
-        "provider-health": {
-          version: 1,
-          providers: {
-            x: {
-              provider: "x",
-              dailyBuckets: [],
-              hourlyBuckets: [],
-              latestAttempts: [
-                {
-                  id: "existing",
-                  provider: "x",
-                  scope: "provider",
-                  outcome: "error",
-                  reason: "Rate limit exceeded",
-                  startedAt: now.getTime() - 1_000,
-                  finishedAt: now.getTime(),
-                  durationMs: 1_000,
-                  itemsSeen: 0,
-                  itemsAdded: 0,
-                  bytesMoved: 0,
-                  signalType: "explicit",
-                },
-              ],
-              pause: null,
-            },
-          },
-          rssFeeds: {},
-          updatedAt: now.getTime(),
-        },
+        "provider-health": persisted,
       }),
     );
 
@@ -237,6 +313,448 @@ describe("provider health", () => {
     const provider = debugStore.useDebugStore.getState().health?.providers.x;
     expect(provider?.lastOutcome).toBe("error");
     expect(provider?.lastError).toBe("Rate limit exceeded");
+    expect(
+      debugStore.useDebugStore.getState().health?.providers.rss.lastOutcome,
+    ).toBe("empty");
+    expect(
+      debugStore.useDebugStore.getState().health?.providers.rss.latestAttempts[0],
+    ).toMatchObject({
+      id: "existing-rss-batch",
+      provider: "rss",
+      scope: "rss_feed",
+      outcome: "empty",
+      reason: "No feeds were due",
+      durationMs: 500,
+    });
+  });
+
+  it("upgrades the provider set written before Substack and Medium were added", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, nativeFiles, debugStore } =
+      await loadProviderHealthModule({ native: true });
+    const persisted = createValidPersistedHealthRecord(now.getTime());
+    const legacyProviders = Object.fromEntries(
+      Object.entries(persisted.providers).filter(
+        ([provider]) => provider !== "substack" && provider !== "medium",
+      ),
+    );
+    nativeFiles.set(
+      "/mock/app-data/sync-health.json",
+      JSON.stringify({
+        "provider-health": {
+          ...persisted,
+          providers: legacyProviders,
+        },
+      }),
+    );
+
+    await mod.initProviderHealth();
+
+    expect(mod.isProviderPaused("substack")).toBe(false);
+    expect(mod.isProviderPaused("medium")).toBe(false);
+    expect(debugStore.useDebugStore.getState().health?.providers.substack.status).toBe("idle");
+    expect(debugStore.useDebugStore.getState().health?.providers.medium.status).toBe("idle");
+  });
+
+  it("blocks automatic provider work without overwriting a future health-store version", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, nativeFiles, nativeWrites, debugStore } =
+      await loadProviderHealthModule({ native: true });
+    const raw = JSON.stringify({
+      "provider-health": {
+        version: 2,
+        providers: {
+          x: {
+            pause: {
+              pausedUntil: now.getTime() + 60_000,
+              pauseReason: "Future pause",
+              pauseLevel: 1,
+              detectedAt: now.getTime(),
+              detectedBy: "auto",
+            },
+          },
+        },
+      },
+    });
+    nativeFiles.set("/mock/app-data/sync-health.json", raw);
+
+    await mod.initProviderHealth();
+
+    expect(mod.isProviderPaused("x")).toBe(true);
+    expect(debugStore.useDebugStore.getState().health?.providers.x).toMatchObject({
+      status: "paused",
+      currentMessage: expect.stringContaining("local request history"),
+    });
+    expect(nativeFiles.get("/mock/app-data/sync-health.json")).toBe(raw);
+    expect(nativeWrites).toEqual([]);
+  });
+
+  it("blocks automatic provider work when an active pause record is malformed", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, nativeFiles, nativeWrites } =
+      await loadProviderHealthModule({ native: true });
+    const persisted = createValidPersistedHealthRecord(now.getTime());
+    persisted.providers.facebook = {
+      ...persisted.providers.facebook,
+      pause: {
+        pausedUntil: now.getTime() + 60_000,
+        pauseReason: 42,
+      },
+    };
+    const raw = JSON.stringify({ "provider-health": persisted });
+    nativeFiles.set("/mock/app-data/sync-health.json", raw);
+
+    await mod.initProviderHealth();
+
+    expect(mod.isProviderPaused("facebook")).toBe(true);
+    expect(nativeFiles.get("/mock/app-data/sync-health.json")).toBe(raw);
+    expect(nativeWrites).toEqual([]);
+  });
+
+  it("blocks all automatic social work when nested request history is malformed", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+    const nowMs = now.getTime();
+    const baseRecord = createValidPersistedHealthRecord(nowMs);
+    const feedUrl = "https://example.com/rss.xml";
+    const validAttempt = {
+      id: "attempt-1",
+      provider: "x",
+      scope: "provider",
+      outcome: "error",
+      startedAt: nowMs - 1_000,
+      finishedAt: nowMs,
+      durationMs: 1_000,
+      itemsSeen: 0,
+      itemsAdded: 0,
+      bytesMoved: 0,
+      signalType: "none",
+    };
+    const validRssAttempt = {
+      ...validAttempt,
+      id: "rss-attempt-1",
+      provider: "rss",
+      scope: "rss_feed",
+      feedUrl,
+    };
+    const validDailyBucket = {
+      dateKey: "2026-04-02",
+      attempts: 1,
+      successes: 0,
+      failures: 1,
+      itemsSeen: 0,
+      itemsAdded: 0,
+      bytesMoved: 0,
+    };
+    const validHourlyBucket = {
+      hourKey: "2026-04-02T19",
+      attempts: 1,
+      successes: 0,
+      failures: 1,
+      itemsSeen: 0,
+      itemsAdded: 0,
+      bytesMoved: 0,
+    };
+    const withProvider = (
+      provider: TestProviderId,
+      update: Record<string, unknown>,
+    ) => ({
+      ...baseRecord,
+      providers: {
+        ...baseRecord.providers,
+        [provider]: {
+          ...baseRecord.providers[provider],
+          ...update,
+        },
+      },
+    });
+    const cases: Array<{ label: string; record: Record<string, unknown> }> = [
+      {
+        label: "latestAttempts",
+        record: withProvider("x", { latestAttempts: "not-an-array" }),
+      },
+      {
+        label: "bucket counts",
+        record: withProvider("x", {
+          dailyBuckets: [{ ...validDailyBucket, attempts: "1" }],
+        }),
+      },
+      {
+        label: "attempt timestamp",
+        record: withProvider("x", {
+          latestAttempts: [{ ...validAttempt, finishedAt: "later" }],
+        }),
+      },
+      {
+        label: "attempt outcome",
+        record: withProvider("x", {
+          latestAttempts: [{ ...validAttempt, outcome: "maybe" }],
+        }),
+      },
+      {
+        label: "missing provider",
+        record: {
+          ...baseRecord,
+          providers: Object.fromEntries(
+            Object.entries(baseRecord.providers).filter(
+              ([provider]) => provider !== "dropbox",
+            ),
+          ),
+        },
+      },
+      {
+        label: "unknown provider",
+        record: {
+          ...baseRecord,
+          providers: {
+            ...baseRecord.providers,
+            bluesky: createValidPersistedProvider("x"),
+          },
+        },
+      },
+      {
+        label: "social attempt scope",
+        record: withProvider("x", {
+          latestAttempts: [{
+            ...validAttempt,
+            scope: "rss_feed",
+            feedUrl,
+          }],
+        }),
+      },
+      {
+        label: "RSS attempt scope",
+        record: withProvider("rss", {
+          latestAttempts: [{ ...validRssAttempt, scope: "provider" }],
+        }),
+      },
+      {
+        label: "invalid daily bucket key",
+        record: withProvider("x", {
+          dailyBuckets: [{ ...validDailyBucket, dateKey: "2026-02-30" }],
+        }),
+      },
+      {
+        label: "invalid hourly bucket key",
+        record: withProvider("x", {
+          hourlyBuckets: [{ ...validHourlyBucket, hourKey: "2026-04-02T24" }],
+        }),
+      },
+      {
+        label: "duplicate daily bucket key",
+        record: withProvider("x", {
+          dailyBuckets: [validDailyBucket, { ...validDailyBucket }],
+        }),
+      },
+      {
+        label: "duplicate hourly bucket key",
+        record: withProvider("x", {
+          hourlyBuckets: [validHourlyBucket, { ...validHourlyBucket }],
+        }),
+      },
+      {
+        label: "provider attempt overflow",
+        record: withProvider("x", {
+          latestAttempts: Array.from({ length: 21 }, (_unused, index) => ({
+            ...validAttempt,
+            id: `attempt-${index.toLocaleString("en-US", { useGrouping: false })}`,
+          })),
+        }),
+      },
+      {
+        label: "RSS feed entry",
+        record: {
+          ...baseRecord,
+          rssFeeds: {
+            [feedUrl]: {
+              feedUrl,
+              feedTitle: 42,
+              dailyBuckets: [],
+              hourlyBuckets: [],
+              latestAttempts: [],
+            },
+          },
+        },
+      },
+      {
+        label: "RSS feed attempt overflow",
+        record: {
+          ...baseRecord,
+          rssFeeds: {
+            [feedUrl]: {
+              feedUrl,
+              feedTitle: "Example Feed",
+              dailyBuckets: [],
+              hourlyBuckets: [],
+              latestAttempts: Array.from(
+                { length: 6 },
+                (_unused, index) => ({
+                  ...validRssAttempt,
+                  id: `rss-attempt-${index.toLocaleString("en-US", { useGrouping: false })}`,
+                }),
+              ),
+            },
+          },
+        },
+      },
+    ];
+
+    for (const testCase of cases) {
+      const { mod, nativeFiles, nativeWrites } =
+        await loadProviderHealthModule({ native: true });
+      const raw = JSON.stringify({ "provider-health": testCase.record });
+      nativeFiles.set("/mock/app-data/sync-health.json", raw);
+
+      await mod.initProviderHealth();
+
+      const automaticProviderWork = vi.fn();
+      for (const provider of [
+        "x",
+        "facebook",
+        "instagram",
+        "linkedin",
+        "youtube",
+      ] as const) {
+        if (!mod.isProviderPaused(provider)) automaticProviderWork(provider);
+      }
+      expect(automaticProviderWork, testCase.label).not.toHaveBeenCalled();
+      expect(
+        nativeFiles.get("/mock/app-data/sync-health.json"),
+        testCase.label,
+      ).toBe(raw);
+      expect(nativeWrites, testCase.label).toEqual([]);
+    }
+  });
+
+  it("upgrades an explicitly recognized legacy snapshot without dropping its history", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+    const nowMs = now.getTime();
+    const { mod, nativeFiles, debugStore } =
+      await loadProviderHealthModule({ native: true });
+    nativeFiles.set(
+      "/mock/app-data/sync-health.json",
+      JSON.stringify({
+        "provider-health": {
+          version: 1,
+          providers: {
+            x: {
+              provider: "x",
+              status: "degraded",
+              lastAttemptAt: nowMs,
+              lastOutcome: "error",
+              lastError: "Legacy request failed",
+              pause: null,
+            },
+          },
+          failingRssFeeds: [{
+            feedUrl: "https://example.com/rss.xml",
+            feedTitle: "Example Feed",
+            status: "failing",
+            failedAttemptsSinceSuccess: 3,
+            outageSince: nowMs - 26 * 60 * 60 * 1_000,
+            lastAttemptAt: nowMs,
+            lastError: "Legacy RSS request failed",
+          }],
+          updatedAt: nowMs,
+        },
+      }),
+    );
+
+    await mod.initProviderHealth();
+
+    expect(debugStore.useDebugStore.getState().health?.providers.x).toMatchObject({
+      status: "degraded",
+      lastOutcome: "error",
+      lastError: "Legacy request failed",
+    });
+    expect(
+      debugStore.useDebugStore.getState().health?.failingRssFeeds[0],
+    ).toMatchObject({
+      feedUrl: "https://example.com/rss.xml",
+      failedAttemptsSinceSuccess: 3,
+      lastError: "Legacy RSS request failed",
+    });
+    expect(mod.isProviderPaused("x")).toBe(false);
+  });
+
+  it("preserves malformed raw evidence before a manual sync repairs the health store", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, nativeFiles, debugStore } =
+      await loadProviderHealthModule({ native: true });
+    const malformedRaw = "{not valid json";
+    nativeFiles.set("/mock/app-data/sync-health.json", malformedRaw);
+
+    await mod.initProviderHealth();
+
+    expect(mod.isProviderPaused("x")).toBe(true);
+    expect(nativeFiles.get("/mock/app-data/sync-health.json")).toBe(malformedRaw);
+
+    await mod.clearProviderPause("x");
+
+    const recoveryPath = [...nativeFiles.keys()].find((path) =>
+      path.includes("/sync-health.recovery."),
+    );
+    expect(recoveryPath).toBeTruthy();
+    const recovery = JSON.parse(nativeFiles.get(recoveryPath ?? "") ?? "{}") as {
+      status?: string;
+      raw?: string;
+    };
+    expect(recovery).toMatchObject({
+      status: "corrupt",
+      raw: malformedRaw,
+    });
+    const repaired = JSON.parse(
+      nativeFiles.get("/mock/app-data/sync-health.json") ?? "{}",
+    ) as { "provider-health"?: { version?: number } };
+    expect(repaired["provider-health"]?.version).toBe(1);
+    expect(mod.isProviderPaused("x")).toBe(false);
+    expect(debugStore.useDebugStore.getState().health?.providers.x.status).toBe("idle");
+  });
+
+  it("fails closed on a native read error until manual sync recovery succeeds", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, nativeFiles, nativeFs, nativeWrites } =
+      await loadProviderHealthModule({ native: true });
+    nativeFs.readError = new Error("provider health file is not readable");
+
+    await mod.initProviderHealth();
+
+    expect(mod.isProviderPaused("instagram")).toBe(true);
+    expect(nativeWrites).toEqual([]);
+
+    await mod.clearProviderPause("instagram");
+
+    const recoveryPath = [...nativeFiles.keys()].find((path) =>
+      path.includes("/sync-health.recovery."),
+    );
+    const recovery = JSON.parse(nativeFiles.get(recoveryPath ?? "") ?? "{}") as {
+      status?: string;
+      raw?: string | null;
+    };
+    expect(recovery).toMatchObject({
+      status: "unavailable",
+      raw: null,
+    });
+    expect(nativeFiles.has("/mock/app-data/sync-health.json")).toBe(true);
+    expect(mod.isProviderPaused("instagram")).toBe(false);
   });
 
   it("compacts retained RSS feed attempts before writing diagnostics", async () => {

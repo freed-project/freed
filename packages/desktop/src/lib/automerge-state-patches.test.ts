@@ -52,6 +52,7 @@ function makeState(items: FeedItem[]): DocState {
     accounts: {},
     friends: {},
     preferences: createDefaultPreferences(),
+    desktopClientIds: [],
     feedUnreadCounts: { [FEED_URL]: 1 },
     feedTotalCounts: { [FEED_URL]: 2 },
     totalUnreadCount: 1,

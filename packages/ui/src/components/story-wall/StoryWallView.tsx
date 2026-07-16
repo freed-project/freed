@@ -11,6 +11,7 @@ import {
   type StoryWallPreferences,
 } from "@freed/shared";
 import { useAppStore, usePlatform, type StoryWallArchiveSummary } from "../../context/PlatformContext.js";
+import { toast } from "../Toast.js";
 
 type StoryWallPreferenceUpdate = Partial<Omit<StoryWallPreferences, "style" | "publishTarget">> & {
   style?: Partial<StoryWallPreferences["style"]>;
@@ -89,24 +90,6 @@ function formatBytes(value: number): string {
     unit: "megabyte",
     maximumFractionDigits: 1,
   }).format(value / 1_000_000);
-}
-
-function mergeStoryWallPreference(
-  current: StoryWallPreferences,
-  update: StoryWallPreferenceUpdate,
-): StoryWallPreferences {
-  return {
-    ...current,
-    ...update,
-    style: {
-      ...current.style,
-      ...update.style,
-    },
-    publishTarget: {
-      ...current.publishTarget,
-      ...update.publishTarget,
-    },
-  };
 }
 
 function ToggleButton({
@@ -399,8 +382,11 @@ export function StoryWallView({ variant = "workspace" }: StoryWallViewProps = {}
   }, [platform.secureStorage]);
 
   const persistStoryWall = (update: StoryWallPreferenceUpdate) => {
-    const next = mergeStoryWallPreference(storyWall, update);
-    void updatePreferences({ storyWall: next });
+    void updatePreferences({
+      storyWall: update,
+    } as Parameters<typeof updatePreferences>[0]).catch(() => {
+      toast.error("Freed could not save the Story Wall settings.");
+    });
   };
 
   const toggleYear = (year: number) => {
@@ -477,7 +463,6 @@ export function StoryWallView({ variant = "workspace" }: StoryWallViewProps = {}
       persistStoryWall({
         enabled: true,
         lastReviewedAt: Date.now(),
-        publishTarget: { status: "publishing" },
       });
       const result = await platform.publishStoryWall({
         token,
@@ -488,18 +473,13 @@ export function StoryWallView({ variant = "workspace" }: StoryWallViewProps = {}
       });
       persistStoryWall({
         publishTarget: {
-          status: "published",
           pagesUrl: result.pagesUrl,
           lastPublishedAt: Date.now(),
-          lastError: undefined,
         },
       });
       setPublishMessage(`Published to ${result.pagesUrl}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Publish failed.";
-      persistStoryWall({
-        publishTarget: { status: "error", lastError: message },
-      });
       setPublishMessage(message);
     } finally {
       setPublishBusy(false);

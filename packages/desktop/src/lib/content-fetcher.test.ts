@@ -65,7 +65,10 @@ function makeTextPostItem(): FeedItem {
   };
 }
 
-async function loadContentFetcherModule() {
+async function loadContentFetcherModule(options: {
+  cacheSetImpl?: () => Promise<void>;
+  isFactoryResetInProgress?: () => boolean;
+} = {}) {
   vi.resetModules();
 
   const mockInvoke = vi.fn(async () => SAMPLE_HTML);
@@ -80,8 +83,9 @@ async function loadContentFetcherModule() {
     author: "Metadata Author",
     publishedAt: 1_700_000_000_000,
   }));
-  const mockCacheSet = vi.fn(async () => undefined);
+  const mockCacheSet = vi.fn(options.cacheSetImpl ?? (async () => undefined));
   const mockDocUpdateFeedItem = vi.fn(async () => undefined);
+  const mockRecordReaderArticleFetchAttempt = vi.fn();
   const mockSubscribe = vi.fn<(cb: (state: { items: FeedItem[]; docItemCount: number }) => void) => () => void>();
   const subscriberRef: {
     current: ((state: { items: FeedItem[]; docItemCount: number }) => void) | null;
@@ -118,8 +122,19 @@ async function loadContentFetcherModule() {
       }),
     },
   }));
+  vi.doMock("@freed/ui/lib/device-ai-preferences", () => ({
+    DEFAULT_OLLAMA_URL: "http://localhost:11434",
+    getDeviceAIPreferences: () => ({
+      provider: "none",
+      model: "",
+      ollamaUrl: "http://localhost:11434",
+    }),
+  }));
   vi.doMock("./ai-summarizer.js", () => ({
     summarize: vi.fn(async () => null),
+  }));
+  vi.doMock("./runtime-health-events.js", () => ({
+    recordReaderArticleFetchAttempt: mockRecordReaderArticleFetchAttempt,
   }));
   vi.doMock("./secure-storage.js", () => ({
     secureStorage: {
@@ -129,6 +144,15 @@ async function loadContentFetcherModule() {
   vi.doMock("@freed/ui/lib/debug-store", () => ({
     addDebugEvent: vi.fn(),
   }));
+  vi.doMock("@freed/ui/lib/factory-reset", async () => {
+    const actual = await vi.importActual<typeof import("@freed/ui/lib/factory-reset")>(
+      "@freed/ui/lib/factory-reset",
+    );
+    return {
+      ...actual,
+      isFactoryResetInProgress: options.isFactoryResetInProgress ?? (() => false),
+    };
+  });
   vi.doMock("./logger.js", () => ({
     log: {
       info: vi.fn(),
@@ -144,6 +168,7 @@ async function loadContentFetcherModule() {
     mockInvoke,
     mockCacheSet,
     mockDocUpdateFeedItem,
+    mockRecordReaderArticleFetchAttempt,
   };
 }
 
@@ -153,16 +178,20 @@ async function loadContentFetcherModuleWithAi({
   provider = "openai",
   summarizeImpl,
   invokeImpl,
+  getApiKeyImpl,
+  isFactoryResetInProgress,
 }: {
   autoSummarize: boolean;
   extractTopics: boolean;
-  provider?: "integrated" | "openai";
+  provider?: "integrated" | "openai" | "anthropic" | "gemini";
   summarizeImpl?: () => Promise<{
     summary: string;
     topics: string[];
     sentiment: "positive" | "negative" | "neutral" | "mixed";
   } | null>;
   invokeImpl?: (...args: unknown[]) => Promise<unknown>;
+  getApiKeyImpl?: () => Promise<string | null>;
+  isFactoryResetInProgress?: () => boolean;
 }) {
   vi.resetModules();
 
@@ -180,6 +209,7 @@ async function loadContentFetcherModuleWithAi({
   }));
   const mockCacheSet = vi.fn(async () => undefined);
   const mockDocUpdateFeedItem = vi.fn(async () => undefined);
+  const mockRecordReaderArticleFetchAttempt = vi.fn();
   const mockSubscribe = vi.fn<(cb: (state: { items: FeedItem[]; docItemCount: number }) => void) => () => void>();
   const subscriberRef: {
     current: ((state: { items: FeedItem[]; docItemCount: number }) => void) | null;
@@ -195,7 +225,7 @@ async function loadContentFetcherModuleWithAi({
     topics: ["ai", "reading"],
     sentiment: "neutral" as const,
   })));
-  const mockGetApiKey = vi.fn(async () => "test-key");
+  const mockGetApiKey = vi.fn(getApiKeyImpl ?? (async () => "test-key"));
 
   vi.doMock("@tauri-apps/api/core", () => ({ invoke: mockInvoke }));
   vi.doMock("@freed/capture-save/browser", () => ({
@@ -217,14 +247,25 @@ async function loadContentFetcherModuleWithAi({
             autoSummarize,
             extractTopics,
             provider,
-            model: provider === "openai" ? "gpt-4o-mini" : "",
+            model: provider === "integrated" ? "" : "test-model",
           },
         },
       }),
     },
   }));
+  vi.doMock("@freed/ui/lib/device-ai-preferences", () => ({
+    DEFAULT_OLLAMA_URL: "http://localhost:11434",
+    getDeviceAIPreferences: () => ({
+      provider,
+      model: provider === "integrated" ? "" : "test-model",
+      ollamaUrl: "http://localhost:11434",
+    }),
+  }));
   vi.doMock("./ai-summarizer.js", () => ({
     summarize: mockSummarize,
+  }));
+  vi.doMock("./runtime-health-events.js", () => ({
+    recordReaderArticleFetchAttempt: mockRecordReaderArticleFetchAttempt,
   }));
   vi.doMock("./secure-storage.js", () => ({
     secureStorage: {
@@ -234,6 +275,15 @@ async function loadContentFetcherModuleWithAi({
   vi.doMock("@freed/ui/lib/debug-store", () => ({
     addDebugEvent: vi.fn(),
   }));
+  vi.doMock("@freed/ui/lib/factory-reset", async () => {
+    const actual = await vi.importActual<typeof import("@freed/ui/lib/factory-reset")>(
+      "@freed/ui/lib/factory-reset",
+    );
+    return {
+      ...actual,
+      isFactoryResetInProgress: isFactoryResetInProgress ?? (() => false),
+    };
+  });
   vi.doMock("./logger.js", () => ({
     log: {
       info: vi.fn(),
@@ -251,6 +301,7 @@ async function loadContentFetcherModuleWithAi({
     mockDocUpdateFeedItem,
     mockSummarize,
     mockGetApiKey,
+    mockRecordReaderArticleFetchAttempt,
   };
 }
 
@@ -262,9 +313,134 @@ afterEach(() => {
 });
 
 describe("content fetcher", () => {
+  it("drains an in-flight cache write before reset cleanup begins", async () => {
+    vi.useFakeTimers();
+    let releaseWrite!: () => void;
+    const writeGate = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    const writeSettled = vi.fn();
+    const { mod, subscriberRef, mockCacheSet, mockDocUpdateFeedItem } =
+      await loadContentFetcherModule({
+        cacheSetImpl: async () => {
+          await writeGate;
+          writeSettled();
+        },
+      });
+
+    mod.start();
+    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockCacheSet).toHaveBeenCalledOnce();
+
+    const cleanupStarted = vi.fn();
+    const draining = mod.stopAndDrain().then(cleanupStarted);
+    await Promise.resolve();
+    expect(cleanupStarted).not.toHaveBeenCalled();
+
+    releaseWrite();
+    await draining;
+    expect(writeSettled).toHaveBeenCalledOnce();
+    expect(mockDocUpdateFeedItem).toHaveBeenCalledOnce();
+    expect(writeSettled.mock.invocationCallOrder[0]).toBeLessThan(
+      cleanupStarted.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
+  });
+
+  it.each(["openai", "anthropic", "gemini"] as const)(
+    "waits for an issued article fetch without starting %s after reset",
+    async (provider) => {
+      vi.useFakeTimers();
+      let releaseFetch!: (html: string) => void;
+      const fetchGate = new Promise<string>((resolve) => {
+        releaseFetch = resolve;
+      });
+      let resetActive = false;
+      const {
+        mod,
+        subscriberRef,
+        mockInvoke,
+        mockCacheSet,
+        mockDocUpdateFeedItem,
+        mockSummarize,
+        mockGetApiKey,
+      } = await loadContentFetcherModuleWithAi({
+        autoSummarize: true,
+        extractTopics: true,
+        provider,
+        invokeImpl: () => fetchGate,
+        isFactoryResetInProgress: () => resetActive,
+      });
+
+      mod.start();
+      subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mockInvoke).toHaveBeenCalledOnce();
+
+      resetActive = true;
+      const resetFinished = vi.fn();
+      const draining = mod.stopAndDrain().then(resetFinished);
+      await Promise.resolve();
+      expect(resetFinished).not.toHaveBeenCalled();
+
+      releaseFetch(SAMPLE_HTML);
+      await draining;
+
+      expect(mockCacheSet).not.toHaveBeenCalled();
+      expect(mockGetApiKey).not.toHaveBeenCalled();
+      expect(mockSummarize).not.toHaveBeenCalled();
+      expect(mockDocUpdateFeedItem).not.toHaveBeenCalled();
+      expect(resetFinished).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("checks reset again after credential lookup before starting summarization", async () => {
+    vi.useFakeTimers();
+    let releaseApiKey!: (apiKey: string | null) => void;
+    const apiKeyGate = new Promise<string | null>((resolve) => {
+      releaseApiKey = resolve;
+    });
+    let resetActive = false;
+    const {
+      mod,
+      subscriberRef,
+      mockCacheSet,
+      mockDocUpdateFeedItem,
+      mockSummarize,
+      mockGetApiKey,
+    } = await loadContentFetcherModuleWithAi({
+      autoSummarize: true,
+      extractTopics: true,
+      provider: "openai",
+      getApiKeyImpl: () => apiKeyGate,
+      isFactoryResetInProgress: () => resetActive,
+    });
+
+    mod.start();
+    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockCacheSet).toHaveBeenCalledOnce();
+    expect(mockGetApiKey).toHaveBeenCalledOnce();
+
+    resetActive = true;
+    const draining = mod.stopAndDrain();
+    releaseApiKey("test-key");
+    await draining;
+
+    expect(mockSummarize).not.toHaveBeenCalled();
+    expect(mockDocUpdateFeedItem).not.toHaveBeenCalled();
+  });
+
   it("keeps full HTML in the local cache but syncs only a compact excerpt", async () => {
     vi.useFakeTimers();
-    const { mod, subscriberRef, mockInvoke, mockCacheSet, mockDocUpdateFeedItem } = await loadContentFetcherModule();
+    const {
+      mod,
+      subscriberRef,
+      mockInvoke,
+      mockCacheSet,
+      mockDocUpdateFeedItem,
+      mockRecordReaderArticleFetchAttempt,
+    } = await loadContentFetcherModule();
 
     mod.start();
     subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
@@ -276,6 +452,9 @@ describe("content fetcher", () => {
       maxBytes: 2 * 1024 * 1024,
     });
     expect(mockCacheSet).toHaveBeenCalledWith("rss:1", SAMPLE_ARTICLE_HTML);
+    expect(mockRecordReaderArticleFetchAttempt).toHaveBeenCalledWith({
+      source: "background-cache",
+    });
     expect(mockDocUpdateFeedItem).toHaveBeenCalledOnce();
 
     const update = mockDocUpdateFeedItem.mock.calls.at(0)?.at(1) as unknown as

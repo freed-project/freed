@@ -25,6 +25,7 @@ const gdriveDeleteFileMock = vi.fn();
 const getDocBinaryMock = vi.fn(async () => new Uint8Array([1, 2, 3]));
 const getDocHeadsMock = vi.fn(async (): Promise<string[] | null> => ["h1"]);
 const mergeDocMock = vi.fn(async () => {});
+const compareDocMock = vi.fn(async () => "equal" as const);
 const recordCloudUploadAttemptMock = vi.fn();
 const recordCloudUploadSkippedMock = vi.fn();
 
@@ -46,6 +47,7 @@ vi.mock("@freed/sync/cloud", () => ({
 }));
 
 vi.mock("./automerge", () => ({
+  compareDoc: compareDocMock,
   getDocBinary: getDocBinaryMock,
   getDocHeads: getDocHeadsMock,
   mergeDoc: mergeDocMock,
@@ -83,6 +85,17 @@ function changeEvent(mutation: DocChangeEvent["mutation"]): DocChangeEvent {
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
+}
+
 async function startSyncAndCaptureSubscriber(): Promise<(event: DocChangeEvent) => void> {
   const { startCloudSync, storeCloudToken } = await import("./sync");
   storeCloudToken("gdrive", {
@@ -90,7 +103,7 @@ async function startSyncAndCaptureSubscriber(): Promise<(event: DocChangeEvent) 
     refreshToken: "refresh-token",
     expiresAt: Date.now() + 3_600_000,
   });
-  gdriveDownloadLatestMock.mockResolvedValue(null);
+  gdriveDownloadLatestMock.mockResolvedValue(new Uint8Array([7]));
   gdriveStartPollLoopMock.mockResolvedValue(undefined);
   await startCloudSync("gdrive", "valid-access-token");
   expect(subscribeMock).toHaveBeenCalledTimes(1);
@@ -127,13 +140,16 @@ describe("P1-01 desktop cloud upload loop damper", () => {
       recordCloudUploadAttemptMock,
       recordCloudUploadSkippedMock,
       mergeDocMock,
+      compareDocMock,
     ]) {
       mock.mockReset();
     }
     subscribeMock.mockClear();
     getDocHeadsMock.mockReset();
     getDocHeadsMock.mockResolvedValue(["h1"]);
-    getDocBinaryMock.mockClear();
+    compareDocMock.mockResolvedValue("equal");
+    getDocBinaryMock.mockReset();
+    getDocBinaryMock.mockResolvedValue(new Uint8Array([1, 2, 3]));
     localStorage.clear();
     const coordinator = await import("./background-runtime-coordinator");
     coordinator.resetBackgroundRuntimeForTests({ requireRendererHealth: false });
@@ -170,6 +186,8 @@ describe("P1-01 desktop cloud upload loop damper", () => {
       mergedRemote: true,
     });
     const { syncCloudProviderNow } = await import("./sync");
+    gdriveDownloadLatestMock.mockResolvedValueOnce(null);
+    mergeDocMock.mockClear();
     await syncCloudProviderNow("gdrive");
     expect(mergeDocMock).toHaveBeenCalledTimes(1);
     updateCloudProviderMock.mockClear();
@@ -208,6 +226,61 @@ describe("P1-01 desktop cloud upload loop damper", () => {
 
     expectUploadQueued(1);
     expect(recordCloudUploadSkippedMock).not.toHaveBeenCalled();
+  });
+
+  it("uploads a mutation that lands while the previous request is in flight", async () => {
+    vi.useFakeTimers();
+    const emit = await startSyncAndCaptureSubscriber();
+    let currentHead = "h-before-request";
+    getDocHeadsMock.mockImplementation(async () => [currentHead]);
+    getDocBinaryMock.mockImplementation(
+      async () => new Uint8Array([currentHead === "h-before-request" ? 1 : 2]),
+    );
+
+    const firstUploadStarted = deferred<void>();
+    const firstUploadResult = deferred<{
+      fileId: string;
+      uploadedBinary: Uint8Array;
+      uploadedBytes: number;
+      remoteBytes: number;
+      mergedRemote: boolean;
+    }>();
+    gdriveUploadSafeMock
+      .mockImplementationOnce(async () => {
+        firstUploadStarted.resolve();
+        return firstUploadResult.promise;
+      })
+      .mockResolvedValue({
+        fileId: "file-2",
+        uploadedBinary: new Uint8Array([2]),
+        uploadedBytes: 1,
+        remoteBytes: 1,
+        mergedRemote: false,
+      });
+
+    const sync = await import("./sync");
+    const firstSync = sync.syncCloudProviderNow("gdrive");
+    await firstUploadStarted.promise;
+
+    currentHead = "h-during-request";
+    emit(changeEvent("ADD_PERSON"));
+    firstUploadResult.resolve({
+      fileId: "file-1",
+      uploadedBinary: new Uint8Array([1]),
+      uploadedBytes: 1,
+      remoteBytes: 1,
+      mergedRemote: false,
+    });
+    await firstSync;
+
+    expect(gdriveUploadSafeMock).toHaveBeenCalledTimes(1);
+    expect(gdriveUploadSafeMock.mock.calls[0][1]).toEqual(new Uint8Array([1]));
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(gdriveUploadSafeMock).toHaveBeenCalledTimes(2);
+    expect(gdriveUploadSafeMock.mock.calls[1][1]).toEqual(new Uint8Array([2]));
   });
 
   it("REPLACE_DOC follows the same heads guard as MERGE_DOC", async () => {
@@ -274,7 +347,7 @@ describe("P1-01 desktop cloud upload loop damper", () => {
     expect(recordCloudUploadSkippedMock).not.toHaveBeenCalled();
   });
 
-  it("deleteCloudFile clears the recorded heads so the next merge event uploads again", async () => {
+  it("deleteCloudFile rejects stale subscriber work and a reconnect can upload again", async () => {
     const emit = await startSyncAndCaptureSubscriber();
 
     getDocHeadsMock.mockResolvedValue(["h-uploaded"]);
@@ -291,11 +364,17 @@ describe("P1-01 desktop cloud upload loop damper", () => {
     await sync.deleteCloudFile("gdrive", "valid-access-token");
     updateCloudProviderMock.mockClear();
 
-    // Same heads as the recorded upload, but the cloud file is gone — the
-    // guard must not suppress re-seeding the cloud.
+    // The old subscription belongs to the deleted generation and cannot
+    // recreate the backup.
     emit(changeEvent("MERGE_DOC"));
     await flush();
+    expectUploadQueued(0);
 
+    subscribeMock.mockClear();
+    const reconnectedEmit = await startSyncAndCaptureSubscriber();
+    updateCloudProviderMock.mockClear();
+    reconnectedEmit(changeEvent("MERGE_DOC"));
+    await flush();
     expectUploadQueued(1);
     expect(recordCloudUploadSkippedMock).not.toHaveBeenCalled();
   });
