@@ -933,18 +933,10 @@ test("facebook groups settings separate last-active text, show active counts, an
     );
   }).toBe(true);
   await page.waitForFunction(() => {
-    const store = (window as Window & {
-      __FREED_STORE__?: {
-        getState: () => {
-          preferences: {
-            fbCapture?: {
-              knownGroups?: Record<string, unknown>;
-            };
-          };
-        };
-      };
-    }).__FREED_STORE__;
-    const knownGroups = store?.getState().preferences.fbCapture?.knownGroups;
+    const discovery = JSON.parse(
+      window.localStorage.getItem("freed-device-facebook-groups-v1") ?? "{}",
+    ) as { knownGroups?: Record<string, unknown> };
+    const knownGroups = discovery.knownGroups;
     if (!knownGroups) return false;
     return !("one" in knownGroups) && Object.keys(knownGroups).length === 2;
   });
