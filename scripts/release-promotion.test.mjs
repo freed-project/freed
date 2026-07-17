@@ -271,6 +271,72 @@ test("validate-main-backflow accepts the historical promote dev to main subject"
   assert.match(result.stdout, /Main backflow is in sync/);
 });
 
+for (const subject of [
+  "chore: promote dev into main for cloud conflict recovery (#784)",
+  "chore: promote dev into main for PWA sync recovery (#798)",
+]) {
+  test(`validate-main-backflow accepts reviewed historical promotion ${subject}`, (t) => {
+    const cwd = makeTempRepo();
+    t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+    git(cwd, ["checkout", "dev"]);
+    writeRepoFile(
+      cwd,
+      "packages/pwa/src/app.ts",
+      "export const value = 'promoted';\n",
+    );
+    commitAll(cwd, "dev feature");
+    updateOriginRef(cwd, "dev");
+
+    git(cwd, ["checkout", "main"]);
+    git(cwd, ["checkout", "dev", "--", "packages/pwa/src/app.ts"]);
+    commitAll(cwd, subject);
+    updateOriginRef(cwd, "main");
+
+    git(cwd, ["checkout", "dev"]);
+    writeRepoFile(
+      cwd,
+      "packages/pwa/src/app.ts",
+      "export const value = 'next dev change';\n",
+    );
+    commitAll(cwd, "next dev change");
+    updateOriginRef(cwd, "dev");
+
+    const result = runNode(VALIDATE_MAIN_BACKFLOW, [
+      `--cwd=${cwd}`,
+      "--dev-ref=origin/dev",
+      "--main-ref=origin/main",
+    ]);
+
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /Main backflow is in sync/);
+  });
+
+  test(`validate-main-backflow rejects novel content labeled as historical promotion ${subject}`, (t) => {
+    const cwd = makeTempRepo();
+    t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+    git(cwd, ["checkout", "main"]);
+    writeRepoFile(
+      cwd,
+      "packages/pwa/src/app.ts",
+      "export const value = 'main-only promotion content';\n",
+    );
+    commitAll(cwd, subject);
+    updateOriginRef(cwd, "main");
+
+    const result = runNode(VALIDATE_MAIN_BACKFLOW, [
+      `--cwd=${cwd}`,
+      "--dev-ref=origin/dev",
+      "--main-ref=origin/main",
+    ]);
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Dev refresh needed/);
+    assert.match(result.stderr, /packages\/pwa\/src\/app\.ts/);
+  });
+}
+
 test("validate-main-backflow accepts a reviewed main backport already in dev history", (t) => {
   const cwd = makeTempRepo();
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
