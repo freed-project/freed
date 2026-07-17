@@ -173,8 +173,37 @@ As of July 12, 2026, other tasks are running on the development machine. The own
 - Billboard labels anchor directly to their parent stars, use a stronger outline, and retain the accepted label set during camera movement.
 - Graph utility controls use the shared Freed secondary button surface so their backgrounds remain legible in every active theme.
 
+## Finalization Audit
+
+The July 17, 2026 audit used current `origin/dev` at `b41470d8ec0b5e529d5be7629dbb4feaf2b84884`. The isolated baseline passed all 23 focused galaxy camera, scene, worker protocol, atlas, and activity-summary tests. The first native galaxy pass is functional, but the following gaps remain before production acceptance:
+
+| Area | Current implementation | Production requirement |
+|---|---|---|
+| GPU backend | One imperative Three.js WebGL2 backend plus canvas fallback | Complete the raw WebGPU versus Three WebGPU laboratory, select the shared WebGPU path, and retain WebGL2 compatibility |
+| Semantic stars | The complete typed semantic scene remains GPU-resident | Prove at least 30,000 resident semantic stars without interaction-time eviction |
+| Background stars | The WebGL2 pass creates 3,000 to 12,000 decorative points | Sustain at least 100,000 decorative stars in one GPU pass |
+| Interaction updates | Hover and selection walk every resident node, rebuild color and highlight arrays, and replace GPU attributes | Patch only changed dynamic indices and keep static buffers permanently bound |
+| Provider fields | Region meshes are recreated on scene synchronization | Cache provider geometry and patch only palette or variation changes |
+| Labels | One instanced glyph-atlas pass keeps accepted labels resident during movement | Preserve the batched pass across backend changes and prove stable close anchoring at every supported density |
+| Avatars | Atlas metadata carries avatar candidates, but renderer diagnostics report zero displayed avatars | Add a settled close-zoom texture atlas for selected and high-priority identities |
+| Graph index | `FriendsView` still materializes a feed-item record and derives several whole-library indexes on mount | Maintain activity and identity graph summaries incrementally so entry cost follows summary size rather than item count |
+| Source revisions | Canvas dimensions participate in the semantic source revision | Separate layout-source identity from viewport dimensions so resize does not rebuild the complete semantic model |
+| Stress proof | The maintained desktop performance fixture uses 1,600 people, 1,920 accounts, and 6,400 items | Add 5,000 people, 25,000 accounts, and a 250,000-item summary-equivalent fixture |
+| Device proof | Browser regressions cover camera and touch behavior | Record repeated consistency ranges on installed Freed Desktop and physical iPhone Safari before backend cutover |
+
+### Finalization Slices
+
+1. Make diagnostics backend-neutral. Record draw calls, buffer uploads, resident semantic and decorative counts, sparse interaction writes, label and avatar atlas activity, GPU capability, and fallback reason.
+2. Split semantic source revision from viewport revision, then add incremental summary and graph-index patches without changing product workflows.
+3. Replace full-scene hover and selection restyling with sparse dynamic-buffer writes. Cache provider resources across ordinary atlas responses.
+4. Build the standalone 30,000-semantic-star plus 100,000-background-star renderer laboratory. Compare raw WebGPU, Three WebGPU, and the existing WebGL2 backend under identical typed-scene input.
+5. Integrate the selected WebGPU backend behind the imperative engine contract. Keep WebGL2 and canvas fallbacks deterministic and feature-compatible.
+6. Add the close-zoom avatar texture atlas and complete theme, reduced-motion, accessibility, and development-variation coverage.
+7. Replace the legacy stress fixture with realistic summary-scale data and run repeated installed desktop and physical iPhone consistency baselines.
+8. Cut over only after the user accepts the visual result and the selected backend meets the production budgets. Remove superseded code, merge through `dev`, and verify the exact production release.
+
 ### Next structural target
 
-Add the WebGPU renderer laboratory, close-zoom avatar texture atlas, incremental graph index maintenance, and repeated device performance baselines. The current WebGL2 engine and batched glyph layer remain the compatibility backend and functional integration surface during that work.
+Start with backend-neutral diagnostics and sparse interaction writes, then build the WebGPU renderer laboratory, close-zoom avatar texture atlas, incremental graph index maintenance, and repeated device performance baselines. The current WebGL2 engine and batched glyph layer remain the compatibility backend and functional integration surface during that work.
 
 Benchmarking is authorized only as repeated consistency runs while other machine tasks remain active. Single-run timing results are not decision evidence.
