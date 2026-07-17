@@ -47,6 +47,12 @@ function writeExecutable(filePath, contents) {
   writeFileSync(filePath, contents, { mode: 0o700 });
 }
 
+function assertProvisionerCallBound(call) {
+  assert.equal(call.options.timeoutMs, 120_000);
+  assert.equal(call.options.killSignal, "SIGKILL");
+  assert.equal(call.options.stdin, "ignore");
+}
+
 function fixture(t) {
   const root = realpathSync(
     mkdtempSync(path.join(os.tmpdir(), "freed-automation-actors-test-")),
@@ -155,7 +161,7 @@ function fixture(t) {
         status: 0,
         stdout: `${JSON.stringify({
           schemaVersion: 1,
-          protocol: "freed-actor-launcher-readiness-v1",
+          protocol: "freed-actor-launcher-readiness-v2",
           purpose: "automation-actor-launcher-readiness",
           ...expected,
           handoff: "keychain-to-canonical-lease",
@@ -252,7 +258,7 @@ function fixture(t) {
     const args = [
       "--attest-readiness",
       "--protocol",
-      "freed-actor-launcher-readiness-v1",
+      "freed-actor-launcher-readiness-v2",
       "--actor",
       request.actor,
       "--state-root",
@@ -524,6 +530,7 @@ test("provision all installs one content-addressed runtime and all public bindin
       "--state-root",
       value.stateRoot,
     ]);
+    assertProvisionerCallBound(call);
   }
   assert.equal(
     value.calls.some((call) =>
@@ -595,6 +602,7 @@ test("provision all rolls back only actors completed by the current batch", (t) 
   for (const call of value.calls.filter((candidate) =>
     ["provision", "revoke"].includes(candidate.args[0]),
   )) {
+    assertProvisionerCallBound(call);
     assert.equal(
       Object.hasOwn(call.options.env, "FREED_AUTOMATION_ACTOR_TOKEN"),
       false,
@@ -646,6 +654,11 @@ test("provision all reports rollback failure after attempting every safe revoke"
     ),
     false,
   );
+  for (const call of value.calls.filter((candidate) =>
+    ["provision", "revoke"].includes(candidate.args[0]),
+  )) {
+    assertProvisionerCallBound(call);
+  }
 });
 
 test("rotate and revoke build privately and invoke only the provisioner", (t) => {
@@ -682,10 +695,89 @@ test("rotate and revoke build privately and invoke only the provisioner", (t) =>
       "--state-root",
       value.stateRoot,
     ]);
+    assertProvisionerCallBound(provisionerCall);
     assert.equal(
       value.calls.some((call) => call.executable === "/usr/bin/sudo"),
       false,
     );
+  }
+});
+
+test("provisioner timeouts are bounded and roll back only completed batch actors", (t) => {
+  const batch = fixture(t);
+  const timedOutActor = AUTOMATION_ACTOR_IDS[1];
+  const batchRunner = batch.dependencies.runner;
+  batch.dependencies.runner = (executable, args, options) => {
+    const result = batchRunner(executable, args, options);
+    if (args[0] === "provision" && args[2] === timedOutActor) {
+      return {
+        ...result,
+        status: null,
+        error: Object.assign(new Error("timed out"), { code: "ETIMEDOUT" }),
+      };
+    }
+    return result;
+  };
+
+  assert.throws(
+    () =>
+      executeCommand(
+        { action: "provision", actor: "all", stateRoot: batch.stateRoot },
+        batch.dependencies,
+      ),
+    (error) =>
+      error instanceof AutomationActorsError &&
+      error.code === "command_timeout" &&
+      error.message.includes("120,000 ms"),
+  );
+  const batchCalls = batch.calls.filter((call) =>
+    ["provision", "revoke"].includes(call.args[0]),
+  );
+  assert.deepEqual(
+    batchCalls.map((call) => [call.args[0], call.args[2]]),
+    [
+      ["provision", AUTOMATION_ACTOR_IDS[0]],
+      ["provision", timedOutActor],
+      ["revoke", AUTOMATION_ACTOR_IDS[0]],
+    ],
+  );
+  for (const call of batchCalls) assertProvisionerCallBound(call);
+
+  for (const action of ["rotate", "revoke"]) {
+    const value = fixture(t);
+    const baseRunner = value.dependencies.runner;
+    value.dependencies.runner = (executable, args, options) => {
+      const result = baseRunner(executable, args, options);
+      if (args[0] === action) {
+        return {
+          ...result,
+          status: null,
+          error: Object.assign(new Error("timed out"), {
+            code: "ETIMEDOUT",
+          }),
+        };
+      }
+      return result;
+    };
+    assert.throws(
+      () =>
+        executeCommand(
+          {
+            action,
+            actor: "freed-release-verifier",
+            stateRoot: value.stateRoot,
+          },
+          value.dependencies,
+        ),
+      (error) =>
+        error instanceof AutomationActorsError &&
+        error.code === "command_timeout" &&
+        error.message.includes("120,000 ms"),
+      action,
+    );
+    const call = value.calls.find((candidate) => candidate.args[0] === action);
+    assert.ok(call);
+    assertProvisionerCallBound(call);
   }
 });
 
@@ -722,9 +814,55 @@ test("verify all attests through exact installed launchers without build, sudo, 
   for (const call of value.calls.filter(
     (candidate) => candidate.args[0] === "--attest-readiness",
   )) {
-    assert.equal(call.options.timeoutMs, 5_000);
+    assert.equal(call.options.timeoutMs, 15_000);
     assert.equal(call.options.killSignal, "SIGKILL");
     assert.equal(call.options.stdin, "ignore");
+  }
+});
+
+test("verify and acquire reject an exact-digest legacy protocol before launcher invocation", (t) => {
+  for (const action of ["verify", "acquire"]) {
+    const value = fixture(t);
+    const actor = "freed-release-verifier";
+    const binding = writeAcquisitionBinding(value, actor);
+    writeActorCredential(value, actor);
+    assert.equal(sha256(binding.launcherPath), binding.launcherSha256);
+    const bindingPath = path.join(value.launcherRoot, `${actor}.json`);
+    writeFileSync(
+      bindingPath,
+      `${JSON.stringify({
+        ...binding,
+        attestationProtocol: "freed-actor-launcher-readiness-v1",
+      })}\n`,
+    );
+    let attestationCalls = 0;
+    value.dependencies.launcherAttestor = () => {
+      attestationCalls += 1;
+      throw new Error("legacy bindings must fail before launcher attestation");
+    };
+
+    assert.throws(
+      () =>
+        executeCommand(
+          { action, actor, stateRoot: value.stateRoot },
+          value.dependencies,
+        ),
+      (error) =>
+        error instanceof AutomationActorsError &&
+        error.code ===
+          (action === "verify" ? "actor_not_ready" : "invalid_binding") &&
+        error.message.includes("handoff contract is invalid"),
+      action,
+    );
+    assert.equal(attestationCalls, 0);
+    assert.equal(
+      value.calls.some(
+        (call) =>
+          call.args[0] === "--attest-readiness" ||
+          call.args[0] === "--acquire-lease",
+      ),
+      false,
+    );
   }
 });
 
@@ -745,7 +883,7 @@ test("verify fails closed on attestation timeout and malformed attestation", (t)
             reason: "",
             attestation: {
               schemaVersion: 1,
-              protocol: "freed-actor-launcher-readiness-v1",
+              protocol: "freed-actor-launcher-readiness-v2",
               purpose: "automation-actor-launcher-readiness",
               actor: request.actor,
             },
@@ -761,7 +899,7 @@ test("verify fails closed on attestation timeout and malformed attestation", (t)
         error instanceof AutomationActorsError &&
         error.code === "actor_not_ready" &&
         (scenario === "timeout"
-          ? error.message.includes("5,000")
+          ? error.message.includes("15,000")
           : error.message.includes("does not match")),
       scenario,
     );

@@ -16,7 +16,7 @@ const ACTOR_CREDENTIAL_PURPOSE = "automation-actor-lease";
 export const ACTOR_LAUNCHER_PURPOSE = "automation-actor-launcher";
 export const ACTOR_LAUNCHER_HANDOFF = "keychain-to-canonical-lease";
 export const ACTOR_LAUNCHER_ATTESTATION_PROTOCOL =
-  "freed-actor-launcher-readiness-v1";
+  "freed-actor-launcher-readiness-v2";
 const ACTOR_LAUNCHER_ATTESTATION_PURPOSE =
   "automation-actor-launcher-readiness";
 export const ACTOR_LAUNCHER_RECORD_ROOT =
@@ -25,7 +25,7 @@ export const ACTOR_RUNTIME_ROOT =
   "/Library/Application Support/Freed/automation-actor-runtimes";
 const ACTOR_RUNTIME_DIGEST_PROTOCOL =
   "freed-automation-actor-runtime-v1";
-export const LAUNCHER_ATTESTATION_TIMEOUT_MS = 5_000;
+export const LAUNCHER_ATTESTATION_TIMEOUT_MS = 15_000;
 const MAX_LAUNCHER_ATTESTATION_BYTES = 16 * 1_024;
 
 const BINDING_KEYS = Object.freeze(

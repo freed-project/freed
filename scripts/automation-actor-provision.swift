@@ -7,7 +7,8 @@ private let bindingSchemaVersion = 1
 private let credentialSchemaVersion = 1
 private let bindingPurpose = "automation-actor-launcher"
 private let bindingHandoff = "keychain-to-canonical-lease"
-private let attestationProtocol = "freed-actor-launcher-readiness-v1"
+private let attestationProtocol = "freed-actor-launcher-readiness-v2"
+private let legacyAttestationProtocol = "freed-actor-launcher-readiness-v1"
 private let credentialPurpose = "automation-actor-lease"
 private let keychainService = "freed-automation-actor"
 private let productionBindingRoot =
@@ -1018,11 +1019,15 @@ private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> Laun
     ],
     label: "actor launcher binding"
   )
+  let attestationProtocolIsAccepted =
+    binding.attestationProtocol == attestationProtocol ||
+    (arguments.action == .revoke &&
+      binding.attestationProtocol == legacyAttestationProtocol)
   guard binding.schemaVersion == bindingSchemaVersion,
     binding.actor == arguments.actor,
     binding.purpose == bindingPurpose,
     binding.handoff == bindingHandoff,
-    binding.attestationProtocol == attestationProtocol,
+    attestationProtocolIsAccepted,
     binding.stateRoot == arguments.stateRoot,
     binding.leaseName == actorLeaseNames[arguments.actor],
     binding.maxLeaseLifetimeMs == leaseLifetimeMilliseconds,

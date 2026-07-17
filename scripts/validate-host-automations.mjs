@@ -1,7 +1,17 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  closeSync,
+  constants as fsConstants,
+  existsSync,
+  fstatSync,
+  openSync,
+  readFileSync,
+  readSync,
+  realpathSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,6 +39,8 @@ const REPO_ROOT = path.resolve(path.dirname(__filename), "..");
 const CANONICAL_REPOSITORY = "freed-project/freed";
 const MODEL_CATALOG_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
 const MODEL_CATALOG_MAX_FUTURE_SKEW_MS = 5 * 60 * 1_000;
+const MAX_CODEX_GLOBAL_STATE_BYTES = 16 * 1_024 * 1_024;
+const CODEX_LOCAL_PROJECT_ID_PATTERN = /^local-[0-9a-f]{32}$/;
 const HOST_SCHEDULE_CONTRACT = Object.freeze({
   cron: Object.freeze({
     HOURLY: Object.freeze({
@@ -341,7 +353,172 @@ export function validateSavedSchedule(value, kind) {
   return { normalized, fields };
 }
 
-function canonicalFreedProjectProblems(target, cwds) {
+export function readProjectRegistrySnapshot(
+  descriptor,
+  expectedSize,
+  { reader = readSync } = {},
+) {
+  if (
+    !Number.isSafeInteger(expectedSize) ||
+    expectedSize <= 0 ||
+    expectedSize > MAX_CODEX_GLOBAL_STATE_BYTES
+  ) {
+    throw new Error("project registry size is outside its bound");
+  }
+  const snapshot = Buffer.alloc(expectedSize + 1);
+  let totalBytesRead = 0;
+  while (totalBytesRead < snapshot.length) {
+    const bytesRead = reader(
+      descriptor,
+      snapshot,
+      totalBytesRead,
+      snapshot.length - totalBytesRead,
+      totalBytesRead,
+    );
+    if (
+      !Number.isSafeInteger(bytesRead) ||
+      bytesRead < 0 ||
+      bytesRead > snapshot.length - totalBytesRead
+    ) {
+      throw new Error("project registry reader returned an invalid byte count");
+    }
+    if (bytesRead === 0) break;
+    totalBytesRead += bytesRead;
+  }
+  if (totalBytesRead !== expectedSize) {
+    throw new Error("project registry changed during its bounded read");
+  }
+  return snapshot.subarray(0, expectedSize).toString("utf8");
+}
+
+function registeredCodexProjectRoot(codexHome, projectId, expectedProjectRoot) {
+  if (!CODEX_LOCAL_PROJECT_ID_PATTERN.test(projectId)) {
+    return {
+      ready: false,
+      reason: "target project id is not a supported local project reference",
+    };
+  }
+  const registryPath = path.join(
+    path.resolve(codexHome),
+    ".codex-global-state.json",
+  );
+  let registry;
+  let registryHandle;
+  try {
+    if (
+      typeof fsConstants.O_NOFOLLOW !== "number" ||
+      typeof fsConstants.O_NONBLOCK !== "number"
+    ) {
+      throw new Error("safe project registry open flags are unavailable");
+    }
+    registryHandle = openSync(
+      registryPath,
+      fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK,
+    );
+    const metadata = fstatSync(registryHandle);
+    const currentUid =
+      typeof process.getuid === "function" ? process.getuid() : metadata.uid;
+    if (
+      !metadata.isFile() ||
+      metadata.uid !== currentUid ||
+      (metadata.mode & 0o022) !== 0 ||
+      metadata.size <= 0 ||
+      metadata.size > MAX_CODEX_GLOBAL_STATE_BYTES
+    ) {
+      throw new Error("unsafe project registry");
+    }
+    registry = JSON.parse(
+      readProjectRegistrySnapshot(registryHandle, metadata.size),
+    );
+  } catch {
+    return {
+      ready: false,
+      reason: "target project registry cannot be read",
+    };
+  } finally {
+    if (registryHandle !== undefined) closeSync(registryHandle);
+  }
+  const localProjects = registry?.["local-projects"];
+  const project =
+    localProjects &&
+    typeof localProjects === "object" &&
+    !Array.isArray(localProjects)
+      ? localProjects[projectId]
+      : undefined;
+  if (
+    !project ||
+    typeof project !== "object" ||
+    Array.isArray(project) ||
+    project.id !== projectId ||
+    !Array.isArray(project.rootPaths) ||
+    project.rootPaths.length !== 1 ||
+    typeof project.rootPaths[0] !== "string" ||
+    !path.isAbsolute(project.rootPaths[0])
+  ) {
+    return {
+      ready: false,
+      reason: "target project id is not registered to one absolute root",
+    };
+  }
+  const registeredProjectRoot = project.rootPaths[0];
+  const expectedProjectId = `local-${createHash("sha256")
+    .update(registeredProjectRoot, "utf8")
+    .digest("hex")
+    .slice(0, 32)}`;
+  if (projectId !== expectedProjectId) {
+    return {
+      ready: false,
+      reason: "target project id does not match its registered root",
+    };
+  }
+  if (registeredProjectRoot !== expectedProjectRoot) {
+    return {
+      ready: false,
+      reason: "cwds does not match the registered target project root",
+    };
+  }
+  let rootClaimants;
+  try {
+    rootClaimants = Object.values(localProjects).filter((candidate) => {
+      if (
+        !candidate ||
+        typeof candidate !== "object" ||
+        Array.isArray(candidate) ||
+        !Array.isArray(candidate.rootPaths) ||
+        candidate.rootPaths.length === 0 ||
+        candidate.rootPaths.some(
+          (candidateRoot) =>
+            typeof candidateRoot !== "string" ||
+            !path.isAbsolute(candidateRoot),
+        )
+      ) {
+        throw new Error("malformed project claimant");
+      }
+      return candidate.rootPaths.some((candidateRoot) => {
+        try {
+          return realpathSync(candidateRoot) === expectedProjectRoot;
+        } catch (error) {
+          if (error?.code === "ENOENT") return false;
+          throw error;
+        }
+      });
+    });
+  } catch {
+    return {
+      ready: false,
+      reason: "target project registry cannot establish a unique root",
+    };
+  }
+  if (rootClaimants.length !== 1 || rootClaimants[0] !== project) {
+    return {
+      ready: false,
+      reason: "target project root is not uniquely registered",
+    };
+  }
+  return { ready: true, projectRoot: registeredProjectRoot };
+}
+
+function canonicalFreedProjectProblems(target, cwds, codexHome) {
   const problems = [];
   const targetKeys =
     target && typeof target === "object" && !Array.isArray(target)
@@ -351,18 +528,51 @@ function canonicalFreedProjectProblems(target, cwds) {
     targetKeys.join("\n") !== ["project_id", "type"].sort().join("\n") ||
     target.type !== "project" ||
     typeof target.project_id !== "string" ||
-    !path.isAbsolute(target.project_id)
+    target.project_id.trim() === ""
   ) {
-    return ["target must be one absolute project target"];
+    return ["target must be one project target"];
   }
+  let resolvedTarget;
+  if (path.isAbsolute(target.project_id)) {
+    resolvedTarget = { ready: true, projectRoot: target.project_id };
+  } else {
+    if (
+      !Array.isArray(cwds) ||
+      cwds.length !== 1 ||
+      typeof cwds[0] !== "string" ||
+      !path.isAbsolute(cwds[0])
+    ) {
+      return ["cwds must contain one absolute target project path"];
+    }
+    let canonicalCwd;
+    try {
+      canonicalCwd = realpathSync(cwds[0]);
+    } catch {
+      return ["cwds target project does not exist"];
+    }
+    resolvedTarget = registeredCodexProjectRoot(
+      codexHome,
+      target.project_id,
+      canonicalCwd,
+    );
+  }
+  if (!resolvedTarget.ready) return [resolvedTarget.reason];
   let projectRoot = "";
   try {
-    projectRoot = realpathSync(target.project_id);
+    projectRoot = realpathSync(resolvedTarget.projectRoot);
   } catch {
     return ["target project does not exist"];
   }
-  if (projectRoot !== target.project_id) {
+  if (projectRoot !== resolvedTarget.projectRoot) {
     problems.push("target project must use its canonical physical path");
+  }
+  if (
+    !Array.isArray(cwds) ||
+    cwds.length !== 1 ||
+    cwds[0] !== resolvedTarget.projectRoot ||
+    cwds[0] !== projectRoot
+  ) {
+    problems.push("cwds must contain only the canonical target project path");
   }
   try {
     const environment = {
@@ -406,13 +616,10 @@ function canonicalFreedProjectProblems(target, cwds) {
   } catch {
     problems.push("target project Git identity cannot be verified");
   }
-  if (!Array.isArray(cwds) || cwds.length !== 1 || cwds[0] !== projectRoot) {
-    problems.push("cwds must contain only the canonical target project path");
-  }
   return problems;
 }
 
-function overlayIssues({ spec, saved, modelCatalog }) {
+function overlayIssues({ spec, saved, modelCatalog, codexHome }) {
   const issues = [];
   const savedOverlayFields = Object.keys(saved).filter(
     (field) => !["id", "kind", "name", "prompt"].includes(field),
@@ -498,6 +705,7 @@ function overlayIssues({ spec, saved, modelCatalog }) {
     for (const problem of canonicalFreedProjectProblems(
       saved.target,
       saved.cwds,
+      codexHome,
     )) {
       issues.push(
         issue(
@@ -625,7 +833,7 @@ export function auditSavedAutomations({
     }
 
     if (parsedSavedAutomation) {
-      issues.push(...overlayIssues({ spec, saved, modelCatalog }));
+      issues.push(...overlayIssues({ spec, saved, modelCatalog, codexHome }));
     }
 
     const status = String(saved.status ?? "").toUpperCase();

@@ -1,13 +1,21 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  appendFileSync,
   chmodSync,
+  closeSync,
+  constants as fsConstants,
+  fstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
+  readSync,
   realpathSync,
   renameSync,
   symlinkSync,
+  truncateSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -23,6 +31,7 @@ import {
   formatHostAutomationAudit,
   inspectRootOwnedRuntimeFile,
   parseSavedAutomationToml,
+  readProjectRegistrySnapshot,
   validateSavedSchedule,
 } from "./validate-host-automations.mjs";
 
@@ -31,6 +40,15 @@ const sourceRoot = path.resolve(
   "..",
 );
 const NOW_MS = Date.parse("2026-07-10T20:05:00.000Z");
+
+function localProjectId(projectRoot) {
+  return `local-${createHash("sha256")
+    .update(projectRoot, "utf8")
+    .digest("hex")
+    .slice(0, 32)}`;
+}
+
+const LOCAL_PROJECT_ID = localProjectId(sourceRoot);
 
 function fixture() {
   const root = realpathSync(
@@ -133,6 +151,26 @@ function writeSavedAutomation(value, overrides = {}) {
   );
 }
 
+function writeProjectRegistry(
+  value,
+  {
+    projectId = LOCAL_PROJECT_ID,
+    project = {
+      id: projectId,
+      name: "freed",
+      rootPaths: [sourceRoot],
+    },
+  } = {},
+) {
+  mkdirSync(value.codexHome, { recursive: true });
+  const registryPath = path.join(value.codexHome, ".codex-global-state.json");
+  writeFileSync(
+    registryPath,
+    `${JSON.stringify({ "local-projects": { [projectId]: project } })}\n`,
+  );
+  return registryPath;
+}
+
 function heartbeatFixture(overrides = {}) {
   const value = fixture();
   value.spec = {
@@ -202,7 +240,7 @@ function shellQuote(value) {
 function launcherAttestation(value, overrides = {}) {
   return {
     schemaVersion: 1,
-    protocol: "freed-actor-launcher-readiness-v1",
+    protocol: "freed-actor-launcher-readiness-v2",
     purpose: "automation-actor-launcher-readiness",
     actor: value.spec.id,
     stateRoot: realpathSync(value.stateRoot),
@@ -224,6 +262,7 @@ function writeLauncherRecord(
   {
     digest = undefined,
     attestationOverrides = {},
+    bindingOverrides = {},
     runtimeDigestOverrides = {},
     runtimePathOverrides = {},
   } = {},
@@ -289,7 +328,7 @@ function writeLauncherRecord(
       actor: value.spec.id,
       purpose: "automation-actor-launcher",
       handoff: "keychain-to-canonical-lease",
-      attestationProtocol: "freed-actor-launcher-readiness-v1",
+      attestationProtocol: "freed-actor-launcher-readiness-v2",
       launcherPath,
       launcherSha256,
       ...runtimePaths,
@@ -300,6 +339,7 @@ function writeLauncherRecord(
       maxLeaseLifetimeMs: value.spec.lease.maxLifetimeMs,
       keychainService: "freed-automation-actor",
       keychainAccount: value.spec.id,
+      ...bindingOverrides,
     })}\n`,
     { mode: 0o600 },
   );
@@ -426,6 +466,442 @@ test("cron actors may use the owner-supplied cadence field instead of rrule", ()
   assert.equal(result.issueCount, 0);
 });
 
+test("cron actors accept a registered local project id bound to the canonical cwd", () => {
+  const value = fixture();
+  writeProjectRegistry(value);
+  writeSavedAutomation(value, {
+    target: { type: "project", project_id: LOCAL_PROJECT_ID },
+  });
+
+  const result = audit(value);
+  assert.equal(result.issueCount, 0);
+});
+
+test("local project ids fail closed when the current registry is unavailable", () => {
+  const value = fixture();
+  writeSavedAutomation(value, {
+    target: { type: "project", project_id: LOCAL_PROJECT_ID },
+  });
+
+  assert.deepEqual(audit(value).records[0].issues, [
+    {
+      code: "target-drift",
+      message: "target project registry cannot be read",
+    },
+  ]);
+});
+
+test("unknown local project ids fail closed even with the canonical cwd", () => {
+  const value = fixture();
+  writeProjectRegistry(value, {
+    projectId: `local-${"b".repeat(32)}`,
+  });
+  writeSavedAutomation(value, {
+    target: { type: "project", project_id: LOCAL_PROJECT_ID },
+  });
+
+  assert.deepEqual(audit(value).records[0].issues, [
+    {
+      code: "target-drift",
+      message: "target project id is not registered to one absolute root",
+    },
+  ]);
+});
+
+test("selected project hints cannot replace the current local project registry", () => {
+  for (const localProjects of [undefined, {}]) {
+    const value = fixture();
+    mkdirSync(value.codexHome, { recursive: true });
+    writeFileSync(
+      path.join(value.codexHome, ".codex-global-state.json"),
+      `${JSON.stringify({
+        ...(localProjects === undefined
+          ? {}
+          : { "local-projects": localProjects }),
+        "selected-project": {
+          type: "local",
+          projectId: LOCAL_PROJECT_ID,
+        },
+      })}\n`,
+    );
+    writeSavedAutomation(value, {
+      target: { type: "project", project_id: LOCAL_PROJECT_ID },
+    });
+
+    assert.deepEqual(audit(value).records[0].issues, [
+      {
+        code: "target-drift",
+        message: "target project id is not registered to one absolute root",
+      },
+    ]);
+  }
+});
+
+test("local project ids ignore backup state when the current registry is malformed", () => {
+  const value = fixture();
+  mkdirSync(value.codexHome, { recursive: true });
+  writeFileSync(
+    path.join(value.codexHome, ".codex-global-state.json"),
+    "{not-json\n",
+  );
+  writeFileSync(
+    path.join(value.codexHome, ".codex-global-state.json.bak"),
+    `${JSON.stringify({
+      "local-projects": {
+        [LOCAL_PROJECT_ID]: {
+          id: LOCAL_PROJECT_ID,
+          rootPaths: [sourceRoot],
+        },
+      },
+    })}\n`,
+  );
+  writeSavedAutomation(value, {
+    target: { type: "project", project_id: LOCAL_PROJECT_ID },
+  });
+
+  assert.deepEqual(audit(value).records[0].issues, [
+    {
+      code: "target-drift",
+      message: "target project registry cannot be read",
+    },
+  ]);
+});
+
+test("local project ids reject a symlink in place of the current registry", () => {
+  const value = fixture();
+  mkdirSync(value.codexHome, { recursive: true });
+  const registryTarget = path.join(
+    value.codexHome,
+    ".codex-global-state.actual.json",
+  );
+  writeFileSync(
+    registryTarget,
+    `${JSON.stringify({
+      "local-projects": {
+        [LOCAL_PROJECT_ID]: {
+          id: LOCAL_PROJECT_ID,
+          rootPaths: [sourceRoot],
+        },
+      },
+    })}\n`,
+  );
+  symlinkSync(
+    registryTarget,
+    path.join(value.codexHome, ".codex-global-state.json"),
+  );
+  writeSavedAutomation(value, {
+    target: { type: "project", project_id: LOCAL_PROJECT_ID },
+  });
+
+  assert.deepEqual(audit(value).records[0].issues, [
+    {
+      code: "target-drift",
+      message: "target project registry cannot be read",
+    },
+  ]);
+});
+
+test("local project ids reject unsafe or unbounded current registry files", () => {
+  for (const scenario of ["empty", "writable", "oversized"]) {
+    const value = fixture();
+    const registryPath = writeProjectRegistry(value);
+    if (scenario === "empty") writeFileSync(registryPath, "");
+    if (scenario === "writable") chmodSync(registryPath, 0o666);
+    if (scenario === "oversized") {
+      truncateSync(registryPath, 16 * 1_024 * 1_024 + 1);
+    }
+    writeSavedAutomation(value, {
+      target: { type: "project", project_id: LOCAL_PROJECT_ID },
+    });
+
+    assert.deepEqual(audit(value).records[0].issues, [
+      {
+        code: "target-drift",
+        message: "target project registry cannot be read",
+      },
+    ]);
+  }
+});
+
+test("bounded project registry reads reject growth after the size snapshot", () => {
+  const value = fixture();
+  const registryPath = writeProjectRegistry(value);
+  const descriptor = openSync(
+    registryPath,
+    fsConstants.O_RDONLY | fsConstants.O_NONBLOCK,
+  );
+  try {
+    const snapshotSize = fstatSync(descriptor).size;
+    appendFileSync(registryPath, " ");
+    assert.throws(
+      () => readProjectRegistrySnapshot(descriptor, snapshotSize),
+      /changed during its bounded read/,
+    );
+  } finally {
+    closeSync(descriptor);
+  }
+});
+
+test("bounded project registry reads handle partial reads before probing growth", () => {
+  const value = fixture();
+  const registryPath = writeProjectRegistry(value);
+  const expected = readFileSync(registryPath, "utf8");
+  const descriptor = openSync(
+    registryPath,
+    fsConstants.O_RDONLY | fsConstants.O_NONBLOCK,
+  );
+  const partialReader = (fd, buffer, offset, length, position) =>
+    readSync(fd, buffer, offset, Math.min(length, 7), position);
+  try {
+    const snapshotSize = fstatSync(descriptor).size;
+    assert.equal(
+      readProjectRegistrySnapshot(descriptor, snapshotSize, {
+        reader: partialReader,
+      }),
+      expected,
+    );
+    appendFileSync(registryPath, " ");
+    assert.throws(
+      () =>
+        readProjectRegistrySnapshot(descriptor, snapshotSize, {
+          reader: partialReader,
+        }),
+      /changed during its bounded read/,
+    );
+  } finally {
+    closeSync(descriptor);
+  }
+});
+
+test("local project ids reject a FIFO registry without blocking", () => {
+  const value = fixture();
+  mkdirSync(value.codexHome, { recursive: true });
+  const registryPath = path.join(value.codexHome, ".codex-global-state.json");
+  execFileSync("/usr/bin/mkfifo", [registryPath]);
+  writeSavedAutomation(value, {
+    target: { type: "project", project_id: LOCAL_PROJECT_ID },
+  });
+  const probePath = path.join(value.root, "fifo-registry-probe.mjs");
+  writeFileSync(
+    probePath,
+    `import { auditSavedAutomations } from ${JSON.stringify(new URL("./validate-host-automations.mjs", import.meta.url).href)};
+const result = auditSavedAutomations(${JSON.stringify({
+      specs: [value.spec],
+      repoRoot: value.repoRoot,
+      codexHome: value.codexHome,
+      stateRoot: value.stateRoot,
+      launcherRecordRoot: value.launcherRecordRoot,
+      runtimeRoot: value.runtimeRoot,
+      modelCatalog: modelCatalog(),
+      nowMs: NOW_MS,
+    })});
+const issue = result.records[0]?.issues[0];
+if (result.issueCount !== 1 || issue?.code !== "target-drift" || issue?.message !== "target project registry cannot be read") process.exit(1);
+`,
+  );
+
+  assert.doesNotThrow(() =>
+    execFileSync(process.execPath, [probePath], {
+      stdio: "pipe",
+      timeout: 2_000,
+    }),
+  );
+});
+
+test("local project ids fail closed when the registry does not bind one absolute root", () => {
+  const cases = [
+    null,
+    { id: `local-${"b".repeat(32)}`, rootPaths: [sourceRoot] },
+    { id: LOCAL_PROJECT_ID, rootPaths: [] },
+    { id: LOCAL_PROJECT_ID, rootPaths: [sourceRoot, sourceRoot] },
+    { id: LOCAL_PROJECT_ID, rootPaths: ["relative/freed"] },
+  ];
+  for (const project of cases) {
+    const value = fixture();
+    writeProjectRegistry(value, { project });
+    writeSavedAutomation(value, {
+      target: { type: "project", project_id: LOCAL_PROJECT_ID },
+    });
+
+    assert.deepEqual(audit(value).records[0].issues, [
+      {
+        code: "target-drift",
+        message: "target project id is not registered to one absolute root",
+      },
+    ]);
+  }
+});
+
+test("registered local project ids still require the matching canonical cwd", () => {
+  const value = fixture();
+  writeProjectRegistry(value);
+  writeSavedAutomation(value, {
+    target: { type: "project", project_id: LOCAL_PROJECT_ID },
+    cwds: ["/tmp"],
+  });
+
+  assert.deepEqual(audit(value).records[0].issues, [
+    {
+      code: "cwds-drift",
+      message: "cwds does not match the registered target project root",
+    },
+  ]);
+});
+
+test("registered local project ids retain canonical Git identity checks", () => {
+  const value = fixture();
+  const notFreed = path.join(value.root, "not-freed");
+  mkdirSync(notFreed);
+  const notFreedProjectId = localProjectId(notFreed);
+  writeProjectRegistry(value, {
+    projectId: notFreedProjectId,
+    project: {
+      id: notFreedProjectId,
+      name: "not-freed",
+      rootPaths: [notFreed],
+    },
+  });
+  writeSavedAutomation(value, {
+    target: { type: "project", project_id: notFreedProjectId },
+    cwds: [notFreed],
+  });
+
+  assert.deepEqual(audit(value).records[0].issues, [
+    {
+      code: "target-drift",
+      message: "target project Git identity cannot be verified",
+    },
+  ]);
+});
+
+test("registered local project ids must match the canonical cwd digest", () => {
+  const value = fixture();
+  const forgedProjectId = `local-${"b".repeat(32)}`;
+  writeProjectRegistry(value, {
+    projectId: forgedProjectId,
+    project: {
+      id: forgedProjectId,
+      rootPaths: [sourceRoot],
+    },
+  });
+  writeSavedAutomation(value, {
+    target: { type: "project", project_id: forgedProjectId },
+  });
+
+  assert.deepEqual(audit(value).records[0].issues, [
+    {
+      code: "target-drift",
+      message: "target project id does not match its registered root",
+    },
+  ]);
+});
+
+test("registered local project roots must have one project claimant", () => {
+  const value = fixture();
+  const duplicateId = `local-${"c".repeat(32)}`;
+  mkdirSync(value.codexHome, { recursive: true });
+  writeFileSync(
+    path.join(value.codexHome, ".codex-global-state.json"),
+    `${JSON.stringify({
+      "local-projects": {
+        [LOCAL_PROJECT_ID]: {
+          id: LOCAL_PROJECT_ID,
+          rootPaths: [sourceRoot],
+        },
+        [duplicateId]: {
+          id: duplicateId,
+          rootPaths: [sourceRoot],
+        },
+      },
+    })}\n`,
+  );
+  writeSavedAutomation(value, {
+    target: { type: "project", project_id: LOCAL_PROJECT_ID },
+  });
+
+  assert.deepEqual(audit(value).records[0].issues, [
+    {
+      code: "target-drift",
+      message: "target project root is not uniquely registered",
+    },
+  ]);
+});
+
+test("registered local project roots reject a physical alias claimant", () => {
+  const value = fixture();
+  const aliasRoot = path.join(value.root, "freed-alias");
+  const aliasId = localProjectId(aliasRoot);
+  symlinkSync(sourceRoot, aliasRoot);
+  mkdirSync(value.codexHome, { recursive: true });
+  writeFileSync(
+    path.join(value.codexHome, ".codex-global-state.json"),
+    `${JSON.stringify({
+      "local-projects": {
+        [LOCAL_PROJECT_ID]: {
+          id: LOCAL_PROJECT_ID,
+          rootPaths: [sourceRoot],
+        },
+        [aliasId]: {
+          id: aliasId,
+          rootPaths: [aliasRoot],
+        },
+      },
+    })}\n`,
+  );
+  writeSavedAutomation(value, {
+    target: { type: "project", project_id: LOCAL_PROJECT_ID },
+  });
+
+  assert.deepEqual(audit(value).records[0].issues, [
+    {
+      code: "target-drift",
+      message: "target project root is not uniquely registered",
+    },
+  ]);
+});
+
+test("registered local project roots ignore a missing unrelated project", () => {
+  const value = fixture();
+  const staleRoot = path.join(value.root, "deleted-project");
+  const staleId = localProjectId(staleRoot);
+  mkdirSync(value.codexHome, { recursive: true });
+  writeFileSync(
+    path.join(value.codexHome, ".codex-global-state.json"),
+    `${JSON.stringify({
+      "local-projects": {
+        [LOCAL_PROJECT_ID]: {
+          id: LOCAL_PROJECT_ID,
+          rootPaths: [sourceRoot],
+        },
+        [staleId]: {
+          id: staleId,
+          rootPaths: [staleRoot],
+        },
+      },
+    })}\n`,
+  );
+  writeSavedAutomation(value, {
+    target: { type: "project", project_id: LOCAL_PROJECT_ID },
+  });
+
+  assert.equal(audit(value).issueCount, 0);
+});
+
+test("opaque project references outside the current local id format are rejected", () => {
+  const value = fixture();
+  writeProjectRegistry(value, { projectId: "project-freed" });
+  writeSavedAutomation(value, {
+    target: { type: "project", project_id: "project-freed" },
+  });
+
+  assert.deepEqual(audit(value).records[0].issues, [
+    {
+      code: "target-drift",
+      message: "target project id is not a supported local project reference",
+    },
+  ]);
+});
+
 test("paused actor may await its owner-provisioned credential and launcher", () => {
   const value = fixture();
   writeSavedAutomation(value);
@@ -496,6 +972,41 @@ test("matching active actor is valid only after the complete trusted handoff exi
   assert.equal(result.issueCount, 0);
   assert.equal(result.records[0].handoffReady, true);
   assert.match(formatHostAutomationAudit(result), /\[ok\].*ACTIVE/);
+});
+
+test("active actor rejects an exact-digest legacy protocol before attestation", () => {
+  const value = fixture();
+  writeSavedAutomation(value, { status: "ACTIVE" });
+  writeCredential(value);
+  const { launcherPath, recordPath } = writeLauncherRecord(value, {
+    bindingOverrides: {
+      attestationProtocol: "freed-actor-launcher-readiness-v1",
+    },
+  });
+  const record = JSON.parse(readFileSync(recordPath, "utf8"));
+  assert.equal(
+    createHash("sha256").update(readFileSync(launcherPath)).digest("hex"),
+    record.launcherSha256,
+  );
+  let attestationCalls = 0;
+  const result = audit(value, {
+    launcherInspector: () => ({ ready: true, reason: "" }),
+    launcherAttestor: () => {
+      attestationCalls += 1;
+      throw new Error("legacy protocol must fail before attestation");
+    },
+  });
+
+  assert.deepEqual(
+    result.records[0].issues.map((item) => item.code),
+    ["active-without-trusted-handoff"],
+  );
+  assert.equal(result.records[0].handoffReady, false);
+  assert.match(
+    result.records[0].launcher.reason,
+    /handoff contract is invalid/,
+  );
+  assert.equal(attestationCalls, 0);
 });
 
 test("saved overlay drift is detected for every safety and liveness field", () => {
@@ -795,7 +1306,7 @@ test("active actor fails closed on bounded timeout and malformed launcher output
     assert.equal(result.records[0].handoffReady, false, scenario);
     assert.match(
       result.records[0].launcher.reason,
-      scenario === "timeout" ? /5,000 ms/ : /does not match/,
+      scenario === "timeout" ? /15,000 ms/ : /does not match/,
       scenario,
     );
   }
