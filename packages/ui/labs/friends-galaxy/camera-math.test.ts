@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { writeGalaxyLabWebGpuViewProjection } from "./camera-math.js";
+import {
+  galaxyLabInitialCameraScale,
+  writeGalaxyLabWebGpuViewProjection,
+} from "./camera-math.js";
 
 function project(
   matrix: ArrayLike<number>,
@@ -20,6 +23,16 @@ function project(
 }
 
 describe("Friends Galaxy raw WebGPU camera math", () => {
+  it("opens compact canvases at a useful exploration scale", () => {
+    expect(galaxyLabInitialCameraScale(0.045, 390)).toBe(0.16);
+    expect(galaxyLabInitialCameraScale(0.2, 390)).toBe(0.2);
+  });
+
+  it("keeps a useful fitted desktop scale unchanged", () => {
+    expect(galaxyLabInitialCameraScale(0.105, 1_280)).toBe(0.105);
+    expect(galaxyLabInitialCameraScale(0.05, 1_280)).toBe(0.08);
+  });
+
   it("maps galactic-plane positions through the shared transform", () => {
     const width = 1_200;
     const height = 800;

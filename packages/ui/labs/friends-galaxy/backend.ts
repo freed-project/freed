@@ -20,6 +20,7 @@ export interface GalaxyLabBackendMetrics {
   appliedActivityNodeCount?: number;
   pickCandidateCount?: number;
   pickSourceNodeCount?: number;
+  renderPixelRatio?: number;
   trackedGpuDataBytes?: number;
   submissionMode?: string;
   fallbackReason: string | null;
@@ -58,6 +59,20 @@ export interface GalaxyLabFrameStats {
   p50Ms: number;
   p95Ms: number;
   worstMs: number;
+}
+
+export function galaxyLabRenderPixelRatio(
+  devicePixelRatio: number,
+  viewportWidth: number,
+  cameraInMotion: boolean,
+): number {
+  const normalizedRatio = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0
+    ? devicePixelRatio
+    : 1;
+  const maximumRatio = cameraInMotion
+    ? viewportWidth < 720 ? 1 : 1.25
+    : 1.5;
+  return Math.min(maximumRatio, Math.max(1, normalizedRatio));
 }
 
 export function frameStats(samples: readonly number[]): GalaxyLabFrameStats {

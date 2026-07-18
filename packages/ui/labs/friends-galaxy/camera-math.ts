@@ -4,6 +4,14 @@ import type { GalaxyLabTransform } from "./scene-fixture.js";
 const DEFAULT_NEAR = 1;
 const DEFAULT_FAR = 20_000;
 
+export function galaxyLabInitialCameraScale(
+  fittedScale: number,
+  viewportWidth: number,
+): number {
+  const minimumUsefulScale = viewportWidth < 720 ? 0.16 : 0.08;
+  return Math.max(fittedScale, minimumUsefulScale);
+}
+
 export function writeGalaxyLabWebGpuViewProjection(
   target: Float32Array,
   transform: GalaxyLabTransform,

@@ -5,7 +5,7 @@ import type {
   GalaxyLabInteraction,
   GalaxyLabViewDetail,
 } from "./backend.js";
-import { hexToRgb } from "./backend.js";
+import { galaxyLabRenderPixelRatio, hexToRgb } from "./backend.js";
 import type { GalaxyActivityScenePatchBatch } from "./activity-scene-patches.js";
 import { GalaxyLabBackendHealth } from "./backend-health.js";
 import {
@@ -692,7 +692,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     if (!this.canvas) return;
     this.width = Math.max(1, Math.floor(width));
     this.height = Math.max(1, Math.floor(height));
-    this.pixelRatio = Math.min(2, Math.max(1, pixelRatio));
+    this.pixelRatio = galaxyLabRenderPixelRatio(pixelRatio, this.width, false);
     this.canvas.width = Math.max(1, Math.floor(this.width * this.pixelRatio));
     this.canvas.height = Math.max(1, Math.floor(this.height * this.pixelRatio));
     const compactLabels = this.width < 720;
@@ -867,6 +867,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       appliedActivityNodeCount: this.appliedActivityNodeCount,
       pickCandidateCount: this.sceneIndex?.lastPickCandidateCount,
       pickSourceNodeCount: this.sceneIndex?.pickSourceNodeCount,
+      renderPixelRatio: this.pixelRatio,
       trackedGpuDataBytes: this.trackedGpuDataBytes(),
       submissionMode: "Pre-recorded world bundle",
       fallbackReason: this.fallbackReason,

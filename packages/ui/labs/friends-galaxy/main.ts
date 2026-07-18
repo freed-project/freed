@@ -1,6 +1,7 @@
 import "./styles.css";
 import {
   frameStats,
+  galaxyLabRenderPixelRatio,
   hexToRgb,
   type GalaxyLabBackend,
   type GalaxyLabBackendId,
@@ -35,6 +36,7 @@ import {
   GalaxyLabAvatarImageAdmission,
   type GalaxyLabAvatarImageAdmissionResult,
 } from "./avatar-image-admission.js";
+import { galaxyLabInitialCameraScale } from "./camera-math.js";
 
 const DEFAULT_PERSON_COUNT = 5_000;
 const DEFAULT_ACCOUNT_COUNT = 25_000;
@@ -46,6 +48,10 @@ const integerFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 
 const scaleFormat = new Intl.NumberFormat(undefined, { maximumSignificantDigits: 3 });
 const labParameters = new URLSearchParams(window.location.search);
 const animationProbeDisabled = labParameters.get("animate") === "0";
+const pixelRatioParameter = Number.parseFloat(labParameters.get("dpr") ?? "");
+const pixelRatioOverride = Number.isFinite(pixelRatioParameter) && pixelRatioParameter > 0
+  ? pixelRatioParameter
+  : null;
 if (labParameters.get("compact") === "1") {
   document.documentElement.dataset.compactProbe = "true";
 }
@@ -152,6 +158,8 @@ let lastFrameAt = 0;
 let lastMetricsAt = 0;
 let dirty = true;
 let userMovedCamera = false;
+let cameraInMotion = false;
+viewport.dataset.cameraMotion = "false";
 let settledDetailTimer = 0;
 const frameSamples: number[] = [];
 const submitSamples: number[] = [];
@@ -290,6 +298,40 @@ function viewportSize(): { width: number; height: number } {
   };
 }
 
+function effectiveDevicePixelRatio(): number {
+  return pixelRatioOverride ?? window.devicePixelRatio ?? 1;
+}
+
+function recordActiveRenderDensity(): void {
+  const renderPixelRatio = activeBackend?.metrics().renderPixelRatio;
+  if (renderPixelRatio === undefined) {
+    delete viewport.dataset.renderDensity;
+    return;
+  }
+  const value = String(renderPixelRatio);
+  viewport.dataset.renderDensity = value;
+  if (cameraInMotion) viewport.dataset.lastMotionRenderDensity = value;
+  else viewport.dataset.lastSettledRenderDensity = value;
+}
+
+function resizeActiveBackend(): void {
+  const { width, height } = viewportSize();
+  activeBackend?.resize(
+    width,
+    height,
+    galaxyLabRenderPixelRatio(effectiveDevicePixelRatio(), width, cameraInMotion),
+  );
+  recordActiveRenderDensity();
+}
+
+function setCameraInMotion(next: boolean): void {
+  if (next === cameraInMotion) return;
+  cameraInMotion = next;
+  viewport.dataset.cameraMotion = String(next);
+  resizeActiveBackend();
+  dirty = true;
+}
+
 function viewDetailForScale(scale: number): GalaxyLabViewDetail {
   if (scale < 0.24) return "overview";
   if (scale < 0.9) return "middle";
@@ -342,6 +384,7 @@ function scheduleSettledViewDetail(immediate = false): void {
   const generation = ++avatarAdmissionGeneration;
   window.clearTimeout(settledDetailTimer);
   const apply = () => {
+    setCameraInMotion(false);
     const backend = activeBackend;
     if (!backend) return;
     const detail = viewDetailForScale(transform.scale);
@@ -356,16 +399,19 @@ function scheduleSettledViewDetail(immediate = false): void {
   settledDetailTimer = window.setTimeout(apply, 140);
 }
 
-function fitGalaxy(markAsUserAction = true): void {
+function frameGalaxy(markAsUserAction: boolean, useInitialScale: boolean): void {
   const { width, height } = viewportSize();
   const bounds = fixture.atlas.bounds;
   const worldWidth = Math.max(1, bounds.right - bounds.left);
   const worldHeight = Math.max(1, bounds.bottom - bounds.top);
   const padding = width < 640 ? 42 : 96;
-  const nextScale = Math.max(
+  const fittedScale = Math.max(
     MIN_SCALE,
     Math.min(MAX_SCALE, Math.min((width - padding * 2) / worldWidth, (height - padding * 2) / worldHeight)),
   );
+  const nextScale = useInitialScale
+    ? Math.min(MAX_SCALE, galaxyLabInitialCameraScale(fittedScale, width))
+    : fittedScale;
   const centerX = (bounds.left + bounds.right) / 2;
   const centerY = (bounds.top + bounds.bottom) / 2;
   transform.scale = nextScale;
@@ -374,6 +420,14 @@ function fitGalaxy(markAsUserAction = true): void {
   userMovedCamera = markAsUserAction;
   dirty = true;
   scheduleSettledViewDetail(true);
+}
+
+function fitGalaxy(markAsUserAction = true): void {
+  frameGalaxy(markAsUserAction, false);
+}
+
+function frameInitialGalaxy(): void {
+  frameGalaxy(false, true);
 }
 
 function resetSamples(): void {
@@ -423,8 +477,7 @@ async function activateBackend(
     backend.setFieldStyle?.(activeFieldStyle);
     fieldStyleSelect.disabled = typeof backend.setFieldStyle !== "function";
     simulateLossButton.disabled = typeof backend.simulateDeviceLoss !== "function";
-    const { width, height } = viewportSize();
-    backend.resize(width, height, window.devicePixelRatio || 1);
+    resizeActiveBackend();
     const detail = viewDetailForScale(transform.scale);
     backend.setViewDetail(detail);
     backend.setInteraction(interaction);
@@ -517,6 +570,9 @@ function updateMetrics(): void {
   if (metrics.residentStarUploadCount !== undefined) {
     addMetric("Resident star uploads", integerFormat.format(metrics.residentStarUploadCount));
   }
+  if (metrics.renderPixelRatio !== undefined) {
+    addMetric("Render density", `${scaleFormat.format(metrics.renderPixelRatio)}x`);
+  }
   if (
     metrics.pickCandidateCount !== undefined &&
     metrics.pickSourceNodeCount !== undefined
@@ -597,6 +653,7 @@ function renderFrame(timeMs: number): void {
 }
 
 function zoomAt(viewportX: number, viewportY: number, nextScale: number): void {
+  setCameraInMotion(true);
   applyGalaxyLabZoomAt(
     transform,
     viewportX,
@@ -687,6 +744,7 @@ viewport.addEventListener("pointermove", (event) => {
     return;
   }
   event.preventDefault();
+  setCameraInMotion(true);
   const bounds = viewport.getBoundingClientRect();
   const nextX = event.clientX - bounds.left;
   const nextY = event.clientY - bounds.top;
@@ -783,6 +841,7 @@ let safariGestureWorldPoint: PointerPosition | null = null;
 
 viewport.addEventListener("gesturestart", ((event: SafariGestureEvent) => {
   event.preventDefault();
+  setCameraInMotion(true);
   avatarAdmissionGeneration += 1;
   window.clearTimeout(settledDetailTimer);
   safariGestureStartScale = transform.scale;
@@ -902,9 +961,8 @@ function syncReducedMotionPreference(): void {
 reducedMotionQuery.addEventListener("change", syncReducedMotionPreference);
 
 const resizeObserver = new ResizeObserver(() => {
-  const { width, height } = viewportSize();
-  activeBackend?.resize(width, height, window.devicePixelRatio || 1);
-  if (!userMovedCamera) fitGalaxy(false);
+  resizeActiveBackend();
+  if (!userMovedCamera) frameInitialGalaxy();
   else scheduleSettledViewDetail(true);
   dirty = true;
 });
@@ -956,6 +1014,6 @@ Object.assign(window, {
 });
 
 applyDocumentPalette(paletteForTheme());
-fitGalaxy(false);
+frameInitialGalaxy();
 void activateBackend(backendSelect.value as GalaxyLabBackendId);
 frameRequest = requestAnimationFrame(renderFrame);

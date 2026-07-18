@@ -20,7 +20,7 @@ import type {
   GalaxyLabInteraction,
   GalaxyLabViewDetail,
 } from "./backend.js";
-import { hexToRgb } from "./backend.js";
+import { galaxyLabRenderPixelRatio, hexToRgb } from "./backend.js";
 import { GalaxyLabBackendHealth } from "./backend-health.js";
 import { createGalaxyLabAvatarAtlas } from "./avatar-atlas.js";
 import {
@@ -311,7 +311,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     if (!this.renderer) return;
     this.width = Math.max(1, Math.floor(width));
     this.height = Math.max(1, Math.floor(height));
-    this.pixelRatio = Math.min(2, Math.max(1, pixelRatio));
+    this.pixelRatio = galaxyLabRenderPixelRatio(pixelRatio, this.width, false);
     this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.setSize(this.width, this.height, false);
     this.camera.aspect = this.width / this.height;
@@ -419,6 +419,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       bufferUploadCount: this.bufferUploadCount,
       pickCandidateCount: this.sceneIndex?.lastPickCandidateCount,
       pickSourceNodeCount: this.sceneIndex?.pickSourceNodeCount,
+      renderPixelRatio: this.pixelRatio,
       fallbackReason: this.fallbackReason,
       adapterDescription: this.adapterDescription,
     };
