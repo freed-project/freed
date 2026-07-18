@@ -18,7 +18,7 @@ import {
   type GalaxyLabTransform,
 } from "./scene-fixture.js";
 import { loadGalaxyLabFixture } from "./scene-fixture-loader.js";
-import { findGalaxyLabSceneNodeIndex } from "./scene-interaction-index.js";
+import { findFriendsGalaxySceneNodeIndex } from "../../src/lib/friends-galaxy-scene-interaction-index.js";
 import {
   applyFriendsGalaxyPinch,
   applyFriendsGalaxyResistedZoomAt,
@@ -272,7 +272,7 @@ function accessibleNodeLabel(nodeId: string | null): string | null {
   if (!nodeId) return null;
   const metadataLabel = nodeLabelById.get(nodeId);
   if (metadataLabel) return metadataLabel;
-  const nodeIndex = findGalaxyLabSceneNodeIndex(
+  const nodeIndex = findFriendsGalaxySceneNodeIndex(
     fixture.scene,
     fixture.interactionIndex,
     nodeId,
@@ -332,7 +332,7 @@ async function decodeLocalAvatarImage(sourceKey: string): Promise<CanvasImageSou
   const prefix = "lab-local-avatar-v1:";
   if (!sourceKey.startsWith(prefix)) throw new Error("Unknown local avatar image source.");
   const nodeId = sourceKey.slice(prefix.length);
-  const nodeIndex = findGalaxyLabSceneNodeIndex(
+  const nodeIndex = findFriendsGalaxySceneNodeIndex(
     fixture.scene,
     fixture.interactionIndex,
     nodeId,
@@ -705,7 +705,7 @@ function frameInitialGalaxy(): void {
 }
 
 function focusGalaxyNode(nodeId: string): boolean {
-  const nodeIndex = findGalaxyLabSceneNodeIndex(
+  const nodeIndex = findFriendsGalaxySceneNodeIndex(
     fixture.scene,
     fixture.interactionIndex,
     nodeId,
@@ -1167,7 +1167,7 @@ function requestContextAt(
 function requestSelectedContext(): boolean {
   const nodeId = interaction.selectedNodeId;
   if (!nodeId) return false;
-  const nodeIndex = findGalaxyLabSceneNodeIndex(
+  const nodeIndex = findFriendsGalaxySceneNodeIndex(
     fixture.scene,
     fixture.interactionIndex,
     nodeId,

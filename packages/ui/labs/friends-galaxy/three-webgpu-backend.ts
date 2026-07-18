@@ -34,10 +34,10 @@ import {
   type GalaxyLabTransform,
 } from "./scene-fixture.js";
 import {
-  GalaxyLabSceneIndex,
-  type GalaxyLabInteractionRole,
-  type GalaxyLabInteractionState,
-} from "./scene-index.js";
+  FriendsGalaxySceneIndex,
+  type FriendsGalaxyInteractionRole,
+  type FriendsGalaxyInteractionState,
+} from "../../src/lib/friends-galaxy-scene-index.js";
 
 interface GalaxySpriteBatch {
   sprite: THREE.Sprite;
@@ -206,7 +206,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
   };
   private settledProjectionValid = false;
   private fixture: GalaxyLabFixture | null = null;
-  private sceneIndex: GalaxyLabSceneIndex | null = null;
+  private sceneIndex: FriendsGalaxySceneIndex | null = null;
   private semanticBatch: GalaxySpriteBatch | null = null;
   private backgroundBatch: GalaxySpriteBatch | null = null;
   private labelBatch: GalaxyBillboardBatch | null = null;
@@ -265,7 +265,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     });
     this.adapterDescription = adapterLabel(adapter);
     this.fixture = fixture;
-    this.sceneIndex = new GalaxyLabSceneIndex(fixture);
+    this.sceneIndex = new FriendsGalaxySceneIndex(fixture.scene, fixture.interactionIndex);
     this.palette = palette;
     this.interactionColor = hexToRgb(palette.selection);
     this.renderer = new THREE.WebGPURenderer({
@@ -584,7 +584,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.settledProjection.height = this.height;
   }
 
-  private writeInteraction(state: GalaxyLabInteractionState): void {
+  private writeInteraction(state: FriendsGalaxyInteractionState): void {
     if (
       !this.semanticBatch || !this.semanticColors || !this.baseSemanticColors ||
       !this.semanticSizes || !this.baseSemanticSizes
@@ -624,7 +624,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.writeContextEdges(state.contextualEdgeIndices, state.contextualEdgeCount);
   }
 
-  private applyInteractionRoles(roles: ReadonlyMap<number, GalaxyLabInteractionRole>): void {
+  private applyInteractionRoles(roles: ReadonlyMap<number, FriendsGalaxyInteractionRole>): void {
     if (!this.semanticColors || !this.semanticSizes) return;
     const [selectionRed, selectionGreen, selectionBlue] = this.interactionColor;
     for (const [index, role] of roles) {

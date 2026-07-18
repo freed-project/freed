@@ -236,6 +236,8 @@ The keyed avatar admission state and bounded image admission queue now live unde
 
 Hover and selection now reuse one scene-index state object, one role map, and one fixed-capacity contextual-edge buffer sized from the worker-reported maximum adjacency degree. The Three.js reference and current WebGL2 fallback retain their touched and changed index sets instead of rebuilding maps, sets, typed views, or edge arrays for each focus change. The Three.js reference also allocates its maximum contextual-edge geometry and sparse attribute-update records once during startup. Renderer startup does not scan the transferred adjacency table.
 
+The transferable interaction-index compiler and the allocation-bounded scene interaction engine now live under shared UI source. Their inputs are only the renderer-neutral typed galaxy scene, its worker-built hash, adjacency, and sparse pick buffers, and a stable selected plus hovered ID pair. The detached fixture no longer enters node lookup, contextual constellation assembly, interaction flag patching, or depth-aware picking. Raw WebGPU, Three.js WebGPU, WebGL2, labels, avatars, and shell focus all consume the same shared stable-ID lookup and sparse scene state that product cutover will use.
+
 Raw WebGPU now leaves the 30,000-instance base semantic buffer untouched during interaction. It packs the active identity system into one fixed-capacity overlay stream, uploads that stream once, and selects a pre-recorded world bundle that adds the overlay draw. Clearing interaction selects the base bundle again. Contextual edges remain one separate bounded upload. Hover cost is therefore independent of where linked stars live in the resident buffer and no longer performs one queue write per affected star.
 
 Raw WebGPU now also records contextual edges, avatar billboards, and label billboards as retained render bundles. Each frame executes one ordered bundle list containing the selected world bundle and only the active presentation layers. Camera movement no longer reissues their pipeline, bind group, vertex buffer, or draw commands from JavaScript. Interaction and settle boundaries replace only the affected bundle, while shared uniform and vertex-buffer writes remain visible through the recorded commands.
@@ -504,6 +506,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.114 | Move the clip-safe locked-camera and directional gesture mathematics into shared UI modules consumed by the laboratory and raw WebGPU backend | High | Done |
 | 8.115 | Move the fixed diagnostic ring, passive long-task monitor, and first-failure backend health latch into shared UI modules consumed by the laboratory and WebGPU backends | High | Done |
 | 8.116 | Move keyed avatar admission and the bounded image decode, failure-cache, eviction, and disposal queue into shared UI modules consumed by the detached shell | High | Done |
+| 8.117 | Move the transferable stable-ID, adjacency, sparse-pick index and allocation-bounded interaction scene state into shared UI modules consumed by every detached backend | High | Done |
 
 ---
 
@@ -608,6 +611,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] The detached laboratory, raw WebGPU backend, and future product engine share one clip-safe camera, depth-correct focus, directional zoom, wheel, and midpoint-preserving pinch implementation
 - [x] The detached laboratory and future product engine share one fixed diagnostic sample ring, passive long-task monitor, and first-failure backend health latch
 - [x] The detached laboratory and future product engine share one keyed avatar admission state and bounded source-deduplicating image decode queue with deterministic disposal
+- [x] Every detached backend and the future product engine share one worker-transferable stable-ID, adjacency, sparse-pick index and one allocation-bounded interaction scene state
 - [x] Mac two-finger trackpad deltas pan with native momentum, pinch remains anchored zoom, and pointer or one-finger touch throws use bounded allocation-free inertia that cancels for new input and reduced motion
 - [x] Animation-disabled scenes stop requesting frames when idle and wake only for renderer work, settle state, diagnostics, or backend health recovery
 - [x] Pointer, wheel, and Safari handlers mark motion density without synchronously resizing the GPU canvas

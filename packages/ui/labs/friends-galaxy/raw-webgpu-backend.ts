@@ -50,10 +50,10 @@ import {
 } from "./provider-fields.js";
 import { writeGalaxyLabInteractionInstances } from "./interaction-instance-data.js";
 import {
-  GalaxyLabSceneIndex,
-  type GalaxyLabInteractionRole,
-  type GalaxyLabInteractionState,
-} from "./scene-index.js";
+  FriendsGalaxySceneIndex,
+  type FriendsGalaxyInteractionRole,
+  type FriendsGalaxyInteractionState,
+} from "../../src/lib/friends-galaxy-scene-index.js";
 
 const INSTANCE_FLOATS = GALAXY_LAB_STAR_INSTANCE_FLOATS;
 const INSTANCE_STRIDE = INSTANCE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
@@ -494,7 +494,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private labelSampler: GPUSampler | null = null;
   private uniformBuffer: GPUBuffer | null = null;
   private fixture: GalaxyLabFixture | null = null;
-  private sceneIndex: GalaxyLabSceneIndex | null = null;
+  private sceneIndex: FriendsGalaxySceneIndex | null = null;
   private semanticData: Float32Array | null = null;
   private interactionData = new Float32Array(0);
   private backgroundData: Float32Array | null = null;
@@ -507,7 +507,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private avatarImages: ReadonlyMap<string, CanvasImageSource> = new Map();
   private palette: GalaxyLabPalette | null = null;
   private interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: null };
-  private interactionRoles: ReadonlyMap<number, GalaxyLabInteractionRole> = new Map();
+  private interactionRoles: ReadonlyMap<number, FriendsGalaxyInteractionRole> = new Map();
   private interactionInstanceCount = 0;
   private interactionColor: readonly [number, number, number] = [1, 1, 1];
   private readonly viewProjection = new Float32Array(16);
@@ -564,7 +564,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.adapter = adapter;
     this.device = device;
     this.fixture = fixture;
-    this.sceneIndex = new GalaxyLabSceneIndex(fixture);
+    this.sceneIndex = new FriendsGalaxySceneIndex(fixture.scene, fixture.interactionIndex);
     this.palette = palette;
     this.interactionColor = hexToRgb(palette.selection);
     this.adapterDescription = adapterLabel(adapter);
@@ -1220,7 +1220,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.settledProjection.height = this.height;
   }
 
-  private writeInteraction(state: GalaxyLabInteractionState): void {
+  private writeInteraction(state: FriendsGalaxyInteractionState): void {
     if (!this.fixture) return;
     this.interactionRoles = state.roles;
     this.writeInteractionOverlay(state.roles);
@@ -1228,7 +1228,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   }
 
   private writeInteractionOverlay(
-    roles: ReadonlyMap<number, GalaxyLabInteractionRole>,
+    roles: ReadonlyMap<number, FriendsGalaxyInteractionRole>,
   ): void {
     if (!this.device || !this.interactionBuffer || !this.semanticData) return;
     const previousCount = this.interactionInstanceCount;

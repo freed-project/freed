@@ -1,54 +1,52 @@
-import { IdentityGalaxyNodeFlag } from "../../src/lib/identity-galaxy-scene.js";
-import type { GalaxyLabInteraction } from "./backend.js";
-import type { GalaxyLabFixture } from "./scene-fixture.js";
 import {
-  findGalaxyLabPickCellIndex,
-  findGalaxyLabSceneNodeIndex,
-} from "./scene-interaction-index.js";
+  IdentityGalaxyNodeFlag,
+  type IdentityGalaxyScene,
+} from "./identity-galaxy-scene.js";
+import {
+  findFriendsGalaxyPickCellIndex,
+  findFriendsGalaxySceneNodeIndex,
+  type FriendsGalaxySceneInteractionIndex,
+} from "./friends-galaxy-scene-interaction-index.js";
 
-export type GalaxyLabInteractionRole = "selected" | "hovered" | "linked";
+export interface FriendsGalaxyInteraction {
+  selectedNodeId: string | null;
+  hoveredNodeId: string | null;
+}
 
-export interface GalaxyLabInteractionState {
+export type FriendsGalaxyInteractionRole = "selected" | "hovered" | "linked";
+
+export interface FriendsGalaxyInteractionState {
   activeNodeId: string | null;
   contextualEdgeIndices: Uint32Array;
   contextualEdgeCount: number;
-  roles: ReadonlyMap<number, GalaxyLabInteractionRole>;
+  roles: ReadonlyMap<number, FriendsGalaxyInteractionRole>;
 }
 
-export class GalaxyLabSceneIndex {
-  private readonly fixture: GalaxyLabFixture;
-  private readonly neighborOffsets: Uint32Array;
-  private readonly neighborIndices: Uint32Array;
-  private readonly interactionRoles = new Map<number, GalaxyLabInteractionRole>();
-  private readonly interactionStateValue: GalaxyLabInteractionState;
+export class FriendsGalaxySceneIndex {
+  private readonly interactionRoles = new Map<number, FriendsGalaxyInteractionRole>();
+  private readonly interactionStateValue: FriendsGalaxyInteractionState;
   private lastPickCandidateCountValue = 0;
 
-  constructor(fixture: GalaxyLabFixture) {
-    this.fixture = fixture;
-    this.neighborOffsets = fixture.interactionIndex.neighborOffsets;
-    this.neighborIndices = fixture.interactionIndex.neighborIndices;
+  constructor(
+    private readonly scene: IdentityGalaxyScene,
+    private readonly interactionIndex: FriendsGalaxySceneInteractionIndex,
+  ) {
     this.interactionStateValue = {
       activeNodeId: null,
-      contextualEdgeIndices: new Uint32Array(
-        fixture.interactionIndex.maxNeighborCount * 2,
-      ),
+      contextualEdgeIndices: new Uint32Array(interactionIndex.maxNeighborCount * 2),
       contextualEdgeCount: 0,
       roles: this.interactionRoles,
     };
   }
 
   nodeIndex(nodeId: string | null): number | null {
-    return findGalaxyLabSceneNodeIndex(
-      this.fixture.scene,
-      this.fixture.interactionIndex,
-      nodeId,
-    );
+    return findFriendsGalaxySceneNodeIndex(this.scene, this.interactionIndex, nodeId);
   }
 
   neighbors(nodeIndex: number): Uint32Array {
-    const start = this.neighborOffsets[nodeIndex] ?? 0;
-    const end = this.neighborOffsets[nodeIndex + 1] ?? start;
-    return this.neighborIndices.subarray(start, end);
+    const start = this.interactionIndex.neighborOffsets[nodeIndex] ?? 0;
+    const end = this.interactionIndex.neighborOffsets[nodeIndex + 1] ?? start;
+    return this.interactionIndex.neighborIndices.subarray(start, end);
   }
 
   get lastPickCandidateCount(): number {
@@ -56,14 +54,14 @@ export class GalaxyLabSceneIndex {
   }
 
   get pickSourceNodeCount(): number {
-    return this.fixture.scene.nodeIds.length;
+    return this.scene.nodeIds.length;
   }
 
   get contextualEdgeCapacity(): number {
     return this.interactionStateValue.contextualEdgeIndices.length / 2;
   }
 
-  interactionState(interaction: GalaxyLabInteraction): GalaxyLabInteractionState {
+  interactionState(interaction: FriendsGalaxyInteraction): FriendsGalaxyInteractionState {
     const state = this.interactionStateValue;
     const roles = this.interactionRoles;
     roles.clear();
@@ -72,33 +70,35 @@ export class GalaxyLabSceneIndex {
     const selectedIndex = this.nodeIndex(interaction.selectedNodeId);
     const hoveredIndex = this.nodeIndex(interaction.hoveredNodeId);
     if (selectedIndex !== null) roles.set(selectedIndex, "selected");
-    if (hoveredIndex !== null && hoveredIndex !== selectedIndex) roles.set(hoveredIndex, "hovered");
+    if (hoveredIndex !== null && hoveredIndex !== selectedIndex) {
+      roles.set(hoveredIndex, "hovered");
+    }
     const activeIndex = hoveredIndex ?? selectedIndex;
     if (activeIndex === null) return state;
-    const neighborStart = this.neighborOffsets[activeIndex] ?? 0;
-    const neighborEnd = this.neighborOffsets[activeIndex + 1] ?? neighborStart;
+    const neighborStart = this.interactionIndex.neighborOffsets[activeIndex] ?? 0;
+    const neighborEnd = this.interactionIndex.neighborOffsets[activeIndex + 1] ?? neighborStart;
     const edgeCount = neighborEnd - neighborStart;
     for (let index = 0; index < edgeCount; index += 1) {
-      const neighbor = this.neighborIndices[neighborStart + index]!;
+      const neighbor = this.interactionIndex.neighborIndices[neighborStart + index]!;
       if (!roles.has(neighbor)) roles.set(neighbor, "linked");
       state.contextualEdgeIndices[index * 2] = activeIndex;
       state.contextualEdgeIndices[index * 2 + 1] = neighbor;
     }
-    state.activeNodeId = this.fixture.scene.nodeIds[activeIndex] ?? null;
+    state.activeNodeId = this.scene.nodeIds[activeIndex] ?? null;
     state.contextualEdgeCount = edgeCount;
     return state;
   }
 
   applyFlags(
     target: Uint16Array,
-    state: GalaxyLabInteractionState,
+    state: FriendsGalaxyInteractionState,
     previousIndices: Iterable<number>,
     touched: Set<number>,
   ): void {
-    for (const index of previousIndices) target[index] = this.fixture.scene.flags[index]!;
+    for (const index of previousIndices) target[index] = this.scene.flags[index]!;
     touched.clear();
     for (const [index, role] of state.roles) {
-      let flags = this.fixture.scene.flags[index]!;
+      let flags = this.scene.flags[index]!;
       if (role === "selected") flags |= IdentityGalaxyNodeFlag.Selected;
       if (role === "hovered") flags |= IdentityGalaxyNodeFlag.Hovered;
       if (role === "linked") flags |= IdentityGalaxyNodeFlag.LinkedToSelection;
@@ -116,8 +116,8 @@ export class GalaxyLabSceneIndex {
     depthRange: "negative-one-to-one" | "zero-to-one" = "negative-one-to-one",
   ): string | null {
     const elements = viewProjection;
-    const positions = this.fixture.scene.positions;
-    const spatial = this.fixture.interactionIndex;
+    const positions = this.scene.positions;
+    const spatial = this.interactionIndex;
     const xScale = elements[0]!;
     const yScale = elements[5]!;
     const cameraZ = elements[15]!;
@@ -137,11 +137,7 @@ export class GalaxyLabSceneIndex {
     const maxRayX = cameraX + ndcX * (cameraZ - spatial.pickMaxZ) / xScale;
     const minRayY = cameraY + ndcY * (cameraZ - spatial.pickMinZ) / yScale;
     const maxRayY = cameraY + ndcY * (cameraZ - spatial.pickMaxZ) / yScale;
-    const furthestDepth = Math.max(
-      1,
-      cameraZ - spatial.pickMinZ,
-      cameraZ - spatial.pickMaxZ,
-    );
+    const furthestDepth = Math.max(1, cameraZ - spatial.pickMinZ, cameraZ - spatial.pickMaxZ);
     const paddingX = spatial.pickMaxScreenRadius * 2 * furthestDepth /
       (Math.abs(xScale) * Math.max(1, viewportWidth));
     const paddingY = spatial.pickMaxScreenRadius * 2 * furthestDepth /
@@ -163,7 +159,7 @@ export class GalaxyLabSceneIndex {
     let bestScore = Number.POSITIVE_INFINITY;
     for (let row = minRow; row <= maxRow; row += 1) {
       for (let column = minColumn; column <= maxColumn; column += 1) {
-        const cellIndex = findGalaxyLabPickCellIndex(spatial, column, row);
+        const cellIndex = findFriendsGalaxyPickCellIndex(spatial, column, row);
         if (cellIndex === null) continue;
         const start = spatial.pickCellOffsets[cellIndex]!;
         const end = spatial.pickCellOffsets[cellIndex + 1]!;
@@ -174,20 +170,24 @@ export class GalaxyLabSceneIndex {
           const x = positions[offset]!;
           const y = positions[offset + 1]!;
           const z = positions[offset + 2]!;
-          const clipX = elements[0]! * x + elements[4]! * y + elements[8]! * z + elements[12]!;
-          const clipY = elements[1]! * x + elements[5]! * y + elements[9]! * z + elements[13]!;
-          const clipZ = elements[2]! * x + elements[6]! * y + elements[10]! * z + elements[14]!;
-          const clipW = elements[3]! * x + elements[7]! * y + elements[11]! * z + elements[15]!;
+          const clipX = elements[0]! * x + elements[4]! * y +
+            elements[8]! * z + elements[12]!;
+          const clipY = elements[1]! * x + elements[5]! * y +
+            elements[9]! * z + elements[13]!;
+          const clipZ = elements[2]! * x + elements[6]! * y +
+            elements[10]! * z + elements[14]!;
+          const clipW = elements[3]! * x + elements[7]! * y +
+            elements[11]! * z + elements[15]!;
           const minimumClipZ = depthRange === "zero-to-one" ? 0 : -clipW;
           if (clipW <= 0 || clipZ < minimumClipZ || clipZ > clipW) continue;
           const screenX = (clipX / clipW + 1) * viewportWidth * 0.5;
           const screenY = (1 - clipY / clipW) * viewportHeight * 0.5;
           const dx = screenX - viewportX;
           const dy = screenY - viewportY;
-          const radius = Math.max(9, this.fixture.scene.pointSizes[index]! * 0.24);
+          const radius = Math.max(9, this.scene.pointSizes[index]! * 0.24);
           const normalizedDistance = (dx * dx + dy * dy) / (radius * radius);
           if (normalizedDistance > 1) continue;
-          const score = normalizedDistance - this.fixture.scene.prominence[index]! * 0.26;
+          const score = normalizedDistance - this.scene.prominence[index]! * 0.26;
           if (score < bestScore || (score === bestScore && index < bestIndex)) {
             bestIndex = index;
             bestScore = score;
@@ -195,6 +195,6 @@ export class GalaxyLabSceneIndex {
         }
       }
     }
-    return bestIndex < 0 ? null : this.fixture.scene.nodeIds[bestIndex] ?? null;
+    return bestIndex < 0 ? null : this.scene.nodeIds[bestIndex] ?? null;
   }
 }

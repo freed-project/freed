@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createGalaxyLabFixture } from "./scene-fixture.js";
 import {
-  createGalaxyLabSceneInteractionIndex,
-  findGalaxyLabPickCellIndex,
-  findGalaxyLabSceneNodeIndex,
-  galaxyLabNodeIdHash,
-} from "./scene-interaction-index.js";
+  createFriendsGalaxySceneInteractionIndex,
+  findFriendsGalaxyPickCellIndex,
+  findFriendsGalaxySceneNodeIndex,
+  friendsGalaxyNodeIdHash,
+} from "../../src/lib/friends-galaxy-scene-interaction-index.js";
 
 describe("Friends Galaxy transferred interaction index", () => {
   const fixture = createGalaxyLabFixture({
@@ -21,7 +21,7 @@ describe("Friends Galaxy transferred interaction index", () => {
       nodeIndex += 1
     ) {
       expect(
-        findGalaxyLabSceneNodeIndex(
+        findFriendsGalaxySceneNodeIndex(
           fixture.scene,
           fixture.interactionIndex,
           fixture.scene.nodeIds[nodeIndex]!,
@@ -29,7 +29,7 @@ describe("Friends Galaxy transferred interaction index", () => {
       ).toBe(nodeIndex);
     }
     expect(
-      findGalaxyLabSceneNodeIndex(
+      findFriendsGalaxySceneNodeIndex(
         fixture.scene,
         fixture.interactionIndex,
         "person:missing",
@@ -63,7 +63,7 @@ describe("Friends Galaxy transferred interaction index", () => {
     );
     for (let nodeIndex = 0; nodeIndex < fixture.scene.nodeIds.length; nodeIndex += 1) {
       const offset = nodeIndex * 3;
-      const cellIndex = findGalaxyLabPickCellIndex(
+      const cellIndex = findFriendsGalaxyPickCellIndex(
         interactionIndex,
         Math.floor(fixture.scene.positions[offset]! / interactionIndex.pickCellSize),
         Math.floor(fixture.scene.positions[offset + 1]! / interactionIndex.pickCellSize),
@@ -82,7 +82,7 @@ describe("Friends Galaxy transferred interaction index", () => {
     const positions = new Float32Array(fixture.scene.positions);
     positions[0] = 1_000_000_000;
     positions[1] = -1_000_000_000;
-    const interactionIndex = createGalaxyLabSceneInteractionIndex({
+    const interactionIndex = createFriendsGalaxySceneInteractionIndex({
       ...fixture.scene,
       positions,
     });
@@ -93,7 +93,7 @@ describe("Friends Galaxy transferred interaction index", () => {
     expect(interactionIndex.pickCellOffsets.length).toBeLessThanOrEqual(
       fixture.scene.nodeIds.length + 1,
     );
-    expect(findGalaxyLabPickCellIndex(
+    expect(findFriendsGalaxyPickCellIndex(
       interactionIndex,
       Math.floor(positions[0]! / interactionIndex.pickCellSize),
       Math.floor(positions[1]! / interactionIndex.pickCellSize),
@@ -120,7 +120,7 @@ describe("Friends Galaxy transferred interaction index", () => {
       edgeIndices: new Uint32Array(0),
       bounds: { minX: 0, maxX: 0, minY: 0, maxY: 0, minZ: 0, maxZ: 0 },
     };
-    const interactionIndex = createGalaxyLabSceneInteractionIndex(emptyScene);
+    const interactionIndex = createFriendsGalaxySceneInteractionIndex(emptyScene);
 
     expect(interactionIndex.pickCellSlots).toEqual(new Uint32Array(2));
     expect(interactionIndex.pickCellCoordinates).toHaveLength(0);
@@ -130,13 +130,13 @@ describe("Friends Galaxy transferred interaction index", () => {
   });
 
   it("hashes ids deterministically into unsigned values", () => {
-    expect(galaxyLabNodeIdHash("person:lab-person-7")).toBe(
-      galaxyLabNodeIdHash("person:lab-person-7"),
+    expect(friendsGalaxyNodeIdHash("person:lab-person-7")).toBe(
+      friendsGalaxyNodeIdHash("person:lab-person-7"),
     );
-    expect(galaxyLabNodeIdHash("person:lab-person-7")).not.toBe(
-      galaxyLabNodeIdHash("person:lab-person-8"),
+    expect(friendsGalaxyNodeIdHash("person:lab-person-7")).not.toBe(
+      friendsGalaxyNodeIdHash("person:lab-person-8"),
     );
-    expect(galaxyLabNodeIdHash("person:lab-person-7")).toBeGreaterThanOrEqual(
+    expect(friendsGalaxyNodeIdHash("person:lab-person-7")).toBeGreaterThanOrEqual(
       0,
     );
   });

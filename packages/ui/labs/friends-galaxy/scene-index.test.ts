@@ -8,7 +8,7 @@ import {
 } from "./billboard-labels.js";
 import { createGalaxyLabFixture } from "./scene-fixture.js";
 import { compactGalaxyLabFixtureMetadata } from "./scene-fixture-worker-protocol.js";
-import { GalaxyLabSceneIndex } from "./scene-index.js";
+import { FriendsGalaxySceneIndex } from "../../src/lib/friends-galaxy-scene-index.js";
 import { projectGalaxyLabWorldPoint } from "./viewport-projection.js";
 
 const stressFixture = compactGalaxyLabFixtureMetadata(createGalaxyLabFixture({
@@ -83,7 +83,7 @@ describe("Friends Galaxy renderer lab scene index", () => {
       accountCount: 40,
       backgroundStarCount: 0,
     });
-    const index = new GalaxyLabSceneIndex(fixture);
+    const index = new FriendsGalaxySceneIndex(fixture.scene, fixture.interactionIndex);
     const state = index.interactionState({
       selectedNodeId: "person:lab-person-0",
       hoveredNodeId: null,
@@ -103,7 +103,7 @@ describe("Friends Galaxy renderer lab scene index", () => {
       accountCount: 40,
       backgroundStarCount: 0,
     });
-    const index = new GalaxyLabSceneIndex(fixture);
+    const index = new FriendsGalaxySceneIndex(fixture.scene, fixture.interactionIndex);
     const state = index.interactionState({
       selectedNodeId: "person:lab-person-1",
       hoveredNodeId: "account:lab-account-0",
@@ -121,7 +121,7 @@ describe("Friends Galaxy renderer lab scene index", () => {
       accountCount: 40,
       backgroundStarCount: 0,
     });
-    const index = new GalaxyLabSceneIndex(fixture);
+    const index = new FriendsGalaxySceneIndex(fixture.scene, fixture.interactionIndex);
     const selected = index.interactionState({
       selectedNodeId: "person:lab-person-0",
       hoveredNodeId: null,
@@ -153,7 +153,7 @@ describe("Friends Galaxy renderer lab scene index", () => {
       accountCount: 40,
       backgroundStarCount: 0,
     });
-    const index = new GalaxyLabSceneIndex(fixture);
+    const index = new FriendsGalaxySceneIndex(fixture.scene, fixture.interactionIndex);
     const flags = new Uint16Array(fixture.scene.flags);
     const selected = index.interactionState({
       selectedNodeId: "person:lab-person-0",
@@ -175,7 +175,7 @@ describe("Friends Galaxy renderer lab scene index", () => {
       accountCount: 40,
       backgroundStarCount: 0,
     });
-    const index = new GalaxyLabSceneIndex(fixture);
+    const index = new FriendsGalaxySceneIndex(fixture.scene, fixture.interactionIndex);
     const { camera, matrix: viewProjection } = viewProjectionFor({
       x: 400,
       y: 300,
@@ -202,7 +202,7 @@ describe("Friends Galaxy renderer lab scene index", () => {
       accountCount: 160,
       backgroundStarCount: 0,
     });
-    const index = new GalaxyLabSceneIndex(fixture);
+    const index = new FriendsGalaxySceneIndex(fixture.scene, fixture.interactionIndex);
     const transforms = [
       { x: 400, y: 300, scale: 0.2 },
       { x: 120, y: -80, scale: 0.72 },
@@ -224,7 +224,10 @@ describe("Friends Galaxy renderer lab scene index", () => {
   });
 
   it("keeps stress-fixture projection bounded by spatial candidates", () => {
-    const index = new GalaxyLabSceneIndex(stressFixture);
+    const index = new FriendsGalaxySceneIndex(
+      stressFixture.scene,
+      stressFixture.interactionIndex,
+    );
     const { camera, matrix } = viewProjectionFor({ x: 400, y: 300, scale: 0.2 });
     const projected = new Vector3(
       stressFixture.scene.positions[0]!,

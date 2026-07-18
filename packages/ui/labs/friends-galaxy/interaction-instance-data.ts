@@ -1,10 +1,10 @@
-import type { GalaxyLabInteractionRole } from "./scene-index.js";
+import type { FriendsGalaxyInteractionRole } from "../../src/lib/friends-galaxy-scene-index.js";
 import { GALAXY_LAB_STAR_INSTANCE_FLOATS } from "./star-instance-data.js";
 
 export function writeGalaxyLabInteractionInstances(
   target: Float32Array,
   semanticInstances: Float32Array,
-  roles: ReadonlyMap<number, GalaxyLabInteractionRole>,
+  roles: ReadonlyMap<number, FriendsGalaxyInteractionRole>,
 ): number {
   target.fill(0);
   const capacity = Math.floor(target.length / GALAXY_LAB_STAR_INSTANCE_FLOATS);

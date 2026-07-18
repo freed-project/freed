@@ -11,7 +11,7 @@ import type {
   GalaxyLabPalette,
   GalaxyLabTransform,
 } from "./scene-fixture.js";
-import { GalaxyLabSceneIndex } from "./scene-index.js";
+import { FriendsGalaxySceneIndex } from "../../src/lib/friends-galaxy-scene-index.js";
 
 function cssRgb(value: string): string {
   return hexToRgb(value).map((part) => Math.round(part * 255)).join(" ");
@@ -32,7 +32,7 @@ export class CurrentWebGl2Backend implements GalaxyLabBackend {
   private engine: IdentityGalaxyEngine | null = null;
   private fixture: GalaxyLabFixture | null = null;
   private interactionScene: GalaxyLabFixture["scene"] | null = null;
-  private sceneIndex: GalaxyLabSceneIndex | null = null;
+  private sceneIndex: FriendsGalaxySceneIndex | null = null;
   private paletteElement: HTMLElement | null = null;
   private decorativeStarCount = 0;
   private bufferUploadCount = 0;
@@ -50,7 +50,7 @@ export class CurrentWebGl2Backend implements GalaxyLabBackend {
   ): Promise<void> {
     this.fixture = fixture;
     this.interactionScene = { ...fixture.scene, flags: new Uint16Array(fixture.scene.flags) };
-    this.sceneIndex = new GalaxyLabSceneIndex(fixture);
+    this.sceneIndex = new FriendsGalaxySceneIndex(fixture.scene, fixture.interactionIndex);
     this.paletteElement = canvas.parentElement ?? document.documentElement;
     applyPalette(this.paletteElement, palette);
     this.engine = new IdentityGalaxyEngine(canvas, this.paletteElement);

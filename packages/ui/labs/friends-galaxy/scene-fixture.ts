@@ -17,9 +17,9 @@ import type {
   IdentityGraphAtlasRegion,
 } from "../../src/lib/identity-graph-atlas.js";
 import {
-  createGalaxyLabSceneInteractionIndex,
-  type GalaxyLabSceneInteractionIndex,
-} from "./scene-interaction-index.js";
+  createFriendsGalaxySceneInteractionIndex,
+  type FriendsGalaxySceneInteractionIndex,
+} from "../../src/lib/friends-galaxy-scene-interaction-index.js";
 import {
   createGalaxyLabPackedStarInstances,
   type GalaxyLabPackedStarInstances,
@@ -54,7 +54,7 @@ export interface GalaxyLabFixtureOptions {
 export interface GalaxyLabFixture {
   atlas: IdentityGraphAtlas;
   scene: IdentityGalaxyScene;
-  interactionIndex: GalaxyLabSceneInteractionIndex;
+  interactionIndex: FriendsGalaxySceneInteractionIndex;
   packedStarInstances: GalaxyLabPackedStarInstances;
   backgroundPositions: Float32Array;
   backgroundBrightness: Float32Array;
@@ -580,7 +580,7 @@ export function createGalaxyLabFixture({
     backgroundBrightness[index] = 0.2 + seededUnit(`background:${index}:brightness`) * 0.8;
   }
 
-  const interactionIndex = createGalaxyLabSceneInteractionIndex(scene);
+  const interactionIndex = createFriendsGalaxySceneInteractionIndex(scene);
   const packedStarInstances = createGalaxyLabPackedStarInstances({
     scene,
     backgroundPositions,

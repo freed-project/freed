@@ -9,7 +9,7 @@ import {
   selectGalaxyLabAvatars,
   type GalaxyLabAvatarSeed,
 } from "./avatar-atlas.js";
-import { findGalaxyLabSceneNodeIndex } from "./scene-interaction-index.js";
+import { findFriendsGalaxySceneNodeIndex } from "../../src/lib/friends-galaxy-scene-interaction-index.js";
 import {
   projectGalaxyLabWorldPoint,
   type GalaxyLabViewportProjection,
@@ -100,7 +100,7 @@ export function selectGalaxyLabLabels(
       : compact ? 32 : 64;
   const selectedPersonId = galaxyLabSelectedPersonNodeId(fixture, selectedNodeId);
   const seedForAtlasLabel = (label: GalaxyLabFixture["atlas"]["labels"][number]): GalaxyLabLabelSeed => {
-    const nodeIndex = findGalaxyLabSceneNodeIndex(
+    const nodeIndex = findFriendsGalaxySceneNodeIndex(
       fixture.scene,
       fixture.interactionIndex,
       label.nodeId,
@@ -186,7 +186,7 @@ export function selectGalaxyLabLabels(
   }
 
   if (selectedPersonId && !seeds.some((label) => label.nodeId === selectedPersonId)) {
-    const nodeIndex = findGalaxyLabSceneNodeIndex(
+    const nodeIndex = findFriendsGalaxySceneNodeIndex(
       fixture.scene,
       fixture.interactionIndex,
       selectedPersonId,

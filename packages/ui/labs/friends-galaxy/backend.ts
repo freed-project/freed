@@ -1,4 +1,5 @@
 import type { GalaxyActivityScenePatchBatch } from "./activity-scene-patches.js";
+import type { FriendsGalaxyInteraction } from "../../src/lib/friends-galaxy-scene-index.js";
 import type { GalaxyLabFixture, GalaxyLabPalette, GalaxyLabTransform } from "./scene-fixture.js";
 
 export type GalaxyLabBackendId = "current-webgl2" | "three-webgpu" | "raw-webgpu";
@@ -31,10 +32,7 @@ export interface GalaxyLabBackendMetrics {
   adapterDescription: string | null;
 }
 
-export interface GalaxyLabInteraction {
-  selectedNodeId: string | null;
-  hoveredNodeId: string | null;
-}
+export type GalaxyLabInteraction = FriendsGalaxyInteraction;
 
 export interface GalaxyLabBackend {
   readonly id: GalaxyLabBackendId;

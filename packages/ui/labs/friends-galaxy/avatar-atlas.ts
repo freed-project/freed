@@ -6,7 +6,7 @@ import {
   type GalaxyLabFixture,
   type GalaxyLabPalette,
 } from "./scene-fixture.js";
-import { findGalaxyLabSceneNodeIndex } from "./scene-interaction-index.js";
+import { findFriendsGalaxySceneNodeIndex } from "../../src/lib/friends-galaxy-scene-interaction-index.js";
 import {
   projectGalaxyLabWorldPoint,
   type GalaxyLabViewportProjection,
@@ -43,7 +43,7 @@ export function galaxyLabSelectedPersonNodeId(
   selectedNodeId: string | null,
 ): string | null {
   if (!selectedNodeId) return null;
-  const selectedIndex = findGalaxyLabSceneNodeIndex(
+  const selectedIndex = findFriendsGalaxySceneNodeIndex(
     fixture.scene,
     fixture.interactionIndex,
     selectedNodeId,
@@ -64,7 +64,7 @@ export function selectGalaxyLabAvatars(
   if (detail !== "close") return [];
   const selectedPersonId = galaxyLabSelectedPersonNodeId(fixture, selectedNodeId);
   const cap = compact ? 6 : 12;
-  const selectedIndex = findGalaxyLabSceneNodeIndex(
+  const selectedIndex = findFriendsGalaxySceneNodeIndex(
     fixture.scene,
     fixture.interactionIndex,
     selectedPersonId,
