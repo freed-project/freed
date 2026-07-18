@@ -64,6 +64,7 @@ describe("Friends Galaxy fixture worker protocol", () => {
     expect(transferables).toContain(
       fixture.interactionIndex.neighborIndices.buffer,
     );
+    expect(fixture.interactionIndex.maxNeighborCount).toBe(4);
     expect(transferables).toContain(
       fixture.interactionIndex.pickCellSlots.buffer,
     );

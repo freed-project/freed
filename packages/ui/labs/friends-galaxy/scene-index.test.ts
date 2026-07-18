@@ -88,7 +88,8 @@ describe("Friends Galaxy renderer lab scene index", () => {
       hoveredNodeId: null,
     });
 
-    expect(state.contextualEdgeIndices).toHaveLength(8);
+    expect(state.contextualEdgeCount).toBe(4);
+    expect(state.contextualEdgeIndices.length).toBeGreaterThanOrEqual(8);
     expect(state.roles.get(0)).toBe("selected");
     for (const neighbor of index.neighbors(0)) {
       expect(state.roles.get(neighbor)).toBe("linked");
@@ -107,10 +108,42 @@ describe("Friends Galaxy renderer lab scene index", () => {
       hoveredNodeId: "account:lab-account-0",
     });
 
-    expect(state.contextualEdgeIndices).toHaveLength(2);
+    expect(state.contextualEdgeCount).toBe(1);
     expect(state.roles.get(index.nodeIndex("person:lab-person-1")!)).toBe("selected");
     expect(state.roles.get(index.nodeIndex("account:lab-account-0")!)).toBe("hovered");
     expect(state.roles.get(index.nodeIndex("person:lab-person-0")!)).toBe("linked");
+  });
+
+  it("reuses interaction roles, edges, and state across focus changes", () => {
+    const fixture = createGalaxyLabFixture({
+      personCount: 10,
+      accountCount: 40,
+      backgroundStarCount: 0,
+    });
+    const index = new GalaxyLabSceneIndex(fixture);
+    const selected = index.interactionState({
+      selectedNodeId: "person:lab-person-0",
+      hoveredNodeId: null,
+    });
+    const roles = selected.roles;
+    const edgeIndices = selected.contextualEdgeIndices;
+
+    const hovered = index.interactionState({
+      selectedNodeId: "person:lab-person-1",
+      hoveredNodeId: "account:lab-account-0",
+    });
+
+    expect(hovered).toBe(selected);
+    expect(hovered.roles).toBe(roles);
+    expect(hovered.contextualEdgeIndices).toBe(edgeIndices);
+    expect(hovered.contextualEdgeCount).toBe(1);
+    expect(hovered.contextualEdgeIndices[0]).toBe(
+      index.nodeIndex("account:lab-account-0"),
+    );
+    expect(hovered.contextualEdgeIndices[1]).toBe(
+      index.nodeIndex("person:lab-person-0"),
+    );
+    expect(index.contextualEdgeCapacity).toBeGreaterThanOrEqual(hovered.contextualEdgeCount);
   });
 
   it("applies and restores interaction flags without a graph-wide reset", () => {
@@ -125,12 +158,14 @@ describe("Friends Galaxy renderer lab scene index", () => {
       selectedNodeId: "person:lab-person-0",
       hoveredNodeId: null,
     });
-    const touched = index.applyFlags(flags, selected, []);
+    const touched = new Set<number>();
+    index.applyFlags(flags, selected, [], touched);
     expect(flags[0]! & IdentityGalaxyNodeFlag.Selected).toBeTruthy();
 
     const cleared = index.interactionState({ selectedNodeId: null, hoveredNodeId: null });
-    index.applyFlags(flags, cleared, touched);
+    index.applyFlags(flags, cleared, touched, touched);
     expect(flags).toEqual(fixture.scene.flags);
+    expect(touched.size).toBe(0);
   });
 
   it("picks the prominent parent star at its projected screen position", () => {

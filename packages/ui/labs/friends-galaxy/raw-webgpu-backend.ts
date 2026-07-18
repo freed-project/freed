@@ -410,7 +410,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private avatarImages: ReadonlyMap<string, CanvasImageSource> = new Map();
   private palette: GalaxyLabPalette | null = null;
   private interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: null };
-  private touchedInteractionIndices = new Set<number>();
+  private readonly touchedInteractionIndices = new Set<number>();
+  private readonly changedInteractionIndices = new Set<number>();
   private interactionRoles: ReadonlyMap<number, GalaxyLabInteractionRole> = new Map();
   private readonly interactionScratch = new Float32Array(INSTANCE_FLOATS);
   private interactionColor: readonly [number, number, number] = [1, 1, 1];
@@ -930,6 +931,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.avatarImages = new Map();
     this.palette = null;
     this.touchedInteractionIndices.clear();
+    this.changedInteractionIndices.clear();
     this.interactionRoles = new Map();
     this.contextualEdgeCount = 0;
     this.appliedActivityNodeCount = 0;
@@ -1049,19 +1051,23 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private writeInteraction(state: GalaxyLabInteractionState): void {
     if (!this.device || !this.semanticBuffer || !this.semanticData || !this.fixture) return;
     this.interactionRoles = state.roles;
-    const nextTouched = new Set(state.roles.keys());
-    const changedIndices = new Set([...this.touchedInteractionIndices, ...nextTouched]);
-    for (const index of changedIndices) {
+    this.changedInteractionIndices.clear();
+    for (const index of this.touchedInteractionIndices) this.changedInteractionIndices.add(index);
+    for (const index of state.roles.keys()) this.changedInteractionIndices.add(index);
+    for (const index of this.changedInteractionIndices) {
       this.writeSemanticInteraction(index, state.roles.get(index) ?? null);
     }
-    this.touchedInteractionIndices = nextTouched;
-    this.writeContextEdges(state.contextualEdgeIndices);
+    this.touchedInteractionIndices.clear();
+    for (const index of state.roles.keys()) this.touchedInteractionIndices.add(index);
+    this.writeContextEdges(state.contextualEdgeIndices, state.contextualEdgeCount);
   }
 
   private writeSemanticInteraction(index: number, role: GalaxyLabInteractionRole | null): void {
     if (!this.device || !this.semanticBuffer || !this.semanticData) return;
     const sourceOffset = index * INSTANCE_FLOATS;
-    this.interactionScratch.set(this.semanticData.subarray(sourceOffset, sourceOffset + INSTANCE_FLOATS));
+    for (let component = 0; component < INSTANCE_FLOATS; component += 1) {
+      this.interactionScratch[component] = this.semanticData[sourceOffset + component]!;
+    }
     if (role) {
       const sizeScale = role === "selected" ? 1.58 : role === "hovered" ? 1.36 : 1.16;
       const colorMix = role === "linked" ? 0.62 : 1;
@@ -1077,22 +1083,22 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.bufferUploadCount += 1;
   }
 
-  private writeContextEdges(edgeIndices: Uint32Array): void {
+  private writeContextEdges(edgeIndices: Uint32Array, activeEdgeCount: number): void {
     if (!this.device || !this.edgeBuffer || !this.fixture) return;
-    const edgeCount = Math.min(MAX_CONTEXTUAL_EDGES, edgeIndices.length / 2);
+    const edgeCount = Math.min(MAX_CONTEXTUAL_EDGES, activeEdgeCount);
     this.edgeData.fill(0);
     for (let edgeIndex = 0; edgeIndex < edgeCount; edgeIndex += 1) {
       const sourceIndex = edgeIndices[edgeIndex * 2]!;
       const targetIndex = edgeIndices[edgeIndex * 2 + 1]!;
       const targetOffset = edgeIndex * EDGE_INSTANCE_FLOATS;
-      this.edgeData.set(
-        this.fixture.scene.positions.subarray(sourceIndex * 3, sourceIndex * 3 + 3),
-        targetOffset,
-      );
-      this.edgeData.set(
-        this.fixture.scene.positions.subarray(targetIndex * 3, targetIndex * 3 + 3),
-        targetOffset + 3,
-      );
+      const sourceOffset = sourceIndex * 3;
+      const linkedOffset = targetIndex * 3;
+      this.edgeData[targetOffset] = this.fixture.scene.positions[sourceOffset]!;
+      this.edgeData[targetOffset + 1] = this.fixture.scene.positions[sourceOffset + 1]!;
+      this.edgeData[targetOffset + 2] = this.fixture.scene.positions[sourceOffset + 2]!;
+      this.edgeData[targetOffset + 3] = this.fixture.scene.positions[linkedOffset]!;
+      this.edgeData[targetOffset + 4] = this.fixture.scene.positions[linkedOffset + 1]!;
+      this.edgeData[targetOffset + 5] = this.fixture.scene.positions[linkedOffset + 2]!;
       this.edgeData[targetOffset + 6] = this.interactionColor[0];
       this.edgeData[targetOffset + 7] = this.interactionColor[1];
       this.edgeData[targetOffset + 8] = this.interactionColor[2];

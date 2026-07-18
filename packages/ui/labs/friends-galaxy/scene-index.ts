@@ -11,6 +11,7 @@ export type GalaxyLabInteractionRole = "selected" | "hovered" | "linked";
 export interface GalaxyLabInteractionState {
   activeNodeId: string | null;
   contextualEdgeIndices: Uint32Array;
+  contextualEdgeCount: number;
   roles: ReadonlyMap<number, GalaxyLabInteractionRole>;
 }
 
@@ -18,12 +19,22 @@ export class GalaxyLabSceneIndex {
   private readonly fixture: GalaxyLabFixture;
   private readonly neighborOffsets: Uint32Array;
   private readonly neighborIndices: Uint32Array;
+  private readonly interactionRoles = new Map<number, GalaxyLabInteractionRole>();
+  private readonly interactionStateValue: GalaxyLabInteractionState;
   private lastPickCandidateCountValue = 0;
 
   constructor(fixture: GalaxyLabFixture) {
     this.fixture = fixture;
     this.neighborOffsets = fixture.interactionIndex.neighborOffsets;
     this.neighborIndices = fixture.interactionIndex.neighborIndices;
+    this.interactionStateValue = {
+      activeNodeId: null,
+      contextualEdgeIndices: new Uint32Array(
+        fixture.interactionIndex.maxNeighborCount * 2,
+      ),
+      contextualEdgeCount: 0,
+      roles: this.interactionRoles,
+    };
   }
 
   nodeIndex(nodeId: string | null): number | null {
@@ -48,34 +59,44 @@ export class GalaxyLabSceneIndex {
     return this.fixture.scene.nodeIds.length;
   }
 
+  get contextualEdgeCapacity(): number {
+    return this.interactionStateValue.contextualEdgeIndices.length / 2;
+  }
+
   interactionState(interaction: GalaxyLabInteraction): GalaxyLabInteractionState {
-    const roles = new Map<number, GalaxyLabInteractionRole>();
+    const state = this.interactionStateValue;
+    const roles = this.interactionRoles;
+    roles.clear();
+    state.activeNodeId = null;
+    state.contextualEdgeCount = 0;
     const selectedIndex = this.nodeIndex(interaction.selectedNodeId);
     const hoveredIndex = this.nodeIndex(interaction.hoveredNodeId);
     if (selectedIndex !== null) roles.set(selectedIndex, "selected");
     if (hoveredIndex !== null && hoveredIndex !== selectedIndex) roles.set(hoveredIndex, "hovered");
     const activeIndex = hoveredIndex ?? selectedIndex;
-    if (activeIndex === null) {
-      return { activeNodeId: null, contextualEdgeIndices: new Uint32Array(0), roles };
-    }
-    const neighbors = this.neighbors(activeIndex);
-    const edgeIndices = new Uint32Array(neighbors.length * 2);
-    for (let index = 0; index < neighbors.length; index += 1) {
-      const neighbor = neighbors[index]!;
+    if (activeIndex === null) return state;
+    const neighborStart = this.neighborOffsets[activeIndex] ?? 0;
+    const neighborEnd = this.neighborOffsets[activeIndex + 1] ?? neighborStart;
+    const edgeCount = neighborEnd - neighborStart;
+    for (let index = 0; index < edgeCount; index += 1) {
+      const neighbor = this.neighborIndices[neighborStart + index]!;
       if (!roles.has(neighbor)) roles.set(neighbor, "linked");
-      edgeIndices[index * 2] = activeIndex;
-      edgeIndices[index * 2 + 1] = neighbor;
+      state.contextualEdgeIndices[index * 2] = activeIndex;
+      state.contextualEdgeIndices[index * 2 + 1] = neighbor;
     }
-    return {
-      activeNodeId: this.fixture.scene.nodeIds[activeIndex] ?? null,
-      contextualEdgeIndices: edgeIndices,
-      roles,
-    };
+    state.activeNodeId = this.fixture.scene.nodeIds[activeIndex] ?? null;
+    state.contextualEdgeCount = edgeCount;
+    return state;
   }
 
-  applyFlags(target: Uint16Array, state: GalaxyLabInteractionState, previousIndices: Iterable<number>): Set<number> {
+  applyFlags(
+    target: Uint16Array,
+    state: GalaxyLabInteractionState,
+    previousIndices: Iterable<number>,
+    touched: Set<number>,
+  ): void {
     for (const index of previousIndices) target[index] = this.fixture.scene.flags[index]!;
-    const touched = new Set<number>();
+    touched.clear();
     for (const [index, role] of state.roles) {
       let flags = this.fixture.scene.flags[index]!;
       if (role === "selected") flags |= IdentityGalaxyNodeFlag.Selected;
@@ -84,7 +105,6 @@ export class GalaxyLabSceneIndex {
       target[index] = flags;
       touched.add(index);
     }
-    return touched;
   }
 
   pickNode(

@@ -47,6 +47,7 @@ describe("Friends Galaxy transferred interaction index", () => {
     expect(fixture.interactionIndex.neighborOffsets.at(-1)).toBe(
       fixture.scene.edgeIndices.length,
     );
+    expect(fixture.interactionIndex.maxNeighborCount).toBe(4);
   });
 
   it("indexes every star exactly once in transferable pick cells", () => {
@@ -125,6 +126,7 @@ describe("Friends Galaxy transferred interaction index", () => {
     expect(interactionIndex.pickCellCoordinates).toHaveLength(0);
     expect(interactionIndex.pickCellOffsets).toEqual(new Uint32Array(1));
     expect(interactionIndex.pickNodeIndices).toHaveLength(0);
+    expect(interactionIndex.maxNeighborCount).toBe(0);
   });
 
   it("hashes ids deterministically into unsigned values", () => {

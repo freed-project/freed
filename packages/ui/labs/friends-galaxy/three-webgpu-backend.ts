@@ -56,6 +56,11 @@ interface GalaxyBillboardBatch {
   viewport: THREE.Vector2;
 }
 
+interface GalaxyAttributeUpdateRange {
+  start: number;
+  count: number;
+}
+
 function adapterLabel(adapter: GPUAdapter): string {
   const info = adapter.info;
   return [info.vendor, info.architecture, info.device, info.description]
@@ -211,7 +216,11 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
   private backgroundColors: Float32Array | null = null;
   private palette: GalaxyLabPalette | null = null;
   private interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: null };
-  private touchedInteractionIndices = new Set<number>();
+  private readonly touchedInteractionIndices = new Set<number>();
+  private readonly changedInteractionIndices = new Set<number>();
+  private colorUpdateRangeScratch: GalaxyAttributeUpdateRange[] = [];
+  private sizeUpdateRangeScratch: GalaxyAttributeUpdateRange[] = [];
+  private interactionColor: readonly [number, number, number] = [1, 1, 1];
   private width = 1;
   private height = 1;
   private pixelRatio = 1;
@@ -249,6 +258,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.fixture = fixture;
     this.sceneIndex = new GalaxyLabSceneIndex(fixture);
     this.palette = palette;
+    this.interactionColor = hexToRgb(palette.selection);
     this.renderer = new THREE.WebGPURenderer({
       canvas,
       device,
@@ -285,7 +295,19 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       0.62,
     );
     this.edgeGeometry = new LineSegmentsGeometry();
-    this.edgeGeometry.setPositions(new Float32Array([0, 0, 0, 0, 0, 0]));
+    this.edgePositions = new Float32Array(
+      Math.max(1, this.sceneIndex.contextualEdgeCapacity) * 6,
+    );
+    const updateRangeCapacity = Math.max(4, (this.sceneIndex.contextualEdgeCapacity + 2) * 2);
+    this.colorUpdateRangeScratch = Array.from(
+      { length: updateRangeCapacity },
+      () => ({ start: 0, count: 3 }),
+    );
+    this.sizeUpdateRangeScratch = Array.from(
+      { length: updateRangeCapacity },
+      () => ({ start: 0, count: 1 }),
+    );
+    this.edgeGeometry.setPositions(this.edgePositions);
     this.edgeGeometry.instanceCount = 0;
     this.edgeMaterial = new THREE.Line2NodeMaterial({
       color: palette.selection,
@@ -328,6 +350,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
   setPalette(palette: GalaxyLabPalette): void {
     if (!this.renderer || !this.fixture || !this.semanticColors || !this.backgroundColors) return;
     this.palette = palette;
+    this.interactionColor = hexToRgb(palette.selection);
     this.renderer.setClearColor(palette.background, 1);
     this.edgeMaterial?.color.set(palette.selection);
     this.applyMaterialOpacity(palette);
@@ -335,8 +358,9 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     const state = this.sceneIndex?.interactionState(this.interaction) ?? null;
     if (state) {
       this.applyInteractionRoles(state.roles);
-      this.touchedInteractionIndices = new Set(state.roles.keys());
-      this.writeContextEdges(state.contextualEdgeIndices);
+      this.touchedInteractionIndices.clear();
+      for (const index of state.roles.keys()) this.touchedInteractionIndices.add(index);
+      this.writeContextEdges(state.contextualEdgeIndices, state.contextualEdgeCount);
     }
     if (this.semanticBatch) {
       this.semanticBatch.colorAttribute.clearUpdateRanges();
@@ -475,6 +499,9 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.backgroundColors = null;
     this.palette = null;
     this.touchedInteractionIndices.clear();
+    this.changedInteractionIndices.clear();
+    this.colorUpdateRangeScratch = [];
+    this.sizeUpdateRangeScratch = [];
     this.contextualEdgeCount = 0;
   }
 
@@ -529,37 +556,44 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       !this.semanticBatch || !this.semanticColors || !this.baseSemanticColors ||
       !this.semanticSizes || !this.baseSemanticSizes
     ) return;
-    const nextTouched = new Set(state.roles.keys());
-    const changedIndices = new Set([...this.touchedInteractionIndices, ...nextTouched]);
-    for (const index of changedIndices) {
+    this.changedInteractionIndices.clear();
+    for (const index of this.touchedInteractionIndices) this.changedInteractionIndices.add(index);
+    for (const index of state.roles.keys()) this.changedInteractionIndices.add(index);
+    for (const index of this.changedInteractionIndices) {
       const colorOffset = index * 3;
-      this.semanticColors.set(
-        this.baseSemanticColors.subarray(colorOffset, colorOffset + 3),
-        colorOffset,
-      );
+      this.semanticColors[colorOffset] = this.baseSemanticColors[colorOffset]!;
+      this.semanticColors[colorOffset + 1] = this.baseSemanticColors[colorOffset + 1]!;
+      this.semanticColors[colorOffset + 2] = this.baseSemanticColors[colorOffset + 2]!;
       this.semanticSizes[index] = this.baseSemanticSizes[index]!;
     }
     this.applyInteractionRoles(state.roles);
-    if (changedIndices.size > 0) {
-      this.semanticBatch.colorAttribute.clearUpdateRanges();
-      this.semanticBatch.sizeAttribute.clearUpdateRanges();
-      for (const index of changedIndices) {
-        this.semanticBatch.colorAttribute.addUpdateRange(index * 3, 3);
-        this.semanticBatch.sizeAttribute.addUpdateRange(index, 1);
+    if (this.changedInteractionIndices.size > 0) {
+      const colorUpdateRanges = this.semanticBatch.colorAttribute.updateRanges;
+      const sizeUpdateRanges = this.semanticBatch.sizeAttribute.updateRanges;
+      colorUpdateRanges.length = 0;
+      sizeUpdateRanges.length = 0;
+      let rangeIndex = 0;
+      for (const index of this.changedInteractionIndices) {
+        const colorRange = this.colorUpdateRangeScratch[rangeIndex]!;
+        const sizeRange = this.sizeUpdateRangeScratch[rangeIndex]!;
+        colorRange.start = index * 3;
+        sizeRange.start = index;
+        colorUpdateRanges.push(colorRange);
+        sizeUpdateRanges.push(sizeRange);
+        rangeIndex += 1;
       }
       this.semanticBatch.colorAttribute.needsUpdate = true;
       this.semanticBatch.sizeAttribute.needsUpdate = true;
       this.bufferUploadCount += 2;
     }
-    this.touchedInteractionIndices = nextTouched;
-    this.writeContextEdges(state.contextualEdgeIndices);
+    this.touchedInteractionIndices.clear();
+    for (const index of state.roles.keys()) this.touchedInteractionIndices.add(index);
+    this.writeContextEdges(state.contextualEdgeIndices, state.contextualEdgeCount);
   }
 
   private applyInteractionRoles(roles: ReadonlyMap<number, GalaxyLabInteractionRole>): void {
     if (!this.semanticColors || !this.semanticSizes) return;
-    const [selectionRed, selectionGreen, selectionBlue] = hexToRgb(
-      this.palette?.selection ?? "#ffffff",
-    );
+    const [selectionRed, selectionGreen, selectionBlue] = this.interactionColor;
     for (const [index, role] of roles) {
       const sizeScale = role === "selected" ? 1.58 : role === "hovered" ? 1.36 : 1.16;
       const colorMix = role === "linked" ? 0.62 : 1;
@@ -574,29 +608,33 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     }
   }
 
-  private writeContextEdges(edgeIndices: Uint32Array): void {
+  private writeContextEdges(edgeIndices: Uint32Array, activeEdgeCount: number): void {
     if (!this.fixture || !this.edgeGeometry || !this.edgeLines) return;
-    const edgeCount = edgeIndices.length / 2;
+    const edgeCount = Math.min(activeEdgeCount, this.edgePositions.length / 6);
     this.contextualEdgeCount = edgeCount;
     if (edgeCount === 0) {
       this.edgeGeometry.instanceCount = 0;
       this.edgeLines.visible = false;
       return;
     }
-    this.edgePositions = new Float32Array(edgeCount * 6);
     for (let edgeIndex = 0; edgeIndex < edgeCount; edgeIndex += 1) {
       const sourceIndex = edgeIndices[edgeIndex * 2]!;
       const targetIndex = edgeIndices[edgeIndex * 2 + 1]!;
-      this.edgePositions.set(
-        this.fixture.scene.positions.subarray(sourceIndex * 3, sourceIndex * 3 + 3),
-        edgeIndex * 6,
-      );
-      this.edgePositions.set(
-        this.fixture.scene.positions.subarray(targetIndex * 3, targetIndex * 3 + 3),
-        edgeIndex * 6 + 3,
-      );
+      const targetOffset = edgeIndex * 6;
+      const sourceOffset = sourceIndex * 3;
+      const linkedOffset = targetIndex * 3;
+      this.edgePositions[targetOffset] = this.fixture.scene.positions[sourceOffset]!;
+      this.edgePositions[targetOffset + 1] = this.fixture.scene.positions[sourceOffset + 1]!;
+      this.edgePositions[targetOffset + 2] = this.fixture.scene.positions[sourceOffset + 2]!;
+      this.edgePositions[targetOffset + 3] = this.fixture.scene.positions[linkedOffset]!;
+      this.edgePositions[targetOffset + 4] = this.fixture.scene.positions[linkedOffset + 1]!;
+      this.edgePositions[targetOffset + 5] = this.fixture.scene.positions[linkedOffset + 2]!;
     }
-    this.edgeGeometry.setPositions(this.edgePositions);
+    const startAttribute = this.edgeGeometry.getAttribute("instanceStart");
+    if (startAttribute instanceof THREE.InterleavedBufferAttribute) {
+      startAttribute.data.needsUpdate = true;
+    }
+    this.edgeGeometry.instanceCount = edgeCount;
     this.edgeLines.visible = true;
     this.bufferUploadCount += 1;
   }

@@ -39,7 +39,7 @@ export class CurrentWebGl2Backend implements GalaxyLabBackend {
   private adapterDescription: string | null = null;
   private fallbackReason: string | null = null;
   private compactViewport: boolean | null = null;
-  private touchedInteractionIndices = new Set<number>();
+  private readonly touchedInteractionIndices = new Set<number>();
   private selectedPersonId: string | null = null;
   private selectedAccountId: string | null = null;
 
@@ -92,9 +92,10 @@ export class CurrentWebGl2Backend implements GalaxyLabBackend {
   setInteraction(interaction: GalaxyLabInteraction): void {
     if (!this.engine || !this.interactionScene || !this.sceneIndex) return;
     const state = this.sceneIndex.interactionState(interaction);
-    this.touchedInteractionIndices = this.sceneIndex.applyFlags(
+    this.sceneIndex.applyFlags(
       this.interactionScene.flags,
       state,
+      this.touchedInteractionIndices,
       this.touchedInteractionIndices,
     );
     const selectedIndex = this.sceneIndex.nodeIndex(interaction.selectedNodeId);

@@ -8,6 +8,7 @@ export interface GalaxyLabSceneInteractionIndex {
   nodeIndexSlots: Uint32Array;
   neighborOffsets: Uint32Array;
   neighborIndices: Uint32Array;
+  maxNeighborCount: number;
   pickCellSlots: Uint32Array;
   pickCellCoordinates: Int32Array;
   pickCellOffsets: Uint32Array;
@@ -59,6 +60,10 @@ export function createGalaxyLabSceneInteractionIndex(
     neighborOffsets[source + 1] += 1;
     neighborOffsets[target + 1] += 1;
   }
+  let maxNeighborCount = 0;
+  for (let index = 1; index < neighborOffsets.length; index += 1) {
+    maxNeighborCount = Math.max(maxNeighborCount, neighborOffsets[index]!);
+  }
   for (let index = 1; index < neighborOffsets.length; index += 1) {
     neighborOffsets[index] += neighborOffsets[index - 1]!;
   }
@@ -79,6 +84,7 @@ export function createGalaxyLabSceneInteractionIndex(
       nodeIndexSlots,
       neighborOffsets,
       neighborIndices,
+      maxNeighborCount,
       pickCellSlots: new Uint32Array(2),
       pickCellCoordinates: new Int32Array(0),
       pickCellOffsets: new Uint32Array(1),
@@ -155,6 +161,7 @@ export function createGalaxyLabSceneInteractionIndex(
     nodeIndexSlots,
     neighborOffsets,
     neighborIndices,
+    maxNeighborCount,
     pickCellSlots,
     pickCellCoordinates,
     pickCellOffsets,

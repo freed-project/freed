@@ -194,6 +194,8 @@ Active pointer movement now reuses viewport bounds captured at gesture start and
 
 Pinch and wheel movement now update one persistent settle deadline instead of canceling and allocating a browser timeout on every event. The animation loop consumes only the latest generation after 140 ms, then restores render density, detail, and bounded avatar admission once.
 
+Hover and selection now reuse one scene-index state object, one role map, and one fixed-capacity contextual-edge buffer sized from the worker-reported maximum adjacency degree. Raw WebGPU, the Three.js reference, and the current WebGL2 fallback retain their touched and changed index sets instead of rebuilding maps, sets, typed views, or edge arrays for each focus change. The Three.js reference also allocates its maximum contextual-edge geometry and sparse attribute-update records once during startup. Renderer startup does not scan the transferred adjacency table.
+
 Provider sectors now follow deterministic logarithmic spirals shared by layout and rendering. The default Nebula treatment combines procedural arms and themed dust without per-star scene objects. Linked accounts stay close to their parent identity, billboard labels sit close to their parent star with a stronger outline, and semantic links remain absent until one star in that identity system is hovered or selected.
 
 ### Scale targets
@@ -411,6 +413,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.77 | Remove diagnostic array shifts and DOM refreshes from the active camera path with fixed typed sample rings | High | Done |
 | 8.78 | Remove point allocations and repeated viewport geometry reads from pointer, hover, and Safari gesture movement | High | Done |
 | 8.79 | Replace per-event settle timeout churn with one animation-loop deadline scheduler | High | Done |
+| 8.80 | Reuse interaction roles, contextual-edge storage, sparse update ranges, and changed-index sets across every hover and selection | High | Done |
 
 ---
 
@@ -501,6 +504,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Gesture diagnostics use fixed typed rings and defer panel DOM updates until camera settle
 - [x] Active pointer and Safari gesture movement reuses captured bounds and scalar state without per-event point allocation
 - [x] Pinch and wheel movement update one scalar settle deadline without allocating or canceling per-event browser timers
+- [x] Hover and selection reuse fixed interaction payloads and renderer scratch storage without rebuilding maps, sets, typed views, or edge geometry
 - [x] Linked accounts occupy complete local orbits, and dense people fields reserve enough space for those systems
 - [x] Galaxy compilation indexes accounts by person once instead of scanning the full account library for every identity
 - [x] Mobile pinch hands directly to one-finger pan when either touch lifts
