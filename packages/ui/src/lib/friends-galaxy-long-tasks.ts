@@ -1,17 +1,17 @@
-export interface GalaxyLabLongTaskEntry {
+export interface FriendsGalaxyLongTaskEntry {
   startTime: number;
   duration: number;
 }
 
-export interface GalaxyLabLongTaskObserver {
+export interface FriendsGalaxyLongTaskObserver {
   disconnect(): void;
 }
 
-export type GalaxyLabLongTaskObserverFactory = (
-  onEntries: (entries: readonly GalaxyLabLongTaskEntry[]) => void,
-) => GalaxyLabLongTaskObserver | null;
+export type FriendsGalaxyLongTaskObserverFactory = (
+  onEntries: (entries: readonly FriendsGalaxyLongTaskEntry[]) => void,
+) => FriendsGalaxyLongTaskObserver | null;
 
-export interface GalaxyLabLongTaskSnapshot {
+export interface FriendsGalaxyLongTaskSnapshot {
   supported: boolean;
   count: number | null;
   totalDurationMs: number | null;
@@ -20,8 +20,8 @@ export interface GalaxyLabLongTaskSnapshot {
 }
 
 function browserLongTaskObserverFactory(
-  onEntries: (entries: readonly GalaxyLabLongTaskEntry[]) => void,
-): GalaxyLabLongTaskObserver | null {
+  onEntries: (entries: readonly FriendsGalaxyLongTaskEntry[]) => void,
+): FriendsGalaxyLongTaskObserver | null {
   if (
     typeof PerformanceObserver === "undefined" ||
     !PerformanceObserver.supportedEntryTypes?.includes("longtask")
@@ -40,18 +40,20 @@ function browserLongTaskObserverFactory(
   }
 }
 
-export class GalaxyLabLongTaskMonitor {
-  private readonly observer: GalaxyLabLongTaskObserver | null;
+export class FriendsGalaxyLongTaskMonitor {
+  private readonly observer: FriendsGalaxyLongTaskObserver | null;
   private taskCount = 0;
   private totalDurationMs = 0;
   private worstDurationMs = 0;
   private latestStartTime = 0;
 
-  constructor(factory: GalaxyLabLongTaskObserverFactory = browserLongTaskObserverFactory) {
+  constructor(
+    factory: FriendsGalaxyLongTaskObserverFactory = browserLongTaskObserverFactory,
+  ) {
     this.observer = factory((entries) => this.record(entries));
   }
 
-  snapshot(): GalaxyLabLongTaskSnapshot {
+  snapshot(): FriendsGalaxyLongTaskSnapshot {
     if (!this.observer) {
       return {
         supported: false,
@@ -74,7 +76,7 @@ export class GalaxyLabLongTaskMonitor {
     this.observer?.disconnect();
   }
 
-  private record(entries: readonly GalaxyLabLongTaskEntry[]): void {
+  private record(entries: readonly FriendsGalaxyLongTaskEntry[]): void {
     for (const entry of entries) {
       if (
         !Number.isFinite(entry.startTime) ||

@@ -21,7 +21,7 @@ import type {
   GalaxyLabViewDetail,
 } from "./backend.js";
 import { galaxyLabRenderPixelRatio, hexToRgb } from "./backend.js";
-import { GalaxyLabBackendHealth } from "./backend-health.js";
+import { FriendsGalaxyBackendHealth } from "../../src/lib/friends-galaxy-backend-health.js";
 import { createGalaxyLabAvatarAtlas } from "./avatar-atlas.js";
 import {
   createGalaxyLabLabelAtlas,
@@ -240,7 +240,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
   private avatarAtlasBuildCount = 0;
   private adapterDescription: string | null = null;
   private fallbackReason: string | null = null;
-  private readonly backendHealth = new GalaxyLabBackendHealth();
+  private readonly backendHealth = new FriendsGalaxyBackendHealth();
   private disposed = false;
 
   async initialize(

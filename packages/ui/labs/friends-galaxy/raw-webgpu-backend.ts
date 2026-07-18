@@ -7,7 +7,7 @@ import type {
 } from "./backend.js";
 import { galaxyLabRenderPixelRatio, hexToRgb } from "./backend.js";
 import type { GalaxyActivityScenePatchBatch } from "./activity-scene-patches.js";
-import { GalaxyLabBackendHealth } from "./backend-health.js";
+import { FriendsGalaxyBackendHealth } from "../../src/lib/friends-galaxy-backend-health.js";
 import {
   createGalaxyLabAvatarAtlas,
   type GalaxyLabAvatarAtlas,
@@ -542,7 +542,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private avatarAtlasBuildCount = 0;
   private fallbackReason: string | null = null;
   private adapterDescription: string | null = null;
-  private readonly backendHealth = new GalaxyLabBackendHealth();
+  private readonly backendHealth = new FriendsGalaxyBackendHealth();
   private disposed = false;
 
   async initialize(

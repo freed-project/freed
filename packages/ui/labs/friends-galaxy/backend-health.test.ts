@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { GalaxyLabBackendHealth } from "./backend-health.js";
+import { FriendsGalaxyBackendHealth } from "../../src/lib/friends-galaxy-backend-health.js";
 
 describe("Friends Galaxy backend health", () => {
   it("keeps the first fatal error until the shell consumes it", () => {
-    const health = new GalaxyLabBackendHealth();
+    const health = new FriendsGalaxyBackendHealth();
     health.reportFatalError("GPU device lost");
     health.reportFatalError("Later queue failure");
 
@@ -12,14 +12,14 @@ describe("Friends Galaxy backend health", () => {
   });
 
   it("ignores empty reports", () => {
-    const health = new GalaxyLabBackendHealth();
+    const health = new FriendsGalaxyBackendHealth();
     health.reportFatalError("   ");
 
     expect(health.takeFatalError()).toBeNull();
   });
 
   it("clears an intentional teardown signal", () => {
-    const health = new GalaxyLabBackendHealth();
+    const health = new FriendsGalaxyBackendHealth();
     health.reportFatalError("GPU device destroyed");
     health.clear();
 

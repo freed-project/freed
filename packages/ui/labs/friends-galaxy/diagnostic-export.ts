@@ -12,7 +12,7 @@ import type {
   GalaxyLabTransform,
 } from "./scene-fixture.js";
 import type { GalaxyLabFixtureWorkerReceipt } from "./scene-fixture-worker-protocol.js";
-import type { GalaxyLabLongTaskSnapshot } from "./long-task-monitor.js";
+import type { FriendsGalaxyLongTaskSnapshot } from "../../src/lib/friends-galaxy-long-tasks.js";
 
 export const GALAXY_LAB_DIAGNOSTIC_SCHEMA_VERSION = 1;
 
@@ -41,7 +41,7 @@ export interface GalaxyLabDiagnosticSnapshotInput {
   settlePending: boolean;
   renderResizePending: boolean;
   recoveryReason: string | null;
-  longTasks: GalaxyLabLongTaskSnapshot;
+  longTasks: FriendsGalaxyLongTaskSnapshot;
   frame: GalaxyLabFrameStats;
   submit: GalaxyLabFrameStats;
   activityPatchKeyCount: number;
@@ -128,7 +128,7 @@ export interface GalaxyLabDiagnosticSnapshot {
     recoveryReason: string | null;
     frame: GalaxyLabFrameStats;
     submit: GalaxyLabFrameStats;
-    longTasks: GalaxyLabLongTaskSnapshot;
+    longTasks: FriendsGalaxyLongTaskSnapshot;
   };
 }
 

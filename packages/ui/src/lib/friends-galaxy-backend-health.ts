@@ -1,4 +1,4 @@
-export class GalaxyLabBackendHealth {
+export class FriendsGalaxyBackendHealth {
   private fatalError: string | null = null;
 
   reportFatalError(reason: string): void {

@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  GalaxyLabLongTaskMonitor,
-  type GalaxyLabLongTaskEntry,
-  type GalaxyLabLongTaskObserverFactory,
-} from "./long-task-monitor.js";
+  FriendsGalaxyLongTaskMonitor,
+  type FriendsGalaxyLongTaskEntry,
+  type FriendsGalaxyLongTaskObserverFactory,
+} from "../../src/lib/friends-galaxy-long-tasks.js";
 
 describe("Friends Galaxy long-task monitor", () => {
   it("reports unsupported browsers without installing a timer", () => {
-    const monitor = new GalaxyLabLongTaskMonitor(() => null);
+    const monitor = new FriendsGalaxyLongTaskMonitor(() => null);
 
     expect(monitor.snapshot()).toEqual({
       supported: false,
@@ -19,13 +19,13 @@ describe("Friends Galaxy long-task monitor", () => {
   });
 
   it("accumulates bounded scalar evidence and ignores malformed entries", () => {
-    let emit: ((entries: readonly GalaxyLabLongTaskEntry[]) => void) | null = null;
+    let emit: ((entries: readonly FriendsGalaxyLongTaskEntry[]) => void) | null = null;
     const disconnect = vi.fn();
-    const factory: GalaxyLabLongTaskObserverFactory = (onEntries) => {
+    const factory: FriendsGalaxyLongTaskObserverFactory = (onEntries) => {
       emit = onEntries;
       return { disconnect };
     };
-    const monitor = new GalaxyLabLongTaskMonitor(factory);
+    const monitor = new FriendsGalaxyLongTaskMonitor(factory);
 
     emit!([
       { startTime: 100, duration: 52 },

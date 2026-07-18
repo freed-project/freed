@@ -52,15 +52,15 @@ import { shouldContinueFriendsGalaxyFrame } from "../../src/lib/friends-galaxy-f
 import { FriendsGalaxyInertialPan } from "../../src/lib/friends-galaxy-inertia.js";
 import { FriendsGalaxyPointerRoster } from "../../src/lib/friends-galaxy-pointer-roster.js";
 import {
-  GalaxyLabSampleRing,
-  shouldRefreshGalaxyLabDiagnostics,
-} from "./sample-ring.js";
+  FriendsGalaxySampleRing,
+  shouldRefreshFriendsGalaxyDiagnostics,
+} from "../../src/lib/friends-galaxy-samples.js";
 import { FriendsGalaxySettleScheduler } from "../../src/lib/friends-galaxy-settle.js";
 import {
   createGalaxyLabDiagnosticSnapshot,
   serializeGalaxyLabDiagnosticSnapshot,
 } from "./diagnostic-export.js";
-import { GalaxyLabLongTaskMonitor } from "./long-task-monitor.js";
+import { FriendsGalaxyLongTaskMonitor } from "../../src/lib/friends-galaxy-long-tasks.js";
 import {
   galaxyLabGraphDescription,
   galaxyLabRecoveryAnnouncement,
@@ -134,7 +134,7 @@ viewport.dataset.touchInputMode = nativeTouchInput
   ? "native-touch-events"
   : "pointer-events";
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-const longTaskMonitor = new GalaxyLabLongTaskMonitor();
+const longTaskMonitor = new FriendsGalaxyLongTaskMonitor();
 let animatePreferenceTouched = false;
 animateControl.checked = !animationProbeDisabled && !reducedMotionQuery.matches;
 
@@ -245,8 +245,8 @@ viewport.dataset.presentationVisible = "true";
 canvasHost.dataset.presentationVisible = "true";
 const settleScheduler = new FriendsGalaxySettleScheduler();
 const inertialPan = new FriendsGalaxyInertialPan();
-const frameSamples = new GalaxyLabSampleRing(240);
-const submitSamples = new GalaxyLabSampleRing(240);
+const frameSamples = new FriendsGalaxySampleRing(240);
+const submitSamples = new FriendsGalaxySampleRing(240);
 const nodeLabelById = new Map(fixture.atlas.nodes.map((node) => [node.id, node.label]));
 let interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: null };
 let avatarAdmissionGeneration = 0;
@@ -1040,7 +1040,7 @@ function renderFrame(timeMs: number): void {
   }
   if (
     (metricsDirty || animateControl.checked) &&
-    shouldRefreshGalaxyLabDiagnostics(cameraInMotion, timeMs - lastMetricsAt)
+    shouldRefreshFriendsGalaxyDiagnostics(cameraInMotion, timeMs - lastMetricsAt)
   ) {
     updateMetrics();
     metricsDirty = false;

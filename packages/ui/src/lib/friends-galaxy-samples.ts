@@ -1,4 +1,4 @@
-export class GalaxyLabSampleRing {
+export class FriendsGalaxySampleRing {
   private readonly samples: Float64Array;
   private nextIndex = 0;
   private sampleCount = 0;
@@ -36,7 +36,7 @@ export class GalaxyLabSampleRing {
   }
 }
 
-export function shouldRefreshGalaxyLabDiagnostics(
+export function shouldRefreshFriendsGalaxyDiagnostics(
   cameraInMotion: boolean,
   elapsedMs: number,
 ): boolean {

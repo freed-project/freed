@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  GalaxyLabSampleRing,
-  shouldRefreshGalaxyLabDiagnostics,
-} from "./sample-ring.js";
+  FriendsGalaxySampleRing,
+  shouldRefreshFriendsGalaxyDiagnostics,
+} from "../../src/lib/friends-galaxy-samples.js";
 
 describe("Friends Galaxy diagnostic sample ring", () => {
   it("retains samples in insertion order before capacity", () => {
-    const ring = new GalaxyLabSampleRing(4);
+    const ring = new FriendsGalaxySampleRing(4);
     ring.push(1);
     ring.push(2);
 
@@ -15,7 +15,7 @@ describe("Friends Galaxy diagnostic sample ring", () => {
   });
 
   it("overwrites the oldest sample without changing capacity", () => {
-    const ring = new GalaxyLabSampleRing(3);
+    const ring = new FriendsGalaxySampleRing(3);
     ring.push(1);
     ring.push(2);
     ring.push(3);
@@ -27,7 +27,7 @@ describe("Friends Galaxy diagnostic sample ring", () => {
   });
 
   it("clears state and ignores non-finite samples", () => {
-    const ring = new GalaxyLabSampleRing(2);
+    const ring = new FriendsGalaxySampleRing(2);
     ring.push(Number.NaN);
     ring.push(1);
     ring.clear();
@@ -37,11 +37,11 @@ describe("Friends Galaxy diagnostic sample ring", () => {
   });
 
   it("defers diagnostics for the complete camera motion window", () => {
-    expect(shouldRefreshGalaxyLabDiagnostics(true, 5_000)).toBe(false);
-    expect(shouldRefreshGalaxyLabDiagnostics(false, 499)).toBe(false);
+    expect(shouldRefreshFriendsGalaxyDiagnostics(true, 5_000)).toBe(false);
+    expect(shouldRefreshFriendsGalaxyDiagnostics(false, 499)).toBe(false);
   });
 
   it("refreshes diagnostics after motion settles and the interval elapses", () => {
-    expect(shouldRefreshGalaxyLabDiagnostics(false, 500)).toBe(true);
+    expect(shouldRefreshFriendsGalaxyDiagnostics(false, 500)).toBe(true);
   });
 });
