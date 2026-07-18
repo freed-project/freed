@@ -8,13 +8,11 @@ import {
   compactGalaxyLabFixtureMetadata,
   galaxyLabFixtureWorkerReceipt,
   type GalaxyLabFixtureWorkerRequest,
-  type GalaxyLabFixtureWorkerResponse,
 } from "./scene-fixture-worker-protocol.js";
 
 class FixtureWorkerStub implements GalaxyLabFixtureWorkerPort {
-  onmessage:
-    ((event: MessageEvent<GalaxyLabFixtureWorkerResponse>) => void) | null =
-    null;
+  onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
+  onmessageerror: ((event: MessageEvent<unknown>) => void) | null = null;
   onerror: ((event: ErrorEvent) => void) | null = null;
   request: GalaxyLabFixtureWorkerRequest | null = null;
   terminated = false;
@@ -29,10 +27,10 @@ class FixtureWorkerStub implements GalaxyLabFixtureWorkerPort {
     this.terminated = true;
   }
 
-  respond(response: GalaxyLabFixtureWorkerResponse): void {
+  respond(response: unknown): void {
     this.onmessage?.({
       data: response,
-    } as MessageEvent<GalaxyLabFixtureWorkerResponse>);
+    } as MessageEvent<unknown>);
   }
 }
 
@@ -66,6 +64,7 @@ describe("Friends Galaxy fixture worker loader", () => {
     expect(result.receipt.transferableBufferCount).toBe(21);
     expect(worker.terminated).toBe(true);
     expect(worker.onmessage).toBeNull();
+    expect(worker.onmessageerror).toBeNull();
     expect(worker.onerror).toBeNull();
   });
 
@@ -120,6 +119,55 @@ describe("Friends Galaxy fixture worker loader", () => {
     expect(worker.terminated).toBe(true);
     expect(worker.onmessage).toBeNull();
     expect(worker.onerror).toBeNull();
+  });
+
+  it("rejects a missing top-level worker envelope immediately", async () => {
+    const worker = new FixtureWorkerStub();
+    const pending = loadGalaxyLabFixture(worker, {
+      personCount: 20,
+      accountCount: 80,
+      backgroundStarCount: 200,
+    });
+    worker.respond(null);
+
+    await expect(pending).rejects.toThrow(
+      "Friends Galaxy worker returned an invalid response.",
+    );
+    expect(worker.terminated).toBe(true);
+  });
+
+  it("rejects an unknown top-level worker response kind immediately", async () => {
+    const worker = new FixtureWorkerStub();
+    const pending = loadGalaxyLabFixture(worker, {
+      personCount: 20,
+      accountCount: 80,
+      backgroundStarCount: 200,
+    });
+    worker.respond({
+      kind: "surprise",
+      requestId: worker.request!.requestId,
+    });
+
+    await expect(pending).rejects.toThrow(
+      "Friends Galaxy worker returned an unknown response kind.",
+    );
+    expect(worker.terminated).toBe(true);
+  });
+
+  it("rejects a worker response deserialization failure immediately", async () => {
+    const worker = new FixtureWorkerStub();
+    const pending = loadGalaxyLabFixture(worker, {
+      personCount: 20,
+      accountCount: 80,
+      backgroundStarCount: 200,
+    });
+    worker.onmessageerror?.({} as MessageEvent<unknown>);
+
+    await expect(pending).rejects.toThrow(
+      "Friends Galaxy worker response could not be deserialized.",
+    );
+    expect(worker.terminated).toBe(true);
+    expect(worker.onmessageerror).toBeNull();
   });
 
   it("settles and closes the worker when request dispatch fails", async () => {

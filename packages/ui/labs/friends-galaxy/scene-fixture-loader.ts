@@ -6,14 +6,13 @@ import {
   validateGalaxyLabFixtureEnvelope,
   type GalaxyLabFixtureWorkerReceipt,
   type GalaxyLabFixtureWorkerRequest,
-  type GalaxyLabFixtureWorkerResponse,
 } from "./scene-fixture-worker-protocol.js";
 
 const DEFAULT_FIXTURE_WORKER_TIMEOUT_MS = 30_000;
 
 export interface GalaxyLabFixtureWorkerPort {
-  onmessage:
-    ((event: MessageEvent<GalaxyLabFixtureWorkerResponse>) => void) | null;
+  onmessage: ((event: MessageEvent<unknown>) => void) | null;
+  onmessageerror: ((event: MessageEvent<unknown>) => void) | null;
   onerror: ((event: ErrorEvent) => void) | null;
   postMessage(message: GalaxyLabFixtureWorkerRequest): void;
   terminate(): void;
@@ -39,6 +38,7 @@ export function loadGalaxyLabFixture(
       settled = true;
       if (timeout !== null) globalThis.clearTimeout(timeout);
       worker.onmessage = null;
+      worker.onmessageerror = null;
       worker.onerror = null;
       worker.terminate();
       settle();
@@ -59,13 +59,56 @@ export function loadGalaxyLabFixture(
 
     worker.onmessage = (event) => {
       const response = event.data;
-      if (response.requestId !== requestId) return;
-      if (response.kind === "error") {
-        finish(() => reject(new Error(response.message)));
+      if (!response || typeof response !== "object") {
+        finish(() =>
+          reject(
+            new Error("Friends Galaxy worker returned an invalid response."),
+          ),
+        );
         return;
       }
+      const candidate = response as Record<string, unknown>;
+      if (!Number.isInteger(candidate.requestId)) {
+        finish(() =>
+          reject(
+            new Error("Friends Galaxy worker returned an invalid request id."),
+          ),
+        );
+        return;
+      }
+      if (candidate.requestId !== requestId) return;
+      if (candidate.kind === "error") {
+        if (
+          typeof candidate.message !== "string" ||
+          candidate.message.length === 0
+        ) {
+          finish(() =>
+            reject(
+              new Error(
+                "Friends Galaxy worker returned an invalid error response.",
+              ),
+            ),
+          );
+          return;
+        }
+        const message = candidate.message;
+        finish(() => reject(new Error(message)));
+        return;
+      }
+      if (candidate.kind !== "ready") {
+        finish(() =>
+          reject(
+            new Error(
+              "Friends Galaxy worker returned an unknown response kind.",
+            ),
+          ),
+        );
+        return;
+      }
+      const fixture = candidate.fixture as GalaxyLabFixture;
+      const receipt = candidate.receipt as GalaxyLabFixtureWorkerReceipt;
       try {
-        validateGalaxyLabFixtureEnvelope(response.fixture, response.receipt);
+        validateGalaxyLabFixtureEnvelope(fixture, receipt);
       } catch (error) {
         finish(() =>
           reject(error instanceof Error ? error : new Error(String(error))),
@@ -73,12 +116,22 @@ export function loadGalaxyLabFixture(
         return;
       }
       finish(() =>
-        resolve({ fixture: response.fixture, receipt: response.receipt }),
+        resolve({
+          fixture,
+          receipt,
+        }),
       );
     };
     worker.onerror = (event) => {
       finish(() =>
         reject(new Error(event.message || "Friends Galaxy worker failed.")),
+      );
+    };
+    worker.onmessageerror = () => {
+      finish(() =>
+        reject(
+          new Error("Friends Galaxy worker response could not be deserialized."),
+        ),
       );
     };
     try {
