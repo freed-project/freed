@@ -206,6 +206,8 @@ The proven full-canvas geometry and engine-to-overlay interaction contracts now 
 
 The allocation-free camera-input primitives now share that same destination. The fixed pointer roster, bounded inertial-pan controller, scalar settle scheduler, and presentation-aware demand-frame predicate live under shared UI source and are imported by the laboratory. The future product engine can use the exact tested state machines for native touch, pointer throws, settle, idle sleep, and mobile Details suspension instead of translating the old React Maps, arrays, timeouts, and frame refs.
 
+The locked perspective camera and gesture mathematics are now shared product primitives too. Clip-safe near and far scale limits, prominence-safe focus, full-canvas inset centering, compact initial framing, WebGPU view and motion uniforms, directional outward resistance, native-speed inward reversal, midpoint-preserving pinch, focal-point zoom, and Mac wheel normalization all live under shared UI source. The laboratory, raw WebGPU backend, diagnostics, avatar projection, and functional tests import those exact modules. Product cutover no longer needs a second camera curve or gesture implementation.
+
 The same camera contract now derives a prominence-safe maximum scale from viewport height, maximum semantic depth, and a 96-unit near-camera clearance. Compact zoom can no longer pass through the closest friend stars. Programmatic `focusNode` navigation uses the target star's real `z` depth and the bounded usable viewport insets, so Reader, search, Map, and details handoffs can center a star beside the desktop rail or above mobile chrome while the canvas remains full bleed. Focus changes only camera and sparse interaction state. It does not reupload resident stars.
 
 Frame and submission diagnostics now use fixed 240-value typed rings. Active camera motion suppresses diagnostics DOM rebuilding, then refreshes the panel after settle from one bounded snapshot. The detached gesture path no longer shifts diagnostic arrays or performs periodic panel layout while the camera is moving.
@@ -495,6 +497,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.111 | Add resident presentation suspension for mobile Details with inert accessibility, complete transient-work cancellation, zero hidden frame or atlas work, and exact resource-preserving resume | High | Done |
 | 8.112 | Move the proven full-canvas geometry, overlay request, keyboard, long-press, and imperative engine-handle contracts into shared UI modules consumed by the detached laboratory | High | Done |
 | 8.113 | Move the fixed pointer roster, bounded inertia, scalar settle scheduler, and presentation-aware demand-frame predicate into shared UI modules consumed by the detached laboratory | High | Done |
+| 8.114 | Move the clip-safe locked-camera and directional gesture mathematics into shared UI modules consumed by the laboratory and raw WebGPU backend | High | Done |
 
 ---
 
@@ -596,6 +599,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Mobile Details suspends graph presentation without disposing the canvas or GPU scene, performs no hidden frame, settle, label-atlas, or avatar-atlas work, and resumes the same camera, selection, backend, and resident semantic stars
 - [x] The detached laboratory and future product shell share one full-canvas geometry contract and one imperative overlay-action contract instead of maintaining translated copies
 - [x] The detached laboratory and future product engine share the same fixed pointer roster, bounded inertia, scalar settle scheduler, and presentation-aware demand-frame predicate
+- [x] The detached laboratory, raw WebGPU backend, and future product engine share one clip-safe camera, depth-correct focus, directional zoom, wheel, and midpoint-preserving pinch implementation
 - [x] Mac two-finger trackpad deltas pan with native momentum, pinch remains anchored zoom, and pointer or one-finger touch throws use bounded allocation-free inertia that cancels for new input and reduced motion
 - [x] Animation-disabled scenes stop requesting frames when idle and wake only for renderer work, settle state, diagnostics, or backend health recovery
 - [x] Pointer, wheel, and Safari handlers mark motion density without synchronously resizing the GPU canvas

@@ -1,10 +1,13 @@
-import { IDENTITY_GALAXY_CAMERA_FOV } from "../../src/lib/identity-galaxy-camera.js";
-import type { GalaxyLabTransform } from "./scene-fixture.js";
+import { IDENTITY_GALAXY_CAMERA_FOV } from "./identity-galaxy-camera.js";
+import type {
+  FriendsGalaxyTransform,
+  FriendsGalaxyViewportInsets,
+} from "./friends-galaxy-viewport.js";
 
-export const GALAXY_LAB_CAMERA_NEAR = 1;
-export const GALAXY_LAB_CAMERA_FAR = 20_000;
-export const GALAXY_LAB_CAMERA_FAR_UTILIZATION = 0.82;
-export const GALAXY_LAB_CAMERA_NEAR_CLEARANCE = 96;
+export const FRIENDS_GALAXY_CAMERA_NEAR = 1;
+export const FRIENDS_GALAXY_CAMERA_FAR = 20_000;
+export const FRIENDS_GALAXY_CAMERA_FAR_UTILIZATION = 0.82;
+export const FRIENDS_GALAXY_CAMERA_NEAR_CLEARANCE = 96;
 
 const ZOOM_RESISTANCE_SCALE_MULTIPLIER = 1.55;
 const FIT_MINIMUM_RESISTANCE_PROGRESS = 0.12;
@@ -12,33 +15,26 @@ const OUTWARD_ZOOM_TARGET_FIT_RATIO = 0.9;
 const OUTWARD_ZOOM_RESISTANCE_FIT_RATIO = 1.35;
 const ABSOLUTE_MAXIMUM_SCALE = 6;
 
-const EMPTY_VIEWPORT_INSETS: GalaxyLabViewportInsets = {
+const EMPTY_VIEWPORT_INSETS: FriendsGalaxyViewportInsets = {
   top: 0,
   right: 0,
   bottom: 0,
   left: 0,
 };
 
-export interface GalaxyLabViewportInsets {
-  top: number;
-  right: number;
-  bottom: number;
-  left: number;
-}
-
-export interface GalaxyLabCameraScaleLimits {
+export interface FriendsGalaxyCameraScaleLimits {
   minimum: number;
   resistance: number;
   fitMinimum: number;
   maximum: number;
 }
 
-export interface GalaxyLabOutwardZoomEnvelope {
+export interface FriendsGalaxyOutwardZoomEnvelope {
   target: number;
   resistance: number;
 }
 
-function galaxyLabCameraDistance(
+function friendsGalaxyCameraDistance(
   viewportHeight: number,
   scale: number,
   fovDegrees: number,
@@ -49,14 +45,14 @@ function galaxyLabCameraDistance(
   return height / 2 / Math.tan((boundedFov * Math.PI) / 360) / safeScale;
 }
 
-export function galaxyLabCameraScaleLimits(
+export function friendsGalaxyCameraScaleLimits(
   viewportHeight: number,
   minimumSceneZ: number,
   maximumSceneZ: number,
   fovDegrees = IDENTITY_GALAXY_CAMERA_FOV,
-  far = GALAXY_LAB_CAMERA_FAR,
-): GalaxyLabCameraScaleLimits {
-  const focalDistance = galaxyLabCameraDistance(
+  far = FRIENDS_GALAXY_CAMERA_FAR,
+): FriendsGalaxyCameraScaleLimits {
+  const focalDistance = friendsGalaxyCameraDistance(
     viewportHeight,
     1,
     fovDegrees,
@@ -64,8 +60,8 @@ export function galaxyLabCameraScaleLimits(
   const minimumDepth = Number.isFinite(minimumSceneZ) ? minimumSceneZ : 0;
   const maximumDepth = Number.isFinite(maximumSceneZ) ? maximumSceneZ : 0;
   const availableCameraDepth = Math.max(
-    GALAXY_LAB_CAMERA_NEAR * 2,
-    far * GALAXY_LAB_CAMERA_FAR_UTILIZATION + minimumDepth,
+    FRIENDS_GALAXY_CAMERA_NEAR * 2,
+    far * FRIENDS_GALAXY_CAMERA_FAR_UTILIZATION + minimumDepth,
   );
   const minimum = focalDistance / availableCameraDepth;
   const resistance = minimum * ZOOM_RESISTANCE_SCALE_MULTIPLIER;
@@ -74,8 +70,8 @@ export function galaxyLabCameraScaleLimits(
   const maximum = Math.min(
     ABSOLUTE_MAXIMUM_SCALE,
     focalDistance / Math.max(
-      GALAXY_LAB_CAMERA_NEAR + GALAXY_LAB_CAMERA_NEAR_CLEARANCE,
-      maximumDepth + GALAXY_LAB_CAMERA_NEAR_CLEARANCE,
+      FRIENDS_GALAXY_CAMERA_NEAR + FRIENDS_GALAXY_CAMERA_NEAR_CLEARANCE,
+      maximumDepth + FRIENDS_GALAXY_CAMERA_NEAR_CLEARANCE,
     ),
   );
   return {
@@ -86,10 +82,10 @@ export function galaxyLabCameraScaleLimits(
   };
 }
 
-export function galaxyLabOutwardZoomEnvelope(
+export function friendsGalaxyOutwardZoomEnvelope(
   fittedScale: number,
-  limits: GalaxyLabCameraScaleLimits,
-): GalaxyLabOutwardZoomEnvelope {
+  limits: FriendsGalaxyCameraScaleLimits,
+): FriendsGalaxyOutwardZoomEnvelope {
   const boundedFit = Math.max(
     limits.fitMinimum,
     Math.min(limits.maximum, fittedScale),
@@ -111,17 +107,17 @@ export function galaxyLabOutwardZoomEnvelope(
   return { target, resistance };
 }
 
-export function writeGalaxyLabFocusedTransform(
-  target: GalaxyLabTransform,
+export function writeFriendsGalaxyFocusedTransform(
+  target: FriendsGalaxyTransform,
   worldX: number,
   worldY: number,
   worldZ: number,
   scale: number,
   viewportWidth: number,
   viewportHeight: number,
-  viewportInsets: GalaxyLabViewportInsets = EMPTY_VIEWPORT_INSETS,
+  viewportInsets: FriendsGalaxyViewportInsets = EMPTY_VIEWPORT_INSETS,
   fovDegrees = IDENTITY_GALAXY_CAMERA_FOV,
-): GalaxyLabTransform {
+): FriendsGalaxyTransform {
   const width = Math.max(1, viewportWidth);
   const height = Math.max(1, viewportHeight);
   const safeScale = Math.max(0.0001, scale);
@@ -133,7 +129,7 @@ export function writeGalaxyLabFocusedTransform(
   const viewportCenterY = height * 0.5;
   const focusX = left + Math.max(1, width - left - right) * 0.5;
   const focusY = top + Math.max(1, height - top - bottom) * 0.5;
-  const cameraZ = galaxyLabCameraDistance(height, safeScale, fovDegrees);
+  const cameraZ = friendsGalaxyCameraDistance(height, safeScale, fovDegrees);
   const depthRatio = (cameraZ - worldZ) / cameraZ;
 
   target.scale = safeScale;
@@ -144,7 +140,7 @@ export function writeGalaxyLabFocusedTransform(
   return target;
 }
 
-export function galaxyLabInitialCameraScale(
+export function friendsGalaxyInitialCameraScale(
   fittedScale: number,
   viewportWidth: number,
 ): number {
@@ -152,7 +148,7 @@ export function galaxyLabInitialCameraScale(
   return Math.max(fittedScale, minimumUsefulScale);
 }
 
-export function writeGalaxyLabWebGpuMotionUniforms(
+export function writeFriendsGalaxyWebGpuMotionUniforms(
   target: Float32Array,
   timeMs: number,
   cameraScale: number,
@@ -164,14 +160,14 @@ export function writeGalaxyLabWebGpuMotionUniforms(
   target[19] = cameraInMotion ? -safeScale : safeScale;
 }
 
-export function writeGalaxyLabWebGpuViewProjection(
+export function writeFriendsGalaxyWebGpuViewProjection(
   target: Float32Array,
-  transform: GalaxyLabTransform,
+  transform: FriendsGalaxyTransform,
   viewportWidth: number,
   viewportHeight: number,
   fovDegrees = IDENTITY_GALAXY_CAMERA_FOV,
-  near = GALAXY_LAB_CAMERA_NEAR,
-  far = GALAXY_LAB_CAMERA_FAR,
+  near = FRIENDS_GALAXY_CAMERA_NEAR,
+  far = FRIENDS_GALAXY_CAMERA_FAR,
 ): Float32Array {
   const width = Math.max(1, viewportWidth);
   const height = Math.max(1, viewportHeight);
@@ -179,7 +175,7 @@ export function writeGalaxyLabWebGpuViewProjection(
   const focalScale = 1 / Math.tan((fovDegrees * Math.PI) / 360);
   const cameraX = (width / 2 - transform.x) / scale;
   const cameraY = -(height / 2 - transform.y) / scale;
-  const cameraZ = galaxyLabCameraDistance(height, scale, fovDegrees);
+  const cameraZ = friendsGalaxyCameraDistance(height, scale, fovDegrees);
   const xScale = focalScale / (width / height);
   const depthScale = far / (near - far);
   const depthTranslate = far * near / (near - far);

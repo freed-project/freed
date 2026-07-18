@@ -20,12 +20,12 @@ import {
 import { loadGalaxyLabFixture } from "./scene-fixture-loader.js";
 import { findGalaxyLabSceneNodeIndex } from "./scene-interaction-index.js";
 import {
-  applyGalaxyLabPinch,
-  applyGalaxyLabResistedZoomAt,
-  applyGalaxyLabZoomAt,
-  galaxyLabResistedScaleAtRatio,
-  galaxyLabWheelDeltaPixels,
-} from "./gesture-math.js";
+  applyFriendsGalaxyPinch,
+  applyFriendsGalaxyResistedZoomAt,
+  applyFriendsGalaxyZoomAt,
+  friendsGalaxyResistedScaleAtRatio,
+  friendsGalaxyWheelDeltaPixels,
+} from "../../src/lib/friends-galaxy-gesture.js";
 import {
   GalaxyActivityScenePatchEncoder,
   type GalaxyActivitySceneBinding,
@@ -41,13 +41,13 @@ import {
   type GalaxyLabAvatarImageAdmissionResult,
 } from "./avatar-image-admission.js";
 import {
-  galaxyLabCameraScaleLimits,
-  galaxyLabInitialCameraScale,
-  galaxyLabOutwardZoomEnvelope,
-  type GalaxyLabOutwardZoomEnvelope,
-  writeGalaxyLabFocusedTransform,
-  writeGalaxyLabWebGpuViewProjection,
-} from "./camera-math.js";
+  friendsGalaxyCameraScaleLimits,
+  friendsGalaxyInitialCameraScale,
+  friendsGalaxyOutwardZoomEnvelope,
+  type FriendsGalaxyOutwardZoomEnvelope,
+  writeFriendsGalaxyFocusedTransform,
+  writeFriendsGalaxyWebGpuViewProjection,
+} from "../../src/lib/friends-galaxy-camera.js";
 import { shouldContinueFriendsGalaxyFrame } from "../../src/lib/friends-galaxy-frame-loop.js";
 import { FriendsGalaxyInertialPan } from "../../src/lib/friends-galaxy-inertia.js";
 import { FriendsGalaxyPointerRoster } from "../../src/lib/friends-galaxy-pointer-roster.js";
@@ -212,13 +212,13 @@ const activityProbeScenePatch = activityScenePatchEncoder.encode(
 );
 
 const transform: GalaxyLabTransform = { x: 0, y: 0, scale: 0.12 };
-let cameraScaleLimits = galaxyLabCameraScaleLimits(
+let cameraScaleLimits = friendsGalaxyCameraScaleLimits(
   1,
   fixture.scene.bounds.minZ,
   fixture.scene.bounds.maxZ,
 );
-let outwardZoomEnvelope: GalaxyLabOutwardZoomEnvelope =
-  galaxyLabOutwardZoomEnvelope(cameraScaleLimits.fitMinimum, cameraScaleLimits);
+let outwardZoomEnvelope: FriendsGalaxyOutwardZoomEnvelope =
+  friendsGalaxyOutwardZoomEnvelope(cameraScaleLimits.fitMinimum, cameraScaleLimits);
 let activeBackend: GalaxyLabBackend | null = null;
 let activeCanvas: HTMLCanvasElement | null = null;
 let activeTheme = themeSelect.value as GalaxyLabThemeId;
@@ -444,7 +444,7 @@ function canvasSize(): { width: number; height: number } {
 }
 
 function refreshCameraScaleLimits(viewportHeight: number): void {
-  cameraScaleLimits = galaxyLabCameraScaleLimits(
+  cameraScaleLimits = friendsGalaxyCameraScaleLimits(
     viewportHeight,
     fixture.scene.bounds.minZ,
     fixture.scene.bounds.maxZ,
@@ -454,7 +454,7 @@ function refreshCameraScaleLimits(viewportHeight: number): void {
 }
 
 function refreshOutwardZoomEnvelope(fittedScale: number): void {
-  outwardZoomEnvelope = galaxyLabOutwardZoomEnvelope(
+  outwardZoomEnvelope = friendsGalaxyOutwardZoomEnvelope(
     fittedScale,
     cameraScaleLimits,
   );
@@ -549,7 +549,7 @@ async function admitSettledAvatarImages(
   if (!backend.setAvatarImages || !canPresentGalaxy()) return;
   const { width, height } = canvasSize();
   const compact = width < 720;
-  writeGalaxyLabWebGpuViewProjection(
+  writeFriendsGalaxyWebGpuViewProjection(
     avatarAdmissionViewProjection,
     transform,
     width,
@@ -675,12 +675,12 @@ function frameGalaxy(markAsUserAction: boolean, useInitialScale: boolean): void 
   const nextScale = useInitialScale
     ? Math.min(
         cameraScaleLimits.maximum,
-        galaxyLabInitialCameraScale(fittedScale, usableWidth),
+        friendsGalaxyInitialCameraScale(fittedScale, usableWidth),
       )
     : fittedScale;
   const centerX = (bounds.left + bounds.right) / 2;
   const centerY = (bounds.top + bounds.bottom) / 2;
-  writeGalaxyLabFocusedTransform(
+  writeFriendsGalaxyFocusedTransform(
     transform,
     centerX,
     centerY,
@@ -720,7 +720,7 @@ function focusGalaxyNode(nodeId: string): boolean {
     cameraScaleLimits.maximum,
     Math.max(transform.scale, PROGRAMMATIC_FOCUS_SCALE),
   );
-  writeGalaxyLabFocusedTransform(
+  writeFriendsGalaxyFocusedTransform(
     transform,
     fixture.scene.positions[offset]!,
     -fixture.scene.positions[offset + 1]!,
@@ -1063,7 +1063,7 @@ function renderFrame(timeMs: number): void {
 function zoomAt(viewportX: number, viewportY: number, nextScale: number): void {
   cancelInertialPan();
   setCameraInMotion(true);
-  applyGalaxyLabResistedZoomAt(
+  applyFriendsGalaxyResistedZoomAt(
     transform,
     viewportX,
     viewportY,
@@ -1174,7 +1174,7 @@ function requestSelectedContext(): boolean {
   );
   if (nodeIndex === null) return false;
   const { width, height } = canvasSize();
-  writeGalaxyLabWebGpuViewProjection(
+  writeFriendsGalaxyWebGpuViewProjection(
     contextProjectionMatrix,
     transform,
     width,
@@ -1350,7 +1350,7 @@ viewport.addEventListener("pointermove", (event) => {
     const previousSecondX = pointers.xAt(1);
     const previousSecondY = pointers.yAt(1);
     pointers.update(pointerIndex, nextX, nextY);
-    applyGalaxyLabPinch(
+    applyFriendsGalaxyPinch(
       transform,
       previousFirstX,
       previousFirstY,
@@ -1495,7 +1495,7 @@ function moveNativeTouches(event: TouchEvent): void {
   if (pointers.count >= 2) {
     gestureMoved = true;
     beginInertialPanSample(event.timeStamp);
-    applyGalaxyLabPinch(
+    applyFriendsGalaxyPinch(
       transform,
       previousFirstX,
       previousFirstY,
@@ -1604,12 +1604,12 @@ viewport.addEventListener("wheel", (event) => {
     );
     return;
   }
-  const deltaX = galaxyLabWheelDeltaPixels(
+  const deltaX = friendsGalaxyWheelDeltaPixels(
     event.deltaX,
     event.deltaMode,
     viewportGeometry.interactionWidth,
   );
-  const deltaY = galaxyLabWheelDeltaPixels(
+  const deltaY = friendsGalaxyWheelDeltaPixels(
     event.deltaY,
     event.deltaMode,
     viewportGeometry.interactionHeight,
@@ -1721,7 +1721,7 @@ viewport.addEventListener("gesturechange", ((event: SafariGestureEvent) => {
   if (!safariGestureActive) return;
   const viewportX = event.clientX - safariGestureCanvasLeft;
   const viewportY = event.clientY - safariGestureCanvasTop;
-  const nextScale = galaxyLabResistedScaleAtRatio(
+  const nextScale = friendsGalaxyResistedScaleAtRatio(
     safariGestureStartScale,
     event.scale,
     outwardZoomEnvelope.target,
@@ -1926,7 +1926,7 @@ const resizeObserver = new ResizeObserver(() => {
       Math.min(cameraScaleLimits.maximum, transform.scale),
     );
     if (safeResizeScale !== transform.scale) {
-      applyGalaxyLabZoomAt(
+      applyFriendsGalaxyZoomAt(
         transform,
         viewportGeometry.interactionCenterX,
         viewportGeometry.interactionCenterY,

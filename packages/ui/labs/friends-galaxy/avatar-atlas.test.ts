@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { selectGalaxyLabAvatars } from "./avatar-atlas.js";
-import { writeGalaxyLabWebGpuViewProjection } from "./camera-math.js";
+import { writeFriendsGalaxyWebGpuViewProjection } from "../../src/lib/friends-galaxy-camera.js";
 import { createGalaxyLabFixture, GALAXY_LAB_THEMES } from "./scene-fixture.js";
 import { compactGalaxyLabFixtureMetadata } from "./scene-fixture-worker-protocol.js";
 
@@ -74,7 +74,7 @@ describe("Friends Galaxy avatar atlas selection", () => {
       scale,
     };
     const matrix = new Float32Array(16);
-    writeGalaxyLabWebGpuViewProjection(matrix, transform, width, height);
+    writeFriendsGalaxyWebGpuViewProjection(matrix, transform, width, height);
     const avatars = selectGalaxyLabAvatars(
       fixture,
       GALAXY_LAB_THEMES.vesper,

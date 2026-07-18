@@ -13,9 +13,9 @@ import {
   type GalaxyLabAvatarAtlas,
 } from "./avatar-atlas.js";
 import {
-  writeGalaxyLabWebGpuMotionUniforms,
-  writeGalaxyLabWebGpuViewProjection,
-} from "./camera-math.js";
+  writeFriendsGalaxyWebGpuMotionUniforms,
+  writeFriendsGalaxyWebGpuViewProjection,
+} from "../../src/lib/friends-galaxy-camera.js";
 import {
   createGalaxyLabLabelAtlas,
   GALAXY_LAB_BILLBOARD_INSTANCE_STRIDE,
@@ -925,7 +925,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       !this.quadBuffer || !this.semanticBuffer || !this.backgroundBuffer || !this.fixture ||
       !this.worldRenderBundle || !this.colorAttachment || !this.renderPassDescriptor
     ) return;
-    writeGalaxyLabWebGpuViewProjection(
+    writeFriendsGalaxyWebGpuViewProjection(
       this.viewProjection,
       transform,
       this.width,
@@ -934,7 +934,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.uniformData.set(this.viewProjection, 0);
     this.uniformData[16] = this.width;
     this.uniformData[17] = this.height;
-    writeGalaxyLabWebGpuMotionUniforms(
+    writeFriendsGalaxyWebGpuMotionUniforms(
       this.uniformData,
       timeMs,
       transform.scale,
@@ -1210,7 +1210,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   }
 
   private updateSettledProjection(): void {
-    writeGalaxyLabWebGpuViewProjection(
+    writeFriendsGalaxyWebGpuViewProjection(
       this.viewProjection,
       this.settledTransform,
       this.width,

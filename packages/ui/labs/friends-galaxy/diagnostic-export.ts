@@ -4,9 +4,9 @@ import type {
   GalaxyLabFrameStats,
 } from "./backend.js";
 import type {
-  GalaxyLabCameraScaleLimits,
-  GalaxyLabOutwardZoomEnvelope,
-} from "./camera-math.js";
+  FriendsGalaxyCameraScaleLimits,
+  FriendsGalaxyOutwardZoomEnvelope,
+} from "../../src/lib/friends-galaxy-camera.js";
 import type {
   GalaxyLabThemeId,
   GalaxyLabTransform,
@@ -26,8 +26,8 @@ export interface GalaxyLabDiagnosticSnapshotInput {
   theme: GalaxyLabThemeId;
   fieldStyle: GalaxyLabFieldStyle;
   transform: GalaxyLabTransform;
-  cameraScaleLimits: GalaxyLabCameraScaleLimits;
-  outwardZoomEnvelope: GalaxyLabOutwardZoomEnvelope;
+  cameraScaleLimits: FriendsGalaxyCameraScaleLimits;
+  outwardZoomEnvelope: FriendsGalaxyOutwardZoomEnvelope;
   viewportWidth: number;
   viewportHeight: number;
   cameraInMotion: boolean;

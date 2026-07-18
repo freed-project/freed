@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { writeGalaxyLabWebGpuViewProjection } from "./camera-math.js";
+import { writeFriendsGalaxyWebGpuViewProjection } from "../../src/lib/friends-galaxy-camera.js";
 import { projectGalaxyLabWorldPoint } from "./viewport-projection.js";
 
 describe("Friends Galaxy viewport projection", () => {
   const matrix = new Float32Array(16);
-  writeGalaxyLabWebGpuViewProjection(matrix, { x: 640, y: 360, scale: 1 }, 1_280, 720);
+  writeFriendsGalaxyWebGpuViewProjection(matrix, { x: 640, y: 360, scale: 1 }, 1_280, 720);
   const projection = { viewProjection: matrix, width: 1_280, height: 720 };
 
   it("projects the galactic origin into the viewport center", () => {

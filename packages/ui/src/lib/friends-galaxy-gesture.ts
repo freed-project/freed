@@ -1,10 +1,10 @@
-import type { GalaxyLabTransform } from "./scene-fixture.js";
+import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
 
 function clampScale(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
 }
 
-function galaxyLabZoomCoordinate(
+function friendsGalaxyZoomCoordinate(
   scale: number,
   minimumScale: number,
   resistanceScale: number,
@@ -18,7 +18,7 @@ function galaxyLabZoomCoordinate(
   return (1 - 1 / normalizedRange) * resistanceRange / resistanceScale;
 }
 
-function galaxyLabScaleFromZoomCoordinate(
+function friendsGalaxyScaleFromZoomCoordinate(
   coordinate: number,
   minimumScale: number,
   resistanceScale: number,
@@ -40,7 +40,7 @@ function galaxyLabScaleFromZoomCoordinate(
   );
 }
 
-export function galaxyLabResistedScaleAtRatio(
+export function friendsGalaxyResistedScaleAtRatio(
   initialScale: number,
   scaleRatio: number,
   minimumScale: number,
@@ -66,12 +66,12 @@ export function galaxyLabResistedScaleAtRatio(
       maximumScale,
     );
   }
-  const coordinate = galaxyLabZoomCoordinate(
+  const coordinate = friendsGalaxyZoomCoordinate(
     boundedInitial,
     minimumScale,
     boundedResistance,
   );
-  return galaxyLabScaleFromZoomCoordinate(
+  return friendsGalaxyScaleFromZoomCoordinate(
     coordinate + Math.log(boundedRatio),
     minimumScale,
     boundedResistance,
@@ -79,7 +79,7 @@ export function galaxyLabResistedScaleAtRatio(
   );
 }
 
-export function galaxyLabWheelDeltaPixels(
+export function friendsGalaxyWheelDeltaPixels(
   delta: number,
   deltaMode: number,
   viewportExtent: number,
@@ -90,8 +90,8 @@ export function galaxyLabWheelDeltaPixels(
   return delta;
 }
 
-export function applyGalaxyLabZoomAt(
-  transform: GalaxyLabTransform,
+export function applyFriendsGalaxyZoomAt(
+  transform: FriendsGalaxyTransform,
   viewportX: number,
   viewportY: number,
   nextScale: number,
@@ -106,8 +106,8 @@ export function applyGalaxyLabZoomAt(
   transform.y = viewportY - worldY * clampedScale;
 }
 
-export function applyGalaxyLabResistedZoomAt(
-  transform: GalaxyLabTransform,
+export function applyFriendsGalaxyResistedZoomAt(
+  transform: FriendsGalaxyTransform,
   viewportX: number,
   viewportY: number,
   scaleRatio: number,
@@ -115,14 +115,14 @@ export function applyGalaxyLabResistedZoomAt(
   resistanceScale: number,
   maximumScale: number,
 ): void {
-  const nextScale = galaxyLabResistedScaleAtRatio(
+  const nextScale = friendsGalaxyResistedScaleAtRatio(
     transform.scale,
     scaleRatio,
     minimumScale,
     resistanceScale,
     maximumScale,
   );
-  applyGalaxyLabZoomAt(
+  applyFriendsGalaxyZoomAt(
     transform,
     viewportX,
     viewportY,
@@ -132,8 +132,8 @@ export function applyGalaxyLabResistedZoomAt(
   );
 }
 
-export function applyGalaxyLabPinch(
-  transform: GalaxyLabTransform,
+export function applyFriendsGalaxyPinch(
+  transform: FriendsGalaxyTransform,
   previousFirstX: number,
   previousFirstY: number,
   previousSecondX: number,
@@ -161,7 +161,7 @@ export function applyGalaxyLabPinch(
   const nextMidpointY = (nextFirstY + nextSecondY) * 0.5;
   const worldX = (previousMidpointX - transform.x) / transform.scale;
   const worldY = (previousMidpointY - transform.y) / transform.scale;
-  const nextScale = galaxyLabResistedScaleAtRatio(
+  const nextScale = friendsGalaxyResistedScaleAtRatio(
     transform.scale,
     nextDistance / previousDistance,
     minimumScale,

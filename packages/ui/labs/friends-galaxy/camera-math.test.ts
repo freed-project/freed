@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  GALAXY_LAB_CAMERA_FAR,
-  GALAXY_LAB_CAMERA_FAR_UTILIZATION,
-  GALAXY_LAB_CAMERA_NEAR_CLEARANCE,
-  galaxyLabCameraScaleLimits,
-  galaxyLabInitialCameraScale,
-  galaxyLabOutwardZoomEnvelope,
-  writeGalaxyLabFocusedTransform,
-  writeGalaxyLabWebGpuViewProjection,
-  writeGalaxyLabWebGpuMotionUniforms,
-} from "./camera-math.js";
+  FRIENDS_GALAXY_CAMERA_FAR,
+  FRIENDS_GALAXY_CAMERA_FAR_UTILIZATION,
+  FRIENDS_GALAXY_CAMERA_NEAR_CLEARANCE,
+  friendsGalaxyCameraScaleLimits,
+  friendsGalaxyInitialCameraScale,
+  friendsGalaxyOutwardZoomEnvelope,
+  writeFriendsGalaxyFocusedTransform,
+  writeFriendsGalaxyWebGpuViewProjection,
+  writeFriendsGalaxyWebGpuMotionUniforms,
+} from "../../src/lib/friends-galaxy-camera.js";
 
 function project(
   matrix: ArrayLike<number>,
@@ -34,7 +34,7 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
     const viewportHeight = 844;
     const minimumSceneZ = -224;
     const maximumSceneZ = 220;
-    const limits = galaxyLabCameraScaleLimits(
+    const limits = friendsGalaxyCameraScaleLimits(
       viewportHeight,
       minimumSceneZ,
       maximumSceneZ,
@@ -44,20 +44,20 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
     const closestCameraZ = viewportHeight * focalScale / 2 / limits.maximum;
 
     expect(cameraZ - minimumSceneZ).toBeCloseTo(
-      GALAXY_LAB_CAMERA_FAR * GALAXY_LAB_CAMERA_FAR_UTILIZATION,
+      FRIENDS_GALAXY_CAMERA_FAR * FRIENDS_GALAXY_CAMERA_FAR_UTILIZATION,
       8,
     );
     expect(limits.resistance).toBeGreaterThan(limits.fitMinimum);
     expect(limits.fitMinimum).toBeGreaterThan(limits.minimum);
     expect(closestCameraZ - maximumSceneZ).toBeCloseTo(
-      GALAXY_LAB_CAMERA_NEAR_CLEARANCE,
+      FRIENDS_GALAXY_CAMERA_NEAR_CLEARANCE,
       8,
     );
   });
 
   it("moves both safe scale limits closer on a taller viewport", () => {
-    const compact = galaxyLabCameraScaleLimits(667, -224, 220);
-    const tall = galaxyLabCameraScaleLimits(1_366, -224, 220);
+    const compact = friendsGalaxyCameraScaleLimits(667, -224, 220);
+    const tall = friendsGalaxyCameraScaleLimits(1_366, -224, 220);
 
     expect(tall.minimum).toBeGreaterThan(compact.minimum);
     expect(tall.maximum).toBeGreaterThan(compact.maximum);
@@ -68,8 +68,8 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
   });
 
   it("keeps the fitted overview ahead of the clip reserve", () => {
-    const limits = galaxyLabCameraScaleLimits(844, -224, 220);
-    const envelope = galaxyLabOutwardZoomEnvelope(0.2, limits);
+    const limits = friendsGalaxyCameraScaleLimits(844, -224, 220);
+    const envelope = friendsGalaxyOutwardZoomEnvelope(0.2, limits);
 
     expect(envelope.target).toBeCloseTo(0.18, 12);
     expect(envelope.resistance).toBeCloseTo(0.27, 12);
@@ -78,8 +78,8 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
   });
 
   it("uses the clip-derived fit floor when the galaxy bounds are more distant", () => {
-    const limits = galaxyLabCameraScaleLimits(844, -224, 220);
-    const envelope = galaxyLabOutwardZoomEnvelope(0.001, limits);
+    const limits = friendsGalaxyCameraScaleLimits(844, -224, 220);
+    const envelope = friendsGalaxyOutwardZoomEnvelope(0.001, limits);
 
     expect(envelope.target).toBe(limits.fitMinimum);
     expect(envelope.resistance).toBeGreaterThan(envelope.target);
@@ -93,7 +93,7 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
     const worldX = 860;
     const worldY = 420;
     const worldZ = 180;
-    const transform = writeGalaxyLabFocusedTransform(
+    const transform = writeFriendsGalaxyFocusedTransform(
       { x: 0, y: 0, scale: 1 },
       worldX,
       worldY,
@@ -103,7 +103,7 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
       height,
       insets,
     );
-    const matrix = writeGalaxyLabWebGpuViewProjection(
+    const matrix = writeFriendsGalaxyWebGpuViewProjection(
       new Float32Array(16),
       transform,
       width,
@@ -123,20 +123,20 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
   });
 
   it("opens compact canvases at a useful exploration scale", () => {
-    expect(galaxyLabInitialCameraScale(0.045, 390)).toBe(0.16);
-    expect(galaxyLabInitialCameraScale(0.2, 390)).toBe(0.2);
+    expect(friendsGalaxyInitialCameraScale(0.045, 390)).toBe(0.16);
+    expect(friendsGalaxyInitialCameraScale(0.2, 390)).toBe(0.2);
   });
 
   it("keeps a useful fitted desktop scale unchanged", () => {
-    expect(galaxyLabInitialCameraScale(0.105, 1_280)).toBe(0.105);
-    expect(galaxyLabInitialCameraScale(0.05, 1_280)).toBe(0.08);
+    expect(friendsGalaxyInitialCameraScale(0.105, 1_280)).toBe(0.105);
+    expect(friendsGalaxyInitialCameraScale(0.05, 1_280)).toBe(0.08);
   });
 
   it("maps galactic-plane positions through the shared transform", () => {
     const width = 1_200;
     const height = 800;
     const transform = { x: 240, y: -90, scale: 0.72 };
-    const matrix = writeGalaxyLabWebGpuViewProjection(
+    const matrix = writeFriendsGalaxyWebGpuViewProjection(
       new Float32Array(16),
       transform,
       width,
@@ -154,7 +154,7 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
   it("makes prominent positive-depth stars project larger through perspective", () => {
     const width = 390;
     const height = 844;
-    const matrix = writeGalaxyLabWebGpuViewProjection(
+    const matrix = writeFriendsGalaxyWebGpuViewProjection(
       new Float32Array(16),
       { x: 0, y: 0, scale: 0.4 },
       width,
@@ -170,15 +170,15 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
   it("encodes animation and camera motion without expanding the uniform block", () => {
     const uniforms = new Float32Array(20);
 
-    writeGalaxyLabWebGpuMotionUniforms(uniforms, 4_000, 0.5, true, false);
+    writeFriendsGalaxyWebGpuMotionUniforms(uniforms, 4_000, 0.5, true, false);
     expect(uniforms[18]).toBe(4);
     expect(uniforms[19]).toBe(0.5);
 
-    writeGalaxyLabWebGpuMotionUniforms(uniforms, 5_000, 0.5, true, true);
+    writeFriendsGalaxyWebGpuMotionUniforms(uniforms, 5_000, 0.5, true, true);
     expect(uniforms[18]).toBe(-1);
     expect(uniforms[19]).toBe(-0.5);
 
-    writeGalaxyLabWebGpuMotionUniforms(uniforms, 6_000, 0.5, false, false);
+    writeFriendsGalaxyWebGpuMotionUniforms(uniforms, 6_000, 0.5, false, false);
     expect(uniforms[18]).toBe(-1);
     expect(uniforms[19]).toBe(0.5);
   });

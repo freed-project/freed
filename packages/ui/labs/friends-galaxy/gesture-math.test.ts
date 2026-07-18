@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyGalaxyLabPinch,
-  applyGalaxyLabResistedZoomAt,
-  applyGalaxyLabZoomAt,
-  galaxyLabResistedScaleAtRatio,
-  galaxyLabWheelDeltaPixels,
-} from "./gesture-math.js";
+  applyFriendsGalaxyPinch,
+  applyFriendsGalaxyResistedZoomAt,
+  applyFriendsGalaxyZoomAt,
+  friendsGalaxyResistedScaleAtRatio,
+  friendsGalaxyWheelDeltaPixels,
+} from "../../src/lib/friends-galaxy-gesture.js";
 
 describe("Friends Galaxy gesture math", () => {
   it("preserves the world point beneath a centered zoom", () => {
@@ -15,7 +15,7 @@ describe("Friends Galaxy gesture math", () => {
     const worldX = (viewportX - transform.x) / transform.scale;
     const worldY = (viewportY - transform.y) / transform.scale;
 
-    applyGalaxyLabZoomAt(transform, viewportX, viewportY, 0.9, 0.035, 6);
+    applyFriendsGalaxyZoomAt(transform, viewportX, viewportY, 0.9, 0.035, 6);
 
     expect(transform.scale).toBe(0.9);
     expect(worldX * transform.scale + transform.x).toBeCloseTo(viewportX, 8);
@@ -29,7 +29,7 @@ describe("Friends Galaxy gesture math", () => {
     const worldX = (previousMidpointX - transform.x) / transform.scale;
     const worldY = (previousMidpointY - transform.y) / transform.scale;
 
-    expect(applyGalaxyLabPinch(
+    expect(applyFriendsGalaxyPinch(
       transform,
       100,
       200,
@@ -54,7 +54,7 @@ describe("Friends Galaxy gesture math", () => {
     const worldX = 150 / transform.scale;
     const worldY = 100 / transform.scale;
 
-    applyGalaxyLabPinch(
+    applyFriendsGalaxyPinch(
       transform,
       100,
       100,
@@ -75,8 +75,8 @@ describe("Friends Galaxy gesture math", () => {
   });
 
   it("keeps zoom ratios exact before outward resistance begins", () => {
-    expect(galaxyLabResistedScaleAtRatio(0.5, 1.2, 0.07, 0.11, 6)).toBeCloseTo(0.6, 12);
-    expect(galaxyLabResistedScaleAtRatio(0.5, 0.8, 0.07, 0.11, 6)).toBeCloseTo(0.4, 12);
+    expect(friendsGalaxyResistedScaleAtRatio(0.5, 1.2, 0.07, 0.11, 6)).toBeCloseTo(0.6, 12);
+    expect(friendsGalaxyResistedScaleAtRatio(0.5, 0.8, 0.07, 0.11, 6)).toBeCloseTo(0.4, 12);
   });
 
   it("approaches the clip-safe scale smoothly under repeated outward input", () => {
@@ -86,7 +86,7 @@ describe("Friends Galaxy gesture math", () => {
     let previousScale = scale;
 
     for (let index = 0; index < 200; index += 1) {
-      const nextScale = galaxyLabResistedScaleAtRatio(
+      const nextScale = friendsGalaxyResistedScaleAtRatio(
         scale,
         0.95,
         minimumScale,
@@ -100,7 +100,7 @@ describe("Friends Galaxy gesture math", () => {
     }
 
     expect(scale).toBeLessThan(0.074);
-    expect(galaxyLabResistedScaleAtRatio(
+    expect(friendsGalaxyResistedScaleAtRatio(
       scale,
       1.05,
       minimumScale,
@@ -115,7 +115,7 @@ describe("Friends Galaxy gesture math", () => {
     let scale = resistanceScale;
 
     for (let index = 0; index < 1_200; index += 1) {
-      const nextScale = galaxyLabResistedScaleAtRatio(
+      const nextScale = friendsGalaxyResistedScaleAtRatio(
         scale,
         0.995,
         targetScale,
@@ -131,7 +131,7 @@ describe("Friends Galaxy gesture math", () => {
   });
 
   it("restores native zoom speed immediately when moving inward from the ceiling", () => {
-    expect(galaxyLabResistedScaleAtRatio(
+    expect(friendsGalaxyResistedScaleAtRatio(
       0.0901,
       1.04,
       0.09,
@@ -147,7 +147,7 @@ describe("Friends Galaxy gesture math", () => {
     const worldX = (viewportX - transform.x) / transform.scale;
     const worldY = (viewportY - transform.y) / transform.scale;
 
-    applyGalaxyLabResistedZoomAt(
+    applyFriendsGalaxyResistedZoomAt(
       transform,
       viewportX,
       viewportY,
@@ -164,11 +164,11 @@ describe("Friends Galaxy gesture math", () => {
   });
 
   it("keeps pixel trackpad deltas exact", () => {
-    expect(galaxyLabWheelDeltaPixels(18.5, 0, 900)).toBe(18.5);
+    expect(friendsGalaxyWheelDeltaPixels(18.5, 0, 900)).toBe(18.5);
   });
 
   it("normalizes line and page wheel deltas before panning", () => {
-    expect(galaxyLabWheelDeltaPixels(3, 1, 900)).toBe(48);
-    expect(galaxyLabWheelDeltaPixels(-0.5, 2, 800)).toBe(-400);
+    expect(friendsGalaxyWheelDeltaPixels(3, 1, 900)).toBe(48);
+    expect(friendsGalaxyWheelDeltaPixels(-0.5, 2, 800)).toBe(-400);
   });
 });
