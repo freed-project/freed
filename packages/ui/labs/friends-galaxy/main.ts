@@ -603,6 +603,9 @@ function updateMetrics(): void {
   );
   addMetric("Draw calls", metrics.drawCalls === null ? "Not exposed" : integerFormat.format(metrics.drawCalls));
   addMetric("Submission", metrics.submissionMode ?? "Direct draws");
+  if (metrics.renderBundleCount !== undefined) {
+    addMetric("Render bundles", integerFormat.format(metrics.renderBundleCount));
+  }
   addMetric("Billboard labels", integerFormat.format(metrics.labelCount));
   addMetric("Avatar atlas", integerFormat.format(metrics.avatarCount));
   if (activeBackend.setAvatarImages) {

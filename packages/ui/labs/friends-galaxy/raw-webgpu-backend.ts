@@ -452,9 +452,12 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private bindGroup: GPUBindGroup | null = null;
   private providerFieldPipeline: GPURenderPipeline | null = null;
   private providerFieldBindGroup: GPUBindGroup | null = null;
-  private staticRenderBundle: GPURenderBundle | null = null;
-  private staticRenderBundleWithInteraction: GPURenderBundle | null = null;
-  private readonly staticRenderBundles: GPURenderBundle[] = [];
+  private worldRenderBundle: GPURenderBundle | null = null;
+  private worldRenderBundleWithInteraction: GPURenderBundle | null = null;
+  private edgeRenderBundle: GPURenderBundle | null = null;
+  private avatarRenderBundle: GPURenderBundle | null = null;
+  private labelRenderBundle: GPURenderBundle | null = null;
+  private readonly frameRenderBundles: GPURenderBundle[] = [];
   private edgePipeline: GPURenderPipeline | null = null;
   private edgeBindGroup: GPUBindGroup | null = null;
   private labelPipeline: GPURenderPipeline | null = null;
@@ -881,7 +884,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     if (
       !this.device || !this.context || !this.pipeline || !this.bindGroup || !this.uniformBuffer ||
       !this.quadBuffer || !this.semanticBuffer || !this.backgroundBuffer || !this.fixture ||
-      !this.staticRenderBundle || !this.colorAttachment || !this.renderPassDescriptor
+      !this.worldRenderBundle || !this.colorAttachment || !this.renderPassDescriptor
     ) return;
     writeGalaxyLabWebGpuViewProjection(
       this.viewProjection,
@@ -905,35 +908,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.colorAttachment.view = this.context.getCurrentTexture().createView();
     this.colorAttachment.clearValue = this.clearColor;
     const pass = encoder.beginRenderPass(this.renderPassDescriptor);
-    pass.executeBundles(this.staticRenderBundles);
-    if (
-      this.contextualEdgeCount > 0 && this.edgePipeline && this.edgeBindGroup && this.edgeBuffer
-    ) {
-      pass.setPipeline(this.edgePipeline);
-      pass.setBindGroup(0, this.edgeBindGroup);
-      pass.setVertexBuffer(0, this.edgeBuffer);
-      pass.draw(6, this.contextualEdgeCount);
-    }
-    if (
-      this.avatarAtlas && this.avatarAtlas.itemCount > 0 && this.labelPipeline &&
-      this.avatarBindGroup && this.avatarBuffer
-    ) {
-      pass.setPipeline(this.labelPipeline);
-      pass.setBindGroup(0, this.avatarBindGroup);
-      pass.setVertexBuffer(0, this.quadBuffer);
-      pass.setVertexBuffer(1, this.avatarBuffer);
-      pass.draw(6, this.avatarAtlas.itemCount);
-    }
-    if (
-      this.labelAtlas && this.labelAtlas.labels.length > 0 && this.labelPipeline &&
-      this.labelBindGroup && this.labelBuffer
-    ) {
-      pass.setPipeline(this.labelPipeline);
-      pass.setBindGroup(0, this.labelBindGroup);
-      pass.setVertexBuffer(0, this.quadBuffer);
-      pass.setVertexBuffer(1, this.labelBuffer);
-      pass.draw(6, this.labelAtlas.labels.length);
-    }
+    pass.executeBundles(this.frameRenderBundles);
     pass.end();
     this.commandBuffers[0] = encoder.finish();
     this.device.queue.submit(this.commandBuffers);
@@ -969,7 +944,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       pickSourceNodeCount: this.sceneIndex?.pickSourceNodeCount,
       renderPixelRatio: this.pixelRatio,
       trackedGpuDataBytes: this.trackedGpuDataBytes(),
-      submissionMode: "Pre-recorded world bundle",
+      submissionMode: "Pre-recorded frame bundles",
+      renderBundleCount: this.frameRenderBundles.length,
       fallbackReason: this.fallbackReason,
       adapterDescription: this.adapterDescription,
     };
@@ -998,9 +974,12 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.bindGroup = null;
     this.providerFieldPipeline = null;
     this.providerFieldBindGroup = null;
-    this.staticRenderBundle = null;
-    this.staticRenderBundleWithInteraction = null;
-    this.staticRenderBundles.length = 0;
+    this.worldRenderBundle = null;
+    this.worldRenderBundleWithInteraction = null;
+    this.edgeRenderBundle = null;
+    this.avatarRenderBundle = null;
+    this.labelRenderBundle = null;
+    this.frameRenderBundles.length = 0;
     this.edgePipeline = null;
     this.edgeBindGroup = null;
     this.labelPipeline = null;
@@ -1048,6 +1027,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       !this.uniformBuffer || !this.labelSampler
     ) return;
     this.compactLabels = compact;
+    this.labelRenderBundle = null;
+    this.rebuildFrameRenderBundles();
     const atlas = createGalaxyLabLabelAtlas(
       this.fixture,
       this.palette,
@@ -1083,6 +1064,13 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       ],
     });
     this.labelAtlas = atlas;
+    this.labelRenderBundle = this.recordBillboardRenderBundle(
+      "Friends Galaxy label bundle",
+      this.labelBindGroup,
+      this.labelBuffer,
+      atlas.labels.length,
+    );
+    this.rebuildFrameRenderBundles();
     this.bufferUploadCount += 2;
   }
 
@@ -1110,6 +1098,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       !this.device || !this.fixture || !this.palette || !this.labelPipeline ||
       !this.uniformBuffer || !this.labelSampler
     ) return;
+    this.avatarRenderBundle = null;
+    this.rebuildFrameRenderBundles();
     this.avatarBuffer?.destroy();
     this.avatarTexture?.destroy();
     this.avatarBuffer = null;
@@ -1150,6 +1140,13 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
         { binding: 2, resource: this.labelSampler },
       ],
     });
+    this.avatarRenderBundle = this.recordBillboardRenderBundle(
+      "Friends Galaxy avatar bundle",
+      this.avatarBindGroup,
+      this.avatarBuffer,
+      atlas.itemCount,
+    );
+    this.rebuildFrameRenderBundles();
     this.bufferUploadCount += 2;
   }
 
@@ -1171,10 +1168,9 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       roles,
     );
     this.interactionInstanceCount = nextCount;
-    const bundle = nextCount > 0
-      ? this.staticRenderBundleWithInteraction ?? this.staticRenderBundle
-      : this.staticRenderBundle;
-    if (bundle) this.staticRenderBundles[0] = bundle;
+    if ((previousCount === 0) !== (nextCount === 0)) {
+      this.rebuildFrameRenderBundles();
+    }
     if (previousCount === 0 && nextCount === 0) return;
     this.device.queue.writeBuffer(
       this.interactionBuffer,
@@ -1186,6 +1182,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
 
   private writeContextEdges(edgeIndices: Uint32Array, activeEdgeCount: number): void {
     if (!this.device || !this.edgeBuffer || !this.fixture) return;
+    const previousCount = this.contextualEdgeCount;
     const edgeCount = Math.min(MAX_CONTEXTUAL_EDGES, activeEdgeCount);
     this.edgeData.fill(0);
     for (let edgeIndex = 0; edgeIndex < edgeCount; edgeIndex += 1) {
@@ -1206,7 +1203,13 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       this.edgeData[targetOffset + 9] = 0.82;
     }
     this.contextualEdgeCount = edgeCount;
-    if (edgeCount === 0) return;
+    if (edgeCount === 0) {
+      if (previousCount > 0) {
+        this.edgeRenderBundle = null;
+        this.rebuildFrameRenderBundles();
+      }
+      return;
+    }
     this.device.queue.writeBuffer(
       this.edgeBuffer,
       0,
@@ -1214,6 +1217,10 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       this.edgeData.byteOffset,
       edgeCount * EDGE_INSTANCE_STRIDE,
     );
+    if (!this.edgeRenderBundle || previousCount !== edgeCount) {
+      this.edgeRenderBundle = this.recordEdgeRenderBundle();
+      this.rebuildFrameRenderBundles();
+    }
     this.bufferUploadCount += 1;
   }
 
@@ -1311,11 +1318,59 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       }
       return encoder.finish();
     };
-    this.staticRenderBundle = recordBundle(false);
-    this.staticRenderBundleWithInteraction = recordBundle(true);
-    this.staticRenderBundles[0] = this.interactionInstanceCount > 0
-      ? this.staticRenderBundleWithInteraction
-      : this.staticRenderBundle;
+    this.worldRenderBundle = recordBundle(false);
+    this.worldRenderBundleWithInteraction = recordBundle(true);
+    this.rebuildFrameRenderBundles();
+  }
+
+  private recordEdgeRenderBundle(): GPURenderBundle | null {
+    if (
+      !this.device || !this.format || !this.edgePipeline || !this.edgeBindGroup ||
+      !this.edgeBuffer || this.contextualEdgeCount === 0
+    ) return null;
+    const encoder = this.device.createRenderBundleEncoder({
+      label: "Friends Galaxy contextual edge bundle",
+      colorFormats: [this.format],
+    });
+    encoder.setPipeline(this.edgePipeline);
+    encoder.setBindGroup(0, this.edgeBindGroup);
+    encoder.setVertexBuffer(0, this.edgeBuffer);
+    encoder.draw(6, this.contextualEdgeCount);
+    return encoder.finish();
+  }
+
+  private recordBillboardRenderBundle(
+    label: string,
+    bindGroup: GPUBindGroup,
+    instanceBuffer: GPUBuffer,
+    instanceCount: number,
+  ): GPURenderBundle | null {
+    if (
+      !this.device || !this.format || !this.labelPipeline || !this.quadBuffer ||
+      instanceCount === 0
+    ) return null;
+    const encoder = this.device.createRenderBundleEncoder({
+      label,
+      colorFormats: [this.format],
+    });
+    encoder.setPipeline(this.labelPipeline);
+    encoder.setBindGroup(0, bindGroup);
+    encoder.setVertexBuffer(0, this.quadBuffer);
+    encoder.setVertexBuffer(1, instanceBuffer);
+    encoder.draw(6, instanceCount);
+    return encoder.finish();
+  }
+
+  private rebuildFrameRenderBundles(): void {
+    let count = 0;
+    const worldBundle = this.interactionInstanceCount > 0
+      ? this.worldRenderBundleWithInteraction ?? this.worldRenderBundle
+      : this.worldRenderBundle;
+    if (worldBundle) this.frameRenderBundles[count++] = worldBundle;
+    if (this.edgeRenderBundle) this.frameRenderBundles[count++] = this.edgeRenderBundle;
+    if (this.avatarRenderBundle) this.frameRenderBundles[count++] = this.avatarRenderBundle;
+    if (this.labelRenderBundle) this.frameRenderBundles[count++] = this.labelRenderBundle;
+    this.frameRenderBundles.length = count;
   }
 
   private writePaletteUniforms(palette: GalaxyLabPalette): void {

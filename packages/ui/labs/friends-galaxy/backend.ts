@@ -23,6 +23,7 @@ export interface GalaxyLabBackendMetrics {
   renderPixelRatio?: number;
   trackedGpuDataBytes?: number;
   submissionMode?: string;
+  renderBundleCount?: number;
   fallbackReason: string | null;
   adapterDescription: string | null;
 }
