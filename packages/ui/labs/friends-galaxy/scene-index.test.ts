@@ -2,7 +2,10 @@ import { Matrix4, PerspectiveCamera, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
 import { identityGalaxyCameraPose } from "../../src/lib/identity-galaxy-camera.js";
 import { IdentityGalaxyNodeFlag } from "../../src/lib/identity-galaxy-scene.js";
-import { selectGalaxyLabLabels } from "./billboard-labels.js";
+import {
+  placeGalaxyLabLabelsAroundAvatars,
+  selectGalaxyLabLabels,
+} from "./billboard-labels.js";
 import { createGalaxyLabFixture } from "./scene-fixture.js";
 import { GalaxyLabSceneIndex } from "./scene-index.js";
 
@@ -142,5 +145,42 @@ describe("Friends Galaxy billboard label selection", () => {
       "provider:rss",
     ]);
     expect(labels.slice(0, 5).every((label) => label.provider)).toBe(true);
+  });
+
+  it("keeps close labels clear of avatar billboards", () => {
+    const labels = selectGalaxyLabLabels(fixture, false, "close");
+    const ownLabel = labels.find((label) => !label.provider)!;
+    const nearbyLabel = {
+      ...ownLabel,
+      id: `${ownLabel.id}:nearby`,
+      nodeId: `${ownLabel.nodeId}:nearby`,
+      anchorX: ownLabel.anchorX + 4,
+    };
+    const placed = placeGalaxyLabLabelsAroundAvatars(
+      [ownLabel, nearbyLabel],
+      [{
+        nodeId: ownLabel.nodeId,
+        initials: "ID",
+        anchorX: ownLabel.anchorX,
+        anchorY: ownLabel.anchorY,
+        anchorZ: ownLabel.anchorZ,
+        size: 48,
+        priority: 1,
+        selected: true,
+        color: "#000000",
+      }],
+    );
+
+    expect(placed).toHaveLength(1);
+    expect(placed[0]!.nodeId).toBe(ownLabel.nodeId);
+    expect(placed[0]!.gapY).toBeGreaterThanOrEqual(32);
+  });
+
+  it("keeps the selected identity named outside the ordinary label sample", () => {
+    const selectedNodeId = "person:lab-person-4999";
+    const labels = selectGalaxyLabLabels(fixture, false, "close", selectedNodeId);
+
+    expect(labels.some((label) => label.nodeId === selectedNodeId)).toBe(true);
+    expect(labels.length).toBeLessThanOrEqual(64);
   });
 });

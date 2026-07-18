@@ -1,5 +1,10 @@
 import type { GalaxyLabFixture, GalaxyLabPalette } from "./scene-fixture.js";
 import type { GalaxyLabViewDetail } from "./backend.js";
+import {
+  galaxyLabSelectedPersonNodeId,
+  selectGalaxyLabAvatars,
+  type GalaxyLabAvatarSeed,
+} from "./avatar-atlas.js";
 
 const LABEL_INSTANCE_FLOATS = 11;
 const LABEL_PIXEL_SCALE = 2;
@@ -8,7 +13,7 @@ const LABEL_PADDING_X = 8;
 const LABEL_PADDING_Y = 5;
 const LABEL_OUTLINE_WIDTH = 3;
 
-interface GalaxyLabLabelSeed {
+export interface GalaxyLabLabelSeed {
   id: string;
   nodeId: string;
   text: string;
@@ -37,6 +42,32 @@ export interface GalaxyLabLabelAtlas extends GalaxyLabBillboardAtlas {
   labels: readonly GalaxyLabBillboardLabel[];
 }
 
+const AVATAR_LABEL_GAP = 8;
+const AVATAR_EXCLUSION_RADIUS_SCALE = 1.5;
+
+export function placeGalaxyLabLabelsAroundAvatars(
+  seeds: readonly GalaxyLabLabelSeed[],
+  avatars: readonly GalaxyLabAvatarSeed[],
+): readonly GalaxyLabLabelSeed[] {
+  if (avatars.length === 0) return seeds;
+
+  return seeds.flatMap((seed) => {
+    const ownAvatar = avatars.find((avatar) => avatar.nodeId === seed.nodeId);
+    if (ownAvatar) {
+      return [{
+        ...seed,
+        gapY: Math.max(seed.gapY, ownAvatar.size * 0.5 + AVATAR_LABEL_GAP),
+      }];
+    }
+
+    const overlapsAvatar = avatars.some((avatar) => Math.hypot(
+      seed.anchorX - avatar.anchorX,
+      seed.anchorY - avatar.anchorY,
+    ) < avatar.size * AVATAR_EXCLUSION_RADIUS_SCALE + AVATAR_LABEL_GAP);
+    return overlapsAvatar ? [] : [seed];
+  });
+}
+
 function nextPowerOfTwo(value: number): number {
   return 2 ** Math.ceil(Math.log2(Math.max(1, value)));
 }
@@ -50,6 +81,7 @@ export function selectGalaxyLabLabels(
   fixture: GalaxyLabFixture,
   compact: boolean,
   detail: GalaxyLabViewDetail,
+  selectedNodeId: string | null = null,
 ): readonly GalaxyLabLabelSeed[] {
   const nodeIndexById = new Map(fixture.scene.nodeIds.map((id, index) => [id, index]));
   const cap = detail === "overview"
@@ -57,6 +89,7 @@ export function selectGalaxyLabLabels(
     : detail === "middle"
       ? compact ? 20 : 36
       : compact ? 32 : 64;
+  const selectedPersonId = galaxyLabSelectedPersonNodeId(fixture, selectedNodeId);
   const seeds = fixture.atlas.labels.map((label): GalaxyLabLabelSeed => {
     const nodeIndex = nodeIndexById.get(label.nodeId);
     const provider = label.kind === "provider_cluster";
@@ -73,10 +106,30 @@ export function selectGalaxyLabLabels(
       gapY: detail === "close" && !provider
         ? Math.max(pointSize * 0.5, compact ? 21 : 25) + 2
         : pointSize * 0.5 + 2,
-      priority: label.priority + (provider ? 100_000 : fixture.scene.prominence[nodeIndex ?? 0]! * 1_000),
+      priority: label.priority + (provider ? 100_000 : fixture.scene.prominence[nodeIndex ?? 0]! * 1_000) +
+        (label.nodeId === selectedPersonId ? 1_000_000 : 0),
       provider,
     };
   });
+  if (selectedPersonId && !seeds.some((label) => label.nodeId === selectedPersonId)) {
+    const nodeIndex = nodeIndexById.get(selectedPersonId);
+    const node = fixture.atlas.nodes.find((candidate) => candidate.id === selectedPersonId);
+    if (nodeIndex !== undefined && node) {
+      const pointSize = Math.max(3.5, fixture.scene.pointSizes[nodeIndex]! * 0.34);
+      seeds.push({
+        id: `label:selected:${selectedPersonId}`,
+        nodeId: selectedPersonId,
+        text: truncateLabel(node.label),
+        anchorX: fixture.scene.positions[nodeIndex * 3]!,
+        anchorY: fixture.scene.positions[nodeIndex * 3 + 1]!,
+        anchorZ: fixture.scene.positions[nodeIndex * 3 + 2]! + 5,
+        fontSize: compact ? 12 : 14,
+        gapY: Math.max(pointSize * 0.5, compact ? 21 : 25) + 2,
+        priority: 1_000_000 + node.priority + fixture.scene.prominence[nodeIndex]! * 1_000,
+        provider: false,
+      });
+    }
+  }
   const providers = seeds.filter((label) => label.provider);
   const semantic = seeds
     .filter((label) => !label.provider)
@@ -102,9 +155,20 @@ export function createGalaxyLabLabelAtlas(
   palette: GalaxyLabPalette,
   compact: boolean,
   detail: GalaxyLabViewDetail,
+  selectedNodeId: string | null = null,
   fontFamily = "Inter, ui-sans-serif, system-ui, sans-serif",
 ): GalaxyLabLabelAtlas {
-  const seeds = selectGalaxyLabLabels(fixture, compact, detail);
+  const avatars = selectGalaxyLabAvatars(
+    fixture,
+    palette,
+    selectedNodeId,
+    compact,
+    detail,
+  );
+  const seeds = placeGalaxyLabLabelsAroundAvatars(
+    selectGalaxyLabLabels(fixture, compact, detail, selectedNodeId),
+    avatars,
+  );
   const measuringCanvas = document.createElement("canvas");
   const measuringContext = measuringCanvas.getContext("2d");
   if (!measuringContext) throw new Error("Canvas 2D is unavailable for the billboard label atlas.");

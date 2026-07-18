@@ -204,7 +204,7 @@ The July 17, 2026 audit used current `origin/dev` at `b41470d8ec0b5e529d5be7629d
 
 ### Next structural target
 
-Integrate the selected raw WebGPU backend behind the imperative engine contract, then build the close-zoom avatar texture atlas and incremental graph index maintenance. The current WebGL2 engine and batched glyph layer remain the compatibility backend and functional integration surface until the new runtime passes repeated device performance baselines and complete workflow acceptance.
+When global behavioral custody is released, integrate the selected raw WebGPU backend behind the imperative engine contract and move the proven incremental activity index into the shared document-worker path. Add bounded real-image decode and failure caching to the settled avatar atlas during that integration. The current WebGL2 engine and batched glyph layer remain the compatibility backend and functional integration surface until the new runtime passes repeated device performance baselines and complete workflow acceptance.
 
 Benchmarking is authorized only as repeated consistency runs while other machine tasks remain active. Single-run timing results are not decision evidence.
 
@@ -228,7 +228,7 @@ Interaction uses the production locked-camera transform. Pointer pan, wheel zoom
 
 Both WebGPU candidates now use one whole-label canvas atlas and one GPU billboard batch. Labels remain visible throughout active camera movement. The accepted label set changes only after the camera settles and crosses an overview, middle, or close detail boundary. Deterministic screen-density rules retain provider labels, spread identity labels across the viewport, and cap mobile detail more tightly than desktop detail.
 
-Both WebGPU candidates also include one settled close-tier avatar atlas pass. Overview and middle detail carry zero avatar workload. Close detail admits at most twelve identities on desktop and six on compact screens, always retains the selected identity, and resolves a selected linked channel to its parent identity. The atlas accepts decoded image sources and uses deterministic themed monograms in the laboratory, so GPU and layout behavior can be proved without network image loading. Product integration must add bounded asynchronous decode, failure caching, and real local avatar candidates after settle.
+Both WebGPU candidates also include one settled close-tier avatar atlas pass. Overview and middle detail carry zero avatar workload. Close detail admits at most twelve identities on desktop and six on compact screens, always retains the selected identity, and resolves a selected linked channel to its parent identity. The label atlas treats avatars as collision obstacles and always retains the selected identity name outside the normal label sample. The atlas accepts decoded image sources and uses deterministic themed monograms in the laboratory, so GPU and layout behavior can be proved without network image loading. Product integration must add bounded asynchronous decode, failure caching, and real local avatar candidates after settle.
 
 Selection and hover use a compact adjacency index. The engine writes only the previously active and newly active star instances instead of replacing complete color and emphasis buffers. Contextual links contain only the selected or hovered identity system, so the common fixture produces four short local links rather than a global edge field. Click picking projects the resident typed scene only when requested and favors prominent parent identities over nearby channels.
 
@@ -240,10 +240,31 @@ npm run test:friends-galaxy-lab
 npm run friends:galaxy-lab -- --port <free-port>
 ```
 
-The isolated compiler and all sixteen deterministic fixture, camera-matrix, adjacency, picking, label-density, avatar-admission, and local-orbit tests pass. Desktop and iPhone-sized browser checks confirm nonblank output, theme switching, backend switching, persistent gesture labels, sparse selection updates, short contextual links, and warning-free WebGPU pipeline creation. During the mobile pinch probe, all eight overview labels remained present on every sampled gesture frame. The settled middle tier then admitted twenty labels. These are functional checks only. Their frame timing is not benchmark evidence while unrelated machine workloads remain active.
+The isolated compiler and all twenty-three deterministic fixture, camera-matrix, adjacency, picking, label-density, avatar-admission, activity-index, and local-orbit tests pass. Desktop and iPhone-sized browser checks confirm nonblank output, theme switching, backend switching, persistent gesture labels, sparse selection updates, short contextual links, selected avatar naming, and warning-free WebGPU pipeline creation. During the mobile pinch probe, all eight overview labels remained present on every sampled gesture frame. The settled middle tier then admitted twenty labels. The close tier admits twelve avatars and keeps the selected name clear of the avatar rim in one additional draw. These are functional checks only. Their frame timing is not benchmark evidence while unrelated machine workloads remain active.
 
 ### Laboratory backend decision
 
 Raw WebGPU is selected as the primary shared renderer. It handles the same semantic stars, decorative stars, billboard labels, contextual links, picking, and sparse interaction workload with fewer draws, a dedicated allocation-free camera matrix instead of a Three.js runtime dependency, more faithful light-theme output, and exact control over buffer writes and shader behavior. The current WebGL2 engine remains the deterministic compatibility fallback for devices without usable WebGPU. Three.js WebGPU remains a maintained laboratory reference until production cutover proves that it no longer provides a required compatibility advantage.
 
 This decision does not authorize a runtime cutover by itself. The remaining gates are bounded real-image avatar admission, product integration behind the imperative engine contract, every approved Friends workflow, repeated installed Freed Desktop consistency ranges, physical iPhone Safari validation, fallback validation, accessibility, and final owner visual acceptance. Native Metal remains unnecessary unless those repeated device results show that the shared WebGPU path cannot meet the approved budgets.
+
+## Incremental Activity Index Checkpoint
+
+The detached laboratory now includes an exact activity-summary index contract under `packages/ui/labs/friends-galaxy/activity-summary-index.ts`. It deliberately retains state proportional to social and RSS source count rather than feed-item count. Each source bucket holds only total and location counts, the latest three sample candidates, and the latest three distinct avatar candidates.
+
+Normal additions, updates that do not replace a leading candidate, and removals outside the bounded candidates produce key-level summary patches without a library scan. If a destructive mutation removes a leading sample or avatar candidate, the index invalidates only that source. The owning document worker performs one resolver pass over its current authoritative document and rebuilds only the invalidated source buckets. No rebuild, sort, or item traversal occurs on the React thread.
+
+The deterministic stress test represents 250,000 feed items across 25,000 source summaries. A subsequent addition changes one summary patch, reports zero rebuilt sources, and leaves item payloads out of the graph fixture. This is structural correctness evidence, not a timing benchmark.
+
+### Production activity protocol
+
+1. Move the pure contribution, summary, delta, patch, and index types into `@freed/shared` so Freed Desktop and PWA use one implementation.
+2. Let each Automerge worker own the index. Initial hydration builds it while the worker already traverses the authoritative feed-item document. Full document replacement, merge, reset, and schema recovery rebuild it in the worker.
+3. At incremental mutation boundaries, derive previous and next contributions from the immutable document before and after `A.change()`. Attach source-key summary patches and a monotonic summary revision to the existing item-patch response.
+4. Keep one derived activity bridge outside React. It applies key patches without cloning the complete 25,000-key snapshot and exposes a revision for subscribers. `FriendsView` subscribes to that revision and compact summary snapshot, never to the complete `items` array for graph or overview entry.
+5. Build friend overview rows from persons, account indexes, and summaries. Avatar candidates, captured counts, recent activity, and location flags come from summaries rather than retained item arrays.
+6. Add an on-demand worker query for the selected person or account timeline. Only the detail rail receives those full items. Selection changes cancel stale requests, and closing details releases the item array.
+7. Precompute the bounded friend-candidate suggestion list in the document worker from content signals and contact overlap. Friends consumes the resulting top suggestions instead of rescoring every item on mount.
+8. Give the graph atlas worker one initial compact summary snapshot and later source-key patches. Activity-only changes patch affected brightness, size, and avatar metadata without rebuilding stable galaxy coordinates or resending the complete semantic scene.
+
+This protocol removes the remaining `FriendsView` mount scans: feed-item record materialization, graph summary construction, source-item indexing, overview item grouping, candidate rescoring, and selected-account filtering. Account-to-person indexes also move off the React render path. Existing `Person` plus `Account` records and every explicit identity workflow remain unchanged.

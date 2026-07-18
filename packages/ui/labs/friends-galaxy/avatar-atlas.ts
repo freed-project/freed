@@ -32,7 +32,10 @@ function nextPowerOfTwo(value: number): number {
   return 2 ** Math.ceil(Math.log2(Math.max(1, value)));
 }
 
-function selectedPersonNodeId(fixture: GalaxyLabFixture, selectedNodeId: string | null): string | null {
+export function galaxyLabSelectedPersonNodeId(
+  fixture: GalaxyLabFixture,
+  selectedNodeId: string | null,
+): string | null {
   if (!selectedNodeId) return null;
   const selectedIndex = fixture.scene.nodeIds.indexOf(selectedNodeId);
   if (selectedIndex < 0) return null;
@@ -49,7 +52,7 @@ export function selectGalaxyLabAvatars(
 ): readonly GalaxyLabAvatarSeed[] {
   if (detail !== "close") return [];
   const nodeIndexById = new Map(fixture.scene.nodeIds.map((id, index) => [id, index]));
-  const selectedPersonId = selectedPersonNodeId(fixture, selectedNodeId);
+  const selectedPersonId = galaxyLabSelectedPersonNodeId(fixture, selectedNodeId);
   const cap = compact ? 6 : 12;
   const candidates = fixture.atlas.nodes
     .filter((node) => Boolean(node.personId))

@@ -529,6 +529,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     if (!this.sceneIndex) return;
     this.writeInteraction(this.sceneIndex.interactionState(interaction));
     if (selectionChanged && this.viewDetail === "close") {
+      this.rebuildLabels(this.compactLabels ?? this.width < 720);
       this.rebuildAvatars(this.compactLabels ?? this.width < 720);
     }
   }
@@ -672,6 +673,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       this.palette,
       compact,
       this.viewDetail,
+      this.interaction.selectedNodeId,
     );
     this.labelBuffer?.destroy();
     this.labelTexture?.destroy();
