@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
-  appendFileSync,
   chmodSync,
   closeSync,
   constants as fsConstants,
@@ -632,9 +631,18 @@ test("bounded project registry reads reject growth after the size snapshot", () 
   );
   try {
     const snapshotSize = fstatSync(descriptor).size;
-    appendFileSync(registryPath, " ");
+    const growthReader = (fd, buffer, offset, length, position) => {
+      if (position === snapshotSize) {
+        buffer[offset] = 0x20;
+        return 1;
+      }
+      return readSync(fd, buffer, offset, length, position);
+    };
     assert.throws(
-      () => readProjectRegistrySnapshot(descriptor, snapshotSize),
+      () =>
+        readProjectRegistrySnapshot(descriptor, snapshotSize, {
+          reader: growthReader,
+        }),
       /changed during its bounded read/,
     );
   } finally {
@@ -660,11 +668,17 @@ test("bounded project registry reads handle partial reads before probing growth"
       }),
       expected,
     );
-    appendFileSync(registryPath, " ");
+    const partialGrowthReader = (fd, buffer, offset, length, position) => {
+      if (position === snapshotSize) {
+        buffer[offset] = 0x20;
+        return 1;
+      }
+      return partialReader(fd, buffer, offset, length, position);
+    };
     assert.throws(
       () =>
         readProjectRegistrySnapshot(descriptor, snapshotSize, {
-          reader: partialReader,
+          reader: partialGrowthReader,
         }),
       /changed during its bounded read/,
     );
