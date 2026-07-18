@@ -41,6 +41,7 @@ import {
   assertEventCountZero,
   assertFootprintSlope,
   assertGuardedCounters,
+  assertRendererRecoveryCountZero,
   assertRequestSurfaceContracts,
   assertWorkerIdleTerminationContract,
   assertWorkerInitRate,
@@ -1602,25 +1603,39 @@ test("recovery and stale-heartbeat assertions cite the violating lines", () => {
   const lines = [
     { entry: { event: "renderer_heartbeat", tsMs: 1 }, line: 1, raw: "{hb}" },
     {
-      entry: { event: "renderer_recovery_restart_requested", tsMs: 2 },
+      entry: {
+        event: "window_destroyed",
+        label: "main",
+        requestedBy: "renderer heartbeat stale",
+        appSessionId: "renderer-before-rebuild",
+        tsMs: 2,
+      },
       line: 2,
-      raw: "{recovery}",
+      raw: "{main-rebuild}",
     },
     {
-      entry: { event: "renderer_heartbeat_stale", tsMs: 3 },
+      entry: {
+        event: "renderer_recovery_restart_requested",
+        reason: "renderer heartbeat stale",
+        appSessionId: "renderer-after-rebuild",
+        tsMs: 3,
+      },
       line: 3,
+      raw: "{paired-restart}",
+    },
+    {
+      entry: { event: "renderer_heartbeat_stale", tsMs: 4 },
+      line: 4,
       raw: "{stale}",
     },
   ];
-  const recoveries = assertEventCountZero(
-    "renderer_recoveries",
+  const recoveries = assertRendererRecoveryCountZero(
     lines,
     "runtime-health.jsonl",
-    "renderer_recovery_restart_requested",
   );
   assert.equal(recoveries.status, "fail");
   assert.deepEqual(recoveries.violations, [
-    { file: "runtime-health.jsonl", line: 2, excerpt: "{recovery}" },
+    { file: "runtime-health.jsonl", line: 2, excerpt: "{main-rebuild}" },
   ]);
 
   const stale = assertEventCountZero(
@@ -1630,15 +1645,82 @@ test("recovery and stale-heartbeat assertions cite the violating lines", () => {
     "renderer_heartbeat_stale",
   );
   assert.equal(stale.status, "fail");
-  assert.equal(stale.violations[0].line, 3);
+  assert.equal(stale.violations[0].line, 4);
 
-  const clean = assertEventCountZero(
-    "renderer_recoveries",
-    lines.slice(0, 1),
+  const clean = assertRendererRecoveryCountZero(
+    [
+      lines[0],
+      {
+        entry: {
+          event: "window_destroyed",
+          label: "facebook-scraper",
+          requestedBy: "job complete",
+          tsMs: 5,
+        },
+        line: 5,
+        raw: "{scraper-window}",
+      },
+    ],
     "runtime-health.jsonl",
-    "renderer_recovery_restart_requested",
   );
   assert.equal(clean.status, "pass");
+});
+
+test("renderer recovery citations preserve repeated entry-object multiplicity", () => {
+  const repeatedEntry = {
+    event: "window_destroyed",
+    label: "main",
+    requestedBy: "renderer heartbeat stale",
+    tsMs: 1_000,
+  };
+  const result = assertRendererRecoveryCountZero(
+    [
+      { entry: repeatedEntry, line: 10, raw: "{recovery-one}" },
+      { entry: repeatedEntry, line: 11, raw: "{recovery-two}" },
+    ],
+    "runtime-health.jsonl",
+  );
+
+  assert.equal(result.status, "fail");
+  assert.deepEqual(result.violations, [
+    { file: "runtime-health.jsonl", line: 10, excerpt: "{recovery-one}" },
+    { file: "runtime-health.jsonl", line: 11, excerpt: "{recovery-two}" },
+  ]);
+});
+
+test("renderer recovery citations identify the unpaired repeated restart occurrence", () => {
+  const repeatedRestart = {
+    event: "renderer_recovery_restart_requested",
+    reason: "renderer heartbeat stale",
+    tsMs: 2_000,
+  };
+  const result = assertRendererRecoveryCountZero(
+    [
+      {
+        entry: {
+          event: "window_destroyed",
+          label: "main",
+          requestedBy: "renderer heartbeat stale",
+          tsMs: 1_000,
+        },
+        line: 1,
+        raw: "{main-rebuild}",
+      },
+      { entry: repeatedRestart, line: 2, raw: "{paired-restart}" },
+      { entry: repeatedRestart, line: 3, raw: "{unpaired-restart}" },
+    ],
+    "runtime-health.jsonl",
+  );
+
+  assert.equal(result.status, "fail");
+  assert.deepEqual(result.violations, [
+    { file: "runtime-health.jsonl", line: 1, excerpt: "{main-rebuild}" },
+    {
+      file: "runtime-health.jsonl",
+      line: 3,
+      excerpt: "{unpaired-restart}",
+    },
+  ]);
 });
 
 test("webkit_returns_to_baseline fails when the tail never returns to baseline", () => {
@@ -2452,7 +2534,7 @@ test("buildVerdict produces a machine-readable verdict with real numbers", () =>
   assert.equal(verdict.schemaVersion, 1);
   assert.equal(verdict.windowStart, new Date(measurementStartMs).toISOString());
   assert.equal(verdict.windowEnd, new Date(measurementEndMs).toISOString());
-  assert.equal(verdict.metricRegistryVersion, 6);
+  assert.equal(verdict.metricRegistryVersion, 7);
   assert.equal(verdict.pass, true);
   assert.equal(verdict.status, "pass");
   assert.equal(verdict.failures, 0);

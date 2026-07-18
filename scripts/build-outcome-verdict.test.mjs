@@ -147,7 +147,10 @@ function writeStoredSoak(
     })),
     ...Array.from({ length: rendererRecoveryCount }, (_, index) => ({
       ...identity,
-      event: "renderer_recovery_restart_requested",
+      event: "window_destroyed",
+      label: "main",
+      reasonEnum: "watchdog_memory",
+      requestedBy: `fixture renderer recovery ${index + 1}`,
       tsMs: start + (index + 1) * 4_000,
     })),
     ...Array.from({ length: novelItemsNotPersistedCount }, (_, index) => ({
@@ -322,7 +325,10 @@ function attributedCanary({
     })),
     ...Array.from({ length: recoveries }, (_, index) => ({
       ...identity,
-      event: "renderer_recovery_restart_requested",
+      event: "window_destroyed",
+      label: "main",
+      reasonEnum: "watchdog_memory",
+      requestedBy: `fixture renderer recovery ${index + 1}`,
       tsMs: start + (index + 1) * 1_000,
     })),
     {

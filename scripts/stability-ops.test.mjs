@@ -40,9 +40,14 @@ import {
 } from "./bisect-regression.mjs";
 import {
   buildCompositeEvidenceFingerprint,
+  buildVerdict,
   runtimeHealthEvidenceFingerprint,
 } from "./soak-assert.mjs";
-import { COLLECTOR_EVENTS_SCHEMA_VERSION } from "./soak-collect.mjs";
+import {
+  collectorEventEvidenceDeclaration,
+  COLLECTOR_EVENTS_SCHEMA_VERSION,
+  SOAK_SCHEMA_VERSION,
+} from "./soak-collect.mjs";
 import {
   createCanaryEvidenceFixture,
   writeCanaryEvidenceBundle,
@@ -168,16 +173,23 @@ function canaryEntries(uploadsUnchanged) {
   const start = 1_700_000_000_000;
   const entries = [
     { event: "renderer_recovery_attempt", tsMs: start + 1000 },
-    { event: "renderer_recovery_restart_requested", tsMs: start + 1500 },
     {
       event: "window_destroyed",
-      reasonEnum: "job_complete",
-      tsMs: start + 2000,
+      label: "main",
+      reasonEnum: "watchdog_memory",
+      requestedBy: "renderer heartbeat stale",
+      tsMs: start + 1_200,
+    },
+    {
+      event: "renderer_recovery_restart_requested",
+      reason: "renderer heartbeat stale",
+      tsMs: start + 7_500,
     },
     {
       event: "window_destroyed",
-      reasonEnum: "watchdog_memory",
-      tsMs: start + 3000,
+      label: "facebook-scraper",
+      reasonEnum: "job_complete",
+      tsMs: start + 2_000,
     },
     { event: "invariant_alarm", name: "cloud_loop", tsMs: start + 4000 },
     {
@@ -627,7 +639,7 @@ test("computeCanarySummary folds counters into per-release metrics", () => {
     bounds,
   );
   assert.equal(summary.version, "26.7.800");
-  assert.equal(summary.metricRegistryVersion, 6);
+  assert.equal(summary.metricRegistryVersion, 7);
   assert.equal(summary.spanHours, 6);
   assert.equal(summary.metrics.uploadsUnchangedPerHour, 2);
   assert.equal(summary.metrics.startupRepairUploadsPerHour, 0.17);
@@ -655,7 +667,7 @@ test("computeCanarySummary folds counters into per-release metrics", () => {
   assert.equal(
     summary.metrics.recoveriesPerDay,
     4,
-    "attempt plus restart is one counted incident",
+    "paired main destruction and restart request are one sequence",
   );
   assert.equal(summary.metrics.windowKillsByReason.watchdog_memory, 1);
   assert.equal(summary.metrics.alarmsByName.cloud_loop, 1);
@@ -674,6 +686,47 @@ test("computeCanarySummary folds counters into per-release metrics", () => {
   });
   assert.equal(summary.metrics.workerIdleTerminationInvalidReasonCount, 0);
   assert.equal(summary.metrics.appMemoryPressureP95Bytes, 700 * 1024 * 1024);
+});
+
+test("paired renderer recovery rates match between soak and canary consumers", () => {
+  const fixture = createCanaryEvidenceFixture({
+    startMs: 1_700_000_000_000,
+    version: "26.7.1501",
+    commitSha: "a".repeat(40),
+    recoveries: 1,
+    pairedRecoveryRestarts: 1,
+  });
+  const healthLines = fixture.entries.map((entry, index) => ({
+    entry,
+    line: index + 1,
+    raw: JSON.stringify(entry),
+  }));
+  const soakDir = mkdtempSync(
+    path.join(os.tmpdir(), "freed-renderer-recovery-parity-"),
+  );
+  const verdict = buildVerdict({
+    soakDir,
+    metricsText: fixture.collectorMetricsText,
+    metricsPath: path.join(soakDir, "metrics.tsv"),
+    healthLines,
+    healthPath: path.join(soakDir, "runtime-health.jsonl"),
+    collectorEventsText: fixture.collectorEventsText,
+    collectorEventsEvidencePresent: true,
+    soakInfo: {
+      schemaVersion: SOAK_SCHEMA_VERSION,
+      collectorSessionId: fixture.summary.runtimeIdentity.collectorSessionId,
+      intervalSeconds: 60,
+      collectorEvents: collectorEventEvidenceDeclaration(),
+    },
+  });
+  const soakRate = verdict.measurements["renderer-recovery-count"].value;
+  const canaryRate = fixture.summary.metrics.recoveriesPerDay;
+
+  assert.equal(verdict.sourceHealth.appAliveHours, 24);
+  assert.equal(fixture.summary.sourceHealth.appAliveHours, 24);
+  assert.equal(soakRate, 1);
+  assert.equal(canaryRate, 1);
+  assert.equal(soakRate, canaryRate);
 });
 
 test("regression detection flags a worsened trace and passes a steady one", () => {
