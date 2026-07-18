@@ -36,6 +36,7 @@ export interface GalaxyLabDiagnosticSnapshotInput {
   touchInputMode: string;
   wheelInputMode: string;
   inertialPanActive: boolean;
+  presentationVisible: boolean;
   frameLoop: string;
   settlePending: boolean;
   renderResizePending: boolean;
@@ -120,6 +121,7 @@ export interface GalaxyLabDiagnosticSnapshot {
   runtime: {
     theme: GalaxyLabThemeId;
     fieldStyle: GalaxyLabFieldStyle;
+    presentationVisible: boolean;
     frameLoop: string;
     settlePending: boolean;
     renderResizePending: boolean;
@@ -212,6 +214,7 @@ export function createGalaxyLabDiagnosticSnapshot(
     runtime: {
       theme: input.theme,
       fieldStyle: input.fieldStyle,
+      presentationVisible: input.presentationVisible,
       frameLoop: input.frameLoop,
       settlePending: input.settlePending,
       renderResizePending: input.renderResizePending,

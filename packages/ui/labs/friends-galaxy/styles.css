@@ -97,6 +97,14 @@ html[data-controls-hidden="true"] .lab-panel {
   cursor: grabbing;
 }
 
+.galaxy-viewport[data-presentation-visible="false"] {
+  pointer-events: none;
+}
+
+.galaxy-canvas-host[data-presentation-visible="false"] {
+  visibility: hidden;
+}
+
 .galaxy-viewport:focus-visible {
   outline: 2px solid var(--lab-selection);
   outline-offset: -4px;

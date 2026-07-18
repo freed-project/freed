@@ -67,6 +67,7 @@ describe("Friends Galaxy diagnostic export", () => {
       touchInputMode: "Native Touch Events",
       wheelInputMode: "pinch-zoom",
       inertialPanActive: false,
+      presentationVisible: false,
       frameLoop: "idle",
       settlePending: false,
       renderResizePending: false,
@@ -111,6 +112,7 @@ describe("Friends Galaxy diagnostic export", () => {
         resistanceScale: 0.27,
       },
       runtime: {
+        presentationVisible: false,
         longTasks: {
           supported: true,
           count: 2,
@@ -161,6 +163,7 @@ describe("Friends Galaxy diagnostic export", () => {
       touchInputMode: "Pointer Events",
       wheelInputMode: "idle",
       inertialPanActive: false,
+      presentationVisible: true,
       frameLoop: "idle",
       settlePending: false,
       renderResizePending: false,

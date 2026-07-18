@@ -17,4 +17,8 @@ describe("Friends Galaxy demand frame loop", () => {
   it("continues while the scalar settle deadline is pending", () => {
     expect(shouldContinueGalaxyLabFrame(false, false, true)).toBe(true);
   });
+
+  it("sleeps while the graph presentation is suspended", () => {
+    expect(shouldContinueGalaxyLabFrame(true, true, true, false)).toBe(false);
+  });
 });

@@ -2,6 +2,8 @@ export function shouldContinueGalaxyLabFrame(
   animationEnabled: boolean,
   rendererDirty: boolean,
   settlePending: boolean,
+  presentationVisible = true,
 ): boolean {
-  return animationEnabled || rendererDirty || settlePending;
+  return presentationVisible &&
+    (animationEnabled || rendererDirty || settlePending);
 }

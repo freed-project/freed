@@ -232,11 +232,14 @@ let userMovedCamera = false;
 let cameraInMotion = false;
 let renderResizePending = false;
 let wheelInputMode: GalaxyLabWheelInputMode = "idle";
+let presentationVisible = true;
 viewport.dataset.cameraMotion = "false";
 viewport.dataset.frameLoop = "idle";
 viewport.dataset.renderResizePending = "false";
 viewport.dataset.inertialPan = "false";
 viewport.dataset.wheelInputMode = wheelInputMode;
+viewport.dataset.presentationVisible = "true";
+canvasHost.dataset.presentationVisible = "true";
 const settleScheduler = new GalaxyLabSettleScheduler();
 const inertialPan = new GalaxyLabInertialPan();
 const frameSamples = new GalaxyLabSampleRing(240);
@@ -297,8 +300,12 @@ function announceGraphSelection(
   );
 }
 
+function canPresentGalaxy(): boolean {
+  return presentationVisible && document.visibilityState === "visible";
+}
+
 function requestGalaxyFrame(): void {
-  if (frameRequest !== 0) return;
+  if (!canPresentGalaxy() || frameRequest !== 0) return;
   frameRequest = requestAnimationFrame(renderFrame);
   viewport.dataset.frameLoop = "active";
 }
@@ -536,7 +543,7 @@ async function admitSettledAvatarImages(
   detail: GalaxyLabViewDetail,
   generation: number,
 ): Promise<void> {
-  if (!backend.setAvatarImages) return;
+  if (!backend.setAvatarImages || !canPresentGalaxy()) return;
   const { width, height } = canvasSize();
   const compact = width < 720;
   writeGalaxyLabWebGpuViewProjection(
@@ -582,6 +589,7 @@ async function admitSettledAvatarImages(
     !avatarAdmissionState.canCommit(backend, admissionKey, currentGeneration) ||
     backend !== activeBackend ||
     (detail === "close" && viewDetailForScale(transform.scale) !== "close") ||
+    !canPresentGalaxy() ||
     cameraInMotion ||
     pointers.count > 0 ||
     safariGestureActive
@@ -605,6 +613,7 @@ function applyBackendSettledView(
 }
 
 function applySettledViewDetail(generation: number): void {
+  if (!canPresentGalaxy()) return;
   setCameraInMotion(false);
   const backend = activeBackend;
   if (!backend) return;
@@ -616,6 +625,10 @@ function applySettledViewDetail(generation: number): void {
 
 function scheduleSettledViewDetail(immediate = false): void {
   const generation = ++avatarAdmissionGeneration;
+  if (!canPresentGalaxy()) {
+    settleScheduler.cancel();
+    return;
+  }
   if (immediate) {
     settleScheduler.cancel();
     applySettledViewDetail(generation);
@@ -979,6 +992,12 @@ function pollBackendHealth(): void {
 
 function renderFrame(timeMs: number): void {
   frameRequest = -1;
+  if (!canPresentGalaxy()) {
+    frameRequest = 0;
+    lastFrameAt = 0;
+    viewport.dataset.frameLoop = "idle";
+    return;
+  }
   const inertialStep = inertialPan.step(timeMs);
   if (inertialStep.deltaX !== 0 || inertialStep.deltaY !== 0) {
     transform.x += inertialStep.deltaX;
@@ -995,7 +1014,9 @@ function renderFrame(timeMs: number): void {
   if (settledGeneration !== null) applySettledViewDetail(settledGeneration);
   if (renderResizePending) resizeActiveBackend();
   pollBackendHealth();
-  const shouldRender = Boolean(activeBackend && (animateControl.checked || dirty));
+  const shouldRender = Boolean(
+    canPresentGalaxy() && activeBackend && (animateControl.checked || dirty),
+  );
   if (shouldRender && activeBackend) {
     if (lastFrameAt > 0 && animateControl.checked) {
       frameSamples.push(timeMs - lastFrameAt);
@@ -1028,6 +1049,7 @@ function renderFrame(timeMs: number): void {
     backendReady && animateControl.checked,
     backendReady && dirty,
     settleScheduler.isPending || inertialPan.isActive,
+    canPresentGalaxy(),
   )) {
     requestGalaxyFrame();
   } else {
@@ -1615,6 +1637,62 @@ let safariGestureWorldY = 0;
 let safariGestureCanvasLeft = 0;
 let safariGestureCanvasTop = 0;
 
+function stopGalaxyFrameLoop(): void {
+  if (frameRequest > 0) cancelAnimationFrame(frameRequest);
+  frameRequest = 0;
+  lastFrameAt = 0;
+  viewport.dataset.frameLoop = "idle";
+}
+
+function suspendGalaxyTransientWork(): void {
+  avatarAdmissionGeneration += 1;
+  settleScheduler.cancel();
+  cancelLongPress();
+  pointers.clear();
+  cancelInertialPan();
+  safariGestureActive = false;
+  gestureMoved = false;
+  gestureInterruptedInertia = false;
+  pendingHover = false;
+  if (hoverRequest > 0) cancelAnimationFrame(hoverRequest);
+  hoverRequest = 0;
+  viewport.dataset.dragging = "false";
+  if (interaction.hoveredNodeId !== null) {
+    updateInteraction({
+      selectedNodeId: interaction.selectedNodeId,
+      hoveredNodeId: null,
+    });
+  }
+  setCameraInMotion(false);
+  stopGalaxyFrameLoop();
+}
+
+function setGalaxyPresentationVisible(next: boolean): void {
+  if (next === presentationVisible) return;
+  presentationVisible = next;
+  viewport.dataset.presentationVisible = String(next);
+  canvasHost.dataset.presentationVisible = String(next);
+  if (!next) {
+    viewport.inert = true;
+    viewport.setAttribute("aria-hidden", "true");
+    if (document.activeElement === viewport) viewport.blur();
+    suspendGalaxyTransientWork();
+    return;
+  }
+  viewport.inert = false;
+  viewport.removeAttribute("aria-hidden");
+  refreshViewportOrigin();
+  const { width, height } = canvasSize();
+  refreshCameraScaleLimits(height);
+  refreshOutwardZoomEnvelope(fittedGalaxyScale(width, height));
+  renderResizePending = true;
+  viewport.dataset.renderResizePending = "true";
+  dirty = true;
+  metricsDirty = true;
+  scheduleSettledViewDetail();
+  requestGalaxyFrame();
+}
+
 viewport.addEventListener("gesturestart", ((event: SafariGestureEvent) => {
   event.preventDefault();
   cancelInertialPan();
@@ -1735,6 +1813,7 @@ function galaxyDiagnosticSnapshot() {
     touchInputMode: nativeTouchInput ? "Native Touch Events" : "Pointer Events",
     wheelInputMode,
     inertialPanActive: inertialPan.isActive,
+    presentationVisible,
     frameLoop: viewport.dataset.frameLoop ?? "unknown",
     settlePending: settleScheduler.isPending,
     renderResizePending,
@@ -1863,19 +1942,19 @@ resizeObserver.observe(viewport);
 const backendHealthPoll = window.setInterval(() => {
   pollBackendHealth();
   if (
-    document.visibilityState === "visible" && activeBackend &&
+    canPresentGalaxy() && activeBackend &&
     (animateControl.checked || (metricsDirty && !cameraInMotion))
   ) requestGalaxyFrame();
 }, 250);
 
 document.addEventListener("visibilitychange", () => {
-  lastFrameAt = 0;
   if (document.visibilityState === "hidden") {
-    cancelInertialPan();
-    settleScheduler.cancel();
+    suspendGalaxyTransientWork();
     return;
   }
+  if (!presentationVisible) return;
   scheduleSettledViewDetail(true);
+  requestGalaxyFrame();
 });
 
 window.addEventListener("beforeunload", () => {
@@ -1897,6 +1976,7 @@ Object.assign(window, {
     fixture,
     diagnostics: galaxyDiagnosticSnapshot,
     focusNode: focusGalaxyNode,
+    setPresentationVisible: setGalaxyPresentationVisible,
     state: () => ({
       backend: activeBackend?.metrics() ?? null,
       transform: { ...transform },
@@ -1932,6 +2012,7 @@ Object.assign(window, {
       recoveryReason: lastRecoveryReason,
       viewportGeometryReadCount,
       wheelInputMode,
+      presentationVisible,
       inertialPan: {
         active: inertialPan.isActive,
         velocityX: inertialPan.currentVelocityX,
