@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  GALAXY_LAB_CAMERA_FAR,
+  GALAXY_LAB_CAMERA_FAR_UTILIZATION,
+  galaxyLabCameraScaleLimits,
   galaxyLabInitialCameraScale,
   writeGalaxyLabWebGpuViewProjection,
   writeGalaxyLabWebGpuMotionUniforms,
@@ -24,6 +27,32 @@ function project(
 }
 
 describe("Friends Galaxy raw WebGPU camera math", () => {
+  it("derives a clip-safe outward scale from viewport and scene depth", () => {
+    const viewportHeight = 844;
+    const minimumSceneZ = -224;
+    const limits = galaxyLabCameraScaleLimits(viewportHeight, minimumSceneZ);
+    const focalScale = 1 / Math.tan((42 * Math.PI) / 360);
+    const cameraZ = viewportHeight * focalScale / 2 / limits.minimum;
+
+    expect(cameraZ - minimumSceneZ).toBeCloseTo(
+      GALAXY_LAB_CAMERA_FAR * GALAXY_LAB_CAMERA_FAR_UTILIZATION,
+      8,
+    );
+    expect(limits.resistance).toBeGreaterThan(limits.fitMinimum);
+    expect(limits.fitMinimum).toBeGreaterThan(limits.minimum);
+  });
+
+  it("moves the safe scale closer on a taller viewport", () => {
+    const compact = galaxyLabCameraScaleLimits(667, -224);
+    const tall = galaxyLabCameraScaleLimits(1_366, -224);
+
+    expect(tall.minimum).toBeGreaterThan(compact.minimum);
+    expect(tall.resistance / tall.minimum).toBeCloseTo(
+      compact.resistance / compact.minimum,
+      12,
+    );
+  });
+
   it("opens compact canvases at a useful exploration scale", () => {
     expect(galaxyLabInitialCameraScale(0.045, 390)).toBe(0.16);
     expect(galaxyLabInitialCameraScale(0.2, 390)).toBe(0.2);

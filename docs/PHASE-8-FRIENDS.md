@@ -190,6 +190,8 @@ Before any backend receives a worker result, the detached loader now performs co
 
 Compact canvases now open at a useful 0.16 exploration scale around the semantic center instead of presenting literal fit-all as an apparently empty field. Wider canvases retain their useful fitted scale. The explicit Fit galaxy command still reveals every provider sector, so overview geography remains one action away without sacrificing first-use legibility.
 
+The locked camera now derives its outward zoom boundary from viewport height, perspective field of view, semantic scene depth, and the shared 20,000-unit far clip distance. The boundary reserves depth for the decorative starfield, so neither a tall desktop canvas nor an iPhone viewport can move the galaxy behind the far plane. Wheel pinch, Safari gesture events, native touch pinch, and keyboard zoom share one invertible resistance curve. Fit galaxy and resize use the same clip-safe range. Outward motion remains exact until the resistance region, then slows continuously into a practical terminal distance that stays above the clip-safe floor and responds immediately when direction reverses. Midpoint anchoring remains exact throughout the curve.
+
 Frame and submission diagnostics now use fixed 240-value typed rings. Active camera motion suppresses diagnostics DOM rebuilding, then refreshes the panel after settle from one bounded snapshot. The detached gesture path no longer shifts diagnostic arrays or performs periodic panel layout while the camera is moving.
 
 With animation disabled, the detached renderer now schedules frames only for dirty GPU work or a pending settle deadline. It stops requesting animation frames when the scene is idle and exposes that state on the viewport. Diagnostics request a frame only when changed data reaches the bounded refresh interval. One persistent low-frequency health poll remains active so an idle WebGPU device loss still recovers without a permanent animation loop.
@@ -463,6 +465,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.99 | Route detached iPhone pan and pinch through native Touch Events with duplicate-pointer suppression, direct pinch-to-pan handoff, and cancellation recovery | High | Done |
 | 8.100 | Reject malformed or mixed-version worker envelopes before GPU admission with constant-time typed-buffer, sparse-offset, bounds, metadata-cap, and receipt validation | High | Done |
 | 8.101 | Add native Mac two-finger trackpad pan plus bounded allocation-free pointer and touch inertia with cancellation, reduced-motion, and settle guarantees | High | Done |
+| 8.102 | Derive a clip-safe camera scale range, route every continuous zoom path through reversible terminal easing, and keep fit plus resize inside the same safe range | High | Done |
 
 ---
 
@@ -548,6 +551,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Detached startup rejects malformed scene versions, typed-buffer lengths, sparse-offset terminals, bounds, metadata counts, and receipts before renderer admission without scanning resident payloads on the main thread
 - [x] Raw WebGPU uploads worker-packed resident star streams once and resolves theme changes through a fixed palette uniform without full-star CPU traversal or GPU reupload
 - [x] A locked perspective camera produces bounded prominence parallax while preserving intuitive plane navigation
+- [x] Outward zoom derives a viewport-aware clip-safe scale, reserves far-plane depth for decorative stars, eases wheel, Safari, touch, and keyboard input into a reversible terminal distance, and keeps fit plus resize inside the same safe range
 - [x] Semantic stars and settled relationship spokes render through two instanced WebGL2 passes with no per-node or per-edge scene objects
 - [x] Projected picking uses a worker-built transferable sparse world grid, preserves exact depth and prominence selection, tolerates distant pinned outliers, and projects only the locked-camera corridor candidates
 - [x] WebGPU rendering caps settled Retina density and lowers compact or wide motion density once per gesture without removing resident stars or labels

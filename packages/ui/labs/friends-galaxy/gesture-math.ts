@@ -1,7 +1,78 @@
 import type { GalaxyLabTransform } from "./scene-fixture.js";
 
+const MINIMUM_ZOOM_COORDINATE = -4;
+
 function clampScale(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
+}
+
+function galaxyLabZoomCoordinate(
+  scale: number,
+  minimumScale: number,
+  resistanceScale: number,
+): number {
+  if (scale >= resistanceScale) return Math.log(scale / resistanceScale);
+  const resistanceRange = resistanceScale - minimumScale;
+  const normalizedRange = Math.max(
+    Number.EPSILON,
+    (scale - minimumScale) / resistanceRange,
+  );
+  return (1 - 1 / normalizedRange) * resistanceRange / resistanceScale;
+}
+
+function galaxyLabScaleFromZoomCoordinate(
+  coordinate: number,
+  minimumScale: number,
+  resistanceScale: number,
+  maximumScale: number,
+): number {
+  const boundedCoordinate = Math.max(MINIMUM_ZOOM_COORDINATE, coordinate);
+  if (boundedCoordinate >= 0) {
+    return clampScale(
+      resistanceScale * Math.exp(Math.min(64, boundedCoordinate)),
+      minimumScale,
+      maximumScale,
+    );
+  }
+  const resistanceRange = resistanceScale - minimumScale;
+  const curve = resistanceScale / resistanceRange;
+  return clampScale(
+    minimumScale + resistanceRange / (1 - curve * boundedCoordinate),
+    minimumScale,
+    maximumScale,
+  );
+}
+
+export function galaxyLabResistedScaleAtRatio(
+  initialScale: number,
+  scaleRatio: number,
+  minimumScale: number,
+  resistanceScale: number,
+  maximumScale: number,
+): number {
+  const boundedResistance = Math.max(
+    minimumScale + Number.EPSILON,
+    Math.min(maximumScale, resistanceScale),
+  );
+  const boundedInitial = clampScale(initialScale, minimumScale, maximumScale);
+  const boundedRatio = scaleRatio === 0
+    ? Number.MIN_VALUE
+    : scaleRatio === Number.POSITIVE_INFINITY
+      ? Number.MAX_VALUE
+      : Number.isFinite(scaleRatio) && scaleRatio > 0
+        ? scaleRatio
+        : 1;
+  const coordinate = galaxyLabZoomCoordinate(
+    boundedInitial,
+    minimumScale,
+    boundedResistance,
+  );
+  return galaxyLabScaleFromZoomCoordinate(
+    coordinate + Math.log(boundedRatio),
+    minimumScale,
+    boundedResistance,
+    maximumScale,
+  );
 }
 
 export function galaxyLabWheelDeltaPixels(
@@ -31,6 +102,32 @@ export function applyGalaxyLabZoomAt(
   transform.y = viewportY - worldY * clampedScale;
 }
 
+export function applyGalaxyLabResistedZoomAt(
+  transform: GalaxyLabTransform,
+  viewportX: number,
+  viewportY: number,
+  scaleRatio: number,
+  minimumScale: number,
+  resistanceScale: number,
+  maximumScale: number,
+): void {
+  const nextScale = galaxyLabResistedScaleAtRatio(
+    transform.scale,
+    scaleRatio,
+    minimumScale,
+    resistanceScale,
+    maximumScale,
+  );
+  applyGalaxyLabZoomAt(
+    transform,
+    viewportX,
+    viewportY,
+    nextScale,
+    minimumScale,
+    maximumScale,
+  );
+}
+
 export function applyGalaxyLabPinch(
   transform: GalaxyLabTransform,
   previousFirstX: number,
@@ -42,6 +139,7 @@ export function applyGalaxyLabPinch(
   nextSecondX: number,
   nextSecondY: number,
   minimumScale: number,
+  resistanceScale: number,
   maximumScale: number,
 ): boolean {
   const previousDistance = Math.hypot(
@@ -59,9 +157,11 @@ export function applyGalaxyLabPinch(
   const nextMidpointY = (nextFirstY + nextSecondY) * 0.5;
   const worldX = (previousMidpointX - transform.x) / transform.scale;
   const worldY = (previousMidpointY - transform.y) / transform.scale;
-  const nextScale = clampScale(
-    transform.scale * nextDistance / previousDistance,
+  const nextScale = galaxyLabResistedScaleAtRatio(
+    transform.scale,
+    nextDistance / previousDistance,
     minimumScale,
+    resistanceScale,
     maximumScale,
   );
   transform.scale = nextScale;

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   applyGalaxyLabPinch,
+  applyGalaxyLabResistedZoomAt,
   applyGalaxyLabZoomAt,
+  galaxyLabResistedScaleAtRatio,
   galaxyLabWheelDeltaPixels,
 } from "./gesture-math.js";
 
@@ -38,6 +40,7 @@ describe("Friends Galaxy gesture math", () => {
       240,
       220,
       0.035,
+      0.08,
       6,
     )).toBe(true);
 
@@ -62,12 +65,71 @@ describe("Friends Galaxy gesture math", () => {
       400,
       120,
       0.035,
+      0.08,
       6,
     );
 
     expect(transform.scale).toBe(6);
     expect(worldX * transform.scale + transform.x).toBeCloseTo(200, 8);
     expect(worldY * transform.scale + transform.y).toBeCloseTo(120, 8);
+  });
+
+  it("keeps zoom ratios exact before outward resistance begins", () => {
+    expect(galaxyLabResistedScaleAtRatio(0.5, 1.2, 0.07, 0.11, 6)).toBeCloseTo(0.6, 12);
+    expect(galaxyLabResistedScaleAtRatio(0.5, 0.8, 0.07, 0.11, 6)).toBeCloseTo(0.4, 12);
+  });
+
+  it("approaches the clip-safe scale smoothly under repeated outward input", () => {
+    const minimumScale = 0.07;
+    const resistanceScale = 0.11;
+    let scale = 0.12;
+    let previousScale = scale;
+
+    for (let index = 0; index < 200; index += 1) {
+      const nextScale = galaxyLabResistedScaleAtRatio(
+        scale,
+        0.95,
+        minimumScale,
+        resistanceScale,
+        6,
+      );
+      expect(nextScale).toBeLessThanOrEqual(previousScale);
+      expect(nextScale).toBeGreaterThan(minimumScale);
+      previousScale = nextScale;
+      scale = nextScale;
+    }
+
+    expect(scale).toBeLessThan(0.074);
+    expect(galaxyLabResistedScaleAtRatio(
+      scale,
+      1.05,
+      minimumScale,
+      resistanceScale,
+      6,
+    )).toBeGreaterThan(scale);
+  });
+
+  it("preserves the anchored world point while outward zoom is resisted", () => {
+    const transform = { x: 36, y: -24, scale: 0.12 };
+    const viewportX = 190;
+    const viewportY = 422;
+    const worldX = (viewportX - transform.x) / transform.scale;
+    const worldY = (viewportY - transform.y) / transform.scale;
+
+    applyGalaxyLabResistedZoomAt(
+      transform,
+      viewportX,
+      viewportY,
+      0.25,
+      0.07,
+      0.11,
+      6,
+    );
+
+    expect(transform.scale).toBeGreaterThan(0.07);
+    expect(transform.scale).toBeLessThan(0.11);
+    expect(worldX * transform.scale + transform.x).toBeCloseTo(viewportX, 8);
+    expect(worldY * transform.scale + transform.y).toBeCloseTo(viewportY, 8);
   });
 
   it("keeps pixel trackpad deltas exact", () => {

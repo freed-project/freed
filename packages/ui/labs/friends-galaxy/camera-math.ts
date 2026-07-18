@@ -1,8 +1,42 @@
 import { IDENTITY_GALAXY_CAMERA_FOV } from "../../src/lib/identity-galaxy-camera.js";
 import type { GalaxyLabTransform } from "./scene-fixture.js";
 
-const DEFAULT_NEAR = 1;
-const DEFAULT_FAR = 20_000;
+export const GALAXY_LAB_CAMERA_NEAR = 1;
+export const GALAXY_LAB_CAMERA_FAR = 20_000;
+export const GALAXY_LAB_CAMERA_FAR_UTILIZATION = 0.82;
+
+const ZOOM_RESISTANCE_SCALE_MULTIPLIER = 1.55;
+const FIT_MINIMUM_RESISTANCE_PROGRESS = 0.12;
+
+export interface GalaxyLabCameraScaleLimits {
+  minimum: number;
+  resistance: number;
+  fitMinimum: number;
+}
+
+export function galaxyLabCameraScaleLimits(
+  viewportHeight: number,
+  minimumSceneZ: number,
+  fovDegrees = IDENTITY_GALAXY_CAMERA_FOV,
+  far = GALAXY_LAB_CAMERA_FAR,
+): GalaxyLabCameraScaleLimits {
+  const height = Math.max(1, viewportHeight);
+  const boundedFov = Math.max(1, Math.min(179, fovDegrees));
+  const focalDistance = height / 2 / Math.tan((boundedFov * Math.PI) / 360);
+  const sceneDepth = Number.isFinite(minimumSceneZ) ? minimumSceneZ : 0;
+  const availableCameraDepth = Math.max(
+    GALAXY_LAB_CAMERA_NEAR * 2,
+    far * GALAXY_LAB_CAMERA_FAR_UTILIZATION + sceneDepth,
+  );
+  const minimum = focalDistance / availableCameraDepth;
+  const resistance = minimum * ZOOM_RESISTANCE_SCALE_MULTIPLIER;
+  return {
+    minimum,
+    resistance,
+    fitMinimum: minimum +
+      (resistance - minimum) * FIT_MINIMUM_RESISTANCE_PROGRESS,
+  };
+}
 
 export function galaxyLabInitialCameraScale(
   fittedScale: number,
@@ -30,8 +64,8 @@ export function writeGalaxyLabWebGpuViewProjection(
   viewportWidth: number,
   viewportHeight: number,
   fovDegrees = IDENTITY_GALAXY_CAMERA_FOV,
-  near = DEFAULT_NEAR,
-  far = DEFAULT_FAR,
+  near = GALAXY_LAB_CAMERA_NEAR,
+  far = GALAXY_LAB_CAMERA_FAR,
 ): Float32Array {
   const width = Math.max(1, viewportWidth);
   const height = Math.max(1, viewportHeight);

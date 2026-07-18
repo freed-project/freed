@@ -21,7 +21,9 @@ import { loadGalaxyLabFixture } from "./scene-fixture-loader.js";
 import { findGalaxyLabSceneNodeIndex } from "./scene-interaction-index.js";
 import {
   applyGalaxyLabPinch,
+  applyGalaxyLabResistedZoomAt,
   applyGalaxyLabZoomAt,
+  galaxyLabResistedScaleAtRatio,
   galaxyLabWheelDeltaPixels,
 } from "./gesture-math.js";
 import {
@@ -39,6 +41,7 @@ import {
   type GalaxyLabAvatarImageAdmissionResult,
 } from "./avatar-image-admission.js";
 import {
+  galaxyLabCameraScaleLimits,
   galaxyLabInitialCameraScale,
   writeGalaxyLabWebGpuViewProjection,
 } from "./camera-math.js";
@@ -54,7 +57,6 @@ import { GalaxyLabSettleScheduler } from "./settle-scheduler.js";
 const DEFAULT_PERSON_COUNT = 5_000;
 const DEFAULT_ACCOUNT_COUNT = 25_000;
 const DEFAULT_BACKGROUND_COUNT = 100_000;
-const MIN_SCALE = 0.035;
 const MAX_SCALE = 6;
 const numberFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
 const integerFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
@@ -164,6 +166,10 @@ const activityProbeScenePatch = activityScenePatchEncoder.encode(
 );
 
 const transform: GalaxyLabTransform = { x: 0, y: 0, scale: 0.12 };
+let cameraScaleLimits = galaxyLabCameraScaleLimits(
+  1,
+  fixture.scene.bounds.minZ,
+);
 let activeBackend: GalaxyLabBackend | null = null;
 let activeCanvas: HTMLCanvasElement | null = null;
 let activeTheme = themeSelect.value as GalaxyLabThemeId;
@@ -346,6 +352,22 @@ function viewportSize(): { width: number; height: number } {
   };
 }
 
+function refreshCameraScaleLimits(viewportHeight: number): void {
+  cameraScaleLimits = galaxyLabCameraScaleLimits(
+    viewportHeight,
+    fixture.scene.bounds.minZ,
+  );
+  viewport.dataset.minimumCameraScale = String(cameraScaleLimits.minimum);
+  viewport.dataset.zoomResistanceScale = String(cameraScaleLimits.resistance);
+}
+
+function recordCameraScaleDiagnostics(): void {
+  viewport.dataset.cameraScale = String(transform.scale);
+  viewport.dataset.zoomBoundary = transform.scale < cameraScaleLimits.resistance
+    ? "resisted"
+    : "free";
+}
+
 function effectiveDevicePixelRatio(): number {
   return pixelRatioOverride ?? window.devicePixelRatio ?? 1;
 }
@@ -515,12 +537,13 @@ function scheduleSettledViewDetail(immediate = false): void {
 function frameGalaxy(markAsUserAction: boolean, useInitialScale: boolean): void {
   cancelInertialPan();
   const { width, height } = viewportSize();
+  refreshCameraScaleLimits(height);
   const bounds = fixture.atlas.bounds;
   const worldWidth = Math.max(1, bounds.right - bounds.left);
   const worldHeight = Math.max(1, bounds.bottom - bounds.top);
   const padding = width < 640 ? 42 : 96;
   const fittedScale = Math.max(
-    MIN_SCALE,
+    cameraScaleLimits.fitMinimum,
     Math.min(MAX_SCALE, Math.min((width - padding * 2) / worldWidth, (height - padding * 2) / worldHeight)),
   );
   const nextScale = useInitialScale
@@ -531,6 +554,7 @@ function frameGalaxy(markAsUserAction: boolean, useInitialScale: boolean): void 
   transform.scale = nextScale;
   transform.x = width / 2 - centerX * nextScale;
   transform.y = height / 2 - centerY * nextScale;
+  recordCameraScaleDiagnostics();
   userMovedCamera = markAsUserAction;
   markGalaxyDirty();
   scheduleSettledViewDetail(true);
@@ -651,7 +675,7 @@ function formatByteCount(bytes: number): string {
 function updateMetrics(): void {
   viewport.dataset.cameraX = String(transform.x);
   viewport.dataset.cameraY = String(transform.y);
-  viewport.dataset.cameraScale = String(transform.scale);
+  recordCameraScaleDiagnostics();
   metricsElement.replaceChildren();
   if (!activeBackend) {
     addMetric("Renderer", "Loading");
@@ -728,6 +752,11 @@ function updateMetrics(): void {
   }
   if (lastRecoveryReason) addMetric("Recovery reason", lastRecoveryReason);
   addMetric("Camera scale", scaleFormat.format(transform.scale));
+  addMetric("Clip-safe scale", scaleFormat.format(cameraScaleLimits.minimum));
+  addMetric(
+    "Outward zoom",
+    transform.scale < cameraScaleLimits.resistance ? "Soft resistance" : "Free",
+  );
   addMetric("Settled detail", viewDetailForScale(transform.scale));
   addMetric("Touch input", nativeTouchInput ? "Native Touch Events" : "Pointer Events");
   addMetric(
@@ -830,12 +859,13 @@ function renderFrame(timeMs: number): void {
 function zoomAt(viewportX: number, viewportY: number, nextScale: number): void {
   cancelInertialPan();
   setCameraInMotion(true);
-  applyGalaxyLabZoomAt(
+  applyGalaxyLabResistedZoomAt(
     transform,
     viewportX,
     viewportY,
-    nextScale,
-    MIN_SCALE,
+    nextScale / transform.scale,
+    cameraScaleLimits.minimum,
+    cameraScaleLimits.resistance,
     MAX_SCALE,
   );
   userMovedCamera = true;
@@ -971,7 +1001,8 @@ viewport.addEventListener("pointermove", (event) => {
       pointers.yAt(0),
       pointers.xAt(1),
       pointers.yAt(1),
-      MIN_SCALE,
+      cameraScaleLimits.minimum,
+      cameraScaleLimits.resistance,
       MAX_SCALE,
     );
     scheduleSettledViewDetail();
@@ -1094,7 +1125,8 @@ function moveNativeTouches(event: TouchEvent): void {
       pointers.yAt(0),
       pointers.xAt(1),
       pointers.yAt(1),
-      MIN_SCALE,
+      cameraScaleLimits.minimum,
+      cameraScaleLimits.resistance,
       MAX_SCALE,
     );
     scheduleSettledViewDetail();
@@ -1239,7 +1271,13 @@ viewport.addEventListener("gesturechange", ((event: SafariGestureEvent) => {
   if (!safariGestureActive) return;
   const viewportX = event.clientX - safariGestureViewportLeft;
   const viewportY = event.clientY - safariGestureViewportTop;
-  const nextScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, safariGestureStartScale * event.scale));
+  const nextScale = galaxyLabResistedScaleAtRatio(
+    safariGestureStartScale,
+    event.scale,
+    cameraScaleLimits.minimum,
+    cameraScaleLimits.resistance,
+    MAX_SCALE,
+  );
   transform.scale = nextScale;
   transform.x = viewportX - safariGestureWorldX * nextScale;
   transform.y = viewportY - safariGestureWorldY * nextScale;
@@ -1368,8 +1406,24 @@ const resizeObserver = new ResizeObserver(() => {
   cancelInertialPan();
   refreshViewportOrigin();
   resizeActiveBackend();
-  if (!userMovedCamera) frameInitialGalaxy();
-  else scheduleSettledViewDetail(true);
+  const { width, height } = viewportSize();
+  refreshCameraScaleLimits(height);
+  if (!userMovedCamera) {
+    frameInitialGalaxy();
+  } else {
+    if (transform.scale < cameraScaleLimits.fitMinimum) {
+      applyGalaxyLabZoomAt(
+        transform,
+        width * 0.5,
+        height * 0.5,
+        cameraScaleLimits.fitMinimum,
+        cameraScaleLimits.minimum,
+        MAX_SCALE,
+      );
+      recordCameraScaleDiagnostics();
+    }
+    scheduleSettledViewDetail(true);
+  }
   markGalaxyDirty();
 });
 resizeObserver.observe(viewport);
@@ -1410,6 +1464,8 @@ Object.assign(window, {
     state: () => ({
       backend: activeBackend?.metrics() ?? null,
       transform: { ...transform },
+      cameraScaleLimits: { ...cameraScaleLimits },
+      zoomResistanceActive: transform.scale < cameraScaleLimits.resistance,
       interaction: { ...interaction },
       fieldStyle: activeFieldStyle,
       activityProbe: {
