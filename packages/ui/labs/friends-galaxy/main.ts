@@ -20,6 +20,14 @@ import {
   applyGalaxyLabPinch,
   applyGalaxyLabZoomAt,
 } from "./gesture-math.js";
+import {
+  GalaxyActivityScenePatchEncoder,
+  type GalaxyActivitySceneBinding,
+} from "./activity-scene-patches.js";
+import {
+  GalaxyActivitySummaryIndex,
+  type GalaxyActivitySourceKey,
+} from "./activity-summary-index.js";
 
 const DEFAULT_PERSON_COUNT = 5_000;
 const DEFAULT_ACCOUNT_COUNT = 25_000;
@@ -66,6 +74,48 @@ const fixture = createGalaxyLabFixture({
   accountCount: DEFAULT_ACCOUNT_COUNT,
   backgroundStarCount: DEFAULT_BACKGROUND_COUNT,
 });
+
+function activitySourceForNode(nodeIndex: number): GalaxyActivitySourceKey | null {
+  const provider = fixture.scene.providers[nodeIndex];
+  const accountId = fixture.scene.accountIds[nodeIndex];
+  if (!provider || !accountId) return null;
+  return provider === "rss"
+    ? { namespace: "rss", key: `feed:${accountId}` }
+    : { namespace: "social", key: `${provider}:${accountId}` };
+}
+
+function* activitySceneBindings(): Iterable<GalaxyActivitySceneBinding> {
+  for (let nodeIndex = 0; nodeIndex < fixture.scene.nodeIds.length; nodeIndex += 1) {
+    const source = activitySourceForNode(nodeIndex);
+    if (source) yield { ...source, nodeIndex };
+  }
+}
+
+const activityScenePatchEncoder = new GalaxyActivityScenePatchEncoder(activitySceneBindings());
+const activityProbeNodeIndex = fixture.personCount;
+const activityProbeSource = activitySourceForNode(activityProbeNodeIndex);
+if (!activityProbeSource) throw new Error("The Friends Galaxy fixture requires one activity source.");
+const activityProbeIndex = new GalaxyActivitySummaryIndex([{
+  ...activityProbeSource,
+  globalId: "lab-activity-probe-1",
+  publishedAt: 1_725_000_000_000,
+  hasLocation: false,
+  avatarUrl: null,
+}]);
+const activityProbeSummaryPatch = activityProbeIndex.applyDeltas([{
+  previous: null,
+  next: {
+    ...activityProbeSource,
+    globalId: "lab-activity-probe-2",
+    publishedAt: 1_725_000_060_000,
+    hasLocation: true,
+    avatarUrl: "https://lab.invalid/avatar.png",
+  },
+}], () => []);
+const activityProbeScenePatch = activityScenePatchEncoder.encode(
+  activityProbeSummaryPatch.patches,
+  activityProbeSummaryPatch.revision,
+);
 
 const transform: GalaxyLabTransform = { x: 0, y: 0, scale: 0.12 };
 let activeBackend: GalaxyLabBackend | null = null;
@@ -280,8 +330,11 @@ function updateMetrics(): void {
   addMetric("CPU submit", formatFrameStats(frameStats(submitSamples)));
   addMetric("Buffer uploads", integerFormat.format(metrics.bufferUploadCount));
   if (metrics.trackedGpuDataBytes !== undefined) {
-    addMetric("Tracked GPU data", formatByteCount(metrics.trackedGpuDataBytes));
+  addMetric("Tracked GPU data", formatByteCount(metrics.trackedGpuDataBytes));
   }
+  addMetric("Activity patch keys", integerFormat.format(activityProbeSummaryPatch.patches.length));
+  addMetric("Activity patch nodes", integerFormat.format(activityProbeScenePatch.nodeIndices.length));
+  addMetric("Unknown activity keys", integerFormat.format(activityProbeScenePatch.unknownSources.length));
   addMetric("Camera scale", scaleFormat.format(transform.scale));
   addMetric("Settled detail", viewDetailForScale(transform.scale));
   if (metrics.adapterDescription) addMetric("Adapter", metrics.adapterDescription);
@@ -627,6 +680,12 @@ Object.assign(window, {
       transform: { ...transform },
       interaction: { ...interaction },
       fieldStyle: activeFieldStyle,
+      activityProbe: {
+        summaryRevision: activityProbeSummaryPatch.revision,
+        summaryPatchCount: activityProbeSummaryPatch.patches.length,
+        sceneNodeCount: activityProbeScenePatch.nodeIndices.length,
+        unknownSourceCount: activityProbeScenePatch.unknownSources.length,
+      },
       frame: frameStats(frameSamples),
       submit: frameStats(submitSamples),
     }),

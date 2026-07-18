@@ -390,6 +390,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.66 | Add the close-zoom avatar texture atlas for selected and high-priority identities | High | Planned |
 | 8.67 | Replace elliptical provider regions with theme-aware spiral nebulae, tighten identity systems and labels, and reveal links only for the active constellation | High | Done |
 | 8.68 | Prove the selected raw WebGPU backend, procedural six-field nebula batch, provider-specific arm geometry, compact allocation-free gesture path, tracked GPU payload diagnostics, and equal 30,000 plus 100,000 star workload in the detached renderer laboratory | High | Done |
+| 8.69 | Prove source-key activity summaries become proportional typed scene patches without positions or item payloads | High | Done |
 
 ---
 
