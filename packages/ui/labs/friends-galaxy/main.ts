@@ -31,7 +31,11 @@ import {
   GalaxyActivitySummaryIndex,
   type GalaxyActivitySourceKey,
 } from "./activity-summary-index.js";
-import { selectGalaxyLabAvatars } from "./avatar-atlas.js";
+import { GalaxyLabAvatarAdmissionState } from "./avatar-admission-state.js";
+import {
+  galaxyLabSelectedPersonNodeId,
+  selectGalaxyLabAvatars,
+} from "./avatar-atlas.js";
 import {
   GalaxyLabAvatarImageAdmission,
   type GalaxyLabAvatarImageAdmissionResult,
@@ -172,8 +176,12 @@ const submitSamples = new GalaxyLabSampleRing(240);
 const nodeLabelById = new Map(fixture.atlas.nodes.map((node) => [node.id, node.label]));
 let interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: null };
 let avatarAdmissionGeneration = 0;
+const emptyAvatarImages = new Map<string, CanvasImageSource>();
+const avatarAdmissionState = new GalaxyLabAvatarAdmissionState<GalaxyLabBackend>();
+let avatarAdmissionApplyCount = 0;
+let avatarAdmissionReuseCount = 0;
 let avatarAdmissionResult: GalaxyLabAvatarImageAdmissionResult = {
-  images: new Map(),
+  images: emptyAvatarImages,
   requestedNodeCount: 0,
   readyNodeCount: 0,
   failedSourceCount: 0,
@@ -351,39 +359,53 @@ async function admitSettledAvatarImages(
   generation: number,
 ): Promise<void> {
   if (!backend.setAvatarImages) return;
-  if (detail !== "close") {
-    if (generation !== avatarAdmissionGeneration || backend !== activeBackend) return;
-    avatarAdmissionResult = {
-      images: new Map(),
+  const compact = viewportSize().width < 720;
+  const selectedPersonNodeId = galaxyLabSelectedPersonNodeId(
+    fixture,
+    interaction.selectedNodeId,
+  );
+  const admissionKey = detail === "close"
+    ? `close:${compact ? "compact" : "wide"}:${selectedPersonNodeId ?? "none"}`
+    : "hidden";
+  const admissionStart = avatarAdmissionState.begin(backend, admissionKey, generation);
+  if (admissionStart !== "start") {
+    avatarAdmissionReuseCount += 1;
+    return;
+  }
+  const result = detail === "close"
+    ? await avatarImageAdmission.admit(selectGalaxyLabAvatars(
+      fixture,
+      paletteForTheme(),
+      interaction.selectedNodeId,
+      compact,
+      detail,
+    ).map((avatar) => ({
+      nodeId: avatar.nodeId,
+      sourceKey: `lab-local-avatar-v1:${avatar.nodeId}`,
+    })))
+    : {
+      images: emptyAvatarImages,
       requestedNodeCount: 0,
       readyNodeCount: 0,
       failedSourceCount: 0,
       cachedSourceCount: avatarAdmissionResult.cachedSourceCount,
     };
-    backend.setAvatarImages(avatarAdmissionResult.images);
-    return;
-  }
-  const compact = viewportSize().width < 720;
-  const requests = selectGalaxyLabAvatars(
-    fixture,
-    paletteForTheme(),
-    interaction.selectedNodeId,
-    compact,
-    detail,
-  ).map((avatar) => ({
-    nodeId: avatar.nodeId,
-    sourceKey: `lab-local-avatar-v1:${avatar.nodeId}`,
-  }));
-  const result = await avatarImageAdmission.admit(requests);
+  const currentGeneration = avatarAdmissionGeneration;
   if (
-    generation !== avatarAdmissionGeneration ||
+    !avatarAdmissionState.canCommit(backend, admissionKey, currentGeneration) ||
     backend !== activeBackend ||
-    viewDetailForScale(transform.scale) !== "close" ||
+    (detail === "close" && viewDetailForScale(transform.scale) !== "close") ||
+    cameraInMotion ||
     pointers.count > 0 ||
     safariGestureActive
-  ) return;
+  ) {
+    avatarAdmissionState.discard(backend, admissionKey);
+    return;
+  }
   avatarAdmissionResult = result;
   backend.setAvatarImages(result.images);
+  avatarAdmissionState.commit(backend, admissionKey, currentGeneration);
+  avatarAdmissionApplyCount += 1;
   dirty = true;
 }
 
@@ -463,6 +485,7 @@ async function activateBackend(
 ): Promise<void> {
   const generation = ++switchGeneration;
   avatarAdmissionGeneration += 1;
+  avatarAdmissionState.reset();
   simulateLossButton.disabled = true;
   setStatus(`Loading ${backendSelect.selectedOptions[0]?.textContent ?? id}`);
   activeBackend?.dispose();
@@ -568,6 +591,8 @@ function updateMetrics(): void {
     );
     addMetric("Avatar decode failures", integerFormat.format(avatarAdmissionResult.failedSourceCount));
     addMetric("Avatar image cache", integerFormat.format(avatarAdmissionResult.cachedSourceCount));
+    addMetric("Avatar atlas applies", integerFormat.format(avatarAdmissionApplyCount));
+    addMetric("Avatar admission reuse", integerFormat.format(avatarAdmissionReuseCount));
   }
   addMetric("Context edges", integerFormat.format(metrics.contextualEdgeCount));
   addMetric(
@@ -1039,6 +1064,8 @@ Object.assign(window, {
         readyNodeCount: avatarAdmissionResult.readyNodeCount,
         failedSourceCount: avatarAdmissionResult.failedSourceCount,
         cachedSourceCount: avatarAdmissionResult.cachedSourceCount,
+        applyCount: avatarAdmissionApplyCount,
+        reuseCount: avatarAdmissionReuseCount,
       },
       recoveryReason: lastRecoveryReason,
       viewportGeometryReadCount,

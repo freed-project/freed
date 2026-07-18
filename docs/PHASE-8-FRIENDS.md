@@ -198,6 +198,8 @@ Touch state now lives in one fixed-capacity typed pointer roster instead of two 
 
 Pinch and wheel movement now update one persistent settle deadline instead of canceling and allocating a browser timeout on every event. The animation loop consumes only the latest generation after 140 ms, then restores render density, detail, and bounded avatar admission once.
 
+Settled avatar admission now retains an exact backend, detail, compact-width, and selected-person key. Ordinary close-zoom settles reuse the applied image map without rescanning avatar candidates or rebuilding the atlas. Matching in-flight work advances to the latest settle generation, while stale or superseded completions cannot overwrite a newer backend or selection. Theme changes rebuild presentation from retained images inside the backend and do not restart decoding.
+
 Hover and selection now reuse one scene-index state object, one role map, and one fixed-capacity contextual-edge buffer sized from the worker-reported maximum adjacency degree. The Three.js reference and current WebGL2 fallback retain their touched and changed index sets instead of rebuilding maps, sets, typed views, or edge arrays for each focus change. The Three.js reference also allocates its maximum contextual-edge geometry and sparse attribute-update records once during startup. Renderer startup does not scan the transferred adjacency table.
 
 Raw WebGPU now leaves the 30,000-instance base semantic buffer untouched during interaction. It packs the active identity system into one fixed-capacity overlay stream, uploads that stream once, and selects a pre-recorded world bundle that adds the overlay draw. Clearing interaction selects the base bundle again. Contextual edges remain one separate bounded upload. Hover cost is therefore independent of where linked stars live in the resident buffer and no longer performs one queue write per affected star.
@@ -426,6 +428,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.82 | Replace scattered raw WebGPU interaction writes with one fixed overlay upload and pre-recorded interactive world bundle | High | Done |
 | 8.83 | Cache one viewport origin across hover, pointer, wheel, and Safari input so active event bursts perform no repeated geometry reads | High | Done |
 | 8.84 | Replace pointer Maps and per-move iterators with one fixed typed roster that preserves two-touch handoff | High | Done |
+| 8.85 | Retain keyed avatar admission across close-zoom settles and coalesce matching in-flight decode work | High | Done |
 
 ---
 
@@ -505,6 +508,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] The next-generation Friends Galaxy keeps all semantic stars GPU-resident and applies detail limits only to labels, avatars, edges, picking, and expensive effects
 - [x] Activity-only updates encode deterministic size and brightness scales and rewrite only the affected raw WebGPU semantic instances while preserving theme and interaction overlays
 - [x] Settled close-detail avatar decoding is concurrency-limited, revision-cached, compact-capped, stale-safe, and paired with deterministic bitmap cleanup
+- [x] Close-detail avatar admission is keyed by renderer, viewport class, and selected person so unchanged settles do not rescan candidates or rebuild the atlas
 - [x] Raw and Three.js WebGPU device loss recovers once into WebGL2 without discarding the active theme, camera transform, semantic scene, or interaction state
 - [x] Detached startup compiles the complete stress scene and interaction index in a worker, transfers twenty-one numeric buffers, caps rich metadata, and never rebuilds the graph on the main thread
 - [x] Raw WebGPU uploads worker-packed resident star streams once and resolves theme changes through a fixed palette uniform without full-star CPU traversal or GPU reupload
