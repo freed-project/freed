@@ -14,7 +14,7 @@ import {
 } from "./lib/stability-metrics.mjs";
 
 test("the stability metric registry has unique ids and a version", () => {
-  assert.equal(STABILITY_METRIC_REGISTRY_VERSION, 5);
+  assert.equal(STABILITY_METRIC_REGISTRY_VERSION, 6);
   assert.equal(
     new Set(STABILITY_METRICS.map((metric) => metric.id)).size,
     STABILITY_METRICS.length,
@@ -147,6 +147,14 @@ test("worker soak, triage, and canary surfaces share one rate contract", () => {
     allowance: 128 * 1024 * 1024,
     direction: "lower",
   });
+});
+
+test("lost novel item outcomes guard against renderer recovery regression", () => {
+  const contract = metricContractForAssertion("scrape_zero_persist");
+
+  assert.deepEqual(contract.outcomeGuardrailMetricIds, [
+    "renderer-recovery-count",
+  ]);
 });
 
 test("provider-neutral lifecycle metrics route to their existing program buckets", () => {

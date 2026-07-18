@@ -88,6 +88,8 @@ function writeStoredSoak(
     workerInitCount = 0,
     workerIdleTerminationReasons = [],
     workerInitRecoveryCount = 0,
+    novelItemsNotPersistedCount = 0,
+    rendererRecoveryCount = 0,
     comparisonContext = {},
   },
 ) {
@@ -142,6 +144,19 @@ function writeStoredSoak(
       ...identity,
       event: "worker_init_recovery",
       tsMs: start + (index + 1) * 3_000,
+    })),
+    ...Array.from({ length: rendererRecoveryCount }, (_, index) => ({
+      ...identity,
+      event: "renderer_recovery_restart_requested",
+      tsMs: start + (index + 1) * 4_000,
+    })),
+    ...Array.from({ length: novelItemsNotPersistedCount }, (_, index) => ({
+      ...identity,
+      event: "scrape_outcome",
+      tsMs: end - 10_000 - index,
+      itemsExtracted: 5,
+      itemsNovel: 5,
+      itemsPersisted: 0,
     })),
     {
       ...identity,
@@ -810,6 +825,50 @@ test("worker init outcomes enforce the automatic memory-pressure guardrail", () 
       }),
     /lacks the registered app-memory-pressure-p95 measurement contract/,
   );
+});
+
+test("novel item persistence outcomes enforce the renderer recovery guardrail", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "freed-scrape-guardrail-"));
+  const baseline = writeStoredSoak(root, {
+    name: "baseline",
+    start: Date.parse("2026-07-09T00:00:00.000Z"),
+    commitSha: "a".repeat(40),
+    version: "26.7.900-dev",
+    slopeMbPerHour: 4,
+    novelItemsNotPersistedCount: 2,
+  });
+  const current = writeStoredSoak(root, {
+    name: "current",
+    start: Date.parse("2026-07-10T00:00:00.000Z"),
+    commitSha: "b".repeat(40),
+    version: "26.7.1000-dev",
+    slopeMbPerHour: 4,
+    rendererRecoveryCount: 1,
+  });
+
+  const verdict = buildOutcomeVerdictFromArtifacts({
+    sourcePath: current.verdictPath,
+    sourceKind: "soak",
+    taskId: "youtube-capture-completion-timeout",
+    outcome: "regressed",
+    metric: "novel-items-not-persisted",
+    baselineReference: baseline.verdictPath,
+  });
+  assert.equal(verdict.effect.metric, "renderer-recovery-count");
+  assert.equal(verdict.effectAssessment.primaryAssessment, "effective");
+  assert.deepEqual(verdict.effectAssessment.guardrails, [
+    {
+      metric: "renderer-recovery-count",
+      before: 0,
+      after: 4,
+      delta: 4,
+      unit: "events/app-alive-day",
+      direction: "lower",
+      tolerance: 0.01,
+      assessment: "regressed",
+    },
+  ]);
+  assert.equal(verdict.status, "fail");
 });
 
 test("artifact identity survives the soak, canary, and outcome chain", () => {
