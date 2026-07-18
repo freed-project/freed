@@ -44,6 +44,7 @@ import {
 } from "./star-geometry.js";
 import {
   createGalaxyLabProviderFields,
+  GALAXY_LAB_PROVIDER_FIELD_CULL_SCALE,
   GALAXY_LAB_PROVIDER_FIELD_INSTANCE_STRIDE,
   type GalaxyLabProviderFields,
 } from "./provider-fields.js";
@@ -88,11 +89,15 @@ struct VertexOutput {
 @vertex
 fn vertexMain(input: VertexInput) -> VertexOutput {
   var output: VertexOutput;
-  let world = input.center + vec3<f32>(input.corner * input.halfSize, 0.0);
-  output.position = uniforms.viewProjection * vec4<f32>(world, 1.0);
   output.local = input.corner;
   output.color = input.color;
   output.parameters = input.parameters;
+  if (abs(uniforms.cameraScale) >= ${String(GALAXY_LAB_PROVIDER_FIELD_CULL_SCALE)}) {
+    output.position = vec4<f32>(2.0, 2.0, 0.0, 1.0);
+    return output;
+  }
+  let world = input.center + vec3<f32>(input.corner * input.halfSize, 0.0);
+  output.position = uniforms.viewProjection * vec4<f32>(world, 1.0);
   return output;
 }
 

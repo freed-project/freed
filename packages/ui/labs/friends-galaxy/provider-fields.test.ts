@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { providerGalaxyArmCount } from "../../src/lib/identity-galaxy-provider-field.js";
-import { createGalaxyLabProviderFields } from "./provider-fields.js";
+import {
+  createGalaxyLabProviderFields,
+  GALAXY_LAB_PROVIDER_FIELD_CULL_SCALE,
+} from "./provider-fields.js";
 import {
   createGalaxyLabFixture,
   GALAXY_LAB_PROVIDERS,
@@ -56,5 +59,9 @@ describe("Friends Galaxy provider fields", () => {
 
     expect(dark.instanceData[20]).toBeGreaterThan(light.instanceData[20]!);
     expect(light.instanceData.slice(17, 20)).not.toEqual(light.instanceData.slice(29, 32));
+  });
+
+  it("culls fields only beyond useful close detail", () => {
+    expect(GALAXY_LAB_PROVIDER_FIELD_CULL_SCALE).toBe(1.5);
   });
 });

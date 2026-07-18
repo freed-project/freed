@@ -10,6 +10,7 @@ import type {
 } from "./scene-fixture.js";
 
 const PROVIDER_FIELD_INSTANCE_FLOATS = 12;
+export const GALAXY_LAB_PROVIDER_FIELD_CULL_SCALE = 1.5;
 
 export interface GalaxyLabProviderFields {
   instanceData: Float32Array;

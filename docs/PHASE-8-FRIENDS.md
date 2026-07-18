@@ -216,6 +216,8 @@ Moving Raw WebGPU stars now use a retained regular-octagon triangle strip instea
 
 The moving world bundles draw a deterministic 50,000-star prefix of the 100,000 resident decorative dust stars. Their index-keyed placement keeps that prefix evenly distributed across the galactic field. All 30,000 semantic stars, interaction overlays, labels, avatars, and edges remain complete. Settle returns the full decorative stream without an upload or bundle rebuild.
 
+Provider fields now become degenerate in the vertex shader beyond 1.5 close-detail scale. Their existing camera fade has already reduced them to atmospheric residue by that point. The cutoff prevents six large, effectively invisible field quads from rasterizing or running noise fragments over close-zoom stars, labels, and avatars. Overview and middle detail remain unchanged.
+
 Provider sectors now follow deterministic logarithmic spirals shared by layout and rendering. The default Nebula treatment combines procedural arms and themed dust without per-star scene objects. Linked accounts stay close to their parent identity, billboard labels sit close to their parent star with a stronger outline, and semantic links remain absent until one star in that identity system is hovered or selected.
 
 ### Scale targets
@@ -446,6 +448,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.90 | Retain raw WebGPU edge, avatar, and label presentation commands in one ordered frame bundle list | High | Done |
 | 8.91 | Reduce moving-star raster footprints with retained octagon strips while preserving semantic-star diameter and settled luminosity | High | Done |
 | 8.92 | Bound decorative motion density while retaining every semantic star and the full settled dust field | High | Done |
+| 8.93 | Cull fully faded provider field primitives before close-detail rasterization | High | Done |
 
 ---
 
@@ -544,6 +547,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Moving Raw WebGPU stars use squared-radius multiply-only falloff while settled stars retain their complete luminous profile
 - [x] Moving Raw WebGPU stars use retained octagon strips to reduce raster coverage without shrinking axis diameter or changing resident-star count
 - [x] Moving Raw WebGPU frames draw a spatially representative decorative prefix while keeping every semantic star, label, avatar, edge, and resident buffer
+- [x] Raw WebGPU culls provider field primitives after their close-detail fade instead of shading invisible full-field fragments
 - [x] Raw WebGPU expresses hover and selection through one bounded overlay upload without rewriting scattered resident semantic instances
 - [x] Raw WebGPU executes world, contextual edge, avatar, and label presentation through one retained render-bundle list per frame
 - [x] Hover, pointer, wheel, and Safari input share one cached viewport origin, with geometry reads bounded to interaction boundaries and resize
