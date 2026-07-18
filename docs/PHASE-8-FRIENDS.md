@@ -192,6 +192,8 @@ Frame and submission diagnostics now use fixed 240-value typed rings. Active cam
 
 Active pointer movement now reuses viewport bounds captured at gesture start and mutates only the two resident touch records. Hover coalescing retains one scalar coordinate pair. Safari trackpad pinch stores scalar anchor and viewport values at `gesturestart`, so `gesturechange` performs no point allocation or viewport geometry read.
 
+The detached shell now shares one cached viewport origin across hover, pointer, wheel, and Safari input. It refreshes geometry at pointer entry, gesture start, the first event in a wheel burst, and resize. Every event inside the active interaction uses the cached scalar origin. A diagnostic counter exposes the exact geometry-read count without rebuilding the metrics panel during movement.
+
 Pinch and wheel movement now update one persistent settle deadline instead of canceling and allocating a browser timeout on every event. The animation loop consumes only the latest generation after 140 ms, then restores render density, detail, and bounded avatar admission once.
 
 Hover and selection now reuse one scene-index state object, one role map, and one fixed-capacity contextual-edge buffer sized from the worker-reported maximum adjacency degree. The Three.js reference and current WebGL2 fallback retain their touched and changed index sets instead of rebuilding maps, sets, typed views, or edge arrays for each focus change. The Three.js reference also allocates its maximum contextual-edge geometry and sparse attribute-update records once during startup. Renderer startup does not scan the transferred adjacency table.
@@ -420,6 +422,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.80 | Reuse interaction roles, contextual-edge storage, sparse update ranges, and changed-index sets across every hover and selection | High | Done |
 | 8.81 | Freeze twinkle and reduce procedural nebula octaves during camera motion without removing stars, labels, or GPU buffers | High | Done |
 | 8.82 | Replace scattered raw WebGPU interaction writes with one fixed overlay upload and pre-recorded interactive world bundle | High | Done |
+| 8.83 | Cache one viewport origin across hover, pointer, wheel, and Safari input so active event bursts perform no repeated geometry reads | High | Done |
 
 ---
 
@@ -513,6 +516,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Hover and selection reuse fixed interaction payloads and renderer scratch storage without rebuilding maps, sets, typed views, or edge geometry
 - [x] Raw WebGPU keeps semantic stars and labels resident while camera motion uses a coherent reduced-cost twinkle and nebula shader path
 - [x] Raw WebGPU expresses hover and selection through one bounded overlay upload without rewriting scattered resident semantic instances
+- [x] Hover, pointer, wheel, and Safari input share one cached viewport origin, with geometry reads bounded to interaction boundaries and resize
 - [x] Linked accounts occupy complete local orbits, and dense people fields reserve enough space for those systems
 - [x] Galaxy compilation indexes accounts by person once instead of scanning the full account library for every identity
 - [x] Mobile pinch hands directly to one-finger pan when either touch lifts

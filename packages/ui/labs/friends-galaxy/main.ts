@@ -603,6 +603,7 @@ function updateMetrics(): void {
   if (lastRecoveryReason) addMetric("Recovery reason", lastRecoveryReason);
   addMetric("Camera scale", scaleFormat.format(transform.scale));
   addMetric("Settled detail", viewDetailForScale(transform.scale));
+  addMetric("Viewport geometry reads", integerFormat.format(viewportGeometryReadCount));
   if (metrics.adapterDescription) addMetric("Adapter", metrics.adapterDescription);
 }
 
@@ -684,8 +685,23 @@ let hoverRequest = 0;
 let pendingHoverX = 0;
 let pendingHoverY = 0;
 let pendingHover = false;
-let pointerViewportLeft = 0;
-let pointerViewportTop = 0;
+let viewportClientLeft = 0;
+let viewportClientTop = 0;
+let viewportOriginValid = false;
+let viewportGeometryReadCount = 0;
+
+function refreshViewportOrigin(): void {
+  const bounds = viewport.getBoundingClientRect();
+  viewportClientLeft = bounds.left;
+  viewportClientTop = bounds.top;
+  viewportOriginValid = true;
+  viewportGeometryReadCount += 1;
+  viewport.dataset.viewportGeometryReads = String(viewportGeometryReadCount);
+}
+
+function ensureViewportOrigin(): void {
+  if (!viewportOriginValid) refreshViewportOrigin();
+}
 
 function updateInteraction(next: GalaxyLabInteraction): void {
   if (
@@ -728,14 +744,12 @@ viewport.addEventListener("pointerdown", (event) => {
   settleScheduler.cancel();
   viewport.focus({ preventScroll: true });
   if (pointers.size === 0) {
-    const bounds = viewport.getBoundingClientRect();
-    pointerViewportLeft = bounds.left;
-    pointerViewportTop = bounds.top;
+    refreshViewportOrigin();
     gestureMoved = false;
   }
   const point = {
-    x: event.clientX - pointerViewportLeft,
-    y: event.clientY - pointerViewportTop,
+    x: event.clientX - viewportClientLeft,
+    y: event.clientY - viewportClientTop,
   };
   pointers.set(event.pointerId, point);
   pointerStarts.set(event.pointerId, { x: point.x, y: point.y });
@@ -752,15 +766,18 @@ viewport.addEventListener("pointermove", (event) => {
   const previousPoint = pointers.get(event.pointerId);
   if (!previousPoint) {
     if (event.pointerType === "mouse") {
-      const bounds = viewport.getBoundingClientRect();
-      scheduleHoverPick(event.clientX - bounds.left, event.clientY - bounds.top);
+      ensureViewportOrigin();
+      scheduleHoverPick(
+        event.clientX - viewportClientLeft,
+        event.clientY - viewportClientTop,
+      );
     }
     return;
   }
   event.preventDefault();
   setCameraInMotion(true);
-  const nextX = event.clientX - pointerViewportLeft;
-  const nextY = event.clientY - pointerViewportTop;
+  const nextX = event.clientX - viewportClientLeft;
+  const nextY = event.clientY - viewportClientTop;
   const startPoint = pointerStarts.get(event.pointerId) ?? previousPoint;
   if (Math.hypot(nextX - startPoint.x, nextY - startPoint.y) > 4 || pointers.size > 1) {
     gestureMoved = true;
@@ -802,8 +819,8 @@ viewport.addEventListener("pointermove", (event) => {
 });
 
 function releasePointer(event: PointerEvent): void {
-  const releasePointX = event.clientX - pointerViewportLeft;
-  const releasePointY = event.clientY - pointerViewportTop;
+  const releasePointX = event.clientX - viewportClientLeft;
+  const releasePointY = event.clientY - viewportClientTop;
   const shouldSelect = event.type === "pointerup" && pointers.size === 1 && !gestureMoved;
   pointers.delete(event.pointerId);
   pointerStarts.delete(event.pointerId);
@@ -831,6 +848,9 @@ function releasePointer(event: PointerEvent): void {
 
 viewport.addEventListener("pointerup", releasePointer);
 viewport.addEventListener("pointercancel", releasePointer);
+viewport.addEventListener("pointerenter", () => {
+  if (pointers.size === 0) refreshViewportOrigin();
+});
 viewport.addEventListener("pointerleave", () => {
   if (pointers.size > 0) return;
   pendingHover = false;
@@ -839,11 +859,12 @@ viewport.addEventListener("pointerleave", () => {
 
 viewport.addEventListener("wheel", (event) => {
   event.preventDefault();
-  const bounds = viewport.getBoundingClientRect();
+  if (!cameraInMotion) refreshViewportOrigin();
+  else ensureViewportOrigin();
   const sensitivity = event.ctrlKey ? 0.012 : 0.0024;
   zoomAt(
-    event.clientX - bounds.left,
-    event.clientY - bounds.top,
+    event.clientX - viewportClientLeft,
+    event.clientY - viewportClientTop,
     transform.scale * Math.exp(-event.deltaY * sensitivity),
   );
 }, { passive: false });
@@ -867,9 +888,9 @@ viewport.addEventListener("gesturestart", ((event: SafariGestureEvent) => {
   avatarAdmissionGeneration += 1;
   settleScheduler.cancel();
   safariGestureStartScale = transform.scale;
-  const bounds = viewport.getBoundingClientRect();
-  safariGestureViewportLeft = bounds.left;
-  safariGestureViewportTop = bounds.top;
+  refreshViewportOrigin();
+  safariGestureViewportLeft = viewportClientLeft;
+  safariGestureViewportTop = viewportClientTop;
   const viewportX = event.clientX - safariGestureViewportLeft;
   const viewportY = event.clientY - safariGestureViewportTop;
   safariGestureWorldX = (viewportX - transform.x) / transform.scale;
@@ -989,6 +1010,7 @@ function syncReducedMotionPreference(): void {
 reducedMotionQuery.addEventListener("change", syncReducedMotionPreference);
 
 const resizeObserver = new ResizeObserver(() => {
+  refreshViewportOrigin();
   resizeActiveBackend();
   if (!userMovedCamera) frameInitialGalaxy();
   else scheduleSettledViewDetail(true);
@@ -1031,6 +1053,7 @@ Object.assign(window, {
         cachedSourceCount: avatarAdmissionResult.cachedSourceCount,
       },
       recoveryReason: lastRecoveryReason,
+      viewportGeometryReadCount,
       startup: {
         workerOnly: true,
         ...fixtureWorkerReceipt,
