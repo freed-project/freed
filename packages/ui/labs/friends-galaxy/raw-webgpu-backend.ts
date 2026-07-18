@@ -125,9 +125,56 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let arms = input.parameters.y;
   let style = input.parameters.z;
   let point = input.local;
-  let fieldTime = max(uniforms.time, 0.0);
   let cameraScale = abs(uniforms.cameraScale);
-  let octaveCount = select(4u, 2u, uniforms.cameraScale < 0.0);
+  let cameraMoving = uniforms.cameraScale < 0.0;
+  if (cameraMoving) {
+    let radius = length(point);
+    let coarseNoise = noise(
+      point * 2.36 + vec2<f32>(seed * 17.0, seed * 7.0),
+    );
+    let edgeRadius = radius + (coarseNoise - 0.5) * 0.26;
+    let envelope = 1.0 - smoothstep(0.48, 1.07, edgeRadius);
+    let core = 1.0 - smoothstep(0.02, 0.52, radius);
+    let cloud = smoothstep(0.28, 0.78, coarseNoise);
+    var density = envelope * (0.52 + cloud * 0.38 + core * 0.1);
+    if (style > 0.5) {
+      let angle = atan2(point.y, point.x);
+      let armFade = smoothstep(0.18, 0.48, radius) *
+        (1.0 - smoothstep(0.82, 1.08, radius));
+      let armPhase = angle * arms - radius * 9.2 + seed * 6.28318;
+      let streams = envelope * armFade *
+        smoothstep(0.62, 0.94, 0.5 + 0.5 * cos(armPhase)) *
+        (0.3 + coarseNoise * 0.7);
+      density = select(
+        streams * 0.72 + density * 0.1,
+        density * 0.52 + streams * 0.4,
+        style > 1.5,
+      );
+    }
+    let detailFade = mix(1.0, 0.22, smoothstep(0.24, 1.2, cameraScale));
+    let alpha = clamp(
+      density * input.color.a * 0.82 * detailFade,
+      0.0,
+      0.28,
+    );
+    if (alpha < 0.004) {
+      discard;
+    }
+    let darkTheme = step(0.24, input.color.a);
+    var fieldColor = mix(
+      input.color.rgb * 0.7,
+      input.color.rgb,
+      cloud * 0.58 + core * 0.12,
+    );
+    fieldColor = mix(
+      fieldColor,
+      vec3<f32>(1.0),
+      cloud * mix(0.025, 0.11, darkTheme),
+    );
+    return vec4<f32>(fieldColor, alpha);
+  }
+  let octaveCount = 4u;
+  let fieldTime = max(uniforms.time, 0.0);
   let drift = vec2<f32>(fieldTime * 0.0024, -fieldTime * 0.0017);
   let warp = vec2<f32>(
     fbm(point * 1.72 + vec2<f32>(seed * 9.1, seed * 4.3) + drift, octaveCount),
