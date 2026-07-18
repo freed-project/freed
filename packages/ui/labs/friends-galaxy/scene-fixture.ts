@@ -21,9 +21,9 @@ import {
   type FriendsGalaxySceneInteractionIndex,
 } from "../../src/lib/friends-galaxy-scene-interaction-index.js";
 import {
-  createGalaxyLabPackedStarInstances,
-  type GalaxyLabPackedStarInstances,
-} from "./star-instance-data.js";
+  createFriendsGalaxyPackedStarInstances,
+  type FriendsGalaxyPackedStarInstances,
+} from "../../src/lib/friends-galaxy-star-instances.js";
 
 export const GALAXY_LAB_PROVIDERS = ["instagram", "facebook", "linkedin", "x", "rss"] as const;
 
@@ -55,7 +55,7 @@ export interface GalaxyLabFixture {
   atlas: IdentityGraphAtlas;
   scene: IdentityGalaxyScene;
   interactionIndex: FriendsGalaxySceneInteractionIndex;
-  packedStarInstances: GalaxyLabPackedStarInstances;
+  packedStarInstances: FriendsGalaxyPackedStarInstances;
   backgroundPositions: Float32Array;
   backgroundBrightness: Float32Array;
   personCount: number;
@@ -581,7 +581,7 @@ export function createGalaxyLabFixture({
   }
 
   const interactionIndex = createFriendsGalaxySceneInteractionIndex(scene);
-  const packedStarInstances = createGalaxyLabPackedStarInstances({
+  const packedStarInstances = createFriendsGalaxyPackedStarInstances({
     scene,
     backgroundPositions,
     backgroundBrightness,

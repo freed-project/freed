@@ -1,13 +1,13 @@
 import { hexToRgb } from "./backend.js";
 import type { GalaxyLabPalette } from "./scene-fixture.js";
 import {
-  GALAXY_LAB_STAR_PALETTE_ROLE_COUNT,
-  GalaxyLabStarColorRole,
-} from "./star-instance-data.js";
+  FRIENDS_GALAXY_STAR_PALETTE_ROLE_COUNT,
+  FriendsGalaxyStarColorRole,
+} from "../../src/lib/friends-galaxy-star-instances.js";
 
 export const GALAXY_LAB_STAR_PALETTE_FLOAT_OFFSET = 20;
 export const GALAXY_LAB_STAR_PALETTE_FLOAT_COUNT =
-  GALAXY_LAB_STAR_PALETTE_ROLE_COUNT * 4;
+  FRIENDS_GALAXY_STAR_PALETTE_ROLE_COUNT * 4;
 
 export interface GalaxyLabStarPaletteState {
   clearColor: readonly [number, number, number];
@@ -47,9 +47,9 @@ export function writeGalaxyLabStarPaletteUniforms(
     target[offset] = red;
     target[offset + 1] = green;
     target[offset + 2] = blue;
-    target[offset + 3] = role === GalaxyLabStarColorRole.Background
+    target[offset + 3] = role === FriendsGalaxyStarColorRole.Background
       ? lightSurface ? 0.2 : 0.5
-      : role === GalaxyLabStarColorRole.Selection
+      : role === FriendsGalaxyStarColorRole.Selection
         ? 1
         : lightSurface ? 0.88 : 0.97;
   }

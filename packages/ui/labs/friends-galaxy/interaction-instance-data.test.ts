@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { writeGalaxyLabInteractionInstances } from "./interaction-instance-data.js";
-import { GALAXY_LAB_STAR_INSTANCE_FLOATS } from "./star-instance-data.js";
+import { FRIENDS_GALAXY_STAR_INSTANCE_FLOATS } from "../../src/lib/friends-galaxy-star-instances.js";
 
 function semanticFixture(): Float32Array {
   return new Float32Array([
@@ -12,7 +12,7 @@ function semanticFixture(): Float32Array {
 
 describe("Friends Galaxy interaction overlay instances", () => {
   it("packs selected and linked stars into one contiguous stream", () => {
-    const target = new Float32Array(GALAXY_LAB_STAR_INSTANCE_FLOATS * 3);
+    const target = new Float32Array(FRIENDS_GALAXY_STAR_INSTANCE_FLOATS * 3);
     const count = writeGalaxyLabInteractionInstances(
       target,
       semanticFixture(),
@@ -33,7 +33,7 @@ describe("Friends Galaxy interaction overlay instances", () => {
   });
 
   it("clears stale overlay slots while reusing the same target", () => {
-    const target = new Float32Array(GALAXY_LAB_STAR_INSTANCE_FLOATS * 3);
+    const target = new Float32Array(FRIENDS_GALAXY_STAR_INSTANCE_FLOATS * 3);
     target.fill(99);
 
     const count = writeGalaxyLabInteractionInstances(
@@ -50,7 +50,7 @@ describe("Friends Galaxy interaction overlay instances", () => {
   });
 
   it("caps the packed overlay at its fixed capacity", () => {
-    const target = new Float32Array(GALAXY_LAB_STAR_INSTANCE_FLOATS);
+    const target = new Float32Array(FRIENDS_GALAXY_STAR_INSTANCE_FLOATS);
     const count = writeGalaxyLabInteractionInstances(
       target,
       semanticFixture(),
@@ -67,7 +67,7 @@ describe("Friends Galaxy interaction overlay instances", () => {
   it("rejects an interaction index outside the resident scene", () => {
     expect(() => {
       writeGalaxyLabInteractionInstances(
-        new Float32Array(GALAXY_LAB_STAR_INSTANCE_FLOATS),
+        new Float32Array(FRIENDS_GALAXY_STAR_INSTANCE_FLOATS),
         semanticFixture(),
         new Map([[9, "selected"]]),
       );

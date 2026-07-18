@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  createGalaxyLabStarGeometry,
-  galaxyLabMotionBackgroundStarCount,
-  GALAXY_LAB_MOTION_BACKGROUND_STAR_CAP,
-  GALAXY_LAB_MOTION_STAR_VERTEX_COUNT,
-  GALAXY_LAB_SETTLED_STAR_VERTEX_COUNT,
-} from "./star-geometry.js";
+  createFriendsGalaxyStarGeometry,
+  friendsGalaxyMotionBackgroundStarCount,
+  FRIENDS_GALAXY_MOTION_BACKGROUND_STAR_CAP,
+  FRIENDS_GALAXY_MOTION_STAR_VERTEX_COUNT,
+  FRIENDS_GALAXY_SETTLED_STAR_VERTEX_COUNT,
+} from "../../src/lib/friends-galaxy-star-geometry.js";
 
 function stripArea(vertices: Float32Array): number {
   let area = 0;
@@ -23,21 +23,21 @@ function stripArea(vertices: Float32Array): number {
 
 describe("Friends Galaxy star geometry", () => {
   it("keeps the settled square strip complete", () => {
-    const geometry = createGalaxyLabStarGeometry();
+    const geometry = createFriendsGalaxyStarGeometry();
 
-    expect(geometry.settled).toHaveLength(GALAXY_LAB_SETTLED_STAR_VERTEX_COUNT * 2);
+    expect(geometry.settled).toHaveLength(FRIENDS_GALAXY_SETTLED_STAR_VERTEX_COUNT * 2);
     expect(stripArea(geometry.settled)).toBeCloseTo(4, 6);
   });
 
   it("orders the moving octagon as one non-overlapping triangle strip", () => {
-    const geometry = createGalaxyLabStarGeometry();
+    const geometry = createFriendsGalaxyStarGeometry();
 
-    expect(geometry.motion).toHaveLength(GALAXY_LAB_MOTION_STAR_VERTEX_COUNT * 2);
+    expect(geometry.motion).toHaveLength(FRIENDS_GALAXY_MOTION_STAR_VERTEX_COUNT * 2);
     expect(stripArea(geometry.motion)).toBeCloseTo(2 * Math.SQRT2, 6);
   });
 
   it("preserves both axis diameters while reducing raster coverage", () => {
-    const { settled, motion } = createGalaxyLabStarGeometry();
+    const { settled, motion } = createFriendsGalaxyStarGeometry();
     const xs = Array.from(motion.filter((_, index) => index % 2 === 0));
     const ys = Array.from(motion.filter((_, index) => index % 2 === 1));
 
@@ -49,11 +49,11 @@ describe("Friends Galaxy star geometry", () => {
   });
 
   it("caps only decorative motion stars", () => {
-    expect(galaxyLabMotionBackgroundStarCount(12_000)).toBe(12_000);
-    expect(galaxyLabMotionBackgroundStarCount(100_000)).toBe(
-      GALAXY_LAB_MOTION_BACKGROUND_STAR_CAP,
+    expect(friendsGalaxyMotionBackgroundStarCount(12_000)).toBe(12_000);
+    expect(friendsGalaxyMotionBackgroundStarCount(100_000)).toBe(
+      FRIENDS_GALAXY_MOTION_BACKGROUND_STAR_CAP,
     );
-    expect(galaxyLabMotionBackgroundStarCount(-10)).toBe(0);
-    expect(galaxyLabMotionBackgroundStarCount(Number.NaN)).toBe(0);
+    expect(friendsGalaxyMotionBackgroundStarCount(-10)).toBe(0);
+    expect(friendsGalaxyMotionBackgroundStarCount(Number.NaN)).toBe(0);
   });
 });

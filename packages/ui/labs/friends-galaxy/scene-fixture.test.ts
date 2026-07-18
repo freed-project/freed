@@ -3,7 +3,7 @@ import {
   createGalaxyLabFixture,
   GALAXY_LAB_PROVIDERS,
 } from "./scene-fixture.js";
-import { galaxyLabMotionBackgroundStarCount } from "./star-geometry.js";
+import { friendsGalaxyMotionBackgroundStarCount } from "../../src/lib/friends-galaxy-star-geometry.js";
 
 describe("Friends Galaxy renderer lab fixture", () => {
   it("builds the final semantic and decorative stress target", () => {
@@ -25,7 +25,7 @@ describe("Friends Galaxy renderer lab fixture", () => {
     expect(fixture.representedActivityItemCount).toBe(250_000);
     expect(fixture.atlas.nodes[fixture.personCount + 42]?.activityCount).toBe(10);
 
-    const motionCount = galaxyLabMotionBackgroundStarCount(fixture.backgroundStarCount);
+    const motionCount = friendsGalaxyMotionBackgroundStarCount(fixture.backgroundStarCount);
     const fullQuadrants = [0, 0, 0, 0];
     const motionQuadrants = [0, 0, 0, 0];
     for (let index = 0; index < fixture.backgroundStarCount; index += 1) {

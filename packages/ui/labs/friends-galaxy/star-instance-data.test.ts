@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createGalaxyLabFixture } from "./scene-fixture.js";
 import {
-  GALAXY_LAB_STAR_INSTANCE_FLOATS,
-  GalaxyLabStarColorRole,
-  createGalaxyLabPackedStarInstances,
-} from "./star-instance-data.js";
+  FRIENDS_GALAXY_STAR_INSTANCE_FLOATS,
+  FriendsGalaxyStarColorRole,
+  createFriendsGalaxyPackedStarInstances,
+} from "../../src/lib/friends-galaxy-star-instances.js";
 
 describe("Friends Galaxy worker-packed star instances", () => {
   it("packs direct-upload semantic and background streams", () => {
@@ -15,19 +15,19 @@ describe("Friends Galaxy worker-packed star instances", () => {
     });
 
     expect(fixture.packedStarInstances.semantic).toHaveLength(
-      60 * GALAXY_LAB_STAR_INSTANCE_FLOATS,
+      60 * FRIENDS_GALAXY_STAR_INSTANCE_FLOATS,
     );
     expect(fixture.packedStarInstances.background).toHaveLength(
-      100 * GALAXY_LAB_STAR_INSTANCE_FLOATS,
+      100 * FRIENDS_GALAXY_STAR_INSTANCE_FLOATS,
     );
     expect(fixture.packedStarInstances.semantic.slice(0, 3)).toEqual(
       fixture.scene.positions.slice(0, 3),
     );
     expect(fixture.packedStarInstances.semantic[5]).toBe(
-      GalaxyLabStarColorRole.Friend,
+      FriendsGalaxyStarColorRole.Friend,
     );
     expect(fixture.packedStarInstances.background[5]).toBe(
-      GalaxyLabStarColorRole.Background,
+      FriendsGalaxyStarColorRole.Background,
     );
   });
 
@@ -38,18 +38,18 @@ describe("Friends Galaxy worker-packed star instances", () => {
       backgroundStarCount: 0,
     });
     const expectedRoles = [
-      GalaxyLabStarColorRole.Instagram,
-      GalaxyLabStarColorRole.Facebook,
-      GalaxyLabStarColorRole.LinkedIn,
-      GalaxyLabStarColorRole.X,
-      GalaxyLabStarColorRole.Rss,
+      FriendsGalaxyStarColorRole.Instagram,
+      FriendsGalaxyStarColorRole.Facebook,
+      FriendsGalaxyStarColorRole.LinkedIn,
+      FriendsGalaxyStarColorRole.X,
+      FriendsGalaxyStarColorRole.Rss,
     ];
 
     for (let accountIndex = 0; accountIndex < expectedRoles.length; accountIndex += 1) {
       const nodeIndex = fixture.personCount + accountIndex;
       expect(
         fixture.packedStarInstances.semantic[
-          nodeIndex * GALAXY_LAB_STAR_INSTANCE_FLOATS + 5
+          nodeIndex * FRIENDS_GALAXY_STAR_INSTANCE_FLOATS + 5
         ],
       ).toBe(expectedRoles[accountIndex]);
     }
@@ -61,7 +61,7 @@ describe("Friends Galaxy worker-packed star instances", () => {
       accountCount: 0,
       backgroundStarCount: 0,
     });
-    expect(() => createGalaxyLabPackedStarInstances({
+    expect(() => createFriendsGalaxyPackedStarInstances({
       scene: fixture.scene,
       backgroundPositions: new Float32Array(6),
       backgroundBrightness: new Float32Array(1),

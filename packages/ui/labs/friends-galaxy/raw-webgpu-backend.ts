@@ -25,21 +25,21 @@ import {
   type GalaxyLabTransform,
 } from "./scene-fixture.js";
 import {
-  GALAXY_LAB_STAR_INSTANCE_FLOATS,
-  GALAXY_LAB_STAR_PALETTE_ROLE_COUNT,
-  GalaxyLabStarColorRole,
-} from "./star-instance-data.js";
+  FRIENDS_GALAXY_STAR_INSTANCE_FLOATS,
+  FRIENDS_GALAXY_STAR_PALETTE_ROLE_COUNT,
+  FriendsGalaxyStarColorRole,
+} from "../../src/lib/friends-galaxy-star-instances.js";
 import {
   GALAXY_LAB_STAR_PALETTE_FLOAT_COUNT,
   GALAXY_LAB_STAR_PALETTE_FLOAT_OFFSET,
   writeGalaxyLabStarPaletteUniforms,
 } from "./star-palette.js";
 import {
-  createGalaxyLabStarGeometry,
-  galaxyLabMotionBackgroundStarCount,
-  GALAXY_LAB_MOTION_STAR_VERTEX_COUNT,
-  GALAXY_LAB_SETTLED_STAR_VERTEX_COUNT,
-} from "./star-geometry.js";
+  createFriendsGalaxyStarGeometry,
+  friendsGalaxyMotionBackgroundStarCount,
+  FRIENDS_GALAXY_MOTION_STAR_VERTEX_COUNT,
+  FRIENDS_GALAXY_SETTLED_STAR_VERTEX_COUNT,
+} from "../../src/lib/friends-galaxy-star-geometry.js";
 import {
   createGalaxyLabProviderFields,
   GALAXY_LAB_PROVIDER_FIELD_CULL_SCALE,
@@ -53,7 +53,7 @@ import {
   type FriendsGalaxyInteractionState,
 } from "../../src/lib/friends-galaxy-scene-index.js";
 
-const INSTANCE_FLOATS = GALAXY_LAB_STAR_INSTANCE_FLOATS;
+const INSTANCE_FLOATS = FRIENDS_GALAXY_STAR_INSTANCE_FLOATS;
 const INSTANCE_STRIDE = INSTANCE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 const EDGE_INSTANCE_FLOATS = 10;
 const EDGE_INSTANCE_STRIDE = EDGE_INSTANCE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
@@ -267,7 +267,7 @@ struct Uniforms {
   viewport: vec2<f32>,
   time: f32,
   cameraScale: f32,
-  starColors: array<vec4<f32>, ${String(GALAXY_LAB_STAR_PALETTE_ROLE_COUNT)}>,
+  starColors: array<vec4<f32>, ${String(FRIENDS_GALAXY_STAR_PALETTE_ROLE_COUNT)}>,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -294,9 +294,9 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
   clip = vec4<f32>(clip.xy + offset * clip.w, clip.zw);
   output.position = clip;
   output.corner = input.corner;
-  let role = u32(clamp(round(input.appearance.y), 0.0, ${String(GalaxyLabStarColorRole.Selection)}.0));
+  let role = u32(clamp(round(input.appearance.y), 0.0, ${String(FriendsGalaxyStarColorRole.Selection)}.0));
   let baseColor = uniforms.starColors[role];
-  let selectionColor = uniforms.starColors[${String(GalaxyLabStarColorRole.Selection)}u];
+  let selectionColor = uniforms.starColors[${String(FriendsGalaxyStarColorRole.Selection)}u];
   output.color = vec4<f32>(
     mix(baseColor.rgb, selectionColor.rgb, input.appearance.z) * input.appearance.x,
     mix(baseColor.a, selectionColor.a, input.appearance.z) * input.appearance.w,
@@ -585,7 +585,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       -1, -1, 1, -1, 1, 1,
       -1, -1, 1, 1, -1, 1,
     ]);
-    const starGeometry = createGalaxyLabStarGeometry();
+    const starGeometry = createFriendsGalaxyStarGeometry();
     this.quadBuffer = createBuffer(device, quadData, GPUBufferUsage.VERTEX);
     this.settledStarBuffer = createBuffer(device, starGeometry.settled, GPUBufferUsage.VERTEX);
     this.motionStarBuffer = createBuffer(device, starGeometry.motion, GPUBufferUsage.VERTEX);
@@ -966,7 +966,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       api: "WebGPU WGSL",
       semanticStarCount: this.fixture?.scene.nodeIds.length ?? 0,
       decorativeStarCount: this.fixture?.backgroundStarCount ?? 0,
-      motionDecorativeStarCount: galaxyLabMotionBackgroundStarCount(
+      motionDecorativeStarCount: friendsGalaxyMotionBackgroundStarCount(
         this.fixture?.backgroundStarCount ?? 0,
       ),
       drawCalls: 2 + (this.providerFields && this.providerFields.count > 0 ? 1 : 0) +
@@ -1360,7 +1360,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     const motionStarBuffer = this.motionStarBuffer;
     const backgroundBuffer = this.backgroundBuffer;
     const backgroundStarCount = this.fixture.backgroundStarCount;
-    const motionBackgroundStarCount = galaxyLabMotionBackgroundStarCount(backgroundStarCount);
+    const motionBackgroundStarCount = friendsGalaxyMotionBackgroundStarCount(backgroundStarCount);
     const semanticBuffer = this.semanticBuffer;
     const semanticStarCount = this.fixture.scene.nodeIds.length;
     const interactionBuffer = this.interactionBuffer;
@@ -1386,23 +1386,23 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       encoder.setVertexBuffer(1, backgroundBuffer);
       encoder.draw(
         cameraMoving
-          ? GALAXY_LAB_MOTION_STAR_VERTEX_COUNT
-          : GALAXY_LAB_SETTLED_STAR_VERTEX_COUNT,
+          ? FRIENDS_GALAXY_MOTION_STAR_VERTEX_COUNT
+          : FRIENDS_GALAXY_SETTLED_STAR_VERTEX_COUNT,
         cameraMoving ? motionBackgroundStarCount : backgroundStarCount,
       );
       encoder.setVertexBuffer(1, semanticBuffer);
       encoder.draw(
         cameraMoving
-          ? GALAXY_LAB_MOTION_STAR_VERTEX_COUNT
-          : GALAXY_LAB_SETTLED_STAR_VERTEX_COUNT,
+          ? FRIENDS_GALAXY_MOTION_STAR_VERTEX_COUNT
+          : FRIENDS_GALAXY_SETTLED_STAR_VERTEX_COUNT,
         semanticStarCount,
       );
       if (includeInteraction) {
         encoder.setVertexBuffer(1, interactionBuffer);
         encoder.draw(
           cameraMoving
-            ? GALAXY_LAB_MOTION_STAR_VERTEX_COUNT
-            : GALAXY_LAB_SETTLED_STAR_VERTEX_COUNT,
+            ? FRIENDS_GALAXY_MOTION_STAR_VERTEX_COUNT
+            : FRIENDS_GALAXY_SETTLED_STAR_VERTEX_COUNT,
           interactionCapacity,
         );
       }

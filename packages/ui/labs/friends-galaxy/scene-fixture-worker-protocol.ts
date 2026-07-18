@@ -3,7 +3,7 @@ import type {
   GalaxyLabFixtureOptions,
 } from "./scene-fixture.js";
 import { IDENTITY_GALAXY_SCENE_VERSION } from "../../src/lib/identity-galaxy-scene.js";
-import { GALAXY_LAB_STAR_INSTANCE_FLOATS } from "./star-instance-data.js";
+import { FRIENDS_GALAXY_STAR_INSTANCE_FLOATS } from "../../src/lib/friends-galaxy-star-instances.js";
 
 export const GALAXY_LAB_METADATA_NODE_CAP = 192;
 
@@ -256,13 +256,13 @@ export function validateGalaxyLabFixtureEnvelope(
     "packed semantic stars",
     packedStarInstances.semantic,
     Float32Array,
-    nodeCount * GALAXY_LAB_STAR_INSTANCE_FLOATS,
+    nodeCount * FRIENDS_GALAXY_STAR_INSTANCE_FLOATS,
   );
   assertTypedArray(
     "packed background stars",
     packedStarInstances.background,
     Float32Array,
-    backgroundCount * GALAXY_LAB_STAR_INSTANCE_FLOATS,
+    backgroundCount * FRIENDS_GALAXY_STAR_INSTANCE_FLOATS,
   );
 
   if (fixture.personCount + fixture.accountCount !== nodeCount) {

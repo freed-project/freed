@@ -1,13 +1,13 @@
-export const GALAXY_LAB_SETTLED_STAR_VERTEX_COUNT = 4;
-export const GALAXY_LAB_MOTION_STAR_VERTEX_COUNT = 8;
-export const GALAXY_LAB_MOTION_BACKGROUND_STAR_CAP = 50_000;
+export const FRIENDS_GALAXY_SETTLED_STAR_VERTEX_COUNT = 4;
+export const FRIENDS_GALAXY_MOTION_STAR_VERTEX_COUNT = 8;
+export const FRIENDS_GALAXY_MOTION_BACKGROUND_STAR_CAP = 50_000;
 
-export interface GalaxyLabStarGeometry {
+export interface FriendsGalaxyStarGeometry {
   settled: Float32Array;
   motion: Float32Array;
 }
 
-export function createGalaxyLabStarGeometry(): GalaxyLabStarGeometry {
+export function createFriendsGalaxyStarGeometry(): FriendsGalaxyStarGeometry {
   const diagonal = Math.SQRT1_2;
   return {
     settled: new Float32Array([
@@ -29,9 +29,9 @@ export function createGalaxyLabStarGeometry(): GalaxyLabStarGeometry {
   };
 }
 
-export function galaxyLabMotionBackgroundStarCount(residentCount: number): number {
+export function friendsGalaxyMotionBackgroundStarCount(residentCount: number): number {
   const normalizedCount = Number.isFinite(residentCount)
     ? Math.max(0, Math.floor(residentCount))
     : 0;
-  return Math.min(GALAXY_LAB_MOTION_BACKGROUND_STAR_CAP, normalizedCount);
+  return Math.min(FRIENDS_GALAXY_MOTION_BACKGROUND_STAR_CAP, normalizedCount);
 }

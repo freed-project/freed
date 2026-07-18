@@ -250,6 +250,8 @@ Raw WebGPU now receives animation and camera-motion state through its imperative
 
 Moving Raw WebGPU stars now use a retained regular-octagon triangle strip instead of the settled square strip. The footprint preserves horizontal and vertical star diameter while reducing potential fragment coverage by about 29 percent and clipping only the faint outer edge between axis points. A small alpha cutoff skips negligible outer-halo blending. Settle switches back to the complete square footprint and luminous profile by selecting a pre-recorded world bundle. No geometry rebuild, draw-count mutation, or resident-star change occurs at the motion boundary.
 
+The direct-upload star instance and geometry contracts now live under shared UI source. The product worker and raw backend can share the exact eight-float semantic and decorative instance layout, stable semantic and provider palette roles, four-vertex settled square, eight-vertex motion octagon, and 50,000-star decorative motion cap. The detached fixture compiler, worker envelope admission, interaction overlay encoder, palette uniforms, raw backend, and functional tests all import those shared constants and builders. Product cutover no longer needs to translate worker output into a second GPU star format.
+
 The moving world bundles draw a deterministic 50,000-star prefix of the 100,000 resident decorative dust stars. Their index-keyed placement keeps that prefix evenly distributed across the galactic field. All 30,000 semantic stars, interaction overlays, labels, avatars, and edges remain complete. Settle returns the full decorative stream without an upload or bundle rebuild.
 
 Provider fields now become degenerate in the vertex shader beyond 1.5 close-detail scale. Their existing camera fade has already reduced them to atmospheric residue by that point. The cutoff prevents six large, effectively invisible field quads from rasterizing or running noise fragments over close-zoom stars, labels, and avatars. Overview and middle detail remain unchanged.
@@ -513,6 +515,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.117 | Move the transferable stable-ID, adjacency, sparse-pick index and allocation-bounded interaction scene state into shared UI modules consumed by every detached backend | High | Done |
 | 8.118 | Move allocation-free depth-aware world-to-screen projection and bounded viewport admission into a shared UI module consumed by labels, avatars, and shell overlays | High | Done |
 | 8.119 | Split synthetic settled-candidate ranking from shared theme-aware label and avatar billboard compositors with stable texture, UV, and instance contracts | High | Done |
+| 8.120 | Move the eight-float direct-upload star stream, palette-role encoding, settled and motion geometry, and decorative motion cap into shared UI modules | High | Done |
 
 ---
 
@@ -620,6 +623,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Every detached backend and the future product engine share one worker-transferable stable-ID, adjacency, sparse-pick index and one allocation-bounded interaction scene state
 - [x] Labels, avatars, overlays, and the future product engine share one allocation-free depth-aware world-to-screen projection and viewport-admission helper
 - [x] The detached backends and future product engine share theme-aware label and avatar billboard compositors while product metadata retains settled-candidate ownership
+- [x] The detached worker, raw backend, and future product engine share one direct-upload star instance layout, semantic palette-role encoding, settled geometry, motion geometry, and decorative motion cap
 - [x] Mac two-finger trackpad deltas pan with native momentum, pinch remains anchored zoom, and pointer or one-finger touch throws use bounded allocation-free inertia that cancels for new input and reduced motion
 - [x] Animation-disabled scenes stop requesting frames when idle and wake only for renderer work, settle state, diagnostics, or backend health recovery
 - [x] Pointer, wheel, and Safari handlers mark motion density without synchronously resizing the GPU canvas

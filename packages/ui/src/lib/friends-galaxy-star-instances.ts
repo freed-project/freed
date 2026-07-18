@@ -1,11 +1,11 @@
 import {
   IdentityGalaxyNodeKindCode,
   type IdentityGalaxyScene,
-} from "../../src/lib/identity-galaxy-scene.js";
+} from "./identity-galaxy-scene.js";
 
-export const GALAXY_LAB_STAR_INSTANCE_FLOATS = 8;
+export const FRIENDS_GALAXY_STAR_INSTANCE_FLOATS = 8;
 
-export const GalaxyLabStarColorRole = {
+export const FriendsGalaxyStarColorRole = {
   Friend: 0,
   Connection: 1,
   Account: 2,
@@ -19,14 +19,14 @@ export const GalaxyLabStarColorRole = {
   Selection: 10,
 } as const;
 
-export const GALAXY_LAB_STAR_PALETTE_ROLE_COUNT = 11;
+export const FRIENDS_GALAXY_STAR_PALETTE_ROLE_COUNT = 11;
 
-export interface GalaxyLabPackedStarInstances {
+export interface FriendsGalaxyPackedStarInstances {
   semantic: Float32Array;
   background: Float32Array;
 }
 
-export interface GalaxyLabPackedStarInstanceInput {
+export interface FriendsGalaxyPackedStarInstanceInput {
   scene: IdentityGalaxyScene;
   backgroundPositions: Float32Array;
   backgroundBrightness: Float32Array;
@@ -34,38 +34,40 @@ export interface GalaxyLabPackedStarInstanceInput {
 
 function semanticColorRole(scene: IdentityGalaxyScene, index: number): number {
   switch (scene.providers[index]) {
-    case "instagram": return GalaxyLabStarColorRole.Instagram;
-    case "facebook": return GalaxyLabStarColorRole.Facebook;
-    case "linkedin": return GalaxyLabStarColorRole.LinkedIn;
-    case "x": return GalaxyLabStarColorRole.X;
-    case "rss": return GalaxyLabStarColorRole.Rss;
+    case "instagram": return FriendsGalaxyStarColorRole.Instagram;
+    case "facebook": return FriendsGalaxyStarColorRole.Facebook;
+    case "linkedin": return FriendsGalaxyStarColorRole.LinkedIn;
+    case "x": return FriendsGalaxyStarColorRole.X;
+    case "rss": return FriendsGalaxyStarColorRole.Rss;
     default:
       break;
   }
   switch (scene.kinds[index]) {
     case IdentityGalaxyNodeKindCode.FriendPerson:
-      return GalaxyLabStarColorRole.Friend;
+      return FriendsGalaxyStarColorRole.Friend;
     case IdentityGalaxyNodeKindCode.ConnectionPerson:
-      return GalaxyLabStarColorRole.Connection;
+      return FriendsGalaxyStarColorRole.Connection;
     case IdentityGalaxyNodeKindCode.Feed:
-      return GalaxyLabStarColorRole.Feed;
+      return FriendsGalaxyStarColorRole.Feed;
     default:
-      return GalaxyLabStarColorRole.Account;
+      return FriendsGalaxyStarColorRole.Account;
   }
 }
 
-export function createGalaxyLabPackedStarInstances({
+export function createFriendsGalaxyPackedStarInstances({
   scene,
   backgroundPositions,
   backgroundBrightness,
-}: GalaxyLabPackedStarInstanceInput): GalaxyLabPackedStarInstances {
+}: FriendsGalaxyPackedStarInstanceInput): FriendsGalaxyPackedStarInstances {
   if (backgroundPositions.length !== backgroundBrightness.length * 3) {
     throw new Error("Friends Galaxy background positions and brightness lengths do not match.");
   }
-  const semantic = new Float32Array(scene.nodeIds.length * GALAXY_LAB_STAR_INSTANCE_FLOATS);
+  const semantic = new Float32Array(
+    scene.nodeIds.length * FRIENDS_GALAXY_STAR_INSTANCE_FLOATS,
+  );
   for (let index = 0; index < scene.nodeIds.length; index += 1) {
     const sourceOffset = index * 3;
-    const targetOffset = index * GALAXY_LAB_STAR_INSTANCE_FLOATS;
+    const targetOffset = index * FRIENDS_GALAXY_STAR_INSTANCE_FLOATS;
     semantic[targetOffset] = scene.positions[sourceOffset]!;
     semantic[targetOffset + 1] = scene.positions[sourceOffset + 1]!;
     semantic[targetOffset + 2] = scene.positions[sourceOffset + 2]!;
@@ -77,17 +79,17 @@ export function createGalaxyLabPackedStarInstances({
   }
 
   const background = new Float32Array(
-    backgroundBrightness.length * GALAXY_LAB_STAR_INSTANCE_FLOATS,
+    backgroundBrightness.length * FRIENDS_GALAXY_STAR_INSTANCE_FLOATS,
   );
   for (let index = 0; index < backgroundBrightness.length; index += 1) {
     const sourceOffset = index * 3;
-    const targetOffset = index * GALAXY_LAB_STAR_INSTANCE_FLOATS;
+    const targetOffset = index * FRIENDS_GALAXY_STAR_INSTANCE_FLOATS;
     background[targetOffset] = backgroundPositions[sourceOffset]!;
     background[targetOffset + 1] = backgroundPositions[sourceOffset + 1]!;
     background[targetOffset + 2] = backgroundPositions[sourceOffset + 2]!;
     background[targetOffset + 3] = 0.42 + backgroundBrightness[index]! * 1.08;
     background[targetOffset + 4] = backgroundBrightness[index]! * 0.72;
-    background[targetOffset + 5] = GalaxyLabStarColorRole.Background;
+    background[targetOffset + 5] = FriendsGalaxyStarColorRole.Background;
     background[targetOffset + 6] = 0;
     background[targetOffset + 7] = 1;
   }
