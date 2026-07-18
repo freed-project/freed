@@ -242,6 +242,14 @@ function formatFrameStats(stats: GalaxyLabFrameStats): string {
   return stats.frameCount === 0 ? "Pending" : `${numberFormat.format(stats.p95Ms)} ms p95`;
 }
 
+function formatByteCount(bytes: number): string {
+  const mebibyte = 1_024 * 1_024;
+  const kibibyte = 1_024;
+  if (bytes >= mebibyte) return `${numberFormat.format(bytes / mebibyte)} MiB`;
+  if (bytes >= kibibyte) return `${numberFormat.format(bytes / kibibyte)} KiB`;
+  return `${integerFormat.format(bytes)} bytes`;
+}
+
 function updateMetrics(): void {
   metricsElement.replaceChildren();
   if (!activeBackend) {
@@ -271,6 +279,9 @@ function updateMetrics(): void {
   addMetric("Frame interval", formatFrameStats(frameStats(frameSamples)));
   addMetric("CPU submit", formatFrameStats(frameStats(submitSamples)));
   addMetric("Buffer uploads", integerFormat.format(metrics.bufferUploadCount));
+  if (metrics.trackedGpuDataBytes !== undefined) {
+    addMetric("Tracked GPU data", formatByteCount(metrics.trackedGpuDataBytes));
+  }
   addMetric("Camera scale", scaleFormat.format(transform.scale));
   addMetric("Settled detail", viewDetailForScale(transform.scale));
   if (metrics.adapterDescription) addMetric("Adapter", metrics.adapterDescription);

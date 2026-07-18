@@ -828,6 +828,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       avatarCount: this.avatarAtlas?.itemCount ?? 0,
       contextualEdgeCount: this.contextualEdgeCount,
       bufferUploadCount: this.bufferUploadCount,
+      trackedGpuDataBytes: this.trackedGpuDataBytes(),
       submissionMode: "Pre-recorded world bundle",
       fallbackReason: this.fallbackReason,
       adapterDescription: this.adapterDescription,
@@ -929,6 +930,24 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     });
     this.labelAtlas = atlas;
     this.bufferUploadCount += 2;
+  }
+
+  private trackedGpuDataBytes(): number {
+    let bytes = 12 * Float32Array.BYTES_PER_ELEMENT;
+    bytes += this.uniformData.byteLength;
+    bytes += this.edgeData.byteLength;
+    bytes += this.semanticData?.byteLength ?? 0;
+    bytes += this.backgroundData?.byteLength ?? 0;
+    bytes += this.providerFields?.instanceData.byteLength ?? 0;
+    if (this.labelAtlas && this.labelTexture) {
+      bytes += this.labelAtlas.instanceData.byteLength;
+      bytes += this.labelAtlas.canvas.width * this.labelAtlas.canvas.height * 4;
+    }
+    if (this.avatarAtlas && this.avatarTexture) {
+      bytes += this.avatarAtlas.instanceData.byteLength;
+      bytes += this.avatarAtlas.canvas.width * this.avatarAtlas.canvas.height * 4;
+    }
+    return bytes;
   }
 
   private rebuildAvatars(compact: boolean): void {
