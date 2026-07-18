@@ -230,7 +230,7 @@ async function createFixture({
     actor,
     purpose: "automation-actor-launcher",
     handoff: "keychain-to-canonical-lease",
-    attestationProtocol: "freed-actor-launcher-readiness-v1",
+    attestationProtocol: "freed-actor-launcher-readiness-v2",
     launcherPath,
     launcherSha256,
     stateRoot,
@@ -286,7 +286,7 @@ function attestationArguments(fixture, overrides = {}) {
   return [
     "--attest-readiness",
     "--protocol",
-    "freed-actor-launcher-readiness-v1",
+    "freed-actor-launcher-readiness-v2",
     "--actor",
     values.actor,
     "--state-root",
@@ -754,6 +754,111 @@ test(
       code: "ENOENT",
     });
     assert.equal(JSON.parse(revoked.stdout).ready, false);
+  },
+);
+
+test(
+  "native provisioner permits the legacy readiness protocol only for credential revocation",
+  { skip: !darwinOnly },
+  async (t) => {
+    for (const action of ["provision", "rotate", "revoke"]) {
+      const fixture = await createFixture({
+        credential: action === "provision" ? null : existingCredential,
+      });
+      t.after(() => rm(fixture.fixtureRoot, { recursive: true, force: true }));
+      await writeFile(
+        fixture.bindingPath,
+        `${JSON.stringify(
+          {
+            ...fixture.binding,
+            attestationProtocol: "freed-actor-launcher-readiness-v1",
+          },
+          null,
+          2,
+        )}\n`,
+        { mode: 0o600 },
+      );
+      const result = await run(
+        testProvisioner,
+        provisionerArguments(
+          fixture,
+          action,
+          action === "provision"
+            ? "empty"
+            : action === "rotate"
+              ? "valid"
+              : "metadata-only",
+          action === "revoke" ? "initially-disabled" : "get-failure",
+        ),
+      );
+      if (action === "revoke") {
+        assert.equal(result.code, 0, result.stderr);
+        await assert.rejects(readFile(fixture.credentialPath), {
+          code: "ENOENT",
+        });
+      } else {
+        assert.equal(result.code, 1, result.stderr);
+        assert.match(
+          result.stderr,
+          /actor launcher binding does not match this request/,
+        );
+      }
+    }
+  },
+);
+
+test(
+  "native actor host rejects the legacy readiness protocol before Keychain access",
+  { skip: !darwinOnly },
+  async (t) => {
+    const fixture = await createFixture();
+    t.after(() => rm(fixture.fixtureRoot, { recursive: true, force: true }));
+    await rewriteBinding(fixture, (binding) => ({
+      ...binding,
+      attestationProtocol: "freed-actor-launcher-readiness-v1",
+    }));
+
+    const result = await run(
+      fixture.host,
+      acquisitionArguments(fixture, { keychainMode: "read-failure" }),
+    );
+    assert.equal(result.code, 1);
+    assert.match(
+      result.stderr,
+      /actor launcher binding does not match this request/,
+    );
+    assert.doesNotMatch(result.stderr, /Keychain credential could not be read/);
+    assert.equal(result.stdout, "");
+  },
+);
+
+test(
+  "native provisioner keeps legacy credentials when binding integrity fails",
+  { skip: !darwinOnly },
+  async (t) => {
+    const fixture = await createFixture();
+    t.after(() => rm(fixture.fixtureRoot, { recursive: true, force: true }));
+    await rewriteBinding(fixture, (binding) => ({
+      ...binding,
+      attestationProtocol: "freed-actor-launcher-readiness-v1",
+      nodeSha256: "0".repeat(64),
+    }));
+
+    const result = await run(
+      testProvisioner,
+      provisionerArguments(
+        fixture,
+        "revoke",
+        "metadata-only",
+        "initially-disabled",
+      ),
+    );
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /content-addressed layout|pinned digest/);
+    assert.equal(
+      JSON.parse(await readFile(fixture.credentialPath, "utf8")).tokenSha256,
+      sha256(existingCredential),
+    );
   },
 );
 

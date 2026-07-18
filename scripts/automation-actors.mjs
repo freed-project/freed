@@ -45,6 +45,7 @@ const LEASE_TTL_SECONDS = 30 * 60;
 const MAX_LAUNCHER_HANDOFF_BYTES = 16 * 1_024;
 const LAUNCHER_ACQUIRE_TIMEOUT_MS = 15_000;
 const CONTROL_LIFECYCLE_TIMEOUT_MS = 15_000;
+const PROVISIONER_ACTION_TIMEOUT_MS = 120_000;
 const RESERVED_ACTORS = new Set(["freed-owner", "freed-pr-publisher"]);
 
 export const AUTOMATION_ACTORS = Object.freeze({
@@ -618,7 +619,11 @@ function invokeProvisioner(
     dependencies,
     provisionerPath,
     [action, "--actor", actor, "--state-root", stateRoot],
-    { purpose: `Automation actor ${actor} ${action}` },
+    {
+      purpose: `Automation actor ${actor} ${action}`,
+      timeoutMs: dependencies.provisionerActionTimeoutMs,
+      stdin: "ignore",
+    },
   );
 }
 
@@ -1217,6 +1222,7 @@ function dependenciesWithDefaults(overrides = {}) {
     launcherAttestor: defaultLauncherAttestor,
     launcherAcquireTimeoutMs: LAUNCHER_ACQUIRE_TIMEOUT_MS,
     controlLifecycleTimeoutMs: CONTROL_LIFECYCLE_TIMEOUT_MS,
+    provisionerActionTimeoutMs: PROVISIONER_ACTION_TIMEOUT_MS,
     repositoryInspector: defaultRepositoryInspector,
     pinnedNodeResolver: defaultPinnedNodeResolver,
     ...overrides,

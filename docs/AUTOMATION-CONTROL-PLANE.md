@@ -48,7 +48,17 @@ reasoning effort must be advertised by that model. The accepted host recurrence
 forms are the forms currently emitted by Codex: hourly, daily, and weekly for
 cron actors, and minutely for heartbeat actors. Cron targets must resolve to
 the canonical Freed repository, and `cwds` may contain only that physical
-project root. A `pr-only` or `merge-safe` actor must use worktree execution.
+project root. Codex may persist `target.project_id` as either an absolute root
+or a `local-*` project reference. For a local project reference, the validator
+reads only the current `$CODEX_HOME/.codex-global-state.json` `local-projects`
+entry. It requires exact key and embedded ID equality, exactly one absolute
+`rootPaths` entry, the deterministic local ID derived from the canonical root,
+one project claimant for that root, and the same sole canonical `cwds` root
+before applying the existing realpath, Git worktree, and canonical origin
+checks. It reads a bounded, current-user-owned regular file that is not group
+or world writable, without following symlinks. It does not use a backup
+registry or a selected-project hint. A `pr-only` or `merge-safe` actor must use
+worktree execution.
 Guessed model names, alternate repositories, extra working directories,
 self-expiring schedules, and unsupported execution modes are drift.
 
@@ -67,11 +77,32 @@ Every actor specification also requires `trusted-launcher` and
    `freed-automation-actor` and account `<actor>`.
 6. A binding handoff of `keychain-to-canonical-lease`, which gives the actor only
    its short-lived canonical lease and never its persistent secret.
-7. A successful nonmutating `freed-actor-launcher-readiness-v1` attestation from
+7. A successful nonmutating `freed-actor-launcher-readiness-v2` attestation from
    the pinned launcher. It must bind the actor, canonical state root, canonical
    lease name, 30 minute maximum lifetime, credential digest, Keychain service
    and account, and confirm both digest verification and canonical lease
    readiness.
+
+Readiness protocol v2 is the current native launcher generation. Validation
+rejects a v1 binding before invoking its launcher or touching Keychain, even
+when the recorded launcher digest still matches. The current provisioner
+accepts protocol v1 only for an explicit revoke. Provision and rotate require
+v2. Legacy recovery is therefore revoke, inspect the result, then provision
+fresh public material and a credential.
+
+The nonmutating readiness attestation has a 15 second outer ceiling so a cold
+macOS Keychain decrypt can complete. The caller supplies no input, hard-kills
+the launcher at the deadline, and fails closed on timeout or any late,
+oversized, malformed, or mismatched result.
+
+Each native provisioner invocation for provision, rotate, and revoke has a 120
+second outer ceiling, supplies no input, and is hard-killed at the deadline.
+Repository checks, native builds, public file installation, and multi-actor
+orchestration sit outside that per-invocation bound. A timeout means the actor's
+lifecycle result is indeterminate. It is not proof that no state changed. Stop,
+inspect the actor's public binding, private digest, and non-secret Keychain
+metadata, then revoke and provision through the supported lifecycle when the
+state cannot be proven complete.
 
 The validator does not read a Keychain secret and does not write host files.
 `automation:actors verify` validates the private digest record and root-owned
