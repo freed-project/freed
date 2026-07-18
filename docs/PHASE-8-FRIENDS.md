@@ -196,6 +196,8 @@ Pinch and wheel movement now update one persistent settle deadline instead of ca
 
 Hover and selection now reuse one scene-index state object, one role map, and one fixed-capacity contextual-edge buffer sized from the worker-reported maximum adjacency degree. Raw WebGPU, the Three.js reference, and the current WebGL2 fallback retain their touched and changed index sets instead of rebuilding maps, sets, typed views, or edge arrays for each focus change. The Three.js reference also allocates its maximum contextual-edge geometry and sparse attribute-update records once during startup. Renderer startup does not scan the transferred adjacency table.
 
+Raw WebGPU now receives animation and camera-motion state through its imperative backend contract. With animation disabled or the camera moving, one coherent uniform branch skips per-vertex twinkle trigonometry and freezes procedural drift. Active motion also selects two noise octaves instead of four for each nebula sample. The sign bit of the existing camera-scale uniform carries this state, so no uniform block, bind group, pipeline, geometry, label, or resident-star rebuild occurs. Settled rendering restores all four field octaves. Every semantic star and billboard label remains resident and visible in both states.
+
 Provider sectors now follow deterministic logarithmic spirals shared by layout and rendering. The default Nebula treatment combines procedural arms and themed dust without per-star scene objects. Linked accounts stay close to their parent identity, billboard labels sit close to their parent star with a stronger outline, and semantic links remain absent until one star in that identity system is hovered or selected.
 
 ### Scale targets
@@ -414,6 +416,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.78 | Remove point allocations and repeated viewport geometry reads from pointer, hover, and Safari gesture movement | High | Done |
 | 8.79 | Replace per-event settle timeout churn with one animation-loop deadline scheduler | High | Done |
 | 8.80 | Reuse interaction roles, contextual-edge storage, sparse update ranges, and changed-index sets across every hover and selection | High | Done |
+| 8.81 | Freeze twinkle and reduce procedural nebula octaves during camera motion without removing stars, labels, or GPU buffers | High | Done |
 
 ---
 
@@ -505,6 +508,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Active pointer and Safari gesture movement reuses captured bounds and scalar state without per-event point allocation
 - [x] Pinch and wheel movement update one scalar settle deadline without allocating or canceling per-event browser timers
 - [x] Hover and selection reuse fixed interaction payloads and renderer scratch storage without rebuilding maps, sets, typed views, or edge geometry
+- [x] Raw WebGPU keeps semantic stars and labels resident while camera motion uses a coherent reduced-cost twinkle and nebula shader path
 - [x] Linked accounts occupy complete local orbits, and dense people fields reserve enough space for those systems
 - [x] Galaxy compilation indexes accounts by person once instead of scanning the full account library for every identity
 - [x] Mobile pinch hands directly to one-finger pan when either touch lifts

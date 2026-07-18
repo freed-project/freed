@@ -43,6 +43,8 @@ export interface GalaxyLabBackend {
   setPalette(palette: GalaxyLabPalette): void;
   applyActivityPatches?(patches: GalaxyActivityScenePatchBatch): void;
   setAvatarImages?(images: ReadonlyMap<string, CanvasImageSource>): void;
+  setAnimationEnabled?(enabled: boolean): void;
+  setCameraMotion?(active: boolean): void;
   setFieldStyle?(style: GalaxyLabFieldStyle): void;
   setViewDetail(detail: GalaxyLabViewDetail): void;
   pickNode(viewportX: number, viewportY: number): string | null;

@@ -12,7 +12,10 @@ import {
   createGalaxyLabAvatarAtlas,
   type GalaxyLabAvatarAtlas,
 } from "./avatar-atlas.js";
-import { writeGalaxyLabWebGpuViewProjection } from "./camera-math.js";
+import {
+  writeGalaxyLabWebGpuMotionUniforms,
+  writeGalaxyLabWebGpuViewProjection,
+} from "./camera-math.js";
 import {
   createGalaxyLabLabelAtlas,
   GALAXY_LAB_BILLBOARD_INSTANCE_STRIDE,
@@ -103,11 +106,11 @@ fn noise(point: vec2<f32>) -> f32 {
   );
 }
 
-fn fbm(pointInput: vec2<f32>) -> f32 {
+fn fbm(pointInput: vec2<f32>, octaveCount: u32) -> f32 {
   var point = pointInput;
   var value = 0.0;
   var amplitude = 0.54;
-  for (var octave = 0; octave < 4; octave += 1) {
+  for (var octave = 0u; octave < octaveCount; octave += 1u) {
     value += noise(point) * amplitude;
     point = point * 2.03 + vec2<f32>(11.7, 7.9);
     amplitude *= 0.48;
@@ -121,28 +124,38 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let arms = input.parameters.y;
   let style = input.parameters.z;
   let point = input.local;
-  let drift = vec2<f32>(uniforms.time * 0.0024, -uniforms.time * 0.0017);
+  let fieldTime = max(uniforms.time, 0.0);
+  let cameraScale = abs(uniforms.cameraScale);
+  let octaveCount = select(4u, 2u, uniforms.cameraScale < 0.0);
+  let drift = vec2<f32>(fieldTime * 0.0024, -fieldTime * 0.0017);
   let warp = vec2<f32>(
-    fbm(point * 1.72 + vec2<f32>(seed * 9.1, seed * 4.3) + drift),
-    fbm(point * 1.72 + vec2<f32>(seed * 5.7 + 19.4, seed * 11.3) - drift),
+    fbm(point * 1.72 + vec2<f32>(seed * 9.1, seed * 4.3) + drift, octaveCount),
+    fbm(point * 1.72 + vec2<f32>(seed * 5.7 + 19.4, seed * 11.3) - drift, octaveCount),
   ) - 0.5;
   let warpedPoint = point + warp * 0.36;
   let radius = length(warpedPoint);
   let angle = atan2(warpedPoint.y, warpedPoint.x);
-  let boundaryNoise = fbm(warpedPoint * 2.08 + vec2<f32>(seed * 17.0, seed * 7.0));
+  let boundaryNoise = fbm(
+    warpedPoint * 2.08 + vec2<f32>(seed * 17.0, seed * 7.0),
+    octaveCount,
+  );
   let edgeRadius = radius + (boundaryNoise - 0.5) * 0.3 +
     sin(angle * 3.0 + seed * 19.0) * 0.035;
   let envelope = 1.0 - smoothstep(0.48, 1.07, edgeRadius);
 
-  let cloudLow = fbm(warpedPoint * 2.52 + vec2<f32>(seed * 23.0, seed * 31.0));
+  let cloudLow = fbm(
+    warpedPoint * 2.52 + vec2<f32>(seed * 23.0, seed * 31.0),
+    octaveCount,
+  );
   let cloudHigh = fbm(
     (warpedPoint + warp * 0.18) * 5.1 + vec2<f32>(seed * 37.0, seed * 13.0),
+    octaveCount,
   );
   let cloud = smoothstep(0.32, 0.82, cloudLow * 0.7 + cloudHigh * 0.3);
   let wisps = smoothstep(
     0.52,
     0.84,
-    fbm(warpedPoint * 6.3 + vec2<f32>(seed * 43.0, seed * 29.0)),
+    fbm(warpedPoint * 6.3 + vec2<f32>(seed * 43.0, seed * 29.0), octaveCount),
   );
   let core = 1.0 - smoothstep(0.02, 0.52, radius);
   let nebula = envelope *
@@ -158,7 +171,7 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let streamBreakup = smoothstep(
     0.34,
     0.82,
-    fbm(warpedPoint * 3.8 + vec2<f32>(seed * 53.0, seed * 41.0)),
+    fbm(warpedPoint * 3.8 + vec2<f32>(seed * 53.0, seed * 41.0), octaveCount),
   );
   let streams = envelope * armFade *
     (primaryArm * 0.76 + secondaryArm * 0.24) *
@@ -171,7 +184,7 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     density = streams * 0.7 + nebula * 0.1;
   }
 
-  let detailFade = mix(1.0, 0.22, smoothstep(0.24, 1.2, uniforms.cameraScale));
+  let detailFade = mix(1.0, 0.22, smoothstep(0.24, 1.2, cameraScale));
   let alpha = clamp(
     density * input.color.a * 0.82 * detailFade,
     0.0,
@@ -232,7 +245,11 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
     mix(baseColor.a, selectionColor.a, input.appearance.z) * input.appearance.w,
   );
   let phase = input.center.x * 0.017 + input.center.y * 0.011 + input.center.z * 0.007;
-  output.twinkle = 0.91 + sin(uniforms.time * 1.15 + phase) * 0.09;
+  var twinkle = 1.0;
+  if (uniforms.time >= 0.0) {
+    twinkle = 0.91 + sin(uniforms.time * 1.15 + phase) * 0.09;
+  }
+  output.twinkle = twinkle;
   return output;
 }
 
@@ -430,6 +447,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private viewDetail: GalaxyLabViewDetail = "overview";
   private fieldStyle: GalaxyLabFieldStyle = "nebula";
   private contextualEdgeCount = 0;
+  private animationEnabled = false;
+  private cameraMotion = false;
   private appliedActivityNodeCount = 0;
   private clearColor: GPUColor = { r: 0, g: 0, b: 0, a: 1 };
   private bufferUploadCount = 0;
@@ -754,6 +773,14 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     }
   }
 
+  setAnimationEnabled(enabled: boolean): void {
+    this.animationEnabled = enabled;
+  }
+
+  setCameraMotion(active: boolean): void {
+    this.cameraMotion = active;
+  }
+
   setViewDetail(detail: GalaxyLabViewDetail): void {
     if (detail === this.viewDetail) return;
     this.viewDetail = detail;
@@ -799,8 +826,13 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.uniformData.set(this.viewProjection, 0);
     this.uniformData[16] = this.width;
     this.uniformData[17] = this.height;
-    this.uniformData[18] = timeMs / 1_000;
-    this.uniformData[19] = transform.scale;
+    writeGalaxyLabWebGpuMotionUniforms(
+      this.uniformData,
+      timeMs,
+      transform.scale,
+      this.animationEnabled,
+      this.cameraMotion,
+    );
     this.device.queue.writeBuffer(this.uniformBuffer, 0, this.uniformData);
 
     const encoder = this.device.createCommandEncoder({ label: "Friends Galaxy frame" });
@@ -934,6 +966,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.changedInteractionIndices.clear();
     this.interactionRoles = new Map();
     this.contextualEdgeCount = 0;
+    this.animationEnabled = false;
+    this.cameraMotion = false;
     this.appliedActivityNodeCount = 0;
     this.residentStarUploadCount = 0;
   }

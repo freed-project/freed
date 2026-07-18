@@ -333,6 +333,7 @@ function setCameraInMotion(next: boolean): void {
   if (next === cameraInMotion) return;
   cameraInMotion = next;
   viewport.dataset.cameraMotion = String(next);
+  activeBackend?.setCameraMotion?.(next);
   resizeActiveBackend();
   dirty = true;
 }
@@ -480,6 +481,8 @@ async function activateBackend(
       return;
     }
     activeBackend = backend;
+    backend.setAnimationEnabled?.(animateControl.checked);
+    backend.setCameraMotion?.(cameraInMotion);
     backend.setFieldStyle?.(activeFieldStyle);
     fieldStyleSelect.disabled = typeof backend.setFieldStyle !== "function";
     simulateLossButton.disabled = typeof backend.simulateDeviceLoss !== "function";
@@ -970,6 +973,7 @@ fieldStyleSelect.addEventListener("change", () => {
 
 animateControl.addEventListener("change", () => {
   animatePreferenceTouched = true;
+  activeBackend?.setAnimationEnabled?.(animateControl.checked);
   resetSamples();
   dirty = true;
 });
@@ -977,6 +981,7 @@ animateControl.addEventListener("change", () => {
 function syncReducedMotionPreference(): void {
   if (animatePreferenceTouched || animationProbeDisabled) return;
   animateControl.checked = !reducedMotionQuery.matches;
+  activeBackend?.setAnimationEnabled?.(animateControl.checked);
   resetSamples();
   dirty = true;
 }

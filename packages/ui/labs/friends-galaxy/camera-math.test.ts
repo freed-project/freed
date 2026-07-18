@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   galaxyLabInitialCameraScale,
   writeGalaxyLabWebGpuViewProjection,
+  writeGalaxyLabWebGpuMotionUniforms,
 } from "./camera-math.js";
 
 function project(
@@ -66,5 +67,21 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
 
     expect(Math.abs(prominent.x - width / 2)).toBeGreaterThan(Math.abs(center.x - width / 2));
     expect(Math.abs(prominent.y - height / 2)).toBeGreaterThan(Math.abs(center.y - height / 2));
+  });
+
+  it("encodes animation and camera motion without expanding the uniform block", () => {
+    const uniforms = new Float32Array(20);
+
+    writeGalaxyLabWebGpuMotionUniforms(uniforms, 4_000, 0.5, true, false);
+    expect(uniforms[18]).toBe(4);
+    expect(uniforms[19]).toBe(0.5);
+
+    writeGalaxyLabWebGpuMotionUniforms(uniforms, 5_000, 0.5, true, true);
+    expect(uniforms[18]).toBe(-1);
+    expect(uniforms[19]).toBe(-0.5);
+
+    writeGalaxyLabWebGpuMotionUniforms(uniforms, 6_000, 0.5, false, false);
+    expect(uniforms[18]).toBe(-1);
+    expect(uniforms[19]).toBe(0.5);
   });
 });

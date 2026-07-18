@@ -12,6 +12,18 @@ export function galaxyLabInitialCameraScale(
   return Math.max(fittedScale, minimumUsefulScale);
 }
 
+export function writeGalaxyLabWebGpuMotionUniforms(
+  target: Float32Array,
+  timeMs: number,
+  cameraScale: number,
+  animationEnabled: boolean,
+  cameraInMotion: boolean,
+): void {
+  const safeScale = Math.max(0.0001, Math.abs(cameraScale));
+  target[18] = animationEnabled && !cameraInMotion ? timeMs / 1_000 : -1;
+  target[19] = cameraInMotion ? -safeScale : safeScale;
+}
+
 export function writeGalaxyLabWebGpuViewProjection(
   target: Float32Array,
   transform: GalaxyLabTransform,
