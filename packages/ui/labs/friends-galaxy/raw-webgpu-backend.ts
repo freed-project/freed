@@ -8,19 +8,17 @@ import type {
 import { galaxyLabRenderPixelRatio, hexToRgb } from "./backend.js";
 import type { GalaxyActivityScenePatchBatch } from "./activity-scene-patches.js";
 import { FriendsGalaxyBackendHealth } from "../../src/lib/friends-galaxy-backend-health.js";
-import {
-  createGalaxyLabAvatarAtlas,
-  type GalaxyLabAvatarAtlas,
-} from "./avatar-atlas.js";
+import { createGalaxyLabAvatarAtlas } from "./avatar-atlas.js";
+import type { FriendsGalaxyAvatarAtlas } from "../../src/lib/friends-galaxy-avatar-atlas.js";
 import {
   writeFriendsGalaxyWebGpuMotionUniforms,
   writeFriendsGalaxyWebGpuViewProjection,
 } from "../../src/lib/friends-galaxy-camera.js";
+import { createGalaxyLabLabelAtlas } from "./billboard-labels.js";
 import {
-  createGalaxyLabLabelAtlas,
-  GALAXY_LAB_BILLBOARD_INSTANCE_STRIDE,
-  type GalaxyLabLabelAtlas,
-} from "./billboard-labels.js";
+  FRIENDS_GALAXY_BILLBOARD_INSTANCE_STRIDE,
+  type FriendsGalaxyLabelAtlas,
+} from "../../src/lib/friends-galaxy-billboard-atlas.js";
 import {
   type GalaxyLabFixture,
   type GalaxyLabPalette,
@@ -502,8 +500,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private activityBrightnessScales: Float32Array | null = null;
   private providerFields: GalaxyLabProviderFields | null = null;
   private edgeData = new Float32Array(MAX_CONTEXTUAL_EDGES * EDGE_INSTANCE_FLOATS);
-  private labelAtlas: GalaxyLabLabelAtlas | null = null;
-  private avatarAtlas: GalaxyLabAvatarAtlas | null = null;
+  private labelAtlas: FriendsGalaxyLabelAtlas | null = null;
+  private avatarAtlas: FriendsGalaxyAvatarAtlas | null = null;
   private avatarImages: ReadonlyMap<string, CanvasImageSource> = new Map();
   private palette: GalaxyLabPalette | null = null;
   private interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: null };
@@ -754,7 +752,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
             attributes: [{ shaderLocation: 0, offset: 0, format: "float32x2" }],
           },
           {
-            arrayStride: GALAXY_LAB_BILLBOARD_INSTANCE_STRIDE,
+            arrayStride: FRIENDS_GALAXY_BILLBOARD_INSTANCE_STRIDE,
             stepMode: "instance",
             attributes: [
               { shaderLocation: 1, offset: 0, format: "float32x3" },

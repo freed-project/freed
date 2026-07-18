@@ -23,10 +23,8 @@ import type {
 import { galaxyLabRenderPixelRatio, hexToRgb } from "./backend.js";
 import { FriendsGalaxyBackendHealth } from "../../src/lib/friends-galaxy-backend-health.js";
 import { createGalaxyLabAvatarAtlas } from "./avatar-atlas.js";
-import {
-  createGalaxyLabLabelAtlas,
-  type GalaxyLabBillboardAtlas,
-} from "./billboard-labels.js";
+import { createGalaxyLabLabelAtlas } from "./billboard-labels.js";
+import type { FriendsGalaxyBillboardAtlas } from "../../src/lib/friends-galaxy-billboard-atlas.js";
 import {
   galaxyLabSemanticColor,
   type GalaxyLabFixture,
@@ -48,7 +46,7 @@ interface GalaxySpriteBatch {
 }
 
 interface GalaxyBillboardBatch {
-  atlas: GalaxyLabBillboardAtlas;
+  atlas: FriendsGalaxyBillboardAtlas;
   geometry: THREE.InstancedBufferGeometry;
   material: THREE.NodeMaterial;
   mesh: THREE.Mesh;
@@ -126,7 +124,7 @@ function makeSpriteBatch(
 }
 
 function makeBillboardBatch(
-  atlas: GalaxyLabBillboardAtlas,
+  atlas: FriendsGalaxyBillboardAtlas,
   renderOrder: number,
 ): GalaxyBillboardBatch {
   const itemCount = atlas.itemCount;

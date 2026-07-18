@@ -2,10 +2,8 @@ import { Matrix4, PerspectiveCamera, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
 import { identityGalaxyCameraPose } from "../../src/lib/identity-galaxy-camera.js";
 import { IdentityGalaxyNodeFlag } from "../../src/lib/identity-galaxy-scene.js";
-import {
-  placeGalaxyLabLabelsAroundAvatars,
-  selectGalaxyLabLabels,
-} from "./billboard-labels.js";
+import { placeFriendsGalaxyLabelsAroundAvatars } from "../../src/lib/friends-galaxy-billboard-atlas.js";
+import { selectGalaxyLabLabels } from "./billboard-labels.js";
 import { createGalaxyLabFixture } from "./scene-fixture.js";
 import { compactGalaxyLabFixtureMetadata } from "./scene-fixture-worker-protocol.js";
 import { FriendsGalaxySceneIndex } from "../../src/lib/friends-galaxy-scene-index.js";
@@ -301,18 +299,13 @@ describe("Friends Galaxy billboard label selection", () => {
       nodeId: `${ownLabel.nodeId}:nearby`,
       anchorX: ownLabel.anchorX + 4,
     };
-    const placed = placeGalaxyLabLabelsAroundAvatars(
+    const placed = placeFriendsGalaxyLabelsAroundAvatars(
       [ownLabel, nearbyLabel],
       [{
         nodeId: ownLabel.nodeId,
-        initials: "ID",
         anchorX: ownLabel.anchorX,
         anchorY: ownLabel.anchorY,
-        anchorZ: ownLabel.anchorZ,
         size: 48,
-        priority: 1,
-        selected: true,
-        color: "#000000",
       }],
     );
 

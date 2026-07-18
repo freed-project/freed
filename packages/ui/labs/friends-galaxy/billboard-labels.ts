@@ -7,79 +7,18 @@ import type { GalaxyLabViewDetail } from "./backend.js";
 import {
   galaxyLabSelectedPersonNodeId,
   selectGalaxyLabAvatars,
-  type GalaxyLabAvatarSeed,
 } from "./avatar-atlas.js";
 import { findFriendsGalaxySceneNodeIndex } from "../../src/lib/friends-galaxy-scene-interaction-index.js";
+import {
+  createFriendsGalaxyLabelAtlas,
+  placeFriendsGalaxyLabelsAroundAvatars,
+  type FriendsGalaxyLabelAtlas,
+  type FriendsGalaxyLabelSeed,
+} from "../../src/lib/friends-galaxy-billboard-atlas.js";
 import {
   projectFriendsGalaxyWorldPoint,
   type FriendsGalaxyViewportProjection,
 } from "../../src/lib/friends-galaxy-projection.js";
-
-const LABEL_INSTANCE_FLOATS = 11;
-const LABEL_PIXEL_SCALE = 2;
-const LABEL_TEXTURE_WIDTH = 2_048;
-const LABEL_PADDING_X = 8;
-const LABEL_PADDING_Y = 5;
-const LABEL_OUTLINE_WIDTH = 3;
-
-export interface GalaxyLabLabelSeed {
-  id: string;
-  nodeId: string;
-  text: string;
-  anchorX: number;
-  anchorY: number;
-  anchorZ: number;
-  fontSize: number;
-  gapY: number;
-  priority: number;
-  provider: boolean;
-}
-
-export interface GalaxyLabBillboardLabel extends GalaxyLabLabelSeed {
-  width: number;
-  height: number;
-  uv: readonly [number, number, number, number];
-}
-
-export interface GalaxyLabBillboardAtlas {
-  canvas: HTMLCanvasElement;
-  itemCount: number;
-  instanceData: Float32Array;
-}
-
-export interface GalaxyLabLabelAtlas extends GalaxyLabBillboardAtlas {
-  labels: readonly GalaxyLabBillboardLabel[];
-}
-
-const AVATAR_LABEL_GAP = 8;
-const AVATAR_EXCLUSION_RADIUS_SCALE = 1.5;
-
-export function placeGalaxyLabLabelsAroundAvatars(
-  seeds: readonly GalaxyLabLabelSeed[],
-  avatars: readonly GalaxyLabAvatarSeed[],
-): readonly GalaxyLabLabelSeed[] {
-  if (avatars.length === 0) return seeds;
-
-  return seeds.flatMap((seed) => {
-    const ownAvatar = avatars.find((avatar) => avatar.nodeId === seed.nodeId);
-    if (ownAvatar) {
-      return [{
-        ...seed,
-        gapY: Math.max(seed.gapY, ownAvatar.size * 0.5 + AVATAR_LABEL_GAP),
-      }];
-    }
-
-    const overlapsAvatar = avatars.some((avatar) => Math.hypot(
-      seed.anchorX - avatar.anchorX,
-      seed.anchorY - avatar.anchorY,
-    ) < avatar.size * AVATAR_EXCLUSION_RADIUS_SCALE + AVATAR_LABEL_GAP);
-    return overlapsAvatar ? [] : [seed];
-  });
-}
-
-function nextPowerOfTwo(value: number): number {
-  return 2 ** Math.ceil(Math.log2(Math.max(1, value)));
-}
 
 function truncateLabel(value: string): string {
   const characters = Array.from(value.trim());
@@ -92,14 +31,16 @@ export function selectGalaxyLabLabels(
   detail: GalaxyLabViewDetail,
   selectedNodeId: string | null = null,
   projection?: FriendsGalaxyViewportProjection,
-): readonly GalaxyLabLabelSeed[] {
+): readonly FriendsGalaxyLabelSeed[] {
   const cap = detail === "overview"
     ? compact ? 8 : 13
     : detail === "middle"
       ? compact ? 20 : 36
       : compact ? 32 : 64;
   const selectedPersonId = galaxyLabSelectedPersonNodeId(fixture, selectedNodeId);
-  const seedForAtlasLabel = (label: GalaxyLabFixture["atlas"]["labels"][number]): GalaxyLabLabelSeed => {
+  const seedForAtlasLabel = (
+    label: GalaxyLabFixture["atlas"]["labels"][number],
+  ): FriendsGalaxyLabelSeed => {
     const nodeIndex = findFriendsGalaxySceneNodeIndex(
       fixture.scene,
       fixture.interactionIndex,
@@ -124,7 +65,7 @@ export function selectGalaxyLabLabels(
       provider,
     };
   };
-  const seedForPersonNode = (nodeIndex: number): GalaxyLabLabelSeed => {
+  const seedForPersonNode = (nodeIndex: number): FriendsGalaxyLabelSeed => {
     const presentation = galaxyLabNodePresentation(fixture, nodeIndex);
     const nodeId = fixture.scene.nodeIds[nodeIndex]!;
     const pointSize = Math.max(3.5, fixture.scene.pointSizes[nodeIndex]! * 0.34);
@@ -147,7 +88,7 @@ export function selectGalaxyLabLabels(
   const providerSeeds = fixture.atlas.labels
     .filter((label) => label.kind === "provider_cluster")
     .map(seedForAtlasLabel);
-  const seeds: GalaxyLabLabelSeed[] = projection && detail !== "overview"
+  const seeds: FriendsGalaxyLabelSeed[] = projection && detail !== "overview"
     ? [...providerSeeds]
     : fixture.atlas.labels.map(seedForAtlasLabel);
 
@@ -194,7 +135,7 @@ export function selectGalaxyLabLabels(
     if (nodeIndex !== null) seeds.push(seedForPersonNode(nodeIndex));
   }
   const projectionScratch = new Float32Array(2);
-  const labelIsVisible = (label: GalaxyLabLabelSeed): boolean => !projection ||
+  const labelIsVisible = (label: FriendsGalaxyLabelSeed): boolean => !projection ||
     projectFriendsGalaxyWorldPoint(
       projectionScratch,
       projection,
@@ -212,7 +153,7 @@ export function selectGalaxyLabLabels(
     (compact ? 1.3 : 1);
   const minimumScreenDistance = (detail === "overview" ? 96 : detail === "middle" ? 92 : 82) *
     (compact ? 1.08 : 1);
-  const selectedSemantic: GalaxyLabLabelSeed[] = [];
+  const selectedSemantic: FriendsGalaxyLabelSeed[] = [];
   const selectedScreenPositions = new Float32Array(semanticCap * 2);
   for (const candidate of semantic) {
     let separated = true;
@@ -259,7 +200,7 @@ export function createGalaxyLabLabelAtlas(
   selectedNodeId: string | null = null,
   fontFamily = "Inter, ui-sans-serif, system-ui, sans-serif",
   projection?: FriendsGalaxyViewportProjection,
-): GalaxyLabLabelAtlas {
+): FriendsGalaxyLabelAtlas {
   const avatars = selectGalaxyLabAvatars(
     fixture,
     palette,
@@ -268,78 +209,9 @@ export function createGalaxyLabLabelAtlas(
     detail,
     projection,
   );
-  const seeds = placeGalaxyLabLabelsAroundAvatars(
+  const seeds = placeFriendsGalaxyLabelsAroundAvatars(
     selectGalaxyLabLabels(fixture, compact, detail, selectedNodeId, projection),
     avatars,
   );
-  const measuringCanvas = document.createElement("canvas");
-  const measuringContext = measuringCanvas.getContext("2d");
-  if (!measuringContext) throw new Error("Canvas 2D is unavailable for the billboard label atlas.");
-  const measurements = seeds.map((label) => {
-    measuringContext.font = `650 ${String(label.fontSize * LABEL_PIXEL_SCALE)}px ${fontFamily}`;
-    const width = Math.ceil(measuringContext.measureText(label.text).width) + LABEL_PADDING_X * 2 * LABEL_PIXEL_SCALE;
-    const height = Math.ceil(label.fontSize * 1.42 * LABEL_PIXEL_SCALE) + LABEL_PADDING_Y * 2 * LABEL_PIXEL_SCALE;
-    return { width, height };
-  });
-  const placements: Array<{ left: number; top: number; width: number; height: number }> = [];
-  let left = LABEL_PADDING_X * LABEL_PIXEL_SCALE;
-  let top = LABEL_PADDING_Y * LABEL_PIXEL_SCALE;
-  let rowHeight = 0;
-  for (const measurement of measurements) {
-    if (left + measurement.width > LABEL_TEXTURE_WIDTH) {
-      left = LABEL_PADDING_X * LABEL_PIXEL_SCALE;
-      top += rowHeight;
-      rowHeight = 0;
-    }
-    placements.push({ left, top, ...measurement });
-    left += measurement.width;
-    rowHeight = Math.max(rowHeight, measurement.height);
-  }
-  const canvas = document.createElement("canvas");
-  canvas.width = LABEL_TEXTURE_WIDTH;
-  canvas.height = nextPowerOfTwo(top + rowHeight + LABEL_PADDING_Y * LABEL_PIXEL_SCALE);
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("Canvas 2D is unavailable for the billboard label atlas.");
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.lineJoin = "round";
-  context.strokeStyle = palette.background;
-  context.fillStyle = palette.text;
-  context.lineWidth = LABEL_OUTLINE_WIDTH * LABEL_PIXEL_SCALE;
-  const labels = seeds.map((label, index): GalaxyLabBillboardLabel => {
-    const placement = placements[index]!;
-    context.font = `650 ${String(label.fontSize * LABEL_PIXEL_SCALE)}px ${fontFamily}`;
-    const textX = placement.left + placement.width / 2;
-    const textY = placement.top + placement.height / 2;
-    context.strokeText(label.text, textX, textY);
-    context.fillText(label.text, textX, textY);
-    return {
-      ...label,
-      width: placement.width / LABEL_PIXEL_SCALE,
-      height: placement.height / LABEL_PIXEL_SCALE,
-      uv: [
-        placement.left / canvas.width,
-        placement.top / canvas.height,
-        (placement.left + placement.width) / canvas.width,
-        (placement.top + placement.height) / canvas.height,
-      ],
-    };
-  });
-  const instanceData = new Float32Array(labels.length * LABEL_INSTANCE_FLOATS);
-  for (let index = 0; index < labels.length; index += 1) {
-    const label = labels[index]!;
-    const offset = index * LABEL_INSTANCE_FLOATS;
-    instanceData[offset] = label.anchorX;
-    instanceData[offset + 1] = label.anchorY;
-    instanceData[offset + 2] = label.anchorZ;
-    instanceData[offset + 3] = 0;
-    instanceData[offset + 4] = label.gapY + label.height * 0.5;
-    instanceData[offset + 5] = label.width;
-    instanceData[offset + 6] = label.height;
-    instanceData.set(label.uv, offset + 7);
-  }
-  return { canvas, labels, itemCount: labels.length, instanceData };
+  return createFriendsGalaxyLabelAtlas(seeds, palette, fontFamily);
 }
-
-export const GALAXY_LAB_BILLBOARD_INSTANCE_STRIDE = LABEL_INSTANCE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
