@@ -408,6 +408,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private edgeData = new Float32Array(MAX_CONTEXTUAL_EDGES * EDGE_INSTANCE_FLOATS);
   private labelAtlas: GalaxyLabLabelAtlas | null = null;
   private avatarAtlas: GalaxyLabAvatarAtlas | null = null;
+  private avatarImages: ReadonlyMap<string, CanvasImageSource> = new Map();
   private palette: GalaxyLabPalette | null = null;
   private interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: null };
   private touchedInteractionIndices = new Set<number>();
@@ -762,6 +763,13 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     }
   }
 
+  setAvatarImages(images: ReadonlyMap<string, CanvasImageSource>): void {
+    this.avatarImages = images;
+    if (this.viewDetail === "close") {
+      this.rebuildAvatars(this.compactLabels ?? this.width < 720);
+    }
+  }
+
   setViewDetail(detail: GalaxyLabViewDetail): void {
     if (detail === this.viewDetail) return;
     this.viewDetail = detail;
@@ -922,6 +930,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.providerFields = null;
     this.labelAtlas = null;
     this.avatarAtlas = null;
+    this.avatarImages = new Map();
     this.palette = null;
     this.touchedInteractionIndices.clear();
     this.interactionRoles = new Map();
@@ -1007,6 +1016,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       this.interaction.selectedNodeId,
       compact,
       this.viewDetail,
+      this.avatarImages,
     );
     this.avatarAtlas = atlas;
     if (atlas.itemCount === 0) return;

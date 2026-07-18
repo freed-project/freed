@@ -38,6 +38,7 @@ export interface GalaxyLabBackend {
   resize(width: number, height: number, pixelRatio: number): void;
   setPalette(palette: GalaxyLabPalette): void;
   applyActivityPatches?(patches: GalaxyActivityScenePatchBatch): void;
+  setAvatarImages?(images: ReadonlyMap<string, CanvasImageSource>): void;
   setFieldStyle?(style: GalaxyLabFieldStyle): void;
   setViewDetail(detail: GalaxyLabViewDetail): void;
   pickNode(viewportX: number, viewportY: number): string | null;

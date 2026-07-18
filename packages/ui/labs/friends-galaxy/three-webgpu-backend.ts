@@ -197,6 +197,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
   private backgroundBatch: GalaxySpriteBatch | null = null;
   private labelBatch: GalaxyBillboardBatch | null = null;
   private avatarBatch: GalaxyBillboardBatch | null = null;
+  private avatarImages: ReadonlyMap<string, CanvasImageSource> = new Map();
   private edgeGeometry: LineSegmentsGeometry | null = null;
   private edgeMaterial: THREE.Line2NodeMaterial | null = null;
   private edgeLines: LineSegments2 | null = null;
@@ -340,6 +341,13 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.rebuildAvatars(this.compactLabels ?? this.width < 720);
   }
 
+  setAvatarImages(images: ReadonlyMap<string, CanvasImageSource>): void {
+    this.avatarImages = images;
+    if (this.viewDetail === "close") {
+      this.rebuildAvatars(this.compactLabels ?? this.width < 720);
+    }
+  }
+
   pickNode(viewportX: number, viewportY: number): string | null {
     if (!this.sceneIndex) return null;
     return this.sceneIndex.pickNode(
@@ -424,6 +432,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.backgroundBatch = null;
     this.labelBatch = null;
     this.avatarBatch = null;
+    this.avatarImages = new Map();
     this.edgeGeometry = null;
     this.edgeMaterial = null;
     this.edgeLines = null;
@@ -475,6 +484,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       this.interaction.selectedNodeId,
       compact,
       this.viewDetail,
+      this.avatarImages,
     );
     if (atlas.itemCount === 0) return;
     this.avatarBatch = makeBillboardBatch(atlas, 8);

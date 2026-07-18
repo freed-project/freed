@@ -28,6 +28,11 @@ import {
   GalaxyActivitySummaryIndex,
   type GalaxyActivitySourceKey,
 } from "./activity-summary-index.js";
+import { selectGalaxyLabAvatars } from "./avatar-atlas.js";
+import {
+  GalaxyLabAvatarImageAdmission,
+  type GalaxyLabAvatarImageAdmissionResult,
+} from "./avatar-image-admission.js";
 
 const DEFAULT_PERSON_COUNT = 5_000;
 const DEFAULT_ACCOUNT_COUNT = 25_000;
@@ -134,6 +139,97 @@ const frameSamples: number[] = [];
 const submitSamples: number[] = [];
 const nodeLabelById = new Map(fixture.atlas.nodes.map((node) => [node.id, node.label]));
 let interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: null };
+let avatarAdmissionGeneration = 0;
+let avatarAdmissionResult: GalaxyLabAvatarImageAdmissionResult = {
+  images: new Map(),
+  requestedNodeCount: 0,
+  readyNodeCount: 0,
+  failedSourceCount: 0,
+  cachedSourceCount: 0,
+};
+
+function hashAvatarSource(sourceKey: string): number {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < sourceKey.length; index += 1) {
+    hash ^= sourceKey.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return hash >>> 0;
+}
+
+async function decodeLocalAvatarImage(sourceKey: string): Promise<CanvasImageSource> {
+  const prefix = "lab-local-avatar-v1:";
+  if (!sourceKey.startsWith(prefix)) throw new Error("Unknown local avatar image source.");
+  const nodeId = sourceKey.slice(prefix.length);
+  const label = nodeLabelById.get(nodeId) ?? nodeId;
+  const initials = label
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+  const hash = hashAvatarSource(sourceKey);
+  const hue = hash % 360;
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Canvas 2D is unavailable for local avatar decoding.");
+  const background = context.createRadialGradient(42, 34, 8, 64, 64, 92);
+  background.addColorStop(0, `hsl(${String((hue + 42) % 360)} 78% 72%)`);
+  background.addColorStop(0.5, `hsl(${String(hue)} 66% 48%)`);
+  background.addColorStop(1, `hsl(${String((hue + 292) % 360)} 72% 20%)`);
+  context.fillStyle = background;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.globalAlpha = 0.34;
+  context.strokeStyle = "white";
+  context.lineWidth = 3;
+  for (let ring = 0; ring < 3; ring += 1) {
+    context.beginPath();
+    context.ellipse(
+      64,
+      64,
+      28 + ring * 15,
+      12 + ring * 8,
+      ((hash >>> (ring * 4)) % 18) / 10,
+      0,
+      Math.PI * 2,
+    );
+    context.stroke();
+  }
+  context.globalAlpha = 0.92;
+  context.fillStyle = "white";
+  context.font = "700 40px Inter, ui-sans-serif, system-ui, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(initials || "F", 64, 66);
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((value) => {
+      if (value) resolve(value);
+      else reject(new Error("The local avatar fixture could not be encoded."));
+    }, "image/png");
+  });
+  if (typeof createImageBitmap === "function") return createImageBitmap(blob);
+  const image = new Image();
+  image.decoding = "async";
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("The local avatar fixture could not be decoded."));
+      image.src = objectUrl;
+    });
+    return image;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+const avatarImageAdmission = new GalaxyLabAvatarImageAdmission(
+  decodeLocalAvatarImage,
+  18,
+  3,
+);
 
 function paletteForTheme(): GalaxyLabPalette {
   return GALAXY_LAB_THEMES[activeTheme] ?? GALAXY_LAB_THEMES.scriptorium;
@@ -175,10 +271,57 @@ function viewDetailForScale(scale: number): GalaxyLabViewDetail {
   return "close";
 }
 
+async function admitSettledAvatarImages(
+  backend: GalaxyLabBackend,
+  detail: GalaxyLabViewDetail,
+  generation: number,
+): Promise<void> {
+  if (!backend.setAvatarImages) return;
+  if (detail !== "close") {
+    if (generation !== avatarAdmissionGeneration || backend !== activeBackend) return;
+    avatarAdmissionResult = {
+      images: new Map(),
+      requestedNodeCount: 0,
+      readyNodeCount: 0,
+      failedSourceCount: 0,
+      cachedSourceCount: avatarAdmissionResult.cachedSourceCount,
+    };
+    backend.setAvatarImages(avatarAdmissionResult.images);
+    return;
+  }
+  const compact = viewportSize().width < 720;
+  const requests = selectGalaxyLabAvatars(
+    fixture,
+    paletteForTheme(),
+    interaction.selectedNodeId,
+    compact,
+    detail,
+  ).map((avatar) => ({
+    nodeId: avatar.nodeId,
+    sourceKey: `lab-local-avatar-v1:${avatar.nodeId}`,
+  }));
+  const result = await avatarImageAdmission.admit(requests);
+  if (
+    generation !== avatarAdmissionGeneration ||
+    backend !== activeBackend ||
+    viewDetailForScale(transform.scale) !== "close" ||
+    pointers.size > 0 ||
+    safariGestureWorldPoint !== null
+  ) return;
+  avatarAdmissionResult = result;
+  backend.setAvatarImages(result.images);
+  dirty = true;
+}
+
 function scheduleSettledViewDetail(immediate = false): void {
+  const generation = ++avatarAdmissionGeneration;
   window.clearTimeout(settledDetailTimer);
   const apply = () => {
-    activeBackend?.setViewDetail(viewDetailForScale(transform.scale));
+    const backend = activeBackend;
+    if (!backend) return;
+    const detail = viewDetailForScale(transform.scale);
+    backend.setViewDetail(detail);
+    void admitSettledAvatarImages(backend, detail, generation);
     dirty = true;
   };
   if (immediate) {
@@ -232,6 +375,7 @@ async function activateBackend(
   inheritedFallbackReason: string | null = null,
 ): Promise<void> {
   const generation = ++switchGeneration;
+  avatarAdmissionGeneration += 1;
   setStatus(`Loading ${backendSelect.selectedOptions[0]?.textContent ?? id}`);
   activeBackend?.dispose();
   activeBackend = null;
@@ -254,9 +398,12 @@ async function activateBackend(
     fieldStyleSelect.disabled = typeof backend.setFieldStyle !== "function";
     const { width, height } = viewportSize();
     backend.resize(width, height, window.devicePixelRatio || 1);
-    backend.setViewDetail(viewDetailForScale(transform.scale));
+    const detail = viewDetailForScale(transform.scale);
+    backend.setViewDetail(detail);
     backend.setInteraction(interaction);
     backend.applyActivityPatches?.(activityProbeScenePatch);
+    const avatarGeneration = ++avatarAdmissionGeneration;
+    void admitSettledAvatarImages(backend, detail, avatarGeneration);
     resetSamples();
     dirty = true;
     const metrics = backend.metrics();
@@ -323,6 +470,14 @@ function updateMetrics(): void {
   addMetric("Submission", metrics.submissionMode ?? "Direct draws");
   addMetric("Billboard labels", integerFormat.format(metrics.labelCount));
   addMetric("Avatar atlas", integerFormat.format(metrics.avatarCount));
+  if (activeBackend.setAvatarImages) {
+    addMetric(
+      "Decoded avatars",
+      `${integerFormat.format(avatarAdmissionResult.readyNodeCount)} / ${integerFormat.format(avatarAdmissionResult.requestedNodeCount)}`,
+    );
+    addMetric("Avatar decode failures", integerFormat.format(avatarAdmissionResult.failedSourceCount));
+    addMetric("Avatar image cache", integerFormat.format(avatarAdmissionResult.cachedSourceCount));
+  }
   addMetric("Context edges", integerFormat.format(metrics.contextualEdgeCount));
   addMetric(
     "Selection",
@@ -402,8 +557,12 @@ function updateInteraction(next: GalaxyLabInteraction): void {
     next.selectedNodeId === interaction.selectedNodeId &&
     next.hoveredNodeId === interaction.hoveredNodeId
   ) return;
+  const selectionChanged = next.selectedNodeId !== interaction.selectedNodeId;
   interaction = next;
   activeBackend?.setInteraction(interaction);
+  if (selectionChanged && viewDetailForScale(transform.scale) === "close") {
+    scheduleSettledViewDetail(true);
+  }
   dirty = true;
 }
 
@@ -434,6 +593,8 @@ function localPoint(clientX: number, clientY: number): PointerPosition {
 viewport.addEventListener("pointerdown", (event) => {
   if (event.pointerType === "mouse" && event.button !== 0) return;
   event.preventDefault();
+  avatarAdmissionGeneration += 1;
+  window.clearTimeout(settledDetailTimer);
   viewport.focus({ preventScroll: true });
   const point = localPoint(event.clientX, event.clientY);
   if (pointers.size === 0) gestureMoved = false;
@@ -519,6 +680,9 @@ function releasePointer(event: PointerEvent): void {
         selectedNodeId: pickNodeAt(releasePoint),
         hoveredNodeId: null,
       });
+      scheduleSettledViewDetail();
+    } else if (gestureMoved || event.type === "pointercancel") {
+      scheduleSettledViewDetail();
     }
     gestureMoved = false;
   }
@@ -550,6 +714,8 @@ let safariGestureWorldPoint: PointerPosition | null = null;
 
 viewport.addEventListener("gesturestart", ((event: SafariGestureEvent) => {
   event.preventDefault();
+  avatarAdmissionGeneration += 1;
+  window.clearTimeout(settledDetailTimer);
   safariGestureStartScale = transform.scale;
   const point = localPoint(event.clientX, event.clientY);
   safariGestureWorldPoint = {
@@ -574,6 +740,7 @@ viewport.addEventListener("gesturechange", ((event: SafariGestureEvent) => {
 viewport.addEventListener("gestureend", ((event: SafariGestureEvent) => {
   event.preventDefault();
   safariGestureWorldPoint = null;
+  scheduleSettledViewDetail();
 }) as EventListener, { passive: false });
 
 viewport.addEventListener("dblclick", () => fitGalaxy());
@@ -660,6 +827,7 @@ const resizeObserver = new ResizeObserver(() => {
   const { width, height } = viewportSize();
   activeBackend?.resize(width, height, window.devicePixelRatio || 1);
   if (!userMovedCamera) fitGalaxy(false);
+  else scheduleSettledViewDetail(true);
   dirty = true;
 });
 resizeObserver.observe(viewport);
@@ -674,6 +842,7 @@ window.addEventListener("beforeunload", () => {
   window.clearTimeout(settledDetailTimer);
   reducedMotionQuery.removeEventListener("change", syncReducedMotionPreference);
   resizeObserver.disconnect();
+  avatarImageAdmission.dispose();
   activeBackend?.dispose();
 });
 
@@ -690,6 +859,12 @@ Object.assign(window, {
         summaryPatchCount: activityProbeSummaryPatch.patches.length,
         sceneNodeCount: activityProbeScenePatch.nodeIndices.length,
         unknownSourceCount: activityProbeScenePatch.unknownSources.length,
+      },
+      avatarAdmission: {
+        requestedNodeCount: avatarAdmissionResult.requestedNodeCount,
+        readyNodeCount: avatarAdmissionResult.readyNodeCount,
+        failedSourceCount: avatarAdmissionResult.failedSourceCount,
+        cachedSourceCount: avatarAdmissionResult.cachedSourceCount,
       },
       frame: frameStats(frameSamples),
       submit: frameStats(submitSamples),
