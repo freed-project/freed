@@ -198,6 +198,8 @@ The same camera contract now derives a prominence-safe maximum scale from viewpo
 
 Frame and submission diagnostics now use fixed 240-value typed rings. Active camera motion suppresses diagnostics DOM rebuilding, then refreshes the panel after settle from one bounded snapshot. The detached gesture path no longer shifts diagnostic arrays or performs periodic panel layout while the camera is moving.
 
+The detached laboratory now exports one versioned, identity-free diagnostic snapshot from an opaque standard control. It includes worker source scale, renderer and adapter state, fallback and recovery state, resident and motion counts, presentation counts, sparse activity and pick evidence, camera safety, input mode, render density, upload counters, and fixed-ring frame summaries. It excludes names, IDs, URLs, sample items, avatars, and feed payloads. Clipboard failure is contained and leaves the control usable. Product cutover must feed this same schema through the installed renderer heartbeat and add real long-task evidence.
+
 With animation disabled, the detached renderer now schedules frames only for dirty GPU work or a pending settle deadline. It stops requesting animation frames when the scene is idle and exposes that state on the viewport. Diagnostics request a frame only when changed data reaches the bounded refresh interval. One persistent low-frequency health poll remains active so an idle WebGPU device loss still recovers without a permanent animation loop.
 
 Motion-density transitions no longer resize the GPU canvas synchronously inside pointer, wheel, or Safari input. Motion state marks one pending resize and requests a frame. The render callback applies the latest density once before drawing. The same callback consumes settle state and restores settled density. Repeated input before that frame cannot trigger duplicate canvas resizing.
@@ -472,6 +474,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.102 | Derive a clip-safe camera scale range, route every continuous zoom path through reversible terminal easing, and keep fit plus resize inside the same safe range | High | Done |
 | 8.103 | Derive a prominence-safe maximum zoom and prove depth-correct programmatic focus inside desktop and compact full-canvas interaction insets | High | Done |
 | 8.104 | Bind 25,000 compact activity summaries representing 250,000 items into the admitted worker stress envelope without item payloads or transfer growth | High | Done |
+| 8.105 | Add a bounded identity-free Friends Galaxy diagnostic export with source, renderer, camera, input, recovery, and presentation health | High | Done |
 
 ---
 
@@ -565,6 +568,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] WebGPU rendering caps settled Retina density and lowers compact or wide motion density once per gesture without removing resident stars or labels
 - [x] Compact initial framing opens on a legible semantic field while Fit galaxy remains the explicit complete-universe command
 - [x] Gesture diagnostics use fixed typed rings and defer panel DOM updates until camera settle
+- [x] One-click detached diagnostics serialize bounded renderer health without identity, URL, avatar, sample-item, or feed payload data and recover cleanly from clipboard rejection
 - [x] Mac two-finger trackpad deltas pan with native momentum, pinch remains anchored zoom, and pointer or one-finger touch throws use bounded allocation-free inertia that cancels for new input and reduced motion
 - [x] Animation-disabled scenes stop requesting frames when idle and wake only for renderer work, settle state, diagnostics, or backend health recovery
 - [x] Pointer, wheel, and Safari handlers mark motion density without synchronously resizing the GPU canvas

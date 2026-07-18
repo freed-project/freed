@@ -55,6 +55,10 @@ import {
   shouldRefreshGalaxyLabDiagnostics,
 } from "./sample-ring.js";
 import { GalaxyLabSettleScheduler } from "./settle-scheduler.js";
+import {
+  createGalaxyLabDiagnosticSnapshot,
+  serializeGalaxyLabDiagnosticSnapshot,
+} from "./diagnostic-export.js";
 
 const DEFAULT_PERSON_COUNT = 5_000;
 const DEFAULT_ACCOUNT_COUNT = 25_000;
@@ -90,6 +94,7 @@ const backendSelect = requiredElement<HTMLSelectElement>("backend");
 const themeSelect = requiredElement<HTMLSelectElement>("theme");
 const fieldStyleSelect = requiredElement<HTMLSelectElement>("field-style");
 const fitButton = requiredElement<HTMLButtonElement>("fit");
+const copyDiagnosticsButton = requiredElement<HTMLButtonElement>("copy-diagnostics");
 const simulateLossButton = requiredElement<HTMLButtonElement>("simulate-loss");
 const animateControl = requiredElement<HTMLInputElement>("animate");
 const panel = requiredElement<HTMLElement>("panel");
@@ -1443,6 +1448,57 @@ viewport.addEventListener("keydown", (event) => {
 });
 fitButton.addEventListener("click", () => fitGalaxy());
 
+function galaxyDiagnosticSnapshot() {
+  const { width, height } = viewportSize();
+  return createGalaxyLabDiagnosticSnapshot({
+    capturedAt: new Date().toISOString(),
+    receipt: fixtureWorkerReceipt,
+    personCount: fixture.personCount,
+    accountCount: fixture.accountCount,
+    backgroundStarCount: fixture.backgroundStarCount,
+    backend: activeBackend?.metrics() ?? null,
+    theme: activeTheme,
+    fieldStyle: activeFieldStyle,
+    transform,
+    cameraScaleLimits,
+    viewportWidth: width,
+    viewportHeight: height,
+    cameraInMotion,
+    selectionActive: interaction.selectedNodeId !== null,
+    hoverActive: interaction.hoveredNodeId !== null,
+    touchInputMode: nativeTouchInput ? "Native Touch Events" : "Pointer Events",
+    wheelInputMode,
+    inertialPanActive: inertialPan.isActive,
+    frameLoop: viewport.dataset.frameLoop ?? "unknown",
+    settlePending: settleScheduler.isPending,
+    renderResizePending,
+    recoveryReason: lastRecoveryReason,
+    frame: frameStats(frameSamples.snapshot()),
+    submit: frameStats(submitSamples.snapshot()),
+    activityPatchKeyCount: activityProbeSummaryPatch.patches.length,
+    activityPatchNodeCount: activityProbeScenePatch.nodeIndices.length,
+    unknownActivitySourceCount: activityProbeScenePatch.unknownSources.length,
+    avatarRequestedCount: avatarAdmissionResult.requestedNodeCount,
+    avatarReadyCount: avatarAdmissionResult.readyNodeCount,
+    avatarFailureCount: avatarAdmissionResult.failedSourceCount,
+  });
+}
+
+copyDiagnosticsButton.addEventListener("click", () => {
+  const writeText = navigator.clipboard?.writeText?.bind(navigator.clipboard);
+  if (!writeText) {
+    setStatus("Clipboard access is unavailable", true);
+    return;
+  }
+  copyDiagnosticsButton.disabled = true;
+  void writeText(serializeGalaxyLabDiagnosticSnapshot(galaxyDiagnosticSnapshot()))
+    .then(() => setStatus("Diagnostics copied"))
+    .catch(() => setStatus("Diagnostics could not be copied", true))
+    .finally(() => {
+      copyDiagnosticsButton.disabled = false;
+    });
+});
+
 simulateLossButton.addEventListener("click", () => {
   const backend = activeBackend;
   if (!backend?.simulateDeviceLoss) return;
@@ -1554,6 +1610,7 @@ window.addEventListener("beforeunload", () => {
 Object.assign(window, {
   __FRIENDS_GALAXY_LAB__: {
     fixture,
+    diagnostics: galaxyDiagnosticSnapshot,
     focusNode: focusGalaxyNode,
     state: () => ({
       backend: activeBackend?.metrics() ?? null,
