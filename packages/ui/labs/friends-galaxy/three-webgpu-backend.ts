@@ -198,6 +198,13 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(42, 1, 1, 20_000);
   private readonly viewProjection = new THREE.Matrix4();
+  private readonly settledTransform: GalaxyLabTransform = { x: 0, y: 0, scale: 0.12 };
+  private readonly settledProjection = {
+    viewProjection: this.viewProjection.elements,
+    width: 1,
+    height: 1,
+  };
+  private settledProjectionValid = false;
   private fixture: GalaxyLabFixture | null = null;
   private sceneIndex: GalaxyLabSceneIndex | null = null;
   private semanticBatch: GalaxySpriteBatch | null = null;
@@ -338,6 +345,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.renderer.setSize(this.width, this.height, false);
     this.camera.aspect = this.width / this.height;
     this.camera.updateProjectionMatrix();
+    if (this.settledProjectionValid) this.updateViewProjection(this.settledTransform);
     this.labelBatch?.viewport.set(this.width, this.height);
     this.avatarBatch?.viewport.set(this.width, this.height);
     const compactLabels = this.width < 720;
@@ -381,6 +389,17 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.rebuildAvatars(this.compactLabels ?? this.width < 720);
   }
 
+  setSettledView(detail: GalaxyLabViewDetail, transform: GalaxyLabTransform): void {
+    this.viewDetail = detail;
+    this.settledTransform.x = transform.x;
+    this.settledTransform.y = transform.y;
+    this.settledTransform.scale = transform.scale;
+    this.settledProjectionValid = true;
+    this.updateViewProjection(this.settledTransform);
+    this.rebuildLabels(this.compactLabels ?? this.width < 720);
+    this.rebuildAvatars(this.compactLabels ?? this.width < 720);
+  }
+
   setAvatarImages(images: ReadonlyMap<string, CanvasImageSource>): void {
     this.avatarImages = images;
     if (this.viewDetail === "close") {
@@ -400,23 +419,14 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
   }
 
   setInteraction(interaction: GalaxyLabInteraction): void {
-    const selectionChanged = interaction.selectedNodeId !== this.interaction.selectedNodeId;
     this.interaction = interaction;
     if (!this.sceneIndex) return;
     this.writeInteraction(this.sceneIndex.interactionState(interaction));
-    if (selectionChanged && this.viewDetail === "close") {
-      this.rebuildLabels(this.compactLabels ?? this.width < 720);
-      this.rebuildAvatars(this.compactLabels ?? this.width < 720);
-    }
   }
 
   render(transform: GalaxyLabTransform, _timeMs: number): void {
     if (!this.renderer) return;
-    const pose = identityGalaxyCameraPose(transform, this.width, this.height, this.camera.fov);
-    this.camera.position.set(pose.x, pose.y, pose.z);
-    this.camera.lookAt(pose.targetX, pose.targetY, pose.targetZ);
-    this.camera.updateMatrixWorld();
-    this.viewProjection.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+    this.updateViewProjection(transform);
     this.renderer.render(this.scene, this.camera);
     this.drawCalls = this.renderer.info.render.drawCalls;
   }
@@ -503,6 +513,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.colorUpdateRangeScratch = [];
     this.sizeUpdateRangeScratch = [];
     this.contextualEdgeCount = 0;
+    this.settledProjectionValid = false;
   }
 
   private rebuildLabels(compact: boolean): void {
@@ -520,6 +531,8 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       compact,
       this.viewDetail,
       this.interaction.selectedNodeId,
+      undefined,
+      this.settledProjectionValid ? this.settledProjection : undefined,
     );
     this.labelBatch = makeBillboardBatch(atlas, 10);
     this.labelBatch.viewport.set(this.width, this.height);
@@ -543,12 +556,24 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       compact,
       this.viewDetail,
       this.avatarImages,
+      undefined,
+      this.settledProjectionValid ? this.settledProjection : undefined,
     );
     if (atlas.itemCount === 0) return;
     this.avatarBatch = makeBillboardBatch(atlas, 8);
     this.avatarBatch.viewport.set(this.width, this.height);
     this.scene.add(this.avatarBatch.mesh);
     this.bufferUploadCount += 2;
+  }
+
+  private updateViewProjection(transform: GalaxyLabTransform): void {
+    const pose = identityGalaxyCameraPose(transform, this.width, this.height, this.camera.fov);
+    this.camera.position.set(pose.x, pose.y, pose.z);
+    this.camera.lookAt(pose.targetX, pose.targetY, pose.targetZ);
+    this.camera.updateMatrixWorld();
+    this.viewProjection.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+    this.settledProjection.width = this.width;
+    this.settledProjection.height = this.height;
   }
 
   private writeInteraction(state: GalaxyLabInteractionState): void {

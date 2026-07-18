@@ -9,6 +9,7 @@ import {
 import { createGalaxyLabFixture } from "./scene-fixture.js";
 import { compactGalaxyLabFixtureMetadata } from "./scene-fixture-worker-protocol.js";
 import { GalaxyLabSceneIndex } from "./scene-index.js";
+import { projectGalaxyLabWorldPoint } from "./viewport-projection.js";
 
 const stressFixture = compactGalaxyLabFixtureMetadata(createGalaxyLabFixture({
   personCount: 5_000,
@@ -322,6 +323,41 @@ describe("Friends Galaxy billboard label selection", () => {
     const labels = selectGalaxyLabLabels(fixture, false, "close", selectedNodeId);
 
     expect(labels.some((label) => label.nodeId === selectedNodeId)).toBe(true);
+    expect(labels.length).toBeLessThanOrEqual(64);
+  });
+
+  it("rebuilds close labels from identities inside the settled viewport", () => {
+    const selectedIndex = 4_999;
+    const positionOffset = selectedIndex * 3;
+    const width = 800;
+    const height = 600;
+    const scale = 2;
+    const transform = {
+      x: width / 2 - fixture.scene.positions[positionOffset]! * scale,
+      y: height / 2 + fixture.scene.positions[positionOffset + 1]! * scale,
+      scale,
+    };
+    const { matrix } = viewProjectionFor(transform, width, height);
+    const projection = { viewProjection: matrix.elements, width, height };
+    const labels = selectGalaxyLabLabels(
+      fixture,
+      false,
+      "close",
+      "person:lab-person-4999",
+      projection,
+    );
+    const screen = new Float32Array(2);
+
+    expect(labels.some((label) => label.nodeId === "person:lab-person-4999")).toBe(true);
+    expect(labels.some((label) => label.nodeId === "person:lab-person-0")).toBe(false);
+    expect(labels.every((label) => projectGalaxyLabWorldPoint(
+      screen,
+      projection,
+      label.anchorX,
+      label.anchorY,
+      label.anchorZ,
+      160,
+    ))).toBe(true);
     expect(labels.length).toBeLessThanOrEqual(64);
   });
 });

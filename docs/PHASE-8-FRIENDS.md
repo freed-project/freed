@@ -452,6 +452,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.92 | Bound decorative motion density while retaining every semantic star and the full settled dust field | High | Done |
 | 8.93 | Cull fully faded provider field primitives before close-detail rasterization | High | Done |
 | 8.94 | Define the exact workflow-preserving product cutover and main-thread fallback removal boundary | High | Done |
+| 8.95 | Admit settled billboard labels and avatar images from the perspective-projected visible identity roster | High | Done |
 
 ---
 

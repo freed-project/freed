@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { selectGalaxyLabAvatars } from "./avatar-atlas.js";
+import { writeGalaxyLabWebGpuViewProjection } from "./camera-math.js";
 import { createGalaxyLabFixture, GALAXY_LAB_THEMES } from "./scene-fixture.js";
 import { compactGalaxyLabFixtureMetadata } from "./scene-fixture-worker-protocol.js";
 
@@ -59,5 +60,32 @@ describe("Friends Galaxy avatar atlas selection", () => {
       "close",
     );
     expect(avatars.some((avatar) => avatar.nodeId === "person:lab-person-0" && avatar.selected)).toBe(true);
+  });
+
+  it("admits only identities near the settled close viewport", () => {
+    const selectedIndex = 4_999;
+    const positionOffset = selectedIndex * 3;
+    const width = 800;
+    const height = 600;
+    const scale = 2;
+    const transform = {
+      x: width / 2 - fixture.scene.positions[positionOffset]! * scale,
+      y: height / 2 + fixture.scene.positions[positionOffset + 1]! * scale,
+      scale,
+    };
+    const matrix = new Float32Array(16);
+    writeGalaxyLabWebGpuViewProjection(matrix, transform, width, height);
+    const avatars = selectGalaxyLabAvatars(
+      fixture,
+      GALAXY_LAB_THEMES.vesper,
+      "person:lab-person-4999",
+      false,
+      "close",
+      { viewProjection: matrix, width, height },
+    );
+
+    expect(avatars.some((avatar) => avatar.nodeId === "person:lab-person-4999")).toBe(true);
+    expect(avatars.some((avatar) => avatar.nodeId === "person:lab-person-0")).toBe(false);
+    expect(avatars).toHaveLength(12);
   });
 });

@@ -10,6 +10,10 @@ import {
   type GalaxyLabAvatarSeed,
 } from "./avatar-atlas.js";
 import { findGalaxyLabSceneNodeIndex } from "./scene-interaction-index.js";
+import {
+  projectGalaxyLabWorldPoint,
+  type GalaxyLabViewportProjection,
+} from "./viewport-projection.js";
 
 const LABEL_INSTANCE_FLOATS = 11;
 const LABEL_PIXEL_SCALE = 2;
@@ -87,6 +91,7 @@ export function selectGalaxyLabLabels(
   compact: boolean,
   detail: GalaxyLabViewDetail,
   selectedNodeId: string | null = null,
+  projection?: GalaxyLabViewportProjection,
 ): readonly GalaxyLabLabelSeed[] {
   const cap = detail === "overview"
     ? compact ? 8 : 13
@@ -94,7 +99,7 @@ export function selectGalaxyLabLabels(
       ? compact ? 20 : 36
       : compact ? 32 : 64;
   const selectedPersonId = galaxyLabSelectedPersonNodeId(fixture, selectedNodeId);
-  const seeds = fixture.atlas.labels.map((label): GalaxyLabLabelSeed => {
+  const seedForAtlasLabel = (label: GalaxyLabFixture["atlas"]["labels"][number]): GalaxyLabLabelSeed => {
     const nodeIndex = findGalaxyLabSceneNodeIndex(
       fixture.scene,
       fixture.interactionIndex,
@@ -118,44 +123,128 @@ export function selectGalaxyLabLabels(
         (label.nodeId === selectedPersonId ? 1_000_000 : 0),
       provider,
     };
-  });
+  };
+  const seedForPersonNode = (nodeIndex: number): GalaxyLabLabelSeed => {
+    const presentation = galaxyLabNodePresentation(fixture, nodeIndex);
+    const nodeId = fixture.scene.nodeIds[nodeIndex]!;
+    const pointSize = Math.max(3.5, fixture.scene.pointSizes[nodeIndex]! * 0.34);
+    return {
+      id: `label:visible:${nodeId}`,
+      nodeId,
+      text: truncateLabel(presentation.label),
+      anchorX: fixture.scene.positions[nodeIndex * 3]!,
+      anchorY: fixture.scene.positions[nodeIndex * 3 + 1]!,
+      anchorZ: fixture.scene.positions[nodeIndex * 3 + 2]! + 5,
+      fontSize: compact ? 12 : 14,
+      gapY: detail === "close"
+        ? Math.max(pointSize * 0.5, compact ? 21 : 25) + 2
+        : pointSize * 0.5 + 2,
+      priority: presentation.priority + fixture.scene.prominence[nodeIndex]! * 1_000 +
+        (nodeId === selectedPersonId ? 1_000_000 : 0),
+      provider: false,
+    };
+  };
+  const providerSeeds = fixture.atlas.labels
+    .filter((label) => label.kind === "provider_cluster")
+    .map(seedForAtlasLabel);
+  const seeds: GalaxyLabLabelSeed[] = projection && detail !== "overview"
+    ? [...providerSeeds]
+    : fixture.atlas.labels.map(seedForAtlasLabel);
+
+  if (projection && detail !== "overview") {
+    const candidateCapacity = Math.max(1, (cap - providerSeeds.length) * 4);
+    const ranked: Array<{ nodeIndex: number; rank: number }> = [];
+    const screen = new Float32Array(2);
+    for (let nodeIndex = 0; nodeIndex < fixture.scene.nodeIds.length; nodeIndex += 1) {
+      if (!fixture.scene.personIds[nodeIndex]) continue;
+      const offset = nodeIndex * 3;
+      if (!projectGalaxyLabWorldPoint(
+        screen,
+        projection,
+        fixture.scene.positions[offset]!,
+        fixture.scene.positions[offset + 1]!,
+        fixture.scene.positions[offset + 2]!,
+        160,
+      )) continue;
+      const rank = fixture.scene.prominence[nodeIndex]! +
+        (fixture.scene.nodeIds[nodeIndex] === selectedPersonId ? 10 : 0);
+      const last = ranked[ranked.length - 1];
+      if (
+        ranked.length >= candidateCapacity && last &&
+        (rank < last.rank || (rank === last.rank && nodeIndex > last.nodeIndex))
+      ) continue;
+      let insertionIndex = ranked.length;
+      while (insertionIndex > 0) {
+        const previous = ranked[insertionIndex - 1]!;
+        if (previous.rank > rank || (previous.rank === rank && previous.nodeIndex < nodeIndex)) break;
+        insertionIndex -= 1;
+      }
+      ranked.splice(insertionIndex, 0, { nodeIndex, rank });
+      if (ranked.length > candidateCapacity) ranked.pop();
+    }
+    for (const candidate of ranked) seeds.push(seedForPersonNode(candidate.nodeIndex));
+  }
+
   if (selectedPersonId && !seeds.some((label) => label.nodeId === selectedPersonId)) {
     const nodeIndex = findGalaxyLabSceneNodeIndex(
       fixture.scene,
       fixture.interactionIndex,
       selectedPersonId,
     );
-    if (nodeIndex !== null) {
-      const presentation = galaxyLabNodePresentation(fixture, nodeIndex);
-      const pointSize = Math.max(3.5, fixture.scene.pointSizes[nodeIndex]! * 0.34);
-      seeds.push({
-        id: `label:selected:${selectedPersonId}`,
-        nodeId: selectedPersonId,
-        text: truncateLabel(presentation.label),
-        anchorX: fixture.scene.positions[nodeIndex * 3]!,
-        anchorY: fixture.scene.positions[nodeIndex * 3 + 1]!,
-        anchorZ: fixture.scene.positions[nodeIndex * 3 + 2]! + 5,
-        fontSize: compact ? 12 : 14,
-        gapY: Math.max(pointSize * 0.5, compact ? 21 : 25) + 2,
-        priority: 1_000_000 + presentation.priority + fixture.scene.prominence[nodeIndex]! * 1_000,
-        provider: false,
-      });
-    }
+    if (nodeIndex !== null) seeds.push(seedForPersonNode(nodeIndex));
   }
-  const providers = seeds.filter((label) => label.provider);
+  const projectionScratch = new Float32Array(2);
+  const labelIsVisible = (label: GalaxyLabLabelSeed): boolean => !projection ||
+    projectGalaxyLabWorldPoint(
+      projectionScratch,
+      projection,
+      label.anchorX,
+      label.anchorY,
+      label.anchorZ,
+      160,
+    );
+  const providers = seeds.filter((label) => label.provider && labelIsVisible(label));
   const semantic = seeds
-    .filter((label) => !label.provider)
+    .filter((label) => !label.provider && labelIsVisible(label))
     .sort((left, right) => right.priority - left.priority || left.id.localeCompare(right.id));
   const semanticCap = Math.max(0, cap - providers.length);
   const minimumDistance = (detail === "overview" ? 760 : detail === "middle" ? 280 : 90) *
     (compact ? 1.3 : 1);
+  const minimumScreenDistance = (detail === "overview" ? 96 : detail === "middle" ? 92 : 82) *
+    (compact ? 1.08 : 1);
   const selectedSemantic: GalaxyLabLabelSeed[] = [];
+  const selectedScreenPositions = new Float32Array(semanticCap * 2);
   for (const candidate of semantic) {
-    const separated = selectedSemantic.every((selected) => Math.hypot(
-      candidate.anchorX - selected.anchorX,
-      candidate.anchorY - selected.anchorY,
-    ) >= minimumDistance);
+    let separated = true;
+    if (projection) {
+      projectGalaxyLabWorldPoint(
+        projectionScratch,
+        projection,
+        candidate.anchorX,
+        candidate.anchorY,
+        candidate.anchorZ,
+        160,
+      );
+      for (let index = 0; index < selectedSemantic.length; index += 1) {
+        if (Math.hypot(
+          projectionScratch[0]! - selectedScreenPositions[index * 2]!,
+          projectionScratch[1]! - selectedScreenPositions[index * 2 + 1]!,
+        ) < minimumScreenDistance) {
+          separated = false;
+          break;
+        }
+      }
+    } else {
+      separated = selectedSemantic.every((selected) => Math.hypot(
+        candidate.anchorX - selected.anchorX,
+        candidate.anchorY - selected.anchorY,
+      ) >= minimumDistance);
+    }
     if (!separated) continue;
+    if (projection) {
+      selectedScreenPositions[selectedSemantic.length * 2] = projectionScratch[0]!;
+      selectedScreenPositions[selectedSemantic.length * 2 + 1] = projectionScratch[1]!;
+    }
     selectedSemantic.push(candidate);
     if (selectedSemantic.length >= semanticCap) break;
   }
@@ -169,6 +258,7 @@ export function createGalaxyLabLabelAtlas(
   detail: GalaxyLabViewDetail,
   selectedNodeId: string | null = null,
   fontFamily = "Inter, ui-sans-serif, system-ui, sans-serif",
+  projection?: GalaxyLabViewportProjection,
 ): GalaxyLabLabelAtlas {
   const avatars = selectGalaxyLabAvatars(
     fixture,
@@ -176,9 +266,10 @@ export function createGalaxyLabLabelAtlas(
     selectedNodeId,
     compact,
     detail,
+    projection,
   );
   const seeds = placeGalaxyLabLabelsAroundAvatars(
-    selectGalaxyLabLabels(fixture, compact, detail, selectedNodeId),
+    selectGalaxyLabLabels(fixture, compact, detail, selectedNodeId, projection),
     avatars,
   );
   const measuringCanvas = document.createElement("canvas");

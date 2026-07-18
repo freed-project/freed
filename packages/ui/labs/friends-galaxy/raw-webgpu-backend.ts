@@ -511,6 +511,13 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private interactionInstanceCount = 0;
   private interactionColor: readonly [number, number, number] = [1, 1, 1];
   private readonly viewProjection = new Float32Array(16);
+  private readonly settledTransform: GalaxyLabTransform = { x: 0, y: 0, scale: 0.12 };
+  private readonly settledProjection = {
+    viewProjection: this.viewProjection,
+    width: 1,
+    height: 1,
+  };
+  private settledProjectionValid = false;
   private readonly uniformData = new Float32Array(
     GALAXY_LAB_STAR_PALETTE_FLOAT_OFFSET + GALAXY_LAB_STAR_PALETTE_FLOAT_COUNT,
   );
@@ -804,6 +811,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.pixelRatio = galaxyLabRenderPixelRatio(pixelRatio, this.width, false);
     this.canvas.width = Math.max(1, Math.floor(this.width * this.pixelRatio));
     this.canvas.height = Math.max(1, Math.floor(this.height * this.pixelRatio));
+    if (this.settledProjectionValid) this.updateSettledProjection();
     const compactLabels = this.width < 720;
     if (compactLabels !== this.compactLabels) {
       this.rebuildLabels(compactLabels);
@@ -880,6 +888,17 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.rebuildAvatars(this.compactLabels ?? this.width < 720);
   }
 
+  setSettledView(detail: GalaxyLabViewDetail, transform: GalaxyLabTransform): void {
+    this.viewDetail = detail;
+    this.settledTransform.x = transform.x;
+    this.settledTransform.y = transform.y;
+    this.settledTransform.scale = transform.scale;
+    this.settledProjectionValid = true;
+    this.updateSettledProjection();
+    this.rebuildLabels(this.compactLabels ?? this.width < 720);
+    this.rebuildAvatars(this.compactLabels ?? this.width < 720);
+  }
+
   pickNode(viewportX: number, viewportY: number): string | null {
     if (!this.sceneIndex) return null;
     return this.sceneIndex.pickNode(
@@ -893,14 +912,9 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   }
 
   setInteraction(interaction: GalaxyLabInteraction): void {
-    const selectionChanged = interaction.selectedNodeId !== this.interaction.selectedNodeId;
     this.interaction = interaction;
     if (!this.sceneIndex) return;
     this.writeInteraction(this.sceneIndex.interactionState(interaction));
-    if (selectionChanged && this.viewDetail === "close") {
-      this.rebuildLabels(this.compactLabels ?? this.width < 720);
-      this.rebuildAvatars(this.compactLabels ?? this.width < 720);
-    }
   }
 
   render(transform: GalaxyLabTransform, timeMs: number): void {
@@ -1049,6 +1063,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.contextualEdgeCount = 0;
     this.animationEnabled = false;
     this.cameraMotion = false;
+    this.settledProjectionValid = false;
     this.appliedActivityNodeCount = 0;
     this.residentStarUploadCount = 0;
   }
@@ -1067,6 +1082,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       compact,
       this.viewDetail,
       this.interaction.selectedNodeId,
+      undefined,
+      this.settledProjectionValid ? this.settledProjection : undefined,
     );
     this.labelBuffer?.destroy();
     this.labelTexture?.destroy();
@@ -1144,6 +1161,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       compact,
       this.viewDetail,
       this.avatarImages,
+      undefined,
+      this.settledProjectionValid ? this.settledProjection : undefined,
     );
     this.avatarAtlas = atlas;
     if (atlas.itemCount === 0) return;
@@ -1180,6 +1199,17 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     );
     this.rebuildFrameRenderBundles();
     this.bufferUploadCount += 2;
+  }
+
+  private updateSettledProjection(): void {
+    writeGalaxyLabWebGpuViewProjection(
+      this.viewProjection,
+      this.settledTransform,
+      this.width,
+      this.height,
+    );
+    this.settledProjection.width = this.width;
+    this.settledProjection.height = this.height;
   }
 
   private writeInteraction(state: GalaxyLabInteractionState): void {

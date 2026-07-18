@@ -49,6 +49,7 @@ export interface GalaxyLabBackend {
   setCameraMotion?(active: boolean): void;
   setFieldStyle?(style: GalaxyLabFieldStyle): void;
   setViewDetail(detail: GalaxyLabViewDetail): void;
+  setSettledView?(detail: GalaxyLabViewDetail, transform: GalaxyLabTransform): void;
   pickNode(viewportX: number, viewportY: number): string | null;
   setInteraction(interaction: GalaxyLabInteraction): void;
   render(transform: GalaxyLabTransform, timeMs: number): void;

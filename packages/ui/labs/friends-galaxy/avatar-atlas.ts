@@ -7,6 +7,10 @@ import {
   type GalaxyLabPalette,
 } from "./scene-fixture.js";
 import { findGalaxyLabSceneNodeIndex } from "./scene-interaction-index.js";
+import {
+  projectGalaxyLabWorldPoint,
+  type GalaxyLabViewportProjection,
+} from "./viewport-projection.js";
 
 const AVATAR_INSTANCE_FLOATS = 11;
 const AVATAR_PIXEL_SCALE = 2;
@@ -55,58 +59,71 @@ export function selectGalaxyLabAvatars(
   selectedNodeId: string | null,
   compact: boolean,
   detail: GalaxyLabViewDetail,
+  projection?: GalaxyLabViewportProjection,
 ): readonly GalaxyLabAvatarSeed[] {
   if (detail !== "close") return [];
   const selectedPersonId = galaxyLabSelectedPersonNodeId(fixture, selectedNodeId);
   const cap = compact ? 6 : 12;
-  const candidates = fixture.atlas.nodes
-    .filter((node) => Boolean(node.personId))
-    .map((node): GalaxyLabAvatarSeed | null => {
-      const nodeIndex = findGalaxyLabSceneNodeIndex(
-        fixture.scene,
-        fixture.interactionIndex,
-        node.id,
-      );
-      if (nodeIndex === null) return null;
-      const selected = node.id === selectedPersonId;
-      return {
-        nodeId: node.id,
-        initials: node.initials || node.label.slice(0, 2).toUpperCase(),
-        anchorX: fixture.scene.positions[nodeIndex * 3]!,
-        anchorY: fixture.scene.positions[nodeIndex * 3 + 1]!,
-        anchorZ: fixture.scene.positions[nodeIndex * 3 + 2]! + 7,
-        size: selected ? compact ? 42 : 48 : compact ? 34 : 40,
-        priority: node.priority + fixture.scene.prominence[nodeIndex]! * 1_000,
-        selected,
-        color: galaxyLabSemanticColor(fixture, palette, nodeIndex),
-      };
-    })
-    .filter((avatar): avatar is GalaxyLabAvatarSeed => avatar !== null)
-    .sort((left, right) => right.priority - left.priority || left.nodeId.localeCompare(right.nodeId));
-  if (selectedPersonId && !candidates.some((avatar) => avatar.nodeId === selectedPersonId)) {
-    const nodeIndex = findGalaxyLabSceneNodeIndex(
-      fixture.scene,
-      fixture.interactionIndex,
-      selectedPersonId,
+  const selectedIndex = findGalaxyLabSceneNodeIndex(
+    fixture.scene,
+    fixture.interactionIndex,
+    selectedPersonId,
+  );
+  const screen = new Float32Array(2);
+  const visible = (nodeIndex: number): boolean => {
+    if (!projection) return true;
+    const offset = nodeIndex * 3;
+    return projectGalaxyLabWorldPoint(
+      screen,
+      projection,
+      fixture.scene.positions[offset]!,
+      fixture.scene.positions[offset + 1]!,
+      fixture.scene.positions[offset + 2]!,
+      64,
     );
-    if (nodeIndex !== null) {
-      const presentation = galaxyLabNodePresentation(fixture, nodeIndex);
-      candidates.push({
-        nodeId: selectedPersonId,
-        initials: presentation.initials,
-        anchorX: fixture.scene.positions[nodeIndex * 3]!,
-        anchorY: fixture.scene.positions[nodeIndex * 3 + 1]!,
-        anchorZ: fixture.scene.positions[nodeIndex * 3 + 2]! + 7,
-        size: compact ? 42 : 48,
-        priority: presentation.priority + fixture.scene.prominence[nodeIndex]! * 1_000,
-        selected: true,
-        color: galaxyLabSemanticColor(fixture, palette, nodeIndex),
-      });
+  };
+  const selectedVisible = selectedIndex !== null && visible(selectedIndex);
+  const candidateCap = Math.max(0, cap - (selectedVisible ? 1 : 0));
+  const ranked: Array<{ nodeIndex: number; rank: number }> = [];
+  const insertCandidate = (nodeIndex: number, rank: number): void => {
+    if (candidateCap === 0) return;
+    const last = ranked[ranked.length - 1];
+    if (
+      ranked.length >= candidateCap && last &&
+      (rank < last.rank || (rank === last.rank && nodeIndex > last.nodeIndex))
+    ) return;
+    let insertionIndex = ranked.length;
+    while (insertionIndex > 0) {
+      const previous = ranked[insertionIndex - 1]!;
+      if (previous.rank > rank || (previous.rank === rank && previous.nodeIndex < nodeIndex)) break;
+      insertionIndex -= 1;
     }
+    ranked.splice(insertionIndex, 0, { nodeIndex, rank });
+    if (ranked.length > candidateCap) ranked.pop();
+  };
+
+  for (let nodeIndex = 0; nodeIndex < fixture.scene.nodeIds.length; nodeIndex += 1) {
+    if (!fixture.scene.personIds[nodeIndex] || nodeIndex === selectedIndex || !visible(nodeIndex)) continue;
+    insertCandidate(nodeIndex, fixture.scene.prominence[nodeIndex]!);
   }
-  const selected = candidates.find((avatar) => avatar.selected) ?? null;
-  const accepted = candidates.filter((avatar) => !avatar.selected).slice(0, cap - (selected ? 1 : 0));
-  if (selected) accepted.push(selected);
+
+  const createSeed = (nodeIndex: number, selected: boolean): GalaxyLabAvatarSeed => {
+    const presentation = galaxyLabNodePresentation(fixture, nodeIndex);
+    const offset = nodeIndex * 3;
+    return {
+      nodeId: fixture.scene.nodeIds[nodeIndex]!,
+      initials: presentation.initials,
+      anchorX: fixture.scene.positions[offset]!,
+      anchorY: fixture.scene.positions[offset + 1]!,
+      anchorZ: fixture.scene.positions[offset + 2]! + 7,
+      size: selected ? compact ? 42 : 48 : compact ? 34 : 40,
+      priority: presentation.priority + fixture.scene.prominence[nodeIndex]! * 1_000,
+      selected,
+      color: galaxyLabSemanticColor(fixture, palette, nodeIndex),
+    };
+  };
+  const accepted = ranked.map(({ nodeIndex }) => createSeed(nodeIndex, false));
+  if (selectedVisible && selectedIndex !== null) accepted.push(createSeed(selectedIndex, true));
   return accepted;
 }
 
@@ -118,6 +135,7 @@ export function createGalaxyLabAvatarAtlas(
   detail: GalaxyLabViewDetail,
   images: ReadonlyMap<string, CanvasImageSource> = new Map(),
   fontFamily = "Inter, ui-sans-serif, system-ui, sans-serif",
+  projection?: GalaxyLabViewportProjection,
 ): GalaxyLabAvatarAtlas {
   const avatars = selectGalaxyLabAvatars(
     fixture,
@@ -125,6 +143,7 @@ export function createGalaxyLabAvatarAtlas(
     selectedNodeId,
     compact,
     detail,
+    projection,
   );
   if (avatars.length === 0) {
     const canvas = document.createElement("canvas");

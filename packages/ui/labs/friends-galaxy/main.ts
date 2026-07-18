@@ -32,15 +32,15 @@ import {
   type GalaxyActivitySourceKey,
 } from "./activity-summary-index.js";
 import { GalaxyLabAvatarAdmissionState } from "./avatar-admission-state.js";
-import {
-  galaxyLabSelectedPersonNodeId,
-  selectGalaxyLabAvatars,
-} from "./avatar-atlas.js";
+import { selectGalaxyLabAvatars } from "./avatar-atlas.js";
 import {
   GalaxyLabAvatarImageAdmission,
   type GalaxyLabAvatarImageAdmissionResult,
 } from "./avatar-image-admission.js";
-import { galaxyLabInitialCameraScale } from "./camera-math.js";
+import {
+  galaxyLabInitialCameraScale,
+  writeGalaxyLabWebGpuViewProjection,
+} from "./camera-math.js";
 import { shouldContinueGalaxyLabFrame } from "./frame-loop.js";
 import { GalaxyLabPointerRoster } from "./pointer-roster.js";
 import {
@@ -183,6 +183,12 @@ let interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: n
 let avatarAdmissionGeneration = 0;
 const emptyAvatarImages = new Map<string, CanvasImageSource>();
 const avatarAdmissionState = new GalaxyLabAvatarAdmissionState<GalaxyLabBackend>();
+const avatarAdmissionViewProjection = new Float32Array(16);
+const avatarAdmissionProjection = {
+  viewProjection: avatarAdmissionViewProjection,
+  width: 1,
+  height: 1,
+};
 let avatarAdmissionApplyCount = 0;
 let avatarAdmissionReuseCount = 0;
 let avatarAdmissionResult: GalaxyLabAvatarImageAdmissionResult = {
@@ -379,13 +385,28 @@ async function admitSettledAvatarImages(
   generation: number,
 ): Promise<void> {
   if (!backend.setAvatarImages) return;
-  const compact = viewportSize().width < 720;
-  const selectedPersonNodeId = galaxyLabSelectedPersonNodeId(
-    fixture,
-    interaction.selectedNodeId,
+  const { width, height } = viewportSize();
+  const compact = width < 720;
+  writeGalaxyLabWebGpuViewProjection(
+    avatarAdmissionViewProjection,
+    transform,
+    width,
+    height,
   );
+  avatarAdmissionProjection.width = width;
+  avatarAdmissionProjection.height = height;
+  const avatarCandidates = detail === "close"
+    ? selectGalaxyLabAvatars(
+      fixture,
+      paletteForTheme(),
+      interaction.selectedNodeId,
+      compact,
+      detail,
+      avatarAdmissionProjection,
+    )
+    : [];
   const admissionKey = detail === "close"
-    ? `close:${compact ? "compact" : "wide"}:${selectedPersonNodeId ?? "none"}`
+    ? `close:${avatarCandidates.map((avatar) => avatar.nodeId).join(",")}`
     : "hidden";
   const admissionStart = avatarAdmissionState.begin(backend, admissionKey, generation);
   if (admissionStart !== "start") {
@@ -393,13 +414,7 @@ async function admitSettledAvatarImages(
     return;
   }
   const result = detail === "close"
-    ? await avatarImageAdmission.admit(selectGalaxyLabAvatars(
-      fixture,
-      paletteForTheme(),
-      interaction.selectedNodeId,
-      compact,
-      detail,
-    ).map((avatar) => ({
+    ? await avatarImageAdmission.admit(avatarCandidates.map((avatar) => ({
       nodeId: avatar.nodeId,
       sourceKey: `lab-local-avatar-v1:${avatar.nodeId}`,
     })))
@@ -429,12 +444,20 @@ async function admitSettledAvatarImages(
   markGalaxyDirty();
 }
 
+function applyBackendSettledView(
+  backend: GalaxyLabBackend,
+  detail: GalaxyLabViewDetail,
+): void {
+  if (backend.setSettledView) backend.setSettledView(detail, transform);
+  else backend.setViewDetail(detail);
+}
+
 function applySettledViewDetail(generation: number): void {
   setCameraInMotion(false);
   const backend = activeBackend;
   if (!backend) return;
   const detail = viewDetailForScale(transform.scale);
-  backend.setViewDetail(detail);
+  applyBackendSettledView(backend, detail);
   void admitSettledAvatarImages(backend, detail, generation);
   markGalaxyDirty();
 }
@@ -533,8 +556,8 @@ async function activateBackend(
     simulateLossButton.disabled = typeof backend.simulateDeviceLoss !== "function";
     resizeActiveBackend();
     const detail = viewDetailForScale(transform.scale);
-    backend.setViewDetail(detail);
     backend.setInteraction(interaction);
+    applyBackendSettledView(backend, detail);
     backend.applyActivityPatches?.(activityProbeScenePatch);
     const avatarGeneration = ++avatarAdmissionGeneration;
     void admitSettledAvatarImages(backend, detail, avatarGeneration);
@@ -779,9 +802,7 @@ function updateInteraction(next: GalaxyLabInteraction): void {
   const selectionChanged = next.selectedNodeId !== interaction.selectedNodeId;
   interaction = next;
   activeBackend?.setInteraction(interaction);
-  if (selectionChanged && viewDetailForScale(transform.scale) === "close") {
-    scheduleSettledViewDetail(true);
-  }
+  if (selectionChanged) scheduleSettledViewDetail(true);
   markGalaxyDirty();
 }
 
