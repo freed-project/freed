@@ -16,6 +16,8 @@ export interface GalaxyLabFixtureWorkerRequest {
 export interface GalaxyLabFixtureWorkerReceipt {
   semanticNodeCount: number;
   metadataNodeCount: number;
+  activitySummaryCount: number;
+  representedActivityItemCount: number;
   transferableBufferCount: number;
 }
 
@@ -115,8 +117,10 @@ export function validateGalaxyLabFixtureEnvelope(
     ["account count", fixture.accountCount],
     ["linked account count", fixture.linkedAccountCount],
     ["background star count", backgroundCount],
+    ["activity summary count", fixture.activitySummaryCount],
+    ["represented activity item count", fixture.representedActivityItemCount],
   ] as const) {
-    if (!Number.isInteger(value) || value < 0) {
+    if (!Number.isSafeInteger(value) || value < 0) {
       throw new Error(`Friends Galaxy worker returned an invalid ${label}.`);
     }
   }
@@ -267,6 +271,14 @@ export function validateGalaxyLabFixtureEnvelope(
   if (fixture.linkedAccountCount > fixture.accountCount) {
     throw new Error("Friends Galaxy worker returned too many linked accounts.");
   }
+  if (fixture.activitySummaryCount > fixture.accountCount) {
+    throw new Error("Friends Galaxy worker returned too many activity summaries.");
+  }
+  if (fixture.representedActivityItemCount < fixture.activitySummaryCount) {
+    throw new Error(
+      "Friends Galaxy worker returned fewer represented items than activity summaries.",
+    );
+  }
   if (fixture.atlas.nodes.length > GALAXY_LAB_METADATA_NODE_CAP) {
     throw new Error("Friends Galaxy worker exceeded the rich metadata admission cap.");
   }
@@ -279,6 +291,8 @@ export function validateGalaxyLabFixtureEnvelope(
   if (
     receipt.semanticNodeCount !== nodeCount ||
     receipt.metadataNodeCount !== fixture.atlas.nodes.length ||
+    receipt.activitySummaryCount !== fixture.activitySummaryCount ||
+    receipt.representedActivityItemCount !== fixture.representedActivityItemCount ||
     receipt.transferableBufferCount !== transferableBufferCount
   ) {
     throw new Error("Friends Galaxy worker receipt does not match its transferred fixture.");
@@ -364,6 +378,8 @@ export function galaxyLabFixtureWorkerReceipt(
   return {
     semanticNodeCount: fixture.scene.nodeIds.length,
     metadataNodeCount: fixture.atlas.nodes.length,
+    activitySummaryCount: fixture.activitySummaryCount,
+    representedActivityItemCount: fixture.representedActivityItemCount,
     transferableBufferCount,
   };
 }

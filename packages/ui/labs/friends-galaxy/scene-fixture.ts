@@ -47,6 +47,8 @@ export interface GalaxyLabFixtureOptions {
   personCount: number;
   accountCount: number;
   backgroundStarCount: number;
+  activitySummaryCount?: number;
+  representedActivityItemCount?: number;
 }
 
 export interface GalaxyLabFixture {
@@ -60,6 +62,8 @@ export interface GalaxyLabFixture {
   accountCount: number;
   linkedAccountCount: number;
   backgroundStarCount: number;
+  activitySummaryCount: number;
+  representedActivityItemCount: number;
   buildMs: number;
 }
 
@@ -219,6 +223,18 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
 }
 
+function representedItemsForSummary(
+  summaryIndex: number,
+  summaryCount: number,
+  representedItemCount: number,
+): number {
+  if (summaryIndex < 0 || summaryIndex >= summaryCount || summaryCount === 0) {
+    return 0;
+  }
+  const baseItemCount = Math.floor(representedItemCount / summaryCount);
+  return baseItemCount + (summaryIndex < representedItemCount % summaryCount ? 1 : 0);
+}
+
 function hashValue(value: string): number {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {
@@ -313,11 +329,21 @@ export function createGalaxyLabFixture({
   personCount,
   accountCount,
   backgroundStarCount,
+  activitySummaryCount = accountCount,
+  representedActivityItemCount = activitySummaryCount * 10,
 }: GalaxyLabFixtureOptions): GalaxyLabFixture {
   const startedAt = nowMs();
   const safePersonCount = Math.max(1, Math.floor(personCount));
   const safeAccountCount = Math.max(0, Math.floor(accountCount));
   const safeBackgroundCount = Math.max(0, Math.floor(backgroundStarCount));
+  const safeActivitySummaryCount = Math.min(
+    safeAccountCount,
+    Math.max(0, Math.floor(activitySummaryCount)),
+  );
+  const safeRepresentedActivityItemCount = Math.max(
+    safeActivitySummaryCount,
+    Math.floor(representedActivityItemCount),
+  );
   const semanticCount = safePersonCount + safeAccountCount;
   const linkedAccountCount = Math.min(safeAccountCount, safePersonCount * 4);
   const unlinkedAccountCount = safeAccountCount - linkedAccountCount;
@@ -429,7 +455,15 @@ export function createGalaxyLabFixture({
       y = point.y;
       z = -150 + providerIndex * 10 + (seededUnit(`${id}:z`) - 0.5) * 36;
     }
-    const activity = seededUnit(`${id}:activity`);
+    const activityItemCount = representedItemsForSummary(
+      accountIndex,
+      safeActivitySummaryCount,
+      safeRepresentedActivityItemCount,
+    );
+    const countSignal = activityItemCount / (activityItemCount + 18);
+    const activity = activityItemCount > 0
+      ? clamp(0.32 + countSignal * 0.28 + seededUnit(`${id}:activity`) * 0.4, 0, 1)
+      : seededUnit(`${id}:activity`) * 0.14;
     const nodeProminence = linked ? 0.2 + activity * 0.05 : 0.1 + activity * 0.04;
     const pointSize = linked ? 11 + activity * 4 : 8 + activity * 3;
     nodeIds[sceneIndex] = `account:${id}`;
@@ -461,7 +495,7 @@ export function createGalaxyLabFixture({
       accountId: id,
       provider,
       linkedPersonId,
-      activityCount: Math.floor(activity * 180),
+      activityCount: activityItemCount,
     };
   }
 
@@ -565,6 +599,8 @@ export function createGalaxyLabFixture({
     accountCount: safeAccountCount,
     linkedAccountCount,
     backgroundStarCount: safeBackgroundCount,
+    activitySummaryCount: safeActivitySummaryCount,
+    representedActivityItemCount: safeRepresentedActivityItemCount,
     buildMs,
   };
 }

@@ -85,9 +85,65 @@ describe("Friends Galaxy fixture worker protocol", () => {
     expect(receipt).toEqual({
       semanticNodeCount: 60,
       metadataNodeCount: fixture.atlas.nodes.length,
+      activitySummaryCount: 48,
+      representedActivityItemCount: 480,
       transferableBufferCount: 21,
     });
     expect(() => validateGalaxyLabFixtureEnvelope(fixture, receipt)).not.toThrow();
+  });
+
+  it("keeps worker payload shape tied to summary count instead of represented item volume", () => {
+    const options = {
+      personCount: 100,
+      accountCount: 500,
+      backgroundStarCount: 1_000,
+      activitySummaryCount: 500,
+    };
+    const baseline = compactGalaxyLabFixtureMetadata(
+      createGalaxyLabFixture({
+        ...options,
+        representedActivityItemCount: 500,
+      }),
+    );
+    const tenX = compactGalaxyLabFixtureMetadata(
+      createGalaxyLabFixture({
+        ...options,
+        representedActivityItemCount: 5_000,
+      }),
+    );
+    const baselineTransferables = galaxyLabFixtureTransferables(baseline);
+    const tenXTransferables = galaxyLabFixtureTransferables(tenX);
+    const baselineReceipt = galaxyLabFixtureWorkerReceipt(
+      baseline,
+      baselineTransferables.length,
+    );
+    const tenXReceipt = galaxyLabFixtureWorkerReceipt(
+      tenX,
+      tenXTransferables.length,
+    );
+
+    expect(tenXTransferables.map((buffer) => buffer.byteLength)).toEqual(
+      baselineTransferables.map((buffer) => buffer.byteLength),
+    );
+    expect(Array.from(tenX.scene.positions)).toEqual(
+      Array.from(baseline.scene.positions),
+    );
+    expect(Array.from(tenX.scene.brightness)).not.toEqual(
+      Array.from(baseline.scene.brightness),
+    );
+    expect(tenXReceipt).toMatchObject({
+      semanticNodeCount: 600,
+      activitySummaryCount: 500,
+      representedActivityItemCount: 5_000,
+      transferableBufferCount: 21,
+    });
+    expect(baselineReceipt).toMatchObject({
+      activitySummaryCount: 500,
+      representedActivityItemCount: 500,
+      transferableBufferCount: 21,
+    });
+    expect("items" in tenX).toBe(false);
+    expect(() => validateGalaxyLabFixtureEnvelope(tenX, tenXReceipt)).not.toThrow();
   });
 
   it("rejects malformed resident buffers before renderer admission", () => {
@@ -139,6 +195,12 @@ describe("Friends Galaxy fixture worker protocol", () => {
       metadataNodeCount: receipt.metadataNodeCount + 1,
     })).toThrow(
       "Friends Galaxy worker receipt does not match its transferred fixture.",
+    );
+    expect(() => validateGalaxyLabFixtureEnvelope({
+      ...fixture,
+      representedActivityItemCount: fixture.activitySummaryCount - 1,
+    }, receipt)).toThrow(
+      "Friends Galaxy worker returned fewer represented items than activity summaries.",
     );
   });
 });

@@ -11,6 +11,8 @@ describe("Friends Galaxy renderer lab fixture", () => {
       personCount: 5_000,
       accountCount: 25_000,
       backgroundStarCount: 100_000,
+      activitySummaryCount: 25_000,
+      representedActivityItemCount: 250_000,
     });
 
     expect(fixture.scene.nodeIds).toHaveLength(30_000);
@@ -19,6 +21,9 @@ describe("Friends Galaxy renderer lab fixture", () => {
     expect(fixture.backgroundBrightness).toHaveLength(100_000);
     expect(fixture.linkedAccountCount).toBe(20_000);
     expect(fixture.scene.edgeIndices).toHaveLength(40_000);
+    expect(fixture.activitySummaryCount).toBe(25_000);
+    expect(fixture.representedActivityItemCount).toBe(250_000);
+    expect(fixture.atlas.nodes[fixture.personCount + 42]?.activityCount).toBe(10);
 
     const motionCount = galaxyLabMotionBackgroundStarCount(fixture.backgroundStarCount);
     const fullQuadrants = [0, 0, 0, 0];

@@ -59,6 +59,8 @@ import { GalaxyLabSettleScheduler } from "./settle-scheduler.js";
 const DEFAULT_PERSON_COUNT = 5_000;
 const DEFAULT_ACCOUNT_COUNT = 25_000;
 const DEFAULT_BACKGROUND_COUNT = 100_000;
+const DEFAULT_ACTIVITY_SUMMARY_COUNT = 25_000;
+const DEFAULT_REPRESENTED_ACTIVITY_ITEM_COUNT = 250_000;
 const PROGRAMMATIC_FOCUS_SCALE = 0.92;
 const numberFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
 const integerFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
@@ -114,6 +116,8 @@ const fixtureLoad = await loadGalaxyLabFixture(fixtureWorker, {
   personCount: DEFAULT_PERSON_COUNT,
   accountCount: DEFAULT_ACCOUNT_COUNT,
   backgroundStarCount: DEFAULT_BACKGROUND_COUNT,
+  activitySummaryCount: DEFAULT_ACTIVITY_SUMMARY_COUNT,
+  representedActivityItemCount: DEFAULT_REPRESENTED_ACTIVITY_ITEM_COUNT,
 }).catch((error: unknown) => {
   viewport.dataset.fixtureWorker = "error";
   simulateLossButton.disabled = true;
@@ -128,6 +132,10 @@ const { fixture, receipt: fixtureWorkerReceipt } = fixtureLoad;
 viewport.dataset.fixtureWorker = "ready";
 viewport.dataset.fixtureMetadataNodeCount = String(fixtureWorkerReceipt.metadataNodeCount);
 viewport.dataset.fixtureTransferCount = String(fixtureWorkerReceipt.transferableBufferCount);
+viewport.dataset.activitySummaryCount = String(fixtureWorkerReceipt.activitySummaryCount);
+viewport.dataset.representedActivityItemCount = String(
+  fixtureWorkerReceipt.representedActivityItemCount,
+);
 
 function activitySourceForNode(nodeIndex: number): GalaxyActivitySourceKey | null {
   const provider = fixture.scene.providers[nodeIndex];
@@ -756,6 +764,14 @@ function updateMetrics(): void {
   addMetric("API", metrics.api);
   addMetric("Semantic stars", integerFormat.format(metrics.semanticStarCount));
   addMetric("Background stars", integerFormat.format(metrics.decorativeStarCount));
+  addMetric(
+    "Activity summaries",
+    integerFormat.format(fixtureWorkerReceipt.activitySummaryCount),
+  );
+  addMetric(
+    "Represented items",
+    integerFormat.format(fixtureWorkerReceipt.representedActivityItemCount),
+  );
   if (metrics.motionDecorativeStarCount !== undefined) {
     addMetric("Motion background stars", integerFormat.format(metrics.motionDecorativeStarCount));
   }
