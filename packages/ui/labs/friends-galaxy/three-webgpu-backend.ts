@@ -21,6 +21,7 @@ import type {
   GalaxyLabViewDetail,
 } from "./backend.js";
 import { hexToRgb } from "./backend.js";
+import { GalaxyLabBackendHealth } from "./backend-health.js";
 import { createGalaxyLabAvatarAtlas } from "./avatar-atlas.js";
 import {
   createGalaxyLabLabelAtlas,
@@ -188,6 +189,7 @@ function makeBillboardBatch(
 export class ThreeWebGpuBackend implements GalaxyLabBackend {
   readonly id = "three-webgpu" as const;
   private renderer: THREE.WebGPURenderer | null = null;
+  private device: GPUDevice | null = null;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(42, 1, 1, 20_000);
   private readonly viewProjection = new THREE.Matrix4();
@@ -219,16 +221,30 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
   private viewDetail: GalaxyLabViewDetail = "overview";
   private bufferUploadCount = 0;
   private adapterDescription: string | null = null;
+  private fallbackReason: string | null = null;
+  private readonly backendHealth = new GalaxyLabBackendHealth();
+  private disposed = false;
 
   async initialize(
     canvas: HTMLCanvasElement,
     fixture: GalaxyLabFixture,
     palette: GalaxyLabPalette,
   ): Promise<void> {
+    this.disposed = false;
+    this.backendHealth.clear();
+    this.fallbackReason = null;
     if (!navigator.gpu) throw new Error("WebGPU is unavailable in this browser.");
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
     if (!adapter) throw new Error("No WebGPU adapter was available.");
     const device = await adapter.requestDevice();
+    this.device = device;
+    void device.lost.then((info) => {
+      if (this.disposed || this.device !== device) return;
+      const detail = info.message.trim();
+      const reason = `Three.js WebGPU device lost (${info.reason})${detail ? `: ${detail}` : "."}`;
+      this.fallbackReason = reason;
+      this.backendHealth.reportFatalError(reason);
+    });
     this.adapterDescription = adapterLabel(adapter);
     this.fixture = fixture;
     this.sceneIndex = new GalaxyLabSceneIndex(fixture);
@@ -381,6 +397,14 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.drawCalls = this.renderer.info.render.drawCalls;
   }
 
+  takeFatalError(): string | null {
+    return this.backendHealth.takeFatalError();
+  }
+
+  simulateDeviceLoss(): void {
+    this.device?.destroy();
+  }
+
   metrics(): GalaxyLabBackendMetrics {
     return {
       id: this.id,
@@ -393,12 +417,14 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       avatarCount: this.avatarBatch?.atlas.itemCount ?? 0,
       contextualEdgeCount: this.contextualEdgeCount,
       bufferUploadCount: this.bufferUploadCount,
-      fallbackReason: null,
+      fallbackReason: this.fallbackReason,
       adapterDescription: this.adapterDescription,
     };
   }
 
   dispose(): void {
+    this.disposed = true;
+    this.backendHealth.clear();
     if (this.semanticBatch) {
       this.scene.remove(this.semanticBatch.sprite);
       this.semanticBatch.material.dispose();
@@ -425,7 +451,9 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.edgeGeometry?.dispose();
     this.edgeMaterial?.dispose();
     this.renderer?.dispose();
+    this.device?.destroy();
     this.renderer = null;
+    this.device = null;
     this.fixture = null;
     this.sceneIndex = null;
     this.semanticBatch = null;

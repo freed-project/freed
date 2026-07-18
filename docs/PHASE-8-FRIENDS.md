@@ -392,6 +392,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.68 | Prove the selected raw WebGPU backend, procedural six-field nebula batch, provider-specific arm geometry, compact allocation-free gesture path, tracked GPU payload diagnostics, and equal 30,000 plus 100,000 star workload in the detached renderer laboratory | High | Done |
 | 8.69 | Prove source-key activity summaries become proportional typed scene patches and sparse raw WebGPU instance writes without positions or item payloads | High | Done |
 | 8.70 | Prove bounded settled avatar image decode, failure caching, stale-completion rejection, compact admission caps, and bitmap disposal in the detached WebGPU laboratory | High | Done |
+| 8.71 | Prove runtime WebGPU device-loss reporting and one-shot recovery into the current WebGL2 engine while preserving theme, camera, scene, and interaction state | High | Done |
 
 ---
 
@@ -471,6 +472,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] The next-generation Friends Galaxy keeps all semantic stars GPU-resident and applies detail limits only to labels, avatars, edges, picking, and expensive effects
 - [x] Activity-only updates encode deterministic size and brightness scales and rewrite only the affected raw WebGPU semantic instances while preserving theme and interaction overlays
 - [x] Settled close-detail avatar decoding is concurrency-limited, revision-cached, compact-capped, stale-safe, and paired with deterministic bitmap cleanup
+- [x] Raw and Three.js WebGPU device loss recovers once into WebGL2 without discarding the active theme, camera transform, semantic scene, or interaction state
 - [x] A locked perspective camera produces bounded prominence parallax while preserving intuitive plane navigation
 - [x] Semantic stars and settled relationship spokes render through two instanced WebGL2 passes with no per-node or per-edge scene objects
 - [x] Projected picking accounts for the active camera, node depth, and capped interaction candidates

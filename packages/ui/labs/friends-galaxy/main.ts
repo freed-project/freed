@@ -62,6 +62,7 @@ const backendSelect = requiredElement<HTMLSelectElement>("backend");
 const themeSelect = requiredElement<HTMLSelectElement>("theme");
 const fieldStyleSelect = requiredElement<HTMLSelectElement>("field-style");
 const fitButton = requiredElement<HTMLButtonElement>("fit");
+const simulateLossButton = requiredElement<HTMLButtonElement>("simulate-loss");
 const animateControl = requiredElement<HTMLInputElement>("animate");
 const statusElement = requiredElement<HTMLElement>("status");
 const metricsElement = requiredElement<HTMLElement>("metrics");
@@ -129,6 +130,8 @@ let activeCanvas: HTMLCanvasElement | null = null;
 let activeTheme = themeSelect.value as GalaxyLabThemeId;
 let activeFieldStyle = fieldStyleSelect.value as GalaxyLabFieldStyle;
 let switchGeneration = 0;
+let backendRecoveryPending = false;
+let lastRecoveryReason: string | null = null;
 let frameRequest = 0;
 let lastFrameAt = 0;
 let lastMetricsAt = 0;
@@ -376,6 +379,7 @@ async function activateBackend(
 ): Promise<void> {
   const generation = ++switchGeneration;
   avatarAdmissionGeneration += 1;
+  simulateLossButton.disabled = true;
   setStatus(`Loading ${backendSelect.selectedOptions[0]?.textContent ?? id}`);
   activeBackend?.dispose();
   activeBackend = null;
@@ -396,6 +400,7 @@ async function activateBackend(
     activeBackend = backend;
     backend.setFieldStyle?.(activeFieldStyle);
     fieldStyleSelect.disabled = typeof backend.setFieldStyle !== "function";
+    simulateLossButton.disabled = typeof backend.simulateDeviceLoss !== "function";
     const { width, height } = viewportSize();
     backend.resize(width, height, window.devicePixelRatio || 1);
     const detail = viewDetailForScale(transform.scale);
@@ -408,6 +413,7 @@ async function activateBackend(
     dirty = true;
     const metrics = backend.metrics();
     const fallback = inheritedFallbackReason ?? metrics.fallbackReason;
+    lastRecoveryReason = fallback;
     setStatus(
       fallback
         ? `${metrics.label} ready. Fallback reason: ${fallback}`
@@ -487,7 +493,7 @@ function updateMetrics(): void {
   addMetric("CPU submit", formatFrameStats(frameStats(submitSamples)));
   addMetric("Buffer uploads", integerFormat.format(metrics.bufferUploadCount));
   if (metrics.trackedGpuDataBytes !== undefined) {
-  addMetric("Tracked GPU data", formatByteCount(metrics.trackedGpuDataBytes));
+    addMetric("Tracked GPU data", formatByteCount(metrics.trackedGpuDataBytes));
   }
   addMetric("Activity patch keys", integerFormat.format(activityProbeSummaryPatch.patches.length));
   addMetric("Activity patch nodes", integerFormat.format(activityProbeScenePatch.nodeIndices.length));
@@ -495,6 +501,7 @@ function updateMetrics(): void {
   if (metrics.appliedActivityNodeCount !== undefined) {
     addMetric("GPU activity nodes", integerFormat.format(metrics.appliedActivityNodeCount));
   }
+  if (lastRecoveryReason) addMetric("Recovery reason", lastRecoveryReason);
   addMetric("Camera scale", scaleFormat.format(transform.scale));
   addMetric("Settled detail", viewDetailForScale(transform.scale));
   if (metrics.adapterDescription) addMetric("Adapter", metrics.adapterDescription);
@@ -504,7 +511,29 @@ function trimSamples(samples: number[]): void {
   if (samples.length > 240) samples.splice(0, samples.length - 240);
 }
 
+function scheduleBackendRecovery(backend: GalaxyLabBackend, reason: string): void {
+  if (backend !== activeBackend || backendRecoveryPending) return;
+  const normalizedReason = reason.trim() || `${backend.metrics().label} stopped responding.`;
+  if (backend.id === "current-webgl2") {
+    backendRecoveryPending = true;
+    animateControl.checked = false;
+    setStatus(`Compatibility renderer failed: ${normalizedReason}`, true);
+    simulateLossButton.disabled = true;
+    return;
+  }
+  backendRecoveryPending = true;
+  lastRecoveryReason = normalizedReason;
+  backendSelect.value = "current-webgl2";
+  setStatus(`Recovering with WebGL2. ${normalizedReason}`, true);
+  void activateBackend("current-webgl2", normalizedReason).finally(() => {
+    backendRecoveryPending = false;
+  });
+}
+
 function renderFrame(timeMs: number): void {
+  const healthBackend = activeBackend;
+  const fatalError = healthBackend?.takeFatalError?.() ?? null;
+  if (healthBackend && fatalError) scheduleBackendRecovery(healthBackend, fatalError);
   const shouldRender = Boolean(activeBackend && (animateControl.checked || dirty));
   if (shouldRender && activeBackend) {
     if (lastFrameAt > 0 && animateControl.checked) {
@@ -513,9 +542,15 @@ function renderFrame(timeMs: number): void {
     }
     lastFrameAt = timeMs;
     const submitStartedAt = performance.now();
-    activeBackend.render(transform, timeMs);
-    submitSamples.push(performance.now() - submitStartedAt);
-    trimSamples(submitSamples);
+    const renderingBackend = activeBackend;
+    try {
+      renderingBackend.render(transform, timeMs);
+      submitSamples.push(performance.now() - submitStartedAt);
+      trimSamples(submitSamples);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      scheduleBackendRecovery(renderingBackend, reason);
+    }
     dirty = false;
   } else {
     lastFrameAt = 0;
@@ -790,7 +825,16 @@ viewport.addEventListener("keydown", (event) => {
 });
 fitButton.addEventListener("click", () => fitGalaxy());
 
+simulateLossButton.addEventListener("click", () => {
+  const backend = activeBackend;
+  if (!backend?.simulateDeviceLoss) return;
+  simulateLossButton.disabled = true;
+  setStatus(`Testing recovery from ${backend.metrics().label}`);
+  backend.simulateDeviceLoss();
+});
+
 backendSelect.addEventListener("change", () => {
+  backendRecoveryPending = false;
   void activateBackend(backendSelect.value as GalaxyLabBackendId);
 });
 
@@ -866,6 +910,7 @@ Object.assign(window, {
         failedSourceCount: avatarAdmissionResult.failedSourceCount,
         cachedSourceCount: avatarAdmissionResult.cachedSourceCount,
       },
+      recoveryReason: lastRecoveryReason,
       frame: frameStats(frameSamples),
       submit: frameStats(submitSamples),
     }),

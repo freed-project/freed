@@ -7,6 +7,7 @@ import type {
 } from "./backend.js";
 import { hexToRgb } from "./backend.js";
 import type { GalaxyActivityScenePatchBatch } from "./activity-scene-patches.js";
+import { GalaxyLabBackendHealth } from "./backend-health.js";
 import {
   createGalaxyLabAvatarAtlas,
   type GalaxyLabAvatarAtlas,
@@ -433,12 +434,17 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private bufferUploadCount = 0;
   private fallbackReason: string | null = null;
   private adapterDescription: string | null = null;
+  private readonly backendHealth = new GalaxyLabBackendHealth();
+  private disposed = false;
 
   async initialize(
     canvas: HTMLCanvasElement,
     fixture: GalaxyLabFixture,
     palette: GalaxyLabPalette,
   ): Promise<void> {
+    this.disposed = false;
+    this.backendHealth.clear();
+    this.fallbackReason = null;
     if (!navigator.gpu) throw new Error("WebGPU is unavailable in this browser.");
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
     if (!adapter) throw new Error("No WebGPU adapter was available.");
@@ -682,7 +688,11 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.rebuildLabels(canvas.clientWidth < 720);
     this.rebuildAvatars(canvas.clientWidth < 720);
     void device.lost.then((info) => {
-      this.fallbackReason = `WebGPU device lost: ${info.reason}. ${info.message}`.trim();
+      if (this.disposed || this.device !== device) return;
+      const detail = info.message.trim();
+      const reason = `Raw WebGPU device lost (${info.reason})${detail ? `: ${detail}` : "."}`;
+      this.fallbackReason = reason;
+      this.backendHealth.reportFatalError(reason);
     });
   }
 
@@ -857,6 +867,14 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.device.queue.submit(this.commandBuffers);
   }
 
+  takeFatalError(): string | null {
+    return this.backendHealth.takeFatalError();
+  }
+
+  simulateDeviceLoss(): void {
+    this.device?.destroy();
+  }
+
   metrics(): GalaxyLabBackendMetrics {
     return {
       id: this.id,
@@ -881,6 +899,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   }
 
   dispose(): void {
+    this.disposed = true;
+    this.backendHealth.clear();
     this.quadBuffer?.destroy();
     this.semanticBuffer?.destroy();
     this.backgroundBuffer?.destroy();

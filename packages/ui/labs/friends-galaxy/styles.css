@@ -186,6 +186,16 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.wide-button {
+  width: 100%;
+  margin-top: 8px;
+}
+
 button:focus-visible,
 select:focus-visible,
 input:focus-visible {

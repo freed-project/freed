@@ -44,6 +44,8 @@ export interface GalaxyLabBackend {
   pickNode(viewportX: number, viewportY: number): string | null;
   setInteraction(interaction: GalaxyLabInteraction): void;
   render(transform: GalaxyLabTransform, timeMs: number): void;
+  takeFatalError?(): string | null;
+  simulateDeviceLoss?(): void;
   metrics(): GalaxyLabBackendMetrics;
   dispose(): void;
 }
