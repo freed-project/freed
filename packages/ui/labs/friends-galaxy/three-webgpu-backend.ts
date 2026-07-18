@@ -417,6 +417,8 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       avatarCount: this.avatarBatch?.atlas.itemCount ?? 0,
       contextualEdgeCount: this.contextualEdgeCount,
       bufferUploadCount: this.bufferUploadCount,
+      pickCandidateCount: this.sceneIndex?.lastPickCandidateCount,
+      pickSourceNodeCount: this.sceneIndex?.pickSourceNodeCount,
       fallbackReason: this.fallbackReason,
       adapterDescription: this.adapterDescription,
     };

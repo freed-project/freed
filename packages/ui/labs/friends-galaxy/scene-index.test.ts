@@ -10,6 +10,71 @@ import { createGalaxyLabFixture } from "./scene-fixture.js";
 import { compactGalaxyLabFixtureMetadata } from "./scene-fixture-worker-protocol.js";
 import { GalaxyLabSceneIndex } from "./scene-index.js";
 
+const stressFixture = compactGalaxyLabFixtureMetadata(createGalaxyLabFixture({
+  personCount: 5_000,
+  accountCount: 25_000,
+  backgroundStarCount: 0,
+}));
+
+function pickNodeExhaustively(
+  fixture: ReturnType<typeof createGalaxyLabFixture>,
+  viewProjection: ArrayLike<number>,
+  viewportWidth: number,
+  viewportHeight: number,
+  viewportX: number,
+  viewportY: number,
+): string | null {
+  let bestIndex = -1;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < fixture.scene.nodeIds.length; index += 1) {
+    const offset = index * 3;
+    const x = fixture.scene.positions[offset]!;
+    const y = fixture.scene.positions[offset + 1]!;
+    const z = fixture.scene.positions[offset + 2]!;
+    const clipX = viewProjection[0]! * x + viewProjection[4]! * y +
+      viewProjection[8]! * z + viewProjection[12]!;
+    const clipY = viewProjection[1]! * x + viewProjection[5]! * y +
+      viewProjection[9]! * z + viewProjection[13]!;
+    const clipZ = viewProjection[2]! * x + viewProjection[6]! * y +
+      viewProjection[10]! * z + viewProjection[14]!;
+    const clipW = viewProjection[3]! * x + viewProjection[7]! * y +
+      viewProjection[11]! * z + viewProjection[15]!;
+    if (clipW <= 0 || clipZ < -clipW || clipZ > clipW) continue;
+    const screenX = (clipX / clipW + 1) * viewportWidth * 0.5;
+    const screenY = (1 - clipY / clipW) * viewportHeight * 0.5;
+    const dx = screenX - viewportX;
+    const dy = screenY - viewportY;
+    const radius = Math.max(9, fixture.scene.pointSizes[index]! * 0.24);
+    const normalizedDistance = (dx * dx + dy * dy) / (radius * radius);
+    if (normalizedDistance > 1) continue;
+    const score = normalizedDistance - fixture.scene.prominence[index]! * 0.26;
+    if (score < bestScore) {
+      bestIndex = index;
+      bestScore = score;
+    }
+  }
+  return bestIndex < 0 ? null : fixture.scene.nodeIds[bestIndex] ?? null;
+}
+
+function viewProjectionFor(
+  transform: { x: number; y: number; scale: number },
+  width = 800,
+  height = 600,
+): { camera: PerspectiveCamera; matrix: Matrix4 } {
+  const camera = new PerspectiveCamera(42, width / height, 1, 20_000);
+  const pose = identityGalaxyCameraPose(transform, width, height, camera.fov);
+  camera.position.set(pose.x, pose.y, pose.z);
+  camera.lookAt(pose.targetX, pose.targetY, pose.targetZ);
+  camera.updateMatrixWorld();
+  return {
+    camera,
+    matrix: new Matrix4().multiplyMatrices(
+      camera.projectionMatrix,
+      camera.matrixWorldInverse,
+    ),
+  };
+}
+
 describe("Friends Galaxy renderer lab scene index", () => {
   it("returns only the selected identity constellation", () => {
     const fixture = createGalaxyLabFixture({
@@ -75,15 +140,11 @@ describe("Friends Galaxy renderer lab scene index", () => {
       backgroundStarCount: 0,
     });
     const index = new GalaxyLabSceneIndex(fixture);
-    const camera = new PerspectiveCamera(42, 800 / 600, 1, 20_000);
-    const pose = identityGalaxyCameraPose({ x: 400, y: 300, scale: 0.2 }, 800, 600, camera.fov);
-    camera.position.set(pose.x, pose.y, pose.z);
-    camera.lookAt(pose.targetX, pose.targetY, pose.targetZ);
-    camera.updateMatrixWorld();
-    const viewProjection = new Matrix4().multiplyMatrices(
-      camera.projectionMatrix,
-      camera.matrixWorldInverse,
-    );
+    const { camera, matrix: viewProjection } = viewProjectionFor({
+      x: 400,
+      y: 300,
+      scale: 0.2,
+    });
     const projected = new Vector3(
       fixture.scene.positions[0]!,
       fixture.scene.positions[1]!,
@@ -95,16 +156,60 @@ describe("Friends Galaxy renderer lab scene index", () => {
     expect(index.pickNode(viewProjection.elements, 800, 600, screenX, screenY)).toBe(
       "person:lab-person-0",
     );
+    expect(index.lastPickCandidateCount).toBeLessThan(index.pickSourceNodeCount);
     expect(index.pickNode(viewProjection.elements, 800, 600, -100, -100)).toBeNull();
+  });
+
+  it("matches exhaustive picking across representative cameras and screen points", () => {
+    const fixture = createGalaxyLabFixture({
+      personCount: 40,
+      accountCount: 160,
+      backgroundStarCount: 0,
+    });
+    const index = new GalaxyLabSceneIndex(fixture);
+    const transforms = [
+      { x: 400, y: 300, scale: 0.2 },
+      { x: 120, y: -80, scale: 0.72 },
+      { x: -1_400, y: 900, scale: 1.8 },
+    ];
+    const points = Array.from({ length: 80 }, (_, pointIndex) => ({
+      x: 40 + pointIndex % 10 * 80,
+      y: 30 + Math.floor(pointIndex / 10) * 75,
+    }));
+
+    for (const transform of transforms) {
+      const { matrix } = viewProjectionFor(transform);
+      for (const point of points) {
+        expect(index.pickNode(matrix.elements, 800, 600, point.x, point.y)).toBe(
+          pickNodeExhaustively(fixture, matrix.elements, 800, 600, point.x, point.y),
+        );
+      }
+    }
+  });
+
+  it("keeps stress-fixture projection bounded by spatial candidates", () => {
+    const index = new GalaxyLabSceneIndex(stressFixture);
+    const { camera, matrix } = viewProjectionFor({ x: 400, y: 300, scale: 0.2 });
+    const projected = new Vector3(
+      stressFixture.scene.positions[0]!,
+      stressFixture.scene.positions[1]!,
+      stressFixture.scene.positions[2]!,
+    ).project(camera);
+
+    expect(index.pickNode(
+      matrix.elements,
+      800,
+      600,
+      (projected.x + 1) * 400,
+      (1 - projected.y) * 300,
+    )).not.toBeNull();
+    expect(index.lastPickCandidateCount).toBeLessThan(2_000);
+    expect(index.lastPickCandidateCount).toBeLessThan(index.pickSourceNodeCount);
   });
 });
 
 describe("Friends Galaxy billboard label selection", () => {
-  const fixture = compactGalaxyLabFixtureMetadata(createGalaxyLabFixture({
-    personCount: 5_000,
-    accountCount: 25_000,
-    backgroundStarCount: 0,
-  }));
+  const fixture = stressFixture;
 
   it("keeps a stable viewport-bounded label workload", () => {
     const cases = [

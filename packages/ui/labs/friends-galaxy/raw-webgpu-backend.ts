@@ -865,6 +865,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       bufferUploadCount: this.bufferUploadCount,
       residentStarUploadCount: this.residentStarUploadCount,
       appliedActivityNodeCount: this.appliedActivityNodeCount,
+      pickCandidateCount: this.sceneIndex?.lastPickCandidateCount,
+      pickSourceNodeCount: this.sceneIndex?.pickSourceNodeCount,
       trackedGpuDataBytes: this.trackedGpuDataBytes(),
       submissionMode: "Pre-recorded world bundle",
       fallbackReason: this.fallbackReason,

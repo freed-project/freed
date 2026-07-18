@@ -517,6 +517,15 @@ function updateMetrics(): void {
   if (metrics.residentStarUploadCount !== undefined) {
     addMetric("Resident star uploads", integerFormat.format(metrics.residentStarUploadCount));
   }
+  if (
+    metrics.pickCandidateCount !== undefined &&
+    metrics.pickSourceNodeCount !== undefined
+  ) {
+    addMetric(
+      "Pick candidates",
+      `${integerFormat.format(metrics.pickCandidateCount)} / ${integerFormat.format(metrics.pickSourceNodeCount)}`,
+    );
+  }
   if (metrics.trackedGpuDataBytes !== undefined) {
     addMetric("Tracked GPU data", formatByteCount(metrics.trackedGpuDataBytes));
   }

@@ -18,6 +18,8 @@ export interface GalaxyLabBackendMetrics {
   bufferUploadCount: number;
   residentStarUploadCount?: number;
   appliedActivityNodeCount?: number;
+  pickCandidateCount?: number;
+  pickSourceNodeCount?: number;
   trackedGpuDataBytes?: number;
   submissionMode?: string;
   fallbackReason: string | null;

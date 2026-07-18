@@ -1,11 +1,21 @@
 import type { IdentityGalaxyScene } from "../../src/lib/identity-galaxy-scene.js";
 
 const EMPTY_NODE_INDEX_SLOT = 0;
+const EMPTY_PICK_CELL_SLOT = 0;
+export const GALAXY_LAB_PICK_CELL_SIZE = 192;
 
 export interface GalaxyLabSceneInteractionIndex {
   nodeIndexSlots: Uint32Array;
   neighborOffsets: Uint32Array;
   neighborIndices: Uint32Array;
+  pickCellSlots: Uint32Array;
+  pickCellCoordinates: Int32Array;
+  pickCellOffsets: Uint32Array;
+  pickNodeIndices: Uint32Array;
+  pickCellSize: number;
+  pickMinZ: number;
+  pickMaxZ: number;
+  pickMaxScreenRadius: number;
 }
 
 function nextPowerOfTwo(value: number): number {
@@ -18,6 +28,12 @@ export function galaxyLabNodeIdHash(nodeId: string): number {
     hash ^= nodeId.charCodeAt(index);
     hash = Math.imul(hash, 16_777_619);
   }
+  return hash >>> 0;
+}
+
+function galaxyLabPickCellHash(column: number, row: number): number {
+  let hash = Math.imul(column, 0x9e3779b1) ^ Math.imul(row, 0x85ebca77);
+  hash ^= hash >>> 16;
   return hash >>> 0;
 }
 
@@ -58,7 +74,118 @@ export function createGalaxyLabSceneInteractionIndex(
     writeOffsets[target] += 1;
   }
 
-  return { nodeIndexSlots, neighborOffsets, neighborIndices };
+  if (nodeCount === 0) {
+    return {
+      nodeIndexSlots,
+      neighborOffsets,
+      neighborIndices,
+      pickCellSlots: new Uint32Array(2),
+      pickCellCoordinates: new Int32Array(0),
+      pickCellOffsets: new Uint32Array(1),
+      pickNodeIndices: new Uint32Array(0),
+      pickCellSize: GALAXY_LAB_PICK_CELL_SIZE,
+      pickMinZ: 0,
+      pickMaxZ: 0,
+      pickMaxScreenRadius: 9,
+    };
+  }
+
+  let minZ = Number.POSITIVE_INFINITY;
+  let maxZ = Number.NEGATIVE_INFINITY;
+  let maxScreenRadius = 9;
+  for (let nodeIndex = 0; nodeIndex < nodeCount; nodeIndex += 1) {
+    const offset = nodeIndex * 3;
+    const z = scene.positions[offset + 2]!;
+    minZ = Math.min(minZ, z);
+    maxZ = Math.max(maxZ, z);
+    maxScreenRadius = Math.max(maxScreenRadius, scene.pointSizes[nodeIndex]! * 0.24);
+  }
+  const pickCellSize = GALAXY_LAB_PICK_CELL_SIZE;
+  const pickCellSlots = new Uint32Array(nextPowerOfTwo(Math.max(2, nodeCount * 2)));
+  const pickSlotMask = pickCellSlots.length - 1;
+  const coordinateScratch = new Int32Array(nodeCount * 2);
+  const countScratch = new Uint32Array(nodeCount);
+  let pickCellCount = 0;
+  const findOrCreatePickCell = (column: number, row: number): number => {
+    let slot = galaxyLabPickCellHash(column, row) & pickSlotMask;
+    while (true) {
+      const storedIndex = pickCellSlots[slot]!;
+      if (storedIndex === EMPTY_PICK_CELL_SLOT) {
+        const cellIndex = pickCellCount;
+        pickCellCount += 1;
+        pickCellSlots[slot] = cellIndex + 1;
+        coordinateScratch[cellIndex * 2] = column;
+        coordinateScratch[cellIndex * 2 + 1] = row;
+        return cellIndex;
+      }
+      const cellIndex = storedIndex - 1;
+      if (
+        coordinateScratch[cellIndex * 2] === column &&
+        coordinateScratch[cellIndex * 2 + 1] === row
+      ) return cellIndex;
+      slot = (slot + 1) & pickSlotMask;
+    }
+  };
+  for (let nodeIndex = 0; nodeIndex < nodeCount; nodeIndex += 1) {
+    const offset = nodeIndex * 3;
+    const column = Math.floor(scene.positions[offset]! / pickCellSize);
+    const row = Math.floor(scene.positions[offset + 1]! / pickCellSize);
+    countScratch[findOrCreatePickCell(column, row)] += 1;
+  }
+  const pickCellCoordinates = coordinateScratch.slice(0, pickCellCount * 2);
+  const pickCellOffsets = new Uint32Array(pickCellCount + 1);
+  for (let cellIndex = 0; cellIndex < pickCellCount; cellIndex += 1) {
+    pickCellOffsets[cellIndex + 1] = countScratch[cellIndex]!;
+  }
+  for (let cellIndex = 1; cellIndex < pickCellOffsets.length; cellIndex += 1) {
+    pickCellOffsets[cellIndex] += pickCellOffsets[cellIndex - 1]!;
+  }
+  const pickNodeIndices = new Uint32Array(nodeCount);
+  const pickWriteOffsets = pickCellOffsets.slice(0, -1);
+  for (let nodeIndex = 0; nodeIndex < nodeCount; nodeIndex += 1) {
+    const offset = nodeIndex * 3;
+    const column = Math.floor(scene.positions[offset]! / pickCellSize);
+    const row = Math.floor(scene.positions[offset + 1]! / pickCellSize);
+    const cellIndex = findOrCreatePickCell(column, row);
+    pickNodeIndices[pickWriteOffsets[cellIndex]!] = nodeIndex;
+    pickWriteOffsets[cellIndex] += 1;
+  }
+
+  return {
+    nodeIndexSlots,
+    neighborOffsets,
+    neighborIndices,
+    pickCellSlots,
+    pickCellCoordinates,
+    pickCellOffsets,
+    pickNodeIndices,
+    pickCellSize,
+    pickMinZ: minZ,
+    pickMaxZ: maxZ,
+    pickMaxScreenRadius: maxScreenRadius,
+  };
+}
+
+export function findGalaxyLabPickCellIndex(
+  index: GalaxyLabSceneInteractionIndex,
+  column: number,
+  row: number,
+): number | null {
+  if (index.pickCellSlots.length === 0) return null;
+  const slotMask = index.pickCellSlots.length - 1;
+  let slot = galaxyLabPickCellHash(column, row) & slotMask;
+  const initialSlot = slot;
+  do {
+    const storedIndex = index.pickCellSlots[slot]!;
+    if (storedIndex === EMPTY_PICK_CELL_SLOT) return null;
+    const cellIndex = storedIndex - 1;
+    if (
+      index.pickCellCoordinates[cellIndex * 2] === column &&
+      index.pickCellCoordinates[cellIndex * 2 + 1] === row
+    ) return cellIndex;
+    slot = (slot + 1) & slotMask;
+  } while (slot !== initialSlot);
+  return null;
 }
 
 export function findGalaxyLabSceneNodeIndex(
