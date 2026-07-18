@@ -37,6 +37,7 @@ import {
   type GalaxyLabAvatarImageAdmissionResult,
 } from "./avatar-image-admission.js";
 import { galaxyLabInitialCameraScale } from "./camera-math.js";
+import { GalaxyLabPointerRoster } from "./pointer-roster.js";
 import {
   GalaxyLabSampleRing,
   shouldRefreshGalaxyLabDiagnostics,
@@ -378,7 +379,7 @@ async function admitSettledAvatarImages(
     generation !== avatarAdmissionGeneration ||
     backend !== activeBackend ||
     viewDetailForScale(transform.scale) !== "close" ||
-    pointers.size > 0 ||
+    pointers.count > 0 ||
     safariGestureActive
   ) return;
   avatarAdmissionResult = result;
@@ -673,13 +674,7 @@ function zoomAt(viewportX: number, viewportY: number, nextScale: number): void {
   scheduleSettledViewDetail();
 }
 
-interface PointerPosition {
-  x: number;
-  y: number;
-}
-
-const pointers = new Map<number, PointerPosition>();
-const pointerStarts = new Map<number, PointerPosition>();
+const pointers = new GalaxyLabPointerRoster(8);
 let gestureMoved = false;
 let hoverRequest = 0;
 let pendingHoverX = 0;
@@ -725,7 +720,7 @@ function scheduleHoverPick(viewportX: number, viewportY: number): void {
   hoverRequest = requestAnimationFrame(() => {
     hoverRequest = 0;
     if (!pendingHover) return;
-    if (pointers.size > 0) {
+    if (pointers.count > 0) {
       pendingHover = false;
       return;
     }
@@ -743,17 +738,17 @@ viewport.addEventListener("pointerdown", (event) => {
   avatarAdmissionGeneration += 1;
   settleScheduler.cancel();
   viewport.focus({ preventScroll: true });
-  if (pointers.size === 0) {
+  if (pointers.count === 0) {
     refreshViewportOrigin();
     gestureMoved = false;
   }
-  const point = {
-    x: event.clientX - viewportClientLeft,
-    y: event.clientY - viewportClientTop,
-  };
-  pointers.set(event.pointerId, point);
-  pointerStarts.set(event.pointerId, { x: point.x, y: point.y });
-  if (pointers.size > 1) gestureMoved = true;
+  const pointerIndex = pointers.begin(
+    event.pointerId,
+    event.clientX - viewportClientLeft,
+    event.clientY - viewportClientTop,
+  );
+  if (pointerIndex < 0) return;
+  if (pointers.count > 1) gestureMoved = true;
   try {
     viewport.setPointerCapture(event.pointerId);
   } catch {
@@ -763,8 +758,8 @@ viewport.addEventListener("pointerdown", (event) => {
 });
 
 viewport.addEventListener("pointermove", (event) => {
-  const previousPoint = pointers.get(event.pointerId);
-  if (!previousPoint) {
+  const pointerIndex = pointers.indexOf(event.pointerId);
+  if (pointerIndex < 0) {
     if (event.pointerType === "mouse") {
       ensureViewportOrigin();
       scheduleHoverPick(
@@ -778,52 +773,45 @@ viewport.addEventListener("pointermove", (event) => {
   setCameraInMotion(true);
   const nextX = event.clientX - viewportClientLeft;
   const nextY = event.clientY - viewportClientTop;
-  const startPoint = pointerStarts.get(event.pointerId) ?? previousPoint;
-  if (Math.hypot(nextX - startPoint.x, nextY - startPoint.y) > 4 || pointers.size > 1) {
+  if (pointers.movedBeyond(pointerIndex, nextX, nextY, 4) || pointers.count > 1) {
     gestureMoved = true;
   }
-  if (pointers.size >= 2) {
-    const iterator = pointers.values();
-    const first = iterator.next().value as PointerPosition | undefined;
-    const second = iterator.next().value as PointerPosition | undefined;
-    if (first && second) {
-      const previousFirstX = first.x;
-      const previousFirstY = first.y;
-      const previousSecondX = second.x;
-      const previousSecondY = second.y;
-      previousPoint.x = nextX;
-      previousPoint.y = nextY;
-      applyGalaxyLabPinch(
-        transform,
-        previousFirstX,
-        previousFirstY,
-        previousSecondX,
-        previousSecondY,
-        first.x,
-        first.y,
-        second.x,
-        second.y,
-        MIN_SCALE,
-        MAX_SCALE,
-      );
-    }
+  if (pointers.count >= 2) {
+    const previousFirstX = pointers.xAt(0);
+    const previousFirstY = pointers.yAt(0);
+    const previousSecondX = pointers.xAt(1);
+    const previousSecondY = pointers.yAt(1);
+    pointers.update(pointerIndex, nextX, nextY);
+    applyGalaxyLabPinch(
+      transform,
+      previousFirstX,
+      previousFirstY,
+      previousSecondX,
+      previousSecondY,
+      pointers.xAt(0),
+      pointers.yAt(0),
+      pointers.xAt(1),
+      pointers.yAt(1),
+      MIN_SCALE,
+      MAX_SCALE,
+    );
     scheduleSettledViewDetail();
   } else {
-    transform.x += nextX - previousPoint.x;
-    transform.y += nextY - previousPoint.y;
-    previousPoint.x = nextX;
-    previousPoint.y = nextY;
+    transform.x += nextX - pointers.xAt(pointerIndex);
+    transform.y += nextY - pointers.yAt(pointerIndex);
+    pointers.update(pointerIndex, nextX, nextY);
   }
   userMovedCamera = true;
   dirty = true;
 });
 
 function releasePointer(event: PointerEvent): void {
+  const pointerIndex = pointers.indexOf(event.pointerId);
+  if (pointerIndex < 0) return;
   const releasePointX = event.clientX - viewportClientLeft;
   const releasePointY = event.clientY - viewportClientTop;
-  const shouldSelect = event.type === "pointerup" && pointers.size === 1 && !gestureMoved;
-  pointers.delete(event.pointerId);
-  pointerStarts.delete(event.pointerId);
+  const shouldSelect = event.type === "pointerup" && pointers.count === 1 && !gestureMoved;
+  pointers.remove(event.pointerId);
   if (viewport.hasPointerCapture(event.pointerId)) {
     try {
       viewport.releasePointerCapture(event.pointerId);
@@ -831,7 +819,7 @@ function releasePointer(event: PointerEvent): void {
       // The browser may release capture before pointercancel is delivered.
     }
   }
-  if (pointers.size === 0) {
+  if (pointers.count === 0) {
     viewport.dataset.dragging = "false";
     if (shouldSelect) {
       updateInteraction({
@@ -849,10 +837,10 @@ function releasePointer(event: PointerEvent): void {
 viewport.addEventListener("pointerup", releasePointer);
 viewport.addEventListener("pointercancel", releasePointer);
 viewport.addEventListener("pointerenter", () => {
-  if (pointers.size === 0) refreshViewportOrigin();
+  if (pointers.count === 0) refreshViewportOrigin();
 });
 viewport.addEventListener("pointerleave", () => {
-  if (pointers.size > 0) return;
+  if (pointers.count > 0) return;
   pendingHover = false;
   updateInteraction({ selectedNodeId: interaction.selectedNodeId, hoveredNodeId: null });
 });
