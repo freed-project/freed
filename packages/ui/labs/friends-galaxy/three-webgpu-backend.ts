@@ -236,6 +236,8 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
   private compactLabels: boolean | null = null;
   private viewDetail: GalaxyLabViewDetail = "overview";
   private bufferUploadCount = 0;
+  private labelAtlasBuildCount = 0;
+  private avatarAtlasBuildCount = 0;
   private adapterDescription: string | null = null;
   private fallbackReason: string | null = null;
   private readonly backendHealth = new GalaxyLabBackendHealth();
@@ -449,6 +451,8 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       drawCalls: this.drawCalls,
       labelCount: this.labelBatch?.atlas.itemCount ?? 0,
       avatarCount: this.avatarBatch?.atlas.itemCount ?? 0,
+      labelAtlasBuildCount: this.labelAtlasBuildCount,
+      avatarAtlasBuildCount: this.avatarAtlasBuildCount,
       contextualEdgeCount: this.contextualEdgeCount,
       bufferUploadCount: this.bufferUploadCount,
       pickCandidateCount: this.sceneIndex?.lastPickCandidateCount,
@@ -513,6 +517,8 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.colorUpdateRangeScratch = [];
     this.sizeUpdateRangeScratch = [];
     this.contextualEdgeCount = 0;
+    this.labelAtlasBuildCount = 0;
+    this.avatarAtlasBuildCount = 0;
     this.settledProjectionValid = false;
   }
 
@@ -534,6 +540,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       undefined,
       this.settledProjectionValid ? this.settledProjection : undefined,
     );
+    this.labelAtlasBuildCount += 1;
     this.labelBatch = makeBillboardBatch(atlas, 10);
     this.labelBatch.viewport.set(this.width, this.height);
     this.scene.add(this.labelBatch.mesh);
@@ -559,6 +566,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       undefined,
       this.settledProjectionValid ? this.settledProjection : undefined,
     );
+    this.avatarAtlasBuildCount += 1;
     if (atlas.itemCount === 0) return;
     this.avatarBatch = makeBillboardBatch(atlas, 8);
     this.avatarBatch.viewport.set(this.width, this.height);

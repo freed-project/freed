@@ -634,6 +634,12 @@ function updateMetrics(): void {
   }
   addMetric("Billboard labels", integerFormat.format(metrics.labelCount));
   addMetric("Avatar atlas", integerFormat.format(metrics.avatarCount));
+  if (metrics.labelAtlasBuildCount !== undefined) {
+    addMetric("Label atlas builds", integerFormat.format(metrics.labelAtlasBuildCount));
+  }
+  if (metrics.avatarAtlasBuildCount !== undefined) {
+    addMetric("Avatar atlas builds", integerFormat.format(metrics.avatarAtlasBuildCount));
+  }
   if (activeBackend.setAvatarImages) {
     addMetric(
       "Decoded avatars",
@@ -794,16 +800,16 @@ function ensureViewportOrigin(): void {
   if (!viewportOriginValid) refreshViewportOrigin();
 }
 
-function updateInteraction(next: GalaxyLabInteraction): void {
+function updateInteraction(next: GalaxyLabInteraction): boolean {
   if (
     next.selectedNodeId === interaction.selectedNodeId &&
     next.hoveredNodeId === interaction.hoveredNodeId
-  ) return;
+  ) return false;
   const selectionChanged = next.selectedNodeId !== interaction.selectedNodeId;
   interaction = next;
   activeBackend?.setInteraction(interaction);
-  if (selectionChanged) scheduleSettledViewDetail(true);
   markGalaxyDirty();
+  return selectionChanged;
 }
 
 function scheduleHoverPick(viewportX: number, viewportY: number): void {
@@ -916,11 +922,11 @@ function releasePointer(event: PointerEvent): void {
   if (pointers.count === 0) {
     viewport.dataset.dragging = "false";
     if (shouldSelect) {
-      updateInteraction({
+      const selectionChanged = updateInteraction({
         selectedNodeId: activeBackend?.pickNode(releasePointX, releasePointY) ?? null,
         hoveredNodeId: null,
       });
-      scheduleSettledViewDetail();
+      if (selectionChanged) scheduleSettledViewDetail(true);
     } else if (gestureMoved || event.type === "pointercancel") {
       scheduleSettledViewDetail();
     }
@@ -1035,7 +1041,9 @@ viewport.addEventListener("keydown", (event) => {
       fitGalaxy();
       break;
     case "Escape":
-      updateInteraction({ selectedNodeId: null, hoveredNodeId: null });
+      if (updateInteraction({ selectedNodeId: null, hoveredNodeId: null })) {
+        scheduleSettledViewDetail(true);
+      }
       break;
     default:
       handled = false;

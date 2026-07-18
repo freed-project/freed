@@ -15,6 +15,8 @@ export interface GalaxyLabBackendMetrics {
   drawCalls: number | null;
   labelCount: number;
   avatarCount: number;
+  labelAtlasBuildCount?: number;
+  avatarAtlasBuildCount?: number;
   contextualEdgeCount: number;
   bufferUploadCount: number;
   residentStarUploadCount?: number;

@@ -538,6 +538,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private clearColor: GPUColor = { r: 0, g: 0, b: 0, a: 1 };
   private bufferUploadCount = 0;
   private residentStarUploadCount = 0;
+  private labelAtlasBuildCount = 0;
+  private avatarAtlasBuildCount = 0;
   private fallbackReason: string | null = null;
   private adapterDescription: string | null = null;
   private readonly backendHealth = new GalaxyLabBackendHealth();
@@ -976,6 +978,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
         (this.contextualEdgeCount > 0 ? 1 : 0),
       labelCount: this.labelAtlas?.labels.length ?? 0,
       avatarCount: this.avatarAtlas?.itemCount ?? 0,
+      labelAtlasBuildCount: this.labelAtlasBuildCount,
+      avatarAtlasBuildCount: this.avatarAtlasBuildCount,
       contextualEdgeCount: this.contextualEdgeCount,
       bufferUploadCount: this.bufferUploadCount,
       residentStarUploadCount: this.residentStarUploadCount,
@@ -1066,6 +1070,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.settledProjectionValid = false;
     this.appliedActivityNodeCount = 0;
     this.residentStarUploadCount = 0;
+    this.labelAtlasBuildCount = 0;
+    this.avatarAtlasBuildCount = 0;
   }
 
   private rebuildLabels(compact: boolean): void {
@@ -1085,6 +1091,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       undefined,
       this.settledProjectionValid ? this.settledProjection : undefined,
     );
+    this.labelAtlasBuildCount += 1;
     this.labelBuffer?.destroy();
     this.labelTexture?.destroy();
     this.labelBuffer = createBuffer(
@@ -1164,6 +1171,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       undefined,
       this.settledProjectionValid ? this.settledProjection : undefined,
     );
+    this.avatarAtlasBuildCount += 1;
     this.avatarAtlas = atlas;
     if (atlas.itemCount === 0) return;
     this.avatarBuffer = createBuffer(
