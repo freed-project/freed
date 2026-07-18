@@ -42,11 +42,12 @@ import {
   FRIENDS_GALAXY_SETTLED_STAR_VERTEX_COUNT,
 } from "../../src/lib/friends-galaxy-star-geometry.js";
 import {
-  createGalaxyLabProviderFields,
-  GALAXY_LAB_PROVIDER_FIELD_CULL_SCALE,
-  GALAXY_LAB_PROVIDER_FIELD_INSTANCE_STRIDE,
-  type GalaxyLabProviderFields,
-} from "./provider-fields.js";
+  createFriendsGalaxyProviderFields,
+  FRIENDS_GALAXY_PROVIDER_FIELD_CULL_SCALE,
+  FRIENDS_GALAXY_PROVIDER_FIELD_INSTANCE_STRIDE,
+  type FriendsGalaxyProviderFields,
+  writeFriendsGalaxyProviderFieldPresentation,
+} from "../../src/lib/friends-galaxy-provider-fields.js";
 import { writeGalaxyLabInteractionInstances } from "./interaction-instance-data.js";
 import {
   FriendsGalaxySceneIndex,
@@ -91,7 +92,7 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
   output.local = input.corner;
   output.color = input.color;
   output.parameters = input.parameters;
-  if (abs(uniforms.cameraScale) >= ${String(GALAXY_LAB_PROVIDER_FIELD_CULL_SCALE)}) {
+  if (abs(uniforms.cameraScale) >= ${String(FRIENDS_GALAXY_PROVIDER_FIELD_CULL_SCALE)}) {
     output.position = vec4<f32>(2.0, 2.0, 0.0, 1.0);
     return output;
   }
@@ -499,7 +500,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private backgroundData: Float32Array | null = null;
   private activitySizeScales: Float32Array | null = null;
   private activityBrightnessScales: Float32Array | null = null;
-  private providerFields: GalaxyLabProviderFields | null = null;
+  private providerFields: FriendsGalaxyProviderFields | null = null;
   private edgeData = new Float32Array(MAX_CONTEXTUAL_EDGES * EDGE_INSTANCE_FLOATS);
   private labelAtlas: FriendsGalaxyLabelAtlas | null = null;
   private avatarAtlas: FriendsGalaxyAvatarAtlas | null = null;
@@ -609,7 +610,16 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     );
     this.residentStarUploadCount = 2;
-    this.providerFields = createGalaxyLabProviderFields(fixture, palette, this.fieldStyle);
+    this.providerFields = createFriendsGalaxyProviderFields({
+      positions: fixture.scene.positions,
+      personCount: fixture.personCount,
+      regions: fixture.atlas.regions,
+    });
+    writeFriendsGalaxyProviderFieldPresentation(
+      this.providerFields,
+      palette,
+      this.fieldStyle,
+    );
     this.providerFieldBuffer = createBuffer(
       device,
       this.providerFields.instanceData,
@@ -639,7 +649,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
             attributes: [{ shaderLocation: 0, offset: 0, format: "float32x2" }],
           },
           {
-            arrayStride: GALAXY_LAB_PROVIDER_FIELD_INSTANCE_STRIDE,
+            arrayStride: FRIENDS_GALAXY_PROVIDER_FIELD_INSTANCE_STRIDE,
             stepMode: "instance",
             attributes: [
               { shaderLocation: 1, offset: 0, format: "float32x3" },
@@ -1294,9 +1304,11 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   }
 
   private writeProviderFields(): void {
-    if (!this.device || !this.providerFieldBuffer || !this.fixture || !this.palette) return;
-    this.providerFields = createGalaxyLabProviderFields(
-      this.fixture,
+    if (
+      !this.device || !this.providerFieldBuffer || !this.providerFields || !this.palette
+    ) return;
+    writeFriendsGalaxyProviderFieldPresentation(
+      this.providerFields,
       this.palette,
       this.fieldStyle,
     );

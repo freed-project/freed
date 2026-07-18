@@ -256,6 +256,8 @@ The direct-upload star instance and geometry contracts now live under shared UI 
 
 Theme resolution now uses a shared structural star-palette contract too. It defines the eleven semantic and provider roles, fixed uniform offset and length, normalized color conversion, light-surface classification, clear color, and role alpha policy consumed by Raw WebGPU. The laboratory palettes extend that contract directly, while Raw WebGPU, Three.js WebGPU, WebGL2, provider fields, document theming, and tests all use the same color parser. Product cutover can therefore pass active theme tokens into every backend without a laboratory palette adapter or resident-star traversal.
 
+Provider-field compilation now lives under shared UI source as well. It owns the fixed twelve-float instance layout, style codes, close-detail culling threshold, deterministic identity and provider geometry, active-theme colors, and light-versus-dark opacity policy. Geometry scans the bounded person positions once when the scene is admitted. Later theme and field-style changes mutate only the retained six-instance presentation block, so they never rescan people or replace GPU storage. Empty identity scenes produce finite one-by-one core geometry, and unknown provider keys fall back to the account theme role.
+
 The moving world bundles draw a deterministic 50,000-star prefix of the 100,000 resident decorative dust stars. Their index-keyed placement keeps that prefix evenly distributed across the galactic field. All 30,000 semantic stars, interaction overlays, labels, avatars, and edges remain complete. Settle returns the full decorative stream without an upload or bundle rebuild.
 
 Provider fields now become degenerate in the vertex shader beyond 1.5 close-detail scale. Their existing camera fade has already reduced them to atmospheric residue by that point. The cutoff prevents six large, effectively invisible field quads from rasterizing or running noise fragments over close-zoom stars, labels, and avatars. Overview and middle detail remain unchanged.
@@ -523,6 +525,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.121 | Tighten the fitted outer zoom envelope and convert cumulative Safari gesture scale into incremental ratios with immediate native inward reversal | High | Done |
 | 8.122 | Move the structural theme palette, normalized color parser, fixed star-uniform layout, and light-surface role policy into shared UI source | High | Done |
 | 8.123 | Strengthen the fitted zoom ceiling and remove compressed-scale startup lag from inward trackpad, wheel, Safari gesture, and keyboard zoom while preserving exact native touch ratios | High | Done |
+| 8.124 | Move provider-field geometry, presentation, style, stride, and close-culling contracts into shared UI source without rescanning people on theme changes | High | Done |
 
 ---
 
@@ -633,6 +636,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] The detached worker, raw backend, and future product engine share one direct-upload star instance layout, semantic palette-role encoding, settled geometry, motion geometry, and decorative motion cap
 - [x] The fitted zoom ceiling brakes decisively before the padded overview target, trackpad reversal leaves the compressed band at full overview speed from its first event, and native touch retains its exact distance ratio
 - [x] Raw WebGPU, Three.js WebGPU, WebGL2, provider fields, and the future product engine share one structural theme palette and normalized color parser, while Raw WebGPU resolves the fixed role block without resident-star rewrites
+- [x] Provider-field geometry compiles once from bounded person positions and atlas regions, while theme and style changes rewrite only the fixed presentation instances
 - [x] Mac two-finger trackpad deltas pan with native momentum, pinch remains anchored zoom, and pointer or one-finger touch throws use bounded allocation-free inertia that cancels for new input and reduced motion
 - [x] Animation-disabled scenes stop requesting frames when idle and wake only for renderer work, settle state, diagnostics, or backend health recovery
 - [x] Pointer, wheel, and Safari handlers mark motion density without synchronously resizing the GPU canvas

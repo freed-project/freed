@@ -1,10 +1,11 @@
 import type { GalaxyActivityScenePatchBatch } from "./activity-scene-patches.js";
+import type { FriendsGalaxyFieldStyle } from "../../src/lib/friends-galaxy-provider-fields.js";
 import type { FriendsGalaxyInteraction } from "../../src/lib/friends-galaxy-scene-index.js";
 import type { GalaxyLabFixture, GalaxyLabPalette, GalaxyLabTransform } from "./scene-fixture.js";
 
 export type GalaxyLabBackendId = "current-webgl2" | "three-webgpu" | "raw-webgpu";
 export type GalaxyLabViewDetail = "overview" | "middle" | "close";
-export type GalaxyLabFieldStyle = "nebula-rings" | "nebula" | "rings";
+export type GalaxyLabFieldStyle = FriendsGalaxyFieldStyle;
 
 export interface GalaxyLabBackendMetrics {
   id: GalaxyLabBackendId;

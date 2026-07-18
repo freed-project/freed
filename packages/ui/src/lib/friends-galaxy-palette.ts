@@ -39,6 +39,11 @@ export function friendsGalaxyHexToRgb(value: string): [number, number, number] {
   ];
 }
 
+export function friendsGalaxyColorIsLight(value: string): boolean {
+  const [red, green, blue] = friendsGalaxyHexToRgb(value);
+  return red * 0.2126 + green * 0.7152 + blue * 0.0722 > 0.58;
+}
+
 export function writeFriendsGalaxyStarPaletteUniforms(
   target: Float32Array,
   palette: FriendsGalaxyStarPalette,
@@ -49,9 +54,7 @@ export function writeFriendsGalaxyStarPaletteUniforms(
     throw new Error("Friends Galaxy star palette uniform storage is too small.");
   }
   const clearColor = friendsGalaxyHexToRgb(palette.background);
-  const luminance =
-    clearColor[0] * 0.2126 + clearColor[1] * 0.7152 + clearColor[2] * 0.0722;
-  const lightSurface = luminance > 0.58;
+  const lightSurface = friendsGalaxyColorIsLight(palette.background);
   const colors = [
     palette.friend,
     palette.connection,
