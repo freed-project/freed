@@ -1072,6 +1072,7 @@ function zoomAt(viewportX: number, viewportY: number, nextScale: number): void {
     outwardZoomEnvelope.target,
     outwardZoomEnvelope.resistance,
     cameraScaleLimits.maximum,
+    outwardZoomEnvelope.resistance,
   );
   userMovedCamera = true;
   markGalaxyDirty();
@@ -1730,6 +1731,7 @@ viewport.addEventListener("gesturechange", ((event: SafariGestureEvent) => {
     outwardZoomEnvelope.target,
     outwardZoomEnvelope.resistance,
     cameraScaleLimits.maximum,
+    outwardZoomEnvelope.resistance,
   );
   transform.scale = nextScale;
   transform.x = viewportX - worldX * nextScale;

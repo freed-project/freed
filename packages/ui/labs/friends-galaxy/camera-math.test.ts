@@ -72,7 +72,7 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
     const envelope = friendsGalaxyOutwardZoomEnvelope(0.2, limits);
 
     expect(envelope.target).toBeCloseTo(0.196, 12);
-    expect(envelope.resistance).toBeCloseTo(0.31, 12);
+    expect(envelope.resistance).toBeCloseTo(0.36, 12);
     expect(envelope.target).toBeGreaterThan(limits.fitMinimum);
     expect(limits.fitMinimum).toBeGreaterThan(limits.minimum);
   });

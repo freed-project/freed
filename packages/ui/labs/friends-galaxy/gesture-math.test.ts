@@ -75,6 +75,27 @@ describe("Friends Galaxy gesture math", () => {
     expect(worldY * transform.scale + transform.y).toBeCloseTo(120, 8);
   });
 
+  it("keeps native touch distance exact inside the ceiling band", () => {
+    const transform = { x: 0, y: 0, scale: 0.0901 };
+
+    applyFriendsGalaxyPinch(
+      transform,
+      100,
+      100,
+      200,
+      100,
+      98,
+      100,
+      202,
+      100,
+      0.09,
+      0.12,
+      6,
+    );
+
+    expect(transform.scale).toBeCloseTo(0.0901 * 1.04, 12);
+  });
+
   it("keeps zoom ratios exact before outward resistance begins", () => {
     expect(friendsGalaxyResistedScaleAtRatio(0.5, 1.2, 0.07, 0.11, 6)).toBeCloseTo(0.6, 12);
     expect(friendsGalaxyResistedScaleAtRatio(0.5, 0.8, 0.07, 0.11, 6)).toBeCloseTo(0.4, 12);
@@ -100,7 +121,7 @@ describe("Friends Galaxy gesture math", () => {
       scale = nextScale;
     }
 
-    expect(scale).toBeLessThan(0.074);
+    expect(scale).toBeLessThan(0.078);
     expect(friendsGalaxyResistedScaleAtRatio(
       scale,
       1.05,
@@ -128,31 +149,52 @@ describe("Friends Galaxy gesture math", () => {
       scale = nextScale;
     }
 
-    expect(scale).toBeLessThan(0.092);
+    expect(scale).toBeLessThan(0.096);
   });
 
-  it("restores native zoom speed immediately when moving inward from the ceiling", () => {
-    expect(friendsGalaxyResistedScaleAtRatio(
+  it("brakes outward input more aggressively inside the ceiling band", () => {
+    const scale = friendsGalaxyResistedScaleAtRatio(
+      0.12,
+      0.5,
+      0.09,
+      0.12,
+      6,
+    );
+
+    expect(scale).toBeCloseTo(0.10310327153353985, 12);
+    expect(scale).toBeGreaterThan(0.1);
+  });
+
+  it("escapes the compressed ceiling at full overview speed", () => {
+    const scale = friendsGalaxyResistedScaleAtRatio(
       0.0901,
       1.04,
       0.09,
       0.12,
       6,
-    )).toBeCloseTo(0.0901 * 1.04, 12);
+      0.12,
+    );
+
+    expect(scale).toBeCloseTo(0.0901 + 0.12 * Math.log(1.04), 12);
+    expect(scale).toBeGreaterThan(0.0901 * 1.04);
   });
 
-  it("reverses a cumulative Safari gesture at native speed on its first inward event", () => {
+  it("reverses a cumulative Safari gesture at full overview speed", () => {
     const scale = 0.0901;
     const ratio = friendsGalaxyGestureScaleRatio(0.72, 0.74);
 
     expect(ratio).toBeCloseTo(0.74 / 0.72, 12);
-    expect(friendsGalaxyResistedScaleAtRatio(
+    const nextScale = friendsGalaxyResistedScaleAtRatio(
       scale,
       ratio,
       0.09,
       0.12,
       6,
-    )).toBeCloseTo(scale * ratio, 12);
+      0.12,
+    );
+
+    expect(nextScale).toBeCloseTo(scale + 0.12 * Math.log(ratio), 12);
+    expect(nextScale).toBeGreaterThan(scale * ratio);
   });
 
   it("ignores invalid cumulative gesture scales", () => {
