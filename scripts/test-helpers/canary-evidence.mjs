@@ -55,6 +55,7 @@ export function createCanaryEvidenceFixture({
   version,
   commitSha,
   recoveries = 0,
+  pairedRecoveryRestarts = 0,
   workerInits = 0,
   scenario = "idle",
   providerCohort = "social-authenticated-gdrive-connected",
@@ -104,8 +105,17 @@ export function createCanaryEvidenceFixture({
     })),
     ...Array.from({ length: recoveries }, (_, index) => ({
       ...identity,
-      event: "renderer_recovery_restart_requested",
+      event: "window_destroyed",
+      label: "main",
+      reasonEnum: "watchdog_memory",
+      requestedBy: `fixture renderer recovery ${index + 1}`,
       tsMs: startMs + (index + 1) * 1_000,
+    })),
+    ...Array.from({ length: pairedRecoveryRestarts }, (_, index) => ({
+      ...identity,
+      event: "renderer_recovery_restart_requested",
+      reason: `fixture renderer recovery ${index + 1}`,
+      tsMs: startMs + (index + 1) * 1_000 + 7_000,
     })),
     ...Array.from({ length: workerInits }, (_, index) => ({
       ...identity,

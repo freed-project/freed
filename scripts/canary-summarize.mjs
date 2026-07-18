@@ -35,6 +35,7 @@ import {
   invariantAlarmMeetsMetricContract,
   MIN_LIFECYCLE_CREDITED_APP_ALIVE_HOURS,
   STABILITY_METRIC_REGISTRY_VERSION,
+  summarizeRendererRecoverySequences,
   windowDurationsAreComparable,
 } from "./lib/stability-metrics.mjs";
 import {
@@ -1128,11 +1129,7 @@ export function computeCanarySummary(
         };
 
   const count = (predicate) => entries.filter(predicate).length;
-  // Match the soak contract exactly. Attempts and restart requests can belong
-  // to one recovery sequence, so adding both double-counts the same incident.
-  const recoveries = count(
-    (e) => e.event === "renderer_recovery_restart_requested",
-  );
+  const recoveries = summarizeRendererRecoverySequences(entries).count;
   const killsByReason = {};
   for (const e of entries) {
     if (e.event !== "window_destroyed") continue;

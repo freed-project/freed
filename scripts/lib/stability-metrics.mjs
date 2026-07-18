@@ -6,10 +6,232 @@
  * surfaces cannot quietly invent different definitions for the same symptom.
  */
 
-export const STABILITY_METRIC_REGISTRY_VERSION = 6;
+export const STABILITY_METRIC_REGISTRY_VERSION = 7;
 export const MIN_LIFECYCLE_CREDITED_APP_ALIVE_HOURS = 6;
 export const MIN_COMPARABLE_WINDOW_DURATION_RATIO = 0.8;
 export const MAX_COMPARABLE_WINDOW_DURATION_RATIO = 1.25;
+
+// A recovery can destroy and rebuild the main window, then escalate to a full
+// app restart when the three-second memory verification fails. Treat that
+// pair as one recovery sequence. After destruction is recorded, the 15-second
+// bound covers the five-second release poll, the five-second rebuild step, and
+// three-second verification while staying below the recovery cooldown.
+const RENDERER_RECOVERY_ESCALATION_PAIR_WINDOW_MS = 15_000;
+
+function exactNonemptyString(value) {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function recoveryTimestamp(entry) {
+  const raw = entry?.tsMs;
+  return typeof raw === "number" && Number.isSafeInteger(raw) && raw > 0
+    ? raw
+    : null;
+}
+
+function normalizedNativePid(value) {
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value > 0
+    ? value
+    : null;
+}
+
+// appSessionId belongs to the renderer and changes during a successful main
+// window rebuild, so it cannot separate native recovery generations. Records
+// that carry nativeBootId or nativePid can prove a generation match. Current
+// historical records carry neither, leaving the exact reason and bounded
+// timestamp as their only sequence identity. A renderer worker_spawn record
+// is not a native boundary.
+function nativeGenerationField(entry, key, normalize) {
+  const raw = entry?.[key];
+  if (raw === undefined) return { state: "absent", value: null };
+  const value = normalize(raw);
+  return value === null
+    ? { state: "invalid", value: null }
+    : { state: "valid", value };
+}
+
+function nativeGenerationFields(entry) {
+  return {
+    bootId: nativeGenerationField(entry, "nativeBootId", exactNonemptyString),
+    pid: nativeGenerationField(entry, "nativePid", normalizedNativePid),
+  };
+}
+
+function recoveryRecordsShareNativeGeneration(
+  left,
+  right,
+  { allowLegacyKeylessFallback },
+) {
+  const leftGeneration = nativeGenerationFields(left);
+  const rightGeneration = nativeGenerationFields(right);
+  let matchedExplicitGeneration = false;
+  for (const key of ["bootId", "pid"]) {
+    const leftField = leftGeneration[key];
+    const rightField = rightGeneration[key];
+    if (leftField.state === "invalid" || rightField.state === "invalid") {
+      return false;
+    }
+    if (leftField.state === "valid" || rightField.state === "valid") {
+      if (leftField.state !== "valid" || rightField.state !== "valid") {
+        return false;
+      }
+      if (leftField.value !== rightField.value) return false;
+      matchedExplicitGeneration = true;
+    }
+  }
+  return matchedExplicitGeneration || allowLegacyKeylessFallback;
+}
+
+function restartMatchesMainRecoveryReasonAndTime(
+  mainRecovery,
+  restartRequest,
+) {
+  const mainTs = recoveryTimestamp(mainRecovery);
+  const restartTs = recoveryTimestamp(restartRequest);
+  if (mainTs === null || restartTs === null) return false;
+  const elapsedMs = restartTs - mainTs;
+  if (
+    elapsedMs < 0 ||
+    elapsedMs > RENDERER_RECOVERY_ESCALATION_PAIR_WINDOW_MS
+  ) {
+    return false;
+  }
+  const mainReason = exactNonemptyString(mainRecovery.requestedBy);
+  const restartReason = exactNonemptyString(restartRequest.reason);
+  return mainReason !== null && mainReason === restartReason;
+}
+
+export function isMainRendererRecoveryRecord(entry) {
+  return entry?.event === "window_destroyed" && entry?.label === "main";
+}
+
+export function summarizeRendererRecoverySequences(entries) {
+  const sequences = [];
+  const ineligibleMainSequences = new Set();
+  const currentNativeGeneration = { bootId: null, pid: null };
+  const decoratedEntries = (Array.isArray(entries) ? entries : []).map(
+    (entry, inputIndex) => ({
+      entry,
+      inputIndex,
+      timestamp: recoveryTimestamp(entry),
+    }),
+  );
+  const pairingDisabledByUnreliableNativeGeneration = decoratedEntries.some(
+    ({ entry, timestamp }) => {
+      const generation = nativeGenerationFields(entry);
+      if (
+        generation.bootId.state === "invalid" ||
+        generation.pid.state === "invalid"
+      ) {
+        return true;
+      }
+      if (timestamp !== null) return false;
+      return (
+        generation.bootId.state === "valid" || generation.pid.state === "valid"
+      );
+    },
+  );
+  const hasValidNativeGenerationEvidence = decoratedEntries.some(
+    ({ entry }) => {
+      const generation = nativeGenerationFields(entry);
+      return (
+        generation.bootId.state === "valid" || generation.pid.state === "valid"
+      );
+    },
+  );
+  const allowLegacyKeylessFallback = !hasValidNativeGenerationEvidence;
+  const orderedEntries = decoratedEntries.sort((left, right) => {
+    if (left.timestamp !== null && right.timestamp !== null) {
+      return (
+        left.timestamp - right.timestamp || left.inputIndex - right.inputIndex
+      );
+    }
+    if (left.timestamp !== null) return -1;
+    if (right.timestamp !== null) return 1;
+    return left.inputIndex - right.inputIndex;
+  });
+
+  for (const { entry, inputIndex } of orderedEntries) {
+    const generation = nativeGenerationFields(entry);
+    let crossedNativeGeneration = false;
+    for (const key of ["bootId", "pid"]) {
+      const field = generation[key];
+      if (field.state === "invalid") {
+        crossedNativeGeneration = true;
+        currentNativeGeneration[key] = null;
+      } else if (field.state === "valid") {
+        if (
+          currentNativeGeneration[key] !== null &&
+          currentNativeGeneration[key] !== field.value
+        ) {
+          crossedNativeGeneration = true;
+        }
+        currentNativeGeneration[key] = field.value;
+      }
+    }
+    if (crossedNativeGeneration) {
+      for (const sequence of sequences) {
+        if (
+          sequence.mainWindowDestroyed !== null &&
+          sequence.restartRequest === null
+        ) {
+          ineligibleMainSequences.add(sequence);
+        }
+      }
+    }
+
+    if (isMainRendererRecoveryRecord(entry)) {
+      sequences.push({
+        primary: entry,
+        primaryInputIndex: inputIndex,
+        mainWindowDestroyed: entry,
+        mainWindowDestroyedInputIndex: inputIndex,
+        restartRequest: null,
+        restartRequestInputIndex: null,
+      });
+      continue;
+    }
+    if (entry?.event !== "renderer_recovery_restart_requested") continue;
+
+    const nearestCandidate = sequences.findLast(
+      (sequence) =>
+        !pairingDisabledByUnreliableNativeGeneration &&
+        sequence.mainWindowDestroyed !== null &&
+        sequence.restartRequest === null &&
+        !ineligibleMainSequences.has(sequence) &&
+        restartMatchesMainRecoveryReasonAndTime(
+          sequence.mainWindowDestroyed,
+          entry,
+        ),
+    );
+    if (
+      nearestCandidate &&
+      recoveryRecordsShareNativeGeneration(
+        nearestCandidate.mainWindowDestroyed,
+        entry,
+        { allowLegacyKeylessFallback },
+      )
+    ) {
+      nearestCandidate.restartRequest = entry;
+      nearestCandidate.restartRequestInputIndex = inputIndex;
+      continue;
+    }
+    sequences.push({
+      primary: entry,
+      primaryInputIndex: inputIndex,
+      mainWindowDestroyed: null,
+      mainWindowDestroyedInputIndex: null,
+      restartRequest: entry,
+      restartRequestInputIndex: inputIndex,
+    });
+  }
+  return {
+    count: sequences.length,
+    sequences,
+  };
+}
 
 /** Keep baseline windows close enough in duration for rate and peak comparisons. */
 export function windowDurationsAreComparable(

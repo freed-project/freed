@@ -9,7 +9,7 @@
 //
 // Assertions (each cites the violating file:line):
 //   main_footprint_slope    idle main-process footprint slope < 25 MB/h over >= 4h
-//   renderer_recoveries     renderer_recovery_restart_requested count == 0
+//   renderer_recoveries     distinct main renderer recovery sequences == 0
 //   stale_heartbeats        renderer_heartbeat_stale count == 0
 //   worker_init_rate        worker INITs < 10/app-alive hour over >= 1h
 //   webkit_returns_to_baseline  machine-wide WebContent count returns to its
@@ -38,6 +38,7 @@ import {
   metricContractForAssertion,
   stabilityMetricById,
   STABILITY_METRIC_REGISTRY_VERSION,
+  summarizeRendererRecoverySequences,
 } from "./lib/stability-metrics.mjs";
 import {
   COLLECTOR_EVENTS_ARCHIVE_FILENAME,
@@ -1218,30 +1219,68 @@ export function assertFootprintSlope(
   );
 }
 
+function assertHealthLineCountZero(
+  id,
+  hits,
+  healthPath,
+  eventDescription,
+  { runtimeEvidenceActionable = true } = {},
+) {
+  if (!runtimeEvidenceActionable) {
+    return assertion(
+      id,
+      "inconclusive",
+      `Runtime-health coverage or attribution is incomplete, so ${hits.length.toLocaleString()} observed ${eventDescription}${hits.length === 1 ? "" : "s"} cannot establish the complete-window count.`,
+      hits.slice(0, 10).map(({ line, raw }) => cite(healthPath, line, raw)),
+    );
+  }
+  if (hits.length === 0) {
+    return assertion(id, "pass", `0 ${eventDescription}s in the soak window.`);
+  }
+  return assertion(
+    id,
+    "fail",
+    `${hits.length.toLocaleString()} ${eventDescription}${hits.length === 1 ? "" : "s"} in the soak window.`,
+    hits.slice(0, 10).map(({ line, raw }) => cite(healthPath, line, raw)),
+  );
+}
+
 export function assertEventCountZero(
   id,
   healthLines,
   healthPath,
   eventName,
+  options = {},
+) {
+  return assertHealthLineCountZero(
+    id,
+    healthLines.filter(({ entry }) => entry.event === eventName),
+    healthPath,
+    `${eventName} event`,
+    options,
+  );
+}
+
+export function assertRendererRecoveryCountZero(
+  healthLines,
+  healthPath,
   { runtimeEvidenceActionable = true } = {},
 ) {
-  const hits = healthLines.filter(({ entry }) => entry.event === eventName);
-  if (!runtimeEvidenceActionable) {
-    return assertion(
-      id,
-      "inconclusive",
-      `Runtime-health coverage or attribution is incomplete, so ${hits.length.toLocaleString()} observed ${eventName} event${hits.length === 1 ? "" : "s"} cannot establish the complete-window count.`,
-      hits.slice(0, 10).map(({ line, raw }) => cite(healthPath, line, raw)),
-    );
-  }
-  if (hits.length === 0) {
-    return assertion(id, "pass", `0 ${eventName} events in the soak window.`);
-  }
-  return assertion(
-    id,
-    "fail",
-    `${hits.length} ${eventName} event${hits.length === 1 ? "" : "s"} in the soak window.`,
-    hits.slice(0, 10).map(({ line, raw }) => cite(healthPath, line, raw)),
+  const summary = summarizeRendererRecoverySequences(
+    healthLines.map(({ entry }) => entry),
+  );
+  const primaryInputIndexes = new Set(
+    summary.sequences.map(({ primaryInputIndex }) => primaryInputIndex),
+  );
+  const hits = healthLines.filter((_, inputIndex) =>
+    primaryInputIndexes.has(inputIndex),
+  );
+  return assertHealthLineCountZero(
+    "renderer_recoveries",
+    hits,
+    healthPath,
+    "renderer recovery sequence",
+    { runtimeEvidenceActionable },
   );
 }
 
@@ -2321,6 +2360,9 @@ export function buildVerdict({
     const novel = novelItems(entry);
     return novel !== null && novel > Number(entry.itemsPersisted);
   }).length;
+  const rendererRecoverySequences = summarizeRendererRecoverySequences(
+    healthLines.map(({ entry }) => entry),
+  );
   const measurement = (metricId, value) => {
     const contract = stabilityMetricById(metricId)?.outcomeMeasurement;
     if (!contract || !Number.isFinite(value)) return null;
@@ -2339,10 +2381,7 @@ export function buildVerdict({
       "renderer-recovery-count": measurement(
         "renderer-recovery-count",
         runtimeEvidenceActionable && appAliveDays
-          ? healthLines.filter(
-              ({ entry }) =>
-                entry.event === "renderer_recovery_restart_requested",
-            ).length / appAliveDays
+          ? rendererRecoverySequences.count / appAliveDays
           : null,
       ),
       "stale-heartbeat-count": measurement(
@@ -2435,13 +2474,9 @@ export function buildVerdict({
   const assertions = [
     sourceHealthAssertion,
     assertFootprintSlope(healthLines, metricsRows, metricsPath, healthPath),
-    assertEventCountZero(
-      "renderer_recoveries",
-      healthLines,
-      healthPath,
-      "renderer_recovery_restart_requested",
-      { runtimeEvidenceActionable },
-    ),
+    assertRendererRecoveryCountZero(healthLines, healthPath, {
+      runtimeEvidenceActionable,
+    }),
     assertEventCountZero(
       "stale_heartbeats",
       healthLines,
