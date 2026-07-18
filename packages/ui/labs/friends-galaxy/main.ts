@@ -16,6 +16,10 @@ import {
   type GalaxyLabThemeId,
   type GalaxyLabTransform,
 } from "./scene-fixture.js";
+import {
+  applyGalaxyLabPinch,
+  applyGalaxyLabZoomAt,
+} from "./gesture-math.js";
 
 const DEFAULT_PERSON_COUNT = 5_000;
 const DEFAULT_ACCOUNT_COUNT = 25_000;
@@ -24,6 +28,15 @@ const MIN_SCALE = 0.035;
 const MAX_SCALE = 6;
 const numberFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
 const integerFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
+const scaleFormat = new Intl.NumberFormat(undefined, { maximumSignificantDigits: 3 });
+const labParameters = new URLSearchParams(window.location.search);
+const animationProbeDisabled = labParameters.get("animate") === "0";
+if (labParameters.get("compact") === "1") {
+  document.documentElement.dataset.compactProbe = "true";
+}
+if (labParameters.get("controls") === "hidden") {
+  document.documentElement.dataset.controlsHidden = "true";
+}
 
 function requiredElement<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -41,7 +54,7 @@ const statusElement = requiredElement<HTMLElement>("status");
 const metricsElement = requiredElement<HTMLElement>("metrics");
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 let animatePreferenceTouched = false;
-animateControl.checked = !reducedMotionQuery.matches;
+animateControl.checked = !animationProbeDisabled && !reducedMotionQuery.matches;
 
 function setStatus(message: string, error = false): void {
   statusElement.textContent = message;
@@ -258,7 +271,7 @@ function updateMetrics(): void {
   addMetric("Frame interval", formatFrameStats(frameStats(frameSamples)));
   addMetric("CPU submit", formatFrameStats(frameStats(submitSamples)));
   addMetric("Buffer uploads", integerFormat.format(metrics.bufferUploadCount));
-  addMetric("Camera scale", numberFormat.format(transform.scale));
+  addMetric("Camera scale", scaleFormat.format(transform.scale));
   addMetric("Settled detail", viewDetailForScale(transform.scale));
   if (metrics.adapterDescription) addMetric("Adapter", metrics.adapterDescription);
 }
@@ -291,12 +304,14 @@ function renderFrame(timeMs: number): void {
 }
 
 function zoomAt(viewportX: number, viewportY: number, nextScale: number): void {
-  const clampedScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, nextScale));
-  const worldX = (viewportX - transform.x) / transform.scale;
-  const worldY = (viewportY - transform.y) / transform.scale;
-  transform.scale = clampedScale;
-  transform.x = viewportX - worldX * clampedScale;
-  transform.y = viewportY - worldY * clampedScale;
+  applyGalaxyLabZoomAt(
+    transform,
+    viewportX,
+    viewportY,
+    nextScale,
+    MIN_SCALE,
+    MAX_SCALE,
+  );
   userMovedCamera = true;
   dirty = true;
   scheduleSettledViewDetail();
@@ -347,14 +362,6 @@ function localPoint(clientX: number, clientY: number): PointerPosition {
   return { x: clientX - bounds.left, y: clientY - bounds.top };
 }
 
-function midpoint(left: PointerPosition, right: PointerPosition): PointerPosition {
-  return { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2 };
-}
-
-function distance(left: PointerPosition, right: PointerPosition): number {
-  return Math.hypot(right.x - left.x, right.y - left.y);
-}
-
 viewport.addEventListener("pointerdown", (event) => {
   if (event.pointerType === "mouse" && event.button !== 0) return;
   event.preventDefault();
@@ -362,7 +369,7 @@ viewport.addEventListener("pointerdown", (event) => {
   const point = localPoint(event.clientX, event.clientY);
   if (pointers.size === 0) gestureMoved = false;
   pointers.set(event.pointerId, point);
-  pointerStarts.set(event.pointerId, point);
+  pointerStarts.set(event.pointerId, { x: point.x, y: point.y });
   if (pointers.size > 1) gestureMoved = true;
   try {
     viewport.setPointerCapture(event.pointerId);
@@ -381,27 +388,44 @@ viewport.addEventListener("pointermove", (event) => {
     return;
   }
   event.preventDefault();
-  const before = [...pointers.values()];
-  const nextPoint = localPoint(event.clientX, event.clientY);
+  const bounds = viewport.getBoundingClientRect();
+  const nextX = event.clientX - bounds.left;
+  const nextY = event.clientY - bounds.top;
   const startPoint = pointerStarts.get(event.pointerId) ?? previousPoint;
-  if (distance(startPoint, nextPoint) > 4 || pointers.size > 1) gestureMoved = true;
-  pointers.set(event.pointerId, nextPoint);
-  const after = [...pointers.values()];
-  if (after.length >= 2 && before.length >= 2) {
-    const previousMidpoint = midpoint(before[0]!, before[1]!);
-    const nextMidpoint = midpoint(after[0]!, after[1]!);
-    const previousDistance = Math.max(1, distance(before[0]!, before[1]!));
-    const nextDistance = Math.max(1, distance(after[0]!, after[1]!));
-    const worldX = (previousMidpoint.x - transform.x) / transform.scale;
-    const worldY = (previousMidpoint.y - transform.y) / transform.scale;
-    const nextScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, transform.scale * nextDistance / previousDistance));
-    transform.scale = nextScale;
-    transform.x = nextMidpoint.x - worldX * nextScale;
-    transform.y = nextMidpoint.y - worldY * nextScale;
+  if (Math.hypot(nextX - startPoint.x, nextY - startPoint.y) > 4 || pointers.size > 1) {
+    gestureMoved = true;
+  }
+  if (pointers.size >= 2) {
+    const iterator = pointers.values();
+    const first = iterator.next().value as PointerPosition | undefined;
+    const second = iterator.next().value as PointerPosition | undefined;
+    if (first && second) {
+      const previousFirstX = first.x;
+      const previousFirstY = first.y;
+      const previousSecondX = second.x;
+      const previousSecondY = second.y;
+      previousPoint.x = nextX;
+      previousPoint.y = nextY;
+      applyGalaxyLabPinch(
+        transform,
+        previousFirstX,
+        previousFirstY,
+        previousSecondX,
+        previousSecondY,
+        first.x,
+        first.y,
+        second.x,
+        second.y,
+        MIN_SCALE,
+        MAX_SCALE,
+      );
+    }
     scheduleSettledViewDetail();
   } else {
-    transform.x += nextPoint.x - previousPoint.x;
-    transform.y += nextPoint.y - previousPoint.y;
+    transform.x += nextX - previousPoint.x;
+    transform.y += nextY - previousPoint.y;
+    previousPoint.x = nextX;
+    previousPoint.y = nextY;
   }
   userMovedCamera = true;
   dirty = true;
@@ -555,7 +579,7 @@ animateControl.addEventListener("change", () => {
 });
 
 function syncReducedMotionPreference(): void {
-  if (animatePreferenceTouched) return;
+  if (animatePreferenceTouched || animationProbeDisabled) return;
   animateControl.checked = !reducedMotionQuery.matches;
   resetSamples();
   dirty = true;

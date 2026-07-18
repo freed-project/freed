@@ -46,6 +46,20 @@ input {
   background: var(--lab-background);
 }
 
+html[data-compact-probe="true"] body {
+  display: flex;
+  justify-content: center;
+}
+
+html[data-compact-probe="true"] .lab-shell {
+  width: min(390px, 100%);
+  height: min(844px, 100%);
+}
+
+html[data-controls-hidden="true"] .lab-panel {
+  display: none;
+}
+
 .galaxy-viewport {
   position: absolute;
   z-index: 0;

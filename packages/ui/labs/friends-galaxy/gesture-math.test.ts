@@ -1,0 +1,71 @@
+import { describe, expect, it } from "vitest";
+import {
+  applyGalaxyLabPinch,
+  applyGalaxyLabZoomAt,
+} from "./gesture-math.js";
+
+describe("Friends Galaxy gesture math", () => {
+  it("preserves the world point beneath a centered zoom", () => {
+    const transform = { x: 36, y: -24, scale: 0.5 };
+    const viewportX = 190;
+    const viewportY = 422;
+    const worldX = (viewportX - transform.x) / transform.scale;
+    const worldY = (viewportY - transform.y) / transform.scale;
+
+    applyGalaxyLabZoomAt(transform, viewportX, viewportY, 0.9, 0.035, 6);
+
+    expect(transform.scale).toBe(0.9);
+    expect(worldX * transform.scale + transform.x).toBeCloseTo(viewportX, 8);
+    expect(worldY * transform.scale + transform.y).toBeCloseTo(viewportY, 8);
+  });
+
+  it("uses the exact touch-distance ratio and preserves the moving midpoint", () => {
+    const transform = { x: 20, y: 30, scale: 0.5 };
+    const previousMidpointX = 150;
+    const previousMidpointY = 200;
+    const worldX = (previousMidpointX - transform.x) / transform.scale;
+    const worldY = (previousMidpointY - transform.y) / transform.scale;
+
+    expect(applyGalaxyLabPinch(
+      transform,
+      100,
+      200,
+      200,
+      200,
+      80,
+      220,
+      240,
+      220,
+      0.035,
+      6,
+    )).toBe(true);
+
+    expect(transform.scale).toBeCloseTo(0.8, 8);
+    expect(worldX * transform.scale + transform.x).toBeCloseTo(160, 8);
+    expect(worldY * transform.scale + transform.y).toBeCloseTo(220, 8);
+  });
+
+  it("clamps pinch scale without losing the active midpoint", () => {
+    const transform = { x: 0, y: 0, scale: 5.8 };
+    const worldX = 150 / transform.scale;
+    const worldY = 100 / transform.scale;
+
+    applyGalaxyLabPinch(
+      transform,
+      100,
+      100,
+      200,
+      100,
+      0,
+      120,
+      400,
+      120,
+      0.035,
+      6,
+    );
+
+    expect(transform.scale).toBe(6);
+    expect(worldX * transform.scale + transform.x).toBeCloseTo(200, 8);
+    expect(worldY * transform.scale + transform.y).toBeCloseTo(120, 8);
+  });
+});
