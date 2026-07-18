@@ -188,6 +188,8 @@ The detached laboratory now starts through a one-shot worker with no main-thread
 
 Compact canvases now open at a useful 0.16 exploration scale around the semantic center instead of presenting literal fit-all as an apparently empty field. Wider canvases retain their useful fitted scale. The explicit Fit galaxy command still reveals every provider sector, so overview geography remains one action away without sacrificing first-use legibility.
 
+Frame and submission diagnostics now use fixed 240-value typed rings. Active camera motion suppresses diagnostics DOM rebuilding, then refreshes the panel after settle from one bounded snapshot. The detached gesture path no longer shifts diagnostic arrays or performs periodic panel layout while the camera is moving.
+
 Provider sectors now follow deterministic logarithmic spirals shared by layout and rendering. The default Nebula treatment combines procedural arms and themed dust without per-star scene objects. Linked accounts stay close to their parent identity, billboard labels sit close to their parent star with a stronger outline, and semantic links remain absent until one star in that identity system is hovered or selected.
 
 ### Scale targets
@@ -402,6 +404,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.74 | Prove worker-built transferable sparse spatial picking with exact bounded candidate projection in both WebGPU backends | High | Done |
 | 8.75 | Prove bounded settled and motion render density on Retina and compact WebGPU canvases without evicting semantic detail | High | Done |
 | 8.76 | Separate useful compact initial framing from explicit fit-all while preserving the locked semantic center | High | Done |
+| 8.77 | Remove diagnostic array shifts and DOM refreshes from the active camera path with fixed typed sample rings | High | Done |
 
 ---
 
@@ -489,6 +492,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Projected picking uses a worker-built transferable sparse world grid, preserves exact depth and prominence selection, tolerates distant pinned outliers, and projects only the locked-camera corridor candidates
 - [x] WebGPU rendering caps settled Retina density and lowers compact or wide motion density once per gesture without removing resident stars or labels
 - [x] Compact initial framing opens on a legible semantic field while Fit galaxy remains the explicit complete-universe command
+- [x] Gesture diagnostics use fixed typed rings and defer panel DOM updates until camera settle
 - [x] Linked accounts occupy complete local orbits, and dense people fields reserve enough space for those systems
 - [x] Galaxy compilation indexes accounts by person once instead of scanning the full account library for every identity
 - [x] Mobile pinch hands directly to one-finger pan when either touch lifts

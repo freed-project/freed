@@ -37,6 +37,10 @@ import {
   type GalaxyLabAvatarImageAdmissionResult,
 } from "./avatar-image-admission.js";
 import { galaxyLabInitialCameraScale } from "./camera-math.js";
+import {
+  GalaxyLabSampleRing,
+  shouldRefreshGalaxyLabDiagnostics,
+} from "./sample-ring.js";
 
 const DEFAULT_PERSON_COUNT = 5_000;
 const DEFAULT_ACCOUNT_COUNT = 25_000;
@@ -161,8 +165,8 @@ let userMovedCamera = false;
 let cameraInMotion = false;
 viewport.dataset.cameraMotion = "false";
 let settledDetailTimer = 0;
-const frameSamples: number[] = [];
-const submitSamples: number[] = [];
+const frameSamples = new GalaxyLabSampleRing(240);
+const submitSamples = new GalaxyLabSampleRing(240);
 const nodeLabelById = new Map(fixture.atlas.nodes.map((node) => [node.id, node.label]));
 let interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: null };
 let avatarAdmissionGeneration = 0;
@@ -431,8 +435,8 @@ function frameInitialGalaxy(): void {
 }
 
 function resetSamples(): void {
-  frameSamples.length = 0;
-  submitSamples.length = 0;
+  frameSamples.clear();
+  submitSamples.clear();
   lastFrameAt = 0;
 }
 
@@ -564,8 +568,8 @@ function updateMetrics(): void {
     "Selection",
     interaction.selectedNodeId ? nodeLabelById.get(interaction.selectedNodeId) ?? "Selected" : "None",
   );
-  addMetric("Frame interval", formatFrameStats(frameStats(frameSamples)));
-  addMetric("CPU submit", formatFrameStats(frameStats(submitSamples)));
+  addMetric("Frame interval", formatFrameStats(frameStats(frameSamples.snapshot())));
+  addMetric("CPU submit", formatFrameStats(frameStats(submitSamples.snapshot())));
   addMetric("Buffer uploads", integerFormat.format(metrics.bufferUploadCount));
   if (metrics.residentStarUploadCount !== undefined) {
     addMetric("Resident star uploads", integerFormat.format(metrics.residentStarUploadCount));
@@ -597,10 +601,6 @@ function updateMetrics(): void {
   if (metrics.adapterDescription) addMetric("Adapter", metrics.adapterDescription);
 }
 
-function trimSamples(samples: number[]): void {
-  if (samples.length > 240) samples.splice(0, samples.length - 240);
-}
-
 function scheduleBackendRecovery(backend: GalaxyLabBackend, reason: string): void {
   if (backend !== activeBackend || backendRecoveryPending) return;
   const normalizedReason = reason.trim() || `${backend.metrics().label} stopped responding.`;
@@ -628,7 +628,6 @@ function renderFrame(timeMs: number): void {
   if (shouldRender && activeBackend) {
     if (lastFrameAt > 0 && animateControl.checked) {
       frameSamples.push(timeMs - lastFrameAt);
-      trimSamples(frameSamples);
     }
     lastFrameAt = timeMs;
     const submitStartedAt = performance.now();
@@ -636,7 +635,6 @@ function renderFrame(timeMs: number): void {
     try {
       renderingBackend.render(transform, timeMs);
       submitSamples.push(performance.now() - submitStartedAt);
-      trimSamples(submitSamples);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       scheduleBackendRecovery(renderingBackend, reason);
@@ -645,7 +643,7 @@ function renderFrame(timeMs: number): void {
   } else {
     lastFrameAt = 0;
   }
-  if (timeMs - lastMetricsAt >= 500) {
+  if (shouldRefreshGalaxyLabDiagnostics(cameraInMotion, timeMs - lastMetricsAt)) {
     updateMetrics();
     lastMetricsAt = timeMs;
   }
@@ -1007,8 +1005,8 @@ Object.assign(window, {
         workerOnly: true,
         ...fixtureWorkerReceipt,
       },
-      frame: frameStats(frameSamples),
-      submit: frameStats(submitSamples),
+      frame: frameStats(frameSamples.snapshot()),
+      submit: frameStats(submitSamples.snapshot()),
     }),
   },
 });
