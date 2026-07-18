@@ -171,8 +171,10 @@ let dirty = true;
 let metricsDirty = true;
 let userMovedCamera = false;
 let cameraInMotion = false;
+let renderResizePending = false;
 viewport.dataset.cameraMotion = "false";
 viewport.dataset.frameLoop = "idle";
+viewport.dataset.renderResizePending = "false";
 const settleScheduler = new GalaxyLabSettleScheduler();
 const frameSamples = new GalaxyLabSampleRing(240);
 const submitSamples = new GalaxyLabSampleRing(240);
@@ -351,6 +353,8 @@ function resizeActiveBackend(): void {
     galaxyLabRenderPixelRatio(effectiveDevicePixelRatio(), width, cameraInMotion),
   );
   recordActiveRenderDensity();
+  renderResizePending = false;
+  viewport.dataset.renderResizePending = "false";
 }
 
 function setCameraInMotion(next: boolean): void {
@@ -358,7 +362,8 @@ function setCameraInMotion(next: boolean): void {
   cameraInMotion = next;
   viewport.dataset.cameraMotion = String(next);
   activeBackend?.setCameraMotion?.(next);
-  resizeActiveBackend();
+  renderResizePending = true;
+  viewport.dataset.renderResizePending = "true";
   markGalaxyDirty();
 }
 
@@ -679,6 +684,7 @@ function renderFrame(timeMs: number): void {
   frameRequest = -1;
   const settledGeneration = settleScheduler.takeDue(timeMs);
   if (settledGeneration !== null) applySettledViewDetail(settledGeneration);
+  if (renderResizePending) resizeActiveBackend();
   pollBackendHealth();
   const shouldRender = Boolean(activeBackend && (animateControl.checked || dirty));
   if (shouldRender && activeBackend) {
@@ -1116,6 +1122,7 @@ Object.assign(window, {
       recoveryReason: lastRecoveryReason,
       viewportGeometryReadCount,
       frameLoop: viewport.dataset.frameLoop,
+      renderResizePending,
       settlePending: settleScheduler.isPending,
       startup: {
         workerOnly: true,

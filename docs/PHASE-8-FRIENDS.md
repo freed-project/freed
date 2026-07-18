@@ -192,6 +192,8 @@ Frame and submission diagnostics now use fixed 240-value typed rings. Active cam
 
 With animation disabled, the detached renderer now schedules frames only for dirty GPU work or a pending settle deadline. It stops requesting animation frames when the scene is idle and exposes that state on the viewport. Diagnostics request a frame only when changed data reaches the bounded refresh interval. One persistent low-frequency health poll remains active so an idle WebGPU device loss still recovers without a permanent animation loop.
 
+Motion-density transitions no longer resize the GPU canvas synchronously inside pointer, wheel, or Safari input. Motion state marks one pending resize and requests a frame. The render callback applies the latest density once before drawing. The same callback consumes settle state and restores settled density. Repeated input before that frame cannot trigger duplicate canvas resizing.
+
 Active pointer movement now reuses viewport bounds captured at gesture start and mutates only the two resident touch records. Hover coalescing retains one scalar coordinate pair. Safari trackpad pinch stores scalar anchor and viewport values at `gesturestart`, so `gesturechange` performs no point allocation or viewport geometry read.
 
 The detached shell now shares one cached viewport origin across hover, pointer, wheel, and Safari input. It refreshes geometry at pointer entry, gesture start, the first event in a wheel burst, and resize. Every event inside the active interaction uses the cached scalar origin. A diagnostic counter exposes the exact geometry-read count without rebuilding the metrics panel during movement.
@@ -434,6 +436,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.86 | Replace the permanent idle animation loop with demand-driven frames and a bounded backend-health poll | High | Done |
 | 8.87 | Replace the fourteen-noise camera-motion field path with one coherent coarse sample while retaining the complete settled nebula | High | Done |
 | 8.88 | Replace moving-star square root, exponential, fractional power, and unused twinkle phase work with coherent multiply-only falloff | High | Done |
+| 8.89 | Defer motion-density canvas resizing out of input handlers and coalesce it in the next requested render callback | High | Done |
 
 ---
 
@@ -524,6 +527,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Compact initial framing opens on a legible semantic field while Fit galaxy remains the explicit complete-universe command
 - [x] Gesture diagnostics use fixed typed rings and defer panel DOM updates until camera settle
 - [x] Animation-disabled scenes stop requesting frames when idle and wake only for renderer work, settle state, diagnostics, or backend health recovery
+- [x] Pointer, wheel, and Safari handlers mark motion density without synchronously resizing the GPU canvas
 - [x] Active pointer and Safari gesture movement reuses captured bounds and scalar state without per-event point allocation
 - [x] Pinch and wheel movement update one scalar settle deadline without allocating or canceling per-event browser timers
 - [x] Hover and selection reuse fixed interaction payloads and renderer scratch storage without rebuilding maps, sets, typed views, or edge geometry
