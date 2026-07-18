@@ -41,6 +41,7 @@ import {
   GALAXY_LAB_PROVIDER_FIELD_INSTANCE_STRIDE,
   type GalaxyLabProviderFields,
 } from "./provider-fields.js";
+import { writeGalaxyLabInteractionInstances } from "./interaction-instance-data.js";
 import {
   GalaxyLabSceneIndex,
   type GalaxyLabInteractionRole,
@@ -397,6 +398,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private providerFieldPipeline: GPURenderPipeline | null = null;
   private providerFieldBindGroup: GPUBindGroup | null = null;
   private staticRenderBundle: GPURenderBundle | null = null;
+  private staticRenderBundleWithInteraction: GPURenderBundle | null = null;
   private readonly staticRenderBundles: GPURenderBundle[] = [];
   private edgePipeline: GPURenderPipeline | null = null;
   private edgeBindGroup: GPUBindGroup | null = null;
@@ -405,6 +407,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private avatarBindGroup: GPUBindGroup | null = null;
   private quadBuffer: GPUBuffer | null = null;
   private semanticBuffer: GPUBuffer | null = null;
+  private interactionBuffer: GPUBuffer | null = null;
   private backgroundBuffer: GPUBuffer | null = null;
   private providerFieldBuffer: GPUBuffer | null = null;
   private edgeBuffer: GPUBuffer | null = null;
@@ -417,6 +420,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private fixture: GalaxyLabFixture | null = null;
   private sceneIndex: GalaxyLabSceneIndex | null = null;
   private semanticData: Float32Array | null = null;
+  private interactionData = new Float32Array(0);
   private backgroundData: Float32Array | null = null;
   private activitySizeScales: Float32Array | null = null;
   private activityBrightnessScales: Float32Array | null = null;
@@ -427,10 +431,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private avatarImages: ReadonlyMap<string, CanvasImageSource> = new Map();
   private palette: GalaxyLabPalette | null = null;
   private interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: null };
-  private readonly touchedInteractionIndices = new Set<number>();
-  private readonly changedInteractionIndices = new Set<number>();
   private interactionRoles: ReadonlyMap<number, GalaxyLabInteractionRole> = new Map();
-  private readonly interactionScratch = new Float32Array(INSTANCE_FLOATS);
+  private interactionInstanceCount = 0;
   private interactionColor: readonly [number, number, number] = [1, 1, 1];
   private readonly viewProjection = new Float32Array(16);
   private readonly uniformData = new Float32Array(
@@ -506,6 +508,14 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       this.semanticData,
       GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     );
+    this.interactionData = new Float32Array(
+      Math.max(1, this.sceneIndex.contextualEdgeCapacity + 2) * INSTANCE_FLOATS,
+    );
+    this.interactionBuffer = createBuffer(
+      device,
+      this.interactionData,
+      GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    );
     this.backgroundBuffer = createBuffer(
       device,
       this.backgroundData,
@@ -518,7 +528,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       this.providerFields.instanceData,
       GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     );
-    this.bufferUploadCount = 3;
+    this.bufferUploadCount = 4;
     this.edgeBuffer = createBuffer(
       device,
       this.edgeData,
@@ -761,9 +771,10 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       this.activitySizeScales[nodeIndex] = patches.sizeScales[patchIndex]!;
       this.activityBrightnessScales[nodeIndex] = patches.brightnessScales[patchIndex]!;
       this.writeSemanticBase(nodeIndex);
-      this.writeSemanticInteraction(nodeIndex, this.interactionRoles.get(nodeIndex) ?? null);
+      this.uploadSemanticBase(nodeIndex);
       this.appliedActivityNodeCount += 1;
     }
+    if (this.interactionRoles.size > 0) this.writeInteractionOverlay(this.interactionRoles);
   }
 
   setAvatarImages(images: ReadonlyMap<string, CanvasImageSource>): void {
@@ -889,6 +900,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       semanticStarCount: this.fixture?.scene.nodeIds.length ?? 0,
       decorativeStarCount: this.fixture?.backgroundStarCount ?? 0,
       drawCalls: 2 + (this.providerFields && this.providerFields.count > 0 ? 1 : 0) +
+        (this.interactionInstanceCount > 0 ? 1 : 0) +
         (this.labelAtlas && this.labelAtlas.labels.length > 0 ? 1 : 0) +
         (this.avatarAtlas && this.avatarAtlas.itemCount > 0 ? 1 : 0) +
         (this.contextualEdgeCount > 0 ? 1 : 0),
@@ -913,6 +925,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.backendHealth.clear();
     this.quadBuffer?.destroy();
     this.semanticBuffer?.destroy();
+    this.interactionBuffer?.destroy();
     this.backgroundBuffer?.destroy();
     this.providerFieldBuffer?.destroy();
     this.edgeBuffer?.destroy();
@@ -931,6 +944,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.providerFieldPipeline = null;
     this.providerFieldBindGroup = null;
     this.staticRenderBundle = null;
+    this.staticRenderBundleWithInteraction = null;
     this.staticRenderBundles.length = 0;
     this.edgePipeline = null;
     this.edgeBindGroup = null;
@@ -939,6 +953,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.avatarBindGroup = null;
     this.quadBuffer = null;
     this.semanticBuffer = null;
+    this.interactionBuffer = null;
     this.backgroundBuffer = null;
     this.providerFieldBuffer = null;
     this.edgeBuffer = null;
@@ -954,6 +969,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.fixture = null;
     this.sceneIndex = null;
     this.semanticData = null;
+    this.interactionData = new Float32Array(0);
     this.backgroundData = null;
     this.activitySizeScales = null;
     this.activityBrightnessScales = null;
@@ -962,9 +978,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.avatarAtlas = null;
     this.avatarImages = new Map();
     this.palette = null;
-    this.touchedInteractionIndices.clear();
-    this.changedInteractionIndices.clear();
     this.interactionRoles = new Map();
+    this.interactionInstanceCount = 0;
     this.contextualEdgeCount = 0;
     this.animationEnabled = false;
     this.cameraMotion = false;
@@ -1021,6 +1036,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     bytes += this.uniformData.byteLength;
     bytes += this.edgeData.byteLength;
     bytes += this.semanticData?.byteLength ?? 0;
+    bytes += this.interactionData.byteLength;
     bytes += this.backgroundData?.byteLength ?? 0;
     bytes += this.providerFields?.instanceData.byteLength ?? 0;
     if (this.labelAtlas && this.labelTexture) {
@@ -1083,36 +1099,32 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   }
 
   private writeInteraction(state: GalaxyLabInteractionState): void {
-    if (!this.device || !this.semanticBuffer || !this.semanticData || !this.fixture) return;
+    if (!this.fixture) return;
     this.interactionRoles = state.roles;
-    this.changedInteractionIndices.clear();
-    for (const index of this.touchedInteractionIndices) this.changedInteractionIndices.add(index);
-    for (const index of state.roles.keys()) this.changedInteractionIndices.add(index);
-    for (const index of this.changedInteractionIndices) {
-      this.writeSemanticInteraction(index, state.roles.get(index) ?? null);
-    }
-    this.touchedInteractionIndices.clear();
-    for (const index of state.roles.keys()) this.touchedInteractionIndices.add(index);
+    this.writeInteractionOverlay(state.roles);
     this.writeContextEdges(state.contextualEdgeIndices, state.contextualEdgeCount);
   }
 
-  private writeSemanticInteraction(index: number, role: GalaxyLabInteractionRole | null): void {
-    if (!this.device || !this.semanticBuffer || !this.semanticData) return;
-    const sourceOffset = index * INSTANCE_FLOATS;
-    for (let component = 0; component < INSTANCE_FLOATS; component += 1) {
-      this.interactionScratch[component] = this.semanticData[sourceOffset + component]!;
-    }
-    if (role) {
-      const sizeScale = role === "selected" ? 1.58 : role === "hovered" ? 1.36 : 1.16;
-      const colorMix = role === "linked" ? 0.62 : 1;
-      this.interactionScratch[3] *= sizeScale;
-      this.interactionScratch[6] = colorMix;
-      this.interactionScratch[7] = 1;
-    }
+  private writeInteractionOverlay(
+    roles: ReadonlyMap<number, GalaxyLabInteractionRole>,
+  ): void {
+    if (!this.device || !this.interactionBuffer || !this.semanticData) return;
+    const previousCount = this.interactionInstanceCount;
+    const nextCount = writeGalaxyLabInteractionInstances(
+      this.interactionData,
+      this.semanticData,
+      roles,
+    );
+    this.interactionInstanceCount = nextCount;
+    const bundle = nextCount > 0
+      ? this.staticRenderBundleWithInteraction ?? this.staticRenderBundle
+      : this.staticRenderBundle;
+    if (bundle) this.staticRenderBundles[0] = bundle;
+    if (previousCount === 0 && nextCount === 0) return;
     this.device.queue.writeBuffer(
-      this.semanticBuffer,
-      index * INSTANCE_STRIDE,
-      this.interactionScratch,
+      this.interactionBuffer,
+      0,
+      this.interactionData,
     );
     this.bufferUploadCount += 1;
   }
@@ -1184,31 +1196,71 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.semanticData[sourceOffset + 4] = brightness;
   }
 
+  private uploadSemanticBase(index: number): void {
+    if (!this.device || !this.semanticBuffer || !this.semanticData) return;
+    const byteOffset = index * INSTANCE_STRIDE;
+    this.device.queue.writeBuffer(
+      this.semanticBuffer,
+      byteOffset,
+      this.semanticData.buffer as ArrayBuffer,
+      this.semanticData.byteOffset + byteOffset,
+      INSTANCE_STRIDE,
+    );
+    this.bufferUploadCount += 1;
+  }
+
   private rebuildStaticRenderBundle(): void {
     if (
       !this.device || !this.format || !this.providerFieldPipeline ||
       !this.providerFieldBindGroup || !this.providerFieldBuffer || !this.providerFields ||
       !this.pipeline || !this.bindGroup || !this.quadBuffer || !this.backgroundBuffer ||
-      !this.semanticBuffer || !this.fixture
+      !this.semanticBuffer || !this.interactionBuffer || !this.fixture
     ) return;
-    const encoder = this.device.createRenderBundleEncoder({
-      label: "Friends Galaxy static world bundle",
-      colorFormats: [this.format],
-    });
-    encoder.setPipeline(this.providerFieldPipeline);
-    encoder.setBindGroup(0, this.providerFieldBindGroup);
-    encoder.setVertexBuffer(0, this.quadBuffer);
-    encoder.setVertexBuffer(1, this.providerFieldBuffer);
-    encoder.draw(6, this.providerFields.count);
-    encoder.setPipeline(this.pipeline);
-    encoder.setBindGroup(0, this.bindGroup);
-    encoder.setVertexBuffer(0, this.quadBuffer);
-    encoder.setVertexBuffer(1, this.backgroundBuffer);
-    encoder.draw(6, this.fixture.backgroundStarCount);
-    encoder.setVertexBuffer(1, this.semanticBuffer);
-    encoder.draw(6, this.fixture.scene.nodeIds.length);
-    this.staticRenderBundle = encoder.finish();
-    this.staticRenderBundles[0] = this.staticRenderBundle;
+    const device = this.device;
+    const format = this.format;
+    const providerFieldPipeline = this.providerFieldPipeline;
+    const providerFieldBindGroup = this.providerFieldBindGroup;
+    const providerFieldBuffer = this.providerFieldBuffer;
+    const providerFieldCount = this.providerFields.count;
+    const pipeline = this.pipeline;
+    const bindGroup = this.bindGroup;
+    const quadBuffer = this.quadBuffer;
+    const backgroundBuffer = this.backgroundBuffer;
+    const backgroundStarCount = this.fixture.backgroundStarCount;
+    const semanticBuffer = this.semanticBuffer;
+    const semanticStarCount = this.fixture.scene.nodeIds.length;
+    const interactionBuffer = this.interactionBuffer;
+    const interactionCapacity = this.interactionData.length / INSTANCE_FLOATS;
+    const recordBundle = (includeInteraction: boolean): GPURenderBundle => {
+      const encoder = device.createRenderBundleEncoder({
+        label: includeInteraction
+          ? "Friends Galaxy interactive world bundle"
+          : "Friends Galaxy static world bundle",
+        colorFormats: [format],
+      });
+      encoder.setPipeline(providerFieldPipeline);
+      encoder.setBindGroup(0, providerFieldBindGroup);
+      encoder.setVertexBuffer(0, quadBuffer);
+      encoder.setVertexBuffer(1, providerFieldBuffer);
+      encoder.draw(6, providerFieldCount);
+      encoder.setPipeline(pipeline);
+      encoder.setBindGroup(0, bindGroup);
+      encoder.setVertexBuffer(0, quadBuffer);
+      encoder.setVertexBuffer(1, backgroundBuffer);
+      encoder.draw(6, backgroundStarCount);
+      encoder.setVertexBuffer(1, semanticBuffer);
+      encoder.draw(6, semanticStarCount);
+      if (includeInteraction) {
+        encoder.setVertexBuffer(1, interactionBuffer);
+        encoder.draw(6, interactionCapacity);
+      }
+      return encoder.finish();
+    };
+    this.staticRenderBundle = recordBundle(false);
+    this.staticRenderBundleWithInteraction = recordBundle(true);
+    this.staticRenderBundles[0] = this.interactionInstanceCount > 0
+      ? this.staticRenderBundleWithInteraction
+      : this.staticRenderBundle;
   }
 
   private writePaletteUniforms(palette: GalaxyLabPalette): void {
