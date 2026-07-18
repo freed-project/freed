@@ -7,10 +7,8 @@ import type {
   FriendsGalaxyCameraScaleLimits,
   FriendsGalaxyOutwardZoomEnvelope,
 } from "../../src/lib/friends-galaxy-camera.js";
-import type {
-  GalaxyLabThemeId,
-  GalaxyLabTransform,
-} from "./scene-fixture.js";
+import type { GalaxyLabThemeId } from "./scene-fixture.js";
+import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
 import type { GalaxyLabFixtureWorkerReceipt } from "./scene-fixture-worker-protocol.js";
 import type { FriendsGalaxyLongTaskSnapshot } from "../../src/lib/friends-galaxy-long-tasks.js";
 
@@ -25,7 +23,7 @@ export interface GalaxyLabDiagnosticSnapshotInput {
   backend: GalaxyLabBackendMetrics | null;
   theme: GalaxyLabThemeId;
   fieldStyle: GalaxyLabFieldStyle;
-  transform: GalaxyLabTransform;
+  transform: FriendsGalaxyTransform;
   cameraScaleLimits: FriendsGalaxyCameraScaleLimits;
   outwardZoomEnvelope: FriendsGalaxyOutwardZoomEnvelope;
   viewportWidth: number;

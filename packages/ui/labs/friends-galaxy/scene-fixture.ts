@@ -61,12 +61,6 @@ export interface GalaxyLabFixture {
   buildMs: number;
 }
 
-export interface GalaxyLabTransform {
-  x: number;
-  y: number;
-  scale: number;
-}
-
 export interface GalaxyLabNodePresentation {
   label: string;
   initials: string;

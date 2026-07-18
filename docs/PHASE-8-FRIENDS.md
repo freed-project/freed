@@ -262,6 +262,8 @@ Incremental activity indexing and sparse scene patch encoding now live under sha
 
 Backend selection and recovery now use one renderer-neutral runtime under shared UI source. A replacement renderer initializes on a hidden candidate canvas while the current canvas remains visible, then commits atomically only after scene and interaction state are ready. A newer request invalidates the older generation and removes its candidate surface immediately. Preferred-backend failure falls through to WebGL2, but retains an already healthy WebGL2 instance instead of rebuilding it. Runtime failure recovers once, while compatibility failure latches terminal state and stops the demand loop instead of retrying forever. The bounded diagnostic snapshot now records backend generation, recovery-pending state, terminal state, and the existing bounded reason. Product cutover can supply its real backend factories and callbacks to this same controller without recreating switch state in React.
 
+The renderer interface now lives under shared UI source too. It owns backend IDs, overview, middle, and close detail tiers, the existing shared transform, renderer metrics, palette constraints, interaction updates, activity patches, avatar images, field style, animation and camera-motion state, picking, rendering, health, simulation hooks, and disposal. Its scene is a generic type parameter, so the detached synthetic fixture and the future product worker envelope can use the same renderer lifecycle without either importing the other. The motion render-density policy moved with this interface and remains covered by the existing compact and wide viewport tests. Laboratory aliases are compile-time names only and contain no renderer behavior.
+
 The moving world bundles draw a deterministic 50,000-star prefix of the 100,000 resident decorative dust stars. Their index-keyed placement keeps that prefix evenly distributed across the galactic field. All 30,000 semantic stars, interaction overlays, labels, avatars, and edges remain complete. Settle returns the full decorative stream without an upload or bundle rebuild.
 
 Provider fields now become degenerate in the vertex shader beyond 1.5 close-detail scale. Their existing camera fade has already reduced them to atmospheric residue by that point. The cutoff prevents six large, effectively invisible field quads from rasterizing or running noise fragments over close-zoom stars, labels, and avatars. Overview and middle detail remain unchanged.
@@ -532,6 +534,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.124 | Move provider-field geometry, presentation, style, stride, and close-culling contracts into shared UI source without rescanning people on theme changes | High | Done |
 | 8.125 | Move the source-key incremental activity index and sparse typed scene patch encoder into shared UI source without connecting the frozen product route | High | Done |
 | 8.126 | Move atomic backend activation, stale-candidate disposal, compatibility retention, one-shot recovery, and terminal latching into shared UI source | High | Done |
+| 8.127 | Move renderer IDs, detail tiers, transform, metrics, lifecycle methods, and motion render-density policy into one shared generic backend contract | High | Done |
 
 ---
 
@@ -612,6 +615,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Activity-only updates encode deterministic size and brightness scales and rewrite only the affected raw WebGPU semantic instances while preserving theme and interaction overlays
 - [x] The detached laboratory consumes one shared source-key activity index and sparse typed patch encoder whose retained state follows source count and whose updates exclude positions and feed-item payloads
 - [x] The detached laboratory and future product shell share one generation-safe backend runtime that keeps the old canvas visible until replacement commit, recovers once, and terminates compatibility failure without a render loop
+- [x] Raw WebGPU, Three.js WebGPU, and WebGL2 implement one shared generic renderer contract with no duplicate transform or render-density policy in the laboratory
 - [x] Settled close-detail avatar decoding is concurrency-limited, revision-cached, compact-capped, stale-safe, and paired with deterministic bitmap cleanup
 - [x] Close-detail avatar admission is keyed by renderer, viewport class, and selected person so unchanged settles do not rescan candidates or rebuild the atlas
 - [x] Raw and Three.js WebGPU device loss recovers once into WebGL2 without discarding the active theme, camera transform, semantic scene, or interaction state

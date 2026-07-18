@@ -1,7 +1,6 @@
 import "./styles.css";
 import {
   frameStats,
-  galaxyLabRenderPixelRatio,
   type GalaxyLabBackend,
   type GalaxyLabBackendId,
   type GalaxyLabFieldStyle,
@@ -10,13 +9,13 @@ import {
   type GalaxyLabViewDetail,
 } from "./backend.js";
 import { FriendsGalaxyBackendRuntime } from "../../src/lib/friends-galaxy-backend-runtime.js";
+import { friendsGalaxyRenderPixelRatio } from "../../src/lib/friends-galaxy-renderer.js";
 import { friendsGalaxyHexToRgb } from "../../src/lib/friends-galaxy-palette.js";
 import {
   GALAXY_LAB_THEMES,
   galaxyLabNodePresentation,
   type GalaxyLabPalette,
   type GalaxyLabThemeId,
-  type GalaxyLabTransform,
 } from "./scene-fixture.js";
 import { loadGalaxyLabFixture } from "./scene-fixture-loader.js";
 import { findFriendsGalaxySceneNodeIndex } from "../../src/lib/friends-galaxy-scene-interaction-index.js";
@@ -75,6 +74,7 @@ import {
   reanchorFriendsGalaxyTransformToInteraction,
   writeFriendsGalaxyCanvasPoint,
   type FriendsGalaxyCanvasPoint,
+  type FriendsGalaxyTransform,
   type FriendsGalaxyViewportGeometry,
 } from "../../src/lib/friends-galaxy-viewport.js";
 import {
@@ -213,7 +213,7 @@ const activityProbeScenePatch = activityScenePatchEncoder.encode(
   1_725_000_120_000,
 );
 
-const transform: GalaxyLabTransform = { x: 0, y: 0, scale: 0.12 };
+const transform: FriendsGalaxyTransform = { x: 0, y: 0, scale: 0.12 };
 let cameraScaleLimits = friendsGalaxyCameraScaleLimits(
   1,
   fixture.scene.bounds.minZ,
@@ -488,7 +488,7 @@ function resizeBackend(backend: GalaxyLabBackend): void {
   backend.resize(
     width,
     height,
-    galaxyLabRenderPixelRatio(effectiveDevicePixelRatio(), width, cameraInMotion),
+    friendsGalaxyRenderPixelRatio(effectiveDevicePixelRatio(), width, cameraInMotion),
   );
 }
 

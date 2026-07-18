@@ -20,7 +20,7 @@ import type {
   GalaxyLabInteraction,
   GalaxyLabViewDetail,
 } from "./backend.js";
-import { galaxyLabRenderPixelRatio } from "./backend.js";
+import { friendsGalaxyRenderPixelRatio } from "../../src/lib/friends-galaxy-renderer.js";
 import { friendsGalaxyHexToRgb } from "../../src/lib/friends-galaxy-palette.js";
 import { FriendsGalaxyBackendHealth } from "../../src/lib/friends-galaxy-backend-health.js";
 import { createGalaxyLabAvatarAtlas } from "./avatar-atlas.js";
@@ -30,8 +30,8 @@ import {
   galaxyLabSemanticColor,
   type GalaxyLabFixture,
   type GalaxyLabPalette,
-  type GalaxyLabTransform,
 } from "./scene-fixture.js";
+import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
 import {
   FriendsGalaxySceneIndex,
   type FriendsGalaxyInteractionRole,
@@ -197,7 +197,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(42, 1, 1, 20_000);
   private readonly viewProjection = new THREE.Matrix4();
-  private readonly settledTransform: GalaxyLabTransform = { x: 0, y: 0, scale: 0.12 };
+  private readonly settledTransform: FriendsGalaxyTransform = { x: 0, y: 0, scale: 0.12 };
   private readonly settledProjection = {
     viewProjection: this.viewProjection.elements,
     width: 1,
@@ -341,7 +341,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     if (!this.renderer) return;
     this.width = Math.max(1, Math.floor(width));
     this.height = Math.max(1, Math.floor(height));
-    this.pixelRatio = galaxyLabRenderPixelRatio(pixelRatio, this.width, false);
+    this.pixelRatio = friendsGalaxyRenderPixelRatio(pixelRatio, this.width, false);
     this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.setSize(this.width, this.height, false);
     this.camera.aspect = this.width / this.height;
@@ -390,7 +390,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.rebuildAvatars(this.compactLabels ?? this.width < 720);
   }
 
-  setSettledView(detail: GalaxyLabViewDetail, transform: GalaxyLabTransform): void {
+  setSettledView(detail: GalaxyLabViewDetail, transform: FriendsGalaxyTransform): void {
     this.viewDetail = detail;
     this.settledTransform.x = transform.x;
     this.settledTransform.y = transform.y;
@@ -425,7 +425,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.writeInteraction(this.sceneIndex.interactionState(interaction));
   }
 
-  render(transform: GalaxyLabTransform, _timeMs: number): void {
+  render(transform: FriendsGalaxyTransform, _timeMs: number): void {
     if (!this.renderer) return;
     this.updateViewProjection(transform);
     this.renderer.render(this.scene, this.camera);
@@ -573,7 +573,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.bufferUploadCount += 2;
   }
 
-  private updateViewProjection(transform: GalaxyLabTransform): void {
+  private updateViewProjection(transform: FriendsGalaxyTransform): void {
     const pose = identityGalaxyCameraPose(transform, this.width, this.height, this.camera.fov);
     this.camera.position.set(pose.x, pose.y, pose.z);
     this.camera.lookAt(pose.targetX, pose.targetY, pose.targetZ);

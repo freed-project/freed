@@ -9,9 +9,9 @@ import { friendsGalaxyHexToRgb } from "../../src/lib/friends-galaxy-palette.js";
 import type {
   GalaxyLabFixture,
   GalaxyLabPalette,
-  GalaxyLabTransform,
 } from "./scene-fixture.js";
 import { FriendsGalaxySceneIndex } from "../../src/lib/friends-galaxy-scene-index.js";
+import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
 
 function cssRgb(value: string): string {
   return friendsGalaxyHexToRgb(value).map((part) => Math.round(part * 255)).join(" ");
@@ -113,7 +113,7 @@ export class CurrentWebGl2Backend implements GalaxyLabBackend {
     this.bufferUploadCount += 1;
   }
 
-  render(transform: GalaxyLabTransform, _timeMs: number): void {
+  render(transform: FriendsGalaxyTransform, _timeMs: number): void {
     this.engine?.render(transform);
   }
 

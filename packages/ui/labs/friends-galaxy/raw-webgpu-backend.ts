@@ -5,7 +5,7 @@ import type {
   GalaxyLabInteraction,
   GalaxyLabViewDetail,
 } from "./backend.js";
-import { galaxyLabRenderPixelRatio } from "./backend.js";
+import { friendsGalaxyRenderPixelRatio } from "../../src/lib/friends-galaxy-renderer.js";
 import type { FriendsGalaxyActivityScenePatchBatch } from "../../src/lib/friends-galaxy-activity-patches.js";
 import { FriendsGalaxyBackendHealth } from "../../src/lib/friends-galaxy-backend-health.js";
 import { createGalaxyLabAvatarAtlas } from "./avatar-atlas.js";
@@ -22,8 +22,8 @@ import {
 import {
   type GalaxyLabFixture,
   type GalaxyLabPalette,
-  type GalaxyLabTransform,
 } from "./scene-fixture.js";
+import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
 import {
   FRIENDS_GALAXY_STAR_INSTANCE_FLOATS,
   FRIENDS_GALAXY_STAR_PALETTE_ROLE_COUNT,
@@ -511,7 +511,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private interactionInstanceCount = 0;
   private interactionColor: readonly [number, number, number] = [1, 1, 1];
   private readonly viewProjection = new Float32Array(16);
-  private readonly settledTransform: GalaxyLabTransform = { x: 0, y: 0, scale: 0.12 };
+  private readonly settledTransform: FriendsGalaxyTransform = { x: 0, y: 0, scale: 0.12 };
   private readonly settledProjection = {
     viewProjection: this.viewProjection,
     width: 1,
@@ -819,7 +819,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     if (!this.canvas) return;
     this.width = Math.max(1, Math.floor(width));
     this.height = Math.max(1, Math.floor(height));
-    this.pixelRatio = galaxyLabRenderPixelRatio(pixelRatio, this.width, false);
+    this.pixelRatio = friendsGalaxyRenderPixelRatio(pixelRatio, this.width, false);
     this.canvas.width = Math.max(1, Math.floor(this.width * this.pixelRatio));
     this.canvas.height = Math.max(1, Math.floor(this.height * this.pixelRatio));
     if (this.settledProjectionValid) this.updateSettledProjection();
@@ -899,7 +899,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.rebuildAvatars(this.compactLabels ?? this.width < 720);
   }
 
-  setSettledView(detail: GalaxyLabViewDetail, transform: GalaxyLabTransform): void {
+  setSettledView(detail: GalaxyLabViewDetail, transform: FriendsGalaxyTransform): void {
     this.viewDetail = detail;
     this.settledTransform.x = transform.x;
     this.settledTransform.y = transform.y;
@@ -928,7 +928,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.writeInteraction(this.sceneIndex.interactionState(interaction));
   }
 
-  render(transform: GalaxyLabTransform, timeMs: number): void {
+  render(transform: FriendsGalaxyTransform, timeMs: number): void {
     if (
       !this.device || !this.context || !this.pipeline || !this.bindGroup || !this.uniformBuffer ||
       !this.quadBuffer || !this.semanticBuffer || !this.backgroundBuffer || !this.fixture ||

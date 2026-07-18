@@ -1,84 +1,25 @@
-import type { FriendsGalaxyActivityScenePatchBatch } from "../../src/lib/friends-galaxy-activity-patches.js";
 import type { FriendsGalaxyFieldStyle } from "../../src/lib/friends-galaxy-provider-fields.js";
 import type { FriendsGalaxyInteraction } from "../../src/lib/friends-galaxy-scene-index.js";
-import type { GalaxyLabFixture, GalaxyLabPalette, GalaxyLabTransform } from "./scene-fixture.js";
+import type {
+  FriendsGalaxyRenderer,
+  FriendsGalaxyRendererId,
+  FriendsGalaxyRendererMetrics,
+  FriendsGalaxyViewDetail,
+} from "../../src/lib/friends-galaxy-renderer.js";
+import type { GalaxyLabFixture, GalaxyLabPalette } from "./scene-fixture.js";
 
-export type GalaxyLabBackendId = "current-webgl2" | "three-webgpu" | "raw-webgpu";
-export type GalaxyLabViewDetail = "overview" | "middle" | "close";
+export type GalaxyLabBackendId = FriendsGalaxyRendererId;
+export type GalaxyLabViewDetail = FriendsGalaxyViewDetail;
 export type GalaxyLabFieldStyle = FriendsGalaxyFieldStyle;
-
-export interface GalaxyLabBackendMetrics {
-  id: GalaxyLabBackendId;
-  label: string;
-  api: string;
-  semanticStarCount: number;
-  decorativeStarCount: number;
-  motionDecorativeStarCount?: number;
-  drawCalls: number | null;
-  labelCount: number;
-  avatarCount: number;
-  labelAtlasBuildCount?: number;
-  avatarAtlasBuildCount?: number;
-  contextualEdgeCount: number;
-  bufferUploadCount: number;
-  residentStarUploadCount?: number;
-  appliedActivityNodeCount?: number;
-  pickCandidateCount?: number;
-  pickSourceNodeCount?: number;
-  renderPixelRatio?: number;
-  trackedGpuDataBytes?: number;
-  submissionMode?: string;
-  renderBundleCount?: number;
-  fallbackReason: string | null;
-  adapterDescription: string | null;
-}
-
+export type GalaxyLabBackendMetrics = FriendsGalaxyRendererMetrics;
 export type GalaxyLabInteraction = FriendsGalaxyInteraction;
-
-export interface GalaxyLabBackend {
-  readonly id: GalaxyLabBackendId;
-  initialize(
-    canvas: HTMLCanvasElement,
-    fixture: GalaxyLabFixture,
-    palette: GalaxyLabPalette,
-  ): Promise<void>;
-  resize(width: number, height: number, pixelRatio: number): void;
-  setPalette(palette: GalaxyLabPalette): void;
-  applyActivityPatches?(patches: FriendsGalaxyActivityScenePatchBatch): void;
-  setAvatarImages?(images: ReadonlyMap<string, CanvasImageSource>): void;
-  setAnimationEnabled?(enabled: boolean): void;
-  setCameraMotion?(active: boolean): void;
-  setFieldStyle?(style: GalaxyLabFieldStyle): void;
-  setViewDetail(detail: GalaxyLabViewDetail): void;
-  setSettledView?(detail: GalaxyLabViewDetail, transform: GalaxyLabTransform): void;
-  pickNode(viewportX: number, viewportY: number): string | null;
-  setInteraction(interaction: GalaxyLabInteraction): void;
-  render(transform: GalaxyLabTransform, timeMs: number): void;
-  takeFatalError?(): string | null;
-  simulateDeviceLoss?(): void;
-  metrics(): GalaxyLabBackendMetrics;
-  dispose(): void;
-}
+export type GalaxyLabBackend = FriendsGalaxyRenderer<GalaxyLabFixture, GalaxyLabPalette>;
 
 export interface GalaxyLabFrameStats {
   frameCount: number;
   p50Ms: number;
   p95Ms: number;
   worstMs: number;
-}
-
-export function galaxyLabRenderPixelRatio(
-  devicePixelRatio: number,
-  viewportWidth: number,
-  cameraInMotion: boolean,
-): number {
-  const normalizedRatio = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0
-    ? devicePixelRatio
-    : 1;
-  const maximumRatio = cameraInMotion
-    ? viewportWidth < 720 ? 1 : 1.25
-    : 1.5;
-  return Math.min(maximumRatio, Math.max(1, normalizedRatio));
 }
 
 export function frameStats(samples: readonly number[]): GalaxyLabFrameStats {
