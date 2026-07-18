@@ -212,6 +212,8 @@ The bounded observability and renderer-recovery primitives now live under shared
 
 The renderer scene envelope now lives under shared UI source too. Raw WebGPU, Three.js WebGPU, WebGL2, billboard labels, and avatar admission receive one renderer-neutral object containing the atlas, typed scene, sparse interaction index, direct-upload star instances, decorative background buffers, and locale-independent source counts. Synthetic fixture-only activity and build diagnostics extend that envelope outside the renderer. Product cutover can therefore supply the real worker result without teaching a backend about laboratory metadata.
 
+The complete renderer palette now has the same boundary. Shared UI source owns background, surface, primary text, muted text, friend, connection, account, feed, selection, and fixed provider colors. A shared semantic resolver reads only the typed scene kind and provider arrays, so Three.js color buffers and avatar seeds no longer call a laboratory helper. The backend alias now accepts the shared scene and palette contracts directly. The laboratory retains only its four sample palette values and synthetic label metadata.
+
 The same camera contract now derives a prominence-safe maximum scale from viewport height, maximum semantic depth, and a 96-unit near-camera clearance. Compact zoom can no longer pass through the closest friend stars. Programmatic `focusNode` navigation uses the target star's real `z` depth and the bounded usable viewport insets, so Reader, search, Map, and details handoffs can center a star beside the desktop rail or above mobile chrome while the canvas remains full bleed. Focus changes only camera and sparse interaction state. It does not reupload resident stars.
 
 Frame and submission diagnostics now use fixed 240-value typed rings. Active camera motion suppresses diagnostics DOM rebuilding, then refreshes the panel after settle from one bounded snapshot. The detached gesture path no longer shifts diagnostic arrays or performs periodic panel layout while the camera is moving.
@@ -539,6 +541,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.127 | Move renderer IDs, detail tiers, transform, metrics, lifecycle methods, and motion render-density policy into one shared generic backend contract | High | Done |
 | 8.128 | Move the renderer scene envelope into shared UI source so every backend consumes the same atlas, scene, sparse interaction index, direct-upload stars, background field, and source counts | High | Done |
 | 8.129 | Strengthen the asymptotic outer ceiling and give trackpad inward reversal an immediate constant-speed log response with boundary-crossing input preservation | High | Done |
+| 8.130 | Move the complete renderer palette and typed-scene semantic color resolver into shared UI source, then remove laboratory scene and palette types from every backend contract | High | Done |
 
 ---
 
@@ -621,6 +624,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] The detached laboratory and future product shell share one generation-safe backend runtime that keeps the old canvas visible until replacement commit, recovers once, and terminates compatibility failure without a render loop
 - [x] Raw WebGPU, Three.js WebGPU, and WebGL2 implement one shared generic renderer contract with no duplicate transform or render-density policy in the laboratory
 - [x] Every detached backend, billboard compositor, and avatar selector consumes one shared renderer scene envelope without depending on synthetic fixture diagnostics
+- [x] Every detached backend consumes one shared complete renderer palette, and semantic star colors resolve from typed scene data without a laboratory helper
 - [x] Settled close-detail avatar decoding is concurrency-limited, revision-cached, compact-capped, stale-safe, and paired with deterministic bitmap cleanup
 - [x] Close-detail avatar admission is keyed by renderer, viewport class, and selected person so unchanged settles do not rescan candidates or rebuild the atlas
 - [x] Raw and Three.js WebGPU device loss recovers once into WebGL2 without discarding the active theme, camera transform, semantic scene, or interaction state

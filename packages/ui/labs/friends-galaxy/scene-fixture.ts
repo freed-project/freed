@@ -24,7 +24,7 @@ import {
   createFriendsGalaxyPackedStarInstances,
   type FriendsGalaxyPackedStarInstances,
 } from "../../src/lib/friends-galaxy-star-instances.js";
-import type { FriendsGalaxyStarPalette } from "../../src/lib/friends-galaxy-palette.js";
+import type { FriendsGalaxyRendererPalette } from "../../src/lib/friends-galaxy-palette.js";
 import type { FriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer.js";
 
 export const GALAXY_LAB_PROVIDERS = ["instagram", "facebook", "linkedin", "x", "rss"] as const;
@@ -32,11 +32,7 @@ export const GALAXY_LAB_PROVIDERS = ["instagram", "facebook", "linkedin", "x", "
 export type GalaxyLabProvider = (typeof GALAXY_LAB_PROVIDERS)[number];
 export type GalaxyLabThemeId = "scriptorium" | "neon" | "midas" | "vesper";
 
-export interface GalaxyLabPalette extends FriendsGalaxyStarPalette {
-  surface: string;
-  text: string;
-  providers: Record<GalaxyLabProvider, string>;
-}
+export type GalaxyLabPalette = FriendsGalaxyRendererPalette;
 
 export interface GalaxyLabFixtureOptions {
   personCount: number;
@@ -171,20 +167,6 @@ export const GALAXY_LAB_THEMES: Record<GalaxyLabThemeId, GalaxyLabPalette> = {
     },
   },
 };
-
-export function galaxyLabSemanticColor(
-  fixture: FriendsGalaxyRendererScene,
-  palette: GalaxyLabPalette,
-  index: number,
-): string {
-  const provider = fixture.scene.providers[index] as GalaxyLabProvider | null | undefined;
-  if (provider && provider in palette.providers) return palette.providers[provider];
-  const kind = fixture.scene.kinds[index];
-  if (kind === IdentityGalaxyNodeKindCode.FriendPerson) return palette.friend;
-  if (kind === IdentityGalaxyNodeKindCode.ConnectionPerson) return palette.connection;
-  if (kind === IdentityGalaxyNodeKindCode.Feed) return palette.feed;
-  return palette.account;
-}
 
 const PERSON_FIELD_RADIUS = 1_680;
 const PERSON_ARM_COUNT = 6;

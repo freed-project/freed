@@ -1,9 +1,11 @@
 import type { GalaxyLabViewDetail } from "./backend.js";
 import {
   galaxyLabNodePresentation,
-  galaxyLabSemanticColor,
-  type GalaxyLabPalette,
 } from "./scene-fixture.js";
+import {
+  friendsGalaxySemanticColor,
+  type FriendsGalaxyRendererPalette,
+} from "../../src/lib/friends-galaxy-palette.js";
 import type { FriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer.js";
 import { findFriendsGalaxySceneNodeIndex } from "../../src/lib/friends-galaxy-scene-interaction-index.js";
 import {
@@ -33,7 +35,7 @@ export function galaxyLabSelectedPersonNodeId(
 
 export function selectGalaxyLabAvatars(
   fixture: FriendsGalaxyRendererScene,
-  palette: GalaxyLabPalette,
+  palette: FriendsGalaxyRendererPalette,
   selectedNodeId: string | null,
   compact: boolean,
   detail: GalaxyLabViewDetail,
@@ -97,7 +99,7 @@ export function selectGalaxyLabAvatars(
       size: selected ? compact ? 42 : 48 : compact ? 34 : 40,
       priority: presentation.priority + fixture.scene.prominence[nodeIndex]! * 1_000,
       selected,
-      color: galaxyLabSemanticColor(fixture, palette, nodeIndex),
+      color: friendsGalaxySemanticColor(fixture.scene, palette, nodeIndex),
     };
   };
   const accepted = ranked.map(({ nodeIndex }) => createSeed(nodeIndex, false));
@@ -107,7 +109,7 @@ export function selectGalaxyLabAvatars(
 
 export function createGalaxyLabAvatarAtlas(
   fixture: FriendsGalaxyRendererScene,
-  palette: GalaxyLabPalette,
+  palette: FriendsGalaxyRendererPalette,
   selectedNodeId: string | null,
   compact: boolean,
   detail: GalaxyLabViewDetail,

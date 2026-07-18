@@ -2,6 +2,10 @@ import {
   FRIENDS_GALAXY_STAR_PALETTE_ROLE_COUNT,
   FriendsGalaxyStarColorRole,
 } from "./friends-galaxy-star-instances.js";
+import {
+  IdentityGalaxyNodeKindCode,
+  type IdentityGalaxyScene,
+} from "./identity-galaxy-scene.js";
 
 export const FRIENDS_GALAXY_STAR_PALETTE_FLOAT_OFFSET = 20;
 export const FRIENDS_GALAXY_STAR_PALETTE_FLOAT_COUNT =
@@ -24,6 +28,11 @@ export interface FriendsGalaxyStarPalette {
   };
 }
 
+export interface FriendsGalaxyRendererPalette extends FriendsGalaxyStarPalette {
+  surface: string;
+  text: string;
+}
+
 export interface FriendsGalaxyStarPaletteState {
   clearColor: readonly [number, number, number];
   lightSurface: boolean;
@@ -42,6 +51,25 @@ export function friendsGalaxyHexToRgb(value: string): [number, number, number] {
 export function friendsGalaxyColorIsLight(value: string): boolean {
   const [red, green, blue] = friendsGalaxyHexToRgb(value);
   return red * 0.2126 + green * 0.7152 + blue * 0.0722 > 0.58;
+}
+
+export function friendsGalaxySemanticColor(
+  scene: IdentityGalaxyScene,
+  palette: FriendsGalaxyStarPalette,
+  index: number,
+): string {
+  const provider = scene.providers[index];
+  if (provider) {
+    const providerColor = palette.providers[
+      provider as keyof FriendsGalaxyStarPalette["providers"]
+    ];
+    if (providerColor) return providerColor;
+  }
+  const kind = scene.kinds[index];
+  if (kind === IdentityGalaxyNodeKindCode.FriendPerson) return palette.friend;
+  if (kind === IdentityGalaxyNodeKindCode.ConnectionPerson) return palette.connection;
+  if (kind === IdentityGalaxyNodeKindCode.Feed) return palette.feed;
+  return palette.account;
 }
 
 export function writeFriendsGalaxyStarPaletteUniforms(

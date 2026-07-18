@@ -1,7 +1,7 @@
 import {
   galaxyLabNodePresentation,
-  type GalaxyLabPalette,
 } from "./scene-fixture.js";
+import type { FriendsGalaxyRendererPalette } from "../../src/lib/friends-galaxy-palette.js";
 import type { GalaxyLabViewDetail } from "./backend.js";
 import type { FriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer.js";
 import {
@@ -194,7 +194,7 @@ export function selectGalaxyLabLabels(
 
 export function createGalaxyLabLabelAtlas(
   fixture: FriendsGalaxyRendererScene,
-  palette: GalaxyLabPalette,
+  palette: FriendsGalaxyRendererPalette,
   compact: boolean,
   detail: GalaxyLabViewDetail,
   selectedNodeId: string | null = null,

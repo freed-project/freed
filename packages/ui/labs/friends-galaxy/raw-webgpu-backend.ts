@@ -19,9 +19,6 @@ import {
   FRIENDS_GALAXY_BILLBOARD_INSTANCE_STRIDE,
   type FriendsGalaxyLabelAtlas,
 } from "../../src/lib/friends-galaxy-billboard-atlas.js";
-import {
-  type GalaxyLabPalette,
-} from "./scene-fixture.js";
 import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
 import type { FriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer.js";
 import {
@@ -33,6 +30,7 @@ import {
   friendsGalaxyHexToRgb,
   FRIENDS_GALAXY_STAR_PALETTE_FLOAT_COUNT,
   FRIENDS_GALAXY_STAR_PALETTE_FLOAT_OFFSET,
+  type FriendsGalaxyRendererPalette,
   writeFriendsGalaxyStarPaletteUniforms,
 } from "../../src/lib/friends-galaxy-palette.js";
 import {
@@ -505,7 +503,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private labelAtlas: FriendsGalaxyLabelAtlas | null = null;
   private avatarAtlas: FriendsGalaxyAvatarAtlas | null = null;
   private avatarImages: ReadonlyMap<string, CanvasImageSource> = new Map();
-  private palette: GalaxyLabPalette | null = null;
+  private palette: FriendsGalaxyRendererPalette | null = null;
   private interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: null };
   private interactionRoles: ReadonlyMap<number, FriendsGalaxyInteractionRole> = new Map();
   private interactionInstanceCount = 0;
@@ -548,7 +546,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   async initialize(
     canvas: HTMLCanvasElement,
     fixture: FriendsGalaxyRendererScene,
-    palette: GalaxyLabPalette,
+    palette: FriendsGalaxyRendererPalette,
   ): Promise<void> {
     this.disposed = false;
     this.backendHealth.clear();
@@ -830,7 +828,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     }
   }
 
-  setPalette(palette: GalaxyLabPalette): void {
+  setPalette(palette: FriendsGalaxyRendererPalette): void {
     if (!this.device || !this.semanticBuffer || !this.backgroundBuffer) return;
     this.palette = palette;
     this.interactionColor = friendsGalaxyHexToRgb(palette.selection);
@@ -1484,7 +1482,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.frameRenderBundles.length = count;
   }
 
-  private writePaletteUniforms(palette: GalaxyLabPalette): void {
+  private writePaletteUniforms(palette: FriendsGalaxyRendererPalette): void {
     const { clearColor } = writeFriendsGalaxyStarPaletteUniforms(this.uniformData, palette);
     this.clearColor = { r: clearColor[0], g: clearColor[1], b: clearColor[2], a: 1 };
   }

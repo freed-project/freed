@@ -5,10 +5,10 @@ import type {
   GalaxyLabInteraction,
   GalaxyLabViewDetail,
 } from "./backend.js";
-import { friendsGalaxyHexToRgb } from "../../src/lib/friends-galaxy-palette.js";
 import type {
-  GalaxyLabPalette,
-} from "./scene-fixture.js";
+  FriendsGalaxyRendererPalette,
+} from "../../src/lib/friends-galaxy-palette.js";
+import { friendsGalaxyHexToRgb } from "../../src/lib/friends-galaxy-palette.js";
 import { FriendsGalaxySceneIndex } from "../../src/lib/friends-galaxy-scene-index.js";
 import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
 import type { FriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer.js";
@@ -17,7 +17,7 @@ function cssRgb(value: string): string {
   return friendsGalaxyHexToRgb(value).map((part) => Math.round(part * 255)).join(" ");
 }
 
-function applyPalette(element: HTMLElement, palette: GalaxyLabPalette): void {
+function applyPalette(element: HTMLElement, palette: FriendsGalaxyRendererPalette): void {
   element.style.setProperty("--theme-shell-rgb", cssRgb(palette.background));
   element.style.setProperty("--theme-accent-primary-rgb", cssRgb(palette.friend));
   element.style.setProperty("--theme-accent-secondary-rgb", cssRgb(palette.selection));
@@ -46,7 +46,7 @@ export class CurrentWebGl2Backend implements GalaxyLabBackend {
   async initialize(
     canvas: HTMLCanvasElement,
     fixture: FriendsGalaxyRendererScene,
-    palette: GalaxyLabPalette,
+    palette: FriendsGalaxyRendererPalette,
   ): Promise<void> {
     this.fixture = fixture;
     this.interactionScene = { ...fixture.scene, flags: new Uint16Array(fixture.scene.flags) };
@@ -74,7 +74,7 @@ export class CurrentWebGl2Backend implements GalaxyLabBackend {
     this.syncScene();
   }
 
-  setPalette(palette: GalaxyLabPalette): void {
+  setPalette(palette: FriendsGalaxyRendererPalette): void {
     if (!this.paletteElement) return;
     applyPalette(this.paletteElement, palette);
     this.syncScene();

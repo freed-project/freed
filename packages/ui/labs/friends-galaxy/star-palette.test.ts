@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { GALAXY_LAB_THEMES } from "./scene-fixture.js";
+import {
+  createGalaxyLabFixture,
+  GALAXY_LAB_THEMES,
+} from "./scene-fixture.js";
 import {
   friendsGalaxyHexToRgb,
+  friendsGalaxySemanticColor,
   FRIENDS_GALAXY_STAR_PALETTE_FLOAT_COUNT,
   FRIENDS_GALAXY_STAR_PALETTE_FLOAT_OFFSET,
   writeFriendsGalaxyStarPaletteUniforms,
 } from "../../src/lib/friends-galaxy-palette.js";
 import { FriendsGalaxyStarColorRole } from "../../src/lib/friends-galaxy-star-instances.js";
+import { IdentityGalaxyNodeKindCode } from "../../src/lib/identity-galaxy-scene.js";
 
 describe("Friends Galaxy GPU star palette", () => {
   it("normalizes six-digit theme colors and contains malformed values", () => {
@@ -62,6 +67,34 @@ describe("Friends Galaxy GPU star palette", () => {
         Array.from(target.slice(FRIENDS_GALAXY_STAR_PALETTE_FLOAT_OFFSET)).every(Number.isFinite),
       ).toBe(true);
     }
+  });
+
+  it("resolves provider and identity colors without laboratory metadata", () => {
+    const fixture = createGalaxyLabFixture({
+      personCount: 10,
+      accountCount: 20,
+      backgroundStarCount: 0,
+    });
+    const palette = GALAXY_LAB_THEMES.vesper;
+    const providerIndex = fixture.scene.providers.findIndex(Boolean);
+    const friendIndex = fixture.scene.kinds.findIndex(
+      (kind) => kind === IdentityGalaxyNodeKindCode.FriendPerson,
+    );
+    const connectionKinds = new Uint8Array(fixture.scene.kinds);
+    connectionKinds[friendIndex] = IdentityGalaxyNodeKindCode.ConnectionPerson;
+    const connectionScene = { ...fixture.scene, kinds: connectionKinds };
+
+    expect(providerIndex).toBeGreaterThanOrEqual(0);
+    const provider = fixture.scene.providers[providerIndex]! as keyof typeof palette.providers;
+    expect(friendsGalaxySemanticColor(fixture.scene, palette, providerIndex)).toBe(
+      palette.providers[provider],
+    );
+    expect(friendsGalaxySemanticColor(fixture.scene, palette, friendIndex)).toBe(
+      palette.friend,
+    );
+    expect(friendsGalaxySemanticColor(connectionScene, palette, friendIndex)).toBe(
+      palette.connection,
+    );
   });
 
   it("rejects undersized uniform storage", () => {

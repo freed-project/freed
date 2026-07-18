@@ -21,15 +21,15 @@ import type {
   GalaxyLabViewDetail,
 } from "./backend.js";
 import { friendsGalaxyRenderPixelRatio } from "../../src/lib/friends-galaxy-renderer.js";
-import { friendsGalaxyHexToRgb } from "../../src/lib/friends-galaxy-palette.js";
+import {
+  friendsGalaxyHexToRgb,
+  friendsGalaxySemanticColor,
+  type FriendsGalaxyRendererPalette,
+} from "../../src/lib/friends-galaxy-palette.js";
 import { FriendsGalaxyBackendHealth } from "../../src/lib/friends-galaxy-backend-health.js";
 import { createGalaxyLabAvatarAtlas } from "./avatar-atlas.js";
 import { createGalaxyLabLabelAtlas } from "./billboard-labels.js";
 import type { FriendsGalaxyBillboardAtlas } from "../../src/lib/friends-galaxy-billboard-atlas.js";
-import {
-  galaxyLabSemanticColor,
-  type GalaxyLabPalette,
-} from "./scene-fixture.js";
 import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
 import type { FriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer.js";
 import {
@@ -67,7 +67,7 @@ function adapterLabel(adapter: GPUAdapter): string {
     .join(" ") || "WebGPU adapter";
 }
 
-function paletteLuminance(palette: GalaxyLabPalette): number {
+function paletteLuminance(palette: FriendsGalaxyRendererPalette): number {
   const [red, green, blue] = friendsGalaxyHexToRgb(palette.background);
   return red * 0.2126 + green * 0.7152 + blue * 0.0722;
 }
@@ -220,7 +220,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
   private semanticSizes: Float32Array | null = null;
   private baseSemanticSizes: Float32Array | null = null;
   private backgroundColors: Float32Array | null = null;
-  private palette: GalaxyLabPalette | null = null;
+  private palette: FriendsGalaxyRendererPalette | null = null;
   private interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: null };
   private readonly touchedInteractionIndices = new Set<number>();
   private readonly changedInteractionIndices = new Set<number>();
@@ -245,7 +245,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
   async initialize(
     canvas: HTMLCanvasElement,
     fixture: FriendsGalaxyRendererScene,
-    palette: GalaxyLabPalette,
+    palette: FriendsGalaxyRendererPalette,
   ): Promise<void> {
     this.disposed = false;
     this.backendHealth.clear();
@@ -356,7 +356,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     }
   }
 
-  setPalette(palette: GalaxyLabPalette): void {
+  setPalette(palette: FriendsGalaxyRendererPalette): void {
     if (!this.renderer || !this.fixture || !this.semanticColors || !this.backgroundColors) return;
     this.palette = palette;
     this.interactionColor = friendsGalaxyHexToRgb(palette.selection);
@@ -671,13 +671,13 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.bufferUploadCount += 1;
   }
 
-  private writePalette(palette: GalaxyLabPalette): void {
+  private writePalette(palette: FriendsGalaxyRendererPalette): void {
     if (
       !this.fixture || !this.semanticColors || !this.baseSemanticColors || !this.backgroundColors
     ) return;
     for (let index = 0; index < this.fixture.scene.nodeIds.length; index += 1) {
       const [red, green, blue] = friendsGalaxyHexToRgb(
-        galaxyLabSemanticColor(this.fixture, palette, index),
+        friendsGalaxySemanticColor(this.fixture.scene, palette, index),
       );
       const brightness = this.fixture.scene.brightness[index]!;
       const offset = index * 3;
@@ -699,7 +699,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     }
   }
 
-  private applyMaterialOpacity(palette: GalaxyLabPalette): void {
+  private applyMaterialOpacity(palette: FriendsGalaxyRendererPalette): void {
     const lightSurface = paletteLuminance(palette) > 0.58;
     if (this.semanticBatch) this.semanticBatch.material.opacity = lightSurface ? 0.86 : 0.96;
     if (this.backgroundBatch) this.backgroundBatch.material.opacity = lightSurface ? 0.2 : 0.48;
