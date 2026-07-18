@@ -1,10 +1,9 @@
 import type {
-  GalaxyLabBackend,
-  GalaxyLabBackendMetrics,
-  GalaxyLabFieldStyle,
-  GalaxyLabInteraction,
-  GalaxyLabViewDetail,
-} from "./backend.js";
+  FriendsGalaxyRendererBackend,
+  FriendsGalaxyRendererMetrics,
+  FriendsGalaxyRendererScene,
+  FriendsGalaxyViewDetail,
+} from "../../src/lib/friends-galaxy-renderer.js";
 import { friendsGalaxyRenderPixelRatio } from "../../src/lib/friends-galaxy-renderer.js";
 import type { FriendsGalaxyActivityScenePatchBatch } from "../../src/lib/friends-galaxy-activity-patches.js";
 import { FriendsGalaxyBackendHealth } from "../../src/lib/friends-galaxy-backend-health.js";
@@ -18,7 +17,6 @@ import {
   type FriendsGalaxyLabelAtlas,
 } from "../../src/lib/friends-galaxy-billboard-atlas.js";
 import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
-import type { FriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer.js";
 import {
   FRIENDS_GALAXY_STAR_INSTANCE_FLOATS,
   FRIENDS_GALAXY_STAR_PALETTE_ROLE_COUNT,
@@ -41,6 +39,7 @@ import {
   createFriendsGalaxyProviderFields,
   FRIENDS_GALAXY_PROVIDER_FIELD_CULL_SCALE,
   FRIENDS_GALAXY_PROVIDER_FIELD_INSTANCE_STRIDE,
+  type FriendsGalaxyFieldStyle,
   type FriendsGalaxyProviderFields,
   writeFriendsGalaxyProviderFieldPresentation,
 } from "../../src/lib/friends-galaxy-provider-fields.js";
@@ -52,6 +51,7 @@ import {
 } from "../../src/lib/friends-galaxy-presentation.js";
 import {
   FriendsGalaxySceneIndex,
+  type FriendsGalaxyInteraction,
   type FriendsGalaxyInteractionRole,
   type FriendsGalaxyInteractionState,
 } from "../../src/lib/friends-galaxy-scene-index.js";
@@ -457,7 +457,7 @@ function createBuffer(device: GPUDevice, data: Float32Array, usage: GPUBufferUsa
   return buffer;
 }
 
-export class RawWebGpuBackend implements GalaxyLabBackend {
+export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
   constructor(
     private readonly resolvePresentation: FriendsGalaxyNodePresentationResolver,
   ) {}
@@ -511,7 +511,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private avatarAtlas: FriendsGalaxyAvatarAtlas | null = null;
   private avatarImages: ReadonlyMap<string, CanvasImageSource> = new Map();
   private palette: FriendsGalaxyRendererPalette | null = null;
-  private interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: null };
+  private interaction: FriendsGalaxyInteraction = { selectedNodeId: null, hoveredNodeId: null };
   private interactionRoles: ReadonlyMap<number, FriendsGalaxyInteractionRole> = new Map();
   private interactionInstanceCount = 0;
   private interactionColor: readonly [number, number, number] = [1, 1, 1];
@@ -534,8 +534,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private pixelRatio = 1;
   private format: GPUTextureFormat | null = null;
   private compactLabels: boolean | null = null;
-  private viewDetail: GalaxyLabViewDetail = "overview";
-  private fieldStyle: GalaxyLabFieldStyle = "nebula";
+  private viewDetail: FriendsGalaxyViewDetail = "overview";
+  private fieldStyle: FriendsGalaxyFieldStyle = "nebula";
   private contextualEdgeCount = 0;
   private animationEnabled = false;
   private cameraMotion = false;
@@ -846,7 +846,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     if (this.sceneIndex) this.writeInteraction(this.sceneIndex.interactionState(this.interaction));
   }
 
-  setFieldStyle(style: GalaxyLabFieldStyle): void {
+  setFieldStyle(style: FriendsGalaxyFieldStyle): void {
     if (style === this.fieldStyle) return;
     this.fieldStyle = style;
     this.writeProviderFields();
@@ -897,14 +897,14 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.rebuildFrameRenderBundles();
   }
 
-  setViewDetail(detail: GalaxyLabViewDetail): void {
+  setViewDetail(detail: FriendsGalaxyViewDetail): void {
     if (detail === this.viewDetail) return;
     this.viewDetail = detail;
     this.rebuildLabels(this.compactLabels ?? this.width < 720);
     this.rebuildAvatars(this.compactLabels ?? this.width < 720);
   }
 
-  setSettledView(detail: GalaxyLabViewDetail, transform: FriendsGalaxyTransform): void {
+  setSettledView(detail: FriendsGalaxyViewDetail, transform: FriendsGalaxyTransform): void {
     this.viewDetail = detail;
     this.settledTransform.x = transform.x;
     this.settledTransform.y = transform.y;
@@ -927,7 +927,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     );
   }
 
-  setInteraction(interaction: GalaxyLabInteraction): void {
+  setInteraction(interaction: FriendsGalaxyInteraction): void {
     this.interaction = interaction;
     if (!this.sceneIndex) return;
     this.writeInteraction(this.sceneIndex.interactionState(interaction));
@@ -975,7 +975,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.device?.destroy();
   }
 
-  metrics(): GalaxyLabBackendMetrics {
+  metrics(): FriendsGalaxyRendererMetrics {
     return {
       id: this.id,
       label: "Raw WebGPU",

@@ -15,11 +15,11 @@ import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeome
 import { LineSegments2 } from "three/examples/jsm/lines/webgpu/LineSegments2.js";
 import { identityGalaxyCameraPose } from "../../src/lib/identity-galaxy-camera.js";
 import type {
-  GalaxyLabBackend,
-  GalaxyLabBackendMetrics,
-  GalaxyLabInteraction,
-  GalaxyLabViewDetail,
-} from "./backend.js";
+  FriendsGalaxyRendererBackend,
+  FriendsGalaxyRendererMetrics,
+  FriendsGalaxyRendererScene,
+  FriendsGalaxyViewDetail,
+} from "../../src/lib/friends-galaxy-renderer.js";
 import { friendsGalaxyRenderPixelRatio } from "../../src/lib/friends-galaxy-renderer.js";
 import {
   friendsGalaxyHexToRgb,
@@ -34,9 +34,9 @@ import {
   type FriendsGalaxyNodePresentationResolver,
 } from "../../src/lib/friends-galaxy-presentation.js";
 import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
-import type { FriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer.js";
 import {
   FriendsGalaxySceneIndex,
+  type FriendsGalaxyInteraction,
   type FriendsGalaxyInteractionRole,
   type FriendsGalaxyInteractionState,
 } from "../../src/lib/friends-galaxy-scene-index.js";
@@ -193,7 +193,7 @@ function makeBillboardBatch(
   return { atlas, geometry, material, mesh, texture: canvasTexture, viewport };
 }
 
-export class ThreeWebGpuBackend implements GalaxyLabBackend {
+export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
   constructor(
     private readonly resolvePresentation: FriendsGalaxyNodePresentationResolver,
   ) {}
@@ -228,7 +228,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
   private baseSemanticSizes: Float32Array | null = null;
   private backgroundColors: Float32Array | null = null;
   private palette: FriendsGalaxyRendererPalette | null = null;
-  private interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: null };
+  private interaction: FriendsGalaxyInteraction = { selectedNodeId: null, hoveredNodeId: null };
   private readonly touchedInteractionIndices = new Set<number>();
   private readonly changedInteractionIndices = new Set<number>();
   private colorUpdateRangeScratch: GalaxyAttributeUpdateRange[] = [];
@@ -240,7 +240,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
   private drawCalls = 0;
   private contextualEdgeCount = 0;
   private compactLabels: boolean | null = null;
-  private viewDetail: GalaxyLabViewDetail = "overview";
+  private viewDetail: FriendsGalaxyViewDetail = "overview";
   private bufferUploadCount = 0;
   private labelAtlasBuildCount = 0;
   private avatarAtlasBuildCount = 0;
@@ -390,14 +390,14 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.rebuildAvatars(this.compactLabels ?? this.width < 720);
   }
 
-  setViewDetail(detail: GalaxyLabViewDetail): void {
+  setViewDetail(detail: FriendsGalaxyViewDetail): void {
     if (detail === this.viewDetail) return;
     this.viewDetail = detail;
     this.rebuildLabels(this.compactLabels ?? this.width < 720);
     this.rebuildAvatars(this.compactLabels ?? this.width < 720);
   }
 
-  setSettledView(detail: GalaxyLabViewDetail, transform: FriendsGalaxyTransform): void {
+  setSettledView(detail: FriendsGalaxyViewDetail, transform: FriendsGalaxyTransform): void {
     this.viewDetail = detail;
     this.settledTransform.x = transform.x;
     this.settledTransform.y = transform.y;
@@ -426,7 +426,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     );
   }
 
-  setInteraction(interaction: GalaxyLabInteraction): void {
+  setInteraction(interaction: FriendsGalaxyInteraction): void {
     this.interaction = interaction;
     if (!this.sceneIndex) return;
     this.writeInteraction(this.sceneIndex.interactionState(interaction));
@@ -447,7 +447,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.device?.destroy();
   }
 
-  metrics(): GalaxyLabBackendMetrics {
+  metrics(): FriendsGalaxyRendererMetrics {
     return {
       id: this.id,
       label: "Three.js WebGPU",

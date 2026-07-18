@@ -1,17 +1,19 @@
 import { IdentityGalaxyEngine } from "../../src/lib/identity-galaxy-engine.js";
 import type {
-  GalaxyLabBackend,
-  GalaxyLabBackendMetrics,
-  GalaxyLabInteraction,
-  GalaxyLabViewDetail,
-} from "./backend.js";
+  FriendsGalaxyRendererBackend,
+  FriendsGalaxyRendererMetrics,
+  FriendsGalaxyRendererScene,
+  FriendsGalaxyViewDetail,
+} from "../../src/lib/friends-galaxy-renderer.js";
 import type {
   FriendsGalaxyRendererPalette,
 } from "../../src/lib/friends-galaxy-palette.js";
 import { friendsGalaxyHexToRgb } from "../../src/lib/friends-galaxy-palette.js";
-import { FriendsGalaxySceneIndex } from "../../src/lib/friends-galaxy-scene-index.js";
+import {
+  FriendsGalaxySceneIndex,
+  type FriendsGalaxyInteraction,
+} from "../../src/lib/friends-galaxy-scene-index.js";
 import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
-import type { FriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer.js";
 
 function cssRgb(value: string): string {
   return friendsGalaxyHexToRgb(value).map((part) => Math.round(part * 255)).join(" ");
@@ -27,7 +29,7 @@ function applyPalette(element: HTMLElement, palette: FriendsGalaxyRendererPalett
   element.style.fontFamily = "Inter, ui-sans-serif, system-ui, sans-serif";
 }
 
-export class CurrentWebGl2Backend implements GalaxyLabBackend {
+export class CurrentWebGl2Backend implements FriendsGalaxyRendererBackend {
   readonly id = "current-webgl2" as const;
   private engine: IdentityGalaxyEngine | null = null;
   private fixture: FriendsGalaxyRendererScene | null = null;
@@ -80,7 +82,7 @@ export class CurrentWebGl2Backend implements GalaxyLabBackend {
     this.syncScene();
   }
 
-  setViewDetail(_detail: GalaxyLabViewDetail): void {
+  setViewDetail(_detail: FriendsGalaxyViewDetail): void {
     // The current engine performs its own collision-based settled label layout.
   }
 
@@ -89,7 +91,7 @@ export class CurrentWebGl2Backend implements GalaxyLabBackend {
     return this.engine.pickNode(viewportX, viewportY, this.fixture.scene.nodeIds);
   }
 
-  setInteraction(interaction: GalaxyLabInteraction): void {
+  setInteraction(interaction: FriendsGalaxyInteraction): void {
     if (!this.engine || !this.interactionScene || !this.sceneIndex) return;
     const state = this.sceneIndex.interactionState(interaction);
     this.sceneIndex.applyFlags(
@@ -117,7 +119,7 @@ export class CurrentWebGl2Backend implements GalaxyLabBackend {
     this.engine?.render(transform);
   }
 
-  metrics(): GalaxyLabBackendMetrics {
+  metrics(): FriendsGalaxyRendererMetrics {
     return {
       id: this.id,
       label: "Current production engine",

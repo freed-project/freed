@@ -1,7 +1,10 @@
 import type { FriendsGalaxyActivityScenePatchBatch } from "./friends-galaxy-activity-patches.js";
 import type { FriendsGalaxyFieldStyle } from "./friends-galaxy-provider-fields.js";
 import type { FriendsGalaxyInteraction } from "./friends-galaxy-scene-index.js";
-import type { FriendsGalaxyStarPalette } from "./friends-galaxy-palette.js";
+import type {
+  FriendsGalaxyRendererPalette,
+  FriendsGalaxyStarPalette,
+} from "./friends-galaxy-palette.js";
 import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
 import type { IdentityGalaxyScene } from "./identity-galaxy-scene.js";
 import type { IdentityGraphAtlas } from "./identity-graph-atlas.js";
@@ -77,6 +80,11 @@ export interface FriendsGalaxyRenderer<
   metrics(): FriendsGalaxyRendererMetrics;
   dispose(): void;
 }
+
+export type FriendsGalaxyRendererBackend = FriendsGalaxyRenderer<
+  FriendsGalaxyRendererScene,
+  FriendsGalaxyRendererPalette
+>;
 
 export function friendsGalaxyRenderPixelRatio(
   devicePixelRatio: number,
