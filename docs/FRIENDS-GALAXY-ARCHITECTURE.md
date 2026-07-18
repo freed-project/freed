@@ -206,6 +206,36 @@ The July 17, 2026 audit used current `origin/dev` at `b41470d8ec0b5e529d5be7629d
 
 When global behavioral custody is released, integrate the selected raw WebGPU backend behind the imperative engine contract and move the proven incremental activity index into the shared document-worker path. Connect the proven bounded avatar admission queue to approved product avatar candidates and the shared settled-detail lifecycle. The current WebGL2 engine and batched glyph layer remain the compatibility backend and functional integration surface until the new runtime passes repeated device performance baselines and complete workflow acceptance.
 
+### Product cutover boundary
+
+The product integration is an internal graph-surface replacement. It is not a rewrite of Friends workflows.
+
+- Preserve the public `FriendGraph` prop and ref contract used by `FriendsView`. Selection, details, relationship promotion, account linking, device-local person pins, device-local account pins, identity mode, and mobile Details mode remain owned by the existing product shell.
+- Preserve context-menu-only pinning. A pointer or long press opens the node menu. `Pin here` persists the camera-projected world point through the existing person or account callback. No node drag or drag-to-pin path returns.
+- Preserve context-menu-only linking. An account menu opens the existing searchable person picker and calls the existing account-to-person callback. No drag-to-link target or hidden gesture returns.
+- Preserve `focusNode(id)` for reader author links, search results, Map handoff, selected details, and programmatic navigation.
+- Keep the context menu and searchable picker in the React overlay layer. Move them to the shared bounded menu and standard control vocabulary during cutover. They must remain inside the viewport and usable by keyboard, pointer, and touch.
+- Replace the 1,920-line `FriendGraph.tsx` internals with a small lifecycle and product-callback shell. The imperative engine owns the canvas, backend selection, camera, render loop, resize, GPU resources, picking, interaction buffers, palette, detail tier, and recovery.
+- Move the selected raw WebGPU backend from the laboratory into one shared product module. The laboratory imports that module afterward. Do not fork a second raw renderer.
+- Reuse the proven pointer roster, settle scheduler, demand-driven frame loop, density policy, sparse scene index, render bundles, label atlas, avatar admission, and backend-health primitives. Do not translate them back into React state, Maps, per-event objects, or browser timers.
+- Delete `runAtlasOnMainThread` and every timeout path that compiles the complete semantic graph in React. A worker startup failure either keeps the last-good scene or enters the bounded WebGL2 compatibility state with a visible diagnostic reason.
+- Split worker messages into source revision, viewport detail, sparse activity patch, and interaction patch lanes. Camera movement sends none of them. Resize changes presentation dimensions without rebuilding the semantic source.
+- Keep all semantic stars resident in raw WebGPU. Motion may use the proven decorative prefix, octagon footprint, reduced density, coarse field shader, and close-field cull. It may not evict identities, accounts, labels, avatars, contextual edges, or interaction state.
+- Retain WebGL2 and canvas as deterministic compatibility paths. Recovery preserves theme, camera transform, selected node, identity mode, and available detail metadata.
+- Keep Friends full bleed beneath the shared sidebar exactly like Map. Fit and focus calculations use the visible workspace inset while rendering continues beneath the sidebar.
+- Route graph diagnostics through the renderer heartbeat and one-click export. Installed Freed Desktop and PWA builds must report backend, fallback reason, resident and motion counts, labels, avatars, contextual edges, sparse pick candidates, buffer uploads, render density, long tasks, and frame-loop state.
+- Remove the development backend and field controls from production output. Keep them in feature previews until raw WebGPU, WebGL2 recovery, Nebula, and active themes pass user acceptance.
+- Do not publish the cutover from a stale base. Reconcile current `origin/dev` only after global behavioral custody is explicitly released, then rerun focused graph tests before adapting any changed product boundary.
+
+The integration sequence is deliberately narrow:
+
+1. Move renderer-neutral laboratory primitives into the product library without changing the active route.
+2. Add the raw backend to `IdentityGalaxyEngine` behind an explicit backend contract and retain the current engine as fallback.
+3. Replace `FriendGraph` scene and input orchestration while preserving its external props, ref, context menu, controls, and diagnostics hooks.
+4. Delete the main-thread atlas fallback and superseded gesture code in the same change that proves worker failure recovery.
+5. Verify linking, pinning, promotion, selection, focus, fit, theme, mobile Details mode, full-bleed layout, and fallback before any performance verdict.
+6. Run repeated consistency baselines only after the machine workload permits comparable runs, then perform physical iPhone and installed Freed Desktop acceptance.
+
 Benchmarking is authorized only as repeated consistency runs while other machine tasks remain active. Single-run timing results are not decision evidence.
 
 ## Renderer Laboratory Checkpoint

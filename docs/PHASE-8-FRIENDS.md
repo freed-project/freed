@@ -220,6 +220,8 @@ Provider fields now become degenerate in the vertex shader beyond 1.5 close-deta
 
 Provider sectors now follow deterministic logarithmic spirals shared by layout and rendering. The default Nebula treatment combines procedural arms and themed dust without per-star scene objects. Linked accounts stay close to their parent identity, billboard labels sit close to their parent star with a stronger outline, and semantic links remain absent until one star in that identity system is hovered or selected.
 
+The approved product cutover now has an exact ownership boundary. `FriendsView` keeps selection, details, promotion, context-menu linking, context-menu pinning, mode, persistence, and mobile Details behavior. A reduced `FriendGraph` shell delegates worker startup, rendering, camera, input, picking, detail tiers, palette, recovery, and diagnostics to the imperative engine. Cutover must delete the main-thread atlas fallback and reuse the detached pointer roster, settle scheduler, demand-driven loop, sparse index, render bundles, labels, avatars, and recovery primitives without duplicating them.
+
 ### Scale targets
 
 - Default showcase sample: 250 friends, 1,250 connected social identities, 15 feeds, and 1,445 items
@@ -449,6 +451,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.91 | Reduce moving-star raster footprints with retained octagon strips while preserving semantic-star diameter and settled luminosity | High | Done |
 | 8.92 | Bound decorative motion density while retaining every semantic star and the full settled dust field | High | Done |
 | 8.93 | Cull fully faded provider field primitives before close-detail rasterization | High | Done |
+| 8.94 | Define the exact workflow-preserving product cutover and main-thread fallback removal boundary | High | Done |
 
 ---
 
