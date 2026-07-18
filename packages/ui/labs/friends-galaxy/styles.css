@@ -72,15 +72,25 @@ html[data-controls-hidden="true"] .lab-panel {
   display: none;
 }
 
+.galaxy-canvas-host,
 .galaxy-viewport {
   position: absolute;
-  z-index: 0;
   inset: 0;
   overflow: hidden;
+}
+
+.galaxy-canvas-host {
+  z-index: 0;
+  pointer-events: none;
+  background: var(--lab-background);
+}
+
+.galaxy-viewport {
+  z-index: 2;
   touch-action: none;
   user-select: none;
   cursor: grab;
-  background: var(--lab-background);
+  background: transparent;
 }
 
 .galaxy-viewport[data-dragging="true"] {
@@ -92,13 +102,19 @@ html[data-controls-hidden="true"] .lab-panel {
   outline-offset: -4px;
 }
 
-.galaxy-viewport canvas {
+.galaxy-canvas-host canvas {
   position: absolute;
   z-index: 0;
   inset: 0;
   display: block;
   width: 100%;
   height: 100%;
+}
+
+@media (min-width: 721px) {
+  html:not([data-controls-hidden="true"]):not([data-compact-probe="true"]) .galaxy-viewport {
+    left: 356px;
+  }
 }
 
 .lab-panel {

@@ -45,7 +45,6 @@ import {
   galaxyLabInitialCameraScale,
   galaxyLabOutwardZoomEnvelope,
   type GalaxyLabOutwardZoomEnvelope,
-  type GalaxyLabViewportInsets,
   writeGalaxyLabFocusedTransform,
   writeGalaxyLabWebGpuViewProjection,
 } from "./camera-math.js";
@@ -69,6 +68,13 @@ import {
   galaxyLabUnavailableAnnouncement,
   type GalaxyLabSelectionAnnouncementKind,
 } from "./accessibility.js";
+import {
+  galaxyLabViewportGeometry,
+  reanchorGalaxyLabTransformToInteraction,
+  writeGalaxyLabCanvasPoint,
+  type GalaxyLabCanvasPoint,
+  type GalaxyLabViewportGeometry,
+} from "./viewport-geometry.js";
 
 const DEFAULT_PERSON_COUNT = 5_000;
 const DEFAULT_ACCOUNT_COUNT = 25_000;
@@ -100,6 +106,7 @@ function requiredElement<T extends HTMLElement>(id: string): T {
 }
 
 const viewport = requiredElement<HTMLElement>("viewport");
+const canvasHost = requiredElement<HTMLElement>("canvas-host");
 const graphDescription = requiredElement<HTMLElement>("galaxy-description");
 const graphAnnouncer = requiredElement<HTMLElement>("galaxy-announcer");
 const backendSelect = requiredElement<HTMLSelectElement>("backend");
@@ -109,7 +116,6 @@ const fitButton = requiredElement<HTMLButtonElement>("fit");
 const copyDiagnosticsButton = requiredElement<HTMLButtonElement>("copy-diagnostics");
 const simulateLossButton = requiredElement<HTMLButtonElement>("simulate-loss");
 const animateControl = requiredElement<HTMLInputElement>("animate");
-const panel = requiredElement<HTMLElement>("panel");
 const statusElement = requiredElement<HTMLElement>("status");
 const metricsElement = requiredElement<HTMLElement>("metrics");
 const nativeTouchInput = navigator.maxTouchPoints > 0 && "ontouchstart" in window;
@@ -412,10 +418,10 @@ function applyDocumentPalette(palette: GalaxyLabPalette): void {
   );
 }
 
-function viewportSize(): { width: number; height: number } {
+function canvasSize(): { width: number; height: number } {
   return {
-    width: Math.max(1, viewport.clientWidth),
-    height: Math.max(1, viewport.clientHeight),
+    width: viewportGeometry.canvasWidth,
+    height: viewportGeometry.canvasHeight,
   };
 }
 
@@ -462,7 +468,7 @@ function recordActiveRenderDensity(): void {
 }
 
 function resizeActiveBackend(): void {
-  const { width, height } = viewportSize();
+  const { width, height } = canvasSize();
   activeBackend?.resize(
     width,
     height,
@@ -523,7 +529,7 @@ async function admitSettledAvatarImages(
   generation: number,
 ): Promise<void> {
   if (!backend.setAvatarImages) return;
-  const { width, height } = viewportSize();
+  const { width, height } = canvasSize();
   const compact = width < 720;
   writeGalaxyLabWebGpuViewProjection(
     avatarAdmissionViewProjection,
@@ -615,14 +621,17 @@ function fittedGalaxyScale(width: number, height: number): number {
   const bounds = fixture.atlas.bounds;
   const worldWidth = Math.max(1, bounds.right - bounds.left);
   const worldHeight = Math.max(1, bounds.bottom - bounds.top);
-  const padding = width < 640 ? 42 : 96;
+  const insets = viewportGeometry.insets;
+  const usableWidth = Math.max(1, width - insets.left - insets.right);
+  const usableHeight = Math.max(1, height - insets.top - insets.bottom);
+  const padding = usableWidth < 640 ? 42 : 96;
   return Math.max(
     cameraScaleLimits.fitMinimum,
     Math.min(
       cameraScaleLimits.maximum,
       Math.min(
-        (width - padding * 2) / worldWidth,
-        (height - padding * 2) / worldHeight,
+        Math.max(1, usableWidth - padding * 2) / worldWidth,
+        Math.max(1, usableHeight - padding * 2) / worldHeight,
       ),
     ),
   );
@@ -630,22 +639,33 @@ function fittedGalaxyScale(width: number, height: number): number {
 
 function frameGalaxy(markAsUserAction: boolean, useInitialScale: boolean): void {
   cancelInertialPan();
-  const { width, height } = viewportSize();
+  const { width, height } = canvasSize();
   refreshCameraScaleLimits(height);
   const bounds = fixture.atlas.bounds;
   const fittedScale = fittedGalaxyScale(width, height);
   refreshOutwardZoomEnvelope(fittedScale);
+  const usableWidth = Math.max(
+    1,
+    width - viewportGeometry.insets.left - viewportGeometry.insets.right,
+  );
   const nextScale = useInitialScale
     ? Math.min(
         cameraScaleLimits.maximum,
-        galaxyLabInitialCameraScale(fittedScale, width),
+        galaxyLabInitialCameraScale(fittedScale, usableWidth),
       )
     : fittedScale;
   const centerX = (bounds.left + bounds.right) / 2;
   const centerY = (bounds.top + bounds.bottom) / 2;
-  transform.scale = nextScale;
-  transform.x = width / 2 - centerX * nextScale;
-  transform.y = height / 2 - centerY * nextScale;
+  writeGalaxyLabFocusedTransform(
+    transform,
+    centerX,
+    centerY,
+    0,
+    nextScale,
+    width,
+    height,
+    viewportGeometry.insets,
+  );
   recordCameraScaleDiagnostics();
   userMovedCamera = markAsUserAction;
   markGalaxyDirty();
@@ -660,28 +680,6 @@ function frameInitialGalaxy(): void {
   frameGalaxy(false, true);
 }
 
-function programmaticFocusInsets(): GalaxyLabViewportInsets {
-  if (getComputedStyle(panel).display === "none") {
-    return { top: 0, right: 0, bottom: 0, left: 0 };
-  }
-  const viewportBounds = viewport.getBoundingClientRect();
-  const panelBounds = panel.getBoundingClientRect();
-  if (viewportBounds.width <= 640) {
-    return {
-      top: 0,
-      right: 0,
-      bottom: Math.max(0, viewportBounds.bottom - panelBounds.top + 12),
-      left: 0,
-    };
-  }
-  return {
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: Math.max(0, panelBounds.right - viewportBounds.left + 18),
-  };
-}
-
 function focusGalaxyNode(nodeId: string): boolean {
   const nodeIndex = findGalaxyLabSceneNodeIndex(
     fixture.scene,
@@ -692,7 +690,7 @@ function focusGalaxyNode(nodeId: string): boolean {
   viewport.focus({ preventScroll: true });
   cancelInertialPan();
   settleScheduler.cancel();
-  const { width, height } = viewportSize();
+  const { width, height } = canvasSize();
   const offset = nodeIndex * 3;
   const scale = Math.min(
     cameraScaleLimits.maximum,
@@ -706,7 +704,7 @@ function focusGalaxyNode(nodeId: string): boolean {
     scale,
     width,
     height,
-    programmaticFocusInsets(),
+    viewportGeometry.insets,
   );
   recordCameraScaleDiagnostics();
   updateInteraction({ selectedNodeId: nodeId, hoveredNodeId: null });
@@ -751,7 +749,7 @@ async function activateBackend(
   activeCanvas?.remove();
   const canvas = document.createElement("canvas");
   canvas.setAttribute("aria-hidden", "true");
-  viewport.prepend(canvas);
+  canvasHost.prepend(canvas);
   activeCanvas = canvas;
   let backend: GalaxyLabBackend | null = null;
   try {
@@ -1053,26 +1051,39 @@ let hoverRequest = 0;
 let pendingHoverX = 0;
 let pendingHoverY = 0;
 let pendingHover = false;
-let viewportClientLeft = 0;
-let viewportClientTop = 0;
-let viewportClientWidth = 1;
-let viewportClientHeight = 1;
+let viewportGeometry: GalaxyLabViewportGeometry = galaxyLabViewportGeometry(
+  { left: 0, top: 0, width: 1, height: 1 },
+  { left: 0, top: 0, width: 1, height: 1 },
+);
+const eventCanvasPoint: GalaxyLabCanvasPoint = { x: 0, y: 0 };
 let viewportOriginValid = false;
 let viewportGeometryReadCount = 0;
 
 function refreshViewportOrigin(): void {
-  const bounds = viewport.getBoundingClientRect();
-  viewportClientLeft = bounds.left;
-  viewportClientTop = bounds.top;
-  viewportClientWidth = Math.max(1, bounds.width);
-  viewportClientHeight = Math.max(1, bounds.height);
+  viewportGeometry = galaxyLabViewportGeometry(
+    canvasHost.getBoundingClientRect(),
+    viewport.getBoundingClientRect(),
+  );
   viewportOriginValid = true;
-  viewportGeometryReadCount += 1;
+  viewportGeometryReadCount += 2;
   viewport.dataset.viewportGeometryReads = String(viewportGeometryReadCount);
+  viewport.dataset.canvasOffsetX = String(viewportGeometry.interactionLeft);
+  viewport.dataset.canvasOffsetY = String(viewportGeometry.interactionTop);
+  viewport.dataset.interactionWidth = String(viewportGeometry.interactionWidth);
+  viewport.dataset.interactionHeight = String(viewportGeometry.interactionHeight);
 }
 
 function ensureViewportOrigin(): void {
   if (!viewportOriginValid) refreshViewportOrigin();
+}
+
+function canvasPoint(clientX: number, clientY: number): GalaxyLabCanvasPoint {
+  return writeGalaxyLabCanvasPoint(
+    eventCanvasPoint,
+    viewportGeometry,
+    clientX,
+    clientY,
+  );
 }
 
 function updateInteraction(next: GalaxyLabInteraction): boolean {
@@ -1123,10 +1134,11 @@ viewport.addEventListener("pointerdown", (event) => {
   } else {
     gestureInterruptedInertia ||= interruptedInertia;
   }
+  const point = canvasPoint(event.clientX, event.clientY);
   const pointerIndex = pointers.begin(
     event.pointerId,
-    event.clientX - viewportClientLeft,
-    event.clientY - viewportClientTop,
+    point.x,
+    point.y,
   );
   if (pointerIndex < 0) return;
   if (pointers.count > 1) gestureMoved = true;
@@ -1144,17 +1156,16 @@ viewport.addEventListener("pointermove", (event) => {
   if (pointerIndex < 0) {
     if (event.pointerType === "mouse") {
       ensureViewportOrigin();
-      scheduleHoverPick(
-        event.clientX - viewportClientLeft,
-        event.clientY - viewportClientTop,
-      );
+      const point = canvasPoint(event.clientX, event.clientY);
+      scheduleHoverPick(point.x, point.y);
     }
     return;
   }
   event.preventDefault();
   setCameraInMotion(true);
-  const nextX = event.clientX - viewportClientLeft;
-  const nextY = event.clientY - viewportClientTop;
+  const point = canvasPoint(event.clientX, event.clientY);
+  const nextX = point.x;
+  const nextY = point.y;
   if (pointers.movedBeyond(pointerIndex, nextX, nextY, 4) || pointers.count > 1) {
     gestureMoved = true;
   }
@@ -1197,8 +1208,9 @@ function releasePointer(event: PointerEvent): void {
   const pointerIndex = pointers.indexOf(event.pointerId);
   if (pointerIndex < 0) return;
   const activeCountBeforeRelease = pointers.count;
-  const releasePointX = event.clientX - viewportClientLeft;
-  const releasePointY = event.clientY - viewportClientTop;
+  const point = canvasPoint(event.clientX, event.clientY);
+  const releasePointX = point.x;
+  const releasePointY = point.y;
   const shouldSelect = event.type === "pointerup" && pointers.count === 1 && !gestureMoved;
   pointers.remove(event.pointerId);
   if (viewport.hasPointerCapture(event.pointerId)) {
@@ -1261,10 +1273,11 @@ function beginNativeTouches(event: TouchEvent): void {
   for (let index = 0; index < event.changedTouches.length; index += 1) {
     const touch = event.changedTouches.item(index);
     if (!touch) continue;
+    const point = canvasPoint(touch.clientX, touch.clientY);
     pointers.begin(
       touch.identifier,
-      touch.clientX - viewportClientLeft,
-      touch.clientY - viewportClientTop,
+      point.x,
+      point.y,
     );
   }
   if (pointers.count > 1) gestureMoved = true;
@@ -1284,8 +1297,9 @@ function moveNativeTouches(event: TouchEvent): void {
     if (!touch) continue;
     const pointerIndex = pointers.indexOf(touch.identifier);
     if (pointerIndex < 0) continue;
-    const nextX = touch.clientX - viewportClientLeft;
-    const nextY = touch.clientY - viewportClientTop;
+    const point = canvasPoint(touch.clientX, touch.clientY);
+    const nextX = point.x;
+    const nextY = point.y;
     if (pointers.movedBeyond(pointerIndex, nextX, nextY, 4)) gestureMoved = true;
     pointers.update(pointerIndex, nextX, nextY);
   }
@@ -1337,10 +1351,8 @@ function endNativeTouches(event: TouchEvent): void {
   }
   viewport.dataset.dragging = "false";
   if (shouldSelect && releaseTouch) {
-    const selectedNodeId = activeBackend?.pickNode(
-      releaseTouch.clientX - viewportClientLeft,
-      releaseTouch.clientY - viewportClientTop,
-    ) ?? null;
+    const point = canvasPoint(releaseTouch.clientX, releaseTouch.clientY);
+    const selectedNodeId = activeBackend?.pickNode(point.x, point.y) ?? null;
     const selectionChanged = updateInteraction({
       selectedNodeId,
       hoveredNodeId: null,
@@ -1383,9 +1395,10 @@ viewport.addEventListener("wheel", (event) => {
   if (event.ctrlKey) {
     wheelInputMode = "pinch-zoom";
     viewport.dataset.wheelInputMode = wheelInputMode;
+    const point = canvasPoint(event.clientX, event.clientY);
     zoomAt(
-      event.clientX - viewportClientLeft,
-      event.clientY - viewportClientTop,
+      point.x,
+      point.y,
       transform.scale * Math.exp(-event.deltaY * 0.012),
     );
     return;
@@ -1393,12 +1406,12 @@ viewport.addEventListener("wheel", (event) => {
   const deltaX = galaxyLabWheelDeltaPixels(
     event.deltaX,
     event.deltaMode,
-    viewportClientWidth,
+    viewportGeometry.interactionWidth,
   );
   const deltaY = galaxyLabWheelDeltaPixels(
     event.deltaY,
     event.deltaMode,
-    viewportClientHeight,
+    viewportGeometry.interactionHeight,
   );
   if (deltaX === 0 && deltaY === 0) {
     if (interruptedInertia) scheduleSettledViewDetail();
@@ -1424,8 +1437,8 @@ let safariGestureStartScale = transform.scale;
 let safariGestureActive = false;
 let safariGestureWorldX = 0;
 let safariGestureWorldY = 0;
-let safariGestureViewportLeft = 0;
-let safariGestureViewportTop = 0;
+let safariGestureCanvasLeft = 0;
+let safariGestureCanvasTop = 0;
 
 viewport.addEventListener("gesturestart", ((event: SafariGestureEvent) => {
   event.preventDefault();
@@ -1437,10 +1450,10 @@ viewport.addEventListener("gesturestart", ((event: SafariGestureEvent) => {
   settleScheduler.cancel();
   safariGestureStartScale = transform.scale;
   refreshViewportOrigin();
-  safariGestureViewportLeft = viewportClientLeft;
-  safariGestureViewportTop = viewportClientTop;
-  const viewportX = event.clientX - safariGestureViewportLeft;
-  const viewportY = event.clientY - safariGestureViewportTop;
+  safariGestureCanvasLeft = viewportGeometry.canvasClientLeft;
+  safariGestureCanvasTop = viewportGeometry.canvasClientTop;
+  const viewportX = event.clientX - safariGestureCanvasLeft;
+  const viewportY = event.clientY - safariGestureCanvasTop;
   safariGestureWorldX = (viewportX - transform.x) / transform.scale;
   safariGestureWorldY = (viewportY - transform.y) / transform.scale;
   safariGestureActive = true;
@@ -1449,8 +1462,8 @@ viewport.addEventListener("gesturestart", ((event: SafariGestureEvent) => {
 viewport.addEventListener("gesturechange", ((event: SafariGestureEvent) => {
   event.preventDefault();
   if (!safariGestureActive) return;
-  const viewportX = event.clientX - safariGestureViewportLeft;
-  const viewportY = event.clientY - safariGestureViewportTop;
+  const viewportX = event.clientX - safariGestureCanvasLeft;
+  const viewportY = event.clientY - safariGestureCanvasTop;
   const nextScale = galaxyLabResistedScaleAtRatio(
     safariGestureStartScale,
     event.scale,
@@ -1493,14 +1506,20 @@ viewport.addEventListener("keydown", (event) => {
       break;
     case "+":
     case "=": {
-      const { width, height } = viewportSize();
-      zoomAt(width * 0.5, height * 0.5, transform.scale * 1.18);
+      zoomAt(
+        viewportGeometry.interactionCenterX,
+        viewportGeometry.interactionCenterY,
+        transform.scale * 1.18,
+      );
       break;
     }
     case "-":
     case "_": {
-      const { width, height } = viewportSize();
-      zoomAt(width * 0.5, height * 0.5, transform.scale / 1.18);
+      zoomAt(
+        viewportGeometry.interactionCenterX,
+        viewportGeometry.interactionCenterY,
+        transform.scale / 1.18,
+      );
       break;
     }
     case "Home":
@@ -1536,7 +1555,7 @@ viewport.addEventListener("keydown", (event) => {
 fitButton.addEventListener("click", () => fitGalaxy());
 
 function galaxyDiagnosticSnapshot() {
-  const { width, height } = viewportSize();
+  const { width, height } = canvasSize();
   return createGalaxyLabDiagnosticSnapshot({
     capturedAt: new Date().toISOString(),
     receipt: fixtureWorkerReceipt,
@@ -1646,14 +1665,20 @@ reducedMotionQuery.addEventListener("change", syncReducedMotionPreference);
 
 const resizeObserver = new ResizeObserver(() => {
   cancelInertialPan();
+  const previousGeometry = viewportGeometry;
   refreshViewportOrigin();
   resizeActiveBackend();
-  const { width, height } = viewportSize();
+  const { width, height } = canvasSize();
   refreshCameraScaleLimits(height);
   refreshOutwardZoomEnvelope(fittedGalaxyScale(width, height));
   if (!userMovedCamera) {
     frameInitialGalaxy();
   } else {
+    reanchorGalaxyLabTransformToInteraction(
+      transform,
+      previousGeometry,
+      viewportGeometry,
+    );
     const safeResizeScale = Math.max(
       outwardZoomEnvelope.target,
       Math.min(cameraScaleLimits.maximum, transform.scale),
@@ -1661,8 +1686,8 @@ const resizeObserver = new ResizeObserver(() => {
     if (safeResizeScale !== transform.scale) {
       applyGalaxyLabZoomAt(
         transform,
-        width * 0.5,
-        height * 0.5,
+        viewportGeometry.interactionCenterX,
+        viewportGeometry.interactionCenterY,
         safeResizeScale,
         outwardZoomEnvelope.target,
         cameraScaleLimits.maximum,
@@ -1673,6 +1698,7 @@ const resizeObserver = new ResizeObserver(() => {
   }
   markGalaxyDirty();
 });
+resizeObserver.observe(canvasHost);
 resizeObserver.observe(viewport);
 
 const backendHealthPoll = window.setInterval(() => {
@@ -1714,6 +1740,10 @@ Object.assign(window, {
     state: () => ({
       backend: activeBackend?.metrics() ?? null,
       transform: { ...transform },
+      viewportGeometry: {
+        ...viewportGeometry,
+        insets: { ...viewportGeometry.insets },
+      },
       cameraScaleLimits: { ...cameraScaleLimits },
       outwardZoomEnvelope: { ...outwardZoomEnvelope },
       zoomResistanceActive: transform.scale < outwardZoomEnvelope.resistance,
@@ -1755,6 +1785,7 @@ Object.assign(window, {
   },
 });
 
+refreshViewportOrigin();
 applyDocumentPalette(paletteForTheme());
 syncGraphDescription();
 frameInitialGalaxy();
