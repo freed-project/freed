@@ -28,13 +28,13 @@ import {
   friendsGalaxyWheelDeltaPixels,
 } from "../../src/lib/friends-galaxy-gesture.js";
 import {
-  GalaxyActivityScenePatchEncoder,
-  type GalaxyActivitySceneBinding,
-} from "./activity-scene-patches.js";
+  FriendsGalaxyActivityScenePatchEncoder,
+  type FriendsGalaxyActivitySceneBinding,
+} from "../../src/lib/friends-galaxy-activity-patches.js";
 import {
-  GalaxyActivitySummaryIndex,
-  type GalaxyActivitySourceKey,
-} from "./activity-summary-index.js";
+  FriendsGalaxyActivitySummaryIndex,
+  type FriendsGalaxyActivitySourceKey,
+} from "../../src/lib/friends-galaxy-activity-index.js";
 import { FriendsGalaxyAvatarAdmissionState } from "../../src/lib/friends-galaxy-avatar-admission.js";
 import { selectGalaxyLabAvatars } from "./avatar-atlas.js";
 import {
@@ -173,7 +173,7 @@ viewport.dataset.representedActivityItemCount = String(
   fixtureWorkerReceipt.representedActivityItemCount,
 );
 
-function activitySourceForNode(nodeIndex: number): GalaxyActivitySourceKey | null {
+function activitySourceForNode(nodeIndex: number): FriendsGalaxyActivitySourceKey | null {
   const provider = fixture.scene.providers[nodeIndex];
   const accountId = fixture.scene.accountIds[nodeIndex];
   if (!provider || !accountId) return null;
@@ -185,11 +185,11 @@ function activitySourceForNode(nodeIndex: number): GalaxyActivitySourceKey | nul
 const activityProbeNodeIndex = fixture.personCount;
 const activityProbeSource = activitySourceForNode(activityProbeNodeIndex);
 if (!activityProbeSource) throw new Error("The Friends Galaxy fixture requires one activity source.");
-const activityScenePatchEncoder = new GalaxyActivityScenePatchEncoder([{
+const activityScenePatchEncoder = new FriendsGalaxyActivityScenePatchEncoder([{
   ...activityProbeSource,
   nodeIndex: activityProbeNodeIndex,
-} satisfies GalaxyActivitySceneBinding]);
-const activityProbeIndex = new GalaxyActivitySummaryIndex([{
+} satisfies FriendsGalaxyActivitySceneBinding]);
+const activityProbeIndex = new FriendsGalaxyActivitySummaryIndex([{
   ...activityProbeSource,
   globalId: "lab-activity-probe-1",
   publishedAt: 1_725_000_000_000,

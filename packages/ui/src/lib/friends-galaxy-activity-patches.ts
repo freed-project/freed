@@ -1,20 +1,20 @@
 import type {
-  GalaxyActivitySourceKey,
-  GalaxyActivitySummary,
-  GalaxyActivitySummaryPatch,
-} from "./activity-summary-index.js";
+  FriendsGalaxyActivitySourceKey,
+  FriendsGalaxyActivitySummary,
+  FriendsGalaxyActivitySummaryPatch,
+} from "./friends-galaxy-activity-index.js";
 
-export const GalaxyActivitySceneFlag = {
+export const FriendsGalaxyActivitySceneFlag = {
   HasLocation: 1 << 0,
   HasAvatar: 1 << 1,
   Removed: 1 << 2,
 } as const;
 
-export interface GalaxyActivitySceneBinding extends GalaxyActivitySourceKey {
+export interface FriendsGalaxyActivitySceneBinding extends FriendsGalaxyActivitySourceKey {
   nodeIndex: number;
 }
 
-export interface GalaxyActivityScenePatchBatch {
+export interface FriendsGalaxyActivityScenePatchBatch {
   revision: number;
   nodeIndices: Uint32Array;
   itemCounts: Uint32Array;
@@ -23,18 +23,18 @@ export interface GalaxyActivityScenePatchBatch {
   brightnessScales: Float32Array;
   flags: Uint8Array;
   avatarUrls: Array<string | null>;
-  unknownSources: GalaxyActivitySourceKey[];
+  unknownSources: FriendsGalaxyActivitySourceKey[];
 }
 
 interface EncodedPatch {
   nodeIndex: number;
-  summary: GalaxyActivitySummary | null;
+  summary: FriendsGalaxyActivitySummary | null;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
 function visualScales(
-  summary: GalaxyActivitySummary | null,
+  summary: FriendsGalaxyActivitySummary | null,
   referenceTime: number,
 ): { size: number; brightness: number } {
   if (!summary) return { size: 0.82, brightness: 0.72 };
@@ -50,18 +50,18 @@ function visualScales(
   };
 }
 
-function sourceToken(source: GalaxyActivitySourceKey): string {
+function sourceToken(source: FriendsGalaxyActivitySourceKey): string {
   return `${source.namespace}\u0000${source.key}`;
 }
 
-function compareSource(left: GalaxyActivitySourceKey, right: GalaxyActivitySourceKey): number {
+function compareSource(left: FriendsGalaxyActivitySourceKey, right: FriendsGalaxyActivitySourceKey): number {
   return left.namespace.localeCompare(right.namespace) || left.key.localeCompare(right.key);
 }
 
-export class GalaxyActivityScenePatchEncoder {
+export class FriendsGalaxyActivityScenePatchEncoder {
   private readonly nodeIndicesBySource = new Map<string, number[]>();
 
-  constructor(bindings: Iterable<GalaxyActivitySceneBinding>) {
+  constructor(bindings: Iterable<FriendsGalaxyActivitySceneBinding>) {
     const sourceByNodeIndex = new Map<number, string>();
     for (const binding of bindings) {
       if (
@@ -91,10 +91,10 @@ export class GalaxyActivityScenePatchEncoder {
   }
 
   encode(
-    patches: Iterable<GalaxyActivitySummaryPatch>,
+    patches: Iterable<FriendsGalaxyActivitySummaryPatch>,
     revision: number,
     referenceTime: number,
-  ): GalaxyActivityScenePatchBatch {
+  ): FriendsGalaxyActivityScenePatchBatch {
     if (!Number.isSafeInteger(revision) || revision < 0) {
       throw new Error("A Friends Galaxy activity scene patch requires a non-negative revision.");
     }
@@ -102,7 +102,7 @@ export class GalaxyActivityScenePatchEncoder {
       throw new Error("A Friends Galaxy activity scene patch requires a valid reference time.");
     }
     const encodedByNodeIndex = new Map<number, EncodedPatch>();
-    const unknownBySource = new Map<string, GalaxyActivitySourceKey>();
+    const unknownBySource = new Map<string, FriendsGalaxyActivitySourceKey>();
     for (const patch of patches) {
       const nodeIndices = this.nodeIndicesBySource.get(sourceToken(patch));
       if (!nodeIndices) {
@@ -134,14 +134,14 @@ export class GalaxyActivityScenePatchEncoder {
       sizeScales[index] = scales.size;
       brightnessScales[index] = scales.brightness;
       if (!summary) {
-        flags[index] = GalaxyActivitySceneFlag.Removed;
+        flags[index] = FriendsGalaxyActivitySceneFlag.Removed;
         avatarUrls[index] = null;
         return;
       }
       itemCounts[index] = Math.min(0xffff_ffff, Math.max(0, summary.itemCount));
       latestActivityAt[index] = Math.max(0, summary.latestActivityAt);
-      flags[index] = (summary.hasLocation ? GalaxyActivitySceneFlag.HasLocation : 0) |
-        (summary.avatarUrlCandidates.length > 0 ? GalaxyActivitySceneFlag.HasAvatar : 0);
+      flags[index] = (summary.hasLocation ? FriendsGalaxyActivitySceneFlag.HasLocation : 0) |
+        (summary.avatarUrlCandidates.length > 0 ? FriendsGalaxyActivitySceneFlag.HasAvatar : 0);
       avatarUrls[index] = summary.avatarUrlCandidates[0] ?? null;
     });
 

@@ -1,23 +1,23 @@
-export type GalaxyActivityNamespace = "social" | "rss";
+export type FriendsGalaxyActivityNamespace = "social" | "rss";
 
-export interface GalaxyActivitySourceKey {
-  namespace: GalaxyActivityNamespace;
+export interface FriendsGalaxyActivitySourceKey {
+  namespace: FriendsGalaxyActivityNamespace;
   key: string;
 }
 
-export interface GalaxyActivityContribution extends GalaxyActivitySourceKey {
+export interface FriendsGalaxyActivityContribution extends FriendsGalaxyActivitySourceKey {
   globalId: string;
   publishedAt: number;
   hasLocation: boolean;
   avatarUrl: string | null;
 }
 
-export interface GalaxyActivityDelta {
-  previous: GalaxyActivityContribution | null;
-  next: GalaxyActivityContribution | null;
+export interface FriendsGalaxyActivityDelta {
+  previous: FriendsGalaxyActivityContribution | null;
+  next: FriendsGalaxyActivityContribution | null;
 }
 
-export interface GalaxyActivitySummary {
+export interface FriendsGalaxyActivitySummary {
   itemCount: number;
   latestActivityAt: number;
   sampleItemIds: string[];
@@ -25,19 +25,19 @@ export interface GalaxyActivitySummary {
   avatarUrlCandidates: string[];
 }
 
-export interface GalaxyActivitySummarySnapshot {
-  social: Record<string, GalaxyActivitySummary>;
-  rss: Record<string, GalaxyActivitySummary>;
+export interface FriendsGalaxyActivitySummarySnapshot {
+  social: Record<string, FriendsGalaxyActivitySummary>;
+  rss: Record<string, FriendsGalaxyActivitySummary>;
   itemCount: number;
   revision: number;
 }
 
-export interface GalaxyActivitySummaryPatch extends GalaxyActivitySourceKey {
-  summary: GalaxyActivitySummary | null;
+export interface FriendsGalaxyActivitySummaryPatch extends FriendsGalaxyActivitySourceKey {
+  summary: FriendsGalaxyActivitySummary | null;
 }
 
-export interface GalaxyActivityPatchResult {
-  patches: GalaxyActivitySummaryPatch[];
+export interface FriendsGalaxyActivityPatchResult {
+  patches: FriendsGalaxyActivitySummaryPatch[];
   changedItemCount: number;
   rebuiltSourceCount: number;
   rebuildContributionCount: number;
@@ -45,9 +45,9 @@ export interface GalaxyActivityPatchResult {
   revision: number;
 }
 
-export type GalaxyActivityRebuildResolver = (
-  invalidatedSources: readonly GalaxyActivitySourceKey[],
-) => Iterable<GalaxyActivityContribution>;
+export type FriendsGalaxyActivityRebuildResolver = (
+  invalidatedSources: readonly FriendsGalaxyActivitySourceKey[],
+) => Iterable<FriendsGalaxyActivityContribution>;
 
 interface RankedCandidate {
   globalId: string;
@@ -72,7 +72,7 @@ function compareRankedCandidate(left: RankedCandidate, right: RankedCandidate): 
   return right.publishedAt - left.publishedAt || left.globalId.localeCompare(right.globalId);
 }
 
-function cloneSummary(summary: GalaxyActivitySummary): GalaxyActivitySummary {
+function cloneSummary(summary: FriendsGalaxyActivitySummary): FriendsGalaxyActivitySummary {
   return {
     ...summary,
     sampleItemIds: [...summary.sampleItemIds],
@@ -81,8 +81,8 @@ function cloneSummary(summary: GalaxyActivitySummary): GalaxyActivitySummary {
 }
 
 function contributionEqual(
-  left: GalaxyActivityContribution,
-  right: GalaxyActivityContribution,
+  left: FriendsGalaxyActivityContribution,
+  right: FriendsGalaxyActivityContribution,
 ): boolean {
   return left.globalId === right.globalId &&
     left.namespace === right.namespace &&
@@ -119,7 +119,7 @@ function insertRankedCandidate<T extends RankedCandidate>(
 
 function addContributionToBucket(
   bucket: ActivityBucket,
-  contribution: GalaxyActivityContribution,
+  contribution: FriendsGalaxyActivityContribution,
 ): void {
   bucket.itemCount += 1;
   if (contribution.hasLocation) bucket.locationItemCount += 1;
@@ -142,7 +142,7 @@ function addContributionToBucket(
   insertRankedCandidate(bucket.avatars, candidate, MAX_AVATAR_URL_CANDIDATES);
 }
 
-function bucketSummary(bucket: ActivityBucket): GalaxyActivitySummary {
+function bucketSummary(bucket: ActivityBucket): FriendsGalaxyActivitySummary {
   return {
     itemCount: bucket.itemCount,
     latestActivityAt: bucket.samples[0]?.publishedAt ?? 0,
@@ -152,17 +152,17 @@ function bucketSummary(bucket: ActivityBucket): GalaxyActivitySummary {
   };
 }
 
-function sourceToken(source: GalaxyActivitySourceKey): string {
+function sourceToken(source: FriendsGalaxyActivitySourceKey): string {
   return `${source.namespace}\u0000${source.key}`;
 }
 
-export class GalaxyActivitySummaryIndex {
+export class FriendsGalaxyActivitySummaryIndex {
   private readonly socialBuckets = new Map<string, ActivityBucket>();
   private readonly rssBuckets = new Map<string, ActivityBucket>();
   private totalItemCount = 0;
   private currentRevision = 0;
 
-  constructor(contributions: Iterable<GalaxyActivityContribution> = []) {
+  constructor(contributions: Iterable<FriendsGalaxyActivityContribution> = []) {
     for (const contribution of contributions) this.addContribution(contribution);
   }
 
@@ -174,7 +174,7 @@ export class GalaxyActivitySummaryIndex {
     return this.currentRevision;
   }
 
-  snapshot(): GalaxyActivitySummarySnapshot {
+  snapshot(): FriendsGalaxyActivitySummarySnapshot {
     return {
       social: this.snapshotNamespace(this.socialBuckets),
       rss: this.snapshotNamespace(this.rssBuckets),
@@ -184,11 +184,11 @@ export class GalaxyActivitySummaryIndex {
   }
 
   applyDeltas(
-    deltas: Iterable<GalaxyActivityDelta>,
-    rebuildInvalidated: GalaxyActivityRebuildResolver,
-  ): GalaxyActivityPatchResult {
-    const touched = new Map<string, GalaxyActivitySourceKey>();
-    const invalidated = new Map<string, GalaxyActivitySourceKey>();
+    deltas: Iterable<FriendsGalaxyActivityDelta>,
+    rebuildInvalidated: FriendsGalaxyActivityRebuildResolver,
+  ): FriendsGalaxyActivityPatchResult {
+    const touched = new Map<string, FriendsGalaxyActivitySourceKey>();
+    const invalidated = new Map<string, FriendsGalaxyActivitySourceKey>();
     const changedIds = new Set<string>();
 
     for (const delta of deltas) {
@@ -255,7 +255,7 @@ export class GalaxyActivitySummaryIndex {
     const patches = [...touched.values()]
       .sort((left, right) => left.namespace.localeCompare(right.namespace) ||
         left.key.localeCompare(right.key))
-      .map(({ namespace, key }): GalaxyActivitySummaryPatch => {
+      .map(({ namespace, key }): FriendsGalaxyActivitySummaryPatch => {
         const bucket = this.bucketsFor(namespace).get(key);
         return {
           namespace,
@@ -274,11 +274,11 @@ export class GalaxyActivitySummaryIndex {
     };
   }
 
-  private bucketsFor(namespace: GalaxyActivityNamespace): Map<string, ActivityBucket> {
+  private bucketsFor(namespace: FriendsGalaxyActivityNamespace): Map<string, ActivityBucket> {
     return namespace === "social" ? this.socialBuckets : this.rssBuckets;
   }
 
-  private addContribution(contribution: GalaxyActivityContribution): void {
+  private addContribution(contribution: FriendsGalaxyActivityContribution): void {
     const buckets = this.bucketsFor(contribution.namespace);
     let bucket = buckets.get(contribution.key);
     if (!bucket) {
@@ -289,7 +289,7 @@ export class GalaxyActivitySummaryIndex {
     this.totalItemCount += 1;
   }
 
-  private removeContribution(contribution: GalaxyActivityContribution): boolean {
+  private removeContribution(contribution: FriendsGalaxyActivityContribution): boolean {
     const buckets = this.bucketsFor(contribution.namespace);
     const bucket = buckets.get(contribution.key);
     if (!bucket || bucket.itemCount <= 0) {
@@ -308,8 +308,11 @@ export class GalaxyActivitySummaryIndex {
 
   private snapshotNamespace(
     buckets: ReadonlyMap<string, ActivityBucket>,
-  ): Record<string, GalaxyActivitySummary> {
-    const snapshot: Record<string, GalaxyActivitySummary> = {};
+  ): Record<string, FriendsGalaxyActivitySummary> {
+    const snapshot = Object.create(null) as Record<
+      string,
+      FriendsGalaxyActivitySummary
+    >;
     for (const [key, bucket] of buckets) snapshot[key] = cloneSummary(bucketSummary(bucket));
     return snapshot;
   }

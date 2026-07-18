@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  GalaxyActivitySummaryIndex,
-  type GalaxyActivityContribution,
-} from "./activity-summary-index.js";
+  FriendsGalaxyActivitySummaryIndex,
+  type FriendsGalaxyActivityContribution,
+} from "../../src/lib/friends-galaxy-activity-index.js";
 
 function contribution(
   globalId: string,
   publishedAt: number,
-  overrides: Partial<GalaxyActivityContribution> = {},
-): GalaxyActivityContribution {
+  overrides: Partial<FriendsGalaxyActivityContribution> = {},
+): FriendsGalaxyActivityContribution {
   return {
     globalId,
     namespace: "social",
@@ -22,7 +22,7 @@ function contribution(
 
 describe("Friends Galaxy incremental activity summary index", () => {
   it("builds deterministic samples and avatar candidates from unordered input", () => {
-    const index = new GalaxyActivitySummaryIndex([
+    const index = new FriendsGalaxyActivitySummaryIndex([
       contribution("item-c", 30, { avatarUrl: "https://images.test/c.png" }),
       contribution("item-b", 20, { hasLocation: true, avatarUrl: "https://images.test/b.png" }),
       contribution("item-d", 30, { avatarUrl: "https://images.test/d.png" }),
@@ -44,7 +44,7 @@ describe("Friends Galaxy incremental activity summary index", () => {
 
   it("updates ordinary additions and non-leading removals without a rebuild scan", () => {
     const oldest = contribution("item-oldest", 1, { hasLocation: true });
-    const index = new GalaxyActivitySummaryIndex([
+    const index = new FriendsGalaxyActivitySummaryIndex([
       oldest,
       contribution("item-2", 2),
       contribution("item-3", 3),
@@ -79,7 +79,7 @@ describe("Friends Galaxy incremental activity summary index", () => {
       contribution("item-3", 3),
       contribution("item-4", 4, { avatarUrl: "https://images.test/latest.png" }),
     ];
-    const index = new GalaxyActivitySummaryIndex(current);
+    const index = new FriendsGalaxyActivitySummaryIndex(current);
     const removed = current.pop()!;
     const rebuiltSources: string[][] = [];
     const result = index.applyDeltas(
@@ -107,7 +107,7 @@ describe("Friends Galaxy incremental activity summary index", () => {
       namespace: "rss",
       key: "https://feed.test/rss.xml",
     });
-    const index = new GalaxyActivitySummaryIndex([previous]);
+    const index = new FriendsGalaxyActivitySummaryIndex([previous]);
     const result = index.applyDeltas([{ previous, next }], () => {
       throw new Error("Moving the sole source item must not require a rebuild.");
     });
@@ -130,8 +130,20 @@ describe("Friends Galaxy incremental activity summary index", () => {
     expect(result.itemCount).toBe(1);
   });
 
+  it("returns isolated prototype-safe source snapshots", () => {
+    const index = new FriendsGalaxyActivitySummaryIndex([
+      contribution("item-1", 10, { key: "__proto__" }),
+    ]);
+    const first = index.snapshot();
+
+    expect(Object.hasOwn(first.social, "__proto__")).toBe(true);
+    expect(first.social["__proto__"]?.itemCount).toBe(1);
+    first.social["__proto__"]!.sampleItemIds.push("external-mutation");
+    expect(index.snapshot().social["__proto__"]?.sampleItemIds).toEqual(["item-1"]);
+  });
+
   it("represents 250,000 items with 25,000 source summaries and constant-work additions", () => {
-    function* stressContributions(): Iterable<GalaxyActivityContribution> {
+    function* stressContributions(): Iterable<FriendsGalaxyActivityContribution> {
       for (let sequence = 0; sequence < 10; sequence += 1) {
         for (let sourceIndex = 0; sourceIndex < 25_000; sourceIndex += 1) {
           yield contribution(`item-${sourceIndex}-${sequence}`, sequence, {
@@ -142,7 +154,7 @@ describe("Friends Galaxy incremental activity summary index", () => {
       }
     }
 
-    const index = new GalaxyActivitySummaryIndex(stressContributions());
+    const index = new FriendsGalaxyActivitySummaryIndex(stressContributions());
     const snapshot = index.snapshot();
     expect(snapshot.itemCount).toBe(250_000);
     expect(Object.keys(snapshot.social)).toHaveLength(25_000);

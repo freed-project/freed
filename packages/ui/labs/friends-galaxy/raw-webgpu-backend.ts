@@ -6,7 +6,7 @@ import type {
   GalaxyLabViewDetail,
 } from "./backend.js";
 import { galaxyLabRenderPixelRatio } from "./backend.js";
-import type { GalaxyActivityScenePatchBatch } from "./activity-scene-patches.js";
+import type { FriendsGalaxyActivityScenePatchBatch } from "../../src/lib/friends-galaxy-activity-patches.js";
 import { FriendsGalaxyBackendHealth } from "../../src/lib/friends-galaxy-backend-health.js";
 import { createGalaxyLabAvatarAtlas } from "./avatar-atlas.js";
 import type { FriendsGalaxyAvatarAtlas } from "../../src/lib/friends-galaxy-avatar-atlas.js";
@@ -847,7 +847,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.writeProviderFields();
   }
 
-  applyActivityPatches(patches: GalaxyActivityScenePatchBatch): void {
+  applyActivityPatches(patches: FriendsGalaxyActivityScenePatchBatch): void {
     if (
       !this.device || !this.semanticBuffer || !this.semanticData || !this.fixture ||
       !this.activitySizeScales || !this.activityBrightnessScales

@@ -258,6 +258,8 @@ Theme resolution now uses a shared structural star-palette contract too. It defi
 
 Provider-field compilation now lives under shared UI source as well. It owns the fixed twelve-float instance layout, style codes, close-detail culling threshold, deterministic identity and provider geometry, active-theme colors, and light-versus-dark opacity policy. Geometry scans the bounded person positions once when the scene is admitted. Later theme and field-style changes mutate only the retained six-instance presentation block, so they never rescan people or replace GPU storage. Empty identity scenes produce finite one-by-one core geometry, and unknown provider keys fall back to the account theme role.
 
+Incremental activity indexing and sparse scene patch encoding now live under shared UI source and are consumed directly by the detached laboratory. The index retains only source-level counts, three recent sample IDs, location presence, and three avatar candidates for each social external ID or RSS URL. Normal deltas update affected source keys directly. Removing a retained leading candidate asks the owning document worker to rebuild only that source. The encoder converts those source patches into sorted typed node updates without positions, labels, sample IDs, or feed-item records. Product cutover must connect the existing feed mutation boundary to these modules and delete the current whole-item Friends mount builder. That production path remains intentionally unchanged while global behavioral custody is closed.
+
 The moving world bundles draw a deterministic 50,000-star prefix of the 100,000 resident decorative dust stars. Their index-keyed placement keeps that prefix evenly distributed across the galactic field. All 30,000 semantic stars, interaction overlays, labels, avatars, and edges remain complete. Settle returns the full decorative stream without an upload or bundle rebuild.
 
 Provider fields now become degenerate in the vertex shader beyond 1.5 close-detail scale. Their existing camera fade has already reduced them to atmospheric residue by that point. The cutoff prevents six large, effectively invisible field quads from rasterizing or running noise fragments over close-zoom stars, labels, and avatars. Overview and middle detail remain unchanged.
@@ -526,6 +528,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.122 | Move the structural theme palette, normalized color parser, fixed star-uniform layout, and light-surface role policy into shared UI source | High | Done |
 | 8.123 | Strengthen the fitted zoom ceiling and remove compressed-scale startup lag from inward trackpad, wheel, Safari gesture, and keyboard zoom while preserving exact native touch ratios | High | Done |
 | 8.124 | Move provider-field geometry, presentation, style, stride, and close-culling contracts into shared UI source without rescanning people on theme changes | High | Done |
+| 8.125 | Move the source-key incremental activity index and sparse typed scene patch encoder into shared UI source without connecting the frozen product route | High | Done |
 
 ---
 
@@ -604,6 +607,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] The worker caches the full semantic model by source revision, and viewport updates retain every semantic star while capping labels, hit detail, and edges
 - [x] The next-generation Friends Galaxy keeps all semantic stars GPU-resident and applies detail limits only to labels, avatars, edges, picking, and expensive effects
 - [x] Activity-only updates encode deterministic size and brightness scales and rewrite only the affected raw WebGPU semantic instances while preserving theme and interaction overlays
+- [x] The detached laboratory consumes one shared source-key activity index and sparse typed patch encoder whose retained state follows source count and whose updates exclude positions and feed-item payloads
 - [x] Settled close-detail avatar decoding is concurrency-limited, revision-cached, compact-capped, stale-safe, and paired with deterministic bitmap cleanup
 - [x] Close-detail avatar admission is keyed by renderer, viewport class, and selected person so unchanged settles do not rescan candidates or rebuild the atlas
 - [x] Raw and Three.js WebGPU device loss recovers once into WebGL2 without discarding the active theme, camera transform, semantic scene, or interaction state

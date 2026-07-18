@@ -1,4 +1,4 @@
-import type { GalaxyActivityScenePatchBatch } from "./activity-scene-patches.js";
+import type { FriendsGalaxyActivityScenePatchBatch } from "../../src/lib/friends-galaxy-activity-patches.js";
 import type { FriendsGalaxyFieldStyle } from "../../src/lib/friends-galaxy-provider-fields.js";
 import type { FriendsGalaxyInteraction } from "../../src/lib/friends-galaxy-scene-index.js";
 import type { GalaxyLabFixture, GalaxyLabPalette, GalaxyLabTransform } from "./scene-fixture.js";
@@ -44,7 +44,7 @@ export interface GalaxyLabBackend {
   ): Promise<void>;
   resize(width: number, height: number, pixelRatio: number): void;
   setPalette(palette: GalaxyLabPalette): void;
-  applyActivityPatches?(patches: GalaxyActivityScenePatchBatch): void;
+  applyActivityPatches?(patches: FriendsGalaxyActivityScenePatchBatch): void;
   setAvatarImages?(images: ReadonlyMap<string, CanvasImageSource>): void;
   setAnimationEnabled?(enabled: boolean): void;
   setCameraMotion?(active: boolean): void;

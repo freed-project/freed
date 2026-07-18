@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
-  GalaxyActivitySceneFlag,
-  GalaxyActivityScenePatchEncoder,
-} from "./activity-scene-patches.js";
-import type { GalaxyActivitySummaryPatch } from "./activity-summary-index.js";
+  FriendsGalaxyActivitySceneFlag,
+  FriendsGalaxyActivityScenePatchEncoder,
+} from "../../src/lib/friends-galaxy-activity-patches.js";
+import type { FriendsGalaxyActivitySummaryPatch } from "../../src/lib/friends-galaxy-activity-index.js";
 
 function summaryPatch(
   namespace: "social" | "rss",
   key: string,
   itemCount: number,
   options: { avatarUrl?: string; hasLocation?: boolean; latestActivityAt?: number } = {},
-): GalaxyActivitySummaryPatch {
+): FriendsGalaxyActivitySummaryPatch {
   return {
     namespace,
     key,
@@ -26,7 +26,7 @@ function summaryPatch(
 
 describe("Friends Galaxy activity scene patches", () => {
   it("encodes source summaries as a stable node-index payload", () => {
-    const encoder = new GalaxyActivityScenePatchEncoder([
+    const encoder = new FriendsGalaxyActivityScenePatchEncoder([
       { namespace: "social", key: "instagram:alpha", nodeIndex: 7 },
       { namespace: "rss", key: "https://example.com/feed.xml", nodeIndex: 2 },
     ]);
@@ -42,8 +42,8 @@ describe("Friends Galaxy activity scene patches", () => {
     expect(Array.from(batch.nodeIndices)).toEqual([2, 7]);
     expect(Array.from(batch.itemCounts)).toEqual([3, 12]);
     expect(Array.from(batch.flags)).toEqual([
-      GalaxyActivitySceneFlag.HasLocation,
-      GalaxyActivitySceneFlag.HasAvatar,
+      FriendsGalaxyActivitySceneFlag.HasLocation,
+      FriendsGalaxyActivitySceneFlag.HasAvatar,
     ]);
     expect(batch.avatarUrls).toEqual([null, "https://example.com/avatar.jpg"]);
     expect(batch.sizeScales[0]).toBeGreaterThan(1);
@@ -52,7 +52,7 @@ describe("Friends Galaxy activity scene patches", () => {
   });
 
   it("represents source removal without item or position payloads", () => {
-    const encoder = new GalaxyActivityScenePatchEncoder([
+    const encoder = new FriendsGalaxyActivityScenePatchEncoder([
       { namespace: "social", key: "x:removed", nodeIndex: 44 },
     ]);
     const batch = encoder.encode([{
@@ -64,7 +64,7 @@ describe("Friends Galaxy activity scene patches", () => {
     expect(Array.from(batch.nodeIndices)).toEqual([44]);
     expect(Array.from(batch.itemCounts)).toEqual([0]);
     expect(Array.from(batch.latestActivityAt)).toEqual([0]);
-    expect(Array.from(batch.flags)).toEqual([GalaxyActivitySceneFlag.Removed]);
+    expect(Array.from(batch.flags)).toEqual([FriendsGalaxyActivitySceneFlag.Removed]);
     expect(batch.sizeScales[0]).toBeCloseTo(0.82, 5);
     expect(batch.brightnessScales[0]).toBeCloseTo(0.72, 5);
     expect(batch.avatarUrls).toEqual([null]);
@@ -73,7 +73,7 @@ describe("Friends Galaxy activity scene patches", () => {
   });
 
   it("fans one source patch out to duplicate scene representations", () => {
-    const encoder = new GalaxyActivityScenePatchEncoder([
+    const encoder = new FriendsGalaxyActivityScenePatchEncoder([
       { namespace: "rss", key: "feed", nodeIndex: 12 },
       { namespace: "rss", key: "feed", nodeIndex: 3 },
       { namespace: "rss", key: "feed", nodeIndex: 12 },
@@ -85,8 +85,18 @@ describe("Friends Galaxy activity scene patches", () => {
     expect(Array.from(batch.itemCounts)).toEqual([8, 8]);
   });
 
+  it("rejects invalid or conflicting source bindings", () => {
+    expect(() => new FriendsGalaxyActivityScenePatchEncoder([
+      { namespace: "social", key: "invalid", nodeIndex: -1 },
+    ])).toThrow("requires a 32-bit node index");
+    expect(() => new FriendsGalaxyActivityScenePatchEncoder([
+      { namespace: "social", key: "first", nodeIndex: 4 },
+      { namespace: "rss", key: "second", nodeIndex: 4 },
+    ])).toThrow("cannot bind to multiple activity sources");
+  });
+
   it("reports unknown sources for a structural atlas refresh", () => {
-    const encoder = new GalaxyActivityScenePatchEncoder([
+    const encoder = new FriendsGalaxyActivityScenePatchEncoder([
       { namespace: "social", key: "linkedin:known", nodeIndex: 5 },
     ]);
 
@@ -108,7 +118,7 @@ describe("Friends Galaxy activity scene patches", () => {
       key: `source-${nodeIndex}`,
       nodeIndex,
     }));
-    const encoder = new GalaxyActivityScenePatchEncoder(bindings);
+    const encoder = new FriendsGalaxyActivityScenePatchEncoder(bindings);
 
     const batch = encoder.encode([
       summaryPatch("social", "source-19999", 101, { latestActivityAt: 1_800_000_000_000 }),
@@ -121,7 +131,7 @@ describe("Friends Galaxy activity scene patches", () => {
   });
 
   it("encodes fresh active sources more strongly than stale inactive sources", () => {
-    const encoder = new GalaxyActivityScenePatchEncoder([
+    const encoder = new FriendsGalaxyActivityScenePatchEncoder([
       { namespace: "social", key: "fresh", nodeIndex: 1 },
       { namespace: "social", key: "stale", nodeIndex: 2 },
     ]);
