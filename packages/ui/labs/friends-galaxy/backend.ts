@@ -1,6 +1,7 @@
 import type { GalaxyLabFixture, GalaxyLabPalette, GalaxyLabTransform } from "./scene-fixture.js";
 
 export type GalaxyLabBackendId = "current-webgl2" | "three-webgpu" | "raw-webgpu";
+export type GalaxyLabViewDetail = "overview" | "middle" | "close";
 
 export interface GalaxyLabBackendMetrics {
   id: GalaxyLabBackendId;
@@ -9,9 +10,16 @@ export interface GalaxyLabBackendMetrics {
   semanticStarCount: number;
   decorativeStarCount: number;
   drawCalls: number | null;
+  labelCount: number;
+  contextualEdgeCount: number;
   bufferUploadCount: number;
   fallbackReason: string | null;
   adapterDescription: string | null;
+}
+
+export interface GalaxyLabInteraction {
+  selectedNodeId: string | null;
+  hoveredNodeId: string | null;
 }
 
 export interface GalaxyLabBackend {
@@ -23,6 +31,9 @@ export interface GalaxyLabBackend {
   ): Promise<void>;
   resize(width: number, height: number, pixelRatio: number): void;
   setPalette(palette: GalaxyLabPalette): void;
+  setViewDetail(detail: GalaxyLabViewDetail): void;
+  pickNode(viewportX: number, viewportY: number): string | null;
+  setInteraction(interaction: GalaxyLabInteraction): void;
   render(transform: GalaxyLabTransform, timeMs: number): void;
   metrics(): GalaxyLabBackendMetrics;
   dispose(): void;

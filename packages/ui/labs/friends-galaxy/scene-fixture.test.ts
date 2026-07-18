@@ -43,7 +43,9 @@ describe("Friends Galaxy renderer lab fixture", () => {
       const accountSceneIndex = fixture.personCount + accountIndex;
       const dx = fixture.scene.positions[accountSceneIndex * 3]! - fixture.scene.positions[personIndex * 3]!;
       const dy = fixture.scene.positions[accountSceneIndex * 3 + 1]! - fixture.scene.positions[personIndex * 3 + 1]!;
-      expect(Math.hypot(dx, dy)).toBeLessThan(100);
+      const dz = fixture.scene.positions[accountSceneIndex * 3 + 2]! - fixture.scene.positions[personIndex * 3 + 2]!;
+      expect(Math.hypot(dx, dy)).toBeLessThan(55);
+      expect(Math.abs(dz)).toBeLessThan(12);
       expect(fixture.scene.linkedPersonIds[accountSceneIndex]).toBe(`lab-person-${personIndex}`);
     }
   });

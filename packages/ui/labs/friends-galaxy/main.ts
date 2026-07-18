@@ -5,6 +5,8 @@ import {
   type GalaxyLabBackend,
   type GalaxyLabBackendId,
   type GalaxyLabFrameStats,
+  type GalaxyLabInteraction,
+  type GalaxyLabViewDetail,
 } from "./backend.js";
 import {
   createGalaxyLabFixture,
@@ -57,8 +59,11 @@ let lastFrameAt = 0;
 let lastMetricsAt = 0;
 let dirty = true;
 let userMovedCamera = false;
+let settledDetailTimer = 0;
 const frameSamples: number[] = [];
 const submitSamples: number[] = [];
+const nodeLabelById = new Map(fixture.atlas.nodes.map((node) => [node.id, node.label]));
+let interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: null };
 
 function paletteForTheme(): GalaxyLabPalette {
   return GALAXY_LAB_THEMES[activeTheme] ?? GALAXY_LAB_THEMES.scriptorium;
@@ -93,6 +98,25 @@ function viewportSize(): { width: number; height: number } {
   };
 }
 
+function viewDetailForScale(scale: number): GalaxyLabViewDetail {
+  if (scale < 0.24) return "overview";
+  if (scale < 0.9) return "middle";
+  return "close";
+}
+
+function scheduleSettledViewDetail(immediate = false): void {
+  window.clearTimeout(settledDetailTimer);
+  const apply = () => {
+    activeBackend?.setViewDetail(viewDetailForScale(transform.scale));
+    dirty = true;
+  };
+  if (immediate) {
+    apply();
+    return;
+  }
+  settledDetailTimer = window.setTimeout(apply, 140);
+}
+
 function fitGalaxy(markAsUserAction = true): void {
   const { width, height } = viewportSize();
   const bounds = fixture.atlas.bounds;
@@ -110,6 +134,7 @@ function fitGalaxy(markAsUserAction = true): void {
   transform.y = height / 2 - centerY * nextScale;
   userMovedCamera = markAsUserAction;
   dirty = true;
+  scheduleSettledViewDetail(true);
 }
 
 function resetSamples(): void {
@@ -156,6 +181,8 @@ async function activateBackend(
     activeBackend = backend;
     const { width, height } = viewportSize();
     backend.resize(width, height, window.devicePixelRatio || 1);
+    backend.setViewDetail(viewDetailForScale(transform.scale));
+    backend.setInteraction(interaction);
     resetSamples();
     dirty = true;
     const metrics = backend.metrics();
@@ -205,10 +232,17 @@ function updateMetrics(): void {
   addMetric("Semantic stars", integerFormat.format(metrics.semanticStarCount));
   addMetric("Background stars", integerFormat.format(metrics.decorativeStarCount));
   addMetric("Draw calls", metrics.drawCalls === null ? "Not exposed" : integerFormat.format(metrics.drawCalls));
+  addMetric("Billboard labels", integerFormat.format(metrics.labelCount));
+  addMetric("Context edges", integerFormat.format(metrics.contextualEdgeCount));
+  addMetric(
+    "Selection",
+    interaction.selectedNodeId ? nodeLabelById.get(interaction.selectedNodeId) ?? "Selected" : "None",
+  );
   addMetric("Frame interval", formatFrameStats(frameStats(frameSamples)));
   addMetric("CPU submit", formatFrameStats(frameStats(submitSamples)));
   addMetric("Buffer uploads", integerFormat.format(metrics.bufferUploadCount));
   addMetric("Camera scale", numberFormat.format(transform.scale));
+  addMetric("Settled detail", viewDetailForScale(transform.scale));
   if (metrics.adapterDescription) addMetric("Adapter", metrics.adapterDescription);
 }
 
@@ -248,6 +282,7 @@ function zoomAt(viewportX: number, viewportY: number, nextScale: number): void {
   transform.y = viewportY - worldY * clampedScale;
   userMovedCamera = true;
   dirty = true;
+  scheduleSettledViewDetail();
 }
 
 interface PointerPosition {
@@ -256,6 +291,39 @@ interface PointerPosition {
 }
 
 const pointers = new Map<number, PointerPosition>();
+const pointerStarts = new Map<number, PointerPosition>();
+let gestureMoved = false;
+let hoverRequest = 0;
+let pendingHoverPoint: PointerPosition | null = null;
+
+function updateInteraction(next: GalaxyLabInteraction): void {
+  if (
+    next.selectedNodeId === interaction.selectedNodeId &&
+    next.hoveredNodeId === interaction.hoveredNodeId
+  ) return;
+  interaction = next;
+  activeBackend?.setInteraction(interaction);
+  dirty = true;
+}
+
+function pickNodeAt(point: PointerPosition): string | null {
+  return activeBackend?.pickNode(point.x, point.y) ?? null;
+}
+
+function scheduleHoverPick(point: PointerPosition): void {
+  pendingHoverPoint = point;
+  if (hoverRequest !== 0) return;
+  hoverRequest = requestAnimationFrame(() => {
+    hoverRequest = 0;
+    const pending = pendingHoverPoint;
+    pendingHoverPoint = null;
+    if (!pending || pointers.size > 0) return;
+    updateInteraction({
+      selectedNodeId: interaction.selectedNodeId,
+      hoveredNodeId: pickNodeAt(pending),
+    });
+  });
+}
 
 function localPoint(clientX: number, clientY: number): PointerPosition {
   const bounds = viewport.getBoundingClientRect();
@@ -273,7 +341,11 @@ function distance(left: PointerPosition, right: PointerPosition): number {
 viewport.addEventListener("pointerdown", (event) => {
   if (event.pointerType === "mouse" && event.button !== 0) return;
   event.preventDefault();
-  pointers.set(event.pointerId, localPoint(event.clientX, event.clientY));
+  const point = localPoint(event.clientX, event.clientY);
+  if (pointers.size === 0) gestureMoved = false;
+  pointers.set(event.pointerId, point);
+  pointerStarts.set(event.pointerId, point);
+  if (pointers.size > 1) gestureMoved = true;
   try {
     viewport.setPointerCapture(event.pointerId);
   } catch {
@@ -284,10 +356,17 @@ viewport.addEventListener("pointerdown", (event) => {
 
 viewport.addEventListener("pointermove", (event) => {
   const previousPoint = pointers.get(event.pointerId);
-  if (!previousPoint) return;
+  if (!previousPoint) {
+    if (event.pointerType === "mouse") {
+      scheduleHoverPick(localPoint(event.clientX, event.clientY));
+    }
+    return;
+  }
   event.preventDefault();
   const before = [...pointers.values()];
   const nextPoint = localPoint(event.clientX, event.clientY);
+  const startPoint = pointerStarts.get(event.pointerId) ?? previousPoint;
+  if (distance(startPoint, nextPoint) > 4 || pointers.size > 1) gestureMoved = true;
   pointers.set(event.pointerId, nextPoint);
   const after = [...pointers.values()];
   if (after.length >= 2 && before.length >= 2) {
@@ -301,6 +380,7 @@ viewport.addEventListener("pointermove", (event) => {
     transform.scale = nextScale;
     transform.x = nextMidpoint.x - worldX * nextScale;
     transform.y = nextMidpoint.y - worldY * nextScale;
+    scheduleSettledViewDetail();
   } else {
     transform.x += nextPoint.x - previousPoint.x;
     transform.y += nextPoint.y - previousPoint.y;
@@ -310,7 +390,10 @@ viewport.addEventListener("pointermove", (event) => {
 });
 
 function releasePointer(event: PointerEvent): void {
+  const releasePoint = localPoint(event.clientX, event.clientY);
+  const shouldSelect = event.type === "pointerup" && pointers.size === 1 && !gestureMoved;
   pointers.delete(event.pointerId);
+  pointerStarts.delete(event.pointerId);
   if (viewport.hasPointerCapture(event.pointerId)) {
     try {
       viewport.releasePointerCapture(event.pointerId);
@@ -318,11 +401,25 @@ function releasePointer(event: PointerEvent): void {
       // The browser may release capture before pointercancel is delivered.
     }
   }
-  if (pointers.size === 0) viewport.dataset.dragging = "false";
+  if (pointers.size === 0) {
+    viewport.dataset.dragging = "false";
+    if (shouldSelect) {
+      updateInteraction({
+        selectedNodeId: pickNodeAt(releasePoint),
+        hoveredNodeId: null,
+      });
+    }
+    gestureMoved = false;
+  }
 }
 
 viewport.addEventListener("pointerup", releasePointer);
 viewport.addEventListener("pointercancel", releasePointer);
+viewport.addEventListener("pointerleave", () => {
+  if (pointers.size > 0) return;
+  pendingHoverPoint = null;
+  updateInteraction({ selectedNodeId: interaction.selectedNodeId, hoveredNodeId: null });
+});
 
 viewport.addEventListener("wheel", (event) => {
   event.preventDefault();
@@ -360,6 +457,7 @@ viewport.addEventListener("gesturechange", ((event: SafariGestureEvent) => {
   transform.y = point.y - safariGestureWorldPoint.y * nextScale;
   userMovedCamera = true;
   dirty = true;
+  scheduleSettledViewDetail();
 }) as EventListener, { passive: false });
 
 viewport.addEventListener("gestureend", ((event: SafariGestureEvent) => {
@@ -401,6 +499,8 @@ document.addEventListener("visibilitychange", () => {
 
 window.addEventListener("beforeunload", () => {
   cancelAnimationFrame(frameRequest);
+  cancelAnimationFrame(hoverRequest);
+  window.clearTimeout(settledDetailTimer);
   resizeObserver.disconnect();
   activeBackend?.dispose();
 });
@@ -411,6 +511,7 @@ Object.assign(window, {
     state: () => ({
       backend: activeBackend?.metrics() ?? null,
       transform: { ...transform },
+      interaction: { ...interaction },
       frame: frameStats(frameSamples),
       submit: frameStats(submitSamples),
     }),

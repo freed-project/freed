@@ -1,23 +1,57 @@
 import * as THREE from "three/webgpu";
-import { instancedBufferAttribute } from "three/tsl";
+import {
+  cameraProjectionMatrix,
+  cameraViewMatrix,
+  instancedBufferAttribute,
+  positionGeometry,
+  texture,
+  uniform,
+  uv,
+  vec2,
+  vec3,
+  vec4,
+} from "three/tsl";
+import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
+import { LineSegments2 } from "three/examples/jsm/lines/webgpu/LineSegments2.js";
 import { identityGalaxyCameraPose } from "../../src/lib/identity-galaxy-camera.js";
 import type {
   GalaxyLabBackend,
   GalaxyLabBackendMetrics,
+  GalaxyLabInteraction,
+  GalaxyLabViewDetail,
 } from "./backend.js";
 import { hexToRgb } from "./backend.js";
+import {
+  createGalaxyLabLabelAtlas,
+  type GalaxyLabLabelAtlas,
+} from "./billboard-labels.js";
 import {
   galaxyLabSemanticColor,
   type GalaxyLabFixture,
   type GalaxyLabPalette,
   type GalaxyLabTransform,
 } from "./scene-fixture.js";
+import {
+  GalaxyLabSceneIndex,
+  type GalaxyLabInteractionRole,
+  type GalaxyLabInteractionState,
+} from "./scene-index.js";
 
 interface GalaxySpriteBatch {
   sprite: THREE.Sprite;
   material: THREE.PointsNodeMaterial;
   texture: THREE.CanvasTexture;
   colorAttribute: THREE.InstancedBufferAttribute;
+  sizeAttribute: THREE.InstancedBufferAttribute;
+}
+
+interface GalaxyLabelBatch {
+  atlas: GalaxyLabLabelAtlas;
+  geometry: THREE.InstancedBufferGeometry;
+  material: THREE.NodeMaterial;
+  mesh: THREE.Mesh;
+  texture: THREE.CanvasTexture;
+  viewport: THREE.Vector2;
 }
 
 function adapterLabel(adapter: GPUAdapter): string {
@@ -81,7 +115,70 @@ function makeSpriteBatch(
   const sprite = new THREE.Sprite(material as unknown as THREE.SpriteMaterial);
   sprite.count = positions.length / 3;
   sprite.frustumCulled = false;
-  return { sprite, material, texture, colorAttribute };
+  return { sprite, material, texture, colorAttribute, sizeAttribute };
+}
+
+function makeLabelBatch(atlas: GalaxyLabLabelAtlas): GalaxyLabelBatch {
+  const labelCount = atlas.labels.length;
+  const anchors = new Float32Array(labelCount * 3);
+  const offsets = new Float32Array(labelCount * 2);
+  const sizes = new Float32Array(labelCount * 2);
+  const uvRects = new Float32Array(labelCount * 4);
+  for (let index = 0; index < labelCount; index += 1) {
+    const sourceOffset = index * 11;
+    anchors.set(atlas.instanceData.subarray(sourceOffset, sourceOffset + 3), index * 3);
+    offsets.set(atlas.instanceData.subarray(sourceOffset + 3, sourceOffset + 5), index * 2);
+    sizes.set(atlas.instanceData.subarray(sourceOffset + 5, sourceOffset + 7), index * 2);
+    uvRects.set(atlas.instanceData.subarray(sourceOffset + 7, sourceOffset + 11), index * 4);
+  }
+  const anchorAttribute = new THREE.InstancedBufferAttribute(anchors, 3);
+  const offsetAttribute = new THREE.InstancedBufferAttribute(offsets, 2);
+  const sizeAttribute = new THREE.InstancedBufferAttribute(sizes, 2);
+  const uvRectAttribute = new THREE.InstancedBufferAttribute(uvRects, 4);
+  const plane = new THREE.PlaneGeometry(1, 1);
+  const geometry = new THREE.InstancedBufferGeometry();
+  geometry.setIndex(plane.getIndex());
+  geometry.setAttribute("position", plane.getAttribute("position"));
+  geometry.setAttribute("uv", plane.getAttribute("uv"));
+  plane.dispose();
+  geometry.setAttribute("instanceAnchor", anchorAttribute);
+  geometry.setAttribute("instanceOffset", offsetAttribute);
+  geometry.setAttribute("instanceSize", sizeAttribute);
+  geometry.setAttribute("instanceUvRect", uvRectAttribute);
+  geometry.instanceCount = labelCount;
+  const canvasTexture = new THREE.CanvasTexture(atlas.canvas);
+  canvasTexture.flipY = false;
+  canvasTexture.colorSpace = THREE.SRGBColorSpace;
+  canvasTexture.generateMipmaps = false;
+  canvasTexture.minFilter = THREE.LinearFilter;
+  canvasTexture.magFilter = THREE.LinearFilter;
+  canvasTexture.needsUpdate = true;
+  const viewport = new THREE.Vector2(1, 1);
+  const viewportNode = uniform(viewport);
+  const anchorNode = vec3(instancedBufferAttribute<"vec3">(anchorAttribute, "vec3"));
+  const offsetNode = vec2(instancedBufferAttribute<"vec2">(offsetAttribute, "vec2"));
+  const sizeNode = vec2(instancedBufferAttribute<"vec2">(sizeAttribute, "vec2"));
+  const uvRectNode = vec4(instancedBufferAttribute<"vec4">(uvRectAttribute, "vec4"));
+  const centerClip = cameraProjectionMatrix.mul(cameraViewMatrix.mul(vec4(anchorNode, 1)));
+  const pixelPosition = offsetNode.add(positionGeometry.xy.mul(sizeNode));
+  const clipOffset = pixelPosition.mul(2).div(viewportNode).mul(centerClip.w);
+  const material = new THREE.NodeMaterial();
+  material.vertexNode = centerClip.add(vec4(clipOffset, 0, 0));
+  const topLeftUv = vec2(uv().x, uv().y.oneMinus());
+  const atlasUv = uvRectNode.xy.add(topLeftUv.mul(uvRectNode.zw.sub(uvRectNode.xy)));
+  const atlasSample = texture(canvasTexture, atlasUv);
+  material.colorNode = atlasSample.rgb;
+  material.opacityNode = atlasSample.a;
+  material.transparent = true;
+  material.depthWrite = false;
+  material.depthTest = false;
+  material.alphaTest = 0.015;
+  material.blending = THREE.NormalBlending;
+  material.toneMapped = false;
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 10;
+  return { atlas, geometry, material, mesh, texture: canvasTexture, viewport };
 }
 
 export class ThreeWebGpuBackend implements GalaxyLabBackend {
@@ -89,15 +186,31 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
   private renderer: THREE.WebGPURenderer | null = null;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(42, 1, 1, 20_000);
+  private readonly viewProjection = new THREE.Matrix4();
   private fixture: GalaxyLabFixture | null = null;
+  private sceneIndex: GalaxyLabSceneIndex | null = null;
   private semanticBatch: GalaxySpriteBatch | null = null;
   private backgroundBatch: GalaxySpriteBatch | null = null;
+  private labelBatch: GalaxyLabelBatch | null = null;
+  private edgeGeometry: LineSegmentsGeometry | null = null;
+  private edgeMaterial: THREE.Line2NodeMaterial | null = null;
+  private edgeLines: LineSegments2 | null = null;
+  private edgePositions = new Float32Array(0);
   private semanticColors: Float32Array | null = null;
+  private baseSemanticColors: Float32Array | null = null;
+  private semanticSizes: Float32Array | null = null;
+  private baseSemanticSizes: Float32Array | null = null;
   private backgroundColors: Float32Array | null = null;
+  private palette: GalaxyLabPalette | null = null;
+  private interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: null };
+  private touchedInteractionIndices = new Set<number>();
   private width = 1;
   private height = 1;
   private pixelRatio = 1;
   private drawCalls = 0;
+  private contextualEdgeCount = 0;
+  private compactLabels: boolean | null = null;
+  private viewDetail: GalaxyLabViewDetail = "overview";
   private bufferUploadCount = 0;
   private adapterDescription: string | null = null;
 
@@ -112,6 +225,8 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     const device = await adapter.requestDevice();
     this.adapterDescription = adapterLabel(adapter);
     this.fixture = fixture;
+    this.sceneIndex = new GalaxyLabSceneIndex(fixture);
+    this.palette = palette;
     this.renderer = new THREE.WebGPURenderer({
       canvas,
       device,
@@ -122,20 +237,22 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.renderer.setClearColor(palette.background, 1);
     await this.renderer.init();
 
-    const semanticSizes = new Float32Array(fixture.scene.pointSizes.length);
-    for (let index = 0; index < semanticSizes.length; index += 1) {
-      semanticSizes[index] = Math.max(3.5, fixture.scene.pointSizes[index]! * 0.34);
+    this.baseSemanticSizes = new Float32Array(fixture.scene.pointSizes.length);
+    for (let index = 0; index < this.baseSemanticSizes.length; index += 1) {
+      this.baseSemanticSizes[index] = Math.max(4.5, fixture.scene.pointSizes[index]! * 0.42);
     }
+    this.semanticSizes = new Float32Array(this.baseSemanticSizes);
     const backgroundSizes = new Float32Array(fixture.backgroundStarCount);
     for (let index = 0; index < backgroundSizes.length; index += 1) {
       backgroundSizes[index] = 0.42 + fixture.backgroundBrightness[index]! * 1.08;
     }
+    this.baseSemanticColors = new Float32Array(fixture.scene.nodeIds.length * 3);
     this.semanticColors = new Float32Array(fixture.scene.nodeIds.length * 3);
     this.backgroundColors = new Float32Array(fixture.backgroundStarCount * 3);
     this.writePalette(palette);
     this.semanticBatch = makeSpriteBatch(
       fixture.scene.positions,
-      semanticSizes,
+      this.semanticSizes,
       this.semanticColors,
       0.94,
     );
@@ -145,9 +262,26 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       this.backgroundColors,
       0.62,
     );
-    this.scene.add(this.backgroundBatch.sprite, this.semanticBatch.sprite);
+    this.edgeGeometry = new LineSegmentsGeometry();
+    this.edgeGeometry.setPositions(new Float32Array([0, 0, 0, 0, 0, 0]));
+    this.edgeGeometry.instanceCount = 0;
+    this.edgeMaterial = new THREE.Line2NodeMaterial({
+      color: palette.selection,
+      linewidth: 2.4,
+      transparent: true,
+      opacity: 0.86,
+      depthWrite: false,
+      depthTest: false,
+      worldUnits: false,
+    });
+    this.edgeLines = new LineSegments2(this.edgeGeometry, this.edgeMaterial);
+    this.edgeLines.frustumCulled = false;
+    this.edgeLines.renderOrder = 5;
+    this.edgeLines.visible = false;
+    this.scene.add(this.backgroundBatch.sprite, this.semanticBatch.sprite, this.edgeLines);
+    this.rebuildLabels(canvas.clientWidth < 720);
     this.applyMaterialOpacity(palette);
-    this.bufferUploadCount = 2;
+    this.bufferUploadCount += 3;
   }
 
   resize(width: number, height: number, pixelRatio: number): void {
@@ -159,16 +293,56 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.renderer.setSize(this.width, this.height, false);
     this.camera.aspect = this.width / this.height;
     this.camera.updateProjectionMatrix();
+    this.labelBatch?.viewport.set(this.width, this.height);
+    const compactLabels = this.width < 720;
+    if (compactLabels !== this.compactLabels) this.rebuildLabels(compactLabels);
   }
 
   setPalette(palette: GalaxyLabPalette): void {
     if (!this.renderer || !this.fixture || !this.semanticColors || !this.backgroundColors) return;
+    this.palette = palette;
     this.renderer.setClearColor(palette.background, 1);
+    this.edgeMaterial?.color.set(palette.selection);
     this.applyMaterialOpacity(palette);
     this.writePalette(palette);
-    if (this.semanticBatch) this.semanticBatch.colorAttribute.needsUpdate = true;
+    const state = this.sceneIndex?.interactionState(this.interaction) ?? null;
+    if (state) {
+      this.applyInteractionRoles(state.roles);
+      this.touchedInteractionIndices = new Set(state.roles.keys());
+      this.writeContextEdges(state.contextualEdgeIndices);
+    }
+    if (this.semanticBatch) {
+      this.semanticBatch.colorAttribute.clearUpdateRanges();
+      this.semanticBatch.sizeAttribute.clearUpdateRanges();
+      this.semanticBatch.colorAttribute.needsUpdate = true;
+      this.semanticBatch.sizeAttribute.needsUpdate = true;
+    }
     if (this.backgroundBatch) this.backgroundBatch.colorAttribute.needsUpdate = true;
-    this.bufferUploadCount += 2;
+    this.bufferUploadCount += 3;
+    this.rebuildLabels(this.compactLabels ?? this.width < 720);
+  }
+
+  setViewDetail(detail: GalaxyLabViewDetail): void {
+    if (detail === this.viewDetail) return;
+    this.viewDetail = detail;
+    this.rebuildLabels(this.compactLabels ?? this.width < 720);
+  }
+
+  pickNode(viewportX: number, viewportY: number): string | null {
+    if (!this.sceneIndex) return null;
+    return this.sceneIndex.pickNode(
+      this.viewProjection.elements,
+      this.width,
+      this.height,
+      viewportX,
+      viewportY,
+    );
+  }
+
+  setInteraction(interaction: GalaxyLabInteraction): void {
+    this.interaction = interaction;
+    if (!this.sceneIndex) return;
+    this.writeInteraction(this.sceneIndex.interactionState(interaction));
   }
 
   render(transform: GalaxyLabTransform, _timeMs: number): void {
@@ -176,6 +350,8 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     const pose = identityGalaxyCameraPose(transform, this.width, this.height, this.camera.fov);
     this.camera.position.set(pose.x, pose.y, pose.z);
     this.camera.lookAt(pose.targetX, pose.targetY, pose.targetZ);
+    this.camera.updateMatrixWorld();
+    this.viewProjection.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
     this.renderer.render(this.scene, this.camera);
     this.drawCalls = this.renderer.info.render.drawCalls;
   }
@@ -188,6 +364,8 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       semanticStarCount: this.fixture?.scene.nodeIds.length ?? 0,
       decorativeStarCount: this.fixture?.backgroundStarCount ?? 0,
       drawCalls: this.drawCalls,
+      labelCount: this.labelBatch?.atlas.labels.length ?? 0,
+      contextualEdgeCount: this.contextualEdgeCount,
       bufferUploadCount: this.bufferUploadCount,
       fallbackReason: null,
       adapterDescription: this.adapterDescription,
@@ -205,24 +383,145 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       this.backgroundBatch.material.dispose();
       this.backgroundBatch.texture.dispose();
     }
+    if (this.labelBatch) {
+      this.scene.remove(this.labelBatch.mesh);
+      this.labelBatch.geometry.dispose();
+      this.labelBatch.material.dispose();
+      this.labelBatch.texture.dispose();
+    }
+    if (this.edgeLines) this.scene.remove(this.edgeLines);
+    this.edgeGeometry?.dispose();
+    this.edgeMaterial?.dispose();
     this.renderer?.dispose();
     this.renderer = null;
     this.fixture = null;
+    this.sceneIndex = null;
     this.semanticBatch = null;
     this.backgroundBatch = null;
+    this.labelBatch = null;
+    this.edgeGeometry = null;
+    this.edgeMaterial = null;
+    this.edgeLines = null;
+    this.edgePositions = new Float32Array(0);
     this.semanticColors = null;
+    this.baseSemanticColors = null;
+    this.semanticSizes = null;
+    this.baseSemanticSizes = null;
     this.backgroundColors = null;
+    this.palette = null;
+    this.touchedInteractionIndices.clear();
+    this.contextualEdgeCount = 0;
+  }
+
+  private rebuildLabels(compact: boolean): void {
+    if (!this.fixture || !this.palette) return;
+    this.compactLabels = compact;
+    if (this.labelBatch) {
+      this.scene.remove(this.labelBatch.mesh);
+      this.labelBatch.geometry.dispose();
+      this.labelBatch.material.dispose();
+      this.labelBatch.texture.dispose();
+    }
+    const atlas = createGalaxyLabLabelAtlas(
+      this.fixture,
+      this.palette,
+      compact,
+      this.viewDetail,
+    );
+    this.labelBatch = makeLabelBatch(atlas);
+    this.labelBatch.viewport.set(this.width, this.height);
+    this.scene.add(this.labelBatch.mesh);
+    this.bufferUploadCount += 2;
+  }
+
+  private writeInteraction(state: GalaxyLabInteractionState): void {
+    if (
+      !this.semanticBatch || !this.semanticColors || !this.baseSemanticColors ||
+      !this.semanticSizes || !this.baseSemanticSizes
+    ) return;
+    const nextTouched = new Set(state.roles.keys());
+    const changedIndices = new Set([...this.touchedInteractionIndices, ...nextTouched]);
+    for (const index of changedIndices) {
+      const colorOffset = index * 3;
+      this.semanticColors.set(
+        this.baseSemanticColors.subarray(colorOffset, colorOffset + 3),
+        colorOffset,
+      );
+      this.semanticSizes[index] = this.baseSemanticSizes[index]!;
+    }
+    this.applyInteractionRoles(state.roles);
+    if (changedIndices.size > 0) {
+      this.semanticBatch.colorAttribute.clearUpdateRanges();
+      this.semanticBatch.sizeAttribute.clearUpdateRanges();
+      for (const index of changedIndices) {
+        this.semanticBatch.colorAttribute.addUpdateRange(index * 3, 3);
+        this.semanticBatch.sizeAttribute.addUpdateRange(index, 1);
+      }
+      this.semanticBatch.colorAttribute.needsUpdate = true;
+      this.semanticBatch.sizeAttribute.needsUpdate = true;
+      this.bufferUploadCount += 2;
+    }
+    this.touchedInteractionIndices = nextTouched;
+    this.writeContextEdges(state.contextualEdgeIndices);
+  }
+
+  private applyInteractionRoles(roles: ReadonlyMap<number, GalaxyLabInteractionRole>): void {
+    if (!this.semanticColors || !this.semanticSizes) return;
+    const [selectionRed, selectionGreen, selectionBlue] = hexToRgb(
+      this.palette?.selection ?? "#ffffff",
+    );
+    for (const [index, role] of roles) {
+      const sizeScale = role === "selected" ? 1.58 : role === "hovered" ? 1.36 : 1.16;
+      const colorMix = role === "linked" ? 0.62 : 1;
+      const colorOffset = index * 3;
+      this.semanticSizes[index] *= sizeScale;
+      this.semanticColors[colorOffset] = this.semanticColors[colorOffset]! * (1 - colorMix) +
+        selectionRed * colorMix;
+      this.semanticColors[colorOffset + 1] = this.semanticColors[colorOffset + 1]! * (1 - colorMix) +
+        selectionGreen * colorMix;
+      this.semanticColors[colorOffset + 2] = this.semanticColors[colorOffset + 2]! * (1 - colorMix) +
+        selectionBlue * colorMix;
+    }
+  }
+
+  private writeContextEdges(edgeIndices: Uint32Array): void {
+    if (!this.fixture || !this.edgeGeometry || !this.edgeLines) return;
+    const edgeCount = edgeIndices.length / 2;
+    this.contextualEdgeCount = edgeCount;
+    if (edgeCount === 0) {
+      this.edgeGeometry.instanceCount = 0;
+      this.edgeLines.visible = false;
+      return;
+    }
+    this.edgePositions = new Float32Array(edgeCount * 6);
+    for (let edgeIndex = 0; edgeIndex < edgeCount; edgeIndex += 1) {
+      const sourceIndex = edgeIndices[edgeIndex * 2]!;
+      const targetIndex = edgeIndices[edgeIndex * 2 + 1]!;
+      this.edgePositions.set(
+        this.fixture.scene.positions.subarray(sourceIndex * 3, sourceIndex * 3 + 3),
+        edgeIndex * 6,
+      );
+      this.edgePositions.set(
+        this.fixture.scene.positions.subarray(targetIndex * 3, targetIndex * 3 + 3),
+        edgeIndex * 6 + 3,
+      );
+    }
+    this.edgeGeometry.setPositions(this.edgePositions);
+    this.edgeLines.visible = true;
+    this.bufferUploadCount += 1;
   }
 
   private writePalette(palette: GalaxyLabPalette): void {
-    if (!this.fixture || !this.semanticColors || !this.backgroundColors) return;
+    if (
+      !this.fixture || !this.semanticColors || !this.baseSemanticColors || !this.backgroundColors
+    ) return;
     for (let index = 0; index < this.fixture.scene.nodeIds.length; index += 1) {
       const [red, green, blue] = hexToRgb(galaxyLabSemanticColor(this.fixture, palette, index));
       const brightness = this.fixture.scene.brightness[index]!;
       const offset = index * 3;
-      this.semanticColors[offset] = red * brightness;
-      this.semanticColors[offset + 1] = green * brightness;
-      this.semanticColors[offset + 2] = blue * brightness;
+      this.baseSemanticColors[offset] = red * brightness;
+      this.baseSemanticColors[offset + 1] = green * brightness;
+      this.baseSemanticColors[offset + 2] = blue * brightness;
     }
     const [red, green, blue] = hexToRgb(palette.mutedText);
     for (let index = 0; index < this.fixture.backgroundStarCount; index += 1) {
@@ -231,6 +530,10 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       this.backgroundColors[offset] = red * brightness;
       this.backgroundColors[offset + 1] = green * brightness;
       this.backgroundColors[offset + 2] = blue * brightness;
+    }
+    this.semanticColors.set(this.baseSemanticColors);
+    if (this.semanticSizes && this.baseSemanticSizes) {
+      this.semanticSizes.set(this.baseSemanticSizes);
     }
   }
 

@@ -335,10 +335,10 @@ export function createGalaxyLabFixture({
       const orbitIndex = Math.floor(accountIndex / safePersonCount);
       const orbitAngle = seededUnit(`lab-person-${personIndex}:orbit`) * Math.PI * 2 +
         orbitIndex * (Math.PI * 2 / 4);
-      const orbit = 46 + orbitIndex * 13;
+      const orbit = 24 + orbitIndex * 8;
       x = personX[personIndex]! + Math.cos(orbitAngle) * orbit;
       y = personY[personIndex]! + Math.sin(orbitAngle) * orbit * 0.86;
-      z = personZ[personIndex]! - 40 - orbitIndex * 7;
+      z = personZ[personIndex]! - 4 - orbitIndex * 2;
       linkedPersonId = `lab-person-${personIndex}`;
       edges[accountIndex] = {
         id: `lab-edge:${personIndex}:${accountIndex}`,
@@ -394,6 +394,11 @@ export function createGalaxyLabFixture({
   }
 
   const regions = buildRegions(safeAccountCount, linkedAccountCount);
+  const labeledPersonCount = Math.min(72, safePersonCount);
+  const labeledPeople = Array.from({ length: labeledPersonCount }, (_, index) => {
+    const personIndex = Math.floor((index + 0.5) * safePersonCount / labeledPersonCount);
+    return atlasNodes[Math.min(safePersonCount - 1, personIndex)]!;
+  });
   const labels: IdentityGraphAtlasLabel[] = [
     ...regions.map((region) => ({
       id: `label:${region.id}`,
@@ -404,7 +409,7 @@ export function createGalaxyLabFixture({
       priority: 1_500 + region.count,
       kind: "provider_cluster" as const,
     })),
-    ...atlasNodes.slice(0, 72).map((node) => ({
+    ...labeledPeople.map((node) => ({
       id: `label:${node.id}`,
       nodeId: node.id,
       text: node.label,

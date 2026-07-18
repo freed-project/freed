@@ -204,7 +204,7 @@ The July 17, 2026 audit used current `origin/dev` at `b41470d8ec0b5e529d5be7629d
 
 ### Next structural target
 
-Start with backend-neutral diagnostics and sparse interaction writes, then build the WebGPU renderer laboratory, close-zoom avatar texture atlas, incremental graph index maintenance, and repeated device performance baselines. The current WebGL2 engine and batched glyph layer remain the compatibility backend and functional integration surface during that work.
+Integrate the selected raw WebGPU backend behind the imperative engine contract, then build the close-zoom avatar texture atlas and incremental graph index maintenance. The current WebGL2 engine and batched glyph layer remain the compatibility backend and functional integration surface until the new runtime passes repeated device performance baselines and complete workflow acceptance.
 
 Benchmarking is authorized only as repeated consistency runs while other machine tasks remain active. Single-run timing results are not decision evidence.
 
@@ -217,14 +217,18 @@ The laboratory builds one deterministic renderer-neutral fixture and feeds the i
 | Backend | Semantic field | Decorative field | Submission shape |
 |---|---:|---:|---|
 | Current production Three.js WebGL2 | 30,000 stars | Existing viewport cap of 7,000 or 12,000 stars | Production engine, draw-call count not yet exposed |
-| Three.js WebGPU | 30,000 stars | 100,000 stars | Two instanced sprite batches, currently reported as three renderer draw calls |
-| Raw WebGPU and WGSL | 30,000 stars | 100,000 stars | One shared pipeline and two instanced draw calls |
+| Three.js WebGPU | 30,000 stars | 100,000 stars | Four overview draws, five while contextual links are active |
+| Raw WebGPU and WGSL | 30,000 stars | 100,000 stars | Three overview draws, four while contextual links are active |
 
 The fixture represents 5,000 identities and 25,000 attached or unlinked channels. Identity systems occupy a deterministic six-arm galactic plane. Linked channels remain in short local orbits. Unlinked channels occupy five provider spiral sectors. Prominence remains bounded on the z axis so camera pan creates restrained parallax without random spatial scattering.
 
-The laboratory includes Scriptorium, Neon, Midas, and Vesper palettes. Light themes reduce background opacity and avoid additive bleaching. Dark themes retain brighter coronae. The control panel uses an opaque theme surface because blurred translucent overlays produced WebGPU compositor artifacts in browser verification.
+The laboratory includes Scriptorium, Neon, Midas, and Vesper palettes. Light themes reduce background opacity and avoid additive bleaching. Dark themes retain brighter coronae. The raw WebGPU path preserves the Scriptorium palette more faithfully than the Three.js WebGPU path. The control panel uses an opaque theme surface because blurred translucent overlays produced WebGPU compositor artifacts in browser verification.
 
 Interaction uses the production locked-camera transform. Pointer pan, wheel zoom, Safari gesture events, and two-pointer pinch all update the transform directly. A 390 by 844 browser probe confirmed that a synthetic two-touch expansion changed camera scale by the exact touch-distance ratio while preserving the world point beneath the midpoint.
+
+Both WebGPU candidates now use one whole-label canvas atlas and one GPU billboard batch. Labels remain visible throughout active camera movement. The accepted label set changes only after the camera settles and crosses an overview, middle, or close detail boundary. Deterministic screen-density rules retain provider labels, spread identity labels across the viewport, and cap mobile detail more tightly than desktop detail.
+
+Selection and hover use a compact adjacency index. The engine writes only the previously active and newly active star instances instead of replacing complete color and emphasis buffers. Contextual links contain only the selected or hovered identity system, so the common fixture produces four short local links rather than a global edge field. Click picking projects the resident typed scene only when requested and favors prominent parent identities over nearby channels.
 
 Verification commands:
 
@@ -234,8 +238,10 @@ npm run test:friends-galaxy-lab
 npm run friends:galaxy-lab -- --port <free-port>
 ```
 
-The isolated compiler and all four deterministic fixture tests pass. Desktop and iPhone-sized browser checks confirm nonblank output, theme switching, backend switching, and warning-free WebGPU pipeline creation. These are functional checks only. Their frame timing is not benchmark evidence while unrelated machine workloads remain active.
+The isolated compiler and all thirteen deterministic fixture, camera-matrix, adjacency, picking, label-density, and local-orbit tests pass. Desktop and iPhone-sized browser checks confirm nonblank output, theme switching, backend switching, persistent gesture labels, sparse selection updates, short contextual links, and warning-free WebGPU pipeline creation. During the mobile pinch probe, all eight overview labels remained present on every sampled gesture frame. The settled middle tier then admitted twenty labels. These are functional checks only. Their frame timing is not benchmark evidence while unrelated machine workloads remain active.
 
-### Laboratory decision still open
+### Laboratory backend decision
 
-Raw WebGPU is the current control-case leader for predictable submission count and direct shader control. Three.js WebGPU remains valuable for camera, resource, material, and fallback integration. The production backend decision must wait for repeated installed Freed Desktop and physical iPhone consistency ranges, plus equivalent batched labels, short contextual links, picking, and avatar-atlas workloads. The laboratory does not authorize a runtime cutover by itself.
+Raw WebGPU is selected as the primary shared renderer. It handles the same semantic stars, decorative stars, billboard labels, contextual links, picking, and sparse interaction workload with fewer draws, a dedicated allocation-free camera matrix instead of a Three.js runtime dependency, more faithful light-theme output, and exact control over buffer writes and shader behavior. The current WebGL2 engine remains the deterministic compatibility fallback for devices without usable WebGPU. Three.js WebGPU remains a maintained laboratory reference until production cutover proves that it no longer provides a required compatibility advantage.
+
+This decision does not authorize a runtime cutover by itself. The remaining gates are close-zoom avatar parity, product integration behind the imperative engine contract, every approved Friends workflow, repeated installed Freed Desktop consistency ranges, physical iPhone Safari validation, fallback validation, accessibility, and final owner visual acceptance. Native Metal remains unnecessary unless those repeated device results show that the shared WebGPU path cannot meet the approved budgets.
