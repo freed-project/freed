@@ -41,6 +41,7 @@ import {
   GalaxyLabSampleRing,
   shouldRefreshGalaxyLabDiagnostics,
 } from "./sample-ring.js";
+import { GalaxyLabSettleScheduler } from "./settle-scheduler.js";
 
 const DEFAULT_PERSON_COUNT = 5_000;
 const DEFAULT_ACCOUNT_COUNT = 25_000;
@@ -164,7 +165,7 @@ let dirty = true;
 let userMovedCamera = false;
 let cameraInMotion = false;
 viewport.dataset.cameraMotion = "false";
-let settledDetailTimer = 0;
+const settleScheduler = new GalaxyLabSettleScheduler();
 const frameSamples = new GalaxyLabSampleRing(240);
 const submitSamples = new GalaxyLabSampleRing(240);
 const nodeLabelById = new Map(fixture.atlas.nodes.map((node) => [node.id, node.label]));
@@ -384,23 +385,24 @@ async function admitSettledAvatarImages(
   dirty = true;
 }
 
+function applySettledViewDetail(generation: number): void {
+  setCameraInMotion(false);
+  const backend = activeBackend;
+  if (!backend) return;
+  const detail = viewDetailForScale(transform.scale);
+  backend.setViewDetail(detail);
+  void admitSettledAvatarImages(backend, detail, generation);
+  dirty = true;
+}
+
 function scheduleSettledViewDetail(immediate = false): void {
   const generation = ++avatarAdmissionGeneration;
-  window.clearTimeout(settledDetailTimer);
-  const apply = () => {
-    setCameraInMotion(false);
-    const backend = activeBackend;
-    if (!backend) return;
-    const detail = viewDetailForScale(transform.scale);
-    backend.setViewDetail(detail);
-    void admitSettledAvatarImages(backend, detail, generation);
-    dirty = true;
-  };
   if (immediate) {
-    apply();
+    settleScheduler.cancel();
+    applySettledViewDetail(generation);
     return;
   }
-  settledDetailTimer = window.setTimeout(apply, 140);
+  settleScheduler.schedule(generation, performance.now());
 }
 
 function frameGalaxy(markAsUserAction: boolean, useInitialScale: boolean): void {
@@ -621,6 +623,8 @@ function scheduleBackendRecovery(backend: GalaxyLabBackend, reason: string): voi
 }
 
 function renderFrame(timeMs: number): void {
+  const settledGeneration = settleScheduler.takeDue(timeMs);
+  if (settledGeneration !== null) applySettledViewDetail(settledGeneration);
   const healthBackend = activeBackend;
   const fatalError = healthBackend?.takeFatalError?.() ?? null;
   if (healthBackend && fatalError) scheduleBackendRecovery(healthBackend, fatalError);
@@ -718,7 +722,7 @@ viewport.addEventListener("pointerdown", (event) => {
   if (event.pointerType === "mouse" && event.button !== 0) return;
   event.preventDefault();
   avatarAdmissionGeneration += 1;
-  window.clearTimeout(settledDetailTimer);
+  settleScheduler.cancel();
   viewport.focus({ preventScroll: true });
   if (pointers.size === 0) {
     const bounds = viewport.getBoundingClientRect();
@@ -858,7 +862,7 @@ viewport.addEventListener("gesturestart", ((event: SafariGestureEvent) => {
   event.preventDefault();
   setCameraInMotion(true);
   avatarAdmissionGeneration += 1;
-  window.clearTimeout(settledDetailTimer);
+  settleScheduler.cancel();
   safariGestureStartScale = transform.scale;
   const bounds = viewport.getBoundingClientRect();
   safariGestureViewportLeft = bounds.left;
@@ -994,7 +998,7 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("beforeunload", () => {
   cancelAnimationFrame(frameRequest);
   cancelAnimationFrame(hoverRequest);
-  window.clearTimeout(settledDetailTimer);
+  settleScheduler.cancel();
   reducedMotionQuery.removeEventListener("change", syncReducedMotionPreference);
   resizeObserver.disconnect();
   avatarImageAdmission.dispose();

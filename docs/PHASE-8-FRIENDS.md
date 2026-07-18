@@ -192,6 +192,8 @@ Frame and submission diagnostics now use fixed 240-value typed rings. Active cam
 
 Active pointer movement now reuses viewport bounds captured at gesture start and mutates only the two resident touch records. Hover coalescing retains one scalar coordinate pair. Safari trackpad pinch stores scalar anchor and viewport values at `gesturestart`, so `gesturechange` performs no point allocation or viewport geometry read.
 
+Pinch and wheel movement now update one persistent settle deadline instead of canceling and allocating a browser timeout on every event. The animation loop consumes only the latest generation after 140 ms, then restores render density, detail, and bounded avatar admission once.
+
 Provider sectors now follow deterministic logarithmic spirals shared by layout and rendering. The default Nebula treatment combines procedural arms and themed dust without per-star scene objects. Linked accounts stay close to their parent identity, billboard labels sit close to their parent star with a stronger outline, and semantic links remain absent until one star in that identity system is hovered or selected.
 
 ### Scale targets
@@ -408,6 +410,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.76 | Separate useful compact initial framing from explicit fit-all while preserving the locked semantic center | High | Done |
 | 8.77 | Remove diagnostic array shifts and DOM refreshes from the active camera path with fixed typed sample rings | High | Done |
 | 8.78 | Remove point allocations and repeated viewport geometry reads from pointer, hover, and Safari gesture movement | High | Done |
+| 8.79 | Replace per-event settle timeout churn with one animation-loop deadline scheduler | High | Done |
 
 ---
 
@@ -497,6 +500,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Compact initial framing opens on a legible semantic field while Fit galaxy remains the explicit complete-universe command
 - [x] Gesture diagnostics use fixed typed rings and defer panel DOM updates until camera settle
 - [x] Active pointer and Safari gesture movement reuses captured bounds and scalar state without per-event point allocation
+- [x] Pinch and wheel movement update one scalar settle deadline without allocating or canceling per-event browser timers
 - [x] Linked accounts occupy complete local orbits, and dense people fields reserve enough space for those systems
 - [x] Galaxy compilation indexes accounts by person once instead of scanning the full account library for every identity
 - [x] Mobile pinch hands directly to one-finger pan when either touch lifts
