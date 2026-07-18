@@ -21,9 +21,10 @@ import type {
   GalaxyLabViewDetail,
 } from "./backend.js";
 import { hexToRgb } from "./backend.js";
+import { createGalaxyLabAvatarAtlas } from "./avatar-atlas.js";
 import {
   createGalaxyLabLabelAtlas,
-  type GalaxyLabLabelAtlas,
+  type GalaxyLabBillboardAtlas,
 } from "./billboard-labels.js";
 import {
   galaxyLabSemanticColor,
@@ -45,8 +46,8 @@ interface GalaxySpriteBatch {
   sizeAttribute: THREE.InstancedBufferAttribute;
 }
 
-interface GalaxyLabelBatch {
-  atlas: GalaxyLabLabelAtlas;
+interface GalaxyBillboardBatch {
+  atlas: GalaxyLabBillboardAtlas;
   geometry: THREE.InstancedBufferGeometry;
   material: THREE.NodeMaterial;
   mesh: THREE.Mesh;
@@ -118,13 +119,16 @@ function makeSpriteBatch(
   return { sprite, material, texture, colorAttribute, sizeAttribute };
 }
 
-function makeLabelBatch(atlas: GalaxyLabLabelAtlas): GalaxyLabelBatch {
-  const labelCount = atlas.labels.length;
-  const anchors = new Float32Array(labelCount * 3);
-  const offsets = new Float32Array(labelCount * 2);
-  const sizes = new Float32Array(labelCount * 2);
-  const uvRects = new Float32Array(labelCount * 4);
-  for (let index = 0; index < labelCount; index += 1) {
+function makeBillboardBatch(
+  atlas: GalaxyLabBillboardAtlas,
+  renderOrder: number,
+): GalaxyBillboardBatch {
+  const itemCount = atlas.itemCount;
+  const anchors = new Float32Array(itemCount * 3);
+  const offsets = new Float32Array(itemCount * 2);
+  const sizes = new Float32Array(itemCount * 2);
+  const uvRects = new Float32Array(itemCount * 4);
+  for (let index = 0; index < itemCount; index += 1) {
     const sourceOffset = index * 11;
     anchors.set(atlas.instanceData.subarray(sourceOffset, sourceOffset + 3), index * 3);
     offsets.set(atlas.instanceData.subarray(sourceOffset + 3, sourceOffset + 5), index * 2);
@@ -145,7 +149,7 @@ function makeLabelBatch(atlas: GalaxyLabLabelAtlas): GalaxyLabelBatch {
   geometry.setAttribute("instanceOffset", offsetAttribute);
   geometry.setAttribute("instanceSize", sizeAttribute);
   geometry.setAttribute("instanceUvRect", uvRectAttribute);
-  geometry.instanceCount = labelCount;
+  geometry.instanceCount = itemCount;
   const canvasTexture = new THREE.CanvasTexture(atlas.canvas);
   canvasTexture.flipY = false;
   canvasTexture.colorSpace = THREE.SRGBColorSpace;
@@ -177,7 +181,7 @@ function makeLabelBatch(atlas: GalaxyLabLabelAtlas): GalaxyLabelBatch {
   material.toneMapped = false;
   const mesh = new THREE.Mesh(geometry, material);
   mesh.frustumCulled = false;
-  mesh.renderOrder = 10;
+  mesh.renderOrder = renderOrder;
   return { atlas, geometry, material, mesh, texture: canvasTexture, viewport };
 }
 
@@ -191,7 +195,8 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
   private sceneIndex: GalaxyLabSceneIndex | null = null;
   private semanticBatch: GalaxySpriteBatch | null = null;
   private backgroundBatch: GalaxySpriteBatch | null = null;
-  private labelBatch: GalaxyLabelBatch | null = null;
+  private labelBatch: GalaxyBillboardBatch | null = null;
+  private avatarBatch: GalaxyBillboardBatch | null = null;
   private edgeGeometry: LineSegmentsGeometry | null = null;
   private edgeMaterial: THREE.Line2NodeMaterial | null = null;
   private edgeLines: LineSegments2 | null = null;
@@ -280,6 +285,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.edgeLines.visible = false;
     this.scene.add(this.backgroundBatch.sprite, this.semanticBatch.sprite, this.edgeLines);
     this.rebuildLabels(canvas.clientWidth < 720);
+    this.rebuildAvatars(canvas.clientWidth < 720);
     this.applyMaterialOpacity(palette);
     this.bufferUploadCount += 3;
   }
@@ -294,8 +300,12 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.camera.aspect = this.width / this.height;
     this.camera.updateProjectionMatrix();
     this.labelBatch?.viewport.set(this.width, this.height);
+    this.avatarBatch?.viewport.set(this.width, this.height);
     const compactLabels = this.width < 720;
-    if (compactLabels !== this.compactLabels) this.rebuildLabels(compactLabels);
+    if (compactLabels !== this.compactLabels) {
+      this.rebuildLabels(compactLabels);
+      this.rebuildAvatars(compactLabels);
+    }
   }
 
   setPalette(palette: GalaxyLabPalette): void {
@@ -320,12 +330,14 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     if (this.backgroundBatch) this.backgroundBatch.colorAttribute.needsUpdate = true;
     this.bufferUploadCount += 3;
     this.rebuildLabels(this.compactLabels ?? this.width < 720);
+    this.rebuildAvatars(this.compactLabels ?? this.width < 720);
   }
 
   setViewDetail(detail: GalaxyLabViewDetail): void {
     if (detail === this.viewDetail) return;
     this.viewDetail = detail;
     this.rebuildLabels(this.compactLabels ?? this.width < 720);
+    this.rebuildAvatars(this.compactLabels ?? this.width < 720);
   }
 
   pickNode(viewportX: number, viewportY: number): string | null {
@@ -340,9 +352,13 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
   }
 
   setInteraction(interaction: GalaxyLabInteraction): void {
+    const selectionChanged = interaction.selectedNodeId !== this.interaction.selectedNodeId;
     this.interaction = interaction;
     if (!this.sceneIndex) return;
     this.writeInteraction(this.sceneIndex.interactionState(interaction));
+    if (selectionChanged && this.viewDetail === "close") {
+      this.rebuildAvatars(this.compactLabels ?? this.width < 720);
+    }
   }
 
   render(transform: GalaxyLabTransform, _timeMs: number): void {
@@ -364,7 +380,8 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       semanticStarCount: this.fixture?.scene.nodeIds.length ?? 0,
       decorativeStarCount: this.fixture?.backgroundStarCount ?? 0,
       drawCalls: this.drawCalls,
-      labelCount: this.labelBatch?.atlas.labels.length ?? 0,
+      labelCount: this.labelBatch?.atlas.itemCount ?? 0,
+      avatarCount: this.avatarBatch?.atlas.itemCount ?? 0,
       contextualEdgeCount: this.contextualEdgeCount,
       bufferUploadCount: this.bufferUploadCount,
       fallbackReason: null,
@@ -389,6 +406,12 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       this.labelBatch.material.dispose();
       this.labelBatch.texture.dispose();
     }
+    if (this.avatarBatch) {
+      this.scene.remove(this.avatarBatch.mesh);
+      this.avatarBatch.geometry.dispose();
+      this.avatarBatch.material.dispose();
+      this.avatarBatch.texture.dispose();
+    }
     if (this.edgeLines) this.scene.remove(this.edgeLines);
     this.edgeGeometry?.dispose();
     this.edgeMaterial?.dispose();
@@ -399,6 +422,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.semanticBatch = null;
     this.backgroundBatch = null;
     this.labelBatch = null;
+    this.avatarBatch = null;
     this.edgeGeometry = null;
     this.edgeMaterial = null;
     this.edgeLines = null;
@@ -428,9 +452,32 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       compact,
       this.viewDetail,
     );
-    this.labelBatch = makeLabelBatch(atlas);
+    this.labelBatch = makeBillboardBatch(atlas, 10);
     this.labelBatch.viewport.set(this.width, this.height);
     this.scene.add(this.labelBatch.mesh);
+    this.bufferUploadCount += 2;
+  }
+
+  private rebuildAvatars(compact: boolean): void {
+    if (!this.fixture || !this.palette) return;
+    if (this.avatarBatch) {
+      this.scene.remove(this.avatarBatch.mesh);
+      this.avatarBatch.geometry.dispose();
+      this.avatarBatch.material.dispose();
+      this.avatarBatch.texture.dispose();
+      this.avatarBatch = null;
+    }
+    const atlas = createGalaxyLabAvatarAtlas(
+      this.fixture,
+      this.palette,
+      this.interaction.selectedNodeId,
+      compact,
+      this.viewDetail,
+    );
+    if (atlas.itemCount === 0) return;
+    this.avatarBatch = makeBillboardBatch(atlas, 8);
+    this.avatarBatch.viewport.set(this.width, this.height);
+    this.scene.add(this.avatarBatch.mesh);
     this.bufferUploadCount += 2;
   }
 

@@ -11,6 +11,7 @@ export interface GalaxyLabBackendMetrics {
   decorativeStarCount: number;
   drawCalls: number | null;
   labelCount: number;
+  avatarCount: number;
   contextualEdgeCount: number;
   bufferUploadCount: number;
   fallbackReason: string | null;

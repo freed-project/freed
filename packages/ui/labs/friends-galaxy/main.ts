@@ -233,6 +233,7 @@ function updateMetrics(): void {
   addMetric("Background stars", integerFormat.format(metrics.decorativeStarCount));
   addMetric("Draw calls", metrics.drawCalls === null ? "Not exposed" : integerFormat.format(metrics.drawCalls));
   addMetric("Billboard labels", integerFormat.format(metrics.labelCount));
+  addMetric("Avatar atlas", integerFormat.format(metrics.avatarCount));
   addMetric("Context edges", integerFormat.format(metrics.contextualEdgeCount));
   addMetric(
     "Selection",

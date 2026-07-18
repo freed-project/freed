@@ -127,6 +127,7 @@ export class CurrentWebGl2Backend implements GalaxyLabBackend {
       decorativeStarCount: this.decorativeStarCount,
       drawCalls: null,
       labelCount: this.engine?.readyLabelCount ?? 0,
+      avatarCount: 0,
       contextualEdgeCount: this.engine?.edgeCount ?? 0,
       bufferUploadCount: this.bufferUploadCount,
       fallbackReason: this.fallbackReason,

@@ -27,10 +27,14 @@ export interface GalaxyLabBillboardLabel extends GalaxyLabLabelSeed {
   uv: readonly [number, number, number, number];
 }
 
-export interface GalaxyLabLabelAtlas {
+export interface GalaxyLabBillboardAtlas {
   canvas: HTMLCanvasElement;
-  labels: readonly GalaxyLabBillboardLabel[];
+  itemCount: number;
   instanceData: Float32Array;
+}
+
+export interface GalaxyLabLabelAtlas extends GalaxyLabBillboardAtlas {
+  labels: readonly GalaxyLabBillboardLabel[];
 }
 
 function nextPowerOfTwo(value: number): number {
@@ -66,7 +70,9 @@ export function selectGalaxyLabLabels(
       anchorY: nodeIndex === undefined ? -label.y : fixture.scene.positions[nodeIndex * 3 + 1]!,
       anchorZ: nodeIndex === undefined ? -72 : fixture.scene.positions[nodeIndex * 3 + 2]! + 5,
       fontSize,
-      gapY: pointSize * 0.5 + 2,
+      gapY: detail === "close" && !provider
+        ? Math.max(pointSize * 0.5, compact ? 21 : 25) + 2
+        : pointSize * 0.5 + 2,
       priority: label.priority + (provider ? 100_000 : fixture.scene.prominence[nodeIndex ?? 0]! * 1_000),
       provider,
     };
@@ -166,7 +172,7 @@ export function createGalaxyLabLabelAtlas(
     instanceData[offset + 6] = label.height;
     instanceData.set(label.uv, offset + 7);
   }
-  return { canvas, labels, instanceData };
+  return { canvas, labels, itemCount: labels.length, instanceData };
 }
 
-export const GALAXY_LAB_LABEL_INSTANCE_STRIDE = LABEL_INSTANCE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
+export const GALAXY_LAB_BILLBOARD_INSTANCE_STRIDE = LABEL_INSTANCE_FLOATS * Float32Array.BYTES_PER_ELEMENT;

@@ -5,10 +5,14 @@ import type {
   GalaxyLabViewDetail,
 } from "./backend.js";
 import { hexToRgb } from "./backend.js";
+import {
+  createGalaxyLabAvatarAtlas,
+  type GalaxyLabAvatarAtlas,
+} from "./avatar-atlas.js";
 import { writeGalaxyLabWebGpuViewProjection } from "./camera-math.js";
 import {
   createGalaxyLabLabelAtlas,
-  GALAXY_LAB_LABEL_INSTANCE_STRIDE,
+  GALAXY_LAB_BILLBOARD_INSTANCE_STRIDE,
   type GalaxyLabLabelAtlas,
 } from "./billboard-labels.js";
 import {
@@ -230,12 +234,15 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private edgeBindGroup: GPUBindGroup | null = null;
   private labelPipeline: GPURenderPipeline | null = null;
   private labelBindGroup: GPUBindGroup | null = null;
+  private avatarBindGroup: GPUBindGroup | null = null;
   private quadBuffer: GPUBuffer | null = null;
   private semanticBuffer: GPUBuffer | null = null;
   private backgroundBuffer: GPUBuffer | null = null;
   private edgeBuffer: GPUBuffer | null = null;
   private labelBuffer: GPUBuffer | null = null;
   private labelTexture: GPUTexture | null = null;
+  private avatarBuffer: GPUBuffer | null = null;
+  private avatarTexture: GPUTexture | null = null;
   private labelSampler: GPUSampler | null = null;
   private uniformBuffer: GPUBuffer | null = null;
   private fixture: GalaxyLabFixture | null = null;
@@ -244,6 +251,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private backgroundData: Float32Array | null = null;
   private edgeData = new Float32Array(MAX_CONTEXTUAL_EDGES * EDGE_INSTANCE_FLOATS);
   private labelAtlas: GalaxyLabLabelAtlas | null = null;
+  private avatarAtlas: GalaxyLabAvatarAtlas | null = null;
   private palette: GalaxyLabPalette | null = null;
   private interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: null };
   private touchedInteractionIndices = new Set<number>();
@@ -416,7 +424,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
             attributes: [{ shaderLocation: 0, offset: 0, format: "float32x2" }],
           },
           {
-            arrayStride: GALAXY_LAB_LABEL_INSTANCE_STRIDE,
+            arrayStride: GALAXY_LAB_BILLBOARD_INSTANCE_STRIDE,
             stepMode: "instance",
             attributes: [
               { shaderLocation: 1, offset: 0, format: "float32x3" },
@@ -447,6 +455,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       addressModeV: "clamp-to-edge",
     });
     this.rebuildLabels(canvas.clientWidth < 720);
+    this.rebuildAvatars(canvas.clientWidth < 720);
     void device.lost.then((info) => {
       this.fallbackReason = `WebGPU device lost: ${info.reason}. ${info.message}`.trim();
     });
@@ -460,7 +469,10 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.canvas.width = Math.max(1, Math.floor(this.width * this.pixelRatio));
     this.canvas.height = Math.max(1, Math.floor(this.height * this.pixelRatio));
     const compactLabels = this.width < 720;
-    if (compactLabels !== this.compactLabels) this.rebuildLabels(compactLabels);
+    if (compactLabels !== this.compactLabels) {
+      this.rebuildLabels(compactLabels);
+      this.rebuildAvatars(compactLabels);
+    }
   }
 
   setPalette(palette: GalaxyLabPalette): void {
@@ -488,6 +500,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     }
     this.bufferUploadCount += 2;
     this.rebuildLabels(this.compactLabels ?? this.width < 720);
+    this.rebuildAvatars(this.compactLabels ?? this.width < 720);
     if (this.sceneIndex) this.writeInteraction(this.sceneIndex.interactionState(this.interaction));
   }
 
@@ -495,6 +508,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     if (detail === this.viewDetail) return;
     this.viewDetail = detail;
     this.rebuildLabels(this.compactLabels ?? this.width < 720);
+    this.rebuildAvatars(this.compactLabels ?? this.width < 720);
   }
 
   pickNode(viewportX: number, viewportY: number): string | null {
@@ -510,9 +524,13 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   }
 
   setInteraction(interaction: GalaxyLabInteraction): void {
+    const selectionChanged = interaction.selectedNodeId !== this.interaction.selectedNodeId;
     this.interaction = interaction;
     if (!this.sceneIndex) return;
     this.writeInteraction(this.sceneIndex.interactionState(interaction));
+    if (selectionChanged && this.viewDetail === "close") {
+      this.rebuildAvatars(this.compactLabels ?? this.width < 720);
+    }
   }
 
   render(transform: GalaxyLabTransform, timeMs: number): void {
@@ -558,6 +576,16 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       pass.draw(6, this.contextualEdgeCount);
     }
     if (
+      this.avatarAtlas && this.avatarAtlas.itemCount > 0 && this.labelPipeline &&
+      this.avatarBindGroup && this.avatarBuffer
+    ) {
+      pass.setPipeline(this.labelPipeline);
+      pass.setBindGroup(0, this.avatarBindGroup);
+      pass.setVertexBuffer(0, this.quadBuffer);
+      pass.setVertexBuffer(1, this.avatarBuffer);
+      pass.draw(6, this.avatarAtlas.itemCount);
+    }
+    if (
       this.labelAtlas && this.labelAtlas.labels.length > 0 && this.labelPipeline &&
       this.labelBindGroup && this.labelBuffer
     ) {
@@ -579,8 +607,10 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       semanticStarCount: this.fixture?.scene.nodeIds.length ?? 0,
       decorativeStarCount: this.fixture?.backgroundStarCount ?? 0,
       drawCalls: 2 + (this.labelAtlas && this.labelAtlas.labels.length > 0 ? 1 : 0) +
+        (this.avatarAtlas && this.avatarAtlas.itemCount > 0 ? 1 : 0) +
         (this.contextualEdgeCount > 0 ? 1 : 0),
       labelCount: this.labelAtlas?.labels.length ?? 0,
+      avatarCount: this.avatarAtlas?.itemCount ?? 0,
       contextualEdgeCount: this.contextualEdgeCount,
       bufferUploadCount: this.bufferUploadCount,
       fallbackReason: this.fallbackReason,
@@ -595,6 +625,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.edgeBuffer?.destroy();
     this.labelBuffer?.destroy();
     this.labelTexture?.destroy();
+    this.avatarBuffer?.destroy();
+    this.avatarTexture?.destroy();
     this.uniformBuffer?.destroy();
     this.device?.destroy();
     this.canvas = null;
@@ -607,12 +639,15 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.edgeBindGroup = null;
     this.labelPipeline = null;
     this.labelBindGroup = null;
+    this.avatarBindGroup = null;
     this.quadBuffer = null;
     this.semanticBuffer = null;
     this.backgroundBuffer = null;
     this.edgeBuffer = null;
     this.labelBuffer = null;
     this.labelTexture = null;
+    this.avatarBuffer = null;
+    this.avatarTexture = null;
     this.labelSampler = null;
     this.uniformBuffer = null;
     this.fixture = null;
@@ -620,6 +655,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.semanticData = null;
     this.backgroundData = null;
     this.labelAtlas = null;
+    this.avatarAtlas = null;
     this.palette = null;
     this.touchedInteractionIndices.clear();
     this.contextualEdgeCount = 0;
@@ -665,6 +701,53 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       ],
     });
     this.labelAtlas = atlas;
+    this.bufferUploadCount += 2;
+  }
+
+  private rebuildAvatars(compact: boolean): void {
+    if (
+      !this.device || !this.fixture || !this.palette || !this.labelPipeline ||
+      !this.uniformBuffer || !this.labelSampler
+    ) return;
+    this.avatarBuffer?.destroy();
+    this.avatarTexture?.destroy();
+    this.avatarBuffer = null;
+    this.avatarTexture = null;
+    this.avatarBindGroup = null;
+    const atlas = createGalaxyLabAvatarAtlas(
+      this.fixture,
+      this.palette,
+      this.interaction.selectedNodeId,
+      compact,
+      this.viewDetail,
+    );
+    this.avatarAtlas = atlas;
+    if (atlas.itemCount === 0) return;
+    this.avatarBuffer = createBuffer(
+      this.device,
+      atlas.instanceData,
+      GPUBufferUsage.VERTEX,
+    );
+    this.avatarTexture = this.device.createTexture({
+      size: [atlas.canvas.width, atlas.canvas.height],
+      format: "rgba8unorm",
+      usage: GPUTextureUsage.TEXTURE_BINDING |
+        GPUTextureUsage.COPY_DST |
+        GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+    this.device.queue.copyExternalImageToTexture(
+      { source: atlas.canvas },
+      { texture: this.avatarTexture },
+      [atlas.canvas.width, atlas.canvas.height],
+    );
+    this.avatarBindGroup = this.device.createBindGroup({
+      layout: this.labelPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.uniformBuffer } },
+        { binding: 1, resource: this.avatarTexture.createView() },
+        { binding: 2, resource: this.labelSampler },
+      ],
+    });
     this.bufferUploadCount += 2;
   }
 
