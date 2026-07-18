@@ -236,6 +236,47 @@ The integration sequence is deliberately narrow:
 5. Verify linking, pinning, promotion, selection, focus, fit, theme, mobile Details mode, full-bleed layout, and fallback before any performance verdict.
 6. Run repeated consistency baselines only after the machine workload permits comparable runs, then perform physical iPhone and installed Freed Desktop acceptance.
 
+### Full-canvas topology
+
+Friends must follow Map's two-lane canvas pattern instead of extending the current interactive graph element underneath the primary sidebar.
+
+- `AppShell` owns a `friends-background-layer` beside the existing `map-background-layer`. It spans the complete content frame below the header and sits behind the primary sidebar, Friends workspace, detail rail, and debug drawer.
+- `FriendGraph` portals only the GPU canvas into that background layer. The canvas has `pointer-events: none`. No menu, control, focus target, or gesture listener lives in the full-bleed layer.
+- The existing `friend-graph-viewport` remains inside the Friends workspace. It becomes the bounded focusable interaction overlay and owns pointer, touch, wheel, keyboard, context-menu, and accessibility behavior.
+- The engine receives both rectangles. Canvas coordinates equal interaction coordinates plus the measured interaction-to-canvas offset. Pin world coordinates, picking, midpoint-preserving zoom, and focus calculations use that conversion.
+- The usable camera inset is derived from the canvas and interaction rectangles. Its left edge excludes the primary sidebar. Its right edge excludes the open Friends detail rail and any debug drawer. Fit and focus center the semantic target inside this usable rectangle while the starfield continues beneath the surrounding chrome.
+- One coalesced `ResizeObserver` updates the canvas dimensions and usable inset only when shell geometry changes. Camera movement never measures DOM geometry and never writes React state.
+- The context menu, searchable person picker, development variation control, Fit all, diagnostics control, collapsed detail card, and mobile Details lens stay in the bounded React layer. They never become GPU content.
+- When mobile switches to the separate Details lens, the engine keeps its resident scene and camera but stops drawing until the graph lens is visible again. Returning to Graph restores the same selection and camera without recompiling the scene.
+
+This topology is the required fix for the PR 887 failure mode. Visual bleed and pointer ownership are separate by construction, so empty-space clicks, sidebar controls, and graph controls cannot compete for the same DOM surface.
+
+### Product acceptance matrix
+
+The cutover should preserve existing test IDs where they still describe the product contract. Tests that assert obsolete renderer internals must be adapted, not deleted without replacement.
+
+| Contract | Existing maintained proof | Cutover requirement |
+|---|---|---|
+| Workspace navigation | `smoke.spec.ts`: Friends return navigation and workspace back navigation | Keep the same app route, header, sidebar, and back behavior |
+| Desktop detail rail | `smoke.spec.ts`: rail visibility persistence and 400-pixel resize cap | Keep selection, persisted open state, resize handle, width cap, and collapsed detail card |
+| Mobile lens | `smoke.spec.ts`: mobile toolbar switches between Graph and Details | Suspend drawing in Details, then restore the exact camera and selection in Graph |
+| Selection lifecycle | `smoke.spec.ts`: pending-atlas selection, collapsed card, and empty-space clear | Preserve selected person and account callbacks across worker startup and backend recovery |
+| Canonical graph content | `smoke.spec.ts`: confirmed friends, provisional people, and channels render together | Keep Person plus Account identity systems, Friends and All Content modes, and provider sectors |
+| Explicit relationship changes | `smoke.spec.ts`: suggestion promotion, linked-account promotion, and relationship slider | Keep Followed, Friends, and Fam actions explicit. Rename internal drop terminology during cutover without restoring node drag |
+| Suggestions | `smoke.spec.ts`: ranked suggestion promote and dismiss | Keep local ranking, explanation, confirmation, and non-destructive dismissal |
+| Context linking | `smoke.spec.ts`: channel context-menu link survives reload | Keep account context menu, searchable person picker, canonical document mutation, and reload proof |
+| Device-local pinning | `smoke.spec.ts`: person context-menu pin survives reload without Automerge fields | Keep context-menu-only pinning and the device layout store. Pan must never create pins |
+| Labels during movement | `smoke.spec.ts`: zoom labels remain visible and stress pan causes no scene rebuild | Keep the accepted billboard batch resident during movement, then refresh from the settled projected viewport |
+| Touch camera | `smoke.spec.ts`: two-touch midpoint pinch and pinch-to-pan continuation | Route native touch, Safari gesture events, wheel, and pointer pan through one locked-camera transform |
+| Reader handoff | `reader-hydration.spec.ts`: author link opens channel details in Friends | Preserve `focusNode(id)` and canonical account selection across lazy engine startup |
+| Map handoff | Map and Friends smoke flows for marker linking, promotion, and post navigation | Preserve shared identity mode and canonical person or account focus |
+| Themes and controls | `theme-switching.spec.ts`: Friends control placement and opaque control backgrounds | Replace the old bounded-canvas geometry assertion with full background coverage plus bounded interaction and control-lane assertions |
+| Dense visual structure | `smoke.spec.ts`: maintained Scriptorium dense snapshot | Update snapshots only after Raw WebGPU is accepted in Scriptorium and one dark theme |
+| Renderer diagnostics | `perf-friends.spec.ts` and renderer heartbeat assertions | Replace dense-scene internals with backend, fallback reason, resident counts, sparse writes, presentation counts, render density, and frame-loop state |
+| Representative scale | Current perf fixture uses 1,600 people and 1,920 accounts | Add 5,000 people, 25,000 accounts, and a 250,000-item summary-equivalent source before performance acceptance |
+| Recovery parity | No complete maintained Friends backend-loss workflow yet | Add Raw WebGPU loss recovery that preserves theme, camera, selection, detail tier, and functional WebGL2 or canvas controls |
+| Mobile context actions | Desktop context-menu workflows plus current long-press implementation | Add maintained touch long-press coverage for Open details, Pin here, Link to person, and explicit relationship actions |
+
 Benchmarking is authorized only as repeated consistency runs while other machine tasks remain active. Single-run timing results are not decision evidence.
 
 ## Renderer Laboratory Checkpoint
