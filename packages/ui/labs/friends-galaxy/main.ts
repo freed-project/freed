@@ -39,6 +39,9 @@ const fitButton = requiredElement<HTMLButtonElement>("fit");
 const animateControl = requiredElement<HTMLInputElement>("animate");
 const statusElement = requiredElement<HTMLElement>("status");
 const metricsElement = requiredElement<HTMLElement>("metrics");
+const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+let animatePreferenceTouched = false;
+animateControl.checked = !reducedMotionQuery.matches;
 
 function setStatus(message: string, error = false): void {
   statusElement.textContent = message;
@@ -79,6 +82,7 @@ function applyDocumentPalette(palette: GalaxyLabPalette): void {
   root.style.setProperty("--lab-text", palette.text);
   root.style.setProperty("--lab-muted", palette.mutedText);
   root.style.setProperty("--lab-friend", palette.friend);
+  root.style.setProperty("--lab-selection", palette.selection);
   root.style.setProperty("--lab-account", palette.account);
   root.style.setProperty("--lab-feed", palette.feed);
   const [red, green, blue] = hexToRgb(palette.background);
@@ -354,6 +358,7 @@ function distance(left: PointerPosition, right: PointerPosition): number {
 viewport.addEventListener("pointerdown", (event) => {
   if (event.pointerType === "mouse" && event.button !== 0) return;
   event.preventDefault();
+  viewport.focus({ preventScroll: true });
   const point = localPoint(event.clientX, event.clientY);
   if (pointers.size === 0) gestureMoved = false;
   pointers.set(event.pointerId, point);
@@ -479,6 +484,50 @@ viewport.addEventListener("gestureend", ((event: SafariGestureEvent) => {
 }) as EventListener, { passive: false });
 
 viewport.addEventListener("dblclick", () => fitGalaxy());
+viewport.addEventListener("keydown", (event) => {
+  if (event.altKey || event.ctrlKey || event.metaKey) return;
+  const panStep = event.shiftKey ? 120 : 56;
+  let handled = true;
+  switch (event.key) {
+    case "ArrowLeft":
+      transform.x += panStep;
+      break;
+    case "ArrowRight":
+      transform.x -= panStep;
+      break;
+    case "ArrowUp":
+      transform.y += panStep;
+      break;
+    case "ArrowDown":
+      transform.y -= panStep;
+      break;
+    case "+":
+    case "=": {
+      const { width, height } = viewportSize();
+      zoomAt(width * 0.5, height * 0.5, transform.scale * 1.18);
+      break;
+    }
+    case "-":
+    case "_": {
+      const { width, height } = viewportSize();
+      zoomAt(width * 0.5, height * 0.5, transform.scale / 1.18);
+      break;
+    }
+    case "Home":
+    case "0":
+      fitGalaxy();
+      break;
+    case "Escape":
+      updateInteraction({ selectedNodeId: null, hoveredNodeId: null });
+      break;
+    default:
+      handled = false;
+  }
+  if (!handled) return;
+  event.preventDefault();
+  if (event.key.startsWith("Arrow")) userMovedCamera = true;
+  dirty = true;
+});
 fitButton.addEventListener("click", () => fitGalaxy());
 
 backendSelect.addEventListener("change", () => {
@@ -500,9 +549,19 @@ fieldStyleSelect.addEventListener("change", () => {
 });
 
 animateControl.addEventListener("change", () => {
+  animatePreferenceTouched = true;
   resetSamples();
   dirty = true;
 });
+
+function syncReducedMotionPreference(): void {
+  if (animatePreferenceTouched) return;
+  animateControl.checked = !reducedMotionQuery.matches;
+  resetSamples();
+  dirty = true;
+}
+
+reducedMotionQuery.addEventListener("change", syncReducedMotionPreference);
 
 const resizeObserver = new ResizeObserver(() => {
   const { width, height } = viewportSize();
@@ -520,6 +579,7 @@ window.addEventListener("beforeunload", () => {
   cancelAnimationFrame(frameRequest);
   cancelAnimationFrame(hoverRequest);
   window.clearTimeout(settledDetailTimer);
+  reducedMotionQuery.removeEventListener("change", syncReducedMotionPreference);
   resizeObserver.disconnect();
   activeBackend?.dispose();
 });

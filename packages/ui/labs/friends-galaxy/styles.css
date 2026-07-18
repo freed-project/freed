@@ -11,6 +11,7 @@
   --lab-border: rgb(48 34 24 / 0.2);
   --lab-shadow: rgb(48 34 24 / 0.18);
   --lab-friend: #735336;
+  --lab-selection: #237da0;
   --lab-account: #a7794b;
   --lab-feed: #b34f68;
 }
@@ -58,6 +59,11 @@ input {
 
 .galaxy-viewport[data-dragging="true"] {
   cursor: grabbing;
+}
+
+.galaxy-viewport:focus-visible {
+  outline: 2px solid var(--lab-selection);
+  outline-offset: -4px;
 }
 
 .galaxy-viewport canvas {
