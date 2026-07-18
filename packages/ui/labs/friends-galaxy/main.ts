@@ -377,7 +377,7 @@ async function admitSettledAvatarImages(
     backend !== activeBackend ||
     viewDetailForScale(transform.scale) !== "close" ||
     pointers.size > 0 ||
-    safariGestureWorldPoint !== null
+    safariGestureActive
   ) return;
   avatarAdmissionResult = result;
   backend.setAvatarImages(result.images);
@@ -674,7 +674,11 @@ const pointers = new Map<number, PointerPosition>();
 const pointerStarts = new Map<number, PointerPosition>();
 let gestureMoved = false;
 let hoverRequest = 0;
-let pendingHoverPoint: PointerPosition | null = null;
+let pendingHoverX = 0;
+let pendingHoverY = 0;
+let pendingHover = false;
+let pointerViewportLeft = 0;
+let pointerViewportTop = 0;
 
 function updateInteraction(next: GalaxyLabInteraction): void {
   if (
@@ -690,28 +694,24 @@ function updateInteraction(next: GalaxyLabInteraction): void {
   dirty = true;
 }
 
-function pickNodeAt(point: PointerPosition): string | null {
-  return activeBackend?.pickNode(point.x, point.y) ?? null;
-}
-
-function scheduleHoverPick(point: PointerPosition): void {
-  pendingHoverPoint = point;
+function scheduleHoverPick(viewportX: number, viewportY: number): void {
+  pendingHoverX = viewportX;
+  pendingHoverY = viewportY;
+  pendingHover = true;
   if (hoverRequest !== 0) return;
   hoverRequest = requestAnimationFrame(() => {
     hoverRequest = 0;
-    const pending = pendingHoverPoint;
-    pendingHoverPoint = null;
-    if (!pending || pointers.size > 0) return;
+    if (!pendingHover) return;
+    if (pointers.size > 0) {
+      pendingHover = false;
+      return;
+    }
+    pendingHover = false;
     updateInteraction({
       selectedNodeId: interaction.selectedNodeId,
-      hoveredNodeId: pickNodeAt(pending),
+      hoveredNodeId: activeBackend?.pickNode(pendingHoverX, pendingHoverY) ?? null,
     });
   });
-}
-
-function localPoint(clientX: number, clientY: number): PointerPosition {
-  const bounds = viewport.getBoundingClientRect();
-  return { x: clientX - bounds.left, y: clientY - bounds.top };
 }
 
 viewport.addEventListener("pointerdown", (event) => {
@@ -720,8 +720,16 @@ viewport.addEventListener("pointerdown", (event) => {
   avatarAdmissionGeneration += 1;
   window.clearTimeout(settledDetailTimer);
   viewport.focus({ preventScroll: true });
-  const point = localPoint(event.clientX, event.clientY);
-  if (pointers.size === 0) gestureMoved = false;
+  if (pointers.size === 0) {
+    const bounds = viewport.getBoundingClientRect();
+    pointerViewportLeft = bounds.left;
+    pointerViewportTop = bounds.top;
+    gestureMoved = false;
+  }
+  const point = {
+    x: event.clientX - pointerViewportLeft,
+    y: event.clientY - pointerViewportTop,
+  };
   pointers.set(event.pointerId, point);
   pointerStarts.set(event.pointerId, { x: point.x, y: point.y });
   if (pointers.size > 1) gestureMoved = true;
@@ -737,15 +745,15 @@ viewport.addEventListener("pointermove", (event) => {
   const previousPoint = pointers.get(event.pointerId);
   if (!previousPoint) {
     if (event.pointerType === "mouse") {
-      scheduleHoverPick(localPoint(event.clientX, event.clientY));
+      const bounds = viewport.getBoundingClientRect();
+      scheduleHoverPick(event.clientX - bounds.left, event.clientY - bounds.top);
     }
     return;
   }
   event.preventDefault();
   setCameraInMotion(true);
-  const bounds = viewport.getBoundingClientRect();
-  const nextX = event.clientX - bounds.left;
-  const nextY = event.clientY - bounds.top;
+  const nextX = event.clientX - pointerViewportLeft;
+  const nextY = event.clientY - pointerViewportTop;
   const startPoint = pointerStarts.get(event.pointerId) ?? previousPoint;
   if (Math.hypot(nextX - startPoint.x, nextY - startPoint.y) > 4 || pointers.size > 1) {
     gestureMoved = true;
@@ -787,7 +795,8 @@ viewport.addEventListener("pointermove", (event) => {
 });
 
 function releasePointer(event: PointerEvent): void {
-  const releasePoint = localPoint(event.clientX, event.clientY);
+  const releasePointX = event.clientX - pointerViewportLeft;
+  const releasePointY = event.clientY - pointerViewportTop;
   const shouldSelect = event.type === "pointerup" && pointers.size === 1 && !gestureMoved;
   pointers.delete(event.pointerId);
   pointerStarts.delete(event.pointerId);
@@ -802,7 +811,7 @@ function releasePointer(event: PointerEvent): void {
     viewport.dataset.dragging = "false";
     if (shouldSelect) {
       updateInteraction({
-        selectedNodeId: pickNodeAt(releasePoint),
+        selectedNodeId: activeBackend?.pickNode(releasePointX, releasePointY) ?? null,
         hoveredNodeId: null,
       });
       scheduleSettledViewDetail();
@@ -817,15 +826,19 @@ viewport.addEventListener("pointerup", releasePointer);
 viewport.addEventListener("pointercancel", releasePointer);
 viewport.addEventListener("pointerleave", () => {
   if (pointers.size > 0) return;
-  pendingHoverPoint = null;
+  pendingHover = false;
   updateInteraction({ selectedNodeId: interaction.selectedNodeId, hoveredNodeId: null });
 });
 
 viewport.addEventListener("wheel", (event) => {
   event.preventDefault();
-  const point = localPoint(event.clientX, event.clientY);
+  const bounds = viewport.getBoundingClientRect();
   const sensitivity = event.ctrlKey ? 0.012 : 0.0024;
-  zoomAt(point.x, point.y, transform.scale * Math.exp(-event.deltaY * sensitivity));
+  zoomAt(
+    event.clientX - bounds.left,
+    event.clientY - bounds.top,
+    transform.scale * Math.exp(-event.deltaY * sensitivity),
+  );
 }, { passive: false });
 
 interface SafariGestureEvent extends Event {
@@ -835,7 +848,11 @@ interface SafariGestureEvent extends Event {
 }
 
 let safariGestureStartScale = transform.scale;
-let safariGestureWorldPoint: PointerPosition | null = null;
+let safariGestureActive = false;
+let safariGestureWorldX = 0;
+let safariGestureWorldY = 0;
+let safariGestureViewportLeft = 0;
+let safariGestureViewportTop = 0;
 
 viewport.addEventListener("gesturestart", ((event: SafariGestureEvent) => {
   event.preventDefault();
@@ -843,21 +860,25 @@ viewport.addEventListener("gesturestart", ((event: SafariGestureEvent) => {
   avatarAdmissionGeneration += 1;
   window.clearTimeout(settledDetailTimer);
   safariGestureStartScale = transform.scale;
-  const point = localPoint(event.clientX, event.clientY);
-  safariGestureWorldPoint = {
-    x: (point.x - transform.x) / transform.scale,
-    y: (point.y - transform.y) / transform.scale,
-  };
+  const bounds = viewport.getBoundingClientRect();
+  safariGestureViewportLeft = bounds.left;
+  safariGestureViewportTop = bounds.top;
+  const viewportX = event.clientX - safariGestureViewportLeft;
+  const viewportY = event.clientY - safariGestureViewportTop;
+  safariGestureWorldX = (viewportX - transform.x) / transform.scale;
+  safariGestureWorldY = (viewportY - transform.y) / transform.scale;
+  safariGestureActive = true;
 }) as EventListener, { passive: false });
 
 viewport.addEventListener("gesturechange", ((event: SafariGestureEvent) => {
   event.preventDefault();
-  if (!safariGestureWorldPoint) return;
-  const point = localPoint(event.clientX, event.clientY);
+  if (!safariGestureActive) return;
+  const viewportX = event.clientX - safariGestureViewportLeft;
+  const viewportY = event.clientY - safariGestureViewportTop;
   const nextScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, safariGestureStartScale * event.scale));
   transform.scale = nextScale;
-  transform.x = point.x - safariGestureWorldPoint.x * nextScale;
-  transform.y = point.y - safariGestureWorldPoint.y * nextScale;
+  transform.x = viewportX - safariGestureWorldX * nextScale;
+  transform.y = viewportY - safariGestureWorldY * nextScale;
   userMovedCamera = true;
   dirty = true;
   scheduleSettledViewDetail();
@@ -865,7 +886,7 @@ viewport.addEventListener("gesturechange", ((event: SafariGestureEvent) => {
 
 viewport.addEventListener("gestureend", ((event: SafariGestureEvent) => {
   event.preventDefault();
-  safariGestureWorldPoint = null;
+  safariGestureActive = false;
   scheduleSettledViewDetail();
 }) as EventListener, { passive: false });
 

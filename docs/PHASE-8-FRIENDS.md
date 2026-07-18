@@ -190,6 +190,8 @@ Compact canvases now open at a useful 0.16 exploration scale around the semantic
 
 Frame and submission diagnostics now use fixed 240-value typed rings. Active camera motion suppresses diagnostics DOM rebuilding, then refreshes the panel after settle from one bounded snapshot. The detached gesture path no longer shifts diagnostic arrays or performs periodic panel layout while the camera is moving.
 
+Active pointer movement now reuses viewport bounds captured at gesture start and mutates only the two resident touch records. Hover coalescing retains one scalar coordinate pair. Safari trackpad pinch stores scalar anchor and viewport values at `gesturestart`, so `gesturechange` performs no point allocation or viewport geometry read.
+
 Provider sectors now follow deterministic logarithmic spirals shared by layout and rendering. The default Nebula treatment combines procedural arms and themed dust without per-star scene objects. Linked accounts stay close to their parent identity, billboard labels sit close to their parent star with a stronger outline, and semantic links remain absent until one star in that identity system is hovered or selected.
 
 ### Scale targets
@@ -405,6 +407,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.75 | Prove bounded settled and motion render density on Retina and compact WebGPU canvases without evicting semantic detail | High | Done |
 | 8.76 | Separate useful compact initial framing from explicit fit-all while preserving the locked semantic center | High | Done |
 | 8.77 | Remove diagnostic array shifts and DOM refreshes from the active camera path with fixed typed sample rings | High | Done |
+| 8.78 | Remove point allocations and repeated viewport geometry reads from pointer, hover, and Safari gesture movement | High | Done |
 
 ---
 
@@ -493,6 +496,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] WebGPU rendering caps settled Retina density and lowers compact or wide motion density once per gesture without removing resident stars or labels
 - [x] Compact initial framing opens on a legible semantic field while Fit galaxy remains the explicit complete-universe command
 - [x] Gesture diagnostics use fixed typed rings and defer panel DOM updates until camera settle
+- [x] Active pointer and Safari gesture movement reuses captured bounds and scalar state without per-event point allocation
 - [x] Linked accounts occupy complete local orbits, and dense people fields reserve enough space for those systems
 - [x] Galaxy compilation indexes accounts by person once instead of scanning the full account library for every identity
 - [x] Mobile pinch hands directly to one-finger pan when either touch lifts
