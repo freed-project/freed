@@ -207,3 +207,35 @@ The July 17, 2026 audit used current `origin/dev` at `b41470d8ec0b5e529d5be7629d
 Start with backend-neutral diagnostics and sparse interaction writes, then build the WebGPU renderer laboratory, close-zoom avatar texture atlas, incremental graph index maintenance, and repeated device performance baselines. The current WebGL2 engine and batched glyph layer remain the compatibility backend and functional integration surface during that work.
 
 Benchmarking is authorized only as repeated consistency runs while other machine tasks remain active. Single-run timing results are not decision evidence.
+
+## Renderer Laboratory Checkpoint
+
+The July 17, 2026 runtime-neutral renderer laboratory lives under `packages/ui/labs/friends-galaxy`. It is intentionally detached from PWA and Freed Desktop entry points while the global behavioral product slot remains occupied by stability work.
+
+The laboratory builds one deterministic renderer-neutral fixture and feeds the identical typed positions, sizes, prominence depth, provider assignments, and theme roles to three backends:
+
+| Backend | Semantic field | Decorative field | Submission shape |
+|---|---:|---:|---|
+| Current production Three.js WebGL2 | 30,000 stars | Existing viewport cap of 7,000 or 12,000 stars | Production engine, draw-call count not yet exposed |
+| Three.js WebGPU | 30,000 stars | 100,000 stars | Two instanced sprite batches, currently reported as three renderer draw calls |
+| Raw WebGPU and WGSL | 30,000 stars | 100,000 stars | One shared pipeline and two instanced draw calls |
+
+The fixture represents 5,000 identities and 25,000 attached or unlinked channels. Identity systems occupy a deterministic six-arm galactic plane. Linked channels remain in short local orbits. Unlinked channels occupy five provider spiral sectors. Prominence remains bounded on the z axis so camera pan creates restrained parallax without random spatial scattering.
+
+The laboratory includes Scriptorium, Neon, Midas, and Vesper palettes. Light themes reduce background opacity and avoid additive bleaching. Dark themes retain brighter coronae. The control panel uses an opaque theme surface because blurred translucent overlays produced WebGPU compositor artifacts in browser verification.
+
+Interaction uses the production locked-camera transform. Pointer pan, wheel zoom, Safari gesture events, and two-pointer pinch all update the transform directly. A 390 by 844 browser probe confirmed that a synthetic two-touch expansion changed camera scale by the exact touch-distance ratio while preserving the world point beneath the midpoint.
+
+Verification commands:
+
+```bash
+npm run typecheck:friends-galaxy-lab
+npm run test:friends-galaxy-lab
+npm run friends:galaxy-lab -- --port <free-port>
+```
+
+The isolated compiler and all four deterministic fixture tests pass. Desktop and iPhone-sized browser checks confirm nonblank output, theme switching, backend switching, and warning-free WebGPU pipeline creation. These are functional checks only. Their frame timing is not benchmark evidence while unrelated machine workloads remain active.
+
+### Laboratory decision still open
+
+Raw WebGPU is the current control-case leader for predictable submission count and direct shader control. Three.js WebGPU remains valuable for camera, resource, material, and fallback integration. The production backend decision must wait for repeated installed Freed Desktop and physical iPhone consistency ranges, plus equivalent batched labels, short contextual links, picking, and avatar-atlas workloads. The laboratory does not authorize a runtime cutover by itself.

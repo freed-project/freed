@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="data:," />
+    <title>Friends Galaxy Renderer Lab</title>
+  </head>
+  <body>
+    <main class="lab-shell">
+      <section id="viewport" class="galaxy-viewport" aria-label="Friends Galaxy renderer comparison"></section>
+      <aside class="lab-panel" aria-label="Renderer controls">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Friends Galaxy</p>
+            <h1>Renderer Lab</h1>
+          </div>
+          <span class="target-badge">30K + 100K</span>
+        </div>
+
+        <label class="field-label" for="backend">Renderer</label>
+        <select id="backend" class="field-control">
+          <option value="current-webgl2">Current WebGL2</option>
+          <option value="three-webgpu">Three.js WebGPU</option>
+          <option value="raw-webgpu">Raw WebGPU</option>
+        </select>
+
+        <label class="field-label" for="theme">Theme</label>
+        <select id="theme" class="field-control">
+          <option value="scriptorium">Scriptorium</option>
+          <option value="neon">Neon</option>
+          <option value="midas">Midas</option>
+          <option value="vesper">Vesper</option>
+        </select>
+
+        <div class="button-row">
+          <button id="fit" type="button">Fit galaxy</button>
+          <label class="toggle-control">
+            <input id="animate" type="checkbox" checked />
+            <span>Animate</span>
+          </label>
+        </div>
+
+        <div id="status" class="status-line" role="status">Building deterministic fixture</div>
+        <dl id="metrics" class="metrics-grid"></dl>
+
+        <div class="legend" aria-label="Star legend">
+          <span><i data-swatch="friend"></i>Identity</span>
+          <span><i data-swatch="account"></i>Channel</span>
+          <span><i data-swatch="feed"></i>Feed</span>
+        </div>
+      </aside>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
