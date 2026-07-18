@@ -212,6 +212,8 @@ Raw WebGPU now also records contextual edges, avatar billboards, and label billb
 
 Raw WebGPU now receives animation and camera-motion state through its imperative backend contract. With animation disabled or the camera moving, one coherent uniform branch skips per-vertex twinkle phase arithmetic and trigonometry and freezes procedural drift. Active star fragments use squared radius and multiply-only falloff instead of square root, exponential, and fractional power. Active motion exits the field shader through one coarse noise sample and a bounded envelope. Only the stream variations add one spiral phase. Settled rendering restores the complete luminous star profile plus seven independent four-octave field samples, domain warping, wisps, and both spiral phases. The sign bit of the existing camera-scale uniform carries motion state, so no uniform block, bind group, pipeline, geometry, label, or resident-star rebuild occurs. Every semantic star and billboard label remains resident and visible in both states.
 
+Moving Raw WebGPU stars now use a retained regular-octagon triangle strip instead of the settled square strip. The footprint preserves horizontal and vertical star diameter while reducing potential fragment coverage by about 29 percent and clipping only the faint outer edge between axis points. A small alpha cutoff skips negligible outer-halo blending. Settle switches back to the complete square footprint and luminous profile by selecting a pre-recorded world bundle. No geometry rebuild, draw-count mutation, or resident-star change occurs at the motion boundary.
+
 Provider sectors now follow deterministic logarithmic spirals shared by layout and rendering. The default Nebula treatment combines procedural arms and themed dust without per-star scene objects. Linked accounts stay close to their parent identity, billboard labels sit close to their parent star with a stronger outline, and semantic links remain absent until one star in that identity system is hovered or selected.
 
 ### Scale targets
@@ -440,6 +442,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.88 | Replace moving-star square root, exponential, fractional power, and unused twinkle phase work with coherent multiply-only falloff | High | Done |
 | 8.89 | Defer motion-density canvas resizing out of input handlers and coalesce it in the next requested render callback | High | Done |
 | 8.90 | Retain raw WebGPU edge, avatar, and label presentation commands in one ordered frame bundle list | High | Done |
+| 8.91 | Reduce moving-star raster footprints with retained octagon strips while preserving semantic-star diameter and settled luminosity | High | Done |
 
 ---
 
@@ -536,6 +539,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Hover and selection reuse fixed interaction payloads and renderer scratch storage without rebuilding maps, sets, typed views, or edge geometry
 - [x] Raw WebGPU keeps semantic stars and labels resident while camera motion uses one coherent coarse field sample and settle restores the complete nebula shader
 - [x] Moving Raw WebGPU stars use squared-radius multiply-only falloff while settled stars retain their complete luminous profile
+- [x] Moving Raw WebGPU stars use retained octagon strips to reduce raster coverage without shrinking axis diameter or changing resident-star count
 - [x] Raw WebGPU expresses hover and selection through one bounded overlay upload without rewriting scattered resident semantic instances
 - [x] Raw WebGPU executes world, contextual edge, avatar, and label presentation through one retained render-bundle list per frame
 - [x] Hover, pointer, wheel, and Safari input share one cached viewport origin, with geometry reads bounded to interaction boundaries and resize

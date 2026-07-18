@@ -37,6 +37,11 @@ import {
   writeGalaxyLabStarPaletteUniforms,
 } from "./star-palette.js";
 import {
+  createGalaxyLabStarGeometry,
+  GALAXY_LAB_MOTION_STAR_VERTEX_COUNT,
+  GALAXY_LAB_SETTLED_STAR_VERTEX_COUNT,
+} from "./star-geometry.js";
+import {
   createGalaxyLabProviderFields,
   GALAXY_LAB_PROVIDER_FIELD_INSTANCE_STRIDE,
   type GalaxyLabProviderFields,
@@ -311,6 +316,9 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     let radial = 1.0 - radiusSquared;
     let core = radial * radial;
     let alpha = min(1.0, core + radial * 0.22) * input.color.a;
+    if (alpha < 0.006) {
+      discard;
+    }
     let radiance = 0.74 + core * 0.72;
     return vec4<f32>(input.color.rgb * radiance, alpha);
   }
@@ -454,6 +462,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private providerFieldBindGroup: GPUBindGroup | null = null;
   private worldRenderBundle: GPURenderBundle | null = null;
   private worldRenderBundleWithInteraction: GPURenderBundle | null = null;
+  private motionWorldRenderBundle: GPURenderBundle | null = null;
+  private motionWorldRenderBundleWithInteraction: GPURenderBundle | null = null;
   private edgeRenderBundle: GPURenderBundle | null = null;
   private avatarRenderBundle: GPURenderBundle | null = null;
   private labelRenderBundle: GPURenderBundle | null = null;
@@ -464,6 +474,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private labelBindGroup: GPUBindGroup | null = null;
   private avatarBindGroup: GPUBindGroup | null = null;
   private quadBuffer: GPUBuffer | null = null;
+  private settledStarBuffer: GPUBuffer | null = null;
+  private motionStarBuffer: GPUBuffer | null = null;
   private semanticBuffer: GPUBuffer | null = null;
   private interactionBuffer: GPUBuffer | null = null;
   private backgroundBuffer: GPUBuffer | null = null;
@@ -560,7 +572,10 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       -1, -1, 1, -1, 1, 1,
       -1, -1, 1, 1, -1, 1,
     ]);
+    const starGeometry = createGalaxyLabStarGeometry();
     this.quadBuffer = createBuffer(device, quadData, GPUBufferUsage.VERTEX);
+    this.settledStarBuffer = createBuffer(device, starGeometry.settled, GPUBufferUsage.VERTEX);
+    this.motionStarBuffer = createBuffer(device, starGeometry.motion, GPUBufferUsage.VERTEX);
     this.semanticBuffer = createBuffer(
       device,
       this.semanticData,
@@ -672,7 +687,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
           },
         }],
       },
-      primitive: { topology: "triangle-list", cullMode: "none" },
+      primitive: { topology: "triangle-strip", cullMode: "none" },
     });
     this.bindGroup = device.createBindGroup({
       layout: this.pipeline.getBindGroupLayout(0),
@@ -847,7 +862,9 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   }
 
   setCameraMotion(active: boolean): void {
+    if (active === this.cameraMotion) return;
     this.cameraMotion = active;
+    this.rebuildFrameRenderBundles();
   }
 
   setViewDetail(detail: GalaxyLabViewDetail): void {
@@ -955,6 +972,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.disposed = true;
     this.backendHealth.clear();
     this.quadBuffer?.destroy();
+    this.settledStarBuffer?.destroy();
+    this.motionStarBuffer?.destroy();
     this.semanticBuffer?.destroy();
     this.interactionBuffer?.destroy();
     this.backgroundBuffer?.destroy();
@@ -976,6 +995,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.providerFieldBindGroup = null;
     this.worldRenderBundle = null;
     this.worldRenderBundleWithInteraction = null;
+    this.motionWorldRenderBundle = null;
+    this.motionWorldRenderBundleWithInteraction = null;
     this.edgeRenderBundle = null;
     this.avatarRenderBundle = null;
     this.labelRenderBundle = null;
@@ -986,6 +1007,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.labelBindGroup = null;
     this.avatarBindGroup = null;
     this.quadBuffer = null;
+    this.settledStarBuffer = null;
+    this.motionStarBuffer = null;
     this.semanticBuffer = null;
     this.interactionBuffer = null;
     this.backgroundBuffer = null;
@@ -1075,7 +1098,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   }
 
   private trackedGpuDataBytes(): number {
-    let bytes = 12 * Float32Array.BYTES_PER_ELEMENT;
+    let bytes = 36 * Float32Array.BYTES_PER_ELEMENT;
     bytes += this.uniformData.byteLength;
     bytes += this.edgeData.byteLength;
     bytes += this.semanticData?.byteLength ?? 0;
@@ -1276,7 +1299,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       !this.device || !this.format || !this.providerFieldPipeline ||
       !this.providerFieldBindGroup || !this.providerFieldBuffer || !this.providerFields ||
       !this.pipeline || !this.bindGroup || !this.quadBuffer || !this.backgroundBuffer ||
-      !this.semanticBuffer || !this.interactionBuffer || !this.fixture
+      !this.settledStarBuffer || !this.motionStarBuffer || !this.semanticBuffer ||
+      !this.interactionBuffer || !this.fixture
     ) return;
     const device = this.device;
     const format = this.format;
@@ -1287,17 +1311,22 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     const pipeline = this.pipeline;
     const bindGroup = this.bindGroup;
     const quadBuffer = this.quadBuffer;
+    const settledStarBuffer = this.settledStarBuffer;
+    const motionStarBuffer = this.motionStarBuffer;
     const backgroundBuffer = this.backgroundBuffer;
     const backgroundStarCount = this.fixture.backgroundStarCount;
     const semanticBuffer = this.semanticBuffer;
     const semanticStarCount = this.fixture.scene.nodeIds.length;
     const interactionBuffer = this.interactionBuffer;
     const interactionCapacity = this.interactionData.length / INSTANCE_FLOATS;
-    const recordBundle = (includeInteraction: boolean): GPURenderBundle => {
+    const recordBundle = (
+      includeInteraction: boolean,
+      cameraMoving: boolean,
+    ): GPURenderBundle => {
       const encoder = device.createRenderBundleEncoder({
-        label: includeInteraction
-          ? "Friends Galaxy interactive world bundle"
-          : "Friends Galaxy static world bundle",
+        label: `Friends Galaxy ${cameraMoving ? "moving" : "settled"} ${
+          includeInteraction ? "interactive" : "base"
+        } world bundle`,
         colorFormats: [format],
       });
       encoder.setPipeline(providerFieldPipeline);
@@ -1307,19 +1336,36 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       encoder.draw(6, providerFieldCount);
       encoder.setPipeline(pipeline);
       encoder.setBindGroup(0, bindGroup);
-      encoder.setVertexBuffer(0, quadBuffer);
+      encoder.setVertexBuffer(0, cameraMoving ? motionStarBuffer : settledStarBuffer);
       encoder.setVertexBuffer(1, backgroundBuffer);
-      encoder.draw(6, backgroundStarCount);
+      encoder.draw(
+        cameraMoving
+          ? GALAXY_LAB_MOTION_STAR_VERTEX_COUNT
+          : GALAXY_LAB_SETTLED_STAR_VERTEX_COUNT,
+        backgroundStarCount,
+      );
       encoder.setVertexBuffer(1, semanticBuffer);
-      encoder.draw(6, semanticStarCount);
+      encoder.draw(
+        cameraMoving
+          ? GALAXY_LAB_MOTION_STAR_VERTEX_COUNT
+          : GALAXY_LAB_SETTLED_STAR_VERTEX_COUNT,
+        semanticStarCount,
+      );
       if (includeInteraction) {
         encoder.setVertexBuffer(1, interactionBuffer);
-        encoder.draw(6, interactionCapacity);
+        encoder.draw(
+          cameraMoving
+            ? GALAXY_LAB_MOTION_STAR_VERTEX_COUNT
+            : GALAXY_LAB_SETTLED_STAR_VERTEX_COUNT,
+          interactionCapacity,
+        );
       }
       return encoder.finish();
     };
-    this.worldRenderBundle = recordBundle(false);
-    this.worldRenderBundleWithInteraction = recordBundle(true);
+    this.worldRenderBundle = recordBundle(false, false);
+    this.worldRenderBundleWithInteraction = recordBundle(true, false);
+    this.motionWorldRenderBundle = recordBundle(false, true);
+    this.motionWorldRenderBundleWithInteraction = recordBundle(true, true);
     this.rebuildFrameRenderBundles();
   }
 
@@ -1363,9 +1409,15 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
 
   private rebuildFrameRenderBundles(): void {
     let count = 0;
-    const worldBundle = this.interactionInstanceCount > 0
+    const settledWorldBundle = this.interactionInstanceCount > 0
       ? this.worldRenderBundleWithInteraction ?? this.worldRenderBundle
       : this.worldRenderBundle;
+    const motionWorldBundle = this.interactionInstanceCount > 0
+      ? this.motionWorldRenderBundleWithInteraction ?? this.motionWorldRenderBundle
+      : this.motionWorldRenderBundle;
+    const worldBundle = this.cameraMotion
+      ? motionWorldBundle ?? settledWorldBundle
+      : settledWorldBundle;
     if (worldBundle) this.frameRenderBundles[count++] = worldBundle;
     if (this.edgeRenderBundle) this.frameRenderBundles[count++] = this.edgeRenderBundle;
     if (this.avatarRenderBundle) this.frameRenderBundles[count++] = this.avatarRenderBundle;
