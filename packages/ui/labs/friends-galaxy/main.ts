@@ -62,6 +62,13 @@ import {
   serializeGalaxyLabDiagnosticSnapshot,
 } from "./diagnostic-export.js";
 import { GalaxyLabLongTaskMonitor } from "./long-task-monitor.js";
+import {
+  galaxyLabGraphDescription,
+  galaxyLabRecoveryAnnouncement,
+  galaxyLabSelectionAnnouncement,
+  galaxyLabUnavailableAnnouncement,
+  type GalaxyLabSelectionAnnouncementKind,
+} from "./accessibility.js";
 
 const DEFAULT_PERSON_COUNT = 5_000;
 const DEFAULT_ACCOUNT_COUNT = 25_000;
@@ -93,6 +100,8 @@ function requiredElement<T extends HTMLElement>(id: string): T {
 }
 
 const viewport = requiredElement<HTMLElement>("viewport");
+const graphDescription = requiredElement<HTMLElement>("galaxy-description");
+const graphAnnouncer = requiredElement<HTMLElement>("galaxy-announcer");
 const backendSelect = requiredElement<HTMLSelectElement>("backend");
 const themeSelect = requiredElement<HTMLSelectElement>("theme");
 const fieldStyleSelect = requiredElement<HTMLSelectElement>("field-style");
@@ -238,6 +247,41 @@ let avatarAdmissionResult: GalaxyLabAvatarImageAdmissionResult = {
   failedSourceCount: 0,
   cachedSourceCount: 0,
 };
+
+function accessibleNodeLabel(nodeId: string | null): string | null {
+  if (!nodeId) return null;
+  const metadataLabel = nodeLabelById.get(nodeId);
+  if (metadataLabel) return metadataLabel;
+  const nodeIndex = findGalaxyLabSceneNodeIndex(
+    fixture.scene,
+    fixture.interactionIndex,
+    nodeId,
+  );
+  return nodeIndex === null
+    ? "Galaxy item"
+    : galaxyLabNodePresentation(fixture, nodeIndex).label;
+}
+
+function syncGraphDescription(): void {
+  graphDescription.textContent = galaxyLabGraphDescription(
+    accessibleNodeLabel(interaction.selectedNodeId),
+    reducedMotionQuery.matches,
+  );
+}
+
+function announceGraph(message: string): void {
+  graphAnnouncer.textContent = message;
+  graphAnnouncer.dataset.lastAnnouncement = message;
+}
+
+function announceGraphSelection(
+  nodeId: string | null,
+  kind: GalaxyLabSelectionAnnouncementKind,
+): void {
+  announceGraph(
+    galaxyLabSelectionAnnouncement(accessibleNodeLabel(nodeId), kind),
+  );
+}
 
 function requestGalaxyFrame(): void {
   if (frameRequest !== 0) return;
@@ -645,6 +689,7 @@ function focusGalaxyNode(nodeId: string): boolean {
     nodeId,
   );
   if (nodeIndex === null) return false;
+  viewport.focus({ preventScroll: true });
   cancelInertialPan();
   settleScheduler.cancel();
   const { width, height } = viewportSize();
@@ -665,6 +710,7 @@ function focusGalaxyNode(nodeId: string): boolean {
   );
   recordCameraScaleDiagnostics();
   updateInteraction({ selectedNodeId: nodeId, hoveredNodeId: null });
+  announceGraphSelection(nodeId, "focus");
   userMovedCamera = true;
   markGalaxyDirty();
   scheduleSettledViewDetail(true);
@@ -740,6 +786,11 @@ async function activateBackend(
         : `${metrics.label} ready. Fixture ${numberFormat.format(fixture.buildMs)} ms`,
       Boolean(fallback),
     );
+    if (fallback) {
+      announceGraph(galaxyLabRecoveryAnnouncement(
+        backendSelect.selectedOptions[0]?.textContent ?? metrics.label,
+      ));
+    }
     statusElement.dataset.backend = metrics.id;
   } catch (error) {
     backend?.dispose();
@@ -752,6 +803,7 @@ async function activateBackend(
       return;
     }
     setStatus(`Renderer failed: ${reason}`, true);
+    announceGraph(galaxyLabUnavailableAnnouncement());
   }
 }
 
@@ -899,6 +951,7 @@ function scheduleBackendRecovery(backend: GalaxyLabBackend, reason: string): voi
     backendRecoveryPending = true;
     animateControl.checked = false;
     setStatus(`Compatibility renderer failed: ${normalizedReason}`, true);
+    announceGraph(galaxyLabUnavailableAnnouncement());
     simulateLossButton.disabled = true;
     markGalaxyDirty();
     return;
@@ -1030,6 +1083,7 @@ function updateInteraction(next: GalaxyLabInteraction): boolean {
   const selectionChanged = next.selectedNodeId !== interaction.selectedNodeId;
   interaction = next;
   activeBackend?.setInteraction(interaction);
+  if (selectionChanged) syncGraphDescription();
   markGalaxyDirty();
   return selectionChanged;
 }
@@ -1157,12 +1211,15 @@ function releasePointer(event: PointerEvent): void {
   if (pointers.count === 0) {
     viewport.dataset.dragging = "false";
     if (shouldSelect) {
+      const selectedNodeId = activeBackend?.pickNode(releasePointX, releasePointY) ?? null;
       const selectionChanged = updateInteraction({
-        selectedNodeId: activeBackend?.pickNode(releasePointX, releasePointY) ?? null,
+        selectedNodeId,
         hoveredNodeId: null,
       });
-      if (selectionChanged) scheduleSettledViewDetail(true);
-      else if (gestureInterruptedInertia) scheduleSettledViewDetail();
+      if (selectionChanged) {
+        announceGraphSelection(selectedNodeId, "selection");
+        scheduleSettledViewDetail(true);
+      } else if (gestureInterruptedInertia) scheduleSettledViewDetail();
     } else if (gestureMoved || event.type === "pointercancel") {
       const inertiaStarted = event.type === "pointerup" &&
         activeCountBeforeRelease === 1 &&
@@ -1280,15 +1337,18 @@ function endNativeTouches(event: TouchEvent): void {
   }
   viewport.dataset.dragging = "false";
   if (shouldSelect && releaseTouch) {
+    const selectedNodeId = activeBackend?.pickNode(
+      releaseTouch.clientX - viewportClientLeft,
+      releaseTouch.clientY - viewportClientTop,
+    ) ?? null;
     const selectionChanged = updateInteraction({
-      selectedNodeId: activeBackend?.pickNode(
-        releaseTouch.clientX - viewportClientLeft,
-        releaseTouch.clientY - viewportClientTop,
-      ) ?? null,
+      selectedNodeId,
       hoveredNodeId: null,
     });
-    if (selectionChanged) scheduleSettledViewDetail(true);
-    else if (gestureInterruptedInertia) scheduleSettledViewDetail();
+    if (selectionChanged) {
+      announceGraphSelection(selectedNodeId, "selection");
+      scheduleSettledViewDetail(true);
+    } else if (gestureInterruptedInertia) scheduleSettledViewDetail();
   } else if (gestureMoved) {
     const inertiaStarted = event.type === "touchend" &&
       activeCountBeforeRelease === 1 &&
@@ -1449,6 +1509,7 @@ viewport.addEventListener("keydown", (event) => {
       break;
     case "Escape":
       if (updateInteraction({ selectedNodeId: null, hoveredNodeId: null })) {
+        announceGraphSelection(null, "selection");
         scheduleSettledViewDetail(true);
         interactionSettled = true;
       }
@@ -1516,12 +1577,19 @@ copyDiagnosticsButton.addEventListener("click", () => {
   const writeText = navigator.clipboard?.writeText?.bind(navigator.clipboard);
   if (!writeText) {
     setStatus("Clipboard access is unavailable", true);
+    announceGraph("Clipboard access is unavailable.");
     return;
   }
   copyDiagnosticsButton.disabled = true;
   void writeText(serializeGalaxyLabDiagnosticSnapshot(galaxyDiagnosticSnapshot()))
-    .then(() => setStatus("Diagnostics copied"))
-    .catch(() => setStatus("Diagnostics could not be copied", true))
+    .then(() => {
+      setStatus("Diagnostics copied");
+      announceGraph("Diagnostics copied.");
+    })
+    .catch(() => {
+      setStatus("Diagnostics could not be copied", true);
+      announceGraph("Diagnostics could not be copied.");
+    })
     .finally(() => {
       copyDiagnosticsButton.disabled = false;
     });
@@ -1566,6 +1634,7 @@ function syncReducedMotionPreference(): void {
     cancelInertialPan();
     scheduleSettledViewDetail();
   }
+  syncGraphDescription();
   if (animatePreferenceTouched || animationProbeDisabled) return;
   animateControl.checked = !reducedMotionQuery.matches;
   activeBackend?.setAnimationEnabled?.(animateControl.checked);
@@ -1687,6 +1756,7 @@ Object.assign(window, {
 });
 
 applyDocumentPalette(paletteForTheme());
+syncGraphDescription();
 frameInitialGalaxy();
 void activateBackend(backendSelect.value as GalaxyLabBackendId);
 requestGalaxyFrame();

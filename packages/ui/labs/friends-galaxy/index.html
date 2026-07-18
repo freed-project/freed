@@ -13,9 +13,22 @@
         id="viewport"
         class="galaxy-viewport"
         aria-label="Friends Galaxy renderer comparison"
-        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight + - Home Escape"
+        aria-describedby="galaxy-description"
+        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight + - Home 0 Escape"
+        role="region"
         tabindex="0"
       ></section>
+      <p id="galaxy-description" class="sr-only">
+        Interactive Friends Galaxy. Use arrow keys to pan, plus and minus to zoom, Home or zero to
+        fit, and Escape to clear selection.
+      </p>
+      <div
+        id="galaxy-announcer"
+        class="sr-only"
+        aria-atomic="true"
+        aria-live="polite"
+        role="status"
+      ></div>
       <aside id="panel" class="lab-panel" aria-label="Renderer controls">
         <div class="panel-heading">
           <div>
@@ -71,7 +84,7 @@
           Test GPU fallback
         </button>
 
-        <div id="status" class="status-line" role="status">Building deterministic fixture</div>
+        <div id="status" class="status-line">Building deterministic fixture</div>
         <dl id="metrics" class="metrics-grid"></dl>
 
         <div class="legend" aria-label="Star legend">

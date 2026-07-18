@@ -194,6 +194,8 @@ Compact canvases now open at a useful 0.16 exploration scale around the semantic
 
 The locked camera now derives a deep clip reserve from viewport height, perspective field of view, semantic scene depth, and the shared 20,000-unit far clip distance. It separately derives an outer interaction target from the current fitted galaxy bounds. Wheel pinch, Safari gesture events, native touch pinch, and keyboard zoom decelerate asymptotically toward that fitted target without reaching an abrupt stop or the deeper clip reserve. Inward input bypasses the outward resistance and applies its native multiplicative ratio on the first event, so a trackpad gesture never needs to ramp away from maximum zoom out. Fit galaxy and resize recompute the same viewport envelope. Midpoint anchoring remains exact throughout both directions.
 
+The detached graph now uses one focusable described region and one polite atomic live region. Renderer canvases are hidden from assistive technology, and the 30,000 semantic stars remain GPU instances with no per-star DOM. Arrow, zoom, fit, and clear shortcuts are exposed through accessibility metadata. Programmatic focus selects and announces any semantic identity with its synthesized locale-formatted label, including nodes outside compact worker metadata. Pointer or touch selection, Escape clear, reduced-motion state, bounded clipboard feedback, compatibility recovery, and terminal renderer failure each produce concise announcements. Hover, camera movement, animation, and settle do not write the live region. Product cutover still owns Enter details, context-menu focus restoration, mobile long press, identity-mode description, and search-to-focus acceptance.
+
 The same camera contract now derives a prominence-safe maximum scale from viewport height, maximum semantic depth, and a 96-unit near-camera clearance. Compact zoom can no longer pass through the closest friend stars. Programmatic `focusNode` navigation uses the target star's real `z` depth and the bounded usable viewport insets, so Reader, search, Map, and details handoffs can center a star beside the desktop rail or above mobile chrome while the canvas remains full bleed. Focus changes only camera and sparse interaction state. It does not reupload resident stars.
 
 Frame and submission diagnostics now use fixed 240-value typed rings. Active camera motion suppresses diagnostics DOM rebuilding, then refreshes the panel after settle from one bounded snapshot. The detached gesture path no longer shifts diagnostic arrays or performs periodic panel layout while the camera is moving.
@@ -477,6 +479,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.105 | Add a bounded identity-free Friends Galaxy diagnostic export with source, renderer, camera, input, recovery, and presentation health | High | Done |
 | 8.106 | Add passive bounded long-task evidence with explicit unsupported state and no timer or camera-path work | High | Done |
 | 8.107 | Separate fitted outer navigation from the far clip reserve, use asymptotic outward resistance, and restore native inward zoom speed on the first event | High | Done |
+| 8.108 | Add one accessible graph region with hidden canvases, synthesized selection labels, reduced-motion description, and bounded selection plus recovery announcements | High | Done |
 
 ---
 
@@ -572,6 +575,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Gesture diagnostics use fixed typed rings and defer panel DOM updates until camera settle
 - [x] One-click detached diagnostics serialize bounded renderer health without identity, URL, avatar, sample-item, or feed payload data and recover cleanly from clipboard rejection
 - [x] Long-task diagnostics use passive observer callbacks when supported, report nullable unsupported state otherwise, and disconnect with the renderer without installing a polling loop
+- [x] The detached graph exposes one focusable described region and one polite live region, keeps every canvas and semantic star out of the accessibility tree, and announces focus, selection, clear, reduced motion, clipboard feedback, and recovery without writing during hover or camera motion
 - [x] Mac two-finger trackpad deltas pan with native momentum, pinch remains anchored zoom, and pointer or one-finger touch throws use bounded allocation-free inertia that cancels for new input and reduced motion
 - [x] Animation-disabled scenes stop requesting frames when idle and wake only for renderer work, settle state, diagnostics, or backend health recovery
 - [x] Pointer, wheel, and Safari handlers mark motion density without synchronously resizing the GPU canvas
