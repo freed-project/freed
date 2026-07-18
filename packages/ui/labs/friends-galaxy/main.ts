@@ -10,12 +10,14 @@ import {
   type GalaxyLabViewDetail,
 } from "./backend.js";
 import {
-  createGalaxyLabFixture,
   GALAXY_LAB_THEMES,
+  galaxyLabNodePresentation,
   type GalaxyLabPalette,
   type GalaxyLabThemeId,
   type GalaxyLabTransform,
 } from "./scene-fixture.js";
+import { loadGalaxyLabFixture } from "./scene-fixture-loader.js";
+import { findGalaxyLabSceneNodeIndex } from "./scene-interaction-index.js";
 import {
   applyGalaxyLabPinch,
   applyGalaxyLabZoomAt,
@@ -75,11 +77,27 @@ function setStatus(message: string, error = false): void {
   statusElement.dataset.error = String(error);
 }
 
-const fixture = createGalaxyLabFixture({
+const fixtureWorker = new Worker(
+  new URL("./scene-fixture.worker.ts", import.meta.url),
+  { type: "module" },
+);
+const fixtureLoad = await loadGalaxyLabFixture(fixtureWorker, {
   personCount: DEFAULT_PERSON_COUNT,
   accountCount: DEFAULT_ACCOUNT_COUNT,
   backgroundStarCount: DEFAULT_BACKGROUND_COUNT,
+}).catch((error: unknown) => {
+  viewport.dataset.fixtureWorker = "error";
+  simulateLossButton.disabled = true;
+  fitButton.disabled = true;
+  setStatus(
+    error instanceof Error ? error.message : "Friends Galaxy scene compilation failed.",
+    true,
+  );
+  throw error;
 });
+const { fixture, receipt: fixtureWorkerReceipt } = fixtureLoad;
+viewport.dataset.fixtureWorker = "ready";
+viewport.dataset.fixtureMetadataNodeCount = String(fixtureWorkerReceipt.metadataNodeCount);
 
 function activitySourceForNode(nodeIndex: number): GalaxyActivitySourceKey | null {
   const provider = fixture.scene.providers[nodeIndex];
@@ -90,17 +108,13 @@ function activitySourceForNode(nodeIndex: number): GalaxyActivitySourceKey | nul
     : { namespace: "social", key: `${provider}:${accountId}` };
 }
 
-function* activitySceneBindings(): Iterable<GalaxyActivitySceneBinding> {
-  for (let nodeIndex = 0; nodeIndex < fixture.scene.nodeIds.length; nodeIndex += 1) {
-    const source = activitySourceForNode(nodeIndex);
-    if (source) yield { ...source, nodeIndex };
-  }
-}
-
-const activityScenePatchEncoder = new GalaxyActivityScenePatchEncoder(activitySceneBindings());
 const activityProbeNodeIndex = fixture.personCount;
 const activityProbeSource = activitySourceForNode(activityProbeNodeIndex);
 if (!activityProbeSource) throw new Error("The Friends Galaxy fixture requires one activity source.");
+const activityScenePatchEncoder = new GalaxyActivityScenePatchEncoder([{
+  ...activityProbeSource,
+  nodeIndex: activityProbeNodeIndex,
+} satisfies GalaxyActivitySceneBinding]);
 const activityProbeIndex = new GalaxyActivitySummaryIndex([{
   ...activityProbeSource,
   globalId: "lab-activity-probe-1",
@@ -164,7 +178,14 @@ async function decodeLocalAvatarImage(sourceKey: string): Promise<CanvasImageSou
   const prefix = "lab-local-avatar-v1:";
   if (!sourceKey.startsWith(prefix)) throw new Error("Unknown local avatar image source.");
   const nodeId = sourceKey.slice(prefix.length);
-  const label = nodeLabelById.get(nodeId) ?? nodeId;
+  const nodeIndex = findGalaxyLabSceneNodeIndex(
+    fixture.scene,
+    fixture.interactionIndex,
+    nodeId,
+  );
+  const label = nodeLabelById.get(nodeId) ?? (
+    nodeIndex === null ? nodeId : galaxyLabNodePresentation(fixture, nodeIndex).label
+  );
   const initials = label
     .split(/\s+/)
     .filter(Boolean)
@@ -911,6 +932,10 @@ Object.assign(window, {
         cachedSourceCount: avatarAdmissionResult.cachedSourceCount,
       },
       recoveryReason: lastRecoveryReason,
+      startup: {
+        workerOnly: true,
+        ...fixtureWorkerReceipt,
+      },
       frame: frameStats(frameSamples),
       submit: frameStats(submitSamples),
     }),

@@ -1,6 +1,7 @@
 import { IdentityGalaxyNodeFlag } from "../../src/lib/identity-galaxy-scene.js";
 import type { GalaxyLabInteraction } from "./backend.js";
 import type { GalaxyLabFixture } from "./scene-fixture.js";
+import { findGalaxyLabSceneNodeIndex } from "./scene-interaction-index.js";
 
 export type GalaxyLabInteractionRole = "selected" | "hovered" | "linked";
 
@@ -12,40 +13,21 @@ export interface GalaxyLabInteractionState {
 
 export class GalaxyLabSceneIndex {
   private readonly fixture: GalaxyLabFixture;
-  private readonly nodeIndexById: ReadonlyMap<string, number>;
   private readonly neighborOffsets: Uint32Array;
   private readonly neighborIndices: Uint32Array;
 
   constructor(fixture: GalaxyLabFixture) {
     this.fixture = fixture;
-    this.nodeIndexById = new Map(fixture.scene.nodeIds.map((id, index) => [id, index]));
-    const nodeCount = fixture.scene.nodeIds.length;
-    const neighborCounts = new Uint32Array(nodeCount + 1);
-    for (let offset = 0; offset < fixture.scene.edgeIndices.length; offset += 2) {
-      const source = fixture.scene.edgeIndices[offset]!;
-      const target = fixture.scene.edgeIndices[offset + 1]!;
-      neighborCounts[source + 1] += 1;
-      neighborCounts[target + 1] += 1;
-    }
-    for (let index = 1; index < neighborCounts.length; index += 1) {
-      neighborCounts[index] += neighborCounts[index - 1]!;
-    }
-    this.neighborOffsets = neighborCounts;
-    this.neighborIndices = new Uint32Array(fixture.scene.edgeIndices.length);
-    const writeOffsets = neighborCounts.slice(0, nodeCount);
-    for (let offset = 0; offset < fixture.scene.edgeIndices.length; offset += 2) {
-      const source = fixture.scene.edgeIndices[offset]!;
-      const target = fixture.scene.edgeIndices[offset + 1]!;
-      this.neighborIndices[writeOffsets[source]!] = target;
-      writeOffsets[source] += 1;
-      this.neighborIndices[writeOffsets[target]!] = source;
-      writeOffsets[target] += 1;
-    }
+    this.neighborOffsets = fixture.interactionIndex.neighborOffsets;
+    this.neighborIndices = fixture.interactionIndex.neighborIndices;
   }
 
   nodeIndex(nodeId: string | null): number | null {
-    if (!nodeId) return null;
-    return this.nodeIndexById.get(nodeId) ?? null;
+    return findGalaxyLabSceneNodeIndex(
+      this.fixture.scene,
+      this.fixture.interactionIndex,
+      nodeId,
+    );
   }
 
   neighbors(nodeIndex: number): Uint32Array {

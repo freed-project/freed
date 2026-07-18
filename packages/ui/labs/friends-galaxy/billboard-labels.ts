@@ -1,10 +1,15 @@
-import type { GalaxyLabFixture, GalaxyLabPalette } from "./scene-fixture.js";
+import {
+  galaxyLabNodePresentation,
+  type GalaxyLabFixture,
+  type GalaxyLabPalette,
+} from "./scene-fixture.js";
 import type { GalaxyLabViewDetail } from "./backend.js";
 import {
   galaxyLabSelectedPersonNodeId,
   selectGalaxyLabAvatars,
   type GalaxyLabAvatarSeed,
 } from "./avatar-atlas.js";
+import { findGalaxyLabSceneNodeIndex } from "./scene-interaction-index.js";
 
 const LABEL_INSTANCE_FLOATS = 11;
 const LABEL_PIXEL_SCALE = 2;
@@ -83,7 +88,6 @@ export function selectGalaxyLabLabels(
   detail: GalaxyLabViewDetail,
   selectedNodeId: string | null = null,
 ): readonly GalaxyLabLabelSeed[] {
-  const nodeIndexById = new Map(fixture.scene.nodeIds.map((id, index) => [id, index]));
   const cap = detail === "overview"
     ? compact ? 8 : 13
     : detail === "middle"
@@ -91,17 +95,21 @@ export function selectGalaxyLabLabels(
       : compact ? 32 : 64;
   const selectedPersonId = galaxyLabSelectedPersonNodeId(fixture, selectedNodeId);
   const seeds = fixture.atlas.labels.map((label): GalaxyLabLabelSeed => {
-    const nodeIndex = nodeIndexById.get(label.nodeId);
+    const nodeIndex = findGalaxyLabSceneNodeIndex(
+      fixture.scene,
+      fixture.interactionIndex,
+      label.nodeId,
+    );
     const provider = label.kind === "provider_cluster";
     const fontSize = provider ? compact ? 15 : 18 : compact ? 12 : 14;
-    const pointSize = nodeIndex === undefined ? 8 : Math.max(3.5, fixture.scene.pointSizes[nodeIndex]! * 0.34);
+    const pointSize = nodeIndex === null ? 8 : Math.max(3.5, fixture.scene.pointSizes[nodeIndex]! * 0.34);
     return {
       id: label.id,
       nodeId: label.nodeId,
       text: truncateLabel(label.text),
-      anchorX: nodeIndex === undefined ? label.x : fixture.scene.positions[nodeIndex * 3]!,
-      anchorY: nodeIndex === undefined ? -label.y : fixture.scene.positions[nodeIndex * 3 + 1]!,
-      anchorZ: nodeIndex === undefined ? -72 : fixture.scene.positions[nodeIndex * 3 + 2]! + 5,
+      anchorX: nodeIndex === null ? label.x : fixture.scene.positions[nodeIndex * 3]!,
+      anchorY: nodeIndex === null ? -label.y : fixture.scene.positions[nodeIndex * 3 + 1]!,
+      anchorZ: nodeIndex === null ? -72 : fixture.scene.positions[nodeIndex * 3 + 2]! + 5,
       fontSize,
       gapY: detail === "close" && !provider
         ? Math.max(pointSize * 0.5, compact ? 21 : 25) + 2
@@ -112,20 +120,24 @@ export function selectGalaxyLabLabels(
     };
   });
   if (selectedPersonId && !seeds.some((label) => label.nodeId === selectedPersonId)) {
-    const nodeIndex = nodeIndexById.get(selectedPersonId);
-    const node = fixture.atlas.nodes.find((candidate) => candidate.id === selectedPersonId);
-    if (nodeIndex !== undefined && node) {
+    const nodeIndex = findGalaxyLabSceneNodeIndex(
+      fixture.scene,
+      fixture.interactionIndex,
+      selectedPersonId,
+    );
+    if (nodeIndex !== null) {
+      const presentation = galaxyLabNodePresentation(fixture, nodeIndex);
       const pointSize = Math.max(3.5, fixture.scene.pointSizes[nodeIndex]! * 0.34);
       seeds.push({
         id: `label:selected:${selectedPersonId}`,
         nodeId: selectedPersonId,
-        text: truncateLabel(node.label),
+        text: truncateLabel(presentation.label),
         anchorX: fixture.scene.positions[nodeIndex * 3]!,
         anchorY: fixture.scene.positions[nodeIndex * 3 + 1]!,
         anchorZ: fixture.scene.positions[nodeIndex * 3 + 2]! + 5,
         fontSize: compact ? 12 : 14,
         gapY: Math.max(pointSize * 0.5, compact ? 21 : 25) + 2,
-        priority: 1_000_000 + node.priority + fixture.scene.prominence[nodeIndex]! * 1_000,
+        priority: 1_000_000 + presentation.priority + fixture.scene.prominence[nodeIndex]! * 1_000,
         provider: false,
       });
     }

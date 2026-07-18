@@ -1,10 +1,12 @@
 import type { GalaxyLabViewDetail } from "./backend.js";
 import type { GalaxyLabBillboardAtlas } from "./billboard-labels.js";
 import {
+  galaxyLabNodePresentation,
   galaxyLabSemanticColor,
   type GalaxyLabFixture,
   type GalaxyLabPalette,
 } from "./scene-fixture.js";
+import { findGalaxyLabSceneNodeIndex } from "./scene-interaction-index.js";
 
 const AVATAR_INSTANCE_FLOATS = 11;
 const AVATAR_PIXEL_SCALE = 2;
@@ -37,8 +39,12 @@ export function galaxyLabSelectedPersonNodeId(
   selectedNodeId: string | null,
 ): string | null {
   if (!selectedNodeId) return null;
-  const selectedIndex = fixture.scene.nodeIds.indexOf(selectedNodeId);
-  if (selectedIndex < 0) return null;
+  const selectedIndex = findGalaxyLabSceneNodeIndex(
+    fixture.scene,
+    fixture.interactionIndex,
+    selectedNodeId,
+  );
+  if (selectedIndex === null) return null;
   const personId = fixture.scene.personIds[selectedIndex] ?? fixture.scene.linkedPersonIds[selectedIndex];
   return personId ? `person:${personId}` : null;
 }
@@ -51,14 +57,17 @@ export function selectGalaxyLabAvatars(
   detail: GalaxyLabViewDetail,
 ): readonly GalaxyLabAvatarSeed[] {
   if (detail !== "close") return [];
-  const nodeIndexById = new Map(fixture.scene.nodeIds.map((id, index) => [id, index]));
   const selectedPersonId = galaxyLabSelectedPersonNodeId(fixture, selectedNodeId);
   const cap = compact ? 6 : 12;
   const candidates = fixture.atlas.nodes
     .filter((node) => Boolean(node.personId))
     .map((node): GalaxyLabAvatarSeed | null => {
-      const nodeIndex = nodeIndexById.get(node.id);
-      if (nodeIndex === undefined) return null;
+      const nodeIndex = findGalaxyLabSceneNodeIndex(
+        fixture.scene,
+        fixture.interactionIndex,
+        node.id,
+      );
+      if (nodeIndex === null) return null;
       const selected = node.id === selectedPersonId;
       return {
         nodeId: node.id,
@@ -74,6 +83,27 @@ export function selectGalaxyLabAvatars(
     })
     .filter((avatar): avatar is GalaxyLabAvatarSeed => avatar !== null)
     .sort((left, right) => right.priority - left.priority || left.nodeId.localeCompare(right.nodeId));
+  if (selectedPersonId && !candidates.some((avatar) => avatar.nodeId === selectedPersonId)) {
+    const nodeIndex = findGalaxyLabSceneNodeIndex(
+      fixture.scene,
+      fixture.interactionIndex,
+      selectedPersonId,
+    );
+    if (nodeIndex !== null) {
+      const presentation = galaxyLabNodePresentation(fixture, nodeIndex);
+      candidates.push({
+        nodeId: selectedPersonId,
+        initials: presentation.initials,
+        anchorX: fixture.scene.positions[nodeIndex * 3]!,
+        anchorY: fixture.scene.positions[nodeIndex * 3 + 1]!,
+        anchorZ: fixture.scene.positions[nodeIndex * 3 + 2]! + 7,
+        size: compact ? 42 : 48,
+        priority: presentation.priority + fixture.scene.prominence[nodeIndex]! * 1_000,
+        selected: true,
+        color: galaxyLabSemanticColor(fixture, palette, nodeIndex),
+      });
+    }
+  }
   const selected = candidates.find((avatar) => avatar.selected) ?? null;
   const accepted = candidates.filter((avatar) => !avatar.selected).slice(0, cap - (selected ? 1 : 0));
   if (selected) accepted.push(selected);

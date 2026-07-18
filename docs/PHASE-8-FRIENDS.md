@@ -184,6 +184,8 @@ The current atlas starfield remains the shipping compatibility surface while the
 
 The foundation compiles the complete semantic galaxy into compact typed buffers for stable 3D positions, semantic prominence, bounded activity and recency brightness, theme color roles, interaction flags, and indexed edges. The atlas worker caches the rich semantic model by source revision and transfers the full star buffers only when graph source data or layout dimensions change. Pan and zoom retain those star buffers and move only the locked camera. Settled viewport requests return capped label, hit, and edge detail. Hover and selection patch dynamic typed arrays in place without rebuilding positions. An imperative engine owns the locked perspective camera, one instanced procedural star pass, one instanced settled edge pass, one instanced glyph label pass, depth-aware projected picking, theme palette resolution, WebGL fallback selection, resize, scene synchronization, rendering, and disposal. The React shell owns product props, worker lifecycle, interaction orchestration, and product callbacks. The complete approved vision, interaction contract, rendering contract, and staged roadmap live in [FRIENDS-GALAXY-ARCHITECTURE.md](./FRIENDS-GALAXY-ARCHITECTURE.md).
 
+The detached laboratory now starts through a one-shot worker with no main-thread graph compiler fallback. It transfers fifteen numeric scene and interaction-index buffers, retains all 30,000 semantic stars, and caps rich UI metadata at 192 nodes. Product integration must remove the current `runAtlasOnMainThread` timeout path before cutover. Worker pressure must retain the last-good scene or enter a bounded compatibility state instead of rebuilding the complete galaxy in React.
+
 Provider sectors now follow deterministic logarithmic spirals shared by layout and rendering. The default Nebula treatment combines procedural arms and themed dust without per-star scene objects. Linked accounts stay close to their parent identity, billboard labels sit close to their parent star with a stronger outline, and semantic links remain absent until one star in that identity system is hovered or selected.
 
 ### Scale targets
@@ -393,6 +395,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.69 | Prove source-key activity summaries become proportional typed scene patches and sparse raw WebGPU instance writes without positions or item payloads | High | Done |
 | 8.70 | Prove bounded settled avatar image decode, failure caching, stale-completion rejection, compact admission caps, and bitmap disposal in the detached WebGPU laboratory | High | Done |
 | 8.71 | Prove runtime WebGPU device-loss reporting and one-shot recovery into the current WebGL2 engine while preserving theme, camera, scene, and interaction state | High | Done |
+| 8.72 | Prove worker-only galaxy compilation, transferable scene and interaction indexes, bounded rich metadata, and explicit startup failure without a main-thread graph rebuild | High | Done |
 
 ---
 
@@ -473,6 +476,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Activity-only updates encode deterministic size and brightness scales and rewrite only the affected raw WebGPU semantic instances while preserving theme and interaction overlays
 - [x] Settled close-detail avatar decoding is concurrency-limited, revision-cached, compact-capped, stale-safe, and paired with deterministic bitmap cleanup
 - [x] Raw and Three.js WebGPU device loss recovers once into WebGL2 without discarding the active theme, camera transform, semantic scene, or interaction state
+- [x] Detached startup compiles the complete stress scene and interaction index in a worker, transfers fifteen numeric buffers, caps rich metadata, and never rebuilds the graph on the main thread
 - [x] A locked perspective camera produces bounded prominence parallax while preserving intuitive plane navigation
 - [x] Semantic stars and settled relationship spokes render through two instanced WebGL2 passes with no per-node or per-edge scene objects
 - [x] Projected picking accounts for the active camera, node depth, and capped interaction candidates

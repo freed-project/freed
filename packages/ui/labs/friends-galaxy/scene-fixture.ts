@@ -16,6 +16,10 @@ import type {
   IdentityGraphAtlasNode,
   IdentityGraphAtlasRegion,
 } from "../../src/lib/identity-graph-atlas.js";
+import {
+  createGalaxyLabSceneInteractionIndex,
+  type GalaxyLabSceneInteractionIndex,
+} from "./scene-interaction-index.js";
 
 export const GALAXY_LAB_PROVIDERS = ["instagram", "facebook", "linkedin", "x", "rss"] as const;
 
@@ -44,6 +48,7 @@ export interface GalaxyLabFixtureOptions {
 export interface GalaxyLabFixture {
   atlas: IdentityGraphAtlas;
   scene: IdentityGalaxyScene;
+  interactionIndex: GalaxyLabSceneInteractionIndex;
   backgroundPositions: Float32Array;
   backgroundBrightness: Float32Array;
   personCount: number;
@@ -57,6 +62,51 @@ export interface GalaxyLabTransform {
   x: number;
   y: number;
   scale: number;
+}
+
+export interface GalaxyLabNodePresentation {
+  label: string;
+  initials: string;
+  priority: number;
+}
+
+export function galaxyLabNodePresentation(
+  fixture: GalaxyLabFixture,
+  nodeIndex: number,
+): GalaxyLabNodePresentation {
+  const nodeId = fixture.scene.nodeIds[nodeIndex] ?? "";
+  const metadata = fixture.atlas.nodes.find((node) => node.id === nodeId);
+  if (metadata) {
+    return {
+      label: metadata.label,
+      initials: metadata.initials || metadata.label.slice(0, 2).toUpperCase(),
+      priority: metadata.priority,
+    };
+  }
+  const personId = fixture.scene.personIds[nodeIndex];
+  if (personId) {
+    const personIndex = Number(personId.match(/(\d+)$/)?.[1] ?? nodeIndex);
+    const careLevel = 5 - (personIndex % 5);
+    return {
+      label: `Identity ${personIndex.toLocaleString()}`,
+      initials: `I${String(personIndex % 10)}`,
+      priority: 900 + careLevel * 40,
+    };
+  }
+  const accountId = fixture.scene.accountIds[nodeIndex];
+  const provider = fixture.scene.providers[nodeIndex];
+  if (accountId) {
+    const accountIndex = Number(
+      accountId.match(/(\d+)$/)?.[1] ?? Math.max(0, nodeIndex - fixture.personCount),
+    );
+    const feed = provider === "rss";
+    return {
+      label: `${feed ? "Feed" : "Channel"} ${accountIndex.toLocaleString()}`,
+      initials: feed ? "RS" : (provider ?? "CH").slice(0, 2).toUpperCase(),
+      priority: fixture.scene.linkedPersonIds[nodeIndex] ? 430 : 280,
+    };
+  }
+  return { label: nodeId || "Unknown star", initials: "?", priority: 0 };
 }
 
 export const GALAXY_LAB_THEMES: Record<GalaxyLabThemeId, GalaxyLabPalette> = {
@@ -491,11 +541,13 @@ export function createGalaxyLabFixture({
     backgroundBrightness[index] = 0.2 + seededUnit(`background:${index}:brightness`) * 0.8;
   }
 
+  const interactionIndex = createGalaxyLabSceneInteractionIndex(scene);
   const buildMs = nowMs() - startedAt;
   atlas.metrics.buildMs = buildMs;
   return {
     atlas,
     scene,
+    interactionIndex,
     backgroundPositions,
     backgroundBrightness,
     personCount: safePersonCount,

@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { selectGalaxyLabAvatars } from "./avatar-atlas.js";
 import { createGalaxyLabFixture, GALAXY_LAB_THEMES } from "./scene-fixture.js";
+import { compactGalaxyLabFixtureMetadata } from "./scene-fixture-worker-protocol.js";
 
 describe("Friends Galaxy avatar atlas selection", () => {
-  const fixture = createGalaxyLabFixture({
+  const fixture = compactGalaxyLabFixtureMetadata(createGalaxyLabFixture({
     personCount: 5_000,
     accountCount: 25_000,
     backgroundStarCount: 0,
-  });
+  }));
 
   it("loads no avatar workload before settled close detail", () => {
     expect(selectGalaxyLabAvatars(

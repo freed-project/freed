@@ -7,6 +7,7 @@ import {
   selectGalaxyLabLabels,
 } from "./billboard-labels.js";
 import { createGalaxyLabFixture } from "./scene-fixture.js";
+import { compactGalaxyLabFixtureMetadata } from "./scene-fixture-worker-protocol.js";
 import { GalaxyLabSceneIndex } from "./scene-index.js";
 
 describe("Friends Galaxy renderer lab scene index", () => {
@@ -99,11 +100,11 @@ describe("Friends Galaxy renderer lab scene index", () => {
 });
 
 describe("Friends Galaxy billboard label selection", () => {
-  const fixture = createGalaxyLabFixture({
+  const fixture = compactGalaxyLabFixtureMetadata(createGalaxyLabFixture({
     personCount: 5_000,
     accountCount: 25_000,
     backgroundStarCount: 0,
-  });
+  }));
 
   it("keeps a stable viewport-bounded label workload", () => {
     const cases = [
