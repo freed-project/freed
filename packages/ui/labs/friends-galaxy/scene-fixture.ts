@@ -20,6 +20,10 @@ import {
   createGalaxyLabSceneInteractionIndex,
   type GalaxyLabSceneInteractionIndex,
 } from "./scene-interaction-index.js";
+import {
+  createGalaxyLabPackedStarInstances,
+  type GalaxyLabPackedStarInstances,
+} from "./star-instance-data.js";
 
 export const GALAXY_LAB_PROVIDERS = ["instagram", "facebook", "linkedin", "x", "rss"] as const;
 
@@ -49,6 +53,7 @@ export interface GalaxyLabFixture {
   atlas: IdentityGraphAtlas;
   scene: IdentityGalaxyScene;
   interactionIndex: GalaxyLabSceneInteractionIndex;
+  packedStarInstances: GalaxyLabPackedStarInstances;
   backgroundPositions: Float32Array;
   backgroundBrightness: Float32Array;
   personCount: number;
@@ -542,12 +547,18 @@ export function createGalaxyLabFixture({
   }
 
   const interactionIndex = createGalaxyLabSceneInteractionIndex(scene);
+  const packedStarInstances = createGalaxyLabPackedStarInstances({
+    scene,
+    backgroundPositions,
+    backgroundBrightness,
+  });
   const buildMs = nowMs() - startedAt;
   atlas.metrics.buildMs = buildMs;
   return {
     atlas,
     scene,
     interactionIndex,
+    packedStarInstances,
     backgroundPositions,
     backgroundBrightness,
     personCount: safePersonCount,

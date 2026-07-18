@@ -51,8 +51,8 @@ describe("Friends Galaxy fixture worker protocol", () => {
       transferables.length,
     );
 
-    expect(transferables).toHaveLength(15);
-    expect(new Set(transferables).size).toBe(15);
+    expect(transferables).toHaveLength(17);
+    expect(new Set(transferables).size).toBe(17);
     expect(transferables).toContain(fixture.scene.positions.buffer);
     expect(transferables).toContain(fixture.scene.edgeIndices.buffer);
     expect(transferables).toContain(
@@ -64,12 +64,14 @@ describe("Friends Galaxy fixture worker protocol", () => {
     expect(transferables).toContain(
       fixture.interactionIndex.neighborIndices.buffer,
     );
+    expect(transferables).toContain(fixture.packedStarInstances.semantic.buffer);
+    expect(transferables).toContain(fixture.packedStarInstances.background.buffer);
     expect(transferables).toContain(fixture.backgroundPositions.buffer);
     expect(transferables).toContain(fixture.backgroundBrightness.buffer);
     expect(receipt).toEqual({
       semanticNodeCount: 60,
       metadataNodeCount: fixture.atlas.nodes.length,
-      transferableBufferCount: 15,
+      transferableBufferCount: 17,
     });
   });
 });

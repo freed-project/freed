@@ -89,6 +89,8 @@ export function galaxyLabFixtureTransferables(
     fixture.interactionIndex.nodeIndexSlots.buffer,
     fixture.interactionIndex.neighborOffsets.buffer,
     fixture.interactionIndex.neighborIndices.buffer,
+    fixture.packedStarInstances.semantic.buffer,
+    fixture.packedStarInstances.background.buffer,
     fixture.backgroundPositions.buffer,
     fixture.backgroundBrightness.buffer,
   ];

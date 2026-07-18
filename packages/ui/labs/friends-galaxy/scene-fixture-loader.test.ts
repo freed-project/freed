@@ -57,13 +57,13 @@ describe("Friends Galaxy fixture worker loader", () => {
       kind: "ready",
       requestId: worker.request!.requestId,
       fixture,
-      receipt: galaxyLabFixtureWorkerReceipt(fixture, 15),
+      receipt: galaxyLabFixtureWorkerReceipt(fixture, 17),
     });
 
     const result = await pending;
     expect(worker.request).toMatchObject({ kind: "build", requestId: 1 });
     expect(result.fixture.scene.nodeIds).toHaveLength(100);
-    expect(result.receipt.transferableBufferCount).toBe(15);
+    expect(result.receipt.transferableBufferCount).toBe(17);
     expect(worker.terminated).toBe(true);
     expect(worker.onmessage).toBeNull();
     expect(worker.onerror).toBeNull();

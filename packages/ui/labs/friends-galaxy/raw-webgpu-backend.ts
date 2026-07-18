@@ -19,11 +19,20 @@ import {
   type GalaxyLabLabelAtlas,
 } from "./billboard-labels.js";
 import {
-  galaxyLabSemanticColor,
   type GalaxyLabFixture,
   type GalaxyLabPalette,
   type GalaxyLabTransform,
 } from "./scene-fixture.js";
+import {
+  GALAXY_LAB_STAR_INSTANCE_FLOATS,
+  GALAXY_LAB_STAR_PALETTE_ROLE_COUNT,
+  GalaxyLabStarColorRole,
+} from "./star-instance-data.js";
+import {
+  GALAXY_LAB_STAR_PALETTE_FLOAT_COUNT,
+  GALAXY_LAB_STAR_PALETTE_FLOAT_OFFSET,
+  writeGalaxyLabStarPaletteUniforms,
+} from "./star-palette.js";
 import {
   createGalaxyLabProviderFields,
   GALAXY_LAB_PROVIDER_FIELD_INSTANCE_STRIDE,
@@ -35,7 +44,7 @@ import {
   type GalaxyLabInteractionState,
 } from "./scene-index.js";
 
-const INSTANCE_FLOATS = 8;
+const INSTANCE_FLOATS = GALAXY_LAB_STAR_INSTANCE_FLOATS;
 const INSTANCE_STRIDE = INSTANCE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 const EDGE_INSTANCE_FLOATS = 10;
 const EDGE_INSTANCE_STRIDE = EDGE_INSTANCE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
@@ -188,6 +197,7 @@ struct Uniforms {
   viewport: vec2<f32>,
   time: f32,
   pixelRatio: f32,
+  starColors: array<vec4<f32>, ${String(GALAXY_LAB_STAR_PALETTE_ROLE_COUNT)}>,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -196,7 +206,7 @@ struct VertexInput {
   @location(0) corner: vec2<f32>,
   @location(1) center: vec3<f32>,
   @location(2) size: f32,
-  @location(3) color: vec4<f32>,
+  @location(3) appearance: vec4<f32>,
 };
 
 struct VertexOutput {
@@ -214,7 +224,13 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
   clip = vec4<f32>(clip.xy + offset * clip.w, clip.zw);
   output.position = clip;
   output.corner = input.corner;
-  output.color = input.color;
+  let role = u32(clamp(round(input.appearance.y), 0.0, ${String(GalaxyLabStarColorRole.Selection)}.0));
+  let baseColor = uniforms.starColors[role];
+  let selectionColor = uniforms.starColors[${String(GalaxyLabStarColorRole.Selection)}u];
+  output.color = vec4<f32>(
+    mix(baseColor.rgb, selectionColor.rgb, input.appearance.z) * input.appearance.x,
+    mix(baseColor.a, selectionColor.a, input.appearance.z) * input.appearance.w,
+  );
   let phase = input.center.x * 0.017 + input.center.y * 0.011 + input.center.z * 0.007;
   output.twinkle = 0.91 + sin(uniforms.time * 1.15 + phase) * 0.09;
   return output;
@@ -353,24 +369,6 @@ function createBuffer(device: GPUDevice, data: Float32Array, usage: GPUBufferUsa
   return buffer;
 }
 
-function writeInstancePositions(
-  target: Float32Array,
-  positions: Float32Array,
-  sizes: Float32Array,
-  alpha: number,
-): void {
-  const count = positions.length / 3;
-  for (let index = 0; index < count; index += 1) {
-    const targetOffset = index * INSTANCE_FLOATS;
-    const positionOffset = index * 3;
-    target[targetOffset] = positions[positionOffset]!;
-    target[targetOffset + 1] = positions[positionOffset + 1]!;
-    target[targetOffset + 2] = positions[positionOffset + 2]!;
-    target[targetOffset + 3] = sizes[index]!;
-    target[targetOffset + 7] = alpha;
-  }
-}
-
 export class RawWebGpuBackend implements GalaxyLabBackend {
   readonly id = "raw-webgpu" as const;
   private canvas: HTMLCanvasElement | null = null;
@@ -417,7 +415,9 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private readonly interactionScratch = new Float32Array(INSTANCE_FLOATS);
   private interactionColor: readonly [number, number, number] = [1, 1, 1];
   private readonly viewProjection = new Float32Array(16);
-  private readonly uniformData = new Float32Array(20);
+  private readonly uniformData = new Float32Array(
+    GALAXY_LAB_STAR_PALETTE_FLOAT_OFFSET + GALAXY_LAB_STAR_PALETTE_FLOAT_COUNT,
+  );
   private colorAttachment: GPURenderPassColorAttachment | null = null;
   private renderPassDescriptor: GPURenderPassDescriptor | null = null;
   private readonly commandBuffers: GPUCommandBuffer[] = [];
@@ -432,6 +432,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private appliedActivityNodeCount = 0;
   private clearColor: GPUColor = { r: 0, g: 0, b: 0, a: 1 };
   private bufferUploadCount = 0;
+  private residentStarUploadCount = 0;
   private fallbackReason: string | null = null;
   private adapterDescription: string | null = null;
   private readonly backendHealth = new GalaxyLabBackendHealth();
@@ -467,23 +468,13 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       alphaMode: "premultiplied",
     });
 
-    const semanticSizes = new Float32Array(fixture.scene.nodeIds.length);
-    for (let index = 0; index < semanticSizes.length; index += 1) {
-      semanticSizes[index] = Math.max(4.5, fixture.scene.pointSizes[index]! * 0.42);
-    }
-    const backgroundSizes = new Float32Array(fixture.backgroundStarCount);
-    for (let index = 0; index < backgroundSizes.length; index += 1) {
-      backgroundSizes[index] = 0.42 + fixture.backgroundBrightness[index]! * 1.08;
-    }
-    this.semanticData = new Float32Array(fixture.scene.nodeIds.length * INSTANCE_FLOATS);
-    this.backgroundData = new Float32Array(fixture.backgroundStarCount * INSTANCE_FLOATS);
+    this.semanticData = fixture.packedStarInstances.semantic;
+    this.backgroundData = fixture.packedStarInstances.background;
     this.activitySizeScales = new Float32Array(fixture.scene.nodeIds.length);
     this.activitySizeScales.fill(1);
     this.activityBrightnessScales = new Float32Array(fixture.scene.nodeIds.length);
     this.activityBrightnessScales.fill(1);
-    writeInstancePositions(this.semanticData, fixture.scene.positions, semanticSizes, 0.96);
-    writeInstancePositions(this.backgroundData, fixture.backgroundPositions, backgroundSizes, 0.68);
-    this.writePalette(palette);
+    this.writePaletteUniforms(palette);
 
     const quadData = new Float32Array([
       -1, -1, 1, -1, 1, 1,
@@ -500,6 +491,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       this.backgroundData,
       GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     );
+    this.residentStarUploadCount = 2;
     this.providerFields = createGalaxyLabProviderFields(fixture, palette, this.fieldStyle);
     this.providerFieldBuffer = createBuffer(
       device,
@@ -714,26 +706,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     if (!this.device || !this.semanticBuffer || !this.backgroundBuffer) return;
     this.palette = palette;
     this.interactionColor = hexToRgb(palette.selection);
-    this.writePalette(palette);
-    if (this.semanticData) {
-      this.device.queue.writeBuffer(
-        this.semanticBuffer,
-        0,
-        this.semanticData.buffer as ArrayBuffer,
-        this.semanticData.byteOffset,
-        this.semanticData.byteLength,
-      );
-    }
-    if (this.backgroundData) {
-      this.device.queue.writeBuffer(
-        this.backgroundBuffer,
-        0,
-        this.backgroundData.buffer as ArrayBuffer,
-        this.backgroundData.byteOffset,
-        this.backgroundData.byteLength,
-      );
-    }
-    this.bufferUploadCount += 2;
+    this.writePaletteUniforms(palette);
     this.writeProviderFields();
     this.rebuildLabels(this.compactLabels ?? this.width < 720);
     this.rebuildAvatars(this.compactLabels ?? this.width < 720);
@@ -890,6 +863,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       avatarCount: this.avatarAtlas?.itemCount ?? 0,
       contextualEdgeCount: this.contextualEdgeCount,
       bufferUploadCount: this.bufferUploadCount,
+      residentStarUploadCount: this.residentStarUploadCount,
       appliedActivityNodeCount: this.appliedActivityNodeCount,
       trackedGpuDataBytes: this.trackedGpuDataBytes(),
       submissionMode: "Pre-recorded world bundle",
@@ -956,6 +930,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.interactionRoles = new Map();
     this.contextualEdgeCount = 0;
     this.appliedActivityNodeCount = 0;
+    this.residentStarUploadCount = 0;
   }
 
   private rebuildLabels(compact: boolean): void {
@@ -1088,11 +1063,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       const sizeScale = role === "selected" ? 1.58 : role === "hovered" ? 1.36 : 1.16;
       const colorMix = role === "linked" ? 0.62 : 1;
       this.interactionScratch[3] *= sizeScale;
-      for (let channel = 0; channel < 3; channel += 1) {
-        const base = this.interactionScratch[4 + channel]!;
-        const selected = this.interactionColor[channel]!;
-        this.interactionScratch[4 + channel] = base * (1 - colorMix) + selected * colorMix;
-      }
+      this.interactionScratch[6] = colorMix;
       this.interactionScratch[7] = 1;
     }
     this.device.queue.writeBuffer(
@@ -1155,11 +1126,10 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
 
   private writeSemanticBase(index: number): void {
     if (
-      !this.fixture || !this.palette || !this.semanticData ||
+      !this.fixture || !this.semanticData ||
       !this.activitySizeScales || !this.activityBrightnessScales
     ) return;
     const sourceOffset = index * INSTANCE_FLOATS;
-    const [red, green, blue] = hexToRgb(galaxyLabSemanticColor(this.fixture, this.palette, index));
     const brightness = Math.min(
       1.18,
       this.fixture.scene.brightness[index]! * this.activityBrightnessScales[index]!,
@@ -1168,9 +1138,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       4.5,
       this.fixture.scene.pointSizes[index]! * 0.42 * this.activitySizeScales[index]!,
     );
-    this.semanticData[sourceOffset + 4] = red * brightness;
-    this.semanticData[sourceOffset + 5] = green * brightness;
-    this.semanticData[sourceOffset + 6] = blue * brightness;
+    this.semanticData[sourceOffset + 4] = brightness;
   }
 
   private rebuildStaticRenderBundle(): void {
@@ -1200,23 +1168,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.staticRenderBundles[0] = this.staticRenderBundle;
   }
 
-  private writePalette(palette: GalaxyLabPalette): void {
-    if (!this.fixture || !this.semanticData || !this.backgroundData) return;
-    const [clearRed, clearGreen, clearBlue] = hexToRgb(palette.background);
-    this.clearColor = { r: clearRed, g: clearGreen, b: clearBlue, a: 1 };
-    const lightSurface = clearRed * 0.2126 + clearGreen * 0.7152 + clearBlue * 0.0722 > 0.58;
-    for (let index = 0; index < this.fixture.scene.nodeIds.length; index += 1) {
-      this.writeSemanticBase(index);
-      this.semanticData[index * INSTANCE_FLOATS + 7] = lightSurface ? 0.88 : 0.97;
-    }
-    const [red, green, blue] = hexToRgb(palette.mutedText);
-    for (let index = 0; index < this.fixture.backgroundStarCount; index += 1) {
-      const brightness = this.fixture.backgroundBrightness[index]! * 0.72;
-      const offset = index * INSTANCE_FLOATS + 4;
-      this.backgroundData[offset] = red * brightness;
-      this.backgroundData[offset + 1] = green * brightness;
-      this.backgroundData[offset + 2] = blue * brightness;
-      this.backgroundData[offset + 3] = lightSurface ? 0.2 : 0.5;
-    }
+  private writePaletteUniforms(palette: GalaxyLabPalette): void {
+    const { clearColor } = writeGalaxyLabStarPaletteUniforms(this.uniformData, palette);
+    this.clearColor = { r: clearColor[0], g: clearColor[1], b: clearColor[2], a: 1 };
   }
 }

@@ -98,6 +98,7 @@ const fixtureLoad = await loadGalaxyLabFixture(fixtureWorker, {
 const { fixture, receipt: fixtureWorkerReceipt } = fixtureLoad;
 viewport.dataset.fixtureWorker = "ready";
 viewport.dataset.fixtureMetadataNodeCount = String(fixtureWorkerReceipt.metadataNodeCount);
+viewport.dataset.fixtureTransferCount = String(fixtureWorkerReceipt.transferableBufferCount);
 
 function activitySourceForNode(nodeIndex: number): GalaxyActivitySourceKey | null {
   const provider = fixture.scene.providers[nodeIndex];
@@ -513,6 +514,9 @@ function updateMetrics(): void {
   addMetric("Frame interval", formatFrameStats(frameStats(frameSamples)));
   addMetric("CPU submit", formatFrameStats(frameStats(submitSamples)));
   addMetric("Buffer uploads", integerFormat.format(metrics.bufferUploadCount));
+  if (metrics.residentStarUploadCount !== undefined) {
+    addMetric("Resident star uploads", integerFormat.format(metrics.residentStarUploadCount));
+  }
   if (metrics.trackedGpuDataBytes !== undefined) {
     addMetric("Tracked GPU data", formatByteCount(metrics.trackedGpuDataBytes));
   }
