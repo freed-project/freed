@@ -34,12 +34,12 @@ import {
   GalaxyActivitySummaryIndex,
   type GalaxyActivitySourceKey,
 } from "./activity-summary-index.js";
-import { GalaxyLabAvatarAdmissionState } from "./avatar-admission-state.js";
+import { FriendsGalaxyAvatarAdmissionState } from "../../src/lib/friends-galaxy-avatar-admission.js";
 import { selectGalaxyLabAvatars } from "./avatar-atlas.js";
 import {
-  GalaxyLabAvatarImageAdmission,
-  type GalaxyLabAvatarImageAdmissionResult,
-} from "./avatar-image-admission.js";
+  FriendsGalaxyAvatarImageAdmission,
+  type FriendsGalaxyAvatarImageAdmissionResult,
+} from "../../src/lib/friends-galaxy-avatar-image-admission.js";
 import {
   friendsGalaxyCameraScaleLimits,
   friendsGalaxyInitialCameraScale,
@@ -251,7 +251,7 @@ const nodeLabelById = new Map(fixture.atlas.nodes.map((node) => [node.id, node.l
 let interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: null };
 let avatarAdmissionGeneration = 0;
 const emptyAvatarImages = new Map<string, CanvasImageSource>();
-const avatarAdmissionState = new GalaxyLabAvatarAdmissionState<GalaxyLabBackend>();
+const avatarAdmissionState = new FriendsGalaxyAvatarAdmissionState<GalaxyLabBackend>();
 const avatarAdmissionViewProjection = new Float32Array(16);
 const avatarAdmissionProjection = {
   viewProjection: avatarAdmissionViewProjection,
@@ -260,7 +260,7 @@ const avatarAdmissionProjection = {
 };
 let avatarAdmissionApplyCount = 0;
 let avatarAdmissionReuseCount = 0;
-let avatarAdmissionResult: GalaxyLabAvatarImageAdmissionResult = {
+let avatarAdmissionResult: FriendsGalaxyAvatarImageAdmissionResult = {
   images: emptyAvatarImages,
   requestedNodeCount: 0,
   readyNodeCount: 0,
@@ -403,7 +403,7 @@ async function decodeLocalAvatarImage(sourceKey: string): Promise<CanvasImageSou
   }
 }
 
-const avatarImageAdmission = new GalaxyLabAvatarImageAdmission(
+const avatarImageAdmission = new FriendsGalaxyAvatarImageAdmission(
   decodeLocalAvatarImage,
   18,
   3,

@@ -1,9 +1,9 @@
-export interface GalaxyLabAvatarImageRequest {
+export interface FriendsGalaxyAvatarImageRequest {
   nodeId: string;
   sourceKey: string;
 }
 
-export interface GalaxyLabAvatarImageAdmissionResult {
+export interface FriendsGalaxyAvatarImageAdmissionResult {
   images: ReadonlyMap<string, CanvasImageSource>;
   requestedNodeCount: number;
   readyNodeCount: number;
@@ -11,7 +11,7 @@ export interface GalaxyLabAvatarImageAdmissionResult {
   cachedSourceCount: number;
 }
 
-export type GalaxyLabAvatarImageDecoder = (
+export type FriendsGalaxyAvatarImageDecoder = (
   sourceKey: string,
 ) => Promise<CanvasImageSource>;
 
@@ -35,7 +35,7 @@ function closeImage(image: CanvasImageSource): void {
   }
 }
 
-export class GalaxyLabAvatarImageAdmission {
+export class FriendsGalaxyAvatarImageAdmission {
   private readonly cache = new Map<string, CachedImage>();
   private readonly failedSources = new Map<string, number>();
   private readonly inFlight = new Map<string, Promise<CanvasImageSource | null>>();
@@ -45,7 +45,7 @@ export class GalaxyLabAvatarImageAdmission {
   private disposed = false;
 
   constructor(
-    private readonly decoder: GalaxyLabAvatarImageDecoder,
+    private readonly decoder: FriendsGalaxyAvatarImageDecoder,
     private readonly maxEntries: number,
     private readonly maxConcurrent: number,
   ) {
@@ -58,10 +58,10 @@ export class GalaxyLabAvatarImageAdmission {
   }
 
   async admit(
-    requests: readonly GalaxyLabAvatarImageRequest[],
-  ): Promise<GalaxyLabAvatarImageAdmissionResult> {
+    requests: readonly FriendsGalaxyAvatarImageRequest[],
+  ): Promise<FriendsGalaxyAvatarImageAdmissionResult> {
     if (this.disposed) return this.emptyResult();
-    const requestByNodeId = new Map<string, GalaxyLabAvatarImageRequest>();
+    const requestByNodeId = new Map<string, FriendsGalaxyAvatarImageRequest>();
     for (const request of requests) {
       if (!request.nodeId || !request.sourceKey || requestByNodeId.has(request.nodeId)) continue;
       requestByNodeId.set(request.nodeId, request);
@@ -102,7 +102,7 @@ export class GalaxyLabAvatarImageAdmission {
     this.failedSources.clear();
   }
 
-  private emptyResult(): GalaxyLabAvatarImageAdmissionResult {
+  private emptyResult(): FriendsGalaxyAvatarImageAdmissionResult {
     return {
       images: new Map(),
       requestedNodeCount: 0,

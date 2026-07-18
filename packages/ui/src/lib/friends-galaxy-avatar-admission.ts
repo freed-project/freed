@@ -1,13 +1,13 @@
-export type GalaxyLabAvatarAdmissionStart = "applied" | "pending" | "start";
+export type FriendsGalaxyAvatarAdmissionStart = "applied" | "pending" | "start";
 
-export class GalaxyLabAvatarAdmissionState<Owner extends object> {
+export class FriendsGalaxyAvatarAdmissionState<Owner extends object> {
   private appliedOwner: Owner | null = null;
   private appliedKey = "";
   private pendingOwner: Owner | null = null;
   private pendingKey = "";
   private pendingGeneration = 0;
 
-  begin(owner: Owner, key: string, generation: number): GalaxyLabAvatarAdmissionStart {
+  begin(owner: Owner, key: string, generation: number): FriendsGalaxyAvatarAdmissionStart {
     if (owner === this.appliedOwner && key === this.appliedKey) return "applied";
     if (owner === this.pendingOwner && key === this.pendingKey) {
       this.pendingGeneration = generation;

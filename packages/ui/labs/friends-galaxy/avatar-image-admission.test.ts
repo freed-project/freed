@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  GalaxyLabAvatarImageAdmission,
-  type GalaxyLabAvatarImageRequest,
-} from "./avatar-image-admission.js";
+  FriendsGalaxyAvatarImageAdmission,
+  type FriendsGalaxyAvatarImageRequest,
+} from "../../src/lib/friends-galaxy-avatar-image-admission.js";
 
 interface FakeImage {
   sourceKey: string;
   close: () => void;
 }
 
-function request(nodeId: string, sourceKey = nodeId): GalaxyLabAvatarImageRequest {
+function request(nodeId: string, sourceKey = nodeId): FriendsGalaxyAvatarImageRequest {
   return { nodeId, sourceKey };
 }
 
@@ -22,7 +22,7 @@ describe("Friends Galaxy avatar image admission", () => {
     let activeDecodes = 0;
     let maximumActiveDecodes = 0;
     let decoderCalls = 0;
-    const admission = new GalaxyLabAvatarImageAdmission(async (sourceKey) => {
+    const admission = new FriendsGalaxyAvatarImageAdmission(async (sourceKey) => {
       decoderCalls += 1;
       activeDecodes += 1;
       maximumActiveDecodes = Math.max(maximumActiveDecodes, activeDecodes);
@@ -48,7 +48,7 @@ describe("Friends Galaxy avatar image admission", () => {
 
   it("caches failed source revisions instead of retrying on every settle", async () => {
     let decoderCalls = 0;
-    const admission = new GalaxyLabAvatarImageAdmission(async () => {
+    const admission = new FriendsGalaxyAvatarImageAdmission(async () => {
       decoderCalls += 1;
       throw new Error("Invalid local image fixture");
     }, 4, 2);
@@ -65,7 +65,7 @@ describe("Friends Galaxy avatar image admission", () => {
 
   it("evicts least-recently-used bitmaps and closes every owned image", async () => {
     const closedSources: string[] = [];
-    const admission = new GalaxyLabAvatarImageAdmission(async (sourceKey) => asCanvasSource({
+    const admission = new FriendsGalaxyAvatarImageAdmission(async (sourceKey) => asCanvasSource({
       sourceKey,
       close: () => closedSources.push(sourceKey),
     }), 2, 1);

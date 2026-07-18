@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { GalaxyLabAvatarAdmissionState } from "./avatar-admission-state.js";
+import { FriendsGalaxyAvatarAdmissionState } from "../../src/lib/friends-galaxy-avatar-admission.js";
 
 describe("Friends Galaxy retained avatar admission", () => {
   it("reuses an applied admission for the same owner and key", () => {
     const owner = {};
-    const state = new GalaxyLabAvatarAdmissionState<object>();
+    const state = new FriendsGalaxyAvatarAdmissionState<object>();
 
     expect(state.begin(owner, "close:wide:none", 1)).toBe("start");
     expect(state.commit(owner, "close:wide:none", 1)).toBe(true);
@@ -13,7 +13,7 @@ describe("Friends Galaxy retained avatar admission", () => {
 
   it("coalesces matching work and advances its accepted generation", () => {
     const owner = {};
-    const state = new GalaxyLabAvatarAdmissionState<object>();
+    const state = new FriendsGalaxyAvatarAdmissionState<object>();
 
     expect(state.begin(owner, "close:compact:person:1", 3)).toBe("start");
     expect(state.begin(owner, "close:compact:person:1", 4)).toBe("pending");
@@ -23,7 +23,7 @@ describe("Friends Galaxy retained avatar admission", () => {
 
   it("rejects a stale completion after the active generation changes", () => {
     const owner = {};
-    const state = new GalaxyLabAvatarAdmissionState<object>();
+    const state = new FriendsGalaxyAvatarAdmissionState<object>();
 
     state.begin(owner, "close:wide:person:2", 5);
 
@@ -35,7 +35,7 @@ describe("Friends Galaxy retained avatar admission", () => {
   it("does not let superseded work discard a newer request", () => {
     const firstOwner = {};
     const secondOwner = {};
-    const state = new GalaxyLabAvatarAdmissionState<object>();
+    const state = new FriendsGalaxyAvatarAdmissionState<object>();
 
     state.begin(firstOwner, "close:wide:person:3", 7);
     state.begin(secondOwner, "close:wide:person:3", 8);
@@ -47,7 +47,7 @@ describe("Friends Galaxy retained avatar admission", () => {
   it("releases applied and pending owners during backend replacement", () => {
     const appliedOwner = {};
     const pendingOwner = {};
-    const state = new GalaxyLabAvatarAdmissionState<object>();
+    const state = new FriendsGalaxyAvatarAdmissionState<object>();
     state.begin(appliedOwner, "hidden", 9);
     state.commit(appliedOwner, "hidden", 9);
     state.begin(pendingOwner, "close:wide:person:4", 10);
