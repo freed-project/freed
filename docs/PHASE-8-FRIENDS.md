@@ -260,6 +260,8 @@ Provider-field compilation now lives under shared UI source as well. It owns the
 
 Incremental activity indexing and sparse scene patch encoding now live under shared UI source and are consumed directly by the detached laboratory. The index retains only source-level counts, three recent sample IDs, location presence, and three avatar candidates for each social external ID or RSS URL. Normal deltas update affected source keys directly. Removing a retained leading candidate asks the owning document worker to rebuild only that source. The encoder converts those source patches into sorted typed node updates without positions, labels, sample IDs, or feed-item records. Product cutover must connect the existing feed mutation boundary to these modules and delete the current whole-item Friends mount builder. That production path remains intentionally unchanged while global behavioral custody is closed.
 
+Backend selection and recovery now use one renderer-neutral runtime under shared UI source. A replacement renderer initializes on a hidden candidate canvas while the current canvas remains visible, then commits atomically only after scene and interaction state are ready. A newer request invalidates the older generation and removes its candidate surface immediately. Preferred-backend failure falls through to WebGL2, but retains an already healthy WebGL2 instance instead of rebuilding it. Runtime failure recovers once, while compatibility failure latches terminal state and stops the demand loop instead of retrying forever. The bounded diagnostic snapshot now records backend generation, recovery-pending state, terminal state, and the existing bounded reason. Product cutover can supply its real backend factories and callbacks to this same controller without recreating switch state in React.
+
 The moving world bundles draw a deterministic 50,000-star prefix of the 100,000 resident decorative dust stars. Their index-keyed placement keeps that prefix evenly distributed across the galactic field. All 30,000 semantic stars, interaction overlays, labels, avatars, and edges remain complete. Settle returns the full decorative stream without an upload or bundle rebuild.
 
 Provider fields now become degenerate in the vertex shader beyond 1.5 close-detail scale. Their existing camera fade has already reduced them to atmospheric residue by that point. The cutoff prevents six large, effectively invisible field quads from rasterizing or running noise fragments over close-zoom stars, labels, and avatars. Overview and middle detail remain unchanged.
@@ -529,6 +531,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.123 | Strengthen the fitted zoom ceiling and remove compressed-scale startup lag from inward trackpad, wheel, Safari gesture, and keyboard zoom while preserving exact native touch ratios | High | Done |
 | 8.124 | Move provider-field geometry, presentation, style, stride, and close-culling contracts into shared UI source without rescanning people on theme changes | High | Done |
 | 8.125 | Move the source-key incremental activity index and sparse typed scene patch encoder into shared UI source without connecting the frozen product route | High | Done |
+| 8.126 | Move atomic backend activation, stale-candidate disposal, compatibility retention, one-shot recovery, and terminal latching into shared UI source | High | Done |
 
 ---
 
@@ -608,6 +611,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] The next-generation Friends Galaxy keeps all semantic stars GPU-resident and applies detail limits only to labels, avatars, edges, picking, and expensive effects
 - [x] Activity-only updates encode deterministic size and brightness scales and rewrite only the affected raw WebGPU semantic instances while preserving theme and interaction overlays
 - [x] The detached laboratory consumes one shared source-key activity index and sparse typed patch encoder whose retained state follows source count and whose updates exclude positions and feed-item payloads
+- [x] The detached laboratory and future product shell share one generation-safe backend runtime that keeps the old canvas visible until replacement commit, recovers once, and terminates compatibility failure without a render loop
 - [x] Settled close-detail avatar decoding is concurrency-limited, revision-cached, compact-capped, stale-safe, and paired with deterministic bitmap cleanup
 - [x] Close-detail avatar admission is keyed by renderer, viewport class, and selected person so unchanged settles do not rescan candidates or rebuild the atlas
 - [x] Raw and Three.js WebGPU device loss recovers once into WebGL2 without discarding the active theme, camera transform, semantic scene, or interaction state

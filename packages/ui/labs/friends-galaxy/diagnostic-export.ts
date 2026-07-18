@@ -40,6 +40,9 @@ export interface GalaxyLabDiagnosticSnapshotInput {
   frameLoop: string;
   settlePending: boolean;
   renderResizePending: boolean;
+  backendGeneration: number;
+  backendRecoveryPending: boolean;
+  backendTerminalFailure: boolean;
   recoveryReason: string | null;
   longTasks: FriendsGalaxyLongTaskSnapshot;
   frame: GalaxyLabFrameStats;
@@ -125,6 +128,9 @@ export interface GalaxyLabDiagnosticSnapshot {
     frameLoop: string;
     settlePending: boolean;
     renderResizePending: boolean;
+    backendGeneration: number;
+    backendRecoveryPending: boolean;
+    backendTerminalFailure: boolean;
     recoveryReason: string | null;
     frame: GalaxyLabFrameStats;
     submit: GalaxyLabFrameStats;
@@ -218,6 +224,9 @@ export function createGalaxyLabDiagnosticSnapshot(
       frameLoop: input.frameLoop,
       settlePending: input.settlePending,
       renderResizePending: input.renderResizePending,
+      backendGeneration: input.backendGeneration,
+      backendRecoveryPending: input.backendRecoveryPending,
+      backendTerminalFailure: input.backendTerminalFailure,
       recoveryReason: boundedText(input.recoveryReason),
       frame: { ...input.frame },
       submit: { ...input.submit },

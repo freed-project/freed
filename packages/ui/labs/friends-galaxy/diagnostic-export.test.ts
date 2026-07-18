@@ -71,6 +71,9 @@ describe("Friends Galaxy diagnostic export", () => {
       frameLoop: "idle",
       settlePending: false,
       renderResizePending: false,
+      backendGeneration: 4,
+      backendRecoveryPending: false,
+      backendTerminalFailure: false,
       recoveryReason: null,
       longTasks: {
         supported: true,
@@ -113,6 +116,9 @@ describe("Friends Galaxy diagnostic export", () => {
       },
       runtime: {
         presentationVisible: false,
+        backendGeneration: 4,
+        backendRecoveryPending: false,
+        backendTerminalFailure: false,
         longTasks: {
           supported: true,
           count: 2,
@@ -167,6 +173,9 @@ describe("Friends Galaxy diagnostic export", () => {
       frameLoop: "idle",
       settlePending: false,
       renderResizePending: false,
+      backendGeneration: 1,
+      backendRecoveryPending: false,
+      backendTerminalFailure: false,
       recoveryReason: null,
       longTasks: {
         supported: false,

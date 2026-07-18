@@ -9,6 +9,7 @@ import {
   type GalaxyLabInteraction,
   type GalaxyLabViewDetail,
 } from "./backend.js";
+import { FriendsGalaxyBackendRuntime } from "../../src/lib/friends-galaxy-backend-runtime.js";
 import { friendsGalaxyHexToRgb } from "../../src/lib/friends-galaxy-palette.js";
 import {
   GALAXY_LAB_THEMES,
@@ -220,12 +221,8 @@ let cameraScaleLimits = friendsGalaxyCameraScaleLimits(
 );
 let outwardZoomEnvelope: FriendsGalaxyOutwardZoomEnvelope =
   friendsGalaxyOutwardZoomEnvelope(cameraScaleLimits.fitMinimum, cameraScaleLimits);
-let activeBackend: GalaxyLabBackend | null = null;
-let activeCanvas: HTMLCanvasElement | null = null;
 let activeTheme = themeSelect.value as GalaxyLabThemeId;
 let activeFieldStyle = fieldStyleSelect.value as GalaxyLabFieldStyle;
-let switchGeneration = 0;
-let backendRecoveryPending = false;
 let lastRecoveryReason: string | null = null;
 let frameRequest = 0;
 let lastFrameAt = 0;
@@ -475,7 +472,7 @@ function effectiveDevicePixelRatio(): number {
 }
 
 function recordActiveRenderDensity(): void {
-  const renderPixelRatio = activeBackend?.metrics().renderPixelRatio;
+  const renderPixelRatio = backendRuntime.activeBackend?.metrics().renderPixelRatio;
   if (renderPixelRatio === undefined) {
     delete viewport.dataset.renderDensity;
     return;
@@ -486,13 +483,17 @@ function recordActiveRenderDensity(): void {
   else viewport.dataset.lastSettledRenderDensity = value;
 }
 
-function resizeActiveBackend(): void {
+function resizeBackend(backend: GalaxyLabBackend): void {
   const { width, height } = canvasSize();
-  activeBackend?.resize(
+  backend.resize(
     width,
     height,
     galaxyLabRenderPixelRatio(effectiveDevicePixelRatio(), width, cameraInMotion),
   );
+}
+
+function resizeActiveBackend(): void {
+  if (backendRuntime.activeBackend) resizeBackend(backendRuntime.activeBackend);
   recordActiveRenderDensity();
   renderResizePending = false;
   viewport.dataset.renderResizePending = "false";
@@ -502,7 +503,7 @@ function setCameraInMotion(next: boolean): void {
   if (next === cameraInMotion) return;
   cameraInMotion = next;
   viewport.dataset.cameraMotion = String(next);
-  activeBackend?.setCameraMotion?.(next);
+  backendRuntime.activeBackend?.setCameraMotion?.(next);
   renderResizePending = true;
   viewport.dataset.renderResizePending = "true";
   markGalaxyDirty();
@@ -591,7 +592,7 @@ async function admitSettledAvatarImages(
   const currentGeneration = avatarAdmissionGeneration;
   if (
     !avatarAdmissionState.canCommit(backend, admissionKey, currentGeneration) ||
-    backend !== activeBackend ||
+    backend !== backendRuntime.activeBackend ||
     (detail === "close" && viewDetailForScale(transform.scale) !== "close") ||
     !canPresentGalaxy() ||
     cameraInMotion ||
@@ -619,7 +620,7 @@ function applyBackendSettledView(
 function applySettledViewDetail(generation: number): void {
   if (!canPresentGalaxy()) return;
   setCameraInMotion(false);
-  const backend = activeBackend;
+  const backend = backendRuntime.activeBackend;
   if (!backend) return;
   const detail = viewDetailForScale(transform.scale);
   applyBackendSettledView(backend, detail);
@@ -759,75 +760,110 @@ async function createBackend(id: GalaxyLabBackendId): Promise<GalaxyLabBackend> 
   return new RawWebGpuBackend();
 }
 
-async function activateBackend(
-  id: GalaxyLabBackendId,
-  inheritedFallbackReason: string | null = null,
-): Promise<void> {
-  if (cancelInertialPan()) setCameraInMotion(false);
-  const generation = ++switchGeneration;
-  avatarAdmissionGeneration += 1;
-  avatarAdmissionState.reset();
-  simulateLossButton.disabled = true;
-  setStatus(`Loading ${backendSelect.selectedOptions[0]?.textContent ?? id}`);
-  activeBackend?.dispose();
-  activeBackend = null;
-  activeCanvas?.remove();
-  const canvas = document.createElement("canvas");
-  canvas.setAttribute("aria-hidden", "true");
-  canvasHost.prepend(canvas);
-  activeCanvas = canvas;
-  let backend: GalaxyLabBackend | null = null;
-  try {
-    backend = await createBackend(id);
+function backendLabel(id: GalaxyLabBackendId): string {
+  return Array.from(backendSelect.options).find((option) => option.value === id)?.textContent ?? id;
+}
+
+function configureBackendState(backend: GalaxyLabBackend): void {
+  backend.setAnimationEnabled?.(animateControl.checked);
+  backend.setCameraMotion?.(cameraInMotion);
+  backend.setFieldStyle?.(activeFieldStyle);
+  resizeBackend(backend);
+  const detail = viewDetailForScale(transform.scale);
+  backend.setInteraction(interaction);
+  applyBackendSettledView(backend, detail);
+  backend.applyActivityPatches?.(activityProbeScenePatch);
+}
+
+const backendRuntime = new FriendsGalaxyBackendRuntime<
+  GalaxyLabBackendId,
+  GalaxyLabBackend,
+  HTMLCanvasElement
+>({
+  compatibilityId: "current-webgl2",
+  createSurface: () => {
+    const canvas = document.createElement("canvas");
+    canvas.setAttribute("aria-hidden", "true");
+    canvas.style.visibility = "hidden";
+    canvas.style.pointerEvents = "none";
+    return canvas;
+  },
+  mountSurface: (canvas) => {
+    canvasHost.prepend(canvas);
+  },
+  showSurface: (canvas) => {
+    canvas.style.removeProperty("visibility");
+    canvas.style.removeProperty("pointer-events");
+  },
+  removeSurface: (canvas) => {
+    canvas.remove();
+  },
+  createBackend,
+  initializeBackend: async (backend, canvas) => {
     await backend.initialize(canvas, fixture, paletteForTheme());
-    if (generation !== switchGeneration) {
-      backend.dispose();
-      canvas.remove();
-      return;
-    }
-    activeBackend = backend;
-    backend.setAnimationEnabled?.(animateControl.checked);
-    backend.setCameraMotion?.(cameraInMotion);
-    backend.setFieldStyle?.(activeFieldStyle);
-    fieldStyleSelect.disabled = typeof backend.setFieldStyle !== "function";
-    simulateLossButton.disabled = typeof backend.simulateDeviceLoss !== "function";
-    resizeActiveBackend();
+    configureBackendState(backend);
+  },
+  fallbackReason: (backend) => backend.metrics().fallbackReason,
+  backendLabel: (backend) => backend.metrics().label,
+  onLoading: ({ id, recovery, reason }) => {
+    if (cancelInertialPan()) setCameraInMotion(false);
+    avatarAdmissionGeneration += 1;
+    avatarAdmissionState.reset();
+    simulateLossButton.disabled = true;
+    setStatus(
+      recovery && reason
+        ? `Recovering with ${backendLabel(id)}. ${reason}`
+        : `Loading ${backendLabel(id)}`,
+      recovery,
+    );
+  },
+  onRecovering: ({ compatibilityId, reason }) => {
+    lastRecoveryReason = reason;
+    backendSelect.value = compatibilityId;
+    setStatus(`Recovering with ${backendLabel(compatibilityId)}. ${reason}`, true);
+  },
+  onActivated: (activation) => {
+    if (activation.retained) configureBackendState(activation.backend);
+    fieldStyleSelect.disabled = typeof activation.backend.setFieldStyle !== "function";
+    simulateLossButton.disabled = typeof activation.backend.simulateDeviceLoss !== "function";
+    recordActiveRenderDensity();
+    renderResizePending = false;
+    viewport.dataset.renderResizePending = "false";
     const detail = viewDetailForScale(transform.scale);
-    backend.setInteraction(interaction);
-    applyBackendSettledView(backend, detail);
-    backend.applyActivityPatches?.(activityProbeScenePatch);
     const avatarGeneration = ++avatarAdmissionGeneration;
-    void admitSettledAvatarImages(backend, detail, avatarGeneration);
+    void admitSettledAvatarImages(activation.backend, detail, avatarGeneration);
     resetSamples();
     markGalaxyDirty();
-    const metrics = backend.metrics();
-    const fallback = inheritedFallbackReason ?? metrics.fallbackReason;
-    lastRecoveryReason = fallback;
+    const metrics = activation.backend.metrics();
+    lastRecoveryReason = activation.fallbackReason;
     setStatus(
-      fallback
-        ? `${metrics.label} ready. Fallback reason: ${fallback}`
+      activation.fallbackReason
+        ? `${metrics.label} ready. Fallback reason: ${activation.fallbackReason}`
         : `${metrics.label} ready. Fixture ${numberFormat.format(fixture.buildMs)} ms`,
-      Boolean(fallback),
+      Boolean(activation.fallbackReason),
     );
-    if (fallback) {
-      announceGraph(galaxyLabRecoveryAnnouncement(
-        backendSelect.selectedOptions[0]?.textContent ?? metrics.label,
-      ));
+    if (activation.fallbackReason) {
+      announceGraph(galaxyLabRecoveryAnnouncement(backendLabel(activation.id)));
     }
     statusElement.dataset.backend = metrics.id;
-  } catch (error) {
-    backend?.dispose();
-    canvas.remove();
-    if (generation !== switchGeneration) return;
-    const reason = error instanceof Error ? error.message : String(error);
-    if (id !== "current-webgl2") {
-      backendSelect.value = "current-webgl2";
-      await activateBackend("current-webgl2", reason);
-      return;
-    }
-    setStatus(`Renderer failed: ${reason}`, true);
+  },
+  onFailure: ({ id, reason, phase }) => {
+    lastRecoveryReason = reason;
+    animateControl.checked = false;
+    setStatus(
+      phase === "runtime" && id === "current-webgl2"
+        ? `Compatibility renderer failed: ${reason}`
+        : `Renderer failed: ${reason}`,
+      true,
+    );
     announceGraph(galaxyLabUnavailableAnnouncement());
-  }
+    simulateLossButton.disabled = true;
+    markGalaxyDirty();
+  },
+});
+
+async function activateBackend(id: GalaxyLabBackendId): Promise<void> {
+  await backendRuntime.activate(id);
 }
 
 function addMetric(label: string, value: string): void {
@@ -855,11 +891,11 @@ function updateMetrics(): void {
   viewport.dataset.cameraY = String(transform.y);
   recordCameraScaleDiagnostics();
   metricsElement.replaceChildren();
-  if (!activeBackend) {
+  if (!backendRuntime.activeBackend) {
     addMetric("Renderer", "Loading");
     return;
   }
-  const metrics = activeBackend.metrics();
+  const metrics = backendRuntime.activeBackend.metrics();
   addMetric("Renderer", metrics.label);
   addMetric("API", metrics.api);
   addMetric("Semantic stars", integerFormat.format(metrics.semanticStarCount));
@@ -877,7 +913,7 @@ function updateMetrics(): void {
   }
   addMetric(
     "Cosmic field",
-    typeof activeBackend.setFieldStyle === "function"
+    typeof backendRuntime.activeBackend.setFieldStyle === "function"
       ? fieldStyleSelect.selectedOptions[0]?.textContent ?? activeFieldStyle
       : "Backend default",
   );
@@ -894,7 +930,7 @@ function updateMetrics(): void {
   if (metrics.avatarAtlasBuildCount !== undefined) {
     addMetric("Avatar atlas builds", integerFormat.format(metrics.avatarAtlasBuildCount));
   }
-  if (activeBackend.setAvatarImages) {
+  if (backendRuntime.activeBackend.setAvatarImages) {
     addMetric(
       "Decoded avatars",
       `${integerFormat.format(avatarAdmissionResult.readyNodeCount)} / ${integerFormat.format(avatarAdmissionResult.requestedNodeCount)}`,
@@ -941,6 +977,13 @@ function updateMetrics(): void {
   if (metrics.appliedActivityNodeCount !== undefined) {
     addMetric("GPU activity nodes", integerFormat.format(metrics.appliedActivityNodeCount));
   }
+  addMetric("Backend generation", integerFormat.format(backendRuntime.generation));
+  addMetric(
+    "Renderer recovery",
+    backendRuntime.terminalFailure
+      ? "Terminal"
+      : backendRuntime.recoveryPending ? "Recovering" : "Ready",
+  );
   if (lastRecoveryReason) addMetric("Recovery reason", lastRecoveryReason);
   addMetric("Camera scale", scaleFormat.format(transform.scale));
   addMetric(
@@ -967,31 +1010,8 @@ function updateMetrics(): void {
   if (metrics.adapterDescription) addMetric("Adapter", metrics.adapterDescription);
 }
 
-function scheduleBackendRecovery(backend: GalaxyLabBackend, reason: string): void {
-  if (backend !== activeBackend || backendRecoveryPending) return;
-  const normalizedReason = reason.trim() || `${backend.metrics().label} stopped responding.`;
-  if (backend.id === "current-webgl2") {
-    backendRecoveryPending = true;
-    animateControl.checked = false;
-    setStatus(`Compatibility renderer failed: ${normalizedReason}`, true);
-    announceGraph(galaxyLabUnavailableAnnouncement());
-    simulateLossButton.disabled = true;
-    markGalaxyDirty();
-    return;
-  }
-  backendRecoveryPending = true;
-  lastRecoveryReason = normalizedReason;
-  backendSelect.value = "current-webgl2";
-  setStatus(`Recovering with WebGL2. ${normalizedReason}`, true);
-  void activateBackend("current-webgl2", normalizedReason).finally(() => {
-    backendRecoveryPending = false;
-  });
-}
-
 function pollBackendHealth(): void {
-  const healthBackend = activeBackend;
-  const fatalError = healthBackend?.takeFatalError?.() ?? null;
-  if (healthBackend && fatalError) scheduleBackendRecovery(healthBackend, fatalError);
+  void backendRuntime.pollHealth();
 }
 
 function renderFrame(timeMs: number): void {
@@ -1019,21 +1039,23 @@ function renderFrame(timeMs: number): void {
   if (renderResizePending) resizeActiveBackend();
   pollBackendHealth();
   const shouldRender = Boolean(
-    canPresentGalaxy() && activeBackend && (animateControl.checked || dirty),
+    canPresentGalaxy() && backendRuntime.activeBackend &&
+    !backendRuntime.recoveryPending && !backendRuntime.terminalFailure &&
+    (animateControl.checked || dirty),
   );
-  if (shouldRender && activeBackend) {
+  if (shouldRender && backendRuntime.activeBackend) {
     if (lastFrameAt > 0 && animateControl.checked) {
       frameSamples.push(timeMs - lastFrameAt);
     }
     lastFrameAt = timeMs;
     const submitStartedAt = performance.now();
-    const renderingBackend = activeBackend;
+    const renderingBackend = backendRuntime.activeBackend;
     try {
       renderingBackend.render(transform, timeMs);
       submitSamples.push(performance.now() - submitStartedAt);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      scheduleBackendRecovery(renderingBackend, reason);
+      void backendRuntime.recoverFromFatalError(renderingBackend, reason);
     }
     dirty = false;
   } else {
@@ -1048,10 +1070,12 @@ function renderFrame(timeMs: number): void {
     lastMetricsAt = timeMs;
   }
   frameRequest = 0;
-  const backendReady = activeBackend !== null;
+  const backendReady = backendRuntime.activeBackend !== null;
+  const backendRenderable = backendReady &&
+    !backendRuntime.recoveryPending && !backendRuntime.terminalFailure;
   if (shouldContinueFriendsGalaxyFrame(
-    backendReady && animateControl.checked,
-    backendReady && dirty,
+    backendRenderable && animateControl.checked,
+    backendRenderable && dirty,
     settleScheduler.isPending || inertialPan.isActive,
     canPresentGalaxy(),
   )) {
@@ -1143,7 +1167,7 @@ function requestContextAt(
   canvasX: number,
   canvasY: number,
   source: FriendsGalaxyContextRequestSource,
-  nodeId = activeBackend?.pickNode(canvasX, canvasY) ?? null,
+  nodeId = backendRuntime.activeBackend?.pickNode(canvasX, canvasY) ?? null,
 ): boolean {
   if (!nodeId) return false;
   const target = friendsGalaxyContextTarget(
@@ -1257,7 +1281,7 @@ function updateInteraction(next: GalaxyLabInteraction): boolean {
   ) return false;
   const selectionChanged = next.selectedNodeId !== interaction.selectedNodeId;
   interaction = next;
-  activeBackend?.setInteraction(interaction);
+  backendRuntime.activeBackend?.setInteraction(interaction);
   if (selectionChanged) syncGraphDescription();
   markGalaxyDirty();
   return selectionChanged;
@@ -1278,7 +1302,7 @@ function scheduleHoverPick(viewportX: number, viewportY: number): void {
     pendingHover = false;
     updateInteraction({
       selectedNodeId: interaction.selectedNodeId,
-      hoveredNodeId: activeBackend?.pickNode(pendingHoverX, pendingHoverY) ?? null,
+      hoveredNodeId: backendRuntime.activeBackend?.pickNode(pendingHoverX, pendingHoverY) ?? null,
     });
   });
 }
@@ -1400,7 +1424,10 @@ function releasePointer(event: PointerEvent): void {
   if (pointers.count === 0) {
     viewport.dataset.dragging = "false";
     if (shouldSelect) {
-      const selectedNodeId = activeBackend?.pickNode(releasePointX, releasePointY) ?? null;
+      const selectedNodeId = backendRuntime.activeBackend?.pickNode(
+        releasePointX,
+        releasePointY,
+      ) ?? null;
       const selectionChanged = updateInteraction({
         selectedNodeId,
         hoveredNodeId: null,
@@ -1546,7 +1573,7 @@ function endNativeTouches(event: TouchEvent): void {
   viewport.dataset.dragging = "false";
   if (shouldSelect && releaseTouch) {
     const point = canvasPoint(releaseTouch.clientX, releaseTouch.clientY);
-    const selectedNodeId = activeBackend?.pickNode(point.x, point.y) ?? null;
+    const selectedNodeId = backendRuntime.activeBackend?.pickNode(point.x, point.y) ?? null;
     const selectionChanged = updateInteraction({
       selectedNodeId,
       hoveredNodeId: null,
@@ -1813,7 +1840,7 @@ function galaxyDiagnosticSnapshot() {
     personCount: fixture.personCount,
     accountCount: fixture.accountCount,
     backgroundStarCount: fixture.backgroundStarCount,
-    backend: activeBackend?.metrics() ?? null,
+    backend: backendRuntime.activeBackend?.metrics() ?? null,
     theme: activeTheme,
     fieldStyle: activeFieldStyle,
     transform,
@@ -1831,6 +1858,9 @@ function galaxyDiagnosticSnapshot() {
     frameLoop: viewport.dataset.frameLoop ?? "unknown",
     settlePending: settleScheduler.isPending,
     renderResizePending,
+    backendGeneration: backendRuntime.generation,
+    backendRecoveryPending: backendRuntime.recoveryPending,
+    backendTerminalFailure: backendRuntime.terminalFailure,
     recoveryReason: lastRecoveryReason,
     longTasks: longTaskMonitor.snapshot(),
     frame: frameStats(frameSamples.snapshot()),
@@ -1867,7 +1897,7 @@ copyDiagnosticsButton.addEventListener("click", () => {
 });
 
 simulateLossButton.addEventListener("click", () => {
-  const backend = activeBackend;
+  const backend = backendRuntime.activeBackend;
   if (!backend?.simulateDeviceLoss) return;
   simulateLossButton.disabled = true;
   setStatus(`Testing recovery from ${backend.metrics().label}`);
@@ -1875,7 +1905,6 @@ simulateLossButton.addEventListener("click", () => {
 });
 
 backendSelect.addEventListener("change", () => {
-  backendRecoveryPending = false;
   void activateBackend(backendSelect.value as GalaxyLabBackendId);
 });
 
@@ -1883,19 +1912,19 @@ themeSelect.addEventListener("change", () => {
   activeTheme = themeSelect.value as GalaxyLabThemeId;
   const palette = paletteForTheme();
   applyDocumentPalette(palette);
-  activeBackend?.setPalette(palette);
+  backendRuntime.activeBackend?.setPalette(palette);
   markGalaxyDirty();
 });
 
 fieldStyleSelect.addEventListener("change", () => {
   activeFieldStyle = fieldStyleSelect.value as GalaxyLabFieldStyle;
-  activeBackend?.setFieldStyle?.(activeFieldStyle);
+  backendRuntime.activeBackend?.setFieldStyle?.(activeFieldStyle);
   markGalaxyDirty();
 });
 
 animateControl.addEventListener("change", () => {
   animatePreferenceTouched = true;
-  activeBackend?.setAnimationEnabled?.(animateControl.checked);
+  backendRuntime.activeBackend?.setAnimationEnabled?.(animateControl.checked);
   resetSamples();
   markGalaxyDirty();
 });
@@ -1908,7 +1937,7 @@ function syncReducedMotionPreference(): void {
   syncGraphDescription();
   if (animatePreferenceTouched || animationProbeDisabled) return;
   animateControl.checked = !reducedMotionQuery.matches;
-  activeBackend?.setAnimationEnabled?.(animateControl.checked);
+  backendRuntime.activeBackend?.setAnimationEnabled?.(animateControl.checked);
   resetSamples();
   markGalaxyDirty();
 }
@@ -1956,7 +1985,7 @@ resizeObserver.observe(viewport);
 const backendHealthPoll = window.setInterval(() => {
   pollBackendHealth();
   if (
-    canPresentGalaxy() && activeBackend &&
+    canPresentGalaxy() && backendRuntime.activeBackend && !backendRuntime.terminalFailure &&
     (animateControl.checked || (metricsDirty && !cameraInMotion))
   ) requestGalaxyFrame();
 }, 250);
@@ -1982,7 +2011,7 @@ window.addEventListener("beforeunload", () => {
   resizeObserver.disconnect();
   avatarImageAdmission.dispose();
   longTaskMonitor.dispose();
-  activeBackend?.dispose();
+  backendRuntime.dispose();
 });
 
 const imperativeHandle: FriendsGalaxyImperativeHandle = {
@@ -1997,7 +2026,7 @@ Object.assign(window, {
     diagnostics: galaxyDiagnosticSnapshot,
     ...imperativeHandle,
     state: () => ({
-      backend: activeBackend?.metrics() ?? null,
+      backend: backendRuntime.activeBackend?.metrics() ?? null,
       transform: { ...transform },
       viewportGeometry: {
         ...viewportGeometry,
@@ -2029,6 +2058,11 @@ Object.assign(window, {
         reuseCount: avatarAdmissionReuseCount,
       },
       recoveryReason: lastRecoveryReason,
+      backendRuntime: {
+        generation: backendRuntime.generation,
+        recoveryPending: backendRuntime.recoveryPending,
+        terminalFailure: backendRuntime.terminalFailure,
+      },
       viewportGeometryReadCount,
       wheelInputMode,
       presentationVisible,
