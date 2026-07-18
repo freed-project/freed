@@ -2,9 +2,9 @@ import type { GalaxyLabViewDetail } from "./backend.js";
 import {
   galaxyLabNodePresentation,
   galaxyLabSemanticColor,
-  type GalaxyLabFixture,
   type GalaxyLabPalette,
 } from "./scene-fixture.js";
+import type { FriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer.js";
 import { findFriendsGalaxySceneNodeIndex } from "../../src/lib/friends-galaxy-scene-interaction-index.js";
 import {
   createFriendsGalaxyAvatarAtlas,
@@ -17,7 +17,7 @@ import {
 } from "../../src/lib/friends-galaxy-projection.js";
 
 export function galaxyLabSelectedPersonNodeId(
-  fixture: GalaxyLabFixture,
+  fixture: FriendsGalaxyRendererScene,
   selectedNodeId: string | null,
 ): string | null {
   if (!selectedNodeId) return null;
@@ -32,7 +32,7 @@ export function galaxyLabSelectedPersonNodeId(
 }
 
 export function selectGalaxyLabAvatars(
-  fixture: GalaxyLabFixture,
+  fixture: FriendsGalaxyRendererScene,
   palette: GalaxyLabPalette,
   selectedNodeId: string | null,
   compact: boolean,
@@ -106,7 +106,7 @@ export function selectGalaxyLabAvatars(
 }
 
 export function createGalaxyLabAvatarAtlas(
-  fixture: GalaxyLabFixture,
+  fixture: FriendsGalaxyRendererScene,
   palette: GalaxyLabPalette,
   selectedNodeId: string | null,
   compact: boolean,

@@ -1,9 +1,9 @@
 import {
   galaxyLabNodePresentation,
-  type GalaxyLabFixture,
   type GalaxyLabPalette,
 } from "./scene-fixture.js";
 import type { GalaxyLabViewDetail } from "./backend.js";
+import type { FriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer.js";
 import {
   galaxyLabSelectedPersonNodeId,
   selectGalaxyLabAvatars,
@@ -26,7 +26,7 @@ function truncateLabel(value: string): string {
 }
 
 export function selectGalaxyLabLabels(
-  fixture: GalaxyLabFixture,
+  fixture: FriendsGalaxyRendererScene,
   compact: boolean,
   detail: GalaxyLabViewDetail,
   selectedNodeId: string | null = null,
@@ -39,7 +39,7 @@ export function selectGalaxyLabLabels(
       : compact ? 32 : 64;
   const selectedPersonId = galaxyLabSelectedPersonNodeId(fixture, selectedNodeId);
   const seedForAtlasLabel = (
-    label: GalaxyLabFixture["atlas"]["labels"][number],
+    label: FriendsGalaxyRendererScene["atlas"]["labels"][number],
   ): FriendsGalaxyLabelSeed => {
     const nodeIndex = findFriendsGalaxySceneNodeIndex(
       fixture.scene,
@@ -193,7 +193,7 @@ export function selectGalaxyLabLabels(
 }
 
 export function createGalaxyLabLabelAtlas(
-  fixture: GalaxyLabFixture,
+  fixture: FriendsGalaxyRendererScene,
   palette: GalaxyLabPalette,
   compact: boolean,
   detail: GalaxyLabViewDetail,

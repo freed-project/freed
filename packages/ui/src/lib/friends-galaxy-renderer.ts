@@ -3,9 +3,26 @@ import type { FriendsGalaxyFieldStyle } from "./friends-galaxy-provider-fields.j
 import type { FriendsGalaxyInteraction } from "./friends-galaxy-scene-index.js";
 import type { FriendsGalaxyStarPalette } from "./friends-galaxy-palette.js";
 import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
+import type { IdentityGalaxyScene } from "./identity-galaxy-scene.js";
+import type { IdentityGraphAtlas } from "./identity-graph-atlas.js";
+import type { FriendsGalaxySceneInteractionIndex } from "./friends-galaxy-scene-interaction-index.js";
+import type { FriendsGalaxyPackedStarInstances } from "./friends-galaxy-star-instances.js";
 
 export type FriendsGalaxyRendererId = "current-webgl2" | "raw-webgpu" | "three-webgpu";
 export type FriendsGalaxyViewDetail = "overview" | "middle" | "close";
+
+export interface FriendsGalaxyRendererScene {
+  atlas: IdentityGraphAtlas;
+  scene: IdentityGalaxyScene;
+  interactionIndex: FriendsGalaxySceneInteractionIndex;
+  packedStarInstances: FriendsGalaxyPackedStarInstances;
+  backgroundPositions: Float32Array;
+  backgroundBrightness: Float32Array;
+  personCount: number;
+  accountCount: number;
+  linkedAccountCount: number;
+  backgroundStarCount: number;
+}
 
 export interface FriendsGalaxyRendererMetrics {
   id: FriendsGalaxyRendererId;

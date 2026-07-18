@@ -28,10 +28,10 @@ import { createGalaxyLabLabelAtlas } from "./billboard-labels.js";
 import type { FriendsGalaxyBillboardAtlas } from "../../src/lib/friends-galaxy-billboard-atlas.js";
 import {
   galaxyLabSemanticColor,
-  type GalaxyLabFixture,
   type GalaxyLabPalette,
 } from "./scene-fixture.js";
 import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
+import type { FriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer.js";
 import {
   FriendsGalaxySceneIndex,
   type FriendsGalaxyInteractionRole,
@@ -204,7 +204,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     height: 1,
   };
   private settledProjectionValid = false;
-  private fixture: GalaxyLabFixture | null = null;
+  private fixture: FriendsGalaxyRendererScene | null = null;
   private sceneIndex: FriendsGalaxySceneIndex | null = null;
   private semanticBatch: GalaxySpriteBatch | null = null;
   private backgroundBatch: GalaxySpriteBatch | null = null;
@@ -244,7 +244,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
 
   async initialize(
     canvas: HTMLCanvasElement,
-    fixture: GalaxyLabFixture,
+    fixture: FriendsGalaxyRendererScene,
     palette: GalaxyLabPalette,
   ): Promise<void> {
     this.disposed = false;

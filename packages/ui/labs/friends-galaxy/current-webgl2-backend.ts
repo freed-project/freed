@@ -7,11 +7,11 @@ import type {
 } from "./backend.js";
 import { friendsGalaxyHexToRgb } from "../../src/lib/friends-galaxy-palette.js";
 import type {
-  GalaxyLabFixture,
   GalaxyLabPalette,
 } from "./scene-fixture.js";
 import { FriendsGalaxySceneIndex } from "../../src/lib/friends-galaxy-scene-index.js";
 import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
+import type { FriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer.js";
 
 function cssRgb(value: string): string {
   return friendsGalaxyHexToRgb(value).map((part) => Math.round(part * 255)).join(" ");
@@ -30,8 +30,8 @@ function applyPalette(element: HTMLElement, palette: GalaxyLabPalette): void {
 export class CurrentWebGl2Backend implements GalaxyLabBackend {
   readonly id = "current-webgl2" as const;
   private engine: IdentityGalaxyEngine | null = null;
-  private fixture: GalaxyLabFixture | null = null;
-  private interactionScene: GalaxyLabFixture["scene"] | null = null;
+  private fixture: FriendsGalaxyRendererScene | null = null;
+  private interactionScene: FriendsGalaxyRendererScene["scene"] | null = null;
   private sceneIndex: FriendsGalaxySceneIndex | null = null;
   private paletteElement: HTMLElement | null = null;
   private decorativeStarCount = 0;
@@ -45,7 +45,7 @@ export class CurrentWebGl2Backend implements GalaxyLabBackend {
 
   async initialize(
     canvas: HTMLCanvasElement,
-    fixture: GalaxyLabFixture,
+    fixture: FriendsGalaxyRendererScene,
     palette: GalaxyLabPalette,
   ): Promise<void> {
     this.fixture = fixture;

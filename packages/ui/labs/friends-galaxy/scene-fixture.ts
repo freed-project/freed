@@ -25,6 +25,7 @@ import {
   type FriendsGalaxyPackedStarInstances,
 } from "../../src/lib/friends-galaxy-star-instances.js";
 import type { FriendsGalaxyStarPalette } from "../../src/lib/friends-galaxy-palette.js";
+import type { FriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer.js";
 
 export const GALAXY_LAB_PROVIDERS = ["instagram", "facebook", "linkedin", "x", "rss"] as const;
 
@@ -45,17 +46,7 @@ export interface GalaxyLabFixtureOptions {
   representedActivityItemCount?: number;
 }
 
-export interface GalaxyLabFixture {
-  atlas: IdentityGraphAtlas;
-  scene: IdentityGalaxyScene;
-  interactionIndex: FriendsGalaxySceneInteractionIndex;
-  packedStarInstances: FriendsGalaxyPackedStarInstances;
-  backgroundPositions: Float32Array;
-  backgroundBrightness: Float32Array;
-  personCount: number;
-  accountCount: number;
-  linkedAccountCount: number;
-  backgroundStarCount: number;
+export interface GalaxyLabFixture extends FriendsGalaxyRendererScene {
   activitySummaryCount: number;
   representedActivityItemCount: number;
   buildMs: number;
@@ -68,7 +59,7 @@ export interface GalaxyLabNodePresentation {
 }
 
 export function galaxyLabNodePresentation(
-  fixture: GalaxyLabFixture,
+  fixture: FriendsGalaxyRendererScene,
   nodeIndex: number,
 ): GalaxyLabNodePresentation {
   const nodeId = fixture.scene.nodeIds[nodeIndex] ?? "";
@@ -182,7 +173,7 @@ export const GALAXY_LAB_THEMES: Record<GalaxyLabThemeId, GalaxyLabPalette> = {
 };
 
 export function galaxyLabSemanticColor(
-  fixture: GalaxyLabFixture,
+  fixture: FriendsGalaxyRendererScene,
   palette: GalaxyLabPalette,
   index: number,
 ): string {

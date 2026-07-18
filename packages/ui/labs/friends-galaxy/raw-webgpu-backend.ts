@@ -20,10 +20,10 @@ import {
   type FriendsGalaxyLabelAtlas,
 } from "../../src/lib/friends-galaxy-billboard-atlas.js";
 import {
-  type GalaxyLabFixture,
   type GalaxyLabPalette,
 } from "./scene-fixture.js";
 import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
+import type { FriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer.js";
 import {
   FRIENDS_GALAXY_STAR_INSTANCE_FLOATS,
   FRIENDS_GALAXY_STAR_PALETTE_ROLE_COUNT,
@@ -493,7 +493,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private avatarTexture: GPUTexture | null = null;
   private labelSampler: GPUSampler | null = null;
   private uniformBuffer: GPUBuffer | null = null;
-  private fixture: GalaxyLabFixture | null = null;
+  private fixture: FriendsGalaxyRendererScene | null = null;
   private sceneIndex: FriendsGalaxySceneIndex | null = null;
   private semanticData: Float32Array | null = null;
   private interactionData = new Float32Array(0);
@@ -547,7 +547,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
 
   async initialize(
     canvas: HTMLCanvasElement,
-    fixture: GalaxyLabFixture,
+    fixture: FriendsGalaxyRendererScene,
     palette: GalaxyLabPalette,
   ): Promise<void> {
     this.disposed = false;

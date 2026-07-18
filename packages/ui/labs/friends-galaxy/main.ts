@@ -20,6 +20,7 @@ import {
 import { loadGalaxyLabFixture } from "./scene-fixture-loader.js";
 import { findFriendsGalaxySceneNodeIndex } from "../../src/lib/friends-galaxy-scene-interaction-index.js";
 import {
+  FRIENDS_GALAXY_TRACKPAD_INWARD_OVERVIEW_GAIN,
   applyFriendsGalaxyPinch,
   applyFriendsGalaxyResistedZoomAt,
   applyFriendsGalaxyZoomAt,
@@ -1085,7 +1086,12 @@ function renderFrame(timeMs: number): void {
   }
 }
 
-function zoomAt(viewportX: number, viewportY: number, nextScale: number): void {
+function zoomAt(
+  viewportX: number,
+  viewportY: number,
+  nextScale: number,
+  inwardOverviewGain = 1,
+): void {
   cancelInertialPan();
   setCameraInMotion(true);
   applyFriendsGalaxyResistedZoomAt(
@@ -1096,7 +1102,7 @@ function zoomAt(viewportX: number, viewportY: number, nextScale: number): void {
     outwardZoomEnvelope.target,
     outwardZoomEnvelope.resistance,
     cameraScaleLimits.maximum,
-    outwardZoomEnvelope.resistance,
+    inwardOverviewGain,
   );
   userMovedCamera = true;
   markGalaxyDirty();
@@ -1630,6 +1636,7 @@ viewport.addEventListener("wheel", (event) => {
       point.x,
       point.y,
       transform.scale * Math.exp(-event.deltaY * 0.012),
+      FRIENDS_GALAXY_TRACKPAD_INWARD_OVERVIEW_GAIN,
     );
     return;
   }
@@ -1758,7 +1765,7 @@ viewport.addEventListener("gesturechange", ((event: SafariGestureEvent) => {
     outwardZoomEnvelope.target,
     outwardZoomEnvelope.resistance,
     cameraScaleLimits.maximum,
-    outwardZoomEnvelope.resistance,
+    FRIENDS_GALAXY_TRACKPAD_INWARD_OVERVIEW_GAIN,
   );
   transform.scale = nextScale;
   transform.x = viewportX - worldX * nextScale;

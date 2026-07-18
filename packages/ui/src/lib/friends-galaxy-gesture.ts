@@ -1,6 +1,8 @@
 import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
 
-const OUTWARD_RESISTANCE_CURVE_POWER = 0.4;
+const OUTWARD_RESISTANCE_CURVE_POWER = 0.25;
+
+export const FRIENDS_GALAXY_TRACKPAD_INWARD_OVERVIEW_GAIN = 3;
 
 function clampScale(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
@@ -54,21 +56,31 @@ function friendsGalaxyScaleFromZoomCoordinate(
 function friendsGalaxyInwardScaleAtRatio(
   initialScale: number,
   scaleRatio: number,
-  referenceScale: number,
+  resistanceScale: number,
   maximumScale: number,
+  overviewGain: number,
 ): number {
   const nativeInput = Math.log(scaleRatio);
-  const inputToReference = (referenceScale - initialScale) / referenceScale;
-  if (nativeInput <= inputToReference) {
+  const boundedGain = Math.max(1, overviewGain);
+  if (boundedGain === 1 || initialScale >= resistanceScale) {
     return Math.min(
       maximumScale,
-      initialScale + referenceScale * nativeInput,
+      initialScale * Math.exp(nativeInput),
+    );
+  }
+
+  const inputToResistance = Math.log(resistanceScale / initialScale) /
+    boundedGain;
+  if (nativeInput <= inputToResistance) {
+    return Math.min(
+      maximumScale,
+      initialScale * Math.exp(nativeInput * boundedGain),
     );
   }
 
   return Math.min(
     maximumScale,
-    referenceScale * Math.exp(nativeInput - inputToReference),
+    resistanceScale * Math.exp(nativeInput - inputToResistance),
   );
 }
 
@@ -78,7 +90,7 @@ export function friendsGalaxyResistedScaleAtRatio(
   minimumScale: number,
   resistanceScale: number,
   maximumScale: number,
-  inwardReferenceScale = initialScale,
+  inwardOverviewGain = 1,
 ): number {
   const boundedResistance = Math.max(
     minimumScale + Number.EPSILON,
@@ -93,16 +105,12 @@ export function friendsGalaxyResistedScaleAtRatio(
         ? scaleRatio
         : 1;
   if (boundedRatio >= 1) {
-    const boundedReference = clampScale(
-      inwardReferenceScale,
-      boundedInitial,
-      boundedResistance,
-    );
     return friendsGalaxyInwardScaleAtRatio(
       boundedInitial,
       boundedRatio,
-      boundedReference,
+      boundedResistance,
       maximumScale,
+      inwardOverviewGain,
     );
   }
   const coordinate = friendsGalaxyZoomCoordinate(
@@ -164,7 +172,7 @@ export function applyFriendsGalaxyResistedZoomAt(
   minimumScale: number,
   resistanceScale: number,
   maximumScale: number,
-  inwardReferenceScale?: number,
+  inwardOverviewGain?: number,
 ): void {
   const nextScale = friendsGalaxyResistedScaleAtRatio(
     transform.scale,
@@ -172,7 +180,7 @@ export function applyFriendsGalaxyResistedZoomAt(
     minimumScale,
     resistanceScale,
     maximumScale,
-    inwardReferenceScale,
+    inwardOverviewGain,
   );
   applyFriendsGalaxyZoomAt(
     transform,
