@@ -175,32 +175,33 @@ As of July 12, 2026, other tasks are running on the development machine. The own
 
 ## Finalization Audit
 
-The July 17, 2026 audit used current `origin/dev` at `b41470d8ec0b5e529d5be7629dbb4feaf2b84884`. The isolated baseline passed all 23 focused galaxy camera, scene, worker protocol, atlas, and activity-summary tests. The first native galaxy pass is functional, but the following gaps remain before production acceptance:
+The detached laboratory is now clean at `14e2752f1f628f0d46e58de46cac9d25793defb8`. Its 123 deterministic tests, production build, and functional browser probes prove the renderer foundation described below. This evidence does not prove product integration or device acceptance. The feature branch remains detached while the global behavioral slot is closed, so the audit deliberately distinguishes laboratory proof from shipping proof.
 
-| Area | Current implementation | Production requirement |
+| Area | Detached evidence at `14e2752f1` | Remaining production requirement |
 |---|---|---|
-| GPU backend | One imperative Three.js WebGL2 backend plus canvas fallback | Complete the raw WebGPU versus Three WebGPU laboratory, select the shared WebGPU path, and retain WebGL2 compatibility |
-| Semantic stars | The complete typed semantic scene remains GPU-resident | Prove at least 30,000 resident semantic stars without interaction-time eviction |
-| Background stars | The WebGL2 pass creates 3,000 to 12,000 decorative points | Sustain at least 100,000 decorative stars in one GPU pass |
-| Interaction updates | Hover and selection walk every resident node, rebuild color and highlight arrays, and replace GPU attributes | Patch only changed dynamic indices and keep static buffers permanently bound |
-| Provider fields | Region meshes are recreated on scene synchronization | Cache provider geometry and patch only palette or variation changes |
-| Labels | One instanced glyph-atlas pass keeps accepted labels resident during movement | Preserve the batched pass across backend changes and prove stable close anchoring at every supported density |
-| Avatars | Atlas metadata carries avatar candidates, but renderer diagnostics report zero displayed avatars | Add a settled close-zoom texture atlas for selected and high-priority identities |
-| Graph index | `FriendsView` still materializes a feed-item record and derives several whole-library indexes on mount | Maintain activity and identity graph summaries incrementally so entry cost follows summary size rather than item count |
-| Source revisions | Canvas dimensions participate in the semantic source revision | Separate layout-source identity from viewport dimensions so resize does not rebuild the complete semantic model |
-| Stress proof | The maintained desktop performance fixture uses 1,600 people, 1,920 accounts, and 6,400 items | Add 5,000 people, 25,000 accounts, and a 250,000-item summary-equivalent fixture |
-| Device proof | Browser regressions cover camera and touch behavior | Record repeated consistency ranges on installed Freed Desktop and physical iPhone Safari before backend cutover |
+| GPU backend | Raw WebGPU is selected, Three.js WebGPU remains a reference, and WebGL2 is the deterministic compatibility backend. One-shot device-loss recovery preserves theme, camera, scene, and interaction. | Move the selected backend into one shared product module, make the laboratory import it, and verify recovery in the product shell. |
+| Semantic stars | All 30,000 typed semantic stars remain GPU-resident during pan, pinch, selection, theme changes, motion-density changes, and backend recovery. | Feed the resident scene from the real identity worker and preserve every product selection and details callback. |
+| Background stars | Raw WebGPU retains 100,000 decorative stars and selects a deterministic 50,000-star motion prefix without uploads or scene rebuilds. | Preserve the same resident and motion policy after product cutover. |
+| Interaction updates | Hover and selection use a worker-built sparse adjacency index, one fixed-capacity overlay upload, one bounded contextual-edge upload, and retained render bundles. | Route real product selection, context-menu linking, context-menu pinning, and details state through the sparse path without React movement state. |
+| Provider fields | Six retained procedural fields use deterministic provider spirals, active-theme uniforms, Nebula by default, a bounded motion shader, and close-detail culling. | Remove development controls from production while preserving provider geography and every active theme. |
+| Labels | One instanced billboard glyph batch remains resident during movement, then performs bounded perspective-projected admission after settle. | Verify full-canvas interaction insets, reader and search focus, detail-rail changes, theme switches, and fallback parity in the product route. |
+| Avatars | Close detail admits at most 12 desktop or 6 compact avatars, decodes with bounded concurrency, reuses keyed results, rejects stale completions, caches failures, and disposes bitmaps. | Connect real product avatar candidates and prove selected identity priority in Freed Desktop and the PWA. |
+| Camera and input | The locked camera has native iPhone touch, Mac trackpad pan and pinch, pointer and touch inertia, midpoint anchoring, reduced-motion cancellation, keyboard navigation, and a viewport-derived far-clip-safe zoom curve. | Reuse these exact primitives in the product engine and complete the maintained accessibility, menu-focus, and search-to-focus workflows. |
+| Graph index | The laboratory proves source-key activity summaries, proportional scene patches, and sparse raw WebGPU instance writes without item payloads or position changes. | Move the incremental index into the shared document-worker path and remove whole-item Friends mount derivation. |
+| Source revisions | Worker-only startup transfers 21 numeric buffers, caps rich metadata at 192 nodes, and never includes viewport movement in semantic compilation. | Split product source, viewport detail, activity patch, and interaction patch messages, then delete `runAtlasOnMainThread`. |
+| Stress proof | The detached fixture contains 5,000 people, 25,000 accounts, 30,000 semantic stars, and 100,000 decorative stars. | Add a realistic 250,000-item summary-equivalent product fixture and prove graph entry follows summary size rather than item count. |
+| Diagnostics | The laboratory reports renderer, fallback, star counts, label and avatar counts, contextual edges, sparse pick candidates, buffer uploads, render density, frame-loop state, and camera safety state. | Route the same fields through the renderer heartbeat and one-click installed diagnostic export. |
+| Device proof | Desktop and compact browser probes confirm nonblank output, touch and trackpad semantics, theme parity, labels during movement, backend recovery, and far-clip protection. | Record repeated consistency ranges on installed Freed Desktop and a physical iPhone using the exact integrated build. |
 
 ### Finalization Slices
 
-1. Make diagnostics backend-neutral. Record draw calls, buffer uploads, resident semantic and decorative counts, sparse interaction writes, label and avatar atlas activity, GPU capability, and fallback reason.
-2. Split semantic source revision from viewport revision, then add incremental summary and graph-index patches without changing product workflows.
-3. Replace full-scene hover and selection restyling with sparse dynamic-buffer writes. Cache provider resources across ordinary atlas responses.
-4. Build the standalone 30,000-semantic-star plus 100,000-background-star renderer laboratory. Compare raw WebGPU, Three WebGPU, and the existing WebGL2 backend under identical typed-scene input.
-5. Integrate the selected WebGPU backend behind the imperative engine contract. Keep WebGL2 and canvas fallbacks deterministic and feature-compatible.
-6. Add the close-zoom avatar texture atlas and complete theme, reduced-motion, accessibility, and development-variation coverage.
-7. Replace the legacy stress fixture with realistic summary-scale data and run repeated installed desktop and physical iPhone consistency baselines.
-8. Cut over only after the user accepts the visual result and the selected backend meets the production budgets. Remove superseded code, merge through `dev`, and verify the exact production release.
+1. Complete in the detached laboratory: backend-neutral diagnostics, retained GPU resources, sparse interaction writes, worker-only compilation, raw WebGPU selection, WebGL2 recovery, batched labels, bounded avatars, native touch, trackpad navigation, inertia, theme parity, and camera safety.
+2. Next after custody release: reconcile current `origin/dev`, move the selected renderer and proven primitives into shared product modules, and make the laboratory consume those modules instead of retaining a fork.
+3. Replace the large `FriendGraph` internals with the reduced lifecycle shell while preserving the existing ref, callback, context-menu, pin, link, promotion, Details, and identity-mode contracts.
+4. Move incremental summaries into the shared document-worker path, split worker message lanes, delete the main-thread compiler fallback, and add the realistic 250,000-item summary-equivalent regression.
+5. Run the complete maintained Friends acceptance matrix, accessibility workflows, backend recovery, and installed diagnostic export on the integrated feature branch.
+6. Record repeated installed Freed Desktop and physical iPhone consistency ranges only when the machine is suitable for meaningful comparison.
+7. Cut over only after final product-route visual acceptance. Merge through `dev`, promote through the governed production release lane, and verify the exact installed production build.
 
 ### Next structural target
 
