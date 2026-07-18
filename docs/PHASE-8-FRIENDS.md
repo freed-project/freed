@@ -206,7 +206,7 @@ Hover and selection now reuse one scene-index state object, one role map, and on
 
 Raw WebGPU now leaves the 30,000-instance base semantic buffer untouched during interaction. It packs the active identity system into one fixed-capacity overlay stream, uploads that stream once, and selects a pre-recorded world bundle that adds the overlay draw. Clearing interaction selects the base bundle again. Contextual edges remain one separate bounded upload. Hover cost is therefore independent of where linked stars live in the resident buffer and no longer performs one queue write per affected star.
 
-Raw WebGPU now receives animation and camera-motion state through its imperative backend contract. With animation disabled or the camera moving, one coherent uniform branch skips per-vertex twinkle trigonometry and freezes procedural drift. Active motion exits the field shader through one coarse noise sample and a bounded envelope. Only the stream variations add one spiral phase. Settled rendering restores seven independent four-octave field samples, domain warping, wisps, and both spiral phases. The sign bit of the existing camera-scale uniform carries motion state, so no uniform block, bind group, pipeline, geometry, label, or resident-star rebuild occurs. Every semantic star and billboard label remains resident and visible in both states.
+Raw WebGPU now receives animation and camera-motion state through its imperative backend contract. With animation disabled or the camera moving, one coherent uniform branch skips per-vertex twinkle phase arithmetic and trigonometry and freezes procedural drift. Active star fragments use squared radius and multiply-only falloff instead of square root, exponential, and fractional power. Active motion exits the field shader through one coarse noise sample and a bounded envelope. Only the stream variations add one spiral phase. Settled rendering restores the complete luminous star profile plus seven independent four-octave field samples, domain warping, wisps, and both spiral phases. The sign bit of the existing camera-scale uniform carries motion state, so no uniform block, bind group, pipeline, geometry, label, or resident-star rebuild occurs. Every semantic star and billboard label remains resident and visible in both states.
 
 Provider sectors now follow deterministic logarithmic spirals shared by layout and rendering. The default Nebula treatment combines procedural arms and themed dust without per-star scene objects. Linked accounts stay close to their parent identity, billboard labels sit close to their parent star with a stronger outline, and semantic links remain absent until one star in that identity system is hovered or selected.
 
@@ -433,6 +433,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.85 | Retain keyed avatar admission across close-zoom settles and coalesce matching in-flight decode work | High | Done |
 | 8.86 | Replace the permanent idle animation loop with demand-driven frames and a bounded backend-health poll | High | Done |
 | 8.87 | Replace the fourteen-noise camera-motion field path with one coherent coarse sample while retaining the complete settled nebula | High | Done |
+| 8.88 | Replace moving-star square root, exponential, fractional power, and unused twinkle phase work with coherent multiply-only falloff | High | Done |
 
 ---
 
@@ -527,6 +528,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Pinch and wheel movement update one scalar settle deadline without allocating or canceling per-event browser timers
 - [x] Hover and selection reuse fixed interaction payloads and renderer scratch storage without rebuilding maps, sets, typed views, or edge geometry
 - [x] Raw WebGPU keeps semantic stars and labels resident while camera motion uses one coherent coarse field sample and settle restores the complete nebula shader
+- [x] Moving Raw WebGPU stars use squared-radius multiply-only falloff while settled stars retain their complete luminous profile
 - [x] Raw WebGPU expresses hover and selection through one bounded overlay upload without rewriting scattered resident semantic instances
 - [x] Hover, pointer, wheel, and Safari input share one cached viewport origin, with geometry reads bounded to interaction boundaries and resize
 - [x] Active pan and pinch mutate one fixed typed pointer roster without per-move Map iterators or point objects

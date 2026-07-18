@@ -257,7 +257,7 @@ struct Uniforms {
   viewProjection: mat4x4<f32>,
   viewport: vec2<f32>,
   time: f32,
-  pixelRatio: f32,
+  cameraScale: f32,
   starColors: array<vec4<f32>, ${String(GALAXY_LAB_STAR_PALETTE_ROLE_COUNT)}>,
 };
 
@@ -292,9 +292,9 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
     mix(baseColor.rgb, selectionColor.rgb, input.appearance.z) * input.appearance.x,
     mix(baseColor.a, selectionColor.a, input.appearance.z) * input.appearance.w,
   );
-  let phase = input.center.x * 0.017 + input.center.y * 0.011 + input.center.z * 0.007;
   var twinkle = 1.0;
   if (uniforms.time >= 0.0) {
+    let phase = input.center.x * 0.017 + input.center.y * 0.011 + input.center.z * 0.007;
     twinkle = 0.91 + sin(uniforms.time * 1.15 + phase) * 0.09;
   }
   output.twinkle = twinkle;
@@ -303,11 +303,19 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
 
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
-  let distance = length(input.corner);
-  if (distance > 1.0) {
+  let radiusSquared = dot(input.corner, input.corner);
+  if (radiusSquared > 1.0) {
     discard;
   }
-  let core = exp(-distance * distance * 10.0);
+  if (uniforms.cameraScale < 0.0) {
+    let radial = 1.0 - radiusSquared;
+    let core = radial * radial;
+    let alpha = min(1.0, core + radial * 0.22) * input.color.a;
+    let radiance = 0.74 + core * 0.72;
+    return vec4<f32>(input.color.rgb * radiance, alpha);
+  }
+  let distance = sqrt(radiusSquared);
+  let core = exp(-radiusSquared * 10.0);
   let halo = pow(max(0.0, 1.0 - distance), 2.4) * 0.52;
   let alpha = min(1.0, core + halo) * input.color.a * input.twinkle;
   let radiance = 0.72 + core * 0.72;
