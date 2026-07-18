@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   GALAXY_LAB_CAMERA_FAR,
   GALAXY_LAB_CAMERA_FAR_UTILIZATION,
+  GALAXY_LAB_CAMERA_NEAR_CLEARANCE,
   galaxyLabCameraScaleLimits,
   galaxyLabInitialCameraScale,
+  writeGalaxyLabFocusedTransform,
   writeGalaxyLabWebGpuViewProjection,
   writeGalaxyLabWebGpuMotionUniforms,
 } from "./camera-math.js";
@@ -30,9 +32,15 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
   it("derives a clip-safe outward scale from viewport and scene depth", () => {
     const viewportHeight = 844;
     const minimumSceneZ = -224;
-    const limits = galaxyLabCameraScaleLimits(viewportHeight, minimumSceneZ);
+    const maximumSceneZ = 220;
+    const limits = galaxyLabCameraScaleLimits(
+      viewportHeight,
+      minimumSceneZ,
+      maximumSceneZ,
+    );
     const focalScale = 1 / Math.tan((42 * Math.PI) / 360);
     const cameraZ = viewportHeight * focalScale / 2 / limits.minimum;
+    const closestCameraZ = viewportHeight * focalScale / 2 / limits.maximum;
 
     expect(cameraZ - minimumSceneZ).toBeCloseTo(
       GALAXY_LAB_CAMERA_FAR * GALAXY_LAB_CAMERA_FAR_UTILIZATION,
@@ -40,17 +48,58 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
     );
     expect(limits.resistance).toBeGreaterThan(limits.fitMinimum);
     expect(limits.fitMinimum).toBeGreaterThan(limits.minimum);
+    expect(closestCameraZ - maximumSceneZ).toBeCloseTo(
+      GALAXY_LAB_CAMERA_NEAR_CLEARANCE,
+      8,
+    );
   });
 
-  it("moves the safe scale closer on a taller viewport", () => {
-    const compact = galaxyLabCameraScaleLimits(667, -224);
-    const tall = galaxyLabCameraScaleLimits(1_366, -224);
+  it("moves both safe scale limits closer on a taller viewport", () => {
+    const compact = galaxyLabCameraScaleLimits(667, -224, 220);
+    const tall = galaxyLabCameraScaleLimits(1_366, -224, 220);
 
     expect(tall.minimum).toBeGreaterThan(compact.minimum);
+    expect(tall.maximum).toBeGreaterThan(compact.maximum);
     expect(tall.resistance / tall.minimum).toBeCloseTo(
       compact.resistance / compact.minimum,
       12,
     );
+  });
+
+  it("centers a prominent star inside the usable full-canvas viewport", () => {
+    const width = 1_400;
+    const height = 900;
+    const insets = { top: 44, right: 280, bottom: 120, left: 320 };
+    const worldX = 860;
+    const worldY = 420;
+    const worldZ = 180;
+    const transform = writeGalaxyLabFocusedTransform(
+      { x: 0, y: 0, scale: 1 },
+      worldX,
+      worldY,
+      worldZ,
+      0.92,
+      width,
+      height,
+      insets,
+    );
+    const matrix = writeGalaxyLabWebGpuViewProjection(
+      new Float32Array(16),
+      transform,
+      width,
+      height,
+    );
+    const projected = project(matrix, [worldX, -worldY, worldZ], width, height);
+
+    expect(projected.x).toBeCloseTo(
+      insets.left + (width - insets.left - insets.right) * 0.5,
+      3,
+    );
+    expect(projected.y).toBeCloseTo(
+      insets.top + (height - insets.top - insets.bottom) * 0.5,
+      3,
+    );
+    expect(transform.scale).toBe(0.92);
   });
 
   it("opens compact canvases at a useful exploration scale", () => {

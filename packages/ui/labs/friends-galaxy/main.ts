@@ -43,6 +43,8 @@ import {
 import {
   galaxyLabCameraScaleLimits,
   galaxyLabInitialCameraScale,
+  type GalaxyLabViewportInsets,
+  writeGalaxyLabFocusedTransform,
   writeGalaxyLabWebGpuViewProjection,
 } from "./camera-math.js";
 import { shouldContinueGalaxyLabFrame } from "./frame-loop.js";
@@ -57,7 +59,7 @@ import { GalaxyLabSettleScheduler } from "./settle-scheduler.js";
 const DEFAULT_PERSON_COUNT = 5_000;
 const DEFAULT_ACCOUNT_COUNT = 25_000;
 const DEFAULT_BACKGROUND_COUNT = 100_000;
-const MAX_SCALE = 6;
+const PROGRAMMATIC_FOCUS_SCALE = 0.92;
 const numberFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
 const integerFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
 const scaleFormat = new Intl.NumberFormat(undefined, { maximumSignificantDigits: 3 });
@@ -88,6 +90,7 @@ const fieldStyleSelect = requiredElement<HTMLSelectElement>("field-style");
 const fitButton = requiredElement<HTMLButtonElement>("fit");
 const simulateLossButton = requiredElement<HTMLButtonElement>("simulate-loss");
 const animateControl = requiredElement<HTMLInputElement>("animate");
+const panel = requiredElement<HTMLElement>("panel");
 const statusElement = requiredElement<HTMLElement>("status");
 const metricsElement = requiredElement<HTMLElement>("metrics");
 const nativeTouchInput = navigator.maxTouchPoints > 0 && "ontouchstart" in window;
@@ -169,6 +172,7 @@ const transform: GalaxyLabTransform = { x: 0, y: 0, scale: 0.12 };
 let cameraScaleLimits = galaxyLabCameraScaleLimits(
   1,
   fixture.scene.bounds.minZ,
+  fixture.scene.bounds.maxZ,
 );
 let activeBackend: GalaxyLabBackend | null = null;
 let activeCanvas: HTMLCanvasElement | null = null;
@@ -356,8 +360,10 @@ function refreshCameraScaleLimits(viewportHeight: number): void {
   cameraScaleLimits = galaxyLabCameraScaleLimits(
     viewportHeight,
     fixture.scene.bounds.minZ,
+    fixture.scene.bounds.maxZ,
   );
   viewport.dataset.minimumCameraScale = String(cameraScaleLimits.minimum);
+  viewport.dataset.maximumCameraScale = String(cameraScaleLimits.maximum);
   viewport.dataset.zoomResistanceScale = String(cameraScaleLimits.resistance);
 }
 
@@ -544,10 +550,19 @@ function frameGalaxy(markAsUserAction: boolean, useInitialScale: boolean): void 
   const padding = width < 640 ? 42 : 96;
   const fittedScale = Math.max(
     cameraScaleLimits.fitMinimum,
-    Math.min(MAX_SCALE, Math.min((width - padding * 2) / worldWidth, (height - padding * 2) / worldHeight)),
+    Math.min(
+      cameraScaleLimits.maximum,
+      Math.min(
+        (width - padding * 2) / worldWidth,
+        (height - padding * 2) / worldHeight,
+      ),
+    ),
   );
   const nextScale = useInitialScale
-    ? Math.min(MAX_SCALE, galaxyLabInitialCameraScale(fittedScale, width))
+    ? Math.min(
+        cameraScaleLimits.maximum,
+        galaxyLabInitialCameraScale(fittedScale, width),
+      )
     : fittedScale;
   const centerX = (bounds.left + bounds.right) / 2;
   const centerY = (bounds.top + bounds.bottom) / 2;
@@ -566,6 +581,61 @@ function fitGalaxy(markAsUserAction = true): void {
 
 function frameInitialGalaxy(): void {
   frameGalaxy(false, true);
+}
+
+function programmaticFocusInsets(): GalaxyLabViewportInsets {
+  if (getComputedStyle(panel).display === "none") {
+    return { top: 0, right: 0, bottom: 0, left: 0 };
+  }
+  const viewportBounds = viewport.getBoundingClientRect();
+  const panelBounds = panel.getBoundingClientRect();
+  if (viewportBounds.width <= 640) {
+    return {
+      top: 0,
+      right: 0,
+      bottom: Math.max(0, viewportBounds.bottom - panelBounds.top + 12),
+      left: 0,
+    };
+  }
+  return {
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: Math.max(0, panelBounds.right - viewportBounds.left + 18),
+  };
+}
+
+function focusGalaxyNode(nodeId: string): boolean {
+  const nodeIndex = findGalaxyLabSceneNodeIndex(
+    fixture.scene,
+    fixture.interactionIndex,
+    nodeId,
+  );
+  if (nodeIndex === null) return false;
+  cancelInertialPan();
+  settleScheduler.cancel();
+  const { width, height } = viewportSize();
+  const offset = nodeIndex * 3;
+  const scale = Math.min(
+    cameraScaleLimits.maximum,
+    Math.max(transform.scale, PROGRAMMATIC_FOCUS_SCALE),
+  );
+  writeGalaxyLabFocusedTransform(
+    transform,
+    fixture.scene.positions[offset]!,
+    -fixture.scene.positions[offset + 1]!,
+    fixture.scene.positions[offset + 2]!,
+    scale,
+    width,
+    height,
+    programmaticFocusInsets(),
+  );
+  recordCameraScaleDiagnostics();
+  updateInteraction({ selectedNodeId: nodeId, hoveredNodeId: null });
+  userMovedCamera = true;
+  markGalaxyDirty();
+  scheduleSettledViewDetail(true);
+  return true;
 }
 
 function resetSamples(): void {
@@ -752,7 +822,10 @@ function updateMetrics(): void {
   }
   if (lastRecoveryReason) addMetric("Recovery reason", lastRecoveryReason);
   addMetric("Camera scale", scaleFormat.format(transform.scale));
-  addMetric("Clip-safe scale", scaleFormat.format(cameraScaleLimits.minimum));
+  addMetric(
+    "Clip-safe range",
+    `${scaleFormat.format(cameraScaleLimits.minimum)} to ${scaleFormat.format(cameraScaleLimits.maximum)}`,
+  );
   addMetric(
     "Outward zoom",
     transform.scale < cameraScaleLimits.resistance ? "Soft resistance" : "Free",
@@ -866,7 +939,7 @@ function zoomAt(viewportX: number, viewportY: number, nextScale: number): void {
     nextScale / transform.scale,
     cameraScaleLimits.minimum,
     cameraScaleLimits.resistance,
-    MAX_SCALE,
+    cameraScaleLimits.maximum,
   );
   userMovedCamera = true;
   markGalaxyDirty();
@@ -1003,7 +1076,7 @@ viewport.addEventListener("pointermove", (event) => {
       pointers.yAt(1),
       cameraScaleLimits.minimum,
       cameraScaleLimits.resistance,
-      MAX_SCALE,
+      cameraScaleLimits.maximum,
     );
     scheduleSettledViewDetail();
   } else {
@@ -1127,7 +1200,7 @@ function moveNativeTouches(event: TouchEvent): void {
       pointers.yAt(1),
       cameraScaleLimits.minimum,
       cameraScaleLimits.resistance,
-      MAX_SCALE,
+      cameraScaleLimits.maximum,
     );
     scheduleSettledViewDetail();
   } else {
@@ -1276,7 +1349,7 @@ viewport.addEventListener("gesturechange", ((event: SafariGestureEvent) => {
     event.scale,
     cameraScaleLimits.minimum,
     cameraScaleLimits.resistance,
-    MAX_SCALE,
+    cameraScaleLimits.maximum,
   );
   transform.scale = nextScale;
   transform.x = viewportX - safariGestureWorldX * nextScale;
@@ -1411,14 +1484,18 @@ const resizeObserver = new ResizeObserver(() => {
   if (!userMovedCamera) {
     frameInitialGalaxy();
   } else {
-    if (transform.scale < cameraScaleLimits.fitMinimum) {
+    const safeResizeScale = Math.max(
+      cameraScaleLimits.fitMinimum,
+      Math.min(cameraScaleLimits.maximum, transform.scale),
+    );
+    if (safeResizeScale !== transform.scale) {
       applyGalaxyLabZoomAt(
         transform,
         width * 0.5,
         height * 0.5,
-        cameraScaleLimits.fitMinimum,
+        safeResizeScale,
         cameraScaleLimits.minimum,
-        MAX_SCALE,
+        cameraScaleLimits.maximum,
       );
       recordCameraScaleDiagnostics();
     }
@@ -1461,6 +1538,7 @@ window.addEventListener("beforeunload", () => {
 Object.assign(window, {
   __FRIENDS_GALAXY_LAB__: {
     fixture,
+    focusNode: focusGalaxyNode,
     state: () => ({
       backend: activeBackend?.metrics() ?? null,
       transform: { ...transform },

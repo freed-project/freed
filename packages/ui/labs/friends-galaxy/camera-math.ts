@@ -4,38 +4,112 @@ import type { GalaxyLabTransform } from "./scene-fixture.js";
 export const GALAXY_LAB_CAMERA_NEAR = 1;
 export const GALAXY_LAB_CAMERA_FAR = 20_000;
 export const GALAXY_LAB_CAMERA_FAR_UTILIZATION = 0.82;
+export const GALAXY_LAB_CAMERA_NEAR_CLEARANCE = 96;
 
 const ZOOM_RESISTANCE_SCALE_MULTIPLIER = 1.55;
 const FIT_MINIMUM_RESISTANCE_PROGRESS = 0.12;
+const ABSOLUTE_MAXIMUM_SCALE = 6;
+
+const EMPTY_VIEWPORT_INSETS: GalaxyLabViewportInsets = {
+  top: 0,
+  right: 0,
+  bottom: 0,
+  left: 0,
+};
+
+export interface GalaxyLabViewportInsets {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
 
 export interface GalaxyLabCameraScaleLimits {
   minimum: number;
   resistance: number;
   fitMinimum: number;
+  maximum: number;
+}
+
+function galaxyLabCameraDistance(
+  viewportHeight: number,
+  scale: number,
+  fovDegrees: number,
+): number {
+  const height = Math.max(1, viewportHeight);
+  const safeScale = Math.max(0.0001, scale);
+  const boundedFov = Math.max(1, Math.min(179, fovDegrees));
+  return height / 2 / Math.tan((boundedFov * Math.PI) / 360) / safeScale;
 }
 
 export function galaxyLabCameraScaleLimits(
   viewportHeight: number,
   minimumSceneZ: number,
+  maximumSceneZ: number,
   fovDegrees = IDENTITY_GALAXY_CAMERA_FOV,
   far = GALAXY_LAB_CAMERA_FAR,
 ): GalaxyLabCameraScaleLimits {
-  const height = Math.max(1, viewportHeight);
-  const boundedFov = Math.max(1, Math.min(179, fovDegrees));
-  const focalDistance = height / 2 / Math.tan((boundedFov * Math.PI) / 360);
-  const sceneDepth = Number.isFinite(minimumSceneZ) ? minimumSceneZ : 0;
+  const focalDistance = galaxyLabCameraDistance(
+    viewportHeight,
+    1,
+    fovDegrees,
+  );
+  const minimumDepth = Number.isFinite(minimumSceneZ) ? minimumSceneZ : 0;
+  const maximumDepth = Number.isFinite(maximumSceneZ) ? maximumSceneZ : 0;
   const availableCameraDepth = Math.max(
     GALAXY_LAB_CAMERA_NEAR * 2,
-    far * GALAXY_LAB_CAMERA_FAR_UTILIZATION + sceneDepth,
+    far * GALAXY_LAB_CAMERA_FAR_UTILIZATION + minimumDepth,
   );
   const minimum = focalDistance / availableCameraDepth;
   const resistance = minimum * ZOOM_RESISTANCE_SCALE_MULTIPLIER;
+  const fitMinimum = minimum +
+    (resistance - minimum) * FIT_MINIMUM_RESISTANCE_PROGRESS;
+  const maximum = Math.min(
+    ABSOLUTE_MAXIMUM_SCALE,
+    focalDistance / Math.max(
+      GALAXY_LAB_CAMERA_NEAR + GALAXY_LAB_CAMERA_NEAR_CLEARANCE,
+      maximumDepth + GALAXY_LAB_CAMERA_NEAR_CLEARANCE,
+    ),
+  );
   return {
     minimum,
     resistance,
-    fitMinimum: minimum +
-      (resistance - minimum) * FIT_MINIMUM_RESISTANCE_PROGRESS,
+    fitMinimum,
+    maximum: Math.max(fitMinimum, maximum),
   };
+}
+
+export function writeGalaxyLabFocusedTransform(
+  target: GalaxyLabTransform,
+  worldX: number,
+  worldY: number,
+  worldZ: number,
+  scale: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  viewportInsets: GalaxyLabViewportInsets = EMPTY_VIEWPORT_INSETS,
+  fovDegrees = IDENTITY_GALAXY_CAMERA_FOV,
+): GalaxyLabTransform {
+  const width = Math.max(1, viewportWidth);
+  const height = Math.max(1, viewportHeight);
+  const safeScale = Math.max(0.0001, scale);
+  const left = Math.max(0, viewportInsets.left);
+  const right = Math.max(0, viewportInsets.right);
+  const top = Math.max(0, viewportInsets.top);
+  const bottom = Math.max(0, viewportInsets.bottom);
+  const viewportCenterX = width * 0.5;
+  const viewportCenterY = height * 0.5;
+  const focusX = left + Math.max(1, width - left - right) * 0.5;
+  const focusY = top + Math.max(1, height - top - bottom) * 0.5;
+  const cameraZ = galaxyLabCameraDistance(height, safeScale, fovDegrees);
+  const depthRatio = (cameraZ - worldZ) / cameraZ;
+
+  target.scale = safeScale;
+  target.x = viewportCenterX - worldX * safeScale +
+    (focusX - viewportCenterX) * depthRatio;
+  target.y = viewportCenterY - worldY * safeScale +
+    (focusY - viewportCenterY) * depthRatio;
+  return target;
 }
 
 export function galaxyLabInitialCameraScale(
@@ -73,7 +147,7 @@ export function writeGalaxyLabWebGpuViewProjection(
   const focalScale = 1 / Math.tan((fovDegrees * Math.PI) / 360);
   const cameraX = (width / 2 - transform.x) / scale;
   const cameraY = -(height / 2 - transform.y) / scale;
-  const cameraZ = height * focalScale / 2 / scale;
+  const cameraZ = galaxyLabCameraDistance(height, scale, fovDegrees);
   const xScale = focalScale / (width / height);
   const depthScale = far / (near - far);
   const depthTranslate = far * near / (near - far);
