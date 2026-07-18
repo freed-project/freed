@@ -59,6 +59,7 @@ import {
   createGalaxyLabDiagnosticSnapshot,
   serializeGalaxyLabDiagnosticSnapshot,
 } from "./diagnostic-export.js";
+import { GalaxyLabLongTaskMonitor } from "./long-task-monitor.js";
 
 const DEFAULT_PERSON_COUNT = 5_000;
 const DEFAULT_ACCOUNT_COUNT = 25_000;
@@ -105,6 +106,7 @@ viewport.dataset.touchInputMode = nativeTouchInput
   ? "native-touch-events"
   : "pointer-events";
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+const longTaskMonitor = new GalaxyLabLongTaskMonitor();
 let animatePreferenceTouched = false;
 animateControl.checked = !animationProbeDisabled && !reducedMotionQuery.matches;
 
@@ -816,6 +818,11 @@ function updateMetrics(): void {
   );
   addMetric("Frame interval", formatFrameStats(frameStats(frameSamples.snapshot())));
   addMetric("CPU submit", formatFrameStats(frameStats(submitSamples.snapshot())));
+  const longTasks = longTaskMonitor.snapshot();
+  addMetric(
+    "Long tasks",
+    longTasks.supported ? integerFormat.format(longTasks.count ?? 0) : "Unavailable",
+  );
   addMetric("Buffer uploads", integerFormat.format(metrics.bufferUploadCount));
   if (metrics.residentStarUploadCount !== undefined) {
     addMetric("Resident star uploads", integerFormat.format(metrics.residentStarUploadCount));
@@ -1473,6 +1480,7 @@ function galaxyDiagnosticSnapshot() {
     settlePending: settleScheduler.isPending,
     renderResizePending,
     recoveryReason: lastRecoveryReason,
+    longTasks: longTaskMonitor.snapshot(),
     frame: frameStats(frameSamples.snapshot()),
     submit: frameStats(submitSamples.snapshot()),
     activityPatchKeyCount: activityProbeSummaryPatch.patches.length,
@@ -1604,6 +1612,7 @@ window.addEventListener("beforeunload", () => {
   reducedMotionQuery.removeEventListener("change", syncReducedMotionPreference);
   resizeObserver.disconnect();
   avatarImageAdmission.dispose();
+  longTaskMonitor.dispose();
   activeBackend?.dispose();
 });
 
@@ -1642,6 +1651,7 @@ Object.assign(window, {
         velocityY: inertialPan.currentVelocityY,
       },
       frameLoop: viewport.dataset.frameLoop,
+      longTasks: longTaskMonitor.snapshot(),
       renderResizePending,
       settlePending: settleScheduler.isPending,
       startup: {

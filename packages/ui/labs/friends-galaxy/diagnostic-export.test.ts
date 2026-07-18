@@ -67,6 +67,13 @@ describe("Friends Galaxy diagnostic export", () => {
       settlePending: false,
       renderResizePending: false,
       recoveryReason: null,
+      longTasks: {
+        supported: true,
+        count: 2,
+        totalDurationMs: 133,
+        worstDurationMs: 81,
+        latestStartTime: 240,
+      },
       frame: { frameCount: 240, p50Ms: 16, p95Ms: 24, worstMs: 31 },
       submit: { frameCount: 240, p50Ms: 0.1, p95Ms: 0.2, worstMs: 0.4 },
       activityPatchKeyCount: 1,
@@ -94,7 +101,11 @@ describe("Friends Galaxy diagnostic export", () => {
         hoverActive: false,
       },
       runtime: {
-        longTaskCount: null,
+        longTasks: {
+          supported: true,
+          count: 2,
+          worstDurationMs: 81,
+        },
       },
     });
     expect(serialized).not.toContain("nodeId");
@@ -140,6 +151,13 @@ describe("Friends Galaxy diagnostic export", () => {
       settlePending: false,
       renderResizePending: false,
       recoveryReason: null,
+      longTasks: {
+        supported: false,
+        count: null,
+        totalDurationMs: null,
+        worstDurationMs: null,
+        latestStartTime: null,
+      },
       frame: { frameCount: 0, p50Ms: 0, p95Ms: 0, worstMs: 0 },
       submit: { frameCount: 0, p50Ms: 0, p95Ms: 0, worstMs: 0 },
       activityPatchKeyCount: 0,
