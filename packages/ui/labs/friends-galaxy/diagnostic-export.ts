@@ -3,7 +3,10 @@ import type {
   GalaxyLabFieldStyle,
   GalaxyLabFrameStats,
 } from "./backend.js";
-import type { GalaxyLabCameraScaleLimits } from "./camera-math.js";
+import type {
+  GalaxyLabCameraScaleLimits,
+  GalaxyLabOutwardZoomEnvelope,
+} from "./camera-math.js";
 import type {
   GalaxyLabThemeId,
   GalaxyLabTransform,
@@ -24,6 +27,7 @@ export interface GalaxyLabDiagnosticSnapshotInput {
   fieldStyle: GalaxyLabFieldStyle;
   transform: GalaxyLabTransform;
   cameraScaleLimits: GalaxyLabCameraScaleLimits;
+  outwardZoomEnvelope: GalaxyLabOutwardZoomEnvelope;
   viewportWidth: number;
   viewportHeight: number;
   cameraInMotion: boolean;
@@ -100,6 +104,7 @@ export interface GalaxyLabDiagnosticSnapshot {
     minimumScale: number;
     resistanceScale: number;
     fitMinimumScale: number;
+    outwardTargetScale: number;
     maximumScale: number;
     viewportWidth: number;
     viewportHeight: number;
@@ -189,8 +194,9 @@ export function createGalaxyLabDiagnosticSnapshot(
       y: input.transform.y,
       scale: input.transform.scale,
       minimumScale: input.cameraScaleLimits.minimum,
-      resistanceScale: input.cameraScaleLimits.resistance,
+      resistanceScale: input.outwardZoomEnvelope.resistance,
       fitMinimumScale: input.cameraScaleLimits.fitMinimum,
+      outwardTargetScale: input.outwardZoomEnvelope.target,
       maximumScale: input.cameraScaleLimits.maximum,
       viewportWidth: input.viewportWidth,
       viewportHeight: input.viewportHeight,

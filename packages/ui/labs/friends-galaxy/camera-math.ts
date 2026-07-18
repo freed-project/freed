@@ -8,6 +8,8 @@ export const GALAXY_LAB_CAMERA_NEAR_CLEARANCE = 96;
 
 const ZOOM_RESISTANCE_SCALE_MULTIPLIER = 1.55;
 const FIT_MINIMUM_RESISTANCE_PROGRESS = 0.12;
+const OUTWARD_ZOOM_TARGET_FIT_RATIO = 0.9;
+const OUTWARD_ZOOM_RESISTANCE_FIT_RATIO = 1.35;
 const ABSOLUTE_MAXIMUM_SCALE = 6;
 
 const EMPTY_VIEWPORT_INSETS: GalaxyLabViewportInsets = {
@@ -29,6 +31,11 @@ export interface GalaxyLabCameraScaleLimits {
   resistance: number;
   fitMinimum: number;
   maximum: number;
+}
+
+export interface GalaxyLabOutwardZoomEnvelope {
+  target: number;
+  resistance: number;
 }
 
 function galaxyLabCameraDistance(
@@ -77,6 +84,31 @@ export function galaxyLabCameraScaleLimits(
     fitMinimum,
     maximum: Math.max(fitMinimum, maximum),
   };
+}
+
+export function galaxyLabOutwardZoomEnvelope(
+  fittedScale: number,
+  limits: GalaxyLabCameraScaleLimits,
+): GalaxyLabOutwardZoomEnvelope {
+  const boundedFit = Math.max(
+    limits.fitMinimum,
+    Math.min(limits.maximum, fittedScale),
+  );
+  const target = Math.max(
+    limits.fitMinimum,
+    Math.min(limits.maximum, boundedFit * OUTWARD_ZOOM_TARGET_FIT_RATIO),
+  );
+  const resistance = Math.max(
+    target,
+    Math.min(
+      limits.maximum,
+      Math.max(
+        limits.resistance,
+        boundedFit * OUTWARD_ZOOM_RESISTANCE_FIT_RATIO,
+      ),
+    ),
+  );
+  return { target, resistance };
 }
 
 export function writeGalaxyLabFocusedTransform(

@@ -192,7 +192,7 @@ Before any backend receives a worker result, the detached loader now performs co
 
 Compact canvases now open at a useful 0.16 exploration scale around the semantic center instead of presenting literal fit-all as an apparently empty field. Wider canvases retain their useful fitted scale. The explicit Fit galaxy command still reveals every provider sector, so overview geography remains one action away without sacrificing first-use legibility.
 
-The locked camera now derives its outward zoom boundary from viewport height, perspective field of view, semantic scene depth, and the shared 20,000-unit far clip distance. The boundary reserves depth for the decorative starfield, so neither a tall desktop canvas nor an iPhone viewport can move the galaxy behind the far plane. Wheel pinch, Safari gesture events, native touch pinch, and keyboard zoom share one invertible resistance curve. Fit galaxy and resize use the same clip-safe range. Outward motion remains exact until the resistance region, then slows continuously into a practical terminal distance that stays above the clip-safe floor and responds immediately when direction reverses. Midpoint anchoring remains exact throughout the curve.
+The locked camera now derives a deep clip reserve from viewport height, perspective field of view, semantic scene depth, and the shared 20,000-unit far clip distance. It separately derives an outer interaction target from the current fitted galaxy bounds. Wheel pinch, Safari gesture events, native touch pinch, and keyboard zoom decelerate asymptotically toward that fitted target without reaching an abrupt stop or the deeper clip reserve. Inward input bypasses the outward resistance and applies its native multiplicative ratio on the first event, so a trackpad gesture never needs to ramp away from maximum zoom out. Fit galaxy and resize recompute the same viewport envelope. Midpoint anchoring remains exact throughout both directions.
 
 The same camera contract now derives a prominence-safe maximum scale from viewport height, maximum semantic depth, and a 96-unit near-camera clearance. Compact zoom can no longer pass through the closest friend stars. Programmatic `focusNode` navigation uses the target star's real `z` depth and the bounded usable viewport insets, so Reader, search, Map, and details handoffs can center a star beside the desktop rail or above mobile chrome while the canvas remains full bleed. Focus changes only camera and sparse interaction state. It does not reupload resident stars.
 
@@ -471,11 +471,12 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.99 | Route detached iPhone pan and pinch through native Touch Events with duplicate-pointer suppression, direct pinch-to-pan handoff, and cancellation recovery | High | Done |
 | 8.100 | Reject malformed or mixed-version worker envelopes before GPU admission with constant-time typed-buffer, sparse-offset, bounds, metadata-cap, and receipt validation | High | Done |
 | 8.101 | Add native Mac two-finger trackpad pan plus bounded allocation-free pointer and touch inertia with cancellation, reduced-motion, and settle guarantees | High | Done |
-| 8.102 | Derive a clip-safe camera scale range, route every continuous zoom path through reversible terminal easing, and keep fit plus resize inside the same safe range | High | Done |
+| 8.102 | Derive clip-safe camera scale limits, route every continuous zoom path through shared focal-point-preserving math, and keep fit plus resize inside the safe range | High | Done |
 | 8.103 | Derive a prominence-safe maximum zoom and prove depth-correct programmatic focus inside desktop and compact full-canvas interaction insets | High | Done |
 | 8.104 | Bind 25,000 compact activity summaries representing 250,000 items into the admitted worker stress envelope without item payloads or transfer growth | High | Done |
 | 8.105 | Add a bounded identity-free Friends Galaxy diagnostic export with source, renderer, camera, input, recovery, and presentation health | High | Done |
 | 8.106 | Add passive bounded long-task evidence with explicit unsupported state and no timer or camera-path work | High | Done |
+| 8.107 | Separate fitted outer navigation from the far clip reserve, use asymptotic outward resistance, and restore native inward zoom speed on the first event | High | Done |
 
 ---
 
@@ -562,7 +563,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Detached worker startup represents 250,000 activity items through 25,000 compact summaries while keeping item payloads absent and transfer shape independent of represented item volume
 - [x] Raw WebGPU uploads worker-packed resident star streams once and resolves theme changes through a fixed palette uniform without full-star CPU traversal or GPU reupload
 - [x] A locked perspective camera produces bounded prominence parallax while preserving intuitive plane navigation
-- [x] Outward zoom derives a viewport-aware clip-safe scale, reserves far-plane depth for decorative stars, eases wheel, Safari, touch, and keyboard input into a reversible terminal distance, and keeps fit plus resize inside the same safe range
+- [x] Outward zoom approaches a fitted viewport target asymptotically while retaining a deeper far-plane reserve, and wheel, Safari, touch, and keyboard input restore native inward speed on the first reverse event
 - [x] Inward zoom preserves near-camera clearance, and programmatic focus centers the target's actual prominence depth inside the bounded usable viewport without resident-star uploads
 - [x] Semantic stars and settled relationship spokes render through two instanced WebGL2 passes with no per-node or per-edge scene objects
 - [x] Projected picking uses a worker-built transferable sparse world grid, preserves exact depth and prominence selection, tolerates distant pinned outliers, and projects only the locked-camera corridor candidates

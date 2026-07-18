@@ -1,7 +1,5 @@
 import type { GalaxyLabTransform } from "./scene-fixture.js";
 
-const MINIMUM_ZOOM_COORDINATE = -4;
-
 function clampScale(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
 }
@@ -26,10 +24,9 @@ function galaxyLabScaleFromZoomCoordinate(
   resistanceScale: number,
   maximumScale: number,
 ): number {
-  const boundedCoordinate = Math.max(MINIMUM_ZOOM_COORDINATE, coordinate);
-  if (boundedCoordinate >= 0) {
+  if (coordinate >= 0) {
     return clampScale(
-      resistanceScale * Math.exp(Math.min(64, boundedCoordinate)),
+      resistanceScale * Math.exp(Math.min(64, coordinate)),
       minimumScale,
       maximumScale,
     );
@@ -37,7 +34,7 @@ function galaxyLabScaleFromZoomCoordinate(
   const resistanceRange = resistanceScale - minimumScale;
   const curve = resistanceScale / resistanceRange;
   return clampScale(
-    minimumScale + resistanceRange / (1 - curve * boundedCoordinate),
+    minimumScale + resistanceRange / (1 - curve * coordinate),
     minimumScale,
     maximumScale,
   );
@@ -62,6 +59,13 @@ export function galaxyLabResistedScaleAtRatio(
       : Number.isFinite(scaleRatio) && scaleRatio > 0
         ? scaleRatio
         : 1;
+  if (boundedRatio >= 1) {
+    return clampScale(
+      boundedInitial * boundedRatio,
+      minimumScale,
+      maximumScale,
+    );
+  }
   const coordinate = galaxyLabZoomCoordinate(
     boundedInitial,
     minimumScale,

@@ -55,6 +55,10 @@ describe("Friends Galaxy diagnostic export", () => {
         fitMinimum: 0.075,
         maximum: 3.7,
       },
+      outwardZoomEnvelope: {
+        target: 0.18,
+        resistance: 0.27,
+      },
       viewportWidth: 390,
       viewportHeight: 844,
       cameraInMotion: false,
@@ -100,6 +104,12 @@ describe("Friends Galaxy diagnostic export", () => {
         selectionActive: true,
         hoverActive: false,
       },
+      camera: {
+        minimumScale: 0.07,
+        fitMinimumScale: 0.075,
+        outwardTargetScale: 0.18,
+        resistanceScale: 0.27,
+      },
       runtime: {
         longTasks: {
           supported: true,
@@ -138,6 +148,10 @@ describe("Friends Galaxy diagnostic export", () => {
         resistance: 0.15,
         fitMinimum: 0.11,
         maximum: 4,
+      },
+      outwardZoomEnvelope: {
+        target: 0.2,
+        resistance: 0.3,
       },
       viewportWidth: 1,
       viewportHeight: 1,

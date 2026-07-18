@@ -106,7 +106,38 @@ describe("Friends Galaxy gesture math", () => {
       minimumScale,
       resistanceScale,
       6,
-    )).toBeGreaterThan(scale);
+    )).toBeCloseTo(scale * 1.05, 12);
+  });
+
+  it("keeps decelerating without reaching a discrete outward stop", () => {
+    const targetScale = 0.09;
+    const resistanceScale = 0.12;
+    let scale = resistanceScale;
+
+    for (let index = 0; index < 1_200; index += 1) {
+      const nextScale = galaxyLabResistedScaleAtRatio(
+        scale,
+        0.995,
+        targetScale,
+        resistanceScale,
+        6,
+      );
+      expect(nextScale).toBeLessThan(scale);
+      expect(nextScale).toBeGreaterThan(targetScale);
+      scale = nextScale;
+    }
+
+    expect(scale).toBeLessThan(0.092);
+  });
+
+  it("restores native zoom speed immediately when moving inward from the ceiling", () => {
+    expect(galaxyLabResistedScaleAtRatio(
+      0.0901,
+      1.04,
+      0.09,
+      0.12,
+      6,
+    )).toBeCloseTo(0.0901 * 1.04, 12);
   });
 
   it("preserves the anchored world point while outward zoom is resisted", () => {

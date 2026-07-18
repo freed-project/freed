@@ -43,6 +43,8 @@ import {
 import {
   galaxyLabCameraScaleLimits,
   galaxyLabInitialCameraScale,
+  galaxyLabOutwardZoomEnvelope,
+  type GalaxyLabOutwardZoomEnvelope,
   type GalaxyLabViewportInsets,
   writeGalaxyLabFocusedTransform,
   writeGalaxyLabWebGpuViewProjection,
@@ -189,6 +191,8 @@ let cameraScaleLimits = galaxyLabCameraScaleLimits(
   fixture.scene.bounds.minZ,
   fixture.scene.bounds.maxZ,
 );
+let outwardZoomEnvelope: GalaxyLabOutwardZoomEnvelope =
+  galaxyLabOutwardZoomEnvelope(cameraScaleLimits.fitMinimum, cameraScaleLimits);
 let activeBackend: GalaxyLabBackend | null = null;
 let activeCanvas: HTMLCanvasElement | null = null;
 let activeTheme = themeSelect.value as GalaxyLabThemeId;
@@ -379,12 +383,20 @@ function refreshCameraScaleLimits(viewportHeight: number): void {
   );
   viewport.dataset.minimumCameraScale = String(cameraScaleLimits.minimum);
   viewport.dataset.maximumCameraScale = String(cameraScaleLimits.maximum);
-  viewport.dataset.zoomResistanceScale = String(cameraScaleLimits.resistance);
+}
+
+function refreshOutwardZoomEnvelope(fittedScale: number): void {
+  outwardZoomEnvelope = galaxyLabOutwardZoomEnvelope(
+    fittedScale,
+    cameraScaleLimits,
+  );
+  viewport.dataset.outwardZoomTargetScale = String(outwardZoomEnvelope.target);
+  viewport.dataset.zoomResistanceScale = String(outwardZoomEnvelope.resistance);
 }
 
 function recordCameraScaleDiagnostics(): void {
   viewport.dataset.cameraScale = String(transform.scale);
-  viewport.dataset.zoomBoundary = transform.scale < cameraScaleLimits.resistance
+  viewport.dataset.zoomBoundary = transform.scale < outwardZoomEnvelope.resistance
     ? "resisted"
     : "free";
 }
@@ -555,15 +567,12 @@ function scheduleSettledViewDetail(immediate = false): void {
   requestGalaxyFrame();
 }
 
-function frameGalaxy(markAsUserAction: boolean, useInitialScale: boolean): void {
-  cancelInertialPan();
-  const { width, height } = viewportSize();
-  refreshCameraScaleLimits(height);
+function fittedGalaxyScale(width: number, height: number): number {
   const bounds = fixture.atlas.bounds;
   const worldWidth = Math.max(1, bounds.right - bounds.left);
   const worldHeight = Math.max(1, bounds.bottom - bounds.top);
   const padding = width < 640 ? 42 : 96;
-  const fittedScale = Math.max(
+  return Math.max(
     cameraScaleLimits.fitMinimum,
     Math.min(
       cameraScaleLimits.maximum,
@@ -573,6 +582,15 @@ function frameGalaxy(markAsUserAction: boolean, useInitialScale: boolean): void 
       ),
     ),
   );
+}
+
+function frameGalaxy(markAsUserAction: boolean, useInitialScale: boolean): void {
+  cancelInertialPan();
+  const { width, height } = viewportSize();
+  refreshCameraScaleLimits(height);
+  const bounds = fixture.atlas.bounds;
+  const fittedScale = fittedGalaxyScale(width, height);
+  refreshOutwardZoomEnvelope(fittedScale);
   const nextScale = useInitialScale
     ? Math.min(
         cameraScaleLimits.maximum,
@@ -856,8 +874,9 @@ function updateMetrics(): void {
   );
   addMetric(
     "Outward zoom",
-    transform.scale < cameraScaleLimits.resistance ? "Soft resistance" : "Free",
+    transform.scale < outwardZoomEnvelope.resistance ? "Soft resistance" : "Free",
   );
+  addMetric("Outer glide target", scaleFormat.format(outwardZoomEnvelope.target));
   addMetric("Settled detail", viewDetailForScale(transform.scale));
   addMetric("Touch input", nativeTouchInput ? "Native Touch Events" : "Pointer Events");
   addMetric(
@@ -965,8 +984,8 @@ function zoomAt(viewportX: number, viewportY: number, nextScale: number): void {
     viewportX,
     viewportY,
     nextScale / transform.scale,
-    cameraScaleLimits.minimum,
-    cameraScaleLimits.resistance,
+    outwardZoomEnvelope.target,
+    outwardZoomEnvelope.resistance,
     cameraScaleLimits.maximum,
   );
   userMovedCamera = true;
@@ -1102,8 +1121,8 @@ viewport.addEventListener("pointermove", (event) => {
       pointers.yAt(0),
       pointers.xAt(1),
       pointers.yAt(1),
-      cameraScaleLimits.minimum,
-      cameraScaleLimits.resistance,
+      outwardZoomEnvelope.target,
+      outwardZoomEnvelope.resistance,
       cameraScaleLimits.maximum,
     );
     scheduleSettledViewDetail();
@@ -1226,8 +1245,8 @@ function moveNativeTouches(event: TouchEvent): void {
       pointers.yAt(0),
       pointers.xAt(1),
       pointers.yAt(1),
-      cameraScaleLimits.minimum,
-      cameraScaleLimits.resistance,
+      outwardZoomEnvelope.target,
+      outwardZoomEnvelope.resistance,
       cameraScaleLimits.maximum,
     );
     scheduleSettledViewDetail();
@@ -1375,8 +1394,8 @@ viewport.addEventListener("gesturechange", ((event: SafariGestureEvent) => {
   const nextScale = galaxyLabResistedScaleAtRatio(
     safariGestureStartScale,
     event.scale,
-    cameraScaleLimits.minimum,
-    cameraScaleLimits.resistance,
+    outwardZoomEnvelope.target,
+    outwardZoomEnvelope.resistance,
     cameraScaleLimits.maximum,
   );
   transform.scale = nextScale;
@@ -1468,6 +1487,7 @@ function galaxyDiagnosticSnapshot() {
     fieldStyle: activeFieldStyle,
     transform,
     cameraScaleLimits,
+    outwardZoomEnvelope,
     viewportWidth: width,
     viewportHeight: height,
     cameraInMotion,
@@ -1561,11 +1581,12 @@ const resizeObserver = new ResizeObserver(() => {
   resizeActiveBackend();
   const { width, height } = viewportSize();
   refreshCameraScaleLimits(height);
+  refreshOutwardZoomEnvelope(fittedGalaxyScale(width, height));
   if (!userMovedCamera) {
     frameInitialGalaxy();
   } else {
     const safeResizeScale = Math.max(
-      cameraScaleLimits.fitMinimum,
+      outwardZoomEnvelope.target,
       Math.min(cameraScaleLimits.maximum, transform.scale),
     );
     if (safeResizeScale !== transform.scale) {
@@ -1574,7 +1595,7 @@ const resizeObserver = new ResizeObserver(() => {
         width * 0.5,
         height * 0.5,
         safeResizeScale,
-        cameraScaleLimits.minimum,
+        outwardZoomEnvelope.target,
         cameraScaleLimits.maximum,
       );
       recordCameraScaleDiagnostics();
@@ -1625,7 +1646,8 @@ Object.assign(window, {
       backend: activeBackend?.metrics() ?? null,
       transform: { ...transform },
       cameraScaleLimits: { ...cameraScaleLimits },
-      zoomResistanceActive: transform.scale < cameraScaleLimits.resistance,
+      outwardZoomEnvelope: { ...outwardZoomEnvelope },
+      zoomResistanceActive: transform.scale < outwardZoomEnvelope.resistance,
       interaction: { ...interaction },
       fieldStyle: activeFieldStyle,
       activityProbe: {

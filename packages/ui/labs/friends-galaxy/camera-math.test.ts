@@ -5,6 +5,7 @@ import {
   GALAXY_LAB_CAMERA_NEAR_CLEARANCE,
   galaxyLabCameraScaleLimits,
   galaxyLabInitialCameraScale,
+  galaxyLabOutwardZoomEnvelope,
   writeGalaxyLabFocusedTransform,
   writeGalaxyLabWebGpuViewProjection,
   writeGalaxyLabWebGpuMotionUniforms,
@@ -64,6 +65,25 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
       compact.resistance / compact.minimum,
       12,
     );
+  });
+
+  it("keeps the fitted overview ahead of the clip reserve", () => {
+    const limits = galaxyLabCameraScaleLimits(844, -224, 220);
+    const envelope = galaxyLabOutwardZoomEnvelope(0.2, limits);
+
+    expect(envelope.target).toBeCloseTo(0.18, 12);
+    expect(envelope.resistance).toBeCloseTo(0.27, 12);
+    expect(envelope.target).toBeGreaterThan(limits.fitMinimum);
+    expect(limits.fitMinimum).toBeGreaterThan(limits.minimum);
+  });
+
+  it("uses the clip-derived fit floor when the galaxy bounds are more distant", () => {
+    const limits = galaxyLabCameraScaleLimits(844, -224, 220);
+    const envelope = galaxyLabOutwardZoomEnvelope(0.001, limits);
+
+    expect(envelope.target).toBe(limits.fitMinimum);
+    expect(envelope.resistance).toBeGreaterThan(envelope.target);
+    expect(envelope.resistance).toBeLessThanOrEqual(limits.maximum);
   });
 
   it("centers a prominent star inside the usable full-canvas viewport", () => {
