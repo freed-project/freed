@@ -202,6 +202,8 @@ The detached engine now emits renderer-neutral overlay requests for context acti
 
 The detached engine now has an explicit resident presentation lifecycle for the mobile `Details` lens. Suspending presentation cancels long press, active contacts, inertia, hover work, settle work, and scheduled frames, makes the graph region inert and hidden from assistive technology, and hides the retained canvas without disposing it. Settled labels and avatars cannot start or commit while suspended. Resuming reuses the exact canvas, backend, camera transform, selection, semantic buffers, and resident-star uploads, then restores bounded settled presentation. Raw WebGPU held its buffer, label-atlas, avatar-atlas, and resident-star upload counters unchanged throughout the suspended interval. Raw WebGPU, Three.js WebGPU, and WebGL2 each resumed with the same canvas object, 30,000 semantic stars, camera, and selected identity.
 
+The proven full-canvas geometry and engine-to-overlay interaction contracts now live in neutral shared UI modules instead of laboratory-only files. The laboratory imports those shared modules directly. The shared imperative handle exposes `fitAll`, stable-ID `focusNode`, and resident `setPresentationVisible`. The shared overlay contract owns bounded context anchors, galactic-plane pin coordinates, details requests, keyboard commands, and the cancellable long-press tracker. Product cutover can delegate the existing `FriendGraph` ref and callbacks to these exact implementations without copying or renaming their behavior.
+
 The same camera contract now derives a prominence-safe maximum scale from viewport height, maximum semantic depth, and a 96-unit near-camera clearance. Compact zoom can no longer pass through the closest friend stars. Programmatic `focusNode` navigation uses the target star's real `z` depth and the bounded usable viewport insets, so Reader, search, Map, and details handoffs can center a star beside the desktop rail or above mobile chrome while the canvas remains full bleed. Focus changes only camera and sparse interaction state. It does not reupload resident stars.
 
 Frame and submission diagnostics now use fixed 240-value typed rings. Active camera motion suppresses diagnostics DOM rebuilding, then refreshes the panel after settle from one bounded snapshot. The detached gesture path no longer shifts diagnostic arrays or performs periodic panel layout while the camera is moving.
@@ -489,6 +491,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.109 | Separate the detached full-canvas render host from the bounded interaction lane and prove offset fit, focus, picking, responsive center reanchoring, and compact collapse | High | Done |
 | 8.110 | Define stable details and context-action requests with bounded anchors, plane coordinates, keyboard actions, and cancellable one-touch long press | High | Done |
 | 8.111 | Add resident presentation suspension for mobile Details with inert accessibility, complete transient-work cancellation, zero hidden frame or atlas work, and exact resource-preserving resume | High | Done |
+| 8.112 | Move the proven full-canvas geometry, overlay request, keyboard, long-press, and imperative engine-handle contracts into shared UI modules consumed by the detached laboratory | High | Done |
 
 ---
 
@@ -588,6 +591,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Full-canvas rendering and bounded interaction use separate rectangles, one retained geometry snapshot, exact client-to-canvas input translation, usable-lane fit and focus centering, responsive center reanchoring, and compact zero-inset collapse
 - [x] The detached engine emits stable context-action and details requests for pointer, keyboard, and long press, while movement, release, cancellation, or a second touch cancels pending long press and scene positions never mutate
 - [x] Mobile Details suspends graph presentation without disposing the canvas or GPU scene, performs no hidden frame, settle, label-atlas, or avatar-atlas work, and resumes the same camera, selection, backend, and resident semantic stars
+- [x] The detached laboratory and future product shell share one full-canvas geometry contract and one imperative overlay-action contract instead of maintaining translated copies
 - [x] Mac two-finger trackpad deltas pan with native momentum, pinch remains anchored zoom, and pointer or one-finger touch throws use bounded allocation-free inertia that cancels for new input and reduced motion
 - [x] Animation-disabled scenes stop requesting frames when idle and wake only for renderer work, settle state, diagnostics, or backend health recovery
 - [x] Pointer, wheel, and Safari handlers mark motion density without synchronously resizing the GPU canvas

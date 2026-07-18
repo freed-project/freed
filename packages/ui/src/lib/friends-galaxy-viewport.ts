@@ -1,19 +1,23 @@
-import type { GalaxyLabViewportInsets } from "./camera-math.js";
-import type { GalaxyLabTransform } from "./scene-fixture.js";
-
-export interface GalaxyLabClientRect {
+export interface FriendsGalaxyClientRect {
   readonly left: number;
   readonly top: number;
   readonly width: number;
   readonly height: number;
 }
 
-export interface GalaxyLabCanvasPoint {
+export interface FriendsGalaxyCanvasPoint {
   x: number;
   y: number;
 }
 
-export interface GalaxyLabViewportGeometry {
+export interface FriendsGalaxyViewportInsets {
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly left: number;
+}
+
+export interface FriendsGalaxyViewportGeometry {
   readonly canvasClientLeft: number;
   readonly canvasClientTop: number;
   readonly canvasWidth: number;
@@ -24,7 +28,13 @@ export interface GalaxyLabViewportGeometry {
   readonly interactionHeight: number;
   readonly interactionCenterX: number;
   readonly interactionCenterY: number;
-  readonly insets: GalaxyLabViewportInsets;
+  readonly insets: FriendsGalaxyViewportInsets;
+}
+
+export interface FriendsGalaxyTransform {
+  x: number;
+  y: number;
+  scale: number;
 }
 
 function finite(value: number, fallback: number): number {
@@ -41,10 +51,10 @@ function boundedRange(
   return [boundedStart, boundedEnd];
 }
 
-export function galaxyLabViewportGeometry(
-  canvasRect: GalaxyLabClientRect,
-  interactionRect: GalaxyLabClientRect,
-): GalaxyLabViewportGeometry {
+export function friendsGalaxyViewportGeometry(
+  canvasRect: FriendsGalaxyClientRect,
+  interactionRect: FriendsGalaxyClientRect,
+): FriendsGalaxyViewportGeometry {
   const canvasClientLeft = finite(canvasRect.left, 0);
   const canvasClientTop = finite(canvasRect.top, 0);
   const canvasWidth = Math.max(1, finite(canvasRect.width, 1));
@@ -90,11 +100,11 @@ export function galaxyLabViewportGeometry(
   };
 }
 
-export function reanchorGalaxyLabTransformToInteraction(
-  target: GalaxyLabTransform,
-  previous: GalaxyLabViewportGeometry,
-  next: GalaxyLabViewportGeometry,
-): GalaxyLabTransform {
+export function reanchorFriendsGalaxyTransformToInteraction(
+  target: FriendsGalaxyTransform,
+  previous: FriendsGalaxyViewportGeometry,
+  next: FriendsGalaxyViewportGeometry,
+): FriendsGalaxyTransform {
   const scale = Math.max(0.0001, target.scale);
   const worldX = (previous.interactionCenterX - target.x) / scale;
   const worldY = (previous.interactionCenterY - target.y) / scale;
@@ -103,12 +113,12 @@ export function reanchorGalaxyLabTransformToInteraction(
   return target;
 }
 
-export function writeGalaxyLabCanvasPoint(
-  target: GalaxyLabCanvasPoint,
-  geometry: GalaxyLabViewportGeometry,
+export function writeFriendsGalaxyCanvasPoint(
+  target: FriendsGalaxyCanvasPoint,
+  geometry: FriendsGalaxyViewportGeometry,
   clientX: number,
   clientY: number,
-): GalaxyLabCanvasPoint {
+): FriendsGalaxyCanvasPoint {
   target.x = clientX - geometry.canvasClientLeft;
   target.y = clientY - geometry.canvasClientTop;
   return target;

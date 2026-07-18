@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  galaxyLabViewportGeometry,
-  reanchorGalaxyLabTransformToInteraction,
-  writeGalaxyLabCanvasPoint,
-} from "./viewport-geometry.js";
+  friendsGalaxyViewportGeometry,
+  reanchorFriendsGalaxyTransformToInteraction,
+  writeFriendsGalaxyCanvasPoint,
+} from "../../src/lib/friends-galaxy-viewport.js";
 
 describe("Friends Galaxy full-canvas viewport geometry", () => {
   it("derives bounded interaction insets inside a larger canvas", () => {
-    const geometry = galaxyLabViewportGeometry(
+    const geometry = friendsGalaxyViewportGeometry(
       { left: 40, top: 80, width: 1_440, height: 900 },
       { left: 360, top: 124, width: 840, height: 736 },
     );
@@ -28,11 +28,11 @@ describe("Friends Galaxy full-canvas viewport geometry", () => {
   });
 
   it("keeps client input in full-canvas coordinates", () => {
-    const geometry = galaxyLabViewportGeometry(
+    const geometry = friendsGalaxyViewportGeometry(
       { left: 40, top: 80, width: 1_440, height: 900 },
       { left: 360, top: 124, width: 840, height: 736 },
     );
-    const point = writeGalaxyLabCanvasPoint({ x: 0, y: 0 }, geometry, 560, 324);
+    const point = writeFriendsGalaxyCanvasPoint({ x: 0, y: 0 }, geometry, 560, 324);
 
     expect(point).toEqual({ x: 520, y: 244 });
     expect(point.x - geometry.interactionLeft).toBe(200);
@@ -40,7 +40,7 @@ describe("Friends Galaxy full-canvas viewport geometry", () => {
   });
 
   it("clips an interaction rectangle to the renderable canvas", () => {
-    const geometry = galaxyLabViewportGeometry(
+    const geometry = friendsGalaxyViewportGeometry(
       { left: 100, top: 50, width: 800, height: 600 },
       { left: 40, top: 20, width: 940, height: 700 },
     );
@@ -53,11 +53,11 @@ describe("Friends Galaxy full-canvas viewport geometry", () => {
   });
 
   it("keeps the same world point under a changed interaction center", () => {
-    const desktop = galaxyLabViewportGeometry(
+    const desktop = friendsGalaxyViewportGeometry(
       { left: 0, top: 0, width: 1_280, height: 720 },
       { left: 356, top: 0, width: 924, height: 720 },
     );
-    const compact = galaxyLabViewportGeometry(
+    const compact = friendsGalaxyViewportGeometry(
       { left: 0, top: 0, width: 390, height: 844 },
       { left: 0, top: 0, width: 390, height: 844 },
     );
@@ -65,7 +65,7 @@ describe("Friends Galaxy full-canvas viewport geometry", () => {
     const worldX = (desktop.interactionCenterX - transform.x) / transform.scale;
     const worldY = (desktop.interactionCenterY - transform.y) / transform.scale;
 
-    reanchorGalaxyLabTransformToInteraction(transform, desktop, compact);
+    reanchorFriendsGalaxyTransformToInteraction(transform, desktop, compact);
 
     expect(worldX * transform.scale + transform.x).toBeCloseTo(
       compact.interactionCenterX,
@@ -78,7 +78,7 @@ describe("Friends Galaxy full-canvas viewport geometry", () => {
   });
 
   it("uses zero insets when canvas and interaction lanes match", () => {
-    const geometry = galaxyLabViewportGeometry(
+    const geometry = friendsGalaxyViewportGeometry(
       { left: 0, top: 0, width: 390, height: 844 },
       { left: 0, top: 0, width: 390, height: 844 },
     );

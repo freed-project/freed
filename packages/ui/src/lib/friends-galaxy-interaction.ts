@@ -1,12 +1,14 @@
-import type { GalaxyLabTransform } from "./scene-fixture.js";
-import type { GalaxyLabViewportGeometry } from "./viewport-geometry.js";
+import type {
+  FriendsGalaxyTransform,
+  FriendsGalaxyViewportGeometry,
+} from "./friends-galaxy-viewport.js";
 
-export type GalaxyLabContextRequestSource =
+export type FriendsGalaxyContextRequestSource =
   "keyboard" | "long-press" | "pointer";
 
-export interface GalaxyLabContextTarget {
+export interface FriendsGalaxyContextTarget {
   readonly nodeId: string;
-  readonly source: GalaxyLabContextRequestSource;
+  readonly source: FriendsGalaxyContextRequestSource;
   readonly canvasX: number;
   readonly canvasY: number;
   readonly interactionX: number;
@@ -15,7 +17,18 @@ export interface GalaxyLabContextTarget {
   readonly worldY: number;
 }
 
-export type GalaxyLabKeyboardCommand =
+export interface FriendsGalaxyDetailsRequest {
+  readonly nodeId: string;
+  readonly source: "keyboard";
+}
+
+export interface FriendsGalaxyImperativeHandle {
+  fitAll(): void;
+  focusNode(nodeId: string): boolean;
+  setPresentationVisible(visible: boolean): void;
+}
+
+export type FriendsGalaxyKeyboardCommand =
   | { readonly type: "clear" }
   | { readonly type: "context-menu" }
   | { readonly type: "details" }
@@ -23,7 +36,7 @@ export type GalaxyLabKeyboardCommand =
   | { readonly type: "pan"; readonly deltaX: number; readonly deltaY: number }
   | { readonly type: "zoom"; readonly ratio: number };
 
-export interface GalaxyLabKeyboardInput {
+export interface FriendsGalaxyKeyboardInput {
   readonly key: string;
   readonly altKey?: boolean;
   readonly ctrlKey?: boolean;
@@ -31,7 +44,7 @@ export interface GalaxyLabKeyboardInput {
   readonly shiftKey?: boolean;
 }
 
-export interface GalaxyLabLongPressActivation {
+export interface FriendsGalaxyLongPressActivation {
   readonly pointerId: number;
   readonly x: number;
   readonly y: number;
@@ -46,14 +59,14 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
 }
 
-export function galaxyLabContextTarget(
+export function friendsGalaxyContextTarget(
   nodeId: string,
-  source: GalaxyLabContextRequestSource,
+  source: FriendsGalaxyContextRequestSource,
   canvasX: number,
   canvasY: number,
-  transform: GalaxyLabTransform,
-  geometry: GalaxyLabViewportGeometry,
-): GalaxyLabContextTarget | null {
+  transform: FriendsGalaxyTransform,
+  geometry: FriendsGalaxyViewportGeometry,
+): FriendsGalaxyContextTarget | null {
   if (!nodeId) return null;
   const horizontalInset = Math.min(
     CONTEXT_EDGE_INSET,
@@ -84,9 +97,15 @@ export function galaxyLabContextTarget(
   };
 }
 
-export function galaxyLabKeyboardCommand(
-  input: GalaxyLabKeyboardInput,
-): GalaxyLabKeyboardCommand | null {
+export function friendsGalaxyDetailsRequest(
+  nodeId: string,
+): FriendsGalaxyDetailsRequest | null {
+  return nodeId ? { nodeId, source: "keyboard" } : null;
+}
+
+export function friendsGalaxyKeyboardCommand(
+  input: FriendsGalaxyKeyboardInput,
+): FriendsGalaxyKeyboardCommand | null {
   if (input.altKey || input.ctrlKey || input.metaKey) return null;
   const panStep = input.shiftKey ? 120 : 56;
   switch (input.key) {
@@ -120,7 +139,7 @@ export function galaxyLabKeyboardCommand(
   }
 }
 
-export class GalaxyLabLongPressTracker {
+export class FriendsGalaxyLongPressTracker {
   private pointerIdValue: number | null = null;
   private startX = 0;
   private startY = 0;
@@ -165,7 +184,7 @@ export class GalaxyLabLongPressTracker {
     return true;
   }
 
-  activate(nowMs: number): GalaxyLabLongPressActivation | null {
+  activate(nowMs: number): FriendsGalaxyLongPressActivation | null {
     if (
       this.pointerIdValue === null ||
       this.activated ||

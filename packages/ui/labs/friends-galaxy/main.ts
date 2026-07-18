@@ -69,19 +69,22 @@ import {
   type GalaxyLabSelectionAnnouncementKind,
 } from "./accessibility.js";
 import {
-  galaxyLabViewportGeometry,
-  reanchorGalaxyLabTransformToInteraction,
-  writeGalaxyLabCanvasPoint,
-  type GalaxyLabCanvasPoint,
-  type GalaxyLabViewportGeometry,
-} from "./viewport-geometry.js";
+  friendsGalaxyViewportGeometry,
+  reanchorFriendsGalaxyTransformToInteraction,
+  writeFriendsGalaxyCanvasPoint,
+  type FriendsGalaxyCanvasPoint,
+  type FriendsGalaxyViewportGeometry,
+} from "../../src/lib/friends-galaxy-viewport.js";
 import {
-  GalaxyLabLongPressTracker,
-  galaxyLabContextTarget,
-  galaxyLabKeyboardCommand,
-  type GalaxyLabContextRequestSource,
-  type GalaxyLabContextTarget,
-} from "./interaction-contract.js";
+  FriendsGalaxyLongPressTracker,
+  friendsGalaxyContextTarget,
+  friendsGalaxyDetailsRequest,
+  friendsGalaxyKeyboardCommand,
+  type FriendsGalaxyContextRequestSource,
+  type FriendsGalaxyContextTarget,
+  type FriendsGalaxyDetailsRequest,
+  type FriendsGalaxyImperativeHandle,
+} from "../../src/lib/friends-galaxy-interaction.js";
 import { projectGalaxyLabWorldPoint } from "./viewport-projection.js";
 
 const DEFAULT_PERSON_COUNT = 5_000;
@@ -1081,22 +1084,22 @@ let hoverRequest = 0;
 let pendingHoverX = 0;
 let pendingHoverY = 0;
 let pendingHover = false;
-let viewportGeometry: GalaxyLabViewportGeometry = galaxyLabViewportGeometry(
+let viewportGeometry: FriendsGalaxyViewportGeometry = friendsGalaxyViewportGeometry(
   { left: 0, top: 0, width: 1, height: 1 },
   { left: 0, top: 0, width: 1, height: 1 },
 );
-const eventCanvasPoint: GalaxyLabCanvasPoint = { x: 0, y: 0 };
+const eventCanvasPoint: FriendsGalaxyCanvasPoint = { x: 0, y: 0 };
 const contextProjectionMatrix = new Float32Array(16);
 const contextProjectionPoint = new Float32Array(2);
-const longPressTracker = new GalaxyLabLongPressTracker();
+const longPressTracker = new FriendsGalaxyLongPressTracker();
 let longPressTimeout = 0;
-let lastContextTarget: GalaxyLabContextTarget | null = null;
-let lastDetailsRequest: { nodeId: string; source: "keyboard" } | null = null;
+let lastContextTarget: FriendsGalaxyContextTarget | null = null;
+let lastDetailsRequest: FriendsGalaxyDetailsRequest | null = null;
 let viewportOriginValid = false;
 let viewportGeometryReadCount = 0;
 
 function refreshViewportOrigin(): void {
-  viewportGeometry = galaxyLabViewportGeometry(
+  viewportGeometry = friendsGalaxyViewportGeometry(
     canvasHost.getBoundingClientRect(),
     viewport.getBoundingClientRect(),
   );
@@ -1113,8 +1116,8 @@ function ensureViewportOrigin(): void {
   if (!viewportOriginValid) refreshViewportOrigin();
 }
 
-function canvasPoint(clientX: number, clientY: number): GalaxyLabCanvasPoint {
-  return writeGalaxyLabCanvasPoint(
+function canvasPoint(clientX: number, clientY: number): FriendsGalaxyCanvasPoint {
+  return writeFriendsGalaxyCanvasPoint(
     eventCanvasPoint,
     viewportGeometry,
     clientX,
@@ -1137,11 +1140,11 @@ function cancelLongPress(): void {
 function requestContextAt(
   canvasX: number,
   canvasY: number,
-  source: GalaxyLabContextRequestSource,
+  source: FriendsGalaxyContextRequestSource,
   nodeId = activeBackend?.pickNode(canvasX, canvasY) ?? null,
 ): boolean {
   if (!nodeId) return false;
-  const target = galaxyLabContextTarget(
+  const target = friendsGalaxyContextTarget(
     nodeId,
     source,
     canvasX,
@@ -1153,7 +1156,7 @@ function requestContextAt(
   lastContextTarget = target;
   viewport.dataset.contextRequestSource = source;
   viewport.dispatchEvent(
-    new CustomEvent<GalaxyLabContextTarget>("friends-galaxy-context-request", {
+    new CustomEvent<FriendsGalaxyContextTarget>("friends-galaxy-context-request", {
       bubbles: true,
       detail: target,
     }),
@@ -1203,7 +1206,8 @@ function requestSelectedContext(): boolean {
 function requestSelectedDetails(): boolean {
   const nodeId = interaction.selectedNodeId;
   if (!nodeId) return false;
-  lastDetailsRequest = { nodeId, source: "keyboard" };
+  lastDetailsRequest = friendsGalaxyDetailsRequest(nodeId);
+  if (!lastDetailsRequest) return false;
   viewport.dispatchEvent(
     new CustomEvent("friends-galaxy-details-request", {
       bubbles: true,
@@ -1740,7 +1744,7 @@ viewport.addEventListener("gestureend", ((event: SafariGestureEvent) => {
 
 viewport.addEventListener("dblclick", () => fitGalaxy());
 viewport.addEventListener("keydown", (event) => {
-  const command = galaxyLabKeyboardCommand(event);
+  const command = friendsGalaxyKeyboardCommand(event);
   if (!command) return;
   let available = true;
   let interactionSettled = false;
@@ -1912,7 +1916,7 @@ const resizeObserver = new ResizeObserver(() => {
   if (!userMovedCamera) {
     frameInitialGalaxy();
   } else {
-    reanchorGalaxyLabTransformToInteraction(
+    reanchorFriendsGalaxyTransformToInteraction(
       transform,
       previousGeometry,
       viewportGeometry,
@@ -1971,12 +1975,17 @@ window.addEventListener("beforeunload", () => {
   activeBackend?.dispose();
 });
 
+const imperativeHandle: FriendsGalaxyImperativeHandle = {
+  fitAll: () => fitGalaxy(),
+  focusNode: focusGalaxyNode,
+  setPresentationVisible: setGalaxyPresentationVisible,
+};
+
 Object.assign(window, {
   __FRIENDS_GALAXY_LAB__: {
     fixture,
     diagnostics: galaxyDiagnosticSnapshot,
-    focusNode: focusGalaxyNode,
-    setPresentationVisible: setGalaxyPresentationVisible,
+    ...imperativeHandle,
     state: () => ({
       backend: activeBackend?.metrics() ?? null,
       transform: { ...transform },
