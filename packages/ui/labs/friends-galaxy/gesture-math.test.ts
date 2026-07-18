@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyGalaxyLabPinch,
   applyGalaxyLabZoomAt,
+  galaxyLabWheelDeltaPixels,
 } from "./gesture-math.js";
 
 describe("Friends Galaxy gesture math", () => {
@@ -67,5 +68,14 @@ describe("Friends Galaxy gesture math", () => {
     expect(transform.scale).toBe(6);
     expect(worldX * transform.scale + transform.x).toBeCloseTo(200, 8);
     expect(worldY * transform.scale + transform.y).toBeCloseTo(120, 8);
+  });
+
+  it("keeps pixel trackpad deltas exact", () => {
+    expect(galaxyLabWheelDeltaPixels(18.5, 0, 900)).toBe(18.5);
+  });
+
+  it("normalizes line and page wheel deltas before panning", () => {
+    expect(galaxyLabWheelDeltaPixels(3, 1, 900)).toBe(48);
+    expect(galaxyLabWheelDeltaPixels(-0.5, 2, 800)).toBe(-400);
   });
 });

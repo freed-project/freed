@@ -22,6 +22,7 @@ import { findGalaxyLabSceneNodeIndex } from "./scene-interaction-index.js";
 import {
   applyGalaxyLabPinch,
   applyGalaxyLabZoomAt,
+  galaxyLabWheelDeltaPixels,
 } from "./gesture-math.js";
 import {
   GalaxyActivityScenePatchEncoder,
@@ -42,6 +43,7 @@ import {
   writeGalaxyLabWebGpuViewProjection,
 } from "./camera-math.js";
 import { shouldContinueGalaxyLabFrame } from "./frame-loop.js";
+import { GalaxyLabInertialPan } from "./inertial-pan.js";
 import { GalaxyLabPointerRoster } from "./pointer-roster.js";
 import {
   GalaxyLabSampleRing,
@@ -57,6 +59,7 @@ const MAX_SCALE = 6;
 const numberFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
 const integerFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
 const scaleFormat = new Intl.NumberFormat(undefined, { maximumSignificantDigits: 3 });
+type GalaxyLabWheelInputMode = "idle" | "two-finger-pan" | "pinch-zoom";
 const labParameters = new URLSearchParams(window.location.search);
 const animationProbeDisabled = labParameters.get("animate") === "0";
 const pixelRatioParameter = Number.parseFloat(labParameters.get("dpr") ?? "");
@@ -176,10 +179,14 @@ let metricsDirty = true;
 let userMovedCamera = false;
 let cameraInMotion = false;
 let renderResizePending = false;
+let wheelInputMode: GalaxyLabWheelInputMode = "idle";
 viewport.dataset.cameraMotion = "false";
 viewport.dataset.frameLoop = "idle";
 viewport.dataset.renderResizePending = "false";
+viewport.dataset.inertialPan = "false";
+viewport.dataset.wheelInputMode = wheelInputMode;
 const settleScheduler = new GalaxyLabSettleScheduler();
+const inertialPan = new GalaxyLabInertialPan();
 const frameSamples = new GalaxyLabSampleRing(240);
 const submitSamples = new GalaxyLabSampleRing(240);
 const nodeLabelById = new Map(fixture.atlas.nodes.map((node) => [node.id, node.label]));
@@ -377,6 +384,34 @@ function setCameraInMotion(next: boolean): void {
   markGalaxyDirty();
 }
 
+function cancelInertialPan(): boolean {
+  const wasActive = inertialPan.isActive;
+  inertialPan.cancel();
+  viewport.dataset.inertialPan = "false";
+  return wasActive;
+}
+
+function beginInertialPanSample(timeMs: number): boolean {
+  const interrupted = inertialPan.isActive;
+  inertialPan.begin(timeMs);
+  viewport.dataset.inertialPan = "false";
+  return interrupted;
+}
+
+function startInertialPan(releaseTimeMs: number): boolean {
+  const started = inertialPan.start(
+    releaseTimeMs,
+    performance.now(),
+    reducedMotionQuery.matches,
+  );
+  viewport.dataset.inertialPan = String(started);
+  if (!started) return false;
+  settleScheduler.cancel();
+  setCameraInMotion(true);
+  markGalaxyDirty();
+  return true;
+}
+
 function viewDetailForScale(scale: number): GalaxyLabViewDetail {
   if (scale < 0.24) return "overview";
   if (scale < 0.9) return "middle";
@@ -478,6 +513,7 @@ function scheduleSettledViewDetail(immediate = false): void {
 }
 
 function frameGalaxy(markAsUserAction: boolean, useInitialScale: boolean): void {
+  cancelInertialPan();
   const { width, height } = viewportSize();
   const bounds = fixture.atlas.bounds;
   const worldWidth = Math.max(1, bounds.right - bounds.left);
@@ -531,6 +567,7 @@ async function activateBackend(
   id: GalaxyLabBackendId,
   inheritedFallbackReason: string | null = null,
 ): Promise<void> {
+  if (cancelInertialPan()) setCameraInMotion(false);
   const generation = ++switchGeneration;
   avatarAdmissionGeneration += 1;
   avatarAdmissionState.reset();
@@ -693,6 +730,15 @@ function updateMetrics(): void {
   addMetric("Camera scale", scaleFormat.format(transform.scale));
   addMetric("Settled detail", viewDetailForScale(transform.scale));
   addMetric("Touch input", nativeTouchInput ? "Native Touch Events" : "Pointer Events");
+  addMetric(
+    "Trackpad input",
+    wheelInputMode === "two-finger-pan"
+      ? "Two-finger pan"
+      : wheelInputMode === "pinch-zoom"
+        ? "Pinch zoom"
+        : "Ready",
+  );
+  addMetric("Inertial pan", inertialPan.isActive ? "Active" : "Idle");
   addMetric("Viewport geometry reads", integerFormat.format(viewportGeometryReadCount));
   if (metrics.adapterDescription) addMetric("Adapter", metrics.adapterDescription);
 }
@@ -725,6 +771,18 @@ function pollBackendHealth(): void {
 
 function renderFrame(timeMs: number): void {
   frameRequest = -1;
+  const inertialStep = inertialPan.step(timeMs);
+  if (inertialStep.deltaX !== 0 || inertialStep.deltaY !== 0) {
+    transform.x += inertialStep.deltaX;
+    transform.y += inertialStep.deltaY;
+    userMovedCamera = true;
+    dirty = true;
+    metricsDirty = true;
+  }
+  if (inertialStep.finished) {
+    viewport.dataset.inertialPan = "false";
+    scheduleSettledViewDetail();
+  }
   const settledGeneration = settleScheduler.takeDue(timeMs);
   if (settledGeneration !== null) applySettledViewDetail(settledGeneration);
   if (renderResizePending) resizeActiveBackend();
@@ -761,7 +819,7 @@ function renderFrame(timeMs: number): void {
   if (shouldContinueGalaxyLabFrame(
     backendReady && animateControl.checked,
     backendReady && dirty,
-    settleScheduler.isPending,
+    settleScheduler.isPending || inertialPan.isActive,
   )) {
     requestGalaxyFrame();
   } else {
@@ -770,6 +828,7 @@ function renderFrame(timeMs: number): void {
 }
 
 function zoomAt(viewportX: number, viewportY: number, nextScale: number): void {
+  cancelInertialPan();
   setCameraInMotion(true);
   applyGalaxyLabZoomAt(
     transform,
@@ -786,12 +845,15 @@ function zoomAt(viewportX: number, viewportY: number, nextScale: number): void {
 
 const pointers = new GalaxyLabPointerRoster(8);
 let gestureMoved = false;
+let gestureInterruptedInertia = false;
 let hoverRequest = 0;
 let pendingHoverX = 0;
 let pendingHoverY = 0;
 let pendingHover = false;
 let viewportClientLeft = 0;
 let viewportClientTop = 0;
+let viewportClientWidth = 1;
+let viewportClientHeight = 1;
 let viewportOriginValid = false;
 let viewportGeometryReadCount = 0;
 
@@ -799,6 +861,8 @@ function refreshViewportOrigin(): void {
   const bounds = viewport.getBoundingClientRect();
   viewportClientLeft = bounds.left;
   viewportClientTop = bounds.top;
+  viewportClientWidth = Math.max(1, bounds.width);
+  viewportClientHeight = Math.max(1, bounds.height);
   viewportOriginValid = true;
   viewportGeometryReadCount += 1;
   viewport.dataset.viewportGeometryReads = String(viewportGeometryReadCount);
@@ -828,7 +892,7 @@ function scheduleHoverPick(viewportX: number, viewportY: number): void {
   hoverRequest = requestAnimationFrame(() => {
     hoverRequest = 0;
     if (!pendingHover) return;
-    if (pointers.count > 0) {
+    if (pointers.count > 0 || inertialPan.isActive) {
       pendingHover = false;
       return;
     }
@@ -846,10 +910,14 @@ viewport.addEventListener("pointerdown", (event) => {
   event.preventDefault();
   avatarAdmissionGeneration += 1;
   settleScheduler.cancel();
+  const interruptedInertia = beginInertialPanSample(event.timeStamp);
   viewport.focus({ preventScroll: true });
   if (pointers.count === 0) {
     refreshViewportOrigin();
     gestureMoved = false;
+    gestureInterruptedInertia = interruptedInertia;
+  } else {
+    gestureInterruptedInertia ||= interruptedInertia;
   }
   const pointerIndex = pointers.begin(
     event.pointerId,
@@ -887,6 +955,7 @@ viewport.addEventListener("pointermove", (event) => {
     gestureMoved = true;
   }
   if (pointers.count >= 2) {
+    beginInertialPanSample(event.timeStamp);
     const previousFirstX = pointers.xAt(0);
     const previousFirstY = pointers.yAt(0);
     const previousSecondX = pointers.xAt(1);
@@ -907,8 +976,11 @@ viewport.addEventListener("pointermove", (event) => {
     );
     scheduleSettledViewDetail();
   } else {
-    transform.x += nextX - pointers.xAt(pointerIndex);
-    transform.y += nextY - pointers.yAt(pointerIndex);
+    const deltaX = nextX - pointers.xAt(pointerIndex);
+    const deltaY = nextY - pointers.yAt(pointerIndex);
+    inertialPan.sample(deltaX, deltaY, event.timeStamp);
+    transform.x += deltaX;
+    transform.y += deltaY;
     pointers.update(pointerIndex, nextX, nextY);
   }
   userMovedCamera = true;
@@ -919,6 +991,7 @@ function releasePointer(event: PointerEvent): void {
   if (nativeTouchInput && event.pointerType === "touch") return;
   const pointerIndex = pointers.indexOf(event.pointerId);
   if (pointerIndex < 0) return;
+  const activeCountBeforeRelease = pointers.count;
   const releasePointX = event.clientX - viewportClientLeft;
   const releasePointY = event.clientY - viewportClientTop;
   const shouldSelect = event.type === "pointerup" && pointers.count === 1 && !gestureMoved;
@@ -938,10 +1011,18 @@ function releasePointer(event: PointerEvent): void {
         hoveredNodeId: null,
       });
       if (selectionChanged) scheduleSettledViewDetail(true);
+      else if (gestureInterruptedInertia) scheduleSettledViewDetail();
     } else if (gestureMoved || event.type === "pointercancel") {
-      scheduleSettledViewDetail();
+      const inertiaStarted = event.type === "pointerup" &&
+        activeCountBeforeRelease === 1 &&
+        startInertialPan(event.timeStamp);
+      if (!inertiaStarted) scheduleSettledViewDetail();
     }
     gestureMoved = false;
+    gestureInterruptedInertia = false;
+  } else if (pointers.count === 1) {
+    beginInertialPanSample(event.timeStamp);
+    settleScheduler.cancel();
   }
 }
 
@@ -960,10 +1041,14 @@ function beginNativeTouches(event: TouchEvent): void {
   event.preventDefault();
   avatarAdmissionGeneration += 1;
   settleScheduler.cancel();
+  const interruptedInertia = beginInertialPanSample(event.timeStamp);
   viewport.focus({ preventScroll: true });
   if (pointers.count === 0) {
     refreshViewportOrigin();
     gestureMoved = false;
+    gestureInterruptedInertia = interruptedInertia;
+  } else {
+    gestureInterruptedInertia ||= interruptedInertia;
   }
   for (let index = 0; index < event.changedTouches.length; index += 1) {
     const touch = event.changedTouches.item(index);
@@ -998,6 +1083,7 @@ function moveNativeTouches(event: TouchEvent): void {
   }
   if (pointers.count >= 2) {
     gestureMoved = true;
+    beginInertialPanSample(event.timeStamp);
     applyGalaxyLabPinch(
       transform,
       previousFirstX,
@@ -1013,8 +1099,11 @@ function moveNativeTouches(event: TouchEvent): void {
     );
     scheduleSettledViewDetail();
   } else {
-    transform.x += pointers.xAt(0) - previousFirstX;
-    transform.y += pointers.yAt(0) - previousFirstY;
+    const deltaX = pointers.xAt(0) - previousFirstX;
+    const deltaY = pointers.yAt(0) - previousFirstY;
+    inertialPan.sample(deltaX, deltaY, event.timeStamp);
+    transform.x += deltaX;
+    transform.y += deltaY;
   }
   userMovedCamera = true;
   markGalaxyDirty();
@@ -1033,6 +1122,7 @@ function endNativeTouches(event: TouchEvent): void {
     if (touch) pointers.remove(touch.identifier);
   }
   if (pointers.count > 0) {
+    beginInertialPanSample(event.timeStamp);
     settleScheduler.cancel();
     return;
   }
@@ -1046,17 +1136,24 @@ function endNativeTouches(event: TouchEvent): void {
       hoveredNodeId: null,
     });
     if (selectionChanged) scheduleSettledViewDetail(true);
+    else if (gestureInterruptedInertia) scheduleSettledViewDetail();
   } else if (gestureMoved) {
-    scheduleSettledViewDetail();
+    const inertiaStarted = event.type === "touchend" &&
+      activeCountBeforeRelease === 1 &&
+      startInertialPan(event.timeStamp);
+    if (!inertiaStarted) scheduleSettledViewDetail();
   }
   gestureMoved = false;
+  gestureInterruptedInertia = false;
 }
 
 function cancelNativeTouches(event: TouchEvent): void {
   event.preventDefault();
   pointers.clear();
+  cancelInertialPan();
   viewport.dataset.dragging = "false";
   gestureMoved = false;
+  gestureInterruptedInertia = false;
   scheduleSettledViewDetail();
 }
 
@@ -1067,14 +1164,42 @@ viewport.addEventListener("touchcancel", cancelNativeTouches, { passive: false }
 
 viewport.addEventListener("wheel", (event) => {
   event.preventDefault();
+  if (safariGestureActive) return;
+  const interruptedInertia = cancelInertialPan();
   if (!cameraInMotion) refreshViewportOrigin();
   else ensureViewportOrigin();
-  const sensitivity = event.ctrlKey ? 0.012 : 0.0024;
-  zoomAt(
-    event.clientX - viewportClientLeft,
-    event.clientY - viewportClientTop,
-    transform.scale * Math.exp(-event.deltaY * sensitivity),
+  if (event.ctrlKey) {
+    wheelInputMode = "pinch-zoom";
+    viewport.dataset.wheelInputMode = wheelInputMode;
+    zoomAt(
+      event.clientX - viewportClientLeft,
+      event.clientY - viewportClientTop,
+      transform.scale * Math.exp(-event.deltaY * 0.012),
+    );
+    return;
+  }
+  const deltaX = galaxyLabWheelDeltaPixels(
+    event.deltaX,
+    event.deltaMode,
+    viewportClientWidth,
   );
+  const deltaY = galaxyLabWheelDeltaPixels(
+    event.deltaY,
+    event.deltaMode,
+    viewportClientHeight,
+  );
+  if (deltaX === 0 && deltaY === 0) {
+    if (interruptedInertia) scheduleSettledViewDetail();
+    return;
+  }
+  wheelInputMode = "two-finger-pan";
+  viewport.dataset.wheelInputMode = wheelInputMode;
+  setCameraInMotion(true);
+  transform.x -= deltaX;
+  transform.y -= deltaY;
+  userMovedCamera = true;
+  markGalaxyDirty();
+  scheduleSettledViewDetail();
 }, { passive: false });
 
 interface SafariGestureEvent extends Event {
@@ -1092,6 +1217,9 @@ let safariGestureViewportTop = 0;
 
 viewport.addEventListener("gesturestart", ((event: SafariGestureEvent) => {
   event.preventDefault();
+  cancelInertialPan();
+  wheelInputMode = "pinch-zoom";
+  viewport.dataset.wheelInputMode = wheelInputMode;
   setCameraInMotion(true);
   avatarAdmissionGeneration += 1;
   settleScheduler.cancel();
@@ -1131,6 +1259,7 @@ viewport.addEventListener("keydown", (event) => {
   if (event.altKey || event.ctrlKey || event.metaKey) return;
   const panStep = event.shiftKey ? 120 : 56;
   let handled = true;
+  let interactionSettled = false;
   switch (event.key) {
     case "ArrowLeft":
       transform.x += panStep;
@@ -1163,14 +1292,26 @@ viewport.addEventListener("keydown", (event) => {
     case "Escape":
       if (updateInteraction({ selectedNodeId: null, hoveredNodeId: null })) {
         scheduleSettledViewDetail(true);
+        interactionSettled = true;
       }
       break;
     default:
       handled = false;
   }
   if (!handled) return;
+  const interruptedInertia = cancelInertialPan();
   event.preventDefault();
-  if (event.key.startsWith("Arrow")) userMovedCamera = true;
+  if (event.key.startsWith("Arrow")) {
+    userMovedCamera = true;
+    setCameraInMotion(true);
+    scheduleSettledViewDetail();
+  } else if (
+    interruptedInertia &&
+    event.key === "Escape" &&
+    !interactionSettled
+  ) {
+    scheduleSettledViewDetail();
+  }
   markGalaxyDirty();
 });
 fitButton.addEventListener("click", () => fitGalaxy());
@@ -1210,6 +1351,10 @@ animateControl.addEventListener("change", () => {
 });
 
 function syncReducedMotionPreference(): void {
+  if (reducedMotionQuery.matches && inertialPan.isActive) {
+    cancelInertialPan();
+    scheduleSettledViewDetail();
+  }
   if (animatePreferenceTouched || animationProbeDisabled) return;
   animateControl.checked = !reducedMotionQuery.matches;
   activeBackend?.setAnimationEnabled?.(animateControl.checked);
@@ -1220,6 +1365,7 @@ function syncReducedMotionPreference(): void {
 reducedMotionQuery.addEventListener("change", syncReducedMotionPreference);
 
 const resizeObserver = new ResizeObserver(() => {
+  cancelInertialPan();
   refreshViewportOrigin();
   resizeActiveBackend();
   if (!userMovedCamera) frameInitialGalaxy();
@@ -1238,7 +1384,12 @@ const backendHealthPoll = window.setInterval(() => {
 
 document.addEventListener("visibilitychange", () => {
   lastFrameAt = 0;
-  if (document.visibilityState === "visible") markGalaxyDirty();
+  if (document.visibilityState === "hidden") {
+    cancelInertialPan();
+    settleScheduler.cancel();
+    return;
+  }
+  scheduleSettledViewDetail(true);
 });
 
 window.addEventListener("beforeunload", () => {
@@ -1246,6 +1397,7 @@ window.addEventListener("beforeunload", () => {
   cancelAnimationFrame(hoverRequest);
   clearInterval(backendHealthPoll);
   settleScheduler.cancel();
+  cancelInertialPan();
   reducedMotionQuery.removeEventListener("change", syncReducedMotionPreference);
   resizeObserver.disconnect();
   avatarImageAdmission.dispose();
@@ -1276,6 +1428,12 @@ Object.assign(window, {
       },
       recoveryReason: lastRecoveryReason,
       viewportGeometryReadCount,
+      wheelInputMode,
+      inertialPan: {
+        active: inertialPan.isActive,
+        velocityX: inertialPan.currentVelocityX,
+        velocityY: inertialPan.currentVelocityY,
+      },
       frameLoop: viewport.dataset.frameLoop,
       renderResizePending,
       settlePending: settleScheduler.isPending,

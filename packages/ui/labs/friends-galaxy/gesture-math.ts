@@ -4,6 +4,17 @@ function clampScale(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
 }
 
+export function galaxyLabWheelDeltaPixels(
+  delta: number,
+  deltaMode: number,
+  viewportExtent: number,
+): number {
+  if (!Number.isFinite(delta)) return 0;
+  if (deltaMode === 1) return delta * 16;
+  if (deltaMode === 2) return delta * Math.max(1, viewportExtent);
+  return delta;
+}
+
 export function applyGalaxyLabZoomAt(
   transform: GalaxyLabTransform,
   viewportX: number,

@@ -202,6 +202,8 @@ The detached shell now shares one cached viewport origin across hover, pointer, 
 
 Touch state now lives in one fixed-capacity typed pointer roster instead of two Maps. On touch-capable hardware, the detached shell uses non-passive native Touch Events and ignores duplicate touch Pointer Events. Mouse and pen remain on Pointer Events. Touch start writes scalar identity, position, and gesture origin once. Active pan and pinch perform indexed scalar reads and writes without creating a Map iterator or position object. Removing either touch shifts the surviving roster in place and cancels the former pinch deadline, so the interaction hands directly back to one-finger pan without settling underneath the remaining contact. Touch cancellation clears the complete roster before settle so stale contacts cannot block the next gesture.
 
+Mac trackpad input now separates pan from zoom. Ordinary wheel deltas pan the camera and preserve the operating system's continuing momentum events. Control-modified wheel input and Safari gesture events retain midpoint-anchored pinch zoom. Pointer and one-finger touch drags feed a bounded inertial controller, so a quick release continues transform-only motion without adding synthetic momentum on top of the trackpad's native momentum. The controller reuses one result object, caps launch velocity, decays in the demand-driven frame loop, cancels after a stalled frame or any new input, and schedules presentation settle only after motion ends. Reduced-motion preference disables the throw. No star, edge, label, avatar, or GPU buffer rebuild runs during inertia.
+
 Pinch and wheel movement now update one persistent settle deadline instead of canceling and allocating a browser timeout on every event. The animation loop consumes only the latest generation after 140 ms, then restores render density, detail, and bounded avatar admission once.
 
 Settled avatar admission now retains an exact backend, detail, compact-width, and selected-person key. Ordinary close-zoom settles reuse the applied image map without rescanning avatar candidates or rebuilding the atlas. Matching in-flight work advances to the latest settle generation, while stale or superseded completions cannot overwrite a newer backend or selection. Theme changes rebuild presentation from retained images inside the backend and do not restart decoding.
@@ -460,6 +462,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.98 | Define keyboard, assistive-technology, menu-focus, and reduced-motion cutover requirements | High | Done |
 | 8.99 | Route detached iPhone pan and pinch through native Touch Events with duplicate-pointer suppression, direct pinch-to-pan handoff, and cancellation recovery | High | Done |
 | 8.100 | Reject malformed or mixed-version worker envelopes before GPU admission with constant-time typed-buffer, sparse-offset, bounds, metadata-cap, and receipt validation | High | Done |
+| 8.101 | Add native Mac two-finger trackpad pan plus bounded allocation-free pointer and touch inertia with cancellation, reduced-motion, and settle guarantees | High | Done |
 
 ---
 
@@ -550,6 +553,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] WebGPU rendering caps settled Retina density and lowers compact or wide motion density once per gesture without removing resident stars or labels
 - [x] Compact initial framing opens on a legible semantic field while Fit galaxy remains the explicit complete-universe command
 - [x] Gesture diagnostics use fixed typed rings and defer panel DOM updates until camera settle
+- [x] Mac two-finger trackpad deltas pan with native momentum, pinch remains anchored zoom, and pointer or one-finger touch throws use bounded allocation-free inertia that cancels for new input and reduced motion
 - [x] Animation-disabled scenes stop requesting frames when idle and wake only for renderer work, settle state, diagnostics, or backend health recovery
 - [x] Pointer, wheel, and Safari handlers mark motion density without synchronously resizing the GPU canvas
 - [x] Active pointer and Safari gesture movement reuses captured bounds and scalar state without per-event point allocation
