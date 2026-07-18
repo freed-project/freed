@@ -243,6 +243,7 @@ function updateMetrics(): void {
       : "Backend default",
   );
   addMetric("Draw calls", metrics.drawCalls === null ? "Not exposed" : integerFormat.format(metrics.drawCalls));
+  addMetric("Submission", metrics.submissionMode ?? "Direct draws");
   addMetric("Billboard labels", integerFormat.format(metrics.labelCount));
   addMetric("Avatar atlas", integerFormat.format(metrics.avatarCount));
   addMetric("Context edges", integerFormat.format(metrics.contextualEdgeCount));

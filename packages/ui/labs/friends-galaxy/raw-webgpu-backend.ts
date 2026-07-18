@@ -379,6 +379,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private bindGroup: GPUBindGroup | null = null;
   private providerFieldPipeline: GPURenderPipeline | null = null;
   private providerFieldBindGroup: GPUBindGroup | null = null;
+  private staticRenderBundle: GPURenderBundle | null = null;
+  private readonly staticRenderBundles: GPURenderBundle[] = [];
   private edgePipeline: GPURenderPipeline | null = null;
   private edgeBindGroup: GPUBindGroup | null = null;
   private labelPipeline: GPURenderPipeline | null = null;
@@ -410,6 +412,9 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private interactionColor: readonly [number, number, number] = [1, 1, 1];
   private readonly viewProjection = new Float32Array(16);
   private readonly uniformData = new Float32Array(20);
+  private colorAttachment: GPURenderPassColorAttachment | null = null;
+  private renderPassDescriptor: GPURenderPassDescriptor | null = null;
+  private readonly commandBuffers: GPUCommandBuffer[] = [];
   private width = 1;
   private height = 1;
   private pixelRatio = 1;
@@ -653,6 +658,17 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       addressModeU: "clamp-to-edge",
       addressModeV: "clamp-to-edge",
     });
+    this.rebuildStaticRenderBundle();
+    this.colorAttachment = {
+      view: context.getCurrentTexture().createView(),
+      clearValue: this.clearColor,
+      loadOp: "clear",
+      storeOp: "store",
+    };
+    this.renderPassDescriptor = {
+      label: "Friends Galaxy render pass",
+      colorAttachments: [this.colorAttachment],
+    };
     this.rebuildLabels(canvas.clientWidth < 720);
     this.rebuildAvatars(canvas.clientWidth < 720);
     void device.lost.then((info) => {
@@ -743,7 +759,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   render(transform: GalaxyLabTransform, timeMs: number): void {
     if (
       !this.device || !this.context || !this.pipeline || !this.bindGroup || !this.uniformBuffer ||
-      !this.quadBuffer || !this.semanticBuffer || !this.backgroundBuffer || !this.fixture
+      !this.quadBuffer || !this.semanticBuffer || !this.backgroundBuffer || !this.fixture ||
+      !this.staticRenderBundle || !this.colorAttachment || !this.renderPassDescriptor
     ) return;
     writeGalaxyLabWebGpuViewProjection(
       this.viewProjection,
@@ -759,31 +776,10 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.device.queue.writeBuffer(this.uniformBuffer, 0, this.uniformData);
 
     const encoder = this.device.createCommandEncoder({ label: "Friends Galaxy frame" });
-    const pass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: this.context.getCurrentTexture().createView(),
-        clearValue: this.clearColor,
-        loadOp: "clear",
-        storeOp: "store",
-      }],
-    });
-    if (
-      this.providerFieldPipeline && this.providerFieldBindGroup &&
-      this.providerFieldBuffer && this.providerFields
-    ) {
-      pass.setPipeline(this.providerFieldPipeline);
-      pass.setBindGroup(0, this.providerFieldBindGroup);
-      pass.setVertexBuffer(0, this.quadBuffer);
-      pass.setVertexBuffer(1, this.providerFieldBuffer);
-      pass.draw(6, this.providerFields.count);
-    }
-    pass.setPipeline(this.pipeline);
-    pass.setBindGroup(0, this.bindGroup);
-    pass.setVertexBuffer(0, this.quadBuffer);
-    pass.setVertexBuffer(1, this.backgroundBuffer);
-    pass.draw(6, this.fixture.backgroundStarCount);
-    pass.setVertexBuffer(1, this.semanticBuffer);
-    pass.draw(6, this.fixture.scene.nodeIds.length);
+    this.colorAttachment.view = this.context.getCurrentTexture().createView();
+    this.colorAttachment.clearValue = this.clearColor;
+    const pass = encoder.beginRenderPass(this.renderPassDescriptor);
+    pass.executeBundles(this.staticRenderBundles);
     if (
       this.contextualEdgeCount > 0 && this.edgePipeline && this.edgeBindGroup && this.edgeBuffer
     ) {
@@ -813,7 +809,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       pass.draw(6, this.labelAtlas.labels.length);
     }
     pass.end();
-    this.device.queue.submit([encoder.finish()]);
+    this.commandBuffers[0] = encoder.finish();
+    this.device.queue.submit(this.commandBuffers);
   }
 
   metrics(): GalaxyLabBackendMetrics {
@@ -831,6 +828,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       avatarCount: this.avatarAtlas?.itemCount ?? 0,
       contextualEdgeCount: this.contextualEdgeCount,
       bufferUploadCount: this.bufferUploadCount,
+      submissionMode: "Pre-recorded world bundle",
       fallbackReason: this.fallbackReason,
       adapterDescription: this.adapterDescription,
     };
@@ -856,6 +854,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.bindGroup = null;
     this.providerFieldPipeline = null;
     this.providerFieldBindGroup = null;
+    this.staticRenderBundle = null;
+    this.staticRenderBundles.length = 0;
     this.edgePipeline = null;
     this.edgeBindGroup = null;
     this.labelPipeline = null;
@@ -872,6 +872,9 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.avatarTexture = null;
     this.labelSampler = null;
     this.uniformBuffer = null;
+    this.colorAttachment = null;
+    this.renderPassDescriptor = null;
+    this.commandBuffers.length = 0;
     this.fixture = null;
     this.sceneIndex = null;
     this.semanticData = null;
@@ -1057,6 +1060,33 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       this.providerFields.instanceData.byteLength,
     );
     this.bufferUploadCount += 1;
+  }
+
+  private rebuildStaticRenderBundle(): void {
+    if (
+      !this.device || !this.format || !this.providerFieldPipeline ||
+      !this.providerFieldBindGroup || !this.providerFieldBuffer || !this.providerFields ||
+      !this.pipeline || !this.bindGroup || !this.quadBuffer || !this.backgroundBuffer ||
+      !this.semanticBuffer || !this.fixture
+    ) return;
+    const encoder = this.device.createRenderBundleEncoder({
+      label: "Friends Galaxy static world bundle",
+      colorFormats: [this.format],
+    });
+    encoder.setPipeline(this.providerFieldPipeline);
+    encoder.setBindGroup(0, this.providerFieldBindGroup);
+    encoder.setVertexBuffer(0, this.quadBuffer);
+    encoder.setVertexBuffer(1, this.providerFieldBuffer);
+    encoder.draw(6, this.providerFields.count);
+    encoder.setPipeline(this.pipeline);
+    encoder.setBindGroup(0, this.bindGroup);
+    encoder.setVertexBuffer(0, this.quadBuffer);
+    encoder.setVertexBuffer(1, this.backgroundBuffer);
+    encoder.draw(6, this.fixture.backgroundStarCount);
+    encoder.setVertexBuffer(1, this.semanticBuffer);
+    encoder.draw(6, this.fixture.scene.nodeIds.length);
+    this.staticRenderBundle = encoder.finish();
+    this.staticRenderBundles[0] = this.staticRenderBundle;
   }
 
   private writePalette(palette: GalaxyLabPalette): void {
