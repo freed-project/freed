@@ -8,9 +8,9 @@ import {
 } from "./scene-fixture.js";
 import { findFriendsGalaxySceneNodeIndex } from "../../src/lib/friends-galaxy-scene-interaction-index.js";
 import {
-  projectGalaxyLabWorldPoint,
-  type GalaxyLabViewportProjection,
-} from "./viewport-projection.js";
+  projectFriendsGalaxyWorldPoint,
+  type FriendsGalaxyViewportProjection,
+} from "../../src/lib/friends-galaxy-projection.js";
 
 const AVATAR_INSTANCE_FLOATS = 11;
 const AVATAR_PIXEL_SCALE = 2;
@@ -59,7 +59,7 @@ export function selectGalaxyLabAvatars(
   selectedNodeId: string | null,
   compact: boolean,
   detail: GalaxyLabViewDetail,
-  projection?: GalaxyLabViewportProjection,
+  projection?: FriendsGalaxyViewportProjection,
 ): readonly GalaxyLabAvatarSeed[] {
   if (detail !== "close") return [];
   const selectedPersonId = galaxyLabSelectedPersonNodeId(fixture, selectedNodeId);
@@ -73,7 +73,7 @@ export function selectGalaxyLabAvatars(
   const visible = (nodeIndex: number): boolean => {
     if (!projection) return true;
     const offset = nodeIndex * 3;
-    return projectGalaxyLabWorldPoint(
+    return projectFriendsGalaxyWorldPoint(
       screen,
       projection,
       fixture.scene.positions[offset]!,
@@ -135,7 +135,7 @@ export function createGalaxyLabAvatarAtlas(
   detail: GalaxyLabViewDetail,
   images: ReadonlyMap<string, CanvasImageSource> = new Map(),
   fontFamily = "Inter, ui-sans-serif, system-ui, sans-serif",
-  projection?: GalaxyLabViewportProjection,
+  projection?: FriendsGalaxyViewportProjection,
 ): GalaxyLabAvatarAtlas {
   const avatars = selectGalaxyLabAvatars(
     fixture,

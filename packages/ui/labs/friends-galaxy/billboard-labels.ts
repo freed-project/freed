@@ -11,9 +11,9 @@ import {
 } from "./avatar-atlas.js";
 import { findFriendsGalaxySceneNodeIndex } from "../../src/lib/friends-galaxy-scene-interaction-index.js";
 import {
-  projectGalaxyLabWorldPoint,
-  type GalaxyLabViewportProjection,
-} from "./viewport-projection.js";
+  projectFriendsGalaxyWorldPoint,
+  type FriendsGalaxyViewportProjection,
+} from "../../src/lib/friends-galaxy-projection.js";
 
 const LABEL_INSTANCE_FLOATS = 11;
 const LABEL_PIXEL_SCALE = 2;
@@ -91,7 +91,7 @@ export function selectGalaxyLabLabels(
   compact: boolean,
   detail: GalaxyLabViewDetail,
   selectedNodeId: string | null = null,
-  projection?: GalaxyLabViewportProjection,
+  projection?: FriendsGalaxyViewportProjection,
 ): readonly GalaxyLabLabelSeed[] {
   const cap = detail === "overview"
     ? compact ? 8 : 13
@@ -158,7 +158,7 @@ export function selectGalaxyLabLabels(
     for (let nodeIndex = 0; nodeIndex < fixture.scene.nodeIds.length; nodeIndex += 1) {
       if (!fixture.scene.personIds[nodeIndex]) continue;
       const offset = nodeIndex * 3;
-      if (!projectGalaxyLabWorldPoint(
+      if (!projectFriendsGalaxyWorldPoint(
         screen,
         projection,
         fixture.scene.positions[offset]!,
@@ -195,7 +195,7 @@ export function selectGalaxyLabLabels(
   }
   const projectionScratch = new Float32Array(2);
   const labelIsVisible = (label: GalaxyLabLabelSeed): boolean => !projection ||
-    projectGalaxyLabWorldPoint(
+    projectFriendsGalaxyWorldPoint(
       projectionScratch,
       projection,
       label.anchorX,
@@ -217,7 +217,7 @@ export function selectGalaxyLabLabels(
   for (const candidate of semantic) {
     let separated = true;
     if (projection) {
-      projectGalaxyLabWorldPoint(
+      projectFriendsGalaxyWorldPoint(
         projectionScratch,
         projection,
         candidate.anchorX,
@@ -258,7 +258,7 @@ export function createGalaxyLabLabelAtlas(
   detail: GalaxyLabViewDetail,
   selectedNodeId: string | null = null,
   fontFamily = "Inter, ui-sans-serif, system-ui, sans-serif",
-  projection?: GalaxyLabViewportProjection,
+  projection?: FriendsGalaxyViewportProjection,
 ): GalaxyLabLabelAtlas {
   const avatars = selectGalaxyLabAvatars(
     fixture,

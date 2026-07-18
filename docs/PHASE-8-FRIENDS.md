@@ -238,6 +238,8 @@ Hover and selection now reuse one scene-index state object, one role map, and on
 
 The transferable interaction-index compiler and the allocation-bounded scene interaction engine now live under shared UI source. Their inputs are only the renderer-neutral typed galaxy scene, its worker-built hash, adjacency, and sparse pick buffers, and a stable selected plus hovered ID pair. The detached fixture no longer enters node lookup, contextual constellation assembly, interaction flag patching, or depth-aware picking. Raw WebGPU, Three.js WebGPU, WebGL2, labels, avatars, and shell focus all consume the same shared stable-ID lookup and sparse scene state that product cutover will use.
 
+The allocation-free perspective projection helper now lives under shared UI source too. It projects a world point into a caller-owned two-value target through the shared view-projection matrix and reports bounded viewport admission without allocating screen vectors. Settled labels, avatars, shell menu anchors, and functional projection tests consume the same helper, so product cutover has one depth-aware screen coordinate contract for presentation and overlay placement.
+
 Raw WebGPU now leaves the 30,000-instance base semantic buffer untouched during interaction. It packs the active identity system into one fixed-capacity overlay stream, uploads that stream once, and selects a pre-recorded world bundle that adds the overlay draw. Clearing interaction selects the base bundle again. Contextual edges remain one separate bounded upload. Hover cost is therefore independent of where linked stars live in the resident buffer and no longer performs one queue write per affected star.
 
 Raw WebGPU now also records contextual edges, avatar billboards, and label billboards as retained render bundles. Each frame executes one ordered bundle list containing the selected world bundle and only the active presentation layers. Camera movement no longer reissues their pipeline, bind group, vertex buffer, or draw commands from JavaScript. Interaction and settle boundaries replace only the affected bundle, while shared uniform and vertex-buffer writes remain visible through the recorded commands.
@@ -507,6 +509,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.115 | Move the fixed diagnostic ring, passive long-task monitor, and first-failure backend health latch into shared UI modules consumed by the laboratory and WebGPU backends | High | Done |
 | 8.116 | Move keyed avatar admission and the bounded image decode, failure-cache, eviction, and disposal queue into shared UI modules consumed by the detached shell | High | Done |
 | 8.117 | Move the transferable stable-ID, adjacency, sparse-pick index and allocation-bounded interaction scene state into shared UI modules consumed by every detached backend | High | Done |
+| 8.118 | Move allocation-free depth-aware world-to-screen projection and bounded viewport admission into a shared UI module consumed by labels, avatars, and shell overlays | High | Done |
 
 ---
 
@@ -612,6 +615,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] The detached laboratory and future product engine share one fixed diagnostic sample ring, passive long-task monitor, and first-failure backend health latch
 - [x] The detached laboratory and future product engine share one keyed avatar admission state and bounded source-deduplicating image decode queue with deterministic disposal
 - [x] Every detached backend and the future product engine share one worker-transferable stable-ID, adjacency, sparse-pick index and one allocation-bounded interaction scene state
+- [x] Labels, avatars, overlays, and the future product engine share one allocation-free depth-aware world-to-screen projection and viewport-admission helper
 - [x] Mac two-finger trackpad deltas pan with native momentum, pinch remains anchored zoom, and pointer or one-finger touch throws use bounded allocation-free inertia that cancels for new input and reduced motion
 - [x] Animation-disabled scenes stop requesting frames when idle and wake only for renderer work, settle state, diagnostics, or backend health recovery
 - [x] Pointer, wheel, and Safari handlers mark motion density without synchronously resizing the GPU canvas

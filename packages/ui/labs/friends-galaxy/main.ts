@@ -85,7 +85,7 @@ import {
   type FriendsGalaxyDetailsRequest,
   type FriendsGalaxyImperativeHandle,
 } from "../../src/lib/friends-galaxy-interaction.js";
-import { projectGalaxyLabWorldPoint } from "./viewport-projection.js";
+import { projectFriendsGalaxyWorldPoint } from "../../src/lib/friends-galaxy-projection.js";
 
 const DEFAULT_PERSON_COUNT = 5_000;
 const DEFAULT_ACCOUNT_COUNT = 25_000;
@@ -1183,7 +1183,7 @@ function requestSelectedContext(): boolean {
   const offset = nodeIndex * 3;
   contextProjectionPoint[0] = Number.NaN;
   contextProjectionPoint[1] = Number.NaN;
-  projectGalaxyLabWorldPoint(
+  projectFriendsGalaxyWorldPoint(
     contextProjectionPoint,
     {
       viewProjection: contextProjectionMatrix,

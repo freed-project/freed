@@ -9,7 +9,7 @@ import {
 import { createGalaxyLabFixture } from "./scene-fixture.js";
 import { compactGalaxyLabFixtureMetadata } from "./scene-fixture-worker-protocol.js";
 import { FriendsGalaxySceneIndex } from "../../src/lib/friends-galaxy-scene-index.js";
-import { projectGalaxyLabWorldPoint } from "./viewport-projection.js";
+import { projectFriendsGalaxyWorldPoint } from "../../src/lib/friends-galaxy-projection.js";
 
 const stressFixture = compactGalaxyLabFixtureMetadata(createGalaxyLabFixture({
   personCount: 5_000,
@@ -353,7 +353,7 @@ describe("Friends Galaxy billboard label selection", () => {
 
     expect(labels.some((label) => label.nodeId === "person:lab-person-4999")).toBe(true);
     expect(labels.some((label) => label.nodeId === "person:lab-person-0")).toBe(false);
-    expect(labels.every((label) => projectGalaxyLabWorldPoint(
+    expect(labels.every((label) => projectFriendsGalaxyWorldPoint(
       screen,
       projection,
       label.anchorX,
