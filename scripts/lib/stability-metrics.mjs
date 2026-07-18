@@ -6,7 +6,7 @@
  * surfaces cannot quietly invent different definitions for the same symptom.
  */
 
-export const STABILITY_METRIC_REGISTRY_VERSION = 5;
+export const STABILITY_METRIC_REGISTRY_VERSION = 6;
 export const MIN_LIFECYCLE_CREDITED_APP_ALIVE_HOURS = 6;
 export const MIN_COMPARABLE_WINDOW_DURATION_RATIO = 0.8;
 export const MAX_COMPARABLE_WINDOW_DURATION_RATIO = 1.25;
@@ -317,6 +317,7 @@ export const STABILITY_METRICS = Object.freeze([
     }),
     target: Object.freeze({ kind: "max_count", value: 0 }),
     triageBucketId: "scrape-zero-persist",
+    outcomeGuardrailMetricIds: Object.freeze(["renderer-recovery-count"]),
     alarmNames: Object.freeze(["scrape_zero_persist"]),
     canaryMetrics: Object.freeze([]),
   }),

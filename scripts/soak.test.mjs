@@ -2452,7 +2452,7 @@ test("buildVerdict produces a machine-readable verdict with real numbers", () =>
   assert.equal(verdict.schemaVersion, 1);
   assert.equal(verdict.windowStart, new Date(measurementStartMs).toISOString());
   assert.equal(verdict.windowEnd, new Date(measurementEndMs).toISOString());
-  assert.equal(verdict.metricRegistryVersion, 5);
+  assert.equal(verdict.metricRegistryVersion, 6);
   assert.equal(verdict.pass, true);
   assert.equal(verdict.status, "pass");
   assert.equal(verdict.failures, 0);
