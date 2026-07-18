@@ -11,6 +11,7 @@ export interface GalaxyLabBackendMetrics {
   api: string;
   semanticStarCount: number;
   decorativeStarCount: number;
+  motionDecorativeStarCount?: number;
   drawCalls: number | null;
   labelCount: number;
   avatarCount: number;

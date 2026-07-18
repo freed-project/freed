@@ -595,6 +595,9 @@ function updateMetrics(): void {
   addMetric("API", metrics.api);
   addMetric("Semantic stars", integerFormat.format(metrics.semanticStarCount));
   addMetric("Background stars", integerFormat.format(metrics.decorativeStarCount));
+  if (metrics.motionDecorativeStarCount !== undefined) {
+    addMetric("Motion background stars", integerFormat.format(metrics.motionDecorativeStarCount));
+  }
   addMetric(
     "Cosmic field",
     typeof activeBackend.setFieldStyle === "function"

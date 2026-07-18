@@ -3,6 +3,7 @@ import {
   createGalaxyLabFixture,
   GALAXY_LAB_PROVIDERS,
 } from "./scene-fixture.js";
+import { galaxyLabMotionBackgroundStarCount } from "./star-geometry.js";
 
 describe("Friends Galaxy renderer lab fixture", () => {
   it("builds the final semantic and decorative stress target", () => {
@@ -18,6 +19,22 @@ describe("Friends Galaxy renderer lab fixture", () => {
     expect(fixture.backgroundBrightness).toHaveLength(100_000);
     expect(fixture.linkedAccountCount).toBe(20_000);
     expect(fixture.scene.edgeIndices).toHaveLength(40_000);
+
+    const motionCount = galaxyLabMotionBackgroundStarCount(fixture.backgroundStarCount);
+    const fullQuadrants = [0, 0, 0, 0];
+    const motionQuadrants = [0, 0, 0, 0];
+    for (let index = 0; index < fixture.backgroundStarCount; index += 1) {
+      const x = fixture.backgroundPositions[index * 3]!;
+      const y = fixture.backgroundPositions[index * 3 + 1]!;
+      const quadrant = (x >= 0 ? 1 : 0) + (y >= 0 ? 2 : 0);
+      fullQuadrants[quadrant]! += 1;
+      if (index < motionCount) motionQuadrants[quadrant]! += 1;
+    }
+    for (let quadrant = 0; quadrant < fullQuadrants.length; quadrant += 1) {
+      const fullShare = fullQuadrants[quadrant]! / fixture.backgroundStarCount;
+      const motionShare = motionQuadrants[quadrant]! / motionCount;
+      expect(Math.abs(motionShare - fullShare)).toBeLessThan(0.01);
+    }
   });
 
   it("is deterministic across repeated builds", () => {

@@ -38,6 +38,7 @@ import {
 } from "./star-palette.js";
 import {
   createGalaxyLabStarGeometry,
+  galaxyLabMotionBackgroundStarCount,
   GALAXY_LAB_MOTION_STAR_VERTEX_COUNT,
   GALAXY_LAB_SETTLED_STAR_VERTEX_COUNT,
 } from "./star-geometry.js";
@@ -946,6 +947,9 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       api: "WebGPU WGSL",
       semanticStarCount: this.fixture?.scene.nodeIds.length ?? 0,
       decorativeStarCount: this.fixture?.backgroundStarCount ?? 0,
+      motionDecorativeStarCount: galaxyLabMotionBackgroundStarCount(
+        this.fixture?.backgroundStarCount ?? 0,
+      ),
       drawCalls: 2 + (this.providerFields && this.providerFields.count > 0 ? 1 : 0) +
         (this.interactionInstanceCount > 0 ? 1 : 0) +
         (this.labelAtlas && this.labelAtlas.labels.length > 0 ? 1 : 0) +
@@ -1315,6 +1319,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     const motionStarBuffer = this.motionStarBuffer;
     const backgroundBuffer = this.backgroundBuffer;
     const backgroundStarCount = this.fixture.backgroundStarCount;
+    const motionBackgroundStarCount = galaxyLabMotionBackgroundStarCount(backgroundStarCount);
     const semanticBuffer = this.semanticBuffer;
     const semanticStarCount = this.fixture.scene.nodeIds.length;
     const interactionBuffer = this.interactionBuffer;
@@ -1342,7 +1347,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
         cameraMoving
           ? GALAXY_LAB_MOTION_STAR_VERTEX_COUNT
           : GALAXY_LAB_SETTLED_STAR_VERTEX_COUNT,
-        backgroundStarCount,
+        cameraMoving ? motionBackgroundStarCount : backgroundStarCount,
       );
       encoder.setVertexBuffer(1, semanticBuffer);
       encoder.draw(

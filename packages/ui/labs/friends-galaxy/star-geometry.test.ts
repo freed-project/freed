@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   createGalaxyLabStarGeometry,
+  galaxyLabMotionBackgroundStarCount,
+  GALAXY_LAB_MOTION_BACKGROUND_STAR_CAP,
   GALAXY_LAB_MOTION_STAR_VERTEX_COUNT,
   GALAXY_LAB_SETTLED_STAR_VERTEX_COUNT,
 } from "./star-geometry.js";
@@ -44,5 +46,14 @@ describe("Friends Galaxy star geometry", () => {
     expect(Math.min(...ys)).toBe(-1);
     expect(Math.max(...ys)).toBe(1);
     expect(stripArea(motion) / stripArea(settled)).toBeCloseTo(Math.SQRT1_2, 6);
+  });
+
+  it("caps only decorative motion stars", () => {
+    expect(galaxyLabMotionBackgroundStarCount(12_000)).toBe(12_000);
+    expect(galaxyLabMotionBackgroundStarCount(100_000)).toBe(
+      GALAXY_LAB_MOTION_BACKGROUND_STAR_CAP,
+    );
+    expect(galaxyLabMotionBackgroundStarCount(-10)).toBe(0);
+    expect(galaxyLabMotionBackgroundStarCount(Number.NaN)).toBe(0);
   });
 });
