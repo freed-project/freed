@@ -86,6 +86,42 @@ describe("Friends Galaxy fixture worker loader", () => {
     expect(worker.terminated).toBe(true);
   });
 
+  it("rejects a malformed worker scene before renderer admission", async () => {
+    const worker = new FixtureWorkerStub();
+    const pending = loadGalaxyLabFixture(worker, {
+      personCount: 20,
+      accountCount: 80,
+      backgroundStarCount: 200,
+    });
+    const fixture = compactGalaxyLabFixtureMetadata(
+      createGalaxyLabFixture({
+        personCount: 20,
+        accountCount: 80,
+        backgroundStarCount: 200,
+      }),
+    );
+    const malformed = {
+      ...fixture,
+      packedStarInstances: {
+        ...fixture.packedStarInstances,
+        semantic: fixture.packedStarInstances.semantic.slice(0, -1),
+      },
+    };
+    worker.respond({
+      kind: "ready",
+      requestId: worker.request!.requestId,
+      fixture: malformed,
+      receipt: galaxyLabFixtureWorkerReceipt(fixture, 21),
+    });
+
+    await expect(pending).rejects.toThrow(
+      "Friends Galaxy worker returned packed semantic stars length 799; expected 800.",
+    );
+    expect(worker.terminated).toBe(true);
+    expect(worker.onmessage).toBeNull();
+    expect(worker.onerror).toBeNull();
+  });
+
   it("settles and closes the worker when request dispatch fails", async () => {
     const worker = new FixtureWorkerStub();
     worker.postError = new Error("worker request failed");

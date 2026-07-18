@@ -2,10 +2,11 @@ import type {
   GalaxyLabFixture,
   GalaxyLabFixtureOptions,
 } from "./scene-fixture.js";
-import type {
-  GalaxyLabFixtureWorkerReceipt,
-  GalaxyLabFixtureWorkerRequest,
-  GalaxyLabFixtureWorkerResponse,
+import {
+  validateGalaxyLabFixtureEnvelope,
+  type GalaxyLabFixtureWorkerReceipt,
+  type GalaxyLabFixtureWorkerRequest,
+  type GalaxyLabFixtureWorkerResponse,
 } from "./scene-fixture-worker-protocol.js";
 
 const DEFAULT_FIXTURE_WORKER_TIMEOUT_MS = 30_000;
@@ -61,6 +62,14 @@ export function loadGalaxyLabFixture(
       if (response.requestId !== requestId) return;
       if (response.kind === "error") {
         finish(() => reject(new Error(response.message)));
+        return;
+      }
+      try {
+        validateGalaxyLabFixtureEnvelope(response.fixture, response.receipt);
+      } catch (error) {
+        finish(() =>
+          reject(error instanceof Error ? error : new Error(String(error))),
+        );
         return;
       }
       finish(() =>

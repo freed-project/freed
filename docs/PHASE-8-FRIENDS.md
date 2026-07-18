@@ -186,6 +186,8 @@ The foundation compiles the complete semantic galaxy into compact typed buffers 
 
 The detached laboratory now starts through a one-shot worker with no main-thread graph compiler fallback. It transfers twenty-one numeric scene, interaction-index, spatial-pick, and direct-upload star buffers, retains all 30,000 semantic stars, and caps rich UI metadata at 192 nodes. Raw WebGPU resolves eleven active-theme colors in a fixed shader uniform block, so theme changes do not traverse or reupload resident stars. The worker-built sparse pick grid keeps pointer hit testing proportional to the camera corridor instead of the semantic star count, even when one pinned star is a distant outlier. WebGPU render density stays capped at 1.5 when settled and drops once at motion entry to 1.0 on compact canvases or 1.25 on wider canvases, without removing labels or stars. Product integration must remove the current `runAtlasOnMainThread` timeout path before cutover. Worker pressure must retain the last-good scene or enter a bounded compatibility state instead of rebuilding the complete galaxy in React.
 
+Before any backend receives a worker result, the detached loader now performs constant-time envelope admission. It verifies the scene version, source counts, every transferred typed-array class and expected length, scene and pick bounds, sparse adjacency and pick-offset terminals, packed instance sizes, metadata cap, and receipt counts. Rejection terminates the one-shot worker and never invokes a renderer or caller-side compiler. The admission path inspects only fixed metadata and terminal offsets, so it does not traverse resident stars, edges, labels, or feed items on the main thread.
+
 Compact canvases now open at a useful 0.16 exploration scale around the semantic center instead of presenting literal fit-all as an apparently empty field. Wider canvases retain their useful fitted scale. The explicit Fit galaxy command still reveals every provider sector, so overview geography remains one action away without sacrificing first-use legibility.
 
 Frame and submission diagnostics now use fixed 240-value typed rings. Active camera motion suppresses diagnostics DOM rebuilding, then refreshes the panel after settle from one bounded snapshot. The detached gesture path no longer shifts diagnostic arrays or performs periodic panel layout while the camera is moving.
@@ -457,6 +459,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.97 | Expose presentation build counters and remove duplicate selection settle rebuilds | High | Done |
 | 8.98 | Define keyboard, assistive-technology, menu-focus, and reduced-motion cutover requirements | High | Done |
 | 8.99 | Route detached iPhone pan and pinch through native Touch Events with duplicate-pointer suppression, direct pinch-to-pan handoff, and cancellation recovery | High | Done |
+| 8.100 | Reject malformed or mixed-version worker envelopes before GPU admission with constant-time typed-buffer, sparse-offset, bounds, metadata-cap, and receipt validation | High | Done |
 
 ---
 
@@ -539,6 +542,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Close-detail avatar admission is keyed by renderer, viewport class, and selected person so unchanged settles do not rescan candidates or rebuild the atlas
 - [x] Raw and Three.js WebGPU device loss recovers once into WebGL2 without discarding the active theme, camera transform, semantic scene, or interaction state
 - [x] Detached startup compiles the complete stress scene and interaction index in a worker, transfers twenty-one numeric buffers, caps rich metadata, and never rebuilds the graph on the main thread
+- [x] Detached startup rejects malformed scene versions, typed-buffer lengths, sparse-offset terminals, bounds, metadata counts, and receipts before renderer admission without scanning resident payloads on the main thread
 - [x] Raw WebGPU uploads worker-packed resident star streams once and resolves theme changes through a fixed palette uniform without full-star CPU traversal or GPU reupload
 - [x] A locked perspective camera produces bounded prominence parallax while preserving intuitive plane navigation
 - [x] Semantic stars and settled relationship spokes render through two instanced WebGL2 passes with no per-node or per-edge scene objects

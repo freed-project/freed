@@ -5,6 +5,7 @@ import {
   compactGalaxyLabFixtureMetadata,
   galaxyLabFixtureTransferables,
   galaxyLabFixtureWorkerReceipt,
+  validateGalaxyLabFixtureEnvelope,
 } from "./scene-fixture-worker-protocol.js";
 
 describe("Friends Galaxy fixture worker protocol", () => {
@@ -86,5 +87,58 @@ describe("Friends Galaxy fixture worker protocol", () => {
       metadataNodeCount: fixture.atlas.nodes.length,
       transferableBufferCount: 21,
     });
+    expect(() => validateGalaxyLabFixtureEnvelope(fixture, receipt)).not.toThrow();
+  });
+
+  it("rejects malformed resident buffers before renderer admission", () => {
+    const fixture = compactGalaxyLabFixtureMetadata(
+      createGalaxyLabFixture({
+        personCount: 12,
+        accountCount: 48,
+        backgroundStarCount: 120,
+      }),
+    );
+    const malformed = {
+      ...fixture,
+      scene: {
+        ...fixture.scene,
+        positions: fixture.scene.positions.slice(0, -3),
+      },
+    };
+    const receipt = galaxyLabFixtureWorkerReceipt(fixture, 21);
+
+    expect(() => validateGalaxyLabFixtureEnvelope(malformed, receipt)).toThrow(
+      "Friends Galaxy worker returned positions length 177; expected 180.",
+    );
+  });
+
+  it("rejects inconsistent sparse-index offsets and worker receipts", () => {
+    const fixture = compactGalaxyLabFixtureMetadata(
+      createGalaxyLabFixture({
+        personCount: 12,
+        accountCount: 48,
+        backgroundStarCount: 120,
+      }),
+    );
+    const neighborOffsets = fixture.interactionIndex.neighborOffsets.slice();
+    neighborOffsets[neighborOffsets.length - 1] -= 1;
+    const malformedIndex = {
+      ...fixture,
+      interactionIndex: {
+        ...fixture.interactionIndex,
+        neighborOffsets,
+      },
+    };
+    const receipt = galaxyLabFixtureWorkerReceipt(fixture, 21);
+
+    expect(() => validateGalaxyLabFixtureEnvelope(malformedIndex, receipt)).toThrow(
+      "Friends Galaxy worker returned inconsistent neighbor offsets.",
+    );
+    expect(() => validateGalaxyLabFixtureEnvelope(fixture, {
+      ...receipt,
+      metadataNodeCount: receipt.metadataNodeCount + 1,
+    })).toThrow(
+      "Friends Galaxy worker receipt does not match its transferred fixture.",
+    );
   });
 });
