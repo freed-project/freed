@@ -19,6 +19,8 @@ export interface GalaxyActivityScenePatchBatch {
   nodeIndices: Uint32Array;
   itemCounts: Uint32Array;
   latestActivityAt: Float64Array;
+  sizeScales: Float32Array;
+  brightnessScales: Float32Array;
   flags: Uint8Array;
   avatarUrls: Array<string | null>;
   unknownSources: GalaxyActivitySourceKey[];
@@ -27,6 +29,25 @@ export interface GalaxyActivityScenePatchBatch {
 interface EncodedPatch {
   nodeIndex: number;
   summary: GalaxyActivitySummary | null;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1_000;
+
+function visualScales(
+  summary: GalaxyActivitySummary | null,
+  referenceTime: number,
+): { size: number; brightness: number } {
+  if (!summary) return { size: 0.82, brightness: 0.72 };
+  const countSignal = 1 - Math.exp(-Math.max(0, summary.itemCount) / 80);
+  const ageDays = Math.max(0, referenceTime - summary.latestActivityAt) / DAY_MS;
+  const recencySignal = Math.exp(-ageDays / 21);
+  return {
+    size: Math.min(1.2, 0.94 + countSignal * 0.14 + recencySignal * 0.1),
+    brightness: Math.min(
+      1.18,
+      0.82 + countSignal * 0.1 + recencySignal * 0.12 + (summary.hasLocation ? 0.02 : 0),
+    ),
+  };
 }
 
 function sourceToken(source: GalaxyActivitySourceKey): string {
@@ -72,9 +93,13 @@ export class GalaxyActivityScenePatchEncoder {
   encode(
     patches: Iterable<GalaxyActivitySummaryPatch>,
     revision: number,
+    referenceTime: number,
   ): GalaxyActivityScenePatchBatch {
     if (!Number.isSafeInteger(revision) || revision < 0) {
       throw new Error("A Friends Galaxy activity scene patch requires a non-negative revision.");
+    }
+    if (!Number.isFinite(referenceTime) || referenceTime < 0) {
+      throw new Error("A Friends Galaxy activity scene patch requires a valid reference time.");
     }
     const encodedByNodeIndex = new Map<number, EncodedPatch>();
     const unknownBySource = new Map<string, GalaxyActivitySourceKey>();
@@ -98,11 +123,16 @@ export class GalaxyActivityScenePatchEncoder {
     const nodeIndices = new Uint32Array(encoded.length);
     const itemCounts = new Uint32Array(encoded.length);
     const latestActivityAt = new Float64Array(encoded.length);
+    const sizeScales = new Float32Array(encoded.length);
+    const brightnessScales = new Float32Array(encoded.length);
     const flags = new Uint8Array(encoded.length);
     const avatarUrls = new Array<string | null>(encoded.length);
 
     encoded.forEach(({ nodeIndex, summary }, index) => {
       nodeIndices[index] = nodeIndex;
+      const scales = visualScales(summary, referenceTime);
+      sizeScales[index] = scales.size;
+      brightnessScales[index] = scales.brightness;
       if (!summary) {
         flags[index] = GalaxyActivitySceneFlag.Removed;
         avatarUrls[index] = null;
@@ -120,6 +150,8 @@ export class GalaxyActivityScenePatchEncoder {
       nodeIndices,
       itemCounts,
       latestActivityAt,
+      sizeScales,
+      brightnessScales,
       flags,
       avatarUrls,
       unknownSources: [...unknownBySource.values()].sort(compareSource),

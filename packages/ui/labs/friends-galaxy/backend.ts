@@ -1,3 +1,4 @@
+import type { GalaxyActivityScenePatchBatch } from "./activity-scene-patches.js";
 import type { GalaxyLabFixture, GalaxyLabPalette, GalaxyLabTransform } from "./scene-fixture.js";
 
 export type GalaxyLabBackendId = "current-webgl2" | "three-webgpu" | "raw-webgpu";
@@ -15,6 +16,7 @@ export interface GalaxyLabBackendMetrics {
   avatarCount: number;
   contextualEdgeCount: number;
   bufferUploadCount: number;
+  appliedActivityNodeCount?: number;
   trackedGpuDataBytes?: number;
   submissionMode?: string;
   fallbackReason: string | null;
@@ -35,6 +37,7 @@ export interface GalaxyLabBackend {
   ): Promise<void>;
   resize(width: number, height: number, pixelRatio: number): void;
   setPalette(palette: GalaxyLabPalette): void;
+  applyActivityPatches?(patches: GalaxyActivityScenePatchBatch): void;
   setFieldStyle?(style: GalaxyLabFieldStyle): void;
   setViewDetail(detail: GalaxyLabViewDetail): void;
   pickNode(viewportX: number, viewportY: number): string | null;

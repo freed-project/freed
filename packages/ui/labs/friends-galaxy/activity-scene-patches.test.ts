@@ -36,7 +36,7 @@ describe("Friends Galaxy activity scene patches", () => {
         avatarUrl: "https://example.com/avatar.jpg",
       }),
       summaryPatch("rss", "https://example.com/feed.xml", 3, { hasLocation: true }),
-    ], 9);
+    ], 9, 1_725_000_120_000);
 
     expect(batch.revision).toBe(9);
     expect(Array.from(batch.nodeIndices)).toEqual([2, 7]);
@@ -46,6 +46,8 @@ describe("Friends Galaxy activity scene patches", () => {
       GalaxyActivitySceneFlag.HasAvatar,
     ]);
     expect(batch.avatarUrls).toEqual([null, "https://example.com/avatar.jpg"]);
+    expect(batch.sizeScales[0]).toBeGreaterThan(1);
+    expect(batch.brightnessScales[0]).toBeGreaterThan(0.9);
     expect(batch.unknownSources).toEqual([]);
   });
 
@@ -57,12 +59,14 @@ describe("Friends Galaxy activity scene patches", () => {
       namespace: "social",
       key: "x:removed",
       summary: null,
-    }], 10);
+    }], 10, 1_725_000_120_000);
 
     expect(Array.from(batch.nodeIndices)).toEqual([44]);
     expect(Array.from(batch.itemCounts)).toEqual([0]);
     expect(Array.from(batch.latestActivityAt)).toEqual([0]);
     expect(Array.from(batch.flags)).toEqual([GalaxyActivitySceneFlag.Removed]);
+    expect(batch.sizeScales[0]).toBeCloseTo(0.82, 5);
+    expect(batch.brightnessScales[0]).toBeCloseTo(0.72, 5);
     expect(batch.avatarUrls).toEqual([null]);
     expect(batch).not.toHaveProperty("positions");
     expect(batch).not.toHaveProperty("sampleItemIds");
@@ -75,7 +79,7 @@ describe("Friends Galaxy activity scene patches", () => {
       { namespace: "rss", key: "feed", nodeIndex: 12 },
     ]);
 
-    const batch = encoder.encode([summaryPatch("rss", "feed", 8)], 2);
+    const batch = encoder.encode([summaryPatch("rss", "feed", 8)], 2, 1_725_000_120_000);
 
     expect(Array.from(batch.nodeIndices)).toEqual([3, 12]);
     expect(Array.from(batch.itemCounts)).toEqual([8, 8]);
@@ -89,7 +93,7 @@ describe("Friends Galaxy activity scene patches", () => {
     const batch = encoder.encode([
       summaryPatch("social", "instagram:new", 4),
       summaryPatch("rss", "https://example.com/new.xml", 2),
-    ], 3);
+    ], 3, 1_725_000_120_000);
 
     expect(batch.nodeIndices).toHaveLength(0);
     expect(batch.unknownSources).toEqual([
@@ -108,11 +112,28 @@ describe("Friends Galaxy activity scene patches", () => {
 
     const batch = encoder.encode([
       summaryPatch("social", "source-19999", 101, { latestActivityAt: 1_800_000_000_000 }),
-    ], 71);
+    ], 71, 1_800_000_060_000);
 
     expect(Array.from(batch.nodeIndices)).toEqual([19_999]);
     expect(Array.from(batch.itemCounts)).toEqual([101]);
     expect(batch.latestActivityAt[0]).toBe(1_800_000_000_000);
     expect(batch.unknownSources).toEqual([]);
+  });
+
+  it("encodes fresh active sources more strongly than stale inactive sources", () => {
+    const encoder = new GalaxyActivityScenePatchEncoder([
+      { namespace: "social", key: "fresh", nodeIndex: 1 },
+      { namespace: "social", key: "stale", nodeIndex: 2 },
+    ]);
+    const referenceTime = 1_800_000_000_000;
+    const batch = encoder.encode([
+      summaryPatch("social", "fresh", 120, { latestActivityAt: referenceTime - 60_000 }),
+      summaryPatch("social", "stale", 1, {
+        latestActivityAt: referenceTime - 365 * 24 * 60 * 60 * 1_000,
+      }),
+    ], 8, referenceTime);
+
+    expect(batch.sizeScales[0]).toBeGreaterThan(batch.sizeScales[1]!);
+    expect(batch.brightnessScales[0]).toBeGreaterThan(batch.brightnessScales[1]!);
   });
 });

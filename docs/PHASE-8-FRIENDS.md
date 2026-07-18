@@ -390,7 +390,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.66 | Add the close-zoom avatar texture atlas for selected and high-priority identities | High | Planned |
 | 8.67 | Replace elliptical provider regions with theme-aware spiral nebulae, tighten identity systems and labels, and reveal links only for the active constellation | High | Done |
 | 8.68 | Prove the selected raw WebGPU backend, procedural six-field nebula batch, provider-specific arm geometry, compact allocation-free gesture path, tracked GPU payload diagnostics, and equal 30,000 plus 100,000 star workload in the detached renderer laboratory | High | Done |
-| 8.69 | Prove source-key activity summaries become proportional typed scene patches without positions or item payloads | High | Done |
+| 8.69 | Prove source-key activity summaries become proportional typed scene patches and sparse raw WebGPU instance writes without positions or item payloads | High | Done |
 
 ---
 
@@ -468,6 +468,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] The React Friends shell delegates palette, renderer, fallback, GPU resource, resize, scene sync, and disposal ownership to an imperative engine
 - [x] The worker caches the full semantic model by source revision, and viewport updates retain every semantic star while capping labels, hit detail, and edges
 - [x] The next-generation Friends Galaxy keeps all semantic stars GPU-resident and applies detail limits only to labels, avatars, edges, picking, and expensive effects
+- [x] Activity-only updates encode deterministic size and brightness scales and rewrite only the affected raw WebGPU semantic instances while preserving theme and interaction overlays
 - [x] A locked perspective camera produces bounded prominence parallax while preserving intuitive plane navigation
 - [x] Semantic stars and settled relationship spokes render through two instanced WebGL2 passes with no per-node or per-edge scene objects
 - [x] Projected picking accounts for the active camera, node depth, and capped interaction candidates

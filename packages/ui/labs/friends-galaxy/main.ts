@@ -115,6 +115,7 @@ const activityProbeSummaryPatch = activityProbeIndex.applyDeltas([{
 const activityProbeScenePatch = activityScenePatchEncoder.encode(
   activityProbeSummaryPatch.patches,
   activityProbeSummaryPatch.revision,
+  1_725_000_120_000,
 );
 
 const transform: GalaxyLabTransform = { x: 0, y: 0, scale: 0.12 };
@@ -255,6 +256,7 @@ async function activateBackend(
     backend.resize(width, height, window.devicePixelRatio || 1);
     backend.setViewDetail(viewDetailForScale(transform.scale));
     backend.setInteraction(interaction);
+    backend.applyActivityPatches?.(activityProbeScenePatch);
     resetSamples();
     dirty = true;
     const metrics = backend.metrics();
@@ -335,6 +337,9 @@ function updateMetrics(): void {
   addMetric("Activity patch keys", integerFormat.format(activityProbeSummaryPatch.patches.length));
   addMetric("Activity patch nodes", integerFormat.format(activityProbeScenePatch.nodeIndices.length));
   addMetric("Unknown activity keys", integerFormat.format(activityProbeScenePatch.unknownSources.length));
+  if (metrics.appliedActivityNodeCount !== undefined) {
+    addMetric("GPU activity nodes", integerFormat.format(metrics.appliedActivityNodeCount));
+  }
   addMetric("Camera scale", scaleFormat.format(transform.scale));
   addMetric("Settled detail", viewDetailForScale(transform.scale));
   if (metrics.adapterDescription) addMetric("Adapter", metrics.adapterDescription);

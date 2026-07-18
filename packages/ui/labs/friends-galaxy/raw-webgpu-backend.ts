@@ -6,6 +6,7 @@ import type {
   GalaxyLabViewDetail,
 } from "./backend.js";
 import { hexToRgb } from "./backend.js";
+import type { GalaxyActivityScenePatchBatch } from "./activity-scene-patches.js";
 import {
   createGalaxyLabAvatarAtlas,
   type GalaxyLabAvatarAtlas,
@@ -401,6 +402,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private sceneIndex: GalaxyLabSceneIndex | null = null;
   private semanticData: Float32Array | null = null;
   private backgroundData: Float32Array | null = null;
+  private activitySizeScales: Float32Array | null = null;
+  private activityBrightnessScales: Float32Array | null = null;
   private providerFields: GalaxyLabProviderFields | null = null;
   private edgeData = new Float32Array(MAX_CONTEXTUAL_EDGES * EDGE_INSTANCE_FLOATS);
   private labelAtlas: GalaxyLabLabelAtlas | null = null;
@@ -408,6 +411,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private palette: GalaxyLabPalette | null = null;
   private interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: null };
   private touchedInteractionIndices = new Set<number>();
+  private interactionRoles: ReadonlyMap<number, GalaxyLabInteractionRole> = new Map();
   private readonly interactionScratch = new Float32Array(INSTANCE_FLOATS);
   private interactionColor: readonly [number, number, number] = [1, 1, 1];
   private readonly viewProjection = new Float32Array(16);
@@ -423,6 +427,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private viewDetail: GalaxyLabViewDetail = "overview";
   private fieldStyle: GalaxyLabFieldStyle = "nebula";
   private contextualEdgeCount = 0;
+  private appliedActivityNodeCount = 0;
   private clearColor: GPUColor = { r: 0, g: 0, b: 0, a: 1 };
   private bufferUploadCount = 0;
   private fallbackReason: string | null = null;
@@ -465,6 +470,10 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     }
     this.semanticData = new Float32Array(fixture.scene.nodeIds.length * INSTANCE_FLOATS);
     this.backgroundData = new Float32Array(fixture.backgroundStarCount * INSTANCE_FLOATS);
+    this.activitySizeScales = new Float32Array(fixture.scene.nodeIds.length);
+    this.activitySizeScales.fill(1);
+    this.activityBrightnessScales = new Float32Array(fixture.scene.nodeIds.length);
+    this.activityBrightnessScales.fill(1);
     writeInstancePositions(this.semanticData, fixture.scene.positions, semanticSizes, 0.96);
     writeInstancePositions(this.backgroundData, fixture.backgroundPositions, backgroundSizes, 0.68);
     this.writePalette(palette);
@@ -726,6 +735,33 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.writeProviderFields();
   }
 
+  applyActivityPatches(patches: GalaxyActivityScenePatchBatch): void {
+    if (
+      !this.device || !this.semanticBuffer || !this.semanticData || !this.fixture ||
+      !this.activitySizeScales || !this.activityBrightnessScales
+    ) return;
+    const patchCount = patches.nodeIndices.length;
+    if (
+      patches.sizeScales.length !== patchCount ||
+      patches.brightnessScales.length !== patchCount
+    ) {
+      throw new Error("A Friends Galaxy GPU activity patch has mismatched typed-array lengths.");
+    }
+    for (let patchIndex = 0; patchIndex < patchCount; patchIndex += 1) {
+      const nodeIndex = patches.nodeIndices[patchIndex]!;
+      if (nodeIndex >= this.fixture.scene.nodeIds.length) {
+        throw new Error(
+          `Friends Galaxy activity node ${nodeIndex.toLocaleString()} is outside the resident scene.`,
+        );
+      }
+      this.activitySizeScales[nodeIndex] = patches.sizeScales[patchIndex]!;
+      this.activityBrightnessScales[nodeIndex] = patches.brightnessScales[patchIndex]!;
+      this.writeSemanticBase(nodeIndex);
+      this.writeSemanticInteraction(nodeIndex, this.interactionRoles.get(nodeIndex) ?? null);
+      this.appliedActivityNodeCount += 1;
+    }
+  }
+
   setViewDetail(detail: GalaxyLabViewDetail): void {
     if (detail === this.viewDetail) return;
     this.viewDetail = detail;
@@ -828,6 +864,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       avatarCount: this.avatarAtlas?.itemCount ?? 0,
       contextualEdgeCount: this.contextualEdgeCount,
       bufferUploadCount: this.bufferUploadCount,
+      appliedActivityNodeCount: this.appliedActivityNodeCount,
       trackedGpuDataBytes: this.trackedGpuDataBytes(),
       submissionMode: "Pre-recorded world bundle",
       fallbackReason: this.fallbackReason,
@@ -880,12 +917,16 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.sceneIndex = null;
     this.semanticData = null;
     this.backgroundData = null;
+    this.activitySizeScales = null;
+    this.activityBrightnessScales = null;
     this.providerFields = null;
     this.labelAtlas = null;
     this.avatarAtlas = null;
     this.palette = null;
     this.touchedInteractionIndices.clear();
+    this.interactionRoles = new Map();
     this.contextualEdgeCount = 0;
+    this.appliedActivityNodeCount = 0;
   }
 
   private rebuildLabels(compact: boolean): void {
@@ -999,6 +1040,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
 
   private writeInteraction(state: GalaxyLabInteractionState): void {
     if (!this.device || !this.semanticBuffer || !this.semanticData || !this.fixture) return;
+    this.interactionRoles = state.roles;
     const nextTouched = new Set(state.roles.keys());
     const changedIndices = new Set([...this.touchedInteractionIndices, ...nextTouched]);
     for (const index of changedIndices) {
@@ -1081,6 +1123,26 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.bufferUploadCount += 1;
   }
 
+  private writeSemanticBase(index: number): void {
+    if (
+      !this.fixture || !this.palette || !this.semanticData ||
+      !this.activitySizeScales || !this.activityBrightnessScales
+    ) return;
+    const sourceOffset = index * INSTANCE_FLOATS;
+    const [red, green, blue] = hexToRgb(galaxyLabSemanticColor(this.fixture, this.palette, index));
+    const brightness = Math.min(
+      1.18,
+      this.fixture.scene.brightness[index]! * this.activityBrightnessScales[index]!,
+    );
+    this.semanticData[sourceOffset + 3] = Math.max(
+      4.5,
+      this.fixture.scene.pointSizes[index]! * 0.42 * this.activitySizeScales[index]!,
+    );
+    this.semanticData[sourceOffset + 4] = red * brightness;
+    this.semanticData[sourceOffset + 5] = green * brightness;
+    this.semanticData[sourceOffset + 6] = blue * brightness;
+  }
+
   private rebuildStaticRenderBundle(): void {
     if (
       !this.device || !this.format || !this.providerFieldPipeline ||
@@ -1114,13 +1176,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.clearColor = { r: clearRed, g: clearGreen, b: clearBlue, a: 1 };
     const lightSurface = clearRed * 0.2126 + clearGreen * 0.7152 + clearBlue * 0.0722 > 0.58;
     for (let index = 0; index < this.fixture.scene.nodeIds.length; index += 1) {
-      const [red, green, blue] = hexToRgb(galaxyLabSemanticColor(this.fixture, palette, index));
-      const brightness = this.fixture.scene.brightness[index]!;
-      const offset = index * INSTANCE_FLOATS + 4;
-      this.semanticData[offset] = red * brightness;
-      this.semanticData[offset + 1] = green * brightness;
-      this.semanticData[offset + 2] = blue * brightness;
-      this.semanticData[offset + 3] = lightSurface ? 0.88 : 0.97;
+      this.writeSemanticBase(index);
+      this.semanticData[index * INSTANCE_FLOATS + 7] = lightSurface ? 0.88 : 0.97;
     }
     const [red, green, blue] = hexToRgb(palette.mutedText);
     for (let index = 0; index < this.fixture.backgroundStarCount; index += 1) {
