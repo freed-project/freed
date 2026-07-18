@@ -1,7 +1,7 @@
-import type { FriendsGalaxyInteractionRole } from "../../src/lib/friends-galaxy-scene-index.js";
-import { FRIENDS_GALAXY_STAR_INSTANCE_FLOATS } from "../../src/lib/friends-galaxy-star-instances.js";
+import type { FriendsGalaxyInteractionRole } from "./friends-galaxy-scene-index.js";
+import { FRIENDS_GALAXY_STAR_INSTANCE_FLOATS } from "./friends-galaxy-star-instances.js";
 
-export function writeGalaxyLabInteractionInstances(
+export function writeFriendsGalaxyInteractionInstances(
   target: Float32Array,
   semanticInstances: Float32Array,
   roles: ReadonlyMap<number, FriendsGalaxyInteractionRole>,

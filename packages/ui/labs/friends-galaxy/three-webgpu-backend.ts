@@ -27,9 +27,12 @@ import {
   type FriendsGalaxyRendererPalette,
 } from "../../src/lib/friends-galaxy-palette.js";
 import { FriendsGalaxyBackendHealth } from "../../src/lib/friends-galaxy-backend-health.js";
-import { createGalaxyLabAvatarAtlas } from "./avatar-atlas.js";
-import { createGalaxyLabLabelAtlas } from "./billboard-labels.js";
 import type { FriendsGalaxyBillboardAtlas } from "../../src/lib/friends-galaxy-billboard-atlas.js";
+import {
+  createFriendsGalaxyRendererAvatarAtlas,
+  createFriendsGalaxyRendererLabelAtlas,
+  type FriendsGalaxyNodePresentationResolver,
+} from "../../src/lib/friends-galaxy-presentation.js";
 import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
 import type { FriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer.js";
 import {
@@ -191,6 +194,10 @@ function makeBillboardBatch(
 }
 
 export class ThreeWebGpuBackend implements GalaxyLabBackend {
+  constructor(
+    private readonly resolvePresentation: FriendsGalaxyNodePresentationResolver,
+  ) {}
+
   readonly id = "three-webgpu" as const;
   private renderer: THREE.WebGPURenderer | null = null;
   private device: GPUDevice | null = null;
@@ -530,9 +537,10 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       this.labelBatch.material.dispose();
       this.labelBatch.texture.dispose();
     }
-    const atlas = createGalaxyLabLabelAtlas(
+    const atlas = createFriendsGalaxyRendererLabelAtlas(
       this.fixture,
       this.palette,
+      this.resolvePresentation,
       compact,
       this.viewDetail,
       this.interaction.selectedNodeId,
@@ -555,9 +563,10 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       this.avatarBatch.texture.dispose();
       this.avatarBatch = null;
     }
-    const atlas = createGalaxyLabAvatarAtlas(
+    const atlas = createFriendsGalaxyRendererAvatarAtlas(
       this.fixture,
       this.palette,
+      this.resolvePresentation,
       this.interaction.selectedNodeId,
       compact,
       this.viewDetail,

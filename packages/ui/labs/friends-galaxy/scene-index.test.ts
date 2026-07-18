@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import { identityGalaxyCameraPose } from "../../src/lib/identity-galaxy-camera.js";
 import { IdentityGalaxyNodeFlag } from "../../src/lib/identity-galaxy-scene.js";
 import { placeFriendsGalaxyLabelsAroundAvatars } from "../../src/lib/friends-galaxy-billboard-atlas.js";
-import { selectGalaxyLabLabels } from "./billboard-labels.js";
-import { createGalaxyLabFixture } from "./scene-fixture.js";
+import { selectFriendsGalaxyLabels } from "../../src/lib/friends-galaxy-presentation.js";
+import {
+  createGalaxyLabFixture,
+  galaxyLabNodePresentation,
+} from "./scene-fixture.js";
 import { compactGalaxyLabFixtureMetadata } from "./scene-fixture-worker-protocol.js";
 import { FriendsGalaxySceneIndex } from "../../src/lib/friends-galaxy-scene-index.js";
 import { projectFriendsGalaxyWorldPoint } from "../../src/lib/friends-galaxy-projection.js";
@@ -258,15 +261,30 @@ describe("Friends Galaxy billboard label selection", () => {
       { compact: true, detail: "close" as const, cap: 32 },
     ];
     for (const { compact, detail, cap } of cases) {
-      const labels = selectGalaxyLabLabels(fixture, compact, detail);
+      const labels = selectFriendsGalaxyLabels(
+        fixture,
+        galaxyLabNodePresentation,
+        compact,
+        detail,
+      );
       expect(labels.length).toBeGreaterThanOrEqual(5);
       expect(labels.length).toBeLessThanOrEqual(cap);
-      expect(selectGalaxyLabLabels(fixture, compact, detail)).toEqual(labels);
+      expect(selectFriendsGalaxyLabels(
+        fixture,
+        galaxyLabNodePresentation,
+        compact,
+        detail,
+      )).toEqual(labels);
     }
   });
 
   it("spatially separates overview identity labels", () => {
-    const labels = selectGalaxyLabLabels(fixture, false, "overview")
+    const labels = selectFriendsGalaxyLabels(
+      fixture,
+      galaxyLabNodePresentation,
+      false,
+      "overview",
+    )
       .filter((label) => !label.provider);
     for (let left = 0; left < labels.length; left += 1) {
       for (let right = left + 1; right < labels.length; right += 1) {
@@ -279,7 +297,12 @@ describe("Friends Galaxy billboard label selection", () => {
   });
 
   it("retains every provider label before semantic labels", () => {
-    const labels = selectGalaxyLabLabels(fixture, true, "overview");
+    const labels = selectFriendsGalaxyLabels(
+      fixture,
+      galaxyLabNodePresentation,
+      true,
+      "overview",
+    );
     expect(labels.slice(0, 5).map((label) => label.nodeId)).toEqual([
       "provider:instagram",
       "provider:facebook",
@@ -291,7 +314,12 @@ describe("Friends Galaxy billboard label selection", () => {
   });
 
   it("keeps close labels clear of avatar billboards", () => {
-    const labels = selectGalaxyLabLabels(fixture, false, "close");
+    const labels = selectFriendsGalaxyLabels(
+      fixture,
+      galaxyLabNodePresentation,
+      false,
+      "close",
+    );
     const ownLabel = labels.find((label) => !label.provider)!;
     const nearbyLabel = {
       ...ownLabel,
@@ -316,7 +344,13 @@ describe("Friends Galaxy billboard label selection", () => {
 
   it("keeps the selected identity named outside the ordinary label sample", () => {
     const selectedNodeId = "person:lab-person-4999";
-    const labels = selectGalaxyLabLabels(fixture, false, "close", selectedNodeId);
+    const labels = selectFriendsGalaxyLabels(
+      fixture,
+      galaxyLabNodePresentation,
+      false,
+      "close",
+      selectedNodeId,
+    );
 
     expect(labels.some((label) => label.nodeId === selectedNodeId)).toBe(true);
     expect(labels.length).toBeLessThanOrEqual(64);
@@ -335,8 +369,9 @@ describe("Friends Galaxy billboard label selection", () => {
     };
     const { matrix } = viewProjectionFor(transform, width, height);
     const projection = { viewProjection: matrix.elements, width, height };
-    const labels = selectGalaxyLabLabels(
+    const labels = selectFriendsGalaxyLabels(
       fixture,
+      galaxyLabNodePresentation,
       false,
       "close",
       "person:lab-person-4999",

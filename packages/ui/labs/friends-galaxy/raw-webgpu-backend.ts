@@ -8,13 +8,11 @@ import type {
 import { friendsGalaxyRenderPixelRatio } from "../../src/lib/friends-galaxy-renderer.js";
 import type { FriendsGalaxyActivityScenePatchBatch } from "../../src/lib/friends-galaxy-activity-patches.js";
 import { FriendsGalaxyBackendHealth } from "../../src/lib/friends-galaxy-backend-health.js";
-import { createGalaxyLabAvatarAtlas } from "./avatar-atlas.js";
 import type { FriendsGalaxyAvatarAtlas } from "../../src/lib/friends-galaxy-avatar-atlas.js";
 import {
   writeFriendsGalaxyWebGpuMotionUniforms,
   writeFriendsGalaxyWebGpuViewProjection,
 } from "../../src/lib/friends-galaxy-camera.js";
-import { createGalaxyLabLabelAtlas } from "./billboard-labels.js";
 import {
   FRIENDS_GALAXY_BILLBOARD_INSTANCE_STRIDE,
   type FriendsGalaxyLabelAtlas,
@@ -46,7 +44,12 @@ import {
   type FriendsGalaxyProviderFields,
   writeFriendsGalaxyProviderFieldPresentation,
 } from "../../src/lib/friends-galaxy-provider-fields.js";
-import { writeGalaxyLabInteractionInstances } from "./interaction-instance-data.js";
+import { writeFriendsGalaxyInteractionInstances } from "../../src/lib/friends-galaxy-interaction-instances.js";
+import {
+  createFriendsGalaxyRendererAvatarAtlas,
+  createFriendsGalaxyRendererLabelAtlas,
+  type FriendsGalaxyNodePresentationResolver,
+} from "../../src/lib/friends-galaxy-presentation.js";
 import {
   FriendsGalaxySceneIndex,
   type FriendsGalaxyInteractionRole,
@@ -455,6 +458,10 @@ function createBuffer(device: GPUDevice, data: Float32Array, usage: GPUBufferUsa
 }
 
 export class RawWebGpuBackend implements GalaxyLabBackend {
+  constructor(
+    private readonly resolvePresentation: FriendsGalaxyNodePresentationResolver,
+  ) {}
+
   readonly id = "raw-webgpu" as const;
   private canvas: HTMLCanvasElement | null = null;
   private context: GPUCanvasContext | null = null;
@@ -1089,9 +1096,10 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.compactLabels = compact;
     this.labelRenderBundle = null;
     this.rebuildFrameRenderBundles();
-    const atlas = createGalaxyLabLabelAtlas(
+    const atlas = createFriendsGalaxyRendererLabelAtlas(
       this.fixture,
       this.palette,
+      this.resolvePresentation,
       compact,
       this.viewDetail,
       this.interaction.selectedNodeId,
@@ -1168,9 +1176,10 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.avatarBuffer = null;
     this.avatarTexture = null;
     this.avatarBindGroup = null;
-    const atlas = createGalaxyLabAvatarAtlas(
+    const atlas = createFriendsGalaxyRendererAvatarAtlas(
       this.fixture,
       this.palette,
+      this.resolvePresentation,
       this.interaction.selectedNodeId,
       compact,
       this.viewDetail,
@@ -1239,7 +1248,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   ): void {
     if (!this.device || !this.interactionBuffer || !this.semanticData) return;
     const previousCount = this.interactionInstanceCount;
-    const nextCount = writeGalaxyLabInteractionInstances(
+    const nextCount = writeFriendsGalaxyInteractionInstances(
       this.interactionData,
       this.semanticData,
       roles,

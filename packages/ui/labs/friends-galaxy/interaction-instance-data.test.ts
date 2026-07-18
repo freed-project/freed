@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { writeGalaxyLabInteractionInstances } from "./interaction-instance-data.js";
+import { writeFriendsGalaxyInteractionInstances } from "../../src/lib/friends-galaxy-interaction-instances.js";
 import { FRIENDS_GALAXY_STAR_INSTANCE_FLOATS } from "../../src/lib/friends-galaxy-star-instances.js";
 
 function semanticFixture(): Float32Array {
@@ -13,7 +13,7 @@ function semanticFixture(): Float32Array {
 describe("Friends Galaxy interaction overlay instances", () => {
   it("packs selected and linked stars into one contiguous stream", () => {
     const target = new Float32Array(FRIENDS_GALAXY_STAR_INSTANCE_FLOATS * 3);
-    const count = writeGalaxyLabInteractionInstances(
+    const count = writeFriendsGalaxyInteractionInstances(
       target,
       semanticFixture(),
       new Map([
@@ -36,7 +36,7 @@ describe("Friends Galaxy interaction overlay instances", () => {
     const target = new Float32Array(FRIENDS_GALAXY_STAR_INSTANCE_FLOATS * 3);
     target.fill(99);
 
-    const count = writeGalaxyLabInteractionInstances(
+    const count = writeFriendsGalaxyInteractionInstances(
       target,
       semanticFixture(),
       new Map([[1, "hovered"]]),
@@ -51,7 +51,7 @@ describe("Friends Galaxy interaction overlay instances", () => {
 
   it("caps the packed overlay at its fixed capacity", () => {
     const target = new Float32Array(FRIENDS_GALAXY_STAR_INSTANCE_FLOATS);
-    const count = writeGalaxyLabInteractionInstances(
+    const count = writeFriendsGalaxyInteractionInstances(
       target,
       semanticFixture(),
       new Map([
@@ -66,7 +66,7 @@ describe("Friends Galaxy interaction overlay instances", () => {
 
   it("rejects an interaction index outside the resident scene", () => {
     expect(() => {
-      writeGalaxyLabInteractionInstances(
+      writeFriendsGalaxyInteractionInstances(
         new Float32Array(FRIENDS_GALAXY_STAR_INSTANCE_FLOATS),
         semanticFixture(),
         new Map([[9, "selected"]]),

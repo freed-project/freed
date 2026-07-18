@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { selectGalaxyLabAvatars } from "./avatar-atlas.js";
+import { selectFriendsGalaxyAvatars } from "../../src/lib/friends-galaxy-presentation.js";
 import { writeFriendsGalaxyWebGpuViewProjection } from "../../src/lib/friends-galaxy-camera.js";
-import { createGalaxyLabFixture, GALAXY_LAB_THEMES } from "./scene-fixture.js";
+import {
+  createGalaxyLabFixture,
+  galaxyLabNodePresentation,
+  GALAXY_LAB_THEMES,
+} from "./scene-fixture.js";
 import { compactGalaxyLabFixtureMetadata } from "./scene-fixture-worker-protocol.js";
 
 describe("Friends Galaxy avatar atlas selection", () => {
@@ -12,16 +16,18 @@ describe("Friends Galaxy avatar atlas selection", () => {
   }));
 
   it("loads no avatar workload before settled close detail", () => {
-    expect(selectGalaxyLabAvatars(
+    expect(selectFriendsGalaxyAvatars(
       fixture,
       GALAXY_LAB_THEMES.scriptorium,
+      galaxyLabNodePresentation,
       "person:lab-person-0",
       false,
       "overview",
     )).toEqual([]);
-    expect(selectGalaxyLabAvatars(
+    expect(selectFriendsGalaxyAvatars(
       fixture,
       GALAXY_LAB_THEMES.scriptorium,
+      galaxyLabNodePresentation,
       "person:lab-person-0",
       false,
       "middle",
@@ -30,16 +36,18 @@ describe("Friends Galaxy avatar atlas selection", () => {
 
   it("keeps the close atlas capped and retains a selected low-priority identity", () => {
     const selectedNodeId = "person:lab-person-4999";
-    const desktop = selectGalaxyLabAvatars(
+    const desktop = selectFriendsGalaxyAvatars(
       fixture,
       GALAXY_LAB_THEMES.scriptorium,
+      galaxyLabNodePresentation,
       selectedNodeId,
       false,
       "close",
     );
-    const compact = selectGalaxyLabAvatars(
+    const compact = selectFriendsGalaxyAvatars(
       fixture,
       GALAXY_LAB_THEMES.scriptorium,
+      galaxyLabNodePresentation,
       selectedNodeId,
       true,
       "close",
@@ -52,9 +60,10 @@ describe("Friends Galaxy avatar atlas selection", () => {
   });
 
   it("resolves a selected linked channel to its parent identity", () => {
-    const avatars = selectGalaxyLabAvatars(
+    const avatars = selectFriendsGalaxyAvatars(
       fixture,
       GALAXY_LAB_THEMES.neon,
+      galaxyLabNodePresentation,
       "account:lab-account-0",
       false,
       "close",
@@ -75,9 +84,10 @@ describe("Friends Galaxy avatar atlas selection", () => {
     };
     const matrix = new Float32Array(16);
     writeFriendsGalaxyWebGpuViewProjection(matrix, transform, width, height);
-    const avatars = selectGalaxyLabAvatars(
+    const avatars = selectFriendsGalaxyAvatars(
       fixture,
       GALAXY_LAB_THEMES.vesper,
+      galaxyLabNodePresentation,
       "person:lab-person-4999",
       false,
       "close",

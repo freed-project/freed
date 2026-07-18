@@ -37,7 +37,7 @@ import {
   type FriendsGalaxyActivitySourceKey,
 } from "../../src/lib/friends-galaxy-activity-index.js";
 import { FriendsGalaxyAvatarAdmissionState } from "../../src/lib/friends-galaxy-avatar-admission.js";
-import { selectGalaxyLabAvatars } from "./avatar-atlas.js";
+import { selectFriendsGalaxyAvatars } from "../../src/lib/friends-galaxy-presentation.js";
 import {
   FriendsGalaxyAvatarImageAdmission,
   type FriendsGalaxyAvatarImageAdmissionResult,
@@ -561,9 +561,10 @@ async function admitSettledAvatarImages(
   avatarAdmissionProjection.width = width;
   avatarAdmissionProjection.height = height;
   const avatarCandidates = detail === "close"
-    ? selectGalaxyLabAvatars(
+    ? selectFriendsGalaxyAvatars(
       fixture,
       paletteForTheme(),
+      galaxyLabNodePresentation,
       interaction.selectedNodeId,
       compact,
       detail,
@@ -755,10 +756,10 @@ async function createBackend(id: GalaxyLabBackendId): Promise<GalaxyLabBackend> 
   }
   if (id === "three-webgpu") {
     const { ThreeWebGpuBackend } = await import("./three-webgpu-backend.js");
-    return new ThreeWebGpuBackend();
+    return new ThreeWebGpuBackend(galaxyLabNodePresentation);
   }
   const { RawWebGpuBackend } = await import("./raw-webgpu-backend.js");
-  return new RawWebGpuBackend();
+  return new RawWebGpuBackend(galaxyLabNodePresentation);
 }
 
 function backendLabel(id: GalaxyLabBackendId): string {

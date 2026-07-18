@@ -26,6 +26,7 @@ import {
 } from "../../src/lib/friends-galaxy-star-instances.js";
 import type { FriendsGalaxyRendererPalette } from "../../src/lib/friends-galaxy-palette.js";
 import type { FriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer.js";
+import type { FriendsGalaxyNodePresentation } from "../../src/lib/friends-galaxy-presentation.js";
 
 export const GALAXY_LAB_PROVIDERS = ["instagram", "facebook", "linkedin", "x", "rss"] as const;
 
@@ -48,16 +49,10 @@ export interface GalaxyLabFixture extends FriendsGalaxyRendererScene {
   buildMs: number;
 }
 
-export interface GalaxyLabNodePresentation {
-  label: string;
-  initials: string;
-  priority: number;
-}
-
 export function galaxyLabNodePresentation(
   fixture: FriendsGalaxyRendererScene,
   nodeIndex: number,
-): GalaxyLabNodePresentation {
+): FriendsGalaxyNodePresentation {
   const nodeId = fixture.scene.nodeIds[nodeIndex] ?? "";
   const metadata = fixture.atlas.nodes.find((node) => node.id === nodeId);
   if (metadata) {
