@@ -190,6 +190,8 @@ Compact canvases now open at a useful 0.16 exploration scale around the semantic
 
 Frame and submission diagnostics now use fixed 240-value typed rings. Active camera motion suppresses diagnostics DOM rebuilding, then refreshes the panel after settle from one bounded snapshot. The detached gesture path no longer shifts diagnostic arrays or performs periodic panel layout while the camera is moving.
 
+With animation disabled, the detached renderer now schedules frames only for dirty GPU work or a pending settle deadline. It stops requesting animation frames when the scene is idle and exposes that state on the viewport. Diagnostics request a frame only when changed data reaches the bounded refresh interval. One persistent low-frequency health poll remains active so an idle WebGPU device loss still recovers without a permanent animation loop.
+
 Active pointer movement now reuses viewport bounds captured at gesture start and mutates only the two resident touch records. Hover coalescing retains one scalar coordinate pair. Safari trackpad pinch stores scalar anchor and viewport values at `gesturestart`, so `gesturechange` performs no point allocation or viewport geometry read.
 
 The detached shell now shares one cached viewport origin across hover, pointer, wheel, and Safari input. It refreshes geometry at pointer entry, gesture start, the first event in a wheel burst, and resize. Every event inside the active interaction uses the cached scalar origin. A diagnostic counter exposes the exact geometry-read count without rebuilding the metrics panel during movement.
@@ -429,6 +431,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.83 | Cache one viewport origin across hover, pointer, wheel, and Safari input so active event bursts perform no repeated geometry reads | High | Done |
 | 8.84 | Replace pointer Maps and per-move iterators with one fixed typed roster that preserves two-touch handoff | High | Done |
 | 8.85 | Retain keyed avatar admission across close-zoom settles and coalesce matching in-flight decode work | High | Done |
+| 8.86 | Replace the permanent idle animation loop with demand-driven frames and a bounded backend-health poll | High | Done |
 
 ---
 
@@ -518,6 +521,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] WebGPU rendering caps settled Retina density and lowers compact or wide motion density once per gesture without removing resident stars or labels
 - [x] Compact initial framing opens on a legible semantic field while Fit galaxy remains the explicit complete-universe command
 - [x] Gesture diagnostics use fixed typed rings and defer panel DOM updates until camera settle
+- [x] Animation-disabled scenes stop requesting frames when idle and wake only for renderer work, settle state, diagnostics, or backend health recovery
 - [x] Active pointer and Safari gesture movement reuses captured bounds and scalar state without per-event point allocation
 - [x] Pinch and wheel movement update one scalar settle deadline without allocating or canceling per-event browser timers
 - [x] Hover and selection reuse fixed interaction payloads and renderer scratch storage without rebuilding maps, sets, typed views, or edge geometry

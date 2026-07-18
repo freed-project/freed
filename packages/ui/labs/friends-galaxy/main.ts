@@ -41,6 +41,7 @@ import {
   type GalaxyLabAvatarImageAdmissionResult,
 } from "./avatar-image-admission.js";
 import { galaxyLabInitialCameraScale } from "./camera-math.js";
+import { shouldContinueGalaxyLabFrame } from "./frame-loop.js";
 import { GalaxyLabPointerRoster } from "./pointer-roster.js";
 import {
   GalaxyLabSampleRing,
@@ -167,9 +168,11 @@ let frameRequest = 0;
 let lastFrameAt = 0;
 let lastMetricsAt = 0;
 let dirty = true;
+let metricsDirty = true;
 let userMovedCamera = false;
 let cameraInMotion = false;
 viewport.dataset.cameraMotion = "false";
+viewport.dataset.frameLoop = "idle";
 const settleScheduler = new GalaxyLabSettleScheduler();
 const frameSamples = new GalaxyLabSampleRing(240);
 const submitSamples = new GalaxyLabSampleRing(240);
@@ -187,6 +190,18 @@ let avatarAdmissionResult: GalaxyLabAvatarImageAdmissionResult = {
   failedSourceCount: 0,
   cachedSourceCount: 0,
 };
+
+function requestGalaxyFrame(): void {
+  if (frameRequest !== 0) return;
+  frameRequest = requestAnimationFrame(renderFrame);
+  viewport.dataset.frameLoop = "active";
+}
+
+function markGalaxyDirty(): void {
+  dirty = true;
+  metricsDirty = true;
+  requestGalaxyFrame();
+}
 
 function hashAvatarSource(sourceKey: string): number {
   let hash = 2_166_136_261;
@@ -344,7 +359,7 @@ function setCameraInMotion(next: boolean): void {
   viewport.dataset.cameraMotion = String(next);
   activeBackend?.setCameraMotion?.(next);
   resizeActiveBackend();
-  dirty = true;
+  markGalaxyDirty();
 }
 
 function viewDetailForScale(scale: number): GalaxyLabViewDetail {
@@ -406,7 +421,7 @@ async function admitSettledAvatarImages(
   backend.setAvatarImages(result.images);
   avatarAdmissionState.commit(backend, admissionKey, currentGeneration);
   avatarAdmissionApplyCount += 1;
-  dirty = true;
+  markGalaxyDirty();
 }
 
 function applySettledViewDetail(generation: number): void {
@@ -416,7 +431,7 @@ function applySettledViewDetail(generation: number): void {
   const detail = viewDetailForScale(transform.scale);
   backend.setViewDetail(detail);
   void admitSettledAvatarImages(backend, detail, generation);
-  dirty = true;
+  markGalaxyDirty();
 }
 
 function scheduleSettledViewDetail(immediate = false): void {
@@ -427,6 +442,7 @@ function scheduleSettledViewDetail(immediate = false): void {
     return;
   }
   settleScheduler.schedule(generation, performance.now());
+  requestGalaxyFrame();
 }
 
 function frameGalaxy(markAsUserAction: boolean, useInitialScale: boolean): void {
@@ -448,7 +464,7 @@ function frameGalaxy(markAsUserAction: boolean, useInitialScale: boolean): void 
   transform.x = width / 2 - centerX * nextScale;
   transform.y = height / 2 - centerY * nextScale;
   userMovedCamera = markAsUserAction;
-  dirty = true;
+  markGalaxyDirty();
   scheduleSettledViewDetail(true);
 }
 
@@ -518,7 +534,7 @@ async function activateBackend(
     const avatarGeneration = ++avatarAdmissionGeneration;
     void admitSettledAvatarImages(backend, detail, avatarGeneration);
     resetSamples();
-    dirty = true;
+    markGalaxyDirty();
     const metrics = backend.metrics();
     const fallback = inheritedFallbackReason ?? metrics.fallbackReason;
     lastRecoveryReason = fallback;
@@ -641,6 +657,7 @@ function scheduleBackendRecovery(backend: GalaxyLabBackend, reason: string): voi
     animateControl.checked = false;
     setStatus(`Compatibility renderer failed: ${normalizedReason}`, true);
     simulateLossButton.disabled = true;
+    markGalaxyDirty();
     return;
   }
   backendRecoveryPending = true;
@@ -652,12 +669,17 @@ function scheduleBackendRecovery(backend: GalaxyLabBackend, reason: string): voi
   });
 }
 
-function renderFrame(timeMs: number): void {
-  const settledGeneration = settleScheduler.takeDue(timeMs);
-  if (settledGeneration !== null) applySettledViewDetail(settledGeneration);
+function pollBackendHealth(): void {
   const healthBackend = activeBackend;
   const fatalError = healthBackend?.takeFatalError?.() ?? null;
   if (healthBackend && fatalError) scheduleBackendRecovery(healthBackend, fatalError);
+}
+
+function renderFrame(timeMs: number): void {
+  frameRequest = -1;
+  const settledGeneration = settleScheduler.takeDue(timeMs);
+  if (settledGeneration !== null) applySettledViewDetail(settledGeneration);
+  pollBackendHealth();
   const shouldRender = Boolean(activeBackend && (animateControl.checked || dirty));
   if (shouldRender && activeBackend) {
     if (lastFrameAt > 0 && animateControl.checked) {
@@ -677,11 +699,25 @@ function renderFrame(timeMs: number): void {
   } else {
     lastFrameAt = 0;
   }
-  if (shouldRefreshGalaxyLabDiagnostics(cameraInMotion, timeMs - lastMetricsAt)) {
+  if (
+    (metricsDirty || animateControl.checked) &&
+    shouldRefreshGalaxyLabDiagnostics(cameraInMotion, timeMs - lastMetricsAt)
+  ) {
     updateMetrics();
+    metricsDirty = false;
     lastMetricsAt = timeMs;
   }
-  frameRequest = requestAnimationFrame(renderFrame);
+  frameRequest = 0;
+  const backendReady = activeBackend !== null;
+  if (shouldContinueGalaxyLabFrame(
+    backendReady && animateControl.checked,
+    backendReady && dirty,
+    settleScheduler.isPending,
+  )) {
+    requestGalaxyFrame();
+  } else {
+    viewport.dataset.frameLoop = "idle";
+  }
 }
 
 function zoomAt(viewportX: number, viewportY: number, nextScale: number): void {
@@ -695,7 +731,7 @@ function zoomAt(viewportX: number, viewportY: number, nextScale: number): void {
     MAX_SCALE,
   );
   userMovedCamera = true;
-  dirty = true;
+  markGalaxyDirty();
   scheduleSettledViewDetail();
 }
 
@@ -734,7 +770,7 @@ function updateInteraction(next: GalaxyLabInteraction): void {
   if (selectionChanged && viewDetailForScale(transform.scale) === "close") {
     scheduleSettledViewDetail(true);
   }
-  dirty = true;
+  markGalaxyDirty();
 }
 
 function scheduleHoverPick(viewportX: number, viewportY: number): void {
@@ -827,7 +863,7 @@ viewport.addEventListener("pointermove", (event) => {
     pointers.update(pointerIndex, nextX, nextY);
   }
   userMovedCamera = true;
-  dirty = true;
+  markGalaxyDirty();
 });
 
 function releasePointer(event: PointerEvent): void {
@@ -921,7 +957,7 @@ viewport.addEventListener("gesturechange", ((event: SafariGestureEvent) => {
   transform.x = viewportX - safariGestureWorldX * nextScale;
   transform.y = viewportY - safariGestureWorldY * nextScale;
   userMovedCamera = true;
-  dirty = true;
+  markGalaxyDirty();
   scheduleSettledViewDetail();
 }) as EventListener, { passive: false });
 
@@ -974,7 +1010,7 @@ viewport.addEventListener("keydown", (event) => {
   if (!handled) return;
   event.preventDefault();
   if (event.key.startsWith("Arrow")) userMovedCamera = true;
-  dirty = true;
+  markGalaxyDirty();
 });
 fitButton.addEventListener("click", () => fitGalaxy());
 
@@ -996,20 +1032,20 @@ themeSelect.addEventListener("change", () => {
   const palette = paletteForTheme();
   applyDocumentPalette(palette);
   activeBackend?.setPalette(palette);
-  dirty = true;
+  markGalaxyDirty();
 });
 
 fieldStyleSelect.addEventListener("change", () => {
   activeFieldStyle = fieldStyleSelect.value as GalaxyLabFieldStyle;
   activeBackend?.setFieldStyle?.(activeFieldStyle);
-  dirty = true;
+  markGalaxyDirty();
 });
 
 animateControl.addEventListener("change", () => {
   animatePreferenceTouched = true;
   activeBackend?.setAnimationEnabled?.(animateControl.checked);
   resetSamples();
-  dirty = true;
+  markGalaxyDirty();
 });
 
 function syncReducedMotionPreference(): void {
@@ -1017,7 +1053,7 @@ function syncReducedMotionPreference(): void {
   animateControl.checked = !reducedMotionQuery.matches;
   activeBackend?.setAnimationEnabled?.(animateControl.checked);
   resetSamples();
-  dirty = true;
+  markGalaxyDirty();
 }
 
 reducedMotionQuery.addEventListener("change", syncReducedMotionPreference);
@@ -1027,17 +1063,27 @@ const resizeObserver = new ResizeObserver(() => {
   resizeActiveBackend();
   if (!userMovedCamera) frameInitialGalaxy();
   else scheduleSettledViewDetail(true);
-  dirty = true;
+  markGalaxyDirty();
 });
 resizeObserver.observe(viewport);
 
+const backendHealthPoll = window.setInterval(() => {
+  pollBackendHealth();
+  if (
+    document.visibilityState === "visible" && activeBackend &&
+    (animateControl.checked || (metricsDirty && !cameraInMotion))
+  ) requestGalaxyFrame();
+}, 250);
+
 document.addEventListener("visibilitychange", () => {
   lastFrameAt = 0;
+  if (document.visibilityState === "visible") markGalaxyDirty();
 });
 
 window.addEventListener("beforeunload", () => {
   cancelAnimationFrame(frameRequest);
   cancelAnimationFrame(hoverRequest);
+  clearInterval(backendHealthPoll);
   settleScheduler.cancel();
   reducedMotionQuery.removeEventListener("change", syncReducedMotionPreference);
   resizeObserver.disconnect();
@@ -1069,6 +1115,8 @@ Object.assign(window, {
       },
       recoveryReason: lastRecoveryReason,
       viewportGeometryReadCount,
+      frameLoop: viewport.dataset.frameLoop,
+      settlePending: settleScheduler.isPending,
       startup: {
         workerOnly: true,
         ...fixtureWorkerReceipt,
@@ -1082,4 +1130,4 @@ Object.assign(window, {
 applyDocumentPalette(paletteForTheme());
 frameInitialGalaxy();
 void activateBackend(backendSelect.value as GalaxyLabBackendId);
-frameRequest = requestAnimationFrame(renderFrame);
+requestGalaxyFrame();

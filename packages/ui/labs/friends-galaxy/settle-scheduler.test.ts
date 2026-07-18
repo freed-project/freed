@@ -7,8 +7,10 @@ describe("Friends Galaxy settle scheduler", () => {
     scheduler.schedule(1, 100);
     scheduler.schedule(2, 180);
 
+    expect(scheduler.isPending).toBe(true);
     expect(scheduler.takeDue(319)).toBeNull();
     expect(scheduler.takeDue(320)).toBe(2);
+    expect(scheduler.isPending).toBe(false);
   });
 
   it("delivers each settled generation once", () => {
