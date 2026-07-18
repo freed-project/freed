@@ -5,15 +5,15 @@ const MIN_START_SPEED = 0.06;
 const STOP_SPEED = 0.015;
 const MAX_SPEED = 3.2;
 
-export interface GalaxyLabInertialPanStep {
+export interface FriendsGalaxyInertialPanStep {
   deltaX: number;
   deltaY: number;
   active: boolean;
   finished: boolean;
 }
 
-export class GalaxyLabInertialPan {
-  private readonly stepResult: GalaxyLabInertialPanStep = {
+export class FriendsGalaxyInertialPan {
+  private readonly stepResult: FriendsGalaxyInertialPanStep = {
     deltaX: 0,
     deltaY: 0,
     active: false,
@@ -88,7 +88,7 @@ export class GalaxyLabInertialPan {
     return true;
   }
 
-  step(timeMs: number): GalaxyLabInertialPanStep {
+  step(timeMs: number): FriendsGalaxyInertialPanStep {
     if (!this.active || !Number.isFinite(timeMs)) {
       return this.writeStep(0, 0, false, false);
     }
@@ -138,7 +138,7 @@ export class GalaxyLabInertialPan {
     deltaY: number,
     active: boolean,
     finished: boolean,
-  ): GalaxyLabInertialPanStep {
+  ): FriendsGalaxyInertialPanStep {
     this.stepResult.deltaX = deltaX;
     this.stepResult.deltaY = deltaY;
     this.stepResult.active = active;

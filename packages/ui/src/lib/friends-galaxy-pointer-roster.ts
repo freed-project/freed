@@ -1,4 +1,4 @@
-export class GalaxyLabPointerRoster {
+export class FriendsGalaxyPointerRoster {
   private readonly pointerIds: Int32Array;
   private readonly positionsX: Float64Array;
   private readonly positionsY: Float64Array;

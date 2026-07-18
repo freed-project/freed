@@ -48,14 +48,14 @@ import {
   writeGalaxyLabFocusedTransform,
   writeGalaxyLabWebGpuViewProjection,
 } from "./camera-math.js";
-import { shouldContinueGalaxyLabFrame } from "./frame-loop.js";
-import { GalaxyLabInertialPan } from "./inertial-pan.js";
-import { GalaxyLabPointerRoster } from "./pointer-roster.js";
+import { shouldContinueFriendsGalaxyFrame } from "../../src/lib/friends-galaxy-frame-loop.js";
+import { FriendsGalaxyInertialPan } from "../../src/lib/friends-galaxy-inertia.js";
+import { FriendsGalaxyPointerRoster } from "../../src/lib/friends-galaxy-pointer-roster.js";
 import {
   GalaxyLabSampleRing,
   shouldRefreshGalaxyLabDiagnostics,
 } from "./sample-ring.js";
-import { GalaxyLabSettleScheduler } from "./settle-scheduler.js";
+import { FriendsGalaxySettleScheduler } from "../../src/lib/friends-galaxy-settle.js";
 import {
   createGalaxyLabDiagnosticSnapshot,
   serializeGalaxyLabDiagnosticSnapshot,
@@ -243,8 +243,8 @@ viewport.dataset.inertialPan = "false";
 viewport.dataset.wheelInputMode = wheelInputMode;
 viewport.dataset.presentationVisible = "true";
 canvasHost.dataset.presentationVisible = "true";
-const settleScheduler = new GalaxyLabSettleScheduler();
-const inertialPan = new GalaxyLabInertialPan();
+const settleScheduler = new FriendsGalaxySettleScheduler();
+const inertialPan = new FriendsGalaxyInertialPan();
 const frameSamples = new GalaxyLabSampleRing(240);
 const submitSamples = new GalaxyLabSampleRing(240);
 const nodeLabelById = new Map(fixture.atlas.nodes.map((node) => [node.id, node.label]));
@@ -1048,7 +1048,7 @@ function renderFrame(timeMs: number): void {
   }
   frameRequest = 0;
   const backendReady = activeBackend !== null;
-  if (shouldContinueGalaxyLabFrame(
+  if (shouldContinueFriendsGalaxyFrame(
     backendReady && animateControl.checked,
     backendReady && dirty,
     settleScheduler.isPending || inertialPan.isActive,
@@ -1077,7 +1077,7 @@ function zoomAt(viewportX: number, viewportY: number, nextScale: number): void {
   scheduleSettledViewDetail();
 }
 
-const pointers = new GalaxyLabPointerRoster(8);
+const pointers = new FriendsGalaxyPointerRoster(8);
 let gestureMoved = false;
 let gestureInterruptedInertia = false;
 let hoverRequest = 0;

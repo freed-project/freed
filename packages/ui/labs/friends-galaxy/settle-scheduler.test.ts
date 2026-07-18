@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { GalaxyLabSettleScheduler } from "./settle-scheduler.js";
+import { FriendsGalaxySettleScheduler } from "../../src/lib/friends-galaxy-settle.js";
 
 describe("Friends Galaxy settle scheduler", () => {
   it("replaces repeated movement with the latest scalar deadline", () => {
-    const scheduler = new GalaxyLabSettleScheduler();
+    const scheduler = new FriendsGalaxySettleScheduler();
     scheduler.schedule(1, 100);
     scheduler.schedule(2, 180);
 
@@ -14,7 +14,7 @@ describe("Friends Galaxy settle scheduler", () => {
   });
 
   it("delivers each settled generation once", () => {
-    const scheduler = new GalaxyLabSettleScheduler();
+    const scheduler = new FriendsGalaxySettleScheduler();
     scheduler.schedule(7, 100);
 
     expect(scheduler.takeDue(240)).toBe(7);
@@ -22,7 +22,7 @@ describe("Friends Galaxy settle scheduler", () => {
   });
 
   it("cancels pending settle work when a new gesture starts", () => {
-    const scheduler = new GalaxyLabSettleScheduler();
+    const scheduler = new FriendsGalaxySettleScheduler();
     scheduler.schedule(3, 100);
     scheduler.cancel();
 

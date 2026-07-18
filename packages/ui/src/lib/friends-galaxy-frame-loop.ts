@@ -1,4 +1,4 @@
-export function shouldContinueGalaxyLabFrame(
+export function shouldContinueFriendsGalaxyFrame(
   animationEnabled: boolean,
   rendererDirty: boolean,
   settlePending: boolean,

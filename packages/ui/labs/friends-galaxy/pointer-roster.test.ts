@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { GalaxyLabPointerRoster } from "./pointer-roster.js";
+import { FriendsGalaxyPointerRoster } from "../../src/lib/friends-galaxy-pointer-roster.js";
 
 describe("Friends Galaxy pointer roster", () => {
   it("retains scalar positions in pointer order", () => {
-    const roster = new GalaxyLabPointerRoster(4);
+    const roster = new FriendsGalaxyPointerRoster(4);
 
     expect(roster.begin(41, 100, 200)).toBe(0);
     expect(roster.begin(73, 300, 400)).toBe(1);
@@ -17,7 +17,7 @@ describe("Friends Galaxy pointer roster", () => {
   });
 
   it("tracks movement from each pointer's fixed gesture origin", () => {
-    const roster = new GalaxyLabPointerRoster(2);
+    const roster = new FriendsGalaxyPointerRoster(2);
     const index = roster.begin(12, 20, 30);
 
     expect(roster.movedBeyond(index, 23, 33, 4)).toBe(true);
@@ -28,7 +28,7 @@ describe("Friends Galaxy pointer roster", () => {
   });
 
   it("promotes remaining pointers in order after either touch lifts", () => {
-    const roster = new GalaxyLabPointerRoster(4);
+    const roster = new FriendsGalaxyPointerRoster(4);
     roster.begin(1, 10, 20);
     roster.begin(2, 30, 40);
     roster.begin(3, 50, 60);
@@ -42,7 +42,7 @@ describe("Friends Galaxy pointer roster", () => {
   });
 
   it("rejects excess pointers without changing the active roster", () => {
-    const roster = new GalaxyLabPointerRoster(2);
+    const roster = new FriendsGalaxyPointerRoster(2);
     roster.begin(7, 1, 2);
     roster.begin(8, 3, 4);
 
@@ -53,7 +53,7 @@ describe("Friends Galaxy pointer roster", () => {
   });
 
   it("clears a cancelled native touch sequence without retaining stale positions", () => {
-    const roster = new GalaxyLabPointerRoster(3);
+    const roster = new FriendsGalaxyPointerRoster(3);
     roster.begin(31, 110, 210);
     roster.begin(32, 310, 410);
 

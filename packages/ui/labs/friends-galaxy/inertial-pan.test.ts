@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { GalaxyLabInertialPan } from "./inertial-pan.js";
+import { FriendsGalaxyInertialPan } from "../../src/lib/friends-galaxy-inertia.js";
 
 describe("Friends Galaxy inertial pan", () => {
   it("continues a recent drag and decays to a deterministic stop", () => {
-    const inertia = new GalaxyLabInertialPan();
+    const inertia = new FriendsGalaxyInertialPan();
     inertia.begin(0);
     inertia.sample(16, 8, 16);
     inertia.sample(20, 10, 32);
@@ -30,7 +30,7 @@ describe("Friends Galaxy inertial pan", () => {
   });
 
   it("does not throw after a stale release or under reduced motion", () => {
-    const inertia = new GalaxyLabInertialPan();
+    const inertia = new FriendsGalaxyInertialPan();
     inertia.begin(0);
     inertia.sample(20, 0, 16);
     expect(inertia.start(200, 200, false)).toBe(false);
@@ -41,7 +41,7 @@ describe("Friends Galaxy inertial pan", () => {
   });
 
   it("caps extreme input velocity and cancels a stalled frame", () => {
-    const inertia = new GalaxyLabInertialPan();
+    const inertia = new FriendsGalaxyInertialPan();
     inertia.begin(0);
     inertia.sample(1_000, 1_000, 1);
     expect(Math.hypot(
@@ -58,7 +58,7 @@ describe("Friends Galaxy inertial pan", () => {
   });
 
   it("stops immediately when new input cancels the throw", () => {
-    const inertia = new GalaxyLabInertialPan();
+    const inertia = new FriendsGalaxyInertialPan();
     inertia.begin(0);
     inertia.sample(24, -12, 16);
     expect(inertia.start(18, 40, false)).toBe(true);

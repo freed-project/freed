@@ -1,4 +1,4 @@
-export class GalaxyLabSettleScheduler {
+export class FriendsGalaxySettleScheduler {
   private pending = false;
   private deadlineMs = 0;
   private generation = 0;
