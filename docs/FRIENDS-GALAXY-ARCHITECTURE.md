@@ -251,6 +251,18 @@ Friends must follow Map's two-lane canvas pattern instead of extending the curre
 
 This topology is the required fix for the PR 887 failure mode. Visual bleed and pointer ownership are separate by construction, so empty-space clicks, sidebar controls, and graph controls cannot compete for the same DOM surface.
 
+### Accessibility contract
+
+- The full-bleed GPU canvas remains `aria-hidden` and never creates one DOM node per star.
+- The bounded interaction lane is one focusable graph region with a visible theme-aware focus ring. Its accessible description identifies the active identity mode, selected identity or channel, and available camera controls.
+- Arrow keys pan. Plus and minus zoom around the usable workspace center. Home and zero fit the galaxy. Escape clears selection or closes the active graph menu. Enter opens details for the selected node. Shift+F10 and the Context Menu key open the selected node menu.
+- Search remains the primary non-spatial identity navigator. Choosing a result calls the same `focusNode(id)` path used by Reader and Map, moves the camera, selects the canonical node, and announces the result.
+- Selection, focus completion, backend recovery, and unavailable actions publish concise updates through one polite live region. Camera movement does not announce every frame or every star crossed by the pointer.
+- The context menu uses shared bounded menu behavior. It moves focus to its first enabled command, supports normal arrow and Tab navigation, keeps the searchable person picker inside the viewport, and restores focus to the graph region when closed.
+- Mobile long press opens the same menu without enabling node drag. A second touch or movement beyond the tap threshold cancels the pending long press.
+- Reduced motion disables twinkle, pulse, inertial pan, and animated focus travel. It does not remove labels, depth ordering, selection emphasis, reconnect state, or provider geography.
+- Details, overview lists, search results, and suggestions remain ordinary semantic HTML. The canvas is an exploration surface, not the only way to inspect or change identity data.
+
 ### Product acceptance matrix
 
 The cutover should preserve existing test IDs where they still describe the product contract. Tests that assert obsolete renderer internals must be adapted, not deleted without replacement.
@@ -271,6 +283,7 @@ The cutover should preserve existing test IDs where they still describe the prod
 | Reader handoff | `reader-hydration.spec.ts`: author link opens channel details in Friends | Preserve `focusNode(id)` and canonical account selection across lazy engine startup |
 | Map handoff | Map and Friends smoke flows for marker linking, promotion, and post navigation | Preserve shared identity mode and canonical person or account focus |
 | Themes and controls | `theme-switching.spec.ts`: Friends control placement and opaque control backgrounds | Replace the old bounded-canvas geometry assertion with full background coverage plus bounded interaction and control-lane assertions |
+| Keyboard and assistive access | No complete maintained Friends graph keyboard workflow yet | Add focus, camera shortcut, selection announcement, menu focus restoration, reduced-motion, and search-to-focus coverage without per-star DOM nodes |
 | Dense visual structure | `smoke.spec.ts`: maintained Scriptorium dense snapshot | Update snapshots only after Raw WebGPU is accepted in Scriptorium and one dark theme |
 | Renderer diagnostics | `perf-friends.spec.ts` and renderer heartbeat assertions | Replace dense-scene internals with backend, fallback reason, resident counts, sparse writes, presentation counts, render density, and frame-loop state |
 | Representative scale | Current perf fixture uses 1,600 people and 1,920 accounts | Add 5,000 people, 25,000 accounts, and a 250,000-item summary-equivalent source before performance acceptance |

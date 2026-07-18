@@ -455,6 +455,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.95 | Admit settled billboard labels and avatar images from the perspective-projected visible identity roster | High | Done |
 | 8.96 | Define the full-canvas render and bounded interaction topology plus the product cutover acceptance matrix | High | Done |
 | 8.97 | Expose presentation build counters and remove duplicate selection settle rebuilds | High | Done |
+| 8.98 | Define keyboard, assistive-technology, menu-focus, and reduced-motion cutover requirements | High | Done |
 
 ---
 
