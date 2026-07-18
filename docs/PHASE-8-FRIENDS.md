@@ -198,7 +198,7 @@ Active pointer movement now reuses viewport bounds captured at gesture start and
 
 The detached shell now shares one cached viewport origin across hover, pointer, wheel, and Safari input. It refreshes geometry at pointer entry, gesture start, the first event in a wheel burst, and resize. Every event inside the active interaction uses the cached scalar origin. A diagnostic counter exposes the exact geometry-read count without rebuilding the metrics panel during movement.
 
-Touch state now lives in one fixed-capacity typed pointer roster instead of two Maps. Pointer down writes scalar identity, position, and gesture origin once. Active pan and pinch perform indexed scalar reads and writes without creating a Map iterator or position object. Removing either touch shifts the surviving roster in place, so the interaction hands directly back to one-finger pan.
+Touch state now lives in one fixed-capacity typed pointer roster instead of two Maps. On touch-capable hardware, the detached shell uses non-passive native Touch Events and ignores duplicate touch Pointer Events. Mouse and pen remain on Pointer Events. Touch start writes scalar identity, position, and gesture origin once. Active pan and pinch perform indexed scalar reads and writes without creating a Map iterator or position object. Removing either touch shifts the surviving roster in place and cancels the former pinch deadline, so the interaction hands directly back to one-finger pan without settling underneath the remaining contact. Touch cancellation clears the complete roster before settle so stale contacts cannot block the next gesture.
 
 Pinch and wheel movement now update one persistent settle deadline instead of canceling and allocating a browser timeout on every event. The animation loop consumes only the latest generation after 140 ms, then restores render density, detail, and bounded avatar admission once.
 
@@ -456,6 +456,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.96 | Define the full-canvas render and bounded interaction topology plus the product cutover acceptance matrix | High | Done |
 | 8.97 | Expose presentation build counters and remove duplicate selection settle rebuilds | High | Done |
 | 8.98 | Define keyboard, assistive-technology, menu-focus, and reduced-motion cutover requirements | High | Done |
+| 8.99 | Route detached iPhone pan and pinch through native Touch Events with duplicate-pointer suppression, direct pinch-to-pan handoff, and cancellation recovery | High | Done |
 
 ---
 

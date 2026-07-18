@@ -51,4 +51,19 @@ describe("Friends Galaxy pointer roster", () => {
     expect(roster.remove(99)).toBe(false);
     expect(roster.count).toBe(2);
   });
+
+  it("clears a cancelled native touch sequence without retaining stale positions", () => {
+    const roster = new GalaxyLabPointerRoster(3);
+    roster.begin(31, 110, 210);
+    roster.begin(32, 310, 410);
+
+    roster.clear();
+
+    expect(roster.count).toBe(0);
+    expect(roster.indexOf(31)).toBe(-1);
+    expect(roster.indexOf(32)).toBe(-1);
+    expect(roster.begin(33, 510, 610)).toBe(0);
+    expect(roster.xAt(0)).toBe(510);
+    expect(roster.yAt(0)).toBe(610);
+  });
 });

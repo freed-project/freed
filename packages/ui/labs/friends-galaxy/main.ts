@@ -85,6 +85,10 @@ const simulateLossButton = requiredElement<HTMLButtonElement>("simulate-loss");
 const animateControl = requiredElement<HTMLInputElement>("animate");
 const statusElement = requiredElement<HTMLElement>("status");
 const metricsElement = requiredElement<HTMLElement>("metrics");
+const nativeTouchInput = navigator.maxTouchPoints > 0 && "ontouchstart" in window;
+viewport.dataset.touchInputMode = nativeTouchInput
+  ? "native-touch-events"
+  : "pointer-events";
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 let animatePreferenceTouched = false;
 animateControl.checked = !animationProbeDisabled && !reducedMotionQuery.matches;
@@ -608,6 +612,9 @@ function formatByteCount(bytes: number): string {
 }
 
 function updateMetrics(): void {
+  viewport.dataset.cameraX = String(transform.x);
+  viewport.dataset.cameraY = String(transform.y);
+  viewport.dataset.cameraScale = String(transform.scale);
   metricsElement.replaceChildren();
   if (!activeBackend) {
     addMetric("Renderer", "Loading");
@@ -685,6 +692,7 @@ function updateMetrics(): void {
   if (lastRecoveryReason) addMetric("Recovery reason", lastRecoveryReason);
   addMetric("Camera scale", scaleFormat.format(transform.scale));
   addMetric("Settled detail", viewDetailForScale(transform.scale));
+  addMetric("Touch input", nativeTouchInput ? "Native Touch Events" : "Pointer Events");
   addMetric("Viewport geometry reads", integerFormat.format(viewportGeometryReadCount));
   if (metrics.adapterDescription) addMetric("Adapter", metrics.adapterDescription);
 }
@@ -833,6 +841,7 @@ function scheduleHoverPick(viewportX: number, viewportY: number): void {
 }
 
 viewport.addEventListener("pointerdown", (event) => {
+  if (nativeTouchInput && event.pointerType === "touch") return;
   if (event.pointerType === "mouse" && event.button !== 0) return;
   event.preventDefault();
   avatarAdmissionGeneration += 1;
@@ -858,6 +867,7 @@ viewport.addEventListener("pointerdown", (event) => {
 });
 
 viewport.addEventListener("pointermove", (event) => {
+  if (nativeTouchInput && event.pointerType === "touch") return;
   const pointerIndex = pointers.indexOf(event.pointerId);
   if (pointerIndex < 0) {
     if (event.pointerType === "mouse") {
@@ -906,6 +916,7 @@ viewport.addEventListener("pointermove", (event) => {
 });
 
 function releasePointer(event: PointerEvent): void {
+  if (nativeTouchInput && event.pointerType === "touch") return;
   const pointerIndex = pointers.indexOf(event.pointerId);
   if (pointerIndex < 0) return;
   const releasePointX = event.clientX - viewportClientLeft;
@@ -944,6 +955,115 @@ viewport.addEventListener("pointerleave", () => {
   pendingHover = false;
   updateInteraction({ selectedNodeId: interaction.selectedNodeId, hoveredNodeId: null });
 });
+
+function beginNativeTouches(event: TouchEvent): void {
+  event.preventDefault();
+  avatarAdmissionGeneration += 1;
+  settleScheduler.cancel();
+  viewport.focus({ preventScroll: true });
+  if (pointers.count === 0) {
+    refreshViewportOrigin();
+    gestureMoved = false;
+  }
+  for (let index = 0; index < event.changedTouches.length; index += 1) {
+    const touch = event.changedTouches.item(index);
+    if (!touch) continue;
+    pointers.begin(
+      touch.identifier,
+      touch.clientX - viewportClientLeft,
+      touch.clientY - viewportClientTop,
+    );
+  }
+  if (pointers.count > 1) gestureMoved = true;
+  if (pointers.count > 0) viewport.dataset.dragging = "true";
+}
+
+function moveNativeTouches(event: TouchEvent): void {
+  if (pointers.count === 0) return;
+  event.preventDefault();
+  setCameraInMotion(true);
+  const previousFirstX = pointers.xAt(0);
+  const previousFirstY = pointers.yAt(0);
+  const previousSecondX = pointers.xAt(1);
+  const previousSecondY = pointers.yAt(1);
+  for (let index = 0; index < event.touches.length; index += 1) {
+    const touch = event.touches.item(index);
+    if (!touch) continue;
+    const pointerIndex = pointers.indexOf(touch.identifier);
+    if (pointerIndex < 0) continue;
+    const nextX = touch.clientX - viewportClientLeft;
+    const nextY = touch.clientY - viewportClientTop;
+    if (pointers.movedBeyond(pointerIndex, nextX, nextY, 4)) gestureMoved = true;
+    pointers.update(pointerIndex, nextX, nextY);
+  }
+  if (pointers.count >= 2) {
+    gestureMoved = true;
+    applyGalaxyLabPinch(
+      transform,
+      previousFirstX,
+      previousFirstY,
+      previousSecondX,
+      previousSecondY,
+      pointers.xAt(0),
+      pointers.yAt(0),
+      pointers.xAt(1),
+      pointers.yAt(1),
+      MIN_SCALE,
+      MAX_SCALE,
+    );
+    scheduleSettledViewDetail();
+  } else {
+    transform.x += pointers.xAt(0) - previousFirstX;
+    transform.y += pointers.yAt(0) - previousFirstY;
+  }
+  userMovedCamera = true;
+  markGalaxyDirty();
+}
+
+function endNativeTouches(event: TouchEvent): void {
+  event.preventDefault();
+  const activeCountBeforeRelease = pointers.count;
+  const releaseTouch = event.changedTouches.item(0);
+  const shouldSelect = event.type === "touchend" &&
+    activeCountBeforeRelease === 1 &&
+    !gestureMoved &&
+    releaseTouch !== null;
+  for (let index = 0; index < event.changedTouches.length; index += 1) {
+    const touch = event.changedTouches.item(index);
+    if (touch) pointers.remove(touch.identifier);
+  }
+  if (pointers.count > 0) {
+    settleScheduler.cancel();
+    return;
+  }
+  viewport.dataset.dragging = "false";
+  if (shouldSelect && releaseTouch) {
+    const selectionChanged = updateInteraction({
+      selectedNodeId: activeBackend?.pickNode(
+        releaseTouch.clientX - viewportClientLeft,
+        releaseTouch.clientY - viewportClientTop,
+      ) ?? null,
+      hoveredNodeId: null,
+    });
+    if (selectionChanged) scheduleSettledViewDetail(true);
+  } else if (gestureMoved) {
+    scheduleSettledViewDetail();
+  }
+  gestureMoved = false;
+}
+
+function cancelNativeTouches(event: TouchEvent): void {
+  event.preventDefault();
+  pointers.clear();
+  viewport.dataset.dragging = "false";
+  gestureMoved = false;
+  scheduleSettledViewDetail();
+}
+
+viewport.addEventListener("touchstart", beginNativeTouches, { passive: false });
+viewport.addEventListener("touchmove", moveNativeTouches, { passive: false });
+viewport.addEventListener("touchend", endNativeTouches, { passive: false });
+viewport.addEventListener("touchcancel", cancelNativeTouches, { passive: false });
 
 viewport.addEventListener("wheel", (event) => {
   event.preventDefault();

@@ -87,4 +87,13 @@ export class GalaxyLabPointerRoster {
     this.activeCount = nextCount;
     return true;
   }
+
+  clear(): void {
+    this.pointerIds.fill(-1);
+    this.positionsX.fill(0);
+    this.positionsY.fill(0);
+    this.startsX.fill(0);
+    this.startsY.fill(0);
+    this.activeCount = 0;
+  }
 }
