@@ -3,6 +3,7 @@ import {
   applyFriendsGalaxyPinch,
   applyFriendsGalaxyResistedZoomAt,
   applyFriendsGalaxyZoomAt,
+  friendsGalaxyGestureScaleRatio,
   friendsGalaxyResistedScaleAtRatio,
   friendsGalaxyWheelDeltaPixels,
 } from "../../src/lib/friends-galaxy-gesture.js";
@@ -138,6 +139,25 @@ describe("Friends Galaxy gesture math", () => {
       0.12,
       6,
     )).toBeCloseTo(0.0901 * 1.04, 12);
+  });
+
+  it("reverses a cumulative Safari gesture at native speed on its first inward event", () => {
+    const scale = 0.0901;
+    const ratio = friendsGalaxyGestureScaleRatio(0.72, 0.74);
+
+    expect(ratio).toBeCloseTo(0.74 / 0.72, 12);
+    expect(friendsGalaxyResistedScaleAtRatio(
+      scale,
+      ratio,
+      0.09,
+      0.12,
+      6,
+    )).toBeCloseTo(scale * ratio, 12);
+  });
+
+  it("ignores invalid cumulative gesture scales", () => {
+    expect(friendsGalaxyGestureScaleRatio(0, 0.8)).toBe(1);
+    expect(friendsGalaxyGestureScaleRatio(0.8, Number.NaN)).toBe(1);
   });
 
   it("preserves the anchored world point while outward zoom is resisted", () => {

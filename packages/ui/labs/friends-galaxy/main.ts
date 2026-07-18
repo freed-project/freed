@@ -23,6 +23,7 @@ import {
   applyFriendsGalaxyPinch,
   applyFriendsGalaxyResistedZoomAt,
   applyFriendsGalaxyZoomAt,
+  friendsGalaxyGestureScaleRatio,
   friendsGalaxyResistedScaleAtRatio,
   friendsGalaxyWheelDeltaPixels,
 } from "../../src/lib/friends-galaxy-gesture.js";
@@ -1634,10 +1635,10 @@ interface SafariGestureEvent extends Event {
   clientY: number;
 }
 
-let safariGestureStartScale = transform.scale;
+let safariGesturePreviousEventScale = 1;
 let safariGestureActive = false;
-let safariGestureWorldX = 0;
-let safariGestureWorldY = 0;
+let safariGesturePreviousViewportX = 0;
+let safariGesturePreviousViewportY = 0;
 let safariGestureCanvasLeft = 0;
 let safariGestureCanvasTop = 0;
 
@@ -1705,14 +1706,14 @@ viewport.addEventListener("gesturestart", ((event: SafariGestureEvent) => {
   setCameraInMotion(true);
   avatarAdmissionGeneration += 1;
   settleScheduler.cancel();
-  safariGestureStartScale = transform.scale;
+  safariGesturePreviousEventScale = Number.isFinite(event.scale) && event.scale > 0
+    ? event.scale
+    : 1;
   refreshViewportOrigin();
   safariGestureCanvasLeft = viewportGeometry.canvasClientLeft;
   safariGestureCanvasTop = viewportGeometry.canvasClientTop;
-  const viewportX = event.clientX - safariGestureCanvasLeft;
-  const viewportY = event.clientY - safariGestureCanvasTop;
-  safariGestureWorldX = (viewportX - transform.x) / transform.scale;
-  safariGestureWorldY = (viewportY - transform.y) / transform.scale;
+  safariGesturePreviousViewportX = event.clientX - safariGestureCanvasLeft;
+  safariGesturePreviousViewportY = event.clientY - safariGestureCanvasTop;
   safariGestureActive = true;
 }) as EventListener, { passive: false });
 
@@ -1721,16 +1722,23 @@ viewport.addEventListener("gesturechange", ((event: SafariGestureEvent) => {
   if (!safariGestureActive) return;
   const viewportX = event.clientX - safariGestureCanvasLeft;
   const viewportY = event.clientY - safariGestureCanvasTop;
+  const worldX = (safariGesturePreviousViewportX - transform.x) / transform.scale;
+  const worldY = (safariGesturePreviousViewportY - transform.y) / transform.scale;
   const nextScale = friendsGalaxyResistedScaleAtRatio(
-    safariGestureStartScale,
-    event.scale,
+    transform.scale,
+    friendsGalaxyGestureScaleRatio(safariGesturePreviousEventScale, event.scale),
     outwardZoomEnvelope.target,
     outwardZoomEnvelope.resistance,
     cameraScaleLimits.maximum,
   );
   transform.scale = nextScale;
-  transform.x = viewportX - safariGestureWorldX * nextScale;
-  transform.y = viewportY - safariGestureWorldY * nextScale;
+  transform.x = viewportX - worldX * nextScale;
+  transform.y = viewportY - worldY * nextScale;
+  if (Number.isFinite(event.scale) && event.scale > 0) {
+    safariGesturePreviousEventScale = event.scale;
+  }
+  safariGesturePreviousViewportX = viewportX;
+  safariGesturePreviousViewportY = viewportY;
   userMovedCamera = true;
   markGalaxyDirty();
   scheduleSettledViewDetail();

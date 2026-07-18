@@ -220,7 +220,9 @@ With animation disabled, the detached renderer now schedules frames only for dir
 
 Motion-density transitions no longer resize the GPU canvas synchronously inside pointer, wheel, or Safari input. Motion state marks one pending resize and requests a frame. The render callback applies the latest density once before drawing. The same callback consumes settle state and restores settled density. Repeated input before that frame cannot trigger duplicate canvas resizing.
 
-Active pointer movement now reuses viewport bounds captured at gesture start and mutates only the two resident touch records. Hover coalescing retains one scalar coordinate pair. Safari trackpad pinch stores scalar anchor and viewport values at `gesturestart`, so `gesturechange` performs no point allocation or viewport geometry read.
+Active pointer movement now reuses viewport bounds captured at gesture start and mutates only the two resident touch records. Hover coalescing retains one scalar coordinate pair. Safari trackpad pinch stores the previous cumulative gesture scale and midpoint as scalars. Each `gesturechange` applies only the incremental ratio, so reversing inward restores native zoom on the first event instead of repaying cumulative outward gesture movement. The handler performs no point allocation or viewport geometry read.
+
+The practical outer target now sits two percent beyond the padded fitted overview instead of ten percent beyond it, while resistance begins at 1.55 times fitted scale instead of 1.35. Zooming out therefore slows sooner and approaches a more useful maximum distance. Wheel, touch, Safari, and keyboard zoom still use the same asymptotic curve, and every inward ratio remains native from the first event.
 
 The detached shell now shares one cached viewport origin across hover, pointer, wheel, and Safari input. It refreshes geometry at pointer entry, gesture start, the first event in a wheel burst, and resize. Every event inside the active interaction uses the cached scalar origin. A diagnostic counter exposes the exact geometry-read count without rebuilding the metrics panel during movement.
 
@@ -516,6 +518,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.118 | Move allocation-free depth-aware world-to-screen projection and bounded viewport admission into a shared UI module consumed by labels, avatars, and shell overlays | High | Done |
 | 8.119 | Split synthetic settled-candidate ranking from shared theme-aware label and avatar billboard compositors with stable texture, UV, and instance contracts | High | Done |
 | 8.120 | Move the eight-float direct-upload star stream, palette-role encoding, settled and motion geometry, and decorative motion cap into shared UI modules | High | Done |
+| 8.121 | Tighten the fitted outer zoom envelope and convert cumulative Safari gesture scale into incremental ratios with immediate native inward reversal | High | Done |
 
 ---
 
@@ -624,6 +627,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Labels, avatars, overlays, and the future product engine share one allocation-free depth-aware world-to-screen projection and viewport-admission helper
 - [x] The detached backends and future product engine share theme-aware label and avatar billboard compositors while product metadata retains settled-candidate ownership
 - [x] The detached worker, raw backend, and future product engine share one direct-upload star instance layout, semantic palette-role encoding, settled geometry, motion geometry, and decorative motion cap
+- [x] The fitted zoom ceiling ramps decisively before the padded overview target, and Safari trackpad reversal applies native inward scale on its first event without cumulative gesture debt
 - [x] Mac two-finger trackpad deltas pan with native momentum, pinch remains anchored zoom, and pointer or one-finger touch throws use bounded allocation-free inertia that cancels for new input and reduced motion
 - [x] Animation-disabled scenes stop requesting frames when idle and wake only for renderer work, settle state, diagnostics, or backend health recovery
 - [x] Pointer, wheel, and Safari handlers mark motion density without synchronously resizing the GPU canvas

@@ -90,6 +90,17 @@ export function friendsGalaxyWheelDeltaPixels(
   return delta;
 }
 
+export function friendsGalaxyGestureScaleRatio(
+  previousScale: number,
+  nextScale: number,
+): number {
+  if (
+    !Number.isFinite(previousScale) || previousScale <= 0 ||
+    !Number.isFinite(nextScale) || nextScale <= 0
+  ) return 1;
+  return nextScale / previousScale;
+}
+
 export function applyFriendsGalaxyZoomAt(
   transform: FriendsGalaxyTransform,
   viewportX: number,
