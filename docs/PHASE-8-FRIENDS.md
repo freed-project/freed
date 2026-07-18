@@ -180,7 +180,7 @@ Default nudge intervals by care level:
 
 ### Next-generation Friends Galaxy
 
-The current atlas starfield remains the shipping compatibility surface while the next renderer is built behind it. The approved replacement uses a constrained 3D galactic plane with stable semantic geography on `x` and `y`, relationship prominence on `z`, tight identity systems, provider sectors on the outer rim, a locked perspective camera, and a renderer-neutral typed scene protocol. WebGPU is the preferred shared backend, WebGL2 is the compatibility backend, and native Metal remains gated on later device evidence.
+The current atlas starfield remains the shipping compatibility surface while the next renderer is built behind it. The approved replacement uses a constrained 3D galactic plane with stable semantic geography on `x` and `y`, relationship prominence on `z`, tight identity systems, provider sectors on the outer rim, a locked perspective camera, and a renderer-neutral typed scene protocol. The equal-workload renderer laboratory selected raw WebGPU as the preferred shared backend, with WebGL2 as the compatibility backend and native Metal still gated on later device evidence.
 
 The foundation compiles the complete semantic galaxy into compact typed buffers for stable 3D positions, semantic prominence, bounded activity and recency brightness, theme color roles, interaction flags, and indexed edges. The atlas worker caches the rich semantic model by source revision and transfers the full star buffers only when graph source data or layout dimensions change. Pan and zoom retain those star buffers and move only the locked camera. Settled viewport requests return capped label, hit, and edge detail. Hover and selection patch dynamic typed arrays in place without rebuilding positions. An imperative engine owns the locked perspective camera, one instanced procedural star pass, one instanced settled edge pass, one instanced glyph label pass, depth-aware projected picking, theme palette resolution, WebGL fallback selection, resize, scene synchronization, rendering, and disposal. The React shell owns product props, worker lifecycle, interaction orchestration, and product callbacks. The complete approved vision, interaction contract, rendering contract, and staged roadmap live in [FRIENDS-GALAXY-ARCHITECTURE.md](./FRIENDS-GALAXY-ARCHITECTURE.md).
 
@@ -389,6 +389,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.65 | Route Mac Safari trackpad gestures through native gesture events while keeping motion transform-only and labels resident | High | Done |
 | 8.66 | Add the close-zoom avatar texture atlas for selected and high-priority identities | High | Planned |
 | 8.67 | Replace elliptical provider regions with theme-aware spiral nebulae, tighten identity systems and labels, and reveal links only for the active constellation | High | Done |
+| 8.68 | Prove the selected raw WebGPU backend, procedural six-field nebula batch, provider-specific arm geometry, and equal 30,000 plus 100,000 star workload in the detached renderer laboratory | High | Done |
 
 ---
 

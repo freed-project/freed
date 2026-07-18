@@ -148,6 +148,11 @@ button,
   padding: 0 34px 0 10px;
 }
 
+.field-control:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .button-row {
   display: grid;
   grid-template-columns: 1fr 1fr;

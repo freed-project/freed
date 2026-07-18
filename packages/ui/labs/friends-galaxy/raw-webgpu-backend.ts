@@ -1,6 +1,7 @@
 import type {
   GalaxyLabBackend,
   GalaxyLabBackendMetrics,
+  GalaxyLabFieldStyle,
   GalaxyLabInteraction,
   GalaxyLabViewDetail,
 } from "./backend.js";
@@ -22,6 +23,11 @@ import {
   type GalaxyLabTransform,
 } from "./scene-fixture.js";
 import {
+  createGalaxyLabProviderFields,
+  GALAXY_LAB_PROVIDER_FIELD_INSTANCE_STRIDE,
+  type GalaxyLabProviderFields,
+} from "./provider-fields.js";
+import {
   GalaxyLabSceneIndex,
   type GalaxyLabInteractionRole,
   type GalaxyLabInteractionState,
@@ -32,6 +38,147 @@ const INSTANCE_STRIDE = INSTANCE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 const EDGE_INSTANCE_FLOATS = 10;
 const EDGE_INSTANCE_STRIDE = EDGE_INSTANCE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 const MAX_CONTEXTUAL_EDGES = 16;
+
+const PROVIDER_FIELD_SHADER = /* wgsl */ `
+struct Uniforms {
+  viewProjection: mat4x4<f32>,
+  viewport: vec2<f32>,
+  time: f32,
+  cameraScale: f32,
+};
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
+struct VertexInput {
+  @location(0) corner: vec2<f32>,
+  @location(1) center: vec3<f32>,
+  @location(2) halfSize: vec2<f32>,
+  @location(3) color: vec4<f32>,
+  @location(4) parameters: vec3<f32>,
+};
+
+struct VertexOutput {
+  @builtin(position) position: vec4<f32>,
+  @location(0) local: vec2<f32>,
+  @location(1) color: vec4<f32>,
+  @location(2) parameters: vec3<f32>,
+};
+
+@vertex
+fn vertexMain(input: VertexInput) -> VertexOutput {
+  var output: VertexOutput;
+  let world = input.center + vec3<f32>(input.corner * input.halfSize, 0.0);
+  output.position = uniforms.viewProjection * vec4<f32>(world, 1.0);
+  output.local = input.corner;
+  output.color = input.color;
+  output.parameters = input.parameters;
+  return output;
+}
+
+fn hash21(point: vec2<f32>) -> f32 {
+  var value = fract(point * vec2<f32>(123.34, 456.21));
+  value += dot(value, value + 45.32);
+  return fract(value.x * value.y);
+}
+
+fn noise(point: vec2<f32>) -> f32 {
+  let cell = floor(point);
+  var local = fract(point);
+  local = local * local * (3.0 - 2.0 * local);
+  return mix(
+    mix(hash21(cell), hash21(cell + vec2<f32>(1.0, 0.0)), local.x),
+    mix(hash21(cell + vec2<f32>(0.0, 1.0)), hash21(cell + vec2<f32>(1.0, 1.0)), local.x),
+    local.y,
+  );
+}
+
+fn fbm(pointInput: vec2<f32>) -> f32 {
+  var point = pointInput;
+  var value = 0.0;
+  var amplitude = 0.54;
+  for (var octave = 0; octave < 4; octave += 1) {
+    value += noise(point) * amplitude;
+    point = point * 2.03 + vec2<f32>(11.7, 7.9);
+    amplitude *= 0.48;
+  }
+  return value;
+}
+
+@fragment
+fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
+  let seed = input.parameters.x;
+  let arms = input.parameters.y;
+  let style = input.parameters.z;
+  let point = input.local;
+  let drift = vec2<f32>(uniforms.time * 0.0024, -uniforms.time * 0.0017);
+  let warp = vec2<f32>(
+    fbm(point * 1.72 + vec2<f32>(seed * 9.1, seed * 4.3) + drift),
+    fbm(point * 1.72 + vec2<f32>(seed * 5.7 + 19.4, seed * 11.3) - drift),
+  ) - 0.5;
+  let warpedPoint = point + warp * 0.36;
+  let radius = length(warpedPoint);
+  let angle = atan2(warpedPoint.y, warpedPoint.x);
+  let boundaryNoise = fbm(warpedPoint * 2.08 + vec2<f32>(seed * 17.0, seed * 7.0));
+  let edgeRadius = radius + (boundaryNoise - 0.5) * 0.3 +
+    sin(angle * 3.0 + seed * 19.0) * 0.035;
+  let envelope = 1.0 - smoothstep(0.48, 1.07, edgeRadius);
+
+  let cloudLow = fbm(warpedPoint * 2.52 + vec2<f32>(seed * 23.0, seed * 31.0));
+  let cloudHigh = fbm(
+    (warpedPoint + warp * 0.18) * 5.1 + vec2<f32>(seed * 37.0, seed * 13.0),
+  );
+  let cloud = smoothstep(0.32, 0.82, cloudLow * 0.7 + cloudHigh * 0.3);
+  let wisps = smoothstep(
+    0.52,
+    0.84,
+    fbm(warpedPoint * 6.3 + vec2<f32>(seed * 43.0, seed * 29.0)),
+  );
+  let core = 1.0 - smoothstep(0.02, 0.52, radius);
+  let nebula = envelope *
+    (pow(cloud, 1.28) * 0.74 + wisps * 0.13 + core * 0.13) *
+    (0.64 + boundaryNoise * 0.36);
+
+  let armFade = smoothstep(0.18, 0.48, radius) *
+    (1.0 - smoothstep(0.82, 1.08, radius));
+  let armPhase = angle * arms - radius * 9.2 + seed * 6.28318 + warp.x * 3.2;
+  let secondaryPhase = angle * (arms + 1.0) - radius * 12.8 + seed * 11.0 - warp.y * 2.4;
+  let primaryArm = smoothstep(0.63, 0.94, 0.5 + 0.5 * cos(armPhase));
+  let secondaryArm = smoothstep(0.76, 0.97, 0.5 + 0.5 * cos(secondaryPhase));
+  let streamBreakup = smoothstep(
+    0.34,
+    0.82,
+    fbm(warpedPoint * 3.8 + vec2<f32>(seed * 53.0, seed * 41.0)),
+  );
+  let streams = envelope * armFade *
+    (primaryArm * 0.76 + secondaryArm * 0.24) *
+    (0.24 + streamBreakup * 0.76);
+
+  var density = nebula * 0.62;
+  if (style > 1.5) {
+    density = nebula * 0.52 + streams * 0.42;
+  } else if (style > 0.5) {
+    density = streams * 0.7 + nebula * 0.1;
+  }
+
+  let detailFade = mix(1.0, 0.22, smoothstep(0.24, 1.2, uniforms.cameraScale));
+  let alpha = clamp(
+    density * input.color.a * 0.82 * detailFade,
+    0.0,
+    0.28,
+  );
+  if (alpha < 0.004) {
+    discard;
+  }
+  let darkTheme = step(0.24, input.color.a);
+  var fieldColor = mix(input.color.rgb * 0.68, input.color.rgb, cloud * 0.62 + core * 0.12);
+  fieldColor = mix(
+    fieldColor,
+    vec3<f32>(1.0),
+    cloudHigh * mix(0.035, 0.16, darkTheme),
+  );
+  return vec4<f32>(fieldColor, alpha);
+}
+`;
 
 const STAR_SHADER = /* wgsl */ `
 struct Uniforms {
@@ -230,6 +377,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private device: GPUDevice | null = null;
   private pipeline: GPURenderPipeline | null = null;
   private bindGroup: GPUBindGroup | null = null;
+  private providerFieldPipeline: GPURenderPipeline | null = null;
+  private providerFieldBindGroup: GPUBindGroup | null = null;
   private edgePipeline: GPURenderPipeline | null = null;
   private edgeBindGroup: GPUBindGroup | null = null;
   private labelPipeline: GPURenderPipeline | null = null;
@@ -238,6 +387,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private quadBuffer: GPUBuffer | null = null;
   private semanticBuffer: GPUBuffer | null = null;
   private backgroundBuffer: GPUBuffer | null = null;
+  private providerFieldBuffer: GPUBuffer | null = null;
   private edgeBuffer: GPUBuffer | null = null;
   private labelBuffer: GPUBuffer | null = null;
   private labelTexture: GPUTexture | null = null;
@@ -249,6 +399,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private sceneIndex: GalaxyLabSceneIndex | null = null;
   private semanticData: Float32Array | null = null;
   private backgroundData: Float32Array | null = null;
+  private providerFields: GalaxyLabProviderFields | null = null;
   private edgeData = new Float32Array(MAX_CONTEXTUAL_EDGES * EDGE_INSTANCE_FLOATS);
   private labelAtlas: GalaxyLabLabelAtlas | null = null;
   private avatarAtlas: GalaxyLabAvatarAtlas | null = null;
@@ -265,6 +416,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   private format: GPUTextureFormat | null = null;
   private compactLabels: boolean | null = null;
   private viewDetail: GalaxyLabViewDetail = "overview";
+  private fieldStyle: GalaxyLabFieldStyle = "nebula";
   private contextualEdgeCount = 0;
   private clearColor: GPUColor = { r: 0, g: 0, b: 0, a: 1 };
   private bufferUploadCount = 0;
@@ -327,7 +479,13 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       this.backgroundData,
       GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     );
-    this.bufferUploadCount = 2;
+    this.providerFields = createGalaxyLabProviderFields(fixture, palette, this.fieldStyle);
+    this.providerFieldBuffer = createBuffer(
+      device,
+      this.providerFields.instanceData,
+      GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    );
+    this.bufferUploadCount = 3;
     this.edgeBuffer = createBuffer(
       device,
       this.edgeData,
@@ -337,6 +495,47 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.uniformBuffer = device.createBuffer({
       size: this.uniformData.byteLength,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    const providerFieldShaderModule = device.createShaderModule({ code: PROVIDER_FIELD_SHADER });
+    this.providerFieldPipeline = await device.createRenderPipelineAsync({
+      layout: "auto",
+      vertex: {
+        module: providerFieldShaderModule,
+        entryPoint: "vertexMain",
+        buffers: [
+          {
+            arrayStride: 2 * Float32Array.BYTES_PER_ELEMENT,
+            stepMode: "vertex",
+            attributes: [{ shaderLocation: 0, offset: 0, format: "float32x2" }],
+          },
+          {
+            arrayStride: GALAXY_LAB_PROVIDER_FIELD_INSTANCE_STRIDE,
+            stepMode: "instance",
+            attributes: [
+              { shaderLocation: 1, offset: 0, format: "float32x3" },
+              { shaderLocation: 2, offset: 12, format: "float32x2" },
+              { shaderLocation: 3, offset: 20, format: "float32x4" },
+              { shaderLocation: 4, offset: 36, format: "float32x3" },
+            ],
+          },
+        ],
+      },
+      fragment: {
+        module: providerFieldShaderModule,
+        entryPoint: "fragmentMain",
+        targets: [{
+          format: this.format,
+          blend: {
+            color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add" },
+            alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
+          },
+        }],
+      },
+      primitive: { topology: "triangle-list", cullMode: "none" },
+    });
+    this.providerFieldBindGroup = device.createBindGroup({
+      layout: this.providerFieldPipeline.getBindGroupLayout(0),
+      entries: [{ binding: 0, resource: { buffer: this.uniformBuffer } }],
     });
     const shaderModule = device.createShaderModule({ code: STAR_SHADER });
     this.pipeline = await device.createRenderPipelineAsync({
@@ -499,9 +698,16 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       );
     }
     this.bufferUploadCount += 2;
+    this.writeProviderFields();
     this.rebuildLabels(this.compactLabels ?? this.width < 720);
     this.rebuildAvatars(this.compactLabels ?? this.width < 720);
     if (this.sceneIndex) this.writeInteraction(this.sceneIndex.interactionState(this.interaction));
+  }
+
+  setFieldStyle(style: GalaxyLabFieldStyle): void {
+    if (style === this.fieldStyle) return;
+    this.fieldStyle = style;
+    this.writeProviderFields();
   }
 
   setViewDetail(detail: GalaxyLabViewDetail): void {
@@ -549,7 +755,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.uniformData[16] = this.width;
     this.uniformData[17] = this.height;
     this.uniformData[18] = timeMs / 1_000;
-    this.uniformData[19] = this.pixelRatio;
+    this.uniformData[19] = transform.scale;
     this.device.queue.writeBuffer(this.uniformBuffer, 0, this.uniformData);
 
     const encoder = this.device.createCommandEncoder({ label: "Friends Galaxy frame" });
@@ -561,6 +767,16 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
         storeOp: "store",
       }],
     });
+    if (
+      this.providerFieldPipeline && this.providerFieldBindGroup &&
+      this.providerFieldBuffer && this.providerFields
+    ) {
+      pass.setPipeline(this.providerFieldPipeline);
+      pass.setBindGroup(0, this.providerFieldBindGroup);
+      pass.setVertexBuffer(0, this.quadBuffer);
+      pass.setVertexBuffer(1, this.providerFieldBuffer);
+      pass.draw(6, this.providerFields.count);
+    }
     pass.setPipeline(this.pipeline);
     pass.setBindGroup(0, this.bindGroup);
     pass.setVertexBuffer(0, this.quadBuffer);
@@ -607,7 +823,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       api: "WebGPU WGSL",
       semanticStarCount: this.fixture?.scene.nodeIds.length ?? 0,
       decorativeStarCount: this.fixture?.backgroundStarCount ?? 0,
-      drawCalls: 2 + (this.labelAtlas && this.labelAtlas.labels.length > 0 ? 1 : 0) +
+      drawCalls: 2 + (this.providerFields && this.providerFields.count > 0 ? 1 : 0) +
+        (this.labelAtlas && this.labelAtlas.labels.length > 0 ? 1 : 0) +
         (this.avatarAtlas && this.avatarAtlas.itemCount > 0 ? 1 : 0) +
         (this.contextualEdgeCount > 0 ? 1 : 0),
       labelCount: this.labelAtlas?.labels.length ?? 0,
@@ -623,6 +840,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.quadBuffer?.destroy();
     this.semanticBuffer?.destroy();
     this.backgroundBuffer?.destroy();
+    this.providerFieldBuffer?.destroy();
     this.edgeBuffer?.destroy();
     this.labelBuffer?.destroy();
     this.labelTexture?.destroy();
@@ -636,6 +854,8 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.device = null;
     this.pipeline = null;
     this.bindGroup = null;
+    this.providerFieldPipeline = null;
+    this.providerFieldBindGroup = null;
     this.edgePipeline = null;
     this.edgeBindGroup = null;
     this.labelPipeline = null;
@@ -644,6 +864,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.quadBuffer = null;
     this.semanticBuffer = null;
     this.backgroundBuffer = null;
+    this.providerFieldBuffer = null;
     this.edgeBuffer = null;
     this.labelBuffer = null;
     this.labelTexture = null;
@@ -655,6 +876,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.sceneIndex = null;
     this.semanticData = null;
     this.backgroundData = null;
+    this.providerFields = null;
     this.labelAtlas = null;
     this.avatarAtlas = null;
     this.palette = null;
@@ -816,6 +1038,23 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
       this.edgeData.buffer as ArrayBuffer,
       this.edgeData.byteOffset,
       edgeCount * EDGE_INSTANCE_STRIDE,
+    );
+    this.bufferUploadCount += 1;
+  }
+
+  private writeProviderFields(): void {
+    if (!this.device || !this.providerFieldBuffer || !this.fixture || !this.palette) return;
+    this.providerFields = createGalaxyLabProviderFields(
+      this.fixture,
+      this.palette,
+      this.fieldStyle,
+    );
+    this.device.queue.writeBuffer(
+      this.providerFieldBuffer,
+      0,
+      this.providerFields.instanceData.buffer as ArrayBuffer,
+      this.providerFields.instanceData.byteOffset,
+      this.providerFields.instanceData.byteLength,
     );
     this.bufferUploadCount += 1;
   }

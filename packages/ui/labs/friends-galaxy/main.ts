@@ -4,6 +4,7 @@ import {
   hexToRgb,
   type GalaxyLabBackend,
   type GalaxyLabBackendId,
+  type GalaxyLabFieldStyle,
   type GalaxyLabFrameStats,
   type GalaxyLabInteraction,
   type GalaxyLabViewDetail,
@@ -33,6 +34,7 @@ function requiredElement<T extends HTMLElement>(id: string): T {
 const viewport = requiredElement<HTMLElement>("viewport");
 const backendSelect = requiredElement<HTMLSelectElement>("backend");
 const themeSelect = requiredElement<HTMLSelectElement>("theme");
+const fieldStyleSelect = requiredElement<HTMLSelectElement>("field-style");
 const fitButton = requiredElement<HTMLButtonElement>("fit");
 const animateControl = requiredElement<HTMLInputElement>("animate");
 const statusElement = requiredElement<HTMLElement>("status");
@@ -53,6 +55,7 @@ const transform: GalaxyLabTransform = { x: 0, y: 0, scale: 0.12 };
 let activeBackend: GalaxyLabBackend | null = null;
 let activeCanvas: HTMLCanvasElement | null = null;
 let activeTheme = themeSelect.value as GalaxyLabThemeId;
+let activeFieldStyle = fieldStyleSelect.value as GalaxyLabFieldStyle;
 let switchGeneration = 0;
 let frameRequest = 0;
 let lastFrameAt = 0;
@@ -179,6 +182,8 @@ async function activateBackend(
       return;
     }
     activeBackend = backend;
+    backend.setFieldStyle?.(activeFieldStyle);
+    fieldStyleSelect.disabled = typeof backend.setFieldStyle !== "function";
     const { width, height } = viewportSize();
     backend.resize(width, height, window.devicePixelRatio || 1);
     backend.setViewDetail(viewDetailForScale(transform.scale));
@@ -231,6 +236,12 @@ function updateMetrics(): void {
   addMetric("API", metrics.api);
   addMetric("Semantic stars", integerFormat.format(metrics.semanticStarCount));
   addMetric("Background stars", integerFormat.format(metrics.decorativeStarCount));
+  addMetric(
+    "Cosmic field",
+    typeof activeBackend.setFieldStyle === "function"
+      ? fieldStyleSelect.selectedOptions[0]?.textContent ?? activeFieldStyle
+      : "Backend default",
+  );
   addMetric("Draw calls", metrics.drawCalls === null ? "Not exposed" : integerFormat.format(metrics.drawCalls));
   addMetric("Billboard labels", integerFormat.format(metrics.labelCount));
   addMetric("Avatar atlas", integerFormat.format(metrics.avatarCount));
@@ -481,6 +492,12 @@ themeSelect.addEventListener("change", () => {
   dirty = true;
 });
 
+fieldStyleSelect.addEventListener("change", () => {
+  activeFieldStyle = fieldStyleSelect.value as GalaxyLabFieldStyle;
+  activeBackend?.setFieldStyle?.(activeFieldStyle);
+  dirty = true;
+});
+
 animateControl.addEventListener("change", () => {
   resetSamples();
   dirty = true;
@@ -513,6 +530,7 @@ Object.assign(window, {
       backend: activeBackend?.metrics() ?? null,
       transform: { ...transform },
       interaction: { ...interaction },
+      fieldStyle: activeFieldStyle,
       frame: frameStats(frameSamples),
       submit: frameStats(submitSamples),
     }),

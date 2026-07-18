@@ -5,6 +5,10 @@ import {
   IDENTITY_GALAXY_SCENE_VERSION,
   type IdentityGalaxyScene,
 } from "../../src/lib/identity-galaxy-scene.js";
+import {
+  providerGalaxyArmCount,
+  providerGalaxyLocalPoint,
+} from "../../src/lib/identity-galaxy-provider-field.js";
 import type {
   IdentityGraphAtlas,
   IdentityGraphAtlasEdge,
@@ -184,13 +188,26 @@ function providerCenter(providerIndex: number): { x: number; y: number } {
 function providerFieldPoint(provider: GalaxyLabProvider, index: number, count: number): { x: number; y: number } {
   const providerIndex = GALAXY_LAB_PROVIDERS.indexOf(provider);
   const center = providerCenter(providerIndex);
-  const normalized = (index + 0.5) / Math.max(1, count);
-  const arm = index % 3;
-  const angle = arm * (Math.PI * 2 / 3) + normalized * Math.PI * 5.5 + seededUnit(`${provider}:${index}`) * 0.18;
-  const radius = 42 + Math.sqrt(normalized) * PROVIDER_FIELD_RADIUS_X;
+  const armCount = providerGalaxyArmCount(provider);
+  const armIndex = index % armCount;
+  const indexInArm = Math.floor(index / armCount);
+  const armPopulation = Math.max(1, Math.ceil((Math.max(1, count) - armIndex) / armCount));
+  const progress = (indexInArm + 0.42) / (armPopulation + 0.42);
+  const angularJitter = (seededUnit(`${provider}:${index}:angle`) - 0.5) *
+    (0.18 + progress * 0.18);
+  const radialJitter = (seededUnit(`${provider}:${index}:radius`) - 0.5) * 0.075;
+  const point = providerGalaxyLocalPoint(
+    provider,
+    armIndex,
+    clamp(progress + radialJitter, 0.012, 0.988),
+    PROVIDER_FIELD_RADIUS_X,
+    PROVIDER_FIELD_RADIUS_Y,
+    angularJitter,
+  );
+  const scatter = 12 + progress * 34;
   return {
-    x: center.x + Math.cos(angle) * radius,
-    y: center.y + Math.sin(angle) * radius * (PROVIDER_FIELD_RADIUS_Y / PROVIDER_FIELD_RADIUS_X),
+    x: center.x + point.x + (seededUnit(`${provider}:${index}:x`) - 0.5) * scatter,
+    y: center.y + point.y + (seededUnit(`${provider}:${index}:y`) - 0.5) * scatter * 0.72,
   };
 }
 

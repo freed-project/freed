@@ -2,6 +2,7 @@ import type { GalaxyLabFixture, GalaxyLabPalette, GalaxyLabTransform } from "./s
 
 export type GalaxyLabBackendId = "current-webgl2" | "three-webgpu" | "raw-webgpu";
 export type GalaxyLabViewDetail = "overview" | "middle" | "close";
+export type GalaxyLabFieldStyle = "nebula-rings" | "nebula" | "rings";
 
 export interface GalaxyLabBackendMetrics {
   id: GalaxyLabBackendId;
@@ -32,6 +33,7 @@ export interface GalaxyLabBackend {
   ): Promise<void>;
   resize(width: number, height: number, pixelRatio: number): void;
   setPalette(palette: GalaxyLabPalette): void;
+  setFieldStyle?(style: GalaxyLabFieldStyle): void;
   setViewDetail(detail: GalaxyLabViewDetail): void;
   pickNode(viewportX: number, viewportY: number): string | null;
   setInteraction(interaction: GalaxyLabInteraction): void;
