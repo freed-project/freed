@@ -9,13 +9,13 @@ import {
 describe("Friends Galaxy accessibility copy", () => {
   it("describes the bounded camera controls without creating a star roster", () => {
     expect(galaxyLabGraphDescription(null, false)).toBe(
-      "Interactive Friends Galaxy. Use arrow keys to pan, plus and minus to zoom, Home or zero to fit, and Escape to clear selection.",
+      "Interactive Friends Galaxy. Use arrow keys to pan, plus and minus to zoom, Home or zero to fit, Enter to open details, Shift plus F10 to open actions, and Escape to clear selection.",
     );
   });
 
   it("adds the selected label and reduced-motion state to the graph description", () => {
     expect(galaxyLabGraphDescription("Keira Davenport", true)).toBe(
-      "Interactive Friends Galaxy. Selected Keira Davenport. Use arrow keys to pan, plus and minus to zoom, Home or zero to fit, and Escape to clear selection. Ambient animation is reduced.",
+      "Interactive Friends Galaxy. Selected Keira Davenport. Use arrow keys to pan, plus and minus to zoom, Home or zero to fit, Enter to open details, Shift plus F10 to open actions, and Escape to clear selection. Ambient animation is reduced.",
     );
   });
 

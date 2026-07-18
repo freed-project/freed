@@ -1,7 +1,7 @@
 export type GalaxyLabSelectionAnnouncementKind = "focus" | "selection";
 
 const CAMERA_HELP =
-  "Use arrow keys to pan, plus and minus to zoom, Home or zero to fit, and Escape to clear selection.";
+  "Use arrow keys to pan, plus and minus to zoom, Home or zero to fit, Enter to open details, Shift plus F10 to open actions, and Escape to clear selection.";
 const FALLBACK_LABEL = "Galaxy item";
 
 function accessibleLabel(

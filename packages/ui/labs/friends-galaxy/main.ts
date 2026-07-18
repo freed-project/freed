@@ -75,6 +75,14 @@ import {
   type GalaxyLabCanvasPoint,
   type GalaxyLabViewportGeometry,
 } from "./viewport-geometry.js";
+import {
+  GalaxyLabLongPressTracker,
+  galaxyLabContextTarget,
+  galaxyLabKeyboardCommand,
+  type GalaxyLabContextRequestSource,
+  type GalaxyLabContextTarget,
+} from "./interaction-contract.js";
+import { projectGalaxyLabWorldPoint } from "./viewport-projection.js";
 
 const DEFAULT_PERSON_COUNT = 5_000;
 const DEFAULT_ACCOUNT_COUNT = 25_000;
@@ -1056,6 +1064,12 @@ let viewportGeometry: GalaxyLabViewportGeometry = galaxyLabViewportGeometry(
   { left: 0, top: 0, width: 1, height: 1 },
 );
 const eventCanvasPoint: GalaxyLabCanvasPoint = { x: 0, y: 0 };
+const contextProjectionMatrix = new Float32Array(16);
+const contextProjectionPoint = new Float32Array(2);
+const longPressTracker = new GalaxyLabLongPressTracker();
+let longPressTimeout = 0;
+let lastContextTarget: GalaxyLabContextTarget | null = null;
+let lastDetailsRequest: { nodeId: string; source: "keyboard" } | null = null;
 let viewportOriginValid = false;
 let viewportGeometryReadCount = 0;
 
@@ -1084,6 +1098,128 @@ function canvasPoint(clientX: number, clientY: number): GalaxyLabCanvasPoint {
     clientX,
     clientY,
   );
+}
+
+function clearLongPressTimeout(): void {
+  if (longPressTimeout === 0) return;
+  window.clearTimeout(longPressTimeout);
+  longPressTimeout = 0;
+}
+
+function cancelLongPress(): void {
+  clearLongPressTimeout();
+  longPressTracker.cancel();
+  viewport.dataset.longPress = "idle";
+}
+
+function requestContextAt(
+  canvasX: number,
+  canvasY: number,
+  source: GalaxyLabContextRequestSource,
+  nodeId = activeBackend?.pickNode(canvasX, canvasY) ?? null,
+): boolean {
+  if (!nodeId) return false;
+  const target = galaxyLabContextTarget(
+    nodeId,
+    source,
+    canvasX,
+    canvasY,
+    transform,
+    viewportGeometry,
+  );
+  if (!target) return false;
+  lastContextTarget = target;
+  viewport.dataset.contextRequestSource = source;
+  viewport.dispatchEvent(
+    new CustomEvent<GalaxyLabContextTarget>("friends-galaxy-context-request", {
+      bubbles: true,
+      detail: target,
+    }),
+  );
+  return true;
+}
+
+function requestSelectedContext(): boolean {
+  const nodeId = interaction.selectedNodeId;
+  if (!nodeId) return false;
+  const nodeIndex = findGalaxyLabSceneNodeIndex(
+    fixture.scene,
+    fixture.interactionIndex,
+    nodeId,
+  );
+  if (nodeIndex === null) return false;
+  const { width, height } = canvasSize();
+  writeGalaxyLabWebGpuViewProjection(
+    contextProjectionMatrix,
+    transform,
+    width,
+    height,
+  );
+  const offset = nodeIndex * 3;
+  contextProjectionPoint[0] = Number.NaN;
+  contextProjectionPoint[1] = Number.NaN;
+  projectGalaxyLabWorldPoint(
+    contextProjectionPoint,
+    {
+      viewProjection: contextProjectionMatrix,
+      width,
+      height,
+    },
+    fixture.scene.positions[offset]!,
+    fixture.scene.positions[offset + 1]!,
+    fixture.scene.positions[offset + 2]!,
+  );
+  const canvasX = Number.isFinite(contextProjectionPoint[0])
+    ? contextProjectionPoint[0]!
+    : viewportGeometry.interactionCenterX;
+  const canvasY = Number.isFinite(contextProjectionPoint[1])
+    ? contextProjectionPoint[1]!
+    : viewportGeometry.interactionCenterY;
+  return requestContextAt(canvasX, canvasY, "keyboard", nodeId);
+}
+
+function requestSelectedDetails(): boolean {
+  const nodeId = interaction.selectedNodeId;
+  if (!nodeId) return false;
+  lastDetailsRequest = { nodeId, source: "keyboard" };
+  viewport.dispatchEvent(
+    new CustomEvent("friends-galaxy-details-request", {
+      bubbles: true,
+      detail: lastDetailsRequest,
+    }),
+  );
+  return true;
+}
+
+function beginLongPress(pointerId: number, x: number, y: number): void {
+  cancelLongPress();
+  longPressTracker.begin(pointerId, x, y, performance.now());
+  viewport.dataset.longPress = "pending";
+  longPressTimeout = window.setTimeout(() => {
+    longPressTimeout = 0;
+    const activation = longPressTracker.activate(performance.now());
+    if (!activation) return;
+    gestureMoved = true;
+    viewport.dataset.longPress = "activated";
+    requestContextAt(activation.x, activation.y, "long-press");
+  }, longPressTracker.durationMs);
+}
+
+function moveLongPress(pointerId: number, x: number, y: number): boolean {
+  if (!longPressTracker.isTracking(pointerId)) return false;
+  if (longPressTracker.isActivated) return true;
+  if (!longPressTracker.isPending) return false;
+  if (longPressTracker.move(pointerId, x, y)) return true;
+  clearLongPressTimeout();
+  viewport.dataset.longPress = "idle";
+  return false;
+}
+
+function releaseLongPress(pointerId: number): void {
+  longPressTracker.release(pointerId);
+  if (longPressTracker.isPending) return;
+  clearLongPressTimeout();
+  viewport.dataset.longPress = "idle";
 }
 
 function updateInteraction(next: GalaxyLabInteraction): boolean {
@@ -1141,7 +1277,12 @@ viewport.addEventListener("pointerdown", (event) => {
     point.y,
   );
   if (pointerIndex < 0) return;
-  if (pointers.count > 1) gestureMoved = true;
+  if (pointers.count > 1) {
+    gestureMoved = true;
+    cancelLongPress();
+  } else if (event.pointerType === "touch") {
+    beginLongPress(event.pointerId, point.x, point.y);
+  }
   try {
     viewport.setPointerCapture(event.pointerId);
   } catch {
@@ -1162,10 +1303,17 @@ viewport.addEventListener("pointermove", (event) => {
     return;
   }
   event.preventDefault();
-  setCameraInMotion(true);
   const point = canvasPoint(event.clientX, event.clientY);
   const nextX = point.x;
   const nextY = point.y;
+  if (
+    event.pointerType === "touch" &&
+    moveLongPress(event.pointerId, nextX, nextY)
+  ) {
+    pointers.update(pointerIndex, nextX, nextY);
+    return;
+  }
+  setCameraInMotion(true);
   if (pointers.movedBeyond(pointerIndex, nextX, nextY, 4) || pointers.count > 1) {
     gestureMoved = true;
   }
@@ -1212,6 +1360,7 @@ function releasePointer(event: PointerEvent): void {
   const releasePointX = point.x;
   const releasePointY = point.y;
   const shouldSelect = event.type === "pointerup" && pointers.count === 1 && !gestureMoved;
+  releaseLongPress(event.pointerId);
   pointers.remove(event.pointerId);
   if (viewport.hasPointerCapture(event.pointerId)) {
     try {
@@ -1270,28 +1419,39 @@ function beginNativeTouches(event: TouchEvent): void {
   } else {
     gestureInterruptedInertia ||= interruptedInertia;
   }
+  let longPressPointerId: number | null = null;
+  let longPressX = 0;
+  let longPressY = 0;
   for (let index = 0; index < event.changedTouches.length; index += 1) {
     const touch = event.changedTouches.item(index);
     if (!touch) continue;
     const point = canvasPoint(touch.clientX, touch.clientY);
+    longPressPointerId = touch.identifier;
+    longPressX = point.x;
+    longPressY = point.y;
     pointers.begin(
       touch.identifier,
       point.x,
       point.y,
     );
   }
-  if (pointers.count > 1) gestureMoved = true;
+  if (pointers.count > 1) {
+    gestureMoved = true;
+    cancelLongPress();
+  } else if (longPressPointerId !== null) {
+    beginLongPress(longPressPointerId, longPressX, longPressY);
+  }
   if (pointers.count > 0) viewport.dataset.dragging = "true";
 }
 
 function moveNativeTouches(event: TouchEvent): void {
   if (pointers.count === 0) return;
   event.preventDefault();
-  setCameraInMotion(true);
   const previousFirstX = pointers.xAt(0);
   const previousFirstY = pointers.yAt(0);
   const previousSecondX = pointers.xAt(1);
   const previousSecondY = pointers.yAt(1);
+  let suppressLongPressPan = false;
   for (let index = 0; index < event.touches.length; index += 1) {
     const touch = event.touches.item(index);
     if (!touch) continue;
@@ -1300,9 +1460,12 @@ function moveNativeTouches(event: TouchEvent): void {
     const point = canvasPoint(touch.clientX, touch.clientY);
     const nextX = point.x;
     const nextY = point.y;
+    suppressLongPressPan ||= moveLongPress(touch.identifier, nextX, nextY);
     if (pointers.movedBeyond(pointerIndex, nextX, nextY, 4)) gestureMoved = true;
     pointers.update(pointerIndex, nextX, nextY);
   }
+  if (suppressLongPressPan && pointers.count === 1) return;
+  setCameraInMotion(true);
   if (pointers.count >= 2) {
     gestureMoved = true;
     beginInertialPanSample(event.timeStamp);
@@ -1342,7 +1505,10 @@ function endNativeTouches(event: TouchEvent): void {
     releaseTouch !== null;
   for (let index = 0; index < event.changedTouches.length; index += 1) {
     const touch = event.changedTouches.item(index);
-    if (touch) pointers.remove(touch.identifier);
+    if (touch) {
+      releaseLongPress(touch.identifier);
+      pointers.remove(touch.identifier);
+    }
   }
   if (pointers.count > 0) {
     beginInertialPanSample(event.timeStamp);
@@ -1373,6 +1539,7 @@ function endNativeTouches(event: TouchEvent): void {
 
 function cancelNativeTouches(event: TouchEvent): void {
   event.preventDefault();
+  cancelLongPress();
   pointers.clear();
   cancelInertialPan();
   viewport.dataset.dragging = "false";
@@ -1385,6 +1552,14 @@ viewport.addEventListener("touchstart", beginNativeTouches, { passive: false });
 viewport.addEventListener("touchmove", moveNativeTouches, { passive: false });
 viewport.addEventListener("touchend", endNativeTouches, { passive: false });
 viewport.addEventListener("touchcancel", cancelNativeTouches, { passive: false });
+
+viewport.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+  cancelInertialPan();
+  refreshViewportOrigin();
+  const point = canvasPoint(event.clientX, event.clientY);
+  requestContextAt(point.x, point.y, "pointer");
+});
 
 viewport.addEventListener("wheel", (event) => {
   event.preventDefault();
@@ -1487,65 +1662,49 @@ viewport.addEventListener("gestureend", ((event: SafariGestureEvent) => {
 
 viewport.addEventListener("dblclick", () => fitGalaxy());
 viewport.addEventListener("keydown", (event) => {
-  if (event.altKey || event.ctrlKey || event.metaKey) return;
-  const panStep = event.shiftKey ? 120 : 56;
-  let handled = true;
+  const command = galaxyLabKeyboardCommand(event);
+  if (!command) return;
+  let available = true;
   let interactionSettled = false;
-  switch (event.key) {
-    case "ArrowLeft":
-      transform.x += panStep;
+  switch (command.type) {
+    case "pan":
+      transform.x += command.deltaX;
+      transform.y += command.deltaY;
       break;
-    case "ArrowRight":
-      transform.x -= panStep;
-      break;
-    case "ArrowUp":
-      transform.y += panStep;
-      break;
-    case "ArrowDown":
-      transform.y -= panStep;
-      break;
-    case "+":
-    case "=": {
+    case "zoom":
       zoomAt(
         viewportGeometry.interactionCenterX,
         viewportGeometry.interactionCenterY,
-        transform.scale * 1.18,
+        transform.scale * command.ratio,
       );
       break;
-    }
-    case "-":
-    case "_": {
-      zoomAt(
-        viewportGeometry.interactionCenterX,
-        viewportGeometry.interactionCenterY,
-        transform.scale / 1.18,
-      );
-      break;
-    }
-    case "Home":
-    case "0":
+    case "fit":
       fitGalaxy();
       break;
-    case "Escape":
+    case "details":
+      available = requestSelectedDetails();
+      break;
+    case "context-menu":
+      available = requestSelectedContext();
+      break;
+    case "clear":
       if (updateInteraction({ selectedNodeId: null, hoveredNodeId: null })) {
         announceGraphSelection(null, "selection");
         scheduleSettledViewDetail(true);
         interactionSettled = true;
       }
       break;
-    default:
-      handled = false;
   }
-  if (!handled) return;
+  if (!available) return;
   const interruptedInertia = cancelInertialPan();
   event.preventDefault();
-  if (event.key.startsWith("Arrow")) {
+  if (command.type === "pan") {
     userMovedCamera = true;
     setCameraInMotion(true);
     scheduleSettledViewDetail();
   } else if (
     interruptedInertia &&
-    event.key === "Escape" &&
+    command.type === "clear" &&
     !interactionSettled
   ) {
     scheduleSettledViewDetail();
@@ -1722,6 +1881,7 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("beforeunload", () => {
   cancelAnimationFrame(frameRequest);
   cancelAnimationFrame(hoverRequest);
+  cancelLongPress();
   clearInterval(backendHealthPoll);
   settleScheduler.cancel();
   cancelInertialPan();
@@ -1748,6 +1908,12 @@ Object.assign(window, {
       outwardZoomEnvelope: { ...outwardZoomEnvelope },
       zoomResistanceActive: transform.scale < outwardZoomEnvelope.resistance,
       interaction: { ...interaction },
+      overlayRequests: {
+        context: lastContextTarget ? { ...lastContextTarget } : null,
+        details: lastDetailsRequest ? { ...lastDetailsRequest } : null,
+        longPressPending: longPressTracker.isPending,
+        longPressActivated: longPressTracker.isActivated,
+      },
       fieldStyle: activeFieldStyle,
       activityProbe: {
         summaryRevision: activityProbeSummaryPatch.revision,
