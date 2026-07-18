@@ -24,22 +24,16 @@ import {
   createFriendsGalaxyPackedStarInstances,
   type FriendsGalaxyPackedStarInstances,
 } from "../../src/lib/friends-galaxy-star-instances.js";
+import type { FriendsGalaxyStarPalette } from "../../src/lib/friends-galaxy-palette.js";
 
 export const GALAXY_LAB_PROVIDERS = ["instagram", "facebook", "linkedin", "x", "rss"] as const;
 
 export type GalaxyLabProvider = (typeof GALAXY_LAB_PROVIDERS)[number];
 export type GalaxyLabThemeId = "scriptorium" | "neon" | "midas" | "vesper";
 
-export interface GalaxyLabPalette {
-  background: string;
+export interface GalaxyLabPalette extends FriendsGalaxyStarPalette {
   surface: string;
   text: string;
-  mutedText: string;
-  friend: string;
-  connection: string;
-  account: string;
-  feed: string;
-  selection: string;
   providers: Record<GalaxyLabProvider, string>;
 }
 

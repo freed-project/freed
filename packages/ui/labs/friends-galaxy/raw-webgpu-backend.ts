@@ -5,7 +5,7 @@ import type {
   GalaxyLabInteraction,
   GalaxyLabViewDetail,
 } from "./backend.js";
-import { galaxyLabRenderPixelRatio, hexToRgb } from "./backend.js";
+import { galaxyLabRenderPixelRatio } from "./backend.js";
 import type { GalaxyActivityScenePatchBatch } from "./activity-scene-patches.js";
 import { FriendsGalaxyBackendHealth } from "../../src/lib/friends-galaxy-backend-health.js";
 import { createGalaxyLabAvatarAtlas } from "./avatar-atlas.js";
@@ -30,10 +30,11 @@ import {
   FriendsGalaxyStarColorRole,
 } from "../../src/lib/friends-galaxy-star-instances.js";
 import {
-  GALAXY_LAB_STAR_PALETTE_FLOAT_COUNT,
-  GALAXY_LAB_STAR_PALETTE_FLOAT_OFFSET,
-  writeGalaxyLabStarPaletteUniforms,
-} from "./star-palette.js";
+  friendsGalaxyHexToRgb,
+  FRIENDS_GALAXY_STAR_PALETTE_FLOAT_COUNT,
+  FRIENDS_GALAXY_STAR_PALETTE_FLOAT_OFFSET,
+  writeFriendsGalaxyStarPaletteUniforms,
+} from "../../src/lib/friends-galaxy-palette.js";
 import {
   createFriendsGalaxyStarGeometry,
   friendsGalaxyMotionBackgroundStarCount,
@@ -517,7 +518,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   };
   private settledProjectionValid = false;
   private readonly uniformData = new Float32Array(
-    GALAXY_LAB_STAR_PALETTE_FLOAT_OFFSET + GALAXY_LAB_STAR_PALETTE_FLOAT_COUNT,
+    FRIENDS_GALAXY_STAR_PALETTE_FLOAT_OFFSET + FRIENDS_GALAXY_STAR_PALETTE_FLOAT_COUNT,
   );
   private colorAttachment: GPURenderPassColorAttachment | null = null;
   private renderPassDescriptor: GPURenderPassDescriptor | null = null;
@@ -564,7 +565,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
     this.fixture = fixture;
     this.sceneIndex = new FriendsGalaxySceneIndex(fixture.scene, fixture.interactionIndex);
     this.palette = palette;
-    this.interactionColor = hexToRgb(palette.selection);
+    this.interactionColor = friendsGalaxyHexToRgb(palette.selection);
     this.adapterDescription = adapterLabel(adapter);
     this.format = navigator.gpu.getPreferredCanvasFormat();
     context.configure({
@@ -822,7 +823,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   setPalette(palette: GalaxyLabPalette): void {
     if (!this.device || !this.semanticBuffer || !this.backgroundBuffer) return;
     this.palette = palette;
-    this.interactionColor = hexToRgb(palette.selection);
+    this.interactionColor = friendsGalaxyHexToRgb(palette.selection);
     this.writePaletteUniforms(palette);
     this.writeProviderFields();
     this.rebuildLabels(this.compactLabels ?? this.width < 720);
@@ -1472,7 +1473,7 @@ export class RawWebGpuBackend implements GalaxyLabBackend {
   }
 
   private writePaletteUniforms(palette: GalaxyLabPalette): void {
-    const { clearColor } = writeGalaxyLabStarPaletteUniforms(this.uniformData, palette);
+    const { clearColor } = writeFriendsGalaxyStarPaletteUniforms(this.uniformData, palette);
     this.clearColor = { r: clearColor[0], g: clearColor[1], b: clearColor[2], a: 1 };
   }
 }

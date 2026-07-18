@@ -2,7 +2,8 @@ import {
   providerGalaxyArmCount,
   providerGalaxySeed,
 } from "../../src/lib/identity-galaxy-provider-field.js";
-import { hexToRgb, type GalaxyLabFieldStyle } from "./backend.js";
+import type { GalaxyLabFieldStyle } from "./backend.js";
+import { friendsGalaxyHexToRgb } from "../../src/lib/friends-galaxy-palette.js";
 import type {
   GalaxyLabFixture,
   GalaxyLabPalette,
@@ -24,7 +25,7 @@ function fieldStyleCode(style: GalaxyLabFieldStyle): number {
 }
 
 function sceneIsLight(palette: GalaxyLabPalette): boolean {
-  const [red, green, blue] = hexToRgb(palette.background);
+  const [red, green, blue] = friendsGalaxyHexToRgb(palette.background);
   return red * 0.2126 + green * 0.7152 + blue * 0.0722 > 0.58;
 }
 
@@ -45,7 +46,7 @@ function writeField(
   },
 ): void {
   const offset = index * PROVIDER_FIELD_INSTANCE_FLOATS;
-  const [red, green, blue] = hexToRgb(field.color);
+  const [red, green, blue] = friendsGalaxyHexToRgb(field.color);
   target[offset] = field.x;
   target[offset + 1] = field.y;
   target[offset + 2] = field.z;

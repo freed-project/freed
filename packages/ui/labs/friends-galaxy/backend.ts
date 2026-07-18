@@ -93,13 +93,3 @@ export function frameStats(samples: readonly number[]): GalaxyLabFrameStats {
     worstMs: sorted[sorted.length - 1] ?? 0,
   };
 }
-
-export function hexToRgb(value: string): [number, number, number] {
-  const normalized = value.trim().replace(/^#/, "");
-  if (!/^[0-9a-f]{6}$/i.test(normalized)) return [1, 1, 1];
-  return [
-    Number.parseInt(normalized.slice(0, 2), 16) / 255,
-    Number.parseInt(normalized.slice(2, 4), 16) / 255,
-    Number.parseInt(normalized.slice(4, 6), 16) / 255,
-  ];
-}

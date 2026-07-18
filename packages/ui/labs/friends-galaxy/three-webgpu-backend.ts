@@ -20,7 +20,8 @@ import type {
   GalaxyLabInteraction,
   GalaxyLabViewDetail,
 } from "./backend.js";
-import { galaxyLabRenderPixelRatio, hexToRgb } from "./backend.js";
+import { galaxyLabRenderPixelRatio } from "./backend.js";
+import { friendsGalaxyHexToRgb } from "../../src/lib/friends-galaxy-palette.js";
 import { FriendsGalaxyBackendHealth } from "../../src/lib/friends-galaxy-backend-health.js";
 import { createGalaxyLabAvatarAtlas } from "./avatar-atlas.js";
 import { createGalaxyLabLabelAtlas } from "./billboard-labels.js";
@@ -67,7 +68,7 @@ function adapterLabel(adapter: GPUAdapter): string {
 }
 
 function paletteLuminance(palette: GalaxyLabPalette): number {
-  const [red, green, blue] = hexToRgb(palette.background);
+  const [red, green, blue] = friendsGalaxyHexToRgb(palette.background);
   return red * 0.2126 + green * 0.7152 + blue * 0.0722;
 }
 
@@ -265,7 +266,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
     this.fixture = fixture;
     this.sceneIndex = new FriendsGalaxySceneIndex(fixture.scene, fixture.interactionIndex);
     this.palette = palette;
-    this.interactionColor = hexToRgb(palette.selection);
+    this.interactionColor = friendsGalaxyHexToRgb(palette.selection);
     this.renderer = new THREE.WebGPURenderer({
       canvas,
       device,
@@ -358,7 +359,7 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
   setPalette(palette: GalaxyLabPalette): void {
     if (!this.renderer || !this.fixture || !this.semanticColors || !this.backgroundColors) return;
     this.palette = palette;
-    this.interactionColor = hexToRgb(palette.selection);
+    this.interactionColor = friendsGalaxyHexToRgb(palette.selection);
     this.renderer.setClearColor(palette.background, 1);
     this.edgeMaterial?.color.set(palette.selection);
     this.applyMaterialOpacity(palette);
@@ -675,14 +676,16 @@ export class ThreeWebGpuBackend implements GalaxyLabBackend {
       !this.fixture || !this.semanticColors || !this.baseSemanticColors || !this.backgroundColors
     ) return;
     for (let index = 0; index < this.fixture.scene.nodeIds.length; index += 1) {
-      const [red, green, blue] = hexToRgb(galaxyLabSemanticColor(this.fixture, palette, index));
+      const [red, green, blue] = friendsGalaxyHexToRgb(
+        galaxyLabSemanticColor(this.fixture, palette, index),
+      );
       const brightness = this.fixture.scene.brightness[index]!;
       const offset = index * 3;
       this.baseSemanticColors[offset] = red * brightness;
       this.baseSemanticColors[offset + 1] = green * brightness;
       this.baseSemanticColors[offset + 2] = blue * brightness;
     }
-    const [red, green, blue] = hexToRgb(palette.mutedText);
+    const [red, green, blue] = friendsGalaxyHexToRgb(palette.mutedText);
     for (let index = 0; index < this.fixture.backgroundStarCount; index += 1) {
       const brightness = this.fixture.backgroundBrightness[index]! * 0.72;
       const offset = index * 3;

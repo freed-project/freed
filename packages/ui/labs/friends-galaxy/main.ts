@@ -2,7 +2,6 @@ import "./styles.css";
 import {
   frameStats,
   galaxyLabRenderPixelRatio,
-  hexToRgb,
   type GalaxyLabBackend,
   type GalaxyLabBackendId,
   type GalaxyLabFieldStyle,
@@ -10,6 +9,7 @@ import {
   type GalaxyLabInteraction,
   type GalaxyLabViewDetail,
 } from "./backend.js";
+import { friendsGalaxyHexToRgb } from "../../src/lib/friends-galaxy-palette.js";
 import {
   GALAXY_LAB_THEMES,
   galaxyLabNodePresentation,
@@ -424,7 +424,7 @@ function applyDocumentPalette(palette: GalaxyLabPalette): void {
   root.style.setProperty("--lab-selection", palette.selection);
   root.style.setProperty("--lab-account", palette.account);
   root.style.setProperty("--lab-feed", palette.feed);
-  const [red, green, blue] = hexToRgb(palette.background);
+  const [red, green, blue] = friendsGalaxyHexToRgb(palette.background);
   const luminance = red * 0.2126 + green * 0.7152 + blue * 0.0722;
   root.style.colorScheme = luminance > 0.58 ? "light" : "dark";
   root.style.setProperty(

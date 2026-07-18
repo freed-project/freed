@@ -5,7 +5,7 @@ import type {
   GalaxyLabInteraction,
   GalaxyLabViewDetail,
 } from "./backend.js";
-import { hexToRgb } from "./backend.js";
+import { friendsGalaxyHexToRgb } from "../../src/lib/friends-galaxy-palette.js";
 import type {
   GalaxyLabFixture,
   GalaxyLabPalette,
@@ -14,7 +14,7 @@ import type {
 import { FriendsGalaxySceneIndex } from "../../src/lib/friends-galaxy-scene-index.js";
 
 function cssRgb(value: string): string {
-  return hexToRgb(value).map((part) => Math.round(part * 255)).join(" ");
+  return friendsGalaxyHexToRgb(value).map((part) => Math.round(part * 255)).join(" ");
 }
 
 function applyPalette(element: HTMLElement, palette: GalaxyLabPalette): void {
