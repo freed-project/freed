@@ -6,7 +6,10 @@ import {
 } from "./identity-graph-atlas.js";
 import { FRIENDS_GALAXY_PRESENTATION_NODE_CAP } from "./friends-galaxy-presentation-atlas.js";
 import { compileFriendsGalaxyProductRendererScene } from "./friends-galaxy-product-scene.js";
-import { compactFriendsGalaxyPresentationMetadata } from "./friends-galaxy-renderer-scene.js";
+import {
+  compactFriendsGalaxyPresentationMetadata,
+  includeFriendsGalaxyPriorityMetadata,
+} from "./friends-galaxy-renderer-scene.js";
 import {
   FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,
   type FriendsGalaxyProductWorkerErrorResponse,
@@ -26,6 +29,13 @@ interface CachedFriendsGalaxyProductSource {
   sourceRevision: number;
   model: IdentityGraphAtlasModel;
   semanticNodeCount: number;
+  linkedPersonNodeIdByAccountId: Map<string, string>;
+  metadataByNodeId: Map<string, IdentityGraphAtlasModel["nodes"][number]>;
+}
+
+interface FriendsGalaxyProductSourceIndexes {
+  linkedPersonNodeIdByAccountId: Map<string, string>;
+  metadataByNodeId: Map<string, IdentityGraphAtlasModel["nodes"][number]>;
 }
 
 function nowMs(): number {
@@ -51,11 +61,38 @@ function viewportDimension(label: string, value: unknown): number {
 function priorityNodeIds(
   selectedPersonId: string | null | undefined,
   selectedAccountId: string | null | undefined,
+  linkedPersonNodeIdByAccountId: ReadonlyMap<string, string>,
 ): string[] {
   const nodeIds: string[] = [];
   if (selectedPersonId) nodeIds.push(`person:${selectedPersonId}`);
-  if (selectedAccountId) nodeIds.push(`account:${selectedAccountId}`);
+  if (selectedAccountId) {
+    nodeIds.push(`account:${selectedAccountId}`);
+    const linkedPersonNodeId = linkedPersonNodeIdByAccountId.get(selectedAccountId);
+    if (linkedPersonNodeId) {
+      if (!nodeIds.includes(linkedPersonNodeId)) nodeIds.push(linkedPersonNodeId);
+    }
+  }
   return nodeIds;
+}
+
+function productSourceIndexes(
+  model: IdentityGraphAtlasModel,
+): FriendsGalaxyProductSourceIndexes {
+  const linkedPersonNodeIdByAccountId = new Map<string, string>();
+  const metadataByNodeId = new Map<
+    string,
+    IdentityGraphAtlasModel["nodes"][number]
+  >();
+  for (const node of model.nodes) {
+    metadataByNodeId.set(node.id, node);
+    if (node.accountId && node.linkedPersonId) {
+      linkedPersonNodeIdByAccountId.set(
+        node.accountId,
+        `person:${node.linkedPersonId}`,
+      );
+    }
+  }
+  return { linkedPersonNodeIdByAccountId, metadataByNodeId };
 }
 
 function boundedErrorMessage(error: unknown): string {
@@ -125,10 +162,12 @@ export class FriendsGalaxyProductWorkerService {
       backgroundStarCount: request.backgroundStarCount,
       backgroundSeed: request.backgroundSeed,
     });
+    const sourceIndexes = productSourceIndexes(model);
     this.cached = {
       sourceRevision: request.sourceRevision,
       model,
       semanticNodeCount: rendererScene.scene.nodeIds.length,
+      ...sourceIndexes,
     };
     return {
       kind: "source-ready",
@@ -150,22 +189,28 @@ export class FriendsGalaxyProductWorkerService {
     if (!cached || cached.sourceRevision !== request.sourceRevision) {
       throw new Error("Friends Galaxy presentation requested without its source revision.");
     }
+    const priorityIds = priorityNodeIds(
+      request.viewport.selectedPersonId,
+      request.viewport.selectedAccountId,
+      cached.linkedPersonNodeIdByAccountId,
+    );
     const atlas = compactFriendsGalaxyPresentationMetadata(
-      sliceIdentityGraphAtlas({
-        model: cached.model,
-        transform: request.viewport.transform,
-        width: viewportDimension("viewport width", request.viewport.width),
-        height: viewportDimension("viewport height", request.viewport.height),
-        quality: "settled",
-        selectedPersonId: request.viewport.selectedPersonId,
-        selectedAccountId: request.viewport.selectedAccountId,
-      }),
+      includeFriendsGalaxyPriorityMetadata(
+        sliceIdentityGraphAtlas({
+          model: cached.model,
+          transform: request.viewport.transform,
+          width: viewportDimension("viewport width", request.viewport.width),
+          height: viewportDimension("viewport height", request.viewport.height),
+          quality: "settled",
+          selectedPersonId: request.viewport.selectedPersonId,
+          selectedAccountId: request.viewport.selectedAccountId,
+        }),
+        cached.metadataByNodeId,
+        priorityIds,
+      ),
       cached.semanticNodeCount,
       FRIENDS_GALAXY_PRESENTATION_NODE_CAP,
-      priorityNodeIds(
-        request.viewport.selectedPersonId,
-        request.viewport.selectedAccountId,
-      ),
+      priorityIds,
     );
     return {
       kind: "presentation-ready",

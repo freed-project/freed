@@ -14,6 +14,7 @@ import {
 import {
   compactFriendsGalaxyRendererSceneMetadata,
   createFriendsGalaxyRendererScene,
+  includeFriendsGalaxyPriorityMetadata,
 } from "./friends-galaxy-renderer-scene.js";
 
 export const FRIENDS_GALAXY_PRODUCT_BACKGROUND_STAR_COUNT = 100_000;
@@ -37,6 +38,7 @@ interface FriendsGalaxyProductSource {
   accountCount: number;
   linkedAccountCount: number;
   priorityNodeIds: string[];
+  metadataByNodeId: Map<string, IdentityGraphAtlasNode>;
 }
 
 function productSource(
@@ -49,10 +51,13 @@ function productSource(
   let personCount = 0;
   let accountCount = 0;
   let linkedAccountCount = 0;
+  let selectedLinkedPersonNodeId: string | null = null;
+  const metadataByNodeId = new Map<string, IdentityGraphAtlasNode>();
 
   for (const node of source.nodes) {
     if (node.kind === "provider_cluster") continue;
     nodes.push(node);
+    metadataByNodeId.set(node.id, node);
     if (node.kind === "friend_person" || node.kind === "connection_person") {
       personCount += 1;
     } else if (node.kind === "account" || node.kind === "feed") {
@@ -65,7 +70,19 @@ function productSource(
     ) {
       priorityNodeIds.push(node.id);
     }
+    if (
+      selectedAccountId &&
+      node.accountId === selectedAccountId &&
+      node.linkedPersonId
+    ) {
+      selectedLinkedPersonNodeId = `person:${node.linkedPersonId}`;
+    }
   }
+
+  if (
+    selectedLinkedPersonNodeId &&
+    !priorityNodeIds.includes(selectedLinkedPersonNodeId)
+  ) priorityNodeIds.push(selectedLinkedPersonNodeId);
 
   if (personCount + accountCount !== nodes.length) {
     throw new Error("Friends Galaxy product source contains an unsupported semantic node kind.");
@@ -76,6 +93,7 @@ function productSource(
     accountCount,
     linkedAccountCount,
     priorityNodeIds,
+    metadataByNodeId,
   };
 }
 
@@ -101,7 +119,11 @@ export function compileFriendsGalaxyProductRendererScene({
   );
   const rendererScene = compactFriendsGalaxyRendererSceneMetadata(
     createFriendsGalaxyRendererScene({
-      atlas,
+      atlas: includeFriendsGalaxyPriorityMetadata(
+        atlas,
+        product.metadataByNodeId,
+        product.priorityNodeIds,
+      ),
       scene,
       personCount: product.personCount,
       accountCount: product.accountCount,

@@ -134,3 +134,28 @@ export function compactFriendsGalaxyPresentationMetadata(
     },
   };
 }
+
+export function includeFriendsGalaxyPriorityMetadata(
+  atlas: IdentityGraphAtlas,
+  metadataByNodeId: ReadonlyMap<string, IdentityGraphAtlas["nodes"][number]>,
+  priorityNodeIds: readonly string[],
+): IdentityGraphAtlas {
+  const admittedNodeIds = new Set(atlas.nodes.map((node) => node.id));
+  const missing = [];
+  for (const nodeId of priorityNodeIds) {
+    if (admittedNodeIds.has(nodeId)) continue;
+    const metadata = metadataByNodeId.get(nodeId);
+    if (!metadata) continue;
+    missing.push(metadata);
+    admittedNodeIds.add(nodeId);
+  }
+  if (missing.length === 0) return atlas;
+  return {
+    ...atlas,
+    nodes: [...atlas.nodes, ...missing],
+    metrics: {
+      ...atlas.metrics,
+      visibleNodeCount: atlas.nodes.length + missing.length,
+    },
+  };
+}
