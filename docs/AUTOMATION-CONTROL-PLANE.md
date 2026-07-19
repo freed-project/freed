@@ -572,8 +572,10 @@ until a final exact archive-set rescan. The pinned
 and archive listings are relative to held directory descriptors. The
 destination directory is synced before the source directory. Missing native
 syscalls, directory sync, local filesystem admission, or exact readback fail
-closed. General actor runtime schema v2 copies and digests the helper beside
-the pinned control library.
+closed. General actor runtime schema v3 copies and digests the helper, the
+kernel guard contract, and the outcome ledger repair contract beside the
+pinned control library. The installed control entry must load from that
+content-addressed runtime without access to the source checkout.
 
 Before writing any new lease staging file, the control plane accounts for all
 cleanup archives and computes a conservative reservation for the next

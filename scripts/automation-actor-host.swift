@@ -3,7 +3,7 @@ import Darwin
 import Foundation
 import Security
 
-private let bindingSchemaVersion = 2
+private let bindingSchemaVersion = 3
 private let credentialSchemaVersion = 1
 private let bindingPurpose = "automation-actor-launcher"
 private let bindingHandoff = "keychain-to-canonical-lease"
@@ -255,6 +255,10 @@ private struct LauncherBinding: Decodable {
   let controlEntrySha256: String
   let controlLibraryPath: String
   let controlLibrarySha256: String
+  let kernelGuardContractPath: String
+  let kernelGuardContractSha256: String
+  let outcomeLedgerRepairContractPath: String
+  let outcomeLedgerRepairContractSha256: String
   let leaseArchiveHelperPath: String
   let leaseArchiveHelperSha256: String
 }
@@ -1357,10 +1361,12 @@ private func sha256Hex(_ data: Data) -> String {
 
 private func runtimeDigest(_ binding: LauncherBinding) -> String {
   let manifest =
-    "freed-automation-actor-runtime-v2\n" +
+    "freed-automation-actor-runtime-v3\n" +
     "node:\(binding.nodeSha256)\n" +
     "automation-control.mjs:\(binding.controlEntrySha256)\n" +
     "lib/automation-control.mjs:\(binding.controlLibrarySha256)\n" +
+    "lib/automation-kernel-guard-contract.mjs:\(binding.kernelGuardContractSha256)\n" +
+    "lib/outcome-ledger-repair-contract.mjs:\(binding.outcomeLedgerRepairContractSha256)\n" +
     "lib/lease-archive-move.py:\(binding.leaseArchiveHelperSha256)\n"
   return sha256Hex(Data(manifest.utf8))
 }
@@ -1445,6 +1451,8 @@ private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> Laun
       "maxLeaseLifetimeMs", "keychainService", "keychainAccount", "nodePath",
       "nodeSha256", "controlEntryPath", "controlEntrySha256",
       "controlLibraryPath", "controlLibrarySha256",
+      "kernelGuardContractPath", "kernelGuardContractSha256",
+      "outcomeLedgerRepairContractPath", "outcomeLedgerRepairContractSha256",
       "leaseArchiveHelperPath", "leaseArchiveHelperSha256",
     ],
     label: "actor launcher binding"
@@ -1466,6 +1474,8 @@ private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> Laun
   try requireLowercaseHex(binding.nodeSha256, length: 64, label: "Node digest")
   try requireLowercaseHex(binding.controlEntrySha256, length: 64, label: "control entry digest")
   try requireLowercaseHex(binding.controlLibrarySha256, length: 64, label: "control library digest")
+  try requireLowercaseHex(binding.kernelGuardContractSha256, length: 64, label: "kernel guard contract digest")
+  try requireLowercaseHex(binding.outcomeLedgerRepairContractSha256, length: 64, label: "outcome ledger repair contract digest")
   try requireLowercaseHex(binding.leaseArchiveHelperSha256, length: 64, label: "lease archive helper digest")
 
   let expectedLauncherPath =
@@ -1488,6 +1498,8 @@ private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> Laun
   guard binding.nodePath == expectedRuntimeDirectory + "/node",
     binding.controlEntryPath == expectedRuntimeDirectory + "/automation-control.mjs",
     binding.controlLibraryPath == expectedRuntimeDirectory + "/lib/automation-control.mjs",
+    binding.kernelGuardContractPath == expectedRuntimeDirectory + "/lib/automation-kernel-guard-contract.mjs",
+    binding.outcomeLedgerRepairContractPath == expectedRuntimeDirectory + "/lib/outcome-ledger-repair-contract.mjs",
     binding.leaseArchiveHelperPath == expectedRuntimeDirectory + "/lib/lease-archive-move.py"
   else {
     throw HostFailure("the pinned actor runtime does not use the canonical content-addressed layout")
@@ -1496,6 +1508,8 @@ private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> Laun
     (binding.nodePath, binding.nodeSha256, true, "Node runtime"),
     (binding.controlEntryPath, binding.controlEntrySha256, false, "automation control entry"),
     (binding.controlLibraryPath, binding.controlLibrarySha256, false, "automation control library"),
+    (binding.kernelGuardContractPath, binding.kernelGuardContractSha256, false, "automation kernel guard contract"),
+    (binding.outcomeLedgerRepairContractPath, binding.outcomeLedgerRepairContractSha256, false, "outcome ledger repair contract"),
     (binding.leaseArchiveHelperPath, binding.leaseArchiveHelperSha256, false, "lease archive helper"),
   ]
   for (runtimePath, digest, executable, label) in runtimePins {

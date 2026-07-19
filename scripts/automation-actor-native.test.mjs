@@ -164,14 +164,18 @@ function runtimeDigest({
   nodeSha256,
   controlEntrySha256,
   controlLibrarySha256,
+  kernelGuardContractSha256,
+  outcomeLedgerRepairContractSha256,
   leaseArchiveHelperSha256,
 }) {
   return sha256(
     [
-      "freed-automation-actor-runtime-v2",
+      "freed-automation-actor-runtime-v3",
       `node:${nodeSha256}`,
       `automation-control.mjs:${controlEntrySha256}`,
       `lib/automation-control.mjs:${controlLibrarySha256}`,
+      `lib/automation-kernel-guard-contract.mjs:${kernelGuardContractSha256}`,
+      `lib/outcome-ledger-repair-contract.mjs:${outcomeLedgerRepairContractSha256}`,
       `lib/lease-archive-move.py:${leaseArchiveHelperSha256}`,
       "",
     ].join("\n"),
@@ -231,12 +235,18 @@ async function createFixture({
     node: Buffer.from(runtimeNodeContents),
     controlEntry: Buffer.from("export {};\n"),
     controlLibrary: Buffer.from("export {};\n"),
+    kernelGuardContract: Buffer.from("export {};\n"),
+    outcomeLedgerRepairContract: Buffer.from("export {};\n"),
     leaseArchiveHelper: Buffer.from("print('archive helper fixture')\n"),
   };
   const digests = {
     nodeSha256: sha256(runtimeFiles.node),
     controlEntrySha256: sha256(runtimeFiles.controlEntry),
     controlLibrarySha256: sha256(runtimeFiles.controlLibrary),
+    kernelGuardContractSha256: sha256(runtimeFiles.kernelGuardContract),
+    outcomeLedgerRepairContractSha256: sha256(
+      runtimeFiles.outcomeLedgerRepairContract,
+    ),
     leaseArchiveHelperSha256: sha256(runtimeFiles.leaseArchiveHelper),
   };
   const runtimeDirectory = path.join(runtimeRoot, runtimeDigest(digests));
@@ -253,6 +263,14 @@ async function createFixture({
     runtimeLibraryDirectory,
     "automation-control.mjs",
   );
+  const kernelGuardContractPath = path.join(
+    runtimeLibraryDirectory,
+    "automation-kernel-guard-contract.mjs",
+  );
+  const outcomeLedgerRepairContractPath = path.join(
+    runtimeLibraryDirectory,
+    "outcome-ledger-repair-contract.mjs",
+  );
   const leaseArchiveHelperPath = path.join(
     runtimeLibraryDirectory,
     "lease-archive-move.py",
@@ -262,17 +280,27 @@ async function createFixture({
   await writeFile(controlLibraryPath, runtimeFiles.controlLibrary, {
     mode: 0o600,
   });
+  await writeFile(kernelGuardContractPath, runtimeFiles.kernelGuardContract, {
+    mode: 0o600,
+  });
+  await writeFile(
+    outcomeLedgerRepairContractPath,
+    runtimeFiles.outcomeLedgerRepairContract,
+    { mode: 0o600 },
+  );
   await writeFile(leaseArchiveHelperPath, runtimeFiles.leaseArchiveHelper, {
     mode: 0o600,
   });
   await chmod(nodePath, 0o755);
   await chmod(controlEntryPath, 0o600);
   await chmod(controlLibraryPath, 0o600);
+  await chmod(kernelGuardContractPath, 0o600);
+  await chmod(outcomeLedgerRepairContractPath, 0o600);
   await chmod(leaseArchiveHelperPath, 0o600);
 
   const bindingPath = path.join(bindingRoot, `${actor}.json`);
   const binding = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     actor,
     purpose: "automation-actor-launcher",
     handoff: "keychain-to-canonical-lease",
@@ -290,6 +318,11 @@ async function createFixture({
     controlEntrySha256: digests.controlEntrySha256,
     controlLibraryPath,
     controlLibrarySha256: digests.controlLibrarySha256,
+    kernelGuardContractPath,
+    kernelGuardContractSha256: digests.kernelGuardContractSha256,
+    outcomeLedgerRepairContractPath,
+    outcomeLedgerRepairContractSha256:
+      digests.outcomeLedgerRepairContractSha256,
     leaseArchiveHelperPath,
     leaseArchiveHelperSha256: digests.leaseArchiveHelperSha256,
   };
@@ -1333,6 +1366,27 @@ test(
       /content-addressed layout|pinned digest/,
     );
 
+    const kernelContractDigestFixture = await createFixture();
+    t.after(() =>
+      rm(kernelContractDigestFixture.fixtureRoot, {
+        recursive: true,
+        force: true,
+      }),
+    );
+    await rewriteBinding(kernelContractDigestFixture, (binding) => ({
+      ...binding,
+      kernelGuardContractSha256: "0".repeat(64),
+    }));
+    const kernelContractDigestResult = await run(
+      kernelContractDigestFixture.host,
+      acquisitionArguments(kernelContractDigestFixture),
+    );
+    assert.equal(kernelContractDigestResult.code, 1);
+    assert.match(
+      kernelContractDigestResult.stderr,
+      /content-addressed layout|pinned digest/,
+    );
+
     const helperModeFixture = await createFixture();
     t.after(() =>
       rm(helperModeFixture.fixtureRoot, { recursive: true, force: true }),
@@ -1737,6 +1791,24 @@ test(
     assert.equal(helperDigestResult.code, 1);
     assert.match(
       helperDigestResult.stderr,
+      /content-addressed layout|pinned digest/,
+    );
+
+    const outcomeContractDigest = await createFixture();
+    t.after(() =>
+      rm(outcomeContractDigest.fixtureRoot, { recursive: true, force: true }),
+    );
+    await rewriteBinding(outcomeContractDigest, (binding) => ({
+      ...binding,
+      outcomeLedgerRepairContractSha256: "0".repeat(64),
+    }));
+    const outcomeContractDigestResult = await run(
+      testProvisioner,
+      provisionerArguments(outcomeContractDigest, "rotate", "valid"),
+    );
+    assert.equal(outcomeContractDigestResult.code, 1);
+    assert.match(
+      outcomeContractDigestResult.stderr,
       /content-addressed layout|pinned digest/,
     );
 

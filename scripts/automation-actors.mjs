@@ -516,6 +516,22 @@ function describeRuntime(dependencies, pinnedNodePath) {
       "automation-control.mjs",
     ),
   );
+  const kernelGuardContractSource = inspectRegularFile(
+    path.join(
+      dependencies.repoRoot,
+      "scripts",
+      "lib",
+      "automation-kernel-guard-contract.mjs",
+    ),
+  );
+  const outcomeLedgerRepairContractSource = inspectRegularFile(
+    path.join(
+      dependencies.repoRoot,
+      "scripts",
+      "lib",
+      "outcome-ledger-repair-contract.mjs",
+    ),
+  );
   const leaseArchiveHelperSource = inspectRegularFile(
     path.join(
       dependencies.repoRoot,
@@ -528,6 +544,10 @@ function describeRuntime(dependencies, pinnedNodePath) {
     nodeSha256: sha256File(pinnedNodePath),
     controlEntrySha256: sha256File(controlEntrySource),
     controlLibrarySha256: sha256File(controlLibrarySource),
+    kernelGuardContractSha256: sha256File(kernelGuardContractSource),
+    outcomeLedgerRepairContractSha256: sha256File(
+      outcomeLedgerRepairContractSource,
+    ),
     leaseArchiveHelperSha256: sha256File(leaseArchiveHelperSource),
   };
   const digest = runtimeDigestForPins(pins);
@@ -541,6 +561,18 @@ function describeRuntime(dependencies, pinnedNodePath) {
     controlEntryPath: path.join(directory, "automation-control.mjs"),
     controlLibrarySource,
     controlLibraryPath: path.join(directory, "lib", "automation-control.mjs"),
+    kernelGuardContractSource,
+    kernelGuardContractPath: path.join(
+      directory,
+      "lib",
+      "automation-kernel-guard-contract.mjs",
+    ),
+    outcomeLedgerRepairContractSource,
+    outcomeLedgerRepairContractPath: path.join(
+      directory,
+      "lib",
+      "outcome-ledger-repair-contract.mjs",
+    ),
     leaseArchiveHelperSource,
     leaseArchiveHelperPath: path.join(
       directory,
@@ -570,6 +602,18 @@ function installRuntime(dependencies, runtime) {
   );
   installFile(
     dependencies,
+    runtime.kernelGuardContractSource,
+    runtime.kernelGuardContractPath,
+    "0444",
+  );
+  installFile(
+    dependencies,
+    runtime.outcomeLedgerRepairContractSource,
+    runtime.outcomeLedgerRepairContractPath,
+    "0444",
+  );
+  installFile(
+    dependencies,
     runtime.leaseArchiveHelperSource,
     runtime.leaseArchiveHelperPath,
     "0444",
@@ -588,7 +632,7 @@ export function bindingForActor({
     fail("invalid_actor", `Unsupported automation actor: ${actor}`);
   }
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     actor,
     purpose: LAUNCHER_PURPOSE,
     handoff: LAUNCHER_HANDOFF,
@@ -606,6 +650,12 @@ export function bindingForActor({
     controlEntrySha256: runtime.controlEntrySha256,
     controlLibraryPath: runtime.controlLibraryPath,
     controlLibrarySha256: runtime.controlLibrarySha256,
+    kernelGuardContractPath: runtime.kernelGuardContractPath,
+    kernelGuardContractSha256: runtime.kernelGuardContractSha256,
+    outcomeLedgerRepairContractPath:
+      runtime.outcomeLedgerRepairContractPath,
+    outcomeLedgerRepairContractSha256:
+      runtime.outcomeLedgerRepairContractSha256,
     leaseArchiveHelperPath: runtime.leaseArchiveHelperPath,
     leaseArchiveHelperSha256: runtime.leaseArchiveHelperSha256,
   };

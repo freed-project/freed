@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -9,6 +10,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -16,6 +18,7 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   AUTOMATION_ACTORS,
@@ -39,6 +42,7 @@ const testLeaseToken = "short-lived-test-token-1234567890";
 const testLeaseTokenSha256 = createHash("sha256")
   .update(testLeaseToken)
   .digest("hex");
+const sourceScriptsRoot = path.dirname(fileURLToPath(import.meta.url));
 
 function sha256(filePath) {
   return createHash("sha256").update(readFileSync(filePath)).digest("hex");
@@ -97,6 +101,24 @@ function fixture(t) {
   writeFileSync(
     path.join(repoRoot, "scripts", "lib", "automation-control.mjs"),
     "export const library = true;\n",
+  );
+  writeFileSync(
+    path.join(
+      repoRoot,
+      "scripts",
+      "lib",
+      "automation-kernel-guard-contract.mjs",
+    ),
+    "export const kernelGuardContract = true;\n",
+  );
+  writeFileSync(
+    path.join(
+      repoRoot,
+      "scripts",
+      "lib",
+      "outcome-ledger-repair-contract.mjs",
+    ),
+    "export const outcomeLedgerRepairContract = true;\n",
   );
   writeFileSync(
     path.join(repoRoot, "scripts", "lib", "lease-archive-move.py"),
@@ -499,11 +521,35 @@ test("provision all installs one content-addressed runtime and all public bindin
     path.join(runtimeDirectory, "node"),
     path.join(runtimeDirectory, "automation-control.mjs"),
     path.join(runtimeDirectory, "lib", "automation-control.mjs"),
+    path.join(
+      runtimeDirectory,
+      "lib",
+      "automation-kernel-guard-contract.mjs",
+    ),
+    path.join(
+      runtimeDirectory,
+      "lib",
+      "outcome-ledger-repair-contract.mjs",
+    ),
     path.join(runtimeDirectory, "lib", "lease-archive-move.py"),
   ];
   for (const runtimePath of runtimePaths) {
     assert.equal(existsSync(runtimePath), true, runtimePath);
   }
+  assert.deepEqual(readdirSync(runtimeDirectory).sort(), [
+    "automation-control.mjs",
+    "lib",
+    "node",
+  ]);
+  assert.deepEqual(
+    readdirSync(path.join(runtimeDirectory, "lib")).sort(),
+    [
+      "automation-control.mjs",
+      "automation-kernel-guard-contract.mjs",
+      "lease-archive-move.py",
+      "outcome-ledger-repair-contract.mjs",
+    ].sort(),
+  );
 
   for (const actor of AUTOMATION_ACTOR_IDS) {
     const bindingPath = path.join(value.launcherRoot, `${actor}.json`);
@@ -515,7 +561,9 @@ test("provision all installs one content-addressed runtime and all public bindin
     assert.equal(binding.nodePath, runtimePaths[0]);
     assert.equal(binding.controlEntryPath, runtimePaths[1]);
     assert.equal(binding.controlLibraryPath, runtimePaths[2]);
-    assert.equal(binding.leaseArchiveHelperPath, runtimePaths[3]);
+    assert.equal(binding.kernelGuardContractPath, runtimePaths[3]);
+    assert.equal(binding.outcomeLedgerRepairContractPath, runtimePaths[4]);
+    assert.equal(binding.leaseArchiveHelperPath, runtimePaths[5]);
     assert.equal(existsSync(binding.launcherPath), true);
     assert.equal(
       path.basename(binding.launcherPath),
@@ -578,6 +626,52 @@ test("provision all installs one content-addressed runtime and all public bindin
       ),
     false,
   );
+});
+
+test("provisioned runtime resolves the automation control local import closure", (t) => {
+  const value = fixture(t);
+  for (const relativePath of [
+    "automation-control.mjs",
+    "lib/automation-control.mjs",
+    "lib/automation-kernel-guard-contract.mjs",
+    "lib/outcome-ledger-repair-contract.mjs",
+    "lib/lease-archive-move.py",
+  ]) {
+    copyFileSync(
+      path.join(sourceScriptsRoot, relativePath),
+      path.join(value.repoRoot, "scripts", relativePath),
+    );
+  }
+  value.dependencies.pinnedNodeResolver = () => process.execPath;
+
+  executeCommand(
+    {
+      action: "provision",
+      actor: "freed-runtime-observer",
+      stateRoot: value.stateRoot,
+    },
+    value.dependencies,
+  );
+
+  const binding = JSON.parse(
+    readFileSync(
+      path.join(value.launcherRoot, "freed-runtime-observer.json"),
+      "utf8",
+    ),
+  );
+  const launched = spawnSync(
+    binding.nodePath,
+    [binding.controlEntryPath, "--help"],
+    {
+      cwd: "/",
+      encoding: "utf8",
+      env: { PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C" },
+      timeout: 15_000,
+      killSignal: "SIGKILL",
+    },
+  );
+  assert.equal(launched.status, 0, launched.stderr);
+  assert.match(launched.stdout, /^Usage:/);
 });
 
 test("provision all rolls back only actors completed by the current batch", (t) => {
@@ -1093,6 +1187,22 @@ function writeAcquisitionBinding(value, actor) {
     controlLibrarySha256: sha256(
       path.join(value.repoRoot, "scripts", "lib", "automation-control.mjs"),
     ),
+    kernelGuardContractSha256: sha256(
+      path.join(
+        value.repoRoot,
+        "scripts",
+        "lib",
+        "automation-kernel-guard-contract.mjs",
+      ),
+    ),
+    outcomeLedgerRepairContractSha256: sha256(
+      path.join(
+        value.repoRoot,
+        "scripts",
+        "lib",
+        "outcome-ledger-repair-contract.mjs",
+      ),
+    ),
     leaseArchiveHelperSha256: sha256(
       path.join(value.repoRoot, "scripts", "lib", "lease-archive-move.py"),
     ),
@@ -1107,6 +1217,16 @@ function writeAcquisitionBinding(value, actor) {
       runtimeDirectory,
       "lib",
       "automation-control.mjs",
+    ),
+    kernelGuardContractPath: path.join(
+      runtimeDirectory,
+      "lib",
+      "automation-kernel-guard-contract.mjs",
+    ),
+    outcomeLedgerRepairContractPath: path.join(
+      runtimeDirectory,
+      "lib",
+      "outcome-ledger-repair-contract.mjs",
     ),
     leaseArchiveHelperPath: path.join(
       runtimeDirectory,
@@ -1124,6 +1244,24 @@ function writeAcquisitionBinding(value, actor) {
   copyFileSync(
     path.join(value.repoRoot, "scripts", "lib", "automation-control.mjs"),
     runtime.controlLibraryPath,
+  );
+  copyFileSync(
+    path.join(
+      value.repoRoot,
+      "scripts",
+      "lib",
+      "automation-kernel-guard-contract.mjs",
+    ),
+    runtime.kernelGuardContractPath,
+  );
+  copyFileSync(
+    path.join(
+      value.repoRoot,
+      "scripts",
+      "lib",
+      "outcome-ledger-repair-contract.mjs",
+    ),
+    runtime.outcomeLedgerRepairContractPath,
   );
   copyFileSync(
     path.join(value.repoRoot, "scripts", "lib", "lease-archive-move.py"),
@@ -1191,6 +1329,10 @@ function replaceActorRuntime(value, actor) {
     controlLibrarySha256: createHash("sha256")
       .update(controlLibraryContents)
       .digest("hex"),
+    kernelGuardContractSha256:
+      installedBinding.kernelGuardContractSha256,
+    outcomeLedgerRepairContractSha256:
+      installedBinding.outcomeLedgerRepairContractSha256,
     leaseArchiveHelperSha256: installedBinding.leaseArchiveHelperSha256,
   };
   const digest = runtimeDigestForPins(runtimePins);
@@ -1203,6 +1345,16 @@ function replaceActorRuntime(value, actor) {
       runtimeDirectory,
       "lib",
       "automation-control.mjs",
+    ),
+    kernelGuardContractPath: path.join(
+      runtimeDirectory,
+      "lib",
+      "automation-kernel-guard-contract.mjs",
+    ),
+    outcomeLedgerRepairContractPath: path.join(
+      runtimeDirectory,
+      "lib",
+      "outcome-ledger-repair-contract.mjs",
     ),
     leaseArchiveHelperPath: path.join(
       runtimeDirectory,
@@ -1217,6 +1369,14 @@ function replaceActorRuntime(value, actor) {
   writeFileSync(runtime.controlLibraryPath, controlLibraryContents, {
     mode: 0o600,
   });
+  copyFileSync(
+    installedBinding.kernelGuardContractPath,
+    runtime.kernelGuardContractPath,
+  );
+  copyFileSync(
+    installedBinding.outcomeLedgerRepairContractPath,
+    runtime.outcomeLedgerRepairContractPath,
+  );
   copyFileSync(
     installedBinding.leaseArchiveHelperPath,
     runtime.leaseArchiveHelperPath,
@@ -1558,6 +1718,18 @@ test("acquire rejects binding path or digest drift before invoking a launcher", 
       name: "runtime digest drift",
       mutate(binding) {
         binding.controlLibrarySha256 = "0".repeat(64);
+      },
+    },
+    {
+      name: "kernel guard contract digest drift",
+      mutate(binding) {
+        binding.kernelGuardContractSha256 = "0".repeat(64);
+      },
+    },
+    {
+      name: "outcome ledger repair contract digest drift",
+      mutate(binding) {
+        binding.outcomeLedgerRepairContractSha256 = "0".repeat(64);
       },
     },
   ];

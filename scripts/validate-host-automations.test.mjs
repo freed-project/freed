@@ -282,6 +282,9 @@ function writeLauncherRecord(
     nodePath: "pinned node fixture\n",
     controlEntryPath: "pinned control entry fixture\n",
     controlLibraryPath: "pinned control library fixture\n",
+    kernelGuardContractPath: "pinned kernel guard contract fixture\n",
+    outcomeLedgerRepairContractPath:
+      "pinned outcome ledger repair contract fixture\n",
     leaseArchiveHelperPath: "pinned lease archive helper fixture\n",
   };
   const runtimeDigests = Object.fromEntries(
@@ -293,10 +296,12 @@ function writeLauncherRecord(
   const runtimeDigest = createHash("sha256")
     .update(
       [
-        "freed-automation-actor-runtime-v2",
+        "freed-automation-actor-runtime-v3",
         `node:${runtimeDigests.nodeSha256}`,
         `automation-control.mjs:${runtimeDigests.controlEntrySha256}`,
         `lib/automation-control.mjs:${runtimeDigests.controlLibrarySha256}`,
+        `lib/automation-kernel-guard-contract.mjs:${runtimeDigests.kernelGuardContractSha256}`,
+        `lib/outcome-ledger-repair-contract.mjs:${runtimeDigests.outcomeLedgerRepairContractSha256}`,
         `lib/lease-archive-move.py:${runtimeDigests.leaseArchiveHelperSha256}`,
         "",
       ].join("\n"),
@@ -310,6 +315,16 @@ function writeLauncherRecord(
       runtimeVersionRoot,
       "lib",
       "automation-control.mjs",
+    ),
+    kernelGuardContractPath: path.join(
+      runtimeVersionRoot,
+      "lib",
+      "automation-kernel-guard-contract.mjs",
+    ),
+    outcomeLedgerRepairContractPath: path.join(
+      runtimeVersionRoot,
+      "lib",
+      "outcome-ledger-repair-contract.mjs",
     ),
     leaseArchiveHelperPath: path.join(
       runtimeVersionRoot,
@@ -330,7 +345,7 @@ function writeLauncherRecord(
   writeFileSync(
     recordPath,
     `${JSON.stringify({
-      schemaVersion: 2,
+      schemaVersion: 3,
       actor: value.spec.id,
       purpose: "automation-actor-launcher",
       handoff: "keychain-to-canonical-lease",
@@ -1134,6 +1149,10 @@ test("general actor launcher records pin the complete root-owned runtime", () =>
     "controlEntrySha256",
     "controlLibraryPath",
     "controlLibrarySha256",
+    "kernelGuardContractPath",
+    "kernelGuardContractSha256",
+    "outcomeLedgerRepairContractPath",
+    "outcomeLedgerRepairContractSha256",
     "leaseArchiveHelperPath",
     "leaseArchiveHelperSha256",
   ]) {
@@ -1163,6 +1182,14 @@ test("general actor launcher records pin the complete root-owned runtime", () =>
   assert.equal(readiness.nodePath, record.nodePath);
   assert.equal(readiness.controlEntryPath, record.controlEntryPath);
   assert.equal(readiness.controlLibraryPath, record.controlLibraryPath);
+  assert.equal(
+    readiness.kernelGuardContractPath,
+    record.kernelGuardContractPath,
+  );
+  assert.equal(
+    readiness.outcomeLedgerRepairContractPath,
+    record.outcomeLedgerRepairContractPath,
+  );
   assert.equal(
     readiness.leaseArchiveHelperPath,
     record.leaseArchiveHelperPath,
@@ -1246,6 +1273,20 @@ test("general actor runtime pins reject missing fields, escapes, writable files,
         record.leaseArchiveHelperSha256 = "0".repeat(64);
       },
       expected: /identity or handoff contract is invalid/,
+    },
+    {
+      name: "kernel guard contract digest drift",
+      mutate(record) {
+        record.kernelGuardContractSha256 = "0".repeat(64);
+      },
+      expected: /identity or handoff contract is invalid/,
+    },
+    {
+      name: "outcome ledger repair contract special mode",
+      mutate(record) {
+        chmodSync(record.outcomeLedgerRepairContractPath, 0o4600);
+      },
+      expected: /not a root-owned immutable regular file/,
     },
     {
       name: "lease archive helper special mode",
