@@ -350,25 +350,17 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   const interaction = await collectLongTasksDuring(page, () =>
     measureFps(page, async () => {
       await page.evaluate(() => performance.mark("friends-wheel-start"));
-      await viewport.evaluate((element) => {
-        const rect = element.getBoundingClientRect();
-        element.dispatchEvent(new WheelEvent("wheel", {
-          bubbles: true,
-          cancelable: true,
-          ctrlKey: true,
-          clientX: rect.left + rect.width / 2,
-          clientY: rect.top + rect.height / 2,
-          deltaY: -120,
-        }));
-      });
-      await expect.poll(async () => (await readGraphPerf(page))?.qualityMode)
-        .toBe("interactive");
-      const duringWheelBaseline = await readGraphPerf(page);
-      expect(duringWheelBaseline).not.toBeNull();
-      // Driver round trips can exceed the gesture release timer on hosted CI.
-      // Emit the continuous trackpad stream at browser animation cadence.
-      await viewport.evaluate(async (element) => {
-        for (let index = 1; index < 18; index += 1) {
+      // Keep the first event, baseline, and remaining stream in one browser task.
+      // Hosted driver round trips can exceed the gesture release timer and turn
+      // one synthetic trackpad gesture into multiple correctly settled gestures.
+      const wheelSnapshots = await viewport.evaluate(async (element) => {
+        const readPerf = () => {
+          const perf = (window as typeof window & {
+            __FREED_GRAPH_PERF__?: Record<string, unknown>;
+          }).__FREED_GRAPH_PERF__;
+          return perf ? { ...perf } : null;
+        };
+        const dispatchWheel = () => {
           const rect = element.getBoundingClientRect();
           element.dispatchEvent(new WheelEvent("wheel", {
             bubbles: true,
@@ -378,21 +370,30 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
             clientY: rect.top + rect.height / 2,
             deltaY: -120,
           }));
+        };
+
+        dispatchWheel();
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        const baseline = readPerf();
+        for (let index = 1; index < 18; index += 1) {
+          dispatchWheel();
           await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         }
+        return { baseline, after: readPerf() };
       });
+      const duringWheelBaseline = wheelSnapshots.baseline as
+        Awaited<ReturnType<typeof readGraphPerf>>;
+      afterWheelPerf = wheelSnapshots.after as
+        Awaited<ReturnType<typeof readGraphPerf>>;
+      expect(duringWheelBaseline).not.toBeNull();
       await page.evaluate(() => performance.mark("friends-wheel-end"));
 
-      await expect
-        .poll(async () => {
-          const perf = await readGraphPerf(page);
-          return (perf?.transformOnlySyncCount ?? 0) -
-            (beforeMotionPerf?.transformOnlySyncCount ?? 0);
-        }, { timeout: 5_000 })
-        .toBeGreaterThan(0);
-      afterWheelPerf = await readGraphPerf(page);
       expect(afterWheelPerf).not.toBeNull();
       expect(afterWheelPerf!.qualityMode).toBe("interactive");
+      expect(
+        (afterWheelPerf!.transformOnlySyncCount ?? 0) -
+          (beforeMotionPerf?.transformOnlySyncCount ?? 0),
+      ).toBeGreaterThan(0);
       expect(afterWheelPerf!.rendererType).toBe(duringWheelBaseline!.rendererType);
       expect(afterWheelPerf!.sceneSyncCount).toBe(duringWheelBaseline!.sceneSyncCount);
       expect(afterWheelPerf!.edgeRebuildCount).toBe(duringWheelBaseline!.edgeRebuildCount);
