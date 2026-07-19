@@ -61,7 +61,7 @@ function PaginationNav({
   smoothScrollOnNavigate?: boolean;
 }) {
   const router = useRouter();
-  const toggleHref = mode === "all" ? "/changelog" : "/changelog/all";
+  const toggleHref = mode === "all" ? "/changelog/prod" : "/changelog";
   const toggleLabel = mode === "all" ? "Hide dev releases" : "Show dev releases";
 
   return (

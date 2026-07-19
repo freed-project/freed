@@ -9,9 +9,19 @@ const nextConfig: NextConfig = {
       process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
   },
 
-  // Configure redirects if needed
   async redirects() {
-    return [];
+    return [
+      {
+        source: "/changelog/all",
+        destination: "/changelog",
+        permanent: true,
+      },
+      {
+        source: "/changelog/all/:page",
+        destination: "/changelog/:page",
+        permanent: true,
+      },
+    ];
   },
 };
 

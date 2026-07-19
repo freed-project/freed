@@ -1,5 +1,161 @@
 [
   {
+    "version": "26.7.1501-dev",
+    "tagName": "v26.7.1501-dev",
+    "channel": "dev",
+    "date": "2026-07-15T10:55:05Z",
+    "deck": "Friends is now a theme-aware personal galaxy with native touch and trackpad navigation, tight identity constellations, and cosmic provider nebulae.",
+    "features": [
+      {
+        "text": "Explore Friends as a hardware-accelerated 3D galaxy where relationship importance controls depth, identities form tight constellations, and every starfield follows the active Freed theme"
+      },
+      {
+        "text": "Pan, zoom, and focus the galaxy with a mouse, trackpad, or midpoint-preserving iPhone pinch gestures while billboard labels stay visible and close to their stars"
+      },
+      {
+        "text": "Use the new Medium and Substack beta sources in Freed Desktop to capture essays, visible relationships, subscriptions, and activity through your signed-in sessions"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Friends selection now settles on the current person or account without stale atlas updates, while provider regions form spiral nebulae and identity links stay focused on the active constellation"
+      },
+      {
+        "text": "Facebook groups confirmed as left now stay removed from the source list"
+      },
+      {
+        "text": "Medium and Substack beta labels remain readable through 150% interface zoom, with their source menus still keyboard accessible"
+      },
+      {
+        "text": "YouTube followed-channel and subscription capture now reports bounded progress, cancels stale work, and closes hidden capture sessions when finished"
+      },
+      {
+        "text": "Security reports can now be submitted privately with redacted diagnostics and hardened fetched-content handling"
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.1501-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.7.1501-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.7.1501-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.1501-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.7.1200-dev",
+    "tagName": "v26.7.1200-dev",
+    "channel": "dev",
+    "date": "2026-07-12T22:27:00Z",
+    "deck": "YouTube now gets out of the way as soon as sign-in succeeds while your first subscription sync continues quietly.",
+    "features": [],
+    "fixes": [
+      {
+        "text": "The YouTube login window now hides as soon as authentication is confirmed while the first subscription sync continues in the background"
+      },
+      {
+        "text": "Later YouTube syncs and Freed Offline playlist actions reuse the authenticated session without showing the provider window"
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.1200-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.7.1200-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.7.1200-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.1200-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.7.1000-dev",
+    "tagName": "v26.7.1000-dev",
+    "channel": "dev",
+    "date": "2026-07-11T02:14:08Z",
+    "deck": "YouTube joins Freed with a focused study feed, exact-video playback, and a private playlist for YouTube Premium downloads. This build also refines display scaling and command search stability.",
+    "features": [
+      {
+        "text": "Connect YouTube in Freed Desktop through your signed-in website session to capture followed channels and recent long-form Subscriptions videos"
+      },
+      {
+        "text": "Keep Shorts and Reels out of the captured study feed, watch a selected video in Focus Mode, or open that same video directly in YouTube"
+      },
+      {
+        "text": "Create or reuse a private Freed Offline playlist from selected saved videos, then open it in YouTube so Premium subscribers can download it on their device"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Display scaling now uses a practical 75% to 200% range and keeps the sidebar, toolbar, and quick settings stable while the scale changes"
+      },
+      {
+        "text": "Command search clears delayed blur work when it is refocused or closed, preventing stale updates after navigation"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Large offline audio and video packages remain future work; this build hands offline downloads to YouTube Premium through the private playlist"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.1000-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.7.1000-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.7.1000-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.1000-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.7.900-dev",
+    "tagName": "v26.7.900-dev",
+    "channel": "dev",
+    "date": "2026-07-09T17:13:45Z",
+    "deck": "The desktop cloud-sync upload loop is broken for good (stability P1-01): an idle machine with cloud sync connected no longer re-uploads the same unchanged document over and over. This build also lands the Wave-2 stability toolchain and interface zoom controls.",
+    "features": [
+      {
+        "text": "Desktop cloud sync no longer loops on idle: a mutation filter and document-heads guard stop the upload to merge-back to re-upload echo (stability P1-01)"
+      },
+      {
+        "text": "Interface zoom controls"
+      },
+      {
+        "text": "Stability observability toolchain: alarms, soak verdicts, canary regressions, and red CI fold into ranked task files (W2-02), backed by per-release canary summaries, an offline watchdog-decision replay, and a metric-driven release bisector (W2-03)"
+      }
+    ],
+    "fixes": [],
+    "followUps": [
+      {
+        "text": "P1-01 is the first cloud-loop damper; the PWA-side and GDrive self-write dampers follow, one per soak cycle"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.900-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.7.900-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.7.900-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.7.900-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
     "version": "26.7.800-dev",
     "tagName": "v26.7.800-dev",
     "channel": "dev",

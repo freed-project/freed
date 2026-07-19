@@ -1,6 +1,10 @@
 import type { MetadataRoute } from "next";
 import { posts } from "@/content";
-import { getChangelogTotalPages } from "./changelog/pagination";
+import {
+  getChangelogPageHref,
+  getChangelogTotalPages,
+  type ChangelogMode,
+} from "./changelog/pagination";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = "https://freed.wtf";
@@ -32,6 +36,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.9,
     },
     {
+      url: `${baseUrl}/changelog/prod`,
+      lastModified: new Date(),
+      changeFrequency: "weekly",
+      priority: 0.8,
+    },
+    {
       url: `${baseUrl}/updates`,
       lastModified: new Date(),
       changeFrequency: "weekly",
@@ -53,14 +63,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.7,
   }));
 
-  const changelogPages: MetadataRoute.Sitemap = Array.from(
-    { length: Math.max(0, getChangelogTotalPages() - 1) },
-    (_, index) => ({
-      url: `${baseUrl}/changelog/${(index + 2).toString()}`,
-      lastModified: new Date(),
-      changeFrequency: "weekly" as const,
-      priority: 0.7,
-    }),
+  const changelogPages: MetadataRoute.Sitemap = (
+    ["all", "production"] satisfies ChangelogMode[]
+  ).flatMap((mode) =>
+    Array.from(
+      { length: Math.max(0, getChangelogTotalPages(mode) - 1) },
+      (_, index) => ({
+        url: `${baseUrl}${getChangelogPageHref(index + 2, mode)}`,
+        lastModified: new Date(),
+        changeFrequency: "weekly" as const,
+        priority: 0.7,
+      }),
+    ),
   );
 
   return [...staticPages, ...blogPosts, ...changelogPages];

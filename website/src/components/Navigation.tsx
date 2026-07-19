@@ -43,7 +43,6 @@ const NAV_ITEMS = [
   { path: "/manifesto", label: "Manifesto" },
   { path: "/roadmap", label: "Roadmap" },
   { path: "/changelog", label: "Changelog" },
-  { path: "/updates", label: "Updates" },
 ];
 
 function isActive(itemPath: string, pathname: string): boolean {

@@ -14,7 +14,7 @@ interface Props {
   params: Promise<{ page: string }>;
 }
 
-const mode = "all";
+const mode = "production";
 
 export function generateStaticParams(): Array<{ page: string }> {
   return getChangelogPaginationStaticParams(mode);
@@ -25,7 +25,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return buildChangelogMetadata(parseChangelogPage(page, mode), mode);
 }
 
-export default async function AllChangelogPaginationPage({ params }: Props) {
+export default async function ProductionChangelogPaginationPage({
+  params,
+}: Props) {
   const { page } = await params;
   const currentPage = parseChangelogPage(page, mode);
 

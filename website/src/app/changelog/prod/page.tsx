@@ -8,11 +8,11 @@ import {
   getChangelogTotalPages,
 } from "../pagination";
 
-const mode = "all";
+const mode = "production";
 
 export const metadata: Metadata = buildChangelogMetadata(1, mode);
 
-export default function AllChangelogPage() {
+export default function ProductionChangelogPage() {
   const currentPage = 1;
 
   return (
