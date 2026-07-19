@@ -12,6 +12,7 @@ import {
 } from "../../src/lib/friends-galaxy-palette.js";
 import { FriendsGalaxyStarColorRole } from "../../src/lib/friends-galaxy-star-instances.js";
 import { IdentityGalaxyNodeKindCode } from "../../src/lib/identity-galaxy-scene.js";
+import { friendsGalaxyRendererPaletteForTheme } from "../../src/lib/friends-galaxy-theme-palettes.js";
 
 describe("Friends Galaxy GPU star palette", () => {
   it("normalizes six-digit theme colors and contains malformed values", () => {
@@ -69,13 +70,31 @@ describe("Friends Galaxy GPU star palette", () => {
     }
   });
 
+  it("selects the active Freed theme and contains unknown stored values", () => {
+    expect(Object.keys(GALAXY_LAB_THEMES).sort()).toEqual([
+      "ember",
+      "midas",
+      "neon",
+      "scriptorium",
+    ]);
+    expect(friendsGalaxyRendererPaletteForTheme("ember")).toBe(
+      GALAXY_LAB_THEMES.ember,
+    );
+    expect(friendsGalaxyRendererPaletteForTheme("retired-theme")).toBe(
+      GALAXY_LAB_THEMES.scriptorium,
+    );
+    expect(friendsGalaxyRendererPaletteForTheme("toString")).toBe(
+      GALAXY_LAB_THEMES.scriptorium,
+    );
+  });
+
   it("resolves provider and identity colors without laboratory metadata", () => {
     const fixture = createGalaxyLabFixture({
       personCount: 10,
       accountCount: 20,
       backgroundStarCount: 0,
     });
-    const palette = GALAXY_LAB_THEMES.vesper;
+    const palette = GALAXY_LAB_THEMES.ember;
     const providerIndex = fixture.scene.providers.findIndex(Boolean);
     const friendIndex = fixture.scene.kinds.findIndex(
       (kind) => kind === IdentityGalaxyNodeKindCode.FriendPerson,

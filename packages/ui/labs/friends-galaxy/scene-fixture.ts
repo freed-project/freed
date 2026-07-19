@@ -17,6 +17,7 @@ import type {
   IdentityGraphAtlasRegion,
 } from "../../src/lib/identity-graph-atlas.js";
 import type { FriendsGalaxyRendererPalette } from "../../src/lib/friends-galaxy-palette.js";
+import { FRIENDS_GALAXY_THEME_PALETTES } from "../../src/lib/friends-galaxy-theme-palettes.js";
 import type { FriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer.js";
 import { createFriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer-scene.js";
 import type { FriendsGalaxyNodePresentation } from "../../src/lib/friends-galaxy-presentation.js";
@@ -24,7 +25,7 @@ import type { FriendsGalaxyNodePresentation } from "../../src/lib/friends-galaxy
 export const GALAXY_LAB_PROVIDERS = ["instagram", "facebook", "linkedin", "x", "rss"] as const;
 
 export type GalaxyLabProvider = (typeof GALAXY_LAB_PROVIDERS)[number];
-export type GalaxyLabThemeId = "scriptorium" | "neon" | "midas" | "vesper";
+export type GalaxyLabThemeId = keyof typeof FRIENDS_GALAXY_THEME_PALETTES;
 
 export type GalaxyLabPalette = FriendsGalaxyRendererPalette;
 
@@ -81,80 +82,7 @@ export function galaxyLabNodePresentation(
   return { label: nodeId || "Unknown star", initials: "?", priority: 0 };
 }
 
-export const GALAXY_LAB_THEMES: Record<GalaxyLabThemeId, GalaxyLabPalette> = {
-  scriptorium: {
-    background: "#f2e5cc",
-    surface: "#f8efdc",
-    text: "#302218",
-    mutedText: "#745f4d",
-    friend: "#735336",
-    connection: "#477c86",
-    account: "#a7794b",
-    feed: "#b34f68",
-    selection: "#237da0",
-    providers: {
-      instagram: "#c64f85",
-      facebook: "#3d72c4",
-      linkedin: "#2d7d9d",
-      x: "#59636b",
-      rss: "#d1842d",
-    },
-  },
-  neon: {
-    background: "#07090d",
-    surface: "#11151d",
-    text: "#f6fbff",
-    mutedText: "#a2b1c1",
-    friend: "#6df2d0",
-    connection: "#f7d66d",
-    account: "#9ac4ff",
-    feed: "#ff77a9",
-    selection: "#ffffff",
-    providers: {
-      instagram: "#ff5ea8",
-      facebook: "#70a2ff",
-      linkedin: "#49d4f2",
-      x: "#d4dee8",
-      rss: "#ffbd62",
-    },
-  },
-  midas: {
-    background: "#11100d",
-    surface: "#1d1a13",
-    text: "#fff8de",
-    mutedText: "#c8b991",
-    friend: "#f4d36b",
-    connection: "#83c5be",
-    account: "#d7a95e",
-    feed: "#e7786f",
-    selection: "#fff2a8",
-    providers: {
-      instagram: "#e77da7",
-      facebook: "#75a7e8",
-      linkedin: "#5eb7c8",
-      x: "#cbc6b8",
-      rss: "#f0a44a",
-    },
-  },
-  vesper: {
-    background: "#15131a",
-    surface: "#211e27",
-    text: "#f5f0f7",
-    mutedText: "#b7acbd",
-    friend: "#e7a8bf",
-    connection: "#8bc5bd",
-    account: "#b8a5d5",
-    feed: "#ee9a78",
-    selection: "#f8d7e5",
-    providers: {
-      instagram: "#e68eb3",
-      facebook: "#8aa9e8",
-      linkedin: "#72b9c6",
-      x: "#c8c3cf",
-      rss: "#e7a45f",
-    },
-  },
-};
+export const GALAXY_LAB_THEMES = FRIENDS_GALAXY_THEME_PALETTES;
 
 const PERSON_FIELD_RADIUS = 1_680;
 const PERSON_ARM_COUNT = 6;

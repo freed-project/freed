@@ -18,11 +18,7 @@ import {
   fitTransformToAtlasBounds,
   sliceIdentityGraphAtlas,
 } from "../../src/lib/identity-graph-atlas.js";
-import { compileIdentityGalaxyScene } from "../../src/lib/identity-galaxy-scene.js";
-import {
-  compactFriendsGalaxyRendererSceneMetadata,
-  createFriendsGalaxyRendererScene,
-} from "../../src/lib/friends-galaxy-renderer-scene.js";
+import { compileFriendsGalaxyProductRendererScene } from "../../src/lib/friends-galaxy-product-scene.js";
 
 function productPerson(index: number): Person {
   return {
@@ -96,6 +92,7 @@ describe("Friends Galaxy fixture worker protocol", () => {
         return [entry.id, entry];
       }),
     );
+    const selectedAccountId = "product-account-499";
     const model = buildIdentityGraphAtlasModel({
       persons,
       accounts,
@@ -112,25 +109,17 @@ describe("Friends Galaxy fixture worker protocol", () => {
       width: 1_400,
       height: 900,
       quality: "settled",
+      selectedAccountId,
     });
-    const semanticNodes = model.nodes.filter(
-      (node) => node.kind !== "provider_cluster",
-    );
-    const productScene = compactFriendsGalaxyRendererSceneMetadata(
-      createFriendsGalaxyRendererScene({
-        atlas,
-        scene: compileIdentityGalaxyScene({
-          nodes: semanticNodes,
-          edges: model.edges,
-        }, { quality: "settled", now: 1 }),
-        personCount: productPersonCount,
-        accountCount: productAccountCount,
-        linkedAccountCount: productPersonCount * 3,
-        backgroundStarCount: 2_000,
-        backgroundSeed: "product-bridge",
-      }),
-      GALAXY_LAB_METADATA_NODE_CAP,
-    );
+    const productScene = compileFriendsGalaxyProductRendererScene({
+      atlas,
+      source: model,
+      selectedAccountId,
+      backgroundStarCount: 2_000,
+      backgroundSeed: "product-bridge",
+      metadataNodeCap: GALAXY_LAB_METADATA_NODE_CAP,
+      now: 1,
+    });
     const productReceipt = friendsGalaxyWorkerSceneReceipt(productScene);
 
     expect(productScene.scene.nodeIds).toHaveLength(
@@ -141,6 +130,7 @@ describe("Friends Galaxy fixture worker protocol", () => {
     expect(productScene.atlas.nodes.length).toBeLessThanOrEqual(
       GALAXY_LAB_METADATA_NODE_CAP,
     );
+    expect(productScene.atlas.nodes[0]?.accountId).toBe(selectedAccountId);
     expect(productReceipt.transferableBufferCount).toBe(21);
     expect(() =>
       validateFriendsGalaxyWorkerScene(productScene, productReceipt, {

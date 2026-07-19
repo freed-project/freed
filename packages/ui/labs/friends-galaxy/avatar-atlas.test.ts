@@ -112,7 +112,7 @@ describe("Friends Galaxy avatar atlas selection", () => {
     writeFriendsGalaxyWebGpuViewProjection(matrix, transform, width, height);
     const avatars = selectFriendsGalaxyAvatars(
       fixture,
-      GALAXY_LAB_THEMES.vesper,
+      GALAXY_LAB_THEMES.ember,
       galaxyLabNodePresentation,
       "person:lab-person-4999",
       false,

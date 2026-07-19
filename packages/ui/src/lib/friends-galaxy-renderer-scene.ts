@@ -64,11 +64,24 @@ export function createFriendsGalaxyRendererScene({
 
 export function compactFriendsGalaxyRendererSceneMetadata<
   Scene extends FriendsGalaxyRendererScene,
->(scene: Scene, cap: number): Scene {
+>(
+  scene: Scene,
+  cap: number,
+  priorityNodeIds: readonly string[] = [],
+): Scene {
   const safeCap = Number.isFinite(cap) ? Math.max(0, Math.floor(cap)) : 0;
   const requiredNodeIds = new Set(scene.atlas.labels.map((label) => label.nodeId));
   const nodes = [];
   const acceptedNodeIds = new Set<string>();
+  const nodeById = new Map(scene.atlas.nodes.map((node) => [node.id, node]));
+
+  for (const nodeId of priorityNodeIds) {
+    if (nodes.length >= safeCap || acceptedNodeIds.has(nodeId)) continue;
+    const node = nodeById.get(nodeId);
+    if (!node) continue;
+    nodes.push(node);
+    acceptedNodeIds.add(nodeId);
+  }
 
   for (const node of scene.atlas.nodes) {
     if (nodes.length >= safeCap) break;

@@ -171,7 +171,7 @@ describe("Friends Galaxy renderer host", () => {
         accountCount: 0,
         backgroundStarCount: 0,
       }),
-      palette: GALAXY_LAB_THEMES.vesper,
+      palette: GALAXY_LAB_THEMES.ember,
       resolvePresentation: galaxyLabNodePresentation,
       createSurface: () => ({}) as HTMLCanvasElement,
       mountSurface: () => undefined,

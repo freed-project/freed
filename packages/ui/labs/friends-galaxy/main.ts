@@ -11,11 +11,11 @@ import { friendsGalaxyHexToRgb } from "../../src/lib/friends-galaxy-palette.js";
 import type { FriendsGalaxyFieldStyle } from "../../src/lib/friends-galaxy-provider-fields.js";
 import type { FriendsGalaxyInteraction } from "../../src/lib/friends-galaxy-scene-index.js";
 import {
-  GALAXY_LAB_THEMES,
   galaxyLabNodePresentation,
   type GalaxyLabPalette,
   type GalaxyLabThemeId,
 } from "./scene-fixture.js";
+import { friendsGalaxyRendererPaletteForTheme } from "../../src/lib/friends-galaxy-theme-palettes.js";
 import { loadGalaxyLabFixture } from "./scene-fixture-loader.js";
 import { findFriendsGalaxySceneNodeIndex } from "../../src/lib/friends-galaxy-scene-interaction-index.js";
 import {
@@ -425,7 +425,7 @@ const avatarImageAdmission = new FriendsGalaxyAvatarImageAdmission(
 );
 
 function paletteForTheme(): GalaxyLabPalette {
-  return GALAXY_LAB_THEMES[activeTheme] ?? GALAXY_LAB_THEMES.scriptorium;
+  return friendsGalaxyRendererPaletteForTheme(activeTheme);
 }
 
 function applyDocumentPalette(palette: GalaxyLabPalette): void {
