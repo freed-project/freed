@@ -45,6 +45,10 @@ import {
   type FriendsGalaxyInteractionRole,
   type FriendsGalaxyInteractionState,
 } from "./friends-galaxy-scene-index.js";
+import {
+  FRIENDS_GALAXY_AMBIENT_MOTION_PROFILE,
+  friendsGalaxyAmbientMotionTimeSeconds,
+} from "./friends-galaxy-ambient-motion.js";
 
 interface GalaxySpriteBatch {
   sprite: THREE.Sprite;
@@ -53,6 +57,8 @@ interface GalaxySpriteBatch {
   colorAttribute: THREE.InstancedBufferAttribute;
   sizeAttribute: THREE.InstancedBufferAttribute;
   sizeScale: { value: number };
+  ambientTime: { value: number };
+  ambientStrength: { value: number };
 }
 
 interface GalaxyBillboardBatch {
@@ -113,29 +119,74 @@ function makeSpriteBatch(
   colors: Float32Array,
   opacity: number,
   initialSizeScale = 1,
+  kind: "semantic" | "decorative" = "semantic",
 ): GalaxySpriteBatch {
   const positionAttribute = new THREE.InstancedBufferAttribute(positions, 3);
   const sizeAttribute = new THREE.InstancedBufferAttribute(sizes, 1);
   const colorAttribute = new THREE.InstancedBufferAttribute(colors, 3);
   const texture = makeGlowTexture();
   const sizeScale = uniform(initialSizeScale);
+  const ambientTime = uniform(0);
+  const ambientStrength = uniform(0);
   const material = new THREE.PointsNodeMaterial({
     alphaMap: texture,
     alphaTest: 0.015,
     transparent: true,
     depthWrite: false,
     depthTest: true,
-    opacity,
+    opacity: 1,
     sizeAttenuation: false,
     blending: THREE.NormalBlending,
   });
-  material.positionNode = instancedBufferAttribute(positionAttribute, "vec3");
+  const positionNode = vec3(
+    instancedBufferAttribute<"vec3">(positionAttribute, "vec3"),
+  );
+  const phase = positionNode.x.mul(0.017)
+    .add(positionNode.y.mul(0.011))
+    .add(positionNode.z.mul(0.007));
+  const sparkleSeed = phase.mul(5.731).sin().mul(0.5).add(0.5);
+  const sparkleMask = sparkleSeed.mul(sparkleSeed);
+  const rate = sparkleSeed.mul(1.1).add(0.52);
+  const twinkleStrength = kind === "decorative" ? 0.16 : 0.1;
+  const twinkle = ambientTime.mul(rate).add(phase).sin()
+    .mul(sparkleMask)
+    .mul(twinkleStrength)
+    .mul(ambientStrength)
+    .add(1);
+  if (kind === "decorative") {
+    const depthWeight = positionNode.z.mul(-1).sub(260).div(1300).clamp(0, 1);
+    const driftStrength = depthWeight.mul(14).add(4);
+    const driftX = ambientTime.mul(0.11).add(phase).sin()
+      .mul(driftStrength)
+      .mul(ambientStrength);
+    const driftY = ambientTime.mul(0.087).add(phase.mul(1.37)).cos()
+      .mul(driftStrength)
+      .mul(0.68)
+      .mul(ambientStrength);
+    material.positionNode = vec3(
+      positionNode.x.add(driftX),
+      positionNode.y.add(driftY),
+      positionNode.z,
+    );
+  } else {
+    material.positionNode = positionNode;
+  }
   material.sizeNode = mul(instancedBufferAttribute(sizeAttribute, "float"), sizeScale);
   material.colorNode = instancedBufferAttribute(colorAttribute, "vec3");
+  material.opacityNode = uniform(opacity).mul(twinkle);
   const sprite = new THREE.Sprite(material as unknown as THREE.SpriteMaterial);
   sprite.count = positions.length / 3;
   sprite.frustumCulled = false;
-  return { sprite, material, texture, colorAttribute, sizeAttribute, sizeScale };
+  return {
+    sprite,
+    material,
+    texture,
+    colorAttribute,
+    sizeAttribute,
+    sizeScale,
+    ambientTime,
+    ambientStrength,
+  };
 }
 
 function makeBillboardBatch(
@@ -266,7 +317,8 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
   private bufferUploadCount = 0;
   private labelAtlasBuildCount = 0;
   private avatarAtlasBuildCount = 0;
-  private animationEnabled = false;
+  private ambientMotionEnabled = false;
+  private cameraMotion = false;
   private avatarCandidateSource: FriendsGalaxyAvatarCandidateSource = "atlas";
   private avatarRosterKey = "";
   private readonly identityDetailFade = new FriendsGalaxyIdentityDetailFade();
@@ -328,6 +380,8 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
       this.semanticSizes,
       this.semanticColors,
       0.94,
+      1,
+      "semantic",
     );
     this.backgroundBatch = makeSpriteBatch(
       fixture.backgroundPositions,
@@ -335,6 +389,7 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
       this.backgroundColors,
       0.62,
       friendsGalaxyDecorativeStarScale(this.settledTransform.scale),
+      "decorative",
     );
     this.edgeGeometry = new LineSegmentsGeometry();
     this.edgePositions = new Float32Array(
@@ -420,8 +475,12 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
     );
   }
 
-  setAnimationEnabled(enabled: boolean): void {
-    this.animationEnabled = enabled;
+  setAmbientMotionEnabled(enabled: boolean): void {
+    this.ambientMotionEnabled = enabled;
+  }
+
+  setCameraMotion(active: boolean): void {
+    this.cameraMotion = active;
   }
 
   setViewDetail(detail: FriendsGalaxyViewDetail): void {
@@ -480,13 +539,26 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
   render(transform: FriendsGalaxyTransform, timeMs: number): void {
     if (!this.renderer) return;
     this.updateViewProjection(transform);
+    const ambientTime = friendsGalaxyAmbientMotionTimeSeconds(
+      timeMs,
+      this.ambientMotionEnabled,
+      this.cameraMotion,
+    );
+    const ambientStrength = ambientTime >= 0 ? 1 : 0;
+    const shaderTime = Math.max(0, ambientTime);
+    if (this.semanticBatch) {
+      this.semanticBatch.ambientTime.value = shaderTime;
+      this.semanticBatch.ambientStrength.value = ambientStrength;
+    }
     if (this.backgroundBatch) {
       this.backgroundBatch.sizeScale.value = friendsGalaxyDecorativeStarScale(transform.scale);
+      this.backgroundBatch.ambientTime.value = shaderTime;
+      this.backgroundBatch.ambientStrength.value = ambientStrength;
     }
     const identityDetailStep = this.identityDetailFade.step(
       transform.scale,
       timeMs,
-      this.animationEnabled,
+      this.ambientMotionEnabled,
     );
     if (this.avatarBatch && identityDetailStep.changed) {
       this.avatarBatch.opacity.value = identityDetailStep.opacity;
@@ -512,6 +584,8 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
       api: "Three.js WebGPU",
       semanticStarCount: this.fixture?.scene.nodeIds.length ?? 0,
       decorativeStarCount: this.fixture?.backgroundStarCount ?? 0,
+      ambientMotionEnabled: this.ambientMotionEnabled,
+      ambientMotionProfile: FRIENDS_GALAXY_AMBIENT_MOTION_PROFILE,
       drawCalls: this.drawCalls,
       labelCount: this.labelBatch?.atlas.itemCount ?? 0,
       avatarCount: this.avatarBatch?.atlas.itemCount ?? 0,
@@ -585,7 +659,8 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.contextualEdgeCount = 0;
     this.labelAtlasBuildCount = 0;
     this.avatarAtlasBuildCount = 0;
-    this.animationEnabled = false;
+    this.ambientMotionEnabled = false;
+    this.cameraMotion = false;
     this.avatarCandidateSource = "atlas";
     this.avatarRosterKey = "";
     this.identityDetailFade.restartFromHidden();

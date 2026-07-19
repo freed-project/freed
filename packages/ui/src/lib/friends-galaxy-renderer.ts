@@ -43,6 +43,8 @@ export interface FriendsGalaxyRendererMetrics {
   semanticStarCount: number;
   decorativeStarCount: number;
   motionDecorativeStarCount?: number;
+  ambientMotionEnabled?: boolean;
+  ambientMotionProfile?: string;
   drawCalls: number | null;
   labelCount: number;
   avatarCount: number;
@@ -78,7 +80,7 @@ export interface FriendsGalaxyRenderer<
   setPalette(palette: Palette): void;
   applyActivityPatches?(patches: FriendsGalaxyActivityScenePatchBatch): void;
   setAvatarImages?(images: ReadonlyMap<string, CanvasImageSource>): void;
-  setAnimationEnabled?(enabled: boolean): void;
+  setAmbientMotionEnabled?(enabled: boolean): void;
   setCameraMotion?(active: boolean): void;
   setFieldStyle?(style: FriendsGalaxyFieldStyle): void;
   setViewDetail(detail: FriendsGalaxyViewDetail): void;

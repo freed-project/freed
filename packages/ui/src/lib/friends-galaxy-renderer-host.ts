@@ -48,7 +48,7 @@ export class FriendsGalaxyRendererHost {
   private width = 1;
   private height = 1;
   private pixelRatio = 1;
-  private animationEnabled = true;
+  private ambientMotionEnabled = true;
   private cameraMotion = false;
   private fieldStyle: FriendsGalaxyFieldStyle = "nebula";
   private interaction: FriendsGalaxyInteraction = {
@@ -137,9 +137,9 @@ export class FriendsGalaxyRendererHost {
     this.activeBackend?.setPalette(palette);
   }
 
-  setAnimationEnabled(enabled: boolean): void {
-    this.animationEnabled = enabled;
-    this.activeBackend?.setAnimationEnabled?.(enabled);
+  setAmbientMotionEnabled(enabled: boolean): void {
+    this.ambientMotionEnabled = enabled;
+    this.activeBackend?.setAmbientMotionEnabled?.(enabled);
   }
 
   setCameraMotion(active: boolean): void {
@@ -206,7 +206,7 @@ export class FriendsGalaxyRendererHost {
   }
 
   private applyState(backend: FriendsGalaxyRendererBackend): void {
-    backend.setAnimationEnabled?.(this.animationEnabled);
+    backend.setAmbientMotionEnabled?.(this.ambientMotionEnabled);
     backend.setCameraMotion?.(this.cameraMotion);
     backend.setFieldStyle?.(this.fieldStyle);
     backend.resize(this.width, this.height, this.pixelRatio);

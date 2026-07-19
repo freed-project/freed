@@ -55,11 +55,11 @@ export class FriendsGalaxyIdentityDetailFade {
   step(
     scale: number,
     timeMs: number,
-    animationEnabled: boolean,
+    motionEnabled: boolean,
   ): FriendsGalaxyIdentityDetailFadeStep {
     const nextTarget = friendsGalaxyIdentityDetailTargetOpacity(scale);
     this.targetOpacity = nextTarget;
-    if (!animationEnabled) {
+    if (!motionEnabled) {
       const changed = Math.abs(this.opacity - nextTarget) > CHANGED_OPACITY_EPSILON;
       this.opacity = nextTarget;
       this.lastFrameTimeMs = Number.isFinite(timeMs) ? timeMs : Number.NaN;

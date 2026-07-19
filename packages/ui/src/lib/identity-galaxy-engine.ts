@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { friendsGalaxyDecorativeStarScale } from "./friends-galaxy-decorative-star-scale.js";
+import { friendsGalaxyAmbientMotionTimeSeconds } from "./friends-galaxy-ambient-motion.js";
 import type {
   IdentityGraphAtlas,
   IdentityGraphAtlasQuality,
@@ -163,7 +164,7 @@ function graphNodeColor(
   return colorFromCss(providerColor(provider ?? undefined, palette), "#38bdf8");
 }
 
-function makePointMaterial(): THREE.ShaderMaterial {
+function makePointMaterial(ambientTime: { value: number }): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
@@ -172,16 +173,34 @@ function makePointMaterial(): THREE.ShaderMaterial {
     uniforms: {
       pixelRatio: { value: Math.min(1.5, window.devicePixelRatio || 1) },
       decorativeScale: { value: 1 },
+      ambientTime,
     },
     vertexShader: `
       attribute float pointSize;
       uniform float decorativeScale;
+      uniform float ambientTime;
       varying vec3 vColor;
       varying float vAlpha;
+      varying float vTwinkle;
 
       void main() {
         vColor = color;
-        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        vec3 animatedPosition = position;
+        if (ambientTime >= 0.0) {
+          float phase = position.x * 0.017 + position.y * 0.011 + position.z * 0.007;
+          float depthWeight = clamp((-position.z - 260.0) / 1300.0, 0.0, 1.0);
+          float driftStrength = mix(4.0, 18.0, depthWeight);
+          animatedPosition.x += sin(ambientTime * 0.11 + phase) * driftStrength;
+          animatedPosition.y += cos(ambientTime * 0.087 + phase * 1.37) * driftStrength * 0.68;
+          float sparkleSeed = fract(sin(phase * 5.731) * 43758.5453);
+          float sparkleMask = smoothstep(0.18, 1.0, sparkleSeed);
+          float rate = 0.52 + sparkleSeed * 1.1;
+          vTwinkle = 1.0 + sin(ambientTime * rate + phase) *
+            (0.05 + sparkleSeed * 0.11) * sparkleMask;
+        } else {
+          vTwinkle = 1.0;
+        }
+        vec4 mvPosition = modelViewMatrix * vec4(animatedPosition, 1.0);
         gl_PointSize = pointSize * decorativeScale;
         gl_Position = projectionMatrix * mvPosition;
         vAlpha = clamp(pointSize / 48.0, 0.36, 1.0);
@@ -190,13 +209,14 @@ function makePointMaterial(): THREE.ShaderMaterial {
     fragmentShader: `
       varying vec3 vColor;
       varying float vAlpha;
+      varying float vTwinkle;
 
       void main() {
         vec2 center = gl_PointCoord - vec2(0.5);
         float distanceFromCenter = length(center);
         float core = 1.0 - smoothstep(0.02, 0.34, distanceFromCenter);
         float halo = (1.0 - smoothstep(0.08, 0.5, distanceFromCenter)) * 0.52;
-        float alpha = max(core, halo) * vAlpha;
+        float alpha = max(core, halo) * vAlpha * vTwinkle;
         if (alpha < 0.02) discard;
         gl_FragColor = vec4(vColor, alpha);
       }
@@ -224,7 +244,7 @@ function makeGalaxyStarGeometry(): THREE.InstancedBufferGeometry {
   return geometry;
 }
 
-function makeGalaxyStarMaterial(): THREE.ShaderMaterial {
+function makeGalaxyStarMaterial(ambientTime: { value: number }): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
@@ -233,9 +253,11 @@ function makeGalaxyStarMaterial(): THREE.ShaderMaterial {
     uniforms: {
       resolution: { value: new THREE.Vector2(1, 1) },
       lightSurface: { value: 0 },
+      ambientTime,
     },
     vertexShader: `
       uniform vec2 resolution;
+      uniform float ambientTime;
       attribute vec2 starUv;
       attribute vec3 instancePosition;
       attribute vec3 instanceColor;
@@ -246,6 +268,7 @@ function makeGalaxyStarMaterial(): THREE.ShaderMaterial {
       varying vec3 vStarColor;
       varying float vProminence;
       varying float vHighlight;
+      varying float vTwinkle;
 
       void main() {
         vec4 viewCenter = modelViewMatrix * vec4(instancePosition, 1.0);
@@ -258,6 +281,17 @@ function makeGalaxyStarMaterial(): THREE.ShaderMaterial {
         vStarColor = instanceColor;
         vProminence = instanceProminence;
         vHighlight = instanceHighlight;
+        if (ambientTime >= 0.0) {
+          float phase = instancePosition.x * 0.017 + instancePosition.y * 0.011 +
+            instancePosition.z * 0.007;
+          float sparkleSeed = fract(sin(phase * 5.731) * 43758.5453);
+          float sparkleMask = smoothstep(0.18, 1.0, sparkleSeed);
+          float rate = 0.52 + sparkleSeed * 1.1;
+          float strength = (0.025 + sparkleSeed * 0.075) * (1.0 - instanceHighlight * 0.6);
+          vTwinkle = 1.0 + sin(ambientTime * rate + phase) * strength * sparkleMask;
+        } else {
+          vTwinkle = 1.0;
+        }
       }
     `,
     fragmentShader: `
@@ -265,6 +299,7 @@ function makeGalaxyStarMaterial(): THREE.ShaderMaterial {
       varying vec3 vStarColor;
       varying float vProminence;
       varying float vHighlight;
+      varying float vTwinkle;
       uniform float lightSurface;
 
       void main() {
@@ -279,7 +314,7 @@ function makeGalaxyStarMaterial(): THREE.ShaderMaterial {
         float rays = rayShape * (1.0 - smoothstep(0.08, 0.94, radius)) * vProminence * 0.2;
         float outerRing = smoothstep(0.6, 0.68, radius) - smoothstep(0.74, 0.82, radius);
         float selectionRing = outerRing * vHighlight * 0.82;
-        float alpha = clamp(core + corona + rays + selectionRing, 0.0, 1.0);
+        float alpha = clamp((core + corona + rays) * vTwinkle + selectionRing, 0.0, 1.0);
         vec3 hotColor = mix(vec3(1.0), vStarColor * 0.5, lightSurface);
         vec3 color = mix(vStarColor, hotColor, hotCore * 0.76 + rays * 0.22);
         color = mix(color, vec3(1.0), selectionRing * 0.5);
@@ -354,7 +389,11 @@ function makeGalaxyEdgeMaterial(): THREE.ShaderMaterial {
   });
 }
 
-function makeProviderNebulaMaterial(color: THREE.Color, provider: string): THREE.ShaderMaterial {
+function makeProviderNebulaMaterial(
+  color: THREE.Color,
+  provider: string,
+  ambientTime: { value: number },
+): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
@@ -366,6 +405,7 @@ function makeProviderNebulaMaterial(color: THREE.Color, provider: string): THREE
       seed: { value: providerGalaxySeed(provider) },
       arms: { value: providerGalaxyArmCount(provider) },
       opacity: { value: 0.3 },
+      ambientTime,
     },
     vertexShader: `
       varying vec2 vUv;
@@ -380,6 +420,7 @@ function makeProviderNebulaMaterial(color: THREE.Color, provider: string): THREE
       uniform float seed;
       uniform float arms;
       uniform float opacity;
+      uniform float ambientTime;
       varying vec2 vUv;
 
       float hash21(vec2 point) {
@@ -412,12 +453,16 @@ function makeProviderNebulaMaterial(color: THREE.Color, provider: string): THREE
 
       void main() {
         vec2 point = (vUv - 0.5) * 2.0;
+        float fieldTime = max(ambientTime, 0.0);
+        vec2 drift = vec2(fieldTime * 0.0075, -fieldTime * 0.0054);
         float radius = length(point);
         float angle = atan(point.y, point.x);
-        float turbulence = fbm(point * 3.1 + seed * 17.0);
+        float turbulence = fbm(point * 3.1 + seed * 17.0 + drift);
         float warpedRadius = radius + (turbulence - 0.5) * 0.25 + sin(angle * 5.0 + seed * 19.0) * 0.045;
         float envelope = 1.0 - smoothstep(0.48, 1.08, warpedRadius);
-        float spiral = 0.5 + 0.5 * cos(angle * arms - radius * 10.8 + seed * 6.28318);
+        float spiral = 0.5 + 0.5 * cos(
+          angle * arms - radius * 10.8 + seed * 6.28318 + fieldTime * 0.018
+        );
         spiral = pow(spiral, 4.0);
         float core = 1.0 - smoothstep(0.02, 0.48, warpedRadius);
         float dust = envelope * (0.18 + spiral * 0.82) * (0.38 + turbulence * 0.86);
@@ -961,16 +1006,17 @@ class StarfieldGraphRenderer {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(IDENTITY_GALAXY_CAMERA_FOV, 1, 1, 20_000);
+  private readonly ambientTimeUniform = { value: -1 };
   private readonly graphGroup = new THREE.Group();
   private readonly regionGroup = new THREE.Group();
   private readonly labelGroup = new THREE.Group();
   private readonly nodeGeometry = makeGalaxyStarGeometry();
-  private readonly nodeMaterial = makeGalaxyStarMaterial();
+  private readonly nodeMaterial = makeGalaxyStarMaterial(this.ambientTimeUniform);
   private readonly nodeStars: THREE.Mesh;
   private readonly edgeGeometry = makeGalaxyEdgeGeometry();
   private readonly edgeMaterial = makeGalaxyEdgeMaterial();
   private readonly edgeLines: THREE.Mesh;
-  private readonly starMaterial = makePointMaterial();
+  private readonly starMaterial = makePointMaterial(this.ambientTimeUniform);
   private readonly labelGeometry: THREE.InstancedBufferGeometry;
   private readonly labelMaterial: THREE.ShaderMaterial;
   private readonly labelGlyphs: THREE.Mesh;
@@ -1106,8 +1152,18 @@ class StarfieldGraphRenderer {
     this.syncNodes(galaxyScene, palette);
   }
 
-  render(transform: ViewTransform): void {
+  render(
+    transform: ViewTransform,
+    timeMs: number,
+    ambientMotionEnabled: boolean,
+    cameraInMotion: boolean,
+  ): void {
     if (this.disposed) return;
+    this.ambientTimeUniform.value = friendsGalaxyAmbientMotionTimeSeconds(
+      timeMs,
+      ambientMotionEnabled,
+      cameraInMotion,
+    );
     this.applyCamera(transform);
     this.starMaterial.uniforms.decorativeScale.value =
       friendsGalaxyDecorativeStarScale(transform.scale);
@@ -1312,7 +1368,11 @@ class StarfieldGraphRenderer {
       if (variation === "nebula-rings" || variation === "nebula") {
         const haze = new THREE.Mesh(
           new THREE.PlaneGeometry(2, 2),
-          makeProviderNebulaMaterial(color, region.provider),
+          makeProviderNebulaMaterial(
+            color,
+            region.provider,
+            this.ambientTimeUniform,
+          ),
         );
         haze.position.set(region.x, -region.y, -182);
         haze.scale.set(region.radiusX * 1.12, region.radiusY * 1.12, 1);
@@ -1488,6 +1548,8 @@ export class IdentityGalaxyEngine {
   private variation: IdentityGalaxyVariation = "nebula";
   private fallbackLabelCount = 0;
   private fallbackReadyLabelCount = 0;
+  private ambientMotionEnabled = false;
+  private cameraInMotion = false;
 
   constructor(canvas: HTMLCanvasElement, paletteElement: HTMLElement | null) {
     this.canvas = canvas;
@@ -1518,6 +1580,14 @@ export class IdentityGalaxyEngine {
 
   resize(width: number, height: number): void {
     this.renderer?.resize(width, height);
+  }
+
+  setAmbientMotionEnabled(enabled: boolean): void {
+    this.ambientMotionEnabled = enabled;
+  }
+
+  setCameraMotion(active: boolean): void {
+    this.cameraInMotion = active;
   }
 
   syncScene(
@@ -1551,9 +1621,14 @@ export class IdentityGalaxyEngine {
     }
   }
 
-  render(transform: ViewTransform): void {
+  render(transform: ViewTransform, timeMs = performance.now()): void {
     if (this.renderer) {
-      this.renderer.render(transform);
+      this.renderer.render(
+        transform,
+        timeMs,
+        this.ambientMotionEnabled,
+        this.cameraInMotion,
+      );
       return;
     }
     if (!this.atlas || !this.scene || !this.palette) return;
@@ -1586,6 +1661,8 @@ export class IdentityGalaxyEngine {
     this.palette = null;
     this.fallbackLabelCount = 0;
     this.fallbackReadyLabelCount = 0;
+    this.ambientMotionEnabled = false;
+    this.cameraInMotion = false;
     fallbackStarfieldBackgrounds.delete(this.canvas);
   }
 }

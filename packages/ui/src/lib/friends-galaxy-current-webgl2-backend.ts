@@ -14,6 +14,7 @@ import {
   type FriendsGalaxyInteraction,
 } from "./friends-galaxy-scene-index.js";
 import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
+import { FRIENDS_GALAXY_FIELD_AMBIENT_MOTION_PROFILE } from "./friends-galaxy-ambient-motion.js";
 
 function cssRgb(value: string): string {
   return friendsGalaxyHexToRgb(value).map((part) => Math.round(part * 255)).join(" ");
@@ -44,6 +45,8 @@ export class CurrentWebGl2Backend implements FriendsGalaxyRendererBackend {
   private readonly touchedInteractionIndices = new Set<number>();
   private selectedPersonId: string | null = null;
   private selectedAccountId: string | null = null;
+  private ambientMotionEnabled = false;
+  private cameraMotion = false;
 
   async initialize(
     canvas: HTMLCanvasElement,
@@ -86,6 +89,16 @@ export class CurrentWebGl2Backend implements FriendsGalaxyRendererBackend {
     // The current engine performs its own collision-based settled label layout.
   }
 
+  setAmbientMotionEnabled(enabled: boolean): void {
+    this.ambientMotionEnabled = enabled;
+    this.engine?.setAmbientMotionEnabled(enabled);
+  }
+
+  setCameraMotion(active: boolean): void {
+    this.cameraMotion = active;
+    this.engine?.setCameraMotion(active);
+  }
+
   pickNode(viewportX: number, viewportY: number): string | null {
     if (!this.engine || !this.fixture) return null;
     return this.engine.pickNode(viewportX, viewportY, this.fixture.scene.nodeIds);
@@ -115,8 +128,8 @@ export class CurrentWebGl2Backend implements FriendsGalaxyRendererBackend {
     this.bufferUploadCount += 1;
   }
 
-  render(transform: FriendsGalaxyTransform, _timeMs: number): void {
-    this.engine?.render(transform);
+  render(transform: FriendsGalaxyTransform, timeMs: number): void {
+    this.engine?.render(transform, timeMs);
   }
 
   metrics(): FriendsGalaxyRendererMetrics {
@@ -128,6 +141,11 @@ export class CurrentWebGl2Backend implements FriendsGalaxyRendererBackend {
         : "Three.js WebGL2",
       semanticStarCount: this.fixture?.scene.nodeIds.length ?? 0,
       decorativeStarCount: this.decorativeStarCount,
+      ambientMotionEnabled: this.engine?.rendererType === "three-starfield" &&
+        this.ambientMotionEnabled,
+      ambientMotionProfile: this.engine?.rendererType === "three-starfield"
+        ? FRIENDS_GALAXY_FIELD_AMBIENT_MOTION_PROFILE
+        : undefined,
       drawCalls: null,
       labelCount: this.engine?.readyLabelCount ?? 0,
       avatarCount: 0,
@@ -148,6 +166,8 @@ export class CurrentWebGl2Backend implements FriendsGalaxyRendererBackend {
     this.touchedInteractionIndices.clear();
     this.selectedPersonId = null;
     this.selectedAccountId = null;
+    this.ambientMotionEnabled = false;
+    this.cameraMotion = false;
   }
 
   private syncScene(): void {

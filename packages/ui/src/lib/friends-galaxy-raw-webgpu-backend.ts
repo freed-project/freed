@@ -63,6 +63,7 @@ import {
   type FriendsGalaxyInteractionRole,
   type FriendsGalaxyInteractionState,
 } from "./friends-galaxy-scene-index.js";
+import { FRIENDS_GALAXY_FIELD_AMBIENT_MOTION_PROFILE } from "./friends-galaxy-ambient-motion.js";
 
 const INSTANCE_FLOATS = FRIENDS_GALAXY_STAR_INSTANCE_FLOATS;
 const INSTANCE_STRIDE = INSTANCE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
@@ -196,7 +197,7 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   }
   let octaveCount = 4u;
   let fieldTime = max(uniforms.time, 0.0);
-  let drift = vec2<f32>(fieldTime * 0.0024, -fieldTime * 0.0017);
+  let drift = vec2<f32>(fieldTime * 0.0075, -fieldTime * 0.0054);
   let warp = vec2<f32>(
     fbm(point * 1.72 + vec2<f32>(seed * 9.1, seed * 4.3) + drift, octaveCount),
     fbm(point * 1.72 + vec2<f32>(seed * 5.7 + 19.4, seed * 11.3) - drift, octaveCount),
@@ -233,8 +234,10 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
 
   let armFade = smoothstep(0.18, 0.48, radius) *
     (1.0 - smoothstep(0.82, 1.08, radius));
-  let armPhase = angle * arms - radius * 9.2 + seed * 6.28318 + warp.x * 3.2;
-  let secondaryPhase = angle * (arms + 1.0) - radius * 12.8 + seed * 11.0 - warp.y * 2.4;
+  let armPhase = angle * arms - radius * 9.2 + seed * 6.28318 +
+    warp.x * 3.2 + fieldTime * 0.018;
+  let secondaryPhase = angle * (arms + 1.0) - radius * 12.8 + seed * 11.0 -
+    warp.y * 2.4 - fieldTime * 0.013;
   let primaryArm = smoothstep(0.63, 0.94, 0.5 + 0.5 * cos(armPhase));
   let secondaryArm = smoothstep(0.76, 0.97, 0.5 + 0.5 * cos(secondaryPhase));
   let streamBreakup = smoothstep(
@@ -301,8 +304,19 @@ struct VertexOutput {
 @vertex
 fn vertexMain(input: VertexInput) -> VertexOutput {
   var output: VertexOutput;
-  var clip = uniforms.viewProjection * vec4<f32>(input.center, 1.0);
   let role = u32(clamp(round(input.appearance.y), 0.0, ${String(FriendsGalaxyStarColorRole.Selection)}.0));
+  var center = input.center;
+  if (
+    uniforms.time >= 0.0 &&
+    role == ${String(FriendsGalaxyStarColorRole.Background)}u
+  ) {
+    let phase = input.center.x * 0.017 + input.center.y * 0.011 + input.center.z * 0.007;
+    let depthWeight = clamp((-input.center.z - 260.0) / 1300.0, 0.0, 1.0);
+    let driftStrength = mix(4.0, 18.0, depthWeight);
+    center.x += sin(uniforms.time * 0.11 + phase) * driftStrength;
+    center.y += cos(uniforms.time * 0.087 + phase * 1.37) * driftStrength * 0.68;
+  }
+  var clip = uniforms.viewProjection * vec4<f32>(center, 1.0);
   let decorativeScale = clamp(
     ${String(FRIENDS_GALAXY_DECORATIVE_STAR_MIN_SCALE)} +
       abs(uniforms.cameraScale) * ${String(FRIENDS_GALAXY_DECORATIVE_STAR_SCALE_SLOPE)},
@@ -327,7 +341,17 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
   var twinkle = 1.0;
   if (uniforms.time >= 0.0) {
     let phase = input.center.x * 0.017 + input.center.y * 0.011 + input.center.z * 0.007;
-    twinkle = 0.91 + sin(uniforms.time * 1.15 + phase) * 0.09;
+    let sparkleSeed = fract(sin(phase * 5.731) * 43758.5453);
+    let sparkleMask = smoothstep(0.18, 1.0, sparkleSeed);
+    let backgroundStrength = 0.05 + sparkleSeed * 0.11;
+    let semanticStrength = 0.025 + sparkleSeed * 0.075;
+    let strength = select(
+      semanticStrength,
+      backgroundStrength,
+      role == ${String(FriendsGalaxyStarColorRole.Background)}u,
+    );
+    let rate = 0.52 + sparkleSeed * 1.1;
+    twinkle = 1.0 + sin(uniforms.time * rate + phase) * strength * sparkleMask;
   }
   output.twinkle = twinkle;
   return output;
@@ -564,7 +588,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
   private viewDetail: FriendsGalaxyViewDetail = "overview";
   private fieldStyle: FriendsGalaxyFieldStyle = "nebula";
   private contextualEdgeCount = 0;
-  private animationEnabled = false;
+  private ambientMotionEnabled = false;
   private cameraMotion = false;
   private appliedActivityNodeCount = 0;
   private clearColor: GPUColor = { r: 0, g: 0, b: 0, a: 1 };
@@ -934,8 +958,8 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     }
   }
 
-  setAnimationEnabled(enabled: boolean): void {
-    this.animationEnabled = enabled;
+  setAmbientMotionEnabled(enabled: boolean): void {
+    this.ambientMotionEnabled = enabled;
   }
 
   setCameraMotion(active: boolean): void {
@@ -1007,14 +1031,14 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
       this.uniformData,
       timeMs,
       transform.scale,
-      this.animationEnabled,
+      this.ambientMotionEnabled,
       this.cameraMotion,
     );
     this.device.queue.writeBuffer(this.uniformBuffer, 0, this.uniformData);
     const identityDetailStep = this.identityDetailFade.step(
       transform.scale,
       timeMs,
-      this.animationEnabled,
+      this.ambientMotionEnabled,
     );
     if (identityDetailStep.changed && this.avatarOpacityBuffer) {
       this.avatarOpacityData[0] = identityDetailStep.opacity;
@@ -1056,6 +1080,8 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
       motionDecorativeStarCount: friendsGalaxyMotionBackgroundStarCount(
         this.fixture?.backgroundStarCount ?? 0,
       ),
+      ambientMotionEnabled: this.ambientMotionEnabled,
+      ambientMotionProfile: FRIENDS_GALAXY_FIELD_AMBIENT_MOTION_PROFILE,
       drawCalls: 2 + (this.providerFields && this.providerFields.count > 0 ? 1 : 0) +
         (this.interactionInstanceCount > 0 ? 1 : 0) +
         (this.labelAtlas && this.labelAtlas.labels.length > 0 ? 1 : 0) +
@@ -1156,7 +1182,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.interactionRoles = new Map();
     this.interactionInstanceCount = 0;
     this.contextualEdgeCount = 0;
-    this.animationEnabled = false;
+    this.ambientMotionEnabled = false;
     this.cameraMotion = false;
     this.settledProjectionValid = false;
     this.appliedActivityNodeCount = 0;

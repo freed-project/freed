@@ -1,4 +1,5 @@
 import { IDENTITY_GALAXY_CAMERA_FOV } from "./identity-galaxy-camera.js";
+import { friendsGalaxyAmbientMotionTimeSeconds } from "./friends-galaxy-ambient-motion.js";
 import type {
   FriendsGalaxyTransform,
   FriendsGalaxyViewportInsets,
@@ -255,11 +256,15 @@ export function writeFriendsGalaxyWebGpuMotionUniforms(
   target: Float32Array,
   timeMs: number,
   cameraScale: number,
-  animationEnabled: boolean,
+  ambientMotionEnabled: boolean,
   cameraInMotion: boolean,
 ): void {
   const safeScale = Math.max(0.0001, Math.abs(cameraScale));
-  target[18] = animationEnabled && !cameraInMotion ? timeMs / 1_000 : -1;
+  target[18] = friendsGalaxyAmbientMotionTimeSeconds(
+    timeMs,
+    ambientMotionEnabled,
+    cameraInMotion,
+  );
   target[19] = cameraInMotion ? -safeScale : safeScale;
 }
 

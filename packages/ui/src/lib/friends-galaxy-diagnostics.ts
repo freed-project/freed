@@ -9,7 +9,7 @@ import type {
 import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
 import type { FriendsGalaxyLongTaskSnapshot } from "./friends-galaxy-long-tasks.js";
 
-export const FRIENDS_GALAXY_DIAGNOSTIC_SCHEMA_VERSION = 1;
+export const FRIENDS_GALAXY_DIAGNOSTIC_SCHEMA_VERSION = 2;
 
 export interface FriendsGalaxyDiagnosticSourceReceipt {
   semanticNodeCount: number;
@@ -107,6 +107,8 @@ export interface FriendsGalaxyDiagnosticSnapshot {
     semanticStarCount: number | null;
     decorativeStarCount: number | null;
     motionDecorativeStarCount: number | null;
+    ambientMotionEnabled: boolean | null;
+    ambientMotionProfile: string | null;
     drawCalls: number | null;
     renderBundleCount: number | null;
     submissionMode: string | null;
@@ -211,6 +213,8 @@ export function createFriendsGalaxyDiagnosticSnapshot(
       semanticStarCount: finiteOrNull(backend?.semanticStarCount),
       decorativeStarCount: finiteOrNull(backend?.decorativeStarCount),
       motionDecorativeStarCount: finiteOrNull(backend?.motionDecorativeStarCount),
+      ambientMotionEnabled: backend?.ambientMotionEnabled ?? null,
+      ambientMotionProfile: boundedText(backend?.ambientMotionProfile, 128),
       drawCalls: finiteOrNull(backend?.drawCalls),
       renderBundleCount: finiteOrNull(backend?.renderBundleCount),
       submissionMode: boundedText(backend?.submissionMode, 128),

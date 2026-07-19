@@ -5,6 +5,7 @@ import {
   friendsGalaxyFrameStats,
   serializeFriendsGalaxyDiagnosticSnapshot,
 } from "../../src/lib/friends-galaxy-diagnostics.js";
+import { FRIENDS_GALAXY_FIELD_AMBIENT_MOTION_PROFILE } from "../../src/lib/friends-galaxy-ambient-motion.js";
 
 const backend: FriendsGalaxyRendererMetrics = {
   id: "raw-webgpu",
@@ -13,6 +14,8 @@ const backend: FriendsGalaxyRendererMetrics = {
   semanticStarCount: 30_000,
   decorativeStarCount: 100_000,
   motionDecorativeStarCount: 50_000,
+  ambientMotionEnabled: true,
+  ambientMotionProfile: FRIENDS_GALAXY_FIELD_AMBIENT_MOTION_PROFILE,
   drawCalls: 4,
   labelCount: 20,
   avatarCount: 6,
@@ -116,7 +119,7 @@ describe("Friends Galaxy diagnostic export", () => {
     const serialized = serializeFriendsGalaxyDiagnosticSnapshot(snapshot);
 
     expect(snapshot).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       source: {
         activitySummaryCount: 25_000,
         representedActivityItemCount: 250_000,
@@ -125,6 +128,8 @@ describe("Friends Galaxy diagnostic export", () => {
       renderer: {
         id: "raw-webgpu",
         residentStarUploadCount: 2,
+        ambientMotionEnabled: true,
+        ambientMotionProfile: FRIENDS_GALAXY_FIELD_AMBIENT_MOTION_PROFILE,
       },
       presentation: {
         identityDetailOpacity: 0.72,

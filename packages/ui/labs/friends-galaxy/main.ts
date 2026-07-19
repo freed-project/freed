@@ -107,7 +107,8 @@ const integerFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 
 const scaleFormat = new Intl.NumberFormat(undefined, { maximumSignificantDigits: 3 });
 type GalaxyLabWheelInputMode = "idle" | "two-finger-pan" | "pinch-zoom";
 const labParameters = new URLSearchParams(window.location.search);
-const animationProbeDisabled = labParameters.get("animate") === "0";
+const ambientMotionProbeDisabled = labParameters.get("motion") === "0" ||
+  labParameters.get("animate") === "0";
 const pixelRatioParameter = Number.parseFloat(labParameters.get("dpr") ?? "");
 const pixelRatioOverride = Number.isFinite(pixelRatioParameter) && pixelRatioParameter > 0
   ? pixelRatioParameter
@@ -135,7 +136,7 @@ const fieldStyleSelect = requiredElement<HTMLSelectElement>("field-style");
 const fitButton = requiredElement<HTMLButtonElement>("fit");
 const copyDiagnosticsButton = requiredElement<HTMLButtonElement>("copy-diagnostics");
 const simulateLossButton = requiredElement<HTMLButtonElement>("simulate-loss");
-const animateControl = requiredElement<HTMLInputElement>("animate");
+const ambientMotionControl = requiredElement<HTMLInputElement>("ambient-motion");
 const statusElement = requiredElement<HTMLElement>("status");
 const metricsElement = requiredElement<HTMLElement>("metrics");
 const nativeTouchInput = navigator.maxTouchPoints > 0 && "ontouchstart" in window;
@@ -144,8 +145,9 @@ viewport.dataset.touchInputMode = nativeTouchInput
   : "pointer-events";
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 const longTaskMonitor = new FriendsGalaxyLongTaskMonitor();
-let animatePreferenceTouched = false;
-animateControl.checked = !animationProbeDisabled && !reducedMotionQuery.matches;
+let ambientMotionPreferenceTouched = false;
+let ambientMotionActive = false;
+ambientMotionControl.checked = !ambientMotionProbeDisabled && !reducedMotionQuery.matches;
 
 function setStatus(message: string, error = false): void {
   statusElement.textContent = message;
@@ -800,6 +802,7 @@ const rendererHost = new FriendsGalaxyRendererHost({
     canvas.remove();
   },
   onLoading: ({ id, recovery, reason }) => {
+    ambientMotionActive = false;
     if (cancelCameraInertia()) setCameraInMotion(false);
     avatarAdmissionGeneration += 1;
     avatarAdmissionState.reset();
@@ -828,6 +831,7 @@ const rendererHost = new FriendsGalaxyRendererHost({
     resetSamples();
     markGalaxyDirty();
     const metrics = activation.backend.metrics();
+    ambientMotionActive = metrics.ambientMotionEnabled === true;
     lastRecoveryReason = activation.fallbackReason;
     setStatus(
       activation.fallbackReason
@@ -842,7 +846,8 @@ const rendererHost = new FriendsGalaxyRendererHost({
   },
   onFailure: ({ id, reason, phase }) => {
     lastRecoveryReason = reason;
-    animateControl.checked = false;
+    ambientMotionActive = false;
+    ambientMotionControl.checked = false;
     setStatus(
       phase === "runtime" && id === "current-webgl2"
         ? `Compatibility renderer failed: ${reason}`
@@ -857,7 +862,7 @@ const rendererHost = new FriendsGalaxyRendererHost({
 
 async function activateBackend(id: FriendsGalaxyRendererId): Promise<void> {
   resizeRendererHost();
-  rendererHost.setAnimationEnabled(animateControl.checked);
+  rendererHost.setAmbientMotionEnabled(ambientMotionControl.checked);
   rendererHost.setCameraMotion(cameraInMotion);
   rendererHost.setFieldStyle(activeFieldStyle);
   rendererHost.setInteraction(interaction);
@@ -899,10 +904,18 @@ function updateMetrics(): void {
     return;
   }
   const metrics = rendererHost.activeBackend.metrics();
+  ambientMotionActive = metrics.ambientMotionEnabled === true;
   addMetric("Renderer", metrics.label);
   addMetric("API", metrics.api);
   addMetric("Semantic stars", integerFormat.format(metrics.semanticStarCount));
   addMetric("Background stars", integerFormat.format(metrics.decorativeStarCount));
+  viewport.dataset.ambientMotion = metrics.ambientMotionEnabled ? "active" : "off";
+  addMetric(
+    "Ambient motion",
+    metrics.ambientMotionEnabled
+      ? metrics.ambientMotionProfile ?? "Active"
+      : "Off",
+  );
   addMetric(
     "Activity summaries",
     integerFormat.format(fixtureWorkerReceipt.activitySummaryCount),
@@ -1099,10 +1112,10 @@ function renderFrame(timeMs: number): void {
   const shouldRender = Boolean(
     canPresentGalaxy() && rendererHost.activeBackend &&
     !rendererHost.recoveryPending && !rendererHost.terminalFailure &&
-    (animateControl.checked || dirty || presentationTransitionActive),
+    (ambientMotionActive || dirty || presentationTransitionActive),
   );
   if (shouldRender && rendererHost.activeBackend) {
-    if (lastFrameAt > 0 && animateControl.checked) {
+    if (lastFrameAt > 0 && ambientMotionActive) {
       frameSamples.push(timeMs - lastFrameAt);
     }
     lastFrameAt = timeMs;
@@ -1120,7 +1133,7 @@ function renderFrame(timeMs: number): void {
     lastFrameAt = 0;
   }
   if (
-    (metricsDirty || animateControl.checked) &&
+    (metricsDirty || ambientMotionActive) &&
     shouldRefreshFriendsGalaxyDiagnostics(cameraInMotion, timeMs - lastMetricsAt)
   ) {
     updateMetrics();
@@ -1132,7 +1145,7 @@ function renderFrame(timeMs: number): void {
   const backendRenderable = backendReady &&
     !rendererHost.recoveryPending && !rendererHost.terminalFailure;
   if (shouldContinueFriendsGalaxyFrame(
-    backendRenderable && animateControl.checked,
+    backendRenderable && ambientMotionActive,
     backendRenderable && dirty,
     settleScheduler.isPending || inertialPan.isActive || inertialZoom.isActive ||
       wheelZoomReleaseAt > 0 ||
@@ -2030,9 +2043,10 @@ fieldStyleSelect.addEventListener("change", () => {
   markGalaxyDirty();
 });
 
-animateControl.addEventListener("change", () => {
-  animatePreferenceTouched = true;
-  rendererHost.setAnimationEnabled(animateControl.checked);
+ambientMotionControl.addEventListener("change", () => {
+  ambientMotionPreferenceTouched = true;
+  rendererHost.setAmbientMotionEnabled(ambientMotionControl.checked);
+  ambientMotionActive = rendererHost.activeBackend?.metrics().ambientMotionEnabled === true;
   resetSamples();
   markGalaxyDirty();
 });
@@ -2046,9 +2060,10 @@ function syncReducedMotionPreference(): void {
     scheduleSettledViewDetail();
   }
   syncGraphDescription();
-  if (animatePreferenceTouched || animationProbeDisabled) return;
-  animateControl.checked = !reducedMotionQuery.matches;
-  rendererHost.setAnimationEnabled(animateControl.checked);
+  if (ambientMotionPreferenceTouched || ambientMotionProbeDisabled) return;
+  ambientMotionControl.checked = !reducedMotionQuery.matches;
+  rendererHost.setAmbientMotionEnabled(ambientMotionControl.checked);
+  ambientMotionActive = rendererHost.activeBackend?.metrics().ambientMotionEnabled === true;
   resetSamples();
   markGalaxyDirty();
 }
@@ -2096,7 +2111,7 @@ const backendHealthPoll = window.setInterval(() => {
   pollBackendHealth();
   if (
     canPresentGalaxy() && rendererHost.activeBackend && !rendererHost.terminalFailure &&
-    (animateControl.checked || (metricsDirty && !cameraInMotion))
+    (ambientMotionActive || (metricsDirty && !cameraInMotion))
   ) requestGalaxyFrame();
 }, 250);
 

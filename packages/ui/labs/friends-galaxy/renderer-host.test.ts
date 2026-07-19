@@ -42,8 +42,8 @@ class FakeRendererBackend implements FriendsGalaxyRendererBackend {
     this.events.push(`activity:${patches.revision}`);
   }
 
-  setAnimationEnabled(enabled: boolean): void {
-    this.events.push(`animation:${enabled}`);
+  setAmbientMotionEnabled(enabled: boolean): void {
+    this.events.push(`ambient:${enabled}`);
   }
 
   setCameraMotion(active: boolean): void {
@@ -136,7 +136,7 @@ describe("Friends Galaxy renderer host", () => {
       },
     });
     host.resize(390, 844, 1.5);
-    host.setAnimationEnabled(false);
+    host.setAmbientMotionEnabled(false);
     host.setCameraMotion(true);
     host.setFieldStyle("rings");
     host.setInteraction({ selectedNodeId: "person:1", hoveredNodeId: "account:2" });
@@ -152,7 +152,7 @@ describe("Friends Galaxy renderer host", () => {
     expect(backends[0]?.disposed).toBe(true);
     expect(backends[1]?.events).toEqual([
       "initialize:9:#07090d",
-      "animation:false",
+      "ambient:false",
       "motion:true",
       "field:rings",
       "resize:390:844:1.5",
