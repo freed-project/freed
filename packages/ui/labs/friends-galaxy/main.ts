@@ -1,6 +1,7 @@
 import "./styles.css";
 import {
   friendsGalaxyRenderPixelRatio,
+  friendsGalaxyViewDetailForScale,
   type FriendsGalaxyRendererBackend,
   type FriendsGalaxyRendererId,
   type FriendsGalaxyViewDetail,
@@ -42,11 +43,11 @@ import {
   type FriendsGalaxyAvatarImageAdmissionResult,
 } from "../../src/lib/friends-galaxy-avatar-image-admission.js";
 import {
-  friendsGalaxyCameraScaleLimits,
-  friendsGalaxyInitialCameraScale,
-  friendsGalaxyOutwardZoomEnvelope,
+  friendsGalaxyCameraFrameState,
+  type FriendsGalaxyCameraFrameState,
   type FriendsGalaxyOutwardZoomEnvelope,
   writeFriendsGalaxyFocusedTransform,
+  writeFriendsGalaxyFramedTransform,
   writeFriendsGalaxyWebGpuViewProjection,
 } from "../../src/lib/friends-galaxy-camera.js";
 import { shouldContinueFriendsGalaxyFrame } from "../../src/lib/friends-galaxy-frame-loop.js";
@@ -216,13 +217,16 @@ const activityProbeScenePatch = activityScenePatchEncoder.encode(
 );
 
 const transform: FriendsGalaxyTransform = { x: 0, y: 0, scale: 0.12 };
-let cameraScaleLimits = friendsGalaxyCameraScaleLimits(
-  1,
+const initialCameraFrame = friendsGalaxyCameraFrameState(
+  fixture.atlas.bounds,
   fixture.scene.bounds.minZ,
   fixture.scene.bounds.maxZ,
+  1,
+  1,
 );
+let cameraScaleLimits = initialCameraFrame.scaleLimits;
 let outwardZoomEnvelope: FriendsGalaxyOutwardZoomEnvelope =
-  friendsGalaxyOutwardZoomEnvelope(cameraScaleLimits.fitMinimum, cameraScaleLimits);
+  initialCameraFrame.outwardZoomEnvelope;
 let activeTheme = themeSelect.value as GalaxyLabThemeId;
 let activeFieldStyle = fieldStyleSelect.value as FriendsGalaxyFieldStyle;
 let lastRecoveryReason: string | null = null;
@@ -443,23 +447,29 @@ function canvasSize(): { width: number; height: number } {
   };
 }
 
-function refreshCameraScaleLimits(viewportHeight: number): void {
-  cameraScaleLimits = friendsGalaxyCameraScaleLimits(
-    viewportHeight,
-    fixture.scene.bounds.minZ,
-    fixture.scene.bounds.maxZ,
-  );
+function applyCameraFrameState(frame: FriendsGalaxyCameraFrameState): void {
+  cameraScaleLimits = frame.scaleLimits;
+  outwardZoomEnvelope = frame.outwardZoomEnvelope;
   viewport.dataset.minimumCameraScale = String(cameraScaleLimits.minimum);
   viewport.dataset.maximumCameraScale = String(cameraScaleLimits.maximum);
-}
-
-function refreshOutwardZoomEnvelope(fittedScale: number): void {
-  outwardZoomEnvelope = friendsGalaxyOutwardZoomEnvelope(
-    fittedScale,
-    cameraScaleLimits,
-  );
   viewport.dataset.outwardZoomTargetScale = String(outwardZoomEnvelope.target);
   viewport.dataset.zoomResistanceScale = String(outwardZoomEnvelope.resistance);
+}
+
+function refreshCameraFrameState(
+  viewportWidth: number,
+  viewportHeight: number,
+): FriendsGalaxyCameraFrameState {
+  const frame = friendsGalaxyCameraFrameState(
+    fixture.atlas.bounds,
+    fixture.scene.bounds.minZ,
+    fixture.scene.bounds.maxZ,
+    viewportWidth,
+    viewportHeight,
+    viewportGeometry.insets,
+  );
+  applyCameraFrameState(frame);
+  return frame;
 }
 
 function recordCameraScaleDiagnostics(): void {
@@ -539,12 +549,6 @@ function startInertialPan(releaseTimeMs: number): boolean {
   return true;
 }
 
-function viewDetailForScale(scale: number): FriendsGalaxyViewDetail {
-  if (scale < 0.24) return "overview";
-  if (scale < 0.9) return "middle";
-  return "close";
-}
-
 async function admitSettledAvatarImages(
   backend: FriendsGalaxyRendererBackend,
   detail: FriendsGalaxyViewDetail,
@@ -596,7 +600,7 @@ async function admitSettledAvatarImages(
   if (
     !avatarAdmissionState.canCommit(backend, admissionKey, currentGeneration) ||
     backend !== backendRuntime.activeBackend ||
-    (detail === "close" && viewDetailForScale(transform.scale) !== "close") ||
+    (detail === "close" && friendsGalaxyViewDetailForScale(transform.scale) !== "close") ||
     !canPresentGalaxy() ||
     cameraInMotion ||
     pointers.count > 0 ||
@@ -625,7 +629,7 @@ function applySettledViewDetail(generation: number): void {
   setCameraInMotion(false);
   const backend = backendRuntime.activeBackend;
   if (!backend) return;
-  const detail = viewDetailForScale(transform.scale);
+  const detail = friendsGalaxyViewDetailForScale(transform.scale);
   applyBackendSettledView(backend, detail);
   void admitSettledAvatarImages(backend, detail, generation);
   markGalaxyDirty();
@@ -646,54 +650,19 @@ function scheduleSettledViewDetail(immediate = false): void {
   requestGalaxyFrame();
 }
 
-function fittedGalaxyScale(width: number, height: number): number {
-  const bounds = fixture.atlas.bounds;
-  const worldWidth = Math.max(1, bounds.right - bounds.left);
-  const worldHeight = Math.max(1, bounds.bottom - bounds.top);
-  const insets = viewportGeometry.insets;
-  const usableWidth = Math.max(1, width - insets.left - insets.right);
-  const usableHeight = Math.max(1, height - insets.top - insets.bottom);
-  const padding = usableWidth < 640 ? 42 : 96;
-  return Math.max(
-    cameraScaleLimits.fitMinimum,
-    Math.min(
-      cameraScaleLimits.maximum,
-      Math.min(
-        Math.max(1, usableWidth - padding * 2) / worldWidth,
-        Math.max(1, usableHeight - padding * 2) / worldHeight,
-      ),
-    ),
-  );
-}
-
 function frameGalaxy(markAsUserAction: boolean, useInitialScale: boolean): void {
   cancelInertialPan();
   const { width, height } = canvasSize();
-  refreshCameraScaleLimits(height);
   const bounds = fixture.atlas.bounds;
-  const fittedScale = fittedGalaxyScale(width, height);
-  refreshOutwardZoomEnvelope(fittedScale);
-  const usableWidth = Math.max(
-    1,
-    width - viewportGeometry.insets.left - viewportGeometry.insets.right,
-  );
-  const nextScale = useInitialScale
-    ? Math.min(
-        cameraScaleLimits.maximum,
-        friendsGalaxyInitialCameraScale(fittedScale, usableWidth),
-      )
-    : fittedScale;
-  const centerX = (bounds.left + bounds.right) / 2;
-  const centerY = (bounds.top + bounds.bottom) / 2;
-  writeFriendsGalaxyFocusedTransform(
+  const frame = refreshCameraFrameState(width, height);
+  writeFriendsGalaxyFramedTransform(
     transform,
-    centerX,
-    centerY,
-    0,
-    nextScale,
+    bounds,
+    frame,
     width,
     height,
     viewportGeometry.insets,
+    useInitialScale,
   );
   recordCameraScaleDiagnostics();
   userMovedCamera = markAsUserAction;
@@ -759,7 +728,7 @@ function configureBackendState(backend: FriendsGalaxyRendererBackend): void {
   backend.setCameraMotion?.(cameraInMotion);
   backend.setFieldStyle?.(activeFieldStyle);
   resizeBackend(backend);
-  const detail = viewDetailForScale(transform.scale);
+  const detail = friendsGalaxyViewDetailForScale(transform.scale);
   backend.setInteraction(interaction);
   applyBackendSettledView(backend, detail);
   backend.applyActivityPatches?.(activityProbeScenePatch);
@@ -822,7 +791,7 @@ const backendRuntime = new FriendsGalaxyBackendRuntime<
     recordActiveRenderDensity();
     renderResizePending = false;
     viewport.dataset.renderResizePending = "false";
-    const detail = viewDetailForScale(transform.scale);
+    const detail = friendsGalaxyViewDetailForScale(transform.scale);
     const avatarGeneration = ++avatarAdmissionGeneration;
     void admitSettledAvatarImages(activation.backend, detail, avatarGeneration);
     resetSamples();
@@ -988,7 +957,7 @@ function updateMetrics(): void {
     transform.scale < outwardZoomEnvelope.resistance ? "Soft resistance" : "Free",
   );
   addMetric("Outer glide target", scaleFormat.format(outwardZoomEnvelope.target));
-  addMetric("Settled detail", viewDetailForScale(transform.scale));
+  addMetric("Settled detail", friendsGalaxyViewDetailForScale(transform.scale));
   addMetric("Touch input", nativeTouchInput ? "Native Touch Events" : "Pointer Events");
   addMetric(
     "Trackpad input",
@@ -1715,8 +1684,7 @@ function setGalaxyPresentationVisible(next: boolean): void {
   viewport.removeAttribute("aria-hidden");
   refreshViewportOrigin();
   const { width, height } = canvasSize();
-  refreshCameraScaleLimits(height);
-  refreshOutwardZoomEnvelope(fittedGalaxyScale(width, height));
+  refreshCameraFrameState(width, height);
   renderResizePending = true;
   viewport.dataset.renderResizePending = "true";
   dirty = true;
@@ -1949,8 +1917,7 @@ const resizeObserver = new ResizeObserver(() => {
   refreshViewportOrigin();
   resizeActiveBackend();
   const { width, height } = canvasSize();
-  refreshCameraScaleLimits(height);
-  refreshOutwardZoomEnvelope(fittedGalaxyScale(width, height));
+  refreshCameraFrameState(width, height);
   if (!userMovedCamera) {
     frameInitialGalaxy();
   } else {

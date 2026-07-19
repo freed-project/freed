@@ -3,10 +3,13 @@ import {
   FRIENDS_GALAXY_CAMERA_FAR,
   FRIENDS_GALAXY_CAMERA_FAR_UTILIZATION,
   FRIENDS_GALAXY_CAMERA_NEAR_CLEARANCE,
+  friendsGalaxyCameraFrameState,
   friendsGalaxyCameraScaleLimits,
+  friendsGalaxyFittedCameraScale,
   friendsGalaxyInitialCameraScale,
   friendsGalaxyOutwardZoomEnvelope,
   writeFriendsGalaxyFocusedTransform,
+  writeFriendsGalaxyFramedTransform,
   writeFriendsGalaxyWebGpuViewProjection,
   writeFriendsGalaxyWebGpuMotionUniforms,
 } from "../../src/lib/friends-galaxy-camera.js";
@@ -130,6 +133,74 @@ describe("Friends Galaxy raw WebGPU camera math", () => {
   it("keeps a useful fitted desktop scale unchanged", () => {
     expect(friendsGalaxyInitialCameraScale(0.105, 1_280)).toBe(0.105);
     expect(friendsGalaxyInitialCameraScale(0.05, 1_280)).toBe(0.08);
+  });
+
+  it("fits and frames the galaxy inside the usable full-canvas lane", () => {
+    const width = 1_400;
+    const height = 900;
+    const bounds = { left: -2_000, right: 2_000, top: -1_500, bottom: 1_500 };
+    const insets = { top: 44, right: 280, bottom: 120, left: 320 };
+    const frame = friendsGalaxyCameraFrameState(
+      bounds,
+      -224,
+      220,
+      width,
+      height,
+      insets,
+    );
+    const directFit = friendsGalaxyFittedCameraScale(
+      bounds,
+      width,
+      height,
+      insets,
+      frame.scaleLimits,
+    );
+    const transform = writeFriendsGalaxyFramedTransform(
+      { x: 0, y: 0, scale: 1 },
+      bounds,
+      frame,
+      width,
+      height,
+      insets,
+    );
+    const matrix = writeFriendsGalaxyWebGpuViewProjection(
+      new Float32Array(16),
+      transform,
+      width,
+      height,
+    );
+    const projectedCenter = project(matrix, [0, 0, 0], width, height);
+
+    expect(frame.fittedScale).toBe(directFit);
+    expect(transform.scale).toBe(frame.fittedScale);
+    expect(projectedCenter.x).toBeCloseTo(720, 4);
+    expect(projectedCenter.y).toBeCloseTo(412, 4);
+    expect(frame.outwardZoomEnvelope.target).toBeLessThanOrEqual(frame.fittedScale);
+  });
+
+  it("uses the compact exploration floor only for initial framing", () => {
+    const bounds = { left: -8_000, right: 8_000, top: -6_000, bottom: 6_000 };
+    const frame = friendsGalaxyCameraFrameState(bounds, -224, 220, 390, 844);
+    const initial = writeFriendsGalaxyFramedTransform(
+      { x: 0, y: 0, scale: 1 },
+      bounds,
+      frame,
+      390,
+      844,
+      { top: 0, right: 0, bottom: 0, left: 0 },
+      true,
+    );
+    const fitted = writeFriendsGalaxyFramedTransform(
+      { x: 0, y: 0, scale: 1 },
+      bounds,
+      frame,
+      390,
+      844,
+    );
+
+    expect(initial.scale).toBeGreaterThanOrEqual(0.16);
+    expect(fitted.scale).toBe(frame.fittedScale);
+    expect(initial.scale).toBeGreaterThan(fitted.scale);
   });
 
   it("maps galactic-plane positions through the shared transform", () => {

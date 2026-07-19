@@ -206,7 +206,7 @@ The proven full-canvas geometry and engine-to-overlay interaction contracts now 
 
 The allocation-free camera-input primitives now share that same destination. The fixed pointer roster, bounded inertial-pan controller, scalar settle scheduler, and presentation-aware demand-frame predicate live under shared UI source and are imported by the laboratory. The future product engine can use the exact tested state machines for native touch, pointer throws, settle, idle sleep, and mobile Details suspension instead of translating the old React Maps, arrays, timeouts, and frame refs.
 
-The locked perspective camera and gesture mathematics are now shared product primitives too. Clip-safe near and far scale limits, prominence-safe focus, full-canvas inset centering, compact initial framing, WebGPU view and motion uniforms, directional outward resistance, native-speed inward reversal, midpoint-preserving pinch, focal-point zoom, and Mac wheel normalization all live under shared UI source. The laboratory, raw WebGPU backend, diagnostics, avatar projection, and functional tests import those exact modules. Product cutover no longer needs a second camera curve or gesture implementation.
+The locked perspective camera and gesture mathematics are now shared product primitives too. Clip-safe near and far scale limits, full-canvas inset-aware fitted scale, one derived camera-frame state, compact initial framing, framed transforms, prominence-safe focus, overview, middle, and close detail thresholds, WebGPU view and motion uniforms, directional outward resistance, native-speed inward reversal, midpoint-preserving pinch, focal-point zoom, and Mac wheel normalization all live under shared UI source. The laboratory, raw WebGPU backend, diagnostics, avatar projection, and functional tests import those exact modules. The detached shell no longer composes its own fit or detail tiers, and product cutover does not need a second camera curve.
 
 The bounded observability and renderer-recovery primitives now live under shared UI source as well. The fixed typed sample ring and settled diagnostic refresh gate, passive feature-detected long-task monitor, and first-failure backend health latch are imported directly by the laboratory and both WebGPU backends. Product cutover can report the same bounded renderer evidence and consume an idle device-loss signal without copying laboratory counters, adding a polling timer for long tasks, or rebuilding diagnostics during camera movement.
 
@@ -552,6 +552,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.134 | Move the versioned identity-free diagnostic schema, bounded text normalization, structural source receipt, and frame-statistics helper into shared UI source | High | Done |
 | 8.135 | Move bounded graph descriptions, selection and focus announcements, compatibility recovery, and terminal renderer failure copy into shared UI source | High | Done |
 | 8.136 | Delete the laboratory backend alias layer and type the detached shell directly against shared renderer, interaction, field-style, and detail contracts | High | Done |
+| 8.137 | Move inset-aware fitted scale, derived camera-frame state, framed transform, compact initial framing, and view-detail thresholds into shared UI source | High | Done |
 
 ---
 
@@ -664,6 +665,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] The detached laboratory and future product shell share one full-canvas geometry contract and one imperative overlay-action contract instead of maintaining translated copies
 - [x] The detached laboratory and future product engine share the same fixed pointer roster, bounded inertia, scalar settle scheduler, and presentation-aware demand-frame predicate
 - [x] The detached laboratory, raw WebGPU backend, and future product engine share one clip-safe camera, depth-correct focus, directional zoom, wheel, and midpoint-preserving pinch implementation
+- [x] The detached laboratory and future product engine share one inset-aware camera-frame state, framed transform, compact initial framing rule, and overview, middle, and close detail thresholds
 - [x] The detached laboratory and future product engine share one fixed diagnostic sample ring, passive long-task monitor, and first-failure backend health latch
 - [x] The detached laboratory and future product engine share one keyed avatar admission state and bounded source-deduplicating image decode queue with deterministic disposal
 - [x] Every detached backend and the future product engine share one worker-transferable stable-ID, adjacency, sparse-pick index and one allocation-bounded interaction scene state

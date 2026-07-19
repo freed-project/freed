@@ -34,6 +34,19 @@ export interface FriendsGalaxyOutwardZoomEnvelope {
   resistance: number;
 }
 
+export interface FriendsGalaxyPlanarBounds {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+export interface FriendsGalaxyCameraFrameState {
+  fittedScale: number;
+  scaleLimits: FriendsGalaxyCameraScaleLimits;
+  outwardZoomEnvelope: FriendsGalaxyOutwardZoomEnvelope;
+}
+
 function friendsGalaxyCameraDistance(
   viewportHeight: number,
   scale: number,
@@ -105,6 +118,96 @@ export function friendsGalaxyOutwardZoomEnvelope(
     ),
   );
   return { target, resistance };
+}
+
+export function friendsGalaxyFittedCameraScale(
+  bounds: FriendsGalaxyPlanarBounds,
+  viewportWidth: number,
+  viewportHeight: number,
+  viewportInsets: FriendsGalaxyViewportInsets,
+  limits: FriendsGalaxyCameraScaleLimits,
+): number {
+  const width = Math.max(1, viewportWidth);
+  const height = Math.max(1, viewportHeight);
+  const usableWidth = Math.max(
+    1,
+    width - Math.max(0, viewportInsets.left) - Math.max(0, viewportInsets.right),
+  );
+  const usableHeight = Math.max(
+    1,
+    height - Math.max(0, viewportInsets.top) - Math.max(0, viewportInsets.bottom),
+  );
+  const worldWidth = Math.max(1, bounds.right - bounds.left);
+  const worldHeight = Math.max(1, bounds.bottom - bounds.top);
+  const padding = usableWidth < 640 ? 42 : 96;
+  return Math.max(
+    limits.fitMinimum,
+    Math.min(
+      limits.maximum,
+      Math.min(
+        Math.max(1, usableWidth - padding * 2) / worldWidth,
+        Math.max(1, usableHeight - padding * 2) / worldHeight,
+      ),
+    ),
+  );
+}
+
+export function friendsGalaxyCameraFrameState(
+  bounds: FriendsGalaxyPlanarBounds,
+  minimumSceneZ: number,
+  maximumSceneZ: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  viewportInsets: FriendsGalaxyViewportInsets = EMPTY_VIEWPORT_INSETS,
+): FriendsGalaxyCameraFrameState {
+  const scaleLimits = friendsGalaxyCameraScaleLimits(
+    viewportHeight,
+    minimumSceneZ,
+    maximumSceneZ,
+  );
+  const fittedScale = friendsGalaxyFittedCameraScale(
+    bounds,
+    viewportWidth,
+    viewportHeight,
+    viewportInsets,
+    scaleLimits,
+  );
+  return {
+    fittedScale,
+    scaleLimits,
+    outwardZoomEnvelope: friendsGalaxyOutwardZoomEnvelope(fittedScale, scaleLimits),
+  };
+}
+
+export function writeFriendsGalaxyFramedTransform(
+  target: FriendsGalaxyTransform,
+  bounds: FriendsGalaxyPlanarBounds,
+  frame: FriendsGalaxyCameraFrameState,
+  viewportWidth: number,
+  viewportHeight: number,
+  viewportInsets: FriendsGalaxyViewportInsets = EMPTY_VIEWPORT_INSETS,
+  initial = false,
+): FriendsGalaxyTransform {
+  const usableWidth = Math.max(
+    1,
+    viewportWidth - Math.max(0, viewportInsets.left) - Math.max(0, viewportInsets.right),
+  );
+  const scale = initial
+    ? Math.min(
+        frame.scaleLimits.maximum,
+        friendsGalaxyInitialCameraScale(frame.fittedScale, usableWidth),
+      )
+    : frame.fittedScale;
+  return writeFriendsGalaxyFocusedTransform(
+    target,
+    (bounds.left + bounds.right) * 0.5,
+    (bounds.top + bounds.bottom) * 0.5,
+    0,
+    scale,
+    viewportWidth,
+    viewportHeight,
+    viewportInsets,
+  );
 }
 
 export function writeFriendsGalaxyFocusedTransform(

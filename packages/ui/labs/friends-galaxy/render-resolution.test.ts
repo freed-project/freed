@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { friendsGalaxyRenderPixelRatio } from "../../src/lib/friends-galaxy-renderer.js";
+import {
+  friendsGalaxyRenderPixelRatio,
+  friendsGalaxyViewDetailForScale,
+} from "../../src/lib/friends-galaxy-renderer.js";
 
 describe("Friends Galaxy render resolution", () => {
   it("caps settled Retina rendering without dropping below native density", () => {
@@ -16,5 +19,13 @@ describe("Friends Galaxy render resolution", () => {
   it("normalizes invalid device ratios", () => {
     expect(friendsGalaxyRenderPixelRatio(Number.NaN, 390, false)).toBe(1);
     expect(friendsGalaxyRenderPixelRatio(0, 390, true)).toBe(1);
+  });
+
+  it("shares stable overview, middle, and close detail thresholds", () => {
+    expect(friendsGalaxyViewDetailForScale(0.239)).toBe("overview");
+    expect(friendsGalaxyViewDetailForScale(0.24)).toBe("middle");
+    expect(friendsGalaxyViewDetailForScale(0.899)).toBe("middle");
+    expect(friendsGalaxyViewDetailForScale(0.9)).toBe("close");
+    expect(friendsGalaxyViewDetailForScale(Number.NaN)).toBe("overview");
   });
 });
