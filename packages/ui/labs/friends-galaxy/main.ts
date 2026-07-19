@@ -1,15 +1,15 @@
 import "./styles.css";
 import {
-  type GalaxyLabBackend,
-  type GalaxyLabBackendId,
-  type GalaxyLabFieldStyle,
-  type GalaxyLabInteraction,
-  type GalaxyLabViewDetail,
-} from "./backend.js";
+  friendsGalaxyRenderPixelRatio,
+  type FriendsGalaxyRendererBackend,
+  type FriendsGalaxyRendererId,
+  type FriendsGalaxyViewDetail,
+} from "../../src/lib/friends-galaxy-renderer.js";
 import { FriendsGalaxyBackendRuntime } from "../../src/lib/friends-galaxy-backend-runtime.js";
 import { createFriendsGalaxyRendererBackend } from "../../src/lib/friends-galaxy-backend-factory.js";
-import { friendsGalaxyRenderPixelRatio } from "../../src/lib/friends-galaxy-renderer.js";
 import { friendsGalaxyHexToRgb } from "../../src/lib/friends-galaxy-palette.js";
+import type { FriendsGalaxyFieldStyle } from "../../src/lib/friends-galaxy-provider-fields.js";
+import type { FriendsGalaxyInteraction } from "../../src/lib/friends-galaxy-scene-index.js";
 import {
   GALAXY_LAB_THEMES,
   galaxyLabNodePresentation,
@@ -224,7 +224,7 @@ let cameraScaleLimits = friendsGalaxyCameraScaleLimits(
 let outwardZoomEnvelope: FriendsGalaxyOutwardZoomEnvelope =
   friendsGalaxyOutwardZoomEnvelope(cameraScaleLimits.fitMinimum, cameraScaleLimits);
 let activeTheme = themeSelect.value as GalaxyLabThemeId;
-let activeFieldStyle = fieldStyleSelect.value as GalaxyLabFieldStyle;
+let activeFieldStyle = fieldStyleSelect.value as FriendsGalaxyFieldStyle;
 let lastRecoveryReason: string | null = null;
 let frameRequest = 0;
 let lastFrameAt = 0;
@@ -248,10 +248,10 @@ const inertialPan = new FriendsGalaxyInertialPan();
 const frameSamples = new FriendsGalaxySampleRing(240);
 const submitSamples = new FriendsGalaxySampleRing(240);
 const nodeLabelById = new Map(fixture.atlas.nodes.map((node) => [node.id, node.label]));
-let interaction: GalaxyLabInteraction = { selectedNodeId: null, hoveredNodeId: null };
+let interaction: FriendsGalaxyInteraction = { selectedNodeId: null, hoveredNodeId: null };
 let avatarAdmissionGeneration = 0;
 const emptyAvatarImages = new Map<string, CanvasImageSource>();
-const avatarAdmissionState = new FriendsGalaxyAvatarAdmissionState<GalaxyLabBackend>();
+const avatarAdmissionState = new FriendsGalaxyAvatarAdmissionState<FriendsGalaxyRendererBackend>();
 const avatarAdmissionViewProjection = new Float32Array(16);
 const avatarAdmissionProjection = {
   viewProjection: avatarAdmissionViewProjection,
@@ -485,7 +485,7 @@ function recordActiveRenderDensity(): void {
   else viewport.dataset.lastSettledRenderDensity = value;
 }
 
-function resizeBackend(backend: GalaxyLabBackend): void {
+function resizeBackend(backend: FriendsGalaxyRendererBackend): void {
   const { width, height } = canvasSize();
   backend.resize(
     width,
@@ -539,15 +539,15 @@ function startInertialPan(releaseTimeMs: number): boolean {
   return true;
 }
 
-function viewDetailForScale(scale: number): GalaxyLabViewDetail {
+function viewDetailForScale(scale: number): FriendsGalaxyViewDetail {
   if (scale < 0.24) return "overview";
   if (scale < 0.9) return "middle";
   return "close";
 }
 
 async function admitSettledAvatarImages(
-  backend: GalaxyLabBackend,
-  detail: GalaxyLabViewDetail,
+  backend: FriendsGalaxyRendererBackend,
+  detail: FriendsGalaxyViewDetail,
   generation: number,
 ): Promise<void> {
   if (!backend.setAvatarImages || !canPresentGalaxy()) return;
@@ -613,8 +613,8 @@ async function admitSettledAvatarImages(
 }
 
 function applyBackendSettledView(
-  backend: GalaxyLabBackend,
-  detail: GalaxyLabViewDetail,
+  backend: FriendsGalaxyRendererBackend,
+  detail: FriendsGalaxyViewDetail,
 ): void {
   if (backend.setSettledView) backend.setSettledView(detail, transform);
   else backend.setViewDetail(detail);
@@ -750,11 +750,11 @@ function resetSamples(): void {
   lastFrameAt = 0;
 }
 
-function backendLabel(id: GalaxyLabBackendId): string {
+function backendLabel(id: FriendsGalaxyRendererId): string {
   return Array.from(backendSelect.options).find((option) => option.value === id)?.textContent ?? id;
 }
 
-function configureBackendState(backend: GalaxyLabBackend): void {
+function configureBackendState(backend: FriendsGalaxyRendererBackend): void {
   backend.setAnimationEnabled?.(animateControl.checked);
   backend.setCameraMotion?.(cameraInMotion);
   backend.setFieldStyle?.(activeFieldStyle);
@@ -766,8 +766,8 @@ function configureBackendState(backend: GalaxyLabBackend): void {
 }
 
 const backendRuntime = new FriendsGalaxyBackendRuntime<
-  GalaxyLabBackendId,
-  GalaxyLabBackend,
+  FriendsGalaxyRendererId,
+  FriendsGalaxyRendererBackend,
   HTMLCanvasElement
 >({
   compatibilityId: "current-webgl2",
@@ -855,7 +855,7 @@ const backendRuntime = new FriendsGalaxyBackendRuntime<
   },
 });
 
-async function activateBackend(id: GalaxyLabBackendId): Promise<void> {
+async function activateBackend(id: FriendsGalaxyRendererId): Promise<void> {
   await backendRuntime.activate(id);
 }
 
@@ -1272,7 +1272,7 @@ function releaseLongPress(pointerId: number): void {
   viewport.dataset.longPress = "idle";
 }
 
-function updateInteraction(next: GalaxyLabInteraction): boolean {
+function updateInteraction(next: FriendsGalaxyInteraction): boolean {
   if (
     next.selectedNodeId === interaction.selectedNodeId &&
     next.hoveredNodeId === interaction.hoveredNodeId
@@ -1904,7 +1904,7 @@ simulateLossButton.addEventListener("click", () => {
 });
 
 backendSelect.addEventListener("change", () => {
-  void activateBackend(backendSelect.value as GalaxyLabBackendId);
+  void activateBackend(backendSelect.value as FriendsGalaxyRendererId);
 });
 
 themeSelect.addEventListener("change", () => {
@@ -1916,7 +1916,7 @@ themeSelect.addEventListener("change", () => {
 });
 
 fieldStyleSelect.addEventListener("change", () => {
-  activeFieldStyle = fieldStyleSelect.value as GalaxyLabFieldStyle;
+  activeFieldStyle = fieldStyleSelect.value as FriendsGalaxyFieldStyle;
   backendRuntime.activeBackend?.setFieldStyle?.(activeFieldStyle);
   markGalaxyDirty();
 });
@@ -2088,5 +2088,5 @@ refreshViewportOrigin();
 applyDocumentPalette(paletteForTheme());
 syncGraphDescription();
 frameInitialGalaxy();
-void activateBackend(backendSelect.value as GalaxyLabBackendId);
+void activateBackend(backendSelect.value as FriendsGalaxyRendererId);
 requestGalaxyFrame();
