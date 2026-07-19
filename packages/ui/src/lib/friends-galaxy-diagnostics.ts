@@ -1,28 +1,58 @@
 import type {
-  GalaxyLabBackendMetrics,
-  GalaxyLabFieldStyle,
-  GalaxyLabFrameStats,
-} from "./backend.js";
+  FriendsGalaxyRendererMetrics,
+} from "./friends-galaxy-renderer.js";
+import type { FriendsGalaxyFieldStyle } from "./friends-galaxy-provider-fields.js";
 import type {
   FriendsGalaxyCameraScaleLimits,
   FriendsGalaxyOutwardZoomEnvelope,
-} from "../../src/lib/friends-galaxy-camera.js";
-import type { GalaxyLabThemeId } from "./scene-fixture.js";
-import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
-import type { GalaxyLabFixtureWorkerReceipt } from "./scene-fixture-worker-protocol.js";
-import type { FriendsGalaxyLongTaskSnapshot } from "../../src/lib/friends-galaxy-long-tasks.js";
+} from "./friends-galaxy-camera.js";
+import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
+import type { FriendsGalaxyLongTaskSnapshot } from "./friends-galaxy-long-tasks.js";
 
-export const GALAXY_LAB_DIAGNOSTIC_SCHEMA_VERSION = 1;
+export const FRIENDS_GALAXY_DIAGNOSTIC_SCHEMA_VERSION = 1;
 
-export interface GalaxyLabDiagnosticSnapshotInput {
+export interface FriendsGalaxyDiagnosticSourceReceipt {
+  semanticNodeCount: number;
+  metadataNodeCount: number;
+  activitySummaryCount: number;
+  representedActivityItemCount: number;
+  transferableBufferCount: number;
+}
+
+export interface FriendsGalaxyFrameStats {
+  frameCount: number;
+  p50Ms: number;
+  p95Ms: number;
+  worstMs: number;
+}
+
+export function friendsGalaxyFrameStats(
+  samples: readonly number[],
+): FriendsGalaxyFrameStats {
+  if (samples.length === 0) {
+    return { frameCount: 0, p50Ms: 0, p95Ms: 0, worstMs: 0 };
+  }
+  const sorted = [...samples].sort((left, right) => left - right);
+  const percentile = (value: number): number => sorted[
+    Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * value))
+  ] ?? 0;
+  return {
+    frameCount: samples.length,
+    p50Ms: percentile(0.5),
+    p95Ms: percentile(0.95),
+    worstMs: sorted[sorted.length - 1] ?? 0,
+  };
+}
+
+export interface FriendsGalaxyDiagnosticSnapshotInput {
   capturedAt: string;
-  receipt: GalaxyLabFixtureWorkerReceipt;
+  receipt: FriendsGalaxyDiagnosticSourceReceipt;
   personCount: number;
   accountCount: number;
   backgroundStarCount: number;
-  backend: GalaxyLabBackendMetrics | null;
-  theme: GalaxyLabThemeId;
-  fieldStyle: GalaxyLabFieldStyle;
+  backend: FriendsGalaxyRendererMetrics | null;
+  theme: string;
+  fieldStyle: FriendsGalaxyFieldStyle;
   transform: FriendsGalaxyTransform;
   cameraScaleLimits: FriendsGalaxyCameraScaleLimits;
   outwardZoomEnvelope: FriendsGalaxyOutwardZoomEnvelope;
@@ -43,8 +73,8 @@ export interface GalaxyLabDiagnosticSnapshotInput {
   backendTerminalFailure: boolean;
   recoveryReason: string | null;
   longTasks: FriendsGalaxyLongTaskSnapshot;
-  frame: GalaxyLabFrameStats;
-  submit: GalaxyLabFrameStats;
+  frame: FriendsGalaxyFrameStats;
+  submit: FriendsGalaxyFrameStats;
   activityPatchKeyCount: number;
   activityPatchNodeCount: number;
   unknownActivitySourceCount: number;
@@ -53,8 +83,8 @@ export interface GalaxyLabDiagnosticSnapshotInput {
   avatarFailureCount: number;
 }
 
-export interface GalaxyLabDiagnosticSnapshot {
-  schemaVersion: typeof GALAXY_LAB_DIAGNOSTIC_SCHEMA_VERSION;
+export interface FriendsGalaxyDiagnosticSnapshot {
+  schemaVersion: typeof FRIENDS_GALAXY_DIAGNOSTIC_SCHEMA_VERSION;
   capturedAt: string;
   source: {
     personCount: number;
@@ -120,8 +150,8 @@ export interface GalaxyLabDiagnosticSnapshot {
     inertialPanActive: boolean;
   };
   runtime: {
-    theme: GalaxyLabThemeId;
-    fieldStyle: GalaxyLabFieldStyle;
+    theme: string;
+    fieldStyle: FriendsGalaxyFieldStyle;
     presentationVisible: boolean;
     frameLoop: string;
     settlePending: boolean;
@@ -130,8 +160,8 @@ export interface GalaxyLabDiagnosticSnapshot {
     backendRecoveryPending: boolean;
     backendTerminalFailure: boolean;
     recoveryReason: string | null;
-    frame: GalaxyLabFrameStats;
-    submit: GalaxyLabFrameStats;
+    frame: FriendsGalaxyFrameStats;
+    submit: FriendsGalaxyFrameStats;
     longTasks: FriendsGalaxyLongTaskSnapshot;
   };
 }
@@ -145,13 +175,17 @@ function boundedText(value: string | null | undefined, maximumLength = 512): str
   return value.slice(0, maximumLength);
 }
 
-export function createGalaxyLabDiagnosticSnapshot(
-  input: GalaxyLabDiagnosticSnapshotInput,
-): GalaxyLabDiagnosticSnapshot {
+function boundedRequiredText(value: string, maximumLength = 128): string {
+  return value.slice(0, maximumLength);
+}
+
+export function createFriendsGalaxyDiagnosticSnapshot(
+  input: FriendsGalaxyDiagnosticSnapshotInput,
+): FriendsGalaxyDiagnosticSnapshot {
   const { backend } = input;
   return {
-    schemaVersion: GALAXY_LAB_DIAGNOSTIC_SCHEMA_VERSION,
-    capturedAt: input.capturedAt,
+    schemaVersion: FRIENDS_GALAXY_DIAGNOSTIC_SCHEMA_VERSION,
+    capturedAt: boundedRequiredText(input.capturedAt, 64),
     source: {
       personCount: input.personCount,
       accountCount: input.accountCount,
@@ -211,15 +245,15 @@ export function createGalaxyLabDiagnosticSnapshot(
     interaction: {
       selectionActive: input.selectionActive,
       hoverActive: input.hoverActive,
-      touchInputMode: input.touchInputMode,
-      wheelInputMode: input.wheelInputMode,
+      touchInputMode: boundedRequiredText(input.touchInputMode, 64),
+      wheelInputMode: boundedRequiredText(input.wheelInputMode, 64),
       inertialPanActive: input.inertialPanActive,
     },
     runtime: {
-      theme: input.theme,
+      theme: boundedRequiredText(input.theme, 64),
       fieldStyle: input.fieldStyle,
       presentationVisible: input.presentationVisible,
-      frameLoop: input.frameLoop,
+      frameLoop: boundedRequiredText(input.frameLoop, 64),
       settlePending: input.settlePending,
       renderResizePending: input.renderResizePending,
       backendGeneration: input.backendGeneration,
@@ -233,8 +267,8 @@ export function createGalaxyLabDiagnosticSnapshot(
   };
 }
 
-export function serializeGalaxyLabDiagnosticSnapshot(
-  snapshot: GalaxyLabDiagnosticSnapshot,
+export function serializeFriendsGalaxyDiagnosticSnapshot(
+  snapshot: FriendsGalaxyDiagnosticSnapshot,
 ): string {
   return JSON.stringify(snapshot, null, 2);
 }

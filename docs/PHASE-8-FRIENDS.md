@@ -220,7 +220,7 @@ The same camera contract now derives a prominence-safe maximum scale from viewpo
 
 Frame and submission diagnostics now use fixed 240-value typed rings. Active camera motion suppresses diagnostics DOM rebuilding, then refreshes the panel after settle from one bounded snapshot. The detached gesture path no longer shifts diagnostic arrays or performs periodic panel layout while the camera is moving.
 
-The detached laboratory now exports one versioned, identity-free diagnostic snapshot from an opaque standard control. It includes worker source scale, renderer and adapter state, fallback and recovery state, resident and motion counts, presentation counts, sparse activity and pick evidence, camera safety, input mode, render density, upload counters, fixed-ring frame summaries, and passive long-task evidence. It excludes names, IDs, URLs, sample items, avatars, and feed payloads. Clipboard failure is contained and leaves the control usable. A feature-detected `PerformanceObserver` records bounded long-task scalars without a polling timer, while unsupported browsers report nullable counters. Product cutover must feed this same schema through the installed renderer heartbeat.
+Shared UI source now owns one versioned, identity-free diagnostic snapshot and its frame-statistics helper. It accepts structural worker source counts, shared renderer metrics, bounded camera and runtime state, and passive long-task evidence without importing fixture or theme types. Every required text field and optional renderer description is length-bounded, and non-finite optional metrics normalize to null. The detached laboratory exports this schema from an opaque standard control. It includes worker source scale, renderer and adapter state, fallback and recovery state, resident and motion counts, presentation counts, sparse activity and pick evidence, camera safety, input mode, render density, upload counters, fixed-ring frame summaries, and passive long-task evidence. It excludes names, IDs, URLs, sample items, avatars, and feed payloads. Clipboard failure is contained and leaves the control usable. Product cutover must feed this same shared schema through the installed renderer heartbeat.
 
 With animation disabled, the detached renderer now schedules frames only for dirty GPU work or a pending settle deadline. It stops requesting animation frames when the scene is idle and exposes that state on the viewport. Diagnostics request a frame only when changed data reaches the bounded refresh interval. One persistent low-frequency health poll remains active so an idle WebGPU device loss still recovers without a permanent animation loop.
 
@@ -549,6 +549,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.131 | Move bounded label and avatar selection, selected-parent resolution, atlas assembly, and interaction-overlay packing into shared UI source behind an injected node-presentation resolver | High | Done |
 | 8.132 | Bind the renderer-neutral scene and complete palette into one shared concrete backend type, then remove every laboratory import from the three renderer implementations | High | Done |
 | 8.133 | Move Raw WebGPU, Three.js WebGPU, and WebGL2 into shared UI source behind one lazy renderer factory consumed by the detached laboratory | High | Done |
+| 8.134 | Move the versioned identity-free diagnostic schema, bounded text normalization, structural source receipt, and frame-statistics helper into shared UI source | High | Done |
 
 ---
 
@@ -650,7 +651,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] WebGPU rendering caps settled Retina density and lowers compact or wide motion density once per gesture without removing resident stars or labels
 - [x] Compact initial framing opens on a legible semantic field while Fit galaxy remains the explicit complete-universe command
 - [x] Gesture diagnostics use fixed typed rings and defer panel DOM updates until camera settle
-- [x] One-click detached diagnostics serialize bounded renderer health without identity, URL, avatar, sample-item, or feed payload data and recover cleanly from clipboard rejection
+- [x] One-click detached diagnostics and the future installed heartbeat share one versioned bounded schema without identity, URL, avatar, sample-item, or feed payload data, and clipboard rejection remains contained
 - [x] Long-task diagnostics use passive observer callbacks when supported, report nullable unsupported state otherwise, and disconnect with the renderer without installing a polling loop
 - [x] The detached graph exposes one focusable described region and one polite live region, keeps every canvas and semantic star out of the accessibility tree, and announces focus, selection, clear, reduced motion, clipboard feedback, and recovery without writing during hover or camera motion
 - [x] Full-canvas rendering and bounded interaction use separate rectangles, one retained geometry snapshot, exact client-to-canvas input translation, usable-lane fit and focus centering, responsive center reanchoring, and compact zero-inset collapse

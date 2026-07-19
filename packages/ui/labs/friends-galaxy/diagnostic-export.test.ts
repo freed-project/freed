@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { GalaxyLabBackendMetrics } from "./backend.js";
+import type { FriendsGalaxyRendererMetrics } from "../../src/lib/friends-galaxy-renderer.js";
 import {
-  createGalaxyLabDiagnosticSnapshot,
-  serializeGalaxyLabDiagnosticSnapshot,
-} from "./diagnostic-export.js";
+  createFriendsGalaxyDiagnosticSnapshot,
+  friendsGalaxyFrameStats,
+  serializeFriendsGalaxyDiagnosticSnapshot,
+} from "../../src/lib/friends-galaxy-diagnostics.js";
 
-const backend: GalaxyLabBackendMetrics = {
+const backend: FriendsGalaxyRendererMetrics = {
   id: "raw-webgpu",
   label: "Raw WebGPU",
   api: "WebGPU WGSL",
@@ -32,8 +33,25 @@ const backend: GalaxyLabBackendMetrics = {
 };
 
 describe("Friends Galaxy diagnostic export", () => {
+  it("summarizes bounded frame samples without retaining the input", () => {
+    const samples = [32, 8, 16, 24];
+    expect(friendsGalaxyFrameStats(samples)).toEqual({
+      frameCount: 4,
+      p50Ms: 16,
+      p95Ms: 24,
+      worstMs: 32,
+    });
+    expect(samples).toEqual([32, 8, 16, 24]);
+    expect(friendsGalaxyFrameStats([])).toEqual({
+      frameCount: 0,
+      p50Ms: 0,
+      p95Ms: 0,
+      worstMs: 0,
+    });
+  });
+
   it("serializes bounded renderer health without identity or content payloads", () => {
-    const snapshot = createGalaxyLabDiagnosticSnapshot({
+    const snapshot = createFriendsGalaxyDiagnosticSnapshot({
       capturedAt: "2026-07-18T18:10:00.000Z",
       receipt: {
         semanticNodeCount: 30_000,
@@ -91,7 +109,7 @@ describe("Friends Galaxy diagnostic export", () => {
       avatarReadyCount: 6,
       avatarFailureCount: 0,
     });
-    const serialized = serializeGalaxyLabDiagnosticSnapshot(snapshot);
+    const serialized = serializeFriendsGalaxyDiagnosticSnapshot(snapshot);
 
     expect(snapshot).toMatchObject({
       schemaVersion: 1,
@@ -135,7 +153,7 @@ describe("Friends Galaxy diagnostic export", () => {
   });
 
   it("normalizes unavailable and non-finite backend values", () => {
-    const snapshot = createGalaxyLabDiagnosticSnapshot({
+    const snapshot = createFriendsGalaxyDiagnosticSnapshot({
       capturedAt: "2026-07-18T18:10:00.000Z",
       receipt: {
         semanticNodeCount: 0,
@@ -148,7 +166,7 @@ describe("Friends Galaxy diagnostic export", () => {
       accountCount: 0,
       backgroundStarCount: 0,
       backend: { ...backend, renderPixelRatio: Number.NaN },
-      theme: "vesper",
+      theme: "v".repeat(200),
       fieldStyle: "rings",
       transform: { x: 0, y: 0, scale: 1 },
       cameraScaleLimits: {
@@ -195,5 +213,6 @@ describe("Friends Galaxy diagnostic export", () => {
     });
 
     expect(snapshot.renderer.renderPixelRatio).toBeNull();
+    expect(snapshot.runtime.theme).toHaveLength(64);
   });
 });

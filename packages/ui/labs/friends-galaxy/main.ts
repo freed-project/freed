@@ -1,10 +1,8 @@
 import "./styles.css";
 import {
-  frameStats,
   type GalaxyLabBackend,
   type GalaxyLabBackendId,
   type GalaxyLabFieldStyle,
-  type GalaxyLabFrameStats,
   type GalaxyLabInteraction,
   type GalaxyLabViewDetail,
 } from "./backend.js";
@@ -60,9 +58,11 @@ import {
 } from "../../src/lib/friends-galaxy-samples.js";
 import { FriendsGalaxySettleScheduler } from "../../src/lib/friends-galaxy-settle.js";
 import {
-  createGalaxyLabDiagnosticSnapshot,
-  serializeGalaxyLabDiagnosticSnapshot,
-} from "./diagnostic-export.js";
+  createFriendsGalaxyDiagnosticSnapshot,
+  friendsGalaxyFrameStats,
+  serializeFriendsGalaxyDiagnosticSnapshot,
+  type FriendsGalaxyFrameStats,
+} from "../../src/lib/friends-galaxy-diagnostics.js";
 import { FriendsGalaxyLongTaskMonitor } from "../../src/lib/friends-galaxy-long-tasks.js";
 import {
   galaxyLabGraphDescription,
@@ -867,7 +867,7 @@ function addMetric(label: string, value: string): void {
   metricsElement.append(term, description);
 }
 
-function formatFrameStats(stats: GalaxyLabFrameStats): string {
+function formatFrameStats(stats: FriendsGalaxyFrameStats): string {
   return stats.frameCount === 0 ? "Pending" : `${numberFormat.format(stats.p95Ms)} ms p95`;
 }
 
@@ -938,8 +938,8 @@ function updateMetrics(): void {
     "Selection",
     interaction.selectedNodeId ? nodeLabelById.get(interaction.selectedNodeId) ?? "Selected" : "None",
   );
-  addMetric("Frame interval", formatFrameStats(frameStats(frameSamples.snapshot())));
-  addMetric("CPU submit", formatFrameStats(frameStats(submitSamples.snapshot())));
+  addMetric("Frame interval", formatFrameStats(friendsGalaxyFrameStats(frameSamples.snapshot())));
+  addMetric("CPU submit", formatFrameStats(friendsGalaxyFrameStats(submitSamples.snapshot())));
   const longTasks = longTaskMonitor.snapshot();
   addMetric(
     "Long tasks",
@@ -1833,7 +1833,7 @@ fitButton.addEventListener("click", () => fitGalaxy());
 
 function galaxyDiagnosticSnapshot() {
   const { width, height } = canvasSize();
-  return createGalaxyLabDiagnosticSnapshot({
+  return createFriendsGalaxyDiagnosticSnapshot({
     capturedAt: new Date().toISOString(),
     receipt: fixtureWorkerReceipt,
     personCount: fixture.personCount,
@@ -1862,8 +1862,8 @@ function galaxyDiagnosticSnapshot() {
     backendTerminalFailure: backendRuntime.terminalFailure,
     recoveryReason: lastRecoveryReason,
     longTasks: longTaskMonitor.snapshot(),
-    frame: frameStats(frameSamples.snapshot()),
-    submit: frameStats(submitSamples.snapshot()),
+    frame: friendsGalaxyFrameStats(frameSamples.snapshot()),
+    submit: friendsGalaxyFrameStats(submitSamples.snapshot()),
     activityPatchKeyCount: activityProbeSummaryPatch.patches.length,
     activityPatchNodeCount: activityProbeScenePatch.nodeIndices.length,
     unknownActivitySourceCount: activityProbeScenePatch.unknownSources.length,
@@ -1881,7 +1881,7 @@ copyDiagnosticsButton.addEventListener("click", () => {
     return;
   }
   copyDiagnosticsButton.disabled = true;
-  void writeText(serializeGalaxyLabDiagnosticSnapshot(galaxyDiagnosticSnapshot()))
+  void writeText(serializeFriendsGalaxyDiagnosticSnapshot(galaxyDiagnosticSnapshot()))
     .then(() => {
       setStatus("Diagnostics copied");
       announceGraph("Diagnostics copied.");
@@ -2078,8 +2078,8 @@ Object.assign(window, {
         workerOnly: true,
         ...fixtureWorkerReceipt,
       },
-      frame: frameStats(frameSamples.snapshot()),
-      submit: frameStats(submitSamples.snapshot()),
+      frame: friendsGalaxyFrameStats(frameSamples.snapshot()),
+      submit: friendsGalaxyFrameStats(submitSamples.snapshot()),
     }),
   },
 });
