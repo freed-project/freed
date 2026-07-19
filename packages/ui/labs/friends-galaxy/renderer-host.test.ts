@@ -23,7 +23,10 @@ class FakeRendererBackend implements FriendsGalaxyRendererBackend {
   initializedAtlas: IdentityGraphAtlas | null = null;
   presentationAtlas: IdentityGraphAtlas | null = null;
 
-  constructor(readonly id: FriendsGalaxyRendererId) {}
+  constructor(
+    readonly id: FriendsGalaxyRendererId,
+    private readonly initializeGate?: Promise<void>,
+  ) {}
 
   async initialize(
     _canvas: HTMLCanvasElement,
@@ -32,6 +35,7 @@ class FakeRendererBackend implements FriendsGalaxyRendererBackend {
   ): Promise<void> {
     this.initializedAtlas = scene.atlas;
     this.events.push(`initialize:${scene.scene.nodeIds.length}:${palette.background}`);
+    await this.initializeGate;
   }
 
   resize(width: number, height: number, pixelRatio: number): void {
@@ -210,5 +214,61 @@ describe("Friends Galaxy renderer host", () => {
     host.dispose();
     expect(backend.disposed).toBe(true);
     expect(host.activeBackend).toBeNull();
+  });
+
+  it("keeps settled metadata on its source scene during atomic replacement", async () => {
+    const firstScene = createGalaxyLabFixture({
+      personCount: 2,
+      accountCount: 2,
+      backgroundStarCount: 0,
+    });
+    const replacementScene = createGalaxyLabFixture({
+      personCount: 4,
+      accountCount: 8,
+      backgroundStarCount: 0,
+    });
+    let releaseReplacement: () => void = () => {};
+    const replacementGate = new Promise<void>((resolve) => {
+      releaseReplacement = resolve;
+    });
+    const backends: FakeRendererBackend[] = [];
+    const host = new FriendsGalaxyRendererHost({
+      scene: firstScene,
+      palette: GALAXY_LAB_THEMES.scriptorium,
+      resolvePresentation: galaxyLabNodePresentation,
+      createSurface: () => ({}) as HTMLCanvasElement,
+      mountSurface: () => undefined,
+      showSurface: () => undefined,
+      removeSurface: () => undefined,
+      createBackend: async (id) => {
+        const backend = new FakeRendererBackend(
+          id,
+          backends.length === 0 ? undefined : replacementGate,
+        );
+        backends.push(backend);
+        return backend;
+      },
+    });
+
+    await host.activate("raw-webgpu");
+    const replacement = host.replaceScene(replacementScene);
+    await Promise.resolve();
+    const settledAtlas: IdentityGraphAtlas = {
+      ...replacementScene.atlas,
+      nodes: replacementScene.atlas.nodes.slice(0, 3),
+      labels: replacementScene.atlas.labels.slice(0, 2),
+    };
+    host.setSettledPresentation(
+      settledAtlas,
+      "middle",
+      { x: 14, y: 22, scale: 0.5 },
+    );
+
+    expect(backends[0]?.presentationAtlas).toBeNull();
+    releaseReplacement();
+    await replacement;
+    expect(backends[1]?.initializedAtlas).toBe(replacementScene.atlas);
+    expect(backends[1]?.presentationAtlas).toBe(settledAtlas);
+    expect(backends[0]?.disposed).toBe(true);
   });
 });

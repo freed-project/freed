@@ -327,6 +327,7 @@ The approved product cutover now has an exact ownership boundary. `FriendsView` 
 - `packages/ui/src/lib/friends-galaxy-product.worker.ts` - product worker entrypoint with one-time resident buffer transfer
 - `packages/ui/src/lib/friends-galaxy-product-worker-client.ts` - generation-safe worker lifecycle, settled coalescing, response admission, and health-poll timeout boundary
 - `packages/ui/src/lib/friends-galaxy-product-presentation.ts` - bounded real identity metadata index and stable renderer presentation resolver
+- `packages/ui/src/lib/friends-galaxy-product-engine.ts` - imperative product worker, metadata, retained renderer, state replay, and health boundary
 - `packages/ui/src/lib/identity-galaxy-engine.ts` - imperative rendering engine and current Three.js plus canvas compatibility backends
 - `packages/ui/src/lib/identity-galaxy-provider-field.ts` - deterministic provider spiral geometry shared by atlas placement and rendering
 - `packages/ui/src/components/friends/index.ts` — barrel export
@@ -586,6 +587,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.149 | Split the real product worker into deterministic source and settled-presentation lanes with one resident transfer, stale-revision containment, and atlas-only label plus avatar candidate resolution | High | Done |
 | 8.150 | Add a generation-safe product worker client that queues pre-ready settles, keeps one presentation in flight, coalesces to the newest viewport, and fails closed without a main-thread compiler | High | Done |
 | 8.151 | Bind selected linked channels to their required parent identity metadata and resolve real labels, initials, priority, and avatar candidates through one capped product presentation index | High | Done |
+| 8.152 | Assemble the product worker client, bounded metadata resolver, and retained renderer host behind one imperative engine with atomic source replacement and last-good-scene preservation | High | Done |
 
 ---
 
@@ -648,6 +650,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] The real product worker compiles a stable source revision once, returns later settled metadata without scene transfers, rejects stale revisions, and keeps product label plus avatar selection inside the bounded worker atlas
 - [x] The product worker client preserves the last visible renderer scene outside its lifecycle, coalesces settled requests, ignores superseded generations, and bounds silent or malformed failure through the shared health poll without gesture timers or a main-thread compiler
 - [x] Selected linked channels admit their parent identity metadata without a settled whole-model scan, and one stable capped product resolver supplies real label, initials, priority, and avatar records to every renderer
+- [x] One imperative product engine connects source and settled worker lanes to the retained renderer host, replays pre-start state, keeps the old source coherent until atomic replacement, retains the last visible scene after worker failure, and reports admitted-scene readiness separately from worker-port readiness
 - [x] Scriptorium graph colors stay legible instead of washing node fills and labels into the stage
 - [x] Graph model construction uses single-pass activity indexing instead of rescanning every captured item per node
 - [x] Worker layout uses local bucketed overlap resolution instead of naïve all-pairs nudging

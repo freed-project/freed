@@ -45,6 +45,7 @@ export interface FriendsGalaxyRendererHostOptions {
 
 export class FriendsGalaxyRendererHost {
   private scene: FriendsGalaxyRendererScene;
+  private activeScene: FriendsGalaxyRendererScene | null = null;
   private palette: FriendsGalaxyRendererPalette;
   private width = 1;
   private height = 1;
@@ -59,6 +60,7 @@ export class FriendsGalaxyRendererHost {
   private detail: FriendsGalaxyViewDetail = "overview";
   private settledTransform: FriendsGalaxyTransform | null = null;
   private activityPatches: FriendsGalaxyActivityScenePatchBatch | null = null;
+  private requestedRendererId: FriendsGalaxyRendererId | null = null;
   private readonly runtime: FriendsGalaxyBackendRuntime<
     FriendsGalaxyRendererId,
     FriendsGalaxyRendererBackend,
@@ -78,16 +80,29 @@ export class FriendsGalaxyRendererHost {
       removeSurface: options.removeSurface,
       createBackend,
       initializeBackend: async (backend, canvas) => {
-        await backend.initialize(canvas, this.scene, this.palette);
+        const initializingScene = this.scene;
+        await backend.initialize(canvas, initializingScene, this.palette);
+        if (
+          this.scene.scene === initializingScene.scene &&
+          this.scene.atlas !== initializingScene.atlas
+        ) {
+          backend.setPresentationAtlas(this.scene.atlas);
+        }
         this.applyState(backend);
       },
       fallbackReason: (backend) => backend.metrics().fallbackReason,
       backendLabel: (backend) => backend.metrics().label,
       onLoading: options.onLoading,
-      onActivated: options.onActivated,
+      onActivated: (activation) => {
+        if (!activation.retained) this.activeScene = this.scene;
+        options.onActivated?.(activation);
+      },
       onRecovering: options.onRecovering,
       onFailure: options.onFailure,
-      onDisposed: options.onDisposed,
+      onDisposed: () => {
+        this.activeScene = null;
+        options.onDisposed?.();
+      },
     });
   }
 
@@ -116,12 +131,14 @@ export class FriendsGalaxyRendererHost {
   }
 
   activate(id: FriendsGalaxyRendererId): Promise<RendererActivation | null> {
+    this.requestedRendererId = id;
     return this.runtime.activate(id);
   }
 
   replaceScene(scene: FriendsGalaxyRendererScene): Promise<RendererActivation | null> {
     this.scene = scene;
-    return this.activeId ? this.activate(this.activeId) : Promise.resolve(null);
+    const rendererId = this.activeId ?? this.requestedRendererId;
+    return rendererId ? this.activate(rendererId) : Promise.resolve(null);
   }
 
   resize(width: number, height: number, pixelRatio: number): void {
@@ -179,8 +196,9 @@ export class FriendsGalaxyRendererHost {
     this.detail = detail;
     this.settledTransform = { ...transform };
     const backend = this.activeBackend;
-    if (!backend) return;
+    if (!backend || this.activeScene?.scene !== this.scene.scene) return;
     backend.setPresentationAtlas(atlas);
+    this.activeScene = this.scene;
     if (backend.setSettledView) backend.setSettledView(detail, this.settledTransform);
     else backend.setViewDetail(detail);
   }
@@ -218,6 +236,7 @@ export class FriendsGalaxyRendererHost {
   }
 
   dispose(): void {
+    this.requestedRendererId = null;
     this.runtime.dispose();
   }
 
