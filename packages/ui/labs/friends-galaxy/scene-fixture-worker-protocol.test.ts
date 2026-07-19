@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Account, Person } from "@freed/shared";
 import { createGalaxyLabFixture } from "./scene-fixture.js";
 import {
   GALAXY_LAB_METADATA_NODE_CAP,
@@ -12,9 +13,50 @@ import {
   friendsGalaxyWorkerSceneReceipt,
   validateFriendsGalaxyWorkerScene,
 } from "../../src/lib/friends-galaxy-worker-scene.js";
+import {
+  buildIdentityGraphAtlasModel,
+  fitTransformToAtlasBounds,
+  sliceIdentityGraphAtlas,
+} from "../../src/lib/identity-graph-atlas.js";
+import { compileIdentityGalaxyScene } from "../../src/lib/identity-galaxy-scene.js";
+import {
+  compactFriendsGalaxyRendererSceneMetadata,
+  createFriendsGalaxyRendererScene,
+} from "../../src/lib/friends-galaxy-renderer-scene.js";
+
+function productPerson(index: number): Person {
+  return {
+    id: `product-person-${index}`,
+    name: `Product Person ${index}`,
+    relationshipStatus: index % 5 === 0 ? "connection" : "friend",
+    careLevel: ((index % 5) + 1) as 1 | 2 | 3 | 4 | 5,
+    createdAt: 1,
+    updatedAt: 1,
+  };
+}
+
+function productAccount(index: number, personCount: number): Account {
+  const provider = index % 3 === 0 ? "instagram" : index % 3 === 1 ? "x" : "linkedin";
+  return {
+    id: `product-account-${index}`,
+    personId: index < personCount * 3
+      ? `product-person-${index % personCount}`
+      : undefined,
+    kind: "social",
+    provider,
+    externalId: `product-author-${index}`,
+    handle: `product-author-${index}`,
+    displayName: `Product Author ${index}`,
+    firstSeenAt: 1,
+    lastSeenAt: index + 1,
+    discoveredFrom: "captured_item",
+    createdAt: 1,
+    updatedAt: 1,
+  };
+}
 
 describe("Friends Galaxy fixture worker protocol", () => {
-  it("keeps the semantic scene complete while bounding rich main-thread metadata", () => {
+  it("keeps lab and product semantic scenes complete while bounding rich metadata", () => {
     const fullFixture = createGalaxyLabFixture({
       personCount: 500,
       accountCount: 2_500,
@@ -41,6 +83,70 @@ describe("Friends Galaxy fixture worker protocol", () => {
         true,
       );
     }
+
+    const productPersonCount = 120;
+    const productAccountCount = 500;
+    const persons = Array.from(
+      { length: productPersonCount },
+      (_, index) => productPerson(index),
+    );
+    const accounts = Object.fromEntries(
+      Array.from({ length: productAccountCount }, (_, index) => {
+        const entry = productAccount(index, productPersonCount);
+        return [entry.id, entry];
+      }),
+    );
+    const model = buildIdentityGraphAtlasModel({
+      persons,
+      accounts,
+      feeds: {},
+      activitySummaries: { social: {}, rss: {}, buildMs: 0, itemCount: 0 },
+      mode: "all_content",
+      width: 1_400,
+      height: 900,
+    });
+    const transform = fitTransformToAtlasBounds(model.bounds, 1_400, 900, 96);
+    const atlas = sliceIdentityGraphAtlas({
+      model,
+      transform,
+      width: 1_400,
+      height: 900,
+      quality: "settled",
+    });
+    const semanticNodes = model.nodes.filter(
+      (node) => node.kind !== "provider_cluster",
+    );
+    const productScene = compactFriendsGalaxyRendererSceneMetadata(
+      createFriendsGalaxyRendererScene({
+        atlas,
+        scene: compileIdentityGalaxyScene({
+          nodes: semanticNodes,
+          edges: model.edges,
+        }, { quality: "settled", now: 1 }),
+        personCount: productPersonCount,
+        accountCount: productAccountCount,
+        linkedAccountCount: productPersonCount * 3,
+        backgroundStarCount: 2_000,
+        backgroundSeed: "product-bridge",
+      }),
+      GALAXY_LAB_METADATA_NODE_CAP,
+    );
+    const productReceipt = friendsGalaxyWorkerSceneReceipt(productScene);
+
+    expect(productScene.scene.nodeIds).toHaveLength(
+      productPersonCount + productAccountCount,
+    );
+    expect(productScene.scene.nodeIds.some((id) => id.startsWith("provider:"))).toBe(false);
+    expect(productScene.atlas.regions.length).toBeGreaterThan(0);
+    expect(productScene.atlas.nodes.length).toBeLessThanOrEqual(
+      GALAXY_LAB_METADATA_NODE_CAP,
+    );
+    expect(productReceipt.transferableBufferCount).toBe(21);
+    expect(() =>
+      validateFriendsGalaxyWorkerScene(productScene, productReceipt, {
+        metadataNodeCap: GALAXY_LAB_METADATA_NODE_CAP,
+      }),
+    ).not.toThrow();
   });
 
   it("transfers every numeric scene payload without duplicate buffers", () => {
