@@ -1,4 +1,4 @@
-export type GalaxyLabSelectionAnnouncementKind = "focus" | "selection";
+export type FriendsGalaxySelectionAnnouncementKind = "focus" | "selection";
 
 const CAMERA_HELP =
   "Use arrow keys to pan, plus and minus to zoom, Home or zero to fit, Enter to open details, Shift plus F10 to open actions, and Escape to clear selection.";
@@ -12,7 +12,7 @@ function accessibleLabel(
   return normalized || fallback;
 }
 
-export function galaxyLabGraphDescription(
+export function friendsGalaxyGraphDescription(
   selectedLabel: string | null,
   reducedMotion: boolean,
 ): string {
@@ -23,9 +23,9 @@ export function galaxyLabGraphDescription(
   return `Interactive Friends Galaxy.${selection} ${CAMERA_HELP}${motion}`;
 }
 
-export function galaxyLabSelectionAnnouncement(
+export function friendsGalaxySelectionAnnouncement(
   selectedLabel: string | null,
-  kind: GalaxyLabSelectionAnnouncementKind,
+  kind: FriendsGalaxySelectionAnnouncementKind,
 ): string {
   if (!selectedLabel) return "Selection cleared.";
   const label = accessibleLabel(selectedLabel);
@@ -34,10 +34,10 @@ export function galaxyLabSelectionAnnouncement(
     : `${label} selected.`;
 }
 
-export function galaxyLabRecoveryAnnouncement(rendererLabel: string): string {
+export function friendsGalaxyRecoveryAnnouncement(rendererLabel: string): string {
   return `Friends Galaxy recovered with ${accessibleLabel(rendererLabel, "the compatibility renderer")}.`;
 }
 
-export function galaxyLabUnavailableAnnouncement(): string {
+export function friendsGalaxyUnavailableAnnouncement(): string {
   return "Friends Galaxy renderer unavailable.";
 }

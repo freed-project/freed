@@ -65,12 +65,12 @@ import {
 } from "../../src/lib/friends-galaxy-diagnostics.js";
 import { FriendsGalaxyLongTaskMonitor } from "../../src/lib/friends-galaxy-long-tasks.js";
 import {
-  galaxyLabGraphDescription,
-  galaxyLabRecoveryAnnouncement,
-  galaxyLabSelectionAnnouncement,
-  galaxyLabUnavailableAnnouncement,
-  type GalaxyLabSelectionAnnouncementKind,
-} from "./accessibility.js";
+  friendsGalaxyGraphDescription,
+  friendsGalaxyRecoveryAnnouncement,
+  friendsGalaxySelectionAnnouncement,
+  friendsGalaxyUnavailableAnnouncement,
+  type FriendsGalaxySelectionAnnouncementKind,
+} from "../../src/lib/friends-galaxy-accessibility.js";
 import {
   friendsGalaxyViewportGeometry,
   reanchorFriendsGalaxyTransformToInteraction,
@@ -283,7 +283,7 @@ function accessibleNodeLabel(nodeId: string | null): string | null {
 }
 
 function syncGraphDescription(): void {
-  graphDescription.textContent = galaxyLabGraphDescription(
+  graphDescription.textContent = friendsGalaxyGraphDescription(
     accessibleNodeLabel(interaction.selectedNodeId),
     reducedMotionQuery.matches,
   );
@@ -296,10 +296,10 @@ function announceGraph(message: string): void {
 
 function announceGraphSelection(
   nodeId: string | null,
-  kind: GalaxyLabSelectionAnnouncementKind,
+  kind: FriendsGalaxySelectionAnnouncementKind,
 ): void {
   announceGraph(
-    galaxyLabSelectionAnnouncement(accessibleNodeLabel(nodeId), kind),
+    friendsGalaxySelectionAnnouncement(accessibleNodeLabel(nodeId), kind),
   );
 }
 
@@ -836,7 +836,7 @@ const backendRuntime = new FriendsGalaxyBackendRuntime<
       Boolean(activation.fallbackReason),
     );
     if (activation.fallbackReason) {
-      announceGraph(galaxyLabRecoveryAnnouncement(backendLabel(activation.id)));
+      announceGraph(friendsGalaxyRecoveryAnnouncement(backendLabel(activation.id)));
     }
     statusElement.dataset.backend = metrics.id;
   },
@@ -849,7 +849,7 @@ const backendRuntime = new FriendsGalaxyBackendRuntime<
         : `Renderer failed: ${reason}`,
       true,
     );
-    announceGraph(galaxyLabUnavailableAnnouncement());
+    announceGraph(friendsGalaxyUnavailableAnnouncement());
     simulateLossButton.disabled = true;
     markGalaxyDirty();
   },
