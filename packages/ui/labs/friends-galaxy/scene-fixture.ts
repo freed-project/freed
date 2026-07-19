@@ -16,16 +16,9 @@ import type {
   IdentityGraphAtlasNode,
   IdentityGraphAtlasRegion,
 } from "../../src/lib/identity-graph-atlas.js";
-import {
-  createFriendsGalaxySceneInteractionIndex,
-  type FriendsGalaxySceneInteractionIndex,
-} from "../../src/lib/friends-galaxy-scene-interaction-index.js";
-import {
-  createFriendsGalaxyPackedStarInstances,
-  type FriendsGalaxyPackedStarInstances,
-} from "../../src/lib/friends-galaxy-star-instances.js";
 import type { FriendsGalaxyRendererPalette } from "../../src/lib/friends-galaxy-palette.js";
 import type { FriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer.js";
+import { createFriendsGalaxyRendererScene } from "../../src/lib/friends-galaxy-renderer-scene.js";
 import type { FriendsGalaxyNodePresentation } from "../../src/lib/friends-galaxy-presentation.js";
 
 export const GALAXY_LAB_PROVIDERS = ["instagram", "facebook", "linkedin", "x", "rss"] as const;
@@ -525,36 +518,19 @@ export function createGalaxyLabFixture({
     bounds: sceneBounds,
   };
 
-  const backgroundPositions = new Float32Array(safeBackgroundCount * 3);
-  const backgroundBrightness = new Float32Array(safeBackgroundCount);
-  for (let index = 0; index < safeBackgroundCount; index += 1) {
-    const radius = 1_800 + Math.sqrt(seededUnit(`background:${index}:radius`)) * 7_600;
-    const angle = seededUnit(`background:${index}:angle`) * Math.PI * 2;
-    backgroundPositions[index * 3] = Math.cos(angle) * radius;
-    backgroundPositions[index * 3 + 1] = Math.sin(angle) * radius * 0.68;
-    backgroundPositions[index * 3 + 2] = -260 - seededUnit(`background:${index}:depth`) * 1_300;
-    backgroundBrightness[index] = 0.2 + seededUnit(`background:${index}:brightness`) * 0.8;
-  }
-
-  const interactionIndex = createFriendsGalaxySceneInteractionIndex(scene);
-  const packedStarInstances = createFriendsGalaxyPackedStarInstances({
-    scene,
-    backgroundPositions,
-    backgroundBrightness,
-  });
-  const buildMs = nowMs() - startedAt;
-  atlas.metrics.buildMs = buildMs;
-  return {
+  const rendererScene = createFriendsGalaxyRendererScene({
     atlas,
     scene,
-    interactionIndex,
-    packedStarInstances,
-    backgroundPositions,
-    backgroundBrightness,
     personCount: safePersonCount,
     accountCount: safeAccountCount,
     linkedAccountCount,
     backgroundStarCount: safeBackgroundCount,
+    backgroundSeed: "",
+  });
+  const buildMs = nowMs() - startedAt;
+  atlas.metrics.buildMs = buildMs;
+  return {
+    ...rendererScene,
     activitySummaryCount: safeActivitySummaryCount,
     representedActivityItemCount: safeRepresentedActivityItemCount,
     buildMs,

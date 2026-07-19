@@ -570,6 +570,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.142 | Fade retained identity detail icons by elapsed time and camera scale without atlas rebuilds during zoom | High | Done |
 | 8.143 | Scale decorative background stars with camera zoom through one bounded GPU-side curve without changing semantic stars or resident buffers | High | Done |
 | 8.144 | Replace the misleading animation loop with shared shader-only ambient scintillation, depth drift, nebula flow, reduced-motion behavior, and diagnostic state | High | Done |
+| 8.145 | Share deterministic background generation, renderer-scene assembly, and rich-metadata compaction between the laboratory and product worker boundary | High | Done |
 
 ---
 
@@ -625,6 +626,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Provider island labels stay prominent at low zoom while person labels wait for closer inspection
 - [x] Pan and zoom update only the graph transform during active movement instead of rebuilding the full scene every frame
 - [x] Optional ambient motion uses scalar shader uniforms for stellar scintillation and depth-sensitive dust drift across Raw WebGPU, Three.js WebGPU, and WebGL2. Raw WebGPU and WebGL2 also animate provider fields, while camera movement and reduced-motion mode freeze every cosmetic branch
+- [x] The laboratory and future product atlas worker share one deterministic renderer-scene assembler, background generator, metadata compactor, sparse interaction index, and direct-upload star stream contract
 - [x] Scriptorium graph colors stay legible instead of washing node fills and labels into the stage
 - [x] Graph model construction uses single-pass activity indexing instead of rescanning every captured item per node
 - [x] Worker layout uses local bucketed overlap resolution instead of naïve all-pairs nudging
