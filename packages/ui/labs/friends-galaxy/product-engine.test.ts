@@ -409,6 +409,45 @@ describe("Friends Galaxy product engine", () => {
     expect(backend.presentationAtlas).toBeNull();
   });
 
+  it("defers a fresh source scene until active camera motion settles", async () => {
+    const worker = new ControlledProductWorker();
+    const service = new FriendsGalaxyProductWorkerService();
+    const backends: ProductRendererBackend[] = [];
+    const sourceRevisions: number[] = [];
+    const engine = new FriendsGalaxyProductEngine({
+      palette: FRIENDS_GALAXY_THEME_PALETTES.scriptorium,
+      createWorker: () => worker,
+      createSurface: () => ({}) as HTMLCanvasElement,
+      mountSurface: () => undefined,
+      showSurface: () => undefined,
+      removeSurface: () => undefined,
+      createBackend: async (id) => {
+        const backend = new ProductRendererBackend(id);
+        backends.push(backend);
+        return backend;
+      },
+      onSourceSceneReady: (result) => sourceRevisions.push(result.sourceRevision),
+    });
+
+    engine.requestSource(sourceRequest(1, 12, 48));
+    worker.emit(response(service, worker, 0));
+    await flushActivation();
+    engine.setCameraMotion(true);
+    engine.requestSource(sourceRequest(2, 9, 27));
+    worker.emit(response(service, worker, 1));
+
+    expect(sourceRevisions).toEqual([1]);
+    expect(engine.activeSourceRevision).toBe(1);
+    expect(backends).toHaveLength(1);
+
+    engine.setCameraMotion(false);
+    expect(sourceRevisions).toEqual([1, 2]);
+    expect(engine.activeSourceRevision).toBe(2);
+    await flushActivation();
+    expect(backends).toHaveLength(2);
+    expect(backends[1]?.initializedScene?.personCount).toBe(9);
+  });
+
   it("owns clip-safe navigation and emits settled presentation only on demand", async () => {
     const worker = new ControlledProductWorker();
     const service = new FriendsGalaxyProductWorkerService();

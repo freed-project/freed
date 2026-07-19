@@ -95,6 +95,7 @@ export class FriendsGalaxyProductEngine {
   private settledTransform: FriendsGalaxyTransform | null = null;
   private activityPatches: FriendsGalaxyActivityScenePatchBatch | null = null;
   private latestPresentation: FriendsGalaxyProductWorkerPresentationInput | null = null;
+  private pendingSourceResponse: FriendsGalaxyProductWorkerSourceResponse | null = null;
   private admittedSourceRevision: number | null = null;
   private disposed = false;
 
@@ -195,6 +196,7 @@ export class FriendsGalaxyProductEngine {
   requestSource(input: FriendsGalaxyProductWorkerSourceInput): number {
     this.assertActive();
     this.latestPresentation = null;
+    this.pendingSourceResponse = null;
     this.activityPatches = null;
     return this.worker.requestSource(input);
   }
@@ -280,6 +282,11 @@ export class FriendsGalaxyProductEngine {
   setCameraMotion(active: boolean): void {
     this.cameraMotion = active;
     this.renderer?.setCameraMotion(active);
+    if (!active && this.pendingSourceResponse) {
+      const response = this.pendingSourceResponse;
+      this.pendingSourceResponse = null;
+      this.admitSource(response);
+    }
   }
 
   setFieldStyle(style: FriendsGalaxyFieldStyle): void {
@@ -445,6 +452,7 @@ export class FriendsGalaxyProductEngine {
     this.navigation = null;
     this.sceneIndex = null;
     this.latestPresentation = null;
+    this.pendingSourceResponse = null;
     this.admittedSourceRevision = null;
   }
 
@@ -455,6 +463,14 @@ export class FriendsGalaxyProductEngine {
   }
 
   private receiveSource(response: FriendsGalaxyProductWorkerSourceResponse): void {
+    if (this.cameraMotion && this.admittedSourceRevision !== null) {
+      this.pendingSourceResponse = response;
+      return;
+    }
+    this.admitSource(response);
+  }
+
+  private admitSource(response: FriendsGalaxyProductWorkerSourceResponse): void {
     this.presentation.replace(response.rendererScene.atlas);
     this.admittedSourceRevision = response.sourceRevision;
     this.sceneIndex = new FriendsGalaxySceneIndex(
