@@ -26,6 +26,206 @@ export interface FriendsGalaxyActivityScenePatchBatch {
   unknownSources: FriendsGalaxyActivitySourceKey[];
 }
 
+export const FRIENDS_GALAXY_ACTIVITY_SOURCE_PATCH_CAP = 4_096;
+const FRIENDS_GALAXY_ACTIVITY_SCENE_BUFFER_COUNT = 6;
+
+const ACTIVITY_SCENE_FLAG_MASK =
+  FriendsGalaxyActivitySceneFlag.HasLocation |
+  FriendsGalaxyActivitySceneFlag.HasAvatar |
+  FriendsGalaxyActivitySceneFlag.Removed;
+
+export function friendsGalaxyActivityScenePatchTransferables(
+  batch: FriendsGalaxyActivityScenePatchBatch,
+): ArrayBuffer[] {
+  const buffers = [
+    batch.nodeIndices.buffer,
+    batch.itemCounts.buffer,
+    batch.latestActivityAt.buffer,
+    batch.sizeScales.buffer,
+    batch.brightnessScales.buffer,
+    batch.flags.buffer,
+  ];
+  const transferables = new Set<ArrayBuffer>();
+  for (const buffer of buffers) {
+    if (buffer instanceof ArrayBuffer) transferables.add(buffer);
+  }
+  return [...transferables];
+}
+
+function boundedPatchText(label: string, value: unknown, maximum: number): void {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    Array.from(value).length > maximum
+  ) {
+    throw new Error(`Friends Galaxy activity patches contain an invalid ${label}.`);
+  }
+}
+
+export function validateFriendsGalaxyActivityScenePatchBatch(
+  batch: FriendsGalaxyActivityScenePatchBatch,
+  semanticNodeCount: number,
+  expectedRevision: number,
+): void {
+  if (
+    !Number.isSafeInteger(expectedRevision) ||
+    expectedRevision < 0 ||
+    batch.revision !== expectedRevision
+  ) {
+    throw new Error("Friends Galaxy activity patches have an invalid revision.");
+  }
+  if (!Number.isSafeInteger(semanticNodeCount) || semanticNodeCount < 0) {
+    throw new Error("Friends Galaxy activity patches require a valid semantic count.");
+  }
+  if (
+    !(batch.nodeIndices instanceof Uint32Array) ||
+    !(batch.itemCounts instanceof Uint32Array) ||
+    !(batch.latestActivityAt instanceof Float64Array) ||
+    !(batch.sizeScales instanceof Float32Array) ||
+    !(batch.brightnessScales instanceof Float32Array) ||
+    !(batch.flags instanceof Uint8Array) ||
+    !Array.isArray(batch.avatarUrls) ||
+    !Array.isArray(batch.unknownSources)
+  ) {
+    throw new Error("Friends Galaxy activity patches have invalid buffer types.");
+  }
+  const length = batch.nodeIndices.length;
+  if (
+    length > semanticNodeCount ||
+    batch.itemCounts.length !== length ||
+    batch.latestActivityAt.length !== length ||
+    batch.sizeScales.length !== length ||
+    batch.brightnessScales.length !== length ||
+    batch.flags.length !== length ||
+    batch.avatarUrls.length !== length ||
+    batch.unknownSources.length > FRIENDS_GALAXY_ACTIVITY_SOURCE_PATCH_CAP ||
+    friendsGalaxyActivityScenePatchTransferables(batch).length !==
+      FRIENDS_GALAXY_ACTIVITY_SCENE_BUFFER_COUNT
+  ) {
+    throw new Error("Friends Galaxy activity patches have inconsistent lengths.");
+  }
+  let previousNodeIndex = -1;
+  for (let index = 0; index < length; index += 1) {
+    const nodeIndex = batch.nodeIndices[index]!;
+    if (nodeIndex >= semanticNodeCount || nodeIndex <= previousNodeIndex) {
+      throw new Error("Friends Galaxy activity patches have invalid node ordering.");
+    }
+    previousNodeIndex = nodeIndex;
+    if (
+      !Number.isFinite(batch.latestActivityAt[index]) ||
+      batch.latestActivityAt[index]! < 0 ||
+      !Number.isFinite(batch.sizeScales[index]) ||
+      batch.sizeScales[index]! < 0 ||
+      !Number.isFinite(batch.brightnessScales[index]) ||
+      batch.brightnessScales[index]! < 0 ||
+      (batch.flags[index]! & ~ACTIVITY_SCENE_FLAG_MASK) !== 0
+    ) {
+      throw new Error("Friends Galaxy activity patches contain invalid node values.");
+    }
+    const avatarUrl = batch.avatarUrls[index];
+    if (avatarUrl !== null) boundedPatchText("avatar URL", avatarUrl, 2_048);
+  }
+  const unknownTokens = new Set<string>();
+  for (const source of batch.unknownSources) {
+    if (source.namespace !== "social" && source.namespace !== "rss") {
+      throw new Error("Friends Galaxy activity patches contain an invalid namespace.");
+    }
+    boundedPatchText("source key", source.key, 2_048);
+    const token = `${source.namespace}\u0000${source.key}`;
+    if (unknownTokens.has(token)) {
+      throw new Error("Friends Galaxy activity patches contain duplicate unknown sources.");
+    }
+    unknownTokens.add(token);
+  }
+}
+
+interface FriendsGalaxyActivityNodeState {
+  itemCount: number;
+  latestActivityAt: number;
+  sizeScale: number;
+  brightnessScale: number;
+  flags: number;
+  avatarUrl: string | null;
+}
+
+export class FriendsGalaxyActivityPatchJournal {
+  private readonly stateByNodeIndex = new Map<
+    number,
+    FriendsGalaxyActivityNodeState
+  >();
+  private revision = -1;
+
+  constructor(private readonly semanticNodeCount: number) {
+    if (!Number.isSafeInteger(semanticNodeCount) || semanticNodeCount < 0) {
+      throw new Error("Friends Galaxy activity journal requires a valid semantic count.");
+    }
+  }
+
+  get nodeCount(): number {
+    return this.stateByNodeIndex.size;
+  }
+
+  get latestRevision(): number | null {
+    return this.revision < 0 ? null : this.revision;
+  }
+
+  record(batch: FriendsGalaxyActivityScenePatchBatch): void {
+    if (batch.revision <= this.revision) {
+      throw new Error("Friends Galaxy activity journal requires increasing revisions.");
+    }
+    validateFriendsGalaxyActivityScenePatchBatch(
+      batch,
+      this.semanticNodeCount,
+      batch.revision,
+    );
+    for (let index = 0; index < batch.nodeIndices.length; index += 1) {
+      this.stateByNodeIndex.set(batch.nodeIndices[index]!, {
+        itemCount: batch.itemCounts[index]!,
+        latestActivityAt: batch.latestActivityAt[index]!,
+        sizeScale: batch.sizeScales[index]!,
+        brightnessScale: batch.brightnessScales[index]!,
+        flags: batch.flags[index]!,
+        avatarUrl: batch.avatarUrls[index]!,
+      });
+    }
+    this.revision = batch.revision;
+  }
+
+  snapshot(): FriendsGalaxyActivityScenePatchBatch | null {
+    if (this.revision < 0) return null;
+    const entries = [...this.stateByNodeIndex.entries()].sort(
+      ([left], [right]) => left - right,
+    );
+    const nodeIndices = new Uint32Array(entries.length);
+    const itemCounts = new Uint32Array(entries.length);
+    const latestActivityAt = new Float64Array(entries.length);
+    const sizeScales = new Float32Array(entries.length);
+    const brightnessScales = new Float32Array(entries.length);
+    const flags = new Uint8Array(entries.length);
+    const avatarUrls = new Array<string | null>(entries.length);
+    entries.forEach(([nodeIndex, state], index) => {
+      nodeIndices[index] = nodeIndex;
+      itemCounts[index] = state.itemCount;
+      latestActivityAt[index] = state.latestActivityAt;
+      sizeScales[index] = state.sizeScale;
+      brightnessScales[index] = state.brightnessScale;
+      flags[index] = state.flags;
+      avatarUrls[index] = state.avatarUrl;
+    });
+    return {
+      revision: this.revision,
+      nodeIndices,
+      itemCounts,
+      latestActivityAt,
+      sizeScales,
+      brightnessScales,
+      flags,
+      avatarUrls,
+      unknownSources: [],
+    };
+  }
+}
+
 interface EncodedPatch {
   nodeIndex: number;
   summary: FriendsGalaxyActivitySummary | null;

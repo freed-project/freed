@@ -22,6 +22,7 @@ class FakeRendererBackend implements FriendsGalaxyRendererBackend {
   disposed = false;
   initializedAtlas: IdentityGraphAtlas | null = null;
   presentationAtlas: IdentityGraphAtlas | null = null;
+  activityPatches: FriendsGalaxyActivityScenePatchBatch[] = [];
 
   constructor(
     readonly id: FriendsGalaxyRendererId,
@@ -47,6 +48,7 @@ class FakeRendererBackend implements FriendsGalaxyRendererBackend {
   }
 
   applyActivityPatches(patches: FriendsGalaxyActivityScenePatchBatch): void {
+    this.activityPatches.push(patches);
     this.events.push(`activity:${patches.revision}`);
   }
 
@@ -270,5 +272,52 @@ describe("Friends Galaxy renderer host", () => {
     expect(backends[1]?.initializedAtlas).toBe(replacementScene.atlas);
     expect(backends[1]?.presentationAtlas).toBe(settledAtlas);
     expect(backends[0]?.disposed).toBe(true);
+  });
+
+  it("replays cumulative sparse activity state after a backend switch", async () => {
+    const backends: FakeRendererBackend[] = [];
+    const host = new FriendsGalaxyRendererHost({
+      scene: createGalaxyLabFixture({
+        personCount: 2,
+        accountCount: 3,
+        backgroundStarCount: 0,
+      }),
+      palette: GALAXY_LAB_THEMES.neon,
+      resolvePresentation: galaxyLabNodePresentation,
+      createSurface: () => ({}) as HTMLCanvasElement,
+      mountSurface: () => undefined,
+      showSurface: () => undefined,
+      removeSurface: () => undefined,
+      createBackend: async (id) => {
+        const backend = new FakeRendererBackend(id);
+        backends.push(backend);
+        return backend;
+      },
+    });
+    await host.activate("raw-webgpu");
+    const first = emptyActivityPatches(1);
+    first.nodeIndices = new Uint32Array([0]);
+    first.itemCounts = new Uint32Array([4]);
+    first.latestActivityAt = new Float64Array([100]);
+    first.sizeScales = new Float32Array([1]);
+    first.brightnessScales = new Float32Array([1]);
+    first.flags = new Uint8Array([0]);
+    first.avatarUrls = [null];
+    const second = emptyActivityPatches(2);
+    second.nodeIndices = new Uint32Array([1]);
+    second.itemCounts = new Uint32Array([9]);
+    second.latestActivityAt = new Float64Array([200]);
+    second.sizeScales = new Float32Array([1.1]);
+    second.brightnessScales = new Float32Array([1.05]);
+    second.flags = new Uint8Array([0]);
+    second.avatarUrls = [null];
+    host.applyActivityPatches(first);
+    host.applyActivityPatches(second);
+
+    await host.activate("three-webgpu");
+    const replay = backends[1]?.activityPatches.at(-1);
+    expect(replay?.revision).toBe(2);
+    expect(Array.from(replay?.nodeIndices ?? [])).toEqual([0, 1]);
+    expect(Array.from(replay?.itemCounts ?? [])).toEqual([4, 9]);
   });
 });

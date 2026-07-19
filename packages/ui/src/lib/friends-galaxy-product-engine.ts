@@ -3,12 +3,14 @@ import type { FriendsGalaxyRendererPalette } from "./friends-galaxy-palette.js";
 import { FriendsGalaxyProductPresentationIndex } from "./friends-galaxy-product-presentation.js";
 import {
   FriendsGalaxyProductWorkerClient,
+  type FriendsGalaxyProductWorkerActivityInput,
   type FriendsGalaxyProductWorkerFailure,
   type FriendsGalaxyProductWorkerPort,
   type FriendsGalaxyProductWorkerPresentationInput,
   type FriendsGalaxyProductWorkerSourceInput,
 } from "./friends-galaxy-product-worker-client.js";
 import type {
+  FriendsGalaxyProductWorkerActivityResponse,
   FriendsGalaxyProductWorkerPresentationResponse,
   FriendsGalaxyProductWorkerSourceResponse,
 } from "./friends-galaxy-product-worker-protocol.js";
@@ -42,6 +44,7 @@ export interface FriendsGalaxyProductEngineOptions extends Omit<
   onPresentationReady?(
     response: FriendsGalaxyProductWorkerPresentationResponse,
   ): void;
+  onActivityReady?(response: FriendsGalaxyProductWorkerActivityResponse): void;
 }
 
 export class FriendsGalaxyProductEngine {
@@ -53,6 +56,7 @@ export class FriendsGalaxyProductEngine {
   >;
   private readonly onSourceSceneReady: FriendsGalaxyProductEngineOptions["onSourceSceneReady"];
   private readonly onPresentationReady: FriendsGalaxyProductEngineOptions["onPresentationReady"];
+  private readonly onActivityReady: FriendsGalaxyProductEngineOptions["onActivityReady"];
   private renderer: FriendsGalaxyRendererHost | null = null;
   private rendererId: FriendsGalaxyRendererId;
   private palette: FriendsGalaxyRendererPalette;
@@ -83,6 +87,7 @@ export class FriendsGalaxyProductEngine {
       onWorkerFailure,
       onSourceSceneReady,
       onPresentationReady,
+      onActivityReady,
       ...rendererOptions
     } = options;
     this.palette = palette;
@@ -90,12 +95,14 @@ export class FriendsGalaxyProductEngine {
     this.rendererOptions = rendererOptions;
     this.onSourceSceneReady = onSourceSceneReady;
     this.onPresentationReady = onPresentationReady;
+    this.onActivityReady = onActivityReady;
     this.worker = new FriendsGalaxyProductWorkerClient({
       createWorker,
       timeoutMs: workerTimeoutMs,
       now,
       onSourceReady: (response) => this.receiveSource(response),
       onPresentationReady: (response) => this.receivePresentation(response),
+      onActivityReady: (response) => this.receiveActivity(response),
       onFailure: (failure) => onWorkerFailure?.(failure),
     });
   }
@@ -151,6 +158,7 @@ export class FriendsGalaxyProductEngine {
   requestSource(input: FriendsGalaxyProductWorkerSourceInput): number {
     this.assertActive();
     this.latestPresentation = null;
+    this.activityPatches = null;
     return this.worker.requestSource(input);
   }
 
@@ -169,6 +177,13 @@ export class FriendsGalaxyProductEngine {
     const requestId = this.worker.requestPresentation(input);
     if (requestId === null) this.latestPresentation = previousPresentation;
     return requestId;
+  }
+
+  requestActivity(
+    input: FriendsGalaxyProductWorkerActivityInput,
+  ): number | null {
+    this.assertActive();
+    return this.worker.requestActivity(input);
   }
 
   activateRenderer(
@@ -313,6 +328,13 @@ export class FriendsGalaxyProductEngine {
       this.settledTransform,
     );
     this.onPresentationReady?.(response);
+  }
+
+  private receiveActivity(
+    response: FriendsGalaxyProductWorkerActivityResponse,
+  ): void {
+    this.applyActivityPatches(response.scenePatches);
+    this.onActivityReady?.(response);
   }
 
   private replayRendererState(renderer: FriendsGalaxyRendererHost): void {

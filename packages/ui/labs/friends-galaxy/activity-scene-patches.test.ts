@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  FriendsGalaxyActivityPatchJournal,
   FriendsGalaxyActivitySceneFlag,
   FriendsGalaxyActivityScenePatchEncoder,
 } from "../../src/lib/friends-galaxy-activity-patches.js";
@@ -145,5 +146,40 @@ describe("Friends Galaxy activity scene patches", () => {
 
     expect(batch.sizeScales[0]).toBeGreaterThan(batch.sizeScales[1]!);
     expect(batch.brightnessScales[0]).toBeGreaterThan(batch.brightnessScales[1]!);
+  });
+
+  it("accumulates latest sparse node state for renderer recovery", () => {
+    const encoder = new FriendsGalaxyActivityScenePatchEncoder([
+      { namespace: "social", key: "first", nodeIndex: 7 },
+      { namespace: "social", key: "second", nodeIndex: 2 },
+    ]);
+    const journal = new FriendsGalaxyActivityPatchJournal(10);
+    journal.record(encoder.encode([
+      summaryPatch("social", "first", 4),
+    ], 1, 1_800_000_000_000));
+    journal.record(encoder.encode([
+      summaryPatch("social", "second", 9),
+      summaryPatch("social", "first", 12),
+    ], 2, 1_800_000_000_000));
+
+    const snapshot = journal.snapshot();
+    expect(snapshot?.revision).toBe(2);
+    expect(Array.from(snapshot?.nodeIndices ?? [])).toEqual([2, 7]);
+    expect(Array.from(snapshot?.itemCounts ?? [])).toEqual([9, 12]);
+    expect(snapshot?.unknownSources).toEqual([]);
+    expect(journal.nodeCount).toBe(2);
+  });
+
+  it("rejects stale recovery journal revisions", () => {
+    const encoder = new FriendsGalaxyActivityScenePatchEncoder([
+      { namespace: "social", key: "first", nodeIndex: 1 },
+    ]);
+    const batch = encoder.encode([
+      summaryPatch("social", "first", 4),
+    ], 2, 1_800_000_000_000);
+    const journal = new FriendsGalaxyActivityPatchJournal(3);
+    journal.record(batch);
+
+    expect(() => journal.record(batch)).toThrow("requires increasing revisions");
   });
 });

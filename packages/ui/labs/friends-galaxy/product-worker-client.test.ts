@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FriendsGalaxyProductWorkerClient,
+  type FriendsGalaxyProductWorkerActivityInput,
   type FriendsGalaxyProductWorkerFailure,
   type FriendsGalaxyProductWorkerPort,
   type FriendsGalaxyProductWorkerPresentationInput,
@@ -62,6 +63,30 @@ function presentationInput(
       transform: { x: 195, y: 422, scale: 0.42 },
       selectedAccountId: "product-account-319",
     },
+  };
+}
+
+function activityInput(
+  activityRevision: number,
+  key = "x:product-author-1",
+  sourceRevision = 1,
+): FriendsGalaxyProductWorkerActivityInput {
+  return {
+    kind: "activity",
+    sourceRevision,
+    activityRevision,
+    referenceTime: 1_800_000_000_000,
+    patches: [{
+      namespace: "social",
+      key,
+      summary: {
+        itemCount: activityRevision,
+        latestActivityAt: 1_799_999_000_000 + activityRevision,
+        sampleItemIds: [`sample-${activityRevision.toLocaleString()}`],
+        hasLocation: false,
+        avatarUrlCandidates: [],
+      },
+    }],
   };
 }
 
@@ -130,6 +155,71 @@ describe("Friends Galaxy product worker client", () => {
     worker.emit(serviceResponse(service, worker, 2));
     expect(presentations).toEqual([3]);
     expect(client.droppedResponseCount).toBe(1);
+  });
+
+  it("queues sparse activity until its source scene is admitted", () => {
+    const worker = new FakeProductWorker();
+    const service = new FriendsGalaxyProductWorkerService();
+    const activityRevisions: number[] = [];
+    const client = new FriendsGalaxyProductWorkerClient({
+      createWorker: () => worker,
+      onSourceReady: () => undefined,
+      onPresentationReady: () => undefined,
+      onActivityReady: (response) =>
+        activityRevisions.push(response.activityRevision),
+      onFailure: () => undefined,
+    });
+
+    client.requestSource(sourceInput());
+    client.requestActivity(activityInput(1));
+    expect(worker.messages.map((request) => request.kind)).toEqual(["source"]);
+    worker.emit(serviceResponse(service, worker, 0));
+    expect(worker.messages.map((request) => request.kind)).toEqual([
+      "source",
+      "activity",
+    ]);
+    worker.emit(serviceResponse(service, worker, 1));
+    expect(activityRevisions).toEqual([1]);
+    expect(client.activityInFlight).toBe(false);
+  });
+
+  it("merges queued activity sources without dropping an earlier delta", () => {
+    const worker = new FakeProductWorker();
+    const service = new FriendsGalaxyProductWorkerService();
+    const activityRevisions: number[] = [];
+    const client = new FriendsGalaxyProductWorkerClient({
+      createWorker: () => worker,
+      onSourceReady: () => undefined,
+      onPresentationReady: () => undefined,
+      onActivityReady: (response) =>
+        activityRevisions.push(response.activityRevision),
+      onFailure: () => undefined,
+    });
+
+    client.requestSource(sourceInput());
+    worker.emit(serviceResponse(service, worker, 0));
+    client.requestActivity(activityInput(1));
+    client.requestActivity(activityInput(2, "linkedin:product-author-2"));
+    client.requestActivity(activityInput(3, "instagram:product-author-3"));
+    expect(client.activityInFlight).toBe(true);
+    expect(client.activityQueued).toBe(true);
+    expect(worker.messages).toHaveLength(2);
+
+    worker.emit(serviceResponse(service, worker, 1));
+    expect(activityRevisions).toEqual([1]);
+    expect(worker.messages).toHaveLength(3);
+    expect(worker.messages[2]).toMatchObject({
+      kind: "activity",
+      activityRevision: 3,
+    });
+    const queued = worker.messages[2];
+    if (queued?.kind !== "activity") throw new Error("Expected an activity request.");
+    expect(queued.patches.map((patch) => patch.key)).toEqual([
+      "instagram:product-author-3",
+      "linkedin:product-author-2",
+    ]);
+    worker.emit(serviceResponse(service, worker, 2));
+    expect(activityRevisions).toEqual([1, 3]);
   });
 
   it("terminates an older source generation and ignores its late callback", () => {

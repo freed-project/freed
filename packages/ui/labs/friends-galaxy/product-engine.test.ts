@@ -170,6 +170,26 @@ function presentationRequest(sourceRevision = 1, presentationRevision = 1) {
   };
 }
 
+function activityRequest(sourceRevision = 1, activityRevision = 1) {
+  return {
+    kind: "activity" as const,
+    sourceRevision,
+    activityRevision,
+    referenceTime: 1_800_000_000_000,
+    patches: [{
+      namespace: "social" as const,
+      key: "linkedin:product-author-2",
+      summary: {
+        itemCount: activityRevision,
+        latestActivityAt: 1_799_999_000_000 + activityRevision,
+        sampleItemIds: [`sample-${activityRevision.toLocaleString()}`],
+        hasLocation: true,
+        avatarUrlCandidates: ["https://example.com/avatar.jpg"],
+      },
+    }],
+  };
+}
+
 function response(
   service: FriendsGalaxyProductWorkerService,
   worker: ControlledProductWorker,
@@ -280,6 +300,40 @@ describe("Friends Galaxy product engine", () => {
     expect(engine.metadata("person:product-person-2")?.label).toBe(
       "Product Person 2",
     );
+  });
+
+  it("streams sparse activity and replays its cumulative state after a renderer switch", async () => {
+    const worker = new ControlledProductWorker();
+    const service = new FriendsGalaxyProductWorkerService();
+    const backends: ProductRendererBackend[] = [];
+    const activityRevisions: number[] = [];
+    const engine = new FriendsGalaxyProductEngine({
+      palette: FRIENDS_GALAXY_THEME_PALETTES.neon,
+      createWorker: () => worker,
+      createSurface: () => ({}) as HTMLCanvasElement,
+      mountSurface: () => undefined,
+      showSurface: () => undefined,
+      removeSurface: () => undefined,
+      createBackend: async (id) => {
+        const backend = new ProductRendererBackend(id);
+        backends.push(backend);
+        return backend;
+      },
+      onActivityReady: (result) =>
+        activityRevisions.push(result.activityRevision),
+    });
+
+    engine.requestSource(sourceRequest());
+    worker.emit(response(service, worker, 0));
+    await flushActivation();
+    expect(engine.requestActivity(activityRequest())).toBe(2);
+    worker.emit(response(service, worker, 1));
+
+    expect(activityRevisions).toEqual([1]);
+    expect(backends[0]?.events).toContain("activity:1");
+    await engine.activateRenderer("current-webgl2");
+    expect(engine.activeRendererId).toBe("current-webgl2");
+    expect(backends[1]?.events).toContain("activity:1");
   });
 
   it("invalidates an initializing source scene when a newer revision arrives", async () => {

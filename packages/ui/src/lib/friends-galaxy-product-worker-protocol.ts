@@ -1,4 +1,10 @@
 import type { BuildIdentityGraphAtlasModelInput, IdentityGraphAtlas } from "./identity-graph-atlas.js";
+import type { FriendsGalaxyActivitySummaryPatch } from "./friends-galaxy-activity-index.js";
+import {
+  friendsGalaxyActivityScenePatchTransferables,
+  validateFriendsGalaxyActivityScenePatchBatch,
+  type FriendsGalaxyActivityScenePatchBatch,
+} from "./friends-galaxy-activity-patches.js";
 import type { FriendsGalaxyRendererScene } from "./friends-galaxy-renderer.js";
 import {
   friendsGalaxyRendererSceneTransferables,
@@ -11,7 +17,7 @@ import {
 } from "./friends-galaxy-presentation-atlas.js";
 import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
 
-export const FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION = 1 as const;
+export const FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION = 2 as const;
 
 export interface FriendsGalaxyProductWorkerSelection {
   selectedPersonId?: string | null;
@@ -47,9 +53,18 @@ export interface FriendsGalaxyProductWorkerPresentationRequest extends
   viewport: FriendsGalaxyProductWorkerViewport;
 }
 
+export interface FriendsGalaxyProductWorkerActivityRequest extends
+  FriendsGalaxyProductWorkerRequestBase {
+  kind: "activity";
+  activityRevision: number;
+  referenceTime: number;
+  patches: FriendsGalaxyActivitySummaryPatch[];
+}
+
 export type FriendsGalaxyProductWorkerRequest =
   | FriendsGalaxyProductWorkerSourceRequest
-  | FriendsGalaxyProductWorkerPresentationRequest;
+  | FriendsGalaxyProductWorkerPresentationRequest
+  | FriendsGalaxyProductWorkerActivityRequest;
 
 interface FriendsGalaxyProductWorkerResponseBase {
   protocolVersion: typeof FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION;
@@ -72,6 +87,13 @@ export interface FriendsGalaxyProductWorkerPresentationResponse extends
   atlas: IdentityGraphAtlas;
 }
 
+export interface FriendsGalaxyProductWorkerActivityResponse extends
+  FriendsGalaxyProductWorkerResponseBase {
+  kind: "activity-ready";
+  activityRevision: number;
+  scenePatches: FriendsGalaxyActivityScenePatchBatch;
+}
+
 export interface FriendsGalaxyProductWorkerErrorResponse extends
   FriendsGalaxyProductWorkerResponseBase {
   kind: "error";
@@ -82,6 +104,7 @@ export interface FriendsGalaxyProductWorkerErrorResponse extends
 export type FriendsGalaxyProductWorkerResponse =
   | FriendsGalaxyProductWorkerSourceResponse
   | FriendsGalaxyProductWorkerPresentationResponse
+  | FriendsGalaxyProductWorkerActivityResponse
   | FriendsGalaxyProductWorkerErrorResponse;
 
 function assertEnvelopeInteger(label: string, value: unknown): asserts value is number {
@@ -113,9 +136,13 @@ function assertResponseBase(
 export function friendsGalaxyProductWorkerResponseTransferables(
   response: FriendsGalaxyProductWorkerResponse,
 ): ArrayBuffer[] {
-  return response.kind === "source-ready"
-    ? friendsGalaxyRendererSceneTransferables(response.rendererScene)
-    : [];
+  if (response.kind === "source-ready") {
+    return friendsGalaxyRendererSceneTransferables(response.rendererScene);
+  }
+  if (response.kind === "activity-ready") {
+    return friendsGalaxyActivityScenePatchTransferables(response.scenePatches);
+  }
+  return [];
 }
 
 export function validateFriendsGalaxyProductWorkerResponse(
@@ -161,6 +188,18 @@ export function validateFriendsGalaxyProductWorkerResponse(
       response.atlas,
       residentScene.scene,
       residentScene.interactionIndex,
+    );
+    return;
+  }
+  if (request.kind === "activity" && response.kind === "activity-ready") {
+    assertEnvelopeInteger("activity revision", response.activityRevision);
+    if (response.activityRevision !== request.activityRevision || !residentScene) {
+      throw new Error("Friends Galaxy activity response does not match its request.");
+    }
+    validateFriendsGalaxyActivityScenePatchBatch(
+      response.scenePatches,
+      residentScene.scene.nodeIds.length,
+      request.activityRevision,
     );
     return;
   }

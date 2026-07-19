@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { FRIENDS_GALAXY_ACTIVITY_SOURCE_PATCH_CAP } from "../../src/lib/friends-galaxy-activity-patches.js";
 import {
   FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,
   friendsGalaxyProductWorkerResponseTransferables,
   validateFriendsGalaxyProductWorkerResponse,
+  type FriendsGalaxyProductWorkerActivityRequest,
   type FriendsGalaxyProductWorkerPresentationRequest,
   type FriendsGalaxyProductWorkerSourceRequest,
 } from "../../src/lib/friends-galaxy-product-worker-protocol.js";
@@ -47,6 +49,30 @@ function presentationRequest(
       transform: { x: 195, y: 422, scale: 0.22 },
       selectedAccountId: "product-account-499",
     },
+  };
+}
+
+function activityRequest(
+  sourceRevision = 1,
+): FriendsGalaxyProductWorkerActivityRequest {
+  return {
+    kind: "activity",
+    protocolVersion: FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,
+    requestId: 3,
+    sourceRevision,
+    activityRevision: 11,
+    referenceTime: 1_800_000_000_000,
+    patches: [{
+      namespace: "social",
+      key: "linkedin:product-author-2",
+      summary: {
+        itemCount: 17,
+        latestActivityAt: 1_799_999_000_000,
+        sampleItemIds: ["not-transferred"],
+        hasLocation: true,
+        avatarUrlCandidates: ["https://example.com/avatar.jpg"],
+      },
+    }],
   };
 }
 
@@ -147,6 +173,79 @@ describe("Friends Galaxy product worker", () => {
     )).toBe(true);
   });
 
+  it("encodes sparse activity changes against the resident source scene", () => {
+    const service = new FriendsGalaxyProductWorkerService();
+    const source = sourceRequest();
+    const sourceResponse = service.handle(source);
+    if (sourceResponse.kind !== "source-ready") throw new Error("Expected a source response.");
+    const request = activityRequest();
+    const response = service.handle(request);
+    validateFriendsGalaxyProductWorkerResponse(
+      response,
+      request,
+      sourceResponse.rendererScene,
+    );
+    if (response.kind !== "activity-ready") {
+      throw new Error("Expected an activity response.");
+    }
+
+    const accountNodeIndex = sourceResponse.rendererScene.scene.nodeIds.indexOf(
+      "account:product-account-2",
+    );
+    expect(Array.from(response.scenePatches.nodeIndices)).toEqual([accountNodeIndex]);
+    expect(Array.from(response.scenePatches.itemCounts)).toEqual([17]);
+    expect(response.scenePatches.avatarUrls).toEqual([
+      "https://example.com/avatar.jpg",
+    ]);
+    expect(response.scenePatches.unknownSources).toEqual([]);
+    expect(response.scenePatches).not.toHaveProperty("sampleItemIds");
+    expect(friendsGalaxyProductWorkerResponseTransferables(response)).toHaveLength(6);
+  });
+
+  it("reports unknown activity sources without rebuilding the scene", () => {
+    const service = new FriendsGalaxyProductWorkerService();
+    const source = sourceRequest();
+    const sourceResponse = service.handle(source);
+    if (sourceResponse.kind !== "source-ready") throw new Error("Expected a source response.");
+    const request = activityRequest();
+    request.patches = [{
+      namespace: "rss",
+      key: "https://example.com/new-feed.xml",
+      summary: null,
+    }];
+    const response = service.handle(request);
+    if (response.kind !== "activity-ready") {
+      throw new Error("Expected an activity response.");
+    }
+
+    expect(response.scenePatches.nodeIndices).toHaveLength(0);
+    expect(response.scenePatches.unknownSources).toEqual([{
+      namespace: "rss",
+      key: "https://example.com/new-feed.xml",
+    }]);
+    expect(sourceResponse.rendererScene.scene.nodeIds).toHaveLength(620);
+  });
+
+  it("rejects activity batches that exceed the sparse source cap", () => {
+    const service = new FriendsGalaxyProductWorkerService();
+    service.handle(sourceRequest());
+    const request = activityRequest();
+    request.patches = Array.from(
+      { length: FRIENDS_GALAXY_ACTIVITY_SOURCE_PATCH_CAP + 1 },
+      (_, index) => ({
+        namespace: "social" as const,
+        key: `x:overflow-${index.toLocaleString()}`,
+        summary: null,
+      }),
+    );
+
+    const response = service.handle(request);
+    expect(response.kind).toBe("error");
+    if (response.kind !== "error") throw new Error("Expected an error response.");
+    expect(response.requestKind).toBe("activity");
+    expect(response.message).toContain("invalid patches");
+  });
+
   it("contains missing and stale source revisions without rebuilding on the caller", () => {
     const service = new FriendsGalaxyProductWorkerService();
     const missingRequest = presentationRequest();
@@ -163,6 +262,14 @@ describe("Friends Galaxy product worker", () => {
     const staleResponse = service.handle(staleRequest);
     validateFriendsGalaxyProductWorkerResponse(staleResponse, staleRequest);
     expect(staleResponse.kind).toBe("error");
+
+    const staleActivityRequest = activityRequest(3);
+    const staleActivityResponse = service.handle(staleActivityRequest);
+    validateFriendsGalaxyProductWorkerResponse(
+      staleActivityResponse,
+      staleActivityRequest,
+    );
+    expect(staleActivityResponse.kind).toBe("error");
   });
 
   it("uses stable virtual layout dimensions instead of source viewport dimensions", () => {

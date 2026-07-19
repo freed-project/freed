@@ -2,6 +2,8 @@ import type { FriendsGalaxyRendererScene } from "./friends-galaxy-renderer.js";
 import {
   FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,
   validateFriendsGalaxyProductWorkerResponse,
+  type FriendsGalaxyProductWorkerActivityRequest,
+  type FriendsGalaxyProductWorkerActivityResponse,
   type FriendsGalaxyProductWorkerPresentationRequest,
   type FriendsGalaxyProductWorkerPresentationResponse,
   type FriendsGalaxyProductWorkerRequest,
@@ -21,6 +23,11 @@ export type FriendsGalaxyProductWorkerPresentationInput = Omit<
   "protocolVersion" | "requestId"
 >;
 
+export type FriendsGalaxyProductWorkerActivityInput = Omit<
+  FriendsGalaxyProductWorkerActivityRequest,
+  "protocolVersion" | "requestId"
+>;
+
 export interface FriendsGalaxyProductWorkerPort {
   onmessage: ((event: MessageEvent<unknown>) => void) | null;
   onmessageerror: ((event: MessageEvent<unknown>) => void) | null;
@@ -32,6 +39,7 @@ export interface FriendsGalaxyProductWorkerPort {
 export type FriendsGalaxyProductWorkerFailurePhase =
   | "source"
   | "presentation"
+  | "activity"
   | "protocol"
   | "runtime"
   | "post";
@@ -51,6 +59,7 @@ export interface FriendsGalaxyProductWorkerClientOptions {
   onPresentationReady(
     response: FriendsGalaxyProductWorkerPresentationResponse,
   ): void;
+  onActivityReady?(response: FriendsGalaxyProductWorkerActivityResponse): void;
   onFailure(failure: FriendsGalaxyProductWorkerFailure): void;
 }
 
@@ -73,12 +82,47 @@ function boundedMessage(value: unknown): string {
   return Array.from(normalized).slice(0, 240).join("");
 }
 
+function cloneActivityPatches(
+  patches: FriendsGalaxyProductWorkerActivityRequest["patches"],
+): FriendsGalaxyProductWorkerActivityRequest["patches"] {
+  return patches.map((patch) => ({
+    ...patch,
+    summary: patch.summary
+      ? {
+          ...patch.summary,
+          sampleItemIds: [...patch.summary.sampleItemIds],
+          avatarUrlCandidates: [...patch.summary.avatarUrlCandidates],
+        }
+      : null,
+  }));
+}
+
+function mergeActivityRequests(
+  previous: FriendsGalaxyProductWorkerActivityRequest,
+  next: FriendsGalaxyProductWorkerActivityRequest,
+): FriendsGalaxyProductWorkerActivityRequest {
+  const patchBySource = new Map<string, (typeof next.patches)[number]>();
+  for (const patch of previous.patches) {
+    patchBySource.set(`${patch.namespace}\u0000${patch.key}`, patch);
+  }
+  for (const patch of next.patches) {
+    patchBySource.set(`${patch.namespace}\u0000${patch.key}`, patch);
+  }
+  return {
+    ...next,
+    patches: [...patchBySource.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([, patch]) => patch),
+  };
+}
+
 export class FriendsGalaxyProductWorkerClient {
   private readonly createWorker: () => FriendsGalaxyProductWorkerPort;
   private readonly timeoutMs: number;
   private readonly now: () => number;
   private readonly onSourceReady: FriendsGalaxyProductWorkerClientOptions["onSourceReady"];
   private readonly onPresentationReady: FriendsGalaxyProductWorkerClientOptions["onPresentationReady"];
+  private readonly onActivityReady: FriendsGalaxyProductWorkerClientOptions["onActivityReady"];
   private readonly onFailure: FriendsGalaxyProductWorkerClientOptions["onFailure"];
   private worker: FriendsGalaxyProductWorkerPort | null = null;
   private generation = 0;
@@ -88,8 +132,13 @@ export class FriendsGalaxyProductWorkerClient {
   private residentScene: FriendsGalaxyRendererScene | null = null;
   private inFlightPresentation: FriendsGalaxyProductWorkerPresentationRequest | null = null;
   private queuedPresentation: FriendsGalaxyProductWorkerPresentationRequest | null = null;
+  private inFlightActivity: FriendsGalaxyProductWorkerActivityRequest | null = null;
+  private queuedActivity: FriendsGalaxyProductWorkerActivityRequest | null = null;
   private latestPresentationRequestId = 0;
-  private responseDeadline = 0;
+  private latestActivityRevision = -1;
+  private sourceDeadline = 0;
+  private presentationDeadline = 0;
+  private activityDeadline = 0;
   private disposed = false;
   private droppedResponses = 0;
   private failures = 0;
@@ -102,6 +151,7 @@ export class FriendsGalaxyProductWorkerClient {
     this.now = options.now ?? defaultNow;
     this.onSourceReady = options.onSourceReady;
     this.onPresentationReady = options.onPresentationReady;
+    this.onActivityReady = options.onActivityReady;
     this.onFailure = options.onFailure;
   }
 
@@ -121,6 +171,14 @@ export class FriendsGalaxyProductWorkerClient {
     return this.queuedPresentation !== null;
   }
 
+  get activityInFlight(): boolean {
+    return this.inFlightActivity !== null;
+  }
+
+  get activityQueued(): boolean {
+    return this.queuedActivity !== null;
+  }
+
   get droppedResponseCount(): number {
     return this.droppedResponses;
   }
@@ -136,7 +194,10 @@ export class FriendsGalaxyProductWorkerClient {
     this.residentScene = null;
     this.inFlightPresentation = null;
     this.queuedPresentation = null;
+    this.inFlightActivity = null;
+    this.queuedActivity = null;
     this.latestPresentationRequestId = 0;
+    this.latestActivityRevision = -1;
     const request: FriendsGalaxyProductWorkerSourceRequest = {
       ...input,
       kind: "source",
@@ -186,17 +247,55 @@ export class FriendsGalaxyProductWorkerClient {
     return request.requestId;
   }
 
-  poll(): void {
+  requestActivity(input: FriendsGalaxyProductWorkerActivityInput): number | null {
+    this.assertActive();
     if (
-      this.responseDeadline === 0 ||
-      this.now() < this.responseDeadline
-    ) return;
-    const request = this.sourceRequest ?? this.inFlightPresentation;
-    this.fail(
-      "runtime",
-      "Friends Galaxy worker timed out while preserving the last visible scene.",
-      request,
-    );
+      this.currentSourceRevision !== input.sourceRevision ||
+      !this.worker ||
+      !Number.isSafeInteger(input.activityRevision) ||
+      input.activityRevision < 0 ||
+      input.activityRevision <= this.latestActivityRevision
+    ) return null;
+    const request: FriendsGalaxyProductWorkerActivityRequest = {
+      ...input,
+      patches: cloneActivityPatches(input.patches),
+      kind: "activity",
+      protocolVersion: FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,
+      requestId: this.nextRequestId++,
+    };
+    this.latestActivityRevision = request.activityRevision;
+    this.queuedActivity = this.queuedActivity
+      ? mergeActivityRequests(this.queuedActivity, request)
+      : request;
+    this.flushActivity();
+    return request.requestId;
+  }
+
+  poll(): void {
+    const now = this.now();
+    if (this.sourceDeadline > 0 && now >= this.sourceDeadline) {
+      this.fail(
+        "runtime",
+        "Friends Galaxy worker timed out while preserving the last visible scene.",
+        this.sourceRequest,
+      );
+      return;
+    }
+    if (this.presentationDeadline > 0 && now >= this.presentationDeadline) {
+      this.fail(
+        "runtime",
+        "Friends Galaxy presentation timed out while preserving the last visible scene.",
+        this.inFlightPresentation,
+      );
+      return;
+    }
+    if (this.activityDeadline > 0 && now >= this.activityDeadline) {
+      this.fail(
+        "runtime",
+        "Friends Galaxy activity update timed out while preserving the last visible scene.",
+        this.inFlightActivity,
+      );
+    }
   }
 
   dispose(): void {
@@ -209,6 +308,9 @@ export class FriendsGalaxyProductWorkerClient {
     this.residentScene = null;
     this.inFlightPresentation = null;
     this.queuedPresentation = null;
+    this.inFlightActivity = null;
+    this.queuedActivity = null;
+    this.latestActivityRevision = -1;
   }
 
   private assertActive(): void {
@@ -219,7 +321,10 @@ export class FriendsGalaxyProductWorkerClient {
 
   private post(request: FriendsGalaxyProductWorkerRequest): void {
     if (!this.worker) throw new Error("Friends Galaxy worker is unavailable.");
-    this.responseDeadline = this.now() + this.timeoutMs;
+    const deadline = this.now() + this.timeoutMs;
+    if (request.kind === "source") this.sourceDeadline = deadline;
+    else if (request.kind === "presentation") this.presentationDeadline = deadline;
+    else this.activityDeadline = deadline;
     this.worker.postMessage(request);
   }
 
@@ -230,11 +335,12 @@ export class FriendsGalaxyProductWorkerClient {
     }
     const sourceRequest = this.sourceRequest;
     const presentationRequest = this.inFlightPresentation;
+    const activityRequest = this.inFlightActivity;
     if (!candidate || typeof candidate !== "object") {
       this.fail(
         "protocol",
         "Friends Galaxy worker returned an invalid response.",
-        sourceRequest ?? presentationRequest,
+        sourceRequest ?? presentationRequest ?? activityRequest,
       );
       return;
     }
@@ -247,7 +353,7 @@ export class FriendsGalaxyProductWorkerClient {
       this.fail(
         "protocol",
         "Friends Galaxy worker returned an invalid request id.",
-        sourceRequest ?? presentationRequest,
+        sourceRequest ?? presentationRequest ?? activityRequest,
       );
       return;
     }
@@ -257,6 +363,10 @@ export class FriendsGalaxyProductWorkerClient {
     }
     if (presentationRequest && requestId === presentationRequest.requestId) {
       this.receivePresentation(candidate, presentationRequest);
+      return;
+    }
+    if (activityRequest && requestId === activityRequest.requestId) {
+      this.receiveActivity(candidate, activityRequest);
       return;
     }
     this.droppedResponses += 1;
@@ -275,11 +385,12 @@ export class FriendsGalaxyProductWorkerClient {
       if (candidate.kind !== "source-ready") {
         throw new Error("Friends Galaxy worker returned the wrong source response.");
       }
-      this.responseDeadline = 0;
+      this.sourceDeadline = 0;
       this.sourceRequest = null;
       this.residentScene = candidate.rendererScene;
       this.onSourceReady(candidate);
       this.flushPresentation();
+      this.flushActivity();
     } catch (error) {
       this.fail("protocol", error, request);
     }
@@ -298,7 +409,10 @@ export class FriendsGalaxyProductWorkerClient {
     this.fail(
       phase,
       error,
-      this.sourceRequest ?? this.inFlightPresentation ?? sourceRequest,
+      this.sourceRequest ??
+        this.inFlightPresentation ??
+        this.inFlightActivity ??
+        sourceRequest,
     );
   }
 
@@ -319,7 +433,7 @@ export class FriendsGalaxyProductWorkerClient {
       if (candidate.kind !== "presentation-ready") {
         throw new Error("Friends Galaxy worker returned the wrong presentation response.");
       }
-      this.responseDeadline = 0;
+      this.presentationDeadline = 0;
       this.inFlightPresentation = null;
       if (
         request.requestId === this.latestPresentationRequestId &&
@@ -335,6 +449,32 @@ export class FriendsGalaxyProductWorkerClient {
     }
   }
 
+  private receiveActivity(
+    candidate: unknown,
+    request: FriendsGalaxyProductWorkerActivityRequest,
+  ): void {
+    try {
+      validateFriendsGalaxyProductWorkerResponse(
+        candidate,
+        request,
+        this.residentScene ?? undefined,
+      );
+      if (candidate.kind === "error") {
+        this.fail("activity", candidate.message, request);
+        return;
+      }
+      if (candidate.kind !== "activity-ready") {
+        throw new Error("Friends Galaxy worker returned the wrong activity response.");
+      }
+      this.activityDeadline = 0;
+      this.inFlightActivity = null;
+      this.onActivityReady?.(candidate);
+      this.flushActivity();
+    } catch (error) {
+      this.fail("protocol", error, request);
+    }
+  }
+
   private flushPresentation(): void {
     if (
       !this.worker || !this.residentScene || this.sourceRequest ||
@@ -343,6 +483,21 @@ export class FriendsGalaxyProductWorkerClient {
     const request = this.queuedPresentation;
     this.queuedPresentation = null;
     this.inFlightPresentation = request;
+    try {
+      this.post(request);
+    } catch (error) {
+      this.fail("post", error, request);
+    }
+  }
+
+  private flushActivity(): void {
+    if (
+      !this.worker || !this.residentScene || this.sourceRequest ||
+      this.inFlightActivity || !this.queuedActivity
+    ) return;
+    const request = this.queuedActivity;
+    this.queuedActivity = null;
+    this.inFlightActivity = request;
     try {
       this.post(request);
     } catch (error) {
@@ -370,6 +525,9 @@ export class FriendsGalaxyProductWorkerClient {
     this.residentScene = null;
     this.inFlightPresentation = null;
     this.queuedPresentation = null;
+    this.inFlightActivity = null;
+    this.queuedActivity = null;
+    this.latestActivityRevision = -1;
     try {
       this.onFailure(failure);
     } catch {
@@ -378,7 +536,9 @@ export class FriendsGalaxyProductWorkerClient {
   }
 
   private releaseWorker(): void {
-    this.responseDeadline = 0;
+    this.sourceDeadline = 0;
+    this.presentationDeadline = 0;
+    this.activityDeadline = 0;
     const worker = this.worker;
     this.worker = null;
     if (!worker) return;

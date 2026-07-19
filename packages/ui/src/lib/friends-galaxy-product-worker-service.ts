@@ -4,6 +4,11 @@ import {
   sliceIdentityGraphAtlas,
   type IdentityGraphAtlasModel,
 } from "./identity-graph-atlas.js";
+import {
+  FRIENDS_GALAXY_ACTIVITY_SOURCE_PATCH_CAP,
+  FriendsGalaxyActivityScenePatchEncoder,
+  type FriendsGalaxyActivitySceneBinding,
+} from "./friends-galaxy-activity-patches.js";
 import { FRIENDS_GALAXY_PRESENTATION_NODE_CAP } from "./friends-galaxy-presentation-atlas.js";
 import { compileFriendsGalaxyProductRendererScene } from "./friends-galaxy-product-scene.js";
 import {
@@ -12,6 +17,8 @@ import {
 } from "./friends-galaxy-renderer-scene.js";
 import {
   FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,
+  type FriendsGalaxyProductWorkerActivityRequest,
+  type FriendsGalaxyProductWorkerActivityResponse,
   type FriendsGalaxyProductWorkerErrorResponse,
   type FriendsGalaxyProductWorkerPresentationRequest,
   type FriendsGalaxyProductWorkerPresentationResponse,
@@ -21,6 +28,7 @@ import {
   type FriendsGalaxyProductWorkerSourceResponse,
 } from "./friends-galaxy-product-worker-protocol.js";
 import { friendsGalaxyWorkerSceneReceipt } from "./friends-galaxy-worker-scene.js";
+import { socialActivitySummaryKey } from "./identity-graph-activity-summary.js";
 
 export const FRIENDS_GALAXY_PRODUCT_LAYOUT_WIDTH = 1_400;
 export const FRIENDS_GALAXY_PRODUCT_LAYOUT_HEIGHT = 900;
@@ -31,6 +39,7 @@ interface CachedFriendsGalaxyProductSource {
   semanticNodeCount: number;
   linkedPersonNodeIdByAccountId: Map<string, string>;
   metadataByNodeId: Map<string, IdentityGraphAtlasModel["nodes"][number]>;
+  activityEncoder: FriendsGalaxyActivityScenePatchEncoder;
 }
 
 interface FriendsGalaxyProductSourceIndexes {
@@ -95,6 +104,38 @@ function productSourceIndexes(
   return { linkedPersonNodeIdByAccountId, metadataByNodeId };
 }
 
+function productActivityBindings(
+  request: FriendsGalaxyProductWorkerSourceRequest,
+  rendererScene: ReturnType<typeof compileFriendsGalaxyProductRendererScene>,
+): FriendsGalaxyActivitySceneBinding[] {
+  const bindings: FriendsGalaxyActivitySceneBinding[] = [];
+  for (
+    let nodeIndex = 0;
+    nodeIndex < rendererScene.scene.nodeIds.length;
+    nodeIndex += 1
+  ) {
+    const nodeId = rendererScene.scene.nodeIds[nodeIndex]!;
+    if (nodeId.startsWith("account:")) {
+      const account = request.source.accounts[nodeId.slice("account:".length)];
+      if (!account?.provider || !account.externalId) continue;
+      bindings.push({
+        namespace: "social",
+        key: socialActivitySummaryKey(account.provider, account.externalId),
+        nodeIndex,
+      });
+      continue;
+    }
+    if (nodeId.startsWith("feed:")) {
+      bindings.push({
+        namespace: "rss",
+        key: nodeId.slice("feed:".length),
+        nodeIndex,
+      });
+    }
+  }
+  return bindings;
+}
+
 function boundedErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   const characters = Array.from(message.trim() || "Friends Galaxy worker failed.");
@@ -114,6 +155,7 @@ export class FriendsGalaxyProductWorkerService {
       requestInteger("source revision", request.sourceRevision);
       if (request.kind === "source") return this.buildSource(request, startedAt);
       if (request.kind === "presentation") return this.buildPresentation(request, startedAt);
+      if (request.kind === "activity") return this.buildActivity(request, startedAt);
       throw new Error("Unknown Friends Galaxy worker request.");
     } catch (error) {
       const response: FriendsGalaxyProductWorkerErrorResponse = {
@@ -123,7 +165,9 @@ export class FriendsGalaxyProductWorkerService {
         sourceRevision: Number.isSafeInteger(request?.sourceRevision)
           ? request.sourceRevision
           : 0,
-        requestKind: request?.kind === "source" || request?.kind === "presentation"
+        requestKind: request?.kind === "source" ||
+          request?.kind === "presentation" ||
+          request?.kind === "activity"
           ? request.kind
           : "unknown",
         durationMs: Math.max(0, nowMs() - startedAt),
@@ -163,11 +207,15 @@ export class FriendsGalaxyProductWorkerService {
       backgroundSeed: request.backgroundSeed,
     });
     const sourceIndexes = productSourceIndexes(model);
+    const activityEncoder = new FriendsGalaxyActivityScenePatchEncoder(
+      productActivityBindings(request, rendererScene),
+    );
     this.cached = {
       sourceRevision: request.sourceRevision,
       model,
       semanticNodeCount: rendererScene.scene.nodeIds.length,
       ...sourceIndexes,
+      activityEncoder,
     };
     return {
       kind: "source-ready",
@@ -219,6 +267,39 @@ export class FriendsGalaxyProductWorkerService {
       sourceRevision: request.sourceRevision,
       presentationRevision: request.presentationRevision,
       atlas,
+      durationMs: Math.max(0, nowMs() - startedAt),
+    };
+  }
+
+  private buildActivity(
+    request: FriendsGalaxyProductWorkerActivityRequest,
+    startedAt: number,
+  ): FriendsGalaxyProductWorkerActivityResponse {
+    requestInteger("activity revision", request.activityRevision);
+    if (!Number.isFinite(request.referenceTime) || request.referenceTime < 0) {
+      throw new Error("Friends Galaxy activity requested with an invalid reference time.");
+    }
+    if (
+      !Array.isArray(request.patches) ||
+      request.patches.length > FRIENDS_GALAXY_ACTIVITY_SOURCE_PATCH_CAP
+    ) {
+      throw new Error("Friends Galaxy activity requested with invalid patches.");
+    }
+    const cached = this.cached;
+    if (!cached || cached.sourceRevision !== request.sourceRevision) {
+      throw new Error("Friends Galaxy activity requested without its source revision.");
+    }
+    return {
+      kind: "activity-ready",
+      protocolVersion: FRIENDS_GALAXY_PRODUCT_WORKER_PROTOCOL_VERSION,
+      requestId: request.requestId,
+      sourceRevision: request.sourceRevision,
+      activityRevision: request.activityRevision,
+      scenePatches: cached.activityEncoder.encode(
+        request.patches,
+        request.activityRevision,
+        request.referenceTime,
+      ),
       durationMs: Math.max(0, nowMs() - startedAt),
     };
   }

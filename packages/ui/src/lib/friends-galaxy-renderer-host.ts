@@ -1,4 +1,7 @@
-import type { FriendsGalaxyActivityScenePatchBatch } from "./friends-galaxy-activity-patches.js";
+import {
+  FriendsGalaxyActivityPatchJournal,
+  type FriendsGalaxyActivityScenePatchBatch,
+} from "./friends-galaxy-activity-patches.js";
 import {
   FriendsGalaxyBackendRuntime,
   type FriendsGalaxyBackendActivation,
@@ -59,7 +62,7 @@ export class FriendsGalaxyRendererHost {
   };
   private detail: FriendsGalaxyViewDetail = "overview";
   private settledTransform: FriendsGalaxyTransform | null = null;
-  private activityPatches: FriendsGalaxyActivityScenePatchBatch | null = null;
+  private activityJournal: FriendsGalaxyActivityPatchJournal;
   private requestedRendererId: FriendsGalaxyRendererId | null = null;
   private readonly runtime: FriendsGalaxyBackendRuntime<
     FriendsGalaxyRendererId,
@@ -69,6 +72,9 @@ export class FriendsGalaxyRendererHost {
 
   constructor(options: FriendsGalaxyRendererHostOptions) {
     this.scene = options.scene;
+    this.activityJournal = new FriendsGalaxyActivityPatchJournal(
+      options.scene.scene.nodeIds.length,
+    );
     this.palette = options.palette;
     const createBackend = options.createBackend ?? ((id) =>
       createFriendsGalaxyRendererBackend(id, options.resolvePresentation));
@@ -136,6 +142,11 @@ export class FriendsGalaxyRendererHost {
   }
 
   replaceScene(scene: FriendsGalaxyRendererScene): Promise<RendererActivation | null> {
+    if (scene.scene !== this.scene.scene) {
+      this.activityJournal = new FriendsGalaxyActivityPatchJournal(
+        scene.scene.nodeIds.length,
+      );
+    }
     this.scene = scene;
     const rendererId = this.activeId ?? this.requestedRendererId;
     return rendererId ? this.activate(rendererId) : Promise.resolve(null);
@@ -204,7 +215,8 @@ export class FriendsGalaxyRendererHost {
   }
 
   applyActivityPatches(patches: FriendsGalaxyActivityScenePatchBatch): void {
-    this.activityPatches = patches;
+    this.activityJournal.record(patches);
+    if (this.activeScene?.scene !== this.scene.scene) return;
     this.activeBackend?.applyActivityPatches?.(patches);
   }
 
@@ -251,6 +263,7 @@ export class FriendsGalaxyRendererHost {
     } else {
       backend.setViewDetail(this.detail);
     }
-    if (this.activityPatches) backend.applyActivityPatches?.(this.activityPatches);
+    const activityPatches = this.activityJournal.snapshot();
+    if (activityPatches) backend.applyActivityPatches?.(activityPatches);
   }
 }
