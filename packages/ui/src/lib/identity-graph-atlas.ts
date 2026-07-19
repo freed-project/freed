@@ -709,10 +709,12 @@ export function sliceIdentityGraphAtlas({
     ? []
     : visibleNodes
       .filter((node) =>
-        selectedNodeIds.has(node.id) ||
-        (lod === "overview" && node.kind === "friend_person" && node.priority >= 980) ||
-        (lod === "middle" && (node.kind === "friend_person" || node.priority >= 620)) ||
-        (lod === "detail" && node.priority >= 320),
+        node.kind !== "provider_cluster" && (
+          selectedNodeIds.has(node.id) ||
+          (lod === "overview" && node.kind === "friend_person" && node.priority >= 980) ||
+          (lod === "middle" && (node.kind === "friend_person" || node.priority >= 620)) ||
+          (lod === "detail" && node.priority >= 320)
+        ),
       )
       .map((node) => ({
         id: `label:${node.id}`,

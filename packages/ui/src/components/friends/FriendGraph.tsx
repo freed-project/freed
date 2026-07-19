@@ -2,11 +2,13 @@ import {
   forwardRef,
   useCallback,
   useEffect,
+  useId,
   useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
 } from "react";
 import type {
   Account,
@@ -19,48 +21,53 @@ import type {
 import type { ThemeId } from "@freed/shared/themes";
 import { CopyIcon } from "../icons.js";
 import {
+  friendsGalaxyGraphDescription,
+  friendsGalaxyRecoveryAnnouncement,
+  friendsGalaxySelectionAnnouncement,
+  friendsGalaxyUnavailableAnnouncement,
+} from "../../lib/friends-galaxy-accessibility.js";
+import {
+  diffFriendsGalaxyIdentityActivitySummaries,
+} from "../../lib/friends-galaxy-activity-index.js";
+import {
+  writeFriendsGalaxyWebGpuViewProjection,
+} from "../../lib/friends-galaxy-camera.js";
+import {
+  createFriendsGalaxyDiagnosticSnapshot,
+  serializeFriendsGalaxyDiagnosticSnapshot,
+} from "../../lib/friends-galaxy-diagnostics.js";
+import { FriendsGalaxyInputController } from "../../lib/friends-galaxy-input-controller.js";
+import type { FriendsGalaxyContextTarget } from "../../lib/friends-galaxy-interaction.js";
+import { FriendsGalaxyProductEngine } from "../../lib/friends-galaxy-product-engine.js";
+import type {
+  FriendsGalaxyProductWorkerActivityResponse,
+  FriendsGalaxyProductWorkerPresentationResponse,
+  FriendsGalaxyProductWorkerSourceResponse,
+} from "../../lib/friends-galaxy-product-worker-protocol.js";
+import { projectFriendsGalaxyWorldPoint } from "../../lib/friends-galaxy-projection.js";
+import type {
+  FriendsGalaxyRendererScene,
+} from "../../lib/friends-galaxy-renderer.js";
+import { friendsGalaxyRendererPaletteForTheme } from "../../lib/friends-galaxy-theme-palettes.js";
+import type {
+  FriendsGalaxyTransform,
+  FriendsGalaxyViewportGeometry,
+} from "../../lib/friends-galaxy-viewport.js";
+import {
   buildIdentityGraphActivitySummaries,
   type IdentityGraphActivitySummaries,
 } from "../../lib/identity-graph-activity-summary.js";
-import {
-  buildIdentityGraphAtlasModel,
-  fitTransformToAtlasBounds,
-  sliceIdentityGraphAtlas,
-  type BuildIdentityGraphAtlasModelInput,
-  type IdentityGraphAtlas,
-  type IdentityGraphAtlasBounds,
-  type IdentityGraphAtlasNode,
-  type IdentityGraphAtlasQuality,
-} from "../../lib/identity-graph-atlas.js";
-import {
-  compileIdentityGalaxyScene,
-  IdentityGalaxyNodeKindCode,
-  type IdentityGalaxyScene,
-  updateIdentityGalaxySceneInteraction,
-} from "../../lib/identity-galaxy-scene.js";
-import {
-  IdentityGalaxyEngine,
-  type IdentityGalaxyVariation,
-} from "../../lib/identity-galaxy-engine.js";
-import { viewportPointToIdentityGalaxyPlane } from "../../lib/identity-galaxy-camera.js";
 import type {
-  IdentityGalaxyWorkerResponse,
-  IdentityGalaxyWorkerSelection,
-  IdentityGalaxyWorkerViewportInput,
-} from "../../lib/identity-galaxy-worker-protocol.js";
-import {
-  identityGalaxyWorkerResponseDisposition,
-  identityGalaxyWorkerSelectionsMatch,
-  shouldRequestIdentityGalaxyWorkerSelection,
-} from "../../lib/identity-galaxy-worker-protocol.js";
-import {
-  FRIEND_GRAPH_DEFAULT_TRANSFORM,
-  type ViewTransform,
-} from "../../lib/identity-graph-layout.js";
+  BuildIdentityGraphAtlasModelInput,
+  IdentityGraphAtlas,
+  IdentityGraphAtlasNode,
+} from "../../lib/identity-graph-atlas.js";
+import { IdentityGalaxyNodeKindCode } from "../../lib/identity-galaxy-scene.js";
 
 export interface FriendGraphHandle {
   fitAll: () => void;
   focusNode: (id: string) => void;
+  setPresentationVisible: (visible: boolean) => void;
 }
 
 interface FriendGraphProps {
@@ -86,52 +93,14 @@ interface FriendGraphProps {
   friendSuggestionStrengthByPerson?: Map<string, FriendCandidateConfidence>;
   friendSuggestionStrengthByAccount?: Map<string, FriendCandidateConfidence>;
   themeId?: ThemeId;
+  presentationVisible?: boolean;
 }
 
-type DragState =
-  {
-    kind: "pan";
-    pointerId: number;
-    startX: number;
-    startY: number;
-    originX: number;
-    originY: number;
-    moved: boolean;
-  };
-
-type TouchPoint = {
+interface GraphContextMenuState {
   x: number;
   y: number;
-};
-
-type PinchState = {
-  pointerIds: [number, number];
-  initialDistance: number;
-  initialScale: number;
-  initialMidpoint: TouchPoint;
-  initialWorldPoint: TouchPoint;
-  moved: boolean;
-};
-
-type SafariGestureState = {
-  initialScale: number;
-  localPoint: TouchPoint;
-  worldPoint: TouchPoint;
-};
-
-interface SafariGestureEvent extends Event {
-  scale?: number;
-  clientX?: number;
-  clientY?: number;
-}
-
-type GraphContextMenuState = {
-  x: number;
-  y: number;
-  worldX: number;
-  worldY: number;
   node: IdentityGraphAtlasNode;
-};
+}
 
 interface GraphDebugNode {
   id: string;
@@ -142,17 +111,12 @@ interface GraphDebugNode {
   kind: string;
   x: number;
   y: number;
+  screenX: number;
+  screenY: number;
   radius: number;
 }
 
-type GraphViewportInsets = {
-  top: number;
-  right: number;
-  bottom: number;
-  left: number;
-};
-
-interface GraphPerfSnapshot {
+interface GraphSurfacePerfSnapshot {
   modelBuildMs: number;
   layoutMs: number;
   sceneSyncMs: number;
@@ -184,13 +148,10 @@ interface GraphPerfSnapshot {
   frameP95Ms: number;
   longTaskCount: number;
   memoryEstimateBytes: number;
-  rendererType: "three-starfield" | "canvas-starfield-fallback";
-  touchInputMode: "native-touch-events";
-  lod: string;
+  rendererType: string;
+  touchInputMode: string;
+  lod: "overview" | "middle" | "detail";
   capped: boolean;
-}
-
-interface GraphSurfacePerfSnapshot extends GraphPerfSnapshot {
   nodeCount: number;
   linkCount: number;
   personCount: number;
@@ -198,163 +159,31 @@ interface GraphSurfacePerfSnapshot extends GraphPerfSnapshot {
   transformScale: number;
 }
 
-type ApplyIdentityGraphAtlas = (
-  requestId: number,
-  sourceRevision: number,
-  atlas: IdentityGraphAtlas,
-  galaxyScene: IdentityGalaxyScene | undefined,
-  edgeIndices: Uint32Array | undefined,
-  durationMs: number,
-) => void;
-
-const MIN_SCALE = 0.18;
-const MAX_SCALE = 3.2;
-const FIT_PADDING = 96;
-const DESKTOP_INITIAL_SCALE = 0.34;
-const MOBILE_INITIAL_SCALE = 0.42;
-const TRACKPAD_PINCH_ZOOM_SPEED = 0.0035;
-const WHEEL_ZOOM_SPEED = 0.0014;
-const INTERACTION_SETTLE_DELAY_MS = 180;
-const DENSE_INTERACTION_SETTLE_DELAY_MS = 420;
-const GRAPH_LAYOUT_WORKER_TIMEOUT_MS = 2_400;
-const CONTROL_BASE = "btn-secondary rounded-lg px-3 py-1.5 text-xs shadow-sm";
-const EMPTY_GRAPH_VIEWPORT_INSETS: GraphViewportInsets = {
-  top: 0,
-  right: 0,
-  bottom: 0,
-  left: 0,
-};
-
-function fitPaddingForViewport(width: number): number {
-  return width <= 700 ? 28 : FIT_PADDING;
+interface GraphDiagnosticState {
+  sourceScene: FriendsGalaxyRendererScene | null;
+  presentationAtlas: IdentityGraphAtlas | null;
+  sourceReceipt: FriendsGalaxyProductWorkerSourceResponse["receipt"] | null;
+  sourceDurationMs: number;
+  sceneSyncMs: number;
+  sceneSyncCount: number;
+  sourceAdmissionCount: number;
+  transformOnlySyncCount: number;
+  lastTransform: FriendsGalaxyTransform | null;
+  firstVisibleMs: number;
+  activityPatchKeyCount: number;
+  activityPatchNodeCount: number;
+  unknownActivitySourceCount: number;
 }
+
+const BACKGROUND_STAR_COUNT = 100_000;
+const CONTROL_BASE = "btn-secondary rounded-lg px-3 py-1.5 text-xs shadow-sm";
+const MENU_WIDTH = 264;
+const MENU_ESTIMATED_HEIGHT = 376;
 
 function nowMs(): number {
-  if (typeof performance !== "undefined" && typeof performance.now === "function") {
-    return performance.now();
-  }
-  return Date.now();
-}
-
-function clampScale(scale: number): number {
-  return Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
-}
-
-function distanceBetween(first: TouchPoint, second: TouchPoint): number {
-  return Math.hypot(first.x - second.x, first.y - second.y);
-}
-
-function midpointBetween(first: TouchPoint, second: TouchPoint): TouchPoint {
-  return {
-    x: (first.x + second.x) / 2,
-    y: (first.y + second.y) / 2,
-  };
-}
-
-function sameGraphViewportInsets(left: GraphViewportInsets, right: GraphViewportInsets): boolean {
-  return left.top === right.top &&
-    left.right === right.right &&
-    left.bottom === right.bottom &&
-    left.left === right.left;
-}
-
-function fitTransformToVisibleAtlasBounds(
-  bounds: IdentityGraphAtlasBounds,
-  width: number,
-  height: number,
-  padding: number,
-  viewportInsets: GraphViewportInsets,
-): ViewTransform {
-  const visibleWidth = Math.max(1, width - viewportInsets.left - viewportInsets.right);
-  const visibleHeight = Math.max(1, height - viewportInsets.top - viewportInsets.bottom);
-  const transform = fitTransformToAtlasBounds(bounds, visibleWidth, visibleHeight, padding);
-  return {
-    x: transform.x + viewportInsets.left,
-    y: transform.y + viewportInsets.top,
-    scale: transform.scale,
-  };
-}
-
-function initialGalaxyBounds(
-  atlasBounds: IdentityGraphAtlasBounds,
-  scene: IdentityGalaxyScene,
-  viewportWidth: number,
-): IdentityGraphAtlasBounds {
-  let left = Number.POSITIVE_INFINITY;
-  let right = Number.NEGATIVE_INFINITY;
-  let top = Number.POSITIVE_INFINITY;
-  let bottom = Number.NEGATIVE_INFINITY;
-  for (let index = 0; index < scene.nodeIds.length; index += 1) {
-    const kind = scene.kinds[index];
-    if (kind !== IdentityGalaxyNodeKindCode.FriendPerson &&
-      kind !== IdentityGalaxyNodeKindCode.ConnectionPerson) {
-      continue;
-    }
-    const x = scene.positions[index * 3]!;
-    const y = -scene.positions[index * 3 + 1]!;
-    const radius = scene.radii[index]!;
-    left = Math.min(left, x - radius);
-    right = Math.max(right, x + radius);
-    top = Math.min(top, y - radius);
-    bottom = Math.max(bottom, y + radius);
-  }
-  if (!Number.isFinite(left)) return atlasBounds;
-  const padding = viewportWidth <= 700 ? 72 : 150;
-  return {
-    left: left - padding,
-    right: right + padding,
-    top: top - padding,
-    bottom: bottom + padding,
-  };
-}
-
-function ensureInitialGalaxyScale(
-  transform: ViewTransform,
-  bounds: IdentityGraphAtlasBounds,
-  width: number,
-  height: number,
-  viewportInsets: GraphViewportInsets,
-): ViewTransform {
-  const minimumScale = width <= 700 ? MOBILE_INITIAL_SCALE : DESKTOP_INITIAL_SCALE;
-  if (transform.scale >= minimumScale) return transform;
-  const center = visibleViewportCenter(width, height, viewportInsets);
-  const worldCenterX = (bounds.left + bounds.right) / 2;
-  const worldCenterY = (bounds.top + bounds.bottom) / 2;
-  return {
-    x: center.x - worldCenterX * minimumScale,
-    y: center.y - worldCenterY * minimumScale,
-    scale: minimumScale,
-  };
-}
-
-function initialGalaxyTransform(
-  atlasBounds: IdentityGraphAtlasBounds,
-  scene: IdentityGalaxyScene,
-  width: number,
-  height: number,
-  viewportInsets: GraphViewportInsets,
-): ViewTransform {
-  const bounds = initialGalaxyBounds(atlasBounds, scene, width);
-  return ensureInitialGalaxyScale(
-    fitTransformToVisibleAtlasBounds(
-      bounds,
-      width,
-      height,
-      fitPaddingForViewport(width),
-      viewportInsets,
-    ),
-    bounds,
-    width,
-    height,
-    viewportInsets,
-  );
-}
-
-function visibleViewportCenter(width: number, height: number, viewportInsets: GraphViewportInsets): TouchPoint {
-  return {
-    x: viewportInsets.left + Math.max(1, width - viewportInsets.left - viewportInsets.right) / 2,
-    y: viewportInsets.top + Math.max(1, height - viewportInsets.top - viewportInsets.bottom) / 2,
-  };
+  return typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
 }
 
 function shouldExposeGraphDebug(): boolean {
@@ -363,75 +192,179 @@ function shouldExposeGraphDebug(): boolean {
       .__FREED_GRAPH_DEBUG_ENABLED__ === true;
 }
 
-function isGraphGestureUiTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && Boolean(target.closest(
-    'button, input, select, textarea, [role="menu"], [data-graph-gesture-ignore="true"]',
-  ));
-}
-
-function buildGraphDebugNodes(nodes: IdentityGraphAtlasNode[]): GraphDebugNode[] {
-  return nodes.map((node) => ({
-    id: node.id,
-    personId: node.personId,
-    accountId: node.accountId,
-    feedUrl: node.feedUrl,
-    linkedPersonId: node.linkedPersonId,
-    kind: node.kind,
-    x: node.x,
-    y: node.y,
-    radius: node.radius,
-  }));
-}
-
 function buildSuggestionRecord(
   map: Map<string, FriendCandidateConfidence> | undefined,
 ): Record<string, FriendCandidateConfidence> {
-  if (!map) return {};
-  return Object.fromEntries(map.entries());
+  return map ? Object.fromEntries(map.entries()) : {};
 }
 
-function estimateMemoryBytes(atlas: IdentityGraphAtlas): number {
-  return atlas.nodes.length * 160 +
-    atlas.edges.length * 64 +
-    atlas.labels.length * 96 +
-    atlas.regions.length * 112 +
-    atlas.hitBuckets.reduce((sum, bucket) => sum + bucket.nodeIds.length * 24, 0);
+function accountLabel(account: Account): string {
+  return account.displayName || account.handle || account.externalId || "Unnamed account";
 }
 
-function buildHitBucketMap(atlas: IdentityGraphAtlas): Map<string, string[]> {
-  return new Map(atlas.hitBuckets.map((bucket) => [bucket.key, bucket.nodeIds]));
+function initialsForLabel(label: string): string {
+  const parts = label.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return Array.from(parts[0]!).slice(0, 2).join("").toUpperCase();
+  return `${Array.from(parts[0]!)[0] ?? ""}${Array.from(parts[1]!)[0] ?? ""}`.toUpperCase();
 }
 
-function findHitNode(
-  atlas: IdentityGraphAtlas,
-  hitBuckets: Map<string, string[]>,
-  x: number,
-  y: number,
-): IdentityGraphAtlasNode | null {
-  const nodeById = new Map(atlas.nodes.map((node) => [node.id, node]));
-  const cellX = Math.floor(x / 96);
-  const cellY = Math.floor(y / 96);
-  let best: IdentityGraphAtlasNode | null = null;
-  let bestDistance = Number.POSITIVE_INFINITY;
-  for (let xOffset = -1; xOffset <= 1; xOffset += 1) {
-    for (let yOffset = -1; yOffset <= 1; yOffset += 1) {
-      const bucket = hitBuckets.get(`${cellX + xOffset}:${cellY + yOffset}`);
-      if (!bucket) continue;
-      for (const nodeId of bucket) {
-        const node = nodeById.get(nodeId);
-        if (!node) continue;
-        const dx = node.x - x;
-        const dy = node.y - y;
-        const distance = dx * dx + dy * dy;
-        if (distance > node.radius * node.radius) continue;
-        if (distance < bestDistance) {
-          best = node;
-          bestDistance = distance;
-        }
-      }
-    }
+function nodeKindLabel(node: IdentityGraphAtlasNode): string {
+  if (node.kind === "friend_person") return "Friend";
+  if (node.kind === "connection_person") return "Connection";
+  if (node.kind === "feed") return "Feed";
+  if (node.kind === "provider_cluster") return "Galaxy";
+  return node.provider ? `${node.provider} account` : "Account";
+}
+
+function lodForScale(scale: number): GraphSurfacePerfSnapshot["lod"] {
+  if (scale < 0.24) return "overview";
+  if (scale < 0.9) return "middle";
+  return "detail";
+}
+
+function normalizedNodeId(
+  id: string,
+  persons: ReadonlyMap<string, Person>,
+  accounts: Record<string, Account>,
+  feeds: Record<string, RssFeed>,
+): string {
+  if (id.startsWith("person:") || id.startsWith("account:") || id.startsWith("feed:")) {
+    return id;
   }
-  return best;
+  if (persons.has(id)) return `person:${id}`;
+  if (accounts[id]) return `account:${id}`;
+  if (feeds[id]) return `feed:${id}`;
+  return id;
+}
+
+function synthesizeContextNode(
+  target: FriendsGalaxyContextTarget,
+  persons: ReadonlyMap<string, Person>,
+  accounts: Record<string, Account>,
+  feeds: Record<string, RssFeed>,
+): IdentityGraphAtlasNode | null {
+  if (target.nodeId.startsWith("person:")) {
+    const personId = target.nodeId.slice("person:".length);
+    const person = persons.get(personId);
+    if (!person) return null;
+    return {
+      id: target.nodeId,
+      kind: person.relationshipStatus === "friend" ? "friend_person" : "connection_person",
+      label: person.name || "Unnamed friend",
+      x: target.worldX,
+      y: target.worldY,
+      radius: 32,
+      priority: 1,
+      personId,
+      initials: initialsForLabel(person.name),
+      activityCount: 0,
+      careLevel: person.careLevel,
+      graphPinned: person.graphPinned,
+    };
+  }
+  if (target.nodeId.startsWith("account:")) {
+    const accountId = target.nodeId.slice("account:".length);
+    const account = accounts[accountId];
+    if (!account) return null;
+    const label = accountLabel(account);
+    return {
+      id: target.nodeId,
+      kind: "account",
+      label,
+      x: target.worldX,
+      y: target.worldY,
+      radius: 14,
+      priority: 1,
+      accountId,
+      provider: account.provider,
+      linkedPersonId: account.personId ?? null,
+      initials: initialsForLabel(label),
+      activityCount: 0,
+      graphPinned: account.graphPinned,
+    };
+  }
+  if (target.nodeId.startsWith("feed:")) {
+    const feedUrl = target.nodeId.slice("feed:".length);
+    const feed = feeds[feedUrl];
+    const label = feed?.title || feedUrl;
+    return {
+      id: target.nodeId,
+      kind: "feed",
+      label,
+      x: target.worldX,
+      y: target.worldY,
+      radius: 10,
+      priority: 1,
+      feedUrl,
+      provider: "rss",
+      initials: initialsForLabel(label),
+      activityCount: 0,
+    };
+  }
+  return null;
+}
+
+function graphDebugNodes(
+  scene: FriendsGalaxyRendererScene,
+  transform: FriendsGalaxyTransform,
+  geometry: FriendsGalaxyViewportGeometry,
+): GraphDebugNode[] {
+  const matrix = new Float32Array(16);
+  const point = new Float32Array(2);
+  writeFriendsGalaxyWebGpuViewProjection(
+    matrix,
+    transform,
+    geometry.canvasWidth,
+    geometry.canvasHeight,
+  );
+  const scale = Math.max(0.0001, transform.scale);
+  const metadataByNodeId = new Map(scene.atlas.nodes.map((node) => [node.id, node]));
+  return scene.scene.nodeIds.map((id, nodeIndex) => {
+    const offset = nodeIndex * 3;
+    const worldX = scene.scene.positions[offset]!;
+    const worldY = -scene.scene.positions[offset + 1]!;
+    const metadata = metadataByNodeId.get(id);
+    let screenX = transform.x + worldX * scale;
+    let screenY = transform.y + worldY * scale;
+    projectFriendsGalaxyWorldPoint(
+      point,
+      {
+        viewProjection: matrix,
+        width: geometry.canvasWidth,
+        height: geometry.canvasHeight,
+      },
+      scene.scene.positions[offset]!,
+      scene.scene.positions[offset + 1]!,
+      scene.scene.positions[offset + 2]!,
+    );
+    screenX = point[0]!;
+    screenY = point[1]!;
+    const kindCode = scene.scene.kinds[nodeIndex];
+    const kind = kindCode === IdentityGalaxyNodeKindCode.FriendPerson
+      ? "friend_person"
+      : kindCode === IdentityGalaxyNodeKindCode.ConnectionPerson
+        ? "connection_person"
+        : kindCode === IdentityGalaxyNodeKindCode.Feed
+          ? "feed"
+          : "account";
+    const personId = scene.scene.personIds[nodeIndex] ?? undefined;
+    const accountId = scene.scene.accountIds[nodeIndex] ?? undefined;
+    const linkedPersonId = scene.scene.linkedPersonIds[nodeIndex];
+    return {
+      id,
+      personId,
+      accountId,
+      feedUrl: metadata?.feedUrl ?? (id.startsWith("feed:") ? id.slice("feed:".length) : undefined),
+      linkedPersonId,
+      kind,
+      x: metadata?.x ?? worldX,
+      y: metadata?.y ?? worldY,
+      screenX,
+      screenY,
+      radius: metadata?.radius ?? scene.scene.radii[nodeIndex]!,
+    };
+  });
 }
 
 export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(function FriendGraph(
@@ -454,1293 +387,693 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     friendSuggestionStrengthByPerson,
     friendSuggestionStrengthByAccount,
     themeId,
+    presentationVisible = true,
   },
   ref,
 ) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const engineRef = useRef<IdentityGalaxyEngine | null>(null);
-  const workerRef = useRef<Worker | null>(null);
-  const applyAtlasRef = useRef<ApplyIdentityGraphAtlas | null>(null);
-  const requestAtlasRef = useRef<((quality: IdentityGraphAtlasQuality) => void) | null>(null);
-  const requestSelectionByIdRef = useRef<Map<number, IdentityGalaxyWorkerSelection>>(new Map());
-  const atlasRef = useRef<IdentityGraphAtlas | null>(null);
-  const galaxySceneRef = useRef<IdentityGalaxyScene | null>(null);
-  const hitBucketsRef = useRef<Map<string, string[]>>(new Map());
-  const atlasNodeByIdRef = useRef<Map<string, IdentityGraphAtlasNode>>(new Map());
-  const visibleNodeIdsRef = useRef<string[]>([]);
-  const transformRef = useRef<ViewTransform>({ ...FRIEND_GRAPH_DEFAULT_TRANSFORM });
-  const dragStateRef = useRef<DragState | null>(null);
-  const pinchStateRef = useRef<PinchState | null>(null);
-  const safariGestureStateRef = useRef<SafariGestureState | null>(null);
-  const lastPointerPointRef = useRef<TouchPoint | null>(null);
-  const activeTouchPointsRef = useRef<Map<number, TouchPoint>>(new Map());
-  const ignoredTouchIdsRef = useRef<Set<number>>(new Set());
-  const hoveredNodeIdRef = useRef<string | null>(null);
-  const selectedPersonIdRef = useRef(selectedPersonId);
-  const selectedAccountIdRef = useRef(selectedAccountId);
-  const previousSelectionRef = useRef<IdentityGalaxyWorkerSelection>({
-    selectedPersonId,
-    selectedAccountId,
-  });
-  const latestRequestIdRef = useRef(0);
-  const latestResolvedRequestIdRef = useRef(0);
-  const nextSourceRevisionRef = useRef(0);
-  const postedSourceRevisionRef = useRef(-1);
-  const pendingWorkerTimeoutsRef = useRef<Map<number, number>>(new Map());
-  const drawRafRef = useRef(0);
-  const sceneDirtyRef = useRef(true);
-  const interactionDirtyRef = useRef(false);
-  const settleTimerRef = useRef<number | null>(null);
-  const longPressTimerRef = useRef<number | null>(null);
-  const hasFittedInitialAtlasRef = useRef(false);
-  const hasUserAdjustedTransformRef = useRef(false);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const engineRef = useRef<FriendsGalaxyProductEngine | null>(null);
+  const controllerRef = useRef<FriendsGalaxyInputController | null>(null);
+  const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const mountedAtRef = useRef(nowMs());
-  const firstVisibleMsRef = useRef(0);
-  const frameSamplesRef = useRef<number[]>([]);
-  const lastFrameAtRef = useRef<number | null>(null);
-  const longTaskCountRef = useRef(0);
-  const sceneSyncCountRef = useRef(0);
-  const transformOnlySyncCountRef = useRef(0);
-  const edgeRebuildCountRef = useRef(0);
-  const latestQualityRef = useRef<IdentityGraphAtlasQuality>("settled");
-  const viewportInsetsRef = useRef<GraphViewportInsets>(EMPTY_GRAPH_VIEWPORT_INSETS);
-  const [canvasSize, setCanvasSize] = useState({ width: 900, height: 640 });
-  const [viewportInsets, setViewportInsets] = useState<GraphViewportInsets>(EMPTY_GRAPH_VIEWPORT_INSETS);
-  const [atlasReady, setAtlasReady] = useState(false);
-  const [contextMenu, setContextMenu] = useState<GraphContextMenuState | null>(null);
-  const [linkPickerAccountId, setLinkPickerAccountId] = useState<string | null>(null);
-  const [linkPickerQuery, setLinkPickerQuery] = useState("");
-  const [starfieldVariation, setStarfieldVariation] = useState<IdentityGalaxyVariation>("nebula");
-  const starfieldVariationRef = useRef(starfieldVariation);
-  selectedPersonIdRef.current = selectedPersonId;
-  selectedAccountIdRef.current = selectedAccountId;
-  starfieldVariationRef.current = starfieldVariation;
-
+  const diagnosticsOwnerRef = useRef({});
+  const recoveringRef = useRef(false);
+  const contextMenuOpenRef = useRef(false);
+  const sourceRevisionRef = useRef(0);
+  const activityRevisionRef = useRef(0);
+  const sourceActivityBaselineRef = useRef(new Map<number, IdentityGraphActivitySummaries>());
+  const lastAppliedActivityRef = useRef<IdentityGraphActivitySummaries | null>(null);
+  const latestActivityRef = useRef<IdentityGraphActivitySummaries | null>(null);
+  const diagnosticsRef = useRef<GraphDiagnosticState>({
+    sourceScene: null,
+    presentationAtlas: null,
+    sourceReceipt: null,
+    sourceDurationMs: 0,
+    sceneSyncMs: 0,
+    sceneSyncCount: 0,
+    sourceAdmissionCount: 0,
+    transformOnlySyncCount: 0,
+    lastTransform: null,
+    firstVisibleMs: 0,
+    activityPatchKeyCount: 0,
+    activityPatchNodeCount: 0,
+    unknownActivitySourceCount: 0,
+  });
+  const personsById = useMemo(
+    () => new Map(persons.map((person) => [person.id, person])),
+    [persons],
+  );
   const activitySummaries = useMemo(
     () => activitySummariesProp ?? buildIdentityGraphActivitySummaries(feedItems ?? {}),
     [activitySummariesProp, feedItems],
   );
-  const personsById = useMemo(
-    () => Object.fromEntries(persons.map((person) => [person.id, person])),
-    [persons],
-  );
-  const personPickerOptions = useMemo(() => {
-    const query = linkPickerQuery.trim().toLowerCase();
-    return persons
-      .filter((person) => {
-        if (!query) return true;
-        return person.name.toLowerCase().includes(query) ||
-          person.notes?.toLowerCase().includes(query);
-      })
-      .sort((left, right) => {
-        const leftFriend = left.relationshipStatus === "friend" ? 0 : 1;
-        const rightFriend = right.relationshipStatus === "friend" ? 0 : 1;
-        if (leftFriend !== rightFriend) return leftFriend - rightFriend;
-        return left.name.localeCompare(right.name);
-      })
-      .slice(0, 12);
-  }, [linkPickerQuery, persons]);
-  const personCount = persons.length;
-  const channelCount = Object.values(accounts).filter((account) => account.kind === "social").length +
-    Object.values(feeds).filter((feed) => feed.enabled !== false).length;
-  const canonicalNodeCount = personCount + channelCount;
-  const visiblePersonIds = useMemo(
-    () => new Set(persons.filter((person) => mode === "all_content" || person.relationshipStatus === "friend").map((person) => person.id)),
-    [mode, persons],
-  );
-  const canonicalLinkCount = useMemo(
-    () =>
-      Object.values(accounts).filter((account) =>
-        account.kind === "social" &&
-        !!account.personId &&
-        visiblePersonIds.has(account.personId),
-      ).length,
-    [accounts, visiblePersonIds],
-  );
-  const friendSuggestionStrengthByPersonRecord = useMemo(
+  const personSuggestionRecord = useMemo(
     () => buildSuggestionRecord(friendSuggestionStrengthByPerson),
     [friendSuggestionStrengthByPerson],
   );
-  const friendSuggestionStrengthByAccountRecord = useMemo(
+  const accountSuggestionRecord = useMemo(
     () => buildSuggestionRecord(friendSuggestionStrengthByAccount),
     [friendSuggestionStrengthByAccount],
   );
-  const galaxySource = useMemo(() => ({
-    revision: nextSourceRevisionRef.current + 1,
-    input: {
-      persons,
-      accounts,
-      feeds,
-      activitySummaries,
-      mode,
-      width: canvasSize.width,
-      height: canvasSize.height,
-      friendSuggestionStrengthByPerson: friendSuggestionStrengthByPersonRecord,
-      friendSuggestionStrengthByAccount: friendSuggestionStrengthByAccountRecord,
-    } satisfies BuildIdentityGraphAtlasModelInput,
-  }), [
-    accounts,
-    activitySummaries,
-    canvasSize.height,
-    canvasSize.width,
-    feeds,
-    friendSuggestionStrengthByAccountRecord,
-    friendSuggestionStrengthByPersonRecord,
-    mode,
-    persons,
-  ]);
-  nextSourceRevisionRef.current = galaxySource.revision;
+  const personCount = persons.length;
+  const channelCount = useMemo(
+    () => Object.values(accounts).filter((account) => account.kind === "social").length +
+      Object.values(feeds).filter((feed) => feed.enabled !== false).length,
+    [accounts, feeds],
+  );
+  const linkCount = useMemo(() => {
+    const visiblePersonIds = new Set(
+      persons
+        .filter((person) => mode === "all_content" || person.relationshipStatus === "friend")
+        .map((person) => person.id),
+    );
+    return Object.values(accounts).filter((account) =>
+      account.kind === "social" && Boolean(account.personId && visiblePersonIds.has(account.personId)),
+    ).length;
+  }, [accounts, mode, persons]);
+  const [graphReady, setGraphReady] = useState(false);
+  const [graphStatus, setGraphStatus] = useState("Building galaxy...");
+  const [graphError, setGraphError] = useState<string | null>(null);
+  const [sourceRetry, setSourceRetry] = useState(0);
+  const [contextMenu, setContextMenu] = useState<GraphContextMenuState | null>(null);
+  const [linkPickerAccountId, setLinkPickerAccountId] = useState<string | null>(null);
+  const [linkPickerQuery, setLinkPickerQuery] = useState("");
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [announcement, setAnnouncement] = useState("");
+  const graphDescriptionId = useId();
+  const graphAnnouncementId = useId();
 
-  const exposeDiagnostics = useCallback((atlas: IdentityGraphAtlas, sceneSyncMs: number) => {
-    const sourceNodeCount = canonicalNodeCount;
-    const residentNodeCount = galaxySceneRef.current?.nodeIds.length ?? atlas.metrics.visibleNodeCount;
-    const visibleNodeCount = atlas.metrics.visibleNodeCount;
-    const p95Samples = [...frameSamplesRef.current].sort((left, right) => left - right);
-    const frameP95Ms = p95Samples[Math.floor(p95Samples.length * 0.95)] ?? 0;
+  latestActivityRef.current = activitySummaries;
+
+  const personPickerOptions = useMemo(() => {
+    const query = linkPickerQuery.trim().toLocaleLowerCase();
+    return persons
+      .filter((person) => {
+        if (!query) return true;
+        return person.name.toLocaleLowerCase().includes(query) ||
+          person.notes?.toLocaleLowerCase().includes(query);
+      })
+      .sort((left, right) => {
+        const friendOrder = Number(right.relationshipStatus === "friend") -
+          Number(left.relationshipStatus === "friend");
+        return friendOrder || left.name.localeCompare(right.name);
+      })
+      .slice(0, 12);
+  }, [linkPickerQuery, persons]);
+
+  const closeContextMenu = useCallback(() => {
+    const shouldRestoreFocus = contextMenuOpenRef.current;
+    contextMenuOpenRef.current = false;
+    setContextMenu(null);
+    setLinkPickerAccountId(null);
+    setLinkPickerQuery("");
+    if (shouldRestoreFocus) {
+      window.requestAnimationFrame(() => viewportRef.current?.focus({ preventScroll: true }));
+    }
+  }, []);
+
+  const selectNode = useCallback((nodeId: string | null) => {
+    closeContextMenu();
+    if (!nodeId) {
+      onClearSelection?.();
+      return;
+    }
+    if (nodeId.startsWith("person:")) {
+      const person = personsById.get(nodeId.slice("person:".length));
+      if (person) onSelectPerson(person);
+      return;
+    }
+    if (nodeId.startsWith("account:")) {
+      const account = accounts[nodeId.slice("account:".length)];
+      if (account) onSelectAccount(account);
+    }
+  }, [accounts, closeContextMenu, onClearSelection, onSelectAccount, onSelectPerson, personsById]);
+
+  const selectNodeRef = useRef(selectNode);
+  selectNodeRef.current = selectNode;
+  const contextResolverRef = useRef<(target: FriendsGalaxyContextTarget | null) => void>(() => undefined);
+
+  const requestActivityDiff = useCallback((
+    previous: IdentityGraphActivitySummaries,
+    next: IdentityGraphActivitySummaries,
+  ) => {
+    const engine = engineRef.current;
+    if (
+      !engine?.sourceReady ||
+      engine.requestedSourceRevision !== engine.activeSourceRevision
+    ) return;
+    const patches = diffFriendsGalaxyIdentityActivitySummaries(previous, next);
+    if (patches.length === 0) {
+      lastAppliedActivityRef.current = next;
+      return;
+    }
+    activityRevisionRef.current += 1;
+    const requestId = engine.requestActivity({
+      kind: "activity",
+      sourceRevision: engine.activeSourceRevision!,
+      activityRevision: activityRevisionRef.current,
+      referenceTime: Date.now(),
+      patches,
+    });
+    if (requestId !== null) {
+      diagnosticsRef.current.activityPatchKeyCount = patches.length;
+      lastAppliedActivityRef.current = next;
+    }
+  }, []);
+
+  const publishDiagnosticsRef = useRef<() => void>(() => undefined);
+  const publishDiagnostics = useCallback(() => {
+    const viewport = viewportRef.current;
+    const engine = engineRef.current;
+    const controller = controllerRef.current;
+    if (!viewport || !engine || !controller) return;
+    const snapshot = controller.snapshot();
+    const transform = snapshot.transform;
+    if (!transform) return;
+    const diagnostic = diagnosticsRef.current;
+    const atlas = diagnostic.presentationAtlas ?? diagnostic.sourceScene?.atlas ?? null;
+    const receipt = diagnostic.sourceReceipt;
+    const renderer = snapshot.renderer;
+    const previousTransform = diagnostic.lastTransform;
+    if (
+      previousTransform &&
+      (previousTransform.x !== transform.x ||
+        previousTransform.y !== transform.y ||
+        previousTransform.scale !== transform.scale)
+    ) {
+      diagnostic.transformOnlySyncCount += 1;
+    }
+    diagnostic.lastTransform = { ...transform };
+    const visibleNodeCount = atlas?.nodes.length ?? engine.presentationNodeCount;
+    const residentNodeCount = receipt?.semanticNodeCount ?? renderer?.semanticStarCount ?? 0;
+    const visibleLabelCount = renderer?.labelCount ?? atlas?.labels.length ?? 0;
+    const visibleProviderLabelCount = atlas
+      ? new Set(atlas.labels
+        .filter((label) => label.kind === "provider_cluster")
+        .map((label) => label.nodeId)).size
+      : 0;
+    const qualityMode = snapshot.cameraInMotion ? "interactive" : "settled";
     const perf: GraphSurfacePerfSnapshot = {
       modelBuildMs: activitySummaries.buildMs,
-      layoutMs: atlas.metrics.buildMs,
-      sceneSyncMs,
+      layoutMs: diagnostic.sourceDurationMs,
+      sceneSyncMs: diagnostic.sceneSyncMs,
       labelPassMs: 0,
-      sceneSyncCount: sceneSyncCountRef.current,
-      contentSyncCount: 1,
-      transformOnlySyncCount: transformOnlySyncCountRef.current,
-      edgeRebuildCount: edgeRebuildCountRef.current,
-      nodeRestyleCount: residentNodeCount,
-      labelLayoutCount: atlas.labels.length > 0 ? 1 : 0,
-      avatarDisplayCount: 0,
-      visibleLabelCount: atlas.labels.length,
-      visibleNodeLabelCount: atlas.labels.filter((label) => label.kind !== "provider_cluster").length,
-      visibleProviderLabelCount: atlas.labels.filter((label) => label.kind === "provider_cluster").length,
-      rendererLabelCount: engineRef.current?.labelCount ?? 0,
-      readyRendererLabelCount: engineRef.current?.readyLabelCount ?? 0,
-      rendererEdgeCount: engineRef.current?.edgeCount ?? 0,
-      denseRenderMode: sourceNodeCount >= 1_200 ? "dense" : "containers",
-      denseInteractionEligible: sourceNodeCount >= 1_200,
-      denseInteractionNodeCount: latestQualityRef.current === "interactive" ? visibleNodeCount : 0,
-      denseInteractionCulled: atlas.metrics.capped,
-      denseInteractionRebuildCount: atlas.metrics.capped ? 1 : 0,
-      qualityMode: latestQualityRef.current,
-      sourceNodeCount,
+      sceneSyncCount: diagnostic.sceneSyncCount,
+      contentSyncCount: diagnostic.sourceAdmissionCount,
+      transformOnlySyncCount: diagnostic.transformOnlySyncCount,
+      edgeRebuildCount: renderer?.contextualEdgeCount ?? 0,
+      nodeRestyleCount: 0,
+      labelLayoutCount: renderer?.labelLayoutCount ?? renderer?.labelAtlasBuildCount ?? 0,
+      avatarDisplayCount: renderer?.avatarCount ?? 0,
+      visibleLabelCount,
+      visibleNodeLabelCount: Math.max(0, visibleLabelCount - visibleProviderLabelCount),
+      visibleProviderLabelCount,
+      rendererLabelCount: renderer?.labelCount ?? 0,
+      readyRendererLabelCount: renderer?.labelCount ?? 0,
+      rendererEdgeCount: renderer?.contextualEdgeCount ?? 0,
+      denseRenderMode: residentNodeCount >= 1_200 ? "dense" : "containers",
+      denseInteractionEligible: residentNodeCount >= 1_200,
+      denseInteractionNodeCount: qualityMode === "interactive" ? visibleNodeCount : 0,
+      denseInteractionCulled: residentNodeCount > visibleNodeCount,
+      denseInteractionRebuildCount: 0,
+      qualityMode,
+      sourceNodeCount: residentNodeCount,
       residentNodeCount,
       visibleNodeCount,
-      renderedPrimitiveCount: residentNodeCount + atlas.edges.length + atlas.regions.length + atlas.labels.length,
-      firstVisibleMs: firstVisibleMsRef.current,
-      frameP95Ms,
-      longTaskCount: longTaskCountRef.current,
-      memoryEstimateBytes: estimateMemoryBytes(atlas),
-      rendererType: engineRef.current?.rendererType ?? "three-starfield",
-      touchInputMode: "native-touch-events",
-      lod: atlas.metrics.lod,
-      capped: atlas.metrics.capped,
-      nodeCount: sourceNodeCount,
-      linkCount: canonicalLinkCount,
+      renderedPrimitiveCount: residentNodeCount +
+        (renderer?.decorativeStarCount ?? 0) +
+        visibleLabelCount +
+        (renderer?.contextualEdgeCount ?? 0),
+      firstVisibleMs: diagnostic.firstVisibleMs,
+      frameP95Ms: snapshot.frame.p95Ms,
+      longTaskCount: snapshot.longTasks.count ?? 0,
+      memoryEstimateBytes: renderer?.trackedGpuDataBytes ?? 0,
+      rendererType: renderer?.id ?? "initializing",
+      touchInputMode: snapshot.touchInputMode,
+      lod: lodForScale(transform.scale),
+      capped: residentNodeCount > visibleNodeCount,
+      nodeCount: residentNodeCount,
+      linkCount,
       personCount,
       channelCount,
-      transformScale: transformRef.current.scale,
+      transformScale: transform.scale,
     };
-    const container = containerRef.current;
-    if (container) {
-      container.dataset.graphNodeCount = String(sourceNodeCount);
-      container.dataset.graphLinkCount = String(canonicalLinkCount);
-      container.dataset.graphPersonCount = String(personCount);
-      container.dataset.graphChannelCount = String(channelCount);
-      container.dataset.visibleLabelCount = String(atlas.labels.length);
-      container.dataset.rendererLabelCount = String(engineRef.current?.labelCount ?? 0);
-      container.dataset.readyRendererLabelCount = String(engineRef.current?.readyLabelCount ?? 0);
-      container.dataset.rendererEdgeCount = String(engineRef.current?.edgeCount ?? 0);
-      container.dataset.graphQualityMode = latestQualityRef.current;
-      container.dataset.graphVisibleNodeCount = String(visibleNodeCount);
-      container.dataset.graphResidentNodeCount = String(residentNodeCount);
-      container.dataset.graphRenderer = engineRef.current?.rendererType ?? "three-starfield";
-    }
-    (window as typeof window & { __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot }).__FREED_GRAPH_PERF__ = perf;
-    if (shouldExposeGraphDebug()) {
+    viewport.dataset.graphNodeCount = String(residentNodeCount);
+    viewport.dataset.graphLinkCount = String(linkCount);
+    viewport.dataset.graphPersonCount = String(personCount);
+    viewport.dataset.graphChannelCount = String(channelCount);
+    viewport.dataset.graphResidentNodeCount = String(residentNodeCount);
+    viewport.dataset.graphVisibleNodeCount = String(visibleNodeCount);
+    viewport.dataset.graphRenderer = renderer?.id ?? "initializing";
+    viewport.dataset.graphQualityMode = qualityMode;
+    viewport.dataset.visibleLabelCount = String(visibleLabelCount);
+    viewport.dataset.rendererLabelCount = String(renderer?.labelCount ?? 0);
+    viewport.dataset.readyRendererLabelCount = String(renderer?.labelCount ?? 0);
+    viewport.dataset.rendererEdgeCount = String(renderer?.contextualEdgeCount ?? 0);
+    viewport.dataset.graphDiagnostics = "published";
+    const graphWindow = window as typeof window & {
+      __FREED_GRAPH_OWNER__?: object;
+      __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot;
+    };
+    graphWindow.__FREED_GRAPH_OWNER__ = diagnosticsOwnerRef.current;
+    graphWindow.__FREED_GRAPH_PERF__ = perf;
+
+    if (shouldExposeGraphDebug() && diagnostic.sourceScene && atlas) {
       (window as typeof window & {
         __FREED_GRAPH_DEBUG__?: {
           nodes: GraphDebugNode[];
           regions: IdentityGraphAtlas["regions"];
-          transform: ViewTransform;
+          labels: IdentityGraphAtlas["labels"];
+          transform: FriendsGalaxyTransform;
           qualityMode: "interactive" | "settled";
-          metrics: GraphPerfSnapshot;
+          metrics: GraphSurfacePerfSnapshot;
         };
       }).__FREED_GRAPH_DEBUG__ = {
-        nodes: buildGraphDebugNodes(atlas.nodes),
-        regions: atlas.regions,
-        transform: transformRef.current,
-        qualityMode: latestQualityRef.current,
+        nodes: graphDebugNodes(
+          diagnostic.sourceScene,
+          transform,
+          snapshot.viewportGeometry,
+        ),
+        regions: diagnostic.sourceScene.atlas.regions,
+        labels: atlas.labels,
+        transform: {
+          x: transform.x - snapshot.viewportGeometry.interactionLeft,
+          y: transform.y - snapshot.viewportGeometry.interactionTop,
+          scale: transform.scale,
+        },
+        qualityMode,
         metrics: perf,
       };
     }
-  }, [activitySummaries.buildMs, canonicalLinkCount, canonicalNodeCount, channelCount, personCount]);
+  }, [activitySummaries.buildMs, channelCount, linkCount, personCount]);
+  publishDiagnosticsRef.current = publishDiagnostics;
 
-  const updateTransformDiagnostics = useCallback(() => {
-    transformOnlySyncCountRef.current += 1;
-    const graphWindow = window as typeof window & {
-      __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot;
-      __FREED_GRAPH_DEBUG__?: {
-        nodes: GraphDebugNode[];
-        regions: IdentityGraphAtlas["regions"];
-        transform: ViewTransform;
-        qualityMode: "interactive" | "settled";
-        metrics: GraphPerfSnapshot;
-      };
-    };
-    const perf = graphWindow.__FREED_GRAPH_PERF__;
-    if (perf) {
-      perf.sceneSyncMs = 0;
-      perf.transformOnlySyncCount = transformOnlySyncCountRef.current;
-      perf.qualityMode = latestQualityRef.current;
-      perf.transformScale = transformRef.current.scale;
-      perf.rendererLabelCount = engineRef.current?.labelCount ?? perf.rendererLabelCount;
-      perf.readyRendererLabelCount = engineRef.current?.readyLabelCount ?? perf.readyRendererLabelCount;
-      perf.rendererEdgeCount = engineRef.current?.edgeCount ?? perf.rendererEdgeCount;
-    }
-    const debug = graphWindow.__FREED_GRAPH_DEBUG__;
-    if (debug) {
-      debug.transform = { ...transformRef.current };
-      debug.qualityMode = latestQualityRef.current;
-      if (perf) debug.metrics = perf;
-    }
-    const container = containerRef.current;
-    if (container && container.dataset.graphQualityMode !== latestQualityRef.current) {
-      container.dataset.graphQualityMode = latestQualityRef.current;
-    }
-  }, []);
+  const sourceReadyRef = useRef<(response: FriendsGalaxyProductWorkerSourceResponse) => void>(
+    () => undefined,
+  );
+  sourceReadyRef.current = (response) => {
+    const diagnostic = diagnosticsRef.current;
+    diagnostic.sourceScene = response.rendererScene;
+    diagnostic.presentationAtlas = response.rendererScene.atlas;
+    diagnostic.sourceReceipt = response.receipt;
+    diagnostic.sourceDurationMs = response.durationMs;
+    diagnostic.sceneSyncMs = 0;
+    diagnostic.sceneSyncCount += 1;
+    diagnostic.sourceAdmissionCount += 1;
+    const baseline = sourceActivityBaselineRef.current.get(response.sourceRevision) ??
+      latestActivityRef.current;
+    sourceActivityBaselineRef.current.clear();
+    if (baseline) lastAppliedActivityRef.current = baseline;
+    controllerRef.current?.sourceReady();
+    const latest = latestActivityRef.current;
+    if (baseline && latest) requestActivityDiff(baseline, latest);
+    publishDiagnosticsRef.current();
+  };
 
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current;
-    const atlas = atlasRef.current;
-    if (!canvas || !atlas) return;
-    const galaxyScene = galaxySceneRef.current;
-    try {
-      if (!galaxyScene) {
-        throw new Error("Friends galaxy scene is unavailable");
-      }
-      const shouldSyncScene = sceneDirtyRef.current;
-      const shouldSyncInteraction = shouldSyncScene || interactionDirtyRef.current;
-      if (shouldSyncInteraction) {
-        updateIdentityGalaxySceneInteraction(galaxyScene, {
-          quality: latestQualityRef.current,
-          selectedPersonId: selectedPersonIdRef.current,
-          selectedAccountId: selectedAccountIdRef.current,
-          hoveredNodeId: hoveredNodeIdRef.current,
-        });
-      }
-      let engine = engineRef.current;
-      let engineCreated = false;
-      if (!engine) {
-        engine = new IdentityGalaxyEngine(canvas, containerRef.current);
-        engineRef.current = engine;
-        engineCreated = true;
-      }
-      const frameAt = nowMs();
-      if (lastFrameAtRef.current !== null) {
-        const delta = frameAt - lastFrameAtRef.current;
-        frameSamplesRef.current.push(delta);
-        if (frameSamplesRef.current.length > 160) {
-          frameSamplesRef.current.shift();
-        }
-      }
-      lastFrameAtRef.current = frameAt;
-      engine.resize(canvasSize.width, canvasSize.height);
-      let sceneSyncMs = 0;
-      if (shouldSyncScene || engineCreated) {
-        const syncStartedAt = nowMs();
-        engine.syncScene(
-          atlas,
-          galaxyScene,
-          {
-            selectedPersonId: selectedPersonIdRef.current,
-            selectedAccountId: selectedAccountIdRef.current,
-            variation: starfieldVariationRef.current,
-            quality: latestQualityRef.current,
-          },
-        );
-        sceneSyncMs = nowMs() - syncStartedAt;
-        sceneSyncCountRef.current += 1;
-        if (atlas.edges.length > 0) edgeRebuildCountRef.current += 1;
-      } else if (shouldSyncInteraction) {
-        engine.updateInteraction(
-          galaxyScene,
-          selectedPersonIdRef.current,
-          selectedAccountIdRef.current,
-        );
-        if (galaxyScene.edgeIndices.length > 0) edgeRebuildCountRef.current += 1;
-        const perf = (window as typeof window & {
-          __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot;
-        }).__FREED_GRAPH_PERF__;
-        if (perf) {
-          perf.edgeRebuildCount = edgeRebuildCountRef.current;
-          perf.rendererEdgeCount = engine.edgeCount;
-        }
-        if (containerRef.current) {
-          containerRef.current.dataset.rendererEdgeCount = String(engine.edgeCount);
-        }
-      }
-      engine.render(transformRef.current);
-      sceneDirtyRef.current = false;
-      interactionDirtyRef.current = false;
-      if (!firstVisibleMsRef.current && atlas.nodes.length > 0) {
-        firstVisibleMsRef.current = nowMs() - mountedAtRef.current;
-      }
-      if (shouldSyncScene || engineCreated) {
-        exposeDiagnostics(atlas, sceneSyncMs);
-      } else if (!shouldSyncInteraction) {
-        updateTransformDiagnostics();
-      }
-    } catch (error) {
-      (window as typeof window & { __FREED_GRAPH_DRAW_ERROR__?: string }).__FREED_GRAPH_DRAW_ERROR__ =
-        error instanceof Error ? error.message : String(error);
-      console.warn("[friends-graph] starfield draw failed", error);
+  const presentationReadyRef = useRef<(
+    response: FriendsGalaxyProductWorkerPresentationResponse,
+  ) => void>(() => undefined);
+  presentationReadyRef.current = (response) => {
+    const diagnostic = diagnosticsRef.current;
+    diagnostic.presentationAtlas = response.atlas;
+    diagnostic.sceneSyncCount += 1;
+    diagnostic.sceneSyncMs = 0;
+    controllerRef.current?.wake();
+    publishDiagnosticsRef.current();
+  };
+
+  const activityReadyRef = useRef<(
+    response: FriendsGalaxyProductWorkerActivityResponse,
+  ) => void>(() => undefined);
+  activityReadyRef.current = (response) => {
+    const diagnostic = diagnosticsRef.current;
+    diagnostic.activityPatchNodeCount = response.scenePatches.nodeIndices.length;
+    diagnostic.unknownActivitySourceCount = response.scenePatches.unknownSources.length;
+    publishDiagnosticsRef.current();
+  };
+
+  contextResolverRef.current = (target) => {
+    if (!target) {
+      closeContextMenu();
+      return;
     }
-  }, [
-    canvasSize.height,
-    canvasSize.width,
-    exposeDiagnostics,
-    updateTransformDiagnostics,
-  ]);
-
-  const scheduleDraw = useCallback(() => {
-    if (drawRafRef.current !== 0) return;
-    drawRafRef.current = requestAnimationFrame(() => {
-      drawRafRef.current = 0;
-      draw();
-    });
-  }, [draw]);
-
-  const requestSelectionAwareAtlas = useCallback((quality: IdentityGraphAtlasQuality) => {
-    const currentSelection: IdentityGalaxyWorkerSelection = {
-      selectedPersonId: selectedPersonIdRef.current,
-      selectedAccountId: selectedAccountIdRef.current,
-    };
-    const latestRequestSelection = requestSelectionByIdRef.current.get(latestRequestIdRef.current);
-    if (!shouldRequestIdentityGalaxyWorkerSelection(latestRequestSelection, currentSelection)) return;
-    requestAtlasRef.current?.(quality);
-  }, []);
-
-  const applyAtlas = useCallback((
-    requestId: number,
-    sourceRevision: number,
-    atlas: IdentityGraphAtlas,
-    galaxyScene: IdentityGalaxyScene | undefined,
-    edgeIndices: Uint32Array | undefined,
-    durationMs: number,
-  ) => {
-    const timeout = pendingWorkerTimeoutsRef.current.get(requestId);
-    if (timeout !== undefined) {
-      window.clearTimeout(timeout);
-      pendingWorkerTimeoutsRef.current.delete(requestId);
-    }
-    const requestSelection = requestSelectionByIdRef.current.get(requestId);
-    const currentSelection: IdentityGalaxyWorkerSelection = {
-      selectedPersonId: selectedPersonIdRef.current,
-      selectedAccountId: selectedAccountIdRef.current,
-    };
-    const disposition = identityGalaxyWorkerResponseDisposition(
-      requestId,
-      latestResolvedRequestIdRef.current,
-      requestSelection,
-      currentSelection,
+    const viewport = viewportRef.current;
+    const node = engineRef.current?.metadata(target.nodeId) ??
+      synthesizeContextNode(target, personsById, accounts, feeds);
+    if (!viewport || !node) return;
+    const x = Math.max(8, Math.min(target.interactionX, viewport.clientWidth - MENU_WIDTH - 8));
+    const y = Math.max(
+      8,
+      Math.min(target.interactionY, viewport.clientHeight - MENU_ESTIMATED_HEIGHT - 8),
     );
-    if (disposition === "ignore") {
-      if (requestId < latestResolvedRequestIdRef.current) {
-        requestSelectionByIdRef.current.delete(requestId);
-      }
-      return;
-    }
-    if (disposition === "reconcile") {
-      latestResolvedRequestIdRef.current = requestId;
-      if (galaxyScene && sourceRevision === galaxySource.revision) {
-        galaxySceneRef.current = galaxyScene;
-      }
-      for (const resolvedRequestId of requestSelectionByIdRef.current.keys()) {
-        if (resolvedRequestId < requestId) requestSelectionByIdRef.current.delete(resolvedRequestId);
-      }
-      requestSelectionAwareAtlas("settled");
-      return;
-    }
-    latestResolvedRequestIdRef.current = requestId;
-    for (const resolvedRequestId of requestSelectionByIdRef.current.keys()) {
-      if (resolvedRequestId < requestId) requestSelectionByIdRef.current.delete(resolvedRequestId);
-    }
-    atlas.metrics.buildMs = durationMs;
-    atlasRef.current = atlas;
-    if (galaxyScene) {
-      galaxySceneRef.current = galaxyScene;
-    } else if (edgeIndices && galaxySceneRef.current) {
-      galaxySceneRef.current.edgeIndices = edgeIndices;
-    }
-    if (!galaxySceneRef.current) {
-      throw new Error("Friends galaxy atlas arrived without a semantic scene");
-    }
-    hitBucketsRef.current = buildHitBucketMap(atlas);
-    atlasNodeByIdRef.current = new Map(atlas.nodes.map((node) => [node.id, node]));
-    visibleNodeIdsRef.current = atlas.nodes.map((node) => node.id);
-    sceneDirtyRef.current = true;
-    if (!hasFittedInitialAtlasRef.current && !hasUserAdjustedTransformRef.current) {
-      transformRef.current = initialGalaxyTransform(
-        atlas.bounds,
-        galaxySceneRef.current,
-        canvasSize.width,
-        canvasSize.height,
-        viewportInsetsRef.current,
-      );
-      hasFittedInitialAtlasRef.current = true;
-    }
-    setAtlasReady(true);
-    draw();
-    scheduleDraw();
-  }, [canvasSize.height, canvasSize.width, draw, galaxySource.revision, requestSelectionAwareAtlas, scheduleDraw]);
-  applyAtlasRef.current = applyAtlas;
-
-  const runAtlasOnMainThread = useCallback((
-    requestId: number,
-    sourceRevision: number,
-    source: BuildIdentityGraphAtlasModelInput,
-    viewport: IdentityGalaxyWorkerViewportInput,
-  ) => {
-    window.setTimeout(() => {
-      const startedAt = nowMs();
-      const model = buildIdentityGraphAtlasModel(source);
-      const atlas = sliceIdentityGraphAtlas({ model, ...viewport });
-      const galaxyScene = compileIdentityGalaxyScene({
-        nodes: model.nodes,
-        edges: model.edges,
-      }, {
-        quality: viewport.quality,
-        selectedPersonId: viewport.selectedPersonId,
-        selectedAccountId: viewport.selectedAccountId,
-      });
-      applyAtlas(requestId, sourceRevision, atlas, galaxyScene, undefined, nowMs() - startedAt);
-    }, 0);
-  }, [applyAtlas]);
-
-  const requestAtlas = useCallback((quality: IdentityGraphAtlasQuality) => {
-    latestQualityRef.current = quality;
-    const requestId = latestRequestIdRef.current + 1;
-    latestRequestIdRef.current = requestId;
-    const viewport: IdentityGalaxyWorkerViewportInput = {
-      transform: transformRef.current,
-      width: canvasSize.width,
-      height: canvasSize.height,
-      quality,
-      selectedPersonId: selectedPersonIdRef.current,
-      selectedAccountId: selectedAccountIdRef.current,
-    };
-    requestSelectionByIdRef.current.set(requestId, {
-      selectedPersonId: viewport.selectedPersonId,
-      selectedAccountId: viewport.selectedAccountId,
-    });
-    const worker = workerRef.current;
-    if (!worker) {
-      runAtlasOnMainThread(requestId, galaxySource.revision, galaxySource.input, viewport);
-      return;
-    }
-    const timeout = window.setTimeout(() => {
-      pendingWorkerTimeoutsRef.current.delete(requestId);
-      if (requestId < latestResolvedRequestIdRef.current) return;
-      if (workerRef.current === worker) {
-        worker.terminate();
-        workerRef.current = null;
-        postedSourceRevisionRef.current = -1;
-      }
-      runAtlasOnMainThread(requestId, galaxySource.revision, galaxySource.input, viewport);
-    }, GRAPH_LAYOUT_WORKER_TIMEOUT_MS);
-    pendingWorkerTimeoutsRef.current.set(requestId, timeout);
-    if (postedSourceRevisionRef.current !== galaxySource.revision) {
-      postedSourceRevisionRef.current = galaxySource.revision;
-      worker.postMessage({
-        kind: "build",
-        requestId,
-        sourceRevision: galaxySource.revision,
-        source: galaxySource.input,
-        viewport,
-      });
-    } else {
-      worker.postMessage({
-        kind: "viewport",
-        requestId,
-        sourceRevision: galaxySource.revision,
-        viewport,
-      });
-    }
-  }, [
-    canvasSize.height,
-    canvasSize.width,
-    galaxySource,
-    runAtlasOnMainThread,
-  ]);
-  requestAtlasRef.current = requestAtlas;
-
-  const markInteractive = useCallback(() => {
-    latestQualityRef.current = "interactive";
-    scheduleDraw();
-    if (settleTimerRef.current !== null) {
-      window.clearTimeout(settleTimerRef.current);
-    }
-    const sourceCount = atlasRef.current?.metrics.sourceNodeCount ?? 0;
-    const delay = sourceCount >= 1_200 ? DENSE_INTERACTION_SETTLE_DELAY_MS : INTERACTION_SETTLE_DELAY_MS;
-    const settleWhenIdle = () => {
-      if (
-        dragStateRef.current ||
-        pinchStateRef.current ||
-        safariGestureStateRef.current ||
-        activeTouchPointsRef.current.size > 0
-      ) {
-        settleTimerRef.current = window.setTimeout(settleWhenIdle, delay);
-        return;
-      }
-      latestQualityRef.current = "settled";
-      settleTimerRef.current = null;
-      requestAtlas("settled");
-    };
-    settleTimerRef.current = window.setTimeout(settleWhenIdle, delay);
-  }, [requestAtlas, scheduleDraw]);
-
-  const viewportToWorld = useCallback((clientX: number, clientY: number) => {
-    const container = containerRef.current;
-    if (!container) return { x: 0, y: 0 };
-    const rect = container.getBoundingClientRect();
-    return viewportPointToIdentityGalaxyPlane(
-      clientX - rect.left,
-      clientY - rect.top,
-      transformRef.current,
-    );
-  }, []);
-
-  const hitNodeAt = useCallback((clientX: number, clientY: number) => {
-    const atlas = atlasRef.current;
-    if (!atlas) return null;
-    const container = containerRef.current;
-    const scene = galaxySceneRef.current;
-    const engine = engineRef.current;
-    if (container && scene && engine) {
-      const rect = container.getBoundingClientRect();
-      const nodeId = engine.pickNode(
-        clientX - rect.left,
-        clientY - rect.top,
-        visibleNodeIdsRef.current,
-      );
-      if (nodeId) return atlasNodeByIdRef.current.get(nodeId) ?? null;
-    }
-    const point = viewportToWorld(clientX, clientY);
-    return findHitNode(atlas, hitBucketsRef.current, point.x, point.y);
-  }, [viewportToWorld]);
-
-  const openNodeContextMenu = useCallback((clientX: number, clientY: number) => {
-    const node = hitNodeAt(clientX, clientY);
-    if (!node || node.kind === "provider_cluster") {
-      setContextMenu(null);
-      return false;
-    }
-    const container = containerRef.current;
-    const rect = container?.getBoundingClientRect();
-    const point = viewportToWorld(clientX, clientY);
-    setContextMenu({
-      x: rect ? clientX - rect.left : clientX,
-      y: rect ? clientY - rect.top : clientY,
-      worldX: point.x,
-      worldY: point.y,
-      node,
-    });
     setLinkPickerAccountId(null);
     setLinkPickerQuery("");
-    return true;
-  }, [hitNodeAt, viewportToWorld]);
-
-  const fitAll = useCallback(() => {
-    const atlas = atlasRef.current;
-    if (!atlas) return;
-    transformRef.current = fitTransformToVisibleAtlasBounds(
-      atlas.bounds,
-      canvasSize.width,
-      canvasSize.height,
-      fitPaddingForViewport(canvasSize.width),
-      viewportInsetsRef.current,
-    );
-    hasUserAdjustedTransformRef.current = true;
-    requestAtlas("settled");
-    scheduleDraw();
-  }, [canvasSize.height, canvasSize.width, requestAtlas, scheduleDraw]);
-
-  const focusNode = useCallback((id: string) => {
-    const atlas = atlasRef.current;
-    if (!atlas) return;
-    const hit = atlas.nodes.find((node) => node.id === id || node.personId === id || node.accountId === id);
-    if (!hit) return;
-    const scale = Math.max(transformRef.current.scale, 0.92);
-    const center = visibleViewportCenter(canvasSize.width, canvasSize.height, viewportInsetsRef.current);
-    transformRef.current = {
-      x: center.x - hit.x * scale,
-      y: center.y - hit.y * scale,
-      scale,
-    };
-    hasUserAdjustedTransformRef.current = true;
-    requestAtlas("settled");
-    scheduleDraw();
-  }, [canvasSize.height, canvasSize.width, requestAtlas, scheduleDraw]);
-
-  useImperativeHandle(ref, () => ({ fitAll, focusNode }), [fitAll, focusNode]);
+    contextMenuOpenRef.current = true;
+    setContextMenu({ x, y, node });
+  };
 
   useEffect(() => {
-    const worker = new Worker(
-      new URL("../../lib/identity-graph-atlas.worker.ts", import.meta.url),
-      { type: "module" },
-    );
-    workerRef.current = worker;
-    postedSourceRevisionRef.current = -1;
-    worker.onmessage = (event: MessageEvent<IdentityGalaxyWorkerResponse>) => {
-      applyAtlasRef.current?.(
-        event.data.requestId,
-        event.data.sourceRevision,
-        event.data.atlas,
-        event.data.scene,
-        event.data.edgeIndices,
-        event.data.durationMs,
-      );
-    };
-    worker.onerror = () => {
-      if (workerRef.current === worker) {
-        workerRef.current = null;
-        postedSourceRevisionRef.current = -1;
-      }
-    };
-    return () => {
-      for (const timeout of pendingWorkerTimeoutsRef.current.values()) {
-        window.clearTimeout(timeout);
-      }
-      pendingWorkerTimeoutsRef.current.clear();
-      requestSelectionByIdRef.current.clear();
-      worker.terminate();
-      if (workerRef.current === worker) {
-        workerRef.current = null;
-        postedSourceRevisionRef.current = -1;
-      }
-    };
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedMotion(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
   }, []);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    window.requestAnimationFrame(() => {
+      const menu = contextMenuRef.current;
+      if (!menu || linkPickerAccountId) return;
+      menu.querySelector<HTMLElement>('button:not([disabled])')?.focus({ preventScroll: true });
+    });
+  }, [contextMenu, linkPickerAccountId]);
+
+  useEffect(() => {
+    const selectedLabel = selectedPersonId
+      ? personsById.get(selectedPersonId)?.name ?? null
+      : selectedAccountId
+        ? accounts[selectedAccountId]?.displayName ?? null
+        : null;
+    setAnnouncement(friendsGalaxySelectionAnnouncement(selectedLabel, "selection"));
+  }, [accounts, personsById, selectedAccountId, selectedPersonId]);
 
   useLayoutEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const updateSize = () => {
-      const containerRect = container.getBoundingClientRect();
-      const mainRect = container.closest("main")?.getBoundingClientRect();
-      const nextInsets = mainRect
-        ? {
-            top: Math.max(0, Math.round(mainRect.top - containerRect.top)),
-            right: Math.max(0, Math.round(containerRect.right - mainRect.right)),
-            bottom: Math.max(0, Math.round(containerRect.bottom - mainRect.bottom)),
-            left: Math.max(0, Math.round(mainRect.left - containerRect.left)),
-          }
-        : EMPTY_GRAPH_VIEWPORT_INSETS;
-      viewportInsetsRef.current = nextInsets;
-      setViewportInsets((current) =>
-        sameGraphViewportInsets(current, nextInsets) ? current : nextInsets,
-      );
-      setCanvasSize({
-        width: Math.max(320, container.clientWidth),
-        height: Math.max(320, container.clientHeight || 640),
-      });
-    };
-    updateSize();
-    const observer = new ResizeObserver(updateSize);
-    observer.observe(container);
-    const main = container.closest("main");
-    if (main) observer.observe(main);
-    return () => observer.disconnect();
-  }, []);
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const backgroundLayer = document.querySelector<HTMLElement>(
+      '[data-testid="friends-background-layer"]',
+    );
+    const canvasHost = document.createElement("div");
+    canvasHost.dataset.testid = "friend-graph-canvas-host";
+    canvasHost.style.position = "absolute";
+    canvasHost.style.inset = "0";
+    canvasHost.style.overflow = "hidden";
+    canvasHost.style.pointerEvents = "none";
+    canvasHost.style.opacity = presentationVisible ? "1" : "0";
+    canvasHost.style.backgroundColor = friendsGalaxyRendererPaletteForTheme(themeId).background;
+    canvasHost.style.transition = "opacity 140ms ease";
+    (backgroundLayer ?? viewport).appendChild(canvasHost);
+    canvasHostRef.current = canvasHost;
 
-  useEffect(() => {
-    requestAtlas("settled");
-  }, [requestAtlas]);
+    const engine = new FriendsGalaxyProductEngine({
+      palette: friendsGalaxyRendererPaletteForTheme(themeId),
+      rendererId: "raw-webgpu",
+      createSurface: (rendererId) => {
+        const canvas = document.createElement("canvas");
+        canvas.dataset.rendererId = rendererId;
+        canvas.style.position = "absolute";
+        canvas.style.inset = "0";
+        canvas.style.width = "100%";
+        canvas.style.height = "100%";
+        canvas.style.pointerEvents = "none";
+        canvas.style.opacity = "0";
+        canvas.setAttribute("aria-hidden", "true");
+        return canvas;
+      },
+      mountSurface: (surface) => {
+        canvasHost.appendChild(surface);
+      },
+      showSurface: (surface) => {
+        for (const candidate of canvasHost.querySelectorAll("canvas")) {
+          candidate.style.opacity = candidate === surface ? "1" : "0";
+          candidate.removeAttribute("data-testid");
+        }
+        surface.dataset.testid = "friend-graph-canvas";
+        setGraphReady(true);
+        setGraphStatus("");
+        setGraphError(null);
+        if (diagnosticsRef.current.firstVisibleMs === 0) {
+          diagnosticsRef.current.firstVisibleMs = nowMs() - mountedAtRef.current;
+        }
+        delete (window as typeof window & { __FREED_GRAPH_DRAW_ERROR__?: string })
+          .__FREED_GRAPH_DRAW_ERROR__;
+        if (recoveringRef.current) {
+          const rendererLabel = surface.dataset.rendererId === "raw-webgpu"
+            ? "WebGPU"
+            : "WebGL2 compatibility graphics";
+          setAnnouncement(friendsGalaxyRecoveryAnnouncement(rendererLabel));
+          recoveringRef.current = false;
+        }
+        controllerRef.current?.wake();
+        publishDiagnosticsRef.current();
+      },
+      removeSurface: (surface) => surface.remove(),
+      onLoading: ({ recovery }) => {
+        if (!graphReady) setGraphStatus(recovery ? "Recovering graphics..." : "Starting galaxy...");
+      },
+      onRecovering: ({ reason }) => {
+        recoveringRef.current = true;
+        setGraphStatus("Recovering graphics...");
+        (window as typeof window & { __FREED_GRAPH_DRAW_ERROR__?: string })
+          .__FREED_GRAPH_DRAW_ERROR__ = reason;
+      },
+      onFailure: ({ reason }) => {
+        if (!engineRef.current?.activeRenderer) {
+          setGraphError(reason);
+          setGraphStatus("");
+          setAnnouncement(friendsGalaxyUnavailableAnnouncement());
+        }
+      },
+      onWorkerFailure: (failure) => {
+        if (failure.phase === "source" && !engineRef.current?.sourceReady) {
+          setGraphError(failure.message);
+          setGraphStatus("");
+        }
+      },
+      onSourceSceneReady: (response) => sourceReadyRef.current(response),
+      onPresentationReady: (response) => presentationReadyRef.current(response),
+      onActivityReady: (response) => activityReadyRef.current(response),
+    });
+    engineRef.current = engine;
+    engine.setFieldStyle("nebula");
+    engine.setInteraction({
+      selectedNodeId: selectedPersonId
+        ? `person:${selectedPersonId}`
+        : selectedAccountId
+          ? `account:${selectedAccountId}`
+          : null,
+      hoveredNodeId: null,
+    });
+    const controller = new FriendsGalaxyInputController({
+      viewport,
+      canvasHost,
+      engine,
+      onSelection: (nodeId) => selectNodeRef.current(nodeId),
+      onContext: (target) => contextResolverRef.current(target),
+      onDetails: (nodeId) => selectNodeRef.current(nodeId),
+      onStateChange: () => publishDiagnosticsRef.current(),
+      onPresentationVisibilityChange: (visible) => {
+        canvasHost.style.opacity = visible ? "1" : "0";
+      },
+    });
+    controllerRef.current = controller;
+    controller.setPresentationVisible(presentationVisible);
 
-  useEffect(() => {
-    if (!atlasReady) return;
-    engineRef.current?.resize(canvasSize.width, canvasSize.height);
-    scheduleDraw();
-  }, [atlasReady, canvasSize.height, canvasSize.width, scheduleDraw]);
-
-  useEffect(() => {
-    if (!atlasReady) return;
-    const atlas = atlasRef.current;
-    const scene = galaxySceneRef.current;
-    if (atlas && scene && !hasUserAdjustedTransformRef.current) {
-      transformRef.current = initialGalaxyTransform(
-        atlas.bounds,
-        scene,
-        canvasSize.width,
-        canvasSize.height,
-        viewportInsets,
-      );
-    }
-    requestAtlas("settled");
-    scheduleDraw();
-  }, [atlasReady, canvasSize.height, canvasSize.width, requestAtlas, scheduleDraw, viewportInsets]);
-
-  useEffect(() => {
-    sceneDirtyRef.current = true;
-    scheduleDraw();
-  }, [scheduleDraw, themeId]);
-
-  useEffect(() => {
-    sceneDirtyRef.current = true;
-    scheduleDraw();
-  }, [scheduleDraw, starfieldVariation]);
-
-  useEffect(() => {
-    const currentSelection: IdentityGalaxyWorkerSelection = {
-      selectedPersonId,
-      selectedAccountId,
-    };
-    if (identityGalaxyWorkerSelectionsMatch(previousSelectionRef.current, currentSelection)) {
-      return;
-    }
-    previousSelectionRef.current = currentSelection;
-    interactionDirtyRef.current = true;
-    scheduleDraw();
-    if (atlasReady) {
-      requestSelectionAwareAtlas("settled");
-    }
-  }, [atlasReady, requestSelectionAwareAtlas, scheduleDraw, selectedAccountId, selectedPersonId]);
-
-  useEffect(() => {
-    if (typeof PerformanceObserver === "undefined") return;
-    try {
-      const observer = new PerformanceObserver((list) => {
-        longTaskCountRef.current += list.getEntries().length;
-      });
-      observer.observe({ type: "longtask", buffered: false });
-      return () => observer.disconnect();
-    } catch {
-      return undefined;
-    }
-  }, []);
-
-  useEffect(() => {
     return () => {
-      window.cancelAnimationFrame(drawRafRef.current);
-      drawRafRef.current = 0;
-      if (settleTimerRef.current !== null) {
-        window.clearTimeout(settleTimerRef.current);
-      }
-      if (longPressTimerRef.current !== null) {
-        window.clearTimeout(longPressTimerRef.current);
-      }
-      engineRef.current?.dispose();
+      controller.dispose();
+      engine.dispose();
+      controllerRef.current = null;
       engineRef.current = null;
-      galaxySceneRef.current = null;
+      canvasHostRef.current = null;
+      canvasHost.remove();
+      const graphWindow = window as typeof window & {
+        __FREED_GRAPH_OWNER__?: object;
+        __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot;
+        __FREED_GRAPH_DEBUG__?: unknown;
+      };
+      const diagnosticsOwner = diagnosticsOwnerRef.current;
+      window.setTimeout(() => {
+        const activeViewport = document.querySelector('[data-testid="friend-graph-viewport"]');
+        if (
+          !activeViewport &&
+          graphWindow.__FREED_GRAPH_OWNER__ === diagnosticsOwner
+        ) {
+          delete graphWindow.__FREED_GRAPH_OWNER__;
+          delete graphWindow.__FREED_GRAPH_PERF__;
+          delete graphWindow.__FREED_GRAPH_DEBUG__;
+        }
+      }, 0);
     };
   }, []);
-
-  const zoomAtPoint = useCallback((clientX: number, clientY: number, nextScale: number) => {
-    const container = containerRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    const localX = clientX - rect.left;
-    const localY = clientY - rect.top;
-    const current = transformRef.current;
-    const scale = clampScale(nextScale);
-    const worldX = (localX - current.x) / current.scale;
-    const worldY = (localY - current.y) / current.scale;
-    transformRef.current = {
-      scale,
-      x: localX - worldX * scale,
-      y: localY - worldY * scale,
-    };
-    hasUserAdjustedTransformRef.current = true;
-    markInteractive();
-  }, [markInteractive]);
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const gesturePoint = (event: SafariGestureEvent) => {
-      const rect = container.getBoundingClientRect();
-      const eventX = typeof event.clientX === "number" ? event.clientX : Number.NaN;
-      const eventY = typeof event.clientY === "number" ? event.clientY : Number.NaN;
-      if (
-        Number.isFinite(eventX) &&
-        Number.isFinite(eventY) &&
-        eventX >= rect.left &&
-        eventX <= rect.right &&
-        eventY >= rect.top &&
-        eventY <= rect.bottom
-      ) {
-        return { clientX: eventX, clientY: eventY };
-      }
-      const pointer = lastPointerPointRef.current;
-      if (pointer) return { clientX: pointer.x, clientY: pointer.y };
-      const center = visibleViewportCenter(
-        canvasSize.width,
-        canvasSize.height,
-        viewportInsetsRef.current,
-      );
-      return { clientX: rect.left + center.x, clientY: rect.top + center.y };
-    };
-
-    const beginGesture = (event: SafariGestureEvent) => {
-      if (isGraphGestureUiTarget(event.target)) return;
-      event.preventDefault();
-      const point = gesturePoint(event);
-      const rect = container.getBoundingClientRect();
-      safariGestureStateRef.current = {
-        initialScale: transformRef.current.scale,
-        localPoint: {
-          x: point.clientX - rect.left,
-          y: point.clientY - rect.top,
-        },
-        worldPoint: viewportToWorld(point.clientX, point.clientY),
-      };
-      setContextMenu(null);
-      setLinkPickerAccountId(null);
-      markInteractive();
-    };
-
-    const updateGesture = (event: SafariGestureEvent) => {
-      if (isGraphGestureUiTarget(event.target)) return;
-      event.preventDefault();
-      if (!safariGestureStateRef.current) beginGesture(event);
-      const gesture = safariGestureStateRef.current;
-      if (!gesture) return;
-      const scale = clampScale(gesture.initialScale * Math.max(0.05, event.scale ?? 1));
-      transformRef.current = {
-        scale,
-        x: gesture.localPoint.x - gesture.worldPoint.x * scale,
-        y: gesture.localPoint.y - gesture.worldPoint.y * scale,
-      };
-      hasUserAdjustedTransformRef.current = true;
-      markInteractive();
-    };
-
-    const endGesture = (event: SafariGestureEvent) => {
-      if (!safariGestureStateRef.current) return;
-      event.preventDefault();
-      safariGestureStateRef.current = null;
-    };
-
-    container.addEventListener("gesturestart", beginGesture as EventListener, { passive: false });
-    container.addEventListener("gesturechange", updateGesture as EventListener, { passive: false });
-    container.addEventListener("gestureend", endGesture as EventListener, { passive: false });
-    return () => {
-      container.removeEventListener("gesturestart", beginGesture as EventListener);
-      container.removeEventListener("gesturechange", updateGesture as EventListener);
-      container.removeEventListener("gestureend", endGesture as EventListener);
-    };
-  }, [canvasSize.height, canvasSize.width, markInteractive, viewportToWorld]);
-
-  const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    if (event.ctrlKey || event.metaKey) {
-      const delta = Math.exp(-event.deltaY * TRACKPAD_PINCH_ZOOM_SPEED);
-      zoomAtPoint(event.clientX, event.clientY, transformRef.current.scale * delta);
-      return;
+    const engine = engineRef.current;
+    const controller = controllerRef.current;
+    if (!engine || !controller) return;
+    sourceRevisionRef.current += 1;
+    const sourceRevision = sourceRevisionRef.current;
+    const baseline = latestActivityRef.current ?? activitySummaries;
+    sourceActivityBaselineRef.current.set(sourceRevision, baseline);
+    if (!engine.sourceReady) {
+      setGraphReady(false);
+      setGraphStatus("Building galaxy...");
     }
-    if (event.shiftKey) {
-      const delta = Math.exp(-event.deltaY * WHEEL_ZOOM_SPEED);
-      zoomAtPoint(event.clientX, event.clientY, transformRef.current.scale * delta);
-      return;
-    }
-    transformRef.current = {
-      ...transformRef.current,
-      x: transformRef.current.x - event.deltaX,
-      y: transformRef.current.y - event.deltaY,
+    setGraphError(null);
+    const geometry = controller.geometry;
+    const source: BuildIdentityGraphAtlasModelInput = {
+      persons,
+      accounts,
+      feeds,
+      activitySummaries: baseline,
+      mode,
+      width: 1_400,
+      height: 900,
+      friendSuggestionStrengthByPerson: personSuggestionRecord,
+      friendSuggestionStrengthByAccount: accountSuggestionRecord,
     };
-    hasUserAdjustedTransformRef.current = true;
-    markInteractive();
-  }, [markInteractive, zoomAtPoint]);
-
-  const clearLongPress = useCallback(() => {
-    if (longPressTimerRef.current === null) return;
-    window.clearTimeout(longPressTimerRef.current);
-    longPressTimerRef.current = null;
-  }, []);
-
-  const beginNativePinch = useCallback(() => {
-    const [firstEntry, secondEntry] = [...activeTouchPointsRef.current.entries()];
-    if (!firstEntry || !secondEntry) return false;
-    const initialDistance = distanceBetween(firstEntry[1], secondEntry[1]);
-    if (initialDistance <= 0) return false;
-    const initialMidpoint = midpointBetween(firstEntry[1], secondEntry[1]);
-    clearLongPress();
-    pinchStateRef.current = {
-      pointerIds: [firstEntry[0], secondEntry[0]],
-      initialDistance,
-      initialScale: transformRef.current.scale,
-      initialMidpoint,
-      initialWorldPoint: viewportToWorld(initialMidpoint.x, initialMidpoint.y),
-      moved: false,
-    };
-    dragStateRef.current = null;
-    return true;
-  }, [clearLongPress, viewportToWorld]);
-
-  const beginNativePan = useCallback((touchId: number, point: TouchPoint, moved = false) => {
-    clearLongPress();
-    dragStateRef.current = {
-      kind: "pan",
-      pointerId: touchId,
-      startX: point.x,
-      startY: point.y,
-      originX: transformRef.current.x,
-      originY: transformRef.current.y,
-      moved,
-    };
-    if (moved) return;
-    longPressTimerRef.current = window.setTimeout(() => {
-      const currentPoint = activeTouchPointsRef.current.get(touchId);
-      const drag = dragStateRef.current;
-      if (!currentPoint || !drag || drag.pointerId !== touchId || drag.moved || pinchStateRef.current) return;
-      dragStateRef.current = null;
-      openNodeContextMenu(currentPoint.x, currentPoint.y);
-      scheduleDraw();
-    }, 520);
-  }, [clearLongPress, openNodeContextMenu, scheduleDraw]);
-
-  const updateNativePinch = useCallback(() => {
-    const pinch = pinchStateRef.current;
-    if (!pinch) return false;
-    const first = activeTouchPointsRef.current.get(pinch.pointerIds[0]);
-    const second = activeTouchPointsRef.current.get(pinch.pointerIds[1]);
-    if (!first || !second || pinch.initialDistance <= 0) return false;
-    const container = containerRef.current;
-    if (!container) return false;
-    const currentDistance = distanceBetween(first, second);
-    const midpoint = midpointBetween(first, second);
-    pinch.moved = pinch.moved ||
-      Math.abs(currentDistance - pinch.initialDistance) > 4 ||
-      distanceBetween(midpoint, pinch.initialMidpoint) > 4;
-    const rect = container.getBoundingClientRect();
-    const scale = clampScale(pinch.initialScale * (currentDistance / pinch.initialDistance));
-    const localX = midpoint.x - rect.left;
-    const localY = midpoint.y - rect.top;
-    transformRef.current = {
-      scale,
-      x: localX - pinch.initialWorldPoint.x * scale,
-      y: localY - pinch.initialWorldPoint.y * scale,
-    };
-    hasUserAdjustedTransformRef.current = true;
-    markInteractive();
-    return true;
-  }, [markInteractive]);
-
-  const updateNativePan = useCallback(() => {
-    const drag = dragStateRef.current;
-    if (!drag) return false;
-    const point = activeTouchPointsRef.current.get(drag.pointerId);
-    if (!point) return false;
-    const moved = Math.abs(point.x - drag.startX) > 3 || Math.abs(point.y - drag.startY) > 3;
-    drag.moved = drag.moved || moved;
-    if (drag.moved) clearLongPress();
-    transformRef.current = {
-      ...transformRef.current,
-      x: drag.originX + point.x - drag.startX,
-      y: drag.originY + point.y - drag.startY,
-    };
-    hasUserAdjustedTransformRef.current = true;
-    markInteractive();
-    return true;
-  }, [clearLongPress, markInteractive]);
-
-  const selectNodeAt = useCallback((clientX: number, clientY: number) => {
-    const hit = hitNodeAt(clientX, clientY);
-    if (!hit) {
-      onClearSelection?.();
-      scheduleDraw();
-      return;
-    }
-    if (hit.personId) {
-      const person = personsById[hit.personId];
-      if (person) onSelectPerson(person);
-    } else if (hit.accountId) {
-      const account = accounts[hit.accountId];
-      if (account) onSelectAccount(account);
-    }
-    scheduleDraw();
+    engine.requestSource({
+      kind: "source",
+      sourceRevision,
+      source,
+      viewport: {
+        width: geometry.canvasWidth,
+        height: geometry.canvasHeight,
+        selectedPersonId,
+        selectedAccountId,
+      },
+      backgroundStarCount: BACKGROUND_STAR_COUNT,
+      backgroundSeed: `freed-friends-${mode}-${persons.length.toLocaleString()}-${channelCount.toLocaleString()}`,
+    });
   }, [
+    accountSuggestionRecord,
     accounts,
-    hitNodeAt,
-    onClearSelection,
-    onSelectAccount,
-    onSelectPerson,
-    personsById,
-    scheduleDraw,
+    channelCount,
+    feeds,
+    mode,
+    personSuggestionRecord,
+    persons,
+    sourceRetry,
   ]);
-
-  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType === "touch" || isGraphGestureUiTarget(event.target)) return;
-    if (event.pointerType === "mouse" && event.button !== 0) return;
-    lastPointerPointRef.current = { x: event.clientX, y: event.clientY };
-    const container = containerRef.current;
-    if (!container) return;
-    container.setPointerCapture(event.pointerId);
-    setContextMenu(null);
-    setLinkPickerAccountId(null);
-    dragStateRef.current = {
-      kind: "pan",
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: transformRef.current.x,
-      originY: transformRef.current.y,
-      moved: false,
-    };
-    overlayRef.current?.classList.add("cursor-grabbing");
-    markInteractive();
-  }, [markInteractive]);
-
-  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType === "touch") return;
-    lastPointerPointRef.current = { x: event.clientX, y: event.clientY };
-    const drag = dragStateRef.current;
-    if (!drag) {
-      if (event.pointerType === "mouse" || event.pointerType === "pen") {
-        const hit = hitNodeAt(event.clientX, event.clientY);
-        const nextHovered = hit?.id ?? null;
-        if (hoveredNodeIdRef.current !== nextHovered) {
-          hoveredNodeIdRef.current = nextHovered;
-          interactionDirtyRef.current = true;
-          scheduleDraw();
-        }
-      }
-      return;
-    }
-    if (drag.pointerId !== event.pointerId) return;
-    const moved = Math.abs(event.clientX - drag.startX) > 3 || Math.abs(event.clientY - drag.startY) > 3;
-    drag.moved = drag.moved || moved;
-    transformRef.current = {
-      ...transformRef.current,
-      x: drag.originX + event.clientX - drag.startX,
-      y: drag.originY + event.clientY - drag.startY,
-    };
-    hasUserAdjustedTransformRef.current = true;
-    markInteractive();
-  }, [hitNodeAt, markInteractive, scheduleDraw]);
-
-  const handlePointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType === "touch") return;
-    const drag = dragStateRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    dragStateRef.current = null;
-    overlayRef.current?.classList.remove("cursor-grabbing");
-    if (drag.moved) {
-      requestAtlas("settled");
-      return;
-    }
-    selectNodeAt(event.clientX, event.clientY);
-  }, [requestAtlas, selectNodeAt]);
-
-  const handlePointerLeave = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType === "touch") return;
-    if (hoveredNodeIdRef.current) {
-      hoveredNodeIdRef.current = null;
-      interactionDirtyRef.current = true;
-      scheduleDraw();
-    }
-    dragStateRef.current = null;
-    overlayRef.current?.classList.remove("cursor-grabbing");
-  }, [scheduleDraw]);
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    const previous = lastAppliedActivityRef.current;
+    if (!previous) {
+      lastAppliedActivityRef.current = activitySummaries;
+      return;
+    }
+    requestActivityDiff(previous, activitySummaries);
+  }, [activitySummaries, requestActivityDiff]);
 
-    const syncActiveTouches = (touches: TouchList) => {
-      const activePoints = activeTouchPointsRef.current;
-      activePoints.clear();
-      for (let index = 0; index < touches.length; index += 1) {
-        const touch = touches.item(index);
-        if (!touch || ignoredTouchIdsRef.current.has(touch.identifier)) continue;
-        activePoints.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
-      }
-    };
+  useEffect(() => {
+    const nodeId = selectedPersonId
+      ? `person:${selectedPersonId}`
+      : selectedAccountId
+        ? `account:${selectedAccountId}`
+        : null;
+    controllerRef.current?.setSelection(
+      nodeId,
+      { selectedPersonId, selectedAccountId },
+    );
+  }, [selectedAccountId, selectedPersonId]);
 
-    const touchPointFromList = (touches: TouchList, touchId: number): TouchPoint | null => {
-      for (let index = 0; index < touches.length; index += 1) {
-        const touch = touches.item(index);
-        if (touch?.identifier === touchId) return { x: touch.clientX, y: touch.clientY };
-      }
-      return null;
-    };
+  useEffect(() => {
+    const palette = friendsGalaxyRendererPaletteForTheme(themeId);
+    engineRef.current?.setPalette(palette);
+    if (canvasHostRef.current) canvasHostRef.current.style.backgroundColor = palette.background;
+    controllerRef.current?.wake();
+  }, [themeId]);
 
-    const handleTouchStart = (event: TouchEvent) => {
-      if (isGraphGestureUiTarget(event.target)) {
-        for (let index = 0; index < event.changedTouches.length; index += 1) {
-          const touch = event.changedTouches.item(index);
-          if (touch) ignoredTouchIdsRef.current.add(touch.identifier);
-        }
-        return;
-      }
-      syncActiveTouches(event.touches);
-      if (activeTouchPointsRef.current.size === 0) return;
-      event.preventDefault();
-      setContextMenu(null);
-      setLinkPickerAccountId(null);
-      if (activeTouchPointsRef.current.size >= 2) {
-        beginNativePinch();
-      } else {
-        const firstEntry = activeTouchPointsRef.current.entries().next().value as
-          | [number, TouchPoint]
-          | undefined;
-        if (firstEntry) beginNativePan(firstEntry[0], firstEntry[1]);
-      }
-      overlayRef.current?.classList.add("cursor-grabbing");
-      markInteractive();
-    };
+  useEffect(() => {
+    controllerRef.current?.setPresentationVisible(presentationVisible);
+  }, [presentationVisible]);
 
-    const handleTouchMove = (event: TouchEvent) => {
-      syncActiveTouches(event.touches);
-      if (activeTouchPointsRef.current.size === 0) return;
-      event.preventDefault();
-      if (activeTouchPointsRef.current.size >= 2) {
-        const pinch = pinchStateRef.current;
-        if (!pinch ||
-          !activeTouchPointsRef.current.has(pinch.pointerIds[0]) ||
-          !activeTouchPointsRef.current.has(pinch.pointerIds[1])) {
-          beginNativePinch();
-        }
-        updateNativePinch();
-        return;
-      }
-      updateNativePan();
-    };
-
-    const handleTouchEnd = (event: TouchEvent) => {
-      const hadActiveGesture = activeTouchPointsRef.current.size > 0;
-      for (let index = 0; index < event.changedTouches.length; index += 1) {
-        const touch = event.changedTouches.item(index);
-        if (touch) ignoredTouchIdsRef.current.delete(touch.identifier);
-      }
-      syncActiveTouches(event.touches);
-      if (!hadActiveGesture && activeTouchPointsRef.current.size === 0) return;
-      event.preventDefault();
-      clearLongPress();
-
-      const pinch = pinchStateRef.current;
-      if (pinch) {
-        if (activeTouchPointsRef.current.size >= 2) {
-          beginNativePinch();
-          markInteractive();
-          return;
-        }
-        pinchStateRef.current = null;
-        const remainingTouch = activeTouchPointsRef.current.entries().next().value as
-          | [number, TouchPoint]
-          | undefined;
-        if (remainingTouch) {
-          beginNativePan(remainingTouch[0], remainingTouch[1], true);
-          overlayRef.current?.classList.add("cursor-grabbing");
-          markInteractive();
-          return;
-        }
-        dragStateRef.current = null;
-        overlayRef.current?.classList.remove("cursor-grabbing");
-        requestAtlas("settled");
-        return;
-      }
-
-      const drag = dragStateRef.current;
-      if (!drag) {
-        if (activeTouchPointsRef.current.size === 0) {
-          overlayRef.current?.classList.remove("cursor-grabbing");
-          requestAtlas("settled");
-        }
-        return;
-      }
-      if (activeTouchPointsRef.current.has(drag.pointerId)) return;
-      dragStateRef.current = null;
-      overlayRef.current?.classList.remove("cursor-grabbing");
-      if (drag.moved) {
-        requestAtlas("settled");
-        return;
-      }
-      const releasePoint = touchPointFromList(event.changedTouches, drag.pointerId) ?? {
-        x: drag.startX,
-        y: drag.startY,
-      };
-      selectNodeAt(releasePoint.x, releasePoint.y);
-    };
-
-    const handleTouchCancel = (event: TouchEvent) => {
-      if (event.cancelable) event.preventDefault();
-      clearLongPress();
-      activeTouchPointsRef.current.clear();
-      ignoredTouchIdsRef.current.clear();
-      pinchStateRef.current = null;
-      dragStateRef.current = null;
-      overlayRef.current?.classList.remove("cursor-grabbing");
-      requestAtlas("settled");
-    };
-
-    container.addEventListener("touchstart", handleTouchStart, { passive: false });
-    container.addEventListener("touchmove", handleTouchMove, { passive: false });
-    container.addEventListener("touchend", handleTouchEnd, { passive: false });
-    container.addEventListener("touchcancel", handleTouchCancel, { passive: false });
-    return () => {
-      container.removeEventListener("touchstart", handleTouchStart);
-      container.removeEventListener("touchmove", handleTouchMove);
-      container.removeEventListener("touchend", handleTouchEnd);
-      container.removeEventListener("touchcancel", handleTouchCancel);
-    };
-  }, [
-    beginNativePan,
-    beginNativePinch,
-    clearLongPress,
-    markInteractive,
-    requestAtlas,
-    selectNodeAt,
-    updateNativePan,
-    updateNativePinch,
-  ]);
+  const fitAll = useCallback(() => controllerRef.current?.fitAll(), []);
+  const focusNode = useCallback((id: string) => {
+    const nodeId = normalizedNodeId(id, personsById, accounts, feeds);
+    controllerRef.current?.focusNode(nodeId);
+    const label = nodeId.startsWith("person:")
+      ? personsById.get(nodeId.slice("person:".length))?.name ?? null
+      : nodeId.startsWith("account:")
+        ? accounts[nodeId.slice("account:".length)]?.displayName ?? null
+        : null;
+    setAnnouncement(friendsGalaxySelectionAnnouncement(label, "focus"));
+  }, [accounts, feeds, personsById]);
+  useImperativeHandle(ref, () => ({
+    fitAll,
+    focusNode,
+    setPresentationVisible: (visible) => controllerRef.current?.setPresentationVisible(visible),
+  }), [fitAll, focusNode]);
 
   const handleCopyDiagnostics = useCallback(async () => {
-    const debug = {
-      perf: (window as typeof window & { __FREED_GRAPH_PERF__?: GraphSurfacePerfSnapshot }).__FREED_GRAPH_PERF__ ?? null,
-      debug: shouldExposeGraphDebug()
-        ? (window as typeof window & { __FREED_GRAPH_DEBUG__?: unknown }).__FREED_GRAPH_DEBUG__ ?? null
-        : null,
-    };
-    await navigator.clipboard?.writeText(JSON.stringify(debug, null, 2));
-  }, []);
-
-  const handleContextMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    openNodeContextMenu(event.clientX, event.clientY);
-  }, [openNodeContextMenu]);
-
-  const closeContextMenu = useCallback(() => {
-    setContextMenu(null);
-    setLinkPickerAccountId(null);
-    setLinkPickerQuery("");
-  }, []);
+    const engine = engineRef.current;
+    const controller = controllerRef.current;
+    const receipt = diagnosticsRef.current.sourceReceipt;
+    const cameraFrame = engine?.cameraFrame;
+    const snapshot = controller?.snapshot();
+    const transform = snapshot?.transform;
+    if (!engine || !controller || !receipt || !cameraFrame || !snapshot || !transform) return;
+    const exported = createFriendsGalaxyDiagnosticSnapshot({
+      capturedAt: new Date().toISOString(),
+      receipt: {
+        ...receipt,
+        activitySummaryCount: Object.keys(activitySummaries.social).length +
+          Object.keys(activitySummaries.rss).length,
+        representedActivityItemCount: activitySummaries.itemCount,
+      },
+      personCount,
+      accountCount: channelCount,
+      backgroundStarCount: BACKGROUND_STAR_COUNT,
+      backend: snapshot.renderer,
+      theme: themeId ?? "scriptorium",
+      fieldStyle: "nebula",
+      transform,
+      cameraScaleLimits: cameraFrame.scaleLimits,
+      outwardZoomEnvelope: cameraFrame.outwardZoomEnvelope,
+      viewportWidth: snapshot.viewportGeometry.canvasWidth,
+      viewportHeight: snapshot.viewportGeometry.canvasHeight,
+      cameraInMotion: snapshot.cameraInMotion,
+      selectionActive: snapshot.selectedNodeId !== null,
+      hoverActive: snapshot.hoveredNodeId !== null,
+      touchInputMode: snapshot.touchInputMode,
+      wheelInputMode: snapshot.wheelInputMode,
+      inertialPanActive: snapshot.inertialPanActive,
+      inertialZoomActive: snapshot.inertialZoomActive,
+      inertialZoomPending: snapshot.inertialZoomPending,
+      presentationVisible: snapshot.presentationVisible,
+      frameLoop: snapshot.frameLoop,
+      settlePending: snapshot.settlePending,
+      renderResizePending: snapshot.renderResizePending,
+      backendGeneration: engine.rendererGeneration,
+      backendRecoveryPending: engine.recoveryPending,
+      backendTerminalFailure: engine.terminalRendererFailure,
+      recoveryReason: engine.recoveryReason,
+      longTasks: snapshot.longTasks,
+      frame: snapshot.frame,
+      submit: snapshot.submit,
+      activityPatchKeyCount: diagnosticsRef.current.activityPatchKeyCount,
+      activityPatchNodeCount: diagnosticsRef.current.activityPatchNodeCount,
+      unknownActivitySourceCount: diagnosticsRef.current.unknownActivitySourceCount,
+      avatarRequestedCount: 0,
+      avatarReadyCount: snapshot.renderer?.avatarCount ?? 0,
+      avatarFailureCount: 0,
+    });
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(serializeFriendsGalaxyDiagnosticSnapshot(exported));
+      setGraphStatus("Diagnostics copied");
+      window.setTimeout(() => setGraphStatus(""), 1_200);
+    } catch {
+      setGraphStatus("Clipboard unavailable");
+    }
+  }, [activitySummaries, channelCount, personCount, themeId]);
 
   const handleOpenContextDetails = useCallback(() => {
+    if (!contextMenu) return;
+    selectNode(contextMenu.node.id);
+  }, [contextMenu, selectNode]);
+
+  const handlePinContextNode = useCallback(async () => {
     const node = contextMenu?.node;
     if (!node) return;
     if (node.personId) {
-      const person = personsById[node.personId];
-      if (person) onSelectPerson(person);
+      await onPinPersonPosition?.(node.personId, node.x, node.y);
     } else if (node.accountId) {
-      const account = accounts[node.accountId];
-      if (account) onSelectAccount(account);
+      await onPinAccountPosition?.(node.accountId, node.x, node.y);
     }
     closeContextMenu();
-  }, [accounts, closeContextMenu, contextMenu, onSelectAccount, onSelectPerson, personsById]);
-
-  const handlePinContextNode = useCallback(async () => {
-    const menu = contextMenu;
-    if (!menu) return;
-    if (menu.node.personId) {
-      await onPinPersonPosition?.(menu.node.personId, menu.worldX, menu.worldY);
-    } else if (menu.node.accountId) {
-      await onPinAccountPosition?.(menu.node.accountId, menu.worldX, menu.worldY);
-    }
-    closeContextMenu();
-    requestAtlas("settled");
-  }, [closeContextMenu, contextMenu, onPinAccountPosition, onPinPersonPosition, requestAtlas]);
+  }, [closeContextMenu, contextMenu, onPinAccountPosition, onPinPersonPosition]);
 
   const handlePromoteContextNode = useCallback(async (level: 1 | 3 | 5) => {
     const node = contextMenu?.node;
@@ -1751,99 +1084,110 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       level,
     });
     closeContextMenu();
-    requestAtlas("settled");
-  }, [closeContextMenu, contextMenu, onDropNodeToRelationshipTier, requestAtlas]);
-
-  const handleStartLinkPicker = useCallback(() => {
-    if (!contextMenu?.node.accountId) return;
-    setLinkPickerAccountId(contextMenu.node.accountId);
-    setLinkPickerQuery("");
-  }, [contextMenu]);
+  }, [closeContextMenu, contextMenu, onDropNodeToRelationshipTier]);
 
   const handleLinkAccountToPickerPerson = useCallback(async (personId: string) => {
     if (!linkPickerAccountId || !onLinkAccountToPerson) return;
     await onLinkAccountToPerson(linkPickerAccountId, personId);
     closeContextMenu();
-    requestAtlas("settled");
-  }, [closeContextMenu, linkPickerAccountId, onLinkAccountToPerson, requestAtlas]);
+  }, [closeContextMenu, linkPickerAccountId, onLinkAccountToPerson]);
+
+  const contextMenuStyle = contextMenu
+    ? {
+        left: contextMenu.x,
+        top: contextMenu.y,
+        "--theme-menu-top": `${contextMenu.y}px`,
+      } as CSSProperties
+    : undefined;
 
   return (
     <div
-      ref={containerRef}
+      ref={viewportRef}
       data-testid="friend-graph-viewport"
-      className="theme-soft-viewport relative h-full w-full touch-none overscroll-contain"
-      onWheel={handleWheel}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerLeave}
-      onPointerLeave={handlePointerLeave}
-      onContextMenu={handleContextMenu}
-      onDoubleClick={(event) => event.preventDefault()}
-      aria-label="Friends identity graph"
+      className="relative z-[1] h-full w-full touch-none overscroll-contain bg-transparent outline-none"
+      tabIndex={0}
+      role="region"
+      aria-label="Friends galaxy"
+      aria-describedby={graphDescriptionId}
+      aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight + - Home 0 Escape Enter Shift+F10 ContextMenu"
     >
-      <div className="theme-soft-viewport-content">
-        <canvas
-          ref={canvasRef}
-          data-testid="friend-graph-canvas"
-          className="absolute inset-0 h-full w-full"
-        />
-        {!atlasReady ? (
-          <div className="absolute inset-0 z-10 flex items-center justify-center">
-            <div className="rounded-full border border-[color:rgb(var(--theme-border-rgb)/0.25)] bg-[color:rgb(var(--theme-surface-rgb)/0.8)] px-4 py-2 text-xs text-[color:var(--theme-text-muted)] backdrop-blur-sm">
-              Building graph...
-            </div>
+      <p id={graphDescriptionId} className="sr-only">
+        {friendsGalaxyGraphDescription(
+          selectedPersonId
+            ? personsById.get(selectedPersonId)?.name ?? null
+            : selectedAccountId
+              ? accounts[selectedAccountId]?.displayName ?? null
+              : null,
+          reducedMotion,
+        )}
+      </p>
+      <p
+        id={graphAnnouncementId}
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {announcement}
+      </p>
+      <div
+        data-testid="friend-graph-canvas-overlay"
+        className="absolute inset-0 cursor-grab bg-transparent active:cursor-grabbing"
+        aria-hidden="true"
+      />
+
+      {!graphReady || graphError || graphStatus ? (
+        <div className="pointer-events-none absolute inset-x-0 top-16 z-20 flex justify-center px-4">
+          <div className="max-w-[min(28rem,calc(100%-2rem))] rounded-lg border border-[color:rgb(var(--theme-border-rgb)/0.28)] bg-[color:rgb(var(--theme-surface-rgb)/0.9)] px-4 py-2 text-center text-xs text-[color:var(--theme-text-secondary)] shadow-lg backdrop-blur-md">
+            {graphError ? (
+              <div className="pointer-events-auto flex items-center gap-3">
+                <span>{graphError}</span>
+                <button
+                  type="button"
+                  className="btn-secondary rounded-lg px-3 py-1 text-xs"
+                  onClick={() => setSourceRetry((value) => value + 1)}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : graphStatus || "Building galaxy..."}
           </div>
-        ) : null}
-        <div
-          ref={overlayRef}
-          data-testid="friend-graph-canvas-overlay"
-          className="absolute inset-0 cursor-grab"
-        />
-      </div>
-      {import.meta.env.DEV || import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1" ? (
-        <div className="absolute left-3 top-3 z-10 flex items-center gap-2 rounded-xl border border-[color:rgb(var(--theme-border-rgb)/0.22)] bg-[color:rgb(var(--theme-surface-rgb)/0.78)] px-2 py-2 text-xs text-[color:var(--theme-text-secondary)] shadow-lg backdrop-blur-md sm:left-4 sm:top-4 sm:px-3">
-          <span className="hidden font-semibold text-[color:var(--theme-text-primary)] sm:inline">Starfield</span>
-          <select
-            className="max-w-[8.5rem] rounded-lg border border-[color:rgb(var(--theme-border-rgb)/0.24)] bg-[color:var(--theme-bg-card)] px-2 py-1 text-xs text-[color:var(--theme-text-primary)] sm:max-w-none"
-            value={starfieldVariation}
-            onChange={(event) => setStarfieldVariation(event.target.value as IdentityGalaxyVariation)}
-            aria-label="Starfield variation"
-          >
-            <option value="nebula-rings">Cosmic blend</option>
-            <option value="nebula">Nebula</option>
-            <option value="rings">Star streams</option>
-          </select>
         </div>
       ) : null}
+
       {contextMenu ? (
         <div
-          className="theme-menu-shell absolute z-30 w-64 rounded-xl border border-[color:rgb(var(--theme-border-rgb)/0.24)] bg-[color:rgb(var(--theme-surface-rgb)/0.94)] p-2 text-sm text-[color:var(--theme-text-primary)] shadow-2xl backdrop-blur-xl"
-          style={{
-            left: Math.min(contextMenu.x, Math.max(12, canvasSize.width - 272)),
-            top: Math.min(contextMenu.y, Math.max(12, canvasSize.height - 360)),
-          }}
-          role="menu"
+          ref={contextMenuRef}
+          className="theme-menu-shell absolute z-30 w-64 max-w-[calc(100%-1rem)] rounded-lg border border-[color:rgb(var(--theme-border-rgb)/0.28)] bg-[color:rgb(var(--theme-surface-rgb)/0.96)] p-2 text-sm text-[color:var(--theme-text-primary)] shadow-2xl backdrop-blur-xl"
+          style={contextMenuStyle}
+          role="dialog"
+          aria-label="Galaxy actions"
           data-testid="friend-graph-context-menu"
+          data-graph-gesture-ignore="true"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            closeContextMenu();
+          }}
         >
           <div className="px-2 pb-2">
             <p className="truncate text-sm font-semibold">{contextMenu.node.label}</p>
             <p className="text-xs text-[color:var(--theme-text-muted)]">
-              {contextMenu.node.kind === "friend_person" ? "Person" : contextMenu.node.kind === "connection_person" ? "Connection" : contextMenu.node.provider ?? "Account"}
+              {nodeKindLabel(contextMenu.node)}
             </p>
           </div>
           {linkPickerAccountId ? (
             <div className="space-y-2">
               <input
-                className="w-full rounded-lg border border-[color:rgb(var(--theme-border-rgb)/0.24)] bg-[color:var(--theme-bg-card)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none"
+                className="theme-input w-full rounded-lg px-3 py-2 text-sm outline-none"
                 value={linkPickerQuery}
                 onChange={(event) => setLinkPickerQuery(event.target.value)}
                 placeholder="Search people"
                 autoFocus
               />
-              <div className="max-h-64 space-y-1 overflow-auto">
+              <div className="max-h-64 space-y-1 overflow-y-auto">
                 {personPickerOptions.map((person) => (
                   <button
                     key={person.id}
@@ -1858,56 +1202,97 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
                   </button>
                 ))}
               </div>
-              <button type="button" className={`${CONTROL_BASE} w-full`} onClick={() => setLinkPickerAccountId(null)}>
+              <button
+                type="button"
+                className={`${CONTROL_BASE} w-full`}
+                onClick={() => setLinkPickerAccountId(null)}
+              >
                 Back
               </button>
             </div>
           ) : (
             <div className="space-y-1">
-              <button type="button" className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]" onClick={handleOpenContextDetails}>
-                Open details
-              </button>
-              {(contextMenu.node.personId || contextMenu.node.accountId) && (onPinPersonPosition || onPinAccountPosition) ? (
-                <button type="button" className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]" onClick={() => void handlePinContextNode()}>
+              {(contextMenu.node.personId || contextMenu.node.accountId) ? (
+                <button
+                  type="button"
+                  className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]"
+                  onClick={handleOpenContextDetails}
+                >
+                  Open details
+                </button>
+              ) : null}
+              {(contextMenu.node.personId || contextMenu.node.accountId) &&
+              (onPinPersonPosition || onPinAccountPosition) ? (
+                <button
+                  type="button"
+                  className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]"
+                  onClick={() => void handlePinContextNode()}
+                >
                   Pin here
                 </button>
               ) : null}
               {contextMenu.node.accountId && onLinkAccountToPerson ? (
-                <button type="button" className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]" onClick={handleStartLinkPicker}>
+                <button
+                  type="button"
+                  className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]"
+                  onClick={() => {
+                    setLinkPickerAccountId(contextMenu.node.accountId ?? null);
+                    setLinkPickerQuery("");
+                  }}
+                >
                   Link to person
                 </button>
               ) : null}
-              {onDropNodeToRelationshipTier ? (
+              {onDropNodeToRelationshipTier &&
+              (contextMenu.node.personId || contextMenu.node.accountId) ? (
                 <>
-                  <button type="button" className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]" onClick={() => void handlePromoteContextNode(1)}>
+                  <button
+                    type="button"
+                    className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]"
+                    onClick={() => void handlePromoteContextNode(1)}
+                  >
                     Mark followed
                   </button>
-                  <button type="button" className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]" onClick={() => void handlePromoteContextNode(3)}>
+                  <button
+                    type="button"
+                    className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]"
+                    onClick={() => void handlePromoteContextNode(3)}
+                  >
                     Promote to Friend
                   </button>
-                  <button type="button" className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]" onClick={() => void handlePromoteContextNode(5)}>
+                  <button
+                    type="button"
+                    className="w-full rounded-lg px-3 py-2 text-left hover:bg-[color:var(--theme-bg-card-hover)]"
+                    onClick={() => void handlePromoteContextNode(5)}
+                  >
                     Promote to Fam
                   </button>
                 </>
               ) : null}
-              <button type="button" className="w-full rounded-lg px-3 py-2 text-left text-[color:var(--theme-text-muted)] hover:bg-[color:var(--theme-bg-card-hover)]" onClick={closeContextMenu}>
+              <button
+                type="button"
+                className="w-full rounded-lg px-3 py-2 text-left text-[color:var(--theme-text-muted)] hover:bg-[color:var(--theme-bg-card-hover)]"
+                onClick={closeContextMenu}
+              >
                 Close
               </button>
             </div>
           )}
         </div>
       ) : null}
+
       <div
         data-testid="friend-graph-controls"
-        className="absolute right-3 top-3 z-10 flex items-center gap-2 sm:right-4 sm:top-4"
+        data-graph-gesture-ignore="true"
+        className="absolute right-3 top-3 z-20 flex items-center gap-2 sm:right-4 sm:top-4"
       >
         <button type="button" className={CONTROL_BASE} onClick={fitAll}>
           Fit all
         </button>
         <button
           type="button"
-          className={`${CONTROL_BASE} inline-flex items-center px-2 sm:px-3`}
-          onClick={handleCopyDiagnostics}
+          className={`${CONTROL_BASE} inline-flex items-center gap-1.5 px-2 sm:px-3`}
+          onClick={() => void handleCopyDiagnostics()}
           aria-label="Copy diagnostics"
           title="Copy diagnostics"
         >

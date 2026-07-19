@@ -20,7 +20,11 @@
       "status": "current",
       "source": "docs/PHASE-7-SOCIAL-CAPTURE.md"
     },
-    { "id": 8, "status": "current", "source": "docs/PHASE-8-FRIENDS.md" },
+    {
+      "id": 8,
+      "status": "current",
+      "source": "docs/PHASE-8-FRIENDS.md"
+    },
     {
       "id": 9,
       "status": "upcoming",
