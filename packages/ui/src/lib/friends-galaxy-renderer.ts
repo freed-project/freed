@@ -46,6 +46,8 @@ export interface FriendsGalaxyRendererMetrics {
   drawCalls: number | null;
   labelCount: number;
   avatarCount: number;
+  identityDetailOpacity?: number;
+  identityDetailTransitionActive?: boolean;
   labelAtlasBuildCount?: number;
   avatarAtlasBuildCount?: number;
   contextualEdgeCount: number;
@@ -81,6 +83,7 @@ export interface FriendsGalaxyRenderer<
   setFieldStyle?(style: FriendsGalaxyFieldStyle): void;
   setViewDetail(detail: FriendsGalaxyViewDetail): void;
   setSettledView?(detail: FriendsGalaxyViewDetail, transform: FriendsGalaxyTransform): void;
+  hasActivePresentationTransition?(): boolean;
   pickNode(viewportX: number, viewportY: number): string | null;
   setInteraction(interaction: FriendsGalaxyInteraction): void;
   render(transform: FriendsGalaxyTransform, timeMs: number): void;

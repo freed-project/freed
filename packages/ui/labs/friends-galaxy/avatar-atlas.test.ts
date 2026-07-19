@@ -71,6 +71,32 @@ describe("Friends Galaxy avatar atlas selection", () => {
     expect(avatars.some((avatar) => avatar.nodeId === "person:lab-person-0" && avatar.selected)).toBe(true);
   });
 
+  it("can prebuild a bounded hidden roster from compact atlas metadata", () => {
+    const atlasPersonIds = new Set(
+      fixture.atlas.nodes
+        .filter((node) => node.kind === "friend_person" || node.kind === "connection_person")
+        .map((node) => node.id),
+    );
+    const selectedNodeId = "person:lab-person-4999";
+    const avatars = selectFriendsGalaxyAvatars(
+      fixture,
+      GALAXY_LAB_THEMES.scriptorium,
+      galaxyLabNodePresentation,
+      selectedNodeId,
+      true,
+      "close",
+      undefined,
+      "atlas",
+    );
+
+    expect(atlasPersonIds.has(selectedNodeId)).toBe(false);
+    expect(avatars).toHaveLength(6);
+    expect(avatars.some((avatar) => avatar.nodeId === selectedNodeId && avatar.selected)).toBe(true);
+    expect(
+      avatars.every((avatar) => avatar.nodeId === selectedNodeId || atlasPersonIds.has(avatar.nodeId)),
+    ).toBe(true);
+  });
+
   it("admits only identities near the settled close viewport", () => {
     const selectedIndex = 4_999;
     const positionOffset = selectedIndex * 3;

@@ -927,6 +927,19 @@ function updateMetrics(): void {
   }
   addMetric("Billboard labels", integerFormat.format(metrics.labelCount));
   addMetric("Avatar atlas", integerFormat.format(metrics.avatarCount));
+  if (metrics.identityDetailOpacity !== undefined) {
+    viewport.dataset.identityDetailOpacity = String(metrics.identityDetailOpacity);
+    addMetric(
+      "Identity detail opacity",
+      `${scaleFormat.format(metrics.identityDetailOpacity * 100)}%`,
+    );
+    addMetric(
+      "Identity detail fade",
+      metrics.identityDetailTransitionActive ? "Active" : "Settled",
+    );
+  } else {
+    delete viewport.dataset.identityDetailOpacity;
+  }
   if (metrics.labelAtlasBuildCount !== undefined) {
     addMetric("Label atlas builds", integerFormat.format(metrics.labelAtlasBuildCount));
   }
@@ -1081,10 +1094,12 @@ function renderFrame(timeMs: number): void {
   if (settledGeneration !== null) applySettledViewDetail(settledGeneration);
   if (renderResizePending) resizeActiveBackend();
   pollBackendHealth();
+  const presentationTransitionActive =
+    rendererHost.activeBackend?.hasActivePresentationTransition?.() ?? false;
   const shouldRender = Boolean(
     canPresentGalaxy() && rendererHost.activeBackend &&
     !rendererHost.recoveryPending && !rendererHost.terminalFailure &&
-    (animateControl.checked || dirty),
+    (animateControl.checked || dirty || presentationTransitionActive),
   );
   if (shouldRender && rendererHost.activeBackend) {
     if (lastFrameAt > 0 && animateControl.checked) {
@@ -1120,7 +1135,8 @@ function renderFrame(timeMs: number): void {
     backendRenderable && animateControl.checked,
     backendRenderable && dirty,
     settleScheduler.isPending || inertialPan.isActive || inertialZoom.isActive ||
-      wheelZoomReleaseAt > 0,
+      wheelZoomReleaseAt > 0 ||
+      Boolean(rendererHost.activeBackend?.hasActivePresentationTransition?.()),
     canPresentGalaxy(),
   )) {
     requestGalaxyFrame();

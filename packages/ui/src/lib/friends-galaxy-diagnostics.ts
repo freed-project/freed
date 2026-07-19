@@ -118,6 +118,8 @@ export interface FriendsGalaxyDiagnosticSnapshot {
   presentation: {
     labelCount: number | null;
     avatarCount: number | null;
+    identityDetailOpacity: number | null;
+    identityDetailTransitionActive: boolean | null;
     contextualEdgeCount: number | null;
     labelAtlasBuildCount: number | null;
     avatarAtlasBuildCount: number | null;
@@ -220,6 +222,8 @@ export function createFriendsGalaxyDiagnosticSnapshot(
     presentation: {
       labelCount: finiteOrNull(backend?.labelCount),
       avatarCount: finiteOrNull(backend?.avatarCount),
+      identityDetailOpacity: finiteOrNull(backend?.identityDetailOpacity),
+      identityDetailTransitionActive: backend?.identityDetailTransitionActive ?? null,
       contextualEdgeCount: finiteOrNull(backend?.contextualEdgeCount),
       labelAtlasBuildCount: finiteOrNull(backend?.labelAtlasBuildCount),
       avatarAtlasBuildCount: finiteOrNull(backend?.avatarAtlasBuildCount),

@@ -34,6 +34,14 @@ export type FriendsGalaxyNodePresentationResolver = (
   nodeIndex: number,
 ) => FriendsGalaxyNodePresentation;
 
+export type FriendsGalaxyAvatarCandidateSource = "scene" | "atlas";
+
+export function friendsGalaxyAvatarAtlasRosterKey(
+  atlas: FriendsGalaxyAvatarAtlas,
+): string {
+  return atlas.avatars.map((avatar) => avatar.nodeId).join("\u0000");
+}
+
 function friendsGalaxySelectedPersonNodeId(
   scene: FriendsGalaxyRendererScene,
   selectedNodeId: string | null,
@@ -58,6 +66,7 @@ export function selectFriendsGalaxyAvatars(
   compact: boolean,
   detail: FriendsGalaxyViewDetail,
   projection?: FriendsGalaxyViewportProjection,
+  candidateSource: FriendsGalaxyAvatarCandidateSource = "scene",
 ): readonly FriendsGalaxyAvatarSeed[] {
   if (detail !== "close") return [];
   const selectedPersonId = friendsGalaxySelectedPersonNodeId(scene, selectedNodeId);
@@ -103,13 +112,27 @@ export function selectFriendsGalaxyAvatars(
     if (ranked.length > candidateCap) ranked.pop();
   };
 
-  for (let nodeIndex = 0; nodeIndex < scene.scene.nodeIds.length; nodeIndex += 1) {
+  const considerNode = (nodeIndex: number): void => {
     if (
       !scene.scene.personIds[nodeIndex] ||
       nodeIndex === selectedIndex ||
       !visible(nodeIndex)
-    ) continue;
+    ) return;
     insertCandidate(nodeIndex, scene.scene.prominence[nodeIndex]!);
+  };
+  if (candidateSource === "atlas") {
+    for (const node of scene.atlas.nodes) {
+      const nodeIndex = findFriendsGalaxySceneNodeIndex(
+        scene.scene,
+        scene.interactionIndex,
+        node.id,
+      );
+      if (nodeIndex !== null) considerNode(nodeIndex);
+    }
+  } else {
+    for (let nodeIndex = 0; nodeIndex < scene.scene.nodeIds.length; nodeIndex += 1) {
+      considerNode(nodeIndex);
+    }
   }
 
   const createSeed = (nodeIndex: number, selected: boolean): FriendsGalaxyAvatarSeed => {
@@ -144,6 +167,7 @@ export function createFriendsGalaxyRendererAvatarAtlas(
   images: ReadonlyMap<string, CanvasImageSource> = new Map(),
   fontFamily = "Inter, ui-sans-serif, system-ui, sans-serif",
   projection?: FriendsGalaxyViewportProjection,
+  candidateSource: FriendsGalaxyAvatarCandidateSource = "scene",
 ): FriendsGalaxyAvatarAtlas {
   const avatars = selectFriendsGalaxyAvatars(
     scene,
@@ -153,6 +177,7 @@ export function createFriendsGalaxyRendererAvatarAtlas(
     compact,
     detail,
     projection,
+    candidateSource,
   );
   return createFriendsGalaxyAvatarAtlas(avatars, palette, images, fontFamily);
 }

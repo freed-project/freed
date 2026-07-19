@@ -16,6 +16,8 @@ const backend: FriendsGalaxyRendererMetrics = {
   drawCalls: 4,
   labelCount: 20,
   avatarCount: 6,
+  identityDetailOpacity: 0.72,
+  identityDetailTransitionActive: true,
   labelAtlasBuildCount: 3,
   avatarAtlasBuildCount: 2,
   contextualEdgeCount: 4,
@@ -123,6 +125,10 @@ describe("Friends Galaxy diagnostic export", () => {
       renderer: {
         id: "raw-webgpu",
         residentStarUploadCount: 2,
+      },
+      presentation: {
+        identityDetailOpacity: 0.72,
+        identityDetailTransitionActive: true,
       },
       interaction: {
         selectionActive: true,

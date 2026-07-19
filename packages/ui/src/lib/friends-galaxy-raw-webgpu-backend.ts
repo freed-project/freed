@@ -47,8 +47,11 @@ import { writeFriendsGalaxyInteractionInstances } from "./friends-galaxy-interac
 import {
   createFriendsGalaxyRendererAvatarAtlas,
   createFriendsGalaxyRendererLabelAtlas,
+  friendsGalaxyAvatarAtlasRosterKey,
+  type FriendsGalaxyAvatarCandidateSource,
   type FriendsGalaxyNodePresentationResolver,
 } from "./friends-galaxy-presentation.js";
+import { FriendsGalaxyIdentityDetailFade } from "./friends-galaxy-identity-detail-fade.js";
 import {
   FriendsGalaxySceneIndex,
   type FriendsGalaxyInteraction,
@@ -61,6 +64,7 @@ const INSTANCE_STRIDE = INSTANCE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 const EDGE_INSTANCE_FLOATS = 10;
 const EDGE_INSTANCE_STRIDE = EDGE_INSTANCE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 const MAX_CONTEXTUAL_EDGES = 16;
+const IDENTITY_DETAIL_VISIBLE_EPSILON = 0.001;
 
 const PROVIDER_FIELD_SHADER = /* wgsl */ `
 struct Uniforms {
@@ -403,6 +407,7 @@ struct Uniforms {
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var labelAtlas: texture_2d<f32>;
 @group(0) @binding(2) var labelSampler: sampler;
+@group(0) @binding(3) var<uniform> billboardOpacity: f32;
 
 struct VertexInput {
   @location(0) corner: vec2<f32>,
@@ -432,10 +437,11 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let sample = textureSample(labelAtlas, labelSampler, input.uv);
-  if (sample.a < 0.015) {
+  let alpha = sample.a * billboardOpacity;
+  if (alpha < 0.015) {
     discard;
   }
-  return sample;
+  return vec4<f32>(sample.rgb, alpha);
 }
 `;
 
@@ -498,6 +504,8 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
   private avatarTexture: GPUTexture | null = null;
   private labelSampler: GPUSampler | null = null;
   private uniformBuffer: GPUBuffer | null = null;
+  private labelOpacityBuffer: GPUBuffer | null = null;
+  private avatarOpacityBuffer: GPUBuffer | null = null;
   private fixture: FriendsGalaxyRendererScene | null = null;
   private sceneIndex: FriendsGalaxySceneIndex | null = null;
   private semanticData: Float32Array | null = null;
@@ -526,6 +534,9 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
   private readonly uniformData = new Float32Array(
     FRIENDS_GALAXY_STAR_PALETTE_FLOAT_OFFSET + FRIENDS_GALAXY_STAR_PALETTE_FLOAT_COUNT,
   );
+  private readonly labelOpacityData = new Float32Array([1, 0, 0, 0]);
+  private readonly avatarOpacityData = new Float32Array(4);
+  private readonly identityDetailFade = new FriendsGalaxyIdentityDetailFade();
   private colorAttachment: GPURenderPassColorAttachment | null = null;
   private renderPassDescriptor: GPURenderPassDescriptor | null = null;
   private readonly commandBuffers: GPUCommandBuffer[] = [];
@@ -545,6 +556,9 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
   private residentStarUploadCount = 0;
   private labelAtlasBuildCount = 0;
   private avatarAtlasBuildCount = 0;
+  private avatarCandidateSource: FriendsGalaxyAvatarCandidateSource = "atlas";
+  private avatarRosterKey = "";
+  private avatarBundleVisible = false;
   private fallbackReason: string | null = null;
   private adapterDescription: string | null = null;
   private readonly backendHealth = new FriendsGalaxyBackendHealth();
@@ -641,6 +655,17 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
       size: this.uniformData.byteLength,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
+    this.labelOpacityBuffer = createBuffer(
+      device,
+      this.labelOpacityData,
+      GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    );
+    this.avatarOpacityBuffer = createBuffer(
+      device,
+      this.avatarOpacityData,
+      GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    );
+    this.bufferUploadCount += 2;
     const providerFieldShaderModule = device.createShaderModule({ code: PROVIDER_FIELD_SHADER });
     this.providerFieldPipeline = await device.createRenderPipelineAsync({
       layout: "auto",
@@ -810,7 +835,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
       colorAttachments: [this.colorAttachment],
     };
     this.rebuildLabels(canvas.clientWidth < 720);
-    this.rebuildAvatars(canvas.clientWidth < 720);
+    this.rebuildAvatars(canvas.clientWidth < 720, "atlas");
     void device.lost.then((info) => {
       if (this.disposed || this.device !== device) return;
       const detail = info.message.trim();
@@ -831,7 +856,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     const compactLabels = this.width < 720;
     if (compactLabels !== this.compactLabels) {
       this.rebuildLabels(compactLabels);
-      this.rebuildAvatars(compactLabels);
+      this.rebuildAvatars(compactLabels, this.avatarCandidateSource);
     }
   }
 
@@ -842,7 +867,10 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.writePaletteUniforms(palette);
     this.writeProviderFields();
     this.rebuildLabels(this.compactLabels ?? this.width < 720);
-    this.rebuildAvatars(this.compactLabels ?? this.width < 720);
+    this.rebuildAvatars(
+      this.compactLabels ?? this.width < 720,
+      this.avatarCandidateSource,
+    );
     if (this.sceneIndex) this.writeInteraction(this.sceneIndex.interactionState(this.interaction));
   }
 
@@ -883,7 +911,10 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
   setAvatarImages(images: ReadonlyMap<string, CanvasImageSource>): void {
     this.avatarImages = images;
     if (this.viewDetail === "close") {
-      this.rebuildAvatars(this.compactLabels ?? this.width < 720);
+      this.rebuildAvatars(
+        this.compactLabels ?? this.width < 720,
+        this.avatarCandidateSource,
+      );
     }
   }
 
@@ -901,7 +932,9 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     if (detail === this.viewDetail) return;
     this.viewDetail = detail;
     this.rebuildLabels(this.compactLabels ?? this.width < 720);
-    this.rebuildAvatars(this.compactLabels ?? this.width < 720);
+    if (detail === "close") {
+      this.rebuildAvatars(this.compactLabels ?? this.width < 720, "scene");
+    }
   }
 
   setSettledView(detail: FriendsGalaxyViewDetail, transform: FriendsGalaxyTransform): void {
@@ -912,7 +945,13 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.settledProjectionValid = true;
     this.updateSettledProjection();
     this.rebuildLabels(this.compactLabels ?? this.width < 720);
-    this.rebuildAvatars(this.compactLabels ?? this.width < 720);
+    if (detail === "close") {
+      this.rebuildAvatars(this.compactLabels ?? this.width < 720, "scene");
+    }
+  }
+
+  hasActivePresentationTransition(): boolean {
+    return this.identityDetailFade.isActive;
   }
 
   pickNode(viewportX: number, viewportY: number): string | null {
@@ -956,6 +995,22 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
       this.cameraMotion,
     );
     this.device.queue.writeBuffer(this.uniformBuffer, 0, this.uniformData);
+    const identityDetailStep = this.identityDetailFade.step(
+      transform.scale,
+      timeMs,
+      this.animationEnabled,
+    );
+    if (identityDetailStep.changed && this.avatarOpacityBuffer) {
+      this.avatarOpacityData[0] = identityDetailStep.opacity;
+      this.device.queue.writeBuffer(this.avatarOpacityBuffer, 0, this.avatarOpacityData);
+    }
+    const avatarBundleVisible = Boolean(
+      this.avatarRenderBundle && identityDetailStep.opacity > IDENTITY_DETAIL_VISIBLE_EPSILON,
+    );
+    if (avatarBundleVisible !== this.avatarBundleVisible) {
+      this.avatarBundleVisible = avatarBundleVisible;
+      this.rebuildFrameRenderBundles();
+    }
 
     const encoder = this.device.createCommandEncoder({ label: "Friends Galaxy frame" });
     this.colorAttachment.view = this.context.getCurrentTexture().createView();
@@ -988,10 +1043,12 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
       drawCalls: 2 + (this.providerFields && this.providerFields.count > 0 ? 1 : 0) +
         (this.interactionInstanceCount > 0 ? 1 : 0) +
         (this.labelAtlas && this.labelAtlas.labels.length > 0 ? 1 : 0) +
-        (this.avatarAtlas && this.avatarAtlas.itemCount > 0 ? 1 : 0) +
+        (this.avatarBundleVisible ? 1 : 0) +
         (this.contextualEdgeCount > 0 ? 1 : 0),
       labelCount: this.labelAtlas?.labels.length ?? 0,
       avatarCount: this.avatarAtlas?.itemCount ?? 0,
+      identityDetailOpacity: this.identityDetailFade.currentOpacity,
+      identityDetailTransitionActive: this.identityDetailFade.isActive,
       labelAtlasBuildCount: this.labelAtlasBuildCount,
       avatarAtlasBuildCount: this.avatarAtlasBuildCount,
       contextualEdgeCount: this.contextualEdgeCount,
@@ -1025,6 +1082,8 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.avatarBuffer?.destroy();
     this.avatarTexture?.destroy();
     this.uniformBuffer?.destroy();
+    this.labelOpacityBuffer?.destroy();
+    this.avatarOpacityBuffer?.destroy();
     this.device?.destroy();
     this.canvas = null;
     this.context = null;
@@ -1061,6 +1120,8 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.avatarTexture = null;
     this.labelSampler = null;
     this.uniformBuffer = null;
+    this.labelOpacityBuffer = null;
+    this.avatarOpacityBuffer = null;
     this.colorAttachment = null;
     this.renderPassDescriptor = null;
     this.commandBuffers.length = 0;
@@ -1086,12 +1147,17 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.residentStarUploadCount = 0;
     this.labelAtlasBuildCount = 0;
     this.avatarAtlasBuildCount = 0;
+    this.avatarCandidateSource = "atlas";
+    this.avatarRosterKey = "";
+    this.avatarBundleVisible = false;
+    this.avatarOpacityData.fill(0);
+    this.identityDetailFade.restartFromHidden();
   }
 
   private rebuildLabels(compact: boolean): void {
     if (
       !this.device || !this.fixture || !this.palette || !this.labelPipeline ||
-      !this.uniformBuffer || !this.labelSampler
+      !this.uniformBuffer || !this.labelOpacityBuffer || !this.labelSampler
     ) return;
     this.compactLabels = compact;
     this.labelRenderBundle = null;
@@ -1132,6 +1198,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
         { binding: 0, resource: { buffer: this.uniformBuffer } },
         { binding: 1, resource: this.labelTexture.createView() },
         { binding: 2, resource: this.labelSampler },
+        { binding: 3, resource: { buffer: this.labelOpacityBuffer } },
       ],
     });
     this.labelAtlas = atlas;
@@ -1148,6 +1215,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
   private trackedGpuDataBytes(): number {
     let bytes = 36 * Float32Array.BYTES_PER_ELEMENT;
     bytes += this.uniformData.byteLength;
+    bytes += this.labelOpacityData.byteLength + this.avatarOpacityData.byteLength;
     bytes += this.edgeData.byteLength;
     bytes += this.semanticData?.byteLength ?? 0;
     bytes += this.interactionData.byteLength;
@@ -1164,10 +1232,13 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     return bytes;
   }
 
-  private rebuildAvatars(compact: boolean): void {
+  private rebuildAvatars(
+    compact: boolean,
+    candidateSource: FriendsGalaxyAvatarCandidateSource,
+  ): void {
     if (
       !this.device || !this.fixture || !this.palette || !this.labelPipeline ||
-      !this.uniformBuffer || !this.labelSampler
+      !this.uniformBuffer || !this.avatarOpacityBuffer || !this.labelSampler
     ) return;
     this.avatarRenderBundle = null;
     this.rebuildFrameRenderBundles();
@@ -1182,14 +1253,28 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
       this.resolvePresentation,
       this.interaction.selectedNodeId,
       compact,
-      this.viewDetail,
+      "close",
       this.avatarImages,
       undefined,
       this.settledProjectionValid ? this.settledProjection : undefined,
+      candidateSource,
     );
     this.avatarAtlasBuildCount += 1;
+    const nextRosterKey = friendsGalaxyAvatarAtlasRosterKey(atlas);
+    const rosterChanged = nextRosterKey !== this.avatarRosterKey;
+    this.avatarCandidateSource = candidateSource;
+    this.avatarRosterKey = nextRosterKey;
     this.avatarAtlas = atlas;
-    if (atlas.itemCount === 0) return;
+    if (rosterChanged) {
+      this.identityDetailFade.restartFromHidden();
+      this.avatarOpacityData.fill(0);
+      this.device.queue.writeBuffer(this.avatarOpacityBuffer, 0, this.avatarOpacityData);
+      this.avatarBundleVisible = false;
+    }
+    if (atlas.itemCount === 0) {
+      this.rebuildFrameRenderBundles();
+      return;
+    }
     this.avatarBuffer = createBuffer(
       this.device,
       atlas.instanceData,
@@ -1213,6 +1298,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
         { binding: 0, resource: { buffer: this.uniformBuffer } },
         { binding: 1, resource: this.avatarTexture.createView() },
         { binding: 2, resource: this.labelSampler },
+        { binding: 3, resource: { buffer: this.avatarOpacityBuffer } },
       ],
     });
     this.avatarRenderBundle = this.recordBillboardRenderBundle(
@@ -1221,6 +1307,8 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
       this.avatarBuffer,
       atlas.itemCount,
     );
+    this.avatarBundleVisible = this.identityDetailFade.currentOpacity >
+      IDENTITY_DETAIL_VISIBLE_EPSILON;
     this.rebuildFrameRenderBundles();
     this.bufferUploadCount += 2;
   }
@@ -1486,7 +1574,9 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
       : settledWorldBundle;
     if (worldBundle) this.frameRenderBundles[count++] = worldBundle;
     if (this.edgeRenderBundle) this.frameRenderBundles[count++] = this.edgeRenderBundle;
-    if (this.avatarRenderBundle) this.frameRenderBundles[count++] = this.avatarRenderBundle;
+    if (this.avatarBundleVisible && this.avatarRenderBundle) {
+      this.frameRenderBundles[count++] = this.avatarRenderBundle;
+    }
     if (this.labelRenderBundle) this.frameRenderBundles[count++] = this.labelRenderBundle;
     this.frameRenderBundles.length = count;
   }

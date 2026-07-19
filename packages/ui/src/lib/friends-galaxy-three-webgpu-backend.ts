@@ -31,8 +31,11 @@ import type { FriendsGalaxyBillboardAtlas } from "./friends-galaxy-billboard-atl
 import {
   createFriendsGalaxyRendererAvatarAtlas,
   createFriendsGalaxyRendererLabelAtlas,
+  friendsGalaxyAvatarAtlasRosterKey,
+  type FriendsGalaxyAvatarCandidateSource,
   type FriendsGalaxyNodePresentationResolver,
 } from "./friends-galaxy-presentation.js";
+import { FriendsGalaxyIdentityDetailFade } from "./friends-galaxy-identity-detail-fade.js";
 import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
 import {
   FriendsGalaxySceneIndex,
@@ -56,12 +59,15 @@ interface GalaxyBillboardBatch {
   mesh: THREE.Mesh;
   texture: THREE.CanvasTexture;
   viewport: THREE.Vector2;
+  opacity: { value: number };
 }
 
 interface GalaxyAttributeUpdateRange {
   start: number;
   count: number;
 }
+
+const IDENTITY_DETAIL_VISIBLE_EPSILON = 0.001;
 
 function adapterLabel(adapter: GPUAdapter): string {
   const info = adapter.info;
@@ -130,6 +136,7 @@ function makeSpriteBatch(
 function makeBillboardBatch(
   atlas: FriendsGalaxyBillboardAtlas,
   renderOrder: number,
+  initialOpacity = 1,
 ): GalaxyBillboardBatch {
   const itemCount = atlas.itemCount;
   const anchors = new Float32Array(itemCount * 3);
@@ -167,6 +174,7 @@ function makeBillboardBatch(
   canvasTexture.needsUpdate = true;
   const viewport = new THREE.Vector2(1, 1);
   const viewportNode = uniform(viewport);
+  const opacityNode = uniform(initialOpacity);
   const anchorNode = vec3(instancedBufferAttribute<"vec3">(anchorAttribute, "vec3"));
   const offsetNode = vec2(instancedBufferAttribute<"vec2">(offsetAttribute, "vec2"));
   const sizeNode = vec2(instancedBufferAttribute<"vec2">(sizeAttribute, "vec2"));
@@ -180,7 +188,7 @@ function makeBillboardBatch(
   const atlasUv = uvRectNode.xy.add(topLeftUv.mul(uvRectNode.zw.sub(uvRectNode.xy)));
   const atlasSample = texture(canvasTexture, atlasUv);
   material.colorNode = atlasSample.rgb;
-  material.opacityNode = atlasSample.a;
+  material.opacityNode = atlasSample.a.mul(opacityNode);
   material.transparent = true;
   material.depthWrite = false;
   material.depthTest = false;
@@ -190,7 +198,16 @@ function makeBillboardBatch(
   const mesh = new THREE.Mesh(geometry, material);
   mesh.frustumCulled = false;
   mesh.renderOrder = renderOrder;
-  return { atlas, geometry, material, mesh, texture: canvasTexture, viewport };
+  mesh.visible = initialOpacity > IDENTITY_DETAIL_VISIBLE_EPSILON;
+  return {
+    atlas,
+    geometry,
+    material,
+    mesh,
+    texture: canvasTexture,
+    viewport,
+    opacity: opacityNode,
+  };
 }
 
 export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
@@ -244,6 +261,10 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
   private bufferUploadCount = 0;
   private labelAtlasBuildCount = 0;
   private avatarAtlasBuildCount = 0;
+  private animationEnabled = false;
+  private avatarCandidateSource: FriendsGalaxyAvatarCandidateSource = "atlas";
+  private avatarRosterKey = "";
+  private readonly identityDetailFade = new FriendsGalaxyIdentityDetailFade();
   private adapterDescription: string | null = null;
   private fallbackReason: string | null = null;
   private readonly backendHealth = new FriendsGalaxyBackendHealth();
@@ -339,7 +360,7 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.edgeLines.visible = false;
     this.scene.add(this.backgroundBatch.sprite, this.semanticBatch.sprite, this.edgeLines);
     this.rebuildLabels(canvas.clientWidth < 720);
-    this.rebuildAvatars(canvas.clientWidth < 720);
+    this.rebuildAvatars(canvas.clientWidth < 720, "atlas");
     this.applyMaterialOpacity(palette);
     this.bufferUploadCount += 3;
   }
@@ -359,7 +380,7 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
     const compactLabels = this.width < 720;
     if (compactLabels !== this.compactLabels) {
       this.rebuildLabels(compactLabels);
-      this.rebuildAvatars(compactLabels);
+      this.rebuildAvatars(compactLabels, this.avatarCandidateSource);
     }
   }
 
@@ -387,14 +408,23 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
     if (this.backgroundBatch) this.backgroundBatch.colorAttribute.needsUpdate = true;
     this.bufferUploadCount += 3;
     this.rebuildLabels(this.compactLabels ?? this.width < 720);
-    this.rebuildAvatars(this.compactLabels ?? this.width < 720);
+    this.rebuildAvatars(
+      this.compactLabels ?? this.width < 720,
+      this.avatarCandidateSource,
+    );
+  }
+
+  setAnimationEnabled(enabled: boolean): void {
+    this.animationEnabled = enabled;
   }
 
   setViewDetail(detail: FriendsGalaxyViewDetail): void {
     if (detail === this.viewDetail) return;
     this.viewDetail = detail;
     this.rebuildLabels(this.compactLabels ?? this.width < 720);
-    this.rebuildAvatars(this.compactLabels ?? this.width < 720);
+    if (detail === "close") {
+      this.rebuildAvatars(this.compactLabels ?? this.width < 720, "scene");
+    }
   }
 
   setSettledView(detail: FriendsGalaxyViewDetail, transform: FriendsGalaxyTransform): void {
@@ -405,14 +435,23 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.settledProjectionValid = true;
     this.updateViewProjection(this.settledTransform);
     this.rebuildLabels(this.compactLabels ?? this.width < 720);
-    this.rebuildAvatars(this.compactLabels ?? this.width < 720);
+    if (detail === "close") {
+      this.rebuildAvatars(this.compactLabels ?? this.width < 720, "scene");
+    }
   }
 
   setAvatarImages(images: ReadonlyMap<string, CanvasImageSource>): void {
     this.avatarImages = images;
     if (this.viewDetail === "close") {
-      this.rebuildAvatars(this.compactLabels ?? this.width < 720);
+      this.rebuildAvatars(
+        this.compactLabels ?? this.width < 720,
+        this.avatarCandidateSource,
+      );
     }
+  }
+
+  hasActivePresentationTransition(): boolean {
+    return this.identityDetailFade.isActive;
   }
 
   pickNode(viewportX: number, viewportY: number): string | null {
@@ -432,9 +471,19 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.writeInteraction(this.sceneIndex.interactionState(interaction));
   }
 
-  render(transform: FriendsGalaxyTransform, _timeMs: number): void {
+  render(transform: FriendsGalaxyTransform, timeMs: number): void {
     if (!this.renderer) return;
     this.updateViewProjection(transform);
+    const identityDetailStep = this.identityDetailFade.step(
+      transform.scale,
+      timeMs,
+      this.animationEnabled,
+    );
+    if (this.avatarBatch && identityDetailStep.changed) {
+      this.avatarBatch.opacity.value = identityDetailStep.opacity;
+      this.avatarBatch.mesh.visible = identityDetailStep.opacity >
+        IDENTITY_DETAIL_VISIBLE_EPSILON;
+    }
     this.renderer.render(this.scene, this.camera);
     this.drawCalls = this.renderer.info.render.drawCalls;
   }
@@ -457,6 +506,8 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
       drawCalls: this.drawCalls,
       labelCount: this.labelBatch?.atlas.itemCount ?? 0,
       avatarCount: this.avatarBatch?.atlas.itemCount ?? 0,
+      identityDetailOpacity: this.identityDetailFade.currentOpacity,
+      identityDetailTransitionActive: this.identityDetailFade.isActive,
       labelAtlasBuildCount: this.labelAtlasBuildCount,
       avatarAtlasBuildCount: this.avatarAtlasBuildCount,
       contextualEdgeCount: this.contextualEdgeCount,
@@ -525,6 +576,10 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.contextualEdgeCount = 0;
     this.labelAtlasBuildCount = 0;
     this.avatarAtlasBuildCount = 0;
+    this.animationEnabled = false;
+    this.avatarCandidateSource = "atlas";
+    this.avatarRosterKey = "";
+    this.identityDetailFade.restartFromHidden();
     this.settledProjectionValid = false;
   }
 
@@ -554,7 +609,10 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.bufferUploadCount += 2;
   }
 
-  private rebuildAvatars(compact: boolean): void {
+  private rebuildAvatars(
+    compact: boolean,
+    candidateSource: FriendsGalaxyAvatarCandidateSource,
+  ): void {
     if (!this.fixture || !this.palette) return;
     if (this.avatarBatch) {
       this.scene.remove(this.avatarBatch.mesh);
@@ -569,14 +627,24 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
       this.resolvePresentation,
       this.interaction.selectedNodeId,
       compact,
-      this.viewDetail,
+      "close",
       this.avatarImages,
       undefined,
       this.settledProjectionValid ? this.settledProjection : undefined,
+      candidateSource,
     );
     this.avatarAtlasBuildCount += 1;
+    const nextRosterKey = friendsGalaxyAvatarAtlasRosterKey(atlas);
+    const rosterChanged = nextRosterKey !== this.avatarRosterKey;
+    this.avatarCandidateSource = candidateSource;
+    this.avatarRosterKey = nextRosterKey;
+    if (rosterChanged) this.identityDetailFade.restartFromHidden();
     if (atlas.itemCount === 0) return;
-    this.avatarBatch = makeBillboardBatch(atlas, 8);
+    this.avatarBatch = makeBillboardBatch(
+      atlas,
+      8,
+      this.identityDetailFade.currentOpacity,
+    );
     this.avatarBatch.viewport.set(this.width, this.height);
     this.scene.add(this.avatarBatch.mesh);
     this.bufferUploadCount += 2;
