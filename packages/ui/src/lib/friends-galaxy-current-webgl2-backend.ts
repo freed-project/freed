@@ -1,19 +1,19 @@
-import { IdentityGalaxyEngine } from "../../src/lib/identity-galaxy-engine.js";
+import { IdentityGalaxyEngine } from "./identity-galaxy-engine.js";
 import type {
   FriendsGalaxyRendererBackend,
   FriendsGalaxyRendererMetrics,
   FriendsGalaxyRendererScene,
   FriendsGalaxyViewDetail,
-} from "../../src/lib/friends-galaxy-renderer.js";
+} from "./friends-galaxy-renderer.js";
 import type {
   FriendsGalaxyRendererPalette,
-} from "../../src/lib/friends-galaxy-palette.js";
-import { friendsGalaxyHexToRgb } from "../../src/lib/friends-galaxy-palette.js";
+} from "./friends-galaxy-palette.js";
+import { friendsGalaxyHexToRgb } from "./friends-galaxy-palette.js";
 import {
   FriendsGalaxySceneIndex,
   type FriendsGalaxyInteraction,
-} from "../../src/lib/friends-galaxy-scene-index.js";
-import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
+} from "./friends-galaxy-scene-index.js";
+import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
 
 function cssRgb(value: string): string {
   return friendsGalaxyHexToRgb(value).map((part) => Math.round(part * 255)).join(" ");

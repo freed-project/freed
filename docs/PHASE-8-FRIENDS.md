@@ -270,6 +270,8 @@ Backend selection and recovery now use one renderer-neutral runtime under shared
 
 The renderer interface now lives under shared UI source too. It owns backend IDs, overview, middle, and close detail tiers, the existing shared transform, renderer metrics, palette constraints, interaction updates, activity patches, avatar images, field style, animation and camera-motion state, picking, rendering, health, simulation hooks, and disposal. Its scene is a generic type parameter, so the detached synthetic fixture and the future product worker envelope can use the same renderer lifecycle without either importing the other. A concrete shared backend type binds the renderer-neutral scene and complete palette. Raw WebGPU, Three.js WebGPU, and WebGL2 implement that type directly and import no laboratory module. The motion render-density policy moved with this interface and remains covered by the existing compact and wide viewport tests. Laboratory aliases remain only in shell diagnostics and contain no renderer behavior.
 
+The three concrete renderer implementations now live under shared UI source too. One shared lazy factory resolves the requested renderer ID and injects the node-presentation resolver only into the WebGPU implementations that need settled label and avatar metadata. The detached laboratory imports this factory and owns no renderer class or dynamic renderer path. Product cutover can therefore instantiate Raw WebGPU, Three.js WebGPU, or the WebGL2 compatibility renderer from the real Friends engine without reaching into laboratory source or eagerly adding the large Three.js WebGPU reference chunk to startup.
+
 The moving world bundles draw a deterministic 50,000-star prefix of the 100,000 resident decorative dust stars. Their index-keyed placement keeps that prefix evenly distributed across the galactic field. All 30,000 semantic stars, interaction overlays, labels, avatars, and edges remain complete. Settle returns the full decorative stream without an upload or bundle rebuild.
 
 Provider fields now become degenerate in the vertex shader beyond 1.5 close-detail scale. Their existing camera fade has already reduced them to atmospheric residue by that point. The cutoff prevents six large, effectively invisible field quads from rasterizing or running noise fragments over close-zoom stars, labels, and avatars. Overview and middle detail remain unchanged.
@@ -546,6 +548,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.130 | Move the complete renderer palette and typed-scene semantic color resolver into shared UI source, then remove laboratory scene and palette types from every backend contract | High | Done |
 | 8.131 | Move bounded label and avatar selection, selected-parent resolution, atlas assembly, and interaction-overlay packing into shared UI source behind an injected node-presentation resolver | High | Done |
 | 8.132 | Bind the renderer-neutral scene and complete palette into one shared concrete backend type, then remove every laboratory import from the three renderer implementations | High | Done |
+| 8.133 | Move Raw WebGPU, Three.js WebGPU, and WebGL2 into shared UI source behind one lazy renderer factory consumed by the detached laboratory | High | Done |
 
 ---
 
@@ -628,6 +631,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] The detached laboratory and future product shell share one generation-safe backend runtime that keeps the old canvas visible until replacement commit, recovers once, and terminates compatibility failure without a render loop
 - [x] Raw WebGPU, Three.js WebGPU, and WebGL2 implement one shared generic renderer contract with no duplicate transform or render-density policy in the laboratory
 - [x] Raw WebGPU, Three.js WebGPU, and WebGL2 implement one shared concrete renderer type and import no laboratory module
+- [x] The detached laboratory owns no renderer implementation and instantiates all three shared backends through one lazy shared factory
 - [x] Every detached backend, billboard compositor, and avatar selector consumes one shared renderer scene envelope without depending on synthetic fixture diagnostics
 - [x] Every detached backend consumes one shared complete renderer palette, and semantic star colors resolve from typed scene data without a laboratory helper
 - [x] Raw WebGPU and Three.js WebGPU share one renderer-neutral presentation pipeline for bounded visible labels, avatars, selected-parent retention, atlas construction, and interaction-overlay packing

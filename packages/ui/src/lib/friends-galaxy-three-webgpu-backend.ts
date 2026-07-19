@@ -13,33 +13,33 @@ import {
 } from "three/tsl";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { LineSegments2 } from "three/examples/jsm/lines/webgpu/LineSegments2.js";
-import { identityGalaxyCameraPose } from "../../src/lib/identity-galaxy-camera.js";
+import { identityGalaxyCameraPose } from "./identity-galaxy-camera.js";
 import type {
   FriendsGalaxyRendererBackend,
   FriendsGalaxyRendererMetrics,
   FriendsGalaxyRendererScene,
   FriendsGalaxyViewDetail,
-} from "../../src/lib/friends-galaxy-renderer.js";
-import { friendsGalaxyRenderPixelRatio } from "../../src/lib/friends-galaxy-renderer.js";
+} from "./friends-galaxy-renderer.js";
+import { friendsGalaxyRenderPixelRatio } from "./friends-galaxy-renderer.js";
 import {
   friendsGalaxyHexToRgb,
   friendsGalaxySemanticColor,
   type FriendsGalaxyRendererPalette,
-} from "../../src/lib/friends-galaxy-palette.js";
-import { FriendsGalaxyBackendHealth } from "../../src/lib/friends-galaxy-backend-health.js";
-import type { FriendsGalaxyBillboardAtlas } from "../../src/lib/friends-galaxy-billboard-atlas.js";
+} from "./friends-galaxy-palette.js";
+import { FriendsGalaxyBackendHealth } from "./friends-galaxy-backend-health.js";
+import type { FriendsGalaxyBillboardAtlas } from "./friends-galaxy-billboard-atlas.js";
 import {
   createFriendsGalaxyRendererAvatarAtlas,
   createFriendsGalaxyRendererLabelAtlas,
   type FriendsGalaxyNodePresentationResolver,
-} from "../../src/lib/friends-galaxy-presentation.js";
-import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
+} from "./friends-galaxy-presentation.js";
+import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
 import {
   FriendsGalaxySceneIndex,
   type FriendsGalaxyInteraction,
   type FriendsGalaxyInteractionRole,
   type FriendsGalaxyInteractionState,
-} from "../../src/lib/friends-galaxy-scene-index.js";
+} from "./friends-galaxy-scene-index.js";
 
 interface GalaxySpriteBatch {
   sprite: THREE.Sprite;

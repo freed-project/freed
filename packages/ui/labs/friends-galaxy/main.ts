@@ -9,6 +9,7 @@ import {
   type GalaxyLabViewDetail,
 } from "./backend.js";
 import { FriendsGalaxyBackendRuntime } from "../../src/lib/friends-galaxy-backend-runtime.js";
+import { createFriendsGalaxyRendererBackend } from "../../src/lib/friends-galaxy-backend-factory.js";
 import { friendsGalaxyRenderPixelRatio } from "../../src/lib/friends-galaxy-renderer.js";
 import { friendsGalaxyHexToRgb } from "../../src/lib/friends-galaxy-palette.js";
 import {
@@ -749,19 +750,6 @@ function resetSamples(): void {
   lastFrameAt = 0;
 }
 
-async function createBackend(id: GalaxyLabBackendId): Promise<GalaxyLabBackend> {
-  if (id === "current-webgl2") {
-    const { CurrentWebGl2Backend } = await import("./current-webgl2-backend.js");
-    return new CurrentWebGl2Backend();
-  }
-  if (id === "three-webgpu") {
-    const { ThreeWebGpuBackend } = await import("./three-webgpu-backend.js");
-    return new ThreeWebGpuBackend(galaxyLabNodePresentation);
-  }
-  const { RawWebGpuBackend } = await import("./raw-webgpu-backend.js");
-  return new RawWebGpuBackend(galaxyLabNodePresentation);
-}
-
 function backendLabel(id: GalaxyLabBackendId): string {
   return Array.from(backendSelect.options).find((option) => option.value === id)?.textContent ?? id;
 }
@@ -800,7 +788,10 @@ const backendRuntime = new FriendsGalaxyBackendRuntime<
   removeSurface: (canvas) => {
     canvas.remove();
   },
-  createBackend,
+  createBackend: (id) => createFriendsGalaxyRendererBackend(
+    id,
+    galaxyLabNodePresentation,
+  ),
   initializeBackend: async (backend, canvas) => {
     await backend.initialize(canvas, fixture, paletteForTheme());
     configureBackendState(backend);

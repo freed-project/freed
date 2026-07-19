@@ -3,38 +3,38 @@ import type {
   FriendsGalaxyRendererMetrics,
   FriendsGalaxyRendererScene,
   FriendsGalaxyViewDetail,
-} from "../../src/lib/friends-galaxy-renderer.js";
-import { friendsGalaxyRenderPixelRatio } from "../../src/lib/friends-galaxy-renderer.js";
-import type { FriendsGalaxyActivityScenePatchBatch } from "../../src/lib/friends-galaxy-activity-patches.js";
-import { FriendsGalaxyBackendHealth } from "../../src/lib/friends-galaxy-backend-health.js";
-import type { FriendsGalaxyAvatarAtlas } from "../../src/lib/friends-galaxy-avatar-atlas.js";
+} from "./friends-galaxy-renderer.js";
+import { friendsGalaxyRenderPixelRatio } from "./friends-galaxy-renderer.js";
+import type { FriendsGalaxyActivityScenePatchBatch } from "./friends-galaxy-activity-patches.js";
+import { FriendsGalaxyBackendHealth } from "./friends-galaxy-backend-health.js";
+import type { FriendsGalaxyAvatarAtlas } from "./friends-galaxy-avatar-atlas.js";
 import {
   writeFriendsGalaxyWebGpuMotionUniforms,
   writeFriendsGalaxyWebGpuViewProjection,
-} from "../../src/lib/friends-galaxy-camera.js";
+} from "./friends-galaxy-camera.js";
 import {
   FRIENDS_GALAXY_BILLBOARD_INSTANCE_STRIDE,
   type FriendsGalaxyLabelAtlas,
-} from "../../src/lib/friends-galaxy-billboard-atlas.js";
-import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
+} from "./friends-galaxy-billboard-atlas.js";
+import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
 import {
   FRIENDS_GALAXY_STAR_INSTANCE_FLOATS,
   FRIENDS_GALAXY_STAR_PALETTE_ROLE_COUNT,
   FriendsGalaxyStarColorRole,
-} from "../../src/lib/friends-galaxy-star-instances.js";
+} from "./friends-galaxy-star-instances.js";
 import {
   friendsGalaxyHexToRgb,
   FRIENDS_GALAXY_STAR_PALETTE_FLOAT_COUNT,
   FRIENDS_GALAXY_STAR_PALETTE_FLOAT_OFFSET,
   type FriendsGalaxyRendererPalette,
   writeFriendsGalaxyStarPaletteUniforms,
-} from "../../src/lib/friends-galaxy-palette.js";
+} from "./friends-galaxy-palette.js";
 import {
   createFriendsGalaxyStarGeometry,
   friendsGalaxyMotionBackgroundStarCount,
   FRIENDS_GALAXY_MOTION_STAR_VERTEX_COUNT,
   FRIENDS_GALAXY_SETTLED_STAR_VERTEX_COUNT,
-} from "../../src/lib/friends-galaxy-star-geometry.js";
+} from "./friends-galaxy-star-geometry.js";
 import {
   createFriendsGalaxyProviderFields,
   FRIENDS_GALAXY_PROVIDER_FIELD_CULL_SCALE,
@@ -42,19 +42,19 @@ import {
   type FriendsGalaxyFieldStyle,
   type FriendsGalaxyProviderFields,
   writeFriendsGalaxyProviderFieldPresentation,
-} from "../../src/lib/friends-galaxy-provider-fields.js";
-import { writeFriendsGalaxyInteractionInstances } from "../../src/lib/friends-galaxy-interaction-instances.js";
+} from "./friends-galaxy-provider-fields.js";
+import { writeFriendsGalaxyInteractionInstances } from "./friends-galaxy-interaction-instances.js";
 import {
   createFriendsGalaxyRendererAvatarAtlas,
   createFriendsGalaxyRendererLabelAtlas,
   type FriendsGalaxyNodePresentationResolver,
-} from "../../src/lib/friends-galaxy-presentation.js";
+} from "./friends-galaxy-presentation.js";
 import {
   FriendsGalaxySceneIndex,
   type FriendsGalaxyInteraction,
   type FriendsGalaxyInteractionRole,
   type FriendsGalaxyInteractionState,
-} from "../../src/lib/friends-galaxy-scene-index.js";
+} from "./friends-galaxy-scene-index.js";
 
 const INSTANCE_FLOATS = FRIENDS_GALAXY_STAR_INSTANCE_FLOATS;
 const INSTANCE_STRIDE = INSTANCE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
