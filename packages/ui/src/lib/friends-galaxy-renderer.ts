@@ -83,6 +83,7 @@ export interface FriendsGalaxyRenderer<
   setAmbientMotionEnabled?(enabled: boolean): void;
   setCameraMotion?(active: boolean): void;
   setFieldStyle?(style: FriendsGalaxyFieldStyle): void;
+  setPresentationAtlas(atlas: IdentityGraphAtlas): void;
   setViewDetail(detail: FriendsGalaxyViewDetail): void;
   setSettledView?(detail: FriendsGalaxyViewDetail, transform: FriendsGalaxyTransform): void;
   hasActivePresentationTransition?(): boolean;

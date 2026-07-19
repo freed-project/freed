@@ -17,6 +17,7 @@ import {
   type FriendsGalaxyLabelAtlas,
 } from "./friends-galaxy-billboard-atlas.js";
 import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
+import type { IdentityGraphAtlas } from "./identity-graph-atlas.js";
 import {
   FRIENDS_GALAXY_STAR_INSTANCE_FLOATS,
   FRIENDS_GALAXY_STAR_PALETTE_ROLE_COUNT,
@@ -975,6 +976,11 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     if (detail === "close") {
       this.rebuildAvatars(this.compactLabels ?? this.width < 720, "scene");
     }
+  }
+
+  setPresentationAtlas(atlas: IdentityGraphAtlas): void {
+    if (!this.fixture) return;
+    this.fixture = { ...this.fixture, atlas };
   }
 
   setSettledView(detail: FriendsGalaxyViewDetail, transform: FriendsGalaxyTransform): void {

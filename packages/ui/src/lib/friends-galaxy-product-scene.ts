@@ -8,12 +8,17 @@ import {
 } from "./identity-galaxy-scene.js";
 import type { FriendsGalaxyRendererScene } from "./friends-galaxy-renderer.js";
 import {
+  FRIENDS_GALAXY_PRESENTATION_NODE_CAP,
+  validateFriendsGalaxyPresentationAtlas,
+} from "./friends-galaxy-presentation-atlas.js";
+import {
   compactFriendsGalaxyRendererSceneMetadata,
   createFriendsGalaxyRendererScene,
 } from "./friends-galaxy-renderer-scene.js";
 
 export const FRIENDS_GALAXY_PRODUCT_BACKGROUND_STAR_COUNT = 100_000;
-export const FRIENDS_GALAXY_PRODUCT_METADATA_NODE_CAP = 192;
+export const FRIENDS_GALAXY_PRODUCT_METADATA_NODE_CAP =
+  FRIENDS_GALAXY_PRESENTATION_NODE_CAP;
 
 export interface CompileFriendsGalaxyProductSceneInput {
   atlas: IdentityGraphAtlas;
@@ -94,7 +99,7 @@ export function compileFriendsGalaxyProductRendererScene({
       now,
     },
   );
-  return compactFriendsGalaxyRendererSceneMetadata(
+  const rendererScene = compactFriendsGalaxyRendererSceneMetadata(
     createFriendsGalaxyRendererScene({
       atlas,
       scene,
@@ -107,4 +112,11 @@ export function compileFriendsGalaxyProductRendererScene({
     metadataNodeCap,
     product.priorityNodeIds,
   );
+  validateFriendsGalaxyPresentationAtlas(
+    rendererScene.atlas,
+    rendererScene.scene,
+    rendererScene.interactionIndex,
+    { nodeCap: metadataNodeCap },
+  );
+  return rendererScene;
 }

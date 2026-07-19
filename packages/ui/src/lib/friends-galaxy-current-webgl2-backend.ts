@@ -15,6 +15,7 @@ import {
 } from "./friends-galaxy-scene-index.js";
 import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
 import { FRIENDS_GALAXY_FIELD_AMBIENT_MOTION_PROFILE } from "./friends-galaxy-ambient-motion.js";
+import type { IdentityGraphAtlas } from "./identity-graph-atlas.js";
 
 function cssRgb(value: string): string {
   return friendsGalaxyHexToRgb(value).map((part) => Math.round(part * 255)).join(" ");
@@ -87,6 +88,12 @@ export class CurrentWebGl2Backend implements FriendsGalaxyRendererBackend {
 
   setViewDetail(_detail: FriendsGalaxyViewDetail): void {
     // The current engine performs its own collision-based settled label layout.
+  }
+
+  setPresentationAtlas(atlas: IdentityGraphAtlas): void {
+    if (!this.fixture) return;
+    this.fixture = { ...this.fixture, atlas };
+    this.syncScene();
   }
 
   setAmbientMotionEnabled(enabled: boolean): void {

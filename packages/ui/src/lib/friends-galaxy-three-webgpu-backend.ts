@@ -39,6 +39,7 @@ import {
 import { FriendsGalaxyIdentityDetailFade } from "./friends-galaxy-identity-detail-fade.js";
 import { friendsGalaxyDecorativeStarScale } from "./friends-galaxy-decorative-star-scale.js";
 import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
+import type { IdentityGraphAtlas } from "./identity-graph-atlas.js";
 import {
   FriendsGalaxySceneIndex,
   type FriendsGalaxyInteraction,
@@ -490,6 +491,11 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
     if (detail === "close") {
       this.rebuildAvatars(this.compactLabels ?? this.width < 720, "scene");
     }
+  }
+
+  setPresentationAtlas(atlas: IdentityGraphAtlas): void {
+    if (!this.fixture) return;
+    this.fixture = { ...this.fixture, atlas };
   }
 
   setSettledView(detail: FriendsGalaxyViewDetail, transform: FriendsGalaxyTransform): void {

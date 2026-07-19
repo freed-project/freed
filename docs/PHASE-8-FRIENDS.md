@@ -220,7 +220,7 @@ Settled presentation assembly now lives behind one shared node-presentation reso
 
 The same camera contract now derives a prominence-safe maximum scale from viewport height, maximum semantic depth, and a 96-unit near-camera clearance. Compact zoom can no longer pass through the closest friend stars. Programmatic `focusNode` navigation uses the target star's real `z` depth and the bounded usable viewport insets, so Reader, search, Map, and details handoffs can center a star beside the desktop rail or above mobile chrome while the canvas remains full bleed. Focus changes only camera and sparse interaction state. It does not reupload resident stars.
 
-One shared renderer host now owns the active scene, theme palette, dimensions, density, animation preference, camera-motion state, provider-field style, selection, hover, settled detail, camera transform, and incremental activity patches. Every preferred-backend activation and compatibility recovery receives that complete state before its canvas becomes visible. The detached shell routes rendering, picking, palette changes, interaction, simulated loss, and disposal through the host while keeping asynchronous avatar image admission outside it. Product cutover can therefore replace a failed WebGPU canvas without presenting a default theme, stale selection, wrong density, or partially initialized detail tier.
+One shared renderer host now owns the active scene, theme palette, dimensions, density, animation preference, camera-motion state, provider-field style, selection, hover, settled detail, camera transform, bounded viewport presentation, and incremental activity patches. Every preferred-backend activation and compatibility recovery receives that complete state before its canvas becomes visible. A settled presentation update replaces only bounded rich nodes, labels, and provider regions, then rebuilds the label and avatar presentation against the retained semantic scene. It does not recreate semantic stars, the sparse interaction index, or the camera. The detached shell routes rendering, picking, palette changes, interaction, simulated loss, and disposal through the host while keeping asynchronous avatar image admission outside it. Product cutover can therefore replace a failed WebGPU canvas without presenting a default theme, stale selection, wrong density, or partially initialized detail tier.
 
 Frame and submission diagnostics now use fixed 240-value typed rings. Active camera motion suppresses diagnostics DOM rebuilding, then refreshes the panel after settle from one bounded snapshot. The detached gesture path no longer shifts diagnostic arrays or performs periodic panel layout while the camera is moving.
 
@@ -573,6 +573,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.145 | Share deterministic background generation, renderer-scene assembly, and rich-metadata compaction between the laboratory and product worker boundary | High | Done |
 | 8.146 | Compile real product atlas models into the resident renderer scene with provider aggregates excluded, selected metadata retained, and structural counts derived in the worker boundary | High | Done |
 | 8.147 | Replace laboratory-only theme names with one shared Scriptorium, Neon, Midas, and Ember renderer palette map selected directly by Freed theme id | High | Done |
+| 8.148 | Add a bounded settled-presentation atlas lane that refreshes viewport labels and selected metadata without replacing resident semantic stars or camera state | High | Done |
 
 ---
 
@@ -631,6 +632,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] The laboratory and future product atlas worker share one deterministic renderer-scene assembler, background generator, metadata compactor, sparse interaction index, and direct-upload star stream contract
 - [x] One shared product-scene compiler derives people, channel, and linked-channel counts from the real atlas model, excludes provider aggregates from semantic GPU residency, and preserves selected identity metadata inside the bounded worker envelope
 - [x] The detached renderers and future product shell select the same Scriptorium, Neon, Midas, and Ember renderer palettes directly from the active Freed theme id
+- [x] Settled viewport metadata is capped, structurally admitted against stable resident node ids, and replayed across backend recovery without replacing semantic or interaction buffers
 - [x] Scriptorium graph colors stay legible instead of washing node fills and labels into the stage
 - [x] Graph model construction uses single-pass activity indexing instead of rescanning every captured item per node
 - [x] Worker layout uses local bucketed overlap resolution instead of naïve all-pairs nudging

@@ -10,6 +10,7 @@ import type {
 } from "../../src/lib/friends-galaxy-renderer.js";
 import type { FriendsGalaxyInteraction } from "../../src/lib/friends-galaxy-scene-index.js";
 import type { FriendsGalaxyTransform } from "../../src/lib/friends-galaxy-viewport.js";
+import type { IdentityGraphAtlas } from "../../src/lib/identity-graph-atlas.js";
 import {
   createGalaxyLabFixture,
   GALAXY_LAB_THEMES,
@@ -19,6 +20,8 @@ import {
 class FakeRendererBackend implements FriendsGalaxyRendererBackend {
   readonly events: string[] = [];
   disposed = false;
+  initializedAtlas: IdentityGraphAtlas | null = null;
+  presentationAtlas: IdentityGraphAtlas | null = null;
 
   constructor(readonly id: FriendsGalaxyRendererId) {}
 
@@ -27,6 +30,7 @@ class FakeRendererBackend implements FriendsGalaxyRendererBackend {
     scene: FriendsGalaxyRendererScene,
     palette: typeof GALAXY_LAB_THEMES.scriptorium,
   ): Promise<void> {
+    this.initializedAtlas = scene.atlas;
     this.events.push(`initialize:${scene.scene.nodeIds.length}:${palette.background}`);
   }
 
@@ -56,6 +60,11 @@ class FakeRendererBackend implements FriendsGalaxyRendererBackend {
 
   setViewDetail(detail: FriendsGalaxyViewDetail): void {
     this.events.push(`detail:${detail}`);
+  }
+
+  setPresentationAtlas(atlas: IdentityGraphAtlas): void {
+    this.presentationAtlas = atlas;
+    this.events.push(`presentation:${atlas.nodes.length}:${atlas.labels.length}`);
   }
 
   setSettledView(detail: FriendsGalaxyViewDetail, transform: FriendsGalaxyTransform): void {
@@ -145,11 +154,24 @@ describe("Friends Galaxy renderer host", () => {
 
     await host.activate("raw-webgpu");
     host.setPalette(GALAXY_LAB_THEMES.neon);
+    const settledAtlas: IdentityGraphAtlas = {
+      ...scene.atlas,
+      nodes: scene.atlas.nodes.slice(0, 2),
+      labels: scene.atlas.labels.slice(0, 1),
+    };
+    host.setSettledPresentation(
+      settledAtlas,
+      "middle",
+      { x: 18, y: -11, scale: 0.44 },
+    );
     await host.activate("three-webgpu");
 
     expect(visibleIds).toEqual(["raw-webgpu", "three-webgpu"]);
     expect(backends[0]?.events).toContain("palette:#07090d");
+    expect(backends[0]?.events).toContain("presentation:2:1");
+    expect(backends[0]?.presentationAtlas).toBe(settledAtlas);
     expect(backends[0]?.disposed).toBe(true);
+    expect(backends[1]?.initializedAtlas).toBe(settledAtlas);
     expect(backends[1]?.events).toEqual([
       "initialize:9:#07090d",
       "ambient:false",
@@ -157,7 +179,7 @@ describe("Friends Galaxy renderer host", () => {
       "field:rings",
       "resize:390:844:1.5",
       "interaction:person:1:account:2",
-      "settled:close:0.92",
+      "settled:middle:0.44",
       "activity:7",
     ]);
     expect(removedSurfaces).toHaveLength(1);

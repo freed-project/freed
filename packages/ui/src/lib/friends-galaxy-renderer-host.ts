@@ -18,6 +18,7 @@ import type {
   FriendsGalaxyViewDetail,
 } from "./friends-galaxy-renderer.js";
 import type { FriendsGalaxyInteraction } from "./friends-galaxy-scene-index.js";
+import type { IdentityGraphAtlas } from "./identity-graph-atlas.js";
 import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
 
 type RendererActivation = FriendsGalaxyBackendActivation<
@@ -165,6 +166,21 @@ export class FriendsGalaxyRendererHost {
     this.settledTransform = { ...transform };
     const backend = this.activeBackend;
     if (!backend) return;
+    if (backend.setSettledView) backend.setSettledView(detail, this.settledTransform);
+    else backend.setViewDetail(detail);
+  }
+
+  setSettledPresentation(
+    atlas: IdentityGraphAtlas,
+    detail: FriendsGalaxyViewDetail,
+    transform: FriendsGalaxyTransform,
+  ): void {
+    this.scene = { ...this.scene, atlas };
+    this.detail = detail;
+    this.settledTransform = { ...transform };
+    const backend = this.activeBackend;
+    if (!backend) return;
+    backend.setPresentationAtlas(atlas);
     if (backend.setSettledView) backend.setSettledView(detail, this.settledTransform);
     else backend.setViewDetail(detail);
   }
