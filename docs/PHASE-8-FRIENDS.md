@@ -212,6 +212,8 @@ The bounded observability and renderer-recovery primitives now live under shared
 
 The renderer scene envelope now lives under shared UI source too. Raw WebGPU, Three.js WebGPU, WebGL2, billboard labels, and avatar admission receive one renderer-neutral object containing the atlas, typed scene, sparse interaction index, direct-upload star instances, decorative background buffers, and locale-independent source counts. Synthetic fixture-only activity and build diagnostics extend that envelope outside the renderer. Product cutover can therefore supply the real worker result without teaching a backend about laboratory metadata.
 
+The complete worker-scene admission contract now shares that boundary. Shared UI source owns the exact twenty-one unique transferable buffers, structural scene receipt, semantic array and bounds validation, adjacency and sparse-pick terminal checks, packed-instance lengths, source-count consistency, rich-metadata cap, and top-level malformed-envelope rejection. The detached fixture protocol adds only its synthetic activity-volume and build fields around that shared validator. Product cutover can therefore admit a real worker response through the same constant-time checks before any renderer initializes, without retaining a laboratory wrapper or a second transfer list.
+
 The complete renderer palette now has the same boundary. Shared UI source owns background, surface, primary text, muted text, friend, connection, account, feed, selection, and fixed provider colors. A shared semantic resolver reads only the typed scene kind and provider arrays, so Three.js color buffers and avatar seeds no longer call a laboratory helper. The backend alias now accepts the shared scene and palette contracts directly. The laboratory retains only its four sample palette values and synthetic label metadata.
 
 Settled presentation assembly now lives behind one shared node-presentation resolver too. Product or laboratory code supplies only a label, initials, and priority for a typed scene node. Shared UI source owns visible-person ranking, compact and detail caps, selected-person retention, linked-account parent resolution, depth-aware viewport admission, label collision spacing, avatar exclusion, label and avatar atlas construction, and fixed-capacity interaction-overlay packing. Raw WebGPU and Three.js WebGPU consume this same pipeline. Synthetic identity names stay in the fixture, while no backend imports a laboratory presentation helper.
@@ -557,6 +559,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.137 | Move inset-aware fitted scale, derived camera-frame state, framed transform, compact initial framing, and view-detail thresholds into shared UI source | High | Done |
 | 8.138 | Add one shared renderer host that replays complete scene presentation and interaction state before preferred-backend activation or compatibility recovery becomes visible | High | Done |
 | 8.139 | Strengthen outward ceiling compression while making every first inward wheel, Safari, touch, and keyboard ratio bypass resistance at native speed | High | Done |
+| 8.140 | Move the exact twenty-one-buffer renderer-scene transfer, receipt, and constant-time malformed-envelope admission contract into shared UI source | High | Done |
 
 ---
 
@@ -642,6 +645,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] The detached laboratory owns no renderer implementation and instantiates all three shared backends through one lazy shared factory
 - [x] The detached shell consumes shared backend, renderer ID, interaction, field-style, and detail types directly with no laboratory alias layer
 - [x] Every detached backend, billboard compositor, and avatar selector consumes one shared renderer scene envelope without depending on synthetic fixture diagnostics
+- [x] The detached worker and future product worker share one exact twenty-one-buffer scene transfer list, structural receipt, and constant-time admission validator before renderer initialization
 - [x] Every detached backend consumes one shared complete renderer palette, and semantic star colors resolve from typed scene data without a laboratory helper
 - [x] Raw WebGPU and Three.js WebGPU share one renderer-neutral presentation pipeline for bounded visible labels, avatars, selected-parent retention, atlas construction, and interaction-overlay packing
 - [x] Settled close-detail avatar decoding is concurrency-limited, revision-cached, compact-capped, stale-safe, and paired with deterministic bitmap cleanup

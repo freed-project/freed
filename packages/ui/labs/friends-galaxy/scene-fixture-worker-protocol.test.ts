@@ -7,6 +7,11 @@ import {
   galaxyLabFixtureWorkerReceipt,
   validateGalaxyLabFixtureEnvelope,
 } from "./scene-fixture-worker-protocol.js";
+import {
+  friendsGalaxyRendererSceneTransferables,
+  friendsGalaxyWorkerSceneReceipt,
+  validateFriendsGalaxyWorkerScene,
+} from "../../src/lib/friends-galaxy-worker-scene.js";
 
 describe("Friends Galaxy fixture worker protocol", () => {
   it("keeps the semantic scene complete while bounding rich main-thread metadata", () => {
@@ -53,6 +58,9 @@ describe("Friends Galaxy fixture worker protocol", () => {
     );
 
     expect(transferables).toHaveLength(21);
+    expect(transferables).toEqual(
+      friendsGalaxyRendererSceneTransferables(fixture),
+    );
     expect(new Set(transferables).size).toBe(21);
     expect(transferables).toContain(fixture.scene.positions.buffer);
     expect(transferables).toContain(fixture.scene.edgeIndices.buffer);
@@ -78,8 +86,12 @@ describe("Friends Galaxy fixture worker protocol", () => {
     expect(transferables).toContain(
       fixture.interactionIndex.pickNodeIndices.buffer,
     );
-    expect(transferables).toContain(fixture.packedStarInstances.semantic.buffer);
-    expect(transferables).toContain(fixture.packedStarInstances.background.buffer);
+    expect(transferables).toContain(
+      fixture.packedStarInstances.semantic.buffer,
+    );
+    expect(transferables).toContain(
+      fixture.packedStarInstances.background.buffer,
+    );
     expect(transferables).toContain(fixture.backgroundPositions.buffer);
     expect(transferables).toContain(fixture.backgroundBrightness.buffer);
     expect(receipt).toEqual({
@@ -89,7 +101,21 @@ describe("Friends Galaxy fixture worker protocol", () => {
       representedActivityItemCount: 480,
       transferableBufferCount: 21,
     });
-    expect(() => validateGalaxyLabFixtureEnvelope(fixture, receipt)).not.toThrow();
+    expect(friendsGalaxyWorkerSceneReceipt(fixture)).toEqual({
+      semanticNodeCount: 60,
+      metadataNodeCount: fixture.atlas.nodes.length,
+      transferableBufferCount: 21,
+    });
+    expect(() =>
+      validateFriendsGalaxyWorkerScene(
+        fixture,
+        friendsGalaxyWorkerSceneReceipt(fixture),
+        { metadataNodeCap: GALAXY_LAB_METADATA_NODE_CAP },
+      ),
+    ).not.toThrow();
+    expect(() =>
+      validateGalaxyLabFixtureEnvelope(fixture, receipt),
+    ).not.toThrow();
   });
 
   it("keeps worker payload shape tied to summary count instead of represented item volume", () => {
@@ -143,7 +169,9 @@ describe("Friends Galaxy fixture worker protocol", () => {
       transferableBufferCount: 21,
     });
     expect("items" in tenX).toBe(false);
-    expect(() => validateGalaxyLabFixtureEnvelope(tenX, tenXReceipt)).not.toThrow();
+    expect(() =>
+      validateGalaxyLabFixtureEnvelope(tenX, tenXReceipt),
+    ).not.toThrow();
   });
 
   it("rejects malformed resident buffers before renderer admission", () => {
@@ -168,6 +196,47 @@ describe("Friends Galaxy fixture worker protocol", () => {
     );
   });
 
+  it("fails closed on malformed or aliased renderer scene roots", () => {
+    const fixture = compactGalaxyLabFixtureMetadata(
+      createGalaxyLabFixture({
+        personCount: 12,
+        accountCount: 48,
+        backgroundStarCount: 120,
+      }),
+    );
+    const receipt = friendsGalaxyWorkerSceneReceipt(fixture);
+    const admission = { metadataNodeCap: GALAXY_LAB_METADATA_NODE_CAP };
+
+    expect(() =>
+      validateFriendsGalaxyWorkerScene(null, receipt, admission),
+    ).toThrow("Friends Galaxy worker returned an invalid renderer scene.");
+    expect(() =>
+      validateFriendsGalaxyWorkerScene(
+        { ...fixture, scene: null },
+        receipt,
+        admission,
+      ),
+    ).toThrow("Friends Galaxy worker returned an invalid semantic scene.");
+    expect(() =>
+      validateFriendsGalaxyWorkerScene(fixture, null, admission),
+    ).toThrow("Friends Galaxy worker returned an invalid scene receipt.");
+    expect(() =>
+      validateFriendsGalaxyWorkerScene(
+        {
+          ...fixture,
+          scene: {
+            ...fixture.scene,
+            pointSizes: fixture.scene.radii,
+          },
+        },
+        receipt,
+        admission,
+      ),
+    ).toThrow(
+      "Friends Galaxy worker returned 20 unique scene buffers; expected 21.",
+    );
+  });
+
   it("rejects inconsistent sparse-index offsets and worker receipts", () => {
     const fixture = compactGalaxyLabFixtureMetadata(
       createGalaxyLabFixture({
@@ -187,19 +256,26 @@ describe("Friends Galaxy fixture worker protocol", () => {
     };
     const receipt = galaxyLabFixtureWorkerReceipt(fixture, 21);
 
-    expect(() => validateGalaxyLabFixtureEnvelope(malformedIndex, receipt)).toThrow(
-      "Friends Galaxy worker returned inconsistent neighbor offsets.",
+    expect(() =>
+      validateGalaxyLabFixtureEnvelope(malformedIndex, receipt),
+    ).toThrow("Friends Galaxy worker returned inconsistent neighbor offsets.");
+    expect(() =>
+      validateGalaxyLabFixtureEnvelope(fixture, {
+        ...receipt,
+        metadataNodeCount: receipt.metadataNodeCount + 1,
+      }),
+    ).toThrow(
+      "Friends Galaxy worker receipt does not match its transferred scene.",
     );
-    expect(() => validateGalaxyLabFixtureEnvelope(fixture, {
-      ...receipt,
-      metadataNodeCount: receipt.metadataNodeCount + 1,
-    })).toThrow(
-      "Friends Galaxy worker receipt does not match its transferred fixture.",
-    );
-    expect(() => validateGalaxyLabFixtureEnvelope({
-      ...fixture,
-      representedActivityItemCount: fixture.activitySummaryCount - 1,
-    }, receipt)).toThrow(
+    expect(() =>
+      validateGalaxyLabFixtureEnvelope(
+        {
+          ...fixture,
+          representedActivityItemCount: fixture.activitySummaryCount - 1,
+        },
+        receipt,
+      ),
+    ).toThrow(
       "Friends Galaxy worker returned fewer represented items than activity summaries.",
     );
   });
