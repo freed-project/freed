@@ -53,6 +53,11 @@ import {
 } from "./friends-galaxy-presentation.js";
 import { FriendsGalaxyIdentityDetailFade } from "./friends-galaxy-identity-detail-fade.js";
 import {
+  FRIENDS_GALAXY_DECORATIVE_STAR_MAX_SCALE,
+  FRIENDS_GALAXY_DECORATIVE_STAR_MIN_SCALE,
+  FRIENDS_GALAXY_DECORATIVE_STAR_SCALE_SLOPE,
+} from "./friends-galaxy-decorative-star-scale.js";
+import {
   FriendsGalaxySceneIndex,
   type FriendsGalaxyInteraction,
   type FriendsGalaxyInteractionRole,
@@ -297,11 +302,22 @@ struct VertexOutput {
 fn vertexMain(input: VertexInput) -> VertexOutput {
   var output: VertexOutput;
   var clip = uniforms.viewProjection * vec4<f32>(input.center, 1.0);
-  let offset = input.corner * input.size * 2.0 / uniforms.viewport;
+  let role = u32(clamp(round(input.appearance.y), 0.0, ${String(FriendsGalaxyStarColorRole.Selection)}.0));
+  let decorativeScale = clamp(
+    ${String(FRIENDS_GALAXY_DECORATIVE_STAR_MIN_SCALE)} +
+      abs(uniforms.cameraScale) * ${String(FRIENDS_GALAXY_DECORATIVE_STAR_SCALE_SLOPE)},
+    ${String(FRIENDS_GALAXY_DECORATIVE_STAR_MIN_SCALE)},
+    ${String(FRIENDS_GALAXY_DECORATIVE_STAR_MAX_SCALE)},
+  );
+  let renderedSize = select(
+    input.size,
+    input.size * decorativeScale,
+    role == ${String(FriendsGalaxyStarColorRole.Background)}u,
+  );
+  let offset = input.corner * renderedSize * 2.0 / uniforms.viewport;
   clip = vec4<f32>(clip.xy + offset * clip.w, clip.zw);
   output.position = clip;
   output.corner = input.corner;
-  let role = u32(clamp(round(input.appearance.y), 0.0, ${String(FriendsGalaxyStarColorRole.Selection)}.0));
   let baseColor = uniforms.starColors[role];
   let selectionColor = uniforms.starColors[${String(FriendsGalaxyStarColorRole.Selection)}u];
   output.color = vec4<f32>(

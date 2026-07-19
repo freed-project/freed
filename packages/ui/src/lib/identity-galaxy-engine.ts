@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { friendsGalaxyDecorativeStarScale } from "./friends-galaxy-decorative-star-scale.js";
 import type {
   IdentityGraphAtlas,
   IdentityGraphAtlasQuality,
@@ -170,17 +171,18 @@ function makePointMaterial(): THREE.ShaderMaterial {
     blending: THREE.AdditiveBlending,
     uniforms: {
       pixelRatio: { value: Math.min(1.5, window.devicePixelRatio || 1) },
+      decorativeScale: { value: 1 },
     },
     vertexShader: `
       attribute float pointSize;
+      uniform float decorativeScale;
       varying vec3 vColor;
       varying float vAlpha;
 
       void main() {
         vColor = color;
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        float depthScale = clamp(940.0 / max(280.0, -mvPosition.z), 0.68, 2.35);
-        gl_PointSize = pointSize * depthScale;
+        gl_PointSize = pointSize * decorativeScale;
         gl_Position = projectionMatrix * mvPosition;
         vAlpha = clamp(pointSize / 48.0, 0.36, 1.0);
       }
@@ -1107,6 +1109,8 @@ class StarfieldGraphRenderer {
   render(transform: ViewTransform): void {
     if (this.disposed) return;
     this.applyCamera(transform);
+    this.starMaterial.uniforms.decorativeScale.value =
+      friendsGalaxyDecorativeStarScale(transform.scale);
     if (this.starPoints) {
       this.starPoints.visible = true;
     }

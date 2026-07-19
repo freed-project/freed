@@ -246,6 +246,8 @@ Settled avatar admission now retains an exact backend, detail, compact-width, an
 
 Identity detail icons now fade through a scale-derived opacity band and an elapsed-time controller instead of appearing at the close-detail threshold. Raw WebGPU updates one dedicated four-float opacity uniform while keeping its recorded avatar bundle resident. The Three.js WebGPU reference updates the equivalent TSL uniform. Startup prepares a hidden six- or twelve-icon roster from the worker's bounded atlas metadata, close settle may replace it with the projected visible roster, and a changed roster restarts transparent. Zoom frames do not select candidates, rebuild the atlas, decode images, or touch labels and stars. The demand loop remains active only while the short presentation transition is unfinished. Disabled animation and reduced-motion operation settle the opacity immediately.
 
+Decorative background stars now participate in camera zoom instead of retaining a fixed screen-pixel diameter. One shared bounded curve keeps the existing dust size at the overview-to-middle boundary, makes distant overview dust smaller, and grows close-detail dust without allowing it to compete with semantic identities. Raw WebGPU evaluates the curve in its resident star vertex shader, Three.js WebGPU updates one scalar TSL uniform, and WebGL2 updates one point-material uniform. Camera movement still performs no star-buffer upload, scene rebuild, or main-thread traversal.
+
 The keyed avatar admission state and bounded image admission queue now live under shared UI source and are consumed directly by the detached shell. The shared queue deduplicates source revisions, caps concurrent decoding, caches failures, evicts least-recently-used images with deterministic bitmap cleanup, and resolves queued work during disposal. The shared generation state coalesces matching work and prevents stale backend, detail, viewport-class, or selected-person completions from committing. Product cutover can connect real avatar candidates without cloning this lifecycle into React.
 
 Hover and selection now reuse one scene-index state object, one role map, and one fixed-capacity contextual-edge buffer sized from the worker-reported maximum adjacency degree. The Three.js reference and current WebGL2 fallback retain their touched and changed index sets instead of rebuilding maps, sets, typed views, or edge arrays for each focus change. The Three.js reference also allocates its maximum contextual-edge geometry and sparse attribute-update records once during startup. Renderer startup does not scan the transferred adjacency table.
@@ -564,6 +566,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.140 | Move the exact twenty-one-buffer renderer-scene transfer, receipt, and constant-time malformed-envelope admission contract into shared UI source | High | Done |
 | 8.141 | Add focal-point-preserving logarithmic inertia for Mac control-wheel and Safari trackpad pinch zoom with outer-ceiling, cancellation, reduced-motion, and settle guarantees | High | Done |
 | 8.142 | Fade retained identity detail icons by elapsed time and camera scale without atlas rebuilds during zoom | High | Done |
+| 8.143 | Scale decorative background stars with camera zoom through one bounded GPU-side curve without changing semantic stars or resident buffers | High | Done |
 
 ---
 
@@ -665,6 +668,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Semantic stars and settled relationship spokes render through two instanced WebGL2 passes with no per-node or per-edge scene objects
 - [x] Projected picking uses a worker-built transferable sparse world grid, preserves exact depth and prominence selection, tolerates distant pinned outliers, and projects only the locked-camera corridor candidates
 - [x] WebGPU rendering caps settled Retina density and lowers compact or wide motion density once per gesture without removing resident stars or labels
+- [x] Decorative background stars scale smoothly with camera zoom across Raw WebGPU, Three.js WebGPU, and WebGL2 without changing semantic star sizes or uploading resident buffers
 - [x] Compact initial framing opens on a legible semantic field while Fit galaxy remains the explicit complete-universe command
 - [x] Gesture diagnostics use fixed typed rings and defer panel DOM updates until camera settle
 - [x] One-click detached diagnostics and the future installed heartbeat share one versioned bounded schema without identity, URL, avatar, sample-item, or feed payload data, and clipboard rejection remains contained

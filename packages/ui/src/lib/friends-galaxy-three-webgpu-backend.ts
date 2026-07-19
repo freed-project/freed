@@ -3,6 +3,7 @@ import {
   cameraProjectionMatrix,
   cameraViewMatrix,
   instancedBufferAttribute,
+  mul,
   positionGeometry,
   texture,
   uniform,
@@ -36,6 +37,7 @@ import {
   type FriendsGalaxyNodePresentationResolver,
 } from "./friends-galaxy-presentation.js";
 import { FriendsGalaxyIdentityDetailFade } from "./friends-galaxy-identity-detail-fade.js";
+import { friendsGalaxyDecorativeStarScale } from "./friends-galaxy-decorative-star-scale.js";
 import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
 import {
   FriendsGalaxySceneIndex,
@@ -50,6 +52,7 @@ interface GalaxySpriteBatch {
   texture: THREE.CanvasTexture;
   colorAttribute: THREE.InstancedBufferAttribute;
   sizeAttribute: THREE.InstancedBufferAttribute;
+  sizeScale: { value: number };
 }
 
 interface GalaxyBillboardBatch {
@@ -109,11 +112,13 @@ function makeSpriteBatch(
   sizes: Float32Array,
   colors: Float32Array,
   opacity: number,
+  initialSizeScale = 1,
 ): GalaxySpriteBatch {
   const positionAttribute = new THREE.InstancedBufferAttribute(positions, 3);
   const sizeAttribute = new THREE.InstancedBufferAttribute(sizes, 1);
   const colorAttribute = new THREE.InstancedBufferAttribute(colors, 3);
   const texture = makeGlowTexture();
+  const sizeScale = uniform(initialSizeScale);
   const material = new THREE.PointsNodeMaterial({
     alphaMap: texture,
     alphaTest: 0.015,
@@ -125,12 +130,12 @@ function makeSpriteBatch(
     blending: THREE.NormalBlending,
   });
   material.positionNode = instancedBufferAttribute(positionAttribute, "vec3");
-  material.sizeNode = instancedBufferAttribute(sizeAttribute, "float");
+  material.sizeNode = mul(instancedBufferAttribute(sizeAttribute, "float"), sizeScale);
   material.colorNode = instancedBufferAttribute(colorAttribute, "vec3");
   const sprite = new THREE.Sprite(material as unknown as THREE.SpriteMaterial);
   sprite.count = positions.length / 3;
   sprite.frustumCulled = false;
-  return { sprite, material, texture, colorAttribute, sizeAttribute };
+  return { sprite, material, texture, colorAttribute, sizeAttribute, sizeScale };
 }
 
 function makeBillboardBatch(
@@ -329,6 +334,7 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
       backgroundSizes,
       this.backgroundColors,
       0.62,
+      friendsGalaxyDecorativeStarScale(this.settledTransform.scale),
     );
     this.edgeGeometry = new LineSegmentsGeometry();
     this.edgePositions = new Float32Array(
@@ -474,6 +480,9 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
   render(transform: FriendsGalaxyTransform, timeMs: number): void {
     if (!this.renderer) return;
     this.updateViewProjection(transform);
+    if (this.backgroundBatch) {
+      this.backgroundBatch.sizeScale.value = friendsGalaxyDecorativeStarScale(transform.scale);
+    }
     const identityDetailStep = this.identityDetailFade.step(
       transform.scale,
       timeMs,
