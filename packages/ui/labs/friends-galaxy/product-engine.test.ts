@@ -336,6 +336,108 @@ describe("Friends Galaxy product engine", () => {
     expect(backends[1]?.events).toContain("activity:1");
   });
 
+  it("keeps interaction direct and replays its latest sparse state without worker traffic", async () => {
+    const worker = new ControlledProductWorker();
+    const service = new FriendsGalaxyProductWorkerService();
+    const backends: ProductRendererBackend[] = [];
+    const engine = new FriendsGalaxyProductEngine({
+      palette: FRIENDS_GALAXY_THEME_PALETTES.scriptorium,
+      createWorker: () => worker,
+      createSurface: () => ({}) as HTMLCanvasElement,
+      mountSurface: () => undefined,
+      showSurface: () => undefined,
+      removeSurface: () => undefined,
+      createBackend: async (id) => {
+        const backend = new ProductRendererBackend(id);
+        backends.push(backend);
+        return backend;
+      },
+    });
+
+    engine.requestSource(sourceRequest());
+    worker.emit(response(service, worker, 0));
+    await flushActivation();
+    engine.setInteraction({
+      selectedNodeId: "person:product-person-2",
+      hoveredNodeId: null,
+    });
+    engine.setInteraction({
+      selectedNodeId: "person:product-person-2",
+      hoveredNodeId: "account:product-account-2",
+    });
+
+    expect(worker.messages).toHaveLength(1);
+    expect(engine.interactionState).toEqual({
+      selectedNodeId: "person:product-person-2",
+      hoveredNodeId: "account:product-account-2",
+    });
+    await engine.activateRenderer("current-webgl2");
+    expect(backends[1]?.events).toContain(
+      "interaction:person:product-person-2:account:product-account-2",
+    );
+    expect(worker.messages).toHaveLength(1);
+  });
+
+  it("owns clip-safe navigation and emits settled presentation only on demand", async () => {
+    const worker = new ControlledProductWorker();
+    const service = new FriendsGalaxyProductWorkerService();
+    const backend = new ProductRendererBackend("raw-webgpu");
+    const engine = new FriendsGalaxyProductEngine({
+      palette: FRIENDS_GALAXY_THEME_PALETTES.scriptorium,
+      createWorker: () => worker,
+      createSurface: () => ({}) as HTMLCanvasElement,
+      mountSurface: () => undefined,
+      showSurface: () => undefined,
+      removeSurface: () => undefined,
+      createBackend: async () => backend,
+    });
+    engine.resize(1_280, 720, 1.5);
+    engine.setViewportInsets({ top: 0, right: 0, bottom: 0, left: 356 });
+    expect(engine.fitAll()).toBe(false);
+
+    engine.requestSource(sourceRequest());
+    worker.emit(response(service, worker, 0));
+    await flushActivation();
+    expect(engine.cameraFrame).not.toBeNull();
+    expect(engine.fitAll()).toBe(true);
+    const fitted = engine.cameraTransform;
+    expect(fitted?.scale).toBeCloseTo(engine.cameraFrame!.fittedScale, 12);
+    expect(engine.focusNode("person:product-person-2")).toBe(true);
+    const focused = engine.cameraTransform!;
+    expect(engine.panCameraBy(18, -11)).toBe(true);
+    expect(engine.zoomCameraAt(818, 360, 1.18)).toBe(true);
+    expect(engine.zoomCameraBetween(818, 360, 830, 372, 1.04)).toBe(true);
+    expect(engine.pinchCamera(
+      760,
+      360,
+      876,
+      360,
+      740,
+      370,
+      896,
+      370,
+    )).toBe(true);
+    expect(engine.cameraTransform).not.toEqual(focused);
+    expect(engine.settleCamera()).not.toBeNull();
+    engine.renderCamera(240);
+    expect(backend.events.some((event) => event.startsWith("settled:"))).toBe(true);
+    expect(backend.events.some((event) => event.startsWith("render:"))).toBe(true);
+
+    expect(engine.requestCameraPresentation(4, {
+      selectedPersonId: "product-person-2",
+    })).toBe(2);
+    expect(worker.messages).toHaveLength(2);
+    const request = worker.messages[1];
+    expect(request?.kind).toBe("presentation");
+    if (request?.kind !== "presentation") {
+      throw new Error("Expected a presentation request.");
+    }
+    expect(request.viewport.width).toBe(1_280);
+    expect(request.viewport.height).toBe(720);
+    expect(request.viewport.selectedPersonId).toBe("product-person-2");
+    expect(request.viewport.transform).toEqual(engine.cameraTransform);
+  });
+
   it("invalidates an initializing source scene when a newer revision arrives", async () => {
     const workers: ControlledProductWorker[] = [];
     const services = [

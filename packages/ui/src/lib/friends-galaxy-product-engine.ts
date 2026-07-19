@@ -1,4 +1,6 @@
 import type { FriendsGalaxyActivityScenePatchBatch } from "./friends-galaxy-activity-patches.js";
+import type { FriendsGalaxyCameraFrameState } from "./friends-galaxy-camera.js";
+import { FriendsGalaxyNavigationController } from "./friends-galaxy-navigation.js";
 import type { FriendsGalaxyRendererPalette } from "./friends-galaxy-palette.js";
 import { FriendsGalaxyProductPresentationIndex } from "./friends-galaxy-product-presentation.js";
 import {
@@ -12,6 +14,7 @@ import {
 import type {
   FriendsGalaxyProductWorkerActivityResponse,
   FriendsGalaxyProductWorkerPresentationResponse,
+  FriendsGalaxyProductWorkerSelection,
   FriendsGalaxyProductWorkerSourceResponse,
 } from "./friends-galaxy-product-worker-protocol.js";
 import type { FriendsGalaxyFieldStyle } from "./friends-galaxy-provider-fields.js";
@@ -27,7 +30,10 @@ import {
   type FriendsGalaxyViewDetail,
 } from "./friends-galaxy-renderer.js";
 import type { FriendsGalaxyInteraction } from "./friends-galaxy-scene-index.js";
-import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
+import type {
+  FriendsGalaxyTransform,
+  FriendsGalaxyViewportInsets,
+} from "./friends-galaxy-viewport.js";
 import type { IdentityGraphAtlasNode } from "./identity-graph-atlas.js";
 
 export interface FriendsGalaxyProductEngineOptions extends Omit<
@@ -58,11 +64,18 @@ export class FriendsGalaxyProductEngine {
   private readonly onPresentationReady: FriendsGalaxyProductEngineOptions["onPresentationReady"];
   private readonly onActivityReady: FriendsGalaxyProductEngineOptions["onActivityReady"];
   private renderer: FriendsGalaxyRendererHost | null = null;
+  private navigation: FriendsGalaxyNavigationController | null = null;
   private rendererId: FriendsGalaxyRendererId;
   private palette: FriendsGalaxyRendererPalette;
   private width = 1;
   private height = 1;
   private pixelRatio = 1;
+  private viewportInsets: FriendsGalaxyViewportInsets = {
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  };
   private ambientMotionEnabled = true;
   private cameraMotion = false;
   private fieldStyle: FriendsGalaxyFieldStyle = "nebula";
@@ -135,6 +148,18 @@ export class FriendsGalaxyProductEngine {
     return this.presentation.nodeCount;
   }
 
+  get cameraTransform(): FriendsGalaxyTransform | null {
+    return this.navigation ? { ...this.navigation.transform } : null;
+  }
+
+  get cameraFrame(): FriendsGalaxyCameraFrameState | null {
+    return this.navigation?.frame ?? null;
+  }
+
+  get interactionState(): FriendsGalaxyInteraction {
+    return { ...this.interaction };
+  }
+
   get droppedWorkerResponseCount(): number {
     return this.worker.droppedResponseCount;
   }
@@ -186,6 +211,27 @@ export class FriendsGalaxyProductEngine {
     return this.worker.requestActivity(input);
   }
 
+  requestCameraPresentation(
+    presentationRevision: number,
+    selection: FriendsGalaxyProductWorkerSelection = {},
+  ): number | null {
+    this.assertActive();
+    const navigation = this.navigation;
+    const sourceRevision = this.worker.activeSourceRevision;
+    if (!navigation || sourceRevision === null) return null;
+    return this.requestSettledPresentation({
+      kind: "presentation",
+      sourceRevision,
+      presentationRevision,
+      viewport: {
+        width: this.width,
+        height: this.height,
+        transform: { ...navigation.transform },
+        ...selection,
+      },
+    });
+  }
+
   activateRenderer(
     rendererId: FriendsGalaxyRendererId,
   ): ReturnType<FriendsGalaxyRendererHost["activate"]> {
@@ -200,7 +246,13 @@ export class FriendsGalaxyProductEngine {
     this.pixelRatio = Number.isFinite(pixelRatio) && pixelRatio > 0
       ? pixelRatio
       : 1;
+    this.navigation?.resize(this.width, this.height, this.viewportInsets);
     this.renderer?.resize(this.width, this.height, this.pixelRatio);
+  }
+
+  setViewportInsets(insets: FriendsGalaxyViewportInsets): void {
+    this.viewportInsets = { ...insets };
+    this.navigation?.resize(this.width, this.height, this.viewportInsets);
   }
 
   setPalette(palette: FriendsGalaxyRendererPalette): void {
@@ -237,6 +289,75 @@ export class FriendsGalaxyProductEngine {
     this.renderer?.setSettledView(detail, this.settledTransform);
   }
 
+  fitAll(initial = false): boolean {
+    const navigation = this.navigation;
+    if (!navigation) return false;
+    navigation.fit(initial);
+    return true;
+  }
+
+  focusNode(nodeId: string, minimumScale = 0.92): boolean {
+    return this.navigation?.focusNode(nodeId, minimumScale) ?? false;
+  }
+
+  panCameraBy(deltaX: number, deltaY: number): boolean {
+    return this.navigation?.panBy(deltaX, deltaY) ?? false;
+  }
+
+  zoomCameraAt(
+    viewportX: number,
+    viewportY: number,
+    scaleRatio: number,
+  ): boolean {
+    return this.navigation?.zoomAt(viewportX, viewportY, scaleRatio) ?? false;
+  }
+
+  zoomCameraBetween(
+    previousViewportX: number,
+    previousViewportY: number,
+    nextViewportX: number,
+    nextViewportY: number,
+    scaleRatio: number,
+  ): boolean {
+    return this.navigation?.zoomBetween(
+      previousViewportX,
+      previousViewportY,
+      nextViewportX,
+      nextViewportY,
+      scaleRatio,
+    ) ?? false;
+  }
+
+  pinchCamera(
+    previousFirstX: number,
+    previousFirstY: number,
+    previousSecondX: number,
+    previousSecondY: number,
+    nextFirstX: number,
+    nextFirstY: number,
+    nextSecondX: number,
+    nextSecondY: number,
+  ): boolean {
+    return this.navigation?.pinch(
+      previousFirstX,
+      previousFirstY,
+      previousSecondX,
+      previousSecondY,
+      nextFirstX,
+      nextFirstY,
+      nextSecondX,
+      nextSecondY,
+    ) ?? false;
+  }
+
+  settleCamera(): FriendsGalaxyViewDetail | null {
+    const transform = this.cameraTransform;
+    if (!transform) return null;
+    const detail = friendsGalaxyViewDetailForScale(transform.scale);
+    this.setSettledView(detail, transform);
+    return detail;
+  }
+
   applyActivityPatches(patches: FriendsGalaxyActivityScenePatchBatch): void {
     this.activityPatches = patches;
     this.renderer?.applyActivityPatches(patches);
@@ -256,6 +377,11 @@ export class FriendsGalaxyProductEngine {
 
   render(transform: FriendsGalaxyTransform, timeMs: number): void {
     this.renderer?.render(transform, timeMs);
+  }
+
+  renderCamera(timeMs: number): void {
+    const navigation = this.navigation;
+    if (navigation) this.renderer?.render(navigation.transform, timeMs);
   }
 
   metrics(): FriendsGalaxyRendererMetrics | null {
@@ -281,6 +407,7 @@ export class FriendsGalaxyProductEngine {
     this.worker.dispose();
     this.renderer?.dispose();
     this.renderer = null;
+    this.navigation = null;
     this.latestPresentation = null;
     this.admittedSourceRevision = null;
   }
@@ -294,6 +421,21 @@ export class FriendsGalaxyProductEngine {
   private receiveSource(response: FriendsGalaxyProductWorkerSourceResponse): void {
     this.presentation.replace(response.rendererScene.atlas);
     this.admittedSourceRevision = response.sourceRevision;
+    if (this.navigation) this.navigation.replaceScene(response.rendererScene);
+    else {
+      this.navigation = new FriendsGalaxyNavigationController(
+        response.rendererScene,
+        this.width,
+        this.height,
+        this.viewportInsets,
+      );
+    }
+    if (!this.settledTransform && this.navigation) {
+      this.settledTransform = { ...this.navigation.transform };
+      this.settledDetail = friendsGalaxyViewDetailForScale(
+        this.navigation.transform.scale,
+      );
+    }
     if (this.renderer) {
       void this.renderer.replaceScene(response.rendererScene);
     } else {

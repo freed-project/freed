@@ -19,11 +19,7 @@ import { friendsGalaxyRendererPaletteForTheme } from "../../src/lib/friends-gala
 import { loadGalaxyLabFixture } from "./scene-fixture-loader.js";
 import { findFriendsGalaxySceneNodeIndex } from "../../src/lib/friends-galaxy-scene-interaction-index.js";
 import {
-  applyFriendsGalaxyPinch,
-  applyFriendsGalaxyResistedZoomAt,
-  applyFriendsGalaxyZoomAt,
   friendsGalaxyGestureScaleRatio,
-  friendsGalaxyResistedScaleAtRatio,
   friendsGalaxyWheelDeltaPixels,
 } from "../../src/lib/friends-galaxy-gesture.js";
 import {
@@ -41,13 +37,11 @@ import {
   type FriendsGalaxyAvatarImageAdmissionResult,
 } from "../../src/lib/friends-galaxy-avatar-image-admission.js";
 import {
-  friendsGalaxyCameraFrameState,
   type FriendsGalaxyCameraFrameState,
   type FriendsGalaxyOutwardZoomEnvelope,
-  writeFriendsGalaxyFocusedTransform,
-  writeFriendsGalaxyFramedTransform,
   writeFriendsGalaxyWebGpuViewProjection,
 } from "../../src/lib/friends-galaxy-camera.js";
+import { FriendsGalaxyNavigationController } from "../../src/lib/friends-galaxy-navigation.js";
 import { shouldContinueFriendsGalaxyFrame } from "../../src/lib/friends-galaxy-frame-loop.js";
 import {
   FriendsGalaxyInertialPan,
@@ -75,10 +69,8 @@ import {
 } from "../../src/lib/friends-galaxy-accessibility.js";
 import {
   friendsGalaxyViewportGeometry,
-  reanchorFriendsGalaxyTransformToInteraction,
   writeFriendsGalaxyCanvasPoint,
   type FriendsGalaxyCanvasPoint,
-  type FriendsGalaxyTransform,
   type FriendsGalaxyViewportGeometry,
 } from "../../src/lib/friends-galaxy-viewport.js";
 import {
@@ -222,14 +214,9 @@ const activityProbeScenePatch = activityScenePatchEncoder.encode(
   1_725_000_120_000,
 );
 
-const transform: FriendsGalaxyTransform = { x: 0, y: 0, scale: 0.12 };
-const initialCameraFrame = friendsGalaxyCameraFrameState(
-  fixture.atlas.bounds,
-  fixture.scene.bounds.minZ,
-  fixture.scene.bounds.maxZ,
-  1,
-  1,
-);
+const navigation = new FriendsGalaxyNavigationController(fixture);
+const transform = navigation.transform;
+const initialCameraFrame = navigation.frame;
 let cameraScaleLimits = initialCameraFrame.scaleLimits;
 let outwardZoomEnvelope: FriendsGalaxyOutwardZoomEnvelope =
   initialCameraFrame.outwardZoomEnvelope;
@@ -471,14 +458,12 @@ function refreshCameraFrameState(
   viewportWidth: number,
   viewportHeight: number,
 ): FriendsGalaxyCameraFrameState {
-  const frame = friendsGalaxyCameraFrameState(
-    fixture.atlas.bounds,
-    fixture.scene.bounds.minZ,
-    fixture.scene.bounds.maxZ,
+  navigation.resize(
     viewportWidth,
     viewportHeight,
     viewportGeometry.insets,
   );
+  const frame = navigation.frame;
   applyCameraFrameState(frame);
   return frame;
 }
@@ -710,17 +695,8 @@ function scheduleSettledViewDetail(immediate = false): void {
 function frameGalaxy(markAsUserAction: boolean, useInitialScale: boolean): void {
   cancelCameraInertia();
   const { width, height } = canvasSize();
-  const bounds = fixture.atlas.bounds;
-  const frame = refreshCameraFrameState(width, height);
-  writeFriendsGalaxyFramedTransform(
-    transform,
-    bounds,
-    frame,
-    width,
-    height,
-    viewportGeometry.insets,
-    useInitialScale,
-  );
+  refreshCameraFrameState(width, height);
+  navigation.fit(useInitialScale);
   recordCameraScaleDiagnostics();
   userMovedCamera = markAsUserAction;
   markGalaxyDirty();
@@ -745,22 +721,7 @@ function focusGalaxyNode(nodeId: string): boolean {
   viewport.focus({ preventScroll: true });
   cancelCameraInertia();
   settleScheduler.cancel();
-  const { width, height } = canvasSize();
-  const offset = nodeIndex * 3;
-  const scale = Math.min(
-    cameraScaleLimits.maximum,
-    Math.max(transform.scale, PROGRAMMATIC_FOCUS_SCALE),
-  );
-  writeFriendsGalaxyFocusedTransform(
-    transform,
-    fixture.scene.positions[offset]!,
-    -fixture.scene.positions[offset + 1]!,
-    fixture.scene.positions[offset + 2]!,
-    scale,
-    width,
-    height,
-    viewportGeometry.insets,
-  );
+  if (!navigation.focusNode(nodeId, PROGRAMMATIC_FOCUS_SCALE)) return false;
   recordCameraScaleDiagnostics();
   updateInteraction({ selectedNodeId: nodeId, hoveredNodeId: null });
   announceGraphSelection(nodeId, "focus");
@@ -1066,8 +1027,7 @@ function renderFrame(timeMs: number): void {
   }
   const inertialStep = inertialPan.step(timeMs);
   if (inertialStep.deltaX !== 0 || inertialStep.deltaY !== 0) {
-    transform.x += inertialStep.deltaX;
-    transform.y += inertialStep.deltaY;
+    navigation.panBy(inertialStep.deltaX, inertialStep.deltaY);
     userMovedCamera = true;
     dirty = true;
     metricsDirty = true;
@@ -1080,14 +1040,10 @@ function renderFrame(timeMs: number): void {
   let inertialZoomStalled = false;
   if (inertialZoomStep.scaleRatio !== 1) {
     const previousScale = transform.scale;
-    applyFriendsGalaxyResistedZoomAt(
-      transform,
+    navigation.zoomAt(
       inertialZoomFocalX,
       inertialZoomFocalY,
       inertialZoomStep.scaleRatio,
-      outwardZoomEnvelope.target,
-      outwardZoomEnvelope.resistance,
-      cameraScaleLimits.maximum,
     );
     const appliedLogDelta = Math.abs(Math.log(transform.scale / previousScale));
     if (appliedLogDelta <= INERTIAL_ZOOM_STALL_LOG_DELTA) {
@@ -1165,14 +1121,10 @@ function zoomAt(
 ): void {
   cancelCameraInertia();
   setCameraInMotion(true);
-  applyFriendsGalaxyResistedZoomAt(
-    transform,
+  navigation.zoomAt(
     viewportX,
     viewportY,
     nextScale / transform.scale,
-    outwardZoomEnvelope.target,
-    outwardZoomEnvelope.resistance,
-    cameraScaleLimits.maximum,
   );
   userMovedCamera = true;
   markGalaxyDirty();
@@ -1455,8 +1407,7 @@ viewport.addEventListener("pointermove", (event) => {
     const previousSecondX = pointers.xAt(1);
     const previousSecondY = pointers.yAt(1);
     pointers.update(pointerIndex, nextX, nextY);
-    applyFriendsGalaxyPinch(
-      transform,
+    navigation.pinch(
       previousFirstX,
       previousFirstY,
       previousSecondX,
@@ -1465,17 +1416,13 @@ viewport.addEventListener("pointermove", (event) => {
       pointers.yAt(0),
       pointers.xAt(1),
       pointers.yAt(1),
-      outwardZoomEnvelope.target,
-      outwardZoomEnvelope.resistance,
-      cameraScaleLimits.maximum,
     );
     scheduleSettledViewDetail();
   } else {
     const deltaX = nextX - pointers.xAt(pointerIndex);
     const deltaY = nextY - pointers.yAt(pointerIndex);
     inertialPan.sample(deltaX, deltaY, event.timeStamp);
-    transform.x += deltaX;
-    transform.y += deltaY;
+    navigation.panBy(deltaX, deltaY);
     pointers.update(pointerIndex, nextX, nextY);
   }
   userMovedCamera = true;
@@ -1603,8 +1550,7 @@ function moveNativeTouches(event: TouchEvent): void {
   if (pointers.count >= 2) {
     gestureMoved = true;
     beginInertialPanSample(event.timeStamp);
-    applyFriendsGalaxyPinch(
-      transform,
+    navigation.pinch(
       previousFirstX,
       previousFirstY,
       previousSecondX,
@@ -1613,17 +1559,13 @@ function moveNativeTouches(event: TouchEvent): void {
       pointers.yAt(0),
       pointers.xAt(1),
       pointers.yAt(1),
-      outwardZoomEnvelope.target,
-      outwardZoomEnvelope.resistance,
-      cameraScaleLimits.maximum,
     );
     scheduleSettledViewDetail();
   } else {
     const deltaX = pointers.xAt(0) - previousFirstX;
     const deltaY = pointers.yAt(0) - previousFirstY;
     inertialPan.sample(deltaX, deltaY, event.timeStamp);
-    transform.x += deltaX;
-    transform.y += deltaY;
+    navigation.panBy(deltaX, deltaY);
   }
   userMovedCamera = true;
   markGalaxyDirty();
@@ -1723,14 +1665,10 @@ viewport.addEventListener("wheel", (event) => {
     viewport.dataset.inertialZoom = "false";
     settleScheduler.cancel();
     setCameraInMotion(true);
-    applyFriendsGalaxyResistedZoomAt(
-      transform,
+    navigation.zoomAt(
       point.x,
       point.y,
       scaleRatio,
-      outwardZoomEnvelope.target,
-      outwardZoomEnvelope.resistance,
-      cameraScaleLimits.maximum,
     );
     userMovedCamera = true;
     markGalaxyDirty();
@@ -1754,8 +1692,7 @@ viewport.addEventListener("wheel", (event) => {
   wheelInputMode = "two-finger-pan";
   viewport.dataset.wheelInputMode = wheelInputMode;
   setCameraInMotion(true);
-  transform.x -= deltaX;
-  transform.y -= deltaY;
+  navigation.panBy(-deltaX, -deltaY);
   userMovedCamera = true;
   markGalaxyDirty();
   scheduleSettledViewDetail();
@@ -1857,8 +1794,6 @@ viewport.addEventListener("gesturechange", ((event: SafariGestureEvent) => {
   if (!safariGestureActive) return;
   const viewportX = event.clientX - safariGestureCanvasLeft;
   const viewportY = event.clientY - safariGestureCanvasTop;
-  const worldX = (safariGesturePreviousViewportX - transform.x) / transform.scale;
-  const worldY = (safariGesturePreviousViewportY - transform.y) / transform.scale;
   const scaleRatio = friendsGalaxyGestureScaleRatio(
     safariGesturePreviousEventScale,
     event.scale,
@@ -1869,16 +1804,13 @@ viewport.addEventListener("gesturechange", ((event: SafariGestureEvent) => {
     viewportX,
     viewportY,
   );
-  const nextScale = friendsGalaxyResistedScaleAtRatio(
-    transform.scale,
+  navigation.zoomBetween(
+    safariGesturePreviousViewportX,
+    safariGesturePreviousViewportY,
+    viewportX,
+    viewportY,
     scaleRatio,
-    outwardZoomEnvelope.target,
-    outwardZoomEnvelope.resistance,
-    cameraScaleLimits.maximum,
   );
-  transform.scale = nextScale;
-  transform.x = viewportX - worldX * nextScale;
-  transform.y = viewportY - worldY * nextScale;
   if (Number.isFinite(event.scale) && event.scale > 0) {
     safariGesturePreviousEventScale = event.scale;
   }
@@ -1906,8 +1838,7 @@ viewport.addEventListener("keydown", (event) => {
   let interactionSettled = false;
   switch (command.type) {
     case "pan":
-      transform.x += command.deltaX;
-      transform.y += command.deltaY;
+      navigation.panBy(command.deltaX, command.deltaY);
       break;
     case "zoom":
       zoomAt(
@@ -2072,7 +2003,6 @@ reducedMotionQuery.addEventListener("change", syncReducedMotionPreference);
 
 const resizeObserver = new ResizeObserver(() => {
   cancelCameraInertia();
-  const previousGeometry = viewportGeometry;
   refreshViewportOrigin();
   resizeActiveBackend();
   const { width, height } = canvasSize();
@@ -2080,26 +2010,7 @@ const resizeObserver = new ResizeObserver(() => {
   if (!userMovedCamera) {
     frameInitialGalaxy();
   } else {
-    reanchorFriendsGalaxyTransformToInteraction(
-      transform,
-      previousGeometry,
-      viewportGeometry,
-    );
-    const safeResizeScale = Math.max(
-      outwardZoomEnvelope.target,
-      Math.min(cameraScaleLimits.maximum, transform.scale),
-    );
-    if (safeResizeScale !== transform.scale) {
-      applyFriendsGalaxyZoomAt(
-        transform,
-        viewportGeometry.interactionCenterX,
-        viewportGeometry.interactionCenterY,
-        safeResizeScale,
-        outwardZoomEnvelope.target,
-        cameraScaleLimits.maximum,
-      );
-      recordCameraScaleDiagnostics();
-    }
+    recordCameraScaleDiagnostics();
     scheduleSettledViewDetail(true);
   }
   markGalaxyDirty();
