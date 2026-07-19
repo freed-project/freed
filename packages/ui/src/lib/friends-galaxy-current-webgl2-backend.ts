@@ -47,7 +47,6 @@ export class CurrentWebGl2Backend implements FriendsGalaxyRendererBackend {
   private selectedPersonId: string | null = null;
   private selectedAccountId: string | null = null;
   private ambientMotionEnabled = false;
-  private cameraMotion = false;
 
   async initialize(
     canvas: HTMLCanvasElement,
@@ -102,7 +101,6 @@ export class CurrentWebGl2Backend implements FriendsGalaxyRendererBackend {
   }
 
   setCameraMotion(active: boolean): void {
-    this.cameraMotion = active;
     this.engine?.setCameraMotion(active);
   }
 
@@ -156,6 +154,7 @@ export class CurrentWebGl2Backend implements FriendsGalaxyRendererBackend {
       drawCalls: null,
       labelCount: this.engine?.readyLabelCount ?? 0,
       avatarCount: 0,
+      labelLayoutCount: this.engine?.labelLayoutCount ?? 0,
       contextualEdgeCount: this.engine?.edgeCount ?? 0,
       bufferUploadCount: this.bufferUploadCount,
       fallbackReason: this.fallbackReason,
@@ -174,7 +173,6 @@ export class CurrentWebGl2Backend implements FriendsGalaxyRendererBackend {
     this.selectedPersonId = null;
     this.selectedAccountId = null;
     this.ambientMotionEnabled = false;
-    this.cameraMotion = false;
   }
 
   private syncScene(): void {

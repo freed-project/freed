@@ -80,6 +80,7 @@ export class FriendsGalaxyBackendRuntime<
   Backend extends FriendsGalaxyManagedBackend<BackendId>,
   Surface extends object,
 > {
+  private readonly options: FriendsGalaxyBackendRuntimeOptions<BackendId, Backend, Surface>;
   private active: ActiveBackend<BackendId, Backend, Surface> | null = null;
   private currentGeneration = 0;
   private pendingRecovery = false;
@@ -90,9 +91,9 @@ export class FriendsGalaxyBackendRuntime<
   private readonly removedSurfaces = new WeakSet<object>();
   private readonly pendingSurfaces = new Set<Surface>();
 
-  constructor(
-    private readonly options: FriendsGalaxyBackendRuntimeOptions<BackendId, Backend, Surface>,
-  ) {}
+  constructor(options: FriendsGalaxyBackendRuntimeOptions<BackendId, Backend, Surface>) {
+    this.options = options;
+  }
 
   get activeBackend(): Backend | null {
     return this.active?.backend ?? null;

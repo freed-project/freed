@@ -83,12 +83,14 @@ async function readGraphPerf(page: Page) {
     return (window as typeof window & {
       __FREED_GRAPH_PERF__?: {
         nodeCount?: number;
+        rendererType?: string;
         qualityMode?: "interactive" | "settled";
         visibleProviderLabelCount?: number;
         denseInteractionNodeCount?: number;
         denseInteractionRebuildCount?: number;
         sceneSyncCount?: number;
         edgeRebuildCount?: number;
+        labelLayoutCount?: number;
         transformOnlySyncCount?: number;
         rendererLabelCount?: number;
         readyRendererLabelCount?: number;
@@ -345,7 +347,22 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   const interaction = await collectLongTasksDuring(page, () =>
     measureFps(page, async () => {
       await page.evaluate(() => performance.mark("friends-wheel-start"));
-      for (let index = 0; index < 18; index += 1) {
+      await viewport.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        element.dispatchEvent(new WheelEvent("wheel", {
+          bubbles: true,
+          cancelable: true,
+          ctrlKey: true,
+          clientX: rect.left + rect.width / 2,
+          clientY: rect.top + rect.height / 2,
+          deltaY: -120,
+        }));
+      });
+      await expect.poll(async () => (await readGraphPerf(page))?.qualityMode)
+        .toBe("interactive");
+      const duringWheelBaseline = await readGraphPerf(page);
+      expect(duringWheelBaseline).not.toBeNull();
+      for (let index = 1; index < 18; index += 1) {
         await viewport.evaluate((element) => {
           const rect = element.getBoundingClientRect();
           element.dispatchEvent(new WheelEvent("wheel", {
@@ -371,9 +388,11 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
       afterWheelPerf = await readGraphPerf(page);
       expect(afterWheelPerf).not.toBeNull();
       expect(afterWheelPerf!.qualityMode).toBe("interactive");
+      expect(afterWheelPerf!.rendererType).toBe(duringWheelBaseline!.rendererType);
       expect(afterWheelPerf!.sceneSyncCount).toBe(beforeMotionPerf!.sceneSyncCount);
       expect(afterWheelPerf!.edgeRebuildCount).toBe(beforeMotionPerf!.edgeRebuildCount);
-      expect(afterWheelPerf!.rendererLabelCount).toBe(beforeMotionPerf!.rendererLabelCount);
+      expect(afterWheelPerf!.labelLayoutCount).toBe(duringWheelBaseline!.labelLayoutCount);
+      expect(afterWheelPerf!.rendererLabelCount).toBe(duringWheelBaseline!.rendererLabelCount);
       expect(afterWheelPerf!.readyRendererLabelCount ?? 0).toBeGreaterThan(0);
 
       await page.evaluate(() => performance.mark("friends-drag-start"));

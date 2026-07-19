@@ -1,5 +1,8 @@
 import type { FriendsGalaxyActivityScenePatchBatch } from "./friends-galaxy-activity-patches.js";
-import type { FriendsGalaxyCameraFrameState } from "./friends-galaxy-camera.js";
+import {
+  writeFriendsGalaxyWebGpuViewProjection,
+  type FriendsGalaxyCameraFrameState,
+} from "./friends-galaxy-camera.js";
 import { FriendsGalaxyNavigationController } from "./friends-galaxy-navigation.js";
 import type { FriendsGalaxyRendererPalette } from "./friends-galaxy-palette.js";
 import { FriendsGalaxyProductPresentationIndex } from "./friends-galaxy-product-presentation.js";
@@ -29,7 +32,10 @@ import {
   type FriendsGalaxyRendererMetrics,
   type FriendsGalaxyViewDetail,
 } from "./friends-galaxy-renderer.js";
-import type { FriendsGalaxyInteraction } from "./friends-galaxy-scene-index.js";
+import {
+  FriendsGalaxySceneIndex,
+  type FriendsGalaxyInteraction,
+} from "./friends-galaxy-scene-index.js";
 import type {
   FriendsGalaxyTransform,
   FriendsGalaxyViewportInsets,
@@ -65,6 +71,8 @@ export class FriendsGalaxyProductEngine {
   private readonly onActivityReady: FriendsGalaxyProductEngineOptions["onActivityReady"];
   private renderer: FriendsGalaxyRendererHost | null = null;
   private navigation: FriendsGalaxyNavigationController | null = null;
+  private sceneIndex: FriendsGalaxySceneIndex | null = null;
+  private readonly pickViewProjection = new Float32Array(16);
   private rendererId: FriendsGalaxyRendererId;
   private palette: FriendsGalaxyRendererPalette;
   private width = 1;
@@ -126,6 +134,10 @@ export class FriendsGalaxyProductEngine {
 
   get activeRendererId(): FriendsGalaxyRendererId | null {
     return this.renderer?.activeId ?? null;
+  }
+
+  get rendererGeneration(): number {
+    return this.renderer?.generation ?? 0;
   }
 
   get activeSourceRevision(): number | null {
@@ -372,7 +384,23 @@ export class FriendsGalaxyProductEngine {
   }
 
   pickNode(viewportX: number, viewportY: number): string | null {
-    return this.renderer?.pickNode(viewportX, viewportY) ?? null;
+    const navigation = this.navigation;
+    const sceneIndex = this.sceneIndex;
+    if (!navigation || !sceneIndex) return null;
+    writeFriendsGalaxyWebGpuViewProjection(
+      this.pickViewProjection,
+      navigation.transform,
+      this.width,
+      this.height,
+    );
+    return sceneIndex.pickNode(
+      this.pickViewProjection,
+      this.width,
+      this.height,
+      viewportX,
+      viewportY,
+      "zero-to-one",
+    );
   }
 
   render(transform: FriendsGalaxyTransform, timeMs: number): void {
@@ -397,6 +425,13 @@ export class FriendsGalaxyProductEngine {
     void this.renderer?.pollHealth();
   }
 
+  recoverActiveRenderer(reason: string): void {
+    const renderer = this.renderer;
+    const backend = renderer?.activeBackend;
+    if (!renderer || !backend) return;
+    void renderer.recoverFromFatalError(backend, reason);
+  }
+
   simulateDeviceLoss(): void {
     this.renderer?.simulateDeviceLoss();
   }
@@ -408,6 +443,7 @@ export class FriendsGalaxyProductEngine {
     this.renderer?.dispose();
     this.renderer = null;
     this.navigation = null;
+    this.sceneIndex = null;
     this.latestPresentation = null;
     this.admittedSourceRevision = null;
   }
@@ -421,6 +457,10 @@ export class FriendsGalaxyProductEngine {
   private receiveSource(response: FriendsGalaxyProductWorkerSourceResponse): void {
     this.presentation.replace(response.rendererScene.atlas);
     this.admittedSourceRevision = response.sourceRevision;
+    this.sceneIndex = new FriendsGalaxySceneIndex(
+      response.rendererScene.scene,
+      response.rendererScene.interactionIndex,
+    );
     if (this.navigation) this.navigation.replaceScene(response.rendererScene);
     else {
       this.navigation = new FriendsGalaxyNavigationController(
@@ -460,6 +500,7 @@ export class FriendsGalaxyProductEngine {
       request.sourceRevision !== response.sourceRevision ||
       request.presentationRevision !== response.presentationRevision
     ) return;
+    if (this.cameraMotion) return;
     this.presentation.replace(response.atlas);
     const detail = friendsGalaxyViewDetailForScale(request.viewport.transform.scale);
     this.settledDetail = detail;

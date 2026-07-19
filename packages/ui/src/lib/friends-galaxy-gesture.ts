@@ -1,6 +1,7 @@
 import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
 
 const OUTWARD_RESISTANCE_CURVE_POWER = 0.15;
+const MAX_WHEEL_ZOOM_LOG_STEP = 0.24;
 
 function clampScale(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
@@ -95,6 +96,18 @@ export function friendsGalaxyWheelDeltaPixels(
   if (deltaMode === 1) return delta * 16;
   if (deltaMode === 2) return delta * Math.max(1, viewportExtent);
   return delta;
+}
+
+export function friendsGalaxyWheelScaleRatio(
+  deltaY: number,
+  speed: number,
+): number {
+  if (!Number.isFinite(deltaY) || !Number.isFinite(speed) || speed <= 0) return 1;
+  const logStep = Math.max(
+    -MAX_WHEEL_ZOOM_LOG_STEP,
+    Math.min(MAX_WHEEL_ZOOM_LOG_STEP, -deltaY * speed),
+  );
+  return Math.exp(logStep);
 }
 
 export function friendsGalaxyGestureScaleRatio(

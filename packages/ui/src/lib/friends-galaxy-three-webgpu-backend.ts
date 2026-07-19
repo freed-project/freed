@@ -1,3 +1,5 @@
+/// <reference types="@webgpu/types" />
+
 import * as THREE from "three/webgpu";
 import {
   cameraProjectionMatrix,
@@ -268,9 +270,11 @@ function makeBillboardBatch(
 }
 
 export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
-  constructor(
-    private readonly resolvePresentation: FriendsGalaxyNodePresentationResolver,
-  ) {}
+  private readonly resolvePresentation: FriendsGalaxyNodePresentationResolver;
+
+  constructor(resolvePresentation: FriendsGalaxyNodePresentationResolver) {
+    this.resolvePresentation = resolvePresentation;
+  }
 
   readonly id = "three-webgpu" as const;
   private renderer: THREE.WebGPURenderer | null = null;

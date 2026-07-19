@@ -1725,15 +1725,21 @@ export function FriendsView({
   const showMobileSidebar = isMobile && mobileSurface === "details";
   const showCollapsedSelectionCard =
     !isMobile && !friendsSidebarOpen && (!!selectedPerson || !!selectedAccount);
+  const graphIsEmpty =
+    (effectiveMode === "friends" && friendList.length === 0) ||
+    (effectiveMode === "all_content" && socialAccountCount === 0 && friendList.length === 0);
 
   return (
-    <div className="app-theme-shell flex h-full flex-col overflow-hidden">
+    <div className="flex h-full flex-col overflow-hidden bg-transparent">
       <div
         className={`relative flex min-h-0 flex-1 ${isMobile ? "flex-col pt-[var(--feed-card-gap,8px)]" : "flex-row"}`}
       >
-        {showGraphSurface ? (
-          <div className="relative min-h-0 min-w-0 flex-1 overflow-visible">
-            {(effectiveMode === "friends" && friendList.length === 0) || (effectiveMode === "all_content" && socialAccountCount === 0 && friendList.length === 0) ? (
+        <div className={`${
+          showGraphSurface
+            ? "relative min-h-0 min-w-0 flex-1 overflow-visible"
+            : "pointer-events-none absolute inset-0 min-h-0 min-w-0 overflow-hidden opacity-0"
+        }`}>
+            {graphIsEmpty ? (
               renderGraphEmptyState()
             ) : (
               <FriendGraph
@@ -1755,10 +1761,10 @@ export function FriendsView({
                 friendSuggestionStrengthByPerson={friendSuggestionStrengthByPerson}
                 friendSuggestionStrengthByAccount={friendSuggestionStrengthByAccount}
                 themeId={themeId}
+                presentationVisible={showGraphSurface}
               />
             )}
-          </div>
-        ) : null}
+        </div>
 
         {showDesktopSidebar && (
           <div

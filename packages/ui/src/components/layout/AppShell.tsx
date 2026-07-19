@@ -528,6 +528,12 @@ export function AppShell({ children }: AppShellProps) {
             isMobileDevice ? "" : "min-h-0 overflow-hidden"
           }`}
         >
+          {activeView === "friends" ? (
+            <div
+              className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
+              data-testid="friends-background-layer"
+            />
+          ) : null}
           {activeView === "map" ? (
             <div
               className="absolute inset-0 z-0"

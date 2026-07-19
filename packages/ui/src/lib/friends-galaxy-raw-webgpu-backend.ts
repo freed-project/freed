@@ -1,3 +1,5 @@
+/// <reference types="@webgpu/types" />
+
 import type {
   FriendsGalaxyRendererBackend,
   FriendsGalaxyRendererMetrics,
@@ -505,14 +507,15 @@ function createBuffer(device: GPUDevice, data: Float32Array, usage: GPUBufferUsa
 }
 
 export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
-  constructor(
-    private readonly resolvePresentation: FriendsGalaxyNodePresentationResolver,
-  ) {}
+  private readonly resolvePresentation: FriendsGalaxyNodePresentationResolver;
+
+  constructor(resolvePresentation: FriendsGalaxyNodePresentationResolver) {
+    this.resolvePresentation = resolvePresentation;
+  }
 
   readonly id = "raw-webgpu" as const;
   private canvas: HTMLCanvasElement | null = null;
   private context: GPUCanvasContext | null = null;
-  private adapter: GPUAdapter | null = null;
   private device: GPUDevice | null = null;
   private pipeline: GPURenderPipeline | null = null;
   private bindGroup: GPUBindGroup | null = null;
@@ -621,7 +624,6 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     if (!context) throw new Error("The browser did not provide a WebGPU canvas context.");
     this.canvas = canvas;
     this.context = context;
-    this.adapter = adapter;
     this.device = device;
     this.fixture = fixture;
     this.sceneIndex = new FriendsGalaxySceneIndex(fixture.scene, fixture.interactionIndex);
@@ -1141,7 +1143,6 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.device?.destroy();
     this.canvas = null;
     this.context = null;
-    this.adapter = null;
     this.device = null;
     this.pipeline = null;
     this.bindGroup = null;

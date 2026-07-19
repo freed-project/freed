@@ -23,14 +23,18 @@ export interface FriendsGalaxyInteractionState {
 }
 
 export class FriendsGalaxySceneIndex {
+  private readonly scene: IdentityGalaxyScene;
+  private readonly interactionIndex: FriendsGalaxySceneInteractionIndex;
   private readonly interactionRoles = new Map<number, FriendsGalaxyInteractionRole>();
   private readonly interactionStateValue: FriendsGalaxyInteractionState;
   private lastPickCandidateCountValue = 0;
 
   constructor(
-    private readonly scene: IdentityGalaxyScene,
-    private readonly interactionIndex: FriendsGalaxySceneInteractionIndex,
+    scene: IdentityGalaxyScene,
+    interactionIndex: FriendsGalaxySceneInteractionIndex,
   ) {
+    this.scene = scene;
+    this.interactionIndex = interactionIndex;
     this.interactionStateValue = {
       activeNodeId: null,
       contextualEdgeIndices: new Uint32Array(interactionIndex.maxNeighborCount * 2),

@@ -842,16 +842,18 @@ function drawFallbackLabels(
   palette: GraphPalette,
   width: number,
   height: number,
-): number {
+  residentLabelIds: ReadonlySet<string> | null,
+): Set<string> | null {
   const smallViewport = width < 720;
   const cap = smallViewport ? 24 : 72;
   const occupied: Array<{ left: number; right: number; top: number; bottom: number }> = [];
   const nodeById = new Map(atlas.nodes.map((node) => [node.id, node]));
-  let visibleCount = 0;
+  const nextResidentLabelIds = residentLabelIds === null ? new Set<string>() : null;
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.lineJoin = "round";
   for (const label of atlas.labels.slice(0, cap)) {
+    if (residentLabelIds !== null && !residentLabelIds.has(label.id)) continue;
     const fontSize = label.kind === "provider_cluster"
       ? smallViewport ? 16 : 19
       : label.kind === "friend_person"
@@ -868,30 +870,32 @@ function drawFallbackLabels(
     const labelOffset = starRadius + fontSize * 0.68 + 3;
     const screenY = transform.y + label.y * transform.scale - labelOffset;
     context.font = `600 ${String(fontSize)}px ${palette.fontFamily}`;
-    const textWidth = context.measureText(text).width;
-    const bounds = {
-      left: screenX - textWidth / 2 - 6,
-      right: screenX + textWidth / 2 + 6,
-      top: screenY - fontSize * 0.75,
-      bottom: screenY + fontSize * 0.75,
-    };
-    const outside = bounds.left < 8 || bounds.right > width - 8 || bounds.top < 8 || bounds.bottom > height - 8;
-    const collides = occupied.some((entry) =>
-      bounds.left < entry.right &&
-      bounds.right > entry.left &&
-      bounds.top < entry.bottom &&
-      bounds.bottom > entry.top,
-    );
-    if (outside || collides) continue;
-    occupied.push(bounds);
+    if (nextResidentLabelIds) {
+      const textWidth = context.measureText(text).width;
+      const bounds = {
+        left: screenX - textWidth / 2 - 6,
+        right: screenX + textWidth / 2 + 6,
+        top: screenY - fontSize * 0.75,
+        bottom: screenY + fontSize * 0.75,
+      };
+      const outside = bounds.left < 8 || bounds.right > width - 8 || bounds.top < 8 || bounds.bottom > height - 8;
+      const collides = occupied.some((entry) =>
+        bounds.left < entry.right &&
+        bounds.right > entry.left &&
+        bounds.top < entry.bottom &&
+        bounds.bottom > entry.top,
+      );
+      if (outside || collides) continue;
+      occupied.push(bounds);
+      nextResidentLabelIds.add(label.id);
+    }
     context.lineWidth = label.kind === "provider_cluster" ? 5.5 : 4.5;
     context.strokeStyle = palette.labelFill;
     context.fillStyle = palette.text;
     context.strokeText(text, screenX, screenY);
     context.fillText(text, screenX, screenY);
-    visibleCount += 1;
   }
-  return visibleCount;
+  return nextResidentLabelIds;
 }
 
 function drawFallbackStarfield(
@@ -903,9 +907,10 @@ function drawFallbackStarfield(
   selectedPersonId: string | null | undefined,
   selectedAccountId: string | null | undefined,
   variation: IdentityGalaxyVariation,
-): number {
+  residentLabelIds: ReadonlySet<string> | null,
+): Set<string> | null {
   const context = canvas.getContext("2d");
-  if (!context) return 0;
+  if (!context) return null;
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
   const pixelRatio = Math.min(1.5, window.devicePixelRatio || 1);
@@ -999,7 +1004,15 @@ function drawFallbackStarfield(
     }
   }
   context.restore();
-  return drawFallbackLabels(context, atlas, transform, palette, width, height);
+  return drawFallbackLabels(
+    context,
+    atlas,
+    transform,
+    palette,
+    width,
+    height,
+    residentLabelIds,
+  );
 }
 
 class StarfieldGraphRenderer {
@@ -1030,6 +1043,7 @@ class StarfieldGraphRenderer {
   private nodeIndexById = new Map<string, number>();
   private readonly projectedNode = new THREE.Vector3();
   private labelLayoutDirty = false;
+  private labelLayoutCountValue = 0;
   private width = 1;
   private height = 1;
   private starCount = 0;
@@ -1164,7 +1178,7 @@ class StarfieldGraphRenderer {
       ambientMotionEnabled,
       cameraInMotion,
     );
-    this.applyCamera(transform);
+    this.applyCamera(transform, cameraInMotion);
     this.starMaterial.uniforms.decorativeScale.value =
       friendsGalaxyDecorativeStarScale(transform.scale);
     if (this.starPoints) {
@@ -1180,6 +1194,10 @@ class StarfieldGraphRenderer {
 
   get readyLabelCount(): number {
     return this.renderedLabelCount;
+  }
+
+  get labelLayoutCount(): number {
+    return this.labelLayoutCountValue;
   }
 
   get edgeCount(): number {
@@ -1242,11 +1260,11 @@ class StarfieldGraphRenderer {
     this.renderer.dispose();
   }
 
-  private applyCamera(transform: ViewTransform): void {
+  private applyCamera(transform: ViewTransform, cameraInMotion: boolean): void {
     const pose = identityGalaxyCameraPose(transform, this.width, this.height, this.camera.fov);
     this.camera.position.set(pose.x, pose.y, pose.z);
     this.camera.lookAt(pose.targetX, pose.targetY, pose.targetZ);
-    if (this.labelLayoutDirty) {
+    if (this.labelLayoutDirty && !cameraInMotion) {
       this.layoutLabels();
       this.labelLayoutDirty = false;
     }
@@ -1259,6 +1277,7 @@ class StarfieldGraphRenderer {
   }
 
   private layoutLabels(): void {
+    this.labelLayoutCountValue += 1;
     const glyphAtlas = this.glyphAtlas;
     if (!glyphAtlas || this.labelRecords.length === 0) {
       this.labelGeometry.instanceCount = 0;
@@ -1548,6 +1567,9 @@ export class IdentityGalaxyEngine {
   private variation: IdentityGalaxyVariation = "nebula";
   private fallbackLabelCount = 0;
   private fallbackReadyLabelCount = 0;
+  private fallbackLabelLayoutCount = 0;
+  private fallbackLabelLayoutDirty = true;
+  private fallbackResidentLabelIds: ReadonlySet<string> = new Set();
   private ambientMotionEnabled = false;
   private cameraInMotion = false;
 
@@ -1571,6 +1593,10 @@ export class IdentityGalaxyEngine {
 
   get readyLabelCount(): number {
     return this.renderer?.readyLabelCount ?? this.fallbackReadyLabelCount;
+  }
+
+  get labelLayoutCount(): number {
+    return this.renderer?.labelLayoutCount ?? this.fallbackLabelLayoutCount;
   }
 
   get edgeCount(): number {
@@ -1604,6 +1630,7 @@ export class IdentityGalaxyEngine {
     this.variation = options.variation;
     if (!this.renderer && options.quality === "settled") {
       this.fallbackLabelCount = Math.min(atlas.labels.length, this.canvas.clientWidth < 720 ? 24 : 72);
+      this.fallbackLabelLayoutDirty = true;
     }
     this.renderer?.syncScene(atlas, scene, palette, options.variation, options.quality);
   }
@@ -1632,7 +1659,7 @@ export class IdentityGalaxyEngine {
       return;
     }
     if (!this.atlas || !this.scene || !this.palette) return;
-    this.fallbackReadyLabelCount = drawFallbackStarfield(
+    const nextResidentLabelIds = drawFallbackStarfield(
       this.canvas,
       this.atlas,
       this.scene,
@@ -1641,7 +1668,16 @@ export class IdentityGalaxyEngine {
       this.selectedPersonId,
       this.selectedAccountId,
       this.variation,
+      this.fallbackLabelLayoutDirty && !this.cameraInMotion
+        ? null
+        : this.fallbackResidentLabelIds,
     );
+    if (nextResidentLabelIds) {
+      this.fallbackResidentLabelIds = nextResidentLabelIds;
+      this.fallbackLabelLayoutDirty = false;
+      this.fallbackLabelLayoutCount += 1;
+    }
+    this.fallbackReadyLabelCount = this.fallbackResidentLabelIds.size;
   }
 
   pickNode(
@@ -1661,6 +1697,9 @@ export class IdentityGalaxyEngine {
     this.palette = null;
     this.fallbackLabelCount = 0;
     this.fallbackReadyLabelCount = 0;
+    this.fallbackLabelLayoutCount = 0;
+    this.fallbackLabelLayoutDirty = true;
+    this.fallbackResidentLabelIds = new Set();
     this.ambientMotionEnabled = false;
     this.cameraInMotion = false;
     fallbackStarfieldBackgrounds.delete(this.canvas);

@@ -149,16 +149,18 @@ interface FriendsGalaxyActivityNodeState {
 }
 
 export class FriendsGalaxyActivityPatchJournal {
+  private readonly semanticNodeCount: number;
   private readonly stateByNodeIndex = new Map<
     number,
     FriendsGalaxyActivityNodeState
   >();
   private revision = -1;
 
-  constructor(private readonly semanticNodeCount: number) {
+  constructor(semanticNodeCount: number) {
     if (!Number.isSafeInteger(semanticNodeCount) || semanticNodeCount < 0) {
       throw new Error("Friends Galaxy activity journal requires a valid semantic count.");
     }
+    this.semanticNodeCount = semanticNodeCount;
   }
 
   get nodeCount(): number {

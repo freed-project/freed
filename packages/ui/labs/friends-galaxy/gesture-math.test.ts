@@ -6,6 +6,7 @@ import {
   friendsGalaxyGestureScaleRatio,
   friendsGalaxyResistedScaleAtRatio,
   friendsGalaxyWheelDeltaPixels,
+  friendsGalaxyWheelScaleRatio,
 } from "../../src/lib/friends-galaxy-gesture.js";
 
 describe("Friends Galaxy gesture math", () => {
@@ -260,6 +261,12 @@ describe("Friends Galaxy gesture math", () => {
 
   it("keeps pixel trackpad deltas exact", () => {
     expect(friendsGalaxyWheelDeltaPixels(18.5, 0, 900)).toBe(18.5);
+  });
+
+  it("keeps fine trackpad zoom native and bounds coarse wheel bursts", () => {
+    expect(friendsGalaxyWheelScaleRatio(-2, 0.012)).toBeCloseTo(Math.exp(0.024), 12);
+    expect(friendsGalaxyWheelScaleRatio(-260, 0.012)).toBeCloseTo(Math.exp(0.24), 12);
+    expect(friendsGalaxyWheelScaleRatio(260, 0.012)).toBeCloseTo(Math.exp(-0.24), 12);
   });
 
   it("normalizes line and page wheel deltas before panning", () => {

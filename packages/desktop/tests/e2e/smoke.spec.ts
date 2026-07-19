@@ -364,6 +364,8 @@ async function graphNodeScreenPoint(
           accountId?: string;
           x: number;
           y: number;
+          screenX: number;
+          screenY: number;
         }>;
         transform: { x: number; y: number; scale: number };
       };
@@ -382,10 +384,12 @@ async function graphNodeScreenPoint(
       return null;
     }
 
-    const rect = viewport.getBoundingClientRect();
+    const canvas = document.querySelector('[data-testid="friend-graph-canvas"]') as HTMLElement | null;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
     return {
-      x: rect.left + node.x * debug.transform.scale + debug.transform.x,
-      y: rect.top + node.y * debug.transform.scale + debug.transform.y,
+      x: rect.left + node.screenX,
+      y: rect.top + node.screenY,
     };
   }, matcher);
 }
@@ -457,8 +461,11 @@ async function readGraphDebug(page: Page) {
           linkedPersonId?: string | null;
           x: number;
           y: number;
+          screenX: number;
+          screenY: number;
           radius: number;
         }>;
+        labels: Array<{ nodeId: string }>;
         regions: Array<{
           id: string;
           provider: string;
@@ -4374,15 +4381,27 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
   await expect(lens.getByRole("button", { name: "All content" })).toBeVisible({ timeout: 5_000 });
   await expect(lens.getByRole("button", { name: "Details" })).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
+  const beforeDetails = await readGraphDebug(page);
+  expect(beforeDetails).not.toBeNull();
 
   await lens.getByRole("button", { name: "Details" }).click();
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByTestId("friend-graph-viewport")).toHaveCount(0);
+  const suspendedViewport = page.getByTestId("friend-graph-viewport");
+  await expect(suspendedViewport).toHaveCount(1);
+  await expect(suspendedViewport).toHaveAttribute("aria-hidden", "true");
+  await expect(suspendedViewport).toHaveAttribute("data-presentation-visible", "false");
+  await expect(page.getByTestId("friend-graph-canvas")).toHaveCount(1);
   await expect.poll(() => readDeviceDisplayPreference(page, "friendsMode"), { timeout: 5_000 })
     .toBe("all_content");
 
   await lens.getByRole("button", { name: "Friends" }).click();
-  await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 5_000 });
+  const resumedViewport = page.getByTestId("friend-graph-viewport");
+  await expect(resumedViewport).toBeVisible({ timeout: 5_000 });
+  await expect(resumedViewport).not.toHaveAttribute("aria-hidden", "true");
+  await expect(resumedViewport).toHaveAttribute("data-presentation-visible", "true");
+  await expect(page.getByTestId("friend-graph-canvas")).toHaveCount(1);
+  await expect.poll(async () => (await readGraphDebug(page))?.metrics.contentSyncCount ?? 0)
+    .toBe(beforeDetails!.metrics.contentSyncCount);
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
   await expect.poll(() => readDeviceDisplayPreference(page, "friendsMode"), { timeout: 5_000 })
     .toBe("friends");
@@ -4546,7 +4565,7 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
     people: 3,
     channels: 5,
     links: 3,
-    resident: 10,
+    resident: 8,
   });
 });
 
@@ -5008,10 +5027,16 @@ test("linking a channel from the graph context menu survives reload", async ({ a
   }).toBeGreaterThanOrEqual(3);
   await waitForGraphPerfToSettle(page);
 
-  const accountPoint = await graphNodeScreenPoint(page, { accountId: "social:instagram:nora-ig" });
-  expect(accountPoint).not.toBeNull();
+  const accountPoint = await waitForGraphNodeScreenPoint(
+    page,
+    { accountId: "social:instagram:nora-ig" },
+  );
 
-  await page.mouse.click(accountPoint!.x, accountPoint!.y, { button: "right" });
+  await page.mouse.click(accountPoint.x, accountPoint.y, { button: "right" });
+  await expect(viewport).toHaveAttribute(
+    "data-last-context-node-id",
+    "account:social:instagram:nora-ig",
+  );
   const menu = page.getByTestId("friend-graph-context-menu");
   await expect(menu).toBeVisible({ timeout: 5_000 });
   await menu.getByRole("button", { name: "Link to person" }).click();
@@ -5151,12 +5176,20 @@ test("pinning a person stays device-local and survives reload", async ({ app, pa
     throw new Error("Friends graph debug node was unavailable for the pinned person");
   }
 
-  const pinnedPoint = await graphNodeScreenPoint(page, { personId: "friend-pinned" });
-  expect(pinnedPoint).not.toBeNull();
-  await page.mouse.click(pinnedPoint!.x, pinnedPoint!.y, { button: "right" });
+  const pinnedPoint = await waitForGraphNodeScreenPoint(
+    page,
+    { personId: "friend-pinned" },
+  );
+  await page.mouse.click(pinnedPoint.x, pinnedPoint.y, { button: "right" });
+  await expect(viewport).toHaveAttribute(
+    "data-last-context-node-id",
+    "person:friend-pinned",
+  );
   const menu = page.getByTestId("friend-graph-context-menu");
   await expect(menu).toBeVisible({ timeout: 5_000 });
+  await expect(menu.getByRole("button", { name: "Open details" })).toBeFocused();
   await menu.getByRole("button", { name: "Pin here" }).click();
+  await expect(viewport).toBeFocused();
 
   const storedPinnedPosition = await page.waitForFunction(() => {
     const stored = JSON.parse(
@@ -5275,7 +5308,11 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
   await expect
     .poll(async () => {
       const debug = await readGraphSummary(page);
-      if (!debug || debug.qualityMode !== "settled" || debug.metrics.visibleLabelCount <= 0) {
+      if (
+        !debug ||
+        debug.qualityMode !== "settled" ||
+        debug.metrics.visibleNodeLabelCount <= 0
+      ) {
         return 0;
       }
       return debug.nodeCount;
@@ -5575,19 +5612,14 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
   const outOfSliceSelection = await page.evaluate(() => {
     const debug = (window as typeof window & {
       __FREED_GRAPH_DEBUG__?: {
-        nodes: Array<{ personId?: string; accountId?: string }>;
+        labels: Array<{ nodeId: string }>;
       };
     }).__FREED_GRAPH_DEBUG__;
-    const visiblePersonIds = new Set(
-      debug?.nodes.flatMap((node) => node.personId ? [node.personId] : []) ?? [],
-    );
-    const visibleAccountIds = new Set(
-      debug?.nodes.flatMap((node) => node.accountId ? [node.accountId] : []) ?? [],
-    );
+    const presentedNodeIds = new Set(debug?.labels.map((label) => label.nodeId) ?? []);
     let personId: string | null = null;
     for (let index = 1_199; index >= 0; index -= 1) {
       const candidate = `stress-person-${index}`;
-      if (!visiblePersonIds.has(candidate)) {
+      if (!presentedNodeIds.has(`person:${candidate}`)) {
         personId = candidate;
         break;
       }
@@ -5595,7 +5627,7 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
     let accountId: string | null = null;
     for (let index = 1_439; index >= 0; index -= 1) {
       const candidate = `stress-account-${index}`;
-      if (!visibleAccountIds.has(candidate)) {
+      if (!presentedNodeIds.has(`account:${candidate}`)) {
         accountId = candidate;
         break;
       }
@@ -5603,7 +5635,7 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
     return { personId, accountId };
   });
   if (!outOfSliceSelection.personId || !outOfSliceSelection.accountId) {
-    throw new Error("Dense Friends fixture did not produce out-of-slice identities");
+    throw new Error("Dense Friends fixture did not produce out-of-presentation identities");
   }
   const selectExternalIdentity = async (selection: {
     personId: string | null;
@@ -5630,9 +5662,10 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
       await expect
         .poll(async () => {
           const debug = await readGraphDebug(page);
-          return debug?.nodes.some((node) =>
-            node.personId === selection.personId || node.accountId === selection.accountId
-          ) ?? false;
+          const selectedNodeId = selection.personId
+            ? `person:${selection.personId}`
+            : `account:${selection.accountId}`;
+          return debug?.labels.some((label) => label.nodeId === selectedNodeId) ?? false;
         }, { timeout: 10_000 })
         .toBe(true);
     }

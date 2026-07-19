@@ -53,6 +53,7 @@ export interface FriendsGalaxyRendererMetrics {
   identityDetailOpacity?: number;
   identityDetailTransitionActive?: boolean;
   labelAtlasBuildCount?: number;
+  labelLayoutCount?: number;
   avatarAtlasBuildCount?: number;
   contextualEdgeCount: number;
   bufferUploadCount: number;

@@ -1,6 +1,6 @@
 # Friends Galaxy Architecture
 
-Status: Approved for implementation on July 12, 2026.
+Status: Product cutover implementation and integrated acceptance are complete as of July 19, 2026. Dev release publication is pending.
 
 ## Historical Summary
 
@@ -175,7 +175,7 @@ As of July 12, 2026, other tasks are running on the development machine. The own
 
 ## Finalization Audit
 
-The detached laboratory branch now has 215 deterministic tests, a production build, and functional browser probes that prove the renderer foundation described below. This evidence does not prove product integration or device acceptance. The feature branch remains detached while the global behavioral slot is closed, so the audit deliberately distinguishes laboratory proof from shipping proof.
+The shared renderer foundation now has 242 deterministic tests and the product route has replaced its former direct `IdentityGalaxyEngine` ownership, whole-atlas React orchestration, and `runAtlasOnMainThread` fallback. The retained WebGL2 compatibility backend may still wrap that low-level renderer behind the shared backend contract. The same source, settled-presentation, sparse-activity, direct-interaction, navigation, input, renderer-host, and recovery modules are now consumed by both the laboratory and the shipping Friends surface. The audit table records the evidence available before cutover and the integrated acceptance completed before release.
 
 | Area | Detached evidence | Remaining production requirement |
 |---|---|---|
@@ -197,17 +197,17 @@ The detached laboratory branch now has 215 deterministic tests, a production bui
 
 ### Finalization Slices
 
-1. Complete in the detached laboratory: backend-neutral diagnostics, retained GPU resources, sparse interaction writes, worker-only compilation, raw WebGPU selection, WebGL2 recovery, batched labels, bounded avatars, native touch, trackpad navigation, inertia, theme parity, camera safety, resident presentation suspension, and shared UI modules for separate render and interaction rectangles plus the engine-to-overlay details and context-action contract.
-2. Next after custody release: reconcile current `origin/dev`, move the selected renderer and proven primitives into shared product modules, and make the laboratory consume those modules instead of retaining a fork.
-3. Replace the large `FriendGraph` internals with the reduced lifecycle shell while preserving the existing ref, callback, context-menu, pin, link, promotion, Details, and identity-mode contracts.
-4. Move incremental summaries into the shared document-worker path, connect the completed source, settled-presentation, sparse-activity, and direct interaction lanes, delete the main-thread compiler fallback, and add the realistic 250,000-item summary-equivalent regression.
-5. Run the complete maintained Friends acceptance matrix, accessibility workflows, backend recovery, and installed diagnostic export on the integrated feature branch.
-6. Record repeated installed Freed Desktop and physical iPhone consistency ranges only when the machine is suitable for meaningful comparison.
-7. Cut over only after final product-route visual acceptance. Merge through `dev`, promote through the governed production release lane, and verify the exact installed production build.
+1. Complete: backend-neutral diagnostics, retained GPU resources, sparse interaction writes, worker-only compilation, Raw WebGPU selection, WebGL2 recovery, batched labels, bounded avatars, native touch, trackpad navigation, inertia, theme parity, camera safety, and resident presentation suspension.
+2. Complete: reconcile current `origin/dev`, move the selected renderer and proven primitives into shared product modules, and make the laboratory consume the same modules.
+3. Complete: replace the large `FriendGraph` internals with the reduced lifecycle shell while preserving its ref, callbacks, context menu, pin, link, promotion, Details, identity-mode, theme, and diagnostics contracts.
+4. Complete for the graph surface: connect source, settled-presentation, sparse-activity, and direct-interaction lanes, then delete the main-thread compiler fallback. Document-worker ownership of the upstream summary index remains separate Phase 8 work.
+5. Complete: run the maintained Friends acceptance matrix, accessibility workflows, backend recovery, PWA touch paths, active-theme visuals, production Desktop build, and diagnostic export on the integrated feature branch.
+6. Deferred by evidence policy: record repeated installed Freed Desktop and physical iPhone consistency ranges only when the machine is suitable for meaningful comparison.
+7. Pending release: merge through `dev`, publish the governed dev build, and verify the exact released artifact.
 
 ### Next structural target
 
-When global behavioral custody is released, integrate the selected raw WebGPU backend behind the imperative engine contract and move the proven incremental activity index into the shared document-worker path. Connect the proven bounded avatar admission queue to approved product avatar candidates and the shared settled-detail lifecycle. The current WebGL2 engine and batched glyph layer remain the compatibility backend and functional integration surface until the new runtime passes repeated device performance baselines and complete workflow acceptance.
+Finish integrated product acceptance, adapt obsolete renderer-internal tests to the retained GPU contract, and publish the exact reviewed dev build. After this graph release, move the proven incremental activity index into the shared document-worker path so overview and detail data also stop depending on Friends-view item scans. Raw WebGPU remains preferred, WebGL2 remains the deterministic compatibility backend, and native Metal remains unnecessary unless later device evidence changes that decision.
 
 ### Product cutover boundary
 
@@ -414,7 +414,7 @@ Product interaction is deliberately not a fourth worker protocol. Pointer hover,
 
 The worker-packed semantic and decorative streams are theme-neutral. Each instance carries position, size, brightness, palette role, interaction mix, and alpha scale. Raw WebGPU uploads those streams once. A shared structural palette contract owns normalized color conversion, light-surface classification, role alpha, the fixed uniform offset, and all eleven active-theme colors. Laboratory themes extend that contract directly, and every backend imports the same parser. Raw WebGPU theme changes therefore write only the bounded uniform block, with no laboratory adapter, resident-star loop, or reupload. Live Scriptorium-to-Neon verification kept the resident star upload counter at two while visibly changing the complete field, preserving 30,000 semantic stars, selection, and contextual links.
 
-This exposed three remaining production cutover hazards. `FriendGraph.tsx` currently calls `runAtlasOnMainThread` when its atlas worker is unavailable or exceeds its timeout. That compatibility behavior can turn worker pressure into a frozen Friends interface. Its diagnostic frame history shifts a JavaScript array after every retained sample, and its settle path recreates browser timeouts during movement. Product integration must replace the compiler fallback with a bounded retry, compatibility state, or retained last-good scene, and use the proven fixed sample ring plus deadline scheduler. It must never compile the full semantic model, maintain diagnostics through per-frame array shifts, or churn settle timers on the React thread.
+The product cutover removes those three hazards. `FriendGraph.tsx` no longer imports or calls `runAtlasOnMainThread`, no longer owns the old atlas worker or `IdentityGalaxyEngine`, and no longer shifts frame-history arrays or recreates browser settle timers during movement. The product worker fails closed while the renderer retains its last-good scene, fixed sample rings own frame evidence, and the scalar settle scheduler drives bounded post-motion presentation refresh.
 
 ## Incremental Activity Index Checkpoint
 

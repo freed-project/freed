@@ -169,7 +169,7 @@ describe("Friends Galaxy inertial zoom", () => {
     const inertia = new FriendsGalaxyInertialZoom();
     inertia.begin(0);
     inertia.sample(Number.MAX_VALUE, 1);
-    expect(inertia.currentLogScaleVelocity).toBeCloseTo(0.014, 8);
+    expect(inertia.currentLogScaleVelocity).toBeCloseTo(0.0032, 8);
     expect(inertia.start(2, 20, false)).toBe(true);
     expect(inertia.step(200)).toEqual({
       scaleRatio: 1,

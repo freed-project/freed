@@ -259,12 +259,14 @@ describe("Friends Galaxy product engine", () => {
       "settled:middle:0.52",
     ]));
 
+    engine.setCameraMotion(false);
     engine.requestSettledPresentation(presentationRequest());
     worker.emit(response(service, worker, 1));
     expect(presentationRevisions).toEqual([1]);
     expect(backends[0]?.presentationAtlas?.nodes.slice(0, 2).map((node) => node.id))
       .toEqual(["account:product-account-2", "person:product-person-2"]);
-    expect(engine.pickNode(4, 9)).toBe("pick:4:9");
+    expect(engine.focusNode("account:product-account-47", 1.2)).toBe(true);
+    expect(engine.pickNode(195, 422)).toBe("account:product-account-47");
     engine.render({ x: 0, y: 0, scale: 0.52 }, 120);
     expect(backends[0]?.events).toContain("render:0.52:120");
   });
@@ -376,6 +378,35 @@ describe("Friends Galaxy product engine", () => {
       "interaction:person:product-person-2:account:product-account-2",
     );
     expect(worker.messages).toHaveLength(1);
+  });
+
+  it("drops stale settled presentation that arrives while the camera is moving", async () => {
+    const worker = new ControlledProductWorker();
+    const service = new FriendsGalaxyProductWorkerService();
+    const presentationRevisions: number[] = [];
+    const backend = new ProductRendererBackend("raw-webgpu");
+    const engine = new FriendsGalaxyProductEngine({
+      palette: FRIENDS_GALAXY_THEME_PALETTES.scriptorium,
+      createWorker: () => worker,
+      createSurface: () => ({}) as HTMLCanvasElement,
+      mountSurface: () => undefined,
+      showSurface: () => undefined,
+      removeSurface: () => undefined,
+      createBackend: async () => backend,
+      onPresentationReady: (result) =>
+        presentationRevisions.push(result.presentationRevision),
+    });
+
+    engine.resize(390, 844, 1);
+    engine.requestSource(sourceRequest());
+    worker.emit(response(service, worker, 0));
+    await flushActivation();
+    engine.requestSettledPresentation(presentationRequest());
+    engine.setCameraMotion(true);
+    worker.emit(response(service, worker, 1));
+
+    expect(presentationRevisions).toEqual([]);
+    expect(backend.presentationAtlas).toBeNull();
   });
 
   it("owns clip-safe navigation and emits settled presentation only on demand", async () => {

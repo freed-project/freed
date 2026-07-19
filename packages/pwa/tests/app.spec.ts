@@ -1300,7 +1300,7 @@ test.describe("FREED PWA", () => {
       await page.getByTestId("reader-author-friends-link").click();
       await expect.poll(() => new URL(page.url()).pathname).toBe("/friends");
       await expect(page.getByText("Freed hit a fatal error")).toHaveCount(0);
-      await expect(page.getByLabel("Friends identity graph")).toBeVisible();
+      await expect(page.getByLabel("Friends galaxy")).toBeVisible();
 
       await page.goBack();
       await expect.poll(() => new URL(page.url()).search).toBe("?item=facebook%3Areader-author%3A1");
@@ -1545,13 +1545,24 @@ test.describe("FREED PWA", () => {
 
   test("friend graph handles browser-generated two-finger pinch without page zoom", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
+    const browserSession = await page.context().newCDPSession(page);
+    await browserSession.send("Emulation.setTouchEmulationEnabled", {
+      enabled: true,
+      maxTouchPoints: 2,
+    });
     await page.goto("/");
     await acceptLegalGate(page);
     await seedFriendsWorkspace(page);
 
     const canvas = page.getByTestId("friend-graph-canvas");
     await expect(canvas).toBeVisible();
-
+    const viewport = page.getByTestId("friend-graph-viewport");
+    await expect(viewport).toHaveAttribute("data-graph-quality-mode", "settled", {
+      timeout: 10_000,
+    });
+    await expect.poll(() => viewport.evaluate((element) => (
+      Number((element as HTMLElement).dataset.graphNodeCount ?? "0")
+    )), { timeout: 10_000 }).toBeGreaterThan(0);
     const readGraphScale = () => page.evaluate(() => (
       window as typeof window & {
         __FREED_GRAPH_PERF__?: { transformScale?: number };
@@ -1566,11 +1577,6 @@ test.describe("FREED PWA", () => {
     expect(box).not.toBeNull();
     const centerX = Math.round(box!.x + box!.width / 2);
     const centerY = Math.round(box!.y + box!.height / 2);
-    const browserSession = await page.context().newCDPSession(page);
-    await browserSession.send("Emulation.setTouchEmulationEnabled", {
-      enabled: true,
-      maxTouchPoints: 2,
-    });
     const touchPoints = (distance: number) => [
       {
         x: centerX - distance,
@@ -1632,24 +1638,7 @@ test.describe("FREED PWA", () => {
     const secondPinchScale = await readGraphScale();
 
     const fitAllButton = page.getByRole("button", { name: "Fit all" });
-    const fitAllBox = await fitAllButton.boundingBox();
-    expect(fitAllBox).not.toBeNull();
-    const fitAllTouch = [{
-      x: Math.round(fitAllBox!.x + fitAllBox!.width / 2),
-      y: Math.round(fitAllBox!.y + fitAllBox!.height / 2),
-      radiusX: 8,
-      radiusY: 8,
-      force: 1,
-      id: 0,
-    }];
-    await browserSession.send("Input.dispatchTouchEvent", {
-      type: "touchStart",
-      touchPoints: fitAllTouch,
-    });
-    await browserSession.send("Input.dispatchTouchEvent", {
-      type: "touchEnd",
-      touchPoints: [],
-    });
+    await fitAllButton.click();
     await expect.poll(readGraphScale).toBeLessThan(secondPinchScale);
 
     const pageZoomAfter = await page.evaluate(() => window.visualViewport?.scale ?? 1);

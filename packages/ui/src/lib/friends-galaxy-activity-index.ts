@@ -1,3 +1,8 @@
+import type {
+  IdentityGraphActivitySummaries,
+  IdentityGraphActivitySummary,
+} from "./identity-graph-activity-summary.js";
+
 export type FriendsGalaxyActivityNamespace = "social" | "rss";
 
 export interface FriendsGalaxyActivitySourceKey {
@@ -48,6 +53,60 @@ export interface FriendsGalaxyActivityPatchResult {
 export type FriendsGalaxyActivityRebuildResolver = (
   invalidatedSources: readonly FriendsGalaxyActivitySourceKey[],
 ) => Iterable<FriendsGalaxyActivityContribution>;
+
+function identitySummaryEqual(
+  left: IdentityGraphActivitySummary | undefined,
+  right: IdentityGraphActivitySummary | undefined,
+): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return left.itemCount === right.itemCount &&
+    left.latestActivityAt === right.latestActivityAt &&
+    left.hasLocation === right.hasLocation &&
+    left.avatarUrl === right.avatarUrl &&
+    left.sampleItemIds.length === right.sampleItemIds.length &&
+    left.sampleItemIds.every((itemId, index) => itemId === right.sampleItemIds[index]);
+}
+
+function identitySummaryPatch(
+  namespace: FriendsGalaxyActivityNamespace,
+  key: string,
+  summary: IdentityGraphActivitySummary | undefined,
+): FriendsGalaxyActivitySummaryPatch {
+  return {
+    namespace,
+    key,
+    summary: summary
+      ? {
+          itemCount: summary.itemCount,
+          latestActivityAt: summary.latestActivityAt,
+          sampleItemIds: [...summary.sampleItemIds],
+          hasLocation: summary.hasLocation,
+          avatarUrlCandidates: summary.avatarUrl ? [summary.avatarUrl] : [],
+        }
+      : null,
+  };
+}
+
+export function diffFriendsGalaxyIdentityActivitySummaries(
+  previous: IdentityGraphActivitySummaries,
+  next: IdentityGraphActivitySummaries,
+): FriendsGalaxyActivitySummaryPatch[] {
+  const patches: FriendsGalaxyActivitySummaryPatch[] = [];
+  for (const namespace of ["rss", "social"] as const) {
+    const previousSummaries = previous[namespace];
+    const nextSummaries = next[namespace];
+    const keys = new Set([
+      ...Object.keys(previousSummaries),
+      ...Object.keys(nextSummaries),
+    ]);
+    for (const key of [...keys].sort((left, right) => left.localeCompare(right))) {
+      if (identitySummaryEqual(previousSummaries[key], nextSummaries[key])) continue;
+      patches.push(identitySummaryPatch(namespace, key, nextSummaries[key]));
+    }
+  }
+  return patches;
+}
 
 interface RankedCandidate {
   globalId: string;

@@ -10,7 +10,7 @@ const ZOOM_MAX_FRAME_GAP_MS = 120;
 const ZOOM_DECAY_TIME_CONSTANT_MS = 250;
 const ZOOM_MIN_START_SPEED = 0.0003;
 const ZOOM_STOP_SPEED = 0.00007;
-const ZOOM_MAX_SPEED = 0.014;
+const ZOOM_MAX_SPEED = 0.0032;
 
 export interface FriendsGalaxyInertialPanStep {
   deltaX: number;

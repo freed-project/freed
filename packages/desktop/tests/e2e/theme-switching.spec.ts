@@ -513,5 +513,8 @@ test("friends graph controls align to the graph lane between sidebars", async ({
     expect(background).not.toBe("transparent");
     expect(background).not.toBe("rgba(0, 0, 0, 0)");
   }
-  await expect(page.getByLabel("Starfield variation")).toHaveValue("nebula");
+  await expect(page.getByTestId("friend-graph-viewport")).toHaveAttribute(
+    "data-graph-renderer",
+    /^(raw-webgpu|current-webgl2)$/,
+  );
 });

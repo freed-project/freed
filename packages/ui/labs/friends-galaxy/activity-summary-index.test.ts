@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  diffFriendsGalaxyIdentityActivitySummaries,
   FriendsGalaxyActivitySummaryIndex,
   type FriendsGalaxyActivityContribution,
 } from "../../src/lib/friends-galaxy-activity-index.js";
@@ -21,6 +22,70 @@ function contribution(
 }
 
 describe("Friends Galaxy incremental activity summary index", () => {
+  it("diffs legacy graph summaries into deterministic sparse product patches", () => {
+    const previous = {
+      social: {
+        "x:author-1": {
+          itemCount: 1,
+          latestActivityAt: 10,
+          sampleItemIds: ["item-1"],
+          hasLocation: false,
+          avatarUrl: null,
+        },
+      },
+      rss: {},
+      buildMs: 4,
+      itemCount: 1,
+    };
+    const next = {
+      social: {
+        "x:author-1": {
+          itemCount: 2,
+          latestActivityAt: 20,
+          sampleItemIds: ["item-2", "item-1"],
+          hasLocation: true,
+          avatarUrl: "https://images.test/author.png",
+        },
+      },
+      rss: {
+        "https://feed.test/rss.xml": {
+          itemCount: 1,
+          latestActivityAt: 15,
+          sampleItemIds: ["rss-1"],
+          hasLocation: false,
+          avatarUrl: null,
+        },
+      },
+      buildMs: 5,
+      itemCount: 3,
+    };
+
+    expect(diffFriendsGalaxyIdentityActivitySummaries(previous, next)).toEqual([
+      {
+        namespace: "rss",
+        key: "https://feed.test/rss.xml",
+        summary: {
+          itemCount: 1,
+          latestActivityAt: 15,
+          sampleItemIds: ["rss-1"],
+          hasLocation: false,
+          avatarUrlCandidates: [],
+        },
+      },
+      {
+        namespace: "social",
+        key: "x:author-1",
+        summary: {
+          itemCount: 2,
+          latestActivityAt: 20,
+          sampleItemIds: ["item-2", "item-1"],
+          hasLocation: true,
+          avatarUrlCandidates: ["https://images.test/author.png"],
+        },
+      },
+    ]);
+  });
+
   it("builds deterministic samples and avatar candidates from unordered input", () => {
     const index = new FriendsGalaxyActivitySummaryIndex([
       contribution("item-c", 30, { avatarUrl: "https://images.test/c.png" }),
