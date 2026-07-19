@@ -365,8 +365,10 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
         .toBe("interactive");
       const duringWheelBaseline = await readGraphPerf(page);
       expect(duringWheelBaseline).not.toBeNull();
-      for (let index = 1; index < 18; index += 1) {
-        await viewport.evaluate((element) => {
+      // Driver round trips can exceed the gesture release timer on hosted CI.
+      // Emit the continuous trackpad stream at browser animation cadence.
+      await viewport.evaluate(async (element) => {
+        for (let index = 1; index < 18; index += 1) {
           const rect = element.getBoundingClientRect();
           element.dispatchEvent(new WheelEvent("wheel", {
             bubbles: true,
@@ -376,9 +378,9 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
             clientY: rect.top + rect.height / 2,
             deltaY: -120,
           }));
-        });
-        await page.waitForTimeout(16);
-      }
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        }
+      });
       await page.evaluate(() => performance.mark("friends-wheel-end"));
 
       await expect
