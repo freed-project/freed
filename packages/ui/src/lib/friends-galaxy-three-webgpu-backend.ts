@@ -489,7 +489,10 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.viewDetail = detail;
     this.rebuildLabels(this.compactLabels ?? this.width < 720);
     if (detail === "close") {
-      this.rebuildAvatars(this.compactLabels ?? this.width < 720, "scene");
+      this.rebuildAvatars(
+        this.compactLabels ?? this.width < 720,
+        this.fixture?.presentationCandidateSource ?? "scene",
+      );
     }
   }
 
@@ -507,7 +510,10 @@ export class ThreeWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.updateViewProjection(this.settledTransform);
     this.rebuildLabels(this.compactLabels ?? this.width < 720);
     if (detail === "close") {
-      this.rebuildAvatars(this.compactLabels ?? this.width < 720, "scene");
+      this.rebuildAvatars(
+        this.compactLabels ?? this.width < 720,
+        this.fixture?.presentationCandidateSource ?? "scene",
+      );
     }
   }
 

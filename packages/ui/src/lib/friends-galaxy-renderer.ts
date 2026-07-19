@@ -13,6 +13,7 @@ import type { FriendsGalaxyPackedStarInstances } from "./friends-galaxy-star-ins
 
 export type FriendsGalaxyRendererId = "current-webgl2" | "raw-webgpu" | "three-webgpu";
 export type FriendsGalaxyViewDetail = "overview" | "middle" | "close";
+export type FriendsGalaxyPresentationCandidateSource = "scene" | "atlas";
 
 export function friendsGalaxyViewDetailForScale(
   scale: number,
@@ -26,6 +27,7 @@ export function friendsGalaxyViewDetailForScale(
 export interface FriendsGalaxyRendererScene {
   atlas: IdentityGraphAtlas;
   scene: IdentityGalaxyScene;
+  presentationCandidateSource?: FriendsGalaxyPresentationCandidateSource;
   interactionIndex: FriendsGalaxySceneInteractionIndex;
   packedStarInstances: FriendsGalaxyPackedStarInstances;
   backgroundPositions: Float32Array;

@@ -974,7 +974,10 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.viewDetail = detail;
     this.rebuildLabels(this.compactLabels ?? this.width < 720);
     if (detail === "close") {
-      this.rebuildAvatars(this.compactLabels ?? this.width < 720, "scene");
+      this.rebuildAvatars(
+        this.compactLabels ?? this.width < 720,
+        this.fixture?.presentationCandidateSource ?? "scene",
+      );
     }
   }
 
@@ -992,7 +995,10 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.updateSettledProjection();
     this.rebuildLabels(this.compactLabels ?? this.width < 720);
     if (detail === "close") {
-      this.rebuildAvatars(this.compactLabels ?? this.width < 720, "scene");
+      this.rebuildAvatars(
+        this.compactLabels ?? this.width < 720,
+        this.fixture?.presentationCandidateSource ?? "scene",
+      );
     }
   }
 

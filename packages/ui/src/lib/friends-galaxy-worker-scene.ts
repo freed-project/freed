@@ -141,6 +141,15 @@ export function validateFriendsGalaxyWorkerScene(
     );
   }
   const rendererScene = candidate as FriendsGalaxyRendererScene;
+  if (
+    rendererScene.presentationCandidateSource !== undefined &&
+    rendererScene.presentationCandidateSource !== "scene" &&
+    rendererScene.presentationCandidateSource !== "atlas"
+  ) {
+    throw new Error(
+      "Friends Galaxy worker returned an invalid presentation candidate source.",
+    );
+  }
   if (!rendererScene.scene || typeof rendererScene.scene !== "object") {
     throw new Error(
       "Friends Galaxy worker returned an invalid semantic scene.",

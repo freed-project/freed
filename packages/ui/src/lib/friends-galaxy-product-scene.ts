@@ -108,6 +108,7 @@ export function compileFriendsGalaxyProductRendererScene({
       linkedAccountCount: product.linkedAccountCount,
       backgroundStarCount,
       backgroundSeed,
+      presentationCandidateSource: "atlas",
     }),
     metadataNodeCap,
     product.priorityNodeIds,

@@ -222,6 +222,8 @@ The same camera contract now derives a prominence-safe maximum scale from viewpo
 
 One shared renderer host now owns the active scene, theme palette, dimensions, density, animation preference, camera-motion state, provider-field style, selection, hover, settled detail, camera transform, bounded viewport presentation, and incremental activity patches. Every preferred-backend activation and compatibility recovery receives that complete state before its canvas becomes visible. A settled presentation update replaces only bounded rich nodes, labels, and provider regions, then rebuilds the label and avatar presentation against the retained semantic scene. It does not recreate semantic stars, the sparse interaction index, or the camera. The detached shell routes rendering, picking, palette changes, interaction, simulated loss, and disposal through the host while keeping asynchronous avatar image admission outside it. Product cutover can therefore replace a failed WebGPU canvas without presenting a default theme, stale selection, wrong density, or partially initialized detail tier.
 
+The detached product worker boundary now has separate source and settled-presentation lanes. A source revision builds the real identity atlas at one deterministic virtual layout size, compiles every person and channel into the resident GPU scene, validates the exact twenty-one-buffer receipt, and transfers that envelope once. Later settled requests reuse the cached model and return only capped viewport nodes, real labels, and provider regions with no semantic buffer transfer. Source and presentation revisions are independently checked, missing or stale source revisions fail inside the worker, and error text is bounded. Product renderer scenes explicitly use the admitted atlas as their label and avatar candidate source, so a settle never rescans all resident people on the main thread. The synthetic laboratory can still use its complete resident fixture for visual stress work.
+
 Frame and submission diagnostics now use fixed 240-value typed rings. Active camera motion suppresses diagnostics DOM rebuilding, then refreshes the panel after settle from one bounded snapshot. The detached gesture path no longer shifts diagnostic arrays or performs periodic panel layout while the camera is moving.
 
 Shared UI source now owns one versioned, identity-free diagnostic snapshot and its frame-statistics helper. It accepts structural worker source counts, shared renderer metrics, bounded camera and runtime state, and passive long-task evidence without importing fixture or theme types. Every required text field and optional renderer description is length-bounded, and non-finite optional metrics normalize to null. The detached laboratory exports this schema from an opaque standard control. It includes worker source scale, renderer and adapter state, fallback and recovery state, resident and motion counts, presentation counts, identity-detail opacity and transition state, sparse activity and pick evidence, camera safety, input mode, render density, upload counters, fixed-ring frame summaries, and passive long-task evidence. It excludes names, IDs, URLs, sample items, avatars, and feed payloads. Clipboard failure is contained and leaves the control usable. Product cutover must feed this same shared schema through the installed renderer heartbeat.
@@ -318,6 +320,9 @@ The approved product cutover now has an exact ownership boundary. `FriendsView` 
 - `packages/ui/src/lib/identity-galaxy-scene.ts` - renderer-neutral typed scene compiler for semantic 3D node and edge buffers
 - `packages/ui/src/lib/identity-galaxy-camera.ts` - locked perspective camera and plane-to-viewport projection math
 - `packages/ui/src/lib/identity-galaxy-worker-protocol.ts` - typed worker request, response, and transferable buffer contract
+- `packages/ui/src/lib/friends-galaxy-product-worker-protocol.ts` - versioned real-source and settled-presentation request, response, transfer, and admission contract
+- `packages/ui/src/lib/friends-galaxy-product-worker-service.ts` - deterministic real atlas model cache and worker lane implementation
+- `packages/ui/src/lib/friends-galaxy-product.worker.ts` - product worker entrypoint with one-time resident buffer transfer
 - `packages/ui/src/lib/identity-galaxy-engine.ts` - imperative rendering engine and current Three.js plus canvas compatibility backends
 - `packages/ui/src/lib/identity-galaxy-provider-field.ts` - deterministic provider spiral geometry shared by atlas placement and rendering
 - `packages/ui/src/components/friends/index.ts` — barrel export
@@ -574,6 +579,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.146 | Compile real product atlas models into the resident renderer scene with provider aggregates excluded, selected metadata retained, and structural counts derived in the worker boundary | High | Done |
 | 8.147 | Replace laboratory-only theme names with one shared Scriptorium, Neon, Midas, and Ember renderer palette map selected directly by Freed theme id | High | Done |
 | 8.148 | Add a bounded settled-presentation atlas lane that refreshes viewport labels and selected metadata without replacing resident semantic stars or camera state | High | Done |
+| 8.149 | Split the real product worker into deterministic source and settled-presentation lanes with one resident transfer, stale-revision containment, and atlas-only label plus avatar candidate resolution | High | Done |
 
 ---
 
@@ -633,6 +639,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] One shared product-scene compiler derives people, channel, and linked-channel counts from the real atlas model, excludes provider aggregates from semantic GPU residency, and preserves selected identity metadata inside the bounded worker envelope
 - [x] The detached renderers and future product shell select the same Scriptorium, Neon, Midas, and Ember renderer palettes directly from the active Freed theme id
 - [x] Settled viewport metadata is capped, structurally admitted against stable resident node ids, and replayed across backend recovery without replacing semantic or interaction buffers
+- [x] The real product worker compiles a stable source revision once, returns later settled metadata without scene transfers, rejects stale revisions, and keeps product label plus avatar selection inside the bounded worker atlas
 - [x] Scriptorium graph colors stay legible instead of washing node fills and labels into the stage
 - [x] Graph model construction uses single-pass activity indexing instead of rescanning every captured item per node
 - [x] Worker layout uses local bucketed overlap resolution instead of naïve all-pairs nudging

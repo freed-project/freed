@@ -18,6 +18,7 @@ import {
   type FriendsGalaxyViewportProjection,
 } from "./friends-galaxy-projection.js";
 import type {
+  FriendsGalaxyPresentationCandidateSource,
   FriendsGalaxyRendererScene,
   FriendsGalaxyViewDetail,
 } from "./friends-galaxy-renderer.js";
@@ -34,7 +35,15 @@ export type FriendsGalaxyNodePresentationResolver = (
   nodeIndex: number,
 ) => FriendsGalaxyNodePresentation;
 
-export type FriendsGalaxyAvatarCandidateSource = "scene" | "atlas";
+export type FriendsGalaxyAvatarCandidateSource =
+  FriendsGalaxyPresentationCandidateSource;
+
+function presentationCandidateSource(
+  scene: FriendsGalaxyRendererScene,
+  requested?: FriendsGalaxyPresentationCandidateSource,
+): FriendsGalaxyPresentationCandidateSource {
+  return requested ?? scene.presentationCandidateSource ?? "scene";
+}
 
 export function friendsGalaxyAvatarAtlasRosterKey(
   atlas: FriendsGalaxyAvatarAtlas,
@@ -66,7 +75,7 @@ export function selectFriendsGalaxyAvatars(
   compact: boolean,
   detail: FriendsGalaxyViewDetail,
   projection?: FriendsGalaxyViewportProjection,
-  candidateSource: FriendsGalaxyAvatarCandidateSource = "scene",
+  candidateSource?: FriendsGalaxyAvatarCandidateSource,
 ): readonly FriendsGalaxyAvatarSeed[] {
   if (detail !== "close") return [];
   const selectedPersonId = friendsGalaxySelectedPersonNodeId(scene, selectedNodeId);
@@ -120,7 +129,7 @@ export function selectFriendsGalaxyAvatars(
     ) return;
     insertCandidate(nodeIndex, scene.scene.prominence[nodeIndex]!);
   };
-  if (candidateSource === "atlas") {
+  if (presentationCandidateSource(scene, candidateSource) === "atlas") {
     for (const node of scene.atlas.nodes) {
       const nodeIndex = findFriendsGalaxySceneNodeIndex(
         scene.scene,
@@ -196,6 +205,7 @@ export function selectFriendsGalaxyLabels(
   detail: FriendsGalaxyViewDetail,
   selectedNodeId: string | null = null,
   projection?: FriendsGalaxyViewportProjection,
+  candidateSource?: FriendsGalaxyPresentationCandidateSource,
 ): readonly FriendsGalaxyLabelSeed[] {
   const cap = detail === "overview"
     ? compact ? 8 : 13
@@ -264,8 +274,8 @@ export function selectFriendsGalaxyLabels(
     const candidateCapacity = Math.max(1, (cap - providerSeeds.length) * 4);
     const ranked: Array<{ nodeIndex: number; rank: number }> = [];
     const screen = new Float32Array(2);
-    for (let nodeIndex = 0; nodeIndex < scene.scene.nodeIds.length; nodeIndex += 1) {
-      if (!scene.scene.personIds[nodeIndex]) continue;
+    const considerNode = (nodeIndex: number): void => {
+      if (!scene.scene.personIds[nodeIndex]) return;
       const offset = nodeIndex * 3;
       if (!projectFriendsGalaxyWorldPoint(
         screen,
@@ -274,14 +284,14 @@ export function selectFriendsGalaxyLabels(
         scene.scene.positions[offset + 1]!,
         scene.scene.positions[offset + 2]!,
         160,
-      )) continue;
+      )) return;
       const rank = scene.scene.prominence[nodeIndex]! +
         (scene.scene.nodeIds[nodeIndex] === selectedPersonId ? 10 : 0);
       const last = ranked[ranked.length - 1];
       if (
         ranked.length >= candidateCapacity && last &&
         (rank < last.rank || (rank === last.rank && nodeIndex > last.nodeIndex))
-      ) continue;
+      ) return;
       let insertionIndex = ranked.length;
       while (insertionIndex > 0) {
         const previous = ranked[insertionIndex - 1]!;
@@ -293,6 +303,20 @@ export function selectFriendsGalaxyLabels(
       }
       ranked.splice(insertionIndex, 0, { nodeIndex, rank });
       if (ranked.length > candidateCapacity) ranked.pop();
+    };
+    if (presentationCandidateSource(scene, candidateSource) === "atlas") {
+      for (const node of scene.atlas.nodes) {
+        const nodeIndex = findFriendsGalaxySceneNodeIndex(
+          scene.scene,
+          scene.interactionIndex,
+          node.id,
+        );
+        if (nodeIndex !== null) considerNode(nodeIndex);
+      }
+    } else {
+      for (let nodeIndex = 0; nodeIndex < scene.scene.nodeIds.length; nodeIndex += 1) {
+        considerNode(nodeIndex);
+      }
     }
     for (const candidate of ranked) seeds.push(seedForPersonNode(candidate.nodeIndex));
   }
@@ -381,6 +405,7 @@ export function createFriendsGalaxyRendererLabelAtlas(
     compact,
     detail,
     projection,
+    scene.presentationCandidateSource,
   );
   const seeds = placeFriendsGalaxyLabelsAroundAvatars(
     selectFriendsGalaxyLabels(
@@ -390,6 +415,7 @@ export function createFriendsGalaxyRendererLabelAtlas(
       detail,
       selectedNodeId,
       projection,
+      scene.presentationCandidateSource,
     ),
     avatars,
   );

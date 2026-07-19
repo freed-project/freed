@@ -1,7 +1,10 @@
 import type { IdentityGalaxyScene } from "./identity-galaxy-scene.js";
 import type { IdentityGraphAtlas } from "./identity-graph-atlas.js";
 import { createFriendsGalaxyBackgroundField } from "./friends-galaxy-background.js";
-import type { FriendsGalaxyRendererScene } from "./friends-galaxy-renderer.js";
+import type {
+  FriendsGalaxyPresentationCandidateSource,
+  FriendsGalaxyRendererScene,
+} from "./friends-galaxy-renderer.js";
 import { createFriendsGalaxySceneInteractionIndex } from "./friends-galaxy-scene-interaction-index.js";
 import { createFriendsGalaxyPackedStarInstances } from "./friends-galaxy-star-instances.js";
 
@@ -13,6 +16,7 @@ export interface CreateFriendsGalaxyRendererSceneInput {
   linkedAccountCount: number;
   backgroundStarCount: number;
   backgroundSeed?: string;
+  presentationCandidateSource?: FriendsGalaxyPresentationCandidateSource;
 }
 
 function safeSourceCount(value: number): number {
@@ -27,6 +31,7 @@ export function createFriendsGalaxyRendererScene({
   linkedAccountCount,
   backgroundStarCount,
   backgroundSeed,
+  presentationCandidateSource = "scene",
 }: CreateFriendsGalaxyRendererSceneInput): FriendsGalaxyRendererScene {
   const safePersonCount = safeSourceCount(personCount);
   const safeAccountCount = safeSourceCount(accountCount);
@@ -47,6 +52,7 @@ export function createFriendsGalaxyRendererScene({
   return {
     atlas,
     scene,
+    presentationCandidateSource,
     interactionIndex: createFriendsGalaxySceneInteractionIndex(scene),
     packedStarInstances: createFriendsGalaxyPackedStarInstances({
       scene,
@@ -69,11 +75,31 @@ export function compactFriendsGalaxyRendererSceneMetadata<
   cap: number,
   priorityNodeIds: readonly string[] = [],
 ): Scene {
+  return {
+    ...scene,
+    atlas: compactFriendsGalaxyPresentationMetadata(
+      scene.atlas,
+      scene.scene.nodeIds.length,
+      cap,
+      priorityNodeIds,
+    ),
+  };
+}
+
+export function compactFriendsGalaxyPresentationMetadata(
+  atlas: IdentityGraphAtlas,
+  semanticNodeCount: number,
+  cap: number,
+  priorityNodeIds: readonly string[] = [],
+): IdentityGraphAtlas {
   const safeCap = Number.isFinite(cap) ? Math.max(0, Math.floor(cap)) : 0;
-  const requiredNodeIds = new Set(scene.atlas.labels.map((label) => label.nodeId));
+  const safeSemanticNodeCount = Number.isFinite(semanticNodeCount)
+    ? Math.max(0, Math.floor(semanticNodeCount))
+    : 0;
+  const requiredNodeIds = new Set(atlas.labels.map((label) => label.nodeId));
   const nodes = [];
   const acceptedNodeIds = new Set<string>();
-  const nodeById = new Map(scene.atlas.nodes.map((node) => [node.id, node]));
+  const nodeById = new Map(atlas.nodes.map((node) => [node.id, node]));
 
   for (const nodeId of priorityNodeIds) {
     if (nodes.length >= safeCap || acceptedNodeIds.has(nodeId)) continue;
@@ -83,13 +109,13 @@ export function compactFriendsGalaxyRendererSceneMetadata<
     acceptedNodeIds.add(nodeId);
   }
 
-  for (const node of scene.atlas.nodes) {
+  for (const node of atlas.nodes) {
     if (nodes.length >= safeCap) break;
     if (!requiredNodeIds.has(node.id) || acceptedNodeIds.has(node.id)) continue;
     nodes.push(node);
     acceptedNodeIds.add(node.id);
   }
-  for (const node of scene.atlas.nodes) {
+  for (const node of atlas.nodes) {
     if (nodes.length >= safeCap) break;
     if (!node.personId || acceptedNodeIds.has(node.id)) continue;
     nodes.push(node);
@@ -97,17 +123,14 @@ export function compactFriendsGalaxyRendererSceneMetadata<
   }
 
   return {
-    ...scene,
-    atlas: {
-      ...scene.atlas,
-      nodes,
-      edges: [],
-      hitBuckets: [],
-      metrics: {
-        ...scene.atlas.metrics,
-        visibleNodeCount: nodes.length,
-        capped: scene.scene.nodeIds.length > nodes.length,
-      },
+    ...atlas,
+    nodes,
+    edges: [],
+    hitBuckets: [],
+    metrics: {
+      ...atlas.metrics,
+      visibleNodeCount: nodes.length,
+      capped: safeSemanticNodeCount > nodes.length,
     },
   };
 }
