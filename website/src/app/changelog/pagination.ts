@@ -23,7 +23,7 @@ export function getLatestChangelogTagName(
 }
 
 export function getChangelogTotalPages(
-  mode: ChangelogMode = "production",
+  mode: ChangelogMode = "all",
 ): number {
   return Math.max(
     1,
@@ -33,16 +33,16 @@ export function getChangelogTotalPages(
 
 export function getChangelogPageHref(
   page: number,
-  mode: ChangelogMode = "production",
+  mode: ChangelogMode = "all",
 ): string {
-  const basePath = mode === "all" ? "/changelog/all" : "/changelog";
+  const basePath = mode === "all" ? "/changelog" : "/changelog/prod";
   const pathPage = page.toLocaleString("en-US", { useGrouping: false });
   return page <= 1 ? basePath : `${basePath}/${pathPage}`;
 }
 
 export function parseChangelogPage(
   value: string | number | undefined,
-  mode: ChangelogMode = "production",
+  mode: ChangelogMode = "all",
 ): number {
   const parsed =
     typeof value === "number" ? value : Number.parseInt(value ?? "1", 10);
@@ -61,12 +61,12 @@ export function parseChangelogPage(
 }
 
 export function getChangelogPageSlice(page: number): ParsedRelease[] {
-  return getChangelogPageSliceForMode(page, "production");
+  return getChangelogPageSliceForMode(page, "all");
 }
 
 export function getChangelogPageSliceForMode(
   page: number,
-  mode: ChangelogMode = "production",
+  mode: ChangelogMode = "all",
 ): ParsedRelease[] {
   const start = (page - 1) * CHANGELOG_PAGE_SIZE;
   return releasesForMode(mode).slice(start, start + CHANGELOG_PAGE_SIZE);
@@ -74,7 +74,7 @@ export function getChangelogPageSliceForMode(
 
 export function getChangelogPageRange(
   page: number,
-  mode: ChangelogMode = "production",
+  mode: ChangelogMode = "all",
 ): {
   start: number;
   end: number;
@@ -93,7 +93,7 @@ export function getChangelogPageRange(
 
 export function buildChangelogMetadata(
   page: number,
-  mode: ChangelogMode = "production",
+  mode: ChangelogMode = "all",
 ): Metadata {
   const pageSuffix = page > 1 ? `, page ${page.toLocaleString()}` : "";
   const title = "Changelog | Freed";
@@ -118,7 +118,7 @@ export function buildChangelogMetadata(
 }
 
 export function getChangelogPaginationStaticParams(
-  mode: ChangelogMode = "production",
+  mode: ChangelogMode = "all",
 ): Array<{ page: string }> {
   const totalPages = getChangelogTotalPages(mode);
 

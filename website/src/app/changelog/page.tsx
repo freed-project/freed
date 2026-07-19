@@ -12,7 +12,7 @@ export const metadata: Metadata = buildChangelogMetadata(1);
 
 export default function ChangelogPage() {
   const currentPage = 1;
-  const mode = "production";
+  const mode = "all";
 
   return (
     <ChangelogContent

@@ -15,17 +15,17 @@ interface Props {
 }
 
 export function generateStaticParams(): Array<{ page: string }> {
-  return getChangelogPaginationStaticParams("production");
+  return getChangelogPaginationStaticParams("all");
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { page } = await params;
-  return buildChangelogMetadata(parseChangelogPage(page, "production"));
+  return buildChangelogMetadata(parseChangelogPage(page, "all"), "all");
 }
 
 export default async function ChangelogPaginationPage({ params }: Props) {
   const { page } = await params;
-  const mode = "production";
+  const mode = "all";
   const currentPage = parseChangelogPage(page, mode);
 
   return (
