@@ -1424,6 +1424,7 @@ version = "26.7.1501"
 dependencies = [
  "base64 0.22.1",
  "criterion",
+ "fslock",
  "futures-util",
  "hostname",
  "libc",

@@ -1166,8 +1166,41 @@ fn runtime_health_path(data_dir: &Path) -> PathBuf {
 
 const RUNTIME_HEALTH_RETAIN_DAYS: usize = 14;
 const RUNTIME_HEALTH_HISTORY_MAX_BYTES: u64 = 8 * 1024 * 1024;
+const RUNTIME_HEALTH_WRITER_LOCK_FILE: &str = ".runtime-health.writer.lock";
 
-static RUNTIME_HEALTH_ACTIVE_DATE: StdMutex<Option<String>> = StdMutex::new(None);
+// Serializes every runtime-health mutation on every platform. On Unix this
+// covers date selection, rollover, and whole-record append. On platforms that
+// keep the bounded legacy file it also covers the read, rewrite, and append
+// sequence. Factory reset takes the same lock before removing runtime-health
+// files so a concurrent writer cannot recreate or append to a file mid-reset.
+struct RuntimeHealthWriterState {
+    active_target: Option<(PathBuf, String)>,
+}
+
+static RUNTIME_HEALTH_WRITER_STATE: StdMutex<RuntimeHealthWriterState> =
+    StdMutex::new(RuntimeHealthWriterState {
+        active_target: None,
+    });
+
+struct RuntimeHealthWriteGuard {
+    // Fields drop in declaration order. Release the operating-system lock
+    // before allowing another local writer through the process mutex.
+    _file_lock: fslock::LockFile,
+    state: std::sync::MutexGuard<'static, RuntimeHealthWriterState>,
+}
+
+fn runtime_health_write_guard(data_dir: &Path) -> std::io::Result<RuntimeHealthWriteGuard> {
+    std::fs::create_dir_all(data_dir)?;
+    let state = RUNTIME_HEALTH_WRITER_STATE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut file_lock = fslock::LockFile::open(&data_dir.join(RUNTIME_HEALTH_WRITER_LOCK_FILE))?;
+    file_lock.lock()?;
+    Ok(RuntimeHealthWriteGuard {
+        _file_lock: file_lock,
+        state,
+    })
+}
 
 fn runtime_health_dated_file_name(date: &str) -> String {
     format!("runtime-health-{}.jsonl", date)
@@ -1294,20 +1327,19 @@ fn roll_runtime_health_files(data_dir: &Path, date: &str) -> std::io::Result<Pat
 /// rewrite on the event path (retention bounds total disk use instead).
 #[cfg(unix)]
 fn append_runtime_health_line(data_dir: &Path, line: &str) -> std::io::Result<()> {
+    let mut record = Vec::with_capacity(line.len() + 1);
+    record.extend_from_slice(line.as_bytes());
+    record.push(b'\n');
+
+    let mut write_guard = runtime_health_write_guard(data_dir)?;
     let date = local_date_yyyymmdd();
-    let needs_roll = {
-        let mut active = RUNTIME_HEALTH_ACTIVE_DATE.lock().unwrap();
-        if active.as_deref() == Some(date.as_str()) {
-            false
-        } else {
-            *active = Some(date.clone());
-            true
-        }
-    };
-    if needs_roll {
-        if let Err(error) = roll_runtime_health_files(data_dir, &date) {
-            warn!("[runtime-health] rotation failed for {}: {}", date, error);
-        }
+    let target = (data_dir.to_path_buf(), date.clone());
+    let reader_target = PathBuf::from(runtime_health_dated_file_name(&date));
+    let reader_is_current = std::fs::read_link(runtime_health_path(data_dir))
+        .is_ok_and(|current| current == reader_target);
+    if write_guard.state.active_target.as_ref() != Some(&target) || !reader_is_current {
+        roll_runtime_health_files(data_dir, &date)?;
+        write_guard.state.active_target = Some(target);
     }
 
     let mut file = std::fs::OpenOptions::new()
@@ -1315,18 +1347,33 @@ fn append_runtime_health_line(data_dir: &Path, line: &str) -> std::io::Result<()
         .append(true)
         .open(runtime_health_dated_path(data_dir, &date))?;
     use std::io::Write;
-    writeln!(file, "{}", line)
+    file.write_all(&record)
 }
 
 /// Windows has no reliable unprivileged symlinks for the reader-compat
 /// shim, so it keeps the legacy bounded single-file behavior.
 #[cfg(not(unix))]
 fn append_runtime_health_line(data_dir: &Path, line: &str) -> std::io::Result<()> {
-    append_bounded_jsonl(
-        &runtime_health_path(data_dir),
-        line,
-        RUNTIME_HEALTH_MAX_BYTES,
-    )
+    append_runtime_health_bounded_line(data_dir, line, RUNTIME_HEALTH_MAX_BYTES, || {})
+}
+
+/// The bounded runtime-health path is compiled and tested on every platform,
+/// even though production Unix builds use dated files. The callback exists so
+/// the deterministic concurrency regression can pause one writer only after it
+/// owns both the process mutex and the operating-system file lock.
+#[cfg(any(not(unix), test))]
+fn append_runtime_health_bounded_line<F>(
+    data_dir: &Path,
+    line: &str,
+    max_bytes: u64,
+    after_lock: F,
+) -> std::io::Result<()>
+where
+    F: FnOnce(),
+{
+    let _write_guard = runtime_health_write_guard(data_dir)?;
+    after_lock();
+    append_bounded_jsonl(&runtime_health_path(data_dir), line, max_bytes)
 }
 
 /// Newest `days` runtime-health day files concatenated oldest-first, falling
@@ -5587,6 +5634,9 @@ fn remove_factory_reset_file(path: &Path) -> Result<(), String> {
 }
 
 fn clear_factory_reset_runtime_artifacts_in(data_dir: &Path) -> Result<(), String> {
+    let mut runtime_health_write_guard = runtime_health_write_guard(data_dir)
+        .map_err(|error| format!("failed to lock runtime-health state: {error}"))?;
+    runtime_health_write_guard.state.active_target = None;
     let mut paths = vec![
         startup_recovery_state_path(data_dir),
         runtime_health_path(data_dir),
@@ -5615,7 +5665,6 @@ fn clear_factory_reset_runtime_artifacts_in(data_dir: &Path) -> Result<(), Strin
     for path in paths {
         remove_factory_reset_file(&path)?;
     }
-    *RUNTIME_HEALTH_ACTIVE_DATE.lock().unwrap() = None;
     Ok(())
 }
 
@@ -14815,6 +14864,200 @@ mod tests {
             std::fs::read_to_string(runtime_health_dated_path(temp.path(), "20260701")).unwrap(),
             "day-one\n"
         );
+    }
+
+    #[test]
+    fn runtime_health_concurrent_appends_preserve_every_jsonl_record() {
+        const WRITER_COUNT: usize = 16;
+        const RECORDS_PER_WRITER: usize = 100;
+
+        let temp = tempfile::tempdir().unwrap();
+        let data_dir = Arc::new(temp.path().to_path_buf());
+        let start = Arc::new(std::sync::Barrier::new(WRITER_COUNT));
+        // Keep the full cross-platform run below the bounded writer's 5 MiB
+        // retention threshold. The record is still large enough to expose
+        // interleaving if the shared writer lock is removed.
+        let payload = Arc::new("x".repeat(2 * 1024));
+        let mut writers = Vec::with_capacity(WRITER_COUNT);
+
+        for writer_index in 0..WRITER_COUNT {
+            let data_dir = Arc::clone(&data_dir);
+            let start = Arc::clone(&start);
+            let payload = Arc::clone(&payload);
+            writers.push(std::thread::spawn(move || {
+                start.wait();
+                for record_index in 0..RECORDS_PER_WRITER {
+                    let line = serde_json::json!({
+                        "event": "runtime_health_concurrent_append_test",
+                        "payload": payload.as_str(),
+                        "recordIndex": record_index,
+                        "writerIndex": writer_index,
+                    })
+                    .to_string();
+                    append_runtime_health_line(&data_dir, &line).unwrap();
+                }
+            }));
+        }
+
+        for writer in writers {
+            writer.join().unwrap();
+        }
+
+        #[cfg(unix)]
+        let output_path = runtime_health_dated_path(&data_dir, &local_date_yyyymmdd());
+        #[cfg(not(unix))]
+        let output_path = runtime_health_path(&data_dir);
+        let raw = std::fs::read_to_string(output_path).unwrap();
+        assert!(raw.ends_with('\n'));
+        assert_eq!(raw.lines().count(), WRITER_COUNT * RECORDS_PER_WRITER);
+
+        let mut occurrences = HashMap::<(usize, usize), usize>::new();
+        for (line_index, line) in raw.lines().enumerate() {
+            let record: serde_json::Value = serde_json::from_str(line).unwrap_or_else(|error| {
+                panic!("runtime-health line {line_index} is invalid: {error}")
+            });
+            let writer_index = record["writerIndex"].as_u64().unwrap() as usize;
+            let record_index = record["recordIndex"].as_u64().unwrap() as usize;
+            *occurrences.entry((writer_index, record_index)).or_default() += 1;
+        }
+
+        assert_eq!(occurrences.len(), WRITER_COUNT * RECORDS_PER_WRITER);
+        for writer_index in 0..WRITER_COUNT {
+            for record_index in 0..RECORDS_PER_WRITER {
+                assert_eq!(occurrences.get(&(writer_index, record_index)), Some(&1));
+            }
+        }
+    }
+
+    #[test]
+    fn runtime_health_writer_lock_serializes_bounded_rewrite_and_append() {
+        const MAX_BYTES: u64 = 1_024;
+
+        let temp = tempfile::tempdir().unwrap();
+        let data_dir = Arc::new(temp.path().to_path_buf());
+        let path = runtime_health_path(&data_dir);
+        let seed = (0..160)
+            .map(|index| serde_json::json!({ "seed": index }).to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(&path, format!("{seed}\n")).unwrap();
+        assert!(std::fs::metadata(&path).unwrap().len() > MAX_BYTES);
+
+        let (first_entered_tx, first_entered_rx) = std::sync::mpsc::channel();
+        let (release_first_tx, release_first_rx) = std::sync::mpsc::channel();
+        let first_dir = Arc::clone(&data_dir);
+        let first = std::thread::spawn(move || {
+            append_runtime_health_bounded_line(
+                &first_dir,
+                &serde_json::json!({ "writer": "first" }).to_string(),
+                MAX_BYTES,
+                || {
+                    first_entered_tx.send(()).unwrap();
+                    release_first_rx.recv().unwrap();
+                },
+            )
+            .unwrap();
+        });
+        first_entered_rx.recv().unwrap();
+
+        let (second_entered_tx, second_entered_rx) = std::sync::mpsc::channel();
+        let second_dir = Arc::clone(&data_dir);
+        let second = std::thread::spawn(move || {
+            append_runtime_health_bounded_line(
+                &second_dir,
+                &serde_json::json!({ "writer": "second" }).to_string(),
+                MAX_BYTES,
+                || second_entered_tx.send(()).unwrap(),
+            )
+            .unwrap();
+        });
+
+        assert!(second_entered_rx
+            .recv_timeout(std::time::Duration::from_millis(100))
+            .is_err());
+        release_first_tx.send(()).unwrap();
+        first.join().unwrap();
+        second_entered_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        second.join().unwrap();
+
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.ends_with('\n'));
+        let records = raw
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert!(records.iter().any(|entry| entry["writer"] == "first"));
+        assert!(records.iter().any(|entry| entry["writer"] == "second"));
+    }
+
+    #[test]
+    fn runtime_health_file_lock_excludes_an_independent_handle() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join(RUNTIME_HEALTH_WRITER_LOCK_FILE);
+        let mut first = fslock::LockFile::open(&path).unwrap();
+        let mut second = fslock::LockFile::open(&path).unwrap();
+
+        first.lock().unwrap();
+        assert!(!second.try_lock().unwrap());
+        first.unlock().unwrap();
+        assert!(second.try_lock().unwrap());
+        second.unlock().unwrap();
+    }
+
+    #[test]
+    fn runtime_health_same_date_initializes_each_data_directory() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        append_runtime_health_line(first.path(), r#"{"event":"first"}"#).unwrap();
+        append_runtime_health_line(second.path(), r#"{"event":"second"}"#).unwrap();
+
+        #[cfg(unix)]
+        {
+            let expected = PathBuf::from(runtime_health_dated_file_name(&local_date_yyyymmdd()));
+            assert_eq!(
+                std::fs::read_link(runtime_health_path(first.path())).unwrap(),
+                expected
+            );
+            assert_eq!(
+                std::fs::read_link(runtime_health_path(second.path())).unwrap(),
+                expected
+            );
+        }
+        #[cfg(not(unix))]
+        {
+            assert!(runtime_health_path(first.path()).is_file());
+            assert!(runtime_health_path(second.path()).is_file());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn runtime_health_roll_failure_leaves_target_uncommitted_and_retries() {
+        let temp = tempfile::tempdir().unwrap();
+        let date = local_date_yyyymmdd();
+        let dated = runtime_health_dated_path(temp.path(), &date);
+        std::fs::create_dir(&dated).unwrap();
+        std::fs::write(runtime_health_path(temp.path()), "legacy\n").unwrap();
+
+        assert!(append_runtime_health_line(temp.path(), r#"{"event":"blocked"}"#).is_err());
+        let target = (temp.path().to_path_buf(), date.clone());
+        assert_ne!(
+            RUNTIME_HEALTH_WRITER_STATE
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .active_target
+                .as_ref(),
+            Some(&target)
+        );
+
+        std::fs::remove_dir(&dated).unwrap();
+        append_runtime_health_line(temp.path(), r#"{"event":"retried"}"#).unwrap();
+        let raw = std::fs::read_to_string(&dated).unwrap();
+        assert!(raw.contains("legacy"));
+        assert!(raw.contains("retried"));
+        assert!(!raw.contains("blocked"));
     }
 
     #[test]
