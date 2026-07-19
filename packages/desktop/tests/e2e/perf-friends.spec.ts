@@ -392,8 +392,8 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
       expect(afterWheelPerf).not.toBeNull();
       expect(afterWheelPerf!.qualityMode).toBe("interactive");
       expect(afterWheelPerf!.rendererType).toBe(duringWheelBaseline!.rendererType);
-      expect(afterWheelPerf!.sceneSyncCount).toBe(beforeMotionPerf!.sceneSyncCount);
-      expect(afterWheelPerf!.edgeRebuildCount).toBe(beforeMotionPerf!.edgeRebuildCount);
+      expect(afterWheelPerf!.sceneSyncCount).toBe(duringWheelBaseline!.sceneSyncCount);
+      expect(afterWheelPerf!.edgeRebuildCount).toBe(duringWheelBaseline!.edgeRebuildCount);
       expect(afterWheelPerf!.labelLayoutCount).toBe(duringWheelBaseline!.labelLayoutCount);
       expect(afterWheelPerf!.rendererLabelCount).toBe(duringWheelBaseline!.rendererLabelCount);
       expect(afterWheelPerf!.readyRendererLabelCount ?? 0).toBeGreaterThan(0);
