@@ -1,0 +1,57 @@
+{
+  "tag": "v26.7.1900-dev",
+  "version": "26.7.1900-dev",
+  "channel": "dev",
+  "dayKey": "26.7.19",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-07-19T11:12:09.841Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.7.1501-dev",
+    "previousPublishedDayTag": "v26.7.1501-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "9813bd3d33d76e8887929cf811d6c9aa2b300000",
+    "promotedDevCommitSha": null,
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.7.1900-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.7.1900-dev"
+    ],
+    "prNumbers": [
+      1030,
+      1031,
+      1032,
+      1033,
+      1036,
+      1037,
+      1039
+    ],
+    "commitSubjects": [
+      "feat: ship the next-generation Friends Galaxy (#1039)",
+      "fix: isolate local AI health notifications (#1037)",
+      "fix: serialize runtime health writes (#1036)",
+      "fix: count renderer recovery sequences",
+      "fix: enforce renderer recovery outcome guardrail",
+      "fix: remove registry test filesystem race (#1033)",
+      "fix: harden automation host validation (#1032)",
+      "fix: recognize historical cloud promotions (#1031)",
+      "fix: align Facebook group regression with local state (#1030)",
+      "fix: enforce device-local state boundaries"
+    ]
+  },
+  "release": {
+    "deck": "The next-generation Friends Galaxy, recognize historical cloud promotions, and enforce device-local state boundaries",
+    "features": [
+      "The next-generation Friends Galaxy"
+    ],
+    "fixes": [
+      "Align Facebook group regression with local state"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.1900-dev\n\nThe next-generation Friends Galaxy, recognize historical cloud promotions, and enforce device-local state boundaries\n\n### Features\n\n- The next-generation Friends Galaxy\n\n### Fixes\n\n- Align Facebook group regression with local state\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
