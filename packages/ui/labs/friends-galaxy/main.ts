@@ -6,8 +6,7 @@ import {
   type FriendsGalaxyRendererId,
   type FriendsGalaxyViewDetail,
 } from "../../src/lib/friends-galaxy-renderer.js";
-import { FriendsGalaxyBackendRuntime } from "../../src/lib/friends-galaxy-backend-runtime.js";
-import { createFriendsGalaxyRendererBackend } from "../../src/lib/friends-galaxy-backend-factory.js";
+import { FriendsGalaxyRendererHost } from "../../src/lib/friends-galaxy-renderer-host.js";
 import { friendsGalaxyHexToRgb } from "../../src/lib/friends-galaxy-palette.js";
 import type { FriendsGalaxyFieldStyle } from "../../src/lib/friends-galaxy-provider-fields.js";
 import type { FriendsGalaxyInteraction } from "../../src/lib/friends-galaxy-scene-index.js";
@@ -20,7 +19,6 @@ import {
 import { loadGalaxyLabFixture } from "./scene-fixture-loader.js";
 import { findFriendsGalaxySceneNodeIndex } from "../../src/lib/friends-galaxy-scene-interaction-index.js";
 import {
-  FRIENDS_GALAXY_TRACKPAD_INWARD_OVERVIEW_GAIN,
   applyFriendsGalaxyPinch,
   applyFriendsGalaxyResistedZoomAt,
   applyFriendsGalaxyZoomAt,
@@ -484,7 +482,7 @@ function effectiveDevicePixelRatio(): number {
 }
 
 function recordActiveRenderDensity(): void {
-  const renderPixelRatio = backendRuntime.activeBackend?.metrics().renderPixelRatio;
+  const renderPixelRatio = rendererHost.activeBackend?.metrics().renderPixelRatio;
   if (renderPixelRatio === undefined) {
     delete viewport.dataset.renderDensity;
     return;
@@ -495,9 +493,9 @@ function recordActiveRenderDensity(): void {
   else viewport.dataset.lastSettledRenderDensity = value;
 }
 
-function resizeBackend(backend: FriendsGalaxyRendererBackend): void {
+function resizeRendererHost(): void {
   const { width, height } = canvasSize();
-  backend.resize(
+  rendererHost.resize(
     width,
     height,
     friendsGalaxyRenderPixelRatio(effectiveDevicePixelRatio(), width, cameraInMotion),
@@ -505,7 +503,7 @@ function resizeBackend(backend: FriendsGalaxyRendererBackend): void {
 }
 
 function resizeActiveBackend(): void {
-  if (backendRuntime.activeBackend) resizeBackend(backendRuntime.activeBackend);
+  resizeRendererHost();
   recordActiveRenderDensity();
   renderResizePending = false;
   viewport.dataset.renderResizePending = "false";
@@ -515,7 +513,7 @@ function setCameraInMotion(next: boolean): void {
   if (next === cameraInMotion) return;
   cameraInMotion = next;
   viewport.dataset.cameraMotion = String(next);
-  backendRuntime.activeBackend?.setCameraMotion?.(next);
+  rendererHost.setCameraMotion(next);
   renderResizePending = true;
   viewport.dataset.renderResizePending = "true";
   markGalaxyDirty();
@@ -599,7 +597,7 @@ async function admitSettledAvatarImages(
   const currentGeneration = avatarAdmissionGeneration;
   if (
     !avatarAdmissionState.canCommit(backend, admissionKey, currentGeneration) ||
-    backend !== backendRuntime.activeBackend ||
+    backend !== rendererHost.activeBackend ||
     (detail === "close" && friendsGalaxyViewDetailForScale(transform.scale) !== "close") ||
     !canPresentGalaxy() ||
     cameraInMotion ||
@@ -616,21 +614,13 @@ async function admitSettledAvatarImages(
   markGalaxyDirty();
 }
 
-function applyBackendSettledView(
-  backend: FriendsGalaxyRendererBackend,
-  detail: FriendsGalaxyViewDetail,
-): void {
-  if (backend.setSettledView) backend.setSettledView(detail, transform);
-  else backend.setViewDetail(detail);
-}
-
 function applySettledViewDetail(generation: number): void {
   if (!canPresentGalaxy()) return;
   setCameraInMotion(false);
-  const backend = backendRuntime.activeBackend;
+  const backend = rendererHost.activeBackend;
   if (!backend) return;
   const detail = friendsGalaxyViewDetailForScale(transform.scale);
-  applyBackendSettledView(backend, detail);
+  rendererHost.setSettledView(detail, transform);
   void admitSettledAvatarImages(backend, detail, generation);
   markGalaxyDirty();
 }
@@ -723,23 +713,10 @@ function backendLabel(id: FriendsGalaxyRendererId): string {
   return Array.from(backendSelect.options).find((option) => option.value === id)?.textContent ?? id;
 }
 
-function configureBackendState(backend: FriendsGalaxyRendererBackend): void {
-  backend.setAnimationEnabled?.(animateControl.checked);
-  backend.setCameraMotion?.(cameraInMotion);
-  backend.setFieldStyle?.(activeFieldStyle);
-  resizeBackend(backend);
-  const detail = friendsGalaxyViewDetailForScale(transform.scale);
-  backend.setInteraction(interaction);
-  applyBackendSettledView(backend, detail);
-  backend.applyActivityPatches?.(activityProbeScenePatch);
-}
-
-const backendRuntime = new FriendsGalaxyBackendRuntime<
-  FriendsGalaxyRendererId,
-  FriendsGalaxyRendererBackend,
-  HTMLCanvasElement
->({
-  compatibilityId: "current-webgl2",
+const rendererHost = new FriendsGalaxyRendererHost({
+  scene: fixture,
+  palette: paletteForTheme(),
+  resolvePresentation: galaxyLabNodePresentation,
   createSurface: () => {
     const canvas = document.createElement("canvas");
     canvas.setAttribute("aria-hidden", "true");
@@ -757,16 +734,6 @@ const backendRuntime = new FriendsGalaxyBackendRuntime<
   removeSurface: (canvas) => {
     canvas.remove();
   },
-  createBackend: (id) => createFriendsGalaxyRendererBackend(
-    id,
-    galaxyLabNodePresentation,
-  ),
-  initializeBackend: async (backend, canvas) => {
-    await backend.initialize(canvas, fixture, paletteForTheme());
-    configureBackendState(backend);
-  },
-  fallbackReason: (backend) => backend.metrics().fallbackReason,
-  backendLabel: (backend) => backend.metrics().label,
   onLoading: ({ id, recovery, reason }) => {
     if (cancelInertialPan()) setCameraInMotion(false);
     avatarAdmissionGeneration += 1;
@@ -785,7 +752,6 @@ const backendRuntime = new FriendsGalaxyBackendRuntime<
     setStatus(`Recovering with ${backendLabel(compatibilityId)}. ${reason}`, true);
   },
   onActivated: (activation) => {
-    if (activation.retained) configureBackendState(activation.backend);
     fieldStyleSelect.disabled = typeof activation.backend.setFieldStyle !== "function";
     simulateLossButton.disabled = typeof activation.backend.simulateDeviceLoss !== "function";
     recordActiveRenderDensity();
@@ -825,7 +791,17 @@ const backendRuntime = new FriendsGalaxyBackendRuntime<
 });
 
 async function activateBackend(id: FriendsGalaxyRendererId): Promise<void> {
-  await backendRuntime.activate(id);
+  resizeRendererHost();
+  rendererHost.setAnimationEnabled(animateControl.checked);
+  rendererHost.setCameraMotion(cameraInMotion);
+  rendererHost.setFieldStyle(activeFieldStyle);
+  rendererHost.setInteraction(interaction);
+  rendererHost.setSettledView(
+    friendsGalaxyViewDetailForScale(transform.scale),
+    transform,
+  );
+  rendererHost.applyActivityPatches(activityProbeScenePatch);
+  await rendererHost.activate(id);
 }
 
 function addMetric(label: string, value: string): void {
@@ -853,11 +829,11 @@ function updateMetrics(): void {
   viewport.dataset.cameraY = String(transform.y);
   recordCameraScaleDiagnostics();
   metricsElement.replaceChildren();
-  if (!backendRuntime.activeBackend) {
+  if (!rendererHost.activeBackend) {
     addMetric("Renderer", "Loading");
     return;
   }
-  const metrics = backendRuntime.activeBackend.metrics();
+  const metrics = rendererHost.activeBackend.metrics();
   addMetric("Renderer", metrics.label);
   addMetric("API", metrics.api);
   addMetric("Semantic stars", integerFormat.format(metrics.semanticStarCount));
@@ -875,7 +851,7 @@ function updateMetrics(): void {
   }
   addMetric(
     "Cosmic field",
-    typeof backendRuntime.activeBackend.setFieldStyle === "function"
+    typeof rendererHost.activeBackend.setFieldStyle === "function"
       ? fieldStyleSelect.selectedOptions[0]?.textContent ?? activeFieldStyle
       : "Backend default",
   );
@@ -892,7 +868,7 @@ function updateMetrics(): void {
   if (metrics.avatarAtlasBuildCount !== undefined) {
     addMetric("Avatar atlas builds", integerFormat.format(metrics.avatarAtlasBuildCount));
   }
-  if (backendRuntime.activeBackend.setAvatarImages) {
+  if (rendererHost.activeBackend.setAvatarImages) {
     addMetric(
       "Decoded avatars",
       `${integerFormat.format(avatarAdmissionResult.readyNodeCount)} / ${integerFormat.format(avatarAdmissionResult.requestedNodeCount)}`,
@@ -939,12 +915,12 @@ function updateMetrics(): void {
   if (metrics.appliedActivityNodeCount !== undefined) {
     addMetric("GPU activity nodes", integerFormat.format(metrics.appliedActivityNodeCount));
   }
-  addMetric("Backend generation", integerFormat.format(backendRuntime.generation));
+  addMetric("Backend generation", integerFormat.format(rendererHost.generation));
   addMetric(
     "Renderer recovery",
-    backendRuntime.terminalFailure
+    rendererHost.terminalFailure
       ? "Terminal"
-      : backendRuntime.recoveryPending ? "Recovering" : "Ready",
+      : rendererHost.recoveryPending ? "Recovering" : "Ready",
   );
   if (lastRecoveryReason) addMetric("Recovery reason", lastRecoveryReason);
   addMetric("Camera scale", scaleFormat.format(transform.scale));
@@ -973,7 +949,7 @@ function updateMetrics(): void {
 }
 
 function pollBackendHealth(): void {
-  void backendRuntime.pollHealth();
+  void rendererHost.pollHealth();
 }
 
 function renderFrame(timeMs: number): void {
@@ -1001,23 +977,23 @@ function renderFrame(timeMs: number): void {
   if (renderResizePending) resizeActiveBackend();
   pollBackendHealth();
   const shouldRender = Boolean(
-    canPresentGalaxy() && backendRuntime.activeBackend &&
-    !backendRuntime.recoveryPending && !backendRuntime.terminalFailure &&
+    canPresentGalaxy() && rendererHost.activeBackend &&
+    !rendererHost.recoveryPending && !rendererHost.terminalFailure &&
     (animateControl.checked || dirty),
   );
-  if (shouldRender && backendRuntime.activeBackend) {
+  if (shouldRender && rendererHost.activeBackend) {
     if (lastFrameAt > 0 && animateControl.checked) {
       frameSamples.push(timeMs - lastFrameAt);
     }
     lastFrameAt = timeMs;
     const submitStartedAt = performance.now();
-    const renderingBackend = backendRuntime.activeBackend;
+    const renderingBackend = rendererHost.activeBackend;
     try {
-      renderingBackend.render(transform, timeMs);
+      rendererHost.render(transform, timeMs);
       submitSamples.push(performance.now() - submitStartedAt);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      void backendRuntime.recoverFromFatalError(renderingBackend, reason);
+      void rendererHost.recoverFromFatalError(renderingBackend, reason);
     }
     dirty = false;
   } else {
@@ -1032,9 +1008,9 @@ function renderFrame(timeMs: number): void {
     lastMetricsAt = timeMs;
   }
   frameRequest = 0;
-  const backendReady = backendRuntime.activeBackend !== null;
+  const backendReady = rendererHost.activeBackend !== null;
   const backendRenderable = backendReady &&
-    !backendRuntime.recoveryPending && !backendRuntime.terminalFailure;
+    !rendererHost.recoveryPending && !rendererHost.terminalFailure;
   if (shouldContinueFriendsGalaxyFrame(
     backendRenderable && animateControl.checked,
     backendRenderable && dirty,
@@ -1051,7 +1027,6 @@ function zoomAt(
   viewportX: number,
   viewportY: number,
   nextScale: number,
-  inwardOverviewGain = 1,
 ): void {
   cancelInertialPan();
   setCameraInMotion(true);
@@ -1063,7 +1038,6 @@ function zoomAt(
     outwardZoomEnvelope.target,
     outwardZoomEnvelope.resistance,
     cameraScaleLimits.maximum,
-    inwardOverviewGain,
   );
   userMovedCamera = true;
   markGalaxyDirty();
@@ -1134,7 +1108,7 @@ function requestContextAt(
   canvasX: number,
   canvasY: number,
   source: FriendsGalaxyContextRequestSource,
-  nodeId = backendRuntime.activeBackend?.pickNode(canvasX, canvasY) ?? null,
+  nodeId = rendererHost.pickNode(canvasX, canvasY),
 ): boolean {
   if (!nodeId) return false;
   const target = friendsGalaxyContextTarget(
@@ -1248,7 +1222,7 @@ function updateInteraction(next: FriendsGalaxyInteraction): boolean {
   ) return false;
   const selectionChanged = next.selectedNodeId !== interaction.selectedNodeId;
   interaction = next;
-  backendRuntime.activeBackend?.setInteraction(interaction);
+  rendererHost.setInteraction(interaction);
   if (selectionChanged) syncGraphDescription();
   markGalaxyDirty();
   return selectionChanged;
@@ -1269,7 +1243,7 @@ function scheduleHoverPick(viewportX: number, viewportY: number): void {
     pendingHover = false;
     updateInteraction({
       selectedNodeId: interaction.selectedNodeId,
-      hoveredNodeId: backendRuntime.activeBackend?.pickNode(pendingHoverX, pendingHoverY) ?? null,
+      hoveredNodeId: rendererHost.pickNode(pendingHoverX, pendingHoverY),
     });
   });
 }
@@ -1391,10 +1365,10 @@ function releasePointer(event: PointerEvent): void {
   if (pointers.count === 0) {
     viewport.dataset.dragging = "false";
     if (shouldSelect) {
-      const selectedNodeId = backendRuntime.activeBackend?.pickNode(
+      const selectedNodeId = rendererHost.pickNode(
         releasePointX,
         releasePointY,
-      ) ?? null;
+      );
       const selectionChanged = updateInteraction({
         selectedNodeId,
         hoveredNodeId: null,
@@ -1540,7 +1514,7 @@ function endNativeTouches(event: TouchEvent): void {
   viewport.dataset.dragging = "false";
   if (shouldSelect && releaseTouch) {
     const point = canvasPoint(releaseTouch.clientX, releaseTouch.clientY);
-    const selectedNodeId = backendRuntime.activeBackend?.pickNode(point.x, point.y) ?? null;
+    const selectedNodeId = rendererHost.pickNode(point.x, point.y);
     const selectionChanged = updateInteraction({
       selectedNodeId,
       hoveredNodeId: null,
@@ -1597,7 +1571,6 @@ viewport.addEventListener("wheel", (event) => {
       point.x,
       point.y,
       transform.scale * Math.exp(-event.deltaY * 0.012),
-      FRIENDS_GALAXY_TRACKPAD_INWARD_OVERVIEW_GAIN,
     );
     return;
   }
@@ -1725,7 +1698,6 @@ viewport.addEventListener("gesturechange", ((event: SafariGestureEvent) => {
     outwardZoomEnvelope.target,
     outwardZoomEnvelope.resistance,
     cameraScaleLimits.maximum,
-    FRIENDS_GALAXY_TRACKPAD_INWARD_OVERVIEW_GAIN,
   );
   transform.scale = nextScale;
   transform.x = viewportX - worldX * nextScale;
@@ -1807,7 +1779,7 @@ function galaxyDiagnosticSnapshot() {
     personCount: fixture.personCount,
     accountCount: fixture.accountCount,
     backgroundStarCount: fixture.backgroundStarCount,
-    backend: backendRuntime.activeBackend?.metrics() ?? null,
+    backend: rendererHost.activeBackend?.metrics() ?? null,
     theme: activeTheme,
     fieldStyle: activeFieldStyle,
     transform,
@@ -1825,9 +1797,9 @@ function galaxyDiagnosticSnapshot() {
     frameLoop: viewport.dataset.frameLoop ?? "unknown",
     settlePending: settleScheduler.isPending,
     renderResizePending,
-    backendGeneration: backendRuntime.generation,
-    backendRecoveryPending: backendRuntime.recoveryPending,
-    backendTerminalFailure: backendRuntime.terminalFailure,
+    backendGeneration: rendererHost.generation,
+    backendRecoveryPending: rendererHost.recoveryPending,
+    backendTerminalFailure: rendererHost.terminalFailure,
     recoveryReason: lastRecoveryReason,
     longTasks: longTaskMonitor.snapshot(),
     frame: friendsGalaxyFrameStats(frameSamples.snapshot()),
@@ -1864,11 +1836,11 @@ copyDiagnosticsButton.addEventListener("click", () => {
 });
 
 simulateLossButton.addEventListener("click", () => {
-  const backend = backendRuntime.activeBackend;
+  const backend = rendererHost.activeBackend;
   if (!backend?.simulateDeviceLoss) return;
   simulateLossButton.disabled = true;
   setStatus(`Testing recovery from ${backend.metrics().label}`);
-  backend.simulateDeviceLoss();
+  rendererHost.simulateDeviceLoss();
 });
 
 backendSelect.addEventListener("change", () => {
@@ -1879,19 +1851,19 @@ themeSelect.addEventListener("change", () => {
   activeTheme = themeSelect.value as GalaxyLabThemeId;
   const palette = paletteForTheme();
   applyDocumentPalette(palette);
-  backendRuntime.activeBackend?.setPalette(palette);
+  rendererHost.setPalette(palette);
   markGalaxyDirty();
 });
 
 fieldStyleSelect.addEventListener("change", () => {
   activeFieldStyle = fieldStyleSelect.value as FriendsGalaxyFieldStyle;
-  backendRuntime.activeBackend?.setFieldStyle?.(activeFieldStyle);
+  rendererHost.setFieldStyle(activeFieldStyle);
   markGalaxyDirty();
 });
 
 animateControl.addEventListener("change", () => {
   animatePreferenceTouched = true;
-  backendRuntime.activeBackend?.setAnimationEnabled?.(animateControl.checked);
+  rendererHost.setAnimationEnabled(animateControl.checked);
   resetSamples();
   markGalaxyDirty();
 });
@@ -1904,7 +1876,7 @@ function syncReducedMotionPreference(): void {
   syncGraphDescription();
   if (animatePreferenceTouched || animationProbeDisabled) return;
   animateControl.checked = !reducedMotionQuery.matches;
-  backendRuntime.activeBackend?.setAnimationEnabled?.(animateControl.checked);
+  rendererHost.setAnimationEnabled(animateControl.checked);
   resetSamples();
   markGalaxyDirty();
 }
@@ -1951,7 +1923,7 @@ resizeObserver.observe(viewport);
 const backendHealthPoll = window.setInterval(() => {
   pollBackendHealth();
   if (
-    canPresentGalaxy() && backendRuntime.activeBackend && !backendRuntime.terminalFailure &&
+    canPresentGalaxy() && rendererHost.activeBackend && !rendererHost.terminalFailure &&
     (animateControl.checked || (metricsDirty && !cameraInMotion))
   ) requestGalaxyFrame();
 }, 250);
@@ -1977,7 +1949,7 @@ window.addEventListener("beforeunload", () => {
   resizeObserver.disconnect();
   avatarImageAdmission.dispose();
   longTaskMonitor.dispose();
-  backendRuntime.dispose();
+  rendererHost.dispose();
 });
 
 const imperativeHandle: FriendsGalaxyImperativeHandle = {
@@ -1992,7 +1964,7 @@ Object.assign(window, {
     diagnostics: galaxyDiagnosticSnapshot,
     ...imperativeHandle,
     state: () => ({
-      backend: backendRuntime.activeBackend?.metrics() ?? null,
+      backend: rendererHost.activeBackend?.metrics() ?? null,
       transform: { ...transform },
       viewportGeometry: {
         ...viewportGeometry,
@@ -2025,9 +1997,9 @@ Object.assign(window, {
       },
       recoveryReason: lastRecoveryReason,
       backendRuntime: {
-        generation: backendRuntime.generation,
-        recoveryPending: backendRuntime.recoveryPending,
-        terminalFailure: backendRuntime.terminalFailure,
+        generation: rendererHost.generation,
+        recoveryPending: rendererHost.recoveryPending,
+        terminalFailure: rendererHost.terminalFailure,
       },
       viewportGeometryReadCount,
       wheelInputMode,

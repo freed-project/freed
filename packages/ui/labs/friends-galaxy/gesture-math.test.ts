@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  FRIENDS_GALAXY_TRACKPAD_INWARD_OVERVIEW_GAIN,
   applyFriendsGalaxyPinch,
   applyFriendsGalaxyResistedZoomAt,
   applyFriendsGalaxyZoomAt,
@@ -122,7 +121,7 @@ describe("Friends Galaxy gesture math", () => {
       scale = nextScale;
     }
 
-    expect(scale).toBeLessThan(0.083);
+    expect(scale).toBeLessThan(0.09);
     expect(friendsGalaxyResistedScaleAtRatio(
       scale,
       1.05,
@@ -150,7 +149,7 @@ describe("Friends Galaxy gesture math", () => {
       scale = nextScale;
     }
 
-    expect(scale).toBeLessThan(0.1);
+    expect(scale).toBeLessThan(0.105);
   });
 
   it("brakes outward input decisively inside the ceiling band", () => {
@@ -162,25 +161,23 @@ describe("Friends Galaxy gesture math", () => {
       6,
     );
 
-    expect(scale).toBeCloseTo(0.10608834951015009, 12);
-    expect(scale).toBeGreaterThan(0.106);
+    expect(scale).toBeCloseTo(0.10921630078570582, 12);
+    expect(scale).toBeGreaterThan(0.109);
   });
 
-  it("escapes the compressed ceiling at full speed on the first input", () => {
+  it("escapes the compressed ceiling at native speed on the first input", () => {
     const scale = friendsGalaxyResistedScaleAtRatio(
       0.0901,
       1.04,
       0.09,
       0.12,
       6,
-      FRIENDS_GALAXY_TRACKPAD_INWARD_OVERVIEW_GAIN,
     );
 
-    expect(scale).toBeCloseTo(0.0901 * Math.pow(1.04, 3), 12);
-    expect(scale / 0.0901).toBeGreaterThan(1.12);
+    expect(scale).toBeCloseTo(0.0901 * 1.04, 12);
   });
 
-  it("reverses a cumulative Safari gesture at full overview speed", () => {
+  it("reverses a cumulative Safari gesture at native speed", () => {
     const scale = 0.0901;
     const ratio = friendsGalaxyGestureScaleRatio(0.72, 0.74);
 
@@ -191,11 +188,9 @@ describe("Friends Galaxy gesture math", () => {
       0.09,
       0.12,
       6,
-      FRIENDS_GALAXY_TRACKPAD_INWARD_OVERVIEW_GAIN,
     );
 
-    expect(nextScale).toBeCloseTo(scale * Math.pow(ratio, 3), 12);
-    expect(nextScale / scale).toBeGreaterThan(ratio);
+    expect(nextScale).toBeCloseTo(scale * ratio, 12);
   });
 
   it("rejoins ordinary inward zoom after leaving the ceiling band", () => {
@@ -205,7 +200,6 @@ describe("Friends Galaxy gesture math", () => {
       0.09,
       0.12,
       6,
-      FRIENDS_GALAXY_TRACKPAD_INWARD_OVERVIEW_GAIN,
     )).toBeCloseTo(0.12 * 1.04, 12);
   });
 
@@ -216,7 +210,6 @@ describe("Friends Galaxy gesture math", () => {
       0.09,
       0.12,
       6,
-      FRIENDS_GALAXY_TRACKPAD_INWARD_OVERVIEW_GAIN,
     );
     const first = friendsGalaxyResistedScaleAtRatio(
       0.09,
@@ -224,7 +217,6 @@ describe("Friends Galaxy gesture math", () => {
       0.09,
       0.12,
       6,
-      FRIENDS_GALAXY_TRACKPAD_INWARD_OVERVIEW_GAIN,
     );
     const split = friendsGalaxyResistedScaleAtRatio(
       first,
@@ -232,7 +224,6 @@ describe("Friends Galaxy gesture math", () => {
       0.09,
       0.12,
       6,
-      FRIENDS_GALAXY_TRACKPAD_INWARD_OVERVIEW_GAIN,
     );
 
     expect(once).toBeGreaterThan(0.12);
