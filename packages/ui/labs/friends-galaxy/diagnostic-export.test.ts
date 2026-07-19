@@ -85,6 +85,8 @@ describe("Friends Galaxy diagnostic export", () => {
       touchInputMode: "Native Touch Events",
       wheelInputMode: "pinch-zoom",
       inertialPanActive: false,
+      inertialZoomActive: true,
+      inertialZoomPending: false,
       presentationVisible: false,
       frameLoop: "idle",
       settlePending: false,
@@ -125,6 +127,8 @@ describe("Friends Galaxy diagnostic export", () => {
       interaction: {
         selectionActive: true,
         hoverActive: false,
+        inertialZoomActive: true,
+        inertialZoomPending: false,
       },
       camera: {
         minimumScale: 0.07,
@@ -187,6 +191,8 @@ describe("Friends Galaxy diagnostic export", () => {
       touchInputMode: "Pointer Events",
       wheelInputMode: "idle",
       inertialPanActive: false,
+      inertialZoomActive: false,
+      inertialZoomPending: false,
       presentationVisible: true,
       frameLoop: "idle",
       settlePending: false,

@@ -49,7 +49,10 @@ import {
   writeFriendsGalaxyWebGpuViewProjection,
 } from "../../src/lib/friends-galaxy-camera.js";
 import { shouldContinueFriendsGalaxyFrame } from "../../src/lib/friends-galaxy-frame-loop.js";
-import { FriendsGalaxyInertialPan } from "../../src/lib/friends-galaxy-inertia.js";
+import {
+  FriendsGalaxyInertialPan,
+  FriendsGalaxyInertialZoom,
+} from "../../src/lib/friends-galaxy-inertia.js";
 import { FriendsGalaxyPointerRoster } from "../../src/lib/friends-galaxy-pointer-roster.js";
 import {
   FriendsGalaxySampleRing,
@@ -96,6 +99,9 @@ const DEFAULT_BACKGROUND_COUNT = 100_000;
 const DEFAULT_ACTIVITY_SUMMARY_COUNT = 25_000;
 const DEFAULT_REPRESENTED_ACTIVITY_ITEM_COUNT = 250_000;
 const PROGRAMMATIC_FOCUS_SCALE = 0.92;
+const TRACKPAD_ZOOM_RELEASE_DELAY_MS = 72;
+const TRACKPAD_ZOOM_MAX_RELEASE_LATENCY_MS = 120;
+const INERTIAL_ZOOM_STALL_LOG_DELTA = 0.000002;
 const numberFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
 const integerFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
 const scaleFormat = new Intl.NumberFormat(undefined, { maximumSignificantDigits: 3 });
@@ -242,11 +248,16 @@ viewport.dataset.cameraMotion = "false";
 viewport.dataset.frameLoop = "idle";
 viewport.dataset.renderResizePending = "false";
 viewport.dataset.inertialPan = "false";
+viewport.dataset.inertialZoom = "false";
 viewport.dataset.wheelInputMode = wheelInputMode;
 viewport.dataset.presentationVisible = "true";
 canvasHost.dataset.presentationVisible = "true";
 const settleScheduler = new FriendsGalaxySettleScheduler();
 const inertialPan = new FriendsGalaxyInertialPan();
+const inertialZoom = new FriendsGalaxyInertialZoom();
+let inertialZoomFocalX = 0;
+let inertialZoomFocalY = 0;
+let wheelZoomReleaseAt = 0;
 const frameSamples = new FriendsGalaxySampleRing(240);
 const submitSamples = new FriendsGalaxySampleRing(240);
 const nodeLabelById = new Map(fixture.atlas.nodes.map((node) => [node.id, node.label]));
@@ -526,20 +537,74 @@ function cancelInertialPan(): boolean {
   return wasActive;
 }
 
+function cancelInertialZoom(): boolean {
+  const wasActive = inertialZoom.isActive || wheelZoomReleaseAt > 0;
+  inertialZoom.cancel();
+  wheelZoomReleaseAt = 0;
+  viewport.dataset.inertialZoom = "false";
+  return wasActive;
+}
+
+function cancelCameraInertia(): boolean {
+  const panWasActive = cancelInertialPan();
+  const zoomWasActive = cancelInertialZoom();
+  return panWasActive || zoomWasActive;
+}
+
 function beginInertialPanSample(timeMs: number): boolean {
-  const interrupted = inertialPan.isActive;
+  const panWasActive = inertialPan.isActive;
+  const zoomWasActive = cancelInertialZoom();
   inertialPan.begin(timeMs);
   viewport.dataset.inertialPan = "false";
-  return interrupted;
+  return panWasActive || zoomWasActive;
 }
 
 function startInertialPan(releaseTimeMs: number): boolean {
+  cancelInertialZoom();
   const started = inertialPan.start(
     releaseTimeMs,
     performance.now(),
     reducedMotionQuery.matches,
   );
   viewport.dataset.inertialPan = String(started);
+  if (!started) return false;
+  settleScheduler.cancel();
+  setCameraInMotion(true);
+  markGalaxyDirty();
+  return true;
+}
+
+function beginInertialZoomSample(
+  timeMs: number,
+  viewportX: number,
+  viewportY: number,
+): boolean {
+  const interrupted = cancelCameraInertia();
+  inertialZoom.begin(timeMs);
+  inertialZoomFocalX = viewportX;
+  inertialZoomFocalY = viewportY;
+  return interrupted;
+}
+
+function sampleInertialZoom(
+  scaleRatio: number,
+  timeMs: number,
+  viewportX: number,
+  viewportY: number,
+): void {
+  inertialZoom.sample(scaleRatio, timeMs);
+  inertialZoomFocalX = viewportX;
+  inertialZoomFocalY = viewportY;
+}
+
+function startInertialZoom(releaseTimeMs: number, frameTimeMs: number): boolean {
+  wheelZoomReleaseAt = 0;
+  const started = inertialZoom.start(
+    releaseTimeMs,
+    frameTimeMs,
+    reducedMotionQuery.matches,
+  );
+  viewport.dataset.inertialZoom = String(started);
   if (!started) return false;
   settleScheduler.cancel();
   setCameraInMotion(true);
@@ -641,7 +706,7 @@ function scheduleSettledViewDetail(immediate = false): void {
 }
 
 function frameGalaxy(markAsUserAction: boolean, useInitialScale: boolean): void {
-  cancelInertialPan();
+  cancelCameraInertia();
   const { width, height } = canvasSize();
   const bounds = fixture.atlas.bounds;
   const frame = refreshCameraFrameState(width, height);
@@ -676,7 +741,7 @@ function focusGalaxyNode(nodeId: string): boolean {
   );
   if (nodeIndex === null) return false;
   viewport.focus({ preventScroll: true });
-  cancelInertialPan();
+  cancelCameraInertia();
   settleScheduler.cancel();
   const { width, height } = canvasSize();
   const offset = nodeIndex * 3;
@@ -735,7 +800,7 @@ const rendererHost = new FriendsGalaxyRendererHost({
     canvas.remove();
   },
   onLoading: ({ id, recovery, reason }) => {
-    if (cancelInertialPan()) setCameraInMotion(false);
+    if (cancelCameraInertia()) setCameraInMotion(false);
     avatarAdmissionGeneration += 1;
     avatarAdmissionState.reset();
     simulateLossButton.disabled = true;
@@ -944,6 +1009,10 @@ function updateMetrics(): void {
         : "Ready",
   );
   addMetric("Inertial pan", inertialPan.isActive ? "Active" : "Idle");
+  addMetric(
+    "Inertial zoom",
+    inertialZoom.isActive ? "Active" : wheelZoomReleaseAt > 0 ? "Sampling" : "Idle",
+  );
   addMetric("Viewport geometry reads", integerFormat.format(viewportGeometryReadCount));
   if (metrics.adapterDescription) addMetric("Adapter", metrics.adapterDescription);
 }
@@ -960,6 +1029,15 @@ function renderFrame(timeMs: number): void {
     viewport.dataset.frameLoop = "idle";
     return;
   }
+  if (wheelZoomReleaseAt > 0 && timeMs >= wheelZoomReleaseAt) {
+    const releaseTimeMs = wheelZoomReleaseAt;
+    const releaseWasTimely = timeMs - releaseTimeMs <=
+      TRACKPAD_ZOOM_MAX_RELEASE_LATENCY_MS;
+    if (!releaseWasTimely || !startInertialZoom(releaseTimeMs, timeMs)) {
+      cancelInertialZoom();
+      scheduleSettledViewDetail();
+    }
+  }
   const inertialStep = inertialPan.step(timeMs);
   if (inertialStep.deltaX !== 0 || inertialStep.deltaY !== 0) {
     transform.x += inertialStep.deltaX;
@@ -970,6 +1048,33 @@ function renderFrame(timeMs: number): void {
   }
   if (inertialStep.finished) {
     viewport.dataset.inertialPan = "false";
+    scheduleSettledViewDetail();
+  }
+  const inertialZoomStep = inertialZoom.step(timeMs);
+  let inertialZoomStalled = false;
+  if (inertialZoomStep.scaleRatio !== 1) {
+    const previousScale = transform.scale;
+    applyFriendsGalaxyResistedZoomAt(
+      transform,
+      inertialZoomFocalX,
+      inertialZoomFocalY,
+      inertialZoomStep.scaleRatio,
+      outwardZoomEnvelope.target,
+      outwardZoomEnvelope.resistance,
+      cameraScaleLimits.maximum,
+    );
+    const appliedLogDelta = Math.abs(Math.log(transform.scale / previousScale));
+    if (appliedLogDelta <= INERTIAL_ZOOM_STALL_LOG_DELTA) {
+      inertialZoom.cancel();
+      inertialZoomStalled = true;
+    } else {
+      userMovedCamera = true;
+      dirty = true;
+      metricsDirty = true;
+    }
+  }
+  if (inertialZoomStep.finished || inertialZoomStalled) {
+    viewport.dataset.inertialZoom = "false";
     scheduleSettledViewDetail();
   }
   const settledGeneration = settleScheduler.takeDue(timeMs);
@@ -1014,7 +1119,8 @@ function renderFrame(timeMs: number): void {
   if (shouldContinueFriendsGalaxyFrame(
     backendRenderable && animateControl.checked,
     backendRenderable && dirty,
-    settleScheduler.isPending || inertialPan.isActive,
+    settleScheduler.isPending || inertialPan.isActive || inertialZoom.isActive ||
+      wheelZoomReleaseAt > 0,
     canPresentGalaxy(),
   )) {
     requestGalaxyFrame();
@@ -1028,7 +1134,7 @@ function zoomAt(
   viewportY: number,
   nextScale: number,
 ): void {
-  cancelInertialPan();
+  cancelCameraInertia();
   setCameraInMotion(true);
   applyFriendsGalaxyResistedZoomAt(
     transform,
@@ -1236,7 +1342,10 @@ function scheduleHoverPick(viewportX: number, viewportY: number): void {
   hoverRequest = requestAnimationFrame(() => {
     hoverRequest = 0;
     if (!pendingHover) return;
-    if (pointers.count > 0 || inertialPan.isActive) {
+    if (
+      pointers.count > 0 || inertialPan.isActive || inertialZoom.isActive ||
+      wheelZoomReleaseAt > 0
+    ) {
       pendingHover = false;
       return;
     }
@@ -1537,7 +1646,7 @@ function cancelNativeTouches(event: TouchEvent): void {
   event.preventDefault();
   cancelLongPress();
   pointers.clear();
-  cancelInertialPan();
+  cancelCameraInertia();
   viewport.dataset.dragging = "false";
   gestureMoved = false;
   gestureInterruptedInertia = false;
@@ -1551,29 +1660,54 @@ viewport.addEventListener("touchcancel", cancelNativeTouches, { passive: false }
 
 viewport.addEventListener("contextmenu", (event) => {
   event.preventDefault();
-  cancelInertialPan();
+  const interruptedInertia = cancelCameraInertia();
   refreshViewportOrigin();
   const point = canvasPoint(event.clientX, event.clientY);
   requestContextAt(point.x, point.y, "pointer");
+  if (interruptedInertia) scheduleSettledViewDetail();
 });
 
 viewport.addEventListener("wheel", (event) => {
   event.preventDefault();
   if (safariGestureActive) return;
-  const interruptedInertia = cancelInertialPan();
   if (!cameraInMotion) refreshViewportOrigin();
   else ensureViewportOrigin();
   if (event.ctrlKey) {
     wheelInputMode = "pinch-zoom";
     viewport.dataset.wheelInputMode = wheelInputMode;
     const point = canvasPoint(event.clientX, event.clientY);
-    zoomAt(
+    const sampleTimeMs = performance.now();
+    const continuingWheelPinch = wheelZoomReleaseAt > 0 &&
+      sampleTimeMs <= wheelZoomReleaseAt && !inertialZoom.isActive;
+    if (continuingWheelPinch) {
+      cancelInertialPan();
+    } else {
+      avatarAdmissionGeneration += 1;
+      beginInertialZoomSample(sampleTimeMs, point.x, point.y);
+    }
+    const scaleRatio = Math.exp(Math.max(
+      -64,
+      Math.min(64, -event.deltaY * 0.012),
+    ));
+    sampleInertialZoom(scaleRatio, sampleTimeMs, point.x, point.y);
+    wheelZoomReleaseAt = sampleTimeMs + TRACKPAD_ZOOM_RELEASE_DELAY_MS;
+    viewport.dataset.inertialZoom = "false";
+    settleScheduler.cancel();
+    setCameraInMotion(true);
+    applyFriendsGalaxyResistedZoomAt(
+      transform,
       point.x,
       point.y,
-      transform.scale * Math.exp(-event.deltaY * 0.012),
+      scaleRatio,
+      outwardZoomEnvelope.target,
+      outwardZoomEnvelope.resistance,
+      cameraScaleLimits.maximum,
     );
+    userMovedCamera = true;
+    markGalaxyDirty();
     return;
   }
+  const interruptedInertia = cancelCameraInertia();
   const deltaX = friendsGalaxyWheelDeltaPixels(
     event.deltaX,
     event.deltaMode,
@@ -1623,7 +1757,7 @@ function suspendGalaxyTransientWork(): void {
   settleScheduler.cancel();
   cancelLongPress();
   pointers.clear();
-  cancelInertialPan();
+  cancelCameraInertia();
   safariGestureActive = false;
   gestureMoved = false;
   gestureInterruptedInertia = false;
@@ -1668,7 +1802,6 @@ function setGalaxyPresentationVisible(next: boolean): void {
 
 viewport.addEventListener("gesturestart", ((event: SafariGestureEvent) => {
   event.preventDefault();
-  cancelInertialPan();
   wheelInputMode = "pinch-zoom";
   viewport.dataset.wheelInputMode = wheelInputMode;
   setCameraInMotion(true);
@@ -1682,6 +1815,11 @@ viewport.addEventListener("gesturestart", ((event: SafariGestureEvent) => {
   safariGestureCanvasTop = viewportGeometry.canvasClientTop;
   safariGesturePreviousViewportX = event.clientX - safariGestureCanvasLeft;
   safariGesturePreviousViewportY = event.clientY - safariGestureCanvasTop;
+  beginInertialZoomSample(
+    performance.now(),
+    safariGesturePreviousViewportX,
+    safariGesturePreviousViewportY,
+  );
   safariGestureActive = true;
 }) as EventListener, { passive: false });
 
@@ -1692,9 +1830,19 @@ viewport.addEventListener("gesturechange", ((event: SafariGestureEvent) => {
   const viewportY = event.clientY - safariGestureCanvasTop;
   const worldX = (safariGesturePreviousViewportX - transform.x) / transform.scale;
   const worldY = (safariGesturePreviousViewportY - transform.y) / transform.scale;
+  const scaleRatio = friendsGalaxyGestureScaleRatio(
+    safariGesturePreviousEventScale,
+    event.scale,
+  );
+  sampleInertialZoom(
+    scaleRatio,
+    performance.now(),
+    viewportX,
+    viewportY,
+  );
   const nextScale = friendsGalaxyResistedScaleAtRatio(
     transform.scale,
-    friendsGalaxyGestureScaleRatio(safariGesturePreviousEventScale, event.scale),
+    scaleRatio,
     outwardZoomEnvelope.target,
     outwardZoomEnvelope.resistance,
     cameraScaleLimits.maximum,
@@ -1709,13 +1857,16 @@ viewport.addEventListener("gesturechange", ((event: SafariGestureEvent) => {
   safariGesturePreviousViewportY = viewportY;
   userMovedCamera = true;
   markGalaxyDirty();
-  scheduleSettledViewDetail();
+  settleScheduler.cancel();
 }) as EventListener, { passive: false });
 
 viewport.addEventListener("gestureend", ((event: SafariGestureEvent) => {
   event.preventDefault();
   safariGestureActive = false;
-  scheduleSettledViewDetail();
+  const releaseTimeMs = performance.now();
+  if (!startInertialZoom(releaseTimeMs, releaseTimeMs)) {
+    scheduleSettledViewDetail();
+  }
 }) as EventListener, { passive: false });
 
 viewport.addEventListener("dblclick", () => fitGalaxy());
@@ -1754,7 +1905,7 @@ viewport.addEventListener("keydown", (event) => {
       break;
   }
   if (!available) return;
-  const interruptedInertia = cancelInertialPan();
+  const interruptedInertia = cancelCameraInertia();
   event.preventDefault();
   if (command.type === "pan") {
     userMovedCamera = true;
@@ -1793,6 +1944,8 @@ function galaxyDiagnosticSnapshot() {
     touchInputMode: nativeTouchInput ? "Native Touch Events" : "Pointer Events",
     wheelInputMode,
     inertialPanActive: inertialPan.isActive,
+    inertialZoomActive: inertialZoom.isActive,
+    inertialZoomPending: wheelZoomReleaseAt > 0,
     presentationVisible,
     frameLoop: viewport.dataset.frameLoop ?? "unknown",
     settlePending: settleScheduler.isPending,
@@ -1869,8 +2022,11 @@ animateControl.addEventListener("change", () => {
 });
 
 function syncReducedMotionPreference(): void {
-  if (reducedMotionQuery.matches && inertialPan.isActive) {
-    cancelInertialPan();
+  if (
+    reducedMotionQuery.matches &&
+    (inertialPan.isActive || inertialZoom.isActive || wheelZoomReleaseAt > 0)
+  ) {
+    cancelCameraInertia();
     scheduleSettledViewDetail();
   }
   syncGraphDescription();
@@ -1884,7 +2040,7 @@ function syncReducedMotionPreference(): void {
 reducedMotionQuery.addEventListener("change", syncReducedMotionPreference);
 
 const resizeObserver = new ResizeObserver(() => {
-  cancelInertialPan();
+  cancelCameraInertia();
   const previousGeometry = viewportGeometry;
   refreshViewportOrigin();
   resizeActiveBackend();
@@ -1944,7 +2100,7 @@ window.addEventListener("beforeunload", () => {
   cancelLongPress();
   clearInterval(backendHealthPoll);
   settleScheduler.cancel();
-  cancelInertialPan();
+  cancelCameraInertia();
   reducedMotionQuery.removeEventListener("change", syncReducedMotionPreference);
   resizeObserver.disconnect();
   avatarImageAdmission.dispose();
@@ -2008,6 +2164,13 @@ Object.assign(window, {
         active: inertialPan.isActive,
         velocityX: inertialPan.currentVelocityX,
         velocityY: inertialPan.currentVelocityY,
+      },
+      inertialZoom: {
+        active: inertialZoom.isActive,
+        sampling: wheelZoomReleaseAt > 0,
+        logScaleVelocity: inertialZoom.currentLogScaleVelocity,
+        focalX: inertialZoomFocalX,
+        focalY: inertialZoomFocalY,
       },
       frameLoop: viewport.dataset.frameLoop,
       longTasks: longTaskMonitor.snapshot(),

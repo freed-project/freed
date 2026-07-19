@@ -64,6 +64,8 @@ export interface FriendsGalaxyDiagnosticSnapshotInput {
   touchInputMode: string;
   wheelInputMode: string;
   inertialPanActive: boolean;
+  inertialZoomActive: boolean;
+  inertialZoomPending: boolean;
   presentationVisible: boolean;
   frameLoop: string;
   settlePending: boolean;
@@ -148,6 +150,8 @@ export interface FriendsGalaxyDiagnosticSnapshot {
     touchInputMode: string;
     wheelInputMode: string;
     inertialPanActive: boolean;
+    inertialZoomActive: boolean;
+    inertialZoomPending: boolean;
   };
   runtime: {
     theme: string;
@@ -248,6 +252,8 @@ export function createFriendsGalaxyDiagnosticSnapshot(
       touchInputMode: boundedRequiredText(input.touchInputMode, 64),
       wheelInputMode: boundedRequiredText(input.wheelInputMode, 64),
       inertialPanActive: input.inertialPanActive,
+      inertialZoomActive: input.inertialZoomActive,
+      inertialZoomPending: input.inertialZoomPending,
     },
     runtime: {
       theme: boundedRequiredText(input.theme, 64),
