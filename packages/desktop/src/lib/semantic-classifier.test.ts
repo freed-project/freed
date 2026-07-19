@@ -1,13 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import localAIHealthFeedbackReplay from "../../tests/fixtures/local-ai-health-feedback-replay.json";
 
 async function loadSemanticClassifierModule({
   enabled,
   summary = { updated: 1, remaining: 0, total: 28_349 },
   backfillImpl,
+  notifyModelSubscriberOnHealthUpdate = false,
 }: {
   enabled: { current: boolean };
   summary?: { updated: number; remaining: number; total: number };
   backfillImpl?: () => Promise<{ updated: number; remaining: number; total: number }>;
+  notifyModelSubscriberOnHealthUpdate?: boolean;
 }) {
   vi.resetModules();
 
@@ -23,7 +26,9 @@ async function loadSemanticClassifierModule({
   const mockDocBackfillContentSignals = vi.fn(
     backfillImpl ?? (async () => summary),
   );
-  const mockUpdateHealth = vi.fn(async () => undefined);
+  const mockUpdateHealth = vi.fn(async () => {
+    if (notifyModelSubscriberOnHealthUpdate) callbacks.model?.();
+  });
   const mockListModels = vi.fn(async () => [
     {
       selected: true,
@@ -173,6 +178,65 @@ describe("semantic classifier", () => {
     await vi.advanceTimersByTimeAsync(9 * 60 * 1000);
 
     expect(mockDocBackfillContentSignals).not.toHaveBeenCalled();
+    mod.stop();
+  });
+
+  it("replays the five-second feedback loop when a health write is broadcast as a lifecycle change", async () => {
+    vi.useFakeTimers();
+    const enabled = { current: true };
+    const replay = localAIHealthFeedbackReplay.automergeLoop;
+    const terminalSummary = replay.semanticClassifier.terminalSummary;
+    expect(localAIHealthFeedbackReplay.networkBoundary.providerTraffic).toBe(false);
+    expect(replay.semanticClassifier.runtimeSummaryObserved).toBe(false);
+    expect(replay.causalContract).toMatchObject({
+      timerOwner: "semantic_classifier",
+      rearmOwner: "local_ai_health_update_notification",
+      cloudUploadSkipIsDownstream: true,
+      cloudUploadSkipSchedulesClassifierTick: false,
+    });
+    const { mockDocBackfillContentSignals, mockUpdateHealth, mod } =
+      await loadSemanticClassifierModule({
+        enabled,
+        summary: terminalSummary,
+        notifyModelSubscriberOnHealthUpdate: true,
+      });
+
+    await vi.advanceTimersByTimeAsync(
+      replay.semanticClassifier.startupDelayMs +
+        (replay.semanticClassifier.processIntervalMs * 3),
+    );
+
+    expect(mockDocBackfillContentSignals).toHaveBeenCalledTimes(
+      replay.expectedPositiveControl.healthBroadcastBatchCount,
+    );
+    expect(mockUpdateHealth).toHaveBeenCalledTimes(
+      replay.expectedPositiveControl.healthBroadcastBatchCount,
+    );
+    mod.stop();
+  });
+
+  it("does not rearm a terminal batch when health persistence is not a lifecycle change", async () => {
+    vi.useFakeTimers();
+    const enabled = { current: true };
+    const replay = localAIHealthFeedbackReplay.automergeLoop;
+    const terminalSummary = replay.semanticClassifier.terminalSummary;
+    const { mockDocBackfillContentSignals, mockUpdateHealth, mod } =
+      await loadSemanticClassifierModule({
+        enabled,
+        summary: terminalSummary,
+      });
+
+    await vi.advanceTimersByTimeAsync(
+      replay.semanticClassifier.startupDelayMs +
+        (replay.semanticClassifier.processIntervalMs * 3),
+    );
+
+    expect(mockDocBackfillContentSignals).toHaveBeenCalledTimes(
+      replay.expectedPositiveControl.isolatedHealthBatchCount,
+    );
+    expect(mockUpdateHealth).toHaveBeenCalledTimes(
+      replay.expectedPositiveControl.isolatedHealthBatchCount,
+    );
     mod.stop();
   });
 });

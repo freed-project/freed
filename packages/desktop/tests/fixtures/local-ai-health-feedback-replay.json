@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "local-ai-health-feedback-replay",
+  "seed": "20260718-terminal-classifier-health-feedback",
+  "sourceTaskIds": [
+    "W5-01",
+    "webkit-recovery-retained-process-amplification",
+    "webkit-recovery-process-attribution-undercount"
+  ],
+  "sourceBuild": {
+    "version": "26.7.1501",
+    "channel": "dev",
+    "commitSha": "0e99811c6eee2d7d3abbdea07e5adf1c61241c73"
+  },
+  "sourceEvidence": {
+    "runtimeHealthLog": "runtime-health-20260718.jsonl",
+    "selectedPrefixLineCount": 255,
+    "selectedPrefixBytes": 173863,
+    "selectedPrefixSha256": "2da62c60de099d1994ae7315a91b9423530c66b483266f4464fce382423a0df5",
+    "selectedAutomergeLineNumbers": [123, 226, 250, 251, 252, 253, 254, 255]
+  },
+  "networkBoundary": {
+    "providerTraffic": false,
+    "providerContentIncluded": false,
+    "credentialsIncluded": false,
+    "fixtureKind": "sanitized-runtime-metadata"
+  },
+  "automergeLoop": {
+    "appSessionId": "7896b20a-909a-43a0-9672-e9e0a8b59110",
+    "firstObservedSessionEventTsMs": 1784394048175,
+    "classifierFirstPostQuietSpawnTsMs": 1784394650743,
+    "documentBytes": 15727768,
+    "semanticClassifier": {
+      "startupDelayMs": 600000,
+      "processIntervalMs": 5000,
+      "batchSize": 100,
+      "terminalSummary": {
+        "updated": 0,
+        "remaining": 0,
+        "total": 500
+      },
+      "runtimeSummaryObserved": false,
+      "terminalSummarySource": "production_contract_fault_injection"
+    },
+    "causalContract": {
+      "timerOwner": "semantic_classifier",
+      "rearmOwner": "local_ai_health_update_notification",
+      "rearmPath": [
+        "recordSemanticHealth",
+        "localAIModels.updateHealth",
+        "updateModelState",
+        "savePersisted",
+        "notifyLocalAIModelState",
+        "subscribeToLocalAIModelState",
+        "scheduleBackfill"
+      ],
+      "cloudUploadSkipIsDownstream": true,
+      "cloudUploadSkipSchedulesClassifierTick": false
+    },
+    "logicalSequence": [
+      {
+        "sequence": 1,
+        "event": "worker_spawn",
+        "tsMs": 1784394695892
+      },
+      {
+        "sequence": 2,
+        "event": "worker_init",
+        "tsMs": 1784394697802,
+        "docBytes": 15727768
+      },
+      {
+        "sequence": 3,
+        "event": "cloud_upload_skipped",
+        "tsMs": 1784394699778,
+        "cause": "subscriber",
+        "reason": "execution_heads_unchanged"
+      },
+      {
+        "sequence": 4,
+        "event": "worker_spawn",
+        "tsMs": 1784394700893
+      },
+      {
+        "sequence": 5,
+        "event": "worker_init",
+        "tsMs": 1784394702681,
+        "docBytes": 15727768
+      },
+      {
+        "sequence": 6,
+        "event": "cloud_upload_skipped",
+        "tsMs": 1784394704660,
+        "cause": "subscriber",
+        "reason": "execution_heads_unchanged"
+      }
+    ],
+    "expectedPositiveControl": {
+      "healthBroadcastBatchCount": 4,
+      "isolatedHealthBatchCount": 1,
+      "workerGenerationCount": 2,
+      "workerInitCount": 2,
+      "unchangedHeadSkipCount": 2,
+      "providerTraffic": false
+    }
+  }
+}

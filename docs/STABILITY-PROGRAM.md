@@ -106,6 +106,7 @@ Must land AFTER the P1 dampers or the relay and cloud loops amplify each other.
 
 ## Wave 5 — Memory demand-side (summaries)
 
+- Local AI classifier health persistence is not a model lifecycle signal. A terminal no-op batch now stays terminal instead of rearming every five seconds, recreating the Automerge worker, and scheduling downstream unchanged-head cloud checks. Judge the installed effect with `worker-init-rate` and its automatic `app-memory-pressure-p95` guardrail.
 - Raw-bytes transport: transferable Uint8Array postMessage + Tauri raw ArrayBuffer invoke (deletes the 16-20x number[]/JSON amplification).
 - Worker lifecycle: time-based idle unload (30-60s) instead of unload-on-queue-drain + 1s kill; persist compaction bookkeeping across unloads.
 - UPDATE_FEED_ITEM through ITEM_PATCH; batch imports persist once.

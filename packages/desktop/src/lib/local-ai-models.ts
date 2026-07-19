@@ -399,23 +399,29 @@ export function createLocalAIModelService(
     return next;
   }
 
-  async function savePersisted(state: PersistedState): Promise<void> {
+  async function savePersisted(
+    state: PersistedState,
+    options: { notifyLifecycleSubscribers?: boolean } = {},
+  ): Promise<void> {
     const root = await rootDir();
     await deps.mkdir(root, { recursive: true });
     await deps.writeTextFile(await statePath(), JSON.stringify({ ...state, version: STATE_VERSION }, null, 2));
-    notifyLocalAIModelState();
+    if (options.notifyLifecycleSubscribers ?? true) {
+      notifyLocalAIModelState();
+    }
   }
 
   async function updateModelState(
     id: LocalAIModelId,
     update: (current: LocalAIModelInstallState) => LocalAIModelInstallState,
+    options: { notifyLifecycleSubscribers?: boolean } = {},
   ): Promise<LocalAIModelInstallState> {
     const persisted = await loadPersisted();
     const entry = byId(id);
     const current = cleanState(entry, persisted.models[id], deps.now(), deps.webGPUAvailable());
     const next = update(current);
     persisted.models[id] = next;
-    await savePersisted(persisted);
+    await savePersisted(persisted, options);
     return next;
   }
 
@@ -797,7 +803,10 @@ export function createLocalAIModelService(
         ...health,
       },
       updatedAt: deps.now(),
-    }));
+    }), {
+      // Classifier telemetry is persisted state, not a model lifecycle change.
+      notifyLifecycleSubscribers: false,
+    });
     return listModels();
   }
 

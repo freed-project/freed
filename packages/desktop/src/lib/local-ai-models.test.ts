@@ -462,6 +462,32 @@ describe("local AI model manager", () => {
     expect(notifications).toBe(1);
   });
 
+  it("persists classifier health without notifying model lifecycle subscribers", async () => {
+    const { deps } = createDeps();
+    const service = createLocalAIModelService(deps, TEST_MANIFEST);
+    let notifications = 0;
+    const unsubscribe = subscribeToLocalAIModelState(() => {
+      notifications += 1;
+    });
+
+    try {
+      await service.updateHealth("integrated-balanced", {
+        lastIndexedItemCount: 500,
+        lastRunAt: 123_456,
+        failureCount: 0,
+      });
+    } finally {
+      unsubscribe();
+    }
+
+    expect(notifications).toBe(0);
+    expect((await service.listModels())[0].state.health).toEqual({
+      lastIndexedItemCount: 500,
+      lastRunAt: 123_456,
+      failureCount: 0,
+    });
+  });
+
   it("migrates legacy single-pack state into the balanced pack", async () => {
     const statePath = "/app/local-ai-models/state.json";
     const legacyPath = "/app/local-ai-models/integrated-local-ai/abc123/model.bin";
