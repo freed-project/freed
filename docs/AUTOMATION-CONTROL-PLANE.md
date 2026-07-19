@@ -12,20 +12,24 @@ release.
 
 ## Sources of truth
 
-| Source                                            | Purpose                                                                                                                                                   |
-| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `automation/specs/*.json`                         | Checked-in automation identity, authority, provider policy, prompt path, soak limit, allowed local overlay fields, and required host handoff capabilities |
-| `automation/prompts/*.md`                         | Checked-in behavioral contract for each automation                                                                                                        |
-| `.github/rulesets/*.json`                         | Checked-in dev, main, and www PR governance, plus split release-tag creation and no-bypass immutability policies                                          |
-| `~/.freed/automation/control/current-tasks.json`  | Atomic current task state                                                                                                                                 |
-| `~/.freed/automation/control/task-transactions/`  | Recoverable write-ahead records that bind each task revision to its audit event                                                                           |
-| `~/.freed/automation/control/events.jsonl`        | Append-only audit history for task, authority, lease, and observer events                                                                                 |
-| `~/.freed/automation/control/leases/`             | Token-bound leases that prevent duplicate writers                                                                                                         |
-| `~/.freed/automation/control/actor-credentials/`  | Private local credential records used by pinned general actor launchers to acquire canonical role leases                                                  |
-| `~/.freed/automation/control/owner-capabilities/` | Broker-signed one-use owner governance capabilities, split into pending and consumed records                                                              |
-| `~/.freed/automation/outcomes.jsonl`              | Versioned merge, install, and observed-effect outcomes                                                                                                    |
-| `~/.freed/automation/soaks/`                      | Installed-build evidence windows and verdicts                                                                                                             |
-| `docs/roadmap-status.json`                        | Structured phase status used to validate roadmap truth                                                                                                    |
+| Source                                                     | Purpose                                                                                                                                                   |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `automation/specs/*.json`                                  | Checked-in automation identity, authority, provider policy, prompt path, soak limit, allowed local overlay fields, and required host handoff capabilities |
+| `automation/prompts/*.md`                                  | Checked-in behavioral contract for each automation                                                                                                        |
+| `.github/rulesets/*.json`                                  | Checked-in dev, main, and www PR governance, plus split release-tag creation and no-bypass immutability policies                                          |
+| `~/.freed/automation/control/current-tasks.json`           | Atomic current task state                                                                                                                                 |
+| `~/.freed/automation/control/task-transactions/`           | Recoverable write-ahead records that bind each task revision to its audit event                                                                           |
+| `~/.freed/automation/control/outcome-ledger-transactions/` | Recoverable owner-governed outcome history repairs                                                                                                        |
+| `~/.freed/automation/control/events.jsonl`                 | Append-only audit history for task, authority, lease, and observer events                                                                                 |
+| `~/.freed/automation/control/kernel-guard-cutover.json`    | Durable activation receipt for the old-compatible permanent kernel guard set                                                                              |
+| `~/.freed/automation/control/leases/`                      | Token-bound leases that prevent duplicate writers                                                                                                         |
+| `~/.freed/automation/control/actor-credentials/`           | Private local credential records used by pinned general actor launchers to acquire canonical role leases                                                  |
+| `~/.freed/automation/control/owner-capabilities/`          | Broker-signed one-use owner governance capabilities, split into pending and consumed records                                                              |
+| `~/.freed/automation/outcomes.jsonl`                       | Versioned merge, install, and observed-effect outcomes                                                                                                    |
+| `~/.freed/automation/artifacts/outcome-ledger-repair/`     | Content-addressed raw history, per-line decisions, retained entries, rejected entries, and completion receipts                                            |
+| `~/.freed/automation/artifacts/kernel-guard-cutover/`      | Immutable pre-cutover lock bytes, transaction material, and owner-approved cutover receipts                                                               |
+| `~/.freed/automation/soaks/`                               | Installed-build evidence windows and verdicts                                                                                                             |
+| `docs/roadmap-status.json`                                 | Structured phase status used to validate roadmap truth                                                                                                    |
 
 The default state root can be replaced with `FREED_AUTOMATION_STATE_ROOT` or the
 CLI `--state-root` option. Repository automation specifications intentionally do
@@ -171,13 +175,46 @@ interaction for the credential read, restores the prior interaction policy,
 and invokes only the pinned control entry. A failure to disable interaction,
 read the credential, or restore the prior policy fails closed. Verify, acquire,
 and host acceptance must never display a Keychain password dialog. The launcher
-and orchestration layer bound child runtime and output, terminate a timed-out
-child, and reject late, oversized, or malformed results. The pinned control
-child is the only JavaScript process that receives the persistent credential,
-and receives it only long enough to acquire the actor's canonical lease. The
-launcher returns only the short-lived lease result. General actor leases have a
-30 minute absolute lifetime. Heartbeats cannot extend them past the original
-limit.
+and orchestration layer bound child runtime and output, terminate the complete
+timed-out child process group, and reject late, oversized, or malformed results.
+Native acquisition has one 65 second end-to-end budget split into a 20 second
+acquisition window and a final 45 second cleanup reserve. Validation, binding
+checks, and the Keychain read consume the acquisition window. If they exhaust
+it, the launcher fails before starting lease mutation. Once an acquire child may
+have committed, the reserve is available only to two exact-identity release
+attempts and two absence inspections. The caller's 75 second outer ceiling adds
+10 seconds beyond the native boundary, so its hard kill cannot interrupt an
+active bounded child. The pinned acquire child is the only JavaScript process
+that receives the persistent credential. Release receives only its retained
+short-lived operation ID and lease token. Show receives neither secret. After
+malformed or lost acquisition responses, the launcher retries one idempotent
+release identity, then retries inspection and requires confirmed absence before
+returning failure. Before preflight begins, the native host takes synchronous
+`SIGINT` and `SIGTERM` ownership through a Darwin kqueue. Every control child
+starts in its own process group with an empty signal mask and default interrupt
+and termination dispositions. Cancellation before an acquire child starts exits
+with the matching signal status and performs no lease mutation. Once acquire may
+have started, cancellation kills and reaps the complete child group, uses the
+retained exact release identity, confirms absence inside the cleanup deadline,
+and emits no lease handoff. Cleanup children do not consume host cancellation,
+so a signal cannot spend a release or inspection retry. The first signal remains
+retained until cleanup finishes and the host exits with status 130 or 143.
+
+The lease handoff has one native commit point. The host blocks both cancellation
+signals, drains the kqueue, and cleans the lease without output if cancellation
+was already present. Otherwise that drain commits the transfer. The host writes
+the complete handoff while both signals remain blocked and exits successfully
+without restoring a signal window. A signal arriving after that commit belongs
+to the completed transfer and cannot turn valid handoff bytes into a failed
+launcher result. As a second cleanup layer, the orchestration caller bounded-parses
+launcher output even on a nonzero result. If it finds a plausible retained lease
+token, it performs exact-token release and confirms absence before reporting the
+launcher failure. Terminal error and cancellation paths perform a preliminary
+drain and one final drain, then keep both signals blocked through process exit.
+
+The launcher returns only the short-lived lease result. General actor leases
+have a 30 minute absolute lifetime. Heartbeats cannot extend them past the
+original limit.
 
 This handoff follows the control plane's cooperative same-user threat model. It
 protects the persistent credential and pins the selected role to one immutable
@@ -239,7 +276,7 @@ authority, provider authority, and JSON details.
 
 Task writes use this sequence:
 
-1. Acquire the short filesystem guard for task state.
+1. Acquire the persistent kernel-backed guard for task state.
 2. Recover any prepared transaction left by an interrupted writer.
 3. Read and validate the current manifest.
 4. Reject a stale `expectedRevision` when the caller supplied one.
@@ -256,10 +293,149 @@ its stable event ID. A failed caller can therefore leave prepared work, but it
 cannot leave an unexplained task revision permanently. Use
 `scripts/automation-control.mjs` instead of editing the JSON manually.
 
-Each filesystem guard records its PID and process start identity. Age alone
-never permits takeover while that exact process is alive. A stale guard is
-recoverable only when the process is gone, the PID was reused with a different
-start identity, or the owner record is irrecoverably absent.
+Task, event, and outcome writers use one durable, old-compatible kernel-lock
+cutover. macOS uses `/usr/bin/lockf`. Linux uses `/usr/bin/flock`. Task, event,
+and lease guards retain the historical mode `0700` directory shape. Each
+directory contains an exact mode `0600` `owner.json` sentinel and a permanent
+mode `0600` `kernel.lock`. The outcome writer keeps the historical
+`outcomes.jsonl.writer-lock` pathname as a permanent mode `0600` sentinel and
+kernel-lock inode. Every sentinel records PID 1 as live under the old protocol,
+so an older Freed control process cannot age-take over, rename, or unlink it.
+PID 1 is only a compatibility sentinel. It is not the current lock owner. The
+new protocol locks only the permanent kernel inode and never renames or unlinks
+any sentinel path.
+
+Process exit, including `SIGKILL`, releases the kernel lock while leaving every
+sentinel byte and inode intact. New writers refuse all control mutation until
+`control/kernel-guard-cutover.json` verifies the complete sentinel set and the
+exact `freed-kernel-guard-cutover-v1` receipt. Missing, empty, partial, legacy,
+or malformed paths fail closed. Bridge-only and cutover-only writers cannot run
+together because there is no bridge mode after that receipt becomes current.
+The contract requires a local filesystem whose `/usr/bin/lockf` or
+`/usr/bin/flock` semantics apply to every contender. Network or otherwise
+distributed filesystems are unsupported and fail host admission. Runtime
+revalidates the exact receipt, canonical directory ancestry, owner, mode, link
+count, marker bytes, and locked inode for every operation. A prior doctor run
+is never used as mutation authority.
+
+The one-time rollout is an explicit quiescent owner operation. All five saved
+actors must be `PAUSED`, every canonical lease must be absent, no older control
+process may be alive, and every source byte named by the read-only plan must
+remain unchanged. The migration uses one exact private current-task owner
+confirmation directly because acquiring the owner-governance lease itself
+depends on the guard protocol being installed. This bootstrap exception applies
+only to `automation-guard.cutover`. Normal owner operations return to exact
+short-lived leases after the cutover receipt is durable.
+
+Plan the cutover without mutation:
+
+```bash
+npm run --silent automation:cutover-kernel-guards -- plan \
+  --task-id "$TASK_ID" \
+  --plan-file "$PLAN_FILE"
+```
+
+The complete plan has one 32 MiB aggregate byte limit. Planning, private plan
+storage, plan loading, continuous receipt inspection, and strict doctor use the
+same limit. Planning fails read-only if the source snapshot would produce a
+plan that any later reader must reject.
+
+Create one private mode `0600` current-task owner confirmation from the exact
+reported intent and digest. Then apply the same immutable plan:
+
+```bash
+npm run --silent automation:cutover-kernel-guards -- apply \
+  --plan-file "$PLAN_FILE" \
+  --owner-confirmation-file "$CONFIRMATION_FILE"
+```
+
+The migration archives prior lock bytes, prepares complete sentinels before
+publishing them, syncs every file and parent directory, writes a durable
+transaction and artifact receipt, and publishes the global receipt last. The
+permanent mode `0600` bootstrap lock is on the same admitted local filesystem,
+contains the exact PID 1 compatibility marker, and is part of completed
+receipt inspection. A partial run stays inactive and can resume idempotently
+from the same plan.
+
+Planning and every retry validate the full canonical task manifest with fatal
+UTF-8 decoding and the same task schema used by completed receipt inspection.
+A matching task ID inside a malformed manifest is not sufficient. Before the
+first state mutation, the executor also checks the exact write-ahead path and
+every deterministic cutover artifact, archive, authorization, quarantine, and
+supersede evidence path against the local filesystem and same-device contract.
+It repeats that exact admission before receipt activation or supersede
+retirement.
+
+Every in-place legacy claim, marker conversion, and pre-marker restoration is
+preceded by one durable write-ahead record. That record binds the exact device,
+inode, source bytes, target bytes, mode, operation, and phase before the first
+canonical write. Recovery accepts only the exact source, exact target, or the
+bounded target-prefix state produced by an interrupted write on that same
+inode. Planned removals first move the exact occurrence into a deterministic
+private quarantine, sync both parents, remove it, and advance the same journal
+before cleanup. An empty quarantine left after journal unlink is recovered
+idempotently. Any unbound occurrence fails closed.
+
+The first validated owner confirmation is copied into an immutable private
+authorization artifact before the prepared transaction is published. Each
+later validated retry keeps its own exact raw confirmation evidence and appends
+its identity to the bounded transaction history. The completed receipt names
+the final authorization used to activate the cutover. Runtime and strict doctor
+verify the raw confirmation digests, the first-authorization artifact, the
+bounded history, and the final receipt attribution. Private plan, transaction,
+authorization, receipt, and journal files are admitted through one descriptor
+with exact mode `0600`, owner, link count, inode, canonical path, and post-read
+identity checks.
+
+Immediately before the transaction advances to `receipt-prepared`, the
+executor revalidates the exact owner confirmation and records it as the last
+transaction authorization. The transaction records `completedAt` at that
+authorization commit, and the confirmation must still be live at that exact
+time. The executor writes and syncs the `receipt-prepared` transaction before
+it writes either the immutable receipt artifact or the global activation
+receipt. A verified `receipt-prepared` transaction is terminal write-ahead
+authority. Recovery branches on that phase before asking for another owner
+confirmation, revalidates the plan, transaction, archives, permanent markers,
+quiescence, and protected source, then finishes only the missing receipt writes.
+It may therefore finish after the source confirmation file is absent or its
+time window has expired. It cannot replace the committed authorization,
+re-enter an earlier mutation phase, or accept inconsistent evidence.
+
+Protected source or exact `dev` identity may legitimately change after a
+transaction is prepared. Before any permanent writer, owner, or inner marker
+exists, create a separate read-only supersede plan:
+
+```bash
+npm run --silent automation:cutover-kernel-guards -- plan-supersede \
+  --plan-file "$PLAN_FILE" \
+  --supersede-plan-file "$SUPERSEDE_PLAN_FILE"
+```
+
+Create a new private mode `0600` current-task owner confirmation from that
+supersede intent. Then restore the exact planned legacy paths, preserve the old
+plan, transaction, archives, and superseded receipt, and retire only the
+canonical prepared transaction:
+
+```bash
+npm run --silent automation:cutover-kernel-guards -- supersede \
+  --plan-file "$PLAN_FILE" \
+  --supersede-plan-file "$SUPERSEDE_PLAN_FILE" \
+  --owner-confirmation-file "$SUPERSEDE_CONFIRMATION_FILE"
+```
+
+Supersede requires the same quiescence proof as apply. It binds the exact old
+plan, transaction, claim generations, archive identities, and current canonical
+task. It is allowed only in `prepared` or `claims-installed`. Once any permanent
+writer or canonical guard marker exists, supersede fails closed and only the
+same cutover plan may resume. The bootstrap lock remains permanent. Run
+`node scripts/doctor.mjs --strict` after apply. Never remove the permanent
+writer marker, bootstrap lock, guard directories, owner sentinels, inner lock
+files, completed cutover transaction, archive, or receipt.
+
+The immutable supersede receipt preserves the exact raw owner confirmation,
+its raw and canonical digests, canonical source path, and validation time. A
+retry may use a fresh live confirmation, but it cannot rewrite the authority
+evidence already bound to a durable supersede receipt.
 
 The successful task path is:
 
@@ -319,7 +495,7 @@ A mutating automation must acquire a named writer lease before it creates a
 worktree, edits files, opens a pull request, merges, installs, or starts a soak.
 The lease record contains:
 
-- a random ownership token
+- a caller-retained high-entropy ownership token
 - owner name
 - acquisition and heartbeat timestamps
 - expiry and TTL
@@ -337,16 +513,82 @@ runtime observer must acquire its canonical lease before it appends a control
 event or creates an `observed` task. Every other task mutation also requires the
 actor's live canonical lease and secret token.
 
+Lease `acquire`, `heartbeat`, `bind-head`, and `release` operations use one
+recoverable write-ahead transaction family under `leases/.transactions/`, with
+completed replay receipts under `leases/.transaction-receipts/`. The caller
+creates and retains an exact operation ID for every operation. For acquisition,
+the caller also creates and retains the high-entropy lease token before the
+control process starts. Transaction and receipt JSON contain only the token's
+SHA-256 digest. Plaintext token bytes may exist only in the canonical lease or
+private mode `0700` staging needed to recover the same caller handoff.
+
+Each transaction binds the operation, canonical request digest, stable event ID
+and timestamp, exact event payload, exact redacted before and after lease
+records, before and after record digests, operation-specific result receipt,
+capability movement, and prior takeover summary when applicable. Its durable
+phases are `prepared`, `state-committed`, `event-appended`, and `complete`.
+Preparation happens before capability consumption, takeover removal, or lease
+mutation. Under lock order lease guard then event guard, recovery classifies
+canonical state and the exact event as before, after, or conflict. It finishes
+only a deterministic missing step. An unknown-token live lease is never an
+acceptable recovery result.
+
+Every lease inspection, authority check, and mutation recovers the exact
+transaction under the lease guard or fails closed while one remains pending.
+An exact completed retry returns its immutable receipt when the operation ID,
+request digest, and token digest match, even after a later legitimate heartbeat
+or binding changed the current lease. Event ID reuse requires complete payload
+equivalence. A collision or any state, event, staging, capability, takeover, or
+receipt conflict fails closed.
+
 Typical writer flow inside an automation process, after the trusted host
-launcher acquires the actor's lease:
+launcher acquires the actor's lease and retains its token. Generate a fresh
+caller-owned operation ID for each lease mutation. Reuse that operation ID and
+token only when retrying the same mutation:
 
 ```bash
-node scripts/automation-control.mjs lease heartbeat \
+HEARTBEAT_OPERATION_ID="$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
+FREED_AUTOMATION_LEASE_OPERATION_ID="$HEARTBEAT_OPERATION_ID" \
+FREED_AUTOMATION_LEASE_TOKEN="$ACTOR_LEASE_TOKEN" \
+  node scripts/automation-control.mjs lease heartbeat \
   --name nightly-writer
 
-node scripts/automation-control.mjs lease release \
+RELEASE_OPERATION_ID="$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
+FREED_AUTOMATION_LEASE_OPERATION_ID="$RELEASE_OPERATION_ID" \
+FREED_AUTOMATION_LEASE_TOKEN="$ACTOR_LEASE_TOKEN" \
+  node scripts/automation-control.mjs lease release \
   --name nightly-writer
 ```
+
+Each completed lease mutation retires its staging files, active transaction
+record, and pruned receipts into one of two private cleanup archive
+directories. Cleanup admits the full sorted plan before its first move. It
+holds every source inode and every source and destination directory generation
+until a final exact archive-set rescan. The pinned
+`scripts/lib/lease-archive-move.py` helper runs only through
+`/usr/bin/python3` in isolated mode. It uses
+`renameatx_np(RENAME_EXCL)` on Darwin and
+`renameat2(RENAME_NOREPLACE)` on Linux. Destination readback, absence checks,
+and archive listings are relative to held directory descriptors. The
+destination directory is synced before the source directory. Missing native
+syscalls, directory sync, local filesystem admission, or exact readback fail
+closed. General actor runtime schema v2 copies and digests the helper beside
+the pinned control library.
+
+Before writing any new lease staging file, the control plane accounts for all
+cleanup archives and computes a conservative reservation for the next
+operation. The reservation includes three maximum-size transaction artifacts
+plus the largest stale receipt-pruning set that one canonical lease operation
+could retire. Every retained receipt is validated before it contributes to the
+reservation. The operational limits are 100,000 entries, 4,294,967,296 total
+bytes, an oldest age of 366 days, and at least 1,073,741,824 free bytes after
+the computed reservation. Every archive entry must be one mode `0600` regular
+file with one link on the same local filesystem and device as automation state.
+`scripts/doctor.mjs` reports the current and projected count, bytes, oldest age,
+filesystem, and free space. Crossing any limit pauses new lease staging.
+Archive compaction is deliberately absent from lease mutation and doctor. It
+requires a separate, owner-authorized lifecycle that preserves audit
+requirements.
 
 Lease authority is derived from the checked-in actor policy. Callers cannot
 supply authority or invent actor names. Canonical pairs are
@@ -469,15 +711,33 @@ only when the diff is release-only metadata.
 
 The broker writes a mode `0600` signed capability into the state root. It is
 valid for 60 seconds and requests one fixed 30 minute publisher lease. The
-trusted launcher starts with an empty environment containing only public pins
-and the capability path. It rechecks the immutable control checkout, pinned
-Node and GitHub CLI, canonical base, target scope, explicit publish mode, and
-the exact main head when applicable. Automation control verifies the Ed25519 signature against the
+trusted launcher starts with a scrubbed environment containing the public pins,
+the capability path, one caller-retained operation ID, and the matching
+short-lived lease token. The wrapper copies those two retained values into
+non-exported shell variables and immediately removes them from its environment.
+It exposes the token only to the pinned acquire control child until that child
+returns the bound short-lived lease. The wrapper then passes that lease to the
+pinned publisher helper. Validation children never receive it. The wrapper
+rechecks the immutable control checkout, pinned Node and GitHub CLI, canonical
+base, target scope, explicit publish mode, and the exact main head when
+applicable. Automation control verifies the Ed25519 signature against the
 provisioned public key, compares the exact requested scope and lifetime, and
 atomically moves the capability from `pending` to `consumed`. Replay fails
-closed. Only then does it issue the short-lived publisher lease token to the
-pinned publisher helper. A nightly runner credential cannot authenticate this
-lease.
+closed. A nightly runner credential cannot authenticate this lease.
+
+The native broker retains the same token while the wrapper runs. It takes
+synchronous ownership of `SIGINT` and `SIGTERM` before starting the wrapper. On
+cancellation it kills the wrapper process group, reaps the wrapper leader,
+retries one caller-owned release identity, requires confirmed lease absence,
+and exits with the original signal status. The same broker cleanup runs after
+normal or signaled wrapper exit. The wrapper's exit trap remains a first cleanup
+layer, but broker cleanup does not depend on that trap running. The broker removes
+the pending capability, clears its retained secret state, blocks both signals,
+performs a preliminary kqueue drain and one final terminal drain, then keeps both
+signals blocked through process exit. It never restores a handler or mask after
+the terminal decision. A cancellation at the child-exit, cleanup, capability
+removal, or terminal-drain boundary therefore retains the signal exit status
+without reopening a late mutation or capability cleanup window.
 
 `scripts/doctor.mjs` checks the fixed broker config, ownership and modes,
 all pinned file digests, broker signature and designated identity, control
@@ -654,7 +914,11 @@ private mode `0600` JSON file outside the repository:
 Compute the intent with `owner intent-digest`, then acquire the short lease:
 
 ```bash
-node scripts/automation-control.mjs lease acquire \
+OWNER_ACQUIRE_OPERATION_ID="$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
+OWNER_LEASE_TOKEN="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("base64url"))')"
+FREED_AUTOMATION_LEASE_OPERATION_ID="$OWNER_ACQUIRE_OPERATION_ID" \
+FREED_AUTOMATION_LEASE_TOKEN="$OWNER_LEASE_TOKEN" \
+  node scripts/automation-control.mjs lease acquire \
   --name owner-governance \
   --owner freed-owner \
   --ttl-seconds 600 \
@@ -663,11 +927,13 @@ node scripts/automation-control.mjs lease acquire \
   --owner-intent-digest <digest>
 ```
 
-The command generates and returns only a short lease token. The lease is bound
-to the exact task and intent. A different action, parameter, revision, or task
-is rejected. The confirmation must identify `AubreyF`, cannot be future dated,
-must still be live, and cannot last more than seven days. Its canonical digest,
-task reference, and owner identity are copied into the lease and mutation audit
+The caller generates and retains the short lease token before acquisition. The
+command installs that exact token and returns it only as confirmation for the
+same caller-owned handoff and retry. The lease is bound to the exact task and
+intent. A different action, parameter, revision, or task is rejected. The
+confirmation must identify `AubreyF`, cannot be future dated, must still be
+live, and cannot last more than seven days. Its canonical digest, task
+reference, and owner identity are copied into the lease and mutation audit
 events.
 
 This route is cooperative evidence. The JSON does not prove who wrote it, so
@@ -857,6 +1123,30 @@ that does not match the event are ignored by the planner. The ledger entry and
 control event both bind the exact canonical task revision produced by the
 transition.
 
+Every new outcome transition enters through the authenticated outcome writer.
+The writer first creates an `outcomeRequired` reservation for `merged`,
+`installed`, and every terminal outcome. That reservation blocks later task
+mutation until one matching `outcome_recorded` event, one authenticated ledger
+row, and one finalization event are durable. A process loss can therefore leave
+recoverable pending work, but it cannot silently advance the lifecycle without
+the outcome. Historical ordinary outcomes that already have a complete
+authenticated transition, control event, and ledger row remain trusted when
+their older transition predates `outcomeRequired`. A new append may not attach
+to that older transition. Same-state legacy backfill creates a new exact
+reservation linked to the historical transition, then follows the normal
+record and finalization path.
+
+Normal automation actors use `record-outcome.mjs` with their canonical lease.
+An owner operation uses one composite `outcome.record` intent. The read-only
+`plan` command binds the normalized source task, source state and revision,
+route, historical transition when applicable, complete normalized ledger row,
+row timestamp, evidence, and digest. Save that output as a private mode `0600`
+file before acquiring the owner lease. The `apply` command accepts only that
+plan file and reads the short owner token only from
+`FREED_AUTOMATION_LEASE_TOKEN`. Transition, same-state reservation, audit
+event, ledger append, and finalization all reauthorize against the same exact
+intent. Retries may use a fresh lease for the unchanged plan.
+
 The task manifest alone cannot release the global behavior slot. If a process
 stops after a terminal task transition but before its authenticated outcome is
 durable, the planner reports `outcome-record-pending` and keeps all new
@@ -871,6 +1161,125 @@ fingerprint, and report a healthy source for measured outcomes. These identity,
 window, and fingerprint requirements also apply to lifecycle `inconclusive`.
 They do not prevent raw analysis from reporting an unrecordable inconclusive
 result when capture itself is insufficient.
+
+## Owner-governed outcome history repair
+
+Normal outcome recording only appends authenticated schema version 3 entries.
+It never converts an unsigned historical line into a trusted outcome. When
+legacy or otherwise rejected lines make the canonical ledger unhealthy, the
+separate history repair path may retain already trusted entries and quarantine
+the rejected raw bytes. It never reserializes, edits, or re-signs a legacy
+entry.
+
+A repair plan binds one existing canonical task to the fixed repair policy and
+the exact physical inputs and expected outputs. The owner intent includes the
+canonical state root and ledger path, source SHA-256 digest, source byte size,
+physical line count, an exact append-only control-event history prefix digest
+and byte size, expected trusted and rejected counts, replacement digest and
+size, raw archive digest, per-line decision digest, and final receipt digest.
+Any count, digest, path, policy, source, or bound prefix change invalidates the
+plan. Later event suffixes are allowed because acquiring the required owner
+lease appends its own event. Under the outcome writer lock, the current full
+history must remain healthy and must produce the same per-line decisions and
+the same retained and rejected raw byte streams. Live repair requires a current
+`freed-owner` lease named `owner-governance` whose exact operation intent
+matches those values. Task authority, actor authority, provider authority, and
+general instructions do not substitute for that owner authorization.
+
+The plan reports the canonical task's current state and revision for operator
+context. Those fields are informational. The signed intent binds the stable
+task ID and requires that exact task to exist at plan and apply time. It does
+not bind task state or revision because lifecycle state does not grant outcome
+history repair authority.
+
+Planning classifies every physical line with its original line number, byte
+offset, byte length, occurrence order, raw digest, disposition, and reason. The
+content-addressed artifact set preserves the complete source bytes, the exact
+raw bytes retained in the replacement, the exact raw bytes rejected from it,
+the per-line decision manifest, and the completion receipt. Retained and
+rejected lines keep their original bytes. A repair cannot manufacture trusted
+history by reserializing old JSON or signing it after the fact.
+
+The mutation reuses the same `outcomes.jsonl.writer-lock` as normal outcome
+append. Owner authority is checked again after that lock is acquired, after
+owned temp cleanup, immediately before the first archive write, immediately
+before ledger replacement, and inside the audit-event guard. If the owner lease
+expires while either guard is busy, no new archive or audit mutation occurs.
+Recovery requires a fresh exact lease for the same intent. The reserved audit
+event has no standalone append API. Its synchronous finalization guard
+revalidates the exact prepared transaction, source, retained, rejected, and
+decision artifacts, plus the canonical replacement before append. The callback
+must leave the transaction in `audited`, and its helpers expire when the guard
+returns. The immutable source archive is reclassified against the current full
+event history immediately before audit, including recovery after replacement.
+
+The durable transaction phases have literal meanings:
+
+- `prepared` means the source, retained, rejected, and decision artifacts plus
+  the transaction are durable. The receipt may not exist yet.
+- `replaced` means the atomic canonical-ledger rename and directory sync are
+  durable.
+- `audited` means exactly one reserved, deterministic
+  `outcome_history_repaired` event is durable.
+- `complete` is written only after the receipt, current ledger, immutable
+  archives, and exact audit event verify together.
+
+Generic event writers cannot claim the reserved event type.
+
+Recovery is idempotent at every phase. It verifies the transaction, immutable
+artifacts, current ledger, and audit event before finishing only the missing
+steps. A retry of a completed operation returns the same receipt and does not
+rewrite history or duplicate the event. A conflicting transaction, artifact,
+receipt, event, source snapshot, or post-repair ledger fails closed. Any
+prepared, replaced, or audited transaction keeps outcome-ledger health false
+until recovery reaches `complete`, so a crash cannot quietly reopen the global
+behavior slot.
+
+Use the dedicated CLI. Plan before acquiring the owner lease:
+
+```bash
+npm run --silent automation:repair-outcome-ledger -- plan \
+  --task-id "$TASK_ID" \
+  --source-digest "$SOURCE_DIGEST"
+```
+
+Create one private mode `0600` current-task owner confirmation from
+`result.intent` and `result.intentDigest`, then acquire the exact short lease:
+
+```bash
+OWNER_ACQUIRE_OPERATION_ID="$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
+OWNER_LEASE_TOKEN="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("base64url"))')"
+FREED_AUTOMATION_LEASE_OPERATION_ID="$OWNER_ACQUIRE_OPERATION_ID" \
+FREED_AUTOMATION_LEASE_TOKEN="$OWNER_LEASE_TOKEN" \
+  node scripts/automation-control.mjs lease acquire \
+  --name owner-governance \
+  --owner freed-owner \
+  --ttl-seconds 600 \
+  --owner-confirmation-file "$CONFIRMATION" \
+  --owner-task-id "$TASK_ID" \
+  --owner-intent-digest "$INTENT_DIGEST"
+```
+
+Do not replan merely because lease acquisition appended its control event. Keep
+the caller-retained token only in the standard environment variable while
+applying:
+
+```bash
+FREED_AUTOMATION_LEASE_TOKEN="$OWNER_LEASE_TOKEN" \
+npm run --silent automation:repair-outcome-ledger -- repair \
+  --task-id "$TASK_ID" \
+  --source-digest "$SOURCE_DIGEST"
+```
+
+Release the lease after either success or failure:
+
+```bash
+OWNER_RELEASE_OPERATION_ID="$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
+FREED_AUTOMATION_LEASE_OPERATION_ID="$OWNER_RELEASE_OPERATION_ID" \
+FREED_AUTOMATION_LEASE_TOKEN="$OWNER_LEASE_TOKEN" \
+  node scripts/automation-control.mjs lease release \
+  --name owner-governance
+```
 
 ## Structured roadmap status
 

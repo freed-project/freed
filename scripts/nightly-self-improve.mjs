@@ -5,13 +5,17 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   appendFileSync,
   closeSync,
+  constants,
   copyFileSync,
   existsSync,
+  fstatSync,
   fsyncSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readdirSync,
   readFileSync,
+  readSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -20,18 +24,27 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { TextDecoder } from "node:util";
 import { fileURLToPath } from "node:url";
 
 import {
-  appendOutcomeControlEvent,
+  AutomationControlError,
+  AUTOMATION_CONTROL_SCHEMA_VERSION,
   automationControlPaths,
-  finalizeTaskOutcome,
-  guardOwnerIsLive,
+  CONTROL_EVENT_HISTORY_MAX_BYTES,
+  CONTROL_EVENT_MAX_LINE_BYTES,
+  installedOutcomeIdentityMatches,
+  isTaskTransitionAllowed,
   normalizeInstalledBuildIdentity,
-  processStartIdentity,
-  readTask,
+  outcomeRecordOwnerIntent,
+  outcomeReservationEventId,
+  ownerGovernanceIntentDigest,
   readTaskManifest,
-  transitionTask,
+  validateTaskManifest,
+  validateOutcomeLedgerRepairEvent,
+  withAutomationOutcomeLedgerWriterGuard,
+  withMutationLeaseAuthority,
+  withOutcomeRecordingGuards,
 } from "./lib/automation-control.mjs";
 import {
   canonicalOutcomeDelta,
@@ -41,6 +54,19 @@ import {
   validateOutcomeVerdictProvenance,
 } from "./build-outcome-verdict.mjs";
 import { isProviderVisiblePath } from "./lib/provider-visible-paths.mjs";
+import {
+  OUTCOME_LEDGER_REPAIR_ACTION,
+  OUTCOME_LEDGER_REPAIR_EVENT_TYPE,
+  OUTCOME_LEDGER_REPAIR_MAX_BYTES as OUTCOME_LEDGER_MAX_BYTES,
+  OUTCOME_LEDGER_REPAIR_MAX_LINES,
+  OUTCOME_LEDGER_REPAIR_PARAMETER_KEYS,
+  OUTCOME_LEDGER_REPAIR_PHASES,
+  OUTCOME_LEDGER_REPAIR_POLICY,
+  OUTCOME_LEDGER_REPAIR_SCHEMA_VERSION,
+  OUTCOME_LEDGER_REPAIR_TRANSACTION_KEYS,
+  outcomeLedgerRepairEventId,
+  outcomeLedgerRepairOperationSeed,
+} from "./lib/outcome-ledger-repair-contract.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -62,6 +88,10 @@ export const AUTOMATION_STATE_DIR = path.join(
   "automation",
 );
 export const OUTCOME_SCHEMA_VERSION = 3;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+const OUTCOME_REPAIR_IDENTIFIER_PATTERN =
+  /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const outcomeRepairDecoder = new TextDecoder("utf-8", { fatal: true });
 export const OUTCOME_STATUSES = [
   "merged",
   "installed",
@@ -578,27 +608,54 @@ function readText(filePath) {
   return readFileSync(filePath, "utf8");
 }
 
-function readJsonLinesWithHealth(filePath) {
-  const exists = Boolean(filePath && existsSync(filePath));
+function parseJsonLinesWithHealth(text, { exists }) {
   const entries = [];
+  const records = [];
   const malformedLines = [];
   if (!exists) {
-    return { entries, exists: false, healthy: false, malformedLines };
+    return {
+      entries,
+      records,
+      exists: false,
+      healthy: false,
+      malformedLines,
+    };
   }
-  for (const [index, line] of readText(filePath).split(/\r?\n/).entries()) {
-    if (!line.trim()) continue;
+  const lines = text.split(/\r?\n/);
+  for (const [index, line] of lines.entries()) {
+    if (!line.trim()) {
+      const allowedEmptyFile = text.length === 0 && index === 0;
+      const allowedFinalNewline =
+        line === "" && index === lines.length - 1 && /\r?\n$/.test(text);
+      if (!allowedEmptyFile && !allowedFinalNewline) {
+        malformedLines.push(index + 1);
+        records.push({ lineNumber: index + 1, entry: null, malformed: true });
+      }
+      continue;
+    }
     try {
-      entries.push(JSON.parse(line));
+      const entry = JSON.parse(line);
+      entries.push(entry);
+      records.push({ lineNumber: index + 1, entry, malformed: false });
     } catch {
       malformedLines.push(index + 1);
+      records.push({ lineNumber: index + 1, entry: null, malformed: true });
     }
   }
   return {
     entries,
+    records,
     exists: true,
     healthy: malformedLines.length === 0,
     malformedLines,
   };
+}
+
+function readJsonLinesWithHealth(filePath) {
+  const exists = Boolean(filePath && existsSync(filePath));
+  return parseJsonLinesWithHealth(exists ? readText(filePath) : "", {
+    exists,
+  });
 }
 
 function readJsonLines(filePath) {
@@ -833,9 +890,20 @@ function outcomeEntryDigest(entry) {
   return createHash("sha256").update(JSON.stringify(digestible)).digest("hex");
 }
 
-function trustedOutcomeEventHistory(stateRoot) {
-  const eventsPath = automationControlPaths(stateRoot).events;
-  const source = readJsonLinesWithHealth(eventsPath);
+function isOutcomeReservationEvent(event) {
+  return (
+    event?.type === "outcome_reservation_created" &&
+    event?.data?.outcomeBackfill === true &&
+    event?.data?.outcomeRequired === true &&
+    typeof event?.data?.legacyTransitionEventId === "string"
+  );
+}
+
+function isOutcomeTransitionEvent(event) {
+  return event?.type === "task_transitioned" || isOutcomeReservationEvent(event);
+}
+
+function trustedOutcomeEventHistoryFromSource(source) {
   return {
     source,
     outcomes: new Map(
@@ -853,13 +921,728 @@ function trustedOutcomeEventHistory(stateRoot) {
       source.entries
         .filter(
           (event) =>
-            event?.type === "task_transitioned" &&
+            isOutcomeTransitionEvent(event) &&
             typeof event?.eventId === "string" &&
             typeof event?.taskId === "string" &&
             Number.isInteger(event?.taskRevision),
         )
         .map((event) => [event.eventId, event]),
     ),
+  };
+}
+
+function trustedOutcomeEventHistory(stateRoot, sourceText = undefined) {
+  const eventsPath = automationControlPaths(stateRoot).events;
+  const source =
+    sourceText === undefined
+      ? readJsonLinesWithHealth(eventsPath)
+      : parseJsonLinesWithHealth(sourceText, { exists: true });
+  return trustedOutcomeEventHistoryFromSource(source);
+}
+
+function readOutcomeControlBytes(
+  filePath,
+  maxBytes = 1024 * 1024,
+  { allowReadonlyGroupWorld = false } = {},
+) {
+  if (
+    typeof constants.O_NOFOLLOW !== "number" ||
+    typeof constants.O_NONBLOCK !== "number"
+  ) {
+    throw new Error("Safe nonblocking control file admission is unavailable.");
+  }
+  const descriptor = openSync(
+    filePath,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+  );
+  try {
+    const before = fstatSync(descriptor);
+    const canonicalBefore = realpathSync(filePath);
+    const mode = before.mode & 0o7777;
+    const expectedUid =
+      typeof process.getuid === "function" ? process.getuid() : before.uid;
+    if (
+      !before.isFile() ||
+      canonicalBefore !== filePath ||
+      before.uid !== expectedUid ||
+      (allowReadonlyGroupWorld
+        ? ![0o600, 0o640, 0o644].includes(mode)
+        : mode !== 0o600) ||
+      before.size < 0 ||
+      before.size > maxBytes
+    ) {
+      throw new Error(`Unsafe outcome control file: ${filePath}`);
+    }
+    const bytes = Buffer.alloc(before.size + 1);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const count = readSync(
+        descriptor,
+        bytes,
+        offset,
+        bytes.length - offset,
+        null,
+      );
+      if (count === 0) break;
+      offset += count;
+    }
+    const after = fstatSync(descriptor);
+    const current = lstatSync(filePath);
+    if (
+      offset !== before.size ||
+      after.dev !== before.dev ||
+      after.ino !== before.ino ||
+      after.size !== before.size ||
+      after.mtimeMs !== before.mtimeMs ||
+      after.ctimeMs !== before.ctimeMs ||
+      current.isSymbolicLink() ||
+      current.dev !== before.dev ||
+      current.ino !== before.ino ||
+      realpathSync(filePath) !== filePath
+    ) {
+      throw new Error(`Outcome control file changed while read: ${filePath}`);
+    }
+    return { bytes: bytes.subarray(0, offset), stats: before };
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function readOutcomeJsonLinesSnapshot(
+  filePath,
+  {
+    sourceText = undefined,
+    maxBytes,
+    allowReadonlyGroupWorld = false,
+    label,
+  },
+) {
+  let bytes;
+  if (sourceText !== undefined) {
+    bytes = Buffer.isBuffer(sourceText)
+      ? Buffer.from(sourceText)
+      : Buffer.from(String(sourceText), "utf8");
+  } else {
+    try {
+      bytes = readOutcomeControlBytes(filePath, maxBytes, {
+        allowReadonlyGroupWorld,
+      }).bytes;
+    } catch (error) {
+      const missing = error?.code === "ENOENT";
+      return {
+        bytes: Buffer.alloc(0),
+        source: parseJsonLinesWithHealth(missing ? "" : "{", {
+          exists: !missing,
+        }),
+        missing,
+        issue: `${label} safe read failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      };
+    }
+  }
+
+  try {
+    return {
+      bytes,
+      source: parseJsonLinesWithHealth(outcomeRepairDecoder.decode(bytes), {
+        exists: true,
+      }),
+      missing: false,
+      issue: null,
+    };
+  } catch {
+    return {
+      bytes,
+      source: parseJsonLinesWithHealth("{", { exists: true }),
+      missing: false,
+      issue: `${label} is not valid UTF-8.`,
+    };
+  }
+}
+
+function rejectedOutcomeJsonLinesSnapshot(label, error) {
+  return {
+    bytes: Buffer.alloc(0),
+    source: parseJsonLinesWithHealth("{", { exists: true }),
+    missing: false,
+    issue: `${label} safe read failed: ${
+      error instanceof Error ? error.message : String(error)
+    }`,
+  };
+}
+
+function readCanonicalOutcomeSnapshots(
+  stateRoot,
+  ledgerPath,
+  { ledgerText = undefined, eventHistoryText = undefined } = {},
+) {
+  const root = path.resolve(stateRoot);
+  const paths = automationControlPaths(root);
+  try {
+    if (path.resolve(ledgerPath) !== paths.outcomes) {
+      throw new Error("Outcome ledger path is not canonical for the state root.");
+    }
+    requireOutcomeRepairPrivateDescendants(root, paths.controlRoot);
+  } catch (error) {
+    return {
+      ledger: rejectedOutcomeJsonLinesSnapshot("Outcome ledger", error),
+      events: rejectedOutcomeJsonLinesSnapshot("Control event history", error),
+    };
+  }
+  return {
+    ledger: readOutcomeJsonLinesSnapshot(paths.outcomes, {
+      sourceText: ledgerText,
+      maxBytes: OUTCOME_LEDGER_MAX_BYTES,
+      allowReadonlyGroupWorld: true,
+      label: "Outcome ledger",
+    }),
+    events: readOutcomeJsonLinesSnapshot(paths.events, {
+      sourceText: eventHistoryText,
+      maxBytes: 128 * 1024 * 1024,
+      label: "Control event history",
+    }),
+  };
+}
+
+function readOutcomeControlJsonFile(filePath, maxBytes = 1024 * 1024) {
+  const snapshot = readOutcomeControlBytes(filePath, maxBytes);
+  return {
+    value: JSON.parse(outcomeRepairDecoder.decode(snapshot.bytes)),
+    bytes: snapshot.bytes,
+    mtimeMs: snapshot.stats.mtimeMs,
+    stats: snapshot.stats,
+  };
+}
+
+function stableOutcomeRepairJson(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableOutcomeRepairJson).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value)
+      .sort()
+      .map(
+        (key) =>
+          `${JSON.stringify(key)}:${stableOutcomeRepairJson(value[key])}`,
+      )
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function outcomeRepairDigest(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function requireOutcomeRepairCount(value, field) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${field} must be a nonnegative safe integer.`);
+  }
+  return value;
+}
+
+function outcomeRepairPhysicalLines(bytes) {
+  const lines = [];
+  let offset = 0;
+  let lineNumber = 1;
+  while (offset < bytes.length) {
+    const newline = bytes.indexOf(0x0a, offset);
+    const end = newline === -1 ? bytes.length : newline + 1;
+    const raw = bytes.subarray(offset, end);
+    let contentEnd = raw.length;
+    if (contentEnd > 0 && raw[contentEnd - 1] === 0x0a) contentEnd -= 1;
+    if (contentEnd > 0 && raw[contentEnd - 1] === 0x0d) contentEnd -= 1;
+    let text;
+    try {
+      text = outcomeRepairDecoder.decode(raw.subarray(0, contentEnd));
+    } catch {
+      throw new Error(
+        `Outcome ledger repair archive line ${lineNumber.toLocaleString()} is not valid UTF-8.`,
+      );
+    }
+    if (!text.trim()) {
+      throw new Error(
+        `Outcome ledger repair archive line ${lineNumber.toLocaleString()} is blank.`,
+      );
+    }
+    JSON.parse(text);
+    lines.push({
+      lineNumber,
+      offset,
+      length: raw.length,
+      digest: outcomeRepairDigest(raw),
+      raw,
+    });
+    if (lines.length > OUTCOME_LEDGER_REPAIR_MAX_LINES) {
+      throw new Error("Outcome ledger repair archive has too many physical lines.");
+    }
+    offset = end;
+    lineNumber += 1;
+  }
+  return lines;
+}
+
+function requireOutcomeRepairPrivateDescendants(stateRoot, targetPath) {
+  const relative = path.relative(stateRoot, targetPath);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error("Outcome ledger repair artifact path escapes state root.");
+  }
+  const expectedUid =
+    typeof process.getuid === "function" ? process.getuid() : null;
+  const rootStats = lstatSync(stateRoot);
+  if (
+    !rootStats.isDirectory() ||
+    rootStats.isSymbolicLink() ||
+    (expectedUid !== null && rootStats.uid !== expectedUid) ||
+    (rootStats.mode & 0o777) !== 0o700 ||
+    realpathSync(stateRoot) !== stateRoot
+  ) {
+    throw new Error("Outcome ledger repair state root is unsafe.");
+  }
+  let current = stateRoot;
+  for (const segment of relative.split(path.sep)) {
+    current = path.join(current, segment);
+    const stats = lstatSync(current);
+    if (
+      !stats.isDirectory() ||
+      stats.isSymbolicLink() ||
+      (expectedUid !== null && stats.uid !== expectedUid) ||
+      (stats.mode & 0o777) !== 0o700 ||
+      realpathSync(current) !== current
+    ) {
+      throw new Error(
+        `Outcome ledger repair artifact directory is unsafe: ${current}`,
+      );
+    }
+  }
+}
+
+function validateCompletedOutcomeLedgerRepair({
+  stateRoot,
+  ledgerPath,
+  ledgerBytes,
+  eventHistoryBytes,
+  eventEntries,
+  transactionPath,
+  record,
+}) {
+  const parameters = record?.parameters;
+  if (
+    record?.schemaVersion !== OUTCOME_LEDGER_REPAIR_SCHEMA_VERSION ||
+    record?.policy !== OUTCOME_LEDGER_REPAIR_POLICY ||
+    record?.phase !== "complete" ||
+    !OUTCOME_REPAIR_IDENTIFIER_PATTERN.test(String(record?.taskId ?? "")) ||
+    !SHA256_PATTERN.test(String(record?.operationId ?? "")) ||
+    path.basename(transactionPath) !== `${record.operationId}.json` ||
+    !parameters ||
+    typeof parameters !== "object" ||
+    Array.isArray(parameters) ||
+    stableOutcomeRepairJson(Object.keys(parameters).sort()) !==
+      stableOutcomeRepairJson(OUTCOME_LEDGER_REPAIR_PARAMETER_KEYS) ||
+    stableOutcomeRepairJson(Object.keys(record).sort()) !==
+      stableOutcomeRepairJson(OUTCOME_LEDGER_REPAIR_TRANSACTION_KEYS)
+  ) {
+    throw new Error("Completed outcome ledger repair identity is invalid.");
+  }
+  for (const field of [
+    "archiveDigest",
+    "decisionsDigest",
+    "eventHistoryDigest",
+    "operationId",
+    "receiptDigest",
+    "replacementDigest",
+    "sourceDigest",
+  ]) {
+    if (!SHA256_PATTERN.test(String(parameters[field] ?? ""))) {
+      throw new Error(`Outcome ledger repair ${field} is invalid.`);
+    }
+  }
+  for (const field of [
+    "eventHistorySize",
+    "rejectedCount",
+    "replacementSize",
+    "sourceLineCount",
+    "sourceSize",
+    "trustedCount",
+  ]) {
+    requireOutcomeRepairCount(parameters[field], field);
+  }
+  if (
+    parameters.schemaVersion !== OUTCOME_LEDGER_REPAIR_SCHEMA_VERSION ||
+    parameters.policy !== OUTCOME_LEDGER_REPAIR_POLICY ||
+    parameters.stateRoot !== stateRoot ||
+    parameters.ledgerPath !== ledgerPath ||
+    parameters.operationId !== record.operationId ||
+    parameters.archiveDigest !== parameters.sourceDigest ||
+    parameters.sourceLineCount !==
+      parameters.trustedCount + parameters.rejectedCount ||
+    record.eventId !== outcomeLedgerRepairEventId(record.operationId)
+  ) {
+    throw new Error("Completed outcome ledger repair parameters conflict.");
+  }
+  const operationSeed = outcomeLedgerRepairOperationSeed(
+    record.taskId,
+    parameters,
+  );
+  if (
+    outcomeRepairDigest(stableOutcomeRepairJson(operationSeed)) !==
+    record.operationId
+  ) {
+    throw new Error("Completed outcome ledger repair operation ID drifted.");
+  }
+  const intent = {
+    schemaVersion: 1,
+    action: OUTCOME_LEDGER_REPAIR_ACTION,
+    taskId: record.taskId,
+    parameters,
+  };
+  const intentDigest = ownerGovernanceIntentDigest(intent);
+  if (record.intentDigest !== intentDigest) {
+    throw new Error("Completed outcome ledger repair intent digest drifted.");
+  }
+  const artifactDirectory = path.join(
+    stateRoot,
+    "artifacts",
+    "outcome-ledger-repair",
+    record.taskId,
+    parameters.sourceDigest,
+    record.operationId,
+  );
+  const expectedArtifacts = {
+    source: path.join(
+      artifactDirectory,
+      `source-${parameters.sourceDigest}.jsonl`,
+    ),
+    trusted: path.join(artifactDirectory, "trusted.jsonl"),
+    rejected: path.join(artifactDirectory, "rejected.jsonl"),
+    decisions: path.join(artifactDirectory, "decisions.json"),
+    receipt: path.join(artifactDirectory, "receipt.json"),
+  };
+  requireOutcomeRepairPrivateDescendants(stateRoot, artifactDirectory);
+  if (
+    stableOutcomeRepairJson(record.artifacts) !==
+    stableOutcomeRepairJson(expectedArtifacts)
+  ) {
+    throw new Error("Completed outcome ledger repair artifact paths drifted.");
+  }
+  const sourceBytes = readOutcomeControlBytes(
+    expectedArtifacts.source,
+    16 * 1024 * 1024,
+  ).bytes;
+  const trustedBytes = readOutcomeControlBytes(
+    expectedArtifacts.trusted,
+    16 * 1024 * 1024,
+  ).bytes;
+  const rejectedBytes = readOutcomeControlBytes(
+    expectedArtifacts.rejected,
+    16 * 1024 * 1024,
+  ).bytes;
+  const decisionBytes = readOutcomeControlBytes(
+    expectedArtifacts.decisions,
+    128 * 1024 * 1024,
+  ).bytes;
+  const receiptBytes = readOutcomeControlBytes(
+    expectedArtifacts.receipt,
+    16 * 1024 * 1024,
+  ).bytes;
+  if (
+    sourceBytes.length !== parameters.sourceSize ||
+    outcomeRepairDigest(sourceBytes) !== parameters.sourceDigest ||
+    trustedBytes.length !== parameters.replacementSize ||
+    outcomeRepairDigest(trustedBytes) !== parameters.replacementDigest ||
+    outcomeRepairDigest(decisionBytes) !== parameters.decisionsDigest
+  ) {
+    throw new Error("Completed outcome ledger repair artifacts drifted.");
+  }
+  const decisionManifest = JSON.parse(outcomeRepairDecoder.decode(decisionBytes));
+  const { lines: decisions, ...decisionHeader } = decisionManifest ?? {};
+  const expectedDecisionHeader = {
+    schemaVersion: OUTCOME_LEDGER_REPAIR_SCHEMA_VERSION,
+    policy: OUTCOME_LEDGER_REPAIR_POLICY,
+    taskId: record.taskId,
+    sourceDigest: parameters.sourceDigest,
+    sourceSize: parameters.sourceSize,
+    sourceLineCount: parameters.sourceLineCount,
+    eventHistoryDigest: parameters.eventHistoryDigest,
+    eventHistorySize: parameters.eventHistorySize,
+    trustedCount: parameters.trustedCount,
+    rejectedCount: parameters.rejectedCount,
+    replacementDigest: parameters.replacementDigest,
+    replacementSize: parameters.replacementSize,
+  };
+  if (
+    !Array.isArray(decisions) ||
+    stableOutcomeRepairJson(decisionHeader) !==
+      stableOutcomeRepairJson(expectedDecisionHeader)
+  ) {
+    throw new Error("Completed outcome ledger repair decisions drifted.");
+  }
+  const sourceLines = outcomeRepairPhysicalLines(sourceBytes);
+  if (
+    sourceLines.length !== parameters.sourceLineCount ||
+    decisions.length !== sourceLines.length
+  ) {
+    throw new Error("Completed outcome ledger repair occurrence count drifted.");
+  }
+  const trustedParts = [];
+  const rejectedParts = [];
+  for (const [index, line] of sourceLines.entries()) {
+    const decision = decisions[index];
+    if (
+      decision?.lineNumber !== line.lineNumber ||
+      decision?.offset !== line.offset ||
+      decision?.length !== line.length ||
+      decision?.rawDigest !== line.digest ||
+      !["trusted", "rejected"].includes(decision?.disposition) ||
+      typeof decision?.reason !== "string" ||
+      decision.reason.length === 0
+    ) {
+      throw new Error("Completed outcome ledger repair occurrence drifted.");
+    }
+    (decision.disposition === "trusted" ? trustedParts : rejectedParts).push(
+      line.raw,
+    );
+  }
+  if (
+    trustedParts.length !== parameters.trustedCount ||
+    rejectedParts.length !== parameters.rejectedCount ||
+    !trustedBytes.equals(Buffer.concat(trustedParts)) ||
+    !rejectedBytes.equals(Buffer.concat(rejectedParts))
+  ) {
+    throw new Error("Completed outcome ledger repair raw archives drifted.");
+  }
+  const receiptCore = {
+    schemaVersion: OUTCOME_LEDGER_REPAIR_SCHEMA_VERSION,
+    policy: OUTCOME_LEDGER_REPAIR_POLICY,
+    status: "complete",
+    taskId: record.taskId,
+    operationId: record.operationId,
+    eventId: record.eventId,
+    stateRoot: parameters.stateRoot,
+    ledgerPath: parameters.ledgerPath,
+    sourceArtifact: expectedArtifacts.source,
+    trustedArtifact: expectedArtifacts.trusted,
+    rejectedArtifact: expectedArtifacts.rejected,
+    decisionsArtifact: expectedArtifacts.decisions,
+    sourceDigest: parameters.sourceDigest,
+    sourceSize: parameters.sourceSize,
+    sourceLineCount: parameters.sourceLineCount,
+    eventHistoryDigest: parameters.eventHistoryDigest,
+    eventHistorySize: parameters.eventHistorySize,
+    trustedCount: parameters.trustedCount,
+    rejectedCount: parameters.rejectedCount,
+    replacementDigest: parameters.replacementDigest,
+    replacementSize: parameters.replacementSize,
+    archiveDigest: parameters.archiveDigest,
+    decisionsDigest: parameters.decisionsDigest,
+  };
+  const receiptDigest = outcomeRepairDigest(stableOutcomeRepairJson(receiptCore));
+  const expectedReceipt = { ...receiptCore, receiptDigest };
+  const expectedReceiptBytes = Buffer.from(
+    `${JSON.stringify(expectedReceipt, null, 2)}\n`,
+    "utf8",
+  );
+  const receipt = JSON.parse(outcomeRepairDecoder.decode(receiptBytes));
+  if (
+    receiptDigest !== parameters.receiptDigest ||
+    !receiptBytes.equals(expectedReceiptBytes) ||
+    stableOutcomeRepairJson(receipt) !== stableOutcomeRepairJson(expectedReceipt) ||
+    stableOutcomeRepairJson(record.receipt) !==
+      stableOutcomeRepairJson(expectedReceipt)
+  ) {
+    throw new Error("Completed outcome ledger repair receipt drifted.");
+  }
+  if (
+    eventHistoryBytes.length < parameters.eventHistorySize ||
+    outcomeRepairDigest(
+      eventHistoryBytes.subarray(0, parameters.eventHistorySize),
+    ) !== parameters.eventHistoryDigest
+  ) {
+    throw new Error("Completed outcome ledger repair event prefix drifted.");
+  }
+  const matchingEvents = eventEntries.filter(
+    (event) => event?.eventId === record.eventId,
+  );
+  if (matchingEvents.length !== 1) {
+    throw new Error(
+      "Completed outcome ledger repair requires exactly one audit event.",
+    );
+  }
+  validateOutcomeLedgerRepairEvent(matchingEvents[0], {
+    stateRoot,
+    taskId: record.taskId,
+    parameters,
+    intentDigest,
+  });
+  if (
+    ledgerBytes.length < trustedBytes.length ||
+    !ledgerBytes.subarray(0, trustedBytes.length).equals(trustedBytes)
+  ) {
+    throw new Error("Completed outcome ledger repair retained bytes drifted.");
+  }
+}
+
+function inspectOutcomeLedgerRepairTransactions(
+  stateRoot,
+  {
+    ledgerPath,
+    ledgerBytes,
+    eventHistoryBytes,
+    eventEntries,
+    inputIssue = null,
+    allowedPendingOperationId = null,
+  },
+) {
+  const transactionDirectory = path.join(
+    automationControlPaths(stateRoot).controlRoot,
+    "outcome-ledger-transactions",
+  );
+  const repairAuditEvents = eventEntries.filter(
+    (event) => event?.type === OUTCOME_LEDGER_REPAIR_EVENT_TYPE,
+  );
+  const issues = inputIssue === null ? [] : [inputIssue];
+  if (!existsSync(transactionDirectory)) {
+    for (const event of repairAuditEvents) {
+      issues.push(
+        `${String(event?.eventId ?? "unknown repair audit event")}: matching complete transaction is missing`,
+      );
+    }
+    return {
+      exists: repairAuditEvents.length > 0,
+      healthy: issues.length === 0,
+      pending: [],
+      issues,
+    };
+  }
+  const pending = [];
+  const verifiedEventIds = new Set();
+  const admittedPendingEventIds = new Set();
+  try {
+    requireOutcomeRepairPrivateDescendants(stateRoot, transactionDirectory);
+    const stats = lstatSync(transactionDirectory);
+    const expectedUid =
+      typeof process.getuid === "function" ? process.getuid() : stats.uid;
+    if (
+      !stats.isDirectory() ||
+      stats.isSymbolicLink() ||
+      stats.uid !== expectedUid ||
+      (stats.mode & 0o777) !== 0o700 ||
+      realpathSync(transactionDirectory) !== transactionDirectory
+    ) {
+      throw new Error("Outcome ledger transaction directory is unsafe.");
+    }
+    for (const entry of readdirSync(transactionDirectory, {
+      withFileTypes: true,
+    })) {
+      if (
+        /^\.[0-9a-f]{64}\.json\.\d+\.tmp(?:\.quarantine\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})*$/.test(
+          entry.name,
+        )
+      ) {
+        try {
+          readOutcomeControlBytes(
+            path.join(transactionDirectory, entry.name),
+            128 * 1024 * 1024,
+          );
+        } catch (error) {
+          issues.push(
+            `${entry.name}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+        continue;
+      }
+      if (!entry.isFile() || !entry.name.endsWith(".json")) {
+        issues.push(`unexpected transaction entry ${entry.name}`);
+        continue;
+      }
+      const filePath = path.join(transactionDirectory, entry.name);
+      try {
+        const record = readOutcomeControlJsonFile(filePath).value;
+        if (
+          record?.schemaVersion !== 1 ||
+          !SHA256_PATTERN.test(String(record?.operationId ?? "")) ||
+          entry.name !== `${record.operationId}.json` ||
+          !OUTCOME_REPAIR_IDENTIFIER_PATTERN.test(
+            String(record?.taskId ?? ""),
+          ) ||
+          stableOutcomeRepairJson(Object.keys(record).sort()) !==
+            stableOutcomeRepairJson(OUTCOME_LEDGER_REPAIR_TRANSACTION_KEYS) ||
+          record?.eventId !== outcomeLedgerRepairEventId(record.operationId) ||
+          !OUTCOME_LEDGER_REPAIR_PHASES.includes(record?.phase)
+        ) {
+          throw new Error("invalid transaction record");
+        }
+        if (record.phase !== "complete") {
+          pending.push({
+            operationId: record.operationId,
+            taskId: record.taskId,
+            phase: record.phase,
+          });
+          if (
+            record.operationId === allowedPendingOperationId &&
+            ["replaced", "audited"].includes(record.phase)
+          ) {
+            const matchingEvents = eventEntries.filter(
+              (event) => event?.eventId === record.eventId,
+            );
+            if (
+              matchingEvents.length === 0 &&
+              record.phase === "replaced"
+            ) {
+              continue;
+            }
+            if (matchingEvents.length !== 1) {
+              throw new Error(
+                "pending outcome ledger repair requires exactly one audit event",
+              );
+            }
+            validateOutcomeLedgerRepairEvent(matchingEvents[0], {
+              stateRoot,
+              taskId: record.taskId,
+              parameters: record.parameters,
+              intentDigest: record.intentDigest,
+            });
+            admittedPendingEventIds.add(record.eventId);
+          }
+        } else {
+          validateCompletedOutcomeLedgerRepair({
+            stateRoot,
+            ledgerPath,
+            ledgerBytes,
+            eventHistoryBytes,
+            eventEntries,
+            transactionPath: filePath,
+            record,
+          });
+          verifiedEventIds.add(record.eventId);
+        }
+      } catch (error) {
+        issues.push(
+          `${entry.name}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    for (const event of repairAuditEvents) {
+      if (
+        typeof event?.eventId !== "string" ||
+        !/^outcome-history-repaired:[0-9a-f]{64}$/.test(event.eventId) ||
+        (!verifiedEventIds.has(event.eventId) &&
+          !admittedPendingEventIds.has(event.eventId))
+      ) {
+        issues.push(
+          `${String(event?.eventId ?? "unknown repair audit event")}: matching complete transaction is missing or invalid`,
+        );
+      }
+    }
+  } catch (error) {
+    issues.push(error instanceof Error ? error.message : String(error));
+  }
+  return {
+    exists: true,
+    healthy: issues.length === 0,
+    pending,
+    issues,
   };
 }
 
@@ -920,6 +1703,57 @@ function authenticateOutcomeEntry(
   const transitionEvent = eventHistory.transitions.get(
     authentication.transitionEventId,
   );
+  const reservationEvent = isOutcomeReservationEvent(transitionEvent);
+  const legacyReservationTransitions = reservationEvent
+    ? eventHistory.source.entries.filter(
+        (candidate) =>
+          candidate?.eventId ===
+          transitionEvent.data.legacyTransitionEventId,
+      )
+    : [];
+  const legacyReservationTransition = legacyReservationTransitions[0];
+  let validLegacyReservationEdge = false;
+  if (
+    typeof legacyReservationTransition?.data?.fromState === "string" &&
+    typeof legacyReservationTransition?.data?.toState === "string"
+  ) {
+    try {
+      validLegacyReservationEdge = isTaskTransitionAllowed(
+        legacyReservationTransition.data.fromState,
+        legacyReservationTransition.data.toState,
+      );
+    } catch {
+      validLegacyReservationEdge = false;
+    }
+  }
+  const validLegacyReservation =
+    !reservationEvent ||
+    (legacyReservationTransitions.length === 1 &&
+      legacyReservationTransition?.type === "task_transitioned" &&
+      legacyReservationTransition.taskId === entry.taskId &&
+      legacyReservationTransition.taskRevision + 1 ===
+      authentication.taskRevision &&
+      legacyReservationTransition.data?.toState === entry.outcome &&
+      validLegacyReservationEdge &&
+      legacyReservationTransition.data?.outcomeDigest === undefined &&
+      legacyReservationTransition.data?.outcomeRequired === undefined);
+  const validInstalledTransitionIdentity = installedOutcomeIdentityMatches({
+    outcome: entry.outcome,
+    build: entry.build,
+    buildIdentity: entry.buildIdentity,
+    transitionEvent,
+  });
+  const validLegacyInstalledIdentity =
+    !reservationEvent ||
+    (installedOutcomeIdentityMatches({
+      outcome: entry.outcome,
+      build: entry.build,
+      buildIdentity: entry.buildIdentity,
+      transitionEvent: legacyReservationTransition,
+    }) &&
+      (entry.outcome !== "installed" ||
+        legacyReservationTransition?.data?.installedAt ===
+          transitionEvent.data?.installedAt));
   const digest = outcomeEntryDigest(entry);
   if (
     !event ||
@@ -938,12 +1772,15 @@ function authenticateOutcomeEntry(
     event.data?.transitionEventId !== authentication.transitionEventId ||
     JSON.stringify(event.data?.evidence ?? {}) !== JSON.stringify(evidence) ||
     !transitionEvent ||
+    !validLegacyReservation ||
+    !validInstalledTransitionIdentity ||
+    !validLegacyInstalledIdentity ||
     transitionEvent.actor !== authentication.actor ||
     transitionEvent.taskId !== entry.taskId ||
     transitionEvent.taskRevision !== authentication.taskRevision ||
     transitionEvent.data?.toState !== entry.outcome ||
     transitionEvent.data?.outcomeDigest !== digest ||
-    (VERIFICATION_OUTCOME_STATUSES.has(entry.outcome) &&
+    ((VERIFICATION_OUTCOME_STATUSES.has(entry.outcome) || reservationEvent) &&
       transitionEvent.data?.outcomeRequired !== true)
   ) {
     return {
@@ -958,20 +1795,58 @@ function authenticateOutcomeEntry(
 
 export function summarizeOutcomeLedger(
   filePath,
-  { stateRoot = path.dirname(path.resolve(filePath)) } = {},
+  {
+    stateRoot = path.dirname(path.resolve(filePath)),
+    ledgerText = undefined,
+    eventHistoryText = undefined,
+    allowedPendingRepairOperationId = null,
+  } = {},
 ) {
   const ledgerPath = path.resolve(filePath);
-  const ledgerSource = readJsonLinesWithHealth(ledgerPath);
-  const rawEntries = ledgerSource.entries;
-  const eventHistory = trustedOutcomeEventHistory(stateRoot);
+  const snapshots = readCanonicalOutcomeSnapshots(stateRoot, ledgerPath, {
+    ledgerText,
+    eventHistoryText,
+  });
+  const ledgerSnapshot = snapshots.ledger;
+  const eventHistorySnapshot = snapshots.events;
+  const ledgerSource = ledgerSnapshot.source;
+  const eventHistory = trustedOutcomeEventHistoryFromSource(
+    eventHistorySnapshot.source,
+  );
+  const repairInputIssues = [
+    ledgerSnapshot.issue,
+    eventHistorySnapshot.issue,
+  ].filter(Boolean);
+  const repairTransactions = inspectOutcomeLedgerRepairTransactions(stateRoot, {
+    ledgerPath,
+    ledgerBytes: ledgerSnapshot.bytes,
+    eventHistoryBytes: eventHistorySnapshot.bytes,
+    eventEntries: eventHistory.source.entries,
+    inputIssue:
+      repairInputIssues.length === 0 ? null : repairInputIssues.join("; "),
+    allowedPendingOperationId: allowedPendingRepairOperationId,
+  });
   const consumedEventIds = new Set();
   const consumedOutcomeKeys = new Set();
   const entries = [];
-  const rejectedEntries = ledgerSource.malformedLines.map((line) => ({
-    entry: null,
-    reason: `malformed outcome ledger line ${line}`,
-  }));
-  for (const entry of rawEntries) {
+  const rejectedEntries = [];
+  const lineDecisions = [];
+  for (const record of ledgerSource.records) {
+    if (record.malformed) {
+      const reason = `malformed outcome ledger line ${record.lineNumber}`;
+      rejectedEntries.push({
+        lineNumber: record.lineNumber,
+        entry: null,
+        reason,
+      });
+      lineDecisions.push({
+        lineNumber: record.lineNumber,
+        disposition: "rejected",
+        reason,
+      });
+      continue;
+    }
+    const entry = record.entry;
     const authentication = authenticateOutcomeEntry(
       entry,
       ledgerPath,
@@ -981,8 +1856,22 @@ export function summarizeOutcomeLedger(
     );
     if (authentication.trusted) {
       entries.push(entry);
+      lineDecisions.push({
+        lineNumber: record.lineNumber,
+        disposition: "trusted",
+        reason: "authenticated outcome provenance",
+      });
     } else {
-      rejectedEntries.push({ entry, reason: authentication.reason });
+      rejectedEntries.push({
+        lineNumber: record.lineNumber,
+        entry,
+        reason: authentication.reason,
+      });
+      lineDecisions.push({
+        lineNumber: record.lineNumber,
+        disposition: "rejected",
+        reason: authentication.reason,
+      });
     }
   }
   const byKind = new Map();
@@ -1047,14 +1936,23 @@ export function summarizeOutcomeLedger(
     exists: entries.length > 0,
     entries,
     rejectedEntries,
+    lineDecisions,
     sourceHealth: {
-      ledgerHealthy: ledgerSource.healthy && rejectedEntries.length === 0,
+      ledgerHealthy:
+        ledgerSource.healthy &&
+        eventHistory.source.healthy &&
+        rejectedEntries.length === 0 &&
+        repairTransactions.healthy &&
+        repairTransactions.pending.length === 0,
       ledgerSyntaxHealthy: ledgerSource.healthy,
       ledgerExists: ledgerSource.exists,
       malformedLedgerLines: ledgerSource.malformedLines,
       controlEventsHealthy: eventHistory.source.healthy,
       controlEventsExist: eventHistory.source.exists,
       malformedControlEventLines: eventHistory.source.malformedLines,
+      outcomeLedgerTransactionsHealthy: repairTransactions.healthy,
+      pendingOutcomeLedgerRepairs: repairTransactions.pending,
+      outcomeLedgerTransactionIssues: repairTransactions.issues,
     },
     byKind: Object.fromEntries(byKind),
     byId: Object.fromEntries(byId),
@@ -1068,130 +1966,167 @@ function waitForOutcomeLedgerLock(ms) {
   Atomics.wait(signal, 0, 0, ms);
 }
 
+function requireOutcomeLedgerAppendAdmission(ledgerPath, stateRoot) {
+  const snapshots = readCanonicalOutcomeSnapshots(stateRoot, ledgerPath);
+  const ledgerSnapshot = snapshots.ledger;
+  const eventHistorySnapshot = snapshots.events;
+  requireOutcomeLedgerPhysicalBoundary(ledgerSnapshot.bytes);
+  const eventHistory = trustedOutcomeEventHistoryFromSource(
+    eventHistorySnapshot.source,
+  );
+  const inputIssues = [
+    ledgerSnapshot.missing ? null : ledgerSnapshot.issue,
+    eventHistorySnapshot.missing ? null : eventHistorySnapshot.issue,
+  ].filter(Boolean);
+  const repairTransactions = inspectOutcomeLedgerRepairTransactions(stateRoot, {
+    ledgerPath,
+    ledgerBytes: ledgerSnapshot.bytes,
+    eventHistoryBytes: eventHistorySnapshot.bytes,
+    eventEntries: eventHistory.source.entries,
+    inputIssue: inputIssues.length === 0 ? null : inputIssues.join("; "),
+  });
+  if (
+    (!ledgerSnapshot.missing && !ledgerSnapshot.source.healthy) ||
+    (!eventHistorySnapshot.missing && !eventHistory.source.healthy) ||
+    !repairTransactions.healthy ||
+    repairTransactions.pending.length > 0
+  ) {
+    throw new Error(
+      "Outcome recording is blocked by unsafe or pending outcome ledger repair state.",
+    );
+  }
+  return { ledgerSnapshot, eventHistorySnapshot, eventHistory };
+}
+
+function requireOutcomeLedgerPhysicalBoundary(bytes) {
+  let lineCount = 0;
+  let offset = 0;
+  while (offset < bytes.length) {
+    const newline = bytes.indexOf(0x0a, offset);
+    const end = newline === -1 ? bytes.length : newline;
+    let contentEnd = end;
+    if (contentEnd > offset && bytes[contentEnd - 1] === 0x0d) {
+      contentEnd -= 1;
+    }
+    let hasContent = false;
+    for (let index = offset; index < contentEnd; index += 1) {
+      if (![0x09, 0x0b, 0x0c, 0x20].includes(bytes[index])) {
+        hasContent = true;
+        break;
+      }
+    }
+    if (!hasContent) {
+      throw new Error(
+        "Outcome ledger contains a blank interior physical line.",
+      );
+    }
+    lineCount += 1;
+    if (lineCount > OUTCOME_LEDGER_REPAIR_MAX_LINES) {
+      throw new Error(
+        "Outcome ledger exceeds the supported physical line boundary.",
+      );
+    }
+    offset = newline === -1 ? bytes.length : newline + 1;
+  }
+  return lineCount;
+}
+
 function syncOutcomeLedgerDirectory(directoryPath) {
   let directoryFd;
   try {
-    directoryFd = openSync(directoryPath, "r");
+    directoryFd = openSync(
+      directoryPath,
+      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+    );
     fsyncSync(directoryFd);
-  } catch {
-    // The atomically replaced ledger file is still synced on platforms that
-    // do not permit directory fsync.
+  } catch (error) {
+    if (!['EINVAL', 'ENOTSUP', 'EISDIR'].includes(error?.code)) throw error;
   } finally {
     if (directoryFd !== undefined) closeSync(directoryFd);
   }
 }
 
-export function appendOutcomeEntryAtomic(
-  ledgerPath,
-  entry,
-  {
-    timeoutMs = 5_000,
-    staleLockMs = 30_000,
-    wait = waitForOutcomeLedgerLock,
-    now = () => Date.now(),
-  } = {},
-) {
-  const directoryPath = path.dirname(ledgerPath);
-  const lockPath = `${ledgerPath}.writer-lock`;
-  const token = randomUUID();
-  const deadline = Date.now() + timeoutMs;
-  mkdirSync(directoryPath, { recursive: true });
-  while (true) {
-    let lockFd;
-    try {
-      lockFd = openSync(lockPath, "wx", 0o600);
-      writeFileSync(
-        lockFd,
-        `${JSON.stringify({
-          schemaVersion: 1,
-          token,
-          pid: process.pid,
-          processStartIdentity: processStartIdentity(process.pid),
-          acquiredAt: new Date(now()).toISOString(),
-        })}\n`,
-        "utf8",
-      );
-      fsyncSync(lockFd);
-      closeSync(lockFd);
-      break;
-    } catch (error) {
-      if (lockFd !== undefined) closeSync(lockFd);
-      if (error?.code !== "EEXIST") throw error;
-      let currentOwner = null;
-      let lockAgeMs = 0;
-      try {
-        currentOwner = JSON.parse(readFileSync(lockPath, "utf8"));
-        lockAgeMs = Math.max(0, now() - statSync(lockPath).mtimeMs);
-      } catch (readError) {
-        if (readError?.code === "ENOENT") continue;
-      }
-      const currentOwnerIsLive = guardOwnerIsLive(currentOwner);
-      const identityBoundOwner = Boolean(
-        currentOwner?.schemaVersion === 1 &&
-        Number.isSafeInteger(currentOwner?.pid) &&
-        currentOwner.pid > 0 &&
-        Object.hasOwn(currentOwner, "processStartIdentity") &&
-        (currentOwner.processStartIdentity === null ||
-          typeof currentOwner.processStartIdentity === "string"),
-      );
-      if (
-        !currentOwnerIsLive &&
-        (identityBoundOwner || lockAgeMs >= staleLockMs)
-      ) {
-        const abandonedPath = `${lockPath}.abandoned.${randomUUID()}`;
-        try {
-          renameSync(lockPath, abandonedPath);
-          rmSync(abandonedPath, { force: true });
-          continue;
-        } catch (takeoverError) {
-          if (!["ENOENT", "EEXIST"].includes(takeoverError?.code))
-            throw takeoverError;
-          continue;
-        }
-      }
-      if (Date.now() >= deadline) {
-        throw new Error(`Outcome ledger writer lock is busy: ${lockPath}`);
-      }
-      wait(10);
-    }
+function prepareOutcomeLedgerAppend(admittedLedgerBytes, entry) {
+  const separator =
+    admittedLedgerBytes.length > 0 &&
+    admittedLedgerBytes[admittedLedgerBytes.length - 1] !== 0x0a
+      ? Buffer.from("\n", "utf8")
+      : Buffer.alloc(0);
+  const entryBytes = Buffer.from(`${JSON.stringify(entry)}\n`, "utf8");
+  const prospectiveSize =
+    admittedLedgerBytes.length + separator.length + entryBytes.length;
+  const existingLineCount = requireOutcomeLedgerPhysicalBoundary(
+    admittedLedgerBytes,
+  );
+  if (
+    prospectiveSize > OUTCOME_LEDGER_MAX_BYTES ||
+    existingLineCount + 1 > OUTCOME_LEDGER_REPAIR_MAX_LINES
+  ) {
+    throw new Error(
+      "Outcome ledger append would exceed the supported repair boundary.",
+    );
   }
+  return { separator, entryBytes };
+}
 
-  const temporaryPath = `${ledgerPath}.${process.pid}.${randomUUID()}.tmp`;
-  let temporaryFd;
-  try {
-    const existing = existsSync(ledgerPath)
-      ? readFileSync(ledgerPath, "utf8")
-      : "";
-    const prefix =
-      existing && !existing.endsWith("\n") ? `${existing}\n` : existing;
-    temporaryFd = openSync(temporaryPath, "wx", 0o600);
-    writeFileSync(temporaryFd, `${prefix}${JSON.stringify(entry)}\n`, "utf8");
-    fsyncSync(temporaryFd);
-    closeSync(temporaryFd);
-    temporaryFd = undefined;
-    renameSync(temporaryPath, ledgerPath);
-    syncOutcomeLedgerDirectory(directoryPath);
-  } finally {
-    if (temporaryFd !== undefined) closeSync(temporaryFd);
-    rmSync(temporaryPath, { force: true });
-    try {
-      const lock = JSON.parse(readFileSync(lockPath, "utf8"));
-      if (lock.token === token) rmSync(lockPath, { force: true });
-    } catch {
-      // A successor or manual recovery owns any lock that no longer carries
-      // this token.
-    }
+function requireOutcomeControlEventHeadroom(
+  eventHistoryBytes,
+  prospectiveEventCount,
+) {
+  const separatorBytes =
+    prospectiveEventCount > 0 &&
+    eventHistoryBytes.length > 0 &&
+    eventHistoryBytes[eventHistoryBytes.length - 1] !== 0x0a
+      ? 1
+      : 0;
+  if (
+    !Number.isSafeInteger(prospectiveEventCount) ||
+    prospectiveEventCount < 0 ||
+    eventHistoryBytes.length +
+      separatorBytes +
+      prospectiveEventCount * CONTROL_EVENT_MAX_LINE_BYTES >
+      CONTROL_EVENT_HISTORY_MAX_BYTES
+  ) {
+    throw new Error(
+      "Outcome recording would exceed the supported control event history boundary.",
+    );
   }
 }
 
-export function appendOutcomeLedger(filePath, entry, options = {}) {
-  const normalizedOptions =
-    options instanceof Date ? { now: options } : options;
-  const now = normalizedOptions.now ?? new Date();
-  const stateRoot = path.resolve(
-    normalizedOptions.stateRoot ?? path.dirname(path.resolve(filePath)),
-  );
-  const authentication = normalizedOptions.authentication ?? {};
+function buildCleanOutcomeEntry({
+  entry,
+  taskId,
+  resolvedOutcome,
+  recordedAt,
+}) {
+  const outcomeBuildIdentity =
+    entry.outcome === "installed"
+      ? normalizeInstalledBuildIdentity(entry.installedIdentity)
+      : (resolvedOutcome.verdict?.buildIdentity ?? null);
+  const cleanEntry = {
+    schemaVersion: OUTCOME_SCHEMA_VERSION,
+    ts: recordedAt,
+    id: String(entry.id),
+    taskId,
+    kind: String(entry.kind),
+    outcome: String(entry.outcome),
+    notes: String(entry.notes ?? ""),
+    evidence: structuredClone(resolvedOutcome.evidence),
+  };
+  if (entry.pr) cleanEntry.pr = String(entry.pr);
+  if (outcomeBuildIdentity) {
+    cleanEntry.buildIdentity = outcomeBuildIdentity;
+    cleanEntry.build = outcomeBuildIdentity.version;
+  }
+  if (entry.runDir) cleanEntry.runDir = String(entry.runDir);
+  if (entry.evidenceWindowEnd) {
+    cleanEntry.evidenceWindowEnd = String(entry.evidenceWindowEnd);
+  }
+  if (resolvedOutcome.effect) cleanEntry.effect = resolvedOutcome.effect;
+  return cleanEntry;
+}
+
+function requireOutcomeRecordRequest(entry, now) {
   if (!entry?.id || !entry?.kind || !entry?.outcome) {
     throw new Error("Outcome ledger entries require id, kind, and outcome.");
   }
@@ -1209,15 +2144,14 @@ export function appendOutcomeLedger(filePath, entry, options = {}) {
       "An installed outcome requires version, commit, and channel identity.",
     );
   }
-  if (VERIFICATION_OUTCOME_STATUSES.has(entry.outcome)) {
-    if (
-      !entry.evidenceWindowEnd ||
-      !Number.isFinite(Date.parse(String(entry.evidenceWindowEnd)))
-    ) {
-      throw new Error(
-        "A verification outcome requires a valid evidence window end timestamp.",
-      );
-    }
+  if (
+    VERIFICATION_OUTCOME_STATUSES.has(entry.outcome) &&
+    (!entry.evidenceWindowEnd ||
+      !Number.isFinite(Date.parse(String(entry.evidenceWindowEnd))))
+  ) {
+    throw new Error(
+      "A verification outcome requires a valid evidence window end timestamp.",
+    );
   }
   if (
     FRESHNESS_GATED_OUTCOME_STATUSES.has(entry.outcome) &&
@@ -1235,33 +2169,414 @@ export function appendOutcomeLedger(filePath, entry, options = {}) {
   ) {
     throw new Error("Outcome evidence window end cannot be in the future.");
   }
-  const actor = String(authentication.actor ?? "").trim();
-  const leaseName = String(authentication.leaseName ?? "").trim();
-  const leaseToken = String(authentication.leaseToken ?? "").trim();
-  if (!actor || !leaseName || !leaseToken) {
-    throw new Error(
-      "Outcome recording requires an authenticated actor, lease name, and lease token.",
-    );
-  }
-  if (!OUTCOME_ACTORS_BY_STATUS[entry.outcome]?.includes(actor)) {
-    throw new Error(
-      `Actor ${actor || "unknown"} cannot record ${entry.outcome} outcomes.`,
-    );
-  }
+  return taskId;
+}
 
-  const task = readTask({ stateRoot, taskId, nowMs: now.getTime() });
+function readOutcomeRecordPlanTask(stateRoot, taskId) {
+  const paths = automationControlPaths(stateRoot);
+  requireOutcomeRepairPrivateDescendants(stateRoot, paths.controlRoot);
+  if (existsSync(paths.taskTransactions)) {
+    requireOutcomeRepairPrivateDescendants(stateRoot, paths.taskTransactions);
+    if (readdirSync(paths.taskTransactions).length > 0) {
+      throw new Error(
+        "Outcome record planning requires settled task transactions.",
+      );
+    }
+  }
+  const manifestSnapshot = readOutcomeControlJsonFile(
+    paths.taskManifest,
+    OUTCOME_LEDGER_MAX_BYTES,
+  );
+  const manifest = validateTaskManifest(manifestSnapshot.value);
+  if (!Array.isArray(manifest?.tasks)) {
+    throw new Error("Outcome record planning requires a canonical task manifest.");
+  }
+  const matches = manifest.tasks.filter((task) => task?.taskId === taskId);
+  if (
+    matches.length !== 1 ||
+    !TASK_STATES_FOR_OUTCOME_PLAN.has(matches[0]?.state) ||
+    !Number.isSafeInteger(matches[0]?.revision) ||
+    matches[0].revision < 1
+  ) {
+    throw new Error(
+      `Outcome task ${taskId} does not have one canonical lifecycle record.`,
+    );
+  }
+  return {
+    task: structuredClone(matches[0]),
+    manifestBytes: Buffer.from(manifestSnapshot.bytes),
+  };
+}
+
+const TASK_STATES_FOR_OUTCOME_PLAN = new Set([
+  "observed",
+  "triaged",
+  "approved_for_pr",
+  "implemented",
+  "validated",
+  "merged",
+  "installed",
+  "soaking",
+  ...OUTCOME_STATUSES,
+  "closed",
+]);
+
+export function planOutcomeRecord(
+  filePath,
+  entry,
+  { stateRoot = path.dirname(path.resolve(filePath)), now = new Date() } = {},
+) {
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
+    throw new Error("Outcome record planning requires a valid timestamp.");
+  }
+  const canonicalStateRoot = realpathSync(path.resolve(stateRoot));
+  const ledgerPath = path.resolve(filePath);
+  const canonicalLedgerPath = automationControlPaths(canonicalStateRoot).outcomes;
+  if (ledgerPath !== canonicalLedgerPath) {
+    throw new Error(
+      `Outcome recording requires the canonical ledger at ${canonicalLedgerPath}.`,
+    );
+  }
+  requireOutcomeRepairPrivateDescendants(
+    canonicalStateRoot,
+    automationControlPaths(canonicalStateRoot).controlRoot,
+  );
+  const taskId = requireOutcomeRecordRequest(entry, now);
+  const resolvedOutcome = resolveOutcomeEvidence({ ...entry, taskId });
+  const firstTaskSnapshot = readOutcomeRecordPlanTask(
+    canonicalStateRoot,
+    taskId,
+  );
+  const admission = requireOutcomeLedgerAppendAdmission(
+    ledgerPath,
+    canonicalStateRoot,
+  );
+  if (!admission.eventHistory.source.healthy) {
+    throw new Error(
+      "Outcome record planning requires complete control event history.",
+    );
+  }
+  const secondTaskSnapshot = readOutcomeRecordPlanTask(
+    canonicalStateRoot,
+    taskId,
+  );
+  if (
+    !firstTaskSnapshot.manifestBytes.equals(
+      secondTaskSnapshot.manifestBytes,
+    ) ||
+    JSON.stringify(firstTaskSnapshot.task) !==
+      JSON.stringify(secondTaskSnapshot.task)
+  ) {
+    throw new Error(
+      "Outcome record planning requires one stable task and event snapshot.",
+    );
+  }
+  const task = secondTaskSnapshot.task;
+  if (task.pendingOutcome !== undefined) {
+    throw new Error(
+      `Outcome task ${taskId} already has a pending reservation. Reuse its original plan.`,
+    );
+  }
+  const cleanEntry = buildCleanOutcomeEntry({
+    entry,
+    taskId,
+    resolvedOutcome,
+    recordedAt: now.toISOString(),
+  });
+  const outcomeDigest = outcomeEntryDigest(cleanEntry);
+  const legacyTransitions = admission.eventHistory.source.entries.filter(
+    (event) =>
+      event?.type === "task_transitioned" &&
+      event.taskId === taskId &&
+      event.taskRevision === task.revision &&
+      event.data?.toState === cleanEntry.outcome &&
+      event.data?.outcomeDigest === undefined &&
+      event.data?.outcomeRequired === undefined,
+  );
+  const route =
+    task.state === cleanEntry.outcome ? "legacy-backfill" : "transition";
+  if (
+    (route === "legacy-backfill" &&
+      (legacyTransitions.length !== 1 ||
+        task.details?.latestOutcome !== undefined)) ||
+    (route === "transition" &&
+      !isTaskTransitionAllowed(task.state, cleanEntry.outcome))
+  ) {
+    throw new Error(
+      `Outcome task ${taskId} cannot plan ${cleanEntry.outcome} from ${task.state}.`,
+    );
+  }
+  if (route === "legacy-backfill" && cleanEntry.outcome === "installed") {
+    let taskIdentity;
+    let legacyIdentity;
+    try {
+      taskIdentity = normalizeInstalledBuildIdentity(task.installedIdentity);
+      legacyIdentity = normalizeInstalledBuildIdentity(
+        legacyTransitions[0].data?.installedIdentity,
+      );
+    } catch {
+      throw new Error(
+        `Outcome task ${taskId} installed history has no canonical build identity.`,
+      );
+    }
+    if (
+      JSON.stringify(taskIdentity) !== JSON.stringify(cleanEntry.buildIdentity) ||
+      JSON.stringify(legacyIdentity) !== JSON.stringify(taskIdentity) ||
+      legacyTransitions[0].data?.installedBuild !== taskIdentity.version ||
+      legacyTransitions[0].data?.installedAt !== task.installedAt
+    ) {
+      throw new Error(
+        `Outcome task ${taskId} installed identity does not match canonical control history.`,
+      );
+    }
+  }
+  const planned = outcomeRecordOwnerIntent({
+    stateRoot: canonicalStateRoot,
+    taskId,
+    parameters: {
+      schemaVersion: AUTOMATION_CONTROL_SCHEMA_VERSION,
+      policy: "freed-outcome-record-v1",
+      stateRoot: canonicalStateRoot,
+      ledgerPath,
+      sourceTask: structuredClone(task),
+      sourceTaskState: task.state,
+      sourceTaskDetails: structuredClone(task.details ?? {}),
+      sourceTaskRevision: task.revision,
+      route,
+      legacyTransition:
+        route === "legacy-backfill"
+          ? structuredClone(legacyTransitions[0])
+          : null,
+      legacyTransitionEventId:
+        route === "legacy-backfill" ? legacyTransitions[0].eventId : null,
+      cleanEntry,
+      outcomeDigest,
+    },
+  });
+  return {
+    schemaVersion: AUTOMATION_CONTROL_SCHEMA_VERSION,
+    intent: planned.intent,
+    intentDigest: planned.intentDigest,
+    taskId,
+    cleanEntry,
+    outcomeDigest,
+  };
+}
+
+function normalizeOutcomeRecordPlan(
+  value,
+  { stateRoot, ledgerPath, taskId },
+) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("freed-owner outcome recording requires an exact plan.");
+  }
+  const expectedKeys = [
+    "cleanEntry",
+    "intent",
+    "intentDigest",
+    "outcomeDigest",
+    "schemaVersion",
+    "taskId",
+  ];
+  const actualKeys = Object.keys(value).sort();
+  if (JSON.stringify(actualKeys) !== JSON.stringify(expectedKeys)) {
+    throw new Error(
+      "Outcome record plan must contain the exact canonical field set.",
+    );
+  }
+  if (
+    value.schemaVersion !== AUTOMATION_CONTROL_SCHEMA_VERSION ||
+    value.taskId !== taskId ||
+    value.intent?.taskId !== taskId
+  ) {
+    throw new Error("Outcome record plan does not match the requested task.");
+  }
+  const planned = outcomeRecordOwnerIntent({
+    stateRoot,
+    taskId,
+    parameters: value.intent?.parameters,
+  });
+  if (
+    planned.parameters.ledgerPath !== ledgerPath ||
+    value.intentDigest !== planned.intentDigest ||
+    JSON.stringify(value.intent) !== JSON.stringify(planned.intent) ||
+    value.outcomeDigest !== planned.parameters.outcomeDigest ||
+    JSON.stringify(value.cleanEntry) !==
+      JSON.stringify(planned.parameters.cleanEntry)
+  ) {
+    throw new Error(
+      "Outcome record plan does not match its canonical owner intent.",
+    );
+  }
+  return planned;
+}
+
+function requireOutcomeControlEventLineCapacity(event) {
+  const eventBytes = Buffer.from(`${JSON.stringify(event)}\n`, "utf8");
+  if (eventBytes.length > CONTROL_EVENT_MAX_LINE_BYTES) {
+    throw new Error(
+      "Outcome control event would exceed the supported line boundary.",
+    );
+  }
+}
+
+function outcomeRecordedEventId({
+  taskId,
+  taskRevision,
+  outcomeDigest,
+  transitionEventId,
+}) {
+  return `outcome-recorded:${createHash("sha256")
+    .update(
+      JSON.stringify({
+        taskId,
+        taskRevision,
+        outcomeDigest,
+        transitionEventId,
+      }),
+    )
+    .digest("hex")}`;
+}
+
+function outcomeRecordedEventData({
+  cleanEntry,
+  taskId,
+  taskRevision,
+  taskState,
+  ledgerPath,
+  leaseName,
+  evidence,
+  outcomeDigest,
+  transitionEventId,
+}) {
+  return {
+    id: cleanEntry.id,
+    taskId,
+    taskRevision,
+    taskState,
+    kind: cleanEntry.kind,
+    outcome: cleanEntry.outcome,
+    ledgerPath,
+    leaseName,
+    evidence,
+    outcomeDigest,
+    transitionEventId,
+  };
+}
+
+function requireExistingOutcomeControlEvent(
+  events,
+  { eventId, actor, taskId, data },
+) {
+  const matches = events.filter((event) => event?.eventId === eventId);
+  if (matches.length > 1) {
+    throw new Error(`Control event history contains duplicate event ${eventId}.`);
+  }
+  if (matches.length === 0) return null;
+  const existing = matches[0];
+  const expected = {
+    schemaVersion: AUTOMATION_CONTROL_SCHEMA_VERSION,
+    eventId,
+    type: "outcome_recorded",
+    ts: existing.ts,
+    actor,
+    taskId,
+    data,
+  };
+  if (stableOutcomeRepairJson(existing) !== stableOutcomeRepairJson(expected)) {
+    throw new Error(`Control event ${eventId} conflicts with the outcome.`);
+  }
+  return existing;
+}
+
+function authenticatedOutcomeEntry(
+  cleanEntry,
+  { actor, leaseName, controlEventId, transitionEventId, outcomeDigest, taskRevision },
+) {
+  return {
+    ...cleanEntry,
+    authentication: {
+      actor,
+      leaseName,
+      controlEventId,
+      transitionEventId,
+      outcomeDigest,
+      taskRevision,
+    },
+  };
+}
+
+function appendOutcomeEntryUnlocked(ledgerPath, entry, admittedLedgerBytes) {
+  const directoryPath = path.dirname(ledgerPath);
+  const temporaryPath = `${ledgerPath}.${process.pid}.${randomUUID()}.tmp`;
+  const { separator, entryBytes } = prepareOutcomeLedgerAppend(
+    admittedLedgerBytes,
+    entry,
+  );
+  let temporaryFd;
+  try {
+    temporaryFd = openSync(temporaryPath, "wx", 0o600);
+    writeFileSync(temporaryFd, admittedLedgerBytes);
+    if (separator.length > 0) writeFileSync(temporaryFd, separator);
+    writeFileSync(temporaryFd, entryBytes);
+    fsyncSync(temporaryFd);
+    closeSync(temporaryFd);
+    temporaryFd = undefined;
+    renameSync(temporaryPath, ledgerPath);
+    syncOutcomeLedgerDirectory(directoryPath);
+  } finally {
+    if (temporaryFd !== undefined) closeSync(temporaryFd);
+    rmSync(temporaryPath, { force: true });
+  }
+}
+
+export function withOutcomeLedgerWriterLock(
+  ledgerPath,
+  operation,
+  {
+    timeoutMs = 5_000,
+    wait = waitForOutcomeLedgerLock,
+  } = {},
+) {
+  if (typeof operation !== "function") {
+    throw new Error("Outcome ledger writer lock requires an operation.");
+  }
+  return withAutomationOutcomeLedgerWriterGuard(ledgerPath, operation, {
+    stateRoot: path.dirname(path.resolve(ledgerPath)),
+    timeoutMs,
+    wait,
+  });
+}
+
+function appendOutcomeLedgerLocked({
+  ledgerPath,
+  stateRoot,
+  entry,
+  taskId,
+  actor,
+  leaseName,
+  leaseToken,
+  now,
+  resolvedOutcome,
+  checkpoint,
+  initialAdmission,
+  control,
+  ownerPlan,
+}) {
+  let admission = initialAdmission;
+  const task = control.readTask(taskId);
   if (!task) {
     throw new Error(
       `Outcome task ${taskId} does not exist in canonical control state.`,
     );
   }
-  const eventHistoryBeforeWrite = trustedOutcomeEventHistory(stateRoot);
+  admission = requireOutcomeLedgerAppendAdmission(ledgerPath, stateRoot);
+  const eventHistoryBeforeWrite = admission.eventHistory;
   if (!eventHistoryBeforeWrite.source.healthy) {
     throw new Error(
       "Outcome recording requires complete, well-formed control event history.",
     );
   }
-  const resolvedOutcome = resolveOutcomeEvidence({ ...entry, taskId });
   const evidence = resolvedOutcome.evidence;
   if (VERIFICATION_OUTCOME_STATUSES.has(entry.outcome)) {
     let installedIdentity;
@@ -1296,63 +2611,278 @@ export function appendOutcomeLedger(filePath, entry, options = {}) {
       );
     }
   }
-
-  const ledgerPath = path.resolve(filePath);
-  const canonicalLedgerPath = automationControlPaths(stateRoot).outcomes;
-  if (ledgerPath !== canonicalLedgerPath) {
-    throw new Error(
-      `Outcome recording requires the canonical ledger at ${canonicalLedgerPath}.`,
-    );
-  }
-  mkdirSync(path.dirname(ledgerPath), { recursive: true });
-  const ledgerBeforeWrite = readJsonLinesWithHealth(ledgerPath);
-  if (ledgerBeforeWrite.exists && !ledgerBeforeWrite.healthy) {
+  const ledgerBeforeWrite = admission.ledgerSnapshot;
+  if (
+    (!ledgerBeforeWrite.missing && ledgerBeforeWrite.issue) ||
+    (ledgerBeforeWrite.source.exists && !ledgerBeforeWrite.source.healthy)
+  ) {
     throw new Error("Outcome recording requires a well-formed outcome ledger.");
   }
   const priorOutcome = task.details?.latestOutcome;
   const priorRecordedAt = Date.parse(String(priorOutcome?.recordedAt ?? ""));
-  const recordedAt =
-    task.state === entry.outcome &&
-    priorOutcome?.outcome === entry.outcome &&
-    Number.isFinite(priorRecordedAt)
+  const recordedAt = ownerPlan
+    ? ownerPlan.parameters.cleanEntry.ts
+    : task.state === entry.outcome &&
+        priorOutcome?.outcome === entry.outcome &&
+        Number.isFinite(priorRecordedAt)
       ? String(priorOutcome.recordedAt)
       : now.toISOString();
-  const outcomeBuildIdentity =
-    entry.outcome === "installed"
-      ? normalizeInstalledBuildIdentity(entry.installedIdentity)
-      : (resolvedOutcome.verdict?.buildIdentity ?? null);
-  const cleanEntry = {
-    schemaVersion: OUTCOME_SCHEMA_VERSION,
-    ts: recordedAt,
-    id: String(entry.id),
+  const cleanEntry = buildCleanOutcomeEntry({
+    entry,
     taskId,
-    kind: String(entry.kind),
-    outcome: String(entry.outcome),
-    notes: String(entry.notes ?? ""),
-    evidence,
-  };
-  if (entry.pr) {
-    cleanEntry.pr = String(entry.pr);
+    resolvedOutcome,
+    recordedAt,
+  });
+  if (
+    entry.outcome === "installed" &&
+    task.state === "installed" &&
+    JSON.stringify(normalizeInstalledBuildIdentity(task.installedIdentity)) !==
+      JSON.stringify(cleanEntry.buildIdentity)
+  ) {
+    throw new Error(
+      `Outcome task ${taskId} installed identity does not match canonical control state.`,
+    );
   }
-  if (outcomeBuildIdentity) {
-    cleanEntry.buildIdentity = outcomeBuildIdentity;
-    cleanEntry.build = outcomeBuildIdentity.version;
-  }
-  if (entry.runDir) {
-    cleanEntry.runDir = String(entry.runDir);
-  }
-  if (entry.evidenceWindowEnd) {
-    cleanEntry.evidenceWindowEnd = String(entry.evidenceWindowEnd);
-  }
-  if (resolvedOutcome.effect) {
-    cleanEntry.effect = resolvedOutcome.effect;
-  }
-
   const outcomeDigest = outcomeEntryDigest(cleanEntry);
-  const taskTransition =
-    task.state === cleanEntry.outcome
-      ? { changed: false, task }
-      : transitionTask({
+  const latestOutcome = {
+    outcome: cleanEntry.outcome,
+    evidence,
+    evidenceWindowEnd: cleanEntry.evidenceWindowEnd ?? null,
+    build: cleanEntry.build ?? null,
+    buildIdentity: cleanEntry.buildIdentity ?? null,
+    installedIdentity:
+      cleanEntry.outcome === "installed" ? cleanEntry.buildIdentity : null,
+    outcomeDigest,
+    recordedAt,
+  };
+  const plannedTaskDetails = ownerPlan
+    ? {
+        ...structuredClone(ownerPlan.parameters.sourceTaskDetails),
+        ...(cleanEntry.outcome === "installed"
+          ? { installedIdentity: structuredClone(cleanEntry.buildIdentity) }
+          : {}),
+        latestOutcome,
+      }
+    : null;
+  if (
+    ownerPlan &&
+    (JSON.stringify(cleanEntry) !==
+      JSON.stringify(ownerPlan.parameters.cleanEntry) ||
+      outcomeDigest !== ownerPlan.parameters.outcomeDigest)
+  ) {
+    throw new Error(
+      `Outcome task ${taskId} request does not match its exact owner plan.`,
+    );
+  }
+  if (ownerPlan) {
+    const parameters = ownerPlan.parameters;
+    const atPlannedSource =
+      JSON.stringify(task) === JSON.stringify(parameters.sourceTask);
+    const atPlannedOutcome =
+      task.state === parameters.cleanEntry.outcome &&
+      task.revision === parameters.sourceTaskRevision + 1 &&
+      JSON.stringify(task.details ?? {}) === JSON.stringify(plannedTaskDetails) &&
+      (task.pendingOutcome === undefined ||
+        JSON.stringify(task.pendingOutcome) ===
+          JSON.stringify({
+            outcome: parameters.cleanEntry.outcome,
+            outcomeDigest: parameters.outcomeDigest,
+            taskRevision: parameters.sourceTaskRevision + 1,
+          }));
+    if (!atPlannedSource && !atPlannedOutcome) {
+      throw new Error(
+        `Outcome task ${taskId} lifecycle state has drifted from its owner plan.`,
+      );
+    }
+  }
+  const taskWillTransition = task.state !== cleanEntry.outcome;
+  const matchingTransitions = taskWillTransition
+    ? []
+    : eventHistoryBeforeWrite.source.entries.filter(
+        (event) =>
+          isOutcomeTransitionEvent(event) &&
+          event.taskId === taskId &&
+          event.actor === actor &&
+          event.taskRevision === task.revision &&
+          event.data?.toState === cleanEntry.outcome &&
+          event.data?.outcomeDigest === outcomeDigest &&
+          event.data?.outcomeRequired === true,
+      );
+  const legacyLifecycleTransitions = taskWillTransition
+    ? []
+    : eventHistoryBeforeWrite.source.entries.filter(
+        (event) =>
+          event?.type === "task_transitioned" &&
+          event.taskId === taskId &&
+          event.taskRevision === task.revision &&
+          event.data?.toState === cleanEntry.outcome &&
+          event.data?.outcomeDigest === undefined &&
+          event.data?.outcomeRequired === undefined,
+      );
+  const taskNeedsOutcomeBackfill =
+    !taskWillTransition &&
+    matchingTransitions.length === 0 &&
+    legacyLifecycleTransitions.length === 1 &&
+    task.pendingOutcome === undefined &&
+    task.details?.latestOutcome === undefined;
+  if (ownerPlan) {
+    const parameters = ownerPlan.parameters;
+    const matchingOwnerReservation = matchingTransitions[0];
+    const plannedLegacyMatches = eventHistoryBeforeWrite.source.entries.filter(
+      (event) => event?.eventId === parameters.legacyTransitionEventId,
+    );
+    const ownerLegacyTransitionMatches =
+      parameters.route === "transition" ||
+      (plannedLegacyMatches.length === 1 &&
+        JSON.stringify(plannedLegacyMatches[0]) ===
+          JSON.stringify(parameters.legacyTransition));
+    const ownerRouteMatches =
+      ownerLegacyTransitionMatches &&
+      ((taskWillTransition && parameters.route === "transition") ||
+      (taskNeedsOutcomeBackfill &&
+        parameters.route === "legacy-backfill" &&
+        legacyLifecycleTransitions[0]?.eventId ===
+          parameters.legacyTransitionEventId) ||
+      (!taskWillTransition &&
+        !taskNeedsOutcomeBackfill &&
+        matchingTransitions.length === 1 &&
+        ((parameters.route === "transition" &&
+          matchingOwnerReservation?.type === "task_transitioned" &&
+          matchingOwnerReservation?.data?.fromState ===
+            parameters.sourceTaskState) ||
+          (parameters.route === "legacy-backfill" &&
+            matchingOwnerReservation?.type ===
+              "outcome_reservation_created" &&
+            matchingOwnerReservation?.data?.legacyTransitionEventId ===
+              parameters.legacyTransitionEventId))));
+    if (!ownerRouteMatches) {
+      throw new Error(
+        `Outcome task ${taskId} lifecycle route does not match its owner plan.`,
+      );
+    }
+  }
+  if (
+    !taskWillTransition &&
+    !taskNeedsOutcomeBackfill &&
+    matchingTransitions.length !== 1
+  ) {
+    throw new Error(
+      `Outcome task ${taskId} requires exactly one matching lifecycle transition for ${cleanEntry.outcome}.`,
+    );
+  }
+  const taskWillMutate = taskWillTransition || taskNeedsOutcomeBackfill;
+  const predictedTaskRevision = task.revision + (taskWillMutate ? 1 : 0);
+  if (
+    ownerPlan &&
+    predictedTaskRevision !== ownerPlan.parameters.sourceTaskRevision + 1
+  ) {
+    throw new Error(
+      `Outcome task ${taskId} revision does not match its owner plan.`,
+    );
+  }
+  const placeholderTransitionEventId =
+    "00000000-0000-4000-8000-000000000000";
+  const predictedTransitionEventId = taskWillTransition
+    ? placeholderTransitionEventId
+    : taskNeedsOutcomeBackfill
+      ? outcomeReservationEventId({
+          taskId,
+          outcome: cleanEntry.outcome,
+          outcomeDigest,
+          taskRevision: predictedTaskRevision,
+          legacyTransitionEventId: legacyLifecycleTransitions[0].eventId,
+        })
+      : matchingTransitions[0].eventId;
+  const predictedControlEventId = outcomeRecordedEventId({
+    taskId,
+    taskRevision: predictedTaskRevision,
+    outcomeDigest,
+    transitionEventId: predictedTransitionEventId,
+  });
+  const predictedControlEventData = outcomeRecordedEventData({
+    cleanEntry,
+    taskId,
+    taskRevision: predictedTaskRevision,
+    taskState: cleanEntry.outcome,
+    ledgerPath,
+    leaseName,
+    evidence,
+    outcomeDigest,
+    transitionEventId: predictedTransitionEventId,
+  });
+  const existingControlEvent = taskWillMutate
+    ? null
+    : requireExistingOutcomeControlEvent(
+        eventHistoryBeforeWrite.source.entries,
+        {
+          eventId: predictedControlEventId,
+          actor,
+          taskId,
+          data: predictedControlEventData,
+        },
+      );
+  if (!existingControlEvent) {
+    requireOutcomeControlEventLineCapacity({
+      schemaVersion: AUTOMATION_CONTROL_SCHEMA_VERSION,
+      eventId: predictedControlEventId,
+      type: "outcome_recorded",
+      ts: now.toISOString(),
+      actor,
+      taskId,
+      data: predictedControlEventData,
+    });
+  }
+  const predictedAuthenticatedEntry = authenticatedOutcomeEntry(cleanEntry, {
+    actor,
+    leaseName,
+    controlEventId: predictedControlEventId,
+    transitionEventId: predictedTransitionEventId,
+    outcomeDigest,
+    taskRevision: predictedTaskRevision,
+  });
+  const ledgerSummary = summarizeOutcomeLedger(ledgerPath, {
+    stateRoot,
+    ledgerText: outcomeRepairDecoder.decode(admission.ledgerSnapshot.bytes),
+    eventHistoryText: outcomeRepairDecoder.decode(
+      admission.eventHistorySnapshot.bytes,
+    ),
+  });
+  const existingEntry = ledgerSummary.entries.find(
+    (candidate) =>
+      candidate.authentication?.outcomeDigest === outcomeDigest &&
+      candidate.authentication?.transitionEventId ===
+        predictedTransitionEventId,
+  );
+  const rejectedExistingEntry = ledgerSummary.rejectedEntries.find(
+    (record) =>
+      record.entry?.authentication?.outcomeDigest === outcomeDigest &&
+      record.entry?.authentication?.transitionEventId ===
+        predictedTransitionEventId,
+  );
+  if (rejectedExistingEntry) {
+    throw new AutomationControlError(
+      "outcome_not_durable",
+      `Outcome task ${taskId} has a matching ledger row with invalid durable provenance.`,
+      { taskId, outcome: cleanEntry.outcome, outcomeDigest },
+    );
+  }
+  if (!existingEntry) {
+    prepareOutcomeLedgerAppend(
+      admission.ledgerSnapshot.bytes,
+      predictedAuthenticatedEntry,
+    );
+  }
+  const finalizationWillAppend =
+    taskWillMutate || task.pendingOutcome !== undefined;
+  requireOutcomeControlEventHeadroom(
+    admission.eventHistorySnapshot.bytes,
+    (taskWillMutate ? 1 : 0) +
+      (existingControlEvent ? 0 : 1) +
+      (finalizationWillAppend ? 1 : 0),
+  );
+
+  const taskTransition = taskWillTransition
+    ? control.transitionTask({
           stateRoot,
           taskId,
           actor,
@@ -1360,27 +2890,38 @@ export function appendOutcomeLedger(filePath, entry, options = {}) {
           leaseToken,
           toState: cleanEntry.outcome,
           expectedRevision: task.revision,
-          details: {
-            ...task.details,
-            ...(cleanEntry.outcome === "installed"
-              ? { installedIdentity: cleanEntry.buildIdentity }
-              : {}),
-            latestOutcome: {
-              outcome: cleanEntry.outcome,
-              evidence,
-              evidenceWindowEnd: cleanEntry.evidenceWindowEnd ?? null,
-              build: cleanEntry.build ?? null,
-              buildIdentity: cleanEntry.buildIdentity ?? null,
-              installedIdentity:
-                cleanEntry.outcome === "installed"
-                  ? cleanEntry.buildIdentity
-                  : null,
-              outcomeDigest,
-              recordedAt,
+          details:
+            plannedTaskDetails ?? {
+              ...task.details,
+              ...(cleanEntry.outcome === "installed"
+                ? { installedIdentity: cleanEntry.buildIdentity }
+                : {}),
+              latestOutcome,
             },
-          },
           nowMs: now.getTime(),
-        });
+        })
+    : taskNeedsOutcomeBackfill
+      ? control.reserveCurrentTaskOutcome({
+          stateRoot,
+          taskId,
+          actor,
+          leaseName,
+          leaseToken,
+          outcome: cleanEntry.outcome,
+          legacyTransitionEventId: legacyLifecycleTransitions[0].eventId,
+          expectedRevision: task.revision,
+          details:
+            plannedTaskDetails ?? {
+              ...task.details,
+              ...(cleanEntry.outcome === "installed"
+                ? { installedIdentity: cleanEntry.buildIdentity }
+                : {}),
+              latestOutcome,
+            },
+          nowMs: now.getTime(),
+        })
+      : { changed: false, task };
+  checkpoint("outcome-transition-resolved");
   if (taskTransition.task.state !== cleanEntry.outcome) {
     throw new Error(
       `Outcome task ${taskId} is ${taskTransition.task.state}, not ${cleanEntry.outcome}.`,
@@ -1388,77 +2929,24 @@ export function appendOutcomeLedger(filePath, entry, options = {}) {
   }
   const transitionEvent =
     taskTransition.event ??
-    [...eventHistoryBeforeWrite.transitions.values()].find(
-      (event) =>
-        event.taskId === taskId &&
-        event.taskRevision === taskTransition.task.revision &&
-        event.data?.toState === cleanEntry.outcome &&
-        event.data?.outcomeDigest === outcomeDigest,
-    );
+    matchingTransitions[0];
   if (!transitionEvent) {
     throw new Error(
       `Outcome task ${taskId} has no matching lifecycle transition for ${cleanEntry.outcome}.`,
     );
   }
-  const existingEntry = summarizeOutcomeLedger(ledgerPath, {
-    stateRoot,
-  }).entries.find(
-    (candidate) =>
-      candidate.authentication?.outcomeDigest === outcomeDigest &&
-      candidate.authentication?.transitionEventId === transitionEvent.eventId,
-  );
   if (existingEntry) {
-    if (VERIFICATION_OUTCOME_STATUSES.has(cleanEntry.outcome)) {
-      finalizeTaskOutcome({
-        stateRoot,
-        taskId,
-        actor,
-        leaseName,
-        leaseToken,
-        outcome: cleanEntry.outcome,
-        outcomeDigest,
-        taskRevision: taskTransition.task.revision,
-        nowMs: now.getTime(),
-      });
-    }
-    return existingEntry;
-  }
-
-  const controlEvent = appendOutcomeControlEvent({
-    stateRoot,
-    actor,
-    leaseName,
-    leaseToken,
-    taskId,
-    nowMs: now.getTime(),
-    data: {
-      id: cleanEntry.id,
-      taskId,
-      taskRevision: taskTransition.task.revision,
-      taskState: taskTransition.task.state,
-      kind: cleanEntry.kind,
-      outcome: cleanEntry.outcome,
-      ledgerPath,
-      leaseName,
-      evidence,
-      outcomeDigest,
-      transitionEventId: transitionEvent.eventId,
-    },
-  });
-  const authenticatedEntry = {
-    ...cleanEntry,
-    authentication: {
+    control.appendOutcomeControlEvent({
+      stateRoot,
       actor,
       leaseName,
-      controlEventId: controlEvent.eventId,
-      transitionEventId: transitionEvent.eventId,
-      outcomeDigest,
-      taskRevision: taskTransition.task.revision,
-    },
-  };
-  appendOutcomeEntryAtomic(ledgerPath, authenticatedEntry);
-  if (VERIFICATION_OUTCOME_STATUSES.has(cleanEntry.outcome)) {
-    finalizeTaskOutcome({
+      leaseToken,
+      taskId,
+      eventId: predictedControlEventId,
+      nowMs: now.getTime(),
+      data: predictedControlEventData,
+    });
+    control.finalizeTaskOutcome({
       stateRoot,
       taskId,
       actor,
@@ -1469,8 +2957,173 @@ export function appendOutcomeLedger(filePath, entry, options = {}) {
       taskRevision: taskTransition.task.revision,
       nowMs: now.getTime(),
     });
+    checkpoint("outcome-finalized");
+    return existingEntry;
   }
+
+  const controlEventId = outcomeRecordedEventId({
+    taskId,
+    taskRevision: taskTransition.task.revision,
+    outcomeDigest,
+    transitionEventId: transitionEvent.eventId,
+  });
+  const controlEventData = outcomeRecordedEventData({
+    cleanEntry,
+    taskId,
+    taskRevision: taskTransition.task.revision,
+    taskState: taskTransition.task.state,
+    ledgerPath,
+    leaseName,
+    evidence,
+    outcomeDigest,
+    transitionEventId: transitionEvent.eventId,
+  });
+  const controlEvent = control.appendOutcomeControlEvent({
+    stateRoot,
+    actor,
+    leaseName,
+    leaseToken,
+    taskId,
+    eventId: controlEventId,
+    nowMs: now.getTime(),
+    data: controlEventData,
+  });
+  checkpoint("outcome-control-event-appended");
+  control.appendOutcomeControlEvent({
+    stateRoot,
+    actor,
+    leaseName,
+    leaseToken,
+    taskId,
+    eventId: controlEventId,
+    nowMs: now.getTime(),
+    data: controlEventData,
+  });
+  const authenticatedEntry = authenticatedOutcomeEntry(cleanEntry, {
+    actor,
+    leaseName,
+    controlEventId: controlEvent.eventId,
+    transitionEventId: transitionEvent.eventId,
+    outcomeDigest,
+    taskRevision: taskTransition.task.revision,
+  });
+  appendOutcomeEntryUnlocked(
+    ledgerPath,
+    authenticatedEntry,
+    admission.ledgerSnapshot.bytes,
+  );
+  checkpoint("outcome-ledger-appended");
+  control.finalizeTaskOutcome({
+    stateRoot,
+    taskId,
+    actor,
+    leaseName,
+    leaseToken,
+    outcome: cleanEntry.outcome,
+    outcomeDigest,
+    taskRevision: taskTransition.task.revision,
+    nowMs: now.getTime(),
+  });
+  checkpoint("outcome-finalized");
   return authenticatedEntry;
+}
+
+export function appendOutcomeLedger(filePath, entry, options = {}) {
+  const normalizedOptions =
+    options instanceof Date ? { now: options } : options;
+  const now = normalizedOptions.now ?? new Date();
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
+    throw new Error("Outcome recording requires a valid timestamp.");
+  }
+  const stateRoot = path.resolve(
+    normalizedOptions.stateRoot ?? path.dirname(path.resolve(filePath)),
+  );
+  const authentication = normalizedOptions.authentication ?? {};
+  const taskId = requireOutcomeRecordRequest(entry, now);
+  const actor = String(authentication.actor ?? "").trim();
+  const leaseName = String(authentication.leaseName ?? "").trim();
+  const leaseToken = String(authentication.leaseToken ?? "").trim();
+  if (!actor || !leaseName || !leaseToken) {
+    throw new Error(
+      "Outcome recording requires an authenticated actor, lease name, and lease token.",
+    );
+  }
+  if (!OUTCOME_ACTORS_BY_STATUS[entry.outcome]?.includes(actor)) {
+    throw new Error(
+      `Actor ${actor || "unknown"} cannot record ${entry.outcome} outcomes.`,
+    );
+  }
+
+  const resolvedOutcome = resolveOutcomeEvidence({ ...entry, taskId });
+
+  const ledgerPath = path.resolve(filePath);
+  const canonicalLedgerPath = automationControlPaths(stateRoot).outcomes;
+  if (ledgerPath !== canonicalLedgerPath) {
+    throw new Error(
+      `Outcome recording requires the canonical ledger at ${canonicalLedgerPath}.`,
+    );
+  }
+  requireOutcomeRepairPrivateDescendants(
+    stateRoot,
+    automationControlPaths(stateRoot).controlRoot,
+  );
+  const ownerPlan =
+    actor === "freed-owner"
+      ? normalizeOutcomeRecordPlan(normalizedOptions.ownerPlan, {
+          stateRoot,
+          ledgerPath,
+          taskId,
+        })
+      : null;
+  if (actor === "freed-owner" && leaseName !== "owner-governance") {
+    throw new Error(
+      "freed-owner outcome recording requires the owner-governance lease.",
+    );
+  }
+  if (actor !== "freed-owner" && normalizedOptions.ownerPlan !== undefined) {
+    throw new Error("Only freed-owner may apply an owner outcome plan.");
+  }
+  return withMutationLeaseAuthority(
+    {
+      stateRoot,
+      actor,
+      leaseName,
+      leaseToken,
+      taskId,
+      ownerIntentDigest: ownerPlan?.intentDigest,
+    },
+    (authorityContext) =>
+      withOutcomeLedgerWriterLock(ledgerPath, () => {
+        const initialAdmission = requireOutcomeLedgerAppendAdmission(
+          ledgerPath,
+          stateRoot,
+        );
+        return withOutcomeRecordingGuards(
+          {
+            stateRoot,
+            nowMs: now.getTime(),
+            ownerIntent: ownerPlan?.intent ?? null,
+            authorityContext,
+          },
+          (control) =>
+            appendOutcomeLedgerLocked({
+              ledgerPath,
+              stateRoot,
+              entry,
+              taskId,
+              actor,
+              leaseName,
+              leaseToken,
+              now,
+              resolvedOutcome,
+              checkpoint: normalizedOptions.checkpoint ?? (() => {}),
+              initialAdmission,
+              control,
+              ownerPlan,
+            }),
+        );
+      }),
+  );
 }
 
 export function parseTsv(text) {
@@ -3385,33 +5038,84 @@ export function selectTargets(candidates, options) {
 }
 
 export function findPendingOutcomeTransitions(stateRoot, outcomeEntries = []) {
+  const transitionIdentity = ({
+    taskId,
+    outcome,
+    taskRevision,
+    transitionEventId,
+    outcomeDigest,
+  }) =>
+    JSON.stringify({
+      taskId,
+      outcome,
+      taskRevision,
+      transitionEventId,
+      outcomeDigest,
+    });
   const recordedTransitions = new Set(
     outcomeEntries.map((entry) =>
-      JSON.stringify({
+      transitionIdentity({
         taskId: entry?.taskId,
         outcome: entry?.outcome,
         taskRevision: entry?.authentication?.taskRevision,
+        transitionEventId: entry?.authentication?.transitionEventId,
+        outcomeDigest: entry?.authentication?.outcomeDigest,
       }),
     ),
   );
   const source = readJsonLinesWithHealth(
     automationControlPaths(stateRoot).events,
   );
-  const pending = source.entries
-    .filter(
-      (event) =>
-        event?.type === "task_transitioned" &&
-        VERIFICATION_OUTCOME_STATUSES.has(event?.data?.toState) &&
-        event?.data?.outcomeRequired === true &&
-        Number.isInteger(event?.taskRevision),
-    )
+  const outcomeTransitions = source.entries.filter(
+    (event) =>
+      isOutcomeTransitionEvent(event) &&
+      OUTCOME_STATUSES.includes(event?.data?.toState) &&
+      event?.data?.outcomeRequired === true &&
+      Number.isInteger(event?.taskRevision),
+  );
+  const transitionsByTaskRevision = new Map();
+  for (const event of outcomeTransitions) {
+    const key = JSON.stringify({
+      taskId: event.taskId,
+      outcome: event.data.toState,
+      taskRevision: event.taskRevision,
+    });
+    const matching = transitionsByTaskRevision.get(key) ?? [];
+    matching.push(event);
+    transitionsByTaskRevision.set(key, matching);
+  }
+  const reservationConflicts = [];
+  for (const events of transitionsByTaskRevision.values()) {
+    if (events.length < 2) continue;
+    const first = events[0];
+    const identities = new Set(
+      events.map((event) =>
+        transitionIdentity({
+          taskId: event.taskId,
+          outcome: event.data.toState,
+          taskRevision: event.taskRevision,
+          transitionEventId: event.eventId,
+          outcomeDigest: event.data?.outcomeDigest,
+        }),
+      ),
+    );
+    reservationConflicts.push({
+      taskId: first.taskId,
+      state: first.data.toState,
+      revision: first.taskRevision,
+      kind: identities.size === 1 ? "duplicate" : "conflict",
+    });
+  }
+  const pending = outcomeTransitions
     .filter(
       (event) =>
         !recordedTransitions.has(
-          JSON.stringify({
+          transitionIdentity({
             taskId: event.taskId,
             outcome: event.data.toState,
             taskRevision: event.taskRevision,
+            transitionEventId: event.eventId,
+            outcomeDigest: event.data?.outcomeDigest,
           }),
         ),
     )
@@ -3421,9 +5125,13 @@ export function findPendingOutcomeTransitions(stateRoot, outcomeEntries = []) {
       revision: event.taskRevision,
     }));
   Object.defineProperties(pending, {
-    sourceHealthy: { value: source.healthy, enumerable: false },
+    sourceHealthy: {
+      value: source.healthy && reservationConflicts.length === 0,
+      enumerable: false,
+    },
     sourceExists: { value: source.exists, enumerable: false },
     malformedLines: { value: source.malformedLines, enumerable: false },
+    reservationConflicts: { value: reservationConflicts, enumerable: false },
   });
   return pending;
 }

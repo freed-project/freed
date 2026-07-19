@@ -2,11 +2,14 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -20,12 +23,14 @@ import {
   createTask,
   finalizeTaskOutcome,
   readTask,
+  releaseLease,
   transitionTask,
+  withMutationLeaseAuthority,
+  withOutcomeRecordingGuards,
 } from "./lib/automation-control.mjs";
 import {
   assessSoakEvidenceQuality,
   applyOutcomeFeedback,
-  appendOutcomeEntryAtomic,
   appendOutcomeLedger,
   buildBehavioralTaskGate,
   buildCandidates,
@@ -44,6 +49,7 @@ import {
   parseArgs,
   parseGitWorktreePorcelain,
   parseTsv,
+  planOutcomeRecord,
   planNightlyRun,
   repairSoakPointer,
   resolveReadableSoak,
@@ -54,17 +60,40 @@ import {
   summarizeDailyBugMemory,
   summarizeSoak,
   runNightlyMachinePreflight,
+  withOutcomeLedgerWriterLock,
   writeRunPlan,
 } from "./nightly-self-improve.mjs";
 import { writeMeasuredOutcomeVerdict } from "./test-helpers/outcome-evidence.mjs";
+import { installAutomationKernelGuardCutoverFixture } from "./test-helpers/automation-kernel-guard.mjs";
+import { automationKernelGuardMarkerBytes } from "./lib/automation-kernel-guard-contract.mjs";
 
 const GIB = 1024 * 1024 * 1024;
 const ACTOR_LEASES = new Map();
+let OWNER_OUTCOME_LEASE_SEQUENCE = 0;
+let LEASE_MUTATION_SEQUENCE = 0;
+
+function leaseMutationId(label) {
+  LEASE_MUTATION_SEQUENCE += 1;
+  return createHash("sha256")
+    .update(`${label}:${LEASE_MUTATION_SEQUENCE}`)
+    .digest("hex");
+}
+
+function temporaryOutcomeStateRoot(prefix) {
+  const stateRoot = realpathSync(mkdtempSync(path.join(os.tmpdir(), prefix)));
+  installAutomationKernelGuardCutoverFixture(stateRoot);
+  mkdirSync(path.join(stateRoot, "control"), {
+    recursive: true,
+    mode: 0o700,
+  });
+  return stateRoot;
+}
 
 function actorCredential(stateRoot, actor) {
   const token = `credential:${actor}:${"x".repeat(64)}`;
   const credentialDir = path.join(stateRoot, "control", "actor-credentials");
-  mkdirSync(credentialDir, { recursive: true });
+  mkdirSync(credentialDir, { recursive: true, mode: 0o700 });
+  chmodSync(credentialDir, 0o700);
   writeFileSync(
     path.join(credentialDir, `${actor}.json`),
     `${JSON.stringify({
@@ -79,17 +108,20 @@ function actorCredential(stateRoot, actor) {
 }
 
 function outcomeAuthentication(stateRoot, actor, nowMs) {
+  installAutomationKernelGuardCutoverFixture(stateRoot);
   const policy = AUTOMATION_ACTOR_POLICIES[actor];
   const token = `${actor}-${nowMs}`;
   const key = `${stateRoot}:${actor}`;
   if (!ACTOR_LEASES.has(key)) {
+    const leaseNowMs = Math.max(nowMs, Date.now());
     acquireLease({
       stateRoot,
       name: policy.leaseName,
       owner: actor,
+      operationId: leaseMutationId(`acquire:${actor}`),
       token,
       actorCredentialToken: actorCredential(stateRoot, actor),
-      nowMs: nowMs - 1_000,
+      nowMs: leaseNowMs - 1_000,
       ttlMs: policy.maxLeaseLifetimeMs,
     });
     ACTOR_LEASES.set(key, token);
@@ -103,6 +135,126 @@ function outcomeAuthentication(stateRoot, actor, nowMs) {
       leaseToken,
     },
   };
+}
+
+function ownerOutcomeAuthentication(stateRoot, plan, nowMs = Date.now()) {
+  installAutomationKernelGuardCutoverFixture(stateRoot);
+  OWNER_OUTCOME_LEASE_SEQUENCE += 1;
+  const confirmationId =
+    `owner-outcome-confirmation-${OWNER_OUTCOME_LEASE_SEQUENCE}`;
+  const confirmationPath = path.join(stateRoot, `${confirmationId}.json`);
+  writeFileSync(
+    confirmationPath,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      kind: "owner-confirmation",
+      confirmationId,
+      approvedBy: "AubreyF",
+      ownerApprovalReference:
+        "Owner approved this exact isolated outcome record test intent.",
+      approvalSource: { kind: "current-task", reference: plan.taskId },
+      taskId: plan.taskId,
+      intent: plan.intent,
+      intentDigest: plan.intentDigest,
+      approvedAt: new Date(nowMs).toISOString(),
+      expiresAt: new Date(nowMs + 11 * 60_000).toISOString(),
+    })}\n`,
+    { mode: 0o600 },
+  );
+  const acquired = acquireLease({
+    stateRoot,
+    name: "owner-governance",
+    owner: "freed-owner",
+    operationId: leaseMutationId("acquire:freed-owner"),
+    token: `owner-outcome-token-${"x".repeat(64)}`,
+    ttlMs: 10 * 60_000,
+    nowMs: nowMs + 1,
+    ownerConfirmationFile: confirmationPath,
+    ownerCapabilityTaskId: plan.taskId,
+    ownerCapabilityIntentDigest: plan.intentDigest,
+  });
+  return {
+    stateRoot,
+    authentication: {
+      actor: "freed-owner",
+      leaseName: "owner-governance",
+      leaseToken: acquired.lease.token,
+    },
+    ownerPlan: plan,
+  };
+}
+
+function writeLegacyOutcomeTransitionFixture({
+  stateRoot,
+  taskId,
+  toState,
+  nowMs,
+  actor,
+  installedIdentity = undefined,
+}) {
+  assert.ok(["merged", "installed"].includes(toState));
+  const paths = automationControlPaths(stateRoot);
+  const manifest = JSON.parse(readFileSync(paths.taskManifest, "utf8"));
+  const task = manifest.tasks.find((candidate) => candidate.taskId === taskId);
+  assert.ok(task, `Missing legacy outcome fixture task ${taskId}.`);
+  const fromState = task.state;
+  task.state = toState;
+  task.revision += 1;
+  task.updatedAt = new Date(nowMs).toISOString();
+  if (toState === "merged") {
+    task.mergedAt = task.updatedAt;
+  } else {
+    task.installedIdentity = installedIdentity;
+    task.installedBuild = installedIdentity.version;
+    task.installedAt = task.updatedAt;
+  }
+  manifest.revision += 1;
+  manifest.updatedAt = task.updatedAt;
+  writeFileSync(paths.taskManifest, `${JSON.stringify(manifest)}\n`, {
+    mode: 0o600,
+  });
+  const eventId = `legacy-outcome:${createHash("sha256")
+    .update(`${taskId}:${toState}:${task.revision}`)
+    .digest("hex")}`;
+  const event = {
+    schemaVersion: 1,
+    eventId,
+    type: "task_transitioned",
+    ts: task.updatedAt,
+    actor,
+    taskId,
+    taskRevision: task.revision,
+    manifestRevision: manifest.revision,
+    observerAuthority: task.observerAuthority,
+    providerAuthority: task.providerAuthority,
+    ...(task.providerApprovalReference === undefined
+      ? {}
+      : { providerApprovalReference: task.providerApprovalReference }),
+    data: {
+      fromState,
+      toState,
+      ...(toState === "merged" ? { mergedAt: task.mergedAt } : {}),
+      ...(toState === "installed"
+        ? {
+            installedBuild: task.installedBuild,
+            installedIdentity: task.installedIdentity,
+            installedAt: task.installedAt,
+          }
+        : {}),
+    },
+  };
+  const existing = existsSync(paths.events) ? readFileSync(paths.events) : Buffer.alloc(0);
+  writeFileSync(
+    paths.events,
+    Buffer.concat([
+      existing,
+      existing.length > 0 && existing.at(-1) !== 0x0a
+        ? Buffer.from("\n")
+        : Buffer.alloc(0),
+      Buffer.from(`${JSON.stringify(event)}\n`),
+    ]),
+    { mode: 0o600 },
+  );
 }
 
 function prepareTaskAtState(
@@ -155,29 +307,128 @@ function prepareTaskAtState(
     ) {
       if (state !== targetState) break;
     }
-    transitionTask({
-      stateRoot,
-      taskId,
-      actor: authentication.authentication.actor,
-      leaseName: authentication.authentication.leaseName,
-      leaseToken: authentication.authentication.leaseToken,
-      toState: state,
-      ...(state === "installed"
-        ? {
-            details: {
-              behavioral,
+    const transitionNowMs = lifecycleStartMs + (index + 1) * 60_000;
+    if (["merged", "installed"].includes(state)) {
+      writeLegacyOutcomeTransitionFixture({
+        stateRoot,
+        taskId,
+        toState: state,
+        nowMs: transitionNowMs,
+        actor: authentication.authentication.actor,
+        ...(state === "installed"
+          ? {
               installedIdentity: {
                 version: build.replace(/^v/i, ""),
                 commitSha,
                 channel,
               },
-            },
-          }
-        : {}),
-      nowMs: lifecycleStartMs + (index + 1) * 60_000,
-    });
+            }
+          : {}),
+      });
+    } else {
+      transitionTask({
+        stateRoot,
+        taskId,
+        actor: authentication.authentication.actor,
+        leaseName: authentication.authentication.leaseName,
+        leaseToken: authentication.authentication.leaseToken,
+        toState: state,
+        nowMs: transitionNowMs,
+      });
+    }
     if (state === targetState) break;
   }
+}
+
+function prepareLiveMergedOutcomeBackfillFixture(stateRoot) {
+  const paths = automationControlPaths(stateRoot);
+  const taskId = "authenticated-essay-capture-pr-642";
+  const mergedAt = "2026-07-14T21:56:07.850Z";
+  const providerApprovalReference =
+    "sha256:b89bcf1c2c9aaa6277618451cc9329d4689da038deb6e94f6776eccea5bd4ab9";
+  const task = {
+    schemaVersion: 1,
+    taskId,
+    state: "merged",
+    revision: 6,
+    behavioral: true,
+    observerAuthority: "merge-safe",
+    providerAuthority: "approved",
+    providerApprovalReference,
+    createdAt: "2026-07-14T21:56:06.121Z",
+    updatedAt: mergedAt,
+    details: {
+      behavioral: true,
+      metricId: "renderer-recovery-count",
+      feature: "Authenticated Substack and Medium capture",
+      featurePullRequest: "https://github.com/freed-project/freed/pull/642",
+      featureMergeCommit: "c1ac25428ecb28cd4da89225590738b08800ca19",
+      governanceRepairPullRequest:
+        "https://github.com/freed-project/freed/pull/982",
+      governanceRepairMergeCommit:
+        "c253c21945c4e159047fe7329fe24e2694fa989a",
+      providerRiskArtifact:
+        "/Users/aubreyfalconer/.freed/automation/artifacts/provider-risk-review/authenticated-essay-capture-pr-642/20260714215412807-d7af8b95508050f9e4d2d30f617571d67d4ac4acde28e9f772107da3a0eab70a.json",
+      providerRiskArtifactDigest:
+        "d7af8b95508050f9e4d2d30f617571d67d4ac4acde28e9f772107da3a0eab70a",
+      gate2AuthorizationDigest: providerApprovalReference,
+      ownerApprovalComment:
+        "https://github.com/freed-project/freed/pull/642#issuecomment-4970593829",
+      liveProviderTrafficAuthorized: false,
+      soakMode: "offline-installed-build",
+    },
+    mergedAt,
+  };
+  const historicalEvent = {
+    schemaVersion: 1,
+    eventId: "37db3aa0-7a37-4341-a13c-5bfe6485f393",
+    type: "task_transitioned",
+    ts: mergedAt,
+    actor: "freed-owner",
+    taskId,
+    taskRevision: 6,
+    manifestRevision: 7,
+    observerAuthority: "merge-safe",
+    providerAuthority: "approved",
+    providerApprovalReference,
+    data: {
+      fromState: "validated",
+      toState: "merged",
+      authorizationProvenance: {
+        leaseName: "owner-governance",
+        leaseAcquiredAt: "2026-07-14T21:56:07.712Z",
+        credentialKind: "owner-confirmation",
+        ownerConfirmationId: "authenticated-essay-capture-merged",
+        ownerConfirmationTaskId: taskId,
+        ownerConfirmationIntentDigest:
+          "2a9c302e304cf76ed0ef57c5e5a22c9de03d76d7c6f35806f13222754fc48c4f",
+        ownerConfirmationDigest:
+          "8a59fcff56c33629689bed0ef96038ea291126d9241b2e3fffec16f684b017c7",
+        ownerConfirmationReference:
+          "authenticated-essay-capture-current-task-2026-07-14",
+        ownerConfirmationApprovedBy: "AubreyF",
+        ownerConfirmationApprovalReference:
+          "The owner explicitly approved this exact lifecycle operation in the current task on 2026-07-14.",
+        ownerConfirmationApprovedAt: "2026-07-14T21:56:06.623Z",
+        ownerConfirmationExpiresAt: "2026-07-14T23:56:07.623Z",
+      },
+      mergedAt,
+    },
+  };
+  writeFileSync(
+    paths.taskManifest,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      revision: 7,
+      updatedAt: mergedAt,
+      tasks: [task],
+    })}\n`,
+    { mode: 0o600 },
+  );
+  writeFileSync(paths.events, `${JSON.stringify(historicalEvent)}\n`, {
+    mode: 0o600,
+  });
+  return { historicalEvent, task, taskId };
 }
 
 function writeOutcomeVerdict(
@@ -672,9 +923,7 @@ test("a terminal task state cannot release the behavior slot before its trusted 
 });
 
 test("missing or malformed control history keeps the behavior slot closed", () => {
-  const dir = mkdtempSync(
-    path.join(os.tmpdir(), "freed-control-history-unhealthy-"),
-  );
+  const dir = temporaryOutcomeStateRoot("freed-control-history-unhealthy-");
   const task = {
     taskId: "P1-01",
     state: "verified_effective",
@@ -716,6 +965,142 @@ test("missing or malformed control history keeps the behavior slot closed", () =
     }).status,
     "outcome-record-pending",
   );
+});
+
+test("pending outcome resolution binds the exact transition identity and digest", () => {
+  const dir = temporaryOutcomeStateRoot("freed-pending-outcome-identity-");
+  const eventsPath = automationControlPaths(dir).events;
+  const outcomeDigest = "a".repeat(64);
+  const reservation = {
+    schemaVersion: 1,
+    eventId: "task-outcome-reserved:exact",
+    type: "outcome_reservation_created",
+    ts: "2026-07-18T12:00:00.000Z",
+    actor: "freed-nightly-runner",
+    taskId: "pending-identity",
+    taskRevision: 7,
+    data: {
+      toState: "merged",
+      outcomeRequired: true,
+      outcomeBackfill: true,
+      outcomeDigest,
+      legacyTransitionEventId: "legacy-transition",
+    },
+  };
+  writeFileSync(eventsPath, `${JSON.stringify(reservation)}\n`, { mode: 0o600 });
+  const outcomeEntry = (transitionEventId, authenticatedDigest) => ({
+    taskId: reservation.taskId,
+    outcome: reservation.data.toState,
+    authentication: {
+      taskRevision: reservation.taskRevision,
+      transitionEventId,
+      outcomeDigest: authenticatedDigest,
+    },
+  });
+
+  const wrongEvent = findPendingOutcomeTransitions(dir, [
+    outcomeEntry("task-outcome-reserved:other", outcomeDigest),
+  ]);
+  assert.deepEqual(wrongEvent, [
+    { taskId: "pending-identity", state: "merged", revision: 7 },
+  ]);
+  assert.equal(wrongEvent.sourceHealthy, true);
+
+  const wrongDigest = findPendingOutcomeTransitions(dir, [
+    outcomeEntry(reservation.eventId, "b".repeat(64)),
+  ]);
+  assert.deepEqual(wrongDigest, [
+    { taskId: "pending-identity", state: "merged", revision: 7 },
+  ]);
+  assert.equal(wrongDigest.sourceHealthy, true);
+
+  const exact = findPendingOutcomeTransitions(dir, [
+    outcomeEntry(reservation.eventId, outcomeDigest),
+  ]);
+  assert.deepEqual(exact, []);
+  assert.equal(exact.sourceHealthy, true);
+});
+
+test("duplicate and conflicting outcome reservations fail control history health", () => {
+  const dir = temporaryOutcomeStateRoot("freed-pending-outcome-conflict-");
+  const eventsPath = automationControlPaths(dir).events;
+  const reservation = (eventId, outcomeDigest) => ({
+    schemaVersion: 1,
+    eventId,
+    type: "outcome_reservation_created",
+    ts: "2026-07-18T12:00:00.000Z",
+    actor: "freed-nightly-runner",
+    taskId: "pending-conflict",
+    taskRevision: 7,
+    data: {
+      toState: "merged",
+      outcomeRequired: true,
+      outcomeBackfill: true,
+      outcomeDigest,
+      legacyTransitionEventId: "legacy-transition",
+    },
+  });
+  const first = reservation("task-outcome-reserved:first", "a".repeat(64));
+  const second = reservation("task-outcome-reserved:second", "b".repeat(64));
+  const firstOutcome = {
+    taskId: first.taskId,
+    outcome: first.data.toState,
+    authentication: {
+      taskRevision: first.taskRevision,
+      transitionEventId: first.eventId,
+      outcomeDigest: first.data.outcomeDigest,
+    },
+  };
+  writeFileSync(
+    eventsPath,
+    `${JSON.stringify(first)}\n${JSON.stringify(second)}\n`,
+    { mode: 0o600 },
+  );
+
+  const conflicting = findPendingOutcomeTransitions(dir, [firstOutcome]);
+  assert.deepEqual(conflicting, [
+    { taskId: "pending-conflict", state: "merged", revision: 7 },
+  ]);
+  assert.equal(conflicting.sourceHealthy, false);
+  assert.deepEqual(conflicting.reservationConflicts, [
+    {
+      taskId: "pending-conflict",
+      state: "merged",
+      revision: 7,
+      kind: "conflict",
+    },
+  ]);
+  assert.equal(
+    buildBehavioralTaskGate(
+      [
+        {
+          taskId: "pending-conflict",
+          state: "merged",
+          revision: 7,
+          behavioral: true,
+        },
+      ],
+      { pendingOutcomeTransitions: conflicting },
+    ).status,
+    "control-history-unhealthy",
+  );
+
+  writeFileSync(
+    eventsPath,
+    `${JSON.stringify(first)}\n${JSON.stringify(first)}\n`,
+    { mode: 0o600 },
+  );
+  const duplicate = findPendingOutcomeTransitions(dir, [firstOutcome]);
+  assert.deepEqual(duplicate, []);
+  assert.equal(duplicate.sourceHealthy, false);
+  assert.deepEqual(duplicate.reservationConflicts, [
+    {
+      taskId: "pending-conflict",
+      state: "merged",
+      revision: 7,
+      kind: "duplicate",
+    },
+  ]);
 });
 
 test("target selection ignores candidates outside the runnable task manifest", () => {
@@ -803,9 +1188,7 @@ test("canonical behavioral and provider policy override candidate metadata", () 
 });
 
 test("pending verification reservations block follow-on task state changes", () => {
-  const dir = mkdtempSync(
-    path.join(os.tmpdir(), "freed-outcome-pending-history-"),
-  );
+  const dir = temporaryOutcomeStateRoot("freed-outcome-pending-history-");
   const nowMs = Date.parse("2026-07-10T13:00:00Z");
   prepareTaskAtState(dir, "partial-outcome", "soaking", nowMs, {
     behavioral: true,
@@ -824,22 +1207,34 @@ test("pending verification reservations block follow-on task state changes", () 
   const outcomeDigest = createHash("sha256")
     .update(JSON.stringify(cleanEntry))
     .digest("hex");
-  const reserved = transitionTask({
-    stateRoot: dir,
-    taskId: "partial-outcome",
-    actor: verifier.authentication.actor,
-    leaseName: verifier.authentication.leaseName,
-    leaseToken: verifier.authentication.leaseToken,
-    toState: "verified_neutral",
-    details: {
-      behavioral: true,
-      latestOutcome: {
-        outcome: "verified_neutral",
-        outcomeDigest,
-      },
+  const reserved = withMutationLeaseAuthority(
+    {
+      stateRoot: dir,
+      taskId: "partial-outcome",
+      ...verifier.authentication,
     },
-    nowMs: nowMs + 1,
-  });
+    (authorityContext) =>
+      withOutcomeRecordingGuards(
+        { stateRoot: dir, nowMs: nowMs + 1, authorityContext },
+        (control) =>
+          control.transitionTask({
+            stateRoot: dir,
+            taskId: "partial-outcome",
+            actor: verifier.authentication.actor,
+            leaseName: verifier.authentication.leaseName,
+            leaseToken: verifier.authentication.leaseToken,
+            toState: "verified_neutral",
+            details: {
+              behavioral: true,
+              latestOutcome: {
+                outcome: "verified_neutral",
+                outcomeDigest,
+              },
+            },
+            nowMs: nowMs + 1,
+          }),
+      ),
+  );
   assert.throws(
     () =>
       finalizeTaskOutcome({
@@ -1244,10 +1639,16 @@ test("repo snapshot preserves leading status columns for changed paths", () => {
 });
 
 test("nightly JSON plan exposes only sanitized control-task state", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-plan-sanitized-"));
+  const dir = realpathSync(
+    mkdtempSync(path.join(os.tmpdir(), "freed-plan-sanitized-")),
+  );
   const repo = path.join(dir, "repo");
   const stateRoot = path.join(dir, "automation");
   mkdirSync(repo, { recursive: true });
+  mkdirSync(path.join(stateRoot, "control"), {
+    recursive: true,
+    mode: 0o700,
+  });
   execFileSync("git", ["init"], { cwd: repo });
   execFileSync("git", ["config", "user.email", "test@example.com"], {
     cwd: repo,
@@ -1835,7 +2236,7 @@ test("duplicate work candidates are selected before generic roadmap fallback", (
 });
 
 test("outcome feedback learns from measured effects and suppresses completed task ids", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-outcomes-"));
+  const dir = temporaryOutcomeStateRoot("freed-outcomes-");
   const ledgerPath = path.join(dir, "outcomes.jsonl");
   const releaseVerifier = outcomeAuthentication(
     dir,
@@ -2018,8 +2419,1088 @@ test("target selection excludes completed and governance-blocked candidates", ()
   );
 });
 
+test("one owner intent records a fresh merged outcome", () => {
+  const stateRoot = temporaryOutcomeStateRoot("freed-owner-outcome-fresh-");
+  const paths = automationControlPaths(stateRoot);
+  const taskId = "owner-outcome-fresh";
+  const nowMs = Date.now();
+  prepareTaskAtState(stateRoot, taskId, "validated", nowMs);
+  const input = {
+    id: taskId,
+    taskId,
+    kind: "stability",
+    outcome: "merged",
+    notes: "Owner composite transition.",
+    evidenceDigest: "d".repeat(64),
+  };
+  const plannedAt = new Date(nowMs + 1_000);
+  const plan = planOutcomeRecord(paths.outcomes, input, {
+    stateRoot,
+    now: plannedAt,
+  });
+  const owner = ownerOutcomeAuthentication(stateRoot, plan, nowMs + 2_000);
+  const recorded = appendOutcomeLedger(paths.outcomes, input, {
+    ...owner,
+    now: new Date(nowMs + 3_000),
+  });
+
+  assert.equal(recorded.ts, plannedAt.toISOString());
+  assert.equal(recorded.outcome, "merged");
+  assert.equal(recorded.authentication.actor, "freed-owner");
+  const task = readTask({ stateRoot, taskId });
+  assert.equal(task.state, "merged");
+  assert.equal(task.revision, plan.intent.parameters.sourceTaskRevision + 1);
+  assert.equal(task.pendingOutcome, undefined);
+  assert.equal(task.details.latestOutcome.recordedAt, plannedAt.toISOString());
+  const summary = summarizeOutcomeLedger(paths.outcomes, { stateRoot });
+  assert.equal(summary.entries.length, 1);
+  assert.equal(summary.sourceHealth.ledgerHealthy, true);
+});
+
+for (const checkpointName of [
+  "outcome-transition-resolved",
+  "outcome-control-event-appended",
+  "outcome-ledger-appended",
+  "outcome-finalized",
+]) {
+  test(`one owner intent recovers the live merged backfill after ${checkpointName}`, () => {
+    const stateRoot = temporaryOutcomeStateRoot(
+      `freed-owner-live-backfill-${checkpointName}-`,
+    );
+    const paths = automationControlPaths(stateRoot);
+    const { taskId } = prepareLiveMergedOutcomeBackfillFixture(stateRoot);
+    const input = {
+      id: taskId,
+      taskId,
+      kind: "stability",
+      outcome: "merged",
+      notes: "Authenticated merged outcome backfill.",
+      evidenceDigest: "e".repeat(64),
+    };
+    const nowMs = Date.now();
+    const plan = planOutcomeRecord(paths.outcomes, input, {
+      stateRoot,
+      now: new Date(nowMs),
+    });
+    const firstOwner = ownerOutcomeAuthentication(
+      stateRoot,
+      plan,
+      nowMs + 1_000,
+    );
+    assert.throws(
+      () =>
+        appendOutcomeLedger(paths.outcomes, input, {
+          ...firstOwner,
+          now: new Date(nowMs + 2_000),
+          checkpoint: (checkpoint) => {
+            if (checkpoint === checkpointName) {
+              throw new Error(`simulated owner crash at ${checkpointName}`);
+            }
+          },
+        }),
+      new RegExp(`simulated owner crash at ${checkpointName}`),
+    );
+    releaseLease({
+      stateRoot,
+      name: firstOwner.authentication.leaseName,
+      operationId: leaseMutationId("release:first-owner"),
+      token: firstOwner.authentication.leaseToken,
+      nowMs: nowMs + 3_000,
+    });
+    const recoveryOwner = ownerOutcomeAuthentication(
+      stateRoot,
+      plan,
+      nowMs + 4_000,
+    );
+    const recovered = appendOutcomeLedger(paths.outcomes, input, {
+      ...recoveryOwner,
+      now: new Date(nowMs + 5_000),
+    });
+    const task = readTask({ stateRoot, taskId });
+    assert.equal(task.state, "merged");
+    assert.equal(task.revision, 7);
+    assert.equal(task.pendingOutcome, undefined);
+    assert.equal(recovered.ts, plan.cleanEntry.ts);
+    const summary = summarizeOutcomeLedger(paths.outcomes, { stateRoot });
+    assert.equal(summary.entries.length, 1);
+    assert.equal(summary.sourceHealth.ledgerHealthy, true);
+
+    const settledBytes = {
+      manifest: readFileSync(paths.taskManifest),
+      events: readFileSync(paths.events),
+      ledger: readFileSync(paths.outcomes),
+    };
+    assert.deepEqual(
+      appendOutcomeLedger(paths.outcomes, input, {
+        ...recoveryOwner,
+        now: new Date(nowMs + 6_000),
+      }),
+      recovered,
+    );
+    assert.deepEqual(readFileSync(paths.taskManifest), settledBytes.manifest);
+    assert.deepEqual(readFileSync(paths.events), settledBytes.events);
+    assert.deepEqual(readFileSync(paths.outcomes), settledBytes.ledger);
+  });
+}
+
+test("an owner plan cannot take over another actor's pending outcome", () => {
+  const stateRoot = temporaryOutcomeStateRoot("freed-owner-cross-actor-");
+  const paths = automationControlPaths(stateRoot);
+  const taskId = "owner-cross-actor";
+  const nowMs = Date.now();
+  prepareTaskAtState(stateRoot, taskId, "validated", nowMs);
+  const input = {
+    id: taskId,
+    taskId,
+    kind: "stability",
+    outcome: "merged",
+    notes: "Cross-actor retry proof.",
+    evidenceDigest: "f".repeat(64),
+  };
+  const recordTime = new Date(nowMs + 1_000);
+  const plan = planOutcomeRecord(paths.outcomes, input, {
+    stateRoot,
+    now: recordTime,
+  });
+  const nightly = outcomeAuthentication(
+    stateRoot,
+    "freed-nightly-runner",
+    nowMs + 2_000,
+  );
+  assert.throws(
+    () =>
+      appendOutcomeLedger(paths.outcomes, input, {
+        ...nightly,
+        now: recordTime,
+        checkpoint: (checkpoint) => {
+          if (checkpoint === "outcome-transition-resolved") {
+            throw new Error("simulated first-actor crash");
+          }
+        },
+      }),
+    /simulated first-actor crash/,
+  );
+  const owner = ownerOutcomeAuthentication(stateRoot, plan, nowMs + 3_000);
+  const beforeOwnerRetry = {
+    manifest: readFileSync(paths.taskManifest),
+    events: readFileSync(paths.events),
+    ledger: existsSync(paths.outcomes) ? readFileSync(paths.outcomes) : null,
+    transactions: existsSync(paths.taskTransactions)
+      ? readdirSync(paths.taskTransactions).sort()
+      : [],
+  };
+  assert.throws(
+    () =>
+      appendOutcomeLedger(paths.outcomes, input, {
+        ...owner,
+        now: new Date(nowMs + 4_000),
+      }),
+    /lifecycle route does not match its owner plan/,
+  );
+  assert.deepEqual(readFileSync(paths.taskManifest), beforeOwnerRetry.manifest);
+  assert.deepEqual(readFileSync(paths.events), beforeOwnerRetry.events);
+  assert.deepEqual(
+    existsSync(paths.outcomes) ? readFileSync(paths.outcomes) : null,
+    beforeOwnerRetry.ledger,
+  );
+  assert.deepEqual(
+    existsSync(paths.taskTransactions)
+      ? readdirSync(paths.taskTransactions).sort()
+      : [],
+    beforeOwnerRetry.transactions,
+  );
+
+  const recovered = appendOutcomeLedger(paths.outcomes, input, {
+    ...nightly,
+    now: recordTime,
+  });
+  assert.equal(recovered.authentication.actor, "freed-nightly-runner");
+  assert.equal(
+    summarizeOutcomeLedger(paths.outcomes, { stateRoot }).entries.length,
+    1,
+  );
+});
+
+test("an owner plan rejects tampering before canonical mutation", () => {
+  const stateRoot = temporaryOutcomeStateRoot("freed-owner-plan-tamper-");
+  const paths = automationControlPaths(stateRoot);
+  const taskId = "owner-plan-tamper";
+  const nowMs = Date.now();
+  prepareTaskAtState(stateRoot, taskId, "validated", nowMs);
+  const input = {
+    id: taskId,
+    taskId,
+    kind: "stability",
+    outcome: "merged",
+    notes: "Original owner plan.",
+    evidenceDigest: "1".repeat(64),
+  };
+  const plan = planOutcomeRecord(paths.outcomes, input, {
+    stateRoot,
+    now: new Date(nowMs + 1_000),
+  });
+  const owner = ownerOutcomeAuthentication(stateRoot, plan, nowMs + 2_000);
+  const tamperedPlan = structuredClone(plan);
+  tamperedPlan.cleanEntry.notes = "Changed after approval.";
+  const before = {
+    manifest: readFileSync(paths.taskManifest),
+    events: readFileSync(paths.events),
+    ledger: existsSync(paths.outcomes) ? readFileSync(paths.outcomes) : null,
+    transactions: existsSync(paths.taskTransactions)
+      ? readdirSync(paths.taskTransactions).sort()
+      : [],
+  };
+  assert.throws(
+    () =>
+      appendOutcomeLedger(paths.outcomes, input, {
+        ...owner,
+        ownerPlan: tamperedPlan,
+        now: new Date(nowMs + 3_000),
+      }),
+    /does not match its canonical owner intent/,
+  );
+  assert.deepEqual(readFileSync(paths.taskManifest), before.manifest);
+  assert.deepEqual(readFileSync(paths.events), before.events);
+  assert.deepEqual(
+    existsSync(paths.outcomes) ? readFileSync(paths.outcomes) : null,
+    before.ledger,
+  );
+  assert.deepEqual(
+    existsSync(paths.taskTransactions)
+      ? readdirSync(paths.taskTransactions).sort()
+      : [],
+    before.transactions,
+  );
+});
+
+test("a tampered pending outcome digest blocks retry before mutation", () => {
+  const stateRoot = temporaryOutcomeStateRoot("freed-pending-digest-tamper-");
+  const paths = automationControlPaths(stateRoot);
+  const taskId = "pending-digest-tamper";
+  const nowMs = Date.now();
+  prepareTaskAtState(stateRoot, taskId, "validated", nowMs);
+  const input = {
+    id: taskId,
+    taskId,
+    kind: "stability",
+    outcome: "merged",
+    notes: "Pending digest parity.",
+    evidenceDigest: "2".repeat(64),
+  };
+  const authentication = outcomeAuthentication(
+    stateRoot,
+    "freed-nightly-runner",
+    nowMs + 1_000,
+  );
+  assert.throws(
+    () =>
+      appendOutcomeLedger(paths.outcomes, input, {
+        ...authentication,
+        now: new Date(nowMs + 2_000),
+        checkpoint: (checkpoint) => {
+          if (checkpoint === "outcome-transition-resolved") {
+            throw new Error("simulated pending digest crash");
+          }
+        },
+      }),
+    /simulated pending digest crash/,
+  );
+  const manifest = JSON.parse(readFileSync(paths.taskManifest, "utf8"));
+  const task = manifest.tasks.find((candidate) => candidate.taskId === taskId);
+  task.pendingOutcome.outcomeDigest = "3".repeat(64);
+  writeFileSync(paths.taskManifest, `${JSON.stringify(manifest)}\n`, {
+    mode: 0o600,
+  });
+  const before = {
+    manifest: readFileSync(paths.taskManifest),
+    events: readFileSync(paths.events),
+    ledger: existsSync(paths.outcomes) ? readFileSync(paths.outcomes) : null,
+    transactions: existsSync(paths.taskTransactions)
+      ? readdirSync(paths.taskTransactions).sort()
+      : [],
+  };
+  assert.throws(
+    () =>
+      appendOutcomeLedger(paths.outcomes, input, {
+        ...authentication,
+        now: new Date(nowMs + 3_000),
+      }),
+    (error) => error?.code === "invalid_state",
+  );
+  assert.deepEqual(readFileSync(paths.taskManifest), before.manifest);
+  assert.deepEqual(readFileSync(paths.events), before.events);
+  assert.deepEqual(
+    existsSync(paths.outcomes) ? readFileSync(paths.outcomes) : null,
+    before.ledger,
+  );
+  assert.deepEqual(
+    existsSync(paths.taskTransactions)
+      ? readdirSync(paths.taskTransactions).sort()
+      : [],
+    before.transactions,
+  );
+});
+
+test("lease replacement after the outcome event cannot append a ledger row", () => {
+  const stateRoot = temporaryOutcomeStateRoot("freed-outcome-lease-replaced-");
+  const paths = automationControlPaths(stateRoot);
+  const taskId = "outcome-lease-replaced";
+  const nowMs = Date.now();
+  prepareTaskAtState(stateRoot, taskId, "validated", nowMs);
+  const input = {
+    id: taskId,
+    taskId,
+    kind: "stability",
+    outcome: "merged",
+    notes: "Lease reauthorization before ledger append.",
+    evidenceDigest: "4".repeat(64),
+  };
+  const authentication = outcomeAuthentication(
+    stateRoot,
+    "freed-nightly-runner",
+    nowMs + 1_000,
+  );
+  const leaseRecordPath = path.join(
+    paths.leases,
+    `${authentication.authentication.leaseName}.lease`,
+    "lease.json",
+  );
+  assert.throws(
+    () =>
+      appendOutcomeLedger(paths.outcomes, input, {
+        ...authentication,
+        now: new Date(nowMs + 2_000),
+        checkpoint: (checkpoint) => {
+          if (checkpoint !== "outcome-control-event-appended") return;
+          const lease = JSON.parse(readFileSync(leaseRecordPath, "utf8"));
+          lease.token = "replacement-token";
+          writeFileSync(leaseRecordPath, `${JSON.stringify(lease)}\n`, {
+            mode: 0o600,
+          });
+        },
+      }),
+    (error) => error?.code === "lease_token_mismatch",
+  );
+  assert.equal(existsSync(paths.outcomes), false);
+  assert.equal(
+    JSON.parse(readFileSync(paths.taskManifest, "utf8")).tasks[0]
+      .pendingOutcome.outcome,
+    "merged",
+  );
+  assert.equal(
+    readFileSync(paths.events, "utf8")
+      .trim()
+      .split("\n")
+      .map(JSON.parse)
+      .filter((event) => event.type === "outcome_recorded").length,
+    1,
+  );
+});
+
+test("installed backfill rejects legacy event identity drift without mutation", () => {
+  const stateRoot = temporaryOutcomeStateRoot(
+    "freed-installed-legacy-identity-drift-",
+  );
+  const paths = automationControlPaths(stateRoot);
+  const taskId = "installed-legacy-identity-drift";
+  const nowMs = Date.now();
+  const installedIdentity = {
+    version: "26.7.1800",
+    commitSha: "5".repeat(40),
+    channel: "dev",
+  };
+  prepareTaskAtState(stateRoot, taskId, "installed", nowMs, {
+    build: installedIdentity.version,
+    commitSha: installedIdentity.commitSha,
+    channel: installedIdentity.channel,
+  });
+  const events = readFileSync(paths.events, "utf8")
+    .trim()
+    .split("\n")
+    .map(JSON.parse);
+  const legacyInstalled = events.find(
+    (event) =>
+      event.type === "task_transitioned" &&
+      event.taskId === taskId &&
+      event.data?.toState === "installed",
+  );
+  legacyInstalled.data.installedIdentity.commitSha = "6".repeat(40);
+  writeFileSync(
+    paths.events,
+    `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
+    { mode: 0o600 },
+  );
+  const authentication = outcomeAuthentication(
+    stateRoot,
+    "freed-nightly-runner",
+    nowMs + 1_000,
+  );
+  const before = {
+    manifest: readFileSync(paths.taskManifest),
+    events: readFileSync(paths.events),
+    ledger: existsSync(paths.outcomes) ? readFileSync(paths.outcomes) : null,
+    transactions: existsSync(paths.taskTransactions)
+      ? readdirSync(paths.taskTransactions).sort()
+      : [],
+  };
+  assert.throws(
+    () =>
+      appendOutcomeLedger(
+        paths.outcomes,
+        {
+          id: taskId,
+          taskId,
+          kind: "stability",
+          outcome: "installed",
+          notes: "Legacy installed identity parity.",
+          evidenceDigest: "7".repeat(64),
+          installedIdentity,
+        },
+        {
+          ...authentication,
+          now: new Date(nowMs + 2_000),
+        },
+      ),
+    /legacy installed transition does not match canonical installed state/,
+  );
+  assert.deepEqual(readFileSync(paths.taskManifest), before.manifest);
+  assert.deepEqual(readFileSync(paths.events), before.events);
+  assert.deepEqual(
+    existsSync(paths.outcomes) ? readFileSync(paths.outcomes) : null,
+    before.ledger,
+  );
+  assert.deepEqual(
+    existsSync(paths.taskTransactions)
+      ? readdirSync(paths.taskTransactions).sort()
+      : [],
+    before.transactions,
+  );
+});
+
+test("appendOutcomeLedger crash recovery reserves merged and installed outcomes exactly once", () => {
+  const dir = temporaryOutcomeStateRoot(
+    "freed-all-outcome-reservation-recovery-",
+  );
+  const paths = automationControlPaths(dir);
+  const ledgerPath = paths.outcomes;
+  const nowMs = Date.now();
+  const taskId = "all-outcome-reservation-recovery";
+  const authentication = outcomeAuthentication(
+    dir,
+    "freed-nightly-runner",
+    nowMs,
+  );
+  prepareTaskAtState(dir, taskId, "validated", nowMs);
+
+  const readEvents = () =>
+    readFileSync(paths.events, "utf8")
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+  const assertOutcomeExactlyOnce = (entry) => {
+    const events = readEvents();
+    const provenance = entry.authentication;
+    assert.equal(
+      events.filter(
+        (event) =>
+          event.eventId === provenance.transitionEventId &&
+          event.type === "task_transitioned" &&
+          event.taskId === taskId &&
+          event.taskRevision === provenance.taskRevision &&
+          event.data?.toState === entry.outcome &&
+          event.data?.outcomeDigest === provenance.outcomeDigest &&
+          event.data?.outcomeRequired === true,
+      ).length,
+      1,
+    );
+    assert.equal(
+      events.filter(
+        (event) =>
+          event.eventId === provenance.controlEventId &&
+          event.type === "outcome_recorded" &&
+          event.taskId === taskId &&
+          event.data?.taskRevision === provenance.taskRevision &&
+          event.data?.outcome === entry.outcome &&
+          event.data?.outcomeDigest === provenance.outcomeDigest,
+      ).length,
+      1,
+    );
+    assert.equal(
+      events.filter(
+        (event) =>
+          event.type === "outcome_reservation_finalized" &&
+          event.taskId === taskId &&
+          event.data?.outcome === entry.outcome &&
+          event.data?.outcomeDigest === provenance.outcomeDigest &&
+          event.data?.taskRevision === provenance.taskRevision,
+      ).length,
+      1,
+    );
+    const summary = summarizeOutcomeLedger(ledgerPath, { stateRoot: dir });
+    assert.equal(
+      summary.entries.filter(
+        (candidate) =>
+          candidate.taskId === taskId &&
+          candidate.outcome === entry.outcome &&
+          candidate.authentication?.outcomeDigest ===
+            provenance.outcomeDigest &&
+          candidate.authentication?.transitionEventId ===
+            provenance.transitionEventId &&
+          candidate.authentication?.controlEventId ===
+            provenance.controlEventId,
+      ).length,
+      1,
+    );
+    return summary;
+  };
+
+  const mergedInput = {
+    id: taskId,
+    taskId,
+    kind: "stability",
+    outcome: "merged",
+    notes: "",
+    evidenceDigest: "a".repeat(64),
+  };
+  const mergedNow = new Date(nowMs + 60_000);
+  let mergedCheckpointReached = false;
+  assert.throws(
+    () =>
+      appendOutcomeLedger(ledgerPath, mergedInput, {
+        ...authentication,
+        now: mergedNow,
+        checkpoint: (checkpoint) => {
+          if (checkpoint === "outcome-transition-resolved") {
+            mergedCheckpointReached = true;
+            throw new Error("simulated merged crash");
+          }
+        },
+      }),
+    /simulated merged crash/,
+  );
+  assert.equal(mergedCheckpointReached, true);
+
+  const pendingMergedTask = readTask({ stateRoot: dir, taskId });
+  assert.equal(pendingMergedTask.state, "merged");
+  assert.deepEqual(pendingMergedTask.pendingOutcome, {
+    outcome: "merged",
+    outcomeDigest: pendingMergedTask.details.latestOutcome.outcomeDigest,
+    taskRevision: pendingMergedTask.revision,
+  });
+  assert.deepEqual(findPendingOutcomeTransitions(dir, []), [
+    {
+      taskId,
+      state: "merged",
+      revision: pendingMergedTask.revision,
+    },
+  ]);
+  assert.equal(existsSync(ledgerPath), false);
+
+  const beforeBlockedInstall = {
+    manifest: readFileSync(paths.taskManifest),
+    events: readFileSync(paths.events),
+  };
+  assert.throws(
+    () =>
+      transitionTask({
+        stateRoot: dir,
+        taskId,
+        actor: authentication.authentication.actor,
+        leaseName: authentication.authentication.leaseName,
+        leaseToken: authentication.authentication.leaseToken,
+        toState: "installed",
+        details: {
+          behavioral: false,
+          installedIdentity: {
+            version: "26.7.1800",
+            commitSha: "b".repeat(40),
+            channel: "dev",
+          },
+        },
+        nowMs: nowMs + 90_000,
+      }),
+    (error) => error?.code === "outcome_pending",
+  );
+  assert.deepEqual(
+    readFileSync(paths.taskManifest),
+    beforeBlockedInstall.manifest,
+  );
+  assert.deepEqual(readFileSync(paths.events), beforeBlockedInstall.events);
+  assert.equal(existsSync(ledgerPath), false);
+
+  const merged = appendOutcomeLedger(ledgerPath, mergedInput, {
+    ...authentication,
+    now: mergedNow,
+  });
+  assert.equal(readTask({ stateRoot: dir, taskId }).pendingOutcome, undefined);
+  const mergedSummary = assertOutcomeExactlyOnce(merged);
+  assert.deepEqual(
+    findPendingOutcomeTransitions(dir, mergedSummary.entries),
+    [],
+  );
+
+  const afterMergedRecovery = {
+    manifest: readFileSync(paths.taskManifest),
+    events: readFileSync(paths.events),
+    ledger: readFileSync(ledgerPath),
+  };
+  assert.deepEqual(
+    appendOutcomeLedger(ledgerPath, mergedInput, {
+      ...authentication,
+      now: mergedNow,
+    }),
+    merged,
+  );
+  assert.deepEqual(
+    readFileSync(paths.taskManifest),
+    afterMergedRecovery.manifest,
+  );
+  assert.deepEqual(readFileSync(paths.events), afterMergedRecovery.events);
+  assert.deepEqual(readFileSync(ledgerPath), afterMergedRecovery.ledger);
+  assertOutcomeExactlyOnce(merged);
+
+  const installedIdentity = {
+    version: "26.7.1800",
+    commitSha: "b".repeat(40),
+    channel: "dev",
+  };
+  const installedInput = {
+    id: taskId,
+    taskId,
+    kind: "stability",
+    outcome: "installed",
+    notes: "",
+    evidenceDigest: "c".repeat(64),
+    installedIdentity,
+  };
+  const installedNow = new Date(nowMs + 120_000);
+  let installedCheckpointReached = false;
+  assert.throws(
+    () =>
+      appendOutcomeLedger(ledgerPath, installedInput, {
+        ...authentication,
+        now: installedNow,
+        checkpoint: (checkpoint) => {
+          if (checkpoint === "outcome-control-event-appended") {
+            installedCheckpointReached = true;
+            throw new Error("simulated installed crash");
+          }
+        },
+      }),
+    /simulated installed crash/,
+  );
+  assert.equal(installedCheckpointReached, true);
+
+  const pendingInstalledTask = readTask({ stateRoot: dir, taskId });
+  assert.equal(pendingInstalledTask.state, "installed");
+  assert.deepEqual(pendingInstalledTask.installedIdentity, installedIdentity);
+  assert.deepEqual(pendingInstalledTask.pendingOutcome, {
+    outcome: "installed",
+    outcomeDigest: pendingInstalledTask.details.latestOutcome.outcomeDigest,
+    taskRevision: pendingInstalledTask.revision,
+  });
+  assert.deepEqual(readFileSync(ledgerPath), afterMergedRecovery.ledger);
+  assert.deepEqual(findPendingOutcomeTransitions(dir, mergedSummary.entries), [
+    {
+      taskId,
+      state: "installed",
+      revision: pendingInstalledTask.revision,
+    },
+  ]);
+
+  const beforeBlockedSoak = {
+    manifest: readFileSync(paths.taskManifest),
+    events: readFileSync(paths.events),
+    ledger: readFileSync(ledgerPath),
+  };
+  assert.throws(
+    () =>
+      transitionTask({
+        stateRoot: dir,
+        taskId,
+        actor: authentication.authentication.actor,
+        leaseName: authentication.authentication.leaseName,
+        leaseToken: authentication.authentication.leaseToken,
+        toState: "soaking",
+        nowMs: nowMs + 150_000,
+      }),
+    (error) => error?.code === "outcome_pending",
+  );
+  assert.deepEqual(
+    readFileSync(paths.taskManifest),
+    beforeBlockedSoak.manifest,
+  );
+  assert.deepEqual(readFileSync(paths.events), beforeBlockedSoak.events);
+  assert.deepEqual(readFileSync(ledgerPath), beforeBlockedSoak.ledger);
+
+  const installed = appendOutcomeLedger(ledgerPath, installedInput, {
+    ...authentication,
+    now: installedNow,
+  });
+  assert.equal(readTask({ stateRoot: dir, taskId }).pendingOutcome, undefined);
+  const installedSummary = assertOutcomeExactlyOnce(installed);
+  assert.deepEqual(
+    findPendingOutcomeTransitions(dir, installedSummary.entries),
+    [],
+  );
+
+  const afterInstalledRecovery = {
+    manifest: readFileSync(paths.taskManifest),
+    events: readFileSync(paths.events),
+    ledger: readFileSync(ledgerPath),
+  };
+  assert.deepEqual(
+    appendOutcomeLedger(ledgerPath, installedInput, {
+      ...authentication,
+      now: installedNow,
+    }),
+    installed,
+  );
+  assert.deepEqual(
+    readFileSync(paths.taskManifest),
+    afterInstalledRecovery.manifest,
+  );
+  assert.deepEqual(readFileSync(paths.events), afterInstalledRecovery.events);
+  assert.deepEqual(readFileSync(ledgerPath), afterInstalledRecovery.ledger);
+  assertOutcomeExactlyOnce(merged);
+  assertOutcomeExactlyOnce(installed);
+});
+
+for (const route of ["fresh", "legacy-backfill"]) {
+  test(`${route} installed identity drift blocks finalization and continuous trust`, () => {
+    const stateRoot = temporaryOutcomeStateRoot(
+      `freed-installed-${route}-finalization-`,
+    );
+    const paths = automationControlPaths(stateRoot);
+    const nowMs = Date.now();
+    const taskId = `installed-${route}-finalization`;
+    const authentication = outcomeAuthentication(
+      stateRoot,
+      "freed-nightly-runner",
+      nowMs,
+    );
+    const installedIdentity = {
+      version: "26.7.1802-dev",
+      commitSha: "d".repeat(40),
+      channel: "dev",
+      artifactDigest: "e".repeat(64),
+    };
+    if (route === "fresh") {
+      prepareTaskAtState(stateRoot, taskId, "validated", nowMs);
+      appendOutcomeLedger(
+        paths.outcomes,
+        {
+          id: taskId,
+          taskId,
+          kind: "stability",
+          outcome: "merged",
+          notes: "Fresh installed identity setup.",
+          evidenceDigest: "1".repeat(64),
+        },
+        {
+          ...authentication,
+          now: new Date(nowMs + 60_000),
+        },
+      );
+    } else {
+      prepareTaskAtState(stateRoot, taskId, "installed", nowMs, {
+        build: installedIdentity.version,
+        commitSha: installedIdentity.commitSha,
+        channel: installedIdentity.channel,
+      });
+      const manifest = JSON.parse(readFileSync(paths.taskManifest, "utf8"));
+      const task = manifest.tasks.find((candidate) => candidate.taskId === taskId);
+      task.installedIdentity = installedIdentity;
+      task.details.installedIdentity = installedIdentity;
+      writeFileSync(paths.taskManifest, `${JSON.stringify(manifest)}\n`, {
+        mode: 0o600,
+      });
+      const events = readFileSync(paths.events, "utf8")
+        .trim()
+        .split("\n")
+        .map(JSON.parse);
+      const legacyInstalled = events.find(
+        (event) =>
+          event.type === "task_transitioned" &&
+          event.taskId === taskId &&
+          event.data?.toState === "installed",
+      );
+      legacyInstalled.data.installedIdentity = installedIdentity;
+      writeFileSync(
+        paths.events,
+        `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
+        { mode: 0o600 },
+      );
+    }
+
+    const input = {
+      id: taskId,
+      taskId,
+      kind: "stability",
+      outcome: "installed",
+      notes: `${route} installed identity finalization.`,
+      evidenceDigest: "2".repeat(64),
+      installedIdentity,
+    };
+    const recordTime = new Date(nowMs + 120_000);
+    assert.throws(
+      () =>
+        appendOutcomeLedger(paths.outcomes, input, {
+          ...authentication,
+          now: recordTime,
+          checkpoint: (checkpoint) => {
+            if (checkpoint === "outcome-ledger-appended") {
+              throw new Error(`simulate ${route} installed crash`);
+            }
+          },
+        }),
+      new RegExp(`simulate ${route} installed crash`),
+    );
+
+    const ledgerEntries = readFileSync(paths.outcomes, "utf8")
+      .trim()
+      .split("\n")
+      .map(JSON.parse);
+    const installedEntry = ledgerEntries.find(
+      (entry) => entry.taskId === taskId && entry.outcome === "installed",
+    );
+    assert.ok(installedEntry);
+    const events = readFileSync(paths.events, "utf8")
+      .trim()
+      .split("\n")
+      .map(JSON.parse);
+    const transition = events.find(
+      (event) =>
+        event.eventId === installedEntry.authentication.transitionEventId,
+    );
+    assert.equal(
+      transition.type,
+      route === "fresh" ? "task_transitioned" : "outcome_reservation_created",
+    );
+    transition.data.installedIdentity = {
+      ...transition.data.installedIdentity,
+      commitSha: "f".repeat(40),
+    };
+    writeFileSync(
+      paths.events,
+      `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
+      { mode: 0o600 },
+    );
+
+    const snapshot = () => ({
+      manifest: readFileSync(paths.taskManifest),
+      events: readFileSync(paths.events),
+      ledger: readFileSync(paths.outcomes),
+      taskTransactions: existsSync(paths.taskTransactions)
+        ? Object.fromEntries(
+            readdirSync(paths.taskTransactions)
+              .sort()
+              .map((name) => [
+                name,
+                readFileSync(path.join(paths.taskTransactions, name)),
+              ]),
+          )
+        : {},
+    });
+    const beforeRetry = snapshot();
+    assert.throws(
+      () =>
+        appendOutcomeLedger(paths.outcomes, input, {
+          ...authentication,
+          now: recordTime,
+        }),
+      (error) => error?.code === "outcome_not_durable",
+    );
+    assert.deepEqual(snapshot(), beforeRetry);
+
+    const summary = summarizeOutcomeLedger(paths.outcomes, { stateRoot });
+    assert.equal(
+      summary.entries.some(
+        (entry) => entry.taskId === taskId && entry.outcome === "installed",
+      ),
+      false,
+    );
+    assert.equal(
+      summary.rejectedEntries.some(
+        (record) =>
+          record.entry?.taskId === taskId &&
+          record.entry?.outcome === "installed" &&
+          record.reason ===
+            "outcome does not match its authenticated control event",
+      ),
+      true,
+    );
+    assert.equal(summary.sourceHealth.ledgerHealthy, false);
+  });
+}
+
+for (const checkpointName of [
+  "outcome-transition-resolved",
+  "outcome-control-event-appended",
+  "outcome-ledger-appended",
+  "outcome-finalized",
+]) {
+  test(`legacy merged outcome backfill is exact after ${checkpointName}`, () => {
+    const dir = temporaryOutcomeStateRoot(
+      `freed-legacy-merged-backfill-${checkpointName}-`,
+    );
+    const paths = automationControlPaths(dir);
+    const liveFixture = prepareLiveMergedOutcomeBackfillFixture(dir);
+    const { historicalEvent: legacyMergedEvent, task: legacyTask, taskId } =
+      liveFixture;
+    const nowMs = Date.now();
+    const authentication = outcomeAuthentication(
+      dir,
+      "freed-nightly-runner",
+      nowMs,
+    );
+    const recordedLegacyTask = readTask({ stateRoot: dir, taskId });
+    assert.equal(legacyTask.state, "merged");
+    assert.equal(legacyTask.revision, 6);
+    assert.equal(legacyTask.details.latestOutcome, undefined);
+    assert.equal(legacyTask.pendingOutcome, undefined);
+    assert.deepEqual(recordedLegacyTask, legacyTask);
+    assert.equal(legacyMergedEvent.data.outcomeDigest, undefined);
+    assert.equal(legacyMergedEvent.data.outcomeRequired, undefined);
+
+    const mergedInput = {
+      id: taskId,
+      taskId,
+      kind: "stability",
+      outcome: "merged",
+      notes: `legacy backfill ${checkpointName}`,
+      evidenceDigest: "9".repeat(64),
+    };
+    const mergedNow = new Date(nowMs + 60_000);
+    let checkpointReached = false;
+    assert.throws(
+      () =>
+        appendOutcomeLedger(paths.outcomes, mergedInput, {
+          ...authentication,
+          now: mergedNow,
+          checkpoint: (checkpoint) => {
+            if (checkpoint === checkpointName && !checkpointReached) {
+              checkpointReached = true;
+              throw new Error(`simulate legacy backfill loss at ${checkpoint}`);
+            }
+          },
+        }),
+      new RegExp(`simulate legacy backfill loss at ${checkpointName}`),
+    );
+    assert.equal(checkpointReached, true);
+
+    const merged = appendOutcomeLedger(paths.outcomes, mergedInput, {
+      ...authentication,
+      now: mergedNow,
+    });
+    const afterMerged = {
+      manifest: readFileSync(paths.taskManifest),
+      events: readFileSync(paths.events),
+      ledger: readFileSync(paths.outcomes),
+    };
+    assert.deepEqual(
+      appendOutcomeLedger(paths.outcomes, mergedInput, {
+        ...authentication,
+        now: mergedNow,
+      }),
+      merged,
+    );
+    assert.deepEqual(readFileSync(paths.taskManifest), afterMerged.manifest);
+    assert.deepEqual(readFileSync(paths.events), afterMerged.events);
+    assert.deepEqual(readFileSync(paths.outcomes), afterMerged.ledger);
+
+    const mergedTask = readTask({ stateRoot: dir, taskId });
+    assert.equal(mergedTask.state, "merged");
+    assert.equal(mergedTask.revision, 7);
+    assert.equal(mergedTask.mergedAt, legacyTask.mergedAt);
+    assert.equal(mergedTask.pendingOutcome, undefined);
+    assert.equal(
+      mergedTask.details.latestOutcome.outcomeDigest,
+      merged.authentication.outcomeDigest,
+    );
+    const eventsAfterMerged = readFileSync(paths.events, "utf8")
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+    assert.deepEqual(
+      eventsAfterMerged.find(
+        (event) => event.eventId === legacyMergedEvent.eventId,
+      ),
+      legacyMergedEvent,
+    );
+    assert.equal(
+      eventsAfterMerged.filter(
+        (event) =>
+          event.eventId === merged.authentication.transitionEventId &&
+          event.type === "outcome_reservation_created" &&
+          event.taskId === taskId &&
+          event.taskRevision === 7 &&
+          event.data?.toState === "merged" &&
+          event.data?.outcomeBackfill === true &&
+          event.data?.outcomeRequired === true &&
+          event.data?.legacyTransitionEventId === legacyMergedEvent.eventId &&
+          event.data?.outcomeDigest === merged.authentication.outcomeDigest,
+      ).length,
+      1,
+    );
+    assert.equal(
+      eventsAfterMerged.filter(
+        (event) =>
+          event.eventId === merged.authentication.controlEventId &&
+          event.type === "outcome_recorded",
+      ).length,
+      1,
+    );
+    assert.equal(
+      eventsAfterMerged.filter(
+        (event) =>
+          event.type === "outcome_reservation_finalized" &&
+          event.taskId === taskId &&
+          event.data?.outcomeDigest === merged.authentication.outcomeDigest,
+      ).length,
+      1,
+    );
+    assert.equal(
+      summarizeOutcomeLedger(paths.outcomes, { stateRoot: dir }).entries.filter(
+        (entry) =>
+          entry.taskId === taskId &&
+          entry.outcome === "merged" &&
+          entry.authentication?.outcomeDigest ===
+            merged.authentication.outcomeDigest,
+      ).length,
+      1,
+    );
+
+    const installedIdentity = {
+      version: "26.7.1801-dev",
+      commitSha: "8".repeat(40),
+      channel: "dev",
+    };
+    appendOutcomeLedger(
+      paths.outcomes,
+      {
+        id: taskId,
+        taskId,
+        kind: "stability",
+        outcome: "installed",
+        evidenceDigest: "7".repeat(64),
+        installedIdentity,
+      },
+      {
+        ...authentication,
+        now: new Date(nowMs + 120_000),
+      },
+    );
+    const installedTask = readTask({ stateRoot: dir, taskId });
+    assert.equal(installedTask.state, "installed");
+    assert.equal(installedTask.revision, 8);
+    assert.deepEqual(installedTask.installedIdentity, installedIdentity);
+    assert.equal(installedTask.pendingOutcome, undefined);
+  });
+}
+
 test("appendOutcomeLedger records closeout entries for future scoring", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-outcome-append-"));
+  const dir = temporaryOutcomeStateRoot("freed-outcome-append-");
   const ledgerPath = path.join(dir, "outcomes.jsonl");
   const now = new Date("2026-05-29T12:00:00Z");
   const authentication = outcomeAuthentication(
@@ -2103,7 +3584,7 @@ test("appendOutcomeLedger records closeout entries for future scoring", () => {
 });
 
 test("appendOutcomeLedger rejects unresolved verification evidence", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-outcome-invalid-"));
+  const dir = temporaryOutcomeStateRoot("freed-outcome-invalid-");
   const ledgerPath = path.join(dir, "outcomes.jsonl");
   const authentication = outcomeAuthentication(
     dir,
@@ -2153,7 +3634,7 @@ test("appendOutcomeLedger rejects unresolved verification evidence", () => {
 });
 
 test("verification outcomes bind exact verdict semantics, installed build, and soak window", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-outcome-contract-"));
+  const dir = temporaryOutcomeStateRoot("freed-outcome-contract-");
   const ledgerPath = path.join(dir, "outcomes.jsonl");
   const now = new Date("2026-07-10T13:00:00Z");
   const authentication = outcomeAuthentication(
@@ -2256,7 +3737,7 @@ test("verification outcomes bind exact verdict semantics, installed build, and s
 });
 
 test("appendOutcomeLedger requires a canonical task at the verification lifecycle gate", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-outcome-lifecycle-"));
+  const dir = temporaryOutcomeStateRoot("freed-outcome-lifecycle-");
   const ledgerPath = path.join(dir, "outcomes.jsonl");
   const now = new Date("2026-07-10T13:00:00Z");
   const authentication = outcomeAuthentication(
@@ -2313,7 +3794,7 @@ test("appendOutcomeLedger requires a canonical task at the verification lifecycl
 });
 
 test("summarizeOutcomeLedger rejects unsigned and replayed ledger lines", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-outcome-forged-"));
+  const dir = temporaryOutcomeStateRoot("freed-outcome-forged-");
   const ledgerPath = path.join(dir, "outcomes.jsonl");
   const now = new Date("2026-07-10T13:00:00Z");
   const authentication = outcomeAuthentication(
@@ -2370,8 +3851,13 @@ test("summarizeOutcomeLedger rejects unsigned and replayed ledger lines", () => 
   );
 });
 
-test("outcome ledger writer lock does not steal an unverifiable fresh owner", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-outcome-lock-"));
+test("nightly production exports no raw outcome append authority bypass", async () => {
+  const module = await import("./nightly-self-improve.mjs");
+  assert.equal(Object.hasOwn(module, "appendOutcomeEntryAtomic"), false);
+});
+
+test("outcome ledger writer refuses an unverifiable legacy owner after cutover", () => {
+  const dir = temporaryOutcomeStateRoot("freed-outcome-lock-");
   const ledgerPath = path.join(dir, "outcomes.jsonl");
   const lockPath = `${ledgerPath}.writer-lock`;
   const lockContents = `${JSON.stringify({ token: "existing-owner", pid: 999 })}\n`;
@@ -2379,43 +3865,49 @@ test("outcome ledger writer lock does not steal an unverifiable fresh owner", ()
 
   assert.throws(
     () =>
-      appendOutcomeEntryAtomic(
-        ledgerPath,
-        { schemaVersion: 3, id: "blocked" },
-        { timeoutMs: 0, staleLockMs: 60_000, wait: () => {} },
-      ),
-    /writer lock is busy/,
+      withOutcomeLedgerWriterLock(ledgerPath, () => undefined, {
+        timeoutMs: 0,
+        wait: () => {},
+      }),
+    /cutover is incomplete/,
   );
   assert.equal(readFileSync(lockPath, "utf8"), lockContents);
   assert.equal(existsSync(ledgerPath), false);
 });
 
-test("outcome ledger writer lock recovers an identity-bound dead owner", () => {
-  const dir = mkdtempSync(
-    path.join(os.tmpdir(), "freed-outcome-lock-recovery-"),
-  );
+test("outcome ledger writer requires the permanent cutover marker", () => {
+  const dir = temporaryOutcomeStateRoot("freed-outcome-lock-recovery-");
   const ledgerPath = path.join(dir, "outcomes.jsonl");
   const lockPath = `${ledgerPath}.writer-lock`;
-  writeFileSync(
-    lockPath,
-    `${JSON.stringify({
-      schemaVersion: 1,
-      token: "dead-owner",
-      pid: 2_147_483_647,
-      processStartIdentity: "darwin:expired-process",
-      acquiredAt: "2026-07-10T00:00:00.000Z",
-    })}\n`,
-    { mode: 0o600 },
-  );
+  const lockContents = `${JSON.stringify({
+    schemaVersion: 1,
+    token: "dead-owner",
+    pid: 2_147_483_647,
+    processStartIdentity: "darwin:expired-process",
+    acquiredAt: "2026-07-10T00:00:00.000Z",
+  })}\n`;
+  writeFileSync(lockPath, lockContents, { mode: 0o600 });
 
-  appendOutcomeEntryAtomic(
-    ledgerPath,
-    { schemaVersion: 3, id: "recovered" },
-    { wait: () => {} },
+  assert.throws(
+    () =>
+      withOutcomeLedgerWriterLock(ledgerPath, () => undefined, {
+        timeoutMs: 0,
+        wait: () => {},
+      }),
+    /cutover is incomplete/,
   );
+  assert.equal(readFileSync(lockPath, "utf8"), lockContents);
+  assert.equal(existsSync(ledgerPath), false);
 
-  assert.match(readFileSync(ledgerPath, "utf8"), /"id":"recovered"/);
-  assert.equal(existsSync(lockPath), false);
+  rmSync(lockPath);
+  installAutomationKernelGuardCutoverFixture(dir);
+  withOutcomeLedgerWriterLock(ledgerPath, () => undefined, {
+    timeoutMs: 0,
+    wait: () => {},
+  });
+
+  assert.equal(existsSync(ledgerPath), false);
+  assert.deepEqual(readFileSync(lockPath), automationKernelGuardMarkerBytes());
 });
 
 test("risk snapshot reports dirty worktrees, generated artifacts, stale soak, and paused automation", () => {

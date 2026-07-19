@@ -282,6 +282,7 @@ function writeLauncherRecord(
     nodePath: "pinned node fixture\n",
     controlEntryPath: "pinned control entry fixture\n",
     controlLibraryPath: "pinned control library fixture\n",
+    leaseArchiveHelperPath: "pinned lease archive helper fixture\n",
   };
   const runtimeDigests = Object.fromEntries(
     Object.entries(runtimeContents).map(([field, contents]) => [
@@ -292,10 +293,11 @@ function writeLauncherRecord(
   const runtimeDigest = createHash("sha256")
     .update(
       [
-        "freed-automation-actor-runtime-v1",
+        "freed-automation-actor-runtime-v2",
         `node:${runtimeDigests.nodeSha256}`,
         `automation-control.mjs:${runtimeDigests.controlEntrySha256}`,
         `lib/automation-control.mjs:${runtimeDigests.controlLibrarySha256}`,
+        `lib/lease-archive-move.py:${runtimeDigests.leaseArchiveHelperSha256}`,
         "",
       ].join("\n"),
     )
@@ -308,6 +310,11 @@ function writeLauncherRecord(
       runtimeVersionRoot,
       "lib",
       "automation-control.mjs",
+    ),
+    leaseArchiveHelperPath: path.join(
+      runtimeVersionRoot,
+      "lib",
+      "lease-archive-move.py",
     ),
     ...runtimePathOverrides,
   };
@@ -323,7 +330,7 @@ function writeLauncherRecord(
   writeFileSync(
     recordPath,
     `${JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       actor: value.spec.id,
       purpose: "automation-actor-launcher",
       handoff: "keychain-to-canonical-lease",
@@ -1127,6 +1134,8 @@ test("general actor launcher records pin the complete root-owned runtime", () =>
     "controlEntrySha256",
     "controlLibraryPath",
     "controlLibrarySha256",
+    "leaseArchiveHelperPath",
+    "leaseArchiveHelperSha256",
   ]) {
     assert.equal(Object.hasOwn(record, field), true, `${field} is missing`);
   }
@@ -1154,6 +1163,10 @@ test("general actor launcher records pin the complete root-owned runtime", () =>
   assert.equal(readiness.nodePath, record.nodePath);
   assert.equal(readiness.controlEntryPath, record.controlEntryPath);
   assert.equal(readiness.controlLibraryPath, record.controlLibraryPath);
+  assert.equal(
+    readiness.leaseArchiveHelperPath,
+    record.leaseArchiveHelperPath,
+  );
 });
 
 test("general actor runtime pins reject missing fields, escapes, writable files, and digest drift", () => {
@@ -1172,6 +1185,20 @@ test("general actor runtime pins reject missing fields, escapes, writable files,
         writeFileSync(outsidePath, "outside runtime\n", { mode: 0o500 });
         record.nodePath = outsidePath;
         record.nodeSha256 = createHash("sha256")
+          .update(readFileSync(outsidePath))
+          .digest("hex");
+      },
+      expected: /identity or handoff contract is invalid/,
+    },
+    {
+      name: "lease archive helper escape",
+      mutate(record, value) {
+        const outsidePath = path.join(value.root, "outside-archive-helper.py");
+        writeFileSync(outsidePath, "print('outside runtime')\n", {
+          mode: 0o400,
+        });
+        record.leaseArchiveHelperPath = outsidePath;
+        record.leaseArchiveHelperSha256 = createHash("sha256")
           .update(readFileSync(outsidePath))
           .digest("hex");
       },
@@ -1212,6 +1239,20 @@ test("general actor runtime pins reject missing fields, escapes, writable files,
         record.controlLibrarySha256 = "0".repeat(64);
       },
       expected: /identity or handoff contract is invalid/,
+    },
+    {
+      name: "lease archive helper digest drift",
+      mutate(record) {
+        record.leaseArchiveHelperSha256 = "0".repeat(64);
+      },
+      expected: /identity or handoff contract is invalid/,
+    },
+    {
+      name: "lease archive helper special mode",
+      mutate(record) {
+        chmodSync(record.leaseArchiveHelperPath, 0o4600);
+      },
+      expected: /not a root-owned immutable regular file/,
     },
   ];
 

@@ -34,6 +34,12 @@ import {
   parseLauncherAttestation,
 } from "./lib/automation-actor-readiness.mjs";
 
+const testLeaseOperationId = "12345678-1234-4123-8123-123456789abc";
+const testLeaseToken = "short-lived-test-token-1234567890";
+const testLeaseTokenSha256 = createHash("sha256")
+  .update(testLeaseToken)
+  .digest("hex");
+
 function sha256(filePath) {
   return createHash("sha256").update(readFileSync(filePath)).digest("hex");
 }
@@ -92,6 +98,10 @@ function fixture(t) {
     path.join(repoRoot, "scripts", "lib", "automation-control.mjs"),
     "export const library = true;\n",
   );
+  writeFileSync(
+    path.join(repoRoot, "scripts", "lib", "lease-archive-move.py"),
+    "print('lease archive helper fixture')\n",
+  );
   writeExecutable(hostBuildPath, "#!/bin/bash\nexit 0\n");
   writeExecutable(pinnedNodePath, "pinned node fixture\n");
 
@@ -129,7 +139,7 @@ function fixture(t) {
     if (args[0] === "--acquire-lease") {
       const actor = args[args.indexOf("--actor") + 1];
       const leaseName = args[args.indexOf("--lease-name") + 1];
-      const leaseToken = "short-lived-test-token";
+      const leaseToken = testLeaseToken;
       liveLeases.set(leaseName, { actor, leaseToken });
       return {
         status: 0,
@@ -137,7 +147,9 @@ function fixture(t) {
           schemaVersion: 1,
           actor,
           leaseName,
+          leaseOperationId: testLeaseOperationId,
           leaseToken,
+          leaseTokenSha256: testLeaseTokenSha256,
           acquiredAt: "2026-07-13T12:00:00.000Z",
           expiresAt: "2026-07-13T12:30:00.000Z",
           ttlMs: Number(args[args.indexOf("--ttl-seconds") + 1]) * 1_000,
@@ -487,6 +499,7 @@ test("provision all installs one content-addressed runtime and all public bindin
     path.join(runtimeDirectory, "node"),
     path.join(runtimeDirectory, "automation-control.mjs"),
     path.join(runtimeDirectory, "lib", "automation-control.mjs"),
+    path.join(runtimeDirectory, "lib", "lease-archive-move.py"),
   ];
   for (const runtimePath of runtimePaths) {
     assert.equal(existsSync(runtimePath), true, runtimePath);
@@ -502,6 +515,7 @@ test("provision all installs one content-addressed runtime and all public bindin
     assert.equal(binding.nodePath, runtimePaths[0]);
     assert.equal(binding.controlEntryPath, runtimePaths[1]);
     assert.equal(binding.controlLibraryPath, runtimePaths[2]);
+    assert.equal(binding.leaseArchiveHelperPath, runtimePaths[3]);
     assert.equal(existsSync(binding.launcherPath), true);
     assert.equal(
       path.basename(binding.launcherPath),
@@ -1079,6 +1093,9 @@ function writeAcquisitionBinding(value, actor) {
     controlLibrarySha256: sha256(
       path.join(value.repoRoot, "scripts", "lib", "automation-control.mjs"),
     ),
+    leaseArchiveHelperSha256: sha256(
+      path.join(value.repoRoot, "scripts", "lib", "lease-archive-move.py"),
+    ),
   };
   const digest = runtimeDigestForPins(sourcePins);
   const runtimeDirectory = path.join(value.runtimeRoot, digest);
@@ -1091,6 +1108,11 @@ function writeAcquisitionBinding(value, actor) {
       "lib",
       "automation-control.mjs",
     ),
+    leaseArchiveHelperPath: path.join(
+      runtimeDirectory,
+      "lib",
+      "lease-archive-move.py",
+    ),
     ...sourcePins,
   };
   mkdirSync(path.dirname(runtime.controlLibraryPath), { recursive: true });
@@ -1102,6 +1124,10 @@ function writeAcquisitionBinding(value, actor) {
   copyFileSync(
     path.join(value.repoRoot, "scripts", "lib", "automation-control.mjs"),
     runtime.controlLibraryPath,
+  );
+  copyFileSync(
+    path.join(value.repoRoot, "scripts", "lib", "lease-archive-move.py"),
+    runtime.leaseArchiveHelperPath,
   );
   const launcherContents = "actor launcher fixture\n";
   const launcherSha256 = createHash("sha256")
@@ -1165,6 +1191,7 @@ function replaceActorRuntime(value, actor) {
     controlLibrarySha256: createHash("sha256")
       .update(controlLibraryContents)
       .digest("hex"),
+    leaseArchiveHelperSha256: installedBinding.leaseArchiveHelperSha256,
   };
   const digest = runtimeDigestForPins(runtimePins);
   const runtimeDirectory = path.join(value.runtimeRoot, digest);
@@ -1177,6 +1204,11 @@ function replaceActorRuntime(value, actor) {
       "lib",
       "automation-control.mjs",
     ),
+    leaseArchiveHelperPath: path.join(
+      runtimeDirectory,
+      "lib",
+      "lease-archive-move.py",
+    ),
     ...runtimePins,
   };
   mkdirSync(path.dirname(runtime.controlLibraryPath), { recursive: true });
@@ -1185,6 +1217,10 @@ function replaceActorRuntime(value, actor) {
   writeFileSync(runtime.controlLibraryPath, controlLibraryContents, {
     mode: 0o600,
   });
+  copyFileSync(
+    installedBinding.leaseArchiveHelperPath,
+    runtime.leaseArchiveHelperPath,
+  );
   const replacementBinding = bindingForActor({
     actor,
     stateRoot: value.stateRoot,
@@ -1209,7 +1245,9 @@ test("acquire validates the public binding and invokes its exact launcher", (t) 
     schemaVersion: 1,
     actor,
     leaseName: "nightly-writer",
-    leaseToken: "short-lived-test-token",
+    leaseOperationId: testLeaseOperationId,
+    leaseToken: testLeaseToken,
+    leaseTokenSha256: testLeaseTokenSha256,
     acquiredAt: "2026-07-13T12:00:00.000Z",
     expiresAt: "2026-07-13T12:30:00.000Z",
     ttlMs: 1_800_000,
@@ -1228,7 +1266,7 @@ test("acquire validates the public binding and invokes its exact launcher", (t) 
     "--ttl-seconds",
     "1800",
   ]);
-  assert.equal(launcherCall.options.timeoutMs, 15_000);
+  assert.equal(launcherCall.options.timeoutMs, 75_000);
   assert.equal(launcherCall.options.killSignal, "SIGKILL");
   assert.equal(launcherCall.options.stdin, "ignore");
 });
@@ -1257,8 +1295,43 @@ test("acquire fails closed when the installed launcher exceeds its outer bound",
     (error) =>
       error instanceof AutomationActorsError &&
       error.code === "command_timeout" &&
-      error.message.includes("15,000"),
+      error.message.includes("75,000"),
   );
+});
+
+test("acquire cleans a bounded handoff returned with SIGINT or SIGTERM status", (t) => {
+  for (const status of [130, 143]) {
+    const value = fixture(t);
+    const actor = "freed-nightly-runner";
+    const binding = writeAcquisitionBinding(value, actor);
+    const originalRunner = value.dependencies.runner;
+    value.dependencies.runner = (executable, args, options) => {
+      const result = originalRunner(executable, args, options);
+      if (executable === binding.launcherPath && args[0] === "--acquire-lease") {
+        return { ...result, status };
+      }
+      return result;
+    };
+
+    assert.throws(
+      () =>
+        executeCommand(
+          { action: "acquire", actor, stateRoot: value.stateRoot },
+          value.dependencies,
+        ),
+      (error) =>
+        error instanceof AutomationActorsError &&
+        error.code === "command_failed" &&
+        error.message.includes(status.toLocaleString()),
+    );
+    assert.equal(value.liveLeases.size, 0);
+    assert.deepEqual(
+      value.calls
+        .filter((call) => call.args[1] === "lease")
+        .map((call) => call.args[2]),
+      ["release", "show"],
+    );
+  }
 });
 
 test("acquire rejects malformed, unbounded, and actor-mismatched launcher handoffs", (t) => {
@@ -1279,6 +1352,18 @@ test("acquire rejects malformed, unbounded, and actor-mismatched launcher handof
       name: "wrong actor",
       mutate(result) {
         result.actor = "freed-release-verifier";
+      },
+    },
+    {
+      name: "wrong lease token digest",
+      mutate(result) {
+        result.leaseTokenSha256 = "0".repeat(64);
+      },
+    },
+    {
+      name: "invalid lease operation identity",
+      mutate(result) {
+        result.leaseOperationId = "predictable";
       },
     },
     {
@@ -1319,7 +1404,9 @@ test("acquire rejects malformed, unbounded, and actor-mismatched launcher handof
         schemaVersion: 1,
         actor,
         leaseName: "nightly-writer",
-        leaseToken: "short-lived-test-token",
+        leaseOperationId: testLeaseOperationId,
+        leaseToken: testLeaseToken,
+        leaseTokenSha256: testLeaseTokenSha256,
         acquiredAt: "2026-07-13T12:00:00.000Z",
         expiresAt: "2026-07-13T12:30:00.000Z",
         ttlMs: 1_800_000,
@@ -1376,8 +1463,87 @@ test("standalone acquire cleans up a plausible lease from a malformed handoff", 
     value.calls
       .filter((call) => call.args[1] === "lease")
       .map((call) => call.args[2]),
-    ["show", "release", "show"],
+    ["release", "show"],
   );
+});
+
+test("standalone malformed acquisition retries exact release and inspection identities", (t) => {
+  const value = fixture(t);
+  const actor = "freed-release-verifier";
+  const binding = writeAcquisitionBinding(value, actor);
+  const originalRunner = value.dependencies.runner;
+  const releaseOperationIds = [];
+  let releaseResponseLost = false;
+  let showResponseLost = false;
+  value.dependencies.runner = (executable, args, options) => {
+    const result = originalRunner(executable, args, options);
+    if (executable === binding.launcherPath && args[0] === "--acquire-lease") {
+      const handoff = JSON.parse(result.stdout);
+      handoff.unexpected = true;
+      return { ...result, stdout: `${JSON.stringify(handoff)}\n` };
+    }
+    if (args[1] === "lease" && args[2] === "release") {
+      releaseOperationIds.push(options.env.FREED_AUTOMATION_LEASE_OPERATION_ID);
+      if (!releaseResponseLost) {
+        releaseResponseLost = true;
+        return { status: 1, stdout: "", stderr: "response lost" };
+      }
+    }
+    if (args[1] === "lease" && args[2] === "show" && !showResponseLost) {
+      showResponseLost = true;
+      return { status: 0, stdout: "{}\n", stderr: "" };
+    }
+    return result;
+  };
+
+  assert.throws(
+    () =>
+      executeCommand(
+        { action: "acquire", actor, stateRoot: value.stateRoot },
+        value.dependencies,
+      ),
+    (error) =>
+      error instanceof AutomationActorsError &&
+      error.code === "invalid_launcher_response",
+  );
+  assert.equal(value.liveLeases.size, 0);
+  assert.equal(releaseOperationIds.length, 2);
+  assert.equal(releaseOperationIds[0], releaseOperationIds[1]);
+  assert.deepEqual(
+    value.calls
+      .filter((call) => call.args[1] === "lease")
+      .map((call) => call.args[2]),
+    ["release", "release", "show", "show"],
+  );
+});
+
+test("standalone acquire fails closed against the legacy launcher handoff and removes its plausible lease", (t) => {
+  const value = fixture(t);
+  const actor = "freed-release-verifier";
+  const binding = writeAcquisitionBinding(value, actor);
+  const originalRunner = value.dependencies.runner;
+  value.dependencies.runner = (executable, args, options) => {
+    const result = originalRunner(executable, args, options);
+    if (executable !== binding.launcherPath || args[0] !== "--acquire-lease") {
+      return result;
+    }
+    const handoff = JSON.parse(result.stdout);
+    delete handoff.leaseOperationId;
+    delete handoff.leaseTokenSha256;
+    return { ...result, stdout: `${JSON.stringify(handoff)}\n` };
+  };
+
+  assert.throws(
+    () =>
+      executeCommand(
+        { action: "acquire", actor, stateRoot: value.stateRoot },
+        value.dependencies,
+      ),
+    (error) =>
+      error instanceof AutomationActorsError &&
+      error.code === "invalid_launcher_response",
+  );
+  assert.equal(value.liveLeases.size, 0);
 });
 
 test("acquire rejects binding path or digest drift before invoking a launcher", (t) => {
@@ -1545,7 +1711,7 @@ test("accept-host proves every installed actor lifecycle without exposing creden
   assert.equal(value.liveLeases.size, 0);
   const publicOutput = JSON.stringify(result);
   assert.ok(Buffer.byteLength(publicOutput, "utf8") < 16 * 1_024);
-  assert.equal(publicOutput.includes("short-lived-test-token"), false);
+  assert.equal(publicOutput.includes(testLeaseToken), false);
   assert.equal(publicOutput.includes("must-not-reach-a-child"), false);
 
   const controlCalls = value.calls.filter((call) => call.args[1] === "lease");
@@ -1567,6 +1733,29 @@ test("accept-host proves every installed actor lifecycle without exposing creden
       Object.hasOwn(call.options.env, "FREED_AUTOMATION_LEASE_TOKEN"),
       action !== "show",
     );
+    assert.equal(
+      Object.hasOwn(
+        call.options.env,
+        "FREED_AUTOMATION_LEASE_OPERATION_ID",
+      ),
+      action !== "show",
+    );
+    if (action !== "show") {
+      assert.match(
+        call.options.env.FREED_AUTOMATION_LEASE_OPERATION_ID,
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+      assert.equal(
+        call.args.includes(call.options.env.FREED_AUTOMATION_LEASE_TOKEN),
+        false,
+      );
+      assert.equal(
+        call.args.includes(
+          call.options.env.FREED_AUTOMATION_LEASE_OPERATION_ID,
+        ),
+        false,
+      );
+    }
   }
   assert.equal(
     value.calls.some((call) =>
@@ -1600,6 +1789,42 @@ test("accept-host proves every installed actor lifecycle without exposing creden
     value.calls.indexOf(
       controlCalls.filter((call) => call.args[2] === "show").at(-1),
     ) < value.calls.indexOf(attestationCalls[AUTOMATION_ACTOR_IDS.length]),
+  );
+});
+
+test("accept-host retries a lost heartbeat response with the exact caller identity", (t) => {
+  const value = fixture(t);
+  for (const actor of AUTOMATION_ACTOR_IDS) {
+    writeAcquisitionBinding(value, actor);
+    writeActorCredential(value, actor);
+  }
+  const originalRunner = value.dependencies.runner;
+  const retryOperationIds = [];
+  let responseLost = false;
+  value.dependencies.runner = (executable, args, options) => {
+    const result = originalRunner(executable, args, options);
+    if (args[1] !== "lease" || args[2] !== "heartbeat") return result;
+    retryOperationIds.push(
+      options.env.FREED_AUTOMATION_LEASE_OPERATION_ID,
+    );
+    if (!responseLost) {
+      responseLost = true;
+      return { status: 1, stdout: "", stderr: "response lost" };
+    }
+    return result;
+  };
+
+  const result = executeCommand(
+    { action: "accept-host", actor: "all", stateRoot: value.stateRoot },
+    value.dependencies,
+  );
+
+  assert.equal(result.accepted, true);
+  assert.equal(retryOperationIds.length, AUTOMATION_ACTOR_IDS.length + 1);
+  assert.equal(retryOperationIds[0], retryOperationIds[1]);
+  assert.match(
+    retryOperationIds[0],
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
   );
 });
 

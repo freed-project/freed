@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -43,7 +44,13 @@ const ATTESTATION_PROTOCOL = ACTOR_LAUNCHER_ATTESTATION_PROTOCOL;
 const MAX_LEASE_LIFETIME_MS = 30 * 60 * 1_000;
 const LEASE_TTL_SECONDS = 30 * 60;
 const MAX_LAUNCHER_HANDOFF_BYTES = 16 * 1_024;
-const LAUNCHER_ACQUIRE_TIMEOUT_MS = 15_000;
+// The native launcher bounds two acquire attempts, two exact-token release
+// attempts, and two absence inspections to a 65-second lifecycle. Keep the
+// caller bound above that complete recovery budget so SIGKILL cannot preempt
+// an active bounded child or discard its retained lease token.
+const NATIVE_LAUNCHER_LIFECYCLE_BUDGET_MS = 65_000;
+const LAUNCHER_ACQUIRE_TIMEOUT_MS =
+  NATIVE_LAUNCHER_LIFECYCLE_BUDGET_MS + 10_000;
 const CONTROL_LIFECYCLE_TIMEOUT_MS = 15_000;
 const PROVISIONER_ACTION_TIMEOUT_MS = 120_000;
 const RESERVED_ACTORS = new Set(["freed-owner", "freed-pr-publisher"]);
@@ -229,6 +236,7 @@ function runChecked(
     timeoutMs = undefined,
     additionalEnv = {},
     stdin = "inherit",
+    onFailure = undefined,
   } = {},
 ) {
   const result = normalizedRunResult(
@@ -244,6 +252,7 @@ function runChecked(
     }),
   );
   if (result.error || result.status !== 0) {
+    onFailure?.(result);
     if (result.error?.code === "ETIMEDOUT") {
       const bound = Number.isSafeInteger(timeoutMs)
         ? `${timeoutMs.toLocaleString()} ms`
@@ -507,10 +516,19 @@ function describeRuntime(dependencies, pinnedNodePath) {
       "automation-control.mjs",
     ),
   );
+  const leaseArchiveHelperSource = inspectRegularFile(
+    path.join(
+      dependencies.repoRoot,
+      "scripts",
+      "lib",
+      "lease-archive-move.py",
+    ),
+  );
   const pins = {
     nodeSha256: sha256File(pinnedNodePath),
     controlEntrySha256: sha256File(controlEntrySource),
     controlLibrarySha256: sha256File(controlLibrarySource),
+    leaseArchiveHelperSha256: sha256File(leaseArchiveHelperSource),
   };
   const digest = runtimeDigestForPins(pins);
   const directory = path.join(dependencies.runtimeRoot, digest);
@@ -523,6 +541,12 @@ function describeRuntime(dependencies, pinnedNodePath) {
     controlEntryPath: path.join(directory, "automation-control.mjs"),
     controlLibrarySource,
     controlLibraryPath: path.join(directory, "lib", "automation-control.mjs"),
+    leaseArchiveHelperSource,
+    leaseArchiveHelperPath: path.join(
+      directory,
+      "lib",
+      "lease-archive-move.py",
+    ),
     ...pins,
   };
 }
@@ -544,6 +568,12 @@ function installRuntime(dependencies, runtime) {
     runtime.controlLibraryPath,
     "0444",
   );
+  installFile(
+    dependencies,
+    runtime.leaseArchiveHelperSource,
+    runtime.leaseArchiveHelperPath,
+    "0444",
+  );
 }
 
 export function bindingForActor({
@@ -558,7 +588,7 @@ export function bindingForActor({
     fail("invalid_actor", `Unsupported automation actor: ${actor}`);
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     actor,
     purpose: LAUNCHER_PURPOSE,
     handoff: LAUNCHER_HANDOFF,
@@ -576,6 +606,8 @@ export function bindingForActor({
     controlEntrySha256: runtime.controlEntrySha256,
     controlLibraryPath: runtime.controlLibraryPath,
     controlLibrarySha256: runtime.controlLibrarySha256,
+    leaseArchiveHelperPath: runtime.leaseArchiveHelperPath,
+    leaseArchiveHelperSha256: runtime.leaseArchiveHelperSha256,
   };
 }
 
@@ -782,6 +814,22 @@ function acquireActor(
       purpose: "Automation actor lease acquisition",
       timeoutMs: dependencies.launcherAcquireTimeoutMs,
       stdin: "ignore",
+      onFailure: (result) => {
+        const failedHandoff = parseAcquisitionHandoff(
+          result.stdout,
+          command.actor,
+          binding.leaseName,
+        );
+        if (failedHandoff.plausibleLeaseToken !== undefined) {
+          cleanupMalformedAcquisition(
+            command.actor,
+            failedHandoff.plausibleLeaseToken,
+            binding,
+            dependencies,
+            stateRoot,
+          );
+        }
+      },
     },
   );
   const parsed = parseAcquisitionHandoff(
@@ -808,6 +856,9 @@ function acquireActor(
 }
 
 function parseAcquisitionHandoff(stdout, actor, leaseName) {
+  if (Buffer.byteLength(stdout, "utf8") > MAX_LAUNCHER_HANDOFF_BYTES) {
+    return { valid: false, plausibleLeaseToken: undefined };
+  }
   let result;
   try {
     result = JSON.parse(stdout);
@@ -816,7 +867,7 @@ function parseAcquisitionHandoff(stdout, actor, leaseName) {
   }
   const plausibleLeaseToken =
     typeof result?.leaseToken === "string" &&
-    Buffer.byteLength(result.leaseToken, "utf8") >= 16 &&
+    Buffer.byteLength(result.leaseToken, "utf8") >= 32 &&
     Buffer.byteLength(result.leaseToken, "utf8") <= 4 * 1_024
       ? result.leaseToken
       : undefined;
@@ -825,7 +876,9 @@ function parseAcquisitionHandoff(stdout, actor, leaseName) {
     "actor",
     "expiresAt",
     "leaseName",
+    "leaseOperationId",
     "leaseToken",
+    "leaseTokenSha256",
     "schemaVersion",
     "ttlMs",
   ].sort();
@@ -833,7 +886,6 @@ function parseAcquisitionHandoff(stdout, actor, leaseName) {
     const acquiredAt = Date.parse(result?.acquiredAt);
     const expiresAt = Date.parse(result?.expiresAt);
     if (
-      Buffer.byteLength(stdout, "utf8") > MAX_LAUNCHER_HANDOFF_BYTES ||
       !result ||
       typeof result !== "object" ||
       Array.isArray(result) ||
@@ -842,9 +894,16 @@ function parseAcquisitionHandoff(stdout, actor, leaseName) {
       result.schemaVersion !== 1 ||
       result.actor !== actor ||
       result.leaseName !== leaseName ||
+      typeof result.leaseOperationId !== "string" ||
+      !/^(?:[0-9a-f]{64}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/.test(
+        result.leaseOperationId,
+      ) ||
       typeof result.leaseToken !== "string" ||
-      Buffer.byteLength(result.leaseToken, "utf8") < 16 ||
+      Buffer.byteLength(result.leaseToken, "utf8") < 32 ||
       Buffer.byteLength(result.leaseToken, "utf8") > 4 * 1_024 ||
+      typeof result.leaseTokenSha256 !== "string" ||
+      createHash("sha256").update(result.leaseToken).digest("hex") !==
+        result.leaseTokenSha256 ||
       typeof result.acquiredAt !== "string" ||
       typeof result.expiresAt !== "string" ||
       result.ttlMs !== MAX_LEASE_LIFETIME_MS ||
@@ -869,20 +928,6 @@ function cleanupMalformedAcquisition(
   stateRoot,
 ) {
   try {
-    const before = runPinnedControl(
-      dependencies,
-      binding,
-      stateRoot,
-      "show",
-    );
-    if (before === null) return;
-    if (
-      before?.name !== binding.leaseName ||
-      before?.owner !== actor ||
-      !["active", "expired"].includes(before?.status)
-    ) {
-      throw new Error("unexpected live lease");
-    }
     const release = runPinnedControl(
       dependencies,
       binding,
@@ -897,17 +942,28 @@ function cleanupMalformedAcquisition(
     ) {
       throw new Error("release was not confirmed");
     }
-    if (
-      runPinnedControl(dependencies, binding, stateRoot, "show") !== null
-    ) {
-      throw new Error("lease remains live");
-    }
   } catch {
-    fail(
-      "acquire_cleanup_failed",
-      `Malformed acquisition may have left the ${actor} lease live.`,
-    );
+    // The retried absence inspection below is the cleanup authority.
   }
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const live = runPinnedControl(dependencies, binding, stateRoot, "show");
+      if (live === null) return;
+      if (
+        live?.name !== binding.leaseName ||
+        live?.owner !== actor ||
+        !["active", "expired"].includes(live?.status)
+      ) {
+        throw new Error("unexpected live lease");
+      }
+    } catch {
+      continue;
+    }
+  }
+  fail(
+    "acquire_cleanup_failed",
+    `Malformed acquisition may have left the ${actor} lease live.`,
+  );
 }
 
 function attestActor(actor, dependencies, stateRoot) {
@@ -1007,19 +1063,35 @@ function runPinnedControl(
   if (action === "heartbeat") {
     args.push("--ttl-seconds", String(LEASE_TTL_SECONDS));
   }
-  const stdout = runChecked(dependencies, binding.nodePath, args, {
-    purpose: `Automation actor lease ${action}`,
-    timeoutMs: dependencies.controlLifecycleTimeoutMs,
-    stdin: "ignore",
-    additionalEnv:
-      leaseToken === undefined
-        ? {}
-        : { FREED_AUTOMATION_LEASE_TOKEN: leaseToken },
-  });
-  return parseControlResponse(stdout, {
-    action: `lease.${action}`,
-    stateRoot,
-  });
+  const operationId =
+    action === "show"
+      ? undefined
+      : dependencies.leaseOperationIdGenerator(action);
+  let failure;
+  const attempts = action === "show" ? 1 : 2;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const stdout = runChecked(dependencies, binding.nodePath, args, {
+        purpose: `Automation actor lease ${action}`,
+        timeoutMs: dependencies.controlLifecycleTimeoutMs,
+        stdin: "ignore",
+        additionalEnv:
+          leaseToken === undefined
+            ? {}
+            : {
+                FREED_AUTOMATION_LEASE_OPERATION_ID: operationId,
+                FREED_AUTOMATION_LEASE_TOKEN: leaseToken,
+              },
+      });
+      return parseControlResponse(stdout, {
+        action: `lease.${action}`,
+        stateRoot,
+      });
+    } catch (error) {
+      failure = error;
+    }
+  }
+  throw failure;
 }
 
 function canonicalIdentity(value) {
@@ -1225,6 +1297,7 @@ function dependenciesWithDefaults(overrides = {}) {
     provisionerActionTimeoutMs: PROVISIONER_ACTION_TIMEOUT_MS,
     repositoryInspector: defaultRepositoryInspector,
     pinnedNodeResolver: defaultPinnedNodeResolver,
+    leaseOperationIdGenerator: () => randomUUID(),
     ...overrides,
   };
   dependencies.repoRoot = path.resolve(dependencies.repoRoot);

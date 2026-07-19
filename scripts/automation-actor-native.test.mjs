@@ -24,6 +24,7 @@ import test, { after, before } from "node:test";
 const execFileAsync = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const hostSource = path.join(root, "scripts/automation-actor-host.swift");
+const callerSource = path.join(root, "scripts/automation-actors.mjs");
 const provisionerSource = path.join(
   root,
   "scripts/automation-actor-provision.swift",
@@ -113,6 +114,38 @@ function sha256(data) {
   return createHash("sha256").update(data).digest("hex");
 }
 
+test("native actor lifecycle budget stays below the caller outer ceiling", async () => {
+  const [host, caller] = await Promise.all([
+    readFile(hostSource, "utf8"),
+    readFile(callerSource, "utf8"),
+  ]);
+  const controlMatch =
+    /controlTimeoutMilliseconds: UInt64 = (\d+) \* 1_000/.exec(host);
+  const acquisitionMatch =
+    /nativeAcquisitionWindowMilliseconds: UInt64 = (\d+) \* 1_000/.exec(host);
+  const cleanupMatch =
+    /nativeCleanupReserveMilliseconds: UInt64 = (\d+) \* 1_000/.exec(host);
+  const callerBudgetMatch =
+    /NATIVE_LAUNCHER_LIFECYCLE_BUDGET_MS = ([\d_]+);/.exec(caller);
+  const callerMarginMatch =
+    /NATIVE_LAUNCHER_LIFECYCLE_BUDGET_MS \+ ([\d_]+);/.exec(caller);
+  assert.ok(controlMatch);
+  assert.ok(acquisitionMatch);
+  assert.ok(cleanupMatch);
+  assert.ok(callerBudgetMatch);
+  assert.ok(callerMarginMatch);
+  const controlBudget = Number(controlMatch[1]) * 1_000;
+  const acquisitionBudget = Number(acquisitionMatch[1]) * 1_000;
+  const cleanupBudget = Number(cleanupMatch[1]) * 1_000;
+  const nativeBudget = acquisitionBudget + cleanupBudget;
+  const callerBudget = Number(callerBudgetMatch[1].replaceAll("_", ""));
+  const callerMargin = Number(callerMarginMatch[1].replaceAll("_", ""));
+  assert.ok(acquisitionBudget >= controlBudget * 2);
+  assert.ok(cleanupBudget >= controlBudget * 4 + 5_000);
+  assert.equal(callerBudget, nativeBudget);
+  assert.ok(callerMargin >= 10_000);
+});
+
 async function sha256File(file) {
   return sha256(await readFile(file));
 }
@@ -131,13 +164,15 @@ function runtimeDigest({
   nodeSha256,
   controlEntrySha256,
   controlLibrarySha256,
+  leaseArchiveHelperSha256,
 }) {
   return sha256(
     [
-      "freed-automation-actor-runtime-v1",
+      "freed-automation-actor-runtime-v2",
       `node:${nodeSha256}`,
       `automation-control.mjs:${controlEntrySha256}`,
       `lib/automation-control.mjs:${controlLibrarySha256}`,
+      `lib/lease-archive-move.py:${leaseArchiveHelperSha256}`,
       "",
     ].join("\n"),
   );
@@ -166,6 +201,7 @@ async function writeCredentialRecord(stateRoot, actor, token) {
 async function createFixture({
   actor = defaultActor,
   credential = existingCredential,
+  runtimeNodeContents = "#!/bin/sh\nexit 99\n",
 } = {}) {
   const fixtureRoot = await realpath(
     await mkdtemp(path.join(os.tmpdir(), "freed-actor-native-fixture-")),
@@ -192,14 +228,16 @@ async function createFixture({
   await chmod(launcherPath, 0o755);
 
   const runtimeFiles = {
-    node: Buffer.from("#!/bin/sh\nexit 99\n"),
+    node: Buffer.from(runtimeNodeContents),
     controlEntry: Buffer.from("export {};\n"),
     controlLibrary: Buffer.from("export {};\n"),
+    leaseArchiveHelper: Buffer.from("print('archive helper fixture')\n"),
   };
   const digests = {
     nodeSha256: sha256(runtimeFiles.node),
     controlEntrySha256: sha256(runtimeFiles.controlEntry),
     controlLibrarySha256: sha256(runtimeFiles.controlLibrary),
+    leaseArchiveHelperSha256: sha256(runtimeFiles.leaseArchiveHelper),
   };
   const runtimeDirectory = path.join(runtimeRoot, runtimeDigest(digests));
   const runtimeLibraryDirectory = path.join(runtimeDirectory, "lib");
@@ -215,18 +253,26 @@ async function createFixture({
     runtimeLibraryDirectory,
     "automation-control.mjs",
   );
+  const leaseArchiveHelperPath = path.join(
+    runtimeLibraryDirectory,
+    "lease-archive-move.py",
+  );
   await writeFile(nodePath, runtimeFiles.node, { mode: 0o755 });
   await writeFile(controlEntryPath, runtimeFiles.controlEntry, { mode: 0o600 });
   await writeFile(controlLibraryPath, runtimeFiles.controlLibrary, {
     mode: 0o600,
   });
+  await writeFile(leaseArchiveHelperPath, runtimeFiles.leaseArchiveHelper, {
+    mode: 0o600,
+  });
   await chmod(nodePath, 0o755);
   await chmod(controlEntryPath, 0o600);
   await chmod(controlLibraryPath, 0o600);
+  await chmod(leaseArchiveHelperPath, 0o600);
 
   const bindingPath = path.join(bindingRoot, `${actor}.json`);
   const binding = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     actor,
     purpose: "automation-actor-launcher",
     handoff: "keychain-to-canonical-lease",
@@ -244,6 +290,8 @@ async function createFixture({
     controlEntrySha256: digests.controlEntrySha256,
     controlLibraryPath,
     controlLibrarySha256: digests.controlLibrarySha256,
+    leaseArchiveHelperPath,
+    leaseArchiveHelperSha256: digests.leaseArchiveHelperSha256,
   };
   await writeFile(bindingPath, `${JSON.stringify(binding, null, 2)}\n`, {
     mode: 0o600,
@@ -363,8 +411,13 @@ function provisionerArguments(
 }
 
 async function run(executable, args, options = {}) {
-  return await new Promise((resolve, reject) => {
-    const child = execFile(
+  return await startRun(executable, args, options).result;
+}
+
+function startRun(executable, args, options = {}) {
+  let child;
+  const result = new Promise((resolve, reject) => {
+    child = execFile(
       executable,
       args,
       {
@@ -389,6 +442,160 @@ async function run(executable, args, options = {}) {
     );
     child.on("error", reject);
   });
+  return { child, result };
+}
+
+async function waitForFile(file, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (true) {
+    try {
+      return await readFile(file, "utf8");
+    } catch (error) {
+      if (error?.code !== "ENOENT" || Date.now() >= deadline) throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
+function processExists(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error?.code === "ESRCH") return false;
+    throw error;
+  }
+}
+
+async function waitForProcessExit(pid, timeoutMs = 2_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (processExists(pid)) {
+    if (Date.now() >= deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return true;
+}
+
+function actorControlRuntime({ selfSignal = false } = {}) {
+  return `#!/bin/bash
+set -eu
+action="\${3:-}"
+state_root=""
+previous=""
+for argument in "$@"; do
+  if [[ "$previous" == "--state-root" ]]; then state_root="$argument"; fi
+  previous="$argument"
+done
+if [[ -z "$state_root" ]]; then exit 88; fi
+fixture_root="\${state_root%/*}"
+lease_file="$state_root/test-actor-lease.json"
+release_retry="$state_root/test-actor-release-retry"
+show_retry="$state_root/test-actor-show-retry"
+log_file="$state_root/test-actor-process-control.jsonl"
+operation_id="\${FREED_AUTOMATION_LEASE_OPERATION_ID:-}"
+token="\${FREED_AUTOMATION_LEASE_TOKEN:-}"
+token_sha=""
+if [[ -n "$token" ]]; then
+  token_sha="$(printf '%s' "$token" | /usr/bin/shasum -a 256 | /usr/bin/awk '{ print $1 }')"
+fi
+printf '{"action":"%s","operationId":"%s","tokenSha256":"%s","persistentCredentialPresent":%s}\n' \
+  "$action" "$operation_id" "$token_sha" "$([[ -n "\${FREED_AUTOMATION_ACTOR_TOKEN:-}" ]] && printf true || printf false)" >> "$log_file"
+if [[ "$action" == "acquire" ]]; then
+  printf '%s\n' "$$" >> "$fixture_root/test-actor-control-parent.pid"
+  ${selfSignal ? 'kill -TERM $$\nprintf survivor > "$fixture_root/test-actor-child-survived-signal"' : `printf '{"name":"scaffolding-writer","owner":"freed-scaffolding-maintainer","token":"%s"}\n' "$token" > "$lease_file"
+  : > "$release_retry"
+  : > "$show_retry"
+  /bin/sleep 30 &
+  descendant_pid="$!"
+  printf '%s\n' "$descendant_pid" >> "$fixture_root/test-actor-control-child.pid"
+  : > "$fixture_root/test-actor-acquire-process-ready"
+  wait "$descendant_pid"
+  printf late > "$fixture_root/test-actor-late-mutation"`}
+  exit 89
+fi
+if [[ "$action" == "release" ]]; then
+  if [[ -f "$release_retry" ]]; then
+    /bin/rm -f "$release_retry" "$lease_file"
+    exit 91
+  fi
+  released=false
+  if [[ -f "$lease_file" ]]; then
+    /bin/rm -f "$lease_file"
+    released=true
+  fi
+  printf '{"ok":true,"schemaVersion":1,"action":"lease.release","stateRoot":"%s","result":{"released":%s,"lease":{"name":"scaffolding-writer","owner":"freed-scaffolding-maintainer"}}}\n' "$state_root" "$released"
+  exit 0
+fi
+if [[ "$action" == "show" ]]; then
+  if [[ -f "$show_retry" ]]; then
+    /bin/rm -f "$show_retry"
+    exit 92
+  fi
+  if [[ -f "$lease_file" ]]; then
+    printf '{"ok":true,"schemaVersion":1,"action":"lease.show","stateRoot":"%s","result":{"name":"scaffolding-writer","owner":"freed-scaffolding-maintainer","status":"active"}}\n' "$state_root"
+  else
+    printf '{"ok":true,"schemaVersion":1,"action":"lease.show","stateRoot":"%s","result":null}\n' "$state_root"
+  fi
+  exit 0
+fi
+exit 93
+`;
+}
+
+function actorCleanupCancellationRuntime() {
+  return `#!/bin/bash
+set -eu
+action="\${3:-}"
+state_root=""
+previous=""
+for argument in "$@"; do
+  if [[ "$previous" == "--state-root" ]]; then state_root="$argument"; fi
+  previous="$argument"
+done
+if [[ -z "$state_root" ]]; then exit 88; fi
+fixture_root="\${state_root%/*}"
+lease_file="$state_root/test-actor-lease.json"
+release_count_file="$state_root/test-actor-release-count"
+show_count_file="$state_root/test-actor-show-count"
+log_file="$state_root/test-actor-process-control.jsonl"
+operation_id="\${FREED_AUTOMATION_LEASE_OPERATION_ID:-}"
+token="\${FREED_AUTOMATION_LEASE_TOKEN:-}"
+token_sha=""
+if [[ -n "$token" ]]; then
+  token_sha="$(printf '%s' "$token" | /usr/bin/shasum -a 256 | /usr/bin/awk '{ print $1 }')"
+fi
+printf '{"action":"%s","operationId":"%s","tokenSha256":"%s","persistentCredentialPresent":%s}\n' \
+  "$action" "$operation_id" "$token_sha" "$([[ -n "\${FREED_AUTOMATION_ACTOR_TOKEN:-}" ]] && printf true || printf false)" >> "$log_file"
+if [[ "$action" == "acquire" ]]; then
+  printf '{"name":"scaffolding-writer","owner":"freed-scaffolding-maintainer","token":"%s"}\n' "$token" > "$lease_file"
+  printf '{}\n'
+  exit 0
+fi
+if [[ "$action" == "release" ]]; then
+  count=0
+  if [[ -f "$release_count_file" ]]; then count="$(cat "$release_count_file")"; fi
+  count=$((count + 1))
+  printf '%s\n' "$count" > "$release_count_file"
+  if [[ "$count" == 1 ]]; then
+    : > "$fixture_root/test-actor-cleanup-ready"
+    /bin/sleep 0.5
+    /bin/rm -f "$lease_file"
+    exit 91
+  fi
+  printf '{"ok":true,"schemaVersion":1,"action":"lease.release","stateRoot":"%s","result":{"released":false,"lease":{"name":"scaffolding-writer","owner":"freed-scaffolding-maintainer"}}}\n' "$state_root"
+  exit 0
+fi
+if [[ "$action" == "show" ]]; then
+  count=0
+  if [[ -f "$show_count_file" ]]; then count="$(cat "$show_count_file")"; fi
+  count=$((count + 1))
+  printf '%s\n' "$count" > "$show_count_file"
+  if [[ "$count" == 1 ]]; then exit 92; fi
+  printf '{"ok":true,"schemaVersion":1,"action":"lease.show","stateRoot":"%s","result":null}\n' "$state_root"
+  exit 0
+fi
+exit 93
+`;
 }
 
 async function stateSnapshot(stateRoot) {
@@ -481,12 +688,22 @@ test(
       "actor",
       "expiresAt",
       "leaseName",
+      "leaseOperationId",
       "leaseToken",
+      "leaseTokenSha256",
       "schemaVersion",
       "ttlMs",
     ]);
     assert.equal(handoff.actor, defaultActor);
     assert.equal(handoff.leaseName, "scaffolding-writer");
+    assert.match(
+      handoff.leaseOperationId,
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    assert.equal(
+      handoff.leaseTokenSha256,
+      createHash("sha256").update(handoff.leaseToken).digest("hex"),
+    );
     assert.equal(handoff.ttlMs, 1_800_000);
     assert.equal(
       Date.parse(handoff.expiresAt) - Date.parse(handoff.acquiredAt),
@@ -494,6 +711,499 @@ test(
     );
     assert.doesNotMatch(result.stdout, new RegExp(existingCredential));
     assert.doesNotMatch(result.stdout, /hostile-persistent-token/);
+  },
+);
+
+test(
+  "native actor host reuses its caller-owned acquisition identity after response loss",
+  { skip: !darwinOnly },
+  async (t) => {
+    const fixture = await createFixture();
+    t.after(() => rm(fixture.fixtureRoot, { recursive: true, force: true }));
+    const result = await run(
+      fixture.host,
+      acquisitionArguments(fixture, { controlMode: "response-loss-once" }),
+    );
+    assert.equal(result.code, 0, result.stderr);
+    const handoff = JSON.parse(result.stdout);
+    assert.equal(
+      handoff.leaseTokenSha256,
+      createHash("sha256").update(handoff.leaseToken).digest("hex"),
+    );
+    assert.match(
+      handoff.leaseOperationId,
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+  },
+);
+
+test(
+  "native actor host releases after malformed acquisition and retries malformed inspection without the persistent credential",
+  { skip: !darwinOnly },
+  async (t) => {
+    const fixture = await createFixture();
+    t.after(() => rm(fixture.fixtureRoot, { recursive: true, force: true }));
+    const result = await run(
+      fixture.host,
+      acquisitionArguments(fixture, {
+        controlMode: "malformed-acquire-and-show",
+      }),
+    );
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /control response is invalid/);
+    assert.doesNotMatch(result.stderr, /unknown actor lease live/);
+    assert.equal(result.stdout, "");
+  },
+);
+
+test(
+  "native actor host preserves its cleanup reserve after delayed Keychain preflight and committed response loss",
+  { skip: !darwinOnly },
+  async (t) => {
+    const fixture = await createFixture();
+    t.after(() => rm(fixture.fixtureRoot, { recursive: true, force: true }));
+    const startedAt = Date.now();
+    const result = await run(
+      fixture.host,
+      acquisitionArguments(fixture, {
+        controlMode: "commit-response-loss-near-deadline",
+        keychainMode: "delayed",
+      }),
+    );
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /control response is invalid/);
+    assert.doesNotMatch(result.stderr, /unknown actor lease live/);
+    assert.equal(result.stdout, "");
+    assert.ok(Date.now() - startedAt < 4_000);
+  },
+);
+
+test(
+  "native actor host fails before mutation when Keychain preflight exhausts the acquisition window",
+  { skip: !darwinOnly },
+  async (t) => {
+    const fixture = await createFixture();
+    t.after(() => rm(fixture.fixtureRoot, { recursive: true, force: true }));
+    const startedAt = Date.now();
+    const result = await run(
+      fixture.host,
+      acquisitionArguments(fixture, {
+        keychainMode: "acquisition-window-exhausted",
+      }),
+    );
+    assert.equal(result.code, 1);
+    assert.match(
+      result.stderr,
+      /acquisition window was exhausted before lease mutation/,
+    );
+    assert.equal(result.stdout, "");
+    assert.ok(Date.now() - startedAt < 4_000);
+  },
+);
+
+test(
+  "native actor host owns SIGINT and SIGTERM before delayed preflight can mutate a lease",
+  { skip: !darwinOnly, timeout: 15_000 },
+  async (t) => {
+    for (const [signal, expectedCode] of [
+      ["SIGINT", 130],
+      ["SIGTERM", 143],
+    ]) {
+      const fixture = await createFixture();
+      t.after(() => rm(fixture.fixtureRoot, { recursive: true, force: true }));
+      const before = await stateSnapshot(fixture.stateRoot);
+      const execution = startRun(
+        fixture.host,
+        acquisitionArguments(fixture, {
+          keychainMode: "signal-preflight-delay",
+        }),
+      );
+      await waitForFile(
+        path.join(fixture.fixtureRoot, "test-actor-preflight-ready"),
+      );
+      assert.equal(execution.child.kill(signal), true);
+      const result = await execution.result;
+      assert.equal(result.code, expectedCode, result.stderr);
+      assert.equal(result.stdout, "");
+      assert.deepEqual(await stateSnapshot(fixture.stateRoot), before);
+      await assert.rejects(
+        readFile(path.join(fixture.stateRoot, "test-actor-control.jsonl")),
+        { code: "ENOENT" },
+      );
+    }
+  },
+);
+
+test(
+  "native actor host cancels a committed acquire child and proves exact lease absence",
+  { skip: !darwinOnly, timeout: 20_000 },
+  async (t) => {
+    for (const [signal, expectedCode] of [
+      ["SIGINT", 130],
+      ["SIGTERM", 143],
+    ]) {
+      const fixture = await createFixture({
+        runtimeNodeContents: actorControlRuntime(),
+      });
+      const execution = startRun(
+        fixture.host,
+        acquisitionArguments(fixture, {
+          controlMode: "process-cancellation-commit",
+        }),
+      );
+      let parentPid;
+      let descendantPid;
+      t.after(async () => {
+        execution.child.kill("SIGKILL");
+        for (const pid of [parentPid, descendantPid]) {
+          if (Number.isInteger(pid) && processExists(pid)) {
+            process.kill(pid, "SIGKILL");
+          }
+        }
+        await rm(fixture.fixtureRoot, { recursive: true, force: true });
+      });
+      await waitForFile(
+        path.join(fixture.fixtureRoot, "test-actor-acquire-process-ready"),
+      );
+      parentPid = Number(
+        (
+          await readFile(
+            path.join(fixture.fixtureRoot, "test-actor-control-parent.pid"),
+            "utf8",
+          )
+        ).trim(),
+      );
+      descendantPid = Number(
+        (
+          await readFile(
+            path.join(fixture.fixtureRoot, "test-actor-control-child.pid"),
+            "utf8",
+          )
+        ).trim(),
+      );
+      assert.equal(processExists(parentPid), true);
+      assert.equal(processExists(descendantPid), true);
+      assert.equal(execution.child.kill(signal), true);
+      const result = await execution.result;
+      assert.equal(result.code, expectedCode, result.stderr);
+      assert.equal(result.stdout, "");
+      assert.equal(await waitForProcessExit(parentPid), true);
+      assert.equal(await waitForProcessExit(descendantPid), true);
+      await assert.rejects(
+        readFile(path.join(fixture.stateRoot, "test-actor-lease.json")),
+        { code: "ENOENT" },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      await assert.rejects(
+        readFile(path.join(fixture.fixtureRoot, "test-actor-late-mutation")),
+        { code: "ENOENT" },
+      );
+      const calls = (
+        await readFile(
+          path.join(fixture.stateRoot, "test-actor-process-control.jsonl"),
+          "utf8",
+        )
+      )
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      const acquire = calls.find((call) => call.action === "acquire");
+      const releases = calls.filter((call) => call.action === "release");
+      const inspections = calls.filter((call) => call.action === "show");
+      assert.ok(acquire);
+      assert.equal(acquire.persistentCredentialPresent, true);
+      assert.equal(releases.length, 2);
+      assert.equal(releases[0].operationId, releases[1].operationId);
+      assert.match(releases[0].operationId, /^[0-9a-f-]{36}$/);
+      assert.ok(
+        releases.every(
+          (call) =>
+            call.tokenSha256 === acquire.tokenSha256 &&
+            call.persistentCredentialPresent === false,
+        ),
+      );
+      assert.equal(inspections.length, 2);
+      assert.ok(
+        inspections.every(
+          (call) =>
+            call.operationId === "" &&
+            call.tokenSha256 === "" &&
+            call.persistentCredentialPresent === false,
+        ),
+      );
+    }
+  },
+);
+
+test(
+  "native actor host reclaims an acquired lease when cancellation arrives before handoff",
+  { skip: !darwinOnly, timeout: 15_000 },
+  async (t) => {
+    for (const [signal, expectedCode] of [
+      ["SIGINT", 130],
+      ["SIGTERM", 143],
+    ]) {
+      const fixture = await createFixture();
+      t.after(() => rm(fixture.fixtureRoot, { recursive: true, force: true }));
+      const execution = startRun(
+        fixture.host,
+        acquisitionArguments(fixture, {
+          controlMode: "post-child-handoff-delay",
+        }),
+      );
+      await waitForFile(
+        path.join(fixture.fixtureRoot, "test-actor-handoff-ready"),
+      );
+      assert.equal(execution.child.kill(signal), true);
+      const result = await execution.result;
+      assert.equal(result.code, expectedCode, result.stderr);
+      assert.equal(result.stdout, "");
+      const calls = (
+        await readFile(
+          path.join(fixture.stateRoot, "test-actor-control.jsonl"),
+          "utf8",
+        )
+      )
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      const releases = calls.filter((call) => call.action === "release");
+      const inspections = calls.filter((call) => call.action === "show");
+      assert.equal(releases.length, 1);
+      assert.match(releases[0].operationId, /^[0-9a-f-]{36}$/);
+      assert.equal(releases[0].persistentCredentialPresent, false);
+      assert.equal(inspections.length, 1);
+      assert.equal(inspections[0].operationId, null);
+      assert.equal(inspections[0].leaseTokenSha256, null);
+    }
+  },
+);
+
+test(
+  "native actor handoff commit stays successful when cancellation arrives after the final check",
+  { skip: !darwinOnly, timeout: 15_000 },
+  async (t) => {
+    for (const signal of ["SIGINT", "SIGTERM"]) {
+      const fixture = await createFixture();
+      t.after(() => rm(fixture.fixtureRoot, { recursive: true, force: true }));
+      const execution = startRun(
+        fixture.host,
+        acquisitionArguments(fixture, {
+          controlMode: "post-final-check-pre-write-delay",
+        }),
+      );
+      await waitForFile(
+        path.join(fixture.fixtureRoot, "test-actor-handoff-commit-ready"),
+      );
+      assert.equal(execution.child.kill(signal), true);
+      const result = await execution.result;
+      assert.equal(result.code, 0, result.stderr);
+      const handoff = JSON.parse(result.stdout);
+      assert.equal(handoff.actor, defaultActor);
+      assert.equal(handoff.leaseName, "scaffolding-writer");
+      assert.equal(
+        handoff.leaseTokenSha256,
+        createHash("sha256").update(handoff.leaseToken).digest("hex"),
+      );
+      const calls = (
+        await readFile(
+          path.join(fixture.stateRoot, "test-actor-control.jsonl"),
+          "utf8",
+        )
+      )
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      assert.deepEqual(
+        calls.map((call) => call.action),
+        ["acquire"],
+      );
+    }
+  },
+);
+
+test(
+  "native actor cleanup retains cancellation without spending its release or inspection retries",
+  { skip: !darwinOnly, timeout: 20_000 },
+  async (t) => {
+    for (const [signal, expectedCode] of [
+      ["SIGINT", 130],
+      ["SIGTERM", 143],
+    ]) {
+      const fixture = await createFixture({
+        runtimeNodeContents: actorCleanupCancellationRuntime(),
+      });
+      const execution = startRun(
+        fixture.host,
+        acquisitionArguments(fixture, {
+          controlMode: "process-cleanup-cancellation",
+        }),
+      );
+      t.after(async () => {
+        execution.child.kill("SIGKILL");
+        await rm(fixture.fixtureRoot, { recursive: true, force: true });
+      });
+      await waitForFile(
+        path.join(fixture.fixtureRoot, "test-actor-cleanup-ready"),
+      );
+      assert.equal(execution.child.kill(signal), true);
+      const result = await execution.result;
+      assert.equal(result.code, expectedCode, result.stderr);
+      assert.equal(result.stdout, "");
+      await assert.rejects(
+        readFile(path.join(fixture.stateRoot, "test-actor-lease.json")),
+        { code: "ENOENT" },
+      );
+      const calls = (
+        await readFile(
+          path.join(fixture.stateRoot, "test-actor-process-control.jsonl"),
+          "utf8",
+        )
+      )
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      const acquires = calls.filter((call) => call.action === "acquire");
+      const releases = calls.filter((call) => call.action === "release");
+      const inspections = calls.filter((call) => call.action === "show");
+      assert.equal(acquires.length, 2);
+      assert.equal(releases.length, 2);
+      assert.equal(inspections.length, 2);
+      assert.equal(releases[0].operationId, releases[1].operationId);
+      assert.ok(
+        releases.every(
+          (call) =>
+            call.tokenSha256 === acquires[0].tokenSha256 &&
+            call.persistentCredentialPresent === false,
+        ),
+      );
+      assert.ok(
+        inspections.every(
+          (call) =>
+            call.operationId === "" &&
+            call.tokenSha256 === "" &&
+            call.persistentCredentialPresent === false,
+        ),
+      );
+    }
+  },
+);
+
+test(
+  "native actor terminal drain retains SIGINT and SIGTERM while signals stay blocked through exit",
+  { skip: !darwinOnly, timeout: 15_000 },
+  async (t) => {
+    for (const [signal, expectedCode] of [
+      ["SIGINT", 130],
+      ["SIGTERM", 143],
+    ]) {
+      const fixture = await createFixture();
+      t.after(() => rm(fixture.fixtureRoot, { recursive: true, force: true }));
+      await writeFile(
+        path.join(fixture.stateRoot, "test-actor-finalization-pause"),
+        "",
+      );
+      const execution = startRun(
+        fixture.host,
+        attestationArguments(fixture),
+      );
+      await waitForFile(
+        path.join(fixture.stateRoot, "test-actor-finalization-drained"),
+      );
+      assert.equal(execution.child.kill(signal), true);
+      const result = await execution.result;
+      assert.equal(result.code, expectedCode, result.stderr);
+      assert.equal(JSON.parse(result.stdout).mutatesState, false);
+    }
+  },
+);
+
+test(
+  "native actor control child receives unblocked default termination signals",
+  { skip: !darwinOnly, timeout: 10_000 },
+  async (t) => {
+    const fixture = await createFixture({
+      runtimeNodeContents: actorControlRuntime({ selfSignal: true }),
+    });
+    t.after(() => rm(fixture.fixtureRoot, { recursive: true, force: true }));
+    const result = await run(
+      fixture.host,
+      acquisitionArguments(fixture, { controlMode: "process-signal-state" }),
+    );
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /rejected the lease request/);
+    assert.equal(result.stdout, "");
+    await assert.rejects(
+      readFile(
+        path.join(fixture.fixtureRoot, "test-actor-child-survived-signal"),
+      ),
+      { code: "ENOENT" },
+    );
+    const pids = (
+      await readFile(
+        path.join(fixture.fixtureRoot, "test-actor-control-parent.pid"),
+        "utf8",
+      )
+    )
+      .trim()
+      .split("\n")
+      .map((value) => Number.parseInt(value, 10));
+    assert.equal(pids.length, 2);
+    for (const pid of pids) assert.equal(await waitForProcessExit(pid), true);
+  },
+);
+
+test(
+  "native actor control timeout reclaims its process group before the lifecycle budget expires",
+  { skip: !darwinOnly },
+  async (t) => {
+    const fixture = await createFixture({
+      runtimeNodeContents: [
+        "#!/bin/sh",
+        'runtime_dir="${0%/*}"',
+        'printf "%s\\n" "$$" >> "$runtime_dir/control-parent.pid"',
+        "/bin/sleep 30 &",
+        'printf "%s\\n" "$!" >> "$runtime_dir/control-child.pid"',
+        "wait",
+        "",
+      ].join("\n"),
+    });
+    t.after(() => rm(fixture.fixtureRoot, { recursive: true, force: true }));
+    const startedAt = Date.now();
+    const result = await run(
+      fixture.host,
+      acquisitionArguments(fixture, { controlMode: "process-timeout" }),
+    );
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /unknown actor lease live/);
+    assert.ok(Date.now() - startedAt < 5_000);
+
+    const runtimeDirectory = path.dirname(fixture.binding.nodePath);
+    const pids = (
+      await Promise.all(
+        ["control-parent.pid", "control-child.pid"].map(async (name) =>
+          (await readFile(path.join(runtimeDirectory, name), "utf8"))
+            .trim()
+            .split("\n")
+            .map((value) => Number.parseInt(value, 10)),
+        ),
+      )
+    ).flat();
+    assert.equal(pids.length, 12);
+    const processExists = (pid) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch (error) {
+        if (error?.code === "ESRCH") return false;
+        throw error;
+      }
+    };
+    const deadline = Date.now() + 2_000;
+    while (pids.some(processExists) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    for (const pid of pids) assert.equal(processExists(pid), false);
   },
 );
 
@@ -604,6 +1314,36 @@ test(
       runtimeResult.stderr,
       /content-addressed layout|pinned digest/,
     );
+
+    const helperDigestFixture = await createFixture();
+    t.after(() =>
+      rm(helperDigestFixture.fixtureRoot, { recursive: true, force: true }),
+    );
+    await rewriteBinding(helperDigestFixture, (binding) => ({
+      ...binding,
+      leaseArchiveHelperSha256: "0".repeat(64),
+    }));
+    const helperDigestResult = await run(
+      helperDigestFixture.host,
+      acquisitionArguments(helperDigestFixture),
+    );
+    assert.equal(helperDigestResult.code, 1);
+    assert.match(
+      helperDigestResult.stderr,
+      /content-addressed layout|pinned digest/,
+    );
+
+    const helperModeFixture = await createFixture();
+    t.after(() =>
+      rm(helperModeFixture.fixtureRoot, { recursive: true, force: true }),
+    );
+    await chmod(helperModeFixture.binding.leaseArchiveHelperPath, 0o4600);
+    const helperModeResult = await run(
+      helperModeFixture.host,
+      acquisitionArguments(helperModeFixture),
+    );
+    assert.equal(helperModeResult.code, 1);
+    assert.match(helperModeResult.stderr, /trusted immutable regular file/);
 
     const launcherFixture = await createFixture();
     t.after(() =>
@@ -982,6 +1722,36 @@ test(
       /does not match the owner-held digest/,
     );
 
+    const helperDigest = await createFixture();
+    t.after(() =>
+      rm(helperDigest.fixtureRoot, { recursive: true, force: true }),
+    );
+    await rewriteBinding(helperDigest, (binding) => ({
+      ...binding,
+      leaseArchiveHelperSha256: "0".repeat(64),
+    }));
+    const helperDigestResult = await run(
+      testProvisioner,
+      provisionerArguments(helperDigest, "rotate", "valid"),
+    );
+    assert.equal(helperDigestResult.code, 1);
+    assert.match(
+      helperDigestResult.stderr,
+      /content-addressed layout|pinned digest/,
+    );
+
+    const helperMode = await createFixture();
+    t.after(() =>
+      rm(helperMode.fixtureRoot, { recursive: true, force: true }),
+    );
+    await chmod(helperMode.binding.leaseArchiveHelperPath, 0o4600);
+    const helperModeResult = await run(
+      testProvisioner,
+      provisionerArguments(helperMode, "rotate", "valid"),
+    );
+    assert.equal(helperModeResult.code, 1);
+    assert.match(helperModeResult.stderr, /trusted immutable regular file/);
+
     const wrongACL = await createFixture();
     t.after(() => rm(wrongACL.fixtureRoot, { recursive: true, force: true }));
     const wrongACLResult = await run(
@@ -1052,7 +1822,7 @@ test(
       assert.doesNotMatch(stdout, /--test-interaction-mode/);
       assert.doesNotMatch(
         stdout,
-        /digest-write-failure|partial-rotation-failure|disable-noop|restore-failure-with-digest-drift/,
+        /digest-write-failure|partial-rotation-failure|disable-noop|restore-failure-with-digest-drift|commit-response-loss-near-deadline|acquisition-window-exhausted|malformed-acquire-and-show|process-timeout/,
       );
     }
     const hostResult = await run(productionHost, [

@@ -30,6 +30,14 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  inspectAutomationKernelGuardCutover,
+} from "./lib/automation-kernel-guard-contract.mjs";
+import {
+  conservativeLeaseCleanupArchiveReservation,
+  inspectLeaseCleanupArchiveCapacity,
+} from "./lib/automation-control.mjs";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..");
@@ -369,6 +377,47 @@ function checkSimpleCommand(id, title, command, args, remediation) {
   );
 }
 
+export function kernelGuardToolForPlatform(platform = os.platform()) {
+  if (platform === "darwin") return "/usr/bin/lockf";
+  if (platform === "linux") return "/usr/bin/flock";
+  return "";
+}
+
+export function checkKernelGuardTool(platform = os.platform()) {
+  const toolPath = kernelGuardToolForPlatform(platform);
+  if (!toolPath) {
+    return check(
+      "kernel-guard",
+      "kernel-backed automation guard",
+      "fail",
+      `No supported kernel guard tool is defined for ${platform}.`,
+      "Run Freed automation control tooling on macOS or Linux.",
+    );
+  }
+  try {
+    const stats = statSync(toolPath);
+    if (!stats.isFile() || (stats.mode & 0o111) === 0) {
+      throw new Error("the path is not an executable regular file");
+    }
+  } catch (error) {
+    return check(
+      "kernel-guard",
+      "kernel-backed automation guard",
+      "fail",
+      `${toolPath} is unavailable: ${error instanceof Error ? error.message : String(error)}.`,
+      platform === "darwin"
+        ? "Restore /usr/bin/lockf through the macOS system installation."
+        : "Install util-linux so /usr/bin/flock is available.",
+    );
+  }
+  return check(
+    "kernel-guard",
+    "kernel-backed automation guard",
+    "ok",
+    `${toolPath} is available for crash-safe process exclusion.`,
+  );
+}
+
 function checkSystemPython() {
   const systemPython = "/usr/bin/python3";
   if (!existsSync(systemPython)) {
@@ -436,17 +485,34 @@ const PRIVATE_AUTOMATION_DIRECTORIES = [
   "control/.guards",
   "control/actor-credentials",
   "control/leases",
+  "control/leases/.transactions",
+  "control/leases/.transactions/.lease-cleanup-quarantine",
+  "control/leases/.transaction-receipts",
+  "control/leases/.transaction-receipts/.lease-cleanup-quarantine",
   "control/owner-capabilities",
   "control/owner-capabilities/consumed",
   "control/owner-capabilities/pending",
   "control/publisher-capabilities",
   "control/publisher-capabilities/consumed",
   "control/publisher-capabilities/pending",
+  "control/outcome-ledger-transactions",
   "control/task-transactions",
+  "artifacts",
+  "artifacts/outcome-ledger-repair",
 ];
 
 function shellQuote(value) {
   return `'${String(value).replaceAll("'", `'\\''`)}'`;
+}
+
+function automationKernelGuardCutoverRemediation(stateDir) {
+  return [
+    "Keep every automation actor PAUSED and stop every old control-plane process.",
+    "Plan command:",
+    `npm run --silent automation:cutover-kernel-guards -- plan --task-id <task-id> --plan-file <absolute-plan-file> --state-root ${shellQuote(stateDir)}`,
+    "Apply command:",
+    "npm run --silent automation:cutover-kernel-guards -- apply --plan-file <absolute-plan-file> --owner-confirmation-file <absolute-owner-confirmation-file>",
+  ].join("\n");
 }
 
 export function checkAutomationStateDir(stateDir) {
@@ -455,12 +521,40 @@ export function checkAutomationStateDir(stateDir) {
       typeof process.getuid === "function" ? process.getuid() : null;
     const problems = [];
     const repairableModes = [];
+    const verifiedPrivateDirectories = new Set();
+    let archiveInspection = null;
+    let archiveProblem = false;
+    const requiredCutoverDirectories = new Set([
+      "control",
+      "control/.guards",
+    ]);
     for (const relativePath of PRIVATE_AUTOMATION_DIRECTORIES) {
       const directoryPath = relativePath
         ? path.join(stateDir, relativePath)
         : stateDir;
-      if (!existsSync(directoryPath)) continue;
-      const stats = lstatSync(directoryPath);
+      if (
+        relativePath &&
+        !verifiedPrivateDirectories.has(path.dirname(directoryPath))
+      ) {
+        continue;
+      }
+      let stats;
+      try {
+        stats = lstatSync(directoryPath);
+      } catch (error) {
+        if (error?.code === "ENOENT") {
+          if (requiredCutoverDirectories.has(relativePath)) {
+            problems.push(
+              `${directoryPath} is missing from the kernel guard cutover contract`,
+            );
+          }
+          continue;
+        }
+        problems.push(
+          `${directoryPath} could not be inspected: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        continue;
+      }
       if (
         !stats.isDirectory() ||
         stats.isSymbolicLink() ||
@@ -474,13 +568,53 @@ export function checkAutomationStateDir(stateDir) {
       if ((stats.mode & 0o777) !== 0o700) {
         problems.push(`${directoryPath} is not mode 0700`);
         repairableModes.push(directoryPath);
+        continue;
+      }
+      verifiedPrivateDirectories.add(directoryPath);
+    }
+    const guardsPath = path.join(stateDir, "control", ".guards");
+    if (
+      verifiedPrivateDirectories.has(stateDir) &&
+      verifiedPrivateDirectories.has(path.join(stateDir, "control")) &&
+      verifiedPrivateDirectories.has(guardsPath)
+    ) {
+      try {
+        const inspection = inspectAutomationKernelGuardCutover(stateDir);
+        if (!inspection.ready) {
+          problems.push(...inspection.problems);
+        }
+      } catch (error) {
+        problems.push(
+          `Kernel guard cutover is incomplete or unsafe: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    if (problems.length === 0 && verifiedPrivateDirectories.has(stateDir)) {
+      try {
+        const reservation = conservativeLeaseCleanupArchiveReservation(
+          stateDir,
+        );
+        archiveInspection = inspectLeaseCleanupArchiveCapacity(stateDir, {
+          reservation,
+        });
+        if (!archiveInspection.ready) {
+          archiveProblem = true;
+          problems.push(...archiveInspection.problems);
+        }
+      } catch (error) {
+        archiveProblem = true;
+        problems.push(
+          `Lease cleanup archive accounting is unsafe: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
     if (problems.length > 0) {
       const remediation =
-        repairableModes.length === problems.length
+        archiveProblem
+          ? "Keep automation actors PAUSED. Use a separate owner-authorized archive compaction lifecycle before admitting another lease transaction."
+          : repairableModes.length === problems.length
           ? `Run: chmod 700 ${repairableModes.map(shellQuote).join(" ")}`
-          : "Move aside the unsafe path, then recreate each listed directory as the current user with mode 0700.";
+          : automationKernelGuardCutoverRemediation(stateDir);
       return check(
         "automation-state-dir",
         "automation state dir",
@@ -493,7 +627,7 @@ export function checkAutomationStateDir(stateDir) {
       "automation-state-dir",
       "automation state dir",
       "ok",
-      `${stateDir} and its private control directories are mode 0700.`,
+      `${stateDir} has private control directories and a complete permanent kernel guard cutover. Lease cleanup archive: ${archiveInspection.count.toLocaleString()} entries, ${archiveInspection.bytes.toLocaleString()} bytes, projected next-operation use ${archiveInspection.projectedCount.toLocaleString()} entries and ${archiveInspection.projectedBytes.toLocaleString()} bytes, projected oldest age ${Math.floor(archiveInspection.projectedOldestAgeMs / (24 * 60 * 60 * 1_000)).toLocaleString()} days, ${archiveInspection.availableBytes.toLocaleString()} bytes free on local ${archiveInspection.filesystemType}.`,
     );
   }
   try {
@@ -501,8 +635,9 @@ export function checkAutomationStateDir(stateDir) {
     return check(
       "automation-state-dir",
       "automation state dir",
-      "ok",
-      `${stateDir} created with mode 0700.`,
+      "fail",
+      `${stateDir} was created with mode 0700, but the permanent kernel guard cutover is not installed.`,
+      automationKernelGuardCutoverRemediation(stateDir),
     );
   } catch (error) {
     return check(
@@ -922,6 +1057,7 @@ export function runChecks(options = {}) {
       "Install git (xcode-select --install).",
     ),
     checkSimpleCommand("curl", "curl", "curl", ["--version"], "Install curl."),
+    checkKernelGuardTool(platform),
     checkSystemPython(),
     checkAutomationStateDir(stateDir),
     checkTrustedPublisherConfig(options.env ?? process.env, home),

@@ -8,10 +8,12 @@ import { spawnSync } from "node:child_process";
 import {
   createHash,
   generateKeyPairSync,
+  randomUUID,
   sign as signPayload,
 } from "node:crypto";
 import { providerApprovalAuthorizationDigest } from "./lib/provider-visible-paths.mjs";
 import { stabilityArtifactDigest } from "./lib/stability-artifacts.mjs";
+import { installAutomationKernelGuardCutoverFixture } from "./test-helpers/automation-kernel-guard.mjs";
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptsDir, "..");
@@ -31,6 +33,24 @@ const allProviderIds = [
   "x",
   "youtube",
 ];
+
+function trustedAcquireEnv() {
+  return {
+    FREED_PUBLISHER_ACQUIRE_OPERATION_ID:
+      "12345678-1234-4123-8123-123456789abc",
+    FREED_PUBLISHER_ACQUIRE_TOKEN:
+      "publisher-caller-retained-token-1234567890",
+  };
+}
+
+function publisherCapabilityLeaseFields(environment) {
+  return {
+    leaseOperationId: environment.FREED_PUBLISHER_ACQUIRE_OPERATION_ID,
+    tokenSha256: createHash("sha256")
+      .update(environment.FREED_PUBLISHER_ACQUIRE_TOKEN)
+      .digest("hex"),
+  };
+}
 
 async function createTrustedControlCheckout(t) {
   const root = await fs.mkdtemp(
@@ -99,8 +119,8 @@ async function createPublishFixture(
   t,
   { seedProviderFile = false, preacquirePublisherLease = true } = {},
 ) {
-  const root = await fs.mkdtemp(
-    path.join(os.tmpdir(), "freed-worktree-publish-"),
+  const root = await fs.realpath(
+    await fs.mkdtemp(path.join(os.tmpdir(), "freed-worktree-publish-")),
   );
   t.after(async () => {
     await fs.rm(root, { recursive: true, force: true });
@@ -127,11 +147,16 @@ async function createPublishFixture(
   await fs.mkdir(path.join(automationStateRoot, "control"), {
     recursive: true,
   });
+  installAutomationKernelGuardCutoverFixture(automationStateRoot);
   const publisherCredentialPath = path.join(
     automationStateRoot,
     "control/actor-credentials/freed-pr-publisher.json",
   );
-  await fs.mkdir(path.dirname(publisherCredentialPath), { recursive: true });
+  await fs.mkdir(path.dirname(publisherCredentialPath), {
+    recursive: true,
+    mode: 0o700,
+  });
+  await fs.chmod(path.dirname(publisherCredentialPath), 0o700);
   await fs.writeFile(
     publisherCredentialPath,
     JSON.stringify({
@@ -342,12 +367,20 @@ process.exit(1);
 
   const nowMs = Date.now();
   const capabilityId = `publisher-test-${nowMs}`;
+  const publisherAcquireEnvironment = preacquirePublisherLease
+    ? {
+        FREED_PUBLISHER_ACQUIRE_OPERATION_ID: randomUUID(),
+        FREED_PUBLISHER_ACQUIRE_TOKEN:
+          "publisher-test-caller-retained-token-1234567890",
+      }
+    : trustedAcquireEnv();
   const capabilityPayload = Buffer.from(
     JSON.stringify({
       schemaVersion: 1,
       capabilityId,
       issuer: "freed-pr-publisher",
       leaseName: "pr-publisher",
+      ...publisherCapabilityLeaseFields(publisherAcquireEnvironment),
       issuedAt: new Date(nowMs).toISOString(),
       expiresAt: new Date(nowMs + 60_000).toISOString(),
       leaseTtlMs: 1_800_000,
@@ -363,6 +396,11 @@ process.exit(1);
     recursive: true,
     mode: 0o700,
   });
+  await fs.chmod(
+    path.join(automationStateRoot, "control/publisher-capabilities"),
+    0o700,
+  );
+  await fs.chmod(path.dirname(capabilityPath), 0o700);
   await fs.writeFile(
     capabilityPath,
     `${JSON.stringify({
@@ -402,11 +440,19 @@ process.exit(1);
         env: {
           ...process.env,
           HOME: homeDir,
+          FREED_AUTOMATION_LEASE_OPERATION_ID:
+            publisherAcquireEnvironment.FREED_PUBLISHER_ACQUIRE_OPERATION_ID,
+          FREED_AUTOMATION_LEASE_TOKEN:
+            publisherAcquireEnvironment.FREED_PUBLISHER_ACQUIRE_TOKEN,
         },
       },
     );
     assertSuccess(acquire);
     publisherLeaseToken = JSON.parse(acquire.stdout).result.lease.token;
+    assert.equal(
+      publisherLeaseToken,
+      publisherAcquireEnvironment.FREED_PUBLISHER_ACQUIRE_TOKEN,
+    );
   }
 
   return {
@@ -1196,6 +1242,7 @@ test(
         cwd: fixture.worktree,
         env: {
           ...fixture.env,
+          ...trustedAcquireEnv(),
           FREED_AUTOMATION_ACTOR: "freed-nightly-runner",
           FREED_AUTOMATION_ACTOR_TOKEN: "nightly-persistent-secret-1234567890",
           FREED_AUTOMATION_LEASE_TOKEN: "nightly-lease-secret-1234567890",
@@ -1238,6 +1285,64 @@ test(
 );
 
 test(
+  "trusted publisher launcher fails closed against a legacy unbound capability",
+  {
+    skip: process.platform !== "darwin",
+  },
+  async (t) => {
+    const fixture = await createPublishFixture(t, {
+      preacquirePublisherLease: false,
+    });
+    const trusted = await createTrustedControlCheckout(t);
+    await fs.writeFile(
+      path.join(fixture.worktree, "README.md"),
+      "legacy publisher capability\n",
+    );
+    const envelope = JSON.parse(
+      await fs.readFile(fixture.capabilityPath, "utf8"),
+    );
+    const payload = JSON.parse(
+      Buffer.from(envelope.payloadBase64, "base64").toString("utf8"),
+    );
+    delete payload.leaseOperationId;
+    delete payload.tokenSha256;
+    const legacyPayload = Buffer.from(JSON.stringify(payload));
+    await fs.writeFile(
+      fixture.capabilityPath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        payloadBase64: legacyPayload.toString("base64"),
+        signatureBase64: signPayload(
+          null,
+          legacyPayload,
+          fixture.publisherPrivateKey,
+        ).toString("base64"),
+      })}\n`,
+      { mode: 0o600 },
+    );
+
+    const result = run(
+      "bash",
+      [trusted.publishScript, "--title", "fix: reject legacy capability"],
+      {
+        cwd: fixture.worktree,
+        env: {
+          ...fixture.env,
+          ...trustedAcquireEnv(),
+          FREED_PUBLISHER_CAPABILITY_FILE: fixture.capabilityPath,
+          FREED_TRUSTED_CONTROL_SHA: trusted.head,
+          FREED_TRUSTED_STATE_ROOT: fixture.automationStateRoot,
+        },
+      },
+    );
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /publisher_capability_invalid/);
+    assert.equal((await readGhLog(fixture.ghLogFile)).length, 0);
+  },
+);
+
+test(
   "trusted publisher launcher rejects an unpinned GitHub CLI",
   {
     skip: process.platform !== "darwin",
@@ -1259,6 +1364,7 @@ test(
         cwd: fixture.worktree,
         env: {
           ...fixture.env,
+          ...trustedAcquireEnv(),
           FREED_PUBLISHER_CAPABILITY_FILE: fixture.capabilityPath,
           FREED_TRUSTED_CONTROL_SHA: trusted.head,
           FREED_TRUSTED_STATE_ROOT: fixture.automationStateRoot,
@@ -1297,6 +1403,7 @@ test(
         cwd: fixture.worktree,
         env: {
           ...fixture.env,
+          ...trustedAcquireEnv(),
           FREED_PUBLISHER_CAPABILITY_FILE: fixture.capabilityPath,
           FREED_TRUSTED_CONTROL_SHA: trusted.head,
           FREED_TRUSTED_STATE_ROOT: fixture.automationStateRoot,
@@ -1405,6 +1512,7 @@ test(
         capabilityId,
         issuer: "freed-pr-publisher",
         leaseName: "pr-publisher",
+        ...publisherCapabilityLeaseFields(trustedAcquireEnv()),
         issuedAt: new Date(nowMs).toISOString(),
         expiresAt: new Date(nowMs + 60_000).toISOString(),
         leaseTtlMs: 1_800_000,
@@ -1453,6 +1561,7 @@ test(
         cwd: fixture.worktree,
         env: {
           ...fixture.env,
+          ...trustedAcquireEnv(),
           FREED_PUBLISHER_CAPABILITY_FILE: capabilityPath,
           FREED_TRUSTED_CONTROL_SHA: trusted.head,
           FREED_TRUSTED_STATE_ROOT: fixture.automationStateRoot,
@@ -1517,6 +1626,7 @@ test(
         capabilityId,
         issuer: "freed-pr-publisher",
         leaseName: "pr-publisher",
+        ...publisherCapabilityLeaseFields(trustedAcquireEnv()),
         issuedAt: new Date(nowMs).toISOString(),
         expiresAt: new Date(nowMs + 60_000).toISOString(),
         leaseTtlMs: 1_800_000,
@@ -1570,6 +1680,7 @@ test(
         cwd: fixture.worktree,
         env: {
           ...fixture.env,
+          ...trustedAcquireEnv(),
           FREED_PUBLISHER_CAPABILITY_FILE: capabilityPath,
           FREED_TRUSTED_CONTROL_SHA: trusted.head,
           FREED_TRUSTED_STATE_ROOT: fixture.automationStateRoot,
@@ -1621,6 +1732,7 @@ test(
         cwd: fixture.worktree,
         env: {
           ...fixture.env,
+          ...trustedAcquireEnv(),
           FREED_PUBLISHER_CAPABILITY_FILE: fixture.capabilityPath,
           FREED_TRUSTED_CONTROL_SHA: trusted.head,
           FREED_TRUSTED_STATE_ROOT: fixture.automationStateRoot,
