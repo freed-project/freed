@@ -101,7 +101,7 @@ COMMON=(
 "${SWIFTC}" "${COMMON[@]}" "${HOST_SOURCE}" -o "${HOST_TEMP}" \
   -framework Foundation -framework Security -framework CryptoKit
 "${SWIFTC}" "${COMMON[@]}" "${PROVISIONER_SOURCE}" -o "${PROVISIONER_TEMP}" \
-  -framework Foundation -framework Security
+  -framework Foundation -framework Security -framework CryptoKit
 
 /usr/bin/codesign --force --sign - "${HOST_TEMP}"
 /usr/bin/codesign --force --sign - "${PROVISIONER_TEMP}"

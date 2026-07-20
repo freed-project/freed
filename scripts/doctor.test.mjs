@@ -22,6 +22,7 @@ import {
   classifyBinaryArch,
   checkAutomationStateDir,
   checkKernelGuardTool,
+  checkReleaseTagPublisherConfig,
   checkTrustedPublisherConfig,
   credentialHelperBinary,
   evaluateGhCheck,
@@ -1386,11 +1387,136 @@ test("resolveExitCode is warn-only by default and hard-fails under --strict", ()
     failures: 0,
     warnings: 0,
   };
+  const releasePublisherClosed = {
+    checks: [{ id: "release-tag-publisher", status: "fail" }],
+    failures: 1,
+    warnings: 0,
+  };
+  const releasePublisherReady = {
+    checks: [{ id: "release-tag-publisher", status: "ok" }],
+    failures: 0,
+    warnings: 0,
+  };
   assert.equal(resolveExitCode(failing), 0);
   assert.equal(resolveExitCode(failing, { strict: true }), 1);
   assert.equal(resolveExitCode(clean, { strict: true }), 0);
   assert.equal(resolveExitCode(publisherClosed, { requirePublisher: true }), 1);
   assert.equal(resolveExitCode(publisherReady, { requirePublisher: true }), 0);
+  assert.equal(
+    resolveExitCode(releasePublisherClosed, {
+      requireReleasePublisher: true,
+    }),
+    1,
+  );
+  assert.equal(
+    resolveExitCode(releasePublisherReady, {
+      requireReleasePublisher: true,
+    }),
+    0,
+  );
+});
+
+test("release publisher doctor profile is separate and uses native ACL inspection", () => {
+  const root = mkdtempSync(
+    path.join(os.tmpdir(), "freed-doctor-release-publisher-"),
+  );
+  const hostPath = path.join(root, "release-tag-publisher");
+  const provisionerPath = path.join(root, "release-tag-publisher-provision");
+  const configPath = path.join(root, "release-tag-publisher.json");
+  writeFileSync(hostPath, "host", { mode: 0o700 });
+  writeFileSync(provisionerPath, "provisioner", { mode: 0o700 });
+  writeFileSync(
+    configPath,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      purpose: "freed-release-tag-publisher-binding",
+      status: "active",
+      repo: "freed-project/freed",
+      appId: 4_296_969,
+      appSlug: "freed-release-publisher",
+      publisherPath: hostPath,
+      publisherSha256: sha256(hostPath),
+    })}\n`,
+    { mode: 0o600 },
+  );
+  const calls = [];
+  const inspected = [];
+  const ready = checkReleaseTagPublisherConfig({
+    configPath,
+    hostPath,
+    provisionerPath,
+    inspectPath(filePath, label, options) {
+      inspected.push({ filePath, label, options });
+      return [];
+    },
+    platform: "darwin",
+    run(file, args) {
+      calls.push({ file, args });
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          schemaVersion: 1,
+          purpose: "freed-release-tag-publisher-keychain-result",
+          action: "inspect",
+          service: "freed-release-tag-publisher",
+          account: "github-app-private-key",
+          host: hostPath,
+          state: "present",
+        }),
+      };
+    },
+  });
+  assert.equal(ready.status, "ok");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].file, provisionerPath);
+  assert.deepEqual(calls[0].args, [
+    "inspect",
+    "--host",
+    hostPath,
+  ]);
+  assert.deepEqual(
+    inspected.map(({ filePath, options }) => ({ filePath, options })),
+    [
+      {
+        filePath: hostPath,
+        options: {
+          executable: true,
+          exactMode: 0o555,
+          exactGroup: 0,
+          exactLinkCount: 1,
+        },
+      },
+      {
+        filePath: provisionerPath,
+        options: {
+          executable: true,
+          exactMode: 0o555,
+          exactGroup: 0,
+          exactLinkCount: 1,
+        },
+      },
+      {
+        filePath: configPath,
+        options: {
+          executable: false,
+          exactMode: 0o444,
+          exactGroup: 0,
+          exactLinkCount: 1,
+        },
+      },
+    ],
+  );
+
+  const missing = checkReleaseTagPublisherConfig({
+    configPath,
+    hostPath,
+    provisionerPath,
+    inspectPath: () => [],
+    platform: "darwin",
+    run: () => ({ status: 1 }),
+  });
+  assert.equal(missing.status, "fail");
+  assert.match(missing.detail, /could not validate.*Keychain item and ACL/);
 });
 
 test("runChecks returns every check id with a valid status", () => {
@@ -1422,5 +1548,34 @@ test("runChecks returns every check id with a valid status", () => {
   assert.equal(
     result.failures,
     result.checks.filter((item) => item.status === "fail").length,
+  );
+});
+
+test("runChecks adds Release Publisher readiness only when requested", () => {
+  const stateDir = path.join(
+    mkdtempSync(path.join(os.tmpdir(), "freed-doctor-release-profile-")),
+    "state",
+  );
+  const result = runChecks({
+    stateDir,
+    requireReleasePublisher: true,
+    releaseTagPublisherCheck: {
+      id: "release-tag-publisher",
+      title: "release tag publisher",
+      status: "ok",
+      detail: "ready",
+      remediation: "",
+    },
+  });
+  assert.equal(
+    result.checks.filter((item) => item.id === "release-tag-publisher").length,
+    1,
+  );
+  const defaultResult = runChecks({ stateDir });
+  assert.equal(
+    defaultResult.checks.filter(
+      (item) => item.id === "release-tag-publisher",
+    ).length,
+    0,
   );
 });

@@ -171,9 +171,10 @@ requests only repository Contents write permission. GitHub adds Metadata read
 implicitly. The App subscribes to no events, has no OAuth flow, and keeps its
 required webhook inactive.
 
-The helper converts the manifest, pipes the returned private key directly to
-the fixed native provisioner, and never writes the key to disk. The provisioner
-stores it in the macOS Keychain with:
+The helper converts the manifest, records the nonsecret App identity before any
+credential mutation, pipes the returned private key directly to the fixed
+native provisioner, and never writes the key to disk. The provisioner stores it
+in the macOS Keychain with:
 
 - service `freed-release-tag-publisher`
 - account `github-app-private-key`
@@ -188,6 +189,67 @@ The binding pins the repository, App ID, App slug, publisher path, and publisher
 SHA-256 digest. The nonsecret App identity is also recorded at
 `~/.freed/automation/release-tag-publisher/github-app.json`. Neither file
 contains the private key.
+
+### Recover a migrated Release Publisher key
+
+This recovery is only for the private key belonging to GitHub App ID
+`4,296,969`, slug `freed-release-publisher`. A filename is not identity proof.
+For example, a key named `freed-security-reports.private-key.pem` belongs to a
+different App unless GitHub independently proves otherwise. Never feed a
+different App key to this recovery command just because it happens to be a PEM
+file. Credential archaeology is already enough of a haunted attic.
+
+The PEM may live temporarily under `~/.freed/credentials`, but it is recovery
+input, not the long-term credential store. Do not put it in the repository, a
+repository environment file, task text, shell history, logs, or an unencrypted
+sync directory. The Keychain remains the canonical store because its item ACL
+limits access to the installed native host and provisioner. A plain file under
+`~/.freed` has only filesystem permissions and can be read by any process
+running as the same user.
+
+Before recovery, make the source an absolute canonical regular file owned by
+the current user, with exact mode `0600`, one hard link, and no symlink. The
+installer opens it once without following links, checks its path and inode,
+reads it positionally for a SHA-256 fingerprint, and passes that same held file
+descriptor to the native provisioner. A FIFO, oversized file, path swap,
+permission drift, content drift, malformed PKCS1 key, or fingerprint mismatch
+fails before Keychain creation.
+
+Inspect the distinct release profile. This check is opt-in, checks the native
+host and binding, and asks the provisioner to validate item presence and the
+exact ACL without returning private key bytes:
+
+```bash
+node scripts/doctor.mjs --require-release-publisher
+```
+
+Recovery and discard are deliberately unavailable in this code-only
+checkpoint. Both commands fail before host, Keychain, or binding mutation until
+the outcome-ledger repair lands and supplies its exact current-task
+owner-confirmation validator. Do not substitute an environment flag, a shell
+prompt, or a caller assertion. The final intent must bind the action, App ID
+`4,296,969`, App slug, repository, expected source and tree, admitted key
+fingerprint, native executable path and digest, and exact state transition.
+
+If the Keychain item is missing, the command installs the current native tools,
+adds the key, validates the exact newly created item, checks its fingerprint,
+and activates the binding. If the item is already present, it must match the
+admitted PEM fingerprint before activation. A different existing key fails
+closed without replacing, revoking, or discarding anything.
+
+If activation loses its response or fails after Keychain creation, the key is
+left intact. Rerun the same command with the same PEM and App identity. The
+second run proves the installed fingerprint and resumes activation. It never
+uses broad automatic revocation as cleanup.
+
+Abandoning a staged recovery is a separate owner operation. Its future
+owner-confirmed request must bind the exact PEM fingerprint. The digest-bound
+and idempotent discard action remains unavailable until that validator is
+integrated.
+
+Discard refuses a different installed fingerprint and deletes only the exact
+matching Keychain item reference. A missing item reports no change. Normal
+recovery failures never call discard or revoke.
 
 ### Activate the split tag rulesets
 
@@ -217,6 +279,11 @@ GitHub returns tag update rules without the branch-only fetch and merge
 parameter. The checked-in tag policies use that canonical parameter-free form.
 The verifier accepts an older explicit `false` value but rejects `true` or any
 unexpected update parameters.
+
+The release authority validator loads every live same-named creation,
+immutability, and lockdown ruleset. It rejects duplicate authority names and
+rejects publication while any no-bypass lockdown remains active, even if an
+earlier same-named lockdown is disabled.
 
 ### Verify, publish, rotate, or revoke
 
@@ -252,9 +319,10 @@ node scripts/release-tag-publisher-install.mjs verify
 ```
 
 After verification, delete the old key in GitHub and remove the temporary PEM.
-The installer also exposes `provision` and `activate` for controlled recovery,
-but the manifest helper is the normal setup path because it keeps the initial
-private key off disk.
+The installer also keeps `provision` as a compatibility alias for controlled
+recovery. Use `recover` in the runbook because it states the intended operation.
+The manifest helper remains the normal initial setup path because it keeps the
+new private key off disk.
 
 To retire the publisher, restore the no-bypass lockdown first, then revoke the
 local key and binding:

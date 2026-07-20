@@ -208,8 +208,8 @@ test("completed creation writes and logs only nonsecret App identity", async (t)
   });
   assert.equal(provisionedPem, pem);
   assert.deepEqual(sequence, [
-    "provision",
     "write-identity",
+    "provision",
     "activate-binding",
     "open-installation",
     "verify-installation",
@@ -252,6 +252,40 @@ test("completed creation writes and logs only nonsecret App identity", async (t)
     appSlug: "freed-release-publisher",
     ownerId: 257444947,
   });
+});
+
+test("initial App setup records identity before any private key mutation", async () => {
+  let provisioned = false;
+  await assert.rejects(
+    completeReleaseGitHubAppCreation(conversion(), {
+      writeIdentity() {
+        throw new Error("injected identity persistence failure");
+      },
+      provisionPrivateKey() {
+        provisioned = true;
+      },
+    }),
+    /injected identity persistence failure/,
+  );
+  assert.equal(provisioned, false);
+});
+
+test("initial App setup never replaces an existing App identity", (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "freed-release-app-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const { identity } = validateManifestConversion(conversion());
+  const identityPath = writeReleaseAppIdentity(identity, { stateRoot: root });
+  const original = readFileSync(identityPath, "utf8");
+
+  assert.throws(
+    () =>
+      writeReleaseAppIdentity(
+        { ...identity, appId: identity.appId + 1 },
+        { stateRoot: root },
+      ),
+    /EEXIST|file exists/i,
+  );
+  assert.equal(readFileSync(identityPath, "utf8"), original);
 });
 
 test("identity persistence rejects a symlinked private directory", (t) => {

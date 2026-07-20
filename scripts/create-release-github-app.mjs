@@ -9,11 +9,11 @@ import {
   fchmodSync,
   fstatSync,
   fsyncSync,
+  linkSync,
   lstatSync,
   mkdirSync,
   openSync,
   realpathSync,
-  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -390,7 +390,9 @@ export function writeReleaseAppIdentity(
     fsyncSync(descriptor);
     closeSync(descriptor);
     descriptor = undefined;
-    renameSync(temporaryPath, filePath);
+    linkSync(temporaryPath, filePath);
+    fsyncSync(directoryDescriptor);
+    rmSync(temporaryPath);
     fsyncSync(directoryDescriptor);
     fsyncSync(rootDescriptor);
   } catch (error) {
@@ -483,9 +485,10 @@ export async function completeReleaseGitHubAppCreation(
   } = {},
 ) {
   const { identity, pem } = validateManifestConversion(conversion);
+  onStatus("Recording the nonsecret release App identity.");
+  writeIdentity(identity);
   onStatus("Installing the private App credential in the release publisher.");
   provisionPrivateKey(pem);
-  writeIdentity(identity);
   onStatus("Activating the root-owned App identity binding.");
   activatePublisher(identity);
   const installationUrl = releaseAppInstallationUrl(identity);

@@ -318,14 +318,44 @@ export function verifyReleaseTagLockdown(rulesets) {
   return { lockdown };
 }
 
-export function verifyLiveReleaseTagAuthority(rulesets, expectedReleaseAppId) {
+export function verifyLiveReleaseTagAuthority(
+  rulesets,
+  expectedReleaseAppId,
+  { allowActiveLockdown = false } = {},
+) {
   const expectedAppId = Number(expectedReleaseAppId);
-  const creation = rulesets.find(
+  const lockdowns = rulesets.filter(
+    (ruleset) => ruleset.name === RELEASE_TAG_LOCKDOWN_RULESET_NAME,
+  );
+  const activeLockdowns = lockdowns.filter(
+    (ruleset) => ruleset.enforcement === "active",
+  );
+  if (activeLockdowns.length > 0 && !allowActiveLockdown) {
+    throw new Error(
+      "The no-bypass release tag lockdown is still active. Release publication must remain closed until the controlled authority transition removes it.",
+    );
+  }
+  if (activeLockdowns.length > 0) {
+    if (lockdowns.length !== 1 || activeLockdowns.length !== 1) {
+      throw new Error(
+        "The controlled release authority transition requires exactly one active lockdown ruleset. Duplicate lockdown names fail closed.",
+      );
+    }
+    verifyReleaseTagLockdown(activeLockdowns);
+  }
+  const creations = rulesets.filter(
     (ruleset) => ruleset.name === RELEASE_TAG_CREATION_RULESET_NAME,
   );
-  const immutability = rulesets.find(
+  const immutabilities = rulesets.filter(
     (ruleset) => ruleset.name === RELEASE_TAG_IMMUTABILITY_RULESET_NAME,
   );
+  if (creations.length !== 1 || immutabilities.length !== 1) {
+    throw new Error(
+      "Live release tag authority requires exactly one creation ruleset and exactly one immutability ruleset. Duplicate names are ambiguous and fail closed.",
+    );
+  }
+  const [creation] = creations;
+  const [immutability] = immutabilities;
   if (
     creation?.target !== "tag" ||
     creation?.enforcement !== "active" ||
@@ -540,6 +570,21 @@ function ghJson(args, { exec = execFileSync } = {}) {
   return JSON.parse(
     exec("gh", args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }),
   );
+}
+
+function ghPaginatedArray(endpoint, { exec = execFileSync } = {}) {
+  const pages = ghJson(
+    ["api", "--paginate", "--slurp", endpoint],
+    { exec },
+  );
+  if (
+    !Array.isArray(pages) ||
+    pages.length === 0 ||
+    !pages.every((page) => Array.isArray(page))
+  ) {
+    throw new Error("GitHub returned an invalid paginated ruleset listing.");
+  }
+  return pages.flat();
 }
 
 function applyRuleset(repo, item, { exec = execFileSync } = {}) {
@@ -789,7 +834,9 @@ function main() {
         (args.branch === null || rulesetBranch(ruleset) === args.branch),
     );
   }
-  const summary = ghJson(["api", `repos/${args.repo}/rulesets`]);
+  const summary = ghPaginatedArray(
+    `repos/${args.repo}/rulesets?per_page=100`,
+  );
   const current = summary.map((item) =>
     ghJson(["api", `repos/${args.repo}/rulesets/${item.id}`]),
   );
@@ -844,13 +891,19 @@ function main() {
     }
   }
   if (args.apply && args.releaseTags) {
-    const refreshedSummary = ghJson(["api", `repos/${args.repo}/rulesets`]);
+    const refreshedSummary = ghPaginatedArray(
+      `repos/${args.repo}/rulesets?per_page=100`,
+    );
     const refreshed = refreshedSummary.map((item) =>
       ghJson(["api", `repos/${args.repo}/rulesets/${item.id}`]),
     );
-    verifyLiveReleaseTagAuthority(refreshed, Number(args.releaseAppId));
+    verifyLiveReleaseTagAuthority(refreshed, Number(args.releaseAppId), {
+      allowActiveLockdown: true,
+    });
     const lockdown = refreshed.find(
-      (ruleset) => ruleset.name === RELEASE_TAG_LOCKDOWN_RULESET_NAME,
+      (ruleset) =>
+        ruleset.name === RELEASE_TAG_LOCKDOWN_RULESET_NAME &&
+        ruleset.enforcement === "active",
     );
     if (lockdown?.id) {
       deleteRuleset(args.repo, lockdown.id);

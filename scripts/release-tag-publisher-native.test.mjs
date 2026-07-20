@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
-import { createHash, generateKeyPairSync } from "node:crypto";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import {
   chmodSync,
   mkdirSync,
@@ -24,6 +24,8 @@ const tag = "v26.7.1302-dev";
 
 let fixtureRoot;
 let host;
+let provisioner;
+let recoveryKey;
 let configPath;
 let keyPath;
 let worktree;
@@ -85,6 +87,41 @@ function runHost(args, cwd = fixtureRoot) {
       stderr += chunk.toString("utf8");
     });
     child.on("close", (status) => resolve({ status, stdout, stderr }));
+  });
+}
+
+function createProvisionerState() {
+  const statePath = path.join(
+    fixtureRoot,
+    `provisioner-state-${randomUUID()}.json`,
+  );
+  writeFileSync(
+    statePath,
+    `${JSON.stringify({ exactDeleteCount: 0 })}\n`,
+    { mode: 0o600 },
+  );
+  return statePath;
+}
+
+function runProvisioner(action, statePath, options = {}) {
+  const args = [
+    action,
+    "--host",
+    host,
+    "--test-store",
+    statePath,
+  ];
+  if (options.expectedSha256) {
+    args.push("--expected-sha256", options.expectedSha256);
+  }
+  if (options.failure) {
+    args.push("--test-failure", options.failure);
+  }
+  return spawnSync(provisioner, args, {
+    cwd: fixtureRoot,
+    encoding: "utf8",
+    env: { PATH: "/usr/bin:/bin" },
+    input: options.input,
   });
 }
 
@@ -193,11 +230,39 @@ before(async () => {
   );
   chmodSync(host, 0o700);
 
+  provisioner = path.join(
+    fixtureRoot,
+    "release-tag-publisher-provision-test",
+  );
+  execFileSync(
+    "/usr/bin/xcrun",
+    [
+      "--sdk",
+      "macosx",
+      "swiftc",
+      "-D",
+      "RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING",
+      "-O",
+      path.join(root, "scripts", "release-tag-publisher-provision.swift"),
+      "-o",
+      provisioner,
+      "-framework",
+      "Foundation",
+      "-framework",
+      "Security",
+      "-framework",
+      "CryptoKit",
+    ],
+    { cwd: root, stdio: "pipe" },
+  );
+  chmodSync(provisioner, 0o700);
+
   const { privateKey } = generateKeyPairSync("rsa", {
     modulusLength: 2048,
     privateKeyEncoding: { format: "pem", type: "pkcs1" },
     publicKeyEncoding: { format: "pem", type: "spki" },
   });
+  recoveryKey = privateKey;
   keyPath = path.join(fixtureRoot, "release-app.pem");
   writeFileSync(keyPath, privateKey, { mode: 0o600 });
   configPath = path.join(fixtureRoot, "release-tag-publisher.json");
@@ -388,6 +453,126 @@ test("production native publisher tools compile", { skip: !enabled }, () => {
   assert.match(hostSource, /kSecUseAuthenticationUIFail/);
   assert.match(provisionerSource, /kSecUseAuthenticationUIFail/);
 });
+
+test(
+  "native provisioner recovers, matches, and discards only the expected item",
+  { skip: !enabled },
+  () => {
+    const statePath = createProvisionerState();
+    const digest = createHash("sha256").update(recoveryKey).digest("hex");
+
+    const missing = runProvisioner("inspect", statePath);
+    assert.equal(missing.status, 0, missing.stderr);
+    assert.equal(JSON.parse(missing.stdout).state, "missing");
+
+    const recovered = runProvisioner("recover", statePath, {
+      expectedSha256: digest,
+      input: recoveryKey,
+    });
+    assert.equal(recovered.status, 0, recovered.stderr);
+    assert.equal(JSON.parse(recovered.stdout).changed, true);
+
+    const matched = runProvisioner("matches", statePath, {
+      expectedSha256: digest,
+    });
+    assert.equal(matched.status, 0, matched.stderr);
+    assert.equal(JSON.parse(matched.stdout).matched, true);
+
+    const duplicate = runProvisioner("recover", statePath, {
+      expectedSha256: digest,
+      input: recoveryKey,
+    });
+    assert.equal(duplicate.status, 1);
+    assert.match(duplicate.stderr, /already exists/);
+
+    const wrongDiscard = runProvisioner("discard-recovery", statePath, {
+      expectedSha256: "0".repeat(64),
+    });
+    assert.equal(wrongDiscard.status, 1);
+    assert.match(wrongDiscard.stderr, /does not match the authorized discard/);
+    assert.notEqual(JSON.parse(readFileSync(statePath, "utf8")).itemId, null);
+
+    const discarded = runProvisioner("discard-recovery", statePath, {
+      expectedSha256: digest,
+    });
+    assert.equal(discarded.status, 0, discarded.stderr);
+    assert.equal(JSON.parse(discarded.stdout).changed, true);
+    let state = JSON.parse(readFileSync(statePath, "utf8"));
+    assert.equal(state.itemId ?? null, null);
+    assert.equal(state.exactDeleteCount, 1);
+
+    const missingDiscard = runProvisioner("discard-recovery", statePath, {
+      expectedSha256: digest,
+    });
+    assert.equal(missingDiscard.status, 0, missingDiscard.stderr);
+    assert.equal(JSON.parse(missingDiscard.stdout).changed, false);
+    state = JSON.parse(readFileSync(statePath, "utf8"));
+    assert.equal(state.exactDeleteCount, 1);
+
+    const output = [
+      missing,
+      recovered,
+      matched,
+      duplicate,
+      wrongDiscard,
+      discarded,
+      missingDiscard,
+    ]
+      .flatMap((result) => [result.stdout, result.stderr])
+      .join("\n");
+    assert.doesNotMatch(output, /BEGIN RSA PRIVATE KEY/);
+  },
+);
+
+test(
+  "native provisioner rolls back the exact item when creation validation fails",
+  { skip: !enabled },
+  () => {
+    const statePath = createProvisionerState();
+    const digest = createHash("sha256").update(recoveryKey).digest("hex");
+    const mismatched = runProvisioner("recover", statePath, {
+      expectedSha256: "0".repeat(64),
+      input: recoveryKey,
+    });
+    assert.equal(mismatched.status, 1);
+    assert.match(mismatched.stderr, /does not match the admitted file digest/);
+    let state = JSON.parse(readFileSync(statePath, "utf8"));
+    assert.equal(state.itemId ?? null, null);
+    assert.equal(state.exactDeleteCount, 0);
+
+    const result = runProvisioner("recover", statePath, {
+      expectedSha256: digest,
+      failure: "read-created",
+      input: recoveryKey,
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Injected test failure/);
+    state = JSON.parse(readFileSync(statePath, "utf8"));
+    assert.equal(state.itemId ?? null, null);
+    assert.equal(state.exactDeleteCount, 1);
+    assert.doesNotMatch(result.stdout + result.stderr, /BEGIN RSA PRIVATE KEY/);
+  },
+);
+
+test(
+  "native provisioner never widens rollback when exact deletion fails",
+  { skip: !enabled },
+  () => {
+    const statePath = createProvisionerState();
+    const digest = createHash("sha256").update(recoveryKey).digest("hex");
+    const result = runProvisioner("recover", statePath, {
+      expectedSha256: digest,
+      failure: "read-created-delete-created",
+      input: recoveryKey,
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /exact newly created item could not be rolled back/);
+    const state = JSON.parse(readFileSync(statePath, "utf8"));
+    assert.match(state.itemId, /^[a-f0-9-]{36}$/);
+    assert.equal(state.exactDeleteCount, 0);
+    assert.doesNotMatch(result.stdout + result.stderr, /BEGIN RSA PRIVATE KEY/);
+  },
+);
 
 test(
   "native installation verification proves exact App and repository scope",

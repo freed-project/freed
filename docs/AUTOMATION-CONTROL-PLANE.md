@@ -744,6 +744,22 @@ pinned binding, and requires a selected-repository installation for only
 `freed-project/freed`. The Keychain item uses service
 `freed-release-tag-publisher` and account `github-app-private-key`.
 
+Migrated-machine recovery is fail-closed and resumable. The disk PEM is
+admitted through one nonblocking, no-follow descriptor with exact owner, mode,
+link-count, size, path, inode, and stable-content checks. Native recovery binds
+the supplied bytes to that admitted SHA-256 fingerprint before adding the item.
+If later binding activation fails, the exact created key remains available for
+an identical retry. Recovery never performs broad automatic revocation. A
+different existing fingerprint blocks activation without changing the item.
+Discard is a separate digest-bound owner operation and deletes only the exact
+matching item reference. The stable control task is
+`release-publisher-key-recovery-2026-07-20`.
+
+The recovery and discard entry points remain fail-closed in this code-only
+checkpoint. They cannot mutate Keychain state until the outcome-ledger repair
+lands and supplies its exact current-task owner-confirmation validator. No
+environment flag or caller assertion substitutes for that validator.
+
 Activation requires an owner-reviewed change that pins the App ID in the
 creation policy. The release ruleset command verifies the exact App,
 installation, repository, permission, native binding, and publisher proof. It
@@ -850,6 +866,14 @@ when the caller deliberately selects the optional broker profile. The native
 broker repeats the trust checks at use time. Missing broker provisioning does
 not block normal GitHub-authenticated publication through
 `scripts/worktree-publish.sh`.
+
+The Release Publisher is not part of that default or PR publisher profile.
+`scripts/doctor.mjs --require-release-publisher` explicitly adds the fixed
+release host, provisioner, binding, executable digest, and native nonsecret
+Keychain ACL inspection. It requires exact root and wheel ownership, one link,
+mode `0555` for both executables, and mode `0444` for the binding. Ordinary
+development checks do not require that release-only credential. Release
+preparation must select the profile on purpose.
 
 ### Publisher credential provisioning and rotation
 

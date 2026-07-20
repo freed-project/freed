@@ -163,8 +163,8 @@ test("bootstrap lockdown performs one ruleset POST without App provisioning", (t
     ghPath,
     `#!/bin/sh
 printf '%s\n' "$*" >> "$FAKE_GH_LOG"
-if [ "$*" = "api repos/freed-project/freed/rulesets" ]; then
-  printf '[]'
+if [ "$*" = "api --paginate --slurp repos/freed-project/freed/rulesets?per_page=100" ]; then
+  printf '[[]]'
 else
   printf '{}'
 fi
@@ -295,6 +295,47 @@ test("release tag creation grants only the dedicated App while immutability gran
     ready: true,
     releaseAppId: 123456,
   });
+  assert.throws(
+    () =>
+      verifyLiveReleaseTagAuthority(
+        [
+          { ...lockdown, enforcement: "disabled" },
+          ...activeRulesets,
+          { ...lockdown, id: 999, enforcement: "active" },
+        ],
+        123456,
+      ),
+    /lockdown is still active/,
+  );
+  assert.deepEqual(
+    verifyLiveReleaseTagAuthority(
+      [...activeRulesets, { ...lockdown, enforcement: "active" }],
+      123456,
+      { allowActiveLockdown: true },
+    ),
+    { ready: true, releaseAppId: 123456 },
+  );
+  assert.throws(
+    () =>
+      verifyLiveReleaseTagAuthority(
+        [
+          { ...lockdown, enforcement: "disabled" },
+          ...activeRulesets,
+          { ...lockdown, id: 999, enforcement: "active" },
+        ],
+        123456,
+        { allowActiveLockdown: true },
+      ),
+    /exactly one active lockdown ruleset/,
+  );
+  assert.throws(
+    () =>
+      verifyLiveReleaseTagAuthority(
+        [activeCreation, { ...activeCreation, id: 998 }, immutability],
+        123456,
+      ),
+    /exactly one creation ruleset.*exactly one immutability ruleset/,
+  );
   assert.throws(
     () =>
       verifyLiveReleaseTagAuthority(

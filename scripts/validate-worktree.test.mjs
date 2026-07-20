@@ -452,6 +452,19 @@ test("feature plan for release tooling changes runs script tests and artifact va
   assert.ok(labels.includes("release note artifact validation"));
 });
 
+test("feature plan routes Release Publisher changes through the focused suite", () => {
+  const labels = describePlan(
+    buildValidationPlan("feature", [
+      "scripts/release-tag-publisher-provision.swift",
+      "scripts/release-tag-publisher-install.mjs",
+    ]),
+  );
+
+  assert.equal(labels[0], "root typecheck");
+  assert.ok(labels.includes("release notes shared tests"));
+  assert.ok(labels.includes("release publisher tests"));
+});
+
 test("collectReleaseArtifactsToValidate resolves markdown artifacts to their json pairs", () => {
   const artifacts = collectReleaseArtifactsToValidate([
     "release-notes/releases/v26.4.1602.md",
