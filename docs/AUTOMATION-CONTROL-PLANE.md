@@ -737,11 +737,16 @@ Release tags have a separate external trust boundary. The checked-in
 `release-tag-lockdown.json` is the bootstrap authority. Apply it with
 `--lock-release-tags --apply` before App provisioning. It restricts creation,
 update, and deletion with no bypass. `release-tag-publisher-install.mjs prepare`
-builds and installs the fixed root-owned native host and provisioner. This
-checkpoint does not create an App, add a credential, activate a binding, rotate
-a key, discard staged material, or revoke an active item. The manifest helper
-fails before it opens a browser or contacts GitHub. The production native
-provisioner accepts only `inspect`, `matches`, and `verify`. It rejects
+builds the fixed root-owned native host and provisioner. It installs the
+schema 2 `preparing` barrier before replacing either native executable,
+installs and verifies the lockdown provisioner and host, then records the exact
+pair as `prepared`. The binding pins both fixed paths, both file digests, and
+one digest over the native pair. An interrupted run changes no executable if
+the barrier cannot land and fails closed after the barrier. This checkpoint
+does not create an App, add a credential,
+activate a binding, rotate a key, discard staged material, or revoke an active
+item. The manifest helper fails before it opens a browser or contacts GitHub.
+The production native provisioner accepts only `inspect`, `matches`, and `verify`. It rejects
 `provision`, `recover`, `rotate`, `discard-recovery`, and `revoke` during action
 parsing, before it admits a caller-supplied host path or reads standard input.
 
@@ -754,8 +759,8 @@ The future recovery transaction must begin with one kernel-attested,
 current-task owner confirmation. Its exact intent must bind the action, App ID
 `4,296,969`, App slug `freed-release-publisher`, repository
 `freed-project/freed`, expected source commit and tree, admitted key
-fingerprint, native executable path and digest, transaction ID, and exact state
-transition. No environment flag, shell prompt, reusable lease, or caller
+fingerprint, both native executable paths and digests, native pair digest,
+transaction ID, and exact state transition. No environment flag, shell prompt, reusable lease, or caller
 assertion substitutes for that one-use authorization.
 
 An authorized key must first enter a distinct staged Keychain service and
@@ -786,7 +791,7 @@ active. It also requires the release commit to equal the current protected
 channel branch, validates the fixed product and promoted dev receipts, rejects
 an existing local or remote tag, and delegates one exact annotated-tag creation
 through the same fixed root-owned publisher binding used during activation. The
-binding, parent chain, executable digest, App identity, Keychain credential,
+binding, parent chains, host and provisioner digests, native pair digest, App identity, Keychain credential,
 selected repository, and installation permissions are rechecked immediately
 before use. The native host rechecks the branch tip and receipt at publication,
 then obtains and revokes one short-lived installation token. It does not accept
@@ -882,8 +887,9 @@ not block normal GitHub-authenticated publication through
 
 The Release Publisher is not part of that default or PR publisher profile.
 `scripts/doctor.mjs --require-release-publisher` explicitly adds the fixed
-release host, provisioner, binding, executable digest, and native nonsecret
-Keychain ACL inspection. It requires exact root and wheel ownership, one link,
+release host, provisioner, binding, both executable digests, and native nonsecret
+Keychain ACL inspection. The schema 2 binding and readiness attestation must
+agree on both executable digests and the native pair digest. It requires exact root and wheel ownership, one link,
 mode `0555` for both executables, and mode `0444` for the binding. Ordinary
 development checks do not require that release-only credential. Release
 preparation must select the profile on purpose.

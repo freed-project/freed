@@ -457,6 +457,7 @@ test("feature plan routes Release Publisher changes through the focused suite", 
     buildValidationPlan("feature", [
       "scripts/release-tag-publisher-provision.swift",
       "scripts/release-tag-publisher-install.mjs",
+      "scripts/lib/release-tag-publisher-binding.mjs",
     ]),
   );
 

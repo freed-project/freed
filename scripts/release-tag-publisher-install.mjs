@@ -21,6 +21,17 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  RELEASE_TAG_PUBLISHER_APP_ID as RELEASE_GITHUB_APP_ID,
+  RELEASE_TAG_PUBLISHER_APP_SLUG as RELEASE_GITHUB_APP_SLUG,
+  RELEASE_TAG_PUBLISHER_BINDING_PURPOSE,
+  RELEASE_TAG_PUBLISHER_BINDING_SCHEMA_VERSION,
+  RELEASE_TAG_PUBLISHER_REPO,
+  releaseTagPublisherNativePairSha256,
+  verifyReleaseTagPublisherBindingShape,
+} from "./lib/release-tag-publisher-binding.mjs";
+import { verifyReleaseTagPublisherReadiness } from "./lib/release-tag-publisher.mjs";
+
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), "..");
 
@@ -40,9 +51,8 @@ export const RELEASE_TAG_PUBLISHER_CONFIG = path.join(
 );
 const RELEASE_TAG_PUBLISHER_KEYCHAIN_SERVICE = "freed-release-tag-publisher";
 const RELEASE_TAG_PUBLISHER_KEYCHAIN_ACCOUNT = "github-app-private-key";
-const RELEASE_GITHUB_APP_ID = 4_296_969;
-const RELEASE_GITHUB_APP_SLUG = "freed-release-publisher";
 const MAXIMUM_PRIVATE_KEY_BYTES = 32 * 1_024;
+const MAXIMUM_BINDING_BYTES = 64 * 1_024;
 const DARWIN_O_CLOEXEC = 0x01000000;
 
 class InstallerError extends Error {}
@@ -64,6 +74,7 @@ function defaultDependencies() {
     provisionerPath: RELEASE_TAG_PUBLISHER_PROVISIONER,
     configPath: RELEASE_TAG_PUBLISHER_CONFIG,
     run: spawnSync,
+    readInstalledConfig: inspectInstalledConfig,
     authorizeRecovery() {
       fail(
         "Release Publisher credential mutation is unavailable until one-use kernel-attested owner authorization and staged GitHub identity proof are integrated.",
@@ -121,6 +132,80 @@ function inspectInstalledHost(filePath) {
   return filePath;
 }
 
+function inspectInstalledConfig(filePath) {
+  let descriptor;
+  let bytes;
+  try {
+    if (!path.isAbsolute(filePath) || realpathSync(filePath) !== filePath) {
+      fail(
+        "The installed publisher binding must use a canonical absolute path.",
+      );
+    }
+    const link = lstatSync(filePath, { bigint: true });
+    descriptor = openSync(
+      filePath,
+      constants.O_RDONLY |
+        constants.O_NOFOLLOW |
+        constants.O_NONBLOCK |
+        (constants.O_CLOEXEC ?? DARWIN_O_CLOEXEC),
+    );
+    const before = fstatSync(descriptor, { bigint: true });
+    if (
+      !link.isFile() ||
+      !before.isFile() ||
+      link.dev !== before.dev ||
+      link.ino !== before.ino ||
+      before.uid !== 0n ||
+      before.gid !== 0n ||
+      before.nlink !== 1n ||
+      (before.mode & 0o777n) !== 0o444n ||
+      before.size <= 0n ||
+      before.size > BigInt(MAXIMUM_BINDING_BYTES)
+    ) {
+      fail("The installed publisher binding is not an exact root-owned file.");
+    }
+    const expectedSize = Number(before.size);
+    bytes = Buffer.alloc(expectedSize + 1);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const count = readSync(
+        descriptor,
+        bytes,
+        offset,
+        bytes.length - offset,
+        offset,
+      );
+      if (count === 0) break;
+      offset += count;
+    }
+    const after = fstatSync(descriptor, { bigint: true });
+    if (
+      offset !== expectedSize ||
+      before.dev !== after.dev ||
+      before.ino !== after.ino ||
+      before.size !== after.size ||
+      before.mode !== after.mode ||
+      before.uid !== after.uid ||
+      before.gid !== after.gid ||
+      before.nlink !== after.nlink ||
+      before.mtimeNs !== after.mtimeNs ||
+      before.ctimeNs !== after.ctimeNs
+    ) {
+      fail("The installed publisher binding changed during admission.");
+    }
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(
+      bytes.subarray(0, expectedSize),
+    );
+    return JSON.parse(text);
+  } catch (error) {
+    if (error instanceof InstallerError) throw error;
+    fail("The installed publisher binding could not be admitted safely.");
+  } finally {
+    bytes?.fill(0);
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
 function withPrivateDirectory(dependencies, operation) {
   const created = mkdtempSync(
     path.join(dependencies.tempRoot, "freed-release-tag-publisher-"),
@@ -138,6 +223,52 @@ function sudoInstall(dependencies, args, purpose) {
   runChecked(dependencies, "/usr/bin/sudo", ["/usr/bin/install", ...args], {
     purpose,
   });
+}
+
+function nativePairBinding(
+  dependencies,
+  { status, publisherSha256, provisionerSha256 },
+) {
+  const binding = {
+    schemaVersion: RELEASE_TAG_PUBLISHER_BINDING_SCHEMA_VERSION,
+    purpose: RELEASE_TAG_PUBLISHER_BINDING_PURPOSE,
+    status,
+    repo: RELEASE_TAG_PUBLISHER_REPO,
+    appId: RELEASE_GITHUB_APP_ID,
+    appSlug: RELEASE_GITHUB_APP_SLUG,
+    publisherPath: dependencies.hostPath,
+    publisherSha256,
+    provisionerPath: dependencies.provisionerPath,
+    provisionerSha256,
+  };
+  return {
+    ...binding,
+    nativePairSha256: releaseTagPublisherNativePairSha256(binding),
+  };
+}
+
+function installBinding(dependencies, directory, binding, purpose) {
+  const source = path.join(
+    directory,
+    `release-tag-publisher.${binding.status}.json`,
+  );
+  writeFileSync(source, `${JSON.stringify(binding, null, 2)}\n`, {
+    mode: 0o600,
+  });
+  sudoInstall(
+    dependencies,
+    [
+      "-o",
+      "root",
+      "-g",
+      "wheel",
+      "-m",
+      "0444",
+      source,
+      dependencies.configPath,
+    ],
+    purpose,
+  );
 }
 
 export function prepareReleaseTagPublisher({ dependencies: overrides } = {}) {
@@ -160,6 +291,8 @@ export function prepareReleaseTagPublisher({ dependencies: overrides } = {}) {
       ],
       { purpose: "Release tag publisher native build" },
     );
+    const publisherSha256 = sha256File(hostOutput);
+    const provisionerSha256 = sha256File(provisionerOutput);
     sudoInstall(
       dependencies,
       [
@@ -174,6 +307,36 @@ export function prepareReleaseTagPublisher({ dependencies: overrides } = {}) {
       ],
       "Release tag publisher directory installation",
     );
+    const preparingBinding = nativePairBinding(dependencies, {
+      status: "preparing",
+      publisherSha256,
+      provisionerSha256,
+    });
+    installBinding(
+      dependencies,
+      directory,
+      preparingBinding,
+      "Release tag publisher fail-closed native cutover binding installation",
+    );
+    sudoInstall(
+      dependencies,
+      [
+        "-o",
+        "root",
+        "-g",
+        "wheel",
+        "-m",
+        "0555",
+        provisionerOutput,
+        dependencies.provisionerPath,
+      ],
+      "Release tag publisher lockdown provisioner installation",
+    );
+    if (sha256File(dependencies.provisionerPath) !== provisionerSha256) {
+      fail(
+        "The installed lockdown provisioner digest does not match its build.",
+      );
+    }
     sudoInstall(
       dependencies,
       [
@@ -188,27 +351,70 @@ export function prepareReleaseTagPublisher({ dependencies: overrides } = {}) {
       ],
       "Release tag publisher host installation",
     );
-    sudoInstall(
+    if (
+      sha256File(dependencies.hostPath) !== publisherSha256 ||
+      sha256File(dependencies.provisionerPath) !== provisionerSha256
+    ) {
+      fail(
+        "The installed release publisher native pair is mixed or incomplete.",
+      );
+    }
+    const preparedBinding = {
+      ...preparingBinding,
+      status: "prepared",
+    };
+    installBinding(
       dependencies,
-      [
-        "-o",
-        "root",
-        "-g",
-        "wheel",
-        "-m",
-        "0555",
-        provisionerOutput,
-        dependencies.provisionerPath,
-      ],
-      "Release tag publisher provisioner installation",
+      directory,
+      preparedBinding,
+      "Release tag publisher prepared native pair binding installation",
     );
     return {
       action: "prepare",
       hostPath: dependencies.hostPath,
       provisionerPath: dependencies.provisionerPath,
-      publisherSha256: sha256File(dependencies.hostPath),
+      publisherSha256,
+      provisionerSha256,
+      nativePairSha256: preparedBinding.nativePairSha256,
     };
   });
+}
+
+function loadInstalledBinding(dependencies, statuses) {
+  const binding = dependencies.readInstalledConfig(dependencies.configPath);
+  verifyReleaseTagPublisherBindingShape(binding, { statuses });
+  if (
+    binding.publisherPath !== dependencies.hostPath ||
+    binding.provisionerPath !== dependencies.provisionerPath
+  ) {
+    fail(
+      "The installed publisher binding does not use the fixed native paths.",
+    );
+  }
+  return binding;
+}
+
+function verifyInstalledNativePair(dependencies, binding) {
+  requireInstalledExecutable(dependencies, binding.publisherPath);
+  requireInstalledExecutable(dependencies, binding.provisionerPath);
+  const publisherSha256 = sha256File(binding.publisherPath);
+  const provisionerSha256 = sha256File(binding.provisionerPath);
+  if (
+    publisherSha256 !== binding.publisherSha256 ||
+    provisionerSha256 !== binding.provisionerSha256
+  ) {
+    fail("The installed release publisher native pair is mixed or incomplete.");
+  }
+  return { publisherSha256, provisionerSha256 };
+}
+
+function requireBoundNativePair(dependencies, statuses = ["active"]) {
+  if (typeof dependencies.verifyInstalledNativePair === "function") {
+    return dependencies.verifyInstalledNativePair({ statuses });
+  }
+  const binding = loadInstalledBinding(dependencies, statuses);
+  verifyInstalledNativePair(dependencies, binding);
+  return binding;
 }
 
 function validateAppIdentity(appId, appSlug) {
@@ -235,54 +441,50 @@ export function activateReleaseTagPublisher({
     appSlug: identity.appSlug,
     repo: "freed-project/freed",
   });
-  requireInstalledExecutable(dependencies, dependencies.hostPath);
-  requireInstalledExecutable(dependencies, dependencies.provisionerPath);
-  const publisherSha256 = sha256File(dependencies.hostPath);
-  const binding = {
-    schemaVersion: 1,
-    purpose: "freed-release-tag-publisher-binding",
-    status: "active",
-    repo: "freed-project/freed",
-    appId: identity.appId,
-    appSlug: identity.appSlug,
-    publisherPath: dependencies.hostPath,
-    publisherSha256,
-  };
-  withPrivateDirectory(dependencies, (directory) => {
-    const source = path.join(directory, "release-tag-publisher.json");
-    writeFileSync(source, `${JSON.stringify(binding, null, 2)}\n`, {
-      mode: 0o600,
+  const prepared = loadInstalledBinding(dependencies, ["prepared", "active"]);
+  verifyInstalledNativePair(dependencies, prepared);
+  const recovered = prepared.status === "active";
+  const binding = recovered ? prepared : { ...prepared, status: "active" };
+  if (!recovered) {
+    withPrivateDirectory(dependencies, (directory) => {
+      installBinding(
+        dependencies,
+        directory,
+        binding,
+        "Release tag publisher active native pair binding installation",
+      );
     });
-    sudoInstall(
+  }
+  const attestation = JSON.parse(
+    runChecked(
       dependencies,
+      dependencies.hostPath,
       [
-        "-o",
-        "root",
-        "-g",
-        "wheel",
-        "-m",
-        "0444",
-        source,
-        dependencies.configPath,
+        "attest",
+        "--repo",
+        binding.repo,
+        "--app-id",
+        String(binding.appId),
+        "--app-slug",
+        binding.appSlug,
       ],
-      "Release tag publisher binding installation",
-    );
-  });
-  const attestation = runChecked(
-    dependencies,
-    dependencies.hostPath,
-    [
-      "attest",
-      "--repo",
-      binding.repo,
-      "--app-id",
-      String(binding.appId),
-      "--app-slug",
-      binding.appSlug,
-    ],
-    { purpose: "Release tag publisher local attestation" },
+      { purpose: "Release tag publisher local attestation" },
+    ),
   );
-  return { action: "activate", binding, attestation: JSON.parse(attestation) };
+  verifyReleaseTagPublisherReadiness(attestation, {
+    repo: binding.repo,
+    releaseAppId: binding.appId,
+    releaseAppSlug: binding.appSlug,
+    publisherDigest: binding.publisherSha256,
+    provisionerDigest: binding.provisionerSha256,
+    nativePairDigest: binding.nativePairSha256,
+  });
+  return {
+    action: "activate",
+    recovered,
+    binding,
+    attestation,
+  };
 }
 
 function privateKeyMetadataIdentity(metadata) {
@@ -503,8 +705,7 @@ export function provisionReleaseTagPublisher({
       admission.assertUnchanged();
       credentialAction = "recovered";
     } else {
-      requireInstalledExecutable(dependencies, dependencies.hostPath);
-      requireInstalledExecutable(dependencies, dependencies.provisionerPath);
+      requireBoundNativePair(dependencies);
     }
     admission.assertUnchanged();
     invokeProvisioner(dependencies, "matches", {
@@ -529,9 +730,7 @@ export function provisionReleaseTagPublisher({
 
 export function verifyReleaseTagPublisher({ dependencies: overrides } = {}) {
   const dependencies = dependenciesWith(overrides);
-  const binding = JSON.parse(readFileSync(dependencies.configPath, "utf8"));
-  requireInstalledExecutable(dependencies, dependencies.hostPath);
-  requireInstalledExecutable(dependencies, dependencies.provisionerPath);
+  const binding = requireBoundNativePair(dependencies);
   invokeProvisioner(dependencies, "verify");
   const readiness = runChecked(
     dependencies,
@@ -560,8 +759,7 @@ export function rotateReleaseTagPublisher({
       action: "release-tag-publisher.rotate-staged-key",
       privateKeySha256: admission.digest,
     });
-    requireInstalledExecutable(dependencies, dependencies.hostPath);
-    requireInstalledExecutable(dependencies, dependencies.provisionerPath);
+    requireBoundNativePair(dependencies);
     admission.assertUnchanged();
     invokeProvisioner(dependencies, "rotate", {
       descriptor: admission.descriptor,
@@ -576,8 +774,7 @@ export function inspectReleaseTagPublisherCredential({
   dependencies: overrides,
 } = {}) {
   const dependencies = dependenciesWith(overrides);
-  requireInstalledExecutable(dependencies, dependencies.hostPath);
-  requireInstalledExecutable(dependencies, dependencies.provisionerPath);
+  requireBoundNativePair(dependencies);
   const result = invokeProvisioner(dependencies, "inspect");
   return { action: "inspect", state: result.state };
 }
@@ -594,8 +791,7 @@ export function discardReleaseTagPublisherRecovery({
     action: "release-tag-publisher.discard-staged-key",
     privateKeySha256: expectedSha256,
   });
-  requireInstalledExecutable(dependencies, dependencies.hostPath);
-  requireInstalledExecutable(dependencies, dependencies.provisionerPath);
+  requireBoundNativePair(dependencies);
   const result = invokeProvisioner(dependencies, "discard-recovery", {
     expectedSha256,
   });
@@ -610,6 +806,7 @@ export function revokeReleaseTagPublisher({ dependencies: overrides } = {}) {
     appSlug: RELEASE_GITHUB_APP_SLUG,
     repo: "freed-project/freed",
   });
+  requireBoundNativePair(dependencies);
   invokeProvisioner(dependencies, "revoke");
   runChecked(
     dependencies,

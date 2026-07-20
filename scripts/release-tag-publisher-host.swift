@@ -5,6 +5,8 @@ import Security
 
 private let productionConfigPath =
   "/Library/Application Support/Freed/release-tag-publisher.json"
+private let productionProvisionerPath =
+  "/Library/Application Support/Freed/release-tag-publisher-provision"
 private let keychainService = "freed-release-tag-publisher"
 private let keychainAccount = "github-app-private-key"
 private let productionAPIBase = "https://api.github.com"
@@ -26,6 +28,15 @@ private struct PublisherBinding: Decodable {
   let appSlug: String
   let publisherPath: String
   let publisherSha256: String
+  let provisionerPath: String
+  let provisionerSha256: String
+  let nativePairSha256: String
+}
+
+private struct NativePairIdentity {
+  let publisherSha256: String
+  let provisionerSha256: String
+  let nativePairSha256: String
 }
 
 private struct ParsedCommand {
@@ -241,6 +252,17 @@ private func sha256(_ data: Data) -> String {
   SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
 }
 
+private func nativePairSha256(_ binding: PublisherBinding) -> String {
+  sha256(Data([
+    "freed-release-tag-publisher-native-pair-v1",
+    binding.publisherPath,
+    binding.publisherSha256,
+    binding.provisionerPath,
+    binding.provisionerSha256,
+    "",
+  ].joined(separator: "\n").utf8))
+}
+
 private func validateLowercaseHex(_ value: String, count: Int, label: String) throws {
   guard value.count == count,
     value.unicodeScalars.allSatisfy({
@@ -263,7 +285,8 @@ private func loadBinding(_ path: String) throws -> PublisherBinding {
   let object = try JSONSerialization.jsonObject(with: data)
   let expectedKeys: Set<String> = [
     "schemaVersion", "purpose", "status", "repo", "appId", "appSlug",
-    "publisherPath", "publisherSha256",
+    "publisherPath", "publisherSha256", "provisionerPath", "provisionerSha256",
+    "nativePairSha256",
   ]
   guard let dictionary = object as? [String: Any], Set(dictionary.keys) == expectedKeys else {
     try fail("The publisher binding contains unsupported or missing fields.")
@@ -274,23 +297,30 @@ private func loadBinding(_ path: String) throws -> PublisherBinding {
   } catch {
     try fail("The publisher binding has invalid field types.")
   }
-  guard binding.schemaVersion == 1,
+  guard binding.schemaVersion == 2,
     binding.purpose == "freed-release-tag-publisher-binding",
     binding.status == "active",
     binding.repo == "freed-project/freed",
-    binding.appId > 0,
-    !binding.appSlug.isEmpty
+    binding.appId == 4_296_969,
+    binding.appSlug == "freed-release-publisher"
   else {
     try fail("The publisher binding identity is invalid.")
   }
   try validateLowercaseHex(binding.publisherSha256, count: 64, label: "publisher digest")
+  try validateLowercaseHex(
+    binding.provisionerSha256, count: 64, label: "publisher provisioner digest")
+  try validateLowercaseHex(
+    binding.nativePairSha256, count: 64, label: "publisher native pair digest")
+  guard nativePairSha256(binding) == binding.nativePairSha256 else {
+    try fail("The publisher native pair digest is invalid.")
+  }
   return binding
 }
 
 private func validateBinding(
   _ binding: PublisherBinding,
   parsed: ParsedCommand
-) throws -> String {
+) throws -> NativePairIdentity {
   let executable = try currentExecutablePath()
   #if RELEASE_TAG_PUBLISHER_HOST_TESTING
     let testing = parsed.configPath != productionConfigPath
@@ -303,9 +333,25 @@ private func validateBinding(
   guard executable == boundPublisher else {
     try fail("The running publisher does not match the bound publisher path.")
   }
-  let digest = sha256(try readBoundedFile(executable, maximumBytes: 64 * 1_024 * 1_024))
-  guard digest == binding.publisherSha256 else {
+  let publisherDigest = sha256(
+    try readBoundedFile(executable, maximumBytes: 64 * 1_024 * 1_024))
+  guard publisherDigest == binding.publisherSha256 else {
     try fail("The running publisher does not match the bound publisher digest.")
+  }
+  let boundProvisioner = try canonicalExistingPath(
+    binding.provisionerPath, label: "bound publisher provisioner")
+  #if !RELEASE_TAG_PUBLISHER_HOST_TESTING
+    guard boundProvisioner == productionProvisionerPath else {
+      try fail("The publisher provisioner does not use its fixed production path.")
+    }
+  #endif
+  try requireTrustedFile(
+    boundProvisioner, executable: true, testingOwnerAllowed: testing)
+  try requireTrustedParents(boundProvisioner, testingOwnerAllowed: testing)
+  let provisionerDigest = sha256(
+    try readBoundedFile(boundProvisioner, maximumBytes: 64 * 1_024 * 1_024))
+  guard provisionerDigest == binding.provisionerSha256 else {
+    try fail("The publisher provisioner does not match the bound provisioner digest.")
   }
   guard parsed.values["--repo"] == binding.repo else {
     try fail("Publisher arguments do not match the root-owned App binding.")
@@ -317,7 +363,11 @@ private func validateBinding(
       try fail("Publisher arguments do not match the root-owned App binding.")
     }
   }
-  return digest
+  return NativePairIdentity(
+    publisherSha256: publisherDigest,
+    provisionerSha256: provisionerDigest,
+    nativePairSha256: binding.nativePairSha256
+  )
 }
 
 private func readKeychainSecret() throws -> Data {
@@ -897,7 +947,7 @@ private func main() -> Int32 {
     clearEnvironment()
     let parsed = try parseCommand(rawArguments)
     let binding = try loadBinding(parsed.configPath)
-    let digest = try validateBinding(binding, parsed: parsed)
+    let nativePair = try validateBinding(binding, parsed: parsed)
     var secret = try readPrivateKey(parsed)
     defer { secret.resetBytes(in: 0..<secret.count) }
     let key = try privateRSAKey(from: secret)
@@ -907,7 +957,7 @@ private func main() -> Int32 {
     switch parsed.name {
     case "attest":
       try emitJSON([
-        "schemaVersion": AnyEncodable(1),
+        "schemaVersion": AnyEncodable(2),
         "purpose": AnyEncodable("freed-release-tag-publisher-readiness"),
         "repo": AnyEncodable(binding.repo),
         "appId": AnyEncodable(binding.appId),
@@ -917,7 +967,9 @@ private func main() -> Int32 {
         "allowsArbitraryRefs": AnyEncodable(false),
         "allowsUpdates": AnyEncodable(false),
         "allowsDeletions": AnyEncodable(false),
-        "digest": AnyEncodable(digest),
+        "publisherSha256": AnyEncodable(nativePair.publisherSha256),
+        "provisionerSha256": AnyEncodable(nativePair.provisionerSha256),
+        "nativePairSha256": AnyEncodable(nativePair.nativePairSha256),
       ])
     case "verify-installation":
       var context = try installationContext(binding: binding, key: key, client: client)

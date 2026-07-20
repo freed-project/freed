@@ -40,6 +40,7 @@ import {
   installAutomationKernelGuardCutoverFixture,
   rewriteAutomationKernelGuardCutoverTransactionFixture,
 } from "./test-helpers/automation-kernel-guard.mjs";
+import { releaseTagPublisherNativePairSha256 } from "./lib/release-tag-publisher-binding.mjs";
 
 const sourceRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -73,6 +74,28 @@ function writePrettyJson(filePath, value) {
 
 function installKernelGuardCutoverFixture(stateDir) {
   return installAutomationKernelGuardCutoverFixture(stateDir).paths;
+}
+
+function releasePublisherBinding(hostPath, provisionerPath, overrides = {}) {
+  const binding = {
+    schemaVersion: 2,
+    purpose: "freed-release-tag-publisher-binding",
+    status: "active",
+    repo: "freed-project/freed",
+    appId: 4_296_969,
+    appSlug: "freed-release-publisher",
+    publisherPath: hostPath,
+    publisherSha256: sha256(hostPath),
+    provisionerPath,
+    provisionerSha256: sha256(provisionerPath),
+    ...overrides,
+  };
+  return {
+    ...binding,
+    nativePairSha256:
+      overrides.nativePairSha256 ??
+      releaseTagPublisherNativePairSha256(binding),
+  };
 }
 
 function writePublisherConfigFixture(home, overrides = {}) {
@@ -1427,16 +1450,7 @@ test("release publisher doctor profile is separate and uses native ACL inspectio
   writeFileSync(provisionerPath, "provisioner", { mode: 0o700 });
   writeFileSync(
     configPath,
-    `${JSON.stringify({
-      schemaVersion: 1,
-      purpose: "freed-release-tag-publisher-binding",
-      status: "active",
-      repo: "freed-project/freed",
-      appId: 4_296_969,
-      appSlug: "freed-release-publisher",
-      publisherPath: hostPath,
-      publisherSha256: sha256(hostPath),
-    })}\n`,
+    `${JSON.stringify(releasePublisherBinding(hostPath, provisionerPath))}\n`,
     { mode: 0o600 },
   );
   const calls = [];
@@ -1573,22 +1587,64 @@ test("release publisher doctor never executes after invalid config admission", (
   assert.equal(runs, 0);
 });
 
-test("release publisher doctor never executes native code off macOS", () => {
+test("release publisher doctor rejects a mixed native generation before execution", (t) => {
+  const root = mkdtempSync(
+    path.join(os.tmpdir(), "freed-doctor-release-publisher-mixed-"),
+  );
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const hostPath = path.join(root, "release-tag-publisher");
+  const provisionerPath = path.join(root, "release-tag-publisher-provision");
+  const configPath = path.join(root, "release-tag-publisher.json");
+  writeFileSync(hostPath, "host", { mode: 0o700 });
+  writeFileSync(provisionerPath, "provisioner", { mode: 0o700 });
   let runs = 0;
-  const config = {
-    schemaVersion: 1,
-    purpose: "freed-release-tag-publisher-binding",
-    status: "active",
-    repo: "freed-project/freed",
-    appId: 4_296_969,
-    appSlug: "freed-release-publisher",
-    publisherPath: "/admitted/host",
-    publisherSha256: "a".repeat(64),
-  };
+  const checkBinding = (binding) =>
+    checkReleaseTagPublisherConfig({
+      configPath,
+      hostPath,
+      provisionerPath,
+      inspectPath: () => [],
+      readConfig: () => JSON.stringify(binding),
+      run() {
+        runs += 1;
+        return { status: 0 };
+      },
+      platform: "darwin",
+    });
+
+  const wrongProvisioner = releasePublisherBinding(hostPath, provisionerPath, {
+    provisionerSha256: "c".repeat(64),
+  });
+  const mixed = checkBinding(wrongProvisioner);
+  assert.equal(mixed.status, "fail");
+  assert.match(mixed.detail, /provisioner digest does not match/);
+  assert.equal(runs, 0);
+
+  const invalidPair = checkBinding(
+    releasePublisherBinding(hostPath, provisionerPath, {
+      nativePairSha256: "0".repeat(64),
+    }),
+  );
+  assert.equal(invalidPair.status, "fail");
+  assert.match(invalidPair.detail, /binding is invalid/);
+  assert.equal(runs, 0);
+});
+
+test("release publisher doctor never executes native code off macOS", (t) => {
+  let runs = 0;
+  const root = mkdtempSync(
+    path.join(os.tmpdir(), "freed-doctor-release-publisher-platform-"),
+  );
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const hostPath = path.join(root, "host");
+  const provisionerPath = path.join(root, "provisioner");
+  writeFileSync(hostPath, "host");
+  writeFileSync(provisionerPath, "provisioner");
+  const config = releasePublisherBinding(hostPath, provisionerPath);
   const result = checkReleaseTagPublisherConfig({
     configPath: "/admitted/config",
-    hostPath: "/admitted/host",
-    provisionerPath: "/admitted/provisioner",
+    hostPath,
+    provisionerPath,
     inspectPath: () => [],
     readConfig: () => JSON.stringify(config),
     run() {

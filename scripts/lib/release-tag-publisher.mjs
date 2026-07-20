@@ -3,13 +3,14 @@ import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 
+import { verifyReleaseTagPublisherBindingShape } from "./release-tag-publisher-binding.mjs";
+
 export const RELEASE_TAG_PUBLISHER_CONFIG =
   "/Library/Application Support/Freed/release-tag-publisher.json";
 
 export const RELEASE_TAG_INSTALLATION_READINESS_PURPOSE =
   "freed-release-tag-publisher-installation-readiness";
 
-const RELEASE_REPO = "freed-project/freed";
 const RELEASE_ACCOUNT = "freed-project";
 
 function hasExactKeys(value, expected) {
@@ -66,11 +67,33 @@ function verifyPinnedFile(filePath, { executable = false } = {}) {
 
 export function verifyReleaseTagPublisherReadiness(
   attestation,
-  { repo, releaseAppId, releaseAppSlug, publisherDigest },
+  {
+    repo,
+    releaseAppId,
+    releaseAppSlug,
+    publisherDigest,
+    provisionerDigest,
+    nativePairDigest,
+  },
 ) {
   const expectedOperations = ["create-annotated-tag"];
   if (
-    attestation?.schemaVersion !== 1 ||
+    !hasExactKeys(attestation, [
+      "allowsArbitraryRefs",
+      "allowsDeletions",
+      "allowsUpdates",
+      "appId",
+      "appSlug",
+      "credentialMode",
+      "nativePairSha256",
+      "operations",
+      "provisionerSha256",
+      "publisherSha256",
+      "purpose",
+      "repo",
+      "schemaVersion",
+    ]) ||
+    attestation.schemaVersion !== 2 ||
     attestation?.purpose !== "freed-release-tag-publisher-readiness" ||
     attestation?.repo !== repo ||
     Number(attestation?.appId) !== Number(releaseAppId) ||
@@ -82,13 +105,20 @@ export function verifyReleaseTagPublisherReadiness(
     attestation?.allowsArbitraryRefs !== false ||
     attestation?.allowsUpdates !== false ||
     attestation?.allowsDeletions !== false ||
-    attestation?.digest !== publisherDigest
+    attestation?.publisherSha256 !== publisherDigest ||
+    attestation?.provisionerSha256 !== provisionerDigest ||
+    attestation?.nativePairSha256 !== nativePairDigest
   ) {
     throw new Error(
       "Release tag publisher attestation does not match the pinned short-lived annotated-tag publisher.",
     );
   }
-  return { ready: true, publisherDigest };
+  return {
+    ready: true,
+    publisherDigest,
+    provisionerDigest,
+    nativePairDigest,
+  };
 }
 
 export function verifyReleaseTagPublisherInstallationReadiness(
@@ -155,27 +185,16 @@ export function verifyReleaseTagPublisherInstallationReadiness(
 }
 
 export function verifyReleaseTagPublisherConfig(config) {
-  if (
-    config?.schemaVersion !== 1 ||
-    config?.purpose !== "freed-release-tag-publisher-binding" ||
-    config?.status !== "active" ||
-    config?.repo !== RELEASE_REPO ||
-    !Number.isSafeInteger(config?.appId) ||
-    config.appId <= 0 ||
-    typeof config?.appSlug !== "string" ||
-    config.appSlug.length === 0 ||
-    typeof config?.publisherPath !== "string" ||
-    !/^[0-9a-f]{64}$/.test(config?.publisherSha256 ?? "")
-  ) {
-    throw new Error("Release tag publisher binding is missing or malformed.");
-  }
-  return config;
+  return verifyReleaseTagPublisherBindingShape(config, {
+    statuses: ["active"],
+  });
 }
 
 export function verifyReleaseTagPublisherInstallation(
   binding,
   { exec = execFileSync } = {},
 ) {
+  verifyReleaseTagPublisherConfig(binding);
   const raw = exec(
     binding.publisherPath,
     [
@@ -206,13 +225,19 @@ export function verifyReleaseTagPublisherInstallation(
 
 export function verifyReleaseTagPublisherBinding(
   config,
-  actualDigest,
+  actualPublisherDigest,
+  actualProvisionerDigest,
   attestation,
 ) {
   verifyReleaseTagPublisherConfig(config);
-  if (actualDigest !== config.publisherSha256) {
+  if (actualPublisherDigest !== config.publisherSha256) {
     throw new Error(
       "Release tag publisher executable digest does not match its binding.",
+    );
+  }
+  if (actualProvisionerDigest !== config.provisionerSha256) {
+    throw new Error(
+      "Release tag publisher provisioner digest does not match its binding.",
     );
   }
   verifyReleaseTagPublisherReadiness(attestation, {
@@ -220,8 +245,15 @@ export function verifyReleaseTagPublisherBinding(
     releaseAppId: config.appId,
     releaseAppSlug: config.appSlug,
     publisherDigest: config.publisherSha256,
+    provisionerDigest: config.provisionerSha256,
+    nativePairDigest: config.nativePairSha256,
   });
-  return { ready: true, publisherDigest: actualDigest };
+  return {
+    ready: true,
+    publisherDigest: actualPublisherDigest,
+    provisionerDigest: actualProvisionerDigest,
+    nativePairDigest: config.nativePairSha256,
+  };
 }
 
 export function loadAndVerifyReleaseTagPublisher({
@@ -232,8 +264,12 @@ export function loadAndVerifyReleaseTagPublisher({
   const config = JSON.parse(readFileSync(configPath, "utf8"));
   verifyReleaseTagPublisherConfig(config);
   verifyPinnedFile(config.publisherPath, { executable: true });
-  const digest = createHash("sha256")
+  verifyPinnedFile(config.provisionerPath, { executable: true });
+  const publisherDigest = createHash("sha256")
     .update(readFileSync(config.publisherPath))
+    .digest("hex");
+  const provisionerDigest = createHash("sha256")
+    .update(readFileSync(config.provisionerPath))
     .digest("hex");
   const attestation = JSON.parse(
     exec(
@@ -250,6 +286,11 @@ export function loadAndVerifyReleaseTagPublisher({
       { encoding: "utf8", maxBuffer: 1024 * 1024 },
     ),
   );
-  verifyReleaseTagPublisherBinding(config, digest, attestation);
+  verifyReleaseTagPublisherBinding(
+    config,
+    publisherDigest,
+    provisionerDigest,
+    attestation,
+  );
   return { ...config, configPath };
 }

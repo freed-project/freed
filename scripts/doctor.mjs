@@ -42,6 +42,10 @@ import {
   conservativeLeaseCleanupArchiveReservation,
   inspectLeaseCleanupArchiveCapacity,
 } from "./lib/automation-control.mjs";
+import {
+  RELEASE_TAG_PUBLISHER_BINDING_KEYS,
+  verifyReleaseTagPublisherBindingShape,
+} from "./lib/release-tag-publisher-binding.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -61,16 +65,6 @@ const RELEASE_TAG_PUBLISHER_CONFIG_PATH = path.join(
   RELEASE_TAG_PUBLISHER_DIRECTORY,
   "release-tag-publisher.json",
 );
-const RELEASE_TAG_PUBLISHER_CONFIG_KEYS = Object.freeze([
-  "appId",
-  "appSlug",
-  "publisherPath",
-  "publisherSha256",
-  "purpose",
-  "repo",
-  "schemaVersion",
-  "status",
-]);
 const RELEASE_TAG_PUBLISHER_CONFIG_MAXIMUM_BYTES = 64 * 1_024;
 const DARWIN_O_CLOEXEC = 0x01000000;
 
@@ -1203,27 +1197,39 @@ export function checkReleaseTagPublisherConfig({
   if (config) {
     if (
       JSON.stringify(Object.keys(config).sort()) !==
-      JSON.stringify(RELEASE_TAG_PUBLISHER_CONFIG_KEYS)
+      JSON.stringify(RELEASE_TAG_PUBLISHER_BINDING_KEYS)
     ) {
       problems.push(
-        `the release tag publisher config must contain exactly: ${RELEASE_TAG_PUBLISHER_CONFIG_KEYS.join(", ")}`,
+        `the release tag publisher config must contain exactly: ${RELEASE_TAG_PUBLISHER_BINDING_KEYS.join(", ")}`,
       );
     }
-    if (
-      config.schemaVersion !== 1 ||
-      config.purpose !== "freed-release-tag-publisher-binding" ||
-      config.status !== "active" ||
-      config.repo !== "freed-project/freed" ||
-      config.appId !== 4_296_969 ||
-      config.appSlug !== "freed-release-publisher" ||
-      config.publisherPath !== hostPath ||
-      !/^[a-f0-9]{64}$/.test(String(config.publisherSha256 ?? ""))
-    ) {
+    try {
+      verifyReleaseTagPublisherBindingShape(config, { statuses: ["active"] });
+    } catch {
       problems.push("the release tag publisher binding is invalid");
-    } else if (existsSync(hostPath)) {
-      const actualDigest = fileSha256(hostPath);
-      if (actualDigest === null || actualDigest !== config.publisherSha256) {
+    }
+    if (
+      config.publisherPath !== hostPath ||
+      config.provisionerPath !== provisionerPath
+    ) {
+      problems.push("the release tag publisher binding paths do not match");
+    }
+    if (problems.length === 0) {
+      const actualPublisherDigest = fileSha256(hostPath);
+      const actualProvisionerDigest = fileSha256(provisionerPath);
+      if (
+        actualPublisherDigest === null ||
+        actualPublisherDigest !== config.publisherSha256
+      ) {
         problems.push("the release tag publisher host digest does not match");
+      }
+      if (
+        actualProvisionerDigest === null ||
+        actualProvisionerDigest !== config.provisionerSha256
+      ) {
+        problems.push(
+          "the release tag publisher provisioner digest does not match",
+        );
       }
     }
   }
@@ -1281,7 +1287,7 @@ export function checkReleaseTagPublisherConfig({
     "release-tag-publisher",
     "release tag publisher",
     "ok",
-    `GitHub App ${config.appId.toLocaleString()} is bound to freed-project/freed, and its native nonsecret Keychain ACL check passed.`,
+    `GitHub App ${config.appId.toLocaleString()} is bound to freed-project/freed through one exact native host and provisioner generation, and its nonsecret Keychain ACL check passed.`,
   );
 }
 

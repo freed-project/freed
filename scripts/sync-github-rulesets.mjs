@@ -573,10 +573,7 @@ function ghJson(args, { exec = execFileSync } = {}) {
 }
 
 function ghPaginatedArray(endpoint, { exec = execFileSync } = {}) {
-  const pages = ghJson(
-    ["api", "--paginate", "--slurp", endpoint],
-    { exec },
-  );
+  const pages = ghJson(["api", "--paginate", "--slurp", endpoint], { exec });
   if (
     !Array.isArray(pages) ||
     pages.length === 0 ||
@@ -728,6 +725,8 @@ function findReleaseTagPublisherReadinessEvidence(
   return {
     ready: true,
     publisherDigest: binding.publisherSha256,
+    provisionerDigest: binding.provisionerSha256,
+    nativePairDigest: binding.nativePairSha256,
     installationAttestation: installation.attestation,
   };
 }
@@ -834,9 +833,7 @@ function main() {
         (args.branch === null || rulesetBranch(ruleset) === args.branch),
     );
   }
-  const summary = ghPaginatedArray(
-    `repos/${args.repo}/rulesets?per_page=100`,
-  );
+  const summary = ghPaginatedArray(`repos/${args.repo}/rulesets?per_page=100`);
   const current = summary.map((item) =>
     ghJson(["api", `repos/${args.repo}/rulesets/${item.id}`]),
   );
@@ -860,7 +857,7 @@ function main() {
       `release-app: ${args.releaseAppSlug} app ${app.appId.toLocaleString()} installation ${app.installationId.toLocaleString()}\n`,
     );
     process.stdout.write(
-      `release-publisher: ${publisher.publisherDigest || "attested"}\n`,
+      `release-publisher-pair: ${publisher.nativePairDigest || "attested"}\n`,
     );
   }
   for (const item of plan) {

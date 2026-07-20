@@ -44,6 +44,48 @@ function sha256(filePath) {
   return createHash("sha256").update(readFileSync(filePath)).digest("hex");
 }
 
+function nativePairSha256({
+  publisherPath,
+  publisherSha256,
+  provisionerPath,
+  provisionerSha256,
+}) {
+  return createHash("sha256")
+    .update(
+      [
+        "freed-release-tag-publisher-native-pair-v1",
+        publisherPath,
+        publisherSha256,
+        provisionerPath,
+        provisionerSha256,
+        "",
+      ].join("\n"),
+    )
+    .digest("hex");
+}
+
+function writeNativeBinding(overrides = {}) {
+  const binding = {
+    schemaVersion: 2,
+    purpose: "freed-release-tag-publisher-binding",
+    status: "active",
+    repo: "freed-project/freed",
+    appId: 4_296_969,
+    appSlug: "freed-release-publisher",
+    publisherPath: host,
+    publisherSha256: sha256(host),
+    provisionerPath: provisioner,
+    provisionerSha256: sha256(provisioner),
+    ...overrides,
+  };
+  binding.nativePairSha256 =
+    overrides.nativePairSha256 ?? nativePairSha256(binding);
+  writeFileSync(configPath, `${JSON.stringify(binding, null, 2)}\n`, {
+    mode: 0o600,
+  });
+  return binding;
+}
+
 function git(args, cwd) {
   return execFileSync("/usr/bin/git", args, {
     cwd,
@@ -254,24 +296,7 @@ before(async () => {
   keyPath = path.join(fixtureRoot, "release-app.pem");
   writeFileSync(keyPath, privateKey, { mode: 0o600 });
   configPath = path.join(fixtureRoot, "release-tag-publisher.json");
-  writeFileSync(
-    configPath,
-    `${JSON.stringify(
-      {
-        schemaVersion: 1,
-        purpose: "freed-release-tag-publisher-binding",
-        status: "active",
-        repo: "freed-project/freed",
-        appId: 4_296_969,
-        appSlug: "freed-release-publisher",
-        publisherPath: host,
-        publisherSha256: sha256(host),
-      },
-      null,
-      2,
-    )}\n`,
-    { mode: 0o600 },
-  );
+  writeNativeBinding();
 
   worktree = path.join(fixtureRoot, "repo");
   mkdirSync(path.join(worktree, "release-notes", "releases"), {
@@ -440,9 +465,57 @@ test("production native publisher tools compile", { skip: !enabled }, () => {
   );
   assert.match(hostSource, /kSecUseAuthenticationUIFail/);
   assert.match(provisionerSource, /kSecUseAuthenticationUIFail/);
-  assert.match(provisionerSource, /publisherPromptSelector/);
-  assert.match(provisionerSource, /selector == publisherPromptSelector/);
 });
+
+test(
+  "native ACL model accepts exactly the host and provisioner with no prompt",
+  { skip: !enabled },
+  () => {
+    const model = (applications, prompt) => {
+      const value = spawnSync(
+        provisioner,
+        [
+          "acl-model",
+          "--test-acl-applications",
+          applications.join(","),
+          "--test-acl-prompt",
+          prompt,
+        ],
+        {
+          cwd: fixtureRoot,
+          encoding: "utf8",
+          env: { PATH: "/usr/bin:/bin" },
+        },
+      );
+      assert.equal(value.status, 0, value.stderr);
+      return JSON.parse(value.stdout).matched;
+    };
+    assert.equal(model(["host", "provisioner"], "empty"), true);
+    assert.equal(model(["provisioner", "host"], "empty"), true);
+    assert.equal(model(["host"], "empty"), false);
+    assert.equal(model(["host", "provisioner", "other"], "empty"), false);
+    assert.equal(model(["host", "host"], "empty"), false);
+    assert.equal(model(["host", "provisioner"], "nonempty"), false);
+
+    const production = spawnSync(
+      productionProvisioner,
+      [
+        "acl-model",
+        "--test-acl-applications",
+        "host,provisioner",
+        "--test-acl-prompt",
+        "empty",
+      ],
+      {
+        cwd: fixtureRoot,
+        encoding: "utf8",
+        env: { PATH: "/usr/bin:/bin" },
+      },
+    );
+    assert.equal(production.status, 1);
+    assert.doesNotMatch(production.stdout, /matched/);
+  },
+);
 
 test(
   "production provisioner rejects every credential mutation before host or secret admission",
@@ -596,6 +669,51 @@ test(
     assert.match(state.itemId, /^[a-f0-9-]{36}$/);
     assert.equal(state.exactDeleteCount, 0);
     assert.doesNotMatch(result.stdout + result.stderr, /BEGIN RSA PRIVATE KEY/);
+  },
+);
+
+test(
+  "native publisher attests one exact host and provisioner generation",
+  { skip: !enabled },
+  async () => {
+    const result = await runHost(["attest", ...identityArgs()]);
+    assert.equal(result.status, 0, result.stderr);
+    const value = JSON.parse(result.stdout);
+    assert.equal(value.schemaVersion, 2);
+    assert.equal(value.publisherSha256, sha256(host));
+    assert.equal(value.provisionerSha256, sha256(provisioner));
+    assert.equal(
+      value.nativePairSha256,
+      nativePairSha256({
+        publisherPath: host,
+        publisherSha256: sha256(host),
+        provisionerPath: provisioner,
+        provisionerSha256: sha256(provisioner),
+      }),
+    );
+    assert.equal("digest" in value, false);
+  },
+);
+
+test(
+  "native publisher rejects a mixed provisioner generation before credential use",
+  { skip: !enabled },
+  async () => {
+    try {
+      writeNativeBinding({ provisionerSha256: sha256(productionProvisioner) });
+      const result = await runHost(["attest", ...identityArgs()]);
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /bound provisioner digest/);
+      assert.doesNotMatch(result.stderr, /Keychain key is unavailable/);
+
+      writeNativeBinding({ nativePairSha256: "0".repeat(64) });
+      const invalidPair = await runHost(["attest", ...identityArgs()]);
+      assert.equal(invalidPair.status, 1);
+      assert.match(invalidPair.stderr, /native pair digest is invalid/);
+      assert.doesNotMatch(invalidPair.stderr, /Keychain key is unavailable/);
+    } finally {
+      writeNativeBinding();
+    }
   },
 );
 

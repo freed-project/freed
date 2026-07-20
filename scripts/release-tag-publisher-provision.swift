@@ -44,6 +44,8 @@ private struct ParsedArguments {
   #if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING
     let testStore: String?
     let testFailure: String?
+    let testACLApplications: String?
+    let testACLPrompt: String?
   #endif
 }
 
@@ -65,6 +67,19 @@ private func fail(_ message: String) throws -> Never {
 
 private func sha256Hex(_ data: Data) -> String {
   SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+}
+
+private func publisherACLModelMatches(
+  actualApplications: [Data],
+  expectedApplications: [Data],
+  promptSelector: SecKeychainPromptSelector
+) -> Bool {
+  actualApplications.count == 2 &&
+    expectedApplications.count == 2 &&
+    Set(actualApplications).count == 2 &&
+    Set(expectedApplications).count == 2 &&
+    Set(actualApplications) == Set(expectedApplications) &&
+    promptSelector == publisherPromptSelector
 }
 
 private func canonicalExistingPath(_ path: String, label: String) throws -> String {
@@ -298,9 +313,9 @@ private final class KeychainStore: SecretStore {
     guard SecKeychainItemCopyAccess(item, &itemAccess) == errSecSuccess,
       let itemAccess
     else { try fail("The publisher Keychain ACL is unavailable.") }
-    let expected = Set(try [host, provisioner].map {
-      try applicationData(trustedApplication($0)).base64EncodedString()
-    })
+    let expected = try [host, provisioner].map {
+      try applicationData(trustedApplication($0))
+    }
     guard let aclList = SecAccessCopyMatchingACLList(
       itemAccess,
       kSecACLAuthorizationDecrypt
@@ -310,14 +325,14 @@ private final class KeychainStore: SecretStore {
       var description: CFString?
       var selector = SecKeychainPromptSelector()
       guard SecACLCopyContents(acl, &applications, &description, &selector) == errSecSuccess,
-        let trusted = applications as? [SecTrustedApplication],
-        trusted.count == 2,
-        selector == publisherPromptSelector
+        let trusted = applications as? [SecTrustedApplication]
       else { return false }
-      let actual = Set(try trusted.map {
-        try applicationData($0).base64EncodedString()
-      })
-      if actual != expected { return false }
+      let actual = try trusted.map { try applicationData($0) }
+      if !publisherACLModelMatches(
+        actualApplications: actual,
+        expectedApplications: expected,
+        promptSelector: selector
+      ) { return false }
     }
     return true
   }
@@ -501,7 +516,7 @@ private func parse(_ arguments: [String]) throws -> ParsedArguments {
   }
   #if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING
     let supportedActions: Set<String> = [
-      "inspect", "provision", "recover", "matches", "verify",
+      "inspect", "provision", "recover", "matches", "verify", "acl-model",
     ]
   #else
     let mutationActions: Set<String> = [
@@ -523,7 +538,9 @@ private func parse(_ arguments: [String]) throws -> ParsedArguments {
   var index = 1
   var allowed: Set<String> = ["--host", "--expected-sha256"]
   #if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING
-    allowed.formUnion(["--test-store", "--test-failure"])
+    allowed.formUnion([
+      "--test-store", "--test-failure", "--test-acl-applications", "--test-acl-prompt",
+    ])
   #endif
   while index < arguments.count {
     let flag = arguments[index]
@@ -533,6 +550,28 @@ private func parse(_ arguments: [String]) throws -> ParsedArguments {
     values[flag] = arguments[index + 1]
     index += 2
   }
+  #if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING
+    if action == "acl-model" {
+      guard Set(values.keys) == Set(["--test-acl-applications", "--test-acl-prompt"]),
+        let applications = values["--test-acl-applications"],
+        let prompt = values["--test-acl-prompt"],
+        ["empty", "nonempty"].contains(prompt)
+      else {
+        try fail(
+          "The ACL model requires exactly --test-acl-applications and --test-acl-prompt <empty|nonempty>."
+        )
+      }
+      return ParsedArguments(
+        action: action,
+        host: "",
+        expectedSha256: nil,
+        testStore: nil,
+        testFailure: nil,
+        testACLApplications: applications,
+        testACLPrompt: prompt
+      )
+    }
+  #endif
   guard let host = values["--host"] else {
     try fail("The publisher provisioner requires --host.")
   }
@@ -551,6 +590,9 @@ private func parse(_ arguments: [String]) throws -> ParsedArguments {
   #if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING
     let testStore = values["--test-store"]
     let testFailure = values["--test-failure"]
+    guard values["--test-acl-applications"] == nil,
+      values["--test-acl-prompt"] == nil
+    else { try fail("ACL model options are accepted only by acl-model.") }
     if ["provision", "recover"].contains(action), testStore == nil {
       try fail("Testing credential mutation requires an isolated --test-store.")
     }
@@ -569,7 +611,9 @@ private func parse(_ arguments: [String]) throws -> ParsedArguments {
       host: host,
       expectedSha256: expectedSha256,
       testStore: testStore,
-      testFailure: testFailure
+      testFailure: testFailure,
+      testACLApplications: nil,
+      testACLPrompt: nil
     )
   #else
     return ParsedArguments(
@@ -641,6 +685,31 @@ private func main() -> Int32 {
     _ = umask(0o077)
     try disableCoreDumps()
     let parsed = try parse(Array(CommandLine.arguments.dropFirst()))
+    #if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING
+      if parsed.action == "acl-model" {
+        let actual = (parsed.testACLApplications ?? "")
+          .components(separatedBy: ",")
+          .map { Data($0.utf8) }
+        let expected = [Data("host".utf8), Data("provisioner".utf8)]
+        let selector = parsed.testACLPrompt == "empty"
+          ? publisherPromptSelector
+          : SecKeychainPromptSelector(rawValue: 1)
+        try writeResult(
+          ProvisionResult(
+            action: parsed.action,
+            host: "behavioral-acl-model",
+            state: nil,
+            changed: nil,
+            matched: publisherACLModelMatches(
+              actualApplications: actual,
+              expectedApplications: expected,
+              promptSelector: selector
+            )
+          )
+        )
+        return 0
+      }
+    #endif
     let host = try canonicalExistingPath(parsed.host, label: "publisher host")
     let provisioner = try currentExecutablePath()
     #if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING

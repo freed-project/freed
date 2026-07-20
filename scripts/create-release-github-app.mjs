@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import {
   closeSync,
   constants,
@@ -352,7 +352,7 @@ export function releaseAppIdentityPath(candidateStateRoot = undefined) {
   );
 }
 
-function existingIdentityMatches(filePath, expected) {
+function inspectIdentityPath(filePath, expected, allowedLinkCounts) {
   let descriptor;
   const buffer = Buffer.alloc(expected.length + 1);
   try {
@@ -360,8 +360,17 @@ function existingIdentityMatches(filePath, expected) {
       realpathSync(path.dirname(filePath)),
       path.basename(filePath),
     );
-    if (realpathSync(filePath) !== canonicalFilePath) return false;
-    const link = lstatSync(filePath);
+    let resolvedFilePath;
+    try {
+      resolvedFilePath = realpathSync(filePath);
+    } catch (error) {
+      if (error?.code === "ENOENT") return null;
+      throw error;
+    }
+    if (resolvedFilePath !== canonicalFilePath) {
+      throw new Error("The release GitHub App identity path is not canonical.");
+    }
+    const link = lstatSync(filePath, { bigint: true });
     descriptor = openSync(
       filePath,
       constants.O_RDONLY |
@@ -369,18 +378,18 @@ function existingIdentityMatches(filePath, expected) {
         constants.O_NONBLOCK |
         (constants.O_CLOEXEC ?? DARWIN_O_CLOEXEC),
     );
-    const before = fstatSync(descriptor);
+    const before = fstatSync(descriptor, { bigint: true });
     if (
       !link.isFile() ||
       !before.isFile() ||
       link.dev !== before.dev ||
       link.ino !== before.ino ||
-      before.uid !== process.getuid() ||
-      before.nlink !== 1 ||
-      (before.mode & 0o777) !== 0o600 ||
-      before.size !== expected.length
+      before.uid !== BigInt(process.getuid()) ||
+      !allowedLinkCounts.includes(before.nlink) ||
+      (before.mode & 0o777n) !== 0o600n ||
+      before.size !== BigInt(expected.length)
     ) {
-      return false;
+      throw new Error("The release GitHub App identity path is unsafe.");
     }
     let offset = 0;
     while (offset < buffer.length) {
@@ -394,7 +403,7 @@ function existingIdentityMatches(filePath, expected) {
       if (count === 0) break;
       offset += count;
     }
-    const after = fstatSync(descriptor);
+    const after = fstatSync(descriptor, { bigint: true });
     if (
       offset !== expected.length ||
       before.dev !== after.dev ||
@@ -403,23 +412,99 @@ function existingIdentityMatches(filePath, expected) {
       before.mode !== after.mode ||
       before.uid !== after.uid ||
       before.nlink !== after.nlink ||
-      before.mtimeMs !== after.mtimeMs ||
-      before.ctimeMs !== after.ctimeMs
+      before.mtimeNs !== after.mtimeNs ||
+      before.ctimeNs !== after.ctimeNs ||
+      !timingSafeEqual(buffer.subarray(0, expected.length), expected)
     ) {
-      return false;
+      throw new Error(
+        "The release GitHub App identity file exists with unexpected content or changed during admission.",
+      );
     }
-    return timingSafeEqual(buffer.subarray(0, expected.length), expected);
-  } catch {
-    return false;
+    const finalLink = lstatSync(filePath, { bigint: true });
+    if (
+      finalLink.dev !== after.dev ||
+      finalLink.ino !== after.ino ||
+      finalLink.nlink !== after.nlink
+    ) {
+      throw new Error(
+        "The release GitHub App identity path changed during admission.",
+      );
+    }
+    return { dev: after.dev, ino: after.ino, nlink: after.nlink };
   } finally {
     buffer.fill(0);
     if (descriptor !== undefined) closeSync(descriptor);
   }
 }
 
+function sameIdentityInode(left, right) {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+function reconcileIdentityTransaction({
+  filePath,
+  temporaryPath,
+  identityBytes,
+  directoryDescriptor,
+}) {
+  const finalState = inspectIdentityPath(filePath, identityBytes, [1n, 2n]);
+  const pendingState = inspectIdentityPath(temporaryPath, identityBytes, [
+    1n,
+    2n,
+  ]);
+  if (finalState && pendingState) {
+    if (sameIdentityInode(finalState, pendingState)) {
+      if (finalState.nlink !== 2n || pendingState.nlink !== 2n) {
+        throw new Error(
+          "The release GitHub App identity transaction has an unsafe link count.",
+        );
+      }
+    } else if (finalState.nlink !== 1n || pendingState.nlink !== 1n) {
+      throw new Error(
+        "The release GitHub App identity transaction is ambiguous.",
+      );
+    }
+    rmSync(temporaryPath);
+    fsyncSync(directoryDescriptor);
+    const recovered = inspectIdentityPath(filePath, identityBytes, [1n]);
+    if (!recovered) {
+      throw new Error(
+        "The release GitHub App identity transaction could not be recovered.",
+      );
+    }
+    return true;
+  }
+  if (finalState) {
+    if (finalState.nlink !== 1n) {
+      throw new Error(
+        "The release GitHub App identity has an unexplained hard link.",
+      );
+    }
+    return true;
+  }
+  if (pendingState) {
+    if (pendingState.nlink !== 1n) {
+      throw new Error(
+        "The pending release GitHub App identity has an unexplained hard link.",
+      );
+    }
+    linkSync(temporaryPath, filePath);
+    fsyncSync(directoryDescriptor);
+    rmSync(temporaryPath);
+    fsyncSync(directoryDescriptor);
+    if (!inspectIdentityPath(filePath, identityBytes, [1n])) {
+      throw new Error(
+        "The pending release GitHub App identity could not be committed.",
+      );
+    }
+    return true;
+  }
+  return false;
+}
+
 export function writeReleaseAppIdentity(
   identity,
-  { stateRoot: candidateStateRoot = undefined } = {},
+  { stateRoot: candidateStateRoot = undefined, checkpoint = () => {} } = {},
 ) {
   if (
     !hasExactKeys(identity, [
@@ -451,10 +536,7 @@ export function writeReleaseAppIdentity(
     label: "The release GitHub App state root",
   });
   let directoryDescriptor;
-  const temporaryPath = path.join(
-    directory,
-    `.github-app.${process.pid.toLocaleString("en-US", { useGrouping: false })}.${randomUUID()}.tmp`,
-  );
+  const temporaryPath = path.join(directory, ".github-app.pending");
   let descriptor;
   const identityBytes = Buffer.from(`${JSON.stringify(identity, null, 2)}\n`);
   try {
@@ -462,28 +544,33 @@ export function writeReleaseAppIdentity(
       recursive: false,
       label: "The release GitHub App identity directory",
     });
+    if (
+      reconcileIdentityTransaction({
+        filePath,
+        temporaryPath,
+        identityBytes,
+        directoryDescriptor,
+      })
+    ) {
+      fsyncSync(rootDescriptor);
+      return filePath;
+    }
     descriptor = openSync(temporaryPath, "wx", 0o600);
     writeFileSync(descriptor, identityBytes);
     fsyncSync(descriptor);
     closeSync(descriptor);
     descriptor = undefined;
-    try {
-      linkSync(temporaryPath, filePath);
-    } catch (error) {
-      if (
-        error?.code !== "EEXIST" ||
-        !existingIdentityMatches(filePath, identityBytes)
-      ) {
-        throw error;
-      }
-    }
+    linkSync(temporaryPath, filePath);
     fsyncSync(directoryDescriptor);
+    checkpoint("identity-linked");
     rmSync(temporaryPath);
     fsyncSync(directoryDescriptor);
+    if (!inspectIdentityPath(filePath, identityBytes, [1n])) {
+      throw new Error("The release GitHub App identity commit is incomplete.");
+    }
     fsyncSync(rootDescriptor);
   } catch (error) {
     if (descriptor !== undefined) closeSync(descriptor);
-    rmSync(temporaryPath, { force: true });
     throw error;
   } finally {
     identityBytes.fill(0);

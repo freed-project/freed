@@ -58,6 +58,7 @@ const RELEASE_PUBLISHER_TOOLING_PATHS = new Set([
   "scripts/create-release-github-app.test.mjs",
   "scripts/doctor.mjs",
   "scripts/doctor.test.mjs",
+  "scripts/lib/release-tag-publisher-binding.mjs",
   "scripts/lib/release-tag-publisher.mjs",
   "scripts/lib/release-tag-publisher.test.mjs",
   "scripts/release-tag-publisher-build.sh",

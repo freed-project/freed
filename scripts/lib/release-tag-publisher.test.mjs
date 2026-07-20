@@ -6,21 +6,30 @@ import {
   verifyReleaseTagPublisherInstallation,
   verifyReleaseTagPublisherInstallationReadiness,
 } from "./release-tag-publisher.mjs";
+import { releaseTagPublisherNativePairSha256 } from "./release-tag-publisher-binding.mjs";
 
 function fixture() {
-  const digest = "a".repeat(64);
-  const config = {
-    schemaVersion: 1,
+  const publisherDigest = "a".repeat(64);
+  const provisionerDigest = "b".repeat(64);
+  const base = {
+    schemaVersion: 2,
     purpose: "freed-release-tag-publisher-binding",
     status: "active",
     repo: "freed-project/freed",
-    appId: 123456,
+    appId: 4_296_969,
     appSlug: "freed-release-publisher",
     publisherPath: "/Library/Application Support/Freed/release-tag-publisher",
-    publisherSha256: digest,
+    publisherSha256: publisherDigest,
+    provisionerPath:
+      "/Library/Application Support/Freed/release-tag-publisher-provision",
+    provisionerSha256: provisionerDigest,
+  };
+  const config = {
+    ...base,
+    nativePairSha256: releaseTagPublisherNativePairSha256(base),
   };
   const attestation = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     purpose: "freed-release-tag-publisher-readiness",
     repo: config.repo,
     appId: config.appId,
@@ -30,9 +39,11 @@ function fixture() {
     allowsArbitraryRefs: false,
     allowsUpdates: false,
     allowsDeletions: false,
-    digest,
+    publisherSha256: publisherDigest,
+    provisionerSha256: provisionerDigest,
+    nativePairSha256: config.nativePairSha256,
   };
-  return { config, attestation, digest };
+  return { config, attestation, publisherDigest, provisionerDigest };
 }
 
 function installationAttestation() {
@@ -40,7 +51,7 @@ function installationAttestation() {
     schemaVersion: 1,
     purpose: "freed-release-tag-publisher-installation-readiness",
     repo: "freed-project/freed",
-    appId: 123456,
+    appId: 4_296_969,
     appSlug: "freed-release-publisher",
     appName: "Freed Release Publisher",
     appExternalUrl: "https://freed.wtf",
@@ -57,23 +68,64 @@ function installationAttestation() {
   };
 }
 
-test("publisher binding pins the exact App, operation, and executable digest", () => {
-  const { config, attestation, digest } = fixture();
+test("publisher binding pins the exact App, operation, and native pair", () => {
+  const { config, attestation, publisherDigest, provisionerDigest } = fixture();
   assert.deepEqual(
-    verifyReleaseTagPublisherBinding(config, digest, attestation),
-    { ready: true, publisherDigest: digest },
+    verifyReleaseTagPublisherBinding(
+      config,
+      publisherDigest,
+      provisionerDigest,
+      attestation,
+    ),
+    {
+      ready: true,
+      publisherDigest,
+      provisionerDigest,
+      nativePairDigest: config.nativePairSha256,
+    },
   );
   assert.throws(
-    () => verifyReleaseTagPublisherBinding(config, "b".repeat(64), attestation),
+    () =>
+      verifyReleaseTagPublisherBinding(
+        config,
+        "c".repeat(64),
+        provisionerDigest,
+        attestation,
+      ),
     /digest does not match/,
   );
   assert.throws(
     () =>
-      verifyReleaseTagPublisherBinding(config, digest, {
-        ...attestation,
-        operations: ["create-annotated-tag", "delete-tag"],
-      }),
+      verifyReleaseTagPublisherBinding(
+        config,
+        publisherDigest,
+        "c".repeat(64),
+        attestation,
+      ),
+    /provisioner digest does not match/,
+  );
+  assert.throws(
+    () =>
+      verifyReleaseTagPublisherBinding(
+        config,
+        publisherDigest,
+        provisionerDigest,
+        {
+          ...attestation,
+          operations: ["create-annotated-tag", "delete-tag"],
+        },
+      ),
     /does not match the pinned short-lived annotated-tag publisher/,
+  );
+  assert.throws(
+    () =>
+      verifyReleaseTagPublisherBinding(
+        { ...config, nativePairSha256: "0".repeat(64) },
+        publisherDigest,
+        provisionerDigest,
+        attestation,
+      ),
+    /native pair digest is invalid/,
   );
 });
 
@@ -81,7 +133,7 @@ test("installation readiness accepts only the exact dedicated App scope", () => 
   const attestation = installationAttestation();
   const expected = {
     repo: "freed-project/freed",
-    releaseAppId: 123456,
+    releaseAppId: 4_296_969,
     releaseAppSlug: "freed-release-publisher",
   };
   assert.deepEqual(
@@ -110,12 +162,7 @@ test("installation readiness accepts only the exact dedicated App scope", () => 
 });
 
 test("native installation verification uses only the pinned App identity", () => {
-  const binding = {
-    repo: "freed-project/freed",
-    appId: 123456,
-    appSlug: "freed-release-publisher",
-    publisherPath: "/trusted/release-tag-publisher",
-  };
+  const { config: binding } = fixture();
   const calls = [];
   const result = verifyReleaseTagPublisherInstallation(binding, {
     exec(file, args, options) {
@@ -129,7 +176,7 @@ test("native installation verification uses only the pinned App identity", () =>
     "--repo",
     "freed-project/freed",
     "--app-id",
-    "123456",
+    "4296969",
     "--app-slug",
     "freed-release-publisher",
   ]);

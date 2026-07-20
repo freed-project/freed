@@ -26,13 +26,16 @@ function main() {
   if (command === "attest") {
     process.stdout.write(
       `${JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 2,
         purpose: "freed-release-tag-publisher-binding",
         repo: binding.repo,
         appId: binding.appId,
         appSlug: binding.appSlug,
         publisherPath: binding.publisherPath,
         publisherSha256: binding.publisherSha256,
+        provisionerPath: binding.provisionerPath,
+        provisionerSha256: binding.provisionerSha256,
+        nativePairSha256: binding.nativePairSha256,
       })}\n`,
     );
     return;

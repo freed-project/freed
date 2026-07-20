@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -340,6 +342,52 @@ test("initial App setup never replaces an existing App identity", (t) => {
     /EEXIST|file exists/i,
   );
   assert.equal(readFileSync(identityPath, "utf8"), original);
+});
+
+test("identity persistence recovers an exact hard-link commit after process death", (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "freed-release-app-crash-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const { identity } = validateManifestConversion(conversion());
+  const moduleUrl = new URL("./create-release-github-app.mjs", import.meta.url)
+    .href;
+  const child = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `
+        import { writeReleaseAppIdentity } from ${JSON.stringify(moduleUrl)};
+        writeReleaseAppIdentity(${JSON.stringify(identity)}, {
+          stateRoot: ${JSON.stringify(root)},
+          checkpoint(name) {
+            if (name === "identity-linked") process.kill(process.pid, "SIGKILL");
+          },
+        });
+      `,
+    ],
+    { encoding: "utf8", timeout: 5_000 },
+  );
+  assert.equal(child.error, undefined, child.error?.message);
+  assert.equal(child.status, null);
+  assert.equal(child.signal, "SIGKILL");
+
+  const identityPath = releaseAppIdentityPath(root);
+  const pendingPath = path.join(
+    path.dirname(identityPath),
+    ".github-app.pending",
+  );
+  const committedBeforeRecovery = statSync(identityPath);
+  const pendingBeforeRecovery = statSync(pendingPath);
+  assert.equal(committedBeforeRecovery.ino, pendingBeforeRecovery.ino);
+  assert.equal(committedBeforeRecovery.nlink, 2);
+
+  assert.equal(
+    writeReleaseAppIdentity(identity, { stateRoot: root }),
+    identityPath,
+  );
+  assert.equal(existsSync(pendingPath), false);
+  assert.equal(statSync(identityPath).nlink, 1);
+  assert.deepEqual(JSON.parse(readFileSync(identityPath, "utf8")), identity);
 });
 
 test("identity persistence rejects a symlinked private directory", (t) => {

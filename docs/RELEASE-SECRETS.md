@@ -149,13 +149,21 @@ node scripts/release-tag-publisher-install.mjs prepare
 ```
 
 The helper runs `scripts/release-tag-publisher-build.sh` in a private temporary
-directory, builds the native Swift host and provisioner, and installs them as
-root-owned, read-only executables at these fixed paths:
+directory and builds the native Swift host and provisioner. It installs the
+schema 2 `preparing` barrier before replacing either native executable,
+installs and verifies the lockdown provisioner and host, then writes a
+`prepared` binding. That binding pins both fixed paths, both file digests, and
+one digest over the native pair. A retry can finish an interrupted preparation,
+while the barrier prevents a mixed pair from becoming active. If the barrier
+cannot land, neither executable changes. The executables are root-owned and
+read-only at these fixed paths:
 
 - `/Library/Application Support/Freed/release-tag-publisher`
 - `/Library/Application Support/Freed/release-tag-publisher-provision`
 
-The binding does not exist yet, so publication still fails closed.
+Preparation does not activate the binding or touch a credential. Publication
+therefore remains unavailable. Activation can promote only the exact prepared
+pair, and an exact retry of an already active pair is recoverable.
 
 ### App creation and credential promotion are unavailable
 
@@ -210,8 +218,8 @@ node scripts/doctor.mjs --require-release-publisher
 Recovery, activation, rotation, discard, and revocation are deliberately
 unavailable. The final one-use owner intent must bind the action, App ID
 `4,296,969`, App slug, repository, expected source commit and tree, admitted key
-fingerprint, native executable path and digest, transaction ID, and exact state
-transition.
+fingerprint, both native executable paths and digests, native pair digest,
+transaction ID, and exact state transition.
 
 The authorized design must add the candidate to a separate staged Keychain
 service and account tied to that pending transaction. The staged key must prove
@@ -273,7 +281,8 @@ node scripts/validate-release-tag-authority.mjs --repo=freed-project/freed
 `./scripts/release-publish.sh <version>` remains the only release entry point.
 It rejects a dirty or wrong branch, a commit that differs from the protected
 remote tip, an unapproved or mismatched release receipt, an existing tag, a
-missing live policy, a changed publisher digest, or a mismatched App
+missing live policy, a changed host or provisioner digest, a changed native
+pair digest, or a mismatched App
 installation. The native host requests one short-lived installation token
 scoped to `freed-project/freed`, rechecks the remote branch and committed
 receipt, creates one annotated tag, verifies the result, and revokes the token.

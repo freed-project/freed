@@ -575,9 +575,11 @@ test("release tag publisher attestation permits one narrow short-lived operation
     releaseAppId: 123456,
     releaseAppSlug: "freed-release-publisher",
     publisherDigest: "a".repeat(64),
+    provisionerDigest: "b".repeat(64),
+    nativePairDigest: "c".repeat(64),
   };
   const attestation = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     purpose: "freed-release-tag-publisher-readiness",
     repo: expected.repo,
     appId: expected.releaseAppId,
@@ -587,11 +589,15 @@ test("release tag publisher attestation permits one narrow short-lived operation
     allowsArbitraryRefs: false,
     allowsUpdates: false,
     allowsDeletions: false,
-    digest: "a".repeat(64),
+    publisherSha256: "a".repeat(64),
+    provisionerSha256: "b".repeat(64),
+    nativePairSha256: "c".repeat(64),
   };
   assert.deepEqual(verifyReleaseTagPublisherReadiness(attestation, expected), {
     ready: true,
     publisherDigest: "a".repeat(64),
+    provisionerDigest: "b".repeat(64),
+    nativePairDigest: "c".repeat(64),
   });
   assert.throws(
     () =>
