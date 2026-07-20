@@ -16,6 +16,7 @@ import {
   buildManifestBootstrapHtml,
   buildReleaseGitHubAppManifest,
   completeReleaseGitHubAppCreation,
+  createReleaseGitHubApp,
   exchangeManifestCode,
   parseManifestCallback,
   provisionReleaseAppPrivateKey,
@@ -28,7 +29,7 @@ const pem = `-----BEGIN RSA PRIVATE KEY-----\n${"A".repeat(512)}\n-----END RSA P
 
 function conversion() {
   return {
-    id: 123456,
+    id: 4_296_969,
     slug: "freed-release-publisher",
     name: "Freed Release Publisher",
     external_url: "https://freed.wtf",
@@ -120,15 +121,60 @@ test("manifest exchange never sends credentials", async () => {
       };
     },
   });
-  assert.equal(result.id, 123456);
+  assert.equal(result.id, 4_296_969);
   assert.deepEqual(calls[0].options.method, "POST");
   assert.equal("body" in calls[0].options, false);
   assert.equal("Authorization" in calls[0].options.headers, false);
 });
 
+test("manifest conversion accepts only the dedicated release App identity", () => {
+  assert.throws(
+    () => validateManifestConversion({ ...conversion(), id: 4_296_970 }),
+    /did not return the expected private organization App identity/,
+  );
+});
+
+test("App creation fails before local or GitHub side effects while promotion is unavailable", async () => {
+  const calls = [];
+  await assert.rejects(
+    createReleaseGitHubApp({
+      verifyPreparedHost() {
+        calls.push("verify-host");
+      },
+      openUrl() {
+        calls.push("open-url");
+      },
+      exchangeCode() {
+        calls.push("exchange-code");
+      },
+      completeCreation() {
+        calls.push("complete-creation");
+      },
+    }),
+    /creation and credential promotion are unavailable/,
+  );
+  assert.deepEqual(calls, []);
+});
+
+test("direct private key provisioning fails before spawning while promotion is unavailable", () => {
+  let spawned = false;
+  assert.throws(
+    () =>
+      provisionReleaseAppPrivateKey(pem, {
+        spawn() {
+          spawned = true;
+          return { status: 0 };
+        },
+      }),
+    /creation and credential promotion are unavailable/,
+  );
+  assert.equal(spawned, false);
+});
+
 test("private key is piped to the fixed provisioner and never placed in arguments", () => {
   const calls = [];
   provisionReleaseAppPrivateKey(pem, {
+    requirePromotionReadiness() {},
     spawn(file, args, options) {
       calls.push({ file, args, options });
       return { status: 0 };
@@ -146,7 +192,7 @@ test("private key is piped to the fixed provisioner and never placed in argument
 test("publisher activation passes only the nonsecret App identity to pinned Node", () => {
   const calls = [];
   activateReleaseTagPublisherBinding(
-    { appId: 123456, appSlug: "freed-release-publisher" },
+    { appId: 4_296_969, appSlug: "freed-release-publisher" },
     {
       nodePath: "/pinned/node",
       installerPath: "/repo/scripts/release-tag-publisher-install.mjs",
@@ -162,7 +208,7 @@ test("publisher activation passes only the nonsecret App identity to pinned Node
         "/repo/scripts/release-tag-publisher-install.mjs",
         "activate",
         "--app-id",
-        "123456",
+        "4296969",
         "--app-slug",
         "freed-release-publisher",
       ],
@@ -183,6 +229,7 @@ test("completed creation writes and logs only nonsecret App identity", async (t)
   const sequence = [];
   let provisionedPem = "";
   const result = await completeReleaseGitHubAppCreation(conversion(), {
+    requirePromotionReadiness() {},
     provisionPrivateKey(value) {
       sequence.push("provision");
       provisionedPem = value;
@@ -225,7 +272,7 @@ test("completed creation writes and logs only nonsecret App identity", async (t)
   assert.deepEqual(result, {
     status: "ready",
     repo: "freed-project/freed",
-    appId: 123456,
+    appId: 4_296_969,
     appSlug: "freed-release-publisher",
     installationId: 42,
   });
@@ -248,7 +295,7 @@ test("completed creation writes and logs only nonsecret App identity", async (t)
     purpose: "freed-release-github-app-identity",
     organization: "freed-project",
     repo: "freed-project/freed",
-    appId: 123456,
+    appId: 4_296_969,
     appSlug: "freed-release-publisher",
     ownerId: 257444947,
   });
@@ -258,6 +305,7 @@ test("initial App setup records identity before any private key mutation", async
   let provisioned = false;
   await assert.rejects(
     completeReleaseGitHubAppCreation(conversion(), {
+      requirePromotionReadiness() {},
       writeIdentity() {
         throw new Error("injected identity persistence failure");
       },
@@ -277,10 +325,16 @@ test("initial App setup never replaces an existing App identity", (t) => {
   const identityPath = writeReleaseAppIdentity(identity, { stateRoot: root });
   const original = readFileSync(identityPath, "utf8");
 
+  assert.equal(
+    writeReleaseAppIdentity(identity, { stateRoot: root }),
+    identityPath,
+  );
+  assert.equal(readFileSync(identityPath, "utf8"), original);
+
   assert.throws(
     () =>
       writeReleaseAppIdentity(
-        { ...identity, appId: identity.appId + 1 },
+        { ...identity, ownerId: identity.ownerId + 1 },
         { stateRoot: root },
       ),
     /EEXIST|file exists/i,

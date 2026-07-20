@@ -19,9 +19,14 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  closeSync,
+  constants,
   existsSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
+  openSync,
+  readSync,
   readFileSync,
   realpathSync,
   statSync,
@@ -43,8 +48,7 @@ const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..");
 const TRUSTED_PUBLISHER_CONFIG_PATH =
   "/Library/Application Support/Freed/trusted-publisher-host.json";
-const RELEASE_TAG_PUBLISHER_DIRECTORY =
-  "/Library/Application Support/Freed";
+const RELEASE_TAG_PUBLISHER_DIRECTORY = "/Library/Application Support/Freed";
 const RELEASE_TAG_PUBLISHER_HOST_PATH = path.join(
   RELEASE_TAG_PUBLISHER_DIRECTORY,
   "release-tag-publisher",
@@ -67,6 +71,8 @@ const RELEASE_TAG_PUBLISHER_CONFIG_KEYS = Object.freeze([
   "schemaVersion",
   "status",
 ]);
+const RELEASE_TAG_PUBLISHER_CONFIG_MAXIMUM_BYTES = 64 * 1_024;
+const DARWIN_O_CLOEXEC = 0x01000000;
 
 const CURL_FALLBACK_PATTERN = [
   "TOKEN=$(security find-generic-password -s \"gh:github.com\" -w | sed 's/^go-keyring-base64://' | base64 -d)",
@@ -1081,32 +1087,114 @@ export function checkTrustedPublisherConfig(
   );
 }
 
+function readReleaseTagPublisherConfig(filePath) {
+  let descriptor;
+  let bytes;
+  try {
+    if (!path.isAbsolute(filePath) || realpathSync(filePath) !== filePath) {
+      throw new Error("the config path is not canonical");
+    }
+    const link = lstatSync(filePath, { bigint: true });
+    descriptor = openSync(
+      filePath,
+      constants.O_RDONLY |
+        constants.O_NOFOLLOW |
+        constants.O_NONBLOCK |
+        (constants.O_CLOEXEC ?? DARWIN_O_CLOEXEC),
+    );
+    const before = fstatSync(descriptor, { bigint: true });
+    if (
+      !link.isFile() ||
+      !before.isFile() ||
+      link.dev !== before.dev ||
+      link.ino !== before.ino ||
+      before.uid !== 0n ||
+      before.gid !== 0n ||
+      before.nlink !== 1n ||
+      (before.mode & 0o777n) !== 0o444n ||
+      before.size <= 0n ||
+      before.size > BigInt(RELEASE_TAG_PUBLISHER_CONFIG_MAXIMUM_BYTES)
+    ) {
+      throw new Error("the config descriptor admission failed");
+    }
+    const expectedSize = Number(before.size);
+    bytes = Buffer.alloc(expectedSize + 1);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const count = readSync(
+        descriptor,
+        bytes,
+        offset,
+        bytes.length - offset,
+        offset,
+      );
+      if (count === 0) break;
+      offset += count;
+    }
+    const after = fstatSync(descriptor, { bigint: true });
+    if (
+      offset !== expectedSize ||
+      before.dev !== after.dev ||
+      before.ino !== after.ino ||
+      before.size !== after.size ||
+      before.mode !== after.mode ||
+      before.uid !== after.uid ||
+      before.gid !== after.gid ||
+      before.nlink !== after.nlink ||
+      before.mtimeNs !== after.mtimeNs ||
+      before.ctimeNs !== after.ctimeNs
+    ) {
+      throw new Error("the config changed during admission");
+    }
+    return new TextDecoder("utf-8", { fatal: true }).decode(
+      bytes.subarray(0, expectedSize),
+    );
+  } finally {
+    bytes?.fill(0);
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
 export function checkReleaseTagPublisherConfig({
   configPath = RELEASE_TAG_PUBLISHER_CONFIG_PATH,
   hostPath = RELEASE_TAG_PUBLISHER_HOST_PATH,
   provisionerPath = RELEASE_TAG_PUBLISHER_PROVISIONER_PATH,
   inspectPath = immutableRootOwnedPathProblems,
+  readConfig = readReleaseTagPublisherConfig,
   run = spawnSync,
   platform = os.platform(),
 } = {}) {
   const problems = [];
+  const failure = () =>
+    check(
+      "release-tag-publisher",
+      "release tag publisher",
+      "fail",
+      `${[...new Set(problems)].join("; ")}. Release tag publication stays unavailable.`,
+      "Run the controlled Release Publisher recovery for task release-publisher-key-recovery-2026-07-20, then rerun this exact opt-in profile.",
+    );
   let config = null;
   for (const [filePath, label] of [
     [hostPath, "release tag publisher host"],
     [provisionerPath, "release tag publisher provisioner"],
     [configPath, "release tag publisher config"],
   ]) {
-    problems.push(
-      ...inspectPath(filePath, label, {
-        executable: filePath !== configPath,
-        exactMode: filePath === configPath ? 0o444 : 0o555,
-        exactGroup: 0,
-        exactLinkCount: 1,
-      }),
-    );
+    try {
+      problems.push(
+        ...inspectPath(filePath, label, {
+          executable: filePath !== configPath,
+          exactMode: filePath === configPath ? 0o444 : 0o555,
+          exactGroup: 0,
+          exactLinkCount: 1,
+        }),
+      );
+    } catch {
+      problems.push(`the ${label} path admission failed`);
+    }
   }
+  if (problems.length > 0) return failure();
   try {
-    config = JSON.parse(readFileSync(configPath, "utf8"));
+    config = JSON.parse(readConfig(configPath));
   } catch (error) {
     problems.push(
       `the release tag publisher config cannot be read: ${error instanceof Error ? error.message : String(error)}`,
@@ -1126,8 +1214,7 @@ export function checkReleaseTagPublisherConfig({
       config.purpose !== "freed-release-tag-publisher-binding" ||
       config.status !== "active" ||
       config.repo !== "freed-project/freed" ||
-      !Number.isSafeInteger(config.appId) ||
-      config.appId <= 0 ||
+      config.appId !== 4_296_969 ||
       config.appSlug !== "freed-release-publisher" ||
       config.publisherPath !== hostPath ||
       !/^[a-f0-9]{64}$/.test(String(config.publisherSha256 ?? ""))
@@ -1140,53 +1227,55 @@ export function checkReleaseTagPublisherConfig({
       }
     }
   }
+  if (problems.length > 0) return failure();
   if (platform !== "darwin") {
-    problems.push("the release tag publisher Keychain is supported only on macOS");
-  } else {
-    const keychain = run(
-      provisionerPath,
-      ["inspect", "--host", hostPath],
-      {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-      },
+    problems.push(
+      "the release tag publisher Keychain is supported only on macOS",
     );
-    if (keychain?.error || keychain?.status !== 0) {
-      problems.push(
-        "the native provisioner could not validate the release GitHub App Keychain item and ACL",
-      );
-    } else {
-      try {
-        const inspection = JSON.parse(String(keychain.stdout ?? ""));
-        if (
-          inspection.schemaVersion !== 1 ||
-          inspection.purpose !==
-            "freed-release-tag-publisher-keychain-result" ||
-          inspection.action !== "inspect" ||
-          inspection.service !== "freed-release-tag-publisher" ||
-          inspection.account !== "github-app-private-key" ||
-          inspection.host !== hostPath ||
-          inspection.state !== "present"
-        ) {
-          problems.push(
-            "the native provisioner returned an invalid release Keychain inspection",
-          );
-        }
-      } catch {
+    return failure();
+  }
+  const keychain = run(provisionerPath, ["inspect", "--host", hostPath], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      HOME: process.env.HOME ?? "",
+      PATH: "/usr/bin:/bin",
+    },
+    timeout: 5_000,
+    maxBuffer: 64 * 1_024,
+  });
+  if (
+    keychain?.error ||
+    keychain?.status !== 0 ||
+    (keychain?.signal !== null && keychain?.signal !== undefined)
+  ) {
+    problems.push(
+      "the native provisioner could not validate the release GitHub App Keychain item and ACL",
+    );
+  } else {
+    try {
+      const inspection = JSON.parse(String(keychain.stdout ?? ""));
+      if (
+        inspection.schemaVersion !== 1 ||
+        inspection.purpose !== "freed-release-tag-publisher-keychain-result" ||
+        inspection.action !== "inspect" ||
+        inspection.service !== "freed-release-tag-publisher" ||
+        inspection.account !== "github-app-private-key" ||
+        inspection.host !== hostPath ||
+        inspection.state !== "present"
+      ) {
         problems.push(
-          "the native provisioner returned invalid release Keychain inspection JSON",
+          "the native provisioner returned an invalid release Keychain inspection",
         );
       }
+    } catch {
+      problems.push(
+        "the native provisioner returned invalid release Keychain inspection JSON",
+      );
     }
   }
   if (problems.length > 0) {
-    return check(
-      "release-tag-publisher",
-      "release tag publisher",
-      "fail",
-      `${[...new Set(problems)].join("; ")}. Release tag publication stays unavailable.`,
-      "Run the controlled Release Publisher recovery for task release-publisher-key-recovery-2026-07-20, then rerun this exact opt-in profile.",
-    );
+    return failure();
   }
   return check(
     "release-tag-publisher",
@@ -1286,9 +1375,7 @@ function main() {
   const argv = process.argv.slice(2);
   const strict = argv.includes("--strict");
   const requirePublisher = argv.includes("--require-publisher");
-  const requireReleasePublisher = argv.includes(
-    "--require-release-publisher",
-  );
+  const requireReleasePublisher = argv.includes("--require-release-publisher");
   const json = argv.includes("--json");
   const unknown = argv.filter(
     (arg) =>

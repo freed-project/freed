@@ -465,6 +465,20 @@ test("feature plan routes Release Publisher changes through the focused suite", 
   assert.ok(labels.includes("release publisher tests"));
 });
 
+test("feature plan routes every release tag ruleset through publisher validation", () => {
+  for (const filePath of [
+    ".github/rulesets/release-tag-lockdown.json",
+    ".github/rulesets/release-tag-immutability.json",
+    ".github/rulesets/release-tags.json",
+  ]) {
+    const labels = describePlan(buildValidationPlan("feature", [filePath]));
+    assert.ok(
+      labels.includes("release publisher tests"),
+      `${filePath} must run release publisher tests`,
+    );
+  }
+});
+
 test("collectReleaseArtifactsToValidate resolves markdown artifacts to their json pairs", () => {
   const artifacts = collectReleaseArtifactsToValidate([
     "release-notes/releases/v26.4.1602.md",

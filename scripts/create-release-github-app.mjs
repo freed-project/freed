@@ -13,6 +13,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readSync,
   realpathSync,
   rmSync,
   statSync,
@@ -27,6 +28,7 @@ import { verifyReleaseTagPublisherInstallationReadiness } from "./lib/release-ta
 
 export const RELEASE_GITHUB_APP_ORGANIZATION = "freed-project";
 export const RELEASE_GITHUB_APP_REPO = "freed-project/freed";
+export const RELEASE_GITHUB_APP_ID = 4_296_969;
 export const RELEASE_GITHUB_APP_NAME = "Freed Release Publisher";
 export const RELEASE_GITHUB_APP_SLUG = "freed-release-publisher";
 export const RELEASE_TAG_PUBLISHER_PATH =
@@ -39,6 +41,7 @@ const BOOTSTRAP_PATH = "/";
 const MANIFEST_TIMEOUT_MS = 15 * 60 * 1000;
 const INSTALLATION_TIMEOUT_MS = 15 * 60 * 1000;
 const INSTALLATION_POLL_MS = 2_000;
+const DARWIN_O_CLOEXEC = 0x01000000;
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 export const RELEASE_TAG_PUBLISHER_INSTALLER_PATH = path.join(
   SCRIPT_DIRECTORY,
@@ -244,7 +247,7 @@ export function validateManifestConversion(conversion) {
   const pem = conversion?.pem;
   if (
     !Number.isSafeInteger(appId) ||
-    appId <= 0 ||
+    appId !== RELEASE_GITHUB_APP_ID ||
     conversion?.slug !== RELEASE_GITHUB_APP_SLUG ||
     conversion?.name !== RELEASE_GITHUB_APP_NAME ||
     conversion?.external_url !== "https://freed.wtf" ||
@@ -280,14 +283,22 @@ export function validateManifestConversion(conversion) {
   return { identity, pem };
 }
 
+export function requireReleaseGitHubAppPromotionReadiness() {
+  throw new Error(
+    "Release GitHub App creation and credential promotion are unavailable until one-use kernel-attested owner authorization and staged authoritative GitHub identity proof are integrated.",
+  );
+}
+
 export function provisionReleaseAppPrivateKey(
   pem,
   {
+    requirePromotionReadiness = requireReleaseGitHubAppPromotionReadiness,
     spawn = spawnSync,
     provisionerPath = RELEASE_TAG_PUBLISHER_PROVISIONER_PATH,
     publisherPath = RELEASE_TAG_PUBLISHER_PATH,
   } = {},
 ) {
+  requirePromotionReadiness();
   const result = spawn(
     provisionerPath,
     ["provision", "--host", publisherPath],
@@ -341,6 +352,71 @@ export function releaseAppIdentityPath(candidateStateRoot = undefined) {
   );
 }
 
+function existingIdentityMatches(filePath, expected) {
+  let descriptor;
+  const buffer = Buffer.alloc(expected.length + 1);
+  try {
+    const canonicalFilePath = path.join(
+      realpathSync(path.dirname(filePath)),
+      path.basename(filePath),
+    );
+    if (realpathSync(filePath) !== canonicalFilePath) return false;
+    const link = lstatSync(filePath);
+    descriptor = openSync(
+      filePath,
+      constants.O_RDONLY |
+        constants.O_NOFOLLOW |
+        constants.O_NONBLOCK |
+        (constants.O_CLOEXEC ?? DARWIN_O_CLOEXEC),
+    );
+    const before = fstatSync(descriptor);
+    if (
+      !link.isFile() ||
+      !before.isFile() ||
+      link.dev !== before.dev ||
+      link.ino !== before.ino ||
+      before.uid !== process.getuid() ||
+      before.nlink !== 1 ||
+      (before.mode & 0o777) !== 0o600 ||
+      before.size !== expected.length
+    ) {
+      return false;
+    }
+    let offset = 0;
+    while (offset < buffer.length) {
+      const count = readSync(
+        descriptor,
+        buffer,
+        offset,
+        buffer.length - offset,
+        offset,
+      );
+      if (count === 0) break;
+      offset += count;
+    }
+    const after = fstatSync(descriptor);
+    if (
+      offset !== expected.length ||
+      before.dev !== after.dev ||
+      before.ino !== after.ino ||
+      before.size !== after.size ||
+      before.mode !== after.mode ||
+      before.uid !== after.uid ||
+      before.nlink !== after.nlink ||
+      before.mtimeMs !== after.mtimeMs ||
+      before.ctimeMs !== after.ctimeMs
+    ) {
+      return false;
+    }
+    return timingSafeEqual(buffer.subarray(0, expected.length), expected);
+  } catch {
+    return false;
+  } finally {
+    buffer.fill(0);
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
 export function writeReleaseAppIdentity(
   identity,
   { stateRoot: candidateStateRoot = undefined } = {},
@@ -360,7 +436,7 @@ export function writeReleaseAppIdentity(
     identity.organization !== RELEASE_GITHUB_APP_ORGANIZATION ||
     identity.repo !== RELEASE_GITHUB_APP_REPO ||
     !Number.isSafeInteger(identity.appId) ||
-    identity.appId <= 0 ||
+    identity.appId !== RELEASE_GITHUB_APP_ID ||
     identity.appSlug !== RELEASE_GITHUB_APP_SLUG ||
     !Number.isSafeInteger(identity.ownerId) ||
     identity.ownerId <= 0
@@ -380,17 +456,27 @@ export function writeReleaseAppIdentity(
     `.github-app.${process.pid.toLocaleString("en-US", { useGrouping: false })}.${randomUUID()}.tmp`,
   );
   let descriptor;
+  const identityBytes = Buffer.from(`${JSON.stringify(identity, null, 2)}\n`);
   try {
     directoryDescriptor = openPrivateDirectory(directory, {
       recursive: false,
       label: "The release GitHub App identity directory",
     });
     descriptor = openSync(temporaryPath, "wx", 0o600);
-    writeFileSync(descriptor, `${JSON.stringify(identity, null, 2)}\n`, "utf8");
+    writeFileSync(descriptor, identityBytes);
     fsyncSync(descriptor);
     closeSync(descriptor);
     descriptor = undefined;
-    linkSync(temporaryPath, filePath);
+    try {
+      linkSync(temporaryPath, filePath);
+    } catch (error) {
+      if (
+        error?.code !== "EEXIST" ||
+        !existingIdentityMatches(filePath, identityBytes)
+      ) {
+        throw error;
+      }
+    }
     fsyncSync(directoryDescriptor);
     rmSync(temporaryPath);
     fsyncSync(directoryDescriptor);
@@ -400,6 +486,7 @@ export function writeReleaseAppIdentity(
     rmSync(temporaryPath, { force: true });
     throw error;
   } finally {
+    identityBytes.fill(0);
     if (directoryDescriptor !== undefined) closeSync(directoryDescriptor);
     closeSync(rootDescriptor);
   }
@@ -475,6 +562,7 @@ export async function pollReleaseAppInstallation(
 export async function completeReleaseGitHubAppCreation(
   conversion,
   {
+    requirePromotionReadiness = requireReleaseGitHubAppPromotionReadiness,
     provisionPrivateKey = provisionReleaseAppPrivateKey,
     writeIdentity = writeReleaseAppIdentity,
     activatePublisher = activateReleaseTagPublisherBinding,
@@ -484,6 +572,7 @@ export async function completeReleaseGitHubAppCreation(
     onStatus = () => {},
   } = {},
 ) {
+  requirePromotionReadiness();
   const { identity, pem } = validateManifestConversion(conversion);
   onStatus("Recording the nonsecret release App identity.");
   writeIdentity(identity);
@@ -591,12 +680,14 @@ function createCallbackServer({ state, timeoutMs = MANIFEST_TIMEOUT_MS }) {
 }
 
 export async function createReleaseGitHubApp({
+  requirePromotionReadiness = requireReleaseGitHubAppPromotionReadiness,
   verifyPreparedHost = verifyPreparedReleaseTagPublisher,
   openUrl = (url) => execFileSync("/usr/bin/open", [url], { stdio: "ignore" }),
   exchangeCode = exchangeManifestCode,
   completeCreation = completeReleaseGitHubAppCreation,
   onStatus = () => {},
 } = {}) {
+  requirePromotionReadiness();
   verifyPreparedHost();
   const state = randomBytes(32).toString("hex");
   const listener = createCallbackServer({ state });
@@ -606,7 +697,10 @@ export async function createReleaseGitHubApp({
     openUrl(`${listener.origin}${BOOTSTRAP_PATH}`);
     const { code } = await listener.callback;
     const conversion = await exchangeCode(code);
-    return await completeCreation(conversion, { onStatus });
+    return await completeCreation(conversion, {
+      onStatus,
+      requirePromotionReadiness,
+    });
   } finally {
     listener.close();
   }

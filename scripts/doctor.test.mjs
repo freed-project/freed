@@ -1449,9 +1449,12 @@ test("release publisher doctor profile is separate and uses native ACL inspectio
       inspected.push({ filePath, label, options });
       return [];
     },
+    readConfig(filePath) {
+      return readFileSync(filePath, "utf8");
+    },
     platform: "darwin",
-    run(file, args) {
-      calls.push({ file, args });
+    run(file, args, options) {
+      calls.push({ file, args, options });
       return {
         status: 0,
         stdout: JSON.stringify({
@@ -1469,11 +1472,17 @@ test("release publisher doctor profile is separate and uses native ACL inspectio
   assert.equal(ready.status, "ok");
   assert.equal(calls.length, 1);
   assert.equal(calls[0].file, provisionerPath);
-  assert.deepEqual(calls[0].args, [
-    "inspect",
-    "--host",
-    hostPath,
-  ]);
+  assert.deepEqual(calls[0].args, ["inspect", "--host", hostPath]);
+  assert.deepEqual(calls[0].options, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      HOME: process.env.HOME ?? "",
+      PATH: "/usr/bin:/bin",
+    },
+    timeout: 5_000,
+    maxBuffer: 64 * 1_024,
+  });
   assert.deepEqual(
     inspected.map(({ filePath, options }) => ({ filePath, options })),
     [
@@ -1512,11 +1521,85 @@ test("release publisher doctor profile is separate and uses native ACL inspectio
     hostPath,
     provisionerPath,
     inspectPath: () => [],
+    readConfig: (filePath) => readFileSync(filePath, "utf8"),
     platform: "darwin",
     run: () => ({ status: 1 }),
   });
   assert.equal(missing.status, "fail");
   assert.match(missing.detail, /could not validate.*Keychain item and ACL/);
+});
+
+test("release publisher doctor never reads or executes after path admission failure", () => {
+  let reads = 0;
+  let runs = 0;
+  const result = checkReleaseTagPublisherConfig({
+    configPath: "/untrusted/config",
+    hostPath: "/untrusted/host",
+    provisionerPath: "/untrusted/provisioner",
+    inspectPath(filePath) {
+      return filePath.endsWith("host") ? ["the host path is untrusted"] : [];
+    },
+    readConfig() {
+      reads += 1;
+      return "{}";
+    },
+    run() {
+      runs += 1;
+      return { status: 0 };
+    },
+    platform: "darwin",
+  });
+  assert.equal(result.status, "fail");
+  assert.equal(reads, 0);
+  assert.equal(runs, 0);
+});
+
+test("release publisher doctor never executes after invalid config admission", () => {
+  let runs = 0;
+  const result = checkReleaseTagPublisherConfig({
+    configPath: "/admitted/config",
+    hostPath: "/admitted/host",
+    provisionerPath: "/admitted/provisioner",
+    inspectPath: () => [],
+    readConfig: () => JSON.stringify({ schemaVersion: 1 }),
+    run() {
+      runs += 1;
+      return { status: 0 };
+    },
+    platform: "darwin",
+  });
+  assert.equal(result.status, "fail");
+  assert.match(result.detail, /must contain exactly|binding is invalid/);
+  assert.equal(runs, 0);
+});
+
+test("release publisher doctor never executes native code off macOS", () => {
+  let runs = 0;
+  const config = {
+    schemaVersion: 1,
+    purpose: "freed-release-tag-publisher-binding",
+    status: "active",
+    repo: "freed-project/freed",
+    appId: 4_296_969,
+    appSlug: "freed-release-publisher",
+    publisherPath: "/admitted/host",
+    publisherSha256: "a".repeat(64),
+  };
+  const result = checkReleaseTagPublisherConfig({
+    configPath: "/admitted/config",
+    hostPath: "/admitted/host",
+    provisionerPath: "/admitted/provisioner",
+    inspectPath: () => [],
+    readConfig: () => JSON.stringify(config),
+    run() {
+      runs += 1;
+      return { status: 0 };
+    },
+    platform: "linux",
+  });
+  assert.equal(result.status, "fail");
+  assert.match(result.detail, /supported only on macOS/);
+  assert.equal(runs, 0);
 });
 
 test("runChecks returns every check id with a valid status", () => {
@@ -1573,9 +1656,8 @@ test("runChecks adds Release Publisher readiness only when requested", () => {
   );
   const defaultResult = runChecks({ stateDir });
   assert.equal(
-    defaultResult.checks.filter(
-      (item) => item.id === "release-tag-publisher",
-    ).length,
+    defaultResult.checks.filter((item) => item.id === "release-tag-publisher")
+      .length,
     0,
   );
 });

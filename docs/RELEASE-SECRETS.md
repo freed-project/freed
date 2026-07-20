@@ -157,38 +157,22 @@ root-owned, read-only executables at these fixed paths:
 
 The binding does not exist yet, so publication still fails closed.
 
-### Create and install the release App
+### App creation and credential promotion are unavailable
 
-Use the manifest helper for normal provisioning:
+Do not run `scripts/create-release-github-app.mjs` as a provisioning step in
+this checkpoint. It fails before opening a browser, starting the loopback
+manifest flow, contacting GitHub, writing identity state, or invoking native
+credential code. The dedicated publisher already has the fixed identity App ID
+`4,296,969`, slug `freed-release-publisher`, and repository
+`freed-project/freed`. A newly created App would have a different ID and is not
+an acceptable replacement.
 
-```bash
-node scripts/create-release-github-app.mjs
-```
-
-The helper opens a loopback GitHub manifest flow for the private organization
-App `Freed Release Publisher`, with slug `freed-release-publisher`. The manifest
-requests only repository Contents write permission. GitHub adds Metadata read
-implicitly. The App subscribes to no events, has no OAuth flow, and keeps its
-required webhook inactive.
-
-The helper converts the manifest, records the nonsecret App identity before any
-credential mutation, pipes the returned private key directly to the fixed
-native provisioner, and never writes the key to disk. The provisioner stores it
-in the macOS Keychain with:
-
-- service `freed-release-tag-publisher`
-- account `github-app-private-key`
-
-The Keychain ACL permits only the installed native host and provisioner. The
-helper then installs the root-owned binding at
-`/Library/Application Support/Freed/release-tag-publisher.json`, opens the App
-installation page, and waits for an active selected-repository installation
-whose only repository is `freed-project/freed`.
-
-The binding pins the repository, App ID, App slug, publisher path, and publisher
-SHA-256 digest. The nonsecret App identity is also recorded at
-`~/.freed/automation/release-tag-publisher/github-app.json`. Neither file
-contains the private key.
+The production native provisioner accepts only `inspect`, `matches`, and
+`verify`. It rejects `provision`, `recover`, `rotate`, `discard-recovery`, and
+`revoke` before admitting `--host` or reading key bytes. The Keychain ACL
+validator requires exactly the fixed host and provisioner plus an empty prompt
+selector. No credential mutation command in this checkpoint is a live runbook
+operation.
 
 ### Recover a migrated Release Publisher key
 
@@ -223,33 +207,25 @@ exact ACL without returning private key bytes:
 node scripts/doctor.mjs --require-release-publisher
 ```
 
-Recovery and discard are deliberately unavailable in this code-only
-checkpoint. Both commands fail before host, Keychain, or binding mutation until
-the outcome-ledger repair lands and supplies its exact current-task
-owner-confirmation validator. Do not substitute an environment flag, a shell
-prompt, or a caller assertion. The final intent must bind the action, App ID
-`4,296,969`, App slug, repository, expected source and tree, admitted key
-fingerprint, native executable path and digest, and exact state transition.
+Recovery, activation, rotation, discard, and revocation are deliberately
+unavailable. The final one-use owner intent must bind the action, App ID
+`4,296,969`, App slug, repository, expected source commit and tree, admitted key
+fingerprint, native executable path and digest, transaction ID, and exact state
+transition.
 
-If the Keychain item is missing, the command installs the current native tools,
-adds the key, validates the exact newly created item, checks its fingerprint,
-and activates the binding. If the item is already present, it must match the
-admitted PEM fingerprint before activation. A different existing key fails
-closed without replacing, revoking, or discarding anything.
+The authorized design must add the candidate to a separate staged Keychain
+service and account tied to that pending transaction. The staged key must prove
+through GitHub that it authenticates App ID `4,296,969`, the exact slug and
+organization, Contents write plus Metadata read only, no events, and one active
+selected-repository installation whose only repository is
+`freed-project/freed`. A local PEM digest is not identity proof.
 
-If activation loses its response or fails after Keychain creation, the key is
-left intact. Rerun the same command with the same PEM and App identity. The
-second run proves the installed fingerprint and resumes activation. It never
-uses broad automatic revocation as cleanup.
-
-Abandoning a staged recovery is a separate owner operation. Its future
-owner-confirmed request must bind the exact PEM fingerprint. The digest-bound
-and idempotent discard action remains unavailable until that validator is
-integrated.
-
-Discard refuses a different installed fingerprint and deletes only the exact
-matching Keychain item reference. A missing item reports no change. Normal
-recovery failures never call discard or revoke.
+Only after that proof may promotion create and verify a replacement active
+reference. The old active reference stays intact until the replacement is
+verified. An exact retry uses the same transaction ID and recovers the result.
+Rotation uses the same stage, prove, and promote transaction. Discard must bind
+the exact pending transaction, staged item reference, and digest. It can delete
+only that staged item. It can never select or delete the active credential.
 
 ### Activate the split tag rulesets
 
@@ -285,7 +261,7 @@ immutability, and lockdown ruleset. It rejects duplicate authority names and
 rejects publication while any no-bypass lockdown remains active, even if an
 earlier same-named lockdown is disabled.
 
-### Verify, publish, rotate, or revoke
+### Verify and publish
 
 Verify the installed publisher and its live App installation at any time:
 
@@ -307,30 +283,11 @@ Read-only GitHub checks may use the current `gh` login. Tag creation never
 falls back to `GITHUB_TOKEN`, `GH_TOKEN`, a personal access token, a user push,
 or a general automation credential.
 
-For key rotation, create a replacement private key in the GitHub App settings
-and keep the previous GitHub key active until verification succeeds. Save the
-replacement briefly as an absolute, current-user-owned mode `0600` file, then
-run:
-
-```bash
-node scripts/release-tag-publisher-install.mjs rotate \
-  --private-key-file /absolute/path/to/replacement.pem
-node scripts/release-tag-publisher-install.mjs verify
-```
-
-After verification, delete the old key in GitHub and remove the temporary PEM.
-The installer also keeps `provision` as a compatibility alias for controlled
-recovery. Use `recover` in the runbook because it states the intended operation.
-The manifest helper remains the normal initial setup path because it keeps the
-new private key off disk.
-
-To retire the publisher, restore the no-bypass lockdown first, then revoke the
-local key and binding:
-
-```bash
-node scripts/sync-github-rulesets.mjs --lock-release-tags --apply
-node scripts/release-tag-publisher-install.mjs revoke
-```
+Key rotation and retirement have no executable runbook in this checkpoint.
+Their command names remain reserved, but both JavaScript and native production
+paths fail closed. A future retirement runbook must restore and verify the
+no-bypass lockdown before a separately authorized active credential and binding
+transaction can begin.
 
 ## Drafting release notes
 

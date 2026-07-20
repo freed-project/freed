@@ -38,9 +38,10 @@ export const RELEASE_TAG_PUBLISHER_CONFIG = path.join(
   RELEASE_TAG_PUBLISHER_DIRECTORY,
   "release-tag-publisher.json",
 );
-const RELEASE_TAG_PUBLISHER_KEYCHAIN_SERVICE =
-  "freed-release-tag-publisher";
+const RELEASE_TAG_PUBLISHER_KEYCHAIN_SERVICE = "freed-release-tag-publisher";
 const RELEASE_TAG_PUBLISHER_KEYCHAIN_ACCOUNT = "github-app-private-key";
+const RELEASE_GITHUB_APP_ID = 4_296_969;
+const RELEASE_GITHUB_APP_SLUG = "freed-release-publisher";
 const MAXIMUM_PRIVATE_KEY_BYTES = 32 * 1_024;
 const DARWIN_O_CLOEXEC = 0x01000000;
 
@@ -65,7 +66,7 @@ function defaultDependencies() {
     run: spawnSync,
     authorizeRecovery() {
       fail(
-        "Release Publisher recovery is unavailable until exact current-task owner confirmation is integrated from the outcome-ledger repair.",
+        "Release Publisher credential mutation is unavailable until one-use kernel-attested owner authorization and staged GitHub identity proof are integrated.",
       );
     },
   };
@@ -212,14 +213,11 @@ export function prepareReleaseTagPublisher({ dependencies: overrides } = {}) {
 
 function validateAppIdentity(appId, appSlug) {
   const numericId = Number(appId);
-  if (!Number.isSafeInteger(numericId) || numericId <= 0) {
-    fail("The release GitHub App ID must be a positive integer.");
+  if (numericId !== RELEASE_GITHUB_APP_ID) {
+    fail("The release GitHub App ID must match the dedicated publisher App.");
   }
-  if (
-    typeof appSlug !== "string" ||
-    !/^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$/.test(appSlug)
-  ) {
-    fail("The release GitHub App slug is invalid.");
+  if (appSlug !== RELEASE_GITHUB_APP_SLUG) {
+    fail("The release GitHub App slug must match the dedicated publisher App.");
   }
   return { appId: numericId, appSlug };
 }
@@ -231,6 +229,12 @@ export function activateReleaseTagPublisher({
 }) {
   const dependencies = dependenciesWith(overrides);
   const identity = validateAppIdentity(appId, appSlug);
+  dependencies.authorizeRecovery({
+    action: "release-tag-publisher.activate-existing-credential",
+    appId: identity.appId,
+    appSlug: identity.appSlug,
+    repo: "freed-project/freed",
+  });
   requireInstalledExecutable(dependencies, dependencies.hostPath);
   requireInstalledExecutable(dependencies, dependencies.provisionerPath);
   const publisherSha256 = sha256File(dependencies.hostPath);
@@ -446,15 +450,10 @@ function invokeProvisioner(
     }
     args.push("--expected-sha256", expectedSha256);
   }
-  const output = runChecked(
-    dependencies,
-    dependencies.provisionerPath,
-    args,
-    {
-      purpose: `Release tag publisher key ${action}`,
-      stdio: [descriptor ?? "ignore", "pipe", "pipe"],
-    },
-  );
+  const output = runChecked(dependencies, dependencies.provisionerPath, args, {
+    purpose: `Release tag publisher key ${action}`,
+    stdio: [descriptor ?? "ignore", "pipe", "pipe"],
+  });
   try {
     const result = JSON.parse(output);
     if (
@@ -557,6 +556,10 @@ export function rotateReleaseTagPublisher({
 }) {
   const dependencies = dependenciesWith(overrides);
   return withAdmittedPrivateKey(privateKeyFile, (admission) => {
+    dependencies.authorizeRecovery({
+      action: "release-tag-publisher.rotate-staged-key",
+      privateKeySha256: admission.digest,
+    });
     requireInstalledExecutable(dependencies, dependencies.hostPath);
     requireInstalledExecutable(dependencies, dependencies.provisionerPath);
     admission.assertUnchanged();
@@ -601,6 +604,12 @@ export function discardReleaseTagPublisherRecovery({
 
 export function revokeReleaseTagPublisher({ dependencies: overrides } = {}) {
   const dependencies = dependenciesWith(overrides);
+  dependencies.authorizeRecovery({
+    action: "release-tag-publisher.revoke-active-credential",
+    appId: RELEASE_GITHUB_APP_ID,
+    appSlug: RELEASE_GITHUB_APP_SLUG,
+    repo: "freed-project/freed",
+  });
   invokeProvisioner(dependencies, "revoke");
   runChecked(
     dependencies,

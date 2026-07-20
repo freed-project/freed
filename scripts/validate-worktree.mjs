@@ -51,6 +51,9 @@ const RELEASE_TOOLING_PATHS = new Set([
 ]);
 
 const RELEASE_PUBLISHER_TOOLING_PATHS = new Set([
+  ".github/rulesets/release-tag-lockdown.json",
+  ".github/rulesets/release-tag-immutability.json",
+  ".github/rulesets/release-tags.json",
   "scripts/create-release-github-app.mjs",
   "scripts/create-release-github-app.test.mjs",
   "scripts/doctor.mjs",
@@ -455,11 +458,7 @@ function socialProviderFocusedE2eCommand() {
 function pwaTestCommands() {
   return [
     npmCommand("pwa unit tests", ["run", "test:unit"], "packages/pwa"),
-    npmCommand(
-      "pwa performance tests",
-      ["run", "test:perf"],
-      "packages/pwa",
-    ),
+    npmCommand("pwa performance tests", ["run", "test:perf"], "packages/pwa"),
   ];
 }
 

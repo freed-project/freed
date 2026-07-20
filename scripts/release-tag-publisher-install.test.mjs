@@ -17,8 +17,10 @@ import path from "node:path";
 import test, { after, before } from "node:test";
 
 import {
+  activateReleaseTagPublisher,
   discardReleaseTagPublisherRecovery,
   provisionReleaseTagPublisher,
+  revokeReleaseTagPublisher,
   rotateReleaseTagPublisher,
 } from "./release-tag-publisher-install.mjs";
 
@@ -192,7 +194,10 @@ test("recovery admits one stable descriptor and activates after exact matching",
     harness.calls.some((call) => call.args?.includes(privateKey)),
     false,
   );
-  assert.equal(harness.calls.some((call) => call.args?.[0] === "revoke"), false);
+  assert.equal(
+    harness.calls.some((call) => call.args?.[0] === "revoke"),
+    false,
+  );
 });
 
 test("recovery stays closed until exact owner confirmation is integrated", () => {
@@ -217,7 +222,7 @@ test("recovery stays closed until exact owner confirmation is integrated", () =>
           },
         },
       }),
-    /unavailable until exact current-task owner confirmation is integrated/,
+    /credential mutation is unavailable until one-use kernel-attested owner authorization/,
   );
   assert.equal(touched, false);
 
@@ -232,8 +237,44 @@ test("recovery stays closed until exact owner confirmation is integrated", () =>
           },
         },
       }),
-    /unavailable until exact current-task owner confirmation is integrated/,
+    /credential mutation is unavailable until one-use kernel-attested owner authorization/,
   );
+  assert.equal(touched, false);
+
+  for (const operation of [
+    () =>
+      rotateReleaseTagPublisher({
+        privateKeyFile: privateKeyPath,
+        dependencies: {
+          run() {
+            touched = true;
+          },
+        },
+      }),
+    () =>
+      revokeReleaseTagPublisher({
+        dependencies: {
+          run() {
+            touched = true;
+          },
+        },
+      }),
+    () =>
+      activateReleaseTagPublisher({
+        appId: 4_296_969,
+        appSlug: "freed-release-publisher",
+        dependencies: {
+          run() {
+            touched = true;
+          },
+        },
+      }),
+  ]) {
+    assert.throws(
+      operation,
+      /credential mutation is unavailable until one-use kernel-attested owner authorization/,
+    );
+  }
   assert.equal(touched, false);
 });
 
@@ -252,7 +293,10 @@ test("activation failure retains the recovered key and the next run resumes", ()
     /injected activation failure/,
   );
   assert.equal(harness.storedDigest, digest(privateKey));
-  assert.equal(harness.calls.some((call) => call.args?.[0] === "revoke"), false);
+  assert.equal(
+    harness.calls.some((call) => call.args?.[0] === "revoke"),
+    false,
+  );
 
   harness.clearActivationError();
   const resumed = provisionReleaseTagPublisher({
@@ -355,22 +399,20 @@ test("recovery rejects a swapped path before any provisioner call", () => {
   assert.equal(harness.prepared, 0);
 });
 
-test(
-  "recovery rejects a FIFO without blocking or invoking the provisioner",
-  () => {
-    const fifo = path.join(fixtureRoot, "private-key.fifo");
-    execFileSync("/usr/bin/mkfifo", [fifo]);
-    chmodSync(fifo, 0o600);
-    const installerUrl = new URL(
-      "./release-tag-publisher-install.mjs",
-      import.meta.url,
-    ).href;
-    const child = spawnSync(
-      process.execPath,
-      [
-        "--input-type=module",
-        "--eval",
-        `
+test("recovery rejects a FIFO without blocking or invoking the provisioner", () => {
+  const fifo = path.join(fixtureRoot, "private-key.fifo");
+  execFileSync("/usr/bin/mkfifo", [fifo]);
+  chmodSync(fifo, 0o600);
+  const installerUrl = new URL(
+    "./release-tag-publisher-install.mjs",
+    import.meta.url,
+  ).href;
+  const child = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `
           import { provisionReleaseTagPublisher } from ${JSON.stringify(installerUrl)};
           try {
             provisionReleaseTagPublisher({
@@ -388,54 +430,15 @@ test(
             process.stderr.write(String(error?.message ?? error));
           }
         `,
-      ],
-      { encoding: "utf8", timeout: 5_000 },
-    );
-    assert.equal(child.error?.code, undefined, child.error?.message);
-    assert.equal(child.status, 0, child.stderr);
-    assert.match(child.stderr, /private key file/i);
-    const source = readFileSync(
-      new URL("./release-tag-publisher-install.mjs", import.meta.url),
-      "utf8",
-    );
-    assert.match(source, /constants\.O_NONBLOCK/);
-  },
-);
-
-test("rotation uses the admitted digest and explicit discard is digest bound", () => {
-  const harness = createHarness({ presence: "present" });
-  const rotated = rotateReleaseTagPublisher({
-    privateKeyFile: privateKeyPath,
-    dependencies: harness.dependencies,
-  });
-  assert.equal(rotated.action, "rotate");
-  assert.equal(harness.calls[0].args[0], "rotate");
-  assert.equal(
-    harness.calls[0].args[
-      harness.calls[0].args.indexOf("--expected-sha256") + 1
     ],
-    digest(privateKey),
+    { encoding: "utf8", timeout: 5_000 },
   );
-
-  assert.throws(
-    () =>
-      discardReleaseTagPublisherRecovery({
-        expectedSha256: "0".repeat(64),
-        dependencies: harness.dependencies,
-      }),
-    /failed: digest mismatch/,
+  assert.equal(child.error?.code, undefined, child.error?.message);
+  assert.equal(child.status, 0, child.stderr);
+  assert.match(child.stderr, /private key file/i);
+  const source = readFileSync(
+    new URL("./release-tag-publisher-install.mjs", import.meta.url),
+    "utf8",
   );
-  assert.equal(harness.storedDigest, digest(privateKey));
-
-  const discarded = discardReleaseTagPublisherRecovery({
-    expectedSha256: digest(privateKey),
-    dependencies: harness.dependencies,
-  });
-  assert.equal(discarded.changed, true);
-  assert.equal(harness.storedDigest, null);
-  const repeated = discardReleaseTagPublisherRecovery({
-    expectedSha256: digest(privateKey),
-    dependencies: harness.dependencies,
-  });
-  assert.equal(repeated.changed, false);
+  assert.match(source, /constants\.O_NONBLOCK/);
 });

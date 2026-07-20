@@ -25,6 +25,8 @@ const tag = "v26.7.1302-dev";
 let fixtureRoot;
 let host;
 let provisioner;
+let productionHost;
+let productionProvisioner;
 let recoveryKey;
 let configPath;
 let keyPath;
@@ -95,22 +97,14 @@ function createProvisionerState() {
     fixtureRoot,
     `provisioner-state-${randomUUID()}.json`,
   );
-  writeFileSync(
-    statePath,
-    `${JSON.stringify({ exactDeleteCount: 0 })}\n`,
-    { mode: 0o600 },
-  );
+  writeFileSync(statePath, `${JSON.stringify({ exactDeleteCount: 0 })}\n`, {
+    mode: 0o600,
+  });
   return statePath;
 }
 
 function runProvisioner(action, statePath, options = {}) {
-  const args = [
-    action,
-    "--host",
-    host,
-    "--test-store",
-    statePath,
-  ];
+  const args = [action, "--host", host, "--test-store", statePath];
   if (options.expectedSha256) {
     args.push("--expected-sha256", options.expectedSha256);
   }
@@ -141,7 +135,7 @@ function identityArgs(repo = "freed-project/freed") {
     "--repo",
     repo,
     "--app-id",
-    "123456",
+    "4296969",
     "--app-slug",
     "freed-release-publisher",
     ...testingFlags(),
@@ -188,11 +182,8 @@ before(async () => {
     mkdtempSync(path.join(os.tmpdir(), "freed-release-publisher-native-")),
   );
   chmodSync(fixtureRoot, 0o700);
-  const productionHost = path.join(fixtureRoot, "production-host");
-  const productionProvisioner = path.join(
-    fixtureRoot,
-    "production-provisioner",
-  );
+  productionHost = path.join(fixtureRoot, "production-host");
+  productionProvisioner = path.join(fixtureRoot, "production-provisioner");
   execFileSync(
     path.join(root, "scripts", "release-tag-publisher-build.sh"),
     [
@@ -230,10 +221,7 @@ before(async () => {
   );
   chmodSync(host, 0o700);
 
-  provisioner = path.join(
-    fixtureRoot,
-    "release-tag-publisher-provision-test",
-  );
+  provisioner = path.join(fixtureRoot, "release-tag-publisher-provision-test");
   execFileSync(
     "/usr/bin/xcrun",
     [
@@ -274,7 +262,7 @@ before(async () => {
         purpose: "freed-release-tag-publisher-binding",
         status: "active",
         repo: "freed-project/freed",
-        appId: 123456,
+        appId: 4_296_969,
         appSlug: "freed-release-publisher",
         publisherPath: host,
         publisherSha256: sha256(host),
@@ -325,7 +313,7 @@ before(async () => {
     const url = new URL(request.url, "http://127.0.0.1");
     if (request.method === "GET" && url.pathname === "/app") {
       return json(response, 200, {
-        id: 123456,
+        id: 4_296_969,
         slug: "freed-release-publisher",
         name: "Freed Release Publisher",
         external_url: "https://freed.wtf",
@@ -452,10 +440,46 @@ test("production native publisher tools compile", { skip: !enabled }, () => {
   );
   assert.match(hostSource, /kSecUseAuthenticationUIFail/);
   assert.match(provisionerSource, /kSecUseAuthenticationUIFail/);
+  assert.match(provisionerSource, /publisherPromptSelector/);
+  assert.match(provisionerSource, /selector == publisherPromptSelector/);
 });
 
 test(
-  "native provisioner recovers, matches, and discards only the expected item",
+  "production provisioner rejects every credential mutation before host or secret admission",
+  { skip: !enabled },
+  () => {
+    const observable = [];
+    for (const action of [
+      "provision",
+      "recover",
+      "rotate",
+      "discard-recovery",
+      "revoke",
+    ]) {
+      const result = spawnSync(
+        productionProvisioner,
+        [action, "--host", "/path/that/must/not/be-admitted"],
+        {
+          cwd: fixtureRoot,
+          encoding: "utf8",
+          env: { PATH: "/usr/bin:/bin" },
+          input: recoveryKey,
+        },
+      );
+      assert.equal(result.status, 1, `${action}: ${result.stderr}`);
+      assert.match(
+        result.stderr,
+        /Credential mutation is unavailable until one-use kernel-attested owner authorization/,
+      );
+      assert.doesNotMatch(result.stderr, /does not resolve|requires --host/);
+      observable.push(result.stdout, result.stderr);
+    }
+    assert.doesNotMatch(observable.join("\n"), /BEGIN RSA PRIVATE KEY/);
+  },
+);
+
+test(
+  "testing provisioner recovers and matches only the expected item",
   { skip: !enabled },
   () => {
     const statePath = createProvisionerState();
@@ -485,39 +509,11 @@ test(
     assert.equal(duplicate.status, 1);
     assert.match(duplicate.stderr, /already exists/);
 
-    const wrongDiscard = runProvisioner("discard-recovery", statePath, {
-      expectedSha256: "0".repeat(64),
-    });
-    assert.equal(wrongDiscard.status, 1);
-    assert.match(wrongDiscard.stderr, /does not match the authorized discard/);
-    assert.notEqual(JSON.parse(readFileSync(statePath, "utf8")).itemId, null);
+    const state = JSON.parse(readFileSync(statePath, "utf8"));
+    assert.notEqual(state.itemId ?? null, null);
+    assert.equal(state.exactDeleteCount, 0);
 
-    const discarded = runProvisioner("discard-recovery", statePath, {
-      expectedSha256: digest,
-    });
-    assert.equal(discarded.status, 0, discarded.stderr);
-    assert.equal(JSON.parse(discarded.stdout).changed, true);
-    let state = JSON.parse(readFileSync(statePath, "utf8"));
-    assert.equal(state.itemId ?? null, null);
-    assert.equal(state.exactDeleteCount, 1);
-
-    const missingDiscard = runProvisioner("discard-recovery", statePath, {
-      expectedSha256: digest,
-    });
-    assert.equal(missingDiscard.status, 0, missingDiscard.stderr);
-    assert.equal(JSON.parse(missingDiscard.stdout).changed, false);
-    state = JSON.parse(readFileSync(statePath, "utf8"));
-    assert.equal(state.exactDeleteCount, 1);
-
-    const output = [
-      missing,
-      recovered,
-      matched,
-      duplicate,
-      wrongDiscard,
-      discarded,
-      missingDiscard,
-    ]
+    const output = [missing, recovered, matched, duplicate]
       .flatMap((result) => [result.stdout, result.stderr])
       .join("\n");
     assert.doesNotMatch(output, /BEGIN RSA PRIVATE KEY/);
@@ -555,6 +551,32 @@ test(
 );
 
 test(
+  "testing provisioner rejects non-ASCII and oversized PEM input without creating an item",
+  { skip: !enabled },
+  () => {
+    for (const input of [
+      Buffer.concat([
+        Buffer.from("-----BEGIN RSA PRIVATE KEY-----\n"),
+        Buffer.from([0xff]),
+        Buffer.from("\n-----END RSA PRIVATE KEY-----\n"),
+      ]),
+      Buffer.alloc(32 * 1_024 + 1, 0x41),
+    ]) {
+      const statePath = createProvisionerState();
+      const result = runProvisioner("recover", statePath, {
+        expectedSha256: createHash("sha256").update(input).digest("hex"),
+        input,
+      });
+      assert.equal(result.status, 1);
+      const state = JSON.parse(readFileSync(statePath, "utf8"));
+      assert.equal(state.itemId ?? null, null);
+      assert.equal(state.exactDeleteCount, 0);
+      assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /BEGIN RSA/);
+    }
+  },
+);
+
+test(
   "native provisioner never widens rollback when exact deletion fails",
   { skip: !enabled },
   () => {
@@ -566,7 +588,10 @@ test(
       input: recoveryKey,
     });
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /exact newly created item could not be rolled back/);
+    assert.match(
+      result.stderr,
+      /exact newly created item could not be rolled back/,
+    );
     const state = JSON.parse(readFileSync(statePath, "utf8"));
     assert.match(state.itemId, /^[a-f0-9-]{36}$/);
     assert.equal(state.exactDeleteCount, 0);

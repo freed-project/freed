@@ -737,28 +737,41 @@ Release tags have a separate external trust boundary. The checked-in
 `release-tag-lockdown.json` is the bootstrap authority. Apply it with
 `--lock-release-tags --apply` before App provisioning. It restricts creation,
 update, and deletion with no bypass. `release-tag-publisher-install.mjs prepare`
-builds and installs the fixed root-owned native host and provisioner. The
-manifest helper then creates the private `Freed Release Publisher` organization
-App, pipes its private key into the native provisioner, activates the digest
-pinned binding, and requires a selected-repository installation for only
-`freed-project/freed`. The Keychain item uses service
-`freed-release-tag-publisher` and account `github-app-private-key`.
+builds and installs the fixed root-owned native host and provisioner. This
+checkpoint does not create an App, add a credential, activate a binding, rotate
+a key, discard staged material, or revoke an active item. The manifest helper
+fails before it opens a browser or contacts GitHub. The production native
+provisioner accepts only `inspect`, `matches`, and `verify`. It rejects
+`provision`, `recover`, `rotate`, `discard-recovery`, and `revoke` during action
+parsing, before it admits a caller-supplied host path or reads standard input.
 
-Migrated-machine recovery is fail-closed and resumable. The disk PEM is
-admitted through one nonblocking, no-follow descriptor with exact owner, mode,
-link-count, size, path, inode, and stable-content checks. Native recovery binds
-the supplied bytes to that admitted SHA-256 fingerprint before adding the item.
-If later binding activation fails, the exact created key remains available for
-an identical retry. Recovery never performs broad automatic revocation. A
-different existing fingerprint blocks activation without changing the item.
-Discard is a separate digest-bound owner operation and deletes only the exact
-matching item reference. The stable control task is
-`release-publisher-key-recovery-2026-07-20`.
+Migrated-machine recovery remains fail-closed. The disk PEM admission code and
+isolated fake-store tests preserve the intended bounded descriptor contract,
+but no production native mutation verb is compiled into the action switch. The
+stable control task is `release-publisher-key-recovery-2026-07-20`.
 
-The recovery and discard entry points remain fail-closed in this code-only
-checkpoint. They cannot mutate Keychain state until the outcome-ledger repair
-lands and supplies its exact current-task owner-confirmation validator. No
-environment flag or caller assertion substitutes for that validator.
+The future recovery transaction must begin with one kernel-attested,
+current-task owner confirmation. Its exact intent must bind the action, App ID
+`4,296,969`, App slug `freed-release-publisher`, repository
+`freed-project/freed`, expected source commit and tree, admitted key
+fingerprint, native executable path and digest, transaction ID, and exact state
+transition. No environment flag, shell prompt, reusable lease, or caller
+assertion substitutes for that one-use authorization.
+
+An authorized key must first enter a distinct staged Keychain service and
+account tied to that pending transaction. It is not the active publisher item.
+The staged key must authenticate an authoritative GitHub check that proves the
+exact private organization App identity, Contents write and Metadata read only,
+an empty event list, and one unsuspended selected-repository installation whose
+only repository is `freed-project/freed`. Only that proof may begin promotion.
+
+Promotion must create and verify the replacement active reference before it
+retires the prior active reference. A lost response must recover by the same
+transaction ID without repeating the state transition. Rotation uses this same
+stage, prove, and promote transaction. Discard requires the exact pending
+transaction, staged item reference, and digest. It can delete only that staged
+item and can never select or delete the active credential. None of these
+mutation paths is available in this checkpoint.
 
 Activation requires an owner-reviewed change that pins the App ID in the
 creation policy. The release ruleset command verifies the exact App,
