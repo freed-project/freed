@@ -24,6 +24,7 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  framePinnedLeaseArchiveHelperInvocation,
   readPinnedLeaseArchiveHelperSource,
   resolveLeaseArchivePythonRuntime,
 } from "./lib/automation-control.mjs";
@@ -38,24 +39,37 @@ const helperSource = readFileSync(helperPath, "utf8");
 const helperDigest = createHash("sha256").update(helperSource).digest("hex");
 
 function runHelper(operation, args, descriptors = []) {
+  const framed = framePinnedLeaseArchiveHelperInvocation(
+    helperSource,
+    operation,
+    args,
+    { expectedDigest: helperDigest },
+  );
   return spawnSync(
     pythonPath,
-    ["-E", "-I", "-S", "-c", helperSource, operation, ...args.map(String)],
+    framed.argv,
     {
       env: { HOME: os.homedir(), LANG: "C", LC_ALL: "C", PATH: "/usr/bin:/bin" },
+      input: framed.input,
       maxBuffer: 16 * 1024 * 1024,
-      stdio: ["ignore", "pipe", "pipe", ...descriptors],
+      stdio: ["pipe", "pipe", "pipe", ...descriptors],
     },
   );
 }
 
 function runAuthorityHelper(operation, args, descriptors, input) {
+  const framed = framePinnedLeaseArchiveHelperInvocation(
+    helperSource,
+    operation,
+    args,
+    { expectedDigest: helperDigest, input },
+  );
   return spawnSync(
     pythonPath,
-    ["-E", "-I", "-S", "-c", helperSource, operation, ...args.map(String)],
+    framed.argv,
     {
       env: { HOME: os.homedir(), LANG: "C", LC_ALL: "C", PATH: "/usr/bin:/bin" },
-      input,
+      input: framed.input,
       maxBuffer: 16 * 1024 * 1024,
       stdio: ["pipe", "pipe", "pipe", ...descriptors],
     },
@@ -301,14 +315,20 @@ function spawnPausedHelper({
   destination = "",
   input,
 }) {
+  const framed = framePinnedLeaseArchiveHelperInvocation(
+    helperSource,
+    operation,
+    args,
+    { expectedDigest: helperDigest, input },
+  );
   const releaseFd = Math.max(6, 3 + descriptors.length);
   const signalFd = releaseFd + 1;
-  const stdio = [input === undefined ? "ignore" : "pipe", "pipe", "pipe", ...descriptors];
+  const stdio = ["pipe", "pipe", "pipe", ...descriptors];
   while (stdio.length < releaseFd) stdio.push("ignore");
   stdio.push("pipe", "pipe");
   const child = spawn(
     pythonPath,
-    ["-E", "-I", "-S", "-c", helperSource, operation, ...args.map(String)],
+    framed.argv,
     {
       env: {
         HOME: os.homedir(),
@@ -331,7 +351,7 @@ function spawnPausedHelper({
       stdio,
     },
   );
-  if (input !== undefined) child.stdin.end(input);
+  child.stdin.end(framed.input);
   return { child, releaseFd, signalFd };
 }
 
@@ -613,7 +633,20 @@ function assertAuthorityInventoryEntry(receipt, filePath) {
 
 test("lease archive helper source is pinned and contains every native mutation contract", () => {
   const source = readPinnedLeaseArchiveHelperSource();
+  assert.ok(Buffer.byteLength(source, "utf8") > 128 * 1024);
   assert.equal(createHash("sha256").update(source).digest("hex"), helperDigest);
+  const framed = framePinnedLeaseArchiveHelperInvocation(
+    source,
+    "probe",
+    [],
+    { expectedDigest: helperDigest },
+  );
+  assert.ok(
+    framed.argv.every(
+      (argument) => Buffer.byteLength(argument, "utf8") < 128 * 1024,
+    ),
+  );
+  assert.deepEqual(framed.input, Buffer.from(source, "utf8"));
   assert.match(source, /renameatx_np/);
   assert.match(source, /RENAME_EXCL/);
   assert.match(source, /renameat2/);
@@ -3141,14 +3174,14 @@ test("private file batch read validates every selected and unselected sibling", 
     chmodSync(second, 0o644);
     const unsafeMode = runInventory();
     assert.notEqual(unsafeMode.status, 0);
-    assert.match(String(unsafeMode.stderr), /exact mode 0600/);
+    assert.match(String(unsafeMode.stderr), /unsupported exact mode/);
     chmodSync(second, 0o600);
 
     const alias = path.join(root, "c.json");
     linkSync(second, alias);
     const hardLink = runInventory();
     assert.notEqual(hardLink.status, 0);
-    assert.match(String(hardLink.stderr), /exactly one link/);
+    assert.match(String(hardLink.stderr), /unsupported exact link count/);
     rmSync(alias);
 
     const symbolic = path.join(root, "c.json");
@@ -3439,13 +3472,13 @@ test("private lease state batch rejects every unsafe full-set sibling", (t) => {
     chmodSync(record, 0o644);
     const recordMode = runInventory();
     assert.notEqual(recordMode.status, 0);
-    assert.match(String(recordMode.stderr), /exact mode 0600/);
+    assert.match(String(recordMode.stderr), /unsupported exact mode/);
     chmodSync(record, 0o600);
 
     linkSync(record, outsideAlias);
     const hardLink = runInventory();
     assert.notEqual(hardLink.status, 0);
-    assert.match(String(hardLink.stderr), /exactly one link/);
+    assert.match(String(hardLink.stderr), /unsupported exact link count/);
     rmSync(outsideAlias);
 
     rmSync(record);

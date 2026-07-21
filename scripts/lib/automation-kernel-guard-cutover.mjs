@@ -25,6 +25,7 @@ import { TextDecoder } from "node:util";
 
 import {
   AutomationControlError,
+  framePinnedLeaseArchiveHelperInvocation,
   ownerGovernanceIntentDigest,
   processStartIdentity,
   readPinnedLeaseArchiveHelperSource,
@@ -921,6 +922,12 @@ function runCutoverNativeHelperBytes(
   const helperSource = readPinnedLeaseArchiveHelperSource(undefined, {
     expectedDigest: CUTOVER_NATIVE_MOVE_HELPER_SHA256,
   });
+  const framed = framePinnedLeaseArchiveHelperInvocation(
+    helperSource,
+    operation,
+    args,
+    { expectedDigest: CUTOVER_NATIVE_MOVE_HELPER_SHA256 },
+  );
   const pauseCheckpoint =
     process.env.FREED_CUTOVER_MOVE_TEST_PAUSE ?? "";
   const useTestDescriptors =
@@ -932,7 +939,7 @@ function runCutoverNativeHelperBytes(
   try {
     stdout = execFileSync(
       CUTOVER_NATIVE_MOVE_PYTHON,
-      ["-E", "-I", "-S", "-c", helperSource, operation, ...args],
+      framed.argv,
       {
         env: {
           HOME: process.env.HOME ?? "",
@@ -954,8 +961,9 @@ function runCutoverNativeHelperBytes(
             : {}),
         },
         maxBuffer,
+        input: framed.input,
         stdio: [
-          "ignore",
+          "pipe",
           "pipe",
           "pipe",
           ...descriptors,

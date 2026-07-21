@@ -35,6 +35,7 @@ import {
   automationControlPaths,
   consumeLeaseArchiveHelperInvocationCountForTest,
   createTask,
+  framePinnedLeaseArchiveHelperInvocation,
   heartbeatLease,
   processStartIdentity,
   readTask,
@@ -5917,15 +5918,11 @@ test("native exchange rejects two names for the same inode", (t) => {
       String(bytes.length),
       sha256(bytes),
     ];
-    const result = spawnSync(
-      "/usr/bin/python3",
+    const helperSource = readFileSync(MOVE_HELPER_PATH, "utf8");
+    const framed = framePinnedLeaseArchiveHelperInvocation(
+      helperSource,
+      "exchange-durable",
       [
-        "-E",
-        "-I",
-        "-S",
-        "-c",
-        readFileSync(MOVE_HELPER_PATH, "utf8"),
-        "exchange-durable",
         path.basename(sourcePath),
         path.basename(destinationPath),
         ...identityArguments,
@@ -5935,10 +5932,16 @@ test("native exchange rejects two names for the same inode", (t) => {
         String(directoryStats.dev),
         String(directoryStats.ino),
       ],
+      { expectedDigest: sha256(Buffer.from(helperSource, "utf8")) },
+    );
+    const result = spawnSync(
+      "/usr/bin/python3",
+      framed.argv,
       {
         encoding: "utf8",
+        input: framed.input,
         stdio: [
-          "ignore",
+          "pipe",
           "pipe",
           "pipe",
           directoryDescriptor,

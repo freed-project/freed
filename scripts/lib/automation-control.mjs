@@ -154,6 +154,14 @@ const LEASE_ARCHIVE_MOVE_HELPER = fileURLToPath(
 const LEASE_ARCHIVE_MOVE_HELPER_SHA256 =
   "d23a65379acad43c7fb601d65fc150c29f1d214796121362f2a44c7e6c305a3e";
 const LEASE_ARCHIVE_HELPER_MAX_BYTES = 256 * 1024;
+const LEASE_ARCHIVE_MOVE_PYTHON_BOOTSTRAP = [
+  "import hashlib,sys",
+  "_source_size=int(sys.argv.pop(1))",
+  "_source_digest=sys.argv.pop(1)",
+  "_source=sys.stdin.buffer.read(_source_size)",
+  "if len(_source)!=_source_size or hashlib.sha256(_source).hexdigest()!=_source_digest: raise SystemExit('lease archive helper source frame is invalid')",
+  "exec(compile(_source,'<freed-lease-archive-move>','exec'),{'__name__':'__main__'})",
+].join("\n");
 const LEASE_ARCHIVE_LIST_MAX_ENTRY_BYTES =
   64 + 1 + 64 + Buffer.byteLength(".json");
 const LEASE_ARCHIVE_LIST_MAX_BUFFER =
@@ -14926,6 +14934,7 @@ function readAutomationAuthorityFileSnapshotWithPolicy(
       maxBytes,
       allowedModes,
       label,
+      invalidCode,
     };
     const before = readAutomationAuthorityEntryInventory(
       helper,
@@ -19059,11 +19068,23 @@ function restoreLeaseCredential(descriptor) {
 const LEASE_CLEANUP_QUARANTINE_DIRECTORY = ".lease-cleanup-quarantine";
 
 function leaseArchiveHelperError(message, result = undefined) {
+  const causes = [];
   const stderr = String(result?.stderr ?? "").trim();
+  if (stderr !== "") causes.push(stderr);
+  if (result?.error !== undefined) {
+    const errorCode = String(result.error.code ?? "").trim();
+    const errorMessage = String(result.error.message ?? result.error).trim();
+    causes.push(
+      [errorCode, errorMessage].filter((value) => value !== "").join(": "),
+    );
+  }
+  const signal = String(result?.signal ?? "").trim();
+  if (signal !== "") causes.push(`signal ${signal}`);
+  const cause = causes.filter((value) => value !== "").join("; ");
   return new AutomationControlError(
     "lease_transaction_conflict",
     message,
-    stderr === "" ? undefined : { cause: stderr.slice(0, 1_024) },
+    cause === "" ? undefined : { cause: cause.slice(0, 1_024) },
   );
 }
 
@@ -19282,6 +19303,45 @@ export function readPinnedLeaseArchiveHelperSource(
   }
 }
 
+export function framePinnedLeaseArchiveHelperInvocation(
+  source,
+  operation,
+  args = [],
+  {
+    expectedDigest = LEASE_ARCHIVE_MOVE_HELPER_SHA256,
+    input = undefined,
+  } = {},
+) {
+  const sourceBytes = Buffer.from(source, "utf8");
+  const sourceDigest = createHash("sha256").update(sourceBytes).digest("hex");
+  if (
+    sourceBytes.length <= 0 ||
+    sourceBytes.length > LEASE_ARCHIVE_HELPER_MAX_BYTES ||
+    sourceDigest !== expectedDigest
+  ) {
+    throw new AutomationControlError(
+      "lease_transaction_conflict",
+      "Lease archive helper source frame does not match its pinned digest.",
+    );
+  }
+  const operationInput =
+    input === undefined ? Buffer.alloc(0) : Buffer.from(input);
+  return Object.freeze({
+    argv: Object.freeze([
+      "-E",
+      "-I",
+      "-S",
+      "-c",
+      LEASE_ARCHIVE_MOVE_PYTHON_BOOTSTRAP,
+      String(sourceBytes.length),
+      sourceDigest,
+      String(operation),
+      ...args.map(String),
+    ]),
+    input: Buffer.concat([sourceBytes, operationInput]),
+  });
+}
+
 function openPinnedLeaseArchiveHelper() {
   try {
     const pythonRuntime = resolveLeaseArchivePythonRuntime();
@@ -19326,10 +19386,16 @@ function runLeaseArchiveHelper(
   }
   const pauseReleaseChildDescriptor = 3 + inheritedDescriptors.length;
   const pauseSignalChildDescriptor = pauseReleaseChildDescriptor + 1;
+  const framed = framePinnedLeaseArchiveHelperInvocation(
+    helper.source,
+    operation,
+    args,
+    { input },
+  );
   leaseArchiveHelperInvocationCountForTest += 1;
   const result = spawnSync(
     helper.pythonRuntime,
-    ["-E", "-I", "-S", "-c", helper.source, operation, ...args.map(String)],
+    framed.argv,
     {
       env: {
         HOME: os.homedir(),
@@ -19366,13 +19432,13 @@ function runLeaseArchiveHelper(
           ? LEASE_ARCHIVE_LIST_MAX_BUFFER
           : 2 * LEASE_TRANSACTION_MAX_BYTES,
       stdio: [
-        input === undefined ? "ignore" : "pipe",
+        "pipe",
         "pipe",
         "pipe",
         ...inheritedDescriptors,
         ...pauseDescriptors,
       ],
-      ...(input === undefined ? {} : { input: Buffer.from(input) }),
+      input: framed.input,
     },
   );
   if (result.error !== undefined || result.status !== 0) {
@@ -22430,7 +22496,14 @@ function readAutomationAuthorityEntryInventory(
   helper,
   directory,
   name,
-  { allowMissing, allowEmpty, maxBytes, allowedModes, label },
+  {
+    allowMissing,
+    allowEmpty,
+    maxBytes,
+    allowedModes,
+    label,
+    invalidCode = "authority_generation_conflict",
+  },
   helperTestPause = undefined,
 ) {
   const allowedModesArgument = automationAuthorityAllowedModesArgument(
@@ -22438,21 +22511,35 @@ function readAutomationAuthorityEntryInventory(
     label,
   );
   assertPinnedLeaseArchiveDirectory(directory);
-  const result = runLeaseArchiveHelper(
-    helper,
-    "authority-entry-inventory",
-    [
-      name,
-      allowedModesArgument,
-      allowMissing ? "1" : "0",
-      allowEmpty ? "1" : "0",
-      String(maxBytes),
-      ...automationAuthorityParentIdentityArguments(directory),
-    ],
-    [directory.descriptor],
-    undefined,
-    helperTestPause,
-  );
+  let result;
+  try {
+    result = runLeaseArchiveHelper(
+      helper,
+      "authority-entry-inventory",
+      [
+        name,
+        allowedModesArgument,
+        allowMissing ? "1" : "0",
+        allowEmpty ? "1" : "0",
+        String(maxBytes),
+        ...automationAuthorityParentIdentityArguments(directory),
+      ],
+      [directory.descriptor],
+      undefined,
+      helperTestPause,
+    );
+  } catch (error) {
+    if (error instanceof AutomationControlError) {
+      throw new AutomationControlError(
+        invalidCode,
+        `${label} could not be admitted safely.`,
+        {
+          cause: String(error.details?.cause ?? error.message).slice(0, 1_024),
+        },
+      );
+    }
+    throw error;
+  }
   assertPinnedLeaseArchiveDirectory(directory);
   return parseAutomationAuthorityEntryInventory(
     result,

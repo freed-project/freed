@@ -23,6 +23,7 @@ import { TextDecoder } from "node:util";
 import {
   automationControlPaths,
   CONTROL_EVENT_HISTORY_MAX_BYTES,
+  framePinnedLeaseArchiveHelperInvocation,
   ownerGovernanceIntentDigest,
   preauthorizeOutcomeLedgerRepair,
   preflightOutcomeLedgerRepairEvent,
@@ -915,20 +916,20 @@ function listPinnedRepairDirectory(
   const useTestDescriptors =
     pauseCheckpoint !== "" &&
     process.env.FREED_OUTCOME_REPAIR_MOVE_TEST_FDS === "3,4";
-  const result = spawnSync(
-    OUTCOME_REPAIR_MOVE_PYTHON,
+  const framed = framePinnedLeaseArchiveHelperInvocation(
+    helperSource,
+    "list-bounded",
     [
-      "-E",
-      "-I",
-      "-S",
-      "-c",
-      helperSource,
-      "list-bounded",
       String(maxEntries),
       String(REPAIR_DIRECTORY_MAX_ENCODED_BYTES),
       String(pinnedDirectory.identity.device),
       String(pinnedDirectory.identity.inode),
     ],
+    { expectedDigest: OUTCOME_REPAIR_MOVE_HELPER_SHA256 },
+  );
+  const result = spawnSync(
+    OUTCOME_REPAIR_MOVE_PYTHON,
+    framed.argv,
     {
       env: {
         HOME: process.env.HOME ?? "",
@@ -947,9 +948,10 @@ function listPinnedRepairDirectory(
             }
           : {}),
       },
+      input: framed.input,
       maxBuffer: REPAIR_DIRECTORY_MAX_ENCODED_BYTES + 1,
       stdio: [
-        "ignore",
+        "pipe",
         "pipe",
         "pipe",
         pinnedDirectory.descriptor,
@@ -1043,15 +1045,10 @@ function runDurableRepairMove(
     const useTestDescriptors =
       pauseCheckpoint !== "" &&
       process.env.FREED_OUTCOME_REPAIR_MOVE_TEST_FDS === "3,4";
-    const result = spawnSync(
-      OUTCOME_REPAIR_MOVE_PYTHON,
+    const framed = framePinnedLeaseArchiveHelperInvocation(
+      helperSource,
+      "rename-durable",
       [
-        "-E",
-        "-I",
-        "-S",
-        "-c",
-        helperSource,
-        "rename-durable",
         path.basename(sourcePath),
         path.basename(destinationPath),
         String(pinnedSource.identity.device),
@@ -1065,6 +1062,11 @@ function runDurableRepairMove(
         String(destinationDirectory.identity.device),
         String(destinationDirectory.identity.inode),
       ],
+      { expectedDigest: OUTCOME_REPAIR_MOVE_HELPER_SHA256 },
+    );
+    const result = spawnSync(
+      OUTCOME_REPAIR_MOVE_PYTHON,
+      framed.argv,
       {
         env: {
           HOME: process.env.HOME ?? "",
@@ -1083,9 +1085,10 @@ function runDurableRepairMove(
               }
             : {}),
         },
+        input: framed.input,
         maxBuffer: 1024 * 1024,
         stdio: [
-          "ignore",
+          "pipe",
           "pipe",
           "pipe",
           sourceDirectory.descriptor,
@@ -1202,15 +1205,10 @@ function runDurableRepairExchange(
     const useTestDescriptors =
       pauseCheckpoint !== "" &&
       process.env.FREED_OUTCOME_REPAIR_MOVE_TEST_FDS === "3,4";
-    const result = spawnSync(
-      OUTCOME_REPAIR_MOVE_PYTHON,
+    const framed = framePinnedLeaseArchiveHelperInvocation(
+      helperSource,
+      "exchange-durable",
       [
-        "-E",
-        "-I",
-        "-S",
-        "-c",
-        helperSource,
-        "exchange-durable",
         path.basename(sourcePath),
         path.basename(destinationPath),
         String(pinnedSource.identity.device),
@@ -1230,6 +1228,11 @@ function runDurableRepairExchange(
         String(destinationDirectory.identity.device),
         String(destinationDirectory.identity.inode),
       ],
+      { expectedDigest: OUTCOME_REPAIR_MOVE_HELPER_SHA256 },
+    );
+    const result = spawnSync(
+      OUTCOME_REPAIR_MOVE_PYTHON,
+      framed.argv,
       {
         env: {
           HOME: process.env.HOME ?? "",
@@ -1248,9 +1251,10 @@ function runDurableRepairExchange(
               }
             : {}),
         },
+        input: framed.input,
         maxBuffer: 1024 * 1024,
         stdio: [
-          "ignore",
+          "pipe",
           "pipe",
           "pipe",
           sourceDirectory.descriptor,
