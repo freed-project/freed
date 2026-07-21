@@ -7038,7 +7038,7 @@ test("FIFO admission is bounded in a child process", (t) => {
   assert.notEqual(child.status, 0, child.stderr);
   assert.match(
     child.stderr,
-    /not a regular file|authority-entry-inventory|unsafe .*file/i,
+    /not a regular file|authority-entry-inventory|unsafe .*file|could not be admitted safely/i,
   );
 });
 
