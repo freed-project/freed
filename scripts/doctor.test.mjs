@@ -78,7 +78,7 @@ function installKernelGuardCutoverFixture(stateDir) {
 
 function releasePublisherBinding(hostPath, provisionerPath, overrides = {}) {
   const binding = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     purpose: "freed-release-tag-publisher-binding",
     status: "active",
     repo: "freed-project/freed",
@@ -86,8 +86,10 @@ function releasePublisherBinding(hostPath, provisionerPath, overrides = {}) {
     appSlug: "freed-release-publisher",
     publisherPath: hostPath,
     publisherSha256: sha256(hostPath),
+    publisherCdHash: "c".repeat(40),
     provisionerPath,
     provisionerSha256: sha256(provisionerPath),
+    provisionerCdHash: "d".repeat(40),
     ...overrides,
   };
   return {
@@ -1469,24 +1471,41 @@ test("release publisher doctor profile is separate and uses native ACL inspectio
     platform: "darwin",
     run(file, args, options) {
       calls.push({ file, args, options });
+      const binding = releasePublisherBinding(hostPath, provisionerPath);
       return {
         status: 0,
         stdout: JSON.stringify({
-          schemaVersion: 1,
-          purpose: "freed-release-tag-publisher-keychain-result",
-          action: "inspect",
-          service: "freed-release-tag-publisher",
-          account: "github-app-private-key",
-          host: hostPath,
-          state: "present",
+          schemaVersion: 3,
+          purpose: "freed-release-tag-publisher-readiness",
+          repo: binding.repo,
+          appId: binding.appId,
+          appSlug: binding.appSlug,
+          credentialMode: "short-lived-installation-token",
+          operations: ["create-annotated-tag"],
+          allowsArbitraryRefs: false,
+          allowsUpdates: false,
+          allowsDeletions: false,
+          publisherSha256: binding.publisherSha256,
+          publisherCdHash: binding.publisherCdHash,
+          provisionerSha256: binding.provisionerSha256,
+          provisionerCdHash: binding.provisionerCdHash,
+          nativePairSha256: binding.nativePairSha256,
         }),
       };
     },
   });
   assert.equal(ready.status, "ok");
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].file, provisionerPath);
-  assert.deepEqual(calls[0].args, ["inspect", "--host", hostPath]);
+  assert.equal(calls[0].file, hostPath);
+  assert.deepEqual(calls[0].args, [
+    "attest",
+    "--repo",
+    "freed-project/freed",
+    "--app-id",
+    "4296969",
+    "--app-slug",
+    "freed-release-publisher",
+  ]);
   assert.deepEqual(calls[0].options, {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],

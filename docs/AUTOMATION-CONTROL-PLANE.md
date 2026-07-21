@@ -737,13 +737,27 @@ Release tags have a separate external trust boundary. The checked-in
 `release-tag-lockdown.json` is the bootstrap authority. Apply it with
 `--lock-release-tags --apply` before App provisioning. It restricts creation,
 update, and deletion with no bypass. `release-tag-publisher-install.mjs prepare`
-builds the fixed root-owned native host and provisioner. It installs the
-schema 2 `preparing` barrier before replacing either native executable,
-installs and verifies the lockdown provisioner and host, then records the exact
-pair as `prepared`. The binding pins both fixed paths, both file digests, and
-one digest over the native pair. An interrupted run changes no executable if
-the barrier cannot land and fails closed after the barrier. This checkpoint
-does not create an App, add a credential,
+builds the fixed root-owned native host and provisioner. It never migrates a
+schema 1 installation in place. A separately owner-authorized
+`archive-schema1` operation must first prove the credential and matching
+processes absent. It writes a root-only planned cutover record, removes execute
+permission from each legacy inode, admits that same inode through one
+privileged descriptor, then moves it on the same filesystem into a root-only
+non-executable archive. The record binds each source and archive path, device,
+inode, digest, and the pre-cutover boot session ID. Preparation stays closed
+until a later boot proves the fixed paths, credential, and matching processes
+remain absent and every archived inode still matches. It then records the first
+verified post-cutover boot session ID.
+
+After that barrier, preparation installs every executable and binding
+replacement with safe-copy semantics. It installs and verifies the
+mutation-disabled provisioner first, installs the schema 3 `preparing` binding,
+installs and verifies the host, then records the exact pair as `prepared`. The
+schema 3 binding pins both fixed paths, both SHA-256 digests, both static
+CDHashes, and one digest over the complete native pair. A failed provisioner
+replacement leaves the prior state unchanged. Once the safe provisioner lands,
+no production credential mutation verb remains callable, even if the binding
+or host step is interrupted. This checkpoint does not create an App, add a credential,
 activate a binding, rotate a key, discard staged material, or revoke an active
 item. The manifest helper fails before it opens a browser or contacts GitHub.
 The production native provisioner accepts only `inspect`, `matches`, and `verify`. It rejects
@@ -778,6 +792,13 @@ transaction, staged item reference, and digest. It can delete only that staged
 item and can never select or delete the active credential. None of these
 mutation paths is available in this checkpoint.
 
+The disabled App creation helper reserves
+`FREED_RELEASE_GITHUB_APP_OPERATION_ID` for one caller-generated and
+caller-retained canonical UUIDv4 or lowercase 64-hex operation ID. That exact
+value must survive across manifest creation, identity persistence, credential
+promotion, binding activation, and an exact retry after response loss. The
+helper does not generate a replacement operation ID inside its subprocess.
+
 Activation requires an owner-reviewed change that pins the App ID in the
 creation policy. The release ruleset command verifies the exact App,
 installation, repository, permission, native binding, and publisher proof. It
@@ -791,9 +812,14 @@ active. It also requires the release commit to equal the current protected
 channel branch, validates the fixed product and promoted dev receipts, rejects
 an existing local or remote tag, and delegates one exact annotated-tag creation
 through the same fixed root-owned publisher binding used during activation. The
-binding, parent chains, host and provisioner digests, native pair digest, App identity, Keychain credential,
-selected repository, and installation permissions are rechecked immediately
-before use. The native host rechecks the branch tip and receipt at publication,
+binding, parent chains, host and provisioner digests and CDHashes, native pair digest, App
+identity, exact two-application Keychain ACL with an empty prompt selector,
+credential, selected repository, and installation permissions are rechecked
+immediately before use. The native host binds its kernel-reported running
+CDHash to the same static host identity, checks the provisioner static CDHash,
+checks the same Keychain item ACL before and after copying its value, and wipes
+the Security framework buffer plus its mutable PEM, encoded, and DER buffers.
+It rechecks the branch tip and receipt at publication,
 then obtains and revokes one short-lived installation token. It does not accept
 a user token, personal access token, general actor launcher attestation, general
 actor lease token, or the separate PR publisher as a tag-creation fallback. The delayed workflow checks that the
@@ -887,9 +913,11 @@ not block normal GitHub-authenticated publication through
 
 The Release Publisher is not part of that default or PR publisher profile.
 `scripts/doctor.mjs --require-release-publisher` explicitly adds the fixed
-release host, provisioner, binding, both executable digests, and native nonsecret
-Keychain ACL inspection. The schema 2 binding and readiness attestation must
-agree on both executable digests and the native pair digest. It requires exact root and wheel ownership, one link,
+release host, provisioner, binding, both executable digests and CDHashes, and
+native nonsecret Keychain ACL inspection. The schema 3 binding and readiness
+attestation must agree on both executable digests, both CDHashes, and the native
+pair digest. The doctor invokes the fixed native host once for that attestation.
+It requires exact root and wheel ownership, one link,
 mode `0555` for both executables, and mode `0444` for the binding. Ordinary
 development checks do not require that release-only credential. Release
 preparation must select the profile on purpose.

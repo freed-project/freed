@@ -285,10 +285,10 @@ export function verifyReleaseTagActivation(rulesets, releaseAppId) {
       "Release tag creation is locked with no bypass. Add the reviewed dedicated GitHub App ID before applying activation.",
     );
   }
-  const actorId = Number(releaseAppId);
-  if (!Number.isSafeInteger(actorId) || actorId <= 0) {
+  if (!Number.isSafeInteger(releaseAppId) || releaseAppId <= 0) {
     throw new Error("Release GitHub App ID must be a positive integer.");
   }
+  const actorId = releaseAppId;
   if (creation.bypass_actors[0]?.actor_id !== actorId) {
     throw new Error(
       `Checked-in release App ID ${Number(creation.bypass_actors[0]?.actor_id ?? 0).toLocaleString()} does not match requested App ID ${actorId.toLocaleString()}.`,
@@ -323,7 +323,13 @@ export function verifyLiveReleaseTagAuthority(
   expectedReleaseAppId,
   { allowActiveLockdown = false } = {},
 ) {
-  const expectedAppId = Number(expectedReleaseAppId);
+  if (
+    !Number.isSafeInteger(expectedReleaseAppId) ||
+    expectedReleaseAppId <= 0
+  ) {
+    throw new Error("Expected release GitHub App ID must be a positive integer.");
+  }
+  const expectedAppId = expectedReleaseAppId;
   const lockdowns = rulesets.filter(
     (ruleset) => ruleset.name === RELEASE_TAG_LOCKDOWN_RULESET_NAME,
   );
@@ -400,7 +406,10 @@ export function verifyReleaseAppReadiness({
   releaseAppSlug,
   repo,
 }) {
-  const actorId = Number(releaseAppId);
+  if (!Number.isSafeInteger(releaseAppId) || releaseAppId <= 0) {
+    throw new Error("Release GitHub App ID must be a positive integer.");
+  }
+  const actorId = releaseAppId;
   const native = verifyReleaseTagPublisherInstallationReadiness(
     installationReadiness,
     { repo, releaseAppId, releaseAppSlug },
@@ -610,6 +619,77 @@ function deleteRuleset(repo, rulesetId, { exec = execFileSync } = {}) {
   });
 }
 
+function readLiveRulesets(repo, { exec = execFileSync } = {}) {
+  const summary = ghPaginatedArray(`repos/${repo}/rulesets?per_page=100`, {
+    exec,
+  });
+  return summary.map((item) =>
+    ghJson(["api", `repos/${repo}/rulesets/${item.id}`], { exec }),
+  );
+}
+
+export function verifyFinalReleaseTagAuthority(rulesets, releaseAppId) {
+  const result = verifyLiveReleaseTagAuthority(rulesets, releaseAppId);
+  if (
+    rulesets.some(
+      (ruleset) => ruleset.name === RELEASE_TAG_LOCKDOWN_RULESET_NAME,
+    )
+  ) {
+    throw new Error(
+      "The release tag lockdown still exists after the authority transition.",
+    );
+  }
+  return result;
+}
+
+export function finalizeReleaseTagAuthorityTransition({
+  repo,
+  releaseAppId,
+  rulesets,
+  readRulesets = () => readLiveRulesets(repo),
+  removeRuleset = (rulesetId) => deleteRuleset(repo, rulesetId),
+}) {
+  const lockdowns = rulesets.filter(
+    (ruleset) => ruleset.name === RELEASE_TAG_LOCKDOWN_RULESET_NAME,
+  );
+  if (lockdowns.length === 0) {
+    return {
+      ...verifyFinalReleaseTagAuthority(rulesets, releaseAppId),
+      recovered: true,
+    };
+  }
+  verifyLiveReleaseTagAuthority(rulesets, releaseAppId, {
+    allowActiveLockdown: true,
+  });
+  if (
+    lockdowns.length !== 1 ||
+    lockdowns[0].enforcement !== "active" ||
+    !Number.isSafeInteger(lockdowns[0].id) ||
+    lockdowns[0].id <= 0
+  ) {
+    throw new Error(
+      "The controlled release authority transition requires one exact active lockdown ID.",
+    );
+  }
+  let deletionError = null;
+  try {
+    removeRuleset(lockdowns[0].id);
+  } catch (error) {
+    deletionError = error;
+  }
+  const finalRulesets = readRulesets();
+  try {
+    const final = verifyFinalReleaseTagAuthority(
+      finalRulesets,
+      releaseAppId,
+    );
+    return { ...final, recovered: deletionError !== null };
+  } catch (verificationError) {
+    if (deletionError) throw deletionError;
+    throw verificationError;
+  }
+}
+
 function findRulesetReadinessEvidence(
   repo,
   ruleset,
@@ -714,8 +794,8 @@ function findReleaseTagPublisherReadinessEvidence(
   const binding = loadAndVerifyReleaseTagPublisher();
   if (
     binding.repo !== repo ||
-    binding.appId !== Number(releaseAppId) ||
-    binding.appSlug.toLowerCase() !== String(releaseAppSlug).toLowerCase()
+    binding.appId !== releaseAppId ||
+    binding.appSlug !== releaseAppSlug
   ) {
     throw new Error(
       "Root-owned release tag publisher binding does not match the reviewed repository and App identity.",
@@ -725,7 +805,9 @@ function findReleaseTagPublisherReadinessEvidence(
   return {
     ready: true,
     publisherDigest: binding.publisherSha256,
+    publisherCdHash: binding.publisherCdHash,
     provisionerDigest: binding.provisionerSha256,
+    provisionerCdHash: binding.provisionerCdHash,
     nativePairDigest: binding.nativePairSha256,
     installationAttestation: installation.attestation,
   };
@@ -797,10 +879,15 @@ export function parseArgs(argv) {
   }
   if (
     args.releaseAppId !== null &&
-    (!Number.isSafeInteger(Number(args.releaseAppId)) ||
-      Number(args.releaseAppId) <= 0)
+    (!/^[1-9][0-9]*$/.test(args.releaseAppId) ||
+      !Number.isSafeInteger(Number(args.releaseAppId)))
   ) {
-    throw new Error("--release-app-id must be a positive integer.");
+    throw new Error(
+      "--release-app-id must be one canonical positive integer.",
+    );
+  }
+  if (args.releaseAppId !== null) {
+    args.releaseAppId = Number(args.releaseAppId);
   }
   return args;
 }
@@ -833,14 +920,19 @@ function main() {
         (args.branch === null || rulesetBranch(ruleset) === args.branch),
     );
   }
-  const summary = ghPaginatedArray(`repos/${args.repo}/rulesets?per_page=100`);
-  const current = summary.map((item) =>
-    ghJson(["api", `repos/${args.repo}/rulesets/${item.id}`]),
-  );
+  const current = readLiveRulesets(args.repo);
   const plan = planRulesetSync(desired, current);
   let releaseEvidence = null;
   if (args.apply && args.releaseTags) {
-    verifyReleaseTagLockdown(current);
+    try {
+      verifyReleaseTagLockdown(current);
+    } catch (error) {
+      try {
+        verifyFinalReleaseTagAuthority(current, args.releaseAppId);
+      } catch {
+        throw error;
+      }
+    }
     const publisher = findReleaseTagPublisherReadinessEvidence(
       args.repo,
       args.releaseAppId,
@@ -888,26 +980,16 @@ function main() {
     }
   }
   if (args.apply && args.releaseTags) {
-    const refreshedSummary = ghPaginatedArray(
-      `repos/${args.repo}/rulesets?per_page=100`,
-    );
-    const refreshed = refreshedSummary.map((item) =>
-      ghJson(["api", `repos/${args.repo}/rulesets/${item.id}`]),
-    );
-    verifyLiveReleaseTagAuthority(refreshed, Number(args.releaseAppId), {
-      allowActiveLockdown: true,
+    const transition = finalizeReleaseTagAuthorityTransition({
+      repo: args.repo,
+      releaseAppId: args.releaseAppId,
+      rulesets: readLiveRulesets(args.repo),
     });
-    const lockdown = refreshed.find(
-      (ruleset) =>
-        ruleset.name === RELEASE_TAG_LOCKDOWN_RULESET_NAME &&
-        ruleset.enforcement === "active",
+    process.stdout.write(
+      transition.recovered
+        ? "recovered: exact release tag authority is active and lockdown-free\n"
+        : "removed: Freed release tag lockdown after exact post-delete verification\n",
     );
-    if (lockdown?.id) {
-      deleteRuleset(args.repo, lockdown.id);
-      process.stdout.write(
-        "removed: Freed release tag lockdown after split authority verification\n",
-      );
-    }
   }
   if (!args.apply && !args.releaseTags && !args.releaseTagLockdown) {
     const creation = templates.find(

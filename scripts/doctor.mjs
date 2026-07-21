@@ -46,6 +46,7 @@ import {
   RELEASE_TAG_PUBLISHER_BINDING_KEYS,
   verifyReleaseTagPublisherBindingShape,
 } from "./lib/release-tag-publisher-binding.mjs";
+import { verifyReleaseTagPublisherBinding } from "./lib/release-tag-publisher.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1168,6 +1169,8 @@ export function checkReleaseTagPublisherConfig({
       "Run the controlled Release Publisher recovery for task release-publisher-key-recovery-2026-07-20, then rerun this exact opt-in profile.",
     );
   let config = null;
+  let actualPublisherDigest = null;
+  let actualProvisionerDigest = null;
   for (const [filePath, label] of [
     [hostPath, "release tag publisher host"],
     [provisionerPath, "release tag publisher provisioner"],
@@ -1215,8 +1218,8 @@ export function checkReleaseTagPublisherConfig({
       problems.push("the release tag publisher binding paths do not match");
     }
     if (problems.length === 0) {
-      const actualPublisherDigest = fileSha256(hostPath);
-      const actualProvisionerDigest = fileSha256(provisionerPath);
+      actualPublisherDigest = fileSha256(hostPath);
+      actualProvisionerDigest = fileSha256(provisionerPath);
       if (
         actualPublisherDigest === null ||
         actualPublisherDigest !== config.publisherSha256
@@ -1240,43 +1243,48 @@ export function checkReleaseTagPublisherConfig({
     );
     return failure();
   }
-  const keychain = run(provisionerPath, ["inspect", "--host", hostPath], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    env: {
-      HOME: process.env.HOME ?? "",
-      PATH: "/usr/bin:/bin",
+  const keychain = run(
+    hostPath,
+    [
+      "attest",
+      "--repo",
+      config.repo,
+      "--app-id",
+      String(config.appId),
+      "--app-slug",
+      config.appSlug,
+    ],
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        HOME: process.env.HOME ?? "",
+        PATH: "/usr/bin:/bin",
+      },
+      timeout: 5_000,
+      maxBuffer: 64 * 1_024,
     },
-    timeout: 5_000,
-    maxBuffer: 64 * 1_024,
-  });
+  );
   if (
     keychain?.error ||
     keychain?.status !== 0 ||
     (keychain?.signal !== null && keychain?.signal !== undefined)
   ) {
     problems.push(
-      "the native provisioner could not validate the release GitHub App Keychain item and ACL",
+      "the native host could not validate the release GitHub App Keychain item and ACL",
     );
   } else {
     try {
       const inspection = JSON.parse(String(keychain.stdout ?? ""));
-      if (
-        inspection.schemaVersion !== 1 ||
-        inspection.purpose !== "freed-release-tag-publisher-keychain-result" ||
-        inspection.action !== "inspect" ||
-        inspection.service !== "freed-release-tag-publisher" ||
-        inspection.account !== "github-app-private-key" ||
-        inspection.host !== hostPath ||
-        inspection.state !== "present"
-      ) {
-        problems.push(
-          "the native provisioner returned an invalid release Keychain inspection",
-        );
-      }
+      verifyReleaseTagPublisherBinding(
+        config,
+        actualPublisherDigest,
+        actualProvisionerDigest,
+        inspection,
+      );
     } catch {
       problems.push(
-        "the native provisioner returned invalid release Keychain inspection JSON",
+        "the native host returned an invalid release publisher attestation",
       );
     }
   }

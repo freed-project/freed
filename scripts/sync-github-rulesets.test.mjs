@@ -14,15 +14,20 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  finalizeReleaseTagAuthorityTransition,
   findReleaseAppReadinessEvidence,
   loadRulesets,
   parseArgs,
   planRulesetSync,
+  RELEASE_TAG_CREATION_RULESET_NAME,
+  RELEASE_TAG_IMMUTABILITY_RULESET_NAME,
+  RELEASE_TAG_LOCKDOWN_RULESET_NAME,
   requiredCheckContexts,
   validateRuleset,
   verifyCodeownerApprovalReadiness,
   verifyCodeownersReadiness,
   verifyLiveReleaseTagAuthority,
+  verifyFinalReleaseTagAuthority,
   verifyReleaseAppReadiness,
   verifyReleaseTagActivation,
   verifyReleaseTagLockdown,
@@ -118,6 +123,29 @@ test("ruleset apply requires one branch and successful check evidence", () => {
     ]).branch,
     "dev",
   );
+  assert.equal(
+    parseArgs([
+      "--release-tags",
+      "--release-app-id",
+      "4296969",
+      "--release-app-slug",
+      "freed-release-publisher",
+    ]).releaseAppId,
+    4_296_969,
+  );
+  for (const invalidId of ["04296969", " 4296969", "4296969 "]) {
+    assert.throws(
+      () =>
+        parseArgs([
+          "--release-tags",
+          "--release-app-id",
+          invalidId,
+          "--release-app-slug",
+          "freed-release-publisher",
+        ]),
+      /must be one canonical positive integer/,
+    );
+  }
   const dev = loadRulesets().find(
     (ruleset) => ruleset.name === "Freed dev governance",
   );
@@ -296,6 +324,10 @@ test("release tag creation grants only the dedicated App while immutability gran
     releaseAppId: 123456,
   });
   assert.throws(
+    () => verifyLiveReleaseTagAuthority(activeRulesets, "123456"),
+    /positive integer/,
+  );
+  assert.throws(
     () =>
       verifyLiveReleaseTagAuthority(
         [
@@ -380,6 +412,71 @@ test("release tag creation grants only the dedicated App while immutability gran
         123456,
       ),
     /grant no bypass/,
+  );
+});
+
+test("release authority transition proves deletion and recovers a lost delete response", () => {
+  const tagRulesets = loadRulesets().filter(
+    (ruleset) => ruleset.target === "tag",
+  );
+  const creation = tagRulesets.find(
+    (ruleset) => ruleset.name === RELEASE_TAG_CREATION_RULESET_NAME,
+  );
+  const immutability = tagRulesets.find(
+    (ruleset) => ruleset.name === RELEASE_TAG_IMMUTABILITY_RULESET_NAME,
+  );
+  const lockdown = {
+    ...tagRulesets.find(
+      (ruleset) => ruleset.name === RELEASE_TAG_LOCKDOWN_RULESET_NAME,
+    ),
+    id: 99,
+  };
+  let live = [creation, immutability, lockdown];
+  let reads = 0;
+  const recovered = finalizeReleaseTagAuthorityTransition({
+    repo: "freed-project/freed",
+    releaseAppId: 4_296_969,
+    rulesets: live,
+    removeRuleset(id) {
+      assert.equal(id, 99);
+      live = live.filter((ruleset) => ruleset.id !== id);
+      throw new Error("injected delete response loss");
+    },
+    readRulesets() {
+      reads += 1;
+      return live;
+    },
+  });
+  assert.equal(recovered.recovered, true);
+  assert.equal(reads, 1);
+  assert.deepEqual(
+    verifyFinalReleaseTagAuthority(live, 4_296_969),
+    { ready: true, releaseAppId: 4_296_969 },
+  );
+
+  const retried = finalizeReleaseTagAuthorityTransition({
+    repo: "freed-project/freed",
+    releaseAppId: 4_296_969,
+    rulesets: live,
+    removeRuleset() {
+      assert.fail("an exact retry must not issue a second delete");
+    },
+    readRulesets() {
+      assert.fail("an exact completed retry needs no additional read");
+    },
+  });
+  assert.equal(retried.recovered, true);
+
+  assert.throws(
+    () =>
+      finalizeReleaseTagAuthorityTransition({
+        repo: "freed-project/freed",
+        releaseAppId: 4_296_969,
+        rulesets: [creation, immutability, lockdown],
+        removeRuleset() {},
+        readRulesets: () => [creation, immutability, lockdown],
+      }),
+    /lockdown is still active/,
   );
 });
 
@@ -575,11 +672,13 @@ test("release tag publisher attestation permits one narrow short-lived operation
     releaseAppId: 123456,
     releaseAppSlug: "freed-release-publisher",
     publisherDigest: "a".repeat(64),
+    publisherCdHash: "d".repeat(40),
     provisionerDigest: "b".repeat(64),
+    provisionerCdHash: "e".repeat(40),
     nativePairDigest: "c".repeat(64),
   };
   const attestation = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     purpose: "freed-release-tag-publisher-readiness",
     repo: expected.repo,
     appId: expected.releaseAppId,
@@ -590,13 +689,17 @@ test("release tag publisher attestation permits one narrow short-lived operation
     allowsUpdates: false,
     allowsDeletions: false,
     publisherSha256: "a".repeat(64),
+    publisherCdHash: "d".repeat(40),
     provisionerSha256: "b".repeat(64),
+    provisionerCdHash: "e".repeat(40),
     nativePairSha256: "c".repeat(64),
   };
   assert.deepEqual(verifyReleaseTagPublisherReadiness(attestation, expected), {
     ready: true,
     publisherDigest: "a".repeat(64),
+    publisherCdHash: "d".repeat(40),
     provisionerDigest: "b".repeat(64),
+    provisionerCdHash: "e".repeat(40),
     nativePairDigest: "c".repeat(64),
   });
   assert.throws(

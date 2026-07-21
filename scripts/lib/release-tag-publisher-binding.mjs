@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 
-export const RELEASE_TAG_PUBLISHER_BINDING_SCHEMA_VERSION = 2;
+export const RELEASE_TAG_PUBLISHER_BINDING_SCHEMA_VERSION = 3;
 export const RELEASE_TAG_PUBLISHER_BINDING_PURPOSE =
   "freed-release-tag-publisher-binding";
 export const RELEASE_TAG_PUBLISHER_REPO = "freed-project/freed";
@@ -12,8 +12,10 @@ export const RELEASE_TAG_PUBLISHER_BINDING_KEYS = Object.freeze([
   "appId",
   "appSlug",
   "nativePairSha256",
+  "provisionerCdHash",
   "provisionerPath",
   "provisionerSha256",
+  "publisherCdHash",
   "publisherPath",
   "publisherSha256",
   "purpose",
@@ -45,26 +47,36 @@ function validSha256(value) {
   return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
 }
 
+function validCdHash(value) {
+  return typeof value === "string" && /^[0-9a-f]{40,64}$/.test(value);
+}
+
 export function releaseTagPublisherNativePairSha256({
   publisherPath,
   publisherSha256,
+  publisherCdHash,
   provisionerPath,
   provisionerSha256,
+  provisionerCdHash,
 }) {
   if (
     !validAbsolutePath(publisherPath) ||
     !validSha256(publisherSha256) ||
+    !validCdHash(publisherCdHash) ||
     !validAbsolutePath(provisionerPath) ||
-    !validSha256(provisionerSha256)
+    !validSha256(provisionerSha256) ||
+    !validCdHash(provisionerCdHash)
   ) {
     throw new Error("Release tag publisher native pair identity is invalid.");
   }
   const payload = [
-    "freed-release-tag-publisher-native-pair-v1",
+    "freed-release-tag-publisher-native-pair-v2",
     publisherPath,
     publisherSha256,
+    publisherCdHash,
     provisionerPath,
     provisionerSha256,
+    provisionerCdHash,
     "",
   ].join("\n");
   return createHash("sha256").update(payload).digest("hex");
@@ -84,8 +96,10 @@ export function verifyReleaseTagPublisherBindingShape(
     binding.appSlug !== RELEASE_TAG_PUBLISHER_APP_SLUG ||
     !validAbsolutePath(binding.publisherPath) ||
     !validSha256(binding.publisherSha256) ||
+    !validCdHash(binding.publisherCdHash) ||
     !validAbsolutePath(binding.provisionerPath) ||
     !validSha256(binding.provisionerSha256) ||
+    !validCdHash(binding.provisionerCdHash) ||
     !validSha256(binding.nativePairSha256)
   ) {
     throw new Error("Release tag publisher binding is missing or malformed.");

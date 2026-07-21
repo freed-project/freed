@@ -7,6 +7,7 @@ private let keychainService = "freed-release-tag-publisher"
 private let keychainAccount = "github-app-private-key"
 private let maximumKeyBytes = 32 * 1_024
 private let publisherPromptSelector = SecKeychainPromptSelector()
+private let requiredRuntimeSignatureFlag: UInt32 = 0x0001_0000
 
 private struct ProvisionFailure: Error, CustomStringConvertible {
   let description: String
@@ -50,7 +51,7 @@ private struct ParsedArguments {
 }
 
 private struct ProvisionResult: Encodable {
-  let schemaVersion = 1
+  let schemaVersion = 2
   let purpose = "freed-release-tag-publisher-keychain-result"
   let action: String
   let service = keychainService
@@ -59,6 +60,24 @@ private struct ProvisionResult: Encodable {
   let state: String?
   let changed: Bool?
   let matched: Bool?
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion, purpose, action, service, account, host
+    case state, changed, matched
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(schemaVersion, forKey: .schemaVersion)
+    try container.encode(purpose, forKey: .purpose)
+    try container.encode(action, forKey: .action)
+    try container.encode(service, forKey: .service)
+    try container.encode(account, forKey: .account)
+    try container.encode(host, forKey: .host)
+    if let state { try container.encode(state, forKey: .state) }
+    if let changed { try container.encode(changed, forKey: .changed) }
+    if let matched { try container.encode(matched, forKey: .matched) }
+  }
 }
 
 private func fail(_ message: String) throws -> Never {
@@ -127,6 +146,7 @@ private func requireTrustedExecutable(
   guard linkStatus == 0, metadataStatus == 0,
     (link.st_mode & S_IFMT) != S_IFLNK,
     (metadata.st_mode & S_IFMT) == S_IFREG,
+    metadata.st_nlink == 1,
     trustedOwner,
     metadata.st_mode & 0o022 == 0,
     metadata.st_mode & 0o111 != 0
@@ -286,13 +306,17 @@ private final class KeychainStore: SecretStore {
   private func itemReference() throws -> SecKeychainItem {
     var itemQuery = query()
     itemQuery[kSecReturnRef] = true
-    itemQuery[kSecMatchLimit] = kSecMatchLimitOne
+    itemQuery[kSecMatchLimit] = kSecMatchLimitAll
     itemQuery[kSecUseAuthenticationUI] = kSecUseAuthenticationUIFail
     var result: CFTypeRef?
     let status = SecItemCopyMatching(itemQuery as CFDictionary, &result)
     if status == errSecItemNotFound { throw StoreFailure.missing }
-    guard status == errSecSuccess, let item = result as! SecKeychainItem? else {
-      try fail("The publisher Keychain item reference is unavailable.")
+    guard status == errSecSuccess,
+      let items = result as? [SecKeychainItem],
+      items.count == 1,
+      let item = items.first
+    else {
+      try fail("The publisher Keychain item must be one unique reference.")
     }
     return item
   }
@@ -362,20 +386,32 @@ private final class KeychainStore: SecretStore {
         "The release App key is not restricted to the publisher host and provisioner."
       )
     }
-    let dataQuery: [CFString: Any] = [
-      kSecClass: kSecClassGenericPassword,
-      kSecMatchItemList: [item] as CFArray,
-      kSecReturnData: true,
-      kSecMatchLimit: kSecMatchLimitOne,
-      kSecUseAuthenticationUI: kSecUseAuthenticationUIFail,
-    ]
-    var result: CFTypeRef?
-    let status = SecItemCopyMatching(dataQuery as CFDictionary, &result)
-    if status == errSecItemNotFound { throw StoreFailure.missing }
-    guard status == errSecSuccess, let data = result as? Data else {
+    var length: UInt32 = 0
+    var content: UnsafeMutableRawPointer?
+    let status = SecKeychainItemCopyContent(item, nil, nil, &length, &content)
+    guard status == errSecSuccess, let content else {
       try fail("The release App key could not be read from Keychain.")
     }
-    return data
+    defer {
+      _ = memset_s(content, Int(length), 0, Int(length))
+      SecKeychainItemFreeContent(nil, content)
+    }
+    guard length > 0, length <= UInt32(maximumKeyBytes) else {
+      try fail("The release App key is empty or oversized.")
+    }
+    var secret = Data(count: Int(length))
+    secret.withUnsafeMutableBytes { destination in
+      destination.baseAddress?.copyMemory(from: content, byteCount: Int(length))
+    }
+    do {
+      guard try aclMatches(item, host: host, provisioner: provisioner) else {
+        try fail("The release App key ACL changed while its secret was being read.")
+      }
+      return secret
+    } catch {
+      secret.resetBytes(in: 0..<secret.count)
+      throw error
+    }
   }
 
 }
@@ -631,6 +667,61 @@ private func disableCoreDumps() throws {
   }
 }
 
+private func clearEnvironment() {
+  for name in ProcessInfo.processInfo.environment.keys { unsetenv(name) }
+}
+
+private func requireHardenedRuntime() throws {
+  var code: SecCode?
+  guard SecCodeCopySelf(SecCSFlags(), &code) == errSecSuccess, let code,
+    SecCodeCheckValidity(
+      code,
+      SecCSFlags(rawValue: kSecCSStrictValidate),
+      nil
+    ) == errSecSuccess
+  else {
+    try fail("The running publisher provisioner code signature is invalid.")
+  }
+  let dynamicCode = unsafeBitCast(code, to: SecStaticCode.self)
+  var liveInformation: CFDictionary?
+  guard SecCodeCopySigningInformation(
+    dynamicCode,
+    SecCSFlags(rawValue: kSecCSSigningInformation | kSecCSDynamicInformation),
+    &liveInformation
+  ) == errSecSuccess,
+    let liveDictionary = liveInformation as? [CFString: Any],
+    let liveFlags = liveDictionary[kSecCodeInfoFlags] as? NSNumber,
+    liveFlags.uint32Value & requiredRuntimeSignatureFlag == requiredRuntimeSignatureFlag,
+    let liveStatus = liveDictionary[kSecCodeInfoStatus] as? NSNumber,
+    liveStatus.uint32Value & requiredRuntimeSignatureFlag == requiredRuntimeSignatureFlag
+  else {
+    try fail("The live publisher provisioner lacks hardened runtime kernel status.")
+  }
+  var staticCode: SecStaticCode?
+  guard SecCodeCopyStaticCode(code, SecCSFlags(), &staticCode) == errSecSuccess,
+    let staticCode,
+    SecStaticCodeCheckValidity(
+      staticCode,
+      SecCSFlags(rawValue: kSecCSStrictValidate),
+      nil
+    ) == errSecSuccess
+  else {
+    try fail("The publisher provisioner static code signature is invalid.")
+  }
+  var information: CFDictionary?
+  guard SecCodeCopySigningInformation(
+    staticCode,
+    SecCSFlags(rawValue: kSecCSSigningInformation),
+    &information
+  ) == errSecSuccess,
+    let dictionary = information as? [CFString: Any],
+    let flags = dictionary[kSecCodeInfoFlags] as? NSNumber,
+    flags.uint32Value & requiredRuntimeSignatureFlag == requiredRuntimeSignatureFlag
+  else {
+    try fail("The publisher provisioner is not protected by the hardened runtime.")
+  }
+}
+
 private func requireStoredHandle(
   store: SecretStore,
   host: String,
@@ -684,6 +775,8 @@ private func main() -> Int32 {
   do {
     _ = umask(0o077)
     try disableCoreDumps()
+    clearEnvironment()
+    try requireHardenedRuntime()
     let parsed = try parse(Array(CommandLine.arguments.dropFirst()))
     #if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING
       if parsed.action == "acl-model" {

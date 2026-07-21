@@ -53,21 +53,34 @@ test("release preparation uses the channel's protected branch as its exact base"
 });
 
 test("release publication delegates one exact tag to the trusted App publisher", () => {
-  assert.match(
-    releasePublish,
-    /HEAD must equal origin\/\$\{EXPECTED_BRANCH\} before tagging/,
-  );
+  assert.match(releasePublish, /git fetch --no-tags origin dev main/);
   assert.match(
     releasePublish,
     /release-tag-publisher\.mjs publish[\s\S]*--tag "\$\{TAG\}"[\s\S]*--commit "\$\{LOCAL_RELEASE_SHA\}"[\s\S]*--branch "\$\{EXPECTED_BRANCH\}"[\s\S]*--release-file-sha256 "\$\{RELEASE_FILE_SHA256\}"/,
   );
-  assert.match(releasePublish, /git ls-remote --tags origin/);
+  assert.doesNotMatch(releasePublish, /git ls-remote --tags origin/);
   assert.match(
     releasePublish,
-    /git fetch origin "refs\/tags\/\$\{TAG\}:refs\/tags\/\$\{TAG\}"/,
+    /git fetch --no-tags origin "refs\/tags\/\$\{TAG\}"/,
   );
-  assert.match(releasePublish, /git cat-file -t "refs\/tags\/\$\{TAG\}"/);
-  assert.match(releasePublish, /git rev-list -n 1 "refs\/tags\/\$\{TAG\}"/);
+  assert.match(releasePublish, /REMOTE_TAG_OBJECT_SHA="\$\(git rev-parse FETCH_HEAD\)"/);
+  assert.match(
+    releasePublish,
+    /git cat-file -t "\$\{PUBLISH_TAG_OBJECT_SHA\}"/,
+  );
+  assert.match(
+    releasePublish,
+    /git rev-parse "\$\{PUBLISH_TAG_OBJECT_SHA\}\^\{\}"/,
+  );
+  assert.match(releasePublish, /local tag \$\{TAG\} conflicts/);
+  assert.doesNotMatch(
+    releasePublish,
+    /HEAD must equal origin\/\$\{EXPECTED_BRANCH\} before tagging/,
+  );
+  assert.doesNotMatch(
+    releasePublish,
+    /tag \$\{TAG\} already exists\. Release tags are immutable/,
+  );
   assert.doesNotMatch(releasePublish, /git tag -a/);
   assert.doesNotMatch(releasePublish, /git push origin .*--follow-tags/);
   assert.doesNotMatch(releasePublish, /git push origin \$\{EXPECTED_BRANCH\}/);

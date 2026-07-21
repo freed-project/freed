@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  invokeReleaseTagPublisherAction,
   verifyReleaseTagPublisherBinding,
   verifyReleaseTagPublisherInstallation,
   verifyReleaseTagPublisherInstallationReadiness,
@@ -12,7 +13,7 @@ function fixture() {
   const publisherDigest = "a".repeat(64);
   const provisionerDigest = "b".repeat(64);
   const base = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     purpose: "freed-release-tag-publisher-binding",
     status: "active",
     repo: "freed-project/freed",
@@ -20,16 +21,18 @@ function fixture() {
     appSlug: "freed-release-publisher",
     publisherPath: "/Library/Application Support/Freed/release-tag-publisher",
     publisherSha256: publisherDigest,
+    publisherCdHash: "c".repeat(40),
     provisionerPath:
       "/Library/Application Support/Freed/release-tag-publisher-provision",
     provisionerSha256: provisionerDigest,
+    provisionerCdHash: "d".repeat(40),
   };
   const config = {
     ...base,
     nativePairSha256: releaseTagPublisherNativePairSha256(base),
   };
   const attestation = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     purpose: "freed-release-tag-publisher-readiness",
     repo: config.repo,
     appId: config.appId,
@@ -40,7 +43,9 @@ function fixture() {
     allowsUpdates: false,
     allowsDeletions: false,
     publisherSha256: publisherDigest,
+    publisherCdHash: config.publisherCdHash,
     provisionerSha256: provisionerDigest,
+    provisionerCdHash: config.provisionerCdHash,
     nativePairSha256: config.nativePairSha256,
   };
   return { config, attestation, publisherDigest, provisionerDigest };
@@ -80,7 +85,9 @@ test("publisher binding pins the exact App, operation, and native pair", () => {
     {
       ready: true,
       publisherDigest,
+      publisherCdHash: config.publisherCdHash,
       provisionerDigest,
+      provisionerCdHash: config.provisionerCdHash,
       nativePairDigest: config.nativePairSha256,
     },
   );
@@ -129,6 +136,107 @@ test("publisher binding pins the exact App, operation, and native pair", () => {
   );
 });
 
+test("each wrapper action invokes only the fixed native host", () => {
+  const { config, attestation } = fixture();
+  const calls = [];
+  const args = [
+    "attest",
+    "--repo",
+    config.repo,
+    "--app-id",
+    String(config.appId),
+    "--app-slug",
+    config.appSlug,
+  ];
+  const value = invokeReleaseTagPublisherAction(config, args, {
+    exec(file, actualArgs, options) {
+      calls.push({ file, args: actualArgs, options });
+      return JSON.stringify(attestation);
+    },
+  });
+  assert.deepEqual(value, attestation);
+  assert.deepEqual(
+    calls.map(({ file, args: actualArgs }) => ({ file, args: actualArgs })),
+    [{ file: config.publisherPath, args }],
+  );
+  assert.equal(calls[0].options.env.PATH, "/usr/bin:/bin");
+  assert.equal(calls[0].options.timeout, 30_000);
+});
+
+test("publish wrapper requires the exact recoverable native result envelope", () => {
+  const { config } = fixture();
+  const commit = "a".repeat(40);
+  const tag = "v26.7.2000-dev";
+  const args = [
+    "publish",
+    "--tag",
+    tag,
+    "--commit",
+    commit,
+  ];
+  const result = {
+    schemaVersion: 1,
+    purpose: "freed-release-tag-publish-result",
+    repo: config.repo,
+    tag,
+    commit,
+    tagObjectSha: "b".repeat(40),
+    recovered: true,
+  };
+  assert.deepEqual(
+    invokeReleaseTagPublisherAction(config, args, {
+      exec: () => JSON.stringify(result),
+    }),
+    result,
+  );
+  for (const invalid of [
+    { ...result, recovered: "true" },
+    Object.fromEntries(
+      Object.entries(result).filter(([key]) => key !== "recovered"),
+    ),
+    { ...result, extra: true },
+  ]) {
+    assert.throws(
+      () =>
+        invokeReleaseTagPublisherAction(config, args, {
+          exec: () => JSON.stringify(invalid),
+        }),
+      /inexact publish result/,
+    );
+  }
+});
+
+test("action-specific native envelopes reject old or secret-bearing shapes", () => {
+  const { config, attestation } = fixture();
+  for (const invalid of [
+    { ...attestation, schemaVersion: 2 },
+    { ...attestation, secret: "forbidden" },
+    { ...attestation, publisherCdHash: "0".repeat(40) },
+    { ...attestation, appId: "4296969" },
+    { ...attestation, appSlug: "Freed-Release-Publisher" },
+  ]) {
+    assert.throws(
+      () =>
+        invokeReleaseTagPublisherAction(
+          config,
+          [
+            "attest",
+            "--repo",
+            config.repo,
+            "--app-id",
+            String(config.appId),
+            "--app-slug",
+            config.appSlug,
+          ],
+          {
+            exec: () => JSON.stringify(invalid),
+          },
+        ),
+      /does not match the pinned short-lived annotated-tag publisher/,
+    );
+  }
+});
+
 test("installation readiness accepts only the exact dedicated App scope", () => {
   const attestation = installationAttestation();
   const expected = {
@@ -140,6 +248,19 @@ test("installation readiness accepts only the exact dedicated App scope", () => 
     verifyReleaseTagPublisherInstallationReadiness(attestation, expected),
     { ready: true, installationId: 42, attestation },
   );
+  for (const invalidExpected of [
+    { ...expected, releaseAppId: "4296969" },
+    { ...expected, releaseAppSlug: "Freed-Release-Publisher" },
+  ]) {
+    assert.throws(
+      () =>
+        verifyReleaseTagPublisherInstallationReadiness(
+          attestation,
+          invalidExpected,
+        ),
+      /does not match the dedicated selected-repository App contract/,
+    );
+  }
   for (const invalid of [
     { ...attestation, repositories: ["freed-project/other"] },
     {
@@ -152,6 +273,10 @@ test("installation readiness accepts only the exact dedicated App scope", () => 
       ...attestation,
       appPermissions: { contents: "write", metadata: "read", actions: "read" },
     },
+    { ...attestation, appId: "4296969" },
+    { ...attestation, appSlug: "Freed-Release-Publisher" },
+    { ...attestation, accountLogin: "someone-else" },
+    { ...attestation, accountType: "User" },
     { ...attestation, pem: "secret" },
   ]) {
     assert.throws(

@@ -142,21 +142,48 @@ general automation actor, or the PR publisher App as a bypass.
 
 ### Prepare the native publisher
 
-Run the owner helper from the reviewed source checkout:
+Preparation never migrates a schema 1 installation in place. If the fixed
+binding is schema 1, the credential must already be absent and no matching
+publisher process may be running. Once the separate one-use owner authorization
+path is integrated, run the archive action from the reviewed source checkout:
+
+```bash
+node scripts/release-tag-publisher-install.mjs archive-schema1
+```
+
+That action writes a root-only cutover record before mutation. It changes each
+legacy file to mode `0400`, admits the same device, inode, link count, owner,
+size, and digest through one privileged descriptor, then moves that inode on
+the same filesystem into
+`/Library/Application Support/Freed/release-tag-publisher-schema1-archive`.
+The archived files and manifest are root-only and non-executable. Restart macOS
+after the archive completes. The next preparation rechecks that the boot
+session changed, no matching process or credential reappeared, all three fixed
+paths remain absent, and each archived inode still matches its record. A retry
+after a lost response resumes the same planned archive. It never creates a
+second legacy copy.
+
+After the reboot barrier passes, run the owner helper from the reviewed source
+checkout:
 
 ```bash
 node scripts/release-tag-publisher-install.mjs prepare
 ```
 
 The helper runs `scripts/release-tag-publisher-build.sh` in a private temporary
-directory and builds the native Swift host and provisioner. It installs the
-schema 2 `preparing` barrier before replacing either native executable,
-installs and verifies the lockdown provisioner and host, then writes a
-`prepared` binding. That binding pins both fixed paths, both file digests, and
-one digest over the native pair. A retry can finish an interrupted preparation,
-while the barrier prevents a mixed pair from becoming active. If the barrier
-cannot land, neither executable changes. The executables are root-owned and
-read-only at these fixed paths:
+directory and builds the native Swift host and provisioner. Schema 1 migration
+is never performed by preparation. The helper uses safe-copy installation for
+each executable and binding replacement. It installs and verifies the
+mutation-disabled provisioner first, installs the schema 3 `preparing` binding,
+installs and verifies the host, then writes a `prepared` binding. That binding
+pins both fixed paths, both SHA-256 digests, both static CDHashes, and one digest
+over the complete native pair. The host also binds its kernel-reported running
+CDHash to its static code identity before Keychain access. A retry can finish
+an interrupted preparation. A failed
+provisioner replacement leaves the prior state unchanged. Once the safe
+provisioner lands, a barrier or host interruption cannot expose a production
+credential mutation verb. The executables are root-owned and read-only at
+these fixed paths:
 
 - `/Library/Application Support/Freed/release-tag-publisher`
 - `/Library/Application Support/Freed/release-tag-publisher-provision`
@@ -175,11 +202,22 @@ credential code. The dedicated publisher already has the fixed identity App ID
 `freed-project/freed`. A newly created App would have a different ID and is not
 an acceptable replacement.
 
+The disabled helper already reserves the recovery contract required by the
+future owner-authorized cutover. Its caller must generate one canonical UUIDv4
+or lowercase 64-hex operation ID, retain it across response loss, and provide
+it as `FREED_RELEASE_GITHUB_APP_OPERATION_ID`. The helper never generates that
+ID inside its own process. The same value binds manifest creation, identity
+persistence, credential promotion, binding activation, and an exact retry.
+Changing or omitting the value fails closed. This contract does not make the
+currently disabled mutation path available.
+
 The production native provisioner accepts only `inspect`, `matches`, and
 `verify`. It rejects `provision`, `recover`, `rotate`, `discard-recovery`, and
 `revoke` before admitting `--host` or reading key bytes. The Keychain ACL
 validator requires exactly the fixed host and provisioner plus an empty prompt
-selector. No credential mutation command in this checkpoint is a live runbook
+selector. The host checks that same item ACL before and after copying the key,
+then wipes the Keychain content buffer and its mutable PEM, base64, and DER
+buffers. No credential mutation command in this checkpoint is a live runbook
 operation.
 
 ### Recover a migrated Release Publisher key
@@ -208,8 +246,9 @@ permission drift, content drift, malformed PKCS1 key, or fingerprint mismatch
 fails before Keychain creation.
 
 Inspect the distinct release profile. This check is opt-in, checks the native
-host and binding, and asks the provisioner to validate item presence and the
-exact ACL without returning private key bytes:
+host and schema 3 binding, and invokes that fixed host once to validate both
+code identities, item presence, and the exact ACL without returning private
+key bytes:
 
 ```bash
 node scripts/doctor.mjs --require-release-publisher
