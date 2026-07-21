@@ -1829,6 +1829,79 @@ test("outcome writer runtime preserves its permanent marker and requires the cut
   assert.equal(calls, 1);
 });
 
+test("outcome writer snapshot cache invalidates a same-inode rewrite", () => {
+  const stateRoot = temporaryStateRoot();
+  const paths = automationControlPaths(stateRoot);
+  const fixtureDirectory = path.join(paths.controlRoot, "snapshot-cache");
+  mkdirSync(fixtureDirectory, { mode: 0o700 });
+  const filePath = path.join(fixtureDirectory, "snapshot-cache.json");
+  const firstBytes = Buffer.from('{"generation":"first!"}\n');
+  const secondBytes = Buffer.from('{"generation":"second"}\n');
+  assert.equal(firstBytes.length, secondBytes.length);
+  writeFileSync(filePath, firstBytes, { mode: 0o600 });
+
+  withAutomationOutcomeLedgerWriterGuard(
+    paths.outcomes,
+    () => {
+      consumeLeaseArchiveHelperInvocationCountForTest();
+      const first = readAutomationAuthorityFileSnapshot(filePath, {
+        privateRoot: paths.controlRoot,
+        label: "Outcome writer snapshot cache fixture",
+      });
+      const firstHelperCalls =
+        consumeLeaseArchiveHelperInvocationCountForTest();
+      assert.ok(firstHelperCalls > 0);
+
+      const cached = readAutomationAuthorityFileSnapshot(filePath, {
+        privateRoot: paths.controlRoot,
+        label: "Outcome writer snapshot cache fixture",
+      });
+      assert.equal(consumeLeaseArchiveHelperInvocationCountForTest(), 0);
+      assert.deepEqual(cached.bytes, firstBytes);
+
+      assert.throws(
+        () =>
+          readAutomationAuthorityFileSnapshot(
+            path.relative(process.cwd(), filePath),
+            {
+              privateRoot: paths.controlRoot,
+              label: "Outcome writer snapshot cache fixture",
+            },
+          ),
+        (error) =>
+          error instanceof AutomationControlError &&
+          error.code === "invalid_state",
+      );
+      chmodSync(paths.controlRoot, 0o755);
+      try {
+        assert.throws(
+          () =>
+            readAutomationAuthorityFileSnapshot(filePath, {
+              privateRoot: paths.controlRoot,
+              label: "Outcome writer snapshot cache fixture",
+            }),
+          (error) =>
+            error instanceof AutomationControlError &&
+            error.code === "invalid_state",
+        );
+      } finally {
+        chmodSync(paths.controlRoot, 0o700);
+      }
+      consumeLeaseArchiveHelperInvocationCountForTest();
+
+      writeFileSync(filePath, secondBytes, { mode: 0o600 });
+      assert.equal(lstatSync(filePath).ino, Number(first.identity.ino));
+      const rewritten = readAutomationAuthorityFileSnapshot(filePath, {
+        privateRoot: paths.controlRoot,
+        label: "Outcome writer snapshot cache fixture",
+      });
+      assert.ok(consumeLeaseArchiveHelperInvocationCountForTest() > 0);
+      assert.deepEqual(rewritten.bytes, secondBytes);
+    },
+    { stateRoot },
+  );
+});
+
 test("a SIGKILL process loss releases the kernel guard for one recovery", () => {
   const stateRoot = temporaryStateRoot();
   const guardPath = path.join(stateRoot, "sigkill-kernel.lock");
@@ -2118,6 +2191,86 @@ test("lease authority brackets its record read with exactly two pending transact
   assert.equal(callbackCalled, false);
   assert.equal(consumePendingLeaseTransactionInspectionCountForTest(), 1);
   rmSync(pendingPath);
+});
+
+test("lease authority cache invalidates when a pending transaction appears", () => {
+  const stateRoot = temporaryStateRoot();
+  const authentication = actorLease(stateRoot, "freed-stability-controller");
+  const paths = automationControlPaths(stateRoot);
+  const transactionDirectory = path.join(paths.leases, ".transactions");
+  const receiptDirectory = path.join(paths.leases, ".transaction-receipts");
+  const receiptEntry = readdirSync(receiptDirectory).find(
+    (entry) =>
+      entry.startsWith(`${authentication.leaseName}.acquire.`) &&
+      entry.endsWith(".json"),
+  );
+  assert.ok(receiptEntry);
+  const pendingPath = path.join(
+    transactionDirectory,
+    `${authentication.leaseName}.json`,
+  );
+
+  withMutationLeaseAuthority(
+    { stateRoot, ...authentication },
+    (authorityContext) => {
+      consumePendingLeaseTransactionInspectionCountForTest();
+      authorityContext.reauthorize();
+      assert.equal(consumePendingLeaseTransactionInspectionCountForTest(), 0);
+
+      writeFileSync(
+        pendingPath,
+        readFileSync(path.join(receiptDirectory, receiptEntry)),
+        { mode: 0o600 },
+      );
+      assert.throws(
+        () => authorityContext.reauthorize(),
+        (error) =>
+          error instanceof AutomationControlError &&
+          error.code === "lease_transaction_pending",
+      );
+      assert.equal(consumePendingLeaseTransactionInspectionCountForTest(), 1);
+    },
+  );
+  rmSync(pendingPath);
+});
+
+test("lease authority cache invalidates a same-inode record rewrite", () => {
+  const stateRoot = temporaryStateRoot();
+  const authentication = actorLease(stateRoot, "freed-stability-controller");
+  const paths = automationControlPaths(stateRoot);
+  const recordPath = path.join(
+    paths.leases,
+    `${authentication.leaseName}.lease`,
+    "lease.json",
+  );
+
+  withMutationLeaseAuthority(
+    { stateRoot, ...authentication },
+    (authorityContext) => {
+      consumePendingLeaseTransactionInspectionCountForTest();
+      const returned = authorityContext.reauthorize();
+      assert.equal(consumePendingLeaseTransactionInspectionCountForTest(), 0);
+      returned.lease.token = "z".repeat(returned.lease.token.length);
+      assert.equal(
+        authorityContext.reauthorize().lease.token,
+        authentication.leaseToken,
+      );
+      assert.equal(consumePendingLeaseTransactionInspectionCountForTest(), 0);
+
+      const recordStats = lstatSync(recordPath);
+      const record = JSON.parse(readFileSync(recordPath, "utf8"));
+      record.token = "y".repeat(record.token.length);
+      writeFileSync(recordPath, `${JSON.stringify(record)}\n`, { mode: 0o600 });
+      assert.equal(lstatSync(recordPath).ino, recordStats.ino);
+      assert.throws(
+        () => authorityContext.reauthorize(),
+        (error) =>
+          error instanceof AutomationControlError &&
+          error.code === "lease_token_mismatch",
+      );
+      assert.equal(consumePendingLeaseTransactionInspectionCountForTest(), 2);
+    },
+  );
 });
 
 test("exported acquisition cannot persist caller-controlled future authority time", () => {
@@ -6385,19 +6538,25 @@ test("lease transaction history detects a same-inode same-length terminal receip
   let checkpointCount = 0;
   let racedAuthorityState;
 
-  const inspection = inspectLeaseTransactionEventHistory({
-    stateRoot,
-    events,
-    checkpoint(phase) {
-      if (phase !== "lease-history-before-final-revalidation") return;
-      checkpointCount += 1;
-      writeFileSync(receiptPath, racedReceipt, { mode: 0o600 });
-      const identityAfter = lstatSync(receiptPath, { bigint: true });
-      assert.equal(identityAfter.ino, identityBefore.ino);
-      assert.equal(identityAfter.size, identityBefore.size);
-      racedAuthorityState = snapshotLeaseAuthorityState(stateRoot);
-    },
-  });
+  const paths = automationControlPaths(stateRoot);
+  const inspection = withAutomationOutcomeLedgerWriterGuard(
+    paths.outcomes,
+    () =>
+      inspectLeaseTransactionEventHistory({
+        stateRoot,
+        events,
+        checkpoint(phase) {
+          if (phase !== "lease-history-before-final-revalidation") return;
+          checkpointCount += 1;
+          writeFileSync(receiptPath, racedReceipt, { mode: 0o600 });
+          const identityAfter = lstatSync(receiptPath, { bigint: true });
+          assert.equal(identityAfter.ino, identityBefore.ino);
+          assert.equal(identityAfter.size, identityBefore.size);
+          racedAuthorityState = snapshotLeaseAuthorityState(stateRoot);
+        },
+      }),
+    { stateRoot },
+  );
   assert.equal(checkpointCount, 1);
   assert.equal(inspection.healthy, false);
   assert.equal(inspection.pendingTransactionArtifactCount, 0);
@@ -19905,7 +20064,7 @@ test("production task WAL cleanup preserves a swapped canonical generation", () 
   targetManifest.updatedAt = transitionAt;
   const event = {
     schemaVersion: 1,
-    eventId: "task-wal-generation-cleanup-event",
+    eventId: "b9479448-0479-45d4-a4fc-e9b7d3249687",
     type: "task_transitioned",
     ts: transitionAt,
     actor: controller.actor,
@@ -19914,7 +20073,16 @@ test("production task WAL cleanup preserves a swapped canonical generation", () 
     manifestRevision: targetManifest.revision,
     observerAuthority: targetTask.observerAuthority,
     providerAuthority: targetTask.providerAuthority,
-    data: { fromState: "observed", toState: "triaged" },
+    data: {
+      authorizationProvenance: structuredClone(
+        readControlEvents(stateRoot).find(
+          (candidate) =>
+            candidate.type === "task_created" && candidate.taskId === taskId,
+        ).data.authorizationProvenance,
+      ),
+      fromState: "observed",
+      toState: "triaged",
+    },
   };
   const transaction = {
     schemaVersion: 1,
@@ -20112,6 +20280,51 @@ test("automation planning read bundle exposes only frozen plain values and expir
   );
 });
 
+test("automation planning lease history cache invalidates a new pending transaction", () => {
+  const stateRoot = temporaryStateRoot();
+  const authentication = actorLease(stateRoot, "freed-release-verifier");
+  const paths = automationControlPaths(stateRoot);
+  const operationId = nextLeaseOperationId(
+    "planning-lease-history-cache-heartbeat",
+  );
+
+  withAutomationOutcomeLedgerWriterGuard(
+    paths.outcomes,
+    (writerGuardContext) => {
+      const before = withAutomationPlanningReadBundle(
+        { stateRoot, writerGuardContext },
+        (bundle) => bundle.leaseTransactionHistory,
+      );
+      assert.equal(before.healthy, true, before.issues.join("\n"));
+      assert.equal(before.pendingTransactionArtifactCount, 0);
+
+      runLeaseMutationProcessLoss({
+        exportName: "heartbeatLease",
+        options: {
+          stateRoot,
+          name: authentication.leaseName,
+          operationId,
+          token: authentication.leaseToken,
+          ttlMs: 60_000,
+        },
+        phase: "lease-prepared",
+      });
+
+      const after = withAutomationPlanningReadBundle(
+        { stateRoot, writerGuardContext },
+        (bundle) => bundle.leaseTransactionHistory,
+      );
+      assert.equal(after.healthy, false);
+      assert.ok(after.pendingTransactionArtifactCount > 0);
+      assert.match(
+        after.issues.join("\n"),
+        /pending lease transaction artifact/,
+      );
+    },
+    { stateRoot },
+  );
+});
+
 test("the first control event may create history but record 100,001 is rejected byte-stably", () => {
   const firstRoot = temporaryStateRoot();
   const firstPaths = automationControlPaths(firstRoot);
@@ -20179,6 +20392,29 @@ test("automation planning result accessors run before terminal generation proof"
       error instanceof AutomationControlError &&
       error.code === "authority_generation_conflict",
   );
+});
+
+test("automation planning directory-name cache invalidates an added private entry", () => {
+  const stateRoot = temporaryStateRoot();
+  const paths = automationControlPaths(stateRoot);
+  const addedPath = path.join(paths.controlRoot, "uninspected-private.json");
+  assert.equal(existsSync(addedPath), false);
+  assert.throws(
+    () =>
+      withAutomationPlanningReadBundle(
+        { stateRoot, nowMs: Date.parse("2026-07-20T12:35:00.000Z") },
+        () => ({
+          get mutateDirectoryDuringClone() {
+            writeFileSync(addedPath, '{}\n', { mode: 0o600 });
+            return true;
+          },
+        }),
+      ),
+    (error) =>
+      error instanceof AutomationControlError &&
+      error.code === "authority_generation_conflict",
+  );
+  assert.equal(existsSync(addedPath), true);
 });
 
 test("automation planning results reject executable values", () => {

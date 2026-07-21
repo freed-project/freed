@@ -5301,6 +5301,68 @@ test("transaction-bound repair audit rejects missing prepared artifacts before c
   assert.equal(repairAuditEvents(paths, plan.eventId).length, 0);
 });
 
+test("transaction-bound repair audit invalidates a rewritten pending event stage", (t) => {
+  const { stateRoot, paths, plan, owner } = leaveRepairReplaced(
+    t,
+    "transaction-bound-pending-stage-rewrite",
+  );
+  const transactionBefore = readFileSync(plan.artifacts.transaction);
+  const transaction = JSON.parse(transactionBefore.toString("utf8"));
+  const eventsBefore = readFileSync(paths.events);
+  const separator =
+    eventsBefore.length > 0 && eventsBefore.at(-1) !== 0x0a
+      ? Buffer.from("\n")
+      : Buffer.alloc(0);
+  const proposedBytes = Buffer.concat([
+    eventsBefore,
+    separator,
+    Buffer.from(`${JSON.stringify(transaction.eventPlan.event)}\n`),
+  ]);
+  const existingStages = readdirSync(paths.controlRoot).filter((entry) =>
+    entry.startsWith(".events.jsonl.authority."),
+  );
+  assert.equal(existingStages.length, 1);
+  rmSync(path.join(paths.controlRoot, existingStages[0]));
+  const stagePath = path.join(
+    paths.controlRoot,
+    `.events.jsonl.authority.${transaction.eventPlan.stageNamespace}.staging`,
+  );
+  writeFileSync(stagePath, proposedBytes, { mode: 0o600 });
+  const stageStats = lstatSync(stagePath);
+  const invalidBytes = Buffer.alloc(proposedBytes.length, 0x78);
+  let callbackCalled = false;
+
+  assert.throws(
+    () =>
+      withOutcomeLedgerRepairFinalizationGuard(
+        {
+          stateRoot,
+          taskId: TASK_ID,
+          ...owner,
+          parameters: plan.parameters,
+          transactionPath: plan.artifacts.transaction,
+        },
+        ({ beforeFinalizationMutation }) => {
+          callbackCalled = true;
+          writeFileSync(stagePath, invalidBytes, { mode: 0o600 });
+          const rewrittenStats = lstatSync(stagePath);
+          assert.equal(rewrittenStats.ino, stageStats.ino);
+          assert.equal(rewrittenStats.size, stageStats.size);
+          assert.throws(
+            () => beforeFinalizationMutation(),
+            (error) => error?.code === "authority_generation_conflict",
+          );
+        },
+      ),
+    (error) => error?.code === "authority_generation_conflict",
+  );
+
+  assert.equal(callbackCalled, true);
+  assert.deepEqual(readFileSync(paths.events), eventsBefore);
+  assert.deepEqual(readFileSync(plan.artifacts.transaction), transactionBefore);
+  assert.deepEqual(readFileSync(stagePath), invalidBytes);
+});
+
 test("transaction-bound repair audit authenticates every prepared artifact", async (t) => {
   for (const artifact of ["trusted", "rejected", "decisions", "receipt"]) {
     await t.test(artifact, (t) => {

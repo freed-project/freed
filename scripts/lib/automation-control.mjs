@@ -210,6 +210,11 @@ const AUTOMATION_PLANNING_READ_ADMISSION_STATES = new WeakMap();
 const AUTOMATION_PLANNING_READ_BUNDLE_STATES = new WeakMap();
 const ACTIVE_AUTOMATION_PLANNING_READ_ROOTS = new Set();
 const ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS = new WeakSet();
+const ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT = new Map();
+const OUTCOME_WRITER_AUTHORITY_SNAPSHOT_CACHES = new WeakMap();
+const OUTCOME_WRITER_LEASE_HISTORY_CACHES = new WeakMap();
+const OUTCOME_WRITER_DIRECTORY_CHILD_PROOF_CACHES = new WeakMap();
+const OUTCOME_WRITER_DIRECTORY_NAME_CACHES = new WeakMap();
 const AUTOMATION_PLANNING_READ_INTERNAL = Symbol(
   "automation-planning-read-internal",
 );
@@ -1894,11 +1899,30 @@ export function withAutomationOutcomeLedgerWriterGuard(
         }
       },
     });
+    if (ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT.has(paths.stateRoot)) {
+      throw new AutomationControlError(
+        "invalid_state",
+        "Outcome ledger writer context is already active for this state root.",
+      );
+    }
     ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS.add(context);
+    ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT.set(
+      paths.stateRoot,
+      context,
+    );
+    OUTCOME_WRITER_AUTHORITY_SNAPSHOT_CACHES.set(context, new Map());
+    OUTCOME_WRITER_LEASE_HISTORY_CACHES.set(context, null);
+    OUTCOME_WRITER_DIRECTORY_CHILD_PROOF_CACHES.set(context, new Set());
+    OUTCOME_WRITER_DIRECTORY_NAME_CACHES.set(context, new Map());
     try {
       return operation(context);
     } finally {
       active = false;
+      OUTCOME_WRITER_AUTHORITY_SNAPSHOT_CACHES.delete(context);
+      OUTCOME_WRITER_LEASE_HISTORY_CACHES.delete(context);
+      OUTCOME_WRITER_DIRECTORY_CHILD_PROOF_CACHES.delete(context);
+      OUTCOME_WRITER_DIRECTORY_NAME_CACHES.delete(context);
+      ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT.delete(paths.stateRoot);
       ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS.delete(context);
     }
     },
@@ -1978,6 +2002,8 @@ function withFilesystemGuard(
 }
 
 const ACTIVE_AUTOMATION_EVENTS_GUARDS = new WeakSet();
+const ACTIVE_AUTOMATION_EVENTS_GUARDS_BY_ROOT = new Map();
+const AUTOMATION_EVENTS_GUARD_STAGE_ADMISSIONS = new WeakMap();
 const OUTCOME_REPAIR_OWNER_LEASE_BYPASSES = new WeakMap();
 
 function requireActiveAutomationEventsGuard(token) {
@@ -2013,7 +2039,14 @@ function withActiveAutomationEventsGuard(
           stateRoot: paths.stateRoot,
           outcomeRepairBypass,
         });
+        if (ACTIVE_AUTOMATION_EVENTS_GUARDS_BY_ROOT.has(paths.stateRoot)) {
+          throw new AutomationControlError(
+            "invalid_state",
+            "Automation events guard scope is already active for this state root.",
+          );
+        }
         ACTIVE_AUTOMATION_EVENTS_GUARDS.add(token);
+        ACTIVE_AUTOMATION_EVENTS_GUARDS_BY_ROOT.set(paths.stateRoot, token);
         try {
           if (authorizeOutcomeRepairBypass !== null) {
             if (typeof authorizeOutcomeRepairBypass !== "function") {
@@ -2052,6 +2085,8 @@ function withActiveAutomationEventsGuard(
           }
           return result;
         } finally {
+          AUTOMATION_EVENTS_GUARD_STAGE_ADMISSIONS.delete(token);
+          ACTIVE_AUTOMATION_EVENTS_GUARDS_BY_ROOT.delete(paths.stateRoot);
           OUTCOME_REPAIR_OWNER_LEASE_BYPASSES.delete(token);
           ACTIVE_AUTOMATION_EVENTS_GUARDS.delete(token);
         }
@@ -13009,8 +13044,8 @@ export function validateCurrentTaskOwnerConfirmation({
   });
 }
 
-function requireMutationLeaseUnlocked({
-  stateRoot,
+function requireMutationLeaseRecord({
+  record,
   actor,
   leaseName,
   leaseToken,
@@ -13018,21 +13053,6 @@ function requireMutationLeaseUnlocked({
   taskId = undefined,
   ownerIntentDigest = undefined,
 }) {
-  const policy = actorPolicy(actor);
-  requireIdentifier(leaseName, "leaseName");
-  requireNonemptyString(leaseToken, "leaseToken");
-  if (leaseName !== policy.leaseName) {
-    throw new AutomationControlError(
-      "lease_policy_mismatch",
-      `Actor ${actor} must use lease ${policy.leaseName}.`,
-      { actor, expectedLeaseName: policy.leaseName, leaseName },
-    );
-  }
-  const paths = automationControlPaths(stateRoot);
-  const leasePath = leasePathFor(paths, leaseName);
-  requireNoPendingLeaseTransaction(paths, leaseName);
-  const record = readLeaseRecord(leasePath);
-  requireNoPendingLeaseTransaction(paths, leaseName);
   if (!record) {
     throw new AutomationControlError(
       "lease_not_found",
@@ -13040,6 +13060,7 @@ function requireMutationLeaseUnlocked({
       { leaseName },
     );
   }
+  const policy = actorPolicy(actor);
   validateLeaseRecord(record, leaseName);
   if (record.owner === "freed-pr-publisher") {
     normalizePublisherScope(record.scope);
@@ -13108,6 +13129,115 @@ function requireMutationLeaseUnlocked({
   return { lease: record, policy };
 }
 
+function requireMutationLeaseUnlocked({
+  stateRoot,
+  actor,
+  leaseName,
+  leaseToken,
+  nowMs,
+  taskId = undefined,
+  ownerIntentDigest = undefined,
+}) {
+  const policy = actorPolicy(actor);
+  requireIdentifier(leaseName, "leaseName");
+  requireNonemptyString(leaseToken, "leaseToken");
+  if (leaseName !== policy.leaseName) {
+    throw new AutomationControlError(
+      "lease_policy_mismatch",
+      `Actor ${actor} must use lease ${policy.leaseName}.`,
+      { actor, expectedLeaseName: policy.leaseName, leaseName },
+    );
+  }
+  const paths = automationControlPaths(stateRoot);
+  const leasePath = leasePathFor(paths, leaseName);
+  requireNoPendingLeaseTransaction(paths, leaseName);
+  const record = readLeaseRecord(leasePath);
+  requireNoPendingLeaseTransaction(paths, leaseName);
+  return requireMutationLeaseRecord({
+    record,
+    actor,
+    leaseName,
+    leaseToken,
+    nowMs,
+    taskId,
+    ownerIntentDigest,
+  });
+}
+
+function optionalMutationLeasePathFingerprint(filePath, expectedKind) {
+  try {
+    const stats = lstatSync(filePath, { bigint: true });
+    if (
+      stats.isSymbolicLink() ||
+      (expectedKind === "directory" && !stats.isDirectory()) ||
+      (expectedKind === "file" && !stats.isFile()) ||
+      realpathSync(filePath) !== filePath
+    ) {
+      return null;
+    }
+    return filesystemGenerationFingerprint(stats);
+  } catch (error) {
+    if (error?.code === "ENOENT") return "missing";
+    return null;
+  }
+}
+
+function mutationLeaseAuthorityGenerationFingerprint(paths, leaseName) {
+  const transactions = leaseTransactionDirectories(paths).transactions;
+  const leaseDirectory = leasePathFor(paths, leaseName);
+  const recordPath = leaseRecordPath(leaseDirectory);
+  const relatedPrefix = Buffer.from(`${leaseName}.`, "utf8");
+  const relatedHiddenPrefix = Buffer.from(`.${leaseName}.`, "utf8");
+  const snapshot = () => {
+    const leases = optionalMutationLeasePathFingerprint(
+      paths.leases,
+      "directory",
+    );
+    const transactionDirectory = optionalMutationLeasePathFingerprint(
+      transactions,
+      "directory",
+    );
+    let relatedEntries = "";
+    if (transactionDirectory !== "missing" && transactionDirectory !== null) {
+      try {
+        relatedEntries = readdirSync(transactions, { encoding: "buffer" })
+          .filter(
+            (entry) =>
+              entry.subarray(0, relatedPrefix.length).equals(relatedPrefix) ||
+              entry
+                .subarray(0, relatedHiddenPrefix.length)
+                .equals(relatedHiddenPrefix),
+          )
+          .sort(Buffer.compare)
+          .map((entry) => entry.toString("hex"))
+          .join("\0");
+      } catch {
+        return null;
+      }
+    }
+    const lease = optionalMutationLeasePathFingerprint(
+      leaseDirectory,
+      "directory",
+    );
+    const record = optionalMutationLeasePathFingerprint(recordPath, "file");
+    if ([leases, transactionDirectory, lease, record].includes(null)) {
+      return null;
+    }
+    return digestBytes(
+      Buffer.from(
+        [leases, transactionDirectory, relatedEntries, lease, record].join(
+          "\n",
+        ),
+        "utf8",
+      ),
+    );
+  };
+  const before = snapshot();
+  if (before === null) return null;
+  const after = snapshot();
+  return before === after ? after : null;
+}
+
 function requireMutationAuthorityContext(authorityContext, expected) {
   if (authorityContext?.token !== MUTATION_AUTHORITY_GUARD) {
     throw new AutomationControlError(
@@ -13168,6 +13298,7 @@ export function withMutationLeaseAuthority(
 
   return withFilesystemGuard(paths, `lease-${leaseName}`, () => {
     let active = true;
+    let cachedAuthorization = null;
     const requireActive = () => {
       if (!active) {
         throw new AutomationControlError(
@@ -13187,11 +13318,60 @@ export function withMutationLeaseAuthority(
       requireActive,
       reauthorize: () => {
         requireActive();
-        return requireMutationLeaseUnlocked({
+        const nowMs = Date.now();
+        if (cachedAuthorization !== null) {
+          const before = mutationLeaseAuthorityGenerationFingerprint(
+            paths,
+            leaseName,
+          );
+          if (
+            before !== null &&
+            before === cachedAuthorization.generationFingerprint
+          ) {
+            requireMutationLeaseRecord({
+              record: structuredClone(cachedAuthorization.lease),
+              ...expected,
+              nowMs,
+            });
+            const after = mutationLeaseAuthorityGenerationFingerprint(
+              paths,
+              leaseName,
+            );
+            if (before === after) {
+              return requireMutationLeaseRecord({
+                record: structuredClone(cachedAuthorization.lease),
+                ...expected,
+                nowMs: Date.now(),
+              });
+            }
+          }
+        }
+        const before = mutationLeaseAuthorityGenerationFingerprint(
+          paths,
+          leaseName,
+        );
+        const authorization = requireMutationLeaseUnlocked({
           ...expected,
           stateRoot: paths.stateRoot,
+          nowMs,
+        });
+        const after = mutationLeaseAuthorityGenerationFingerprint(
+          paths,
+          leaseName,
+        );
+        const finalAuthorization = requireMutationLeaseRecord({
+          record: structuredClone(authorization.lease),
+          ...expected,
           nowMs: Date.now(),
         });
+        cachedAuthorization =
+          before !== null && before === after
+            ? Object.freeze({
+                lease: structuredClone(finalAuthorization.lease),
+                generationFingerprint: after,
+              })
+            : null;
+        return finalAuthorization;
       },
       authorize: (authorization) => {
         requireActive();
@@ -14895,7 +15075,154 @@ function requireAutomationAuthorityPrivatePath(
   });
 }
 
+function automationAuthoritySnapshotGenerationFingerprint(filePath) {
+  const directoryPath = path.dirname(filePath);
+  const snapshot = () => {
+    try {
+      const directory = lstatSync(directoryPath, { bigint: true });
+      if (
+        !directory.isDirectory() ||
+        directory.isSymbolicLink() ||
+        realpathSync(directoryPath) !== directoryPath
+      ) {
+        return null;
+      }
+      try {
+        const file = lstatSync(filePath, { bigint: true });
+        if (
+          !file.isFile() ||
+          file.isSymbolicLink() ||
+          realpathSync(filePath) !== filePath
+        ) {
+          return null;
+        }
+        return [
+          filesystemGenerationFingerprint(directory, {
+            stableIdentityOnly: true,
+          }),
+          filesystemGenerationFingerprint(file),
+        ].join("\n");
+      } catch (error) {
+        if (error?.code !== "ENOENT") return null;
+        return [filesystemGenerationFingerprint(directory), "missing"].join(
+          "\n",
+        );
+      }
+    } catch {
+      return null;
+    }
+  };
+  const before = snapshot();
+  if (before === null) return null;
+  const after = snapshot();
+  return before === after ? digestBytes(Buffer.from(after, "utf8")) : null;
+}
+
+function activeOutcomeWriterContextForPath(filePath) {
+  let matchingContext = null;
+  let matchingRootLength = -1;
+  for (const [stateRoot, context] of
+    ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT) {
+    const relative = path.relative(stateRoot, filePath);
+    if (
+      relative !== "" &&
+      !relative.startsWith(`..${path.sep}`) &&
+      relative !== ".." &&
+      !path.isAbsolute(relative) &&
+      stateRoot.length > matchingRootLength
+    ) {
+      matchingContext = context;
+      matchingRootLength = stateRoot.length;
+    }
+  }
+  return matchingContext;
+}
+
+function cloneAutomationAuthoritySnapshot(snapshot) {
+  return Object.freeze({
+    ...snapshot,
+    bytes: Buffer.from(snapshot.bytes),
+  });
+}
+
 function readAutomationAuthorityFileSnapshotWithPolicy(
+  filePath,
+  options = {},
+  policy,
+) {
+  const label = options?.label ?? "Automation authority file";
+  const invalidCode = options?.invalidCode ?? "invalid_state";
+  const privateRoot = options?.privateRoot ?? path.dirname(filePath);
+  const {
+    normalizedFilePath,
+    normalizedPrivateRoot,
+  } = requireAutomationAuthorityPrivatePath(
+    filePath,
+    privateRoot,
+    label,
+    invalidCode,
+  );
+  const context = activeOutcomeWriterContextForPath(normalizedFilePath);
+  const helperTestPause = options?.helperTestPause;
+  if (context === null || helperTestPause !== undefined) {
+    return readAutomationAuthorityFileSnapshotWithPolicyUncached(
+      filePath,
+      options,
+      policy,
+    );
+  }
+  const cache = OUTCOME_WRITER_AUTHORITY_SNAPSHOT_CACHES.get(context);
+  const cacheKey = [
+    normalizedPrivateRoot,
+    normalizedFilePath,
+    policy.requireUtf8 ? "utf8" : "raw",
+  ].join("\0");
+  const before = automationAuthoritySnapshotGenerationFingerprint(
+    normalizedFilePath,
+  );
+  const cached = cache?.get(cacheKey);
+  const requestedAllowedModes = options?.allowedModes ?? [0o600];
+  const requestedMaxBytes = options?.maxBytes ?? LEASE_TRANSACTION_MAX_BYTES;
+  const cachedSnapshotAllowed =
+    cached !== undefined &&
+    (cached.snapshot.missing
+      ? options?.allowMissing === true
+      : cached.snapshot.bytes.length <= requestedMaxBytes &&
+        ((options?.allowEmpty ?? true) || cached.snapshot.bytes.length > 0) &&
+        requestedAllowedModes.includes(
+          Number(cached.snapshot.identity.mode) & 0o7777,
+        ));
+  if (
+    before !== null &&
+    cached !== undefined &&
+    cachedSnapshotAllowed &&
+    cached.generationFingerprint === before
+  ) {
+    return cloneAutomationAuthoritySnapshot(cached.snapshot);
+  }
+  const snapshot = readAutomationAuthorityFileSnapshotWithPolicyUncached(
+    filePath,
+    options,
+    policy,
+  );
+  const after = automationAuthoritySnapshotGenerationFingerprint(
+    normalizedFilePath,
+  );
+  if (cache !== undefined && before !== null && before === after) {
+    cache.set(
+      cacheKey,
+      Object.freeze({
+        generationFingerprint: after,
+        snapshot: cloneAutomationAuthoritySnapshot(snapshot),
+      }),
+    );
+  } else {
+    cache?.delete(cacheKey);
+  }
+  return snapshot;
+}
+
+function readAutomationAuthorityFileSnapshotWithPolicyUncached(
   filePath,
   {
     allowMissing = false,
@@ -16529,6 +16856,127 @@ export function inspectLeaseTransactionEventHistory(options) {
     "Lease transaction event history inspection",
   );
   return inspectLeaseTransactionEventHistoryInternal(options);
+}
+
+function leaseAuthorityTreeGenerationFingerprint(paths) {
+  const root = paths.leases;
+  const scan = () => {
+    const generations = [];
+    let entryCount = 0;
+    let encodedNameBytes = 0;
+    const visit = (directoryPath, depth) => {
+      if (depth > 32) throw new Error("lease authority tree is too deep");
+      const directory = lstatSync(directoryPath, { bigint: true });
+      if (
+        !directory.isDirectory() ||
+        directory.isSymbolicLink() ||
+        realpathSync(directoryPath) !== directoryPath
+      ) {
+        throw new Error("lease authority tree has an unsafe directory");
+      }
+      const relativeDirectory = path.relative(root, directoryPath);
+      generations.push(
+        `d:${Buffer.from(relativeDirectory, "utf8").toString("hex")}:${filesystemGenerationFingerprint(directory)}`,
+      );
+      const names = readdirSync(directoryPath, { encoding: "buffer" }).sort(
+        Buffer.compare,
+      );
+      for (const encodedName of names) {
+        entryCount += 1;
+        encodedNameBytes += encodedName.length;
+        if (entryCount > 4_096 || encodedNameBytes > 4 * 1024 * 1024) {
+          throw new Error("lease authority tree exceeds its cache boundary");
+        }
+        const name = privateAuthorityDecoder.decode(encodedName);
+        if (
+          name.length === 0 ||
+          name === "." ||
+          name === ".." ||
+          name.includes(path.sep) ||
+          name.includes("\0")
+        ) {
+          throw new Error("lease authority tree has an invalid entry name");
+        }
+        const childPath = path.join(directoryPath, name);
+        const child = lstatSync(childPath, { bigint: true });
+        if (child.isSymbolicLink() || realpathSync(childPath) !== childPath) {
+          throw new Error("lease authority tree has an unsafe entry");
+        }
+        const relative = path.relative(root, childPath);
+        if (child.isDirectory()) {
+          visit(childPath, depth + 1);
+        } else if (child.isFile()) {
+          generations.push(
+            `f:${Buffer.from(relative, "utf8").toString("hex")}:${filesystemGenerationFingerprint(child)}`,
+          );
+        } else {
+          throw new Error("lease authority tree has an unsupported entry");
+        }
+      }
+    };
+    try {
+      visit(root, 0);
+      return digestBytes(Buffer.from(generations.join("\n"), "utf8"));
+    } catch {
+      return null;
+    }
+  };
+  const before = scan();
+  if (before === null) return null;
+  const after = scan();
+  return before === after ? after : null;
+}
+
+function inspectLeaseTransactionEventHistoryForPlanning(paths, events) {
+  const context = ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT.get(
+    paths.stateRoot,
+  );
+  if (context === undefined) {
+    return inspectLeaseTransactionEventHistoryInternal({
+      stateRoot: paths.stateRoot,
+      events,
+    });
+  }
+  const leaseEventDigest = digestBytes(
+    Buffer.from(
+      JSON.stringify(
+        events.filter(
+          (event) =>
+            typeof event?.eventId === "string" &&
+            (event.eventId.startsWith("lease:") ||
+              LEASE_CONTROL_EVENT_TYPES.has(event.type)),
+        ),
+      ),
+      "utf8",
+    ),
+  );
+  const before = leaseAuthorityTreeGenerationFingerprint(paths);
+  const cached = OUTCOME_WRITER_LEASE_HISTORY_CACHES.get(context);
+  if (
+    before !== null &&
+    cached !== null &&
+    cached !== undefined &&
+    cached.leaseEventDigest === leaseEventDigest &&
+    cached.generationFingerprint === before
+  ) {
+    return cached.inspection;
+  }
+  const inspection = inspectLeaseTransactionEventHistoryInternal({
+    stateRoot: paths.stateRoot,
+    events,
+  });
+  const after = leaseAuthorityTreeGenerationFingerprint(paths);
+  OUTCOME_WRITER_LEASE_HISTORY_CACHES.set(
+    context,
+    before !== null && before === after
+      ? Object.freeze({
+          generationFingerprint: after,
+          inspection,
+          leaseEventDigest,
+        })
+      : null,
+  );
+  return inspection;
 }
 
 function inspectLeaseTransactionEventHistoryInternal({
@@ -19563,6 +20011,26 @@ function requirePinnedLeaseArchiveDirectoryChild(
   }
   assertPinnedLeaseArchiveDirectory(parent);
   assertPinnedLeaseArchiveDirectory(child);
+  const writerContext = activeOutcomeWriterContextForPath(parent.path);
+  const proofCache =
+    writerContext === null
+      ? undefined
+      : OUTCOME_WRITER_DIRECTORY_CHILD_PROOF_CACHES.get(writerContext);
+  const proofKey = [
+    parent.path,
+    parent.identity.dev,
+    parent.identity.ino,
+    parent.identity.mode,
+    parent.identity.uid,
+    child.path,
+    child.identity.dev,
+    child.identity.ino,
+    child.identity.mode,
+    child.identity.uid,
+  ]
+    .map(String)
+    .join("\0");
+  if (proofCache?.has(proofKey)) return;
   const result = runLeaseArchiveHelper(
     helper,
     "directory-child-proof",
@@ -19603,6 +20071,7 @@ function requirePinnedLeaseArchiveDirectoryChild(
   }
   assertPinnedLeaseArchiveDirectory(parent);
   assertPinnedLeaseArchiveDirectory(child);
+  proofCache?.add(proofKey);
 }
 
 function readHeldPrivateFile(descriptor, size) {
@@ -20534,6 +21003,115 @@ function requirePrivateBatchInventoryUnchanged(
   expectedDirectoryNames = [],
   limits = LEASE_PRIVATE_BATCH_DEFAULT_LIMITS,
 ) {
+  const identityMatchesStats = (identity, stats, expectedKind) =>
+    !stats.isSymbolicLink() &&
+    stats.dev.toString() === identity.device &&
+    stats.ino.toString() === identity.inode &&
+    Number(stats.mode & 0o7777n).toString() === identity.mode &&
+    stats.nlink.toString() === identity.linkCount &&
+    stats.uid.toString() === identity.uid &&
+    stats.gid.toString() === identity.gid &&
+    stats.size.toString() === identity.size &&
+    stats.mtimeNs.toString() === identity.mtimeNs &&
+    stats.ctimeNs.toString() === identity.ctimeNs &&
+    (expectedKind === "file" ? stats.isFile() : stats.isDirectory());
+  const parentMatchesInventory = () => {
+    const parent = privateBatchParentReceipt(directory);
+    return !Object.entries(inventory.parent).some(
+      ([key, value]) => parent[key] !== value,
+    );
+  };
+  const recordGenerationMatches = (recordPath, expected) => {
+    let descriptor;
+    try {
+      const namedBefore = lstatSync(recordPath, { bigint: true });
+      if (
+        !identityMatchesStats(expected, namedBefore, "file") ||
+        realpathSync(recordPath) !== recordPath
+      ) {
+        return false;
+      }
+      descriptor = openSync(
+        recordPath,
+        constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+      );
+      const heldBefore = fstatSync(descriptor, { bigint: true });
+      if (!identityMatchesStats(expected, heldBefore, "file")) return false;
+      const bytes = readHeldPrivateFile(descriptor, Number(heldBefore.size));
+      const heldAfter = fstatSync(descriptor, { bigint: true });
+      const namedAfter = lstatSync(recordPath, { bigint: true });
+      return (
+        identityMatchesStats(expected, heldAfter, "file") &&
+        identityMatchesStats(expected, namedAfter, "file") &&
+        realpathSync(recordPath) === recordPath &&
+        digestBytes(bytes) === expected.digest
+      );
+    } catch {
+      return false;
+    } finally {
+      if (descriptor !== undefined) closeSync(descriptor);
+    }
+  };
+  const currentGenerationMatches = () => {
+    try {
+      assertPinnedLeaseArchiveDirectory(directory);
+      if (!parentMatchesInventory()) return false;
+      const names = readdirSync(directory.path, { encoding: "buffer" })
+        .sort(Buffer.compare)
+        .map((entry) => privateAuthorityDecoder.decode(entry));
+      if (
+        names.join("\0") !==
+        inventory.entries.map((entry) => entry.name).join("\0")
+      ) {
+        return false;
+      }
+      for (const entry of inventory.entries) {
+        const entryPath = path.join(directory.path, entry.name);
+        const stats = lstatSync(entryPath, { bigint: true });
+        if (
+          realpathSync(entryPath) !== entryPath ||
+          !identityMatchesStats(
+            entry,
+            stats,
+            entry.kind === "file" ? "file" : "directory",
+          )
+        ) {
+          return false;
+        }
+        if (entry.kind !== "lease-state-directory") continue;
+        const expectedRecordNames = entry.record === null ? [] : ["lease.json"];
+        const recordNames = readdirSync(entryPath, { encoding: "buffer" })
+          .sort(Buffer.compare)
+          .map((name) => privateAuthorityDecoder.decode(name));
+        if (recordNames.join("\0") !== expectedRecordNames.join("\0")) {
+          return false;
+        }
+        if (entry.record === null) continue;
+        const recordPath = path.join(entryPath, "lease.json");
+        if (
+          !recordGenerationMatches(recordPath, entry.record) ||
+          !identityMatchesStats(
+            entry,
+            lstatSync(entryPath, { bigint: true }),
+            "directory",
+          )
+        ) {
+          return false;
+        }
+      }
+      assertPinnedLeaseArchiveDirectory(directory);
+      return parentMatchesInventory();
+    } catch {
+      return false;
+    }
+  };
+  if (
+    activeOutcomeWriterContextForPath(directory.path) !== null &&
+    currentGenerationMatches() &&
+    currentGenerationMatches()
+  ) {
+    return;
+  }
   const requestBytes = privateBatchRequestFor(operation, {
     expectedDirectoryNames,
     inventory,
@@ -20565,13 +21143,62 @@ function automationPlanningReadNames(
   label,
   maxEntries = AUTHORITY_STAGE_DIRECTORY_MAX_ENTRIES,
 ) {
-  return Object.freeze(
+  const generationFingerprint = () => {
+    try {
+      assertPinnedLeaseArchiveDirectory(directory);
+      const held = fstatSync(directory.descriptor, { bigint: true });
+      const named = lstatSync(directory.path, { bigint: true });
+      if (
+        filesystemGenerationFingerprint(held) !==
+          filesystemGenerationFingerprint(named) ||
+        realpathSync(directory.path) !== directory.path
+      ) {
+        return null;
+      }
+      return filesystemGenerationFingerprint(held);
+    } catch {
+      return null;
+    }
+  };
+  const context = activeOutcomeWriterContextForPath(directory.path);
+  const cache =
+    context === null
+      ? undefined
+      : OUTCOME_WRITER_DIRECTORY_NAME_CACHES.get(context);
+  const cacheKey = [
+    directory.path,
+    directory.identity.dev,
+    directory.identity.ino,
+    maxEntries,
+  ]
+    .map(String)
+    .join("\0");
+  const before = generationFingerprint();
+  const cached = cache?.get(cacheKey);
+  if (
+    before !== null &&
+    cached !== undefined &&
+    cached.generationFingerprint === before
+  ) {
+    return cached.names;
+  }
+  const names = Object.freeze(
     listPinnedAutomationAuthorityDirectory(helper, directory, {
       maxEntries,
       label,
       errorCode: "control_event_history_invalid",
     }),
   );
+  const after = generationFingerprint();
+  if (cache !== undefined && before !== null && before === after) {
+    cache.set(
+      cacheKey,
+      Object.freeze({ generationFingerprint: after, names }),
+    );
+  } else {
+    cache?.delete(cacheKey);
+  }
+  return names;
 }
 
 function cloneAutomationPlanningPlainValue(value) {
@@ -21941,10 +22568,10 @@ export function withAutomationPlanningReadBundle(
                 );
                 try {
                   leaseTransactionHistory =
-                    inspectLeaseTransactionEventHistoryInternal({
-                    stateRoot: paths.stateRoot,
-                    events: eventHistorySnapshot.events,
-                    });
+                    inspectLeaseTransactionEventHistoryForPlanning(
+                      paths,
+                      eventHistorySnapshot.events,
+                    );
                 } catch (error) {
                   leaseTransactionHistory = Object.freeze({
                     healthy: false,
@@ -23736,11 +24363,132 @@ function requireControlEventSemanticSuccessor(paths, before, after) {
   });
 }
 
+function filesystemGenerationFingerprint(stats, { stableIdentityOnly = false } = {}) {
+  return [
+    stats.dev,
+    stats.ino,
+    stats.mode,
+    stats.nlink,
+    stats.uid,
+    stats.gid,
+    ...(stableIdentityOnly
+      ? []
+      : [stats.size, stats.mtimeNs, stats.ctimeNs]),
+  ]
+    .map(String)
+    .join(":");
+}
+
+function optionalFilesystemEntryGenerationFingerprint(filePath) {
+  try {
+    return filesystemGenerationFingerprint(
+      lstatSync(filePath, { bigint: true }),
+    );
+  } catch (error) {
+    if (error?.code === "ENOENT") return "missing";
+    return null;
+  }
+}
+
+function controlEventAuthorityGenerationFingerprint(paths) {
+  const directoryPath = path.dirname(paths.events);
+  const canonicalName = path.basename(paths.events);
+  const authorityPrefix = `.${canonicalName}.authority.`;
+  const canonicalNameBytes = Buffer.from(canonicalName, "utf8");
+  const authorityPrefixBytes = Buffer.from(authorityPrefix, "utf8");
+  const relevantNames = () => {
+    const entries = readdirSync(directoryPath, { encoding: "buffer" })
+      .map((entry) => {
+        privateAuthorityDecoder.decode(entry);
+        return entry;
+      });
+    return entries
+      .filter(
+        (entry) =>
+          entry.equals(canonicalNameBytes) ||
+          entry
+            .subarray(0, authorityPrefixBytes.length)
+            .equals(authorityPrefixBytes),
+      )
+      .sort(Buffer.compare)
+      .map((entry) => {
+        const name = privateAuthorityDecoder.decode(entry);
+        const generation = optionalFilesystemEntryGenerationFingerprint(
+          path.join(directoryPath, name),
+        );
+        if (generation === null) {
+          throw new Error("control event authority entry changed during scan");
+        }
+        return `${entry.toString("hex")}:${generation}`;
+      })
+      .join("\0");
+  };
+  try {
+    const directoryBefore = filesystemGenerationFingerprint(
+      lstatSync(directoryPath, { bigint: true }),
+      { stableIdentityOnly: true },
+    );
+    const entriesBefore = relevantNames();
+    const eventBefore = optionalFilesystemEntryGenerationFingerprint(
+      paths.events,
+    );
+    const eventAfter = optionalFilesystemEntryGenerationFingerprint(
+      paths.events,
+    );
+    const entriesAfter = relevantNames();
+    const directoryAfter = filesystemGenerationFingerprint(
+      lstatSync(directoryPath, { bigint: true }),
+      { stableIdentityOnly: true },
+    );
+    if (
+      eventBefore === null ||
+      eventAfter === null ||
+      directoryBefore !== directoryAfter ||
+      entriesBefore !== entriesAfter ||
+      eventBefore !== eventAfter
+    ) {
+      return null;
+    }
+    return digestBytes(
+      Buffer.from(
+        [directoryAfter, entriesAfter, eventAfter].join("\n"),
+        "utf8",
+      ),
+    );
+  } catch {
+    return null;
+  }
+}
+
 function admitControlEventAuthorityStage(
   paths,
   { expectedPendingEvents = [] } = {},
 ) {
-  return admitSemanticAutomationAuthorityStage({
+  const activeGuard = ACTIVE_AUTOMATION_EVENTS_GUARDS_BY_ROOT.get(
+    paths.stateRoot,
+  );
+  const expectedPlanDigest = digestBytes(
+    Buffer.from(JSON.stringify(expectedPendingEvents), "utf8"),
+  );
+  const currentFingerprint =
+    activeGuard === undefined
+      ? null
+      : controlEventAuthorityGenerationFingerprint(paths);
+  const cached =
+    activeGuard === undefined
+      ? undefined
+      : AUTOMATION_EVENTS_GUARD_STAGE_ADMISSIONS.get(activeGuard);
+  if (
+    cached !== undefined &&
+    currentFingerprint !== null &&
+    cached.fingerprint === currentFingerprint &&
+    (cached.admission.kind !== "pending" ||
+      cached.expectedPlanDigest === expectedPlanDigest)
+  ) {
+    return cached.admission;
+  }
+
+  const admission = admitSemanticAutomationAuthorityStage({
     filePath: paths.events,
     privateRoot: paths.controlRoot,
     maxBytes: CONTROL_EVENT_HISTORY_MAX_BYTES,
@@ -23766,6 +24514,24 @@ function admitControlEventAuthorityStage(
       requireControlEventSemanticSuccessor(paths, before, after),
     label: "Control event history",
   });
+  if (activeGuard !== undefined) {
+    const admittedFingerprint = controlEventAuthorityGenerationFingerprint(paths);
+    if (admittedFingerprint === null) {
+      throw new AutomationControlError(
+        "authority_generation_conflict",
+        "Control event authority generation changed while its guard admission was cached.",
+      );
+    }
+    AUTOMATION_EVENTS_GUARD_STAGE_ADMISSIONS.set(
+      activeGuard,
+      Object.freeze({
+        fingerprint: admittedFingerprint,
+        expectedPlanDigest,
+        admission,
+      }),
+    );
+  }
+  return admission;
 }
 
 function parseTaskManifestAuthoritySnapshot(snapshot, label) {
