@@ -1,25 +1,26 @@
 import CryptoKit
 import Darwin
 import Foundation
-import Security
 
 private let bindingSchemaVersion = 3
 private let credentialSchemaVersion = 1
 private let bindingPurpose = "automation-actor-launcher"
-private let bindingHandoff = "keychain-to-canonical-lease"
-private let attestationProtocol = "freed-actor-launcher-readiness-v2"
+private let bindingHandoff = "trusted-launcher-channel-to-canonical-lease"
+private let attestationProtocol = "freed-actor-launcher-readiness-v3"
 private let attestationPurpose = "automation-actor-launcher-readiness"
-private let credentialPurpose = "automation-actor-lease"
-private let keychainService = "freed-automation-actor"
+private let channelProtocol = "freed-actor-launcher-channel-v1"
 private let productionBindingRoot =
   "/Library/Application Support/Freed/automation-actor-launchers"
 private let productionRuntimeRoot =
   "/Library/Application Support/Freed/automation-actor-runtimes"
+private let runtimeDigestProtocol = "freed-automation-actor-runtime-v2"
 private let leaseLifetimeMilliseconds = 30 * 60 * 1_000
 private let leaseLifetimeSeconds = 30 * 60
+private let challengeBytes = 32
+private let childChannelDescriptor: Int32 = 3
 private let maximumBindingBytes = 32 * 1_024
-private let maximumCredentialBytes = 4 * 1_024
 private let maximumControlOutputBytes = 64 * 1_024
+private let maximumAttestationBytes = 16 * 1_024
 private let controlTimeoutMilliseconds: UInt64 = 10 * 1_000
 #if AUTOMATION_ACTOR_HOST_TESTING
   private let testControlTimeoutMilliseconds: UInt64 = 250
@@ -47,6 +48,34 @@ private let actorLeaseNames: [String: String] = [
   "freed-scaffolding-maintainer": "scaffolding-writer",
   "freed-nightly-runner": "nightly-writer",
   "freed-release-verifier": "release-verifier",
+]
+
+private struct ActorLeaseAuthority {
+  let observer: String
+  let provider: String
+}
+
+private let actorLeaseAuthorities: [String: ActorLeaseAuthority] = [
+  "freed-runtime-observer": ActorLeaseAuthority(
+    observer: "observe-only",
+    provider: "forbidden"
+  ),
+  "freed-stability-controller": ActorLeaseAuthority(
+    observer: "plan-only",
+    provider: "forbidden"
+  ),
+  "freed-scaffolding-maintainer": ActorLeaseAuthority(
+    observer: "pr-only",
+    provider: "forbidden"
+  ),
+  "freed-nightly-runner": ActorLeaseAuthority(
+    observer: "merge-safe",
+    provider: "approval-required"
+  ),
+  "freed-release-verifier": ActorLeaseAuthority(
+    observer: "observe-only",
+    provider: "forbidden"
+  ),
 ]
 
 private struct HostFailure: Error, CustomStringConvertible {
@@ -217,6 +246,7 @@ private func signalHandlerIsError(_ handler: sig_t?) -> Bool {
 private enum HostMode {
   case attest
   case acquire
+  case verifyChannel
 }
 
 private struct ParsedArguments {
@@ -225,14 +255,13 @@ private struct ParsedArguments {
   let stateRoot: String
   let leaseName: String
   let maximumLifetimeMilliseconds: Int
-  let credentialSha256: String?
-  let requestedKeychainService: String?
-  let keychainAccount: String?
+  let challengeSha256: String?
+  let controlPid: pid_t?
+  let channelDescriptor: Int32?
+  let channelTestMode: String
   #if AUTOMATION_ACTOR_HOST_TESTING
     let testBindingPath: String
     let testRuntimeRoot: String
-    let testControlMode: String
-    let testKeychainMode: String
   #endif
 }
 
@@ -247,10 +276,10 @@ private struct LauncherBinding: Decodable {
   let stateRoot: String
   let leaseName: String
   let maxLeaseLifetimeMs: Int
-  let keychainService: String
-  let keychainAccount: String
   let nodePath: String
   let nodeSha256: String
+  let actorControlEntryPath: String
+  let actorControlEntrySha256: String
   let controlEntryPath: String
   let controlEntrySha256: String
   let controlLibraryPath: String
@@ -278,11 +307,10 @@ private struct ReadinessAttestation: Codable {
   let stateRoot: String
   let leaseName: String
   let maxLeaseLifetimeMs: Int
-  let credentialSha256: String
   let handoff: String
-  let keychainService: String
-  let keychainAccount: String
-  let credentialDigestVerified: Bool
+  let channelProtocol: String
+  let launcherSha256: String
+  let runtimeDigest: String
   let canonicalLeaseReady: Bool
   let mutatesState: Bool
 
@@ -294,13 +322,52 @@ private struct ReadinessAttestation: Codable {
     case stateRoot
     case leaseName
     case maxLeaseLifetimeMs
-    case credentialSha256
     case handoff
-    case keychainService
-    case keychainAccount
-    case credentialDigestVerified
+    case channelProtocol
+    case launcherSha256
+    case runtimeDigest
     case canonicalLeaseReady
     case mutatesState
+  }
+}
+
+private struct ChannelAttestation: Codable {
+  let schemaVersion: Int
+  let protocolName: String
+  let actor: String
+  let stateRoot: String
+  let leaseName: String
+  let ttlMs: Int
+  let launcherPid: Int32
+  let launcherStartIdentity: String
+  let controlPid: Int32
+  let controlStartIdentity: String
+  let launcherSha256: String
+  let runtimeDigest: String
+  let challengeSha256: String
+  let sessionId: String
+  let launcherIdentityVerified: Bool
+  let runtimeIdentityVerified: Bool
+  let channelVerified: Bool
+
+  enum CodingKeys: String, CodingKey {
+    case schemaVersion
+    case protocolName = "protocol"
+    case actor
+    case stateRoot
+    case leaseName
+    case ttlMs
+    case launcherPid
+    case launcherStartIdentity
+    case controlPid
+    case controlStartIdentity
+    case launcherSha256
+    case runtimeDigest
+    case challengeSha256
+    case sessionId
+    case launcherIdentityVerified
+    case runtimeIdentityVerified
+    case channelVerified
   }
 }
 
@@ -314,6 +381,8 @@ private struct ControlEnvelope: Decodable {
 
 private struct ControlResult: Decodable {
   let acquired: Bool
+  let takeover: Bool
+  let credentialUpgrade: Bool
   let lease: ControlLease
 }
 
@@ -321,8 +390,16 @@ private struct ControlLease: Decodable {
   let name: String
   let owner: String
   let token: String
+  let observerAuthority: String
+  let providerAuthority: String
   let credentialKind: String
+  let launcherSha256: String
+  let actorRuntimeDigest: String
+  let launcherChannelProtocol: String
+  let launcherAttestationSha256: String
+  let launcherSessionId: String
   let acquiredAt: String
+  let heartbeatAt: String
   let expiresAt: String
   let ttlMs: Int
 }
@@ -736,10 +813,7 @@ private struct CStringArena {
   private(set) var lengths: [Int] = []
 
   mutating func append(_ string: String) throws -> UnsafeMutablePointer<CChar> {
-    try append(Data(string.utf8))
-  }
-
-  mutating func append(_ data: Data) throws -> UnsafeMutablePointer<CChar> {
+    let data = Data(string.utf8)
     guard !data.contains(0) else {
       throw HostFailure("a control process value contains a null byte")
     }
@@ -1093,24 +1167,29 @@ private func parseArguments(_ values: [String]) throws -> ParsedArguments {
   var index = 0
   while index < values.count {
     let value = values[index]
-    if value == "--attest-readiness" || value == "--acquire-lease" {
+    if ["--attest-readiness", "--acquire-lease", "--verify-control-channel"].contains(value) {
       guard mode == nil else {
         throw HostFailure("exactly one actor host mode is required")
       }
-      mode = value == "--attest-readiness" ? .attest : .acquire
+      if value == "--attest-readiness" {
+        mode = .attest
+      } else if value == "--acquire-lease" {
+        mode = .acquire
+      } else {
+        mode = .verifyChannel
+      }
       index += 1
       continue
     }
     var allowed = Set([
       "--protocol", "--actor", "--state-root", "--lease-name",
-      "--max-lifetime-ms", "--credential-sha256", "--keychain-service",
-      "--keychain-account", "--ttl-seconds",
+      "--max-lifetime-ms", "--ttl-seconds", "--challenge-sha256",
+      "--control-pid", "--channel-fd",
     ])
     #if AUTOMATION_ACTOR_HOST_TESTING
       allowed.insert("--test-binding")
       allowed.insert("--test-runtime-root")
-      allowed.insert("--test-control-mode")
-      allowed.insert("--test-keychain-mode")
+      allowed.insert("--test-channel-mode")
     #endif
     guard allowed.contains(value), index + 1 < values.count,
       options[value] == nil
@@ -1123,52 +1202,55 @@ private func parseArguments(_ values: [String]) throws -> ParsedArguments {
   guard let mode,
     let actor = options["--actor"],
     let stateRoot = options["--state-root"],
-    let leaseName = options["--lease-name"]
+    let leaseName = options["--lease-name"],
+    let canonicalLeaseName = actorLeaseNames[actor],
+    leaseName == canonicalLeaseName
   else {
-    throw HostFailure("the actor host request is incomplete")
-  }
-  guard let canonicalLeaseName = actorLeaseNames[actor] else {
-    throw HostFailure("the requested identity is not a general automation actor")
-  }
-  guard leaseName == canonicalLeaseName else {
-    throw HostFailure("the requested actor lease name is not canonical")
+    throw HostFailure("the actor host request identity is incomplete or noncanonical")
   }
 
-  let attestationOnly = [
-    "--protocol", "--max-lifetime-ms", "--credential-sha256",
-    "--keychain-service", "--keychain-account",
-  ]
-  let acquisitionOnly = ["--ttl-seconds"]
   let maximumLifetimeMilliseconds: Int
-  let credentialSha256: String?
-  let requestedKeychainService: String?
-  let keychainAccount: String?
+  var challengeSha256: String?
+  var controlPid: pid_t?
+  var channelDescriptor: Int32?
   switch mode {
   case .attest:
-    guard acquisitionOnly.allSatisfy({ options[$0] == nil }),
-      options["--protocol"] == attestationProtocol,
+    guard options["--protocol"] == attestationProtocol,
       options["--max-lifetime-ms"] == String(leaseLifetimeMilliseconds),
-      let digest = options["--credential-sha256"],
-      options["--keychain-service"] == keychainService,
-      options["--keychain-account"] == actor
+      options["--ttl-seconds"] == nil,
+      options["--challenge-sha256"] == nil,
+      options["--control-pid"] == nil,
+      options["--channel-fd"] == nil
     else {
-      throw HostFailure("the actor readiness attestation request is invalid")
+      throw HostFailure("the actor readiness request is invalid")
     }
-    try requireLowercaseHex(digest, length: 64, label: "credential digest")
     maximumLifetimeMilliseconds = leaseLifetimeMilliseconds
-    credentialSha256 = digest
-    requestedKeychainService = keychainService
-    keychainAccount = actor
   case .acquire:
-    guard attestationOnly.allSatisfy({ options[$0] == nil }),
-      options["--ttl-seconds"] == String(leaseLifetimeSeconds)
+    guard options["--protocol"] == nil,
+      options["--max-lifetime-ms"] == nil,
+      options["--ttl-seconds"] == String(leaseLifetimeSeconds),
+      options["--challenge-sha256"] == nil,
+      options["--control-pid"] == nil,
+      options["--channel-fd"] == nil
     else {
       throw HostFailure("the actor lease request must use exactly 1,800 seconds")
     }
     maximumLifetimeMilliseconds = leaseLifetimeMilliseconds
-    credentialSha256 = nil
-    requestedKeychainService = nil
-    keychainAccount = nil
+  case .verifyChannel:
+    guard options["--protocol"] == channelProtocol,
+      options["--max-lifetime-ms"] == nil,
+      options["--ttl-seconds"] == String(leaseLifetimeSeconds),
+      let digest = options["--challenge-sha256"],
+      let rawControlPid = options["--control-pid"],
+      options["--channel-fd"] == String(childChannelDescriptor)
+    else {
+      throw HostFailure("the actor control channel request is invalid")
+    }
+    try requireLowercaseHex(digest, length: 64, label: "challenge digest")
+    challengeSha256 = digest
+    controlPid = try parsePositiveInt32(rawControlPid, label: "control pid")
+    channelDescriptor = childChannelDescriptor
+    maximumLifetimeMilliseconds = leaseLifetimeMilliseconds
   }
 
   #if AUTOMATION_ACTOR_HOST_TESTING
@@ -1205,13 +1287,12 @@ private func parseArguments(_ values: [String]) throws -> ParsedArguments {
       stateRoot: stateRoot,
       leaseName: leaseName,
       maximumLifetimeMilliseconds: maximumLifetimeMilliseconds,
-      credentialSha256: credentialSha256,
-      requestedKeychainService: requestedKeychainService,
-      keychainAccount: keychainAccount,
+      challengeSha256: challengeSha256,
+      controlPid: controlPid,
+      channelDescriptor: channelDescriptor,
+      channelTestMode: channelTestMode,
       testBindingPath: testBindingPath,
-      testRuntimeRoot: testRuntimeRoot,
-      testControlMode: testControlMode,
-      testKeychainMode: testKeychainMode
+      testRuntimeRoot: testRuntimeRoot
     )
   #else
     return ParsedArguments(
@@ -1220,9 +1301,10 @@ private func parseArguments(_ values: [String]) throws -> ParsedArguments {
       stateRoot: stateRoot,
       leaseName: leaseName,
       maximumLifetimeMilliseconds: maximumLifetimeMilliseconds,
-      credentialSha256: credentialSha256,
-      requestedKeychainService: requestedKeychainService,
-      keychainAccount: keychainAccount
+      challengeSha256: challengeSha256,
+      controlPid: controlPid,
+      channelDescriptor: channelDescriptor,
+      channelTestMode: "valid"
     )
   #endif
 }
@@ -1292,7 +1374,8 @@ private func requireTrustedFile(_ path: String, executable: Bool, label: String)
   else {
     throw HostFailure("\(label) must be a trusted immutable regular file")
   }
-  try requireTrustedHierarchy(URL(fileURLWithPath: path).deletingLastPathComponent().path, label: label)
+  let parent = URL(fileURLWithPath: path).deletingLastPathComponent().path
+  try requireTrustedHierarchy(parent, label: label)
 }
 
 private func requireOwnerDirectory(_ path: String, label: String) throws {
@@ -1312,8 +1395,7 @@ private func isStrictChild(_ path: String, of root: String) -> Bool {
 private func readSecureFile(
   _ path: String,
   maximumBytes: Int,
-  allowedOwners: Set<uid_t>,
-  requiredMode: mode_t? = nil
+  allowedOwners: Set<uid_t>
 ) throws -> Data {
   _ = try canonicalExistingPath(path, label: "actor host file")
   let descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
@@ -1325,22 +1407,17 @@ private func readSecureFile(
   guard fstat(descriptor, &value) == 0,
     value.st_mode & S_IFMT == S_IFREG,
     allowedOwners.contains(value.st_uid),
+    value.st_mode & 0o022 == 0,
     value.st_size >= 0,
     value.st_size <= maximumBytes
   else {
-    throw HostFailure("an actor host file has an invalid owner, type, or size")
-  }
-  if let requiredMode {
-    guard value.st_mode & 0o777 == requiredMode else {
-      throw HostFailure("an actor host file has invalid permissions")
-    }
-  } else if value.st_mode & 0o022 != 0 {
-    throw HostFailure("an actor host file is group or world writable")
+    throw HostFailure("an actor host file has an invalid owner, type, mode, or size")
   }
   var data = Data()
   var buffer = [UInt8](repeating: 0, count: min(maximumBytes + 1, 16 * 1_024))
+  defer { buffer.resetBytes(in: 0..<buffer.count) }
   while true {
-    let count = read(descriptor, &buffer, buffer.count)
+    let count = Darwin.read(descriptor, &buffer, buffer.count)
     if count == 0 { break }
     if count < 0 {
       if errno == EINTR { continue }
@@ -1351,7 +1428,6 @@ private func readSecureFile(
     }
     data.append(buffer, count: count)
   }
-  buffer.resetBytes(in: 0..<buffer.count)
   return data
 }
 
@@ -1379,8 +1455,9 @@ private func sha256ForFile(_ path: String) throws -> String {
   defer { close(descriptor) }
   var digest = SHA256()
   var buffer = [UInt8](repeating: 0, count: 1_024 * 1_024)
+  defer { buffer.resetBytes(in: 0..<buffer.count) }
   while true {
-    let count = read(descriptor, &buffer, buffer.count)
+    let count = Darwin.read(descriptor, &buffer, buffer.count)
     if count == 0 { break }
     if count < 0 {
       if errno == EINTR { continue }
@@ -1388,8 +1465,18 @@ private func sha256ForFile(_ path: String) throws -> String {
     }
     digest.update(data: Data(buffer[0..<count]))
   }
-  buffer.resetBytes(in: 0..<buffer.count)
   return digest.finalize().map { String(format: "%02x", $0) }.joined()
+}
+
+private func runtimeDigest(_ binding: LauncherBinding) -> String {
+  let manifest =
+    "\(runtimeDigestProtocol)\n" +
+    "node:\(binding.nodeSha256)\n" +
+    "automation-control.mjs:\(binding.controlEntrySha256)\n" +
+    "automation-actor-control.mjs:\(binding.actorControlEntrySha256)\n" +
+    "lib/automation-control.mjs:\(binding.controlLibrarySha256)\n" +
+    "lib/automation-actor-readiness.mjs:\(binding.readinessLibrarySha256)\n"
+  return sha256Hex(Data(manifest.utf8))
 }
 
 private func decodeStrict<T: Decodable>(
@@ -1398,7 +1485,15 @@ private func decodeStrict<T: Decodable>(
   expectedKeys: Set<String>,
   label: String
 ) throws -> T {
-  let value = try JSONSerialization.jsonObject(with: data)
+  guard data.count <= maximumControlOutputBytes else {
+    throw HostFailure("\(label) exceeded its output bound")
+  }
+  let value: Any
+  do {
+    value = try JSONSerialization.jsonObject(with: data)
+  } catch {
+    throw HostFailure("\(label) is not valid JSON")
+  }
   guard let dictionary = value as? [String: Any], Set(dictionary.keys) == expectedKeys else {
     throw HostFailure("\(label) has an unsupported shape")
   }
@@ -1464,9 +1559,7 @@ private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> Laun
     binding.attestationProtocol == attestationProtocol,
     binding.stateRoot == arguments.stateRoot,
     binding.leaseName == arguments.leaseName,
-    binding.maxLeaseLifetimeMs == arguments.maximumLifetimeMilliseconds,
-    binding.keychainService == keychainService,
-    binding.keychainAccount == arguments.actor
+    binding.maxLeaseLifetimeMs == arguments.maximumLifetimeMilliseconds
   else {
     throw HostFailure("the actor launcher binding does not match this request")
   }
@@ -1492,10 +1585,15 @@ private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> Laun
     throw HostFailure("the actor host executable does not match its pinned digest")
   }
 
-  let canonicalRuntimeRoot = try canonicalExistingPath(runtimeRoot(arguments), label: "actor runtime root")
+  let canonicalRuntimeRoot = try canonicalExistingPath(
+    runtimeRoot(arguments),
+    label: "actor runtime root"
+  )
   try requireTrustedHierarchy(canonicalRuntimeRoot, label: "actor runtime root")
-  let expectedRuntimeDirectory = canonicalRuntimeRoot + "/" + runtimeDigest(binding)
+  let digest = runtimeDigest(binding)
+  let expectedRuntimeDirectory = canonicalRuntimeRoot + "/" + digest
   guard binding.nodePath == expectedRuntimeDirectory + "/node",
+    binding.actorControlEntryPath == expectedRuntimeDirectory + "/automation-actor-control.mjs",
     binding.controlEntryPath == expectedRuntimeDirectory + "/automation-control.mjs",
     binding.controlLibraryPath == expectedRuntimeDirectory + "/lib/automation-control.mjs",
     binding.kernelGuardContractPath == expectedRuntimeDirectory + "/lib/automation-kernel-guard-contract.mjs",
@@ -1506,24 +1604,33 @@ private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> Laun
   }
   let runtimePins = [
     (binding.nodePath, binding.nodeSha256, true, "Node runtime"),
+    (
+      binding.actorControlEntryPath,
+      binding.actorControlEntrySha256,
+      false,
+      "automation actor control entry"
+    ),
     (binding.controlEntryPath, binding.controlEntrySha256, false, "automation control entry"),
     (binding.controlLibraryPath, binding.controlLibrarySha256, false, "automation control library"),
     (binding.kernelGuardContractPath, binding.kernelGuardContractSha256, false, "automation kernel guard contract"),
     (binding.outcomeLedgerRepairContractPath, binding.outcomeLedgerRepairContractSha256, false, "outcome ledger repair contract"),
     (binding.leaseArchiveHelperPath, binding.leaseArchiveHelperSha256, false, "lease archive helper"),
   ]
-  for (runtimePath, digest, executable, label) in runtimePins {
+  for (runtimePath, expectedDigest, executable, label) in runtimePins {
     let canonical = try canonicalExistingPath(runtimePath, label: label)
     guard isStrictChild(canonical, of: canonicalRuntimeRoot) else {
       throw HostFailure("\(label) must be a strict child of the actor runtime root")
     }
     try requireTrustedFile(canonical, executable: executable, label: label)
-    guard try sha256ForFile(canonical) == digest else {
+    guard try sha256ForFile(canonical) == expectedDigest else {
       throw HostFailure("\(label) does not match its pinned digest")
     }
   }
 
-  let canonicalStateRoot = try canonicalExistingPath(arguments.stateRoot, label: "automation state root")
+  let canonicalStateRoot = try canonicalExistingPath(
+    arguments.stateRoot,
+    label: "automation state root"
+  )
   guard binding.stateRoot == canonicalStateRoot else {
     throw HostFailure("the automation state root is not canonical")
   }
@@ -1531,54 +1638,63 @@ private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> Laun
   return binding
 }
 
-private func credentialPath(for binding: LauncherBinding) -> String {
-  binding.stateRoot + "/control/actor-credentials/" + binding.actor + ".json"
-}
-
-private func readAndValidateCredential(_ binding: LauncherBinding) throws -> ActorCredentialRecord {
-  let path = credentialPath(for: binding)
-  let parent = URL(fileURLWithPath: path).deletingLastPathComponent().path
-  try requireOwnerDirectory(parent, label: "actor credential directory")
-  let data = try readSecureFile(
-    path,
-    maximumBytes: maximumCredentialBytes,
-    allowedOwners: [getuid()],
-    requiredMode: 0o600
-  )
-  let credential = try decodeStrict(
-    ActorCredentialRecord.self,
-    data: data,
-    expectedKeys: ["schemaVersion", "actor", "purpose", "tokenSha256"],
-    label: "actor credential record"
-  )
-  guard credential.schemaVersion == credentialSchemaVersion,
-    credential.actor == binding.actor,
-    credential.purpose == credentialPurpose
-  else {
-    throw HostFailure("the actor credential record identity is invalid")
-  }
-  try requireLowercaseHex(credential.tokenSha256, length: 64, label: "actor credential digest")
-  return credential
-}
-
-private func validateSecret(_ secret: Data, credential: ActorCredentialRecord) throws {
-  guard secret.count == 64,
-    secret.allSatisfy({ byte in
-      (byte >= 48 && byte <= 57) || (byte >= 97 && byte <= 102)
-    })
-  else {
-    throw HostFailure("the actor Keychain credential has an invalid representation")
-  }
-  let digest = sha256Hex(secret)
-  guard digest == credential.tokenSha256 else {
-    throw HostFailure("the actor Keychain credential does not match the owner-held digest")
-  }
-}
-
 private func encodeJSON<T: Encodable>(_ value: T) throws -> Data {
   let encoder = JSONEncoder()
   encoder.outputFormatting = [.sortedKeys]
-  return try encoder.encode(value)
+  let data = try encoder.encode(value)
+  guard data.count <= maximumAttestationBytes else {
+    throw HostFailure("the actor host response exceeded its output bound")
+  }
+  return data
+}
+
+private func writeJSON<T: Encodable>(_ value: T) throws {
+  let data = try encodeJSON(value)
+  FileHandle.standardOutput.write(data)
+  FileHandle.standardOutput.write(Data([0x0A]))
+}
+
+private func generateChallenge() throws -> Data {
+  var bytes = [UInt8](repeating: 0, count: challengeBytes)
+  let result = bytes.withUnsafeMutableBytes { rawBuffer in
+    systemGetEntropy(rawBuffer.baseAddress, rawBuffer.count)
+  }
+  guard result == 0 else {
+    bytes.resetBytes(in: 0..<bytes.count)
+    throw posixFailure("generating the actor control channel challenge")
+  }
+  let challenge = Data(bytes)
+  bytes.resetBytes(in: 0..<bytes.count)
+  return challenge
+}
+
+private func writeAll(_ descriptor: Int32, data: Data) throws {
+  try data.withUnsafeBytes { rawBuffer in
+    guard let base = rawBuffer.baseAddress else { return }
+    var offset = 0
+    while offset < data.count {
+      let count = Darwin.write(descriptor, base.advanced(by: offset), data.count - offset)
+      if count < 0 {
+        if errno == EINTR { continue }
+        throw posixFailure("writing the actor control channel challenge")
+      }
+      offset += count
+    }
+  }
+}
+
+private func monotonicMilliseconds() throws -> UInt64 {
+  var value = timespec()
+  guard clock_gettime(CLOCK_MONOTONIC, &value) == 0 else {
+    throw posixFailure("reading the control process clock")
+  }
+  return UInt64(value.tv_sec) * 1_000 + UInt64(value.tv_nsec) / 1_000_000
+}
+
+private func terminateChild(_ child: pid_t) {
+  _ = kill(child, SIGKILL)
+  var status: Int32 = 0
+  while waitpid(child, &status, 0) < 0, errno == EINTR {}
 }
 
 private func encodeJSONLine<T: Encodable>(_ value: T) throws -> Data {
@@ -1587,7 +1703,234 @@ private func encodeJSONLine<T: Encodable>(_ value: T) throws -> Data {
   return data
 }
 
-private func invokeControl(
+private func moveDescriptorAboveStandardStreams(
+  _ descriptor: inout Int32,
+  label: String
+) throws {
+  let original = descriptor
+  let duplicate = fcntl(original, F_DUPFD_CLOEXEC, 10)
+  guard duplicate >= 0 else {
+    throw posixFailure("isolating the \(label) descriptor")
+  }
+  descriptor = duplicate
+  _ = close(original)
+}
+
+private func runBoundedControlProcess(
+  _ invocation: ControlInvocation,
+  challenge: Data,
+  channelTestMode: String
+) throws -> Data {
+  var argumentArena = CStringArena()
+  var environmentArena = CStringArena()
+  defer {
+    argumentArena.destroy()
+    environmentArena.destroy()
+  }
+  var arguments: [UnsafeMutablePointer<CChar>?] = []
+  arguments.append(try argumentArena.append(invocation.executable))
+  for argument in invocation.arguments {
+    arguments.append(try argumentArena.append(argument))
+  }
+  arguments.append(nil)
+  var environment: [UnsafeMutablePointer<CChar>?] = [
+    try environmentArena.append("LANG=C"),
+    try environmentArena.append("LC_ALL=C"),
+    try environmentArena.append("PATH=/usr/bin:/bin"),
+    nil,
+  ]
+
+  var outputPipe = [Int32](repeating: -1, count: 2)
+  guard pipe(&outputPipe) == 0 else {
+    throw posixFailure("creating the control process output pipe")
+  }
+  #if AUTOMATION_ACTOR_HOST_TESTING
+    if channelTestMode == "require-output-read-fd3", outputPipe[0] != childChannelDescriptor {
+      close(outputPipe[0])
+      close(outputPipe[1])
+      throw HostFailure("the control process output pipe did not reserve descriptor 3 for reading")
+    }
+    if channelTestMode == "require-output-write-fd3", outputPipe[1] != childChannelDescriptor {
+      close(outputPipe[0])
+      close(outputPipe[1])
+      throw HostFailure("the control process output pipe did not reserve descriptor 3 for writing")
+    }
+  #endif
+  var outputRead = outputPipe[0]
+  var outputWrite = outputPipe[1]
+  do {
+    try moveDescriptorAboveStandardStreams(&outputRead, label: "control process output reader")
+    try moveDescriptorAboveStandardStreams(&outputWrite, label: "control process output writer")
+  } catch {
+    close(outputRead)
+    close(outputWrite)
+    throw error
+  }
+  var sockets = [Int32](repeating: -1, count: 2)
+  guard socketpair(AF_UNIX, SOCK_STREAM, 0, &sockets) == 0 else {
+    close(outputRead)
+    close(outputWrite)
+    throw posixFailure("creating the actor control channel")
+  }
+  var retainedSocket = sockets[0]
+  var childSocket = sockets[1]
+  do {
+    try moveDescriptorAboveStandardStreams(&retainedSocket, label: "retained control channel")
+    try moveDescriptorAboveStandardStreams(&childSocket, label: "child control channel")
+  } catch {
+    close(outputRead)
+    close(outputWrite)
+    close(retainedSocket)
+    close(childSocket)
+    throw error
+  }
+  var nullDescriptor = open("/dev/null", O_RDWR | O_CLOEXEC)
+  guard nullDescriptor >= 0 else {
+    close(outputRead)
+    close(outputWrite)
+    close(retainedSocket)
+    close(childSocket)
+    throw posixFailure("opening null streams for the control process")
+  }
+  do {
+    try moveDescriptorAboveStandardStreams(&nullDescriptor, label: "control process null stream")
+  } catch {
+    close(outputRead)
+    close(outputWrite)
+    close(retainedSocket)
+    close(childSocket)
+    close(nullDescriptor)
+    throw error
+  }
+
+  var child = pid_t()
+  var childStarted = false
+  var childWaited = false
+  var childSocketOpen = true
+  defer {
+    close(outputRead)
+    if outputWrite >= 0 { close(outputWrite) }
+    close(retainedSocket)
+    if childSocketOpen { close(childSocket) }
+    close(nullDescriptor)
+    if childStarted && !childWaited { terminateChild(child) }
+  }
+
+  try writeAll(retainedSocket, data: challenge)
+
+  var fileActions: posix_spawn_file_actions_t? = nil
+  var attributes: posix_spawnattr_t? = nil
+  guard posix_spawn_file_actions_init(&fileActions) == 0 else {
+    throw HostFailure("control process file actions could not be initialized")
+  }
+  defer { posix_spawn_file_actions_destroy(&fileActions) }
+  guard posix_spawn_file_actions_adddup2(&fileActions, nullDescriptor, STDIN_FILENO) == 0,
+    posix_spawn_file_actions_adddup2(&fileActions, outputWrite, STDOUT_FILENO) == 0,
+    posix_spawn_file_actions_adddup2(&fileActions, nullDescriptor, STDERR_FILENO) == 0,
+    posix_spawn_file_actions_adddup2(&fileActions, childSocket, childChannelDescriptor) == 0,
+    addRootDirectoryAction(&fileActions) == 0,
+    posix_spawn_file_actions_addclose(&fileActions, outputRead) == 0,
+    posix_spawn_file_actions_addclose(&fileActions, outputWrite) == 0,
+    posix_spawn_file_actions_addclose(&fileActions, retainedSocket) == 0,
+    posix_spawn_file_actions_addclose(&fileActions, childSocket) == 0,
+    posix_spawn_file_actions_addclose(&fileActions, nullDescriptor) == 0
+  else {
+    throw HostFailure("control process descriptors could not be isolated")
+  }
+  guard posix_spawnattr_init(&attributes) == 0 else {
+    throw HostFailure("control process attributes could not be initialized")
+  }
+  defer { posix_spawnattr_destroy(&attributes) }
+  guard posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)) == 0 else {
+    throw HostFailure("control process descriptor isolation could not be enabled")
+  }
+
+  let spawnResult = arguments.withUnsafeMutableBufferPointer { argumentBuffer in
+    environment.withUnsafeMutableBufferPointer { environmentBuffer in
+      invocation.executable.withCString { executable in
+        posix_spawn(
+          &child,
+          executable,
+          &fileActions,
+          &attributes,
+          argumentBuffer.baseAddress!,
+          environmentBuffer.baseAddress!
+        )
+      }
+    }
+  }
+  environmentArena.destroy()
+  guard spawnResult == 0 else {
+    throw posixFailure("starting the pinned actor control process", code: spawnResult)
+  }
+  childStarted = true
+  close(outputWrite)
+  outputWrite = -1
+  close(childSocket)
+  childSocketOpen = false
+  guard fcntl(outputRead, F_SETFL, O_NONBLOCK) == 0 else {
+    throw posixFailure("configuring bounded control process output")
+  }
+
+  let deadline = try monotonicMilliseconds() + controlTimeoutMilliseconds
+  var output = Data()
+  var childStatus: Int32?
+  var reachedEnd = false
+  var buffer = [UInt8](repeating: 0, count: 4 * 1_024)
+  defer { buffer.resetBytes(in: 0..<buffer.count) }
+  while childStatus == nil || !reachedEnd {
+    if try monotonicMilliseconds() >= deadline {
+      terminateChild(child)
+      childWaited = true
+      throw HostFailure("the pinned actor control process timed out")
+    }
+    var descriptor = pollfd(fd: outputRead, events: Int16(POLLIN | POLLHUP), revents: 0)
+    let pollResult = poll(&descriptor, 1, 100)
+    if pollResult < 0, errno != EINTR {
+      throw posixFailure("polling bounded control process output")
+    }
+    if pollResult > 0 {
+      while true {
+        let count = Darwin.read(outputRead, &buffer, buffer.count)
+        if count > 0 {
+          guard output.count + count <= maximumControlOutputBytes else {
+            terminateChild(child)
+            childWaited = true
+            throw HostFailure("the pinned actor control process returned too much output")
+          }
+          output.append(buffer, count: count)
+          continue
+        }
+        if count == 0 {
+          reachedEnd = true
+        } else if errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR {
+          throw posixFailure("reading bounded control process output")
+        }
+        break
+      }
+    }
+    if childStatus == nil {
+      var status: Int32 = 0
+      let result = waitpid(child, &status, WNOHANG)
+      if result == child {
+        childStatus = status
+        childWaited = true
+      } else if result < 0, errno != EINTR {
+        throw posixFailure("checking the pinned actor control process")
+      }
+    }
+  }
+  guard let status = childStatus else {
+    throw HostFailure("the pinned actor control process ended without status")
+  }
+  let terminationSignal = status & 0x7f
+  guard terminationSignal == 0, ((status >> 8) & 0xff) == 0 else {
+    throw HostFailure("the pinned actor control process rejected the request")
+  }
+  return output
+}
+
+private func actorControlInvocation(
   binding: LauncherBinding,
   persistentCredential: Data,
   context: LeaseOperationContext,
@@ -1598,11 +1941,11 @@ private func invokeControl(
   let invocation = ControlInvocation(
     executable: binding.nodePath,
     arguments: [
-      binding.controlEntryPath,
-      "lease", "acquire",
+      binding.actorControlEntryPath,
+      "--action", action,
+      "--actor", binding.actor,
       "--state-root", binding.stateRoot,
-      "--name", binding.leaseName,
-      "--owner", binding.actor,
+      "--lease-name", binding.leaseName,
       "--ttl-seconds", String(leaseLifetimeSeconds),
     ],
     operationId: context.operationId,
@@ -1615,17 +1958,76 @@ private func invokeControl(
     lifecycleDeadlineMilliseconds: lifecycleDeadlineMilliseconds,
     cancellationController: cancellationController
   )
-  guard responseData.count <= maximumControlOutputBytes else {
-    throw HostFailure("the pinned automation control process returned too much output")
+  guard attestation.schemaVersion == 1,
+    attestation.protocolName == attestationProtocol,
+    attestation.purpose == attestationPurpose,
+    attestation.actor == binding.actor,
+    attestation.stateRoot == binding.stateRoot,
+    attestation.leaseName == binding.leaseName,
+    attestation.maxLeaseLifetimeMs == binding.maxLeaseLifetimeMs,
+    attestation.handoff == binding.handoff,
+    attestation.channelProtocol == channelProtocol,
+    attestation.launcherSha256 == binding.launcherSha256,
+    attestation.runtimeDigest == runtimeDigest(binding),
+    attestation.canonicalLeaseReady,
+    !attestation.mutatesState
+  else {
+    throw HostFailure("the readiness response does not match the trusted launcher channel")
+  }
+  return attestation
+}
+
+private func validateLeaseResponse(
+  _ data: Data,
+  binding: LauncherBinding
+) throws -> LeaseHandoff {
+  guard let authority = actorLeaseAuthorities[binding.actor] else {
+    throw HostFailure("the actor does not have a canonical lease authority policy")
+  }
+  let rawEnvelope: [String: Any]
+  let rawResult: [String: Any]
+  let rawLease: [String: Any]
+  do {
+    guard let envelope = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+      Set(envelope.keys) == ["action", "ok", "result", "schemaVersion", "stateRoot"],
+      let result = envelope["result"] as? [String: Any],
+      [
+        Set(["acquired", "credentialUpgrade", "lease", "takeover"]),
+        Set(["acquired", "credentialUpgrade", "lease", "previous", "takeover"]),
+      ].contains(Set(result.keys)),
+      let lease = result["lease"] as? [String: Any],
+      Set(lease.keys) == [
+        "acquiredAt", "actorRuntimeDigest", "credentialKind", "expiresAt",
+        "heartbeatAt", "launcherAttestationSha256", "launcherChannelProtocol",
+        "launcherSessionId", "launcherSha256", "name", "observerAuthority",
+        "owner", "providerAuthority", "schemaVersion", "token", "ttlMs",
+      ]
+    else {
+      throw HostFailure("the pinned automation control response has an unsupported shape")
+    }
+    rawEnvelope = envelope
+    rawResult = result
+    rawLease = lease
+  } catch let failure as HostFailure {
+    throw failure
+  } catch {
+    throw HostFailure("the pinned automation control response is invalid JSON")
   }
   let response: ControlEnvelope
   do {
-    response = try JSONDecoder().decode(ControlEnvelope.self, from: responseData)
+    response = try JSONDecoder().decode(ControlEnvelope.self, from: data)
   } catch {
     throw HostFailure("the pinned automation control response is invalid")
   }
   let lease = response.result.lease
+  let hasPrevious = rawResult["previous"] != nil
   guard response.ok,
+    rawEnvelope["ok"] as? Bool == true,
+    rawResult["acquired"] as? Bool == true,
+    rawResult["takeover"] as? Bool == response.result.takeover,
+    rawResult["credentialUpgrade"] as? Bool == response.result.credentialUpgrade,
+    hasPrevious == response.result.takeover,
+    rawLease["schemaVersion"] as? Int == 1,
     response.schemaVersion == 1,
     response.action == "lease.acquire",
     response.stateRoot == binding.stateRoot,
@@ -1637,6 +2039,7 @@ private func invokeControl(
     lease.ttlMs == leaseLifetimeMilliseconds,
     lease.token.utf8.count >= 32,
     lease.token.utf8.count <= 4 * 1_024,
+    lease.acquiredAt == lease.heartbeatAt,
     let acquiredAt = parseControlTimestamp(lease.acquiredAt),
     let expiresAt = parseControlTimestamp(lease.expiresAt),
     expiresAt.timeIntervalSince(acquiredAt) <= Double(leaseLifetimeSeconds),
@@ -1644,6 +2047,16 @@ private func invokeControl(
   else {
     throw HostFailure("the pinned automation control response did not contain a bounded canonical lease")
   }
+  try requireLowercaseHex(
+    lease.launcherAttestationSha256,
+    length: 64,
+    label: "launcher attestation digest"
+  )
+  try requireLowercaseHex(
+    lease.launcherSessionId,
+    length: 64,
+    label: "launcher session identity"
+  )
   return LeaseHandoff(
     schemaVersion: 1,
     actor: binding.actor,

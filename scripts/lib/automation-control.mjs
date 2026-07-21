@@ -24,7 +24,6 @@ import {
   createHash,
   createPublicKey,
   randomUUID,
-  timingSafeEqual,
   verify as verifySignature,
 } from "node:crypto";
 import { TextDecoder } from "node:util";
@@ -522,7 +521,9 @@ const PUBLISHER_LEASE_MAX_LIFETIME_MS = 30 * 60 * 1_000;
 const PUBLISHER_CAPABILITY_LIFETIME_MS = 60 * 1_000;
 const PUBLISHER_CAPABILITY_CLOCK_SKEW_MS = 30 * 1_000;
 const PUBLISHER_CAPABILITY_PURPOSE = "publisher-capability-signing";
-const ACTOR_CREDENTIAL_PURPOSE = "automation-actor-lease";
+const TRUSTED_LAUNCHER_CHANNEL_TIMEOUT_MS = 15_000;
+const MAX_TRUSTED_LAUNCHER_ATTESTATION_BYTES = 16 * 1_024;
+const TRUSTED_LAUNCHER_AUTHORIZATION = Symbol("trusted-launcher-authorization");
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 export class AutomationControlError extends Error {
@@ -29431,7 +29432,7 @@ function buildLeaseEvent(type, actor, name, data, nowMs, transactionId) {
   };
 }
 
-export function acquireLease({
+function acquireLeaseAuthorized({
   stateRoot,
   name,
   owner,
@@ -29444,7 +29445,6 @@ export function acquireLease({
   ownerConfirmationFile = undefined,
   ownerCapabilityTaskId = undefined,
   ownerCapabilityIntentDigest = undefined,
-  actorCredentialToken = undefined,
   publisherCapabilityFile = undefined,
   scope = undefined,
   checkpoint = undefined,
@@ -29455,6 +29455,26 @@ export function acquireLease({
   requireNonemptyString(owner, "owner");
   requirePositiveInteger(ttlMs, "ttlMs");
   const policy = actorPolicy(owner);
+  if (
+    isGeneralAutomationActor(owner) &&
+    trustedLauncherAuthorization?.marker !== TRUSTED_LAUNCHER_AUTHORIZATION
+  ) {
+    throw new AutomationControlError(
+      "actor_launcher_required",
+      `Actor ${owner} can acquire a lease only through its installed trusted launcher.`,
+      { owner },
+    );
+  }
+  if (
+    !isGeneralAutomationActor(owner) &&
+    trustedLauncherAuthorization !== null
+  ) {
+    throw new AutomationControlError(
+      "actor_launcher_forbidden",
+      `Actor ${owner} cannot use the general actor launcher channel.`,
+      { owner },
+    );
+  }
   if (name !== policy.leaseName) {
     throw new AutomationControlError(
       "lease_policy_mismatch",
@@ -29479,19 +29499,11 @@ export function acquireLease({
   requireCallerLeaseToken(token);
   if (
     owner === "freed-pr-publisher" &&
-    (actorCredentialToken !== undefined ||
-      ownerCapabilityFile !== undefined ||
-      ownerConfirmationFile !== undefined)
+    (ownerCapabilityFile !== undefined || ownerConfirmationFile !== undefined)
   ) {
     throw new AutomationControlError(
       "publisher_reusable_credential_forbidden",
       "The publisher rejects reusable actor and owner credentials.",
-    );
-  }
-  if (owner === "freed-owner" && actorCredentialToken !== undefined) {
-    throw new AutomationControlError(
-      "owner_reusable_credential_forbidden",
-      "freed-owner does not accept a reusable actor credential.",
     );
   }
   if (
@@ -29677,10 +29689,6 @@ export function acquireLease({
               nowMs: operationNowMs,
             })
           : null;
-      const actorCredential =
-        owner === "freed-owner" || owner === "freed-pr-publisher"
-          ? null
-          : validateActorCredential(paths, owner, actorCredentialToken);
       if (
         owner !== "freed-pr-publisher" &&
         publisherCapabilityFile !== undefined
@@ -29769,7 +29777,7 @@ export function acquireLease({
               ? "owner-confirmation"
               : publisherCapability !== null
                 ? "signed-capability"
-                : "persistent-actor",
+                : "trusted-launcher-channel",
         ...(ownerCapability === null
           ? {}
           : {
@@ -29799,6 +29807,18 @@ export function acquireLease({
         ...(publisherCapability === null
           ? {}
           : { publisherCapabilityId: publisherCapability.capabilityId }),
+        ...(trustedLauncherAuthorization === null
+          ? {}
+          : {
+              launcherSha256: trustedLauncherAuthorization.launcherSha256,
+              actorRuntimeDigest:
+                trustedLauncherAuthorization.actorRuntimeDigest,
+              launcherChannelProtocol:
+                trustedLauncherAuthorization.launcherChannelProtocol,
+              launcherAttestationSha256:
+                trustedLauncherAuthorization.launcherAttestationSha256,
+              launcherSessionId: trustedLauncherAuthorization.launcherSessionId,
+            }),
         acquiredAt: timestamp,
         heartbeatAt: timestamp,
         expiresAt: nowIso(operationNowMs + ttlMs),
@@ -29981,6 +30001,57 @@ export function acquireLease({
         },
       );
       return leaseResultFromReceipt(transaction, token);
+  });
+}
+
+export function acquireLease(options) {
+  const { actorCredentialToken = undefined, ...leaseOptions } = options;
+  const owner = requireNonemptyString(leaseOptions.owner, "owner");
+  actorPolicy(owner);
+  if (isGeneralAutomationActor(owner)) {
+    throw new AutomationControlError(
+      "actor_launcher_required",
+      `Actor ${owner} can acquire a lease only through its installed trusted launcher.`,
+      { owner },
+    );
+  }
+  if (actorCredentialToken !== undefined) {
+    throw new AutomationControlError(
+      owner === "freed-owner"
+        ? "owner_reusable_credential_forbidden"
+        : "publisher_reusable_credential_forbidden",
+      owner === "freed-owner"
+        ? "freed-owner does not accept a reusable actor credential."
+        : "The publisher rejects reusable actor and owner credentials.",
+    );
+  }
+  return acquireLeaseAuthorized(leaseOptions);
+}
+
+export function acquireGeneralActorLeaseFromTrustedLauncher(options) {
+  const {
+    challengeSha256,
+    actorControlEntryPath,
+    actorCredentialToken = undefined,
+    ...leaseOptions
+  } = options;
+  if (actorCredentialToken !== undefined) {
+    throw new AutomationControlError(
+      "actor_reusable_credential_forbidden",
+      "General automation actors do not accept reusable credentials.",
+    );
+  }
+  const verified = verifyTrustedLauncherChannel({
+    stateRoot: leaseOptions.stateRoot,
+    name: leaseOptions.name,
+    owner: leaseOptions.owner,
+    ttlMs: leaseOptions.ttlMs,
+    challengeSha256,
+    actorControlEntryPath,
+  });
+  return acquireLeaseAuthorized({
+    ...leaseOptions,
+    trustedLauncherAuthorization: verified.authorization,
   });
 }
 

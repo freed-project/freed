@@ -107,6 +107,12 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.join(__dirname, "automation-control.mjs");
+const ACTOR_CONTROL_PATH = path.join(__dirname, "automation-actor-control.mjs");
+const ACTOR_LAUNCHER_CHANNEL_PROTOCOL = "freed-actor-launcher-channel-v1";
+const TEST_LAUNCHER_SHA256 = "a".repeat(64);
+const TEST_ACTOR_RUNTIME_DIGEST = "b".repeat(64);
+const TEST_LAUNCHER_ATTESTATION_SHA256 = "c".repeat(64);
+const TEST_LAUNCHER_SESSION_ID = "d".repeat(64);
 
 let leaseOperationSequence = 0;
 
@@ -523,10 +529,20 @@ function writePublisherCapability(
   };
 }
 
-function writeLegacyLease(
+function writeTrustedLauncherLease(
   stateRoot,
   actor,
-  { owner = actor, token = `${actor}-legacy-token`, nowMs = Date.now() } = {},
+  {
+    token = `${actor}-token`,
+    nowMs = Date.now(),
+    ttlMs = AUTOMATION_ACTOR_POLICIES[actor]?.maxLeaseLifetimeMs,
+    launcherSha256 = TEST_LAUNCHER_SHA256,
+    actorRuntimeDigest = TEST_ACTOR_RUNTIME_DIGEST,
+    launcherChannelProtocol = ACTOR_LAUNCHER_CHANNEL_PROTOCOL,
+    launcherAttestationSha256 = TEST_LAUNCHER_ATTESTATION_SHA256,
+    launcherSessionId = TEST_LAUNCHER_SESSION_ID,
+    appendAcquireEvent = true,
+  } = {},
 ) {
   const policy = AUTOMATION_ACTOR_POLICIES[actor];
   const ttlMs = 60 * 60_000;
@@ -537,10 +553,11 @@ function writeLegacyLease(
     `${policy.leaseName}.lease`,
   );
   mkdirSync(leasePath, { recursive: true, mode: 0o700 });
+  const timestamp = new Date(nowMs).toISOString();
   const record = {
     schemaVersion: 1,
     name: policy.leaseName,
-    owner,
+    owner: actor,
     token,
     observerAuthority: policy.observerAuthority,
     providerAuthority: policy.providerAuthority,
@@ -552,11 +569,73 @@ function writeLegacyLease(
   writeFileSync(
     path.join(leasePath, "lease.json"),
     `${JSON.stringify(record)}\n`,
-    {
-      mode: 0o600,
-    },
+    { mode: 0o600 },
   );
-  return { leasePath, policy, record };
+  if (appendAcquireEvent) {
+    const eventsPath = automationControlPaths(stateRoot).events;
+    mkdirSync(path.dirname(eventsPath), { recursive: true, mode: 0o700 });
+    appendFileSync(
+      eventsPath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        eventId: `test-lease-acquired-${actor}-${nowMs}`,
+        type: "lease_acquired",
+        ts: timestamp,
+        actor,
+        leaseName: policy.leaseName,
+        data: {
+          expiresAt: record.expiresAt,
+          observerAuthority: record.observerAuthority,
+          providerAuthority: record.providerAuthority,
+          credentialKind: record.credentialKind,
+          launcherSha256,
+          actorRuntimeDigest,
+          launcherChannelProtocol,
+          launcherAttestationSha256,
+          launcherSessionId,
+        },
+      })}\n`,
+      { mode: 0o600 },
+    );
+  }
+  return { actor, leaseName: policy.leaseName, leaseToken: token, record };
+}
+
+function writePersistentActorLease(
+  stateRoot,
+  actor,
+  {
+    token = `${actor}-legacy-persistent-token`,
+    nowMs = Date.now(),
+    ttlMs = 60_000,
+  } = {},
+) {
+  const policy = AUTOMATION_ACTOR_POLICIES[actor];
+  assert.ok(policy, `missing actor policy for ${actor}`);
+  const leasePath = path.join(
+    automationControlPaths(stateRoot).leases,
+    `${policy.leaseName}.lease`,
+  );
+  mkdirSync(leasePath, { recursive: true, mode: 0o700 });
+  const record = {
+    schemaVersion: 1,
+    name: policy.leaseName,
+    owner: actor,
+    token,
+    observerAuthority: policy.observerAuthority,
+    providerAuthority: policy.providerAuthority,
+    credentialKind: "persistent-actor",
+    acquiredAt: new Date(nowMs).toISOString(),
+    heartbeatAt: new Date(nowMs).toISOString(),
+    expiresAt: new Date(nowMs + ttlMs).toISOString(),
+    ttlMs,
+  };
+  writeFileSync(
+    path.join(leasePath, "lease.json"),
+    `${JSON.stringify(record)}\n`,
+    { mode: 0o600 },
+  );
+  return { actor, leaseName: policy.leaseName, leaseToken: token, record };
 }
 
 function readControlEvents(stateRoot) {
@@ -18875,6 +18954,15 @@ test("a foreign pending event stage preserves one-use capability paths before pr
       canonicalWal: snapshotFilesystemEntry(transactionPaths.active),
     },
     before,
+  );
+  assert.equal(
+    releaseLease({
+      stateRoot,
+      name: legacy.leaseName,
+      token: legacy.leaseToken,
+      nowMs: nowMs + 2_000,
+    }).released,
+    true,
   );
 });
 

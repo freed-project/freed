@@ -18,9 +18,7 @@ test("checked-in automation specifications are internally consistent", () => {
     specs.every(
       (spec) =>
         spec.requiredHostCapabilities.includes("trusted-launcher") &&
-        spec.requiredHostCapabilities.includes(
-          "short-lived-credential-handoff",
-        ),
+        spec.requiredHostCapabilities.includes("short-lived-lease-handoff"),
     ),
   );
 });
@@ -44,10 +42,7 @@ test("automation specifications reject stale prompt paths and unsafe observer au
     stateRoot: "~/.freed/automation",
     lease: { name: "observer", maxLifetimeMs: 1_800_000 },
     localOverlayFields: ["status", "rrule", "destination", "target_thread_id"],
-    requiredHostCapabilities: [
-      "trusted-launcher",
-      "short-lived-credential-handoff",
-    ],
+    requiredHostCapabilities: ["trusted-launcher", "short-lived-lease-handoff"],
   };
   assert.throws(
     () =>
@@ -88,10 +83,7 @@ test("automation specifications reject provider behavior without a scoped gate",
       "target",
       "cwds",
     ],
-    requiredHostCapabilities: [
-      "trusted-launcher",
-      "short-lived-credential-handoff",
-    ],
+    requiredHostCapabilities: ["trusted-launcher", "short-lived-lease-handoff"],
   };
 
   assert.throws(
@@ -131,10 +123,7 @@ function automationSpec(overrides = {}) {
       "target",
       "cwds",
     ],
-    requiredHostCapabilities: [
-      "trusted-launcher",
-      "short-lived-credential-handoff",
-    ],
+    requiredHostCapabilities: ["trusted-launcher", "short-lived-lease-handoff"],
     ...overrides,
   };
 }
@@ -249,7 +238,7 @@ test("automation specifications require complete host overlay and handoff contra
         automationSpec({ requiredHostCapabilities: ["trusted-launcher"] }),
         { fileName: "actor.json", repoRoot: root },
       ),
-    /requiredHostCapabilities must be trusted-launcher and short-lived-credential-handoff/,
+    /requiredHostCapabilities must be trusted-launcher and short-lived-lease-handoff/,
   );
 });
 

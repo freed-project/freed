@@ -12,7 +12,6 @@ import {
   readFileSync,
   readSync,
   realpathSync,
-  renameSync,
   symlinkSync,
   truncateSync,
   writeFileSync,
@@ -23,7 +22,6 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
-  actorCredentialReadiness,
   actorLauncherReadiness,
   auditSavedAutomations,
   authoritativeModelCatalog,
@@ -65,6 +63,8 @@ function fixture() {
     "freed-nightly-runner.md",
   );
   mkdirSync(path.dirname(promptPath), { recursive: true });
+  mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
+  chmodSync(stateRoot, 0o700);
   writeFileSync(promptPath, "# Nightly\n\nUse the governed task queue.\n");
   const spec = {
     id: "freed-nightly-runner",
@@ -82,10 +82,7 @@ function fixture() {
       "target",
       "cwds",
     ],
-    requiredHostCapabilities: [
-      "trusted-launcher",
-      "short-lived-credential-handoff",
-    ],
+    requiredHostCapabilities: ["trusted-launcher", "short-lived-lease-handoff"],
   };
   return {
     root,
@@ -202,54 +199,30 @@ function heartbeatFixture(overrides = {}) {
     path.join(automationDir, "automation.toml"),
     Object.entries(saved)
       .filter(([, savedValue]) => savedValue !== undefined)
-      .map(
-        ([field, savedValue]) =>
-          `${field} = ${JSON.stringify(savedValue)}`,
-      )
+      .map(([field, savedValue]) => `${field} = ${JSON.stringify(savedValue)}`)
       .join("\n") + "\n",
   );
   return value;
 }
 
-function writeCredential(value) {
-  const credentialDir = path.join(
-    value.stateRoot,
-    "control",
-    "actor-credentials",
-  );
-  mkdirSync(credentialDir, { recursive: true, mode: 0o700 });
-  const credentialPath = path.join(credentialDir, `${value.spec.id}.json`);
-  writeFileSync(
-    credentialPath,
-    `${JSON.stringify({
-      schemaVersion: 1,
-      actor: value.spec.id,
-      purpose: "automation-actor-lease",
-      tokenSha256: "a".repeat(64),
-    })}\n`,
-    { mode: 0o600 },
-  );
-  return credentialPath;
-}
-
-function shellQuote(value) {
-  return `'${String(value).replaceAll("'", `'"'"'`)}'`;
-}
-
 function launcherAttestation(value, overrides = {}) {
+  const recordPath = path.join(
+    value.launcherRecordRoot,
+    `${value.spec.id}.json`,
+  );
+  const record = JSON.parse(readFileSync(recordPath, "utf8"));
   return {
     schemaVersion: 1,
-    protocol: "freed-actor-launcher-readiness-v2",
+    protocol: "freed-actor-launcher-readiness-v3",
     purpose: "automation-actor-launcher-readiness",
     actor: value.spec.id,
     stateRoot: realpathSync(value.stateRoot),
     leaseName: value.spec.lease.name,
     maxLeaseLifetimeMs: value.spec.lease.maxLifetimeMs,
-    credentialSha256: "a".repeat(64),
-    handoff: "keychain-to-canonical-lease",
-    keychainService: "freed-automation-actor",
-    keychainAccount: value.spec.id,
-    credentialDigestVerified: true,
+    handoff: "trusted-launcher-channel-to-canonical-lease",
+    channelProtocol: "freed-actor-launcher-channel-v1",
+    launcherSha256: record.launcherSha256,
+    runtimeDigest: path.basename(path.dirname(record.nodePath)),
     canonicalLeaseReady: true,
     mutatesState: false,
     ...overrides,
@@ -266,9 +239,8 @@ function writeLauncherRecord(
     runtimePathOverrides = {},
   } = {},
 ) {
-  const attestation = launcherAttestation(value, attestationOverrides);
-  const launcherContents =
-    `#!/bin/sh\nprintf '%s\\n' ${shellQuote(JSON.stringify(attestation))}\n`;
+  value.launcherAttestationOverrides = attestationOverrides;
+  const launcherContents = "#!/bin/sh\nexit 0\n";
   const launcherSha256 =
     digest ?? createHash("sha256").update(launcherContents).digest("hex");
   const launcherPath = path.join(
@@ -281,6 +253,7 @@ function writeLauncherRecord(
   const runtimeContents = {
     nodePath: "pinned node fixture\n",
     controlEntryPath: "pinned control entry fixture\n",
+    actorControlEntryPath: "pinned actor control entry fixture\n",
     controlLibraryPath: "pinned control library fixture\n",
     kernelGuardContractPath: "pinned kernel guard contract fixture\n",
     outcomeLedgerRepairContractPath:
@@ -299,6 +272,7 @@ function writeLauncherRecord(
         "freed-automation-actor-runtime-v3",
         `node:${runtimeDigests.nodeSha256}`,
         `automation-control.mjs:${runtimeDigests.controlEntrySha256}`,
+        `automation-actor-control.mjs:${runtimeDigests.actorControlEntrySha256}`,
         `lib/automation-control.mjs:${runtimeDigests.controlLibrarySha256}`,
         `lib/automation-kernel-guard-contract.mjs:${runtimeDigests.kernelGuardContractSha256}`,
         `lib/outcome-ledger-repair-contract.mjs:${runtimeDigests.outcomeLedgerRepairContractSha256}`,
@@ -311,6 +285,10 @@ function writeLauncherRecord(
   const runtimePaths = {
     nodePath: path.join(runtimeVersionRoot, "node"),
     controlEntryPath: path.join(runtimeVersionRoot, "automation-control.mjs"),
+    actorControlEntryPath: path.join(
+      runtimeVersionRoot,
+      "automation-actor-control.mjs",
+    ),
     controlLibraryPath: path.join(
       runtimeVersionRoot,
       "lib",
@@ -348,8 +326,8 @@ function writeLauncherRecord(
       schemaVersion: 3,
       actor: value.spec.id,
       purpose: "automation-actor-launcher",
-      handoff: "keychain-to-canonical-lease",
-      attestationProtocol: "freed-actor-launcher-readiness-v2",
+      handoff: "trusted-launcher-channel-to-canonical-lease",
+      attestationProtocol: "freed-actor-launcher-readiness-v3",
       launcherPath,
       launcherSha256,
       ...runtimePaths,
@@ -358,8 +336,6 @@ function writeLauncherRecord(
       stateRoot: realpathSync(value.stateRoot),
       leaseName: value.spec.lease.name,
       maxLeaseLifetimeMs: value.spec.lease.maxLifetimeMs,
-      keychainService: "freed-automation-actor",
-      keychainAccount: value.spec.id,
       ...bindingOverrides,
     })}\n`,
     { mode: 0o600 },
@@ -381,6 +357,14 @@ function audit(value, options = {}) {
         requiredUid:
           typeof process.getuid === "function" ? process.getuid() : 0,
       }),
+    launcherAttestor: () => ({
+      ready: true,
+      reason: "",
+      attestation: launcherAttestation(
+        value,
+        value.launcherAttestationOverrides,
+      ),
+    }),
     modelCatalog: modelCatalog(),
     nowMs: NOW_MS,
     ...options,
@@ -938,7 +922,7 @@ test("opaque project references outside the current local id format are rejected
   ]);
 });
 
-test("paused actor may await its owner-provisioned credential and launcher", () => {
+test("paused actor may await its owner-installed launcher", () => {
   const value = fixture();
   writeSavedAutomation(value);
   const automationPath = path.join(
@@ -999,7 +983,6 @@ test("missing saved actor is reported as safely paused reconciliation drift", ()
 test("matching active actor is valid only after the complete trusted handoff exists", () => {
   const value = fixture();
   writeSavedAutomation(value, { status: "ACTIVE" });
-  writeCredential(value);
   writeLauncherRecord(value);
   const result = audit(value, {
     launcherInspector: () => ({ ready: true, reason: "" }),
@@ -1013,7 +996,6 @@ test("matching active actor is valid only after the complete trusted handoff exi
 test("active actor rejects an exact-digest legacy protocol before attestation", () => {
   const value = fixture();
   writeSavedAutomation(value, { status: "ACTIVE" });
-  writeCredential(value);
   const { launcherPath, recordPath } = writeLauncherRecord(value, {
     bindingOverrides: {
       attestationProtocol: "freed-actor-launcher-readiness-v1",
@@ -1076,20 +1058,10 @@ test("cron model validation fails closed when the authoritative catalog is unava
   );
 });
 
-test("credential and launcher records reject permissive modes and digest drift", () => {
+test("launcher records reject digest drift and an untrusted binding record", () => {
   const value = fixture();
-  const credentialPath = writeCredential(value);
-  chmodSync(credentialPath, 0o644);
-  assert.equal(
-    actorCredentialReadiness(value.stateRoot, value.spec.id).ready,
-    false,
-  );
-  chmodSync(credentialPath, 0o600);
-  const credential = actorCredentialReadiness(value.stateRoot, value.spec.id);
-
   const launcher = writeLauncherRecord(value, { digest: "0".repeat(64) });
   const readiness = actorLauncherReadiness(value.stateRoot, value.spec.id, {
-    credential,
     leaseContract: value.spec.lease,
     launcherRecordRoot: value.launcherRecordRoot,
     launcherRecordInspector: () => ({ ready: true, reason: "" }),
@@ -1109,7 +1081,6 @@ test("credential and launcher records reject permissive modes and digest drift",
     value.stateRoot,
     value.spec.id,
     {
-      credential,
       leaseContract: value.spec.lease,
       launcherRecordRoot: value.launcherRecordRoot,
       launcherRecordInspector: () => ({
@@ -1122,23 +1093,31 @@ test("credential and launcher records reject permissive modes and digest drift",
   assert.match(untrustedRecord.reason, /not root-owned and immutable/);
 });
 
-test("credential readiness rejects a symlink without reading its target", () => {
+test("paused validation ignores an obsolete actor record symlink", () => {
   const value = fixture();
-  const credentialPath = writeCredential(value);
-  const targetPath = path.join(value.root, "credential-target.json");
-  renameSync(credentialPath, targetPath);
-  symlinkSync(targetPath, credentialPath);
+  writeSavedAutomation(value);
+  const obsoleteRecordRoot = path.join(
+    value.stateRoot,
+    "control",
+    "actor-credentials",
+  );
+  mkdirSync(obsoleteRecordRoot, { recursive: true, mode: 0o700 });
+  const targetPath = path.join(value.root, "obsolete-record-target.json");
+  writeFileSync(targetPath, "not json\n");
+  symlinkSync(
+    targetPath,
+    path.join(obsoleteRecordRoot, `${value.spec.id}.json`),
+  );
 
-  const readiness = actorCredentialReadiness(value.stateRoot, value.spec.id);
-
-  assert.equal(readiness.ready, false);
-  assert.match(readiness.reason, /cannot be read/);
+  const result = audit(value);
+  assert.equal(result.issueCount, 0);
+  assert.equal(result.records[0].handoffReady, false);
+  assert.equal(Object.hasOwn(result.records[0], "credential"), false);
+  assert.match(result.records[0].launcher.reason, /launcher record is missing/);
 });
 
 test("general actor launcher records pin the complete root-owned runtime", () => {
   const value = fixture();
-  writeCredential(value);
-  const credential = actorCredentialReadiness(value.stateRoot, value.spec.id);
   const { recordPath } = writeLauncherRecord(value);
   const record = JSON.parse(readFileSync(recordPath, "utf8"));
 
@@ -1147,6 +1126,8 @@ test("general actor launcher records pin the complete root-owned runtime", () =>
     "nodeSha256",
     "controlEntryPath",
     "controlEntrySha256",
+    "actorControlEntryPath",
+    "actorControlEntrySha256",
     "controlLibraryPath",
     "controlLibrarySha256",
     "kernelGuardContractPath",
@@ -1160,7 +1141,6 @@ test("general actor launcher records pin the complete root-owned runtime", () =>
   }
 
   const readiness = actorLauncherReadiness(value.stateRoot, value.spec.id, {
-    credential,
     leaseContract: value.spec.lease,
     launcherRecordRoot: value.launcherRecordRoot,
     launcherRecordInspector: () => ({ ready: true, reason: "" }),
@@ -1181,6 +1161,7 @@ test("general actor launcher records pin the complete root-owned runtime", () =>
   assert.equal(readiness.runtimeRoot, realpathSync(value.runtimeRoot));
   assert.equal(readiness.nodePath, record.nodePath);
   assert.equal(readiness.controlEntryPath, record.controlEntryPath);
+  assert.equal(readiness.actorControlEntryPath, record.actorControlEntryPath);
   assert.equal(readiness.controlLibraryPath, record.controlLibraryPath);
   assert.equal(
     readiness.kernelGuardContractPath,
@@ -1299,15 +1280,12 @@ test("general actor runtime pins reject missing fields, escapes, writable files,
 
   for (const scenario of cases) {
     const value = fixture();
-    writeCredential(value);
-    const credential = actorCredentialReadiness(value.stateRoot, value.spec.id);
     const { recordPath } = writeLauncherRecord(value);
     const record = JSON.parse(readFileSync(recordPath, "utf8"));
     scenario.mutate(record, value);
     writeFileSync(recordPath, `${JSON.stringify(record)}\n`, { mode: 0o600 });
 
     const readiness = actorLauncherReadiness(value.stateRoot, value.spec.id, {
-      credential,
       leaseContract: value.spec.lease,
       launcherRecordRoot: value.launcherRecordRoot,
       launcherRecordInspector: () => ({ ready: true, reason: "" }),
@@ -1326,7 +1304,6 @@ test("general actor runtime pins reject missing fields, escapes, writable files,
 
 test("runtime file inspection requires a regular immutable file owned by the trusted uid", () => {
   const value = fixture();
-  writeCredential(value);
   const { recordPath } = writeLauncherRecord(value);
   const runtimePath = JSON.parse(readFileSync(recordPath, "utf8")).nodePath;
   const currentUid =
@@ -1352,12 +1329,11 @@ test("runtime file inspection requires a regular immutable file owned by the tru
   );
 });
 
-test("active actor rejects a launcher attestation that does not verify the credential", () => {
+test("active actor rejects a launcher attestation with the wrong channel protocol", () => {
   const value = fixture();
   writeSavedAutomation(value, { status: "ACTIVE" });
-  writeCredential(value);
   writeLauncherRecord(value, {
-    attestationOverrides: { credentialDigestVerified: false },
+    attestationOverrides: { channelProtocol: "untrusted-channel" },
   });
   const result = audit(value, {
     launcherInspector: () => ({ ready: true, reason: "" }),
@@ -1379,7 +1355,6 @@ test("active actor fails closed on bounded timeout and malformed launcher output
   for (const scenario of ["timeout", "malformed"]) {
     const value = fixture();
     writeSavedAutomation(value, { status: "ACTIVE" });
-    writeCredential(value);
     writeLauncherRecord(value);
     const result = audit(value, {
       launcherInspector: () => ({ ready: true, reason: "" }),
@@ -1414,14 +1389,15 @@ test("launcher attestation is bound to actor, state root, lease, lifetime, and d
     { stateRoot: "/tmp/different-state" },
     { leaseName: "different-lease" },
     { maxLeaseLifetimeMs: 1_800_001 },
-    { credentialSha256: "b".repeat(64) },
+    { channelProtocol: "different-channel" },
+    { launcherSha256: "b".repeat(64) },
+    { runtimeDigest: "c".repeat(64) },
     { canonicalLeaseReady: false },
     { mutatesState: true },
   ];
   for (const attestationOverrides of cases) {
     const value = fixture();
     writeSavedAutomation(value, { status: "ACTIVE" });
-    writeCredential(value);
     writeLauncherRecord(value);
     const result = audit(value, {
       launcherInspector: () => ({ ready: true, reason: "" }),

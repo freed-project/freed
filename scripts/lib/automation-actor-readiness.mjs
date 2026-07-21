@@ -1,22 +1,15 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  closeSync,
-  constants,
-  existsSync,
-  fstatSync,
-  lstatSync,
-  openSync,
-  readFileSync,
-  realpathSync,
-} from "node:fs";
+import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 
-const ACTOR_CREDENTIAL_PURPOSE = "automation-actor-lease";
 export const ACTOR_LAUNCHER_PURPOSE = "automation-actor-launcher";
-export const ACTOR_LAUNCHER_HANDOFF = "keychain-to-canonical-lease";
+export const ACTOR_LAUNCHER_HANDOFF =
+  "trusted-launcher-channel-to-canonical-lease";
 export const ACTOR_LAUNCHER_ATTESTATION_PROTOCOL =
-  "freed-actor-launcher-readiness-v2";
+  "freed-actor-launcher-readiness-v3";
+export const ACTOR_LAUNCHER_CHANNEL_PROTOCOL =
+  "freed-actor-launcher-channel-v1";
 const ACTOR_LAUNCHER_ATTESTATION_PURPOSE =
   "automation-actor-launcher-readiness";
 export const ACTOR_LAUNCHER_RECORD_ROOT =
@@ -31,6 +24,8 @@ const MAX_LAUNCHER_ATTESTATION_BYTES = 16 * 1_024;
 const BINDING_KEYS = Object.freeze(
   [
     "actor",
+    "actorControlEntryPath",
+    "actorControlEntrySha256",
     "attestationProtocol",
     "kernelGuardContractPath",
     "kernelGuardContractSha256",
@@ -52,6 +47,8 @@ const BINDING_KEYS = Object.freeze(
     "outcomeLedgerRepairContractPath",
     "outcomeLedgerRepairContractSha256",
     "purpose",
+    "readinessLibraryPath",
+    "readinessLibrarySha256",
     "schemaVersion",
     "stateRoot",
   ].sort(),
@@ -61,16 +58,15 @@ const ATTESTATION_KEYS = Object.freeze(
   [
     "actor",
     "canonicalLeaseReady",
-    "credentialDigestVerified",
-    "credentialSha256",
+    "channelProtocol",
     "handoff",
-    "keychainAccount",
-    "keychainService",
     "leaseName",
+    "launcherSha256",
     "maxLeaseLifetimeMs",
     "mutatesState",
     "protocol",
     "purpose",
+    "runtimeDigest",
     "schemaVersion",
     "stateRoot",
   ].sort(),
@@ -97,108 +93,6 @@ function isStrictChildPath(parentPath, candidatePath) {
     !relative.startsWith(`..${path.sep}`) &&
     !path.isAbsolute(relative)
   );
-}
-
-function currentUid() {
-  return typeof process.getuid === "function" ? process.getuid() : -1;
-}
-
-function readOwnerCredentialFile(filePath, requiredUid) {
-  const descriptor = openSync(
-    filePath,
-    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-  );
-  try {
-    const stats = fstatSync(descriptor);
-    if (
-      realpathSync(filePath) !== filePath ||
-      !stats.isFile() ||
-      stats.uid !== requiredUid ||
-      (stats.mode & 0o777) !== 0o600
-    ) {
-      return {
-        ready: false,
-        reason: "credential record is not an owner-held mode 0600 regular file",
-      };
-    }
-    return { ready: true, contents: readFileSync(descriptor, "utf8") };
-  } finally {
-    closeSync(descriptor);
-  }
-}
-
-export function actorCredentialReadiness(
-  stateRoot,
-  actor,
-  { requiredUid = currentUid() } = {},
-) {
-  const credentialPath = path.join(
-    path.resolve(stateRoot),
-    "control",
-    "actor-credentials",
-    `${actor}.json`,
-  );
-  try {
-    if (
-      typeof constants.O_NOFOLLOW !== "number" ||
-      typeof constants.O_NONBLOCK !== "number"
-    ) {
-      return {
-        ready: false,
-        path: credentialPath,
-        reason:
-          "credential record cannot be opened with safe link and blocking controls",
-      };
-    }
-    const credentialRecord = readOwnerCredentialFile(
-      credentialPath,
-      requiredUid,
-    );
-    if (!credentialRecord.ready) {
-      return {
-        ready: false,
-        path: credentialPath,
-        reason: credentialRecord.reason,
-      };
-    }
-    const credential = JSON.parse(credentialRecord.contents);
-    const tokenSha256 = String(credential?.tokenSha256 ?? "");
-    if (
-      !exactKeys(
-        credential,
-        ["actor", "purpose", "schemaVersion", "tokenSha256"].sort(),
-      ) ||
-      credential.schemaVersion !== 1 ||
-      credential.actor !== actor ||
-      credential.purpose !== ACTOR_CREDENTIAL_PURPOSE ||
-      !isSha256(tokenSha256)
-    ) {
-      return {
-        ready: false,
-        path: credentialPath,
-        reason: "credential record identity or digest is invalid",
-      };
-    }
-    return {
-      ready: true,
-      path: credentialPath,
-      reason: "",
-      tokenSha256,
-    };
-  } catch (error) {
-    if (error?.code === "ENOENT") {
-      return {
-        ready: false,
-        path: credentialPath,
-        reason: "credential record is missing",
-      };
-    }
-    return {
-      ready: false,
-      path: credentialPath,
-      reason: `credential record cannot be read: ${error instanceof Error ? error.message : String(error)}`,
-    };
-  }
 }
 
 function inspectImmutableParents(filePath, rootPath, requiredUid, label) {
@@ -299,12 +193,7 @@ export function inspectRootOwnedExecutable(
         reason: "launcher is not a root-owned immutable executable",
       };
     }
-    return inspectImmutableParents(
-      launcherPath,
-      root,
-      requiredUid,
-      "launcher",
-    );
+    return inspectImmutableParents(launcherPath, root, requiredUid, "launcher");
   } catch (error) {
     return {
       ready: false,
@@ -375,6 +264,7 @@ export function runtimeDigestForPins(pins) {
         ACTOR_RUNTIME_DIGEST_PROTOCOL,
         `node:${pins.nodeSha256}`,
         `automation-control.mjs:${pins.controlEntrySha256}`,
+        `automation-actor-control.mjs:${pins.actorControlEntrySha256}`,
         `lib/automation-control.mjs:${pins.controlLibrarySha256}`,
         `lib/automation-kernel-guard-contract.mjs:${pins.kernelGuardContractSha256}`,
         `lib/outcome-ledger-repair-contract.mjs:${pins.outcomeLedgerRepairContractSha256}`,
@@ -420,8 +310,6 @@ export function validateActorBindingRecord(
       record.purpose !== ACTOR_LAUNCHER_PURPOSE ||
       record.handoff !== ACTOR_LAUNCHER_HANDOFF ||
       record.attestationProtocol !== ACTOR_LAUNCHER_ATTESTATION_PROTOCOL ||
-      record.keychainService !== "freed-automation-actor" ||
-      record.keychainAccount !== actor ||
       record.stateRoot !== canonicalStateRoot ||
       record.leaseName !== leaseContract.name ||
       record.maxLeaseLifetimeMs !== leaseContract.maxLifetimeMs ||
@@ -429,6 +317,7 @@ export function validateActorBindingRecord(
       !isSha256(record.launcherSha256) ||
       !isSha256(record.nodeSha256) ||
       !isSha256(record.controlEntrySha256) ||
+      !isSha256(record.actorControlEntrySha256) ||
       !isSha256(record.controlLibrarySha256) ||
       !isSha256(record.kernelGuardContractSha256) ||
       !isSha256(record.outcomeLedgerRepairContractSha256) ||
@@ -437,6 +326,8 @@ export function validateActorBindingRecord(
       record.nodePath !== path.join(runtimeDirectory, "node") ||
       record.controlEntryPath !==
         path.join(runtimeDirectory, "automation-control.mjs") ||
+      record.actorControlEntryPath !==
+        path.join(runtimeDirectory, "automation-actor-control.mjs") ||
       record.controlLibraryPath !==
         path.join(runtimeDirectory, "lib", "automation-control.mjs") ||
       record.kernelGuardContractPath !==
@@ -457,7 +348,8 @@ export function validateActorBindingRecord(
     ) {
       return {
         ready: false,
-        reason: "trusted launcher record identity or handoff contract is invalid",
+        reason:
+          "trusted launcher record identity or handoff contract is invalid",
       };
     }
     const launcher = launcherInspector(record.launcherPath, {
@@ -477,6 +369,11 @@ export function validateActorBindingRecord(
         "automation control entry",
         record.controlEntryPath,
         record.controlEntrySha256,
+      ],
+      [
+        "automation actor control entry",
+        record.actorControlEntryPath,
+        record.actorControlEntrySha256,
       ],
       [
         "automation control library",
@@ -500,11 +397,9 @@ export function validateActorBindingRecord(
       ],
     ];
     for (const [label, pinPath, digest] of pins) {
-      const inspection = runtimeFileInspector(
-        pinPath,
-        canonicalRuntimeRoot,
-        { requiredUid },
-      );
+      const inspection = runtimeFileInspector(pinPath, canonicalRuntimeRoot, {
+        requiredUid,
+      });
       if (!inspection.ready) {
         return {
           ready: false,
@@ -545,7 +440,10 @@ export function readInstalledActorBinding(
     runtimeFileInspector = inspectRootOwnedRuntimeFile,
   } = {},
 ) {
-  const recordPath = path.join(path.resolve(launcherRecordRoot), `${actor}.json`);
+  const recordPath = path.join(
+    path.resolve(launcherRecordRoot),
+    `${actor}.json`,
+  );
   if (!existsSync(recordPath)) {
     return {
       ready: false,
@@ -596,11 +494,10 @@ function validateLauncherAttestation(attestation, expected) {
     attestation.stateRoot !== expected.stateRoot ||
     attestation.leaseName !== expected.leaseName ||
     attestation.maxLeaseLifetimeMs !== expected.maxLeaseLifetimeMs ||
-    attestation.credentialSha256 !== expected.credentialSha256 ||
     attestation.handoff !== ACTOR_LAUNCHER_HANDOFF ||
-    attestation.keychainService !== expected.keychainService ||
-    attestation.keychainAccount !== expected.keychainAccount ||
-    attestation.credentialDigestVerified !== true ||
+    attestation.channelProtocol !== ACTOR_LAUNCHER_CHANNEL_PROTOCOL ||
+    attestation.launcherSha256 !== expected.launcherSha256 ||
+    attestation.runtimeDigest !== expected.runtimeDigest ||
     attestation.canonicalLeaseReady !== true ||
     attestation.mutatesState !== false
   ) {
@@ -618,7 +515,8 @@ export function parseLauncherAttestation(stdout, expected) {
   if (Buffer.byteLength(text, "utf8") > MAX_LAUNCHER_ATTESTATION_BYTES) {
     return {
       ready: false,
-      reason: "trusted launcher readiness attestation exceeded its output bound",
+      reason:
+        "trusted launcher readiness attestation exceeded its output bound",
     };
   }
   try {
@@ -654,12 +552,6 @@ export function defaultLauncherAttestor(
       request.leaseName,
       "--max-lifetime-ms",
       String(request.maxLeaseLifetimeMs),
-      "--credential-sha256",
-      request.credentialSha256,
-      "--keychain-service",
-      request.keychainService,
-      "--keychain-account",
-      request.keychainAccount,
     ],
     {
       cwd: "/",
@@ -695,40 +587,24 @@ export function actorLauncherReadiness(
   stateRoot,
   actor,
   {
-    credential = undefined,
     leaseContract = undefined,
     launcherAttestor = defaultLauncherAttestor,
     attestationTimeoutMs = LAUNCHER_ATTESTATION_TIMEOUT_MS,
     ...bindingOptions
   } = {},
 ) {
-  const credentialReadiness =
-    credential ??
-    actorCredentialReadiness(stateRoot, actor, {
-      requiredUid: bindingOptions.credentialUid ?? currentUid(),
-    });
   const installed = readInstalledActorBinding(stateRoot, actor, {
     leaseContract,
     ...bindingOptions,
   });
   if (!installed.ready) return installed;
-  if (!credentialReadiness.ready || !isSha256(credentialReadiness.tokenSha256)) {
-    return {
-      ready: false,
-      path: credentialReadiness.path,
-      reason:
-        credentialReadiness.reason ||
-        "credential digest must be ready before launcher attestation",
-    };
-  }
   const expected = {
     actor,
     stateRoot: installed.stateRoot,
     leaseName: leaseContract.name,
     maxLeaseLifetimeMs: leaseContract.maxLifetimeMs,
-    credentialSha256: credentialReadiness.tokenSha256,
-    keychainService: installed.binding.keychainService,
-    keychainAccount: installed.binding.keychainAccount,
+    launcherSha256: installed.binding.launcherSha256,
+    runtimeDigest: installed.runtimeDigest,
   };
   const attestationResult = launcherAttestor(
     { launcherPath: installed.binding.launcherPath, ...expected },
@@ -750,14 +626,13 @@ export function actorLauncherReadiness(
   }
   return {
     ...installed,
-    credentialPath: credentialReadiness.path,
-    credentialSha256: credentialReadiness.tokenSha256,
     launcherPath: installed.binding.launcherPath,
     handoff: installed.binding.handoff,
     leaseName: installed.binding.leaseName,
     maxLeaseLifetimeMs: installed.binding.maxLeaseLifetimeMs,
     nodePath: installed.binding.nodePath,
     controlEntryPath: installed.binding.controlEntryPath,
+    actorControlEntryPath: installed.binding.actorControlEntryPath,
     controlLibraryPath: installed.binding.controlLibraryPath,
     kernelGuardContractPath: installed.binding.kernelGuardContractPath,
     outcomeLedgerRepairContractPath:

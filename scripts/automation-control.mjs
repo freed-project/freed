@@ -78,8 +78,8 @@ Lease options:
   token only from FREED_AUTOMATION_LEASE_TOKEN. Owner acquisition may use the
   existing protected FREED_OWNER_LEASE_TOKEN compatibility variable.
   Lease authority is derived from the checked-in actor policy. It cannot be supplied by the caller.
-  Non-owner acquisition except freed-pr-publisher requires the matching
-  persistent credential in FREED_AUTOMATION_ACTOR_TOKEN.
+  General actors acquire leases only through their installed trusted launcher.
+  Direct general actor acquisition is rejected.
   freed-pr-publisher requires a broker-signed one-use capability file and does
   not accept a reusable actor credential.
   freed-owner accepts either a root-pinned broker signature or an explicit
@@ -477,7 +477,6 @@ export function executeCommand(command, { env = process.env } = {}) {
         ownerConfirmationFile: options.ownerConfirmationFile,
         ownerCapabilityTaskId: options.ownerTaskId,
         ownerCapabilityIntentDigest: options.ownerIntentDigest,
-        actorCredentialToken: env.FREED_AUTOMATION_ACTOR_TOKEN,
         publisherCapabilityFile: options.capabilityFile,
         scope: parseJsonObject(options.scopeJson, "--scope-json"),
       }),
