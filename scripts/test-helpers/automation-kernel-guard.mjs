@@ -116,6 +116,26 @@ export function installAutomationKernelGuardCutoverFixture(
   const paths = automationKernelGuardCutoverPaths(canonicalStateRoot);
   ensurePrivateDirectory(paths.controlRoot);
   ensurePrivateDirectory(paths.guardsRoot);
+  for (const directoryPath of [
+    path.join(paths.controlRoot, "leases", ".lease-state-quarantine"),
+    path.join(paths.controlRoot, "leases"),
+    path.join(paths.controlRoot, "leases", ".transactions"),
+    path.join(
+      paths.controlRoot,
+      "leases",
+      ".transactions",
+      ".lease-cleanup-quarantine",
+    ),
+    path.join(paths.controlRoot, "leases", ".transaction-receipts"),
+    path.join(
+      paths.controlRoot,
+      "leases",
+      ".transaction-receipts",
+      ".lease-cleanup-quarantine",
+    ),
+  ]) {
+    ensurePrivateDirectory(directoryPath);
+  }
   ensurePrivateDirectory(path.dirname(paths.artifactRoot));
   ensurePrivateDirectory(paths.artifactRoot);
   const markerBytes = automationKernelGuardMarkerBytes();

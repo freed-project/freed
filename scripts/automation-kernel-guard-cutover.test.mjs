@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import {
   chmodSync,
   existsSync,
+  linkSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -246,6 +247,31 @@ function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+function captureOversizedBufferAllocation(minimumSize, operation) {
+  const originalAllocate = Buffer.alloc;
+  const attemptedSizes = [];
+  let caught = null;
+  Buffer.alloc = function guardedAllocate(size, ...args) {
+    if (Number.isSafeInteger(size) && size >= minimumSize) {
+      attemptedSizes.push(size);
+      const error = new Error(
+        `Test intercepted an oversized Buffer allocation of ${size.toLocaleString()} bytes.`,
+      );
+      error.code = "cutover_test_oversized_allocation";
+      throw error;
+    }
+    return Reflect.apply(originalAllocate, Buffer, [size, ...args]);
+  };
+  try {
+    operation();
+  } catch (error) {
+    caught = error;
+  } finally {
+    Buffer.alloc = originalAllocate;
+  }
+  return { attemptedSizes, error: caught };
+}
+
 function snapshotFilesystemTree(root) {
   const records = [];
   const visit = (candidatePath) => {
@@ -336,6 +362,106 @@ function seedPreparedTransaction(fixture, plan) {
   );
 }
 
+function maximumConfirmationBytes(plan, confirmationId, approvedAt, expiresAt) {
+  const confirmation = {
+    schemaVersion: 1,
+    kind: "owner-confirmation",
+    confirmationId,
+    approvedBy: "AubreyF",
+    ownerApprovalReference: "",
+    approvalSource: { kind: "current-task", reference: TASK_ID },
+    taskId: TASK_ID,
+    intent: plan.intent,
+    intentDigest: plan.intentDigest,
+    approvedAt,
+    expiresAt,
+  };
+  const emptyBytes = Buffer.from(`${JSON.stringify(confirmation)}\n`, "utf8");
+  confirmation.ownerApprovalReference = "x".repeat(
+    64 * 1024 - emptyBytes.length,
+  );
+  const bytes = Buffer.from(`${JSON.stringify(confirmation)}\n`, "utf8");
+  assert.equal(bytes.length, 64 * 1024);
+  return { confirmation, bytes };
+}
+
+function seedMaximumValidPreparedTransaction(fixture, plan) {
+  const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+  const authorizationDirectory = privateDirectory(
+    path.join(
+      paths.artifactRoot,
+      plan.parameters.cutoverId,
+      "authorizations",
+    ),
+  );
+  const preparedAtMs = Date.parse(plan.createdAt);
+  const approvedAt = new Date(preparedAtMs - 1_000).toISOString();
+  const expiresAt = new Date(preparedAtMs + 10 * 60_000).toISOString();
+  const confirmationDirectory = privateDirectory(
+    path.join(fixture.root, "maximum-confirmations"),
+  );
+  const authorizations = [];
+  for (let index = 0; index < 63; index += 1) {
+    const confirmationId = `maximum-valid-${index.toLocaleString("en-US", {
+      minimumIntegerDigits: 2,
+      useGrouping: false,
+    })}`;
+    const { confirmation, bytes } = maximumConfirmationBytes(
+      plan,
+      confirmationId,
+      approvedAt,
+      expiresAt,
+    );
+    const confirmationPath = path.join(
+      confirmationDirectory,
+      `${confirmationId}.json`,
+    );
+    writeFileSync(confirmationPath, bytes, { mode: 0o600 });
+    const confirmationDigest = sha256(
+      Buffer.from(stableJson(confirmation), "utf8"),
+    );
+    const confirmationRawDigest = sha256(bytes);
+    const confirmationArtifact = path.join(
+      authorizationDirectory,
+      `${confirmationDigest}-${confirmationRawDigest}.json`,
+    );
+    writeFileSync(confirmationArtifact, bytes, { mode: 0o600 });
+    authorizations.push({
+      actor: "freed-owner",
+      confirmationId,
+      confirmationDigest,
+      confirmationPath,
+      confirmationBytesBase64: bytes.toString("base64"),
+      confirmationRawDigest,
+      confirmationArtifact,
+      intentDigest: plan.intentDigest,
+      validatedAt: new Date(preparedAtMs + index).toISOString(),
+    });
+  }
+  writeFileSync(
+    path.join(authorizationDirectory, "prepared-authorization.json"),
+    `${JSON.stringify(authorizations[0], null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  writeSeededTransaction(fixture, {
+    schemaVersion: 1,
+    kind: "automation-kernel-guard-cutover-transaction",
+    cutoverId: plan.parameters.cutoverId,
+    planDigest: sha256(Buffer.from(`${stableJson(plan)}\n`, "utf8")),
+    phase: "prepared",
+    preparedAt: plan.createdAt,
+    authorizations,
+    claimGenerations: [],
+  });
+  const current = maximumConfirmationBytes(
+    plan,
+    "maximum-valid-63",
+    approvedAt,
+    expiresAt,
+  );
+  writeFileSync(fixture.confirmationFile, current.bytes, { mode: 0o600 });
+}
+
 function readSeededTransaction(fixture) {
   const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
   return JSON.parse(readFileSync(paths.transaction, "utf8"));
@@ -357,6 +483,23 @@ function waitForPath(filePath) {
   while (!existsSync(filePath)) {
     if (Date.now() >= deadline) {
       throw new Error(`Timed out waiting for ${filePath}`);
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+  }
+}
+
+function waitForProcessExit(pid) {
+  assert.equal(Number.isSafeInteger(pid) && pid > 0, true);
+  const deadline = Date.now() + 10_000;
+  while (true) {
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if (error?.code === "ESRCH") return;
+      throw error;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for killed process ${pid} to exit.`);
     }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
   }
@@ -530,6 +673,7 @@ function runCutoverKilledAtCheckpoint(
       },
     });
   `;
+  let killedProcess;
   assert.throws(
     () =>
       execFileSync(
@@ -537,11 +681,19 @@ function runCutoverKilledAtCheckpoint(
         ["--input-type=module", "--eval", source],
         { stdio: ["ignore", "pipe", "pipe"] },
       ),
-    (error) => error?.signal === "SIGKILL",
+    (error) => {
+      killedProcess = error;
+      return error?.signal === "SIGKILL";
+    },
   );
+  waitForProcessExit(killedProcess.pid);
 }
 
-function runSupersedeKilledAtCheckpoint(fixture, checkpointName) {
+function runSupersedeKilledAtCheckpoint(
+  fixture,
+  checkpointName,
+  { occurrence = 1 } = {},
+) {
   const source = `
     import {
       applyAutomationKernelGuardCutoverSupersede,
@@ -559,17 +711,22 @@ function runSupersedeKilledAtCheckpoint(fixture, checkpointName) {
       ${JSON.stringify(fixture.supersedePlanFile)},
       plan,
     );
+    let occurrence = 0;
     applyAutomationKernelGuardCutoverSupersede({
       plan,
       supersedePlan,
       ownerConfirmationFile: ${JSON.stringify(fixture.confirmationFile)},
       checkpoint(name) {
-        if (name === ${JSON.stringify(checkpointName)}) {
+        if (
+          name === ${JSON.stringify(checkpointName)} &&
+          ++occurrence === ${JSON.stringify(occurrence)}
+        ) {
           process.kill(process.pid, "SIGKILL");
         }
       },
     });
   `;
+  let killedProcess;
   assert.throws(
     () =>
       execFileSync(
@@ -577,8 +734,45 @@ function runSupersedeKilledAtCheckpoint(fixture, checkpointName) {
         ["--input-type=module", "--eval", source],
         { stdio: ["ignore", "pipe", "pipe"] },
       ),
-    (error) => error?.signal === "SIGKILL",
+    (error) => {
+      killedProcess = error;
+      return error?.signal === "SIGKILL";
+    },
   );
+  waitForProcessExit(killedProcess.pid);
+}
+
+function prepareSupersedeWriteAheadCrash(t, { occurrence = 1 } = {}) {
+  const fixture = createFixture(t, {
+    legacyGuard: true,
+    legacyWriter: true,
+  });
+  const oldPlan = planFixture(fixture);
+  assert.throws(
+    () =>
+      applyAutomationKernelGuardCutover({
+        plan: oldPlan,
+        ownerConfirmationFile: fixture.confirmationFile,
+        checkpoint(name) {
+          if (name === "claims-transaction-durable") {
+            throw new Error("stop after claims");
+          }
+        },
+      }),
+    /stop after claims/,
+  );
+  const supersedePlan = supersedePlanFixture(fixture, oldPlan);
+  runSupersedeKilledAtCheckpoint(
+    fixture,
+    "write-ahead-temporary-durable",
+    { occurrence },
+  );
+  return {
+    fixture,
+    oldPlan,
+    paths: automationKernelGuardCutoverPaths(fixture.stateRoot),
+    supersedePlan,
+  };
 }
 
 function runCli(args) {
@@ -637,6 +831,288 @@ function stopChild(child) {
   return new Promise((resolve) => child.once("close", resolve));
 }
 
+const nativeHelperPauseStates = new WeakMap();
+
+function nativeHelperPauseState(child) {
+  let state = nativeHelperPauseStates.get(child);
+  if (state !== undefined) return state;
+  state = { lines: [], waiters: [], stderr: "", exited: null };
+  nativeHelperPauseStates.set(child, state);
+  let buffered = "";
+  child.stdio[4].setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (chunk) => {
+    state.stderr += chunk;
+  });
+  child.stdio[4].on("data", (chunk) => {
+    buffered += chunk;
+    const parts = buffered.split("\n");
+    buffered = parts.pop() ?? "";
+    state.lines.push(...parts.filter(Boolean));
+    for (const waiter of [...state.waiters]) waiter();
+  });
+  child.once("exit", (code, signal) => {
+    state.exited = { code, signal };
+    for (const waiter of [...state.waiters]) waiter();
+  });
+  return state;
+}
+
+function waitForNativeHelperPause(child, checkpoint, occurrence = 1) {
+  const state = nativeHelperPauseState(child);
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + 10_000;
+    const inspect = () => {
+      const count = state.lines.filter((line) => line === checkpoint).length;
+      if (count >= occurrence) {
+        clearInterval(timer);
+        state.waiters = state.waiters.filter((waiter) => waiter !== inspect);
+        resolve();
+        return;
+      }
+      if (state.exited !== null || Date.now() >= deadline) {
+        clearInterval(timer);
+        state.waiters = state.waiters.filter((waiter) => waiter !== inspect);
+        reject(
+          new Error(
+            `Cutover helper did not reach ${checkpoint} occurrence ${occurrence.toLocaleString()}: ${state.stderr}`,
+          ),
+        );
+      }
+    };
+    const timer = setInterval(inspect, 10);
+    state.waiters.push(inspect);
+    inspect();
+  });
+}
+
+function waitForChildExit(child) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve({ code: child.exitCode, signal: child.signalCode });
+  }
+  return new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code, signal) => resolve({ code, signal }));
+  });
+}
+
+function releasePausedNativeHelper(child) {
+  child.stdio[3].write("1");
+}
+
+function killPausedNativeHelper(child) {
+  const output = execFileSync("/usr/bin/pgrep", ["-P", String(child.pid)], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const pids = output
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(Number);
+  assert.equal(pids.length, 1);
+  process.kill(pids[0], "SIGKILL");
+}
+
+function spawnNativePausedPlanWriter(
+  t,
+  fixture,
+  plan,
+  {
+    checkpoint,
+    operation = "",
+    source = "",
+    destination = "",
+    directoryCheckpoint = "",
+  },
+) {
+  const modulePath = path.join(
+    import.meta.dirname,
+    "lib",
+    "automation-kernel-guard-cutover.mjs",
+  );
+  const sourceCode = `
+    import { writeAutomationKernelGuardCutoverPlan } from ${JSON.stringify(modulePath)};
+    writeAutomationKernelGuardCutoverPlan(
+      ${JSON.stringify(fixture.planFile)},
+      ${JSON.stringify(plan)},
+    );
+  `;
+  const child = spawn(
+    process.execPath,
+    ["--input-type=module", "--eval", sourceCode],
+    {
+      stdio: ["ignore", "pipe", "pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        FREED_CUTOVER_MOVE_TEST_FDS: "3,4",
+        FREED_CUTOVER_MOVE_TEST_PAUSE: checkpoint,
+        FREED_CUTOVER_MOVE_TEST_OPERATION: operation,
+        FREED_CUTOVER_MOVE_TEST_SOURCE: source,
+        FREED_CUTOVER_MOVE_TEST_DESTINATION: destination,
+        FREED_CUTOVER_DIRECTORY_TEST_PAUSE: directoryCheckpoint,
+      },
+    },
+  );
+  t.after(() => stopChild(child));
+  return child;
+}
+
+function spawnNativePausedPlanning(
+  t,
+  fixture,
+  { checkpoint, source },
+) {
+  const modulePath = path.join(
+    import.meta.dirname,
+    "lib",
+    "automation-kernel-guard-cutover.mjs",
+  );
+  const sourceCode = `
+    import { planAutomationKernelGuardCutover } from ${JSON.stringify(modulePath)};
+    let outcome;
+    try {
+      planAutomationKernelGuardCutover({
+        stateRoot: ${JSON.stringify(fixture.stateRoot)},
+        taskId: ${JSON.stringify(TASK_ID)},
+        codexHome: ${JSON.stringify(fixture.codexHome)},
+        repoRoot: ${JSON.stringify(fixture.repoRoot)},
+      });
+      outcome = { ok: true };
+    } catch (error) {
+      outcome = {
+        ok: false,
+        code: error?.code ?? null,
+        message: error instanceof Error ? error.message : String(error),
+        details: error?.details ?? null,
+      };
+    }
+    process.stdout.write(JSON.stringify(outcome));
+  `;
+  const child = spawn(
+    process.execPath,
+    ["--input-type=module", "--eval", sourceCode],
+    {
+      stdio: ["ignore", "pipe", "pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        FREED_CUTOVER_MOVE_TEST_FDS: "3,4",
+        FREED_CUTOVER_MOVE_TEST_PAUSE: checkpoint,
+        FREED_CUTOVER_MOVE_TEST_OPERATION: "snapshot-tree",
+        FREED_CUTOVER_MOVE_TEST_SOURCE: source,
+      },
+    },
+  );
+  t.after(() => stopChild(child));
+  return child;
+}
+
+function spawnNativePausedCutoverApply(
+  t,
+  fixture,
+  checkpoint,
+  { source = "" } = {},
+) {
+  const modulePath = path.join(
+    import.meta.dirname,
+    "lib",
+    "automation-kernel-guard-cutover.mjs",
+  );
+  const sourceCode = `
+    import {
+      applyAutomationKernelGuardCutover,
+      readAutomationKernelGuardCutoverPlan,
+    } from ${JSON.stringify(modulePath)};
+    const plan = readAutomationKernelGuardCutoverPlan(${JSON.stringify(fixture.planFile)});
+    let outcome;
+    try {
+      applyAutomationKernelGuardCutover({
+        plan,
+        ownerConfirmationFile: ${JSON.stringify(fixture.confirmationFile)},
+      });
+      outcome = { ok: true };
+    } catch (error) {
+      outcome = {
+        ok: false,
+        code: error?.code ?? null,
+        message: error instanceof Error ? error.message : String(error),
+        details: error?.details ?? null,
+      };
+    }
+    process.stdout.write(JSON.stringify(outcome));
+  `;
+  const child = spawn(
+    process.execPath,
+    ["--input-type=module", "--eval", sourceCode],
+    {
+      stdio: ["ignore", "pipe", "pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        FREED_CUTOVER_MOVE_TEST_FDS: "3,4",
+        FREED_CUTOVER_MOVE_TEST_PAUSE: checkpoint,
+        FREED_CUTOVER_MOVE_TEST_OPERATION: "list-bounded",
+        FREED_CUTOVER_MOVE_TEST_SOURCE: source,
+      },
+    },
+  );
+  t.after(() => stopChild(child));
+  return child;
+}
+
+function retainedHardLinkGenerationPaths(plan, filePath, bytes) {
+  const retirementDirectory = path.join(
+    plan.parameters.stateRoot,
+    "control",
+    ".kernel-guard-cutover-retired",
+    plan.parameters.cutoverId,
+    "immutable-hard-links",
+  );
+  const generation = sha256(
+    Buffer.from(
+      `${stableJson({
+        kind: "automation-kernel-guard-retained-hard-link-generation",
+        filePath,
+        digest: sha256(bytes),
+      })}\n`,
+      "utf8",
+    ),
+  );
+  return {
+    retirementDirectory,
+    temporaryArchive: path.join(
+      retirementDirectory,
+      `${generation}.temporary.archive`,
+    ),
+    canonicalArchive: path.join(
+      retirementDirectory,
+      `${generation}.canonical.archive`,
+    ),
+    replacement: path.join(
+      retirementDirectory,
+      `${generation}.replacement.tmp`,
+    ),
+  };
+}
+
+function assertRetainedHardLinkGeneration(plan, filePath, bytes) {
+  const retained = retainedHardLinkGenerationPaths(plan, filePath, bytes);
+  assert.equal(existsSync(retained.temporaryArchive), true);
+  assert.equal(existsSync(retained.canonicalArchive), true);
+  assert.equal(existsSync(retained.replacement), false);
+  assert.deepEqual(readFileSync(retained.temporaryArchive), bytes);
+  assert.deepEqual(readFileSync(retained.canonicalArchive), bytes);
+  const temporary = lstatSync(retained.temporaryArchive);
+  const canonical = lstatSync(retained.canonicalArchive);
+  const live = lstatSync(filePath);
+  assert.equal(temporary.dev, canonical.dev);
+  assert.equal(temporary.ino, canonical.ino);
+  assert.equal(temporary.nlink, 2);
+  assert.equal(canonical.nlink, 2);
+  assert.equal(live.nlink, 1);
+  assert.notEqual(live.ino, canonical.ino);
+  return retained;
+}
+
 test("plan uses a real taskId and survives the required private file round trip", (t) => {
   const fixture = createFixture(t);
   const plan = planFixture(fixture);
@@ -654,6 +1130,466 @@ test("plan uses a real taskId and survives the required private file round trip"
         repoRoot: fixture.repoRoot,
       }),
     /does not exist/,
+  );
+});
+
+test("native final-window swaps cannot redirect retained hard-link retirement", async (t) => {
+  const fixture = createFixture(t);
+  const plan = planAutomationKernelGuardCutover({
+    stateRoot: fixture.stateRoot,
+    taskId: TASK_ID,
+    codexHome: fixture.codexHome,
+    repoRoot: fixture.repoRoot,
+  });
+  const temporaryPath = `${fixture.planFile}.cutover.tmp`;
+  const child = spawnNativePausedPlanWriter(t, fixture, plan, {
+    checkpoint: "before-rename-syscall",
+    operation: "rename-durable",
+    source: path.basename(temporaryPath),
+  });
+  await waitForNativeHelperPause(child, "before-rename-syscall");
+
+  const admittedGeneration = path.join(
+    fixture.root,
+    "admitted-plan-hard-link",
+  );
+  const foreignBytes = Buffer.from("foreign final-window generation\n", "utf8");
+  renameSync(temporaryPath, admittedGeneration);
+  writeFileSync(temporaryPath, foreignBytes, { mode: 0o600 });
+  releasePausedNativeHelper(child);
+  const exited = await waitForChildExit(child);
+
+  assert.notEqual(exited.code, 0);
+  assert.deepEqual(readFileSync(temporaryPath), foreignBytes);
+  const live = lstatSync(fixture.planFile);
+  const admitted = lstatSync(admittedGeneration);
+  assert.equal(live.dev, admitted.dev);
+  assert.equal(live.ino, admitted.ino);
+  assert.equal(live.nlink, 2);
+  assert.equal(admitted.nlink, 2);
+  const expectedBytes = Buffer.from(`${JSON.stringify(plan, null, 2)}\n`);
+  assert.deepEqual(readFileSync(fixture.planFile), expectedBytes);
+  assert.deepEqual(readFileSync(admittedGeneration), expectedBytes);
+  const retained = retainedHardLinkGenerationPaths(
+    plan,
+    fixture.planFile,
+    expectedBytes,
+  );
+  assert.deepEqual(readdirSync(retained.retirementDirectory), []);
+});
+
+test("retained hard-link publication recovers after every native mutation", async (t) => {
+  const scenarios = [
+    {
+      name: "temporary retirement rename",
+      checkpoint: "after-rename-before-destination-sync",
+      operation: "rename-durable",
+      occurrence: 1,
+    },
+    {
+      name: "canonical replacement exchange",
+      checkpoint: "after-exchange-before-destination-sync",
+      operation: "exchange-durable",
+      occurrence: 1,
+    },
+    {
+      name: "canonical retirement rename",
+      checkpoint: "after-rename-before-destination-sync",
+      operation: "rename-durable",
+      occurrence: 2,
+    },
+  ];
+  for (const scenario of scenarios) {
+    await t.test(scenario.name, async (subtest) => {
+      const fixture = createFixture(subtest);
+      const plan = planAutomationKernelGuardCutover({
+        stateRoot: fixture.stateRoot,
+        taskId: TASK_ID,
+        codexHome: fixture.codexHome,
+        repoRoot: fixture.repoRoot,
+      });
+      const child = spawnNativePausedPlanWriter(subtest, fixture, plan, {
+        checkpoint: scenario.checkpoint,
+        operation: scenario.operation,
+      });
+      for (let occurrence = 1; occurrence <= scenario.occurrence; occurrence += 1) {
+        await waitForNativeHelperPause(
+          child,
+          scenario.checkpoint,
+          occurrence,
+        );
+        if (occurrence < scenario.occurrence) {
+          releasePausedNativeHelper(child);
+        }
+      }
+      killPausedNativeHelper(child);
+      const exited = await waitForChildExit(child);
+      assert.notEqual(exited.code, 0);
+
+      writeAutomationKernelGuardCutoverPlan(fixture.planFile, plan);
+      assert.deepEqual(
+        readAutomationKernelGuardCutoverPlan(fixture.planFile),
+        plan,
+      );
+      const bytes = readFileSync(fixture.planFile);
+      assertRetainedHardLinkGeneration(plan, fixture.planFile, bytes);
+      assert.equal(existsSync(`${fixture.planFile}.cutover.tmp`), false);
+    });
+  }
+});
+
+test("replacement creation resumes every admitted prefix after process loss", async (t) => {
+  for (const checkpoint of [
+    "after-create-before-copy",
+    "during-copy",
+    "after-file-sync-before-directory-sync",
+    "before-directory-sync",
+    "after-directory-sync",
+  ]) {
+    await t.test(checkpoint, async (subtest) => {
+      const fixture = createFixture(subtest);
+      const plan = planAutomationKernelGuardCutover({
+        stateRoot: fixture.stateRoot,
+        taskId: TASK_ID,
+        codexHome: fixture.codexHome,
+        repoRoot: fixture.repoRoot,
+      });
+      const expectedBytes = Buffer.from(`${JSON.stringify(plan, null, 2)}\n`);
+      const retained = retainedHardLinkGenerationPaths(
+        plan,
+        fixture.planFile,
+        expectedBytes,
+      );
+      const child = spawnNativePausedPlanWriter(subtest, fixture, plan, {
+        checkpoint,
+        operation: "create-private-durable",
+        destination: path.basename(retained.replacement),
+      });
+      await waitForNativeHelperPause(child, checkpoint);
+      killPausedNativeHelper(child);
+      const exited = await waitForChildExit(child);
+      assert.notEqual(exited.code, 0);
+
+      const live = lstatSync(fixture.planFile);
+      const temporaryArchive = lstatSync(retained.temporaryArchive);
+      assert.equal(live.dev, temporaryArchive.dev);
+      assert.equal(live.ino, temporaryArchive.ino);
+      assert.equal(live.nlink, 2);
+      assert.equal(temporaryArchive.nlink, 2);
+      assert.deepEqual(readFileSync(fixture.planFile), expectedBytes);
+      assert.equal(existsSync(retained.canonicalArchive), false);
+      const prefix = readFileSync(retained.replacement);
+      assert.deepEqual(expectedBytes.subarray(0, prefix.length), prefix);
+
+      writeAutomationKernelGuardCutoverPlan(fixture.planFile, plan);
+      assertRetainedHardLinkGeneration(
+        plan,
+        fixture.planFile,
+        expectedBytes,
+      );
+    });
+  }
+});
+
+test("retained directory creation is recoverable on both sides of parent fsync", async (t) => {
+  for (const checkpoint of [
+    "retained-directory-created-before-parent-sync",
+    "retained-directory-parent-synced",
+  ]) {
+    await t.test(checkpoint, async (subtest) => {
+      const fixture = createFixture(subtest);
+      const plan = planAutomationKernelGuardCutover({
+        stateRoot: fixture.stateRoot,
+        taskId: TASK_ID,
+        codexHome: fixture.codexHome,
+        repoRoot: fixture.repoRoot,
+      });
+      const expectedBytes = Buffer.from(`${JSON.stringify(plan, null, 2)}\n`);
+      const child = spawnNativePausedPlanWriter(subtest, fixture, plan, {
+        checkpoint,
+        directoryCheckpoint: checkpoint,
+      });
+      await waitForNativeHelperPause(child, checkpoint);
+      child.kill("SIGKILL");
+      const exited = await waitForChildExit(child);
+      assert.equal(exited.signal, "SIGKILL");
+
+      writeAutomationKernelGuardCutoverPlan(fixture.planFile, plan);
+      assertRetainedHardLinkGeneration(
+        plan,
+        fixture.planFile,
+        expectedBytes,
+      );
+    });
+  }
+});
+
+test("held directory generations contain every native publication boundary", async (t) => {
+  const scenarios = [
+    {
+      name: "first retirement rename",
+      checkpoint: "before-rename-syscall",
+      operation: "rename-durable",
+      occurrence: 1,
+      swapAncestor: false,
+    },
+    {
+      name: "replacement creation",
+      checkpoint: "before-create-syscall",
+      operation: "create-private-durable",
+      occurrence: 1,
+      swapAncestor: false,
+    },
+    {
+      name: "replacement creation ancestor",
+      checkpoint: "before-create-syscall",
+      operation: "create-private-durable",
+      occurrence: 1,
+      swapAncestor: true,
+    },
+    {
+      name: "canonical exchange",
+      checkpoint: "before-exchange-syscall",
+      operation: "exchange-durable",
+      occurrence: 1,
+      swapAncestor: false,
+    },
+    {
+      name: "second retirement rename",
+      checkpoint: "before-rename-syscall",
+      operation: "rename-durable",
+      occurrence: 2,
+      swapAncestor: false,
+    },
+  ];
+  for (const scenario of scenarios) {
+    await t.test(scenario.name, async (subtest) => {
+      const fixture = createFixture(subtest);
+      const plan = planAutomationKernelGuardCutover({
+        stateRoot: fixture.stateRoot,
+        taskId: TASK_ID,
+        codexHome: fixture.codexHome,
+        repoRoot: fixture.repoRoot,
+      });
+      const expectedBytes = Buffer.from(`${JSON.stringify(plan, null, 2)}\n`);
+      const retained = retainedHardLinkGenerationPaths(
+        plan,
+        fixture.planFile,
+        expectedBytes,
+      );
+      const child = spawnNativePausedPlanWriter(subtest, fixture, plan, {
+        checkpoint: scenario.checkpoint,
+        operation: scenario.operation,
+      });
+      for (let occurrence = 1; occurrence <= scenario.occurrence; occurrence += 1) {
+        await waitForNativeHelperPause(
+          child,
+          scenario.checkpoint,
+          occurrence,
+        );
+        if (occurrence < scenario.occurrence) {
+          releasePausedNativeHelper(child);
+        }
+      }
+
+      const swappedPath = scenario.swapAncestor
+        ? path.dirname(path.dirname(retained.retirementDirectory))
+        : retained.retirementDirectory;
+      const admittedPath = `${swappedPath}.admitted`;
+      renameSync(swappedPath, admittedPath);
+      privateDirectory(swappedPath);
+      releasePausedNativeHelper(child);
+      const exited = await waitForChildExit(child);
+      assert.notEqual(exited.code, 0);
+      assert.deepEqual(readdirSync(swappedPath), []);
+
+      rmSync(swappedPath, { recursive: true, force: true });
+      renameSync(admittedPath, swappedPath);
+      writeAutomationKernelGuardCutoverPlan(fixture.planFile, plan);
+      assertRetainedHardLinkGeneration(
+        plan,
+        fixture.planFile,
+        expectedBytes,
+      );
+    });
+  }
+});
+
+test("snapshot admission stops at its entry, depth, and aggregate byte limits", (t) => {
+  const fixture = createFixture(t);
+  const leasesRoot = path.join(fixture.controlRoot, "leases");
+
+  let nested = leasesRoot;
+  for (let depth = 0; depth <= 64; depth += 1) {
+    nested = privateDirectory(path.join(nested, `depth-${depth}`));
+  }
+  assert.throws(
+    () =>
+      planAutomationKernelGuardCutover({
+        stateRoot: fixture.stateRoot,
+        taskId: TASK_ID,
+        codexHome: fixture.codexHome,
+        repoRoot: fixture.repoRoot,
+      }),
+    (error) =>
+      error?.code === "cutover_state_invalid" &&
+      /snapshot depth limit/.test(error.message),
+  );
+
+  rmSync(leasesRoot, { recursive: true, force: true });
+  privateDirectory(leasesRoot);
+  for (let index = 0; index < 4_096; index += 1) {
+    writeFileSync(
+      path.join(
+        leasesRoot,
+        `entry-${index.toLocaleString("en-US", {
+          minimumIntegerDigits: 4,
+          useGrouping: false,
+        })}`,
+      ),
+      "",
+      { mode: 0o600 },
+    );
+  }
+  assert.throws(
+    () =>
+      planAutomationKernelGuardCutover({
+        stateRoot: fixture.stateRoot,
+        taskId: TASK_ID,
+        codexHome: fixture.codexHome,
+        repoRoot: fixture.repoRoot,
+      }),
+    (error) =>
+      error?.code === "cutover_state_invalid" &&
+      /entry snapshot limit/.test(error.message),
+  );
+
+  rmSync(leasesRoot, { recursive: true, force: true });
+  privateDirectory(leasesRoot);
+  truncateSync(
+    path.join(fixture.controlRoot, "events.jsonl"),
+    AUTOMATION_KERNEL_GUARD_CUTOVER_PLAN_MAX_BYTES,
+  );
+  assert.throws(
+    () =>
+      planAutomationKernelGuardCutover({
+        stateRoot: fixture.stateRoot,
+        taskId: TASK_ID,
+        codexHome: fixture.codexHome,
+        repoRoot: fixture.repoRoot,
+      }),
+    (error) =>
+      error?.code === "cutover_state_invalid" &&
+      /aggregate snapshot limit/.test(error.message),
+  );
+});
+
+test("descriptor-bound snapshot rejects a same-inode growth without allocating its bytes", async (t) => {
+  const fixture = createFixture(t);
+  const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+  const eventsPath = path.join(fixture.controlRoot, "events.jsonl");
+  const eventsInode = lstatSync(eventsPath).ino;
+  const child = spawnNativePausedPlanning(t, fixture, {
+    checkpoint: "after-snapshot-file-open-before-read",
+    source: "events.jsonl",
+  });
+  const stdout = [];
+  child.stdout.on("data", (chunk) => stdout.push(Buffer.from(chunk)));
+  const exitPromise = waitForChildExit(child);
+  await waitForNativeHelperPause(
+    child,
+    "after-snapshot-file-open-before-read",
+  );
+  truncateSync(
+    eventsPath,
+    AUTOMATION_KERNEL_GUARD_CUTOVER_PLAN_MAX_BYTES,
+  );
+  releasePausedNativeHelper(child);
+  const exited = await exitPromise;
+  assert.equal(exited.code, 0);
+  assert.equal(exited.signal, null);
+  const outcome = JSON.parse(Buffer.concat(stdout).toString("utf8"));
+
+  assert.equal(outcome.ok, false);
+  assert.equal(outcome.code, "cutover_conflict");
+  assert.match(outcome.message, /changed while being read|grew while being read/);
+  assert.equal(lstatSync(eventsPath).ino, eventsInode);
+  assert.equal(
+    lstatSync(eventsPath).size,
+    AUTOMATION_KERNEL_GUARD_CUTOVER_PLAN_MAX_BYTES,
+  );
+  assert.equal(existsSync(paths.transaction), false);
+  assert.equal(existsSync(paths.globalReceipt), false);
+  assert.equal(existsSync(paths.bootstrapLock), false);
+  assert.equal(existsSync(paths.writerLock), false);
+  assert.deepEqual(readdirSync(paths.guardsRoot), []);
+});
+
+test("planning rejects a recursively snapshotted root swap without admitting a hybrid tree", async (t) => {
+  const fixture = createFixture(t);
+  const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+  const leasesRoot = path.join(fixture.controlRoot, "leases");
+  const child = spawnNativePausedPlanning(t, fixture, {
+    checkpoint: "after-snapshot-tree-root-open-before-traversal",
+    source: "leases",
+  });
+  const stdout = [];
+  child.stdout.on("data", (chunk) => stdout.push(Buffer.from(chunk)));
+  const exitPromise = waitForChildExit(child);
+  await waitForNativeHelperPause(
+    child,
+    "after-snapshot-tree-root-open-before-traversal",
+  );
+  const admitted = `${leasesRoot}.admitted`;
+  renameSync(leasesRoot, admitted);
+  privateDirectory(leasesRoot);
+  writeFileSync(path.join(leasesRoot, "replacement.json"), "replacement\n", {
+    mode: 0o600,
+  });
+  releasePausedNativeHelper(child);
+  const exited = await exitPromise;
+  assert.equal(exited.code, 0);
+  assert.equal(exited.signal, null);
+  const outcome = JSON.parse(Buffer.concat(stdout).toString("utf8"));
+
+  assert.equal(outcome.ok, false);
+  assert.equal(outcome.code, "cutover_conflict");
+  assert.match(outcome.message, /snapshot target changed/);
+  assert.deepEqual(readdirSync(admitted), []);
+  assert.deepEqual(readdirSync(leasesRoot), ["replacement.json"]);
+  assert.equal(existsSync(paths.transaction), false);
+  assert.equal(existsSync(paths.globalReceipt), false);
+});
+
+test("the maximum valid authorization transaction remains writable and readable", (t) => {
+  const fixture = createFixture(t);
+  const plan = planFixture(fixture);
+  const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+  seedMaximumValidPreparedTransaction(fixture, plan);
+
+  assert.throws(
+    () =>
+      applyAutomationKernelGuardCutover({
+        plan,
+        ownerConfirmationFile: fixture.confirmationFile,
+        checkpoint(name) {
+          if (name === "retry-authorization-evidence-durable") {
+            throw new Error("stop after maximum authorization transaction");
+          }
+        },
+      }),
+    /stop after maximum authorization transaction/,
+  );
+
+  const transactionBytes = readFileSync(paths.transaction);
+  const transaction = JSON.parse(transactionBytes.toString("utf8"));
+  assert.equal(transaction.authorizations.length, 64);
+  assert.ok(transactionBytes.length > 1024 * 1024);
+  assert.ok(transactionBytes.length <= 8 * 1024 * 1024);
+  const supersedePlan = planAutomationKernelGuardCutoverSupersede({ plan });
+  assert.equal(
+    supersedePlan.parameters.transactionDigest,
+    sha256(transactionBytes),
   );
 });
 
@@ -1039,7 +1975,9 @@ test("transaction-first retry recovers authorization evidence before a replaceme
 
       runCutoverKilledAtCheckpoint(fixture, checkpointName);
 
-      const beforeRecovery = JSON.parse(readFileSync(paths.transaction, "utf8"));
+      const beforeRecovery = JSON.parse(
+        readFileSync(paths.transaction, "utf8"),
+      );
       const interruptedAuthorization = beforeRecovery.authorizations.at(-1);
       assert.equal(beforeRecovery.authorizations.length, 2);
       assert.equal(
@@ -1128,9 +2066,14 @@ test("initial transaction recovers authorization evidence after process loss", (
   );
   const interruptedAuthorization = interruptedTransaction.authorizations[0];
   assert.equal(interruptedTransaction.authorizations.length, 1);
-  assert.equal(existsSync(interruptedAuthorization.confirmationArtifact), false);
   assert.equal(
-    existsSync(path.join(authorizationDirectory, "prepared-authorization.json")),
+    existsSync(interruptedAuthorization.confirmationArtifact),
+    false,
+  );
+  assert.equal(
+    existsSync(
+      path.join(authorizationDirectory, "prepared-authorization.json"),
+    ),
     false,
   );
 
@@ -1144,11 +2087,7 @@ test("initial transaction recovers authorization evidence after process loss", (
     transaction.authorizations.map(
       (authorization) => authorization.confirmationId,
     ),
-    [
-      "kernel-cutover-test",
-      "kernel-cutover-test",
-      "kernel-cutover-test",
-    ],
+    ["kernel-cutover-test", "kernel-cutover-test", "kernel-cutover-test"],
   );
   assert.deepEqual(transaction.authorizations[0], interruptedAuthorization);
   const expectedAuthorizationNames = [
@@ -1460,7 +2399,7 @@ test("activation checkpoints cannot publish after callback tampering", async (t)
       const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
       let tampered = false;
 
-      assert.throws(() =>
+      const failure = assert.throws(() =>
         applyAutomationKernelGuardCutover({
           plan,
           ownerConfirmationFile: fixture.confirmationFile,
@@ -1476,7 +2415,7 @@ test("activation checkpoints cannot publish after callback tampering", async (t)
         }),
       );
 
-      assert.equal(tampered, true);
+      assert.equal(tampered, true, failure?.stack);
       assert.equal(
         inspectAutomationKernelGuardCutover(fixture.stateRoot).ready,
         false,
@@ -1663,9 +2602,7 @@ test("owner confirmation revocation or expiry stops every permanent mutation bou
                   } else {
                     clockMs = expiresAtMs + 1;
                   }
-                  boundarySnapshot = snapshotFilesystemTree(
-                    fixture.stateRoot,
-                  );
+                  boundarySnapshot = snapshotFilesystemTree(fixture.stateRoot);
                 },
               }),
             (error) =>
@@ -1741,8 +2678,7 @@ test("marker link recovery reauthorizes before removing its exact temporary link
               ownerConfirmationFile: fixture.confirmationFile,
               checkpoint(name) {
                 if (
-                  name !==
-                    "guard-inner-marker-linked-recovery-before-unlink" ||
+                  name !== "guard-inner-marker-linked-recovery-before-unlink" ||
                   boundarySnapshot !== null
                 ) {
                   return;
@@ -1829,11 +2765,7 @@ test("unsafe exact authorization evidence fails before bootstrap mutation", (t) 
   );
   const confirmationRawDigest = sha256(confirmationBytes);
   const authorizationDirectory = privateDirectory(
-    path.join(
-      paths.artifactRoot,
-      plan.parameters.cutoverId,
-      "authorizations",
-    ),
+    path.join(paths.artifactRoot, plan.parameters.cutoverId, "authorizations"),
   );
   const confirmationArtifact = path.join(
     authorizationDirectory,
@@ -2259,6 +3191,127 @@ test("write-ahead recovery rejects journal, inode, and partial-byte tampering", 
   });
 });
 
+test("oversized same-inode rewrite is rejected before initial recovery allocation", (t) => {
+  const fixture = createFixture(t, { legacyWriter: true });
+  const plan = planFixture(fixture);
+  const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+  assert.throws(
+    () =>
+      applyAutomationKernelGuardCutover({
+        plan,
+        ownerConfirmationFile: fixture.confirmationFile,
+        checkpoint(name) {
+          if (name === "writer-claim-before-write-journal-durable") {
+            throw new Error("stop after rewrite journal");
+          }
+        },
+      }),
+    /stop after rewrite journal/,
+  );
+  const journal = JSON.parse(readFileSync(paths.writeAhead, "utf8"));
+  const sourceBytes = Buffer.from(journal.sourceBytesBase64, "base64");
+  const sourceInode = lstatSync(paths.writerLock).ino;
+  const rewriteMaximum = Math.max(journal.sourceSize, journal.targetSize);
+  const adversarialSize = 8 * 1024 * 1024 + 1;
+  assert.ok(adversarialSize > rewriteMaximum);
+  truncateSync(paths.writerLock, adversarialSize);
+  assert.equal(lstatSync(paths.writerLock).ino, sourceInode);
+
+  const trapped = captureOversizedBufferAllocation(adversarialSize, () =>
+    applyAutomationKernelGuardCutover({
+      plan,
+      ownerConfirmationFile: fixture.confirmationFile,
+    }),
+  );
+  assert.equal(trapped.error?.code, "cutover_source_drift");
+  assert.match(trapped.error?.message ?? "", /Legacy claim source changed/);
+  assert.deepEqual(trapped.attemptedSizes, []);
+  assert.equal(existsSync(paths.writeAhead), true);
+  assert.equal(existsSync(paths.globalReceipt), false);
+  assert.equal(lstatSync(paths.writerLock).ino, sourceInode);
+  assert.equal(lstatSync(paths.writerLock).size, adversarialSize);
+
+  writeFileSync(paths.writerLock, sourceBytes, { mode: journal.sourceMode });
+  assert.equal(lstatSync(paths.writerLock).ino, sourceInode);
+  const recovered = applyAutomationKernelGuardCutover({
+    plan,
+    ownerConfirmationFile: fixture.confirmationFile,
+  });
+  assert.equal(recovered.changed, true);
+  assert.equal(existsSync(paths.writeAhead), false);
+  assert.equal(
+    inspectAutomationKernelGuardCutover(fixture.stateRoot).ready,
+    true,
+  );
+});
+
+test("oversized same-inode rewrite is rejected before pinned revalidation allocation", (t) => {
+  const fixture = createFixture(t, { legacyWriter: true });
+  const plan = planFixture(fixture);
+  const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+  assert.throws(
+    () =>
+      applyAutomationKernelGuardCutover({
+        plan,
+        ownerConfirmationFile: fixture.confirmationFile,
+        checkpoint(name) {
+          if (name === "writer-claim-before-write-journal-durable") {
+            throw new Error("stop after rewrite journal");
+          }
+        },
+      }),
+    /stop after rewrite journal/,
+  );
+  const journal = JSON.parse(readFileSync(paths.writeAhead, "utf8"));
+  const sourceBytes = Buffer.from(journal.sourceBytesBase64, "base64");
+  const sourceInode = lstatSync(paths.writerLock).ino;
+  const rewriteMaximum = Math.max(journal.sourceSize, journal.targetSize);
+  const adversarialSize = 8 * 1024 * 1024 + 1;
+  assert.ok(adversarialSize > rewriteMaximum);
+  let expandedAtRevalidation = false;
+
+  const trapped = captureOversizedBufferAllocation(adversarialSize, () =>
+    applyAutomationKernelGuardCutover({
+      plan,
+      ownerConfirmationFile: fixture.confirmationFile,
+      checkpoint(name, details) {
+        if (
+          name === "writer-claim" &&
+          details?.filePath === paths.writerLock &&
+          !expandedAtRevalidation
+        ) {
+          truncateSync(paths.writerLock, adversarialSize);
+          expandedAtRevalidation = true;
+        }
+      },
+    }),
+  );
+  assert.equal(expandedAtRevalidation, true);
+  assert.equal(trapped.error?.code, "cutover_source_drift");
+  assert.match(
+    trapped.error?.message ?? "",
+    /Legacy claim generation changed/,
+  );
+  assert.deepEqual(trapped.attemptedSizes, []);
+  assert.equal(existsSync(paths.writeAhead), true);
+  assert.equal(existsSync(paths.globalReceipt), false);
+  assert.equal(lstatSync(paths.writerLock).ino, sourceInode);
+  assert.equal(lstatSync(paths.writerLock).size, adversarialSize);
+
+  writeFileSync(paths.writerLock, sourceBytes, { mode: journal.sourceMode });
+  assert.equal(lstatSync(paths.writerLock).ino, sourceInode);
+  const recovered = applyAutomationKernelGuardCutover({
+    plan,
+    ownerConfirmationFile: fixture.confirmationFile,
+  });
+  assert.equal(recovered.changed, true);
+  assert.equal(existsSync(paths.writeAhead), false);
+  assert.equal(
+    inspectAutomationKernelGuardCutover(fixture.stateRoot).ready,
+    true,
+  );
+});
+
 test("supersede rejects an apply-scoped write-ahead record until same-plan recovery", (t) => {
   const fixture = createFixture(t);
   const plan = planFixture(fixture);
@@ -2333,6 +3386,235 @@ test("supersede rejects an apply-scoped write-ahead record until same-plan recov
     inspectAutomationKernelGuardCutover(fixture.stateRoot).ready,
     true,
   );
+});
+
+test("supersede planning rejects ambiguous authoritative temporary residue byte-stably", async (t) => {
+  const scenarios = [
+    {
+      name: "transaction",
+      temporaryPath: (paths) => `${paths.transaction}.cutover.tmp`,
+      bytes: (paths) => readFileSync(paths.transaction),
+    },
+    {
+      name: "write-ahead",
+      temporaryPath: (paths) => `${paths.writeAhead}.cutover.tmp`,
+      bytes: () => Buffer.from('{"phase":"prepared"}\n', "utf8"),
+    },
+    {
+      name: "global receipt",
+      temporaryPath: (paths) => `${paths.globalReceipt}.cutover.tmp`,
+      bytes: () => Buffer.from('{"kind":"unfinished-receipt"}\n', "utf8"),
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    await t.test(scenario.name, (subtest) => {
+      const fixture = createFixture(subtest);
+      const oldPlan = planFixture(fixture);
+      seedPreparedTransaction(fixture, oldPlan);
+      const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+      const temporaryPath = scenario.temporaryPath(paths);
+      writeFileSync(temporaryPath, scenario.bytes(paths), { mode: 0o600 });
+      const beforePlanning = snapshotFilesystemTree(fixture.root);
+
+      assert.throws(
+        () => planAutomationKernelGuardCutoverSupersede({ plan: oldPlan }),
+        (error) =>
+          error?.code === "cutover_supersede_conflict" &&
+          /ambiguous temporary residue/.test(error.message),
+      );
+      assert.deepEqual(snapshotFilesystemTree(fixture.root), beforePlanning);
+      assert.equal(existsSync(temporaryPath), true);
+    });
+  }
+});
+
+test("real SIGKILL transaction temp blocks supersede and recovers through the original apply", (t) => {
+  const fixture = createFixture(t);
+  const oldPlan = planFixture(fixture);
+  const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+  const temporaryPath = `${paths.transaction}.cutover.tmp`;
+
+  runCutoverKilledAtCheckpoint(fixture, "transaction-temporary-durable", {
+    filePath: paths.transaction,
+  });
+
+  assert.equal(existsSync(paths.transaction), false);
+  assert.equal(existsSync(temporaryPath), true);
+  assert.equal(lstatSync(temporaryPath).mode & 0o7777, 0o600);
+  assert.equal(
+    JSON.parse(readFileSync(temporaryPath, "utf8")).phase,
+    "prepared",
+  );
+  const beforePlanning = snapshotFilesystemTree(fixture.root);
+
+  assert.throws(
+    () => planAutomationKernelGuardCutoverSupersede({ plan: oldPlan }),
+    (error) =>
+      error?.code === "cutover_supersede_conflict" &&
+      /ambiguous temporary residue/.test(error.message),
+  );
+  assert.deepEqual(snapshotFilesystemTree(fixture.root), beforePlanning);
+  assert.equal(existsSync(temporaryPath), true);
+
+  const recovered = applyAutomationKernelGuardCutover({
+    plan: oldPlan,
+    ownerConfirmationFile: fixture.confirmationFile,
+  });
+  assert.equal(recovered.changed, true);
+  assert.equal(existsSync(temporaryPath), false);
+  const inspection = inspectAutomationKernelGuardCutover(fixture.stateRoot);
+  assert.equal(inspection.ready, true, inspection.problems.join("\n"));
+});
+
+test("real SIGKILL supersede write-ahead temp recovers under the exact plan", (t) => {
+  const { fixture, oldPlan, paths, supersedePlan } =
+    prepareSupersedeWriteAheadCrash(t);
+  const temporaryPath = `${paths.writeAhead}.cutover.tmp`;
+
+  assert.equal(existsSync(paths.writeAhead), false);
+  assert.equal(existsSync(temporaryPath), true);
+  const temporaryRecord = JSON.parse(readFileSync(temporaryPath, "utf8"));
+  assert.equal(temporaryRecord.scope, "supersede");
+  assert.equal(
+    temporaryRecord.scopeId,
+    supersedePlan.parameters.supersedeId,
+  );
+  assert.equal(temporaryRecord.phase, "prepared");
+
+  const recovered = applyAutomationKernelGuardCutoverSupersede({
+    plan: oldPlan,
+    supersedePlan,
+    ownerConfirmationFile: fixture.confirmationFile,
+  });
+  assert.equal(recovered.changed, true);
+  assert.equal(existsSync(temporaryPath), false);
+  assert.equal(existsSync(paths.writeAhead), false);
+  assert.equal(existsSync(paths.transaction), false);
+  assert.equal(existsSync(paths.globalReceipt), false);
+});
+
+test("supersede recovery preserves a canonical write-ahead predecessor", (t) => {
+  const { fixture, oldPlan, paths, supersedePlan } =
+    prepareSupersedeWriteAheadCrash(t, { occurrence: 2 });
+  const temporaryPath = `${paths.writeAhead}.cutover.tmp`;
+  const canonicalRecord = JSON.parse(readFileSync(paths.writeAhead, "utf8"));
+  const temporaryRecord = JSON.parse(readFileSync(temporaryPath, "utf8"));
+  assert.equal(canonicalRecord.phase, "prepared");
+  assert.equal(temporaryRecord.phase, "written");
+  assert.equal(temporaryRecord.operationId, canonicalRecord.operationId);
+
+  const recovered = applyAutomationKernelGuardCutoverSupersede({
+    plan: oldPlan,
+    supersedePlan,
+    ownerConfirmationFile: fixture.confirmationFile,
+  });
+  assert.equal(recovered.changed, true);
+  assert.equal(existsSync(temporaryPath), false);
+  assert.equal(existsSync(paths.writeAhead), false);
+  assert.equal(existsSync(paths.transaction), false);
+});
+
+test("supersede write-ahead temp recovery requires live exact authority", async (t) => {
+  await t.test("missing confirmation", (subtest) => {
+    const { fixture, oldPlan, paths, supersedePlan } =
+      prepareSupersedeWriteAheadCrash(subtest);
+    const temporaryPath = `${paths.writeAhead}.cutover.tmp`;
+    unlinkSync(fixture.confirmationFile);
+    const beforeRecovery = snapshotFilesystemTree(fixture.stateRoot);
+
+    assert.throws(
+      () =>
+        applyAutomationKernelGuardCutoverSupersede({
+          plan: oldPlan,
+          supersedePlan,
+          ownerConfirmationFile: fixture.confirmationFile,
+        }),
+      (error) => error?.code === "owner_confirmation_required",
+    );
+    assert.deepEqual(
+      snapshotFilesystemTree(fixture.stateRoot),
+      beforeRecovery,
+    );
+    assert.equal(existsSync(temporaryPath), true);
+    assert.equal(existsSync(paths.writeAhead), false);
+  });
+
+  await t.test("different plan bytes", (subtest) => {
+    const { fixture, oldPlan, paths, supersedePlan } =
+      prepareSupersedeWriteAheadCrash(subtest);
+    const temporaryPath = `${paths.writeAhead}.cutover.tmp`;
+    const conflictingPlan = structuredClone(supersedePlan);
+    conflictingPlan.createdAt = new Date(
+      Date.parse(supersedePlan.createdAt) + 1,
+    ).toISOString();
+    assert.equal(
+      conflictingPlan.parameters.supersedeId,
+      supersedePlan.parameters.supersedeId,
+    );
+    assert.equal(conflictingPlan.intentDigest, supersedePlan.intentDigest);
+    const beforeRecovery = snapshotFilesystemTree(fixture.stateRoot);
+
+    assert.throws(
+      () =>
+        applyAutomationKernelGuardCutoverSupersede({
+          plan: oldPlan,
+          supersedePlan: conflictingPlan,
+          ownerConfirmationFile: fixture.confirmationFile,
+        }),
+      (error) => error?.code === "cutover_supersede_conflict",
+    );
+    assert.deepEqual(
+      snapshotFilesystemTree(fixture.stateRoot),
+      beforeRecovery,
+    );
+    assert.equal(existsSync(temporaryPath), true);
+    assert.equal(existsSync(paths.writeAhead), false);
+  });
+});
+
+test("supersede protected retirement rejects transaction temporary residue under the bootstrap guard", (t) => {
+  const fixture = createFixture(t, {
+    legacyGuard: true,
+    legacyWriter: true,
+  });
+  const oldPlan = planFixture(fixture);
+  seedPreparedTransaction(fixture, oldPlan);
+  const supersedePlan = supersedePlanFixture(fixture, oldPlan);
+  const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+  const transactionBytes = readFileSync(paths.transaction);
+  const temporaryPath = `${paths.transaction}.cutover.tmp`;
+  const receiptPath = path.join(
+    paths.artifactRoot,
+    oldPlan.parameters.cutoverId,
+    "superseded",
+    supersedePlan.parameters.supersedeId,
+    "receipt.json",
+  );
+  let injected = false;
+
+  assert.throws(
+    () =>
+      applyAutomationKernelGuardCutoverSupersede({
+        plan: oldPlan,
+        supersedePlan,
+        ownerConfirmationFile: fixture.confirmationFile,
+        checkpoint(name) {
+          if (name !== "supersede-claims-restored" || injected) return;
+          writeFileSync(temporaryPath, transactionBytes, { mode: 0o600 });
+          injected = true;
+        },
+      }),
+    (error) =>
+      error?.code === "cutover_supersede_conflict" &&
+      /ambiguous temporary residue/.test(error.message),
+  );
+
+  assert.equal(injected, true);
+  assert.deepEqual(readFileSync(paths.transaction), transactionBytes);
+  assert.deepEqual(readFileSync(temporaryPath), transactionBytes);
+  assert.equal(existsSync(receiptPath), false);
+  assert.equal(existsSync(paths.globalReceipt), false);
 });
 
 test("owner-confirmed prepared supersede recovers drift and admits one fresh cutover", (t) => {
@@ -2448,10 +3730,7 @@ test("caller-owned supersede plan mutation cannot redirect transaction retiremen
     checkpoint(name) {
       if (name !== "supersede-evidence-durable") return;
       Object.assign(rawOldPlan, structuredClone(victimOldPlan));
-      Object.assign(
-        rawSupersedePlan,
-        structuredClone(victimSupersedePlan),
-      );
+      Object.assign(rawSupersedePlan, structuredClone(victimSupersedePlan));
       mutationRan = true;
     },
   });
@@ -2479,10 +3758,7 @@ test("supersede callbacks cannot retire after the plan-bound task changes", asyn
       seedPreparedTransaction(fixture, oldPlan);
       const supersedePlan = supersedePlanFixture(fixture, oldPlan);
       const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
-      const manifestPath = path.join(
-        fixture.controlRoot,
-        "current-tasks.json",
-      );
+      const manifestPath = path.join(fixture.controlRoot, "current-tasks.json");
       let boundarySnapshot = null;
 
       assert.throws(
@@ -2641,7 +3917,10 @@ test("supersede receipt preserves raw owner confirmation across retry and reject
         supersedePlan,
         ownerConfirmationFile: fixture.confirmationFile,
       }),
-    (error) => error?.code === "cutover_supersede_conflict",
+    (error) =>
+      ["cutover_conflict", "cutover_supersede_conflict"].includes(
+        error?.code,
+      ),
   );
   assert.deepEqual(readFileSync(receiptPath), tamperedReceipt);
   assert.deepEqual(
@@ -2747,6 +4026,59 @@ test("claims-installed supersede restores every exact planned legacy byte", (t) 
   assert.equal(existsSync(paths.globalReceipt), false);
 });
 
+test("supersede preserves retired file and directory generations", (t) => {
+  const fixture = createFixture(t);
+  const plan = planFixture(fixture);
+  const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+  assert.throws(
+    () =>
+      applyAutomationKernelGuardCutover({
+        plan,
+        ownerConfirmationFile: fixture.confirmationFile,
+        checkpoint(name) {
+          if (name === "claims-transaction-durable") {
+            throw new Error("stop after claims");
+          }
+        },
+      }),
+    /stop after claims/,
+  );
+  const transactionBytes = readFileSync(paths.transaction);
+  const transactionInode = lstatSync(paths.transaction).ino;
+  const guardInode = lstatSync(paths.guards.events.directory).ino;
+  const supersedePlan = supersedePlanFixture(fixture, plan);
+
+  const result = applyAutomationKernelGuardCutoverSupersede({
+    plan,
+    supersedePlan,
+    ownerConfirmationFile: fixture.confirmationFile,
+  });
+
+  assert.equal(result.changed, true);
+  const retirementDirectory = path.join(
+    fixture.controlRoot,
+    ".kernel-guard-cutover-retired",
+    plan.parameters.cutoverId,
+    "removals",
+  );
+  const retiredPaths = readdirSync(retirementDirectory).map((name) =>
+    path.join(retirementDirectory, name),
+  );
+  const retiredTransaction = retiredPaths.find((filePath) => {
+    const stats = lstatSync(filePath);
+    return stats.isFile() && stats.ino === transactionInode;
+  });
+  const retiredGuard = retiredPaths.find((filePath) => {
+    const stats = lstatSync(filePath);
+    return stats.isDirectory() && stats.ino === guardInode;
+  });
+  assert.notEqual(retiredTransaction, undefined);
+  assert.deepEqual(readFileSync(retiredTransaction), transactionBytes);
+  assert.notEqual(retiredGuard, undefined);
+  assert.equal(existsSync(paths.transaction), false);
+  assert.equal(existsSync(paths.guards.events.directory), false);
+});
+
 test("supersede refuses every permanent target marker", (t) => {
   const fixture = createFixture(t);
   const oldPlan = planFixture(fixture);
@@ -2809,7 +4141,9 @@ test("supersede rejects a malformed canonical task before bootstrap mutation", (
   assert.deepEqual(readFileSync(eventsPath), eventsBefore);
   assert.deepEqual(readFileSync(paths.transaction), transactionBefore);
   assert.deepEqual(
-    readdirSync(path.join(paths.artifactRoot, oldPlan.parameters.cutoverId)).sort(),
+    readdirSync(
+      path.join(paths.artifactRoot, oldPlan.parameters.cutoverId),
+    ).sort(),
     artifactNamesBefore,
   );
   assert.equal(existsSync(paths.bootstrapLock), false);
@@ -2925,6 +4259,241 @@ test("real SIGKILL supersede recovery is exact before and after transaction reti
   }
 });
 
+test("completed supersede response-loss recovery needs no live confirmation or unchanged task", (t) => {
+  const fixture = createFixture(t, {
+    legacyGuard: true,
+    legacyWriter: true,
+  });
+  const oldPlan = planFixture(fixture);
+  seedPreparedTransaction(fixture, oldPlan);
+  const supersedePlan = supersedePlanFixture(fixture, oldPlan);
+  const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+  runSupersedeKilledAtCheckpoint(fixture, "supersede-transaction-retired");
+  assert.equal(existsSync(paths.transaction), false);
+  assert.equal(existsSync(paths.writeAhead), false);
+
+  unlinkSync(fixture.confirmationFile);
+  const manifestPath = path.join(fixture.controlRoot, "current-tasks.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.revision += 1;
+  manifest.updatedAt = new Date().toISOString();
+  manifest.tasks[0].revision += 1;
+  manifest.tasks[0].updatedAt = manifest.updatedAt;
+  manifest.tasks[0].details.supersedeResponseRecovered = true;
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, {
+    mode: 0o600,
+  });
+  const beforeRecovery = snapshotFilesystemTree(fixture.stateRoot);
+
+  const conflictingPlan = structuredClone(supersedePlan);
+  conflictingPlan.createdAt = new Date(
+    Date.parse(supersedePlan.createdAt) + 1,
+  ).toISOString();
+  assert.equal(
+    conflictingPlan.parameters.supersedeId,
+    supersedePlan.parameters.supersedeId,
+  );
+  assert.equal(conflictingPlan.intentDigest, supersedePlan.intentDigest);
+  assert.throws(
+    () =>
+      applyAutomationKernelGuardCutoverSupersede({
+        plan: oldPlan,
+        supersedePlan: conflictingPlan,
+        ownerConfirmationFile: fixture.confirmationFile,
+      }),
+    (error) =>
+      ["cutover_conflict", "cutover_supersede_conflict"].includes(
+        error?.code,
+      ),
+  );
+  assert.deepEqual(snapshotFilesystemTree(fixture.stateRoot), beforeRecovery);
+
+  const recovered = applyAutomationKernelGuardCutoverSupersede({
+    plan: oldPlan,
+    supersedePlan,
+    ownerConfirmationFile: fixture.confirmationFile,
+  });
+
+  assert.equal(recovered.changed, false);
+  assert.equal(
+    recovered.receipt.supersedeId,
+    supersedePlan.parameters.supersedeId,
+  );
+  assert.deepEqual(snapshotFilesystemTree(fixture.stateRoot), beforeRecovery);
+});
+
+test("completed supersede recovery rejects a renamed guard entry without authorization", (t) => {
+  const fixture = createFixture(t, {
+    legacyGuard: true,
+    legacyWriter: true,
+  });
+  const oldPlan = planFixture(fixture);
+  seedPreparedTransaction(fixture, oldPlan);
+  const supersedePlan = supersedePlanFixture(fixture, oldPlan);
+  const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+  runSupersedeKilledAtCheckpoint(fixture, "supersede-transaction-retired");
+  unlinkSync(fixture.confirmationFile);
+
+  renameSync(
+    paths.guards.events.directory,
+    path.join(paths.guardsRoot, "events-renamed.lock"),
+  );
+  const beforeRecovery = snapshotFilesystemTree(fixture.stateRoot);
+
+  assert.throws(
+    () =>
+      applyAutomationKernelGuardCutoverSupersede({
+        plan: oldPlan,
+        supersedePlan,
+        ownerConfirmationFile: fixture.confirmationFile,
+      }),
+    (error) => error?.code === "cutover_source_drift",
+  );
+  assert.deepEqual(snapshotFilesystemTree(fixture.stateRoot), beforeRecovery);
+  assert.equal(existsSync(paths.transaction), false);
+  assert.equal(existsSync(paths.globalReceipt), false);
+});
+
+test("completed supersede recovery rejects every ambiguous authoritative temporary", async (t) => {
+  const scenarios = [
+    {
+      name: "transaction",
+      temporaryPath: ({ paths }) => `${paths.transaction}.cutover.tmp`,
+      install({ temporaryPath, evidence }) {
+        writeFileSync(temporaryPath, readFileSync(evidence.transaction), {
+          mode: 0o600,
+        });
+      },
+    },
+    {
+      name: "write-ahead",
+      temporaryPath: ({ paths }) => `${paths.writeAhead}.cutover.tmp`,
+      install({ temporaryPath }) {
+        writeFileSync(temporaryPath, '{"phase":"prepared"}\n', {
+          mode: 0o600,
+        });
+      },
+    },
+    {
+      name: "global receipt",
+      temporaryPath: ({ paths }) => `${paths.globalReceipt}.cutover.tmp`,
+      install({ temporaryPath }) {
+        writeFileSync(temporaryPath, '{"kind":"unfinished-receipt"}\n', {
+          mode: 0o600,
+        });
+      },
+    },
+    {
+      name: "bootstrap marker hard link",
+      temporaryPath: ({ paths }) => `${paths.bootstrapLock}.cutover.tmp`,
+      install({ temporaryPath, paths }) {
+        linkSync(paths.bootstrapLock, temporaryPath);
+      },
+    },
+    {
+      name: "supersede receipt hard link",
+      temporaryPath: ({ evidence }) => `${evidence.receipt}.cutover.tmp`,
+      install({ temporaryPath, evidence }) {
+        linkSync(evidence.receipt, temporaryPath);
+      },
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    await t.test(scenario.name, (subtest) => {
+      const fixture = createFixture(subtest, {
+        legacyGuard: true,
+        legacyWriter: true,
+      });
+      const oldPlan = planFixture(fixture);
+      seedPreparedTransaction(fixture, oldPlan);
+      const supersedePlan = supersedePlanFixture(fixture, oldPlan);
+      const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+      const evidence = {
+        directory: path.join(
+          paths.artifactRoot,
+          oldPlan.parameters.cutoverId,
+          "superseded",
+          supersedePlan.parameters.supersedeId,
+        ),
+      };
+      evidence.transaction = path.join(
+        evidence.directory,
+        "superseded-transaction.json",
+      );
+      evidence.receipt = path.join(evidence.directory, "receipt.json");
+      runSupersedeKilledAtCheckpoint(fixture, "supersede-transaction-retired");
+      unlinkSync(fixture.confirmationFile);
+
+      const temporaryPath = scenario.temporaryPath({ paths, evidence });
+      scenario.install({ temporaryPath, paths, evidence });
+      const beforeRecovery = snapshotFilesystemTree(fixture.stateRoot);
+
+      assert.throws(
+        () =>
+          applyAutomationKernelGuardCutoverSupersede({
+            plan: oldPlan,
+            supersedePlan,
+            ownerConfirmationFile: fixture.confirmationFile,
+          }),
+        (error) =>
+          error?.code === "cutover_supersede_conflict" &&
+          /ambiguous temporary residue/.test(error.message),
+      );
+      assert.deepEqual(
+        snapshotFilesystemTree(fixture.stateRoot),
+        beforeRecovery,
+      );
+      assert.equal(existsSync(temporaryPath), true);
+      assert.equal(existsSync(paths.transaction), false);
+      assert.equal(existsSync(paths.globalReceipt), false);
+    });
+  }
+});
+
+test("supersede response-loss recovery cannot bypass unfinished retirement authorization", async (t) => {
+  for (const checkpoint of [
+    "supersede-receipt-durable",
+    "supersede-transaction-retire-after-rename",
+  ]) {
+    await t.test(checkpoint, (subtest) => {
+      const fixture = createFixture(subtest, {
+        legacyGuard: true,
+        legacyWriter: true,
+      });
+      const oldPlan = planFixture(fixture);
+      seedPreparedTransaction(fixture, oldPlan);
+      const supersedePlan = supersedePlanFixture(fixture, oldPlan);
+      const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+      runSupersedeKilledAtCheckpoint(fixture, checkpoint);
+      unlinkSync(fixture.confirmationFile);
+      const beforeRecovery = snapshotFilesystemTree(fixture.stateRoot);
+
+      assert.throws(
+        () =>
+          applyAutomationKernelGuardCutoverSupersede({
+            plan: oldPlan,
+            supersedePlan,
+            ownerConfirmationFile: fixture.confirmationFile,
+          }),
+        (error) => error?.code === "owner_confirmation_required",
+      );
+      assert.deepEqual(
+        snapshotFilesystemTree(fixture.stateRoot),
+        beforeRecovery,
+      );
+      assert.equal(
+        existsSync(paths.transaction),
+        checkpoint === "supersede-receipt-durable",
+      );
+      assert.equal(
+        existsSync(paths.writeAhead),
+        checkpoint !== "supersede-receipt-durable",
+      );
+    });
+  }
+});
+
 test("existing legacy guard directory keeps its inode and blocks old stale takeover", (t) => {
   const fixture = createFixture(t, { legacyGuard: true });
   const guardPath = path.join(fixture.guardsRoot, "events.lock");
@@ -2957,7 +4526,6 @@ test("existing legacy guard directory keeps its inode and blocks old stale takeo
 test("expected-missing guard retry completes from permanent owner with missing inner lock", (t) => {
   const fixture = createFixture(t);
   const plan = planFixture(fixture);
-  seedPreparedTransaction(fixture, plan);
   const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
   const guard = paths.guards.events;
   privateDirectory(guard.directory);
@@ -3762,7 +5330,7 @@ test("real SIGKILL recovers every journaled quarantine deletion edge", async (t)
           );
           assert.equal(
             existsSync(journal.quarantinePath),
-            phase === "after-rename",
+            true,
           );
         }
 
@@ -3778,6 +5346,166 @@ test("real SIGKILL recovers every journaled quarantine deletion edge", async (t)
       });
     }
   }
+});
+
+test("empty quarantine recovery stays bound to its held directory across a path swap", async (t) => {
+  const fixture = createFixture(t);
+  const plan = planFixture(fixture);
+  assert.throws(
+    () =>
+      applyAutomationKernelGuardCutover({
+        plan,
+        ownerConfirmationFile: fixture.confirmationFile,
+        checkpoint(name) {
+          if (name === "transaction-prepared-durable") {
+            throw new Error("stop after prepared transaction");
+          }
+        },
+      }),
+    /stop after prepared transaction/,
+  );
+  const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+  const artifactDirectory = path.join(
+    paths.artifactRoot,
+    plan.parameters.cutoverId,
+  );
+  const quarantineRoot = privateDirectory(
+    path.join(artifactDirectory, ".recovery-quarantine"),
+  );
+  const heldQuarantineRoot = `${quarantineRoot}.held`;
+  const child = spawnNativePausedCutoverApply(
+    t,
+    fixture,
+    "after-list-bounded-scan",
+    { source: String(lstatSync(quarantineRoot).ino) },
+  );
+  const stdout = [];
+  child.stdout.on("data", (chunk) => stdout.push(Buffer.from(chunk)));
+  const exitPromise = waitForChildExit(child);
+
+  try {
+    await waitForNativeHelperPause(child, "after-list-bounded-scan");
+  } catch (error) {
+    await exitPromise;
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)} Child output: ${Buffer.concat(stdout).toString("utf8")}`,
+      { cause: error },
+    );
+  }
+  renameSync(quarantineRoot, heldQuarantineRoot);
+  privateDirectory(quarantineRoot);
+  releasePausedNativeHelper(child);
+  const exited = await exitPromise;
+  assert.equal(exited.code, 0);
+  assert.equal(exited.signal, null);
+  const outcome = JSON.parse(Buffer.concat(stdout).toString("utf8"));
+
+  assert.equal(outcome.ok, false);
+  assert.equal(outcome.code, "cutover_conflict");
+  assert.match(
+    outcome.message,
+    /bounded list directory changed during admission|recovery directory generation changed/,
+  );
+  assert.deepEqual(readdirSync(heldQuarantineRoot), []);
+  assert.deepEqual(readdirSync(quarantineRoot), []);
+  assert.equal(existsSync(paths.transaction), true);
+  assert.equal(existsSync(paths.writeAhead), false);
+  assert.equal(existsSync(paths.globalReceipt), false);
+  assert.equal(
+    existsSync(
+      path.join(
+        fixture.controlRoot,
+        ".kernel-guard-cutover-retired",
+        plan.parameters.cutoverId,
+        "legacy-quarantine-roots",
+      ),
+    ),
+    false,
+  );
+});
+
+test("lease quiescence stays bound to the held lease root across a path swap", async (t) => {
+  const fixture = createFixture(t);
+  const plan = planFixture(fixture);
+  const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+  const leasesRoot = path.join(fixture.controlRoot, "leases");
+  const heldLeasesRoot = `${leasesRoot}.held`;
+  const child = spawnNativePausedCutoverApply(
+    t,
+    fixture,
+    "after-list-bounded-scan",
+    { source: String(lstatSync(leasesRoot).ino) },
+  );
+  const stdout = [];
+  child.stdout.on("data", (chunk) => stdout.push(Buffer.from(chunk)));
+  const exitPromise = waitForChildExit(child);
+  await waitForNativeHelperPause(child, "after-list-bounded-scan");
+  renameSync(leasesRoot, heldLeasesRoot);
+  privateDirectory(leasesRoot);
+  writeFileSync(path.join(leasesRoot, "live-lease.json"), "{}\n", {
+    mode: 0o600,
+  });
+  releasePausedNativeHelper(child);
+  const exited = await exitPromise;
+  assert.equal(exited.code, 0);
+  assert.equal(exited.signal, null);
+  const outcome = JSON.parse(Buffer.concat(stdout).toString("utf8"));
+
+  assert.equal(outcome.ok, false);
+  assert.equal(outcome.code, "cutover_conflict");
+  assert.match(
+    outcome.message,
+    /bounded list directory changed during admission|lease root generation changed/,
+  );
+  assert.deepEqual(readdirSync(heldLeasesRoot), []);
+  assert.deepEqual(readdirSync(leasesRoot), ["live-lease.json"]);
+  assert.equal(existsSync(paths.transaction), false);
+  assert.equal(existsSync(paths.globalReceipt), false);
+});
+
+test("guard mode changes never follow a final-window path swap", (t) => {
+  const fixture = createFixture(t);
+  const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+  const guard = paths.guards.tasks;
+  const victim = privateDirectory(path.join(fixture.root, "mode-swap-victim"));
+  chmodSync(victim, 0o755);
+  const plan = planFixture(fixture);
+  const displaced = `${guard.directory}.held`;
+  let armed = false;
+  let swapped = false;
+
+  assert.throws(
+    () =>
+      applyAutomationKernelGuardCutover({
+        plan,
+        ownerConfirmationFile: fixture.confirmationFile,
+        checkpoint(name, details) {
+          if (
+            name === "guard-inner-marker-durable" &&
+            details?.guardName === "tasks" &&
+            !armed
+          ) {
+            chmodSync(guard.directory, 0o755);
+            armed = true;
+            return;
+          }
+          if (name === "guard-tasks-before-private-mode" && !swapped) {
+            swapped = true;
+            renameSync(guard.directory, displaced);
+            symlinkSync(victim, guard.directory);
+          }
+        },
+      }),
+    (error) =>
+      ["cutover_conflict", "cutover_source_drift"].includes(error?.code),
+  );
+
+  assert.equal(armed, true);
+  assert.equal(swapped, true);
+  assert.equal(lstatSync(guard.directory).isSymbolicLink(), true);
+  assert.equal(lstatSync(victim).mode & 0o7777, 0o755);
+  assert.equal(lstatSync(displaced).mode & 0o7777, 0o755);
+  assert.equal(existsSync(paths.globalReceipt), false);
 });
 
 test("real SIGKILL across every remaining durable migration edge is recoverable", async (t) => {
@@ -3918,6 +5646,469 @@ test("real SIGKILL across every remaining durable migration edge is recoverable"
       assert.equal(existsSync(`${paths.globalReceipt}.cutover.tmp`), false);
     });
   }
+});
+
+test("callback pathname swaps preserve foreign generations and fail closed", async (t) => {
+  await t.test("absent atomic destination appears before publication", (subtest) => {
+    const fixture = createFixture(subtest);
+    const plan = planFixture(fixture);
+    const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+    const foreignBytes = Buffer.from("unadmitted transaction generation\n");
+    let injected = false;
+
+    assert.throws(
+      () =>
+        applyAutomationKernelGuardCutover({
+          plan,
+          ownerConfirmationFile: fixture.confirmationFile,
+          checkpoint(name, details) {
+            if (
+              injected ||
+              name !== "transaction-temporary-durable" ||
+              details?.cleanup === true
+            ) {
+              return;
+            }
+            writeFileSync(paths.transaction, foreignBytes, { mode: 0o600 });
+            injected = true;
+          },
+        }),
+      (error) => error?.code === "cutover_conflict",
+    );
+
+    assert.equal(injected, true);
+    assert.deepEqual(readFileSync(paths.transaction), foreignBytes);
+    assert.equal(existsSync(`${paths.transaction}.cutover.tmp`), true);
+  });
+
+  await t.test("admitted atomic destination changes before exchange", (subtest) => {
+    const fixture = createFixture(subtest);
+    const plan = planFixture(fixture);
+    seedPreparedTransaction(fixture, plan);
+    const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+    const predecessorBytes = readFileSync(paths.transaction);
+    const admittedInode = lstatSync(paths.transaction).ino;
+    let replacementInode = null;
+    let swapped = false;
+
+    assert.throws(
+      () =>
+        applyAutomationKernelGuardCutover({
+          plan,
+          ownerConfirmationFile: fixture.confirmationFile,
+          checkpoint(name, details) {
+            if (
+              swapped ||
+              name !== "transaction-temporary-durable" ||
+              details?.cleanup === true
+            ) {
+              return;
+            }
+            unlinkSync(paths.transaction);
+            writeFileSync(paths.transaction, predecessorBytes, {
+              mode: 0o600,
+            });
+            replacementInode = lstatSync(paths.transaction).ino;
+            swapped = true;
+          },
+        }),
+      (error) => error?.code === "cutover_conflict",
+    );
+
+    assert.equal(swapped, true);
+    assert.notEqual(replacementInode, admittedInode);
+    assert.equal(lstatSync(paths.transaction).ino, replacementInode);
+    assert.deepEqual(readFileSync(paths.transaction), predecessorBytes);
+    assert.equal(existsSync(`${paths.transaction}.cutover.tmp`), true);
+  });
+
+  await t.test("normal write-ahead publication", (subtest) => {
+    const fixture = createFixture(subtest, { legacyWriter: true });
+    const plan = planFixture(fixture);
+    const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+    let replacementBytes = null;
+    let admittedInode = null;
+    let replacementInode = null;
+    let swapped = false;
+
+    assert.throws(() =>
+      applyAutomationKernelGuardCutover({
+        plan,
+        ownerConfirmationFile: fixture.confirmationFile,
+        checkpoint(name, details) {
+          if (
+            swapped ||
+            name !== "write-ahead-temporary-durable" ||
+            details?.cleanup === true
+          ) {
+            return;
+          }
+          replacementBytes = readFileSync(details.temporaryPath);
+          admittedInode = lstatSync(details.temporaryPath).ino;
+          unlinkSync(details.temporaryPath);
+          writeFileSync(details.temporaryPath, replacementBytes, {
+            mode: 0o600,
+          });
+          replacementInode = lstatSync(details.temporaryPath).ino;
+          swapped = true;
+        },
+      }),
+    );
+
+    assert.equal(swapped, true);
+    assert.notEqual(replacementInode, admittedInode);
+    assert.deepEqual(
+      readFileSync(`${paths.writeAhead}.cutover.tmp`),
+      replacementBytes,
+    );
+    assert.equal(existsSync(paths.writeAhead), false);
+  });
+
+  await t.test("write-ahead clear", (subtest) => {
+    const fixture = createFixture(subtest, { legacyWriter: true });
+    const plan = planFixture(fixture);
+    const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+    let replacementBytes = null;
+    let admittedInode = null;
+    let replacementInode = null;
+    let swapped = false;
+
+    assert.throws(() =>
+      applyAutomationKernelGuardCutover({
+        plan,
+        ownerConfirmationFile: fixture.confirmationFile,
+        checkpoint(name, details) {
+          if (
+            swapped ||
+            name !== "writer-claim-before-write-journal-written"
+          ) {
+            return;
+          }
+          assert.equal(details.writeAheadPath, paths.writeAhead);
+          replacementBytes = readFileSync(paths.writeAhead);
+          admittedInode = lstatSync(paths.writeAhead).ino;
+          unlinkSync(paths.writeAhead);
+          writeFileSync(paths.writeAhead, replacementBytes, { mode: 0o600 });
+          replacementInode = lstatSync(paths.writeAhead).ino;
+          swapped = true;
+        },
+      }),
+    );
+
+    assert.equal(swapped, true);
+    assert.notEqual(replacementInode, admittedInode);
+    assert.equal(lstatSync(paths.writeAhead).ino, replacementInode);
+    assert.deepEqual(readFileSync(paths.writeAhead), replacementBytes);
+  });
+
+  await t.test("unlinked claim temporary removal", (subtest) => {
+    const fixture = createFixture(subtest);
+    const plan = planFixture(fixture);
+    const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+    assert.throws(
+      () =>
+        applyAutomationKernelGuardCutover({
+          plan,
+          ownerConfirmationFile: fixture.confirmationFile,
+          checkpoint(name) {
+            if (name === "claims-transaction-durable") {
+              throw new Error("stop after claims");
+            }
+          },
+        }),
+      /stop after claims/,
+    );
+    const temporaryPath = `${paths.writerLock}.cutover-claim.tmp`;
+    const claimBytes = readFileSync(paths.writerLock);
+    writeFileSync(temporaryPath, claimBytes, { mode: 0o600 });
+    const admittedInode = lstatSync(temporaryPath).ino;
+    const supersedePlan = supersedePlanFixture(fixture, plan);
+    let replacementInode = null;
+    let swapped = false;
+
+    assert.throws(() =>
+      applyAutomationKernelGuardCutoverSupersede({
+        plan,
+        supersedePlan,
+        ownerConfirmationFile: fixture.confirmationFile,
+        checkpoint(name, details) {
+          if (
+            swapped ||
+            name !== "supersede-claim-temporary-before-remove" ||
+            details?.temporaryPath !== temporaryPath
+          ) {
+            return;
+          }
+          unlinkSync(temporaryPath);
+          writeFileSync(temporaryPath, claimBytes, { mode: 0o600 });
+          replacementInode = lstatSync(temporaryPath).ino;
+          swapped = true;
+        },
+      }),
+    );
+
+    assert.equal(swapped, true);
+    assert.notEqual(replacementInode, admittedInode);
+    assert.equal(lstatSync(temporaryPath).ino, replacementInode);
+    assert.deepEqual(readFileSync(temporaryPath), claimBytes);
+  });
+
+  await t.test("unlinked guard claim temporary removal", (subtest) => {
+    const fixture = createFixture(subtest);
+    const plan = planFixture(fixture);
+    const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+    assert.throws(
+      () =>
+        applyAutomationKernelGuardCutover({
+          plan,
+          ownerConfirmationFile: fixture.confirmationFile,
+          checkpoint(name) {
+            if (name === "claims-transaction-durable") {
+              throw new Error("stop after claims");
+            }
+          },
+        }),
+      /stop after claims/,
+    );
+    const ownerPath = paths.guards.events.owner;
+    const temporaryPath = `${ownerPath}.cutover-claim.tmp`;
+    const claimBytes = readFileSync(ownerPath);
+    writeFileSync(temporaryPath, claimBytes, { mode: 0o600 });
+    const admittedInode = lstatSync(temporaryPath).ino;
+    const supersedePlan = supersedePlanFixture(fixture, plan);
+    let replacementInode = null;
+    let swapped = false;
+
+    assert.throws(() =>
+      applyAutomationKernelGuardCutoverSupersede({
+        plan,
+        supersedePlan,
+        ownerConfirmationFile: fixture.confirmationFile,
+        checkpoint(name, details) {
+          if (
+            swapped ||
+            name !== "supersede-claim-temporary-before-remove" ||
+            details?.temporaryPath !== temporaryPath
+          ) {
+            return;
+          }
+          unlinkSync(temporaryPath);
+          writeFileSync(temporaryPath, claimBytes, { mode: 0o600 });
+          replacementInode = lstatSync(temporaryPath).ino;
+          swapped = true;
+        },
+      }),
+    );
+
+    assert.equal(swapped, true);
+    assert.notEqual(replacementInode, admittedInode);
+    assert.equal(lstatSync(temporaryPath).ino, replacementInode);
+    assert.deepEqual(readFileSync(temporaryPath), claimBytes);
+  });
+
+  for (const scenario of [
+    { name: "supersede successor rename", occurrence: 1, predecessor: false },
+    {
+      name: "supersede predecessor preservation",
+      occurrence: 2,
+      predecessor: true,
+    },
+  ]) {
+    await t.test(scenario.name, (subtest) => {
+      const { fixture, oldPlan, paths, supersedePlan } =
+        prepareSupersedeWriteAheadCrash(subtest, {
+          occurrence: scenario.occurrence,
+        });
+      const temporaryPath = `${paths.writeAhead}.cutover.tmp`;
+      const predecessorBytes = scenario.predecessor
+        ? readFileSync(paths.writeAhead)
+        : null;
+      const replacementBytes = readFileSync(temporaryPath);
+      const admittedInode = lstatSync(temporaryPath).ino;
+      let replacementInode = null;
+      let swapped = false;
+
+      assert.throws(() =>
+        applyAutomationKernelGuardCutoverSupersede({
+          plan: oldPlan,
+          supersedePlan,
+          ownerConfirmationFile: fixture.confirmationFile,
+          checkpoint(name) {
+            if (
+              swapped ||
+              name !==
+                "supersede-write-ahead-temporary-recovery-before-mutation"
+            ) {
+              return;
+            }
+            unlinkSync(temporaryPath);
+            writeFileSync(temporaryPath, replacementBytes, { mode: 0o600 });
+            replacementInode = lstatSync(temporaryPath).ino;
+            swapped = true;
+          },
+        }),
+      );
+
+      assert.equal(swapped, true);
+      assert.notEqual(replacementInode, admittedInode);
+      assert.equal(lstatSync(temporaryPath).ino, replacementInode);
+      assert.deepEqual(readFileSync(temporaryPath), replacementBytes);
+      if (predecessorBytes === null) {
+        assert.equal(existsSync(paths.writeAhead), false);
+      } else {
+        assert.deepEqual(readFileSync(paths.writeAhead), predecessorBytes);
+      }
+    });
+  }
+
+  await t.test("immutable receipt finalization", (subtest) => {
+    const fixture = createFixture(subtest);
+    const plan = planFixture(fixture);
+    const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+    let replacementBytes = null;
+    let admittedInode = null;
+    let replacementInode = null;
+    let temporaryPath = null;
+
+    assert.throws(() =>
+      applyAutomationKernelGuardCutover({
+        plan,
+        ownerConfirmationFile: fixture.confirmationFile,
+        checkpoint(name, details) {
+          if (temporaryPath !== null || name !== "receipt-artifact-linked") {
+            return;
+          }
+          temporaryPath = details.temporaryPath;
+          replacementBytes = readFileSync(temporaryPath);
+          admittedInode = lstatSync(temporaryPath).ino;
+          unlinkSync(temporaryPath);
+          writeFileSync(temporaryPath, replacementBytes, { mode: 0o600 });
+          replacementInode = lstatSync(temporaryPath).ino;
+        },
+      }),
+    );
+
+    assert.notEqual(temporaryPath, null);
+    assert.notEqual(replacementInode, admittedInode);
+    assert.equal(lstatSync(temporaryPath).ino, replacementInode);
+    assert.deepEqual(readFileSync(temporaryPath), replacementBytes);
+    assert.equal(existsSync(paths.globalReceipt), false);
+  });
+
+  await t.test("permanent marker finalization", (subtest) => {
+    const fixture = createFixture(subtest);
+    const plan = planFixture(fixture);
+    let replacementBytes = null;
+    let admittedInode = null;
+    let replacementInode = null;
+    let markerPath = null;
+    let temporaryPath = null;
+
+    assert.throws(() =>
+      applyAutomationKernelGuardCutover({
+        plan,
+        ownerConfirmationFile: fixture.confirmationFile,
+        checkpoint(name, details) {
+          if (temporaryPath !== null || name !== "guard-inner-marker-linked") {
+            return;
+          }
+          markerPath = details.filePath;
+          temporaryPath = details.temporaryPath;
+          replacementBytes = readFileSync(markerPath);
+          admittedInode = lstatSync(markerPath).ino;
+          unlinkSync(markerPath);
+          writeFileSync(markerPath, replacementBytes, { mode: 0o600 });
+          replacementInode = lstatSync(markerPath).ino;
+        },
+      }),
+    );
+
+    assert.notEqual(markerPath, null);
+    assert.notEqual(replacementInode, admittedInode);
+    assert.equal(lstatSync(markerPath).ino, replacementInode);
+    assert.deepEqual(readFileSync(markerPath), replacementBytes);
+    assert.equal(lstatSync(temporaryPath).ino, admittedInode);
+    assert.deepEqual(
+      readFileSync(markerPath),
+      automationKernelGuardMarkerBytes(),
+    );
+  });
+
+  await t.test("in-place rewrite target", (subtest) => {
+    const fixture = createFixture(subtest, { legacyWriter: true });
+    const plan = planFixture(fixture);
+    const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+    let replacementBytes = null;
+    let admittedInode = null;
+    let replacementInode = null;
+    let swapped = false;
+
+    assert.throws(() =>
+      applyAutomationKernelGuardCutover({
+        plan,
+        ownerConfirmationFile: fixture.confirmationFile,
+        checkpoint(name, details) {
+          if (swapped || name !== "writer-claim-before-write") return;
+          assert.equal(details.filePath, paths.writerLock);
+          replacementBytes = readFileSync(paths.writerLock);
+          admittedInode = lstatSync(paths.writerLock).ino;
+          unlinkSync(paths.writerLock);
+          writeFileSync(paths.writerLock, replacementBytes, { mode: 0o600 });
+          replacementInode = lstatSync(paths.writerLock).ino;
+          swapped = true;
+        },
+      }),
+    );
+
+    assert.equal(swapped, true);
+    assert.notEqual(replacementInode, admittedInode);
+    assert.equal(lstatSync(paths.writerLock).ino, replacementInode);
+    assert.deepEqual(readFileSync(paths.writerLock), replacementBytes);
+    assert.equal(existsSync(paths.writeAhead), true);
+  });
+
+  await t.test("quarantine deletion target", (subtest) => {
+    const fixture = createFixture(subtest, { legacyGuard: true });
+    const legacyChild = path.join(
+      fixture.guardsRoot,
+      "events.lock",
+      "legacy-child.json",
+    );
+    writeFileSync(legacyChild, '{"legacy":true}\n', { mode: 0o600 });
+    const plan = planFixture(fixture);
+    let quarantinePath = null;
+    let admittedInode = null;
+    let replacementInode = null;
+    let replacementBytes = null;
+
+    assert.throws(() =>
+      applyAutomationKernelGuardCutover({
+        plan,
+        ownerConfirmationFile: fixture.confirmationFile,
+        checkpoint(name, details) {
+          if (
+            quarantinePath !== null ||
+            name !== "guard-events-legacy-remove-after-rename"
+          ) {
+            return;
+          }
+          quarantinePath = details.quarantinePath;
+          admittedInode = lstatSync(quarantinePath).ino;
+          replacementBytes = readFileSync(quarantinePath);
+          unlinkSync(quarantinePath);
+          writeFileSync(quarantinePath, replacementBytes, {
+            mode: 0o600,
+          });
+          replacementInode = lstatSync(quarantinePath).ino;
+        },
+      }),
+    );
+
+    assert.notEqual(quarantinePath, null);
+    assert.notEqual(replacementInode, admittedInode);
+    assert.equal(lstatSync(quarantinePath).ino, replacementInode);
+    assert.deepEqual(readFileSync(quarantinePath), replacementBytes);
+  });
 });
 
 test("old writer wx fails after cutover and inner kernel contention survives SIGKILL", async (t) => {

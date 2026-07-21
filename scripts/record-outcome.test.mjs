@@ -118,9 +118,9 @@ function acquireOwnerPlanLease(stateRoot, plan, nowMs = Date.now()) {
 }
 
 function prepareValidatedTask(stateRoot, taskId) {
-  const nowMs = Date.now() - 60_000;
   const controller = acquireActorLease(stateRoot, "freed-stability-controller");
   const nightly = acquireActorLease(stateRoot, "freed-nightly-runner");
+  const nowMs = Date.now() + 1_000;
   createTask({
     stateRoot,
     taskId,
@@ -152,7 +152,25 @@ function prepareLiveMergedOutcomeBackfillFixture(stateRoot) {
   mkdirSync(paths.controlRoot, { recursive: true, mode: 0o700 });
   chmodSync(paths.controlRoot, 0o700);
   const taskId = "authenticated-essay-capture-pr-642";
-  const mergedAt = "2026-07-14T21:56:07.850Z";
+  const historyBytes = readFileSync(
+    path.join(
+      __dirname,
+      "fixtures",
+      "legacy-control-event-history.jsonl",
+    ),
+  );
+  const history = historyBytes
+    .toString("utf8")
+    .trimEnd()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  const historicalEvent = history.find(
+    (event) =>
+      event.eventId === "37db3aa0-7a37-4341-a13c-5bfe6485f393" &&
+      event.taskId === taskId,
+  );
+  assert.ok(historicalEvent);
+  const mergedAt = historicalEvent.ts;
   const providerApprovalReference =
     "sha256:b89bcf1c2c9aaa6277618451cc9329d4689da038deb6e94f6776eccea5bd4ab9";
   const task = {
@@ -176,39 +194,6 @@ function prepareLiveMergedOutcomeBackfillFixture(stateRoot) {
     },
     mergedAt,
   };
-  const historicalEvent = {
-    schemaVersion: 1,
-    eventId: "37db3aa0-7a37-4341-a13c-5bfe6485f393",
-    type: "task_transitioned",
-    ts: mergedAt,
-    actor: "freed-owner",
-    taskId,
-    taskRevision: 6,
-    manifestRevision: 7,
-    observerAuthority: "merge-safe",
-    providerAuthority: "approved",
-    providerApprovalReference,
-    data: {
-      fromState: "validated",
-      toState: "merged",
-      authorizationProvenance: {
-        leaseName: "owner-governance",
-        leaseAcquiredAt: "2026-07-14T21:56:07.712Z",
-        credentialKind: "owner-confirmation",
-        ownerConfirmationId: "authenticated-essay-capture-merged",
-        ownerConfirmationTaskId: taskId,
-        ownerConfirmationIntentDigest: "2".repeat(64),
-        ownerConfirmationDigest: "8".repeat(64),
-        ownerConfirmationReference: "authenticated-essay-capture-current-task",
-        ownerConfirmationApprovedBy: "AubreyF",
-        ownerConfirmationApprovalReference:
-          "The owner explicitly approved this exact lifecycle operation.",
-        ownerConfirmationApprovedAt: "2026-07-14T21:56:06.623Z",
-        ownerConfirmationExpiresAt: "2026-07-14T23:56:07.623Z",
-      },
-      mergedAt,
-    },
-  };
   writeFileSync(
     paths.taskManifest,
     `${JSON.stringify({
@@ -219,90 +204,113 @@ function prepareLiveMergedOutcomeBackfillFixture(stateRoot) {
     })}\n`,
     { mode: 0o600 },
   );
-  writeFileSync(paths.events, `${JSON.stringify(historicalEvent)}\n`, {
+  writeFileSync(paths.events, historyBytes, {
     mode: 0o600,
   });
   return { historicalEvent, task, taskId, paths };
 }
 
 function prepareSoakingTask(stateRoot, taskId, build = "v26.7.203-dev") {
-  const controller = acquireActorLease(stateRoot, "freed-stability-controller");
-  const nightly = acquireActorLease(stateRoot, "freed-nightly-runner");
-  const lifecycleStartMs = Date.parse("2026-07-09T18:00:00Z");
-  createTask({
-    stateRoot,
-    taskId,
-    ...controller,
-    observerAuthority: "merge-safe",
-    providerAuthority: "forbidden",
-    details: { behavioral: true },
-    nowMs: lifecycleStartMs,
-  });
-  for (const [index, [state, authentication]] of [
-    ["triaged", controller],
-    ["approved_for_pr", controller],
-    ["implemented", nightly],
-    ["validated", nightly],
-  ].entries()) {
+  const evidenceWindowMs = 6 * 60 * 60_000;
+  const realDateNow = Date.now;
+  let eventNowMs = realDateNow() - evidenceWindowMs - 60_000;
+  Date.now = () => eventNowMs;
+  try {
+    const controller = acquireActorLease(
+      stateRoot,
+      "freed-stability-controller",
+    );
+    eventNowMs += 100;
+    const nightly = acquireActorLease(stateRoot, "freed-nightly-runner");
+    eventNowMs += 900;
+    createTask({
+      stateRoot,
+      taskId,
+      ...controller,
+      observerAuthority: "merge-safe",
+      providerAuthority: "forbidden",
+      details: { behavioral: true },
+      nowMs: eventNowMs,
+    });
+    for (const [state, authentication] of [
+      ["triaged", controller],
+      ["approved_for_pr", controller],
+      ["implemented", nightly],
+      ["validated", nightly],
+    ]) {
+      eventNowMs += 1_000;
+      transitionTask({
+        stateRoot,
+        taskId,
+        toState: state,
+        ...authentication,
+        nowMs: eventNowMs,
+      });
+    }
+    const ledger = automationControlPaths(stateRoot).outcomes;
+    appendOutcomeLedger(
+      ledger,
+      {
+        id: taskId,
+        taskId,
+        kind: "task",
+        outcome: "merged",
+        evidenceDigest: "1".repeat(64),
+      },
+      {
+        stateRoot,
+        authentication: nightly,
+        now: new Date((eventNowMs += 1_000)),
+      },
+    );
+    appendOutcomeLedger(
+      ledger,
+      {
+        id: taskId,
+        taskId,
+        kind: "task",
+        outcome: "installed",
+        installedIdentity: {
+          version: build.replace(/^v/i, ""),
+          commitSha: "a".repeat(40),
+          channel: "dev",
+        },
+        evidenceDigest: "2".repeat(64),
+      },
+      {
+        stateRoot,
+        authentication: nightly,
+        now: new Date((eventNowMs += 1_000)),
+      },
+    );
+    eventNowMs += 1_000;
     transitionTask({
       stateRoot,
       taskId,
-      toState: state,
-      ...authentication,
-      nowMs: lifecycleStartMs + (index + 1) * 60_000,
+      toState: "soaking",
+      ...nightly,
+      nowMs: eventNowMs,
     });
+    const task = readTask({ stateRoot, taskId });
+    const sourceStartMs = Date.parse(task.soakStartedAt);
+    return {
+      evidenceWindowEnd: new Date(
+        sourceStartMs + evidenceWindowMs,
+      ).toISOString(),
+      sourceStartMs,
+    };
+  } finally {
+    Date.now = realDateNow;
   }
-  const ledger = automationControlPaths(stateRoot).outcomes;
-  appendOutcomeLedger(
-    ledger,
-    {
-      id: taskId,
-      taskId,
-      kind: "task",
-      outcome: "merged",
-      evidenceDigest: "1".repeat(64),
-    },
-    {
-      stateRoot,
-      authentication: nightly,
-      now: new Date(lifecycleStartMs + 5 * 60_000),
-    },
-  );
-  appendOutcomeLedger(
-    ledger,
-    {
-      id: taskId,
-      taskId,
-      kind: "task",
-      outcome: "installed",
-      installedIdentity: {
-        version: build.replace(/^v/i, ""),
-        commitSha: "a".repeat(40),
-        channel: "dev",
-      },
-      evidenceDigest: "2".repeat(64),
-    },
-    {
-      stateRoot,
-      authentication: nightly,
-      now: new Date(lifecycleStartMs + 6 * 60_000),
-    },
-  );
-  transitionTask({
-    stateRoot,
-    taskId,
-    toState: "soaking",
-    ...nightly,
-    nowMs: lifecycleStartMs + 7 * 60_000,
-  });
 }
 
-function writeVerdict(dir, { taskId, build, windowEnd }) {
+function writeVerdict(dir, { taskId, build, windowEnd, sourceStartMs }) {
   return writeMeasuredOutcomeVerdict(dir, {
     taskId,
     version: build.replace(/^v/i, ""),
     commitSha: "a".repeat(40),
     windowEnd,
+    sourceStartMs,
     before: 30,
     after: 4,
   }).verdictPath;
@@ -716,12 +724,16 @@ test("record-outcome CLI appends a ledger line at the given path", () => {
   );
   const ledger = path.join(dir, "state", "outcomes.jsonl");
   const stateRoot = path.join(dir, "state");
-  prepareSoakingTask(stateRoot, "W1-01");
+  const { evidenceWindowEnd, sourceStartMs } = prepareSoakingTask(
+    stateRoot,
+    "W1-01",
+  );
   const authentication = acquireActorLease(stateRoot, "freed-release-verifier");
   const verdictPath = writeVerdict(dir, {
     taskId: "W1-01",
     build: "v26.7.203-dev",
-    windowEnd: "2026-07-10T12:00:00Z",
+    windowEnd: evidenceWindowEnd,
+    sourceStartMs,
   });
 
   const stdout = execFileSync(
@@ -741,7 +753,7 @@ test("record-outcome CLI appends a ledger line at the given path", () => {
       "--notes",
       "test entry",
       "--evidence-window-end",
-      "2026-07-10T12:00:00Z",
+      evidenceWindowEnd,
       "--ledger",
       ledger,
       ...authenticationArgs(stateRoot, authentication, verdictPath),
@@ -783,7 +795,7 @@ test("record-outcome CLI appends a ledger line at the given path", () => {
     delta: -26,
     unit: "MB/sample-hour",
   });
-  assert.equal(entry.evidenceWindowEnd, "2026-07-10T12:00:00Z");
+  assert.equal(entry.evidenceWindowEnd, evidenceWindowEnd);
   assert.equal(entry.evidence.verdictReference, realpathSync(verdictPath));
   assert.equal(entry.authentication.actor, "freed-release-verifier");
   assert.ok(entry.ts);

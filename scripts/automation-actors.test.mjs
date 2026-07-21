@@ -112,12 +112,7 @@ function fixture(t) {
     "export const kernelGuardContract = true;\n",
   );
   writeFileSync(
-    path.join(
-      repoRoot,
-      "scripts",
-      "lib",
-      "outcome-ledger-repair-contract.mjs",
-    ),
+    path.join(repoRoot, "scripts", "lib", "outcome-ledger-repair-contract.mjs"),
     "export const outcomeLedgerRepairContract = true;\n",
   );
   writeFileSync(
@@ -184,9 +179,7 @@ function fixture(t) {
         actor: args[args.indexOf("--actor") + 1],
         stateRoot: args[args.indexOf("--state-root") + 1],
         leaseName: args[args.indexOf("--lease-name") + 1],
-        maxLeaseLifetimeMs: Number(
-          args[args.indexOf("--max-lifetime-ms") + 1],
-        ),
+        maxLeaseLifetimeMs: Number(args[args.indexOf("--max-lifetime-ms") + 1]),
         credentialSha256: args[args.indexOf("--credential-sha256") + 1],
         keychainService: args[args.indexOf("--keychain-service") + 1],
         keychainAccount: args[args.indexOf("--keychain-account") + 1],
@@ -415,12 +408,7 @@ test("command parsing accepts only the five actor contracts", () => {
     stateRoot: undefined,
   });
   assert.throws(
-    () =>
-      parseCommand([
-        "accept-host",
-        "--actor",
-        "freed-runtime-observer",
-      ]),
+    () => parseCommand(["accept-host", "--actor", "freed-runtime-observer"]),
     (error) =>
       error instanceof AutomationActorsError && error.code === "invalid_actor",
   );
@@ -521,16 +509,8 @@ test("provision all installs one content-addressed runtime and all public bindin
     path.join(runtimeDirectory, "node"),
     path.join(runtimeDirectory, "automation-control.mjs"),
     path.join(runtimeDirectory, "lib", "automation-control.mjs"),
-    path.join(
-      runtimeDirectory,
-      "lib",
-      "automation-kernel-guard-contract.mjs",
-    ),
-    path.join(
-      runtimeDirectory,
-      "lib",
-      "outcome-ledger-repair-contract.mjs",
-    ),
+    path.join(runtimeDirectory, "lib", "automation-kernel-guard-contract.mjs"),
+    path.join(runtimeDirectory, "lib", "outcome-ledger-repair-contract.mjs"),
     path.join(runtimeDirectory, "lib", "lease-archive-move.py"),
   ];
   for (const runtimePath of runtimePaths) {
@@ -659,6 +639,11 @@ test("provisioned runtime resolves the automation control local import closure",
       "utf8",
     ),
   );
+  rmSync(path.join(value.repoRoot, "scripts"), {
+    recursive: true,
+    force: true,
+  });
+  assert.equal(existsSync(path.join(value.repoRoot, "scripts")), false);
   const launched = spawnSync(
     binding.nodePath,
     [binding.controlEntryPath, "--help"],
@@ -1292,11 +1277,7 @@ function writeAcquisitionBinding(value, actor) {
   return binding;
 }
 
-function writeActorCredential(
-  value,
-  actor,
-  tokenSha256 = "a".repeat(64),
-) {
+function writeActorCredential(value, actor, tokenSha256 = "a".repeat(64)) {
   const credentialDirectory = path.join(
     value.stateRoot,
     "control",
@@ -1329,8 +1310,7 @@ function replaceActorRuntime(value, actor) {
     controlLibrarySha256: createHash("sha256")
       .update(controlLibraryContents)
       .digest("hex"),
-    kernelGuardContractSha256:
-      installedBinding.kernelGuardContractSha256,
+    kernelGuardContractSha256: installedBinding.kernelGuardContractSha256,
     outcomeLedgerRepairContractSha256:
       installedBinding.outcomeLedgerRepairContractSha256,
     leaseArchiveHelperSha256: installedBinding.leaseArchiveHelperSha256,
@@ -1467,7 +1447,10 @@ test("acquire cleans a bounded handoff returned with SIGINT or SIGTERM status", 
     const originalRunner = value.dependencies.runner;
     value.dependencies.runner = (executable, args, options) => {
       const result = originalRunner(executable, args, options);
-      if (executable === binding.launcherPath && args[0] === "--acquire-lease") {
+      if (
+        executable === binding.launcherPath &&
+        args[0] === "--acquire-lease"
+      ) {
         return { ...result, status };
       }
       return result;
@@ -1808,6 +1791,13 @@ test("public binding validation pins all runtime files to one digest directory",
     path.dirname(path.dirname(binding.controlLibraryPath)),
     runtimeDirectory,
   );
+  for (const libraryPath of [
+    binding.kernelGuardContractPath,
+    binding.outcomeLedgerRepairContractPath,
+    binding.leaseArchiveHelperPath,
+  ]) {
+    assert.equal(path.dirname(path.dirname(libraryPath)), runtimeDirectory);
+  }
 });
 
 test("all-actor verification and acceptance require one runtime digest", (t) => {
@@ -1859,7 +1849,10 @@ test("accept-host proves every installed actor lifecycle without exposing creden
   assert.equal(result.accepted, true);
   assert.equal(result.records.length, AUTOMATION_ACTOR_IDS.length);
   assert.match(result.runtimeDigest, /^[0-9a-f]{64}$/);
-  assert.equal(new Set(result.records.map((record) => record.launcherSha256)).size, 1);
+  assert.equal(
+    new Set(result.records.map((record) => record.launcherSha256)).size,
+    1,
+  );
   for (const record of result.records) {
     assert.deepEqual(
       {
@@ -1906,10 +1899,7 @@ test("accept-host proves every installed actor lifecycle without exposing creden
       action !== "show",
     );
     assert.equal(
-      Object.hasOwn(
-        call.options.env,
-        "FREED_AUTOMATION_LEASE_OPERATION_ID",
-      ),
+      Object.hasOwn(call.options.env, "FREED_AUTOMATION_LEASE_OPERATION_ID"),
       action !== "show",
     );
     if (action !== "show") {
@@ -1976,9 +1966,7 @@ test("accept-host retries a lost heartbeat response with the exact caller identi
   value.dependencies.runner = (executable, args, options) => {
     const result = originalRunner(executable, args, options);
     if (args[1] !== "lease" || args[2] !== "heartbeat") return result;
-    retryOperationIds.push(
-      options.env.FREED_AUTOMATION_LEASE_OPERATION_ID,
-    );
+    retryOperationIds.push(options.env.FREED_AUTOMATION_LEASE_OPERATION_ID);
     if (!responseLost) {
       responseLost = true;
       return { status: 1, stdout: "", stderr: "response lost" };
@@ -2083,8 +2071,7 @@ test("accept-host re-attests all five actors before comparing complete identitie
     AUTOMATION_ACTOR_IDS.length,
   );
   assert.equal(
-    value.calls.filter((call) => call.args[0] === "--attest-readiness")
-      .length,
+    value.calls.filter((call) => call.args[0] === "--attest-readiness").length,
     AUTOMATION_ACTOR_IDS.length * 2,
   );
 });
@@ -2134,10 +2121,7 @@ test("accept-host stops at the first failure and releases the acquired lease in 
     value.calls
       .filter((call) => call.args[1] === "lease" && call.args[2] === "release")
       .map((call) => call.args[call.args.indexOf("--name") + 1]),
-    [
-      AUTOMATION_ACTORS[AUTOMATION_ACTOR_IDS[0]].leaseName,
-      failedLease,
-    ],
+    [AUTOMATION_ACTORS[AUTOMATION_ACTOR_IDS[0]].leaseName, failedLease],
   );
 });
 
@@ -2255,7 +2239,10 @@ test("accept-host stops when release fails", (t) => {
     ),
     false,
   );
-  assert.equal(value.liveLeases.has(AUTOMATION_ACTORS[firstActor].leaseName), true);
+  assert.equal(
+    value.liveLeases.has(AUTOMATION_ACTORS[firstActor].leaseName),
+    true,
+  );
 });
 
 test("accept-host fails if release does not actually clear the live lease", (t) => {

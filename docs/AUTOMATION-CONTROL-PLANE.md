@@ -74,8 +74,9 @@ Every actor specification also requires `trusted-launcher` and
 2. A root-owned immutable launcher binding at
    `/Library/Application Support/Freed/automation-actor-launchers/<actor>.json`.
 3. The root-owned executable and exact SHA-256 digest named by that binding.
-4. Root-owned pinned copies of the repo Node binary, control entry, and control
-   library under
+4. Root-owned pinned copies of the repo Node binary, control entry, control
+   library, kernel guard contract, outcome ledger repair contract, and lease
+   archive helper under
    `/Library/Application Support/Freed/automation-actor-runtimes/<runtime-digest>/`.
 5. The matching non-secret Keychain item metadata for service
    `freed-automation-actor` and account `<actor>`.
@@ -293,6 +294,94 @@ its stable event ID. A failed caller can therefore leave prepared work, but it
 cannot leave an unexplained task revision permanently. Use
 `scripts/automation-control.mjs` instead of editing the JSON manually.
 
+### Generic authority file protocol
+
+Generic automation authority files use the pinned helper's
+`freed-authority-file-operation-v1` protocol. A publication admits the
+canonical file and its parent through held descriptors, then creates or
+recovers at most one mode `0600` staging generation for that canonical
+basename. Targeted reads use `authority-entry-inventory` through the held
+parent descriptor before and after the exact byte read. The path-opened file
+must be the same device and inode, retain every admitted metadata field, and
+match the descriptor-proved digest. Bulk retirement admission uses
+`authority-retirement-inventory` through the held retirement-directory
+descriptor and requires two stable sorted scans. A path listing or a
+same-content path is never sufficient authority.
+
+`authority-stage-create` creates a new provisional stage exclusively.
+`authority-stage-rewrite` may complete an interrupted provisional stage only
+through the same held inode. Its exact name is
+`.<basename>.authority.<namespaceDigest>.staging`. Once complete, an exclusive
+rename binds the proposed inode to
+`.<basename>.authority.<namespaceDigest>.<successorStableDigest>.tmp`. A
+replacement commits with `authority-exchange`, an atomic swap that leaves the
+exact predecessor at that ready name while the proposed generation becomes
+canonical. A create into a missing canonical name uses `authority-retire` as
+an exclusive rename. Every operation syncs and verifies the affected
+directories before reporting success.
+
+The version 3 staging namespace binds the canonical path, caller-owned
+operation ID, proposed content digest, full predecessor generation, and
+admitted parent generation. The full predecessor identity contains device,
+inode, mode, link count, user ID, group ID, size, modification time, change
+time, and SHA-256 content digest. The parent identity contains device, inode,
+mode, and user ID. The ready name adds a stable successor digest containing
+device, inode, mode, link count, user ID, group ID, size, modification time,
+and content digest. It intentionally excludes change time because a native
+rename changes that timestamp without changing the file generation. Content
+equality alone never authorizes recovery. A same-content file on a different
+inode is a foreign generation and fails closed. A changed parent generation
+also fails closed.
+
+A replacement can recover after response loss because the ready name retains
+the exact predecessor while the canonical entry retains the exact successor.
+A create-only rename consumes its only ready-name inode witness. A new process
+therefore never infers create-only success from canonical bytes alone. The
+higher-level write-ahead transaction or deterministic event recovery must
+reconcile that completed create. Same-process recovery may use the still-held
+staged identity.
+
+Canonical removal and the quarantine of partial or unproven stages use
+`authority-retire`. It moves only the exact held source generation with an
+exclusive native rename, never an unlink or an overwrite. Retired generations
+remain under the source directory's private mode `0700`
+`.authority-retirements/` directory. Before each retirement, the control plane
+uses a held-directory bounded listing and an exact rescan. The hard limits are
+100,000 entries and 4,294,967,296 total bytes. The local filesystem must retain
+at least 1,073,741,824 free bytes after reserving the incoming generation.
+Crossing any bound fails before mutation. Cleanup of this retained authority
+history requires a separate owner-governed lifecycle. A retry first proves an
+already completed exact retirement and returns it without requiring new
+capacity or filesystem headroom. If the source is missing and no retirement
+directory already exists, recovery fails closed without creating that
+directory. The retained history is deliberately bounded, not infinitely
+live. Reaching 100,000 entries or 4,294,967,296 bytes pauses new retirements
+until that separate cleanup lifecycle runs.
+
+Task transaction recovery recognizes one crash-stranded pre-WAL stage per
+canonical transaction name. A complete, digest-matching, schema-valid stage is
+promoted to the canonical write-ahead record and normal transaction recovery
+continues. A partial, malformed, or otherwise unprovable stage is preserved by
+exact-generation retirement, after which later task mutation can proceed. A
+second stage, a mismatched namespace, or a canonical transaction beside its
+stage fails closed.
+
+The generic authority publication path may call only
+`authority-stage-create`, `authority-stage-rewrite`, `authority-exchange`, and
+`authority-retire`. It must not call the helper's legacy `replace-durable` or
+`remove-durable` operations. Those operations cannot preserve a foreign
+generation swapped into the final validation window.
+
+When `writeJsonAtomic` receives an admitted expected snapshot, it performs no
+directory creation or permission repair before proving that exact snapshot.
+The filesystem protocol protects cooperative production writers and crash
+recovery. It does not claim to defend against a separate, continuously hostile
+process running as the same user, which can mutate the user's files outside
+the protocol. Production writers rely on the kernel and filesystem guards to
+exclude one another before entering this protocol.
+
+### Kernel guard cutover
+
 Task, event, and outcome writers use one durable, old-compatible kernel-lock
 cutover. macOS uses `/usr/bin/lockf`. Linux uses `/usr/bin/flock`. Task, event,
 and lease guards retain the historical mode `0700` directory shape. Each
@@ -371,10 +460,14 @@ preceded by one durable write-ahead record. That record binds the exact device,
 inode, source bytes, target bytes, mode, operation, and phase before the first
 canonical write. Recovery accepts only the exact source, exact target, or the
 bounded target-prefix state produced by an interrupted write on that same
-inode. Planned removals first move the exact occurrence into a deterministic
-private quarantine, sync both parents, remove it, and advance the same journal
-before cleanup. An empty quarantine left after journal unlink is recovered
-idempotently. Any unbound occurrence fails closed.
+inode. Transaction and write-ahead publication use the pinned
+`scripts/lib/lease-archive-move.py` helper's `rename-durable` and
+`exchange-durable` operations. Exact files and directory generations retired by
+cutover or supersede move with native exclusive rename into
+`<stateRoot>/control/.kernel-guard-cutover-retired/<cutoverId>/...`. They remain
+retained and are never deleted by successful execution or recovery. Recovery
+validates the exact retired generations and journal state before advancing. Any
+unbound occurrence fails closed.
 
 The first validated owner confirmation is copied into an immutable private
 authorization artifact before the prepared transaction is published. Each
@@ -435,7 +528,17 @@ files, completed cutover transaction, archive, or receipt.
 The immutable supersede receipt preserves the exact raw owner confirmation,
 its raw and canonical digests, canonical source path, and validation time. A
 retry may use a fresh live confirmation, but it cannot rewrite the authority
-evidence already bound to a durable supersede receipt.
+evidence already bound to a durable supersede receipt. If the canonical
+transaction was already retired and the caller lost the response, a read-only
+retry may recover the completed receipt without another live confirmation or
+an unchanged task. That terminal recovery requires the exact bootstrap marker,
+no transaction or write-ahead residue, the preserved superseded transaction,
+the durable receipt, and the complete restored source snapshot with every
+relative path still intact. Any ambiguous temporary file, renamed source
+entry, or incomplete retirement fails closed and must be reconciled through
+the original operation. A supersede-scoped write-ahead temporary may recover
+only under a live owner confirmation, the exact preserved supersede plan, and
+the same journal generation. Completed response recovery never admits one.
 
 The successful task path is:
 
@@ -487,7 +590,65 @@ lease acquisition, heartbeat, takeover, and release. Observers may append other
 stable event types with the CLI. The event log explains how state changed. It
 does not replace the atomic current manifest. Task transactions make manifest
 and event updates recoverable as one operation. They are internal recovery
-records, not a second task queue.
+records, not a second task queue. Generic event writers cannot claim a built-in
+task, lease, outcome, or repair type, or an identity in one of their
+deterministic namespaces.
+
+Every task lifecycle event and every outcome audit event is authorized by the
+lease that writes it. The event timestamp must be at or after the authorizing
+lease's `acquiredAt` timestamp and strictly before that lease's `expiresAt`
+timestamp. A timestamp before acquisition, at expiry, or after expiry fails
+closed with `lease_event_time_invalid`; a current lease cannot authorize a
+historical event.
+Current mutation admission also rejects a not-yet-active lease when the current
+time is before `acquiredAt`, and an expired lease when the current time is at or
+after `expiresAt`.
+
+Continuous outcome health reconstructs each task's authority and immutable
+behavioral classification from its exact creation and owner authority-update
+events in physical order. Manifest revisions must advance exactly once across
+the global physical order. Each task also carries one state, authority,
+behavioral classification, revision, pending-outcome, and last-transition
+cursor. A transition or outcome reservation is trusted only when it advances
+that exact task cursor and matches the authority already active at that line.
+Finalization is the only lifecycle event allowed to keep the same task revision,
+and it must consume the exact pending reservation. Later task state cannot
+retroactively authorize older history. One byte-frozen pre-hardening transition
+is the sole pre-acquisition actor-credential compatibility. It is accepted only
+as a closed bundle containing that exact transition, its unique deterministic
+outcome event, and exactly one matching authenticated ledger row. A missing,
+duplicate, UUID-substituted, or byte-drifted bundle part fails closed. No generic
+orphan-event or historical outcome-transition compatibility exists. The first
+physical lifecycle revision must be 1 unless that exact pinned checkpoint is
+the retained history prefix.
+
+Current `task_created` events carry one explicit boolean `behavioral` field in
+their canonical event data. Continuous health compares the event-derived value
+to the current task manifest. It also requires the exact task ID set in history
+to equal the exact task ID set in the manifest, and requires the final global
+history revision, or zero for empty history, to equal the manifest revision.
+Two retained pre-field task creations and one retained orphan transition are
+admitted only by their complete pinned event digests and pinned behavioral
+classifications. Adding the new field to those frozen events, removing a task,
+inventing a task, or changing only the manifest classification fails closed.
+
+Credential provenance resolves through one indexed, unique, preceding lease
+acquisition. Continuous history then replays exact, unique, canonical heartbeat
+events in physical order. Each heartbeat must occur before the current effective
+expiry and may extend authority only up to the actor's absolute lease lifetime
+and any owner-confirmation expiry. Publisher acquisition is exactly 30 minutes.
+Ambiguous acquisition or heartbeat identities fail closed. The complete
+pre-transaction lease-event prefix is admitted only through the exact event
+digests pinned from the full retained host history. The complete history fixture
+is the compatibility proof. A curated subsequence is not a valid history because
+omitting release events changes lease lifetime sequencing. An invented or
+drifted raw UUID lease event remains invalid.
+
+Legacy outcome reservation and direct outcome finalization use that same exact
+history replay before mutating the manifest. They reject extra fields,
+noncanonical identities, duplicates, broken provenance, authority drift, stale
+task revisions, and wrong physical order. Another task may advance the global
+manifest without invalidating an unchanged target task cursor.
 
 ## Writer leases
 
@@ -503,10 +664,13 @@ The lease record contains:
 - provider authority
 
 Heartbeat and release require the exact token returned by acquisition. An
-active lease cannot be stolen. A caller may take over an expired lease, or an
-unreadable initialization directory after the orphan grace period. Takeover is
-recorded as an event with the previous owner data. Do not delete a lease to make
-a second runner fit.
+active lease cannot be stolen. A caller may take over an expired, readable
+lease. Takeover is recorded as an event with the previous owner data. A
+recordless canonical lease directory is neither a lease nor proof that an
+earlier acquisition failed. Acquisition and inspection reject it with
+`lease_repair_required` before reading an external credential. It requires a
+separate explicit owner-governed repair. Do not delete a lease directory to
+make a second runner fit.
 
 Read-only observers do not need a lease merely to read or ingest evidence. The
 runtime observer must acquire its canonical lease before it appends a control
@@ -521,25 +685,63 @@ the caller also creates and retains the high-entropy lease token before the
 control process starts. Transaction and receipt JSON contain only the token's
 SHA-256 digest. Plaintext token bytes may exist only in the canonical lease or
 private mode `0700` staging needed to recover the same caller handoff.
+An operation ID is either one canonical lowercase UUID version 4 or exactly 64
+lowercase hexadecimal characters. The control plane does not trim, lowercase,
+or otherwise repair caller input. A spelling change is a different and invalid
+recovery request.
 
-Each transaction binds the operation, canonical request digest, stable event ID
-and timestamp, exact event payload, exact redacted before and after lease
-records, before and after record digests, operation-specific result receipt,
-capability movement, and prior takeover summary when applicable. Its durable
-phases are `prepared`, `state-committed`, `event-appended`, and `complete`.
+Each transaction persists the complete canonical redacted request object and
+its SHA-256 digest. The deterministic audit event carries that same request
+digest. The transaction also binds the operation, stable event ID and
+timestamp, exact event payload, exact redacted before and after lease records,
+before and after record digests, operation-specific result receipt, capability
+movement, and prior takeover summary when applicable. Its durable phases are
+`prepared`, `state-committed`, `event-appended`, and `complete`.
 Preparation happens before capability consumption, takeover removal, or lease
 mutation. Under lock order lease guard then event guard, recovery classifies
 canonical state and the exact event as before, after, or conflict. It finishes
 only a deterministic missing step. An unknown-token live lease is never an
 acceptable recovery result.
+Before state commit, recovery still proves or restores the exact credential
+movement. Once the exact after-state is durable, recovery is bound to the
+transaction, request digest, retained token digest, lease bytes, and audit
+event. Rotating or removing the original external credential cannot strand
+that already committed lease.
 
 Every lease inspection, authority check, and mutation recovers the exact
 transaction under the lease guard or fails closed while one remains pending.
 An exact completed retry returns its immutable receipt when the operation ID,
 request digest, and token digest match, even after a later legitimate heartbeat
-or binding changed the current lease. Event ID reuse requires complete payload
-equivalence. A collision or any state, event, staging, capability, takeover, or
-receipt conflict fails closed.
+or binding changed the current lease. Before returning, recovery verifies the
+receipt against the exact retained before and after lease bytes and the one
+canonical audit event. Event ID reuse requires complete payload equivalence. A
+collision or any state, event, staging, capability, takeover, or receipt
+conflict fails closed.
+
+Every retained phase for one operation must carry the identical canonical
+request object, request digest, event, state identities, and operation-specific
+semantics. A complete record cannot rewrite the meaning established by an
+earlier phase. The completed receipt must have the exact canonical bytes
+derived from that lineage, and the archived complete write-ahead record must
+bind those same receipt bytes and digest.
+
+Continuous outcome health independently scans every completed receipt still
+retained under `leases/.transaction-receipts/`. The scan is bounded, admits one
+held directory generation, pins each private receipt inode, parses every sibling
+with an exact canonical name, and requires exactly one byte-equivalent control
+event for the receipt's deterministic event ID. It also validates the exact
+retained before and after staging generations and any release-state retirement
+required by completed replay. Healthy status requires the exact completed WAL
+copy in the transaction cleanup archive, which binds the retained request
+digest. A receipt-only crash state remains recoverable by its exact caller, but
+it is reported unhealthy until that recovery retires the WAL evidence. A
+malformed sibling, missing staging generation, duplicate event, missing event,
+or semantically plausible event drift makes control-event health unhealthy. Any
+active file or staging artifact under
+`leases/.transactions/` is reported as pending and unhealthy until its exact
+caller recovers it. Receipt pruning remains bounded by the cleanup policy. Once
+a receipt has been deliberately retired, event-only history continues to enforce
+the structural lease lifetime rules.
 
 Typical writer flow inside an automation process, after the trusted host
 launcher acquires the actor's lease and retains its token. Generate a fresh
@@ -572,10 +774,12 @@ until a final exact archive-set rescan. The pinned
 and archive listings are relative to held directory descriptors. The
 destination directory is synced before the source directory. Missing native
 syscalls, directory sync, local filesystem admission, or exact readback fail
-closed. General actor runtime schema v3 copies and digests the helper, the
-kernel guard contract, and the outcome ledger repair contract beside the
-pinned control library. The installed control entry must load from that
-content-addressed runtime without access to the source checkout.
+closed. Its admitted operations are `rename-durable`, `exchange-durable`,
+`retire-directory-durable`, and `list-bounded`. General actor runtime schema v3
+copies and digests the helper, the kernel guard contract, and the outcome ledger
+repair contract beside the pinned control library. The installed control entry
+must load from that content-addressed runtime without access to the source
+checkout.
 
 Before writing any new lease staging file, the control plane accounts for all
 cleanup archives and computes a conservative reservation for the next
@@ -1187,6 +1391,13 @@ the same retained and rejected raw byte streams. Live repair requires a current
 `freed-owner` lease named `owner-governance` whose exact operation intent
 matches those values. Task authority, actor authority, provider authority, and
 general instructions do not substitute for that owner authorization.
+The reserved repair audit must also match exactly one earlier canonical owner
+lease acquisition in the physical control-event history. Its lease name,
+credential kind, capability or confirmation identity, task, intent, and
+authority fields must be identical. The audit timestamp must be at or after
+that acquisition and strictly before the authorization expires. A later event,
+duplicate acquisition identity, spliced credential, or event at the expiry
+boundary fails closed.
 
 The plan reports the canonical task's current state and revision for operator
 context. Those fields are informational. The signed intent binds the stable

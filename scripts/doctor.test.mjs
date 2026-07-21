@@ -376,6 +376,7 @@ test("automation state preflight accepts only the exact completed kernel guard c
   const stateDir = path.join(root, "automation");
   mkdirSync(stateDir, { mode: 0o700 });
   const fixture = installAutomationKernelGuardCutoverFixture(stateDir);
+  installDoctorLeaseArchiveFixture(stateDir, "a", { includeEntry: false });
 
   assert.equal(
     lstatSync(fixture.evidence.authorizationRoot).mode & 0o7777,
@@ -396,21 +397,34 @@ test("automation state preflight accepts only the exact completed kernel guard c
   assert.match(result.detail, /Lease cleanup archive: 0 entries/);
 });
 
-function installDoctorLeaseArchiveFixture(stateDir, suffix = "a") {
+function installDoctorLeaseArchiveFixture(
+  stateDir,
+  suffix = "a",
+  { includeEntry = true } = {},
+) {
   const leases = path.join(stateDir, "control", "leases");
   const transactions = path.join(leases, ".transactions");
   const receipts = path.join(leases, ".transaction-receipts");
   const archive = path.join(transactions, ".lease-cleanup-quarantine");
   const receiptArchive = path.join(receipts, ".lease-cleanup-quarantine");
-  for (const directory of [leases, transactions, receipts, archive, receiptArchive]) {
+  const leaseStateQuarantine = path.join(leases, ".lease-state-quarantine");
+  for (const directory of [
+    leases,
+    transactions,
+    receipts,
+    archive,
+    receiptArchive,
+    leaseStateQuarantine,
+  ]) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     chmodSync(directory, 0o700);
   }
-  const archivePath = path.join(
-    archive,
-    `${suffix.repeat(64)}.${"b".repeat(64)}.json`,
-  );
-  writeFileSync(archivePath, "{}\n", { mode: 0o600 });
+  const archivePath = includeEntry
+    ? path.join(archive, `${suffix.repeat(64)}.${"b".repeat(64)}.json`)
+    : null;
+  if (archivePath !== null) {
+    writeFileSync(archivePath, "{}\n", { mode: 0o600 });
+  }
   return { archive, archivePath };
 }
 
@@ -427,7 +441,7 @@ test("automation state preflight reports safe lease archive accounting", () => {
 
   assert.equal(result.status, "ok");
   assert.match(result.detail, /Lease cleanup archive: 1 entries, 3 bytes/);
-  assert.match(result.detail, /projected next-operation use 4 entries/);
+  assert.match(result.detail, /projected next-operation use 9 entries/);
   assert.match(result.detail, /bytes free on local/);
 });
 

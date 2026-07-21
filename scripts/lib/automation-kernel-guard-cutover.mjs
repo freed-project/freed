@@ -1,7 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import {
-  chmodSync,
   closeSync,
   constants,
   existsSync,
@@ -11,16 +10,11 @@ import {
   fsyncSync,
   linkSync,
   lstatSync,
-  mkdirSync,
   openSync,
   readSync,
   realpathSync,
   readdirSync,
-  renameSync,
-  rmdirSync,
-  rmSync,
   statSync,
-  unlinkSync,
   writeFileSync,
   writeSync,
 } from "node:fs";
@@ -33,6 +27,7 @@ import {
   AutomationControlError,
   ownerGovernanceIntentDigest,
   processStartIdentity,
+  readPinnedLeaseArchiveHelperSource,
   validateCurrentTaskOwnerConfirmation,
   withKernelFileGuard,
 } from "./automation-control.mjs";
@@ -68,6 +63,205 @@ const CUTOVER_WRITE_AHEAD_MAX_BYTES =
   AUTOMATION_KERNEL_GUARD_CUTOVER_PLAN_MAX_BYTES;
 const CUTOVER_MAX_CLAIM_GENERATIONS = 64;
 const CUTOVER_MAX_AUTHORIZATIONS = 64;
+const CUTOVER_TRANSACTION_MAX_BYTES = 8 * 1024 * 1024;
+const CUTOVER_SNAPSHOT_MAX_ENTRIES = 4_096;
+const CUTOVER_SNAPSHOT_MAX_DEPTH = 64;
+const CUTOVER_SNAPSHOT_MAX_AGGREGATE_BYTES =
+  AUTOMATION_KERNEL_GUARD_CUTOVER_PLAN_MAX_BYTES;
+const CUTOVER_NATIVE_MOVE_HELPER_SHA256 =
+  "d23a65379acad43c7fb601d65fc150c29f1d214796121362f2a44c7e6c305a3e";
+const CUTOVER_NATIVE_MOVE_PYTHON = "/usr/bin/python3";
+const CUTOVER_PRIVATE_FILE_CREATE_HELPER_SOURCE = String.raw`
+import hashlib
+import json
+import os
+import stat
+import sys
+
+PROTOCOL = "freed-kernel-guard-private-file-create-v1"
+
+def fail(message):
+    sys.stderr.write("kernel-guard-private-file-create: " + message + "\n")
+    raise SystemExit(1)
+
+def integer(value, label):
+    try:
+        parsed = int(value, 10)
+    except ValueError:
+        fail(label + " is not an integer")
+    if parsed < 0:
+        fail(label + " is negative")
+    return parsed
+
+def digest(descriptor, size):
+    value = hashlib.sha256()
+    offset = 0
+    while offset < size:
+        chunk = os.pread(descriptor, min(65536, size - offset), offset)
+        if not chunk:
+            fail("source changed size")
+        value.update(chunk)
+        offset += len(chunk)
+    if os.pread(descriptor, 1, size):
+        fail("source grew")
+    return value.hexdigest()
+
+def require_directory(expected_device, expected_inode):
+    value = os.fstat(3)
+    if (
+        not stat.S_ISDIR(value.st_mode)
+        or value.st_dev != expected_device
+        or value.st_ino != expected_inode
+        or value.st_uid != os.getuid()
+        or stat.S_IMODE(value.st_mode) != 0o700
+    ):
+        fail("destination directory changed generation")
+    return value
+
+def require_source(expected_device, expected_inode, expected_size, expected_digest):
+    value = os.fstat(4)
+    if (
+        not stat.S_ISREG(value.st_mode)
+        or value.st_dev != expected_device
+        or value.st_ino != expected_inode
+        or value.st_uid != os.getuid()
+        or stat.S_IMODE(value.st_mode) != 0o600
+        or value.st_nlink != 2
+        or value.st_size != expected_size
+        or digest(4, expected_size) != expected_digest
+    ):
+        fail("source file changed generation")
+    return value
+
+def require_destination(descriptor, name, source_size):
+    opened = os.fstat(descriptor)
+    try:
+        named = os.stat(name, dir_fd=3, follow_symlinks=False)
+    except OSError as error:
+        fail("replacement pathname cannot be inspected: " + error.strerror)
+    if (
+        not stat.S_ISREG(opened.st_mode)
+        or opened.st_dev != named.st_dev
+        or opened.st_ino != named.st_ino
+        or opened.st_uid != os.getuid()
+        or stat.S_IMODE(opened.st_mode) != 0o600
+        or opened.st_nlink != 1
+        or opened.st_size < 0
+        or opened.st_size > source_size
+    ):
+        fail("replacement changed generation")
+    current = os.pread(descriptor, opened.st_size + 1, 0)
+    expected = os.pread(4, opened.st_size, 0)
+    if len(current) != opened.st_size or current != expected:
+        fail("replacement is not an exact source prefix")
+    return opened
+
+def pause(checkpoint, name):
+    if os.environ.get("FREED_REPAIR_MOVE_TEST_PAUSE") != checkpoint:
+        return
+    operation = os.environ.get("FREED_REPAIR_MOVE_TEST_OPERATION")
+    destination = os.environ.get("FREED_REPAIR_MOVE_TEST_DESTINATION")
+    if operation and operation != "create-private-durable":
+        return
+    if destination and destination != name:
+        return
+    os.write(7, (checkpoint + "\n").encode("ascii"))
+    if os.read(6, 1) != b"1":
+        fail("test pause was not released")
+
+if len(sys.argv) != 8:
+    fail("expected one destination and six generation fields")
+name = sys.argv[1]
+if not name or name in (".", "..") or "/" in name or "\x00" in name:
+    fail("destination is not one entry")
+directory_device = integer(sys.argv[2], "directory device")
+directory_inode = integer(sys.argv[3], "directory inode")
+source_device = integer(sys.argv[4], "source device")
+source_inode = integer(sys.argv[5], "source inode")
+source_size = integer(sys.argv[6], "source size")
+source_digest = sys.argv[7]
+if len(source_digest) != 64 or any(value not in "0123456789abcdef" for value in source_digest):
+    fail("source digest is invalid")
+require_directory(directory_device, directory_inode)
+require_source(source_device, source_inode, source_size, source_digest)
+pause("before-create-syscall", name)
+require_directory(directory_device, directory_inode)
+require_source(source_device, source_inode, source_size, source_digest)
+descriptor = None
+try:
+    try:
+        descriptor = os.open(
+            name,
+            os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=3,
+        )
+    except FileExistsError:
+        descriptor = os.open(
+            name,
+            os.O_RDWR | os.O_NOFOLLOW,
+            dir_fd=3,
+        )
+    opened = require_destination(descriptor, name, source_size)
+    pause("after-create-before-copy", name)
+    require_directory(directory_device, directory_inode)
+    require_source(source_device, source_inode, source_size, source_digest)
+    opened = require_destination(descriptor, name, source_size)
+    offset = opened.st_size
+    copy_paused = False
+    while offset < source_size:
+        chunk = os.pread(4, min(4096, source_size - offset), offset)
+        if not chunk:
+            fail("source changed while copying")
+        written = 0
+        while written < len(chunk):
+            count = os.pwrite(descriptor, chunk[written:], offset + written)
+            if count <= 0:
+                fail("replacement write did not progress")
+            written += count
+        offset += len(chunk)
+        require_destination(descriptor, name, source_size)
+        if not copy_paused:
+            pause("during-copy", name)
+            copy_paused = True
+            require_directory(directory_device, directory_inode)
+            require_source(source_device, source_inode, source_size, source_digest)
+            require_destination(descriptor, name, source_size)
+    os.fchmod(descriptor, 0o600)
+    pause("after-copy-before-file-sync", name)
+    require_directory(directory_device, directory_inode)
+    require_source(source_device, source_inode, source_size, source_digest)
+    require_destination(descriptor, name, source_size)
+    os.fsync(descriptor)
+    pause("after-file-sync-before-directory-sync", name)
+    require_directory(directory_device, directory_inode)
+    require_source(source_device, source_inode, source_size, source_digest)
+    opened = require_destination(descriptor, name, source_size)
+    if (
+        opened.st_size != source_size
+        or digest(descriptor, source_size) != source_digest
+    ):
+        fail("replacement changed before durability")
+    pause("before-directory-sync", name)
+    require_directory(directory_device, directory_inode)
+    require_destination(descriptor, name, source_size)
+    os.fsync(3)
+    pause("after-directory-sync", name)
+    require_directory(directory_device, directory_inode)
+    durable = require_destination(descriptor, name, source_size)
+    if durable.st_dev != opened.st_dev or durable.st_ino != opened.st_ino:
+        fail("replacement pathname changed")
+    sys.stdout.write(json.dumps({
+        "protocol": PROTOCOL,
+        "device": str(opened.st_dev),
+        "inode": str(opened.st_ino),
+        "size": str(opened.st_size),
+        "digest": source_digest,
+    }, sort_keys=True, separators=(",", ":")))
+finally:
+    if descriptor is not None:
+        os.close(descriptor)
+`;
 const CUTOVER_AUTHORIZATION_KEYS = Object.freeze(
   [
     "actor",
@@ -191,6 +385,14 @@ function syncDirectory(directoryPath) {
   }
 }
 
+function syncPinnedDirectoryDescriptor(descriptor) {
+  try {
+    fsyncSync(descriptor);
+  } catch (error) {
+    if (!["EINVAL", "ENOTSUP", "EISDIR"].includes(error?.code)) throw error;
+  }
+}
+
 function requirePrivateDirectory(directoryPath, label) {
   let stats;
   try {
@@ -229,12 +431,53 @@ function ensurePrivateDirectory(
   if (parent !== directoryPath && !existsSync(parent)) {
     ensurePrivateDirectory(parent, beforeMutation);
   }
-  beforeMutation();
-  mkdirSync(directoryPath, { mode: 0o700 });
-  beforeMutation();
-  chmodSync(directoryPath, 0o700);
-  syncDirectory(parent);
-  requirePrivateDirectory(directoryPath, directoryPath);
+  const pinnedParent = openPinnedPrivateDirectoryPath(
+    parent,
+    `Private directory parent ${parent}`,
+  );
+  try {
+    beforeMutation();
+    requirePinnedPrivateDirectoryPath(
+      parent,
+      pinnedParent,
+      `Private directory parent ${parent}`,
+    );
+    const receipt = runCutoverNativeHelper(
+      "mkdir",
+      [
+        path.basename(directoryPath),
+        String(pinnedParent.identity.dev),
+        String(pinnedParent.identity.ino),
+      ],
+      [pinnedParent.descriptor],
+    );
+    requirePinnedPrivateDirectoryPath(
+      parent,
+      pinnedParent,
+      `Private directory parent ${parent}`,
+    );
+    syncPinnedDirectoryDescriptor(pinnedParent.descriptor);
+    const pinnedDirectory = openPinnedPrivateDirectoryPath(
+      directoryPath,
+      directoryPath,
+    );
+    try {
+      if (
+        ![true, false].includes(receipt.created) ||
+        receipt.device !== String(pinnedDirectory.identity.dev) ||
+        receipt.inode !== String(pinnedDirectory.identity.ino)
+      ) {
+        fail(
+          "cutover_conflict",
+          `Private directory creation receipt changed: ${directoryPath}`,
+        );
+      }
+    } finally {
+      closeSync(pinnedDirectory.descriptor);
+    }
+  } finally {
+    closeSync(pinnedParent.descriptor);
+  }
 }
 
 function readBoundedRegularFile(
@@ -341,49 +584,1684 @@ function readPrivateMode600File(
   );
 }
 
-function removePrivateTemporaryFile(
-  filePath,
-  beforeMutation = () => undefined,
-) {
-  if (!existsSync(filePath)) return;
-  const stats = lstatSync(filePath);
-  if (
-    !stats.isFile() ||
-    stats.isSymbolicLink() ||
-    stats.uid !== currentUid(stats) ||
-    (stats.mode & 0o7777) !== 0o600 ||
-    realpathSync(filePath) !== path.resolve(filePath)
-  ) {
-    fail("cutover_conflict", `Cutover temporary path is unsafe: ${filePath}`);
-  }
-  beforeMutation();
-  unlinkSync(filePath);
-  syncDirectory(path.dirname(filePath));
+function pinnedFileIdentity(stats) {
+  return {
+    dev: stats.dev,
+    ino: stats.ino,
+    uid: stats.uid,
+    mode: stats.mode & 0o7777,
+  };
 }
 
-function writeAtomic(filePath, bytes, beforeMutation = () => undefined) {
-  ensurePrivateDirectory(path.dirname(filePath), beforeMutation);
-  const temporaryPath = `${filePath}.cutover.tmp`;
-  removePrivateTemporaryFile(temporaryPath, beforeMutation);
+function pinnedFileIdentityMatches(stats, identity) {
+  return (
+    stats.dev === identity.dev &&
+    stats.ino === identity.ino &&
+    stats.uid === identity.uid &&
+    (stats.mode & 0o7777) === identity.mode
+  );
+}
+
+function readExactDescriptorBytes(descriptor, stats, maxBytes, label) {
+  if (stats.size < 0 || stats.size > maxBytes) {
+    fail("cutover_conflict", `${label} exceeds its bounded size.`);
+  }
+  const bytes = Buffer.alloc(stats.size + 1);
+  let offset = 0;
+  while (offset < bytes.length) {
+    const count = readSync(
+      descriptor,
+      bytes,
+      offset,
+      bytes.length - offset,
+      offset,
+    );
+    if (count === 0) break;
+    offset += count;
+  }
+  if (offset !== stats.size) {
+    fail("cutover_conflict", `${label} changed while being read.`);
+  }
+  return bytes.subarray(0, stats.size);
+}
+
+function openPinnedPrivateFile(
+  filePath,
+  {
+    maxBytes = CUTOVER_MAX_FILE_BYTES,
+    expectedBytes = undefined,
+    allowedLinkCounts = new Set([1]),
+  } = {},
+) {
   let descriptor;
   try {
-    beforeMutation();
+    const before = lstatSync(filePath);
+    if (
+      !before.isFile() ||
+      before.isSymbolicLink() ||
+      before.uid !== currentUid(before) ||
+      (before.mode & 0o7777) !== 0o600 ||
+      !allowedLinkCounts.has(before.nlink) ||
+      realpathSync(filePath) !== path.resolve(filePath)
+    ) {
+      fail("cutover_conflict", `Cutover private path is unsafe: ${filePath}`);
+    }
     descriptor = openSync(
-      temporaryPath,
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
-      0o600,
+      filePath,
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
     );
-    writeFileSync(descriptor, bytes);
-    fsyncSync(descriptor);
-    closeSync(descriptor);
-    descriptor = undefined;
-    beforeMutation();
-    renameSync(temporaryPath, filePath);
-    syncDirectory(path.dirname(filePath));
-  } finally {
+    const opened = fstatSync(descriptor);
+    const identity = pinnedFileIdentity(opened);
+    if (
+      !opened.isFile() ||
+      !pinnedFileIdentityMatches(before, identity) ||
+      !allowedLinkCounts.has(opened.nlink)
+    ) {
+      fail("cutover_conflict", `Cutover private path changed: ${filePath}`);
+    }
+    const bytes = readExactDescriptorBytes(
+      descriptor,
+      opened,
+      maxBytes,
+      `Cutover private path ${filePath}`,
+    );
+    if (expectedBytes !== undefined && !bytes.equals(expectedBytes)) {
+      fail("cutover_conflict", `Cutover private bytes conflict: ${filePath}`);
+    }
+    requirePinnedPrivateFile(
+      filePath,
+      descriptor,
+      identity,
+      bytes,
+      allowedLinkCounts,
+    );
+    return { descriptor, identity, bytes };
+  } catch (error) {
     if (descriptor !== undefined) closeSync(descriptor);
-    if (existsSync(temporaryPath)) beforeMutation();
-    rmSync(temporaryPath, { force: true });
+    throw error;
+  }
+}
+
+function requirePinnedPrivateFile(
+  filePath,
+  descriptor,
+  identity,
+  expectedBytes,
+  allowedLinkCounts = new Set([1]),
+  allowedModes = new Set([0o600]),
+) {
+  let pathStats;
+  try {
+    pathStats = lstatSync(filePath);
+  } catch {
+    fail("cutover_conflict", `Cutover private path disappeared: ${filePath}`);
+  }
+  const opened = fstatSync(descriptor);
+  if (
+    !opened.isFile() ||
+    !pathStats.isFile() ||
+    pathStats.isSymbolicLink() ||
+    !pinnedFileIdentityMatches(opened, identity) ||
+    !pinnedFileIdentityMatches(pathStats, identity) ||
+    !allowedModes.has(opened.mode & 0o7777) ||
+    !allowedModes.has(pathStats.mode & 0o7777) ||
+    opened.size !== expectedBytes.length ||
+    pathStats.size !== expectedBytes.length ||
+    !allowedLinkCounts.has(opened.nlink) ||
+    !allowedLinkCounts.has(pathStats.nlink) ||
+    realpathSync(filePath) !== path.resolve(filePath) ||
+    !readExactDescriptorBytes(
+      descriptor,
+      opened,
+      Math.max(expectedBytes.length, 1),
+      `Cutover private path ${filePath}`,
+    ).equals(expectedBytes)
+  ) {
+    fail("cutover_conflict", `Cutover private path changed: ${filePath}`);
+  }
+  const afterOpened = fstatSync(descriptor);
+  const afterPath = lstatSync(filePath);
+  if (
+    !pinnedFileIdentityMatches(afterOpened, identity) ||
+    !pinnedFileIdentityMatches(afterPath, identity) ||
+    !allowedModes.has(afterOpened.mode & 0o7777) ||
+    !allowedModes.has(afterPath.mode & 0o7777) ||
+    afterOpened.size !== expectedBytes.length ||
+    afterPath.size !== expectedBytes.length ||
+    !allowedLinkCounts.has(afterOpened.nlink) ||
+    !allowedLinkCounts.has(afterPath.nlink)
+  ) {
+    fail("cutover_conflict", `Cutover private path changed: ${filePath}`);
+  }
+  return pathStats;
+}
+
+function requirePinnedPathAbsentOrUnchanged(filePath, pinned) {
+  if (pinned === null) {
+    if (existsSync(filePath)) {
+      fail(
+        "cutover_conflict",
+        `Cutover destination appeared before publication: ${filePath}`,
+      );
+    }
+    return;
+  }
+  requirePinnedPrivateFile(
+    filePath,
+    pinned.descriptor,
+    pinned.identity,
+    pinned.bytes,
+  );
+}
+
+function openPinnedPrivateDirectoryPath(directoryPath, label) {
+  const before = requirePrivateDirectory(directoryPath, label);
+  const descriptor = openSync(
+    directoryPath,
+    constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+  );
+  try {
+    const opened = fstatSync(descriptor);
+    const identity = pinnedFileIdentity(opened);
+    if (
+      !opened.isDirectory() ||
+      !pinnedFileIdentityMatches(before, identity)
+    ) {
+      fail("cutover_conflict", `${label} generation changed.`);
+    }
+    return { descriptor, identity };
+  } catch (error) {
+    closeSync(descriptor);
+    throw error;
+  }
+}
+
+function requirePinnedPrivateDirectoryPath(directoryPath, pinned, label) {
+  const current = requirePrivateDirectory(directoryPath, label);
+  const opened = fstatSync(pinned.descriptor);
+  if (
+    !opened.isDirectory() ||
+    !pinnedFileIdentityMatches(opened, pinned.identity) ||
+    !pinnedFileIdentityMatches(current, pinned.identity)
+  ) {
+    fail("cutover_conflict", `${label} generation changed.`);
+  }
+}
+
+function requirePinnedSnapshotDirectoryPath(directoryPath, pinned, label) {
+  let current;
+  try {
+    current = lstatSync(directoryPath);
+  } catch (error) {
+    fail(
+      "cutover_conflict",
+      `${label} is unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  const opened = fstatSync(pinned.descriptor);
+  if (
+    !current.isDirectory() ||
+    current.isSymbolicLink() ||
+    !opened.isDirectory() ||
+    current.uid !== currentUid(current) ||
+    opened.uid !== currentUid(opened) ||
+    ![0o700, 0o755].includes(current.mode & 0o7777) ||
+    ![0o700, 0o755].includes(opened.mode & 0o7777) ||
+    !pinnedFileIdentityMatches(current, pinned.identity) ||
+    !pinnedFileIdentityMatches(opened, pinned.identity) ||
+    realpathSync(directoryPath) !== path.resolve(directoryPath)
+  ) {
+    fail("cutover_conflict", `${label} generation changed.`);
+  }
+  return current;
+}
+
+function openPinnedSnapshotDirectoryPath(directoryPath, label) {
+  let descriptor;
+  try {
+    const before = lstatSync(directoryPath);
+    if (
+      !before.isDirectory() ||
+      before.isSymbolicLink() ||
+      before.uid !== currentUid(before) ||
+      ![0o700, 0o755].includes(before.mode & 0o7777) ||
+      realpathSync(directoryPath) !== path.resolve(directoryPath)
+    ) {
+      fail(
+        "cutover_state_invalid",
+        `${label} must be a canonical mode 0700 or 0755 directory owned by the current user.`,
+      );
+    }
+    descriptor = openSync(
+      directoryPath,
+      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+    );
+    const opened = fstatSync(descriptor);
+    const pinned = { descriptor, identity: pinnedFileIdentity(opened) };
+    if (
+      !opened.isDirectory() ||
+      !pinnedFileIdentityMatches(before, pinned.identity)
+    ) {
+      fail("cutover_conflict", `${label} generation changed.`);
+    }
+    requirePinnedSnapshotDirectoryPath(directoryPath, pinned, label);
+    return pinned;
+  } catch (error) {
+    if (descriptor !== undefined) closeSync(descriptor);
+    throw error;
+  }
+}
+
+function setPinnedDirectoryMode(
+  directoryPath,
+  targetMode,
+  {
+    beforeMutation = () => undefined,
+    checkpoint = () => undefined,
+    checkpointName = "directory-before-mode-change",
+  } = {},
+) {
+  if (![0o700, 0o755].includes(targetMode)) {
+    fail(
+      "cutover_state_invalid",
+      `Cutover directory mode is unsupported: ${directoryPath}`,
+    );
+  }
+  const parentPath = path.dirname(directoryPath);
+  const parent = openPinnedPrivateDirectoryPath(
+    parentPath,
+    "Cutover directory mode parent",
+  );
+  let directory;
+  try {
+    directory = openPinnedSnapshotDirectoryPath(
+      directoryPath,
+      "Cutover directory mode target",
+    );
+    if (directory.identity.mode === targetMode) return;
+    checkpoint(checkpointName, { directoryPath, targetMode });
+    beforeMutation({ directoryPath, targetMode });
+    requirePinnedPrivateDirectoryPath(
+      parentPath,
+      parent,
+      "Cutover directory mode parent",
+    );
+    requirePinnedSnapshotDirectoryPath(
+      directoryPath,
+      directory,
+      "Cutover directory mode target",
+    );
+    fchmodSync(directory.descriptor, targetMode);
+    directory.identity.mode = targetMode;
+    syncPinnedDirectoryDescriptor(directory.descriptor);
+    syncPinnedDirectoryDescriptor(parent.descriptor);
+    requirePinnedPrivateDirectoryPath(
+      parentPath,
+      parent,
+      "Cutover directory mode parent",
+    );
+    requirePinnedSnapshotDirectoryPath(
+      directoryPath,
+      directory,
+      "Cutover directory mode target",
+    );
+  } finally {
+    if (directory !== undefined) closeSync(directory.descriptor);
+    closeSync(parent.descriptor);
+  }
+}
+
+function runCutoverNativeHelperBytes(
+  operation,
+  args,
+  descriptors,
+  { maxBuffer = 1024 * 1024 } = {},
+) {
+  const helperSource = readPinnedLeaseArchiveHelperSource(undefined, {
+    expectedDigest: CUTOVER_NATIVE_MOVE_HELPER_SHA256,
+  });
+  const pauseCheckpoint =
+    process.env.FREED_CUTOVER_MOVE_TEST_PAUSE ?? "";
+  const useTestDescriptors =
+    pauseCheckpoint !== "" &&
+    process.env.FREED_CUTOVER_MOVE_TEST_FDS === "3,4";
+  const testReleaseDescriptor = 3 + descriptors.length;
+  const testSignalDescriptor = testReleaseDescriptor + 1;
+  let stdout;
+  try {
+    stdout = execFileSync(
+      CUTOVER_NATIVE_MOVE_PYTHON,
+      ["-E", "-I", "-S", "-c", helperSource, operation, ...args],
+      {
+        env: {
+          HOME: process.env.HOME ?? "",
+          LANG: "C",
+          LC_ALL: "C",
+          PATH: "/usr/bin:/bin",
+          ...(useTestDescriptors
+            ? {
+                FREED_REPAIR_MOVE_TEST_PAUSE: pauseCheckpoint,
+                FREED_REPAIR_MOVE_TEST_OPERATION:
+                  process.env.FREED_CUTOVER_MOVE_TEST_OPERATION ?? "",
+                FREED_REPAIR_MOVE_TEST_SOURCE:
+                  process.env.FREED_CUTOVER_MOVE_TEST_SOURCE ?? "",
+                FREED_REPAIR_MOVE_TEST_DESTINATION:
+                  process.env.FREED_CUTOVER_MOVE_TEST_DESTINATION ?? "",
+                FREED_REPAIR_MOVE_TEST_CONTROL_FDS:
+                  `${testReleaseDescriptor},${testSignalDescriptor}`,
+              }
+            : {}),
+        },
+        maxBuffer,
+        stdio: [
+          "ignore",
+          "pipe",
+          "pipe",
+          ...descriptors,
+          ...(useTestDescriptors ? [3, 4] : []),
+        ],
+      },
+    );
+  } catch (error) {
+    const stderr = String(error?.stderr ?? "").trim();
+    const unavailable = /(?:unavailable|unsupported)/i.test(stderr);
+    fail(
+      unavailable ? "cutover_filesystem_unsupported" : "cutover_conflict",
+      `Kernel guard cutover ${operation} failed${stderr ? `: ${stderr}` : "."}`,
+    );
+  }
+  return Buffer.from(stdout ?? Buffer.alloc(0));
+}
+
+function runCutoverNativeHelper(operation, args, descriptors, options = {}) {
+  const stdout = runCutoverNativeHelperBytes(
+    operation,
+    args,
+    descriptors,
+    options,
+  );
+  let receipt;
+  try {
+    receipt = JSON.parse(String(stdout));
+  } catch {
+    fail(
+      "cutover_conflict",
+      `Kernel guard cutover ${operation} returned an invalid receipt.`,
+    );
+  }
+  if (receipt?.protocol !== "freed-lease-archive-move-v1") {
+    fail(
+      "cutover_conflict",
+      `Kernel guard cutover ${operation} changed its protocol.`,
+    );
+  }
+  return receipt;
+}
+
+function cutoverDirectoryDurabilityTestPause(checkpoint) {
+  if (
+    process.env.FREED_CUTOVER_DIRECTORY_TEST_PAUSE !== checkpoint ||
+    process.env.FREED_CUTOVER_MOVE_TEST_FDS !== "3,4"
+  ) {
+    return;
+  }
+  writeSync(4, Buffer.from(`${checkpoint}\n`, "ascii"));
+  const release = Buffer.alloc(1);
+  if (readSync(3, release, 0, 1, null) !== 1 || release[0] !== 0x31) {
+    fail(
+      "cutover_conflict",
+      `Cutover directory durability test pause was not released at ${checkpoint}.`,
+    );
+  }
+}
+
+function ensurePinnedPrivateDirectoryChain(
+  anchorDirectory,
+  targetDirectory,
+  beforeMutation = () => undefined,
+) {
+  const relative = path.relative(anchorDirectory, targetDirectory);
+  const names = relative.split(path.sep).filter(Boolean);
+  if (
+    !path.isAbsolute(anchorDirectory) ||
+    !path.isAbsolute(targetDirectory) ||
+    relative === "" ||
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    names.some((name) => name === "." || name === "..")
+  ) {
+    fail(
+      "cutover_conflict",
+      `Cutover retained directory is outside its admitted anchor: ${targetDirectory}`,
+    );
+  }
+  let currentPath = anchorDirectory;
+  let current = openPinnedPrivateDirectoryPath(
+    currentPath,
+    "Cutover retained directory anchor",
+  );
+  try {
+    for (const name of names) {
+      beforeMutation();
+      requirePinnedPrivateDirectoryPath(
+        currentPath,
+        current,
+        "Cutover retained directory parent",
+      );
+      const receipt = runCutoverNativeHelper(
+        "mkdir",
+        [
+          name,
+          String(current.identity.dev),
+          String(current.identity.ino),
+        ],
+        [current.descriptor],
+      );
+      requirePinnedPrivateDirectoryPath(
+        currentPath,
+        current,
+        "Cutover retained directory parent",
+      );
+      cutoverDirectoryDurabilityTestPause(
+        "retained-directory-created-before-parent-sync",
+      );
+      requirePinnedPrivateDirectoryPath(
+        currentPath,
+        current,
+        "Cutover retained directory parent",
+      );
+      fsyncSync(current.descriptor);
+      cutoverDirectoryDurabilityTestPause(
+        "retained-directory-parent-synced",
+      );
+      requirePinnedPrivateDirectoryPath(
+        currentPath,
+        current,
+        "Cutover retained directory parent",
+      );
+      const childPath = path.join(currentPath, name);
+      const child = openPinnedPrivateDirectoryPath(
+        childPath,
+        "Cutover retained directory child",
+      );
+      try {
+        if (
+          receipt.device !== String(child.identity.dev) ||
+          receipt.inode !== String(child.identity.ino)
+        ) {
+          fail(
+            "cutover_conflict",
+            `Cutover retained directory receipt changed at ${childPath}.`,
+          );
+        }
+        requirePinnedPrivateDirectoryPath(
+          currentPath,
+          current,
+          "Cutover retained directory parent",
+        );
+        requirePinnedPrivateDirectoryPath(
+          childPath,
+          child,
+          "Cutover retained directory child",
+        );
+      } catch (error) {
+        closeSync(child.descriptor);
+        throw error;
+      }
+      closeSync(current.descriptor);
+      current = child;
+      currentPath = childPath;
+    }
+    return current;
+  } catch (error) {
+    closeSync(current.descriptor);
+    throw error;
+  }
+}
+
+function createPrivateFileRelativeToPinnedDirectory(
+  directoryPath,
+  pinnedDirectory,
+  filePath,
+  sourcePath,
+  pinnedSource,
+) {
+  const pauseCheckpoint =
+    process.env.FREED_CUTOVER_MOVE_TEST_PAUSE ?? "";
+  const useTestDescriptors =
+    pauseCheckpoint !== "" &&
+    process.env.FREED_CUTOVER_MOVE_TEST_FDS === "3,4";
+  requirePinnedPrivateDirectoryPath(
+    directoryPath,
+    pinnedDirectory,
+    "Cutover replacement directory",
+  );
+  const source = fstatSync(pinnedSource.descriptor);
+  requirePinnedPrivateFile(
+    sourcePath,
+    pinnedSource.descriptor,
+    pinnedSource.identity,
+    pinnedSource.bytes,
+    new Set([2]),
+  );
+  let stdout;
+  try {
+    stdout = execFileSync(
+      CUTOVER_NATIVE_MOVE_PYTHON,
+      [
+        "-E",
+        "-I",
+        "-S",
+        "-c",
+        CUTOVER_PRIVATE_FILE_CREATE_HELPER_SOURCE,
+        path.basename(filePath),
+        String(pinnedDirectory.identity.dev),
+        String(pinnedDirectory.identity.ino),
+        String(source.dev),
+        String(source.ino),
+        String(pinnedSource.bytes.length),
+        sha256(pinnedSource.bytes),
+      ],
+      {
+        env: {
+          HOME: process.env.HOME ?? "",
+          LANG: "C",
+          LC_ALL: "C",
+          PATH: "/usr/bin:/bin",
+          ...(useTestDescriptors
+            ? {
+                FREED_REPAIR_MOVE_TEST_PAUSE: pauseCheckpoint,
+                FREED_REPAIR_MOVE_TEST_OPERATION:
+                  process.env.FREED_CUTOVER_MOVE_TEST_OPERATION ?? "",
+                FREED_REPAIR_MOVE_TEST_DESTINATION:
+                  process.env.FREED_CUTOVER_MOVE_TEST_DESTINATION ?? "",
+              }
+            : {}),
+        },
+        maxBuffer: 1024 * 1024,
+        stdio: [
+          "ignore",
+          "pipe",
+          "pipe",
+          pinnedDirectory.descriptor,
+          pinnedSource.descriptor,
+          "ignore",
+          ...(useTestDescriptors ? [3, 4] : []),
+        ],
+      },
+    );
+  } catch (error) {
+    const stderr = String(error?.stderr ?? "").trim();
+    fail(
+      "cutover_conflict",
+      `Kernel guard cutover create-private-durable failed${stderr ? `: ${stderr}` : "."}`,
+    );
+  }
+  requirePinnedPrivateDirectoryPath(
+    directoryPath,
+    pinnedDirectory,
+    "Cutover replacement directory",
+  );
+  let receipt;
+  try {
+    receipt = JSON.parse(String(stdout));
+  } catch {
+    fail(
+      "cutover_conflict",
+      "Kernel guard cutover create-private-durable returned an invalid receipt.",
+    );
+  }
+  if (
+    receipt?.protocol !== "freed-kernel-guard-private-file-create-v1" ||
+    receipt.size !== String(pinnedSource.bytes.length) ||
+    receipt.digest !== sha256(pinnedSource.bytes)
+  ) {
+    fail(
+      "cutover_conflict",
+      "Kernel guard cutover create-private-durable receipt changed.",
+    );
+  }
+  const pinned = openPinnedPrivateFile(filePath, {
+    maxBytes: pinnedSource.bytes.length,
+    expectedBytes: pinnedSource.bytes,
+  });
+  try {
+    if (
+      receipt.device !== String(pinned.identity.dev) ||
+      receipt.inode !== String(pinned.identity.ino)
+    ) {
+      fail(
+        "cutover_conflict",
+        "Kernel guard cutover replacement generation changed.",
+      );
+    }
+    requirePinnedPrivateDirectoryPath(
+      directoryPath,
+      pinnedDirectory,
+      "Cutover replacement directory",
+    );
+    return pinned;
+  } catch (error) {
+    closeSync(pinned.descriptor);
+    throw error;
+  }
+}
+
+function runDurablePrivateFileMove(
+  sourcePath,
+  destinationPath,
+  pinnedSource,
+  {
+    allowedLinkCounts = new Set([1]),
+    allowedModes = new Set([0o600]),
+    heldSourceDirectory = undefined,
+    heldDestinationDirectory = undefined,
+  } = {},
+) {
+  let sourceDirectory;
+  let destinationDirectory;
+  let closeSourceDirectory = false;
+  let closeDestinationDirectory = false;
+  try {
+    sourceDirectory =
+      heldSourceDirectory ??
+      openPinnedPrivateDirectoryPath(
+        path.dirname(sourcePath),
+        "Cutover native move source directory",
+      );
+    destinationDirectory =
+      heldDestinationDirectory ??
+      openPinnedPrivateDirectoryPath(
+        path.dirname(destinationPath),
+        "Cutover native move destination directory",
+      );
+    closeSourceDirectory = heldSourceDirectory === undefined;
+    closeDestinationDirectory = heldDestinationDirectory === undefined;
+    requirePinnedPrivateFile(
+      sourcePath,
+      pinnedSource.descriptor,
+      pinnedSource.identity,
+      pinnedSource.bytes,
+      allowedLinkCounts,
+      allowedModes,
+    );
+    requirePinnedPrivateDirectoryPath(
+      path.dirname(sourcePath),
+      sourceDirectory,
+      "Cutover native move source directory",
+    );
+    requirePinnedPrivateDirectoryPath(
+      path.dirname(destinationPath),
+      destinationDirectory,
+      "Cutover native move destination directory",
+    );
+    if (existsSync(destinationPath)) {
+      fail(
+        "cutover_conflict",
+        `Cutover native move destination already exists: ${destinationPath}`,
+      );
+    }
+    const source = fstatSync(pinnedSource.descriptor);
+    const receipt = runCutoverNativeHelper(
+      "rename-durable",
+      [
+        path.basename(sourcePath),
+        path.basename(destinationPath),
+        String(source.dev),
+        String(source.ino),
+        String(source.mode & 0o7777),
+        String(source.nlink),
+        String(pinnedSource.bytes.length),
+        sha256(pinnedSource.bytes),
+        String(sourceDirectory.identity.dev),
+        String(sourceDirectory.identity.ino),
+        String(destinationDirectory.identity.dev),
+        String(destinationDirectory.identity.ino),
+      ],
+      [
+        sourceDirectory.descriptor,
+        destinationDirectory.descriptor,
+        pinnedSource.descriptor,
+      ],
+    );
+    if (
+      receipt.device !== String(source.dev) ||
+      receipt.inode !== String(source.ino) ||
+      receipt.size !== String(pinnedSource.bytes.length) ||
+      receipt.digest !== sha256(pinnedSource.bytes)
+    ) {
+      fail("cutover_conflict", "Cutover native move receipt changed.");
+    }
+    if (existsSync(sourcePath)) {
+      fail(
+        "cutover_conflict",
+        `Cutover native move source survived: ${sourcePath}`,
+      );
+    }
+    requirePinnedPrivateFile(
+      destinationPath,
+      pinnedSource.descriptor,
+      pinnedSource.identity,
+      pinnedSource.bytes,
+      allowedLinkCounts,
+      allowedModes,
+    );
+  } finally {
+    if (closeDestinationDirectory && destinationDirectory !== undefined) {
+      closeSync(destinationDirectory.descriptor);
+    }
+    if (closeSourceDirectory && sourceDirectory !== undefined) {
+      closeSync(sourceDirectory.descriptor);
+    }
+  }
+}
+
+function runDurablePrivateFileExchange(
+  sourcePath,
+  destinationPath,
+  pinnedSource,
+  pinnedDestination,
+  {
+    sourceAllowedLinkCounts = new Set([1]),
+    destinationAllowedLinkCounts = new Set([1]),
+    heldSourceDirectory = undefined,
+    heldDestinationDirectory = undefined,
+  } = {},
+) {
+  let sourceDirectory;
+  let destinationDirectory;
+  let closeSourceDirectory = false;
+  let closeDestinationDirectory = false;
+  try {
+    sourceDirectory =
+      heldSourceDirectory ??
+      openPinnedPrivateDirectoryPath(
+        path.dirname(sourcePath),
+        "Cutover native exchange source directory",
+      );
+    destinationDirectory =
+      heldDestinationDirectory ??
+      openPinnedPrivateDirectoryPath(
+        path.dirname(destinationPath),
+        "Cutover native exchange destination directory",
+      );
+    closeSourceDirectory = heldSourceDirectory === undefined;
+    closeDestinationDirectory = heldDestinationDirectory === undefined;
+    requirePinnedPrivateFile(
+      sourcePath,
+      pinnedSource.descriptor,
+      pinnedSource.identity,
+      pinnedSource.bytes,
+      sourceAllowedLinkCounts,
+    );
+    requirePinnedPrivateFile(
+      destinationPath,
+      pinnedDestination.descriptor,
+      pinnedDestination.identity,
+      pinnedDestination.bytes,
+      destinationAllowedLinkCounts,
+    );
+    const source = fstatSync(pinnedSource.descriptor);
+    const destination = fstatSync(pinnedDestination.descriptor);
+    const receipt = runCutoverNativeHelper(
+      "exchange-durable",
+      [
+        path.basename(sourcePath),
+        path.basename(destinationPath),
+        String(source.dev),
+        String(source.ino),
+        String(source.mode & 0o7777),
+        String(source.nlink),
+        String(pinnedSource.bytes.length),
+        sha256(pinnedSource.bytes),
+        String(destination.dev),
+        String(destination.ino),
+        String(destination.mode & 0o7777),
+        String(destination.nlink),
+        String(pinnedDestination.bytes.length),
+        sha256(pinnedDestination.bytes),
+        String(sourceDirectory.identity.dev),
+        String(sourceDirectory.identity.ino),
+        String(destinationDirectory.identity.dev),
+        String(destinationDirectory.identity.ino),
+      ],
+      [
+        sourceDirectory.descriptor,
+        destinationDirectory.descriptor,
+        pinnedSource.descriptor,
+      ],
+    );
+    if (
+      receipt.sourceDevice !== String(source.dev) ||
+      receipt.sourceInode !== String(source.ino) ||
+      receipt.sourceDigest !== sha256(pinnedSource.bytes) ||
+      receipt.destinationDevice !== String(destination.dev) ||
+      receipt.destinationInode !== String(destination.ino) ||
+      receipt.destinationDigest !== sha256(pinnedDestination.bytes)
+    ) {
+      fail("cutover_conflict", "Cutover native exchange receipt changed.");
+    }
+    requirePinnedPrivateFile(
+      destinationPath,
+      pinnedSource.descriptor,
+      pinnedSource.identity,
+      pinnedSource.bytes,
+      sourceAllowedLinkCounts,
+    );
+    requirePinnedPrivateFile(
+      sourcePath,
+      pinnedDestination.descriptor,
+      pinnedDestination.identity,
+      pinnedDestination.bytes,
+      destinationAllowedLinkCounts,
+    );
+  } finally {
+    if (closeDestinationDirectory && destinationDirectory !== undefined) {
+      closeSync(destinationDirectory.descriptor);
+    }
+    if (closeSourceDirectory && sourceDirectory !== undefined) {
+      closeSync(sourceDirectory.descriptor);
+    }
+  }
+}
+
+function requirePinnedRemovalDirectoryGeneration(
+  directoryPath,
+  pinned,
+  label,
+) {
+  const current = lstatSync(directoryPath);
+  const opened = fstatSync(pinned.descriptor);
+  if (
+    !current.isDirectory() ||
+    current.isSymbolicLink() ||
+    !opened.isDirectory() ||
+    !pinnedFileIdentityMatches(current, pinned.identity) ||
+    !pinnedFileIdentityMatches(opened, pinned.identity) ||
+    ![0o700, 0o755].includes(current.mode & 0o7777) ||
+    realpathSync(directoryPath) !== path.resolve(directoryPath)
+  ) {
+    fail("cutover_source_drift", `${label} generation changed.`);
+  }
+}
+
+function runDurablePrivateDirectoryMove(
+  sourcePath,
+  destinationPath,
+  pinnedSource,
+  {
+    expectedTreeDigest,
+    maxFileBytes = CUTOVER_MAX_FILE_BYTES,
+    maxEntries = CUTOVER_SNAPSHOT_MAX_ENTRIES,
+    maxDepth = CUTOVER_SNAPSHOT_MAX_DEPTH,
+    maxAggregateBytes = CUTOVER_SNAPSHOT_MAX_AGGREGATE_BYTES,
+  },
+) {
+  if (
+    !SHA256_PATTERN.test(String(expectedTreeDigest ?? "")) ||
+    !Number.isSafeInteger(maxFileBytes) ||
+    maxFileBytes < 0 ||
+    maxFileBytes > CUTOVER_MAX_FILE_BYTES ||
+    !Number.isSafeInteger(maxEntries) ||
+    maxEntries < 1 ||
+    maxEntries > CUTOVER_SNAPSHOT_MAX_ENTRIES ||
+    !Number.isSafeInteger(maxDepth) ||
+    maxDepth < 0 ||
+    maxDepth > CUTOVER_SNAPSHOT_MAX_DEPTH ||
+    !Number.isSafeInteger(maxAggregateBytes) ||
+    maxAggregateBytes < 0 ||
+    maxAggregateBytes > CUTOVER_SNAPSHOT_MAX_AGGREGATE_BYTES
+  ) {
+    fail(
+      "cutover_state_invalid",
+      "Cutover directory retirement snapshot contract is invalid.",
+    );
+  }
+  let sourceDirectory;
+  let destinationDirectory;
+  try {
+    sourceDirectory = openPinnedPrivateDirectoryPath(
+      path.dirname(sourcePath),
+      "Cutover directory retirement source parent",
+    );
+    destinationDirectory = openPinnedPrivateDirectoryPath(
+      path.dirname(destinationPath),
+      "Cutover directory retirement destination parent",
+    );
+    requirePinnedRemovalDirectoryGeneration(
+      sourcePath,
+      pinnedSource,
+      "Cutover directory retirement source",
+    );
+    if (existsSync(destinationPath)) {
+      fail(
+        "cutover_conflict",
+        `Cutover directory retirement destination already exists: ${destinationPath}`,
+      );
+    }
+    const source = fstatSync(pinnedSource.descriptor);
+    const receipt = runCutoverNativeHelper(
+      "retire-directory-durable",
+      [
+        path.basename(sourcePath),
+        path.basename(destinationPath),
+        String(source.dev),
+        String(source.ino),
+        String(source.mode & 0o7777),
+        String(source.uid),
+        String(sourceDirectory.identity.dev),
+        String(sourceDirectory.identity.ino),
+        String(destinationDirectory.identity.dev),
+        String(destinationDirectory.identity.ino),
+        expectedTreeDigest,
+        String(maxFileBytes),
+        String(maxEntries),
+        String(maxDepth),
+        String(maxAggregateBytes),
+      ],
+      [
+        sourceDirectory.descriptor,
+        destinationDirectory.descriptor,
+        pinnedSource.descriptor,
+      ],
+    );
+    if (
+      receipt.device !== String(source.dev) ||
+      receipt.inode !== String(source.ino) ||
+      receipt.mode !== String(source.mode & 0o7777) ||
+      receipt.uid !== String(source.uid) ||
+      receipt.treeDigest !== expectedTreeDigest
+    ) {
+      fail(
+        "cutover_conflict",
+        "Cutover directory retirement receipt changed.",
+      );
+    }
+    if (existsSync(sourcePath)) {
+      fail(
+        "cutover_conflict",
+        `Cutover directory retirement source survived: ${sourcePath}`,
+      );
+    }
+    requirePinnedRemovalDirectoryGeneration(
+      destinationPath,
+      pinnedSource,
+      "Cutover retired directory",
+    );
+  } finally {
+    if (destinationDirectory !== undefined) {
+      closeSync(destinationDirectory.descriptor);
+    }
+    if (sourceDirectory !== undefined) closeSync(sourceDirectory.descriptor);
+  }
+}
+
+function retirementArchivePath(retirementDirectory, filePath, identity, bytes) {
+  return path.join(
+    retirementDirectory,
+    `${sha256(
+      canonicalJsonBytes({
+        filePath,
+        device: String(identity.dev),
+        inode: String(identity.ino),
+        digest: sha256(bytes),
+      }),
+    )}.archive`,
+  );
+}
+
+function retirePinnedPrivateFile(
+  filePath,
+  pinned,
+  {
+    retirementDirectory,
+    beforeMutation = () => undefined,
+    checkpoint = () => undefined,
+    checkpointName = "private-file-before-retirement",
+    mutationDetails = undefined,
+  },
+) {
+  ensurePrivateDirectory(retirementDirectory, beforeMutation);
+  const archivePath = retirementArchivePath(
+    retirementDirectory,
+    filePath,
+    pinned.identity,
+    pinned.bytes,
+  );
+  checkpoint(checkpointName, { filePath, archivePath });
+  requirePinnedPrivateFile(
+    filePath,
+    pinned.descriptor,
+    pinned.identity,
+    pinned.bytes,
+  );
+  beforeMutation(mutationDetails ?? { filePath, archivePath });
+  requirePinnedPrivateFile(
+    filePath,
+    pinned.descriptor,
+    pinned.identity,
+    pinned.bytes,
+  );
+  runDurablePrivateFileMove(filePath, archivePath, pinned);
+  return archivePath;
+}
+
+function retainedHardLinkPaths(retirementDirectory, filePath, bytes) {
+  const generation = sha256(
+    canonicalJsonBytes({
+      kind: "automation-kernel-guard-retained-hard-link-generation",
+      filePath,
+      digest: sha256(bytes),
+    }),
+  );
+  return {
+    temporaryArchive: path.join(
+      retirementDirectory,
+      `${generation}.temporary.archive`,
+    ),
+    canonicalArchive: path.join(
+      retirementDirectory,
+      `${generation}.canonical.archive`,
+    ),
+    replacement: path.join(
+      retirementDirectory,
+      `${generation}.replacement.tmp`,
+    ),
+  };
+}
+
+function samePinnedIdentity(left, right) {
+  return (
+    left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.uid === right.uid &&
+    left.mode === right.mode
+  );
+}
+
+function openRetainedHardLink(pathname, bytes) {
+  return openPinnedPrivateFile(pathname, {
+    maxBytes: bytes.length,
+    expectedBytes: bytes,
+    allowedLinkCounts: new Set([2]),
+  });
+}
+
+function requireRetainedHardLink(
+  pathname,
+  pinned,
+  bytes,
+) {
+  requirePinnedPrivateFile(
+    pathname,
+    pinned.descriptor,
+    pinned.identity,
+    bytes,
+    new Set([2]),
+  );
+}
+
+function inspectRetainedHardLinkPublication(
+  filePath,
+  temporaryPath,
+  bytes,
+  retirementDirectory,
+) {
+  const retained = retainedHardLinkPaths(
+    retirementDirectory,
+    filePath,
+    bytes,
+  );
+  const hasRetainedState = Object.values(retained).some((candidatePath) =>
+    existsSync(candidatePath),
+  );
+  if (!hasRetainedState) return { relevant: false, retained };
+  if (existsSync(temporaryPath) || !existsSync(retained.temporaryArchive)) {
+    fail(
+      "cutover_conflict",
+      `Retained hard-link publication conflicts at ${filePath}.`,
+    );
+  }
+  const original = openRetainedHardLink(retained.temporaryArchive, bytes);
+  let live;
+  let replacement;
+  try {
+    live = openPinnedPrivateFile(filePath, {
+      maxBytes: bytes.length,
+      expectedBytes: bytes,
+      allowedLinkCounts: new Set([1, 2]),
+    });
+    const liveIsOriginal = samePinnedIdentity(
+      live.identity,
+      original.identity,
+    );
+    const canonicalRetired = existsSync(retained.canonicalArchive);
+    const replacementExists = existsSync(retained.replacement);
+    if (canonicalRetired) {
+      if (replacementExists || liveIsOriginal) {
+        fail(
+          "cutover_conflict",
+          `Completed retained hard-link publication conflicts at ${filePath}.`,
+        );
+      }
+      requirePinnedPrivateFile(
+        filePath,
+        live.descriptor,
+        live.identity,
+        bytes,
+      );
+      requireRetainedHardLink(
+        retained.canonicalArchive,
+        original,
+        bytes,
+      );
+      requireRetainedHardLink(
+        retained.temporaryArchive,
+        original,
+        bytes,
+      );
+      return { relevant: true, phase: "complete", retained };
+    }
+    if (liveIsOriginal) {
+      requirePinnedPrivateFile(
+        filePath,
+        original.descriptor,
+        original.identity,
+        bytes,
+        new Set([2]),
+      );
+      if (!replacementExists) {
+        return { relevant: true, phase: "temporary-retired", retained };
+      }
+      replacement = openPinnedPrivateFile(retained.replacement, {
+        maxBytes: bytes.length,
+      });
+      if (samePinnedIdentity(replacement.identity, original.identity)) {
+        fail(
+          "cutover_conflict",
+          `Retained hard-link replacement conflicts at ${filePath}.`,
+        );
+      }
+      if (
+        !bytes
+          .subarray(0, replacement.bytes.length)
+          .equals(replacement.bytes)
+      ) {
+        fail(
+          "cutover_conflict",
+          `Retained hard-link replacement prefix conflicts at ${filePath}.`,
+        );
+      }
+      return {
+        relevant: true,
+        phase: replacement.bytes.equals(bytes)
+          ? "replacement-durable"
+          : "replacement-prefix",
+        retained,
+      };
+    }
+    requirePinnedPrivateFile(
+      filePath,
+      live.descriptor,
+      live.identity,
+      bytes,
+    );
+    if (!replacementExists) {
+      fail(
+        "cutover_conflict",
+        `Retained hard-link displaced generation is missing at ${filePath}.`,
+      );
+    }
+    requireRetainedHardLink(retained.replacement, original, bytes);
+    return { relevant: true, phase: "canonical-exchanged", retained };
+  } finally {
+    if (replacement !== undefined) closeSync(replacement.descriptor);
+    if (live !== undefined) closeSync(live.descriptor);
+    closeSync(original.descriptor);
+  }
+}
+
+function createRetainedHardLinkReplacement(
+  retirementDirectory,
+  pinnedRetirementDirectory,
+  replacementPath,
+  sourcePath,
+  pinnedSource,
+  beforeMutation,
+) {
+  beforeMutation();
+  requirePinnedPrivateDirectoryPath(
+    retirementDirectory,
+    pinnedRetirementDirectory,
+    "Cutover retained hard-link directory",
+  );
+  requireRetainedHardLink(sourcePath, pinnedSource, pinnedSource.bytes);
+  return createPrivateFileRelativeToPinnedDirectory(
+    retirementDirectory,
+    pinnedRetirementDirectory,
+    replacementPath,
+    sourcePath,
+    pinnedSource,
+  );
+}
+
+function retirePublishedHardLinks(
+  filePath,
+  temporaryPath,
+  bytes,
+  {
+    retirementDirectory,
+    beforeMutation = () => undefined,
+  },
+) {
+  let state = inspectRetainedHardLinkPublication(
+    filePath,
+    temporaryPath,
+    bytes,
+    retirementDirectory,
+  );
+  if (
+    !state.relevant &&
+    (!existsSync(filePath) || !existsSync(temporaryPath))
+  ) {
+    return false;
+  }
+  const liveDirectoryPath = path.dirname(filePath);
+  const retirementAnchor = path.dirname(
+    path.dirname(path.dirname(retirementDirectory)),
+  );
+  const liveDirectory = openPinnedPrivateDirectoryPath(
+    liveDirectoryPath,
+    "Cutover retained hard-link live directory",
+  );
+  let pinnedRetirementDirectory;
+  const requireDirectories = () => {
+    requirePinnedPrivateDirectoryPath(
+      liveDirectoryPath,
+      liveDirectory,
+      "Cutover retained hard-link live directory",
+    );
+    requirePinnedPrivateDirectoryPath(
+      retirementDirectory,
+      pinnedRetirementDirectory,
+      "Cutover retained hard-link directory",
+    );
+  };
+  try {
+    pinnedRetirementDirectory = ensurePinnedPrivateDirectoryChain(
+      retirementAnchor,
+      retirementDirectory,
+      beforeMutation,
+    );
+    requireDirectories();
+    state = inspectRetainedHardLinkPublication(
+      filePath,
+      temporaryPath,
+      bytes,
+      retirementDirectory,
+    );
+    requireDirectories();
+    if (!state.relevant) {
+      const original = openPinnedPrivateFile(temporaryPath, {
+        maxBytes: bytes.length,
+        expectedBytes: bytes,
+        allowedLinkCounts: new Set([2]),
+      });
+      try {
+        requirePinnedPrivateFile(
+          filePath,
+          original.descriptor,
+          original.identity,
+          bytes,
+          new Set([2]),
+        );
+        const retained = retainedHardLinkPaths(
+          retirementDirectory,
+          filePath,
+          bytes,
+        );
+        beforeMutation();
+        requireDirectories();
+        requirePinnedPrivateFile(
+          filePath,
+          original.descriptor,
+          original.identity,
+          bytes,
+          new Set([2]),
+        );
+        requirePinnedPrivateFile(
+          temporaryPath,
+          original.descriptor,
+          original.identity,
+          bytes,
+          new Set([2]),
+        );
+        runDurablePrivateFileMove(
+          temporaryPath,
+          retained.temporaryArchive,
+          original,
+          {
+            allowedLinkCounts: new Set([2]),
+            heldSourceDirectory: liveDirectory,
+            heldDestinationDirectory: pinnedRetirementDirectory,
+          },
+        );
+        requireDirectories();
+      } finally {
+        closeSync(original.descriptor);
+      }
+      state = inspectRetainedHardLinkPublication(
+        filePath,
+        temporaryPath,
+        bytes,
+        retirementDirectory,
+      );
+      requireDirectories();
+    }
+    if (state.phase === "complete") return true;
+    if (
+      state.phase === "temporary-retired" ||
+      state.phase === "replacement-prefix"
+    ) {
+      const original = openRetainedHardLink(
+        state.retained.temporaryArchive,
+        bytes,
+      );
+      try {
+        const replacement = createRetainedHardLinkReplacement(
+          retirementDirectory,
+          pinnedRetirementDirectory,
+          state.retained.replacement,
+          state.retained.temporaryArchive,
+          original,
+          beforeMutation,
+        );
+        closeSync(replacement.descriptor);
+        requireDirectories();
+      } finally {
+        closeSync(original.descriptor);
+      }
+      state = inspectRetainedHardLinkPublication(
+        filePath,
+        temporaryPath,
+        bytes,
+        retirementDirectory,
+      );
+      requireDirectories();
+    }
+    if (state.phase === "replacement-durable") {
+      const original = openRetainedHardLink(
+        state.retained.temporaryArchive,
+        bytes,
+      );
+      const replacement = openPinnedPrivateFile(state.retained.replacement, {
+        maxBytes: bytes.length,
+        expectedBytes: bytes,
+      });
+      try {
+        beforeMutation();
+        requireDirectories();
+        requireRetainedHardLink(
+          state.retained.temporaryArchive,
+          original,
+          bytes,
+        );
+        requirePinnedPrivateFile(
+          filePath,
+          original.descriptor,
+          original.identity,
+          bytes,
+          new Set([2]),
+        );
+        requirePinnedPrivateFile(
+          state.retained.replacement,
+          replacement.descriptor,
+          replacement.identity,
+          bytes,
+        );
+        runDurablePrivateFileExchange(
+          state.retained.replacement,
+          filePath,
+          replacement,
+          original,
+          {
+            destinationAllowedLinkCounts: new Set([2]),
+            heldSourceDirectory: pinnedRetirementDirectory,
+            heldDestinationDirectory: liveDirectory,
+          },
+        );
+        requireDirectories();
+      } finally {
+        closeSync(replacement.descriptor);
+        closeSync(original.descriptor);
+      }
+      state = inspectRetainedHardLinkPublication(
+        filePath,
+        temporaryPath,
+        bytes,
+        retirementDirectory,
+      );
+      requireDirectories();
+    }
+    if (state.phase === "canonical-exchanged") {
+      const original = openRetainedHardLink(
+        state.retained.temporaryArchive,
+        bytes,
+      );
+      try {
+        requireRetainedHardLink(state.retained.replacement, original, bytes);
+        beforeMutation();
+        requireDirectories();
+        requireRetainedHardLink(
+          state.retained.temporaryArchive,
+          original,
+          bytes,
+        );
+        requireRetainedHardLink(state.retained.replacement, original, bytes);
+        runDurablePrivateFileMove(
+          state.retained.replacement,
+          state.retained.canonicalArchive,
+          original,
+          {
+            allowedLinkCounts: new Set([2]),
+            heldSourceDirectory: pinnedRetirementDirectory,
+            heldDestinationDirectory: pinnedRetirementDirectory,
+          },
+        );
+        requireDirectories();
+      } finally {
+        closeSync(original.descriptor);
+      }
+      state = inspectRetainedHardLinkPublication(
+        filePath,
+        temporaryPath,
+        bytes,
+        retirementDirectory,
+      );
+      requireDirectories();
+    }
+    if (state.phase !== "complete") {
+      fail(
+        "cutover_conflict",
+        `Retained hard-link publication did not complete at ${filePath}.`,
+      );
+    }
+    return true;
+  } finally {
+    if (pinnedRetirementDirectory !== undefined) {
+      closeSync(pinnedRetirementDirectory.descriptor);
+    }
+    closeSync(liveDirectory.descriptor);
+  }
+}
+
+function removePrivateTemporaryFile(
+  filePath,
+  expectedByteOptions,
+  {
+    retirementDirectory,
+    beforeMutation = () => undefined,
+    beforeUnlink = () => undefined,
+  },
+) {
+  if (!existsSync(filePath)) return;
+  const pinned = openPinnedPrivateFile(filePath);
+  try {
+    if (
+      !Array.isArray(expectedByteOptions) ||
+      !expectedByteOptions.some((option) => pinned.bytes.equals(option))
+    ) {
+      fail(
+        "cutover_conflict",
+        `Cutover temporary bytes conflict: ${filePath}`,
+      );
+    }
+    beforeUnlink({ filePath });
+    requirePinnedPrivateFile(
+      filePath,
+      pinned.descriptor,
+      pinned.identity,
+      pinned.bytes,
+    );
+    beforeMutation();
+    requirePinnedPrivateFile(
+      filePath,
+      pinned.descriptor,
+      pinned.identity,
+      pinned.bytes,
+    );
+    retirePinnedPrivateFile(filePath, pinned, {
+      retirementDirectory,
+      beforeMutation,
+    });
+    if (existsSync(filePath)) {
+      fail(
+        "cutover_conflict",
+        `Cutover temporary path survived exact retirement: ${filePath}`,
+      );
+    }
+  } finally {
+    closeSync(pinned.descriptor);
+  }
+}
+
+function writeAtomic(
+  filePath,
+  bytes,
+  beforeMutation = () => undefined,
+  temporaryDurable = () => undefined,
+) {
+  ensurePrivateDirectory(path.dirname(filePath), beforeMutation);
+  const temporaryPath = `${filePath}.cutover.tmp`;
+  let temporaryPinned = null;
+  let destinationPinned = null;
+  const retirementDirectory = path.join(
+    path.dirname(filePath),
+    ".kernel-guard-cutover-retired",
+    "atomic",
+  );
+  ensurePrivateDirectory(retirementDirectory, beforeMutation);
+  try {
+    if (existsSync(filePath)) {
+      destinationPinned = openPinnedPrivateFile(filePath);
+    }
+    if (existsSync(temporaryPath)) {
+      temporaryPinned = openPinnedPrivateFile(temporaryPath);
+    }
+    const destinationAlreadyPublished = destinationPinned?.bytes.equals(bytes);
+    if (
+      temporaryPinned !== null &&
+      !temporaryPinned.bytes.equals(bytes) &&
+      !destinationAlreadyPublished
+    ) {
+      temporaryDurable({ filePath, temporaryPath, cleanup: true });
+      requirePinnedPathAbsentOrUnchanged(filePath, destinationPinned);
+      retirePinnedPrivateFile(temporaryPath, temporaryPinned, {
+        retirementDirectory,
+        beforeMutation,
+        mutationDetails: { filePath, temporaryPath },
+      });
+      closeSync(temporaryPinned.descriptor);
+      temporaryPinned = null;
+    }
+    if (destinationAlreadyPublished) {
+      if (temporaryPinned !== null) {
+        temporaryDurable({ filePath, temporaryPath, cleanup: true });
+        requirePinnedPathAbsentOrUnchanged(filePath, destinationPinned);
+        retirePinnedPrivateFile(temporaryPath, temporaryPinned, {
+          retirementDirectory,
+          beforeMutation,
+          mutationDetails: { filePath, temporaryPath },
+        });
+      }
+      requirePinnedPrivateFile(
+        filePath,
+        destinationPinned.descriptor,
+        destinationPinned.identity,
+        bytes,
+      );
+      return;
+    }
+    if (temporaryPinned === null) {
+      beforeMutation();
+      const descriptor = openSync(
+        temporaryPath,
+        constants.O_RDWR |
+          constants.O_CREAT |
+          constants.O_EXCL |
+          constants.O_NOFOLLOW,
+        0o600,
+      );
+      writeFileSync(descriptor, bytes);
+      fchmodSync(descriptor, 0o600);
+      fsyncSync(descriptor);
+      temporaryPinned = {
+        descriptor,
+        identity: pinnedFileIdentity(fstatSync(descriptor)),
+        bytes,
+      };
+    }
+    syncDirectory(path.dirname(temporaryPath));
+    temporaryDurable({ filePath, temporaryPath, cleanup: false });
+    requirePinnedPrivateFile(
+      temporaryPath,
+      temporaryPinned.descriptor,
+      temporaryPinned.identity,
+      bytes,
+    );
+    requirePinnedPathAbsentOrUnchanged(filePath, destinationPinned);
+    beforeMutation({ filePath, temporaryPath });
+    requirePinnedPrivateFile(
+      temporaryPath,
+      temporaryPinned.descriptor,
+      temporaryPinned.identity,
+      bytes,
+    );
+    requirePinnedPathAbsentOrUnchanged(filePath, destinationPinned);
+    if (destinationPinned === null) {
+      runDurablePrivateFileMove(temporaryPath, filePath, temporaryPinned);
+    } else {
+      runDurablePrivateFileExchange(
+        temporaryPath,
+        filePath,
+        temporaryPinned,
+        destinationPinned,
+      );
+      retirePinnedPrivateFile(temporaryPath, destinationPinned, {
+        retirementDirectory,
+        beforeMutation,
+        mutationDetails: { filePath, temporaryPath },
+      });
+    }
+    requirePinnedPrivateFile(
+      filePath,
+      temporaryPinned.descriptor,
+      temporaryPinned.identity,
+      bytes,
+    );
+  } finally {
+    if (temporaryPinned !== null) closeSync(temporaryPinned.descriptor);
+    if (destinationPinned !== null) closeSync(destinationPinned.descriptor);
   }
 }
 
@@ -398,6 +2276,36 @@ function cutoverQuarantineRoot(plan) {
   return path.join(artifactDirectory(plan), ".recovery-quarantine");
 }
 
+function cutoverRetirementRoot(plan) {
+  return path.join(
+    automationKernelGuardCutoverPaths(plan.parameters.stateRoot).controlRoot,
+    ".kernel-guard-cutover-retired",
+    plan.parameters.cutoverId,
+  );
+}
+
+function cutoverRetirementDirectory(plan, category) {
+  return path.join(cutoverRetirementRoot(plan), category);
+}
+
+function writeCutoverImmutable(plan, filePath, bytes, options = {}) {
+  return writeImmutable(filePath, bytes, {
+    ...options,
+    retirementDirectory: cutoverRetirementDirectory(
+      plan,
+      "immutable-hard-links",
+    ),
+  });
+}
+
+function requireCutoverImmutableTargetPreflight(plan, filePath, bytes) {
+  return requireImmutableTargetPreflight(
+    filePath,
+    bytes,
+    cutoverRetirementDirectory(plan, "immutable-hard-links"),
+  );
+}
+
 function writeAheadIdentity(record) {
   return {
     schemaVersion: record.schemaVersion,
@@ -405,6 +2313,7 @@ function writeAheadIdentity(record) {
     operation: record.operation,
     scope: record.scope,
     scopeId: record.scopeId,
+    scopePlanDigest: record.scopePlanDigest,
     cutoverId: record.cutoverId,
     operationName: record.operationName,
     filePath: record.filePath,
@@ -456,6 +2365,7 @@ function exactWriteAheadKeys() {
     "schemaVersion",
     "scope",
     "scopeId",
+    "scopePlanDigest",
     "sourceBytesBase64",
     "sourceDev",
     "sourceDigest",
@@ -473,10 +2383,15 @@ function exactWriteAheadKeys() {
 
 function writeAheadScope(plan, supersedePlan = undefined) {
   return supersedePlan === undefined
-    ? { scope: "apply", scopeId: plan.parameters.cutoverId }
+    ? {
+        scope: "apply",
+        scopeId: plan.parameters.cutoverId,
+        scopePlanDigest: sha256(canonicalJsonBytes(plan)),
+      }
     : {
         scope: "supersede",
         scopeId: supersedePlan.parameters.supersedeId,
+        scopePlanDigest: sha256(canonicalJsonBytes(supersedePlan)),
       };
 }
 
@@ -505,6 +2420,13 @@ function validateWriteAheadRecord(plan, record, supersedePlan = undefined) {
   const paths = automationKernelGuardCutoverPaths(plan.parameters.stateRoot);
   const preparedAtMs = Date.parse(String(record?.preparedAt ?? ""));
   const writtenAtMs = Date.parse(String(record?.writtenAt ?? ""));
+  if (record?.operation === "remove") {
+    assertSnapshotTreeAdmission([record.sourceSnapshot], {
+      code: "cutover_write_ahead_invalid",
+      message:
+        "Kernel guard cutover removal snapshot exceeds its bounded admission.",
+    });
+  }
   if (
     record === null ||
     typeof record !== "object" ||
@@ -516,6 +2438,7 @@ function validateWriteAheadRecord(plan, record, supersedePlan = undefined) {
     !["rewrite", "remove"].includes(record.operation) ||
     record.scope !== expectedScope.scope ||
     record.scopeId !== expectedScope.scopeId ||
+    record.scopePlanDigest !== expectedScope.scopePlanDigest ||
     record.cutoverId !== plan.parameters.cutoverId ||
     !IDENTIFIER_PATTERN.test(String(record.operationName ?? "")) ||
     !SHA256_PATTERN.test(String(record.operationId ?? "")) ||
@@ -572,8 +2495,8 @@ function validateWriteAheadRecord(plan, record, supersedePlan = undefined) {
     }
   } else {
     const expectedQuarantine = path.join(
-      cutoverQuarantineRoot(plan),
-      removalQuarantineId(record),
+      cutoverRetirementDirectory(plan, "removals"),
+      `${removalQuarantineId(record)}.archive`,
     );
     if (
       record.targetMode !== null ||
@@ -615,13 +2538,11 @@ function readWriteAheadRecord(plan, supersedePlan = undefined) {
     syncDirectory(path.dirname(filePath));
     return null;
   }
+  let bytes;
   let record;
   try {
-    record = JSON.parse(
-      fatalDecoder.decode(
-        readPrivateMode600File(filePath, CUTOVER_WRITE_AHEAD_MAX_BYTES),
-      ),
-    );
+    bytes = readPrivateMode600File(filePath, CUTOVER_WRITE_AHEAD_MAX_BYTES);
+    record = JSON.parse(fatalDecoder.decode(bytes));
   } catch (error) {
     if (error instanceof AutomationControlError) throw error;
     fail(
@@ -636,14 +2557,18 @@ function readWriteAheadRecord(plan, supersedePlan = undefined) {
       ? supersedePlan
       : undefined,
   );
+  if (!bytes.equals(prettyJsonBytes(validated))) {
+    fail(
+      "cutover_write_ahead_invalid",
+      "Kernel guard cutover write-ahead bytes are not canonical.",
+    );
+  }
   requireLocalFilesystem(plan.parameters.stateRoot, {
     plan,
     supersedePlan,
     extraPaths: [
       validated.filePath,
-      ...(validated.quarantinePath === null
-        ? []
-        : [validated.quarantinePath]),
+      ...(validated.quarantinePath === null ? [] : [validated.quarantinePath]),
     ],
   });
   return validated;
@@ -672,6 +2597,7 @@ function writeWriteAheadRecord(
   record,
   supersedePlan = undefined,
   beforeMutation = () => undefined,
+  checkpoint = () => undefined,
 ) {
   validateWriteAheadRecord(plan, record, supersedePlan);
   requireLocalFilesystem(plan.parameters.stateRoot, {
@@ -690,7 +2616,21 @@ function writeWriteAheadRecord(
       "Kernel guard cutover write-ahead record exceeds its private size boundary.",
     );
   }
-  writeAtomic(cutoverWriteAheadPath(plan), bytes, beforeMutation);
+  writeAtomic(
+    cutoverWriteAheadPath(plan),
+    bytes,
+    beforeMutation,
+    ({ filePath, temporaryPath, cleanup = false }) =>
+      checkpoint("write-ahead-temporary-durable", {
+        filePath,
+        temporaryPath,
+        cleanup,
+        operationId: record.operationId,
+        operationName: record.operationName,
+        phase: record.phase,
+        scope: record.scope,
+      }),
+  );
 }
 
 function clearWriteAheadRecord(
@@ -699,12 +2639,56 @@ function clearWriteAheadRecord(
   checkpointName,
   details = {},
   beforeMutation = () => undefined,
+  expectedRecord = undefined,
+  beforeUnlinkCheckpointName = "",
 ) {
   const filePath = cutoverWriteAheadPath(plan);
   if (existsSync(filePath)) {
-    beforeMutation();
-    unlinkSync(filePath);
-    checkpoint(checkpointName, { ...details, writeAheadPath: filePath });
+    const expectedBytes =
+      expectedRecord === undefined
+        ? readPrivateMode600File(filePath, CUTOVER_WRITE_AHEAD_MAX_BYTES)
+        : prettyJsonBytes(expectedRecord);
+    const pinned = openPinnedPrivateFile(filePath, {
+      maxBytes: CUTOVER_WRITE_AHEAD_MAX_BYTES,
+      expectedBytes,
+    });
+    try {
+      if (beforeUnlinkCheckpointName !== "") {
+        checkpoint(beforeUnlinkCheckpointName, {
+          ...details,
+          writeAheadPath: filePath,
+        });
+        requirePinnedPrivateFile(
+          filePath,
+          pinned.descriptor,
+          pinned.identity,
+          expectedBytes,
+        );
+      }
+      beforeMutation();
+      requirePinnedPrivateFile(
+        filePath,
+        pinned.descriptor,
+        pinned.identity,
+        expectedBytes,
+      );
+      retirePinnedPrivateFile(filePath, pinned, {
+        retirementDirectory: cutoverRetirementDirectory(
+          plan,
+          "write-ahead",
+        ),
+        beforeMutation,
+      });
+      checkpoint(checkpointName, { ...details, writeAheadPath: filePath });
+      if (existsSync(filePath)) {
+        fail(
+          "cutover_write_ahead_conflict",
+          "Kernel guard write-ahead path survived exact retirement.",
+        );
+      }
+    } finally {
+      closeSync(pinned.descriptor);
+    }
   }
   syncDirectory(path.dirname(filePath));
 }
@@ -717,52 +2701,97 @@ function writeImmutable(
     linkedCheckpointName = "",
     beforeMutation = () => undefined,
     beforeFinalize = () => undefined,
+    retirementDirectory,
   } = {},
 ) {
+  if (
+    typeof retirementDirectory !== "string" ||
+    !path.isAbsolute(retirementDirectory)
+  ) {
+    fail(
+      "cutover_conflict",
+      `Cutover immutable retirement directory is unavailable for ${filePath}.`,
+    );
+  }
   ensurePrivateDirectory(path.dirname(filePath), beforeMutation);
   const temporaryPath = `${filePath}.cutover.tmp`;
   if (existsSync(filePath)) {
+    const retainedState = inspectRetainedHardLinkPublication(
+      filePath,
+      temporaryPath,
+      bytes,
+      retirementDirectory,
+    );
+    if (retainedState.relevant) {
+      retirePublishedHardLinks(filePath, temporaryPath, bytes, {
+        retirementDirectory,
+        beforeMutation,
+      });
+      const existing = readPrivateMode600File(filePath, bytes.length);
+      if (!existing.equals(bytes)) {
+        fail("cutover_conflict", `Cutover artifact conflicts at ${filePath}.`);
+      }
+      syncDirectory(path.dirname(filePath));
+      return;
+    }
     if (existsSync(temporaryPath)) {
-      const finalStats = lstatSync(filePath);
-      const temporaryStats = lstatSync(temporaryPath);
-      if (
-        finalStats.isFile() &&
-        temporaryStats.isFile() &&
-        finalStats.dev === temporaryStats.dev &&
-        finalStats.ino === temporaryStats.ino &&
-        finalStats.nlink === 2 &&
-        temporaryStats.nlink === 2 &&
-        readBoundedRegularFile(filePath, bytes.length, new Set([2])).equals(
+      let pinned;
+      try {
+        pinned = openPinnedPrivateFile(temporaryPath, {
+          maxBytes: bytes.length,
+          expectedBytes: bytes,
+          allowedLinkCounts: new Set([2]),
+        });
+        requirePinnedPrivateFile(
+          filePath,
+          pinned.descriptor,
+          pinned.identity,
           bytes,
-        )
-      ) {
+          new Set([2]),
+        );
         beforeFinalize();
-        const recoveredFinal = lstatSync(filePath);
-        const recoveredTemporary = lstatSync(temporaryPath);
-        if (
-          recoveredFinal.dev !== recoveredTemporary.dev ||
-          recoveredFinal.ino !== recoveredTemporary.ino ||
-          recoveredFinal.nlink !== 2 ||
-          recoveredTemporary.nlink !== 2 ||
-          !readPrivateMode600File(
-            filePath,
-            bytes.length,
-            new Set([2]),
-          ).equals(bytes)
-        ) {
-          fail(
-            "cutover_conflict",
-            `Cutover artifact changed before link finalization at ${filePath}.`,
-          );
-        }
+        requirePinnedPrivateFile(
+          filePath,
+          pinned.descriptor,
+          pinned.identity,
+          bytes,
+          new Set([2]),
+        );
+        requirePinnedPrivateFile(
+          temporaryPath,
+          pinned.descriptor,
+          pinned.identity,
+          bytes,
+          new Set([2]),
+        );
         beforeMutation();
-        unlinkSync(temporaryPath);
+        requirePinnedPrivateFile(
+          filePath,
+          pinned.descriptor,
+          pinned.identity,
+          bytes,
+          new Set([2]),
+        );
+        requirePinnedPrivateFile(
+          temporaryPath,
+          pinned.descriptor,
+          pinned.identity,
+          bytes,
+          new Set([2]),
+        );
+        retirePublishedHardLinks(filePath, temporaryPath, bytes, {
+          retirementDirectory,
+          beforeMutation,
+        });
         syncDirectory(path.dirname(filePath));
-      } else {
+      } catch (error) {
+        if (error instanceof AutomationControlError) throw error;
         fail(
           "cutover_conflict",
           `Cutover artifact recovery conflicts at ${filePath}.`,
         );
+      } finally {
+        if (pinned !== undefined) closeSync(pinned.descriptor);
       }
     }
     const existing = readPrivateMode600File(filePath, bytes.length);
@@ -773,34 +2802,44 @@ function writeImmutable(
     return;
   }
   let descriptor;
+  let pinned;
   try {
     if (existsSync(temporaryPath)) {
-      let reusable = false;
-      try {
-        reusable = readPrivateMode600File(temporaryPath, bytes.length).equals(
-          bytes,
-        );
-      } catch {
-        reusable = false;
-      }
-      if (!reusable) {
-        removePrivateTemporaryFile(temporaryPath, beforeMutation);
-      }
+      pinned = openPinnedPrivateFile(temporaryPath, {
+        maxBytes: bytes.length,
+        expectedBytes: bytes,
+      });
     }
     if (!existsSync(temporaryPath)) {
       beforeMutation();
       descriptor = openSync(
         temporaryPath,
-        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
+        constants.O_RDWR |
+          constants.O_CREAT |
+          constants.O_EXCL |
+          constants.O_NOFOLLOW,
         0o600,
       );
       writeFileSync(descriptor, bytes);
+      fchmodSync(descriptor, 0o600);
       fsyncSync(descriptor);
-      closeSync(descriptor);
-      descriptor = undefined;
+      pinned = {
+        descriptor,
+        identity: pinnedFileIdentity(fstatSync(descriptor)),
+        bytes,
+      };
     }
     try {
       beforeMutation();
+      requirePinnedPrivateFile(
+        temporaryPath,
+        pinned.descriptor,
+        pinned.identity,
+        bytes,
+      );
+      if (existsSync(filePath)) {
+        fail("cutover_conflict", `Cutover artifact conflicts at ${filePath}.`);
+      }
       linkSync(temporaryPath, filePath);
     } catch (error) {
       if (error?.code !== "EEXIST") throw error;
@@ -813,49 +2852,91 @@ function writeImmutable(
         fail("cutover_conflict", `Cutover artifact conflicts at ${filePath}.`);
       }
     }
-    const finalStats = lstatSync(filePath);
-    const temporaryStats = lstatSync(temporaryPath);
-    if (
-      finalStats.dev !== temporaryStats.dev ||
-      finalStats.ino !== temporaryStats.ino
-    ) {
-      fail(
-        "cutover_conflict",
-        `Cutover artifact link identity conflicts at ${filePath}.`,
-      );
-    }
+    requirePinnedPrivateFile(
+      filePath,
+      pinned.descriptor,
+      pinned.identity,
+      bytes,
+      new Set([2]),
+    );
+    requirePinnedPrivateFile(
+      temporaryPath,
+      pinned.descriptor,
+      pinned.identity,
+      bytes,
+      new Set([2]),
+    );
     if (linkedCheckpointName !== "") {
       checkpoint(linkedCheckpointName, { filePath, temporaryPath });
-    }
-    beforeFinalize();
-    const finalBeforeUnlink = lstatSync(filePath);
-    const temporaryBeforeUnlink = lstatSync(temporaryPath);
-    if (
-      finalBeforeUnlink.dev !== temporaryBeforeUnlink.dev ||
-      finalBeforeUnlink.ino !== temporaryBeforeUnlink.ino ||
-      finalBeforeUnlink.nlink !== 2 ||
-      temporaryBeforeUnlink.nlink !== 2 ||
-      !readPrivateMode600File(
+      requirePinnedPrivateFile(
         filePath,
-        bytes.length,
+        pinned.descriptor,
+        pinned.identity,
+        bytes,
         new Set([2]),
-      ).equals(bytes)
-    ) {
-      fail(
-        "cutover_conflict",
-        `Cutover artifact changed before link finalization at ${filePath}.`,
+      );
+      requirePinnedPrivateFile(
+        temporaryPath,
+        pinned.descriptor,
+        pinned.identity,
+        bytes,
+        new Set([2]),
       );
     }
+    beforeFinalize();
+    requirePinnedPrivateFile(
+      filePath,
+      pinned.descriptor,
+      pinned.identity,
+      bytes,
+      new Set([2]),
+    );
+    requirePinnedPrivateFile(
+      temporaryPath,
+      pinned.descriptor,
+      pinned.identity,
+      bytes,
+      new Set([2]),
+    );
     beforeMutation();
-    unlinkSync(temporaryPath);
+    requirePinnedPrivateFile(
+      filePath,
+      pinned.descriptor,
+      pinned.identity,
+      bytes,
+      new Set([2]),
+    );
+    requirePinnedPrivateFile(
+      temporaryPath,
+      pinned.descriptor,
+      pinned.identity,
+      bytes,
+      new Set([2]),
+    );
+    retirePublishedHardLinks(filePath, temporaryPath, bytes, {
+      retirementDirectory,
+      beforeMutation,
+    });
     syncDirectory(path.dirname(filePath));
   } finally {
-    if (descriptor !== undefined) closeSync(descriptor);
+    if (pinned !== undefined) closeSync(pinned.descriptor);
+    else if (descriptor !== undefined) closeSync(descriptor);
   }
 }
 
-function requireImmutableTargetPreflight(filePath, bytes) {
+function requireImmutableTargetPreflight(
+  filePath,
+  bytes,
+  retirementDirectory,
+) {
   const temporaryPath = `${filePath}.cutover.tmp`;
+  const retainedState = inspectRetainedHardLinkPublication(
+    filePath,
+    temporaryPath,
+    bytes,
+    retirementDirectory,
+  );
+  if (retainedState.relevant) return;
   const finalExists = existsSync(filePath);
   const temporaryExists = existsSync(temporaryPath);
   if (!finalExists && !temporaryExists) return;
@@ -911,17 +2992,64 @@ function requireSha(value, label) {
 }
 
 function archivedEvidencePaths(entry, targetPath) {
-  if (entry?.kind === "missing") return [targetPath];
-  if (entry?.kind === "file") return [targetPath, `${targetPath}.cutover.tmp`];
-  if (entry?.kind !== "directory" || !Array.isArray(entry.entries)) {
-    return [targetPath];
+  const paths = [];
+  const pending = [{ entry, targetPath, depth: 0 }];
+  let admittedEntries = 0;
+  while (pending.length > 0) {
+    const current = pending.pop();
+    admittedEntries += 1;
+    if (
+      admittedEntries > CUTOVER_SNAPSHOT_MAX_ENTRIES ||
+      current.depth > CUTOVER_SNAPSHOT_MAX_DEPTH
+    ) {
+      fail(
+        "cutover_plan_invalid",
+        "Kernel guard cutover evidence expansion exceeds its snapshot boundary.",
+      );
+    }
+    paths.push(current.targetPath);
+    if (current.entry?.kind === "file") {
+      paths.push(`${current.targetPath}.cutover.tmp`);
+      continue;
+    }
+    if (current.entry?.kind === "missing") continue;
+    if (
+      current.entry?.kind !== "directory" ||
+      !Array.isArray(current.entry.entries)
+    ) {
+      fail(
+        "cutover_plan_invalid",
+        "Kernel guard cutover evidence snapshot has an invalid entry.",
+      );
+    }
+    if (
+      admittedEntries + current.entry.entries.length >
+      CUTOVER_SNAPSHOT_MAX_ENTRIES
+    ) {
+      fail(
+        "cutover_plan_invalid",
+        "Kernel guard cutover evidence expansion exceeds its snapshot boundary.",
+      );
+    }
+    for (let index = current.entry.entries.length - 1; index >= 0; index -= 1) {
+      const child = current.entry.entries[index];
+      if (typeof child?.path !== "string") {
+        fail(
+          "cutover_plan_invalid",
+          "Kernel guard cutover evidence snapshot has an invalid child path.",
+        );
+      }
+      pending.push({
+        entry: child,
+        targetPath: path.join(
+          current.targetPath,
+          path.basename(child.path),
+        ),
+        depth: current.depth + 1,
+      });
+    }
   }
-  return [
-    targetPath,
-    ...entry.entries.flatMap((child) =>
-      archivedEvidencePaths(child, path.join(targetPath, path.basename(child.path))),
-    ),
-  ];
+  return paths;
 }
 
 function exactCutoverEvidenceFilesystemPaths(
@@ -942,6 +3070,8 @@ function exactCutoverEvidenceFilesystemPaths(
     authorizations,
     path.join(authorizations, "prepared-authorization.json"),
     cutoverQuarantineRoot(plan),
+    cutoverRetirementRoot(plan),
+    cutoverRetirementDirectory(plan, "immutable-hard-links"),
     ...archivedEvidencePaths(
       sourceEntry(plan, paths.writerLock),
       path.join(legacyRoot, "outcomes.jsonl.writer-lock"),
@@ -968,10 +3098,13 @@ function exactCutoverEvidenceFilesystemPaths(
       evidence.receipt,
     );
   }
-  return candidates.flatMap((filePath) => [filePath, `${filePath}.cutover.tmp`]);
+  return candidates.flatMap((filePath) => [
+    filePath,
+    `${filePath}.cutover.tmp`,
+  ]);
 }
 
-export function inspectAutomationKernelGuardCutoverFilesystemAdmission(
+function inspectAutomationKernelGuardCutoverFilesystemAdmission(
   {
     stateRoot,
     plan = undefined,
@@ -1138,58 +3271,401 @@ function requirePausedActors(codexHome) {
   return result;
 }
 
-function snapshotPath(
-  targetPath,
-  { includeBytes = true, maxBytes = CUTOVER_MAX_FILE_BYTES } = {},
-) {
-  if (!existsSync(targetPath)) return { path: targetPath, kind: "missing" };
-  const stats = lstatSync(targetPath);
-  if (stats.isSymbolicLink()) {
-    fail(
-      "cutover_state_invalid",
-      `Cutover source path is a symlink: ${targetPath}`,
+function newSnapshotBudget() {
+  return { entries: 0, aggregateBytes: 0 };
+}
+
+function snapshotNativeDigestValue(entry, includeName = false) {
+  const result = { kind: entry.kind, mode: entry.mode };
+  if (includeName) result.name = path.basename(entry.path);
+  if (entry.kind === "file") {
+    result.size = entry.size;
+    result.digest = entry.digest;
+  } else if (entry.kind === "directory") {
+    result.entries = entry.entries.map((child) =>
+      snapshotNativeDigestValue(child, true),
     );
   }
-  if (stats.isDirectory()) {
+  return result;
+}
+
+function snapshotNativeTreeDigest(entry) {
+  return sha256(canonicalJsonBytes(snapshotNativeDigestValue(entry)));
+}
+
+function parseNativeSnapshotCount(value, label, maximum) {
+  if (
+    typeof value !== "string" ||
+    !/^(?:0|[1-9]\d*)$/.test(value)
+  ) {
+    fail("cutover_state_invalid", `${label} is not a canonical count.`);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > maximum) {
+    fail("cutover_state_invalid", `${label} exceeds its boundary.`);
+  }
+  return parsed;
+}
+
+function requireNativeSnapshotName(value, label) {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value === "." ||
+    value === ".." ||
+    value.includes("/") ||
+    value.includes("\0") ||
+    Buffer.from(value, "utf8").toString("utf8") !== value
+  ) {
+    fail("cutover_state_invalid", `${label} is not one canonical entry name.`);
+  }
+  return value;
+}
+
+function nativeSnapshotEntryKeys(entry) {
+  return Object.keys(entry).sort().join("\0");
+}
+
+function convertNativeSnapshotEntry(
+  entry,
+  targetPath,
+  { includeBytes, depth = 0 },
+) {
+  if (
+    entry === null ||
+    typeof entry !== "object" ||
+    Array.isArray(entry) ||
+    depth > CUTOVER_SNAPSHOT_MAX_DEPTH
+  ) {
+    fail("cutover_state_invalid", `Cutover snapshot receipt is invalid: ${targetPath}`);
+  }
+  const name = requireNativeSnapshotName(entry.name, "Cutover snapshot name");
+  if (name !== path.basename(targetPath)) {
+    fail("cutover_state_invalid", `Cutover snapshot receipt changed its target: ${targetPath}`);
+  }
+  if (entry.kind === "missing") {
+    if (nativeSnapshotEntryKeys(entry) !== "kind\0name") {
+      fail("cutover_state_invalid", `Cutover missing snapshot receipt is invalid: ${targetPath}`);
+    }
+    return { entry: { path: targetPath, kind: "missing" }, entries: 1, bytes: 0 };
+  }
+  if (entry.kind === "file") {
+    const expectedKeys = includeBytes
+      ? "bytesBase64\0digest\0kind\0mode\0name\0size"
+      : "digest\0kind\0mode\0name\0size";
     if (
-      stats.uid !== currentUid(stats) ||
-      ![0o700, 0o755].includes(stats.mode & 0o7777) ||
-      realpathSync(targetPath) !== path.resolve(targetPath)
+      nativeSnapshotEntryKeys(entry) !== expectedKeys ||
+      ![0o600, 0o640, 0o644].includes(entry.mode) ||
+      !Number.isSafeInteger(entry.size) ||
+      entry.size < 0 ||
+      entry.size > CUTOVER_MAX_FILE_BYTES ||
+      !SHA256_PATTERN.test(String(entry.digest ?? ""))
     ) {
-      fail(
-        "cutover_state_invalid",
-        `Cutover source directory is unsafe: ${targetPath}`,
-      );
+      fail("cutover_state_invalid", `Cutover file snapshot receipt is invalid: ${targetPath}`);
+    }
+    if (includeBytes) {
+      if (typeof entry.bytesBase64 !== "string") {
+        fail("cutover_state_invalid", `Cutover file snapshot bytes are invalid: ${targetPath}`);
+      }
+      const decoded = Buffer.from(entry.bytesBase64, "base64");
+      if (
+        decoded.length !== entry.size ||
+        decoded.toString("base64") !== entry.bytesBase64 ||
+        sha256(decoded) !== entry.digest
+      ) {
+        fail("cutover_state_invalid", `Cutover file snapshot bytes are invalid: ${targetPath}`);
+      }
     }
     return {
-      path: targetPath,
-      kind: "directory",
-      mode: stats.mode & 0o7777,
-      entries: readdirSync(targetPath)
-        .sort()
-        .map((name) =>
-          snapshotPath(path.join(targetPath, name), {
-            includeBytes,
-            maxBytes,
-          }),
-        ),
+      entry: {
+        path: targetPath,
+        kind: "file",
+        mode: entry.mode,
+        size: entry.size,
+        digest: entry.digest,
+        ...(includeBytes ? { bytesBase64: entry.bytesBase64 } : {}),
+      },
+      entries: 1,
+      bytes: entry.size,
     };
   }
-  if (!stats.isFile()) {
+  if (
+    entry.kind !== "directory" ||
+    nativeSnapshotEntryKeys(entry) !== "entries\0kind\0mode\0name" ||
+    ![0o700, 0o755].includes(entry.mode) ||
+    !Array.isArray(entry.entries)
+  ) {
+    fail("cutover_state_invalid", `Cutover directory snapshot receipt is invalid: ${targetPath}`);
+  }
+  const convertedEntries = [];
+  let admittedEntries = 1;
+  let aggregateBytes = 0;
+  let priorNameBytes = null;
+  for (const child of entry.entries) {
+    const childName = requireNativeSnapshotName(
+      child?.name,
+      "Cutover snapshot child name",
+    );
+    const nameBytes = Buffer.from(childName, "utf8");
+    if (priorNameBytes !== null && Buffer.compare(priorNameBytes, nameBytes) >= 0) {
+      fail("cutover_state_invalid", `Cutover snapshot entries are not canonical: ${targetPath}`);
+    }
+    priorNameBytes = nameBytes;
+    const converted = convertNativeSnapshotEntry(
+      child,
+      path.join(targetPath, childName),
+      { includeBytes, depth: depth + 1 },
+    );
+    admittedEntries += converted.entries;
+    aggregateBytes += converted.bytes;
+    if (
+      !Number.isSafeInteger(admittedEntries) ||
+      admittedEntries > CUTOVER_SNAPSHOT_MAX_ENTRIES ||
+      !Number.isSafeInteger(aggregateBytes) ||
+      aggregateBytes > CUTOVER_SNAPSHOT_MAX_AGGREGATE_BYTES
+    ) {
+      fail("cutover_state_invalid", `Cutover snapshot receipt exceeds its boundary: ${targetPath}`);
+    }
+    convertedEntries.push(converted.entry);
+  }
+  const converted = {
+    path: targetPath,
+    kind: "directory",
+    mode: entry.mode,
+    entries: convertedEntries,
+  };
+  converted.nativeTreeDigest = snapshotNativeTreeDigest(converted);
+  return { entry: converted, entries: admittedEntries, bytes: aggregateBytes };
+}
+
+function assertSnapshotTreeAdmission(
+  entries,
+  {
+    code = "cutover_plan_invalid",
+    message = "Kernel guard cutover snapshot exceeds its bounded admission.",
+  } = {},
+) {
+  if (!Array.isArray(entries)) fail(code, message);
+  const pending = entries.map((entry) => ({ entry, depth: 0 }));
+  const admittedDirectories = [];
+  let admittedEntries = 0;
+  let aggregateBytes = 0;
+  while (pending.length > 0) {
+    const { entry, depth } = pending.pop();
+    admittedEntries += 1;
+    if (
+      admittedEntries > CUTOVER_SNAPSHOT_MAX_ENTRIES ||
+      depth > CUTOVER_SNAPSHOT_MAX_DEPTH ||
+      entry === null ||
+      typeof entry !== "object" ||
+      Array.isArray(entry) ||
+      typeof entry.path !== "string"
+    ) {
+      fail(code, message);
+    }
+    if (entry.kind === "file") {
+      if (
+        ![0o600, 0o640, 0o644].includes(entry.mode) ||
+        !Number.isSafeInteger(entry.size) ||
+        entry.size < 0 ||
+        entry.size > CUTOVER_MAX_FILE_BYTES ||
+        !SHA256_PATTERN.test(String(entry.digest ?? ""))
+      ) {
+        fail(code, message);
+      }
+      aggregateBytes += entry.size;
+      if (
+        !Number.isSafeInteger(aggregateBytes) ||
+        aggregateBytes > CUTOVER_SNAPSHOT_MAX_AGGREGATE_BYTES
+      ) {
+        fail(code, message);
+      }
+      if (Object.hasOwn(entry, "bytesBase64")) {
+        if (typeof entry.bytesBase64 !== "string") fail(code, message);
+        const decodedBytes = Buffer.from(entry.bytesBase64, "base64");
+        if (
+          decodedBytes.toString("base64") !== entry.bytesBase64 ||
+          decodedBytes.length !== entry.size ||
+          sha256(decodedBytes) !== entry.digest
+        ) {
+          fail(code, message);
+        }
+      }
+      continue;
+    }
+    if (entry.kind === "missing") continue;
+    if (
+      entry.kind !== "directory" ||
+      ![0o700, 0o755].includes(entry.mode) ||
+      !Array.isArray(entry.entries) ||
+      !SHA256_PATTERN.test(String(entry.nativeTreeDigest ?? ""))
+    ) {
+      fail(code, message);
+    }
+    admittedDirectories.push(entry);
+    if (admittedEntries + entry.entries.length > CUTOVER_SNAPSHOT_MAX_ENTRIES) {
+      fail(code, message);
+    }
+    let priorNameBytes = null;
+    for (const child of entry.entries) {
+      if (
+        child === null ||
+        typeof child !== "object" ||
+        Array.isArray(child) ||
+        typeof child.path !== "string" ||
+        path.dirname(child.path) !== entry.path
+      ) {
+        fail(code, message);
+      }
+      const childName = path.basename(child.path);
+      try {
+        requireNativeSnapshotName(childName, "Cutover snapshot child name");
+      } catch {
+        fail(code, message);
+      }
+      const nameBytes = Buffer.from(childName, "utf8");
+      if (priorNameBytes !== null && Buffer.compare(priorNameBytes, nameBytes) >= 0) {
+        fail(code, message);
+      }
+      priorNameBytes = nameBytes;
+      pending.push({ entry: child, depth: depth + 1 });
+    }
+  }
+  for (const directory of admittedDirectories) {
+    if (snapshotNativeTreeDigest(directory) !== directory.nativeTreeDigest) {
+      fail(code, message);
+    }
+  }
+  return { entries: admittedEntries, aggregateBytes };
+}
+
+function snapshotPath(
+  targetPath,
+  {
+    includeBytes = true,
+    maxBytes = CUTOVER_MAX_FILE_BYTES,
+    budget = newSnapshotBudget(),
+    depth = 0,
+  } = {},
+) {
+  if (
+    budget === null ||
+    typeof budget !== "object" ||
+    !Number.isSafeInteger(budget.entries) ||
+    budget.entries < 0 ||
+    budget.entries > CUTOVER_SNAPSHOT_MAX_ENTRIES ||
+    !Number.isSafeInteger(budget.aggregateBytes) ||
+    budget.aggregateBytes < 0 ||
+    budget.aggregateBytes > CUTOVER_SNAPSHOT_MAX_AGGREGATE_BYTES ||
+    !Number.isSafeInteger(depth) ||
+    depth < 0 ||
+    depth > CUTOVER_SNAPSHOT_MAX_DEPTH ||
+    !Number.isSafeInteger(maxBytes) ||
+    maxBytes < 0 ||
+    maxBytes > CUTOVER_MAX_FILE_BYTES
+  ) {
     fail(
       "cutover_state_invalid",
-      `Cutover source path is not regular: ${targetPath}`,
+      `Cutover source exceeds its bounded snapshot admission: ${targetPath}`,
     );
   }
-  const bytes = readBoundedRegularFile(targetPath, maxBytes);
-  return {
-    path: targetPath,
-    kind: "file",
-    mode: stats.mode & 0o7777,
-    size: bytes.length,
-    digest: sha256(bytes),
-    ...(includeBytes ? { bytesBase64: bytes.toString("base64") } : {}),
-  };
+  const absoluteTarget = path.resolve(targetPath);
+  const parentPath = path.dirname(absoluteTarget);
+  const targetName = path.basename(absoluteTarget);
+  requireNativeSnapshotName(targetName, "Cutover snapshot target name");
+  const pinnedParent = openPinnedSnapshotDirectoryPath(
+    parentPath,
+    "Cutover snapshot parent",
+  );
+  try {
+    const remainingEntries = CUTOVER_SNAPSHOT_MAX_ENTRIES - budget.entries;
+    const remainingBytes =
+      CUTOVER_SNAPSHOT_MAX_AGGREGATE_BYTES - budget.aggregateBytes;
+    let receipt;
+    try {
+      receipt = runCutoverNativeHelper(
+        "snapshot-tree",
+        [
+          targetName,
+          includeBytes ? "1" : "0",
+          String(maxBytes),
+          String(remainingEntries),
+          String(CUTOVER_SNAPSHOT_MAX_DEPTH - depth),
+          String(remainingBytes),
+          String(CUTOVER_SNAPSHOT_MAX_AGGREGATE_BYTES),
+          String(pinnedParent.identity.dev),
+          String(pinnedParent.identity.ino),
+          String(pinnedParent.identity.mode),
+        ],
+        [pinnedParent.descriptor],
+        { maxBuffer: CUTOVER_SNAPSHOT_MAX_AGGREGATE_BYTES },
+      );
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      if (/depth boundary/.test(detail)) {
+        fail(
+          "cutover_state_invalid",
+          `Cutover source exceeds the ${CUTOVER_SNAPSHOT_MAX_DEPTH.toLocaleString()} level snapshot depth limit: ${targetPath}`,
+        );
+      }
+      if (/entry boundary/.test(detail)) {
+        fail(
+          "cutover_state_invalid",
+          `Cutover source exceeds the ${CUTOVER_SNAPSHOT_MAX_ENTRIES.toLocaleString()} entry snapshot limit: ${targetPath}`,
+        );
+      }
+      if (/aggregate byte boundary/.test(detail)) {
+        fail(
+          "cutover_state_invalid",
+          `Cutover source exceeds the ${CUTOVER_SNAPSHOT_MAX_AGGREGATE_BYTES.toLocaleString()} byte aggregate snapshot limit: ${targetPath}`,
+        );
+      }
+      throw error;
+    }
+    requirePinnedSnapshotDirectoryPath(
+      parentPath,
+      pinnedParent,
+      "Cutover snapshot parent",
+    );
+    if (
+      receipt.operation !== "snapshot-tree" ||
+      receipt.parentDevice !== String(pinnedParent.identity.dev) ||
+      receipt.parentInode !== String(pinnedParent.identity.ino) ||
+      receipt.parentMode !== String(pinnedParent.identity.mode)
+    ) {
+      fail("cutover_state_invalid", `Cutover snapshot receipt changed: ${targetPath}`);
+    }
+    const converted = convertNativeSnapshotEntry(receipt.entry, absoluteTarget, {
+      includeBytes,
+      depth,
+    });
+    const entryCount = parseNativeSnapshotCount(
+      receipt.entryCount,
+      "Cutover snapshot entry count",
+      remainingEntries,
+    );
+    const aggregateBytes = parseNativeSnapshotCount(
+      receipt.aggregateBytes,
+      "Cutover snapshot aggregate bytes",
+      remainingBytes,
+    );
+    const expectedTreeDigest =
+      converted.entry.kind === "directory"
+        ? converted.entry.nativeTreeDigest
+        : null;
+    if (
+      entryCount !== converted.entries ||
+      aggregateBytes !== converted.bytes ||
+      receipt.treeDigest !== expectedTreeDigest
+    ) {
+      fail("cutover_state_invalid", `Cutover snapshot receipt is inconsistent: ${targetPath}`);
+    }
+    budget.entries += entryCount;
+    budget.aggregateBytes += aggregateBytes;
+    return converted.entry;
+  } finally {
+    closeSync(pinnedParent.descriptor);
+  }
 }
 
 function requireLegacySourceShape(paths, entries) {
@@ -1231,19 +3707,26 @@ function snapshotCutoverSource({ stateRoot, codexHome, repoRoot }) {
   requirePrivateDirectory(paths.guardsRoot, "Automation guard root");
   const repo = exactDevIdentity(repoRoot);
   const actors = requirePausedActors(codexHome);
+  const budget = newSnapshotBudget();
   const entries = [
-    snapshotPath(path.join(paths.controlRoot, "current-tasks.json")),
+    snapshotPath(path.join(paths.controlRoot, "current-tasks.json"), {
+      budget,
+    }),
     snapshotPath(path.join(paths.controlRoot, "events.jsonl"), {
       includeBytes: false,
+      budget,
     }),
     snapshotPath(path.join(paths.stateRoot, "outcomes.jsonl"), {
       includeBytes: false,
       maxBytes: 16 * 1024 * 1024,
+      budget,
     }),
-    snapshotPath(path.join(paths.controlRoot, "leases")),
-    snapshotPath(paths.guardsRoot),
-    snapshotPath(paths.writerLock),
-    ...Object.values(actors).map((actor) => snapshotPath(actor.path)),
+    snapshotPath(path.join(paths.controlRoot, "leases"), { budget }),
+    snapshotPath(paths.guardsRoot, { budget }),
+    snapshotPath(paths.writerLock, { budget }),
+    ...Object.values(actors).map((actor) =>
+      snapshotPath(actor.path, { budget }),
+    ),
   ];
   requireLegacySourceShape(paths, entries);
   const legacyEntries = entries.filter(
@@ -1388,6 +3871,7 @@ function normalizePlan(rawPlan) {
     "Kernel guard cutover plan is invalid.",
   );
   assertAutomationKernelGuardCutoverPlanSize(prettyJsonBytes(plan));
+  assertSnapshotTreeAdmission(plan?.sourceSnapshot?.entries);
   if (
     plan?.schemaVersion !== CUTOVER_SCHEMA_VERSION ||
     plan?.kind !== CUTOVER_PLAN_KIND ||
@@ -1523,7 +4007,10 @@ function currentCanonicalTask(plan) {
 function exactTransactionRecord(plan) {
   const transaction = readTransaction(plan);
   if (transaction === null) return null;
-  const bytes = readPrivateMode600File(transactionPath(plan), 1024 * 1024);
+  const bytes = readPrivateMode600File(
+    transactionPath(plan),
+    CUTOVER_TRANSACTION_MAX_BYTES,
+  );
   if (!bytes.equals(prettyJsonBytes(transaction))) {
     fail(
       "cutover_transaction_invalid",
@@ -1692,11 +4179,13 @@ export function planAutomationKernelGuardCutoverSupersede({
 }) {
   const oldPlan = normalizePlan(rawOldPlan);
   requireLocalFilesystem(oldPlan.parameters.stateRoot, { plan: oldPlan });
+  requireNoAmbiguousSupersedeTemporaries(oldPlan);
   requireSupersedeStillPreMarker(oldPlan);
   if (existsSync(cutoverWriteAheadPath(oldPlan))) {
     requireSupersedeWriteAheadScope(readWriteAheadRecord(oldPlan));
   }
   const transactionRecord = exactTransactionRecord(oldPlan);
+  requireNoAmbiguousSupersedeTemporaries(oldPlan);
   if (
     transactionRecord === null ||
     !["prepared", "claims-installed"].includes(
@@ -1751,19 +4240,29 @@ export function planAutomationKernelGuardCutoverSupersede({
     supersedePlan,
     transaction: transactionRecord.transaction,
   });
+  requireNoAmbiguousSupersedeTemporaries(oldPlan);
   return supersedePlan;
 }
 
-function snapshotWithoutPaths(entry) {
+function snapshotComparisonValue(entry, rootPath = entry?.path) {
+  const relativePath =
+    typeof entry?.path === "string" && typeof rootPath === "string"
+      ? path.relative(rootPath, entry.path)
+      : null;
   if (entry?.kind === "directory") {
     return {
+      relativePath,
       kind: entry.kind,
       mode: entry.mode,
-      entries: entry.entries.map(snapshotWithoutPaths),
+      nativeTreeDigest: entry.nativeTreeDigest,
+      entries: entry.entries.map((child) =>
+        snapshotComparisonValue(child, rootPath),
+      ),
     };
   }
   if (entry?.kind === "file") {
     return {
+      relativePath,
       kind: entry.kind,
       mode: entry.mode,
       size: entry.size,
@@ -1771,7 +4270,7 @@ function snapshotWithoutPaths(entry) {
       bytesBase64: entry.bytesBase64,
     };
   }
-  return { kind: entry?.kind };
+  return { relativePath, kind: entry?.kind };
 }
 
 function snapshotIncludesBytes(entry) {
@@ -1796,8 +4295,8 @@ function requireSnapshotMatch(expected, actualPath, label) {
     );
   }
   if (
-    stableJson(snapshotWithoutPaths(actual)) !==
-    stableJson(snapshotWithoutPaths(expected))
+    stableJson(snapshotComparisonValue(actual)) !==
+    stableJson(snapshotComparisonValue(expected))
   ) {
     fail("cutover_source_drift", `${label} changed after planning.`);
   }
@@ -1861,12 +4360,45 @@ function validateStaticSource(plan) {
 function requireNoLeases(stateRoot) {
   const leases = path.join(stateRoot, "control", "leases");
   if (!existsSync(leases)) return;
-  requirePrivateDirectory(leases, "Automation lease root");
-  if (readdirSync(leases).length !== 0) {
+  const pinned = openPinnedPrivateDirectoryPath(
+    leases,
+    "Automation lease root",
+  );
+  try {
+    let entries;
+    try {
+      entries = runCutoverNativeHelperBytes(
+        "list-bounded",
+        [
+          "1",
+          "255",
+          String(pinned.identity.dev),
+          String(pinned.identity.ino),
+        ],
+        [pinned.descriptor],
+        { maxBuffer: 256 },
+      );
+    } catch (error) {
+      if (/listing exceeds the (?:entry|encoded byte) boundary/.test(error?.message ?? "")) {
+        fail(
+          "cutover_lease_live",
+          "Every canonical lease must be absent before cutover.",
+        );
+      }
+      throw error;
+    }
+    requirePinnedPrivateDirectoryPath(
+      leases,
+      pinned,
+      "Automation lease root",
+    );
+    if (entries.length === 0) return;
     fail(
       "cutover_lease_live",
       "Every canonical lease must be absent before cutover.",
     );
+  } finally {
+    closeSync(pinned.descriptor);
   }
 }
 
@@ -1979,6 +4511,248 @@ function transactionPath(plan) {
     .transaction;
 }
 
+function ambiguousSupersedeTemporaryPaths(
+  plan,
+  {
+    supersedePlan = undefined,
+    includeBootstrap = false,
+    includeCompletedEvidence = false,
+    activeAtomicMutation = undefined,
+    deferSupersedeWriteAheadTemporary = false,
+  } = {},
+) {
+  const paths = automationKernelGuardCutoverPaths(plan.parameters.stateRoot);
+  const candidates = [
+    `${paths.transaction}.cutover.tmp`,
+    `${paths.writeAhead}.cutover.tmp`,
+    `${paths.globalReceipt}.cutover.tmp`,
+  ];
+  if (includeBootstrap) {
+    candidates.push(`${paths.bootstrapLock}.cutover.tmp`);
+  }
+  if (includeCompletedEvidence) {
+    candidates.push(
+      ...exactCutoverEvidenceFilesystemPaths(plan, { supersedePlan }).filter(
+        (filePath) => filePath.endsWith(".cutover.tmp"),
+      ),
+    );
+  }
+  const allowedTemporaryPaths = new Set();
+  if (
+    activeAtomicMutation?.filePath === paths.writeAhead &&
+    activeAtomicMutation?.temporaryPath === `${paths.writeAhead}.cutover.tmp`
+  ) {
+    allowedTemporaryPaths.add(activeAtomicMutation.temporaryPath);
+  }
+  if (deferSupersedeWriteAheadTemporary) {
+    allowedTemporaryPaths.add(`${paths.writeAhead}.cutover.tmp`);
+  }
+  return [...new Set(candidates)].filter(
+    (temporaryPath) => !allowedTemporaryPaths.has(temporaryPath),
+  );
+}
+
+function requireNoAmbiguousSupersedeTemporaries(plan, options = undefined) {
+  const temporaryPath = ambiguousSupersedeTemporaryPaths(plan, options).find(
+    existsSync,
+  );
+  if (temporaryPath !== undefined) {
+    fail(
+      "cutover_supersede_conflict",
+      `Kernel guard cutover has ambiguous temporary residue at ${temporaryPath}.`,
+    );
+  }
+}
+
+function writeAheadRecordsEqual(left, right) {
+  return canonicalJsonBytes(left).equals(canonicalJsonBytes(right));
+}
+
+function recoverableSupersedeWriteAheadGeneration(current, temporary) {
+  if (current === null) return temporary.phase === "prepared";
+  if (
+    current.operationId !== temporary.operationId ||
+    current.scope !== "supersede" ||
+    temporary.scope !== "supersede"
+  ) {
+    return false;
+  }
+  if (writeAheadRecordsEqual(current, temporary)) return true;
+  return (
+    current.phase === "prepared" &&
+    temporary.phase === "written" &&
+    writeAheadRecordsEqual(current, {
+      ...temporary,
+      phase: "prepared",
+      writtenAt: null,
+    })
+  );
+}
+
+function readRecoverableSupersedeWriteAheadTemporary(plan, supersedePlan) {
+  const paths = automationKernelGuardCutoverPaths(plan.parameters.stateRoot);
+  const temporaryPath = `${paths.writeAhead}.cutover.tmp`;
+  if (!existsSync(temporaryPath)) return null;
+  const evidence = supersedeEvidencePaths(plan, supersedePlan);
+  if (
+    !exactPrivateFileBytes(evidence.plan, prettyJsonBytes(supersedePlan))
+  ) {
+    fail(
+      "cutover_supersede_conflict",
+      "Supersede write-ahead recovery has no exact prepared plan artifact.",
+    );
+  }
+  let bytes;
+  let record;
+  try {
+    bytes = readPrivateMode600File(
+      temporaryPath,
+      CUTOVER_WRITE_AHEAD_MAX_BYTES,
+    );
+    record = validateWriteAheadRecord(
+      plan,
+      JSON.parse(fatalDecoder.decode(bytes)),
+      supersedePlan,
+    );
+    if (!bytes.equals(prettyJsonBytes(record))) {
+      throw new Error("noncanonical supersede write-ahead temporary");
+    }
+  } catch {
+    fail(
+      "cutover_supersede_conflict",
+      `Kernel guard cutover has ambiguous temporary residue at ${temporaryPath}.`,
+    );
+  }
+  const current = readWriteAheadRecord(plan, supersedePlan);
+  requireSupersedeWriteAheadScope(current);
+  if (!recoverableSupersedeWriteAheadGeneration(current, record)) {
+    fail(
+      "cutover_supersede_conflict",
+      `Kernel guard cutover has ambiguous temporary residue at ${temporaryPath}.`,
+    );
+  }
+  requireLocalFilesystem(plan.parameters.stateRoot, {
+    plan,
+    supersedePlan,
+    extraPaths: [
+      paths.writeAhead,
+      temporaryPath,
+      record.filePath,
+      ...(record.quarantinePath === null ? [] : [record.quarantinePath]),
+    ],
+  });
+  return Object.freeze({ bytes, current, record, temporaryPath });
+}
+
+function recoverSupersedeWriteAheadTemporary(
+  plan,
+  supersedePlan,
+  {
+    checkpoint = () => undefined,
+    beforeMutation = () => undefined,
+  } = {},
+) {
+  const recovery = readRecoverableSupersedeWriteAheadTemporary(
+    plan,
+    supersedePlan,
+  );
+  if (recovery === null) return null;
+  const writeAheadPath = cutoverWriteAheadPath(plan);
+  const temporaryPinned = openPinnedPrivateFile(recovery.temporaryPath, {
+    maxBytes: CUTOVER_WRITE_AHEAD_MAX_BYTES,
+    expectedBytes: recovery.bytes,
+  });
+  const currentBytes =
+    recovery.current === null ? null : prettyJsonBytes(recovery.current);
+  const currentPinned =
+    currentBytes === null
+      ? null
+      : openPinnedPrivateFile(writeAheadPath, {
+          maxBytes: CUTOVER_WRITE_AHEAD_MAX_BYTES,
+          expectedBytes: currentBytes,
+        });
+  try {
+    checkpoint("supersede-write-ahead-temporary-recovery-before-mutation", {
+      filePath: writeAheadPath,
+      temporaryPath: recovery.temporaryPath,
+      operationId: recovery.record.operationId,
+      operationName: recovery.record.operationName,
+      phase: recovery.record.phase,
+      predecessorPreserved: recovery.current !== null,
+    });
+    requirePinnedPrivateFile(
+      recovery.temporaryPath,
+      temporaryPinned.descriptor,
+      temporaryPinned.identity,
+      recovery.bytes,
+    );
+    requirePinnedPathAbsentOrUnchanged(writeAheadPath, currentPinned);
+    beforeMutation({
+      filePath: writeAheadPath,
+      temporaryPath: recovery.temporaryPath,
+    });
+    requirePinnedPrivateFile(
+      recovery.temporaryPath,
+      temporaryPinned.descriptor,
+      temporaryPinned.identity,
+      recovery.bytes,
+    );
+    requirePinnedPathAbsentOrUnchanged(writeAheadPath, currentPinned);
+    if (recovery.current === null) {
+      runDurablePrivateFileMove(
+        recovery.temporaryPath,
+        writeAheadPath,
+        temporaryPinned,
+      );
+      requirePinnedPrivateFile(
+        writeAheadPath,
+        temporaryPinned.descriptor,
+        temporaryPinned.identity,
+        recovery.bytes,
+      );
+    } else {
+      retirePinnedPrivateFile(recovery.temporaryPath, temporaryPinned, {
+        retirementDirectory: cutoverRetirementDirectory(
+          plan,
+          "supersede-write-ahead-temporaries",
+        ),
+        beforeMutation,
+      });
+      if (existsSync(recovery.temporaryPath)) {
+        fail(
+          "cutover_supersede_conflict",
+          `Supersede write-ahead temporary survived exact retirement at ${recovery.temporaryPath}.`,
+        );
+      }
+      requirePinnedPrivateFile(
+        writeAheadPath,
+        currentPinned.descriptor,
+        currentPinned.identity,
+        currentBytes,
+      );
+    }
+    syncDirectory(path.dirname(writeAheadPath));
+  } finally {
+    closeSync(temporaryPinned.descriptor);
+    if (currentPinned !== null) closeSync(currentPinned.descriptor);
+  }
+  checkpoint("supersede-write-ahead-temporary-recovered", {
+    filePath: writeAheadPath,
+    operationId: recovery.record.operationId,
+    operationName: recovery.record.operationName,
+    phase: recovery.record.phase,
+  });
+  const recovered = readWriteAheadRecord(plan, supersedePlan);
+  const expected = recovery.current ?? recovery.record;
+  if (recovered === null || !writeAheadRecordsEqual(recovered, expected)) {
+    fail(
+      "cutover_supersede_conflict",
+      "Recovered supersede write-ahead state changed before admission.",
+    );
+  }
+  return recovered;
+}
+
 function readTransaction(
   plan,
   checkpoint = () => undefined,
@@ -1990,8 +4764,11 @@ function readTransaction(
   try {
     transaction = JSON.parse(
       fatalDecoder.decode(
-        readPrivateMode600File(filePath, 1024 * 1024, new Set([1]), () =>
-          checkpoint("transaction-private-file-opened", { filePath }),
+        readPrivateMode600File(
+          filePath,
+          CUTOVER_TRANSACTION_MAX_BYTES,
+          new Set([1]),
+          () => checkpoint("transaction-private-file-opened", { filePath }),
         ),
       ),
     );
@@ -2111,7 +4888,8 @@ function readTransaction(
       continue;
     }
     if (allowIncompleteAuthorizationEvidence) {
-      requireImmutableTargetPreflight(
+      requireCutoverImmutableTargetPreflight(
+        plan,
         authorization.confirmationArtifact,
         Buffer.from(authorization.confirmationBytesBase64, "base64"),
       );
@@ -2141,7 +4919,8 @@ function readTransaction(
     return transaction;
   }
   if (allowIncompleteAuthorizationEvidence) {
-    requireImmutableTargetPreflight(
+    requireCutoverImmutableTargetPreflight(
+      plan,
       preparedAuthorizationPath,
       prettyJsonBytes(transaction.authorizations[0]),
     );
@@ -2291,7 +5070,8 @@ function writeAuthorizationEvidence(
       "Cutover authorization evidence conflicts.",
     );
   }
-  writeImmutable(
+  writeCutoverImmutable(
+    plan,
     authorization.confirmationArtifact,
     Buffer.from(authorization.confirmationBytesBase64, "base64"),
     { beforeMutation, checkpoint, linkedCheckpointName },
@@ -2309,7 +5089,8 @@ function writePreparedAuthorizationEvidence(
     plan,
     extraPaths: [preparedAuthorizationArtifactPath(plan)],
   });
-  writeImmutable(
+  writeCutoverImmutable(
+    plan,
     preparedAuthorizationArtifactPath(plan),
     prettyJsonBytes(authorization),
     { beforeMutation, checkpoint, linkedCheckpointName },
@@ -2323,10 +5104,7 @@ function readCanonicalAuthorizationRecord(plan, filePath, label) {
     bytes = readPrivateMode600File(filePath, 128 * 1024);
     record = JSON.parse(fatalDecoder.decode(bytes));
   } catch {
-    fail(
-      "cutover_authorization_invalid",
-      `${label} is malformed or unsafe.`,
-    );
+    fail("cutover_authorization_invalid", `${label} is malformed or unsafe.`);
   }
   if (
     !authorizationRecordIsValid(plan, record) ||
@@ -2348,11 +5126,7 @@ function recoverPreparedAuthorizationRecord(
   let bytes;
   let record;
   try {
-    bytes = readPrivateMode600File(
-      readablePath,
-      128 * 1024,
-      new Set([1, 2]),
-    );
+    bytes = readPrivateMode600File(readablePath, 128 * 1024, new Set([1, 2]));
     record = JSON.parse(fatalDecoder.decode(bytes));
   } catch {
     fail(
@@ -2369,8 +5143,8 @@ function recoverPreparedAuthorizationRecord(
       "Kernel guard cutover prepared authorization record conflicts.",
     );
   }
-  requireImmutableTargetPreflight(filePath, bytes);
-  writeImmutable(filePath, bytes, {
+  requireCutoverImmutableTargetPreflight(plan, filePath, bytes);
+  writeCutoverImmutable(plan, filePath, bytes, {
     beforeMutation,
     checkpoint,
     linkedCheckpointName: "prepared-authorization-recovery-linked",
@@ -2490,7 +5264,7 @@ function recoverPreparedAuthorizationTransaction(
     authorizations: [authorization],
     claimGenerations: [],
   };
-  writeTransaction(plan, transaction, beforeMutation);
+  writeTransaction(plan, transaction, beforeMutation, checkpoint);
   checkpoint("transaction-prepared-recovered", {
     cutoverId: plan.parameters.cutoverId,
   });
@@ -2586,7 +5360,7 @@ function recordTransactionAuthorization(
       ? { completedAt: nextAuthorization.validatedAt }
       : {}),
   };
-  writeTransaction(plan, updated, beforeMutation);
+  writeTransaction(plan, updated, beforeMutation, checkpoint);
   checkpoint("retry-authorization-transaction-durable", {
     confirmationId: nextAuthorization.confirmationId,
   });
@@ -2608,6 +5382,7 @@ function currentClaimGeneration(
   plan,
   transaction,
   beforeMutation = () => undefined,
+  checkpoint = () => undefined,
 ) {
   const identity = processStartIdentity(process.pid);
   if (typeof identity !== "string" || identity.length === 0) {
@@ -2639,7 +5414,7 @@ function currentClaimGeneration(
     ...transaction,
     claimGenerations: [...transaction.claimGenerations, generation],
   };
-  writeTransaction(plan, updated, beforeMutation);
+  writeTransaction(plan, updated, beforeMutation, checkpoint);
   return { transaction: updated, generation };
 }
 
@@ -2667,11 +5442,26 @@ function writeTransaction(
   plan,
   transaction,
   beforeMutation = () => undefined,
+  checkpoint = () => undefined,
 ) {
+  const bytes = prettyJsonBytes(transaction);
+  if (bytes.length > CUTOVER_TRANSACTION_MAX_BYTES) {
+    fail(
+      "cutover_transaction_invalid",
+      `Kernel guard cutover transaction exceeds the ${CUTOVER_TRANSACTION_MAX_BYTES.toLocaleString()} byte private boundary.`,
+    );
+  }
   writeAtomic(
     transactionPath(plan),
-    prettyJsonBytes(transaction),
+    bytes,
     beforeMutation,
+    ({ filePath, temporaryPath, cleanup = false }) =>
+      checkpoint("transaction-temporary-durable", {
+        filePath,
+        temporaryPath,
+        cleanup,
+        phase: transaction.phase,
+      }),
   );
 }
 
@@ -2759,45 +5549,29 @@ function exactMarkerDirectory(guard) {
   }
 }
 
-function prepareMarkerTemporaryFile(
-  temporaryPath,
-  beforeMutation = () => undefined,
-) {
-  const bytes = automationKernelGuardMarkerBytes();
-  if (existsSync(temporaryPath)) {
-    let reusable = false;
-    try {
-      reusable = readPrivateMode600File(temporaryPath, bytes.length).equals(
-        bytes,
-      );
-    } catch {
-      reusable = false;
-    }
-    if (reusable) return;
-    fail(
-      "cutover_conflict",
-      `Cutover marker temporary path conflicts: ${temporaryPath}`,
-    );
-  }
-  let descriptor;
-  try {
-    beforeMutation();
-    descriptor = openSync(temporaryPath, "wx", 0o600);
-    writeFileSync(descriptor, bytes);
-    fsyncSync(descriptor);
-    closeSync(descriptor);
-    descriptor = undefined;
-  } finally {
-    if (descriptor !== undefined) closeSync(descriptor);
-  }
-}
-
 function recoverNoReplaceLink(
   filePath,
   temporaryPath,
   bytes,
-  beforeMutation = () => undefined,
+  {
+    beforeMutation = () => undefined,
+    beforeUnlink = () => undefined,
+    retirementDirectory,
+  } = {},
 ) {
+  const retainedState = inspectRetainedHardLinkPublication(
+    filePath,
+    temporaryPath,
+    bytes,
+    retirementDirectory,
+  );
+  if (retainedState.relevant) {
+    retirePublishedHardLinks(filePath, temporaryPath, bytes, {
+      retirementDirectory,
+      beforeMutation,
+    });
+    return true;
+  }
   if (!existsSync(filePath) || !existsSync(temporaryPath)) return false;
   const current = lstatSync(filePath);
   const temporary = lstatSync(temporaryPath);
@@ -2812,10 +5586,58 @@ function recoverNoReplaceLink(
   ) {
     return false;
   }
-  beforeMutation();
-  unlinkSync(temporaryPath);
-  syncDirectory(path.dirname(filePath));
-  return true;
+  const pinned = openPinnedPrivateFile(temporaryPath, {
+    maxBytes: bytes.length,
+    expectedBytes: bytes,
+    allowedLinkCounts: new Set([2]),
+  });
+  try {
+    requirePinnedPrivateFile(
+      filePath,
+      pinned.descriptor,
+      pinned.identity,
+      bytes,
+      new Set([2]),
+    );
+    beforeUnlink();
+    requirePinnedPrivateFile(
+      filePath,
+      pinned.descriptor,
+      pinned.identity,
+      bytes,
+      new Set([2]),
+    );
+    requirePinnedPrivateFile(
+      temporaryPath,
+      pinned.descriptor,
+      pinned.identity,
+      bytes,
+      new Set([2]),
+    );
+    beforeMutation();
+    requirePinnedPrivateFile(
+      filePath,
+      pinned.descriptor,
+      pinned.identity,
+      bytes,
+      new Set([2]),
+    );
+    requirePinnedPrivateFile(
+      temporaryPath,
+      pinned.descriptor,
+      pinned.identity,
+      bytes,
+      new Set([2]),
+    );
+    retirePublishedHardLinks(filePath, temporaryPath, bytes, {
+      retirementDirectory,
+      beforeMutation,
+    });
+    syncDirectory(path.dirname(filePath));
+    return true;
+  } finally {
+    closeSync(pinned.descriptor);
+  }
 }
 
 function recoverAnyClaimLink(
@@ -2833,7 +5655,13 @@ function recoverAnyClaimLink(
         filePath,
         temporaryPath,
         cutoverClaimBytes(plan, generation, target),
-        beforeMutation,
+        {
+          beforeMutation,
+          retirementDirectory: cutoverRetirementDirectory(
+            plan,
+            "immutable-hard-links",
+          ),
+        },
       )
     ) {
       return;
@@ -2842,23 +5670,30 @@ function recoverAnyClaimLink(
 }
 
 function recoverPermanentMarkerLink(
+  plan,
   filePath,
   beforeMutation = () => undefined,
   checkpoint = () => undefined,
   checkpointName = "permanent-marker-linked",
 ) {
   const temporaryPath = `${filePath}.cutover.tmp`;
-  if (existsSync(filePath) && existsSync(temporaryPath)) {
-    checkpoint(`${checkpointName}-recovery-before-unlink`, {
-      filePath,
-      temporaryPath,
-    });
-  }
   recoverNoReplaceLink(
     filePath,
     temporaryPath,
     automationKernelGuardMarkerBytes(),
-    beforeMutation,
+    {
+      beforeMutation,
+      retirementDirectory: cutoverRetirementDirectory(
+        plan,
+        "immutable-hard-links",
+      ),
+      beforeUnlink() {
+        checkpoint(`${checkpointName}-recovery-before-unlink`, {
+          filePath,
+          temporaryPath,
+        });
+      },
+    },
   );
 }
 
@@ -2870,10 +5705,23 @@ function installNoReplaceExactBytes(
     checkpointName,
     temporarySuffix,
     beforeMutation = () => undefined,
+    recoveryCheckpointName = "",
+    retirementDirectory,
   },
 ) {
   const temporaryPath = `${filePath}.${temporarySuffix}.tmp`;
-  recoverNoReplaceLink(filePath, temporaryPath, bytes, beforeMutation);
+  recoverNoReplaceLink(filePath, temporaryPath, bytes, {
+    beforeMutation,
+    retirementDirectory,
+    beforeUnlink() {
+      if (recoveryCheckpointName !== "") {
+        checkpoint(`${recoveryCheckpointName}-recovery-before-unlink`, {
+          filePath,
+          temporaryPath,
+        });
+      }
+    },
+  });
   if (exactPrivateFileBytes(filePath, bytes)) {
     if (existsSync(temporaryPath)) {
       fail(
@@ -2887,44 +5735,108 @@ function installNoReplaceExactBytes(
   if (existsSync(filePath)) {
     fail("cutover_conflict", `Cutover claim path is occupied: ${filePath}`);
   }
-  if (existsSync(temporaryPath)) {
-    if (!exactPrivateFileBytes(temporaryPath, bytes)) {
-      fail(
-        "cutover_conflict",
-        `Cutover claim temporary path conflicts: ${temporaryPath}`,
-      );
-    }
-  }
+  let pinned;
   if (!existsSync(temporaryPath)) {
     let descriptor;
     try {
       beforeMutation();
-      descriptor = openSync(temporaryPath, "wx", 0o600);
+      descriptor = openSync(
+        temporaryPath,
+        constants.O_RDWR |
+          constants.O_CREAT |
+          constants.O_EXCL |
+          constants.O_NOFOLLOW,
+        0o600,
+      );
       writeFileSync(descriptor, bytes);
+      fchmodSync(descriptor, 0o600);
       fsyncSync(descriptor);
-      closeSync(descriptor);
-      descriptor = undefined;
+      pinned = {
+        descriptor,
+        identity: pinnedFileIdentity(fstatSync(descriptor)),
+        bytes,
+      };
     } finally {
-      if (descriptor !== undefined) closeSync(descriptor);
+      if (pinned === undefined && descriptor !== undefined) {
+        closeSync(descriptor);
+      }
     }
+  } else {
+    pinned = openPinnedPrivateFile(temporaryPath, {
+      maxBytes: bytes.length,
+      expectedBytes: bytes,
+    });
   }
   try {
-    beforeMutation();
-    linkSync(temporaryPath, filePath);
-  } catch (error) {
-    if (error?.code !== "EEXIST" || !exactPrivateFileBytes(filePath, bytes)) {
-      throw error;
+    try {
+      beforeMutation();
+      requirePinnedPrivateFile(
+        temporaryPath,
+        pinned.descriptor,
+        pinned.identity,
+        bytes,
+      );
+      if (existsSync(filePath)) {
+        fail("cutover_conflict", `Cutover claim path is occupied: ${filePath}`);
+      }
+      linkSync(temporaryPath, filePath);
+    } catch (error) {
+      if (error?.code !== "EEXIST" || !exactPrivateFileBytes(filePath, bytes)) {
+        throw error;
+      }
     }
+    requirePinnedPrivateFile(
+      filePath,
+      pinned.descriptor,
+      pinned.identity,
+      bytes,
+      new Set([2]),
+    );
+    requirePinnedPrivateFile(
+      temporaryPath,
+      pinned.descriptor,
+      pinned.identity,
+      bytes,
+      new Set([2]),
+    );
+    checkpoint(checkpointName, { filePath, temporaryPath });
+    requirePinnedPrivateFile(
+      filePath,
+      pinned.descriptor,
+      pinned.identity,
+      bytes,
+      new Set([2]),
+    );
+    requirePinnedPrivateFile(
+      temporaryPath,
+      pinned.descriptor,
+      pinned.identity,
+      bytes,
+      new Set([2]),
+    );
+    beforeMutation();
+    requirePinnedPrivateFile(
+      filePath,
+      pinned.descriptor,
+      pinned.identity,
+      bytes,
+      new Set([2]),
+    );
+    requirePinnedPrivateFile(
+      temporaryPath,
+      pinned.descriptor,
+      pinned.identity,
+      bytes,
+      new Set([2]),
+    );
+    retirePublishedHardLinks(filePath, temporaryPath, bytes, {
+      retirementDirectory,
+      beforeMutation,
+    });
+    syncDirectory(path.dirname(filePath));
+  } finally {
+    closeSync(pinned.descriptor);
   }
-  const current = lstatSync(filePath);
-  const temporary = lstatSync(temporaryPath);
-  if (current.dev !== temporary.dev || current.ino !== temporary.ino) {
-    fail("cutover_conflict", `Cutover claim identity conflicts: ${filePath}`);
-  }
-  checkpoint(checkpointName, { filePath, temporaryPath });
-  beforeMutation();
-  unlinkSync(temporaryPath);
-  syncDirectory(path.dirname(filePath));
   if (!exactPrivateFileBytes(filePath, bytes)) {
     fail("cutover_conflict", `Cutover claim did not verify: ${filePath}`);
   }
@@ -2950,6 +5862,57 @@ function possiblePrefixRewriteState(currentBytes, sourceBytes, targetBytes) {
     }
   }
   return false;
+}
+
+function requirePinnedRewritePath(
+  filePath,
+  descriptor,
+  identity,
+  sourceBytes,
+  targetBytes,
+  targetMode,
+) {
+  const maxBytes = Math.max(sourceBytes.length, targetBytes.length);
+  let current;
+  try {
+    current = lstatSync(filePath);
+  } catch {
+    fail(
+      "cutover_source_drift",
+      `Legacy claim generation disappeared at ${filePath}.`,
+    );
+  }
+  const opened = fstatSync(descriptor);
+  if (
+    !opened.isFile() ||
+    !current.isFile() ||
+    current.isSymbolicLink() ||
+    opened.dev !== identity.dev ||
+    opened.ino !== identity.ino ||
+    opened.uid !== identity.uid ||
+    current.dev !== identity.dev ||
+    current.ino !== identity.ino ||
+    current.uid !== identity.uid ||
+    !Number.isSafeInteger(opened.size) ||
+    opened.size < 0 ||
+    opened.size > maxBytes ||
+    current.size !== opened.size ||
+    !new Set([identity.mode, targetMode]).has(opened.mode & 0o7777) ||
+    !new Set([identity.mode, targetMode]).has(current.mode & 0o7777) ||
+    opened.nlink !== 1 ||
+    current.nlink !== 1 ||
+    realpathSync(filePath) !== path.resolve(filePath)
+  ) {
+    fail(
+      "cutover_source_drift",
+      `Legacy claim generation changed at ${filePath}.`,
+    );
+  }
+  const currentBytes = readOpenedBytes(descriptor, opened, maxBytes);
+  if (!possiblePrefixRewriteState(currentBytes, sourceBytes, targetBytes)) {
+    fail("cutover_source_drift", `Legacy claim source changed at ${filePath}.`);
+  }
+  return { bytes: currentBytes, stats: opened };
 }
 
 function preparedRewriteRecord(
@@ -3030,6 +5993,7 @@ function preparedRewriteRecord(
     operation: "rewrite",
     scope: scope.scope,
     scopeId: scope.scopeId,
+    scopePlanDigest: scope.scopePlanDigest,
     cutoverId: plan.parameters.cutoverId,
     operationName,
     filePath,
@@ -3054,7 +6018,13 @@ function preparedRewriteRecord(
     filePath,
     operationId: record.operationId,
   });
-  writeWriteAheadRecord(plan, record, supersedePlan, beforeMutation);
+  writeWriteAheadRecord(
+    plan,
+    record,
+    supersedePlan,
+    beforeMutation,
+    checkpoint,
+  );
   checkpoint(`${checkpointName}-journal-durable`, {
     filePath,
     operationId: record.operationId,
@@ -3074,6 +6044,7 @@ function completePreparedRewrite(
 ) {
   const sourceBytes = Buffer.from(record.sourceBytesBase64, "base64");
   const targetBytes = Buffer.from(record.targetBytesBase64, "base64");
+  const rewriteMaxBytes = Math.max(sourceBytes.length, targetBytes.length);
   let descriptor;
   try {
     const before = lstatSync(record.filePath);
@@ -3091,6 +6062,10 @@ function completePreparedRewrite(
       String(opened.ino) !== record.sourceIno ||
       opened.uid !== currentUid(opened) ||
       opened.nlink !== 1 ||
+      !Number.isSafeInteger(opened.size) ||
+      opened.size < 0 ||
+      opened.size > rewriteMaxBytes ||
+      before.size !== opened.size ||
       !new Set([record.sourceMode, record.targetMode]).has(
         opened.mode & 0o7777,
       ) ||
@@ -3101,7 +6076,11 @@ function completePreparedRewrite(
         `Legacy claim source changed at ${record.filePath}.`,
       );
     }
-    const currentBytes = readOpenedBytes(descriptor, opened);
+    const currentBytes = readOpenedBytes(
+      descriptor,
+      opened,
+      rewriteMaxBytes,
+    );
     if (!possiblePrefixRewriteState(currentBytes, sourceBytes, targetBytes)) {
       fail(
         "cutover_source_drift",
@@ -3118,8 +6097,25 @@ function completePreparedRewrite(
         `Legacy claim generation changed at ${record.filePath}.`,
       );
     }
+    const identity = pinnedFileIdentity(opened);
     checkpoint(checkpointName, { filePath: record.filePath });
+    requirePinnedRewritePath(
+      record.filePath,
+      descriptor,
+      identity,
+      sourceBytes,
+      targetBytes,
+      record.targetMode,
+    );
     beforeMutation();
+    requirePinnedRewritePath(
+      record.filePath,
+      descriptor,
+      identity,
+      sourceBytes,
+      targetBytes,
+      record.targetMode,
+    );
     if (!currentBytes.equals(targetBytes)) {
       const firstBoundary = Math.max(1, Math.floor(targetBytes.length / 2));
       let offset = 0;
@@ -3147,7 +6143,23 @@ function completePreparedRewrite(
             filePath: record.filePath,
             operationId: record.operationId,
           });
+          requirePinnedRewritePath(
+            record.filePath,
+            descriptor,
+            identity,
+            sourceBytes,
+            targetBytes,
+            record.targetMode,
+          );
           beforeMutation();
+          requirePinnedRewritePath(
+            record.filePath,
+            descriptor,
+            identity,
+            sourceBytes,
+            targetBytes,
+            record.targetMode,
+          );
         }
       }
       ftruncateSync(descriptor, targetBytes.length);
@@ -3155,18 +6167,67 @@ function completePreparedRewrite(
         filePath: record.filePath,
         operationId: record.operationId,
       });
+      requirePinnedRewritePath(
+        record.filePath,
+        descriptor,
+        identity,
+        sourceBytes,
+        targetBytes,
+        record.targetMode,
+      );
       beforeMutation();
+      requirePinnedRewritePath(
+        record.filePath,
+        descriptor,
+        identity,
+        sourceBytes,
+        targetBytes,
+        record.targetMode,
+      );
       fchmodSync(descriptor, record.targetMode);
       checkpoint(`${checkpointName}-before-fsync`, {
         filePath: record.filePath,
         operationId: record.operationId,
       });
+      requirePinnedRewritePath(
+        record.filePath,
+        descriptor,
+        identity,
+        sourceBytes,
+        targetBytes,
+        record.targetMode,
+      );
       beforeMutation();
+      requirePinnedRewritePath(
+        record.filePath,
+        descriptor,
+        identity,
+        sourceBytes,
+        targetBytes,
+        record.targetMode,
+      );
       fsyncSync(descriptor);
       checkpoint(`${checkpointName}-after-fsync`, {
         filePath: record.filePath,
         operationId: record.operationId,
       });
+      const afterFsync = requirePinnedRewritePath(
+        record.filePath,
+        descriptor,
+        identity,
+        sourceBytes,
+        targetBytes,
+        record.targetMode,
+      );
+      if (
+        (afterFsync.stats.mode & 0o7777) !== record.targetMode ||
+        !afterFsync.bytes.equals(targetBytes)
+      ) {
+        fail(
+          "cutover_source_drift",
+          `Legacy claim generation changed at ${record.filePath}.`,
+        );
+      }
     }
     const afterOpened = fstatSync(descriptor);
     const after = lstatSync(record.filePath);
@@ -3177,7 +6238,9 @@ function completePreparedRewrite(
       afterOpened.ino !== opened.ino ||
       afterOpened.nlink !== 1 ||
       (afterOpened.mode & 0o7777) !== record.targetMode ||
-      !readOpenedBytes(descriptor, afterOpened).equals(targetBytes)
+      !readOpenedBytes(descriptor, afterOpened, targetBytes.length).equals(
+        targetBytes,
+      )
     ) {
       fail(
         "cutover_source_drift",
@@ -3209,17 +6272,21 @@ function completePreparedRewrite(
     record.phase === "written"
       ? record
       : { ...record, phase: "written", writtenAt: new Date().toISOString() };
-  writeWriteAheadRecord(plan, written, supersedePlan, beforeMutation);
-  checkpoint(`${checkpointName}-journal-written`, {
-    filePath: record.filePath,
-    operationId: record.operationId,
-  });
+  writeWriteAheadRecord(
+    plan,
+    written,
+    supersedePlan,
+    beforeMutation,
+    checkpoint,
+  );
   clearWriteAheadRecord(
     plan,
     checkpoint,
     `${checkpointName}-journal-unlinked`,
     { filePath: record.filePath, operationId: record.operationId },
     beforeMutation,
+    written,
+    `${checkpointName}-journal-written`,
   );
 }
 
@@ -3316,6 +6383,7 @@ function preparedRemovalRecord(
     operation: "remove",
     scope: scope.scope,
     scopeId: scope.scopeId,
+    scopePlanDigest: scope.scopePlanDigest,
     cutoverId: plan.parameters.cutoverId,
     operationName,
     filePath,
@@ -3336,8 +6404,8 @@ function preparedRemovalRecord(
     writtenAt: null,
   };
   record.quarantinePath = path.join(
-    cutoverQuarantineRoot(plan),
-    removalQuarantineId(record),
+    cutoverRetirementDirectory(plan, "removals"),
+    `${removalQuarantineId(record)}.archive`,
   );
   record.operationId = writeAheadOperationId(record);
   requireLocalFilesystem(plan.parameters.stateRoot, {
@@ -3350,12 +6418,235 @@ function preparedRemovalRecord(
     filePath,
     operationId: record.operationId,
   });
-  writeWriteAheadRecord(plan, record, supersedePlan, beforeMutation);
+  writeWriteAheadRecord(
+    plan,
+    record,
+    supersedePlan,
+    beforeMutation,
+    checkpoint,
+  );
   checkpoint(`${checkpointName}-journal-durable`, {
     filePath,
     operationId: record.operationId,
   });
   return record;
+}
+
+function openPinnedRemovalPath(record, filePath, label) {
+  let descriptor;
+  try {
+    const before = lstatSync(filePath);
+    descriptor = openSync(
+      filePath,
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    );
+    const opened = fstatSync(descriptor);
+    const identity = pinnedFileIdentity(opened);
+    if (
+      (!before.isFile() && !before.isDirectory()) ||
+      before.isSymbolicLink() ||
+      !pinnedFileIdentityMatches(before, identity) ||
+      String(opened.dev) !== record.sourceDev ||
+      String(opened.ino) !== record.sourceIno ||
+      identity.mode !== record.sourceMode ||
+      realpathSync(filePath) !== path.resolve(filePath)
+    ) {
+      fail("cutover_source_drift", `${label} generation changed.`);
+    }
+    requireSnapshotMatch(record.sourceSnapshot, filePath, label);
+    requirePinnedRemovalPath(record, filePath, descriptor, identity, label);
+    return { descriptor, identity };
+  } catch (error) {
+    if (descriptor !== undefined) closeSync(descriptor);
+    throw error;
+  }
+}
+
+function requirePinnedRemovalPath(
+  record,
+  filePath,
+  descriptor,
+  identity,
+  label,
+) {
+  let current;
+  try {
+    current = lstatSync(filePath);
+  } catch {
+    fail("cutover_source_drift", `${label} generation disappeared.`);
+  }
+  const opened = fstatSync(descriptor);
+  if (
+    (!opened.isFile() && !opened.isDirectory()) ||
+    (!current.isFile() && !current.isDirectory()) ||
+    current.isSymbolicLink() ||
+    !pinnedFileIdentityMatches(opened, identity) ||
+    !pinnedFileIdentityMatches(current, identity) ||
+    String(opened.dev) !== record.sourceDev ||
+    String(opened.ino) !== record.sourceIno ||
+    realpathSync(filePath) !== path.resolve(filePath)
+  ) {
+    fail("cutover_source_drift", `${label} generation changed.`);
+  }
+  requireSnapshotMatch(record.sourceSnapshot, filePath, label);
+}
+
+function requireRetiredRemoval(record) {
+  if (existsSync(record.filePath) || !existsSync(record.quarantinePath)) {
+    fail(
+      "cutover_write_ahead_conflict",
+      "Cutover removal did not retain one exact retired generation.",
+    );
+  }
+  const pinned = openPinnedRemovalPath(
+    record,
+    record.quarantinePath,
+    "Cutover retired removal",
+  );
+  closeSync(pinned.descriptor);
+}
+
+function movePinnedRemovalToRetirement(record, pinned) {
+  const opened = fstatSync(pinned.descriptor);
+  if (opened.isFile()) {
+    const bytes = readExactDescriptorBytes(
+      pinned.descriptor,
+      opened,
+      CUTOVER_MAX_FILE_BYTES,
+      "Cutover removal source",
+    );
+    runDurablePrivateFileMove(record.filePath, record.quarantinePath, {
+      ...pinned,
+      bytes,
+    }, {
+      allowedModes: new Set([opened.mode & 0o7777]),
+    });
+    return;
+  }
+  if (opened.isDirectory()) {
+    runDurablePrivateDirectoryMove(
+      record.filePath,
+      record.quarantinePath,
+      pinned,
+      {
+        expectedTreeDigest: record.sourceSnapshot.nativeTreeDigest,
+      },
+    );
+    return;
+  }
+  fail(
+    "cutover_source_drift",
+    `Cutover removal source has an unsupported type: ${record.filePath}`,
+  );
+}
+
+function requirePinnedEmptyDirectoryInventory(directoryPath, pinned) {
+  requirePinnedPrivateDirectoryPath(
+    directoryPath,
+    pinned,
+    "Cutover recovery directory",
+  );
+  const bytes = runCutoverNativeHelperBytes(
+    "list-bounded",
+    [
+      "1",
+      "255",
+      String(pinned.identity.dev),
+      String(pinned.identity.ino),
+    ],
+    [pinned.descriptor],
+    { maxBuffer: 256 },
+  );
+  requirePinnedPrivateDirectoryPath(
+    directoryPath,
+    pinned,
+    "Cutover recovery directory",
+  );
+  if (bytes.length !== 0) {
+    fail(
+      "cutover_write_ahead_conflict",
+      `Cutover recovery directory is not empty: ${directoryPath}`,
+    );
+  }
+}
+
+function openPinnedEmptyPrivateDirectory(directoryPath) {
+  const before = requirePrivateDirectory(directoryPath, directoryPath);
+  const descriptor = openSync(
+    directoryPath,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+  );
+  const opened = fstatSync(descriptor);
+  if (
+    !opened.isDirectory() ||
+    opened.dev !== before.dev ||
+    opened.ino !== before.ino ||
+    opened.uid !== before.uid ||
+    opened.mode !== before.mode
+  ) {
+    closeSync(descriptor);
+    fail(
+      "cutover_write_ahead_conflict",
+      `Cutover recovery directory changed: ${directoryPath}`,
+    );
+  }
+  const pinned = { descriptor, identity: pinnedFileIdentity(opened) };
+  try {
+    requirePinnedEmptyDirectoryInventory(directoryPath, pinned);
+    return pinned;
+  } catch (error) {
+    closeSync(descriptor);
+    throw error;
+  }
+}
+
+function requirePinnedEmptyPrivateDirectory(directoryPath, pinned) {
+  const current = requirePrivateDirectory(directoryPath, directoryPath);
+  const opened = fstatSync(pinned.descriptor);
+  if (
+    !opened.isDirectory() ||
+    !pinnedFileIdentityMatches(opened, pinned.identity) ||
+    !pinnedFileIdentityMatches(current, pinned.identity)
+  ) {
+    fail(
+      "cutover_write_ahead_conflict",
+      `Cutover recovery directory changed: ${directoryPath}`,
+    );
+  }
+  requirePinnedEmptyDirectoryInventory(directoryPath, pinned);
+}
+
+function retirePinnedEmptyPrivateDirectory(
+  directoryPath,
+  pinned,
+  retirementDirectory,
+  beforeMutation = () => undefined,
+) {
+  ensurePrivateDirectory(retirementDirectory, beforeMutation);
+  const archivePath = path.join(
+    retirementDirectory,
+    `${sha256(
+      canonicalJsonBytes({
+        directoryPath,
+        device: String(pinned.identity.dev),
+        inode: String(pinned.identity.ino),
+      }),
+    )}.archive`,
+  );
+  beforeMutation({ directoryPath, archivePath });
+  requirePinnedEmptyPrivateDirectory(directoryPath, pinned);
+  runDurablePrivateDirectoryMove(directoryPath, archivePath, pinned, {
+    expectedTreeDigest: snapshotNativeTreeDigest({
+      path: directoryPath,
+      kind: "directory",
+      mode: pinned.identity.mode,
+      entries: [],
+    }),
+    maxEntries: 1,
+    maxDepth: 0,
+    maxAggregateBytes: 0,
+  });
+  return archivePath;
 }
 
 function completePreparedRemoval(
@@ -3376,58 +6667,97 @@ function completePreparedRemoval(
       "Cutover removal exists at both canonical and quarantine paths.",
     );
   }
-  if (sourceExists) {
-    requireSnapshotMatch(
-      record.sourceSnapshot,
-      record.filePath,
-      "Cutover removal source",
-    );
-    const sourceStats = lstatSync(record.filePath);
-    if (
-      String(sourceStats.dev) !== record.sourceDev ||
-      String(sourceStats.ino) !== record.sourceIno
-    ) {
-      fail(
-        "cutover_source_drift",
-        `Removal source generation changed: ${record.filePath}`,
+  let occurrencePinned = null;
+  try {
+    if (sourceExists) {
+      occurrencePinned = openPinnedRemovalPath(
+        record,
+        record.filePath,
+        "Cutover removal source",
+      );
+      beforeMutation();
+      requirePinnedRemovalPath(
+        record,
+        record.filePath,
+        occurrencePinned.descriptor,
+        occurrencePinned.identity,
+        "Cutover removal source",
+      );
+      if (existsSync(record.quarantinePath)) {
+        fail(
+          "cutover_write_ahead_conflict",
+          "Cutover removal quarantine appeared before publication.",
+        );
+      }
+      movePinnedRemovalToRetirement(record, occurrencePinned);
+      if (existsSync(record.filePath)) {
+        fail(
+          "cutover_write_ahead_conflict",
+          "Cutover removal source was replaced during quarantine publication.",
+        );
+      }
+      requirePinnedRemovalPath(
+        record,
+        record.quarantinePath,
+        occurrencePinned.descriptor,
+        occurrencePinned.identity,
+        "Cutover quarantine occurrence",
+      );
+      checkpoint(`${checkpointName}-after-rename`, {
+        filePath: record.filePath,
+        quarantinePath: record.quarantinePath,
+        operationId: record.operationId,
+      });
+      requirePinnedRemovalPath(
+        record,
+        record.quarantinePath,
+        occurrencePinned.descriptor,
+        occurrencePinned.identity,
+        "Cutover quarantine occurrence",
+      );
+      if (existsSync(record.filePath)) {
+        fail(
+          "cutover_write_ahead_conflict",
+          "Cutover removal source was replaced after quarantine publication.",
+        );
+      }
+    }
+    if (existsSync(record.quarantinePath)) {
+      if (occurrencePinned === null) {
+        occurrencePinned = openPinnedRemovalPath(
+          record,
+          record.quarantinePath,
+          "Cutover quarantine occurrence",
+        );
+      }
+      requirePinnedRemovalPath(
+        record,
+        record.quarantinePath,
+        occurrencePinned.descriptor,
+        occurrencePinned.identity,
+        "Cutover quarantine occurrence",
+      );
+      if (existsSync(record.filePath)) {
+        fail(
+          "cutover_write_ahead_conflict",
+          "Cutover removal source was replaced after retirement.",
+        );
+      }
+      checkpoint(`${checkpointName}-after-quarantine-remove`, {
+        quarantinePath: record.quarantinePath,
+        operationId: record.operationId,
+        retained: true,
+      });
+      requirePinnedRemovalPath(
+        record,
+        record.quarantinePath,
+        occurrencePinned.descriptor,
+        occurrencePinned.identity,
+        "Cutover retired removal",
       );
     }
-    beforeMutation();
-    renameSync(record.filePath, record.quarantinePath);
-    checkpoint(`${checkpointName}-after-rename`, {
-      filePath: record.filePath,
-      quarantinePath: record.quarantinePath,
-      operationId: record.operationId,
-    });
-    syncDirectory(path.dirname(record.filePath));
-    syncDirectory(path.dirname(record.quarantinePath));
-  }
-  if (existsSync(record.quarantinePath)) {
-    const quarantineStats = lstatSync(record.quarantinePath);
-    if (
-      String(quarantineStats.dev) !== record.sourceDev ||
-      String(quarantineStats.ino) !== record.sourceIno ||
-      quarantineStats.uid !== currentUid(quarantineStats) ||
-      quarantineStats.isSymbolicLink() ||
-      realpathSync(record.quarantinePath) !==
-        path.resolve(record.quarantinePath)
-    ) {
-      fail(
-        "cutover_write_ahead_conflict",
-        "Cutover quarantine generation conflicts.",
-      );
-    }
-    requireSnapshotMatch(
-      record.sourceSnapshot,
-      record.quarantinePath,
-      "Cutover quarantine occurrence",
-    );
-    beforeMutation();
-    rmSync(record.quarantinePath, { recursive: true, force: true });
-    checkpoint(`${checkpointName}-after-quarantine-remove`, {
-      quarantinePath: record.quarantinePath,
-      operationId: record.operationId,
-    });
+  } finally {
+    if (occurrencePinned !== null) closeSync(occurrencePinned.descriptor);
   }
   syncDirectory(path.dirname(record.filePath));
   syncDirectory(path.dirname(record.quarantinePath));
@@ -3435,24 +6765,31 @@ function completePreparedRemoval(
     record.phase === "written"
       ? record
       : { ...record, phase: "written", writtenAt: new Date().toISOString() };
-  writeWriteAheadRecord(plan, written, supersedePlan, beforeMutation);
-  checkpoint(`${checkpointName}-journal-written`, {
-    filePath: record.filePath,
-    operationId: record.operationId,
-  });
+  const requireRemovalState = (...args) => {
+    beforeMutation(...args);
+    requireRetiredRemoval(record);
+  };
+  const removalCheckpoint = (name, details) => {
+    checkpoint(name, details);
+    requireRetiredRemoval(record);
+  };
+  writeWriteAheadRecord(
+    plan,
+    written,
+    supersedePlan,
+    requireRemovalState,
+    removalCheckpoint,
+  );
   clearWriteAheadRecord(
     plan,
-    checkpoint,
+    removalCheckpoint,
     `${checkpointName}-journal-unlinked`,
     { filePath: record.filePath, operationId: record.operationId },
-    beforeMutation,
+    requireRemovalState,
+    written,
+    `${checkpointName}-journal-written`,
   );
-  const quarantineRoot = cutoverQuarantineRoot(plan);
-  if (existsSync(quarantineRoot) && readdirSync(quarantineRoot).length === 0) {
-    beforeMutation();
-    rmdirSync(quarantineRoot);
-    syncDirectory(path.dirname(quarantineRoot));
-  }
+  requireRetiredRemoval(record);
 }
 
 function removePathRecoverably(plan, filePath, sourceSnapshot, options) {
@@ -3473,19 +6810,17 @@ function recoverPendingWriteAhead(
   if (record === null) {
     const quarantineRoot = cutoverQuarantineRoot(plan);
     if (existsSync(quarantineRoot)) {
-      requirePrivateDirectory(
-        quarantineRoot,
-        "Kernel guard cutover recovery quarantine",
-      );
-      if (readdirSync(quarantineRoot).length !== 0) {
-        fail(
-          "cutover_write_ahead_invalid",
-          "Kernel guard cutover has orphaned quarantine evidence without a write-ahead record.",
+      const pinned = openPinnedEmptyPrivateDirectory(quarantineRoot);
+      try {
+        retirePinnedEmptyPrivateDirectory(
+          quarantineRoot,
+          pinned,
+          cutoverRetirementDirectory(plan, "legacy-quarantine-roots"),
+          beforeMutation,
         );
+      } finally {
+        closeSync(pinned.descriptor);
       }
-      beforeMutation();
-      rmdirSync(quarantineRoot);
-      syncDirectory(path.dirname(quarantineRoot));
     }
     return;
   }
@@ -3503,55 +6838,42 @@ function recoverPendingWriteAhead(
 }
 
 function installNoReplacePermanentMarker(
+  plan,
   filePath,
   checkpoint = () => undefined,
   checkpointName = "permanent-marker-linked",
   beforeMutation = () => undefined,
 ) {
   const bytes = automationKernelGuardMarkerBytes();
-  const temporaryPath = `${filePath}.cutover.tmp`;
-  if (existsSync(filePath) && existsSync(temporaryPath)) {
-    checkpoint(`${checkpointName}-recovery-before-unlink`, {
-      filePath,
-      temporaryPath,
-    });
-  }
-  recoverNoReplaceLink(filePath, temporaryPath, bytes, beforeMutation);
-  if (exactMarkerFile(filePath)) {
-    if (existsSync(temporaryPath)) {
-      fail(
-        "cutover_conflict",
-        `Cutover marker temporary path conflicts: ${temporaryPath}`,
-      );
-    }
-    syncDirectory(path.dirname(filePath));
-    return;
-  }
-  if (existsSync(filePath)) {
-    fail("cutover_conflict", `Cutover marker path is occupied: ${filePath}`);
-  }
-  prepareMarkerTemporaryFile(temporaryPath, beforeMutation);
-  try {
-    beforeMutation();
-    linkSync(temporaryPath, filePath);
-  } catch (error) {
-    if (error?.code !== "EEXIST" || !exactMarkerFile(filePath)) throw error;
-  }
-  const current = lstatSync(filePath);
-  const temporary = lstatSync(temporaryPath);
-  if (current.dev !== temporary.dev || current.ino !== temporary.ino) {
-    fail("cutover_conflict", `Cutover marker identity conflicts: ${filePath}`);
-  }
-  checkpoint(checkpointName, { filePath, temporaryPath });
-  beforeMutation();
-  unlinkSync(temporaryPath);
-  syncDirectory(path.dirname(filePath));
+  installNoReplaceExactBytes(filePath, bytes, {
+    checkpoint,
+    checkpointName,
+    temporarySuffix: "cutover",
+    beforeMutation,
+    recoveryCheckpointName: checkpointName,
+    retirementDirectory: cutoverRetirementDirectory(
+      plan,
+      "immutable-hard-links",
+    ),
+  });
   if (!exactMarkerFile(filePath)) {
     fail("cutover_conflict", `Cutover marker did not verify: ${filePath}`);
   }
 }
 
-function readOpenedBytes(descriptor, opened) {
+function readOpenedBytes(descriptor, opened, maxBytes) {
+  if (
+    !Number.isSafeInteger(opened.size) ||
+    opened.size < 0 ||
+    !Number.isSafeInteger(maxBytes) ||
+    maxBytes < 0 ||
+    opened.size > maxBytes
+  ) {
+    fail(
+      "cutover_source_drift",
+      "Legacy marker source exceeds its bounded rewrite size.",
+    );
+  }
   const bytes = Buffer.alloc(opened.size);
   let offset = 0;
   while (offset < bytes.length) {
@@ -3575,6 +6897,7 @@ function readOpenedBytes(descriptor, opened) {
 }
 
 function writeSnapshotArchive(
+  plan,
   expected,
   targetPath,
   beforeMutation = () => undefined,
@@ -3589,9 +6912,12 @@ function writeSnapshotArchive(
     return;
   }
   if (expected.kind === "file") {
-    writeImmutable(targetPath, Buffer.from(expected.bytesBase64, "base64"), {
-      beforeMutation,
-    });
+    writeCutoverImmutable(
+      plan,
+      targetPath,
+      Buffer.from(expected.bytesBase64, "base64"),
+      { beforeMutation },
+    );
     return;
   }
   ensurePrivateDirectory(targetPath, beforeMutation);
@@ -3608,6 +6934,7 @@ function writeSnapshotArchive(
   }
   for (const child of expected.entries) {
     writeSnapshotArchive(
+      plan,
       child,
       path.join(targetPath, path.basename(child.path)),
       beforeMutation,
@@ -3655,10 +6982,7 @@ function verifySnapshotArchive(expected, targetPath) {
   }
 }
 
-function archiveLegacySources(
-  plan,
-  beforeMutation = () => undefined,
-) {
+function archiveLegacySources(plan, beforeMutation = () => undefined) {
   const paths = automationKernelGuardCutoverPaths(plan.parameters.stateRoot);
   const directory = artifactDirectory(plan);
   const movedRoot = path.join(directory, "legacy-paths");
@@ -3666,11 +6990,13 @@ function archiveLegacySources(
   const writer = sourceEntry(plan, paths.writerLock);
   const guards = sourceEntry(plan, paths.guardsRoot);
   writeSnapshotArchive(
+    plan,
     writer,
     path.join(movedRoot, "outcomes.jsonl.writer-lock"),
     beforeMutation,
   );
   writeSnapshotArchive(
+    plan,
     guards,
     path.join(movedRoot, "guards"),
     beforeMutation,
@@ -3701,23 +7027,31 @@ function removeUnlinkedClaimTemporary(
   plan,
   transaction,
   target,
+  checkpoint = () => undefined,
   beforeMutation = () => undefined,
 ) {
   const temporaryPath = `${filePath}.cutover-claim.tmp`;
   if (!existsSync(temporaryPath)) return;
-  const matches = transaction.claimGenerations.some((generation) =>
-    exactPrivateFileBytes(
-      temporaryPath,
-      cutoverClaimBytes(plan, generation, target),
-    ),
+  const expectedByteOptions = transaction.claimGenerations.map((generation) =>
+    cutoverClaimBytes(plan, generation, target),
   );
-  if (!matches) {
-    fail(
-      "cutover_supersede_conflict",
-      `Cutover claim temporary bytes conflict at ${temporaryPath}.`,
-    );
-  }
-  removePrivateTemporaryFile(temporaryPath, beforeMutation);
+  removePrivateTemporaryFile(
+    temporaryPath,
+    expectedByteOptions,
+    {
+      retirementDirectory: cutoverRetirementDirectory(
+        plan,
+        "claim-temporaries",
+      ),
+      beforeMutation,
+      beforeUnlink: () =>
+        checkpoint("supersede-claim-temporary-before-remove", {
+          filePath,
+          temporaryPath,
+          target,
+        }),
+    },
+  );
 }
 
 function restoreWriterClaim(
@@ -3742,6 +7076,7 @@ function restoreWriterClaim(
     plan,
     transaction,
     target,
+    checkpoint,
     beforeMutation,
   );
   if (expected.kind === "missing") {
@@ -3823,18 +7158,13 @@ function restoreGuardClaim(
   const guard = paths.guards[name];
   const expected = plannedGuardEntry(plan, guard.directory);
   const target = `guard:${name}`;
-  recoverAnyClaimLink(
-    guard.owner,
-    plan,
-    transaction,
-    target,
-    beforeMutation,
-  );
+  recoverAnyClaimLink(guard.owner, plan, transaction, target, beforeMutation);
   removeUnlinkedClaimTemporary(
     guard.owner,
     plan,
     transaction,
     target,
+    checkpoint,
     beforeMutation,
   );
   if (expected.kind === "missing") {
@@ -3929,9 +7259,11 @@ function restoreGuardClaim(
     }
   }
   if ((lstatSync(guard.directory).mode & 0o7777) !== expected.mode) {
-    beforeMutation();
-    chmodSync(guard.directory, expected.mode);
-    syncDirectory(path.dirname(guard.directory));
+    setPinnedDirectoryMode(guard.directory, expected.mode, {
+      beforeMutation,
+      checkpoint,
+      checkpointName: `supersede-guard-${name}-before-mode-restore`,
+    });
   }
   requireSnapshotMatch(expected, guard.directory, `Restored guard ${name}`);
 }
@@ -4023,14 +7355,9 @@ function installWriterClaim(
   const filePath = paths.writerLock;
   const target = "writer";
   const targetBytes = cutoverClaimBytes(plan, generation, target);
-  recoverAnyClaimLink(
-    filePath,
-    plan,
-    transaction,
-    target,
-    beforeMutation,
-  );
+  recoverAnyClaimLink(filePath, plan, transaction, target, beforeMutation);
   recoverPermanentMarkerLink(
+    plan,
     filePath,
     beforeMutation,
     checkpoint,
@@ -4059,6 +7386,10 @@ function installWriterClaim(
       checkpointName: "writer-claim-linked",
       temporarySuffix: "cutover-claim",
       beforeMutation,
+      retirementDirectory: cutoverRetirementDirectory(
+        plan,
+        "immutable-hard-links",
+      ),
     });
     checkpoint("writer-claim-durable", { filePath });
     return;
@@ -4177,20 +7508,16 @@ function installGuardClaim(
   const expected = plannedGuardEntry(plan, guard.directory);
   const target = `guard:${name}`;
   const targetBytes = cutoverClaimBytes(plan, generation, target);
-  recoverAnyClaimLink(
-    guard.owner,
-    plan,
-    transaction,
-    target,
-    beforeMutation,
-  );
+  recoverAnyClaimLink(guard.owner, plan, transaction, target, beforeMutation);
   recoverPermanentMarkerLink(
+    plan,
     guard.owner,
     beforeMutation,
     checkpoint,
     "guard-owner-marker-linked",
   );
   recoverPermanentMarkerLink(
+    plan,
     guard.inner,
     beforeMutation,
     checkpoint,
@@ -4209,11 +7536,7 @@ function installGuardClaim(
       directory: guard.directory,
     });
     try {
-      beforeMutation();
-      mkdirSync(guard.directory, { mode: 0o700 });
-      beforeMutation();
-      chmodSync(guard.directory, 0o700);
-      syncDirectory(path.dirname(guard.directory));
+      ensurePrivateDirectory(guard.directory, beforeMutation);
       checkpoint("guard-claim-directory-durable", {
         guardName: name,
         directory: guard.directory,
@@ -4231,6 +7554,10 @@ function installGuardClaim(
         checkpointName: "guard-claim-linked",
         temporarySuffix: "cutover-claim",
         beforeMutation,
+        retirementDirectory: cutoverRetirementDirectory(
+          plan,
+          "immutable-hard-links",
+        ),
       });
     } catch (error) {
       if (error?.code !== "EEXIST") throw error;
@@ -4307,13 +7634,7 @@ function installCutoverClaims(
   checkpoint = () => undefined,
   beforeMutation = () => undefined,
 ) {
-  installWriterClaim(
-    plan,
-    transaction,
-    generation,
-    checkpoint,
-    beforeMutation,
-  );
+  installWriterClaim(plan, transaction, generation, checkpoint, beforeMutation);
   for (const name of AUTOMATION_KERNEL_GUARD_NAMES) {
     installGuardClaim(
       plan,
@@ -4407,6 +7728,7 @@ function installPermanentTargets(
     }
     if (!exactMarkerFile(guard.inner)) {
       installNoReplacePermanentMarker(
+        plan,
         guard.inner,
         checkpoint,
         "guard-inner-marker-linked",
@@ -4418,9 +7740,11 @@ function installPermanentTargets(
       });
     }
     if ((lstatSync(guard.directory).mode & 0o7777) !== 0o700) {
-      beforeMutation();
-      chmodSync(guard.directory, 0o700);
-      syncDirectory(path.dirname(guard.directory));
+      setPinnedDirectoryMode(guard.directory, 0o700, {
+        beforeMutation,
+        checkpoint,
+        checkpointName: `guard-${name}-before-private-mode`,
+      });
     }
     const expectedByName = new Map(
       expected.kind === "directory"
@@ -4646,7 +7970,8 @@ function verifyPreparedArtifacts(
   if (transaction.phase === "receipt-prepared") {
     const receipt = buildReceipt(plan, transaction);
     if (!requireReceipt && (receiptExists || receiptTemporaryExists)) {
-      requireImmutableTargetPreflight(
+      requireCutoverImmutableTargetPreflight(
+        plan,
         receipt.artifactReceipt,
         receipt.artifactBytes,
       );
@@ -4665,16 +7990,14 @@ function verifyPreparedArtifacts(
   }
 }
 
-function prepareBootstrapLock(
-  plan,
-  beforeMutation = () => undefined,
-) {
+function prepareBootstrapLock(plan, beforeMutation = () => undefined) {
   const lockPath = path.join(
     plan.parameters.stateRoot,
     "control",
     "kernel-guard-cutover.bootstrap.lock",
   );
   installNoReplacePermanentMarker(
+    plan,
     lockPath,
     () => undefined,
     "bootstrap-marker-linked",
@@ -4723,15 +8046,17 @@ function finishReceiptPreparedCutover(
   });
   const receipt = buildReceipt(plan, transaction);
   const paths = automationKernelGuardCutoverPaths(plan.parameters.stateRoot);
-  requireImmutableTargetPreflight(
+  requireCutoverImmutableTargetPreflight(
+    plan,
     receipt.artifactReceipt,
     receipt.artifactBytes,
   );
-  requireImmutableTargetPreflight(
+  requireCutoverImmutableTargetPreflight(
+    plan,
     paths.globalReceipt,
     prettyJsonBytes(receipt.global),
   );
-  writeImmutable(receipt.artifactReceipt, receipt.artifactBytes, {
+  writeCutoverImmutable(plan, receipt.artifactReceipt, receipt.artifactBytes, {
     checkpoint,
     linkedCheckpointName: "receipt-artifact-linked",
     beforeFinalize() {
@@ -4746,7 +8071,7 @@ function finishReceiptPreparedCutover(
   validateReceiptPreparedActivation(plan, transaction, {
     requireReceipt: true,
   });
-  writeImmutable(paths.globalReceipt, prettyJsonBytes(receipt.global), {
+  writeCutoverImmutable(plan, paths.globalReceipt, prettyJsonBytes(receipt.global), {
     checkpoint,
     linkedCheckpointName: "global-receipt-linked",
     beforeFinalize() {
@@ -4832,8 +8157,7 @@ function supersedeAuthorizationFields(supersedePlan, authorization) {
   }
   if (
     ownerGovernanceIntentDigest(confirmation) !== authorization.digest ||
-    confirmation.confirmationId !==
-      authorization.confirmation.confirmationId ||
+    confirmation.confirmationId !== authorization.confirmation.confirmationId ||
     confirmation.taskId !== supersedePlan.taskId ||
     confirmation.intent?.action !== CUTOVER_SUPERSEDE_ACTION ||
     confirmation.intentDigest !== supersedePlan.intentDigest ||
@@ -4978,7 +8302,7 @@ function readSupersedeReceipt(oldPlan, supersedePlan) {
     1024 * 1024,
     new Set([1, 2]),
   );
-  requireImmutableTargetPreflight(evidence.receipt, bytes);
+  requireCutoverImmutableTargetPreflight(oldPlan, evidence.receipt, bytes);
   try {
     receipt = JSON.parse(fatalDecoder.decode(bytes));
   } catch {
@@ -5005,15 +8329,17 @@ function writeSupersedePreparedEvidence(
 ) {
   const directory = artifactDirectory(oldPlan);
   ensurePrivateDirectory(directory, beforeMutation);
-  writeImmutable(path.join(directory, "plan.json"), prettyJsonBytes(oldPlan), {
+  writeCutoverImmutable(oldPlan, path.join(directory, "plan.json"), prettyJsonBytes(oldPlan), {
     beforeMutation,
   });
-  writeImmutable(
+  writeCutoverImmutable(
+    oldPlan,
     path.join(directory, "source-snapshot.json"),
     canonicalJsonBytes(oldPlan.sourceSnapshot),
     { beforeMutation },
   );
-  writeImmutable(
+  writeCutoverImmutable(
+    oldPlan,
     path.join(directory, "legacy-locks.json"),
     canonicalJsonBytes(legacyManifest(oldPlan)),
     { beforeMutation },
@@ -5022,10 +8348,12 @@ function writeSupersedePreparedEvidence(
   verifyLegacyArchive(oldPlan);
   const evidence = supersedeEvidencePaths(oldPlan, supersedePlan);
   ensurePrivateDirectory(evidence.directory, beforeMutation);
-  writeImmutable(evidence.plan, prettyJsonBytes(supersedePlan), {
+  writeCutoverImmutable(oldPlan, evidence.plan, prettyJsonBytes(supersedePlan), {
     beforeMutation,
   });
-  writeImmutable(evidence.transaction, transactionBytes, { beforeMutation });
+  writeCutoverImmutable(oldPlan, evidence.transaction, transactionBytes, {
+    beforeMutation,
+  });
   return evidence;
 }
 
@@ -5129,6 +8457,105 @@ function requireSupersedeCurrentTask(oldPlan, supersedePlan) {
   }
 }
 
+function completedSupersedeResult(oldPlan, supersedePlan) {
+  const paths = automationKernelGuardCutoverPaths(oldPlan.parameters.stateRoot);
+  const evidence = supersedeEvidencePaths(oldPlan, supersedePlan);
+  requireNoAmbiguousSupersedeTemporaries(oldPlan, {
+    supersedePlan,
+    includeBootstrap: true,
+    includeCompletedEvidence: true,
+  });
+  if (!existsSync(evidence.transaction)) {
+    fail(
+      "cutover_supersede_conflict",
+      "No preserved transaction can authenticate completed supersession.",
+    );
+  }
+  const archivedTransactionBytes = readPrivateMode600File(
+    evidence.transaction,
+    CUTOVER_TRANSACTION_MAX_BYTES,
+  );
+  if (
+    sha256(archivedTransactionBytes) !==
+    supersedePlan.parameters.transactionDigest
+  ) {
+    fail(
+      "cutover_supersede_conflict",
+      "Preserved superseded transaction conflicts.",
+    );
+  }
+  const receipt = verifySupersedeEvidence(
+    oldPlan,
+    supersedePlan,
+    archivedTransactionBytes,
+  );
+  if (receipt === null) {
+    fail(
+      "cutover_supersede_conflict",
+      "Retired cutover transaction has no supersede receipt.",
+    );
+  }
+  requireSnapshotMatch(
+    sourceEntry(oldPlan, paths.writerLock),
+    paths.writerLock,
+    "Superseded outcome writer source",
+  );
+  requireSnapshotMatch(
+    sourceEntry(oldPlan, paths.guardsRoot),
+    paths.guardsRoot,
+    "Superseded guard root source",
+  );
+  return {
+    changed: false,
+    action: CUTOVER_SUPERSEDE_ACTION,
+    taskId: supersedePlan.taskId,
+    intentDigest: supersedePlan.intentDigest,
+    receipt,
+  };
+}
+
+function recoverCompletedSupersede(oldPlan, supersedePlan) {
+  const paths = automationKernelGuardCutoverPaths(oldPlan.parameters.stateRoot);
+  const evidence = supersedeEvidencePaths(oldPlan, supersedePlan);
+  if (
+    existsSync(paths.transaction) ||
+    existsSync(paths.writeAhead) ||
+    existsSync(cutoverQuarantineRoot(oldPlan)) ||
+    !existsSync(evidence.transaction) ||
+    !existsSync(evidence.receipt)
+  ) {
+    return null;
+  }
+  requireNoAmbiguousSupersedeTemporaries(oldPlan, {
+    supersedePlan,
+    includeBootstrap: true,
+    includeCompletedEvidence: true,
+  });
+  if (!exactMarkerFile(paths.bootstrapLock)) return null;
+  return withKernelFileGuard(
+    paths.bootstrapLock,
+    () => {
+      requireNoAmbiguousSupersedeTemporaries(oldPlan, {
+        supersedePlan,
+        includeBootstrap: true,
+        includeCompletedEvidence: true,
+      });
+      const transactionRecord = exactTransactionRecord(oldPlan);
+      const writeAhead = readWriteAheadRecord(oldPlan, supersedePlan);
+      if (
+        transactionRecord !== null ||
+        writeAhead !== null ||
+        existsSync(cutoverQuarantineRoot(oldPlan))
+      ) {
+        return null;
+      }
+      requireSupersedeStillPreMarker(oldPlan);
+      return completedSupersedeResult(oldPlan, supersedePlan);
+    },
+    { label: "completed kernel guard cutover supersede", timeoutMs: 15_000 },
+  );
+}
+
 export function applyAutomationKernelGuardCutoverSupersede({
   plan: rawOldPlan,
   supersedePlan: rawSupersedePlan,
@@ -5141,6 +8568,11 @@ export function applyAutomationKernelGuardCutoverSupersede({
     plan: oldPlan,
     supersedePlan,
   });
+  requireNoAmbiguousSupersedeTemporaries(oldPlan, {
+    deferSupersedeWriteAheadTemporary: true,
+  });
+  const completed = recoverCompletedSupersede(oldPlan, supersedePlan);
+  if (completed !== null) return completed;
   const authorize = () =>
     validateCurrentTaskOwnerConfirmation({
       confirmationFile: ownerConfirmationFile,
@@ -5149,18 +8581,22 @@ export function applyAutomationKernelGuardCutoverSupersede({
       nowMs: Date.now(),
     });
   authorize();
+  const preBootstrapWriteAheadTemporary =
+    readRecoverableSupersedeWriteAheadTemporary(oldPlan, supersedePlan);
   requireSupersedeCurrentTask(oldPlan, supersedePlan);
   const preBootstrapTransactionRecord = exactTransactionRecord(oldPlan);
-  const preBootstrapWriteAhead = readWriteAheadRecord(
-    oldPlan,
-    supersedePlan,
-  );
+  const preBootstrapWriteAhead = readWriteAheadRecord(oldPlan, supersedePlan);
   requireSupersedeWriteAheadScope(preBootstrapWriteAhead);
   requireLocalFilesystem(oldPlan.parameters.stateRoot, {
     plan: oldPlan,
     supersedePlan,
     transaction: preBootstrapTransactionRecord?.transaction,
-    extraPaths: writeAheadFilesystemPaths(preBootstrapWriteAhead),
+    extraPaths: [
+      ...writeAheadFilesystemPaths(preBootstrapWriteAhead),
+      ...writeAheadFilesystemPaths(
+        preBootstrapWriteAheadTemporary?.record ?? null,
+      ),
+    ],
   });
   requireQuiescence(oldPlan);
   const bootstrapLock = prepareBootstrapLock(oldPlan, authorize);
@@ -5168,11 +8604,26 @@ export function applyAutomationKernelGuardCutoverSupersede({
     bootstrapLock,
     () => {
       requireQuiescence(oldPlan);
+      requireNoAmbiguousSupersedeTemporaries(oldPlan, {
+        supersedePlan,
+        includeBootstrap: true,
+        deferSupersedeWriteAheadTemporary: true,
+      });
       const authorization = authorize();
       const authorizedCheckpoint = (name, details) => {
         checkpoint(name, details);
         authorize();
       };
+      requireSupersedeStillPreMarker(oldPlan);
+      requireSupersedeCurrentTask(oldPlan, supersedePlan);
+      recoverSupersedeWriteAheadTemporary(oldPlan, supersedePlan, {
+        checkpoint: authorizedCheckpoint,
+        beforeMutation: authorize,
+      });
+      requireNoAmbiguousSupersedeTemporaries(oldPlan, {
+        supersedePlan,
+        includeBootstrap: true,
+      });
       requireSupersedeWriteAheadScope(
         readWriteAheadRecord(oldPlan, supersedePlan),
       );
@@ -5186,6 +8637,10 @@ export function applyAutomationKernelGuardCutoverSupersede({
         checkpoint: authorizedCheckpoint,
         beforeMutation: authorize,
       });
+      requireNoAmbiguousSupersedeTemporaries(oldPlan, {
+        supersedePlan,
+        includeBootstrap: true,
+      });
       let transactionRecord = exactTransactionRecord(oldPlan);
       requireLocalFilesystem(oldPlan.parameters.stateRoot, {
         plan: oldPlan,
@@ -5194,53 +8649,7 @@ export function applyAutomationKernelGuardCutoverSupersede({
       });
       const evidence = supersedeEvidencePaths(oldPlan, supersedePlan);
       if (transactionRecord === null) {
-        if (!existsSync(evidence.transaction)) {
-          fail(
-            "cutover_supersede_conflict",
-            "No canonical or preserved transaction can complete supersession.",
-          );
-        }
-        const archivedTransactionBytes = readPrivateMode600File(
-          evidence.transaction,
-          1024 * 1024,
-        );
-        if (
-          sha256(archivedTransactionBytes) !==
-          supersedePlan.parameters.transactionDigest
-        ) {
-          fail(
-            "cutover_supersede_conflict",
-            "Preserved superseded transaction conflicts.",
-          );
-        }
-        const receipt = verifySupersedeEvidence(
-          oldPlan,
-          supersedePlan,
-          archivedTransactionBytes,
-        );
-        if (receipt === null) {
-          fail(
-            "cutover_supersede_conflict",
-            "Retired cutover transaction has no supersede receipt.",
-          );
-        }
-        requireSnapshotMatch(
-          sourceEntry(oldPlan, paths.writerLock),
-          paths.writerLock,
-          "Superseded outcome writer source",
-        );
-        requireSnapshotMatch(
-          sourceEntry(oldPlan, paths.guardsRoot),
-          paths.guardsRoot,
-          "Superseded guard root source",
-        );
-        return {
-          changed: false,
-          action: CUTOVER_SUPERSEDE_ACTION,
-          taskId: supersedePlan.taskId,
-          intentDigest: supersedePlan.intentDigest,
-          receipt,
-        };
+        return completedSupersedeResult(oldPlan, supersedePlan);
       }
       if (
         transactionRecord.transaction.phase !==
@@ -5292,6 +8701,7 @@ export function applyAutomationKernelGuardCutoverSupersede({
       const requireProtectedSupersedeState = ({
         canonicalTransactionRequired,
         receiptRequired,
+        activeAtomicMutation = undefined,
       }) => {
         authorize();
         requireQuiescence(oldPlan);
@@ -5301,6 +8711,11 @@ export function applyAutomationKernelGuardCutoverSupersede({
           plan: oldPlan,
           supersedePlan,
           transaction: transactionRecord.transaction,
+        });
+        requireNoAmbiguousSupersedeTemporaries(oldPlan, {
+          supersedePlan,
+          includeBootstrap: true,
+          activeAtomicMutation,
         });
         if (canonicalTransactionRequired) {
           const currentTransaction = exactTransactionRecord(oldPlan);
@@ -5350,7 +8765,7 @@ export function applyAutomationKernelGuardCutoverSupersede({
           );
         }
       };
-      writeImmutable(evidence.receipt, prettyJsonBytes(receipt), {
+      writeCutoverImmutable(oldPlan, evidence.receipt, prettyJsonBytes(receipt), {
         checkpoint(name, details) {
           checkpoint(name, details);
           requireReceiptPublicationState();
@@ -5373,10 +8788,11 @@ export function applyAutomationKernelGuardCutoverSupersede({
         canonicalTransactionRequired: true,
         receiptRequired: true,
       });
-      const requireRetirementState = () =>
+      const requireRetirementState = (activeAtomicMutation = undefined) =>
         requireProtectedSupersedeState({
           canonicalTransactionRequired: false,
           receiptRequired: true,
+          activeAtomicMutation,
         });
       removePathRecoverably(
         oldPlan,
@@ -5387,7 +8803,14 @@ export function applyAutomationKernelGuardCutoverSupersede({
           supersedePlan,
           checkpoint(name, details) {
             checkpoint(name, details);
-            requireRetirementState();
+            requireRetirementState(
+              name === "write-ahead-temporary-durable"
+                ? {
+                    filePath: details?.filePath,
+                    temporaryPath: details?.temporaryPath,
+                  }
+                : undefined,
+            );
           },
           checkpointName: "supersede-transaction-retire",
           beforeMutation: requireRetirementState,
@@ -5524,7 +8947,8 @@ export function applyAutomationKernelGuardCutover({
       ...writeAheadFilesystemPaths(preBootstrapWriteAhead),
     ],
   });
-  requireImmutableTargetPreflight(
+  requireCutoverImmutableTargetPreflight(
+    plan,
     preBootstrapAuthorizationSource.confirmationArtifact,
     Buffer.from(
       preBootstrapAuthorizationSource.confirmationBytesBase64,
@@ -5618,7 +9042,12 @@ export function applyAutomationKernelGuardCutover({
           authorizations: [initialAuthorization],
           claimGenerations: [],
         };
-        writeTransaction(plan, transaction, reauthorizeExact);
+        writeTransaction(
+          plan,
+          transaction,
+          reauthorizeExact,
+          authorizedCheckpoint,
+        );
         authorizedCheckpoint("initial-authorization-transaction-durable", {
           confirmationId: initialAuthorization.confirmationId,
         });
@@ -5666,13 +9095,14 @@ export function applyAutomationKernelGuardCutover({
 
       const directory = artifactDirectory(plan);
       ensurePrivateDirectory(directory, reauthorizeExact);
-      writeImmutable(path.join(directory, "plan.json"), prettyJsonBytes(plan), {
+      writeCutoverImmutable(plan, path.join(directory, "plan.json"), prettyJsonBytes(plan), {
         beforeMutation: reauthorizeExact,
       });
       authorizedCheckpoint("plan-artifact-durable", {
         filePath: path.join(directory, "plan.json"),
       });
-      writeImmutable(
+      writeCutoverImmutable(
+        plan,
         path.join(directory, "source-snapshot.json"),
         canonicalJsonBytes(plan.sourceSnapshot),
         { beforeMutation: reauthorizeExact },
@@ -5680,7 +9110,8 @@ export function applyAutomationKernelGuardCutover({
       authorizedCheckpoint("source-artifact-durable", {
         filePath: path.join(directory, "source-snapshot.json"),
       });
-      writeImmutable(
+      writeCutoverImmutable(
+        plan,
         path.join(directory, "legacy-locks.json"),
         canonicalJsonBytes(legacyManifest(plan)),
         { beforeMutation: reauthorizeExact },
@@ -5703,6 +9134,7 @@ export function applyAutomationKernelGuardCutover({
           plan,
           transaction,
           reauthorizeExact,
+          authorizedCheckpoint,
         ));
         installCutoverClaims(
           plan,
@@ -5720,7 +9152,12 @@ export function applyAutomationKernelGuardCutover({
         validateStaticSource(plan);
         if (transaction.phase === "prepared") {
           transaction = { ...transaction, phase: "claims-installed" };
-          writeTransaction(plan, transaction, reauthorizeExact);
+          writeTransaction(
+            plan,
+            transaction,
+            reauthorizeExact,
+            authorizedCheckpoint,
+          );
         }
         authorizedCheckpoint("claims-transaction-durable", {
           claimToken: generation.claimToken,
@@ -5737,7 +9174,12 @@ export function applyAutomationKernelGuardCutover({
           reauthorizeExact,
         );
         transaction = { ...transaction, phase: "markers-installed" };
-        writeTransaction(plan, transaction, reauthorizeExact);
+        writeTransaction(
+          plan,
+          transaction,
+          reauthorizeExact,
+          authorizedCheckpoint,
+        );
         authorizedCheckpoint("markers-transaction-durable", {
           cutoverId: plan.parameters.cutoverId,
         });
@@ -5787,7 +9229,12 @@ export function applyAutomationKernelGuardCutover({
           phase: "receipt-prepared",
           completedAt: finalAuthorizationSource.validatedAt,
         };
-        writeTransaction(plan, transaction, reauthorizeExact);
+        writeTransaction(
+          plan,
+          transaction,
+          reauthorizeExact,
+          authorizedCheckpoint,
+        );
         checkpoint("receipt-transaction-durable", {
           cutoverId: plan.parameters.cutoverId,
         });
@@ -5851,16 +9298,35 @@ export function writeAutomationKernelGuardCutoverSupersedePlan(
       "Cutover supersede plan path must be absolute.",
     );
   }
-  if (existsSync(supersedePlanFile)) {
-    fail("cutover_plan_invalid", "Cutover supersede plan file already exists.");
-  }
+  const normalizedOldPlan = normalizePlan(oldPlan);
   const normalized = normalizeSupersedePlan(
     supersedePlan,
-    normalizePlan(oldPlan),
+    normalizedOldPlan,
   );
-  writeImmutable(
+  const bytes = assertAutomationKernelGuardCutoverPlanSize(
+    prettyJsonBytes(normalized),
+  );
+  const retirementDirectory = cutoverRetirementDirectory(
+    normalizedOldPlan,
+    "immutable-hard-links",
+  );
+  const retainedState = inspectRetainedHardLinkPublication(
     supersedePlanFile,
-    assertAutomationKernelGuardCutoverPlanSize(prettyJsonBytes(normalized)),
+    `${supersedePlanFile}.cutover.tmp`,
+    bytes,
+    retirementDirectory,
+  );
+  if (
+    existsSync(supersedePlanFile) &&
+    !existsSync(`${supersedePlanFile}.cutover.tmp`) &&
+    !retainedState.relevant
+  ) {
+    fail("cutover_plan_invalid", "Cutover supersede plan file already exists.");
+  }
+  writeCutoverImmutable(
+    normalizedOldPlan,
+    supersedePlanFile,
+    bytes,
   );
   return supersedePlanFile;
 }
@@ -5869,13 +9335,31 @@ export function writeAutomationKernelGuardCutoverPlan(planFile, plan) {
   if (!path.isAbsolute(planFile)) {
     fail("cutover_plan_invalid", "Cutover plan path must be absolute.");
   }
-  if (existsSync(planFile)) {
+  const normalized = normalizePlan(plan);
+  const bytes = assertAutomationKernelGuardCutoverPlanSize(
+    prettyJsonBytes(normalized),
+  );
+  const retirementDirectory = cutoverRetirementDirectory(
+    normalized,
+    "immutable-hard-links",
+  );
+  const retainedState = inspectRetainedHardLinkPublication(
+    planFile,
+    `${planFile}.cutover.tmp`,
+    bytes,
+    retirementDirectory,
+  );
+  if (
+    existsSync(planFile) &&
+    !existsSync(`${planFile}.cutover.tmp`) &&
+    !retainedState.relevant
+  ) {
     fail("cutover_plan_invalid", "Cutover plan file already exists.");
   }
-  const normalized = normalizePlan(plan);
-  writeImmutable(
+  writeCutoverImmutable(
+    normalized,
     planFile,
-    assertAutomationKernelGuardCutoverPlanSize(prettyJsonBytes(normalized)),
+    bytes,
   );
   return planFile;
 }

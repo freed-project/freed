@@ -4,21 +4,13 @@ import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
   appendFileSync,
-  closeSync,
-  constants,
   copyFileSync,
   existsSync,
-  fstatSync,
-  fsyncSync,
   lstatSync,
   mkdirSync,
-  openSync,
   readdirSync,
   readFileSync,
-  readSync,
   realpathSync,
-  renameSync,
-  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -30,21 +22,31 @@ import { fileURLToPath } from "node:url";
 import {
   AutomationControlError,
   AUTOMATION_CONTROL_SCHEMA_VERSION,
+  AUTOMATION_OUTCOME_STATES,
+  automationActorCanRecordOutcome,
   automationControlPaths,
   CONTROL_EVENT_HISTORY_MAX_BYTES,
+  CONTROL_EVENT_HISTORY_MAX_RECORDS,
   CONTROL_EVENT_MAX_LINE_BYTES,
   installedOutcomeIdentityMatches,
+  inspectExactOutcomeControlHistory,
+  inspectLeaseTransactionEventHistory,
   isTaskTransitionAllowed,
   normalizeInstalledBuildIdentity,
+  outcomeRecordedEventId,
   outcomeRecordOwnerIntent,
   outcomeReservationEventId,
   ownerGovernanceIntentDigest,
+  readAutomationPlanningAdmission,
+  readAutomationAuthorityFileSnapshot,
   readTaskManifest,
   validateTaskManifest,
   validateOutcomeLedgerRepairEvent,
+  withAutomationPlanningReadBundle,
   withAutomationOutcomeLedgerWriterGuard,
   withMutationLeaseAuthority,
   withOutcomeRecordingGuards,
+  writeAutomationAuthorityFile,
 } from "./lib/automation-control.mjs";
 import {
   canonicalOutcomeDelta,
@@ -56,8 +58,11 @@ import {
 import { isProviderVisiblePath } from "./lib/provider-visible-paths.mjs";
 import {
   OUTCOME_LEDGER_REPAIR_ACTION,
+  OUTCOME_LEDGER_REPAIR_DECISION_FORMAT,
+  OUTCOME_LEDGER_REPAIR_DECISION_REASON_DESCRIPTIONS,
   OUTCOME_LEDGER_REPAIR_EVENT_TYPE,
   OUTCOME_LEDGER_REPAIR_MAX_BYTES as OUTCOME_LEDGER_MAX_BYTES,
+  OUTCOME_LEDGER_REPAIR_MAX_LINE_BYTES,
   OUTCOME_LEDGER_REPAIR_MAX_LINES,
   OUTCOME_LEDGER_REPAIR_PARAMETER_KEYS,
   OUTCOME_LEDGER_REPAIR_PHASES,
@@ -66,7 +71,11 @@ import {
   OUTCOME_LEDGER_REPAIR_TRANSACTION_KEYS,
   outcomeLedgerRepairEventId,
   outcomeLedgerRepairOperationSeed,
+  prepareOutcomeLedgerAppend,
+  requireOutcomeLedgerPhysicalBoundary,
+  stableOutcomeRepairJson,
 } from "./lib/outcome-ledger-repair-contract.mjs";
+import { validateOutcomeLedgerRepairTransactionsFromPlanningBundle } from "./lib/outcome-ledger-repair-validation.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -79,9 +88,9 @@ const DEFAULT_CRASH_AUTOMATION =
 const DEFAULT_DEV_BOT_MEMORY =
   "/Users/aubreyfalconer/.codex/automations/hourly-dev-bot/memory.md";
 // Planner learning state lives under the home directory so it survives
-// reboots; macOS periodically clears /tmp, which made the outcome ledger and
-// active-soak pointer amnesiac. The /tmp paths remain readable as a legacy
-// fallback for one release (see resolveStatePathWithLegacyFallback).
+// reboots; macOS periodically clears /tmp, which made the active-soak pointer
+// amnesiac. Its legacy pointer remains copyable for one release. Outcome
+// ledgers require an explicit governed migration because they are authority.
 export const AUTOMATION_STATE_DIR = path.join(
   os.homedir(),
   ".freed",
@@ -89,20 +98,10 @@ export const AUTOMATION_STATE_DIR = path.join(
 );
 export const OUTCOME_SCHEMA_VERSION = 3;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
-const OUTCOME_REPAIR_IDENTIFIER_PATTERN =
-  /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const OUTCOME_CONTROL_EVENT_APPEND_RESERVATION = 3;
+const OUTCOME_REPAIR_IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const outcomeRepairDecoder = new TextDecoder("utf-8", { fatal: true });
-export const OUTCOME_STATUSES = [
-  "merged",
-  "installed",
-  "verified_effective",
-  "verified_neutral",
-  "regressed",
-  "inconclusive",
-  "governance_blocked",
-  "superseded",
-  "implementation_failed",
-];
+export const OUTCOME_STATUSES = AUTOMATION_OUTCOME_STATES;
 const MEASURED_OUTCOME_STATUSES = new Set([
   "verified_effective",
   "verified_neutral",
@@ -117,29 +116,12 @@ const FRESHNESS_GATED_OUTCOME_STATUSES = new Set([
   "governance_blocked",
   "superseded",
 ]);
-const OUTCOME_ACTORS_BY_STATUS = Object.freeze({
-  merged: Object.freeze(["freed-nightly-runner", "freed-owner"]),
-  installed: Object.freeze(["freed-nightly-runner", "freed-owner"]),
-  verified_effective: Object.freeze(["freed-release-verifier", "freed-owner"]),
-  verified_neutral: Object.freeze(["freed-release-verifier", "freed-owner"]),
-  regressed: Object.freeze(["freed-release-verifier", "freed-owner"]),
-  inconclusive: Object.freeze(["freed-release-verifier", "freed-owner"]),
-  governance_blocked: Object.freeze([
-    "freed-stability-controller",
-    "freed-nightly-runner",
-    "freed-owner",
-  ]),
-  superseded: Object.freeze(["freed-stability-controller", "freed-owner"]),
-  implementation_failed: Object.freeze([
-    "freed-scaffolding-maintainer",
-    "freed-nightly-runner",
-    "freed-owner",
-  ]),
-});
 const OUTCOME_EVIDENCE_DIGEST_PATTERN = /^[0-9a-f]{40,64}$/i;
 const OUTCOME_CONTROL_EVENT_TYPE = "outcome_recorded";
+const AUTHORITY_RETIREMENT_DIRECTORY = ".authority-retirements";
 export const OUTCOME_VERDICT_SCHEMA_VERSION =
   CONVERTER_OUTCOME_VERDICT_SCHEMA_VERSION;
+
 const OUTCOME_VERDICT_STATUS = Object.freeze({
   verified_effective: "pass",
   verified_neutral: "pass",
@@ -166,6 +148,11 @@ const RUNNABLE_NIGHTLY_TASK_STATES = new Set([
   "implemented",
   "validated",
 ]);
+const NIGHTLY_SUCCESS_PATH_CONTROL_EVENT_NEEDS = Object.freeze({
+  approved_for_pr: 5,
+  implemented: 4,
+  validated: 3,
+});
 export const DEFAULT_BEHAVIOR_SOAK_EXCLUSIVITY_KEY = "installed-build-product";
 const LEGACY_OUTCOME_ALIASES = {
   shipped: "merged",
@@ -210,6 +197,21 @@ export function resolveStatePathWithLegacyFallback(
     } catch {
       return legacyPath;
     }
+  }
+  return preferredPath;
+}
+
+export function resolveOutcomeLedgerPathWithoutLegacyCopy(
+  preferredPath,
+  legacyPath,
+  fsOps = {},
+) {
+  const ops = { existsSync, ...fsOps };
+  if (ops.existsSync(preferredPath)) return preferredPath;
+  if (legacyPath && ops.existsSync(legacyPath)) {
+    throw new Error(
+      "Legacy outcome ledger migration requires the governed outcome-ledger repair path. Automatic copy is disabled.",
+    );
   }
   return preferredPath;
 }
@@ -574,7 +576,7 @@ export function parseArgs(argv) {
   if (!outcomeLedgerProvided) {
     args.outcomeLedger =
       canonicalOutcomeLedger === DEFAULT_OUTCOME_LEDGER
-        ? resolveStatePathWithLegacyFallback(
+        ? resolveOutcomeLedgerPathWithoutLegacyCopy(
             DEFAULT_OUTCOME_LEDGER,
             LEGACY_OUTCOME_LEDGER,
           )
@@ -900,44 +902,80 @@ function isOutcomeReservationEvent(event) {
 }
 
 function isOutcomeTransitionEvent(event) {
-  return event?.type === "task_transitioned" || isOutcomeReservationEvent(event);
+  return (
+    event?.type === "task_transitioned" || isOutcomeReservationEvent(event)
+  );
 }
 
-function trustedOutcomeEventHistoryFromSource(source) {
-  return {
-    source,
-    outcomes: new Map(
-      source.entries
-        .filter(
-          (event) =>
-            event?.type === OUTCOME_CONTROL_EVENT_TYPE &&
-            typeof event?.eventId === "string" &&
-            typeof event?.taskId === "string" &&
-            typeof event?.data?.outcomeDigest === "string",
-        )
-        .map((event) => [event.eventId, event]),
-    ),
-    transitions: new Map(
-      source.entries
-        .filter(
-          (event) =>
-            isOutcomeTransitionEvent(event) &&
-            typeof event?.eventId === "string" &&
-            typeof event?.taskId === "string" &&
-            Number.isInteger(event?.taskRevision),
-        )
-        .map((event) => [event.eventId, event]),
-    ),
+function trustedOutcomeEventHistoryFromSource(
+  source,
+  ledgerPath,
+  stateRoot = path.dirname(path.resolve(ledgerPath)),
+  controlEventPhysicalBoundaryIssue = null,
+  admittedLeaseTransactions = null,
+) {
+  const physicalLineIssues =
+    controlEventPhysicalBoundaryIssue === null
+      ? []
+      : [controlEventPhysicalBoundaryIssue];
+  const entries = source.records.map((record, index) => {
+    const expectedLineNumber = index + 1;
+    if (record.lineNumber !== expectedLineNumber) {
+      physicalLineIssues.push(
+        `control event parser record ${expectedLineNumber.toLocaleString()} reports physical line ${Number(record.lineNumber).toLocaleString()}`,
+      );
+    }
+    return record.malformed ? null : record.entry;
+  });
+  const inspection = inspectExactOutcomeControlHistory(entries, { ledgerPath });
+  const leaseTransactions =
+    admittedLeaseTransactions ??
+    inspectLeaseTransactionEventHistory({
+      stateRoot,
+      events: entries,
+    });
+  const identityIssues = [
+    ...physicalLineIssues,
+    ...inspection.issues,
+    ...leaseTransactions.issues,
+  ];
+  const trustedSource = {
+    ...source,
+    healthy:
+      source.healthy &&
+      inspection.healthy &&
+      leaseTransactions.healthy &&
+      identityIssues.length === 0,
+    identityIssues,
+    leaseTransactionsHealthy: leaseTransactions.healthy,
+    leaseTransactionIssues: leaseTransactions.issues,
+    retainedLeaseReceiptCount: leaseTransactions.retainedReceiptCount,
+    pendingLeaseTransactionArtifactCount:
+      leaseTransactions.pendingTransactionArtifactCount,
   };
-}
-
-function trustedOutcomeEventHistory(stateRoot, sourceText = undefined) {
-  const eventsPath = automationControlPaths(stateRoot).events;
-  const source =
-    sourceText === undefined
-      ? readJsonLinesWithHealth(eventsPath)
-      : parseJsonLinesWithHealth(sourceText, { exists: true });
-  return trustedOutcomeEventHistoryFromSource(source);
+  const requiredPinnedLegacyOutcomeEventIds = new Set(
+    inspection.requiredPinnedLegacyOutcomeEventIds,
+  );
+  const pinnedLegacyOutcomeEventsByTransitionId = new Map();
+  for (const eventId of requiredPinnedLegacyOutcomeEventIds) {
+    const event = inspection.outcomes.get(eventId);
+    const transitionEventId = event?.data?.transitionEventId;
+    if (typeof transitionEventId !== "string") continue;
+    pinnedLegacyOutcomeEventsByTransitionId.set(transitionEventId, {
+      controlEventId: eventId,
+      outcomeDigest: event.data.outcomeDigest,
+      taskId: event.taskId,
+      taskRevision: event.data.taskRevision,
+    });
+  }
+  return {
+    source: trustedSource,
+    recordsByEventId: inspection.recordsByEventId,
+    outcomes: inspection.outcomes,
+    transitions: inspection.transitions,
+    requiredPinnedLegacyOutcomeEventIds,
+    pinnedLegacyOutcomeEventsByTransitionId,
+  };
 }
 
 function readOutcomeControlBytes(
@@ -945,96 +983,72 @@ function readOutcomeControlBytes(
   maxBytes = 1024 * 1024,
   { allowReadonlyGroupWorld = false } = {},
 ) {
-  if (
-    typeof constants.O_NOFOLLOW !== "number" ||
-    typeof constants.O_NONBLOCK !== "number"
-  ) {
-    throw new Error("Safe nonblocking control file admission is unavailable.");
+  const authoritySnapshot = readAutomationAuthorityFileSnapshot(filePath, {
+    allowMissing: true,
+    allowEmpty: true,
+    privateRoot: path.dirname(filePath),
+    maxBytes,
+    allowedModes: allowReadonlyGroupWorld ? [0o600, 0o640, 0o644] : [0o600],
+    label: "Outcome control file",
+  });
+  if (authoritySnapshot.missing) {
+    return {
+      bytes: Buffer.alloc(0),
+      stats: null,
+      authoritySnapshot,
+      missing: true,
+    };
   }
-  const descriptor = openSync(
-    filePath,
-    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-  );
-  try {
-    const before = fstatSync(descriptor);
-    const canonicalBefore = realpathSync(filePath);
-    const mode = before.mode & 0o7777;
-    const expectedUid =
-      typeof process.getuid === "function" ? process.getuid() : before.uid;
-    if (
-      !before.isFile() ||
-      canonicalBefore !== filePath ||
-      before.uid !== expectedUid ||
-      (allowReadonlyGroupWorld
-        ? ![0o600, 0o640, 0o644].includes(mode)
-        : mode !== 0o600) ||
-      before.size < 0 ||
-      before.size > maxBytes
-    ) {
-      throw new Error(`Unsafe outcome control file: ${filePath}`);
-    }
-    const bytes = Buffer.alloc(before.size + 1);
-    let offset = 0;
-    while (offset < bytes.length) {
-      const count = readSync(
-        descriptor,
-        bytes,
-        offset,
-        bytes.length - offset,
-        null,
-      );
-      if (count === 0) break;
-      offset += count;
-    }
-    const after = fstatSync(descriptor);
-    const current = lstatSync(filePath);
-    if (
-      offset !== before.size ||
-      after.dev !== before.dev ||
-      after.ino !== before.ino ||
-      after.size !== before.size ||
-      after.mtimeMs !== before.mtimeMs ||
-      after.ctimeMs !== before.ctimeMs ||
-      current.isSymbolicLink() ||
-      current.dev !== before.dev ||
-      current.ino !== before.ino ||
-      realpathSync(filePath) !== filePath
-    ) {
-      throw new Error(`Outcome control file changed while read: ${filePath}`);
-    }
-    return { bytes: bytes.subarray(0, offset), stats: before };
-  } finally {
-    closeSync(descriptor);
-  }
+  return {
+    bytes: authoritySnapshot.bytes,
+    stats: { ...authoritySnapshot.identity },
+    authoritySnapshot,
+    missing: false,
+  };
 }
 
 function readOutcomeJsonLinesSnapshot(
   filePath,
   {
     sourceText = undefined,
+    sourceStats = null,
     maxBytes,
     allowReadonlyGroupWorld = false,
     label,
   },
 ) {
   let bytes;
+  let stats = sourceStats;
+  let authoritySnapshot = null;
   if (sourceText !== undefined) {
     bytes = Buffer.isBuffer(sourceText)
       ? Buffer.from(sourceText)
       : Buffer.from(String(sourceText), "utf8");
   } else {
     try {
-      bytes = readOutcomeControlBytes(filePath, maxBytes, {
+      const snapshot = readOutcomeControlBytes(filePath, maxBytes, {
         allowReadonlyGroupWorld,
-      }).bytes;
+      });
+      if (snapshot.missing) {
+        return {
+          bytes: Buffer.alloc(0),
+          stats: null,
+          authoritySnapshot: snapshot.authoritySnapshot,
+          source: parseJsonLinesWithHealth("", { exists: false }),
+          missing: true,
+          issue: `${label} is unavailable.`,
+        };
+      }
+      bytes = snapshot.bytes;
+      stats = snapshot.stats;
+      authoritySnapshot = snapshot.authoritySnapshot;
     } catch (error) {
-      const missing = error?.code === "ENOENT";
       return {
         bytes: Buffer.alloc(0),
-        source: parseJsonLinesWithHealth(missing ? "" : "{", {
-          exists: !missing,
-        }),
-        missing,
+        stats: null,
+        authoritySnapshot: null,
+        source: parseJsonLinesWithHealth("{", { exists: true }),
+        missing: false,
         issue: `${label} safe read failed: ${
           error instanceof Error ? error.message : String(error)
         }`,
@@ -1045,6 +1059,8 @@ function readOutcomeJsonLinesSnapshot(
   try {
     return {
       bytes,
+      stats,
+      authoritySnapshot,
       source: parseJsonLinesWithHealth(outcomeRepairDecoder.decode(bytes), {
         exists: true,
       }),
@@ -1054,6 +1070,8 @@ function readOutcomeJsonLinesSnapshot(
   } catch {
     return {
       bytes,
+      stats,
+      authoritySnapshot,
       source: parseJsonLinesWithHealth("{", { exists: true }),
       missing: false,
       issue: `${label} is not valid UTF-8.`,
@@ -1061,9 +1079,26 @@ function readOutcomeJsonLinesSnapshot(
   }
 }
 
+function readCanonicalOutcomeEventSnapshot(stateRoot, sourceText = undefined) {
+  const root = path.resolve(stateRoot);
+  const paths = automationControlPaths(root);
+  try {
+    requireOutcomeRepairPrivateDescendants(root, paths.controlRoot);
+  } catch (error) {
+    return rejectedOutcomeJsonLinesSnapshot("Control event history", error);
+  }
+  return readOutcomeJsonLinesSnapshot(paths.events, {
+    sourceText,
+    maxBytes: CONTROL_EVENT_HISTORY_MAX_BYTES,
+    label: "Control event history",
+  });
+}
+
 function rejectedOutcomeJsonLinesSnapshot(label, error) {
   return {
     bytes: Buffer.alloc(0),
+    stats: null,
+    authoritySnapshot: null,
     source: parseJsonLinesWithHealth("{", { exists: true }),
     missing: false,
     issue: `${label} safe read failed: ${
@@ -1075,13 +1110,20 @@ function rejectedOutcomeJsonLinesSnapshot(label, error) {
 function readCanonicalOutcomeSnapshots(
   stateRoot,
   ledgerPath,
-  { ledgerText = undefined, eventHistoryText = undefined } = {},
+  {
+    ledgerText = undefined,
+    ledgerStats = null,
+    eventHistoryText = undefined,
+    eventHistoryStats = null,
+  } = {},
 ) {
   const root = path.resolve(stateRoot);
   const paths = automationControlPaths(root);
   try {
     if (path.resolve(ledgerPath) !== paths.outcomes) {
-      throw new Error("Outcome ledger path is not canonical for the state root.");
+      throw new Error(
+        "Outcome ledger path is not canonical for the state root.",
+      );
     }
     requireOutcomeRepairPrivateDescendants(root, paths.controlRoot);
   } catch (error) {
@@ -1093,94 +1135,62 @@ function readCanonicalOutcomeSnapshots(
   return {
     ledger: readOutcomeJsonLinesSnapshot(paths.outcomes, {
       sourceText: ledgerText,
+      sourceStats: ledgerStats,
       maxBytes: OUTCOME_LEDGER_MAX_BYTES,
       allowReadonlyGroupWorld: true,
       label: "Outcome ledger",
     }),
     events: readOutcomeJsonLinesSnapshot(paths.events, {
       sourceText: eventHistoryText,
+      sourceStats: eventHistoryStats,
       maxBytes: 128 * 1024 * 1024,
       label: "Control event history",
     }),
   };
 }
 
-function readOutcomeControlJsonFile(filePath, maxBytes = 1024 * 1024) {
-  const snapshot = readOutcomeControlBytes(filePath, maxBytes);
+function outcomePlanningSnapshot(filePath, admission, label) {
+  if (admission.missing) {
+    return {
+      bytes: Buffer.alloc(0),
+      stats: null,
+      authoritySnapshot: null,
+      source: parseJsonLinesWithHealth("", { exists: false }),
+      missing: true,
+      issue: `${label} is unavailable.`,
+    };
+  }
+  return readOutcomeJsonLinesSnapshot(filePath, {
+    sourceText: admission.text,
+    sourceStats: admission.identity,
+    maxBytes:
+      label === "Outcome ledger"
+        ? OUTCOME_LEDGER_MAX_BYTES
+        : CONTROL_EVENT_HISTORY_MAX_BYTES,
+    allowReadonlyGroupWorld: label === "Outcome ledger",
+    label,
+  });
+}
+
+function outcomeSnapshotsFromPlanningBundle(bundle) {
+  const paths = automationControlPaths(bundle.stateRoot);
+  if (paths.outcomes !== bundle.ledgerPath) {
+    throw new Error(
+      "Automation planning bundle has a noncanonical outcome ledger path.",
+    );
+  }
   return {
-    value: JSON.parse(outcomeRepairDecoder.decode(snapshot.bytes)),
-    bytes: snapshot.bytes,
-    mtimeMs: snapshot.stats.mtimeMs,
-    stats: snapshot.stats,
+    ledger: outcomePlanningSnapshot(
+      paths.outcomes,
+      bundle.outcomeLedger,
+      "Outcome ledger",
+    ),
+    events: outcomePlanningSnapshot(
+      paths.events,
+      bundle.controlEventHistory,
+      "Control event history",
+    ),
   };
-}
-
-function stableOutcomeRepairJson(value) {
-  if (Array.isArray(value)) {
-    return `[${value.map(stableOutcomeRepairJson).join(",")}]`;
-  }
-  if (value && typeof value === "object") {
-    return `{${Object.keys(value)
-      .sort()
-      .map(
-        (key) =>
-          `${JSON.stringify(key)}:${stableOutcomeRepairJson(value[key])}`,
-      )
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-
-function outcomeRepairDigest(value) {
-  return createHash("sha256").update(value).digest("hex");
-}
-
-function requireOutcomeRepairCount(value, field) {
-  if (!Number.isSafeInteger(value) || value < 0) {
-    throw new Error(`${field} must be a nonnegative safe integer.`);
-  }
-  return value;
-}
-
-function outcomeRepairPhysicalLines(bytes) {
-  const lines = [];
-  let offset = 0;
-  let lineNumber = 1;
-  while (offset < bytes.length) {
-    const newline = bytes.indexOf(0x0a, offset);
-    const end = newline === -1 ? bytes.length : newline + 1;
-    const raw = bytes.subarray(offset, end);
-    let contentEnd = raw.length;
-    if (contentEnd > 0 && raw[contentEnd - 1] === 0x0a) contentEnd -= 1;
-    if (contentEnd > 0 && raw[contentEnd - 1] === 0x0d) contentEnd -= 1;
-    let text;
-    try {
-      text = outcomeRepairDecoder.decode(raw.subarray(0, contentEnd));
-    } catch {
-      throw new Error(
-        `Outcome ledger repair archive line ${lineNumber.toLocaleString()} is not valid UTF-8.`,
-      );
-    }
-    if (!text.trim()) {
-      throw new Error(
-        `Outcome ledger repair archive line ${lineNumber.toLocaleString()} is blank.`,
-      );
-    }
-    JSON.parse(text);
-    lines.push({
-      lineNumber,
-      offset,
-      length: raw.length,
-      digest: outcomeRepairDigest(raw),
-      raw,
-    });
-    if (lines.length > OUTCOME_LEDGER_REPAIR_MAX_LINES) {
-      throw new Error("Outcome ledger repair archive has too many physical lines.");
-    }
-    offset = end;
-    lineNumber += 1;
-  }
-  return lines;
 }
 
 function requireOutcomeRepairPrivateDescendants(stateRoot, targetPath) {
@@ -1218,432 +1228,35 @@ function requireOutcomeRepairPrivateDescendants(stateRoot, targetPath) {
   }
 }
 
-function validateCompletedOutcomeLedgerRepair({
-  stateRoot,
+function exactOutcomeControlEventMatchesEntry({
+  entry,
   ledgerPath,
-  ledgerBytes,
-  eventHistoryBytes,
-  eventEntries,
-  transactionPath,
-  record,
+  event,
+  evidence,
+  authentication,
+  outcomeDigest,
 }) {
-  const parameters = record?.parameters;
-  if (
-    record?.schemaVersion !== OUTCOME_LEDGER_REPAIR_SCHEMA_VERSION ||
-    record?.policy !== OUTCOME_LEDGER_REPAIR_POLICY ||
-    record?.phase !== "complete" ||
-    !OUTCOME_REPAIR_IDENTIFIER_PATTERN.test(String(record?.taskId ?? "")) ||
-    !SHA256_PATTERN.test(String(record?.operationId ?? "")) ||
-    path.basename(transactionPath) !== `${record.operationId}.json` ||
-    !parameters ||
-    typeof parameters !== "object" ||
-    Array.isArray(parameters) ||
-    stableOutcomeRepairJson(Object.keys(parameters).sort()) !==
-      stableOutcomeRepairJson(OUTCOME_LEDGER_REPAIR_PARAMETER_KEYS) ||
-    stableOutcomeRepairJson(Object.keys(record).sort()) !==
-      stableOutcomeRepairJson(OUTCOME_LEDGER_REPAIR_TRANSACTION_KEYS)
-  ) {
-    throw new Error("Completed outcome ledger repair identity is invalid.");
-  }
-  for (const field of [
-    "archiveDigest",
-    "decisionsDigest",
-    "eventHistoryDigest",
-    "operationId",
-    "receiptDigest",
-    "replacementDigest",
-    "sourceDigest",
-  ]) {
-    if (!SHA256_PATTERN.test(String(parameters[field] ?? ""))) {
-      throw new Error(`Outcome ledger repair ${field} is invalid.`);
-    }
-  }
-  for (const field of [
-    "eventHistorySize",
-    "rejectedCount",
-    "replacementSize",
-    "sourceLineCount",
-    "sourceSize",
-    "trustedCount",
-  ]) {
-    requireOutcomeRepairCount(parameters[field], field);
-  }
-  if (
-    parameters.schemaVersion !== OUTCOME_LEDGER_REPAIR_SCHEMA_VERSION ||
-    parameters.policy !== OUTCOME_LEDGER_REPAIR_POLICY ||
-    parameters.stateRoot !== stateRoot ||
-    parameters.ledgerPath !== ledgerPath ||
-    parameters.operationId !== record.operationId ||
-    parameters.archiveDigest !== parameters.sourceDigest ||
-    parameters.sourceLineCount !==
-      parameters.trustedCount + parameters.rejectedCount ||
-    record.eventId !== outcomeLedgerRepairEventId(record.operationId)
-  ) {
-    throw new Error("Completed outcome ledger repair parameters conflict.");
-  }
-  const operationSeed = outcomeLedgerRepairOperationSeed(
-    record.taskId,
-    parameters,
-  );
-  if (
-    outcomeRepairDigest(stableOutcomeRepairJson(operationSeed)) !==
-    record.operationId
-  ) {
-    throw new Error("Completed outcome ledger repair operation ID drifted.");
-  }
-  const intent = {
-    schemaVersion: 1,
-    action: OUTCOME_LEDGER_REPAIR_ACTION,
-    taskId: record.taskId,
-    parameters,
+  if (!event || typeof event !== "object") return false;
+  const expected = {
+    schemaVersion: AUTOMATION_CONTROL_SCHEMA_VERSION,
+    eventId: event.eventId,
+    type: OUTCOME_CONTROL_EVENT_TYPE,
+    ts: event.ts,
+    actor: authentication.actor,
+    taskId: entry.taskId,
+    data: outcomeRecordedEventData({
+      cleanEntry: entry,
+      taskId: entry.taskId,
+      taskRevision: authentication.taskRevision,
+      taskState: entry.outcome,
+      ledgerPath,
+      leaseName: authentication.leaseName,
+      evidence,
+      outcomeDigest,
+      transitionEventId: authentication.transitionEventId,
+    }),
   };
-  const intentDigest = ownerGovernanceIntentDigest(intent);
-  if (record.intentDigest !== intentDigest) {
-    throw new Error("Completed outcome ledger repair intent digest drifted.");
-  }
-  const artifactDirectory = path.join(
-    stateRoot,
-    "artifacts",
-    "outcome-ledger-repair",
-    record.taskId,
-    parameters.sourceDigest,
-    record.operationId,
-  );
-  const expectedArtifacts = {
-    source: path.join(
-      artifactDirectory,
-      `source-${parameters.sourceDigest}.jsonl`,
-    ),
-    trusted: path.join(artifactDirectory, "trusted.jsonl"),
-    rejected: path.join(artifactDirectory, "rejected.jsonl"),
-    decisions: path.join(artifactDirectory, "decisions.json"),
-    receipt: path.join(artifactDirectory, "receipt.json"),
-  };
-  requireOutcomeRepairPrivateDescendants(stateRoot, artifactDirectory);
-  if (
-    stableOutcomeRepairJson(record.artifacts) !==
-    stableOutcomeRepairJson(expectedArtifacts)
-  ) {
-    throw new Error("Completed outcome ledger repair artifact paths drifted.");
-  }
-  const sourceBytes = readOutcomeControlBytes(
-    expectedArtifacts.source,
-    16 * 1024 * 1024,
-  ).bytes;
-  const trustedBytes = readOutcomeControlBytes(
-    expectedArtifacts.trusted,
-    16 * 1024 * 1024,
-  ).bytes;
-  const rejectedBytes = readOutcomeControlBytes(
-    expectedArtifacts.rejected,
-    16 * 1024 * 1024,
-  ).bytes;
-  const decisionBytes = readOutcomeControlBytes(
-    expectedArtifacts.decisions,
-    128 * 1024 * 1024,
-  ).bytes;
-  const receiptBytes = readOutcomeControlBytes(
-    expectedArtifacts.receipt,
-    16 * 1024 * 1024,
-  ).bytes;
-  if (
-    sourceBytes.length !== parameters.sourceSize ||
-    outcomeRepairDigest(sourceBytes) !== parameters.sourceDigest ||
-    trustedBytes.length !== parameters.replacementSize ||
-    outcomeRepairDigest(trustedBytes) !== parameters.replacementDigest ||
-    outcomeRepairDigest(decisionBytes) !== parameters.decisionsDigest
-  ) {
-    throw new Error("Completed outcome ledger repair artifacts drifted.");
-  }
-  const decisionManifest = JSON.parse(outcomeRepairDecoder.decode(decisionBytes));
-  const { lines: decisions, ...decisionHeader } = decisionManifest ?? {};
-  const expectedDecisionHeader = {
-    schemaVersion: OUTCOME_LEDGER_REPAIR_SCHEMA_VERSION,
-    policy: OUTCOME_LEDGER_REPAIR_POLICY,
-    taskId: record.taskId,
-    sourceDigest: parameters.sourceDigest,
-    sourceSize: parameters.sourceSize,
-    sourceLineCount: parameters.sourceLineCount,
-    eventHistoryDigest: parameters.eventHistoryDigest,
-    eventHistorySize: parameters.eventHistorySize,
-    trustedCount: parameters.trustedCount,
-    rejectedCount: parameters.rejectedCount,
-    replacementDigest: parameters.replacementDigest,
-    replacementSize: parameters.replacementSize,
-  };
-  if (
-    !Array.isArray(decisions) ||
-    stableOutcomeRepairJson(decisionHeader) !==
-      stableOutcomeRepairJson(expectedDecisionHeader)
-  ) {
-    throw new Error("Completed outcome ledger repair decisions drifted.");
-  }
-  const sourceLines = outcomeRepairPhysicalLines(sourceBytes);
-  if (
-    sourceLines.length !== parameters.sourceLineCount ||
-    decisions.length !== sourceLines.length
-  ) {
-    throw new Error("Completed outcome ledger repair occurrence count drifted.");
-  }
-  const trustedParts = [];
-  const rejectedParts = [];
-  for (const [index, line] of sourceLines.entries()) {
-    const decision = decisions[index];
-    if (
-      decision?.lineNumber !== line.lineNumber ||
-      decision?.offset !== line.offset ||
-      decision?.length !== line.length ||
-      decision?.rawDigest !== line.digest ||
-      !["trusted", "rejected"].includes(decision?.disposition) ||
-      typeof decision?.reason !== "string" ||
-      decision.reason.length === 0
-    ) {
-      throw new Error("Completed outcome ledger repair occurrence drifted.");
-    }
-    (decision.disposition === "trusted" ? trustedParts : rejectedParts).push(
-      line.raw,
-    );
-  }
-  if (
-    trustedParts.length !== parameters.trustedCount ||
-    rejectedParts.length !== parameters.rejectedCount ||
-    !trustedBytes.equals(Buffer.concat(trustedParts)) ||
-    !rejectedBytes.equals(Buffer.concat(rejectedParts))
-  ) {
-    throw new Error("Completed outcome ledger repair raw archives drifted.");
-  }
-  const receiptCore = {
-    schemaVersion: OUTCOME_LEDGER_REPAIR_SCHEMA_VERSION,
-    policy: OUTCOME_LEDGER_REPAIR_POLICY,
-    status: "complete",
-    taskId: record.taskId,
-    operationId: record.operationId,
-    eventId: record.eventId,
-    stateRoot: parameters.stateRoot,
-    ledgerPath: parameters.ledgerPath,
-    sourceArtifact: expectedArtifacts.source,
-    trustedArtifact: expectedArtifacts.trusted,
-    rejectedArtifact: expectedArtifacts.rejected,
-    decisionsArtifact: expectedArtifacts.decisions,
-    sourceDigest: parameters.sourceDigest,
-    sourceSize: parameters.sourceSize,
-    sourceLineCount: parameters.sourceLineCount,
-    eventHistoryDigest: parameters.eventHistoryDigest,
-    eventHistorySize: parameters.eventHistorySize,
-    trustedCount: parameters.trustedCount,
-    rejectedCount: parameters.rejectedCount,
-    replacementDigest: parameters.replacementDigest,
-    replacementSize: parameters.replacementSize,
-    archiveDigest: parameters.archiveDigest,
-    decisionsDigest: parameters.decisionsDigest,
-  };
-  const receiptDigest = outcomeRepairDigest(stableOutcomeRepairJson(receiptCore));
-  const expectedReceipt = { ...receiptCore, receiptDigest };
-  const expectedReceiptBytes = Buffer.from(
-    `${JSON.stringify(expectedReceipt, null, 2)}\n`,
-    "utf8",
-  );
-  const receipt = JSON.parse(outcomeRepairDecoder.decode(receiptBytes));
-  if (
-    receiptDigest !== parameters.receiptDigest ||
-    !receiptBytes.equals(expectedReceiptBytes) ||
-    stableOutcomeRepairJson(receipt) !== stableOutcomeRepairJson(expectedReceipt) ||
-    stableOutcomeRepairJson(record.receipt) !==
-      stableOutcomeRepairJson(expectedReceipt)
-  ) {
-    throw new Error("Completed outcome ledger repair receipt drifted.");
-  }
-  if (
-    eventHistoryBytes.length < parameters.eventHistorySize ||
-    outcomeRepairDigest(
-      eventHistoryBytes.subarray(0, parameters.eventHistorySize),
-    ) !== parameters.eventHistoryDigest
-  ) {
-    throw new Error("Completed outcome ledger repair event prefix drifted.");
-  }
-  const matchingEvents = eventEntries.filter(
-    (event) => event?.eventId === record.eventId,
-  );
-  if (matchingEvents.length !== 1) {
-    throw new Error(
-      "Completed outcome ledger repair requires exactly one audit event.",
-    );
-  }
-  validateOutcomeLedgerRepairEvent(matchingEvents[0], {
-    stateRoot,
-    taskId: record.taskId,
-    parameters,
-    intentDigest,
-  });
-  if (
-    ledgerBytes.length < trustedBytes.length ||
-    !ledgerBytes.subarray(0, trustedBytes.length).equals(trustedBytes)
-  ) {
-    throw new Error("Completed outcome ledger repair retained bytes drifted.");
-  }
-}
-
-function inspectOutcomeLedgerRepairTransactions(
-  stateRoot,
-  {
-    ledgerPath,
-    ledgerBytes,
-    eventHistoryBytes,
-    eventEntries,
-    inputIssue = null,
-    allowedPendingOperationId = null,
-  },
-) {
-  const transactionDirectory = path.join(
-    automationControlPaths(stateRoot).controlRoot,
-    "outcome-ledger-transactions",
-  );
-  const repairAuditEvents = eventEntries.filter(
-    (event) => event?.type === OUTCOME_LEDGER_REPAIR_EVENT_TYPE,
-  );
-  const issues = inputIssue === null ? [] : [inputIssue];
-  if (!existsSync(transactionDirectory)) {
-    for (const event of repairAuditEvents) {
-      issues.push(
-        `${String(event?.eventId ?? "unknown repair audit event")}: matching complete transaction is missing`,
-      );
-    }
-    return {
-      exists: repairAuditEvents.length > 0,
-      healthy: issues.length === 0,
-      pending: [],
-      issues,
-    };
-  }
-  const pending = [];
-  const verifiedEventIds = new Set();
-  const admittedPendingEventIds = new Set();
-  try {
-    requireOutcomeRepairPrivateDescendants(stateRoot, transactionDirectory);
-    const stats = lstatSync(transactionDirectory);
-    const expectedUid =
-      typeof process.getuid === "function" ? process.getuid() : stats.uid;
-    if (
-      !stats.isDirectory() ||
-      stats.isSymbolicLink() ||
-      stats.uid !== expectedUid ||
-      (stats.mode & 0o777) !== 0o700 ||
-      realpathSync(transactionDirectory) !== transactionDirectory
-    ) {
-      throw new Error("Outcome ledger transaction directory is unsafe.");
-    }
-    for (const entry of readdirSync(transactionDirectory, {
-      withFileTypes: true,
-    })) {
-      if (
-        /^\.[0-9a-f]{64}\.json\.\d+\.tmp(?:\.quarantine\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})*$/.test(
-          entry.name,
-        )
-      ) {
-        try {
-          readOutcomeControlBytes(
-            path.join(transactionDirectory, entry.name),
-            128 * 1024 * 1024,
-          );
-        } catch (error) {
-          issues.push(
-            `${entry.name}: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-        continue;
-      }
-      if (!entry.isFile() || !entry.name.endsWith(".json")) {
-        issues.push(`unexpected transaction entry ${entry.name}`);
-        continue;
-      }
-      const filePath = path.join(transactionDirectory, entry.name);
-      try {
-        const record = readOutcomeControlJsonFile(filePath).value;
-        if (
-          record?.schemaVersion !== 1 ||
-          !SHA256_PATTERN.test(String(record?.operationId ?? "")) ||
-          entry.name !== `${record.operationId}.json` ||
-          !OUTCOME_REPAIR_IDENTIFIER_PATTERN.test(
-            String(record?.taskId ?? ""),
-          ) ||
-          stableOutcomeRepairJson(Object.keys(record).sort()) !==
-            stableOutcomeRepairJson(OUTCOME_LEDGER_REPAIR_TRANSACTION_KEYS) ||
-          record?.eventId !== outcomeLedgerRepairEventId(record.operationId) ||
-          !OUTCOME_LEDGER_REPAIR_PHASES.includes(record?.phase)
-        ) {
-          throw new Error("invalid transaction record");
-        }
-        if (record.phase !== "complete") {
-          pending.push({
-            operationId: record.operationId,
-            taskId: record.taskId,
-            phase: record.phase,
-          });
-          if (
-            record.operationId === allowedPendingOperationId &&
-            ["replaced", "audited"].includes(record.phase)
-          ) {
-            const matchingEvents = eventEntries.filter(
-              (event) => event?.eventId === record.eventId,
-            );
-            if (
-              matchingEvents.length === 0 &&
-              record.phase === "replaced"
-            ) {
-              continue;
-            }
-            if (matchingEvents.length !== 1) {
-              throw new Error(
-                "pending outcome ledger repair requires exactly one audit event",
-              );
-            }
-            validateOutcomeLedgerRepairEvent(matchingEvents[0], {
-              stateRoot,
-              taskId: record.taskId,
-              parameters: record.parameters,
-              intentDigest: record.intentDigest,
-            });
-            admittedPendingEventIds.add(record.eventId);
-          }
-        } else {
-          validateCompletedOutcomeLedgerRepair({
-            stateRoot,
-            ledgerPath,
-            ledgerBytes,
-            eventHistoryBytes,
-            eventEntries,
-            transactionPath: filePath,
-            record,
-          });
-          verifiedEventIds.add(record.eventId);
-        }
-      } catch (error) {
-        issues.push(
-          `${entry.name}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-    }
-    for (const event of repairAuditEvents) {
-      if (
-        typeof event?.eventId !== "string" ||
-        !/^outcome-history-repaired:[0-9a-f]{64}$/.test(event.eventId) ||
-        (!verifiedEventIds.has(event.eventId) &&
-          !admittedPendingEventIds.has(event.eventId))
-      ) {
-        issues.push(
-          `${String(event?.eventId ?? "unknown repair audit event")}: matching complete transaction is missing or invalid`,
-        );
-      }
-    }
-  } catch (error) {
-    issues.push(error instanceof Error ? error.message : String(error));
-  }
-  return {
-    exists: true,
-    healthy: issues.length === 0,
-    pending,
-    issues,
-  };
+  return stableOutcomeRepairJson(event) === stableOutcomeRepairJson(expected);
 }
 
 function authenticateOutcomeEntry(
@@ -1666,7 +1279,7 @@ function authenticateOutcomeEntry(
     !Number.isInteger(authentication.taskRevision) ||
     typeof entry?.taskId !== "string" ||
     !OUTCOME_STATUSES.includes(entry?.outcome) ||
-    !OUTCOME_ACTORS_BY_STATUS[entry?.outcome]?.includes(authentication.actor)
+    !automationActorCanRecordOutcome(authentication.actor, entry?.outcome)
   ) {
     return {
       trusted: false,
@@ -1703,15 +1316,17 @@ function authenticateOutcomeEntry(
   const transitionEvent = eventHistory.transitions.get(
     authentication.transitionEventId,
   );
+  const pinnedLegacyOutcome =
+    eventHistory.pinnedLegacyOutcomeEventsByTransitionId.get(
+      authentication.transitionEventId,
+    );
   const reservationEvent = isOutcomeReservationEvent(transitionEvent);
-  const legacyReservationTransitions = reservationEvent
-    ? eventHistory.source.entries.filter(
-        (candidate) =>
-          candidate?.eventId ===
-          transitionEvent.data.legacyTransitionEventId,
-      )
+  const legacyReservationRecords = reservationEvent
+    ? (eventHistory.recordsByEventId.get(
+        transitionEvent.data.legacyTransitionEventId,
+      ) ?? [])
     : [];
-  const legacyReservationTransition = legacyReservationTransitions[0];
+  const legacyReservationTransition = legacyReservationRecords[0]?.entry;
   let validLegacyReservationEdge = false;
   if (
     typeof legacyReservationTransition?.data?.fromState === "string" &&
@@ -1728,7 +1343,7 @@ function authenticateOutcomeEntry(
   }
   const validLegacyReservation =
     !reservationEvent ||
-    (legacyReservationTransitions.length === 1 &&
+    (legacyReservationRecords.length === 1 &&
       legacyReservationTransition?.type === "task_transitioned" &&
       legacyReservationTransition.taskId === entry.taskId &&
       legacyReservationTransition.taskRevision + 1 ===
@@ -1755,8 +1370,48 @@ function authenticateOutcomeEntry(
         legacyReservationTransition?.data?.installedAt ===
           transitionEvent.data?.installedAt));
   const digest = outcomeEntryDigest(entry);
+  const requiresDeterministicControlEvent =
+    pinnedLegacyOutcome !== undefined ||
+    reservationEvent ||
+    transitionEvent?.data?.outcomeRequired === true;
+  const deterministicControlEventId = outcomeRecordedEventId({
+    taskId: entry.taskId,
+    taskRevision: authentication.taskRevision,
+    outcomeDigest: digest,
+    transitionEventId: authentication.transitionEventId,
+  });
+  const exactOutcomeEvent = exactOutcomeControlEventMatchesEntry({
+    entry,
+    ledgerPath,
+    event,
+    evidence,
+    authentication,
+    outcomeDigest: digest,
+  });
+  const canonicalReservationLink =
+    !reservationEvent ||
+    (transitionEvent.observerAuthority ===
+        legacyReservationTransition?.observerAuthority &&
+      transitionEvent.providerAuthority ===
+        legacyReservationTransition?.providerAuthority &&
+      transitionEvent.providerApprovalReference ===
+        legacyReservationTransition?.providerApprovalReference &&
+      transitionEvent.manifestRevision >
+        legacyReservationTransition?.manifestRevision &&
+      (entry.outcome !== "merged" ||
+        transitionEvent.data?.mergedAt ===
+          legacyReservationTransition?.data?.mergedAt));
   if (
     !event ||
+    (pinnedLegacyOutcome !== undefined &&
+      (authentication.controlEventId !==
+        pinnedLegacyOutcome.controlEventId ||
+        authentication.outcomeDigest !== pinnedLegacyOutcome.outcomeDigest ||
+        authentication.taskRevision !== pinnedLegacyOutcome.taskRevision ||
+        entry.taskId !== pinnedLegacyOutcome.taskId)) ||
+    (requiresDeterministicControlEvent &&
+      event.eventId !== deterministicControlEventId) ||
+    !exactOutcomeEvent ||
     event.actor !== authentication.actor ||
     event.data?.leaseName !== authentication.leaseName ||
     event.data?.ledgerPath !== ledgerPath ||
@@ -1773,6 +1428,7 @@ function authenticateOutcomeEntry(
     JSON.stringify(event.data?.evidence ?? {}) !== JSON.stringify(evidence) ||
     !transitionEvent ||
     !validLegacyReservation ||
+    !canonicalReservationLink ||
     !validInstalledTransitionIdentity ||
     !validLegacyInstalledIdentity ||
     transitionEvent.actor !== authentication.actor ||
@@ -1798,42 +1454,162 @@ export function summarizeOutcomeLedger(
   {
     stateRoot = path.dirname(path.resolve(filePath)),
     ledgerText = undefined,
+    ledgerStats = null,
     eventHistoryText = undefined,
+    eventHistoryStats = null,
     allowedPendingRepairOperationId = null,
+    planningBundle = null,
+    writerGuardContext = null,
+    analysisLedgerAdmission = null,
   } = {},
 ) {
   const ledgerPath = path.resolve(filePath);
-  const snapshots = readCanonicalOutcomeSnapshots(stateRoot, ledgerPath, {
-    ledgerText,
-    eventHistoryText,
-  });
+  if (
+    ledgerText !== undefined ||
+    ledgerStats !== null ||
+    eventHistoryText !== undefined ||
+    eventHistoryStats !== null
+  ) {
+    throw new Error(
+      "Outcome ledger summary authority overrides are unsupported. Use one coherent planning bundle admission.",
+    );
+  }
+  if (planningBundle === null) {
+    if (analysisLedgerAdmission !== null) {
+      throw new Error(
+        "Outcome ledger analysis admissions require their active planning bundle.",
+      );
+    }
+    return withAutomationPlanningReadBundle(
+      {
+        stateRoot,
+        ledgerPath,
+        writerGuardContext,
+      },
+      (bundle) =>
+        summarizeOutcomeLedger(ledgerPath, {
+          stateRoot,
+          allowedPendingRepairOperationId,
+          planningBundle: bundle,
+        }),
+    );
+  }
+  const snapshots = outcomeSnapshotsFromPlanningBundle(planningBundle);
+  if (analysisLedgerAdmission !== null) {
+    const admitted = readAutomationPlanningAdmission(
+      planningBundle,
+      analysisLedgerAdmission,
+    );
+    snapshots.ledger = outcomePlanningSnapshot(
+      admitted.filePath,
+      admitted,
+      "Outcome ledger analysis source",
+    );
+  }
   const ledgerSnapshot = snapshots.ledger;
   const eventHistorySnapshot = snapshots.events;
   const ledgerSource = ledgerSnapshot.source;
+  let ledgerPhysicalLineCount = 0;
+  let ledgerPhysicalBoundaryIssue = null;
+  try {
+    ledgerPhysicalLineCount = requireOutcomeLedgerPhysicalBoundary(
+      ledgerSnapshot.bytes,
+    );
+  } catch (error) {
+    ledgerPhysicalBoundaryIssue =
+      error instanceof Error ? error.message : String(error);
+  }
+  let controlEventPhysicalLineCount = 0;
+  let controlEventPhysicalBoundaryIssue = null;
+  try {
+    controlEventPhysicalLineCount = requireControlEventPhysicalBoundary(
+      eventHistorySnapshot.bytes,
+    );
+  } catch (error) {
+    controlEventPhysicalBoundaryIssue =
+      error instanceof Error ? error.message : String(error);
+  }
+  const outcomeSeparatorBytes =
+    ledgerSnapshot.bytes.length > 0 &&
+    ledgerSnapshot.bytes[ledgerSnapshot.bytes.length - 1] !== 0x0a
+      ? 1
+      : 0;
+  const outcomeAppendCapacity =
+    ledgerPhysicalBoundaryIssue === null
+      ? Math.max(
+          0,
+          Math.min(
+            OUTCOME_LEDGER_REPAIR_MAX_LINES - ledgerPhysicalLineCount,
+            Math.floor(
+              Math.max(
+                0,
+                OUTCOME_LEDGER_MAX_BYTES -
+                  ledgerSnapshot.bytes.length -
+                  outcomeSeparatorBytes,
+              ) / OUTCOME_LEDGER_REPAIR_MAX_LINE_BYTES,
+            ),
+          ),
+        )
+      : 0;
+  const controlEventSeparatorBytes =
+    eventHistorySnapshot.bytes.length > 0 &&
+    eventHistorySnapshot.bytes[eventHistorySnapshot.bytes.length - 1] !== 0x0a
+      ? 1
+      : 0;
+  const controlEventAppendCapacity =
+    controlEventPhysicalBoundaryIssue === null
+      ? Math.max(
+          0,
+          Math.min(
+            CONTROL_EVENT_HISTORY_MAX_RECORDS -
+              controlEventPhysicalLineCount,
+            Math.floor(
+              Math.max(
+                0,
+                CONTROL_EVENT_HISTORY_MAX_BYTES -
+                  eventHistorySnapshot.bytes.length -
+                  controlEventSeparatorBytes,
+              ) / CONTROL_EVENT_MAX_LINE_BYTES,
+            ),
+          ),
+        )
+      : 0;
+  const outcomeAppendReady = outcomeAppendCapacity >= 1;
+  const controlEventAppendReady =
+    controlEventAppendCapacity >= OUTCOME_CONTROL_EVENT_APPEND_RESERVATION;
   const eventHistory = trustedOutcomeEventHistoryFromSource(
     eventHistorySnapshot.source,
+    ledgerPath,
+    stateRoot,
+    controlEventPhysicalBoundaryIssue,
+    planningBundle?.leaseTransactionHistory ?? null,
   );
   const repairInputIssues = [
     ledgerSnapshot.issue,
     eventHistorySnapshot.issue,
   ].filter(Boolean);
-  const repairTransactions = inspectOutcomeLedgerRepairTransactions(stateRoot, {
-    ledgerPath,
-    ledgerBytes: ledgerSnapshot.bytes,
-    eventHistoryBytes: eventHistorySnapshot.bytes,
-    eventEntries: eventHistory.source.entries,
-    inputIssue:
-      repairInputIssues.length === 0 ? null : repairInputIssues.join("; "),
-    allowedPendingOperationId: allowedPendingRepairOperationId,
-  });
+  const admitted = validateOutcomeLedgerRepairTransactionsFromPlanningBundle(
+    planningBundle,
+  );
+  const repairTransactions = {
+    ...admitted,
+    healthy: admitted.healthy && repairInputIssues.length === 0,
+    issues: [...repairInputIssues, ...admitted.issues],
+  };
   const consumedEventIds = new Set();
   const consumedOutcomeKeys = new Set();
+  const pinnedLegacyOutcomeReferenceCounts = new Map(
+    [...eventHistory.requiredPinnedLegacyOutcomeEventIds].map((eventId) => [
+      eventId,
+      0,
+    ]),
+  );
   const entries = [];
   const rejectedEntries = [];
   const lineDecisions = [];
   for (const record of ledgerSource.records) {
     if (record.malformed) {
-      const reason = `malformed outcome ledger line ${record.lineNumber}`;
+      const reason = `malformed outcome ledger line ${record.lineNumber.toLocaleString()}`;
       rejectedEntries.push({
         lineNumber: record.lineNumber,
         entry: null,
@@ -1847,6 +1623,13 @@ export function summarizeOutcomeLedger(
       continue;
     }
     const entry = record.entry;
+    const controlEventId = entry?.authentication?.controlEventId;
+    if (pinnedLegacyOutcomeReferenceCounts.has(controlEventId)) {
+      pinnedLegacyOutcomeReferenceCounts.set(
+        controlEventId,
+        pinnedLegacyOutcomeReferenceCounts.get(controlEventId) + 1,
+      );
+    }
     const authentication = authenticateOutcomeEntry(
       entry,
       ledgerPath,
@@ -1874,6 +1657,17 @@ export function summarizeOutcomeLedger(
       });
     }
   }
+  const pinnedLegacyOutcomeBundleIssues = [];
+  for (const [eventId, referenceCount] of pinnedLegacyOutcomeReferenceCounts) {
+    if (referenceCount === 1 && consumedEventIds.has(eventId)) continue;
+    pinnedLegacyOutcomeBundleIssues.push(
+      `required pinned legacy outcome ${eventId} has ${referenceCount.toLocaleString()} ledger references and ${
+        consumedEventIds.has(eventId) ? "one" : "no"
+      } trusted row`,
+    );
+  }
+  const pinnedLegacyOutcomeBundlesHealthy =
+    pinnedLegacyOutcomeBundleIssues.length === 0;
   const byKind = new Map();
   const byId = new Map();
 
@@ -1935,21 +1729,48 @@ export function summarizeOutcomeLedger(
     path: ledgerPath,
     exists: entries.length > 0,
     entries,
+    pendingOutcomeTransitions: findPendingOutcomeTransitionsFromTrustedHistory(
+      entries,
+      eventHistory,
+    ),
     rejectedEntries,
     lineDecisions,
     sourceHealth: {
       ledgerHealthy:
         ledgerSource.healthy &&
+        ledgerPhysicalBoundaryIssue === null &&
         eventHistory.source.healthy &&
+        pinnedLegacyOutcomeBundlesHealthy &&
         rejectedEntries.length === 0 &&
         repairTransactions.healthy &&
         repairTransactions.pending.length === 0,
       ledgerSyntaxHealthy: ledgerSource.healthy,
+      ledgerPhysicalBoundaryHealthy: ledgerPhysicalBoundaryIssue === null,
+      ledgerPhysicalBoundaryIssue,
+      ledgerPhysicalLineCount,
+      outcomeAppendCapacity,
+      outcomeAppendReady,
+      controlEventPhysicalBoundaryHealthy:
+        controlEventPhysicalBoundaryIssue === null,
+      controlEventPhysicalBoundaryIssue,
+      controlEventPhysicalLineCount,
+      controlEventAppendCapacity,
+      controlEventAppendReady,
       ledgerExists: ledgerSource.exists,
       malformedLedgerLines: ledgerSource.malformedLines,
       controlEventsHealthy: eventHistory.source.healthy,
       controlEventsExist: eventHistory.source.exists,
       malformedControlEventLines: eventHistory.source.malformedLines,
+      controlEventIdentityIssues: eventHistory.source.identityIssues,
+      leaseTransactionsHealthy:
+        eventHistory.source.leaseTransactionsHealthy,
+      leaseTransactionIssues: eventHistory.source.leaseTransactionIssues,
+      retainedLeaseReceiptCount:
+        eventHistory.source.retainedLeaseReceiptCount,
+      pendingLeaseTransactionArtifactCount:
+        eventHistory.source.pendingLeaseTransactionArtifactCount,
+      pinnedLegacyOutcomeBundlesHealthy,
+      pinnedLegacyOutcomeBundleIssues,
       outcomeLedgerTransactionsHealthy: repairTransactions.healthy,
       pendingOutcomeLedgerRepairs: repairTransactions.pending,
       outcomeLedgerTransactionIssues: repairTransactions.issues,
@@ -1966,113 +1787,240 @@ function waitForOutcomeLedgerLock(ms) {
   Atomics.wait(signal, 0, 0, ms);
 }
 
-function requireOutcomeLedgerAppendAdmission(ledgerPath, stateRoot) {
-  const snapshots = readCanonicalOutcomeSnapshots(stateRoot, ledgerPath);
-  const ledgerSnapshot = snapshots.ledger;
-  const eventHistorySnapshot = snapshots.events;
-  requireOutcomeLedgerPhysicalBoundary(ledgerSnapshot.bytes);
-  const eventHistory = trustedOutcomeEventHistoryFromSource(
-    eventHistorySnapshot.source,
+function outcomeLedgerBootstrapAdmissionReady(summary) {
+  const health = summary.sourceHealth;
+  return (
+    health.ledgerExists === false &&
+    health.ledgerSyntaxHealthy === false &&
+    health.ledgerPhysicalBoundaryHealthy === true &&
+    health.outcomeAppendReady === true &&
+    health.controlEventsHealthy === true &&
+    health.controlEventPhysicalBoundaryHealthy === true &&
+    health.controlEventAppendReady === true &&
+    health.leaseTransactionsHealthy === true &&
+    health.pinnedLegacyOutcomeBundlesHealthy === true &&
+    health.pendingOutcomeLedgerRepairs.length === 0 &&
+    health.outcomeLedgerTransactionIssues.length === 1 &&
+    health.outcomeLedgerTransactionIssues[0] ===
+      "Outcome ledger is unavailable." &&
+    health.malformedLedgerLines.length === 0 &&
+    summary.entries.length === 0 &&
+    summary.rejectedEntries.length === 0 &&
+    summary.lineDecisions.length === 0
   );
-  const inputIssues = [
-    ledgerSnapshot.missing ? null : ledgerSnapshot.issue,
-    eventHistorySnapshot.missing ? null : eventHistorySnapshot.issue,
-  ].filter(Boolean);
-  const repairTransactions = inspectOutcomeLedgerRepairTransactions(stateRoot, {
-    ledgerPath,
-    ledgerBytes: ledgerSnapshot.bytes,
-    eventHistoryBytes: eventHistorySnapshot.bytes,
-    eventEntries: eventHistory.source.entries,
-    inputIssue: inputIssues.length === 0 ? null : inputIssues.join("; "),
-  });
-  if (
-    (!ledgerSnapshot.missing && !ledgerSnapshot.source.healthy) ||
-    (!eventHistorySnapshot.missing && !eventHistory.source.healthy) ||
-    !repairTransactions.healthy ||
-    repairTransactions.pending.length > 0
-  ) {
-    throw new Error(
-      "Outcome recording is blocked by unsafe or pending outcome ledger repair state.",
-    );
-  }
-  return { ledgerSnapshot, eventHistorySnapshot, eventHistory };
 }
 
-function requireOutcomeLedgerPhysicalBoundary(bytes) {
+function requireOutcomeLedgerAppendAdmission(
+  ledgerPath,
+  stateRoot,
+  { writerGuardContext = null } = {},
+) {
+  const admitted = withAutomationPlanningReadBundle(
+    { stateRoot, ledgerPath, writerGuardContext },
+    (planningBundle) => {
+      const ledgerSummary = summarizeOutcomeLedger(ledgerPath, {
+        stateRoot,
+        planningBundle,
+      });
+      if (
+        !ledgerSummary.sourceHealth.ledgerHealthy &&
+        !outcomeLedgerBootstrapAdmissionReady(ledgerSummary)
+      ) {
+        throw new Error(
+          "Outcome recording requires a fully authenticated, healthy outcome ledger within the supported repair boundary.",
+        );
+      }
+      return {
+        ledger: planningBundle.outcomeLedger,
+        events: planningBundle.controlEventHistory,
+        taskManifestValue: planningBundle.taskManifest,
+        taskManifest: planningBundle.taskManifestSnapshot,
+        leaseTransactionHistory: planningBundle.leaseTransactionHistory,
+        ledgerSummary,
+      };
+    },
+  );
+  const ledgerSnapshot = outcomePlanningSnapshot(
+    ledgerPath,
+    admitted.ledger,
+    "Outcome ledger",
+  );
+  const eventHistorySnapshot = outcomePlanningSnapshot(
+    automationControlPaths(stateRoot).events,
+    admitted.events,
+    "Control event history",
+  );
+  let controlEventPhysicalBoundaryIssue = null;
+  try {
+    requireControlEventPhysicalBoundary(eventHistorySnapshot.bytes);
+  } catch (error) {
+    controlEventPhysicalBoundaryIssue =
+      error instanceof Error ? error.message : String(error);
+  }
+  const eventHistory = trustedOutcomeEventHistoryFromSource(
+    eventHistorySnapshot.source,
+    ledgerPath,
+    stateRoot,
+    controlEventPhysicalBoundaryIssue,
+    admitted.leaseTransactionHistory,
+  );
+  return {
+    ledgerSnapshot,
+    eventHistorySnapshot,
+    eventHistory,
+    taskManifest: admitted.taskManifestValue,
+    ledgerSummary: admitted.ledgerSummary,
+    leaseTransactionHistory: admitted.leaseTransactionHistory,
+    generationReceipt: Object.freeze({
+      ledger: admitted.ledger,
+      events: admitted.events,
+      taskManifest: admitted.taskManifest,
+    }),
+  };
+}
+
+function requireOutcomePlanningGeneration(snapshot, admitted, label) {
+  const identity = snapshot.stats ?? snapshot.identity;
+  const expected = admitted.identity;
+  const currentDirectoryIdentity =
+    snapshot.authoritySnapshot?.directoryIdentity ??
+    snapshot.directoryIdentity;
+  const expectedDirectoryIdentity = admitted.directoryIdentity;
+  const matchesDirectoryIdentity =
+    expectedDirectoryIdentity === undefined ||
+    (currentDirectoryIdentity !== null &&
+      currentDirectoryIdentity !== undefined &&
+      String(currentDirectoryIdentity.dev) ===
+        String(expectedDirectoryIdentity.dev) &&
+      String(currentDirectoryIdentity.ino) ===
+        String(expectedDirectoryIdentity.ino) &&
+      (Number(currentDirectoryIdentity.mode) & 0o7777) ===
+        (Number(expectedDirectoryIdentity.mode) & 0o7777) &&
+      Number(currentDirectoryIdentity.uid) ===
+        Number(expectedDirectoryIdentity.uid));
+  const matchesIdentity =
+    matchesDirectoryIdentity &&
+    snapshot.missing === admitted.missing &&
+    (snapshot.missing ||
+      (identity !== null &&
+        expected !== null &&
+        String(identity.dev) === String(expected.dev) &&
+        String(identity.ino) === String(expected.ino) &&
+        (Number(identity.mode) & 0o7777) ===
+          (Number(expected.mode) & 0o7777) &&
+        Number(identity.nlink) === Number(expected.nlink) &&
+        Number(identity.uid) === Number(expected.uid) &&
+        Number(identity.gid) === Number(expected.gid) &&
+        Number(identity.size) === Number(expected.size)));
+  if (
+    !matchesIdentity ||
+    snapshot.bytes.length !== admitted.size ||
+    createHash("sha256").update(snapshot.bytes).digest("hex") !==
+      admitted.digest
+  ) {
+    throw new Error(
+      `${label} changed after coherent repair admission: ${JSON.stringify({
+        admitted: {
+          missing: admitted.missing,
+          digest: admitted.digest,
+          size: admitted.size,
+          identity: admitted.identity,
+          directoryIdentity: admitted.directoryIdentity,
+        },
+        current: {
+          missing: snapshot.missing,
+          digest: createHash("sha256").update(snapshot.bytes).digest("hex"),
+          size: snapshot.bytes.length,
+          identity,
+          directoryIdentity: currentDirectoryIdentity,
+        },
+      })}`,
+    );
+  }
+}
+
+function materializeOutcomeLedgerAppendAdmission(
+  admitted,
+  ledgerPath,
+  stateRoot,
+) {
+  const snapshots = readCanonicalOutcomeSnapshots(stateRoot, ledgerPath);
+  const taskManifestSnapshot = readAutomationAuthorityFileSnapshot(
+    automationControlPaths(stateRoot).taskManifest,
+    {
+      allowMissing: true,
+      allowEmpty: true,
+      privateRoot: automationControlPaths(stateRoot).controlRoot,
+      maxBytes: OUTCOME_LEDGER_MAX_BYTES,
+      allowedModes: [0o600],
+      label: "Current task manifest",
+    },
+  );
+  requireOutcomePlanningGeneration(
+    snapshots.ledger,
+    admitted.generationReceipt.ledger,
+    "Outcome ledger",
+  );
+  requireOutcomePlanningGeneration(
+    snapshots.events,
+    admitted.generationReceipt.events,
+    "Control event history",
+  );
+  requireOutcomePlanningGeneration(
+    taskManifestSnapshot,
+    admitted.generationReceipt.taskManifest,
+    "Current task manifest",
+  );
+  let controlEventPhysicalBoundaryIssue = null;
+  try {
+    requireControlEventPhysicalBoundary(snapshots.events.bytes);
+  } catch (error) {
+    controlEventPhysicalBoundaryIssue =
+      error instanceof Error ? error.message : String(error);
+  }
+  const eventHistory = trustedOutcomeEventHistoryFromSource(
+    snapshots.events.source,
+    ledgerPath,
+    stateRoot,
+    controlEventPhysicalBoundaryIssue,
+  );
+  if (!eventHistory.source.healthy) {
+    throw new Error(
+      "Outcome recording requires complete, well-formed control event history.",
+    );
+  }
+  return {
+    ...admitted,
+    ledgerSnapshot: snapshots.ledger,
+    eventHistorySnapshot: snapshots.events,
+    eventHistory,
+  };
+}
+
+function requireControlEventPhysicalBoundary(bytes) {
   let lineCount = 0;
   let offset = 0;
   while (offset < bytes.length) {
     const newline = bytes.indexOf(0x0a, offset);
-    const end = newline === -1 ? bytes.length : newline;
-    let contentEnd = end;
-    if (contentEnd > offset && bytes[contentEnd - 1] === 0x0d) {
-      contentEnd -= 1;
-    }
-    let hasContent = false;
-    for (let index = offset; index < contentEnd; index += 1) {
-      if (![0x09, 0x0b, 0x0c, 0x20].includes(bytes[index])) {
-        hasContent = true;
-        break;
-      }
-    }
-    if (!hasContent) {
+    const physicalLineBytes =
+      newline === -1 ? bytes.length - offset : newline + 1 - offset;
+    if (physicalLineBytes > CONTROL_EVENT_MAX_LINE_BYTES) {
       throw new Error(
-        "Outcome ledger contains a blank interior physical line.",
+        "Control event history contains a physical line beyond the supported byte boundary.",
       );
     }
     lineCount += 1;
-    if (lineCount > OUTCOME_LEDGER_REPAIR_MAX_LINES) {
-      throw new Error(
-        "Outcome ledger exceeds the supported physical line boundary.",
-      );
-    }
     offset = newline === -1 ? bytes.length : newline + 1;
   }
   return lineCount;
-}
-
-function syncOutcomeLedgerDirectory(directoryPath) {
-  let directoryFd;
-  try {
-    directoryFd = openSync(
-      directoryPath,
-      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
-    );
-    fsyncSync(directoryFd);
-  } catch (error) {
-    if (!['EINVAL', 'ENOTSUP', 'EISDIR'].includes(error?.code)) throw error;
-  } finally {
-    if (directoryFd !== undefined) closeSync(directoryFd);
-  }
-}
-
-function prepareOutcomeLedgerAppend(admittedLedgerBytes, entry) {
-  const separator =
-    admittedLedgerBytes.length > 0 &&
-    admittedLedgerBytes[admittedLedgerBytes.length - 1] !== 0x0a
-      ? Buffer.from("\n", "utf8")
-      : Buffer.alloc(0);
-  const entryBytes = Buffer.from(`${JSON.stringify(entry)}\n`, "utf8");
-  const prospectiveSize =
-    admittedLedgerBytes.length + separator.length + entryBytes.length;
-  const existingLineCount = requireOutcomeLedgerPhysicalBoundary(
-    admittedLedgerBytes,
-  );
-  if (
-    prospectiveSize > OUTCOME_LEDGER_MAX_BYTES ||
-    existingLineCount + 1 > OUTCOME_LEDGER_REPAIR_MAX_LINES
-  ) {
-    throw new Error(
-      "Outcome ledger append would exceed the supported repair boundary.",
-    );
-  }
-  return { separator, entryBytes };
 }
 
 function requireOutcomeControlEventHeadroom(
   eventHistoryBytes,
   prospectiveEventCount,
 ) {
+  const existingRecordCount =
+    requireControlEventPhysicalBoundary(eventHistoryBytes);
   const separatorBytes =
     prospectiveEventCount > 0 &&
     eventHistoryBytes.length > 0 &&
@@ -2082,6 +2030,8 @@ function requireOutcomeControlEventHeadroom(
   if (
     !Number.isSafeInteger(prospectiveEventCount) ||
     prospectiveEventCount < 0 ||
+    existingRecordCount + prospectiveEventCount >
+      CONTROL_EVENT_HISTORY_MAX_RECORDS ||
     eventHistoryBytes.length +
       separatorBytes +
       prospectiveEventCount * CONTROL_EVENT_MAX_LINE_BYTES >
@@ -2172,26 +2122,14 @@ function requireOutcomeRecordRequest(entry, now) {
   return taskId;
 }
 
-function readOutcomeRecordPlanTask(stateRoot, taskId) {
-  const paths = automationControlPaths(stateRoot);
-  requireOutcomeRepairPrivateDescendants(stateRoot, paths.controlRoot);
-  if (existsSync(paths.taskTransactions)) {
-    requireOutcomeRepairPrivateDescendants(stateRoot, paths.taskTransactions);
-    if (readdirSync(paths.taskTransactions).length > 0) {
-      throw new Error(
-        "Outcome record planning requires settled task transactions.",
-      );
-    }
+function readOutcomeRecordPlanTask(manifest, taskId) {
+  const admitted = validateTaskManifest(structuredClone(manifest));
+  if (!Array.isArray(admitted?.tasks)) {
+    throw new Error(
+      "Outcome record planning requires a canonical task manifest.",
+    );
   }
-  const manifestSnapshot = readOutcomeControlJsonFile(
-    paths.taskManifest,
-    OUTCOME_LEDGER_MAX_BYTES,
-  );
-  const manifest = validateTaskManifest(manifestSnapshot.value);
-  if (!Array.isArray(manifest?.tasks)) {
-    throw new Error("Outcome record planning requires a canonical task manifest.");
-  }
-  const matches = manifest.tasks.filter((task) => task?.taskId === taskId);
+  const matches = admitted.tasks.filter((task) => task?.taskId === taskId);
   if (
     matches.length !== 1 ||
     !TASK_STATES_FOR_OUTCOME_PLAN.has(matches[0]?.state) ||
@@ -2202,10 +2140,7 @@ function readOutcomeRecordPlanTask(stateRoot, taskId) {
       `Outcome task ${taskId} does not have one canonical lifecycle record.`,
     );
   }
-  return {
-    task: structuredClone(matches[0]),
-    manifestBytes: Buffer.from(manifestSnapshot.bytes),
-  };
+  return structuredClone(matches[0]);
 }
 
 const TASK_STATES_FOR_OUTCOME_PLAN = new Set([
@@ -2231,7 +2166,8 @@ export function planOutcomeRecord(
   }
   const canonicalStateRoot = realpathSync(path.resolve(stateRoot));
   const ledgerPath = path.resolve(filePath);
-  const canonicalLedgerPath = automationControlPaths(canonicalStateRoot).outcomes;
+  const canonicalLedgerPath =
+    automationControlPaths(canonicalStateRoot).outcomes;
   if (ledgerPath !== canonicalLedgerPath) {
     throw new Error(
       `Outcome recording requires the canonical ledger at ${canonicalLedgerPath}.`,
@@ -2243,10 +2179,6 @@ export function planOutcomeRecord(
   );
   const taskId = requireOutcomeRecordRequest(entry, now);
   const resolvedOutcome = resolveOutcomeEvidence({ ...entry, taskId });
-  const firstTaskSnapshot = readOutcomeRecordPlanTask(
-    canonicalStateRoot,
-    taskId,
-  );
   const admission = requireOutcomeLedgerAppendAdmission(
     ledgerPath,
     canonicalStateRoot,
@@ -2256,22 +2188,7 @@ export function planOutcomeRecord(
       "Outcome record planning requires complete control event history.",
     );
   }
-  const secondTaskSnapshot = readOutcomeRecordPlanTask(
-    canonicalStateRoot,
-    taskId,
-  );
-  if (
-    !firstTaskSnapshot.manifestBytes.equals(
-      secondTaskSnapshot.manifestBytes,
-    ) ||
-    JSON.stringify(firstTaskSnapshot.task) !==
-      JSON.stringify(secondTaskSnapshot.task)
-  ) {
-    throw new Error(
-      "Outcome record planning requires one stable task and event snapshot.",
-    );
-  }
-  const task = secondTaskSnapshot.task;
+  const task = readOutcomeRecordPlanTask(admission.taskManifest, taskId);
   if (task.pendingOutcome !== undefined) {
     throw new Error(
       `Outcome task ${taskId} already has a pending reservation. Reuse its original plan.`,
@@ -2320,7 +2237,8 @@ export function planOutcomeRecord(
       );
     }
     if (
-      JSON.stringify(taskIdentity) !== JSON.stringify(cleanEntry.buildIdentity) ||
+      JSON.stringify(taskIdentity) !==
+        JSON.stringify(cleanEntry.buildIdentity) ||
       JSON.stringify(legacyIdentity) !== JSON.stringify(taskIdentity) ||
       legacyTransitions[0].data?.installedBuild !== taskIdentity.version ||
       legacyTransitions[0].data?.installedAt !== task.installedAt
@@ -2363,10 +2281,7 @@ export function planOutcomeRecord(
   };
 }
 
-function normalizeOutcomeRecordPlan(
-  value,
-  { stateRoot, ledgerPath, taskId },
-) {
+function normalizeOutcomeRecordPlan(value, { stateRoot, ledgerPath, taskId }) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("freed-owner outcome recording requires an exact plan.");
   }
@@ -2420,24 +2335,6 @@ function requireOutcomeControlEventLineCapacity(event) {
   }
 }
 
-function outcomeRecordedEventId({
-  taskId,
-  taskRevision,
-  outcomeDigest,
-  transitionEventId,
-}) {
-  return `outcome-recorded:${createHash("sha256")
-    .update(
-      JSON.stringify({
-        taskId,
-        taskRevision,
-        outcomeDigest,
-        transitionEventId,
-      }),
-    )
-    .digest("hex")}`;
-}
-
 function outcomeRecordedEventData({
   cleanEntry,
   taskId,
@@ -2470,7 +2367,9 @@ function requireExistingOutcomeControlEvent(
 ) {
   const matches = events.filter((event) => event?.eventId === eventId);
   if (matches.length > 1) {
-    throw new Error(`Control event history contains duplicate event ${eventId}.`);
+    throw new Error(
+      `Control event history contains duplicate event ${eventId}.`,
+    );
   }
   if (matches.length === 0) return null;
   const existing = matches[0];
@@ -2491,7 +2390,14 @@ function requireExistingOutcomeControlEvent(
 
 function authenticatedOutcomeEntry(
   cleanEntry,
-  { actor, leaseName, controlEventId, transitionEventId, outcomeDigest, taskRevision },
+  {
+    actor,
+    leaseName,
+    controlEventId,
+    transitionEventId,
+    outcomeDigest,
+    taskRevision,
+  },
 ) {
   return {
     ...cleanEntry,
@@ -2506,37 +2412,47 @@ function authenticatedOutcomeEntry(
   };
 }
 
-function appendOutcomeEntryUnlocked(ledgerPath, entry, admittedLedgerBytes) {
-  const directoryPath = path.dirname(ledgerPath);
-  const temporaryPath = `${ledgerPath}.${process.pid}.${randomUUID()}.tmp`;
+function appendOutcomeEntryUnlocked(
+  ledgerPath,
+  entry,
+  admittedLedgerSnapshot,
+  { beforePublish = () => {} } = {},
+) {
+  if (
+    admittedLedgerSnapshot?.authoritySnapshot === null ||
+    admittedLedgerSnapshot?.authoritySnapshot === undefined
+  ) {
+    throw new Error(
+      "Outcome ledger append requires an exact live authority snapshot.",
+    );
+  }
   const { separator, entryBytes } = prepareOutcomeLedgerAppend(
-    admittedLedgerBytes,
+    admittedLedgerSnapshot.bytes,
     entry,
   );
-  let temporaryFd;
-  try {
-    temporaryFd = openSync(temporaryPath, "wx", 0o600);
-    writeFileSync(temporaryFd, admittedLedgerBytes);
-    if (separator.length > 0) writeFileSync(temporaryFd, separator);
-    writeFileSync(temporaryFd, entryBytes);
-    fsyncSync(temporaryFd);
-    closeSync(temporaryFd);
-    temporaryFd = undefined;
-    renameSync(temporaryPath, ledgerPath);
-    syncOutcomeLedgerDirectory(directoryPath);
-  } finally {
-    if (temporaryFd !== undefined) closeSync(temporaryFd);
-    rmSync(temporaryPath, { force: true });
-  }
+  writeAutomationAuthorityFile({
+    filePath: ledgerPath,
+    bytes: Buffer.concat([
+      admittedLedgerSnapshot.bytes,
+      separator,
+      entryBytes,
+    ]),
+    previousSnapshot: admittedLedgerSnapshot.authoritySnapshot,
+    operationId: `outcome-ledger:${
+      entry?.authentication?.controlEventId ?? entry?.id ?? randomUUID()
+    }`,
+    privateRoot: path.dirname(ledgerPath),
+    maxBytes: OUTCOME_LEDGER_MAX_BYTES,
+    allowedModes: [0o600, 0o640, 0o644],
+    label: "Canonical outcome ledger",
+    beforePublish,
+  });
 }
 
 export function withOutcomeLedgerWriterLock(
   ledgerPath,
   operation,
-  {
-    timeoutMs = 5_000,
-    wait = waitForOutcomeLedgerLock,
-  } = {},
+  { timeoutMs = 5_000, wait = waitForOutcomeLedgerLock } = {},
 ) {
   if (typeof operation !== "function") {
     throw new Error("Outcome ledger writer lock requires an operation.");
@@ -2563,14 +2479,17 @@ function appendOutcomeLedgerLocked({
   control,
   ownerPlan,
 }) {
-  let admission = initialAdmission;
+  const admission = materializeOutcomeLedgerAppendAdmission(
+    initialAdmission,
+    ledgerPath,
+    stateRoot,
+  );
   const task = control.readTask(taskId);
   if (!task) {
     throw new Error(
       `Outcome task ${taskId} does not exist in canonical control state.`,
     );
   }
-  admission = requireOutcomeLedgerAppendAdmission(ledgerPath, stateRoot);
   const eventHistoryBeforeWrite = admission.eventHistory;
   if (!eventHistoryBeforeWrite.source.healthy) {
     throw new Error(
@@ -2681,7 +2600,8 @@ function appendOutcomeLedgerLocked({
     const atPlannedOutcome =
       task.state === parameters.cleanEntry.outcome &&
       task.revision === parameters.sourceTaskRevision + 1 &&
-      JSON.stringify(task.details ?? {}) === JSON.stringify(plannedTaskDetails) &&
+      JSON.stringify(task.details ?? {}) ===
+        JSON.stringify(plannedTaskDetails) &&
       (task.pendingOutcome === undefined ||
         JSON.stringify(task.pendingOutcome) ===
           JSON.stringify({
@@ -2780,8 +2700,7 @@ function appendOutcomeLedgerLocked({
       `Outcome task ${taskId} revision does not match its owner plan.`,
     );
   }
-  const placeholderTransitionEventId =
-    "00000000-0000-4000-8000-000000000000";
+  const placeholderTransitionEventId = "00000000-0000-4000-8000-000000000000";
   const predictedTransitionEventId = taskWillTransition
     ? placeholderTransitionEventId
     : taskNeedsOutcomeBackfill
@@ -2840,13 +2759,7 @@ function appendOutcomeLedgerLocked({
     outcomeDigest,
     taskRevision: predictedTaskRevision,
   });
-  const ledgerSummary = summarizeOutcomeLedger(ledgerPath, {
-    stateRoot,
-    ledgerText: outcomeRepairDecoder.decode(admission.ledgerSnapshot.bytes),
-    eventHistoryText: outcomeRepairDecoder.decode(
-      admission.eventHistorySnapshot.bytes,
-    ),
-  });
+  const ledgerSummary = admission.ledgerSummary;
   const existingEntry = ledgerSummary.entries.find(
     (candidate) =>
       candidate.authentication?.outcomeDigest === outcomeDigest &&
@@ -2890,8 +2803,7 @@ function appendOutcomeLedgerLocked({
           leaseToken,
           toState: cleanEntry.outcome,
           expectedRevision: task.revision,
-          details:
-            plannedTaskDetails ?? {
+        details: plannedTaskDetails ?? {
               ...task.details,
               ...(cleanEntry.outcome === "installed"
                 ? { installedIdentity: cleanEntry.buildIdentity }
@@ -2910,8 +2822,7 @@ function appendOutcomeLedgerLocked({
           outcome: cleanEntry.outcome,
           legacyTransitionEventId: legacyLifecycleTransitions[0].eventId,
           expectedRevision: task.revision,
-          details:
-            plannedTaskDetails ?? {
+          details: plannedTaskDetails ?? {
               ...task.details,
               ...(cleanEntry.outcome === "installed"
                 ? { installedIdentity: cleanEntry.buildIdentity }
@@ -2927,9 +2838,7 @@ function appendOutcomeLedgerLocked({
       `Outcome task ${taskId} is ${taskTransition.task.state}, not ${cleanEntry.outcome}.`,
     );
   }
-  const transitionEvent =
-    taskTransition.event ??
-    matchingTransitions[0];
+  const transitionEvent = taskTransition.event ?? matchingTransitions[0];
   if (!transitionEvent) {
     throw new Error(
       `Outcome task ${taskId} has no matching lifecycle transition for ${cleanEntry.outcome}.`,
@@ -3010,7 +2919,13 @@ function appendOutcomeLedgerLocked({
   appendOutcomeEntryUnlocked(
     ledgerPath,
     authenticatedEntry,
-    admission.ledgerSnapshot.bytes,
+    admission.ledgerSnapshot,
+    {
+      beforePublish: () => {
+        checkpoint("outcome-ledger-before-publication");
+        control.reauthorize();
+      },
+    },
   );
   checkpoint("outcome-ledger-appended");
   control.finalizeTaskOutcome({
@@ -3048,7 +2963,7 @@ export function appendOutcomeLedger(filePath, entry, options = {}) {
       "Outcome recording requires an authenticated actor, lease name, and lease token.",
     );
   }
-  if (!OUTCOME_ACTORS_BY_STATUS[entry.outcome]?.includes(actor)) {
+  if (!automationActorCanRecordOutcome(actor, entry.outcome)) {
     throw new Error(
       `Actor ${actor || "unknown"} cannot record ${entry.outcome} outcomes.`,
     );
@@ -3083,6 +2998,7 @@ export function appendOutcomeLedger(filePath, entry, options = {}) {
   if (actor !== "freed-owner" && normalizedOptions.ownerPlan !== undefined) {
     throw new Error("Only freed-owner may apply an owner outcome plan.");
   }
+  requireOutcomeLedgerAppendAdmission(ledgerPath, stateRoot);
   return withMutationLeaseAuthority(
     {
       stateRoot,
@@ -3093,10 +3009,23 @@ export function appendOutcomeLedger(filePath, entry, options = {}) {
       ownerIntentDigest: ownerPlan?.intentDigest,
     },
     (authorityContext) =>
-      withOutcomeLedgerWriterLock(ledgerPath, () => {
+      withOutcomeLedgerWriterLock(ledgerPath, (writerGuardContext) => {
+        withOutcomeRecordingGuards(
+          {
+            stateRoot,
+            nowMs: now.getTime(),
+            ownerIntent: ownerPlan?.intent ?? null,
+            authorityContext,
+          },
+          () => null,
+        );
         const initialAdmission = requireOutcomeLedgerAppendAdmission(
           ledgerPath,
           stateRoot,
+          { writerGuardContext },
+        );
+        (normalizedOptions.checkpoint ?? (() => {}))(
+          "outcome-admitted-before-final-guards",
         );
         return withOutcomeRecordingGuards(
           {
@@ -4967,6 +4896,13 @@ export function selectTargets(candidates, options) {
   );
   const behaviorGate =
     options.behaviorGate ?? buildBehavioralTaskGate(options.controlTasks ?? []);
+  if (
+    ["outcome-history-unhealthy", "control-history-unhealthy"].includes(
+      behaviorGate.status,
+    )
+  ) {
+    return [];
+  }
   const authorizedTaskIds = options.authorizedTaskIds
     ? new Set(options.authorizedTaskIds)
     : null;
@@ -4975,9 +4911,21 @@ export function selectTargets(candidates, options) {
         options.canonicalTaskPolicies.map((policy) => [policy.taskId, policy]),
       )
     : null;
+  const normalizeCapacity = (value) => {
+    if (value === undefined) return Number.POSITIVE_INFINITY;
+    return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+  };
+  const outcomeAppendCapacity = normalizeCapacity(
+    options.outcomeAppendCapacity,
+  );
+  const controlEventAppendCapacity = normalizeCapacity(
+    options.controlEventAppendCapacity,
+  );
   const selected = [];
   let behavioralSelected = false;
   let used = 0;
+  let reservedOutcomeAppends = 0;
+  let reservedControlEventAppends = 0;
 
   for (const candidate of candidates) {
     const taskId = candidate.taskId ?? candidate.id;
@@ -5027,17 +4975,36 @@ export function selectTargets(candidates, options) {
     if (used + candidate.estimatedMinutes > budget && selected.length > 0) {
       continue;
     }
+    const candidateState = canonicalPolicy?.state ?? candidate.taskState;
+    const requiredControlEvents =
+      NIGHTLY_SUCCESS_PATH_CONTROL_EVENT_NEEDS[candidateState];
+    if (
+      reservedOutcomeAppends + 1 > outcomeAppendCapacity ||
+      (Number.isFinite(controlEventAppendCapacity) &&
+        (!Number.isSafeInteger(requiredControlEvents) ||
+          reservedControlEventAppends + requiredControlEvents >
+            controlEventAppendCapacity))
+    ) {
+      continue;
+    }
     selected.push(candidate);
     if (soakExclusivityKey) {
       behavioralSelected = true;
     }
     used += candidate.estimatedMinutes;
+    reservedOutcomeAppends += 1;
+    if (Number.isSafeInteger(requiredControlEvents)) {
+      reservedControlEventAppends += requiredControlEvents;
+    }
   }
 
   return selected;
 }
 
-export function findPendingOutcomeTransitions(stateRoot, outcomeEntries = []) {
+function findPendingOutcomeTransitionsFromTrustedHistory(
+  outcomeEntries = [],
+  eventHistory,
+) {
   const transitionIdentity = ({
     taskId,
     outcome,
@@ -5063,9 +5030,7 @@ export function findPendingOutcomeTransitions(stateRoot, outcomeEntries = []) {
       }),
     ),
   );
-  const source = readJsonLinesWithHealth(
-    automationControlPaths(stateRoot).events,
-  );
+  const source = eventHistory.source;
   const outcomeTransitions = source.entries.filter(
     (event) =>
       isOutcomeTransitionEvent(event) &&
@@ -5131,6 +5096,10 @@ export function findPendingOutcomeTransitions(stateRoot, outcomeEntries = []) {
     },
     sourceExists: { value: source.exists, enumerable: false },
     malformedLines: { value: source.malformedLines, enumerable: false },
+    eventIdentityIssues: {
+      value: source.identityIssues,
+      enumerable: false,
+    },
     reservationConflicts: { value: reservationConflicts, enumerable: false },
   });
   return pending;
@@ -5247,6 +5216,27 @@ export function buildBehavioralTaskGate(
     authorizedTaskId: resumable ? task.taskId : null,
     activeTasks,
   };
+}
+
+export function findPendingOutcomeTransitions(stateRoot, outcomeEntries = []) {
+  const eventSnapshot = readCanonicalOutcomeEventSnapshot(stateRoot);
+  let controlEventPhysicalBoundaryIssue = null;
+  try {
+    requireControlEventPhysicalBoundary(eventSnapshot.bytes);
+  } catch (error) {
+    controlEventPhysicalBoundaryIssue =
+      error instanceof Error ? error.message : String(error);
+  }
+  const eventHistory = trustedOutcomeEventHistoryFromSource(
+    eventSnapshot.source,
+    automationControlPaths(path.resolve(stateRoot)).outcomes,
+    stateRoot,
+    controlEventPhysicalBoundaryIssue,
+  );
+  return findPendingOutcomeTransitionsFromTrustedHistory(
+    outcomeEntries,
+    eventHistory,
+  );
 }
 
 function summarizeBehaviorGate(behaviorGate = {}) {
@@ -5977,12 +5967,6 @@ export function planNightlyRun(args) {
     args.peerWorktrees,
     args.peerScan,
   );
-  const outcomeLedger = summarizeOutcomeLedger(args.outcomeLedger, {
-    stateRoot: args.automationStateRoot,
-  });
-  const controlTaskManifest = readTaskManifest({
-    stateRoot: args.automationStateRoot,
-  });
   const duplicateWork = collectDuplicateWork(peerWorktrees);
   const riskSnapshot = collectRiskSnapshot({
     repoPath: args.repo,
@@ -5994,6 +5978,17 @@ export function planNightlyRun(args) {
     dailyBugMemory: args.dailyBugMemory,
     devBotMemory: args.devBotMemory,
     expectedBranch: args.expectedBranch,
+  });
+  return withAutomationPlanningReadBundle(
+    {
+      stateRoot: args.automationStateRoot,
+      ledgerPath: args.outcomeLedger,
+    },
+    (planningBundle) => {
+  const controlTaskManifest = planningBundle.taskManifest;
+  const outcomeLedger = summarizeOutcomeLedger(args.outcomeLedger, {
+    stateRoot: args.automationStateRoot,
+    planningBundle,
   });
   const baseCandidates = buildCandidates({
     soak,
@@ -6015,17 +6010,22 @@ export function planNightlyRun(args) {
         .filter((task) => taskBehavioralClassification(task) === true)
         .map((task) => task.taskId),
     );
-  const pendingOutcomeTransitions = findPendingOutcomeTransitions(
-    args.automationStateRoot,
-    outcomeLedger.entries,
-  );
+  const pendingOutcomeTransitions = outcomeLedger.pendingOutcomeTransitions;
   const behaviorGate = buildBehavioralTaskGate(controlTaskManifest.tasks, {
     behavioralTaskIds,
     outcomeEntries: outcomeLedger.entries,
     pendingOutcomeTransitions,
     outcomeLedgerHealthy:
-      !outcomeLedger.sourceHealth.ledgerExists ||
-      outcomeLedger.sourceHealth.ledgerHealthy,
+      (outcomeLedger.sourceHealth.ledgerHealthy &&
+        outcomeLedger.sourceHealth.outcomeAppendReady &&
+        outcomeLedger.sourceHealth.controlEventAppendReady) ||
+      (!outcomeLedger.sourceHealth.ledgerExists &&
+        outcomeLedger.sourceHealth.controlEventsHealthy &&
+        outcomeLedger.sourceHealth.pinnedLegacyOutcomeBundlesHealthy &&
+        outcomeLedger.sourceHealth.outcomeLedgerTransactionsHealthy &&
+        outcomeLedger.sourceHealth.outcomeAppendReady &&
+        outcomeLedger.sourceHealth.controlEventAppendReady &&
+        outcomeLedger.sourceHealth.pendingOutcomeLedgerRepairs.length === 0),
   });
   const canonicalTaskPolicies = controlTaskManifest.tasks.map((task) => ({
     taskId: task.taskId,
@@ -6049,6 +6049,10 @@ export function planNightlyRun(args) {
     behaviorGate,
     authorizedTaskIds: runnableTaskIds,
     canonicalTaskPolicies,
+    outcomeAppendCapacity:
+      outcomeLedger.sourceHealth.outcomeAppendCapacity,
+    controlEventAppendCapacity:
+      outcomeLedger.sourceHealth.controlEventAppendCapacity,
   });
   return {
     repo,
@@ -6063,6 +6067,8 @@ export function planNightlyRun(args) {
     candidates,
     selected,
   };
+    },
+  );
 }
 
 function textSummary(plan, writeResult, args) {
