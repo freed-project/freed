@@ -27,6 +27,7 @@ import {
   AUTOMATION_KERNEL_GUARD_NAMES,
   automationKernelGuardCutoverPaths,
   automationKernelGuardMarkerBytes,
+  automationKernelGuardSnapshotNativeTreeDigest,
   inspectAutomationKernelGuardCutover,
 } from "./lib/automation-kernel-guard-contract.mjs";
 import {
@@ -325,7 +326,13 @@ function seedPreparedTransaction(fixture, plan) {
     `${confirmationDigest}-${confirmationRawDigest}.json`,
   );
   writeFileSync(confirmationArtifact, confirmationBytes, { mode: 0o600 });
-  const preparedAt = plan.createdAt;
+  const preparedAt = new Date(
+    Math.max(
+      Date.parse(plan.createdAt),
+      Date.parse(confirmation.approvedAt) + 1,
+    ),
+  ).toISOString();
+  assert.ok(Date.parse(preparedAt) < Date.parse(confirmation.expiresAt));
   const authorization = {
     actor: "freed-owner",
     confirmationId: confirmation.confirmationId,
@@ -1784,6 +1791,53 @@ test("one aggregate plan bound governs creation, private reads, and evidence", (
       error?.code === "cutover_state_invalid" &&
       /Cutover source file is unsafe/.test(error.message),
   );
+});
+
+test("plans bind every directory to one canonical native tree digest", (t) => {
+  const fixture = createFixture(t);
+  const plan = planAutomationKernelGuardCutover({
+    stateRoot: fixture.stateRoot,
+    taskId: TASK_ID,
+    codexHome: fixture.codexHome,
+    repoRoot: fixture.repoRoot,
+  });
+  const directories = [];
+  const pending = [...plan.sourceSnapshot.entries];
+  while (pending.length > 0) {
+    const entry = pending.pop();
+    if (entry.kind !== "directory") continue;
+    directories.push(entry);
+    pending.push(...entry.entries);
+  }
+  assert.ok(directories.length >= 2);
+  for (const directory of directories) {
+    assert.match(directory.nativeTreeDigest, /^[0-9a-f]{64}$/);
+    assert.equal(
+      directory.nativeTreeDigest,
+      automationKernelGuardSnapshotNativeTreeDigest(directory),
+    );
+  }
+
+  const leasesPath = path.join(fixture.controlRoot, "leases");
+  for (const [label, mutate] of [
+    ["missing", (entry) => delete entry.nativeTreeDigest],
+    ["malformed", (entry) => (entry.nativeTreeDigest = "not-a-digest")],
+    ["wrong", (entry) => (entry.nativeTreeDigest = "0".repeat(64))],
+  ]) {
+    const invalidPlan = structuredClone(plan);
+    const directory = invalidPlan.sourceSnapshot.entries.find(
+      (entry) => entry.path === leasesPath,
+    );
+    mutate(directory);
+    assert.throws(
+      () =>
+        writeAutomationKernelGuardCutoverPlan(
+          path.join(fixture.root, `invalid-${label}.json`),
+          invalidPlan,
+        ),
+      (error) => error?.code === "cutover_plan_invalid",
+    );
+  }
 });
 
 test("CLI plans and applies one exact owner-confirmed cutover", (t) => {

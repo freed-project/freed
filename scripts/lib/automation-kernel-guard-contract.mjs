@@ -221,6 +221,31 @@ function canonicalJsonBytes(value) {
   return Buffer.from(`${stableJson(value)}\n`, "utf8");
 }
 
+function automationKernelGuardSnapshotNativeDigestValue(
+  entry,
+  includeName = false,
+) {
+  const result = { kind: entry.kind, mode: entry.mode };
+  if (includeName) result.name = path.basename(entry.path);
+  if (entry.kind === "file") {
+    result.size = entry.size;
+    result.digest = entry.digest;
+  } else if (entry.kind === "directory") {
+    result.entries = entry.entries.map((child) =>
+      automationKernelGuardSnapshotNativeDigestValue(child, true),
+    );
+  }
+  return result;
+}
+
+export function automationKernelGuardSnapshotNativeTreeDigest(entry) {
+  return sha256(
+    canonicalJsonBytes(
+      automationKernelGuardSnapshotNativeDigestValue(entry),
+    ),
+  );
+}
+
 function prettyJsonBytes(value) {
   return Buffer.from(`${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
@@ -682,9 +707,13 @@ function validateSnapshotEntry(
   }
   if (
     entry.kind !== "directory" ||
-    !sameKeys(entry, ["entries", "kind", "mode", "path"].sort()) ||
+    !sameKeys(
+      entry,
+      ["entries", "kind", "mode", "nativeTreeDigest", "path"].sort(),
+    ) ||
     ![0o700, 0o755].includes(entry.mode) ||
-    !Array.isArray(entry.entries)
+    !Array.isArray(entry.entries) ||
+    !SHA256_PATTERN.test(String(entry.nativeTreeDigest ?? ""))
   ) {
     problems.push(`${expectedPath} has an invalid directory snapshot shape`);
     return false;
@@ -710,6 +739,14 @@ function validateSnapshotEntry(
         { requireBytes },
         problems,
       ) && valid;
+  }
+  if (
+    valid &&
+    automationKernelGuardSnapshotNativeTreeDigest(entry) !==
+      entry.nativeTreeDigest
+  ) {
+    problems.push(`${expectedPath} has an invalid native tree digest`);
+    valid = false;
   }
   return valid;
 }

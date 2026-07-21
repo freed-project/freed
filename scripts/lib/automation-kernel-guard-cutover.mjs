@@ -36,6 +36,7 @@ import {
   AUTOMATION_KERNEL_GUARD_CUTOVER_PLAN_MAX_BYTES,
   AUTOMATION_KERNEL_GUARD_MARKER_DIGEST,
   AUTOMATION_KERNEL_GUARD_NAMES,
+  automationKernelGuardSnapshotNativeTreeDigest,
   automationKernelGuardCutoverPaths,
   automationKernelGuardMarkerBytes,
   canonicalAutomationKernelGuardReceiptBytes,
@@ -3275,24 +3276,6 @@ function newSnapshotBudget() {
   return { entries: 0, aggregateBytes: 0 };
 }
 
-function snapshotNativeDigestValue(entry, includeName = false) {
-  const result = { kind: entry.kind, mode: entry.mode };
-  if (includeName) result.name = path.basename(entry.path);
-  if (entry.kind === "file") {
-    result.size = entry.size;
-    result.digest = entry.digest;
-  } else if (entry.kind === "directory") {
-    result.entries = entry.entries.map((child) =>
-      snapshotNativeDigestValue(child, true),
-    );
-  }
-  return result;
-}
-
-function snapshotNativeTreeDigest(entry) {
-  return sha256(canonicalJsonBytes(snapshotNativeDigestValue(entry)));
-}
-
 function parseNativeSnapshotCount(value, label, maximum) {
   if (
     typeof value !== "string" ||
@@ -3434,7 +3417,8 @@ function convertNativeSnapshotEntry(
     mode: entry.mode,
     entries: convertedEntries,
   };
-  converted.nativeTreeDigest = snapshotNativeTreeDigest(converted);
+  converted.nativeTreeDigest =
+    automationKernelGuardSnapshotNativeTreeDigest(converted);
   return { entry: converted, entries: admittedEntries, bytes: aggregateBytes };
 }
 
@@ -3532,7 +3516,10 @@ function assertSnapshotTreeAdmission(
     }
   }
   for (const directory of admittedDirectories) {
-    if (snapshotNativeTreeDigest(directory) !== directory.nativeTreeDigest) {
+    if (
+      automationKernelGuardSnapshotNativeTreeDigest(directory) !==
+      directory.nativeTreeDigest
+    ) {
       fail(code, message);
     }
   }
@@ -6636,7 +6623,7 @@ function retirePinnedEmptyPrivateDirectory(
   beforeMutation({ directoryPath, archivePath });
   requirePinnedEmptyPrivateDirectory(directoryPath, pinned);
   runDurablePrivateDirectoryMove(directoryPath, archivePath, pinned, {
-    expectedTreeDigest: snapshotNativeTreeDigest({
+    expectedTreeDigest: automationKernelGuardSnapshotNativeTreeDigest({
       path: directoryPath,
       kind: "directory",
       mode: pinned.identity.mode,

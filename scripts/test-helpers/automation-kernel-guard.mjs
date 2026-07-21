@@ -13,6 +13,7 @@ import {
   AUTOMATION_KERNEL_GUARD_CUTOVER_POLICY,
   AUTOMATION_KERNEL_GUARD_MARKER_DIGEST,
   AUTOMATION_KERNEL_GUARD_NAMES,
+  automationKernelGuardSnapshotNativeTreeDigest,
   automationKernelGuardMarkerBytes,
   automationKernelGuardCutoverPaths,
   canonicalAutomationKernelGuardReceiptBytes,
@@ -83,12 +84,15 @@ function fileSnapshot(filePath, bytes, { includeBytes = true } = {}) {
 }
 
 function directorySnapshot(directoryPath, entries) {
-  return {
+  const snapshot = {
     path: directoryPath,
     kind: "directory",
     mode: 0o700,
     entries,
   };
+  snapshot.nativeTreeDigest =
+    automationKernelGuardSnapshotNativeTreeDigest(snapshot);
+  return snapshot;
 }
 
 function writeSnapshotArchive(entry, targetPath) {
