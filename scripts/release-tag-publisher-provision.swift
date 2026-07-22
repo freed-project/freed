@@ -1,3 +1,4 @@
+import CryptoKit
 import Darwin
 import Foundation
 import Security
@@ -5,6 +6,8 @@ import Security
 private let keychainService = "freed-release-tag-publisher"
 private let keychainAccount = "github-app-private-key"
 private let maximumKeyBytes = 32 * 1_024
+private let publisherPromptSelector = SecKeychainPromptSelector()
+private let requiredRuntimeSignatureFlag: UInt32 = 0x0001_0000
 
 private struct ProvisionFailure: Error, CustomStringConvertible {
   let description: String
@@ -16,8 +19,86 @@ private enum StoreFailure: Error {
   case duplicate
 }
 
+private enum ItemHandle {
+  case system(SecKeychainItem)
+  #if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING
+    case testing(String)
+  #endif
+}
+
+private protocol SecretStore: AnyObject {
+  func inspect(host: String, provisioner: String) throws -> ItemHandle?
+  func read(_ handle: ItemHandle, host: String, provisioner: String) throws -> Data
+}
+
+#if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING
+  private protocol TestingMutableSecretStore: SecretStore {
+    func add(_ secret: Data, host: String, provisioner: String) throws -> ItemHandle
+    func deleteExact(_ handle: ItemHandle) throws
+  }
+#endif
+
+private struct ParsedArguments {
+  let action: String
+  let host: String
+  let expectedSha256: String?
+  #if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING
+    let testStore: String?
+    let testFailure: String?
+    let testACLApplications: String?
+    let testACLPrompt: String?
+  #endif
+}
+
+private struct ProvisionResult: Encodable {
+  let schemaVersion = 2
+  let purpose = "freed-release-tag-publisher-keychain-result"
+  let action: String
+  let service = keychainService
+  let account = keychainAccount
+  let host: String
+  let state: String?
+  let changed: Bool?
+  let matched: Bool?
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion, purpose, action, service, account, host
+    case state, changed, matched
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(schemaVersion, forKey: .schemaVersion)
+    try container.encode(purpose, forKey: .purpose)
+    try container.encode(action, forKey: .action)
+    try container.encode(service, forKey: .service)
+    try container.encode(account, forKey: .account)
+    try container.encode(host, forKey: .host)
+    if let state { try container.encode(state, forKey: .state) }
+    if let changed { try container.encode(changed, forKey: .changed) }
+    if let matched { try container.encode(matched, forKey: .matched) }
+  }
+}
+
 private func fail(_ message: String) throws -> Never {
   throw ProvisionFailure(message)
+}
+
+private func sha256Hex(_ data: Data) -> String {
+  SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+}
+
+private func publisherACLModelMatches(
+  actualApplications: [Data],
+  expectedApplications: [Data],
+  promptSelector: SecKeychainPromptSelector
+) -> Bool {
+  actualApplications.count == 2 &&
+    expectedApplications.count == 2 &&
+    Set(actualApplications).count == 2 &&
+    Set(expectedApplications).count == 2 &&
+    Set(actualApplications) == Set(expectedApplications) &&
+    promptSelector == publisherPromptSelector
 }
 
 private func canonicalExistingPath(_ path: String, label: String) throws -> String {
@@ -38,12 +119,20 @@ private func currentExecutablePath() throws -> String {
   guard _NSGetExecutablePath(&buffer, &size) == 0 else {
     try fail("The publisher provisioner path is unavailable.")
   }
-  return try canonicalExistingPath(String(cString: buffer), label: "publisher provisioner")
+  return try canonicalExistingPath(
+    String(cString: buffer),
+    label: "publisher provisioner"
+  )
 }
 
-private func requireRootOwnedExecutable(_ path: String) throws {
+private func requireTrustedExecutable(
+  _ path: String,
+  testingOwnerAllowed: Bool = false
+) throws {
   let canonical = try canonicalExistingPath(path, label: "publisher executable")
-  guard canonical == path else { try fail("Publisher executables must use canonical paths.") }
+  guard canonical == path else {
+    try fail("Publisher executables must use canonical paths.")
+  }
   var link = stat()
   var metadata = stat()
   let linkStatus = path.withCString {
@@ -52,33 +141,75 @@ private func requireRootOwnedExecutable(_ path: String) throws {
   let metadataStatus = path.withCString {
     fstatat(AT_FDCWD, $0, &metadata, 0)
   }
+  let trustedOwner = metadata.st_uid == 0 ||
+    (testingOwnerAllowed && metadata.st_uid == getuid())
   guard linkStatus == 0, metadataStatus == 0,
     (link.st_mode & S_IFMT) != S_IFLNK,
     (metadata.st_mode & S_IFMT) == S_IFREG,
-    metadata.st_uid == 0,
+    metadata.st_nlink == 1,
+    trustedOwner,
     metadata.st_mode & 0o022 == 0,
     metadata.st_mode & 0o111 != 0
   else {
-    try fail("Publisher executables must be root owned, executable, and immutable to other users.")
+    try fail(
+      "Publisher executables must be trusted, executable, and immutable to other users."
+    )
   }
 }
 
 private func validatePKCS1PEM(_ data: Data) throws {
-  guard !data.isEmpty, data.count <= maximumKeyBytes,
-    let text = String(data: data, encoding: .utf8)
-  else { try fail("The release App key is empty, oversized, or not UTF-8.") }
-  let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-  let begin = "-----BEGIN RSA PRIVATE KEY-----"
-  let end = "-----END RSA PRIVATE KEY-----"
-  guard trimmed.hasPrefix(begin), trimmed.hasSuffix(end) else {
+  guard !data.isEmpty, data.count <= maximumKeyBytes else {
+    try fail("The release App key is empty or oversized.")
+  }
+  let begin = Data("-----BEGIN RSA PRIVATE KEY-----".utf8)
+  let end = Data("-----END RSA PRIVATE KEY-----".utf8)
+  guard data.starts(with: begin) else {
     try fail("The release App key must use PKCS1 RSA PRIVATE KEY PEM.")
   }
-  let start = trimmed.index(trimmed.startIndex, offsetBy: begin.count)
-  let finish = trimmed.index(trimmed.endIndex, offsetBy: -end.count)
-  let body = trimmed[start..<finish].filter { !$0.isWhitespace }
-  guard !body.isEmpty, let der = Data(base64Encoded: String(body)) else {
+
+  var bodyStart = begin.count
+  if data.count >= bodyStart + 2,
+    data[bodyStart] == 0x0d,
+    data[bodyStart + 1] == 0x0a
+  {
+    bodyStart += 2
+  } else if data.count > bodyStart, data[bodyStart] == 0x0a {
+    bodyStart += 1
+  } else {
+    try fail("The release App PKCS1 header must end with a newline.")
+  }
+
+  var terminalNewlineBytes = 0
+  if data.last == 0x0a {
+    terminalNewlineBytes = data.count >= 2 && data[data.count - 2] == 0x0d ? 2 : 1
+  }
+  guard data.count >= bodyStart + end.count + terminalNewlineBytes else {
+    try fail("The release App key must use PKCS1 RSA PRIVATE KEY PEM.")
+  }
+  let footerStart = data.count - terminalNewlineBytes - end.count
+  guard footerStart > bodyStart,
+    data[footerStart..<(footerStart + end.count)].elementsEqual(end)
+  else {
+    try fail("The release App key must use PKCS1 RSA PRIVATE KEY PEM.")
+  }
+
+  var encoded = Data()
+  encoded.reserveCapacity(footerStart - bodyStart)
+  defer { encoded.resetBytes(in: 0..<encoded.count) }
+  for byte in data[bodyStart..<footerStart] {
+    switch byte {
+    case 0x41...0x5a, 0x61...0x7a, 0x30...0x39, 0x2b, 0x2f, 0x3d:
+      encoded.append(byte)
+    case 0x0a, 0x0d:
+      continue
+    default:
+      try fail("The release App PKCS1 key body contains invalid characters.")
+    }
+  }
+  guard !encoded.isEmpty, var der = Data(base64Encoded: encoded) else {
     try fail("The release App PKCS1 key body is invalid base64.")
   }
+  defer { der.resetBytes(in: 0..<der.count) }
   let attributes: [CFString: Any] = [
     kSecAttrKeyType: kSecAttrKeyTypeRSA,
     kSecAttrKeyClass: kSecAttrKeyClassPrivate,
@@ -87,17 +218,32 @@ private func validatePKCS1PEM(_ data: Data) throws {
   guard let key = SecKeyCreateWithData(der as CFData, attributes as CFDictionary, &error),
     let details = SecKeyCopyAttributes(key) as? [CFString: Any],
     let bits = details[kSecAttrKeySizeInBits] as? Int,
-    bits >= 2048
+    bits >= 2_048
   else { try fail("The release App key must be a valid RSA key with at least 2,048 bits.") }
 }
 
 private func readSecretFromStandardInput() throws -> Data {
-  let data = FileHandle.standardInput.readData(ofLength: maximumKeyBytes + 1)
-  try validatePKCS1PEM(data)
-  return data
+  var data = Data()
+  do {
+    while data.count <= maximumKeyBytes {
+      let remaining = maximumKeyBytes + 1 - data.count
+      var chunk = FileHandle.standardInput.readData(ofLength: min(4_096, remaining))
+      if chunk.isEmpty {
+        chunk.resetBytes(in: 0..<chunk.count)
+        break
+      }
+      data.append(chunk)
+      chunk.resetBytes(in: 0..<chunk.count)
+    }
+    try validatePKCS1PEM(data)
+    return data
+  } catch {
+    data.resetBytes(in: 0..<data.count)
+    throw error
+  }
 }
 
-private final class KeychainStore {
+private final class KeychainStore: SecretStore {
   private func query() -> [CFString: Any] {
     [
       kSecClass: kSecClassGenericPassword,
@@ -124,18 +270,35 @@ private final class KeychainStore {
   }
 
   private func access(host: String, provisioner: String) throws -> SecAccess {
-    let applications = [
+    let trustedList = [
       try trustedApplication(host),
       try trustedApplication(provisioner),
     ] as CFArray
+    let description = "Freed release tag publisher private key" as CFString
     var access: SecAccess?
     let status = SecAccessCreate(
-      "Freed release tag publisher private key" as CFString,
-      applications,
+      description,
+      trustedList,
       &access
     )
     guard status == errSecSuccess, let access else {
       try fail("The publisher-only Keychain ACL could not be created.")
+    }
+    guard let aclList = SecAccessCopyMatchingACLList(
+      access,
+      kSecACLAuthorizationDecrypt
+    ) as? [SecACL], !aclList.isEmpty else {
+      try fail("The publisher-only Keychain decrypt ACL is unavailable.")
+    }
+    for acl in aclList {
+      guard SecACLSetContents(
+        acl,
+        trustedList,
+        description,
+        publisherPromptSelector
+      ) == errSecSuccess else {
+        try fail("The publisher-only Keychain prompt policy could not be set.")
+      }
     }
     return access
   }
@@ -143,26 +306,40 @@ private final class KeychainStore {
   private func itemReference() throws -> SecKeychainItem {
     var itemQuery = query()
     itemQuery[kSecReturnRef] = true
-    itemQuery[kSecMatchLimit] = kSecMatchLimitOne
+    itemQuery[kSecMatchLimit] = kSecMatchLimitAll
     itemQuery[kSecUseAuthenticationUI] = kSecUseAuthenticationUIFail
     var result: CFTypeRef?
     let status = SecItemCopyMatching(itemQuery as CFDictionary, &result)
     if status == errSecItemNotFound { throw StoreFailure.missing }
-    guard status == errSecSuccess, let item = result as! SecKeychainItem? else {
-      try fail("The publisher Keychain item reference is unavailable.")
+    guard status == errSecSuccess,
+      let items = result as? [SecKeychainItem],
+      items.count == 1,
+      let item = items.first
+    else {
+      try fail("The publisher Keychain item must be one unique reference.")
     }
     return item
   }
 
-  private func aclMatches(host: String, provisioner: String) throws -> Bool {
-    let item = try itemReference()
-    var itemAccess: SecAccess?
-    guard SecKeychainItemCopyAccess(item, &itemAccess) == errSecSuccess, let itemAccess else {
-      try fail("The publisher Keychain ACL is unavailable.")
+  private func systemItem(_ handle: ItemHandle) throws -> SecKeychainItem {
+    guard case .system(let item) = handle else {
+      try fail("The publisher Keychain item reference is invalid.")
     }
-    let expected = Set(try [host, provisioner].map {
-      try applicationData(trustedApplication($0)).base64EncodedString()
-    })
+    return item
+  }
+
+  private func aclMatches(
+    _ item: SecKeychainItem,
+    host: String,
+    provisioner: String
+  ) throws -> Bool {
+    var itemAccess: SecAccess?
+    guard SecKeychainItemCopyAccess(item, &itemAccess) == errSecSuccess,
+      let itemAccess
+    else { try fail("The publisher Keychain ACL is unavailable.") }
+    let expected = try [host, provisioner].map {
+      try applicationData(trustedApplication($0))
+    }
     guard let aclList = SecAccessCopyMatchingACLList(
       itemAccess,
       kSecACLAuthorizationDecrypt
@@ -174,78 +351,313 @@ private final class KeychainStore {
       guard SecACLCopyContents(acl, &applications, &description, &selector) == errSecSuccess,
         let trusted = applications as? [SecTrustedApplication]
       else { return false }
-      let actual = Set(try trusted.map {
-        try applicationData($0).base64EncodedString()
-      })
-      if actual != expected { return false }
+      let actual = try trusted.map { try applicationData($0) }
+      if !publisherACLModelMatches(
+        actualApplications: actual,
+        expectedApplications: expected,
+        promptSelector: selector
+      ) { return false }
     }
     return true
   }
 
-  func read(host: String, provisioner: String) throws -> Data {
-    var dataQuery = query()
-    dataQuery[kSecReturnData] = true
-    dataQuery[kSecMatchLimit] = kSecMatchLimitOne
-    dataQuery[kSecUseAuthenticationUI] = kSecUseAuthenticationUIFail
-    var result: CFTypeRef?
-    let status = SecItemCopyMatching(dataQuery as CFDictionary, &result)
-    if status == errSecItemNotFound { throw StoreFailure.missing }
-    guard status == errSecSuccess, let data = result as? Data else {
+  func inspect(host: String, provisioner: String) throws -> ItemHandle? {
+    do {
+      let item = try itemReference()
+      guard try aclMatches(item, host: host, provisioner: provisioner) else {
+        try fail(
+          "The release App key is not restricted to the publisher host and provisioner."
+        )
+      }
+      return .system(item)
+    } catch StoreFailure.missing {
+      return nil
+    }
+  }
+
+  func read(
+    _ handle: ItemHandle,
+    host: String,
+    provisioner: String
+  ) throws -> Data {
+    let item = try systemItem(handle)
+    guard try aclMatches(item, host: host, provisioner: provisioner) else {
+      try fail(
+        "The release App key is not restricted to the publisher host and provisioner."
+      )
+    }
+    var length: UInt32 = 0
+    var content: UnsafeMutableRawPointer?
+    let status = SecKeychainItemCopyContent(item, nil, nil, &length, &content)
+    guard status == errSecSuccess, let content else {
       try fail("The release App key could not be read from Keychain.")
     }
-    guard try aclMatches(host: host, provisioner: provisioner) else {
-      try fail("The release App key is not restricted to the publisher host and provisioner.")
+    defer {
+      _ = memset_s(content, Int(length), 0, Int(length))
+      SecKeychainItemFreeContent(nil, content)
     }
-    return data
-  }
-
-  func add(_ secret: Data, host: String, provisioner: String) throws {
-    var attributes = query()
-    attributes[kSecAttrLabel] = "Freed release tag publisher private key"
-    attributes[kSecValueData] = secret
-    attributes[kSecAttrAccess] = try access(host: host, provisioner: provisioner)
-    let status = SecItemAdd(attributes as CFDictionary, nil)
-    if status == errSecDuplicateItem { throw StoreFailure.duplicate }
-    guard status == errSecSuccess else {
-      try fail("The release App key could not be added to Keychain.")
+    guard length > 0, length <= UInt32(maximumKeyBytes) else {
+      try fail("The release App key is empty or oversized.")
     }
-  }
-
-  func update(_ secret: Data, host: String, provisioner: String) throws {
-    let status = SecItemUpdate(
-      query() as CFDictionary,
-      [kSecValueData: secret] as CFDictionary
-    )
-    if status == errSecItemNotFound { throw StoreFailure.missing }
-    guard status == errSecSuccess else {
-      try fail("The release App key could not be rotated in Keychain.")
+    var secret = Data(count: Int(length))
+    secret.withUnsafeMutableBytes { destination in
+      destination.baseAddress?.copyMemory(from: content, byteCount: Int(length))
     }
-    let item = try itemReference()
-    guard SecKeychainItemSetAccess(
-      item,
-      try access(host: host, provisioner: provisioner)
-    ) == errSecSuccess else {
-      try fail("The rotated release App key ACL could not be constrained.")
+    do {
+      guard try aclMatches(item, host: host, provisioner: provisioner) else {
+        try fail("The release App key ACL changed while its secret was being read.")
+      }
+      return secret
+    } catch {
+      secret.resetBytes(in: 0..<secret.count)
+      throw error
     }
   }
 
-  func delete() throws {
-    let status = SecItemDelete(query() as CFDictionary)
-    if status == errSecItemNotFound { throw StoreFailure.missing }
-    guard status == errSecSuccess else {
-      try fail("The release App key could not be revoked from Keychain.")
-    }
-  }
 }
 
-private func parse(_ arguments: [String]) throws -> (action: String, host: String) {
-  guard arguments.count == 3,
-    ["provision", "rotate", "verify", "revoke"].contains(arguments[0]),
-    arguments[1] == "--host"
-  else {
-    try fail("Usage: release-tag-publisher-provision <provision|rotate|verify|revoke> --host <absolute-path>")
+#if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING
+  private struct FakeStoreState: Codable {
+    var itemId: String?
+    var secretBase64: String?
+    var host: String?
+    var provisioner: String?
+    var exactDeleteCount: Int
   }
-  return (arguments[0], arguments[2])
+
+  private final class FakeKeychainStore: TestingMutableSecretStore {
+    private let statePath: String
+    private let failure: String?
+    private var state: FakeStoreState
+    private var createdItemId: String?
+
+    init(statePath: String, failure: String?) throws {
+      self.statePath = try canonicalExistingPath(statePath, label: "test Keychain state")
+      self.failure = failure
+      let metadata = try Self.fileMetadata(self.statePath)
+      guard (metadata.st_mode & S_IFMT) == S_IFREG,
+        metadata.st_uid == getuid(),
+        metadata.st_mode & 0o077 == 0
+      else { try fail("The test Keychain state must be a private current-user file.") }
+      state = try JSONDecoder().decode(
+        FakeStoreState.self,
+        from: Data(contentsOf: URL(fileURLWithPath: self.statePath))
+      )
+    }
+
+    private static func fileMetadata(_ path: String) throws -> stat {
+      var metadata = stat()
+      guard path.withCString({ fstatat(AT_FDCWD, $0, &metadata, AT_SYMLINK_NOFOLLOW) }) == 0 else {
+        try fail("The test Keychain state metadata is unavailable.")
+      }
+      return metadata
+    }
+
+    private func persist() throws {
+      let encoder = JSONEncoder()
+      encoder.outputFormatting = [.sortedKeys]
+      try encoder.encode(state).write(
+        to: URL(fileURLWithPath: statePath),
+        options: [.atomic]
+      )
+      guard chmod(statePath, 0o600) == 0 else {
+        try fail("The test Keychain state could not be secured.")
+      }
+    }
+
+    private func testingId(_ handle: ItemHandle) throws -> String {
+      guard case .testing(let itemId) = handle else {
+        try fail("The test Keychain item reference is invalid.")
+      }
+      return itemId
+    }
+
+    private func requireExact(
+      _ handle: ItemHandle,
+      host: String,
+      provisioner: String
+    ) throws -> String {
+      let itemId = try testingId(handle)
+      guard state.itemId == itemId else { throw StoreFailure.missing }
+      guard state.host == host, state.provisioner == provisioner else {
+        try fail(
+          "The release App key is not restricted to the publisher host and provisioner."
+        )
+      }
+      return itemId
+    }
+
+    func inspect(host: String, provisioner: String) throws -> ItemHandle? {
+      guard let itemId = state.itemId else { return nil }
+      guard state.host == host, state.provisioner == provisioner else {
+        try fail(
+          "The release App key is not restricted to the publisher host and provisioner."
+        )
+      }
+      return .testing(itemId)
+    }
+
+    func read(
+      _ handle: ItemHandle,
+      host: String,
+      provisioner: String
+    ) throws -> Data {
+      let itemId = try requireExact(handle, host: host, provisioner: provisioner)
+      if (failure == "read-created" || failure == "read-created-delete-created"),
+        createdItemId == itemId
+      {
+        try fail("Injected test failure while validating the created item.")
+      }
+      guard let encoded = state.secretBase64,
+        let data = Data(base64Encoded: encoded)
+      else { try fail("The test Keychain secret is unavailable.") }
+      return data
+    }
+
+    func add(_ secret: Data, host: String, provisioner: String) throws -> ItemHandle {
+      guard state.itemId == nil else { throw StoreFailure.duplicate }
+      let itemId = UUID().uuidString.lowercased()
+      state.itemId = itemId
+      state.secretBase64 = secret.base64EncodedString()
+      state.host = host
+      state.provisioner = provisioner
+      createdItemId = itemId
+      try persist()
+      return .testing(itemId)
+    }
+
+    func deleteExact(_ handle: ItemHandle) throws {
+      let itemId = try testingId(handle)
+      guard state.itemId == itemId else { throw StoreFailure.missing }
+      if (failure == "delete-created" || failure == "read-created-delete-created"),
+        createdItemId == itemId
+      {
+        try fail("Injected test failure while deleting the created item.")
+      }
+      state.itemId = nil
+      state.secretBase64 = nil
+      state.host = nil
+      state.provisioner = nil
+      state.exactDeleteCount += 1
+      try persist()
+    }
+  }
+#endif
+
+private func parse(_ arguments: [String]) throws -> ParsedArguments {
+  guard let action = arguments.first else {
+    try fail(
+      "Usage: release-tag-publisher-provision <inspect|matches|verify> --host <absolute-path> [--expected-sha256 <sha256>]"
+    )
+  }
+  #if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING
+    let supportedActions: Set<String> = [
+      "inspect", "provision", "recover", "matches", "verify", "acl-model",
+    ]
+  #else
+    let mutationActions: Set<String> = [
+      "provision", "recover", "rotate", "discard-recovery", "revoke",
+    ]
+    if mutationActions.contains(action) {
+      try fail(
+        "Credential mutation is unavailable until one-use kernel-attested owner authorization and staged GitHub identity proof are integrated."
+      )
+    }
+    let supportedActions: Set<String> = ["inspect", "matches", "verify"]
+  #endif
+  guard supportedActions.contains(action) else {
+    try fail(
+      "Usage: release-tag-publisher-provision <inspect|matches|verify> --host <absolute-path> [--expected-sha256 <sha256>]"
+    )
+  }
+  var values: [String: String] = [:]
+  var index = 1
+  var allowed: Set<String> = ["--host", "--expected-sha256"]
+  #if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING
+    allowed.formUnion([
+      "--test-store", "--test-failure", "--test-acl-applications", "--test-acl-prompt",
+    ])
+  #endif
+  while index < arguments.count {
+    let flag = arguments[index]
+    guard allowed.contains(flag), index + 1 < arguments.count,
+      values[flag] == nil
+    else { try fail("The publisher provisioner received invalid or duplicate options.") }
+    values[flag] = arguments[index + 1]
+    index += 2
+  }
+  #if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING
+    if action == "acl-model" {
+      guard Set(values.keys) == Set(["--test-acl-applications", "--test-acl-prompt"]),
+        let applications = values["--test-acl-applications"],
+        let prompt = values["--test-acl-prompt"],
+        ["empty", "nonempty"].contains(prompt)
+      else {
+        try fail(
+          "The ACL model requires exactly --test-acl-applications and --test-acl-prompt <empty|nonempty>."
+        )
+      }
+      return ParsedArguments(
+        action: action,
+        host: "",
+        expectedSha256: nil,
+        testStore: nil,
+        testFailure: nil,
+        testACLApplications: applications,
+        testACLPrompt: prompt
+      )
+    }
+  #endif
+  guard let host = values["--host"] else {
+    try fail("The publisher provisioner requires --host.")
+  }
+  let expectedSha256 = values["--expected-sha256"]
+  let expectsDigest = ["recover", "matches"].contains(action)
+  guard expectsDigest == (expectedSha256 != nil) else {
+    try fail(
+      "recover and matches require one --expected-sha256; other actions reject it."
+    )
+  }
+  if let expectedSha256 {
+    guard expectedSha256.count == 64,
+      expectedSha256.allSatisfy({ $0.isNumber || ($0 >= "a" && $0 <= "f") })
+    else { try fail("The expected release App key digest must be 64 lowercase hex characters.") }
+  }
+  #if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING
+    let testStore = values["--test-store"]
+    let testFailure = values["--test-failure"]
+    guard values["--test-acl-applications"] == nil,
+      values["--test-acl-prompt"] == nil
+    else { try fail("ACL model options are accepted only by acl-model.") }
+    if ["provision", "recover"].contains(action), testStore == nil {
+      try fail("Testing credential mutation requires an isolated --test-store.")
+    }
+    if testFailure != nil && testStore == nil {
+      try fail("Test failure injection requires --test-store.")
+    }
+    if let testFailure,
+      ![
+        "read-created", "delete-created", "read-created-delete-created",
+      ].contains(testFailure)
+    {
+      try fail("The requested test failure is unsupported.")
+    }
+    return ParsedArguments(
+      action: action,
+      host: host,
+      expectedSha256: expectedSha256,
+      testStore: testStore,
+      testFailure: testFailure,
+      testACLApplications: nil,
+      testACLPrompt: nil
+    )
+  #else
+    return ParsedArguments(
+      action: action,
+      host: host,
+      expectedSha256: expectedSha256
+    )
+  #endif
 }
 
 private func disableCoreDumps() throws {
@@ -255,65 +667,231 @@ private func disableCoreDumps() throws {
   }
 }
 
+private func clearEnvironment() {
+  for name in ProcessInfo.processInfo.environment.keys { unsetenv(name) }
+}
+
+private func requireHardenedRuntime() throws {
+  var code: SecCode?
+  guard SecCodeCopySelf(SecCSFlags(), &code) == errSecSuccess, let code,
+    SecCodeCheckValidity(
+      code,
+      SecCSFlags(rawValue: kSecCSStrictValidate),
+      nil
+    ) == errSecSuccess
+  else {
+    try fail("The running publisher provisioner code signature is invalid.")
+  }
+  let dynamicCode = unsafeBitCast(code, to: SecStaticCode.self)
+  var liveInformation: CFDictionary?
+  guard SecCodeCopySigningInformation(
+    dynamicCode,
+    SecCSFlags(rawValue: kSecCSSigningInformation | kSecCSDynamicInformation),
+    &liveInformation
+  ) == errSecSuccess,
+    let liveDictionary = liveInformation as? [CFString: Any],
+    let liveFlags = liveDictionary[kSecCodeInfoFlags] as? NSNumber,
+    liveFlags.uint32Value & requiredRuntimeSignatureFlag == requiredRuntimeSignatureFlag,
+    let liveStatus = liveDictionary[kSecCodeInfoStatus] as? NSNumber,
+    liveStatus.uint32Value & requiredRuntimeSignatureFlag == requiredRuntimeSignatureFlag
+  else {
+    try fail("The live publisher provisioner lacks hardened runtime kernel status.")
+  }
+  var staticCode: SecStaticCode?
+  guard SecCodeCopyStaticCode(code, SecCSFlags(), &staticCode) == errSecSuccess,
+    let staticCode,
+    SecStaticCodeCheckValidity(
+      staticCode,
+      SecCSFlags(rawValue: kSecCSStrictValidate),
+      nil
+    ) == errSecSuccess
+  else {
+    try fail("The publisher provisioner static code signature is invalid.")
+  }
+  var information: CFDictionary?
+  guard SecCodeCopySigningInformation(
+    staticCode,
+    SecCSFlags(rawValue: kSecCSSigningInformation),
+    &information
+  ) == errSecSuccess,
+    let dictionary = information as? [CFString: Any],
+    let flags = dictionary[kSecCodeInfoFlags] as? NSNumber,
+    flags.uint32Value & requiredRuntimeSignatureFlag == requiredRuntimeSignatureFlag
+  else {
+    try fail("The publisher provisioner is not protected by the hardened runtime.")
+  }
+}
+
+private func requireStoredHandle(
+  store: SecretStore,
+  host: String,
+  provisioner: String
+) throws -> ItemHandle {
+  guard let handle = try store.inspect(host: host, provisioner: provisioner) else {
+    throw StoreFailure.missing
+  }
+  return handle
+}
+
+#if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING
+  private func addAndValidate(
+    _ secret: Data,
+    store: TestingMutableSecretStore,
+    host: String,
+    provisioner: String
+  ) throws {
+    var created: ItemHandle?
+    do {
+      let handle = try store.add(secret, host: host, provisioner: provisioner)
+      created = handle
+      var verified = try store.read(handle, host: host, provisioner: provisioner)
+      defer { verified.resetBytes(in: 0..<verified.count) }
+      try validatePKCS1PEM(verified)
+      guard sha256Hex(verified) == sha256Hex(secret) else {
+        try fail("The created release App key does not match the supplied replacement.")
+      }
+    } catch {
+      if let created {
+        do {
+          try store.deleteExact(created)
+        } catch {
+          try fail(
+            "Release App key creation failed and the exact newly created item could not be rolled back."
+          )
+        }
+      }
+      throw error
+    }
+  }
+#endif
+
+private func writeResult(_ result: ProvisionResult) throws {
+  let encoder = JSONEncoder()
+  encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+  FileHandle.standardOutput.write(try encoder.encode(result) + Data([0x0a]))
+}
+
 private func main() -> Int32 {
   do {
     _ = umask(0o077)
     try disableCoreDumps()
+    clearEnvironment()
+    try requireHardenedRuntime()
     let parsed = try parse(Array(CommandLine.arguments.dropFirst()))
+    #if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING
+      if parsed.action == "acl-model" {
+        let actual = (parsed.testACLApplications ?? "")
+          .components(separatedBy: ",")
+          .map { Data($0.utf8) }
+        let expected = [Data("host".utf8), Data("provisioner".utf8)]
+        let selector = parsed.testACLPrompt == "empty"
+          ? publisherPromptSelector
+          : SecKeychainPromptSelector(rawValue: 1)
+        try writeResult(
+          ProvisionResult(
+            action: parsed.action,
+            host: "behavioral-acl-model",
+            state: nil,
+            changed: nil,
+            matched: publisherACLModelMatches(
+              actualApplications: actual,
+              expectedApplications: expected,
+              promptSelector: selector
+            )
+          )
+        )
+        return 0
+      }
+    #endif
     let host = try canonicalExistingPath(parsed.host, label: "publisher host")
     let provisioner = try currentExecutablePath()
-    try requireRootOwnedExecutable(host)
-    try requireRootOwnedExecutable(provisioner)
-    let store = KeychainStore()
+    #if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING
+      let testing = parsed.testStore != nil
+    #else
+      let testing = false
+    #endif
+    try requireTrustedExecutable(host, testingOwnerAllowed: testing)
+    try requireTrustedExecutable(provisioner, testingOwnerAllowed: testing)
+    let store: SecretStore
+    #if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING
+      if let testStore = parsed.testStore {
+        store = try FakeKeychainStore(
+          statePath: testStore,
+          failure: parsed.testFailure
+        )
+      } else {
+        store = KeychainStore()
+      }
+    #else
+      store = KeychainStore()
+    #endif
+
+    var state: String?
+    var changed: Bool?
+    var matched: Bool?
     switch parsed.action {
-    case "provision":
-      var secret = try readSecretFromStandardInput()
-      defer { secret.resetBytes(in: 0..<secret.count) }
-      do {
-        try store.add(secret, host: host, provisioner: provisioner)
-        var verified = try store.read(host: host, provisioner: provisioner)
-        defer { verified.resetBytes(in: 0..<verified.count) }
-        try validatePKCS1PEM(verified)
-      } catch {
-        try? store.delete()
-        throw error
-      }
-    case "rotate":
-      var previous = try store.read(host: host, provisioner: provisioner)
-      defer { previous.resetBytes(in: 0..<previous.count) }
-      var replacement = try readSecretFromStandardInput()
-      defer { replacement.resetBytes(in: 0..<replacement.count) }
-      do {
-        try store.update(replacement, host: host, provisioner: provisioner)
-        var verified = try store.read(host: host, provisioner: provisioner)
-        defer { verified.resetBytes(in: 0..<verified.count) }
-        try validatePKCS1PEM(verified)
-      } catch {
-        try? store.update(previous, host: host, provisioner: provisioner)
-        throw error
-      }
-    case "verify":
-      var secret = try store.read(host: host, provisioner: provisioner)
+    case "inspect":
+      state = try store.inspect(host: host, provisioner: provisioner) == nil
+        ? "missing" : "present"
+    #if RELEASE_TAG_PUBLISHER_PROVISIONER_TESTING
+      case "provision", "recover":
+        guard let mutableStore = store as? TestingMutableSecretStore else {
+          try fail("Testing credential mutation requires an isolated test store.")
+        }
+        if parsed.action == "recover",
+          try mutableStore.inspect(host: host, provisioner: provisioner) != nil
+        {
+          throw StoreFailure.duplicate
+        }
+        var secret = try readSecretFromStandardInput()
+        defer { secret.resetBytes(in: 0..<secret.count) }
+        if parsed.action == "recover",
+          sha256Hex(secret) != parsed.expectedSha256
+        {
+          try fail("The recovery key does not match the admitted file digest.")
+        }
+        try addAndValidate(
+          secret,
+          store: mutableStore,
+          host: host,
+          provisioner: provisioner
+        )
+        changed = true
+    #endif
+    case "matches":
+      let handle = try requireStoredHandle(
+        store: store,
+        host: host,
+        provisioner: provisioner
+      )
+      var secret = try store.read(handle, host: host, provisioner: provisioner)
       defer { secret.resetBytes(in: 0..<secret.count) }
       try validatePKCS1PEM(secret)
-    case "revoke":
-      try store.delete()
+      guard sha256Hex(secret) == parsed.expectedSha256 else {
+        try fail("The installed release App key does not match the expected recovery digest.")
+      }
+      matched = true
+    case "verify":
+      let handle = try requireStoredHandle(
+        store: store,
+        host: host,
+        provisioner: provisioner
+      )
+      var secret = try store.read(handle, host: host, provisioner: provisioner)
+      defer { secret.resetBytes(in: 0..<secret.count) }
+      try validatePKCS1PEM(secret)
     default:
       try fail("Unsupported publisher provisioner action.")
     }
-    let output: [String: Any] = [
-      "schemaVersion": 1,
-      "purpose": "freed-release-tag-publisher-keychain-result",
-      "action": parsed.action,
-      "service": keychainService,
-      "account": keychainAccount,
-      "host": host,
-    ]
-    let data = try JSONSerialization.data(
-      withJSONObject: output,
-      options: [.sortedKeys, .withoutEscapingSlashes]
+    try writeResult(
+      ProvisionResult(
+        action: parsed.action,
+        host: host,
+        state: state,
+        changed: changed,
+        matched: matched
+      )
     )
-    FileHandle.standardOutput.write(data + Data([0x0a]))
     return 0
   } catch StoreFailure.missing {
     fputs("release-tag-publisher-provision: the Keychain key is missing\n", stderr)

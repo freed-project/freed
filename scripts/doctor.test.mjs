@@ -22,6 +22,7 @@ import {
   classifyBinaryArch,
   checkAutomationStateDir,
   checkKernelGuardTool,
+  checkReleaseTagPublisherConfig,
   checkTrustedPublisherConfig,
   credentialHelperBinary,
   evaluateGhCheck,
@@ -39,6 +40,7 @@ import {
   installAutomationKernelGuardCutoverFixture,
   rewriteAutomationKernelGuardCutoverTransactionFixture,
 } from "./test-helpers/automation-kernel-guard.mjs";
+import { releaseTagPublisherNativePairSha256 } from "./lib/release-tag-publisher-binding.mjs";
 
 const sourceRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -72,6 +74,30 @@ function writePrettyJson(filePath, value) {
 
 function installKernelGuardCutoverFixture(stateDir) {
   return installAutomationKernelGuardCutoverFixture(stateDir).paths;
+}
+
+function releasePublisherBinding(hostPath, provisionerPath, overrides = {}) {
+  const binding = {
+    schemaVersion: 3,
+    purpose: "freed-release-tag-publisher-binding",
+    status: "active",
+    repo: "freed-project/freed",
+    appId: 4_296_969,
+    appSlug: "freed-release-publisher",
+    publisherPath: hostPath,
+    publisherSha256: sha256(hostPath),
+    publisherCdHash: "c".repeat(40),
+    provisionerPath,
+    provisionerSha256: sha256(provisionerPath),
+    provisionerCdHash: "d".repeat(40),
+    ...overrides,
+  };
+  return {
+    ...binding,
+    nativePairSha256:
+      overrides.nativePairSha256 ??
+      releaseTagPublisherNativePairSha256(binding),
+  };
 }
 
 function writePublisherConfigFixture(home, overrides = {}) {
@@ -1386,11 +1412,269 @@ test("resolveExitCode is warn-only by default and hard-fails under --strict", ()
     failures: 0,
     warnings: 0,
   };
+  const releasePublisherClosed = {
+    checks: [{ id: "release-tag-publisher", status: "fail" }],
+    failures: 1,
+    warnings: 0,
+  };
+  const releasePublisherReady = {
+    checks: [{ id: "release-tag-publisher", status: "ok" }],
+    failures: 0,
+    warnings: 0,
+  };
   assert.equal(resolveExitCode(failing), 0);
   assert.equal(resolveExitCode(failing, { strict: true }), 1);
   assert.equal(resolveExitCode(clean, { strict: true }), 0);
   assert.equal(resolveExitCode(publisherClosed, { requirePublisher: true }), 1);
   assert.equal(resolveExitCode(publisherReady, { requirePublisher: true }), 0);
+  assert.equal(
+    resolveExitCode(releasePublisherClosed, {
+      requireReleasePublisher: true,
+    }),
+    1,
+  );
+  assert.equal(
+    resolveExitCode(releasePublisherReady, {
+      requireReleasePublisher: true,
+    }),
+    0,
+  );
+});
+
+test("release publisher doctor profile is separate and uses credential-free native readiness", () => {
+  const root = mkdtempSync(
+    path.join(os.tmpdir(), "freed-doctor-release-publisher-"),
+  );
+  const hostPath = path.join(root, "release-tag-publisher");
+  const provisionerPath = path.join(root, "release-tag-publisher-provision");
+  const configPath = path.join(root, "release-tag-publisher.json");
+  writeFileSync(hostPath, "host", { mode: 0o700 });
+  writeFileSync(provisionerPath, "provisioner", { mode: 0o700 });
+  writeFileSync(
+    configPath,
+    `${JSON.stringify(releasePublisherBinding(hostPath, provisionerPath))}\n`,
+    { mode: 0o600 },
+  );
+  const calls = [];
+  const inspected = [];
+  const ready = checkReleaseTagPublisherConfig({
+    configPath,
+    hostPath,
+    provisionerPath,
+    inspectPath(filePath, label, options) {
+      inspected.push({ filePath, label, options });
+      return [];
+    },
+    readConfig(filePath) {
+      return readFileSync(filePath, "utf8");
+    },
+    platform: "darwin",
+    run(file, args, options) {
+      calls.push({ file, args, options });
+      const binding = releasePublisherBinding(hostPath, provisionerPath);
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          schemaVersion: 3,
+          purpose: "freed-release-tag-publisher-readiness",
+          repo: binding.repo,
+          appId: binding.appId,
+          appSlug: binding.appSlug,
+          credentialMode: "short-lived-installation-token",
+          operations: ["create-annotated-tag"],
+          allowsArbitraryRefs: false,
+          allowsUpdates: false,
+          allowsDeletions: false,
+          publisherSha256: binding.publisherSha256,
+          publisherCdHash: binding.publisherCdHash,
+          provisionerSha256: binding.provisionerSha256,
+          provisionerCdHash: binding.provisionerCdHash,
+          nativePairSha256: binding.nativePairSha256,
+        }),
+      };
+    },
+  });
+  assert.equal(ready.status, "ok");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].file, hostPath);
+  assert.deepEqual(calls[0].args, [
+    "attest",
+    "--repo",
+    "freed-project/freed",
+    "--app-id",
+    "4296969",
+    "--app-slug",
+    "freed-release-publisher",
+  ]);
+  assert.deepEqual(calls[0].options, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      HOME: process.env.HOME ?? "",
+      PATH: "/usr/bin:/bin",
+    },
+    timeout: 5_000,
+    maxBuffer: 64 * 1_024,
+  });
+  assert.deepEqual(
+    inspected.map(({ filePath, options }) => ({ filePath, options })),
+    [
+      {
+        filePath: hostPath,
+        options: {
+          executable: true,
+          exactMode: 0o555,
+          exactGroup: 0,
+          exactLinkCount: 1,
+        },
+      },
+      {
+        filePath: provisionerPath,
+        options: {
+          executable: true,
+          exactMode: 0o555,
+          exactGroup: 0,
+          exactLinkCount: 1,
+        },
+      },
+      {
+        filePath: configPath,
+        options: {
+          executable: false,
+          exactMode: 0o444,
+          exactGroup: 0,
+          exactLinkCount: 1,
+        },
+      },
+    ],
+  );
+
+  const missing = checkReleaseTagPublisherConfig({
+    configPath,
+    hostPath,
+    provisionerPath,
+    inspectPath: () => [],
+    readConfig: (filePath) => readFileSync(filePath, "utf8"),
+    platform: "darwin",
+    run: () => ({ status: 1 }),
+  });
+  assert.equal(missing.status, "fail");
+  assert.match(missing.detail, /could not validate.*readiness binding/);
+});
+
+test("release publisher doctor never reads or executes after path admission failure", () => {
+  let reads = 0;
+  let runs = 0;
+  const result = checkReleaseTagPublisherConfig({
+    configPath: "/untrusted/config",
+    hostPath: "/untrusted/host",
+    provisionerPath: "/untrusted/provisioner",
+    inspectPath(filePath) {
+      return filePath.endsWith("host") ? ["the host path is untrusted"] : [];
+    },
+    readConfig() {
+      reads += 1;
+      return "{}";
+    },
+    run() {
+      runs += 1;
+      return { status: 0 };
+    },
+    platform: "darwin",
+  });
+  assert.equal(result.status, "fail");
+  assert.equal(reads, 0);
+  assert.equal(runs, 0);
+});
+
+test("release publisher doctor never executes after invalid config admission", () => {
+  let runs = 0;
+  const result = checkReleaseTagPublisherConfig({
+    configPath: "/admitted/config",
+    hostPath: "/admitted/host",
+    provisionerPath: "/admitted/provisioner",
+    inspectPath: () => [],
+    readConfig: () => JSON.stringify({ schemaVersion: 1 }),
+    run() {
+      runs += 1;
+      return { status: 0 };
+    },
+    platform: "darwin",
+  });
+  assert.equal(result.status, "fail");
+  assert.match(result.detail, /must contain exactly|binding is invalid/);
+  assert.equal(runs, 0);
+});
+
+test("release publisher doctor rejects a mixed native generation before execution", (t) => {
+  const root = mkdtempSync(
+    path.join(os.tmpdir(), "freed-doctor-release-publisher-mixed-"),
+  );
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const hostPath = path.join(root, "release-tag-publisher");
+  const provisionerPath = path.join(root, "release-tag-publisher-provision");
+  const configPath = path.join(root, "release-tag-publisher.json");
+  writeFileSync(hostPath, "host", { mode: 0o700 });
+  writeFileSync(provisionerPath, "provisioner", { mode: 0o700 });
+  let runs = 0;
+  const checkBinding = (binding) =>
+    checkReleaseTagPublisherConfig({
+      configPath,
+      hostPath,
+      provisionerPath,
+      inspectPath: () => [],
+      readConfig: () => JSON.stringify(binding),
+      run() {
+        runs += 1;
+        return { status: 0 };
+      },
+      platform: "darwin",
+    });
+
+  const wrongProvisioner = releasePublisherBinding(hostPath, provisionerPath, {
+    provisionerSha256: "c".repeat(64),
+  });
+  const mixed = checkBinding(wrongProvisioner);
+  assert.equal(mixed.status, "fail");
+  assert.match(mixed.detail, /provisioner digest does not match/);
+  assert.equal(runs, 0);
+
+  const invalidPair = checkBinding(
+    releasePublisherBinding(hostPath, provisionerPath, {
+      nativePairSha256: "0".repeat(64),
+    }),
+  );
+  assert.equal(invalidPair.status, "fail");
+  assert.match(invalidPair.detail, /binding is invalid/);
+  assert.equal(runs, 0);
+});
+
+test("release publisher doctor never executes native code off macOS", (t) => {
+  let runs = 0;
+  const root = mkdtempSync(
+    path.join(os.tmpdir(), "freed-doctor-release-publisher-platform-"),
+  );
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const hostPath = path.join(root, "host");
+  const provisionerPath = path.join(root, "provisioner");
+  writeFileSync(hostPath, "host");
+  writeFileSync(provisionerPath, "provisioner");
+  const config = releasePublisherBinding(hostPath, provisionerPath);
+  const result = checkReleaseTagPublisherConfig({
+    configPath: "/admitted/config",
+    hostPath,
+    provisionerPath,
+    inspectPath: () => [],
+    readConfig: () => JSON.stringify(config),
+    run() {
+      runs += 1;
+      return { status: 0 };
+    },
+    platform: "linux",
+  });
+  assert.equal(result.status, "fail");
+  assert.match(result.detail, /supported only on macOS/);
+  assert.equal(runs, 0);
 });
 
 test("runChecks returns every check id with a valid status", () => {
@@ -1422,5 +1706,33 @@ test("runChecks returns every check id with a valid status", () => {
   assert.equal(
     result.failures,
     result.checks.filter((item) => item.status === "fail").length,
+  );
+});
+
+test("runChecks adds Release Publisher readiness only when requested", () => {
+  const stateDir = path.join(
+    mkdtempSync(path.join(os.tmpdir(), "freed-doctor-release-profile-")),
+    "state",
+  );
+  const result = runChecks({
+    stateDir,
+    requireReleasePublisher: true,
+    releaseTagPublisherCheck: {
+      id: "release-tag-publisher",
+      title: "release tag publisher",
+      status: "ok",
+      detail: "ready",
+      remediation: "",
+    },
+  });
+  assert.equal(
+    result.checks.filter((item) => item.id === "release-tag-publisher").length,
+    1,
+  );
+  const defaultResult = runChecks({ stateDir });
+  assert.equal(
+    defaultResult.checks.filter((item) => item.id === "release-tag-publisher")
+      .length,
+    0,
   );
 });

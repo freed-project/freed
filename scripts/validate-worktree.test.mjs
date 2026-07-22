@@ -7,6 +7,7 @@ import {
   describePlan,
   isDesktopNativeSurface,
   isDesktopPerfSensitiveSurface,
+  isReleasePublisherToolingPath,
   isSocialScrapeLoopPath,
   isSocialProviderFocusedSurface,
   parseArgs,
@@ -450,6 +451,77 @@ test("feature plan for release tooling changes runs script tests and artifact va
   assert.equal(labels[0], "root typecheck");
   assert.ok(labels.includes("release notes shared tests"));
   assert.ok(labels.includes("release note artifact validation"));
+});
+
+test("feature plan routes Release Publisher changes through the focused suite", () => {
+  const plan = buildValidationPlan("feature", [
+    "scripts/release-tag-publisher-provision.swift",
+    "scripts/release-tag-publisher-install.mjs",
+    "scripts/lib/release-tag-publisher-binding.mjs",
+    "scripts/release-publish.sh",
+  ]);
+  const labels = describePlan(plan);
+
+  assert.equal(labels[0], "root typecheck");
+  assert.ok(labels.includes("release notes shared tests"));
+  assert.ok(labels.includes("release publisher tests"));
+  assert.ok(
+    plan
+      .find((item) => item.label === "release publisher tests")
+      ?.args.includes("scripts/release-publish.test.mjs"),
+  );
+  assert.ok(
+    plan
+      .find((item) => item.label === "release publisher tests")
+      ?.args.includes("scripts/release-governance.test.mjs"),
+  );
+});
+
+test("feature plan routes every production publisher surface through the complete focused suite", () => {
+  for (const filePath of [
+    ".github/rulesets/release-tag-lockdown.json",
+    ".github/rulesets/release-tag-immutability.json",
+    ".github/rulesets/release-tags.json",
+    "scripts/create-release-github-app.mjs",
+    "scripts/create-release-github-app.test.mjs",
+    "scripts/doctor.mjs",
+    "scripts/doctor.test.mjs",
+    "scripts/lib/release-tag-publisher-binding.mjs",
+    "scripts/lib/release-tag-publisher.mjs",
+    "scripts/lib/release-tag-publisher.test.mjs",
+    "scripts/release-tag-publisher-build.sh",
+    "scripts/release-tag-publisher-host.swift",
+    "scripts/release-tag-publisher-install.mjs",
+    "scripts/release-tag-publisher-install.test.mjs",
+    "scripts/release-tag-publisher-native.test.mjs",
+    "scripts/release-tag-publisher-provision.swift",
+    "scripts/release-tag-publisher.mjs",
+    "scripts/release-publish.sh",
+    "scripts/release-publish.test.mjs",
+    "scripts/sync-github-rulesets.mjs",
+    "scripts/sync-github-rulesets.test.mjs",
+    "scripts/validate-release-tag-authority.mjs",
+    "scripts/validate-release-tag-authority.test.mjs",
+  ]) {
+    assert.equal(
+      isReleasePublisherToolingPath(filePath),
+      true,
+      `${filePath} must be classified as Release Publisher tooling`,
+    );
+    const plan = buildValidationPlan("feature", [filePath]);
+    const labels = describePlan(plan);
+    assert.ok(
+      labels.includes("release publisher tests"),
+      `${filePath} must run release publisher tests`,
+    );
+    const publisherSuite = plan.find(
+      (item) => item.label === "release publisher tests",
+    );
+    assert.ok(
+      publisherSuite?.args.includes("scripts/release-governance.test.mjs"),
+      `${filePath} must run release governance tests`,
+    );
+  }
 });
 
 test("collectReleaseArtifactsToValidate resolves markdown artifacts to their json pairs", () => {

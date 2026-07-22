@@ -19,9 +19,14 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  closeSync,
+  constants,
   existsSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
+  openSync,
+  readSync,
   readFileSync,
   realpathSync,
   statSync,
@@ -37,12 +42,32 @@ import {
   conservativeLeaseCleanupArchiveReservation,
   inspectLeaseCleanupArchiveCapacity,
 } from "./lib/automation-control.mjs";
+import {
+  RELEASE_TAG_PUBLISHER_BINDING_KEYS,
+  verifyReleaseTagPublisherBindingShape,
+} from "./lib/release-tag-publisher-binding.mjs";
+import { verifyReleaseTagPublisherBinding } from "./lib/release-tag-publisher.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..");
 const TRUSTED_PUBLISHER_CONFIG_PATH =
   "/Library/Application Support/Freed/trusted-publisher-host.json";
+const RELEASE_TAG_PUBLISHER_DIRECTORY = "/Library/Application Support/Freed";
+const RELEASE_TAG_PUBLISHER_HOST_PATH = path.join(
+  RELEASE_TAG_PUBLISHER_DIRECTORY,
+  "release-tag-publisher",
+);
+const RELEASE_TAG_PUBLISHER_PROVISIONER_PATH = path.join(
+  RELEASE_TAG_PUBLISHER_DIRECTORY,
+  "release-tag-publisher-provision",
+);
+const RELEASE_TAG_PUBLISHER_CONFIG_PATH = path.join(
+  RELEASE_TAG_PUBLISHER_DIRECTORY,
+  "release-tag-publisher.json",
+);
+const RELEASE_TAG_PUBLISHER_CONFIG_MAXIMUM_BYTES = 64 * 1_024;
+const DARWIN_O_CLOEXEC = 0x01000000;
 
 const CURL_FALLBACK_PATTERN = [
   "TOKEN=$(security find-generic-password -s \"gh:github.com\" -w | sed 's/^go-keyring-base64://' | base64 -d)",
@@ -661,7 +686,12 @@ function fileSha256(filePath) {
 function immutableRootOwnedPathProblems(
   filePath,
   label,
-  { executable = false } = {},
+  {
+    executable = false,
+    exactMode = null,
+    exactGroup = null,
+    exactLinkCount = null,
+  } = {},
 ) {
   const problems = [];
   try {
@@ -678,6 +708,21 @@ function immutableRootOwnedPathProblems(
     }
     if ((fileStats.mode & 0o022) !== 0) {
       problems.push(`${label} is group or world writable`);
+    }
+    if (exactMode !== null && (fileStats.mode & 0o777) !== exactMode) {
+      const modeLabel = new Map([
+        [0o444, "0444"],
+        [0o555, "0555"],
+      ]).get(exactMode);
+      problems.push(
+        `${label} mode is not ${modeLabel ?? "the required exact mode"}`,
+      );
+    }
+    if (exactGroup !== null && fileStats.gid !== exactGroup) {
+      problems.push(`${label} group ownership is not exact`);
+    }
+    if (exactLinkCount !== null && fileStats.nlink !== exactLinkCount) {
+      problems.push(`${label} link count is not exact`);
     }
     if (executable && (fileStats.mode & 0o111) === 0) {
       problems.push(`${label} is not executable`);
@@ -1037,6 +1082,223 @@ export function checkTrustedPublisherConfig(
   );
 }
 
+function readReleaseTagPublisherConfig(filePath) {
+  let descriptor;
+  let bytes;
+  try {
+    if (!path.isAbsolute(filePath) || realpathSync(filePath) !== filePath) {
+      throw new Error("the config path is not canonical");
+    }
+    const link = lstatSync(filePath, { bigint: true });
+    descriptor = openSync(
+      filePath,
+      constants.O_RDONLY |
+        constants.O_NOFOLLOW |
+        constants.O_NONBLOCK |
+        (constants.O_CLOEXEC ?? DARWIN_O_CLOEXEC),
+    );
+    const before = fstatSync(descriptor, { bigint: true });
+    if (
+      !link.isFile() ||
+      !before.isFile() ||
+      link.dev !== before.dev ||
+      link.ino !== before.ino ||
+      before.uid !== 0n ||
+      before.gid !== 0n ||
+      before.nlink !== 1n ||
+      (before.mode & 0o777n) !== 0o444n ||
+      before.size <= 0n ||
+      before.size > BigInt(RELEASE_TAG_PUBLISHER_CONFIG_MAXIMUM_BYTES)
+    ) {
+      throw new Error("the config descriptor admission failed");
+    }
+    const expectedSize = Number(before.size);
+    bytes = Buffer.alloc(expectedSize + 1);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const count = readSync(
+        descriptor,
+        bytes,
+        offset,
+        bytes.length - offset,
+        offset,
+      );
+      if (count === 0) break;
+      offset += count;
+    }
+    const after = fstatSync(descriptor, { bigint: true });
+    if (
+      offset !== expectedSize ||
+      before.dev !== after.dev ||
+      before.ino !== after.ino ||
+      before.size !== after.size ||
+      before.mode !== after.mode ||
+      before.uid !== after.uid ||
+      before.gid !== after.gid ||
+      before.nlink !== after.nlink ||
+      before.mtimeNs !== after.mtimeNs ||
+      before.ctimeNs !== after.ctimeNs
+    ) {
+      throw new Error("the config changed during admission");
+    }
+    return new TextDecoder("utf-8", { fatal: true }).decode(
+      bytes.subarray(0, expectedSize),
+    );
+  } finally {
+    bytes?.fill(0);
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+export function checkReleaseTagPublisherConfig({
+  configPath = RELEASE_TAG_PUBLISHER_CONFIG_PATH,
+  hostPath = RELEASE_TAG_PUBLISHER_HOST_PATH,
+  provisionerPath = RELEASE_TAG_PUBLISHER_PROVISIONER_PATH,
+  inspectPath = immutableRootOwnedPathProblems,
+  readConfig = readReleaseTagPublisherConfig,
+  run = spawnSync,
+  platform = os.platform(),
+} = {}) {
+  const problems = [];
+  const failure = () =>
+    check(
+      "release-tag-publisher",
+      "release tag publisher",
+      "fail",
+      `${[...new Set(problems)].join("; ")}. Release tag publication stays unavailable.`,
+      "Run the controlled Release Publisher recovery for task release-publisher-key-recovery-2026-07-20, then rerun this exact opt-in profile.",
+    );
+  let config = null;
+  let actualPublisherDigest = null;
+  let actualProvisionerDigest = null;
+  for (const [filePath, label] of [
+    [hostPath, "release tag publisher host"],
+    [provisionerPath, "release tag publisher provisioner"],
+    [configPath, "release tag publisher config"],
+  ]) {
+    try {
+      problems.push(
+        ...inspectPath(filePath, label, {
+          executable: filePath !== configPath,
+          exactMode: filePath === configPath ? 0o444 : 0o555,
+          exactGroup: 0,
+          exactLinkCount: 1,
+        }),
+      );
+    } catch {
+      problems.push(`the ${label} path admission failed`);
+    }
+  }
+  if (problems.length > 0) return failure();
+  try {
+    config = JSON.parse(readConfig(configPath));
+  } catch (error) {
+    problems.push(
+      `the release tag publisher config cannot be read: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (config) {
+    if (
+      JSON.stringify(Object.keys(config).sort()) !==
+      JSON.stringify(RELEASE_TAG_PUBLISHER_BINDING_KEYS)
+    ) {
+      problems.push(
+        `the release tag publisher config must contain exactly: ${RELEASE_TAG_PUBLISHER_BINDING_KEYS.join(", ")}`,
+      );
+    }
+    try {
+      verifyReleaseTagPublisherBindingShape(config, { statuses: ["active"] });
+    } catch {
+      problems.push("the release tag publisher binding is invalid");
+    }
+    if (
+      config.publisherPath !== hostPath ||
+      config.provisionerPath !== provisionerPath
+    ) {
+      problems.push("the release tag publisher binding paths do not match");
+    }
+    if (problems.length === 0) {
+      actualPublisherDigest = fileSha256(hostPath);
+      actualProvisionerDigest = fileSha256(provisionerPath);
+      if (
+        actualPublisherDigest === null ||
+        actualPublisherDigest !== config.publisherSha256
+      ) {
+        problems.push("the release tag publisher host digest does not match");
+      }
+      if (
+        actualProvisionerDigest === null ||
+        actualProvisionerDigest !== config.provisionerSha256
+      ) {
+        problems.push(
+          "the release tag publisher provisioner digest does not match",
+        );
+      }
+    }
+  }
+  if (problems.length > 0) return failure();
+  if (platform !== "darwin") {
+    problems.push(
+      "the release tag publisher Keychain is supported only on macOS",
+    );
+    return failure();
+  }
+  const keychain = run(
+    hostPath,
+    [
+      "attest",
+      "--repo",
+      config.repo,
+      "--app-id",
+      String(config.appId),
+      "--app-slug",
+      config.appSlug,
+    ],
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        HOME: process.env.HOME ?? "",
+        PATH: "/usr/bin:/bin",
+      },
+      timeout: 5_000,
+      maxBuffer: 64 * 1_024,
+    },
+  );
+  if (
+    keychain?.error ||
+    keychain?.status !== 0 ||
+    (keychain?.signal !== null && keychain?.signal !== undefined)
+  ) {
+    problems.push(
+      "the native host could not validate the release publisher readiness binding",
+    );
+  } else {
+    try {
+      const inspection = JSON.parse(String(keychain.stdout ?? ""));
+      verifyReleaseTagPublisherBinding(
+        config,
+        actualPublisherDigest,
+        actualProvisionerDigest,
+        inspection,
+      );
+    } catch {
+      problems.push(
+        "the native host returned an invalid release publisher attestation",
+      );
+    }
+  }
+  if (problems.length > 0) {
+    return failure();
+  }
+  return check(
+    "release-tag-publisher",
+    "release tag publisher",
+    "ok",
+    `GitHub App ${config.appId.toLocaleString()} is bound to freed-project/freed through one exact native host and provisioner generation.`,
+  );
+}
+
 export function runChecks(options = {}) {
   const home = options.home ?? os.homedir();
   const repoRoot = options.repoRoot ?? REPO_ROOT;
@@ -1062,6 +1324,12 @@ export function runChecks(options = {}) {
     checkAutomationStateDir(stateDir),
     checkTrustedPublisherConfig(options.env ?? process.env, home),
   ];
+  if (options.requireReleasePublisher) {
+    checks.push(
+      options.releaseTagPublisherCheck ??
+        checkReleaseTagPublisherConfig({ platform }),
+    );
+  }
 
   return {
     checks,
@@ -1091,12 +1359,23 @@ export function formatReport(result) {
 
 export function resolveExitCode(
   result,
-  { strict = false, requirePublisher = false } = {},
+  {
+    strict = false,
+    requirePublisher = false,
+    requireReleasePublisher = false,
+  } = {},
 ) {
   if (
     requirePublisher &&
     result.checks.find((item) => item.id === "trusted-publisher")?.status !==
       "ok"
+  ) {
+    return 1;
+  }
+  if (
+    requireReleasePublisher &&
+    result.checks.find((item) => item.id === "release-tag-publisher")
+      ?.status !== "ok"
   ) {
     return 1;
   }
@@ -1110,31 +1389,42 @@ function main() {
   const argv = process.argv.slice(2);
   const strict = argv.includes("--strict");
   const requirePublisher = argv.includes("--require-publisher");
+  const requireReleasePublisher = argv.includes("--require-release-publisher");
   const json = argv.includes("--json");
   const unknown = argv.filter(
     (arg) =>
-      !["--strict", "--require-publisher", "--json", "--help", "-h"].includes(
-        arg,
-      ),
+      ![
+        "--strict",
+        "--require-publisher",
+        "--require-release-publisher",
+        "--json",
+        "--help",
+        "-h",
+      ].includes(arg),
   );
   if (argv.includes("--help") || argv.includes("-h") || unknown.length > 0) {
     process.stdout.write(
-      "Usage: node scripts/doctor.mjs [--strict] [--require-publisher] [--json]\n" +
+      "Usage: node scripts/doctor.mjs [--strict] [--require-publisher] [--require-release-publisher] [--json]\n" +
         "  --strict  Exit non-zero on hard failures (loop/CI contexts).\n" +
         "  --require-publisher  Exit non-zero unless the root-owned publisher trust chain is ready.\n" +
+        "  --require-release-publisher  Add and require the distinct Release Publisher host and binding profile without accessing its credential.\n" +
         "  --json    Machine-readable report.\n",
     );
     process.exitCode = unknown.length > 0 ? 1 : 0;
     return;
   }
 
-  const result = runChecks();
+  const result = runChecks({ requireReleasePublisher });
   if (json) {
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } else {
     process.stdout.write(formatReport(result));
   }
-  process.exitCode = resolveExitCode(result, { strict, requirePublisher });
+  process.exitCode = resolveExitCode(result, {
+    strict,
+    requirePublisher,
+    requireReleasePublisher,
+  });
 }
 
 if (process.argv[1] === __filename) {
