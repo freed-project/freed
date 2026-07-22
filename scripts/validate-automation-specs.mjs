@@ -49,7 +49,7 @@ const EXACT_LOCAL_OVERLAY_FIELDS = Object.freeze({
   ]),
 });
 const REQUIRED_HOST_CAPABILITIES = Object.freeze([
-  "short-lived-credential-handoff",
+  "short-lived-lease-handoff",
   "trusted-launcher",
 ]);
 const EXPECTED_STATE_ROOT = "~/.freed/automation";
@@ -159,7 +159,7 @@ export function validateAutomationSpec(
       [...REQUIRED_HOST_CAPABILITIES].sort().join("\n")
   ) {
     throw new Error(
-      `${fileName}: requiredHostCapabilities must be trusted-launcher and short-lived-credential-handoff.`,
+      `${fileName}: requiredHostCapabilities must be trusted-launcher and short-lived-lease-handoff.`,
     );
   }
   if (spec.stateRoot !== EXPECTED_STATE_ROOT) {

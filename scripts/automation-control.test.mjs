@@ -29,7 +29,7 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
 import {
@@ -39,7 +39,7 @@ import {
   CONTROL_EVENT_HISTORY_MAX_RECORDS,
   OBSERVER_AUTHORITIES,
   TASK_STATES,
-  acquireLease as acquireLeaseLive,
+  acquireLease as acquireLeasePublic,
   appendControlEvent,
   appendOutcomeControlEvent,
   automationControlPaths,
@@ -107,6 +107,64 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.join(__dirname, "automation-control.mjs");
+const ACTOR_CONTROL_PATH = path.join(__dirname, "automation-actor-control.mjs");
+const ACTOR_LAUNCHER_CHANNEL_PROTOCOL = "freed-actor-launcher-channel-v1";
+const TEST_LAUNCHER_SHA256 = "a".repeat(64);
+const TEST_ACTOR_RUNTIME_DIGEST = "b".repeat(64);
+const TEST_LAUNCHER_ATTESTATION_SHA256 = "c".repeat(64);
+const TEST_LAUNCHER_SESSION_ID = "d".repeat(64);
+
+const internalControlRoot = mkdtempSync(
+  path.join(os.tmpdir(), "freed-automation-control-internal-"),
+);
+cpSync(path.join(__dirname, "lib"), internalControlRoot, { recursive: true });
+const internalControlPath = path.join(
+  internalControlRoot,
+  "automation-control.mjs",
+);
+appendFileSync(
+  internalControlPath,
+  `
+export function acquireGeneralActorLeaseForTest(options) {
+  const {
+    actorCredentialToken: _retiredCredential,
+    launcherAttestationSha256 = "c".repeat(64),
+    launcherSessionId = "d".repeat(64),
+    ...leaseOptions
+  } = options;
+  return acquireLeaseAuthorized({
+    ...leaseOptions,
+    trustedLauncherAuthorization: {
+      marker: TRUSTED_LAUNCHER_AUTHORIZATION,
+      launcherSha256: "a".repeat(64),
+      actorRuntimeDigest: "b".repeat(64),
+      launcherChannelProtocol: ACTOR_LAUNCHER_CHANNEL_PROTOCOL,
+      launcherAttestationSha256,
+      launcherSessionId,
+      leaseOperationId: leaseOptions.operationId,
+      leaseTokenSha256: secretDigest(leaseOptions.token),
+    },
+  });
+}
+`,
+);
+const { acquireGeneralActorLeaseForTest } = await import(
+  pathToFileURL(internalControlPath).href
+);
+process.once("exit", () => {
+  rmSync(internalControlRoot, { recursive: true, force: true });
+});
+
+function acquireLeaseLive(options) {
+  const policy = AUTOMATION_ACTOR_POLICIES[options.owner];
+  if (
+    policy?.maxLeaseLifetimeMs !== undefined &&
+    !["freed-owner", "freed-pr-publisher"].includes(options.owner)
+  ) {
+    return acquireGeneralActorLeaseForTest(options);
+  }
+  return acquireLeasePublic(options);
+}
 
 let leaseOperationSequence = 0;
 
@@ -294,11 +352,7 @@ function outcomeLedgerRepairParametersForCurrentEventHistory(
   });
 }
 
-function appendCanonicalControlEventFixtures(
-  stateRoot,
-  events,
-  operationId,
-) {
+function appendCanonicalControlEventFixtures(stateRoot, events, operationId) {
   const paths = automationControlPaths(stateRoot);
   const previousSnapshot = readAutomationAuthorityFileSnapshot(paths.events, {
     allowMissing: false,
@@ -309,7 +363,9 @@ function appendCanonicalControlEventFixtures(
     label: "Control event history fixture",
   });
   const separator =
-    previousSnapshot.bytes.at(-1) === 0x0a ? Buffer.alloc(0) : Buffer.from("\n");
+    previousSnapshot.bytes.at(-1) === 0x0a
+      ? Buffer.alloc(0)
+      : Buffer.from("\n");
   const appendedBytes = Buffer.from(
     `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
     "utf8",
@@ -523,6 +579,86 @@ function writePublisherCapability(
   };
 }
 
+function writeTrustedLauncherLease(
+  stateRoot,
+  actor,
+  {
+    token = `${actor}-trusted-launcher-token:${"x".repeat(32)}`,
+    nowMs = Date.now(),
+    ttlMs = AUTOMATION_ACTOR_POLICIES[actor]?.maxLeaseLifetimeMs,
+    operationId = nextLeaseOperationId(`trusted-launcher-${actor}`),
+    launcherSha256 = TEST_LAUNCHER_SHA256,
+    actorRuntimeDigest = TEST_ACTOR_RUNTIME_DIGEST,
+    launcherChannelProtocol = ACTOR_LAUNCHER_CHANNEL_PROTOCOL,
+    launcherAttestationSha256 = TEST_LAUNCHER_ATTESTATION_SHA256,
+    launcherSessionId = TEST_LAUNCHER_SESSION_ID,
+    appendAcquireEvent = true,
+  } = {},
+) {
+  const policy = AUTOMATION_ACTOR_POLICIES[actor];
+  const acquiredAtMs = nowMs;
+  const heartbeatAtMs = nowMs;
+  const leasePath = path.join(
+    automationControlPaths(stateRoot).leases,
+    `${policy.leaseName}.lease`,
+  );
+  mkdirSync(leasePath, { recursive: true, mode: 0o700 });
+  const record = {
+    schemaVersion: 1,
+    name: policy.leaseName,
+    owner: actor,
+    token,
+    observerAuthority: policy.observerAuthority,
+    providerAuthority: policy.providerAuthority,
+    credentialKind: "trusted-launcher-channel",
+    launcherSha256,
+    actorRuntimeDigest,
+    launcherChannelProtocol,
+    launcherAttestationSha256,
+    launcherSessionId,
+    acquiredAt: new Date(acquiredAtMs).toISOString(),
+    heartbeatAt: new Date(heartbeatAtMs).toISOString(),
+    expiresAt: new Date(heartbeatAtMs + ttlMs).toISOString(),
+    ttlMs,
+  };
+  writeFileSync(
+    path.join(leasePath, "lease.json"),
+    `${JSON.stringify(record)}\n`,
+    { mode: 0o600 },
+  );
+  if (appendAcquireEvent) {
+    const eventsPath = automationControlPaths(stateRoot).events;
+    mkdirSync(path.dirname(eventsPath), { recursive: true, mode: 0o700 });
+    appendFileSync(
+      eventsPath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        eventId: `lease:${operationId}`,
+        type: "lease_acquired",
+        ts: record.acquiredAt,
+        actor,
+        leaseName: policy.leaseName,
+        data: {
+          expiresAt: record.expiresAt,
+          observerAuthority: record.observerAuthority,
+          providerAuthority: record.providerAuthority,
+          requestDigest: createHash("sha256")
+            .update(`trusted-launcher-request:${operationId}`)
+            .digest("hex"),
+          credentialKind: record.credentialKind,
+          launcherSha256,
+          actorRuntimeDigest,
+          launcherChannelProtocol,
+          launcherAttestationSha256,
+          launcherSessionId,
+        },
+      })}\n`,
+      { mode: 0o600 },
+    );
+  }
+  return { actor, leaseName: policy.leaseName, leaseToken: token, record };
+}
+
 function writeLegacyLease(
   stateRoot,
   actor,
@@ -552,11 +688,46 @@ function writeLegacyLease(
   writeFileSync(
     path.join(leasePath, "lease.json"),
     `${JSON.stringify(record)}\n`,
-    {
-      mode: 0o600,
-    },
+    { mode: 0o600 },
   );
   return { leasePath, policy, record };
+}
+
+function writePersistentActorLease(
+  stateRoot,
+  actor,
+  {
+    token = `${actor}-legacy-persistent-token`,
+    nowMs = Date.now(),
+    ttlMs = 60_000,
+  } = {},
+) {
+  const policy = AUTOMATION_ACTOR_POLICIES[actor];
+  assert.ok(policy, `missing actor policy for ${actor}`);
+  const leasePath = path.join(
+    automationControlPaths(stateRoot).leases,
+    `${policy.leaseName}.lease`,
+  );
+  mkdirSync(leasePath, { recursive: true, mode: 0o700 });
+  const record = {
+    schemaVersion: 1,
+    name: policy.leaseName,
+    owner: actor,
+    token,
+    observerAuthority: policy.observerAuthority,
+    providerAuthority: policy.providerAuthority,
+    credentialKind: "persistent-actor",
+    acquiredAt: new Date(nowMs).toISOString(),
+    heartbeatAt: new Date(nowMs).toISOString(),
+    expiresAt: new Date(nowMs + ttlMs).toISOString(),
+    ttlMs,
+  };
+  writeFileSync(
+    path.join(leasePath, "lease.json"),
+    `${JSON.stringify(record)}\n`,
+    { mode: 0o600 },
+  );
+  return { actor, leaseName: policy.leaseName, leaseToken: token, record };
 }
 
 function readControlEvents(stateRoot) {
@@ -649,7 +820,9 @@ function rewriteCompletedLeaseTransaction(
   const receiptBefore = readFileSync(transactionPaths.receipt);
   const transaction = JSON.parse(receiptBefore.toString("utf8"));
   mutate(transaction);
-  const rewrittenBytes = Buffer.from(`${JSON.stringify(transaction, null, 2)}\n`);
+  const rewrittenBytes = Buffer.from(
+    `${JSON.stringify(transaction, null, 2)}\n`,
+  );
   assert.equal(rewrittenBytes.length, receiptBefore.length);
 
   const completeWalPath = completedLeaseWalArchivePath(
@@ -1155,17 +1328,18 @@ function actorLease(
     assert.equal(acquired.lease.credentialKind, "owner-confirmation");
     return { actor, leaseName: policy.leaseName, leaseToken };
   }
-  const actorCredentialToken = writeActorCredential(stateRoot, actor);
   assert.equal(policy.maxLeaseLifetimeMs, 30 * 60_000);
-  acquireLease({
+  const operationId = nextLeaseOperationId(`actor-lease-${actor}`);
+  const acquired = acquireLeaseMutation({
     stateRoot,
     name: policy.leaseName,
     owner: actor,
+    operationId,
     ttlMs: policy.maxLeaseLifetimeMs,
     nowMs: leaseNowMs,
     token,
-    actorCredentialToken,
   });
+  assert.equal(acquired.lease.credentialKind, "trusted-launcher-channel");
   return { actor, leaseName: policy.leaseName, leaseToken: token };
 }
 
@@ -2078,7 +2252,7 @@ test("outcome recording guard helpers cannot escape their synchronous scope", ()
 
   withMutationLeaseAuthority(authority, (authorityContext) =>
     withOutcomeRecordingGuards({ stateRoot, authorityContext }, (helpers) => {
-        escaped = helpers;
+      escaped = helpers;
     }),
   );
 
@@ -2158,10 +2332,7 @@ test("lease authority brackets its record read with exactly two pending transact
   consumeLeaseArchiveHelperInvocationCountForTest();
   consumePendingLeaseTransactionInspectionCountForTest();
   assert.equal(
-    withMutationLeaseAuthority(
-      { stateRoot, ...authentication },
-      () => true,
-    ),
+    withMutationLeaseAuthority({ stateRoot, ...authentication }, () => true),
     true,
   );
   assert.equal(consumePendingLeaseTransactionInspectionCountForTest(), 2);
@@ -2190,12 +2361,9 @@ test("lease authority brackets its record read with exactly two pending transact
   consumePendingLeaseTransactionInspectionCountForTest();
   assert.throws(
     () =>
-      withMutationLeaseAuthority(
-        { stateRoot, ...authentication },
-        () => {
-          callbackCalled = true;
-        },
-      ),
+      withMutationLeaseAuthority({ stateRoot, ...authentication }, () => {
+        callbackCalled = true;
+      }),
     (error) =>
       error instanceof AutomationControlError &&
       error.code === "lease_transaction_pending",
@@ -2731,7 +2899,6 @@ test("release and replacement wait until the authorized mutation scope commits",
   const stateRoot = temporaryStateRoot();
   const actor = "freed-runtime-observer";
   const authentication = actorLease(stateRoot, actor);
-  const actorCredentialToken = writeActorCredential(stateRoot, actor);
   const authority = { stateRoot, ...authentication };
   const startedPath = path.join(stateRoot, "replacement-started");
   const completedPath = path.join(stateRoot, "replacement-completed");
@@ -2739,8 +2906,9 @@ test("release and replacement wait until the authorized mutation scope commits",
   const replacementToken = `replacement-${"y".repeat(32)}`;
   const releaseOperationId = "91".repeat(32);
   const acquireOperationId = "92".repeat(32);
-  const moduleUrl = new URL("./lib/automation-control.mjs", import.meta.url)
-    .href;
+  const moduleUrl = pathToFileURL(internalControlPath).href;
+  const maxLeaseLifetimeMs =
+    AUTOMATION_ACTOR_POLICIES[actor].maxLeaseLifetimeMs;
   let contender;
 
   withMutationLeaseAuthority(authority, (authorityContext) => {
@@ -2750,7 +2918,7 @@ test("release and replacement wait until the authorized mutation scope commits",
       [
         "--input-type=module",
         "--eval",
-        `import { writeFileSync } from "node:fs"; import { acquireLease, releaseLease } from ${JSON.stringify(moduleUrl)}; writeFileSync(${JSON.stringify(startedPath)}, "started", { mode: 0o600 }); releaseLease({ stateRoot: ${JSON.stringify(stateRoot)}, name: ${JSON.stringify(authentication.leaseName)}, operationId: ${JSON.stringify(releaseOperationId)}, token: ${JSON.stringify(authentication.leaseToken)}, nowMs: Date.now() }); acquireLease({ stateRoot: ${JSON.stringify(stateRoot)}, name: ${JSON.stringify(authentication.leaseName)}, owner: ${JSON.stringify(actor)}, operationId: ${JSON.stringify(acquireOperationId)}, ttlMs: 60000, nowMs: Date.now(), token: ${JSON.stringify(replacementToken)}, actorCredentialToken: ${JSON.stringify(actorCredentialToken)} }); writeFileSync(${JSON.stringify(completedPath)}, "completed", { mode: 0o600 });`,
+        `import { writeFileSync } from "node:fs"; import { acquireGeneralActorLeaseForTest, releaseLease } from ${JSON.stringify(moduleUrl)}; writeFileSync(${JSON.stringify(startedPath)}, "started", { mode: 0o600 }); releaseLease({ stateRoot: ${JSON.stringify(stateRoot)}, name: ${JSON.stringify(authentication.leaseName)}, operationId: ${JSON.stringify(releaseOperationId)}, token: ${JSON.stringify(authentication.leaseToken)}, nowMs: Date.now() }); acquireGeneralActorLeaseForTest({ stateRoot: ${JSON.stringify(stateRoot)}, name: ${JSON.stringify(authentication.leaseName)}, owner: ${JSON.stringify(actor)}, operationId: ${JSON.stringify(acquireOperationId)}, ttlMs: ${JSON.stringify(maxLeaseLifetimeMs)}, token: ${JSON.stringify(replacementToken)} }); writeFileSync(${JSON.stringify(completedPath)}, "completed", { mode: 0o600 });`,
       ],
       { stdio: "ignore" },
     );
@@ -3454,7 +3622,8 @@ test("stored lease timestamps must use the canonical ISO representation", () => 
           nowMs: nowMs + 1,
         }),
       (error) =>
-        error instanceof AutomationControlError && error.code === "invalid_state",
+        error instanceof AutomationControlError &&
+        error.code === "invalid_state",
       field,
     );
     assert.deepEqual(snapshotLeaseAuthorityState(stateRoot), before, field);
@@ -3840,7 +4009,9 @@ test("actor policies enforce lifecycle ownership and fresh-evidence reopening", 
         ...controller,
         toState: "triaged",
         details: {
-          evidenceWindowEnd: new Date(baseMs + 9 * 60_000 - 1_000).toISOString(),
+          evidenceWindowEnd: new Date(
+            baseMs + 9 * 60_000 - 1_000,
+          ).toISOString(),
         },
         nowMs: baseMs + 10 * 60_000,
       }),
@@ -4208,20 +4379,20 @@ test("installed legacy backfill requires the exact canonical installed identity"
           },
           (control) =>
             control.reserveCurrentTaskOutcome({
-            stateRoot,
-            taskId,
-            ...fixture.authentication,
-            outcome: "installed",
-            legacyTransitionEventId: fixture.legacyTransitionEventId,
-            expectedRevision: fixture.task.revision,
-            details: {
-              latestOutcome: {
-                outcome: "installed",
-                outcomeDigest,
-                ...suppliedIdentity,
+              stateRoot,
+              taskId,
+              ...fixture.authentication,
+              outcome: "installed",
+              legacyTransitionEventId: fixture.legacyTransitionEventId,
+              expectedRevision: fixture.task.revision,
+              details: {
+                latestOutcome: {
+                  outcome: "installed",
+                  outcomeDigest,
+                  ...suppliedIdentity,
+                },
               },
-            },
-            nowMs: nowMs + 100,
+              nowMs: nowMs + 100,
             }),
         ),
       (error) =>
@@ -4441,7 +4612,8 @@ test("legacy outcome backfill rejects inexact lifecycle history before mutation"
   );
   assert.ok(legacyTransition);
   assert.ok(
-    readTaskManifest({ stateRoot }).revision > legacyTransition.manifestRevision,
+    readTaskManifest({ stateRoot }).revision >
+      legacyTransition.manifestRevision,
   );
   const canonicalEventBytes = readFileSync(fixture.paths.events);
   const canonicalManifestBytes = readFileSync(fixture.paths.taskManifest);
@@ -4489,7 +4661,9 @@ test("legacy outcome backfill rejects inexact lifecycle history before mutation"
       name: "wrong physical ordering",
       mutate(events, legacyIndex) {
         const [legacy] = events.splice(legacyIndex, 1);
-        const firstTaskEvent = events.findIndex((event) => event.taskId === taskId);
+        const firstTaskEvent = events.findIndex(
+          (event) => event.taskId === taskId,
+        );
         events.splice(firstTaskEvent, 0, legacy);
       },
     },
@@ -4559,7 +4733,10 @@ test("legacy outcome backfill rejects inexact lifecycle history before mutation"
         canonicalManifestBytes,
       );
       assert.deepEqual(readFileSync(fixture.paths.events), tamperedEventBytes);
-      assert.deepEqual(readFileSync(fixture.paths.outcomes), canonicalOutcomeBytes);
+      assert.deepEqual(
+        readFileSync(fixture.paths.outcomes),
+        canonicalOutcomeBytes,
+      );
       assert.deepEqual(
         existsSync(fixture.paths.taskTransactions)
           ? readdirSync(fixture.paths.taskTransactions).sort()
@@ -4601,7 +4778,10 @@ test("legacy outcome backfill rejects inexact lifecycle history before mutation"
 });
 
 test("exact lifecycle history rejects physically preceding future acquisitions", async (t) => {
-  for (const credentialKind of ["persistent-actor", "owner-signed-capability"]) {
+  for (const credentialKind of [
+    "persistent-actor",
+    "owner-signed-capability",
+  ]) {
     await t.test(credentialKind, () => {
       const stateRoot = temporaryStateRoot();
       const nowMs = Date.now();
@@ -4661,11 +4841,9 @@ test("exact lifecycle history rejects physically preceding future acquisitions",
 test("exact lifecycle history rejects a missing physical prefix and misplaced legacy credential compatibility", () => {
   const stateRoot = temporaryStateRoot();
   const nowMs = Date.now();
-  const authentication = actorLease(
-    stateRoot,
-    "freed-stability-controller",
-    { nowMs },
-  );
+  const authentication = actorLease(stateRoot, "freed-stability-controller", {
+    nowMs,
+  });
   createTask({
     stateRoot,
     taskId: "history-prefix-first",
@@ -4694,7 +4872,8 @@ test("exact lifecycle history rejects a missing physical prefix and misplaced le
   ]);
   const missingPrefix = events.filter(
     (event) =>
-      !taskEventTypes.has(event.type) || event.taskId === "history-prefix-second",
+      !taskEventTypes.has(event.type) ||
+      event.taskId === "history-prefix-second",
   );
   const prefixInspection = inspectExactTaskLifecycleHistory(missingPrefix);
   assert.equal(prefixInspection.healthy, false);
@@ -4710,9 +4889,8 @@ test("exact lifecycle history rejects a missing physical prefix and misplaced le
   );
   assert.ok(creation);
   creation.data.authorizationProvenance.credentialKind = "actor-credential";
-  const compatibilityInspection = inspectExactTaskLifecycleHistory(
-    forgedCompatibility,
-  );
+  const compatibilityInspection =
+    inspectExactTaskLifecycleHistory(forgedCompatibility);
   assert.equal(compatibilityInspection.healthy, false);
   assert.match(compatibilityInspection.issues.join("\n"), /lifecycle creation/);
 });
@@ -4784,10 +4962,7 @@ test(
       taskEvents[0],
     ]);
     assert.equal(ambiguousAcquisition.healthy, false);
-    assert.match(
-      ambiguousAcquisition.issues.join("\n"),
-      /lifecycle creation/,
-    );
+    assert.match(ambiguousAcquisition.issues.join("\n"), /lifecycle creation/);
   },
 );
 
@@ -4834,7 +5009,10 @@ test("task lifecycle history owns behavioral classification and exact manifest p
   delete withoutBehavioral.find(
     (event) => event.type === "task_created" && event.taskId === taskId,
   ).data.behavioral;
-  assert.equal(inspectExactTaskLifecycleHistory(withoutBehavioral).healthy, false);
+  assert.equal(
+    inspectExactTaskLifecycleHistory(withoutBehavioral).healthy,
+    false,
+  );
 
   const eventFlip = structuredClone(events);
   eventFlip.find(
@@ -4870,7 +5048,10 @@ test("task lifecycle history owns behavioral classification and exact manifest p
     staleRevision,
   );
   assert.equal(revisionMismatch.healthy, false);
-  assert.match(revisionMismatch.issues.join("\n"), /does not match exact history revision/);
+  assert.match(
+    revisionMismatch.issues.join("\n"),
+    /does not match exact history revision/,
+  );
 
   const authorityDrift = structuredClone(manifest);
   authorityDrift.tasks[0].observerAuthority = "pr-only";
@@ -4950,7 +5131,8 @@ test("exact lifecycle history admits only the pinned legacy lease acquisition br
   assert.equal(invented.healthy, false);
   assert.match(invented.issues.join("\n"), /lifecycle creation/);
 
-  const currentIdentityWithoutRequestDigest = structuredClone(legacyAcquisition);
+  const currentIdentityWithoutRequestDigest =
+    structuredClone(legacyAcquisition);
   currentIdentityWithoutRequestDigest.eventId = `lease:${"a".repeat(64)}`;
   const unboundCurrent = inspectExactTaskLifecycleHistory([
     currentIdentityWithoutRequestDigest,
@@ -4962,11 +5144,7 @@ test("exact lifecycle history admits only the pinned legacy lease acquisition br
 
 test("the complete installed legacy control history is byte pinned and drift sensitive", () => {
   const fixtureBytes = readFileSync(
-    path.join(
-      __dirname,
-      "fixtures",
-      "legacy-control-event-history.jsonl",
-    ),
+    path.join(__dirname, "fixtures", "legacy-control-event-history.jsonl"),
   );
   assert.equal(
     createHash("sha256").update(fixtureBytes).digest("hex"),
@@ -4999,8 +5177,7 @@ test("the complete installed legacy control history is byte pinned and drift sen
 
   for (const creationIndex of [4, 11]) {
     const upgradedLegacy = structuredClone(events);
-    upgradedLegacy[creationIndex].data.behavioral =
-      creationIndex === 11;
+    upgradedLegacy[creationIndex].data.behavioral = creationIndex === 11;
     const inspection = inspectExactTaskLifecycleHistory(upgradedLegacy);
     assert.equal(inspection.healthy, false, creationIndex.toLocaleString());
     assert.match(inspection.issues.join("\n"), /lifecycle creation/);
@@ -5074,45 +5251,55 @@ test("current lease acquisition events require exact credential-specific structu
     assert.match(inspection.issues.join("\n"), /canonical lease control event/);
   });
 
-  await t.test("binds a general actor to its canonical credential path", () => {
-    const stateRoot = temporaryStateRoot();
-    const actor = "freed-runtime-observer";
-    actorLease(stateRoot, actor);
-    const acquisition = readEvents(stateRoot)[0];
-    assert.equal(
-      path.basename(acquisition.data.actorCredentialPath),
-      `${actor}.json`,
-    );
-    assert.equal(
-      path.basename(path.dirname(acquisition.data.actorCredentialPath)),
-      "actor-credentials",
-    );
-    assert.equal(
-      path.basename(path.dirname(path.dirname(acquisition.data.actorCredentialPath))),
-      "control",
-    );
-    assert.equal(path.isAbsolute(acquisition.data.actorCredentialPath), true);
-
-    for (const driftedPath of [
-      path.resolve(os.tmpdir(), `${actor}.json`),
-      path.resolve(
-        os.tmpdir(),
-        "control",
-        "actor-credentials",
-        "freed-release-verifier.json",
-      ),
-      path.join("control", "actor-credentials", `${actor}.json`),
-    ]) {
-      const drifted = structuredClone(acquisition);
-      drifted.data.actorCredentialPath = driftedPath;
-      const inspection = inspectExactTaskLifecycleHistory([drifted]);
-      assert.equal(inspection.healthy, false, driftedPath);
-      assert.match(
-        inspection.issues.join("\n"),
-        /canonical lease control event/,
+  await t.test(
+    "binds a general actor to exact trusted launcher provenance",
+    () => {
+      const stateRoot = temporaryStateRoot();
+      const actor = "freed-runtime-observer";
+      actorLease(stateRoot, actor);
+      const acquisition = readEvents(stateRoot)[0];
+      assert.equal(acquisition.data.credentialKind, "trusted-launcher-channel");
+      assert.equal(acquisition.data.launcherSha256, TEST_LAUNCHER_SHA256);
+      assert.equal(
+        acquisition.data.actorRuntimeDigest,
+        TEST_ACTOR_RUNTIME_DIGEST,
       );
-    }
-  });
+      assert.equal(
+        acquisition.data.launcherChannelProtocol,
+        ACTOR_LAUNCHER_CHANNEL_PROTOCOL,
+      );
+      assert.equal(
+        acquisition.data.launcherAttestationSha256,
+        TEST_LAUNCHER_ATTESTATION_SHA256,
+      );
+      assert.equal(
+        acquisition.data.launcherSessionId,
+        TEST_LAUNCHER_SESSION_ID,
+      );
+      assert.equal(
+        Object.hasOwn(acquisition.data, "actorCredentialPath"),
+        false,
+      );
+
+      for (const field of [
+        "launcherSha256",
+        "actorRuntimeDigest",
+        "launcherChannelProtocol",
+        "launcherAttestationSha256",
+        "launcherSessionId",
+      ]) {
+        const drifted = structuredClone(acquisition);
+        drifted.data[field] =
+          field === "launcherChannelProtocol" ? "retired-channel" : "invalid";
+        const inspection = inspectExactTaskLifecycleHistory([drifted]);
+        assert.equal(inspection.healthy, false, field);
+        assert.match(
+          inspection.issues.join("\n"),
+          /canonical lease control event/,
+        );
+      }
+    },
+  );
 
   await t.test("requires the exact publisher lease lifetime", () => {
     const stateRoot = temporaryStateRoot();
@@ -5130,9 +5317,7 @@ test("current lease acquisition events require exact credential-specific structu
       leaseName: policy.leaseName,
       data: {
         credentialKind: "signed-capability",
-        expiresAt: new Date(
-          Date.parse(acquiredAt) + 30 * 60_000,
-        ).toISOString(),
+        expiresAt: new Date(Date.parse(acquiredAt) + 30 * 60_000).toISOString(),
         observerAuthority: policy.observerAuthority,
         providerAuthority: policy.providerAuthority,
         requestDigest: "c".repeat(64),
@@ -5165,6 +5350,89 @@ test("current lease acquisition events require exact credential-specific structu
       );
     }
   });
+});
+
+test("trusted launcher response-loss recovery admits a fresh channel session", () => {
+  const stateRoot = temporaryStateRoot();
+  const actor = "freed-runtime-observer";
+  const name = AUTOMATION_ACTOR_POLICIES[actor].leaseName;
+  const operationId = nextLeaseOperationId("trusted-launcher-response-loss");
+  const token = `trusted-launcher-response-loss-${"x".repeat(48)}`;
+  const options = {
+    stateRoot,
+    name,
+    owner: actor,
+    operationId,
+    ttlMs: AUTOMATION_ACTOR_POLICIES[actor].maxLeaseLifetimeMs,
+    token,
+    launcherAttestationSha256: TEST_LAUNCHER_ATTESTATION_SHA256,
+    launcherSessionId: TEST_LAUNCHER_SESSION_ID,
+  };
+
+  assert.throws(
+    () =>
+      acquireLeaseLive({
+        ...options,
+        checkpoint: throwAtLeaseCheckpoint("lease-state-committed"),
+      }),
+    /lease checkpoint lease-state-committed/,
+  );
+
+  const paths = automationControlPaths(stateRoot);
+  const transactionPaths = leaseTransactionPaths(
+    stateRoot,
+    name,
+    "acquire",
+    operationId,
+  );
+  assert.equal(existsSync(transactionPaths.active), true);
+  const recovered = acquireLeaseLive({
+    ...options,
+    launcherAttestationSha256: "e".repeat(64),
+    launcherSessionId: "f".repeat(64),
+  });
+
+  assert.equal(recovered.recovered, true);
+  assert.equal(recovered.lease.token, token);
+  assert.equal(
+    recovered.lease.launcherAttestationSha256,
+    TEST_LAUNCHER_ATTESTATION_SHA256,
+  );
+  assert.equal(recovered.lease.launcherSessionId, TEST_LAUNCHER_SESSION_ID);
+  const persisted = inspectLease({
+    stateRoot,
+    name,
+    includeToken: true,
+  });
+  assert.equal(
+    persisted.launcherAttestationSha256,
+    TEST_LAUNCHER_ATTESTATION_SHA256,
+  );
+  assert.equal(persisted.launcherSessionId, TEST_LAUNCHER_SESSION_ID);
+  assert.equal(
+    readEvents(stateRoot).filter(
+      (event) => event.eventId === `lease:${operationId}`,
+    ).length,
+    1,
+  );
+  assert.equal(existsSync(transactionPaths.active), false);
+  assert.equal(existsSync(transactionPaths.receipt), true);
+
+  const receiptBeforeReplay = readFileSync(transactionPaths.receipt);
+  const eventsBeforeReplay = readFileSync(paths.events);
+  const replay = acquireLeaseLive({
+    ...options,
+    launcherAttestationSha256: "1".repeat(64),
+    launcherSessionId: "2".repeat(64),
+  });
+  assert.equal(replay.recovered, true);
+  assert.equal(
+    replay.lease.launcherAttestationSha256,
+    TEST_LAUNCHER_ATTESTATION_SHA256,
+  );
+  assert.equal(replay.lease.launcherSessionId, TEST_LAUNCHER_SESSION_ID);
+  assert.deepEqual(readFileSync(transactionPaths.receipt), receiptBeforeReplay);
+  assert.deepEqual(readFileSync(paths.events), eventsBeforeReplay);
 });
 
 test("owner-confirmation heartbeats cannot outlive their confirmation", () => {
@@ -5222,9 +5490,7 @@ test("owner-confirmation heartbeats cannot outlive their confirmation", () => {
   assert.equal(exact.healthy, true, exact.issues.join("\n"));
 
   const overrun = structuredClone(heartbeat);
-  overrun.data.expiresAt = new Date(
-    confirmationExpiresAtMs + 1,
-  ).toISOString();
+  overrun.data.expiresAt = new Date(confirmationExpiresAtMs + 1).toISOString();
   const drifted = inspectExactTaskLifecycleHistory([acquisition, overrun]);
   assert.equal(drifted.healthy, false);
   assert.match(
@@ -5240,11 +5506,7 @@ test("lease health rejects unrelated duplicate conflicting and malformed reserve
   assert.equal(inspectExactTaskLifecycleHistory(exact).healthy, true);
   assert.equal(inspectExactOutcomeControlHistory(exact).healthy, true);
 
-  for (const variant of [
-    "duplicate",
-    "conflicting",
-    "malformed-reserved",
-  ]) {
+  for (const variant of ["duplicate", "conflicting", "malformed-reserved"]) {
     await t.test(variant, () => {
       const events = [
         ...structuredClone(exact),
@@ -5269,10 +5531,7 @@ test("private batch selection partitions 100,000 names with one template and one
   );
   const partitioned = partitionPrivateBatchSelectionForTest(names);
   assert.equal(partitioned.selectedNameCount, 100_000);
-  assert.equal(
-    partitioned.requestBuildCount,
-    partitioned.chunkCount + 1,
-  );
+  assert.equal(partitioned.requestBuildCount, partitioned.chunkCount + 1);
   assert.ok(partitioned.chunkCount > 1);
   assert.ok(partitioned.maximumChunkSize <= 4_096);
 });
@@ -5321,43 +5580,53 @@ test("lease transaction history requires one complete private storage topology",
     assert.equal(inspection.pendingTransactionArtifactCount, 0);
   });
 
-  await t.test("legacy guards and writer lock preserve pre-cutover compatibility", () => {
-    const stateRoot = temporaryUncutoverStateRoot();
-    const paths = automationControlPaths(stateRoot);
-    const legacyGuard = path.join(paths.guards, "tasks.lock");
-    mkdirSync(legacyGuard, { recursive: true, mode: 0o700 });
-    writeFileSync(path.join(legacyGuard, "owner.json"), "{}\n", {
-      mode: 0o600,
-    });
-    writeFileSync(path.join(stateRoot, "outcomes.jsonl.writer-lock"), "{}\n", {
-      mode: 0o600,
-    });
-    const inspection = inspectLeaseTransactionEventHistory({
-      stateRoot,
-      events: [],
-    });
-    assert.equal(inspection.healthy, true, inspection.issues.join("\n"));
-  });
+  await t.test(
+    "legacy guards and writer lock preserve pre-cutover compatibility",
+    () => {
+      const stateRoot = temporaryUncutoverStateRoot();
+      const paths = automationControlPaths(stateRoot);
+      const legacyGuard = path.join(paths.guards, "tasks.lock");
+      mkdirSync(legacyGuard, { recursive: true, mode: 0o700 });
+      writeFileSync(path.join(legacyGuard, "owner.json"), "{}\n", {
+        mode: 0o600,
+      });
+      writeFileSync(
+        path.join(stateRoot, "outcomes.jsonl.writer-lock"),
+        "{}\n",
+        {
+          mode: 0o600,
+        },
+      );
+      const inspection = inspectLeaseTransactionEventHistory({
+        stateRoot,
+        events: [],
+      });
+      assert.equal(inspection.healthy, true, inspection.issues.join("\n"));
+    },
+  );
 
-  await t.test("invalid existing cutover evidence cannot use legacy absence", () => {
-    const stateRoot = temporaryUncutoverStateRoot();
-    const paths = automationControlPaths(stateRoot);
-    mkdirSync(paths.controlRoot, { recursive: true, mode: 0o700 });
-    writeFileSync(
-      path.join(paths.controlRoot, "kernel-guard-cutover.json"),
-      "{}\n",
-      { mode: 0o600 },
-    );
-    const inspection = inspectLeaseTransactionEventHistory({
-      stateRoot,
-      events: [],
-    });
-    assert.equal(inspection.healthy, false);
-    assert.match(
-      inspection.issues.join("\n"),
-      /missing beside invalid kernel guard cutover evidence/,
-    );
-  });
+  await t.test(
+    "invalid existing cutover evidence cannot use legacy absence",
+    () => {
+      const stateRoot = temporaryUncutoverStateRoot();
+      const paths = automationControlPaths(stateRoot);
+      mkdirSync(paths.controlRoot, { recursive: true, mode: 0o700 });
+      writeFileSync(
+        path.join(paths.controlRoot, "kernel-guard-cutover.json"),
+        "{}\n",
+        { mode: 0o600 },
+      );
+      const inspection = inspectLeaseTransactionEventHistory({
+        stateRoot,
+        events: [],
+      });
+      assert.equal(inspection.healthy, false);
+      assert.match(
+        inspection.issues.join("\n"),
+        /missing beside invalid kernel guard cutover evidence/,
+      );
+    },
+  );
 
   await t.test("transactional events cannot use legacy absence", () => {
     const stateRoot = temporaryUncutoverStateRoot();
@@ -5421,10 +5690,7 @@ test("lease transaction history requires one complete private storage topology",
       });
       assert.equal(inspection.healthy, false);
       assert.equal(inspection.pendingTransactionArtifactCount, 0);
-      assert.match(
-        inspection.issues.join("\n"),
-        /must initialize together/,
-      );
+      assert.match(inspection.issues.join("\n"), /must initialize together/);
     });
   }
 
@@ -5444,10 +5710,7 @@ test("lease transaction history requires one complete private storage topology",
         assert.equal(existsSync(roots.receipts), true);
         assert.equal(
           existsSync(
-            path.join(
-              roots[missingQuarantine],
-              ".lease-cleanup-quarantine",
-            ),
+            path.join(roots[missingQuarantine], ".lease-cleanup-quarantine"),
           ),
           false,
         );
@@ -5482,56 +5745,68 @@ test("lease transaction history requires one complete private storage topology",
 });
 
 test("lease transaction history converts storage probe failures into unhealthy results", async (t) => {
-  await t.test("existence probe cannot traverse a non-directory ancestor", () => {
-    const stateRoot = temporaryStateRoot();
-    const paths = automationControlPaths(stateRoot);
-    rmSync(paths.leases, { recursive: true });
-    writeFileSync(paths.leases, "not-a-directory\n", { mode: 0o600 });
-    const beforeInspection = snapshotLeaseAuthorityState(stateRoot);
-    let inspection;
+  await t.test(
+    "existence probe cannot traverse a non-directory ancestor",
+    () => {
+      const stateRoot = temporaryStateRoot();
+      const paths = automationControlPaths(stateRoot);
+      rmSync(paths.leases, { recursive: true });
+      writeFileSync(paths.leases, "not-a-directory\n", { mode: 0o600 });
+      const beforeInspection = snapshotLeaseAuthorityState(stateRoot);
+      let inspection;
 
-    assert.doesNotThrow(() => {
-      inspection = inspectLeaseTransactionEventHistory({
-        stateRoot,
-        events: [],
+      assert.doesNotThrow(() => {
+        inspection = inspectLeaseTransactionEventHistory({
+          stateRoot,
+          events: [],
+        });
       });
-    });
-    assert.equal(inspection.healthy, false);
-    assert.equal(inspection.retainedReceiptCount, 0);
-    assert.equal(inspection.pendingTransactionArtifactCount, 0);
-    assert.match(
-      inspection.issues.join("\n"),
-      /lease transaction history is unavailable|not a directory/i,
-    );
-    assert.deepEqual(snapshotLeaseAuthorityState(stateRoot), beforeInspection);
-  });
+      assert.equal(inspection.healthy, false);
+      assert.equal(inspection.retainedReceiptCount, 0);
+      assert.equal(inspection.pendingTransactionArtifactCount, 0);
+      assert.match(
+        inspection.issues.join("\n"),
+        /lease transaction history is unavailable|not a directory/i,
+      );
+      assert.deepEqual(
+        snapshotLeaseAuthorityState(stateRoot),
+        beforeInspection,
+      );
+    },
+  );
 
-  await t.test("storage root cannot escape through a symlinked ancestor", () => {
-    const stateRoot = temporaryStateRoot();
-    const paths = automationControlPaths(stateRoot);
-    const transactions = path.join(paths.leases, ".transactions");
-    const externalTransactions = temporaryUncutoverStateRoot();
-    chmodSync(externalTransactions, 0o700);
-    rmSync(transactions, { recursive: true });
-    symlinkSync(externalTransactions, transactions, "dir");
-    const beforeInspection = snapshotLeaseAuthorityState(stateRoot);
-    let inspection;
+  await t.test(
+    "storage root cannot escape through a symlinked ancestor",
+    () => {
+      const stateRoot = temporaryStateRoot();
+      const paths = automationControlPaths(stateRoot);
+      const transactions = path.join(paths.leases, ".transactions");
+      const externalTransactions = temporaryUncutoverStateRoot();
+      chmodSync(externalTransactions, 0o700);
+      rmSync(transactions, { recursive: true });
+      symlinkSync(externalTransactions, transactions, "dir");
+      const beforeInspection = snapshotLeaseAuthorityState(stateRoot);
+      let inspection;
 
-    assert.doesNotThrow(() => {
-      inspection = inspectLeaseTransactionEventHistory({
-        stateRoot,
-        events: [],
+      assert.doesNotThrow(() => {
+        inspection = inspectLeaseTransactionEventHistory({
+          stateRoot,
+          events: [],
+        });
       });
-    });
-    assert.equal(inspection.healthy, false);
-    assert.equal(inspection.retainedReceiptCount, 0);
-    assert.equal(inspection.pendingTransactionArtifactCount, 0);
-    assert.match(
-      inspection.issues.join("\n"),
-      /lease transaction history is unavailable|private directory|pinned/i,
-    );
-    assert.deepEqual(snapshotLeaseAuthorityState(stateRoot), beforeInspection);
-  });
+      assert.equal(inspection.healthy, false);
+      assert.equal(inspection.retainedReceiptCount, 0);
+      assert.equal(inspection.pendingTransactionArtifactCount, 0);
+      assert.match(
+        inspection.issues.join("\n"),
+        /lease transaction history is unavailable|private directory|pinned/i,
+      );
+      assert.deepEqual(
+        snapshotLeaseAuthorityState(stateRoot),
+        beforeInspection,
+      );
+    },
+  );
 });
 
 test("lease root inventory separates pinned legacy history from active transactions", async (t) => {
@@ -5743,9 +6018,7 @@ test("retained release receipts remain healthy and replayable after a later acqu
   const acquiredAtMs = Date.parse("2026-07-19T22:30:00Z");
   const firstToken = `release-reacquire-first-${"x".repeat(40)}`;
   const secondToken = `release-reacquire-second-${"x".repeat(40)}`;
-  const releaseOperationId = nextLeaseOperationId(
-    "release-reacquire-release",
-  );
+  const releaseOperationId = nextLeaseOperationId("release-reacquire-release");
 
   acquireLeaseMutation({
     stateRoot,
@@ -5827,10 +6100,9 @@ test("retained release receipts remain healthy and replayable after a later acqu
   );
   assert.deepEqual(snapshotLeaseAuthorityState(stateRoot), beforeReplay);
 
-  rmSync(
-    path.join(automationControlPaths(stateRoot).leases, `${name}.lease`),
-    { recursive: true },
-  );
+  rmSync(path.join(automationControlPaths(stateRoot).leases, `${name}.lease`), {
+    recursive: true,
+  });
   const deleted = inspectLeaseTransactionEventHistory({
     stateRoot,
     events: readEvents(stateRoot),
@@ -6055,12 +6327,8 @@ test("a transactional heartbeat after the pinned legacy acquire still binds priv
   });
   const paths = automationControlPaths(stateRoot);
   rmSync(
-    leaseTransactionPaths(
-      stateRoot,
-      name,
-      "acquire",
-      initialOperationId,
-    ).receipt,
+    leaseTransactionPaths(stateRoot, name, "acquire", initialOperationId)
+      .receipt,
   );
   const legacyAcquisition = pinnedLegacyRuntimeObserverTakeover();
   writeFileSync(paths.events, `${JSON.stringify(legacyAcquisition)}\n`, {
@@ -6149,7 +6417,10 @@ test("malformed canonical lease receipts return unhealthy without throwing", asy
         inspection.issues.join("\n"),
         /lease transaction receipt .* is invalid/,
       );
-      assert.deepEqual(snapshotLeaseAuthorityState(stateRoot), beforeInspection);
+      assert.deepEqual(
+        snapshotLeaseAuthorityState(stateRoot),
+        beforeInspection,
+      );
     });
   }
 });
@@ -6321,17 +6592,16 @@ test("receipt pruning keeps nonempty quarantine healthy and counts only canonica
   const heartbeatOperationIds = [];
   for (let index = 0; index < 10; index += 1) {
     if (index === 8) {
-      for (const [receiptIndex, operationId] of heartbeatOperationIds.entries()) {
+      for (const [
+        receiptIndex,
+        operationId,
+      ] of heartbeatOperationIds.entries()) {
         const reversedMtime = new Date(
           Date.parse("2026-07-19T23:30:00Z") - receiptIndex * 1_000,
         );
         utimesSync(
-          leaseTransactionPaths(
-            stateRoot,
-            name,
-            "heartbeat",
-            operationId,
-          ).receipt,
+          leaseTransactionPaths(stateRoot, name, "heartbeat", operationId)
+            .receipt,
           reversedMtime,
           reversedMtime,
         );
@@ -6368,12 +6638,8 @@ test("receipt pruning keeps nonempty quarantine healthy and counts only canonica
     assert.equal(
       canonicalReceiptEntries.includes(
         path.basename(
-          leaseTransactionPaths(
-            stateRoot,
-            name,
-            "heartbeat",
-            operationId,
-          ).receipt,
+          leaseTransactionPaths(stateRoot, name, "heartbeat", operationId)
+            .receipt,
         ),
       ),
       index >= 2,
@@ -6396,10 +6662,7 @@ test("receipt pruning keeps nonempty quarantine healthy and counts only canonica
     },
   });
   assert.equal(inspection.healthy, true, inspection.issues.join("\n"));
-  assert.equal(
-    inspection.retainedReceiptCount,
-    canonicalReceiptEntries.length,
-  );
+  assert.equal(inspection.retainedReceiptCount, canonicalReceiptEntries.length);
   assert.notEqual(
     inspection.retainedReceiptCount,
     canonicalReceiptEntries.length + quarantinedReceiptEntries.length,
@@ -6545,9 +6808,7 @@ test("lease transaction history detects a same-inode same-length terminal receip
   const receiptBefore = readFileSync(receiptPath);
   const identityBefore = lstatSync(receiptPath, { bigint: true });
   const originalExpiry = heartbeatEvent.data.expiresAt;
-  const driftedExpiry = new Date(
-    Date.parse(originalExpiry) + 1,
-  ).toISOString();
+  const driftedExpiry = new Date(Date.parse(originalExpiry) + 1).toISOString();
   const receiptText = receiptBefore.toString("utf8");
   const expiryOffset = receiptText.indexOf(originalExpiry);
   assert.ok(expiryOffset >= 0);
@@ -6671,10 +6932,7 @@ test("lease transaction history detects a same-inode same-length retained stagin
   assert.equal(checkpointCount, 1);
   assert.equal(inspection.healthy, false);
   assert.equal(inspection.pendingTransactionArtifactCount, 0);
-  assert.match(
-    inspection.issues.join("\n"),
-    /changed after inspection/,
-  );
+  assert.match(inspection.issues.join("\n"), /changed after inspection/);
   assert.deepEqual(snapshotLeaseAuthorityState(stateRoot), racedAuthorityState);
 });
 
@@ -6735,10 +6993,8 @@ test("receipt-only lease recovery is not continuous health evidence without its 
   assert.equal(existsSync(transactionPaths.before), false);
   assert.equal(existsSync(transactionPaths.after), false);
   assert.equal(
-    leaseCleanupQuarantines(
-      transactionPaths.active,
-      heartbeatOperationId,
-    ).length,
+    leaseCleanupQuarantines(transactionPaths.active, heartbeatOperationId)
+      .length,
     2,
   );
 
@@ -6777,9 +7033,7 @@ test("a digest-only completed receipt and WAL rewrite fails canonical request ad
     token,
     actorCredentialToken,
   });
-  const heartbeatOperationId = nextLeaseOperationId(
-    "receipt-digest-heartbeat",
-  );
+  const heartbeatOperationId = nextLeaseOperationId("receipt-digest-heartbeat");
   heartbeatLeaseMutation({
     stateRoot,
     name,
@@ -6812,10 +7066,7 @@ test("a digest-only completed receipt and WAL rewrite fails canonical request ad
   });
   assert.equal(inspection.healthy, false);
   assert.equal(inspection.pendingTransactionArtifactCount, 0);
-  assert.match(
-    inspection.issues.join("\n"),
-    /inexact canonical request/,
-  );
+  assert.match(inspection.issues.join("\n"), /inexact canonical request/);
   assert.deepEqual(snapshotLeaseAuthorityState(stateRoot), beforeInspection);
 });
 
@@ -7004,18 +7255,16 @@ test("completed takeover replay rejects a control event that contradicts the aud
     exactInspection.issues.join("\n"),
   );
   const firstAuditedTakeover = [structuredClone(exactEvents[1])];
-  const firstAuditedInspection = inspectExactTaskLifecycleHistory(
-    firstAuditedTakeover,
-  );
+  const firstAuditedInspection =
+    inspectExactTaskLifecycleHistory(firstAuditedTakeover);
   assert.equal(
     firstAuditedInspection.healthy,
     true,
     firstAuditedInspection.issues.join("\n"),
   );
   firstAuditedTakeover[0].data.previous.owner = "freed-runtime-observer";
-  const crossActorFirstInspection = inspectExactTaskLifecycleHistory(
-    firstAuditedTakeover,
-  );
+  const crossActorFirstInspection =
+    inspectExactTaskLifecycleHistory(firstAuditedTakeover);
   assert.equal(crossActorFirstInspection.healthy, false);
   assert.match(
     crossActorFirstInspection.issues.join("\n"),
@@ -7125,11 +7374,7 @@ test("historical publisher scope validation is path-independent and enforces bin
   const exact = readEvents(stateRoot);
   assert.deepEqual(
     exact.map((event) => event.type),
-    [
-      "lease_acquired",
-      "lease_scope_bound",
-      "lease_scope_binding_confirmed",
-    ],
+    ["lease_acquired", "lease_scope_bound", "lease_scope_binding_confirmed"],
   );
   assert.equal(inspectExactTaskLifecycleHistory(exact).healthy, true);
 
@@ -7155,7 +7400,10 @@ test("historical publisher scope validation is path-independent and enforces bin
 
   const repeatedBinding = structuredClone(exact);
   repeatedBinding[2].type = "lease_scope_bound";
-  invalidHistories.set("binding repeats after the head is bound", repeatedBinding);
+  invalidHistories.set(
+    "binding repeats after the head is bound",
+    repeatedBinding,
+  );
 
   const driftedConfirmation = structuredClone(exact);
   driftedConfirmation[2].data.scope.headSha = "c".repeat(40);
@@ -7209,9 +7457,7 @@ test("publisher receipts, retired authority, health, and exact replay survive wo
     scope,
   };
   assert.equal(acquireLeaseLive(acquireOptions).acquired, true);
-  const bindOperationId = nextLeaseOperationId(
-    "publisher-receipt-scope-bind",
-  );
+  const bindOperationId = nextLeaseOperationId("publisher-receipt-scope-bind");
   const headSha = "b".repeat(40);
   const bindOptions = {
     stateRoot,
@@ -7446,7 +7692,9 @@ test("every lease mutation and completed replay fails closed on unrelated invali
         );
         const actor = "freed-release-verifier";
         const name = AUTOMATION_ACTOR_POLICIES[actor].leaseName;
-        const operationId = nextLeaseOperationId("invalid-history-acquire-replay");
+        const operationId = nextLeaseOperationId(
+          "invalid-history-acquire-replay",
+        );
         const token = `invalid-history-acquire-replay-${"a".repeat(40)}`;
         const actorCredentialToken = writeActorCredential(stateRoot, actor);
         const options = {
@@ -7555,7 +7803,9 @@ test("every lease mutation and completed replay fails closed on unrelated invali
           "freed-release-verifier",
           "release-replay",
         );
-        const operationId = nextLeaseOperationId("invalid-history-release-replay");
+        const operationId = nextLeaseOperationId(
+          "invalid-history-release-replay",
+        );
         const options = {
           stateRoot,
           name: lease.name,
@@ -7673,10 +7923,7 @@ test("only the frozen actor-credential outcome bundle crosses the legacy history
         data: {
           behavioral: true,
           state: "observed",
-          authorizationProvenance: provenance(
-            controller,
-            controllerAcquiredAt,
-          ),
+          authorizationProvenance: provenance(controller, controllerAcquiredAt),
         },
       },
       ...[
@@ -7695,10 +7942,7 @@ test("only the frozen actor-credential outcome bundle crosses the legacy history
         data: {
           fromState,
           toState,
-          authorizationProvenance: provenance(
-            controller,
-            controllerAcquiredAt,
-          ),
+          authorizationProvenance: provenance(controller, controllerAcquiredAt),
         },
       })),
       policyEvent(
@@ -7747,59 +7991,65 @@ test("only the frozen actor-credential outcome bundle crosses the legacy history
     ledgerPath,
   });
   assert.equal(accepted.healthy, true, accepted.issues.join("\n"));
-  assert.deepEqual([...accepted.requiredPinnedLegacyOutcomeEventIds], [
-    outcomeEventId,
-  ]);
+  assert.deepEqual(
+    [...accepted.requiredPinnedLegacyOutcomeEventIds],
+    [outcomeEventId],
+  );
   assert.equal(accepted.outcomes.get(outcomeEventId)?.eventId, outcomeEventId);
 
-  await t.test("rejects arbitrary merged and installed events without provenance", () => {
-    const mergedHistory = buildHistory(ledgerPath);
-    const merged = structuredClone(mergedHistory.transition);
-    merged.eventId = "00000000-0000-4000-8000-000000000099";
-    delete merged.data.authorizationProvenance;
-    mergedHistory.events.splice(-2, 1, merged);
-    assert.equal(
-      inspectExactTaskLifecycleHistory(mergedHistory.events).healthy,
-      false,
-    );
+  await t.test(
+    "rejects arbitrary merged and installed events without provenance",
+    () => {
+      const mergedHistory = buildHistory(ledgerPath);
+      const merged = structuredClone(mergedHistory.transition);
+      merged.eventId = "00000000-0000-4000-8000-000000000099";
+      delete merged.data.authorizationProvenance;
+      mergedHistory.events.splice(-2, 1, merged);
+      assert.equal(
+        inspectExactTaskLifecycleHistory(mergedHistory.events).healthy,
+        false,
+      );
 
-    const installedHistory = buildHistory(ledgerPath);
-    installedHistory.events.pop();
-    installedHistory.events.push({
-      schemaVersion: 1,
-      eventId: "00000000-0000-4000-8000-000000000100",
-      type: "task_transitioned",
-      ts: "2026-07-18T08:00:21.000Z",
-      actor: "freed-nightly-runner",
-      taskId,
-      taskRevision: 7,
-      manifestRevision: 7,
-      observerAuthority: "merge-safe",
-      providerAuthority: "forbidden",
-      data: {
-        fromState: "merged",
-        toState: "installed",
-        installedAt: "2026-07-18T08:00:21.000Z",
-        installedBuild: "26.7.1800",
-        installedIdentity: {
-          version: "26.7.1800",
-          commitSha: "b".repeat(40),
-          channel: "dev",
-          artifactDigest: "c".repeat(64),
+      const installedHistory = buildHistory(ledgerPath);
+      installedHistory.events.pop();
+      installedHistory.events.push({
+        schemaVersion: 1,
+        eventId: "00000000-0000-4000-8000-000000000100",
+        type: "task_transitioned",
+        ts: "2026-07-18T08:00:21.000Z",
+        actor: "freed-nightly-runner",
+        taskId,
+        taskRevision: 7,
+        manifestRevision: 7,
+        observerAuthority: "merge-safe",
+        providerAuthority: "forbidden",
+        data: {
+          fromState: "merged",
+          toState: "installed",
+          installedAt: "2026-07-18T08:00:21.000Z",
+          installedBuild: "26.7.1800",
+          installedIdentity: {
+            version: "26.7.1800",
+            commitSha: "b".repeat(40),
+            channel: "dev",
+            artifactDigest: "c".repeat(64),
+          },
         },
-      },
-    });
-    assert.equal(
-      inspectExactTaskLifecycleHistory(installedHistory.events).healthy,
-      false,
-    );
-  });
+      });
+      assert.equal(
+        inspectExactTaskLifecycleHistory(installedHistory.events).healthy,
+        false,
+      );
+    },
+  );
 
   await t.test("rejects an actor-credential lookalike", () => {
     const lookalike = buildHistory(ledgerPath);
-    lookalike.events.at(-2).eventId =
-      "00000000-0000-4000-8000-000000000101";
-    assert.equal(inspectExactTaskLifecycleHistory(lookalike.events).healthy, false);
+    lookalike.events.at(-2).eventId = "00000000-0000-4000-8000-000000000101";
+    assert.equal(
+      inspectExactTaskLifecycleHistory(lookalike.events).healthy,
+      false,
+    );
   });
 
   for (const variant of ["missing", "duplicate", "drift", "nondeterministic"]) {
@@ -7965,9 +8215,7 @@ test("shared outcome history enforces exact records, evidence, ledger identity, 
     };
     return [
       leaseAcquisition(creator, leaseAcquiredAt),
-      ...(actor === creator
-        ? []
-        : [leaseAcquisition(actor, leaseAcquiredAt)]),
+      ...(actor === creator ? [] : [leaseAcquisition(actor, leaseAcquiredAt)]),
       creationEvent,
       transitionEvent,
       outcomeEvent,
@@ -7981,21 +8229,18 @@ test("shared outcome history enforces exact records, evidence, ledger identity, 
     },
     { actor: "freed-nightly-runner", outcome: "superseded" },
   ]) {
-    await t.test(
-      `${policyCase.actor} may record ${policyCase.outcome}`,
-      () => {
-        const events = canonicalOutcomeHistory({
-          ...policyCase,
-          evidence: { digest: "a".repeat(64) },
-        });
-        const inspection = inspectExactOutcomeControlHistory(events, {
-          ledgerPath,
-        });
-        assert.equal(inspection.healthy, true, inspection.issues.join("\n"));
-        assert.equal(inspection.outcomes.size, 1);
-        assert.equal(inspection.transitions.size, 1);
-      },
-    );
+    await t.test(`${policyCase.actor} may record ${policyCase.outcome}`, () => {
+      const events = canonicalOutcomeHistory({
+        ...policyCase,
+        evidence: { digest: "a".repeat(64) },
+      });
+      const inspection = inspectExactOutcomeControlHistory(events, {
+        ledgerPath,
+      });
+      assert.equal(inspection.healthy, true, inspection.issues.join("\n"));
+      assert.equal(inspection.outcomes.size, 1);
+      assert.equal(inspection.transitions.size, 1);
+    });
   }
 
   const heartbeatExtendedHistory = () => {
@@ -8186,7 +8431,9 @@ test("shared outcome history enforces exact records, evidence, ledger identity, 
 
   await t.test("rejects a sparse physical event slot", () => {
     const events = new Array(1);
-    const inspection = inspectExactOutcomeControlHistory(events, { ledgerPath });
+    const inspection = inspectExactOutcomeControlHistory(events, {
+      ledgerPath,
+    });
     assert.equal(inspection.healthy, false);
     assert.match(
       inspection.issues.join("\n"),
@@ -8709,13 +8956,15 @@ test("outcome finalization rejects inexact history without mutating the manifest
           (event) =>
             event.type === "lease_acquired" &&
             event.actor === transition.actor &&
-            event.leaseName === transition.data.authorizationProvenance.leaseName &&
+            event.leaseName ===
+              transition.data.authorizationProvenance.leaseName &&
             event.ts ===
               transition.data.authorizationProvenance.leaseAcquiredAt,
         );
         assert.ok(acquisition);
         acquisition.ts = futureTimestamp;
-        transition.data.authorizationProvenance.leaseAcquiredAt = futureTimestamp;
+        transition.data.authorizationProvenance.leaseAcquiredAt =
+          futureTimestamp;
       },
     },
     {
@@ -8802,7 +9051,10 @@ test("outcome finalization rejects inexact history without mutating the manifest
           error instanceof AutomationControlError &&
           error.code === "outcome_not_durable",
       );
-      assert.deepEqual(readFileSync(paths.taskManifest), canonicalManifestBytes);
+      assert.deepEqual(
+        readFileSync(paths.taskManifest),
+        canonicalManifestBytes,
+      );
       assert.deepEqual(readFileSync(paths.events), tamperedEventBytes);
       assert.deepEqual(readFileSync(paths.outcomes), tamperedLedgerBytes);
       assert.deepEqual(
@@ -8867,64 +9119,64 @@ test("legacy backfill finalization rejects a tampered reservation event ID", () 
       nowMs: nowMs + 100,
     },
     (control) => {
-    reservation = control.reserveCurrentTaskOutcome({
-      stateRoot,
-      taskId,
-      ...fixture.authentication,
-      outcome: "merged",
-      legacyTransitionEventId: fixture.legacyTransitionEventId,
-      expectedRevision: fixture.task.revision,
-      details: {
-        latestOutcome: {
-          outcome: "merged",
-          evidence,
-          outcomeDigest,
-          recordedAt: cleanEntry.ts,
+      reservation = control.reserveCurrentTaskOutcome({
+        stateRoot,
+        taskId,
+        ...fixture.authentication,
+        outcome: "merged",
+        legacyTransitionEventId: fixture.legacyTransitionEventId,
+        expectedRevision: fixture.task.revision,
+        details: {
+          latestOutcome: {
+            outcome: "merged",
+            evidence,
+            outcomeDigest,
+            recordedAt: cleanEntry.ts,
+          },
         },
-      },
-      nowMs: nowMs + 100,
-    });
-    controlEventId = outcomeRecordedEventId({
-      taskId,
-      taskRevision: reservation.task.revision,
-      outcomeDigest,
-      transitionEventId: reservation.event.eventId,
-    });
-    control.appendOutcomeControlEvent({
-      stateRoot,
-      taskId,
-      ...fixture.authentication,
-      eventId: controlEventId,
-      data: {
-        ledgerPath: fixture.paths.outcomes,
-        leaseName: fixture.authentication.leaseName,
-        id: cleanEntry.id,
+        nowMs: nowMs + 100,
+      });
+      controlEventId = outcomeRecordedEventId({
         taskId,
         taskRevision: reservation.task.revision,
-        taskState: "merged",
-        kind: cleanEntry.kind,
-        outcome: "merged",
         outcomeDigest,
         transitionEventId: reservation.event.eventId,
-        evidence,
-      },
-      nowMs: nowMs + 100,
-    });
-    appendFileSync(
-      fixture.paths.outcomes,
-      `${JSON.stringify({
-        ...cleanEntry,
-        authentication: {
-          actor: fixture.authentication.actor,
+      });
+      control.appendOutcomeControlEvent({
+        stateRoot,
+        taskId,
+        ...fixture.authentication,
+        eventId: controlEventId,
+        data: {
+          ledgerPath: fixture.paths.outcomes,
           leaseName: fixture.authentication.leaseName,
-          controlEventId,
-          transitionEventId: reservation.event.eventId,
-          outcomeDigest,
+          id: cleanEntry.id,
+          taskId,
           taskRevision: reservation.task.revision,
+          taskState: "merged",
+          kind: cleanEntry.kind,
+          outcome: "merged",
+          outcomeDigest,
+          transitionEventId: reservation.event.eventId,
+          evidence,
         },
-      })}\n`,
-      { mode: 0o600 },
-    );
+        nowMs: nowMs + 100,
+      });
+      appendFileSync(
+        fixture.paths.outcomes,
+        `${JSON.stringify({
+          ...cleanEntry,
+          authentication: {
+            actor: fixture.authentication.actor,
+            leaseName: fixture.authentication.leaseName,
+            controlEventId,
+            transitionEventId: reservation.event.eventId,
+            outcomeDigest,
+            taskRevision: reservation.task.revision,
+          },
+        })}\n`,
+        { mode: 0o600 },
+      );
     },
   );
 
@@ -8971,13 +9223,13 @@ test("legacy backfill finalization rejects a tampered reservation event ID", () 
         },
         (control) =>
           control.finalizeTaskOutcome({
-          stateRoot,
-          taskId,
-          ...fixture.authentication,
-          outcome: "merged",
-          outcomeDigest,
-          taskRevision: reservation.task.revision,
-          nowMs: nowMs + 101,
+            stateRoot,
+            taskId,
+            ...fixture.authentication,
+            outcome: "merged",
+            outcomeDigest,
+            taskRevision: reservation.task.revision,
+            nowMs: nowMs + 101,
           }),
       ),
     (error) =>
@@ -9314,7 +9566,7 @@ test("behavioral classification and the installed soak slot are immutable contro
         }),
       (error) =>
         error instanceof AutomationControlError &&
-      error.code === "reserved_event_type",
+        error.code === "reserved_event_type",
     );
   }
   for (const eventId of [
@@ -10014,49 +10266,44 @@ test("same-UID owner bootstrap files cannot authenticate governance", () => {
   );
 });
 
-test("non-owner lease acquisition requires the matching persistent actor credential", () => {
+test("general actor public acquisition always requires the trusted launcher", () => {
   const stateRoot = temporaryStateRoot();
   assert.throws(
     () =>
-      acquireLease({
+      acquireLeasePublic({
         stateRoot,
         name: "nightly-writer",
         owner: "freed-nightly-runner",
+        operationId: nextLeaseOperationId("public-actor-rejected"),
         ttlMs: 60_000,
+        token: `public-actor-rejected-${"x".repeat(32)}`,
       }),
     (error) =>
       error instanceof AutomationControlError &&
-      error.code === "actor_credential_required",
-  );
-
-  const actorCredentialToken = writeActorCredential(
-    stateRoot,
-    "freed-nightly-runner",
+      error.code === "actor_launcher_required",
   );
   assert.throws(
     () =>
-      acquireLease({
+      acquireLeasePublic({
         stateRoot,
         name: "nightly-writer",
         owner: "freed-nightly-runner",
+        operationId: nextLeaseOperationId("public-credential-rejected"),
         ttlMs: 60_000,
-        actorCredentialToken: "wrong-persistent-actor-secret-1234567890",
+        token: `public-credential-rejected-${"x".repeat(32)}`,
+        actorCredentialToken: "retired-persistent-actor-secret-1234567890",
       }),
     (error) =>
       error instanceof AutomationControlError &&
-      error.code === "actor_credential_mismatch",
+      error.code === "actor_launcher_required",
   );
-  const acquired = acquireLease({
-    stateRoot,
-    name: "nightly-writer",
-    owner: "freed-nightly-runner",
-    ttlMs: 60_000,
-    actorCredentialToken,
-  });
-  assert.equal(acquired.lease.credentialKind, "persistent-actor");
+  assert.equal(
+    existsSync(automationControlPaths(stateRoot).actorCredentials),
+    false,
+  );
 });
 
-test("general actor policies enforce a 30-minute absolute lease lifetime", () => {
+test("trusted launcher leases enforce a 30-minute absolute lifetime", () => {
   const maxLeaseLifetimeMs = 30 * 60_000;
   const nowMs = Date.parse("2026-07-10T14:30:00Z");
   const generalActors = Object.keys(AUTOMATION_ACTOR_POLICIES).filter(
@@ -10080,46 +10327,37 @@ test("general actor policies enforce a 30-minute absolute lease lifetime", () =>
   );
 
   for (const actor of generalActors) {
-    const stateRoot = temporaryStateRoot();
     const policy = AUTOMATION_ACTOR_POLICIES[actor];
-    const actorCredentialToken = writeActorCredential(stateRoot, actor);
     assert.equal(policy.maxLeaseLifetimeMs, maxLeaseLifetimeMs);
-
+    const invalidRoot = temporaryStateRoot();
+    writeTrustedLauncherLease(invalidRoot, actor, {
+      nowMs,
+      ttlMs: maxLeaseLifetimeMs + 1,
+      appendAcquireEvent: false,
+    });
     assert.throws(
-      () =>
-        acquireLease({
-          stateRoot,
-          name: policy.leaseName,
-          owner: actor,
-          ttlMs: maxLeaseLifetimeMs + 1,
-          nowMs,
-          token: `${actor}-overlong-token-caller-retained-1234567890`,
-          actorCredentialToken,
-        }),
+      () => inspectLease({ stateRoot: invalidRoot, name: policy.leaseName }),
       (error) =>
         error instanceof AutomationControlError &&
-        error.code === "lease_ttl_exceeded",
+        error.code === "invalid_state",
     );
 
-    const acquired = acquireLease({
-      stateRoot,
-      name: policy.leaseName,
-      owner: actor,
-      ttlMs: maxLeaseLifetimeMs,
+    const stateRoot = temporaryStateRoot();
+    const acquired = writeTrustedLauncherLease(stateRoot, actor, {
       nowMs,
       token: `${actor}-bounded-token-caller-retained-1234567890`,
-      actorCredentialToken,
+      ttlMs: maxLeaseLifetimeMs,
     });
-    assert.equal(acquired.lease.credentialKind, "persistent-actor");
+    assert.equal(acquired.record.credentialKind, "trusted-launcher-channel");
     assert.equal(
-      acquired.lease.expiresAt,
+      acquired.record.expiresAt,
       new Date(nowMs + maxLeaseLifetimeMs).toISOString(),
     );
 
     const heartbeat = heartbeatLease({
       stateRoot,
       name: policy.leaseName,
-      token: acquired.lease.token,
+      token: acquired.leaseToken,
       ttlMs: maxLeaseLifetimeMs,
       nowMs: nowMs + 20 * 60_000,
     });
@@ -10151,17 +10389,13 @@ test("owner lease lifetime cannot outlive its fixed limit", () => {
     nowMs,
     token: "owner-lifetime-lease-token",
     ownerTaskId: "owner-lifetime-task",
-    ownerIntentDigest: ownerIntent(
-      "task.authorize",
-      "owner-lifetime-task",
-      {
-        observerAuthority: "merge-safe",
-        providerAuthority: null,
-        reason: "Exercise the fixed owner lease lifetime.",
-        approvalReference: null,
-        expectedRevision: 1,
-      },
-    ),
+    ownerIntentDigest: ownerIntent("task.authorize", "owner-lifetime-task", {
+      observerAuthority: "merge-safe",
+      providerAuthority: null,
+      reason: "Exercise the fixed owner lease lifetime.",
+      approvalReference: null,
+      expectedRevision: 1,
+    }),
   });
   const heartbeat = heartbeatLease({
     stateRoot,
@@ -11285,7 +11519,7 @@ test("lease archive capacity counts retained lease directories and record bytes"
   );
   mkdirSync(retainedDirectory, { mode: 0o700 });
   const retainedRecord = path.join(retainedDirectory, "lease.json");
-  writeFileSync(retainedRecord, "{\"retained\":true}\n", { mode: 0o600 });
+  writeFileSync(retainedRecord, '{"retained":true}\n', { mode: 0o600 });
   const nowMs = Date.parse("2026-07-18T12:00:00.000Z");
   const old = new Date(nowMs - 4_000);
   utimesSync(retainedDirectory, old, old);
@@ -11297,7 +11531,7 @@ test("lease archive capacity counts retained lease directories and record bytes"
   assert.equal(inspection.count, 2);
   assert.equal(
     inspection.bytes,
-    Buffer.byteLength("{}\n") + Buffer.byteLength("{\"retained\":true}\n"),
+    Buffer.byteLength("{}\n") + Buffer.byteLength('{"retained":true}\n'),
   );
   assert.equal(inspection.oldestAgeMs, 4_000);
 });
@@ -13972,7 +14206,10 @@ test("fenced outcome repair recovers exact owner lease state published before it
       "acquire",
       operationId,
     );
-    assert.equal(JSON.parse(readFileSync(files.active, "utf8")).phase, "prepared");
+    assert.equal(
+      JSON.parse(readFileSync(files.active, "utf8")).phase,
+      "prepared",
+    );
     assert.equal(
       readControlEvents(fixture.stateRoot).some(
         (event) => event.eventId === `lease:${operationId}`,
@@ -14032,7 +14269,10 @@ test("fenced outcome repair recovers exact owner lease state published before it
       "heartbeat",
       operationId,
     );
-    assert.equal(JSON.parse(readFileSync(files.active, "utf8")).phase, "prepared");
+    assert.equal(
+      JSON.parse(readFileSync(files.active, "utf8")).phase,
+      "prepared",
+    );
     assert.equal(
       readControlEvents(fixture.stateRoot).some(
         (event) => event.eventId === `lease:${operationId}`,
@@ -14040,7 +14280,8 @@ test("fenced outcome repair recovers exact owner lease state published before it
       false,
     );
     assert.throws(
-      () => heartbeatLeaseLive({ ...options, token: `${options.token}-different` }),
+      () =>
+        heartbeatLeaseLive({ ...options, token: `${options.token}-different` }),
       (error) =>
         error instanceof AutomationControlError &&
         error.code === "lease_transaction_conflict",
@@ -14077,7 +14318,10 @@ test("fenced outcome repair recovers exact owner lease state published before it
       "release",
       operationId,
     );
-    assert.equal(JSON.parse(readFileSync(files.active, "utf8")).phase, "prepared");
+    assert.equal(
+      JSON.parse(readFileSync(files.active, "utf8")).phase,
+      "prepared",
+    );
     assert.equal(
       readControlEvents(fixture.stateRoot).some(
         (event) => event.eventId === `lease:${operationId}`,
@@ -14085,17 +14329,24 @@ test("fenced outcome repair recovers exact owner lease state published before it
       false,
     );
     assert.throws(
-      () => releaseLeaseMutation({ ...options, token: `${options.token}-different` }),
+      () =>
+        releaseLeaseMutation({
+          ...options,
+          token: `${options.token}-different`,
+        }),
       (error) =>
         error instanceof AutomationControlError &&
         error.code === "lease_transaction_conflict",
     );
     const recovered = releaseLeaseMutation(options);
     assert.equal(recovered.released, true);
-    assert.equal(inspectLease({
-      stateRoot: fixture.stateRoot,
-      name: fixture.owner.leaseName,
-    }), null);
+    assert.equal(
+      inspectLease({
+        stateRoot: fixture.stateRoot,
+        name: fixture.owner.leaseName,
+      }),
+      null,
+    );
     assert.equal(existsSync(files.active), false);
     assert.equal(existsSync(files.receipt), true);
     assert.equal(
@@ -14500,12 +14751,7 @@ test("active WAL recovery preflights every sibling before cleanup", () => {
     kind: "WAL",
     occurrence: 2,
   });
-  const paths = leaseTransactionPaths(
-    stateRoot,
-    name,
-    "acquire",
-    operationId,
-  );
+  const paths = leaseTransactionPaths(stateRoot, name, "acquire", operationId);
   const successorEntries = readdirSync(path.dirname(paths.active)).filter(
     (entry) =>
       entry.startsWith(".lease-atomic.") &&
@@ -15248,7 +15494,9 @@ test("completed actor acquisition receipt replay survives credential rotation", 
   const stateRoot = temporaryStateRoot();
   const actor = "freed-release-verifier";
   const name = AUTOMATION_ACTOR_POLICIES[actor].leaseName;
-  const operationId = nextLeaseOperationId("completed-actor-credential-rotation");
+  const operationId = nextLeaseOperationId(
+    "completed-actor-credential-rotation",
+  );
   const actorCredentialToken = writeActorCredential(stateRoot, actor);
   const options = {
     stateRoot,
@@ -15261,12 +15509,7 @@ test("completed actor acquisition receipt replay survives credential rotation", 
   };
   const acquired = acquireLeaseLive(options);
   assert.equal(acquired.acquired, true);
-  const files = leaseTransactionPaths(
-    stateRoot,
-    name,
-    "acquire",
-    operationId,
-  );
+  const files = leaseTransactionPaths(stateRoot, name, "acquire", operationId);
   assert.equal(existsSync(files.active), false);
   assert.equal(existsSync(files.receipt), true);
   writeActorCredential(
@@ -15308,7 +15551,10 @@ test("historical credential paths are lexical while prepared recovery rejects sy
       ownerCapabilityIntentDigest: confirmation.intentDigest,
     };
     assert.equal(acquireLeaseLive(options).acquired, true);
-    const replacement = path.join(stateRoot, "owner-confirmation-replacement.json");
+    const replacement = path.join(
+      stateRoot,
+      "owner-confirmation-replacement.json",
+    );
     writeFileSync(replacement, "{}\n", { mode: 0o600 });
     rmSync(confirmation.confirmationPath);
     symlinkSync(replacement, confirmation.confirmationPath);
@@ -15361,7 +15607,10 @@ test("historical credential paths are lexical while prepared recovery rejects sy
       operationId,
     );
     const transaction = JSON.parse(readFileSync(files.receipt, "utf8"));
-    const replacement = path.join(stateRoot, "publisher-capability-replacement.json");
+    const replacement = path.join(
+      stateRoot,
+      "publisher-capability-replacement.json",
+    );
     writeFileSync(replacement, "{}\n", { mode: 0o600 });
     symlinkSync(replacement, transaction.capability.sourcePath);
     rmSync(transaction.capability.consumedPath);
@@ -15654,10 +15903,7 @@ test("already-bound publisher head records and replays every durable phase", () 
       (event) => event.eventId === `lease:${operationId}`,
     );
     assert.equal(matchingEvents.length, 1);
-    assert.equal(
-      matchingEvents[0].type,
-      "lease_scope_binding_confirmed",
-    );
+    assert.equal(matchingEvents[0].type, "lease_scope_binding_confirmed");
 
     const beforeConflict = snapshotLeaseAuthorityState(stateRoot);
     assert.throws(
@@ -16506,7 +16752,11 @@ test("acquire recovery derives takeover claims from exact before staging", () =>
         /inconsistent staged state/.test(error.message),
       drift,
     );
-    assert.deepEqual(snapshotLeaseAuthorityState(stateRoot), driftedState, drift);
+    assert.deepEqual(
+      snapshotLeaseAuthorityState(stateRoot),
+      driftedState,
+      drift,
+    );
   }
 });
 
@@ -17244,10 +17494,11 @@ test("outcome ledger repair event preflight rejects conflicting and duplicate id
     conflictingTaskId,
     nowMs - 1_000,
   );
-  const conflictingParameters = outcomeLedgerRepairParametersForCurrentEventHistory(
-    conflictingRoot,
-    conflictingTaskId,
-  );
+  const conflictingParameters =
+    outcomeLedgerRepairParametersForCurrentEventHistory(
+      conflictingRoot,
+      conflictingTaskId,
+    );
   const conflictingOwner = actorLease(conflictingRoot, "freed-owner", {
     nowMs,
     ownerTaskId: conflictingTaskId,
@@ -17294,10 +17545,11 @@ test("outcome ledger repair event preflight rejects conflicting and duplicate id
   const duplicateRoot = temporaryStateRoot();
   const duplicateTaskId = "outcome-ledger-history-repair-duplicate";
   createOutcomeLedgerRepairTask(duplicateRoot, duplicateTaskId, nowMs - 1_000);
-  const duplicateParameters = outcomeLedgerRepairParametersForCurrentEventHistory(
-    duplicateRoot,
-    duplicateTaskId,
-  );
+  const duplicateParameters =
+    outcomeLedgerRepairParametersForCurrentEventHistory(
+      duplicateRoot,
+      duplicateTaskId,
+    );
   const duplicateOwner = actorLease(duplicateRoot, "freed-owner", {
     nowMs,
     ownerTaskId: duplicateTaskId,
@@ -17568,11 +17820,10 @@ test("concurrent CLI acquisition produces one lease owner", async () => {
   assert.equal(successes.length, 1);
   assert.equal(failures.length, 5);
   assert.ok(
-    failures.every(
-      (attempt) =>
-        ["guard_timeout", "lease_busy"].includes(
-          JSON.parse(attempt.stderr).error.code,
-        ),
+    failures.every((attempt) =>
+      ["guard_timeout", "lease_busy"].includes(
+        JSON.parse(attempt.stderr).error.code,
+      ),
     ),
     JSON.stringify(
       failures.map((attempt) => ({
@@ -17661,9 +17912,10 @@ test("production lease event publication rejects destination and parent swaps", 
           }),
         (error) =>
           error instanceof AutomationControlError &&
-          ["authority_generation_conflict", "lease_transaction_conflict"].includes(
-            error.code,
-          ),
+          [
+            "authority_generation_conflict",
+            "lease_transaction_conflict",
+          ].includes(error.code),
       );
 
       assert.equal(swapped, true);
@@ -17746,9 +17998,7 @@ test("production lease recovery rejects destination and parent swaps", async (t)
         stateRoot,
         name,
         owner: actor,
-        operationId: nextLeaseOperationId(
-          `recovery-event-${variant}-acquire`,
-        ),
+        operationId: nextLeaseOperationId(`recovery-event-${variant}-acquire`),
         ttlMs: 60_000,
         nowMs: startedAt,
         token,
@@ -17885,13 +18135,10 @@ test("production task manifest publication rejects destination and parent swaps"
         details: { behavioral: false },
       });
       const paths = automationControlPaths(stateRoot);
-      const admitted = readAutomationAuthorityFileSnapshot(
-        paths.taskManifest,
-        {
-          privateRoot: paths.controlRoot,
-          label: "Current task manifest",
-        },
-      );
+      const admitted = readAutomationAuthorityFileSnapshot(paths.taskManifest, {
+        privateRoot: paths.controlRoot,
+        label: "Current task manifest",
+      });
       const manifest = JSON.parse(admitted.bytes.toString("utf8"));
       manifest.updatedAt = new Date(Date.now() + 1).toISOString();
       const proposedBytes = Buffer.from(
@@ -17930,9 +18177,10 @@ test("production task manifest publication rejects destination and parent swaps"
           }),
         (error) =>
           error instanceof AutomationControlError &&
-          ["authority_generation_conflict", "lease_transaction_conflict"].includes(
-            error.code,
-          ),
+          [
+            "authority_generation_conflict",
+            "lease_transaction_conflict",
+          ].includes(error.code),
       );
 
       assert.equal(swapped, true);
@@ -17980,10 +18228,7 @@ test("writeJsonAtomic never repairs a drifted expected-snapshot parent", async (
       const parentBefore = lstatSync(paths.controlRoot, { bigint: true });
       const entriesBefore = readdirSync(paths.controlRoot).sort();
       const fileBefore = readFileSync(filePath);
-      const markerPath = path.join(
-        paths.controlRoot,
-        "foreign-parent-marker",
-      );
+      const markerPath = path.join(paths.controlRoot, "foreign-parent-marker");
       const markerBefore = existsSync(markerPath)
         ? readFileSync(markerPath)
         : null;
@@ -18002,9 +18247,10 @@ test("writeJsonAtomic never repairs a drifted expected-snapshot parent", async (
           ),
         (error) =>
           error instanceof AutomationControlError &&
-          ["authority_generation_conflict", "lease_transaction_conflict"].includes(
-            error.code,
-          ),
+          [
+            "authority_generation_conflict",
+            "lease_transaction_conflict",
+          ].includes(error.code),
       );
 
       const parentAfter = lstatSync(paths.controlRoot, { bigint: true });
@@ -18272,9 +18518,10 @@ test("post-exchange retry rejects a same-content foreign canonical generation", 
   );
   const successorStableDigest =
     automationAuthorityStableGenerationDigestForTest(filePath);
-  const proofEntries = readdirSync(paths.controlRoot).filter((name) =>
-    name.startsWith(stagePrefix) &&
-    /^[0-9a-f]{64}\.[0-9a-f]{64}\.tmp$/.test(name.slice(stagePrefix.length)),
+  const proofEntries = readdirSync(paths.controlRoot).filter(
+    (name) =>
+      name.startsWith(stagePrefix) &&
+      /^[0-9a-f]{64}\.[0-9a-f]{64}\.tmp$/.test(name.slice(stagePrefix.length)),
   );
   assert.deepEqual(proofEntries, [
     `${stagePrefix}${namespaceDigest}.${successorStableDigest}.tmp`,
@@ -18325,7 +18572,10 @@ test("create-only cross-process retry fails closed after consuming its inode wit
   const stateRoot = temporaryStateRoot();
   const paths = automationControlPaths(stateRoot);
   mkdirSync(paths.controlRoot, { recursive: true, mode: 0o700 });
-  const filePath = path.join(paths.controlRoot, "create-only-response-loss.json");
+  const filePath = path.join(
+    paths.controlRoot,
+    "create-only-response-loss.json",
+  );
   const proposedBytes = Buffer.from('{"generation":"created"}\n');
   const operationId = nextLeaseOperationId("create-only-response-loss");
   const missing = readAutomationAuthorityFileSnapshot(filePath, {
@@ -18594,9 +18844,7 @@ test("a ready control-event stage blocks a later lease before mutation", () => {
     eventId: "ready-stage-unpublished-event",
     ts: new Date(nowMs + 1).toISOString(),
   };
-  const predecessorBytes = Buffer.from(
-    `${JSON.stringify(predecessorEvent)}\n`,
-  );
+  const predecessorBytes = Buffer.from(`${JSON.stringify(predecessorEvent)}\n`);
   const proposedBytes = Buffer.concat([
     predecessorBytes,
     Buffer.from(`${JSON.stringify(stagedEvent)}\n`),
@@ -18707,14 +18955,8 @@ test("a foreign pending event stage cannot publish an exact current-operation pr
     privateRoot: paths.controlRoot,
     label: "Control event history",
   });
-  const credentialPath = path.join(
-    paths.actorCredentials,
-    `${actor}.json`,
-  );
-  const leaseStatePath = path.join(
-    paths.leases,
-    `${policy.leaseName}.lease`,
-  );
+  const credentialPath = path.join(paths.actorCredentials, `${actor}.json`);
+  const leaseStatePath = path.join(paths.leases, `${policy.leaseName}.lease`);
   const before = {
     walTemporary: snapshotFilesystemEntry(walTemporaryPath),
     credential: snapshotFilesystemEntry(credentialPath),
@@ -18891,14 +19133,8 @@ test("a prepared lease cannot adopt its predicted partial event stage before cre
     "acquire",
     operationId,
   );
-  const credentialPath = path.join(
-    paths.actorCredentials,
-    `${actor}.json`,
-  );
-  const leaseStatePath = path.join(
-    paths.leases,
-    `${policy.leaseName}.lease`,
-  );
+  const credentialPath = path.join(paths.actorCredentials, `${actor}.json`);
+  const leaseStatePath = path.join(paths.leases, `${policy.leaseName}.lease`);
   const checkpoints = [];
   let provisionalPath;
   let preparedBefore;
@@ -18944,10 +19180,7 @@ test("a prepared lease cannot adopt its predicted partial event stage before cre
           );
           writeFileSync(
             provisionalPath,
-            proposedBytes.subarray(
-              0,
-              Math.max(1, proposedBytes.length - 23),
-            ),
+            proposedBytes.subarray(0, Math.max(1, proposedBytes.length - 23)),
             { mode: 0o600 },
           );
           preparedBefore = {
@@ -18999,9 +19232,7 @@ test("a forged settled control-event stage is rejected before the next append", 
   const readyEntries = readdirSync(paths.controlRoot).filter(
     (entry) =>
       entry.startsWith(stagePrefix) &&
-      /^[0-9a-f]{64}\.[0-9a-f]{64}\.tmp$/.test(
-        entry.slice(stagePrefix.length),
-      ),
+      /^[0-9a-f]{64}\.[0-9a-f]{64}\.tmp$/.test(entry.slice(stagePrefix.length)),
   );
   assert.equal(readyEntries.length, 1);
   const readyStagePath = path.join(paths.controlRoot, readyEntries[0]);
@@ -19056,9 +19287,7 @@ test("a forged settled task-manifest stage is rejected before the next task muta
   const readyEntries = readdirSync(paths.controlRoot).filter(
     (entry) =>
       entry.startsWith(stagePrefix) &&
-      /^[0-9a-f]{64}\.[0-9a-f]{64}\.tmp$/.test(
-        entry.slice(stagePrefix.length),
-      ),
+      /^[0-9a-f]{64}\.[0-9a-f]{64}\.tmp$/.test(entry.slice(stagePrefix.length)),
   );
   assert.equal(readyEntries.length, 1);
   const readyStagePath = path.join(paths.controlRoot, readyEntries[0]);
@@ -19088,9 +19317,7 @@ test("same-operation lease recovery rewrites its partial provisional event stage
   const stateRoot = temporaryStateRoot();
   const actor = "freed-release-verifier";
   const authentication = actorLease(stateRoot, actor);
-  const operationId = nextLeaseOperationId(
-    "partial-provisional-lease-event",
-  );
+  const operationId = nextLeaseOperationId("partial-provisional-lease-event");
   const options = {
     stateRoot,
     name: authentication.leaseName,
@@ -19177,11 +19404,7 @@ test("same-operation task recovery rewrites its partial provisional manifest sta
   targetManifest.updatedAt = transitionAt;
   const leaseRecord = JSON.parse(
     readFileSync(
-      path.join(
-        paths.leases,
-        `${controller.leaseName}.lease`,
-        "lease.json",
-      ),
+      path.join(paths.leases, `${controller.leaseName}.lease`, "lease.json"),
       "utf8",
     ),
   );
@@ -19219,18 +19442,13 @@ test("same-operation task recovery rewrites its partial provisional manifest sta
     paths.taskTransactions,
     `${String(targetManifest.revision).padStart(12, "0")}-${transaction.transactionId}.json`,
   );
-  writeFileSync(
-    transactionPath,
-    `${JSON.stringify(transaction, null, 2)}\n`,
-    { mode: 0o600 },
-  );
-  const predecessor = readAutomationAuthorityFileSnapshot(
-    paths.taskManifest,
-    {
-      privateRoot: paths.controlRoot,
-      label: "Current task manifest",
-    },
-  );
+  writeFileSync(transactionPath, `${JSON.stringify(transaction, null, 2)}\n`, {
+    mode: 0o600,
+  });
+  const predecessor = readAutomationAuthorityFileSnapshot(paths.taskManifest, {
+    privateRoot: paths.controlRoot,
+    label: "Current task manifest",
+  });
   const proposedBytes = Buffer.from(
     `${JSON.stringify(targetManifest, null, 2)}\n`,
   );
@@ -19775,9 +19993,7 @@ test("random task pre-WAL authority temps are bounded and cannot wedge later mut
         paths.taskTransactions,
         ".authority-retirements",
       );
-      const retirementEntriesBefore = new Set(
-        readdirSync(retirementDirectory),
-      );
+      const retirementEntriesBefore = new Set(readdirSync(retirementDirectory));
       const targetManifest = structuredClone(current);
       const targetTask = targetManifest.tasks.find(
         (candidate) => candidate.taskId === taskId,
@@ -20039,7 +20255,9 @@ test("production task WAL cleanup preserves a swapped canonical generation", () 
     paths.taskTransactions,
     `${String(targetManifest.revision).padStart(12, "0")}-${transaction.transactionId}.json`,
   );
-  const originalBytes = Buffer.from(`${JSON.stringify(transaction, null, 2)}\n`);
+  const originalBytes = Buffer.from(
+    `${JSON.stringify(transaction, null, 2)}\n`,
+  );
   writeFileSync(transactionPath, originalBytes, { mode: 0o600 });
   const replacementBytes = Buffer.from('{"swapped":"task-wal"}\n');
   const savedPath = path.join(
@@ -20281,7 +20499,7 @@ test("the first control event may create history but record 100,001 is rejected 
     nowMs,
   });
   const paths = automationControlPaths(stateRoot);
-  const compactRecord = '{}\n';
+  const compactRecord = "{}\n";
   writeFileSync(
     paths.events,
     compactRecord.repeat(CONTROL_EVENT_HISTORY_MAX_RECORDS - 1),
@@ -20324,7 +20542,7 @@ test("automation planning result accessors run before terminal generation proof"
         { stateRoot, nowMs: Date.parse("2026-07-20T12:30:00.000Z") },
         () => ({
           get mutateDuringClone() {
-            writeFileSync(paths.outcomes, '{}\n', { mode: 0o600 });
+            writeFileSync(paths.outcomes, "{}\n", { mode: 0o600 });
             return true;
           },
         }),
@@ -20346,7 +20564,7 @@ test("automation planning directory-name cache invalidates an added private entr
         { stateRoot, nowMs: Date.parse("2026-07-20T12:35:00.000Z") },
         () => ({
           get mutateDirectoryDuringClone() {
-            writeFileSync(addedPath, '{}\n', { mode: 0o600 });
+            writeFileSync(addedPath, "{}\n", { mode: 0o600 });
             return true;
           },
         }),

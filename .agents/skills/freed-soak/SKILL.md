@@ -16,13 +16,13 @@ Observe one installed build under one declared scenario. Follow [docs/SOAK-AND-T
    complete `installed` to `soaking` before this workflow starts.
 2. Require the trusted host launcher to have acquired the canonical
    `release-verifier` lease. Use only its short-lived
-   `FREED_AUTOMATION_LEASE_TOKEN` for verdict mutations. Never request or
-   receive the persistent actor credential. The verifier cannot transition
-   `installed` to `soaking`. The control-plane lease is the verdict writer
-   boundary. The collector separately acquires the exclusive
-   `<pointer>.collector-lock`, rejects a live owner, recovers a stale owner, and
-   releases only its own token. Do not bypass that lock or let two behavioral
-   verification cycles share one active pointer.
+   `FREED_AUTOMATION_LEASE_TOKEN` for verdict mutations. Never bypass the
+   trusted launcher or claim a different actor, lease, or authority. The
+   verifier cannot transition `installed` to `soaking`. The control-plane lease
+   is the verdict writer boundary. The collector separately acquires the
+   exclusive `<pointer>.collector-lock`, rejects a live owner, recovers a stale
+   owner, and releases only its own token. Do not bypass that lock or let two
+   behavioral verification cycles share one active pointer.
 3. Verify the installed app's version, channel, git SHA, and app session from runtime-health event identity. Record the collector session, page load ID, renderer generation, relevant PIDs with process start times, host OS, RAM tier, provider cohort, and document-size bucket.
 4. Launch with `open -g /Applications/Freed.app` only when needed. Never steal focus for routine observation.
 5. Start the collector with an immutable comparison context:

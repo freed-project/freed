@@ -20,7 +20,6 @@ import { validateAutomationSpecs } from "./validate-automation-specs.mjs";
 import {
   ACTOR_LAUNCHER_RECORD_ROOT,
   ACTOR_RUNTIME_ROOT,
-  actorCredentialReadiness as sharedActorCredentialReadiness,
   actorLauncherReadiness as sharedActorLauncherReadiness,
   defaultLauncherAttestor as sharedDefaultLauncherAttestor,
   inspectRootOwnedExecutable as sharedInspectRootOwnedExecutable,
@@ -29,7 +28,6 @@ import {
 } from "./lib/automation-actor-readiness.mjs";
 
 export {
-  sharedActorCredentialReadiness as actorCredentialReadiness,
   sharedActorLauncherReadiness as actorLauncherReadiness,
   sharedInspectRootOwnedRuntimeFile as inspectRootOwnedRuntimeFile,
 };
@@ -715,10 +713,7 @@ function overlayIssues({ spec, saved, modelCatalog, codexHome }) {
       );
     }
   } else {
-    if (
-      saved.destination !== undefined &&
-      saved.destination !== "thread"
-    ) {
+    if (saved.destination !== undefined && saved.destination !== "thread") {
       issues.push(
         issue(
           "target-drift",
@@ -774,9 +769,7 @@ export function auditSavedAutomations({
       ? spec.promptPath
       : path.resolve(repoRoot, spec.promptPath);
     const expectedPrompt = normalizedText(readFileSync(promptPath, "utf8"));
-    const credential = sharedActorCredentialReadiness(stateRoot, spec.id);
     const launcher = sharedActorLauncherReadiness(stateRoot, spec.id, {
-      credential,
       leaseContract: spec.lease,
       launcherAttestor,
       launcherInspector,
@@ -842,14 +835,11 @@ export function auditSavedAutomations({
         issue("status-invalid", "saved status must be ACTIVE or PAUSED"),
       );
     }
-    if (status === "ACTIVE" && (!credential.ready || !launcher.ready)) {
-      const reasons = [credential, launcher]
-        .filter((readiness) => !readiness.ready)
-        .map((readiness) => `${readiness.reason} at ${readiness.path}`);
+    if (status === "ACTIVE" && !launcher.ready) {
       issues.push(
         issue(
           "active-without-trusted-handoff",
-          `ACTIVE actor must be paused because ${reasons.join("; ")}`,
+          `ACTIVE actor must be paused because ${launcher.reason} at ${launcher.path}`,
         ),
       );
     }
@@ -859,9 +849,8 @@ export function auditSavedAutomations({
       automationPath,
       installed: existsSync(automationPath),
       status: status || "PAUSED",
-      credential,
       launcher,
-      handoffReady: credential.ready && launcher.ready,
+      handoffReady: launcher.ready,
       issues,
     });
   }
@@ -888,11 +877,8 @@ export function formatHostAutomationAudit(result) {
         lines.push(`    ${item.code}: ${item.message}`);
       }
     } else if (!record.handoffReady) {
-      const reasons = [record.credential, record.launcher]
-        .filter((readiness) => !readiness.ready)
-        .map((readiness) => readiness.reason);
       lines.push(
-        `  [PAUSED] ${record.id}: saved contract matches; ${reasons.join("; ")}.`,
+        `  [PAUSED] ${record.id}: saved contract matches; ${record.launcher.reason}.`,
       );
     } else {
       lines.push(`  [ok] ${record.id} (${record.status})`);

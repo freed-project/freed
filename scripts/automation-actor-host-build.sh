@@ -88,13 +88,9 @@ if [[ "${DEVELOPER_DIR}" != /* || ! -d "${DEVELOPER_DIR}" ]]; then
 fi
 export DEVELOPER_DIR
 SWIFTC="$(/usr/bin/xcrun --sdk macosx --find swiftc)"
-if [[ "${SWIFTC}" != /* || ! -x "${SWIFTC}" ]]; then
-  echo "Error: xcrun did not resolve an absolute Swift compiler." >&2
-  exit 1
-fi
 SDK_PATH="$(/usr/bin/xcrun --sdk macosx --show-sdk-path)"
-if [[ "${SDK_PATH}" != /* || ! -d "${SDK_PATH}" ]]; then
-  echo "Error: xcrun did not resolve an absolute macOS SDK." >&2
+if [[ "${SWIFTC}" != /* || ! -x "${SWIFTC}" || "${SDK_PATH}" != /* || ! -d "${SDK_PATH}" ]]; then
+  echo "Error: xcrun did not resolve the Swift compiler and macOS SDK." >&2
   exit 1
 fi
 ARCHITECTURE="$(/usr/bin/uname -m)"
@@ -102,8 +98,8 @@ if [[ "${ARCHITECTURE}" != "arm64" && "${ARCHITECTURE}" != "x86_64" ]]; then
   echo "Error: the current architecture is unsupported." >&2
   exit 1
 fi
-DEPLOYMENT_TARGET="${ARCHITECTURE}-apple-macosx10.15"
 
+DEPLOYMENT_TARGET="${ARCHITECTURE}-apple-macosx10.15"
 HOST_PARENT="${HOST_OUTPUT%/*}"
 HOST_NAME="${HOST_OUTPUT##*/}"
 PROVISIONER_PARENT="${PROVISIONER_OUTPUT%/*}"
@@ -125,7 +121,6 @@ trap cleanup EXIT
   -target "${DEPLOYMENT_TARGET}" \
   "${HOST_SOURCE}" \
   -o "${HOST_TEMP}" \
-  -framework Security \
   -framework CryptoKit
 
 "${SWIFTC}" \

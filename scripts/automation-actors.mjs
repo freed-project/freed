@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -10,6 +10,7 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -24,9 +25,9 @@ import {
   ACTOR_LAUNCHER_RECORD_ROOT,
   ACTOR_RUNTIME_ROOT,
   LAUNCHER_ATTESTATION_TIMEOUT_MS,
-  actorCredentialReadiness,
   actorLauncherReadiness,
   defaultLauncherAttestor,
+  inspectRootOwnedRecord,
   readInstalledActorBinding,
   runtimeDigestForPins as sharedRuntimeDigestForPins,
   sha256File,
@@ -37,7 +38,6 @@ const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), "..");
 const DEFAULT_LAUNCHER_ROOT = ACTOR_LAUNCHER_RECORD_ROOT;
 const DEFAULT_RUNTIME_ROOT = ACTOR_RUNTIME_ROOT;
-const KEYCHAIN_SERVICE = "freed-automation-actor";
 const LAUNCHER_PURPOSE = ACTOR_LAUNCHER_PURPOSE;
 const LAUNCHER_HANDOFF = ACTOR_LAUNCHER_HANDOFF;
 const ATTESTATION_PROTOCOL = ACTOR_LAUNCHER_ATTESTATION_PROTOCOL;
@@ -53,6 +53,11 @@ const LAUNCHER_ACQUIRE_TIMEOUT_MS =
   NATIVE_LAUNCHER_LIFECYCLE_BUDGET_MS + 10_000;
 const CONTROL_LIFECYCLE_TIMEOUT_MS = 15_000;
 const PROVISIONER_ACTION_TIMEOUT_MS = 120_000;
+const LIFECYCLE_LOCK_STALE_MS = 30 * 1_000;
+const LIFECYCLE_LOCK_PROTOCOL = "freed-automation-actor-lifecycle-lock-v1";
+const LIFECYCLE_LOCK_DIRECTORY = "automation-actor-lifecycle-v2.lock";
+const LIFECYCLE_LOCK_RECORD = "owner.json";
+const MAX_LIFECYCLE_LOCK_RECORD_BYTES = 4 * 1_024;
 const RESERVED_ACTORS = new Set(["freed-owner", "freed-pr-publisher"]);
 
 export const AUTOMATION_ACTORS = Object.freeze({
@@ -92,7 +97,6 @@ function fail(code, message) {
 function usage() {
   return `Usage:
   node scripts/automation-actors.mjs provision (--actor <actor> | --all) [--state-root <path>]
-  node scripts/automation-actors.mjs rotate (--actor <actor> | --all) [--state-root <path>]
   node scripts/automation-actors.mjs revoke (--actor <actor> | --all) [--state-root <path>]
   node scripts/automation-actors.mjs verify (--actor <actor> | --all) [--state-root <path>]
   node scripts/automation-actors.mjs acquire --actor <actor> [--state-root <path>]
@@ -163,14 +167,9 @@ export function parseCommand(argv) {
   }
   const [action, ...rest] = argv;
   if (
-    ![
-      "provision",
-      "rotate",
-      "revoke",
-      "verify",
-      "acquire",
-      "accept-host",
-    ].includes(action)
+    !["provision", "revoke", "verify", "acquire", "accept-host"].includes(
+      action,
+    )
   ) {
     fail("invalid_action", `Unsupported action: ${String(action)}`);
   }
@@ -257,10 +256,7 @@ function runChecked(
       const bound = Number.isSafeInteger(timeoutMs)
         ? `${timeoutMs.toLocaleString()} ms`
         : "its configured time bound";
-      fail(
-        "command_timeout",
-        `${purpose} exceeded ${bound}.`,
-      );
+      fail("command_timeout", `${purpose} exceeded ${bound}.`);
     }
     const status = Number.isInteger(result.status)
       ? ` with status ${result.status.toLocaleString()}`
@@ -390,6 +386,373 @@ function canonicalStateRoot(
   }
 }
 
+function exactKeys(value, keys) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value).sort().join("\n") === [...keys].sort().join("\n")
+  );
+}
+
+function defaultProcessStartInspector(dependencies, pid) {
+  const result = normalizedRunResult(
+    dependencies.runner("/bin/ps", ["-p", String(pid), "-o", "lstart="], {
+      cwd: "/",
+      env: sanitizedEnvironment(dependencies.env),
+      timeoutMs: 5_000,
+      killSignal: "SIGKILL",
+      stdin: "ignore",
+    }),
+  );
+  const identity = result.stdout.trim();
+  if (
+    result.status === 0 &&
+    identity.length > 0 &&
+    Buffer.byteLength(identity, "utf8") <= 512
+  ) {
+    return { status: "live", identity };
+  }
+  if (!result.error && result.status === 1 && identity === "") {
+    return { status: "dead", identity: "" };
+  }
+  return { status: "unknown", identity: "" };
+}
+
+function ensureLifecycleControlRoot(dependencies, stateRoot) {
+  const controlRoot = path.join(stateRoot, "control");
+  if (lstatIfPresent(controlRoot) === null) {
+    try {
+      mkdirSync(controlRoot, { mode: 0o700 });
+      chmodSync(controlRoot, 0o700);
+    } catch (error) {
+      if (error?.code !== "EEXIST") {
+        fail(
+          "lifecycle_lock_unavailable",
+          "The automation actor lifecycle lock directory could not be created.",
+        );
+      }
+    }
+  }
+  try {
+    const stats = lstatSync(controlRoot);
+    if (
+      !stats.isDirectory() ||
+      stats.isSymbolicLink() ||
+      stats.uid !== dependencies.uid ||
+      (stats.mode & 0o077) !== 0 ||
+      realpathSync(controlRoot) !== path.resolve(controlRoot)
+    ) {
+      fail(
+        "lifecycle_lock_unavailable",
+        "The automation control directory is not private and owner-controlled.",
+      );
+    }
+  } catch (error) {
+    if (error instanceof AutomationActorsError) throw error;
+    fail(
+      "lifecycle_lock_unavailable",
+      "The automation control directory could not be inspected.",
+    );
+  }
+  return controlRoot;
+}
+
+function lifecycleLockPaths(stateRoot) {
+  const lockPath = path.join(stateRoot, "control", LIFECYCLE_LOCK_DIRECTORY);
+  return {
+    lockPath,
+    ownerPath: path.join(lockPath, LIFECYCLE_LOCK_RECORD),
+  };
+}
+
+function validLifecycleOwnerRecord(record, stateRoot) {
+  return (
+    exactKeys(record, [
+      "acquiredAtMs",
+      "nonce",
+      "operation",
+      "pid",
+      "processStartIdentity",
+      "protocol",
+      "schemaVersion",
+      "stateRoot",
+    ]) &&
+    record.schemaVersion === 1 &&
+    record.protocol === LIFECYCLE_LOCK_PROTOCOL &&
+    record.stateRoot === stateRoot &&
+    ["provision", "revoke", "accept-host"].includes(record.operation) &&
+    Number.isSafeInteger(record.pid) &&
+    record.pid > 0 &&
+    typeof record.processStartIdentity === "string" &&
+    record.processStartIdentity.length > 0 &&
+    Buffer.byteLength(record.processStartIdentity, "utf8") <= 512 &&
+    typeof record.nonce === "string" &&
+    /^[0-9a-f]{64}$/.test(record.nonce) &&
+    Number.isSafeInteger(record.acquiredAtMs) &&
+    record.acquiredAtMs >= 0
+  );
+}
+
+function inspectLifecycleLock(dependencies, stateRoot) {
+  const { lockPath, ownerPath } = lifecycleLockPaths(stateRoot);
+  const lockStats = lstatIfPresent(lockPath);
+  if (lockStats === null) {
+    return { state: "missing", lockPath, ownerPath };
+  }
+  if (
+    !lockStats.isDirectory() ||
+    lockStats.isSymbolicLink() ||
+    lockStats.uid !== dependencies.uid ||
+    (lockStats.mode & 0o777) !== 0o700
+  ) {
+    fail(
+      "invalid_lifecycle_lock",
+      "The automation actor lifecycle lock is not a private owner directory.",
+    );
+  }
+  const base = {
+    lockPath,
+    ownerPath,
+    directoryDevice: lockStats.dev,
+    directoryInode: lockStats.ino,
+    observedAtMs: lockStats.mtimeMs,
+  };
+  const ownerStats = lstatIfPresent(ownerPath);
+  if (ownerStats === null) {
+    return { ...base, state: "partial", ownerText: "" };
+  }
+  if (
+    !ownerStats.isFile() ||
+    ownerStats.isSymbolicLink() ||
+    ownerStats.uid !== dependencies.uid ||
+    (ownerStats.mode & 0o777) !== 0o600
+  ) {
+    fail(
+      "invalid_lifecycle_lock",
+      "The automation actor lifecycle owner record is not private and owner-controlled.",
+    );
+  }
+  const observedAtMs = Math.max(lockStats.mtimeMs, ownerStats.mtimeMs);
+  if (
+    ownerStats.size <= 0 ||
+    ownerStats.size > MAX_LIFECYCLE_LOCK_RECORD_BYTES
+  ) {
+    return { ...base, state: "partial", ownerText: "", observedAtMs };
+  }
+  let ownerText;
+  try {
+    ownerText = readFileSync(ownerPath, "utf8");
+  } catch {
+    return { ...base, state: "partial", ownerText: "", observedAtMs };
+  }
+  try {
+    const owner = JSON.parse(ownerText);
+    if (!validLifecycleOwnerRecord(owner, stateRoot)) {
+      return { ...base, state: "partial", ownerText, observedAtMs };
+    }
+    return {
+      ...base,
+      state: "owned",
+      owner,
+      ownerText,
+      observedAtMs: Math.max(observedAtMs, owner.acquiredAtMs),
+    };
+  } catch {
+    return { ...base, state: "partial", ownerText, observedAtMs };
+  }
+}
+
+function sameLifecycleLockObservation(left, right) {
+  return (
+    left.state === right.state &&
+    left.directoryDevice === right.directoryDevice &&
+    left.directoryInode === right.directoryInode &&
+    left.ownerText === right.ownerText
+  );
+}
+
+function lifecycleLockIsFresh(observation, nowMs, staleMs) {
+  return (
+    !Number.isFinite(observation.observedAtMs) ||
+    nowMs - observation.observedAtMs < staleMs
+  );
+}
+
+function recoverLifecycleLock(dependencies, stateRoot, observation) {
+  const current = inspectLifecycleLock(dependencies, stateRoot);
+  if (!sameLifecycleLockObservation(observation, current)) {
+    fail(
+      "lifecycle_busy",
+      "The automation actor lifecycle lock changed while recovery was being considered.",
+    );
+  }
+  rmSync(observation.lockPath, { recursive: true, force: false });
+}
+
+function acquireLifecycleLock(dependencies, stateRoot, operation) {
+  ensureLifecycleControlRoot(dependencies, stateRoot);
+  const pid = dependencies.pid;
+  const ownProcess = dependencies.processStartInspector(dependencies, pid);
+  if (
+    ownProcess.status !== "live" ||
+    typeof ownProcess.identity !== "string" ||
+    ownProcess.identity.length === 0
+  ) {
+    fail(
+      "lifecycle_identity_unavailable",
+      "The current process start identity could not be verified.",
+    );
+  }
+  const paths = lifecycleLockPaths(stateRoot);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    let created = false;
+    try {
+      mkdirSync(paths.lockPath, { mode: 0o700 });
+      created = true;
+      chmodSync(paths.lockPath, 0o700);
+      const nonce = dependencies.lifecycleLockTokenFactory();
+      if (typeof nonce !== "string" || !/^[0-9a-f]{64}$/.test(nonce)) {
+        fail(
+          "lifecycle_identity_unavailable",
+          "The lifecycle lock ownership token could not be created.",
+        );
+      }
+      const owner = {
+        schemaVersion: 1,
+        protocol: LIFECYCLE_LOCK_PROTOCOL,
+        stateRoot,
+        operation,
+        pid,
+        processStartIdentity: ownProcess.identity,
+        nonce,
+        acquiredAtMs: dependencies.nowMs(),
+      };
+      const temporaryOwnerPath = path.join(
+        paths.lockPath,
+        `.owner-${nonce}.tmp`,
+      );
+      writeFileSync(temporaryOwnerPath, `${JSON.stringify(owner)}\n`, {
+        flag: "wx",
+        mode: 0o600,
+      });
+      chmodSync(temporaryOwnerPath, 0o600);
+      renameSync(temporaryOwnerPath, paths.ownerPath);
+      const installed = inspectLifecycleLock(dependencies, stateRoot);
+      if (
+        installed.state !== "owned" ||
+        JSON.stringify(installed.owner) !== JSON.stringify(owner)
+      ) {
+        fail(
+          "lifecycle_lock_unavailable",
+          "The lifecycle lock owner record could not be verified.",
+        );
+      }
+      return { ...paths, owner, observation: installed };
+    } catch (error) {
+      if (created) {
+        try {
+          rmSync(paths.lockPath, { recursive: true, force: true });
+        } catch {
+          fail(
+            "lifecycle_lock_release_failed",
+            "A partial lifecycle lock could not be removed after acquisition failed.",
+          );
+        }
+      }
+      if (error instanceof AutomationActorsError) throw error;
+      if (error?.code !== "EEXIST") {
+        fail(
+          "lifecycle_lock_unavailable",
+          "The automation actor lifecycle lock could not be acquired.",
+        );
+      }
+    }
+
+    const observation = inspectLifecycleLock(dependencies, stateRoot);
+    if (observation.state === "missing") continue;
+    const nowMs = dependencies.nowMs();
+    if (observation.state === "owned") {
+      const process = dependencies.processStartInspector(
+        dependencies,
+        observation.owner.pid,
+      );
+      if (
+        process.status === "unknown" ||
+        (process.status === "live" &&
+          process.identity === observation.owner.processStartIdentity)
+      ) {
+        fail(
+          "lifecycle_busy",
+          "Another automation actor lifecycle operation still owns the lock.",
+        );
+      }
+    } else if (
+      lifecycleLockIsFresh(
+        observation,
+        nowMs,
+        dependencies.lifecycleLockStaleMs,
+      )
+    ) {
+      fail(
+        "lifecycle_busy",
+        "Another automation actor lifecycle operation owns a fresh partial lock.",
+      );
+    }
+    recoverLifecycleLock(dependencies, stateRoot, observation);
+  }
+  fail(
+    "lifecycle_busy",
+    "The automation actor lifecycle lock could not be acquired safely.",
+  );
+}
+
+function releaseLifecycleLock(dependencies, stateRoot, ownership) {
+  const current = inspectLifecycleLock(dependencies, stateRoot);
+  if (
+    current.state !== "owned" ||
+    current.directoryDevice !== ownership.observation.directoryDevice ||
+    current.directoryInode !== ownership.observation.directoryInode ||
+    JSON.stringify(current.owner) !== JSON.stringify(ownership.owner)
+  ) {
+    fail(
+      "lifecycle_lock_release_failed",
+      "The lifecycle lock no longer belongs to this exact operation.",
+    );
+  }
+  rmSync(ownership.lockPath, { recursive: true, force: false });
+  if (lstatIfPresent(ownership.lockPath) !== null) {
+    fail(
+      "lifecycle_lock_release_failed",
+      "The lifecycle lock still exists after exact-owner release.",
+    );
+  }
+}
+
+function withLifecycleLock(dependencies, stateRoot, operation, callback) {
+  const ownership = acquireLifecycleLock(dependencies, stateRoot, operation);
+  let result;
+  let primaryError;
+  try {
+    result = callback();
+  } catch (error) {
+    primaryError = error;
+  }
+  try {
+    releaseLifecycleLock(dependencies, stateRoot, ownership);
+  } catch (releaseError) {
+    if (primaryError) {
+      fail(
+        "lifecycle_lock_release_failed",
+        `The lifecycle operation failed, and its exact-owner lock could not be released: ${releaseError instanceof Error ? releaseError.message : String(releaseError)}`,
+      );
+    }
+    throw releaseError;
+  }
+  if (primaryError) throw primaryError;
+  return result;
+}
+
 export function runtimeDigestForPins(pins) {
   return sharedRuntimeDigestForPins(pins);
 }
@@ -504,9 +867,21 @@ function installFile(dependencies, source, destination, mode) {
   );
 }
 
+function sudoRemoveFile(dependencies, destination, purpose) {
+  runChecked(
+    dependencies,
+    "/usr/bin/sudo",
+    ["/bin/rm", "-f", "--", destination],
+    { purpose },
+  );
+}
+
 function describeRuntime(dependencies, pinnedNodePath) {
   const controlEntrySource = inspectRegularFile(
     path.join(dependencies.repoRoot, "scripts", "automation-control.mjs"),
+  );
+  const actorControlEntrySource = inspectRegularFile(
+    path.join(dependencies.repoRoot, "scripts", "automation-actor-control.mjs"),
   );
   const controlLibrarySource = inspectRegularFile(
     path.join(
@@ -514,6 +889,14 @@ function describeRuntime(dependencies, pinnedNodePath) {
       "scripts",
       "lib",
       "automation-control.mjs",
+    ),
+  );
+  const readinessLibrarySource = inspectRegularFile(
+    path.join(
+      dependencies.repoRoot,
+      "scripts",
+      "lib",
+      "automation-actor-readiness.mjs",
     ),
   );
   const kernelGuardContractSource = inspectRegularFile(
@@ -533,17 +916,14 @@ function describeRuntime(dependencies, pinnedNodePath) {
     ),
   );
   const leaseArchiveHelperSource = inspectRegularFile(
-    path.join(
-      dependencies.repoRoot,
-      "scripts",
-      "lib",
-      "lease-archive-move.py",
-    ),
+    path.join(dependencies.repoRoot, "scripts", "lib", "lease-archive-move.py"),
   );
   const pins = {
     nodeSha256: sha256File(pinnedNodePath),
     controlEntrySha256: sha256File(controlEntrySource),
+    actorControlEntrySha256: sha256File(actorControlEntrySource),
     controlLibrarySha256: sha256File(controlLibrarySource),
+    readinessLibrarySha256: sha256File(readinessLibrarySource),
     kernelGuardContractSha256: sha256File(kernelGuardContractSource),
     outcomeLedgerRepairContractSha256: sha256File(
       outcomeLedgerRepairContractSource,
@@ -559,8 +939,16 @@ function describeRuntime(dependencies, pinnedNodePath) {
     nodePath: path.join(directory, "node"),
     controlEntrySource,
     controlEntryPath: path.join(directory, "automation-control.mjs"),
+    actorControlEntrySource,
+    actorControlEntryPath: path.join(directory, "automation-actor-control.mjs"),
     controlLibrarySource,
     controlLibraryPath: path.join(directory, "lib", "automation-control.mjs"),
+    readinessLibrarySource,
+    readinessLibraryPath: path.join(
+      directory,
+      "lib",
+      "automation-actor-readiness.mjs",
+    ),
     kernelGuardContractSource,
     kernelGuardContractPath: path.join(
       directory,
@@ -596,8 +984,20 @@ function installRuntime(dependencies, runtime) {
   );
   installFile(
     dependencies,
+    runtime.actorControlEntrySource,
+    runtime.actorControlEntryPath,
+    "0444",
+  );
+  installFile(
+    dependencies,
     runtime.controlLibrarySource,
     runtime.controlLibraryPath,
+    "0444",
+  );
+  installFile(
+    dependencies,
+    runtime.readinessLibrarySource,
+    runtime.readinessLibraryPath,
     "0444",
   );
   installFile(
@@ -632,13 +1032,11 @@ export function bindingForActor({
     fail("invalid_actor", `Unsupported automation actor: ${actor}`);
   }
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     actor,
     purpose: LAUNCHER_PURPOSE,
     handoff: LAUNCHER_HANDOFF,
     attestationProtocol: ATTESTATION_PROTOCOL,
-    keychainService: KEYCHAIN_SERVICE,
-    keychainAccount: actor,
     stateRoot,
     leaseName: contract.leaseName,
     maxLeaseLifetimeMs: MAX_LEASE_LIFETIME_MS,
@@ -648,12 +1046,15 @@ export function bindingForActor({
     nodeSha256: runtime.nodeSha256,
     controlEntryPath: runtime.controlEntryPath,
     controlEntrySha256: runtime.controlEntrySha256,
+    actorControlEntryPath: runtime.actorControlEntryPath,
+    actorControlEntrySha256: runtime.actorControlEntrySha256,
     controlLibraryPath: runtime.controlLibraryPath,
     controlLibrarySha256: runtime.controlLibrarySha256,
+    readinessLibraryPath: runtime.readinessLibraryPath,
+    readinessLibrarySha256: runtime.readinessLibrarySha256,
     kernelGuardContractPath: runtime.kernelGuardContractPath,
     kernelGuardContractSha256: runtime.kernelGuardContractSha256,
-    outcomeLedgerRepairContractPath:
-      runtime.outcomeLedgerRepairContractPath,
+    outcomeLedgerRepairContractPath: runtime.outcomeLedgerRepairContractPath,
     outcomeLedgerRepairContractSha256:
       runtime.outcomeLedgerRepairContractSha256,
     leaseArchiveHelperPath: runtime.leaseArchiveHelperPath,
@@ -690,23 +1091,241 @@ function installActorPublicMaterial(
   return { binding, bindingPath };
 }
 
-function invokeProvisioner(
+function bindingPathForActor(dependencies, actor) {
+  return path.join(dependencies.launcherRoot, `${actor}.json`);
+}
+
+function captureBindingForRollback(dependencies, actor, privateDirectory) {
+  const bindingPath = bindingPathForActor(dependencies, actor);
+  if (lstatIfPresent(bindingPath) === null) {
+    return { actor, bindingPath, snapshotPath: null };
+  }
+  const inspection = inspectRootOwnedRecord(bindingPath, {
+    recordRoot: dependencies.launcherRoot,
+    requiredUid: dependencies.trustedUid,
+  });
+  if (!inspection.ready) {
+    fail(
+      "invalid_binding",
+      `The existing ${actor} binding cannot be preserved: ${inspection.reason}`,
+    );
+  }
+  const snapshotPath = path.join(privateDirectory, `${actor}.previous.json`);
+  writeFileSync(snapshotPath, readFileSync(bindingPath), { mode: 0o600 });
+  return { actor, bindingPath, snapshotPath };
+}
+
+function existingBindingSchemaVersion(
   dependencies,
-  provisionerPath,
-  action,
+  actor,
+  stateRoot,
+  rollback,
+) {
+  if (rollback.snapshotPath === null) return null;
+  let record;
+  try {
+    record = JSON.parse(readFileSync(rollback.snapshotPath, "utf8"));
+  } catch {
+    fail("invalid_binding", `The existing ${actor} binding is not valid JSON.`);
+  }
+  if (
+    record === null ||
+    typeof record !== "object" ||
+    Array.isArray(record) ||
+    !Number.isSafeInteger(record.schemaVersion)
+  ) {
+    fail(
+      "invalid_binding",
+      `The existing ${actor} binding has no supported schema version.`,
+    );
+  }
+  if (record.schemaVersion === 1) return 1;
+  if (record.schemaVersion !== 4) {
+    fail(
+      "invalid_binding",
+      `The existing ${actor} binding schema is unsupported.`,
+    );
+  }
+  const validation = validateActorBindingRecord(record, {
+    actor,
+    stateRoot,
+    leaseContract: {
+      name: AUTOMATION_ACTORS[actor].leaseName,
+      maxLifetimeMs: MAX_LEASE_LIFETIME_MS,
+    },
+    launcherRoot: dependencies.launcherRoot,
+    runtimeRoot: dependencies.runtimeRoot,
+    requiredUid: dependencies.trustedUid,
+  });
+  if (!validation.ready) {
+    fail(
+      "invalid_binding",
+      `The existing ${actor} binding cannot be replaced: ${validation.reason}`,
+    );
+  }
+  return 4;
+}
+
+function revokeLegacyActorCredential(
+  dependencies,
+  provisionerOutput,
   actor,
   stateRoot,
 ) {
   runChecked(
     dependencies,
-    provisionerPath,
-    [action, "--actor", actor, "--state-root", stateRoot],
+    provisionerOutput,
+    ["revoke", "--actor", actor, "--state-root", stateRoot],
     {
-      purpose: `Automation actor ${actor} ${action}`,
+      cwd: "/",
+      purpose: `Legacy automation actor ${actor} credential migration`,
       timeoutMs: dependencies.provisionerActionTimeoutMs,
       stdin: "ignore",
     },
   );
+}
+
+function restoreBinding(dependencies, rollback) {
+  if (rollback.snapshotPath === null) {
+    sudoRemoveFile(
+      dependencies,
+      rollback.bindingPath,
+      `Automation actor ${rollback.actor} binding rollback`,
+    );
+    return;
+  }
+  installFile(
+    dependencies,
+    rollback.snapshotPath,
+    rollback.bindingPath,
+    "0444",
+  );
+}
+
+function rollbackBindings(dependencies, records) {
+  const failures = [];
+  for (const record of [...records].reverse()) {
+    try {
+      restoreBinding(dependencies, record);
+    } catch {
+      failures.push(record.actor);
+    }
+  }
+  return failures;
+}
+
+function staleActorRecordPath(stateRoot, actor) {
+  return path.join(stateRoot, "control", "actor-credentials", `${actor}.json`);
+}
+
+function lstatIfPresent(filePath) {
+  try {
+    return lstatSync(filePath);
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function captureStaleActorRecord(
+  dependencies,
+  stateRoot,
+  actor,
+  privateDirectory,
+) {
+  const controlRoot = path.join(stateRoot, "control");
+  const recordRoot = path.join(controlRoot, "actor-credentials");
+  for (const directory of [controlRoot, recordRoot]) {
+    const stats = lstatIfPresent(directory);
+    if (stats === null) {
+      return {
+        actor,
+        recordPath: staleActorRecordPath(stateRoot, actor),
+        snapshotPath: null,
+        mode: null,
+      };
+    }
+    if (
+      !stats.isDirectory() ||
+      stats.isSymbolicLink() ||
+      stats.uid !== dependencies.uid ||
+      (stats.mode & 0o077) !== 0
+    ) {
+      fail(
+        "invalid_stale_actor_record_path",
+        "The obsolete actor record directory must be private, canonical, and owner-controlled.",
+      );
+    }
+  }
+  const recordPath = staleActorRecordPath(stateRoot, actor);
+  const stats = lstatIfPresent(recordPath);
+  if (stats === null) {
+    return { actor, recordPath, snapshotPath: null, mode: null };
+  }
+  if (
+    !stats.isFile() ||
+    stats.isSymbolicLink() ||
+    stats.uid !== dependencies.uid ||
+    (stats.mode & 0o077) !== 0 ||
+    stats.size > MAX_LAUNCHER_HANDOFF_BYTES
+  ) {
+    fail(
+      "invalid_stale_actor_record_path",
+      `The obsolete ${actor} record is not an owner-controlled file.`,
+    );
+  }
+  const snapshotPath = path.join(privateDirectory, `${actor}.obsolete.json`);
+  writeFileSync(snapshotPath, readFileSync(recordPath), { mode: 0o600 });
+  return {
+    actor,
+    recordPath,
+    snapshotPath,
+    mode: stats.mode & 0o777,
+  };
+}
+
+function removeStaleActorRecord(record) {
+  if (record.snapshotPath === null) return false;
+  const stats = lstatIfPresent(record.recordPath);
+  if (
+    stats === null ||
+    !stats.isFile() ||
+    stats.isSymbolicLink() ||
+    stats.size > MAX_LAUNCHER_HANDOFF_BYTES ||
+    !readFileSync(record.recordPath).equals(readFileSync(record.snapshotPath))
+  ) {
+    fail(
+      "stale_actor_record_changed",
+      `The obsolete ${record.actor} record changed during the operation.`,
+    );
+  }
+  rmSync(record.recordPath, { force: true });
+  if (lstatIfPresent(record.recordPath) !== null) {
+    fail(
+      "stale_actor_record_removal_failed",
+      `The obsolete ${record.actor} record still exists after removal.`,
+    );
+  }
+  return true;
+}
+
+function restoreStaleActorRecords(records) {
+  const failures = [];
+  for (const record of [...records].reverse()) {
+    if (record.snapshotPath === null) continue;
+    try {
+      if (lstatIfPresent(record.recordPath) !== null) {
+        throw new Error("record path is occupied");
+      }
+      writeFileSync(record.recordPath, readFileSync(record.snapshotPath), {
+        mode: record.mode,
+      });
+      chmodSync(record.recordPath, record.mode);
+    } catch {
+      failures.push(record.actor);
+    }
+  }
+  return failures;
 }
 
 function provisionActors(command, dependencies, stateRoot) {
@@ -717,11 +1336,37 @@ function provisionActors(command, dependencies, stateRoot) {
 
   return withPrivateTempDirectory(dependencies, (privateDirectory) => {
     const artifacts = buildHostArtifacts(dependencies, privateDirectory);
-    installRuntime(dependencies, runtime);
     const records = [];
-    const provisionedActors = [];
+    const rollbackRecords = [];
+    const migratedLegacyActors = new Set();
+    const staleRecords = actors.map((actor) =>
+      captureStaleActorRecord(dependencies, stateRoot, actor, privateDirectory),
+    );
+    installRuntime(dependencies, runtime);
+    const removedStaleRecords = [];
     try {
       for (const actor of actors) {
+        const rollback = captureBindingForRollback(
+          dependencies,
+          actor,
+          privateDirectory,
+        );
+        rollbackRecords.push(rollback);
+        const priorSchemaVersion = existingBindingSchemaVersion(
+          dependencies,
+          actor,
+          stateRoot,
+          rollback,
+        );
+        if (priorSchemaVersion === 1) {
+          revokeLegacyActorCredential(
+            dependencies,
+            artifacts.provisionerOutput,
+            actor,
+            stateRoot,
+          );
+          migratedLegacyActors.add(actor);
+        }
         const installed = installActorPublicMaterial(dependencies, {
           actor,
           stateRoot,
@@ -729,39 +1374,47 @@ function provisionActors(command, dependencies, stateRoot) {
           runtime,
           privateDirectory,
         });
-        invokeProvisioner(
-          dependencies,
-          artifacts.provisionerOutput,
-          "provision",
-          actor,
-          stateRoot,
-        );
-        provisionedActors.push(actor);
         records.push({
           actor,
           leaseName: AUTOMATION_ACTORS[actor].leaseName,
           bindingPath: installed.bindingPath,
+          replacedExistingBinding: rollback.snapshotPath !== null,
+          accepted: false,
+          staleActorRecordRemoved: false,
+          legacyCredentialRevoked: priorSchemaVersion === 1,
         });
       }
-    } catch (error) {
-      const rollbackFailures = [];
-      for (const actor of [...provisionedActors].reverse()) {
-        try {
-          invokeProvisioner(
-            dependencies,
-            artifacts.provisionerOutput,
-            "revoke",
-            actor,
-            stateRoot,
-          );
-        } catch {
-          rollbackFailures.push(actor);
+      const readinesses = actors.map((actor) =>
+        attestActor(actor, dependencies, stateRoot),
+      );
+      assertOneRuntimeDigest(readinesses);
+      for (const [index, actor] of actors.entries()) {
+        acceptActor(actor, dependencies, stateRoot, readinesses[index]);
+        records[index].accepted = true;
+      }
+      for (const staleRecord of staleRecords) {
+        if (migratedLegacyActors.has(staleRecord.actor)) {
+          records.find(
+            (record) => record.actor === staleRecord.actor,
+          ).staleActorRecordRemoved = staleRecord.snapshotPath !== null;
+          continue;
+        }
+        if (removeStaleActorRecord(staleRecord)) {
+          removedStaleRecords.push(staleRecord);
+          records.find(
+            (record) => record.actor === staleRecord.actor,
+          ).staleActorRecordRemoved = true;
         }
       }
-      if (rollbackFailures.length > 0) {
+    } catch (error) {
+      const rollbackFailures = rollbackBindings(dependencies, rollbackRecords);
+      const staleRollbackFailures =
+        restoreStaleActorRecords(removedStaleRecords);
+      const failures = [...rollbackFailures, ...staleRollbackFailures];
+      if (failures.length > 0) {
         fail(
           "provision_rollback_failed",
-          `Provisioning failed, and rollback failed for ${rollbackFailures.join(", ")}. Explicit owner recovery is required.`,
+          `Provisioning failed, and rollback failed for ${[...new Set(failures)].join(", ")}. Explicit owner recovery is required.`,
         );
       }
       throw error;
@@ -775,30 +1428,83 @@ function provisionActors(command, dependencies, stateRoot) {
   });
 }
 
-function runProvisionerAction(command, dependencies, stateRoot) {
+function revokeActors(command, dependencies, stateRoot) {
   return withPrivateTempDirectory(dependencies, (privateDirectory) => {
-    const artifacts = buildHostArtifacts(dependencies, privateDirectory);
     const actors =
       command.actor === "all" ? AUTOMATION_ACTOR_IDS : [command.actor];
-    for (const actor of actors) {
-      invokeProvisioner(
+    const validated = actors.map((actor) => {
+      const installed = installedBinding(
+        { action: "revoke", actor, stateRoot },
         dependencies,
-        artifacts.provisionerOutput,
-        command.action,
-        actor,
         stateRoot,
       );
+      const rollback = captureBindingForRollback(
+        dependencies,
+        actor,
+        privateDirectory,
+      );
+      const staleRecord = captureStaleActorRecord(
+        dependencies,
+        stateRoot,
+        actor,
+        privateDirectory,
+      );
+      return { actor, installed, rollback, staleRecord };
+    });
+    const removed = [];
+    const removedStaleRecords = [];
+    try {
+      for (const record of validated) {
+        if (removeStaleActorRecord(record.staleRecord)) {
+          removedStaleRecords.push(record.staleRecord);
+        }
+      }
+      for (const record of validated) {
+        removed.push(record.rollback);
+        sudoRemoveFile(
+          dependencies,
+          record.rollback.bindingPath,
+          `Automation actor ${record.actor} binding revocation`,
+        );
+        if (lstatIfPresent(record.rollback.bindingPath) !== null) {
+          fail(
+            "revoke_failed",
+            `The ${record.actor} binding still exists after revocation.`,
+          );
+        }
+      }
+    } catch (error) {
+      const rollbackFailures = rollbackBindings(dependencies, removed);
+      const staleRollbackFailures =
+        restoreStaleActorRecords(removedStaleRecords);
+      const failures = [...rollbackFailures, ...staleRollbackFailures];
+      if (failures.length > 0) {
+        fail(
+          "revoke_rollback_failed",
+          `Revocation failed, and rollback failed for ${[...new Set(failures)].join(", ")}. Explicit owner recovery is required.`,
+        );
+      }
+      throw error;
     }
     return command.actor === "all"
       ? {
-          action: command.action,
+          action: "revoke",
           stateRoot,
-          records: actors.map((actor) => ({ actor })),
+          records: validated.map(({ actor, installed }) => ({
+            actor,
+            leaseName: installed.binding.leaseName,
+            bindingPath: installed.path,
+            staleActorRecordRemoved: removedStaleRecords.some(
+              (record) => record.actor === actor,
+            ),
+          })),
         }
       : {
-          action: command.action,
+          action: "revoke",
           actor: command.actor,
           stateRoot,
+          bindingPath: validated[0].installed.path,
+          staleActorRecordRemoved: removedStaleRecords.length === 1,
         };
   });
 }
@@ -1017,11 +1723,7 @@ function cleanupMalformedAcquisition(
 }
 
 function attestActor(actor, dependencies, stateRoot) {
-  const credential = actorCredentialReadiness(stateRoot, actor, {
-    requiredUid: dependencies.uid,
-  });
   const readiness = actorLauncherReadiness(stateRoot, actor, {
-    credential,
     leaseContract: {
       name: AUTOMATION_ACTORS[actor].leaseName,
       maxLifetimeMs: MAX_LEASE_LIFETIME_MS,
@@ -1066,7 +1768,10 @@ function verifyActors(command, dependencies, stateRoot) {
 
 function parseControlResponse(stdout, { action, stateRoot }) {
   if (Buffer.byteLength(stdout, "utf8") > MAX_LAUNCHER_HANDOFF_BYTES) {
-    fail("invalid_control_response", "The pinned control output was too large.");
+    fail(
+      "invalid_control_response",
+      "The pinned control output was too large.",
+    );
   }
   try {
     const payload = JSON.parse(stdout);
@@ -1159,8 +1864,6 @@ function canonicalIdentity(value) {
 function readinessIdentity(readiness) {
   return JSON.stringify(
     canonicalIdentity({
-      credentialPath: readiness.credentialPath,
-      credentialSha256: readiness.credentialSha256,
       binding: readiness.binding,
       runtimeRoot: readiness.runtimeRoot,
       runtimeDigest: readiness.runtimeDigest,
@@ -1278,9 +1981,7 @@ function acceptHost(dependencies, stateRoot) {
   );
   const runtimeDigest = assertOneRuntimeDigest(initialReadinesses);
   const launcherDigests = new Set(
-    initialReadinesses.map(
-      (readiness) => readiness.binding.launcherSha256,
-    ),
+    initialReadinesses.map((readiness) => readiness.binding.launcherSha256),
   );
   if (launcherDigests.size !== 1) {
     fail(
@@ -1308,7 +2009,7 @@ function acceptHost(dependencies, stateRoot) {
     ) {
       fail(
         "launcher_identity_changed",
-        `The installed ${actor} credential or launcher identity changed during acceptance.`,
+        `The installed ${actor} launcher identity changed during acceptance.`,
       );
     }
     records[index].launcherIdentityStable = true;
@@ -1329,6 +2030,7 @@ function dependenciesWithDefaults(overrides = {}) {
     env,
     platform: process.platform,
     uid: typeof process.getuid === "function" ? process.getuid() : -1,
+    pid: process.pid,
     homeDir: os.homedir(),
     tempRoot: realpathSync(os.tmpdir()),
     repoRoot: REPO_ROOT,
@@ -1345,6 +2047,10 @@ function dependenciesWithDefaults(overrides = {}) {
     launcherAcquireTimeoutMs: LAUNCHER_ACQUIRE_TIMEOUT_MS,
     controlLifecycleTimeoutMs: CONTROL_LIFECYCLE_TIMEOUT_MS,
     provisionerActionTimeoutMs: PROVISIONER_ACTION_TIMEOUT_MS,
+    lifecycleLockStaleMs: LIFECYCLE_LOCK_STALE_MS,
+    lifecycleLockTokenFactory: () => randomBytes(32).toString("hex"),
+    nowMs: () => Date.now(),
+    processStartInspector: defaultProcessStartInspector,
     repositoryInspector: defaultRepositoryInspector,
     pinnedNodeResolver: defaultPinnedNodeResolver,
     leaseOperationIdGenerator: () => randomUUID(),
@@ -1361,7 +2067,7 @@ export function executeCommand(command, overrides = {}) {
   if (command.help) return { help: true, usage: usage() };
   const dependencies = dependenciesWithDefaults(overrides);
   assertOwnerHost(dependencies);
-  if (["provision", "rotate", "revoke"].includes(command.action)) {
+  if (command.action === "provision") {
     const repository = dependencies.repositoryInspector(dependencies);
     assertProvisioningReady({
       platform: dependencies.platform,
@@ -1374,10 +2080,14 @@ export function executeCommand(command, overrides = {}) {
     createIfMissing: command.action === "provision",
   });
   if (command.action === "provision") {
-    return provisionActors(command, dependencies, stateRoot);
+    return withLifecycleLock(dependencies, stateRoot, command.action, () =>
+      provisionActors(command, dependencies, stateRoot),
+    );
   }
-  if (["rotate", "revoke"].includes(command.action)) {
-    return runProvisionerAction(command, dependencies, stateRoot);
+  if (command.action === "revoke") {
+    return withLifecycleLock(dependencies, stateRoot, command.action, () =>
+      revokeActors(command, dependencies, stateRoot),
+    );
   }
   if (command.action === "verify") {
     return verifyActors(command, dependencies, stateRoot);
@@ -1386,7 +2096,9 @@ export function executeCommand(command, overrides = {}) {
     return acquireActor(command, dependencies, stateRoot);
   }
   if (command.action === "accept-host") {
-    return acceptHost(dependencies, stateRoot);
+    return withLifecycleLock(dependencies, stateRoot, command.action, () =>
+      acceptHost(dependencies, stateRoot),
+    );
   }
   fail("invalid_action", `Unsupported action: ${command.action}`);
 }

@@ -177,10 +177,11 @@ policy exactly. The specification declares the recognized schedule, status,
 model, reasoning effort, target, and working-directory fields that a host
 reconciler may overlay. The repository does not install or mutate the saved
 automation. `npm run validate:host-automations` performs a read-only comparison
-against the host definitions and rejects an active actor whose owner-provisioned
-credential is unavailable. Keep actors paused until their credentials and
-trusted launchers exist, then reconcile through the Codex host automation
-controls instead of editing TOML directly.
+against the host definitions and rejects an active actor unless its root-owned
+launcher, complete pinned runtime, and live one-use channel attestation are
+ready. The five general actors store no persistent Keychain credential. Keep
+actors paused until their trusted launchers exist, then reconcile through the
+Codex host automation controls instead of editing TOML directly.
 
 After the owner-reviewed bootstrap helper is merged, provision and verify the
 five general actors from a clean `dev` checkout at exact `origin/dev`:
@@ -192,46 +193,48 @@ npm run automation:actors -- accept-host --all
 npm run validate:host-automations
 ```
 
-If the batch fails, credentials completed earlier in that invocation are
-revoked in reverse order. The failing actor is left untouched in case it had
-state from an earlier owner action. Revoke the actor named by the error, then
-retry. A `provision_rollback_failed` result names any earlier actors that also
-need explicit owner recovery.
+If the batch fails, public bindings installed by that invocation are rolled
+back in reverse order. A completed legacy Keychain deletion is never reversed
+or replaced with invented credential metadata. The old schema 1 binding then
+fails closed, and an exact `provision` retry completes the idempotent migration.
+A `provision_rollback_failed` result names any actor that needs explicit owner
+recovery.
 
 The helper uses deterministic linker output names, so identical native builds
 receive the same linker-generated ad hoc signature. It does not select or need a
 developer signing identity. It installs a root-owned, content-addressed copy of
 the pinned Node and control runtime, plus one actor-specific launcher binding.
-The native provisioner stores the persistent credential in the owner's Keychain
-with access limited to that launcher. Verification checks the digest record and
-binding, then asks the exact installed launcher for a nonmutating readiness
-attestation. It never uses a freshly compiled provisioner to read the secret.
-Keep the saved actors paused until real-host verification and host acceptance
-prove unattended Keychain access. Provisioning does not grant task authority or
-provider approval, and it does not contact a provider.
+The normal host links no Security framework. It creates a fresh operation ID
+and lease token for each acquisition, passes the raw token only through the
+one-use file descriptor channel, and returns only the bounded short lease. A
+separate Security-linked provisioner is built only to delete an installed
+schema 1 Keychain item and digest record before schema 4 replacement.
+Verification checks every public pin and asks the exact installed launcher for
+a nonmutating channel attestation. Keep the saved actors paused until real-host
+verification and host acceptance pass. Provisioning does not grant task
+authority or provider approval, and it does not contact a provider.
 
 The ad hoc signed handoff is cooperative among processes running as the same
-macOS user. It pins the selected role and protects the persistent credential,
-but it cannot prove which saved automation invoked a provisioned general actor
-launcher. Do not provision the five launchers if those roles require hard
-caller isolation. Stored task ceilings, provider approvals, the global behavior
-slot, owner governance, publisher isolation, and GitHub review remain enforced.
+macOS user. It proves the selected role, pinned runtime, live process chain,
+one-use challenge, operation ID, and token digest, but it cannot prove which
+saved automation invoked a provisioned general actor launcher. Do not provision
+the five launchers if those roles require hard caller isolation. Stored task
+ceilings, provider approvals, the global behavior slot, owner governance,
+publisher isolation, and GitHub review remain enforced.
 
-Verify, acquire, and host acceptance disable Keychain user interaction and fail
-closed instead of opening a password dialog. Their child processes, output, and
-lifecycle steps are bounded. `accept-host` proves one acquire, heartbeat, and
-release lifecycle for every actor, attempts release after any successful
-acquisition even when a later step fails, and returns no credential or lease
-token. `rotate` is different because it must read
-the prior secret for rollback. It is an explicit owner-interactive action. If
-macOS asks during rotation, choose one-time **Allow**, never **Always Allow**. A
-prompt from provision, verify, acquire, revoke, or host acceptance is a failure.
+Verify, acquire, and host acceptance never read Keychain. Their child
+processes, output, and lifecycle steps are bounded. `accept-host` proves one
+acquire, heartbeat, and release lifecycle for every actor, attempts exact
+release after any possible successful acquisition, and returns no lease token.
+`rotate` is removed because there is no general actor credential to rotate. A
+Keychain prompt from provision, verify, acquire, revoke, or host acceptance is
+a migration failure.
 
-After the repaired helper reaches `dev`, replace credentials touched by the old
-prompting flow before any actor is activated:
+After the repaired helper reaches `dev`, migrate every old schema 1 actor before
+activation. Do not revoke first because provisioning needs the installed legacy
+binding to validate the exact Keychain item it is deleting:
 
 ```bash
-npm run automation:actors -- revoke --all
 npm run automation:actors -- provision --all
 npm run automation:actors -- verify --all
 npm run automation:actors -- accept-host --all
@@ -258,8 +261,8 @@ findings.
 An active lease means another pass owns the writer. Wait or finish read-only
 work. Do not create a duplicate worktree. Expired lease takeover must use the
 control CLI so the previous ownership is preserved in `events.jsonl`.
-The actor credential file and token are machine-local secrets. The runner must
-never create, log, commit, or include them in generated run artifacts.
+The transient lease token and launcher challenge are machine-local secrets. The
+runner must never log, commit, or include them in generated run artifacts.
 
 Validate the checked-in automation contract with:
 

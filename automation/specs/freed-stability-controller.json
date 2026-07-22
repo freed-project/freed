@@ -18,8 +18,5 @@
     "target",
     "cwds"
   ],
-  "requiredHostCapabilities": [
-    "trusted-launcher",
-    "short-lived-credential-handoff"
-  ]
+  "requiredHostCapabilities": ["trusted-launcher", "short-lived-lease-handoff"]
 }
