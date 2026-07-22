@@ -71,6 +71,7 @@ const RELEASE_TAG_PUBLISHER_SCHEMA_ONE_SHA256 = Object.freeze({
 });
 const MAXIMUM_PRIVATE_KEY_BYTES = 32 * 1_024;
 const MAXIMUM_BINDING_BYTES = 64 * 1_024;
+const RELEASE_TAG_PUBLISHER_NATIVE_TIMEOUT_MS = 30_000;
 const DARWIN_O_CLOEXEC = 0x01000000;
 const PRIVILEGED_RETIRED_FILE_ADMISSION = String.raw`
 import hashlib
@@ -193,6 +194,7 @@ function runChecked(dependencies, executable, args, options = {}) {
     stdio: options.stdio,
     input: options.input,
     maxBuffer: options.maxBuffer ?? 1024 * 1024,
+    timeout: options.timeout,
     env: {
       HOME: process.env.HOME ?? "",
       PATH: "/usr/bin:/bin",
@@ -1530,6 +1532,7 @@ function invokeProvisioner(
   const output = runChecked(dependencies, dependencies.provisionerPath, args, {
     purpose: `Release tag publisher key ${action}`,
     stdio: [descriptor ?? "ignore", "pipe", "pipe"],
+    timeout: RELEASE_TAG_PUBLISHER_NATIVE_TIMEOUT_MS,
   });
   try {
     const result = JSON.parse(output);
@@ -1646,7 +1649,10 @@ export function verifyReleaseTagPublisher({ dependencies: overrides } = {}) {
       "--app-slug",
       binding.appSlug,
     ],
-    { purpose: "Release tag publisher installation verification" },
+    {
+      purpose: "Release tag publisher installation verification",
+      timeout: RELEASE_TAG_PUBLISHER_NATIVE_TIMEOUT_MS,
+    },
   );
   let attestation;
   try {

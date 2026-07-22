@@ -163,6 +163,53 @@ test("each wrapper action invokes only the fixed native host", () => {
   assert.equal(calls[0].options.timeout, 30_000);
 });
 
+test("credential-bearing wrapper actions have hard deadlines", () => {
+  const { config } = fixture();
+  const calls = [];
+  invokeReleaseTagPublisherAction(
+    config,
+    [
+      "verify-installation",
+      "--repo",
+      config.repo,
+      "--app-id",
+      String(config.appId),
+      "--app-slug",
+      config.appSlug,
+    ],
+    {
+      exec(file, args, options) {
+        calls.push({ file, args, options });
+        return JSON.stringify(installationAttestation());
+      },
+    },
+  );
+  const commit = "a".repeat(40);
+  const tag = "v26.7.2200";
+  invokeReleaseTagPublisherAction(
+    config,
+    ["publish", "--tag", tag, "--commit", commit],
+    {
+      exec(file, args, options) {
+        calls.push({ file, args, options });
+        return JSON.stringify({
+          schemaVersion: 1,
+          purpose: "freed-release-tag-publish-result",
+          repo: config.repo,
+          tag,
+          commit,
+          tagObjectSha: "b".repeat(40),
+          recovered: false,
+        });
+      },
+    },
+  );
+  assert.deepEqual(
+    calls.map(({ options }) => options.timeout),
+    [30_000, 120_000],
+  );
+});
+
 test("publish wrapper requires the exact recoverable native result envelope", () => {
   const { config } = fixture();
   const commit = "a".repeat(40);

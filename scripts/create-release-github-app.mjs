@@ -45,6 +45,7 @@ const BOOTSTRAP_PATH = "/";
 const MANIFEST_TIMEOUT_MS = 15 * 60 * 1000;
 const INSTALLATION_TIMEOUT_MS = 15 * 60 * 1000;
 const INSTALLATION_POLL_MS = 2_000;
+const RELEASE_TAG_PUBLISHER_VERIFY_TIMEOUT_MS = 30_000;
 const DARWIN_O_CLOEXEC = 0x01000000;
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 export const RELEASE_TAG_PUBLISHER_INSTALLER_PATH = path.join(
@@ -812,7 +813,11 @@ export function verifyInstalledReleaseApp(
       "--app-slug",
       identity.appSlug,
     ],
-    { encoding: "utf8", maxBuffer: 1024 * 1024 },
+    {
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+      timeout: RELEASE_TAG_PUBLISHER_VERIFY_TIMEOUT_MS,
+    },
   );
   let attestation;
   try {

@@ -28,6 +28,7 @@ import {
   RELEASE_GITHUB_APP_OPERATION_ID_ENV,
   releaseAppIdentityPath,
   validateManifestConversion,
+  verifyInstalledReleaseApp,
   writeReleaseAppIdentity,
 } from "./create-release-github-app.mjs";
 
@@ -47,6 +48,28 @@ function conversion() {
     pem,
     client_secret: "client-secret-must-not-survive",
     webhook_secret: "webhook-secret-must-not-survive",
+  };
+}
+
+function installationReadiness() {
+  return {
+    schemaVersion: 1,
+    purpose: "freed-release-tag-publisher-installation-readiness",
+    repo: "freed-project/freed",
+    appId: 4_296_969,
+    appSlug: "freed-release-publisher",
+    appName: "Freed Release Publisher",
+    appExternalUrl: "https://freed.wtf",
+    appOwnerLogin: "freed-project",
+    appOwnerType: "Organization",
+    appPermissions: { contents: "write", metadata: "read" },
+    appEvents: [],
+    installationId: 42,
+    accountLogin: "freed-project",
+    accountType: "Organization",
+    repositorySelection: "selected",
+    permissions: { contents: "write", metadata: "read" },
+    repositories: ["freed-project/freed"],
   };
 }
 
@@ -305,6 +328,28 @@ test("CLI usage names the caller-retained operation ID environment variable", ()
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, new RegExp(RELEASE_GITHUB_APP_OPERATION_ID_ENV));
   assert.match(result.stdout, /caller-retained/);
+});
+
+test("installed release App verification has a hard deadline", () => {
+  const calls = [];
+  const result = verifyInstalledReleaseApp(
+    {
+      repo: "freed-project/freed",
+      appId: 4_296_969,
+      appSlug: "freed-release-publisher",
+    },
+    {
+      publisherPath: "/fixed/release-tag-publisher",
+      exec(file, args, options) {
+        calls.push({ file, args, options });
+        return JSON.stringify(installationReadiness());
+      },
+    },
+  );
+  assert.equal(result.installationId, 42);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].file, "/fixed/release-tag-publisher");
+  assert.equal(calls[0].options.timeout, 30_000);
 });
 
 test("App creation fails before local or GitHub side effects while promotion is unavailable", async () => {

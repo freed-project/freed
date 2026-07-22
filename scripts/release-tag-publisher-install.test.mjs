@@ -1138,11 +1138,13 @@ test("installer verify accepts only a strict installation readiness envelope", (
     nativePairSha256: releaseTagPublisherNativePairSha256(base),
   };
   let readiness = installationReadiness();
+  const calls = [];
   const dependencies = {
     hostPath: binding.publisherPath,
     provisionerPath: binding.provisionerPath,
     verifyInstalledNativePair: () => binding,
-    run(executable, args) {
+    run(executable, args, options) {
+      calls.push({ executable, args, options });
       if (executable === binding.provisionerPath && args[0] === "verify") {
         return { status: 0, stdout: result("verify"), stderr: "" };
       }
@@ -1162,6 +1164,16 @@ test("installer verify accepts only a strict installation readiness envelope", (
   assert.deepEqual(
     verifyReleaseTagPublisher({ dependencies }).readiness,
     readiness,
+  );
+  assert.deepEqual(
+    calls.map(({ args, options }) => ({
+      action: args[0],
+      timeout: options.timeout,
+    })),
+    [
+      { action: "verify", timeout: 30_000 },
+      { action: "verify-installation", timeout: 30_000 },
+    ],
   );
   for (const invalid of [
     installationReadiness({ appId: "4296969" }),
