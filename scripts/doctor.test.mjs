@@ -1441,7 +1441,7 @@ test("resolveExitCode is warn-only by default and hard-fails under --strict", ()
   );
 });
 
-test("release publisher doctor profile is separate and uses native ACL inspection", () => {
+test("release publisher doctor profile is separate and uses credential-free native readiness", () => {
   const root = mkdtempSync(
     path.join(os.tmpdir(), "freed-doctor-release-publisher-"),
   );
@@ -1559,7 +1559,7 @@ test("release publisher doctor profile is separate and uses native ACL inspectio
     run: () => ({ status: 1 }),
   });
   assert.equal(missing.status, "fail");
-  assert.match(missing.detail, /could not validate.*Keychain item and ACL/);
+  assert.match(missing.detail, /could not validate.*readiness binding/);
 });
 
 test("release publisher doctor never reads or executes after path admission failure", () => {

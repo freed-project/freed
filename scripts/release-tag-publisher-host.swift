@@ -591,10 +591,6 @@ private func uniqueKeychainItem(host: String, provisioner: String) throws -> Sec
   return item
 }
 
-private func inspectKeychainItem(host: String, provisioner: String) throws {
-  _ = try uniqueKeychainItem(host: host, provisioner: provisioner)
-}
-
 private func readKeychainSecret(host: String, provisioner: String) throws -> Data {
   let item = try uniqueKeychainItem(host: host, provisioner: provisioner)
   var length: UInt32 = 0
@@ -629,23 +625,6 @@ private func readKeychainSecret(host: String, provisioner: String) throws -> Dat
     secret.resetBytes(in: 0..<secret.count)
     throw error
   }
-}
-
-private func inspectPrivateKey(_ parsed: ParsedCommand, binding: PublisherBinding) throws {
-  #if RELEASE_TAG_PUBLISHER_HOST_TESTING
-    if let path = parsed.testKeyFile {
-      let canonical = try canonicalExistingPath(path, label: "testing private key")
-      guard canonical == path else {
-        try fail("The testing private key path must be canonical.")
-      }
-      try requireTrustedFile(path, executable: false, testingOwnerAllowed: true)
-      try requireTrustedParents(path, testingOwnerAllowed: true)
-      return
-    }
-  #endif
-  try inspectKeychainItem(
-    host: binding.publisherPath,
-    provisioner: binding.provisionerPath)
 }
 
 private func readPrivateKey(_ parsed: ParsedCommand, binding: PublisherBinding) throws -> Data {
@@ -1325,7 +1304,6 @@ private func main() -> Int32 {
     let binding = try loadBinding(parsed.configPath)
     let nativePair = try validateBinding(binding, parsed: parsed)
     if parsed.name == "attest" {
-      try inspectPrivateKey(parsed, binding: binding)
       try emitJSON([
         "schemaVersion": AnyEncodable(3),
         "purpose": AnyEncodable("freed-release-tag-publisher-readiness"),

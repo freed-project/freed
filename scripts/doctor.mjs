@@ -1271,7 +1271,7 @@ export function checkReleaseTagPublisherConfig({
     (keychain?.signal !== null && keychain?.signal !== undefined)
   ) {
     problems.push(
-      "the native host could not validate the release GitHub App Keychain item and ACL",
+      "the native host could not validate the release publisher readiness binding",
     );
   } else {
     try {
@@ -1295,7 +1295,7 @@ export function checkReleaseTagPublisherConfig({
     "release-tag-publisher",
     "release tag publisher",
     "ok",
-    `GitHub App ${config.appId.toLocaleString()} is bound to freed-project/freed through one exact native host and provisioner generation, and its nonsecret Keychain ACL check passed.`,
+    `GitHub App ${config.appId.toLocaleString()} is bound to freed-project/freed through one exact native host and provisioner generation.`,
   );
 }
 
@@ -1407,7 +1407,7 @@ function main() {
       "Usage: node scripts/doctor.mjs [--strict] [--require-publisher] [--require-release-publisher] [--json]\n" +
         "  --strict  Exit non-zero on hard failures (loop/CI contexts).\n" +
         "  --require-publisher  Exit non-zero unless the root-owned publisher trust chain is ready.\n" +
-        "  --require-release-publisher  Add and require the distinct Release Publisher host, binding, and nonsecret Keychain presence profile.\n" +
+        "  --require-release-publisher  Add and require the distinct Release Publisher host and binding profile without accessing its credential.\n" +
         "  --json    Machine-readable report.\n",
     );
     process.exitCode = unknown.length > 0 ? 1 : 0;

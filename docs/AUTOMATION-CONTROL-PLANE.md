@@ -914,13 +914,15 @@ not block normal GitHub-authenticated publication through
 The Release Publisher is not part of that default or PR publisher profile.
 `scripts/doctor.mjs --require-release-publisher` explicitly adds the fixed
 release host, provisioner, binding, both executable digests and CDHashes, and
-native nonsecret Keychain ACL inspection. The schema 3 binding and readiness
-attestation must agree on both executable digests, both CDHashes, and the native
-pair digest. The doctor invokes the fixed native host once for that attestation.
+native readiness attestation without accessing Keychain. The schema 3 binding
+and readiness attestation must agree on both executable digests, both CDHashes,
+and the native pair digest. The doctor invokes the fixed native host once for
+that attestation.
 It requires exact root and wheel ownership, one link,
 mode `0555` for both executables, and mode `0444` for the binding. Ordinary
 development checks do not require that release-only credential. Release
-preparation must select the profile on purpose.
+preparation must select the profile on purpose. Installation verification and
+tag publication access the credential only when those release operations run.
 
 ### Publisher credential provisioning and rotation
 

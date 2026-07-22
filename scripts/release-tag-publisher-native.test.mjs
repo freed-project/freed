@@ -608,9 +608,9 @@ test("production native publisher tools compile", { skip: !enabled }, () => {
     attestBranch,
   );
   assert.ok(attestBranch >= 0 && secretRead > attestBranch);
-  assert.match(
+  assert.doesNotMatch(
     hostSource.slice(attestBranch, secretRead),
-    /inspectPrivateKey/,
+    /inspectPrivateKey|readPrivateKey|SecItem|SecKeychain|Keychain/,
   );
 });
 
@@ -964,12 +964,12 @@ test(
 );
 
 test(
-  "native attest checks credential admission without reading or importing the secret",
+  "native attest never accesses the credential",
   { skip: !enabled },
   async () => {
     const original = readFileSync(keyPath);
     try {
-      writeFileSync(keyPath, "not-a-private-key\n", { mode: 0o600 });
+      rmSync(keyPath);
       const attested = await runHost(["attest", ...identityArgs()]);
       assert.equal(attested.status, 0, attested.stderr);
       const consumed = await runHost([
@@ -977,7 +977,7 @@ test(
         ...identityArgs(),
       ]);
       assert.equal(consumed.status, 1);
-      assert.match(consumed.stderr, /PKCS1|RSA PRIVATE KEY/);
+      assert.match(consumed.stderr, /testing private key|No such file/);
     } finally {
       writeFileSync(keyPath, original, { mode: 0o600 });
       original.fill(0);

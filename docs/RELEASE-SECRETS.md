@@ -247,12 +247,16 @@ fails before Keychain creation.
 
 Inspect the distinct release profile. This check is opt-in, checks the native
 host and schema 3 binding, and invokes that fixed host once to validate both
-code identities, item presence, and the exact ACL without returning private
-key bytes:
+code identities without accessing Keychain:
 
 ```bash
 node scripts/doctor.mjs --require-release-publisher
 ```
+
+The bounded `verify-installation` operation performs the separate credential,
+ACL, GitHub App, and selected-repository installation proof immediately before
+ruleset activation or publication. Ordinary readiness checks never ask macOS
+to unlock the release credential.
 
 Recovery, activation, rotation, discard, and revocation are deliberately
 unavailable. The final one-use owner intent must bind the action, App ID
