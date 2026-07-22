@@ -73,6 +73,10 @@ const CUTOVER_SNAPSHOT_MAX_AGGREGATE_BYTES =
 const CUTOVER_NATIVE_MOVE_HELPER_SHA256 =
   "d23a65379acad43c7fb601d65fc150c29f1d214796121362f2a44c7e6c305a3e";
 const CUTOVER_NATIVE_MOVE_PYTHON = "/usr/bin/python3";
+const LEASE_TRANSACTION_DIRECTORY = ".transactions";
+const LEASE_TRANSACTION_RECEIPT_DIRECTORY = ".transaction-receipts";
+const LEASE_STATE_QUARANTINE_DIRECTORY = ".lease-state-quarantine";
+const LEASE_CLEANUP_QUARANTINE_DIRECTORY = ".lease-cleanup-quarantine";
 const CUTOVER_PRIVATE_FILE_CREATE_HELPER_SOURCE = String.raw`
 import hashlib
 import json
@@ -4329,13 +4333,39 @@ function validateUnmigratedSource(plan) {
   }
 }
 
-function validateStaticSource(plan) {
+function validateStaticSource(
+  plan,
+  {
+    allowLeaseRuntimeStorage = false,
+    requireCompleteLeaseRuntimeStorage = false,
+  } = {},
+) {
   const paths = automationKernelGuardCutoverPaths(plan.parameters.stateRoot);
+  const leasesRoot = path.join(paths.controlRoot, "leases");
   for (const expected of plan.sourceSnapshot.entries) {
     if (
       expected.path === paths.writerLock ||
       expected.path === paths.guardsRoot
     ) {
+      continue;
+    }
+    if (allowLeaseRuntimeStorage && expected.path === leasesRoot) {
+      if (
+        !(
+          expected.kind === "missing" ||
+          (expected.kind === "directory" &&
+            expected.mode === 0o700 &&
+            expected.entries.length === 0)
+        )
+      ) {
+        fail(
+          "cutover_source_drift",
+          "The planned lease root was not empty before terminal runtime initialization.",
+        );
+      }
+      requireTerminalLeaseRuntimeStorage(plan.parameters.stateRoot, {
+        requireComplete: requireCompleteLeaseRuntimeStorage,
+      });
       continue;
     }
     requireSnapshotMatch(
@@ -4352,7 +4382,270 @@ function validateStaticSource(plan) {
   }
 }
 
-function requireNoLeases(stateRoot) {
+function leaseRuntimeStorageLayout(stateRoot) {
+  const leases = path.join(stateRoot, "control", "leases");
+  const transactions = path.join(leases, LEASE_TRANSACTION_DIRECTORY);
+  const receipts = path.join(
+    leases,
+    LEASE_TRANSACTION_RECEIPT_DIRECTORY,
+  );
+  const transactionArchive = path.join(
+    transactions,
+    LEASE_CLEANUP_QUARANTINE_DIRECTORY,
+  );
+  const receiptArchive = path.join(
+    receipts,
+    LEASE_CLEANUP_QUARANTINE_DIRECTORY,
+  );
+  const stateArchive = path.join(leases, LEASE_STATE_QUARANTINE_DIRECTORY);
+  return {
+    leases,
+    transactions,
+    receipts,
+    transactionArchive,
+    receiptArchive,
+    stateArchive,
+    requiredDirectories: [
+      leases,
+      transactions,
+      receipts,
+      stateArchive,
+      transactionArchive,
+      receiptArchive,
+    ],
+  };
+}
+
+function listPinnedPrivateDirectoryEntries(
+  directoryPath,
+  pinned,
+  { maxEntries, maxEncodedBytes, label },
+) {
+  let bytes;
+  try {
+    bytes = runCutoverNativeHelperBytes(
+      "list-bounded",
+      [
+        String(maxEntries),
+        String(maxEncodedBytes),
+        String(pinned.identity.dev),
+        String(pinned.identity.ino),
+      ],
+      [pinned.descriptor],
+      { maxBuffer: maxEncodedBytes + 1 },
+    );
+  } catch (error) {
+    if (
+      /listing exceeds the (?:entry|encoded byte) boundary/.test(
+        error?.message ?? "",
+      )
+    ) {
+      fail(
+        "cutover_lease_live",
+        `${label} contains entries outside the terminal lease runtime scaffold.`,
+      );
+    }
+    throw error;
+  }
+  requirePinnedPrivateDirectoryPath(directoryPath, pinned, label);
+  if (bytes.length === 0) return [];
+  let entries;
+  try {
+    entries = fatalDecoder.decode(bytes).split("\0");
+  } catch {
+    fail(
+      "cutover_lease_live",
+      `${label} has an invalid terminal lease runtime inventory.`,
+    );
+  }
+  if (
+    entries.length > maxEntries ||
+    entries.some(
+      (entry) =>
+        entry.length === 0 ||
+        entry === "." ||
+        entry === ".." ||
+        entry.includes(path.sep) ||
+        entry.includes("\0"),
+    )
+  ) {
+    fail(
+      "cutover_lease_live",
+      `${label} has an invalid terminal lease runtime inventory.`,
+    );
+  }
+  return entries;
+}
+
+function requireTerminalLeaseRuntimeStorage(
+  stateRoot,
+  { requireComplete = false } = {},
+) {
+  const layout = leaseRuntimeStorageLayout(stateRoot);
+  if (!existsSync(layout.leases)) {
+    if (requireComplete) {
+      fail(
+        "cutover_state_invalid",
+        "The terminal lease runtime directory scaffold is incomplete.",
+      );
+    }
+    return;
+  }
+  const leases = openPinnedPrivateDirectoryPath(
+    layout.leases,
+    "Automation lease root",
+  );
+  try {
+    const allowedTopLevel = new Set([
+      LEASE_TRANSACTION_DIRECTORY,
+      LEASE_TRANSACTION_RECEIPT_DIRECTORY,
+      LEASE_STATE_QUARANTINE_DIRECTORY,
+    ]);
+    const entries = listPinnedPrivateDirectoryEntries(layout.leases, leases, {
+      maxEntries: allowedTopLevel.size,
+      maxEncodedBytes: 128,
+      label: "Automation lease root",
+    });
+    if (entries.some((entry) => !allowedTopLevel.has(entry))) {
+      fail(
+        "cutover_lease_live",
+        "Every canonical lease must be absent before cutover activation.",
+      );
+    }
+  } finally {
+    closeSync(leases.descriptor);
+  }
+
+  for (const [directoryPath, allowedEntries] of [
+    [layout.transactions, new Set([LEASE_CLEANUP_QUARANTINE_DIRECTORY])],
+    [layout.receipts, new Set([LEASE_CLEANUP_QUARANTINE_DIRECTORY])],
+    [layout.stateArchive, new Set()],
+  ]) {
+    if (!existsSync(directoryPath)) {
+      if (requireComplete) {
+        fail(
+          "cutover_state_invalid",
+          "The terminal lease runtime directory scaffold is incomplete.",
+        );
+      }
+      continue;
+    }
+    const pinned = openPinnedPrivateDirectoryPath(
+      directoryPath,
+      `Lease runtime directory ${directoryPath}`,
+    );
+    try {
+      const entries = listPinnedPrivateDirectoryEntries(
+        directoryPath,
+        pinned,
+        {
+          maxEntries: Math.max(1, allowedEntries.size),
+          maxEncodedBytes: 64,
+          label: `Lease runtime directory ${directoryPath}`,
+        },
+      );
+      if (entries.some((entry) => !allowedEntries.has(entry))) {
+        fail(
+          "cutover_lease_live",
+          "Every canonical lease and lease transaction must be absent before cutover activation.",
+        );
+      }
+    } finally {
+      closeSync(pinned.descriptor);
+    }
+  }
+
+  for (const directoryPath of [
+    layout.transactionArchive,
+    layout.receiptArchive,
+  ]) {
+    if (!existsSync(directoryPath)) {
+      if (requireComplete) {
+        fail(
+          "cutover_state_invalid",
+          "The terminal lease runtime directory scaffold is incomplete.",
+        );
+      }
+      continue;
+    }
+    const pinned = openPinnedPrivateDirectoryPath(
+      directoryPath,
+      `Lease runtime archive ${directoryPath}`,
+    );
+    try {
+      const entries = listPinnedPrivateDirectoryEntries(
+        directoryPath,
+        pinned,
+        {
+          maxEntries: 1,
+          maxEncodedBytes: 255,
+          label: `Lease runtime archive ${directoryPath}`,
+        },
+      );
+      if (entries.length !== 0) {
+        fail(
+          "cutover_lease_live",
+          "Lease cleanup archives must be empty before cutover activation.",
+        );
+      }
+    } finally {
+      closeSync(pinned.descriptor);
+    }
+  }
+
+  if (requireComplete) {
+    for (const directoryPath of layout.requiredDirectories) {
+      requirePrivateDirectory(
+        directoryPath,
+        `Lease runtime directory ${directoryPath}`,
+      );
+    }
+  }
+}
+
+function requireLeaseRuntimeDirectoryScaffold(stateRoot) {
+  const layout = leaseRuntimeStorageLayout(stateRoot);
+  for (const directoryPath of layout.requiredDirectories) {
+    requirePrivateDirectory(
+      directoryPath,
+      `Lease runtime directory ${directoryPath}`,
+    );
+  }
+}
+
+function leaseRuntimeDirectoryScaffoldReady(stateRoot) {
+  try {
+    requireLeaseRuntimeDirectoryScaffold(stateRoot);
+    return true;
+  } catch (error) {
+    if (error?.code === "cutover_state_invalid") return false;
+    throw error;
+  }
+}
+
+function ensureLeaseRuntimeDirectoryScaffold(
+  plan,
+  checkpoint = () => undefined,
+) {
+  const layout = leaseRuntimeStorageLayout(plan.parameters.stateRoot);
+  for (const directoryPath of layout.requiredDirectories) {
+    const existed = existsSync(directoryPath);
+    ensurePrivateDirectory(directoryPath);
+    checkpoint("lease-runtime-directory-durable", {
+      directoryPath,
+      created: !existed,
+    });
+  }
+}
+
+function requireNoLeases(
+  stateRoot,
+  { allowLeaseRuntimeStorage = false } = {},
+) {
+  if (allowLeaseRuntimeStorage) {
+    requireTerminalLeaseRuntimeStorage(stateRoot);
+    return;
+  }
   const leases = path.join(stateRoot, "control", "leases");
   if (!existsSync(leases)) return;
   const pinned = openPinnedPrivateDirectoryPath(
@@ -4494,9 +4787,12 @@ function requireNoOpenStateDescriptor(stateRoot) {
   }
 }
 
-function requireQuiescence(plan) {
+function requireQuiescence(
+  plan,
+  { allowLeaseRuntimeStorage = false } = {},
+) {
   requirePausedActors(plan.parameters.codexHome);
-  requireNoLeases(plan.parameters.stateRoot);
+  requireNoLeases(plan.parameters.stateRoot, { allowLeaseRuntimeStorage });
   requireNoOldControlProcess();
   requireNoOpenStateDescriptor(plan.parameters.stateRoot);
 }
@@ -8004,11 +8300,19 @@ function prepareBootstrapLock(plan, beforeMutation = () => undefined) {
 function validateReceiptPreparedActivation(
   plan,
   transaction,
-  { requireReceipt },
+  { requireReceipt, requireCompleteLeaseRuntimeStorage = false },
 ) {
-  requireQuiescence(plan);
-  validateStaticSource(plan);
-  requireLocalFilesystem(plan.parameters.stateRoot, { plan, transaction });
+  requireQuiescence(plan, { allowLeaseRuntimeStorage: true });
+  validateStaticSource(plan, {
+    allowLeaseRuntimeStorage: true,
+    requireCompleteLeaseRuntimeStorage,
+  });
+  requireLocalFilesystem(plan.parameters.stateRoot, {
+    plan,
+    transaction,
+    extraPaths: leaseRuntimeStorageLayout(plan.parameters.stateRoot)
+      .requiredDirectories,
+  });
   if (readWriteAheadRecord(plan) !== null) {
     fail(
       "cutover_write_ahead_invalid",
@@ -8039,6 +8343,11 @@ function finishReceiptPreparedCutover(
   validateReceiptPreparedActivation(plan, transaction, {
     requireReceipt: false,
   });
+  ensureLeaseRuntimeDirectoryScaffold(plan, checkpoint);
+  validateReceiptPreparedActivation(plan, transaction, {
+    requireReceipt: false,
+    requireCompleteLeaseRuntimeStorage: true,
+  });
   const receipt = buildReceipt(plan, transaction);
   const paths = automationKernelGuardCutoverPaths(plan.parameters.stateRoot);
   requireCutoverImmutableTargetPreflight(
@@ -8057,6 +8366,7 @@ function finishReceiptPreparedCutover(
     beforeFinalize() {
       validateReceiptPreparedActivation(plan, transaction, {
         requireReceipt: false,
+        requireCompleteLeaseRuntimeStorage: true,
       });
     },
   });
@@ -8065,6 +8375,7 @@ function finishReceiptPreparedCutover(
   });
   validateReceiptPreparedActivation(plan, transaction, {
     requireReceipt: true,
+    requireCompleteLeaseRuntimeStorage: true,
   });
   writeCutoverImmutable(plan, paths.globalReceipt, prettyJsonBytes(receipt.global), {
     checkpoint,
@@ -8072,6 +8383,7 @@ function finishReceiptPreparedCutover(
     beforeFinalize() {
       validateReceiptPreparedActivation(plan, transaction, {
         requireReceipt: true,
+        requireCompleteLeaseRuntimeStorage: true,
       });
     },
   });
@@ -8080,6 +8392,7 @@ function finishReceiptPreparedCutover(
   });
   validateReceiptPreparedActivation(plan, transaction, {
     requireReceipt: true,
+    requireCompleteLeaseRuntimeStorage: true,
   });
   const inspection = inspectAutomationKernelGuardCutover(
     plan.parameters.stateRoot,
@@ -8853,7 +9166,10 @@ export function applyAutomationKernelGuardCutover({
   const initialInspection = inspectAutomationKernelGuardCutover(
     plan.parameters.stateRoot,
   );
-  if (initialInspection.ready) {
+  if (
+    initialInspection.ready &&
+    leaseRuntimeDirectoryScaffoldReady(plan.parameters.stateRoot)
+  ) {
     if (preexistingTransaction?.phase !== "receipt-prepared") {
       fail(
         "cutover_transaction_invalid",
@@ -8879,7 +9195,7 @@ export function applyAutomationKernelGuardCutover({
     return withKernelFileGuard(
       paths.bootstrapLock,
       () => {
-        requireQuiescence(plan);
+        requireQuiescence(plan, { allowLeaseRuntimeStorage: true });
         const transaction = readTransaction(plan, checkpoint);
         if (transaction?.phase !== "receipt-prepared") {
           fail(

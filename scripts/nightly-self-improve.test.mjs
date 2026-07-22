@@ -89,6 +89,10 @@ import {
   planOutcomeLedgerRepair,
   repairOutcomeLedger,
 } from "./lib/outcome-ledger-repair.mjs";
+import {
+  TEST_TRUSTED_LAUNCHER_PROVENANCE,
+  acquireGeneralActorLeaseForTest,
+} from "./test-helpers/trusted-actor-lease.mjs";
 
 const GIB = 1024 * 1024 * 1024;
 const NIGHTLY_MODULE_URL = new URL(
@@ -132,11 +136,7 @@ function deterministicOutcomeRecordedEventId({
     .digest("hex")}`;
 }
 
-function persistentActorProvenance(
-  actor,
-  taskId,
-  eventTimestamp,
-) {
+function trustedActorProvenance(actor, taskId, eventTimestamp) {
   const offset = Number.parseInt(
     createHash("sha256").update(`${actor}:${taskId}`).digest("hex").slice(0, 8),
     16,
@@ -146,7 +146,8 @@ function persistentActorProvenance(
   return {
     leaseName: AUTOMATION_ACTOR_POLICIES[actor].leaseName,
     leaseAcquiredAt: new Date(eventTimestampMs - 2_000 - offset).toISOString(),
-    credentialKind: "persistent-actor",
+    credentialKind: "trusted-launcher-channel",
+    ...TEST_TRUSTED_LAUNCHER_PROVENANCE,
   };
 }
 
@@ -239,7 +240,7 @@ function canonicalMergedTransition({
     data: {
       fromState: "validated",
       toState: "merged",
-      authorizationProvenance: persistentActorProvenance(actor, taskId, ts),
+      authorizationProvenance: trustedActorProvenance(actor, taskId, ts),
       ...(outcomeDigest === undefined
         ? {}
         : { outcomeRequired: true, outcomeDigest }),
@@ -277,7 +278,7 @@ function canonicalTaskCreationFor(
     data: {
       state: "observed",
       behavioral: false,
-      authorizationProvenance: persistentActorProvenance(
+      authorizationProvenance: trustedActorProvenance(
         actor,
         event.taskId,
         createdAt,
@@ -321,7 +322,7 @@ function canonicalTaskStateTransition({
     data: {
       fromState,
       toState,
-      authorizationProvenance: persistentActorProvenance(actor, taskId, ts),
+      authorizationProvenance: trustedActorProvenance(actor, taskId, ts),
     },
   };
 }
@@ -442,7 +443,7 @@ function canonicalMergedReservation(identity, legacyTransition) {
       outcomeBackfill: true,
       outcomeDigest: identity.outcomeDigest,
       legacyTransitionEventId: identity.legacyTransitionEventId,
-      authorizationProvenance: persistentActorProvenance(
+      authorizationProvenance: trustedActorProvenance(
         actor,
         identity.taskId,
         "2026-07-19T12:00:01.000Z",
@@ -504,53 +505,42 @@ function jsonPaddingPhysicalLine(byteLength) {
   return `${prefix}${"x".repeat(paddingLength)}${suffix}`;
 }
 
-function actorCredential(stateRoot, actor) {
-  const token = `credential:${actor}:${"x".repeat(64)}`;
-  const credentialDir = path.join(stateRoot, "control", "actor-credentials");
-  mkdirSync(credentialDir, { recursive: true, mode: 0o700 });
-  chmodSync(credentialDir, 0o700);
-  writeFileSync(
-    path.join(credentialDir, `${actor}.json`),
-    `${JSON.stringify({
-      schemaVersion: 1,
-      actor,
-      purpose: "automation-actor-lease",
-      tokenSha256: createHash("sha256").update(token).digest("hex"),
-    })}\n`,
-    { mode: 0o600 },
-  );
-  return token;
-}
-
 function leaseEventProvenance(event) {
   const common = {
     leaseName: event.leaseName,
     leaseAcquiredAt: event.ts,
     credentialKind: event.data.credentialKind,
   };
-  if (event.data.credentialKind === "persistent-actor") return common;
   const fields =
-    event.data.credentialKind === "owner-confirmation"
+    event.data.credentialKind === "trusted-launcher-channel"
       ? [
-          "ownerConfirmationApprovalReference",
-          "ownerConfirmationApprovedAt",
-          "ownerConfirmationApprovedBy",
-          "ownerConfirmationDigest",
-          "ownerConfirmationExpiresAt",
-          "ownerConfirmationId",
-          "ownerConfirmationIntentDigest",
-          "ownerConfirmationReference",
-          "ownerConfirmationTaskId",
+          "launcherSha256",
+          "actorRuntimeDigest",
+          "launcherChannelProtocol",
+          "launcherAttestationSha256",
+          "launcherSessionId",
         ]
-      : event.data.credentialKind === "owner-signed-capability"
+      : event.data.credentialKind === "owner-confirmation"
         ? [
-            "ownerCapabilityId",
-            "ownerCapabilityIntentDigest",
-            "ownerCapabilityTaskId",
+            "ownerConfirmationApprovalReference",
+            "ownerConfirmationApprovedAt",
+            "ownerConfirmationApprovedBy",
+            "ownerConfirmationDigest",
+            "ownerConfirmationExpiresAt",
+            "ownerConfirmationId",
+            "ownerConfirmationIntentDigest",
+            "ownerConfirmationReference",
+            "ownerConfirmationTaskId",
           ]
-        : event.data.credentialKind === "signed-capability"
-          ? ["publisherCapabilityId"]
-          : [];
+        : event.data.credentialKind === "owner-signed-capability"
+          ? [
+              "ownerCapabilityId",
+              "ownerCapabilityIntentDigest",
+              "ownerCapabilityTaskId",
+            ]
+          : event.data.credentialKind === "signed-capability"
+            ? ["publisherCapabilityId"]
+            : [];
   return {
     ...common,
     ...Object.fromEntries(fields.map((field) => [field, event.data[field]])),
@@ -592,7 +582,9 @@ function bindFixtureLeaseProvenance(events, fixture) {
     const replacement = fixture.provenanceByActor.get(event?.actor);
     const replaceGeneralActor =
       event.actor !== "freed-owner" &&
-      provenance?.credentialKind === "persistent-actor";
+      ["persistent-actor", "trusted-launcher-channel"].includes(
+        provenance?.credentialKind,
+      );
     const replaceSyntheticOwner =
       event.actor === "freed-owner" &&
       provenance?.credentialKind === "owner-signed-capability";
@@ -635,13 +627,12 @@ function outcomeAuthentication(stateRoot, actor, nowMs) {
       };
     }
     const token = `${actor}-${nowMs}`;
-    acquireLease({
+    acquireGeneralActorLeaseForTest({
       stateRoot,
       name: policy.leaseName,
       owner: actor,
       operationId: leaseMutationId(`acquire:${actor}`),
       token,
-      actorCredentialToken: actorCredential(stateRoot, actor),
       ttlMs: policy.maxLeaseLifetimeMs,
     });
     ACTOR_LEASES.set(key, token);
@@ -681,18 +672,24 @@ function ownerOutcomeAuthentication(stateRoot, plan, nowMs = Date.now()) {
     })}\n`,
     { mode: 0o600 },
   );
-  const acquired = acquireLease({
-    stateRoot,
-    name: "owner-governance",
-    owner: "freed-owner",
-    operationId: leaseMutationId("acquire:freed-owner"),
-    token: `owner-outcome-token-${"x".repeat(64)}`,
-    ttlMs: 10 * 60_000,
-    nowMs: nowMs + 1,
-    ownerConfirmationFile: confirmationPath,
-    ownerCapabilityTaskId: plan.taskId,
-    ownerCapabilityIntentDigest: plan.intentDigest,
-  });
+  const liveDateNow = Date.now;
+  let acquired;
+  Date.now = () => nowMs + 1;
+  try {
+    acquired = acquireLease({
+      stateRoot,
+      name: "owner-governance",
+      owner: "freed-owner",
+      operationId: leaseMutationId("acquire:freed-owner"),
+      token: `owner-outcome-token-${"x".repeat(64)}`,
+      ttlMs: 10 * 60_000,
+      ownerConfirmationFile: confirmationPath,
+      ownerCapabilityTaskId: plan.taskId,
+      ownerCapabilityIntentDigest: plan.intentDigest,
+    });
+  } finally {
+    Date.now = liveDateNow;
+  }
   return {
     stateRoot,
     authentication: {
@@ -2220,14 +2217,13 @@ test("outcome source health requires retained lease receipts to match exact even
   let heartbeatOperationId;
   try {
     Date.now = () => acquiredAtMs;
-    acquireLease({
+    acquireGeneralActorLeaseForTest({
       stateRoot,
       name: policy.leaseName,
       owner: actor,
       operationId: leaseMutationId("retained-source-health-acquire"),
       ttlMs: 60_000,
       token,
-      actorCredentialToken: actorCredential(stateRoot, actor),
     });
     heartbeatOperationId = leaseMutationId(
       "retained-source-health-heartbeat",
