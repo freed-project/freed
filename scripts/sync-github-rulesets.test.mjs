@@ -26,7 +26,6 @@ import {
   verifyReleaseAppReadiness,
   verifyReleaseTagActivation,
   verifyReleaseTagLockdown,
-  verifyReleaseTagPublisherReadiness,
   verifyRulesetReadiness,
 } from "./sync-github-rulesets.mjs";
 
@@ -525,40 +524,6 @@ test("release activation uses organization installation evidence and never user 
       call.join(" ").includes("orgs/freed-project/installations?per_page=100"),
     ),
     true,
-  );
-});
-
-test("release tag publisher attestation permits one narrow short-lived operation", () => {
-  const expected = {
-    repo: "freed-project/freed",
-    releaseAppId: 123456,
-    releaseAppSlug: "freed-release-publisher",
-    publisherDigest: "a".repeat(64),
-  };
-  const attestation = {
-    schemaVersion: 1,
-    purpose: "freed-release-tag-publisher-readiness",
-    repo: expected.repo,
-    appId: expected.releaseAppId,
-    appSlug: expected.releaseAppSlug,
-    credentialMode: "short-lived-installation-token",
-    operations: ["create-annotated-tag"],
-    allowsArbitraryRefs: false,
-    allowsUpdates: false,
-    allowsDeletions: false,
-    digest: "a".repeat(64),
-  };
-  assert.deepEqual(verifyReleaseTagPublisherReadiness(attestation, expected), {
-    ready: true,
-    publisherDigest: "a".repeat(64),
-  });
-  assert.throws(
-    () =>
-      verifyReleaseTagPublisherReadiness(
-        { ...attestation, allowsUpdates: true },
-        expected,
-      ),
-    /does not match the pinned short-lived annotated-tag publisher/,
   );
 });
 

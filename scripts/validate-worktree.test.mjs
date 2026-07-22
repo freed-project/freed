@@ -7,6 +7,7 @@ import {
   describePlan,
   isDesktopNativeSurface,
   isDesktopPerfSensitiveSurface,
+  isReleasePublisherToolingPath,
   isSocialScrapeLoopPath,
   isSocialProviderFocusedSurface,
   parseArgs,
@@ -450,6 +451,53 @@ test("feature plan for release tooling changes runs script tests and artifact va
   assert.equal(labels[0], "root typecheck");
   assert.ok(labels.includes("release notes shared tests"));
   assert.ok(labels.includes("release note artifact validation"));
+});
+
+test("feature plan routes every Release Publisher surface through its focused suite", () => {
+  const publisherPaths = [
+    ".github/rulesets/release-tag-lockdown.json",
+    ".github/rulesets/release-tag-immutability.json",
+    ".github/rulesets/release-tags.json",
+    "docs/AUTOMATION-CONTROL-PLANE.md",
+    "docs/RELEASE-SECRETS.md",
+    "scripts/automation-control-docs.test.mjs",
+    "scripts/create-release-github-app.mjs",
+    "scripts/create-release-github-app.test.mjs",
+    "scripts/doctor.mjs",
+    "scripts/doctor.test.mjs",
+    "scripts/lib/release-tag-publisher.mjs",
+    "scripts/lib/release-tag-publisher.test.mjs",
+    "scripts/release-governance.test.mjs",
+    "scripts/release-publish.sh",
+    "scripts/release-tag-publisher-build.sh",
+    "scripts/release-tag-publisher-host.swift",
+    "scripts/release-tag-publisher-install.mjs",
+    "scripts/release-tag-publisher-install.test.mjs",
+    "scripts/release-tag-publisher-native.test.mjs",
+    "scripts/release-tag-publisher.mjs",
+    "scripts/sync-github-rulesets.mjs",
+    "scripts/sync-github-rulesets.test.mjs",
+    "scripts/validate-release-tag-authority.mjs",
+    "scripts/validate-release-tag-authority.test.mjs",
+  ];
+
+  for (const filePath of publisherPaths) {
+    assert.equal(isReleasePublisherToolingPath(filePath), true, filePath);
+    const publisherSuite = buildValidationPlan("feature", [filePath]).find(
+      (item) => item.label === "release publisher tests",
+    );
+    assert.ok(publisherSuite, filePath);
+    assert.ok(
+      publisherSuite.args.includes(
+        "scripts/release-tag-publisher-native.test.mjs",
+      ),
+      filePath,
+    );
+    assert.ok(
+      publisherSuite.args.includes("scripts/automation-control-docs.test.mjs"),
+      filePath,
+    );
+  }
 });
 
 test("collectReleaseArtifactsToValidate resolves markdown artifacts to their json pairs", () => {

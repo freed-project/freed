@@ -3,11 +3,13 @@ import { execFileSync, spawn } from "node:child_process";
 import { createHash, generateKeyPairSync } from "node:crypto";
 import {
   chmodSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import http from "node:http";
@@ -70,7 +72,7 @@ function readBody(request) {
 }
 
 function runHost(args, cwd = fixtureRoot) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const child = spawn(host, args, {
       cwd,
       env: { PATH: "/usr/bin:/bin" },
@@ -78,28 +80,47 @@ function runHost(args, cwd = fixtureRoot) {
     });
     let stdout = "";
     let stderr = "";
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, 5_000);
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString("utf8");
     });
     child.stderr.on("data", (chunk) => {
       stderr += chunk.toString("utf8");
     });
-    child.on("close", (status) => resolve({ status, stdout, stderr }));
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on("close", (status) => {
+      clearTimeout(timeout);
+      if (timedOut) {
+        reject(new Error("The native release publisher exceeded its test deadline."));
+        return;
+      }
+      resolve({ status, stdout, stderr });
+    });
   });
 }
 
-function testingFlags() {
+function testingFlags(testKeyPath = keyPath) {
   return [
     "--config",
     configPath,
     "--test-key-file",
-    keyPath,
+    testKeyPath,
     "--api-base",
     apiBase,
   ];
 }
 
-function identityArgs(repo = "freed-project/freed") {
+function identityArgs(
+  repo = "freed-project/freed",
+  testKeyPath = keyPath,
+) {
   return [
     "--repo",
     repo,
@@ -107,7 +128,7 @@ function identityArgs(repo = "freed-project/freed") {
     "123456",
     "--app-slug",
     "freed-release-publisher",
-    ...testingFlags(),
+    ...testingFlags(testKeyPath),
   ];
 }
 
@@ -121,6 +142,7 @@ function publishArgs(overrides = {}) {
     branch: "dev",
     releaseFile: `release-notes/releases/${tag}.json`,
     releaseDigest: receiptDigest,
+    testKeyPath: keyPath,
     ...overrides,
   };
   return [
@@ -141,7 +163,7 @@ function publishArgs(overrides = {}) {
     values.releaseFile,
     "--release-file-sha256",
     values.releaseDigest,
-    ...testingFlags(),
+    ...testingFlags(values.testKeyPath),
   ];
 }
 
@@ -152,22 +174,12 @@ before(async () => {
   );
   chmodSync(fixtureRoot, 0o700);
   const productionHost = path.join(fixtureRoot, "production-host");
-  const productionProvisioner = path.join(
-    fixtureRoot,
-    "production-provisioner",
-  );
   execFileSync(
     path.join(root, "scripts", "release-tag-publisher-build.sh"),
-    [
-      "--host-output",
-      productionHost,
-      "--provisioner-output",
-      productionProvisioner,
-    ],
+    ["--host-output", productionHost],
     { cwd: root, stdio: "pipe" },
   );
   assert.equal(readFileSync(productionHost).length > 0, true);
-  assert.equal(readFileSync(productionProvisioner).length > 0, true);
 
   host = path.join(fixtureRoot, "release-tag-publisher-test");
   execFileSync(
@@ -381,13 +393,151 @@ test("production native publisher tools compile", { skip: !enabled }, () => {
     path.join(root, "scripts", "release-tag-publisher-host.swift"),
     "utf8",
   );
-  const provisionerSource = readFileSync(
-    path.join(root, "scripts", "release-tag-publisher-provision.swift"),
-    "utf8",
+  assert.match(
+    hostSource,
+    /freed-release-publisher\.private-key\.pem/,
   );
-  assert.match(hostSource, /kSecUseAuthenticationUIFail/);
-  assert.match(provisionerSource, /kSecUseAuthenticationUIFail/);
+  assert.match(hostSource, /getpwuid\(getuid\(\)\)/);
+  assert.match(hostSource, /metadata\.st_mode & 0o7777 == 0o600/);
+  assert.doesNotMatch(
+    hostSource,
+    /SecItemCopyMatching|SecItemAdd|SecItemUpdate|SecItemDelete|kSecAttrService/,
+  );
+  const attestBranch = hostSource.indexOf('if parsed.name == "attest"');
+  const secretRead = hostSource.indexOf("var secret = try readPrivateKey");
+  assert.ok(attestBranch >= 0 && secretRead > attestBranch);
+  assert.doesNotMatch(
+    hostSource.slice(attestBranch, secretRead),
+    /readPrivateKey|SecItem|SecKeychain|Keychain/,
+  );
 });
+
+test(
+  "native readiness attestation never accesses the private key",
+  { skip: !enabled },
+  async () => {
+    const original = readFileSync(keyPath);
+    const originalConfig = readFileSync(configPath);
+    try {
+      rmSync(keyPath);
+      const attested = await runHost(["attest", ...identityArgs()]);
+      assert.equal(attested.status, 0, attested.stderr);
+      const verified = await runHost(["verify-installation", ...identityArgs()]);
+      assert.equal(verified.status, 1);
+      assert.match(verified.stderr, /private key|No such file/);
+
+      const pending = {
+        ...JSON.parse(originalConfig.toString("utf8")),
+        status: "pending",
+      };
+      writeFileSync(configPath, `${JSON.stringify(pending)}\n`, { mode: 0o600 });
+      const pendingAttestation = await runHost(["attest", ...identityArgs()]);
+      assert.equal(pendingAttestation.status, 0, pendingAttestation.stderr);
+      writeFileSync(keyPath, original, { mode: 0o600 });
+      const beforeRequests = requests.length;
+      const pendingVerification = await runHost([
+        "verify-installation",
+        ...identityArgs(),
+      ]);
+      assert.equal(pendingVerification.status, 0, pendingVerification.stderr);
+      assert.ok(requests.length > beforeRequests);
+      const beforePublishRequests = requests.length;
+      const pendingPublish = await runHost(publishArgs(), worktree);
+      assert.equal(pendingPublish.status, 1);
+      assert.match(pendingPublish.stderr, /binding is not active/);
+      assert.equal(requests.length, beforePublishRequests);
+    } finally {
+      writeFileSync(configPath, originalConfig, { mode: 0o600 });
+      writeFileSync(keyPath, original, { mode: 0o600 });
+      originalConfig.fill(0);
+      original.fill(0);
+    }
+  },
+);
+
+test(
+  "native credential admission rejects unsafe local files before network access",
+  { skip: !enabled },
+  async () => {
+    const originalKey = readFileSync(keyPath);
+    const candidates = [];
+    const cleanupPaths = [];
+    const addCandidate = (name) => {
+      const candidate = path.join(fixtureRoot, name);
+      candidates.push(candidate);
+      return candidate;
+    };
+    try {
+      const missing = addCandidate("missing-key.pem");
+      const symlink = addCandidate("symlink-key.pem");
+      symlinkSync(keyPath, symlink);
+      const hardLink = addCandidate("hardlink-key.pem");
+      linkSync(keyPath, hardLink);
+      const wrongMode = addCandidate("wrong-mode-key.pem");
+      writeFileSync(wrongMode, originalKey, { mode: 0o644 });
+      const oversized = addCandidate("oversized-key.pem");
+      writeFileSync(oversized, Buffer.alloc(32 * 1_024 + 1), { mode: 0o600 });
+      const invalid = addCandidate("invalid-key.pem");
+      writeFileSync(invalid, "not an RSA private key\n", { mode: 0o600 });
+      const fifo = addCandidate("fifo-key.pem");
+      execFileSync("/usr/bin/mkfifo", [fifo]);
+      const unsafeParent = path.join(fixtureRoot, "unsafe-parent");
+      mkdirSync(unsafeParent, { mode: 0o700 });
+      const unsafeParentKey = path.join(unsafeParent, "release-key.pem");
+      writeFileSync(unsafeParentKey, originalKey, { mode: 0o600 });
+      chmodSync(unsafeParent, 0o777);
+      cleanupPaths.push(unsafeParent);
+      const ancestorTarget = path.join(fixtureRoot, "ancestor-target");
+      mkdirSync(ancestorTarget, { mode: 0o700 });
+      writeFileSync(path.join(ancestorTarget, "release-key.pem"), originalKey, {
+        mode: 0o600,
+      });
+      const symlinkedAncestor = path.join(fixtureRoot, "symlinked-ancestor");
+      symlinkSync(ancestorTarget, symlinkedAncestor);
+      const symlinkedAncestorKey = path.join(
+        symlinkedAncestor,
+        "release-key.pem",
+      );
+      cleanupPaths.push(symlinkedAncestor, ancestorTarget);
+
+      for (const candidate of [
+        missing,
+        symlink,
+        hardLink,
+        wrongMode,
+        oversized,
+        invalid,
+        fifo,
+        unsafeParentKey,
+        symlinkedAncestorKey,
+      ]) {
+        const beforeRequests = requests.length;
+        const result = await runHost([
+          "verify-installation",
+          ...identityArgs("freed-project/freed", candidate),
+        ]);
+        assert.equal(result.status, 1, candidate);
+        assert.equal(requests.length, beforeRequests, candidate);
+      }
+
+      const beforePublishRequests = requests.length;
+      const publish = await runHost(
+        publishArgs({ testKeyPath: invalid }),
+        worktree,
+      );
+      assert.equal(publish.status, 1);
+      assert.equal(requests.length, beforePublishRequests);
+    } finally {
+      for (const candidate of candidates.reverse()) {
+        rmSync(candidate, { force: true });
+      }
+      for (const candidate of cleanupPaths.reverse()) {
+        rmSync(candidate, { force: true, recursive: true });
+      }
+      originalKey.fill(0);
+    }
+  },
+);
 
 test(
   "native installation verification proves exact App and repository scope",

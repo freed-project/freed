@@ -5,8 +5,6 @@ import Security
 
 private let productionConfigPath =
   "/Library/Application Support/Freed/release-tag-publisher.json"
-private let keychainService = "freed-release-tag-publisher"
-private let keychainAccount = "github-app-private-key"
 private let productionAPIBase = "https://api.github.com"
 private let maximumConfigBytes = 32 * 1_024
 private let maximumKeyBytes = 32 * 1_024
@@ -276,7 +274,7 @@ private func loadBinding(_ path: String) throws -> PublisherBinding {
   }
   guard binding.schemaVersion == 1,
     binding.purpose == "freed-release-tag-publisher-binding",
-    binding.status == "active",
+    ["active", "pending"].contains(binding.status),
     binding.repo == "freed-project/freed",
     binding.appId > 0,
     !binding.appSlug.isEmpty
@@ -310,6 +308,11 @@ private func validateBinding(
   guard parsed.values["--repo"] == binding.repo else {
     try fail("Publisher arguments do not match the root-owned App binding.")
   }
+  if parsed.name == "publish" {
+    guard binding.status == "active" else {
+      try fail("The release tag publisher binding is not active.")
+    }
+  }
   if parsed.name != "publish" {
     guard Int(parsed.values["--app-id"] ?? "") == binding.appId,
       parsed.values["--app-slug"]?.lowercased() == binding.appSlug.lowercased()
@@ -320,19 +323,54 @@ private func validateBinding(
   return digest
 }
 
-private func readKeychainSecret() throws -> Data {
-  let query: [CFString: Any] = [
-    kSecClass: kSecClassGenericPassword,
-    kSecAttrService: keychainService,
-    kSecAttrAccount: keychainAccount,
-    kSecReturnData: true,
-    kSecMatchLimit: kSecMatchLimitOne,
-    kSecUseAuthenticationUI: kSecUseAuthenticationUIFail,
-  ]
-  var result: CFTypeRef?
-  let status = SecItemCopyMatching(query as CFDictionary, &result)
-  guard status == errSecSuccess, let data = result as? Data else {
-    try fail("The release GitHub App private key is unavailable in Keychain.")
+private func productionPrivateKeyPath() throws -> String {
+  guard let account = getpwuid(getuid()) else {
+    try fail("The current user's home directory is unavailable.")
+  }
+  return URL(fileURLWithPath: String(cString: account.pointee.pw_dir))
+    .appendingPathComponent(".freed")
+    .appendingPathComponent("credentials")
+    .appendingPathComponent("github-apps")
+    .appendingPathComponent("freed-release-publisher.private-key.pem")
+    .path
+}
+
+private func readPrivateKeyFile(_ path: String) throws -> Data {
+  let canonical = try canonicalExistingPath(path, label: "release App private key")
+  guard canonical == path else {
+    try fail("The release App private key must use its fixed non-symlink path.")
+  }
+  var current = URL(fileURLWithPath: path).deletingLastPathComponent().path
+  while true {
+    let parent = try fileMetadata(current, followSymlink: true)
+    guard (parent.st_mode & S_IFMT) == S_IFDIR,
+      [uid_t(0), getuid()].contains(parent.st_uid),
+      parent.st_mode & 0o022 == 0
+    else {
+      try fail("The release App private key has an unsafe parent directory.")
+    }
+    let next = URL(fileURLWithPath: current).deletingLastPathComponent().path
+    if next == current { break }
+    current = next
+  }
+  let descriptor = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
+  guard descriptor >= 0 else {
+    try fail("The release App private key cannot be opened safely.")
+  }
+  defer { close(descriptor) }
+  var metadata = stat()
+  guard fstat(descriptor, &metadata) == 0,
+    (metadata.st_mode & S_IFMT) == S_IFREG,
+    metadata.st_uid == getuid(),
+    metadata.st_nlink == 1,
+    metadata.st_mode & 0o7777 == 0o600
+  else {
+    try fail("The release App private key must be a mode 0600 current-user file with one link.")
+  }
+  let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: false)
+  let data = handle.readData(ofLength: maximumKeyBytes + 1)
+  guard !data.isEmpty, data.count <= maximumKeyBytes else {
+    try fail("The release App private key is empty or exceeds its size limit.")
   }
   return data
 }
@@ -340,19 +378,10 @@ private func readKeychainSecret() throws -> Data {
 private func readPrivateKey(_ parsed: ParsedCommand) throws -> Data {
   #if RELEASE_TAG_PUBLISHER_HOST_TESTING
     if let path = parsed.testKeyFile {
-      let canonical = try canonicalExistingPath(path, label: "testing private key")
-      guard canonical == path else { try fail("The testing private key path must be canonical.") }
-      let metadata = try fileMetadata(path, followSymlink: true)
-      guard (metadata.st_mode & S_IFMT) == S_IFREG,
-        metadata.st_uid == getuid(),
-        metadata.st_mode & 0o077 == 0
-      else {
-        try fail("The testing private key must be a private file owned by the current user.")
-      }
-      return try readBoundedFile(path, maximumBytes: maximumKeyBytes)
+      return try readPrivateKeyFile(path)
     }
   #endif
-  return try readKeychainSecret()
+  return try readPrivateKeyFile(try productionPrivateKeyPath())
 }
 
 private func privateRSAKey(from pem: Data) throws -> SecKey {
@@ -524,7 +553,7 @@ private func installationContext(
     owner["login"] as? String == "freed-project",
     owner["type"] as? String == "Organization"
   else {
-    try fail("The Keychain key does not authenticate the exact private Freed Release Publisher App.")
+    try fail("The local credential does not authenticate the exact private Freed Release Publisher App.")
   }
 
   let installationResponse = try client.request(
@@ -898,14 +927,7 @@ private func main() -> Int32 {
     let parsed = try parseCommand(rawArguments)
     let binding = try loadBinding(parsed.configPath)
     let digest = try validateBinding(binding, parsed: parsed)
-    var secret = try readPrivateKey(parsed)
-    defer { secret.resetBytes(in: 0..<secret.count) }
-    let key = try privateRSAKey(from: secret)
-    secret.resetBytes(in: 0..<secret.count)
-    let client = try GitHubClient(base: parsed.apiBase)
-
-    switch parsed.name {
-    case "attest":
+    if parsed.name == "attest" {
       try emitJSON([
         "schemaVersion": AnyEncodable(1),
         "purpose": AnyEncodable("freed-release-tag-publisher-readiness"),
@@ -919,6 +941,15 @@ private func main() -> Int32 {
         "allowsDeletions": AnyEncodable(false),
         "digest": AnyEncodable(digest),
       ])
+      return 0
+    }
+    var secret = try readPrivateKey(parsed)
+    defer { secret.resetBytes(in: 0..<secret.count) }
+    let key = try privateRSAKey(from: secret)
+    secret.resetBytes(in: 0..<secret.count)
+    let client = try GitHubClient(base: parsed.apiBase)
+
+    switch parsed.name {
     case "verify-installation":
       var context = try installationContext(binding: binding, key: key, client: client)
       do {

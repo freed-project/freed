@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -13,18 +16,31 @@ import test from "node:test";
 
 import {
   activateReleaseTagPublisherBinding,
+  assertReleaseAppPrivateKeyAbsent,
   buildManifestBootstrapHtml,
   buildReleaseGitHubAppManifest,
   completeReleaseGitHubAppCreation,
+  createReleaseGitHubApp,
   exchangeManifestCode,
+  finalizeReleaseTagPublisherBinding,
   parseManifestCallback,
   provisionReleaseAppPrivateKey,
   releaseAppIdentityPath,
   validateManifestConversion,
+  verifyInstalledReleaseApp,
   writeReleaseAppIdentity,
 } from "./create-release-github-app.mjs";
 
-const pem = `-----BEGIN RSA PRIVATE KEY-----\n${"A".repeat(512)}\n-----END RSA PRIVATE KEY-----\n`;
+const pem = generateKeyPairSync("rsa", { modulusLength: 2_048 })
+  .privateKey.export({ format: "pem", type: "pkcs1" })
+  .toString();
+const credentialTestHome = realpathSync(os.userInfo().homedir);
+
+function createCredentialTestDirectory(label) {
+  return realpathSync(
+    mkdtempSync(path.join(credentialTestHome, `.freed-${label}-`)),
+  );
+}
 
 function conversion() {
   return {
@@ -38,6 +54,28 @@ function conversion() {
     pem,
     client_secret: "client-secret-must-not-survive",
     webhook_secret: "webhook-secret-must-not-survive",
+  };
+}
+
+function installationReadiness() {
+  return {
+    schemaVersion: 1,
+    purpose: "freed-release-tag-publisher-installation-readiness",
+    repo: "freed-project/freed",
+    appId: 123456,
+    appSlug: "freed-release-publisher",
+    appName: "Freed Release Publisher",
+    appExternalUrl: "https://freed.wtf",
+    appOwnerLogin: "freed-project",
+    appOwnerType: "Organization",
+    appPermissions: { contents: "write", metadata: "read" },
+    appEvents: [],
+    installationId: 42,
+    accountLogin: "freed-project",
+    accountType: "Organization",
+    repositorySelection: "selected",
+    permissions: { contents: "write", metadata: "read" },
+    repositories: ["freed-project/freed"],
   };
 }
 
@@ -80,6 +118,30 @@ test("release App manifest is private, event-free, and Contents-only", () => {
   assert.match(html, /method="post"/);
   assert.doesNotMatch(html, /hook_attributes|inactive-webhook/);
   assert.doesNotMatch(html, /client_secret|webhook_secret|BEGIN RSA/);
+});
+
+test("installed App verification has a hard native deadline", () => {
+  const calls = [];
+  const result = verifyInstalledReleaseApp(
+    {
+      repo: "freed-project/freed",
+      appId: 123456,
+      appSlug: "freed-release-publisher",
+    },
+    {
+      publisherPath: "/fixed/release-tag-publisher",
+      exec(file, args, options) {
+        calls.push({ file, args, options });
+        return JSON.stringify(installationReadiness());
+      },
+    },
+  );
+  assert.equal(result.installationId, 42);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].file, "/fixed/release-tag-publisher");
+  assert.equal(calls[0].options.timeout, 30_000);
+  assert.equal(calls[0].options.env.PATH, "/usr/bin:/bin");
+  assert.deepEqual(Object.keys(calls[0].options.env).sort(), ["HOME", "PATH"]);
 });
 
 test("manifest callback rejects missing, duplicated, and incorrect CSRF state", () => {
@@ -126,21 +188,115 @@ test("manifest exchange never sends credentials", async () => {
   assert.equal("Authorization" in calls[0].options.headers, false);
 });
 
-test("private key is piped to the fixed provisioner and never placed in arguments", () => {
-  const calls = [];
-  provisionReleaseAppPrivateKey(pem, {
-    spawn(file, args, options) {
-      calls.push({ file, args, options });
-      return { status: 0 };
-    },
+test("private key is atomically saved only in the fixed private local path", (t) => {
+  const home = createCredentialTestDirectory("release-home");
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const canonicalHome = home;
+  assert.equal(
+    assertReleaseAppPrivateKeyAbsent({ homeDirectory: canonicalHome }).ready,
+    true,
+  );
+  const keyPath = provisionReleaseAppPrivateKey(pem, {
+    homeDirectory: canonicalHome,
   });
-  assert.deepEqual(calls[0].args, [
-    "provision",
-    "--host",
-    "/Library/Application Support/Freed/release-tag-publisher",
-  ]);
-  assert.equal(calls[0].options.input, pem);
-  assert.doesNotMatch(JSON.stringify(calls[0].args), /BEGIN RSA/);
+  assert.equal(
+    keyPath,
+    path.join(
+      canonicalHome,
+      ".freed",
+      "credentials",
+      "github-apps",
+      "freed-release-publisher.private-key.pem",
+    ),
+  );
+  assert.equal(readFileSync(keyPath, "utf8"), pem);
+  assert.equal(statSync(keyPath).mode & 0o777, 0o600);
+  assert.equal(statSync(path.dirname(keyPath)).mode & 0o777, 0o700);
+  assert.equal(
+    statSync(path.join(canonicalHome, ".freed", "credentials")).mode & 0o777,
+    0o700,
+  );
+  assert.throws(
+    () =>
+      provisionReleaseAppPrivateKey("not a private key", {
+        homeDirectory: home,
+      }),
+    /not valid PKCS1 PEM/,
+  );
+  assert.throws(
+    () =>
+      provisionReleaseAppPrivateKey(pem, {
+        homeDirectory: canonicalHome,
+      }),
+    /EEXIST|exists/,
+  );
+  assert.throws(
+    () => assertReleaseAppPrivateKeyAbsent({ homeDirectory: canonicalHome }),
+    /credential already exists/,
+  );
+  assert.equal(readFileSync(keyPath, "utf8"), pem);
+});
+
+test("private key storage rejects weak keys and unsafe state ancestors", (t) => {
+  const weakPem = generateKeyPairSync("rsa", { modulusLength: 1_024 })
+    .privateKey.export({ format: "pem", type: "pkcs1" })
+    .toString();
+  const weakHome = createCredentialTestDirectory("release-weak-home");
+  t.after(() => rmSync(weakHome, { recursive: true, force: true }));
+  assert.throws(
+    () =>
+      provisionReleaseAppPrivateKey(weakPem, { homeDirectory: weakHome }),
+    /at least 2,048 bits/,
+  );
+
+  const symlinkHome = createCredentialTestDirectory("release-symlink-home");
+  t.after(() => rmSync(symlinkHome, { recursive: true, force: true }));
+  const target = path.join(symlinkHome, "redirected");
+  mkdirSync(target, { mode: 0o700 });
+  symlinkSync(target, path.join(symlinkHome, ".freed"), "dir");
+  assert.throws(
+    () => assertReleaseAppPrivateKeyAbsent({ homeDirectory: symlinkHome }),
+    /Freed state root must use a canonical absolute path/,
+  );
+  assert.throws(
+    () =>
+      provisionReleaseAppPrivateKey(pem, { homeDirectory: symlinkHome }),
+    /Freed state root must use a canonical absolute path/,
+  );
+
+  const unsafeHome = createCredentialTestDirectory("release-unsafe-home");
+  t.after(() => rmSync(unsafeHome, { recursive: true, force: true }));
+  const unsafeRoot = path.join(unsafeHome, ".freed");
+  mkdirSync(unsafeRoot, { mode: 0o700 });
+  chmodSync(unsafeRoot, 0o777);
+  assert.throws(
+    () => assertReleaseAppPrivateKeyAbsent({ homeDirectory: unsafeHome }),
+    /Freed state root must be a protected current-user directory/,
+  );
+  assert.throws(
+    () => provisionReleaseAppPrivateKey(pem, { homeDirectory: unsafeHome }),
+    /Freed state root must be a protected current-user directory/,
+  );
+});
+
+test("unsafe credential preflight stops before GitHub or host setup", async () => {
+  const calls = [];
+  await assert.rejects(
+    createReleaseGitHubApp({
+      verifyCredentialAbsent() {
+        calls.push("preflight");
+        throw new Error("Unsafe credential directory.");
+      },
+      verifyPreparedHost() {
+        calls.push("host");
+      },
+      openUrl() {
+        calls.push("browser");
+      },
+    }),
+    /Unsafe credential directory/,
+  );
+  assert.deepEqual(calls, ["preflight"]);
 });
 
 test("publisher activation passes only the nonsecret App identity to pinned Node", () => {
@@ -173,6 +329,25 @@ test("publisher activation passes only the nonsecret App identity to pinned Node
     JSON.stringify(calls),
     /BEGIN RSA|client-secret|webhook-secret/,
   );
+
+  const finalizeCalls = [];
+  finalizeReleaseTagPublisherBinding({
+    nodePath: "/pinned/node",
+    installerPath: "/repo/scripts/release-tag-publisher-install.mjs",
+    exec(file, args, options) {
+      finalizeCalls.push({ file, args, options });
+    },
+  });
+  assert.deepEqual(finalizeCalls, [
+    {
+      file: "/pinned/node",
+      args: [
+        "/repo/scripts/release-tag-publisher-install.mjs",
+        "finalize",
+      ],
+      options: { stdio: "inherit" },
+    },
+  ]);
 });
 
 test("completed creation writes and logs only nonsecret App identity", async (t) => {
@@ -202,6 +377,9 @@ test("completed creation writes and logs only nonsecret App identity", async (t)
       sequence.push("verify-installation");
       return { ready: true, installationId: 42 };
     },
+    finalizePublisher() {
+      sequence.push("finalize-binding");
+    },
     onStatus(message) {
       statuses.push(message);
     },
@@ -213,6 +391,7 @@ test("completed creation writes and logs only nonsecret App identity", async (t)
     "activate-binding",
     "open-installation",
     "verify-installation",
+    "finalize-binding",
   ]);
   assert.equal(opened.length, 1);
   const installationUrl = new URL(opened[0]);

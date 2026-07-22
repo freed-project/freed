@@ -16,13 +16,9 @@ import {
   loadAndVerifyReleaseTagPublisher,
   verifyReleaseTagPublisherInstallation,
   verifyReleaseTagPublisherInstallationReadiness,
-  verifyReleaseTagPublisherReadiness,
 } from "./lib/release-tag-publisher.mjs";
 
-export {
-  verifyReleaseTagPublisherInstallationReadiness,
-  verifyReleaseTagPublisherReadiness,
-};
+export { verifyReleaseTagPublisherInstallationReadiness };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_RULESET_DIR = path.resolve(

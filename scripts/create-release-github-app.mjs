@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 
-import { execFileSync, spawnSync } from "node:child_process";
-import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import {
+  createPrivateKey,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from "node:crypto";
 import {
   closeSync,
   constants,
@@ -10,6 +15,7 @@ import {
   fstatSync,
   fsyncSync,
   lstatSync,
+  linkSync,
   mkdirSync,
   openSync,
   realpathSync,
@@ -31,8 +37,6 @@ export const RELEASE_GITHUB_APP_NAME = "Freed Release Publisher";
 export const RELEASE_GITHUB_APP_SLUG = "freed-release-publisher";
 export const RELEASE_TAG_PUBLISHER_PATH =
   "/Library/Application Support/Freed/release-tag-publisher";
-export const RELEASE_TAG_PUBLISHER_PROVISIONER_PATH =
-  "/Library/Application Support/Freed/release-tag-publisher-provision";
 
 const CALLBACK_PATH = "/github-app/callback";
 const BOOTSTRAP_PATH = "/";
@@ -115,6 +119,96 @@ function openPrivateDirectory(directory, { recursive, label }) {
   }
 }
 
+function verifyCurrentUserDirectory(directory, label) {
+  if (
+    !path.isAbsolute(directory) ||
+    realpathSync(directory) !== directory
+  ) {
+    throw new Error(`${label} must use a canonical absolute path.`);
+  }
+  const link = lstatSync(directory);
+  const metadata = statSync(directory);
+  if (
+    link.isSymbolicLink() ||
+    !metadata.isDirectory() ||
+    metadata.uid !== process.getuid() ||
+    (metadata.mode & 0o022) !== 0
+  ) {
+    throw new Error(`${label} must be a protected current-user directory.`);
+  }
+}
+
+function verifyProtectedHomeChain(homeDirectory) {
+  verifyCurrentUserDirectory(homeDirectory, "The release credential home");
+  let current = path.dirname(homeDirectory);
+  while (true) {
+    const link = lstatSync(current);
+    const metadata = statSync(current);
+    if (
+      link.isSymbolicLink() ||
+      !metadata.isDirectory() ||
+      ![0, process.getuid()].includes(metadata.uid) ||
+      (metadata.mode & 0o022) !== 0
+    ) {
+      throw new Error(
+        "The release credential home has an unsafe parent directory.",
+      );
+    }
+    const next = path.dirname(current);
+    if (next === current) break;
+    current = next;
+  }
+}
+
+function verifyExistingCredentialDirectoryChain(homeDirectory) {
+  verifyProtectedHomeChain(homeDirectory);
+  for (const [directory, label] of [
+    [path.join(homeDirectory, ".freed"), "The Freed state root"],
+    [
+      path.join(homeDirectory, ".freed", "credentials"),
+      "The release credential root",
+    ],
+    [
+      path.join(homeDirectory, ".freed", "credentials", "github-apps"),
+      "The release GitHub App credential directory",
+    ],
+  ]) {
+    try {
+      lstatSync(directory);
+    } catch (error) {
+      if (error?.code === "ENOENT") break;
+      throw error;
+    }
+    verifyCurrentUserDirectory(directory, label);
+  }
+}
+
+function releaseAppPrivateKeyPath(homeDirectory = os.userInfo().homedir) {
+  return path.join(
+    homeDirectory,
+    ".freed",
+    "credentials",
+    "github-apps",
+    "freed-release-publisher.private-key.pem",
+  );
+}
+
+export function assertReleaseAppPrivateKeyAbsent({
+  homeDirectory = os.userInfo().homedir,
+} = {}) {
+  verifyExistingCredentialDirectoryChain(homeDirectory);
+  const filePath = releaseAppPrivateKeyPath(homeDirectory);
+  try {
+    lstatSync(filePath);
+  } catch (error) {
+    if (error?.code === "ENOENT") return { ready: true, filePath };
+    throw error;
+  }
+  throw new Error(
+    `A release GitHub App credential already exists at ${filePath}. Refusing to create an orphaned replacement App.`,
+  );
+}
+
 function verifyPreparedExecutable(filePath, label) {
   if (
     !path.isAbsolute(filePath) ||
@@ -152,14 +246,9 @@ function verifyPreparedExecutable(filePath, label) {
 
 export function verifyPreparedReleaseTagPublisher({
   publisherPath = RELEASE_TAG_PUBLISHER_PATH,
-  provisionerPath = RELEASE_TAG_PUBLISHER_PROVISIONER_PATH,
 } = {}) {
   verifyPreparedExecutable(publisherPath, "The release tag publisher host");
-  verifyPreparedExecutable(
-    provisionerPath,
-    "The release tag publisher provisioner",
-  );
-  return { ready: true, publisherPath, provisionerPath };
+  return { ready: true, publisherPath };
 }
 
 export function buildReleaseGitHubAppManifest({ origin }) {
@@ -282,26 +371,80 @@ export function validateManifestConversion(conversion) {
 
 export function provisionReleaseAppPrivateKey(
   pem,
-  {
-    spawn = spawnSync,
-    provisionerPath = RELEASE_TAG_PUBLISHER_PROVISIONER_PATH,
-    publisherPath = RELEASE_TAG_PUBLISHER_PATH,
-  } = {},
+  { homeDirectory = os.userInfo().homedir } = {},
 ) {
-  const result = spawn(
-    provisionerPath,
-    ["provision", "--host", publisherPath],
-    {
-      input: pem,
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "pipe"],
-      maxBuffer: 1024 * 1024,
-    },
-  );
-  if (result?.error || result?.status !== 0) {
+  if (
+    typeof pem !== "string" ||
+    Buffer.byteLength(pem, "utf8") > 32 * 1_024 ||
+    !pem.trim().startsWith("-----BEGIN RSA PRIVATE KEY-----") ||
+    !pem.trim().endsWith("-----END RSA PRIVATE KEY-----")
+  ) {
+    throw new Error("The release GitHub App private key is not valid PKCS1 PEM.");
+  }
+  let parsedKey;
+  try {
+    parsedKey = createPrivateKey(pem);
+  } catch {
+    throw new Error("The release GitHub App private key is not valid PKCS1 PEM.");
+  }
+  if (
+    parsedKey.asymmetricKeyType !== "rsa" ||
+    Number(parsedKey.asymmetricKeyDetails?.modulusLength ?? 0) < 2_048
+  ) {
     throw new Error(
-      "The installed release tag publisher provisioner rejected the GitHub App private key.",
+      "The release GitHub App private key must be an RSA key of at least 2,048 bits.",
     );
+  }
+  if (
+    !path.isAbsolute(homeDirectory) ||
+    path.resolve(homeDirectory) !== homeDirectory
+  ) {
+    throw new Error("The release credential home directory must be canonical and absolute.");
+  }
+  verifyExistingCredentialDirectoryChain(homeDirectory);
+  const freedRoot = path.join(homeDirectory, ".freed");
+  try {
+    mkdirSync(freedRoot, { mode: 0o755 });
+  } catch (error) {
+    if (error?.code !== "EEXIST") throw error;
+  }
+  verifyCurrentUserDirectory(freedRoot, "The Freed state root");
+  const credentialRoot = path.join(freedRoot, "credentials");
+  const directory = path.join(credentialRoot, "github-apps");
+  const filePath = releaseAppPrivateKeyPath(homeDirectory);
+  const rootDescriptor = openPrivateDirectory(credentialRoot, {
+    recursive: false,
+    label: "The release credential root",
+  });
+  let directoryDescriptor;
+  const temporaryPath = path.join(
+    directory,
+    `.release-key.${process.pid.toLocaleString("en-US", { useGrouping: false })}.${randomUUID()}.tmp`,
+  );
+  let descriptor;
+  try {
+    directoryDescriptor = openPrivateDirectory(directory, {
+      recursive: false,
+      label: "The release GitHub App credential directory",
+    });
+    descriptor = openSync(temporaryPath, "wx", 0o600);
+    fchmodSync(descriptor, 0o600);
+    writeFileSync(descriptor, `${pem.trim()}\n`, "utf8");
+    fsyncSync(descriptor);
+    closeSync(descriptor);
+    descriptor = undefined;
+    linkSync(temporaryPath, filePath);
+    rmSync(temporaryPath);
+    fsyncSync(directoryDescriptor);
+    fsyncSync(rootDescriptor);
+    return filePath;
+  } catch (error) {
+    if (descriptor !== undefined) closeSync(descriptor);
+    rmSync(temporaryPath, { force: true });
+    throw error;
+  } finally {
+    if (directoryDescriptor !== undefined) closeSync(directoryDescriptor);
+    closeSync(rootDescriptor);
   }
 }
 
@@ -329,6 +472,20 @@ export function activateReleaseTagPublisherBinding(
   } catch {
     throw new Error(
       "The release tag publisher installer could not activate the App binding.",
+    );
+  }
+}
+
+export function finalizeReleaseTagPublisherBinding({
+  exec = execFileSync,
+  nodePath = process.execPath,
+  installerPath = RELEASE_TAG_PUBLISHER_INSTALLER_PATH,
+} = {}) {
+  try {
+    exec(nodePath, [installerPath, "finalize"], { stdio: "inherit" });
+  } catch {
+    throw new Error(
+      "The release tag publisher installer could not finalize the App binding.",
     );
   }
 }
@@ -430,7 +587,15 @@ export function verifyInstalledReleaseApp(
       "--app-slug",
       identity.appSlug,
     ],
-    { encoding: "utf8", maxBuffer: 1024 * 1024 },
+    {
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+      timeout: 30_000,
+      env: {
+        HOME: process.env.HOME ?? "",
+        PATH: "/usr/bin:/bin",
+      },
+    },
   );
   let attestation;
   try {
@@ -476,6 +641,7 @@ export async function completeReleaseGitHubAppCreation(
     provisionPrivateKey = provisionReleaseAppPrivateKey,
     writeIdentity = writeReleaseAppIdentity,
     activatePublisher = activateReleaseTagPublisherBinding,
+    finalizePublisher = finalizeReleaseTagPublisherBinding,
     openUrl = (url) =>
       execFileSync("/usr/bin/open", [url], { stdio: "ignore" }),
     pollInstallation = pollReleaseAppInstallation,
@@ -483,7 +649,7 @@ export async function completeReleaseGitHubAppCreation(
   } = {},
 ) {
   const { identity, pem } = validateManifestConversion(conversion);
-  onStatus("Installing the private App credential in the release publisher.");
+  onStatus("Saving the private App credential in local private storage.");
   provisionPrivateKey(pem);
   writeIdentity(identity);
   onStatus("Activating the root-owned App identity binding.");
@@ -492,6 +658,8 @@ export async function completeReleaseGitHubAppCreation(
   onStatus("Opening the selected-repository installation page.");
   openUrl(installationUrl);
   const installation = await pollInstallation(identity);
+  onStatus("Finalizing the verified root-owned App identity binding.");
+  finalizePublisher();
   return {
     status: "ready",
     repo: identity.repo,
@@ -588,12 +756,14 @@ function createCallbackServer({ state, timeoutMs = MANIFEST_TIMEOUT_MS }) {
 }
 
 export async function createReleaseGitHubApp({
+  verifyCredentialAbsent = assertReleaseAppPrivateKeyAbsent,
   verifyPreparedHost = verifyPreparedReleaseTagPublisher,
   openUrl = (url) => execFileSync("/usr/bin/open", [url], { stdio: "ignore" }),
   exchangeCode = exchangeManifestCode,
   completeCreation = completeReleaseGitHubAppCreation,
   onStatus = () => {},
 } = {}) {
+  verifyCredentialAbsent();
   verifyPreparedHost();
   const state = randomBytes(32).toString("hex");
   const listener = createCallbackServer({ state });

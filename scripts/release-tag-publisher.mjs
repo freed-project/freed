@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import {
   loadAndVerifyReleaseTagPublisher,
+  publishReleaseTag,
   verifyReleaseTagPublisherInstallation,
 } from "./lib/release-tag-publisher.mjs";
 
@@ -42,7 +42,7 @@ function main() {
     process.stdout.write(`${JSON.stringify(result.attestation)}\n`);
     return;
   }
-  execFileSync(binding.publisherPath, args, { stdio: "inherit" });
+  publishReleaseTag(binding, args);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

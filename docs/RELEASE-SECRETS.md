@@ -149,11 +149,10 @@ node scripts/release-tag-publisher-install.mjs prepare
 ```
 
 The helper runs `scripts/release-tag-publisher-build.sh` in a private temporary
-directory, builds the native Swift host and provisioner, and installs them as
-root-owned, read-only executables at these fixed paths:
+directory, builds the native Swift host, installs it as a root-owned, read-only
+executable at this fixed path, and removes the obsolete Keychain provisioner:
 
 - `/Library/Application Support/Freed/release-tag-publisher`
-- `/Library/Application Support/Freed/release-tag-publisher-provision`
 
 The binding does not exist yet, so publication still fails closed.
 
@@ -171,23 +170,30 @@ requests only repository Contents write permission. GitHub adds Metadata read
 implicitly. The App subscribes to no events, has no OAuth flow, and keeps its
 required webhook inactive.
 
-The helper converts the manifest, pipes the returned private key directly to
-the fixed native provisioner, and never writes the key to disk. The provisioner
-stores it in the macOS Keychain with:
-
-- service `freed-release-tag-publisher`
-- account `github-app-private-key`
-
-The Keychain ACL permits only the installed native host and provisioner. The
-helper then installs the root-owned binding at
+The helper converts the manifest and atomically saves the returned private key
+at
+`~/.freed/credentials/github-apps/freed-release-publisher.private-key.pem`.
+The file is current-user owned, mode `0600`, stored under mode `0700`
+credential directories, and never stored in the repository or placed in
+process arguments. Initial creation fails closed if a credential already exists
+instead of replacing a working key. The helper then installs a root-owned
+pending binding at
 `/Library/Application Support/Freed/release-tag-publisher.json`, opens the App
 installation page, and waits for an active selected-repository installation
-whose only repository is `freed-project/freed`.
+whose only repository is `freed-project/freed`. The native host can attest and
+verify an installation while the binding is pending, but it cannot publish a
+tag. Only exact installation proof promotes the binding to `active`.
 
 The binding pins the repository, App ID, App slug, publisher path, and publisher
 SHA-256 digest. The nonsecret App identity is also recorded at
 `~/.freed/automation/release-tag-publisher/github-app.json`. Neither file
 contains the private key.
+
+Routine readiness checks validate the root-owned binding and publisher digest
+without accessing the credential. Explicit installation verification and tag
+publication are the only normal operations that read the private key. Those
+credential-bearing processes have hard deadlines. A legacy release publisher
+Keychain item is ignored and cannot prompt or block release automation.
 
 ### Activate the split tag rulesets
 
@@ -207,7 +213,7 @@ node scripts/sync-github-rulesets.mjs \
 Activation verifies the live lockdown, private App metadata through the native
 App JWT, an independent unsuspended organization installation, exact selected
 repository, exact permissions, empty event list, root-owned binding, executable
-digest, Keychain-backed App proof, and native publisher attestation. It applies
+digest, local-file App proof, and native publisher attestation. It applies
 `Freed release tag creation` with the dedicated App as its only bypass and
 `Freed release tag immutability` with no bypass. It reads both policies back
 from GitHub before removing the bootstrap lockdown. A partial activation leaves
@@ -218,7 +224,7 @@ parameter. The checked-in tag policies use that canonical parameter-free form.
 The verifier accepts an older explicit `false` value but rejects `true` or any
 unexpected update parameters.
 
-### Verify, publish, rotate, or revoke
+### Verify, publish, and recover
 
 Verify the installed publisher and its live App installation at any time:
 
@@ -240,29 +246,30 @@ Read-only GitHub checks may use the current `gh` login. Tag creation never
 falls back to `GITHUB_TOKEN`, `GH_TOKEN`, a personal access token, a user push,
 or a general automation credential.
 
-For key rotation, create a replacement private key in the GitHub App settings
-and keep the previous GitHub key active until verification succeeds. Save the
-replacement briefly as an absolute, current-user-owned mode `0600` file, then
-run:
+Automated key rotation is disabled until it can atomically preserve the current
+key, verify the replacement, and restore the previous key after any failure.
+Do not replace the fixed credential manually. A reviewed recovery procedure
+must first keep the previous GitHub key active, stage the replacement without
+overwriting the live file, verify it through the native host, atomically switch
+the file, and only then remove the previous key from GitHub.
 
-```bash
-node scripts/release-tag-publisher-install.mjs rotate \
-  --private-key-file /absolute/path/to/replacement.pem
-node scripts/release-tag-publisher-install.mjs verify
-```
-
-After verification, delete the old key in GitHub and remove the temporary PEM.
-The installer also exposes `provision` and `activate` for controlled recovery,
-but the manifest helper is the normal setup path because it keeps the initial
-private key off disk.
-
-To retire the publisher, restore the no-bypass lockdown first, then revoke the
-local key and binding:
+Automated credential revocation is also disabled until a reviewed archival
+flow can remove both the fixed credential and root-owned binding without
+leaving tag creation partially authorized. To retire the publisher, restore
+the no-bypass lockdown first, confirm it is active, and then use that reviewed
+archival procedure:
 
 ```bash
 node scripts/sync-github-rulesets.mjs --lock-release-tags --apply
-node scripts/release-tag-publisher-install.mjs revoke
 ```
+
+The installer fails closed if `rotate` or `revoke` is run.
+
+The installer exposes `provision`, `activate`, and `finalize` only for
+controlled recovery. `activate` leaves the binding pending. `finalize` repeats
+the exact installation proof before it installs the active binding. The
+manifest helper is the normal first-time setup path and saves the initial
+private key directly to the fixed local credential file.
 
 ## Drafting release notes
 

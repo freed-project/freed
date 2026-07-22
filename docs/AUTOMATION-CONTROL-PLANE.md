@@ -737,12 +737,21 @@ Release tags have a separate external trust boundary. The checked-in
 `release-tag-lockdown.json` is the bootstrap authority. Apply it with
 `--lock-release-tags --apply` before App provisioning. It restricts creation,
 update, and deletion with no bypass. `release-tag-publisher-install.mjs prepare`
-builds and installs the fixed root-owned native host and provisioner. The
-manifest helper then creates the private `Freed Release Publisher` organization
-App, pipes its private key into the native provisioner, activates the digest
-pinned binding, and requires a selected-repository installation for only
-`freed-project/freed`. The Keychain item uses service
-`freed-release-tag-publisher` and account `github-app-private-key`.
+builds and installs the fixed root-owned native host and removes the obsolete
+Keychain provisioner. The manifest helper then creates the private
+`Freed Release Publisher` organization App, saves its private key only at
+`~/.freed/credentials/github-apps/freed-release-publisher.private-key.pem` as a
+mode `0600` current-user file, activates the digest-pinned binding, and requires
+a selected-repository installation for only `freed-project/freed`. Activation
+first installs a fail-closed pending binding. The native host may attest and
+verify installation while pending, but it cannot publish. Exact installation
+proof promotes the binding to active. The key is
+never stored in the repository or passed in process arguments. Static readiness
+validates the root-owned binding and exact executable digest without accessing
+the credential. Only explicit installation verification and tag publication
+read it, and both operations have hard process deadlines. A legacy
+`freed-release-tag-publisher` Keychain item is ignored and cannot prompt or
+block these operations.
 
 Activation requires an owner-reviewed change that pins the App ID in the
 creation policy. The release ruleset command verifies the exact App,
@@ -757,7 +766,7 @@ active. It also requires the release commit to equal the current protected
 channel branch, validates the fixed product and promoted dev receipts, rejects
 an existing local or remote tag, and delegates one exact annotated-tag creation
 through the same fixed root-owned publisher binding used during activation. The
-binding, parent chain, executable digest, App identity, Keychain credential,
+binding, parent chain, executable digest, App identity, local credential,
 selected repository, and installation permissions are rechecked immediately
 before use. The native host rechecks the branch tip and receipt at publication,
 then obtains and revokes one short-lived installation token. It does not accept
