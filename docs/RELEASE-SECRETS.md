@@ -142,141 +142,52 @@ general automation actor, or the PR publisher App as a bypass.
 
 ### Prepare the native publisher
 
-Preparation never migrates a schema 1 installation in place. If the fixed
-binding is schema 1, the credential must already be absent and no matching
-publisher process may be running. Once the separate one-use owner authorization
-path is integrated, run the archive action from the reviewed source checkout:
-
-```bash
-node scripts/release-tag-publisher-install.mjs archive-schema1
-```
-
-That action writes a root-only cutover record before mutation. It changes each
-legacy file to mode `0400`, admits the same device, inode, link count, owner,
-size, and digest through one privileged descriptor, then moves that inode on
-the same filesystem into
-`/Library/Application Support/Freed/release-tag-publisher-schema1-archive`.
-The archived files and manifest are root-only and non-executable. Restart macOS
-after the archive completes. The next preparation rechecks that the boot
-session changed, no matching process or credential reappeared, all three fixed
-paths remain absent, and each archived inode still matches its record. A retry
-after a lost response resumes the same planned archive. It never creates a
-second legacy copy.
-
-After the reboot barrier passes, run the owner helper from the reviewed source
-checkout:
+Run the owner helper from the reviewed source checkout:
 
 ```bash
 node scripts/release-tag-publisher-install.mjs prepare
 ```
 
 The helper runs `scripts/release-tag-publisher-build.sh` in a private temporary
-directory and builds the native Swift host and provisioner. Schema 1 migration
-is never performed by preparation. The helper uses safe-copy installation for
-each executable and binding replacement. It installs and verifies the
-mutation-disabled provisioner first, installs the schema 3 `preparing` binding,
-installs and verifies the host, then writes a `prepared` binding. That binding
-pins both fixed paths, both SHA-256 digests, both static CDHashes, and one digest
-over the complete native pair. The host also binds its kernel-reported running
-CDHash to its static code identity before Keychain access. A retry can finish
-an interrupted preparation. A failed
-provisioner replacement leaves the prior state unchanged. Once the safe
-provisioner lands, a barrier or host interruption cannot expose a production
-credential mutation verb. The executables are root-owned and read-only at
-these fixed paths:
+directory, builds the native Swift host and provisioner, and installs them as
+root-owned, read-only executables at these fixed paths:
 
 - `/Library/Application Support/Freed/release-tag-publisher`
 - `/Library/Application Support/Freed/release-tag-publisher-provision`
 
-Preparation does not activate the binding or touch a credential. Publication
-therefore remains unavailable. Activation can promote only the exact prepared
-pair, and an exact retry of an already active pair is recoverable.
+The binding does not exist yet, so publication still fails closed.
 
-### App creation and credential promotion are unavailable
+### Create and install the release App
 
-Do not run `scripts/create-release-github-app.mjs` as a provisioning step in
-this checkpoint. It fails before opening a browser, starting the loopback
-manifest flow, contacting GitHub, writing identity state, or invoking native
-credential code. The dedicated publisher already has the fixed identity App ID
-`4,296,969`, slug `freed-release-publisher`, and repository
-`freed-project/freed`. A newly created App would have a different ID and is not
-an acceptable replacement.
-
-The disabled helper already reserves the recovery contract required by the
-future owner-authorized cutover. Its caller must generate one canonical UUIDv4
-or lowercase 64-hex operation ID, retain it across response loss, and provide
-it as `FREED_RELEASE_GITHUB_APP_OPERATION_ID`. The helper never generates that
-ID inside its own process. The same value binds manifest creation, identity
-persistence, credential promotion, binding activation, and an exact retry.
-Changing or omitting the value fails closed. This contract does not make the
-currently disabled mutation path available.
-
-The production native provisioner accepts only `inspect`, `matches`, and
-`verify`. It rejects `provision`, `recover`, `rotate`, `discard-recovery`, and
-`revoke` before admitting `--host` or reading key bytes. The Keychain ACL
-validator requires exactly the fixed host and provisioner plus an empty prompt
-selector. The host checks that same item ACL before and after copying the key,
-then wipes the Keychain content buffer and its mutable PEM, base64, and DER
-buffers. No credential mutation command in this checkpoint is a live runbook
-operation.
-
-### Recover a migrated Release Publisher key
-
-This recovery is only for the private key belonging to GitHub App ID
-`4,296,969`, slug `freed-release-publisher`. A filename is not identity proof.
-For example, a key named `freed-security-reports.private-key.pem` belongs to a
-different App unless GitHub independently proves otherwise. Never feed a
-different App key to this recovery command just because it happens to be a PEM
-file. Credential archaeology is already enough of a haunted attic.
-
-The PEM may live temporarily under `~/.freed/credentials`, but it is recovery
-input, not the long-term credential store. Do not put it in the repository, a
-repository environment file, task text, shell history, logs, or an unencrypted
-sync directory. The Keychain remains the canonical store because its item ACL
-limits access to the installed native host and provisioner. A plain file under
-`~/.freed` has only filesystem permissions and can be read by any process
-running as the same user.
-
-Before recovery, make the source an absolute canonical regular file owned by
-the current user, with exact mode `0600`, one hard link, and no symlink. The
-installer opens it once without following links, checks its path and inode,
-reads it positionally for a SHA-256 fingerprint, and passes that same held file
-descriptor to the native provisioner. A FIFO, oversized file, path swap,
-permission drift, content drift, malformed PKCS1 key, or fingerprint mismatch
-fails before Keychain creation.
-
-Inspect the distinct release profile. This check is opt-in, checks the native
-host and schema 3 binding, and invokes that fixed host once to validate both
-code identities without accessing Keychain:
+Use the manifest helper for normal provisioning:
 
 ```bash
-node scripts/doctor.mjs --require-release-publisher
+node scripts/create-release-github-app.mjs
 ```
 
-The bounded `verify-installation` operation performs the separate credential,
-ACL, GitHub App, and selected-repository installation proof immediately before
-ruleset activation or publication. Ordinary readiness checks never ask macOS
-to unlock the release credential.
+The helper opens a loopback GitHub manifest flow for the private organization
+App `Freed Release Publisher`, with slug `freed-release-publisher`. The manifest
+requests only repository Contents write permission. GitHub adds Metadata read
+implicitly. The App subscribes to no events, has no OAuth flow, and keeps its
+required webhook inactive.
 
-Recovery, activation, rotation, discard, and revocation are deliberately
-unavailable. The final one-use owner intent must bind the action, App ID
-`4,296,969`, App slug, repository, expected source commit and tree, admitted key
-fingerprint, both native executable paths and digests, native pair digest,
-transaction ID, and exact state transition.
+The helper converts the manifest, pipes the returned private key directly to
+the fixed native provisioner, and never writes the key to disk. The provisioner
+stores it in the macOS Keychain with:
 
-The authorized design must add the candidate to a separate staged Keychain
-service and account tied to that pending transaction. The staged key must prove
-through GitHub that it authenticates App ID `4,296,969`, the exact slug and
-organization, Contents write plus Metadata read only, no events, and one active
-selected-repository installation whose only repository is
-`freed-project/freed`. A local PEM digest is not identity proof.
+- service `freed-release-tag-publisher`
+- account `github-app-private-key`
 
-Only after that proof may promotion create and verify a replacement active
-reference. The old active reference stays intact until the replacement is
-verified. An exact retry uses the same transaction ID and recovers the result.
-Rotation uses the same stage, prove, and promote transaction. Discard must bind
-the exact pending transaction, staged item reference, and digest. It can delete
-only that staged item. It can never select or delete the active credential.
+The Keychain ACL permits only the installed native host and provisioner. The
+helper then installs the root-owned binding at
+`/Library/Application Support/Freed/release-tag-publisher.json`, opens the App
+installation page, and waits for an active selected-repository installation
+whose only repository is `freed-project/freed`.
+
+The binding pins the repository, App ID, App slug, publisher path, and publisher
+SHA-256 digest. The nonsecret App identity is also recorded at
+`~/.freed/automation/release-tag-publisher/github-app.json`. Neither file
+contains the private key.
 
 ### Activate the split tag rulesets
 
@@ -307,12 +218,7 @@ parameter. The checked-in tag policies use that canonical parameter-free form.
 The verifier accepts an older explicit `false` value but rejects `true` or any
 unexpected update parameters.
 
-The release authority validator loads every live same-named creation,
-immutability, and lockdown ruleset. It rejects duplicate authority names and
-rejects publication while any no-bypass lockdown remains active, even if an
-earlier same-named lockdown is disabled.
-
-### Verify and publish
+### Verify, publish, rotate, or revoke
 
 Verify the installed publisher and its live App installation at any time:
 
@@ -324,8 +230,7 @@ node scripts/validate-release-tag-authority.mjs --repo=freed-project/freed
 `./scripts/release-publish.sh <version>` remains the only release entry point.
 It rejects a dirty or wrong branch, a commit that differs from the protected
 remote tip, an unapproved or mismatched release receipt, an existing tag, a
-missing live policy, a changed host or provisioner digest, a changed native
-pair digest, or a mismatched App
+missing live policy, a changed publisher digest, or a mismatched App
 installation. The native host requests one short-lived installation token
 scoped to `freed-project/freed`, rechecks the remote branch and committed
 receipt, creates one annotated tag, verifies the result, and revokes the token.
@@ -335,11 +240,29 @@ Read-only GitHub checks may use the current `gh` login. Tag creation never
 falls back to `GITHUB_TOKEN`, `GH_TOKEN`, a personal access token, a user push,
 or a general automation credential.
 
-Key rotation and retirement have no executable runbook in this checkpoint.
-Their command names remain reserved, but both JavaScript and native production
-paths fail closed. A future retirement runbook must restore and verify the
-no-bypass lockdown before a separately authorized active credential and binding
-transaction can begin.
+For key rotation, create a replacement private key in the GitHub App settings
+and keep the previous GitHub key active until verification succeeds. Save the
+replacement briefly as an absolute, current-user-owned mode `0600` file, then
+run:
+
+```bash
+node scripts/release-tag-publisher-install.mjs rotate \
+  --private-key-file /absolute/path/to/replacement.pem
+node scripts/release-tag-publisher-install.mjs verify
+```
+
+After verification, delete the old key in GitHub and remove the temporary PEM.
+The installer also exposes `provision` and `activate` for controlled recovery,
+but the manifest helper is the normal setup path because it keeps the initial
+private key off disk.
+
+To retire the publisher, restore the no-bypass lockdown first, then revoke the
+local key and binding:
+
+```bash
+node scripts/sync-github-rulesets.mjs --lock-release-tags --apply
+node scripts/release-tag-publisher-install.mjs revoke
+```
 
 ## Drafting release notes
 

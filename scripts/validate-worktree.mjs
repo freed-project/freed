@@ -44,50 +44,11 @@ const RELEASE_TOOLING_PATHS = new Set([
   "scripts/prepare-release-notes.mjs",
   "scripts/release-governance.test.mjs",
   "scripts/release-publish.sh",
-  "scripts/release-publish.test.mjs",
   "scripts/release-notes-shared.mjs",
   "scripts/release-notes-shared.test.mjs",
   "scripts/release.sh",
   "scripts/validate-release-notes.mjs",
 ]);
-
-const RELEASE_PUBLISHER_TOOLING_PATHS = new Set([
-  ".github/rulesets/release-tag-lockdown.json",
-  ".github/rulesets/release-tag-immutability.json",
-  ".github/rulesets/release-tags.json",
-  "scripts/create-release-github-app.mjs",
-  "scripts/create-release-github-app.test.mjs",
-  "scripts/doctor.mjs",
-  "scripts/doctor.test.mjs",
-  "scripts/lib/release-tag-publisher-binding.mjs",
-  "scripts/lib/release-tag-publisher.mjs",
-  "scripts/lib/release-tag-publisher.test.mjs",
-  "scripts/release-tag-publisher-build.sh",
-  "scripts/release-tag-publisher-host.swift",
-  "scripts/release-tag-publisher-install.mjs",
-  "scripts/release-tag-publisher-install.test.mjs",
-  "scripts/release-tag-publisher-native.test.mjs",
-  "scripts/release-tag-publisher-provision.swift",
-  "scripts/release-tag-publisher.mjs",
-  "scripts/release-publish.sh",
-  "scripts/release-publish.test.mjs",
-  "scripts/sync-github-rulesets.mjs",
-  "scripts/sync-github-rulesets.test.mjs",
-  "scripts/validate-release-tag-authority.mjs",
-  "scripts/validate-release-tag-authority.test.mjs",
-]);
-
-const RELEASE_PUBLISHER_TEST_FILES = [
-  "scripts/create-release-github-app.test.mjs",
-  "scripts/doctor.test.mjs",
-  "scripts/lib/release-tag-publisher.test.mjs",
-  "scripts/release-governance.test.mjs",
-  "scripts/release-tag-publisher-install.test.mjs",
-  "scripts/release-tag-publisher-native.test.mjs",
-  "scripts/release-publish.test.mjs",
-  "scripts/sync-github-rulesets.test.mjs",
-  "scripts/validate-release-tag-authority.test.mjs",
-];
 
 export function normalizeRepoPath(filePath) {
   return filePath.replace(/\\/g, "/").replace(/^\.\//, "");
@@ -373,14 +334,8 @@ export function isPreparedReleaseArtifactPath(filePath) {
 
 export function isReleaseToolingPath(filePath) {
   return (
-    filePath.startsWith("release-notes/") ||
-    RELEASE_TOOLING_PATHS.has(filePath) ||
-    RELEASE_PUBLISHER_TOOLING_PATHS.has(filePath)
+    filePath.startsWith("release-notes/") || RELEASE_TOOLING_PATHS.has(filePath)
   );
-}
-
-export function isReleasePublisherToolingPath(filePath) {
-  return RELEASE_PUBLISHER_TOOLING_PATHS.has(filePath);
 }
 
 export function isValidateRunnerPath(filePath) {
@@ -465,7 +420,11 @@ function socialProviderFocusedE2eCommand() {
 function pwaTestCommands() {
   return [
     npmCommand("pwa unit tests", ["run", "test:unit"], "packages/pwa"),
-    npmCommand("pwa performance tests", ["run", "test:perf"], "packages/pwa"),
+    npmCommand(
+      "pwa performance tests",
+      ["run", "test:perf"],
+      "packages/pwa",
+    ),
   ];
 }
 
@@ -666,9 +625,6 @@ export function buildValidationPlan(mode, changedFiles) {
     sharedSurfaceChanged || changedFiles.some(isPwaSurface);
   const websiteSurfaceChanged = changedFiles.some(isWebsiteSurface);
   const releaseToolingChanged = changedFiles.some(isReleaseToolingPath);
-  const releasePublisherToolingChanged = changedFiles.some(
-    isReleasePublisherToolingPath,
-  );
   const validateRunnerChanged = changedFiles.some(isValidateRunnerPath);
   const socialScrapeLoopChanged = changedFiles.some(isSocialScrapeLoopPath);
   const captureWorkspaces = unique(
@@ -807,16 +763,6 @@ export function buildValidationPlan(mode, changedFiles) {
       nodeCommand("release notes shared tests", [
         "--test",
         path.join("scripts", "release-notes-shared.test.mjs"),
-      ]),
-    );
-  }
-
-  if (releasePublisherToolingChanged) {
-    addCommand(
-      plan,
-      nodeCommand("release publisher tests", [
-        "--test",
-        ...RELEASE_PUBLISHER_TEST_FILES,
       ]),
     );
   }

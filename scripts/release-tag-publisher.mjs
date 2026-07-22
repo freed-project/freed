@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import {
-  invokeReleaseTagPublisherAction,
   loadAndVerifyReleaseTagPublisher,
+  verifyReleaseTagPublisherInstallation,
 } from "./lib/release-tag-publisher.mjs";
 
 function main() {
@@ -22,20 +23,26 @@ function main() {
     );
   }
   const binding = loadAndVerifyReleaseTagPublisher();
-  const hostArguments =
-    args.length === 1 && command !== "publish"
-      ? [
-          command,
-          "--repo",
-          binding.repo,
-          "--app-id",
-          String(binding.appId),
-          "--app-slug",
-          binding.appSlug,
-        ]
-      : args;
-  const result = invokeReleaseTagPublisherAction(binding, hostArguments);
-  process.stdout.write(`${JSON.stringify(result)}\n`);
+  if (command === "attest") {
+    process.stdout.write(
+      `${JSON.stringify({
+        schemaVersion: 1,
+        purpose: "freed-release-tag-publisher-binding",
+        repo: binding.repo,
+        appId: binding.appId,
+        appSlug: binding.appSlug,
+        publisherPath: binding.publisherPath,
+        publisherSha256: binding.publisherSha256,
+      })}\n`,
+    );
+    return;
+  }
+  if (command === "verify-installation") {
+    const result = verifyReleaseTagPublisherInstallation(binding);
+    process.stdout.write(`${JSON.stringify(result.attestation)}\n`);
+    return;
+  }
+  execFileSync(binding.publisherPath, args, { stdio: "inherit" });
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
