@@ -446,7 +446,11 @@ function repairTopologyDirectoryIdentity(directoryPath, label) {
   };
 }
 
-function repairTopologyFileIdentity(filePath, label) {
+function repairTopologyFileIdentity(
+  filePath,
+  label,
+  { maxBytes = OUTCOME_LEDGER_REPAIR_MAX_BYTES } = {},
+) {
   const stats = lstatSync(filePath);
   const mode = stats.mode & 0o7777;
   if (
@@ -456,7 +460,7 @@ function repairTopologyFileIdentity(filePath, label) {
     ![0o600, 0o640, 0o644].includes(mode) ||
     stats.nlink !== 1 ||
     stats.size < 0 ||
-    stats.size > OUTCOME_LEDGER_REPAIR_MAX_BYTES ||
+    stats.size > maxBytes ||
     realpathSync(filePath) !== filePath
   ) {
     throw new Error(`${label} is not one admitted repair file.`);
@@ -464,7 +468,7 @@ function repairTopologyFileIdentity(filePath, label) {
   const pinned = openPinnedRepairFile(filePath, {
     expectedLinkCount: stats.nlink,
     exactMode: mode,
-    maxBytes: OUTCOME_LEDGER_REPAIR_MAX_BYTES,
+    maxBytes,
     label,
   });
   try {
@@ -569,12 +573,17 @@ function captureRepairTopology(plan) {
   for (const target of ancestorTargets) {
     records.push(...repairTopologyAncestorRecords(paths.stateRoot, target));
   }
-  for (const filePath of [paths.outcomes, paths.events, paths.taskManifest]) {
+  for (const [filePath, maxBytes] of [
+    [paths.outcomes, OUTCOME_LEDGER_REPAIR_MAX_BYTES],
+    [paths.events, CONTROL_EVENT_HISTORY_MAX_BYTES],
+    [paths.taskManifest, OUTCOME_LEDGER_REPAIR_MAX_BYTES],
+  ]) {
     records.push(
       existsAsPath(filePath)
         ? repairTopologyFileIdentity(
             filePath,
             "Outcome ledger repair authority topology",
+            { maxBytes },
           )
         : { kind: "missing", path: filePath },
     );
@@ -3682,6 +3691,7 @@ function findTransaction(stateRoot, taskId, sourceDigest) {
         `Invalid outcome ledger transaction identity: ${entry.name}`,
       );
     }
+    requireTaskId(record.taskId);
     const parameters = validateRepairParameters(record.parameters, {
       stateRoot,
       taskId: record.taskId,

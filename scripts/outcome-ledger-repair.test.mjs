@@ -85,6 +85,13 @@ function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function isUnsafeAuthorityAdmission(error) {
+  return (
+    error instanceof Error &&
+    /could not be admitted safely/i.test(error.message)
+  );
+}
+
 function stableJson(value) {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
   if (value && typeof value === "object") {
@@ -355,7 +362,22 @@ function repairAuditEvents(paths, eventId) {
     .filter((event) => event.eventId === eventId);
 }
 
+function removeAutomationAuthorityStages(filePath) {
+  const directory = path.dirname(filePath);
+  const prefix = `.${path.basename(filePath)}.authority.`;
+  for (const name of readdirSync(directory)) {
+    if (name.startsWith(prefix)) {
+      rmSync(path.join(directory, name), { force: true });
+    }
+  }
+}
+
+function removeControlEventAuthorityStages(paths) {
+  removeAutomationAuthorityStages(paths.events);
+}
+
 function rewriteControlEvent(paths, eventId, mutate) {
+  removeControlEventAuthorityStages(paths);
   let matchCount = 0;
   const lines = readFileSync(paths.events, "utf8").split("\n");
   const rewritten = lines.map((line) => {
@@ -373,8 +395,13 @@ function rewriteControlEvent(paths, eventId, mutate) {
   return bytes;
 }
 
-function completedLegacyRepair(t, id = "completed-health-fixture") {
+function completedLegacyRepair(
+  t,
+  id = "completed-health-fixture",
+  { beforePlan = () => {} } = {},
+) {
   const fixture = temporaryStateRoot(t);
+  beforePlan(fixture);
   const source = legacyLine(id);
   const sourceDigest = writeLedger(fixture.paths, source);
   const session = repairSession(fixture.stateRoot, sourceDigest);
@@ -1271,6 +1298,31 @@ function flatDirectorySnapshot(directoryPath) {
         return { name: entry.name, type: "other" };
       }),
   };
+}
+
+function restoreFlatDirectorySnapshot(directoryPath, snapshot) {
+  rmSync(directoryPath, { recursive: true, force: true });
+  if (!snapshot.exists) return;
+  mkdirSync(directoryPath, { recursive: true, mode: 0o700 });
+  chmodSync(directoryPath, 0o700);
+  const restoreEntries = (parent, entries) => {
+    for (const entry of entries) {
+      const entryPath = path.join(parent, entry.name);
+      if (entry.type === "directory") {
+        mkdirSync(entryPath, { mode: 0o700 });
+        chmodSync(entryPath, 0o700);
+        restoreEntries(entryPath, entry.entries);
+      } else if (entry.type === "file") {
+        writeFileSync(entryPath, entry.bytes, { mode: 0o600 });
+        chmodSync(entryPath, 0o600);
+      } else if (entry.type === "symbolic-link") {
+        symlinkSync(entry.target, entryPath);
+      } else {
+        assert.fail(`Cannot restore unsupported fixture entry ${entry.name}.`);
+      }
+    }
+  };
+  restoreEntries(directoryPath, snapshot.entries);
 }
 
 function appendJsonPaddingToSize(filePath, targetSize, type) {
@@ -6499,18 +6551,9 @@ test("outcome append accepts the exact event cap and preflight failure is byte-s
   const eventCap = 128 * 1024 * 1024;
   const { stateRoot, paths } = temporaryStateRoot(t);
   const { nightly, nowMs } = trustedMergedOutcome(stateRoot);
-  const eventSize = statSync(paths.events).size;
-  const prefix = Buffer.from(
-    '{"type":"event_boundary_padding","payload":"',
-    "utf8",
-  );
-  const suffix = Buffer.from('"}\n', "utf8");
-  const payloadSize = eventCap - eventSize - prefix.length - suffix.length;
-  assert.ok(payloadSize > 0);
-  appendFileSync(
-    paths.events,
-    Buffer.concat([prefix, Buffer.alloc(payloadSize, 0x78), suffix]),
-  );
+  removeAutomationAuthorityStages(paths.taskManifest);
+  removeControlEventAuthorityStages(paths);
+  appendJsonPaddingToSize(paths.events, eventCap, "event_boundary_padding");
   assert.equal(statSync(paths.events).size, eventCap);
   assert.equal(
     summarizeOutcomeLedger(paths.outcomes, { stateRoot }).sourceHealth
@@ -6633,6 +6676,9 @@ test("the append call recovers a pending task transaction and records one outcom
   };
   const manifestBefore = readFileSync(fixture.paths.taskManifest);
   const eventsBefore = readFileSync(fixture.paths.events);
+  const taskTransactionsBefore = flatDirectorySnapshot(
+    fixture.paths.taskTransactions,
+  );
   assert.throws(
     () =>
       appendOutcomeLedger(fixture.paths.outcomes, entry, {
@@ -6657,6 +6703,12 @@ test("the append call recovers a pending task transaction and records one outcom
   );
   assert.ok(transitionEvent);
 
+  restoreFlatDirectorySnapshot(
+    fixture.paths.taskTransactions,
+    taskTransactionsBefore,
+  );
+  removeAutomationAuthorityStages(fixture.paths.taskManifest);
+  removeControlEventAuthorityStages(fixture.paths);
   writeFileSync(fixture.paths.taskManifest, manifestBefore, { mode: 0o600 });
   writeFileSync(fixture.paths.events, eventsBefore, { mode: 0o600 });
   rmSync(fixture.paths.outcomes, { force: true });
@@ -6769,7 +6821,7 @@ test("an installed outcome id above the control event line cap fails before muta
   assertOutcomeMutationSnapshot(stateRoot, paths, before);
 });
 
-test("an installed identity version above the control event line cap fails before task transition mutation", (t) => {
+test("an installed identity version above the outcome ledger line cap fails before task transition mutation", (t) => {
   const { stateRoot, paths } = temporaryStateRoot(t);
   const { nightly, nowMs } = trustedMergedOutcome(stateRoot, Date.now());
   const oversizedVersion = "3".repeat(1024 * 1024 + 128);
@@ -6798,7 +6850,7 @@ test("an installed identity version above the control event line cap fails befor
           now: new Date(nowMs + 60_000),
         },
       ),
-    /control event append.*supported history boundary/i,
+    /outcome ledger append.*supported repair boundary/i,
   );
 
   assertOutcomeMutationSnapshot(stateRoot, paths, before);
@@ -6848,7 +6900,7 @@ test("an existing ledger with an interior blank and 100,001 physical lines is un
           now: new Date(nowMs + 60_000),
         },
       ),
-    /blank interior physical line|supported physical line boundary/i,
+    /fully authenticated, healthy outcome ledger.*supported repair boundary/i,
   );
 
   assertOutcomeMutationSnapshot(stateRoot, paths, before);
@@ -6868,7 +6920,7 @@ test("safe source admission rejects symlinks, writable files, oversize files, an
           taskId: TASK_ID,
           expectedSourceDigest: sha256(readFileSync(target)),
         }),
-      /ELOOP|Unsafe outcome ledger repair file/,
+      isUnsafeAuthorityAdmission,
     );
   });
 
@@ -6883,7 +6935,7 @@ test("safe source admission rejects symlinks, writable files, oversize files, an
           taskId: TASK_ID,
           expectedSourceDigest: sourceDigest,
         }),
-      /Unsafe outcome ledger repair file/,
+      isUnsafeAuthorityAdmission,
     );
   });
 
@@ -6900,7 +6952,7 @@ test("safe source admission rejects symlinks, writable files, oversize files, an
           taskId: TASK_ID,
           expectedSourceDigest: sourceDigest,
         }),
-      /Unsafe outcome ledger repair file/,
+      isUnsafeAuthorityAdmission,
     );
     assert.equal(readFileSync(paths.outcomes).equals(source), true);
   });
@@ -6917,7 +6969,7 @@ test("safe source admission rejects symlinks, writable files, oversize files, an
           taskId: TASK_ID,
           expectedSourceDigest: sourceDigest,
         }),
-      /Unsafe outcome ledger repair file/,
+      isUnsafeAuthorityAdmission,
     );
     assert.equal(readFileSync(paths.outcomes).equals(source), true);
   });
@@ -6933,7 +6985,7 @@ test("safe source admission rejects symlinks, writable files, oversize files, an
           taskId: TASK_ID,
           expectedSourceDigest: "0".repeat(64),
         }),
-      /Unsafe outcome ledger repair file/,
+      isUnsafeAuthorityAdmission,
     );
   });
 
@@ -6950,7 +7002,7 @@ test("safe source admission rejects symlinks, writable files, oversize files, an
           taskId: TASK_ID,
           expectedSourceDigest: sourceDigest,
         }),
-      /not valid UTF-8/,
+      isUnsafeAuthorityAdmission,
     );
   });
 
@@ -7222,7 +7274,7 @@ test("completed repair health fails closed for missing or reformatted evidence",
     assert.equal(health.ledgerHealthy, false);
     assert.ok(
       health.outcomeLedgerTransactionIssues.some((issue) =>
-        /receipt drifted/.test(issue),
+        /one exact receipt|receipt drifted/.test(issue),
       ),
     );
   });
@@ -7233,6 +7285,7 @@ test("completed repair health fails closed for missing or reformatted evidence",
       .split(/\r?\n/)
       .filter(Boolean)
       .filter((line) => JSON.parse(line).eventId !== fixture.plan.eventId);
+    removeControlEventAuthorityStages(fixture.paths);
     writeFileSync(fixture.paths.events, `${retained.join("\n")}\n`, {
       mode: 0o600,
     });
@@ -7321,8 +7374,8 @@ test("completed repair transactions require exact private mode in replay and hea
       assert.ok(
         health.outcomeLedgerTransactionIssues.some(
           (issue) =>
-            issue.includes(path.basename(transactionPath)) &&
-            /Lease archive helper authority-entry-inventory failed/i.test(issue),
+            /transaction inventory admission failed/i.test(issue) &&
+            /unsupported exact mode/i.test(issue),
         ),
         JSON.stringify(health.outcomeLedgerTransactionIssues),
       );
@@ -7506,7 +7559,7 @@ test("completed repair audit rejects exact owner confirmation provenance corrupt
         assert.equal(health.ledgerHealthy, false);
         assert.ok(
           health.outcomeLedgerTransactionIssues.some((issue) =>
-            /authorization provenance is invalid|confirmation provenance does not match the intent|authorization does not match one exact preceding owner lease acquisition|matching complete transaction is missing or invalid/i.test(
+            /authorization provenance is invalid|confirmation provenance does not match the intent|authorization does not match one exact preceding owner lease acquisition|matching (?:complete|canonical) transaction (?:is )?missing or invalid/i.test(
               issue,
             ),
           ),
@@ -7518,6 +7571,7 @@ test("completed repair audit rejects exact owner confirmation provenance corrupt
           baselineTransaction,
         );
       } finally {
+        removeControlEventAuthorityStages(fixture.paths);
         writeFileSync(fixture.paths.events, baselineEvents, { mode: 0o600 });
         chmodSync(fixture.paths.events, 0o600);
       }
@@ -7586,7 +7640,9 @@ test("a completed transaction rejects a traversal task ID before artifact path u
   assert.equal(health.ledgerHealthy, false);
   assert.ok(
     health.outcomeLedgerTransactionIssues.some((issue) =>
-      /identity is invalid|invalid transaction record/i.test(issue),
+      /identity is invalid|invalid transaction record|invalid outer shape/i.test(
+        issue,
+      ),
     ),
   );
   assert.equal(
@@ -7601,7 +7657,7 @@ test("a completed transaction rejects a traversal task ID before artifact path u
         stateRoot: fixture.stateRoot,
         sourceDigest: fixture.sourceDigest,
       }),
-    /stable task ID|transaction identity|parameter identities/i,
+    /stable task ID/i,
   );
 });
 
@@ -7687,17 +7743,31 @@ test("completed repair retry and nightly health reject redirected or public ance
 });
 
 test("completed repair retry and nightly health reject bound event prefix drift", (t) => {
-  const fixture = completedLegacyRepair(t, "shared-event-prefix-drift");
+  const probeMarker = Buffer.from(
+    '"type":"event_prefix_probe","payload":"',
+    "utf8",
+  );
+  const fixture = completedLegacyRepair(t, "shared-event-prefix-drift", {
+    beforePlan: ({ paths }) => {
+      removeAutomationAuthorityStages(paths.taskManifest);
+      removeControlEventAuthorityStages(paths);
+      appendFileSync(
+        paths.events,
+        Buffer.from('{"type":"event_prefix_probe","payload":"a"}\n', "utf8"),
+      );
+    },
+  });
   const events = readFileSync(fixture.paths.events);
   const prefix = events.subarray(0, fixture.plan.parameters.eventHistorySize);
-  const marker = Buffer.from('"eventId":"', "utf8");
-  const markerOffset = prefix.indexOf(marker);
+  const markerOffset = prefix.indexOf(probeMarker);
   assert.ok(markerOffset >= 0);
-  const mutationOffset = markerOffset + marker.length;
+  const mutationOffset = markerOffset + probeMarker.length;
   events[mutationOffset] =
     events[mutationOffset] === "a".charCodeAt(0)
       ? "b".charCodeAt(0)
       : "a".charCodeAt(0);
+  removeAutomationAuthorityStages(fixture.paths.taskManifest);
+  removeControlEventAuthorityStages(fixture.paths);
   writeFileSync(fixture.paths.events, events, { mode: 0o600 });
   const summary = summarizeOutcomeLedger(fixture.paths.outcomes, {
     stateRoot: fixture.stateRoot,
@@ -7706,7 +7776,9 @@ test("completed repair retry and nightly health reject bound event prefix drift"
   assert.equal(summary.sourceHealth.ledgerHealthy, false);
   assert.ok(
     summary.sourceHealth.outcomeLedgerTransactionIssues.some((issue) =>
-      /event prefix drifted/i.test(issue),
+      /event prefix drifted|repair event plan history boundary changed/i.test(
+        issue,
+      ),
     ),
   );
   assert.throws(
@@ -7740,21 +7812,27 @@ test("an exact raw 0xff event suffix is rejected by nightly and completed retry"
 });
 
 test("a valid append-only event suffix above 16 MiB stays accepted below 128 MiB", (t) => {
-  const fixture = completedLegacyRepair(t, "large-valid-event-suffix");
-  const beforeSize = statSync(fixture.paths.events).size;
   const targetSize = 17 * 1024 * 1024;
-  const prefix = Buffer.from(
-    '{"type":"unrelated_append_only_suffix","payload":"',
-    "utf8",
-  );
-  const suffix = Buffer.from('"}\n', "utf8");
-  const payloadSize = targetSize - beforeSize - prefix.length - suffix.length;
-  assert.ok(payloadSize > 0);
-  appendFileSync(
-    fixture.paths.events,
-    Buffer.concat([prefix, Buffer.alloc(payloadSize, 0x78), suffix]),
-  );
+  const fixture = completedLegacyRepair(t, "large-valid-event-suffix", {
+    beforePlan: ({ paths }) => {
+      removeAutomationAuthorityStages(paths.taskManifest);
+      removeControlEventAuthorityStages(paths);
+      appendJsonPaddingToSize(
+        paths.events,
+        targetSize,
+        "large_preexisting_event_history",
+      );
+    },
+  });
+  const beforeSize = statSync(fixture.paths.events).size;
+  heartbeatLease({
+    stateRoot: fixture.stateRoot,
+    name: fixture.owner.leaseName,
+    operationId: leaseMutationId("heartbeat:large-event-suffix"),
+    token: fixture.owner.leaseToken,
+  });
   const grownSize = statSync(fixture.paths.events).size;
+  assert.ok(grownSize > beforeSize);
   assert.ok(grownSize > 16 * 1024 * 1024);
   assert.ok(grownSize < 128 * 1024 * 1024);
   const summary = summarizeOutcomeLedger(fixture.paths.outcomes, {

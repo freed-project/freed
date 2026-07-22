@@ -21498,7 +21498,25 @@ function admitOutcomeRepairTransactionInventory(paths, helper, controlNames) {
     };
   } catch (error) {
     closeSync(directory.descriptor);
-    throw error;
+    if (!(error instanceof AutomationControlError)) throw error;
+    const cause =
+      typeof error.details?.cause === "string"
+        ? `: ${error.details.cause}`
+        : "";
+    return {
+      public: Object.freeze({
+        missing: false,
+        directoryPath: transactionDirectory,
+        entryCount: 0,
+        encodedNameBytes: 0,
+        aggregateSelectedBytes: 0,
+        selectionCount: 0,
+        issues: Object.freeze([
+          `transaction inventory admission failed: ${error.message}${cause}`,
+        ]),
+      }),
+      internal: null,
+    };
   }
 }
 

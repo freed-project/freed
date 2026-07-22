@@ -2564,15 +2564,13 @@ export function validateOutcomeLedgerRepairTransactionsFromPlanningBundle(bundle
   const issues = [...transactionState.issues];
   const pending = [];
   const validated = new Map();
-  const admissions = transactionState.admissions.map((token) =>
-    readAutomationPlanningAdmission(bundle, token),
-  );
-  const canonicalAdmissions = admissions.filter((admission) =>
-    /^(?:[0-9a-f]{64}|pending)\.json$/.test(admission.name),
-  );
+  const admissions = [];
   let active = null;
-  for (const admission of canonicalAdmissions) {
+  for (const token of transactionState.admissions) {
     try {
+      const admission = readAutomationPlanningAdmission(bundle, token);
+      admissions.push(admission);
+      if (!/^(?:[0-9a-f]{64}|pending)\.json$/.test(admission.name)) continue;
       const validation = validateCanonicalTransaction(
         bundle,
         admission,
@@ -2599,7 +2597,7 @@ export function validateOutcomeLedgerRepairTransactionsFromPlanningBundle(bundle
           ? `: ${error.details.cause}`
           : "";
       issues.push(
-        `${admission.name}: ${error instanceof Error ? error.message : String(error)}${cause}`,
+        `${String(token?.name ?? "unknown transaction")}: ${error instanceof Error ? error.message : String(error)}${cause}`,
       );
     }
   }
