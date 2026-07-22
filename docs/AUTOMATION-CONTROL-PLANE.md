@@ -23,7 +23,7 @@ release.
 | `~/.freed/automation/control/events.jsonl`                 | Append-only audit history for task, authority, lease, and observer events                                                                                 |
 | `~/.freed/automation/control/kernel-guard-cutover.json`    | Durable activation receipt for the old-compatible permanent kernel guard set                                                                              |
 | `~/.freed/automation/control/leases/`                      | Token-bound leases that prevent duplicate writers                                                                                                         |
-| `~/.freed/automation/control/actor-credentials/`           | Private local credential records used by pinned general actor launchers to acquire canonical role leases                                                  |
+| `~/.freed/automation/control/actor-credentials/`           | Legacy general actor migration records plus separate publisher public-key records; not current general actor authority                                    |
 | `~/.freed/automation/control/owner-capabilities/`          | Broker-signed one-use owner governance capabilities, split into pending and consumed records                                                              |
 | `~/.freed/automation/outcomes.jsonl`                       | Versioned merge, install, and observed-effect outcomes                                                                                                    |
 | `~/.freed/automation/artifacts/outcome-ledger-repair/`     | Content-addressed raw history, per-line decisions, retained entries, rejected entries, and completion receipts                                            |
@@ -67,66 +67,44 @@ Guessed model names, alternate repositories, extra working directories,
 self-expiring schedules, and unsupported execution modes are drift.
 
 Every actor specification also requires `trusted-launcher` and
-`short-lived-credential-handoff`. Readiness means all of these are present:
+`short-lived-lease-handoff`. Readiness means all of these are present:
 
-1. A private mode `0600` actor credential digest record under
-   `<stateRoot>/control/actor-credentials/`.
-2. A root-owned immutable launcher binding at
+1. A schema 4 root-owned immutable launcher binding at
    `/Library/Application Support/Freed/automation-actor-launchers/<actor>.json`.
-3. The root-owned executable and exact SHA-256 digest named by that binding.
-4. Root-owned pinned copies of the repo Node binary, control entry, control
-   library, kernel guard contract, outcome ledger repair contract, and lease
-   archive helper under
-   `/Library/Application Support/Freed/automation-actor-runtimes/<runtime-digest>/`.
-5. The matching non-secret Keychain item metadata for service
-   `freed-automation-actor` and account `<actor>`.
-6. A binding handoff of `keychain-to-canonical-lease`, which gives the actor only
-   its short-lived canonical lease and never its persistent secret.
-7. A successful nonmutating `freed-actor-launcher-readiness-v2` attestation from
-   the pinned launcher. It must bind the actor, canonical state root, canonical
-   lease name, 30 minute maximum lifetime, credential digest, Keychain service
-   and account, and confirm both digest verification and canonical lease
-   readiness.
+2. The root-owned launcher executable and exact SHA-256 digest named by that
+   binding.
+3. Root-owned pinned copies of Node, `automation-control.mjs`,
+   `automation-actor-control.mjs`, `lib/automation-control.mjs`,
+   `lib/automation-actor-readiness.mjs`, the kernel guard contract, the outcome
+   repair contract, and the lease archive helper under one content-addressed
+   runtime directory.
+4. A binding handoff of `trusted-launcher-channel-to-canonical-lease`.
+5. A successful nonmutating `freed-actor-launcher-readiness-v3` attestation
+   through `freed-actor-launcher-channel-v1`.
 
-Readiness protocol v2 is the current native launcher generation. Validation
-rejects a v1 binding before invoking its launcher or touching Keychain, even
-when the recorded launcher digest still matches. The current provisioner
-accepts protocol v1 only for an explicit revoke. Provision and rotate require
-v2. Legacy recovery is therefore revoke, inspect the result, then provision
-fresh public material and a credential.
+The five general actors store no persistent credential in Keychain or in the
+automation state directory. The launcher creates a fresh operation ID and 32
+random bytes for each acquisition before it starts Node. The raw lease token is
+sent only through the one-use file descriptor 3 channel. It never appears in a
+process argument, environment variable, log, public binding, or readiness
+result. The native verifier binds the action, actor, canonical state root,
+lease, operation ID, token digest, lifetime, launcher and control process start
+identities, launcher digest, runtime digest, and random challenge into one
+session digest before the control process may acquire a lease.
 
-The nonmutating readiness attestation has a 15 second outer ceiling so a cold
-macOS Keychain decrypt can complete. The caller supplies no input, hard-kills
-the launcher at the deadline, and fails closed on timeout or any late,
-oversized, malformed, or mismatched result.
-
-Each native provisioner invocation for provision, rotate, and revoke has a 120
-second outer ceiling, supplies no input, and is hard-killed at the deadline.
-Repository checks, native builds, public file installation, and multi-actor
-orchestration sit outside that per-invocation bound. A timeout means the actor's
-lifecycle result is indeterminate. It is not proof that no state changed. Stop,
-inspect the actor's public binding, private digest, and non-secret Keychain
-metadata, then revoke and provision through the supported lifecycle when the
-state cannot be proven complete.
-
-The validator does not read a Keychain secret and does not write host files.
-`automation:actors verify` validates the private digest record and root-owned
-public binding, then invokes the exact installed launcher for the same
-nonmutating attestation. It does not compile or invoke a disposable provisioner
-to read the secret. The installed launcher reads the Keychain secret inside its
-attestation boundary, compares it to the credential digest, and returns only the
-non-secret result. An ACTIVE actor fails closed if any overlay or readiness
-check fails. A missing actor remains safely PAUSED and is reported as
-reconciliation drift. A saved PAUSED actor may await owner provisioning, but
-its installed overlay still must be valid. Reconcile through the Codex host
+`automation:actors verify` validates the complete public binding and every
+runtime pin, then invokes the exact installed launcher for a live nonmutating
+channel attestation. It reads no Keychain item and writes no host file. An
+ACTIVE actor fails closed on overlay, binding, runtime, process identity,
+challenge, or attestation drift. A missing actor remains safely PAUSED and is
+reported as reconciliation drift. Reconcile saved actors through the Codex host
 automation controls, never by editing `automation.toml` directly.
 
 ### Owner provisioning for general actors
 
-Provision the five general actors only from a clean `dev` checkout whose HEAD is
-the exact local `origin/dev`. The helper refuses `freed-owner` and
-`freed-pr-publisher`. After the reviewed bootstrap PR is merged and the local
-checkout is current, run:
+Provision the five general actors only from a clean `dev` checkout whose HEAD
+matches local `origin/dev`. The helper refuses `freed-owner` and
+`freed-pr-publisher`. Run:
 
 ```bash
 npm run automation:actors -- provision --all
@@ -135,138 +113,67 @@ npm run automation:actors -- accept-host --all
 npm run validate:host-automations
 ```
 
-`accept-host` is the owner-run real-host acceptance gate. For each actor it
-acquires the canonical lease through the installed launcher, heartbeats that
-lease, and releases it before reporting success. Each child process, output,
-and lifecycle step is bounded. After a successful acquisition, cleanup still
-attempts release if the heartbeat or a later check fails. The command does not
-create or mutate a task, grant task or
-provider authority, activate an actor, or expose a persistent credential or
-short-lived lease token in its result.
+The build helper produces two native programs. The normal actor host links
+CryptoKit and has no Security framework or Keychain API dependency. The second
+program links Security only for one bounded migration from the installed schema
+1 contract. Provisioning validates the real root-owned legacy binding, deletes
+the fixed `freed-automation-actor` Keychain item with interaction disabled,
+removes the matching owner digest record when present, and then installs schema
+4. Migration tolerates all four item and digest-record presence combinations,
+so an exact retry completes safely after response loss. Fresh installs and
+schema 4 replacements never invoke the migration program. Provision and rotate
+are rejected by the migration program.
 
-If `provision --all` fails after creating earlier credentials, it revokes only
-the actors completed by that invocation, in reverse order. It never revokes the
-actor whose provision step failed, because that actor may have owner-managed
-state from an earlier attempt. Run `revoke --actor <actor named in the error>`,
-then retry provisioning. A `provision_rollback_failed` result names every actor
-that still requires explicit owner recovery.
+Legacy Keychain deletion is irreversible. If a later replacement step fails,
+rollback may restore the old public binding, but it never fabricates a digest
+record or credential. That old binding then fails closed. Rerun the same
+`provision` command to finish the idempotent migration and install schema 4.
+Each migration invocation has a 120 second outer ceiling, ignored input, a
+scrubbed environment, and a hard kill at the deadline.
 
-The helper compiles two native Swift programs with deterministic linker output
-names. The macOS linker gives identical builds the same ad hoc signature. This
-is a linker-generated identity, not a developer signing identity, and the build
-does not select or require one. The helper installs only public,
-content-addressed runtime files and actor-specific launcher bindings through
-`sudo`. The native provisioner then generates each persistent credential with
-the system random source, stores it in the current owner's Keychain, restricts
-the item to the exact installed launcher, and writes only its digest to the
-private automation state directory. The orchestration script, shell, and agent
-never receive the credential. It never appears in arguments, standard output,
-logs, task state, or agent state.
+`accept-host` is the owner-run real-host gate. It attests all five launchers,
+acquires each canonical lease, heartbeats it, releases it, and attests the final
+launcher identity before reporting success. It returns no lease token. The
+command creates no task, grants no task or provider authority, activates no
+saved actor, and contacts no provider.
 
-The launcher-only decrypt ACL uses an empty prompt selector. The trusted
-application list already limits access to the exact root-owned launcher.
-Setting the unsigned or invalid application prompt flags would require a
-passphrase for the deterministic ad hoc signature and would turn unattended
-acquisition into a password dialog. A missing or mismatched launcher trust
-entry must fail closed while Keychain interaction is disabled.
+Native acquisition has one 65 second budget and the caller has a 75 second
+outer ceiling. The launcher generates and retains the operation ID and token
+across response loss. Once acquisition may have committed, cleanup uses two
+exact release attempts and two absence inspections. Cancellation kills and
+reaps the child process group, performs the same exact cleanup, and emits no
+handoff. The final signal-safe handoff has one commit point. A nonzero or
+malformed result is bounded-parsed by the caller, and any plausible retained
+lease is released and proven absent before failure is returned.
 
-The installed launcher clears inherited environment state, verifies its own
-root-owned binding and every pinned runtime digest, disables Keychain user
-interaction for the credential read, restores the prior interaction policy,
-and invokes only the pinned control entry. A failure to disable interaction,
-read the credential, or restore the prior policy fails closed. Verify, acquire,
-and host acceptance must never display a Keychain password dialog. The launcher
-and orchestration layer bound child runtime and output, terminate the complete
-timed-out child process group, and reject late, oversized, or malformed results.
-Native acquisition has one 65 second end-to-end budget split into a 20 second
-acquisition window and a final 45 second cleanup reserve. Validation, binding
-checks, and the Keychain read consume the acquisition window. If they exhaust
-it, the launcher fails before starting lease mutation. Once an acquire child may
-have committed, the reserve is available only to two exact-identity release
-attempts and two absence inspections. The caller's 75 second outer ceiling adds
-10 seconds beyond the native boundary, so its hard kill cannot interrupt an
-active bounded child. The pinned acquire child is the only JavaScript process
-that receives the persistent credential. Release receives only its retained
-short-lived operation ID and lease token. Show receives neither secret. After
-malformed or lost acquisition responses, the launcher retries one idempotent
-release identity, then retries inspection and requires confirmed absence before
-returning failure. Before preflight begins, the native host takes synchronous
-`SIGINT` and `SIGTERM` ownership through a Darwin kqueue. Every control child
-starts in its own process group with an empty signal mask and default interrupt
-and termination dispositions. Cancellation before an acquire child starts exits
-with the matching signal status and performs no lease mutation. Once acquire may
-have started, cancellation kills and reaps the complete child group, uses the
-retained exact release identity, confirms absence inside the cleanup deadline,
-and emits no lease handoff. Cleanup children do not consume host cancellation,
-so a signal cannot spend a release or inspection retry. The first signal remains
-retained until cleanup finishes and the host exits with status 130 or 143.
+General actor leases have a 30 minute absolute lifetime. Heartbeats cannot
+extend them past that limit. Public lease acquisition always rejects a general
+actor, even if a retired persistent actor token is supplied. Legacy
+`persistent-actor` leases remain readable only so an already-issued lease can
+heartbeat or release during migration. They cannot authorize a new lease.
 
-The lease handoff has one native commit point. The host blocks both cancellation
-signals, drains the kqueue, and cleans the lease without output if cancellation
-was already present. Otherwise that drain commits the transfer. The host writes
-the complete handoff while both signals remain blocked and exits successfully
-without restoring a signal window. A signal arriving after that commit belongs
-to the completed transfer and cannot turn valid handoff bytes into a failed
-launcher result. As a second cleanup layer, the orchestration caller bounded-parses
-launcher output even on a nonzero result. If it finds a plausible retained lease
-token, it performs exact-token release and confirms absence before reporting the
-launcher failure. Terminal error and cancellation paths perform a preliminary
-drain and one final drain, then keep both signals blocked through process exit.
+This is a cooperative same-user boundary. The channel proves the installed
+launcher, pinned runtime, live process chain, one-use challenge, exact operation
+ID, and token digest. It does not authenticate which same-user saved automation
+invoked a launcher. Stored task authority, provider approval, the global
+behavior slot, owner governance, publisher isolation, and GitHub review gates
+still apply.
 
-The launcher returns only the short-lived lease result. General actor leases
-have a 30 minute absolute lifetime. Heartbeats cannot extend them past the
-original limit.
-
-This handoff follows the control plane's cooperative same-user threat model. It
-protects the persistent credential and pins the selected role to one immutable
-launcher and runtime. It does not authenticate which saved automation invoked
-that launcher. Any process running as the same macOS user can invoke any of the
-five provisioned general actor launchers. Stored task authority, provider
-approval, the global behavior slot, owner governance, publisher isolation, and
-GitHub review gates still apply. Do not provision these launchers if the five
-general roles require hard isolation from one another.
-
-The owner can rotate, revoke, or verify one actor without exposing its secret:
+Current actor lifecycle commands are:
 
 ```bash
-npm run automation:actors -- rotate --actor freed-nightly-runner
+npm run automation:actors -- provision --actor freed-nightly-runner
 npm run automation:actors -- revoke --actor freed-nightly-runner
 npm run automation:actors -- verify --actor freed-nightly-runner
 npm run automation:actors -- acquire --actor freed-nightly-runner
 ```
 
-`rotate` is the only actor command allowed to request owner interaction with an
-existing Keychain item. Rotation reads the prior credential so it can restore
-that credential if installing the new digest fails. Run it only as an explicit
-owner action. If macOS asks for Keychain access, choose one-time **Allow**. Never
-choose **Always Allow**. Provision, verify, acquire, revoke, and `accept-host`
-are not interactive commands. A prompt from any of them is a failure, not an
-installation step to click through.
-
-Keep every saved actor paused until `verify --all`, `accept-host --all`, and
-`validate:host-automations` pass on the real host. The first installation must
-prove that the root-owned launcher with its deterministic linker ad hoc
-signature can use its Keychain ACL unattended on the current macOS version. A
-source-level test cannot prove that host policy. Provisioning enables the five
-general policy roles inside the cooperative same-user boundary. It does not
-create task authority, bypass owner governance, authorize provider-visible
-behavior, contact a provider, or consume the one behavioral soak slot.
-
-Any credentials exposed to repeated Keychain approval dialogs before this
-contract was installed must be replaced after the repair reaches `dev`. Keep
-all actors paused, update a clean `dev` checkout to exact `origin/dev`, then run:
-
-```bash
-npm run automation:actors -- revoke --all
-npm run automation:actors -- provision --all
-npm run automation:actors -- verify --all
-npm run automation:actors -- accept-host --all
-npm run validate:host-automations
-```
-
-Do not activate an actor until that complete sequence succeeds without a
-Keychain dialog and the acquire, heartbeat, and release acceptance result is
-clean for all five actors.
+`rotate` is removed because there is no general actor credential to rotate.
+Provision, verify, acquire, revoke, and `accept-host` are noninteractive. A
+Keychain prompt from any of them is a migration failure, not an installation
+step to approve. Keep every saved actor paused until `verify --all`,
+`accept-host --all`, and `validate:host-automations` pass on the real host.
+Provisioning grants no provider traffic and no task authority.
 
 ## Atomic current task manifest
 
@@ -806,36 +713,25 @@ supply authority or invent actor names. Canonical pairs are
 `freed-release-verifier` with `release-verifier`, and explicit manual
 governance through `freed-owner` with `owner-governance`.
 
-### Automation actor credentials
+### Automation actor launcher channel
 
-Every general automation actor's trusted host launcher must bind canonical role
-lease acquisition to both a private local credential record and the matching
-token in `FREED_AUTOMATION_ACTOR_TOKEN`. That persistent token must not enter
-the agent process. The credential lives at
-`<stateRoot>/control/actor-credentials/<actor>.json` and has this shape:
+Every general actor lease starts through the installed native launcher. The
+launcher generates a UUID v4 operation ID and a fresh 32 byte token, retains
+both across response loss, and sends the raw token only through file descriptor
+3 to the pinned actor control entry. The control entry must obtain a matching
+kernel-attested response from its parent launcher before it can call the
+internal acquisition path. The stable audit event is `lease:<operationId>`.
+An exact retry recovers the original receipt. Reusing the operation ID with a
+different token or request fails with `lease_transaction_conflict`.
 
-```json
-{
-  "schemaVersion": 1,
-  "actor": "freed-nightly-runner",
-  "purpose": "automation-actor-lease",
-  "tokenSha256": "<sha256 of the private actor token>"
-}
-```
-
-The credential must be a private regular file with no group or world
-permissions. The private token must contain at least 32 characters. The
-credential is machine-local and must never be checked in, generated by an
-automation prompt, copied into task details, printed in logs, or posted to an
-external service. The native launcher supplies the matching secret only to the
-pinned lease-acquire child process. The scheduled automation receives only the
-resulting short-lived lease token. A missing, permissive,
-malformed, wrong-actor, wrong-purpose, or token-mismatched credential fails
-closed. The credential proves that the pinned launcher and runtime selected the
-canonical actor role. It does not authenticate the calling saved automation.
-Any process running as the same macOS user can invoke another provisioned
-general role. The resulting lease does not expand that role's checked-in
-authority, provider policy, stored task authority, or lifecycle destinations.
+No persistent actor token, `FREED_AUTOMATION_ACTOR_TOKEN`, or current general
+actor credential record exists. Files under `actor-credentials` for these five
+actors are schema 1 migration residue only. Provisioning removes them after the
+matching legacy Keychain item is deleted. The launcher channel proves the
+selected actor role and installed runtime. It does not authenticate the calling
+saved automation. Any same-user process can invoke another provisioned general
+role, but the resulting lease cannot expand that role's checked-in authority,
+provider policy, stored task authority, or lifecycle destinations.
 
 Release tags have a separate external trust boundary. The checked-in
 `release-tag-lockdown.json` is the bootstrap authority. Apply it with
@@ -865,8 +761,8 @@ binding, parent chain, executable digest, App identity, Keychain credential,
 selected repository, and installation permissions are rechecked immediately
 before use. The native host rechecks the branch tip and receipt at publication,
 then obtains and revokes one short-lived installation token. It does not accept
-a user token, personal access token, general actor credential, or the separate
-PR publisher as a tag-creation fallback. The delayed workflow checks that the
+a user token, personal access token, general actor launcher attestation, general
+actor lease token, or the separate PR publisher as a tag-creation fallback. The delayed workflow checks that the
 tag commit remains in protected channel history. It does not compare against a
 moving branch tip or a later dev snapshot.
 
@@ -929,7 +825,8 @@ base, target scope, explicit publish mode, and the exact main head when
 applicable. Automation control verifies the Ed25519 signature against the
 provisioned public key, compares the exact requested scope and lifetime, and
 atomically moves the capability from `pending` to `consumed`. Replay fails
-closed. A nightly runner credential cannot authenticate this lease.
+closed. A nightly runner launcher attestation or lease cannot authenticate this
+publisher lease.
 
 The native broker retains the same token while the wrapper runs. It takes
 synchronous ownership of `SIGINT` and `SIGTERM` before starting the wrapper. On
@@ -954,11 +851,11 @@ broker repeats the trust checks at use time. Missing broker provisioning does
 not block normal GitHub-authenticated publication through
 `scripts/worktree-publish.sh`.
 
-### Credential provisioning and rotation
+### Publisher credential provisioning and rotation
 
-Credential installation is an owner-controlled host bootstrap operation, not
-an automation task. General automation actors use random token bytes and
-private digest records. The publisher instead uses an Ed25519 key pair. Its
+Publisher credential installation is an owner-controlled host bootstrap
+operation, not an automation task. General automation actors have no installed
+credential. The publisher uses an Ed25519 key pair. Its
 installer must generate the private key in native owner-controlled code, store
 it with the macOS Keychain API without putting key bytes in process arguments
 or environment state, verify the public-key derivation, and atomically install
@@ -968,9 +865,9 @@ fails. The `security` command with `-p`, `-w <value>`, or `-X <value>` is not an
 acceptable installer because it exposes secret material in the process list.
 
 The optional broker scheduler handoff is a trusted host boundary outside candidate worktrees.
-General actors retrieve only their own credential and expose it to an approved
-immutable launcher long enough to acquire their canonical lease. Publisher
-handoff never exports its signing key. Candidate work receives only the
+General actors receive only the short-lived lease created through their
+immutable launcher channel. Publisher handoff never exports its signing key.
+Candidate work receives only the
 short-lived authority it needs. The trusted publisher launcher supplies only
 `FREED_PR_PUBLISHER_LEASE_TOKEN` to the pinned `worktree-publish.sh`. The
 helper clears persistent and lease credentials from every child-process
@@ -993,23 +890,23 @@ state directory, environment cleanup, and same-user process boundaries provide
 cooperative governance and auditability. They are not an operating-system
 sandbox against arbitrary code already running as the same user.
 
-To rotate a credential, stop the actor and release its live lease when the lease
-token is available. For the publisher, rotate the Keychain key, root public-key
+To rotate the publisher credential, stop the publisher and release its live
+lease when the lease token is available. Rotate the Keychain key, root public-key
 pin, and private public-key record as one owner transaction. A replacement
 invalidates new capabilities signed by the old key. Deletion prevents all new
 acquisitions. Neither action invalidates a lease that is already active. If its
 lease token is unavailable, keep the actor stopped and wait for the lease to
 expire. The publisher helper requests a 30 minute lease.
 
-When the same actor still owns a live legacy lease without credential metadata,
-an authenticated acquisition upgrades only that lease, issues a new lease
-token, invalidates the old token, and appends `lease_credential_upgraded`.
-Cross-actor upgrades fail closed.
+When the same actor still owns an expired live-format legacy lease without
+credential metadata, a trusted-launcher acquisition upgrades only that lease,
+issues a new token, invalidates the old token, and appends
+`lease_credential_upgraded`. Cross-actor upgrades fail closed.
 
 ### Optional signed owner capability
 
-`freed-owner` is not an unattended automation identity and does not use a
-persistent actor credential or a same-user bootstrap file. A mode `0600` file
+`freed-owner` is not an unattended automation identity and does not reuse a
+general actor launcher channel or a same-user bootstrap file. A mode `0600` file
 created by the current user is never owner authentication. The signed native
 broker reuses the Ed25519 key pinned by the root-owned schema v2 host config.
 Its owner mode requires macOS LocalAuthentication with the

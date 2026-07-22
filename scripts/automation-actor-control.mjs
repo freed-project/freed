@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { readSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   AutomationControlError,
@@ -9,6 +10,8 @@ import {
 } from "./lib/automation-control.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
+const CHANNEL_DESCRIPTOR = 3;
+const MAX_CHANNEL_FRAME_BYTES = 8 * 1_024;
 
 function usage() {
   return `Usage:
@@ -120,6 +123,68 @@ function parseCommand(argv) {
   };
 }
 
+function readLauncherChannelFrame(action) {
+  const bytes = [];
+  const byte = Buffer.allocUnsafe(1);
+  while (bytes.length < MAX_CHANNEL_FRAME_BYTES) {
+    let count;
+    try {
+      count = readSync(CHANNEL_DESCRIPTOR, byte, 0, 1, null);
+    } catch {
+      throw new AutomationControlError(
+        "actor_launcher_channel_invalid",
+        "The trusted launcher channel frame is unavailable.",
+      );
+    }
+    if (count !== 1) {
+      throw new AutomationControlError(
+        "actor_launcher_channel_invalid",
+        "The trusted launcher channel frame ended before its delimiter.",
+      );
+    }
+    if (byte[0] === 0x0a) break;
+    bytes.push(byte[0]);
+  }
+  if (bytes.length === MAX_CHANNEL_FRAME_BYTES) {
+    throw new AutomationControlError(
+      "actor_launcher_channel_invalid",
+      "The trusted launcher channel frame exceeded its byte bound.",
+    );
+  }
+  let frame;
+  try {
+    frame = JSON.parse(Buffer.from(bytes).toString("utf8"));
+  } catch {
+    frame = null;
+  }
+  if (
+    frame === null ||
+    typeof frame !== "object" ||
+    Array.isArray(frame) ||
+    Object.keys(frame).sort().join("\n") !==
+      ["action", "leaseOperationId", "leaseToken", "schemaVersion"]
+        .sort()
+        .join("\n") ||
+    frame.schemaVersion !== 1 ||
+    frame.action !== action ||
+    typeof frame.leaseOperationId !== "string" ||
+    typeof frame.leaseToken !== "string" ||
+    frame.leaseToken.trim() !== frame.leaseToken ||
+    frame.leaseToken.includes("\0") ||
+    Buffer.byteLength(frame.leaseToken, "utf8") < 32 ||
+    Buffer.byteLength(frame.leaseToken, "utf8") > 4 * 1_024
+  ) {
+    throw new AutomationControlError(
+      "actor_launcher_channel_invalid",
+      "The trusted launcher channel frame is invalid.",
+    );
+  }
+  return {
+    operationId: frame.leaseOperationId,
+    token: frame.leaseToken,
+  };
+}
+
 function errorPayload(error) {
   return {
     ok: false,
@@ -141,6 +206,7 @@ function main() {
     process.stdout.write(usage());
     return;
   }
+  Object.assign(command, readLauncherChannelFrame(command.action));
   if (command.action === "attest") {
     process.stdout.write(
       `${JSON.stringify(attestGeneralActorLauncherChannel(command))}\n`,

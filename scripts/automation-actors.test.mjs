@@ -102,6 +102,10 @@ function fixture(t) {
     "export const library = true;\n",
   );
   writeFileSync(
+    path.join(repoRoot, "scripts", "lib", "automation-actor-readiness.mjs"),
+    "export const readiness = true;\n",
+  );
+  writeFileSync(
     path.join(
       repoRoot,
       "scripts",
@@ -123,13 +127,27 @@ function fixture(t) {
 
   const calls = [];
   const liveLeases = new Map();
+  let provisionerOutputPath = null;
   const processIdentities = new Map([[4242, "fixture-process-start"]]);
   const runner = (executable, args, options) => {
     calls.push({ executable, args: [...args], options });
     if (executable === "/bin/bash" && args[0] === hostBuildPath) {
       const hostOutput = args[args.indexOf("--host-output") + 1];
+      provisionerOutputPath = args[args.indexOf("--provisioner-output") + 1];
       writeExecutable(hostOutput, "automation actor host fixture\n");
+      writeExecutable(
+        provisionerOutputPath,
+        "automation actor migration provisioner fixture\n",
+      );
       return { status: 0, stdout: "built\n", stderr: "" };
+    }
+    if (executable === provisionerOutputPath) {
+      const actor = args[args.indexOf("--actor") + 1];
+      rmSync(
+        path.join(stateRoot, "control", "actor-credentials", `${actor}.json`),
+        { force: true },
+      );
+      return { status: 0, stdout: "revoked\n", stderr: "" };
     }
     if (executable === "/usr/bin/sudo") {
       if (args[0] === "/bin/rm") {
@@ -174,15 +192,15 @@ function fixture(t) {
       };
     }
     if (args[0] === "--attest-readiness") {
-      const expected = {
-        actor: args[args.indexOf("--actor") + 1],
-        stateRoot: args[args.indexOf("--state-root") + 1],
-        leaseName: args[args.indexOf("--lease-name") + 1],
-        maxLeaseLifetimeMs: Number(args[args.indexOf("--max-lifetime-ms") + 1]),
-        credentialSha256: args[args.indexOf("--credential-sha256") + 1],
-        keychainService: args[args.indexOf("--keychain-service") + 1],
-        keychainAccount: args[args.indexOf("--keychain-account") + 1],
-      };
+      const actor = args[args.indexOf("--actor") + 1];
+      const requestedStateRoot = args[args.indexOf("--state-root") + 1];
+      const leaseName = args[args.indexOf("--lease-name") + 1];
+      const maxLeaseLifetimeMs = Number(
+        args[args.indexOf("--max-lifetime-ms") + 1],
+      );
+      const binding = JSON.parse(
+        readFileSync(path.join(launcherRoot, `${actor}.json`), "utf8"),
+      );
       return {
         status: 0,
         stdout: `${JSON.stringify({
@@ -190,7 +208,7 @@ function fixture(t) {
           protocol: "freed-actor-launcher-readiness-v3",
           purpose: "automation-actor-launcher-readiness",
           actor,
-          stateRoot,
+          stateRoot: requestedStateRoot,
           leaseName,
           maxLeaseLifetimeMs,
           handoff: "trusted-launcher-channel-to-canonical-lease",
@@ -750,6 +768,7 @@ test("provision all installs one content-addressed runtime and all public bindin
     path.join(runtimeDirectory, "automation-control.mjs"),
     path.join(runtimeDirectory, "automation-actor-control.mjs"),
     path.join(runtimeDirectory, "lib", "automation-control.mjs"),
+    path.join(runtimeDirectory, "lib", "automation-actor-readiness.mjs"),
     path.join(runtimeDirectory, "lib", "automation-kernel-guard-contract.mjs"),
     path.join(runtimeDirectory, "lib", "outcome-ledger-repair-contract.mjs"),
     path.join(runtimeDirectory, "lib", "lease-archive-move.py"),
@@ -758,6 +777,7 @@ test("provision all installs one content-addressed runtime and all public bindin
     assert.equal(existsSync(runtimePath), true, runtimePath);
   }
   assert.deepEqual(readdirSync(runtimeDirectory).sort(), [
+    "automation-actor-control.mjs",
     "automation-control.mjs",
     "lib",
     "node",
@@ -765,6 +785,7 @@ test("provision all installs one content-addressed runtime and all public bindin
   assert.deepEqual(
     readdirSync(path.join(runtimeDirectory, "lib")).sort(),
     [
+      "automation-actor-readiness.mjs",
       "automation-control.mjs",
       "automation-kernel-guard-contract.mjs",
       "lease-archive-move.py",
@@ -776,15 +797,17 @@ test("provision all installs one content-addressed runtime and all public bindin
     const bindingPath = path.join(value.launcherRoot, `${actor}.json`);
     const binding = JSON.parse(readFileSync(bindingPath, "utf8"));
     assert.equal(binding.actor, actor);
-    assert.equal(binding.schemaVersion, 2);
+    assert.equal(binding.schemaVersion, 4);
     assert.equal(binding.leaseName, AUTOMATION_ACTORS[actor].leaseName);
     assert.equal(binding.maxLeaseLifetimeMs, 30 * 60_000);
     assert.equal(binding.nodePath, runtimePaths[0]);
     assert.equal(binding.controlEntryPath, runtimePaths[1]);
-    assert.equal(binding.controlLibraryPath, runtimePaths[2]);
-    assert.equal(binding.kernelGuardContractPath, runtimePaths[3]);
-    assert.equal(binding.outcomeLedgerRepairContractPath, runtimePaths[4]);
-    assert.equal(binding.leaseArchiveHelperPath, runtimePaths[5]);
+    assert.equal(binding.actorControlEntryPath, runtimePaths[2]);
+    assert.equal(binding.controlLibraryPath, runtimePaths[3]);
+    assert.equal(binding.readinessLibraryPath, runtimePaths[4]);
+    assert.equal(binding.kernelGuardContractPath, runtimePaths[5]);
+    assert.equal(binding.outcomeLedgerRepairContractPath, runtimePaths[6]);
+    assert.equal(binding.leaseArchiveHelperPath, runtimePaths[7]);
     assert.equal(existsSync(binding.launcherPath), true);
     assert.equal(
       path.basename(binding.launcherPath),
@@ -804,7 +827,7 @@ test("provision all installs one content-addressed runtime and all public bindin
   assert.equal(buildCalls.length, 1);
   assert.deepEqual(
     buildCalls[0].args.filter((arg) => arg.startsWith("--")),
-    ["--host-output"],
+    ["--host-output", "--provisioner-output"],
   );
   assert.equal(
     value.calls.some((call) =>
@@ -828,20 +851,130 @@ test("provision all installs one content-addressed runtime and all public bindin
     value.calls.some(
       (call) =>
         call.executable === "/usr/bin/security" ||
-        String(call.executable).includes("automation-actor-provisioner") ||
-        call.args.some((argument) =>
-          String(argument).includes("automation-actor-provisioner"),
-        ),
+        String(call.executable).includes("automation-actor-provisioner"),
     ),
     false,
   );
+});
+
+test("provision migrates every installed schema one actor before replacement", (t) => {
+  const value = fixture(t);
+  const legacyBindings = new Map();
+  const staleRecords = new Map();
+  for (const actor of AUTOMATION_ACTOR_IDS) {
+    legacyBindings.set(actor, writeLegacySchemaOneBinding(value, actor));
+    if (actor !== "freed-release-verifier") {
+      staleRecords.set(actor, writeStaleActorRecord(value, actor));
+    }
+  }
+
+  const result = executeCommand(
+    { action: "provision", actor: "all", stateRoot: value.stateRoot },
+    value.dependencies,
+  );
+
+  const migrationCalls = value.calls.filter(
+    (call) =>
+      call.args[0] === "revoke" &&
+      String(call.executable).includes("automation-actor-provisioner"),
+  );
+  assert.equal(migrationCalls.length, AUTOMATION_ACTOR_IDS.length);
+  for (const actor of AUTOMATION_ACTOR_IDS) {
+    const migrationCall = migrationCalls.find(
+      (call) => call.args[call.args.indexOf("--actor") + 1] === actor,
+    );
+    assert.ok(migrationCall, actor);
+    assert.deepEqual(migrationCall.args, [
+      "revoke",
+      "--actor",
+      actor,
+      "--state-root",
+      value.stateRoot,
+    ]);
+    assert.equal(migrationCall.options.cwd, "/");
+    assert.equal(migrationCall.options.timeoutMs, 120_000);
+    assert.equal(migrationCall.options.stdin, "ignore");
+    assert.deepEqual(migrationCall.options.env, {
+      PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
+      LANG: "C",
+      LC_ALL: "C",
+      HOME: value.homeDir,
+      USER: "owner",
+      LOGNAME: "owner",
+    });
+    const bindingPath = legacyBindings.get(actor).bindingPath;
+    const installCall = value.calls.find(
+      (call) =>
+        call.executable === "/usr/bin/sudo" &&
+        call.args[0] === "/usr/bin/install" &&
+        call.args.at(-1) === bindingPath,
+    );
+    assert.ok(installCall, actor);
+    assert.ok(
+      value.calls.indexOf(migrationCall) < value.calls.indexOf(installCall),
+    );
+    assert.equal(
+      JSON.parse(readFileSync(bindingPath, "utf8")).schemaVersion,
+      4,
+    );
+    assert.equal(existsSync(staleRecords.get(actor) ?? ""), false);
+  }
+  assert.equal(
+    result.records.every((record) => record.legacyCredentialRevoked),
+    true,
+  );
+  assert.equal(
+    result.records.find((record) => record.actor === "freed-release-verifier")
+      .staleActorRecordRemoved,
+    false,
+  );
+});
+
+test("schema one migration failure preserves the old binding and never recreates a removed digest", (t) => {
+  const value = fixture(t);
+  const actor = "freed-runtime-observer";
+  const { bindingPath } = writeLegacySchemaOneBinding(value, actor);
+  const legacyBytes = readFileSync(bindingPath);
+  const staleRecordPath = writeStaleActorRecord(value, actor);
+  const originalRunner = value.dependencies.runner;
+  value.dependencies.runner = (executable, args, options) => {
+    if (args[0] === "revoke") {
+      rmSync(staleRecordPath, { force: true });
+      return { status: 1, stdout: "", stderr: "simulated response loss" };
+    }
+    return originalRunner(executable, args, options);
+  };
+
+  assert.throws(
+    () =>
+      executeCommand(
+        { action: "provision", actor, stateRoot: value.stateRoot },
+        value.dependencies,
+      ),
+    (error) =>
+      error instanceof AutomationActorsError && error.code === "command_failed",
+  );
+  assert.deepEqual(readFileSync(bindingPath), legacyBytes);
+  assert.equal(existsSync(staleRecordPath), false);
+
+  value.dependencies.runner = originalRunner;
+  const recovered = executeCommand(
+    { action: "provision", actor, stateRoot: value.stateRoot },
+    value.dependencies,
+  );
+  assert.equal(recovered.records[0].legacyCredentialRevoked, true);
+  assert.equal(recovered.records[0].staleActorRecordRemoved, false);
+  assert.equal(JSON.parse(readFileSync(bindingPath, "utf8")).schemaVersion, 4);
+  assert.equal(existsSync(staleRecordPath), false);
 });
 
 test("provisioned runtime resolves the automation control local import closure", (t) => {
   const value = fixture(t);
   for (const relativePath of [
     "automation-control.mjs",
+    "automation-actor-control.mjs",
     "lib/automation-control.mjs",
+    "lib/automation-actor-readiness.mjs",
     "lib/automation-kernel-guard-contract.mjs",
     "lib/outcome-ledger-repair-contract.mjs",
     "lib/lease-archive-move.py",
@@ -873,19 +1006,20 @@ test("provisioned runtime resolves the automation control local import closure",
     force: true,
   });
   assert.equal(existsSync(path.join(value.repoRoot, "scripts")), false);
-  const launched = spawnSync(
-    binding.nodePath,
-    [binding.controlEntryPath, "--help"],
-    {
+  for (const entryPath of [
+    binding.controlEntryPath,
+    binding.actorControlEntryPath,
+  ]) {
+    const launched = spawnSync(binding.nodePath, [entryPath, "--help"], {
       cwd: "/",
       encoding: "utf8",
       env: { PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C" },
       timeout: 15_000,
       killSignal: "SIGKILL",
-    },
-  );
-  assert.equal(launched.status, 0, launched.stderr);
-  assert.match(launched.stdout, /^Usage:/);
+    });
+    assert.equal(launched.status, 0, launched.stderr);
+    assert.match(launched.stdout, /^Usage:/);
+  }
 });
 
 test("provision all rolls back only actors completed by the current batch", (t) => {
@@ -1463,6 +1597,14 @@ function writeAcquisitionBinding(value, actor) {
     controlLibrarySha256: sha256(
       path.join(value.repoRoot, "scripts", "lib", "automation-control.mjs"),
     ),
+    readinessLibrarySha256: sha256(
+      path.join(
+        value.repoRoot,
+        "scripts",
+        "lib",
+        "automation-actor-readiness.mjs",
+      ),
+    ),
     kernelGuardContractSha256: sha256(
       path.join(
         value.repoRoot,
@@ -1498,6 +1640,11 @@ function writeAcquisitionBinding(value, actor) {
       "lib",
       "automation-control.mjs",
     ),
+    readinessLibraryPath: path.join(
+      runtimeDirectory,
+      "lib",
+      "automation-actor-readiness.mjs",
+    ),
     kernelGuardContractPath: path.join(
       runtimeDirectory,
       "lib",
@@ -1528,6 +1675,15 @@ function writeAcquisitionBinding(value, actor) {
   copyFileSync(
     path.join(value.repoRoot, "scripts", "lib", "automation-control.mjs"),
     runtime.controlLibraryPath,
+  );
+  copyFileSync(
+    path.join(
+      value.repoRoot,
+      "scripts",
+      "lib",
+      "automation-actor-readiness.mjs",
+    ),
+    runtime.readinessLibraryPath,
   );
   copyFileSync(
     path.join(
@@ -1576,8 +1732,8 @@ function writeAcquisitionBinding(value, actor) {
   return binding;
 }
 
-function writeActorCredential(value, actor, tokenSha256 = "a".repeat(64)) {
-  const credentialDirectory = path.join(
+function writeStaleActorRecord(value, actor) {
+  const recordDirectory = path.join(
     value.stateRoot,
     "control",
     "actor-credentials",
@@ -1597,6 +1753,34 @@ function writeActorCredential(value, actor, tokenSha256 = "a".repeat(64)) {
   return recordPath;
 }
 
+function writeLegacySchemaOneBinding(value, actor) {
+  const current = writeAcquisitionBinding(value, actor);
+  const legacy = {
+    schemaVersion: 1,
+    actor,
+    purpose: "automation-actor-launcher",
+    handoff: "keychain-to-canonical-lease",
+    attestationProtocol: "freed-actor-launcher-readiness-v1",
+    launcherPath: current.launcherPath,
+    launcherSha256: current.launcherSha256,
+    nodePath: current.nodePath,
+    nodeSha256: current.nodeSha256,
+    controlEntryPath: current.controlEntryPath,
+    controlEntrySha256: current.controlEntrySha256,
+    controlLibraryPath: current.controlLibraryPath,
+    controlLibrarySha256: current.controlLibrarySha256,
+    stateRoot: value.stateRoot,
+    leaseName: current.leaseName,
+    maxLeaseLifetimeMs: current.maxLeaseLifetimeMs,
+    keychainService: "freed-automation-actor",
+    keychainAccount: actor,
+  };
+  const bindingPath = path.join(value.launcherRoot, `${actor}.json`);
+  writeFileSync(bindingPath, `${JSON.stringify(legacy)}\n`, { mode: 0o444 });
+  chmodSync(bindingPath, 0o444);
+  return { bindingPath, binding: legacy };
+}
+
 function replaceActorRuntime(value, actor) {
   const bindingPath = path.join(value.launcherRoot, `${actor}.json`);
   const installedBinding = JSON.parse(readFileSync(bindingPath, "utf8"));
@@ -1609,6 +1793,7 @@ function replaceActorRuntime(value, actor) {
     controlLibrarySha256: createHash("sha256")
       .update(controlLibraryContents)
       .digest("hex"),
+    readinessLibrarySha256: installedBinding.readinessLibrarySha256,
     kernelGuardContractSha256: installedBinding.kernelGuardContractSha256,
     outcomeLedgerRepairContractSha256:
       installedBinding.outcomeLedgerRepairContractSha256,
@@ -1628,6 +1813,11 @@ function replaceActorRuntime(value, actor) {
       runtimeDirectory,
       "lib",
       "automation-control.mjs",
+    ),
+    readinessLibraryPath: path.join(
+      runtimeDirectory,
+      "lib",
+      "automation-actor-readiness.mjs",
     ),
     kernelGuardContractPath: path.join(
       runtimeDirectory,
@@ -1656,6 +1846,10 @@ function replaceActorRuntime(value, actor) {
   writeFileSync(runtime.controlLibraryPath, controlLibraryContents, {
     mode: 0o600,
   });
+  copyFileSync(
+    installedBinding.readinessLibraryPath,
+    runtime.readinessLibraryPath,
+  );
   copyFileSync(
     installedBinding.kernelGuardContractPath,
     runtime.kernelGuardContractPath,
@@ -2094,11 +2288,13 @@ test("public binding validation pins all runtime files to one digest directory",
   );
   const runtimeDirectory = path.dirname(binding.nodePath);
   assert.equal(path.dirname(binding.controlEntryPath), runtimeDirectory);
+  assert.equal(path.dirname(binding.actorControlEntryPath), runtimeDirectory);
   assert.equal(
     path.dirname(path.dirname(binding.controlLibraryPath)),
     runtimeDirectory,
   );
   for (const libraryPath of [
+    binding.readinessLibraryPath,
     binding.kernelGuardContractPath,
     binding.outcomeLedgerRepairContractPath,
     binding.leaseArchiveHelperPath,
@@ -2259,7 +2455,6 @@ test("accept-host retries a lost heartbeat response with the exact caller identi
   const value = fixture(t);
   for (const actor of AUTOMATION_ACTOR_IDS) {
     writeAcquisitionBinding(value, actor);
-    writeActorCredential(value, actor);
   }
   const originalRunner = value.dependencies.runner;
   const retryOperationIds = [];

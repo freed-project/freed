@@ -1,13 +1,16 @@
 import CryptoKit
+import CoreFoundation
 import Darwin
 import Foundation
 import Security
 
-private let bindingSchemaVersion = 3
+private let currentBindingSchemaVersion = 4
+private let legacyBindingSchemaVersion = 1
 private let credentialSchemaVersion = 1
 private let bindingPurpose = "automation-actor-launcher"
-private let bindingHandoff = "keychain-to-canonical-lease"
-private let attestationProtocol = "freed-actor-launcher-readiness-v2"
+private let currentBindingHandoff = "trusted-launcher-channel-to-canonical-lease"
+private let legacyBindingHandoff = "keychain-to-canonical-lease"
+private let currentAttestationProtocol = "freed-actor-launcher-readiness-v3"
 private let legacyAttestationProtocol = "freed-actor-launcher-readiness-v1"
 private let credentialPurpose = "automation-actor-lease"
 private let keychainService = "freed-automation-actor"
@@ -88,12 +91,40 @@ private struct LauncherBinding: Decodable {
   let controlEntrySha256: String
   let controlLibraryPath: String
   let controlLibrarySha256: String
+}
+
+private struct CurrentLauncherBinding: Decodable {
+  let schemaVersion: Int
+  let actor: String
+  let purpose: String
+  let handoff: String
+  let attestationProtocol: String
+  let launcherPath: String
+  let launcherSha256: String
+  let stateRoot: String
+  let leaseName: String
+  let maxLeaseLifetimeMs: Int
+  let nodePath: String
+  let nodeSha256: String
+  let actorControlEntryPath: String
+  let actorControlEntrySha256: String
+  let controlEntryPath: String
+  let controlEntrySha256: String
+  let controlLibraryPath: String
+  let controlLibrarySha256: String
+  let readinessLibraryPath: String
+  let readinessLibrarySha256: String
   let kernelGuardContractPath: String
   let kernelGuardContractSha256: String
   let outcomeLedgerRepairContractPath: String
   let outcomeLedgerRepairContractSha256: String
   let leaseArchiveHelperPath: String
   let leaseArchiveHelperSha256: String
+}
+
+private enum ValidatedLauncherBinding {
+  case legacy(LauncherBinding)
+  case current(CurrentLauncherBinding)
 }
 
 private struct ActorCredentialRecord: Codable, Equatable {
@@ -923,12 +954,23 @@ private func sha256Hex(_ data: Data) -> String {
   SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
 }
 
-private func runtimeDigest(_ binding: LauncherBinding) -> String {
+private func legacyRuntimeDigest(_ binding: LauncherBinding) -> String {
   let manifest =
-    "freed-automation-actor-runtime-v3\n" +
+    "freed-automation-actor-runtime-v1\n" +
     "node:\(binding.nodeSha256)\n" +
     "automation-control.mjs:\(binding.controlEntrySha256)\n" +
+    "lib/automation-control.mjs:\(binding.controlLibrarySha256)\n"
+  return sha256Hex(Data(manifest.utf8))
+}
+
+private func currentRuntimeDigest(_ binding: CurrentLauncherBinding) -> String {
+  let manifest =
+    "freed-automation-actor-runtime-v4\n" +
+    "node:\(binding.nodeSha256)\n" +
+    "automation-control.mjs:\(binding.controlEntrySha256)\n" +
+    "automation-actor-control.mjs:\(binding.actorControlEntrySha256)\n" +
     "lib/automation-control.mjs:\(binding.controlLibrarySha256)\n" +
+    "lib/automation-actor-readiness.mjs:\(binding.readinessLibrarySha256)\n" +
     "lib/automation-kernel-guard-contract.mjs:\(binding.kernelGuardContractSha256)\n" +
     "lib/outcome-ledger-repair-contract.mjs:\(binding.outcomeLedgerRepairContractSha256)\n" +
     "lib/lease-archive-move.py:\(binding.leaseArchiveHelperSha256)\n"
@@ -1000,7 +1042,95 @@ private func runtimeRoot(_ arguments: ParsedArguments) -> String {
   #endif
 }
 
-private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> LauncherBinding {
+private func validateCurrentBinding(
+  _ binding: CurrentLauncherBinding,
+  arguments: ParsedArguments,
+  canonicalBindingRoot: String
+) throws {
+  guard binding.schemaVersion == currentBindingSchemaVersion,
+    binding.actor == arguments.actor,
+    binding.purpose == bindingPurpose,
+    binding.handoff == currentBindingHandoff,
+    binding.attestationProtocol == currentAttestationProtocol,
+    binding.stateRoot == arguments.stateRoot,
+    binding.leaseName == actorLeaseNames[arguments.actor],
+    binding.maxLeaseLifetimeMs == leaseLifetimeMilliseconds
+  else {
+    throw ProvisionFailure("the current actor launcher binding does not match this request")
+  }
+  let digests = [
+    (binding.launcherSha256, "launcher digest"),
+    (binding.nodeSha256, "Node digest"),
+    (binding.controlEntrySha256, "control entry digest"),
+    (binding.actorControlEntrySha256, "actor control entry digest"),
+    (binding.controlLibrarySha256, "control library digest"),
+    (binding.readinessLibrarySha256, "readiness library digest"),
+    (binding.kernelGuardContractSha256, "kernel guard contract digest"),
+    (binding.outcomeLedgerRepairContractSha256, "outcome ledger repair contract digest"),
+    (binding.leaseArchiveHelperSha256, "lease archive helper digest"),
+  ]
+  for (digest, label) in digests {
+    try requireLowercaseHex(digest, length: 64, label: label)
+  }
+  let expectedLauncherPath =
+    canonicalBindingRoot + "/bin/" + binding.actor + "-" + binding.launcherSha256
+  guard binding.launcherPath == expectedLauncherPath else {
+    throw ProvisionFailure("the current actor host path is not canonical")
+  }
+  try requireTrustedFile(binding.launcherPath, executable: true, label: "actor host executable")
+  guard try sha256ForFile(binding.launcherPath) == binding.launcherSha256 else {
+    throw ProvisionFailure("the current actor host executable does not match its pinned digest")
+  }
+  let canonicalRuntimeRoot = try canonicalExistingPath(
+    runtimeRoot(arguments),
+    label: "actor runtime root"
+  )
+  try requireTrustedHierarchy(canonicalRuntimeRoot, label: "actor runtime root")
+  let expectedRuntimeDirectory = canonicalRuntimeRoot + "/" + currentRuntimeDigest(binding)
+  guard binding.nodePath == expectedRuntimeDirectory + "/node",
+    binding.controlEntryPath == expectedRuntimeDirectory + "/automation-control.mjs",
+    binding.actorControlEntryPath == expectedRuntimeDirectory + "/automation-actor-control.mjs",
+    binding.controlLibraryPath == expectedRuntimeDirectory + "/lib/automation-control.mjs",
+    binding.readinessLibraryPath == expectedRuntimeDirectory + "/lib/automation-actor-readiness.mjs",
+    binding.kernelGuardContractPath == expectedRuntimeDirectory + "/lib/automation-kernel-guard-contract.mjs",
+    binding.outcomeLedgerRepairContractPath == expectedRuntimeDirectory + "/lib/outcome-ledger-repair-contract.mjs",
+    binding.leaseArchiveHelperPath == expectedRuntimeDirectory + "/lib/lease-archive-move.py"
+  else {
+    throw ProvisionFailure("the current actor runtime layout is not canonical")
+  }
+  let runtimePins = [
+    (binding.nodePath, binding.nodeSha256, true, "Node runtime"),
+    (binding.controlEntryPath, binding.controlEntrySha256, false, "automation control entry"),
+    (binding.actorControlEntryPath, binding.actorControlEntrySha256, false, "automation actor control entry"),
+    (binding.controlLibraryPath, binding.controlLibrarySha256, false, "automation control library"),
+    (binding.readinessLibraryPath, binding.readinessLibrarySha256, false, "automation actor readiness library"),
+    (binding.kernelGuardContractPath, binding.kernelGuardContractSha256, false, "automation kernel guard contract"),
+    (binding.outcomeLedgerRepairContractPath, binding.outcomeLedgerRepairContractSha256, false, "outcome ledger repair contract"),
+    (binding.leaseArchiveHelperPath, binding.leaseArchiveHelperSha256, false, "lease archive helper"),
+  ]
+  for (runtimePath, digest, executable, label) in runtimePins {
+    let canonical = try canonicalExistingPath(runtimePath, label: label)
+    guard isStrictChild(canonical, of: canonicalRuntimeRoot) else {
+      throw ProvisionFailure("\(label) must be a strict child of the actor runtime root")
+    }
+    try requireTrustedFile(canonical, executable: executable, label: label)
+    guard try sha256ForFile(canonical) == digest else {
+      throw ProvisionFailure("\(label) does not match its pinned digest")
+    }
+  }
+  let canonicalStateRoot = try canonicalExistingPath(
+    arguments.stateRoot,
+    label: "automation state root"
+  )
+  guard binding.stateRoot == canonicalStateRoot else {
+    throw ProvisionFailure("the automation state root is not canonical")
+  }
+  try requireOwnerDirectory(canonicalStateRoot, label: "automation state root")
+}
+
+private func loadAndValidateBinding(
+  _ arguments: ParsedArguments
+) throws -> ValidatedLauncherBinding {
   let path = bindingPath(arguments)
   let canonicalBindingRoot = URL(fileURLWithPath: path).deletingLastPathComponent().path
   guard path == canonicalBindingRoot + "/" + arguments.actor + ".json" else {
@@ -1017,6 +1147,49 @@ private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> Laun
     maximumBytes: maximumBindingBytes,
     allowedOwners: trustedOwners()
   )
+  let rawValue: Any
+  do {
+    rawValue = try JSONSerialization.jsonObject(with: data)
+  } catch {
+    throw ProvisionFailure("the actor launcher binding is not valid JSON")
+  }
+  guard let dictionary = rawValue as? [String: Any],
+    let schemaNumber = dictionary["schemaVersion"] as? NSNumber,
+    CFGetTypeID(schemaNumber) != CFBooleanGetTypeID(),
+    schemaNumber.doubleValue == Double(schemaNumber.intValue)
+  else {
+    throw ProvisionFailure("the actor launcher binding schema is invalid")
+  }
+
+  if schemaNumber.intValue == currentBindingSchemaVersion {
+    let binding = try decodeStrict(
+      CurrentLauncherBinding.self,
+      data: data,
+      expectedKeys: [
+        "schemaVersion", "actor", "purpose", "handoff", "attestationProtocol",
+        "launcherPath", "launcherSha256", "stateRoot", "leaseName",
+        "maxLeaseLifetimeMs", "nodePath", "nodeSha256",
+        "actorControlEntryPath", "actorControlEntrySha256",
+        "controlEntryPath", "controlEntrySha256",
+        "controlLibraryPath", "controlLibrarySha256",
+        "readinessLibraryPath", "readinessLibrarySha256",
+        "kernelGuardContractPath", "kernelGuardContractSha256",
+        "outcomeLedgerRepairContractPath", "outcomeLedgerRepairContractSha256",
+        "leaseArchiveHelperPath", "leaseArchiveHelperSha256",
+      ],
+      label: "current actor launcher binding"
+    )
+    try validateCurrentBinding(
+      binding,
+      arguments: arguments,
+      canonicalBindingRoot: canonicalBindingRoot
+    )
+    return .current(binding)
+  }
+
+  guard schemaNumber.intValue == legacyBindingSchemaVersion else {
+    throw ProvisionFailure("the actor launcher binding schema is unsupported")
+  }
   let binding = try decodeStrict(
     LauncherBinding.self,
     data: data,
@@ -1026,65 +1199,51 @@ private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> Laun
       "maxLeaseLifetimeMs", "keychainService", "keychainAccount", "nodePath",
       "nodeSha256", "controlEntryPath", "controlEntrySha256",
       "controlLibraryPath", "controlLibrarySha256",
-      "kernelGuardContractPath", "kernelGuardContractSha256",
-      "outcomeLedgerRepairContractPath", "outcomeLedgerRepairContractSha256",
-      "leaseArchiveHelperPath", "leaseArchiveHelperSha256",
     ],
-    label: "actor launcher binding"
+    label: "legacy actor launcher binding"
   )
-  let attestationProtocolIsAccepted =
-    binding.attestationProtocol == attestationProtocol ||
-    (arguments.action == .revoke &&
-      binding.attestationProtocol == legacyAttestationProtocol)
-  guard binding.schemaVersion == bindingSchemaVersion,
+  guard binding.schemaVersion == legacyBindingSchemaVersion,
     binding.actor == arguments.actor,
     binding.purpose == bindingPurpose,
-    binding.handoff == bindingHandoff,
-    attestationProtocolIsAccepted,
+    binding.handoff == legacyBindingHandoff,
+    binding.attestationProtocol == legacyAttestationProtocol,
     binding.stateRoot == arguments.stateRoot,
     binding.leaseName == actorLeaseNames[arguments.actor],
     binding.maxLeaseLifetimeMs == leaseLifetimeMilliseconds,
     binding.keychainService == keychainService,
     binding.keychainAccount == arguments.actor
   else {
-    throw ProvisionFailure("the actor launcher binding does not match this request")
+    throw ProvisionFailure("the legacy actor launcher binding does not match this request")
   }
   try requireLowercaseHex(binding.launcherSha256, length: 64, label: "launcher digest")
   try requireLowercaseHex(binding.nodeSha256, length: 64, label: "Node digest")
   try requireLowercaseHex(binding.controlEntrySha256, length: 64, label: "control entry digest")
   try requireLowercaseHex(binding.controlLibrarySha256, length: 64, label: "control library digest")
-  try requireLowercaseHex(binding.kernelGuardContractSha256, length: 64, label: "kernel guard contract digest")
-  try requireLowercaseHex(binding.outcomeLedgerRepairContractSha256, length: 64, label: "outcome ledger repair contract digest")
-  try requireLowercaseHex(binding.leaseArchiveHelperSha256, length: 64, label: "lease archive helper digest")
-
   let expectedLauncherPath =
     canonicalBindingRoot + "/bin/" + binding.actor + "-" + binding.launcherSha256
   guard binding.launcherPath == expectedLauncherPath else {
-    throw ProvisionFailure("the actor host does not use the canonical content-addressed path")
+    throw ProvisionFailure("the legacy actor host path is not canonical")
   }
-  try requireTrustedFile(binding.launcherPath, executable: true, label: "actor host executable")
+  try requireTrustedFile(binding.launcherPath, executable: true, label: "legacy actor host")
   guard try sha256ForFile(binding.launcherPath) == binding.launcherSha256 else {
-    throw ProvisionFailure("the actor host executable does not match its pinned digest")
+    throw ProvisionFailure("the legacy actor host does not match its pinned digest")
   }
-  let canonicalRuntimeRoot = try canonicalExistingPath(runtimeRoot(arguments), label: "actor runtime root")
-  try requireTrustedHierarchy(canonicalRuntimeRoot, label: "actor runtime root")
-  let expectedRuntimeDirectory = canonicalRuntimeRoot + "/" + runtimeDigest(binding)
+  let canonicalRuntimeRoot = try canonicalExistingPath(
+    runtimeRoot(arguments),
+    label: "legacy actor runtime root"
+  )
+  try requireTrustedHierarchy(canonicalRuntimeRoot, label: "legacy actor runtime root")
+  let expectedRuntimeDirectory = canonicalRuntimeRoot + "/" + legacyRuntimeDigest(binding)
   guard binding.nodePath == expectedRuntimeDirectory + "/node",
     binding.controlEntryPath == expectedRuntimeDirectory + "/automation-control.mjs",
-    binding.controlLibraryPath == expectedRuntimeDirectory + "/lib/automation-control.mjs",
-    binding.kernelGuardContractPath == expectedRuntimeDirectory + "/lib/automation-kernel-guard-contract.mjs",
-    binding.outcomeLedgerRepairContractPath == expectedRuntimeDirectory + "/lib/outcome-ledger-repair-contract.mjs",
-    binding.leaseArchiveHelperPath == expectedRuntimeDirectory + "/lib/lease-archive-move.py"
+    binding.controlLibraryPath == expectedRuntimeDirectory + "/lib/automation-control.mjs"
   else {
-    throw ProvisionFailure("the pinned actor runtime does not use the canonical content-addressed layout")
+    throw ProvisionFailure("the legacy actor runtime layout is not canonical")
   }
   let runtimePins = [
-    (binding.nodePath, binding.nodeSha256, true, "Node runtime"),
-    (binding.controlEntryPath, binding.controlEntrySha256, false, "automation control entry"),
-    (binding.controlLibraryPath, binding.controlLibrarySha256, false, "automation control library"),
-    (binding.kernelGuardContractPath, binding.kernelGuardContractSha256, false, "automation kernel guard contract"),
-    (binding.outcomeLedgerRepairContractPath, binding.outcomeLedgerRepairContractSha256, false, "outcome ledger repair contract"),
-    (binding.leaseArchiveHelperPath, binding.leaseArchiveHelperSha256, false, "lease archive helper"),
+    (binding.nodePath, binding.nodeSha256, true, "legacy Node runtime"),
+    (binding.controlEntryPath, binding.controlEntrySha256, false, "legacy control entry"),
+    (binding.controlLibraryPath, binding.controlLibrarySha256, false, "legacy control library"),
   ]
   for (runtimePath, digest, executable, label) in runtimePins {
     let canonical = try canonicalExistingPath(runtimePath, label: label)
@@ -1096,12 +1255,15 @@ private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> Laun
       throw ProvisionFailure("\(label) does not match its pinned digest")
     }
   }
-  let canonicalStateRoot = try canonicalExistingPath(arguments.stateRoot, label: "automation state root")
+  let canonicalStateRoot = try canonicalExistingPath(
+    arguments.stateRoot,
+    label: "automation state root"
+  )
   guard binding.stateRoot == canonicalStateRoot else {
     throw ProvisionFailure("the automation state root is not canonical")
   }
   try requireOwnerDirectory(canonicalStateRoot, label: "automation state root")
-  return binding
+  return .legacy(binding)
 }
 
 private func credentialDirectory(for binding: LauncherBinding) -> String {
@@ -1441,7 +1603,18 @@ private func main() throws {
   _ = umask(0o077)
   try disableCoreDumps()
   try clearInheritedEnvironment()
-  let binding = try loadAndValidateBinding(arguments)
+  let validatedBinding = try loadAndValidateBinding(arguments)
+  let binding: LauncherBinding
+  switch validatedBinding {
+  case .legacy(let legacyBinding):
+    binding = legacyBinding
+  case .current:
+    throw ProvisionFailure("current actor launchers do not contain a legacy Keychain credential")
+  }
+  guard arguments.action == .revoke else {
+    throw ProvisionFailure("the actor Keychain migration tool only revokes legacy credentials")
+  }
+  _ = try readCredentialIfPresent(binding)
   #if AUTOMATION_ACTOR_PROVISION_TESTING
     let interactionController = FakeKeychainInteractionController(
       mode: arguments.testInteractionMode,
@@ -1453,32 +1626,14 @@ private func main() throws {
       stateRoot: arguments.stateRoot,
       interactionController: interactionController
     )
-    let generator: CredentialGenerator = FakeCredentialGenerator()
   #else
     let interactionController = SystemKeychainInteractionController()
     let store: SecretStore = KeychainSecretStore()
-    let generator: CredentialGenerator = SecureCredentialGenerator()
   #endif
-  switch arguments.action {
-  case .provision:
-    _ = try withKeychainInteractionDisabled(
-      controller: interactionController,
-      restorationFailureCleanup: { rollback in
-        try rollbackProvision(rollback, binding: binding, store: store)
-      }
-    ) {
-      try provision(binding: binding, store: store, generator: generator)
-    }
-    try writeResult(arguments.action, binding: binding, ready: true)
-  case .rotate:
-    try rotate(binding: binding, store: store, generator: generator)
-    try writeResult(arguments.action, binding: binding, ready: true)
-  case .revoke:
-    try withKeychainInteractionDisabled(controller: interactionController) {
-      try revoke(binding: binding, store: store)
-    }
-    try writeResult(arguments.action, binding: binding, ready: false)
+  try withKeychainInteractionDisabled(controller: interactionController) {
+    try revoke(binding: binding, store: store)
   }
+  try writeResult(arguments.action, binding: binding, ready: false)
 }
 
 do {

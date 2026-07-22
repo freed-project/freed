@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -52,6 +52,7 @@ const NATIVE_LAUNCHER_LIFECYCLE_BUDGET_MS = 65_000;
 const LAUNCHER_ACQUIRE_TIMEOUT_MS =
   NATIVE_LAUNCHER_LIFECYCLE_BUDGET_MS + 10_000;
 const CONTROL_LIFECYCLE_TIMEOUT_MS = 15_000;
+const PROVISIONER_ACTION_TIMEOUT_MS = 120_000;
 const LIFECYCLE_LOCK_STALE_MS = 30 * 1_000;
 const LIFECYCLE_LOCK_PROTOCOL = "freed-automation-actor-lifecycle-lock-v1";
 const LIFECYCLE_LOCK_DIRECTORY = "automation-actor-lifecycle-v2.lock";
@@ -819,15 +820,28 @@ function withPrivateTempDirectory(dependencies, operation) {
 
 function buildHostArtifacts(dependencies, directory) {
   const hostOutput = path.join(directory, "automation-actor-host");
+  const provisionerOutput = path.join(
+    directory,
+    "automation-actor-provisioner",
+  );
   const hostBuildPath = inspectRegularFile(dependencies.hostBuildPath);
   runChecked(
     dependencies,
     "/bin/bash",
-    [hostBuildPath, "--host-output", hostOutput],
+    [
+      hostBuildPath,
+      "--host-output",
+      hostOutput,
+      "--provisioner-output",
+      provisionerOutput,
+    ],
     { cwd: dependencies.repoRoot, purpose: "Automation actor host build" },
   );
   return {
     hostOutput: inspectRegularFile(hostOutput, { executable: true }),
+    provisionerOutput: inspectRegularFile(provisionerOutput, {
+      executable: true,
+    }),
   };
 }
 
@@ -877,6 +891,14 @@ function describeRuntime(dependencies, pinnedNodePath) {
       "automation-control.mjs",
     ),
   );
+  const readinessLibrarySource = inspectRegularFile(
+    path.join(
+      dependencies.repoRoot,
+      "scripts",
+      "lib",
+      "automation-actor-readiness.mjs",
+    ),
+  );
   const kernelGuardContractSource = inspectRegularFile(
     path.join(
       dependencies.repoRoot,
@@ -894,18 +916,14 @@ function describeRuntime(dependencies, pinnedNodePath) {
     ),
   );
   const leaseArchiveHelperSource = inspectRegularFile(
-    path.join(
-      dependencies.repoRoot,
-      "scripts",
-      "lib",
-      "lease-archive-move.py",
-    ),
+    path.join(dependencies.repoRoot, "scripts", "lib", "lease-archive-move.py"),
   );
   const pins = {
     nodeSha256: sha256File(pinnedNodePath),
     controlEntrySha256: sha256File(controlEntrySource),
     actorControlEntrySha256: sha256File(actorControlEntrySource),
     controlLibrarySha256: sha256File(controlLibrarySource),
+    readinessLibrarySha256: sha256File(readinessLibrarySource),
     kernelGuardContractSha256: sha256File(kernelGuardContractSource),
     outcomeLedgerRepairContractSha256: sha256File(
       outcomeLedgerRepairContractSource,
@@ -925,6 +943,12 @@ function describeRuntime(dependencies, pinnedNodePath) {
     actorControlEntryPath: path.join(directory, "automation-actor-control.mjs"),
     controlLibrarySource,
     controlLibraryPath: path.join(directory, "lib", "automation-control.mjs"),
+    readinessLibrarySource,
+    readinessLibraryPath: path.join(
+      directory,
+      "lib",
+      "automation-actor-readiness.mjs",
+    ),
     kernelGuardContractSource,
     kernelGuardContractPath: path.join(
       directory,
@@ -972,6 +996,12 @@ function installRuntime(dependencies, runtime) {
   );
   installFile(
     dependencies,
+    runtime.readinessLibrarySource,
+    runtime.readinessLibraryPath,
+    "0444",
+  );
+  installFile(
+    dependencies,
     runtime.kernelGuardContractSource,
     runtime.kernelGuardContractPath,
     "0444",
@@ -1002,7 +1032,7 @@ export function bindingForActor({
     fail("invalid_actor", `Unsupported automation actor: ${actor}`);
   }
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     actor,
     purpose: LAUNCHER_PURPOSE,
     handoff: LAUNCHER_HANDOFF,
@@ -1020,10 +1050,11 @@ export function bindingForActor({
     actorControlEntrySha256: runtime.actorControlEntrySha256,
     controlLibraryPath: runtime.controlLibraryPath,
     controlLibrarySha256: runtime.controlLibrarySha256,
+    readinessLibraryPath: runtime.readinessLibraryPath,
+    readinessLibrarySha256: runtime.readinessLibrarySha256,
     kernelGuardContractPath: runtime.kernelGuardContractPath,
     kernelGuardContractSha256: runtime.kernelGuardContractSha256,
-    outcomeLedgerRepairContractPath:
-      runtime.outcomeLedgerRepairContractPath,
+    outcomeLedgerRepairContractPath: runtime.outcomeLedgerRepairContractPath,
     outcomeLedgerRepairContractSha256:
       runtime.outcomeLedgerRepairContractSha256,
     leaseArchiveHelperPath: runtime.leaseArchiveHelperPath,
@@ -1082,6 +1113,76 @@ function captureBindingForRollback(dependencies, actor, privateDirectory) {
   const snapshotPath = path.join(privateDirectory, `${actor}.previous.json`);
   writeFileSync(snapshotPath, readFileSync(bindingPath), { mode: 0o600 });
   return { actor, bindingPath, snapshotPath };
+}
+
+function existingBindingSchemaVersion(
+  dependencies,
+  actor,
+  stateRoot,
+  rollback,
+) {
+  if (rollback.snapshotPath === null) return null;
+  let record;
+  try {
+    record = JSON.parse(readFileSync(rollback.snapshotPath, "utf8"));
+  } catch {
+    fail("invalid_binding", `The existing ${actor} binding is not valid JSON.`);
+  }
+  if (
+    record === null ||
+    typeof record !== "object" ||
+    Array.isArray(record) ||
+    !Number.isSafeInteger(record.schemaVersion)
+  ) {
+    fail(
+      "invalid_binding",
+      `The existing ${actor} binding has no supported schema version.`,
+    );
+  }
+  if (record.schemaVersion === 1) return 1;
+  if (record.schemaVersion !== 4) {
+    fail(
+      "invalid_binding",
+      `The existing ${actor} binding schema is unsupported.`,
+    );
+  }
+  const validation = validateActorBindingRecord(record, {
+    actor,
+    stateRoot,
+    leaseContract: {
+      name: AUTOMATION_ACTORS[actor].leaseName,
+      maxLifetimeMs: MAX_LEASE_LIFETIME_MS,
+    },
+    launcherRoot: dependencies.launcherRoot,
+    runtimeRoot: dependencies.runtimeRoot,
+    requiredUid: dependencies.trustedUid,
+  });
+  if (!validation.ready) {
+    fail(
+      "invalid_binding",
+      `The existing ${actor} binding cannot be replaced: ${validation.reason}`,
+    );
+  }
+  return 4;
+}
+
+function revokeLegacyActorCredential(
+  dependencies,
+  provisionerOutput,
+  actor,
+  stateRoot,
+) {
+  runChecked(
+    dependencies,
+    provisionerOutput,
+    ["revoke", "--actor", actor, "--state-root", stateRoot],
+    {
+      cwd: "/",
+      purpose: `Legacy automation actor ${actor} credential migration`,
+      timeoutMs: dependencies.provisionerActionTimeoutMs,
+      stdin: "ignore",
+    },
+  );
 }
 
 function restoreBinding(dependencies, rollback) {
@@ -1237,6 +1338,7 @@ function provisionActors(command, dependencies, stateRoot) {
     const artifacts = buildHostArtifacts(dependencies, privateDirectory);
     const records = [];
     const rollbackRecords = [];
+    const migratedLegacyActors = new Set();
     const staleRecords = actors.map((actor) =>
       captureStaleActorRecord(dependencies, stateRoot, actor, privateDirectory),
     );
@@ -1250,6 +1352,21 @@ function provisionActors(command, dependencies, stateRoot) {
           privateDirectory,
         );
         rollbackRecords.push(rollback);
+        const priorSchemaVersion = existingBindingSchemaVersion(
+          dependencies,
+          actor,
+          stateRoot,
+          rollback,
+        );
+        if (priorSchemaVersion === 1) {
+          revokeLegacyActorCredential(
+            dependencies,
+            artifacts.provisionerOutput,
+            actor,
+            stateRoot,
+          );
+          migratedLegacyActors.add(actor);
+        }
         const installed = installActorPublicMaterial(dependencies, {
           actor,
           stateRoot,
@@ -1264,6 +1381,7 @@ function provisionActors(command, dependencies, stateRoot) {
           replacedExistingBinding: rollback.snapshotPath !== null,
           accepted: false,
           staleActorRecordRemoved: false,
+          legacyCredentialRevoked: priorSchemaVersion === 1,
         });
       }
       const readinesses = actors.map((actor) =>
@@ -1275,6 +1393,12 @@ function provisionActors(command, dependencies, stateRoot) {
         records[index].accepted = true;
       }
       for (const staleRecord of staleRecords) {
+        if (migratedLegacyActors.has(staleRecord.actor)) {
+          records.find(
+            (record) => record.actor === staleRecord.actor,
+          ).staleActorRecordRemoved = staleRecord.snapshotPath !== null;
+          continue;
+        }
         if (removeStaleActorRecord(staleRecord)) {
           removedStaleRecords.push(staleRecord);
           records.find(
@@ -1922,6 +2046,7 @@ function dependenciesWithDefaults(overrides = {}) {
     launcherAttestor: defaultLauncherAttestor,
     launcherAcquireTimeoutMs: LAUNCHER_ACQUIRE_TIMEOUT_MS,
     controlLifecycleTimeoutMs: CONTROL_LIFECYCLE_TIMEOUT_MS,
+    provisionerActionTimeoutMs: PROVISIONER_ACTION_TIMEOUT_MS,
     lifecycleLockStaleMs: LIFECYCLE_LOCK_STALE_MS,
     lifecycleLockTokenFactory: () => randomBytes(32).toString("hex"),
     nowMs: () => Date.now(),

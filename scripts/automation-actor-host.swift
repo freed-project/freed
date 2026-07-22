@@ -2,8 +2,10 @@ import CryptoKit
 import Darwin
 import Foundation
 
-private let bindingSchemaVersion = 3
-private let credentialSchemaVersion = 1
+@_silgen_name("getentropy")
+private func systemGetEntropy(_ buffer: UnsafeMutableRawPointer?, _ count: Int) -> Int32
+
+private let bindingSchemaVersion = 4
 private let bindingPurpose = "automation-actor-launcher"
 private let bindingHandoff = "trusted-launcher-channel-to-canonical-lease"
 private let attestationProtocol = "freed-actor-launcher-readiness-v3"
@@ -13,7 +15,7 @@ private let productionBindingRoot =
   "/Library/Application Support/Freed/automation-actor-launchers"
 private let productionRuntimeRoot =
   "/Library/Application Support/Freed/automation-actor-runtimes"
-private let runtimeDigestProtocol = "freed-automation-actor-runtime-v2"
+private let runtimeDigestProtocol = "freed-automation-actor-runtime-v4"
 private let leaseLifetimeMilliseconds = 30 * 60 * 1_000
 private let leaseLifetimeSeconds = 30 * 60
 private let challengeBytes = 32
@@ -21,15 +23,18 @@ private let childChannelDescriptor: Int32 = 3
 private let maximumBindingBytes = 32 * 1_024
 private let maximumControlOutputBytes = 64 * 1_024
 private let maximumAttestationBytes = 16 * 1_024
+private let maximumChannelFrameBytes = 8 * 1_024
 private let controlTimeoutMilliseconds: UInt64 = 10 * 1_000
+private let channelTimeoutMilliseconds: Int32 = 5 * 1_000
 #if AUTOMATION_ACTOR_HOST_TESTING
   private let testControlTimeoutMilliseconds: UInt64 = 250
-  private let nativeAcquisitionWindowMilliseconds: UInt64 = 2_500
-  private let nativeCleanupReserveMilliseconds: UInt64 = 1_800
-  private let testKeychainDelayMicroseconds: useconds_t = 500 * 1_000
-  private let testExhaustedKeychainDelayMicroseconds: useconds_t = 2_550 * 1_000
+  private let nativeAcquisitionWindowMilliseconds: UInt64 = 5_000
+  private let nativeCleanupReserveMilliseconds: UInt64 = 3_000
+  private let TEST_LAUNCHER_CHALLENGE_SHA256 = String(repeating: "e", count: 64)
+  private let TEST_LAUNCHER_ATTESTATION_SHA256 = String(repeating: "c", count: 64)
+  private let TEST_LAUNCHER_SESSION_ID = String(repeating: "d", count: 64)
 #else
-  // Validation and Keychain work share the acquisition window. Once an
+  // Validation and channel verification share the acquisition window. Once an
   // acquire child may have run, the final 45 seconds belong only to two
   // exact-token release attempts and two absence inspections.
   private let nativeAcquisitionWindowMilliseconds: UInt64 = 20 * 1_000
@@ -37,11 +42,6 @@ private let controlTimeoutMilliseconds: UInt64 = 10 * 1_000
 #endif
 private let nativeLifecycleBudgetMilliseconds =
   nativeAcquisitionWindowMilliseconds + nativeCleanupReserveMilliseconds
-#if AUTOMATION_ACTOR_HOST_TESTING
-  private let fakeCredential =
-    Data("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".utf8)
-#endif
-
 private let actorLeaseNames: [String: String] = [
   "freed-runtime-observer": "runtime-observer",
   "freed-stability-controller": "stability-controller",
@@ -255,6 +255,9 @@ private struct ParsedArguments {
   let stateRoot: String
   let leaseName: String
   let maximumLifetimeMilliseconds: Int
+  let channelAction: String?
+  let operationId: String?
+  let tokenSha256: String?
   let challengeSha256: String?
   let controlPid: pid_t?
   let channelDescriptor: Int32?
@@ -262,6 +265,7 @@ private struct ParsedArguments {
   #if AUTOMATION_ACTOR_HOST_TESTING
     let testBindingPath: String
     let testRuntimeRoot: String
+    let testControlMode: String
   #endif
 }
 
@@ -284,19 +288,14 @@ private struct LauncherBinding: Decodable {
   let controlEntrySha256: String
   let controlLibraryPath: String
   let controlLibrarySha256: String
+  let readinessLibraryPath: String
+  let readinessLibrarySha256: String
   let kernelGuardContractPath: String
   let kernelGuardContractSha256: String
   let outcomeLedgerRepairContractPath: String
   let outcomeLedgerRepairContractSha256: String
   let leaseArchiveHelperPath: String
   let leaseArchiveHelperSha256: String
-}
-
-private struct ActorCredentialRecord: Decodable {
-  let schemaVersion: Int
-  let actor: String
-  let purpose: String
-  let tokenSha256: String
 }
 
 private struct ReadinessAttestation: Codable {
@@ -334,9 +333,12 @@ private struct ReadinessAttestation: Codable {
 private struct ChannelAttestation: Codable {
   let schemaVersion: Int
   let protocolName: String
+  let action: String
   let actor: String
   let stateRoot: String
   let leaseName: String
+  let leaseOperationId: String
+  let tokenSha256: String
   let ttlMs: Int
   let launcherPid: Int32
   let launcherStartIdentity: String
@@ -353,9 +355,12 @@ private struct ChannelAttestation: Codable {
   enum CodingKeys: String, CodingKey {
     case schemaVersion
     case protocolName = "protocol"
+    case action
     case actor
     case stateRoot
     case leaseName
+    case leaseOperationId
+    case tokenSha256
     case ttlMs
     case launcherPid
     case launcherStartIdentity
@@ -449,160 +454,32 @@ private struct ControlInvocation {
   let leaseToken: String?
 }
 
+private struct ProcessIdentity {
+  let pid: pid_t
+  let parentPid: pid_t
+  let uid: uid_t
+  let path: String
+  let startIdentity: String
+}
+
 private struct LeaseOperationContext {
   let operationId: String
   let leaseToken: String
   let leaseTokenSha256: String
 }
 
-private protocol SecretReader {
-  func readSecret(service: String, account: String) throws -> Data
-}
-
-private protocol KeychainInteractionController: AnyObject {
-  func currentState() throws -> Bool
-  func setAllowed(_ allowed: Bool) throws
-}
-
-private final class SystemKeychainInteractionController: KeychainInteractionController {
-  func currentState() throws -> Bool {
-    var state = DarwinBoolean(false)
-    guard SecKeychainGetUserInteractionAllowed(&state) == errSecSuccess else {
-      throw HostFailure("the Keychain interaction policy could not be read")
-    }
-    return state.boolValue
-  }
-
-  func setAllowed(_ allowed: Bool) throws {
-    guard
-      SecKeychainSetUserInteractionAllowed(allowed) == errSecSuccess
-    else {
-      throw HostFailure("the Keychain interaction policy could not be changed")
-    }
-  }
-}
-
-private struct KeychainSecretReader: SecretReader {
-  func readSecret(service: String, account: String) throws -> Data {
-    let query: [CFString: Any] = [
-      kSecClass: kSecClassGenericPassword,
-      kSecAttrService: service,
-      kSecAttrAccount: account,
-      kSecReturnData: true,
-      kSecMatchLimit: kSecMatchLimitOne,
-    ]
-    var item: CFTypeRef?
-    let status = SecItemCopyMatching(query as CFDictionary, &item)
-    guard status == errSecSuccess, let secret = item as? Data else {
-      throw HostFailure("the actor Keychain credential is unavailable without interaction")
-    }
-    return secret
-  }
-}
-
-#if AUTOMATION_ACTOR_HOST_TESTING
-  private final class FakeKeychainInteractionController: KeychainInteractionController {
-    private let mode: String
-    private(set) var interactionAllowed: Bool
-
-    init(mode: String) {
-      self.mode = mode
-      interactionAllowed = mode != "initially-disabled"
-    }
-
-    func currentState() throws -> Bool {
-      if mode == "get-failure" {
-        throw HostFailure("the test Keychain interaction policy could not be read")
-      }
-      return interactionAllowed
-    }
-
-    func setAllowed(_ allowed: Bool) throws {
-      if !allowed, mode == "disable-failure" {
-        throw HostFailure("the test Keychain interaction policy could not be disabled")
-      }
-      if !allowed, mode == "disable-noop" {
-        return
-      }
-      if allowed, mode == "restore-failure" {
-        throw HostFailure("the test Keychain interaction policy could not be restored")
-      }
-      interactionAllowed = allowed
-    }
-  }
-
-  private struct FakeSecretReader: SecretReader {
-    let interactionController: FakeKeychainInteractionController
-    let mode: String
-
-    func readSecret(service: String, account: String) throws -> Data {
-      guard service == keychainService, actorLeaseNames[account] != nil else {
-        throw HostFailure("the test Keychain request did not match the actor binding")
-      }
-      guard !interactionController.interactionAllowed else {
-        throw HostFailure("the test Keychain credential read permitted user interaction")
-      }
-      if mode == "read-failure" {
-        throw HostFailure("the test Keychain credential could not be read")
-      }
-      if mode == "delayed" {
-        usleep(testKeychainDelayMicroseconds)
-      }
-      if mode == "acquisition-window-exhausted" {
-        usleep(testExhaustedKeychainDelayMicroseconds)
-      }
-      return fakeCredential
-    }
-  }
-#endif
-
-private func readSecretWithoutInteraction(
-  reader: SecretReader,
-  interactionController: KeychainInteractionController,
-  service: String,
-  account: String
-) throws -> Data {
-  let previousInteractionState = try interactionController.currentState()
-  try interactionController.setAllowed(false)
-  guard try interactionController.currentState() == false else {
-    throw HostFailure("the Keychain interaction policy remained enabled after the disable request")
-  }
-
-  var secret: Data?
-  var readFailure: Error?
-  do {
-    secret = try reader.readSecret(service: service, account: account)
-  } catch {
-    readFailure = error
-  }
-
-  do {
-    try interactionController.setAllowed(previousInteractionState)
-    guard try interactionController.currentState() == previousInteractionState else {
-      throw HostFailure("the Keychain interaction policy restored an unexpected state")
-    }
-  } catch {
-    if let secretCount = secret?.count {
-      secret?.resetBytes(in: 0..<secretCount)
-    }
-    throw HostFailure(
-      "the Keychain interaction policy could not be restored after the credential read"
-    )
-  }
-  if let readFailure {
-    throw readFailure
-  }
-  guard let secret else {
-    throw HostFailure("the actor Keychain credential read returned no data")
-  }
-  return secret
+private struct LauncherChannelFrame: Encodable {
+  let schemaVersion: Int
+  let action: String
+  let leaseOperationId: String
+  let leaseToken: String
 }
 
 private protocol ControlInvoker {
   func run(
     _ invocation: ControlInvocation,
     binding: LauncherBinding,
-    persistentCredential: Data?,
+    channelContext: LeaseOperationContext?,
     lifecycleDeadlineMilliseconds: UInt64,
     cancellationController: ActorCancellationController?
   ) throws -> Data
@@ -610,21 +487,28 @@ private protocol ControlInvoker {
 
 private struct ProcessControlInvoker: ControlInvoker {
   let timeoutMilliseconds: UInt64
+  let channelTestMode: String
 
-  init(timeoutMilliseconds: UInt64 = controlTimeoutMilliseconds) {
+  init(
+    timeoutMilliseconds: UInt64 = controlTimeoutMilliseconds,
+    channelTestMode: String = "valid"
+  ) {
     self.timeoutMilliseconds = timeoutMilliseconds
+    self.channelTestMode = channelTestMode
   }
 
   func run(
     _ invocation: ControlInvocation,
     binding: LauncherBinding,
-    persistentCredential: Data?,
+    channelContext: LeaseOperationContext?,
     lifecycleDeadlineMilliseconds: UInt64,
     cancellationController: ActorCancellationController?
   ) throws -> Data {
     try runBoundedControlProcess(
       invocation,
-      persistentCredential: persistentCredential,
+      binding: binding,
+      channelContext: channelContext,
+      channelTestMode: channelTestMode,
       timeoutMilliseconds: timeoutMilliseconds,
       lifecycleDeadlineMilliseconds: lifecycleDeadlineMilliseconds,
       cancellationController: cancellationController
@@ -651,7 +535,7 @@ private struct ProcessControlInvoker: ControlInvoker {
     func run(
       _ invocation: ControlInvocation,
       binding: LauncherBinding,
-      persistentCredential: Data?,
+      channelContext: LeaseOperationContext?,
       lifecycleDeadlineMilliseconds: UInt64,
       cancellationController: ActorCancellationController?
     ) throws -> Data {
@@ -663,7 +547,7 @@ private struct ProcessControlInvoker: ControlInvoker {
         "action": action,
         "operationId": invocation.operationId ?? NSNull(),
         "leaseTokenSha256": invocation.leaseToken.map { sha256Hex(Data($0.utf8)) } ?? NSNull(),
-        "persistentCredentialPresent": persistentCredential != nil,
+        "channelAuthorityPresent": channelContext != nil,
       ]
       if let auditBytes = try? JSONSerialization.data(withJSONObject: auditRecord) {
         let auditPath = binding.stateRoot + "/test-actor-control.jsonl"
@@ -676,9 +560,11 @@ private struct ProcessControlInvoker: ControlInvoker {
           handle.write(auditBytes + Data([0x0a]))
         }
       }
-      let expectedCredential = action == "acquire" ? fakeCredential : nil
       guard invocation.executable == binding.nodePath,
-        persistentCredential == expectedCredential,
+        (["attest", "acquire"].contains(action)
+          ? channelContext?.operationId == invocation.operationId &&
+            channelContext?.leaseToken == invocation.leaseToken
+          : channelContext == nil),
         inheritedEnvironmentNames().isEmpty,
         try monotonicMilliseconds() < lifecycleDeadlineMilliseconds
       else {
@@ -742,12 +628,13 @@ private struct ProcessControlInvoker: ControlInvoker {
         return try JSONSerialization.data(withJSONObject: payload)
       }
       let expectedArguments = [
-        binding.controlEntryPath,
-        "lease", "acquire",
+        binding.actorControlEntryPath,
+        "--action", "acquire",
+        "--actor", binding.actor,
         "--state-root", binding.stateRoot,
-        "--name", binding.leaseName,
-        "--owner", binding.actor,
+        "--lease-name", binding.leaseName,
         "--ttl-seconds", String(leaseLifetimeSeconds),
+        "--challenge-sha256", sha256Hex(channelChallenge(channelContext!)),
       ]
       guard action == "acquire", invocation.arguments == expectedArguments else {
         throw HostFailure("the test control invocation was not canonical or scrubbed")
@@ -792,12 +679,23 @@ private struct ProcessControlInvoker: ControlInvoker {
         "stateRoot": binding.stateRoot,
         "result": [
           "acquired": true,
+          "takeover": false,
+          "credentialUpgrade": false,
           "lease": [
+            "schemaVersion": 1,
             "name": binding.leaseName,
             "owner": binding.actor,
             "token": token,
-            "credentialKind": "persistent-actor",
+            "observerAuthority": actorLeaseAuthorities[binding.actor]!.observer,
+            "providerAuthority": actorLeaseAuthorities[binding.actor]!.provider,
+            "credentialKind": "trusted-launcher-channel",
+            "launcherSha256": binding.launcherSha256,
+            "actorRuntimeDigest": runtimeDigest(binding),
+            "launcherChannelProtocol": channelProtocol,
+            "launcherAttestationSha256": TEST_LAUNCHER_ATTESTATION_SHA256,
+            "launcherSessionId": TEST_LAUNCHER_SESSION_ID,
             "acquiredAt": acquiredAt,
+            "heartbeatAt": acquiredAt,
             "expiresAt": expiresAt,
             "ttlMs": leaseLifetimeMilliseconds,
           ],
@@ -866,7 +764,9 @@ private func terminateChild(_ child: pid_t) {
 
 private func runBoundedControlProcess(
   _ invocation: ControlInvocation,
-  persistentCredential: Data?,
+  binding: LauncherBinding,
+  channelContext: LeaseOperationContext?,
+  channelTestMode: String,
   timeoutMilliseconds: UInt64,
   lifecycleDeadlineMilliseconds: UInt64,
   cancellationController: ActorCancellationController?
@@ -884,20 +784,14 @@ private func runBoundedControlProcess(
   }
   arguments.append(nil)
 
-  var credentialEnvironment = Data()
-  if let persistentCredential {
-    credentialEnvironment.append(Data("FREED_AUTOMATION_ACTOR_TOKEN=".utf8))
-    credentialEnvironment.append(persistentCredential)
-  }
-  defer { credentialEnvironment.resetBytes(in: 0..<credentialEnvironment.count) }
   guard (invocation.operationId == nil) == (invocation.leaseToken == nil) else {
     throw HostFailure("the control process lease handoff is incomplete")
   }
   var environment: [UnsafeMutablePointer<CChar>?] = []
-  if !credentialEnvironment.isEmpty {
-    environment.append(try environmentArena.append(credentialEnvironment))
-  }
-  if let operationId = invocation.operationId, let leaseToken = invocation.leaseToken {
+  if channelContext == nil,
+    let operationId = invocation.operationId,
+    let leaseToken = invocation.leaseToken
+  {
     environment.append(
       try environmentArena.append("FREED_AUTOMATION_LEASE_OPERATION_ID=\(operationId)"))
     environment.append(try environmentArena.append("FREED_AUTOMATION_LEASE_TOKEN=\(leaseToken)"))
@@ -911,13 +805,106 @@ private func runBoundedControlProcess(
   guard pipe(&descriptors) == 0 else {
     throw posixFailure("creating the control process output pipe")
   }
-  let readDescriptor = descriptors[0]
+  #if AUTOMATION_ACTOR_HOST_TESTING
+    if channelTestMode == "require-output-read-fd3",
+      descriptors[0] != childChannelDescriptor
+    {
+      close(descriptors[0])
+      close(descriptors[1])
+      throw HostFailure("the control process output pipe did not reserve descriptor 3 for reading")
+    }
+    if channelTestMode == "require-output-write-fd3",
+      descriptors[1] != childChannelDescriptor
+    {
+      close(descriptors[0])
+      close(descriptors[1])
+      throw HostFailure("the control process output pipe did not reserve descriptor 3 for writing")
+    }
+  #endif
+  var readDescriptor = descriptors[0]
   var writeDescriptor = descriptors[1]
-  let nullDescriptor = open("/dev/null", O_RDONLY | O_CLOEXEC)
+  do {
+    try moveDescriptorAboveStandardStreams(&readDescriptor, label: "control output read")
+    try moveDescriptorAboveStandardStreams(&writeDescriptor, label: "control output write")
+  } catch {
+    if readDescriptor >= 0 { close(readDescriptor) }
+    if writeDescriptor >= 0 { close(writeDescriptor) }
+    throw error
+  }
+  var nullDescriptor = open("/dev/null", O_RDONLY | O_CLOEXEC)
   guard nullDescriptor >= 0 else {
     close(readDescriptor)
     close(writeDescriptor)
     throw posixFailure("opening null input for the control process")
+  }
+  do {
+    try moveDescriptorAboveStandardStreams(&nullDescriptor, label: "control null input")
+  } catch {
+    close(readDescriptor)
+    close(writeDescriptor)
+    close(nullDescriptor)
+    throw error
+  }
+  var retainedSocket: Int32 = -1
+  var childSocket: Int32 = -1
+  if let channelContext {
+    guard invocation.executable == binding.nodePath,
+      invocation.arguments.first == binding.actorControlEntryPath,
+      invocation.operationId == channelContext.operationId,
+      invocation.leaseToken == channelContext.leaseToken,
+      invocation.arguments.count > 2,
+      invocation.arguments[1] == "--action",
+      ["attest", "acquire"].contains(invocation.arguments[2])
+    else {
+      close(readDescriptor)
+      close(writeDescriptor)
+      close(nullDescriptor)
+      throw HostFailure("the actor channel invocation is not canonical")
+    }
+    var sockets = [Int32](repeating: -1, count: 2)
+    guard socketpair(AF_UNIX, SOCK_STREAM, 0, &sockets) == 0 else {
+      close(readDescriptor)
+      close(writeDescriptor)
+      close(nullDescriptor)
+      throw posixFailure("creating the actor control channel")
+    }
+    retainedSocket = sockets[0]
+    childSocket = sockets[1]
+    do {
+      try moveDescriptorAboveStandardStreams(&retainedSocket, label: "retained actor channel")
+      try moveDescriptorAboveStandardStreams(&childSocket, label: "child actor channel")
+      let frame = LauncherChannelFrame(
+        schemaVersion: 1,
+        action: invocation.arguments[2],
+        leaseOperationId: channelContext.operationId,
+        leaseToken: channelContext.leaseToken
+      )
+      var payload = try encodeJSONLine(frame)
+      var challenge = channelChallenge(channelContext)
+      #if AUTOMATION_ACTOR_HOST_TESTING
+        if channelTestMode == "missing" {
+          challenge.removeAll(keepingCapacity: false)
+        } else if channelTestMode == "mismatch" {
+          challenge[0] ^= 0xff
+        } else if channelTestMode == "extra" {
+          challenge.append(0xff)
+        }
+      #endif
+      payload.append(challenge)
+      challenge.resetBytes(in: 0..<challenge.count)
+      guard payload.count <= maximumChannelFrameBytes + challengeBytes else {
+        throw HostFailure("the actor control channel payload exceeded its byte bound")
+      }
+      try writeAll(retainedSocket, data: payload)
+      payload.resetBytes(in: 0..<payload.count)
+    } catch {
+      close(readDescriptor)
+      close(writeDescriptor)
+      close(nullDescriptor)
+      close(retainedSocket)
+      close(childSocket)
+      throw error
+    }
   }
   var child = pid_t()
   var childStarted = false
@@ -926,6 +913,8 @@ private func runBoundedControlProcess(
     close(readDescriptor)
     if writeDescriptor >= 0 { close(writeDescriptor) }
     close(nullDescriptor)
+    if retainedSocket >= 0 { close(retainedSocket) }
+    if childSocket >= 0 { close(childSocket) }
     if childStarted && !childWaited { terminateChild(child) }
   }
 
@@ -935,14 +924,25 @@ private func runBoundedControlProcess(
     throw HostFailure("control process file actions could not be initialized")
   }
   defer { posix_spawn_file_actions_destroy(&fileActions) }
-  guard posix_spawn_file_actions_adddup2(&fileActions, nullDescriptor, STDIN_FILENO) == 0,
-    posix_spawn_file_actions_adddup2(&fileActions, writeDescriptor, STDOUT_FILENO) == 0,
-    posix_spawn_file_actions_adddup2(&fileActions, writeDescriptor, STDERR_FILENO) == 0,
-    addRootDirectoryAction(&fileActions) == 0,
-    posix_spawn_file_actions_addclose(&fileActions, readDescriptor) == 0,
-    posix_spawn_file_actions_addclose(&fileActions, writeDescriptor) == 0,
+  var fileActionsValid =
+    posix_spawn_file_actions_adddup2(&fileActions, nullDescriptor, STDIN_FILENO) == 0 &&
+    posix_spawn_file_actions_adddup2(&fileActions, writeDescriptor, STDOUT_FILENO) == 0 &&
+    posix_spawn_file_actions_adddup2(&fileActions, writeDescriptor, STDERR_FILENO) == 0 &&
+    addRootDirectoryAction(&fileActions) == 0 &&
+    posix_spawn_file_actions_addclose(&fileActions, readDescriptor) == 0 &&
+    posix_spawn_file_actions_addclose(&fileActions, writeDescriptor) == 0 &&
     posix_spawn_file_actions_addclose(&fileActions, nullDescriptor) == 0
-  else {
+  if childSocket >= 0 {
+    fileActionsValid = fileActionsValid &&
+      posix_spawn_file_actions_adddup2(
+        &fileActions,
+        childSocket,
+        childChannelDescriptor
+      ) == 0 &&
+      posix_spawn_file_actions_addclose(&fileActions, childSocket) == 0 &&
+      posix_spawn_file_actions_addclose(&fileActions, retainedSocket) == 0
+  }
+  guard fileActionsValid else {
     throw HostFailure("control process standard streams could not be isolated")
   }
   guard posix_spawnattr_init(&attributes) == 0 else {
@@ -989,11 +989,17 @@ private func runBoundedControlProcess(
     }
   }
   environmentArena.destroy()
-  credentialEnvironment.resetBytes(in: 0..<credentialEnvironment.count)
   guard spawnResult == 0 else {
     throw posixFailure("starting the pinned automation control process", code: spawnResult)
   }
   childStarted = true
+  if childSocket >= 0 {
+    close(childSocket)
+    childSocket = -1
+  }
+  if retainedSocket >= 0 {
+    _ = shutdown(retainedSocket, SHUT_WR)
+  }
   close(writeDescriptor)
   writeDescriptor = -1
   guard fcntl(readDescriptor, F_SETFL, O_NONBLOCK) == 0 else {
@@ -1131,6 +1137,13 @@ private func requireLowercaseHex(_ value: String, length: Int, label: String) th
   }
 }
 
+private func parsePositiveInt32(_ value: String, label: String) throws -> Int32 {
+  guard let parsed = Int32(value), parsed > 0, String(parsed) == value else {
+    throw HostFailure("\(label) must be one canonical positive process identity")
+  }
+  return parsed
+}
+
 private func validLeaseOperationId(_ value: String) -> Bool {
   value.range(
     of: "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
@@ -1141,7 +1154,10 @@ private func validLeaseOperationId(_ value: String) -> Bool {
 private func newLeaseOperationContext() throws -> LeaseOperationContext {
   let operationId = try newLeaseOperationId()
   var bytes = [UInt8](repeating: 0, count: 32)
-  guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
+  let entropyResult = bytes.withUnsafeMutableBytes { rawBuffer in
+    systemGetEntropy(rawBuffer.baseAddress, rawBuffer.count)
+  }
+  guard entropyResult == 0 else {
     throw HostFailure("the caller-retained lease token could not be generated")
   }
   defer { bytes.resetBytes(in: 0..<bytes.count) }
@@ -1150,6 +1166,17 @@ private func newLeaseOperationContext() throws -> LeaseOperationContext {
     operationId: operationId,
     leaseToken: token,
     leaseTokenSha256: sha256Hex(Data(token.utf8))
+  )
+}
+
+private func channelChallenge(_ context: LeaseOperationContext) -> Data {
+  Data(
+    SHA256.hash(
+      data: Data(
+        "freed-actor-channel-challenge-v1\n\(context.operationId)\n\(context.leaseTokenSha256)\n"
+          .utf8
+      )
+    )
   )
 }
 
@@ -1184,12 +1211,14 @@ private func parseArguments(_ values: [String]) throws -> ParsedArguments {
     var allowed = Set([
       "--protocol", "--actor", "--state-root", "--lease-name",
       "--max-lifetime-ms", "--ttl-seconds", "--challenge-sha256",
+      "--channel-action", "--operation-id", "--token-sha256",
       "--control-pid", "--channel-fd",
     ])
     #if AUTOMATION_ACTOR_HOST_TESTING
       allowed.insert("--test-binding")
       allowed.insert("--test-runtime-root")
       allowed.insert("--test-channel-mode")
+      allowed.insert("--test-control-mode")
     #endif
     guard allowed.contains(value), index + 1 < values.count,
       options[value] == nil
@@ -1210,6 +1239,9 @@ private func parseArguments(_ values: [String]) throws -> ParsedArguments {
   }
 
   let maximumLifetimeMilliseconds: Int
+  var channelAction: String?
+  var operationId: String?
+  var tokenSha256: String?
   var challengeSha256: String?
   var controlPid: pid_t?
   var channelDescriptor: Int32?
@@ -1218,6 +1250,9 @@ private func parseArguments(_ values: [String]) throws -> ParsedArguments {
     guard options["--protocol"] == attestationProtocol,
       options["--max-lifetime-ms"] == String(leaseLifetimeMilliseconds),
       options["--ttl-seconds"] == nil,
+      options["--channel-action"] == nil,
+      options["--operation-id"] == nil,
+      options["--token-sha256"] == nil,
       options["--challenge-sha256"] == nil,
       options["--control-pid"] == nil,
       options["--channel-fd"] == nil
@@ -1229,6 +1264,9 @@ private func parseArguments(_ values: [String]) throws -> ParsedArguments {
     guard options["--protocol"] == nil,
       options["--max-lifetime-ms"] == nil,
       options["--ttl-seconds"] == String(leaseLifetimeSeconds),
+      options["--channel-action"] == nil,
+      options["--operation-id"] == nil,
+      options["--token-sha256"] == nil,
       options["--challenge-sha256"] == nil,
       options["--control-pid"] == nil,
       options["--channel-fd"] == nil
@@ -1240,6 +1278,11 @@ private func parseArguments(_ values: [String]) throws -> ParsedArguments {
     guard options["--protocol"] == channelProtocol,
       options["--max-lifetime-ms"] == nil,
       options["--ttl-seconds"] == String(leaseLifetimeSeconds),
+      let requestedAction = options["--channel-action"],
+      ["attest", "acquire"].contains(requestedAction),
+      let requestedOperationId = options["--operation-id"],
+      validLeaseOperationId(requestedOperationId),
+      let requestedTokenSha256 = options["--token-sha256"],
       let digest = options["--challenge-sha256"],
       let rawControlPid = options["--control-pid"],
       options["--channel-fd"] == String(childChannelDescriptor)
@@ -1247,6 +1290,14 @@ private func parseArguments(_ values: [String]) throws -> ParsedArguments {
       throw HostFailure("the actor control channel request is invalid")
     }
     try requireLowercaseHex(digest, length: 64, label: "challenge digest")
+    try requireLowercaseHex(
+      requestedTokenSha256,
+      length: 64,
+      label: "lease token digest"
+    )
+    channelAction = requestedAction
+    operationId = requestedOperationId
+    tokenSha256 = requestedTokenSha256
     challengeSha256 = digest
     controlPid = try parsePositiveInt32(rawControlPid, label: "control pid")
     channelDescriptor = childChannelDescriptor
@@ -1262,7 +1313,7 @@ private func parseArguments(_ values: [String]) throws -> ParsedArguments {
     let testControlMode = options["--test-control-mode"] ?? "valid"
     guard
       [
-        "valid", "oversized", "short-token", "overlong", "response-loss-once",
+        "valid", "process", "oversized", "short-token", "overlong", "response-loss-once",
         "commit-response-loss-near-deadline", "malformed-acquire-and-show", "process-timeout",
         "post-child-handoff-delay", "process-signal-state",
         "process-cancellation-commit", "process-cleanup-cancellation",
@@ -1271,15 +1322,12 @@ private func parseArguments(_ values: [String]) throws -> ParsedArguments {
     else {
       throw HostFailure("the actor host test control mode is invalid")
     }
-    let testKeychainMode = options["--test-keychain-mode"] ?? "valid"
-    guard
-      [
-        "valid", "read-failure", "get-failure", "disable-failure", "disable-noop",
-        "restore-failure", "initially-disabled", "delayed", "acquisition-window-exhausted",
-        "signal-preflight-delay",
-      ].contains(testKeychainMode)
-    else {
-      throw HostFailure("the actor host test Keychain mode is invalid")
+    let channelTestMode = options["--test-channel-mode"] ?? "valid"
+    guard [
+      "valid", "extra", "missing", "mismatch", "require-output-read-fd3",
+      "require-output-write-fd3",
+    ].contains(channelTestMode) else {
+      throw HostFailure("the actor host test channel mode is invalid")
     }
     return ParsedArguments(
       mode: mode,
@@ -1287,12 +1335,16 @@ private func parseArguments(_ values: [String]) throws -> ParsedArguments {
       stateRoot: stateRoot,
       leaseName: leaseName,
       maximumLifetimeMilliseconds: maximumLifetimeMilliseconds,
+      channelAction: channelAction,
+      operationId: operationId,
+      tokenSha256: tokenSha256,
       challengeSha256: challengeSha256,
       controlPid: controlPid,
       channelDescriptor: channelDescriptor,
       channelTestMode: channelTestMode,
       testBindingPath: testBindingPath,
-      testRuntimeRoot: testRuntimeRoot
+      testRuntimeRoot: testRuntimeRoot,
+      testControlMode: testControlMode
     )
   #else
     return ParsedArguments(
@@ -1301,6 +1353,9 @@ private func parseArguments(_ values: [String]) throws -> ParsedArguments {
       stateRoot: stateRoot,
       leaseName: leaseName,
       maximumLifetimeMilliseconds: maximumLifetimeMilliseconds,
+      channelAction: channelAction,
+      operationId: operationId,
+      tokenSha256: tokenSha256,
       challengeSha256: challengeSha256,
       controlPid: controlPid,
       channelDescriptor: channelDescriptor,
@@ -1435,18 +1490,6 @@ private func sha256Hex(_ data: Data) -> String {
   SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
 }
 
-private func runtimeDigest(_ binding: LauncherBinding) -> String {
-  let manifest =
-    "freed-automation-actor-runtime-v3\n" +
-    "node:\(binding.nodeSha256)\n" +
-    "automation-control.mjs:\(binding.controlEntrySha256)\n" +
-    "lib/automation-control.mjs:\(binding.controlLibrarySha256)\n" +
-    "lib/automation-kernel-guard-contract.mjs:\(binding.kernelGuardContractSha256)\n" +
-    "lib/outcome-ledger-repair-contract.mjs:\(binding.outcomeLedgerRepairContractSha256)\n" +
-    "lib/lease-archive-move.py:\(binding.leaseArchiveHelperSha256)\n"
-  return sha256Hex(Data(manifest.utf8))
-}
-
 private func sha256ForFile(_ path: String) throws -> String {
   let descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
   guard descriptor >= 0 else {
@@ -1475,7 +1518,10 @@ private func runtimeDigest(_ binding: LauncherBinding) -> String {
     "automation-control.mjs:\(binding.controlEntrySha256)\n" +
     "automation-actor-control.mjs:\(binding.actorControlEntrySha256)\n" +
     "lib/automation-control.mjs:\(binding.controlLibrarySha256)\n" +
-    "lib/automation-actor-readiness.mjs:\(binding.readinessLibrarySha256)\n"
+    "lib/automation-actor-readiness.mjs:\(binding.readinessLibrarySha256)\n" +
+    "lib/automation-kernel-guard-contract.mjs:\(binding.kernelGuardContractSha256)\n" +
+    "lib/outcome-ledger-repair-contract.mjs:\(binding.outcomeLedgerRepairContractSha256)\n" +
+    "lib/lease-archive-move.py:\(binding.leaseArchiveHelperSha256)\n"
   return sha256Hex(Data(manifest.utf8))
 }
 
@@ -1543,9 +1589,11 @@ private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> Laun
     expectedKeys: [
       "schemaVersion", "actor", "purpose", "handoff", "attestationProtocol",
       "launcherPath", "launcherSha256", "stateRoot", "leaseName",
-      "maxLeaseLifetimeMs", "keychainService", "keychainAccount", "nodePath",
-      "nodeSha256", "controlEntryPath", "controlEntrySha256",
+      "maxLeaseLifetimeMs", "nodePath", "nodeSha256",
+      "controlEntryPath", "controlEntrySha256",
+      "actorControlEntryPath", "actorControlEntrySha256",
       "controlLibraryPath", "controlLibrarySha256",
+      "readinessLibraryPath", "readinessLibrarySha256",
       "kernelGuardContractPath", "kernelGuardContractSha256",
       "outcomeLedgerRepairContractPath", "outcomeLedgerRepairContractSha256",
       "leaseArchiveHelperPath", "leaseArchiveHelperSha256",
@@ -1566,7 +1614,9 @@ private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> Laun
   try requireLowercaseHex(binding.launcherSha256, length: 64, label: "launcher digest")
   try requireLowercaseHex(binding.nodeSha256, length: 64, label: "Node digest")
   try requireLowercaseHex(binding.controlEntrySha256, length: 64, label: "control entry digest")
+  try requireLowercaseHex(binding.actorControlEntrySha256, length: 64, label: "actor control entry digest")
   try requireLowercaseHex(binding.controlLibrarySha256, length: 64, label: "control library digest")
+  try requireLowercaseHex(binding.readinessLibrarySha256, length: 64, label: "readiness library digest")
   try requireLowercaseHex(binding.kernelGuardContractSha256, length: 64, label: "kernel guard contract digest")
   try requireLowercaseHex(binding.outcomeLedgerRepairContractSha256, length: 64, label: "outcome ledger repair contract digest")
   try requireLowercaseHex(binding.leaseArchiveHelperSha256, length: 64, label: "lease archive helper digest")
@@ -1596,6 +1646,7 @@ private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> Laun
     binding.actorControlEntryPath == expectedRuntimeDirectory + "/automation-actor-control.mjs",
     binding.controlEntryPath == expectedRuntimeDirectory + "/automation-control.mjs",
     binding.controlLibraryPath == expectedRuntimeDirectory + "/lib/automation-control.mjs",
+    binding.readinessLibraryPath == expectedRuntimeDirectory + "/lib/automation-actor-readiness.mjs",
     binding.kernelGuardContractPath == expectedRuntimeDirectory + "/lib/automation-kernel-guard-contract.mjs",
     binding.outcomeLedgerRepairContractPath == expectedRuntimeDirectory + "/lib/outcome-ledger-repair-contract.mjs",
     binding.leaseArchiveHelperPath == expectedRuntimeDirectory + "/lib/lease-archive-move.py"
@@ -1604,14 +1655,15 @@ private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> Laun
   }
   let runtimePins = [
     (binding.nodePath, binding.nodeSha256, true, "Node runtime"),
+    (binding.controlEntryPath, binding.controlEntrySha256, false, "automation control entry"),
     (
       binding.actorControlEntryPath,
       binding.actorControlEntrySha256,
       false,
       "automation actor control entry"
     ),
-    (binding.controlEntryPath, binding.controlEntrySha256, false, "automation control entry"),
     (binding.controlLibraryPath, binding.controlLibrarySha256, false, "automation control library"),
+    (binding.readinessLibraryPath, binding.readinessLibrarySha256, false, "automation actor readiness library"),
     (binding.kernelGuardContractPath, binding.kernelGuardContractSha256, false, "automation kernel guard contract"),
     (binding.outcomeLedgerRepairContractPath, binding.outcomeLedgerRepairContractSha256, false, "outcome ledger repair contract"),
     (binding.leaseArchiveHelperPath, binding.leaseArchiveHelperSha256, false, "lease archive helper"),
@@ -1654,20 +1706,6 @@ private func writeJSON<T: Encodable>(_ value: T) throws {
   FileHandle.standardOutput.write(Data([0x0A]))
 }
 
-private func generateChallenge() throws -> Data {
-  var bytes = [UInt8](repeating: 0, count: challengeBytes)
-  let result = bytes.withUnsafeMutableBytes { rawBuffer in
-    systemGetEntropy(rawBuffer.baseAddress, rawBuffer.count)
-  }
-  guard result == 0 else {
-    bytes.resetBytes(in: 0..<bytes.count)
-    throw posixFailure("generating the actor control channel challenge")
-  }
-  let challenge = Data(bytes)
-  bytes.resetBytes(in: 0..<bytes.count)
-  return challenge
-}
-
 private func writeAll(_ descriptor: Int32, data: Data) throws {
   try data.withUnsafeBytes { rawBuffer in
     guard let base = rawBuffer.baseAddress else { return }
@@ -1681,20 +1719,6 @@ private func writeAll(_ descriptor: Int32, data: Data) throws {
       offset += count
     }
   }
-}
-
-private func monotonicMilliseconds() throws -> UInt64 {
-  var value = timespec()
-  guard clock_gettime(CLOCK_MONOTONIC, &value) == 0 else {
-    throw posixFailure("reading the control process clock")
-  }
-  return UInt64(value.tv_sec) * 1_000 + UInt64(value.tv_nsec) / 1_000_000
-}
-
-private func terminateChild(_ child: pid_t) {
-  _ = kill(child, SIGKILL)
-  var status: Int32 = 0
-  while waitpid(child, &status, 0) < 0, errno == EINTR {}
 }
 
 private func encodeJSONLine<T: Encodable>(_ value: T) throws -> Data {
@@ -1716,7 +1740,7 @@ private func moveDescriptorAboveStandardStreams(
   _ = close(original)
 }
 
-private func runBoundedControlProcess(
+private func legacyChannelControlProcess(
   _ invocation: ControlInvocation,
   challenge: Data,
   channelTestMode: String
@@ -1930,15 +1954,211 @@ private func runBoundedControlProcess(
   return output
 }
 
+private func processIdentity(_ pid: pid_t, label: String) throws -> ProcessIdentity {
+  guard pid > 0 else {
+    throw HostFailure("the \(label) process identifier is invalid")
+  }
+  var info = proc_bsdinfo()
+  let count = proc_pidinfo(
+    pid,
+    PROC_PIDTBSDINFO,
+    0,
+    &info,
+    Int32(MemoryLayout<proc_bsdinfo>.size)
+  )
+  guard count == Int32(MemoryLayout<proc_bsdinfo>.size),
+    info.pbi_pid == UInt32(pid),
+    info.pbi_start_tvsec > 0
+  else {
+    throw HostFailure("the \(label) process identity is unavailable")
+  }
+  var pathBuffer = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
+  let pathLength = proc_pidpath(pid, &pathBuffer, UInt32(pathBuffer.count))
+  guard pathLength > 0 else {
+    throw HostFailure("the \(label) executable path is unavailable")
+  }
+  let path = try canonicalExistingPath(String(cString: pathBuffer), label: "\(label) executable")
+  let startIdentity = "\(pid):\(info.pbi_start_tvsec):\(info.pbi_start_tvusec)"
+  guard startIdentity.utf8.count <= 128 else {
+    throw HostFailure("the \(label) process start identity is invalid")
+  }
+  return ProcessIdentity(
+    pid: pid,
+    parentPid: pid_t(info.pbi_ppid),
+    uid: uid_t(info.pbi_uid),
+    path: path,
+    startIdentity: startIdentity
+  )
+}
+
+private func peerIdentity(_ descriptor: Int32) throws -> ProcessIdentity {
+  var peerPid = pid_t()
+  var peerPidLength = socklen_t(MemoryLayout<pid_t>.size)
+  guard getsockopt(
+    descriptor,
+    SOL_LOCAL,
+    LOCAL_PEERPID,
+    &peerPid,
+    &peerPidLength
+  ) == 0,
+    peerPidLength == socklen_t(MemoryLayout<pid_t>.size)
+  else {
+    throw HostFailure("the actor control channel peer process is unavailable")
+  }
+  var effectivePeerPid = pid_t()
+  var effectivePeerPidLength = socklen_t(MemoryLayout<pid_t>.size)
+  guard getsockopt(
+    descriptor,
+    SOL_LOCAL,
+    LOCAL_PEEREPID,
+    &effectivePeerPid,
+    &effectivePeerPidLength
+  ) == 0,
+    effectivePeerPidLength == socklen_t(MemoryLayout<pid_t>.size),
+    effectivePeerPid == peerPid
+  else {
+    throw HostFailure("the actor control channel effective peer process is invalid")
+  }
+  var peerUid = uid_t()
+  var peerGid = gid_t()
+  guard getpeereid(descriptor, &peerUid, &peerGid) == 0 else {
+    throw HostFailure("the actor control channel peer owner is unavailable")
+  }
+  let identity = try processIdentity(peerPid, label: "launcher peer")
+  guard identity.uid == peerUid, peerUid == getuid() else {
+    throw HostFailure("the actor control channel peer owner is invalid")
+  }
+  return identity
+}
+
+private func readChallenge(_ descriptor: Int32) throws -> Data {
+  var challenge = Data(count: challengeBytes)
+  var offset = 0
+  let deadline = try monotonicMilliseconds() + UInt64(channelTimeoutMilliseconds)
+  while offset < challengeBytes {
+    let now = try monotonicMilliseconds()
+    guard now < deadline else {
+      challenge.resetBytes(in: 0..<challenge.count)
+      throw HostFailure("the actor control channel challenge timed out")
+    }
+    var pollDescriptor = pollfd(
+      fd: descriptor,
+      events: Int16(POLLIN | POLLHUP | POLLERR),
+      revents: 0
+    )
+    let remaining = Int32(min(UInt64(Int32.max), deadline - now))
+    let pollResult = poll(&pollDescriptor, 1, remaining)
+    if pollResult < 0 {
+      if errno == EINTR { continue }
+      challenge.resetBytes(in: 0..<challenge.count)
+      throw posixFailure("polling the actor control channel")
+    }
+    guard pollResult > 0 else { continue }
+    let count = challenge.withUnsafeMutableBytes { rawBuffer in
+      Darwin.read(
+        descriptor,
+        rawBuffer.baseAddress!.advanced(by: offset),
+        challengeBytes - offset
+      )
+    }
+    if count < 0 {
+      if errno == EINTR { continue }
+      challenge.resetBytes(in: 0..<challenge.count)
+      throw posixFailure("reading the actor control channel challenge")
+    }
+    guard count > 0 else {
+      challenge.resetBytes(in: 0..<challenge.count)
+      throw HostFailure("the actor control channel closed before its challenge was complete")
+    }
+    offset += count
+  }
+  var extra: UInt8 = 0
+  let extraCount = recv(descriptor, &extra, 1, MSG_DONTWAIT)
+  guard extraCount == 0 || (extraCount < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) else {
+    challenge.resetBytes(in: 0..<challenge.count)
+    throw HostFailure("the actor control channel contained more than one challenge")
+  }
+  return challenge
+}
+
+private func verifyControlChannel(
+  arguments: ParsedArguments,
+  binding: LauncherBinding
+) throws -> ChannelAttestation {
+  guard let action = arguments.channelAction,
+    let operationId = arguments.operationId,
+    let tokenSha256 = arguments.tokenSha256,
+    let controlPid = arguments.controlPid,
+    let channelDescriptor = arguments.channelDescriptor,
+    let expectedChallengeSha256 = arguments.challengeSha256,
+    controlPid == getppid()
+  else {
+    throw HostFailure("the actor control process is not the verifier parent")
+  }
+  let control = try processIdentity(controlPid, label: "actor control")
+  let launcher = try peerIdentity(channelDescriptor)
+  guard control.parentPid == launcher.pid,
+    control.uid == getuid(),
+    control.path == binding.nodePath,
+    launcher.path == binding.launcherPath,
+    try sha256ForFile(control.path) == binding.nodeSha256,
+    try sha256ForFile(launcher.path) == binding.launcherSha256
+  else {
+    throw HostFailure("the actor control channel process chain does not match the binding")
+  }
+  var challenge = try readChallenge(channelDescriptor)
+  defer { challenge.resetBytes(in: 0..<challenge.count) }
+  let actualChallengeSha256 = sha256Hex(challenge)
+  guard actualChallengeSha256 == expectedChallengeSha256 else {
+    throw HostFailure("the actor control channel challenge does not match its digest")
+  }
+  let digest = runtimeDigest(binding)
+  let sessionMaterial = [
+    channelProtocol,
+    action,
+    binding.actor,
+    binding.stateRoot,
+    binding.leaseName,
+    operationId,
+    tokenSha256,
+    String(leaseLifetimeMilliseconds),
+    launcher.startIdentity,
+    control.startIdentity,
+    binding.launcherSha256,
+    digest,
+    actualChallengeSha256,
+    "",
+  ].joined(separator: "\n")
+  return ChannelAttestation(
+    schemaVersion: 1,
+    protocolName: channelProtocol,
+    action: action,
+    actor: binding.actor,
+    stateRoot: binding.stateRoot,
+    leaseName: binding.leaseName,
+    leaseOperationId: operationId,
+    tokenSha256: tokenSha256,
+    ttlMs: leaseLifetimeMilliseconds,
+    launcherPid: launcher.pid,
+    launcherStartIdentity: launcher.startIdentity,
+    controlPid: control.pid,
+    controlStartIdentity: control.startIdentity,
+    launcherSha256: binding.launcherSha256,
+    runtimeDigest: digest,
+    challengeSha256: actualChallengeSha256,
+    sessionId: sha256Hex(Data(sessionMaterial.utf8)),
+    launcherIdentityVerified: true,
+    runtimeIdentityVerified: true,
+    channelVerified: true
+  )
+}
+
 private func actorControlInvocation(
   binding: LauncherBinding,
-  persistentCredential: Data,
-  context: LeaseOperationContext,
-  invoker: ControlInvoker,
-  lifecycleDeadlineMilliseconds: UInt64,
-  cancellationController: ActorCancellationController
-) throws -> LeaseHandoff {
-  let invocation = ControlInvocation(
+  action: String,
+  context: LeaseOperationContext
+) -> ControlInvocation {
+  ControlInvocation(
     executable: binding.nodePath,
     arguments: [
       binding.actorControlEntryPath,
@@ -1947,16 +2167,26 @@ private func actorControlInvocation(
       "--state-root", binding.stateRoot,
       "--lease-name", binding.leaseName,
       "--ttl-seconds", String(leaseLifetimeSeconds),
+      "--challenge-sha256", sha256Hex(channelChallenge(context)),
     ],
     operationId: context.operationId,
     leaseToken: context.leaseToken
   )
-  let responseData = try invoker.run(
-    invocation,
-    binding: binding,
-    persistentCredential: persistentCredential,
-    lifecycleDeadlineMilliseconds: lifecycleDeadlineMilliseconds,
-    cancellationController: cancellationController
+}
+
+private func validateReadinessResponse(
+  _ data: Data,
+  binding: LauncherBinding
+) throws -> ReadinessAttestation {
+  let attestation = try decodeStrict(
+    ReadinessAttestation.self,
+    data: data,
+    expectedKeys: [
+      "schemaVersion", "protocol", "purpose", "actor", "stateRoot", "leaseName",
+      "maxLeaseLifetimeMs", "handoff", "channelProtocol", "launcherSha256",
+      "runtimeDigest", "canonicalLeaseReady", "mutatesState",
+    ],
+    label: "actor readiness response"
   )
   guard attestation.schemaVersion == 1,
     attestation.protocolName == attestationProtocol,
@@ -1977,9 +2207,27 @@ private func actorControlInvocation(
   return attestation
 }
 
+private func invokeControl(
+  binding: LauncherBinding,
+  context: LeaseOperationContext,
+  invoker: ControlInvoker,
+  lifecycleDeadlineMilliseconds: UInt64,
+  cancellationController: ActorCancellationController
+) throws -> LeaseHandoff {
+  let responseData = try invoker.run(
+    actorControlInvocation(binding: binding, action: "acquire", context: context),
+    binding: binding,
+    channelContext: context,
+    lifecycleDeadlineMilliseconds: lifecycleDeadlineMilliseconds,
+    cancellationController: cancellationController
+  )
+  return try validateLeaseResponse(responseData, binding: binding, context: context)
+}
+
 private func validateLeaseResponse(
   _ data: Data,
-  binding: LauncherBinding
+  binding: LauncherBinding,
+  context: LeaseOperationContext
 ) throws -> LeaseHandoff {
   guard let authority = actorLeaseAuthorities[binding.actor] else {
     throw HostFailure("the actor does not have a canonical lease authority policy")
@@ -2035,7 +2283,12 @@ private func validateLeaseResponse(
     lease.name == binding.leaseName,
     lease.owner == binding.actor,
     lease.token == context.leaseToken,
-    lease.credentialKind == "persistent-actor",
+    lease.observerAuthority == authority.observer,
+    lease.providerAuthority == authority.provider,
+    lease.credentialKind == "trusted-launcher-channel",
+    lease.launcherSha256 == binding.launcherSha256,
+    lease.actorRuntimeDigest == runtimeDigest(binding),
+    lease.launcherChannelProtocol == channelProtocol,
     lease.ttlMs == leaseLifetimeMilliseconds,
     lease.token.utf8.count >= 32,
     lease.token.utf8.count <= 4 * 1_024,
@@ -2088,7 +2341,7 @@ private func inspectAcquiredLease(
       leaseToken: nil
     ),
     binding: binding,
-    persistentCredential: nil,
+    channelContext: nil,
     lifecycleDeadlineMilliseconds: lifecycleDeadlineMilliseconds,
     cancellationController: nil
   )
@@ -2127,7 +2380,7 @@ private func releaseAcquiredLease(
       let responseData = try invoker.run(
         invocation,
         binding: binding,
-        persistentCredential: nil,
+        channelContext: nil,
         lifecycleDeadlineMilliseconds: lifecycleDeadlineMilliseconds,
         cancellationController: nil
       )
@@ -2165,7 +2418,6 @@ private func releaseAcquiredLease(
 
 private func acquireLeaseWithRecovery(
   binding: LauncherBinding,
-  persistentCredential: Data,
   context: LeaseOperationContext,
   invoker: ControlInvoker,
   acquisitionDeadlineMilliseconds: UInt64,
@@ -2185,7 +2437,6 @@ private func acquireLeaseWithRecovery(
     do {
       return try invokeControl(
         binding: binding,
-        persistentCredential: persistentCredential,
         context: context,
         invoker: invoker,
         lifecycleDeadlineMilliseconds: acquisitionDeadlineMilliseconds,
@@ -2245,63 +2496,21 @@ private func main(cancellationController: ActorCancellationController) throws ->
   #if AUTOMATION_ACTOR_HOST_TESTING
     cancellationController.setTestingStateRoot(binding.stateRoot)
   #endif
-  let credential = try readAndValidateCredential(binding)
-  #if AUTOMATION_ACTOR_HOST_TESTING
-    if arguments.testKeychainMode == "signal-preflight-delay" {
-      FileManager.default.createFile(
-        atPath: URL(fileURLWithPath: binding.stateRoot).deletingLastPathComponent()
-          .appendingPathComponent("test-actor-preflight-ready").path,
-        contents: Data()
-      )
-      usleep(2 * 1_000 * 1_000)
-    }
-  #endif
-  #if AUTOMATION_ACTOR_HOST_TESTING
-    let interactionController = FakeKeychainInteractionController(
-      mode: arguments.testKeychainMode
-    )
-    let secretReader: SecretReader = FakeSecretReader(
-      interactionController: interactionController,
-      mode: arguments.testKeychainMode
-    )
-  #else
-    let interactionController = SystemKeychainInteractionController()
-    let secretReader: SecretReader = KeychainSecretReader()
-  #endif
-  var secret = try readSecretWithoutInteraction(
-    reader: secretReader,
-    interactionController: interactionController,
-    service: binding.keychainService,
-    account: binding.keychainAccount
-  )
-  defer { secret.resetBytes(in: 0..<secret.count) }
-  try validateSecret(secret, credential: credential)
 
   switch arguments.mode {
   case .attest:
-    guard arguments.credentialSha256 == credential.tokenSha256,
-      arguments.requestedKeychainService == binding.keychainService,
-      arguments.keychainAccount == binding.keychainAccount
-    else {
-      throw HostFailure("the readiness request does not match the owner-held credential record")
-    }
+    let operation = try newLeaseOperationContext()
+    let response = try ProcessControlInvoker(
+      channelTestMode: arguments.channelTestMode
+    ).run(
+      actorControlInvocation(binding: binding, action: "attest", context: operation),
+      binding: binding,
+      channelContext: operation,
+      lifecycleDeadlineMilliseconds: nativeAcquisitionDeadlineMilliseconds,
+      cancellationController: cancellationController
+    )
     let attestationLine = try encodeJSONLine(
-      ReadinessAttestation(
-        schemaVersion: 1,
-        protocolName: attestationProtocol,
-        purpose: attestationPurpose,
-        actor: binding.actor,
-        stateRoot: binding.stateRoot,
-        leaseName: binding.leaseName,
-        maxLeaseLifetimeMs: binding.maxLeaseLifetimeMs,
-        credentialSha256: credential.tokenSha256,
-        handoff: binding.handoff,
-        keychainService: binding.keychainService,
-        keychainAccount: binding.keychainAccount,
-        credentialDigestVerified: true,
-        canonicalLeaseReady: true,
-        mutatesState: false
-      )
+      validateReadinessResponse(response, binding: binding)
     )
     if let signal = try cancellationController.nextSignal() {
       throw ActorCancellation(signal: signal)
@@ -2311,16 +2520,24 @@ private func main(cancellationController: ActorCancellationController) throws ->
   case .acquire:
     #if AUTOMATION_ACTOR_HOST_TESTING
       let controlInvoker: ControlInvoker
-      if arguments.testControlMode == "process-timeout" {
+      if arguments.testControlMode == "process" {
         controlInvoker = ProcessControlInvoker(
-          timeoutMilliseconds: testControlTimeoutMilliseconds
+          channelTestMode: arguments.channelTestMode
+        )
+      } else if arguments.testControlMode == "process-timeout" {
+        controlInvoker = ProcessControlInvoker(
+          timeoutMilliseconds: testControlTimeoutMilliseconds,
+          channelTestMode: arguments.channelTestMode
         )
       } else if [
         "process-signal-state",
         "process-cancellation-commit",
         "process-cleanup-cancellation",
       ].contains(arguments.testControlMode) {
-        controlInvoker = ProcessControlInvoker(timeoutMilliseconds: 2_000)
+        controlInvoker = ProcessControlInvoker(
+          timeoutMilliseconds: 2_000,
+          channelTestMode: arguments.channelTestMode
+        )
       } else {
         controlInvoker = FakeControlInvoker(mode: arguments.testControlMode)
       }
@@ -2330,7 +2547,6 @@ private func main(cancellationController: ActorCancellationController) throws ->
     let operation = try newLeaseOperationContext()
     let handoff = try acquireLeaseWithRecovery(
       binding: binding,
-      persistentCredential: secret,
       context: operation,
       invoker: controlInvoker,
       acquisitionDeadlineMilliseconds: nativeAcquisitionDeadlineMilliseconds,
@@ -2370,6 +2586,9 @@ private func main(cancellationController: ActorCancellationController) throws ->
       }
     #endif
     FileHandle.standardOutput.write(handoffLine)
+    return 0
+  case .verifyChannel:
+    try writeJSON(try verifyControlChannel(arguments: arguments, binding: binding))
     return 0
   }
 }

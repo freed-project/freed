@@ -50,9 +50,7 @@ test("documented lease mutations retain caller-owned operation identity and toke
       ),
     ].length;
     const acquireCount = [
-      ...block.matchAll(
-        /node scripts\/automation-control\.mjs lease acquire/g,
-      ),
+      ...block.matchAll(/node scripts\/automation-control\.mjs lease acquire/g),
     ].length;
     assert.equal(
       [...block.matchAll(/FREED_AUTOMATION_LEASE_OPERATION_ID=/g)].length,
@@ -63,7 +61,10 @@ test("documented lease mutations retain caller-owned operation identity and toke
       mutationCount,
     );
     assert.equal([...block.matchAll(/randomUUID\(\)/g)].length, mutationCount);
-    assert.equal([...block.matchAll(/randomBytes\(32\)/g)].length, acquireCount);
+    assert.equal(
+      [...block.matchAll(/randomBytes\(32\)/g)].length,
+      acquireCount,
+    );
   }
 
   assert.doesNotMatch(
@@ -130,9 +131,7 @@ test("documented recovery commands remain bound to their production entry points
 
   for (const { command, requiredArguments } of documentedCommands) {
     const matchingBlocks = bashBlocks.filter((block) =>
-      block
-        .split("\n")
-        .includes(`npm run --silent ${command} \\`),
+      block.split("\n").includes(`npm run --silent ${command} \\`),
     );
     assert.equal(matchingBlocks.length, 1, command);
     for (const argument of requiredArguments) {
@@ -146,11 +145,13 @@ test("documented recovery commands remain bound to their production entry points
 
 test("documented actor runtime inventory retains the complete control closure", () => {
   for (const requiredRuntimeMember of [
-    "repo Node binary",
-    "control entry",
-    "control library",
+    "Node",
+    "`automation-control\\.mjs`",
+    "`automation-actor-control\\.mjs`",
+    "`lib/automation-control\\.mjs`",
+    "`lib/automation-actor-readiness\\.mjs`",
     "kernel guard contract",
-    "outcome ledger repair contract",
+    "outcome\\s+repair contract",
     "lease\\s+archive helper",
   ]) {
     assert.match(controlPlaneDocs, new RegExp(requiredRuntimeMember));
@@ -179,7 +180,10 @@ test("documented task and outcome authority matches live and replay admission", 
     controlPlaneDocs,
     /Each heartbeat must occur before the current effective\s+expiry and may extend authority only up to the actor's absolute lease lifetime\s+and any owner-confirmation expiry\./,
   );
-  assert.match(controlPlaneDocs, /Publisher acquisition is exactly 30 minutes\./);
+  assert.match(
+    controlPlaneDocs,
+    /Publisher acquisition is exactly 30 minutes\./,
+  );
   assert.match(
     controlPlaneDocs,
     /The complete history fixture\s+is the compatibility proof\./,
@@ -221,10 +225,7 @@ test("documented task and outcome authority matches live and replay admission", 
     /changing only the manifest classification fails closed/,
   );
   assert.match(controlPlaneDocs, /`lease_repair_required`/);
-  assert.match(
-    controlPlaneDocs,
-    /before reading an external credential/,
-  );
+  assert.match(controlPlaneDocs, /before reading an external credential/);
   assert.doesNotMatch(controlPlaneDocs, /orphan grace period/);
   assert.match(
     controlPlaneDocs,

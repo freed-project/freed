@@ -57,6 +57,12 @@ import {
   outcomeLedgerRepairEventId,
   outcomeLedgerRepairOperationSeed,
 } from "./outcome-ledger-repair-contract.mjs";
+import {
+  ACTOR_LAUNCHER_ATTESTATION_PROTOCOL,
+  ACTOR_LAUNCHER_CHANNEL_PROTOCOL,
+  ACTOR_LAUNCHER_HANDOFF,
+  readInstalledActorBinding,
+} from "./automation-actor-readiness.mjs";
 
 export const AUTOMATION_CONTROL_SCHEMA_VERSION = 1;
 export const PUBLISH_SCOPE_SCHEMA_VERSION = 2;
@@ -478,10 +484,7 @@ const PROVIDER_APPROVAL_GATED_TASK_STATES = new Set([
   "soaking",
 ]);
 
-function taskObserverAuthorityAllowsTransition(
-  observerAuthority,
-  toState,
-) {
+function taskObserverAuthorityAllowsTransition(observerAuthority, toState) {
   const requiredAuthority = TRANSITION_AUTHORITY_REQUIREMENTS[toState];
   const actualRank = TASK_AUTHORITY_RANK[observerAuthority];
   const requiredRank = TASK_AUTHORITY_RANK[requiredAuthority];
@@ -492,10 +495,7 @@ function taskObserverAuthorityAllowsTransition(
   );
 }
 
-function taskProviderAuthorityAllowsTransition(
-  providerAuthority,
-  toState,
-) {
+function taskProviderAuthorityAllowsTransition(providerAuthority, toState) {
   return !(
     providerAuthority === "approval-required" &&
     PROVIDER_APPROVAL_GATED_TASK_STATES.has(toState)
@@ -982,10 +982,7 @@ function normalizeOutcomeLedgerRepairAuthorization(
       String(authorization.ownerConfirmationExpiresAt ?? ""),
     );
     if (
-      [
-        "ownerConfirmationId",
-        "ownerConfirmationDigest",
-      ].some(
+      ["ownerConfirmationId", "ownerConfirmationDigest"].some(
         (field) =>
           typeof authorization[field] !== "string" ||
           authorization[field].length === 0,
@@ -1147,9 +1144,9 @@ function validateOutcomeLedgerRepairEventWithHistoryIndex(
   const authorization = normalizeOutcomeLedgerRepairAuthorization(
     event.data.authorization,
     {
-    taskId,
-    intentDigest,
-    eventTimestamp: event.ts,
+      taskId,
+      intentDigest,
+      eventTimestamp: event.ts,
     },
   );
   validateOutcomeLedgerRepairLeaseHistoryIndexed(
@@ -1345,6 +1342,10 @@ function actorPolicy(actor) {
     );
   }
   return policy;
+}
+
+function isGeneralAutomationActor(actor) {
+  return actor !== "freed-owner" && actor !== "freed-pr-publisher";
 }
 
 function normalizeStoredObserverAuthority(value) {
@@ -1877,61 +1878,58 @@ export function withAutomationOutcomeLedgerWriterGuard(
   return withKernelFileGuard(
     cutover.paths.writerLock,
     () => {
-    const lockedCutover = requireAutomationKernelGuardCutover(paths);
-    if (lockedCutover.paths.writerLock !== cutover.paths.writerLock) {
-      throw new AutomationControlError(
-        "invalid_state",
-        "Outcome ledger writer guard changed during acquisition.",
+      const lockedCutover = requireAutomationKernelGuardCutover(paths);
+      if (lockedCutover.paths.writerLock !== cutover.paths.writerLock) {
+        throw new AutomationControlError(
+          "invalid_state",
+          "Outcome ledger writer guard changed during acquisition.",
+        );
+      }
+      let active = true;
+      const context = Object.freeze({
+        stateRoot: paths.stateRoot,
+        ledgerPath: canonicalLedgerPath,
+        requireActive: () => {
+          if (!active || !ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS.has(context)) {
+            throw new AutomationControlError(
+              "invalid_state",
+              "Outcome ledger writer context is no longer active.",
+            );
+          }
+        },
+      });
+      if (ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT.has(paths.stateRoot)) {
+        throw new AutomationControlError(
+          "invalid_state",
+          "Outcome ledger writer context is already active for this state root.",
+        );
+      }
+      ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS.add(context);
+      ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT.set(
+        paths.stateRoot,
+        context,
       );
-    }
-    let active = true;
-    const context = Object.freeze({
-      stateRoot: paths.stateRoot,
-      ledgerPath: canonicalLedgerPath,
-      requireActive: () => {
-        if (
-          !active ||
-          !ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS.has(context)
-        ) {
-          throw new AutomationControlError(
-            "invalid_state",
-            "Outcome ledger writer context is no longer active.",
-          );
-        }
-      },
-    });
-    if (ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT.has(paths.stateRoot)) {
-      throw new AutomationControlError(
-        "invalid_state",
-        "Outcome ledger writer context is already active for this state root.",
-      );
-    }
-    ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS.add(context);
-    ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT.set(
-      paths.stateRoot,
-      context,
-    );
-    OUTCOME_WRITER_AUTHORITY_SNAPSHOT_CACHES.set(context, new Map());
-    OUTCOME_WRITER_LEASE_HISTORY_CACHES.set(context, null);
-    OUTCOME_WRITER_DIRECTORY_CHILD_PROOF_CACHES.set(context, new Set());
-    OUTCOME_WRITER_DIRECTORY_NAME_CACHES.set(context, new Map());
-    try {
-      return operation(context);
-    } finally {
-      active = false;
-      OUTCOME_WRITER_AUTHORITY_SNAPSHOT_CACHES.delete(context);
-      OUTCOME_WRITER_LEASE_HISTORY_CACHES.delete(context);
-      OUTCOME_WRITER_DIRECTORY_CHILD_PROOF_CACHES.delete(context);
-      OUTCOME_WRITER_DIRECTORY_NAME_CACHES.delete(context);
-      ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT.delete(paths.stateRoot);
-      ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS.delete(context);
-    }
+      OUTCOME_WRITER_AUTHORITY_SNAPSHOT_CACHES.set(context, new Map());
+      OUTCOME_WRITER_LEASE_HISTORY_CACHES.set(context, null);
+      OUTCOME_WRITER_DIRECTORY_CHILD_PROOF_CACHES.set(context, new Set());
+      OUTCOME_WRITER_DIRECTORY_NAME_CACHES.set(context, new Map());
+      try {
+        return operation(context);
+      } finally {
+        active = false;
+        OUTCOME_WRITER_AUTHORITY_SNAPSHOT_CACHES.delete(context);
+        OUTCOME_WRITER_LEASE_HISTORY_CACHES.delete(context);
+        OUTCOME_WRITER_DIRECTORY_CHILD_PROOF_CACHES.delete(context);
+        OUTCOME_WRITER_DIRECTORY_NAME_CACHES.delete(context);
+        ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT.delete(paths.stateRoot);
+        ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS.delete(context);
+      }
     },
     {
-    label: "outcome ledger writer",
-    timeoutMs,
-    wait,
-    monotonicNow: () => performance.now(),
+      label: "outcome ledger writer",
+      timeoutMs,
+      wait,
+      monotonicNow: () => performance.now(),
     },
   );
 }
@@ -1984,20 +1982,20 @@ function withFilesystemGuard(
   return withKernelFileGuard(
     guardPath,
     () => {
-    const lockedCutover = requireAutomationKernelGuardCutover(paths);
-    if (lockedCutover.paths.guards[name]?.inner !== guardPath) {
-      throw new AutomationControlError(
-        "invalid_state",
-        `Automation guard ${name} changed during acquisition.`,
-      );
-    }
-    return callback();
+      const lockedCutover = requireAutomationKernelGuardCutover(paths);
+      if (lockedCutover.paths.guards[name]?.inner !== guardPath) {
+        throw new AutomationControlError(
+          "invalid_state",
+          `Automation guard ${name} changed during acquisition.`,
+        );
+      }
+      return callback();
     },
     {
-    label: name,
-    timeoutMs,
-    wait: waitSync,
-    monotonicNow: () => performance.now(),
+      label: name,
+      timeoutMs,
+      wait: waitSync,
+      monotonicNow: () => performance.now(),
     },
   );
 }
@@ -2035,63 +2033,68 @@ function withActiveAutomationEventsGuard(
     now = undefined,
   } = {},
 ) {
-  return withFilesystemGuard(paths, "events", () => {
-        const token = Object.freeze({
-          stateRoot: paths.stateRoot,
-          outcomeRepairBypass,
-        });
-        if (ACTIVE_AUTOMATION_EVENTS_GUARDS_BY_ROOT.has(paths.stateRoot)) {
-          throw new AutomationControlError(
-            "invalid_state",
-            "Automation events guard scope is already active for this state root.",
-          );
-        }
-        ACTIVE_AUTOMATION_EVENTS_GUARDS.add(token);
-        ACTIVE_AUTOMATION_EVENTS_GUARDS_BY_ROOT.set(paths.stateRoot, token);
-        try {
-          if (authorizeOutcomeRepairBypass !== null) {
-            if (typeof authorizeOutcomeRepairBypass !== "function") {
-              throw new AutomationControlError(
-                "invalid_argument",
-                "Automation events bypass authorization must be synchronous.",
-              );
-            }
-            let ownerLeaseBypass = authorizeOutcomeRepairBypass(token);
-            if (ownerLeaseBypass !== null) {
-              ownerLeaseBypass =
-                commitUncommittedPreparedToReplacedTransitionUnderFence(
-                  paths,
-                  ownerLeaseBypass,
-                );
-              OUTCOME_REPAIR_OWNER_LEASE_BYPASSES.set(
-                token,
-                Object.freeze(ownerLeaseBypass),
-              );
-              completeOutcomeLedgerRepairEventBeforeOwnerLeaseLifecycle(
-                paths,
-                token,
-                ownerLeaseBypass,
-              );
-            }
-          }
-          if (enforceOutcomeRepairFence) {
-            requireOutcomeLedgerRepairFenceAllowsMutation(paths, token);
-          }
-          const result = callback(token);
-          if (result && typeof result.then === "function") {
+  return withFilesystemGuard(
+    paths,
+    "events",
+    () => {
+      const token = Object.freeze({
+        stateRoot: paths.stateRoot,
+        outcomeRepairBypass,
+      });
+      if (ACTIVE_AUTOMATION_EVENTS_GUARDS_BY_ROOT.has(paths.stateRoot)) {
+        throw new AutomationControlError(
+          "invalid_state",
+          "Automation events guard scope is already active for this state root.",
+        );
+      }
+      ACTIVE_AUTOMATION_EVENTS_GUARDS.add(token);
+      ACTIVE_AUTOMATION_EVENTS_GUARDS_BY_ROOT.set(paths.stateRoot, token);
+      try {
+        if (authorizeOutcomeRepairBypass !== null) {
+          if (typeof authorizeOutcomeRepairBypass !== "function") {
             throw new AutomationControlError(
               "invalid_argument",
-              "Lease mutation archive guards require synchronous work.",
+              "Automation events bypass authorization must be synchronous.",
             );
           }
-          return result;
-        } finally {
-          AUTOMATION_EVENTS_GUARD_STAGE_ADMISSIONS.delete(token);
-          ACTIVE_AUTOMATION_EVENTS_GUARDS_BY_ROOT.delete(paths.stateRoot);
-          OUTCOME_REPAIR_OWNER_LEASE_BYPASSES.delete(token);
-          ACTIVE_AUTOMATION_EVENTS_GUARDS.delete(token);
+          let ownerLeaseBypass = authorizeOutcomeRepairBypass(token);
+          if (ownerLeaseBypass !== null) {
+            ownerLeaseBypass =
+              commitUncommittedPreparedToReplacedTransitionUnderFence(
+                paths,
+                ownerLeaseBypass,
+              );
+            OUTCOME_REPAIR_OWNER_LEASE_BYPASSES.set(
+              token,
+              Object.freeze(ownerLeaseBypass),
+            );
+            completeOutcomeLedgerRepairEventBeforeOwnerLeaseLifecycle(
+              paths,
+              token,
+              ownerLeaseBypass,
+            );
+          }
         }
-      }, now === undefined ? {} : { now });
+        if (enforceOutcomeRepairFence) {
+          requireOutcomeLedgerRepairFenceAllowsMutation(paths, token);
+        }
+        const result = callback(token);
+        if (result && typeof result.then === "function") {
+          throw new AutomationControlError(
+            "invalid_argument",
+            "Lease mutation archive guards require synchronous work.",
+          );
+        }
+        return result;
+      } finally {
+        AUTOMATION_EVENTS_GUARD_STAGE_ADMISSIONS.delete(token);
+        ACTIVE_AUTOMATION_EVENTS_GUARDS_BY_ROOT.delete(paths.stateRoot);
+        OUTCOME_REPAIR_OWNER_LEASE_BYPASSES.delete(token);
+        ACTIVE_AUTOMATION_EVENTS_GUARDS.delete(token);
+      }
+    },
+    now === undefined ? {} : { now },
+  );
 }
 
 function withActiveLeaseEventsGuard(paths, callback, options = {}) {
@@ -2374,7 +2377,7 @@ function matchingTaskTransactionEvent(paths, expectedEvent) {
       `Control event history contains duplicate event ${expectedEvent.eventId}.`,
       { eventId: expectedEvent.eventId, count: matches.length },
     );
-    }
+  }
   if (
     matches.length === 1 &&
     !canonicalValuesEqual(matches[0], expectedEvent)
@@ -2459,133 +2462,133 @@ function reconcileTaskTransactionAuthorityStages(
     "Task transaction directory",
   );
   try {
-  const entries = listPinnedAutomationAuthorityDirectory(helper, directory, {
-    maxEntries: AUTHORITY_STAGE_DIRECTORY_MAX_ENTRIES,
-    label: "Task transaction directory",
-    errorCode: "transaction_conflict",
-  }).sort();
-  const stages = [];
-  const stagedCanonicalNames = new Set();
-  for (const entry of entries) {
-    if (entry === AUTHORITY_RETIREMENT_DIRECTORY) {
-      requirePrivateDirectory(
-        path.join(paths.taskTransactions, entry),
-        "Task transaction authority retirement directory",
-      );
-      continue;
+    const entries = listPinnedAutomationAuthorityDirectory(helper, directory, {
+      maxEntries: AUTHORITY_STAGE_DIRECTORY_MAX_ENTRIES,
+      label: "Task transaction directory",
+      errorCode: "transaction_conflict",
+    }).sort();
+    const stages = [];
+    const stagedCanonicalNames = new Set();
+    for (const entry of entries) {
+      if (entry === AUTHORITY_RETIREMENT_DIRECTORY) {
+        requirePrivateDirectory(
+          path.join(paths.taskTransactions, entry),
+          "Task transaction authority retirement directory",
+        );
+        continue;
+      }
+      if (entry.endsWith(".json")) continue;
+      const stage = parseTaskTransactionAuthorityStageEntry(entry);
+      if (stage === null) {
+        throw new AutomationControlError(
+          "transaction_conflict",
+          `Task transaction directory contains unsupported entry ${entry}.`,
+        );
+      }
+      if (stagedCanonicalNames.has(stage.canonicalName)) {
+        throw new AutomationControlError(
+          "transaction_conflict",
+          `Task transaction ${stage.canonicalName} has more than one pre-WAL staging generation.`,
+        );
+      }
+      stagedCanonicalNames.add(stage.canonicalName);
+      stages.push(stage);
     }
-    if (entry.endsWith(".json")) continue;
-    const stage = parseTaskTransactionAuthorityStageEntry(entry);
-    if (stage === null) {
-      throw new AutomationControlError(
-        "transaction_conflict",
-        `Task transaction directory contains unsupported entry ${entry}.`,
+    for (const stage of stages) {
+      const transactionPath = path.join(
+        paths.taskTransactions,
+        stage.canonicalName,
       );
-    }
-    if (stagedCanonicalNames.has(stage.canonicalName)) {
-      throw new AutomationControlError(
-        "transaction_conflict",
-        `Task transaction ${stage.canonicalName} has more than one pre-WAL staging generation.`,
-      );
-    }
-    stagedCanonicalNames.add(stage.canonicalName);
-    stages.push(stage);
-  }
-  for (const stage of stages) {
-    const transactionPath = path.join(
-      paths.taskTransactions,
-      stage.canonicalName,
-    );
-    const missing = readAutomationAuthorityFileSnapshot(transactionPath, {
-      allowMissing: true,
-      allowEmpty: true,
-      privateRoot: paths.controlRoot,
-      maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
-      allowedModes: [0o600],
-      label: `Task transaction ${stage.transactionId}`,
-      invalidCode: "transaction_conflict",
-    });
-    requireAutomationAuthoritySnapshotDirectory(
-      missing,
-      directory,
-      `Task transaction ${stage.transactionId}`,
-    );
-    if (!missing.missing) {
-      throw new AutomationControlError(
-        "transaction_conflict",
-        `Task transaction ${stage.transactionId} exists beside pre-WAL staging.`,
-      );
-    }
-    const stagePath = path.join(paths.taskTransactions, stage.entry);
-    const staged = readAutomationAuthorityStage(stagePath, {
-      privateRoot: paths.controlRoot,
-      maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
-      allowedModes: [0o600],
-      label: `Task transaction ${stage.transactionId} pre-WAL staging`,
-    });
-    requireAutomationAuthoritySnapshotDirectory(
-      staged,
-      directory,
-      `Task transaction ${stage.transactionId} pre-WAL staging`,
-    );
-    if (staged.missing) {
-      throw new AutomationControlError(
-        "transaction_conflict",
-        `Task transaction ${stage.transactionId} staging disappeared during recovery.`,
-      );
-    }
-    const proposedDigest = digestBytes(staged.bytes);
-    const expectedNamespace = automationAuthorityNamespace({
-      filePath: transactionPath,
-      operationId: `task-transaction:${stage.transactionId}`,
-      proposedDigest,
-      previousSnapshot: missing,
-    });
-    let transaction = null;
-    try {
-      transaction = validateTaskTransaction(
-        JSON.parse(privateAuthorityDecoder.decode(staged.bytes)),
-        transactionPath,
-      );
-    } catch {
-      transaction = null;
-    }
-    if (
-      expectedNamespace === stage.namespaceDigest &&
-      (stage.kind !== "ready" ||
-        automationAuthorityStableGenerationDigest(staged) ===
-          stage.successorStableDigest) &&
-      transaction !== null &&
-      transaction.transactionId === stage.transactionId &&
-      transaction.targetManifest.revision === stage.revision
-    ) {
-      beforeMutation();
-      writeAutomationAuthorityFile({
-        filePath: transactionPath,
-        bytes: staged.bytes,
-        previousSnapshot: missing,
-        operationId: `task-transaction:${stage.transactionId}`,
+      const missing = readAutomationAuthorityFileSnapshot(transactionPath, {
+        allowMissing: true,
+        allowEmpty: true,
         privateRoot: paths.controlRoot,
         maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
         allowedModes: [0o600],
         label: `Task transaction ${stage.transactionId}`,
+        invalidCode: "transaction_conflict",
       });
-      continue;
+      requireAutomationAuthoritySnapshotDirectory(
+        missing,
+        directory,
+        `Task transaction ${stage.transactionId}`,
+      );
+      if (!missing.missing) {
+        throw new AutomationControlError(
+          "transaction_conflict",
+          `Task transaction ${stage.transactionId} exists beside pre-WAL staging.`,
+        );
+      }
+      const stagePath = path.join(paths.taskTransactions, stage.entry);
+      const staged = readAutomationAuthorityStage(stagePath, {
+        privateRoot: paths.controlRoot,
+        maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
+        allowedModes: [0o600],
+        label: `Task transaction ${stage.transactionId} pre-WAL staging`,
+      });
+      requireAutomationAuthoritySnapshotDirectory(
+        staged,
+        directory,
+        `Task transaction ${stage.transactionId} pre-WAL staging`,
+      );
+      if (staged.missing) {
+        throw new AutomationControlError(
+          "transaction_conflict",
+          `Task transaction ${stage.transactionId} staging disappeared during recovery.`,
+        );
+      }
+      const proposedDigest = digestBytes(staged.bytes);
+      const expectedNamespace = automationAuthorityNamespace({
+        filePath: transactionPath,
+        operationId: `task-transaction:${stage.transactionId}`,
+        proposedDigest,
+        previousSnapshot: missing,
+      });
+      let transaction = null;
+      try {
+        transaction = validateTaskTransaction(
+          JSON.parse(privateAuthorityDecoder.decode(staged.bytes)),
+          transactionPath,
+        );
+      } catch {
+        transaction = null;
+      }
+      if (
+        expectedNamespace === stage.namespaceDigest &&
+        (stage.kind !== "ready" ||
+          automationAuthorityStableGenerationDigest(staged) ===
+            stage.successorStableDigest) &&
+        transaction !== null &&
+        transaction.transactionId === stage.transactionId &&
+        transaction.targetManifest.revision === stage.revision
+      ) {
+        beforeMutation();
+        writeAutomationAuthorityFile({
+          filePath: transactionPath,
+          bytes: staged.bytes,
+          previousSnapshot: missing,
+          operationId: `task-transaction:${stage.transactionId}`,
+          privateRoot: paths.controlRoot,
+          maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
+          allowedModes: [0o600],
+          label: `Task transaction ${stage.transactionId}`,
+        });
+        continue;
+      }
+      beforeMutation();
+      removeAutomationAuthorityFile({
+        filePath: stagePath,
+        snapshot: staged,
+        operationId: `task-pre-wal-retire:${stage.transactionId}:${stage.namespaceDigest}`,
+        privateRoot: paths.controlRoot,
+        maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
+        allowedModes: [0o600],
+        label: `Task transaction ${stage.transactionId} partial pre-WAL staging`,
+        retirementBasename: stage.canonicalName,
+        rawSource: true,
+      });
     }
-    beforeMutation();
-    removeAutomationAuthorityFile({
-      filePath: stagePath,
-      snapshot: staged,
-      operationId: `task-pre-wal-retire:${stage.transactionId}:${stage.namespaceDigest}`,
-      privateRoot: paths.controlRoot,
-      maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
-      allowedModes: [0o600],
-      label: `Task transaction ${stage.transactionId} partial pre-WAL staging`,
-      retirementBasename: stage.canonicalName,
-      rawSource: true,
-    });
-  }
-  assertPinnedLeaseArchiveDirectory(directory);
+    assertPinnedLeaseArchiveDirectory(directory);
   } finally {
     closeSync(directory.descriptor);
   }
@@ -2630,9 +2633,9 @@ function recoverTaskTransactionsUnlocked(
       openPinnedLeaseArchiveHelper(),
       taskDirectory,
       {
-      maxEntries: AUTHORITY_STAGE_DIRECTORY_MAX_ENTRIES,
-      label: "Task transaction directory",
-      errorCode: "transaction_conflict",
+        maxEntries: AUTHORITY_STAGE_DIRECTORY_MAX_ENTRIES,
+        label: "Task transaction directory",
+        errorCode: "transaction_conflict",
       },
     );
   } finally {
@@ -2659,10 +2662,7 @@ function recoverTaskTransactionsUnlocked(
       );
       return {
         filePath,
-        transaction: validateTaskTransaction(
-          admitted.value,
-          filePath,
-        ),
+        transaction: validateTaskTransaction(admitted.value, filePath),
         snapshot: admitted.snapshot,
       };
     })
@@ -2675,26 +2675,26 @@ function recoverTaskTransactionsUnlocked(
   return withActiveAutomationEventsGuard(
     paths,
     (eventsGuard) => {
-  const guardMutation = () => {
-    requireOutcomeLedgerRepairFenceAllowsMutation(paths, eventsGuard);
-    beforeMutation();
-  };
-  let recovered = 0;
-  for (const { filePath, transaction, snapshot } of transactions) {
-    const readmitAuthorityStages = () => {
-      admitControlEventAuthorityStage(paths, {
-        expectedPendingEvents: [transaction.event],
-      });
-      admitTaskManifestAuthorityStage(paths, {
-        expectedPendingTransactions: [transaction],
-      });
-    };
-    const currentAdmission = readTaskManifestSnapshotUnchecked({
-      stateRoot: paths.stateRoot,
-      nowMs,
-    });
-    const current = currentAdmission.manifest;
-    const target = transaction.targetManifest;
+      const guardMutation = () => {
+        requireOutcomeLedgerRepairFenceAllowsMutation(paths, eventsGuard);
+        beforeMutation();
+      };
+      let recovered = 0;
+      for (const { filePath, transaction, snapshot } of transactions) {
+        const readmitAuthorityStages = () => {
+          admitControlEventAuthorityStage(paths, {
+            expectedPendingEvents: [transaction.event],
+          });
+          admitTaskManifestAuthorityStage(paths, {
+            expectedPendingTransactions: [transaction],
+          });
+        };
+        const currentAdmission = readTaskManifestSnapshotUnchecked({
+          stateRoot: paths.stateRoot,
+          nowMs,
+        });
+        const current = currentAdmission.manifest;
+        const target = transaction.targetManifest;
         let matchedEvent = matchingTaskTransactionEvent(
           paths,
           transaction.event,
@@ -2721,31 +2721,31 @@ function recoverTaskTransactionsUnlocked(
           }
         };
 
-    if (current.revision === transaction.previousManifestRevision) {
+        if (current.revision === transaction.previousManifestRevision) {
           requireExactEvent();
-      guardMutation();
-      readmitAuthorityStages();
-      writeJsonAtomic(paths.taskManifest, target, {
-        expectedSnapshot: currentAdmission.snapshot,
-        operationId: `task-manifest:${transaction.transactionId}`,
-        privateRoot: paths.controlRoot,
-        label: "Current task manifest",
-        validateStageSuccessor: (before, after) =>
-          requireTaskManifestSemanticSuccessor(paths, before, after),
-        buildStagePendingPlans: () => [
-          Object.freeze({
+          guardMutation();
+          readmitAuthorityStages();
+          writeJsonAtomic(paths.taskManifest, target, {
+            expectedSnapshot: currentAdmission.snapshot,
             operationId: `task-manifest:${transaction.transactionId}`,
-            proposedBytes: privateJsonBytes(transaction.targetManifest),
-          }),
-        ],
-      });
-    } else if (current.revision === target.revision) {
-      if (JSON.stringify(current) !== JSON.stringify(target)) {
-        throw new AutomationControlError(
-          "transaction_conflict",
-          `Task transaction ${transaction.transactionId} conflicts with manifest revision ${current.revision}.`,
-        );
-      }
+            privateRoot: paths.controlRoot,
+            label: "Current task manifest",
+            validateStageSuccessor: (before, after) =>
+              requireTaskManifestSemanticSuccessor(paths, before, after),
+            buildStagePendingPlans: () => [
+              Object.freeze({
+                operationId: `task-manifest:${transaction.transactionId}`,
+                proposedBytes: privateJsonBytes(transaction.targetManifest),
+              }),
+            ],
+          });
+        } else if (current.revision === target.revision) {
+          if (JSON.stringify(current) !== JSON.stringify(target)) {
+            throw new AutomationControlError(
+              "transaction_conflict",
+              `Task transaction ${transaction.transactionId} conflicts with manifest revision ${current.revision}.`,
+            );
+          }
           requireExactEvent();
         } else if (current.revision > target.revision) {
           if (matchedEvent.event === null) {
@@ -2754,28 +2754,28 @@ function recoverTaskTransactionsUnlocked(
               `Task transaction ${transaction.transactionId} has no exact audit event at manifest revision ${current.revision}.`,
             );
           }
-    } else {
-      throw new AutomationControlError(
-        "transaction_conflict",
-        `Task transaction ${transaction.transactionId} expected manifest revision ${transaction.previousManifestRevision}, found ${current.revision}.`,
-      );
-    }
+        } else {
+          throw new AutomationControlError(
+            "transaction_conflict",
+            `Task transaction ${transaction.transactionId} expected manifest revision ${transaction.previousManifestRevision}, found ${current.revision}.`,
+          );
+        }
 
-    readmitAuthorityStages();
-    removeAutomationAuthorityFile({
-      filePath,
-      snapshot,
-      operationId: `task-transaction-retire:${transaction.transactionId}`,
-      privateRoot: paths.controlRoot,
-      maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
-      allowedModes: [0o600],
-      label: `Task transaction ${transaction.transactionId}`,
-      beforeRemove: guardMutation,
-    });
-    recovered += 1;
-  }
-  syncDirectory(paths.taskTransactions);
-  return { recovered };
+        readmitAuthorityStages();
+        removeAutomationAuthorityFile({
+          filePath,
+          snapshot,
+          operationId: `task-transaction-retire:${transaction.transactionId}`,
+          privateRoot: paths.controlRoot,
+          maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
+          allowedModes: [0o600],
+          label: `Task transaction ${transaction.transactionId}`,
+          beforeRemove: guardMutation,
+        });
+        recovered += 1;
+      }
+      syncDirectory(paths.taskTransactions);
+      return { recovered };
     },
     { now: () => nowMs },
   );
@@ -2969,7 +2969,7 @@ function prepareControlEventAppend(existingBytes, existingRecordCount, event) {
     eventBytes.length > CONTROL_EVENT_MAX_LINE_BYTES ||
     existingRecordCount + 1 > CONTROL_EVENT_HISTORY_MAX_RECORDS ||
     existingBytes.length + separator.length + eventBytes.length >
-    CONTROL_EVENT_HISTORY_MAX_BYTES
+      CONTROL_EVENT_HISTORY_MAX_BYTES
   ) {
     throw new AutomationControlError(
       "invalid_state",
@@ -3431,10 +3431,10 @@ export function preauthorizeOutcomeLedgerRepair(options) {
     (authorityContext) => {
       if (
         !readTaskUnderMutationAuthority({
-        stateRoot: options.stateRoot,
-        taskId: options.taskId,
-        nowMs,
-        authorityContext,
+          stateRoot: options.stateRoot,
+          taskId: options.taskId,
+          nowMs,
+          authorityContext,
         })
       ) {
         throw new AutomationControlError(
@@ -3576,8 +3576,7 @@ function outcomeLedgerRepairAuthorizationFromOwnerAcquisition(event) {
       ...common,
       ownerConfirmationId: event.data.ownerConfirmationId,
       ownerConfirmationTaskId: event.data.ownerConfirmationTaskId,
-      ownerConfirmationIntentDigest:
-        event.data.ownerConfirmationIntentDigest,
+      ownerConfirmationIntentDigest: event.data.ownerConfirmationIntentDigest,
       ownerConfirmationDigest: event.data.ownerConfirmationDigest,
       ownerConfirmationReference: event.data.ownerConfirmationReference,
       ownerConfirmationApprovedBy: event.data.ownerConfirmationApprovedBy,
@@ -3759,8 +3758,7 @@ function requireOutcomeLedgerRepairEventHistoryBoundary(
     ) ||
     (matchingRecords.length === 0 &&
       snapshot.bytes.length !== records.at(-1)?.end) ||
-    (matchingRecords.length === 1 &&
-      matchingRecords[0].index !== repairIndex)
+    (matchingRecords.length === 1 && matchingRecords[0].index !== repairIndex)
   ) {
     throw new AutomationControlError(
       "outcome_ledger_repair_event_invalid",
@@ -4219,7 +4217,8 @@ function validateOutcomeLedgerRepairArchivedMaterial(
       ![0, 1].includes(decision[4]) ||
       !Number.isSafeInteger(decision[5]) ||
       decision[5] < 0 ||
-      decision[5] >= OUTCOME_LEDGER_REPAIR_DECISION_REASON_DESCRIPTIONS.length ||
+      decision[5] >=
+        OUTCOME_LEDGER_REPAIR_DECISION_REASON_DESCRIPTIONS.length ||
       (decision[4] === 0 && decision[5] !== 0) ||
       (decision[4] === 1 && decision[5] === 0)
     ) {
@@ -4482,8 +4481,7 @@ function validateOutcomeLedgerRepairTransaction(
             eventId: expectedEventId,
             intentDigest,
             parameters,
-            authorizationProvenance:
-              candidate.event.data.authorization,
+            authorizationProvenance: candidate.event.data.authorization,
           },
           inspectExactOutcomeControlHistory(prefix.events, {
             ledgerPath: paths.outcomes,
@@ -4518,11 +4516,10 @@ function validateOutcomeLedgerRepairTransaction(
     ]);
     const eventIsCanonical =
       history.bytes.length >= plannedSuccessor.length &&
-      history.bytes.subarray(0, plannedSuccessor.length).equals(plannedSuccessor);
-    if (
-      history.bytes.length !== prefix.bytes.length &&
-      !eventIsCanonical
-    ) {
+      history.bytes
+        .subarray(0, plannedSuccessor.length)
+        .equals(plannedSuccessor);
+    if (history.bytes.length !== prefix.bytes.length && !eventIsCanonical) {
       throw new AutomationControlError(
         "outcome_ledger_repair_transaction_invalid",
         "Outcome ledger repair event is not the immediate exact successor to its bound history.",
@@ -4552,10 +4549,7 @@ function validateOutcomeLedgerRepairTransaction(
         automationAuthoritySnapshotDescriptor(history),
         candidate.historyGeneration,
       ) ||
-      !canonicalValuesEqual(
-        history.directoryIdentity,
-        candidate.historyParent,
-      )
+      !canonicalValuesEqual(history.directoryIdentity, candidate.historyParent)
     ) {
       throw new AutomationControlError(
         "outcome_ledger_repair_transaction_invalid",
@@ -4654,16 +4648,13 @@ function inspectOutcomeLedgerRepairPendingFence(paths) {
     "pending.json",
   );
   if (!pathEntryExists(transactionPath)) return null;
-  const initialSnapshot = readAutomationAuthorityFileSnapshot(
-    transactionPath,
-    {
-      privateRoot: paths.controlRoot,
-      maxBytes: OUTCOME_LEDGER_REPAIR_MAX_BYTES,
-      allowedModes: [0o600],
-      label: "Pending outcome ledger repair transaction",
-      invalidCode: "outcome_ledger_repair_transaction_invalid",
-    },
-  );
+  const initialSnapshot = readAutomationAuthorityFileSnapshot(transactionPath, {
+    privateRoot: paths.controlRoot,
+    maxBytes: OUTCOME_LEDGER_REPAIR_MAX_BYTES,
+    allowedModes: [0o600],
+    label: "Pending outcome ledger repair transaction",
+    invalidCode: "outcome_ledger_repair_transaction_invalid",
+  });
   let initialValue;
   try {
     initialValue = JSON.parse(
@@ -4700,9 +4691,7 @@ function inspectOutcomeLedgerRepairPendingFence(paths) {
     requirePreparedMaterial: initial.value?.phase !== "fenced",
     admittedSnapshot: initial,
   });
-  if (
-    !automationAuthoritySnapshotMatches(initial, validated.snapshot)
-  ) {
+  if (!automationAuthoritySnapshotMatches(initial, validated.snapshot)) {
     throw new AutomationControlError(
       "outcome_ledger_repair_transaction_invalid",
       "Pending outcome ledger repair transaction changed during admission.",
@@ -4834,10 +4823,7 @@ function readCommittedOutcomeLedgerRepairEventPlan(paths, pending) {
         errorCode: "outcome_ledger_repair_transaction_invalid",
       },
     );
-    if (
-      stagingEntries.length !== 1 ||
-      stagingEntries[0] !== stagingName
-    ) {
+    if (stagingEntries.length !== 1 || stagingEntries[0] !== stagingName) {
       throw new AutomationControlError(
         "outcome_ledger_repair_transaction_invalid",
         "Committed outcome ledger repair requires one exact successor staging generation.",
@@ -5046,7 +5032,10 @@ function requireOutcomeLedgerRepairPriorPublicationLineage(paths, pending) {
     paths,
     pending.parameters,
   );
-  const ledgerIntentPath = path.join(intentDirectory, "ledger-replacement.json");
+  const ledgerIntentPath = path.join(
+    intentDirectory,
+    "ledger-replacement.json",
+  );
   const ledgerIntentSnapshot = readOutcomeLedgerRepairPublicationFile(
     ledgerIntentPath,
     paths,
@@ -5114,7 +5103,9 @@ function requireOutcomeLedgerRepairPriorPublicationLineage(paths, pending) {
         "archivePath",
       ].sort(),
     ) ||
-    !ledgerIntentSnapshot.bytes.equals(privateJsonBytes(expectedLedgerIntent)) ||
+    !ledgerIntentSnapshot.bytes.equals(
+      privateJsonBytes(expectedLedgerIntent),
+    ) ||
     ledgerPredecessorInput.archivePath !== ledgerArchivePath ||
     ledgerIntent.schemaVersion !== 1 ||
     ledgerIntent.kind !== "outcome-ledger-replacement-publication" ||
@@ -5383,7 +5374,8 @@ function inspectUncommittedPreparedToReplacedResidue(paths, pending) {
     }
     if (
       entries.length !== 1 ||
-      (entries[0] !== canonicalName && temporaryPattern.exec(entries[0]) === null)
+      (entries[0] !== canonicalName &&
+        temporaryPattern.exec(entries[0]) === null)
     ) {
       throw new AutomationControlError(
         "outcome_ledger_repair_transaction_invalid",
@@ -5439,12 +5431,11 @@ function inspectUncommittedPreparedToReplacedResidue(paths, pending) {
       projectedStaged,
     );
     requireOutcomeLedgerRepairPriorPublicationLineage(paths, pending);
-    const intentTemporary =
-      inspectOutcomeLedgerRepairPreparedIntentFamily(
-        paths,
-        pending,
-        publication,
-      );
+    const intentTemporary = inspectOutcomeLedgerRepairPreparedIntentFamily(
+      paths,
+      pending,
+      publication,
+    );
     return Object.freeze({
       entry,
       filePath: path.join(directoryPath, entry),
@@ -5518,11 +5509,7 @@ function requireOutcomeLedgerRepairBridgeInventory(
     label: `${label} directory`,
     errorCode: "outcome_ledger_repair_transaction_invalid",
   });
-  const allowed = new Set([
-    ...allowedEntries,
-    canonicalName,
-    temporaryName,
-  ]);
+  const allowed = new Set([...allowedEntries, canonicalName, temporaryName]);
   if (entries.some((entry) => !allowed.has(entry))) {
     throw new AutomationControlError(
       "outcome_ledger_repair_transaction_invalid",
@@ -5565,11 +5552,11 @@ function completeOutcomeLedgerRepairBridgePublication({
       allowedEntries,
       label,
     });
-    let canonical = outcomeLedgerRepairBridgeFileSnapshot(
-      filePath,
-      directory,
-      { privateRoot, maxBytes, label },
-    );
+    let canonical = outcomeLedgerRepairBridgeFileSnapshot(filePath, directory, {
+      privateRoot,
+      maxBytes,
+      label,
+    });
     let temporary = outcomeLedgerRepairBridgeFileSnapshot(
       temporaryPath,
       directory,
@@ -5783,11 +5770,7 @@ function completeOutcomeLedgerRepairBridgePublication({
               ...automationAuthorityParentIdentityArguments(directory),
               ...automationAuthorityParentIdentityArguments(directory),
             ],
-            [
-              directory.descriptor,
-              directory.descriptor,
-              binding.descriptor,
-            ],
+            [directory.descriptor, directory.descriptor, binding.descriptor],
           ),
           {
             operation: "authority-retire",
@@ -5829,11 +5812,11 @@ function completeOutcomeLedgerRepairBridgePublication({
       directory,
       { privateRoot, maxBytes, label: `${label} temporary` },
     );
-    canonical = outcomeLedgerRepairBridgeFileSnapshot(
-      filePath,
-      directory,
-      { privateRoot, maxBytes, label },
-    );
+    canonical = outcomeLedgerRepairBridgeFileSnapshot(filePath, directory, {
+      privateRoot,
+      maxBytes,
+      label,
+    });
     if (
       !temporary.missing ||
       canonical.missing ||
@@ -5872,8 +5855,7 @@ function commitUncommittedPreparedToReplacedTransitionUnderFence(
     state.residue === null ||
     state.residue.filePath !== bypass.preparedResidue.filePath ||
     state.residue.archivePath !== bypass.preparedResidue.archivePath ||
-    state.residue.successorDigest !==
-      bypass.preparedResidue.successorDigest ||
+    state.residue.successorDigest !== bypass.preparedResidue.successorDigest ||
     !automationAuthoritySnapshotMatches(
       state.residue.snapshot,
       bypass.preparedResidue.snapshot,
@@ -5891,9 +5873,7 @@ function commitUncommittedPreparedToReplacedTransitionUnderFence(
       "Outcome ledger repair uncommitted staging changed before recovery.",
     );
   }
-  const transition = outcomeLedgerRepairPreparedToReplacedPaths(
-    state.pending,
-  );
+  const transition = outcomeLedgerRepairPreparedToReplacedPaths(state.pending);
   const retirementDirectory = openPinnedLeaseArchiveDirectory(
     transition.retirementDirectory,
     "Outcome ledger repair transaction retirement directory",
@@ -5923,149 +5903,143 @@ function commitUncommittedPreparedToReplacedTransitionUnderFence(
     }
   };
   try {
-  const requireUncommittedPlan = () => {
-    requireRepairEventStageAdmission();
-    requireArchiveTargetAbsent();
+    const requireUncommittedPlan = () => {
+      requireRepairEventStageAdmission();
+      requireArchiveTargetAbsent();
+      state = requireOutcomeLedgerRepairPreparedBridgeState(paths, bypass);
+      if (
+        state.residue === null ||
+        state.residue.archivePath !== bypass.preparedResidue.archivePath ||
+        state.residue.successorDigest !==
+          bypass.preparedResidue.successorDigest ||
+        !canonicalValuesEqual(
+          state.residue.eventPlan,
+          bypass.preparedResidue.eventPlan,
+        )
+      ) {
+        throw new AutomationControlError(
+          "outcome_ledger_repair_transaction_invalid",
+          "Outcome ledger repair reconstruction inputs changed during transition recovery.",
+        );
+      }
+    };
+    requireUncommittedPlan();
+    const staged = completeOutcomeLedgerRepairBridgePublication({
+      filePath: transition.stagingPath,
+      bytes: bypass.preparedResidue.successorBytes,
+      privateRoot: paths.stateRoot,
+      maxBytes: OUTCOME_LEDGER_REPAIR_MAX_BYTES,
+      allowCreate: false,
+      beforeMutation: requireUncommittedPlan,
+      label: "Outcome ledger repair prepared-to-replaced successor",
+    });
     state = requireOutcomeLedgerRepairPreparedBridgeState(paths, bypass);
     if (
       state.residue === null ||
-      state.residue.archivePath !== bypass.preparedResidue.archivePath ||
-      state.residue.successorDigest !==
-        bypass.preparedResidue.successorDigest ||
+      state.residue.filePath !== transition.stagingPath ||
+      !automationAuthoritySnapshotMatches(state.residue.snapshot, staged)
+    ) {
+      throw new AutomationControlError(
+        "outcome_ledger_repair_transaction_invalid",
+        "Outcome ledger repair successor changed after durable staging recovery.",
+      );
+    }
+    const stagedAdmission = Object.freeze({
+      ...staged,
+      value: parseOutcomeLedgerRepairPublication(
+        staged,
+        "Outcome ledger repair prepared-to-replaced successor",
+      ),
+    });
+    const publication = outcomeLedgerRepairPreparedToReplacedPublication(
+      paths,
+      state.pending,
+      stagedAdmission,
+    );
+    if (
       !canonicalValuesEqual(
-        state.residue.eventPlan,
+        publication.eventPlan,
         bypass.preparedResidue.eventPlan,
       )
     ) {
       throw new AutomationControlError(
         "outcome_ledger_repair_transaction_invalid",
-        "Outcome ledger repair reconstruction inputs changed during transition recovery.",
+        "Outcome ledger repair event plan changed before intent publication.",
       );
     }
-  };
-  requireUncommittedPlan();
-  const staged = completeOutcomeLedgerRepairBridgePublication({
-    filePath: transition.stagingPath,
-    bytes: bypass.preparedResidue.successorBytes,
-    privateRoot: paths.stateRoot,
-    maxBytes: OUTCOME_LEDGER_REPAIR_MAX_BYTES,
-    allowCreate: false,
-    beforeMutation: requireUncommittedPlan,
-    label: "Outcome ledger repair prepared-to-replaced successor",
-  });
-  state = requireOutcomeLedgerRepairPreparedBridgeState(paths, bypass);
-  if (
-    state.residue === null ||
-    state.residue.filePath !== transition.stagingPath ||
-    !automationAuthoritySnapshotMatches(state.residue.snapshot, staged)
-  ) {
-    throw new AutomationControlError(
-      "outcome_ledger_repair_transaction_invalid",
-      "Outcome ledger repair successor changed after durable staging recovery.",
-    );
-  }
-  const stagedAdmission = Object.freeze({
-    ...staged,
-    value: parseOutcomeLedgerRepairPublication(
-      staged,
-      "Outcome ledger repair prepared-to-replaced successor",
-    ),
-  });
-  const publication = outcomeLedgerRepairPreparedToReplacedPublication(
-    paths,
-    state.pending,
-    stagedAdmission,
-  );
-  if (
-    !canonicalValuesEqual(
-      publication.eventPlan,
-      bypass.preparedResidue.eventPlan,
-    )
-  ) {
-    throw new AutomationControlError(
-      "outcome_ledger_repair_transaction_invalid",
-      "Outcome ledger repair event plan changed before intent publication.",
-    );
-  }
-  const requireStagedPlan = () => {
-    requireRepairEventStageAdmission();
-    requireArchiveTargetAbsent();
-    const current = requireOutcomeLedgerRepairPreparedBridgeState(
-      paths,
-      bypass,
-    );
+    const requireStagedPlan = () => {
+      requireRepairEventStageAdmission();
+      requireArchiveTargetAbsent();
+      const current = requireOutcomeLedgerRepairPreparedBridgeState(
+        paths,
+        bypass,
+      );
+      if (
+        current.residue === null ||
+        current.residue.filePath !== transition.stagingPath ||
+        !automationAuthoritySnapshotMatches(current.residue.snapshot, staged) ||
+        !canonicalValuesEqual(current.residue.eventPlan, publication.eventPlan)
+      ) {
+        throw new AutomationControlError(
+          "outcome_ledger_repair_transaction_invalid",
+          "Outcome ledger repair staged successor changed before intent commit.",
+        );
+      }
+    };
+    completeOutcomeLedgerRepairBridgePublication({
+      filePath: transition.intentPath,
+      bytes: publication.intentBytes,
+      privateRoot: paths.stateRoot,
+      maxBytes: 64 * 1024,
+      allowCreate: true,
+      allowedEntries: [
+        "ledger-replacement.json",
+        "transaction-fenced-to-prepared.json",
+      ],
+      beforeMutation: requireStagedPlan,
+      label: "Outcome ledger repair prepared-to-replaced publication intent",
+    });
+    const committedPending = inspectOutcomeLedgerRepairPendingFence(paths);
     if (
-      current.residue === null ||
-      current.residue.filePath !== transition.stagingPath ||
-      !automationAuthoritySnapshotMatches(current.residue.snapshot, staged) ||
+      committedPending === null ||
+      !automationAuthoritySnapshotMatches(
+        committedPending.snapshot,
+        bypass.pendingSnapshot,
+      ) ||
       !canonicalValuesEqual(
-        current.residue.eventPlan,
-        publication.eventPlan,
+        outcomeLedgerRepairPublicationIdentity(
+          committedPending.transactionPath,
+          committedPending.snapshot,
+        ),
+        bypass.pendingPublicationIdentity,
       )
     ) {
       throw new AutomationControlError(
         "outcome_ledger_repair_transaction_invalid",
-        "Outcome ledger repair staged successor changed before intent commit.",
+        "Outcome ledger repair predecessor changed after intent commit.",
       );
     }
-  };
-  completeOutcomeLedgerRepairBridgePublication({
-    filePath: transition.intentPath,
-    bytes: publication.intentBytes,
-    privateRoot: paths.stateRoot,
-    maxBytes: 64 * 1024,
-    allowCreate: true,
-    allowedEntries: [
-      "ledger-replacement.json",
-      "transaction-fenced-to-prepared.json",
-    ],
-    beforeMutation: requireStagedPlan,
-    label: "Outcome ledger repair prepared-to-replaced publication intent",
-  });
-  const committedPending = inspectOutcomeLedgerRepairPendingFence(paths);
-  if (
-    committedPending === null ||
-    !automationAuthoritySnapshotMatches(
-      committedPending.snapshot,
-      bypass.pendingSnapshot,
-    ) ||
-    !canonicalValuesEqual(
-      outcomeLedgerRepairPublicationIdentity(
-        committedPending.transactionPath,
-        committedPending.snapshot,
-      ),
-      bypass.pendingPublicationIdentity,
-    )
-  ) {
-    throw new AutomationControlError(
-      "outcome_ledger_repair_transaction_invalid",
-      "Outcome ledger repair predecessor changed after intent commit.",
+    const committedPlan = readCommittedOutcomeLedgerRepairEventPlan(
+      paths,
+      committedPending,
     );
-  }
-  const committedPlan = readCommittedOutcomeLedgerRepairEventPlan(
-    paths,
-    committedPending,
-  );
-  if (!canonicalValuesEqual(committedPlan, publication.eventPlan)) {
-    throw new AutomationControlError(
-      "outcome_ledger_repair_transaction_invalid",
-      "Outcome ledger repair committed a different prepared transition plan.",
-    );
-  }
-  return {
-    ...bypass,
-    eventPlan: committedPlan,
-    preparedResidue: null,
-  };
+    if (!canonicalValuesEqual(committedPlan, publication.eventPlan)) {
+      throw new AutomationControlError(
+        "outcome_ledger_repair_transaction_invalid",
+        "Outcome ledger repair committed a different prepared transition plan.",
+      );
+    }
+    return {
+      ...bypass,
+      eventPlan: committedPlan,
+      preparedResidue: null,
+    };
   } finally {
     closeSync(retirementDirectory.descriptor);
   }
 }
 
-function requireOutcomeLedgerRepairFenceAllowsMutation(
-  paths,
-  eventsGuard,
-) {
+function requireOutcomeLedgerRepairFenceAllowsMutation(paths, eventsGuard) {
   const active = requireActiveAutomationEventsGuard(eventsGuard);
   if (active.stateRoot !== paths.stateRoot) {
     throw new AutomationControlError(
@@ -6108,10 +6082,7 @@ function requireOutcomeLedgerRepairFenceAllowsMutation(
   );
 }
 
-function requireExactOwnerLeaseTransactionRequest(
-  transaction,
-  operation,
-) {
+function requireExactOwnerLeaseTransactionRequest(transaction, operation) {
   if (
     transaction.name !== operation.name ||
     transaction.operation !== operation.leaseOperation ||
@@ -6129,8 +6100,7 @@ function requireExactOwnerLeaseTransactionRequest(
   const ownerTaskId =
     lease?.ownerCapabilityTaskId ?? lease?.ownerConfirmationTaskId;
   const ownerIntentDigest =
-    lease?.ownerCapabilityIntentDigest ??
-    lease?.ownerConfirmationIntentDigest;
+    lease?.ownerCapabilityIntentDigest ?? lease?.ownerConfirmationIntentDigest;
   if (
     lease?.owner !== "freed-owner" ||
     lease?.name !== "owner-governance" ||
@@ -6149,11 +6119,7 @@ function requireExactOwnerLeaseTransactionRequest(
   return transaction;
 }
 
-function requireReadOnlyLeaseRecoveryState(
-  paths,
-  transaction,
-  eventsGuard,
-) {
+function requireReadOnlyLeaseRecoveryState(paths, transaction, eventsGuard) {
   const records =
     transaction.phase === "complete"
       ? (validateCompletedLeaseReceiptStaging(paths, transaction), null)
@@ -6163,10 +6129,7 @@ function requireReadOnlyLeaseRecoveryState(
     current.descriptor,
     transaction.before,
   );
-  const matchesAfter = leaseStateMatches(
-    current.descriptor,
-    transaction.after,
-  );
+  const matchesAfter = leaseStateMatches(current.descriptor, transaction.after);
   const matchedEvent = matchingLeaseEventUnlocked(paths, transaction);
   const exactEmptyAcquireIntermediate =
     transaction.phase === "prepared" &&
@@ -6176,10 +6139,13 @@ function requireReadOnlyLeaseRecoveryState(
     current.descriptor.recordDigest === null;
   if (
     (transaction.phase === "prepared" &&
-      (!matchesBefore && !matchesAfter && !exactEmptyAcquireIntermediate)) ||
+      !matchesBefore &&
+      !matchesAfter &&
+      !exactEmptyAcquireIntermediate) ||
     (["state-committed", "event-appended", "complete"].includes(
       transaction.phase,
-    ) && !matchesAfter) ||
+    ) &&
+      !matchesAfter) ||
     (transaction.phase === "prepared" && matchedEvent.event !== null) ||
     (["event-appended", "complete"].includes(transaction.phase) &&
       matchedEvent.event === null)
@@ -6193,31 +6159,20 @@ function requireReadOnlyLeaseRecoveryState(
   return records;
 }
 
-function readExactOwnerLeaseRecoveryEvidence(
-  paths,
-  eventsGuard,
-  operation,
-) {
+function readExactOwnerLeaseRecoveryEvidence(paths, eventsGuard, operation) {
   const directories = leaseTransactionDirectories(paths);
   const activePath = path.join(
     directories.transactions,
     `${operation.name}.json`,
   );
-  const active = readLeaseTransactionFile(
-    activePath,
-    paths,
-    operation.name,
-  );
+  const active = readLeaseTransactionFile(activePath, paths, operation.name);
   if (active !== null) {
     requireExactOwnerLeaseTransactionRequest(active, operation);
     requireReadOnlyLeaseRecoveryState(paths, active, eventsGuard);
     return active;
   }
 
-  const predecessor = readLeaseStateSnapshot(
-    paths,
-    operation.name,
-  ).descriptor;
+  const predecessor = readLeaseStateSnapshot(paths, operation.name).descriptor;
   const temporaryPath = leaseAtomicTemporaryPath(activePath, {
     ...operation,
     predecessor,
@@ -6273,10 +6228,7 @@ function readExactOwnerLeaseRecoveryEvidence(
   );
   if (completed === null) return null;
   try {
-    requireExactOwnerLeaseTransactionRequest(
-      completed.transaction,
-      operation,
-    );
+    requireExactOwnerLeaseTransactionRequest(completed.transaction, operation);
     verifyCompletedLeaseReceipt(
       paths,
       completed.transaction,
@@ -6303,8 +6255,7 @@ function requireCurrentOwnerLeaseForPendingRepair(paths, operation) {
   const ownerTaskId =
     record.ownerCapabilityTaskId ?? record.ownerConfirmationTaskId;
   const ownerIntentDigest =
-    record.ownerCapabilityIntentDigest ??
-    record.ownerConfirmationIntentDigest;
+    record.ownerCapabilityIntentDigest ?? record.ownerConfirmationIntentDigest;
   if (
     record.name !== "owner-governance" ||
     record.owner !== "freed-owner" ||
@@ -6454,9 +6405,7 @@ function authorizeOwnerLeaseLifecycleOutcomeRepairBypass(
   if (pending === null) return null;
   if (
     operation?.name !== "owner-governance" ||
-    !["acquire", "heartbeat", "release"].includes(
-      operation?.leaseOperation,
-    )
+    !["acquire", "heartbeat", "release"].includes(operation?.leaseOperation)
   ) {
     throw new AutomationControlError(
       "outcome_ledger_repair_pending",
@@ -6528,17 +6477,14 @@ function authorizeOwnerLeaseLifecycleOutcomeRepairBypass(
 }
 
 function requireOutcomeLedgerRepairReplacement(paths, parameters) {
-  const snapshot = readAutomationAuthorityFileSnapshot(
-    paths.outcomes,
-    {
-      privateRoot: paths.stateRoot,
-      allowEmpty: true,
-      maxBytes: OUTCOME_LEDGER_REPAIR_MAX_BYTES,
-      allowedModes: [0o600],
-      label: "Canonical outcome ledger replacement",
-      invalidCode: "outcome_ledger_repair_transaction_invalid",
-    },
-  );
+  const snapshot = readAutomationAuthorityFileSnapshot(paths.outcomes, {
+    privateRoot: paths.stateRoot,
+    allowEmpty: true,
+    maxBytes: OUTCOME_LEDGER_REPAIR_MAX_BYTES,
+    allowedModes: [0o600],
+    label: "Canonical outcome ledger replacement",
+    invalidCode: "outcome_ledger_repair_transaction_invalid",
+  });
   const digest = digestBytes(snapshot.bytes);
   if (
     snapshot.bytes.length !== parameters.replacementSize ||
@@ -6592,16 +6538,23 @@ export function preflightOutcomeLedgerRepairEvent(options) {
         intentDigest: authority.ownerIntentDigest,
       });
       return withFilesystemGuard(paths, "tasks", () =>
-        withActiveAutomationEventsGuard(paths, (eventsGuard) => {
-        authorityContext.reauthorize();
-        requireOutcomeLedgerRepairFenceAllowsMutation(paths, eventsGuard);
-        preauthorizeOutcomeLedgerRepairFromHeldTaskSnapshot(
-          scopedOptions,
+        withActiveAutomationEventsGuard(
           paths,
-          authorityContext,
-        );
-        return preflightOutcomeLedgerRepairEventUnlocked(scopedOptions, paths);
-        }, { outcomeRepairBypass }),
+          (eventsGuard) => {
+            authorityContext.reauthorize();
+            requireOutcomeLedgerRepairFenceAllowsMutation(paths, eventsGuard);
+            preauthorizeOutcomeLedgerRepairFromHeldTaskSnapshot(
+              scopedOptions,
+              paths,
+              authorityContext,
+            );
+            return preflightOutcomeLedgerRepairEventUnlocked(
+              scopedOptions,
+              paths,
+            );
+          },
+          { outcomeRepairBypass },
+        ),
       );
     },
   );
@@ -6761,9 +6714,7 @@ export function withOutcomeLedgerRepairFenceCreationGuard(options, callback) {
             const currentTask = readTaskManifestSnapshotUnchecked({
               stateRoot: paths.stateRoot,
               nowMs: Date.now(),
-            }).manifest.tasks.filter(
-              (task) => task?.taskId === options.taskId,
-            );
+            }).manifest.tasks.filter((task) => task?.taskId === options.taskId);
             if (
               currentTask.length !== 1 ||
               currentTask[0].revision !== options.taskRevision ||
@@ -6808,10 +6759,8 @@ export function withOutcomeLedgerRepairFenceCreationGuard(options, callback) {
                 "Completed outcome ledger repair identity already exists before fencing.",
               );
             }
-            const finalEventPreflight = preflightOutcomeLedgerRepairEventUnlocked(
-              scopedOptions,
-              paths,
-            );
+            const finalEventPreflight =
+              preflightOutcomeLedgerRepairEventUnlocked(scopedOptions, paths);
             if (finalEventPreflight.existing) {
               throw new AutomationControlError(
                 "outcome_ledger_repair_transaction_invalid",
@@ -6925,13 +6874,16 @@ export function withOutcomeLedgerRepairRetirementGuard(options, callback) {
               options.taskId,
               normalizedParameters,
             );
-            const admittedBefore = validateOutcomeLedgerRepairTransaction(paths, {
-              taskId: options.taskId,
-              parameters: normalizedParameters,
-              intentDigest: authority.ownerIntentDigest,
-              transactionPath: identity.transactionPath,
-              allowedPhases: ["complete"],
-            }).snapshot;
+            const admittedBefore = validateOutcomeLedgerRepairTransaction(
+              paths,
+              {
+                taskId: options.taskId,
+                parameters: normalizedParameters,
+                intentDigest: authority.ownerIntentDigest,
+                transactionPath: identity.transactionPath,
+                allowedPhases: ["complete"],
+              },
+            ).snapshot;
             admitRetirementMutation();
             const result = callback({
               beforeRetirementMutation: admitRetirementMutation,
@@ -7006,283 +6958,294 @@ export function withOutcomeLedgerRepairFinalizationGuard(options, callback) {
         intentDigest: authority.ownerIntentDigest,
       });
       return withFilesystemGuard(paths, "tasks", () =>
-        withActiveAutomationEventsGuard(paths, (eventsGuard) => {
-        authorityContext.reauthorize();
-        requireOutcomeLedgerRepairFenceAllowsMutation(paths, eventsGuard);
-        preauthorizeOutcomeLedgerRepairFromHeldTaskSnapshot(
-          scopedOptions,
+        withActiveAutomationEventsGuard(
           paths,
-          authorityContext,
-        );
-        const transactionOptions = {
-          taskId: options.taskId,
-          parameters: normalizedParameters,
-          intentDigest: authority.ownerIntentDigest,
-          transactionPath: options.transactionPath,
-        };
-        let active = true;
-        let provisionalEventPlan = null;
-        const requireActive = () => {
-          if (!active) {
-            throw new AutomationControlError(
-              "invalid_state",
-              "Outcome ledger repair finalization guard scope is no longer active.",
+          (eventsGuard) => {
+            authorityContext.reauthorize();
+            requireOutcomeLedgerRepairFenceAllowsMutation(paths, eventsGuard);
+            preauthorizeOutcomeLedgerRepairFromHeldTaskSnapshot(
+              scopedOptions,
+              paths,
+              authorityContext,
             );
-          }
-        };
-        const admitFinalizationMutation = () => {
-          requireActive();
-          authorityContext.reauthorize();
-          const validated = validateOutcomeLedgerRepairTransaction(paths, {
-            ...transactionOptions,
-            allowedPhases: ["prepared", "replaced", "audited", "complete"],
-          });
-          if (
-            validated.record.phase === "prepared" &&
-            provisionalEventPlan !== null
-          ) {
-            const provisionalRecord = {
-              ...validated.record,
-              phase: "replaced",
-              eventPlan: provisionalEventPlan,
+            const transactionOptions = {
+              taskId: options.taskId,
+              parameters: normalizedParameters,
+              intentDigest: authority.ownerIntentDigest,
+              transactionPath: options.transactionPath,
             };
-            validateOutcomeLedgerRepairTransaction(paths, {
-              ...transactionOptions,
-              allowedPhases: ["replaced"],
-              admittedSnapshot: {
-                value: provisionalRecord,
-                bytes: privateJsonBytes(provisionalRecord),
-                identity: validated.snapshot.identity,
-              },
-            });
-          }
-          const expectedPendingEvents = [];
-          const committedPreparedPlan =
-            validated.record.phase === "prepared"
-              ? readCommittedOutcomeLedgerRepairEventPlan(
-                  paths,
-                  inspectOutcomeLedgerRepairPendingFence(paths),
-                )
-              : null;
-          if (
-            validated.record.phase === "replaced" ||
-            committedPreparedPlan !== null
-          ) {
-            requireOutcomeLedgerRepairReplacement(
-              paths,
-              normalizedParameters,
-            );
-            const plannedEvent =
-              committedPreparedPlan?.event ??
-              validated.record.eventPlan.event;
-            const matches = readControlEventHistorySnapshot(
-              paths.events,
-            ).events.filter(
-              (event) => event?.eventId === plannedEvent.eventId,
-            );
-            if (matches.length === 0) {
-              expectedPendingEvents.push(plannedEvent);
-            }
-          }
-          if (["audited", "complete"].includes(validated.record.phase)) {
-            requireOutcomeLedgerRepairReplacement(
-              paths,
-              normalizedParameters,
-            );
-            const matches = readControlEventHistorySnapshot(
-              paths.events,
-            ).events.filter(
-              (event) =>
-                event?.eventId === validated.record.eventPlan.event.eventId,
-            );
-            if (matches.length !== 1) {
-              throw new AutomationControlError(
-                "outcome_ledger_repair_transaction_invalid",
-                "Audited outcome ledger repair transaction is missing its exact control event.",
-              );
-            }
-          }
-          admitControlEventAuthorityStage(paths, {
-            expectedPendingEvents,
-          });
-          return validated.record;
-        };
-        const requireReplaced = () => {
-          const record = admitFinalizationMutation();
-          if (record.phase !== "replaced") {
-            throw new AutomationControlError(
-              "outcome_ledger_repair_transaction_invalid",
-              "Outcome ledger repair event publication requires its replaced transaction phase.",
-            );
-          }
-          requireOutcomeLedgerRepairReplacement(paths, normalizedParameters);
-          return record;
-        };
-        const bindRepairEventPlan = () => {
-          const record = admitFinalizationMutation();
-          if (record.phase !== "prepared" || record.eventPlan !== null) {
-            throw new AutomationControlError(
-              "outcome_ledger_repair_transaction_invalid",
-              "Outcome ledger repair event planning requires its exact prepared transaction.",
-            );
-          }
-          const replacement = requireOutcomeLedgerRepairReplacement(
-            paths,
-            normalizedParameters,
-          );
-          const preflight = preflightOutcomeLedgerRepairEventUnlocked(
-            scopedOptions,
-            paths,
-          );
-          if (preflight.existing) {
-            throw new AutomationControlError(
-              "outcome_ledger_repair_transaction_invalid",
-              "Outcome ledger repair event exists before its replaced transaction binds the event plan.",
-            );
-          }
-          provisionalEventPlan = orderedOutcomeLedgerRepairEventPlan({
-            event: preflight.event,
-            historyDigest: preflight.historyDigest,
-            historyGeneration: preflight.historyGeneration,
-            historyParent: preflight.historyParent,
-            historyRecordCount: preflight.historyRecordCount,
-            historySize: preflight.historySize,
-            replacementGeneration: automationAuthoritySnapshotDescriptor(
-              replacement,
-            ),
-            replacementParent: structuredClone(
-              replacement.directoryIdentity,
-            ),
-            stageNamespace: preflight.stageNamespace,
-          });
-          return structuredClone(provisionalEventPlan);
-        };
-        try {
-          admitFinalizationMutation();
-          const result = callback({
-            beforeFinalizationMutation: admitFinalizationMutation,
-            committedRepairEventPlan: () => {
-              requireActive();
-              authorityContext.reauthorize();
-              const pending = inspectOutcomeLedgerRepairPendingFence(paths);
-              if (
-                pending === null ||
-                pending.taskId !== options.taskId ||
-                pending.operationId !== normalizedParameters.operationId ||
-                pending.intentDigest !== authority.ownerIntentDigest
-              ) {
+            let active = true;
+            let provisionalEventPlan = null;
+            const requireActive = () => {
+              if (!active) {
                 throw new AutomationControlError(
-                  "outcome_ledger_repair_transaction_invalid",
-                  "Outcome ledger repair changed while resolving its committed event plan.",
+                  "invalid_state",
+                  "Outcome ledger repair finalization guard scope is no longer active.",
                 );
               }
-              const eventPlan = readCommittedOutcomeLedgerRepairEventPlan(
-                paths,
-                pending,
-              );
-              return eventPlan === null ? null : structuredClone(eventPlan);
-            },
-            reconstructPreparedRepairEventPlan: () => {
-              requireActive();
-              authorityContext.reauthorize();
-              const pending = inspectOutcomeLedgerRepairPendingFence(paths);
-              if (
-                pending === null ||
-                pending.phase !== "prepared" ||
-                pending.taskId !== options.taskId ||
-                pending.operationId !== normalizedParameters.operationId ||
-                pending.intentDigest !== authority.ownerIntentDigest
-              ) {
-                throw new AutomationControlError(
-                  "outcome_ledger_repair_transaction_invalid",
-                  "Outcome ledger repair cannot reconstruct a different prepared transaction.",
-                );
-              }
-              return structuredClone(
-                reconstructOutcomeLedgerRepairEventPlan(paths, pending),
-              );
-            },
-            bindRepairEventPlan,
-            preflightRepairEvent: () => {
+            };
+            const admitFinalizationMutation = () => {
               requireActive();
               authorityContext.reauthorize();
               const validated = validateOutcomeLedgerRepairTransaction(paths, {
                 ...transactionOptions,
-                allowedPhases: ["prepared", "replaced", "audited"],
+                allowedPhases: ["prepared", "replaced", "audited", "complete"],
               });
-              if (validated.record.phase !== "prepared") {
+              if (
+                validated.record.phase === "prepared" &&
+                provisionalEventPlan !== null
+              ) {
+                const provisionalRecord = {
+                  ...validated.record,
+                  phase: "replaced",
+                  eventPlan: provisionalEventPlan,
+                };
+                validateOutcomeLedgerRepairTransaction(paths, {
+                  ...transactionOptions,
+                  allowedPhases: ["replaced"],
+                  admittedSnapshot: {
+                    value: provisionalRecord,
+                    bytes: privateJsonBytes(provisionalRecord),
+                    identity: validated.snapshot.identity,
+                  },
+                });
+              }
+              const expectedPendingEvents = [];
+              const committedPreparedPlan =
+                validated.record.phase === "prepared"
+                  ? readCommittedOutcomeLedgerRepairEventPlan(
+                      paths,
+                      inspectOutcomeLedgerRepairPendingFence(paths),
+                    )
+                  : null;
+              if (
+                validated.record.phase === "replaced" ||
+                committedPreparedPlan !== null
+              ) {
+                requireOutcomeLedgerRepairReplacement(
+                  paths,
+                  normalizedParameters,
+                );
+                const plannedEvent =
+                  committedPreparedPlan?.event ??
+                  validated.record.eventPlan.event;
+                const matches = readControlEventHistorySnapshot(
+                  paths.events,
+                ).events.filter(
+                  (event) => event?.eventId === plannedEvent.eventId,
+                );
+                if (matches.length === 0) {
+                  expectedPendingEvents.push(plannedEvent);
+                }
+              }
+              if (["audited", "complete"].includes(validated.record.phase)) {
+                requireOutcomeLedgerRepairReplacement(
+                  paths,
+                  normalizedParameters,
+                );
                 const matches = readControlEventHistorySnapshot(
                   paths.events,
                 ).events.filter(
                   (event) =>
-                    event?.eventId ===
-                    validated.record.eventPlan.event.eventId,
+                    event?.eventId === validated.record.eventPlan.event.eventId,
                 );
-                return {
-                  existing: matches.length === 1,
-                  event: structuredClone(validated.record.eventPlan.event),
-                  historyDigest: validated.record.eventPlan.historyDigest,
-                  historyGeneration:
-                    validated.record.eventPlan.historyGeneration,
-                  historyParent: validated.record.eventPlan.historyParent,
-                  historyRecordCount:
-                    validated.record.eventPlan.historyRecordCount,
-                  historySize: validated.record.eventPlan.historySize,
-                  replacementGeneration:
-                    validated.record.eventPlan.replacementGeneration,
-                  replacementParent:
-                    validated.record.eventPlan.replacementParent,
-                  stageNamespace: validated.record.eventPlan.stageNamespace,
-                };
+                if (matches.length !== 1) {
+                  throw new AutomationControlError(
+                    "outcome_ledger_repair_transaction_invalid",
+                    "Audited outcome ledger repair transaction is missing its exact control event.",
+                  );
+                }
               }
-              return preflightOutcomeLedgerRepairEventUnlocked(
+              admitControlEventAuthorityStage(paths, {
+                expectedPendingEvents,
+              });
+              return validated.record;
+            };
+            const requireReplaced = () => {
+              const record = admitFinalizationMutation();
+              if (record.phase !== "replaced") {
+                throw new AutomationControlError(
+                  "outcome_ledger_repair_transaction_invalid",
+                  "Outcome ledger repair event publication requires its replaced transaction phase.",
+                );
+              }
+              requireOutcomeLedgerRepairReplacement(
+                paths,
+                normalizedParameters,
+              );
+              return record;
+            };
+            const bindRepairEventPlan = () => {
+              const record = admitFinalizationMutation();
+              if (record.phase !== "prepared" || record.eventPlan !== null) {
+                throw new AutomationControlError(
+                  "outcome_ledger_repair_transaction_invalid",
+                  "Outcome ledger repair event planning requires its exact prepared transaction.",
+                );
+              }
+              const replacement = requireOutcomeLedgerRepairReplacement(
+                paths,
+                normalizedParameters,
+              );
+              const preflight = preflightOutcomeLedgerRepairEventUnlocked(
                 scopedOptions,
                 paths,
               );
-            },
-            appendRepairEvent: () => {
-              const record = requireReplaced();
-              const event = record.eventPlan.event;
-              const snapshot = readControlEventHistorySnapshot(paths.events);
-              const matches = snapshot.events.filter(
-                (candidate) => candidate?.eventId === event.eventId,
-              );
-              if (matches.length === 1) {
-                if (!canonicalValuesEqual(matches[0], event)) {
-                  throw new AutomationControlError(
-                    "control_event_conflict",
-                    `Control event ${event.eventId} conflicts with the bound repair plan.`,
-                    { eventId: event.eventId },
-                  );
-                }
-                admitControlEventAuthorityStage(paths);
-                return structuredClone(matches[0]);
-              }
-              if (matches.length !== 0) {
+              if (preflight.existing) {
                 throw new AutomationControlError(
-                  "control_event_duplicate",
-                  `Control event history contains duplicate event ${event.eventId}.`,
+                  "outcome_ledger_repair_transaction_invalid",
+                  "Outcome ledger repair event exists before its replaced transaction binds the event plan.",
                 );
               }
-              appendEventLineUnlocked(paths, event, snapshot, {
-                beforeRename: requireReplaced,
-                eventsGuard,
+              provisionalEventPlan = orderedOutcomeLedgerRepairEventPlan({
+                event: preflight.event,
+                historyDigest: preflight.historyDigest,
+                historyGeneration: preflight.historyGeneration,
+                historyParent: preflight.historyParent,
+                historyRecordCount: preflight.historyRecordCount,
+                historySize: preflight.historySize,
+                replacementGeneration:
+                  automationAuthoritySnapshotDescriptor(replacement),
+                replacementParent: structuredClone(
+                  replacement.directoryIdentity,
+                ),
+                stageNamespace: preflight.stageNamespace,
               });
-              return structuredClone(event);
-            },
-          });
-          if (result && typeof result.then === "function") {
-            throw new AutomationControlError(
-              "invalid_argument",
-              "Outcome ledger repair finalization guard callback must be synchronous.",
-            );
-          }
-          admitFinalizationMutation();
-          return result;
-        } finally {
-          active = false;
-        }
-        }, { outcomeRepairBypass }),
+              return structuredClone(provisionalEventPlan);
+            };
+            try {
+              admitFinalizationMutation();
+              const result = callback({
+                beforeFinalizationMutation: admitFinalizationMutation,
+                committedRepairEventPlan: () => {
+                  requireActive();
+                  authorityContext.reauthorize();
+                  const pending = inspectOutcomeLedgerRepairPendingFence(paths);
+                  if (
+                    pending === null ||
+                    pending.taskId !== options.taskId ||
+                    pending.operationId !== normalizedParameters.operationId ||
+                    pending.intentDigest !== authority.ownerIntentDigest
+                  ) {
+                    throw new AutomationControlError(
+                      "outcome_ledger_repair_transaction_invalid",
+                      "Outcome ledger repair changed while resolving its committed event plan.",
+                    );
+                  }
+                  const eventPlan = readCommittedOutcomeLedgerRepairEventPlan(
+                    paths,
+                    pending,
+                  );
+                  return eventPlan === null ? null : structuredClone(eventPlan);
+                },
+                reconstructPreparedRepairEventPlan: () => {
+                  requireActive();
+                  authorityContext.reauthorize();
+                  const pending = inspectOutcomeLedgerRepairPendingFence(paths);
+                  if (
+                    pending === null ||
+                    pending.phase !== "prepared" ||
+                    pending.taskId !== options.taskId ||
+                    pending.operationId !== normalizedParameters.operationId ||
+                    pending.intentDigest !== authority.ownerIntentDigest
+                  ) {
+                    throw new AutomationControlError(
+                      "outcome_ledger_repair_transaction_invalid",
+                      "Outcome ledger repair cannot reconstruct a different prepared transaction.",
+                    );
+                  }
+                  return structuredClone(
+                    reconstructOutcomeLedgerRepairEventPlan(paths, pending),
+                  );
+                },
+                bindRepairEventPlan,
+                preflightRepairEvent: () => {
+                  requireActive();
+                  authorityContext.reauthorize();
+                  const validated = validateOutcomeLedgerRepairTransaction(
+                    paths,
+                    {
+                      ...transactionOptions,
+                      allowedPhases: ["prepared", "replaced", "audited"],
+                    },
+                  );
+                  if (validated.record.phase !== "prepared") {
+                    const matches = readControlEventHistorySnapshot(
+                      paths.events,
+                    ).events.filter(
+                      (event) =>
+                        event?.eventId ===
+                        validated.record.eventPlan.event.eventId,
+                    );
+                    return {
+                      existing: matches.length === 1,
+                      event: structuredClone(validated.record.eventPlan.event),
+                      historyDigest: validated.record.eventPlan.historyDigest,
+                      historyGeneration:
+                        validated.record.eventPlan.historyGeneration,
+                      historyParent: validated.record.eventPlan.historyParent,
+                      historyRecordCount:
+                        validated.record.eventPlan.historyRecordCount,
+                      historySize: validated.record.eventPlan.historySize,
+                      replacementGeneration:
+                        validated.record.eventPlan.replacementGeneration,
+                      replacementParent:
+                        validated.record.eventPlan.replacementParent,
+                      stageNamespace: validated.record.eventPlan.stageNamespace,
+                    };
+                  }
+                  return preflightOutcomeLedgerRepairEventUnlocked(
+                    scopedOptions,
+                    paths,
+                  );
+                },
+                appendRepairEvent: () => {
+                  const record = requireReplaced();
+                  const event = record.eventPlan.event;
+                  const snapshot = readControlEventHistorySnapshot(
+                    paths.events,
+                  );
+                  const matches = snapshot.events.filter(
+                    (candidate) => candidate?.eventId === event.eventId,
+                  );
+                  if (matches.length === 1) {
+                    if (!canonicalValuesEqual(matches[0], event)) {
+                      throw new AutomationControlError(
+                        "control_event_conflict",
+                        `Control event ${event.eventId} conflicts with the bound repair plan.`,
+                        { eventId: event.eventId },
+                      );
+                    }
+                    admitControlEventAuthorityStage(paths);
+                    return structuredClone(matches[0]);
+                  }
+                  if (matches.length !== 0) {
+                    throw new AutomationControlError(
+                      "control_event_duplicate",
+                      `Control event history contains duplicate event ${event.eventId}.`,
+                    );
+                  }
+                  appendEventLineUnlocked(paths, event, snapshot, {
+                    beforeRename: requireReplaced,
+                    eventsGuard,
+                  });
+                  return structuredClone(event);
+                },
+              });
+              if (result && typeof result.then === "function") {
+                throw new AutomationControlError(
+                  "invalid_argument",
+                  "Outcome ledger repair finalization guard callback must be synchronous.",
+                );
+              }
+              admitFinalizationMutation();
+              return result;
+            } finally {
+              active = false;
+            }
+          },
+          { outcomeRepairBypass },
+        ),
       );
     },
   );
@@ -7351,20 +7314,11 @@ const CANONICAL_UUID_V4_PATTERN =
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const OUTCOME_EVIDENCE_DIGEST_PATTERN = /^[0-9a-f]{40,64}$/;
 const PINNED_LEGACY_TASK_CREATED_BEHAVIORAL_BY_DIGEST = new Map([
-  [
-    "41caf3a9648db31cf9bd46e13c9eba69c29f15a8f23217935840e77f93356def",
-    false,
-  ],
-  [
-    "724013d0294e8f0d86986d0c2112c5c2c215b5b90a31eda3a1db09834f021710",
-    true,
-  ],
+  ["41caf3a9648db31cf9bd46e13c9eba69c29f15a8f23217935840e77f93356def", false],
+  ["724013d0294e8f0d86986d0c2112c5c2c215b5b90a31eda3a1db09834f021710", true],
 ]);
 const PINNED_ORPHAN_TASK_BEHAVIORAL_BY_DIGEST = new Map([
-  [
-    "70938b73b66517e2afca88951e4aadcf574d23e8046747ac96899d275ed667e4",
-    true,
-  ],
+  ["70938b73b66517e2afca88951e4aadcf574d23e8046747ac96899d275ed667e4", true],
 ]);
 const PINNED_LEGACY_ACTOR_OUTCOME_TRANSITION_DIGESTS = new Set([
   "e45e99465a1bf906ef8d21a540c724155609d22445be95eab21702970a092cca",
@@ -7414,7 +7368,8 @@ const LEASE_CONTROL_EVENT_TYPES = new Set([
 function isCanonicalIsoTimestamp(value) {
   const timestampMs = Date.parse(String(value ?? ""));
   return (
-    Number.isFinite(timestampMs) && new Date(timestampMs).toISOString() === value
+    Number.isFinite(timestampMs) &&
+    new Date(timestampMs).toISOString() === value
   );
 }
 
@@ -7462,7 +7417,8 @@ function canonicalTaskAuthoritySnapshot(value) {
     (approved
       ? typeof value.providerApprovalReference === "string" &&
         value.providerApprovalReference.trim() !== "" &&
-        value.providerApprovalReference === value.providerApprovalReference.trim()
+        value.providerApprovalReference ===
+          value.providerApprovalReference.trim()
       : value.providerApprovalReference === undefined)
   );
 }
@@ -7563,9 +7519,17 @@ function canonicalLeaseAcquisitionEvent(candidate, provenance, actor) {
           ]
         : credentialKind === "signed-capability"
           ? ["publisherCapabilityId", "scope"]
-          : credentialKind === "persistent-actor"
-            ? ["actorCredentialPath"]
-            : null;
+          : credentialKind === "trusted-launcher-channel"
+            ? [
+                "actorRuntimeDigest",
+                "launcherAttestationSha256",
+                "launcherChannelProtocol",
+                "launcherSessionId",
+                "launcherSha256",
+              ]
+            : credentialKind === "persistent-actor"
+              ? ["actorCredentialPath"]
+              : null;
   const optionalMutationFields = [
     ...(candidate?.type === "lease_credential_upgraded"
       ? ["credentialUpgrade", "previous"]
@@ -7577,10 +7541,13 @@ function canonicalLeaseAcquisitionEvent(candidate, provenance, actor) {
     credentialFields === null ||
     (["owner-signed-capability", "owner-confirmation"].includes(
       credentialKind,
-    ) && actor !== "freed-owner") ||
+    ) &&
+      actor !== "freed-owner") ||
     (credentialKind === "signed-capability" &&
       actor !== "freed-pr-publisher") ||
     (credentialKind === "persistent-actor" &&
+      ["freed-owner", "freed-pr-publisher"].includes(actor)) ||
+    (credentialKind === "trusted-launcher-channel" &&
       ["freed-owner", "freed-pr-publisher"].includes(actor)) ||
     !exactObjectKeys(candidate, [
       "actor",
@@ -7592,9 +7559,11 @@ function canonicalLeaseAcquisitionEvent(candidate, provenance, actor) {
       "type",
     ]) ||
     candidate.schemaVersion !== AUTOMATION_CONTROL_SCHEMA_VERSION ||
-    !["lease_acquired", "lease_credential_upgraded", "lease_taken_over"].includes(
-      candidate.type,
-    ) ||
+    ![
+      "lease_acquired",
+      "lease_credential_upgraded",
+      "lease_taken_over",
+    ].includes(candidate.type) ||
     !(
       isCanonicalLeaseEventId(candidate.eventId) ||
       (isCanonicalUuidV4(candidate.eventId) &&
@@ -7622,7 +7591,9 @@ function canonicalLeaseAcquisitionEvent(candidate, provenance, actor) {
       Date.parse(candidate.data.expiresAt) !==
         Date.parse(candidate.ts) + PUBLISHER_LEASE_MAX_LIFETIME_MS) ||
     (candidate.type === "lease_credential_upgraded" &&
-      (credentialKind !== "persistent-actor" ||
+      (!["persistent-actor", "trusted-launcher-channel"].includes(
+        credentialKind,
+      ) ||
         candidate.data.credentialUpgrade !== true ||
         !canonicalLeaseTakeoverSummary(candidate.data.previous) ||
         candidate.data.previous.legacyUncredentialed !== true ||
@@ -7650,6 +7621,21 @@ function canonicalLeaseAcquisitionEvent(candidate, provenance, actor) {
       path.basename(path.dirname(path.dirname(credentialPath))) === "control"
     );
   }
+  if (credentialKind === "trusted-launcher-channel") {
+    return (
+      SHA256_PATTERN.test(String(candidate.data.launcherSha256 ?? "")) &&
+      SHA256_PATTERN.test(String(candidate.data.actorRuntimeDigest ?? "")) &&
+      candidate.data.launcherChannelProtocol ===
+        ACTOR_LAUNCHER_CHANNEL_PROTOCOL &&
+      SHA256_PATTERN.test(
+        String(candidate.data.launcherAttestationSha256 ?? ""),
+      ) &&
+      SHA256_PATTERN.test(String(candidate.data.launcherSessionId ?? "")) &&
+      credentialFields.every(
+        (field) => candidate.data[field] === provenance[field],
+      )
+    );
+  }
   if (credentialKind === "signed-capability") {
     let normalizedScope;
     try {
@@ -7667,17 +7653,22 @@ function canonicalLeaseAcquisitionEvent(candidate, provenance, actor) {
     return (
       typeof candidate.data.publisherCapabilityId === "string" &&
       IDENTIFIER_PATTERN.test(candidate.data.publisherCapabilityId) &&
-      candidate.data.publisherCapabilityId === provenance.publisherCapabilityId &&
+      candidate.data.publisherCapabilityId ===
+        provenance.publisherCapabilityId &&
       (normalizedScope.headSha === null || permitsPreboundMainHead) &&
       canonicalValuesEqual(candidate.data.scope, normalizedScope)
     );
   }
   if (credentialKind === "owner-signed-capability") {
     if (
-      !(typeof candidate.data.ownerCapabilityId === "string" &&
-        IDENTIFIER_PATTERN.test(candidate.data.ownerCapabilityId)) ||
-      !(typeof candidate.data.ownerCapabilityTaskId === "string" &&
-        IDENTIFIER_PATTERN.test(candidate.data.ownerCapabilityTaskId)) ||
+      !(
+        typeof candidate.data.ownerCapabilityId === "string" &&
+        IDENTIFIER_PATTERN.test(candidate.data.ownerCapabilityId)
+      ) ||
+      !(
+        typeof candidate.data.ownerCapabilityTaskId === "string" &&
+        IDENTIFIER_PATTERN.test(candidate.data.ownerCapabilityTaskId)
+      ) ||
       !SHA256_PATTERN.test(candidate.data.ownerCapabilityIntentDigest)
     ) {
       return false;
@@ -7693,10 +7684,14 @@ function canonicalLeaseAcquisitionEvent(candidate, provenance, actor) {
     const acquiredAtMs = Date.parse(candidate.ts);
     const leaseExpiresAtMs = Date.parse(candidate.data.expiresAt);
     if (
-      !(typeof candidate.data.ownerConfirmationId === "string" &&
-        IDENTIFIER_PATTERN.test(candidate.data.ownerConfirmationId)) ||
-      !(typeof candidate.data.ownerConfirmationTaskId === "string" &&
-        IDENTIFIER_PATTERN.test(candidate.data.ownerConfirmationTaskId)) ||
+      !(
+        typeof candidate.data.ownerConfirmationId === "string" &&
+        IDENTIFIER_PATTERN.test(candidate.data.ownerConfirmationId)
+      ) ||
+      !(
+        typeof candidate.data.ownerConfirmationTaskId === "string" &&
+        IDENTIFIER_PATTERN.test(candidate.data.ownerConfirmationTaskId)
+      ) ||
       !SHA256_PATTERN.test(candidate.data.ownerConfirmationIntentDigest) ||
       !SHA256_PATTERN.test(candidate.data.ownerConfirmationDigest) ||
       typeof candidate.data.ownerConfirmationReference !== "string" ||
@@ -7794,25 +7789,35 @@ function indexControlEventHistory(events) {
       activeTimelineByLeaseName.set(event.leaseName, timeline);
       continue;
     }
-    if (event?.type === "lease_released" && typeof event.leaseName === "string") {
+    if (
+      event?.type === "lease_released" &&
+      typeof event.leaseName === "string"
+    ) {
       const timeline = activeTimelineByLeaseName.get(event.leaseName);
       if (timeline !== undefined) timeline.closedAtIndex = record.index;
       activeTimelineByLeaseName.delete(event.leaseName);
       continue;
     }
-    if (event?.type !== "lease_heartbeat" || typeof event.leaseName !== "string") {
+    if (
+      event?.type !== "lease_heartbeat" ||
+      typeof event.leaseName !== "string"
+    ) {
       continue;
     }
     const timeline = activeTimelineByLeaseName.get(event.leaseName);
     if (timeline === undefined || timeline.invalidAtIndex !== null) continue;
     const previous = timeline.heartbeatCheckpoints.at(-1);
-    const effectiveExpiryMs = previous?.effectiveExpiryMs ?? timeline.initialExpiryMs;
+    const effectiveExpiryMs =
+      previous?.effectiveExpiryMs ?? timeline.initialExpiryMs;
     const heartbeatAtMs = Date.parse(String(event.ts ?? ""));
     const heartbeatExpiryMs = Date.parse(String(event.data?.expiresAt ?? ""));
     if (
       !(
-        canonicalLeaseHeartbeatEvent(event, timeline.actor, timeline.leaseName) ||
-        pinnedLegacyLeaseControlEvent(event)
+        canonicalLeaseHeartbeatEvent(
+          event,
+          timeline.actor,
+          timeline.leaseName,
+        ) || pinnedLegacyLeaseControlEvent(event)
       ) ||
       recordsByEventId.get(event.eventId)?.length !== 1 ||
       heartbeatAtMs < timeline.acquiredAtMs ||
@@ -7937,7 +7942,8 @@ function inspectExactLeaseEventHistory(records, eventIdCounts) {
     const event = record.entry;
     const eventId = typeof event?.eventId === "string" ? event.eventId : "";
     const reserved =
-      LEASE_CONTROL_EVENT_TYPES.has(event?.type) || eventId.startsWith("lease:");
+      LEASE_CONTROL_EVENT_TYPES.has(event?.type) ||
+      eventId.startsWith("lease:");
     if (!reserved) continue;
     const policy = AUTOMATION_ACTOR_POLICIES[event?.actor];
     const uniqueEventId = eventId !== "" && eventIdCounts.get(eventId) === 1;
@@ -8125,7 +8131,7 @@ function inspectExactLeaseEventHistory(records, eventIdCounts) {
     }
     if (
       eventAtMs < active.lastEventAtMs ||
-      event.data.expired !== (eventAtMs >= active.expiresAtMs)
+      event.data.expired !== eventAtMs >= active.expiresAtMs
     ) {
       fail(record, "does not close one exact canonical lease lifetime");
       continue;
@@ -8157,7 +8163,10 @@ function requireExactLeaseEventHistory(events) {
       matches.length,
     ]),
   );
-  const inspection = inspectExactLeaseEventHistory(indexed.records, eventIdCounts);
+  const inspection = inspectExactLeaseEventHistory(
+    indexed.records,
+    eventIdCounts,
+  );
   if (!inspection.healthy) {
     throw new AutomationControlError(
       "control_event_history_invalid",
@@ -8209,8 +8218,7 @@ function canonicalLeaseAuthorityAtEvent(
     acquisition.index >= recordIndex ||
     recordsByEventId.get(acquisition.entry.eventId)?.length !== 1 ||
     (leaseAcquisitionMode === "current" && pinnedLegacyAcquisition) ||
-    (leaseAcquisitionMode === "pinned-legacy" &&
-      !pinnedLegacyAcquisition) ||
+    (leaseAcquisitionMode === "pinned-legacy" && !pinnedLegacyAcquisition) ||
     !canonicalLeaseAcquisitionEvent(acquisition.entry, provenance, actor)
   ) {
     return false;
@@ -8295,9 +8303,17 @@ function canonicalTaskAuthorizationProvenance(
           ]
         : value?.credentialKind === "signed-capability"
           ? ["publisherCapabilityId"]
-          : value?.credentialKind === "persistent-actor"
-            ? []
-            : null;
+          : value?.credentialKind === "trusted-launcher-channel"
+            ? [
+                "actorRuntimeDigest",
+                "launcherAttestationSha256",
+                "launcherChannelProtocol",
+                "launcherSessionId",
+                "launcherSha256",
+              ]
+            : value?.credentialKind === "persistent-actor"
+              ? []
+              : null;
   const acquiredAtMs = Date.parse(String(value?.leaseAcquiredAt ?? ""));
   const eventTimestampMs = Date.parse(String(eventTimestamp ?? ""));
   if (
@@ -8311,18 +8327,28 @@ function canonicalTaskAuthorizationProvenance(
     acquiredAtMs > eventTimestampMs ||
     (["owner-signed-capability", "owner-confirmation"].includes(
       value.credentialKind,
-    ) && actor !== "freed-owner") ||
+    ) &&
+      actor !== "freed-owner") ||
     (value.credentialKind === "signed-capability" &&
       actor !== "freed-pr-publisher") ||
     (value.credentialKind === "persistent-actor" &&
-      ["freed-owner", "freed-pr-publisher"].includes(actor))
+      ["freed-owner", "freed-pr-publisher"].includes(actor)) ||
+    (value.credentialKind === "trusted-launcher-channel" &&
+      (["freed-owner", "freed-pr-publisher"].includes(actor) ||
+        !SHA256_PATTERN.test(String(value.launcherSha256 ?? "")) ||
+        !SHA256_PATTERN.test(String(value.actorRuntimeDigest ?? "")) ||
+        value.launcherChannelProtocol !== ACTOR_LAUNCHER_CHANNEL_PROTOCOL ||
+        !SHA256_PATTERN.test(String(value.launcherAttestationSha256 ?? "")) ||
+        !SHA256_PATTERN.test(String(value.launcherSessionId ?? ""))))
   ) {
     return false;
   }
   if (
     value.credentialKind === "owner-signed-capability" &&
-    (!(typeof value.ownerCapabilityId === "string" &&
-      IDENTIFIER_PATTERN.test(value.ownerCapabilityId)) ||
+    (!(
+      typeof value.ownerCapabilityId === "string" &&
+      IDENTIFIER_PATTERN.test(value.ownerCapabilityId)
+    ) ||
       value.ownerCapabilityTaskId !== taskId ||
       !SHA256_PATTERN.test(value.ownerCapabilityIntentDigest))
   ) {
@@ -8336,14 +8362,17 @@ function canonicalTaskAuthorizationProvenance(
       String(value.ownerConfirmationExpiresAt ?? ""),
     );
     if (
-      !(typeof value.ownerConfirmationId === "string" &&
-        IDENTIFIER_PATTERN.test(value.ownerConfirmationId)) ||
+      !(
+        typeof value.ownerConfirmationId === "string" &&
+        IDENTIFIER_PATTERN.test(value.ownerConfirmationId)
+      ) ||
       value.ownerConfirmationTaskId !== taskId ||
       !SHA256_PATTERN.test(value.ownerConfirmationIntentDigest) ||
       !SHA256_PATTERN.test(value.ownerConfirmationDigest) ||
       typeof value.ownerConfirmationReference !== "string" ||
       value.ownerConfirmationReference.trim() === "" ||
-      value.ownerConfirmationReference !== value.ownerConfirmationReference.trim() ||
+      value.ownerConfirmationReference !==
+        value.ownerConfirmationReference.trim() ||
       value.ownerConfirmationApprovedBy !== "AubreyF" ||
       typeof value.ownerConfirmationApprovalReference !== "string" ||
       value.ownerConfirmationApprovalReference.trim() === "" ||
@@ -8362,8 +8391,10 @@ function canonicalTaskAuthorizationProvenance(
   }
   if (
     value.credentialKind === "signed-capability" &&
-    !(typeof value.publisherCapabilityId === "string" &&
-      IDENTIFIER_PATTERN.test(value.publisherCapabilityId))
+    !(
+      typeof value.publisherCapabilityId === "string" &&
+      IDENTIFIER_PATTERN.test(value.publisherCapabilityId)
+    )
   ) {
     return false;
   }
@@ -8480,7 +8511,8 @@ function canonicalTaskTransitionEvent(
   if (
     (data.outcomeRequired !== undefined && data.outcomeRequired !== true) ||
     (data.outcomeRequired === true && !OUTCOME_TASK_STATES.has(data.toState)) ||
-    (data.outcomeRequired === true && !SHA256_PATTERN.test(data.outcomeDigest)) ||
+    (data.outcomeRequired === true &&
+      !SHA256_PATTERN.test(data.outcomeDigest)) ||
     (data.outcomeDigest !== undefined &&
       !SHA256_PATTERN.test(data.outcomeDigest))
   ) {
@@ -8515,22 +8547,17 @@ function canonicalTaskCreatedEvent(
     event.data.state !== "observed" ||
     (!pinnedLegacyCreation && typeof event.data.behavioral !== "boolean") ||
     policy?.canCreateTask !== true ||
-    !canonicalTaskAuthorizationProvenance(
-      event.data.authorizationProvenance,
-      {
-        actor: event.actor,
-        taskId: event.taskId,
-        eventTimestamp: event.ts,
-        recordIndex: record.index,
-        records,
-        recordsByEventId,
-        acquisitionRecordsByKey,
-        leaseTimelinesByAcquisitionIndex,
-        leaseAcquisitionMode: pinnedLegacyCreation
-          ? "pinned-legacy"
-          : "current",
-      },
-    ) ||
+    !canonicalTaskAuthorizationProvenance(event.data.authorizationProvenance, {
+      actor: event.actor,
+      taskId: event.taskId,
+      eventTimestamp: event.ts,
+      recordIndex: record.index,
+      records,
+      recordsByEventId,
+      acquisitionRecordsByKey,
+      leaseTimelinesByAcquisitionIndex,
+      leaseAcquisitionMode: pinnedLegacyCreation ? "pinned-legacy" : "current",
+    }) ||
     (event.actor === "freed-runtime-observer" &&
       (event.observerAuthority !== "observe-only" ||
         event.providerAuthority !== "forbidden")) ||
@@ -8575,24 +8602,22 @@ function canonicalTaskAuthorityUpdatedEvent(
     typeof event.data.reason !== "string" ||
     event.data.reason.trim() === "" ||
     event.data.reason !== event.data.reason.trim() ||
-    !canonicalTaskAuthorizationProvenance(
-      event.data.authorizationProvenance,
-      {
-        actor: event.actor,
-        taskId: event.taskId,
-        eventTimestamp: event.ts,
-        recordIndex: record.index,
-        records,
-        recordsByEventId,
-        acquisitionRecordsByKey,
-        leaseTimelinesByAcquisitionIndex,
-      },
-    )
+    !canonicalTaskAuthorizationProvenance(event.data.authorizationProvenance, {
+      actor: event.actor,
+      taskId: event.taskId,
+      eventTimestamp: event.ts,
+      recordIndex: record.index,
+      records,
+      recordsByEventId,
+      acquisitionRecordsByKey,
+      leaseTimelinesByAcquisitionIndex,
+    })
   ) {
     return false;
   }
   const providerChanged =
-    event.data.before.providerAuthority !== event.data.after.providerAuthority ||
+    event.data.before.providerAuthority !==
+      event.data.after.providerAuthority ||
     event.data.before.providerApprovalReference !==
       event.data.after.providerApprovalReference;
   if (
@@ -8660,8 +8685,10 @@ function canonicalOutcomeReservationEvent(
     !OUTCOME_TASK_STATES.has(data.toState) ||
     !canonicalTaskEventPolicyAuthority(event, data.toState) ||
     !SHA256_PATTERN.test(data.outcomeDigest) ||
-    !(typeof data.legacyTransitionEventId === "string" &&
-      IDENTIFIER_PATTERN.test(data.legacyTransitionEventId)) ||
+    !(
+      typeof data.legacyTransitionEventId === "string" &&
+      IDENTIFIER_PATTERN.test(data.legacyTransitionEventId)
+    ) ||
     !canonicalTaskAuthorizationProvenance(data.authorizationProvenance, {
       actor: event.actor,
       taskId: event.taskId,
@@ -8808,7 +8835,10 @@ export function inspectExactTaskLifecycleHistory(events) {
       : [],
   );
   const eventIdCounts = new Map(
-    [...recordsByEventId].map(([eventId, matches]) => [eventId, matches.length]),
+    [...recordsByEventId].map(([eventId, matches]) => [
+      eventId,
+      matches.length,
+    ]),
   );
   const leaseHistory = inspectExactLeaseEventHistory(records, eventIdCounts);
   issues.push(...leaseHistory.issues);
@@ -8839,7 +8869,10 @@ export function inspectExactTaskLifecycleHistory(events) {
         `line ${record.lineNumber.toLocaleString()} does not advance the physical task manifest revision exactly once`,
       );
     }
-    if (Number.isInteger(event?.manifestRevision) && event.manifestRevision > 0) {
+    if (
+      Number.isInteger(event?.manifestRevision) &&
+      event.manifestRevision > 0
+    ) {
       lastManifestRevision =
         lastManifestRevision === null
           ? event.manifestRevision
@@ -9205,7 +9238,9 @@ function canonicalOutcomeRecordedEvent(event, ledgerPath = undefined) {
     event.schemaVersion !== AUTOMATION_CONTROL_SCHEMA_VERSION ||
     event.type !== "outcome_recorded" ||
     !isCanonicalIsoTimestamp(event.ts) ||
-    !(typeof event.taskId === "string" && IDENTIFIER_PATTERN.test(event.taskId)) ||
+    !(
+      typeof event.taskId === "string" && IDENTIFIER_PATTERN.test(event.taskId)
+    ) ||
     data.taskId !== event.taskId ||
     !Number.isInteger(data.taskRevision) ||
     data.taskRevision < 1 ||
@@ -9222,8 +9257,10 @@ function canonicalOutcomeRecordedEvent(event, ledgerPath = undefined) {
     path.resolve(data.ledgerPath) !== data.ledgerPath ||
     (ledgerPath !== undefined && data.ledgerPath !== ledgerPath) ||
     !SHA256_PATTERN.test(data.outcomeDigest) ||
-    !(typeof data.transitionEventId === "string" &&
-      IDENTIFIER_PATTERN.test(data.transitionEventId)) ||
+    !(
+      typeof data.transitionEventId === "string" &&
+      IDENTIFIER_PATTERN.test(data.transitionEventId)
+    ) ||
     !canonicalOutcomeEvidence(data.evidence) ||
     !automationActorCanRecordOutcome(event.actor, data.outcome) ||
     data.leaseName !== policy.leaseName
@@ -9237,7 +9274,9 @@ function canonicalOutcomeRecordedEvent(event, ledgerPath = undefined) {
       outcomeDigest: data.outcomeDigest,
       transitionEventId: data.transitionEventId,
     });
-    return event.eventId === deterministicId || isCanonicalUuidV4(event.eventId);
+    return (
+      event.eventId === deterministicId || isCanonicalUuidV4(event.eventId)
+    );
   } catch {
     return false;
   }
@@ -9441,8 +9480,7 @@ export function inspectExactOutcomeControlHistory(
       continue;
     }
     try {
-      const repairStateRoot =
-        stateRoot ?? event.data?.parameters?.stateRoot;
+      const repairStateRoot = stateRoot ?? event.data?.parameters?.stateRoot;
       const canonical = validateOutcomeLedgerRepairEventWithHistoryIndex(
         event,
         {
@@ -9630,6 +9668,15 @@ function leaseAuthorizationProvenance(lease, eventNowMs) {
     leaseName: lease.name,
     leaseAcquiredAt: lease.acquiredAt,
     credentialKind: lease.credentialKind,
+    ...(lease.launcherSha256 === undefined
+      ? {}
+      : {
+          launcherSha256: lease.launcherSha256,
+          actorRuntimeDigest: lease.actorRuntimeDigest,
+          launcherChannelProtocol: lease.launcherChannelProtocol,
+          launcherAttestationSha256: lease.launcherAttestationSha256,
+          launcherSessionId: lease.launcherSessionId,
+        }),
     ...(lease.ownerCapabilityId === undefined
       ? {}
       : {
@@ -10329,70 +10376,70 @@ export function createTask({
       stateRoot,
       nowMs,
       (manifest) => {
-    const { lease } = authorize();
-    const existing = manifest.tasks.find((task) => task.taskId === taskId);
-    if (existing) {
-      const idempotent =
-        existing.state === state &&
-        existing.observerAuthority === observerAuthority &&
-        existing.providerAuthority === providerAuthority &&
+        const { lease } = authorize();
+        const existing = manifest.tasks.find((task) => task.taskId === taskId);
+        if (existing) {
+          const idempotent =
+            existing.state === state &&
+            existing.observerAuthority === observerAuthority &&
+            existing.providerAuthority === providerAuthority &&
             existing.providerApprovalReference ===
               normalizedApprovalReference &&
-        taskBehavioralClassification(existing) === behavioral &&
+            taskBehavioralClassification(existing) === behavioral &&
             JSON.stringify(existing.details) ===
               JSON.stringify(normalizedDetails);
-      if (idempotent) {
+          if (idempotent) {
+            return {
+              changed: false,
+              result: {
+                changed: false,
+                manifestRevision: manifest.revision,
+                task: structuredClone(existing),
+              },
+            };
+          }
+          throw new AutomationControlError(
+            "task_exists",
+            `Task ${taskId} already exists.`,
+            {
+              taskId,
+              revision: existing.revision,
+            },
+          );
+        }
+
+        const timestamp = nowIso(nowMs);
+        const task = {
+          schemaVersion: AUTOMATION_CONTROL_SCHEMA_VERSION,
+          taskId,
+          state,
+          revision: 1,
+          behavioral,
+          observerAuthority,
+          providerAuthority,
+          ...(normalizedApprovalReference === undefined
+            ? {}
+            : { providerApprovalReference: normalizedApprovalReference }),
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          details: normalizedDetails,
+        };
+        manifest.tasks.push(task);
         return {
-          changed: false,
-          result: {
-            changed: false,
-            manifestRevision: manifest.revision,
-            task: structuredClone(existing),
+          changed: true,
+          manifest,
+          task,
+          actor,
+          eventType: "task_created",
+          eventData: {
+            behavioral,
+            state,
+            authorizationProvenance: leaseAuthorizationProvenance(lease, nowMs),
+            ...(normalizedApprovalReference === undefined
+              ? {}
+              : { approvalReference: normalizedApprovalReference }),
           },
         };
-      }
-      throw new AutomationControlError(
-        "task_exists",
-        `Task ${taskId} already exists.`,
-        {
-          taskId,
-          revision: existing.revision,
-        },
-      );
-    }
-
-    const timestamp = nowIso(nowMs);
-    const task = {
-      schemaVersion: AUTOMATION_CONTROL_SCHEMA_VERSION,
-      taskId,
-      state,
-      revision: 1,
-      behavioral,
-      observerAuthority,
-      providerAuthority,
-      ...(normalizedApprovalReference === undefined
-        ? {}
-        : { providerApprovalReference: normalizedApprovalReference }),
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      details: normalizedDetails,
-    };
-    manifest.tasks.push(task);
-    return {
-      changed: true,
-      manifest,
-      task,
-      actor,
-      eventType: "task_created",
-      eventData: {
-        behavioral,
-        state,
-        authorizationProvenance: leaseAuthorizationProvenance(lease, nowMs),
-        ...(normalizedApprovalReference === undefined
-          ? {}
-          : { approvalReference: normalizedApprovalReference }),
-      },
-    };
       },
       { beforeCommit: authorize },
     );
@@ -10489,224 +10536,228 @@ function reserveCurrentTaskOutcome({
       stateRoot,
       nowMs,
       (manifest) => {
-    const { policy, lease } = authorize();
-    const task = manifest.tasks.find(
-      (candidate) => candidate.taskId === taskId,
-    );
-    if (!task) {
-      throw new AutomationControlError(
-        "task_not_found",
-        `Task ${taskId} does not exist.`,
-        { taskId },
-      );
-    }
-    requireOwnerOutcomeSourceTask({ actor, taskId, guardContext, task });
+        const { policy, lease } = authorize();
+        const task = manifest.tasks.find(
+          (candidate) => candidate.taskId === taskId,
+        );
+        if (!task) {
+          throw new AutomationControlError(
+            "task_not_found",
+            `Task ${taskId} does not exist.`,
+            { taskId },
+          );
+        }
+        requireOwnerOutcomeSourceTask({ actor, taskId, guardContext, task });
         if (
           expectedRevision !== undefined &&
           task.revision !== expectedRevision
         ) {
-      throw new AutomationControlError(
-        "revision_conflict",
-        `Task ${taskId} is at revision ${task.revision}, not ${expectedRevision}.`,
-        { taskId, expectedRevision, actualRevision: task.revision },
-      );
-    }
-    if (task.pendingOutcome !== undefined) {
-      throw new AutomationControlError(
-        "outcome_pending",
-        `Task ${taskId} already has a pending outcome.`,
-        { taskId, pendingOutcome: structuredClone(task.pendingOutcome) },
-      );
-    }
-    if (task.state !== outcome) {
-      throw new AutomationControlError(
-        "invalid_transition",
-        `Task ${taskId} is ${task.state}, not ${outcome}.`,
-        { taskId, state: task.state, outcome },
-      );
-    }
-    if (task.details?.latestOutcome !== undefined) {
-      throw new AutomationControlError(
-        "outcome_reservation_mismatch",
-        `Task ${taskId} already records outcome details and cannot use legacy backfill.`,
-        { taskId, outcome },
-      );
-    }
-    if (outcome === "installed") {
-      const suppliedInstalledIdentity =
-        normalizedDetails.latestOutcome?.installedIdentity ??
-        normalizedDetails.latestOutcome?.buildIdentity;
-      if (suppliedInstalledIdentity === undefined) {
-        throw new AutomationControlError(
-          "outcome_reservation_mismatch",
-          `Task ${taskId} installed outcome backfill requires its exact canonical installed identity.`,
-          { taskId, outcome },
+          throw new AutomationControlError(
+            "revision_conflict",
+            `Task ${taskId} is at revision ${task.revision}, not ${expectedRevision}.`,
+            { taskId, expectedRevision, actualRevision: task.revision },
+          );
+        }
+        if (task.pendingOutcome !== undefined) {
+          throw new AutomationControlError(
+            "outcome_pending",
+            `Task ${taskId} already has a pending outcome.`,
+            { taskId, pendingOutcome: structuredClone(task.pendingOutcome) },
+          );
+        }
+        if (task.state !== outcome) {
+          throw new AutomationControlError(
+            "invalid_transition",
+            `Task ${taskId} is ${task.state}, not ${outcome}.`,
+            { taskId, state: task.state, outcome },
+          );
+        }
+        if (task.details?.latestOutcome !== undefined) {
+          throw new AutomationControlError(
+            "outcome_reservation_mismatch",
+            `Task ${taskId} already records outcome details and cannot use legacy backfill.`,
+            { taskId, outcome },
+          );
+        }
+        if (outcome === "installed") {
+          const suppliedInstalledIdentity =
+            normalizedDetails.latestOutcome?.installedIdentity ??
+            normalizedDetails.latestOutcome?.buildIdentity;
+          if (suppliedInstalledIdentity === undefined) {
+            throw new AutomationControlError(
+              "outcome_reservation_mismatch",
+              `Task ${taskId} installed outcome backfill requires its exact canonical installed identity.`,
+              { taskId, outcome },
+            );
+          }
+          const canonicalInstalledIdentity = normalizeInstalledBuildIdentity(
+            task.installedIdentity,
+            "task.installedIdentity",
+          );
+          const normalizedSuppliedIdentity = normalizeInstalledBuildIdentity(
+            suppliedInstalledIdentity,
+            "details.latestOutcome.installedIdentity",
+          );
+          if (
+            JSON.stringify(normalizedSuppliedIdentity) !==
+            JSON.stringify(canonicalInstalledIdentity)
+          ) {
+            throw new AutomationControlError(
+              "outcome_reservation_mismatch",
+              `Task ${taskId} installed outcome backfill does not match its canonical installed identity.`,
+              {
+                taskId,
+                outcome,
+                canonicalInstalledIdentity,
+                suppliedInstalledIdentity: normalizedSuppliedIdentity,
+              },
+            );
+          }
+        }
+        const historySnapshot = readControlEventHistorySnapshot(paths.events);
+        const historyInspection = requireExactOutcomeHistoryForTask({
+          events: historySnapshot.events,
+          ledgerPath: paths.outcomes,
+          manifest,
+          task,
+          errorCode: "outcome_reservation_mismatch",
+          message: `Task ${taskId} outcome backfill requires one exact healthy lifecycle history.`,
+        });
+        const legacyMatches =
+          historyInspection.recordsByEventId.get(legacyTransitionEventId) ?? [];
+        if (legacyMatches.length !== 1) {
+          throw new AutomationControlError(
+            "outcome_reservation_mismatch",
+            `Task ${taskId} requires one exact legacy lifecycle transition for outcome backfill.`,
+            { taskId, outcome, legacyTransitionEventId },
+          );
+        }
+        const [legacyRecord] = legacyMatches;
+        const legacyTransition = legacyRecord.entry;
+        const lifecycle = historyInspection.lifecycleByRecordIndex.get(
+          legacyRecord.index,
         );
-      }
-      const canonicalInstalledIdentity = normalizeInstalledBuildIdentity(
-        task.installedIdentity,
-        "task.installedIdentity",
-      );
-      const normalizedSuppliedIdentity = normalizeInstalledBuildIdentity(
-        suppliedInstalledIdentity,
-        "details.latestOutcome.installedIdentity",
-      );
-      if (
-        JSON.stringify(normalizedSuppliedIdentity) !==
-        JSON.stringify(canonicalInstalledIdentity)
-      ) {
-        throw new AutomationControlError(
-          "outcome_reservation_mismatch",
-          `Task ${taskId} installed outcome backfill does not match its canonical installed identity.`,
-          {
-            taskId,
-            outcome,
-            canonicalInstalledIdentity,
-            suppliedInstalledIdentity: normalizedSuppliedIdentity,
+        if (
+          lifecycle?.valid !== true ||
+          !historyInspection.canonicalTaskEventIndexes.has(
+            legacyRecord.index,
+          ) ||
+          legacyTransition.type !== "task_transitioned" ||
+          legacyTransition.taskId !== taskId ||
+          legacyTransition.taskRevision !== task.revision ||
+          legacyTransition.data?.toState !== outcome ||
+          typeof legacyTransition.data?.fromState !== "string" ||
+          !TASK_STATES.includes(legacyTransition.data.fromState) ||
+          !isTaskTransitionAllowed(legacyTransition.data.fromState, outcome) ||
+          legacyTransition.data?.outcomeDigest !== undefined ||
+          legacyTransition.data?.outcomeRequired !== undefined
+        ) {
+          throw new AutomationControlError(
+            "outcome_reservation_mismatch",
+            `Task ${taskId} legacy lifecycle transition cannot authorize outcome backfill.`,
+            { taskId, outcome, legacyTransitionEventId },
+          );
+        }
+        const existingOutcomeLinks = [
+          ...historyInspection.outcomes.values(),
+        ].filter(
+          (event) => event.data?.transitionEventId === legacyTransitionEventId,
+        );
+        if (existingOutcomeLinks.length !== 0) {
+          throw new AutomationControlError(
+            "outcome_reservation_mismatch",
+            `Task ${taskId} legacy lifecycle transition already has an authenticated outcome.`,
+            { taskId, outcome, legacyTransitionEventId },
+          );
+        }
+        if (outcome === "installed") {
+          let legacyInstalledIdentity;
+          try {
+            legacyInstalledIdentity = normalizeInstalledBuildIdentity(
+              legacyTransition.data?.installedIdentity,
+              "legacyTransition.data.installedIdentity",
+            );
+          } catch {
+            throw new AutomationControlError(
+              "outcome_reservation_mismatch",
+              `Task ${taskId} legacy installed transition has no canonical build identity.`,
+              { taskId, outcome, legacyTransitionEventId },
+            );
+          }
+          const canonicalInstalledIdentity = normalizeInstalledBuildIdentity(
+            task.installedIdentity,
+            "task.installedIdentity",
+          );
+          if (
+            !canonicalValuesEqual(
+              legacyInstalledIdentity,
+              canonicalInstalledIdentity,
+            ) ||
+            legacyTransition.data?.installedBuild !==
+              canonicalInstalledIdentity.version ||
+            legacyTransition.data?.installedAt !== task.installedAt
+          ) {
+            throw new AutomationControlError(
+              "outcome_reservation_mismatch",
+              `Task ${taskId} legacy installed transition does not match canonical installed state.`,
+              { taskId, outcome, legacyTransitionEventId },
+            );
+          }
+        }
+        if (!policy.destinations.includes(outcome)) {
+          throw new AutomationControlError(
+            "actor_not_authorized",
+            `Actor ${actor} cannot reserve ${outcome} outcomes.`,
+            { actor, outcome },
+          );
+        }
+        requireTaskTransitionAuthority(task, outcome);
+        const timestamp = nowIso(nowMs);
+        task.revision += 1;
+        task.updatedAt = timestamp;
+        task.details = {
+          ...task.details,
+          ...normalizedDetails,
+          behavioral: taskBehavioralClassification(task),
+        };
+        task.pendingOutcome = {
+          outcome,
+          outcomeDigest,
+          taskRevision: task.revision,
+        };
+        const eventId = outcomeReservationEventId({
+          taskId,
+          outcome,
+          outcomeDigest,
+          taskRevision: task.revision,
+          legacyTransitionEventId,
+        });
+        return {
+          changed: true,
+          manifest,
+          task,
+          actor,
+          eventId,
+          eventType: "outcome_reservation_created",
+          eventData: {
+            toState: outcome,
+            outcomeRequired: true,
+            outcomeBackfill: true,
+            outcomeDigest,
+            legacyTransitionEventId,
+            authorizationProvenance: leaseAuthorizationProvenance(lease, nowMs),
+            ...(outcome === "merged" && task.mergedAt !== undefined
+              ? { mergedAt: task.mergedAt }
+              : {}),
+            ...(outcome === "installed"
+              ? {
+                  installedBuild: task.installedBuild,
+                  installedIdentity: task.installedIdentity,
+                  installedAt: task.installedAt,
+                }
+              : {}),
           },
-        );
-      }
-    }
-    const historySnapshot = readControlEventHistorySnapshot(paths.events);
-    const historyInspection = requireExactOutcomeHistoryForTask({
-      events: historySnapshot.events,
-      ledgerPath: paths.outcomes,
-      manifest,
-      task,
-      errorCode: "outcome_reservation_mismatch",
-      message: `Task ${taskId} outcome backfill requires one exact healthy lifecycle history.`,
-    });
-    const legacyMatches =
-      historyInspection.recordsByEventId.get(legacyTransitionEventId) ?? [];
-    if (legacyMatches.length !== 1) {
-      throw new AutomationControlError(
-        "outcome_reservation_mismatch",
-        `Task ${taskId} requires one exact legacy lifecycle transition for outcome backfill.`,
-        { taskId, outcome, legacyTransitionEventId },
-      );
-    }
-    const [legacyRecord] = legacyMatches;
-    const legacyTransition = legacyRecord.entry;
-    const lifecycle = historyInspection.lifecycleByRecordIndex.get(
-      legacyRecord.index,
-    );
-    if (
-      lifecycle?.valid !== true ||
-      !historyInspection.canonicalTaskEventIndexes.has(legacyRecord.index) ||
-      legacyTransition.type !== "task_transitioned" ||
-      legacyTransition.taskId !== taskId ||
-      legacyTransition.taskRevision !== task.revision ||
-      legacyTransition.data?.toState !== outcome ||
-      typeof legacyTransition.data?.fromState !== "string" ||
-      !TASK_STATES.includes(legacyTransition.data.fromState) ||
-      !isTaskTransitionAllowed(legacyTransition.data.fromState, outcome) ||
-      legacyTransition.data?.outcomeDigest !== undefined ||
-      legacyTransition.data?.outcomeRequired !== undefined
-    ) {
-      throw new AutomationControlError(
-        "outcome_reservation_mismatch",
-        `Task ${taskId} legacy lifecycle transition cannot authorize outcome backfill.`,
-        { taskId, outcome, legacyTransitionEventId },
-      );
-    }
-    const existingOutcomeLinks = [...historyInspection.outcomes.values()].filter(
-      (event) => event.data?.transitionEventId === legacyTransitionEventId,
-    );
-    if (existingOutcomeLinks.length !== 0) {
-      throw new AutomationControlError(
-        "outcome_reservation_mismatch",
-        `Task ${taskId} legacy lifecycle transition already has an authenticated outcome.`,
-        { taskId, outcome, legacyTransitionEventId },
-      );
-    }
-    if (outcome === "installed") {
-      let legacyInstalledIdentity;
-      try {
-        legacyInstalledIdentity = normalizeInstalledBuildIdentity(
-          legacyTransition.data?.installedIdentity,
-          "legacyTransition.data.installedIdentity",
-        );
-      } catch {
-        throw new AutomationControlError(
-          "outcome_reservation_mismatch",
-          `Task ${taskId} legacy installed transition has no canonical build identity.`,
-          { taskId, outcome, legacyTransitionEventId },
-        );
-      }
-      const canonicalInstalledIdentity = normalizeInstalledBuildIdentity(
-        task.installedIdentity,
-        "task.installedIdentity",
-      );
-      if (
-        !canonicalValuesEqual(
-          legacyInstalledIdentity,
-          canonicalInstalledIdentity,
-        ) ||
-        legacyTransition.data?.installedBuild !==
-          canonicalInstalledIdentity.version ||
-        legacyTransition.data?.installedAt !== task.installedAt
-      ) {
-        throw new AutomationControlError(
-          "outcome_reservation_mismatch",
-          `Task ${taskId} legacy installed transition does not match canonical installed state.`,
-          { taskId, outcome, legacyTransitionEventId },
-        );
-      }
-    }
-    if (!policy.destinations.includes(outcome)) {
-      throw new AutomationControlError(
-        "actor_not_authorized",
-        `Actor ${actor} cannot reserve ${outcome} outcomes.`,
-        { actor, outcome },
-      );
-    }
-    requireTaskTransitionAuthority(task, outcome);
-    const timestamp = nowIso(nowMs);
-    task.revision += 1;
-    task.updatedAt = timestamp;
-    task.details = {
-      ...task.details,
-      ...normalizedDetails,
-      behavioral: taskBehavioralClassification(task),
-    };
-    task.pendingOutcome = {
-      outcome,
-      outcomeDigest,
-      taskRevision: task.revision,
-    };
-    const eventId = outcomeReservationEventId({
-      taskId,
-      outcome,
-      outcomeDigest,
-      taskRevision: task.revision,
-      legacyTransitionEventId,
-    });
-    return {
-      changed: true,
-      manifest,
-      task,
-      actor,
-      eventId,
-      eventType: "outcome_reservation_created",
-      eventData: {
-        toState: outcome,
-        outcomeRequired: true,
-        outcomeBackfill: true,
-        outcomeDigest,
-        legacyTransitionEventId,
-        authorizationProvenance: leaseAuthorizationProvenance(lease, nowMs),
-        ...(outcome === "merged" && task.mergedAt !== undefined
-          ? { mergedAt: task.mergedAt }
-          : {}),
-        ...(outcome === "installed"
-          ? {
-              installedBuild: task.installedBuild,
-              installedIdentity: task.installedIdentity,
-              installedAt: task.installedAt,
-            }
-          : {}),
-      },
-    };
+        };
       },
       { beforeCommit: authorize, guardContext },
     );
@@ -10784,10 +10835,10 @@ export function transitionTask({
   };
   const execute = (authorityContext) => {
     const authorize = () => {
-    return requireMutationLease({
+      return requireMutationLease({
         ...authority,
         authorityContext,
-    });
+      });
     };
     authorize();
 
@@ -10795,284 +10846,287 @@ export function transitionTask({
       stateRoot,
       nowMs,
       (manifest) => {
-    const { policy, lease } = authorize();
-    const task = manifest.tasks.find(
-      (candidate) => candidate.taskId === taskId,
-    );
-    if (!task) {
-      throw new AutomationControlError(
-        "task_not_found",
-        `Task ${taskId} does not exist.`,
-        { taskId },
-      );
-    }
-    if (requiresCompositeOutcomeIntent) {
-      requireOwnerOutcomeSourceTask({ actor, taskId, guardContext, task });
-    }
+        const { policy, lease } = authorize();
+        const task = manifest.tasks.find(
+          (candidate) => candidate.taskId === taskId,
+        );
+        if (!task) {
+          throw new AutomationControlError(
+            "task_not_found",
+            `Task ${taskId} does not exist.`,
+            { taskId },
+          );
+        }
+        if (requiresCompositeOutcomeIntent) {
+          requireOwnerOutcomeSourceTask({ actor, taskId, guardContext, task });
+        }
         if (
           expectedRevision !== undefined &&
           task.revision !== expectedRevision
         ) {
-      throw new AutomationControlError(
-        "revision_conflict",
-        `Task ${taskId} is at revision ${task.revision}, not ${expectedRevision}.`,
-        { taskId, expectedRevision, actualRevision: task.revision },
-      );
-    }
-    if (task.state === toState && normalizedDetails === undefined) {
-      return {
-        changed: false,
-        result: {
-          changed: false,
-          manifestRevision: manifest.revision,
-          task: structuredClone(task),
-        },
-      };
-    }
-    if (task.pendingOutcome !== undefined) {
-      throw new AutomationControlError(
-        "outcome_pending",
-        `Task ${taskId} cannot mutate ${task.state} until its pending outcome is durable.`,
-        {
-          taskId,
-          state: task.state,
-          pendingOutcome: structuredClone(task.pendingOutcome),
-        },
-      );
-    }
-    if (!policy.destinations.includes(toState)) {
-      throw new AutomationControlError(
-        "actor_not_authorized",
-        `Actor ${actor} cannot transition tasks to ${toState}.`,
-        { actor, toState },
-      );
-    }
-    const currentBehavioral = taskBehavioralClassification(task);
-    const requestedBehavioral = normalizedDetails?.behavioral;
-    if (
-      typeof currentBehavioral === "boolean" &&
-      requestedBehavioral !== undefined &&
-      requestedBehavioral !== currentBehavioral
-    ) {
-      throw new AutomationControlError(
-        "behavioral_classification_immutable",
-        `Task ${taskId} cannot change its behavioral classification.`,
-        { taskId, behavioral: currentBehavioral, requestedBehavioral },
-      );
-    }
-    if (
-      currentBehavioral === undefined &&
-      !["observed", "triaged"].includes(task.state)
-    ) {
-      throw new AutomationControlError(
-        "behavioral_classification_required",
-        `Task ${taskId} must be classified before it enters the executable lifecycle.`,
-        { taskId, state: task.state },
-      );
-    }
-    const nextBehavioral = currentBehavioral ?? requestedBehavioral;
-    if (
-      ACTIVE_BEHAVIOR_TASK_STATES.has(toState) &&
-      typeof nextBehavioral !== "boolean"
-    ) {
-      throw new AutomationControlError(
-        "behavioral_classification_required",
-        `Task ${taskId} requires an explicit behavioral classification before ${toState}.`,
-        { taskId, toState },
-      );
-    }
+          throw new AutomationControlError(
+            "revision_conflict",
+            `Task ${taskId} is at revision ${task.revision}, not ${expectedRevision}.`,
+            { taskId, expectedRevision, actualRevision: task.revision },
+          );
+        }
+        if (task.state === toState && normalizedDetails === undefined) {
+          return {
+            changed: false,
+            result: {
+              changed: false,
+              manifestRevision: manifest.revision,
+              task: structuredClone(task),
+            },
+          };
+        }
+        if (task.pendingOutcome !== undefined) {
+          throw new AutomationControlError(
+            "outcome_pending",
+            `Task ${taskId} cannot mutate ${task.state} until its pending outcome is durable.`,
+            {
+              taskId,
+              state: task.state,
+              pendingOutcome: structuredClone(task.pendingOutcome),
+            },
+          );
+        }
+        if (!policy.destinations.includes(toState)) {
+          throw new AutomationControlError(
+            "actor_not_authorized",
+            `Actor ${actor} cannot transition tasks to ${toState}.`,
+            { actor, toState },
+          );
+        }
+        const currentBehavioral = taskBehavioralClassification(task);
+        const requestedBehavioral = normalizedDetails?.behavioral;
+        if (
+          typeof currentBehavioral === "boolean" &&
+          requestedBehavioral !== undefined &&
+          requestedBehavioral !== currentBehavioral
+        ) {
+          throw new AutomationControlError(
+            "behavioral_classification_immutable",
+            `Task ${taskId} cannot change its behavioral classification.`,
+            { taskId, behavioral: currentBehavioral, requestedBehavioral },
+          );
+        }
+        if (
+          currentBehavioral === undefined &&
+          !["observed", "triaged"].includes(task.state)
+        ) {
+          throw new AutomationControlError(
+            "behavioral_classification_required",
+            `Task ${taskId} must be classified before it enters the executable lifecycle.`,
+            { taskId, state: task.state },
+          );
+        }
+        const nextBehavioral = currentBehavioral ?? requestedBehavioral;
+        if (
+          ACTIVE_BEHAVIOR_TASK_STATES.has(toState) &&
+          typeof nextBehavioral !== "boolean"
+        ) {
+          throw new AutomationControlError(
+            "behavioral_classification_required",
+            `Task ${taskId} requires an explicit behavioral classification before ${toState}.`,
+            { taskId, toState },
+          );
+        }
         if (
           nextBehavioral === true &&
           ACTIVE_BEHAVIOR_TASK_STATES.has(toState)
         ) {
-      const conflictingTask = manifest.tasks.find(
-        (candidate) =>
-          candidate.taskId !== taskId &&
-          taskBehavioralClassification(candidate) === true &&
-          taskHoldsBehaviorSlot(candidate),
-      );
-      if (conflictingTask) {
-        throw new AutomationControlError(
-          "behavior_slot_conflict",
-          `Task ${taskId} cannot enter ${toState} while behavioral task ${conflictingTask.taskId} is ${conflictingTask.state}.`,
-          {
-            taskId,
+          const conflictingTask = manifest.tasks.find(
+            (candidate) =>
+              candidate.taskId !== taskId &&
+              taskBehavioralClassification(candidate) === true &&
+              taskHoldsBehaviorSlot(candidate),
+          );
+          if (conflictingTask) {
+            throw new AutomationControlError(
+              "behavior_slot_conflict",
+              `Task ${taskId} cannot enter ${toState} while behavioral task ${conflictingTask.taskId} is ${conflictingTask.state}.`,
+              {
+                taskId,
+                toState,
+                conflictingTaskId: conflictingTask.taskId,
+                conflictingTaskState: conflictingTask.state,
+              },
+            );
+          }
+        }
+        requireTaskTransitionAuthority(task, toState);
+        if (!isTaskTransitionAllowed(task.state, toState)) {
+          throw new AutomationControlError(
+            "invalid_transition",
+            `Task ${taskId} cannot transition from ${task.state} to ${toState}.`,
+            { taskId, fromState: task.state, toState },
+          );
+        }
+        if (
+          !taskProviderAuthorityAllowsTransition(
+            task.providerAuthority,
             toState,
-            conflictingTaskId: conflictingTask.taskId,
-            conflictingTaskState: conflictingTask.state,
-          },
-        );
-      }
-    }
-    requireTaskTransitionAuthority(task, toState);
-    if (!isTaskTransitionAllowed(task.state, toState)) {
-      throw new AutomationControlError(
-        "invalid_transition",
-        `Task ${taskId} cannot transition from ${task.state} to ${toState}.`,
-        { taskId, fromState: task.state, toState },
-      );
-    }
-    if (
-      !taskProviderAuthorityAllowsTransition(task.providerAuthority, toState)
-    ) {
-      throw new AutomationControlError(
-        "provider_approval_required",
-        `Task ${taskId} requires owner provider approval before ${toState}.`,
-        { taskId, toState },
-      );
-    }
-    if (
-      nextBehavioral === true &&
-      ["superseded", "closed", "triaged"].includes(toState) &&
-      !COMPLETED_BEHAVIOR_TASK_STATES.has(task.state) &&
-      (task.mergedAt !== undefined ||
-        task.installedAt !== undefined ||
+          )
+        ) {
+          throw new AutomationControlError(
+            "provider_approval_required",
+            `Task ${taskId} requires owner provider approval before ${toState}.`,
+            { taskId, toState },
+          );
+        }
+        if (
+          nextBehavioral === true &&
+          ["superseded", "closed", "triaged"].includes(toState) &&
+          !COMPLETED_BEHAVIOR_TASK_STATES.has(task.state) &&
+          (task.mergedAt !== undefined ||
+            task.installedAt !== undefined ||
             ["merged", "installed", "soaking", "inconclusive"].includes(
               task.state,
             ))
-    ) {
-      throw new AutomationControlError(
-        "behavior_outcome_required",
-        `Merged behavioral task ${taskId} cannot leave the behavior slot before a conclusive verifier outcome.`,
-        { taskId, state: task.state },
-      );
-    }
-    if (task.state === "closed" && toState === "triaged") {
-      const evidenceWindowEnd = normalizedDetails?.evidenceWindowEnd;
+        ) {
+          throw new AutomationControlError(
+            "behavior_outcome_required",
+            `Merged behavioral task ${taskId} cannot leave the behavior slot before a conclusive verifier outcome.`,
+            { taskId, state: task.state },
+          );
+        }
+        if (task.state === "closed" && toState === "triaged") {
+          const evidenceWindowEnd = normalizedDetails?.evidenceWindowEnd;
           const evidenceWindowEndMs = Date.parse(
             String(evidenceWindowEnd ?? ""),
           );
-      const closedAtMs = Date.parse(task.updatedAt);
-      if (
-        !Number.isFinite(evidenceWindowEndMs) ||
-        evidenceWindowEndMs <= closedAtMs
-      ) {
-        throw new AutomationControlError(
-          "stale_reopen_evidence",
-          `Task ${taskId} can reopen only from evidence newer than ${task.updatedAt}.`,
-          { taskId, taskUpdatedAt: task.updatedAt, evidenceWindowEnd },
-        );
-      }
-    }
-    const guardedOutcomeWriter =
-      guardContext?.token === OUTCOME_RECORDING_GUARD;
-    const suppliedOutcome = normalizedDetails?.latestOutcome;
-    if (
-      (OUTCOME_TASK_STATES.has(toState) && !guardedOutcomeWriter) ||
-      (guardedOutcomeWriter &&
-        OUTCOME_TASK_STATES.has(toState) &&
-        (suppliedOutcome?.outcome !== toState ||
-          !/^[0-9a-f]{64}$/i.test(
-            String(suppliedOutcome?.outcomeDigest ?? ""),
-          )))
-    ) {
-      throw new AutomationControlError(
-        "outcome_record_required",
-        `Task ${taskId} must enter ${toState} through the authenticated outcome writer.`,
-        { taskId, toState },
-      );
-    }
+          const closedAtMs = Date.parse(task.updatedAt);
+          if (
+            !Number.isFinite(evidenceWindowEndMs) ||
+            evidenceWindowEndMs <= closedAtMs
+          ) {
+            throw new AutomationControlError(
+              "stale_reopen_evidence",
+              `Task ${taskId} can reopen only from evidence newer than ${task.updatedAt}.`,
+              { taskId, taskUpdatedAt: task.updatedAt, evidenceWindowEnd },
+            );
+          }
+        }
+        const guardedOutcomeWriter =
+          guardContext?.token === OUTCOME_RECORDING_GUARD;
+        const suppliedOutcome = normalizedDetails?.latestOutcome;
+        if (
+          (OUTCOME_TASK_STATES.has(toState) && !guardedOutcomeWriter) ||
+          (guardedOutcomeWriter &&
+            OUTCOME_TASK_STATES.has(toState) &&
+            (suppliedOutcome?.outcome !== toState ||
+              !/^[0-9a-f]{64}$/i.test(
+                String(suppliedOutcome?.outcomeDigest ?? ""),
+              )))
+        ) {
+          throw new AutomationControlError(
+            "outcome_record_required",
+            `Task ${taskId} must enter ${toState} through the authenticated outcome writer.`,
+            { taskId, toState },
+          );
+        }
 
-    const fromState = task.state;
-    const previousUpdatedAt = task.updatedAt;
-    const timestamp = nowIso(nowMs);
-    let installedIdentity;
-    if (toState === "installed") {
-      installedIdentity = normalizeInstalledBuildIdentity(
-        normalizedDetails?.installedIdentity ??
-          normalizedDetails?.latestOutcome?.installedIdentity ??
-          normalizedDetails?.latestOutcome?.buildIdentity,
-      );
-    }
-    if (toState === "soaking") {
-      installedIdentity = task.installedIdentity;
-      if (installedIdentity === undefined) {
-        throw new AutomationControlError(
-          "installed_identity_required",
-          `Task ${taskId} requires canonical installed version, commit, and channel identity before soaking.`,
-          { taskId },
-        );
-      }
+        const fromState = task.state;
+        const previousUpdatedAt = task.updatedAt;
+        const timestamp = nowIso(nowMs);
+        let installedIdentity;
+        if (toState === "installed") {
+          installedIdentity = normalizeInstalledBuildIdentity(
+            normalizedDetails?.installedIdentity ??
+              normalizedDetails?.latestOutcome?.installedIdentity ??
+              normalizedDetails?.latestOutcome?.buildIdentity,
+          );
+        }
+        if (toState === "soaking") {
+          installedIdentity = task.installedIdentity;
+          if (installedIdentity === undefined) {
+            throw new AutomationControlError(
+              "installed_identity_required",
+              `Task ${taskId} requires canonical installed version, commit, and channel identity before soaking.`,
+              { taskId },
+            );
+          }
           installedIdentity =
             normalizeInstalledBuildIdentity(installedIdentity);
-    }
-    task.state = toState;
-    task.revision += 1;
-    task.updatedAt = timestamp;
-    if (typeof nextBehavioral === "boolean") {
-      task.behavioral = nextBehavioral;
-    }
-    if (normalizedDetails !== undefined) {
-      task.details = {
-        ...normalizedDetails,
-        ...(typeof nextBehavioral === "boolean"
-          ? { behavioral: nextBehavioral }
-          : {}),
-      };
-    } else if (typeof nextBehavioral === "boolean") {
-      task.details.behavioral = nextBehavioral;
-    }
-    if (toState === "merged") {
-      task.mergedAt = timestamp;
-    } else if (toState === "installed") {
-      task.installedIdentity = installedIdentity;
-      task.installedBuild = installedIdentity.version;
-      task.installedAt = timestamp;
-      delete task.soakStartedAt;
-    } else if (toState === "soaking") {
-      task.installedIdentity = installedIdentity;
-      task.installedBuild = installedIdentity.version;
-      task.installedAt =
-        task.installedAt ??
-        requireIsoTimestamp(previousUpdatedAt, "installedAt");
-      task.soakStartedAt = timestamp;
-    }
-    const outcomeDigest = normalizedDetails?.latestOutcome?.outcomeDigest;
-    const outcomeWriterTransition =
-      guardContext?.token === OUTCOME_RECORDING_GUARD &&
-      OUTCOME_TASK_STATES.has(toState) &&
-      normalizedDetails?.latestOutcome?.outcome === toState &&
-      /^[0-9a-f]{64}$/i.test(String(outcomeDigest ?? ""));
-    if (outcomeWriterTransition) {
-      task.pendingOutcome = {
-        outcome: toState,
-        outcomeDigest: outcomeDigest.toLowerCase(),
-        taskRevision: task.revision,
-      };
-    }
-    return {
-      changed: true,
-      manifest,
-      task,
-      actor,
-      eventType: "task_transitioned",
-      eventData: {
-        fromState,
-        toState,
-        authorizationProvenance: leaseAuthorizationProvenance(lease, nowMs),
+        }
+        task.state = toState;
+        task.revision += 1;
+        task.updatedAt = timestamp;
+        if (typeof nextBehavioral === "boolean") {
+          task.behavioral = nextBehavioral;
+        }
+        if (normalizedDetails !== undefined) {
+          task.details = {
+            ...normalizedDetails,
+            ...(typeof nextBehavioral === "boolean"
+              ? { behavioral: nextBehavioral }
+              : {}),
+          };
+        } else if (typeof nextBehavioral === "boolean") {
+          task.details.behavioral = nextBehavioral;
+        }
+        if (toState === "merged") {
+          task.mergedAt = timestamp;
+        } else if (toState === "installed") {
+          task.installedIdentity = installedIdentity;
+          task.installedBuild = installedIdentity.version;
+          task.installedAt = timestamp;
+          delete task.soakStartedAt;
+        } else if (toState === "soaking") {
+          task.installedIdentity = installedIdentity;
+          task.installedBuild = installedIdentity.version;
+          task.installedAt =
+            task.installedAt ??
+            requireIsoTimestamp(previousUpdatedAt, "installedAt");
+          task.soakStartedAt = timestamp;
+        }
+        const outcomeDigest = normalizedDetails?.latestOutcome?.outcomeDigest;
+        const outcomeWriterTransition =
+          guardContext?.token === OUTCOME_RECORDING_GUARD &&
+          OUTCOME_TASK_STATES.has(toState) &&
+          normalizedDetails?.latestOutcome?.outcome === toState &&
+          /^[0-9a-f]{64}$/i.test(String(outcomeDigest ?? ""));
+        if (outcomeWriterTransition) {
+          task.pendingOutcome = {
+            outcome: toState,
+            outcomeDigest: outcomeDigest.toLowerCase(),
+            taskRevision: task.revision,
+          };
+        }
+        return {
+          changed: true,
+          manifest,
+          task,
+          actor,
+          eventType: "task_transitioned",
+          eventData: {
+            fromState,
+            toState,
+            authorizationProvenance: leaseAuthorizationProvenance(lease, nowMs),
             ...(outcomeWriterTransition ? { outcomeRequired: true } : {}),
-        ...(typeof outcomeDigest === "string" &&
-        /^[0-9a-f]{64}$/i.test(outcomeDigest)
-          ? { outcomeDigest: outcomeDigest.toLowerCase() }
-          : {}),
-        ...(toState === "installed"
-          ? {
-              installedBuild: task.installedBuild,
-              installedIdentity: task.installedIdentity,
-              installedAt: task.installedAt,
-            }
-          : {}),
-        ...(toState === "merged" ? { mergedAt: task.mergedAt } : {}),
-        ...(toState === "soaking"
-          ? {
-              installedBuild: task.installedBuild,
-              installedIdentity: task.installedIdentity,
-              installedAt: task.installedAt,
-              soakStartedAt: task.soakStartedAt,
-            }
-          : {}),
-      },
-    };
+            ...(typeof outcomeDigest === "string" &&
+            /^[0-9a-f]{64}$/i.test(outcomeDigest)
+              ? { outcomeDigest: outcomeDigest.toLowerCase() }
+              : {}),
+            ...(toState === "installed"
+              ? {
+                  installedBuild: task.installedBuild,
+                  installedIdentity: task.installedIdentity,
+                  installedAt: task.installedAt,
+                }
+              : {}),
+            ...(toState === "merged" ? { mergedAt: task.mergedAt } : {}),
+            ...(toState === "soaking"
+              ? {
+                  installedBuild: task.installedBuild,
+                  installedIdentity: task.installedIdentity,
+                  installedAt: task.installedAt,
+                  soakStartedAt: task.soakStartedAt,
+                }
+              : {}),
+          },
+        };
       },
       { beforeCommit: authorize, guardContext },
     );
@@ -11193,22 +11247,22 @@ function readCanonicalOutcomeLedgerSnapshot(filePath) {
         index === lines.length - 1 && raw.length === 0;
       if (isTrailingTerminator) continue;
       if (!raw.trim()) {
-    throw new AutomationControlError(
-      "outcome_not_durable",
+        throw new AutomationControlError(
+          "outcome_not_durable",
           `Canonical outcome ledger contains a blank physical line at ${(index + 1).toLocaleString()}.`,
           { filePath, line: index + 1 },
-    );
-  }
-    try {
-      entries.push(JSON.parse(raw));
-    } catch {
-      throw new AutomationControlError(
-        "outcome_not_durable",
+        );
+      }
+      try {
+        entries.push(JSON.parse(raw));
+      } catch {
+        throw new AutomationControlError(
+          "outcome_not_durable",
           `Canonical outcome ledger contains malformed JSON on line ${(index + 1).toLocaleString()}.`,
-        { filePath, line: index + 1 },
-      );
+          { filePath, line: index + 1 },
+        );
+      }
     }
-  }
     return { bytes: buffer.subarray(0, offset), entries };
   } catch (error) {
     if (error instanceof AutomationControlError) throw error;
@@ -11253,10 +11307,14 @@ function canonicalOutcomeLedgerEntry(entry) {
   const keys = Object.keys(entry ?? {});
   if (
     requiredKeys.some((key) => !keys.includes(key)) ||
-    keys.some((key) => !requiredKeys.includes(key) && !optionalKeys.includes(key)) ||
+    keys.some(
+      (key) => !requiredKeys.includes(key) && !optionalKeys.includes(key),
+    ) ||
     entry.schemaVersion !== OUTCOME_LEDGER_SCHEMA_VERSION ||
     !isCanonicalIsoTimestamp(entry.ts) ||
-    !(typeof entry.taskId === "string" && IDENTIFIER_PATTERN.test(entry.taskId)) ||
+    !(
+      typeof entry.taskId === "string" && IDENTIFIER_PATTERN.test(entry.taskId)
+    ) ||
     typeof entry.id !== "string" ||
     entry.id.trim() === "" ||
     entry.id !== entry.id.trim() ||
@@ -11277,15 +11335,22 @@ function canonicalOutcomeLedgerEntry(entry) {
     !SHA256_PATTERN.test(entry.authentication.outcomeDigest) ||
     !Number.isInteger(entry.authentication.taskRevision) ||
     entry.authentication.taskRevision < 1 ||
-    !(typeof entry.authentication.controlEventId === "string" &&
-      IDENTIFIER_PATTERN.test(entry.authentication.controlEventId)) ||
-    !(typeof entry.authentication.transitionEventId === "string" &&
-      IDENTIFIER_PATTERN.test(entry.authentication.transitionEventId)) ||
+    !(
+      typeof entry.authentication.controlEventId === "string" &&
+      IDENTIFIER_PATTERN.test(entry.authentication.controlEventId)
+    ) ||
+    !(
+      typeof entry.authentication.transitionEventId === "string" &&
+      IDENTIFIER_PATTERN.test(entry.authentication.transitionEventId)
+    ) ||
     (entry.build === undefined) !== (entry.buildIdentity === undefined)
   ) {
     return false;
   }
-  if (entry.evidenceWindowEnd !== undefined && entry.evidenceWindowEnd !== null) {
+  if (
+    entry.evidenceWindowEnd !== undefined &&
+    entry.evidenceWindowEnd !== null
+  ) {
     if (!isCanonicalIsoTimestamp(entry.evidenceWindowEnd)) return false;
   }
   if (entry.buildIdentity !== undefined) {
@@ -11373,7 +11438,7 @@ function requireDurableOutcomeReservation({
         filePath: paths.events,
         cause: error instanceof Error ? error.message : String(error),
       },
-  );
+    );
   }
   const historyInspection = requireExactOutcomeHistoryForTask({
     events,
@@ -11386,7 +11451,8 @@ function requireDurableOutcomeReservation({
   const controlEvents =
     historyInspection.recordsByEventId.get(authentication.controlEventId) ?? [];
   const transitionEvents =
-    historyInspection.recordsByEventId.get(authentication.transitionEventId) ?? [];
+    historyInspection.recordsByEventId.get(authentication.transitionEventId) ??
+    [];
   if (controlEvents.length !== 1 || transitionEvents.length !== 1) {
     throw new AutomationControlError(
       "outcome_not_durable",
@@ -11576,18 +11642,18 @@ export function finalizeTaskOutcome({
   };
   const execute = (authorityContext) => {
     const authorize = () => {
-    const { lease, policy } = requireMutationLease({
+      const { lease, policy } = requireMutationLease({
         ...authority,
         authorityContext,
-    });
-    requireLeaseAuthorizedEventTime(lease, nowMs);
-    if (!policy.destinations.includes(outcome)) {
-      throw new AutomationControlError(
-        "actor_not_authorized",
-        `Actor ${actor} cannot finalize ${outcome} outcomes.`,
-        { actor, outcome },
-      );
-    }
+      });
+      requireLeaseAuthorizedEventTime(lease, nowMs);
+      if (!policy.destinations.includes(outcome)) {
+        throw new AutomationControlError(
+          "actor_not_authorized",
+          `Actor ${actor} cannot finalize ${outcome} outcomes.`,
+          { actor, outcome },
+        );
+      }
     };
     authorize();
 
@@ -11596,81 +11662,81 @@ export function finalizeTaskOutcome({
       paths.stateRoot,
       nowMs,
       (manifest) => {
-    authorize();
-    const task = manifest.tasks.find(
-      (candidate) => candidate.taskId === taskId,
-    );
-    if (!task) {
-      throw new AutomationControlError(
-        "task_not_found",
-        `Task ${taskId} does not exist.`,
-        { taskId },
-      );
-    }
-    const matchesDurableOutcome =
-      task.state === outcome &&
-      task.revision === taskRevision &&
-      task.details?.latestOutcome?.outcome === outcome &&
+        authorize();
+        const task = manifest.tasks.find(
+          (candidate) => candidate.taskId === taskId,
+        );
+        if (!task) {
+          throw new AutomationControlError(
+            "task_not_found",
+            `Task ${taskId} does not exist.`,
+            { taskId },
+          );
+        }
+        const matchesDurableOutcome =
+          task.state === outcome &&
+          task.revision === taskRevision &&
+          task.details?.latestOutcome?.outcome === outcome &&
           String(
             task.details?.latestOutcome?.outcomeDigest ?? "",
           ).toLowerCase() === normalizedDigest;
-    if (!matchesDurableOutcome) {
-      throw new AutomationControlError(
-        "outcome_reservation_mismatch",
-        `Task ${taskId} does not match the outcome reservation being finalized.`,
-        { taskId, outcome, taskRevision },
-      );
-    }
-    if (task.pendingOutcome === undefined) {
-      requireDurableOutcomeReservation({
-        paths,
-        manifest,
-        task,
-        actor,
-        leaseName,
-        outcome,
-        outcomeDigest: normalizedDigest,
-        taskRevision,
-      });
-      return {
-        changed: false,
-        result: {
-          changed: false,
-          manifestRevision: manifest.revision,
-          task: structuredClone(task),
-        },
-      };
-    }
-    if (
-      task.pendingOutcome.outcome !== outcome ||
-      task.pendingOutcome.taskRevision !== taskRevision ||
-      task.pendingOutcome.outcomeDigest !== normalizedDigest
-    ) {
-      throw new AutomationControlError(
-        "outcome_reservation_mismatch",
-        `Task ${taskId} has a different pending outcome reservation.`,
-        { taskId, pendingOutcome: structuredClone(task.pendingOutcome) },
-      );
-    }
-    requireDurableOutcomeReservation({
-      paths,
-      manifest,
-      task,
-      actor,
-      leaseName,
-      outcome,
-      outcomeDigest: normalizedDigest,
-      taskRevision,
-    });
-    delete task.pendingOutcome;
-    return {
-      changed: true,
-      manifest,
-      task,
-      actor,
-      eventType: "outcome_reservation_finalized",
-      eventData: { outcome, outcomeDigest: normalizedDigest, taskRevision },
-    };
+        if (!matchesDurableOutcome) {
+          throw new AutomationControlError(
+            "outcome_reservation_mismatch",
+            `Task ${taskId} does not match the outcome reservation being finalized.`,
+            { taskId, outcome, taskRevision },
+          );
+        }
+        if (task.pendingOutcome === undefined) {
+          requireDurableOutcomeReservation({
+            paths,
+            manifest,
+            task,
+            actor,
+            leaseName,
+            outcome,
+            outcomeDigest: normalizedDigest,
+            taskRevision,
+          });
+          return {
+            changed: false,
+            result: {
+              changed: false,
+              manifestRevision: manifest.revision,
+              task: structuredClone(task),
+            },
+          };
+        }
+        if (
+          task.pendingOutcome.outcome !== outcome ||
+          task.pendingOutcome.taskRevision !== taskRevision ||
+          task.pendingOutcome.outcomeDigest !== normalizedDigest
+        ) {
+          throw new AutomationControlError(
+            "outcome_reservation_mismatch",
+            `Task ${taskId} has a different pending outcome reservation.`,
+            { taskId, pendingOutcome: structuredClone(task.pendingOutcome) },
+          );
+        }
+        requireDurableOutcomeReservation({
+          paths,
+          manifest,
+          task,
+          actor,
+          leaseName,
+          outcome,
+          outcomeDigest: normalizedDigest,
+          taskRevision,
+        });
+        delete task.pendingOutcome;
+        return {
+          changed: true,
+          manifest,
+          task,
+          actor,
+          eventType: "outcome_reservation_finalized",
+          eventData: { outcome, outcomeDigest: normalizedDigest, taskRevision },
+        };
       },
       { beforeCommit: authorize, guardContext },
     );
@@ -11760,101 +11826,101 @@ export function updateTaskAuthorities({
       stateRoot,
       nowMs,
       (manifest) => {
-    const { lease } = authorize();
-    const task = manifest.tasks.find(
-      (candidate) => candidate.taskId === taskId,
-    );
-    if (!task) {
-      throw new AutomationControlError(
-        "task_not_found",
-        `Task ${taskId} does not exist.`,
-        { taskId },
-      );
-    }
+        const { lease } = authorize();
+        const task = manifest.tasks.find(
+          (candidate) => candidate.taskId === taskId,
+        );
+        if (!task) {
+          throw new AutomationControlError(
+            "task_not_found",
+            `Task ${taskId} does not exist.`,
+            { taskId },
+          );
+        }
         if (
           expectedRevision !== undefined &&
           task.revision !== expectedRevision
         ) {
-      throw new AutomationControlError(
-        "revision_conflict",
-        `Task ${taskId} is at revision ${task.revision}, not ${expectedRevision}.`,
-        { taskId, expectedRevision, actualRevision: task.revision },
-      );
-    }
+          throw new AutomationControlError(
+            "revision_conflict",
+            `Task ${taskId} is at revision ${task.revision}, not ${expectedRevision}.`,
+            { taskId, expectedRevision, actualRevision: task.revision },
+          );
+        }
 
-    const before = {
-      observerAuthority: task.observerAuthority,
-      providerAuthority: task.providerAuthority,
-      ...(task.providerApprovalReference === undefined
-        ? {}
-        : { providerApprovalReference: task.providerApprovalReference }),
-    };
-        const nextObserverAuthority =
-          observerAuthority ?? task.observerAuthority;
-        const nextProviderAuthority =
-          providerAuthority ?? task.providerAuthority;
-    const nextProviderApprovalReference =
-      nextProviderAuthority === "approved"
-        ? (normalizedApprovalReference ?? task.providerApprovalReference)
-        : undefined;
-    if (
-      nextProviderAuthority === "approved" &&
-      (typeof nextProviderApprovalReference !== "string" ||
-        nextProviderApprovalReference.trim() === "")
-    ) {
-      throw new AutomationControlError(
-        "invalid_state",
-        `Task ${taskId} has approved provider authority without an approval reference.`,
-      );
-    }
-    if (
-      nextObserverAuthority === task.observerAuthority &&
-      nextProviderAuthority === task.providerAuthority &&
-      nextProviderApprovalReference === task.providerApprovalReference
-    ) {
-      return {
-        changed: false,
-        result: {
-          changed: false,
-          manifestRevision: manifest.revision,
-          task: structuredClone(task),
-        },
-      };
-    }
-
-    task.observerAuthority = nextObserverAuthority;
-    task.providerAuthority = nextProviderAuthority;
-    if (nextProviderApprovalReference === undefined) {
-      delete task.providerApprovalReference;
-    } else {
-      task.providerApprovalReference = nextProviderApprovalReference;
-    }
-    task.revision += 1;
-    task.updatedAt = nowIso(nowMs);
-    return {
-      changed: true,
-      manifest,
-      task,
-      actor,
-      eventType: "task_authority_updated",
-      eventData: {
-        before,
-        after: {
+        const before = {
           observerAuthority: task.observerAuthority,
           providerAuthority: task.providerAuthority,
           ...(task.providerApprovalReference === undefined
             ? {}
+            : { providerApprovalReference: task.providerApprovalReference }),
+        };
+        const nextObserverAuthority =
+          observerAuthority ?? task.observerAuthority;
+        const nextProviderAuthority =
+          providerAuthority ?? task.providerAuthority;
+        const nextProviderApprovalReference =
+          nextProviderAuthority === "approved"
+            ? (normalizedApprovalReference ?? task.providerApprovalReference)
+            : undefined;
+        if (
+          nextProviderAuthority === "approved" &&
+          (typeof nextProviderApprovalReference !== "string" ||
+            nextProviderApprovalReference.trim() === "")
+        ) {
+          throw new AutomationControlError(
+            "invalid_state",
+            `Task ${taskId} has approved provider authority without an approval reference.`,
+          );
+        }
+        if (
+          nextObserverAuthority === task.observerAuthority &&
+          nextProviderAuthority === task.providerAuthority &&
+          nextProviderApprovalReference === task.providerApprovalReference
+        ) {
+          return {
+            changed: false,
+            result: {
+              changed: false,
+              manifestRevision: manifest.revision,
+              task: structuredClone(task),
+            },
+          };
+        }
+
+        task.observerAuthority = nextObserverAuthority;
+        task.providerAuthority = nextProviderAuthority;
+        if (nextProviderApprovalReference === undefined) {
+          delete task.providerApprovalReference;
+        } else {
+          task.providerApprovalReference = nextProviderApprovalReference;
+        }
+        task.revision += 1;
+        task.updatedAt = nowIso(nowMs);
+        return {
+          changed: true,
+          manifest,
+          task,
+          actor,
+          eventType: "task_authority_updated",
+          eventData: {
+            before,
+            after: {
+              observerAuthority: task.observerAuthority,
+              providerAuthority: task.providerAuthority,
+              ...(task.providerApprovalReference === undefined
+                ? {}
                 : {
                     providerApprovalReference: task.providerApprovalReference,
                   }),
-        },
-        reason: normalizedReason,
-        authorizationProvenance: leaseAuthorizationProvenance(lease, nowMs),
-        ...(normalizedApprovalReference === undefined
-          ? {}
-          : { approvalReference: normalizedApprovalReference }),
-      },
-    };
+            },
+            reason: normalizedReason,
+            authorizationProvenance: leaseAuthorizationProvenance(lease, nowMs),
+            ...(normalizedApprovalReference === undefined
+              ? {}
+              : { approvalReference: normalizedApprovalReference }),
+          },
+        };
       },
       { beforeCommit: authorize },
     );
@@ -12011,6 +12077,19 @@ function validateLeaseRecord(record, name) {
     record?.ownerConfirmationApprovalReference === undefined &&
     record?.ownerConfirmationApprovedAt === undefined &&
     record?.ownerConfirmationExpiresAt === undefined;
+  const hasNoTrustedLauncherFields =
+    record?.launcherSha256 === undefined &&
+    record?.actorRuntimeDigest === undefined &&
+    record?.launcherChannelProtocol === undefined &&
+    record?.launcherAttestationSha256 === undefined &&
+    record?.launcherSessionId === undefined;
+  const validTrustedLauncherChannel =
+    record?.credentialKind === "trusted-launcher-channel" &&
+    SHA256_PATTERN.test(String(record?.launcherSha256 ?? "")) &&
+    SHA256_PATTERN.test(String(record?.actorRuntimeDigest ?? "")) &&
+    record?.launcherChannelProtocol === ACTOR_LAUNCHER_CHANNEL_PROTOCOL &&
+    SHA256_PATTERN.test(String(record?.launcherAttestationSha256 ?? "")) &&
+    SHA256_PATTERN.test(String(record?.launcherSessionId ?? ""));
   const validOwnerSignedCapability =
     record?.credentialKind === "owner-signed-capability" &&
     typeof record?.ownerCapabilityId === "string" &&
@@ -12072,13 +12151,15 @@ function validateLeaseRecord(record, name) {
     policy.providerAuthority !== record?.providerAuthority ||
     ![
       "persistent-actor",
+      "trusted-launcher-channel",
       "owner-confirmation",
       "owner-signed-capability",
       "signed-capability",
     ].includes(record?.credentialKind) ||
     (record?.owner === "freed-owner"
       ? (!validOwnerSignedCapability && !validOwnerConfirmation) ||
-        record?.publisherCapabilityId !== undefined
+        record?.publisherCapabilityId !== undefined ||
+        !hasNoTrustedLauncherFields
       : record?.owner === "freed-pr-publisher"
         ? record.credentialKind !== "signed-capability" ||
           record?.ownerCapabilityId !== undefined ||
@@ -12086,13 +12167,19 @@ function validateLeaseRecord(record, name) {
           record?.ownerCapabilityIntentDigest !== undefined ||
           !hasNoOwnerConfirmationFields ||
           typeof record?.publisherCapabilityId !== "string" ||
-          !IDENTIFIER_PATTERN.test(record.publisherCapabilityId)
-        : record.credentialKind !== "persistent-actor" ||
+          !IDENTIFIER_PATTERN.test(record.publisherCapabilityId) ||
+          !hasNoTrustedLauncherFields
+        : !(
+            record.credentialKind === "persistent-actor" ||
+            validTrustedLauncherChannel
+          ) ||
           record?.ownerCapabilityId !== undefined ||
           record?.ownerCapabilityTaskId !== undefined ||
           record?.ownerCapabilityIntentDigest !== undefined ||
           !hasNoOwnerConfirmationFields ||
-          record?.publisherCapabilityId !== undefined)
+          record?.publisherCapabilityId !== undefined ||
+          (record.credentialKind === "persistent-actor" &&
+            !hasNoTrustedLauncherFields))
   ) {
     throw new AutomationControlError(
       "invalid_state",
@@ -12171,18 +12258,18 @@ function validateLegacyUncredentialedLeaseRecord(record, name, policy) {
 function isLegacyUncredentialedLeaseRecord(record) {
   return Boolean(
     record &&
-      exactObjectKeys(record, [
-        "acquiredAt",
-        "expiresAt",
-        "heartbeatAt",
-        "name",
-        "observerAuthority",
-        "owner",
-        "providerAuthority",
-        "schemaVersion",
-        "token",
-        "ttlMs",
-      ]),
+    exactObjectKeys(record, [
+      "acquiredAt",
+      "expiresAt",
+      "heartbeatAt",
+      "name",
+      "observerAuthority",
+      "owner",
+      "providerAuthority",
+      "schemaVersion",
+      "token",
+      "ttlMs",
+    ]),
   );
 }
 
@@ -12563,56 +12650,6 @@ function readAndValidatePublisherCapability({
     credentialSnapshot: envelopeSnapshot,
     payload,
   };
-}
-
-function validateActorCredential(paths, actor, token) {
-  if (actor === "freed-pr-publisher") {
-    throw new AutomationControlError(
-      "publisher_capability_required",
-      "The publisher cannot acquire a lease with a reusable actor credential.",
-    );
-  }
-  if (typeof token !== "string" || token.length < 32) {
-    throw new AutomationControlError(
-      "actor_credential_required",
-      `Actor ${actor} requires its pre-provisioned persistent credential secret.`,
-    );
-  }
-  const credentialPath = actorCredentialPath(paths, actor);
-  const credentialSnapshot = readPrivateJsonSnapshot(
-    credentialPath,
-    `Actor credential for ${actor}`,
-    {
-      privateRoot: paths.controlRoot,
-      missingCode: "actor_credential_required",
-      missingMessage: `No persistent actor credential exists at ${credentialPath}.`,
-      invalidCode: "actor_credential_invalid",
-      invalidMessage:
-        "Automation credentials must be private regular files with no group or world permissions.",
-    },
-  );
-  const credential = credentialSnapshot.value;
-  const tokenSha256 = String(credential?.tokenSha256 ?? "").toLowerCase();
-  if (
-    credential?.schemaVersion !== AUTOMATION_CONTROL_SCHEMA_VERSION ||
-    credential?.actor !== actor ||
-    credential?.purpose !== ACTOR_CREDENTIAL_PURPOSE ||
-    !/^[0-9a-f]{64}$/.test(tokenSha256)
-  ) {
-    throw new AutomationControlError(
-      "actor_credential_invalid",
-      `The persistent credential for ${actor} has an unsupported identity or digest.`,
-    );
-  }
-  const actualDigest = Buffer.from(secretDigest(token), "hex");
-  const expectedDigest = Buffer.from(tokenSha256, "hex");
-  if (!timingSafeEqual(actualDigest, expectedDigest)) {
-    throw new AutomationControlError(
-      "actor_credential_mismatch",
-      `The persistent credential secret does not match actor ${actor}.`,
-    );
-  }
-  return { credentialPath, credentialSnapshot };
 }
 
 function ownerCapabilityFilePath(paths, capabilityId, state) {
@@ -13673,8 +13710,7 @@ function readBoundedLeaseDirectoryEntries(
           entry === ".." ||
           entry.includes(path.sep) ||
           entry.includes("\0") ||
-          Buffer.byteLength(entry, "utf8") >
-            LEASE_DIRECTORY_ENTRY_MAX_BYTES,
+          Buffer.byteLength(entry, "utf8") > LEASE_DIRECTORY_ENTRY_MAX_BYTES,
       )
     ) {
       throw new Error("bounded helper receipt exceeded its requested contract");
@@ -13864,10 +13900,7 @@ function requireNoPendingLeaseTransaction(paths, name) {
     transactions,
     "Lease transaction directory",
   );
-  const activePath = path.join(
-    transactions,
-    `${name}.json`,
-  );
+  const activePath = path.join(transactions, `${name}.json`);
   if (pathEntryExists(activePath)) {
     readLeaseTransactionFile(activePath, paths, name);
     throw new AutomationControlError(
@@ -13880,8 +13913,7 @@ function requireNoPendingLeaseTransaction(paths, name) {
     label: "Lease transaction directory",
     errorCode: "lease_transaction_pending",
   }).filter(
-    (entry) =>
-      entry.startsWith(`${name}.`) || entry.startsWith(`.${name}.`),
+    (entry) => entry.startsWith(`${name}.`) || entry.startsWith(`.${name}.`),
   );
   if (relatedEntries.length !== 0) {
     throw new AutomationControlError(
@@ -13938,10 +13970,7 @@ function reconcilePreWalLeaseTransactionArtifacts(
     },
   ].map((target) => ({
     ...target,
-    temporaryPath: leaseAtomicTemporaryPath(
-      target.filePath,
-      transaction,
-    ),
+    temporaryPath: leaseAtomicTemporaryPath(target.filePath, transaction),
   }));
   const expectedPaths = new Set(
     targets.flatMap((target) => [target.filePath, target.temporaryPath]),
@@ -13963,8 +13992,7 @@ function reconcilePreWalLeaseTransactionArtifacts(
     const filePath = path.join(transactions, entry);
     if (!expectedPaths.has(filePath)) {
       const sameOperationAtomicTemporary =
-        leaseAtomicTemporaryEntryOperationId(entry) ===
-        transaction.operationId;
+        leaseAtomicTemporaryEntryOperationId(entry) === transaction.operationId;
       throw new AutomationControlError(
         sameOperationAtomicTemporary
           ? "lease_transaction_conflict"
@@ -13993,11 +14021,7 @@ function reconcilePreWalLeaseTransactionArtifacts(
       );
       const recoverableFinal =
         target.side === "after" &&
-        recoverablePreWalAfterStagingBytes(
-          current,
-          target.bytes,
-          transaction,
-        );
+        recoverablePreWalAfterStagingBytes(current, target.bytes, transaction);
       if (incomplete || (!current.equals(target.bytes) && !recoverableFinal)) {
         throw new AutomationControlError(
           "lease_transaction_conflict",
@@ -14066,9 +14090,7 @@ function reconcilePreWalLeaseTransactionArtifacts(
     removeLeaseAtomicTemporaryFile(paths, staging.filePath, staging.bytes, {
       operationId: transaction.operationId,
       kind: "obsolete pre-WAL staging",
-      retirementDirectory: leaseCleanupQuarantineDirectory(
-        files.transaction,
-      ),
+      retirementDirectory: leaseCleanupQuarantineDirectory(files.transaction),
     });
   }
 }
@@ -14180,7 +14202,8 @@ function parseLeaseDurableMoveReceipt(result, source, expectedDigest, label) {
   if (
     Object.keys(receipt ?? {})
       .sort()
-      .join("\n") !== ["device", "digest", "inode", "protocol", "size"].join("\n") ||
+      .join("\n") !==
+      ["device", "digest", "inode", "protocol", "size"].join("\n") ||
     receipt.protocol !== LEASE_ARCHIVE_MOVE_PROTOCOL ||
     receipt.device !== source.identity.dev.toString() ||
     receipt.inode !== source.identity.ino.toString() ||
@@ -14241,10 +14264,7 @@ function moveLeaseFileGenerationDurable(
       );
       parseLeaseDurableMoveReceipt(result, source, expectedDigest, label);
     } catch (error) {
-      if (
-        pathEntryExists(sourcePath) ||
-        !pathEntryExists(destinationPath)
-      ) {
+      if (pathEntryExists(sourcePath) || !pathEntryExists(destinationPath)) {
         throw error;
       }
     }
@@ -14365,7 +14385,11 @@ function exchangeLeaseFileGenerationsDurable(
           ...pinnedDirectoryArguments(sourceDirectory),
           ...pinnedDirectoryArguments(destinationDirectory),
         ],
-        [sourceDirectory.descriptor, destinationDirectory.descriptor, source.descriptor],
+        [
+          sourceDirectory.descriptor,
+          destinationDirectory.descriptor,
+          source.descriptor,
+        ],
       );
       parseLeaseDurableExchangeReceipt(
         result,
@@ -14385,7 +14409,11 @@ function exchangeLeaseFileGenerationsDurable(
       const destinationStillOriginal =
         pathEntryExists(destinationPath) &&
         leaseFileSnapshotMatchesGeneration(
-          readLeaseAtomicSnapshot(paths, destinationPath, `${label} destination`),
+          readLeaseAtomicSnapshot(
+            paths,
+            destinationPath,
+            `${label} destination`,
+          ),
           destinationSnapshot,
         );
       if (sourceStillOriginal && destinationStillOriginal) throw error;
@@ -14561,8 +14589,8 @@ function writePrivateBytesAtomic(
             : isPreWalPlanBoundTemporary
               ? leaseAtomicPreWalCleanupKind(kind)
               : temporaryIsPrefix
-              ? leaseAtomicSuccessorKind(kind)
-              : leaseAtomicSuccessorKind(kind),
+                ? leaseAtomicSuccessorKind(kind)
+                : leaseAtomicSuccessorKind(kind),
           retirementDirectory,
           checkpoint,
           allowEmpty: temporary.bytes.length === 0,
@@ -14612,9 +14640,8 @@ function writePrivateBytesAtomic(
           "lease-atomic-temporary-created",
           { filePath, temporaryPath, kind },
         );
-        const partialLength = bytes.length === 0
-          ? 0
-          : Math.max(1, Math.floor(bytes.length / 2));
+        const partialLength =
+          bytes.length === 0 ? 0 : Math.max(1, Math.floor(bytes.length / 2));
         let offset = 0;
         while (offset < partialLength) {
           offset += writeSync(
@@ -14697,11 +14724,11 @@ function writePrivateBytesAtomic(
         current,
         `Lease ${kind} publication`,
       );
-      invokeLeaseTransactionCheckpoint(
-        checkpoint,
-        "lease-atomic-exchanged",
-        { filePath, temporaryPath, kind },
-      );
+      invokeLeaseTransactionCheckpoint(checkpoint, "lease-atomic-exchanged", {
+        filePath,
+        temporaryPath,
+        kind,
+      });
       const exchangedPredecessor = snapshot(
         temporaryPath,
         `Lease ${kind} exchanged predecessor`,
@@ -14752,7 +14779,9 @@ function writePrivateBytesAtomic(
       );
       const isPreWalPlanBoundTemporary =
         ["before staging", "after staging"].includes(kind) ||
-        (kind === "WAL" && current === null && transaction.phase === "prepared");
+        (kind === "WAL" &&
+          current === null &&
+          transaction.phase === "prepared");
       retireLeaseAtomicGeneration(paths, temporaryPath, stranded, {
         operationId,
         kind: strandedIsPredecessor
@@ -14762,8 +14791,8 @@ function writePrivateBytesAtomic(
             : isPreWalPlanBoundTemporary
               ? leaseAtomicPreWalCleanupKind(kind)
               : strandedIsPrefix
-              ? leaseAtomicSuccessorKind(kind)
-            : leaseAtomicPreWalCleanupKind(kind),
+                ? leaseAtomicSuccessorKind(kind)
+                : leaseAtomicPreWalCleanupKind(kind),
         retirementDirectory,
         checkpoint,
         capacityReserved:
@@ -15134,8 +15163,10 @@ function automationAuthoritySnapshotGenerationFingerprint(filePath) {
 function activeOutcomeWriterContextForPath(filePath) {
   let matchingContext = null;
   let matchingRootLength = -1;
-  for (const [stateRoot, context] of
-    ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT) {
+  for (const [
+    stateRoot,
+    context,
+  ] of ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT) {
     const relative = path.relative(stateRoot, filePath);
     if (
       relative !== "" &&
@@ -15166,15 +15197,13 @@ function readAutomationAuthorityFileSnapshotWithPolicy(
   const label = options?.label ?? "Automation authority file";
   const invalidCode = options?.invalidCode ?? "invalid_state";
   const privateRoot = options?.privateRoot ?? path.dirname(filePath);
-  const {
-    normalizedFilePath,
-    normalizedPrivateRoot,
-  } = requireAutomationAuthorityPrivatePath(
-    filePath,
-    privateRoot,
-    label,
-    invalidCode,
-  );
+  const { normalizedFilePath, normalizedPrivateRoot } =
+    requireAutomationAuthorityPrivatePath(
+      filePath,
+      privateRoot,
+      label,
+      invalidCode,
+    );
   const context = activeOutcomeWriterContextForPath(normalizedFilePath);
   const helperTestPause = options?.helperTestPause;
   if (context === null || helperTestPause !== undefined) {
@@ -15190,9 +15219,8 @@ function readAutomationAuthorityFileSnapshotWithPolicy(
     normalizedFilePath,
     policy.requireUtf8 ? "utf8" : "raw",
   ].join("\0");
-  const before = automationAuthoritySnapshotGenerationFingerprint(
-    normalizedFilePath,
-  );
+  const before =
+    automationAuthoritySnapshotGenerationFingerprint(normalizedFilePath);
   const cached = cache?.get(cacheKey);
   const requestedAllowedModes = options?.allowedModes ?? [0o600];
   const requestedMaxBytes = options?.maxBytes ?? LEASE_TRANSACTION_MAX_BYTES;
@@ -15218,9 +15246,8 @@ function readAutomationAuthorityFileSnapshotWithPolicy(
     options,
     policy,
   );
-  const after = automationAuthoritySnapshotGenerationFingerprint(
-    normalizedFilePath,
-  );
+  const after =
+    automationAuthoritySnapshotGenerationFingerprint(normalizedFilePath);
   if (cache !== undefined && before !== null && before === after) {
     cache.set(
       cacheKey,
@@ -15250,16 +15277,13 @@ function readAutomationAuthorityFileSnapshotWithPolicyUncached(
   } = {},
   { requireUtf8 },
 ) {
-  const {
-    normalizedFilePath,
-    normalizedPrivateRoot,
-    directoryPath,
-  } = requireAutomationAuthorityPrivatePath(
-    filePath,
-    privateRoot,
-    label,
-    invalidCode,
-  );
+  const { normalizedFilePath, normalizedPrivateRoot, directoryPath } =
+    requireAutomationAuthorityPrivatePath(
+      filePath,
+      privateRoot,
+      label,
+      invalidCode,
+    );
   let directory;
   let descriptor;
   try {
@@ -15427,7 +15451,10 @@ function parseLeaseRecordBytes(bytes, name) {
       `Lease ${name} staging contains invalid JSON.`,
     );
   }
-  if (isLegacyUncredentialedLeaseRecord(record) && record.owner !== "freed-owner") {
+  if (
+    isLegacyUncredentialedLeaseRecord(record) &&
+    record.owner !== "freed-owner"
+  ) {
     validateLegacyUncredentialedLeaseRecord(
       record,
       name,
@@ -15681,6 +15708,14 @@ function validateRedactedLeaseRecord(value, name) {
     );
   } else if (value.credentialKind === "signed-capability") {
     expectedKeys.push("publisherCapabilityId", "scope");
+  } else if (value.credentialKind === "trusted-launcher-channel") {
+    expectedKeys.push(
+      "actorRuntimeDigest",
+      "launcherAttestationSha256",
+      "launcherChannelProtocol",
+      "launcherSessionId",
+      "launcherSha256",
+    );
   }
   if (!exactObjectKeys(value, expectedKeys)) {
     throw new AutomationControlError(
@@ -15739,9 +15774,18 @@ function expectedAcquireEventData(
       ? {}
       : { publisherCapabilityId: lease.publisherCapabilityId }),
     ...(lease.scope === undefined ? {} : { scope: lease.scope }),
-    ...(capability.kind === "actor-credential"
+    ...(capability?.kind === "actor-credential"
       ? { actorCredentialPath: capability.sourcePath }
       : {}),
+    ...(lease.launcherSha256 === undefined
+      ? {}
+      : {
+          launcherSha256: lease.launcherSha256,
+          actorRuntimeDigest: lease.actorRuntimeDigest,
+          launcherChannelProtocol: lease.launcherChannelProtocol,
+          launcherAttestationSha256: lease.launcherAttestationSha256,
+          launcherSessionId: lease.launcherSessionId,
+        }),
     ...(lease.ownerCapabilityId === undefined
       ? {}
       : {
@@ -15809,8 +15853,7 @@ function validateLeaseOperationPayload(value, paths) {
       value.resultReceipt.takeover !== (takeover !== null) ||
       (takeover === null
         ? Object.hasOwn(value.resultReceipt, "previous")
-        : !canonicalValuesEqual(value.resultReceipt.previous, takeover)) ||
-      capability === null
+        : !canonicalValuesEqual(value.resultReceipt.previous, takeover))
     ) {
       throw new AutomationControlError(
         "lease_transaction_invalid",
@@ -15819,23 +15862,29 @@ function validateLeaseOperationPayload(value, paths) {
     }
     lease = validateRedactedLeaseRecord(value.resultReceipt.lease, value.name);
     const expectedCapabilityKind =
-      lease.credentialKind === "persistent-actor"
-        ? "actor-credential"
-        : lease.credentialKind === "owner-signed-capability"
-          ? "owner-capability"
-          : lease.credentialKind === "owner-confirmation"
-            ? "owner-confirmation"
-            : "publisher-capability";
+      lease.credentialKind === "trusted-launcher-channel"
+        ? null
+        : lease.credentialKind === "persistent-actor"
+          ? "actor-credential"
+          : lease.credentialKind === "owner-signed-capability"
+            ? "owner-capability"
+            : lease.credentialKind === "owner-confirmation"
+              ? "owner-confirmation"
+              : "publisher-capability";
     const expectedSourceName =
-      expectedCapabilityKind === "actor-credential"
-        ? `${lease.owner}.json`
-        : expectedCapabilityKind === "owner-capability"
-          ? `${lease.ownerCapabilityId}.json`
-          : expectedCapabilityKind === "publisher-capability"
-            ? `${lease.publisherCapabilityId}.json`
-            : null;
+      expectedCapabilityKind === null
+        ? null
+        : expectedCapabilityKind === "actor-credential"
+          ? `${lease.owner}.json`
+          : expectedCapabilityKind === "owner-capability"
+            ? `${lease.ownerCapabilityId}.json`
+            : expectedCapabilityKind === "publisher-capability"
+              ? `${lease.publisherCapabilityId}.json`
+              : null;
     if (
-      capability.kind !== expectedCapabilityKind ||
+      (expectedCapabilityKind === null
+        ? capability !== null
+        : capability?.kind !== expectedCapabilityKind) ||
       (expectedSourceName !== null &&
         path.basename(capability.sourcePath) !== expectedSourceName)
     ) {
@@ -16003,12 +16052,13 @@ function canonicalNullableLeaseRequestPath(value) {
 }
 
 function validateLeaseTransactionRequest(value, transaction) {
-  const commonKeys = [
-    "name",
-    "operation",
-    "operationId",
-    "tokenDigest",
-  ];
+  const commonKeys = ["name", "operation", "operationId", "tokenDigest"];
+  const trustedLauncherRequest =
+    transaction.operation === "acquire" &&
+    Object.hasOwn(value ?? {}, "launcherSha256");
+  const trustedLauncherRequestKeys = trustedLauncherRequest
+    ? ["actorRuntimeDigest", "launcherChannelProtocol", "launcherSha256"]
+    : [];
   const expectedKeys =
     transaction.operation === "acquire"
       ? [
@@ -16025,6 +16075,7 @@ function validateLeaseTransactionRequest(value, transaction) {
           "publisherCapabilityFile",
           "scope",
           "ttlMs",
+          ...trustedLauncherRequestKeys,
         ]
       : transaction.operation === "heartbeat"
         ? [...commonKeys, "ttlMs"]
@@ -16077,17 +16128,27 @@ function validateLeaseTransactionRequest(value, transaction) {
           normalizedScope !== null &&
           canonicalValuesEqual(value.scope, normalizedScope)
         : value.publisherCapabilityFile === null && value.scope === null;
-    const persistentActor = ![
-      "freed-owner",
-      "freed-pr-publisher",
-    ].includes(value.owner);
-    const canonicalActorCredential = persistentActor
-      ? canonicalNullableLeaseRequestPath(value.actorCredentialFile) &&
-        value.actorCredentialFile !== null &&
-        path.basename(value.actorCredentialFile) === `${value.owner}.json` &&
-        SHA256_PATTERN.test(String(value.actorCredentialTokenDigest ?? ""))
+    const generalActor = !["freed-owner", "freed-pr-publisher"].includes(
+      value.owner,
+    );
+    const canonicalTrustedLauncher =
+      trustedLauncherRequest &&
+      generalActor &&
+      value.actorCredentialFile === null &&
+      value.actorCredentialTokenDigest === null &&
+      SHA256_PATTERN.test(String(value.launcherSha256 ?? "")) &&
+      SHA256_PATTERN.test(String(value.actorRuntimeDigest ?? "")) &&
+      value.launcherChannelProtocol === ACTOR_LAUNCHER_CHANNEL_PROTOCOL;
+    const canonicalActorCredential = generalActor
+      ? canonicalTrustedLauncher ||
+        (!trustedLauncherRequest &&
+          canonicalNullableLeaseRequestPath(value.actorCredentialFile) &&
+          value.actorCredentialFile !== null &&
+          path.basename(value.actorCredentialFile) === `${value.owner}.json` &&
+          SHA256_PATTERN.test(String(value.actorCredentialTokenDigest ?? "")))
       : value.actorCredentialFile === null &&
-        value.actorCredentialTokenDigest === null;
+        value.actorCredentialTokenDigest === null &&
+        !trustedLauncherRequest;
     if (
       policy === undefined ||
       policy.leaseName !== value.name ||
@@ -16169,24 +16230,26 @@ function validateLeaseTransactionRequestPayload(transaction, request, payload) {
   const lease = payload.lease;
   const capability = payload.capability;
   const expectedSourcePath =
-    capability.kind === "owner-capability"
-      ? request.ownerCapabilityFile
-      : capability.kind === "owner-confirmation"
-        ? request.ownerConfirmationFile
-        : capability.kind === "publisher-capability"
-          ? request.publisherCapabilityFile
-          : request.actorCredentialFile;
+    capability === null
+      ? null
+      : capability.kind === "owner-capability"
+        ? request.ownerCapabilityFile
+        : capability.kind === "owner-confirmation"
+          ? request.ownerConfirmationFile
+          : capability.kind === "publisher-capability"
+            ? request.publisherCapabilityFile
+            : request.actorCredentialFile;
   const expectedScope = lease.scope ?? null;
   const expectedOwnerTaskId =
-    capability.kind === "owner-capability"
+    capability?.kind === "owner-capability"
       ? lease.ownerCapabilityTaskId
-      : capability.kind === "owner-confirmation"
+      : capability?.kind === "owner-confirmation"
         ? lease.ownerConfirmationTaskId
         : null;
   const expectedOwnerIntentDigest =
-    capability.kind === "owner-capability"
+    capability?.kind === "owner-capability"
       ? lease.ownerCapabilityIntentDigest
-      : capability.kind === "owner-confirmation"
+      : capability?.kind === "owner-confirmation"
         ? lease.ownerConfirmationIntentDigest
         : null;
   if (
@@ -16194,12 +16257,19 @@ function validateLeaseTransactionRequestPayload(transaction, request, payload) {
     request.ttlMs !== lease.ttlMs ||
     request.observerAuthority !== lease.observerAuthority ||
     request.providerAuthority !== lease.providerAuthority ||
-    expectedSourcePath !== capability.sourcePath ||
+    expectedSourcePath !== (capability?.sourcePath ?? null) ||
     !canonicalValuesEqual(request.scope, expectedScope) ||
     request.ownerCapabilityTaskId !== expectedOwnerTaskId ||
     request.ownerCapabilityIntentDigest !== expectedOwnerIntentDigest ||
-    (capability.kind === "actor-credential" &&
-      request.actorCredentialTokenDigest !== capability.tokenSha256)
+    (capability?.kind === "actor-credential" &&
+      request.actorCredentialTokenDigest !== capability.tokenSha256) ||
+    (lease.credentialKind === "trusted-launcher-channel" &&
+      (capability !== null ||
+        request.actorCredentialFile !== null ||
+        request.actorCredentialTokenDigest !== null ||
+        request.launcherSha256 !== lease.launcherSha256 ||
+        request.actorRuntimeDigest !== lease.actorRuntimeDigest ||
+        request.launcherChannelProtocol !== lease.launcherChannelProtocol))
   ) {
     throw new AutomationControlError(
       "lease_transaction_invalid",
@@ -16295,7 +16365,9 @@ function validateLeaseTransaction(value, paths, expectedName) {
     value.operation === "acquire"
       ? after.directoryExists &&
         after.recordDigest !== null &&
-        payload.capability !== null
+        (payload.lease.credentialKind === "trusted-launcher-channel"
+          ? payload.capability === null
+          : payload.capability !== null)
       : value.operation === "heartbeat" || value.operation === "bind-head"
         ? before.recordDigest !== null && after.recordDigest !== null
         : before.recordDigest !== null &&
@@ -16447,17 +16519,17 @@ function privateBatchDirectoryIdentity(entry) {
 
 function leaseTransactionOperationForEventType(eventType) {
   if (
-    ["lease_acquired", "lease_credential_upgraded", "lease_taken_over"].includes(
-      eventType,
-    )
+    [
+      "lease_acquired",
+      "lease_credential_upgraded",
+      "lease_taken_over",
+    ].includes(eventType)
   ) {
     return "acquire";
   }
   if (eventType === "lease_heartbeat") return "heartbeat";
   if (
-    ["lease_scope_binding_confirmed", "lease_scope_bound"].includes(
-      eventType,
-    )
+    ["lease_scope_binding_confirmed", "lease_scope_bound"].includes(eventType)
   ) {
     return "bind-head";
   }
@@ -16562,10 +16634,7 @@ function admitCanonicalTransactionalLeaseState(
       "private-file-batch-read",
     );
     const recordIdentity = inventory.entryByName.get("lease.json");
-    if (
-      inventory.entryCount !== 1 ||
-      recordIdentity?.kind !== "file"
-    ) {
+    if (inventory.entryCount !== 1 || recordIdentity?.kind !== "file") {
       throw new AutomationControlError(
         "lease_transaction_conflict",
         `Lease ${name} canonical authority is not one exact private record generation.`,
@@ -16696,12 +16765,7 @@ function admitParsedLeaseCleanupEvidence(
       receipt.operationId,
       receipt.operation,
     ).receipt;
-    validateArchivedReceiptSnapshot(
-      paths,
-      transaction,
-      originalPath,
-      snapshot,
-    );
+    validateArchivedReceiptSnapshot(paths, transaction, originalPath, snapshot);
     if (
       !leaseCleanupQuarantinePathMatchesTransaction(
         paths,
@@ -16812,9 +16876,7 @@ function validateLeaseAtomicEvidenceSet(
     ) {
       if (
         entry.evidenceClass === "pre-wal-cleanup" &&
-        !["staging-before", "staging-after", "wal"].includes(
-          entry.atomicTarget,
-        )
+        !["staging-before", "staging-after", "wal"].includes(entry.atomicTarget)
       ) {
         throw new AutomationControlError(
           "lease_transaction_conflict",
@@ -17052,7 +17114,10 @@ function inspectLeaseTransactionEventHistoryInternal({
   const transactionalReceiptGroups = new Map();
   let transactionalLeaseEventCount = 0;
   for (const event of events) {
-    if (typeof event?.eventId !== "string" || !event.eventId.startsWith("lease:")) {
+    if (
+      typeof event?.eventId !== "string" ||
+      !event.eventId.startsWith("lease:")
+    ) {
       continue;
     }
     transactionalLeaseEventCount += 1;
@@ -17127,7 +17192,9 @@ function inspectLeaseTransactionEventHistoryInternal({
     if (!transactionsExist && !receiptsExist) {
       let cutoverInspection;
       try {
-        cutoverInspection = inspectAutomationKernelGuardCutover(paths.stateRoot);
+        cutoverInspection = inspectAutomationKernelGuardCutover(
+          paths.stateRoot,
+        );
       } catch (error) {
         issues.push(
           `automation kernel guard cutover readiness is unavailable: ${
@@ -17285,7 +17352,11 @@ function inspectLeaseTransactionEventHistoryInternal({
           continue;
         }
         selectedReceiptNames.push(entry);
-        receiptIdentityByName.set(entry, { name, operation: match[2], operationId });
+        receiptIdentityByName.set(entry, {
+          name,
+          operation: match[2],
+          operationId,
+        });
       }
       readPrivateBatchSelection(
         helper,
@@ -17425,9 +17496,7 @@ function inspectLeaseTransactionEventHistoryInternal({
             continue;
           }
           const selectionPrefix =
-            match[2] === undefined
-              ? match[1]
-              : `${match[1]}.${match[2]}`;
+            match[2] === undefined ? match[1] : `${match[1]}.${match[2]}`;
           const operationId = retainedOperationIdByPrefix.get(
             `${archiveScope}\0${selectionPrefix}`,
           );
@@ -17435,8 +17504,7 @@ function inspectLeaseTransactionEventHistoryInternal({
             if (
               match[2] !== undefined &&
               validatedTransactions.some(
-                ({ transaction }) =>
-                  transaction.operationId === match[1],
+                ({ transaction }) => transaction.operationId === match[1],
               )
             ) {
               issues.push(
@@ -17519,7 +17587,11 @@ function inspectLeaseTransactionEventHistoryInternal({
           },
         );
       }
-      for (const { entry, transaction, contentDigest } of validatedTransactions) {
+      for (const {
+        entry,
+        transaction,
+        contentDigest,
+      } of validatedTransactions) {
         try {
           validateCompletedLeaseReceiptHealthEvidence(paths, transaction, {
             admittedParsedCleanupEvidence,
@@ -17675,8 +17747,7 @@ function inspectLeaseTransactionEventHistoryInternal({
           .filter(([name, active]) => {
             const latest = latestTransactionalStateEventByLeaseName.get(name);
             return (
-              latest !== undefined &&
-              latest.index >= active.acquisitionIndex
+              latest !== undefined && latest.index >= active.acquisitionIndex
             );
           })
           .map(([name]) => name),
@@ -17685,9 +17756,7 @@ function inspectLeaseTransactionEventHistoryInternal({
         ".transactions",
         ".transaction-receipts",
         LEASE_STATE_QUARANTINE_DIRECTORY,
-        ...[...activeTransactionalLeaseNames].map(
-          (name) => `${name}.lease`,
-        ),
+        ...[...activeTransactionalLeaseNames].map((name) => `${name}.lease`),
       ];
       const leasesInventory = admitInventory(
         leasesDirectory,
@@ -18104,12 +18173,17 @@ function reconcileActiveLeaseTransactionArtifacts(paths, files, transaction) {
     );
   }
   const leasePath = leasePathFor(paths, transaction.name);
-  const current = readLeaseDirectorySnapshot(paths, transaction.name, leasePath, {
-    allowedAdditionalEntries:
-      recordTemporaryBytes === null
-        ? []
-        : [path.basename(recordTemporaryPath)],
-  });
+  const current = readLeaseDirectorySnapshot(
+    paths,
+    transaction.name,
+    leasePath,
+    {
+      allowedAdditionalEntries:
+        recordTemporaryBytes === null
+          ? []
+          : [path.basename(recordTemporaryPath)],
+    },
+  );
   const matchesBefore = leaseStateMatches(
     current.descriptor,
     transaction.before,
@@ -18193,10 +18267,7 @@ function reconcileActiveLeaseTransactionArtifacts(paths, files, transaction) {
       !exactExchangedPredecessor &&
       physicalStateMatches &&
       (expectedSuccessorBytes === null ||
-        leaseBytesAreCanonicalPrefix(
-          successorBytes,
-          expectedSuccessorBytes,
-        ));
+        leaseBytesAreCanonicalPrefix(successorBytes, expectedSuccessorBytes));
     if (!exactSuccessor && !exactExchangedPredecessor && !samePlanPartial) {
       throw new AutomationControlError(
         "lease_transaction_conflict",
@@ -18212,9 +18283,7 @@ function reconcileActiveLeaseTransactionArtifacts(paths, files, transaction) {
         : transaction.phase === "event-appended"
           ? leaseAtomicCompletionResidueKind("WAL")
           : leaseAtomicSuccessorKind("WAL"),
-      retirementDirectory: leaseCleanupQuarantineDirectory(
-        files.transaction,
-      ),
+      retirementDirectory: leaseCleanupQuarantineDirectory(files.transaction),
     });
   }
   for (const stagingPath of [
@@ -18223,9 +18292,7 @@ function reconcileActiveLeaseTransactionArtifacts(paths, files, transaction) {
   ]) {
     if (
       stagingPath !== null &&
-      pathEntryExists(
-        leaseAtomicTemporaryPath(stagingPath, transaction),
-      )
+      pathEntryExists(leaseAtomicTemporaryPath(stagingPath, transaction))
     ) {
       throw new AutomationControlError(
         "lease_transaction_conflict",
@@ -18247,10 +18314,7 @@ function reconcileActiveLeaseTransactionArtifacts(paths, files, transaction) {
       !exactPostExchange &&
       (matchesBefore || matchesAcquireDirectoryIntermediate) &&
       matchedEvent === null &&
-      leaseBytesAreCanonicalPrefix(
-        recordTemporaryBytes,
-        recordAfterBytes,
-      );
+      leaseBytesAreCanonicalPrefix(recordTemporaryBytes, recordAfterBytes);
     if (!exactPreExchange && !exactPostExchange && !samePlanPartial) {
       throw new AutomationControlError(
         "lease_transaction_conflict",
@@ -18314,8 +18378,7 @@ function reconcileActiveLeaseTransactionArtifacts(paths, files, transaction) {
       errorCode: "lease_transaction_conflict",
     })
       .sort()
-      .join("\0") !==
-    transactionEntries.join("\0")
+      .join("\0") !== transactionEntries.join("\0")
   ) {
     throw new AutomationControlError(
       "lease_transaction_conflict",
@@ -18405,9 +18468,7 @@ function requireNoPrunedLeaseOperationEvent(paths, operationId, eventsGuard) {
   const eventId = `lease:${operationId}`;
   const snapshot = readControlEventHistorySnapshot(paths.events);
   requireExactLeaseEventHistory(snapshot.events);
-  const matches = snapshot.events.filter(
-    (event) => event?.eventId === eventId,
-  );
+  const matches = snapshot.events.filter((event) => event?.eventId === eventId);
   if (matches.length > 1) {
     throw new AutomationControlError(
       "control_event_duplicate",
@@ -18514,9 +18575,7 @@ function validateLeaseTransactionStagedSemantics(transaction, records) {
           expiredAt: beforeRecord.expiresAt,
           heartbeatAt: beforeRecord.heartbeatAt,
         };
-        if (
-          !isLeaseExpired(beforeRecord, Date.parse(transaction.preparedAt))
-        ) {
+        if (!isLeaseExpired(beforeRecord, Date.parse(transaction.preparedAt))) {
           throw new AutomationControlError(
             "lease_transaction_conflict",
             `Lease acquisition transaction for ${transaction.name} staged a takeover of live authority.`,
@@ -18625,10 +18684,7 @@ function validateLeaseTransactionStagedSemantics(transaction, records) {
 function reconcileLeaseStateIntermediate(paths, transaction) {
   const leasePath = leasePathFor(paths, transaction.name);
   const recordPath = leaseRecordPath(leasePath);
-  const recordTemporaryPath = leaseAtomicTemporaryPath(
-    recordPath,
-    transaction,
-  );
+  const recordTemporaryPath = leaseAtomicTemporaryPath(recordPath, transaction);
   if (pathEntryExists(recordTemporaryPath)) {
     if (transaction.staging.afterPath === null) {
       throw new AutomationControlError(
@@ -18845,7 +18901,9 @@ function requireReleaseLeaseStateRetirement(
     .map((event, index) => ({ event, index }))
     .filter(({ event }) => event?.eventId === transaction.event.eventId);
   const active = inspection.activeByLeaseName.get(transaction.name);
-  const canonicalExists = pathEntryExists(leasePathFor(paths, transaction.name));
+  const canonicalExists = pathEntryExists(
+    leasePathFor(paths, transaction.name),
+  );
   if (releaseMatches.length !== 1) {
     throw new AutomationControlError(
       "lease_transaction_conflict",
@@ -18861,10 +18919,7 @@ function requireReleaseLeaseStateRetirement(
     }
     return retired;
   }
-  if (
-    active.acquisitionIndex <= releaseMatches[0].index ||
-    !canonicalExists
-  ) {
+  if (active.acquisitionIndex <= releaseMatches[0].index || !canonicalExists) {
     throw new AutomationControlError(
       "lease_transaction_conflict",
       `Lease ${transaction.name} canonical authority is not one exact generation acquired after its retained release.`,
@@ -18873,12 +18928,18 @@ function requireReleaseLeaseStateRetirement(
 
   let latest = null;
   for (const [index, event] of snapshot.events.entries()) {
-    if (index < active.acquisitionIndex || event?.leaseName !== transaction.name) {
+    if (
+      index < active.acquisitionIndex ||
+      event?.leaseName !== transaction.name
+    ) {
       continue;
     }
     const operation = leaseTransactionOperationForEventType(event.type);
     if (operation === null || operation === "release") continue;
-    if (typeof event.eventId === "string" && event.eventId.startsWith("lease:")) {
+    if (
+      typeof event.eventId === "string" &&
+      event.eventId.startsWith("lease:")
+    ) {
       latest = { event, operation };
     }
   }
@@ -18940,12 +19001,7 @@ function requireReleaseLeaseStateRetirement(
   return retired;
 }
 
-function snapshotLeaseDirectoryTree(
-  helper,
-  parent,
-  source,
-  sourceSnapshot,
-) {
+function snapshotLeaseDirectoryTree(helper, parent, source, sourceSnapshot) {
   const maxEntries = 4;
   const maxDepth = 1;
   const maxAggregateBytes = LEASE_TRANSACTION_MAX_BYTES;
@@ -18993,8 +19049,9 @@ function snapshotLeaseDirectoryTree(
     sourceSnapshot.descriptor.recordDigest === null ? 0 : 1;
   const child = expectedChildCount === 1 ? children?.[0] : null;
   const rootShape =
-    Object.keys(entry ?? {}).sort().join("\n") ===
-      ["entries", "kind", "mode", "name"].sort().join("\n") &&
+    Object.keys(entry ?? {})
+      .sort()
+      .join("\n") === ["entries", "kind", "mode", "name"].sort().join("\n") &&
     entry.name === path.basename(source.path) &&
     entry.kind === "directory" &&
     entry.mode === 0o700 &&
@@ -19002,31 +19059,34 @@ function snapshotLeaseDirectoryTree(
     children.length === expectedChildCount;
   const childShape =
     expectedChildCount === 0 ||
-    (Object.keys(child ?? {}).sort().join("\n") ===
+    (Object.keys(child ?? {})
+      .sort()
+      .join("\n") ===
       ["digest", "kind", "mode", "name", "size"].sort().join("\n") &&
       child.name === "lease.json" &&
       child.kind === "file" &&
       child.mode === 0o600 &&
       child.size === sourceSnapshot.descriptor.recordSize &&
       child.digest === sourceSnapshot.descriptor.recordDigest);
-  const digestValue = rootShape && childShape
-    ? {
-        kind: "directory",
-        mode: entry.mode,
-        entries:
-          expectedChildCount === 0
-            ? []
-            : [
-                {
-                  kind: "file",
-                  mode: child.mode,
-                  name: child.name,
-                  size: child.size,
-                  digest: child.digest,
-                },
-              ],
-      }
-    : null;
+  const digestValue =
+    rootShape && childShape
+      ? {
+          kind: "directory",
+          mode: entry.mode,
+          entries:
+            expectedChildCount === 0
+              ? []
+              : [
+                  {
+                    kind: "file",
+                    mode: child.mode,
+                    name: child.name,
+                    size: child.size,
+                    digest: child.digest,
+                  },
+                ],
+        }
+      : null;
   const expectedTreeDigest =
     digestValue === null
       ? null
@@ -19037,7 +19097,9 @@ function snapshotLeaseDirectoryTree(
           ),
         );
   if (
-    Object.keys(receipt ?? {}).sort().join("\n") !== expectedKeys.join("\n") ||
+    Object.keys(receipt ?? {})
+      .sort()
+      .join("\n") !== expectedKeys.join("\n") ||
     receipt.protocol !== LEASE_ARCHIVE_MOVE_PROTOCOL ||
     receipt.operation !== "snapshot-tree" ||
     receipt.parentDevice !== parent.identity.dev.toString() ||
@@ -19181,9 +19243,11 @@ function retireLeaseDirectoryDurable(
     if (
       result !== null &&
       (Object.keys(receipt ?? {})
-          .sort()
-          .join("\n") !==
-          ["device", "inode", "mode", "protocol", "treeDigest", "uid"].join("\n") ||
+        .sort()
+        .join("\n") !==
+        ["device", "inode", "mode", "protocol", "treeDigest", "uid"].join(
+          "\n",
+        ) ||
         receipt.protocol !== LEASE_ARCHIVE_MOVE_PROTOCOL ||
         receipt.device !== source.identity.dev.toString() ||
         receipt.inode !== source.identity.ino.toString() ||
@@ -19201,11 +19265,7 @@ function retireLeaseDirectoryDurable(
       "lease-state-directory-retired",
       { leasePath, archivePath, purpose },
     );
-    const retired = readRetiredLeaseStateDirectory(
-      paths,
-      transaction,
-      purpose,
-    );
+    const retired = readRetiredLeaseStateDirectory(paths, transaction, purpose);
     if (
       retired === null ||
       retired.archivePath !== archivePath ||
@@ -19297,9 +19357,13 @@ function replaceLeaseStateFromTransaction(
   const predecessorBytes =
     predecessorPath === null
       ? null
-      : readPrivateBytes(predecessorPath, "Lease canonical predecessor staging", {
-          privateRoot: paths.controlRoot,
-        });
+      : readPrivateBytes(
+          predecessorPath,
+          "Lease canonical predecessor staging",
+          {
+            privateRoot: paths.controlRoot,
+          },
+        );
   writePrivateBytesAtomic(paths, recordPath, bytes, {
     operationId: transaction.operationId,
     transaction,
@@ -19389,7 +19453,8 @@ function moveLeaseCredentialDurable(descriptor, sourcePath, destinationPath) {
     if (
       Object.keys(receipt ?? {})
         .sort()
-        .join("\n") !== ["device", "digest", "inode", "protocol", "size"].join("\n") ||
+        .join("\n") !==
+        ["device", "digest", "inode", "protocol", "size"].join("\n") ||
       receipt.protocol !== LEASE_ARCHIVE_MOVE_PROTOCOL ||
       receipt.device !== source.identity.dev.toString() ||
       receipt.inode !== source.identity.ino.toString() ||
@@ -19457,8 +19522,8 @@ function consumeLeaseCredential(descriptor, checkpoint = undefined) {
     descriptor.consumedPath,
   );
   invokeLeaseTransactionCheckpoint(checkpoint, "lease-credential-renamed", {
-      sourcePath: descriptor.sourcePath,
-      consumedPath: descriptor.consumedPath,
+    sourcePath: descriptor.sourcePath,
+    consumedPath: descriptor.consumedPath,
   });
   syncDirectory(path.dirname(descriptor.consumedPath));
   invokeLeaseTransactionCheckpoint(
@@ -19768,10 +19833,7 @@ export function framePinnedLeaseArchiveHelperInvocation(
   source,
   operation,
   args = [],
-  {
-    expectedDigest = LEASE_ARCHIVE_MOVE_HELPER_SHA256,
-    input = undefined,
-  } = {},
+  { expectedDigest = LEASE_ARCHIVE_MOVE_HELPER_SHA256, input = undefined } = {},
 ) {
   const sourceBytes = Buffer.from(source, "utf8");
   const sourceDigest = createHash("sha256").update(sourceBytes).digest("hex");
@@ -19854,54 +19916,49 @@ function runLeaseArchiveHelper(
     { input },
   );
   leaseArchiveHelperInvocationCountForTest += 1;
-  const result = spawnSync(
-    helper.pythonRuntime,
-    framed.argv,
-    {
-      env: {
-        HOME: os.homedir(),
-        LANG: "C",
-        LC_ALL: "C",
-        PATH: "/usr/bin:/bin",
-        ...(testPause === undefined
-          ? {}
-          : {
-              FREED_REPAIR_MOVE_TEST_PAUSE: testPause.checkpoint,
-              FREED_REPAIR_MOVE_TEST_OPERATION: testPause.operation,
-              ...(testPause.source
-                ? { FREED_REPAIR_MOVE_TEST_SOURCE: testPause.source }
-                : {}),
-              ...(testPause.destination
-                ? {
-                    FREED_REPAIR_MOVE_TEST_DESTINATION:
-                      testPause.destination,
-                  }
-                : {}),
-              FREED_REPAIR_MOVE_TEST_CONTROL_FDS: `${pauseReleaseChildDescriptor},${pauseSignalChildDescriptor}`,
-            }),
-      },
-      maxBuffer:
-        operation === "authority-retirement-inventory"
-          ? AUTHORITY_RETIREMENT_INVENTORY_MAX_RECEIPT_BYTES
-              : [
-                "private-file-batch-read",
-                "private-file-batch-read-allow-empty",
-                "private-lease-state-batch-read",
-              ].includes(operation)
-            ? LEASE_PRIVATE_BATCH_MAX_BUFFER
-          : operation === "list" || operation === "list-bounded"
-          ? LEASE_ARCHIVE_LIST_MAX_BUFFER
-          : 2 * LEASE_TRANSACTION_MAX_BYTES,
-      stdio: [
-        "pipe",
-        "pipe",
-        "pipe",
-        ...inheritedDescriptors,
-        ...pauseDescriptors,
-      ],
-      input: framed.input,
+  const result = spawnSync(helper.pythonRuntime, framed.argv, {
+    env: {
+      HOME: os.homedir(),
+      LANG: "C",
+      LC_ALL: "C",
+      PATH: "/usr/bin:/bin",
+      ...(testPause === undefined
+        ? {}
+        : {
+            FREED_REPAIR_MOVE_TEST_PAUSE: testPause.checkpoint,
+            FREED_REPAIR_MOVE_TEST_OPERATION: testPause.operation,
+            ...(testPause.source
+              ? { FREED_REPAIR_MOVE_TEST_SOURCE: testPause.source }
+              : {}),
+            ...(testPause.destination
+              ? {
+                  FREED_REPAIR_MOVE_TEST_DESTINATION: testPause.destination,
+                }
+              : {}),
+            FREED_REPAIR_MOVE_TEST_CONTROL_FDS: `${pauseReleaseChildDescriptor},${pauseSignalChildDescriptor}`,
+          }),
     },
-  );
+    maxBuffer:
+      operation === "authority-retirement-inventory"
+        ? AUTHORITY_RETIREMENT_INVENTORY_MAX_RECEIPT_BYTES
+        : [
+              "private-file-batch-read",
+              "private-file-batch-read-allow-empty",
+              "private-lease-state-batch-read",
+            ].includes(operation)
+          ? LEASE_PRIVATE_BATCH_MAX_BUFFER
+          : operation === "list" || operation === "list-bounded"
+            ? LEASE_ARCHIVE_LIST_MAX_BUFFER
+            : 2 * LEASE_TRANSACTION_MAX_BYTES,
+    stdio: [
+      "pipe",
+      "pipe",
+      "pipe",
+      ...inheritedDescriptors,
+      ...pauseDescriptors,
+    ],
+    input: framed.input,
+  });
   if (result.error !== undefined || result.status !== 0) {
     throw leaseArchiveHelperError(
       `Lease archive helper ${operation} failed.`,
@@ -20007,12 +20064,7 @@ function assertPinnedLeaseArchiveDirectory(binding) {
   }
 }
 
-function requirePinnedLeaseArchiveDirectoryChild(
-  helper,
-  parent,
-  child,
-  label,
-) {
+function requirePinnedLeaseArchiveDirectoryChild(helper, parent, child, label) {
   if (
     path.dirname(child.path) !== parent.path ||
     path.basename(child.path).length === 0
@@ -20063,18 +20115,19 @@ function requirePinnedLeaseArchiveDirectoryChild(
   const expected = {
     childDevice: child.identity.dev.toString(),
     childInode: child.identity.ino.toString(),
-    childMode: 0o700.toString(),
+    childMode: (0o700).toString(),
     name: path.basename(child.path),
     operation: "directory-child-proof",
     parentDevice: parent.identity.dev.toString(),
     parentInode: parent.identity.ino.toString(),
-    parentMode: 0o700.toString(),
+    parentMode: (0o700).toString(),
     protocol: LEASE_ARCHIVE_MOVE_PROTOCOL,
     uid: process.getuid().toString(),
   };
   if (
-    Object.keys(receipt ?? {}).sort().join("\n") !==
-      Object.keys(expected).sort().join("\n") ||
+    Object.keys(receipt ?? {})
+      .sort()
+      .join("\n") !== Object.keys(expected).sort().join("\n") ||
     Object.entries(expected).some(([key, value]) => receipt[key] !== value)
   ) {
     throw new AutomationControlError(
@@ -20321,7 +20374,9 @@ function parsePrivateBatchIdentity(
     .sort()
     .join("\n");
   if (
-    Object.keys(value ?? {}).sort().join("\n") !== expectedKeys ||
+    Object.keys(value ?? {})
+      .sort()
+      .join("\n") !== expectedKeys ||
     value.kind !== expectedKind
   ) {
     throw new AutomationControlError(
@@ -20352,8 +20407,7 @@ function parsePrivateBatchIdentity(
         !allowedFileLinkCounts.includes(Number(value.linkCount)) ||
         BigInt(value.size) < (allowEmptyFiles ? 0n : 1n) ||
         BigInt(value.size) > BigInt(maxFileBytes)
-      : value.mode !== 0o700.toString() ||
-        BigInt(value.linkCount) < 1n)
+      : value.mode !== (0o700).toString() || BigInt(value.linkCount) < 1n)
   ) {
     throw new AutomationControlError(
       "control_event_history_invalid",
@@ -20382,10 +20436,7 @@ function privateBatchIdentityEqual(left, right) {
 }
 
 function decodeCanonicalPrivateBatchBytes(value, identity, digest, label) {
-  if (
-    typeof value !== "string" ||
-    !/^[A-Za-z0-9+/]*={0,2}$/.test(value)
-  ) {
+  if (typeof value !== "string" || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) {
     throw new AutomationControlError(
       "control_event_history_invalid",
       `${label} bytes are not canonical Base64.`,
@@ -20408,15 +20459,9 @@ function decodeCanonicalPrivateBatchBytes(value, identity, digest, label) {
 
 function privateBatchInventoryDigest(parent, entries) {
   const digest = createHash("sha256");
-  digest.update(
-    `${JSON.stringify(canonicalIntentValue(parent))}\n`,
-    "utf8",
-  );
+  digest.update(`${JSON.stringify(canonicalIntentValue(parent))}\n`, "utf8");
   for (const entry of entries) {
-    digest.update(
-      `${JSON.stringify(canonicalIntentValue(entry))}\n`,
-      "utf8",
-    );
+    digest.update(`${JSON.stringify(canonicalIntentValue(entry))}\n`, "utf8");
   }
   return digest.digest("hex");
 }
@@ -20439,10 +20484,9 @@ function parsePrivateBatchReceipt(
   } catch {
     receipt = null;
   }
-  const totalField =
-    isPrivateFileBatchOperation(operation)
-      ? "inventoryTotalFileBytes"
-      : "inventoryTotalRecordBytes";
+  const totalField = isPrivateFileBatchOperation(operation)
+    ? "inventoryTotalFileBytes"
+    : "inventoryTotalRecordBytes";
   const expectedKeys = [
     "encodedOutputBytes",
     "includeBytes",
@@ -20465,7 +20509,9 @@ function parsePrivateBatchReceipt(
     .join("\n");
   const request = JSON.parse(requestBytes.toString("utf8"));
   if (
-    Object.keys(receipt ?? {}).sort().join("\n") !== expectedKeys ||
+    Object.keys(receipt ?? {})
+      .sort()
+      .join("\n") !== expectedKeys ||
     receipt.protocol !== LEASE_ARCHIVE_MOVE_PROTOCOL ||
     receipt.operation !== operation ||
     receipt.requestDigest !== digestBytes(requestBytes) ||
@@ -20483,9 +20529,7 @@ function parsePrivateBatchReceipt(
     );
   }
   const parent = privateBatchParentReceipt(directory);
-  if (
-    Object.entries(parent).some(([key, value]) => receipt[key] !== value)
-  ) {
+  if (Object.entries(parent).some(([key, value]) => receipt[key] !== value)) {
     throw new AutomationControlError(
       "control_event_history_invalid",
       `${operation} returned a different held parent generation.`,
@@ -20568,8 +20612,7 @@ function parsePrivateBatchReceipt(
           operation === "private-file-batch-read-allow-empty"
             ? [0o600, 0o640, 0o644]
             : [0o600],
-        allowEmptyFiles:
-          operation === "private-file-batch-read-allow-empty",
+        allowEmptyFiles: operation === "private-file-batch-read-allow-empty",
       });
       if (kind === "file") calculatedInventoryBytes += BigInt(parsed.size);
       return parsed;
@@ -20593,8 +20636,7 @@ function parsePrivateBatchReceipt(
         label: `${operation} inventory record`,
         expectedKind: "file",
         maxFileBytes: limits.maxFileBytes,
-        allowEmptyFiles:
-          operation === "private-file-batch-read-allow-empty",
+        allowEmptyFiles: operation === "private-file-batch-read-allow-empty",
         extraKeys: ["digest"],
       });
       if (
@@ -20616,8 +20658,9 @@ function parsePrivateBatchReceipt(
   });
   if (request.returnInventory) {
     const names = inventoryEntries.map((entry) => entry.name);
-    const expectedDirectories = [...expectedDirectoryNames].sort((left, right) =>
-      Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")),
+    const expectedDirectories = [...expectedDirectoryNames].sort(
+      (left, right) =>
+        Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")),
     );
     const actualDirectories = inventoryEntries
       .filter((entry) => entry.kind === "directory")
@@ -20670,8 +20713,7 @@ function parsePrivateBatchReceipt(
           operation === "private-file-batch-read-allow-empty"
             ? [0o600, 0o640, 0o644]
             : [0o600],
-        allowEmptyFiles:
-          operation === "private-file-batch-read-allow-empty",
+        allowEmptyFiles: operation === "private-file-batch-read-allow-empty",
         extraKeys: request.includeBytes
           ? ["bytesBase64", "digest"]
           : ["digest"],
@@ -20884,10 +20926,9 @@ function partitionPrivateBatchSelection(
   };
   for (const name of selectedNames) {
     const entry = inventory.entryByName.get(name);
-    const size =
-      isPrivateFileBatchOperation(operation)
-        ? Number(entry?.size ?? -1)
-        : Number(entry?.record?.size ?? 0);
+    const size = isPrivateFileBatchOperation(operation)
+      ? Number(entry?.size ?? -1)
+      : Number(entry?.record?.size ?? 0);
     if (!Number.isSafeInteger(size) || size < 0) {
       throw new AutomationControlError(
         "control_event_history_invalid",
@@ -20910,8 +20951,7 @@ function partitionPrivateBatchSelection(
     }
     current.push(name);
     currentBytes += size;
-    currentRequestBytes +=
-      (current.length === 1 ? 0 : 1) + encodedNameBytes;
+    currentRequestBytes += (current.length === 1 ? 0 : 1) + encodedNameBytes;
     if (
       current.length > limits.maxSelectedEntries ||
       currentBytes > maxChunkSelectedBytes ||
@@ -21204,10 +21244,7 @@ function automationPlanningReadNames(
   );
   const after = generationFingerprint();
   if (cache !== undefined && before !== null && before === after) {
-    cache.set(
-      cacheKey,
-      Object.freeze({ generationFingerprint: after, names }),
-    );
+    cache.set(cacheKey, Object.freeze({ generationFingerprint: after, names }));
   } else {
     cache?.delete(cacheKey);
   }
@@ -21240,9 +21277,7 @@ function cloneAutomationPlanningPlainValue(value) {
   }
   if (value instanceof Set) {
     return Object.freeze(
-      [...value].map((entry) =>
-        cloneAutomationPlanningPlainValue(entry),
-      ),
+      [...value].map((entry) => cloneAutomationPlanningPlainValue(entry)),
     );
   }
   if (Array.isArray(value)) {
@@ -21446,8 +21481,9 @@ function admitOutcomeRepairTransactionInventory(paths, helper, controlNames) {
       const canonical =
         OUTCOME_REPAIR_TRANSACTION_NAME_PATTERN.test(entry.name) ||
         entry.name === OUTCOME_REPAIR_ACTIVE_TRANSACTION_NAME;
-      const ownedTemporary =
-        OUTCOME_REPAIR_TRANSACTION_TEMP_NAME_PATTERN.test(entry.name);
+      const ownedTemporary = OUTCOME_REPAIR_TRANSACTION_TEMP_NAME_PATTERN.test(
+        entry.name,
+      );
       if (entry.kind !== "file" || (!canonical && !ownedTemporary)) {
         issues.push(`unexpected transaction entry ${entry.name}`);
         continue;
@@ -21455,8 +21491,7 @@ function admitOutcomeRepairTransactionInventory(paths, helper, controlNames) {
       aggregateSelectedBytes += Number(entry.size);
       if (
         !Number.isSafeInteger(aggregateSelectedBytes) ||
-        aggregateSelectedBytes >
-          OUTCOME_REPAIR_TRANSACTION_MAX_SELECTED_BYTES
+        aggregateSelectedBytes > OUTCOME_REPAIR_TRANSACTION_MAX_SELECTED_BYTES
       ) {
         throw new AutomationControlError(
           "control_event_history_invalid",
@@ -21538,11 +21573,7 @@ function planningReadPathInsideStateRoot(stateRoot, filePath) {
   return { normalized, relative };
 }
 
-function admitAutomationPlanningRepairAncestor(
-  state,
-  directoryPath,
-  label,
-) {
+function admitAutomationPlanningRepairAncestor(state, directoryPath, label) {
   const cached = state.repairTreeAncestorBindings.get(directoryPath);
   if (cached !== undefined) {
     assertPinnedLeaseArchiveDirectory(cached.directory);
@@ -21583,10 +21614,7 @@ function admitAutomationPlanningRepairAncestorChain(
   label,
 ) {
   const relative = path.relative(state.paths.stateRoot, directoryPath);
-  if (
-    relative.startsWith("..") ||
-    path.isAbsolute(relative)
-  ) {
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
     throw new AutomationControlError(
       "invalid_state",
       `${label} ancestry escaped its state root.`,
@@ -21649,10 +21677,7 @@ function requireAutomationPlanningRepairAncestorsUnchanged(state) {
   }
 }
 
-function nearestExistingPlanningReadParent(
-  state,
-  filePath,
-) {
+function nearestExistingPlanningReadParent(state, filePath) {
   const stateRoot = state.paths.stateRoot;
   let current = path.dirname(filePath);
   const missingSegments = [path.basename(filePath)];
@@ -21698,9 +21723,7 @@ function nearestExistingPlanningReadParent(
       directory,
       inventory,
       expectedDirectories,
-      names: Object.freeze(
-        inventory.entries.map((entry) => entry.name),
-      ),
+      names: Object.freeze(inventory.entries.map((entry) => entry.name)),
       missingFirstSegments: new Set(),
     };
     state.missingParentInventories.set(current, proof);
@@ -21723,18 +21746,17 @@ function admitAutomationPlanningReadFile(bundle, options) {
   const state = AUTOMATION_PLANNING_READ_BUNDLE_STATES.get(bundle);
   const failBudget = (message) => {
     state.repairAdmissionExhausted = true;
-    throw new AutomationControlError(
-      "control_event_history_invalid",
-      message,
-    );
+    throw new AutomationControlError("control_event_history_invalid", message);
   };
   if (state.repairAdmissionExhausted) {
     failBudget(
       "Outcome ledger repair admissions exhausted their aggregate boundary.",
     );
   }
-  const { normalized: filePath, relative } =
-    planningReadPathInsideStateRoot(state.paths.stateRoot, options?.filePath);
+  const { normalized: filePath, relative } = planningReadPathInsideStateRoot(
+    state.paths.stateRoot,
+    options?.filePath,
+  );
   const encodedNameBytes = Buffer.byteLength(relative, "utf8");
   if (
     state.repairAdmissionCount >= 4_096 ||
@@ -21756,8 +21778,7 @@ function admitAutomationPlanningReadFile(bundle, options) {
     );
   }
   const remainingBytes =
-    OUTCOME_REPAIR_TRANSACTION_MAX_SELECTED_BYTES -
-    state.repairAggregateBytes;
+    OUTCOME_REPAIR_TRANSACTION_MAX_SELECTED_BYTES - state.repairAggregateBytes;
   if (remainingBytes <= 0) {
     failBudget(
       "Outcome ledger repair admissions exhausted their aggregate byte boundary.",
@@ -21780,38 +21801,42 @@ function admitAutomationPlanningReadFile(bundle, options) {
   let terminal;
   try {
     if (!pathEntryExists(path.dirname(filePath))) {
-    if (!allowMissing) {
-      throw new AutomationControlError(
-        "invalid_state",
-        `${String(options?.label ?? "Outcome ledger repair file")} is unavailable.`,
+      if (!allowMissing) {
+        throw new AutomationControlError(
+          "invalid_state",
+          `${String(options?.label ?? "Outcome ledger repair file")} is unavailable.`,
+        );
+      }
+      const { proof, missingSegments } = nearestExistingPlanningReadParent(
+        state,
+        filePath,
       );
-    }
-    const { proof, missingSegments } =
-      nearestExistingPlanningReadParent(state, filePath);
-    snapshot = Object.freeze({
-      filePath,
-      privateRoot: state.paths.stateRoot,
-      missing: true,
-      bytes: Buffer.alloc(0),
-      identity: null,
-      directoryIdentity: automationAuthorityDirectoryIdentity(
-        proof.directory.identity,
-      ),
-      missingSuffix: missingSegments,
-    });
-    terminal = { kind: "missing-descendant", proof, missingSegments };
+      snapshot = Object.freeze({
+        filePath,
+        privateRoot: state.paths.stateRoot,
+        missing: true,
+        bytes: Buffer.alloc(0),
+        identity: null,
+        directoryIdentity: automationAuthorityDirectoryIdentity(
+          proof.directory.identity,
+        ),
+        missingSuffix: missingSegments,
+      });
+      terminal = { kind: "missing-descendant", proof, missingSegments };
     } else {
       snapshot = readAutomationAuthorityFileSnapshotInternal(filePath, {
-      allowMissing,
-      allowEmpty,
-      privateRoot: state.paths.stateRoot,
-      maxBytes,
-      allowedModes,
-      label: String(options?.label ?? "Outcome ledger repair file"),
-    });
+        allowMissing,
+        allowEmpty,
+        privateRoot: state.paths.stateRoot,
+        maxBytes,
+        allowedModes,
+        label: String(options?.label ?? "Outcome ledger repair file"),
+      });
       if (snapshot.missing) {
-        const { proof, missingSegments } =
-          nearestExistingPlanningReadParent(state, filePath);
+        const { proof, missingSegments } = nearestExistingPlanningReadParent(
+          state,
+          filePath,
+        );
         terminal = { kind: "missing-descendant", proof, missingSegments };
       } else {
         terminal = {
@@ -21919,10 +21944,7 @@ function planningTreePublicIdentity(entry) {
   });
 }
 
-function requireAutomationPlanningRepairTreeFileMode(
-  relativePath,
-  entry,
-) {
+function requireAutomationPlanningRepairTreeFileMode(relativePath, entry) {
   const mode = Number(entry.mode);
   const legacyLedgerPredecessor =
     /^retired\/ledger-predecessor-[0-9a-f]{64}\.archive$/.test(relativePath);
@@ -21945,22 +21967,16 @@ function admitAutomationPlanningRepairTree(bundle, options) {
       state.paths.stateRoot,
       options?.directoryPath,
     );
-  const label = String(
-    options?.label ?? "Outcome ledger repair artifact tree",
-  );
+  const label = String(options?.label ?? "Outcome ledger repair artifact tree");
   const allowMissing = options?.allowMissing === true;
   const maximumEntries = 4_096 - state.repairAdmissionCount;
   const maximumEncodedNameBytes =
     16 * 1024 * 1024 - state.repairEncodedNameBytes;
   const maximumAggregateBytes =
-    OUTCOME_REPAIR_TRANSACTION_MAX_SELECTED_BYTES -
-    state.repairAggregateBytes;
+    OUTCOME_REPAIR_TRANSACTION_MAX_SELECTED_BYTES - state.repairAggregateBytes;
   const failBudget = (message) => {
     state.repairAdmissionExhausted = true;
-    throw new AutomationControlError(
-      "control_event_history_invalid",
-      message,
-    );
+    throw new AutomationControlError("control_event_history_invalid", message);
   };
   if (
     state.repairAdmissionExhausted ||
@@ -21979,8 +21995,10 @@ function admitAutomationPlanningRepairTree(bundle, options) {
   let aggregateBytes = 0;
   try {
     if (allowMissing && !pathEntryExists(directoryPath)) {
-      const { proof, missingSegments } =
-        nearestExistingPlanningReadParent(state, directoryPath);
+      const { proof, missingSegments } = nearestExistingPlanningReadParent(
+        state,
+        directoryPath,
+      );
       if (missingSegments.length > 0) {
         const snapshot = Object.freeze({
           filePath: directoryPath,
@@ -22243,7 +22261,10 @@ function admitAutomationPlanningRepairTree(bundle, options) {
           }),
         );
       }
-      if (names.join("\0") !== inventory.entries.map((entry) => entry.name).join("\0")) {
+      if (
+        names.join("\0") !==
+        inventory.entries.map((entry) => entry.name).join("\0")
+      ) {
         throw new AutomationControlError(
           "authority_generation_conflict",
           "Outcome ledger repair tree names changed during admission.",
@@ -22524,440 +22545,437 @@ export function withAutomationPlanningReadBundle(
   );
   const readUnderWriterGuard = () =>
     withFilesystemGuard(
-        paths,
-        "tasks",
-        () => {
-          if (writerGuardContext === null) {
-            recoverTaskTransactionsUnlocked(paths, nowMs);
-          }
-          return withFilesystemGuard(
-            paths,
-            "events",
-            () => {
-              const helper = openPinnedLeaseArchiveHelper();
-              const stateDirectory = openPinnedLeaseArchiveDirectory(
-                paths.stateRoot,
-                "Automation planning state root",
+      paths,
+      "tasks",
+      () => {
+        if (writerGuardContext === null) {
+          recoverTaskTransactionsUnlocked(paths, nowMs);
+        }
+        return withFilesystemGuard(
+          paths,
+          "events",
+          () => {
+            const helper = openPinnedLeaseArchiveHelper();
+            const stateDirectory = openPinnedLeaseArchiveDirectory(
+              paths.stateRoot,
+              "Automation planning state root",
+            );
+            let controlDirectory;
+            let stateNames;
+            let controlNames;
+            let taskTransactions;
+            let taskManifestAdmission;
+            let eventHistorySnapshot;
+            let ledgerSnapshot;
+            let outcomeControlHistory;
+            let taskManifestHistory;
+            let leaseTransactionHistory;
+            try {
+              controlDirectory = openPinnedLeaseArchiveDirectory(
+                paths.controlRoot,
+                "Automation planning control root",
               );
-              let controlDirectory;
-              let stateNames;
-              let controlNames;
-              let taskTransactions;
-              let taskManifestAdmission;
-              let eventHistorySnapshot;
-              let ledgerSnapshot;
-              let outcomeControlHistory;
-              let taskManifestHistory;
-              let leaseTransactionHistory;
-              try {
-                controlDirectory = openPinnedLeaseArchiveDirectory(
-                  paths.controlRoot,
-                  "Automation planning control root",
-                );
-                stateNames = automationPlanningReadNames(
-                  helper,
-                  stateDirectory,
-                  "Automation planning state root",
-                );
-                controlNames = automationPlanningReadNames(
-                  helper,
-                  controlDirectory,
-                  "Automation planning control root",
-                );
-                taskTransactions = admitSettledTaskTransactionInventory(
-                  paths,
-                  helper,
-                  controlNames,
-                );
-                taskManifestAdmission = readTaskManifestSnapshotUnchecked({
-                  stateRoot: paths.stateRoot,
-                  nowMs,
-                  internalCapability: AUTOMATION_PLANNING_READ_INTERNAL,
-                });
-                eventHistorySnapshot = readControlEventHistorySnapshot(
-                  paths.events,
-                  AUTOMATION_PLANNING_READ_INTERNAL,
-                );
-                ledgerSnapshot = readAutomationAuthorityFileSnapshotInternal(
-                  paths.outcomes,
-                  {
-                    allowMissing: true,
-                    allowEmpty: true,
-                    privateRoot: paths.stateRoot,
-                    maxBytes: OUTCOME_LEDGER_REPAIR_MAX_BYTES,
-                    allowedModes: [0o600, 0o640, 0o644],
-                    label: "Outcome ledger",
-                  },
-                );
-                outcomeControlHistory = inspectExactOutcomeControlHistory(
-                  eventHistorySnapshot.events,
-                  { ledgerPath: paths.outcomes, stateRoot: paths.stateRoot },
-                );
-                taskManifestHistory = inspectExactTaskManifestHistoryParity(
-                  eventHistorySnapshot.events,
-                  taskManifestAdmission.manifest,
-                );
-                try {
-                  leaseTransactionHistory =
-                    inspectLeaseTransactionEventHistoryForPlanning(
-                      paths,
-                      eventHistorySnapshot.events,
-                    );
-                } catch (error) {
-                  leaseTransactionHistory = Object.freeze({
-                    healthy: false,
-                    issues: Object.freeze([
-                      error instanceof Error ? error.message : String(error),
-                    ]),
-                    retainedReceiptCount: 0,
-                    pendingTransactionArtifactCount: 0,
-                  });
-                }
-              } catch (error) {
-                if (taskTransactions?.internal != null) {
-                  closeSync(taskTransactions.internal.directory.descriptor);
-                }
-                if (controlDirectory !== undefined) {
-                  closeSync(controlDirectory.descriptor);
-                }
-                closeSync(stateDirectory.descriptor);
-                throw error;
-              }
-              let repairTransactions;
-              try {
-                repairTransactions = admitOutcomeRepairTransactionInventory(
-                  paths,
-                  helper,
-                  controlNames,
-                );
-              } catch (error) {
-                if (taskTransactions.internal !== null) {
-                  closeSync(taskTransactions.internal.directory.descriptor);
-                }
-                closeSync(controlDirectory.descriptor);
-                closeSync(stateDirectory.descriptor);
-                throw error;
-              }
-              const state = {
-                paths,
+              stateNames = automationPlanningReadNames(
                 helper,
                 stateDirectory,
-                controlDirectory,
-                stateNames,
-                controlNames,
-                taskTransactions: taskTransactions.internal,
-                repairTransactions: repairTransactions.internal,
-                fileAdmissions: [],
-                treeAdmissions: [],
-                repairTreeAncestorBindings: new Map([
-                  [
-                    paths.stateRoot,
-                    Object.freeze({
-                      directory: stateDirectory,
-                      owned: false,
-                      parentPath: null,
-                    }),
-                  ],
-                  [
-                    paths.controlRoot,
-                    Object.freeze({
-                      directory: controlDirectory,
-                      owned: false,
-                      parentPath: paths.stateRoot,
-                    }),
-                  ],
-                ]),
-                missingParentInventories: new Map(),
-                repairAdmissionExhausted: false,
-                repairAdmissionCount:
-                  repairTransactions.public.selectionCount,
-                repairEncodedNameBytes:
-                  repairTransactions.public.encodedNameBytes,
-                repairAggregateBytes:
-                  repairTransactions.public.aggregateSelectedBytes,
-              };
-              const repairTransactionAdmissionTokens = Object.freeze(
-                (repairTransactions.internal?.selections ?? []).map(
-                  (selection) =>
-                    createAutomationPlanningAdmissionToken({
-                      kind: "outcome-repair-transaction",
-                      name: selection.name,
-                      filePath: path.join(
-                        repairTransactions.public.directoryPath,
-                        selection.name,
-                      ),
-                      missing: false,
-                      digest: selection.digest,
-                      size: Number(selection.size),
-                    }),
-                ),
+                "Automation planning state root",
               );
-              let bundle;
-              const admitFile = (options) =>
-                admitAutomationPlanningReadFile(bundle, options);
-              const admitTree = (options) =>
-                admitAutomationPlanningRepairTree(bundle, options);
-              bundle = Object.freeze({
-                schemaVersion: 1,
+              controlNames = automationPlanningReadNames(
+                helper,
+                controlDirectory,
+                "Automation planning control root",
+              );
+              taskTransactions = admitSettledTaskTransactionInventory(
+                paths,
+                helper,
+                controlNames,
+              );
+              taskManifestAdmission = readTaskManifestSnapshotUnchecked({
                 stateRoot: paths.stateRoot,
-                stateRootNames: Object.freeze([...stateNames]),
-                ledgerPath: paths.outcomes,
-                taskManifest: cloneAutomationPlanningPlainValue(
-                  taskManifestAdmission.manifest,
-                ),
-                taskManifestSnapshot: Object.freeze({
-                  missing: taskManifestAdmission.snapshot.missing,
-                  text: privateAuthorityDecoder.decode(
-                    taskManifestAdmission.snapshot.bytes,
-                  ),
-                  digest: digestBytes(taskManifestAdmission.snapshot.bytes),
-                  size: taskManifestAdmission.snapshot.bytes.length,
-                  identity: automationPlanningSnapshotIdentity(
-                    taskManifestAdmission.snapshot,
-                  ),
-                  directoryIdentity: automationPlanningDirectoryIdentity(
-                    taskManifestAdmission.snapshot,
-                  ),
-                }),
-                controlEvents: cloneAutomationPlanningPlainValue(
-                  eventHistorySnapshot.events,
-                ),
-                controlEventHistory: Object.freeze({
-                  missing: eventHistorySnapshot.missing,
-                  text: privateAuthorityDecoder.decode(
-                    eventHistorySnapshot.bytes,
-                  ),
-                  digest: digestBytes(eventHistorySnapshot.bytes),
-                  size: eventHistorySnapshot.bytes.length,
-                  identity:
-                    automationPlanningSnapshotIdentity(eventHistorySnapshot),
-                  directoryIdentity:
-                    automationPlanningDirectoryIdentity(eventHistorySnapshot),
-                }),
-                controlEventRecordCount: eventHistorySnapshot.recordCount,
-                outcomeLedger: Object.freeze({
-                  missing: ledgerSnapshot.missing,
-                  text: privateAuthorityDecoder.decode(ledgerSnapshot.bytes),
-                  digest: digestBytes(ledgerSnapshot.bytes),
-                  size: ledgerSnapshot.bytes.length,
-                  identity: automationPlanningSnapshotIdentity(ledgerSnapshot),
-                  directoryIdentity:
-                    automationPlanningDirectoryIdentity(ledgerSnapshot),
-                }),
-                outcomeControlHistory: cloneAutomationPlanningPlainValue({
-                  healthy: outcomeControlHistory.healthy,
-                  issues: outcomeControlHistory.issues,
-                  ownerLeaseLineageHealthy:
-                    outcomeControlHistory.ownerLeaseLineageHealthy,
-                  ownerLeaseLineageByRecordIndex: Object.fromEntries(
-                    outcomeControlHistory.ownerLeaseLineageByRecordIndex,
-                  ),
-                }),
-                outcomeRepairEventsById: cloneAutomationPlanningPlainValue(
-                  Object.fromEntries(
-                    outcomeControlHistory.outcomeLedgerRepairEventsById,
-                  ),
-                ),
-                taskManifestHistory: cloneAutomationPlanningPlainValue({
-                  healthy: taskManifestHistory.healthy,
-                  issues: taskManifestHistory.issues,
-                }),
-                leaseTransactionHistory: cloneAutomationPlanningPlainValue(
-                  leaseTransactionHistory,
-                ),
-                taskTransactions: taskTransactions.public,
-                outcomeRepairTransactions: Object.freeze({
-                  ...repairTransactions.public,
-                  admissions: repairTransactionAdmissionTokens,
-                }),
-                admitFile,
-                admitTree,
+                nowMs,
+                internalCapability: AUTOMATION_PLANNING_READ_INTERNAL,
               });
-              AUTOMATION_PLANNING_READ_BUNDLES.add(bundle);
-              AUTOMATION_PLANNING_READ_BUNDLE_STATES.set(bundle, state);
-              for (const [index, admission] of
-                repairTransactionAdmissionTokens.entries()) {
-                AUTOMATION_PLANNING_READ_ADMISSION_OWNERS.set(
-                  admission,
-                  bundle,
-                );
-                AUTOMATION_PLANNING_READ_ADMISSION_STATES.set(admission, {
-                  kind: "selection",
-                  snapshot: repairTransactions.internal.selections[index],
+              eventHistorySnapshot = readControlEventHistorySnapshot(
+                paths.events,
+                AUTOMATION_PLANNING_READ_INTERNAL,
+              );
+              ledgerSnapshot = readAutomationAuthorityFileSnapshotInternal(
+                paths.outcomes,
+                {
+                  allowMissing: true,
+                  allowEmpty: true,
+                  privateRoot: paths.stateRoot,
+                  maxBytes: OUTCOME_LEDGER_REPAIR_MAX_BYTES,
+                  allowedModes: [0o600, 0o640, 0o644],
+                  label: "Outcome ledger",
+                },
+              );
+              outcomeControlHistory = inspectExactOutcomeControlHistory(
+                eventHistorySnapshot.events,
+                { ledgerPath: paths.outcomes, stateRoot: paths.stateRoot },
+              );
+              taskManifestHistory = inspectExactTaskManifestHistoryParity(
+                eventHistorySnapshot.events,
+                taskManifestAdmission.manifest,
+              );
+              try {
+                leaseTransactionHistory =
+                  inspectLeaseTransactionEventHistoryForPlanning(
+                    paths,
+                    eventHistorySnapshot.events,
+                  );
+              } catch (error) {
+                leaseTransactionHistory = Object.freeze({
+                  healthy: false,
+                  issues: Object.freeze([
+                    error instanceof Error ? error.message : String(error),
+                  ]),
+                  retainedReceiptCount: 0,
+                  pendingTransactionArtifactCount: 0,
                 });
               }
-              ACTIVE_AUTOMATION_PLANNING_READ_BUNDLES.add(bundle);
-              ACTIVE_AUTOMATION_PLANNING_READ_ROOTS.add(paths.stateRoot);
-              let result;
-              try {
-                result = callback(bundle);
-                if (result && typeof result.then === "function") {
-                  throw new AutomationControlError(
-                    "invalid_argument",
-                    "Automation planning read callbacks must be synchronous.",
-                  );
-                }
-                const clonedResult = cloneAutomationPlanningPlainValue(result);
-                requireAutomationPlanningReadFileAdmissionsUnchanged(state);
-                requireAutomationPlanningRepairAncestorsUnchanged(state);
-                requireAutomationPlanningRepairTreeAdmissionsUnchanged(state);
-                requireExactAutomationPlanningSnapshot(
-                  paths.outcomes,
-                  ledgerSnapshot,
-                  {
-                    allowMissing: true,
-                    allowEmpty: true,
-                    privateRoot: paths.stateRoot,
-                    maxBytes: OUTCOME_LEDGER_REPAIR_MAX_BYTES,
-                    allowedModes: [0o600, 0o640, 0o644],
-                    label: "Outcome ledger",
-                  },
-                );
-                requireExactAutomationPlanningSnapshot(
-                  paths.events,
-                  eventHistorySnapshot,
-                  {
-                    allowMissing: true,
-                    allowEmpty: true,
-                    privateRoot: paths.controlRoot,
-                    maxBytes: CONTROL_EVENT_HISTORY_MAX_BYTES,
-                    allowedModes: [0o600],
-                    label: "Control event history",
-                  },
-                );
-                requireExactAutomationPlanningSnapshot(
-                  paths.taskManifest,
-                  taskManifestAdmission.snapshot,
-                  {
-                    allowMissing: true,
-                    allowEmpty: true,
-                    privateRoot: paths.controlRoot,
-                    maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
-                    allowedModes: [0o600],
-                    label: "Current task manifest",
-                  },
-                );
-                if (state.repairTransactions !== null) {
-                  const selectedAgain = [];
-                  readPrivateBatchSelection(
-                    helper,
-                    state.repairTransactions.directory,
-                    "private-file-batch-read",
-                    state.repairTransactions.inventory,
-                    state.repairTransactions.selectedNames,
-                    {
-                      expectedDirectoryNames:
-                        state.repairTransactions.expectedDirectories,
-                      limits: OUTCOME_REPAIR_TRANSACTION_BATCH_LIMITS,
-                      onEntry: (entry) => selectedAgain.push(entry),
-                    },
-                  );
-                  if (
-                    selectedAgain.length !==
-                      state.repairTransactions.selections.length ||
-                    selectedAgain.some(
-                      (entry, index) =>
-                        entry.name !==
-                          state.repairTransactions.selections[index].name ||
-                        entry.digest !==
-                          state.repairTransactions.selections[index].digest ||
-                        !entry.bytes.equals(
-                          state.repairTransactions.selections[index].bytes,
-                        ),
-                    )
-                  ) {
-                    throw new AutomationControlError(
-                      "authority_generation_conflict",
-                      "Outcome ledger repair transaction selections changed during planning.",
-                    );
-                  }
-                  requirePrivateBatchInventoryUnchanged(
-                    helper,
-                    state.repairTransactions.directory,
-                    "private-file-batch-read",
-                    state.repairTransactions.inventory,
-                    state.repairTransactions.expectedDirectories,
-                    OUTCOME_REPAIR_TRANSACTION_BATCH_LIMITS,
-                  );
-                }
-                if (state.taskTransactions !== null) {
-                  requirePrivateBatchInventoryUnchanged(
-                    helper,
-                    state.taskTransactions.directory,
-                    "private-file-batch-read",
-                    state.taskTransactions.inventory,
-                    state.taskTransactions.expectedDirectories,
-                  );
-                }
-                requireAutomationPlanningReadNamesUnchanged(
-                  helper,
-                  controlDirectory,
-                  controlNames,
-                  "Automation planning control root",
-                );
-                requireAutomationPlanningReadNamesUnchanged(
-                  helper,
-                  stateDirectory,
-                  stateNames,
-                  "Automation planning state root",
-                );
-                return clonedResult;
-              } finally {
-                ACTIVE_AUTOMATION_PLANNING_READ_BUNDLES.delete(bundle);
-                ACTIVE_AUTOMATION_PLANNING_READ_ROOTS.delete(paths.stateRoot);
-                AUTOMATION_PLANNING_READ_BUNDLE_STATES.delete(bundle);
-                for (const admission of repairTransactionAdmissionTokens) {
-                  AUTOMATION_PLANNING_READ_ADMISSION_STATES.delete(admission);
-                  AUTOMATION_PLANNING_READ_ADMISSION_OWNERS.delete(admission);
-                }
-                for (const admission of state.fileAdmissions) {
-                  AUTOMATION_PLANNING_READ_ADMISSION_STATES.delete(
-                    admission.token,
-                  );
-                  AUTOMATION_PLANNING_READ_ADMISSION_OWNERS.delete(
-                    admission.token,
-                  );
-                  admission.snapshot.bytes.fill(0);
-                }
-                for (const admission of state.treeAdmissions) {
-                  AUTOMATION_PLANNING_READ_ADMISSION_STATES.delete(
-                    admission.token,
-                  );
-                  AUTOMATION_PLANNING_READ_ADMISSION_OWNERS.delete(
-                    admission.token,
-                  );
-                  for (const held of [...admission.heldDirectories].reverse()) {
-                    for (const selection of held.selections) {
-                      selection.bytes?.fill(0);
-                    }
-                    closeSync(held.directory.descriptor);
-                  }
-                }
-                for (const binding of [
-                  ...state.repairTreeAncestorBindings.values(),
-                ].reverse()) {
-                  if (binding.owned) {
-                    closeSync(binding.directory.descriptor);
-                  }
-                }
-                if (state.repairTransactions !== null) {
-                  for (const selection of state.repairTransactions.selections) {
-                    selection.bytes.fill(0);
-                  }
-                  closeSync(state.repairTransactions.directory.descriptor);
-                }
-                if (state.taskTransactions !== null) {
-                  closeSync(state.taskTransactions.directory.descriptor);
-                }
-                closeSync(controlDirectory.descriptor);
-                closeSync(stateDirectory.descriptor);
+            } catch (error) {
+              if (taskTransactions?.internal != null) {
+                closeSync(taskTransactions.internal.directory.descriptor);
               }
-            },
-            { now: () => nowMs },
-          );
-        },
-        { now: () => nowMs },
-      );
+              if (controlDirectory !== undefined) {
+                closeSync(controlDirectory.descriptor);
+              }
+              closeSync(stateDirectory.descriptor);
+              throw error;
+            }
+            let repairTransactions;
+            try {
+              repairTransactions = admitOutcomeRepairTransactionInventory(
+                paths,
+                helper,
+                controlNames,
+              );
+            } catch (error) {
+              if (taskTransactions.internal !== null) {
+                closeSync(taskTransactions.internal.directory.descriptor);
+              }
+              closeSync(controlDirectory.descriptor);
+              closeSync(stateDirectory.descriptor);
+              throw error;
+            }
+            const state = {
+              paths,
+              helper,
+              stateDirectory,
+              controlDirectory,
+              stateNames,
+              controlNames,
+              taskTransactions: taskTransactions.internal,
+              repairTransactions: repairTransactions.internal,
+              fileAdmissions: [],
+              treeAdmissions: [],
+              repairTreeAncestorBindings: new Map([
+                [
+                  paths.stateRoot,
+                  Object.freeze({
+                    directory: stateDirectory,
+                    owned: false,
+                    parentPath: null,
+                  }),
+                ],
+                [
+                  paths.controlRoot,
+                  Object.freeze({
+                    directory: controlDirectory,
+                    owned: false,
+                    parentPath: paths.stateRoot,
+                  }),
+                ],
+              ]),
+              missingParentInventories: new Map(),
+              repairAdmissionExhausted: false,
+              repairAdmissionCount: repairTransactions.public.selectionCount,
+              repairEncodedNameBytes:
+                repairTransactions.public.encodedNameBytes,
+              repairAggregateBytes:
+                repairTransactions.public.aggregateSelectedBytes,
+            };
+            const repairTransactionAdmissionTokens = Object.freeze(
+              (repairTransactions.internal?.selections ?? []).map((selection) =>
+                createAutomationPlanningAdmissionToken({
+                  kind: "outcome-repair-transaction",
+                  name: selection.name,
+                  filePath: path.join(
+                    repairTransactions.public.directoryPath,
+                    selection.name,
+                  ),
+                  missing: false,
+                  digest: selection.digest,
+                  size: Number(selection.size),
+                }),
+              ),
+            );
+            let bundle;
+            const admitFile = (options) =>
+              admitAutomationPlanningReadFile(bundle, options);
+            const admitTree = (options) =>
+              admitAutomationPlanningRepairTree(bundle, options);
+            bundle = Object.freeze({
+              schemaVersion: 1,
+              stateRoot: paths.stateRoot,
+              stateRootNames: Object.freeze([...stateNames]),
+              ledgerPath: paths.outcomes,
+              taskManifest: cloneAutomationPlanningPlainValue(
+                taskManifestAdmission.manifest,
+              ),
+              taskManifestSnapshot: Object.freeze({
+                missing: taskManifestAdmission.snapshot.missing,
+                text: privateAuthorityDecoder.decode(
+                  taskManifestAdmission.snapshot.bytes,
+                ),
+                digest: digestBytes(taskManifestAdmission.snapshot.bytes),
+                size: taskManifestAdmission.snapshot.bytes.length,
+                identity: automationPlanningSnapshotIdentity(
+                  taskManifestAdmission.snapshot,
+                ),
+                directoryIdentity: automationPlanningDirectoryIdentity(
+                  taskManifestAdmission.snapshot,
+                ),
+              }),
+              controlEvents: cloneAutomationPlanningPlainValue(
+                eventHistorySnapshot.events,
+              ),
+              controlEventHistory: Object.freeze({
+                missing: eventHistorySnapshot.missing,
+                text: privateAuthorityDecoder.decode(
+                  eventHistorySnapshot.bytes,
+                ),
+                digest: digestBytes(eventHistorySnapshot.bytes),
+                size: eventHistorySnapshot.bytes.length,
+                identity:
+                  automationPlanningSnapshotIdentity(eventHistorySnapshot),
+                directoryIdentity:
+                  automationPlanningDirectoryIdentity(eventHistorySnapshot),
+              }),
+              controlEventRecordCount: eventHistorySnapshot.recordCount,
+              outcomeLedger: Object.freeze({
+                missing: ledgerSnapshot.missing,
+                text: privateAuthorityDecoder.decode(ledgerSnapshot.bytes),
+                digest: digestBytes(ledgerSnapshot.bytes),
+                size: ledgerSnapshot.bytes.length,
+                identity: automationPlanningSnapshotIdentity(ledgerSnapshot),
+                directoryIdentity:
+                  automationPlanningDirectoryIdentity(ledgerSnapshot),
+              }),
+              outcomeControlHistory: cloneAutomationPlanningPlainValue({
+                healthy: outcomeControlHistory.healthy,
+                issues: outcomeControlHistory.issues,
+                ownerLeaseLineageHealthy:
+                  outcomeControlHistory.ownerLeaseLineageHealthy,
+                ownerLeaseLineageByRecordIndex: Object.fromEntries(
+                  outcomeControlHistory.ownerLeaseLineageByRecordIndex,
+                ),
+              }),
+              outcomeRepairEventsById: cloneAutomationPlanningPlainValue(
+                Object.fromEntries(
+                  outcomeControlHistory.outcomeLedgerRepairEventsById,
+                ),
+              ),
+              taskManifestHistory: cloneAutomationPlanningPlainValue({
+                healthy: taskManifestHistory.healthy,
+                issues: taskManifestHistory.issues,
+              }),
+              leaseTransactionHistory: cloneAutomationPlanningPlainValue(
+                leaseTransactionHistory,
+              ),
+              taskTransactions: taskTransactions.public,
+              outcomeRepairTransactions: Object.freeze({
+                ...repairTransactions.public,
+                admissions: repairTransactionAdmissionTokens,
+              }),
+              admitFile,
+              admitTree,
+            });
+            AUTOMATION_PLANNING_READ_BUNDLES.add(bundle);
+            AUTOMATION_PLANNING_READ_BUNDLE_STATES.set(bundle, state);
+            for (const [
+              index,
+              admission,
+            ] of repairTransactionAdmissionTokens.entries()) {
+              AUTOMATION_PLANNING_READ_ADMISSION_OWNERS.set(admission, bundle);
+              AUTOMATION_PLANNING_READ_ADMISSION_STATES.set(admission, {
+                kind: "selection",
+                snapshot: repairTransactions.internal.selections[index],
+              });
+            }
+            ACTIVE_AUTOMATION_PLANNING_READ_BUNDLES.add(bundle);
+            ACTIVE_AUTOMATION_PLANNING_READ_ROOTS.add(paths.stateRoot);
+            let result;
+            try {
+              result = callback(bundle);
+              if (result && typeof result.then === "function") {
+                throw new AutomationControlError(
+                  "invalid_argument",
+                  "Automation planning read callbacks must be synchronous.",
+                );
+              }
+              const clonedResult = cloneAutomationPlanningPlainValue(result);
+              requireAutomationPlanningReadFileAdmissionsUnchanged(state);
+              requireAutomationPlanningRepairAncestorsUnchanged(state);
+              requireAutomationPlanningRepairTreeAdmissionsUnchanged(state);
+              requireExactAutomationPlanningSnapshot(
+                paths.outcomes,
+                ledgerSnapshot,
+                {
+                  allowMissing: true,
+                  allowEmpty: true,
+                  privateRoot: paths.stateRoot,
+                  maxBytes: OUTCOME_LEDGER_REPAIR_MAX_BYTES,
+                  allowedModes: [0o600, 0o640, 0o644],
+                  label: "Outcome ledger",
+                },
+              );
+              requireExactAutomationPlanningSnapshot(
+                paths.events,
+                eventHistorySnapshot,
+                {
+                  allowMissing: true,
+                  allowEmpty: true,
+                  privateRoot: paths.controlRoot,
+                  maxBytes: CONTROL_EVENT_HISTORY_MAX_BYTES,
+                  allowedModes: [0o600],
+                  label: "Control event history",
+                },
+              );
+              requireExactAutomationPlanningSnapshot(
+                paths.taskManifest,
+                taskManifestAdmission.snapshot,
+                {
+                  allowMissing: true,
+                  allowEmpty: true,
+                  privateRoot: paths.controlRoot,
+                  maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
+                  allowedModes: [0o600],
+                  label: "Current task manifest",
+                },
+              );
+              if (state.repairTransactions !== null) {
+                const selectedAgain = [];
+                readPrivateBatchSelection(
+                  helper,
+                  state.repairTransactions.directory,
+                  "private-file-batch-read",
+                  state.repairTransactions.inventory,
+                  state.repairTransactions.selectedNames,
+                  {
+                    expectedDirectoryNames:
+                      state.repairTransactions.expectedDirectories,
+                    limits: OUTCOME_REPAIR_TRANSACTION_BATCH_LIMITS,
+                    onEntry: (entry) => selectedAgain.push(entry),
+                  },
+                );
+                if (
+                  selectedAgain.length !==
+                    state.repairTransactions.selections.length ||
+                  selectedAgain.some(
+                    (entry, index) =>
+                      entry.name !==
+                        state.repairTransactions.selections[index].name ||
+                      entry.digest !==
+                        state.repairTransactions.selections[index].digest ||
+                      !entry.bytes.equals(
+                        state.repairTransactions.selections[index].bytes,
+                      ),
+                  )
+                ) {
+                  throw new AutomationControlError(
+                    "authority_generation_conflict",
+                    "Outcome ledger repair transaction selections changed during planning.",
+                  );
+                }
+                requirePrivateBatchInventoryUnchanged(
+                  helper,
+                  state.repairTransactions.directory,
+                  "private-file-batch-read",
+                  state.repairTransactions.inventory,
+                  state.repairTransactions.expectedDirectories,
+                  OUTCOME_REPAIR_TRANSACTION_BATCH_LIMITS,
+                );
+              }
+              if (state.taskTransactions !== null) {
+                requirePrivateBatchInventoryUnchanged(
+                  helper,
+                  state.taskTransactions.directory,
+                  "private-file-batch-read",
+                  state.taskTransactions.inventory,
+                  state.taskTransactions.expectedDirectories,
+                );
+              }
+              requireAutomationPlanningReadNamesUnchanged(
+                helper,
+                controlDirectory,
+                controlNames,
+                "Automation planning control root",
+              );
+              requireAutomationPlanningReadNamesUnchanged(
+                helper,
+                stateDirectory,
+                stateNames,
+                "Automation planning state root",
+              );
+              return clonedResult;
+            } finally {
+              ACTIVE_AUTOMATION_PLANNING_READ_BUNDLES.delete(bundle);
+              ACTIVE_AUTOMATION_PLANNING_READ_ROOTS.delete(paths.stateRoot);
+              AUTOMATION_PLANNING_READ_BUNDLE_STATES.delete(bundle);
+              for (const admission of repairTransactionAdmissionTokens) {
+                AUTOMATION_PLANNING_READ_ADMISSION_STATES.delete(admission);
+                AUTOMATION_PLANNING_READ_ADMISSION_OWNERS.delete(admission);
+              }
+              for (const admission of state.fileAdmissions) {
+                AUTOMATION_PLANNING_READ_ADMISSION_STATES.delete(
+                  admission.token,
+                );
+                AUTOMATION_PLANNING_READ_ADMISSION_OWNERS.delete(
+                  admission.token,
+                );
+                admission.snapshot.bytes.fill(0);
+              }
+              for (const admission of state.treeAdmissions) {
+                AUTOMATION_PLANNING_READ_ADMISSION_STATES.delete(
+                  admission.token,
+                );
+                AUTOMATION_PLANNING_READ_ADMISSION_OWNERS.delete(
+                  admission.token,
+                );
+                for (const held of [...admission.heldDirectories].reverse()) {
+                  for (const selection of held.selections) {
+                    selection.bytes?.fill(0);
+                  }
+                  closeSync(held.directory.descriptor);
+                }
+              }
+              for (const binding of [
+                ...state.repairTreeAncestorBindings.values(),
+              ].reverse()) {
+                if (binding.owned) {
+                  closeSync(binding.directory.descriptor);
+                }
+              }
+              if (state.repairTransactions !== null) {
+                for (const selection of state.repairTransactions.selections) {
+                  selection.bytes.fill(0);
+                }
+                closeSync(state.repairTransactions.directory.descriptor);
+              }
+              if (state.taskTransactions !== null) {
+                closeSync(state.taskTransactions.directory.descriptor);
+              }
+              closeSync(controlDirectory.descriptor);
+              closeSync(stateDirectory.descriptor);
+            }
+          },
+          { now: () => nowMs },
+        );
+      },
+      { now: () => nowMs },
+    );
   if (writerGuardContext !== null) {
     if (
       !ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS.has(writerGuardContext) ||
@@ -23041,14 +23059,7 @@ function automationAuthorityInventoryParentReceipt(directory) {
 
 function parseAutomationAuthorityEntryInventory(
   result,
-  {
-    name,
-    allowedModesArgument,
-    allowMissing,
-    allowEmpty,
-    maxBytes,
-    directory,
-  },
+  { name, allowedModesArgument, allowMissing, allowEmpty, maxBytes, directory },
   label,
 ) {
   let receipt;
@@ -23071,13 +23082,13 @@ function parseAutomationAuthorityEntryInventory(
       (field) => `parent${field}`,
     ),
     ...(missing === false
-      ? AUTHORITY_FILE_IDENTITY_RECEIPT_FIELDS.map(
-          (field) => `entry${field}`,
-        )
+      ? AUTHORITY_FILE_IDENTITY_RECEIPT_FIELDS.map((field) => `entry${field}`)
       : []),
   ].sort();
   if (
-    Object.keys(receipt ?? {}).sort().join("\n") !== expectedKeys.join("\n") ||
+    Object.keys(receipt ?? {})
+      .sort()
+      .join("\n") !== expectedKeys.join("\n") ||
     receipt.protocol !== AUTHORITY_FILE_OPERATION_PROTOCOL ||
     receipt.operation !== "authority-entry-inventory" ||
     receipt.name !== name ||
@@ -23513,7 +23524,9 @@ function parseAutomationAuthorityReceipt(
     ...Object.keys(names),
     ...Object.keys(requested),
     ...identityPrefixes.flatMap((prefix) =>
-      AUTHORITY_FILE_IDENTITY_RECEIPT_FIELDS.map((field) => `${prefix}${field}`),
+      AUTHORITY_FILE_IDENTITY_RECEIPT_FIELDS.map(
+        (field) => `${prefix}${field}`,
+      ),
     ),
     ...parentPrefixes.flatMap((prefix) =>
       AUTHORITY_PARENT_IDENTITY_RECEIPT_FIELDS.map(
@@ -23522,7 +23535,9 @@ function parseAutomationAuthorityReceipt(
     ),
   ].sort();
   if (
-    Object.keys(receipt ?? {}).sort().join("\n") !== expectedKeys.join("\n") ||
+    Object.keys(receipt ?? {})
+      .sort()
+      .join("\n") !== expectedKeys.join("\n") ||
     receipt.protocol !== AUTHORITY_FILE_OPERATION_PROTOCOL ||
     receipt.operation !== operation ||
     Object.entries({ ...names, ...requested }).some(
@@ -23555,9 +23570,7 @@ function requireAutomationAuthorityReceiptIdentity(
     [`${prefix}CtimeNs`]: String(snapshot.identity.ctimeNs),
     [`${prefix}Digest`]: digestBytes(snapshot.bytes),
   };
-  if (
-    Object.entries(expected).some(([key, value]) => receipt[key] !== value)
-  ) {
+  if (Object.entries(expected).some(([key, value]) => receipt[key] !== value)) {
     throw new AutomationControlError(
       "authority_generation_conflict",
       `${label} returned an inexact ${prefix} generation.`,
@@ -23577,9 +23590,7 @@ function requireAutomationAuthorityReceiptParent(
     [`${prefix}Mode`]: Number(binding.identity.mode & 0o7777n).toString(),
     [`${prefix}Uid`]: binding.identity.uid.toString(),
   };
-  if (
-    Object.entries(expected).some(([key, value]) => receipt[key] !== value)
-  ) {
+  if (Object.entries(expected).some(([key, value]) => receipt[key] !== value)) {
     throw new AutomationControlError(
       "authority_generation_conflict",
       `${label} returned an inexact ${prefix} parent generation.`,
@@ -23998,9 +24009,13 @@ function listPinnedAutomationAuthorityDirectory(
       [binding.descriptor],
     );
   } catch (error) {
-    throw new AutomationControlError(errorCode, `${label} could not be listed.`, {
-      cause: error instanceof Error ? error.message : String(error),
-    });
+    throw new AutomationControlError(
+      errorCode,
+      `${label} could not be listed.`,
+      {
+        cause: error instanceof Error ? error.message : String(error),
+      },
+    );
   }
   assertPinnedLeaseArchiveDirectory(binding);
   if (bytes.length === 0) return [];
@@ -24378,9 +24393,7 @@ function requireControlEventSemanticSuccessor(paths, before, after) {
     );
     const canonical = outcomeReserved
       ? outcomeHistory.canonicalOutcomeEventIndexes.has(finalIndex)
-      : outcomeHistory.canonicalOutcomeLedgerRepairEventIndexes.has(
-          finalIndex,
-        );
+      : outcomeHistory.canonicalOutcomeLedgerRepairEventIndexes.has(finalIndex);
     if (!outcomeHistory.healthy || !canonical) {
       throw new AutomationControlError(
         "authority_generation_conflict",
@@ -24394,7 +24407,10 @@ function requireControlEventSemanticSuccessor(paths, before, after) {
   });
 }
 
-function filesystemGenerationFingerprint(stats, { stableIdentityOnly = false } = {}) {
+function filesystemGenerationFingerprint(
+  stats,
+  { stableIdentityOnly = false } = {},
+) {
   return [
     stats.dev,
     stats.ino,
@@ -24402,9 +24418,7 @@ function filesystemGenerationFingerprint(stats, { stableIdentityOnly = false } =
     stats.nlink,
     stats.uid,
     stats.gid,
-    ...(stableIdentityOnly
-      ? []
-      : [stats.size, stats.mtimeNs, stats.ctimeNs]),
+    ...(stableIdentityOnly ? [] : [stats.size, stats.mtimeNs, stats.ctimeNs]),
   ]
     .map(String)
     .join(":");
@@ -24428,11 +24442,12 @@ function controlEventAuthorityGenerationFingerprint(paths) {
   const canonicalNameBytes = Buffer.from(canonicalName, "utf8");
   const authorityPrefixBytes = Buffer.from(authorityPrefix, "utf8");
   const relevantNames = () => {
-    const entries = readdirSync(directoryPath, { encoding: "buffer" })
-      .map((entry) => {
+    const entries = readdirSync(directoryPath, { encoding: "buffer" }).map(
+      (entry) => {
         privateAuthorityDecoder.decode(entry);
         return entry;
-      });
+      },
+    );
     return entries
       .filter(
         (entry) =>
@@ -24546,7 +24561,8 @@ function admitControlEventAuthorityStage(
     label: "Control event history",
   });
   if (activeGuard !== undefined) {
-    const admittedFingerprint = controlEventAuthorityGenerationFingerprint(paths);
+    const admittedFingerprint =
+      controlEventAuthorityGenerationFingerprint(paths);
     if (admittedFingerprint === null) {
       throw new AutomationControlError(
         "authority_generation_conflict",
@@ -24821,10 +24837,11 @@ function requireTaskManifestSemanticSuccessor(paths, before, after) {
         tasks: [],
       });
     const beforeEvents =
-      eventIndexes.length === 1
-        ? events.slice(0, eventIndexes[0])
-        : events;
-    if (!inspectExactTaskManifestHistoryParity(beforeEvents, priorManifest).healthy) {
+      eventIndexes.length === 1 ? events.slice(0, eventIndexes[0]) : events;
+    if (
+      !inspectExactTaskManifestHistoryParity(beforeEvents, priorManifest)
+        .healthy
+    ) {
       return false;
     }
     if (
@@ -24918,7 +24935,9 @@ function readAutomationAuthorityRetirementInventory(helper, directory, label) {
   ].sort();
   const expectedParent = automationAuthorityInventoryParentReceipt(directory);
   if (
-    Object.keys(receipt ?? {}).sort().join("\n") !== expectedKeys.join("\n") ||
+    Object.keys(receipt ?? {})
+      .sort()
+      .join("\n") !== expectedKeys.join("\n") ||
     receipt.protocol !== AUTHORITY_FILE_OPERATION_PROTOCOL ||
     receipt.operation !== "authority-retirement-inventory" ||
     receipt.requestedMaxEntries !==
@@ -24971,7 +24990,9 @@ function readAutomationAuthorityRetirementInventory(helper, directory, label) {
     ].sort();
     const nameBytes = Buffer.from(String(entry?.name ?? ""), "utf8");
     if (
-      Object.keys(entry ?? {}).sort().join("\n") !== keys.join("\n") ||
+      Object.keys(entry ?? {})
+        .sort()
+        .join("\n") !== keys.join("\n") ||
       typeof entry.name !== "string" ||
       entry.name.length === 0 ||
       entry.name === "." ||
@@ -25013,7 +25034,11 @@ function readAutomationAuthorityRetirementInventory(helper, directory, label) {
       `${label} returned inconsistent retirement byte totals.`,
     );
   }
-  return Object.freeze({ entryCount, totalBytes, entries: Object.freeze(entries) });
+  return Object.freeze({
+    entryCount,
+    totalBytes,
+    entries: Object.freeze(entries),
+  });
 }
 
 function requireAutomationAuthorityRetirementCapacity(
@@ -25118,10 +25143,7 @@ function stageAutomationAuthorityBytes({
   let lastError = null;
   let staged = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const provisionalStagePath = path.join(
-      directoryPath,
-      provisionalStageName,
-    );
+    const provisionalStagePath = path.join(directoryPath, provisionalStageName);
     if (
       sourceStage !== null &&
       sourceStage.entry === provisionalStageName &&
@@ -25450,8 +25472,7 @@ function stageAutomationAuthorityBytes({
     !provisionalAfter.missing ||
     ready.missing ||
     !automationAuthorityStableGenerationMatches(ready, staged) ||
-    automationAuthorityStableGenerationDigest(ready) !==
-      successorStableDigest
+    automationAuthorityStableGenerationDigest(ready) !== successorStableDigest
   ) {
     if (helperError !== null) throw helperError;
     throw new AutomationControlError(
@@ -25865,10 +25886,7 @@ export function writeAutomationAuthorityFile({
     requireAutomationAuthoritySnapshotDirectory(published, directory, label);
     if (
       published.missing ||
-      !automationAuthorityStableGenerationMatches(
-        published,
-        staged.snapshot,
-      ) ||
+      !automationAuthorityStableGenerationMatches(published, staged.snapshot) ||
       automationAuthorityStableGenerationDigest(published) !==
         staged.successorStableDigest
     ) {
@@ -25881,10 +25899,10 @@ export function writeAutomationAuthorityFile({
     const stageAfter = readAutomationAuthorityStage(
       path.join(directoryPath, staged.entry),
       {
-      privateRoot: normalizedPrivateRoot,
-      maxBytes,
-      allowedModes: reusableStageModes,
-      label: `${label} post-publication staging generation`,
+        privateRoot: normalizedPrivateRoot,
+        maxBytes,
+        allowedModes: reusableStageModes,
+        label: `${label} post-publication staging generation`,
       },
     );
     requireAutomationAuthoritySnapshotDirectory(
@@ -25902,10 +25920,7 @@ export function writeAutomationAuthorityFile({
       }
     } else if (
       stageAfter.missing ||
-      !automationAuthorityStableGenerationMatches(
-        stageAfter,
-        previousSnapshot,
-      )
+      !automationAuthorityStableGenerationMatches(stageAfter, previousSnapshot)
     ) {
       if (helperError !== null) throw helperError;
       throw new AutomationControlError(
@@ -26677,7 +26692,12 @@ function leaseAtomicArchiveSpecifications(paths, transaction, archiveScope) {
     for (const side of ["before", "after"]) {
       const filePath = transaction.staging[`${side}Path`];
       const kind = `${side} staging`;
-      add(`staging-${side}`, filePath, leaseAtomicSuccessorKind(kind), "successor");
+      add(
+        `staging-${side}`,
+        filePath,
+        leaseAtomicSuccessorKind(kind),
+        "successor",
+      );
       add(
         `staging-${side}`,
         filePath,
@@ -26699,12 +26719,7 @@ function leaseAtomicArchiveSpecifications(paths, transaction, archiveScope) {
       );
     }
     add("wal", files.transaction, "WAL", "canonical-or-successor");
-    add(
-      "wal",
-      files.transaction,
-      leaseAtomicSuccessorKind("WAL"),
-      "successor",
-    );
+    add("wal", files.transaction, leaseAtomicSuccessorKind("WAL"), "successor");
     add(
       "wal",
       files.transaction,
@@ -26717,9 +26732,7 @@ function leaseAtomicArchiveSpecifications(paths, transaction, archiveScope) {
       leaseAtomicCompletionResidueKind("WAL"),
       "non-authoritative-residue",
     );
-    const recordPath = leaseRecordPath(
-      leasePathFor(paths, transaction.name),
-    );
+    const recordPath = leaseRecordPath(leasePathFor(paths, transaction.name));
     add(
       "record",
       recordPath,
@@ -26764,11 +26777,9 @@ function leaseCleanupArchivePrefixes(paths, transaction, archiveScope) {
   return Object.freeze([
     ...new Set([
       transaction.operationId,
-      ...leaseAtomicArchiveSpecifications(
-        paths,
-        transaction,
-        archiveScope,
-      ).map((specification) => specification.selectionPrefix),
+      ...leaseAtomicArchiveSpecifications(paths, transaction, archiveScope).map(
+        (specification) => specification.selectionPrefix,
+      ),
     ]),
   ]);
 }
@@ -26806,16 +26817,10 @@ function leaseCleanupQuarantinePathMatchesTransaction(
     paths,
     transaction,
     archiveScope,
-  ).find(
-    (candidate) => candidate.target === "wal" && candidate.kind === "WAL",
-  );
+  ).find((candidate) => candidate.target === "wal" && candidate.kind === "WAL");
   return (
     specification !== undefined &&
-    leaseAtomicArchiveSpecificationMatches(
-      archivePath,
-      specification,
-      snapshot,
-    )
+    leaseAtomicArchiveSpecificationMatches(archivePath, specification, snapshot)
   );
 }
 
@@ -26835,7 +26840,9 @@ function readLeaseCleanupArchiveEntries(
     label: "Lease cleanup quarantine directory",
     errorCode: "lease_archive_capacity_invalid",
   })
-    .filter((entry) => operationIds.some((value) => entry.startsWith(`${value}.`)))
+    .filter((entry) =>
+      operationIds.some((value) => entry.startsWith(`${value}.`)),
+    )
     .sort()
     .map((entry) => {
       if (
@@ -26936,10 +26943,7 @@ function requireExactCompletedLeaseWalLineage(transaction, generations) {
   const observedPhases = new Map();
   for (const generation of generations) {
     const expected = expectedByPhase.get(generation.phase);
-    if (
-      expected === undefined ||
-      !canonicalValuesEqual(generation, expected)
-    ) {
+    if (expected === undefined || !canonicalValuesEqual(generation, expected)) {
       throw new AutomationControlError(
         "lease_transaction_conflict",
         `Completed lease transaction for ${transaction.name} has an inexact WAL phase lineage.`,
@@ -27368,7 +27372,11 @@ function buildLeaseCleanupPlan({
     const [specification] = matches;
     if (specification.target === "wal" && specification.kind === "WAL") {
       try {
-        parseRetiredLeaseTransactionSnapshot(paths, transaction, entry.snapshot);
+        parseRetiredLeaseTransactionSnapshot(
+          paths,
+          transaction,
+          entry.snapshot,
+        );
         canonicalOperationArchives.push(
           Object.freeze({ ...entry, atomicSpecification: specification }),
         );
@@ -27378,9 +27386,7 @@ function buildLeaseCleanupPlan({
         // classified below and rejected by semantic atomic admission.
       }
     }
-    atomicOperationArchives.push(
-      Object.freeze({ ...entry, specification }),
-    );
+    atomicOperationArchives.push(Object.freeze({ ...entry, specification }));
   }
   const retiredArchives = [];
   const transactionArchiveSpecs = [
@@ -27404,14 +27410,14 @@ function buildLeaseCleanupPlan({
     .filter((entry) => entry.archiveScope === "transaction")
     .map((entry) => {
       const matches = transactionArchiveSpecs.filter((spec) =>
-          leaseCleanupQuarantinePathMatchesTransaction(
-            paths,
-            transaction,
-            "transaction",
-            entry.quarantinePath,
-            spec.filePath,
-            entry.snapshot,
-          ),
+        leaseCleanupQuarantinePathMatchesTransaction(
+          paths,
+          transaction,
+          "transaction",
+          entry.quarantinePath,
+          spec.filePath,
+          entry.snapshot,
+        ),
       );
       if (matches.length !== 1) {
         throw new AutomationControlError(
@@ -27448,7 +27454,9 @@ function buildLeaseCleanupPlan({
       continue;
     }
     retiredTransactions.push(archivedTransaction);
-    const cleanupOperationId = path.basename(entry.quarantinePath).split(".")[0];
+    const cleanupOperationId = path
+      .basename(entry.quarantinePath)
+      .split(".")[0];
     const atomicSpecification = entry.atomicSpecification;
     retiredArchives.push({
       filePath:
@@ -27565,9 +27573,7 @@ function buildLeaseCleanupPlan({
           ),
       });
     }
-    if (
-      !leaseCleanupRequirementsComplete(requirementsByDescriptor)
-    ) {
+    if (!leaseCleanupRequirementsComplete(requirementsByDescriptor)) {
       throw new AutomationControlError(
         "lease_transaction_conflict",
         `Lease ${side} cleanup archives do not cover every exact current and retired generation.`,
@@ -27933,10 +27939,7 @@ function validatePinnedRetiredLeaseCleanupArchive(
           archive.cleanupOperationId ?? operationId,
           snapshot,
         );
-  if (
-    !archive.snapshot.bytes.equals(bytes) ||
-    !archivePathMatches
-  ) {
+  if (!archive.snapshot.bytes.equals(bytes) || !archivePathMatches) {
     throw new AutomationControlError(
       "lease_transaction_conflict",
       `${archive.label} retired generation changed after descriptor admission.`,
@@ -28277,10 +28280,7 @@ function recoverLeaseTransactionUnlocked(
   );
   const recover = (activeEventsGuard) => {
     requireActiveLeaseEventsGuard(activeEventsGuard);
-    requireOutcomeLedgerRepairFenceAllowsMutation(
-      paths,
-      activeEventsGuard,
-    );
+    requireOutcomeLedgerRepairFenceAllowsMutation(paths, activeEventsGuard);
     reconcileActiveLeaseTransactionArtifacts(paths, files, transaction);
     if (transaction.phase === "complete") {
       validateCompletedLeaseReceiptStaging(paths, transaction);
@@ -28423,11 +28423,7 @@ function recoverLeaseTransactionUnlocked(
       }
       if (matchesAfter) {
         transaction.phase = "state-committed";
-        writeLeaseTransactionFile(
-          paths,
-          files.transaction,
-          transaction,
-        );
+        writeLeaseTransactionFile(paths, files.transaction, transaction);
       }
     }
 
@@ -28449,20 +28445,13 @@ function recoverLeaseTransactionUnlocked(
         matchedEvent.snapshot.recordCount,
         transaction.event,
       );
-      appendEventLineUnlocked(
-        paths,
-        transaction.event,
-        matchedEvent.snapshot,
-        { eventsGuard: activeEventsGuard },
-      );
+      appendEventLineUnlocked(paths, transaction.event, matchedEvent.snapshot, {
+        eventsGuard: activeEventsGuard,
+      });
     }
     if (transaction.phase === "state-committed") {
       transaction.phase = "event-appended";
-      writeLeaseTransactionFile(
-        paths,
-        files.transaction,
-        transaction,
-      );
+      writeLeaseTransactionFile(paths, files.transaction, transaction);
     }
     return completeLeaseTransaction(
       paths,
@@ -28622,17 +28611,10 @@ function requireCurrentLeaseOperationRecoveryMatch(
     tokenDigest,
     predecessor,
   };
-  const files = leaseTransactionFiles(
-    paths,
-    name,
-    operationId,
-    operation,
-  );
+  const files = leaseTransactionFiles(paths, name, operationId, operation);
   const expectedPreWalTemporaryEntries = new Set(
     [files.before, files.after, files.transaction].map((filePath) =>
-      path.basename(
-        leaseAtomicTemporaryPath(filePath, namespaceOperation),
-      ),
+      path.basename(leaseAtomicTemporaryPath(filePath, namespaceOperation)),
     ),
   );
   if (pathEntryExists(path.dirname(activePath))) {
@@ -28783,9 +28765,7 @@ function cleanupCompletedLeaseReceipt(
     pruneReceipts: false,
   });
   if (
-    cleanupPlan.targets.every(
-      (target) => target.canonicalSnapshot === null,
-    )
+    cleanupPlan.targets.every((target) => target.canonicalSnapshot === null)
   ) {
     assertPinnedLeaseAtomicFile(receiptBinding);
     return;
@@ -28949,9 +28929,7 @@ function validateParsedCompletedLeaseReceiptHealthEvidence(
           "staging-before",
           "staging-after",
           "atomic-evidence",
-        ].includes(
-          entry.kind,
-        ),
+        ].includes(entry.kind),
     )
   ) {
     throw new AutomationControlError(
@@ -29213,12 +29191,7 @@ function prepareLeaseTransaction({
       retirementDirectory: leaseCleanupQuarantineDirectory(files.after),
     });
   }
-  writeLeaseTransactionFile(
-    paths,
-    files.transaction,
-    transaction,
-    checkpoint,
-  );
+  writeLeaseTransactionFile(paths, files.transaction, transaction, checkpoint);
   return { files, transaction, reservation };
 }
 
@@ -29258,10 +29231,7 @@ function executePreparedLeaseTransaction(
   invokeLeaseTransactionCheckpoint(checkpoint, "lease-prepared");
   const execute = (activeEventsGuard) => {
     requireActiveLeaseEventsGuard(activeEventsGuard);
-    requireOutcomeLedgerRepairFenceAllowsMutation(
-      paths,
-      activeEventsGuard,
-    );
+    requireOutcomeLedgerRepairFenceAllowsMutation(paths, activeEventsGuard);
     validateLeaseStaging(paths, transaction);
     const current = readLeaseStateSnapshot(paths, transaction.name);
     if (!leaseStateMatches(current.descriptor, transaction.before)) {
@@ -29329,8 +29299,8 @@ function executePreparedLeaseTransaction(
       beforeRename: () =>
         invokeLeaseTransactionCheckpoint(
           checkpoint,
-            "lease-event-before-publication",
-          ),
+          "lease-event-before-publication",
+        ),
       eventsGuard: activeEventsGuard,
     });
     transaction.phase = "event-appended";
@@ -29420,6 +29390,345 @@ export function inspectLease({
   });
 }
 
+const TRUSTED_LAUNCHER_ATTESTATION_KEYS = Object.freeze(
+  [
+    "action",
+    "actor",
+    "challengeSha256",
+    "channelVerified",
+    "controlPid",
+    "controlStartIdentity",
+    "launcherIdentityVerified",
+    "launcherPid",
+    "launcherSha256",
+    "launcherStartIdentity",
+    "leaseName",
+    "leaseOperationId",
+    "protocol",
+    "runtimeDigest",
+    "runtimeIdentityVerified",
+    "schemaVersion",
+    "sessionId",
+    "stateRoot",
+    "tokenSha256",
+    "ttlMs",
+  ].sort(),
+);
+
+function trustedLauncherHasExactObjectKeys(value, keys) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value).sort().join("\n") === keys.join("\n")
+  );
+}
+
+function trustedLauncherChannelFailure(message, details = undefined) {
+  throw new AutomationControlError(
+    "actor_launcher_channel_invalid",
+    message,
+    details,
+  );
+}
+
+function isNativeProcessStartIdentity(value, pid) {
+  if (typeof value !== "string") return false;
+  const parts = value.split(":");
+  if (parts.length !== 3 || parts[0] !== String(pid)) return false;
+  if (!/^[1-9][0-9]*$/.test(parts[1]) || !/^(0|[1-9][0-9]*)$/.test(parts[2])) {
+    return false;
+  }
+  const microseconds = Number(parts[2]);
+  return Number.isSafeInteger(microseconds) && microseconds <= 999_999;
+}
+
+export function validateTrustedLauncherChannelAttestation(
+  attestation,
+  {
+    actor,
+    action,
+    stateRoot,
+    leaseName,
+    operationId,
+    tokenSha256,
+    ttlMs,
+    launcherPid,
+    controlPid,
+    launcherSha256,
+    runtimeDigest,
+    challengeSha256,
+  },
+) {
+  const expectedSessionId = createHash("sha256")
+    .update(
+      [
+        ACTOR_LAUNCHER_CHANNEL_PROTOCOL,
+        action,
+        actor,
+        stateRoot,
+        leaseName,
+        operationId,
+        tokenSha256,
+        String(ttlMs),
+        attestation?.launcherStartIdentity,
+        attestation?.controlStartIdentity,
+        launcherSha256,
+        runtimeDigest,
+        challengeSha256,
+        "",
+      ].join("\n"),
+      "utf8",
+    )
+    .digest("hex");
+  if (
+    !trustedLauncherHasExactObjectKeys(
+      attestation,
+      TRUSTED_LAUNCHER_ATTESTATION_KEYS,
+    ) ||
+    attestation.schemaVersion !== AUTOMATION_CONTROL_SCHEMA_VERSION ||
+    attestation.protocol !== ACTOR_LAUNCHER_CHANNEL_PROTOCOL ||
+    attestation.action !== action ||
+    attestation.actor !== actor ||
+    attestation.stateRoot !== stateRoot ||
+    attestation.leaseName !== leaseName ||
+    attestation.leaseOperationId !== operationId ||
+    attestation.tokenSha256 !== tokenSha256 ||
+    attestation.ttlMs !== ttlMs ||
+    attestation.launcherPid !== launcherPid ||
+    attestation.controlPid !== controlPid ||
+    !isNativeProcessStartIdentity(
+      attestation.launcherStartIdentity,
+      attestation.launcherPid,
+    ) ||
+    !isNativeProcessStartIdentity(
+      attestation.controlStartIdentity,
+      attestation.controlPid,
+    ) ||
+    attestation.launcherSha256 !== launcherSha256 ||
+    attestation.runtimeDigest !== runtimeDigest ||
+    attestation.challengeSha256 !== challengeSha256 ||
+    attestation.sessionId !== expectedSessionId ||
+    attestation.launcherIdentityVerified !== true ||
+    attestation.runtimeIdentityVerified !== true ||
+    attestation.channelVerified !== true
+  ) {
+    trustedLauncherChannelFailure(
+      "Trusted launcher channel attestation does not match the installed actor contract.",
+      { owner: actor },
+    );
+  }
+  return attestation;
+}
+
+function verifyTrustedLauncherChannel({
+  stateRoot,
+  name,
+  owner,
+  action,
+  operationId,
+  token,
+  ttlMs,
+  challengeSha256,
+  actorControlEntryPath,
+}) {
+  const policy = actorPolicy(owner);
+  if (!["attest", "acquire"].includes(action)) {
+    trustedLauncherChannelFailure(
+      "The trusted launcher channel action is invalid.",
+      { owner },
+    );
+  }
+  if (!isGeneralAutomationActor(owner)) {
+    throw new AutomationControlError(
+      "actor_launcher_forbidden",
+      `Actor ${owner} cannot use the general actor launcher channel.`,
+      { owner },
+    );
+  }
+  if (name !== policy.leaseName) {
+    throw new AutomationControlError(
+      "lease_policy_mismatch",
+      `Actor ${owner} must acquire canonical lease ${policy.leaseName}.`,
+      { owner, expectedLeaseName: policy.leaseName, name },
+    );
+  }
+  if (ttlMs !== policy.maxLeaseLifetimeMs) {
+    throw new AutomationControlError(
+      "lease_ttl_invalid",
+      `${owner} launcher leases must be exactly ${policy.maxLeaseLifetimeMs.toLocaleString()} ms.`,
+      { owner, ttlMs },
+    );
+  }
+  const normalizedOperationId = requireLeaseOperationId(operationId);
+  requireCallerLeaseToken(token);
+  const tokenSha256 = secretDigest(token);
+  if (
+    typeof challengeSha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test(challengeSha256)
+  ) {
+    trustedLauncherChannelFailure(
+      "The launcher challenge must be one lowercase SHA-256 digest.",
+    );
+  }
+
+  const installed = readInstalledActorBinding(stateRoot, owner, {
+    leaseContract: {
+      name: policy.leaseName,
+      maxLifetimeMs: policy.maxLeaseLifetimeMs,
+    },
+  });
+  if (!installed.ready) {
+    throw new AutomationControlError(
+      "actor_launcher_not_ready",
+      `The trusted launcher for ${owner} is not ready: ${installed.reason}`,
+      { owner, path: installed.path },
+    );
+  }
+
+  let currentNodePath;
+  let currentEntryPath;
+  try {
+    currentNodePath = realpathSync(process.execPath);
+    currentEntryPath = realpathSync(actorControlEntryPath);
+  } catch {
+    trustedLauncherChannelFailure(
+      "The actor control process is not running from the installed immutable runtime.",
+    );
+  }
+  if (
+    currentNodePath !== installed.binding.nodePath ||
+    currentEntryPath !== installed.binding.actorControlEntryPath
+  ) {
+    trustedLauncherChannelFailure(
+      "The actor control process does not match the installed immutable runtime.",
+      {
+        owner,
+        expectedNodePath: installed.binding.nodePath,
+        expectedEntryPath: installed.binding.actorControlEntryPath,
+      },
+    );
+  }
+
+  const result = spawnSync(
+    installed.binding.launcherPath,
+    [
+      "--verify-control-channel",
+      "--protocol",
+      ACTOR_LAUNCHER_CHANNEL_PROTOCOL,
+      "--channel-action",
+      action,
+      "--actor",
+      owner,
+      "--state-root",
+      installed.stateRoot,
+      "--lease-name",
+      name,
+      "--operation-id",
+      normalizedOperationId,
+      "--token-sha256",
+      tokenSha256,
+      "--ttl-seconds",
+      String(ttlMs / 1_000),
+      "--challenge-sha256",
+      challengeSha256,
+      "--control-pid",
+      String(process.pid),
+      "--channel-fd",
+      "3",
+    ],
+    {
+      cwd: "/",
+      encoding: "utf8",
+      env: { PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C" },
+      maxBuffer: 64 * 1_024,
+      stdio: ["ignore", "pipe", "pipe", 3],
+      timeout: TRUSTED_LAUNCHER_CHANNEL_TIMEOUT_MS,
+      killSignal: "SIGKILL",
+    },
+  );
+  if (result.error) {
+    trustedLauncherChannelFailure(
+      result.error.code === "ETIMEDOUT"
+        ? `Trusted launcher channel verification exceeded ${TRUSTED_LAUNCHER_CHANNEL_TIMEOUT_MS.toLocaleString()} ms.`
+        : `Trusted launcher channel verification failed: ${result.error.message}`,
+    );
+  }
+  if (result.status !== 0) {
+    trustedLauncherChannelFailure(
+      Number.isInteger(result.status)
+        ? `Trusted launcher channel verification exited with status ${result.status.toLocaleString()}.`
+        : "Trusted launcher channel verification ended without an exit status.",
+    );
+  }
+  const stdout = String(result.stdout ?? "");
+  if (
+    Buffer.byteLength(stdout, "utf8") > MAX_TRUSTED_LAUNCHER_ATTESTATION_BYTES
+  ) {
+    trustedLauncherChannelFailure(
+      "Trusted launcher channel verification exceeded its output bound.",
+    );
+  }
+  let attestation;
+  try {
+    attestation = JSON.parse(stdout);
+  } catch {
+    trustedLauncherChannelFailure(
+      "Trusted launcher channel verification did not return one JSON object.",
+    );
+  }
+  validateTrustedLauncherChannelAttestation(attestation, {
+    actor: owner,
+    action,
+    stateRoot: installed.stateRoot,
+    leaseName: name,
+    operationId: normalizedOperationId,
+    tokenSha256,
+    ttlMs,
+    launcherPid: process.ppid,
+    controlPid: process.pid,
+    launcherSha256: installed.binding.launcherSha256,
+    runtimeDigest: installed.runtimeDigest,
+    challengeSha256,
+  });
+
+  return {
+    installed,
+    attestation,
+    authorization: {
+      marker: TRUSTED_LAUNCHER_AUTHORIZATION,
+      launcherSha256: installed.binding.launcherSha256,
+      actorRuntimeDigest: installed.runtimeDigest,
+      launcherChannelProtocol: ACTOR_LAUNCHER_CHANNEL_PROTOCOL,
+      launcherAttestationSha256: createHash("sha256")
+        .update(stdout, "utf8")
+        .digest("hex"),
+      launcherSessionId: attestation.sessionId,
+      leaseOperationId: normalizedOperationId,
+      leaseTokenSha256: tokenSha256,
+    },
+  };
+}
+
+export function attestGeneralActorLauncherChannel(options) {
+  const verified = verifyTrustedLauncherChannel(options);
+  return {
+    schemaVersion: AUTOMATION_CONTROL_SCHEMA_VERSION,
+    protocol: ACTOR_LAUNCHER_ATTESTATION_PROTOCOL,
+    purpose: "automation-actor-launcher-readiness",
+    actor: verified.attestation.actor,
+    stateRoot: verified.installed.stateRoot,
+    leaseName: verified.attestation.leaseName,
+    maxLeaseLifetimeMs: verified.attestation.ttlMs,
+    handoff: ACTOR_LAUNCHER_HANDOFF,
+    channelProtocol: ACTOR_LAUNCHER_CHANNEL_PROTOCOL,
+    launcherSha256: verified.authorization.launcherSha256,
+    runtimeDigest: verified.authorization.actorRuntimeDigest,
+    canonicalLeaseReady: true,
+    mutatesState: false,
+  };
+}
+
 function buildLeaseEvent(type, actor, name, data, nowMs, transactionId) {
   return {
     schemaVersion: AUTOMATION_CONTROL_SCHEMA_VERSION,
@@ -29448,6 +29757,7 @@ function acquireLeaseAuthorized({
   publisherCapabilityFile = undefined,
   scope = undefined,
   checkpoint = undefined,
+  trustedLauncherAuthorization = null,
 }) {
   const paths = automationControlPaths(stateRoot);
   const normalizedOperationId = requireLeaseOperationId(operationId);
@@ -29497,6 +29807,17 @@ function acquireLeaseAuthorized({
   const resolvedObserverAuthority = policy.observerAuthority;
   const resolvedProviderAuthority = policy.providerAuthority;
   requireCallerLeaseToken(token);
+  if (
+    trustedLauncherAuthorization !== null &&
+    (trustedLauncherAuthorization.leaseOperationId !== normalizedOperationId ||
+      trustedLauncherAuthorization.leaseTokenSha256 !== secretDigest(token))
+  ) {
+    throw new AutomationControlError(
+      "actor_launcher_channel_invalid",
+      "The trusted launcher attestation does not bind this exact lease operation and token.",
+      { owner },
+    );
+  }
   if (
     owner === "freed-pr-publisher" &&
     (ownerCapabilityFile !== undefined || ownerConfirmationFile !== undefined)
@@ -29569,16 +29890,8 @@ function acquireLeaseAuthorized({
     operationId: normalizedOperationId,
     name,
     owner,
-    actorCredentialFile:
-      owner === "freed-owner" || owner === "freed-pr-publisher"
-        ? null
-        : actorCredentialPath(paths, owner),
-    actorCredentialTokenDigest:
-      owner === "freed-owner" ||
-      owner === "freed-pr-publisher" ||
-      typeof actorCredentialToken !== "string"
-        ? null
-        : secretDigest(actorCredentialToken),
+    actorCredentialFile: null,
+    actorCredentialTokenDigest: null,
     ttlMs,
     tokenDigest: secretDigest(token),
     observerAuthority: resolvedObserverAuthority,
@@ -29589,24 +29902,36 @@ function acquireLeaseAuthorized({
     ownerCapabilityIntentDigest: ownerCapabilityIntentDigest ?? null,
     publisherCapabilityFile: publisherCapabilityFile ?? null,
     scope: publisherScope ?? null,
+    ...(trustedLauncherAuthorization === null
+      ? {}
+      : {
+          launcherSha256: trustedLauncherAuthorization.launcherSha256,
+          actorRuntimeDigest: trustedLauncherAuthorization.actorRuntimeDigest,
+          launcherChannelProtocol:
+            trustedLauncherAuthorization.launcherChannelProtocol,
+        }),
   };
   const requestDigest = canonicalLeaseRequestDigest(request);
 
-  return withLeaseMutationArchiveGuard(paths, name, {
+  return withLeaseMutationArchiveGuard(
+    paths,
     name,
-    owner,
-    leaseOperation: "acquire",
-    operationId: normalizedOperationId,
-    request,
-    requestDigest,
-    token,
-    tokenDigest: secretDigest(token),
-    ttlMs,
-    ownerCapabilityFile,
-    ownerConfirmationFile,
-    ownerCapabilityTaskId,
-    ownerCapabilityIntentDigest,
-  }, (eventsGuard) => {
+    {
+      name,
+      owner,
+      leaseOperation: "acquire",
+      operationId: normalizedOperationId,
+      request,
+      requestDigest,
+      token,
+      tokenDigest: secretDigest(token),
+      ttlMs,
+      ownerCapabilityFile,
+      ownerConfirmationFile,
+      ownerCapabilityTaskId,
+      ownerCapabilityIntentDigest,
+    },
+    (eventsGuard) => {
       requireCurrentLeaseOperationRecoveryMatch(
         paths,
         name,
@@ -29788,7 +30113,8 @@ function acquireLeaseAuthorized({
         ...(ownerConfirmation === null
           ? {}
           : {
-            ownerConfirmationId: ownerConfirmation.confirmation.confirmationId,
+              ownerConfirmationId:
+                ownerConfirmation.confirmation.confirmationId,
               ownerConfirmationTaskId: ownerConfirmation.confirmation.taskId,
               ownerConfirmationIntentDigest:
                 ownerConfirmation.confirmation.intentDigest,
@@ -29840,20 +30166,30 @@ function acquireLeaseAuthorized({
           ? {}
           : { publisherCapabilityId: publisherCapability.capabilityId }),
         ...(publisherScope === undefined ? {} : { scope: publisherScope }),
-        ...(actorCredential === null
+        ...(trustedLauncherAuthorization === null
           ? {}
-          : { actorCredentialPath: actorCredential.credentialPath }),
+          : {
+              launcherSha256: trustedLauncherAuthorization.launcherSha256,
+              actorRuntimeDigest:
+                trustedLauncherAuthorization.actorRuntimeDigest,
+              launcherChannelProtocol:
+                trustedLauncherAuthorization.launcherChannelProtocol,
+              launcherAttestationSha256:
+                trustedLauncherAuthorization.launcherAttestationSha256,
+              launcherSessionId: trustedLauncherAuthorization.launcherSessionId,
+            }),
         ...(ownerCapability === null
           ? {}
           : {
               ownerCapabilityId: ownerCapability.payload.capabilityId,
               ownerCapabilityTaskId: ownerCapability.payload.taskId,
-            ownerCapabilityIntentDigest: ownerCapability.payload.intentDigest,
+              ownerCapabilityIntentDigest: ownerCapability.payload.intentDigest,
             }),
         ...(ownerConfirmation === null
           ? {}
           : {
-            ownerConfirmationId: ownerConfirmation.confirmation.confirmationId,
+              ownerConfirmationId:
+                ownerConfirmation.confirmation.confirmationId,
               ownerConfirmationTaskId: ownerConfirmation.confirmation.taskId,
               ownerConfirmationIntentDigest:
                 ownerConfirmation.confirmation.intentDigest,
@@ -29883,13 +30219,11 @@ function acquireLeaseAuthorized({
       const admittedCredential =
         ownerCapability?.credentialSnapshot ??
         ownerConfirmation?.credentialSnapshot ??
-        publisherCapability?.credentialSnapshot ??
-        actorCredential?.credentialSnapshot;
+        publisherCapability?.credentialSnapshot;
       const admittedCredentialPath =
         ownerCapability?.capabilityFile ??
         ownerConfirmation?.confirmationFile ??
-        publisherCapability?.capabilityFile ??
-        actorCredential?.credentialPath;
+        publisherCapability?.capabilityFile;
       invokeLeaseTransactionCheckpoint(
         checkpoint,
         "lease-credential-authorized",
@@ -29916,14 +30250,11 @@ function acquireLeaseAuthorized({
                   consumedPath: publisherCapability.consumedPath,
                   snapshot: admittedCredential,
                 })
-              : credentialDescriptor({
-                  kind: "actor-credential",
-                  sourcePath: actorCredential.credentialPath,
-                  snapshot: admittedCredential,
-                  tokenSha256:
-                    actorCredential.credentialSnapshot.value.tokenSha256,
-                });
-      if (!credentialBytesMatch(capability.sourcePath, capability)) {
+              : null;
+      if (
+        capability !== null &&
+        !credentialBytesMatch(capability.sourcePath, capability)
+      ) {
         throw new AutomationControlError(
           "lease_transaction_conflict",
           "Lease credential changed after authorization admission.",
@@ -30001,7 +30332,8 @@ function acquireLeaseAuthorized({
         },
       );
       return leaseResultFromReceipt(transaction, token);
-  });
+    },
+  );
 }
 
 export function acquireLease(options) {
@@ -30030,11 +30362,18 @@ export function acquireLease(options) {
 
 export function acquireGeneralActorLeaseFromTrustedLauncher(options) {
   const {
+    action = "acquire",
     challengeSha256,
     actorControlEntryPath,
     actorCredentialToken = undefined,
     ...leaseOptions
   } = options;
+  if (action !== "acquire") {
+    throw new AutomationControlError(
+      "invalid_argument",
+      "Trusted launcher acquisition requires the acquire channel action.",
+    );
+  }
   if (actorCredentialToken !== undefined) {
     throw new AutomationControlError(
       "actor_reusable_credential_forbidden",
@@ -30045,6 +30384,9 @@ export function acquireGeneralActorLeaseFromTrustedLauncher(options) {
     stateRoot: leaseOptions.stateRoot,
     name: leaseOptions.name,
     owner: leaseOptions.owner,
+    action,
+    operationId: leaseOptions.operationId,
+    token: leaseOptions.token,
     ttlMs: leaseOptions.ttlMs,
     challengeSha256,
     actorControlEntryPath,
@@ -30079,15 +30421,19 @@ export function heartbeatLease({
   };
   const requestDigest = canonicalLeaseRequestDigest(request);
 
-  return withLeaseMutationArchiveGuard(paths, name, {
+  return withLeaseMutationArchiveGuard(
+    paths,
     name,
-    leaseOperation: "heartbeat",
-    operationId: normalizedOperationId,
-    request,
-    requestDigest,
-    token,
-    tokenDigest: secretDigest(token),
-  }, (eventsGuard) => {
+    {
+      name,
+      leaseOperation: "heartbeat",
+      operationId: normalizedOperationId,
+      request,
+      requestDigest,
+      token,
+      tokenDigest: secretDigest(token),
+    },
+    (eventsGuard) => {
       requireCurrentLeaseOperationRecoveryMatch(
         paths,
         name,
@@ -30240,7 +30586,8 @@ export function heartbeatLease({
         },
       );
       return leaseResultFromReceipt(transaction, token);
-  });
+    },
+  );
 }
 
 export function bindPublisherLeaseHead({
@@ -30279,15 +30626,19 @@ export function bindPublisherLeaseHead({
   };
   const requestDigest = canonicalLeaseRequestDigest(request);
 
-  return withLeaseMutationArchiveGuard(paths, name, {
+  return withLeaseMutationArchiveGuard(
+    paths,
     name,
-    leaseOperation: "bind-head",
-    operationId: normalizedOperationId,
-    request,
-    requestDigest,
-    token,
-    tokenDigest: secretDigest(token),
-  }, (eventsGuard) => {
+    {
+      name,
+      leaseOperation: "bind-head",
+      operationId: normalizedOperationId,
+      request,
+      requestDigest,
+      token,
+      tokenDigest: secretDigest(token),
+    },
+    (eventsGuard) => {
       requireCurrentLeaseOperationRecoveryMatch(
         paths,
         name,
@@ -30377,9 +30728,7 @@ export function bindPublisherLeaseHead({
       const nextRecord = structuredClone(record);
       if (!alreadyBound) nextRecord.scope.headSha = normalizedHeadSha;
       const event = buildLeaseEvent(
-        alreadyBound
-          ? "lease_scope_binding_confirmed"
-          : "lease_scope_bound",
+        alreadyBound ? "lease_scope_binding_confirmed" : "lease_scope_bound",
         record.owner,
         name,
         { scope: nextRecord.scope, requestDigest },
@@ -30430,7 +30779,8 @@ export function bindPublisherLeaseHead({
         },
       );
       return leaseResultFromReceipt(transaction, token);
-  });
+    },
+  );
 }
 
 export function releaseLease({
@@ -30452,15 +30802,19 @@ export function releaseLease({
   };
   const requestDigest = canonicalLeaseRequestDigest(request);
 
-  return withLeaseMutationArchiveGuard(paths, name, {
+  return withLeaseMutationArchiveGuard(
+    paths,
     name,
-    leaseOperation: "release",
-    operationId: normalizedOperationId,
-    request,
-    requestDigest,
-    token,
-    tokenDigest: secretDigest(token),
-  }, (eventsGuard) => {
+    {
+      name,
+      leaseOperation: "release",
+      operationId: normalizedOperationId,
+      request,
+      requestDigest,
+      token,
+      tokenDigest: secretDigest(token),
+    },
+    (eventsGuard) => {
       requireCurrentLeaseOperationRecoveryMatch(
         paths,
         name,
@@ -30553,5 +30907,6 @@ export function releaseLease({
         { eventsGuard },
       );
       return leaseResultFromReceipt(transaction, token);
-  });
+    },
+  );
 }

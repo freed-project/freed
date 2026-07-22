@@ -16,8 +16,7 @@ export const ACTOR_LAUNCHER_RECORD_ROOT =
   "/Library/Application Support/Freed/automation-actor-launchers";
 export const ACTOR_RUNTIME_ROOT =
   "/Library/Application Support/Freed/automation-actor-runtimes";
-const ACTOR_RUNTIME_DIGEST_PROTOCOL =
-  "freed-automation-actor-runtime-v3";
+const ACTOR_RUNTIME_DIGEST_PROTOCOL = "freed-automation-actor-runtime-v4";
 export const LAUNCHER_ATTESTATION_TIMEOUT_MS = 15_000;
 const MAX_LAUNCHER_ATTESTATION_BYTES = 16 * 1_024;
 
@@ -34,8 +33,6 @@ const BINDING_KEYS = Object.freeze(
     "controlLibraryPath",
     "controlLibrarySha256",
     "handoff",
-    "keychainAccount",
-    "keychainService",
     "leaseArchiveHelperPath",
     "leaseArchiveHelperSha256",
     "leaseName",
@@ -266,6 +263,7 @@ export function runtimeDigestForPins(pins) {
         `automation-control.mjs:${pins.controlEntrySha256}`,
         `automation-actor-control.mjs:${pins.actorControlEntrySha256}`,
         `lib/automation-control.mjs:${pins.controlLibrarySha256}`,
+        `lib/automation-actor-readiness.mjs:${pins.readinessLibrarySha256}`,
         `lib/automation-kernel-guard-contract.mjs:${pins.kernelGuardContractSha256}`,
         `lib/outcome-ledger-repair-contract.mjs:${pins.outcomeLedgerRepairContractSha256}`,
         `lib/lease-archive-move.py:${pins.leaseArchiveHelperSha256}`,
@@ -305,7 +303,7 @@ export function validateActorBindingRecord(
       !Number.isSafeInteger(leaseContract.maxLifetimeMs) ||
       leaseContract.maxLifetimeMs <= 0 ||
       !exactKeys(record, BINDING_KEYS) ||
-      record.schemaVersion !== 3 ||
+      record.schemaVersion !== 4 ||
       record.actor !== actor ||
       record.purpose !== ACTOR_LAUNCHER_PURPOSE ||
       record.handoff !== ACTOR_LAUNCHER_HANDOFF ||
@@ -319,6 +317,7 @@ export function validateActorBindingRecord(
       !isSha256(record.controlEntrySha256) ||
       !isSha256(record.actorControlEntrySha256) ||
       !isSha256(record.controlLibrarySha256) ||
+      !isSha256(record.readinessLibrarySha256) ||
       !isSha256(record.kernelGuardContractSha256) ||
       !isSha256(record.outcomeLedgerRepairContractSha256) ||
       !isSha256(record.leaseArchiveHelperSha256) ||
@@ -330,6 +329,8 @@ export function validateActorBindingRecord(
         path.join(runtimeDirectory, "automation-actor-control.mjs") ||
       record.controlLibraryPath !==
         path.join(runtimeDirectory, "lib", "automation-control.mjs") ||
+      record.readinessLibraryPath !==
+        path.join(runtimeDirectory, "lib", "automation-actor-readiness.mjs") ||
       record.kernelGuardContractPath !==
         path.join(
           runtimeDirectory,
@@ -379,6 +380,11 @@ export function validateActorBindingRecord(
         "automation control library",
         record.controlLibraryPath,
         record.controlLibrarySha256,
+      ],
+      [
+        "automation actor readiness library",
+        record.readinessLibraryPath,
+        record.readinessLibrarySha256,
       ],
       [
         "automation kernel guard contract",
@@ -634,6 +640,7 @@ export function actorLauncherReadiness(
     controlEntryPath: installed.binding.controlEntryPath,
     actorControlEntryPath: installed.binding.actorControlEntryPath,
     controlLibraryPath: installed.binding.controlLibraryPath,
+    readinessLibraryPath: installed.binding.readinessLibraryPath,
     kernelGuardContractPath: installed.binding.kernelGuardContractPath,
     outcomeLedgerRepairContractPath:
       installed.binding.outcomeLedgerRepairContractPath,
