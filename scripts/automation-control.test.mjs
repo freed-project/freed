@@ -228,13 +228,18 @@ function writeKernelGuardMarker(filePath) {
   writeFileSync(filePath, automationKernelGuardMarkerBytes(), { mode: 0o600 });
 }
 
+const ownerIntentsByDigest = new Map();
+
 function ownerIntent(action, taskId, parameters) {
-  return ownerGovernanceIntentDigest({
+  const intent = {
     schemaVersion: 1,
     action,
     taskId,
     parameters,
-  });
+  };
+  const intentDigest = ownerGovernanceIntentDigest(intent);
+  ownerIntentsByDigest.set(intentDigest, intent);
+  return intentDigest;
 }
 
 function outcomeLedgerRepairParameters(stateRoot, taskId, overrides = {}) {
@@ -286,6 +291,38 @@ function outcomeLedgerRepairParametersForCurrentEventHistory(
     eventHistoryDigest: createHash("sha256").update(eventHistory).digest("hex"),
     eventHistorySize: eventHistory.length,
     ...overrides,
+  });
+}
+
+function appendCanonicalControlEventFixtures(
+  stateRoot,
+  events,
+  operationId,
+) {
+  const paths = automationControlPaths(stateRoot);
+  const previousSnapshot = readAutomationAuthorityFileSnapshot(paths.events, {
+    allowMissing: false,
+    allowEmpty: false,
+    privateRoot: paths.controlRoot,
+    maxBytes: CONTROL_EVENT_HISTORY_MAX_BYTES,
+    allowedModes: [0o600],
+    label: "Control event history fixture",
+  });
+  const separator =
+    previousSnapshot.bytes.at(-1) === 0x0a ? Buffer.alloc(0) : Buffer.from("\n");
+  const appendedBytes = Buffer.from(
+    `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
+    "utf8",
+  );
+  writeAutomationAuthorityFile({
+    filePath: paths.events,
+    bytes: Buffer.concat([previousSnapshot.bytes, separator, appendedBytes]),
+    previousSnapshot,
+    operationId,
+    privateRoot: paths.controlRoot,
+    maxBytes: CONTROL_EVENT_HISTORY_MAX_BYTES,
+    allowedModes: [0o600],
+    label: "Control event history fixture",
   });
 }
 
@@ -1089,62 +1126,34 @@ function actorLease(
   if (actor === "freed-owner") {
     assert.match(ownerTaskId ?? "", /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
     assert.match(ownerIntentDigest ?? "", /^[0-9a-f]{64}$/);
-    const leasePath = path.join(
-      automationControlPaths(stateRoot).leases,
-      `${policy.leaseName}.lease`,
+    const intent = ownerIntentsByDigest.get(ownerIntentDigest);
+    assert.ok(intent, `missing owner intent for ${ownerIntentDigest}`);
+    const confirmationId = `owner-test-${createHash("sha256")
+      .update(`${stateRoot}:${ownerTaskId}:${leaseNowMs}:${ownerIntentDigest}`)
+      .digest("hex")}`;
+    const { confirmationPath } = writeOwnerConfirmation(
+      stateRoot,
+      ownerTaskId,
+      intent,
+      { nowMs: leaseNowMs, confirmationId },
     );
-    mkdirSync(leasePath, { recursive: true, mode: 0o700 });
-    const acquiredAt = new Date(leaseNowMs).toISOString();
-    const expiresAt = new Date(leaseNowMs + 10 * 60_000).toISOString();
-    const ownerCapabilityId = `owner-test-${nowMs}`;
-    writeFileSync(
-      path.join(leasePath, "lease.json"),
-      `${JSON.stringify({
-        schemaVersion: 1,
-        name: policy.leaseName,
-        owner: actor,
-        token,
-        observerAuthority: policy.observerAuthority,
-        providerAuthority: policy.providerAuthority,
-        credentialKind: "owner-signed-capability",
-        ownerCapabilityId,
-        ownerCapabilityTaskId: ownerTaskId,
-        ownerCapabilityIntentDigest: ownerIntentDigest,
-        acquiredAt,
-        heartbeatAt: acquiredAt,
-        expiresAt,
-        ttlMs: 10 * 60_000,
-      })}\n`,
-      { mode: 0o600 },
-    );
-    const operationId = createHash("sha256")
-      .update(`owner-test-lease:${stateRoot}:${ownerTaskId}:${leaseNowMs}`)
-      .digest("hex");
-    appendFileSync(
-      automationControlPaths(stateRoot).events,
-      `${JSON.stringify({
-        schemaVersion: 1,
-        eventId: `lease:${operationId}`,
-        type: "lease_acquired",
-        ts: acquiredAt,
-        actor,
-        leaseName: policy.leaseName,
-        data: {
-          expiresAt,
-          observerAuthority: policy.observerAuthority,
-          providerAuthority: policy.providerAuthority,
-          requestDigest: createHash("sha256")
-            .update(`owner-test-request:${operationId}`)
-            .digest("hex"),
-          credentialKind: "owner-signed-capability",
-          ownerCapabilityId,
-          ownerCapabilityTaskId: ownerTaskId,
-          ownerCapabilityIntentDigest: ownerIntentDigest,
-        },
-      })}\n`,
-      { mode: 0o600 },
-    );
-    return { actor, leaseName: policy.leaseName, leaseToken: token };
+    const leaseToken =
+      Buffer.byteLength(token, "utf8") >= 32
+        ? token
+        : `${token}:${"x".repeat(32)}`;
+    const acquired = acquireLease({
+      stateRoot,
+      name: policy.leaseName,
+      owner: actor,
+      ttlMs: 10 * 60_000,
+      nowMs: leaseNowMs,
+      token: leaseToken,
+      ownerConfirmationFile: confirmationPath,
+      ownerCapabilityTaskId: ownerTaskId,
+      ownerCapabilityIntentDigest: ownerIntentDigest,
+    });
+    assert.equal(acquired.lease.credentialKind, "owner-confirmation");
+    return { actor, leaseName: policy.leaseName, leaseToken };
   }
   const actorCredentialToken = writeActorCredential(stateRoot, actor);
   assert.equal(policy.maxLeaseLifetimeMs, 30 * 60_000);
@@ -2004,9 +2013,12 @@ test("low-level kernel guards reject missing and inexact permanent markers", () 
 test("outcome repair finalization guard rejects a missing canonical transaction before callback", () => {
   const stateRoot = temporaryStateRoot();
   const taskId = "repair-event-guard-scope";
-  const nowMs = Date.parse("2026-07-18T09:55:00Z");
+  const nowMs = Date.now();
   createOutcomeLedgerRepairTask(stateRoot, taskId, nowMs - 1_000);
-  const parameters = outcomeLedgerRepairParameters(stateRoot, taskId);
+  const parameters = outcomeLedgerRepairParametersForCurrentEventHistory(
+    stateRoot,
+    taskId,
+  );
   const ownerIntentDigest = ownerIntent(
     "outcome-ledger.repair",
     taskId,
@@ -5038,14 +5050,24 @@ test("current lease acquisition events require exact credential-specific structu
     assert.match(inspection.issues.join("\n"), /canonical lease control event/);
   });
 
-  await t.test("rejects malformed owner capability provenance", () => {
+  await t.test("rejects malformed owner confirmation provenance", () => {
     const stateRoot = temporaryStateRoot();
     actorLease(stateRoot, "freed-owner", {
       ownerTaskId: "strict-owner-provenance",
-      ownerIntentDigest: "a".repeat(64),
+      ownerIntentDigest: ownerIntent(
+        "task.authorize",
+        "strict-owner-provenance",
+        {
+          observerAuthority: "merge-safe",
+          providerAuthority: null,
+          reason: "Exercise exact owner confirmation provenance.",
+          approvalReference: null,
+          expectedRevision: 1,
+        },
+      ),
     });
     const malformed = structuredClone(ownerLeaseAcquisition(stateRoot));
-    malformed.data.ownerCapabilityId = 7;
+    malformed.data.ownerConfirmationId = 7;
 
     const inspection = inspectExactTaskLifecycleHistory([malformed]);
     assert.equal(inspection.healthy, false);
@@ -8253,10 +8275,15 @@ test("freed-owner outcome event and finalization steps require one composite gua
       ? Object.fromEntries(
           readdirSync(paths.taskTransactions)
             .sort()
-            .map((name) => [
-              name,
-              readFileSync(path.join(paths.taskTransactions, name)),
-            ]),
+            .map((name) => {
+              const entryPath = path.join(paths.taskTransactions, name);
+              try {
+                return [name, readFileSync(entryPath)];
+              } catch (error) {
+                if (error?.code === "EISDIR") return [name, null];
+                throw error;
+              }
+            }),
         )
       : {},
   });
@@ -8287,10 +8314,16 @@ test("freed-owner outcome event and finalization steps require one composite gua
       error.code === "owner_intent_required",
   );
   assert.deepEqual(snapshot(), beforeEvent);
+  releaseLease({
+    stateRoot,
+    name: ownerEvent.leaseName,
+    token: ownerEvent.leaseToken,
+    nowMs: nowMs + 3,
+  });
 
   const outcomeDigest = "a".repeat(64);
   const ownerFinalize = actorLease(stateRoot, "freed-owner", {
-    nowMs: nowMs + 3,
+    nowMs: nowMs + 4,
     token: "owner-outcome-finalize-token",
     ownerTaskId: taskId,
     ownerIntentDigest: ownerIntent("task.finalize-outcome", taskId, {
@@ -8309,7 +8342,7 @@ test("freed-owner outcome event and finalization steps require one composite gua
         outcome: "merged",
         outcomeDigest,
         taskRevision: 1,
-        nowMs: nowMs + 4,
+        nowMs: nowMs + 5,
       }),
     (error) =>
       error instanceof AutomationControlError &&
@@ -9450,24 +9483,6 @@ test("provider approval requires a reference and authority changes are audited",
     ),
   );
   const ownerLeaseAcquiredAtMs = Date.parse(ownerLeaseRecord.acquiredAt);
-  appendFileSync(
-    automationControlPaths(stateRoot).events,
-    `${JSON.stringify({
-      schemaVersion: 1,
-      eventId: "provider-owner-capability-lease",
-      type: "lease_acquired",
-      ts: ownerLeaseRecord.acquiredAt,
-      actor: "freed-owner",
-      leaseName: "owner-governance",
-      data: {
-        credentialKind: ownerLeaseRecord.credentialKind,
-        ownerCapabilityId: ownerLeaseRecord.ownerCapabilityId,
-        ownerCapabilityTaskId: ownerLeaseRecord.ownerCapabilityTaskId,
-        ownerCapabilityIntentDigest:
-          ownerLeaseRecord.ownerCapabilityIntentDigest,
-      },
-    })}\n`,
-  );
   assert.throws(
     () =>
       updateTaskAuthorities({
@@ -9518,14 +9533,14 @@ test("provider approval requires a reference and authority changes are audited",
   );
   assert.equal(
     event.data.authorizationProvenance.credentialKind,
-    "owner-signed-capability",
+    "owner-confirmation",
   );
   assert.match(
-    event.data.authorizationProvenance.ownerCapabilityId,
+    event.data.authorizationProvenance.ownerConfirmationId,
     /^owner-test-/,
   );
   assert.equal(
-    event.data.authorizationProvenance.ownerCapabilityTaskId,
+    event.data.authorizationProvenance.ownerConfirmationTaskId,
     "P1-04",
   );
   transitionTask({
@@ -9538,7 +9553,8 @@ test("provider approval requires a reference and authority changes are audited",
   });
   const controlManifest = readTaskManifest({ stateRoot });
   const controlEvents = readEvents(stateRoot);
-  const authorizationEvent = controlEvents.find(
+  const signedControlEvents = structuredClone(controlEvents);
+  const authorizationEvent = signedControlEvents.find(
     (candidate) => candidate.type === "task_authority_updated",
   );
   assert.ok(authorizationEvent);
@@ -9550,20 +9566,38 @@ test("provider approval requires a reference and authority changes are audited",
     authorizationDigest,
   );
   const provenance = authorizationEvent.data.authorizationProvenance;
-  const matchingOwnerLeaseEvent = controlEvents.find(
+  const matchingOwnerLeaseEvent = signedControlEvents.find(
     (candidate) =>
       candidate.type === "lease_acquired" &&
       candidate.actor === "freed-owner" &&
       candidate.leaseName === "owner-governance" &&
-      candidate.data.credentialKind === "owner-signed-capability" &&
-      candidate.data.ownerCapabilityId === provenance.ownerCapabilityId &&
-      candidate.data.ownerCapabilityTaskId ===
-        provenance.ownerCapabilityTaskId &&
-      candidate.data.ownerCapabilityIntentDigest ===
-        provenance.ownerCapabilityIntentDigest &&
+      candidate.data.credentialKind === "owner-confirmation" &&
+      candidate.data.ownerConfirmationId === provenance.ownerConfirmationId &&
       candidate.ts === provenance.leaseAcquiredAt,
   );
   assert.ok(matchingOwnerLeaseEvent);
+  const ownerCapabilityId = `provider-owner-${createHash("sha256")
+    .update(approval.approvalId)
+    .digest("hex")}`;
+  const signedProvenance = {
+    leaseName: provenance.leaseName,
+    leaseAcquiredAt: provenance.leaseAcquiredAt,
+    credentialKind: "owner-signed-capability",
+    ownerCapabilityId,
+    ownerCapabilityTaskId: "P1-04",
+    ownerCapabilityIntentDigest: ownerLeaseRecord.ownerConfirmationIntentDigest,
+  };
+  matchingOwnerLeaseEvent.data = {
+    expiresAt: matchingOwnerLeaseEvent.data.expiresAt,
+    observerAuthority: matchingOwnerLeaseEvent.data.observerAuthority,
+    providerAuthority: matchingOwnerLeaseEvent.data.providerAuthority,
+    requestDigest: matchingOwnerLeaseEvent.data.requestDigest,
+    credentialKind: "owner-signed-capability",
+    ownerCapabilityId,
+    ownerCapabilityTaskId: "P1-04",
+    ownerCapabilityIntentDigest: ownerLeaseRecord.ownerConfirmationIntentDigest,
+  };
+  authorizationEvent.data.authorizationProvenance = signedProvenance;
   const validatedApproval = validateProviderRiskApproval(
     approval,
     approval.paths,
@@ -9571,7 +9605,7 @@ test("provider approval requires a reference and authority changes are audited",
       now: ownerLeaseAcquiredAtMs + 3_000,
       diffSha: approval.diffSha,
       controlManifest,
-      controlEvents,
+      controlEvents: signedControlEvents,
     },
   );
   assert.equal(validatedApproval.authorizationDigest, authorizationDigest);
@@ -10096,7 +10130,7 @@ test("general actor policies enforce a 30-minute absolute lease lifetime", () =>
   }
 });
 
-test("owner lease lifetime cannot outlive its signed capability limit", () => {
+test("owner lease lifetime cannot outlive its fixed limit", () => {
   const stateRoot = temporaryStateRoot();
   const nowMs = Date.now();
   assert.throws(
@@ -10117,7 +10151,17 @@ test("owner lease lifetime cannot outlive its signed capability limit", () => {
     nowMs,
     token: "owner-lifetime-lease-token",
     ownerTaskId: "owner-lifetime-task",
-    ownerIntentDigest: "a".repeat(64),
+    ownerIntentDigest: ownerIntent(
+      "task.authorize",
+      "owner-lifetime-task",
+      {
+        observerAuthority: "merge-safe",
+        providerAuthority: null,
+        reason: "Exercise the fixed owner lease lifetime.",
+        approvalReference: null,
+        expectedRevision: 1,
+      },
+    ),
   });
   const heartbeat = heartbeatLease({
     stateRoot,
@@ -10362,6 +10406,10 @@ test("publisher scope binds distinct governed main modes", () => {
     scope: releaseScope,
   });
   assert.equal(releaseLease.lease.scope.publishMode, "production-release-prep");
+  const releaseHistory = inspectExactTaskLifecycleHistory(
+    readEvents(releaseStateRoot),
+  );
+  assert.equal(releaseHistory.healthy, true, releaseHistory.issues.join("\n"));
 
   const promotionStateRoot = temporaryStateRoot();
   const promotionScope = {
@@ -10385,6 +10433,14 @@ test("publisher scope binds distinct governed main modes", () => {
     scope: promotionScope,
   });
   assert.equal(promotionLease.lease.scope.publishMode, "production-promotion");
+  const promotionHistory = inspectExactTaskLifecycleHistory(
+    readEvents(promotionStateRoot),
+  );
+  assert.equal(
+    promotionHistory.healthy,
+    true,
+    promotionHistory.issues.join("\n"),
+  );
 
   const mismatchedStateRoot = temporaryStateRoot();
   const mismatchedScope = {
@@ -16871,10 +16927,13 @@ test("CLI emits structured JSON for task and lease operations", () => {
 
 test("outcome ledger repair preauthorization binds one exact receipt to the owner lease", () => {
   const stateRoot = temporaryStateRoot();
-  const nowMs = Date.parse("2026-07-18T10:00:00Z");
+  const nowMs = Date.now();
   const taskId = "outcome-ledger-history-repair";
   createOutcomeLedgerRepairTask(stateRoot, taskId, nowMs - 1_000);
-  const parameters = outcomeLedgerRepairParameters(stateRoot, taskId);
+  const parameters = outcomeLedgerRepairParametersForCurrentEventHistory(
+    stateRoot,
+    taskId,
+  );
   const intentDigest = ownerIntent("outcome-ledger.repair", taskId, parameters);
   const owner = actorLease(stateRoot, "freed-owner", {
     nowMs,
@@ -16909,7 +16968,7 @@ test("outcome ledger repair preauthorization binds one exact receipt to the owne
   });
   assert.equal(
     authorization.authorizationProvenance.credentialKind,
-    "owner-signed-capability",
+    "owner-confirmation",
   );
 
   assert.throws(
@@ -16964,7 +17023,7 @@ test("outcome ledger repair preauthorization binds one exact receipt to the owne
 
 test("outcome ledger repair preauthorization rejects noncanonical receipt parameters", () => {
   const stateRoot = temporaryStateRoot();
-  const nowMs = Date.parse("2026-07-18T10:05:00Z");
+  const nowMs = Date.now();
   const taskId = "outcome-ledger-history-repair-invalid";
   createOutcomeLedgerRepairTask(stateRoot, taskId, nowMs - 1_000);
   const parameters = outcomeLedgerRepairParameters(stateRoot, taskId);
@@ -17012,10 +17071,13 @@ test("outcome ledger repair preauthorization rejects noncanonical receipt parame
 
 test("outcome ledger repair event preflight is deterministic and read-only", () => {
   const stateRoot = temporaryStateRoot();
-  const nowMs = Date.parse("2026-07-18T10:10:00Z");
+  const nowMs = Date.now();
   const taskId = "outcome-ledger-history-repair-event";
   createOutcomeLedgerRepairTask(stateRoot, taskId, nowMs - 1_000);
-  const parameters = outcomeLedgerRepairParameters(stateRoot, taskId);
+  const parameters = outcomeLedgerRepairParametersForCurrentEventHistory(
+    stateRoot,
+    taskId,
+  );
   const intentDigest = ownerIntent("outcome-ledger.repair", taskId, parameters);
   const owner = actorLease(stateRoot, "freed-owner", {
     nowMs,
@@ -17026,11 +17088,23 @@ test("outcome ledger repair event preflight is deterministic and read-only", () 
   const input = { stateRoot, taskId, ...owner, parameters };
   const eventsPath = automationControlPaths(stateRoot).events;
   const eventsBefore = readFileSync(eventsPath);
+  assert.equal(
+    createHash("sha256")
+      .update(eventsBefore.subarray(0, parameters.eventHistorySize))
+      .digest("hex"),
+    parameters.eventHistoryDigest,
+    "owner acquisition must preserve the planned event-history prefix",
+  );
 
   const first = preflightOutcomeLedgerRepairEvent({
     ...input,
     nowMs: acquiredAtMs + 1_000,
   });
+  assert.deepEqual(
+    readFileSync(eventsPath),
+    eventsBefore,
+    "first preflight must not change event history",
+  );
   const retry = preflightOutcomeLedgerRepairEvent({
     ...input,
     nowMs: acquiredAtMs + 20_000,
@@ -17042,8 +17116,8 @@ test("outcome ledger repair event preflight is deterministic and read-only", () 
     first.event.eventId,
     `outcome-history-repaired:${parameters.operationId}`,
   );
-  assert.equal(first.event.ts, new Date(acquiredAtMs + 1_000).toISOString());
-  assert.equal(retry.event.ts, new Date(acquiredAtMs + 20_000).toISOString());
+  assert.equal(first.event.ts, new Date(acquiredAtMs).toISOString());
+  assert.equal(retry.event.ts, first.event.ts);
   assert.deepEqual(Object.keys(first.event.data).sort(), [
     "authorization",
     "intentDigest",
@@ -17074,145 +17148,6 @@ test("outcome ledger repair event preflight is deterministic and read-only", () 
     (error) =>
       error instanceof AutomationControlError &&
       error.code === "reserved_event_type",
-  );
-});
-
-test("audited outcome repair survives an expired same-intent owner reacquire", () => {
-  const stateRoot = temporaryStateRoot();
-  const baseMs = Date.now();
-  const taskId = "outcome-ledger-repair-audited-reacquire";
-  withTestDateNow(baseMs, () =>
-    createOutcomeLedgerRepairTask(stateRoot, taskId, baseMs),
-  );
-  const parameters = outcomeLedgerRepairParametersForCurrentEventHistory(
-    stateRoot,
-    taskId,
-  );
-  const intentDigest = ownerIntent("outcome-ledger.repair", taskId, parameters);
-  const firstOwner = actorLease(stateRoot, "freed-owner", {
-    nowMs: baseMs + 2,
-    ownerTaskId: taskId,
-    ownerIntentDigest: intentDigest,
-  });
-  const input = {
-    stateRoot,
-    taskId,
-    ...firstOwner,
-    parameters,
-  };
-  const auditAtMs = baseMs + 1_000;
-  const audit = withTestDateNow(auditAtMs, () =>
-    preflightOutcomeLedgerRepairEvent({ ...input, nowMs: auditAtMs }),
-  );
-  assert.equal(audit.existing, false);
-
-  const paths = automationControlPaths(stateRoot);
-  appendFileSync(paths.events, `${JSON.stringify(audit.event)}\n`, {
-    mode: 0o600,
-  });
-  const firstLeasePath = path.join(
-    paths.leases,
-    `${firstOwner.leaseName}.lease`,
-    "lease.json",
-  );
-  const firstLease = JSON.parse(readFileSync(firstLeasePath, "utf8"));
-  const releaseAtMs = Date.parse(firstLease.expiresAt);
-  const reacquiredAtMs = releaseAtMs + 1;
-  const secondToken = `freed-owner-reacquired-${"r".repeat(32)}`;
-  const secondCapabilityId = `owner-reacquired-${reacquiredAtMs}`;
-  const secondExpiresAt = new Date(
-    reacquiredAtMs + firstLease.ttlMs,
-  ).toISOString();
-  const releaseEvent = {
-    schemaVersion: 1,
-    eventId: `lease:${createHash("sha256")
-      .update(`release:${taskId}:${releaseAtMs}`)
-      .digest("hex")}`,
-    type: "lease_released",
-    ts: new Date(releaseAtMs).toISOString(),
-    actor: "freed-owner",
-    leaseName: firstOwner.leaseName,
-    data: {
-      expired: true,
-      requestDigest: createHash("sha256")
-        .update(`release-request:${taskId}:${releaseAtMs}`)
-        .digest("hex"),
-    },
-  };
-  const reacquireEvent = {
-    schemaVersion: 1,
-    eventId: `lease:${createHash("sha256")
-      .update(`reacquire:${taskId}:${reacquiredAtMs}`)
-      .digest("hex")}`,
-    type: "lease_acquired",
-    ts: new Date(reacquiredAtMs).toISOString(),
-    actor: "freed-owner",
-    leaseName: firstOwner.leaseName,
-    data: {
-      expiresAt: secondExpiresAt,
-      observerAuthority: firstLease.observerAuthority,
-      providerAuthority: firstLease.providerAuthority,
-      requestDigest: createHash("sha256")
-        .update(`reacquire-request:${taskId}:${reacquiredAtMs}`)
-        .digest("hex"),
-      credentialKind: "owner-signed-capability",
-      ownerCapabilityId: secondCapabilityId,
-      ownerCapabilityTaskId: taskId,
-      ownerCapabilityIntentDigest: intentDigest,
-    },
-  };
-  appendFileSync(
-    paths.events,
-    `${JSON.stringify(releaseEvent)}\n${JSON.stringify(reacquireEvent)}\n`,
-    { mode: 0o600 },
-  );
-  writeFileSync(
-    firstLeasePath,
-    `${JSON.stringify({
-      ...firstLease,
-      token: secondToken,
-      ownerCapabilityId: secondCapabilityId,
-      acquiredAt: reacquireEvent.ts,
-      heartbeatAt: reacquireEvent.ts,
-      expiresAt: secondExpiresAt,
-    })}\n`,
-    { mode: 0o600 },
-  );
-
-  const eventsBeforeRecovery = readFileSync(paths.events);
-  const recoveryAtMs = reacquiredAtMs + 1_000;
-  validateOutcomeLedgerRepairEvent(audit.event, {
-    stateRoot,
-    taskId,
-    parameters,
-    intentDigest,
-    eventHistory: readControlEvents(stateRoot),
-  });
-  const recoveredInput = {
-    ...input,
-    leaseToken: secondToken,
-    nowMs: recoveryAtMs,
-  };
-  const recovered = withTestDateNow(recoveryAtMs, () =>
-    preflightOutcomeLedgerRepairEvent(recoveredInput),
-  );
-  const repeated = withTestDateNow(recoveryAtMs + 1, () =>
-    preflightOutcomeLedgerRepairEvent({
-      ...recoveredInput,
-      nowMs: recoveryAtMs + 1,
-    }),
-  );
-
-  assert.equal(recovered.existing, true);
-  assert.equal(repeated.existing, true);
-  assert.deepEqual(recovered.event, audit.event);
-  assert.deepEqual(repeated.event, audit.event);
-  assert.deepEqual(readFileSync(paths.events), eventsBeforeRecovery);
-  assert.equal(
-    readControlEvents(stateRoot).filter(
-      (event) => event.eventId === audit.event.eventId,
-    ).length,
-    1,
   );
 });
 
@@ -17300,7 +17235,7 @@ test("outcome ledger repair audit requires one exact preceding owner acquisition
 });
 
 test("outcome ledger repair event preflight rejects conflicting and duplicate identities", () => {
-  const nowMs = Date.parse("2026-07-18T10:15:00Z");
+  const nowMs = Date.now();
 
   const conflictingRoot = temporaryStateRoot();
   const conflictingTaskId = "outcome-ledger-history-repair-conflict";
@@ -17309,7 +17244,7 @@ test("outcome ledger repair event preflight rejects conflicting and duplicate id
     conflictingTaskId,
     nowMs - 1_000,
   );
-  const conflictingParameters = outcomeLedgerRepairParameters(
+  const conflictingParameters = outcomeLedgerRepairParametersForCurrentEventHistory(
     conflictingRoot,
     conflictingTaskId,
   );
@@ -17322,29 +17257,34 @@ test("outcome ledger repair event preflight rejects conflicting and duplicate id
       conflictingParameters,
     ),
   });
-  const conflictingEventId = `outcome-history-repaired:${conflictingParameters.operationId}`;
-  const conflictingPaths = automationControlPaths(conflictingRoot);
-  mkdirSync(path.dirname(conflictingPaths.events), { recursive: true });
-  writeFileSync(
-    conflictingPaths.events,
-    `${JSON.stringify({
-      schemaVersion: 1,
-      eventId: conflictingEventId,
-      type: "outcome_history_repaired",
-      ts: new Date(nowMs).toISOString(),
-      actor: "freed-owner",
-      taskId: conflictingTaskId,
-      data: { intentDigest: "ff".repeat(32), parameters: {} },
-    })}\n`,
+  const conflictingAcquiredAtMs = Date.parse(
+    ownerLeaseAcquisition(conflictingRoot).ts,
+  );
+  const conflictingInput = {
+    stateRoot: conflictingRoot,
+    taskId: conflictingTaskId,
+    ...conflictingOwner,
+    parameters: conflictingParameters,
+  };
+  const conflictingEvent = structuredClone(
+    preflightOutcomeLedgerRepairEvent({
+      ...conflictingInput,
+      nowMs: conflictingAcquiredAtMs + 1_000,
+    }).event,
+  );
+  conflictingEvent.ts = new Date(
+    Date.parse(conflictingEvent.ts) + 1,
+  ).toISOString();
+  appendCanonicalControlEventFixtures(
+    conflictingRoot,
+    [conflictingEvent],
+    "test-outcome-repair-event-conflict",
   );
   assert.throws(
     () =>
       preflightOutcomeLedgerRepairEvent({
-        stateRoot: conflictingRoot,
-        taskId: conflictingTaskId,
-        ...conflictingOwner,
-        parameters: conflictingParameters,
-        nowMs: nowMs + 1_000,
+        ...conflictingInput,
+        nowMs: conflictingAcquiredAtMs + 2_000,
       }),
     (error) =>
       error instanceof AutomationControlError &&
@@ -17354,7 +17294,7 @@ test("outcome ledger repair event preflight rejects conflicting and duplicate id
   const duplicateRoot = temporaryStateRoot();
   const duplicateTaskId = "outcome-ledger-history-repair-duplicate";
   createOutcomeLedgerRepairTask(duplicateRoot, duplicateTaskId, nowMs - 1_000);
-  const duplicateParameters = outcomeLedgerRepairParameters(
+  const duplicateParameters = outcomeLedgerRepairParametersForCurrentEventHistory(
     duplicateRoot,
     duplicateTaskId,
   );
@@ -17380,9 +17320,10 @@ test("outcome ledger repair event preflight rejects conflicting and duplicate id
     ...duplicateInput,
     nowMs: duplicateAcquiredAtMs + 1_000,
   }).event;
-  appendFileSync(
-    automationControlPaths(duplicateRoot).events,
-    `${JSON.stringify(event)}\n${JSON.stringify(event)}\n`,
+  appendCanonicalControlEventFixtures(
+    duplicateRoot,
+    [event, event],
+    "test-outcome-repair-event-duplicate",
   );
   assert.throws(
     () =>

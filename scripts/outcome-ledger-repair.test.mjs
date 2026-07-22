@@ -185,7 +185,9 @@ function ownerRepairLease(
     intent: plan.intent,
     intentDigest: plan.intentDigest,
     approvedAt: new Date(nowMs).toISOString(),
-    expiresAt: new Date(nowMs + Math.max(ttlMs, 60_000) + 1_000).toISOString(),
+    expiresAt: new Date(
+      nowMs + Math.max(ttlMs, 60_000) + 60 * 60_000,
+    ).toISOString(),
   };
   writeFileSync(confirmationPath, `${JSON.stringify(confirmation)}\n`, {
     mode: 0o600,
@@ -3718,9 +3720,7 @@ test("event recovery accepts a fresh exact owner lease without duplicating audit
     operationId: leaseMutationId("release:event-audited-owner"),
     token: session.owner.leaseToken,
   });
-  const replacementOwner = ownerRepairLease(stateRoot, session.plan, {
-    nowMs: Date.now() + 1_000,
-  });
+  const replacementOwner = ownerRepairLease(stateRoot, session.plan);
   const recovered = executeRepair(
     { stateRoot, sourceDigest },
     { owner: replacementOwner },

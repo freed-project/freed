@@ -148,6 +148,7 @@ function prepareValidatedTask(stateRoot, taskId) {
 }
 
 function prepareLiveMergedOutcomeBackfillFixture(stateRoot) {
+  installAutomationKernelGuardCutoverFixture(stateRoot);
   const paths = automationControlPaths(stateRoot);
   mkdirSync(paths.controlRoot, { recursive: true, mode: 0o700 });
   chmodSync(paths.controlRoot, 0o700);
@@ -170,6 +171,12 @@ function prepareLiveMergedOutcomeBackfillFixture(stateRoot) {
       event.taskId === taskId,
   );
   assert.ok(historicalEvent);
+  const observedEvent = history.find(
+    (event) =>
+      event.type === "task_created" &&
+      event.taskId === "sync-health-youtube-attempt-divergence",
+  );
+  assert.ok(observedEvent);
   const mergedAt = historicalEvent.ts;
   const providerApprovalReference =
     "sha256:b89bcf1c2c9aaa6277618451cc9329d4689da038deb6e94f6776eccea5bd4ab9";
@@ -194,13 +201,25 @@ function prepareLiveMergedOutcomeBackfillFixture(stateRoot) {
     },
     mergedAt,
   };
+  const observedTask = {
+    schemaVersion: 1,
+    taskId: observedEvent.taskId,
+    state: "observed",
+    revision: 1,
+    behavioral: false,
+    observerAuthority: "observe-only",
+    providerAuthority: "forbidden",
+    createdAt: observedEvent.ts,
+    updatedAt: observedEvent.ts,
+    details: { behavioral: false },
+  };
   writeFileSync(
     paths.taskManifest,
     `${JSON.stringify({
       schemaVersion: 1,
       revision: 7,
       updatedAt: mergedAt,
-      tasks: [task],
+      tasks: [observedTask, task],
     })}\n`,
     { mode: 0o600 },
   );

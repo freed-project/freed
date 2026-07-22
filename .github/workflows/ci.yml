@@ -17,9 +17,21 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  tooling-smoke:
-    name: Tooling smoke
+  tooling-smoke-shards:
+    name: Tooling smoke shard (${{ matrix.label }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: general scripts
+            command: >-
+              bash -n scripts/*.sh scripts/lib/*.sh &&
+              node --test $(find scripts -maxdepth 1 -name '*.test.mjs' ! -name 'automation-control.test.mjs' ! -name 'automation-kernel-guard-cutover.test.mjs' -print | sort)
+          - label: automation control
+            command: node --test scripts/automation-control.test.mjs
+          - label: kernel guard cutover
+            command: node --test scripts/automation-kernel-guard-cutover.test.mjs
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -33,8 +45,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tooling smoke tests
-        run: npm run test:scripts
+      - name: Run tooling smoke shard
+        run: ${{ matrix.command }}
+
+  tooling-smoke:
+    name: Tooling smoke
+    if: ${{ always() }}
+    needs: tooling-smoke-shards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every tooling smoke shard
+        env:
+          TOOLING_SMOKE_RESULT: ${{ needs.tooling-smoke-shards.result }}
+        run: test "$TOOLING_SMOKE_RESULT" = "success"
 
   main-pr-guard:
     name: Main PR guard

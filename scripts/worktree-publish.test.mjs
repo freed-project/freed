@@ -11,6 +11,16 @@ import {
   randomUUID,
   sign as signPayload,
 } from "node:crypto";
+import {
+  acquireLease,
+  AUTOMATION_ACTOR_POLICIES,
+  automationControlPaths,
+  createTask,
+  ownerGovernanceIntentDigest,
+  recoverTaskTransactions,
+  transitionTask,
+  updateTaskAuthorities,
+} from "./lib/automation-control.mjs";
 import { providerApprovalAuthorizationDigest } from "./lib/provider-visible-paths.mjs";
 import { stabilityArtifactDigest } from "./lib/stability-artifacts.mjs";
 import { installAutomationKernelGuardCutoverFixture } from "./test-helpers/automation-kernel-guard.mjs";
@@ -490,68 +500,214 @@ process.exit(1);
 
 async function authorizeProviderApproval(fixture, approval) {
   const authorizationDigest = providerApprovalAuthorizationDigest(approval);
-  await fs.writeFile(
-    path.join(fixture.automationStateRoot, "control/current-tasks.json"),
-    JSON.stringify({
-      schemaVersion: 1,
-      revision: 1,
-      updatedAt: new Date().toISOString(),
-      tasks: [
-        {
-          schemaVersion: 1,
-          taskId: approval.approvalSource.reference,
-          state: "approved_for_pr",
-          revision: 2,
-          observerAuthority: "pr-only",
-          providerAuthority: "approved",
-          providerApprovalReference: authorizationDigest,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          details: {},
-        },
-      ],
-    }),
+  const taskId = approval.approvalSource.reference;
+  const reason = "Owner approved the exact provider-visible publication.";
+  const ownerParameters = {
+    observerAuthority: "pr-only",
+    providerAuthority: "approved",
+    reason,
+    approvalReference: authorizationDigest,
+    expectedRevision: 3,
+  };
+  const ownerIntent = {
+    schemaVersion: 1,
+    action: "task.authorize",
+    taskId,
+    parameters: ownerParameters,
+  };
+  const ownerIntentDigest = ownerGovernanceIntentDigest(ownerIntent);
+  const ownerCapabilityId = `provider-owner-${createHash("sha256")
+    .update(approval.approvalId)
+    .digest("hex")}`;
+  const seedStateRoot = await fs.realpath(
+    await fs.mkdtemp(
+      path.join(path.dirname(fixture.automationStateRoot), "provider-control-seed-"),
+    ),
   );
-  await fs.writeFile(
-    path.join(fixture.automationStateRoot, "control/events.jsonl"),
-    `${JSON.stringify({
-      schemaVersion: 1,
-      eventId: `provider-owner-lease-${approval.approvalId}`,
-      type: "lease_acquired",
-      ts: "2026-07-10T15:59:30.000Z",
+  try {
+    installAutomationKernelGuardCutoverFixture(seedStateRoot);
+    const seedPaths = automationControlPaths(seedStateRoot);
+    const controller = "freed-stability-controller";
+    const controllerPolicy = AUTOMATION_ACTOR_POLICIES[controller];
+    const controllerCredentialToken =
+      `credential:${controller}:${"x".repeat(64)}`;
+    const controllerLeaseToken =
+      `provider-approval-controller:${"x".repeat(64)}`;
+    await fs.mkdir(seedPaths.actorCredentials, {
+      recursive: true,
+      mode: 0o700,
+    });
+    await fs.chmod(seedPaths.actorCredentials, 0o700);
+    await fs.writeFile(
+      path.join(seedPaths.actorCredentials, `${controller}.json`),
+      `${JSON.stringify({
+        schemaVersion: 1,
+        actor: controller,
+        purpose: "automation-actor-lease",
+        tokenSha256: createHash("sha256")
+          .update(controllerCredentialToken)
+          .digest("hex"),
+      })}\n`,
+      { mode: 0o600 },
+    );
+    const acquiredController = acquireLease({
+      stateRoot: seedStateRoot,
+      name: controllerPolicy.leaseName,
+      owner: controller,
+      operationId: createHash("sha256")
+        .update(`provider-approval-controller:${approval.approvalId}`)
+        .digest("hex"),
+      token: controllerLeaseToken,
+      actorCredentialToken: controllerCredentialToken,
+      ttlMs: controllerPolicy.maxLeaseLifetimeMs,
+    });
+    const controllerAcquiredAtMs = Date.parse(
+      acquiredController.lease.acquiredAt,
+    );
+    const controllerAuthority = {
+      actor: controller,
+      leaseName: controllerPolicy.leaseName,
+      leaseToken: controllerLeaseToken,
+    };
+    createTask({
+      stateRoot: seedStateRoot,
+      taskId,
+      ...controllerAuthority,
+      observerAuthority: "plan-only",
+      providerAuthority: "forbidden",
+      details: { behavioral: false },
+      nowMs: controllerAcquiredAtMs + 1_000,
+    });
+    transitionTask({
+      stateRoot: seedStateRoot,
+      taskId,
+      ...controllerAuthority,
+      toState: "triaged",
+      expectedRevision: 1,
+      nowMs: controllerAcquiredAtMs + 2_000,
+    });
+    transitionTask({
+      stateRoot: seedStateRoot,
+      taskId,
+      ...controllerAuthority,
+      toState: "approved_for_pr",
+      expectedRevision: 2,
+      nowMs: controllerAcquiredAtMs + 3_000,
+    });
+
+    const ownerPolicy = AUTOMATION_ACTOR_POLICIES["freed-owner"];
+    const ownerLeaseToken = `provider-approval-owner:${"x".repeat(64)}`;
+    const ownerLeaseAcquiredAtMs = Math.max(
+      Date.now(),
+      controllerAcquiredAtMs + 4_000,
+    );
+    const ownerConfirmationPath = path.join(
+      seedStateRoot,
+      `provider-owner-confirmation-${approval.approvalId}.json`,
+    );
+    await fs.writeFile(
+      ownerConfirmationPath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        kind: "owner-confirmation",
+        confirmationId: `provider-owner-confirmation-${approval.approvalId}`,
+        approvedBy: "AubreyF",
+        ownerApprovalReference:
+          "Owner approved this exact provider publication fixture.",
+        approvalSource: { kind: "current-task", reference: taskId },
+        taskId,
+        intent: ownerIntent,
+        intentDigest: ownerIntentDigest,
+        approvedAt: new Date(ownerLeaseAcquiredAtMs - 1_000).toISOString(),
+        expiresAt: new Date(
+          ownerLeaseAcquiredAtMs + 60 * 60_000,
+        ).toISOString(),
+      })}\n`,
+      { mode: 0o600 },
+    );
+    const ownerLeaseOperationId = createHash("sha256")
+      .update(`provider-owner-lease:${approval.approvalId}`)
+      .digest("hex");
+    const acquiredOwner = acquireLease({
+      stateRoot: seedStateRoot,
+      name: ownerPolicy.leaseName,
+      owner: "freed-owner",
+      operationId: ownerLeaseOperationId,
+      token: ownerLeaseToken,
+      ttlMs: 10 * 60_000,
+      nowMs: ownerLeaseAcquiredAtMs,
+      ownerConfirmationFile: ownerConfirmationPath,
+      ownerCapabilityTaskId: taskId,
+      ownerCapabilityIntentDigest: ownerIntentDigest,
+    });
+    const ownerAcquiredAtMs = Date.parse(acquiredOwner.lease.acquiredAt);
+    updateTaskAuthorities({
+      stateRoot: seedStateRoot,
+      taskId,
       actor: "freed-owner",
-      leaseName: "owner-governance",
-      data: {
-        credentialKind: "owner-signed-capability",
-        ownerCapabilityId: "provider-owner-capability-test",
-        ownerCapabilityTaskId: approval.approvalSource.reference,
-        ownerCapabilityIntentDigest: "b".repeat(64),
-      },
-    })}\n${JSON.stringify({
-      schemaVersion: 1,
-      eventId: `provider-owner-authorization-${approval.approvalId}`,
-      type: "task_authority_updated",
-      ts: new Date().toISOString(),
-      actor: "freed-owner",
-      taskId: approval.approvalSource.reference,
-      taskRevision: 2,
-      manifestRevision: 1,
-      observerAuthority: "pr-only",
-      providerAuthority: "approved",
-      providerApprovalReference: authorizationDigest,
-      data: {
-        authorizationProvenance: {
-          leaseName: "owner-governance",
-          leaseAcquiredAt: "2026-07-10T15:59:30.000Z",
-          credentialKind: "owner-signed-capability",
-          ownerCapabilityId: "provider-owner-capability-test",
-          ownerCapabilityTaskId: approval.approvalSource.reference,
-          ownerCapabilityIntentDigest: "b".repeat(64),
-        },
-      },
-    })}\n`,
-  );
-  return authorizationDigest;
+      leaseName: ownerPolicy.leaseName,
+      leaseToken: ownerLeaseToken,
+      ...ownerParameters,
+      nowMs: ownerAcquiredAtMs + 1_000,
+    });
+    recoverTaskTransactions({
+      stateRoot: seedStateRoot,
+      nowMs: ownerAcquiredAtMs + 2_000,
+    });
+
+    const manifest = JSON.parse(
+      await fs.readFile(seedPaths.taskManifest, "utf8"),
+    );
+    const events = (await fs.readFile(seedPaths.events, "utf8"))
+      .trimEnd()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const ownerAcquisition = events.find(
+      (event) => event.eventId === `lease:${ownerLeaseOperationId}`,
+    );
+    const ownerAuthorization = events.find(
+      (event) =>
+        event.type === "task_authority_updated" &&
+        event.actor === "freed-owner" &&
+        event.taskId === taskId,
+    );
+    assert.ok(ownerAcquisition);
+    assert.ok(ownerAuthorization);
+    ownerAcquisition.data = {
+      expiresAt: ownerAcquisition.data.expiresAt,
+      observerAuthority: ownerAcquisition.data.observerAuthority,
+      providerAuthority: ownerAcquisition.data.providerAuthority,
+      requestDigest: ownerAcquisition.data.requestDigest,
+      credentialKind: "owner-signed-capability",
+      ownerCapabilityId,
+      ownerCapabilityTaskId: taskId,
+      ownerCapabilityIntentDigest: ownerIntentDigest,
+    };
+    ownerAuthorization.data.authorizationProvenance = {
+      leaseName: ownerAuthorization.data.authorizationProvenance.leaseName,
+      leaseAcquiredAt:
+        ownerAuthorization.data.authorizationProvenance.leaseAcquiredAt,
+      credentialKind: "owner-signed-capability",
+      ownerCapabilityId,
+      ownerCapabilityTaskId: taskId,
+      ownerCapabilityIntentDigest: ownerIntentDigest,
+    };
+
+    const targetPaths = automationControlPaths(fixture.automationStateRoot);
+    await fs.writeFile(
+      targetPaths.taskManifest,
+      `${JSON.stringify(manifest)}\n`,
+      { mode: 0o600 },
+    );
+    await fs.writeFile(
+      targetPaths.events,
+      `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
+      { mode: 0o600 },
+    );
+    return authorizationDigest;
+  } finally {
+    await fs.rm(seedStateRoot, { recursive: true, force: true });
+  }
 }
 
 async function readGhLog(logFile) {
@@ -2306,7 +2462,9 @@ test("worktree-publish retires owner-confirmed provider approval packets", async
 });
 
 test("worktree-publish revalidates provider approval immediately before PR creation", async (t) => {
-  const fixture = await createPublishFixture(t);
+  const fixture = await createPublishFixture(t, {
+    preacquirePublisherLease: false,
+  });
   const relativeExtractorPath = "packages/desktop/src-tauri/src/fb-extract.js";
   const extractorPath = path.join(fixture.worktree, relativeExtractorPath);
   await fs.mkdir(path.dirname(extractorPath), { recursive: true });
@@ -2370,7 +2528,7 @@ test("worktree-publish revalidates provider approval immediately before PR creat
       "--provider-risk-approval-file",
       approvalPath,
     ],
-    { cwd: fixture.worktree, env: fixture.env },
+    { cwd: fixture.worktree, env: directPublishEnv(fixture) },
   );
 
   assert.notEqual(result.status, 0);
@@ -2387,7 +2545,9 @@ test("worktree-publish revalidates provider approval immediately before PR creat
 });
 
 test("worktree-publish accepts signed control-task authority for provider ready state", async (t) => {
-  const fixture = await createPublishFixture(t);
+  const fixture = await createPublishFixture(t, {
+    preacquirePublisherLease: false,
+  });
   const extractorPath = path.join(
     fixture.worktree,
     "packages/desktop/src-tauri/src/fb-extract.js",
@@ -2453,7 +2613,7 @@ test("worktree-publish accepts signed control-task authority for provider ready 
       approvalPath,
       "--ready",
     ],
-    { cwd: fixture.worktree, env: fixture.env },
+    { cwd: fixture.worktree, env: directPublishEnv(fixture) },
   );
 
   assertSuccess(result);

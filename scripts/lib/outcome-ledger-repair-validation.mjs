@@ -1389,6 +1389,15 @@ function validateLedgerPublication(plan, bundle, tree, material, allowed) {
     ledger.identity?.nlink === 1 &&
     ledger.bytes.length >= material.trusted.bytes.length &&
     ledger.bytes.subarray(0, material.trusted.bytes.length).equals(material.trusted.bytes);
+  if (
+    plan.phase === "complete" &&
+    !ledger.missing &&
+    ledger.identity?.mode !== 0o600
+  ) {
+    throw new Error(
+      "completed repair requires a private canonical ledger with mode 0600",
+    );
+  }
   const temporaryIsReplacement =
     temporary !== null &&
     temporary.identity.dev === replacement.device &&

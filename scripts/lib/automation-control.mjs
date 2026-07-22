@@ -3844,15 +3844,22 @@ function planOutcomeLedgerRepairEventFromHistory(
   if (matches.length === 1) {
     const existing = matches[0];
     try {
-      validateEquivalentOutcomeLedgerRepairEvents(
-        existing,
-        buildOutcomeLedgerRepairEvent(
+      if (
+        !validateEquivalentOutcomeLedgerRepairEvents(
+          existing,
+          buildOutcomeLedgerRepairEvent(
+            deterministicAuthorization,
+            deterministicTimestamp,
+          ),
+          options,
           deterministicAuthorization,
-          deterministicTimestamp,
-        ),
-        options,
-        deterministicAuthorization,
-      );
+        )
+      ) {
+        throw new AutomationControlError(
+          "control_event_conflict",
+          `Control event ${authorization.eventId} conflicts with this repair receipt.`,
+        );
+      }
     } catch {
       throw new AutomationControlError(
         "control_event_conflict",
@@ -7651,11 +7658,16 @@ function canonicalLeaseAcquisitionEvent(candidate, provenance, actor) {
     } catch {
       return false;
     }
+    const permitsPreboundMainHead =
+      normalizedScope.base === "main" &&
+      ["production-release-prep", "production-promotion"].includes(
+        normalizedScope.publishMode,
+      );
     return (
       typeof candidate.data.publisherCapabilityId === "string" &&
       IDENTIFIER_PATTERN.test(candidate.data.publisherCapabilityId) &&
       candidate.data.publisherCapabilityId === provenance.publisherCapabilityId &&
-      normalizedScope.headSha === null &&
+      (normalizedScope.headSha === null || permitsPreboundMainHead) &&
       canonicalValuesEqual(candidate.data.scope, normalizedScope)
     );
   }
