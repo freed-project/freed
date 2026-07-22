@@ -42,7 +42,10 @@ import {
   writeAutomationKernelGuardCutoverPlan,
   writeAutomationKernelGuardCutoverSupersedePlan,
 } from "./lib/automation-kernel-guard-cutover.mjs";
-import { withKernelFileGuard } from "./lib/automation-control.mjs";
+import {
+  inspectLeaseCleanupArchiveCapacity,
+  withKernelFileGuard,
+} from "./lib/automation-control.mjs";
 
 const TASK_ID = "authenticated-essay-capture-pr-642";
 const CLI_PATH = path.join(
@@ -220,6 +223,32 @@ function planFixture(fixture) {
   writeAutomationKernelGuardCutoverPlan(fixture.planFile, plan);
   writeConfirmation(fixture, plan);
   return plan;
+}
+
+function expectedLeaseRuntimeDirectories(stateRoot) {
+  const leases = path.join(stateRoot, "control", "leases");
+  const transactions = path.join(leases, ".transactions");
+  const receipts = path.join(leases, ".transaction-receipts");
+  return [
+    transactions,
+    receipts,
+    path.join(leases, ".lease-state-quarantine"),
+    path.join(transactions, ".lease-cleanup-quarantine"),
+    path.join(receipts, ".lease-cleanup-quarantine"),
+  ];
+}
+
+function assertLeaseRuntimeReady(stateRoot) {
+  for (const directoryPath of expectedLeaseRuntimeDirectories(stateRoot)) {
+    const stats = lstatSync(directoryPath);
+    assert.equal(stats.isDirectory(), true, directoryPath);
+    assert.equal(stats.isSymbolicLink(), false, directoryPath);
+    assert.equal(stats.mode & 0o7777, 0o700, directoryPath);
+  }
+  const capacity = inspectLeaseCleanupArchiveCapacity(stateRoot, {
+    reservation: { entries: 8, bytes: 8 * 1024 * 1024 },
+  });
+  assert.equal(capacity.ready, true, capacity.problems.join("\n"));
 }
 
 function supersedePlanFixture(fixture, plan) {
@@ -2335,7 +2364,6 @@ test("receipt-prepared recovery no longer depends on the source confirmation", (
 
   assert.equal(result.changed, true);
   assert.equal(transaction.authorizations.length, 2);
-  assert.equal(transaction.authorizations.length, 2);
   assert.equal(
     transaction.authorizations.at(-1).confirmationId,
     "kernel-cutover-test",
@@ -2346,6 +2374,59 @@ test("receipt-prepared recovery no longer depends on the source confirmation", (
     transaction.authorizations.at(-1).validatedAt,
   );
   assert.equal(inspection.ready, true, inspection.problems.join("\n"));
+  assertLeaseRuntimeReady(fixture.stateRoot);
+});
+
+test("receipt-prepared recovery completes a partially durable lease runtime scaffold without the source confirmation", (t) => {
+  const fixture = createFixture(t);
+  const plan = planFixture(fixture);
+  const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
+  const stopPath = path.join(
+    fixture.controlRoot,
+    "leases",
+    ".transaction-receipts",
+  );
+  assert.throws(
+    () =>
+      applyAutomationKernelGuardCutover({
+        plan,
+        ownerConfirmationFile: fixture.confirmationFile,
+        checkpoint(name, details) {
+          if (
+            name === "lease-runtime-directory-durable" &&
+            details?.directoryPath === stopPath
+          ) {
+            throw new Error("stop during lease runtime initialization");
+          }
+        },
+      }),
+    /stop during lease runtime initialization/,
+  );
+  assert.equal(existsSync(paths.globalReceipt), false);
+  assert.equal(existsSync(stopPath), true);
+  assert.equal(
+    existsSync(
+      path.join(
+        fixture.controlRoot,
+        "leases",
+        ".lease-state-quarantine",
+      ),
+    ),
+    false,
+  );
+  unlinkSync(fixture.confirmationFile);
+
+  const result = applyAutomationKernelGuardCutover({
+    plan,
+    ownerConfirmationFile: fixture.confirmationFile,
+  });
+
+  assert.equal(result.changed, true);
+  assertLeaseRuntimeReady(fixture.stateRoot);
+  assert.equal(
+    inspectAutomationKernelGuardCutover(fixture.stateRoot).ready,
+    true,
+  );
 });
 
 test("receipt-prepared activation rejects exact protected-state drift and residue", async (t) => {
@@ -2397,6 +2478,16 @@ test("receipt-prepared activation rejects exact protected-state drift and residu
       name: "terminal quarantine residue",
       mutate({ artifactDirectory }) {
         privateDirectory(path.join(artifactDirectory, ".recovery-quarantine"));
+      },
+    },
+    {
+      name: "foreign lease runtime entry",
+      mutate({ fixture }) {
+        writeFileSync(
+          path.join(fixture.controlRoot, "leases", "foreign.json"),
+          "{}\n",
+          { mode: 0o600 },
+        );
       },
     },
   ];

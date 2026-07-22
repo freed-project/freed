@@ -130,6 +130,14 @@ test("feature validation installs Playwright for every desktop e2e plan", () => 
   assert.doesNotMatch(ciWorkflow, /grep -q '\^desktop e2e '/);
 });
 
+test("main PR validation inspects the actual PR head instead of the synthetic merge", () => {
+  assert.match(
+    ciWorkflow,
+    /--head-ref="\$\{\{ github\.event\.pull_request\.head\.sha \}\}"/,
+  );
+  assert.doesNotMatch(ciWorkflow, /validate-main-pr\.mjs[\s\S]*--head-ref=HEAD/);
+});
+
 test("release preparation validates canonical CalVer before mutating version files", () => {
   const validationIndex = releasePrep.indexOf("scripts/release-version.mjs");
   const firstMutationIndex = releasePrep.indexOf(

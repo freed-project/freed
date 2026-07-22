@@ -24,6 +24,7 @@ import {
 import { providerApprovalAuthorizationDigest } from "./lib/provider-visible-paths.mjs";
 import { stabilityArtifactDigest } from "./lib/stability-artifacts.mjs";
 import { installAutomationKernelGuardCutoverFixture } from "./test-helpers/automation-kernel-guard.mjs";
+import { acquireGeneralActorLeaseForTest } from "./test-helpers/trusted-actor-lease.mjs";
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptsDir, "..");
@@ -529,28 +530,9 @@ async function authorizeProviderApproval(fixture, approval) {
     const seedPaths = automationControlPaths(seedStateRoot);
     const controller = "freed-stability-controller";
     const controllerPolicy = AUTOMATION_ACTOR_POLICIES[controller];
-    const controllerCredentialToken =
-      `credential:${controller}:${"x".repeat(64)}`;
     const controllerLeaseToken =
       `provider-approval-controller:${"x".repeat(64)}`;
-    await fs.mkdir(seedPaths.actorCredentials, {
-      recursive: true,
-      mode: 0o700,
-    });
-    await fs.chmod(seedPaths.actorCredentials, 0o700);
-    await fs.writeFile(
-      path.join(seedPaths.actorCredentials, `${controller}.json`),
-      `${JSON.stringify({
-        schemaVersion: 1,
-        actor: controller,
-        purpose: "automation-actor-lease",
-        tokenSha256: createHash("sha256")
-          .update(controllerCredentialToken)
-          .digest("hex"),
-      })}\n`,
-      { mode: 0o600 },
-    );
-    const acquiredController = acquireLease({
+    const acquiredController = acquireGeneralActorLeaseForTest({
       stateRoot: seedStateRoot,
       name: controllerPolicy.leaseName,
       owner: controller,
@@ -558,7 +540,6 @@ async function authorizeProviderApproval(fixture, approval) {
         .update(`provider-approval-controller:${approval.approvalId}`)
         .digest("hex"),
       token: controllerLeaseToken,
-      actorCredentialToken: controllerCredentialToken,
       ttlMs: controllerPolicy.maxLeaseLifetimeMs,
     });
     const controllerAcquiredAtMs = Date.parse(

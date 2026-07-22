@@ -388,6 +388,7 @@ private struct ControlResult: Decodable {
   let acquired: Bool
   let takeover: Bool
   let credentialUpgrade: Bool
+  let recovered: Bool?
   let lease: ControlLease
 }
 
@@ -672,34 +673,38 @@ private struct ProcessControlInvoker: ControlInvoker {
         ? "2026-07-13T12:30:00.001Z"
         : "2026-07-13T12:30:00.000Z"
       let token = mode == "short-token" ? "short" : requestedToken
+      var result: [String: Any] = [
+        "acquired": true,
+        "takeover": false,
+        "credentialUpgrade": false,
+        "lease": [
+          "schemaVersion": 1,
+          "name": binding.leaseName,
+          "owner": binding.actor,
+          "token": token,
+          "observerAuthority": actorLeaseAuthorities[binding.actor]!.observer,
+          "providerAuthority": actorLeaseAuthorities[binding.actor]!.provider,
+          "credentialKind": "trusted-launcher-channel",
+          "launcherSha256": binding.launcherSha256,
+          "actorRuntimeDigest": runtimeDigest(binding),
+          "launcherChannelProtocol": channelProtocol,
+          "launcherAttestationSha256": TEST_LAUNCHER_ATTESTATION_SHA256,
+          "launcherSessionId": TEST_LAUNCHER_SESSION_ID,
+          "acquiredAt": acquiredAt,
+          "heartbeatAt": acquiredAt,
+          "expiresAt": expiresAt,
+          "ttlMs": leaseLifetimeMilliseconds,
+        ],
+      ]
+      if mode == "response-loss-once", acquireAttempts > 1 {
+        result["recovered"] = true
+      }
       let payload: [String: Any] = [
         "ok": true,
         "schemaVersion": 1,
         "action": "lease.acquire",
         "stateRoot": binding.stateRoot,
-        "result": [
-          "acquired": true,
-          "takeover": false,
-          "credentialUpgrade": false,
-          "lease": [
-            "schemaVersion": 1,
-            "name": binding.leaseName,
-            "owner": binding.actor,
-            "token": token,
-            "observerAuthority": actorLeaseAuthorities[binding.actor]!.observer,
-            "providerAuthority": actorLeaseAuthorities[binding.actor]!.provider,
-            "credentialKind": "trusted-launcher-channel",
-            "launcherSha256": binding.launcherSha256,
-            "actorRuntimeDigest": runtimeDigest(binding),
-            "launcherChannelProtocol": channelProtocol,
-            "launcherAttestationSha256": TEST_LAUNCHER_ATTESTATION_SHA256,
-            "launcherSessionId": TEST_LAUNCHER_SESSION_ID,
-            "acquiredAt": acquiredAt,
-            "heartbeatAt": acquiredAt,
-            "expiresAt": expiresAt,
-            "ttlMs": leaseLifetimeMilliseconds,
-          ],
-        ],
+        "result": result,
       ]
       return try JSONSerialization.data(withJSONObject: payload)
     }
@@ -2242,6 +2247,10 @@ private func validateLeaseResponse(
       [
         Set(["acquired", "credentialUpgrade", "lease", "takeover"]),
         Set(["acquired", "credentialUpgrade", "lease", "previous", "takeover"]),
+        Set(["acquired", "credentialUpgrade", "lease", "recovered", "takeover"]),
+        Set([
+          "acquired", "credentialUpgrade", "lease", "previous", "recovered", "takeover",
+        ]),
       ].contains(Set(result.keys)),
       let lease = result["lease"] as? [String: Any],
       Set(lease.keys) == [
@@ -2269,12 +2278,15 @@ private func validateLeaseResponse(
   }
   let lease = response.result.lease
   let hasPrevious = rawResult["previous"] != nil
+  let hasRecovered = rawResult["recovered"] != nil
   guard response.ok,
     rawEnvelope["ok"] as? Bool == true,
     rawResult["acquired"] as? Bool == true,
     rawResult["takeover"] as? Bool == response.result.takeover,
     rawResult["credentialUpgrade"] as? Bool == response.result.credentialUpgrade,
     hasPrevious == response.result.takeover,
+    (!hasRecovered && response.result.recovered == nil) ||
+      (rawResult["recovered"] as? Bool == true && response.result.recovered == true),
     rawLease["schemaVersion"] as? Int == 1,
     response.schemaVersion == 1,
     response.action == "lease.acquire",

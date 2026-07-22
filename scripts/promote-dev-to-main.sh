@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
-  echo "Usage: ./scripts/promote-dev-to-main.sh <worktree-path> [<branch-name>] [--provider-risk-approval-file <path>]" >&2
+  echo "Usage: ./scripts/promote-dev-to-main.sh <worktree-path> [<branch-name>] [--provider-risk-review-artifact <path> | --provider-risk-approval-file <path>]" >&2
   exit 1
 fi
 
@@ -11,6 +11,7 @@ WORKTREE_PATH="$1"
 shift
 BRANCH_NAME=""
 PROVIDER_RISK_APPROVAL_FILE=""
+PROVIDER_RISK_REVIEW_ARTIFACT=""
 if [[ $# -gt 0 && "$1" != --* ]]; then
   BRANCH_NAME="$1"
   shift
@@ -18,6 +19,11 @@ fi
 BRANCH_NAME="${BRANCH_NAME:-chore/promote-dev-to-main-$(date +%Y%m%d-%H%M%S)}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --provider-risk-review-artifact)
+      [[ $# -ge 2 && -n "$2" ]] || { echo "Error: --provider-risk-review-artifact requires a path." >&2; exit 1; }
+      PROVIDER_RISK_REVIEW_ARTIFACT="$2"
+      shift 2
+      ;;
     --provider-risk-approval-file)
       [[ $# -ge 2 && -n "$2" ]] || { echo "Error: --provider-risk-approval-file requires a path." >&2; exit 1; }
       PROVIDER_RISK_APPROVAL_FILE="$2"
@@ -29,6 +35,10 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+if [[ -n "${PROVIDER_RISK_REVIEW_ARTIFACT}" && -n "${PROVIDER_RISK_APPROVAL_FILE}" ]]; then
+  echo "Error: --provider-risk-review-artifact and --provider-risk-approval-file are mutually exclusive." >&2
+  exit 1
+fi
 TITLE="chore: promote dev into main for production release"
 SCRIPT_DIR="$(cd -P -- "${BASH_SOURCE[0]%/*}" && pwd)"
 REPO_ROOT="$(cd -P -- "${SCRIPT_DIR}/.." && pwd)"
@@ -42,6 +52,9 @@ if [[ "${WORKTREE_PATH}" != /* ]]; then
 fi
 if [[ -n "${PROVIDER_RISK_APPROVAL_FILE}" && "${PROVIDER_RISK_APPROVAL_FILE}" != /* ]]; then
   PROVIDER_RISK_APPROVAL_FILE="${ORIGINAL_CWD}/${PROVIDER_RISK_APPROVAL_FILE}"
+fi
+if [[ -n "${PROVIDER_RISK_REVIEW_ARTIFACT}" && "${PROVIDER_RISK_REVIEW_ARTIFACT}" != /* ]]; then
+  PROVIDER_RISK_REVIEW_ARTIFACT="${ORIGINAL_CWD}/${PROVIDER_RISK_REVIEW_ARTIFACT}"
 fi
 
 cd "${REPO_ROOT}"
@@ -83,7 +96,10 @@ else
   (
     cd "${WORKTREE_PATH}"
     /usr/bin/git fetch origin dev main
-    /usr/bin/git merge --squash --no-commit origin/dev
+    "${NODE_BIN}" "${SCRIPT_DIR}/prepare-release-promotion.mjs" \
+      --cwd="${WORKTREE_PATH}" \
+      --from-ref=origin/dev \
+      --base-ref=origin/main
 
     if /usr/bin/git diff --cached --quiet; then
       echo "Error: no staged changes were produced while promoting origin/dev into main." >&2
@@ -97,6 +113,16 @@ fi
 (
   cd "${WORKTREE_PATH}"
   /usr/bin/git fetch origin dev main
+  MAIN_SHA="$(/usr/bin/git rev-parse origin/main)"
+  HEAD_PARENT="$(/usr/bin/git rev-parse HEAD^)"
+  if [[ "${HEAD_PARENT}" != "${MAIN_SHA}" ]]; then
+    echo "Error: promotion commit parent ${HEAD_PARENT} does not equal current origin/main ${MAIN_SHA}. Recreate the promotion from the current base." >&2
+    exit 1
+  fi
+  if [[ "$(/usr/bin/git rev-list --count origin/main..HEAD)" != "1" ]]; then
+    echo "Error: promotion branch must contain exactly one commit above current origin/main." >&2
+    exit 1
+  fi
   "${NODE_BIN}" scripts/validate-main-pr.mjs \
     --base-ref=origin/main \
     --head-ref=HEAD \
@@ -105,9 +131,10 @@ fi
   BODY_FILE="$(mktemp)"
   trap 'rm -f "${BODY_FILE}"' EXIT
   DEV_SHA="$(/usr/bin/git rev-parse origin/dev)"
-  MAIN_SHA="$(/usr/bin/git rev-parse origin/main)"
 
   cat > "${BODY_FILE}" <<EOF
+(AI Generated).
+
 ## Summary
 - Promote the current \`origin/dev\` product snapshot into \`main\` before a production release.
 - Base main SHA: \`${MAIN_SHA}\`
@@ -125,6 +152,9 @@ EOF
   )
   if [[ -n "${PROVIDER_RISK_APPROVAL_FILE}" ]]; then
     PUBLISH_ARGS+=(--provider-risk-approval-file "${PROVIDER_RISK_APPROVAL_FILE}")
+  fi
+  if [[ -n "${PROVIDER_RISK_REVIEW_ARTIFACT}" ]]; then
+    PUBLISH_ARGS+=(--provider-risk-review-artifact "${PROVIDER_RISK_REVIEW_ARTIFACT}")
   fi
   "${PUBLISH_COMMAND[@]}" "${PUBLISH_ARGS[@]}"
 )

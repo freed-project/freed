@@ -5,6 +5,7 @@ import {
   chmodSync,
   mkdtempSync,
   mkdirSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -22,6 +23,10 @@ const __dirname = path.dirname(__filename);
 const VALIDATE_RELEASE_PROMOTION = path.join(
   __dirname,
   "validate-release-promotion.mjs",
+);
+const PREPARE_RELEASE_PROMOTION = path.join(
+  __dirname,
+  "prepare-release-promotion.mjs",
 );
 const VALIDATE_MAIN_PR = path.join(__dirname, "validate-main-pr.mjs");
 const VALIDATE_MAIN_BACKFLOW = path.join(
@@ -195,6 +200,147 @@ test("validate-release-promotion fails when main is stale on product files", (t)
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Production release blocked/);
   assert.match(result.stderr, /packages\/pwa\/src\/app\.ts/);
+});
+
+test("prepare-release-promotion copies the dev product snapshot across squashed history", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'shared snapshot';\n",
+  );
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/icon.bin",
+    Buffer.from([0, 1, 2, 3]),
+  );
+  writeRepoFile(cwd, "packages/pwa/src/legacy.ts", "export const old = true;\n");
+  commitAll(cwd, "dev shared snapshot");
+
+  git(cwd, ["checkout", "main"]);
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'shared snapshot';\n",
+  );
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/icon.bin",
+    Buffer.from([0, 1, 2, 3]),
+  );
+  writeRepoFile(cwd, "packages/pwa/src/legacy.ts", "export const old = true;\n");
+  commitAll(cwd, "chore: promote dev into main");
+  writeRepoFile(
+    cwd,
+    "packages/pwa/package.json",
+    '{\n  "name": "@freed/pwa",\n  "version": "26.7.700"\n}\n',
+  );
+  commitAll(cwd, "release: preserve main version");
+  updateOriginRef(cwd, "main");
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'next dev snapshot';\n",
+  );
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/icon.bin",
+    Buffer.from([0, 255, 2, 3]),
+  );
+  renameSync(
+    path.join(cwd, "packages/pwa/src/legacy.ts"),
+    path.join(cwd, "packages/pwa/src/current.ts"),
+  );
+  writeRepoFile(cwd, "docs/NEXT.md", "# Next\n");
+  rmSync(path.join(cwd, "docs/PHASE-1-FOUNDATION.md"));
+  chmodSync(path.join(cwd, "scripts/release.sh"), 0o755);
+  writeRepoFile(
+    cwd,
+    "packages/pwa/package.json",
+    '{\n  "name": "@freed/pwa",\n  "version": "26.7.2200-dev"\n}\n',
+  );
+  writeRepoFile(
+    cwd,
+    "release-notes/releases/v26.7.2200-dev.json",
+    '{\n  "approved": true\n}\n',
+  );
+  commitAll(cwd, "dev advances after promotion");
+  updateOriginRef(cwd, "dev");
+
+  git(cwd, [
+    "checkout",
+    "-b",
+    "chore/promote-dev-to-main-20260722",
+    "origin/main",
+  ]);
+  const naiveMerge = spawnSync(
+    "git",
+    ["merge", "--squash", "--no-commit", "origin/dev"],
+    { cwd, encoding: "utf8" },
+  );
+  assert.notEqual(naiveMerge.status, 0);
+  assert.notEqual(git(cwd, ["diff", "--name-only", "--diff-filter=U"]), "");
+  git(cwd, ["reset", "--hard", "origin/main"]);
+
+  const prepared = runNode(PREPARE_RELEASE_PROMOTION, [
+    `--cwd=${cwd}`,
+    "--from-ref=origin/dev",
+    "--base-ref=origin/main",
+  ]);
+
+  assert.equal(prepared.status, 0, prepared.stderr);
+  assert.match(prepared.stdout, /Prepared 9 product paths for promotion/);
+  assert.equal(
+    git(cwd, ["show", ":packages/pwa/src/app.ts"]),
+    "export const value = 'next dev snapshot';",
+  );
+  assert.equal(git(cwd, ["show", ":docs/NEXT.md"]), "# Next");
+  assert.equal(
+    git(cwd, ["rev-parse", ":packages/pwa/src/icon.bin"]),
+    git(cwd, ["rev-parse", "origin/dev:packages/pwa/src/icon.bin"]),
+  );
+  assert.match(git(cwd, ["ls-files", "-s", "scripts/release.sh"]), /^100755 /);
+  assert.equal(
+    git(cwd, ["show", ":packages/pwa/src/current.ts"]),
+    "export const old = true;",
+  );
+  assert.equal(
+    spawnSync("git", ["cat-file", "-e", ":packages/pwa/src/legacy.ts"], {
+      cwd,
+      encoding: "utf8",
+    }).status,
+    128,
+  );
+  assert.equal(
+    spawnSync(
+      "git",
+      ["cat-file", "-e", ":docs/PHASE-1-FOUNDATION.md"],
+      { cwd, encoding: "utf8" },
+    ).status,
+    128,
+  );
+  assert.match(
+    git(cwd, ["show", ":packages/pwa/package.json"]),
+    /26\.7\.2200-dev/,
+  );
+  assert.equal(
+    git(cwd, ["show", ":release-notes/releases/v26.7.2200-dev.json"]),
+    '{\n  "approved": true\n}',
+  );
+
+  commitAll(cwd, "chore: promote dev into main for production release");
+  const validated = runNode(VALIDATE_MAIN_PR, [
+    `--cwd=${cwd}`,
+    "--base-ref=origin/main",
+    "--head-ref=HEAD",
+    "--head-branch=chore/promote-dev-to-main-20260722",
+  ]);
+  assert.equal(validated.status, 0, validated.stderr);
 });
 
 test("validate-main-backflow ignores squashed promotion content already in dev history", (t) => {
@@ -877,16 +1023,61 @@ test("validate-main-pr passes for a fresh promotion branch", (t) => {
     "-m",
     "chore: promote dev into main for production release",
   ]);
+  const promotionHead = git(cwd, ["rev-parse", "HEAD"]);
+  git(cwd, ["checkout", "main"]);
+  git(cwd, ["merge", "--no-ff", "--no-edit", promotionHead]);
+  assert.equal(
+    git(cwd, ["rev-list", "--parents", "--max-count=1", "HEAD"])
+      .split(/\s+/)
+      .length,
+    3,
+  );
 
   const result = runNode(VALIDATE_MAIN_PR, [
     `--cwd=${cwd}`,
     "--base-ref=origin/main",
-    "--head-ref=HEAD",
+    `--head-ref=${promotionHead}`,
     "--head-branch=chore/promote-dev-to-main-20260421",
   ]);
 
   assert.equal(result.status, 0);
   assert.match(result.stdout, /Promotion branch matches origin\/dev/);
+});
+
+test("validate-main-pr rejects a promotion whose parent is no longer current main", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(
+    cwd,
+    "packages/pwa/src/app.ts",
+    "export const value = 'dev';\n",
+  );
+  commitAll(cwd, "dev change");
+  updateOriginRef(cwd, "dev");
+
+  const promotionBranch = "chore/promote-dev-to-main-20260421";
+  git(cwd, ["checkout", "-b", promotionBranch, "main"]);
+  git(cwd, ["merge", "--squash", "--no-commit", "dev"]);
+  commitAll(cwd, "chore: promote dev into main for production release");
+
+  git(cwd, ["checkout", "main"]);
+  writeRepoFile(cwd, "release-notes/releases/v0.0.1.json", "{\n}\n");
+  commitAll(cwd, "release: advance main");
+  updateOriginRef(cwd, "main");
+  git(cwd, ["checkout", promotionBranch]);
+
+  const result = runNode(VALIDATE_MAIN_PR, [
+    `--cwd=${cwd}`,
+    "--base-ref=origin/main",
+    "--head-ref=HEAD",
+    `--head-branch=${promotionBranch}`,
+  ]);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Promotion PR is stale/);
+  assert.match(result.stderr, /parent is the current origin\/main commit/);
 });
 
 test("validate-main-pr rejects third-content release metadata on a promotion branch", (t) => {

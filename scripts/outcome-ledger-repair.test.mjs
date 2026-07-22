@@ -7,6 +7,7 @@ import {
   closeSync,
   constants,
   existsSync,
+  fstatSync,
   linkSync,
   lstatSync,
   mkdirSync,
@@ -63,6 +64,7 @@ import {
 } from "./nightly-self-improve.mjs";
 import { writeMeasuredOutcomeVerdict } from "./test-helpers/outcome-evidence.mjs";
 import { installAutomationKernelGuardCutoverFixture } from "./test-helpers/automation-kernel-guard.mjs";
+import { acquireGeneralActorLeaseForTest } from "./test-helpers/trusted-actor-lease.mjs";
 
 const TASK_ID = "authenticated-essay-capture-pr-642";
 const CLI_PATH = path.join(import.meta.dirname, "outcome-ledger-repair.mjs");
@@ -727,12 +729,56 @@ function privateDirectoryFixture(t, label) {
   return root;
 }
 
+const DIRECTORY_RETIREMENT_MAX_FILE_BYTES = 1024 * 1024;
+const DIRECTORY_RETIREMENT_MAX_ENTRIES = 4;
+const DIRECTORY_RETIREMENT_MAX_DEPTH = 1;
+const DIRECTORY_RETIREMENT_MAX_AGGREGATE_BYTES = 1024 * 1024;
+
+function snapshotRetirementDirectoryTree(sourceParentPath, sourceName) {
+  const descriptor = openSync(
+    sourceParentPath,
+    constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+  );
+  const sourceParent = fstatSync(descriptor);
+  let result;
+  try {
+    result = runNativeMoveHelper(
+      "snapshot-tree",
+      [
+        sourceName,
+        0,
+        DIRECTORY_RETIREMENT_MAX_FILE_BYTES,
+        DIRECTORY_RETIREMENT_MAX_ENTRIES,
+        DIRECTORY_RETIREMENT_MAX_DEPTH,
+        DIRECTORY_RETIREMENT_MAX_AGGREGATE_BYTES,
+        2 * DIRECTORY_RETIREMENT_MAX_FILE_BYTES,
+        sourceParent.dev,
+        sourceParent.ino,
+        sourceParent.mode & 0o7777,
+      ],
+      [descriptor],
+    );
+  } finally {
+    closeSync(descriptor);
+  }
+  assert.equal(result.status, 0, result.stderr.toString("utf8"));
+  const receipt = JSON.parse(result.stdout.toString("utf8"));
+  assert.equal(receipt.protocol, "freed-lease-archive-move-v1");
+  assert.equal(receipt.operation, "snapshot-tree");
+  assert.equal(receipt.parentDevice, String(sourceParent.dev));
+  assert.equal(receipt.parentInode, String(sourceParent.ino));
+  assert.equal(receipt.parentMode, String(sourceParent.mode & 0o7777));
+  assert.match(receipt.treeDigest, /^[0-9a-f]{64}$/);
+  return receipt.treeDigest;
+}
+
 function retireDirectoryArguments({
   sourceName,
   destinationName,
   source,
   sourceParent,
   destinationParent,
+  treeDigest,
 }) {
   return [
     sourceName,
@@ -745,6 +791,11 @@ function retireDirectoryArguments({
     sourceParent.ino,
     destinationParent.dev,
     destinationParent.ino,
+    treeDigest,
+    DIRECTORY_RETIREMENT_MAX_FILE_BYTES,
+    DIRECTORY_RETIREMENT_MAX_ENTRIES,
+    DIRECTORY_RETIREMENT_MAX_DEPTH,
+    DIRECTORY_RETIREMENT_MAX_AGGREGATE_BYTES,
   ];
 }
 
@@ -966,19 +1017,16 @@ test("replaced repair accepts its exact same-intent owner heartbeat before audit
   );
 });
 
-test("replaced repair rejects an unrelated canonical lease event before audit", (t) => {
+test("replaced repair fences an unrelated actor lease before mutation or audit", (t) => {
   const fixture = leaveRepairReplaced(t, "unrelated-lease-before-audit");
-  actorLease(fixture.stateRoot, "freed-release-verifier", Date.now());
+  const eventsBefore = readFileSync(fixture.paths.events);
+  const leaseEntriesBefore = readdirSync(fixture.paths.leases).sort();
   assert.throws(
-    () =>
-      repairOutcomeLedger({
-        stateRoot: fixture.stateRoot,
-        taskId: TASK_ID,
-        expectedSourceDigest: fixture.sourceDigest,
-        ...fixture.owner,
-      }),
-    /plan-bound owner lease lifecycle/i,
+    () => actorLease(fixture.stateRoot, "freed-release-verifier", Date.now()),
+    (error) => error?.code === "outcome_ledger_repair_pending",
   );
+  assert.deepEqual(readFileSync(fixture.paths.events), eventsBefore);
+  assert.deepEqual(readdirSync(fixture.paths.leases).sort(), leaseEntriesBefore);
   assert.equal(repairAuditEvents(fixture.paths, fixture.plan.eventId).length, 0);
 });
 
@@ -1019,38 +1067,17 @@ test("audited repair recovers under a new same-intent owner lease without duplic
   assert.equal(existsSync(fixture.plan.artifacts.transaction), false);
 });
 
-function writeActorCredential(stateRoot, actor) {
-  const token = `credential:${actor}:${"x".repeat(64)}`;
-  const credentialPath = path.join(
-    automationControlPaths(stateRoot).actorCredentials,
-    `${actor}.json`,
-  );
-  mkdirSync(path.dirname(credentialPath), { recursive: true, mode: 0o700 });
-  writeFileSync(
-    credentialPath,
-    `${JSON.stringify({
-      schemaVersion: 1,
-      actor,
-      purpose: "automation-actor-lease",
-      tokenSha256: sha256(token),
-    })}\n`,
-    { mode: 0o600 },
-  );
-  return token;
-}
-
 function actorLease(stateRoot, actor, nowMs) {
   const policy = AUTOMATION_ACTOR_POLICIES[actor];
   const token = `${actor}:${nowMs}`;
   const currentTimeMs = Date.now();
   const leaseNowMs = nowMs >= currentTimeMs - 1_000 ? nowMs : currentTimeMs;
-  acquireLease({
+  acquireGeneralActorLeaseForTest({
     stateRoot,
     name: policy.leaseName,
     owner: actor,
     operationId: leaseMutationId(`acquire:${actor}`),
     token,
-    actorCredentialToken: writeActorCredential(stateRoot, actor),
     nowMs: leaseNowMs,
     ttlMs: policy.maxLeaseLifetimeMs,
   });
@@ -5807,6 +5834,10 @@ test("native durable directory retirement is exclusive and generation bound", as
     const source = statSync(sourcePath);
     const sourceParent = statSync(sourceParentPath);
     const destinationParent = statSync(destinationParentPath);
+    const treeDigest = snapshotRetirementDirectoryTree(
+      sourceParentPath,
+      sourceName,
+    );
     const descriptors = [sourceParentPath, destinationParentPath, sourcePath].map(
       (value) =>
         openSync(
@@ -5824,6 +5855,7 @@ test("native durable directory retirement is exclusive and generation bound", as
           source,
           sourceParent,
           destinationParent,
+          treeDigest,
         }),
         descriptors,
       );
@@ -5842,6 +5874,7 @@ test("native durable directory retirement is exclusive and generation bound", as
       inode: String(source.ino),
       mode: String(source.mode & 0o7777),
       protocol: "freed-lease-archive-move-v1",
+      treeDigest,
       uid: String(source.uid),
     });
   });
@@ -5866,6 +5899,10 @@ test("native durable directory retirement is exclusive and generation bound", as
     const destination = statSync(destinationPath);
     const sourceParent = statSync(sourceParentPath);
     const destinationParent = statSync(destinationParentPath);
+    const treeDigest = snapshotRetirementDirectoryTree(
+      sourceParentPath,
+      sourceName,
+    );
     const descriptors = [sourceParentPath, destinationParentPath, sourcePath].map(
       (value) =>
         openSync(
@@ -5883,6 +5920,7 @@ test("native durable directory retirement is exclusive and generation bound", as
           source,
           sourceParent,
           destinationParent,
+          treeDigest,
         }),
         descriptors,
       );
@@ -5914,6 +5952,10 @@ test("native durable directory retirement is exclusive and generation bound", as
     const source = statSync(sourcePath);
     const sourceParent = statSync(sourceParentPath);
     const destinationParent = statSync(destinationParentPath);
+    const treeDigest = snapshotRetirementDirectoryTree(
+      sourceParentPath,
+      sourceName,
+    );
     const descriptors = [sourceParentPath, destinationParentPath, sourcePath].map(
       (value) =>
         openSync(
@@ -5929,6 +5971,7 @@ test("native durable directory retirement is exclusive and generation bound", as
         source,
         sourceParent,
         destinationParent,
+        treeDigest,
       }),
       descriptors,
       pause: "before-retire-directory-syscall",
@@ -5961,6 +6004,10 @@ test("native durable directory retirement is exclusive and generation bound", as
     const source = statSync(sourcePath);
     const sourceParent = statSync(sourceParentPath);
     const destinationParent = statSync(destinationParentPath);
+    const treeDigest = snapshotRetirementDirectoryTree(
+      sourceParentPath,
+      sourceName,
+    );
     const descriptors = [sourceParentPath, destinationParentPath, sourcePath].map(
       (value) =>
         openSync(
@@ -5976,6 +6023,7 @@ test("native durable directory retirement is exclusive and generation bound", as
         source,
         sourceParent,
         destinationParent,
+        treeDigest,
       }),
       descriptors,
       pause: "after-retire-directory-before-destination-sync",

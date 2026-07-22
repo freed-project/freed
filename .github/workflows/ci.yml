@@ -81,7 +81,7 @@ jobs:
         run: |
           node scripts/validate-main-pr.mjs \
             --base-ref="origin/${{ github.base_ref }}" \
-            --head-ref=HEAD \
+            --head-ref="${{ github.event.pull_request.head.sha }}" \
             --head-branch="${{ github.head_ref }}"
 
   feature:

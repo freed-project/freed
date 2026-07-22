@@ -3558,35 +3558,11 @@ function appendOutcomeLedgerRepairEventUnlocked(
 }
 
 function outcomeLedgerRepairAuthorizationFromOwnerAcquisition(event) {
-  const common = {
-    leaseName: event.leaseName,
-    leaseAcquiredAt: event.ts,
-    credentialKind: event.data?.credentialKind,
-  };
-  if (event.data?.credentialKind === "owner-signed-capability") {
-    return {
-      ...common,
-      ownerCapabilityId: event.data.ownerCapabilityId,
-      ownerCapabilityTaskId: event.data.ownerCapabilityTaskId,
-      ownerCapabilityIntentDigest: event.data.ownerCapabilityIntentDigest,
-    };
-  }
-  if (event.data?.credentialKind === "owner-confirmation") {
-    return {
-      ...common,
-      ownerConfirmationId: event.data.ownerConfirmationId,
-      ownerConfirmationTaskId: event.data.ownerConfirmationTaskId,
-      ownerConfirmationIntentDigest: event.data.ownerConfirmationIntentDigest,
-      ownerConfirmationDigest: event.data.ownerConfirmationDigest,
-      ownerConfirmationReference: event.data.ownerConfirmationReference,
-      ownerConfirmationApprovedBy: event.data.ownerConfirmationApprovedBy,
-      ownerConfirmationApprovalReference:
-        event.data.ownerConfirmationApprovalReference,
-      ownerConfirmationApprovedAt: event.data.ownerConfirmationApprovedAt,
-      ownerConfirmationExpiresAt: event.data.ownerConfirmationExpiresAt,
-    };
-  }
-  return null;
+  return ["owner-signed-capability", "owner-confirmation"].includes(
+    event?.data?.credentialKind,
+  )
+    ? taskAuthorizationProvenanceFromLeaseAcquisition(event)
+    : null;
 }
 
 function ownerAcquisitionMatchesOutcomeLedgerRepair(event, authorization) {
@@ -8410,6 +8386,80 @@ function canonicalTaskAuthorizationProvenance(
   });
 }
 
+function taskAuthorizationProvenanceFromLeaseAcquisition(event) {
+  const common = {
+    leaseName: event?.leaseName,
+    leaseAcquiredAt: event?.ts,
+    credentialKind: event?.data?.credentialKind,
+  };
+  if (event?.data?.credentialKind === "owner-signed-capability") {
+    return {
+      ...common,
+      ownerCapabilityId: event.data.ownerCapabilityId,
+      ownerCapabilityTaskId: event.data.ownerCapabilityTaskId,
+      ownerCapabilityIntentDigest: event.data.ownerCapabilityIntentDigest,
+    };
+  }
+  if (event?.data?.credentialKind === "owner-confirmation") {
+    return {
+      ...common,
+      ownerConfirmationId: event.data.ownerConfirmationId,
+      ownerConfirmationTaskId: event.data.ownerConfirmationTaskId,
+      ownerConfirmationIntentDigest: event.data.ownerConfirmationIntentDigest,
+      ownerConfirmationDigest: event.data.ownerConfirmationDigest,
+      ownerConfirmationReference: event.data.ownerConfirmationReference,
+      ownerConfirmationApprovedBy: event.data.ownerConfirmationApprovedBy,
+      ownerConfirmationApprovalReference:
+        event.data.ownerConfirmationApprovalReference,
+      ownerConfirmationApprovedAt: event.data.ownerConfirmationApprovedAt,
+      ownerConfirmationExpiresAt: event.data.ownerConfirmationExpiresAt,
+    };
+  }
+  if (event?.data?.credentialKind === "signed-capability") {
+    return {
+      ...common,
+      publisherCapabilityId: event.data.publisherCapabilityId,
+    };
+  }
+  if (event?.data?.credentialKind === "trusted-launcher-channel") {
+    return {
+      ...common,
+      launcherSha256: event.data.launcherSha256,
+      actorRuntimeDigest: event.data.actorRuntimeDigest,
+      launcherChannelProtocol: event.data.launcherChannelProtocol,
+      launcherAttestationSha256: event.data.launcherAttestationSha256,
+      launcherSessionId: event.data.launcherSessionId,
+    };
+  }
+  if (event?.data?.credentialKind === "persistent-actor") return common;
+  return null;
+}
+
+function indexActiveCanonicalLeaseAcquisitionByRecord(
+  records,
+  canonicalLeaseEventsByIndex,
+) {
+  const activeByLeaseName = new Map();
+  const acquisitionByRecordIndex = new Map();
+  for (const record of records) {
+    const descriptor = canonicalLeaseEventsByIndex.get(record.index);
+    if (descriptor?.kind === "acquisition") {
+      activeByLeaseName.set(
+        record.entry.leaseName,
+        descriptor.acquisitionIndex,
+      );
+    } else if (descriptor?.kind === "release") {
+      activeByLeaseName.delete(record.entry.leaseName);
+    }
+    const policy = AUTOMATION_ACTOR_POLICIES[record.entry?.actor];
+    const acquisitionIndex = activeByLeaseName.get(policy?.leaseName);
+    if (acquisitionIndex !== undefined) {
+      acquisitionByRecordIndex.set(record.index, acquisitionIndex);
+    }
+  }
+  return acquisitionByRecordIndex;
+}
+
 function canonicalTaskEventPolicyAuthority(event, toState) {
   const policy = AUTOMATION_ACTOR_POLICIES[event?.actor];
   return (
@@ -8842,6 +8892,11 @@ export function inspectExactTaskLifecycleHistory(events) {
   );
   const leaseHistory = inspectExactLeaseEventHistory(records, eventIdCounts);
   issues.push(...leaseHistory.issues);
+  const activeCanonicalLeaseAcquisitionByRecordIndex =
+    indexActiveCanonicalLeaseAcquisitionByRecord(
+      records,
+      leaseHistory.canonicalEventsByIndex,
+    );
   const lifecycleByRecordIndex = new Map();
   const canonicalTaskEventIndexes = new Set();
   const currentByTask = new Map();
@@ -9104,6 +9159,12 @@ export function inspectExactTaskLifecycleHistory(events) {
       };
     } else {
       const pending = before.pendingOutcome;
+      const activeAcquisitionIndex =
+        activeCanonicalLeaseAcquisitionByRecordIndex.get(record.index);
+      const activeAcquisition =
+        activeAcquisitionIndex === undefined
+          ? undefined
+          : records[activeAcquisitionIndex]?.entry;
       if (
         !canonicalOutcomeFinalizedEvent(
           event,
@@ -9112,7 +9173,7 @@ export function inspectExactTaskLifecycleHistory(events) {
           recordsByEventId,
           acquisitionRecordsByKey,
           leaseTimelinesByAcquisitionIndex,
-          pending?.authorizationProvenance,
+          taskAuthorizationProvenanceFromLeaseAcquisition(activeAcquisition),
         ) ||
         event.taskRevision !== before.taskRevision ||
         pending === null ||
@@ -9146,6 +9207,7 @@ export function inspectExactTaskLifecycleHistory(events) {
     recordsByEventId,
     acquisitionRecordsByKey,
     leaseTimelinesByAcquisitionIndex,
+    activeCanonicalLeaseAcquisitionByRecordIndex,
     canonicalLeaseEventsByIndex: leaseHistory.canonicalEventsByIndex,
     leaseHistoryIssues: leaseHistory.issues,
     leaseHistoryHealthy: leaseHistory.healthy,
@@ -9389,6 +9451,16 @@ export function inspectExactOutcomeControlHistory(
     const pinnedLegacyTransition =
       transition !== undefined &&
       pinnedLegacyActorOutcomeTransition(transition);
+    const activeAcquisitionIndex =
+      lifecycle.activeCanonicalLeaseAcquisitionByRecordIndex.get(record.index);
+    const activeAcquisition =
+      activeAcquisitionIndex === undefined
+        ? undefined
+        : lifecycle.records[activeAcquisitionIndex]?.entry;
+    const activeLeaseProvenance =
+      activeAcquisition === undefined
+        ? undefined
+        : taskAuthorizationProvenanceFromLeaseAcquisition(activeAcquisition);
     const deterministicRequired =
       transition?.type === "outcome_reservation_created" ||
       transition?.data?.outcomeRequired === true ||
@@ -9419,7 +9491,7 @@ export function inspectExactOutcomeControlHistory(
       (pinnedLegacyTransition
         ? !canonicalPinnedLegacyActorOutcomeEvent(event, transition)
         : !canonicalTaskAuthorizationProvenance(
-            transition.data?.authorizationProvenance,
+            activeLeaseProvenance,
             {
               actor: event.actor,
               taskId: event.taskId,

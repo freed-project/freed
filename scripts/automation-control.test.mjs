@@ -104,56 +104,19 @@ import {
   providerApprovalAuthorizationDigest,
   validateProviderRiskApproval,
 } from "./lib/provider-visible-paths.mjs";
+import {
+  ACTOR_LAUNCHER_CHANNEL_PROTOCOL,
+  TEST_ACTOR_RUNTIME_DIGEST,
+  TEST_LAUNCHER_ATTESTATION_SHA256,
+  TEST_LAUNCHER_SESSION_ID,
+  TEST_LAUNCHER_SHA256,
+  TRUSTED_ACTOR_CONTROL_MODULE_URL,
+  acquireGeneralActorLeaseForTest,
+} from "./test-helpers/trusted-actor-lease.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.join(__dirname, "automation-control.mjs");
 const ACTOR_CONTROL_PATH = path.join(__dirname, "automation-actor-control.mjs");
-const ACTOR_LAUNCHER_CHANNEL_PROTOCOL = "freed-actor-launcher-channel-v1";
-const TEST_LAUNCHER_SHA256 = "a".repeat(64);
-const TEST_ACTOR_RUNTIME_DIGEST = "b".repeat(64);
-const TEST_LAUNCHER_ATTESTATION_SHA256 = "c".repeat(64);
-const TEST_LAUNCHER_SESSION_ID = "d".repeat(64);
-
-const internalControlRoot = mkdtempSync(
-  path.join(os.tmpdir(), "freed-automation-control-internal-"),
-);
-cpSync(path.join(__dirname, "lib"), internalControlRoot, { recursive: true });
-const internalControlPath = path.join(
-  internalControlRoot,
-  "automation-control.mjs",
-);
-appendFileSync(
-  internalControlPath,
-  `
-export function acquireGeneralActorLeaseForTest(options) {
-  const {
-    actorCredentialToken: _retiredCredential,
-    launcherAttestationSha256 = "c".repeat(64),
-    launcherSessionId = "d".repeat(64),
-    ...leaseOptions
-  } = options;
-  return acquireLeaseAuthorized({
-    ...leaseOptions,
-    trustedLauncherAuthorization: {
-      marker: TRUSTED_LAUNCHER_AUTHORIZATION,
-      launcherSha256: "a".repeat(64),
-      actorRuntimeDigest: "b".repeat(64),
-      launcherChannelProtocol: ACTOR_LAUNCHER_CHANNEL_PROTOCOL,
-      launcherAttestationSha256,
-      launcherSessionId,
-      leaseOperationId: leaseOptions.operationId,
-      leaseTokenSha256: secretDigest(leaseOptions.token),
-    },
-  });
-}
-`,
-);
-const { acquireGeneralActorLeaseForTest } = await import(
-  pathToFileURL(internalControlPath).href
-);
-process.once("exit", () => {
-  rmSync(internalControlRoot, { recursive: true, force: true });
-});
 
 function acquireLeaseLive(options) {
   const policy = AUTOMATION_ACTOR_POLICIES[options.owner];
@@ -2906,7 +2869,7 @@ test("release and replacement wait until the authorized mutation scope commits",
   const replacementToken = `replacement-${"y".repeat(32)}`;
   const releaseOperationId = "91".repeat(32);
   const acquireOperationId = "92".repeat(32);
-  const moduleUrl = pathToFileURL(internalControlPath).href;
+  const moduleUrl = TRUSTED_ACTOR_CONTROL_MODULE_URL;
   const maxLeaseLifetimeMs =
     AUTOMATION_ACTOR_POLICIES[actor].maxLeaseLifetimeMs;
   let contender;
@@ -8300,6 +8263,23 @@ test("shared outcome history enforces exact records, evidence, ledger identity, 
     events.push(finalized);
     return { events, heartbeat, finalized };
   };
+  const canonicalLeaseRelease = (timestamp) => ({
+    schemaVersion: 1,
+    eventId: `lease:${createHash("sha256")
+      .update(`release-event:${timestamp}`)
+      .digest("hex")}`,
+    type: "lease_released",
+    ts: timestamp,
+    actor: "freed-scaffolding-maintainer",
+    leaseName:
+      AUTOMATION_ACTOR_POLICIES["freed-scaffolding-maintainer"].leaseName,
+    data: {
+      expired: false,
+      requestDigest: createHash("sha256")
+        .update(`release-request:${timestamp}`)
+        .digest("hex"),
+    },
+  });
 
   await t.test(
     "reconstructs one canonical heartbeat for outcome recording and finalization",
@@ -8322,6 +8302,8 @@ test("shared outcome history enforces exact records, evidence, ledger identity, 
     "noncanonical heartbeat",
     "heartbeat at prior expiry",
     "heartbeat beyond absolute lifetime",
+    "outcome after release without reacquire",
+    "finalization after release without reacquire",
   ]) {
     await t.test(`rejects ${variant} in continuous outcome history`, () => {
       const fixture = heartbeatExtendedHistory();
@@ -8348,13 +8330,51 @@ test("shared outcome history enforces exact records, evidence, ledger identity, 
         fixture.heartbeat.ts = fixture.heartbeat.ts.replace(/Z$/, "+00:00");
       } else if (variant === "heartbeat at prior expiry") {
         fixture.heartbeat.ts = "2026-07-19T12:00:02.500Z";
-      } else {
+      } else if (variant === "heartbeat beyond absolute lifetime") {
         fixture.heartbeat.data.expiresAt = "2026-07-19T12:30:00.001Z";
+      } else if (variant === "outcome after release without reacquire") {
+        const outcomeIndex = fixture.events.indexOf(outcome);
+        assert.notEqual(outcomeIndex, -1);
+        fixture.events.splice(
+          outcomeIndex,
+          0,
+          canonicalLeaseRelease("2026-07-19T12:00:02.750Z"),
+        );
+        fixture.events.splice(fixture.events.indexOf(fixture.finalized), 1);
+      } else {
+        const finalizedIndex = fixture.events.indexOf(fixture.finalized);
+        assert.notEqual(finalizedIndex, -1);
+        fixture.events.splice(
+          finalizedIndex,
+          0,
+          canonicalLeaseRelease("2026-07-19T12:00:03.250Z"),
+        );
       }
       const inspection = inspectExactOutcomeControlHistory(fixture.events, {
         ledgerPath,
       });
       assert.equal(inspection.healthy, false);
+      if (variant === "outcome after release without reacquire") {
+        assert.equal(
+          inspection.leaseHistoryHealthy,
+          true,
+          inspection.leaseHistoryIssues.join("\n"),
+        );
+        assert.match(
+          inspection.issues.join("\n"),
+          /has no exact preceding canonical outcome transition/,
+        );
+      } else if (variant === "finalization after release without reacquire") {
+        assert.equal(
+          inspection.leaseHistoryHealthy,
+          true,
+          inspection.leaseHistoryIssues.join("\n"),
+        );
+        assert.match(
+          inspection.issues.join("\n"),
+          /is not the exact completion of its task outcome reservation/,
+        );
+      }
     });
   }
 

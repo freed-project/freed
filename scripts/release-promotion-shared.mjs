@@ -100,8 +100,17 @@ export function isPromotionScopeFile(filePath) {
   );
 }
 
-export function listChangedFiles({ fromRef, toRef, cwd, pathspec = [] }) {
+export function listChangedFiles({
+  fromRef,
+  toRef,
+  cwd,
+  pathspec = [],
+  detectRenames = true,
+}) {
   const args = ["diff", "--name-only", toRef, fromRef];
+  if (!detectRenames) {
+    args.push("--no-renames");
+  }
   if (pathspec.length > 0) {
     args.push("--", ...pathspec);
   }
@@ -149,6 +158,36 @@ export function listPromotionBranchDiffFiles({ fromRef, toRef, cwd }) {
     toRef,
     cwd,
     pathspec: RELEASE_ONLY_PREFIXES,
+  });
+
+  return uniqueSorted([
+    ...promotionScopeFiles,
+    ...websiteConfigFiles,
+    ...releaseNoteFiles,
+  ]);
+}
+
+export function listPromotionBranchPatchFiles({ fromRef, toRef, cwd }) {
+  const promotionScopeFiles = listChangedFiles({
+    fromRef,
+    toRef,
+    cwd,
+    pathspec: PROMOTION_SCOPE_PATHS,
+    detectRenames: false,
+  });
+  const websiteConfigFiles = listChangedFiles({
+    fromRef,
+    toRef,
+    cwd,
+    pathspec: PROMOTION_WEBSITE_CONFIG_FILES,
+    detectRenames: false,
+  });
+  const releaseNoteFiles = listChangedFiles({
+    fromRef,
+    toRef,
+    cwd,
+    pathspec: RELEASE_ONLY_PREFIXES,
+    detectRenames: false,
   });
 
   return uniqueSorted([

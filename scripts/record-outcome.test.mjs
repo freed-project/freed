@@ -31,6 +31,7 @@ import {
 } from "./nightly-self-improve.mjs";
 import { writeMeasuredOutcomeVerdict } from "./test-helpers/outcome-evidence.mjs";
 import { installAutomationKernelGuardCutoverFixture } from "./test-helpers/automation-kernel-guard.mjs";
+import { acquireGeneralActorLeaseForTest } from "./test-helpers/trusted-actor-lease.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.join(__dirname, "record-outcome.mjs");
@@ -48,32 +49,15 @@ function acquireActorLease(stateRoot, actor) {
   installAutomationKernelGuardCutoverFixture(stateRoot);
   const policy = AUTOMATION_ACTOR_POLICIES[actor];
   const token = `${actor}-lease-token`;
-  const actorCredentialToken = `credential:${actor}:${"x".repeat(64)}`;
   const controlRoot = path.join(stateRoot, "control");
   mkdirSync(controlRoot, { recursive: true, mode: 0o700 });
   chmodSync(controlRoot, 0o700);
-  const credentialDir = path.join(stateRoot, "control", "actor-credentials");
-  mkdirSync(credentialDir, { recursive: true, mode: 0o700 });
-  chmodSync(credentialDir, 0o700);
-  writeFileSync(
-    path.join(credentialDir, `${actor}.json`),
-    `${JSON.stringify({
-      schemaVersion: 1,
-      actor,
-      purpose: "automation-actor-lease",
-      tokenSha256: createHash("sha256")
-        .update(actorCredentialToken)
-        .digest("hex"),
-    })}\n`,
-    { mode: 0o600 },
-  );
-  acquireLease({
+  acquireGeneralActorLeaseForTest({
     stateRoot,
     name: policy.leaseName,
     owner: actor,
     operationId: leaseMutationId(`acquire:${actor}`),
     token,
-    actorCredentialToken,
     ttlMs: policy.maxLeaseLifetimeMs,
   });
   return { actor, leaseName: policy.leaseName, leaseToken: token };
