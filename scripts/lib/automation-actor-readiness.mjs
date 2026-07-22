@@ -24,7 +24,7 @@ export const ACTOR_LAUNCHER_RECORD_ROOT =
 export const ACTOR_RUNTIME_ROOT =
   "/Library/Application Support/Freed/automation-actor-runtimes";
 const ACTOR_RUNTIME_DIGEST_PROTOCOL =
-  "freed-automation-actor-runtime-v1";
+  "freed-automation-actor-runtime-v3";
 export const LAUNCHER_ATTESTATION_TIMEOUT_MS = 15_000;
 const MAX_LAUNCHER_ATTESTATION_BYTES = 16 * 1_024;
 
@@ -32,6 +32,8 @@ const BINDING_KEYS = Object.freeze(
   [
     "actor",
     "attestationProtocol",
+    "kernelGuardContractPath",
+    "kernelGuardContractSha256",
     "controlEntryPath",
     "controlEntrySha256",
     "controlLibraryPath",
@@ -39,12 +41,16 @@ const BINDING_KEYS = Object.freeze(
     "handoff",
     "keychainAccount",
     "keychainService",
+    "leaseArchiveHelperPath",
+    "leaseArchiveHelperSha256",
     "leaseName",
     "launcherPath",
     "launcherSha256",
     "maxLeaseLifetimeMs",
     "nodePath",
     "nodeSha256",
+    "outcomeLedgerRepairContractPath",
+    "outcomeLedgerRepairContractSha256",
     "purpose",
     "schemaVersion",
     "stateRoot",
@@ -240,6 +246,7 @@ export function inspectRootOwnedRecord(
       !stats.isFile() ||
       stats.isSymbolicLink() ||
       stats.uid !== requiredUid ||
+      (stats.mode & 0o7000) !== 0 ||
       (stats.mode & 0o022) !== 0
     ) {
       return {
@@ -335,6 +342,7 @@ export function inspectRootOwnedRuntimeFile(
       !stats.isFile() ||
       stats.isSymbolicLink() ||
       stats.uid !== requiredUid ||
+      (stats.mode & 0o7000) !== 0 ||
       (stats.mode & 0o022) !== 0
     ) {
       return {
@@ -368,6 +376,9 @@ export function runtimeDigestForPins(pins) {
         `node:${pins.nodeSha256}`,
         `automation-control.mjs:${pins.controlEntrySha256}`,
         `lib/automation-control.mjs:${pins.controlLibrarySha256}`,
+        `lib/automation-kernel-guard-contract.mjs:${pins.kernelGuardContractSha256}`,
+        `lib/outcome-ledger-repair-contract.mjs:${pins.outcomeLedgerRepairContractSha256}`,
+        `lib/lease-archive-move.py:${pins.leaseArchiveHelperSha256}`,
         "",
       ].join("\n"),
     )
@@ -404,7 +415,7 @@ export function validateActorBindingRecord(
       !Number.isSafeInteger(leaseContract.maxLifetimeMs) ||
       leaseContract.maxLifetimeMs <= 0 ||
       !exactKeys(record, BINDING_KEYS) ||
-      record.schemaVersion !== 1 ||
+      record.schemaVersion !== 3 ||
       record.actor !== actor ||
       record.purpose !== ACTOR_LAUNCHER_PURPOSE ||
       record.handoff !== ACTOR_LAUNCHER_HANDOFF ||
@@ -419,12 +430,29 @@ export function validateActorBindingRecord(
       !isSha256(record.nodeSha256) ||
       !isSha256(record.controlEntrySha256) ||
       !isSha256(record.controlLibrarySha256) ||
+      !isSha256(record.kernelGuardContractSha256) ||
+      !isSha256(record.outcomeLedgerRepairContractSha256) ||
+      !isSha256(record.leaseArchiveHelperSha256) ||
       !isSha256(runtimeDigest) ||
       record.nodePath !== path.join(runtimeDirectory, "node") ||
       record.controlEntryPath !==
         path.join(runtimeDirectory, "automation-control.mjs") ||
       record.controlLibraryPath !==
         path.join(runtimeDirectory, "lib", "automation-control.mjs") ||
+      record.kernelGuardContractPath !==
+        path.join(
+          runtimeDirectory,
+          "lib",
+          "automation-kernel-guard-contract.mjs",
+        ) ||
+      record.outcomeLedgerRepairContractPath !==
+        path.join(
+          runtimeDirectory,
+          "lib",
+          "outcome-ledger-repair-contract.mjs",
+        ) ||
+      record.leaseArchiveHelperPath !==
+        path.join(runtimeDirectory, "lib", "lease-archive-move.py") ||
       runtimeDigestForPins(record) !== runtimeDigest
     ) {
       return {
@@ -454,6 +482,21 @@ export function validateActorBindingRecord(
         "automation control library",
         record.controlLibraryPath,
         record.controlLibrarySha256,
+      ],
+      [
+        "automation kernel guard contract",
+        record.kernelGuardContractPath,
+        record.kernelGuardContractSha256,
+      ],
+      [
+        "outcome ledger repair contract",
+        record.outcomeLedgerRepairContractPath,
+        record.outcomeLedgerRepairContractSha256,
+      ],
+      [
+        "lease archive helper",
+        record.leaseArchiveHelperPath,
+        record.leaseArchiveHelperSha256,
       ],
     ];
     for (const [label, pinPath, digest] of pins) {
@@ -716,6 +759,10 @@ export function actorLauncherReadiness(
     nodePath: installed.binding.nodePath,
     controlEntryPath: installed.binding.controlEntryPath,
     controlLibraryPath: installed.binding.controlLibraryPath,
+    kernelGuardContractPath: installed.binding.kernelGuardContractPath,
+    outcomeLedgerRepairContractPath:
+      installed.binding.outcomeLedgerRepairContractPath,
+    leaseArchiveHelperPath: installed.binding.leaseArchiveHelperPath,
     attestation: attestationResult.attestation,
   };
 }

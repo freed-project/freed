@@ -16,6 +16,8 @@ private let publisherCapabilityLifetimeSeconds: TimeInterval = 60
 private let publisherLeaseLifetimeMilliseconds = 30 * 60 * 1_000
 private let ownerCapabilityLifetimeSeconds: TimeInterval = 60
 private let ownerLeaseMaximumMilliseconds = 15 * 60 * 1_000
+private let publisherControlTimeoutMilliseconds: UInt64 = 10 * 1_000
+private let maximumPublisherControlOutputBytes = 64 * 1_024
 
 private struct HostFailure: Error, CustomStringConvertible {
   let description: String
@@ -79,6 +81,7 @@ private struct OwnerCapabilityPayload: Codable {
 private struct OwnerCapabilityResult: Codable {
   let schemaVersion: Int
   let capabilityFile: String
+  let leaseOperationId: String
   let leaseToken: String
   let taskId: String
   let intentDigest: String
@@ -102,6 +105,8 @@ private struct PublisherCapabilityPayload: Codable {
   let capabilityId: String
   let issuer: String
   let leaseName: String
+  let leaseOperationId: String
+  let tokenSha256: String
   let issuedAt: String
   let expiresAt: String
   let leaseTtlMs: Int
@@ -112,6 +117,32 @@ private struct PublisherCapabilityEnvelope: Codable {
   let schemaVersion: Int
   let payloadBase64: String
   let signatureBase64: String
+}
+
+private struct PublicPublisherLease: Decodable {
+  let name: String
+  let owner: String
+}
+
+private struct PublisherLeaseShowEnvelope: Decodable {
+  let ok: Bool
+  let schemaVersion: Int
+  let action: String
+  let stateRoot: String
+  let result: PublicPublisherLease?
+}
+
+private struct PublisherLeaseReleaseResult: Decodable {
+  let released: Bool
+  let lease: PublicPublisherLease
+}
+
+private struct PublisherLeaseReleaseEnvelope: Decodable {
+  let ok: Bool
+  let schemaVersion: Int
+  let action: String
+  let stateRoot: String
+  let result: PublisherLeaseReleaseResult
 }
 
 private struct PublisherPublicKeyRecord: Decodable {
@@ -139,6 +170,135 @@ private struct ValidatedConfiguration {
   let githubCLIPath: String
   let stateRoot: String
   let publisherPublicKey: Data
+}
+
+private enum PublisherLauncherResult {
+  case exited(Int32)
+  case cancelled(Int32)
+}
+
+private final class PublisherCancellationController {
+  private var queueDescriptor: Int32 = -1
+  private var handlersInstalled = false
+  private var cancellationSignalsBlocked = false
+  private var firstObservedSignal: Int32?
+
+  init() throws {
+    let descriptor = kqueue()
+    guard descriptor >= 0 else {
+      throw posixMessage("creating the publisher cancellation queue")
+    }
+    var registrations = [
+      kevent64_s(
+        ident: UInt64(SIGINT),
+        filter: Int16(EVFILT_SIGNAL),
+        flags: UInt16(EV_ADD | EV_ENABLE),
+        fflags: 0,
+        data: 0,
+        udata: 0,
+        ext: (0, 0)
+      ),
+      kevent64_s(
+        ident: UInt64(SIGTERM),
+        filter: Int16(EVFILT_SIGNAL),
+        flags: UInt16(EV_ADD | EV_ENABLE),
+        fflags: 0,
+        data: 0,
+        udata: 0,
+        ext: (0, 0)
+      ),
+    ]
+    let registrationResult = registrations.withUnsafeMutableBufferPointer { buffer in
+      kevent64(descriptor, buffer.baseAddress, Int32(buffer.count), nil, 0, 0, nil)
+    }
+    guard registrationResult == 0 else {
+      close(descriptor)
+      throw posixMessage("registering publisher cancellation signals")
+    }
+    let previousInterruptHandler = Darwin.signal(SIGINT, SIG_IGN)
+    guard !signalHandlerIsError(previousInterruptHandler) else {
+      close(descriptor)
+      throw posixMessage("installing publisher interrupt ownership")
+    }
+    let terminateResult = Darwin.signal(SIGTERM, SIG_IGN)
+    guard !signalHandlerIsError(terminateResult) else {
+      _ = Darwin.signal(SIGINT, previousInterruptHandler)
+      close(descriptor)
+      throw posixMessage("installing publisher termination ownership")
+    }
+    queueDescriptor = descriptor
+    handlersInstalled = true
+  }
+
+  func nextSignal(timeoutMilliseconds: Int) throws -> Int32? {
+    let boundedTimeout = max(0, timeoutMilliseconds)
+    var timeout = timespec(
+      tv_sec: boundedTimeout / 1_000,
+      tv_nsec: (boundedTimeout % 1_000) * 1_000_000
+    )
+    var event = kevent64_s()
+    let result = kevent64(queueDescriptor, nil, 0, &event, 1, 0, &timeout)
+    if result == 0 {
+      return nil
+    }
+    if result < 0, errno == EINTR {
+      return nil
+    }
+    if result < 0 {
+      throw posixMessage("waiting for publisher cancellation")
+    }
+    if event.ident == UInt64(SIGINT) || event.ident == UInt64(SIGTERM) {
+      let signal = Int32(event.ident)
+      if firstObservedSignal == nil { firstObservedSignal = signal }
+      return signal
+    }
+    throw HostFailure("the publisher received an unexpected cancellation signal")
+  }
+
+  func finish(
+    preferredSignal: Int32? = nil,
+    testingStateRoot: String? = nil
+  ) throws -> Int32? {
+    guard handlersInstalled else { return firstObservedSignal ?? preferredSignal }
+    if !cancellationSignalsBlocked {
+      var blockedSignals = sigset_t()
+      guard sigemptyset(&blockedSignals) == 0,
+        sigaddset(&blockedSignals, SIGINT) == 0,
+        sigaddset(&blockedSignals, SIGTERM) == 0
+      else {
+        throw posixMessage("blocking publisher cancellation signals")
+      }
+      let blockResult = pthread_sigmask(SIG_BLOCK, &blockedSignals, nil)
+      guard blockResult == 0 else {
+        throw posixMessage("blocking publisher cancellation signals", code: blockResult)
+      }
+      cancellationSignalsBlocked = true
+    }
+    while try nextSignal(timeoutMilliseconds: 0) != nil {}
+    #if TRUSTED_PUBLISHER_HOST_TESTING
+      if let testingStateRoot {
+        let requestPath = testingStateRoot + "/test-publisher-finalization-pause"
+        if FileManager.default.fileExists(atPath: requestPath) {
+          FileManager.default.createFile(
+            atPath: testingStateRoot + "/test-publisher-finalization-blocked",
+            contents: Data()
+          )
+          usleep(1_000 * 1_000)
+        }
+      }
+    #endif
+    // The second drain is the terminal decision point. Both signals remain
+    // blocked until process exit and no handler restoration can lose a signal.
+    while try nextSignal(timeoutMilliseconds: 0) != nil {}
+    close(queueDescriptor)
+    queueDescriptor = -1
+    handlersInstalled = false
+    return firstObservedSignal ?? preferredSignal
+  }
+}
+
+private func signalHandlerIsError(_ handler: sig_t?) -> Bool {
+  unsafeBitCast(handler, to: Int.self) == unsafeBitCast(SIG_ERR, to: Int.self)
 }
 
 private protocol PublisherSecretProvider {
@@ -729,6 +889,8 @@ private func isoTimestamp(_ date: Date) -> String {
 private func writePublisherCapability(
   trusted: ValidatedConfiguration,
   scope: PublisherScope,
+  leaseOperationId: String,
+  tokenSha256: String,
   signingKeyData: Data
 ) throws -> String {
   let signingKey: Curve25519.Signing.PrivateKey
@@ -747,6 +909,8 @@ private func writePublisherCapability(
     capabilityId: capabilityId,
     issuer: "freed-pr-publisher",
     leaseName: "pr-publisher",
+    leaseOperationId: leaseOperationId,
+    tokenSha256: tokenSha256,
     issuedAt: isoTimestamp(issuedAt),
     expiresAt: isoTimestamp(issuedAt.addingTimeInterval(publisherCapabilityLifetimeSeconds)),
     leaseTtlMs: publisherLeaseLifetimeMilliseconds,
@@ -779,7 +943,11 @@ private func writePublisherCapability(
   guard descriptor >= 0 else {
     throw posixMessage("creating the publisher capability")
   }
-  defer { close(descriptor) }
+  var capabilityCommitted = false
+  defer {
+    close(descriptor)
+    if !capabilityCommitted { unlink(capabilityPath) }
+  }
   try envelopeData.withUnsafeBytes { bytes in
     var offset = 0
     while offset < bytes.count {
@@ -794,7 +962,13 @@ private func writePublisherCapability(
   guard fsync(descriptor) == 0 else {
     throw posixMessage("syncing the publisher capability")
   }
+  capabilityCommitted = true
   return capabilityPath
+}
+
+private func removePublisherCapability(_ capabilityPath: String) throws {
+  if unlink(capabilityPath) == 0 || errno == ENOENT { return }
+  throw posixMessage("removing the publisher capability")
 }
 
 private func writeOwnerCapability(
@@ -882,6 +1056,7 @@ private func writeOwnerCapability(
   return OwnerCapabilityResult(
     schemaVersion: 1,
     capabilityFile: capabilityPath,
+    leaseOperationId: UUID().uuidString.lowercased(),
     leaseToken: leaseToken,
     taskId: request.taskId,
     intentDigest: request.intentDigest,
@@ -1338,6 +1513,290 @@ private struct CStringArena {
   }
 }
 
+private func publisherMonotonicMilliseconds() throws -> UInt64 {
+  var value = timespec()
+  guard clock_gettime(CLOCK_MONOTONIC, &value) == 0 else {
+    throw posixMessage("reading the publisher control clock")
+  }
+  return UInt64(value.tv_sec) * 1_000 + UInt64(value.tv_nsec) / 1_000_000
+}
+
+private func terminatePublisherProcessGroup(_ leader: pid_t, reapLeader: Bool) {
+  guard leader > 0 else { return }
+  _ = kill(-leader, SIGKILL)
+  _ = kill(leader, SIGKILL)
+  guard reapLeader else { return }
+  var status: Int32 = 0
+  while waitpid(leader, &status, 0) < 0, errno == EINTR {}
+}
+
+private func runPublisherControl(
+  trusted: ValidatedConfiguration,
+  homeDirectory: String,
+  action: String,
+  operationId: String? = nil,
+  leaseToken: String? = nil
+) throws -> Data {
+  guard ["release", "show"].contains(action),
+    (operationId == nil) == (leaseToken == nil),
+    action == "release" || operationId == nil
+  else {
+    throw HostFailure("the publisher cleanup invocation is incomplete")
+  }
+  var argumentArena = CStringArena()
+  var environmentArena = CStringArena()
+  defer {
+    argumentArena.destroy()
+    environmentArena.destroy()
+  }
+  let controlEntry = trusted.controlRoot + "/scripts/automation-control.mjs"
+  let arguments = [
+    trusted.nodePath,
+    controlEntry,
+    "lease", action,
+    "--state-root", trusted.stateRoot,
+    "--name", "pr-publisher",
+  ]
+  var argumentPointers: [UnsafeMutablePointer<CChar>?] = []
+  for argument in arguments {
+    argumentPointers.append(try argumentArena.append(argument))
+  }
+  argumentPointers.append(nil)
+
+  var environment = [
+    "HOME=\(homeDirectory)",
+    "LANG=C",
+    "LC_ALL=C",
+    "PATH=/usr/bin:/bin",
+  ]
+  if let operationId, let leaseToken {
+    environment.append("FREED_AUTOMATION_LEASE_OPERATION_ID=\(operationId)")
+    environment.append("FREED_AUTOMATION_LEASE_TOKEN=\(leaseToken)")
+  }
+  var environmentPointers: [UnsafeMutablePointer<CChar>?] = []
+  for value in environment {
+    environmentPointers.append(try environmentArena.append(value))
+  }
+  environmentPointers.append(nil)
+
+  var descriptors = [Int32](repeating: -1, count: 2)
+  guard pipe(&descriptors) == 0 else {
+    throw posixMessage("creating the publisher cleanup output pipe")
+  }
+  let readDescriptor = descriptors[0]
+  var writeDescriptor = descriptors[1]
+  let nullDescriptor = open("/dev/null", O_RDONLY | O_CLOEXEC)
+  guard nullDescriptor >= 0 else {
+    close(readDescriptor)
+    close(writeDescriptor)
+    throw posixMessage("opening publisher cleanup null input")
+  }
+  var child = pid_t()
+  var childStarted = false
+  var childWaited = false
+  defer {
+    close(readDescriptor)
+    if writeDescriptor >= 0 { close(writeDescriptor) }
+    close(nullDescriptor)
+    if childStarted && !childWaited {
+      terminatePublisherProcessGroup(child, reapLeader: true)
+    }
+  }
+
+  var fileActions: posix_spawn_file_actions_t? = nil
+  var attributes: posix_spawnattr_t? = nil
+  guard posix_spawn_file_actions_init(&fileActions) == 0 else {
+    throw HostFailure("publisher cleanup file actions could not be initialized")
+  }
+  defer { posix_spawn_file_actions_destroy(&fileActions) }
+  guard posix_spawn_file_actions_adddup2(&fileActions, nullDescriptor, STDIN_FILENO) == 0,
+    posix_spawn_file_actions_adddup2(&fileActions, writeDescriptor, STDOUT_FILENO) == 0,
+    posix_spawn_file_actions_adddup2(&fileActions, writeDescriptor, STDERR_FILENO) == 0,
+    posix_spawn_file_actions_addchdir(&fileActions, "/") == 0,
+    posix_spawn_file_actions_addclose(&fileActions, readDescriptor) == 0,
+    posix_spawn_file_actions_addclose(&fileActions, writeDescriptor) == 0,
+    posix_spawn_file_actions_addclose(&fileActions, nullDescriptor) == 0
+  else {
+    throw HostFailure("publisher cleanup standard streams could not be isolated")
+  }
+  guard posix_spawnattr_init(&attributes) == 0 else {
+    throw HostFailure("publisher cleanup process attributes could not be initialized")
+  }
+  defer { posix_spawnattr_destroy(&attributes) }
+  var childSignalMask = sigset_t()
+  var childDefaultSignals = sigset_t()
+  guard sigemptyset(&childSignalMask) == 0,
+    sigemptyset(&childDefaultSignals) == 0,
+    sigaddset(&childDefaultSignals, SIGINT) == 0,
+    sigaddset(&childDefaultSignals, SIGTERM) == 0
+  else {
+    throw posixMessage("preparing publisher cleanup signals")
+  }
+  let spawnFlags = Int16(
+    POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_SETSIGMASK
+      | POSIX_SPAWN_SETSIGDEF
+  )
+  guard posix_spawnattr_setpgroup(&attributes, 0) == 0,
+    posix_spawnattr_setsigmask(&attributes, &childSignalMask) == 0,
+    posix_spawnattr_setsigdefault(&attributes, &childDefaultSignals) == 0,
+    posix_spawnattr_setflags(&attributes, spawnFlags) == 0
+  else {
+    throw HostFailure("publisher cleanup descriptor isolation could not be enabled")
+  }
+
+  let spawnResult = argumentPointers.withUnsafeMutableBufferPointer { argumentBuffer in
+    environmentPointers.withUnsafeMutableBufferPointer { environmentBuffer in
+      trusted.nodePath.withCString { executable in
+        posix_spawn(
+          &child,
+          executable,
+          &fileActions,
+          &attributes,
+          argumentBuffer.baseAddress!,
+          environmentBuffer.baseAddress!
+        )
+      }
+    }
+  }
+  environmentArena.destroy()
+  guard spawnResult == 0 else {
+    throw posixMessage("starting publisher lease cleanup", code: spawnResult)
+  }
+  childStarted = true
+  close(writeDescriptor)
+  writeDescriptor = -1
+  guard fcntl(readDescriptor, F_SETFL, O_NONBLOCK) == 0 else {
+    throw posixMessage("configuring publisher cleanup output")
+  }
+
+  let deadline = try publisherMonotonicMilliseconds() + publisherControlTimeoutMilliseconds
+  var output = Data()
+  var childStatus: Int32?
+  var reachedEnd = false
+  var buffer = [UInt8](repeating: 0, count: 4 * 1_024)
+  defer { buffer.resetBytes(in: 0..<buffer.count) }
+  while childStatus == nil || !reachedEnd {
+    if try publisherMonotonicMilliseconds() >= deadline {
+      terminatePublisherProcessGroup(child, reapLeader: true)
+      childWaited = true
+      throw HostFailure("the publisher cleanup control process timed out")
+    }
+    var descriptor = pollfd(fd: readDescriptor, events: Int16(POLLIN | POLLHUP), revents: 0)
+    let pollResult = poll(&descriptor, 1, 100)
+    if pollResult < 0, errno != EINTR {
+      throw posixMessage("polling publisher cleanup output")
+    }
+    if pollResult > 0 {
+      while true {
+        let count = read(readDescriptor, &buffer, buffer.count)
+        if count > 0 {
+          guard output.count + count <= maximumPublisherControlOutputBytes else {
+            terminatePublisherProcessGroup(child, reapLeader: true)
+            childWaited = true
+            throw HostFailure("the publisher cleanup control process returned too much output")
+          }
+          output.append(buffer, count: count)
+          continue
+        }
+        if count == 0 {
+          reachedEnd = true
+        } else if errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR {
+          throw posixMessage("reading publisher cleanup output")
+        }
+        break
+      }
+    }
+    if childStatus == nil {
+      var status: Int32 = 0
+      let result = waitpid(child, &status, WNOHANG)
+      if result == child {
+        childStatus = status
+        childWaited = true
+      } else if result < 0, errno != EINTR {
+        throw posixMessage("checking publisher cleanup process")
+      }
+    }
+  }
+  guard let status = childStatus else {
+    throw HostFailure("the publisher cleanup process status was unavailable")
+  }
+  let terminationSignal = status & 0x7f
+  guard terminationSignal == 0, ((status >> 8) & 0xff) == 0 else {
+    throw HostFailure("the publisher cleanup control process rejected the request")
+  }
+  return output
+}
+
+private func inspectPublisherLease(
+  trusted: ValidatedConfiguration,
+  homeDirectory: String
+) throws -> PublicPublisherLease? {
+  let response = try runPublisherControl(
+    trusted: trusted,
+    homeDirectory: homeDirectory,
+    action: "show"
+  )
+  guard response.count <= maximumPublisherControlOutputBytes,
+    let envelope = try? JSONDecoder().decode(PublisherLeaseShowEnvelope.self, from: response),
+    envelope.ok,
+    envelope.schemaVersion == 1,
+    envelope.action == "lease.show",
+    envelope.stateRoot == trusted.stateRoot
+  else {
+    throw HostFailure("the publisher cleanup lease inspection was invalid")
+  }
+  return envelope.result
+}
+
+private func cleanupPublisherLease(
+  trusted: ValidatedConfiguration,
+  homeDirectory: String,
+  releaseOperationId: String,
+  leaseToken: String
+) throws {
+  for _ in 0..<2 {
+    do {
+      let response = try runPublisherControl(
+        trusted: trusted,
+        homeDirectory: homeDirectory,
+        action: "release",
+        operationId: releaseOperationId,
+        leaseToken: leaseToken
+      )
+      if response.count <= maximumPublisherControlOutputBytes,
+        let envelope = try? JSONDecoder().decode(
+          PublisherLeaseReleaseEnvelope.self,
+          from: response
+        ),
+        envelope.ok,
+        envelope.schemaVersion == 1,
+        envelope.action == "lease.release",
+        envelope.stateRoot == trusted.stateRoot,
+        envelope.result.released,
+        envelope.result.lease.name == "pr-publisher",
+        envelope.result.lease.owner == "freed-pr-publisher"
+      {
+        break
+      }
+    } catch {
+      continue
+    }
+  }
+  for _ in 0..<2 {
+    do {
+      if try inspectPublisherLease(
+        trusted: trusted,
+        homeDirectory: homeDirectory
+      ) == nil {
+        return
+      }
+    } catch {
+      continue
+    }
+  }
+  throw HostFailure("the publisher wrapper may have left an unknown publisher lease live")
+}
+
 private func runLauncher(
   path: String,
   arguments: [String],
@@ -1345,8 +1804,11 @@ private func runLauncher(
   homeDirectory: String,
   configuration: HostConfiguration,
   trusted: ValidatedConfiguration,
-  capabilityPath: String
-) throws -> Int32 {
+  capabilityPath: String,
+  leaseOperationId: String,
+  leaseToken: String,
+  cancellationController: PublisherCancellationController
+) throws -> PublisherLauncherResult {
   guard try currentDirectory() == callerDirectory else {
     throw HostFailure("the publisher caller directory changed during validation")
   }
@@ -1364,7 +1826,7 @@ private func runLauncher(
   }
   argumentPointers.append(nil)
 
-  let publicEnvironment = [
+  let launcherEnvironment = [
     "DEVELOPER_DIR=\(developerDirectory)",
     "HOME=\(homeDirectory)",
     "PATH=/usr/bin:/bin",
@@ -1375,9 +1837,11 @@ private func runLauncher(
     "FREED_TRUSTED_NODE_BIN=\(trusted.nodePath)",
     "FREED_TRUSTED_NODE_SHA256=\(configuration.nodeSha256)",
     "FREED_PUBLISHER_CAPABILITY_FILE=\(capabilityPath)",
+    "FREED_PUBLISHER_ACQUIRE_OPERATION_ID=\(leaseOperationId)",
+    "FREED_PUBLISHER_ACQUIRE_TOKEN=\(leaseToken)",
   ]
   var environmentPointers: [UnsafeMutablePointer<CChar>?] = []
-  for value in publicEnvironment {
+  for value in launcherEnvironment {
     environmentPointers.append(try environmentArena.append(value))
   }
   environmentPointers.append(nil)
@@ -1397,12 +1861,38 @@ private func runLauncher(
     throw HostFailure("publisher process attributes could not be initialized")
   }
   defer { posix_spawnattr_destroy(&attributes) }
-  let flags = Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)
-  guard posix_spawnattr_setflags(&attributes, flags) == 0 else {
+  var childSignalMask = sigset_t()
+  var childDefaultSignals = sigset_t()
+  guard sigemptyset(&childSignalMask) == 0,
+    sigemptyset(&childDefaultSignals) == 0,
+    sigaddset(&childDefaultSignals, SIGINT) == 0,
+    sigaddset(&childDefaultSignals, SIGTERM) == 0
+  else {
+    throw posixMessage("preparing publisher child signals")
+  }
+  let flags = Int16(
+    POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_SETSIGMASK
+      | POSIX_SPAWN_SETSIGDEF
+  )
+  guard posix_spawnattr_setpgroup(&attributes, 0) == 0,
+    posix_spawnattr_setsigmask(&attributes, &childSignalMask) == 0,
+    posix_spawnattr_setsigdefault(&attributes, &childDefaultSignals) == 0,
+    posix_spawnattr_setflags(&attributes, flags) == 0
+  else {
     throw HostFailure("publisher process descriptor isolation could not be enabled")
   }
 
   var child = pid_t()
+  var childStarted = false
+  var childWaited = false
+  defer {
+    if childStarted && !childWaited {
+      terminatePublisherProcessGroup(child, reapLeader: true)
+    }
+  }
+  if let signal = try cancellationController.nextSignal(timeoutMilliseconds: 0) {
+    return .cancelled(signal)
+  }
   let spawnResult = argumentPointers.withUnsafeMutableBufferPointer { argumentBuffer in
     environmentPointers.withUnsafeMutableBufferPointer { environmentBuffer in
       path.withCString { executable in
@@ -1417,25 +1907,44 @@ private func runLauncher(
       }
     }
   }
+  environmentArena.destroy()
   guard spawnResult == 0 else {
     throw posixMessage("starting the trusted publisher", code: spawnResult)
   }
+  childStarted = true
 
-  var status: Int32 = 0
-  while waitpid(child, &status, 0) < 0 {
-    if errno == EINTR {
-      continue
+  while true {
+    if let signal = try cancellationController.nextSignal(timeoutMilliseconds: 0) {
+      terminatePublisherProcessGroup(child, reapLeader: true)
+      childWaited = true
+      return .cancelled(signal)
     }
-    throw posixMessage("waiting for the trusted publisher")
+    var status: Int32 = 0
+    let waitResult = waitpid(child, &status, WNOHANG)
+    if waitResult == child {
+      childWaited = true
+      terminatePublisherProcessGroup(child, reapLeader: false)
+      if let signal = try cancellationController.nextSignal(timeoutMilliseconds: 0) {
+        return .cancelled(signal)
+      }
+      let terminationSignal = status & 0x7f
+      if terminationSignal == 0 {
+        return .exited((status >> 8) & 0xff)
+      }
+      if terminationSignal != 0x7f {
+        return .exited(128 + terminationSignal)
+      }
+      return .exited(1)
+    }
+    if waitResult < 0, errno != EINTR {
+      throw posixMessage("waiting for the trusted publisher")
+    }
+    if let signal = try cancellationController.nextSignal(timeoutMilliseconds: 100) {
+      terminatePublisherProcessGroup(child, reapLeader: true)
+      childWaited = true
+      return .cancelled(signal)
+    }
   }
-  let terminationSignal = status & 0x7f
-  if terminationSignal == 0 {
-    return (status >> 8) & 0xff
-  }
-  if terminationSignal != 0x7f {
-    return 128 + terminationSignal
-  }
-  return 1
 }
 
 private func main() -> Int32 {
@@ -1511,24 +2020,110 @@ private func main() -> Int32 {
       provider = KeychainPublisherSecretProvider()
     #endif
     var secret = try provider.readSecret()
-    defer { secret.resetBytes(in: 0..<secret.count) }
+    var secretCleared = false
+    defer {
+      if !secretCleared { secret.resetBytes(in: 0..<secret.count) }
+    }
     try validateSecret(secret)
-    let capabilityPath = try writePublisherCapability(
-      trusted: trusted,
-      scope: scope,
-      signingKeyData: secret
-    )
+    let leaseOperationId = UUID().uuidString.lowercased()
+    let releaseOperationId = UUID().uuidString.lowercased()
+    var leaseToken = try randomOwnerLeaseToken()
+    let leaseTokenSha256 = SHA256.hash(data: Data(leaseToken.utf8))
+      .map { String(format: "%02x", $0) }
+      .joined()
+    let cancellationController = try PublisherCancellationController()
+    let capabilityPath: String
+    do {
+      capabilityPath = try writePublisherCapability(
+        trusted: trusted,
+        scope: scope,
+        leaseOperationId: leaseOperationId,
+        tokenSha256: leaseTokenSha256,
+        signingKeyData: secret
+      )
+    } catch {
+      secret.resetBytes(in: 0..<secret.count)
+      secretCleared = true
+      if let signal = try cancellationController.finish(
+        testingStateRoot: trusted.stateRoot
+      ) {
+        return 128 + signal
+      }
+      throw error
+    }
     secret.resetBytes(in: 0..<secret.count)
-    defer { unlink(capabilityPath) }
-    return try runLauncher(
-      path: trusted.launcher,
-      arguments: parsed.forwarded,
-      callerDirectory: canonicalCallerDirectory,
-      homeDirectory: homeDirectory,
-      configuration: configuration,
-      trusted: trusted,
-      capabilityPath: capabilityPath
+    secretCleared = true
+    #if TRUSTED_PUBLISHER_HOST_TESTING
+      if FileManager.default.fileExists(
+        atPath: trusted.stateRoot + "/test-publisher-before-spawn-pause"
+      ) {
+        FileManager.default.createFile(
+          atPath: trusted.stateRoot + "/test-publisher-before-spawn-ready",
+          contents: Data()
+        )
+        usleep(1_000 * 1_000)
+      }
+    #endif
+    var launcherStatus: Int32?
+    var cancellationSignal: Int32?
+    var launcherFailure: Error?
+    do {
+      let launcherResult = try runLauncher(
+        path: trusted.launcher,
+        arguments: parsed.forwarded,
+        callerDirectory: canonicalCallerDirectory,
+        homeDirectory: homeDirectory,
+        configuration: configuration,
+        trusted: trusted,
+        capabilityPath: capabilityPath,
+        leaseOperationId: leaseOperationId,
+        leaseToken: leaseToken,
+        cancellationController: cancellationController
+      )
+      switch launcherResult {
+      case .cancelled(let signal):
+        cancellationSignal = signal
+      case .exited(let status):
+        launcherStatus = status
+      }
+    } catch {
+      launcherFailure = error
+    }
+    var cleanupFailure: Error?
+    do {
+      try cleanupPublisherLease(
+        trusted: trusted,
+        homeDirectory: homeDirectory,
+        releaseOperationId: releaseOperationId,
+        leaseToken: leaseToken
+      )
+    } catch {
+      cleanupFailure = error
+    }
+    do {
+      try removePublisherCapability(capabilityPath)
+    } catch {
+      if cleanupFailure == nil { cleanupFailure = error }
+    }
+    leaseToken = ""
+    let finalSignal = try cancellationController.finish(
+      preferredSignal: cancellationSignal,
+      testingStateRoot: trusted.stateRoot
     )
+    if let finalSignal {
+      if let cleanupFailure = cleanupFailure as? HostFailure {
+        fputs(
+          "trusted-publisher-host: cancellation cleanup failed: \(cleanupFailure.description)\n",
+          stderr
+        )
+      } else if cleanupFailure != nil {
+        fputs("trusted-publisher-host: cancellation cleanup failed\n", stderr)
+      }
+      return 128 + finalSignal
+    }
+    if let cleanupFailure { throw cleanupFailure }
+    if let launcherFailure { throw launcherFailure }
+    return launcherStatus ?? 1
   } catch let failure as HostFailure {
     fputs("trusted-publisher-host: \(failure.description)\n", stderr)
     return 1

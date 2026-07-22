@@ -25,6 +25,7 @@ builtin unset \
   FREED_PR_PUBLISHER_ACTOR_TOKEN \
   FREED_PR_PUBLISHER_LEASE_TOKEN \
   FREED_AUTOMATION_ACTOR_TOKEN \
+  FREED_AUTOMATION_LEASE_OPERATION_ID \
   FREED_AUTOMATION_LEASE_TOKEN \
   FREED_OWNER_BOOTSTRAP_TOKEN \
   FREED_PUBLISH_CONTROL_STATE_ROOT \
@@ -539,10 +540,28 @@ EXPECTED_DEV_SHA=""
 SUMMARY_ARGS=()
 TEST_ARGS=()
 
+new_lease_operation_id() {
+  "${NODE_BIN}" -e 'process.stdout.write(require("node:crypto").randomUUID())'
+}
+
+run_publish_lease_mutation() {
+  local operation_id="$1"
+  shift
+  for _ in 1 2; do
+    if FREED_AUTOMATION_LEASE_OPERATION_ID="${operation_id}" \
+      FREED_AUTOMATION_LEASE_TOKEN="${PUBLISH_LEASE_TOKEN}" \
+      "${NODE_BIN}" "${SCRIPT_DIR}/automation-control.mjs" "$@"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 release_publish_lease() {
   if ${TRUSTED_PUBLISH_MODE} && [[ -n "${PUBLISH_LEASE_TOKEN}" ]]; then
-    FREED_AUTOMATION_LEASE_TOKEN="${PUBLISH_LEASE_TOKEN}" \
-      "${NODE_BIN}" "${SCRIPT_DIR}/automation-control.mjs" lease release \
+    local operation_id
+    operation_id="$(new_lease_operation_id)"
+    run_publish_lease_mutation "${operation_id}" lease release \
       --state-root "${PUBLISH_CONTROL_STATE_ROOT}" \
       --name pr-publisher >/dev/null 2>&1 || true
     PUBLISH_LEASE_TOKEN=""
@@ -553,14 +572,16 @@ validate_publish_lease() {
   if ! ${TRUSTED_PUBLISH_MODE}; then
     return 0
   fi
-  FREED_AUTOMATION_LEASE_TOKEN="${PUBLISH_LEASE_TOKEN}" \
-    "${NODE_BIN}" "${SCRIPT_DIR}/automation-control.mjs" lease heartbeat \
+  local heartbeat_operation_id
+  heartbeat_operation_id="$(new_lease_operation_id)"
+  run_publish_lease_mutation "${heartbeat_operation_id}" lease heartbeat \
     --state-root "${PUBLISH_CONTROL_STATE_ROOT}" \
     --name pr-publisher \
     --ttl-seconds 1800 >/dev/null
   if [[ -n "${PUBLISH_HEAD}" ]]; then
-    FREED_AUTOMATION_LEASE_TOKEN="${PUBLISH_LEASE_TOKEN}" \
-      "${NODE_BIN}" "${SCRIPT_DIR}/automation-control.mjs" lease bind-head \
+    local bind_operation_id
+    bind_operation_id="$(new_lease_operation_id)"
+    run_publish_lease_mutation "${bind_operation_id}" lease bind-head \
       --state-root "${PUBLISH_CONTROL_STATE_ROOT}" \
       --name pr-publisher \
       --scope-json "${PUBLISH_SCOPE_JSON}" \

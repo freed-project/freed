@@ -3,7 +3,7 @@ import Darwin
 import Foundation
 import Security
 
-private let bindingSchemaVersion = 1
+private let bindingSchemaVersion = 3
 private let credentialSchemaVersion = 1
 private let bindingPurpose = "automation-actor-launcher"
 private let bindingHandoff = "keychain-to-canonical-lease"
@@ -21,6 +21,21 @@ private let maximumBindingBytes = 32 * 1_024
 private let maximumCredentialBytes = 4 * 1_024
 private let maximumControlOutputBytes = 64 * 1_024
 private let controlTimeoutMilliseconds: UInt64 = 10 * 1_000
+#if AUTOMATION_ACTOR_HOST_TESTING
+  private let testControlTimeoutMilliseconds: UInt64 = 250
+  private let nativeAcquisitionWindowMilliseconds: UInt64 = 2_500
+  private let nativeCleanupReserveMilliseconds: UInt64 = 1_800
+  private let testKeychainDelayMicroseconds: useconds_t = 500 * 1_000
+  private let testExhaustedKeychainDelayMicroseconds: useconds_t = 2_550 * 1_000
+#else
+  // Validation and Keychain work share the acquisition window. Once an
+  // acquire child may have run, the final 45 seconds belong only to two
+  // exact-token release attempts and two absence inspections.
+  private let nativeAcquisitionWindowMilliseconds: UInt64 = 20 * 1_000
+  private let nativeCleanupReserveMilliseconds: UInt64 = 45 * 1_000
+#endif
+private let nativeLifecycleBudgetMilliseconds =
+  nativeAcquisitionWindowMilliseconds + nativeCleanupReserveMilliseconds
 #if AUTOMATION_ACTOR_HOST_TESTING
   private let fakeCredential =
     Data("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".utf8)
@@ -40,6 +55,163 @@ private struct HostFailure: Error, CustomStringConvertible {
   init(_ description: String) {
     self.description = description
   }
+}
+
+private struct ActorCancellation: Error {
+  let signal: Int32
+}
+
+private struct ActorControlCancellation: Error {
+  let signal: Int32
+  let mutationMayHaveStarted: Bool
+}
+
+private final class ActorCancellationController {
+  private var queueDescriptor: Int32 = -1
+  private var handlersInstalled = false
+  private var cancellationSignalsBlocked = false
+  private var handoffCommitted = false
+  private var firstObservedSignal: Int32?
+  #if AUTOMATION_ACTOR_HOST_TESTING
+    private var testingStateRoot: String?
+  #endif
+
+  init() throws {
+    let descriptor = kqueue()
+    guard descriptor >= 0 else {
+      throw posixFailure("creating the actor cancellation queue")
+    }
+    var registrations = [
+      kevent64_s(
+        ident: UInt64(SIGINT),
+        filter: Int16(EVFILT_SIGNAL),
+        flags: UInt16(EV_ADD | EV_ENABLE),
+        fflags: 0,
+        data: 0,
+        udata: 0,
+        ext: (0, 0)
+      ),
+      kevent64_s(
+        ident: UInt64(SIGTERM),
+        filter: Int16(EVFILT_SIGNAL),
+        flags: UInt16(EV_ADD | EV_ENABLE),
+        fflags: 0,
+        data: 0,
+        udata: 0,
+        ext: (0, 0)
+      ),
+    ]
+    let registrationResult = registrations.withUnsafeMutableBufferPointer { buffer in
+      kevent64(descriptor, buffer.baseAddress, Int32(buffer.count), nil, 0, 0, nil)
+    }
+    guard registrationResult == 0 else {
+      close(descriptor)
+      throw posixFailure("registering actor cancellation signals")
+    }
+    let previousInterruptHandler = Darwin.signal(SIGINT, SIG_IGN)
+    guard !signalHandlerIsError(previousInterruptHandler) else {
+      close(descriptor)
+      throw posixFailure("installing actor interrupt ownership")
+    }
+    let terminateResult = Darwin.signal(SIGTERM, SIG_IGN)
+    guard !signalHandlerIsError(terminateResult) else {
+      _ = Darwin.signal(SIGINT, previousInterruptHandler)
+      close(descriptor)
+      throw posixFailure("installing actor termination ownership")
+    }
+    queueDescriptor = descriptor
+    handlersInstalled = true
+  }
+
+  #if AUTOMATION_ACTOR_HOST_TESTING
+    func setTestingStateRoot(_ stateRoot: String) {
+      testingStateRoot = stateRoot
+    }
+  #endif
+
+  func nextSignal(timeoutMilliseconds: Int = 0) throws -> Int32? {
+    guard handlersInstalled else { return nil }
+    let boundedTimeout = max(0, timeoutMilliseconds)
+    var timeout = timespec(
+      tv_sec: boundedTimeout / 1_000,
+      tv_nsec: (boundedTimeout % 1_000) * 1_000_000
+    )
+    var event = kevent64_s()
+    let result = kevent64(queueDescriptor, nil, 0, &event, 1, 0, &timeout)
+    if result == 0 { return nil }
+    if result < 0, errno == EINTR { return nil }
+    if result < 0 {
+      throw posixFailure("waiting for actor cancellation")
+    }
+    guard event.ident == UInt64(SIGINT) || event.ident == UInt64(SIGTERM) else {
+      throw HostFailure("the actor host received an unexpected cancellation signal")
+    }
+    let signal = Int32(event.ident)
+    if firstObservedSignal == nil { firstObservedSignal = signal }
+    return signal
+  }
+
+  private func blockCancellationSignals() throws {
+    guard !cancellationSignalsBlocked else { return }
+    var blockedSignals = sigset_t()
+    guard sigemptyset(&blockedSignals) == 0,
+      sigaddset(&blockedSignals, SIGINT) == 0,
+      sigaddset(&blockedSignals, SIGTERM) == 0
+    else {
+      throw posixFailure("blocking actor cancellation signals")
+    }
+    let blockResult = pthread_sigmask(SIG_BLOCK, &blockedSignals, nil)
+    guard blockResult == 0 else {
+      throw posixFailure("blocking actor cancellation signals", code: blockResult)
+    }
+    cancellationSignalsBlocked = true
+  }
+
+  private func drainCancellationSignals() throws {
+    while let signal = try nextSignal() {
+      if firstObservedSignal == nil { firstObservedSignal = signal }
+    }
+  }
+
+  func beginHandoffCommit() throws -> Int32? {
+    try blockCancellationSignals()
+    try drainCancellationSignals()
+    guard firstObservedSignal == nil else { return firstObservedSignal }
+    handoffCommitted = true
+    return nil
+  }
+
+  func finish(preferredSignal: Int32? = nil) throws -> Int32? {
+    guard handlersInstalled else { return firstObservedSignal ?? preferredSignal }
+    try blockCancellationSignals()
+    if !handoffCommitted {
+      try drainCancellationSignals()
+      #if AUTOMATION_ACTOR_HOST_TESTING
+        if let testingStateRoot {
+          let pausePath = testingStateRoot + "/test-actor-finalization-pause"
+          if FileManager.default.fileExists(atPath: pausePath) {
+            FileManager.default.createFile(
+              atPath: testingStateRoot + "/test-actor-finalization-drained",
+              contents: Data()
+            )
+            usleep(1_000 * 1_000)
+          }
+      }
+      #endif
+      // This second drain is the terminal decision point. Signals stay blocked
+      // through process exit and no handler restoration can reopen a gap.
+      try drainCancellationSignals()
+    }
+    close(queueDescriptor)
+    queueDescriptor = -1
+    handlersInstalled = false
+    if handoffCommitted { return nil }
+    return firstObservedSignal ?? preferredSignal
+  }
+}
+
+private func signalHandlerIsError(_ handler: sig_t?) -> Bool {
+  unsafeBitCast(handler, to: Int.self) == unsafeBitCast(SIG_ERR, to: Int.self)
 }
 
 private enum HostMode {
@@ -83,6 +255,12 @@ private struct LauncherBinding: Decodable {
   let controlEntrySha256: String
   let controlLibraryPath: String
   let controlLibrarySha256: String
+  let kernelGuardContractPath: String
+  let kernelGuardContractSha256: String
+  let outcomeLedgerRepairContractPath: String
+  let outcomeLedgerRepairContractSha256: String
+  let leaseArchiveHelperPath: String
+  let leaseArchiveHelperSha256: String
 }
 
 private struct ActorCredentialRecord: Decodable {
@@ -149,11 +327,39 @@ private struct ControlLease: Decodable {
   let ttlMs: Int
 }
 
+private struct PublicControlLease: Decodable {
+  let name: String
+  let owner: String
+}
+
+private struct LeaseShowEnvelope: Decodable {
+  let ok: Bool
+  let schemaVersion: Int
+  let action: String
+  let stateRoot: String
+  let result: PublicControlLease?
+}
+
+private struct LeaseReleaseResult: Decodable {
+  let released: Bool
+  let lease: PublicControlLease
+}
+
+private struct LeaseReleaseEnvelope: Decodable {
+  let ok: Bool
+  let schemaVersion: Int
+  let action: String
+  let stateRoot: String
+  let result: LeaseReleaseResult
+}
+
 private struct LeaseHandoff: Codable {
   let schemaVersion: Int
   let actor: String
   let leaseName: String
+  let leaseOperationId: String
   let leaseToken: String
+  let leaseTokenSha256: String
   let acquiredAt: String
   let expiresAt: String
   let ttlMs: Int
@@ -162,6 +368,14 @@ private struct LeaseHandoff: Codable {
 private struct ControlInvocation {
   let executable: String
   let arguments: [String]
+  let operationId: String?
+  let leaseToken: String?
+}
+
+private struct LeaseOperationContext {
+  let operationId: String
+  let leaseToken: String
+  let leaseTokenSha256: String
 }
 
 private protocol SecretReader {
@@ -254,6 +468,12 @@ private struct KeychainSecretReader: SecretReader {
       if mode == "read-failure" {
         throw HostFailure("the test Keychain credential could not be read")
       }
+      if mode == "delayed" {
+        usleep(testKeychainDelayMicroseconds)
+      }
+      if mode == "acquisition-window-exhausted" {
+        usleep(testExhaustedKeychainDelayMicroseconds)
+      }
       return fakeCredential
     }
   }
@@ -305,61 +525,189 @@ private protocol ControlInvoker {
   func run(
     _ invocation: ControlInvocation,
     binding: LauncherBinding,
-    persistentCredential: Data
+    persistentCredential: Data?,
+    lifecycleDeadlineMilliseconds: UInt64,
+    cancellationController: ActorCancellationController?
   ) throws -> Data
 }
 
 private struct ProcessControlInvoker: ControlInvoker {
+  let timeoutMilliseconds: UInt64
+
+  init(timeoutMilliseconds: UInt64 = controlTimeoutMilliseconds) {
+    self.timeoutMilliseconds = timeoutMilliseconds
+  }
+
   func run(
     _ invocation: ControlInvocation,
     binding: LauncherBinding,
-    persistentCredential: Data
+    persistentCredential: Data?,
+    lifecycleDeadlineMilliseconds: UInt64,
+    cancellationController: ActorCancellationController?
   ) throws -> Data {
     try runBoundedControlProcess(
       invocation,
-      persistentCredential: persistentCredential
+      persistentCredential: persistentCredential,
+      timeoutMilliseconds: timeoutMilliseconds,
+      lifecycleDeadlineMilliseconds: lifecycleDeadlineMilliseconds,
+      cancellationController: cancellationController
     )
   }
 }
 
 #if AUTOMATION_ACTOR_HOST_TESTING
-  private struct FakeControlInvoker: ControlInvoker {
+  private final class FakeControlInvoker: ControlInvoker {
     let mode: String
+    private var acquireAttempts = 0
+    private var releaseAttempts = 0
+    private var showAttempts = 0
+    private var leaseActive = false
+    private var acquireOperationId: String?
+    private var acquireToken: String?
+    private var releaseOperationId: String?
+    private var releaseToken: String?
+
+    init(mode: String) {
+      self.mode = mode
+    }
 
     func run(
       _ invocation: ControlInvocation,
       binding: LauncherBinding,
-      persistentCredential: Data
+      persistentCredential: Data?,
+      lifecycleDeadlineMilliseconds: UInt64,
+      cancellationController: ActorCancellationController?
     ) throws -> Data {
-      let expectedArguments = [
-        binding.controlEntryPath,
-        "lease",
-        "acquire",
-        "--state-root",
-        binding.stateRoot,
-        "--name",
-        binding.leaseName,
-        "--owner",
-        binding.actor,
-        "--ttl-seconds",
-        String(leaseLifetimeSeconds),
+      if let signal = try cancellationController?.nextSignal() {
+        throw ActorControlCancellation(signal: signal, mutationMayHaveStarted: false)
+      }
+      let action = invocation.arguments.count > 2 ? invocation.arguments[2] : ""
+      let auditRecord: [String: Any] = [
+        "action": action,
+        "operationId": invocation.operationId ?? NSNull(),
+        "leaseTokenSha256": invocation.leaseToken.map { sha256Hex(Data($0.utf8)) } ?? NSNull(),
+        "persistentCredentialPresent": persistentCredential != nil,
       ]
+      if let auditBytes = try? JSONSerialization.data(withJSONObject: auditRecord) {
+        let auditPath = binding.stateRoot + "/test-actor-control.jsonl"
+        if !FileManager.default.fileExists(atPath: auditPath) {
+          FileManager.default.createFile(atPath: auditPath, contents: Data())
+        }
+        if let handle = FileHandle(forWritingAtPath: auditPath) {
+          defer { handle.closeFile() }
+          handle.seekToEndOfFile()
+          handle.write(auditBytes + Data([0x0a]))
+        }
+      }
+      let expectedCredential = action == "acquire" ? fakeCredential : nil
       guard invocation.executable == binding.nodePath,
-        invocation.arguments == expectedArguments,
-        persistentCredential == fakeCredential,
-        inheritedEnvironmentNames().isEmpty
+        persistentCredential == expectedCredential,
+        inheritedEnvironmentNames().isEmpty,
+        try monotonicMilliseconds() < lifecycleDeadlineMilliseconds
       else {
         throw HostFailure("the test control invocation was not canonical or scrubbed")
       }
+      if action == "show" {
+        showAttempts += 1
+        guard invocation.operationId == nil, invocation.leaseToken == nil else {
+          throw HostFailure("the test lease inspection received secret mutation state")
+        }
+        if mode == "malformed-acquire-and-show", showAttempts == 1 {
+          guard releaseAttempts == 2 else {
+            throw HostFailure("the test cleanup inspected before exact release retry")
+          }
+          return Data("{}".utf8)
+        }
+        let payload: [String: Any] = [
+          "ok": true,
+          "schemaVersion": 1,
+          "action": "lease.show",
+          "stateRoot": binding.stateRoot,
+          "result": leaseActive
+            ? ["name": binding.leaseName, "owner": binding.actor, "status": "active"]
+            : NSNull(),
+        ]
+        return try JSONSerialization.data(withJSONObject: payload)
+      }
+      guard let operationId = invocation.operationId,
+        let requestedToken = invocation.leaseToken,
+        validLeaseOperationId(operationId),
+        requestedToken.utf8.count >= 32,
+        requestedToken.utf8.count <= 4 * 1_024
+      else {
+        throw HostFailure("the test lease mutation did not retain its caller secrets")
+      }
+      if action == "release" {
+        if let firstOperationId = releaseOperationId, let firstToken = releaseToken {
+          guard operationId == firstOperationId, requestedToken == firstToken else {
+            throw HostFailure("the test release retry changed its caller-owned identity")
+          }
+        } else {
+          releaseOperationId = operationId
+          releaseToken = requestedToken
+        }
+        releaseAttempts += 1
+        let wasActive = leaseActive
+        leaseActive = false
+        if mode == "malformed-acquire-and-show", releaseAttempts == 1 {
+          return Data("{}".utf8)
+        }
+        let payload: [String: Any] = [
+          "ok": true,
+          "schemaVersion": 1,
+          "action": "lease.release",
+          "stateRoot": binding.stateRoot,
+          "result": [
+            "released": wasActive,
+            "lease": ["name": binding.leaseName, "owner": binding.actor],
+          ],
+        ]
+        return try JSONSerialization.data(withJSONObject: payload)
+      }
+      let expectedArguments = [
+        binding.controlEntryPath,
+        "lease", "acquire",
+        "--state-root", binding.stateRoot,
+        "--name", binding.leaseName,
+        "--owner", binding.actor,
+        "--ttl-seconds", String(leaseLifetimeSeconds),
+      ]
+      guard action == "acquire", invocation.arguments == expectedArguments else {
+        throw HostFailure("the test control invocation was not canonical or scrubbed")
+      }
+      if let firstOperationId = acquireOperationId, let firstToken = acquireToken {
+        guard operationId == firstOperationId, requestedToken == firstToken else {
+          throw HostFailure("the test acquire retry changed its caller-owned identity")
+        }
+      } else {
+        acquireOperationId = operationId
+        acquireToken = requestedToken
+      }
+      acquireAttempts += 1
+      leaseActive = true
       if mode == "oversized" {
         return Data(repeating: 0x61, count: maximumControlOutputBytes + 1)
+      }
+      if mode == "response-loss-once", acquireAttempts == 1 {
+        return Data("{}".utf8)
+      }
+      if mode == "commit-response-loss-near-deadline" {
+        let now = try monotonicMilliseconds()
+        if now < lifecycleDeadlineMilliseconds {
+          let remainingMilliseconds = lifecycleDeadlineMilliseconds - now
+          usleep(useconds_t((remainingMilliseconds + 50) * 1_000))
+        }
+        return Data("{}".utf8)
+      }
+      if mode == "malformed-acquire-and-show" {
+        return Data("{}".utf8)
       }
       let acquiredAt = "2026-07-13T12:00:00.000Z"
       let expiresAt =
         mode == "overlong"
         ? "2026-07-13T12:30:00.001Z"
         : "2026-07-13T12:30:00.000Z"
-      let token = mode == "short-token" ? "short" : "test-short-lived-lease-token"
+      let token = mode == "short-token" ? "short" : requestedToken
       let payload: [String: Any] = [
         "ok": true,
         "schemaVersion": 1,
@@ -435,6 +783,8 @@ private func waitForChild(_ child: pid_t) throws -> Int32 {
 }
 
 private func terminateChild(_ child: pid_t) {
+  guard child > 0 else { return }
+  _ = kill(-child, SIGKILL)
   _ = kill(child, SIGKILL)
   var status: Int32 = 0
   while waitpid(child, &status, 0) < 0, errno == EINTR {}
@@ -442,7 +792,10 @@ private func terminateChild(_ child: pid_t) {
 
 private func runBoundedControlProcess(
   _ invocation: ControlInvocation,
-  persistentCredential: Data
+  persistentCredential: Data?,
+  timeoutMilliseconds: UInt64,
+  lifecycleDeadlineMilliseconds: UInt64,
+  cancellationController: ActorCancellationController?
 ) throws -> Data {
   var argumentArena = CStringArena()
   var environmentArena = CStringArena()
@@ -457,16 +810,28 @@ private func runBoundedControlProcess(
   }
   arguments.append(nil)
 
-  var credentialEnvironment = Data("FREED_AUTOMATION_ACTOR_TOKEN=".utf8)
-  credentialEnvironment.append(persistentCredential)
+  var credentialEnvironment = Data()
+  if let persistentCredential {
+    credentialEnvironment.append(Data("FREED_AUTOMATION_ACTOR_TOKEN=".utf8))
+    credentialEnvironment.append(persistentCredential)
+  }
   defer { credentialEnvironment.resetBytes(in: 0..<credentialEnvironment.count) }
-  var environment: [UnsafeMutablePointer<CChar>?] = [
-    try environmentArena.append(credentialEnvironment),
-    try environmentArena.append("LANG=C"),
-    try environmentArena.append("LC_ALL=C"),
-    try environmentArena.append("PATH=/usr/bin:/bin"),
-    nil,
-  ]
+  guard (invocation.operationId == nil) == (invocation.leaseToken == nil) else {
+    throw HostFailure("the control process lease handoff is incomplete")
+  }
+  var environment: [UnsafeMutablePointer<CChar>?] = []
+  if !credentialEnvironment.isEmpty {
+    environment.append(try environmentArena.append(credentialEnvironment))
+  }
+  if let operationId = invocation.operationId, let leaseToken = invocation.leaseToken {
+    environment.append(
+      try environmentArena.append("FREED_AUTOMATION_LEASE_OPERATION_ID=\(operationId)"))
+    environment.append(try environmentArena.append("FREED_AUTOMATION_LEASE_TOKEN=\(leaseToken)"))
+  }
+  environment.append(try environmentArena.append("LANG=C"))
+  environment.append(try environmentArena.append("LC_ALL=C"))
+  environment.append(try environmentArena.append("PATH=/usr/bin:/bin"))
+  environment.append(nil)
 
   var descriptors = [Int32](repeating: -1, count: 2)
   guard pipe(&descriptors) == 0 else {
@@ -510,8 +875,29 @@ private func runBoundedControlProcess(
     throw HostFailure("control process attributes could not be initialized")
   }
   defer { posix_spawnattr_destroy(&attributes) }
-  guard posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)) == 0 else {
+  var childSignalMask = sigset_t()
+  var childDefaultSignals = sigset_t()
+  guard sigemptyset(&childSignalMask) == 0,
+    sigemptyset(&childDefaultSignals) == 0,
+    sigaddset(&childDefaultSignals, SIGINT) == 0,
+    sigaddset(&childDefaultSignals, SIGTERM) == 0
+  else {
+    throw posixFailure("preparing control process signals")
+  }
+  let spawnFlags = Int16(
+    POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_SETSIGMASK
+      | POSIX_SPAWN_SETSIGDEF
+  )
+  guard posix_spawnattr_setpgroup(&attributes, 0) == 0,
+    posix_spawnattr_setsigmask(&attributes, &childSignalMask) == 0,
+    posix_spawnattr_setsigdefault(&attributes, &childDefaultSignals) == 0,
+    posix_spawnattr_setflags(&attributes, spawnFlags) == 0
+  else {
     throw HostFailure("control process descriptor isolation could not be enabled")
+  }
+
+  if let signal = try cancellationController?.nextSignal() {
+    throw ActorControlCancellation(signal: signal, mutationMayHaveStarted: false)
   }
 
   let spawnResult = arguments.withUnsafeMutableBufferPointer { argumentBuffer in
@@ -540,13 +926,27 @@ private func runBoundedControlProcess(
     throw posixFailure("configuring bounded control process output")
   }
 
-  let deadline = try monotonicMilliseconds() + controlTimeoutMilliseconds
+  let startedAt = try monotonicMilliseconds()
+  guard startedAt < lifecycleDeadlineMilliseconds else {
+    terminateChild(child)
+    childWaited = true
+    throw HostFailure("the native actor lifecycle budget was exhausted")
+  }
+  let deadline = min(
+    startedAt + timeoutMilliseconds,
+    lifecycleDeadlineMilliseconds
+  )
   var output = Data()
   var childStatus: Int32?
   var reachedEnd = false
   var buffer = [UInt8](repeating: 0, count: 4 * 1_024)
   defer { buffer.resetBytes(in: 0..<buffer.count) }
   while childStatus == nil || !reachedEnd {
+    if let signal = try cancellationController?.nextSignal() {
+      terminateChild(child)
+      childWaited = true
+      throw ActorControlCancellation(signal: signal, mutationMayHaveStarted: true)
+    }
     if try monotonicMilliseconds() >= deadline {
       terminateChild(child)
       childWaited = true
@@ -595,6 +995,9 @@ private func runBoundedControlProcess(
     status = try waitForChild(child)
   }
   childWaited = true
+  if let signal = try cancellationController?.nextSignal() {
+    throw ActorControlCancellation(signal: signal, mutationMayHaveStarted: true)
+  }
   let terminationSignal = status & 0x7f
   guard terminationSignal == 0, ((status >> 8) & 0xff) == 0 else {
     throw HostFailure("the pinned automation control process rejected the lease request")
@@ -652,6 +1055,36 @@ private func requireLowercaseHex(_ value: String, length: Int, label: String) th
   else {
     throw HostFailure("\(label) must contain \(length) lowercase hexadecimal characters")
   }
+}
+
+private func validLeaseOperationId(_ value: String) -> Bool {
+  value.range(
+    of: "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    options: .regularExpression
+  ) != nil
+}
+
+private func newLeaseOperationContext() throws -> LeaseOperationContext {
+  let operationId = try newLeaseOperationId()
+  var bytes = [UInt8](repeating: 0, count: 32)
+  guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
+    throw HostFailure("the caller-retained lease token could not be generated")
+  }
+  defer { bytes.resetBytes(in: 0..<bytes.count) }
+  let token = Data(bytes).base64EncodedString()
+  return LeaseOperationContext(
+    operationId: operationId,
+    leaseToken: token,
+    leaseTokenSha256: sha256Hex(Data(token.utf8))
+  )
+}
+
+private func newLeaseOperationId() throws -> String {
+  let operationId = UUID().uuidString.lowercased()
+  guard validLeaseOperationId(operationId) else {
+    throw HostFailure("the lease operation identity could not be generated")
+  }
+  return operationId
 }
 
 private func parseArguments(_ values: [String]) throws -> ParsedArguments {
@@ -745,14 +1178,25 @@ private func parseArguments(_ values: [String]) throws -> ParsedArguments {
       throw HostFailure("the actor host test binding is required in test builds")
     }
     let testControlMode = options["--test-control-mode"] ?? "valid"
-    guard ["valid", "oversized", "short-token", "overlong"].contains(testControlMode) else {
+    guard
+      [
+        "valid", "oversized", "short-token", "overlong", "response-loss-once",
+        "commit-response-loss-near-deadline", "malformed-acquire-and-show", "process-timeout",
+        "post-child-handoff-delay", "process-signal-state",
+        "process-cancellation-commit", "process-cleanup-cancellation",
+        "post-final-check-pre-write-delay",
+      ].contains(testControlMode)
+    else {
       throw HostFailure("the actor host test control mode is invalid")
     }
     let testKeychainMode = options["--test-keychain-mode"] ?? "valid"
-    guard [
-      "valid", "read-failure", "get-failure", "disable-failure", "disable-noop",
-      "restore-failure", "initially-disabled",
-    ].contains(testKeychainMode) else {
+    guard
+      [
+        "valid", "read-failure", "get-failure", "disable-failure", "disable-noop",
+        "restore-failure", "initially-disabled", "delayed", "acquisition-window-exhausted",
+        "signal-preflight-delay",
+      ].contains(testKeychainMode)
+    else {
       throw HostFailure("the actor host test Keychain mode is invalid")
     }
     return ParsedArguments(
@@ -842,6 +1286,7 @@ private func requireTrustedFile(_ path: String, executable: Bool, label: String)
   _ = try canonicalExistingPath(path, label: label)
   let value = try metadata(path)
   guard value.st_mode & S_IFMT == S_IFREG, trustedOwners().contains(value.st_uid),
+    value.st_mode & 0o7000 == 0,
     value.st_mode & 0o022 == 0,
     !executable || value.st_mode & 0o111 != 0
   else {
@@ -916,10 +1361,13 @@ private func sha256Hex(_ data: Data) -> String {
 
 private func runtimeDigest(_ binding: LauncherBinding) -> String {
   let manifest =
-    "freed-automation-actor-runtime-v1\n" +
+    "freed-automation-actor-runtime-v3\n" +
     "node:\(binding.nodeSha256)\n" +
     "automation-control.mjs:\(binding.controlEntrySha256)\n" +
-    "lib/automation-control.mjs:\(binding.controlLibrarySha256)\n"
+    "lib/automation-control.mjs:\(binding.controlLibrarySha256)\n" +
+    "lib/automation-kernel-guard-contract.mjs:\(binding.kernelGuardContractSha256)\n" +
+    "lib/outcome-ledger-repair-contract.mjs:\(binding.outcomeLedgerRepairContractSha256)\n" +
+    "lib/lease-archive-move.py:\(binding.leaseArchiveHelperSha256)\n"
   return sha256Hex(Data(manifest.utf8))
 }
 
@@ -1003,6 +1451,9 @@ private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> Laun
       "maxLeaseLifetimeMs", "keychainService", "keychainAccount", "nodePath",
       "nodeSha256", "controlEntryPath", "controlEntrySha256",
       "controlLibraryPath", "controlLibrarySha256",
+      "kernelGuardContractPath", "kernelGuardContractSha256",
+      "outcomeLedgerRepairContractPath", "outcomeLedgerRepairContractSha256",
+      "leaseArchiveHelperPath", "leaseArchiveHelperSha256",
     ],
     label: "actor launcher binding"
   )
@@ -1023,6 +1474,9 @@ private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> Laun
   try requireLowercaseHex(binding.nodeSha256, length: 64, label: "Node digest")
   try requireLowercaseHex(binding.controlEntrySha256, length: 64, label: "control entry digest")
   try requireLowercaseHex(binding.controlLibrarySha256, length: 64, label: "control library digest")
+  try requireLowercaseHex(binding.kernelGuardContractSha256, length: 64, label: "kernel guard contract digest")
+  try requireLowercaseHex(binding.outcomeLedgerRepairContractSha256, length: 64, label: "outcome ledger repair contract digest")
+  try requireLowercaseHex(binding.leaseArchiveHelperSha256, length: 64, label: "lease archive helper digest")
 
   let expectedLauncherPath =
     canonicalBindingRoot + "/bin/" + binding.actor + "-" + binding.launcherSha256
@@ -1043,7 +1497,10 @@ private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> Laun
   let expectedRuntimeDirectory = canonicalRuntimeRoot + "/" + runtimeDigest(binding)
   guard binding.nodePath == expectedRuntimeDirectory + "/node",
     binding.controlEntryPath == expectedRuntimeDirectory + "/automation-control.mjs",
-    binding.controlLibraryPath == expectedRuntimeDirectory + "/lib/automation-control.mjs"
+    binding.controlLibraryPath == expectedRuntimeDirectory + "/lib/automation-control.mjs",
+    binding.kernelGuardContractPath == expectedRuntimeDirectory + "/lib/automation-kernel-guard-contract.mjs",
+    binding.outcomeLedgerRepairContractPath == expectedRuntimeDirectory + "/lib/outcome-ledger-repair-contract.mjs",
+    binding.leaseArchiveHelperPath == expectedRuntimeDirectory + "/lib/lease-archive-move.py"
   else {
     throw HostFailure("the pinned actor runtime does not use the canonical content-addressed layout")
   }
@@ -1051,6 +1508,9 @@ private func loadAndValidateBinding(_ arguments: ParsedArguments) throws -> Laun
     (binding.nodePath, binding.nodeSha256, true, "Node runtime"),
     (binding.controlEntryPath, binding.controlEntrySha256, false, "automation control entry"),
     (binding.controlLibraryPath, binding.controlLibrarySha256, false, "automation control library"),
+    (binding.kernelGuardContractPath, binding.kernelGuardContractSha256, false, "automation kernel guard contract"),
+    (binding.outcomeLedgerRepairContractPath, binding.outcomeLedgerRepairContractSha256, false, "outcome ledger repair contract"),
+    (binding.leaseArchiveHelperPath, binding.leaseArchiveHelperSha256, false, "lease archive helper"),
   ]
   for (runtimePath, digest, executable, label) in runtimePins {
     let canonical = try canonicalExistingPath(runtimePath, label: label)
@@ -1121,16 +1581,19 @@ private func encodeJSON<T: Encodable>(_ value: T) throws -> Data {
   return try encoder.encode(value)
 }
 
-private func writeJSON<T: Encodable>(_ value: T) throws {
-  let data = try encodeJSON(value)
-  FileHandle.standardOutput.write(data)
-  FileHandle.standardOutput.write(Data([0x0A]))
+private func encodeJSONLine<T: Encodable>(_ value: T) throws -> Data {
+  var data = try encodeJSON(value)
+  data.append(0x0a)
+  return data
 }
 
 private func invokeControl(
   binding: LauncherBinding,
   persistentCredential: Data,
-  invoker: ControlInvoker
+  context: LeaseOperationContext,
+  invoker: ControlInvoker,
+  lifecycleDeadlineMilliseconds: UInt64,
+  cancellationController: ActorCancellationController
 ) throws -> LeaseHandoff {
   let invocation = ControlInvocation(
     executable: binding.nodePath,
@@ -1141,12 +1604,16 @@ private func invokeControl(
       "--name", binding.leaseName,
       "--owner", binding.actor,
       "--ttl-seconds", String(leaseLifetimeSeconds),
-    ]
+    ],
+    operationId: context.operationId,
+    leaseToken: context.leaseToken
   )
   let responseData = try invoker.run(
     invocation,
     binding: binding,
-    persistentCredential: persistentCredential
+    persistentCredential: persistentCredential,
+    lifecycleDeadlineMilliseconds: lifecycleDeadlineMilliseconds,
+    cancellationController: cancellationController
   )
   guard responseData.count <= maximumControlOutputBytes else {
     throw HostFailure("the pinned automation control process returned too much output")
@@ -1165,9 +1632,10 @@ private func invokeControl(
     response.result.acquired,
     lease.name == binding.leaseName,
     lease.owner == binding.actor,
+    lease.token == context.leaseToken,
     lease.credentialKind == "persistent-actor",
     lease.ttlMs == leaseLifetimeMilliseconds,
-    lease.token.utf8.count >= 16,
+    lease.token.utf8.count >= 32,
     lease.token.utf8.count <= 4 * 1_024,
     let acquiredAt = parseControlTimestamp(lease.acquiredAt),
     let expiresAt = parseControlTimestamp(lease.expiresAt),
@@ -1180,11 +1648,166 @@ private func invokeControl(
     schemaVersion: 1,
     actor: binding.actor,
     leaseName: binding.leaseName,
+    leaseOperationId: context.operationId,
     leaseToken: lease.token,
+    leaseTokenSha256: context.leaseTokenSha256,
     acquiredAt: lease.acquiredAt,
     expiresAt: lease.expiresAt,
     ttlMs: lease.ttlMs
   )
+}
+
+private func inspectAcquiredLease(
+  binding: LauncherBinding,
+  invoker: ControlInvoker,
+  lifecycleDeadlineMilliseconds: UInt64
+) throws -> PublicControlLease? {
+  let responseData = try invoker.run(
+    ControlInvocation(
+      executable: binding.nodePath,
+      arguments: [
+        binding.controlEntryPath,
+        "lease", "show",
+        "--state-root", binding.stateRoot,
+        "--name", binding.leaseName,
+      ],
+      operationId: nil,
+      leaseToken: nil
+    ),
+    binding: binding,
+    persistentCredential: nil,
+    lifecycleDeadlineMilliseconds: lifecycleDeadlineMilliseconds,
+    cancellationController: nil
+  )
+  guard responseData.count <= maximumControlOutputBytes,
+    let envelope = try? JSONDecoder().decode(LeaseShowEnvelope.self, from: responseData),
+    envelope.ok,
+    envelope.schemaVersion == 1,
+    envelope.action == "lease.show",
+    envelope.stateRoot == binding.stateRoot
+  else {
+    throw HostFailure("the pinned automation control lease inspection was invalid")
+  }
+  return envelope.result
+}
+
+private func releaseAcquiredLease(
+  binding: LauncherBinding,
+  context: LeaseOperationContext,
+  releaseOperationId: String,
+  invoker: ControlInvoker,
+  lifecycleDeadlineMilliseconds: UInt64
+) throws {
+  let invocation = ControlInvocation(
+    executable: binding.nodePath,
+    arguments: [
+      binding.controlEntryPath,
+      "lease", "release",
+      "--state-root", binding.stateRoot,
+      "--name", binding.leaseName,
+    ],
+    operationId: releaseOperationId,
+    leaseToken: context.leaseToken
+  )
+  for _ in 0..<2 {
+    do {
+      let responseData = try invoker.run(
+        invocation,
+        binding: binding,
+        persistentCredential: nil,
+        lifecycleDeadlineMilliseconds: lifecycleDeadlineMilliseconds,
+        cancellationController: nil
+      )
+      if responseData.count <= maximumControlOutputBytes,
+        let envelope = try? JSONDecoder().decode(LeaseReleaseEnvelope.self, from: responseData),
+        envelope.ok,
+        envelope.schemaVersion == 1,
+        envelope.action == "lease.release",
+        envelope.stateRoot == binding.stateRoot,
+        envelope.result.released,
+        envelope.result.lease.name == binding.leaseName,
+        envelope.result.lease.owner == binding.actor
+      {
+        break
+      }
+    } catch {
+      continue
+    }
+  }
+  for _ in 0..<2 {
+    do {
+      if try inspectAcquiredLease(
+        binding: binding,
+        invoker: invoker,
+        lifecycleDeadlineMilliseconds: lifecycleDeadlineMilliseconds
+      ) == nil {
+        return
+      }
+    } catch {
+      continue
+    }
+  }
+  throw HostFailure("a failed acquisition may have left an unknown actor lease live")
+}
+
+private func acquireLeaseWithRecovery(
+  binding: LauncherBinding,
+  persistentCredential: Data,
+  context: LeaseOperationContext,
+  invoker: ControlInvoker,
+  acquisitionDeadlineMilliseconds: UInt64,
+  cleanupDeadlineMilliseconds: UInt64,
+  cancellationController: ActorCancellationController
+) throws -> LeaseHandoff {
+  var acquisitionFailure: Error?
+  var acquisitionMayHaveStarted = false
+  var cancellationSignal: Int32?
+  for _ in 0..<2 {
+    guard try monotonicMilliseconds() < acquisitionDeadlineMilliseconds else {
+      if !acquisitionMayHaveStarted {
+        throw HostFailure("the native actor acquisition window was exhausted before lease mutation")
+      }
+      break
+    }
+    do {
+      return try invokeControl(
+        binding: binding,
+        persistentCredential: persistentCredential,
+        context: context,
+        invoker: invoker,
+        lifecycleDeadlineMilliseconds: acquisitionDeadlineMilliseconds,
+        cancellationController: cancellationController
+      )
+    } catch let cancellation as ActorControlCancellation {
+      if !cancellation.mutationMayHaveStarted && !acquisitionMayHaveStarted {
+        throw ActorCancellation(signal: cancellation.signal)
+      }
+      acquisitionMayHaveStarted = true
+      cancellationSignal = cancellation.signal
+      acquisitionFailure = cancellation
+      break
+    } catch {
+      acquisitionMayHaveStarted = true
+      acquisitionFailure = error
+    }
+  }
+  let releaseOperationId = try newLeaseOperationId()
+  try releaseAcquiredLease(
+    binding: binding,
+    context: context,
+    releaseOperationId: releaseOperationId,
+    invoker: invoker,
+    lifecycleDeadlineMilliseconds: cleanupDeadlineMilliseconds
+  )
+  if cancellationSignal == nil,
+    let signal = try cancellationController.nextSignal()
+  {
+    cancellationSignal = signal
+  }
+  if let cancellationSignal {
+    throw ActorCancellation(signal: cancellationSignal)
+  }
+  throw acquisitionFailure ?? HostFailure("the actor lease acquisition failed")
 }
 
 private func parseControlTimestamp(_ value: String) -> Date? {
@@ -1195,13 +1818,31 @@ private func parseControlTimestamp(_ value: String) -> Date? {
   return formatter.date(from: value)
 }
 
-private func main() throws {
+private func main(cancellationController: ActorCancellationController) throws -> Int32 {
+  let nativeLifecycleStartedAtMilliseconds = try monotonicMilliseconds()
+  let nativeAcquisitionDeadlineMilliseconds =
+    nativeLifecycleStartedAtMilliseconds + nativeAcquisitionWindowMilliseconds
+  let nativeCleanupDeadlineMilliseconds =
+    nativeLifecycleStartedAtMilliseconds + nativeLifecycleBudgetMilliseconds
   let arguments = try parseArguments(Array(CommandLine.arguments.dropFirst()))
   _ = umask(0o077)
   try disableCoreDumps()
   try clearInheritedEnvironment()
   let binding = try loadAndValidateBinding(arguments)
+  #if AUTOMATION_ACTOR_HOST_TESTING
+    cancellationController.setTestingStateRoot(binding.stateRoot)
+  #endif
   let credential = try readAndValidateCredential(binding)
+  #if AUTOMATION_ACTOR_HOST_TESTING
+    if arguments.testKeychainMode == "signal-preflight-delay" {
+      FileManager.default.createFile(
+        atPath: URL(fileURLWithPath: binding.stateRoot).deletingLastPathComponent()
+          .appendingPathComponent("test-actor-preflight-ready").path,
+        contents: Data()
+      )
+      usleep(2 * 1_000 * 1_000)
+    }
+  #endif
   #if AUTOMATION_ACTOR_HOST_TESTING
     let interactionController = FakeKeychainInteractionController(
       mode: arguments.testKeychainMode
@@ -1231,7 +1872,7 @@ private func main() throws {
     else {
       throw HostFailure("the readiness request does not match the owner-held credential record")
     }
-    try writeJSON(
+    let attestationLine = try encodeJSONLine(
       ReadinessAttestation(
         schemaVersion: 1,
         protocolName: attestationProtocol,
@@ -1249,29 +1890,102 @@ private func main() throws {
         mutatesState: false
       )
     )
+    if let signal = try cancellationController.nextSignal() {
+      throw ActorCancellation(signal: signal)
+    }
+    FileHandle.standardOutput.write(attestationLine)
+    return 0
   case .acquire:
     #if AUTOMATION_ACTOR_HOST_TESTING
-      let controlInvoker: ControlInvoker = FakeControlInvoker(
-        mode: arguments.testControlMode
-      )
+      let controlInvoker: ControlInvoker
+      if arguments.testControlMode == "process-timeout" {
+        controlInvoker = ProcessControlInvoker(
+          timeoutMilliseconds: testControlTimeoutMilliseconds
+        )
+      } else if [
+        "process-signal-state",
+        "process-cancellation-commit",
+        "process-cleanup-cancellation",
+      ].contains(arguments.testControlMode) {
+        controlInvoker = ProcessControlInvoker(timeoutMilliseconds: 2_000)
+      } else {
+        controlInvoker = FakeControlInvoker(mode: arguments.testControlMode)
+      }
     #else
       let controlInvoker: ControlInvoker = ProcessControlInvoker()
     #endif
-    let handoff = try invokeControl(
+    let operation = try newLeaseOperationContext()
+    let handoff = try acquireLeaseWithRecovery(
       binding: binding,
       persistentCredential: secret,
-      invoker: controlInvoker
+      context: operation,
+      invoker: controlInvoker,
+      acquisitionDeadlineMilliseconds: nativeAcquisitionDeadlineMilliseconds,
+      cleanupDeadlineMilliseconds: nativeCleanupDeadlineMilliseconds,
+      cancellationController: cancellationController
     )
-    try writeJSON(handoff)
+    let handoffLine = try encodeJSONLine(handoff)
+    #if AUTOMATION_ACTOR_HOST_TESTING
+      if arguments.testControlMode == "post-child-handoff-delay" {
+        FileManager.default.createFile(
+          atPath: URL(fileURLWithPath: binding.stateRoot).deletingLastPathComponent()
+            .appendingPathComponent("test-actor-handoff-ready").path,
+          contents: Data()
+        )
+        usleep(2 * 1_000 * 1_000)
+      }
+    #endif
+    if let signal = try cancellationController.beginHandoffCommit() {
+      let releaseOperationId = try newLeaseOperationId()
+      try releaseAcquiredLease(
+        binding: binding,
+        context: operation,
+        releaseOperationId: releaseOperationId,
+        invoker: controlInvoker,
+        lifecycleDeadlineMilliseconds: nativeCleanupDeadlineMilliseconds
+      )
+      throw ActorCancellation(signal: signal)
+    }
+    #if AUTOMATION_ACTOR_HOST_TESTING
+      if arguments.testControlMode == "post-final-check-pre-write-delay" {
+        FileManager.default.createFile(
+          atPath: URL(fileURLWithPath: binding.stateRoot).deletingLastPathComponent()
+            .appendingPathComponent("test-actor-handoff-commit-ready").path,
+          contents: Data()
+        )
+        usleep(1_000 * 1_000)
+      }
+    #endif
+    FileHandle.standardOutput.write(handoffLine)
+    return 0
   }
 }
 
-do {
-  try main()
-} catch let failure as HostFailure {
-  fputs("automation-actor-host: \(failure.description)\n", stderr)
-  exit(1)
-} catch {
-  fputs("automation-actor-host: an unexpected validation error occurred\n", stderr)
-  exit(1)
+private func runMain() -> Int32 {
+  do {
+    let cancellationController = try ActorCancellationController()
+    do {
+      let status = try main(cancellationController: cancellationController)
+      if let signal = try cancellationController.finish() {
+        return 128 + signal
+      }
+      return status
+    } catch let cancellation as ActorCancellation {
+      let signal = try cancellationController.finish(preferredSignal: cancellation.signal)
+      return 128 + (signal ?? cancellation.signal)
+    } catch {
+      if let signal = try cancellationController.finish() {
+        return 128 + signal
+      }
+      throw error
+    }
+  } catch let failure as HostFailure {
+    fputs("automation-actor-host: \(failure.description)\n", stderr)
+    return 1
+  } catch {
+    fputs("automation-actor-host: an unexpected validation error occurred\n", stderr)
+    return 1
+  }
 }
+
+exit(runMain())

@@ -66,7 +66,6 @@ Owner options:
 Lease options:
   --name <lease-name>               Stable lease name.
   --owner <name>                    Lease owner.
-  --token <token>                   Lease token. Defaults to FREED_AUTOMATION_LEASE_TOKEN.
   --ttl-seconds <number>            Positive lease duration.
   --scope-json <json>               Required target scope for pr-publisher acquisition or head binding.
   --capability-file <path>          One-use signed broker capability for pr-publisher acquisition.
@@ -75,6 +74,9 @@ Lease options:
   --owner-task-id <task-id>         Exact task bound to the owner authorization.
   --owner-intent-digest <sha256>    Exact canonical governance intent bound to the owner authorization.
   --head-sha <sha>                  Exact commit bound once to the publisher lease.
+  Lease mutations require FREED_AUTOMATION_LEASE_OPERATION_ID and read their
+  token only from FREED_AUTOMATION_LEASE_TOKEN. Owner acquisition may use the
+  existing protected FREED_OWNER_LEASE_TOKEN compatibility variable.
   Lease authority is derived from the checked-in actor policy. It cannot be supplied by the caller.
   Non-owner acquisition except freed-pr-publisher requires the matching
   persistent credential in FREED_AUTOMATION_ACTOR_TOKEN.
@@ -174,6 +176,30 @@ function requiredOptionOrEnv(options, key, flag, env, envKey) {
     throw new AutomationControlError(
       "invalid_argument",
       `${flag} or ${envKey} is required.`,
+    );
+  }
+  return value;
+}
+
+function requiredLeaseOperationId(env) {
+  const value = env.FREED_AUTOMATION_LEASE_OPERATION_ID;
+  if (typeof value !== "string" || value === "") {
+    throw new AutomationControlError(
+      "invalid_argument",
+      "FREED_AUTOMATION_LEASE_OPERATION_ID is required.",
+    );
+  }
+  return value;
+}
+
+function requiredLeaseToken(env, { owner = undefined } = {}) {
+  const value =
+    env.FREED_AUTOMATION_LEASE_TOKEN ??
+    (owner === "freed-owner" ? env.FREED_OWNER_LEASE_TOKEN : undefined);
+  if (typeof value !== "string" || value === "") {
+    throw new AutomationControlError(
+      "invalid_argument",
+      "FREED_AUTOMATION_LEASE_TOKEN is required.",
     );
   }
   return value;
@@ -440,23 +466,13 @@ export function executeCommand(command, { env = process.env } = {}) {
         stateRoot,
         name: required(options, "name", "--name"),
         owner,
+        operationId: requiredLeaseOperationId(env),
         ttlMs:
           parsePositiveInteger(
             required(options, "ttlSeconds", "--ttl-seconds"),
             "--ttl-seconds",
           ) * 1_000,
-        ...(owner === "freed-owner" &&
-        options.ownerConfirmationFile === undefined
-          ? {
-              token: requiredOptionOrEnv(
-                {},
-                "ownerLeaseToken",
-                "--owner-lease-token",
-                env,
-                "FREED_OWNER_LEASE_TOKEN",
-              ),
-            }
-          : {}),
+        token: requiredLeaseToken(env, { owner }),
         ownerCapabilityFile: options.ownerCapabilityFile,
         ownerConfirmationFile: options.ownerConfirmationFile,
         ownerCapabilityTaskId: options.ownerTaskId,
@@ -481,20 +497,15 @@ export function executeCommand(command, { env = process.env } = {}) {
   }
 
   if (resource === "lease" && action === "heartbeat") {
-    assertOnlyOptions(options, ["stateRoot", "name", "token", "ttlSeconds"]);
+    assertOnlyOptions(options, ["stateRoot", "name", "ttlSeconds"]);
     return {
       action: "lease.heartbeat",
       stateRoot,
       result: heartbeatLease({
         stateRoot,
         name: required(options, "name", "--name"),
-        token: requiredOptionOrEnv(
-          options,
-          "token",
-          "--token",
-          env,
-          "FREED_AUTOMATION_LEASE_TOKEN",
-        ),
+        operationId: requiredLeaseOperationId(env),
+        token: requiredLeaseToken(env),
         ttlMs:
           options.ttlSeconds === undefined
             ? undefined
@@ -507,7 +518,6 @@ export function executeCommand(command, { env = process.env } = {}) {
     assertOnlyOptions(options, [
       "stateRoot",
       "name",
-      "token",
       "scopeJson",
       "headSha",
     ]);
@@ -517,13 +527,8 @@ export function executeCommand(command, { env = process.env } = {}) {
       result: bindPublisherLeaseHead({
         stateRoot,
         name: required(options, "name", "--name"),
-        token: requiredOptionOrEnv(
-          options,
-          "token",
-          "--token",
-          env,
-          "FREED_AUTOMATION_LEASE_TOKEN",
-        ),
+        operationId: requiredLeaseOperationId(env),
+        token: requiredLeaseToken(env),
         scope: parseJsonObject(
           required(options, "scopeJson", "--scope-json"),
           "--scope-json",
@@ -534,20 +539,15 @@ export function executeCommand(command, { env = process.env } = {}) {
   }
 
   if (resource === "lease" && action === "release") {
-    assertOnlyOptions(options, ["stateRoot", "name", "token"]);
+    assertOnlyOptions(options, ["stateRoot", "name"]);
     return {
       action: "lease.release",
       stateRoot,
       result: releaseLease({
         stateRoot,
         name: required(options, "name", "--name"),
-        token: requiredOptionOrEnv(
-          options,
-          "token",
-          "--token",
-          env,
-          "FREED_AUTOMATION_LEASE_TOKEN",
-        ),
+        operationId: requiredLeaseOperationId(env),
+        token: requiredLeaseToken(env),
       }),
     };
   }
