@@ -1,0 +1,19 @@
+{
+  "channel": "production",
+  "dayKey": "26.7.23",
+  "date": "2026-07-23",
+  "preferredDeck": "Friends Galaxy, a focused YouTube study feed, and calmer reading from Medium and Substack",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [
+    "Friends Galaxy",
+    "YouTube study feed and Focus Mode",
+    "Medium and Substack beta sources",
+    "Device-local interface state"
+  ],
+  "editorialNotes": [],
+  "updatedAt": "2026-07-23T16:34:20.972Z"
+}
