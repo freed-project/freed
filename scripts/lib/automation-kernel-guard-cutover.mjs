@@ -5940,6 +5940,17 @@ function recoverAnyClaimLink(
 ) {
   const temporaryPath = `${filePath}.cutover-claim.tmp`;
   if (!existsSync(temporaryPath)) return;
+  if (existsSync(filePath)) {
+    const current = lstatSync(filePath);
+    const temporary = lstatSync(temporaryPath);
+    if (
+      current.isFile() &&
+      temporary.isFile() &&
+      (current.dev !== temporary.dev || current.ino !== temporary.ino)
+    ) {
+      return;
+    }
+  }
   for (const generation of transaction.claimGenerations) {
     if (
       recoverNoReplaceLink(
