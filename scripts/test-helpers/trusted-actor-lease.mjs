@@ -60,6 +60,8 @@ const internalControl = await import(pathToFileURL(internalControlPath).href);
 
 export const TRUSTED_ACTOR_CONTROL_MODULE_URL =
   pathToFileURL(internalControlPath).href;
+export const TrustedActorAutomationControlError =
+  internalControl.AutomationControlError;
 export const acquireGeneralActorLeaseForTest =
   internalControl.acquireGeneralActorLeaseForTest;
 

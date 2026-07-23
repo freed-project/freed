@@ -2752,7 +2752,7 @@ function recoverLedgerReplacementPublication(
   { checkpoint = () => {}, beforeMutation = () => {} } = {},
 ) {
   const publication = readLedgerReplacementPublicationIntent(plan);
-  if (publication === null) return false;
+  if (publication === null) return null;
   requirePrivateDescendantDirectories(
     plan.artifacts.stateRoot,
     path.dirname(publication.intentPath),
@@ -2813,7 +2813,7 @@ function recoverLedgerReplacementPublication(
     }
     if (canonicalIsReplacement && archive !== null && replacement === null) {
       checkpoint("replacement-publication-recovered");
-      return true;
+      return publication.replacement;
     }
     let predecessorAtArchive = archive;
     if (canonicalIsPredecessor && archive === null && replacement !== null) {
@@ -2862,7 +2862,7 @@ function recoverLedgerReplacementPublication(
       plan.material.trustedBytes,
       { label: "Outcome ledger repair recovered canonical replacement" },
     );
-    return true;
+    return publication.replacement;
   } finally {
     const descriptors = new Set(
       [canonical, archive, replacement]
@@ -4903,6 +4903,7 @@ export function repairOutcomeLedger(
       parameters: plan.parameters,
       transactionPath: plan.artifacts.transaction,
     };
+    let recoveredLedgerReplacementPublication = null;
     withOutcomeLedgerRepairFinalizationGuard(
       finalizationGuardOptions,
       ({ beforeFinalizationMutation, committedRepairEventPlan }) => {
@@ -4916,10 +4917,11 @@ export function repairOutcomeLedger(
           checkpoint: guardedCheckpoint,
           beforeMutation,
         });
-        recoverLedgerReplacementPublication(plan, {
-          checkpoint: guardedCheckpoint,
-          beforeMutation,
-        });
+        recoveredLedgerReplacementPublication =
+          recoverLedgerReplacementPublication(plan, {
+            checkpoint: guardedCheckpoint,
+            beforeMutation,
+          });
         if (transaction.phase === "complete") {
           cleanupRepairTemporaryFiles(
             plan,
@@ -4986,10 +4988,33 @@ export function repairOutcomeLedger(
         const requireClassifiedCanonicalSource = () =>
           requirePinnedPredecessor(plan.artifacts.outcomes, finalCurrent);
         const hasSourceLedger =
+          recoveredLedgerReplacementPublication === null &&
           finalCurrent.digest === plan.parameters.sourceDigest &&
           finalCurrent.size === plan.parameters.sourceSize &&
           finalCurrent.bytes.equals(plan.material.sourceBytes);
+        const sourceAndReplacementMaterialDiffer =
+          plan.parameters.sourceDigest !==
+            plan.parameters.replacementDigest ||
+          plan.parameters.sourceSize !== plan.parameters.replacementSize ||
+          !plan.material.sourceBytes.equals(plan.material.trustedBytes);
+        const recoveredReplacementIdentityMatches =
+          recoveredLedgerReplacementPublication !== null &&
+          publicationIdentityMatches(
+            finalCurrent,
+            recoveredLedgerReplacementPublication,
+            plan.material.trustedBytes,
+          );
+        if (
+          recoveredLedgerReplacementPublication !== null &&
+          !recoveredReplacementIdentityMatches
+        ) {
+          throw new Error(
+            "Canonical outcome ledger changed after recovered replacement publication.",
+          );
+        }
         const hasReplacementLedger =
+          (sourceAndReplacementMaterialDiffer ||
+            recoveredReplacementIdentityMatches) &&
           finalCurrent.identity.mode === 0o600 &&
           finalCurrent.digest === plan.parameters.replacementDigest &&
           finalCurrent.size === plan.parameters.replacementSize &&
