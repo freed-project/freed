@@ -25,11 +25,13 @@ import {
   CONTROL_EVENT_HISTORY_MAX_BYTES,
   framePinnedLeaseArchiveHelperInvocation,
   ownerGovernanceIntentDigest,
+  preflightOutcomeLedgerAuthorityStageForRepair,
   preauthorizeOutcomeLedgerRepair,
   preflightOutcomeLedgerRepairEvent,
   readAutomationPlanningAdmission,
   readPinnedLeaseArchiveHelperSource,
   reauthorizeOutcomeLedgerRepairLease,
+  retireOutcomeLedgerAuthorityStageForRepair,
   validateOutcomeLedgerRepairEvent,
   withAutomationPlanningReadBundle,
   withMutationLeaseAuthority,
@@ -2747,10 +2749,7 @@ function openPublicationIdentity(filePath, record, expectedBytes, label) {
   return pinned;
 }
 
-function recoverLedgerReplacementPublication(
-  plan,
-  { checkpoint = () => {}, beforeMutation = () => {} } = {},
-) {
+function admitLedgerReplacementPublicationRecovery(plan) {
   const publication = readLedgerReplacementPublicationIntent(plan);
   if (publication === null) return null;
   requirePrivateDescendantDirectories(
@@ -2811,12 +2810,76 @@ function recoverLedgerReplacementPublication(
         "Outcome ledger repair publication canonical contains a foreign generation.",
       );
     }
+    let state;
     if (canonicalIsReplacement && archive !== null && replacement === null) {
+      state = "published";
+    } else if (
+      canonicalIsPredecessor &&
+      archive === null &&
+      replacement !== null
+    ) {
+      state = "predecessor-canonical";
+    } else if (
+      canonical === null &&
+      archive !== null &&
+      replacement !== null
+    ) {
+      state = "canonical-missing";
+    } else {
+      throw new Error(
+        "Outcome ledger repair publication intent has an invalid recovery state.",
+      );
+    }
+    return {
+      publication,
+      canonical,
+      archive,
+      replacement,
+      state,
+    };
+  } catch (error) {
+    closeLedgerReplacementPublicationRecovery({
+      canonical,
+      archive,
+      replacement,
+    });
+    throw error;
+  }
+}
+
+function closeLedgerReplacementPublicationRecovery(recovery) {
+  const descriptors = new Set(
+    [recovery.canonical, recovery.archive, recovery.replacement]
+      .filter((value) => value !== null)
+      .map((value) => value.descriptor),
+  );
+  for (const descriptor of descriptors) closeSync(descriptor);
+}
+
+function inspectLedgerReplacementPublicationRecovery(plan) {
+  const recovery = admitLedgerReplacementPublicationRecovery(plan);
+  if (recovery === null) return null;
+  try {
+    return Object.freeze({ state: recovery.state });
+  } finally {
+    closeLedgerReplacementPublicationRecovery(recovery);
+  }
+}
+
+function recoverLedgerReplacementPublication(
+  plan,
+  { checkpoint = () => {}, beforeMutation = () => {} } = {},
+) {
+  const recovery = admitLedgerReplacementPublicationRecovery(plan);
+  if (recovery === null) return null;
+  const { publication, canonical, archive, replacement, state } = recovery;
+  try {
+    if (state === "published") {
       checkpoint("replacement-publication-recovered");
       return publication.replacement;
     }
     let predecessorAtArchive = archive;
-    if (canonicalIsPredecessor && archive === null && replacement !== null) {
+    if (state === "predecessor-canonical") {
       beforeMutation();
       runDurableRepairMove(
         plan.artifacts.outcomes,
@@ -2826,14 +2889,6 @@ function recoverLedgerReplacementPublication(
       );
       predecessorAtArchive = canonical;
       checkpoint("replacement-predecessor-archive-recovered");
-    } else if (
-      canonical !== null ||
-      archive === null ||
-      replacement === null
-    ) {
-      throw new Error(
-        "Outcome ledger repair publication intent has an invalid recovery state.",
-      );
     }
     requirePinnedRepairFile(
       publication.archivePath,
@@ -2864,12 +2919,7 @@ function recoverLedgerReplacementPublication(
     );
     return publication.replacement;
   } finally {
-    const descriptors = new Set(
-      [canonical, archive, replacement]
-        .filter((value) => value !== null)
-        .map((value) => value.descriptor),
-    );
-    for (const descriptor of descriptors) closeSync(descriptor);
+    closeLedgerReplacementPublicationRecovery(recovery);
   }
 }
 
@@ -4764,6 +4814,8 @@ export function repairOutcomeLedger(
       sourceDigest,
     );
     let transaction = lockedTransaction?.record ?? null;
+    let ledgerPublicationRecovery = null;
+    let ledgerAuthorityPreflight = null;
     const reauthorizeCurrentRepair = () =>
       invokeReadOnlyRepairCallback(plan, () =>
         reauthorizeOutcomeLedgerRepairLease({
@@ -4791,6 +4843,26 @@ export function repairOutcomeLedger(
       }
       plan = recoveredPlan;
       transaction = recoveredPlan.transaction;
+      const completedTransactionRetired =
+        transaction.phase === "complete" &&
+        !existsAsPath(plan.artifacts.transaction) &&
+        existsAsPath(plan.artifacts.completedTransaction);
+      ledgerPublicationRecovery =
+        completedTransactionRetired
+          ? null
+          : inspectLedgerReplacementPublicationRecovery(plan);
+      ledgerAuthorityPreflight =
+        preflightOutcomeLedgerAuthorityStageForRepair({
+          stateRoot: root,
+          sourceBytes: plan.material.sourceBytes,
+          replacementBytes: plan.material.trustedBytes,
+          canonicalState:
+            ledgerPublicationRecovery?.state === "canonical-missing"
+              ? "recoverable-missing"
+              : completedTransactionRetired
+                ? "completed"
+                : "present",
+        });
       if (transaction.phase === "fenced") {
         preflightRepairTemporaryFiles(plan, { fencedRecovery: true });
         writePreparedArtifacts(
@@ -4826,6 +4898,12 @@ export function repairOutcomeLedger(
         throw new Error("Outcome ledger classification drifted before repair.");
       }
       plan = lockedPlan;
+      ledgerAuthorityPreflight =
+        preflightOutcomeLedgerAuthorityStageForRepair({
+          stateRoot: root,
+          sourceBytes: plan.material.sourceBytes,
+          replacementBytes: plan.material.trustedBytes,
+        });
       preflightRepairTemporaryFiles(plan, { beforeFirstFence: true });
       preflightOutcomeLedgerRepairEvent({
         stateRoot: root,
@@ -4867,12 +4945,34 @@ export function repairOutcomeLedger(
       transaction = recoveredPlan.transaction;
     }
 
+    const retireLedgerAuthorityStage = (beforeRemove) => {
+      const authorityRetirement =
+        retireOutcomeLedgerAuthorityStageForRepair({
+          stateRoot: root,
+          operationId: plan.operationId,
+          replacementBytes: plan.material.trustedBytes,
+          beforeRemove: () => {
+            guardedCheckpoint(
+              "outcome-ledger-authority-stage-before-retirement",
+            );
+            beforeRemove();
+          },
+        });
+      if (authorityRetirement.retired) {
+        guardedCheckpoint("outcome-ledger-authority-stage-retired");
+      }
+    };
+
     reauthorizeCurrentRepair();
     if (
       transaction?.phase === "complete" &&
+      ledgerPublicationRecovery?.state !== "canonical-missing" &&
       !existsAsPath(plan.artifacts.transaction) &&
       existsAsPath(plan.artifacts.completedTransaction)
     ) {
+      if (ledgerAuthorityPreflight?.retireable) {
+        retireLedgerAuthorityStage(reauthorizeCurrentRepair);
+      }
       if (hasActionableRepairReplacementTemporary(plan)) {
         verifyCompletedRepair(plan, {
           requireComplete: false,
@@ -4913,16 +5013,36 @@ export function repairOutcomeLedger(
         };
         const committedPlan = committedRepairEventPlan();
         if (committedPlan !== null) plan.eventPlan = committedPlan;
-        transaction = recoverTransactionPublications(plan, {
-          checkpoint: guardedCheckpoint,
-          beforeMutation,
-        });
-        recoveredLedgerReplacementPublication =
-          recoverLedgerReplacementPublication(plan, {
+        const recoverLedgerPublication = () => {
+          recoveredLedgerReplacementPublication =
+            recoverLedgerReplacementPublication(plan, {
+              checkpoint: guardedCheckpoint,
+              beforeMutation,
+            });
+          ledgerAuthorityPreflight =
+            preflightOutcomeLedgerAuthorityStageForRepair({
+              stateRoot: root,
+              sourceBytes: plan.material.sourceBytes,
+              replacementBytes: plan.material.trustedBytes,
+            });
+        };
+        if (ledgerPublicationRecovery?.state === "canonical-missing") {
+          recoverLedgerPublication();
+          transaction = recoverTransactionPublications(plan, {
             checkpoint: guardedCheckpoint,
             beforeMutation,
           });
+        } else {
+          transaction = recoverTransactionPublications(plan, {
+            checkpoint: guardedCheckpoint,
+            beforeMutation,
+          });
+          recoverLedgerPublication();
+        }
         if (transaction.phase === "complete") {
+          if (ledgerAuthorityPreflight?.retireable) {
+            retireLedgerAuthorityStage(beforeMutation);
+          }
           cleanupRepairTemporaryFiles(
             plan,
             guardedCheckpoint,
@@ -5109,6 +5229,16 @@ export function repairOutcomeLedger(
               });
               guardedCheckpoint("transaction-replaced");
             }
+            if (
+              !["replaced", "audited", "complete"].includes(
+                transaction.phase,
+              )
+            ) {
+              throw new Error(
+                "Outcome ledger repair cannot retire authority before replacement publication.",
+              );
+            }
+            retireLedgerAuthorityStage(beforeMutation);
             if (!["audited", "complete"].includes(transaction.phase)) {
               appendRepairEvent();
               captureRepairTopology(plan);
