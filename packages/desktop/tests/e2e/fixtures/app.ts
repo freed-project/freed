@@ -64,7 +64,14 @@ export class AppFixture {
   }
 
   async acceptProviderRiskIfPresent(
-    provider: "x" | "facebook" | "instagram" | "linkedin",
+    provider:
+      | "x"
+      | "facebook"
+      | "instagram"
+      | "linkedin"
+      | "substack"
+      | "medium"
+      | "youtube",
     timeout = 10_000,
   ): Promise<boolean> {
     const dialog = this.page.getByTestId(`provider-risk-dialog-${provider}`);

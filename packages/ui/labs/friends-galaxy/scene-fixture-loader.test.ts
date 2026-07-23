@@ -1,0 +1,211 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createGalaxyLabFixture } from "./scene-fixture.js";
+import {
+  loadGalaxyLabFixture,
+  type GalaxyLabFixtureWorkerPort,
+} from "./scene-fixture-loader.js";
+import {
+  compactGalaxyLabFixtureMetadata,
+  galaxyLabFixtureWorkerReceipt,
+  type GalaxyLabFixtureWorkerRequest,
+} from "./scene-fixture-worker-protocol.js";
+
+class FixtureWorkerStub implements GalaxyLabFixtureWorkerPort {
+  onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
+  onmessageerror: ((event: MessageEvent<unknown>) => void) | null = null;
+  onerror: ((event: ErrorEvent) => void) | null = null;
+  request: GalaxyLabFixtureWorkerRequest | null = null;
+  terminated = false;
+  postError: Error | null = null;
+
+  postMessage(message: GalaxyLabFixtureWorkerRequest): void {
+    if (this.postError) throw this.postError;
+    this.request = message;
+  }
+
+  terminate(): void {
+    this.terminated = true;
+  }
+
+  respond(response: unknown): void {
+    this.onmessage?.({
+      data: response,
+    } as MessageEvent<unknown>);
+  }
+}
+
+describe("Friends Galaxy fixture worker loader", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("resolves the transferred fixture and closes its one-shot worker", async () => {
+    const worker = new FixtureWorkerStub();
+    const pending = loadGalaxyLabFixture(worker, {
+      personCount: 20,
+      accountCount: 80,
+      backgroundStarCount: 200,
+    });
+    const fixture = compactGalaxyLabFixtureMetadata(
+      createGalaxyLabFixture({
+        personCount: 20,
+        accountCount: 80,
+        backgroundStarCount: 200,
+      }),
+    );
+    worker.respond({
+      kind: "ready",
+      requestId: worker.request!.requestId,
+      fixture,
+      receipt: galaxyLabFixtureWorkerReceipt(fixture, 21),
+    });
+
+    const result = await pending;
+    expect(worker.request).toMatchObject({ kind: "build", requestId: 1 });
+    expect(result.fixture.scene.nodeIds).toHaveLength(100);
+    expect(result.receipt.transferableBufferCount).toBe(21);
+    expect(worker.terminated).toBe(true);
+    expect(worker.onmessage).toBeNull();
+    expect(worker.onmessageerror).toBeNull();
+    expect(worker.onerror).toBeNull();
+  });
+
+  it("rejects an explicit worker failure without rebuilding on the caller", async () => {
+    const worker = new FixtureWorkerStub();
+    const pending = loadGalaxyLabFixture(worker, {
+      personCount: 20,
+      accountCount: 80,
+      backgroundStarCount: 200,
+    });
+    worker.respond({
+      kind: "error",
+      requestId: worker.request!.requestId,
+      message: "fixture compilation failed",
+    });
+
+    await expect(pending).rejects.toThrow("fixture compilation failed");
+    expect(worker.terminated).toBe(true);
+  });
+
+  it("rejects a malformed worker scene before renderer admission", async () => {
+    const worker = new FixtureWorkerStub();
+    const pending = loadGalaxyLabFixture(worker, {
+      personCount: 20,
+      accountCount: 80,
+      backgroundStarCount: 200,
+    });
+    const fixture = compactGalaxyLabFixtureMetadata(
+      createGalaxyLabFixture({
+        personCount: 20,
+        accountCount: 80,
+        backgroundStarCount: 200,
+      }),
+    );
+    const malformed = {
+      ...fixture,
+      packedStarInstances: {
+        ...fixture.packedStarInstances,
+        semantic: fixture.packedStarInstances.semantic.slice(0, -1),
+      },
+    };
+    worker.respond({
+      kind: "ready",
+      requestId: worker.request!.requestId,
+      fixture: malformed,
+      receipt: galaxyLabFixtureWorkerReceipt(fixture, 21),
+    });
+
+    await expect(pending).rejects.toThrow(
+      "Friends Galaxy worker returned packed semantic stars length 799; expected 800.",
+    );
+    expect(worker.terminated).toBe(true);
+    expect(worker.onmessage).toBeNull();
+    expect(worker.onerror).toBeNull();
+  });
+
+  it("rejects a missing top-level worker envelope immediately", async () => {
+    const worker = new FixtureWorkerStub();
+    const pending = loadGalaxyLabFixture(worker, {
+      personCount: 20,
+      accountCount: 80,
+      backgroundStarCount: 200,
+    });
+    worker.respond(null);
+
+    await expect(pending).rejects.toThrow(
+      "Friends Galaxy worker returned an invalid response.",
+    );
+    expect(worker.terminated).toBe(true);
+  });
+
+  it("rejects an unknown top-level worker response kind immediately", async () => {
+    const worker = new FixtureWorkerStub();
+    const pending = loadGalaxyLabFixture(worker, {
+      personCount: 20,
+      accountCount: 80,
+      backgroundStarCount: 200,
+    });
+    worker.respond({
+      kind: "surprise",
+      requestId: worker.request!.requestId,
+    });
+
+    await expect(pending).rejects.toThrow(
+      "Friends Galaxy worker returned an unknown response kind.",
+    );
+    expect(worker.terminated).toBe(true);
+  });
+
+  it("rejects a worker response deserialization failure immediately", async () => {
+    const worker = new FixtureWorkerStub();
+    const pending = loadGalaxyLabFixture(worker, {
+      personCount: 20,
+      accountCount: 80,
+      backgroundStarCount: 200,
+    });
+    worker.onmessageerror?.({} as MessageEvent<unknown>);
+
+    await expect(pending).rejects.toThrow(
+      "Friends Galaxy worker response could not be deserialized.",
+    );
+    expect(worker.terminated).toBe(true);
+    expect(worker.onmessageerror).toBeNull();
+  });
+
+  it("settles and closes the worker when request dispatch fails", async () => {
+    const worker = new FixtureWorkerStub();
+    worker.postError = new Error("worker request failed");
+
+    await expect(
+      loadGalaxyLabFixture(worker, {
+        personCount: 20,
+        accountCount: 80,
+        backgroundStarCount: 200,
+      }),
+    ).rejects.toThrow("worker request failed");
+    expect(worker.terminated).toBe(true);
+    expect(worker.onmessage).toBeNull();
+    expect(worker.onerror).toBeNull();
+  });
+
+  it("times out and closes a silent worker without caller-side compilation", async () => {
+    vi.useFakeTimers();
+    const worker = new FixtureWorkerStub();
+    const pending = loadGalaxyLabFixture(
+      worker,
+      {
+        personCount: 20,
+        accountCount: 80,
+        backgroundStarCount: 200,
+      },
+      25,
+    );
+    const rejection = expect(pending).rejects.toThrow(
+      "Friends Galaxy worker timed out before producing a scene.",
+    );
+
+    await vi.advanceTimersByTimeAsync(25);
+    await rejection;
+    expect(worker.terminated).toBe(true);
+    expect(worker.onmessage).toBeNull();
+    expect(worker.onerror).toBeNull();
+  });
+});

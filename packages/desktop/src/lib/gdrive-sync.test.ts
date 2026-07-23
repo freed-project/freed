@@ -208,10 +208,10 @@ describe("Google Drive cloud sync", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await gdriveUploadSafe("token", staleEmpty);
-    expect(result.uploadedBytes).toBe(populated.byteLength);
     expect(uploadBodies).toHaveLength(1);
 
     const uploaded = new Uint8Array(uploadBodies[0] as ArrayBuffer);
+    expect(result.uploadedBytes).toBe(uploaded.byteLength);
     const doc = A.load<FreedDoc>(uploaded);
     expect(Object.keys(doc.feedItems)).toHaveLength(600);
   });

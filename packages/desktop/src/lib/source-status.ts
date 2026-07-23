@@ -8,7 +8,7 @@ import {
 } from "@freed/ui/lib/provider-status";
 
 type ProviderSyncCountsShape = Partial<Record<
-  "rss" | "x" | "facebook" | "instagram" | "linkedin",
+  "rss" | "x" | "facebook" | "instagram" | "linkedin" | "substack" | "medium" | "youtube",
   number
 >>;
 
@@ -16,6 +16,8 @@ type ProviderAuthState = {
   isAuthenticated?: boolean;
   lastCaptureError?: string;
 } | null | undefined;
+
+type SocialProviderSourceId = Exclude<keyof ProviderSyncCountsShape, "rss">;
 
 export interface SourceStatusInput {
   feeds: Record<string, RssFeed>;
@@ -25,6 +27,9 @@ export interface SourceStatusInput {
   fbAuth?: ProviderAuthState;
   igAuth?: ProviderAuthState;
   liAuth?: ProviderAuthState;
+  substackAuth?: ProviderAuthState;
+  mediumAuth?: ProviderAuthState;
+  ytAuth?: ProviderAuthState;
 }
 
 function formatFeedHealthDetail(
@@ -41,6 +46,44 @@ function formatFeedHealthDetail(
     return "All followed feeds are currently failing.";
   }
   return `${failingCount.toLocaleString()} followed feed${failingCount === 1 ? "" : "s"} need review, but at least one feed is syncing successfully.`;
+}
+
+function isSocialProviderSourceId(
+  sourceId: string | undefined,
+): sourceId is SocialProviderSourceId {
+  return (
+    sourceId === "x" ||
+    sourceId === "facebook" ||
+    sourceId === "instagram" ||
+    sourceId === "linkedin" ||
+    sourceId === "substack" ||
+    sourceId === "medium" ||
+    sourceId === "youtube"
+  );
+}
+
+function getProviderAuthState(
+  sourceId: string | undefined,
+  desktopState: SourceStatusInput,
+): ProviderAuthState {
+  switch (sourceId) {
+    case "x":
+      return desktopState.xAuth;
+    case "facebook":
+      return desktopState.fbAuth;
+    case "instagram":
+      return desktopState.igAuth;
+    case "linkedin":
+      return desktopState.liAuth;
+    case "substack":
+      return desktopState.substackAuth;
+    case "medium":
+      return desktopState.mediumAuth;
+    case "youtube":
+      return desktopState.ytAuth;
+    default:
+      return null;
+  }
 }
 
 export function getDesktopSourceStatus(
@@ -69,23 +112,10 @@ export function getDesktopSourceStatus(
     };
   }
 
-  const authState =
-    sourceId === "x"
-      ? desktopState.xAuth
-      : sourceId === "facebook"
-        ? desktopState.fbAuth
-        : sourceId === "instagram"
-          ? desktopState.igAuth
-          : sourceId === "linkedin"
-            ? desktopState.liAuth
-            : null;
-  const snapshot =
-    sourceId === "x" ||
-    sourceId === "facebook" ||
-    sourceId === "instagram" ||
-    sourceId === "linkedin"
-      ? health?.providers[sourceId]
-      : undefined;
+  const authState = getProviderAuthState(sourceId, desktopState);
+  const snapshot = isSocialProviderSourceId(sourceId)
+    ? health?.providers[sourceId]
+    : undefined;
   const authError =
     typeof authState?.lastCaptureError === "string" ? authState.lastCaptureError : undefined;
   const isConnected = authState?.isAuthenticated === true;
@@ -112,12 +142,8 @@ export function getDesktopSourceStatus(
       snapshot,
     }),
     paused: snapshot?.status === "paused",
-    syncing:
-      sourceId === "x" ||
-      sourceId === "facebook" ||
-      sourceId === "instagram" ||
-      sourceId === "linkedin"
-        ? (desktopState.providerSyncCounts[sourceId] ?? 0) > 0
-        : false,
+    syncing: isSocialProviderSourceId(sourceId)
+      ? (desktopState.providerSyncCounts[sourceId] ?? 0) > 0
+      : false,
   };
 }

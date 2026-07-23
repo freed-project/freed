@@ -1,0 +1,4 @@
+interface:
+  display_name: "Build Freed Feature"
+  short_description: "Build and publish governed product changes"
+  default_prompt: "Use $freed-build-feature to implement this governed Freed product change and prepare it for review."

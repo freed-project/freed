@@ -12,6 +12,7 @@ import {
   isOAuthCanceledError,
   storeCloudToken,
   startCloudSync,
+  captureCloudLifecycle,
   clearCloudProvider,
   getCloudToken,
   type CloudProvider,
@@ -46,13 +47,28 @@ export function useCloudProviders() {
   const connect = useCallback(
     async (provider: CloudProvider) => {
       const abortController = new AbortController();
+      const lifecycle = captureCloudLifecycle(provider);
       connectAbortControllers.current[provider] = abortController;
       log.info(`[cloud/${provider}] connect requested`);
       setProvider(provider, { status: "connecting" });
       try {
         const token = await initiateDesktopOAuth(provider, { signal: abortController.signal });
+        if (
+          abortController.signal.aborted ||
+          !lifecycle.isCurrent() ||
+          connectAbortControllers.current[provider] !== abortController
+        ) {
+          return;
+        }
         storeCloudToken(provider, token);
-        startCloudSync(provider, token.accessToken).catch(console.error);
+        await startCloudSync(provider, token.accessToken);
+        if (
+          abortController.signal.aborted ||
+          connectAbortControllers.current[provider] !== abortController
+        ) {
+          clearCloudProvider(provider);
+          return;
+        }
         if (connectAbortControllers.current[provider] === abortController) {
           log.info(`[cloud/${provider}] connect completed`);
           setProvider(provider, { status: "connected" });
@@ -85,6 +101,7 @@ export function useCloudProviders() {
       log.info(`[cloud/${provider}] cancel requested`);
       controller.abort();
       delete connectAbortControllers.current[provider];
+      clearCloudProvider(provider);
       setProvider(provider, { status: "idle" });
     },
     [setProvider],
@@ -102,8 +119,9 @@ export function useCloudProviders() {
 
   useEffect(() => {
     return () => {
-      for (const controller of Object.values(connectAbortControllers.current)) {
+      for (const [provider, controller] of Object.entries(connectAbortControllers.current)) {
         controller?.abort();
+        clearCloudProvider(provider as CloudProvider);
       }
       connectAbortControllers.current = {};
     };

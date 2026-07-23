@@ -13,6 +13,8 @@ import { BottomSheet } from "@freed/ui/components/BottomSheet";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { CloudProviderCard } from "@freed/ui/components/CloudProviderCard";
 import { initiateGDriveOAuth } from "../lib/cloud-oauth";
+import { capturePwaRuntimeLifecycle } from "../lib/factory-reset-coordinator";
+import { storePwaOAuthRuntimeGeneration } from "../lib/oauth-redirect";
 
 function generateCodeVerifier(): string {
   const array = new Uint8Array(64);
@@ -36,8 +38,12 @@ const DROPBOX_CLIENT_ID = import.meta.env.VITE_DROPBOX_CLIENT_ID ?? "";
 const OAUTH_REDIRECT_URI = `${window.location.origin}/oauth-callback`;
 
 async function initiateDropboxOAuth(): Promise<void> {
+  const runtimeLifecycle = capturePwaRuntimeLifecycle();
+  runtimeLifecycle.assertCurrent();
   const verifier = generateCodeVerifier();
   const challenge = await generateCodeChallenge(verifier);
+  runtimeLifecycle.assertCurrent();
+  storePwaOAuthRuntimeGeneration(runtimeLifecycle.generation);
   sessionStorage.setItem("freed_pkce_verifier", verifier);
   sessionStorage.setItem("freed_pkce_provider", "dropbox");
 

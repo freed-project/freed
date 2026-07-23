@@ -1,6 +1,6 @@
 # P1-05: Recovery never outruns a scrape invoke; persist lastScrapeAt
 
-runner-safe: false | provider-visible: false | soak-gated: YES
+runner-safe: false | provider-visible: true (changes provider scrape cooldown and WebView recovery timing) | soak-gated: YES (one global behavior slot until its installed-build outcome completes)
 Findings: F03 (sev-5), rust-backfill A2 (watchdog path), plus capture-orchestration map (in-memory lastScrapeAt). Prereq: P0-02/P0-03 live.
 
 ## Defect

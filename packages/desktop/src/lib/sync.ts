@@ -23,8 +23,16 @@ import {
   type CloudProvider,
   type GoogleDriveFetch,
 } from "@freed/sync/cloud";
-import { getDocBinary, getDocHeads, mergeDoc, replaceLocalDoc, subscribe, setRelayClientCount } from "./automerge";
-import { recordCloudUploadAttempt, type CloudUploadCause } from "./runtime-health-events";
+import {
+  compareDoc,
+  getDocBinary,
+  getDocHeads,
+  mergeDoc,
+  replaceLocalDoc,
+  subscribe,
+  setRelayClientCount,
+} from "./automerge";
+import { recordCloudUploadAttempt, recordCloudUploadSkipped, type CloudUploadCause } from "./runtime-health-events";
 import {
   addDebugEvent,
   recordCloudProviderEvent,
@@ -36,6 +44,13 @@ import {
   finishBackgroundActivity,
   startBackgroundActivity,
 } from "@freed/ui/lib/background-activity-store";
+import {
+  beginFactoryResetCloudCleanup,
+  clearFactoryResetCloudCleanupBarrier,
+  clearStoredCloudProvidersForFactoryReset,
+  hasFactoryResetCloudCleanupBarrier,
+  isFactoryResetInProgress,
+} from "@freed/ui/lib/factory-reset";
 import { log } from "./logger.js";
 import { recordProviderHealthEvent } from "./provider-health";
 import { scheduleSideEffect } from "./side-effect-scheduler";
@@ -105,7 +120,7 @@ export async function getAllLocalIPs(): Promise<NetworkInterface[]> {
 
 /**
  * Get the sync relay URL for PWA to connect to.
- * The returned URL includes the pairing token as `?t=<token>`.
+ * The returned URL includes the pairing token.
  */
 export async function getSyncUrl(): Promise<string> {
   try {
@@ -327,11 +342,118 @@ const cloudAborts = new Map<CloudProvider, AbortController>();
 const uploadTimers = new Map<CloudProvider, ReturnType<typeof setTimeout>>();
 const initialDownloadTimers = new Map<CloudProvider, ReturnType<typeof setTimeout>>();
 const cloudChangeUnsubscribes = new Map<CloudProvider, () => void>();
-const cloudTokenRefreshes = new Map<CloudProvider, Promise<string | null>>();
+interface CloudTokenRefreshTask {
+  readonly credentialRevision: number;
+  readonly promise: Promise<string | null>;
+}
+
+const cloudTokenRefreshes = new Map<CloudProvider, CloudTokenRefreshTask>();
+const cloudCredentialRevisions = new Map<CloudProvider, number>();
 const cloudAuthFailureRefreshes = new Map<CloudProvider, number>();
 const cloudUploadDeferredAttempts = new Map<CloudProvider, number>();
 const cloudInitialDownloadDeferredAttempts = new Map<CloudProvider, number>();
 const blockedDestructiveMergeProviders = new Map<CloudProvider, string>();
+const cloudGenerations = new Map<CloudProvider, number>();
+const cloudStartupRepairGeneration = new Map<CloudProvider, number>();
+const cloudInFlightOperations = new Map<CloudProvider, Set<Promise<unknown>>>();
+const cloudInFlightUploads = new Map<CloudProvider, Set<Promise<void>>>();
+const cloudTransientAborts = new Map<CloudProvider, Set<AbortController>>();
+const cloudDeletesInProgress = new Set<CloudProvider>();
+
+function invalidateCloudGeneration(provider: CloudProvider): number {
+  const generation = (cloudGenerations.get(provider) ?? 0) + 1;
+  cloudGenerations.set(provider, generation);
+  return generation;
+}
+
+function currentCloudGeneration(provider: CloudProvider): number {
+  return cloudGenerations.get(provider) ?? 0;
+}
+
+function isCloudGenerationCurrent(
+  provider: CloudProvider,
+  generation: number,
+  signal?: AbortSignal,
+): boolean {
+  return (
+    currentCloudGeneration(provider) === generation
+    && !signal?.aborted
+    && !cloudDeletesInProgress.has(provider)
+  );
+}
+
+function currentCloudCredentialRevision(provider: CloudProvider): number {
+  return cloudCredentialRevisions.get(provider) ?? 0;
+}
+
+function invalidateCloudCredentials(provider: CloudProvider): number {
+  const revision = currentCloudCredentialRevision(provider) + 1;
+  cloudCredentialRevisions.set(provider, revision);
+  return revision;
+}
+
+export interface CloudLifecycleGuard {
+  isCurrent: () => boolean;
+}
+
+export function captureCloudLifecycle(provider: CloudProvider): CloudLifecycleGuard {
+  const generation = currentCloudGeneration(provider);
+  return {
+    isCurrent: () => isCloudGenerationCurrent(provider, generation),
+  };
+}
+
+function trackCloudOperation<T>(provider: CloudProvider, operation: Promise<T>): Promise<T> {
+  let operations = cloudInFlightOperations.get(provider);
+  if (!operations) {
+    operations = new Set();
+    cloudInFlightOperations.set(provider, operations);
+  }
+  operations.add(operation);
+  void operation.finally(() => {
+    operations?.delete(operation);
+    if (operations?.size === 0) cloudInFlightOperations.delete(provider);
+  }).catch(() => {});
+  return operation;
+}
+
+function trackCloudUpload(provider: CloudProvider, upload: Promise<void>): Promise<void> {
+  let uploads = cloudInFlightUploads.get(provider);
+  if (!uploads) {
+    uploads = new Set();
+    cloudInFlightUploads.set(provider, uploads);
+  }
+  uploads.add(upload);
+  void upload.finally(() => {
+    uploads?.delete(upload);
+    if (uploads?.size === 0) cloudInFlightUploads.delete(provider);
+  }).catch(() => {});
+  return upload;
+}
+
+async function waitForCloudSettlement(provider: CloudProvider): Promise<void> {
+  while (true) {
+    const pending = [
+      ...(cloudInFlightOperations.get(provider) ?? []),
+      ...(cloudInFlightUploads.get(provider) ?? []),
+    ];
+    if (pending.length === 0) return;
+    await Promise.allSettled(pending);
+  }
+}
+
+function addTransientCloudAbort(provider: CloudProvider, controller: AbortController): () => void {
+  let controllers = cloudTransientAborts.get(provider);
+  if (!controllers) {
+    controllers = new Set();
+    cloudTransientAborts.set(provider, controllers);
+  }
+  controllers.add(controller);
+  return () => {
+    controllers?.delete(controller);
+    if (controllers?.size === 0) cloudTransientAborts.delete(provider);
+  };
+}
 
 function describeSyncError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -472,11 +594,19 @@ const GDRIVE_TOKEN_PROXY_URL =
 const GDRIVE_FORCE_TOKEN_PROXY = import.meta.env.VITE_GDRIVE_FORCE_TOKEN_PROXY === "1";
 const DROPBOX_CLIENT_ID = import.meta.env.VITE_DROPBOX_CLIENT_ID ?? "";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+let acceptingDesktopOAuth = true;
+const activeDesktopOAuthControllers = new Set<AbortController>();
+const activeDesktopOAuthOperations = new Set<Promise<unknown>>();
 
 export interface CloudTokenBundle {
   accessToken: string;
   refreshToken?: string;
   expiresAt?: number;
+}
+
+interface CloudTokenReadResult {
+  bundle: CloudTokenBundle | null;
+  hasStoredCredentials: boolean;
 }
 
 export interface DesktopOAuthOptions {
@@ -506,7 +636,7 @@ export function isOAuthCanceledError(error: unknown): boolean {
 }
 
 function throwIfOAuthCanceled(signal?: AbortSignal): void {
-  if (signal?.aborted) {
+  if (signal?.aborted || !acceptingDesktopOAuth || isFactoryResetInProgress()) {
     throw createOAuthCanceledError();
   }
 }
@@ -528,31 +658,115 @@ function tokenBundleFromResponse(
   };
 }
 
-function readCloudTokenBundle(provider: CloudProvider): CloudTokenBundle | null {
+function decodeCloudTokenMetadata(raw: string): CloudTokenBundle | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return null;
+  }
+  const record = parsed as Record<string, unknown>;
+  if (typeof record.accessToken !== "string" || record.accessToken.trim().length === 0) {
+    return null;
+  }
+  if (
+    record.refreshToken !== undefined
+    && (typeof record.refreshToken !== "string" || record.refreshToken.trim().length === 0)
+  ) {
+    return null;
+  }
+  if (
+    record.expiresAt !== undefined
+    && (typeof record.expiresAt !== "number" || !Number.isFinite(record.expiresAt))
+  ) {
+    return null;
+  }
+
+  return {
+    accessToken: record.accessToken,
+    refreshToken: record.refreshToken as string | undefined,
+    expiresAt: record.expiresAt as number | undefined,
+  };
+}
+
+function readCloudTokenState(provider: CloudProvider): CloudTokenReadResult {
   const meta = localStorage.getItem(CLOUD_TOKEN_META_KEY(provider));
-  if (meta) {
-    try {
-      const parsed = JSON.parse(meta) as Partial<CloudTokenBundle>;
-      if (typeof parsed.accessToken === "string" && parsed.accessToken) {
-        return {
-          accessToken: parsed.accessToken,
-          refreshToken: typeof parsed.refreshToken === "string" ? parsed.refreshToken : undefined,
-          expiresAt: typeof parsed.expiresAt === "number" && Number.isFinite(parsed.expiresAt)
-            ? parsed.expiresAt
-            : undefined,
-        };
-      }
-    } catch {
-      localStorage.removeItem(CLOUD_TOKEN_META_KEY(provider));
-    }
+  if (meta !== null) {
+    return {
+      bundle: decodeCloudTokenMetadata(meta),
+      hasStoredCredentials: true,
+    };
   }
 
   const legacyToken = localStorage.getItem(CLOUD_TOKEN_KEY(provider));
-  return legacyToken ? { accessToken: legacyToken } : null;
+  return {
+    bundle: legacyToken && legacyToken.trim().length > 0
+      ? { accessToken: legacyToken }
+      : null,
+    hasStoredCredentials: legacyToken !== null,
+  };
 }
 
-/** Persist OAuth credentials for a cloud provider. */
-export function storeCloudToken(provider: CloudProvider, token: string | CloudTokenBundle): void {
+function readCloudTokenBundle(provider: CloudProvider): CloudTokenBundle | null {
+  return readCloudTokenState(provider).bundle;
+}
+
+function readCloudTokenBundleForAuthFailure(
+  provider: CloudProvider,
+  fallbackToken: string,
+): CloudTokenBundle | null {
+  const result = readCloudTokenState(provider);
+  if (result.bundle) return result.bundle;
+  return result.hasStoredCredentials ? null : { accessToken: fallbackToken };
+}
+
+interface CloudTokenStorageSnapshot {
+  accessToken: string | null;
+  metadata: string | null;
+}
+
+function captureCloudTokenStorage(provider: CloudProvider): CloudTokenStorageSnapshot {
+  return {
+    accessToken: localStorage.getItem(CLOUD_TOKEN_KEY(provider)),
+    metadata: localStorage.getItem(CLOUD_TOKEN_META_KEY(provider)),
+  };
+}
+
+function sameCloudTokenStorage(
+  left: CloudTokenStorageSnapshot,
+  right: CloudTokenStorageSnapshot,
+): boolean {
+  return left.accessToken === right.accessToken && left.metadata === right.metadata;
+}
+
+function canCommitCloudTokenRefresh(
+  provider: CloudProvider,
+  credentialRevision: number,
+  source: CloudTokenStorageSnapshot,
+): boolean {
+  return currentCloudCredentialRevision(provider) === credentialRevision
+    && sameCloudTokenStorage(captureCloudTokenStorage(provider), source);
+}
+
+function restoreCloudTokenStorageIfStale(
+  provider: CloudProvider,
+  snapshot: CloudTokenStorageSnapshot,
+  resolvedToken: string | null,
+  credentialRevision: number,
+): void {
+  if (currentCloudCredentialRevision(provider) !== credentialRevision) return;
+  if (!resolvedToken || getCloudToken(provider) !== resolvedToken) return;
+  if (snapshot.accessToken === null) localStorage.removeItem(CLOUD_TOKEN_KEY(provider));
+  else localStorage.setItem(CLOUD_TOKEN_KEY(provider), snapshot.accessToken);
+  if (snapshot.metadata === null) localStorage.removeItem(CLOUD_TOKEN_META_KEY(provider));
+  else localStorage.setItem(CLOUD_TOKEN_META_KEY(provider), snapshot.metadata);
+}
+
+function persistCloudToken(provider: CloudProvider, token: string | CloudTokenBundle): void {
   const previous = readCloudTokenBundle(provider);
   const bundle = typeof token === "string" ? { accessToken: token } : token;
   const storedBundle: CloudTokenBundle = {
@@ -561,6 +775,14 @@ export function storeCloudToken(provider: CloudProvider, token: string | CloudTo
   };
   localStorage.setItem(CLOUD_TOKEN_KEY(provider), storedBundle.accessToken);
   localStorage.setItem(CLOUD_TOKEN_META_KEY(provider), JSON.stringify(storedBundle));
+}
+
+/** Persist OAuth credentials for a cloud provider. */
+export function storeCloudToken(provider: CloudProvider, token: string | CloudTokenBundle): void {
+  if (isFactoryResetInProgress()) throw createOAuthCanceledError();
+  invalidateCloudCredentials(provider);
+  persistCloudToken(provider, token);
+  clearFactoryResetCloudCleanupBarrier();
 }
 
 /** Retrieve the stored OAuth access token for a cloud provider. */
@@ -632,25 +854,40 @@ async function refreshCloudTokenAfterAuthFailure(
 
 async function refreshCloudToken(provider: CloudProvider, bundle: CloudTokenBundle): Promise<string | null> {
   if (!bundle.refreshToken) return bundle.accessToken;
+  const credentialRevision = currentCloudCredentialRevision(provider);
   const existingRefresh = cloudTokenRefreshes.get(provider);
-  if (existingRefresh) return existingRefresh;
+  if (existingRefresh?.credentialRevision === credentialRevision) return existingRefresh.promise;
 
+  const source = captureCloudTokenStorage(provider);
   let refreshPromise!: Promise<string | null>;
-  refreshPromise = refreshCloudTokenInner(provider, bundle).finally(() => {
-    if (cloudTokenRefreshes.get(provider) === refreshPromise) {
+  refreshPromise = refreshCloudTokenInner(
+    provider,
+    bundle,
+    credentialRevision,
+    source,
+  ).finally(() => {
+    if (cloudTokenRefreshes.get(provider)?.promise === refreshPromise) {
       cloudTokenRefreshes.delete(provider);
     }
   });
-  cloudTokenRefreshes.set(provider, refreshPromise);
+  cloudTokenRefreshes.set(provider, { credentialRevision, promise: refreshPromise });
   return refreshPromise;
 }
 
-async function refreshCloudTokenInner(provider: CloudProvider, bundle: CloudTokenBundle): Promise<string | null> {
+async function refreshCloudTokenInner(
+  provider: CloudProvider,
+  bundle: CloudTokenBundle,
+  credentialRevision: number,
+  source: CloudTokenStorageSnapshot,
+): Promise<string | null> {
   const refreshToken = bundle.refreshToken;
   if (!refreshToken) return bundle.accessToken;
 
   if (provider === "gdrive" && shouldUseGoogleTokenProxy()) {
-    return refreshGoogleTokenViaProxy(refreshToken);
+    const nextBundle = await refreshGoogleTokenViaProxy(refreshToken);
+    if (!canCommitCloudTokenRefresh(provider, credentialRevision, source)) return null;
+    persistCloudToken(provider, nextBundle);
+    return nextBundle.accessToken;
   }
 
   const params = new URLSearchParams({
@@ -672,7 +909,8 @@ async function refreshCloudTokenInner(provider: CloudProvider, bundle: CloudToke
       ...refreshed,
       refreshToken: refreshed.refreshToken ?? bundle.refreshToken,
     };
-    storeCloudToken(provider, nextBundle);
+    if (!canCommitCloudTokenRefresh(provider, credentialRevision, source)) return null;
+    persistCloudToken(provider, nextBundle);
     return nextBundle.accessToken;
   } else {
     params.set("client_id", DROPBOX_CLIENT_ID);
@@ -686,8 +924,7 @@ async function refreshCloudTokenInner(provider: CloudProvider, bundle: CloudToke
   });
 
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Token refresh failed (${res.status}): ${body}`);
+    throw dropboxOAuthError("Token refresh failed", res.status);
   }
 
   const refreshed = tokenBundleFromResponse((await res.json()) as TokenExchangeResponse);
@@ -695,7 +932,8 @@ async function refreshCloudTokenInner(provider: CloudProvider, bundle: CloudToke
     ...refreshed,
     refreshToken: refreshed.refreshToken ?? bundle.refreshToken,
   };
-  storeCloudToken(provider, nextBundle);
+  if (!canCommitCloudTokenRefresh(provider, credentialRevision, source)) return null;
+  persistCloudToken(provider, nextBundle);
   return nextBundle.accessToken;
 }
 
@@ -713,31 +951,60 @@ function decodeNativeBody(body: number[]): string {
 
 function googleOAuthError(prefix: string, status: number, body: string): Error {
   const trimmed = body.trim();
-  if (!trimmed) return new Error(`${prefix} (${status})`);
+  let errorCode: string | undefined;
   try {
     const parsed = JSON.parse(trimmed) as {
       error?: string;
       error_description?: string;
       message?: string;
     };
+    errorCode = parsed.error;
     const detail = parsed.error_description ?? parsed.message ?? parsed.error;
-    if (detail) {
-      if (detail === "client_secret is missing.") {
-        if (prefix.includes("proxy")) {
-          return new Error(
-            `${prefix} (${status}): client_secret is missing. The Google token proxy is missing its configured Google client secret.`,
-          );
-        }
+    if (detail === "client_secret is missing.") {
+      if (prefix.includes("proxy")) {
         return new Error(
-          `${prefix} (${status}): client_secret is missing. Freed Desktop is using direct Google token exchange for an OAuth client that requires a secret. Configure the Google token proxy or provide VITE_GDRIVE_CLIENT_SECRET.`,
+          `${prefix}. The Google token proxy is missing its configured Google client secret.`,
         );
       }
-      return new Error(`${prefix} (${status}): ${detail}`);
+      return new Error(
+        `${prefix}. Freed Desktop is using direct Google token exchange for an OAuth client that requires a secret. Configure the Google token proxy or provide VITE_GDRIVE_CLIENT_SECRET.`,
+      );
     }
   } catch {
-    // Use the raw body below.
+    // Fall through to a controlled summary.
   }
-  return new Error(`${prefix} (${status}): ${trimmed.slice(0, 500)}`);
+  if (errorCode === "invalid_scope") {
+    return new Error(`${prefix}. Google rejected one or more requested permissions.`);
+  }
+  if (errorCode === "invalid_grant" || status === 401 || status === 403) {
+    return new Error(`${prefix}. Reconnect Google Drive and try again.`);
+  }
+  if (errorCode === "invalid_client" || errorCode === "unauthorized_client") {
+    return new Error(`${prefix}. Freed Desktop's Google OAuth configuration was rejected.`);
+  }
+  if (errorCode === "access_denied") {
+    return new Error(`${prefix}. Google authorization was denied.`);
+  }
+  if (status === 429) {
+    return new Error(`${prefix}. Google is temporarily limiting OAuth requests.`);
+  }
+  if (status >= 500) {
+    return new Error(`${prefix}. Google OAuth is temporarily unavailable.`);
+  }
+  return new Error(`${prefix}. Google rejected the OAuth request.`);
+}
+
+function dropboxOAuthError(prefix: string, status: number): Error {
+  if (status === 400 || status === 401 || status === 403) {
+    return new Error(`${prefix}. Reconnect Dropbox and try again.`);
+  }
+  if (status === 429) {
+    return new Error(`${prefix}. Dropbox is temporarily limiting OAuth requests.`);
+  }
+  if (status >= 500) {
+    return new Error(`${prefix}. Dropbox OAuth is temporarily unavailable.`);
+  }
+  return new Error(`${prefix}. Dropbox rejected the OAuth request.`);
 }
 
 async function postNativeGoogleOAuth(
@@ -796,7 +1063,7 @@ async function exchangeGoogleCodeViaProxy(
   return tokenBundleFromProxyResponse(data);
 }
 
-async function refreshGoogleTokenViaProxy(refreshToken: string): Promise<string | null> {
+async function refreshGoogleTokenViaProxy(refreshToken: string): Promise<CloudTokenBundle> {
   const data = await postGoogleTokenProxy({
     grantType: "refresh_token",
     refreshToken,
@@ -807,8 +1074,7 @@ async function refreshGoogleTokenViaProxy(refreshToken: string): Promise<string 
     ...refreshed,
     refreshToken: refreshed.refreshToken ?? refreshToken,
   };
-  storeCloudToken("gdrive", nextBundle);
-  return nextBundle.accessToken;
+  return nextBundle;
 }
 
 /** Return a non-expired access token when a refresh token is available. */
@@ -821,12 +1087,70 @@ export async function getValidCloudToken(provider: CloudProvider): Promise<strin
   return bundle.accessToken;
 }
 
+async function resolveCloudTokenForGeneration(
+  provider: CloudProvider,
+  fallbackToken: string | undefined,
+  generation: number,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  const snapshot = captureCloudTokenStorage(provider);
+  const credentialRevision = currentCloudCredentialRevision(provider);
+  const resolvedToken = await getValidCloudToken(provider);
+  if (!isCloudGenerationCurrent(provider, generation, signal)) {
+    restoreCloudTokenStorageIfStale(
+      provider,
+      snapshot,
+      resolvedToken,
+      credentialRevision,
+    );
+    return null;
+  }
+  const hadStoredCredentials = snapshot.accessToken !== null || snapshot.metadata !== null;
+  return resolvedToken ?? (hadStoredCredentials ? null : fallbackToken ?? null);
+}
+
+function createCloudCredentialUnavailableError(provider: CloudProvider): Error {
+  const providerName = provider === "gdrive" ? "Google Drive" : "Dropbox";
+  return new Error(
+    `Stored ${providerName} credentials could not be read. Reconnect ${providerName} to resume sync.`,
+  );
+}
+
+async function requireCloudTokenForGeneration(
+  provider: CloudProvider,
+  fallbackToken: string | undefined,
+  generation: number,
+  signal?: AbortSignal,
+): Promise<string> {
+  const token = await resolveCloudTokenForGeneration(
+    provider,
+    fallbackToken,
+    generation,
+    signal,
+  );
+  if (!token) throw createCloudCredentialUnavailableError(provider);
+  return token;
+}
+
 /** Refresh a provider token even when its stored expiry still looks valid. */
 export async function forceRefreshCloudToken(provider: CloudProvider): Promise<string | null> {
   const bundle = readCloudTokenBundle(provider);
   if (!bundle) return null;
   if (!bundle.refreshToken) return bundle.accessToken;
-  return refreshCloudToken(provider, bundle);
+  const generation = currentCloudGeneration(provider);
+  const snapshot = captureCloudTokenStorage(provider);
+  const credentialRevision = currentCloudCredentialRevision(provider);
+  const refreshed = await refreshCloudToken(provider, bundle);
+  if (!isCloudGenerationCurrent(provider, generation)) {
+    restoreCloudTokenStorageIfStale(
+      provider,
+      snapshot,
+      refreshed,
+      credentialRevision,
+    );
+    return null;
+  }
+  return refreshed;
 }
 
 /** Return all supported providers that have a stored access token. */
@@ -837,6 +1161,7 @@ export function getActiveProviders(): CloudProvider[] {
 
 /** Clear credentials for a provider and stop its sync loop. */
 export function clearCloudProvider(provider: CloudProvider): void {
+  invalidateCloudCredentials(provider);
   localStorage.removeItem(CLOUD_TOKEN_KEY(provider));
   localStorage.removeItem(CLOUD_TOKEN_META_KEY(provider));
   cloudAuthFailureRefreshes.delete(provider);
@@ -873,11 +1198,41 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
  *
  * Resolves with OAuth credentials on success.
  */
-export async function initiateDesktopOAuth(
+export function initiateDesktopOAuth(
   provider: CloudProvider,
   options: DesktopOAuthOptions = {},
 ): Promise<CloudTokenBundle> {
-  const { signal } = options;
+  if (!acceptingDesktopOAuth || isFactoryResetInProgress()) {
+    return Promise.reject(createOAuthCanceledError());
+  }
+
+  const controller = new AbortController();
+  const handleCallerAbort = () => controller.abort();
+  options.signal?.addEventListener("abort", handleCallerAbort, { once: true });
+  if (options.signal?.aborted) controller.abort();
+  activeDesktopOAuthControllers.add(controller);
+
+  let tracked: Promise<CloudTokenBundle>;
+  tracked = initiateDesktopOAuthInternal(provider, controller.signal).finally(() => {
+    options.signal?.removeEventListener("abort", handleCallerAbort);
+    activeDesktopOAuthControllers.delete(controller);
+    activeDesktopOAuthOperations.delete(tracked);
+  });
+  activeDesktopOAuthOperations.add(tracked);
+  return tracked;
+}
+
+/** Abort browser callbacks and wait for issued token requests before destructive reset phases. */
+export async function quiesceDesktopOAuthForFactoryReset(): Promise<void> {
+  acceptingDesktopOAuth = false;
+  for (const controller of activeDesktopOAuthControllers) controller.abort();
+  await Promise.allSettled([...activeDesktopOAuthOperations]);
+}
+
+async function initiateDesktopOAuthInternal(
+  provider: CloudProvider,
+  signal: AbortSignal,
+): Promise<CloudTokenBundle> {
   throwIfOAuthCanceled(signal);
 
   const verifier = generateCodeVerifier();
@@ -979,7 +1334,7 @@ export async function initiateDesktopOAuth(
   throwIfOAuthCanceled(signal);
 
   // Exchange the authorization code for an access token.
-  return exchangeCode(provider, code, verifier, redirectUri);
+  return exchangeCode(provider, code, verifier, redirectUri, signal);
 }
 
 async function exchangeCode(
@@ -987,7 +1342,9 @@ async function exchangeCode(
   code: string,
   codeVerifier: string,
   redirectUri: string,
+  signal: AbortSignal,
 ): Promise<CloudTokenBundle> {
+  throwIfOAuthCanceled(signal);
   const params = new URLSearchParams({
     grant_type: "authorization_code",
     code,
@@ -998,7 +1355,9 @@ async function exchangeCode(
   let tokenUrl: string;
   if (provider === "gdrive") {
     if (shouldUseGoogleTokenProxy()) {
-      return exchangeGoogleCodeViaProxy(code, codeVerifier, redirectUri);
+      const bundle = await exchangeGoogleCodeViaProxy(code, codeVerifier, redirectUri);
+      throwIfOAuthCanceled(signal);
+      return bundle;
     }
 
     params.set("client_id", GDRIVE_CLIENT_ID);
@@ -1008,7 +1367,11 @@ async function exchangeCode(
     if (GDRIVE_CLIENT_SECRET) {
       params.set("client_secret", GDRIVE_CLIENT_SECRET);
     }
-    return tokenBundleFromResponse(await postGoogleToken(params, "Google token exchange failed"));
+    const bundle = tokenBundleFromResponse(
+      await postGoogleToken(params, "Google token exchange failed"),
+    );
+    throwIfOAuthCanceled(signal);
+    return bundle;
   } else {
     params.set("client_id", DROPBOX_CLIENT_ID);
     tokenUrl = "https://api.dropboxapi.com/oauth2/token";
@@ -1018,14 +1381,17 @@ async function exchangeCode(
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params,
+    signal,
   });
+  throwIfOAuthCanceled(signal);
 
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Token exchange failed (${res.status}): ${body}`);
+    throw dropboxOAuthError("Token exchange failed", res.status);
   }
 
-  return tokenBundleFromResponse((await res.json()) as TokenExchangeResponse);
+  const bundle = tokenBundleFromResponse((await res.json()) as TokenExchangeResponse);
+  throwIfOAuthCanceled(signal);
+  return bundle;
 }
 
 // ─── Sync loops ───────────────────────────────────────────────────────────────
@@ -1034,30 +1400,54 @@ async function runInitialCloudDownload(
   provider: CloudProvider,
   signal: AbortSignal,
   resolveToken: () => Promise<string>,
-): Promise<void> {
+  generation: number,
+): Promise<{ needsStartupRepair: boolean; uploadToken: string } | null> {
   const startedAt = Date.now();
   markCloudAttempt(provider, "download", "Checking cloud storage for remote changes.");
   let remote: Uint8Array | null;
+  let uploadToken: string;
   try {
+    const resolvedToken = await resolveToken();
+    if (!isCloudGenerationCurrent(provider, generation, signal)) return null;
+    uploadToken = resolvedToken;
     remote = provider === "gdrive"
-      ? await gdriveDownloadLatest(await resolveToken(), signal, googleDriveFetch)
-      : await dropboxDownloadLatest(await resolveToken(), signal);
+      ? await gdriveDownloadLatest(resolvedToken, signal, googleDriveFetch)
+      : await dropboxDownloadLatest(resolvedToken, signal);
+    if (!isCloudGenerationCurrent(provider, generation, signal)) return null;
   } catch (error) {
+    if (!isCloudGenerationCurrent(provider, generation, signal)) return null;
     const status = authFailureStatus(error);
     if (provider !== "gdrive" || status !== 401) throw error;
     markCloudAttempt(provider, "auth", "Refreshing Google Drive token after an auth response.");
-    const refreshed = await refreshCloudTokenAfterAuthFailure(
-      "gdrive",
-      readCloudTokenBundle("gdrive") ?? { accessToken: await resolveToken() },
-      error,
-    );
+    const fallbackToken = await resolveToken();
+    if (!isCloudGenerationCurrent(provider, generation, signal)) return null;
+    const refreshSnapshot = captureCloudTokenStorage("gdrive");
+    const refreshCredentialRevision = currentCloudCredentialRevision("gdrive");
+    const authBundle = readCloudTokenBundleForAuthFailure("gdrive", fallbackToken);
+    if (!authBundle) throw createCloudCredentialUnavailableError("gdrive");
+    const refreshed = await refreshCloudTokenAfterAuthFailure("gdrive", authBundle, error);
+    if (!isCloudGenerationCurrent(provider, generation, signal)) {
+      restoreCloudTokenStorageIfStale(
+        "gdrive",
+        refreshSnapshot,
+        refreshed,
+        refreshCredentialRevision,
+      );
+      return null;
+    }
     if (!refreshed) throw error;
+    uploadToken = refreshed;
     markCloudAttempt(provider, "download", "Retrying cloud download after token refresh.");
     remote = await gdriveDownloadLatest(refreshed, signal, googleDriveFetch);
+    if (!isCloudGenerationCurrent(provider, generation, signal)) return null;
   }
   if (remote) {
+    const relation = await compareDoc(remote);
+    if (!isCloudGenerationCurrent(provider, generation, signal)) return null;
+    const needsStartupRepair = relation === "local-ahead" || relation === "diverged";
     markCloudAttempt(provider, "merge", "Merging remote document into the local library.");
     await mergeDoc(remote);
+    if (!isCloudGenerationCurrent(provider, generation, signal)) return null;
     cloudInitialDownloadDeferredAttempts.delete(provider);
     console.log("[CloudSync/%s] Initial merge (%d bytes)", provider, remote.length);
     addDebugEvent("received", `[Cloud/${provider}] initial download`, remote.length);
@@ -1079,8 +1469,13 @@ async function runInitialCloudDownload(
       finishedAt: Date.now(),
       bytesMoved: remote.length,
     });
+    return { needsStartupRepair, uploadToken };
   } else {
     cloudInitialDownloadDeferredAttempts.delete(provider);
+    // Empty cloud: whatever heads we recorded from an earlier connection are
+    // not what the cloud holds. Clear them so the P1-01 guard cannot skip the
+    // first upload of this connection.
+    lastSuccessfulUploadHeadsByProvider.delete(provider);
     markCloudSuccess(provider, {
       stage: "idle",
       lastDownloadAt: Date.now(),
@@ -1097,13 +1492,37 @@ async function runInitialCloudDownload(
       startedAt,
       finishedAt: Date.now(),
     });
+    return { needsStartupRepair: true, uploadToken };
   }
+}
+
+async function runStartupCloudReconciliation(
+  provider: CloudProvider,
+  signal: AbortSignal,
+  resolveToken: () => Promise<string>,
+  generation: number,
+): Promise<void> {
+  const result = await runInitialCloudDownload(provider, signal, resolveToken, generation);
+  if (
+    !result?.needsStartupRepair
+    || !isCloudGenerationCurrent(provider, generation, signal)
+    || cloudStartupRepairGeneration.get(provider) === generation
+  ) {
+    return;
+  }
+
+  cloudStartupRepairGeneration.set(provider, generation);
+  await performCloudUpload(provider, result.uploadToken, {
+    cause: "startup-repair",
+    generation,
+  });
 }
 
 function scheduleInitialCloudDownloadRetry(
   provider: CloudProvider,
   token: string,
   reason: string,
+  generation: number,
 ): void {
   const delayMs = nextDeferredBackoffMs(
     cloudInitialDownloadDeferredAttempts,
@@ -1121,19 +1540,13 @@ function scheduleInitialCloudDownloadRetry(
   const timer = setTimeout(() => {
     initialDownloadTimers.delete(provider);
     const controller = cloudAborts.get(provider);
-    if (!controller) return;
-    const resolveToken = async () => (provider === "gdrive" ? (await getValidCloudToken(provider)) ?? token : token);
-    runBackgroundJob({
-      kind: "cloud-sync",
-      source: `cloud:${provider}:initial-download-retry`,
-      timeoutMs: 180_000,
-      run: () => runInitialCloudDownload(provider, controller.signal, resolveToken),
-    }).catch((error) => {
-      if (controller.signal.aborted) return;
-      if (isBackgroundRuntimeDeferredError(error)) {
-        scheduleInitialCloudDownloadRetry(provider, token, error.reason);
-        return;
-      }
+    if (!controller || !isCloudGenerationCurrent(provider, generation, controller.signal)) return;
+    const deferredAttempts = cloudInitialDownloadDeferredAttempts.get(provider);
+    const restart = startCloudSync(provider, token);
+    if (deferredAttempts !== undefined) {
+      cloudInitialDownloadDeferredAttempts.set(provider, deferredAttempts);
+    }
+    void restart.catch((error) => {
       const msg = error instanceof Error ? error.message : String(error);
       addDebugEvent("error", `[Cloud/${provider}] initial download retry failed: ${msg}`);
     });
@@ -1165,22 +1578,28 @@ function nextUploadRetryMs(provider: CloudProvider, reason: string): number {
  */
 export async function startCloudSync(provider: CloudProvider, token: string): Promise<void> {
   stopCloudSync(provider);
+  if (hasFactoryResetCloudCleanupBarrier()) return;
+  if (cloudDeletesInProgress.has(provider)) return;
+  const generation = currentCloudGeneration(provider);
   const controller = new AbortController();
   cloudAborts.set(provider, controller);
   const { signal } = controller;
-  const resolveToken = async () => (provider === "gdrive" ? (await getValidCloudToken(provider)) ?? token : token);
+  const resolveToken = () =>
+    requireCloudTokenForGeneration(provider, token, generation, signal);
 
   // Immediate pull to catch up on any changes since last session.
   try {
-    await runBackgroundJob({
+    const reconciliation = runBackgroundJob({
       kind: "cloud-sync",
       source: `cloud:${provider}:initial-download`,
       timeoutMs: 180_000,
-      run: () => runInitialCloudDownload(provider, signal, resolveToken),
+      run: () => runStartupCloudReconciliation(provider, signal, resolveToken, generation),
     });
+    await trackCloudOperation(provider, reconciliation);
   } catch (err) {
     if (!signal.aborted && isBackgroundRuntimeDeferredError(err)) {
-      scheduleInitialCloudDownloadRetry(provider, token, err.reason);
+      scheduleInitialCloudDownloadRetry(provider, token, err.reason, generation);
+      return;
     } else if (!signal.aborted) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[CloudSync/${provider}] Initial download failed:`, err);
@@ -1197,12 +1616,15 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
     }
   }
 
+  if (signal.aborted) return;
   if (preserveDestructiveMergeBlock(provider)) return;
 
-  const onRemoteChange = async (binary: Uint8Array) => {
+  const handleRemoteChange = async (binary: Uint8Array) => {
+    if (!isCloudGenerationCurrent(provider, generation, signal)) return;
     try {
       markCloudAttempt(provider, "merge");
       await mergeDoc(binary);
+      if (!isCloudGenerationCurrent(provider, generation, signal)) return;
       console.log("[CloudSync/%s] Merged remote change (%d bytes)", provider, binary.length);
       addDebugEvent("received", `[Cloud/${provider}] remote change`, binary.length);
       markCloudSuccess(provider, {
@@ -1220,6 +1642,7 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
         bytesMoved: binary.length,
       });
     } catch (err) {
+      if (!isCloudGenerationCurrent(provider, generation, signal)) return;
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[CloudSync/${provider}] Merge failed:`, err);
       addDebugEvent("merge_err", `[Cloud/${provider}] merge failed: ${msg}`);
@@ -1235,6 +1658,8 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
       });
     }
   };
+  const onRemoteChange = (binary: Uint8Array) =>
+    trackCloudOperation(provider, handleRemoteChange(binary));
 
   const cloudLog = (level: "info" | "warn" | "error", msg: string) => {
     log[level](msg);
@@ -1243,28 +1668,41 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
     }
   };
 
+  const initialPollToken = await resolveToken();
+  if (!isCloudGenerationCurrent(provider, generation, signal)) return;
   if (provider === "gdrive") {
-    const runGDrivePollLoop = async () => {
-      while (!signal.aborted) {
-        const pollToken = await resolveToken();
+    const runGDrivePollLoop = async (firstToken: string) => {
+      let pollToken = firstToken;
+      while (isCloudGenerationCurrent(provider, generation, signal)) {
         try {
           await gdriveStartPollLoop(pollToken, onRemoteChange, signal, cloudLog, googleDriveFetch);
           return;
         } catch (error) {
-          if (signal.aborted) return;
+          if (!isCloudGenerationCurrent(provider, generation, signal)) return;
           const status = authFailureStatus(error);
           if (status !== 401 && status !== 403) throw error;
-          await refreshCloudTokenAfterAuthFailure(
-            "gdrive",
-            readCloudTokenBundle("gdrive") ?? { accessToken: pollToken },
-            error,
-          );
+          const refreshSnapshot = captureCloudTokenStorage("gdrive");
+          const refreshCredentialRevision = currentCloudCredentialRevision("gdrive");
+          const authBundle = readCloudTokenBundleForAuthFailure("gdrive", pollToken);
+          if (!authBundle) throw createCloudCredentialUnavailableError("gdrive");
+          const refreshed = await refreshCloudTokenAfterAuthFailure("gdrive", authBundle, error);
+          if (!isCloudGenerationCurrent(provider, generation, signal)) {
+            restoreCloudTokenStorageIfStale(
+              "gdrive",
+              refreshSnapshot,
+              refreshed,
+              refreshCredentialRevision,
+            );
+            return;
+          }
+          pollToken = await resolveToken();
+          if (!isCloudGenerationCurrent(provider, generation, signal)) return;
         }
       }
     };
 
-    runGDrivePollLoop().catch(async (err) => {
-      if (!signal.aborted) {
+    runGDrivePollLoop(initialPollToken).catch(async (err) => {
+      if (isCloudGenerationCurrent(provider, generation, signal)) {
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`[cloud/gdrive] poll loop crashed: ${msg}`);
         addDebugEvent("error", `[Cloud/gdrive] poll loop crashed: ${msg}`);
@@ -1280,8 +1718,8 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
       }
     });
   } else {
-    dropboxStartLongpollLoop(token, onRemoteChange, signal, cloudLog).catch(async (err) => {
-      if (!signal.aborted) {
+    dropboxStartLongpollLoop(initialPollToken, onRemoteChange, signal, cloudLog).catch(async (err) => {
+      if (isCloudGenerationCurrent(provider, generation, signal)) {
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`[cloud/dropbox] longpoll loop crashed: ${msg}`);
         addDebugEvent("error", `[Cloud/dropbox] longpoll loop crashed: ${msg}`);
@@ -1300,8 +1738,20 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
 
   // Subscribe to local doc changes so every mutation is uploaded back.
   // Debounced by scheduleCloudUpload. Rapid edits coalesce into one upload.
-  const unsubscribe = subscribe(() => {
-    scheduleCloudUpload(provider);
+  //
+  // P1-01 damper (F01/F06): MERGE_DOC/REPLACE_DOC events are cloud- or
+  // relay-sourced, not user edits. Scheduling unconditionally on them is the
+  // self-sustaining loop — after every safe upload the merge-back emits a
+  // STATE_UPDATE tagged MERGE_DOC, which re-scheduled the next upload
+  // forever. Those events only upload when the heads actually moved past the
+  // last successful upload; every other mutation schedules as before.
+  const unsubscribe = subscribe((_state, event) => {
+    if (!isCloudGenerationCurrent(provider, generation, signal)) return;
+    if (event.mutation === "MERGE_DOC" || event.mutation === "REPLACE_DOC") {
+      void scheduleCloudUploadIfHeadsMoved(provider, generation);
+      return;
+    }
+    scheduleCloudUpload(provider, undefined, generation);
   });
   cloudChangeUnsubscribes.set(provider, unsubscribe);
   updateCloudProvider(provider, {
@@ -1317,8 +1767,13 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
 
 /** Stop the cloud sync loop for a provider. */
 export function stopCloudSync(provider: CloudProvider): void {
+  invalidateCloudGeneration(provider);
   cloudAborts.get(provider)?.abort();
   cloudAborts.delete(provider);
+  for (const controller of cloudTransientAborts.get(provider) ?? []) {
+    controller.abort();
+  }
+  cloudTransientAborts.delete(provider);
   updateCloudProvider(provider, {
     status: "idle",
     stage: "idle",
@@ -1347,7 +1802,7 @@ export function stopCloudSync(provider: CloudProvider): void {
 
 /** Stop all active cloud sync loops. */
 export function stopAllCloudSyncs(): void {
-  for (const provider of cloudAborts.keys()) {
+  for (const provider of ["gdrive", "dropbox"] as const) {
     stopCloudSync(provider);
   }
 }
@@ -1358,12 +1813,35 @@ export function stopAllCloudSyncs(): void {
  * Used during factory reset when the user opts to also wipe cloud storage.
  */
 export async function deleteCloudFile(provider: CloudProvider, token: string): Promise<void> {
-  stopCloudSync(provider);
-  if (provider === "gdrive") {
-    await gdriveDeleteFile(token, googleDriveFetch);
-  } else {
-    await dropboxDeleteFile(token);
+  cloudDeletesInProgress.add(provider);
+  try {
+    stopCloudSync(provider);
+    await waitForCloudSettlement(provider);
+    if (provider === "gdrive") {
+      await gdriveDeleteFile(token, googleDriveFetch);
+    } else {
+      await dropboxDeleteFile(token);
+    }
+    // The cloud no longer holds the recorded state; the P1-01 heads guard must
+    // not suppress the next upload after a reconnect.
+    lastSuccessfulUploadHeadsByProvider.delete(provider);
+  } finally {
+    cloudDeletesInProgress.delete(provider);
   }
+}
+
+/** Delete the active cloud copies, then clear credentials only after all deletions succeed. */
+export async function clearStoredCloudDataForFactoryReset(
+  deleteFromCloud: boolean,
+): Promise<void> {
+  beginFactoryResetCloudCleanup();
+  await clearStoredCloudProvidersForFactoryReset({
+    providers: getActiveProviders(),
+    deleteFromCloud,
+    getStoredToken: getCloudToken,
+    deleteCloudFile,
+    clearStoredCredentials: clearCloudProvider,
+  });
 }
 
 export type CloudConflictWinner = "local" | "cloud";
@@ -1378,12 +1856,16 @@ export async function resolveCloudSyncConflict(
   provider: CloudProvider,
   winner: CloudConflictWinner,
 ): Promise<void> {
-  const token = await getValidCloudToken(provider);
+  const lifecycle = captureCloudLifecycle(provider);
+  const generationBeforeToken = currentCloudGeneration(provider);
+  const token = await resolveCloudTokenForGeneration(provider, undefined, generationBeforeToken);
+  if (!lifecycle.isCurrent()) return;
   if (!token) throw new Error("Cloud token missing. Reconnect the provider.");
 
   const blockedMergeMessage = blockedDestructiveMergeProviders.get(provider);
   blockedDestructiveMergeProviders.delete(provider);
   stopCloudSync(provider);
+  const generation = currentCloudGeneration(provider);
   updateCloudProvider(provider, {
     status: "connected",
     stage: winner === "local" ? "upload" : "download",
@@ -1410,9 +1892,14 @@ export async function resolveCloudSyncConflict(
         timeoutMs: 180_000,
         waitForActiveJobMs: CONFLICT_RECOVERY_ACTIVE_JOB_WAIT_MS,
         run: async () => {
-          await performCloudUpload(provider, token, { authoritativeReplace: true, cause: "manual" });
+          await performCloudUpload(provider, token, {
+            authoritativeReplace: true,
+            cause: "manual",
+            generation,
+          });
         },
       });
+      if (!isCloudGenerationCurrent(provider, generation)) return;
       await startCloudSync(provider, token);
       updateCloudProvider(provider, {
         status: "connected",
@@ -1425,19 +1912,28 @@ export async function resolveCloudSyncConflict(
       return;
     }
 
-    await runBackgroundJob({
+    const controller = new AbortController();
+    const removeTransientAbort = addTransientCloudAbort(provider, controller);
+    const recovery = runBackgroundJob({
       kind: "cloud-sync",
       source: `cloud:${provider}:conflict-cloud-wins`,
       timeoutMs: 180_000,
       waitForActiveJobMs: CONFLICT_RECOVERY_ACTIVE_JOB_WAIT_MS,
       run: async () => {
         const remote = provider === "gdrive"
-          ? await gdriveDownloadLatest(token, undefined, googleDriveFetch)
-          : await dropboxDownloadLatest(token);
+          ? await gdriveDownloadLatest(token, controller.signal, googleDriveFetch)
+          : await dropboxDownloadLatest(token, controller.signal);
+        if (!isCloudGenerationCurrent(provider, generation, controller.signal)) return;
         if (!remote) throw new Error("No cloud backup found.");
         await replaceLocalDoc(remote);
       },
     });
+    try {
+      await trackCloudOperation(provider, recovery);
+    } finally {
+      removeTransientAbort();
+    }
+    if (!isCloudGenerationCurrent(provider, generation)) return;
     await startCloudSync(provider, token);
     updateCloudProvider(provider, {
       status: "connected",
@@ -1448,6 +1944,7 @@ export async function resolveCloudSyncConflict(
     });
     recordCloudStep(provider, "success", "idle", "This device now uses the cloud backup.");
   } catch (error) {
+    if (!isCloudGenerationCurrent(provider, generation)) return;
     if (isBackgroundRuntimeDeferredError(error) && blockedMergeMessage) {
       const pendingReason = formatBackgroundRuntimeDeferredReason(error.reason);
       blockedDestructiveMergeProviders.set(provider, blockedMergeMessage);
@@ -1473,48 +1970,218 @@ export async function resolveCloudSyncConflict(
  */
 const lastUploadHeadsByProvider = new Map<CloudProvider, string>();
 
+/**
+ * Heads represented by the local binary supplied to the last successful
+ * upload, per provider. These must come from the same stable snapshot as the
+ * bytes. Reading live heads after the request can mislabel an edit made while
+ * the upload was in flight as already backed up.
+ *
+ * Distinct from lastUploadHeadsByProvider above, which is attempt-time
+ * telemetry for the cloud_upload_attempt counter and must keep measuring
+ * attempts as they happen.
+ */
+const lastSuccessfulUploadHeadsByProvider = new Map<CloudProvider, string>();
+
+const CLOUD_DOCUMENT_SNAPSHOT_MAX_ATTEMPTS = 3;
+
+interface CloudDocumentSnapshot {
+  binary: Uint8Array;
+  representedHeads: string[] | null;
+  representedHeadsKey: string | null;
+}
+
+function headsKey(heads: string[] | null): string | null {
+  return heads && heads.length > 0 ? heads.join(",") : null;
+}
+
+/** Current doc heads as a comparable key, or null when unavailable. */
+async function currentHeadsKey(): Promise<string | null> {
+  return headsKey(await getDocHeads());
+}
+
+/**
+ * Capture bytes with the heads they represent. The worker serializes these
+ * requests, so equal heads immediately before and after getDocBinary prove
+ * that no document change crossed the binary read. If the document keeps
+ * moving, return the latest bytes without represented heads. That makes the
+ * upload damper fail open and prevents a newer edit from being marked as
+ * already uploaded.
+ */
+async function captureCloudDocumentSnapshot(): Promise<CloudDocumentSnapshot> {
+  let latestBinary: Uint8Array | null = null;
+
+  for (let attempt = 0; attempt < CLOUD_DOCUMENT_SNAPSHOT_MAX_ATTEMPTS; attempt += 1) {
+    let headsBefore: string[] | null;
+    try {
+      headsBefore = await getDocHeads();
+    } catch {
+      return {
+        binary: await getDocBinary(),
+        representedHeads: null,
+        representedHeadsKey: null,
+      };
+    }
+
+    latestBinary = await getDocBinary();
+
+    let headsAfter: string[] | null;
+    try {
+      headsAfter = await getDocHeads();
+    } catch {
+      return {
+        binary: latestBinary,
+        representedHeads: null,
+        representedHeadsKey: null,
+      };
+    }
+
+    const beforeKey = headsKey(headsBefore);
+    const afterKey = headsKey(headsAfter);
+    if (beforeKey !== null && beforeKey === afterKey) {
+      return {
+        binary: latestBinary,
+        representedHeads: headsAfter,
+        representedHeadsKey: afterKey,
+      };
+    }
+  }
+
+  return {
+    binary: latestBinary ?? await getDocBinary(),
+    representedHeads: null,
+    representedHeadsKey: null,
+  };
+}
+
+/**
+ * P1-01 belt-and-suspenders (F01/F06): called for MERGE_DOC/REPLACE_DOC
+ * subscriber events instead of scheduling unconditionally. Schedules only
+ * when the doc heads moved past the last successful upload. A genuine merge
+ * that changed local state still uploads. A safe-upload merge-back with
+ * unchanged heads does not. A merge-back that adds remote heads gets one
+ * conservative follow-up upload.
+ */
+async function scheduleCloudUploadIfHeadsMoved(
+  provider: CloudProvider,
+  generation = currentCloudGeneration(provider),
+): Promise<void> {
+  if (!isCloudGenerationCurrent(provider, generation)) return;
+  try {
+    const headsKey = await currentHeadsKey();
+    if (!isCloudGenerationCurrent(provider, generation)) return;
+    const lastUploaded = lastSuccessfulUploadHeadsByProvider.get(provider) ?? null;
+    if (headsKey !== null && headsKey === lastUploaded) {
+      recordCloudUploadSkipped({ provider, cause: "subscriber", reason: "merge_heads_unchanged" });
+      return;
+    }
+  } catch {
+    // Heads unavailable: prefer a redundant upload over a missed one.
+  }
+  scheduleCloudUpload(provider, undefined, generation);
+}
+
+/** Record only the heads proven to be represented by the uploaded bytes. */
+function recordSuccessfulUploadSnapshot(
+  provider: CloudProvider,
+  snapshot: CloudDocumentSnapshot,
+): void {
+  if (snapshot.representedHeadsKey === null) {
+    // An unproven snapshot must clear any older marker. A redundant upload is
+    // safe, while suppressing an upload for unrepresented edits is not.
+    lastSuccessfulUploadHeadsByProvider.delete(provider);
+    return;
+  }
+  lastSuccessfulUploadHeadsByProvider.set(provider, snapshot.representedHeadsKey);
+}
+
 async function recordCloudUploadAttemptCounters(
   provider: CloudProvider,
   cause: CloudUploadCause,
+  snapshot: CloudDocumentSnapshot,
 ): Promise<void> {
   try {
-    const heads = await getDocHeads();
-    const headsKey = heads && heads.length > 0 ? heads.join(",") : null;
+    const attemptHeadsKey = snapshot.representedHeadsKey;
     const previousKey = lastUploadHeadsByProvider.get(provider) ?? null;
-    if (headsKey !== null) lastUploadHeadsByProvider.set(provider, headsKey);
+    if (attemptHeadsKey !== null) {
+      lastUploadHeadsByProvider.set(provider, attemptHeadsKey);
+    }
     recordCloudUploadAttempt({
       provider,
       cause,
-      headsBefore: heads,
-      headsUnchanged: headsKey !== null && headsKey === previousKey,
+      headsBefore: snapshot.representedHeads,
+      headsUnchanged: attemptHeadsKey !== null && attemptHeadsKey === previousKey,
     });
   } catch {
     // Counters never block or fail an upload.
   }
 }
 
-async function performCloudUpload(
+async function runCloudUpload(
   provider: CloudProvider,
-  token?: string,
-  options: { authoritativeReplace?: boolean; cause?: CloudUploadCause } = {},
+  token: string | undefined,
+  options: {
+    authoritativeReplace?: boolean;
+    cause?: CloudUploadCause;
+    generation: number;
+  },
 ): Promise<void> {
   const startedAt = Date.now();
   let byteLength = 0;
   try {
-    const binary = await getDocBinary();
+    if (!isCloudGenerationCurrent(provider, options.generation)) return;
+    const cause = options.cause ?? "subscriber";
+    // P1-01 damper, execution-time check: the debounced timer may have been
+    // armed by a merge-back event that raced ahead of the post-upload heads
+    // record. Re-check at fire time and skip when nothing moved since the
+    // last successful upload. Manual "Sync now" and authoritative replaces
+    // always upload.
+    if (cause === "subscriber" && !options.authoritativeReplace) {
+      try {
+        const headsKey = await currentHeadsKey();
+        if (!isCloudGenerationCurrent(provider, options.generation)) return;
+        if (headsKey !== null && headsKey === lastSuccessfulUploadHeadsByProvider.get(provider)) {
+          recordCloudUploadSkipped({ provider, cause, reason: "execution_heads_unchanged" });
+          updateCloudProvider(provider, {
+            status: "connected",
+            stage: "idle",
+            statusMessage: "Nothing new to upload.",
+            pendingReason: "Waiting for local document changes or Sync now.",
+          });
+          recordCloudStep(provider, "waiting", "idle", "Skipped upload: no changes since the last upload.");
+          return;
+        }
+      } catch {
+        // Heads unavailable: fall through and upload (redundant beats missed).
+      }
+    }
+    const snapshot = await captureCloudDocumentSnapshot();
+    if (!isCloudGenerationCurrent(provider, options.generation)) return;
+    const { binary } = snapshot;
     byteLength = binary.byteLength;
-    await recordCloudUploadAttemptCounters(provider, options.cause ?? "subscriber");
-    const uploadToken = token ?? await getValidCloudToken(provider);
-    if (!uploadToken) throw new Error("Cloud token missing. Reconnect the provider.");
+    await recordCloudUploadAttemptCounters(provider, cause, snapshot);
+    if (!isCloudGenerationCurrent(provider, options.generation)) return;
+    const uploadToken = await requireCloudTokenForGeneration(
+      provider,
+      token,
+      options.generation,
+    );
+    if (!isCloudGenerationCurrent(provider, options.generation)) return;
     markCloudAttempt(provider, "upload", "Uploading local document to cloud storage.");
     if (provider === "gdrive") {
       const result = options.authoritativeReplace
         ? await gdriveUploadReplace(uploadToken, binary, googleDriveFetch)
         : await gdriveUploadSafe(uploadToken, binary, googleDriveFetch);
+      if (!isCloudGenerationCurrent(provider, options.generation)) return;
       if (result.mergedRemote) {
         markCloudAttempt(provider, "merge", "Merging remote data discovered during upload.");
         await mergeDoc(result.uploadedBinary);
+        if (!isCloudGenerationCurrent(provider, options.generation)) return;
       }
+      // Record the heads represented by the bytes supplied to this request.
+      // A merge-back or local edit that moved beyond that snapshot schedules
+      // one follow-up upload instead of being mistaken for backed-up state.
+      recordSuccessfulUploadSnapshot(provider, snapshot);
+      if (!isCloudGenerationCurrent(provider, options.generation)) return;
       markCloudSuccess(provider, {
         stage: "idle",
         lastUploadAt: Date.now(),
@@ -1533,6 +2200,9 @@ async function performCloudUpload(
       } else {
         await dropboxUploadSafe(uploadToken, binary);
       }
+      if (!isCloudGenerationCurrent(provider, options.generation)) return;
+      recordSuccessfulUploadSnapshot(provider, snapshot);
+      if (!isCloudGenerationCurrent(provider, options.generation)) return;
       markCloudSuccess(provider, {
         stage: "idle",
         lastUploadAt: Date.now(),
@@ -1556,6 +2226,7 @@ async function performCloudUpload(
       bytesMoved: byteLength,
     });
   } catch (err) {
+    if (!isCloudGenerationCurrent(provider, options.generation)) return;
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[CloudSync/${provider}] Upload failed:`, err);
     addDebugEvent("error", `[Cloud/${provider}] upload failed: ${msg}`);
@@ -1573,13 +2244,34 @@ async function performCloudUpload(
   }
 }
 
+function performCloudUpload(
+  provider: CloudProvider,
+  token?: string,
+  options: {
+    authoritativeReplace?: boolean;
+    cause?: CloudUploadCause;
+    generation?: number;
+  } = {},
+): Promise<void> {
+  const generation = options.generation ?? currentCloudGeneration(provider);
+  return trackCloudUpload(
+    provider,
+    runCloudUpload(provider, token, { ...options, generation }),
+  );
+}
+
 /**
  * Schedule a debounced upload for a provider.
  * Called from the worker-backed document subscription so every local change
  * can trigger a cloud backup. Debouncing prevents a flood of uploads during
  * rapid edits.
  */
-export function scheduleCloudUpload(provider: CloudProvider, token?: string): void {
+export function scheduleCloudUpload(
+  provider: CloudProvider,
+  token?: string,
+  generation = currentCloudGeneration(provider),
+): void {
+  if (!isCloudGenerationCurrent(provider, generation)) return;
   if (preserveDestructiveMergeBlock(provider)) return;
 
   const existing = uploadTimers.get(provider);
@@ -1595,6 +2287,7 @@ export function scheduleCloudUpload(provider: CloudProvider, token?: string): vo
 
   const timer = setTimeout(async () => {
     uploadTimers.delete(provider);
+    if (!isCloudGenerationCurrent(provider, generation)) return;
     void scheduleSideEffect({
       queue: "sync",
       source: `cloud:${provider}`,
@@ -1608,8 +2301,9 @@ export function scheduleCloudUpload(provider: CloudProvider, token?: string): vo
           timeoutMs: 180_000,
           waitForActiveJobMs: UPLOAD_ACTIVE_JOB_WAIT_MS,
           waitForActiveJobKinds: UPLOAD_WAIT_FOR_ACTIVE_JOB_KINDS,
-          run: () => performCloudUpload(provider, token),
+          run: () => performCloudUpload(provider, token, { generation }),
         }).catch((error) => {
+          if (!isCloudGenerationCurrent(provider, generation)) return;
           if (isBackgroundRuntimeDeferredError(error)) {
             const delayMs = nextUploadRetryMs(provider, error.reason);
             const displayReason = formatBackgroundRuntimeDeferredReason(error.reason);
@@ -1631,7 +2325,8 @@ export function scheduleCloudUpload(provider: CloudProvider, token?: string): vo
             );
             const retryTimer = setTimeout(() => {
               uploadTimers.delete(provider);
-              scheduleCloudUpload(provider, token);
+              if (!isCloudGenerationCurrent(provider, generation)) return;
+              scheduleCloudUpload(provider, token, generation);
             }, delayMs);
             uploadTimers.set(provider, retryTimer);
             return;
@@ -1650,7 +2345,9 @@ export async function syncCloudProviderNow(provider: CloudProvider): Promise<voi
     throw new Error("Choose which copy should win before cloud sync retries.");
   }
 
-  const token = await getValidCloudToken(provider);
+  const generation = currentCloudGeneration(provider);
+  const token = await resolveCloudTokenForGeneration(provider, undefined, generation);
+  if (!isCloudGenerationCurrent(provider, generation)) return;
   if (!token) throw new Error("Cloud token missing. Reconnect the provider.");
 
   const existingTimer = uploadTimers.get(provider);
@@ -1659,9 +2356,12 @@ export async function syncCloudProviderNow(provider: CloudProvider): Promise<voi
     uploadTimers.delete(provider);
   }
 
-  const activeSignal = cloudAborts.get(provider)?.signal;
-  const controller = activeSignal ? null : new AbortController();
-  const signal = activeSignal ?? controller!.signal;
+  const activeController = cloudAborts.get(provider);
+  const controller = activeController ?? new AbortController();
+  const removeTransientAbort = activeController
+    ? () => {}
+    : addTransientCloudAbort(provider, controller);
+  const signal = controller.signal;
   recordCloudStep(provider, "queued", "idle", "Manual sync requested.");
   updateCloudProvider(provider, {
     status: "connected",
@@ -1672,26 +2372,32 @@ export async function syncCloudProviderNow(provider: CloudProvider): Promise<voi
   });
 
   try {
-    await runBackgroundJob({
+    const download = runBackgroundJob({
       kind: "cloud-sync",
       source: `cloud:${provider}:manual-download`,
       timeoutMs: 180_000,
       waitForActiveJobMs: UPLOAD_ACTIVE_JOB_WAIT_MS,
       waitForActiveJobKinds: UPLOAD_WAIT_FOR_ACTIVE_JOB_KINDS,
-      run: () => runInitialCloudDownload(provider, signal, async () => {
-        const currentToken = provider === "gdrive" ? await getValidCloudToken(provider) : token;
-        return currentToken ?? token;
-      }),
+      run: () => runInitialCloudDownload(provider, signal, () =>
+        requireCloudTokenForGeneration(
+          provider,
+          token,
+          generation,
+          signal,
+        ), generation),
     });
+    await trackCloudOperation(provider, download);
+    if (!isCloudGenerationCurrent(provider, generation, signal)) return;
     await runBackgroundJob({
       kind: "cloud-sync",
       source: `cloud:${provider}:manual-upload`,
       timeoutMs: 180_000,
       waitForActiveJobMs: UPLOAD_ACTIVE_JOB_WAIT_MS,
       waitForActiveJobKinds: UPLOAD_WAIT_FOR_ACTIVE_JOB_KINDS,
-      run: () => performCloudUpload(provider, undefined, { cause: "manual" }),
+      run: () => performCloudUpload(provider, undefined, { cause: "manual", generation }),
     });
   } catch (error) {
+    if (!isCloudGenerationCurrent(provider, generation, signal)) return;
     if (isBackgroundRuntimeDeferredError(error)) {
       const displayReason = formatBackgroundRuntimeDeferredReason(error.reason);
       updateCloudProvider(provider, {
@@ -1703,6 +2409,8 @@ export async function syncCloudProviderNow(provider: CloudProvider): Promise<voi
       recordCloudStep(provider, "deferred", "idle", `Manual sync deferred: ${displayReason}`);
     }
     throw error;
+  } finally {
+    removeTransientAbort();
   }
 }
 
@@ -1710,30 +2418,48 @@ export async function syncCloudProviderNow(provider: CloudProvider): Promise<voi
  * Start cloud sync loops for all providers that have stored tokens.
  * Call this on app startup to resume any previously connected providers.
  */
-export async function startAllCloudSyncs(): Promise<void> {
-  for (const provider of getActiveProviders()) {
-    let token: string | null = null;
-    try {
-      token = await getValidCloudToken(provider);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      log.warn(`[CloudSync] Failed to refresh ${provider} on startup: ${msg}`);
-      addDebugEvent("error", `[Cloud/${provider}] failed to refresh on startup: ${msg}`);
-      void recordProviderHealthEvent({
-        provider,
-        outcome: "error",
-        stage: "auth",
-        reason: msg,
-        finishedAt: Date.now(),
-      });
-      continue;
-    }
+export async function restartCloudSync(provider: CloudProvider): Promise<void> {
+  stopCloudSync(provider);
+  if (hasFactoryResetCloudCleanupBarrier()) return;
+  if (cloudDeletesInProgress.has(provider)) return;
+  const generation = currentCloudGeneration(provider);
+  const controller = new AbortController();
+  cloudAborts.set(provider, controller);
 
-    if (!token) continue;
-    startCloudSync(provider, token).catch((err) => {
+  let token: string | null = null;
+  try {
+    token = await resolveCloudTokenForGeneration(
+      provider,
+      undefined,
+      generation,
+      controller.signal,
+    );
+  } catch (err) {
+    if (!isCloudGenerationCurrent(provider, generation, controller.signal)) return;
+    const msg = err instanceof Error ? err.message : String(err);
+    log.warn(`[CloudSync] Failed to refresh ${provider} on startup: ${msg}`);
+    addDebugEvent("error", `[Cloud/${provider}] failed to refresh on startup: ${msg}`);
+    void recordProviderHealthEvent({
+      provider,
+      outcome: "error",
+      stage: "auth",
+      reason: msg,
+      finishedAt: Date.now(),
+    });
+    return;
+  }
+
+  if (!token || !isCloudGenerationCurrent(provider, generation, controller.signal)) return;
+  await startCloudSync(provider, token);
+}
+
+export async function startAllCloudSyncs(): Promise<void> {
+  if (hasFactoryResetCloudCleanupBarrier()) return;
+  await Promise.all(getActiveProviders().map(async (provider) => {
+    await restartCloudSync(provider).catch((err) => {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[CloudSync] Failed to resume ${provider}:`, err);
       addDebugEvent("error", `[Cloud/${provider}] failed to resume on startup: ${msg}`);
     });
-  }
+  }));
 }

@@ -149,6 +149,7 @@ vi.mock("./media-vault", () => ({
 beforeEach(() => {
   vi.useRealTimers();
   vi.resetModules();
+  window.localStorage.clear();
   mocks.resetStoreState();
   mocks.invoke.mockReset();
   mocks.listen.mockReset();
@@ -1045,6 +1046,70 @@ describe("social capture memory pressure gate", () => {
     expect(result).toEqual([]);
     expect(mocks.prepareSocialScrapeMemory).toHaveBeenCalledWith("facebook", "groups scrape");
     expect(mocks.invoke).not.toHaveBeenCalledWith("fb_scrape_groups", expect.anything());
+  });
+
+  it("stores Facebook group discovery locally without writing synchronized preferences", async () => {
+    allowRendererMemoryPreflight();
+    const groups = [{
+      id: "group-one",
+      name: "North Idaho Life",
+      url: "https://www.facebook.com/groups/group-one",
+    }];
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "fb_scrape_groups") return groups;
+      return null;
+    });
+
+    const { captureFbGroups } = await import("./fb-capture");
+    const { getFacebookGroupDiscovery } = await import("./facebook-group-discovery");
+    await captureFbGroups();
+
+    expect(getFacebookGroupDiscovery()).toEqual({ "group-one": groups[0] });
+    expect(mocks.storeState.updatePreferences).not.toHaveBeenCalled();
+  });
+
+  it("removes a departed group locally and sends only a narrow exclusion patch", async () => {
+    allowRendererMemoryPreflight();
+    mocks.storeState.preferences = {
+      fbCapture: {
+        knownGroups: { legacy: { id: "legacy", name: "Legacy", url: "" } },
+        excludedGroupIds: { "group-one": true },
+      },
+    };
+    const discovery = await import("./facebook-group-discovery");
+    discovery.migrateLegacyFacebookGroupDiscovery({
+      "group-one": {
+        id: "group-one",
+        name: "group-one",
+        url: "https://www.facebook.com/groups/group-one",
+      },
+    });
+    mocks.storeState.updatePreferences.mockClear();
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "fb_scrape_groups") return [];
+      if (command === "fb_check_group_membership") {
+        return {
+          id: "group-one",
+          url: "https://www.facebook.com/groups/group-one",
+          stillJoined: false,
+          reason: "not joined",
+        };
+      }
+      return null;
+    });
+
+    const { captureFbGroups } = await import("./fb-capture");
+    await captureFbGroups();
+
+    expect(discovery.getFacebookGroupDiscovery()).toEqual({});
+    expect(mocks.storeState.updatePreferences).toHaveBeenCalledWith({
+      fbCapture: {
+        excludedGroupIds: {},
+      },
+    });
+    expect(mocks.storeState.updatePreferences.mock.calls[0][0]).not.toHaveProperty(
+      "fbCapture.knownGroups",
+    );
   });
 
   it("returns Instagram memory diagnostics before invoking the native scraper", async () => {

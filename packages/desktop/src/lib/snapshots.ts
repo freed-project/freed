@@ -17,6 +17,10 @@ import {
   isBackgroundRuntimeDeferredError,
   runBackgroundJob,
 } from "./background-runtime-coordinator.js";
+import {
+  isFactoryResetInProgress,
+  waitForFactoryResetDrain,
+} from "@freed/ui/lib/factory-reset";
 
 export type SnapshotReason = "auto" | "manual";
 
@@ -53,13 +57,28 @@ const SNAPSHOT_FALLBACK_STORAGE_KEY = "freed.snapshots";
 const MAX_SNAPSHOTS = 24;
 const AUTO_SNAPSHOT_DEBOUNCE_MS = 30_000;
 const AUTO_SNAPSHOT_MIN_INTERVAL_MS = 60 * 60 * 1000;
+const FACTORY_RESET_DRAIN_TIMEOUT_MS = 180_000;
 
 let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
 let snapshotUnsubscribe: (() => void) | null = null;
 let lastSnapshotAt = 0;
 let snapshotManagerStarted = false;
+let snapshotResetInProgress = false;
+const activeSnapshotOperations = new Set<Promise<unknown>>();
 
 const snapshotListeners = new Set<() => void>();
+
+function trackSnapshotOperation<T>(operation: () => Promise<T>): Promise<T> {
+  if (snapshotResetInProgress || isFactoryResetInProgress()) {
+    return Promise.reject(new Error("Snapshots are being reset"));
+  }
+  let tracked: Promise<T>;
+  tracked = Promise.resolve()
+    .then(operation)
+    .finally(() => activeSnapshotOperations.delete(tracked));
+  activeSnapshotOperations.add(tracked);
+  return tracked;
+}
 
 function joinPath(base: string, ...parts: string[]): string {
   const clean = [base, ...parts].map((part, index) => {
@@ -243,7 +262,7 @@ export async function listSnapshots(): Promise<SnapshotSummary[]> {
   return filtered;
 }
 
-export async function createSnapshot(
+async function createSnapshotInternal(
   reason: SnapshotReason = "manual",
 ): Promise<SnapshotSummary | null> {
   const state = getDocState();
@@ -308,6 +327,12 @@ export async function createSnapshot(
   return summary;
 }
 
+export function createSnapshot(
+  reason: SnapshotReason = "manual",
+): Promise<SnapshotSummary | null> {
+  return trackSnapshotOperation(() => createSnapshotInternal(reason));
+}
+
 function scheduleAutoSnapshot(): void {
   if (snapshotTimer) {
     clearTimeout(snapshotTimer);
@@ -339,7 +364,7 @@ function scheduleAutoSnapshot(): void {
   }, AUTO_SNAPSHOT_DEBOUNCE_MS);
 }
 
-export async function restoreSnapshot(snapshotId: string): Promise<SnapshotSummary> {
+async function restoreSnapshotInternal(snapshotId: string): Promise<SnapshotSummary> {
   if (!canUseNativeSnapshotStorage()) {
     const snapshot = readBrowserSnapshotState().snapshots.find((entry) => entry.summary.id === snapshotId);
     if (!snapshot) {
@@ -374,30 +399,35 @@ export async function restoreSnapshot(snapshotId: string): Promise<SnapshotSumma
   return snapshot;
 }
 
+export function restoreSnapshot(snapshotId: string): Promise<SnapshotSummary> {
+  return trackSnapshotOperation(() => restoreSnapshotInternal(snapshotId));
+}
+
 export async function clearSnapshots(): Promise<void> {
-  if (!canUseNativeSnapshotStorage()) {
-    try {
+  snapshotResetInProgress = true;
+  try {
+    await waitForFactoryResetDrain(
+      () => Array.from(activeSnapshotOperations),
+      "Snapshot operations",
+      FACTORY_RESET_DRAIN_TIMEOUT_MS,
+    );
+    if (!canUseNativeSnapshotStorage()) {
       window.localStorage.removeItem(SNAPSHOT_FALLBACK_STORAGE_KEY);
-    } catch {
-      // Ignore preview fallback removal failures.
+    } else {
+      const root = await ensureSnapshotDir();
+      const files = await readDir(root);
+
+      await Promise.all(
+        files
+          .map((entry) => entry.name)
+          .filter((name): name is string => Boolean(name))
+          .map((name) => remove(joinPath(root, name))),
+      );
     }
-
     lastSnapshotAt = 0;
-    notifySnapshotListeners();
-    return;
+  } finally {
+    snapshotResetInProgress = false;
   }
-
-  const root = await ensureSnapshotDir();
-  const files = await readDir(root).catch(() => []);
-
-  await Promise.allSettled(
-    files
-      .map((entry) => entry.name)
-      .filter((name): name is string => Boolean(name))
-      .map((name) => remove(joinPath(root, name))),
-  );
-
-  lastSnapshotAt = 0;
   notifySnapshotListeners();
 }
 

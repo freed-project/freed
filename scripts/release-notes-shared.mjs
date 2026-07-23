@@ -201,6 +201,7 @@ export function applyPinnedHighlightsToRelease(rawRelease = {}, pinnedHighlights
       ...release.followUps,
     ].filter(Boolean);
     if (
+      areNearDuplicates(release.deck, pinnedText) ||
       visibleItems.some(
         (item) =>
           normalizeReleaseText(item).toLowerCase() ===

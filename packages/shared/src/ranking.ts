@@ -255,8 +255,14 @@ export function matchesFeedFilter(
     if (item.userState.archived) return false;
   }
 
-  // Filter by platform
-  if (options.platform && item.platform !== options.platform) return false;
+  // Provider-classified RSS items remain visible in Feeds after identity
+  // reconciliation promotes their platform to a first-class source.
+  if (options.platform) {
+    const matchesPlatform = options.platform === "rss"
+      ? item.platform === "rss" || Boolean(item.rssSource)
+      : item.platform === options.platform;
+    if (!matchesPlatform) return false;
+  }
   if (options.authorId && item.author.id !== options.authorId) return false;
   if (options.feedUrl && item.rssSource?.feedUrl !== options.feedUrl) return false;
 

@@ -12,7 +12,7 @@
 import { Store, load } from "@tauri-apps/plugin-store";
 import { scheduleSideEffect } from "./side-effect-scheduler";
 
-type ApiKeyProvider = "openai" | "anthropic" | "gemini";
+type ApiKeyProvider = "openai" | "anthropic" | "gemini" | "github_story_wall";
 
 // Singleton store instance -- lazy-initialized on first use
 let _store: Store | null = null;
@@ -73,4 +73,5 @@ export const secureStorage = {
       },
     });
   },
+
 };

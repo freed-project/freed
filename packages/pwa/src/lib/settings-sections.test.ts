@@ -11,6 +11,9 @@ const BASE_AVAILABILITY = {
   hasFacebook: false,
   hasInstagram: false,
   hasLinkedIn: false,
+  hasSubstack: false,
+  hasMedium: false,
+  hasYouTube: false,
   hasUpdateChecks: false,
   hasFactoryReset: false,
 };
@@ -68,5 +71,25 @@ describe("settings section availability", () => {
     expect(statusOnly?.keywords).not.toContain("opml");
     expect(managed?.keywords).toContain("add feed");
     expect(managed?.keywords).toContain("opml");
+  });
+
+  it("shows YouTube only when the platform provides its integration settings", () => {
+    expect(buildSettingsSectionMetas(BASE_AVAILABILITY).map((section) => section.id))
+      .not.toContain("youtube");
+    expect(buildSettingsSectionMetas({
+      ...BASE_AVAILABILITY,
+      hasYouTube: true,
+    }).map((section) => section.id)).toContain("youtube");
+  });
+
+  it("marks authenticated essay providers as beta when available", () => {
+    const sections = buildSettingsSectionMetas({
+      ...BASE_AVAILABILITY,
+      hasSubstack: true,
+      hasMedium: true,
+    });
+
+    expect(sections.find((section) => section.id === "substack")?.stage).toBe("beta");
+    expect(sections.find((section) => section.id === "medium")?.stage).toBe("beta");
   });
 });

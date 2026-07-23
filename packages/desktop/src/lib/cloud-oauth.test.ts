@@ -128,6 +128,43 @@ describe("desktop Google OAuth", () => {
     });
   });
 
+  it("does not open a provider when reset begins while the callback server starts", async () => {
+    let finishServer!: (port: number) => void;
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "start_oauth_server") {
+        return new Promise<number>((resolve) => {
+          finishServer = resolve;
+        });
+      }
+      return Promise.resolve(null);
+    });
+    const { initiateDesktopOAuth, quiesceDesktopOAuthForFactoryReset } = await import("./sync");
+    const oauth = initiateDesktopOAuth("gdrive");
+    await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("start_oauth_server"));
+
+    const quiesce = quiesceDesktopOAuthForFactoryReset();
+    finishServer(45555);
+
+    await expect(oauth).rejects.toMatchObject({ name: "AbortError" });
+    await quiesce;
+    expect(shellOpenMock).not.toHaveBeenCalled();
+  });
+
+  it("aborts a pending callback without starting token exchange", async () => {
+    shellOpenMock.mockResolvedValue(undefined);
+    const { initiateDesktopOAuth, quiesceDesktopOAuthForFactoryReset } = await import("./sync");
+    const oauth = initiateDesktopOAuth("gdrive");
+    await vi.waitFor(() => expect(shellOpenMock).toHaveBeenCalledOnce());
+
+    const quiesce = quiesceDesktopOAuthForFactoryReset();
+
+    await expect(oauth).rejects.toMatchObject({ name: "AbortError" });
+    await quiesce;
+    expect(invokeMock.mock.calls.map(([command]) => command)).toEqual([
+      "start_oauth_server",
+    ]);
+  });
+
   it("uses the default Google token proxy when the proxy URL env is empty", async () => {
     vi.stubEnv("VITE_GDRIVE_TOKEN_PROXY_URL", "");
     const oauthCalls = await completeGoogleOAuth();
@@ -339,6 +376,45 @@ describe("desktop Google OAuth", () => {
     expect(getActiveProviders()).toEqual(["gdrive"]);
   });
 
+  it.each([
+    ["malformed JSON", "{corrupt-cloud-credentials"],
+    [
+      "an invalid expiry",
+      JSON.stringify({ accessToken: "metadata-token", expiresAt: "never" }),
+    ],
+  ])("fails closed for %s and preserves the exact cloud credential record", async (_case, raw) => {
+    localStorage.setItem("freed_cloud_token_gdrive", "legacy-token");
+    localStorage.setItem("freed_cloud_token_meta_gdrive", raw);
+
+    const { getActiveProviders, getCloudToken, getValidCloudToken } = await import("./sync");
+
+    expect(getCloudToken("gdrive")).toBeNull();
+    await expect(getValidCloudToken("gdrive")).resolves.toBeNull();
+    expect(getActiveProviders()).toEqual([]);
+    expect(localStorage.getItem("freed_cloud_token_meta_gdrive")).toBe(raw);
+    expect(localStorage.getItem("freed_cloud_token_gdrive")).toBe("legacy-token");
+  });
+
+  it("lets an explicit reconnect replace a corrupt cloud credential record", async () => {
+    const raw = "{corrupt-cloud-credentials";
+    localStorage.setItem("freed_cloud_token_gdrive", "legacy-token");
+    localStorage.setItem("freed_cloud_token_meta_gdrive", raw);
+
+    const { getCloudToken, storeCloudToken } = await import("./sync");
+    storeCloudToken("gdrive", {
+      accessToken: "replacement-token",
+      refreshToken: "replacement-refresh",
+      expiresAt: Date.now() + 60_000,
+    });
+
+    expect(getCloudToken("gdrive")).toBe("replacement-token");
+    expect(localStorage.getItem("freed_cloud_token_gdrive")).toBe("replacement-token");
+    expect(JSON.parse(localStorage.getItem("freed_cloud_token_meta_gdrive") ?? "{}")).toMatchObject({
+      accessToken: "replacement-token",
+      refreshToken: "replacement-refresh",
+    });
+  });
+
   it("does not immediately refresh again when the token proxy omits expires_in", async () => {
     const oauthCalls: Array<{ url: string; body: string; contentType: string }> = [];
     invokeMock.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
@@ -397,7 +473,7 @@ describe("desktop Google OAuth", () => {
     expect(invokeMock).not.toHaveBeenCalledWith("google_oauth_proxy_request", expect.anything());
   });
 
-  it("surfaces Google token response bodies from proxy failures", async () => {
+  it("maps Google token response bodies to controlled failure summaries", async () => {
     vi.stubEnv("VITE_GDRIVE_TOKEN_PROXY_URL", "");
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "start_oauth_server") return 45555;
@@ -407,7 +483,8 @@ describe("desktop Google OAuth", () => {
           headers: [["content-type", "application/json"]],
           body: Array.from(new TextEncoder().encode(JSON.stringify({
             error: "invalid_scope",
-            error_description: "Contacts API has not been enabled.",
+            error_description:
+              "Contacts API failed for access_token=oauth-secret user@example.com refresh_token=refresh-secret.",
           }))),
         };
       }
@@ -423,12 +500,16 @@ describe("desktop Google OAuth", () => {
 
     const { initiateDesktopOAuth } = await import("./sync");
 
-    await expect(initiateDesktopOAuth("gdrive")).rejects.toThrow(
-      "Google token proxy failed (400): Contacts API has not been enabled.",
-    );
+    const error = await initiateDesktopOAuth("gdrive").catch((failure: unknown) => failure);
+    expect(error).toMatchObject({
+      message: "Google token proxy failed. Google rejected one or more requested permissions.",
+    });
+    expect((error as Error).message).not.toContain("oauth-secret");
+    expect((error as Error).message).not.toContain("refresh-secret");
+    expect((error as Error).message).not.toContain("user@example.com");
   });
 
-  it("keeps non-JSON Google token failures actionable", async () => {
+  it("does not expose non-JSON Google token failures", async () => {
     vi.stubEnv("VITE_GDRIVE_TOKEN_PROXY_URL", "");
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "start_oauth_server") return 45555;
@@ -436,7 +517,9 @@ describe("desktop Google OAuth", () => {
         return {
           status: 502,
           headers: [["content-type", "text/html"]],
-          body: Array.from(new TextEncoder().encode("<html>bad gateway</html>")),
+          body: Array.from(new TextEncoder().encode(
+            "<html>bad gateway access_token=oauth-secret user@example.com</html>",
+          )),
         };
       }
       return null;
@@ -451,9 +534,74 @@ describe("desktop Google OAuth", () => {
 
     const { initiateDesktopOAuth } = await import("./sync");
 
-    await expect(initiateDesktopOAuth("gdrive")).rejects.toThrow(
-      "Google token proxy failed (502): <html>bad gateway</html>",
-    );
+    const error = await initiateDesktopOAuth("gdrive").catch((failure: unknown) => failure);
+    expect(error).toMatchObject({
+      message: "Google token proxy failed. Google OAuth is temporarily unavailable.",
+    });
+    expect((error as Error).message).not.toContain("oauth-secret");
+    expect((error as Error).message).not.toContain("user@example.com");
+  });
+
+  it.each([
+    {
+      status: 401,
+      error: "invalid_grant",
+      expected: "Google token proxy failed. Reconnect Google Drive and try again.",
+    },
+    {
+      status: 403,
+      error: "unknown",
+      expected: "Google token proxy failed. Reconnect Google Drive and try again.",
+    },
+    {
+      status: 429,
+      error: "rate_limited",
+      expected: "Google token proxy failed. Google is temporarily limiting OAuth requests.",
+    },
+    {
+      status: 503,
+      error: "server_error",
+      expected: "Google token proxy failed. Google OAuth is temporarily unavailable.",
+    },
+    {
+      status: 418,
+      error: "unknown",
+      expected: "Google token proxy failed. Google rejected the OAuth request.",
+    },
+  ])("maps Google OAuth status $status without retaining provider text", async ({
+    status,
+    error: errorCode,
+    expected,
+  }) => {
+    vi.stubEnv("VITE_GDRIVE_TOKEN_PROXY_URL", "");
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "start_oauth_server") return 45555;
+      if (cmd === "google_oauth_proxy_request") {
+        return {
+          status,
+          headers: [["content-type", "application/json"]],
+          body: Array.from(new TextEncoder().encode(JSON.stringify({
+            error: errorCode,
+            error_description: "access_token=category-secret user@example.com",
+          }))),
+        };
+      }
+      return null;
+    });
+    shellOpenMock.mockImplementation(async (authUrl: string) => {
+      const state = new URL(authUrl).searchParams.get("state");
+      if (!state) throw new Error("Missing OAuth state");
+      queueMicrotask(() => {
+        oauthListener?.({ payload: { code: "auth-code", state } });
+      });
+    });
+
+    const { initiateDesktopOAuth } = await import("./sync");
+    const failure = await initiateDesktopOAuth("gdrive").catch((cause: unknown) => cause);
+
+    expect(failure).toMatchObject({ message: expected });
+    expect((failure as Error).message).not.toContain("category-secret");
+    expect((failure as Error).message).not.toContain("user@example.com");
   });
 
   it("explains Google token proxy client secret failures", async () => {

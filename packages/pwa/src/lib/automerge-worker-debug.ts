@@ -36,3 +36,8 @@ export function persistWorkerDebugEvent(event: Omit<PersistedWorkerDebugEvent, "
     // Diagnostics should never affect sync behavior.
   }
 }
+
+/** Remove persisted worker diagnostics during a destructive local reset. */
+export function clearPersistedWorkerDebugEvents(): void {
+  window.localStorage.removeItem(WORKER_DEBUG_STORAGE_KEY);
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Freed Provider Risk Review"
+  short_description: "Prepare scoped provider behavior approvals"
+  default_prompt: "Use $freed-provider-risk-review to prepare a scoped approval packet for this provider-visible change."

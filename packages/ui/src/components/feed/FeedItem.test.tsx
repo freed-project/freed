@@ -76,6 +76,8 @@ const platformConfig = {
   FacebookSettingsContent: null,
   InstagramSettingsContent: null,
   LinkedInSettingsContent: null,
+  SubstackSettingsContent: null,
+  MediumSettingsContent: null,
   GoogleContactsSettingsContent: null,
 } as unknown as PlatformConfig;
 

@@ -20,6 +20,8 @@ import type {
   BugReportIssueType,
   FeedItem,
   GeneratedBugReportBundle,
+  PrivateVulnerabilityReportPayload,
+  PrivateVulnerabilityReportResult,
   ImportProgress,
   LocalAIModelId,
   LocalAIHardwareProfile,
@@ -127,6 +129,9 @@ export interface BugReportingConfig {
     privacyTier: ReportPrivacyTier;
   }) => Promise<GeneratedBugReportBundle>;
   exportBundle?: (bundle: GeneratedBugReportBundle) => Promise<void>;
+  submitPrivateReport?: (
+    payload: PrivateVulnerabilityReportPayload,
+  ) => Promise<PrivateVulnerabilityReportResult>;
   openUrl?: (url: string) => void;
 }
 
@@ -164,6 +169,17 @@ export interface ReaderHydrationResult {
 
 export interface SaveUrlResult {
   globalId: string;
+}
+
+export interface YouTubeOfflinePlaylistResult {
+  playlistId: string;
+  playlistUrl: string;
+  added: boolean;
+}
+
+export interface YouTubeControls {
+  /** Add one deliberate video selection to the user's private Freed Offline playlist. */
+  addToOfflinePlaylist: (videoUrl: string) => Promise<YouTubeOfflinePlaylistResult>;
 }
 
 export interface LocalAIModelDownloadProgress {
@@ -280,6 +296,19 @@ export interface PlatformConfig {
    */
   LinkedInSettingsContent: ComponentType<SyncProviderSectionProps> | null;
 
+  /** Content rendered in the Settings > Sources > Substack beta section. */
+  SubstackSettingsContent: ComponentType<SyncProviderSectionProps> | null;
+
+  /** Content rendered in the Settings > Sources > Medium beta section. */
+  MediumSettingsContent: ComponentType<SyncProviderSectionProps> | null;
+
+  /**
+   * Content rendered in the Settings > Sources > YouTube section.
+   * The PWA owns OAuth and subscription import. Synced items remain available
+   * on every Freed surface.
+   */
+  YouTubeSettingsContent?: ComponentType<SyncProviderSectionProps> | null;
+
   /**
    * Content rendered in the Settings > Sources > Google Contacts section.
    * When null, the Google Contacts section is omitted from settings entirely.
@@ -320,11 +349,16 @@ export interface PlatformConfig {
 
   /**
    * Perform a factory reset on this device.
-   * Wipes IndexedDB + localStorage. When `deleteFromCloud` is true, also
-   * deletes the sync file from the active cloud provider before clearing.
-   * Always ends with `location.reload()`.
+   * Clears the local library and selected device preferences, then disconnects
+   * active accounts. Request safeguards and certain downloaded files remain local.
+   * Cloud data stays available for restoration after reconnecting unless
+   * `deleteFromCloud` is true.
+   * A successful reset ends with a process or page reload.
    */
   factoryReset?: (deleteFromCloud: boolean) => Promise<void>;
+
+  /** Whether a factory reset revokes existing mobile reader pairings. */
+  factoryResetRevokesMobilePairing?: boolean;
 
   /**
    * Return a human-readable label for the currently active cloud provider
@@ -340,6 +374,9 @@ export interface PlatformConfig {
    * If absent, FeedView falls back to window.open().
    */
   openUrl?: (url: string) => void;
+
+  /** Optional authenticated YouTube actions for the shared reader. */
+  youtube?: YouTubeControls;
 
   /**
    * Fetch full preserved article text for a specific item from local platform
@@ -422,6 +459,9 @@ export interface PlatformConfig {
 
   /** Device-local optional model downloads for offline AI. */
   localAIModels?: LocalAIModelControls;
+
+  /** Check the configured Ollama endpoint through the host telemetry boundary. */
+  checkOllamaReachable?: (ollamaUrl: string) => Promise<boolean>;
 
   /** Import an Instagram Accounts Center export into the device-local media vault. */
   importInstagramStoryWallArchive?: (files: FileList) => Promise<StoryWallImportSummary>;

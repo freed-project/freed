@@ -1,0 +1,19 @@
+{
+  "channel": "dev",
+  "dayKey": "26.7.12",
+  "date": "2026-07-12",
+  "preferredDeck": "YouTube now gets out of the way as soon as sign-in succeeds while your first subscription sync continues quietly",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [
+    "Hide the YouTube login window immediately after authentication while the first subscription sync continues in the background.",
+    "Keep later YouTube syncs and Freed Offline playlist actions inside the persistent hidden session."
+  ],
+  "editorialNotes": [
+    "Keep the internal Automerge worker memory harness out of user-facing notes."
+  ],
+  "updatedAt": "2026-07-12T21:51:33.317Z"
+}

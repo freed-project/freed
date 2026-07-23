@@ -133,6 +133,7 @@ declare module "@tauri-apps/plugin-store" {
     get<T>(key: string): Promise<T | null>;
     set(key: string, value: unknown): Promise<void>;
     delete(key: string): Promise<boolean>;
+    clear(): Promise<void>;
     save(): Promise<void>;
   }
   /** Create or load a persisted key-value store at the given path. */

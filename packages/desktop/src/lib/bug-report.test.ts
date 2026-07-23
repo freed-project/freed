@@ -41,6 +41,7 @@ describe("desktop bug reporting", () => {
       fbAuth: { isAuthenticated: false },
       igAuth: { isAuthenticated: false },
       liAuth: { isAuthenticated: false },
+      ytAuth: { isAuthenticated: false },
     } as never);
     mockInvoke.mockImplementation(async (command: string) => {
       if (command === "get_platform") return "macos";

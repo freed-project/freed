@@ -41,7 +41,7 @@ function makeItem(overrides: Partial<FeedItem> = {}): FeedItem {
 }
 
 describe("feed text compaction", () => {
-  it("caps synced feed body text and strips local html", () => {
+  it("caps synced text while retaining legacy reader html", () => {
     const item = makeItem({
       content: {
         text: "a".repeat(SYNC_CONTENT_TEXT_LIMIT + 50),
@@ -62,13 +62,26 @@ describe("feed text compaction", () => {
 
     expect(item.content.text).toHaveLength(SYNC_CONTENT_TEXT_LIMIT);
     expect(item.preservedContent?.text).toHaveLength(SYNC_PRESERVED_TEXT_LIMIT);
-    expect(item.preservedContent).not.toHaveProperty("html");
+    expect(item.preservedContent?.html).toBe("<article>local only</article>");
     expect(summary).toMatchObject({
       scanned: 1,
       changed: 1,
       contentTextTrimmed: 50,
       preservedTextTrimmed: 75,
-      htmlFieldsRemoved: 1,
+    });
+  });
+
+  it("does not treat legacy reader html as a compaction target", () => {
+    const item = makeItem();
+
+    const summary = compactFeedItemTextForSync(item);
+
+    expect(item.preservedContent?.html).toBe("<article>full</article>");
+    expect(summary).toMatchObject({
+      scanned: 1,
+      changed: 0,
+      contentTextTrimmed: 0,
+      preservedTextTrimmed: 0,
     });
   });
 
@@ -91,7 +104,6 @@ describe("feed text compaction", () => {
       changed: 0,
       contentTextTrimmed: 0,
       preservedTextTrimmed: 0,
-      htmlFieldsRemoved: 0,
     });
   });
 
@@ -108,9 +120,8 @@ describe("feed text compaction", () => {
     ]);
 
     expect(summary.scanned).toBe(2);
-    expect(summary.changed).toBe(2);
+    expect(summary.changed).toBe(1);
     expect(summary.contentTextTrimmed).toBe(10);
-    expect(summary.htmlFieldsRemoved).toBe(2);
-    expect(formatFeedTextCompactionSummary(summary)).toContain("2 of 2 items compacted");
+    expect(formatFeedTextCompactionSummary(summary)).toContain("1 of 2 items compacted");
   });
 });

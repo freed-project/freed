@@ -1,4 +1,5 @@
 import type { Account, Person } from "./types.js";
+import { isPersonLikeSocialAccount } from "./social-account-validity.js";
 
 export interface ProvisionalPersonCandidate {
   person: Person;
@@ -25,6 +26,8 @@ const SOCIAL_GRAPH_PROVIDERS = new Set<Account["provider"]>([
   "facebook",
   "x",
   "linkedin",
+  "substack",
+  "medium",
 ]);
 
 const ORGANIZATION_KEYWORDS = new Set([
@@ -72,6 +75,32 @@ function normalizeIdentityName(value: string | null | undefined): string {
       .replace(/[@._-]+/g, " ")
       .replace(/[^a-z0-9\s']/g, " ")
   );
+}
+
+export function provisionalPersonRepairSignature(
+  persons: Record<string, Person>,
+  accounts: Record<string, Account>,
+): string {
+  const personIdentity = Object.values(persons)
+    .map((person) => [person.id, normalizeIdentityName(person.name)])
+    .sort((left, right) => left[0].localeCompare(right[0]));
+  const accountIdentity = Object.values(accounts)
+    .filter(
+      (account) =>
+        account.kind === "social" && SOCIAL_GRAPH_PROVIDERS.has(account.provider),
+    )
+    .map((account) => [
+      account.id,
+      account.personId ?? "",
+      account.provider,
+      account.externalId,
+      account.handle ?? "",
+      account.displayName ?? "",
+      account.profileUrl ?? "",
+      [...(account.followRosterRoles ?? [])].sort().join(","),
+    ])
+    .sort((left, right) => left[0].localeCompare(right[0]));
+  return JSON.stringify([personIdentity, accountIdentity]);
 }
 
 function titleCaseWord(word: string): string {
@@ -166,7 +195,12 @@ export function buildProvisionalPersonCandidates(
   const grouped = new Map<string, string[]>();
 
   for (const account of Object.values(accounts)) {
-    if (account.kind !== "social" || account.personId || !SOCIAL_GRAPH_PROVIDERS.has(account.provider)) {
+    if (
+      account.kind !== "social" ||
+      account.personId ||
+      !SOCIAL_GRAPH_PROVIDERS.has(account.provider) ||
+      !isPersonLikeSocialAccount(account)
+    ) {
       continue;
     }
     const humanName = humanNameForAccount(account);

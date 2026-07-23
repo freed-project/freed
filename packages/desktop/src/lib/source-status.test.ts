@@ -34,6 +34,9 @@ function health(
       facebook: providerSnapshot("facebook"),
       instagram: providerSnapshot("instagram"),
       linkedin: providerSnapshot("linkedin"),
+      substack: providerSnapshot("substack"),
+      medium: providerSnapshot("medium"),
+      youtube: providerSnapshot("youtube"),
       gdrive: providerSnapshot("gdrive"),
       dropbox: providerSnapshot("dropbox"),
       ...overrides,
@@ -93,5 +96,45 @@ describe("desktop source status", () => {
 
     expect(status?.tone).toBe("critical");
     expect(status?.label).toBe("Reconnect required");
+  });
+
+  it("projects the authenticated YouTube session and active capture state", () => {
+    const status = getDesktopSourceStatus(
+      "youtube",
+      sourceState({
+        ytAuth: { isAuthenticated: true },
+        providerSyncCounts: { youtube: 1 },
+      }),
+      health({
+        youtube: providerSnapshot("youtube", {
+          status: "healthy",
+          lastOutcome: "success",
+          lastSuccessfulAt: Date.now(),
+        }),
+      }),
+    );
+
+    expect(status?.tone).toBe("healthy");
+    expect(status?.syncing).toBe(true);
+  });
+
+  it("projects authenticated beta source health and active sync state", () => {
+    const status = getDesktopSourceStatus(
+      "substack",
+      sourceState({
+        substackAuth: { isAuthenticated: true },
+        providerSyncCounts: { substack: 1 },
+      }),
+      health({
+        substack: providerSnapshot("substack", {
+          status: "healthy",
+          lastOutcome: "success",
+          lastSuccessfulAt: Date.now(),
+        }),
+      }),
+    );
+
+    expect(status?.tone).toBe("healthy");
+    expect(status?.syncing).toBe(true);
   });
 });

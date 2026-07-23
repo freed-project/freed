@@ -3,5 +3,10 @@
   "framework": "vite",
   "buildCommand": "PATH=../../node_modules/.bin:$PATH npm run build",
   "outputDirectory": "dist",
+  "functions": {
+    "api/security-report.ts": {
+      "includeFiles": "../../packages/shared/src/redact-sensitive.ts"
+    }
+  },
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
 }

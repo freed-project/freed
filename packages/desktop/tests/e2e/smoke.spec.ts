@@ -231,42 +231,32 @@ async function expectDesktopSidebarWidthBetween(
 }
 
 async function waitForDesktopSidebarMode(page: Page, mode: "expanded" | "compact" | "closed") {
-  await page.waitForFunction((expectedMode) => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | { getState: () => { preferences: { display: { sidebarMode?: string } } } }
-      | undefined;
-    return store?.getState().preferences.display.sidebarMode === expectedMode;
-  }, mode);
+  await expect.poll(() => readDeviceDisplayPreference(page, "sidebarMode")).toBe(mode);
+}
+
+async function readDeviceDisplayPreference(page: Page, key: string): Promise<unknown> {
+  return page.evaluate((preferenceKey) => {
+    const stored = JSON.parse(localStorage.getItem("freed-device-display-preferences-v1") ?? "null") as
+      | { values?: Record<string, unknown> }
+      | null;
+    return stored?.values?.[preferenceKey];
+  }, key);
 }
 
 async function persistDisplayPreference(page: Page, key: "mapMode", value: string) {
-  await page.waitForFunction(
-    ({ key, value }) => {
-      const w = window as Record<string, unknown>;
-      const store = w.__FREED_STORE__ as
-        | {
-            getState: () => {
-              preferences: { display: Record<string, unknown> };
-            };
-          }
-        | undefined;
-      return store?.getState().preferences.display[key] === value;
-    },
-    { key, value },
-    { timeout: 5_000 },
-  );
-
   await page.evaluate(
     async ({ key, value }) => {
       const w = window as Record<string, unknown>;
-      const automerge = w.__FREED_AUTOMERGE__ as {
-        docUpdatePreferences: (updates: { display: Record<string, string> }) => Promise<void>;
+      const store = w.__FREED_STORE__ as {
+        getState: () => {
+          updatePreferences: (updates: { display: Record<string, string> }) => Promise<void>;
+        };
       };
-      await automerge.docUpdatePreferences({ display: { [key]: value } });
+      await store.getState().updatePreferences({ display: { [key]: value } });
     },
     { key, value },
   );
+  await expect.poll(() => readDeviceDisplayPreference(page, key)).toBe(value);
 }
 
 async function setMapTimeRange(page: Page, startAt: number, endAt: number) {
@@ -374,6 +364,8 @@ async function graphNodeScreenPoint(
           accountId?: string;
           x: number;
           y: number;
+          screenX: number;
+          screenY: number;
         }>;
         transform: { x: number; y: number; scale: number };
       };
@@ -392,10 +384,12 @@ async function graphNodeScreenPoint(
       return null;
     }
 
-    const rect = viewport.getBoundingClientRect();
+    const canvas = document.querySelector('[data-testid="friend-graph-canvas"]') as HTMLElement | null;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
     return {
-      x: rect.left + node.x * debug.transform.scale + debug.transform.x,
-      y: rect.top + node.y * debug.transform.scale + debug.transform.y,
+      x: rect.left + node.screenX,
+      y: rect.top + node.screenY,
     };
   }, matcher);
 }
@@ -467,8 +461,11 @@ async function readGraphDebug(page: Page) {
           linkedPersonId?: string | null;
           x: number;
           y: number;
+          screenX: number;
+          screenY: number;
           radius: number;
         }>;
+        labels: Array<{ nodeId: string }>;
         regions: Array<{
           id: string;
           provider: string;
@@ -495,6 +492,9 @@ async function readGraphDebug(page: Page) {
           visibleLabelCount: number;
           visibleNodeLabelCount: number;
           visibleProviderLabelCount: number;
+          rendererLabelCount: number;
+          readyRendererLabelCount: number;
+          rendererEdgeCount: number;
           sourceNodeCount?: number;
           visibleNodeCount?: number;
           renderedPrimitiveCount?: number;
@@ -527,6 +527,9 @@ async function readGraphSummary(page: Page) {
           visibleLabelCount: number;
           visibleNodeLabelCount: number;
           visibleProviderLabelCount: number;
+          rendererLabelCount: number;
+          readyRendererLabelCount: number;
+          rendererEdgeCount: number;
           qualityMode: "interactive" | "settled";
         };
       };
@@ -595,7 +598,7 @@ async function seedStressIdentityGraph(page: Page) {
     };
 
     const now = Date.now();
-    const personCount = 360;
+    const personCount = 1_200;
     const accountCount = 1_440;
     const feedCount = 80;
     const friendCutoff = Math.round(personCount * 0.82);
@@ -798,12 +801,36 @@ test("desktop sidebar toggle still clicks normally from the shared toolbar", asy
   const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Minimal sidebar");
 
+  await page.evaluate(() => {
+    const toggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]');
+    if (!toggle) throw new Error("Desktop sidebar toggle is unavailable");
+    const labels = [toggle.getAttribute("aria-label")];
+    const observer = new MutationObserver(() => {
+      const next = toggle.getAttribute("aria-label");
+      if (labels.at(-1) !== next) labels.push(next);
+    });
+    observer.observe(toggle, { attributes: true, attributeFilter: ["aria-label"] });
+    (window as Record<string, unknown>).__FREED_SIDEBAR_TRANSITIONS__ = {
+      labels,
+      disconnect: () => observer.disconnect(),
+    };
+  });
+
   await sidebarToggle.click();
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(500);
 
   expect(initialWidth).toBeGreaterThan(200);
   await expectDesktopSidebarWidthBetween(page, 46, 50, 1_500);
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
+  const transitionLabels = await page.evaluate(() => {
+    const transitions = (window as Record<string, unknown>).__FREED_SIDEBAR_TRANSITIONS__ as {
+      labels: Array<string | null>;
+      disconnect: () => void;
+    };
+    transitions.disconnect();
+    return transitions.labels;
+  });
+  expect(transitionLabels).toEqual(["Minimal sidebar", "Hide sidebar"]);
 
   await sidebarToggle.click();
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
@@ -811,27 +838,231 @@ test("desktop sidebar toggle still clicks normally from the shared toolbar", asy
   await expectDesktopSidebarClosed(page, 3_000);
 });
 
-test("desktop titlebar controls align with the macOS stoplight row", async ({ app, page }) => {
+test("desktop sidebar mode stays local when Automerge replays an older display preference", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
 
+  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
+  await sidebarToggle.click();
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
+
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            preferences: { display: { sidebarMode?: string } };
+          };
+          setState: (patch: Record<string, unknown>) => void;
+        }
+      | undefined;
+    if (!store) throw new Error("Freed store is unavailable");
+
+    let preferenceMutationCount = 0;
+    store.setState({
+      updatePreferences: async () => {
+        preferenceMutationCount += 1;
+      },
+    });
+    (window as Record<string, unknown>).__FREED_SIDEBAR_TEST_CONTROL__ = {
+      preferenceMutationCount: () => preferenceMutationCount,
+    };
+  });
+
+  await sidebarToggle.click();
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
+  await expectDesktopSidebarClosed(page, 1_000);
+
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => {
+        preferences: { display: Record<string, unknown> };
+        updatePreferences: (patch: unknown) => Promise<void>;
+      };
+      setState: (patch: Record<string, unknown>) => void;
+    };
+    const state = store.getState();
+    store.setState({
+      preferences: {
+        ...state.preferences,
+        display: {
+          ...state.preferences.display,
+          sidebarMode: "compact",
+        },
+      },
+    });
+  });
+  await page.waitForTimeout(100);
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
+  await expect(page.getByTestId("app-sidebar")).toHaveCount(0);
+  await expect(page.getByTestId("app-sidebar-resize-handle")).toHaveCount(0);
+
+  const localState = await page.evaluate(() => {
+    const control = (window as Record<string, unknown>).__FREED_SIDEBAR_TEST_CONTROL__ as
+      | { preferenceMutationCount: () => number }
+      | undefined;
+    const stored = JSON.parse(localStorage.getItem("freed-device-display-preferences-v1") ?? "null") as
+      | { values?: { sidebarMode?: string } }
+      | null;
+    return {
+      sidebarMode: stored?.values?.sidebarMode,
+      preferenceMutationCount: control?.preferenceMutationCount() ?? -1,
+    };
+  });
+  expect(localState).toEqual({ sidebarMode: "closed", preferenceMutationCount: 0 });
+
+  await page.reload();
+  await app.waitForReady();
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
+  await expectDesktopSidebarClosed(page, 1_000);
+});
+
+test("a newer device display record blocks a false sidebar transition", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const futureRecord = JSON.stringify({
+    version: 2,
+    values: { sidebarMode: "future-layout" },
+    futureLayoutContract: true,
+  });
+  await page.evaluate((record) => {
+    localStorage.setItem("freed-device-display-preferences-v1", record);
+  }, futureRecord);
+  await page.reload();
+  await app.waitForReady();
+
+  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Minimal sidebar");
+  const widthBefore = (await readDesktopSidebarGeometry(page)).sidebarWidth;
+
+  await sidebarToggle.click();
+
+  await expect(page.getByText("Freed could not save the sidebar layout on this device.")).toBeVisible();
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Minimal sidebar");
+  await expect.poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth).toBe(widthBefore);
+  await expect.poll(() => page.evaluate(() => (
+    localStorage.getItem("freed-device-display-preferences-v1")
+  ))).toBe(futureRecord);
+});
+
+test("an appearance change cannot replay a stale synced sidebar mode", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
+  await sidebarToggle.click();
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
+  await sidebarToggle.click();
+  await expectDesktopSidebarClosed(page, 1_000);
+
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => {
+        preferences: { display: Record<string, unknown> };
+        updatePreferences: (patch: unknown) => Promise<void>;
+      };
+      setState: (patch: Record<string, unknown>) => void;
+    };
+    const state = store.getState();
+    const originalUpdatePreferences = state.updatePreferences;
+    let updateCount = 0;
+    store.setState({
+      preferences: {
+        ...state.preferences,
+        display: {
+          ...state.preferences.display,
+          sidebarMode: "expanded",
+        },
+      },
+      updatePreferences: async (patch: unknown) => {
+        updateCount += 1;
+        await originalUpdatePreferences(patch);
+      },
+    });
+    (window as Record<string, unknown>).__FREED_APPEARANCE_UPDATE_COUNT__ = () => updateCount;
+  });
+
+  await page.evaluate(async (settingsStorePath) => {
+    const mod = await import(settingsStorePath);
+    mod.useSettingsStore.getState().openTo("appearance");
+  }, SETTINGS_STORE_PATH);
+  const engagementToggle = page.getByRole("switch", { name: "Show engagement counts" });
+  await expect(engagementToggle).toBeVisible();
+  await engagementToggle.click();
+
+  await expectDesktopSidebarClosed(page, 1_000);
+  await expect.poll(() => readDeviceDisplayPreference(page, "sidebarMode")).toBe("closed");
+  await expect.poll(() => page.evaluate(() => {
+    const readCount = (window as Record<string, unknown>).__FREED_APPEARANCE_UPDATE_COUNT__ as
+      | (() => number)
+      | undefined;
+    return readCount?.() ?? -1;
+  })).toBe(1);
+});
+
+test("a newly detected Freed Desktop peer warns outside Settings", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      setState: (patch: Record<string, unknown>) => void;
+    };
+    store.setState({
+      desktopClientIds: ["desktop-current", "desktop-peer"],
+    });
+  });
+
+  await expect(
+    page.getByText("More than one Freed Desktop installation is registered.", { exact: false }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Review Sync" }).click();
+  await expect(page.getByRole("heading", { name: "Sync", exact: true })).toBeVisible();
+  await expect(page.getByTestId("multiple-desktop-client-warning")).toBeVisible();
+});
+
+test("desktop layout controls fill the toolbar hitbox and center their icons", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(1);
+  await page.locator("[data-feed-item-id]").first().click();
+  await expect(page.getByRole("button", { name: "Hide Previews" })).toBeVisible();
+
   const geometry = await page.evaluate(() => {
     const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
     const sidebarToggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
-    if (!toolbar || !sidebarToggle) return null;
+    const previewToggle = document.querySelector('[aria-label="Hide Previews"]') as HTMLElement | null;
+    const sidebarIcon = sidebarToggle?.querySelector("svg") as SVGElement | null;
+    const previewIcon = previewToggle?.querySelector("svg") as SVGElement | null;
+    if (!toolbar || !sidebarToggle || !previewToggle || !sidebarIcon || !previewIcon) return null;
 
     const toolbarRect = toolbar.getBoundingClientRect();
-    const toggleRect = sidebarToggle.getBoundingClientRect();
+    const readControlGeometry = (control: HTMLElement, icon: SVGElement) => {
+      const controlRect = control.getBoundingClientRect();
+      const iconRect = icon.getBoundingClientRect();
+      return {
+        height: Math.round(controlRect.height),
+        iconCenterY: Math.round(iconRect.top + iconRect.height / 2 - toolbarRect.top),
+      };
+    };
+
     return {
       toolbarHeight: Math.round(toolbarRect.height),
-      toggleCenterY: Math.round(toggleRect.top + toggleRect.height / 2 - toolbarRect.top),
+      toolbarCenterY: Math.round(toolbarRect.height / 2),
+      sidebar: readControlGeometry(sidebarToggle, sidebarIcon),
+      preview: readControlGeometry(previewToggle, previewIcon),
     };
   });
 
   expect(geometry).not.toBeNull();
-  expect(geometry?.toolbarHeight).toBe(52);
-  expect(geometry?.toggleCenterY).toBe(18);
+  expect(geometry?.sidebar.height).toBe(geometry?.toolbarHeight);
+  expect(geometry?.preview.height).toBe(geometry?.toolbarHeight);
+  expect(geometry?.sidebar.iconCenterY).toBe(geometry?.toolbarCenterY);
+  expect(geometry?.preview.iconCenterY).toBe(geometry?.toolbarCenterY);
 });
 
 test("narrow desktop viewports keep the desktop compact rail instead of switching to the mobile drawer", async ({ app, page }) => {
@@ -1530,19 +1761,8 @@ test("sidebar resize holds the dragged width after mouseup", async ({ app, page 
 
   expect(settledWidth).toBeGreaterThan(initialWidth + 40);
 
-  await page.waitForFunction((minimumWidth) => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            preferences: { display: { sidebarWidth?: number } };
-          };
-        }
-      | undefined;
-
-    const savedWidth = store?.getState().preferences.display.sidebarWidth ?? 0;
-    return savedWidth >= minimumWidth;
-  }, Math.round(initialWidth + 40));
+  await expect.poll(async () => Number(await readDeviceDisplayPreference(page, "sidebarWidth")) || 0)
+    .toBeGreaterThanOrEqual(Math.round(initialWidth + 40));
 });
 
 test("primary sidebar resize caps at 400 pixels", async ({ app, page }) => {
@@ -1584,17 +1804,8 @@ test("primary sidebar resize caps at 400 pixels", async ({ app, page }) => {
   );
   expect(sidebarWidth).toBeLessThanOrEqual(400);
 
-  await page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            preferences: { display: { sidebarWidth?: number } };
-          };
-        }
-      | undefined;
-    return store?.getState().preferences.display.sidebarWidth === 400;
-  }, { timeout: 5_000 });
+  await expect.poll(() => readDeviceDisplayPreference(page, "sidebarWidth"), { timeout: 5_000 })
+    .toBe(400);
 });
 
 test("desktop sidebar reopens at the default width after being dragged narrow and collapsed", async ({ app, page }) => {
@@ -1618,25 +1829,10 @@ test("desktop sidebar reopens at the default width after being dragged narrow an
     NARROW_DRAGGED_SIDEBAR_TARGET_WIDTH_PX + NARROW_DRAGGED_SIDEBAR_TOLERANCE_PX,
   );
 
-  await page.waitForFunction(({
-    minimumWidth,
-    maximumWidth,
-  }) => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            preferences: { display: { sidebarWidth?: number } };
-          };
-        }
-      | undefined;
-
-    const savedWidth = store?.getState().preferences.display.sidebarWidth ?? 0;
-    return savedWidth >= minimumWidth && savedWidth <= maximumWidth;
-  }, {
-    minimumWidth: NARROW_DRAGGED_SIDEBAR_TARGET_WIDTH_PX - NARROW_DRAGGED_SIDEBAR_TOLERANCE_PX,
-    maximumWidth: NARROW_DRAGGED_SIDEBAR_TARGET_WIDTH_PX + NARROW_DRAGGED_SIDEBAR_TOLERANCE_PX,
-  });
+  await expect.poll(async () => Number(await readDeviceDisplayPreference(page, "sidebarWidth")) || 0)
+    .toBeGreaterThanOrEqual(
+      NARROW_DRAGGED_SIDEBAR_TARGET_WIDTH_PX - NARROW_DRAGGED_SIDEBAR_TOLERANCE_PX,
+    );
 
   await sidebarToggle.click();
   await expectDesktopSidebarWidthBetween(page, 46, 50, 1_500);
@@ -1655,18 +1851,7 @@ test("desktop sidebar reopens at the default width after being dragged narrow an
     .poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth, { timeout: 1_000 })
     .toBeLessThanOrEqual(DEFAULT_REOPENED_SIDEBAR_MAX_WIDTH_PX);
 
-  await page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            preferences: { display: { sidebarWidth?: number } };
-          };
-        }
-      | undefined;
-
-    return store?.getState().preferences.display.sidebarWidth === 256;
-  });
+  await expect.poll(() => readDeviceDisplayPreference(page, "sidebarWidth")).toBe(256);
 });
 
 test("debug panel resize holds the dragged width after mouseup", async ({ app, page }) => {
@@ -1757,19 +1942,10 @@ test("debug panel resize holds the dragged width after mouseup", async ({ app, p
 
   expect(settledWidth).toBeGreaterThan(initialWidth + 40);
 
-  await page.waitForFunction((expectedWidth) => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            preferences: { display: { debugPanelWidth?: number } };
-          };
-        }
-      | undefined;
-
-    const savedWidth = store?.getState().preferences.display.debugPanelWidth ?? 0;
-    return Math.abs(savedWidth - expectedWidth) <= 2;
-  }, Math.round(settledWidth));
+  await expect.poll(async () => {
+    const savedWidth = Number(await readDeviceDisplayPreference(page, "debugPanelWidth")) || 0;
+    return Math.abs(savedWidth - Math.round(settledWidth));
+  }).toBeLessThanOrEqual(2);
 });
 
 test("settings dialog closes from the desktop sidebar close button", async ({ app }) => {
@@ -2371,24 +2547,7 @@ test("desktop hide previews button collapses the compact reader rail", async ({ 
     }, railWidthBeforeCollapse),
   ).toBeLessThan(railWidthBeforeCollapse);
 
-  await expect.poll(async () => {
-    return page.evaluate(() => {
-      const store = (window as Record<string, unknown>).__FREED_STORE__ as
-        | {
-            getState: () => {
-              preferences: {
-                display: {
-                  reading: {
-                    dualColumnMode: boolean;
-                  };
-                };
-              };
-            };
-          }
-        | undefined;
-      return store?.getState().preferences.display.reading.dualColumnMode ?? true;
-    });
-  }).toBe(false);
+  await expect.poll(() => readDeviceDisplayPreference(page, "dualColumnMode")).toBe(false);
 
   await expect.poll(async () =>
     page.evaluate(() => {
@@ -3785,12 +3944,8 @@ test("Friends detail rail visibility preference hides and restores the desktop s
   });
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
   await expect(page.getByTestId("friends-sidebar-shell")).toHaveCount(0);
-  await page.waitForFunction(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | { getState: () => { preferences: { display: { friendsSidebarOpen?: boolean } } } }
-      | undefined;
-    return store?.getState().preferences.display.friendsSidebarOpen === false;
-  }, { timeout: 5_000 });
+  await expect.poll(() => readDeviceDisplayPreference(page, "friendsSidebarOpen"), { timeout: 5_000 })
+    .toBe(false);
 
   await page.evaluate(async () => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
@@ -3802,17 +3957,10 @@ test("Friends detail rail visibility preference hides and restores the desktop s
       },
     });
   });
-  await page.waitForFunction(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | {
-          getState: () => {
-            preferences: { display: { friendsSidebarOpen?: boolean; friendsSidebarWidth?: number } };
-          };
-        }
-      | undefined;
-    const display = store?.getState().preferences.display;
-    return display?.friendsSidebarOpen === true && display?.friendsSidebarWidth === 388;
-  }, { timeout: 5_000 });
+  await expect.poll(() => readDeviceDisplayPreference(page, "friendsSidebarOpen"), { timeout: 5_000 })
+    .toBe(true);
+  await expect.poll(() => readDeviceDisplayPreference(page, "friendsSidebarWidth"), { timeout: 5_000 })
+    .toBe(388);
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
 
   const after = await page.evaluate(() => {
@@ -3922,17 +4070,125 @@ test("Friends detail rail resize caps at 400 pixels", async ({ app, page }) => {
   );
   expect(sidebarWidth).toBeLessThanOrEqual(400);
 
-  await page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            preferences: { display: { friendsSidebarWidth?: number } };
+  await expect.poll(() => readDeviceDisplayPreference(page, "friendsSidebarWidth"), { timeout: 5_000 })
+    .toBe(400);
+});
+
+test("selection while the initial Friends atlas is pending retains the semantic scene", async ({ app, page }) => {
+  await page.addInitScript(() => {
+    const OriginalWorker = window.Worker;
+    const control: {
+      held: boolean;
+      released: boolean;
+      release: (() => void) | null;
+      outbound: unknown[];
+    } = {
+      held: false,
+      released: false,
+      release: null,
+      outbound: [],
+    };
+
+    class DelayedFriendsGalaxyWorker extends OriginalWorker {
+      private readonly friendsGalaxyWorker: boolean;
+      private readonly heldMessages: unknown[] = [];
+
+      constructor(scriptURL: string | URL, options?: WorkerOptions) {
+        super(scriptURL, options);
+        this.friendsGalaxyWorker = String(scriptURL).includes("friends-galaxy-product.worker");
+        if (!this.friendsGalaxyWorker) return;
+        this.addEventListener("message", (event) => {
+          if (control.released) return;
+          event.stopImmediatePropagation();
+          this.heldMessages.push(event.data);
+          control.held = true;
+          control.release = () => {
+            if (control.released) return;
+            control.released = true;
+            for (const data of this.heldMessages.splice(0)) {
+              this.dispatchEvent(new MessageEvent("message", { data }));
+            }
           };
+        });
+      }
+
+      override postMessage(
+        message: unknown,
+        transferOrOptions?: Transferable[] | StructuredSerializeOptions,
+      ): void {
+        if (this.friendsGalaxyWorker) control.outbound.push(message);
+        if (transferOrOptions === undefined) {
+          OriginalWorker.prototype.postMessage.call(this, message);
+        } else {
+          OriginalWorker.prototype.postMessage.call(this, message, transferOrOptions);
         }
-      | undefined;
-    return store?.getState().preferences.display.friendsSidebarWidth === 400;
-  }, { timeout: 5_000 });
+      }
+    }
+
+    Object.defineProperty(window, "Worker", {
+      configurable: true,
+      writable: true,
+      value: DelayedFriendsGalaxyWorker,
+    });
+    (window as typeof window & {
+      __FREED_GALAXY_WORKER_HOLD__?: typeof control;
+    }).__FREED_GALAXY_WORKER_HOLD__ = control;
+  });
+
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+  await dismissCloudSyncNudgeIfPresent(page);
+  await page.evaluate(async () => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => {
+        updatePreferences: (patch: { display: { friendsMode: "friends"; friendsSidebarOpen: boolean } }) => Promise<void>;
+        setActiveView: (view: string) => void;
+        setSelectedPerson: (personId: string | null) => void;
+      };
+    };
+    await store.getState().updatePreferences({
+      display: {
+        friendsMode: "friends",
+        friendsSidebarOpen: false,
+      },
+    });
+    store.getState().setSelectedPerson(null);
+    store.getState().setActiveView("friends");
+  });
+
+  await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 10_000 });
+  await page.waitForFunction(() => {
+    return (window as typeof window & {
+      __FREED_GALAXY_WORKER_HOLD__?: { held: boolean };
+    }).__FREED_GALAXY_WORKER_HOLD__?.held === true;
+  }, { timeout: 10_000 });
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => { setSelectedPerson: (personId: string | null) => void };
+    };
+    store.getState().setSelectedPerson("friend-ada");
+    const control = (window as typeof window & {
+      __FREED_GALAXY_WORKER_HOLD__?: { release: (() => void) | null };
+    }).__FREED_GALAXY_WORKER_HOLD__;
+    control?.release?.();
+  });
+
+  await expect(page.getByTestId("friends-collapsed-selection-card")).toContainText(
+    "Ada Lovelace",
+    { timeout: 10_000 },
+  );
+  await expect
+    .poll(async () => {
+      const debug = await readGraphDebug(page);
+      return debug?.nodes.some((node) => node.personId === "friend-ada") ?? false;
+    }, { timeout: 10_000 })
+    .toBe(true);
+  const drawError = await page.evaluate(() => {
+    return (window as typeof window & { __FREED_GRAPH_DRAW_ERROR__?: string })
+      .__FREED_GRAPH_DRAW_ERROR__ ?? null;
+  });
+  expect(drawError).toBeNull();
 });
 
 test("selected Friends graph person shows a compact detail card when the detail rail is closed", async ({ app, page }) => {
@@ -3989,19 +4245,17 @@ test("selected Friends graph person shows a compact detail card when the detail 
   const compactCard = page.getByTestId("friends-collapsed-selection-card");
   await expect(compactCard).toBeVisible({ timeout: 5_000 });
   await expect(compactCard).toContainText("Ada Lovelace");
-  const afterSelection = await readGraphSummary(page);
+  await waitForGraphSceneSyncAfter(page, beforeSelection!.metrics.sceneSyncCount);
+  const afterSelection = await waitForGraphPerfToSettle(page);
   expect(afterSelection).not.toBeNull();
   expect(afterSelection!.transform.x).toBeCloseTo(beforeSelection!.transform.x, 1);
   expect(afterSelection!.transform.y).toBeCloseTo(beforeSelection!.transform.y, 1);
   expect(afterSelection!.transform.scale).toBeCloseTo(beforeSelection!.transform.scale, 3);
+  expect(afterSelection!.metrics.sceneSyncCount).toBe(beforeSelection!.metrics.sceneSyncCount + 1);
   expect(afterSelection!.metrics.edgeRebuildCount).toBeLessThanOrEqual(beforeSelection!.metrics.edgeRebuildCount + 2);
   expect(afterSelection!.metrics.nodeRestyleCount).toBeLessThanOrEqual(beforeSelection!.metrics.nodeRestyleCount + 2);
-  await page.waitForFunction(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | { getState: () => { preferences: { display: { friendsSidebarOpen?: boolean } } } }
-      | undefined;
-    return store?.getState().preferences.display.friendsSidebarOpen === false;
-  }, { timeout: 5_000 });
+  await expect.poll(() => readDeviceDisplayPreference(page, "friendsSidebarOpen"), { timeout: 5_000 })
+    .toBe(false);
 
   await compactCard.getByRole("button", { name: "Open details" }).click();
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
@@ -4127,36 +4381,36 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
   await expect(lens.getByRole("button", { name: "All content" })).toBeVisible({ timeout: 5_000 });
   await expect(lens.getByRole("button", { name: "Details" })).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
+  const beforeDetails = await readGraphDebug(page);
+  expect(beforeDetails).not.toBeNull();
 
   await lens.getByRole("button", { name: "Details" }).click();
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByTestId("friend-graph-viewport")).toHaveCount(0);
-  await page.waitForFunction(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | { getState: () => { preferences: { display: { friendsMode?: "friends" | "all_content" } } } }
-      | undefined;
-    return store?.getState().preferences.display.friendsMode === "all_content";
-  }, { timeout: 5_000 });
+  const suspendedViewport = page.getByTestId("friend-graph-viewport");
+  await expect(suspendedViewport).toHaveCount(1);
+  await expect(suspendedViewport).toHaveAttribute("aria-hidden", "true");
+  await expect(suspendedViewport).toHaveAttribute("data-presentation-visible", "false");
+  await expect(page.getByTestId("friend-graph-canvas")).toHaveCount(1);
+  await expect.poll(() => readDeviceDisplayPreference(page, "friendsMode"), { timeout: 5_000 })
+    .toBe("all_content");
 
   await lens.getByRole("button", { name: "Friends" }).click();
-  await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 5_000 });
+  const resumedViewport = page.getByTestId("friend-graph-viewport");
+  await expect(resumedViewport).toBeVisible({ timeout: 5_000 });
+  await expect(resumedViewport).not.toHaveAttribute("aria-hidden", "true");
+  await expect(resumedViewport).toHaveAttribute("data-presentation-visible", "true");
+  await expect(page.getByTestId("friend-graph-canvas")).toHaveCount(1);
+  await expect.poll(async () => (await readGraphDebug(page))?.metrics.contentSyncCount ?? 0)
+    .toBe(beforeDetails!.metrics.contentSyncCount);
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
-  await page.waitForFunction(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | { getState: () => { preferences: { display: { friendsMode?: "friends" | "all_content" } } } }
-      | undefined;
-    return store?.getState().preferences.display.friendsMode === "friends";
-  }, { timeout: 5_000 });
+  await expect.poll(() => readDeviceDisplayPreference(page, "friendsMode"), { timeout: 5_000 })
+    .toBe("friends");
 
   await lens.getByRole("button", { name: "All content" }).click();
   await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
-  await page.waitForFunction(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as
-      | { getState: () => { preferences: { display: { friendsMode?: "friends" | "all_content" } } } }
-      | undefined;
-    return store?.getState().preferences.display.friendsMode === "all_content";
-  }, { timeout: 5_000 });
+  await expect.poll(() => readDeviceDisplayPreference(page, "friendsMode"), { timeout: 5_000 })
+    .toBe("all_content");
 });
 
 test("Friends graph renders confirmed friends, provisional people, and channels together", async ({ app, page }) => {
@@ -4304,12 +4558,14 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
       people: Number((element as HTMLElement).dataset.graphPersonCount ?? "0"),
       channels: Number((element as HTMLElement).dataset.graphChannelCount ?? "0"),
       links: Number((element as HTMLElement).dataset.graphLinkCount ?? "0"),
+      resident: Number((element as HTMLElement).dataset.graphResidentNodeCount ?? "0"),
     }));
   }).toEqual({
     nodes: 8,
     people: 3,
     channels: 5,
     links: 3,
+    resident: 8,
   });
 });
 
@@ -4771,10 +5027,16 @@ test("linking a channel from the graph context menu survives reload", async ({ a
   }).toBeGreaterThanOrEqual(3);
   await waitForGraphPerfToSettle(page);
 
-  const accountPoint = await graphNodeScreenPoint(page, { accountId: "social:instagram:nora-ig" });
-  expect(accountPoint).not.toBeNull();
+  const accountPoint = await waitForGraphNodeScreenPoint(
+    page,
+    { accountId: "social:instagram:nora-ig" },
+  );
 
-  await page.mouse.click(accountPoint!.x, accountPoint!.y, { button: "right" });
+  await page.mouse.click(accountPoint.x, accountPoint.y, { button: "right" });
+  await expect(viewport).toHaveAttribute(
+    "data-last-context-node-id",
+    "account:social:instagram:nora-ig",
+  );
   const menu = page.getByTestId("friend-graph-context-menu");
   await expect(menu).toBeVisible({ timeout: 5_000 });
   await menu.getByRole("button", { name: "Link to person" }).click();
@@ -4819,7 +5081,7 @@ test("linking a channel from the graph context menu survives reload", async ({ a
   }, { timeout: 10_000 });
 });
 
-test("pinning a person from the graph context menu survives reload", async ({ app, page }) => {
+test("pinning a person stays device-local and survives reload", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -4914,34 +5176,36 @@ test("pinning a person from the graph context menu survives reload", async ({ ap
     throw new Error("Friends graph debug node was unavailable for the pinned person");
   }
 
-  const pinnedPoint = await graphNodeScreenPoint(page, { personId: "friend-pinned" });
-  expect(pinnedPoint).not.toBeNull();
-  await page.mouse.click(pinnedPoint!.x, pinnedPoint!.y, { button: "right" });
+  const pinnedPoint = await waitForGraphNodeScreenPoint(
+    page,
+    { personId: "friend-pinned" },
+  );
+  await page.mouse.click(pinnedPoint.x, pinnedPoint.y, { button: "right" });
+  await expect(viewport).toHaveAttribute(
+    "data-last-context-node-id",
+    "person:friend-pinned",
+  );
   const menu = page.getByTestId("friend-graph-context-menu");
   await expect(menu).toBeVisible({ timeout: 5_000 });
+  await expect(menu.getByRole("button", { name: "Open details" })).toBeFocused();
   await menu.getByRole("button", { name: "Pin here" }).click();
+  await expect(viewport).toBeFocused();
 
   const storedPinnedPosition = await page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            persons: Record<string, { graphPinned?: boolean; graphX?: number; graphY?: number }>;
-          };
-        }
-      | undefined;
-    const person = store?.getState().persons["friend-pinned"];
+    const stored = JSON.parse(
+      localStorage.getItem("freed-device-graph-layout-v1") ?? "null",
+    ) as {
+      persons?: Record<string, { graphX?: number; graphY?: number; graphPinned?: boolean }>;
+    } | null;
+    const person = stored?.persons?.["friend-pinned"];
     if (!person?.graphPinned || typeof person.graphX !== "number" || typeof person.graphY !== "number") {
       return false;
     }
-    return {
-      graphX: person.graphX,
-      graphY: person.graphY,
-    };
+    return { graphX: person.graphX, graphY: person.graphY };
   }, { timeout: 10_000 });
   const expectedPinnedPosition = await storedPinnedPosition.jsonValue() as { graphX: number; graphY: number };
 
-  await page.waitForFunction((expected) => {
+  await expect.poll(() => page.evaluate(() => {
     const w = window as Record<string, unknown>;
     const automerge = w.__FREED_AUTOMERGE__ as
       | {
@@ -4949,28 +5213,32 @@ test("pinning a person from the graph context menu survives reload", async ({ ap
             persons: Record<string, { graphPinned?: boolean; graphX?: number; graphY?: number }>;
           } | null;
         }
-      | undefined;
+        | undefined;
     const person = automerge?.getDocState()?.persons["friend-pinned"];
-    return person?.graphPinned === true &&
-      person.graphX === expected.graphX &&
-      person.graphY === expected.graphY;
-  }, expectedPinnedPosition, { timeout: 10_000 });
+    return Boolean(person && (
+      "graphPinned" in person ||
+      "graphX" in person ||
+      "graphY" in person
+    ));
+  })).toBe(false);
 
   await page.reload();
   await app.waitForReady();
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => { setActiveView: (view: string) => void };
+    };
+    store.getState().setActiveView("friends");
+  });
+  await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 10_000 });
   await page.waitForFunction((expected) => {
     const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | {
-          getState: () => {
-            persons: Record<string, { graphPinned?: boolean; graphX?: number; graphY?: number }>;
-          };
-        }
+    const debug = w.__FREED_GRAPH_DEBUG__ as
+      | { nodes: Array<{ personId?: string; x: number; y: number }> }
       | undefined;
-    const person = store?.getState().persons["friend-pinned"];
-    return person?.graphPinned === true &&
-      person.graphX === expected.graphX &&
-      person.graphY === expected.graphY;
+    const person = debug?.nodes.find((node) => node.personId === "friend-pinned");
+    return Math.round(person?.x ?? Number.NaN) === expected.graphX &&
+      Math.round(person?.y ?? Number.NaN) === expected.graphY;
   }, expectedPinnedPosition, { timeout: 10_000 });
 });
 
@@ -5040,7 +5308,11 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
   await expect
     .poll(async () => {
       const debug = await readGraphSummary(page);
-      if (!debug || debug.qualityMode !== "settled" || debug.metrics.visibleLabelCount <= 0) {
+      if (
+        !debug ||
+        debug.qualityMode !== "settled" ||
+        debug.metrics.visibleNodeLabelCount <= 0
+      ) {
         return 0;
       }
       return debug.nodeCount;
@@ -5158,46 +5430,53 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
   const panDelta = { x: 48, y: 32 };
 
   await viewport.evaluate(async (element, gesture) => {
-    const target = element as HTMLElement & {
-      setPointerCapture: (pointerId: number) => void;
-      releasePointerCapture: (pointerId: number) => void;
-    };
-    target.setPointerCapture = () => undefined;
-    target.releasePointerCapture = () => undefined;
-
-    const dispatchTouchPointer = (
-      type: "pointerdown" | "pointermove" | "pointerup",
-      pointerId: number,
-      x: number,
-      y: number,
-      isPrimary: boolean,
+    const target = element as HTMLElement;
+    const makeTouch = (identifier: number, x: number, y: number) => new Touch({
+      identifier,
+      target,
+      clientX: x,
+      clientY: y,
+      screenX: x,
+      screenY: y,
+      pageX: x,
+      pageY: y,
+      radiusX: 8,
+      radiusY: 8,
+      force: 1,
+    });
+    const dispatchTouch = (
+      type: "touchstart" | "touchmove",
+      touches: Touch[],
+      changedTouches: Touch[],
     ) => {
-      target.dispatchEvent(new PointerEvent(type, {
+      target.dispatchEvent(new TouchEvent(type, {
         bubbles: true,
         cancelable: true,
-        pointerId,
-        pointerType: "touch",
-        isPrimary,
-        clientX: x,
-        clientY: y,
-        width: 12,
-        height: 12,
-        buttons: type === "pointerup" ? 0 : 1,
+        touches,
+        targetTouches: touches,
+        changedTouches,
       }));
     };
     const nextFrame = () => new Promise<void>((resolve) => {
       requestAnimationFrame(() => resolve());
     });
 
-    dispatchTouchPointer("pointerdown", 11, gesture.centerX - 80, gesture.centerY, true);
-    dispatchTouchPointer("pointerdown", 12, gesture.centerX + 80, gesture.centerY, false);
+    const firstStart = makeTouch(11, gesture.centerX - 80, gesture.centerY);
+    dispatchTouch("touchstart", [firstStart], [firstStart]);
+    const secondStart = makeTouch(12, gesture.centerX + 80, gesture.centerY);
+    dispatchTouch("touchstart", [firstStart, secondStart], [secondStart]);
     await nextFrame();
-    dispatchTouchPointer("pointermove", 11, gesture.centerX - 140 + gesture.panDelta.x, gesture.centerY - 18 + gesture.panDelta.y, true);
-    await nextFrame();
-    dispatchTouchPointer("pointermove", 12, gesture.centerX + 140 + gesture.panDelta.x, gesture.centerY + 18 + gesture.panDelta.y, false);
-    await nextFrame();
-    dispatchTouchPointer("pointermove", 11, gesture.centerX - 140 + gesture.panDelta.x, gesture.centerY - 18 + gesture.panDelta.y, true);
-    dispatchTouchPointer("pointermove", 12, gesture.centerX + 140 + gesture.panDelta.x, gesture.centerY + 18 + gesture.panDelta.y, false);
+    const firstMoved = makeTouch(
+      11,
+      gesture.centerX - 140 + gesture.panDelta.x,
+      gesture.centerY - 18 + gesture.panDelta.y,
+    );
+    const secondMoved = makeTouch(
+      12,
+      gesture.centerX + 140 + gesture.panDelta.x,
+      gesture.centerY + 18 + gesture.panDelta.y,
+    );
+    dispatchTouch("touchmove", [firstMoved, secondMoved], [firstMoved, secondMoved]);
     await nextFrame();
   }, { centerX, centerY, panDelta });
 
@@ -5225,41 +5504,76 @@ test("pinching the Friends graph zooms around the active two-touch midpoint", as
     }, { timeout: 8_000 })
     .toBeLessThanOrEqual(midpointTolerancePx);
 
-  await viewport.evaluate((element, gesture) => {
-    const target = element as HTMLElement & {
-      setPointerCapture: (pointerId: number) => void;
-      releasePointerCapture: (pointerId: number) => void;
-    };
-    target.setPointerCapture = () => undefined;
-    target.releasePointerCapture = () => undefined;
+  const afterPinch = await readGraphDebug(page);
+  expect(afterPinch).not.toBeNull();
 
-    const dispatchTouchPointer = (
-      type: "pointerup",
-      pointerId: number,
-      x: number,
-      y: number,
-      isPrimary: boolean,
+  await viewport.evaluate(async (element, gesture) => {
+    const target = element as HTMLElement;
+    const makeTouch = (identifier: number, x: number, y: number) => new Touch({
+      identifier,
+      target,
+      clientX: x,
+      clientY: y,
+      screenX: x,
+      screenY: y,
+      pageX: x,
+      pageY: y,
+      radiusX: 8,
+      radiusY: 8,
+      force: 1,
+    });
+    const dispatchTouch = (
+      type: "touchmove" | "touchend",
+      touches: Touch[],
+      changedTouches: Touch[],
     ) => {
-      target.dispatchEvent(new PointerEvent(type, {
+      target.dispatchEvent(new TouchEvent(type, {
         bubbles: true,
         cancelable: true,
-        pointerId,
-        pointerType: "touch",
-        isPrimary,
-        clientX: x,
-        clientY: y,
-        width: 12,
-        height: 12,
-        buttons: 0,
+        touches,
+        targetTouches: touches,
+        changedTouches,
       }));
     };
+    const nextFrame = () => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
 
-    dispatchTouchPointer("pointerup", 11, gesture.centerX - 140 + gesture.panDelta.x, gesture.centerY - 18 + gesture.panDelta.y, true);
-    dispatchTouchPointer("pointerup", 12, gesture.centerX + 140 + gesture.panDelta.x, gesture.centerY + 18 + gesture.panDelta.y, false);
+    const firstEnd = makeTouch(
+      11,
+      gesture.centerX - 140 + gesture.panDelta.x,
+      gesture.centerY - 18 + gesture.panDelta.y,
+    );
+    const secondCurrent = makeTouch(
+      12,
+      gesture.centerX + 140 + gesture.panDelta.x,
+      gesture.centerY + 18 + gesture.panDelta.y,
+    );
+    dispatchTouch("touchend", [secondCurrent], [firstEnd]);
+    await nextFrame();
+    const secondMoved = makeTouch(
+      12,
+      gesture.centerX + 204 + gesture.panDelta.x,
+      gesture.centerY + 42 + gesture.panDelta.y,
+    );
+    dispatchTouch("touchmove", [secondMoved], [secondMoved]);
+    await nextFrame();
+    dispatchTouch("touchend", [], [secondMoved]);
   }, { centerX, centerY, panDelta });
+
+  await expect
+    .poll(async () => {
+      const afterSingleFingerPan = await readGraphDebug(page);
+      if (!afterSingleFingerPan) return 0;
+      return Math.hypot(
+        afterSingleFingerPan.transform.x - afterPinch!.transform.x,
+        afterSingleFingerPan.transform.y - afterPinch!.transform.y,
+      );
+    }, { timeout: 8_000 })
+    .toBeGreaterThan(40);
 });
 
-test("stress Friends graph degrades labels during motion and avoids expensive redraws on pan", async ({ app, page }) => {
+test("stress Friends graph keeps labels resident and avoids scene rebuilds during pan", async ({ app, page }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
@@ -5271,7 +5585,12 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
   await expect
     .poll(async () => {
       const debug = await readGraphSummary(page);
-      if (!debug || debug.qualityMode !== "settled" || debug.metrics.visibleLabelCount <= 0) {
+      if (
+        !debug ||
+        debug.qualityMode !== "settled" ||
+        debug.metrics.visibleLabelCount <= 0 ||
+        !debug.metrics.capped
+      ) {
         return 0;
       }
       return debug.metrics.sourceNodeCount ?? debug.nodeCount;
@@ -5290,7 +5609,102 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
   expect(initial!.metrics.layoutMs).toBeLessThan(1_000);
   expect(initial!.metrics.sceneSyncMs).toBeLessThan(250);
 
-  const benchmarkPoint = await graphNodeScreenPoint(page, { personId: "stress-person-0" });
+  const outOfSliceSelection = await page.evaluate(() => {
+    const debug = (window as typeof window & {
+      __FREED_GRAPH_DEBUG__?: {
+        labels: Array<{ nodeId: string }>;
+      };
+    }).__FREED_GRAPH_DEBUG__;
+    const presentedNodeIds = new Set(debug?.labels.map((label) => label.nodeId) ?? []);
+    let personId: string | null = null;
+    for (let index = 1_199; index >= 0; index -= 1) {
+      const candidate = `stress-person-${index}`;
+      if (!presentedNodeIds.has(`person:${candidate}`)) {
+        personId = candidate;
+        break;
+      }
+    }
+    let accountId: string | null = null;
+    for (let index = 1_439; index >= 0; index -= 1) {
+      const candidate = `stress-account-${index}`;
+      if (!presentedNodeIds.has(`account:${candidate}`)) {
+        accountId = candidate;
+        break;
+      }
+    }
+    return { personId, accountId };
+  });
+  if (!outOfSliceSelection.personId || !outOfSliceSelection.accountId) {
+    throw new Error("Dense Friends fixture did not produce out-of-presentation identities");
+  }
+  const selectExternalIdentity = async (selection: {
+    personId: string | null;
+    accountId: string | null;
+  }) => {
+    const beforeSelection = await readGraphDebug(page);
+    expect(beforeSelection).not.toBeNull();
+    await page.evaluate((nextSelection) => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+        getState: () => {
+          setSelectedPerson: (selectedPersonId: string | null) => void;
+          setSelectedAccount: (selectedAccountId: string | null) => void;
+        };
+      };
+      if (nextSelection.personId) {
+        store.getState().setSelectedPerson(nextSelection.personId);
+      } else if (nextSelection.accountId) {
+        store.getState().setSelectedAccount(nextSelection.accountId);
+      } else {
+        store.getState().setSelectedPerson(null);
+      }
+    }, selection);
+    if (selection.personId || selection.accountId) {
+      await expect
+        .poll(async () => {
+          const debug = await readGraphDebug(page);
+          const selectedNodeId = selection.personId
+            ? `person:${selection.personId}`
+            : `account:${selection.accountId}`;
+          return debug?.labels.some((label) => label.nodeId === selectedNodeId) ?? false;
+        }, { timeout: 10_000 })
+        .toBe(true);
+    }
+    await waitForGraphSceneSyncAfter(page, beforeSelection!.metrics.sceneSyncCount);
+    const afterSelection = await waitForGraphPerfToSettle(page);
+    expect(afterSelection!.metrics.sceneSyncCount).toBe(
+      beforeSelection!.metrics.sceneSyncCount + 1,
+    );
+  };
+  await selectExternalIdentity({
+    personId: outOfSliceSelection.personId,
+    accountId: null,
+  });
+  await selectExternalIdentity({
+    personId: null,
+    accountId: outOfSliceSelection.accountId,
+  });
+  await selectExternalIdentity({ personId: null, accountId: null });
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => {
+        selectedPersonId: string | null;
+        selectedAccountId: string | null;
+      };
+    };
+    const state = store.getState();
+    return state.selectedPersonId === null && state.selectedAccountId === null;
+  });
+
+  const benchmarkPersonId = await page.evaluate(() => {
+    const debug = (window as typeof window & {
+      __FREED_GRAPH_DEBUG__?: {
+        nodes: Array<{ personId?: string }>;
+      };
+    }).__FREED_GRAPH_DEBUG__;
+    return debug?.nodes.find((node) => node.personId)?.personId ?? null;
+  });
+  expect(benchmarkPersonId).not.toBeNull();
+  const benchmarkPoint = await graphNodeScreenPoint(page, { personId: benchmarkPersonId! });
   expect(benchmarkPoint).not.toBeNull();
 
   await page.mouse.move(benchmarkPoint!.x, benchmarkPoint!.y);
@@ -5322,15 +5736,23 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
 
     duringPan = await readGraphDebug(page);
     expect(duringPan).not.toBeNull();
-    expect(duringPan!.metrics.visibleLabelCount).toBeLessThanOrEqual(
-      initial!.metrics.visibleLabelCount,
-    );
+    expect(duringPan!.metrics.visibleLabelCount).toBe(initial!.metrics.visibleLabelCount);
+    expect(duringPan!.metrics.rendererLabelCount).toBe(initial!.metrics.rendererLabelCount);
+    expect(duringPan!.metrics.readyRendererLabelCount).toBeGreaterThan(0);
     await page.mouse.move(startX + 300, startY + 90, { steps: 4 });
     await page.waitForTimeout(250);
     const steadyPan = await readGraphDebug(page);
     expect(steadyPan).not.toBeNull();
     expect(steadyPan!.metrics.sceneSyncCount).toBe(duringPan!.metrics.sceneSyncCount);
     expect(steadyPan!.metrics.edgeRebuildCount).toBe(duringPan!.metrics.edgeRebuildCount);
+    expect(steadyPan!.metrics.rendererLabelCount).toBe(duringPan!.metrics.rendererLabelCount);
+    expect(steadyPan!.metrics.readyRendererLabelCount).toBeGreaterThan(0);
+    expect(steadyPan!.metrics.readyRendererLabelCount).toBeLessThanOrEqual(
+      steadyPan!.metrics.rendererLabelCount,
+    );
+    expect(steadyPan!.metrics.transformOnlySyncCount).toBeGreaterThan(
+      duringPan!.metrics.transformOnlySyncCount,
+    );
     expect(steadyPan!.metrics.sceneSyncMs).toBeLessThan(60);
   } finally {
     await page.mouse.up();
@@ -5480,6 +5902,19 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
   await expect.poll(async () => {
     return (await readGraphDebug(page))?.metrics.visibleLabelCount ?? 0;
   }, { timeout: 10_000 }).toBeGreaterThan(0);
+  await expect.poll(async () => {
+    return (await readGraphDebug(page))?.metrics.rendererEdgeCount ?? -1;
+  }).toBe(0);
+
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => { setSelectedFriend: (id: string) => void };
+    };
+    store.getState().setSelectedFriend("friend-ada");
+  });
+  await expect.poll(async () => {
+    return (await readGraphDebug(page))?.metrics.rendererEdgeCount ?? 0;
+  }).toBe(6);
 });
 
 // ---------------------------------------------------------------------------

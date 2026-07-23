@@ -1,6 +1,6 @@
 # P0-02: Structured window_destroyed kill records
 
-runner-safe: false (lib.rs) | provider-visible: false | soak-gated: no (logging only)
+runner-safe: false (lib.rs) | provider-visible: true (conservative native orchestration gate, even though the intended change is logging only) | soak-gated: no
 Findings: F03, F04, F05 (scrape/login windows destroyed mid-flight) — this task is their measurement instrument, not their fix.
 
 ## Context

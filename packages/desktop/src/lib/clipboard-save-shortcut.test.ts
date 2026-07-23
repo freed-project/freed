@@ -16,6 +16,7 @@ vi.mock("@tauri-apps/plugin-fs", () => ({
 
 import {
   ClipboardSaveShortcutRegistrationController,
+  clearClipboardSaveShortcutConfig,
   createDefaultClipboardSaveShortcutConfig,
   defaultClipboardSaveShortcut,
   formatShortcutForDisplay,
@@ -92,6 +93,29 @@ describe("clipboard save shortcut", () => {
       enabled: false,
       shortcut: "Control+Alt+S",
     });
+  });
+
+  it("clears the device shortcut config during factory reset", async () => {
+    await persistClipboardSaveShortcutConfig({
+      enabled: false,
+      shortcut: "Control+Alt+S",
+    });
+
+    await clearClipboardSaveShortcutConfig();
+
+    expect(await loadClipboardSaveShortcutConfig()).toEqual(
+      createDefaultClipboardSaveShortcutConfig(),
+    );
+  });
+
+  it("propagates shortcut config removal failures", async () => {
+    vi.spyOn(window.localStorage, "removeItem").mockImplementation(() => {
+      throw new Error("storage unavailable");
+    });
+
+    await expect(clearClipboardSaveShortcutConfig()).rejects.toThrow(
+      "storage unavailable",
+    );
   });
 
   it("records shortcuts from keyboard events", () => {

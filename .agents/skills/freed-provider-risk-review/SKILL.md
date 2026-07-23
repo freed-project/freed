@@ -41,24 +41,26 @@ or broad batch of work does not satisfy this gate.
 
 ## Gate 2: provider diff authorization before ready
 
-After implementation and validation, publish the candidate as a draft. Draft
-publication does not authorize provider traffic. The publication helper posts
-one GitHub review comment that records:
+After implementation and validation, write the approved Gate 1 decision as a
+healthy `provider-risk-review` stability artifact. Publish the candidate as a
+draft with `--provider-risk-review-artifact <path>`. Draft publication does not
+authorize provider traffic. The publication helper posts one GitHub review
+comment bound to both the artifact and the current provider subdiff. It records:
 
 - Exact provider-visible path set and provider-only binary diff hash
 - Inferred provider set
 - Observable behavior, fingerprinting risk, and lowest-profile alternative
 
 The human Gate 2 action is a CODEOWNER's GitHub thumbs-up reaction on that
-comment. GitHub records the acting account. Rerun the helper with `--ready`
-after the reaction exists. The helper verifies that the reaction came from a
-CODEOWNER and that the comment fingerprint still matches the current
-provider-visible diff.
+exact, unedited comment. GitHub records the acting account. Rerun the helper
+with the same artifact and `--ready` after the reaction exists. The helper
+verifies that the reaction came from a CODEOWNER after the comment was created,
+and that both the artifact and provider-visible diff still match.
 
 Changes outside the provider-visible path set preserve the approval. A change
-to any provider-visible file creates a new fingerprint, a new review comment,
-and a new reaction requirement. A material behavior change also returns to
-Gate 1 before implementation continues.
+to any provider-visible file or to the Gate 1 artifact creates a new review
+comment and a new reaction requirement. A material behavior change also
+returns to Gate 1 before implementation continues.
 
 For unattended publication, use a signed `control-task` approval record outside
 the repository. Bind its digest to the same provider-only diff, set provider
