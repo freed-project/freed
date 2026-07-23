@@ -54,6 +54,23 @@ test("fatal recovery still surfaces available app updates", async ({ app }) => {
 });
 
 test("bug report export actions track private diagnostics", async ({ app, ipc }) => {
+  let submittedReport: Record<string, unknown> | null = null;
+  let submittedReportCount = 0;
+  await app.page.route(
+    "https://app.freed.wtf/api/security-report",
+    async (route) => {
+      submittedReport = route.request().postDataJSON() as Record<string, unknown>;
+      submittedReportCount += 1;
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          advisoryUrl:
+            "https://github.com/freed-project/freed/security/advisories/GHSA-abcd-1234-efgh",
+        }),
+      });
+    },
+  );
   await app.goto("/");
   await app.waitForReady();
 
@@ -99,6 +116,18 @@ test("bug report export actions track private diagnostics", async ({ app, ipc })
   await expect.poll(async () => (await ipc.openedUrls()).at(-1)).toContain(
     "mailto:support@freed.wtf?",
   );
+
+  await app.page.getByRole("button", { name: "Submit private report to GitHub" }).dblclick();
+  await expect(
+    app.page.getByText(
+      "Private report submitted to the Freed security team through GitHub. The zip bundle stayed on this device.",
+    ),
+  ).toBeVisible();
+  expect(submittedReport).toMatchObject({
+    title: "Freed vulnerability report",
+    stackTrace: expect.stringContaining("Synthetic fatal crash"),
+  });
+  expect(submittedReportCount).toBe(1);
 
   await app.page.getByLabel("Private diagnostics").click();
   await expect(app.page.getByLabel("Expanded logs")).not.toBeChecked();

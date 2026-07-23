@@ -33,6 +33,11 @@ import { getPlatformUA, extractChromeVersion, osPlatformHeader } from "./user-ag
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
 import { recordScrapeOutcome, type SocialScrapeTrigger } from "./runtime-health-events";
 import { clearStoredCookies } from "./x-auth";
+import {
+  assertFactoryResetEpoch,
+  isFactoryResetEpochCurrent,
+  runFactoryResetSensitiveDesktopOperation,
+} from "./factory-reset-guard";
 
 // =============================================================================
 // Injectable Transport
@@ -201,9 +206,19 @@ function collectTweets(value: unknown, tweets: XTweetResult[], seen: Set<string>
  * @param requester  Optional transport override — pass a fixture function in
  *                   tests to avoid hitting Tauri IPC.
  */
-export async function fetchXTimeline(
+export function fetchXTimeline(
   cookies: XCookies,
   requester: XRequester = defaultRequester,
+): Promise<XSyncResult> {
+  return runFactoryResetSensitiveDesktopOperation((resetEpoch) =>
+    fetchXTimelineInternal(cookies, requester, resetEpoch)
+  );
+}
+
+async function fetchXTimelineInternal(
+  cookies: XCookies,
+  requester: XRequester,
+  resetEpoch: number,
 ): Promise<XSyncResult> {
   const diag: XSyncDiag = {
     rawResponseBytes: 0,
@@ -220,6 +235,7 @@ export async function fetchXTimeline(
   let rawResponse: string;
 
   try {
+    assertFactoryResetEpoch(resetEpoch);
     addDebugEvent("change", "[X] requesting home timeline");
     rawResponse = await xRequest(
       cookies,
@@ -227,7 +243,9 @@ export async function fetchXTimeline(
       getHomeLatestTimelineVariables(),
       requester,
     );
+    assertFactoryResetEpoch(resetEpoch);
   } catch (err) {
+    if (!isFactoryResetEpochCurrent(resetEpoch)) throw err;
     diag.errorStage = "transport";
     diag.errorMessage = err instanceof Error ? err.message : String(err);
     return { items: [], diag };
@@ -472,39 +490,45 @@ export async function unfavoriteTweet(
  * @param requester Optional transport override for testing.
  * @param trigger   What initiated this capture, for the scrape_outcome counter.
  */
-export async function captureXTimeline(
+export function captureXTimeline(
   cookies: XCookies,
   requester: XRequester = defaultRequester,
   trigger: SocialScrapeTrigger = "unknown",
 ): Promise<XSyncResult> {
-  const scrapeStartedAt = Date.now();
-  try {
-    const result = await captureXTimelineInternal(cookies, requester);
-    recordScrapeOutcome({
-      provider: "x",
-      trigger,
-      itemsExtracted: result.diag.tweetsExtracted,
-      itemsPersisted: result.diag.itemsAdded,
-      stage: result.diag.errorStage ?? "ok",
-      durationMs: Date.now() - scrapeStartedAt,
-    });
-    return result;
-  } catch (error) {
-    recordScrapeOutcome({
-      provider: "x",
-      trigger,
-      itemsExtracted: 0,
-      itemsPersisted: 0,
-      stage: "exception",
-      durationMs: Date.now() - scrapeStartedAt,
-    });
-    throw error;
-  }
+  return runFactoryResetSensitiveDesktopOperation(async (resetEpoch) => {
+    const scrapeStartedAt = Date.now();
+    try {
+      const result = await captureXTimelineInternal(cookies, requester, resetEpoch);
+      assertFactoryResetEpoch(resetEpoch);
+      recordScrapeOutcome({
+        provider: "x",
+        trigger,
+        itemsExtracted: result.diag.tweetsExtracted,
+        itemsPersisted: result.diag.itemsAdded,
+        stage: result.diag.errorStage ?? "ok",
+        durationMs: Date.now() - scrapeStartedAt,
+      });
+      return result;
+    } catch (error) {
+      if (isFactoryResetEpochCurrent(resetEpoch)) {
+        recordScrapeOutcome({
+          provider: "x",
+          trigger,
+          itemsExtracted: 0,
+          itemsPersisted: 0,
+          stage: "exception",
+          durationMs: Date.now() - scrapeStartedAt,
+        });
+      }
+      throw error;
+    }
+  });
 }
 
 async function captureXTimelineInternal(
   cookies: XCookies,
   requester: XRequester,
+  resetEpoch: number,
 ): Promise<XSyncResult> {
   const store = useAppStore.getState();
   const startedAt = Date.now();
@@ -513,6 +537,7 @@ async function captureXTimelineInternal(
   store.setError(null);
 
   try {
+    assertFactoryResetEpoch(resetEpoch);
     const pause = getProviderPause("x");
     if (pause) {
       return {
@@ -533,6 +558,7 @@ async function captureXTimelineInternal(
 
     addDebugEvent("change", "[X] sync started");
     const result = await fetchXTimeline(cookies, requester);
+    assertFactoryResetEpoch(resetEpoch);
 
     if (result.diag.errorStage) {
       const detail = `[X] sync failed at stage="${result.diag.errorStage}": ${result.diag.errorMessage ?? "(no message)"}`;
@@ -564,6 +590,7 @@ async function captureXTimelineInternal(
         signalType:
           result.diag.errorStage === "provider_rate_limit" ? "explicit" : "none",
       });
+      assertFactoryResetEpoch(resetEpoch);
       return result;
     }
 
@@ -573,7 +600,9 @@ async function captureXTimelineInternal(
         `[X] writing ${result.items.length.toLocaleString()} candidate item${result.items.length === 1 ? "" : "s"} to the library`,
       );
       const before = store.items.filter((i) => i.platform === "x").length;
+      assertFactoryResetEpoch(resetEpoch);
       await store.addItems(result.items);
+      assertFactoryResetEpoch(resetEpoch);
       const after = useAppStore.getState().items.filter((i) => i.platform === "x").length;
       result.diag.itemsAdded = Math.max(0, after - before);
       addDebugEvent(
@@ -589,6 +618,7 @@ async function captureXTimelineInternal(
       lastCapturedAt: Date.now(),
       lastCaptureError: undefined,
     });
+    assertFactoryResetEpoch(resetEpoch);
     await recordProviderHealthEvent({
       provider: "x",
       outcome: result.diag.tweetsExtracted > 0 ? "success" : "empty",
@@ -602,6 +632,7 @@ async function captureXTimelineInternal(
 
     return result;
   } catch (error) {
+    if (!isFactoryResetEpochCurrent(resetEpoch)) throw error;
     const message =
       error instanceof Error ? error.message : "Failed to capture X timeline";
     store.setError(message);
@@ -620,6 +651,6 @@ async function captureXTimelineInternal(
     });
     throw error;
   } finally {
-    store.setLoading(false);
+    if (isFactoryResetEpochCurrent(resetEpoch)) store.setLoading(false);
   }
 }

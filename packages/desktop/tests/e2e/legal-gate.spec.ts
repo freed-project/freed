@@ -31,7 +31,14 @@ async function openSettingsSection(
 
 async function cancelProviderRiskDialog(
   page: import("@playwright/test").Page,
-  provider: "x" | "facebook" | "instagram" | "linkedin",
+  provider:
+    | "x"
+    | "facebook"
+    | "instagram"
+    | "linkedin"
+    | "substack"
+    | "medium"
+    | "youtube",
 ): Promise<void> {
   const dialog = page.getByTestId(`provider-risk-dialog-${provider}`);
   await expect(dialog).toBeVisible({ timeout: 5_000 });
@@ -164,4 +171,29 @@ test("LinkedIn login requires provider consent", async ({ app }) => {
   });
 
   await cancelProviderRiskDialog(page, "linkedin");
+});
+
+test("YouTube login requires provider consent", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  const { page } = app;
+  await openSettingsSection(page, "YouTube");
+
+  await page.getByText("Log in with YouTube").click();
+  await expect(page.getByTestId("provider-risk-accept-youtube")).toBeVisible({
+    timeout: 5_000,
+  });
+
+  await cancelProviderRiskDialog(page, "youtube");
+
+  const settingsDialog = page.locator(".fixed.inset-0.z-50").last();
+  const legalSection = settingsDialog
+    .locator("button")
+    .filter({ hasText: "Legal" })
+    .first();
+  await legalSection.evaluate((button) => {
+    (button as HTMLButtonElement).click();
+  });
+  await expect(settingsDialog.getByText("2026-07-10-youtube")).toBeVisible();
 });

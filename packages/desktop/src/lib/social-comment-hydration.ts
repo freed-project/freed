@@ -3,6 +3,10 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { ReaderThreadReply } from "@freed/ui/context";
 import { getFbScraperWindowMode, getIgScraperWindowMode } from "./scraper-prefs";
 import { safeUnlisten } from "./safe-unlisten";
+import {
+  assertFactoryResetEpoch,
+  runFactoryResetSensitiveDesktopOperation,
+} from "./factory-reset-guard";
 
 type Provider = "facebook" | "instagram";
 
@@ -57,6 +61,7 @@ async function fetchProviderComments(
   command: "fb_scrape_comments" | "ig_scrape_comments",
   eventName: "fb-comments-data" | "ig-comments-data",
   url: string | undefined,
+  resetEpoch: number,
 ): Promise<ReaderThreadReply[]> {
   if (!url) return [];
 
@@ -79,14 +84,18 @@ async function fetchProviderComments(
       if (event.payload?.error) return;
       addPayload(event.payload);
     });
+    assertFactoryResetEpoch(resetEpoch);
 
     const returnedPayload = await invoke<ProviderCommentsPayload | null>(command, {
       url,
       windowMode: provider === "facebook" ? getFbScraperWindowMode() : getIgScraperWindowMode(),
     });
+    assertFactoryResetEpoch(resetEpoch);
     addPayload(returnedPayload);
 
+    assertFactoryResetEpoch(resetEpoch);
     await new Promise<void>((resolve) => setTimeout(resolve, 300));
+    assertFactoryResetEpoch(resetEpoch);
   } finally {
     safeUnlisten(unlisten, `${eventName}:comments`);
   }
@@ -95,9 +104,13 @@ async function fetchProviderComments(
 }
 
 export function fetchFacebookComments(url: string | undefined): Promise<ReaderThreadReply[]> {
-  return fetchProviderComments("facebook", "fb_scrape_comments", "fb-comments-data", url);
+  return runFactoryResetSensitiveDesktopOperation((resetEpoch) =>
+    fetchProviderComments("facebook", "fb_scrape_comments", "fb-comments-data", url, resetEpoch)
+  );
 }
 
 export function fetchInstagramComments(url: string | undefined): Promise<ReaderThreadReply[]> {
-  return fetchProviderComments("instagram", "ig_scrape_comments", "ig-comments-data", url);
+  return runFactoryResetSensitiveDesktopOperation((resetEpoch) =>
+    fetchProviderComments("instagram", "ig_scrape_comments", "ig-comments-data", url, resetEpoch)
+  );
 }

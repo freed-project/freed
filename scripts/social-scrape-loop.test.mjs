@@ -316,6 +316,41 @@ test("buildOptimizationPlan flags provider-health empty feed attempts", () => {
   assert.match(action.nextStep, /Do not add extra provider loads/);
 });
 
+test("YouTube uses passive provider health without demanding social preflight events", () => {
+  const summary = summarizeSocialScrapeHealth([]);
+  applyProviderHealthStore(
+    summary,
+    {
+      "provider-health": {
+        providers: {
+          youtube: {
+            pause: null,
+            latestAttempts: [{
+              outcome: "empty",
+              stage: "empty",
+              reason: "No recent subscription videos were visible.",
+              finishedAt: 160,
+              itemsSeen: 0,
+              itemsAdded: 0,
+            }],
+          },
+        },
+      },
+    },
+    200,
+  );
+
+  const plan = buildOptimizationPlan(summary, { memoryBudgetGib: 4 });
+  const action = plan.actions.find((candidate) => candidate.id === "youtube-empty-feed-health");
+
+  assert.ok(action);
+  assert.match(action.title, /zero videos/);
+  assert.equal(
+    plan.actions.some((candidate) => candidate.id === "youtube-missing-coverage"),
+    false,
+  );
+});
+
 test("buildReport writes provider summaries from health and diagnostics logs", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "freed-social-loop-report-"));
   const healthLog = path.join(dir, "runtime-health.jsonl");

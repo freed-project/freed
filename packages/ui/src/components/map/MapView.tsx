@@ -9,6 +9,7 @@ import {
 import { useAppStore } from "../../context/PlatformContext.js";
 import { useResolvedLocations } from "../../hooks/useResolvedLocations.js";
 import { openAccountFromMap, openFriendFromMap, openPostFromMap } from "../../lib/map-navigation.js";
+import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
 import { MapSurface } from "./MapSurface.js";
 
 const timeRangeFormatter = new Intl.DateTimeFormat(undefined, {
@@ -149,6 +150,7 @@ export function MapView({ viewportInsets }: MapViewProps) {
   const setFilter = useAppStore((state) => state.setFilter);
   const setSearchQuery = useAppStore((state) => state.setSearchQuery);
   const display = useAppStore((state) => state.preferences.display);
+  const [deviceDisplay] = useDeviceDisplayPreferences();
   const themeId = display.themeId;
   const [rangeSelection, setRangeSelection] = useState<LocationTimeRange | null>(null);
 
@@ -181,7 +183,7 @@ export function MapView({ viewportInsets }: MapViewProps) {
     [effectiveTimeRange, resolvedItems],
   );
   const effectiveMode = resolveMapMode(
-    display.mapMode,
+    deviceDisplay.mapMode,
     friendMarkers.length,
     allContentMarkers.length,
   );

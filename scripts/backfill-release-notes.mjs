@@ -91,14 +91,24 @@ function rewriteGitHubRelease(tag, body, dryRun) {
 async function main() {
   const { rewriteGitHub, dryRun } = parseArguments(process.argv.slice(2));
   const tags = await fetchPublishedTags();
+  run("git", ["fetch", "origin", "--tags"]);
 
   for (const tag of tags) {
     console.log(`Backfilling ${tag}...`);
-    execFileSync(NODE_BIN, ["scripts/prepare-release-notes.mjs", tag, "--force"], {
-      cwd: REPO_ROOT,
-      stdio: "inherit",
-      env: process.env,
-    });
+    execFileSync(
+      NODE_BIN,
+      [
+        "scripts/prepare-release-notes.mjs",
+        tag,
+        "--force",
+        "--historical-published-tag",
+      ],
+      {
+        cwd: REPO_ROOT,
+        stdio: "inherit",
+        env: process.env,
+      },
+    );
   }
 
   if (!rewriteGitHub) {

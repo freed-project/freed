@@ -10,6 +10,7 @@ const addDebugEventMock = vi.fn();
 const updateCloudProviderMock = vi.fn();
 const recordCloudProviderEventMock = vi.fn();
 const subscribeMock = vi.fn();
+const compareDocMock = vi.fn();
 
 vi.mock("@freed/sync/cloud", () => ({
   gdriveDownloadLatest: gdriveDownloadLatestMock,
@@ -23,6 +24,7 @@ vi.mock("@freed/sync/cloud", () => ({
 }));
 
 vi.mock("./automerge", () => ({
+  compareDoc: compareDocMock,
   getDocBinary: getDocBinaryMock,
   initDoc: initDocMock,
   mergeDoc: mergeDocMock,
@@ -51,6 +53,8 @@ describe("PWA cloud sync auth refresh", () => {
     recordCloudProviderEventMock.mockReset();
     subscribeMock.mockReset();
     subscribeMock.mockReturnValue(vi.fn());
+    compareDocMock.mockReset();
+    compareDocMock.mockResolvedValue("equal");
     localStorage.clear();
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       access_token: "refreshed-access-token",
@@ -213,7 +217,7 @@ describe("PWA cloud sync auth refresh", () => {
     expect(gdriveUploadSafeMock).toHaveBeenCalledWith("valid-access-token", mergedBinary);
   });
 
-  it("uploads after local document changes while connected by Google Drive only", async () => {
+  it("uploads after MERGE_DOC broadcasts while connected by Google Drive", async () => {
     vi.useFakeTimers();
     subscribeMock.mockImplementation(() => {
       return vi.fn();
@@ -236,9 +240,11 @@ describe("PWA cloud sync auth refresh", () => {
     await startCloudSync("gdrive", "valid-access-token");
 
     expect(subscribeMock).toHaveBeenCalledTimes(1);
-    const notifyChange = subscribeMock.mock.calls[0]?.[0] as (() => void) | undefined;
+    const notifyChange = subscribeMock.mock.calls[0]?.[0] as
+      | ((state: unknown, event: { mutation: "MERGE_DOC" }) => void)
+      | undefined;
     expect(notifyChange).toBeDefined();
-    notifyChange?.();
+    notifyChange?.({}, { mutation: "MERGE_DOC" });
     await vi.advanceTimersByTimeAsync(2_000);
 
     expect(gdriveUploadSafeMock).toHaveBeenCalledWith("valid-access-token", expect.any(Uint8Array));

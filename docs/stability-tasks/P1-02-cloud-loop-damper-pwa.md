@@ -1,6 +1,6 @@
 # P1-02: Break the PWA cloud upload loop
 
-runner-safe: false | provider-visible: false | soak-gated: YES (after P1-01 has soaked)
+runner-safe: false | provider-visible: true (changes Google Drive contact frequency from PWA sync) | soak-gated: YES (after P1-01 has a completed installed-build outcome)
 Findings: F01 (PWA leg), F22. Prereq: P1-01 merged and verified.
 
 ## Defect

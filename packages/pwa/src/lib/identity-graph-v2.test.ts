@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Account, FeedItem, Person, RssFeed } from "@freed/shared";
-import { buildProvisionalPersonCandidates } from "@freed/shared";
+import {
+  buildProvisionalPersonCandidates,
+  provisionalPersonRepairSignature,
+} from "@freed/shared";
 import {
   nudgeOverlapsBucketed,
   buildIdentityGraphLayout,
@@ -18,6 +21,8 @@ const NOW = 1_717_000_000_000;
 const IS_CI = process.env.CI === "true";
 const BENCHMARK_MODEL_BUDGET_MS = IS_CI ? 1_000 : 500;
 const BENCHMARK_LAYOUT_BUDGET_MS = 3_500;
+const RUN_PERFORMANCE_BENCHMARKS = process.env.FREED_PWA_PERF === "1";
+const performanceIt = RUN_PERFORMANCE_BENCHMARKS ? it : it.skip;
 
 function createPerson(overrides: Partial<Person>): Person {
   return {
@@ -336,7 +341,7 @@ describe("identity graph v2 model", () => {
     expect(layout.nodes.length).toBe(model.nodes.length);
   });
 
-  it("rebuilds model and layout within budget for the benchmark graph", () => {
+  performanceIt("rebuilds model and layout within budget for the benchmark graph", () => {
     const benchmarkPeople = 1_000;
     const benchmarkAccounts = 5_000;
     const personEntries = Array.from({ length: benchmarkPeople }, (_, index) =>
@@ -425,6 +430,24 @@ describe("identity graph v2 model", () => {
 });
 
 describe("provisional identity candidates", () => {
+  it("rescans when identity details change without changing account counts", () => {
+    const sparse = {
+      account: createAccount({
+        id: "account",
+        provider: "substack",
+        externalId: "https://substack.com/@ada",
+        displayName: "ada",
+      }),
+    };
+    const descriptive = {
+      account: { ...sparse.account, displayName: "Ada Lovelace" },
+    };
+
+    expect(provisionalPersonRepairSignature({}, sparse)).not.toBe(
+      provisionalPersonRepairSignature({}, descriptive),
+    );
+  });
+
   it("groups obvious human social accounts into provisional connection people", () => {
     const candidates = buildProvisionalPersonCandidates(
       {},
@@ -458,6 +481,45 @@ describe("provisional identity candidates", () => {
         relationshipStatus: "connection",
       },
       accountIds: ["account-ig", "account-li"],
+    });
+  });
+
+  it("keeps publication-only essay subscriptions out of provisional people", () => {
+    const candidates = buildProvisionalPersonCandidates(
+      {},
+      {
+        publication: createAccount({
+          id: "publication",
+          provider: "substack",
+          externalId: "https://systems-thinking.substack.com/",
+          displayName: "Systems Thinking",
+          profileUrl: "https://systems-thinking.substack.com/",
+          followRosterRoles: ["following"],
+        }),
+        writer: createAccount({
+          id: "writer",
+          provider: "substack",
+          externalId: "https://substack.com/@ada",
+          displayName: "Ada Lovelace",
+          profileUrl: "https://substack.com/@ada",
+          followRosterRoles: ["subscription"],
+        }),
+        mediumPublication: createAccount({
+          id: "medium-publication",
+          provider: "medium",
+          externalId: "https://medium.com/better-programming",
+          displayName: "Better Programming",
+          profileUrl: "https://medium.com/better-programming",
+          followRosterRoles: ["subscription"],
+        }),
+      },
+      NOW,
+    );
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      person: { name: "Ada Lovelace", relationshipStatus: "connection" },
+      accountIds: ["writer"],
     });
   });
 });

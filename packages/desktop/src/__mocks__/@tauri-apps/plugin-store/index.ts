@@ -7,6 +7,11 @@
 
 const stores = new Map<string, Map<string, unknown>>();
 
+export function __resetMockStores(): void {
+  for (const store of stores.values()) store.clear();
+  stores.clear();
+}
+
 function storageKey(path: string): string {
   return `__TAURI_MOCK_STORE__:${path}`;
 }
@@ -71,7 +76,20 @@ export class Store {
     persistStoreData(this.path, this.mem);
   }
 
-  async save(): Promise<void> {}
+  async clear(): Promise<void> {
+    if (shouldThrow()) {
+      throw new Error("mock plugin-store failure");
+    }
+    this.mem.clear();
+    persistStoreData(this.path, this.mem);
+  }
+
+  async save(): Promise<void> {
+    if (shouldThrow()) {
+      throw new Error("mock plugin-store failure");
+    }
+    persistStoreData(this.path, this.mem);
+  }
 
   async load(): Promise<void> {}
 }

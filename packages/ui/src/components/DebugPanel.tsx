@@ -528,8 +528,8 @@ function DocumentTab() {
       {/* Summary grid */}
       <div className="grid grid-cols-2 gap-2">
         <div className={DEBUG_CARD_CLASS}>
-          <p className={DEBUG_LABEL_CLASS}>Device ID</p>
-          <p className="font-mono text-xs text-[var(--theme-text-muted)]">...{docSnapshot.deviceId.slice(-8)}</p>
+          <p className={DEBUG_LABEL_CLASS}>Document ID</p>
+          <p className="font-mono text-xs text-[var(--theme-text-muted)]">...{docSnapshot.documentId.slice(-8)}</p>
         </div>
         <div className={DEBUG_CARD_CLASS}>
           <p className={DEBUG_LABEL_CLASS}>Doc Size</p>
@@ -738,6 +738,9 @@ function HealthTab() {
     FacebookSettingsContent,
     InstagramSettingsContent,
     LinkedInSettingsContent,
+    SubstackSettingsContent,
+    MediumSettingsContent,
+    YouTubeSettingsContent,
   } = usePlatform();
   const [feedRangeByUrl, setFeedRangeByUrl] = useState<Record<string, HealthChartRange>>({});
   const [pendingRemoval, setPendingRemoval] = useState<RssFeedHealthSnapshot | null>(null);
@@ -761,6 +764,9 @@ function HealthTab() {
     "facebook",
     "instagram",
     "linkedin",
+    "substack",
+    "medium",
+    "youtube",
     "gdrive",
     "dropbox",
   ];
@@ -771,6 +777,9 @@ function HealthTab() {
     facebook: FacebookSettingsContent,
     instagram: InstagramSettingsContent,
     linkedin: LinkedInSettingsContent,
+    substack: SubstackSettingsContent,
+    medium: MediumSettingsContent,
+    youtube: YouTubeSettingsContent,
   };
 
   const copySnapshot = async () => {

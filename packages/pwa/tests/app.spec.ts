@@ -1300,7 +1300,7 @@ test.describe("FREED PWA", () => {
       await page.getByTestId("reader-author-friends-link").click();
       await expect.poll(() => new URL(page.url()).pathname).toBe("/friends");
       await expect(page.getByText("Freed hit a fatal error")).toHaveCount(0);
-      await expect(page.getByLabel("Friends identity graph")).toBeVisible();
+      await expect(page.getByLabel("Friends galaxy")).toBeVisible();
 
       await page.goBack();
       await expect.poll(() => new URL(page.url()).search).toBe("?item=facebook%3Areader-author%3A1");
@@ -1543,45 +1543,103 @@ test.describe("FREED PWA", () => {
     expect(Math.abs(Math.round(afterReturn!.width) - Math.round(afterResize!.width))).toBeLessThanOrEqual(2);
   });
 
-  test("friend graph pinch zoom stays inside the canvas", async ({ page }) => {
+  test("friend graph handles browser-generated two-finger pinch without page zoom", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const browserSession = await page.context().newCDPSession(page);
+    await browserSession.send("Emulation.setTouchEmulationEnabled", {
+      enabled: true,
+      maxTouchPoints: 2,
+    });
     await page.goto("/");
     await acceptLegalGate(page);
     await seedFriendsWorkspace(page);
 
     const canvas = page.getByTestId("friend-graph-canvas");
     await expect(canvas).toBeVisible();
-
-    const beforeScale = Number(await canvas.getAttribute("data-view-scale"));
+    const viewport = page.getByTestId("friend-graph-viewport");
+    await expect(viewport).toHaveAttribute("data-graph-quality-mode", "settled", {
+      timeout: 10_000,
+    });
+    await expect.poll(() => viewport.evaluate((element) => (
+      Number((element as HTMLElement).dataset.graphNodeCount ?? "0")
+    )), { timeout: 10_000 }).toBeGreaterThan(0);
+    const readGraphScale = () => page.evaluate(() => (
+      window as typeof window & {
+        __FREED_GRAPH_PERF__?: { transformScale?: number };
+      }
+    ).__FREED_GRAPH_PERF__?.transformScale ?? 0);
+    await expect.poll(readGraphScale).toBeGreaterThan(0);
+    const beforeScale = await readGraphScale();
     const pageZoomBefore = await page.evaluate(() => window.visualViewport?.scale ?? 1);
     expect(pageZoomBefore).toBe(1);
 
     const box = await canvas.boundingBox();
     expect(box).not.toBeNull();
-    const zoomEventWasPrevented = await page.evaluate(({ x, y }) => {
-      const canvasEl = document.querySelector('[data-testid="friend-graph-canvas"]');
-      if (!(canvasEl instanceof HTMLCanvasElement)) {
-        throw new Error("friend graph canvas missing");
-      }
+    const centerX = Math.round(box!.x + box!.width / 2);
+    const centerY = Math.round(box!.y + box!.height / 2);
+    const touchPoints = (distance: number) => [
+      {
+        x: centerX - distance,
+        y: centerY,
+        radiusX: 8,
+        radiusY: 8,
+        force: 1,
+        id: 0,
+      },
+      {
+        x: centerX + distance,
+        y: centerY,
+        radiusX: 8,
+        radiusY: 8,
+        force: 1,
+        id: 1,
+      },
+    ];
 
-      const event = new WheelEvent("wheel", {
-        bubbles: true,
-        cancelable: true,
-        clientX: x,
-        clientY: y,
-        deltaY: -180,
-        ctrlKey: true,
+    await browserSession.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: touchPoints(48),
+    });
+    for (const distance of [60, 74, 90, 108]) {
+      await browserSession.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: touchPoints(distance),
       });
-
-      return canvasEl.dispatchEvent(event) === false;
-    }, {
-      x: Math.round(box!.x + box!.width / 2),
-      y: Math.round(box!.y + box!.height / 2),
+    }
+    await browserSession.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
     });
 
-    await expect
-      .poll(async () => Number(await canvas.getAttribute("data-view-scale")))
-      .toBeGreaterThan(beforeScale);
-    expect(zoomEventWasPrevented).toBeTruthy();
+    await expect.poll(readGraphScale).toBeGreaterThan(beforeScale);
+    const firstPinchScale = await readGraphScale();
+
+    await browserSession.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: touchPoints(52),
+    });
+    await browserSession.send("Input.dispatchTouchEvent", {
+      type: "touchCancel",
+      touchPoints: [],
+    });
+    await browserSession.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: touchPoints(48),
+    });
+    await browserSession.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: touchPoints(96),
+    });
+    await browserSession.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    await expect.poll(readGraphScale).toBeGreaterThan(firstPinchScale);
+    const secondPinchScale = await readGraphScale();
+
+    const fitAllButton = page.getByRole("button", { name: "Fit all" });
+    await fitAllButton.click();
+    await expect.poll(readGraphScale).toBeLessThan(secondPinchScale);
 
     const pageZoomAfter = await page.evaluate(() => window.visualViewport?.scale ?? 1);
     expect(pageZoomAfter).toBe(1);

@@ -7,10 +7,17 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { selectPlatformUA, clearPlatformUA } from "./user-agent";
-import { safeUnlisten } from "./safe-unlisten";
-import { clearTransientLastCaptureError } from "./social-auth-transient-errors";
+import {
+  persistDisconnectedSocialAuthStateForFactoryReset,
+  readStoredSocialAuthState,
+  serializeSocialAuthStateForStorage,
+} from "./social-auth-transient-errors";
+import {
+  isDesktopProviderAuthAllowed,
+  requestDesktopProviderAuthCheck,
+  runDesktopProviderAuthRequest,
+} from "./provider-auth-lifecycle";
 
 export interface IgAuthState {
   isAuthenticated: boolean;
@@ -32,8 +39,11 @@ const IG_AUTH_KEY = "ig_auth_state";
  * in, Freed marks the session connected and the user closes the window.
  */
 export async function showIgLogin(): Promise<void> {
-  const userAgent = selectPlatformUA("instagram");
-  await invoke("ig_show_login", { userAgent });
+  if (!isDesktopProviderAuthAllowed()) return;
+  await runDesktopProviderAuthRequest(async () => {
+    const userAgent = selectPlatformUA("instagram");
+    await invoke("ig_show_login", { userAgent });
+  });
 }
 
 /**
@@ -50,26 +60,12 @@ export async function hideIgLogin(): Promise<void> {
  * result event arrives.
  */
 export async function checkIgAuth(): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    let unlisten: UnlistenFn | null = null;
-    const timeout = setTimeout(() => {
-      safeUnlisten(unlisten, "ig-auth-result:timeout");
-      resolve(false);
-    }, 15_000);
-
-    listen<{ loggedIn: boolean }>("ig-auth-result", (event) => {
-      clearTimeout(timeout);
-      safeUnlisten(unlisten, "ig-auth-result");
-      resolve(event.payload.loggedIn);
-    }).then((fn) => {
-      unlisten = fn;
-    });
-
-    invoke("ig_check_auth").catch(() => {
-      clearTimeout(timeout);
-      safeUnlisten(unlisten, "ig-auth-result:error");
-      resolve(false);
-    });
+  if (!isDesktopProviderAuthAllowed()) return false;
+  return requestDesktopProviderAuthCheck<{ loggedIn: boolean }>({
+    eventName: "ig-auth-result",
+    command: "ig_check_auth",
+    timeoutMs: 15_000,
+    isLoggedIn: (payload) => payload.loggedIn,
   });
 }
 
@@ -77,16 +73,23 @@ export async function checkIgAuth(): Promise<boolean> {
  * Disconnect Instagram by clearing all WebView browsing data.
  */
 export async function disconnectIg(): Promise<void> {
-  await invoke("ig_disconnect");
   localStorage.removeItem(IG_AUTH_KEY);
+  await invoke("ig_disconnect");
   clearPlatformUA("instagram");
+}
+
+/** Clear the native session while preserving request history, pause state, and platform identity. */
+export async function disconnectIgForFactoryReset(): Promise<void> {
+  persistDisconnectedSocialAuthStateForFactoryReset(IG_AUTH_KEY, "Instagram");
+  await invoke("ig_disconnect");
 }
 
 /**
  * Persist auth state to localStorage for fast startup.
  */
 export function storeIgAuthState(state: IgAuthState): void {
-  localStorage.setItem(IG_AUTH_KEY, JSON.stringify(clearTransientLastCaptureError(state)));
+  if (!isDesktopProviderAuthAllowed()) return;
+  localStorage.setItem(IG_AUTH_KEY, serializeSocialAuthStateForStorage(state));
 }
 
 /**
@@ -94,20 +97,8 @@ export function storeIgAuthState(state: IgAuthState): void {
  * the real check happens via checkIgAuth().
  */
 export function initIgAuth(): IgAuthState {
-  const stored = localStorage.getItem(IG_AUTH_KEY);
-  if (!stored) return { isAuthenticated: false };
-  try {
-    const parsed = JSON.parse(stored) as IgAuthState;
-    return clearTransientLastCaptureError({
-      isAuthenticated: !!parsed.isAuthenticated,
-      lastCheckedAt: parsed.lastCheckedAt,
-      lastCapturedAt: parsed.lastCapturedAt,
-      lastCaptureError: parsed.lastCaptureError,
-      pausedUntil: parsed.pausedUntil,
-      pauseReason: parsed.pauseReason,
-      pauseLevel: parsed.pauseLevel,
-    });
-  } catch {
-    return { isAuthenticated: false };
-  }
+  const stored = readStoredSocialAuthState<IgAuthState>(IG_AUTH_KEY);
+  return stored.status === "supported"
+    ? stored.state
+    : { isAuthenticated: false };
 }

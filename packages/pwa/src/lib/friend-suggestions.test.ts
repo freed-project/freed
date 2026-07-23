@@ -140,6 +140,37 @@ describe("buildFriendCandidateSuggestions", () => {
     expect(suggestions).toEqual([]);
   });
 
+  it("does not suggest publication-only Substack accounts as friends", () => {
+    const publication = {
+      ...account(
+        "social:substack:systems-thinking",
+        "Systems Thinking",
+        "https://systems-thinking.substack.com/",
+        undefined,
+        "substack",
+      ),
+      profileUrl: "https://systems-thinking.substack.com/",
+      followRosterRoles: ["subscription" as const],
+    };
+    const publicationItem = {
+      ...item(
+        "substack:essay:systems-thinking",
+        publication.externalId,
+        ["life_update", "moment", "discussion"],
+      ),
+      platform: "substack" as const,
+    };
+
+    const suggestions = buildFriendCandidateSuggestions({
+      persons: [],
+      accounts: { [publication.id]: publication },
+      feedItems: [publicationItem],
+      now: NOW,
+    });
+
+    expect(suggestions).toEqual([]);
+  });
+
   it("orders deterministically and keeps ids stable", () => {
     const input = {
       persons: [

@@ -7,6 +7,7 @@ export interface RssRefreshPlanOptions {
   staleAfterMs?: number;
   maxFeeds?: number;
   now?: number;
+  respectRetryWindow?: boolean;
 }
 
 function lastFetchedAt(feed: RssFeed): number {
@@ -39,7 +40,9 @@ export function selectRssFeedsForRefresh(
   const maxFeeds = options.maxFeeds ?? enabled.length;
   if (maxFeeds <= 0) return [];
   const now = options.now ?? Date.now();
-  const eligible = enabled.filter((feed) => isRetryWindowOpen(feed, now));
+  const eligible = options.respectRetryWindow === false
+    ? enabled
+    : enabled.filter((feed) => isRetryWindowOpen(feed, now));
 
   if (options.staleAfterMs === undefined) {
     return eligible.slice().sort(compareFeedsForRefresh).slice(0, maxFeeds);

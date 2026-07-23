@@ -14,6 +14,7 @@ const gdriveUploadSafeMock = vi.fn();
 const gdriveUploadReplaceMock = vi.fn();
 const gdriveDeleteFileMock = vi.fn();
 const replaceLocalDocMock = vi.fn();
+const compareDocMock = vi.fn();
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
@@ -41,7 +42,9 @@ vi.mock("@freed/sync/cloud", () => ({
 }));
 
 vi.mock("./automerge", () => ({
+  compareDoc: compareDocMock,
   getDocBinary: vi.fn(async () => new Uint8Array()),
+  getDocHeads: vi.fn(async () => ["test-head"]),
   mergeDoc: vi.fn(),
   replaceLocalDoc: replaceLocalDocMock,
   setRelayClientCount: vi.fn(),
@@ -89,6 +92,15 @@ describe("desktop cloud sync auth refresh", () => {
     gdriveUploadReplaceMock.mockReset();
     gdriveDeleteFileMock.mockReset();
     replaceLocalDocMock.mockReset();
+    compareDocMock.mockReset();
+    compareDocMock.mockResolvedValue("equal");
+    gdriveUploadSafeMock.mockResolvedValue({
+      fileId: "file-1",
+      uploadedBinary: new Uint8Array(),
+      uploadedBytes: 0,
+      remoteBytes: 0,
+      mergedRemote: false,
+    });
     localStorage.clear();
   });
 
@@ -136,7 +148,7 @@ describe("desktop cloud sync auth refresh", () => {
       }
       return null;
     });
-    gdriveDownloadLatestMock.mockResolvedValue(null);
+    gdriveDownloadLatestMock.mockResolvedValue(new Uint8Array([1]));
     gdriveStartPollLoopMock.mockRejectedValue(
       Object.assign(new Error("GDrive changes failed: 403 Forbidden - insufficientPermissions"), {
         status: 403,
@@ -180,7 +192,7 @@ describe("desktop cloud sync auth refresh", () => {
       }
       return null;
     });
-    gdriveDownloadLatestMock.mockResolvedValue(null);
+    gdriveDownloadLatestMock.mockResolvedValue(new Uint8Array([1]));
     gdriveStartPollLoopMock.mockRejectedValue(
       Object.assign(new Error("GDrive changes failed: 401 Unauthorized"), {
         status: 401,
@@ -276,7 +288,7 @@ describe("desktop cloud sync auth refresh", () => {
   });
 
   it("runs an immediate Google Drive download and upload for manual sync", async () => {
-    gdriveDownloadLatestMock.mockResolvedValue(null);
+    gdriveDownloadLatestMock.mockResolvedValue(new Uint8Array([1]));
     gdriveUploadSafeMock.mockResolvedValue({
       fileId: "file-1",
       uploadedBytes: 0,
@@ -378,7 +390,7 @@ describe("desktop cloud sync auth refresh", () => {
       remoteBytes: 0,
       mergedRemote: false,
     });
-    gdriveDownloadLatestMock.mockResolvedValue(null);
+    gdriveDownloadLatestMock.mockResolvedValue(new Uint8Array([1]));
 
     await resolveCloudSyncConflict("gdrive", "local");
     stopAllCloudSyncs();
@@ -411,7 +423,7 @@ describe("desktop cloud sync auth refresh", () => {
       refreshToken: "refresh-token",
       expiresAt: Date.now() + 3_600_000,
     });
-    gdriveDownloadLatestMock.mockResolvedValue(null);
+    gdriveDownloadLatestMock.mockResolvedValue(new Uint8Array([1]));
     gdriveUploadSafeMock.mockRejectedValueOnce(new Error(destructiveMergeMessage));
 
     await expect(syncCloudProviderNow("gdrive")).rejects.toThrow(/blocked a sync merge/);
@@ -463,7 +475,7 @@ describe("desktop cloud sync auth refresh", () => {
       remoteBytes: 0,
       mergedRemote: false,
     });
-    gdriveDownloadLatestMock.mockResolvedValue(null);
+    gdriveDownloadLatestMock.mockResolvedValue(new Uint8Array([1]));
 
     let releaseIndexing!: () => void;
     const indexing = coordinator.runBackgroundJob({
@@ -500,7 +512,7 @@ describe("desktop cloud sync auth refresh", () => {
     });
     gdriveDownloadLatestMock
       .mockResolvedValueOnce(remote)
-      .mockResolvedValue(null);
+      .mockResolvedValue(remote);
 
     await resolveCloudSyncConflict("gdrive", "cloud");
     stopAllCloudSyncs();
@@ -545,5 +557,45 @@ describe("desktop cloud sync auth refresh", () => {
       reason: expect.stringContaining("Google token proxy is missing"),
     }));
     expect(logWarnMock).toHaveBeenCalledWith(expect.stringContaining("Failed to refresh gdrive on startup"));
+  });
+
+  it("does not retain raw Google OAuth failures in provider health or logs", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "google_oauth_proxy_request") {
+        return {
+          status: 400,
+          headers: [["content-type", "application/json"]],
+          body: Array.from(new TextEncoder().encode(JSON.stringify({
+            error: "invalid_request",
+            error_description:
+              "access_token=health-secret refresh_token=refresh-secret user@example.com",
+          }))),
+        };
+      }
+      return null;
+    });
+    localStorage.setItem("freed_cloud_token_meta_gdrive", JSON.stringify({
+      accessToken: "expired-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() - 60_000,
+    }));
+
+    const { startAllCloudSyncs } = await import("./sync");
+    await expect(startAllCloudSyncs()).resolves.toBeUndefined();
+
+    expect(recordProviderHealthEventMock).toHaveBeenCalledWith(expect.objectContaining({
+      provider: "gdrive",
+      outcome: "error",
+      stage: "auth",
+      reason: "Google token proxy failed. Google rejected the OAuth request.",
+    }));
+    const retainedText = JSON.stringify([
+      recordProviderHealthEventMock.mock.calls,
+      logWarnMock.mock.calls,
+      logErrorMock.mock.calls,
+    ]);
+    expect(retainedText).not.toContain("health-secret");
+    expect(retainedText).not.toContain("refresh-secret");
+    expect(retainedText).not.toContain("user@example.com");
   });
 });

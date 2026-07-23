@@ -1,0 +1,4 @@
+interface:
+  display_name: "Freed Sync Replay"
+  short_description: "Replay sync failures without provider traffic"
+  default_prompt: "Use $freed-sync-replay to reproduce this sync failure with offline fixtures and deterministic faults."

@@ -1420,10 +1420,11 @@ dependencies = [
 
 [[package]]
 name = "freed-desktop"
-version = "26.7.301"
+version = "26.7.1900"
 dependencies = [
  "base64 0.22.1",
  "criterion",
+ "fslock",
  "futures-util",
  "hostname",
  "libc",

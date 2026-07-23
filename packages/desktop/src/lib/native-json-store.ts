@@ -1,6 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { appDataDir } from "@tauri-apps/api/path";
-import { readTextFile, rename, writeTextFile } from "@tauri-apps/plugin-fs";
+import { readTextFile, remove, rename, writeTextFile } from "@tauri-apps/plugin-fs";
 import { scheduleSideEffect } from "./side-effect-scheduler";
 
 const pathPromises = new Map<string, Promise<string>>();
@@ -9,10 +9,14 @@ function mockStoreStorageKey(file: string): string {
   return `__TAURI_MOCK_STORE__:${file}`;
 }
 
-function readMockStoreFile(file: string): Record<string, unknown> | null {
+function readMockStoreRaw(file: string): string | null {
   if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(mockStoreStorageKey(file));
+}
+
+function readMockStoreFile(file: string): Record<string, unknown> | null {
   try {
-    const raw = window.localStorage.getItem(mockStoreStorageKey(file));
+    const raw = readMockStoreRaw(file);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
@@ -32,9 +36,34 @@ function writeMockStoreFile(file: string, contents: Record<string, unknown>): vo
   }
 }
 
+function removeMockStoreFile(file: string): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(mockStoreStorageKey(file));
+}
+
 function isMissingFile(error: unknown): boolean {
+  if (
+    error
+    && typeof error === "object"
+    && "code" in error
+    && error.code === "ENOENT"
+  ) {
+    return true;
+  }
   const message = error instanceof Error ? error.message : String(error);
-  return message.includes("ENOENT") || message.includes("No such file");
+  return /^ENOENT\b/.test(message) || message.includes("No such file or directory");
+}
+
+function parseJsonRecord(raw: string): Record<string, unknown> | null {
+  const parsed = JSON.parse(raw);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? parsed as Record<string, unknown>
+    : null;
+}
+
+interface NativeJsonFileResult {
+  contents: Record<string, unknown> | null;
+  missing: boolean;
 }
 
 async function nativeJsonPath(file: string): Promise<string> {
@@ -48,16 +77,31 @@ async function nativeJsonPath(file: string): Promise<string> {
   return next;
 }
 
+async function readNativeJsonFileResult(file: string): Promise<NativeJsonFileResult> {
+  let raw: string;
+  try {
+    raw = await readTextFile(await nativeJsonPath(file));
+  } catch (error) {
+    if (isMissingFile(error)) {
+      return { contents: readMockStoreFile(file), missing: true };
+    }
+    throw error;
+  }
+  return { contents: parseJsonRecord(raw), missing: false };
+}
+
 export async function readNativeJsonFile(file: string): Promise<Record<string, unknown> | null> {
   if (!isTauri()) return readMockStoreFile(file);
+  return (await readNativeJsonFileResult(file)).contents;
+}
+
+/** Read the exact persisted bytes so callers can preserve malformed evidence. */
+export async function readNativeJsonFileRaw(file: string): Promise<string | null> {
+  if (!isTauri()) return readMockStoreRaw(file);
   try {
-    const raw = await readTextFile(await nativeJsonPath(file));
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : null;
+    return await readTextFile(await nativeJsonPath(file));
   } catch (error) {
-    if (isMissingFile(error)) return readMockStoreFile(file);
+    if (isMissingFile(error)) return readMockStoreRaw(file);
     throw error;
   }
 }
@@ -85,12 +129,11 @@ export async function writeNativeJsonValue(
     kind: `write:${file}`,
     run: async () => {
       const path = await nativeJsonPath(file);
-      let parsed: Record<string, unknown> = {};
-      try {
-        parsed = (await readNativeJsonFile(file)) ?? {};
-      } catch {
-        parsed = {};
+      const existing = await readNativeJsonFileResult(file);
+      if (!existing.missing && !existing.contents) {
+        throw new TypeError(`Native JSON store ${file} must contain an object`);
       }
+      const parsed = existing.contents ?? {};
       parsed[key] = value;
       const tempPath = `${path}.tmp`;
       await writeTextFile(tempPath, JSON.stringify(parsed));
@@ -119,6 +162,33 @@ export async function writeNativeJsonFile(
       await writeTextFile(tempPath, JSON.stringify(contents));
       await rename(tempPath, path);
       writeMockStoreFile(file, contents);
+    },
+  });
+}
+
+/** Remove a native JSON store after all earlier native-store work has settled. */
+export async function removeNativeJsonFile(
+  file: string,
+  source: string,
+): Promise<void> {
+  if (!isTauri()) {
+    removeMockStoreFile(file);
+    return;
+  }
+  await scheduleSideEffect({
+    queue: "nativeStore",
+    source,
+    kind: `remove:${file}`,
+    run: async () => {
+      const path = await nativeJsonPath(file);
+      for (const candidate of [path, `${path}.tmp`]) {
+        try {
+          await remove(candidate);
+        } catch (error) {
+          if (!isMissingFile(error)) throw error;
+        }
+      }
+      removeMockStoreFile(file);
     },
   });
 }

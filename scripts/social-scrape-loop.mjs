@@ -33,11 +33,12 @@ const DEFAULT_OUTPUT = path.join("/tmp", "freed-social-scrape-loop", "latest-rep
 const DEFAULT_LOCK_PATH = path.join("/tmp", "freed-social-scrape-loop", "run.lock");
 const DEFAULT_JSONL_TAIL_BYTES = 8 * 1024 * 1024;
 const HEAVY_DIAGNOSTIC_FIELDS = ["sampleSummary", "vmmapSummary"];
-const PROVIDERS = ["facebook", "instagram", "linkedin", "x"];
+const PROVIDERS = ["facebook", "instagram", "linkedin", "youtube", "x"];
 const PROVIDER_LABELS = {
   facebook: "Facebook",
   instagram: "Instagram",
   linkedin: "LinkedIn",
+  youtube: "YouTube",
   x: "X",
 };
 const numberFormatter = new Intl.NumberFormat("en-US", {
@@ -828,7 +829,7 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
         id: `${provider}-empty-feed-health`,
         priority: "high",
         scope: "local-only",
-        title: `Explain why ${label} is returning zero posts after a scrape plan.`,
+        title: `Explain why ${label} is returning zero ${provider === "youtube" ? "videos" : "posts"} after a scrape plan.`,
         evidence: `${diagnosticsEvidence}${healthEvidence}`,
         nextStep: "Inspect local extractor diagnostics, DOM fixture coverage, and failure-stage mapping. Do not add extra provider loads or scripted traversal without explicit approval.",
       });
@@ -871,7 +872,7 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
       });
     }
 
-    if (stats.preflights === 0) {
+    if (provider !== "youtube" && stats.preflights === 0) {
       addAction(actions, {
         id: `${provider}-missing-coverage`,
         priority: "medium",
@@ -898,7 +899,7 @@ export function buildOptimizationPlan(summary, { memoryBudgetGib = 4 } = {}) {
   blockedProviderRisk.push(
     {
       id: "extra-feed-navigation",
-      providers: ["Facebook", "Instagram", "LinkedIn", "X"],
+      providers: ["Facebook", "Instagram", "LinkedIn", "YouTube", "X"],
       behavior: "Extra authenticated feed loads or refreshes.",
       whyRisky: "Providers can observe repeated navigation cadence and associate it with automation.",
       lowestProfileAlternative: "Use local preflight cleanup, passive log analysis, and manual Sync Now while reviewing risk.",

@@ -10,6 +10,7 @@ import type {
   IdentityGraphActivitySummary,
 } from "./identity-graph-activity-summary.js";
 import { socialActivitySummaryKey } from "./identity-graph-activity-summary.js";
+import { providerGalaxyNodePoint } from "./identity-galaxy-provider-field.js";
 import type { ViewTransform } from "./identity-graph-layout.js";
 
 export type IdentityGraphAtlasNodeKind =
@@ -40,6 +41,7 @@ export interface IdentityGraphAtlasNode {
   latestActivityAt?: number;
   aggregateCount?: number;
   graphPinned?: boolean;
+  careLevel?: Person["careLevel"];
   friendSuggestionConfidence?: FriendCandidateConfidence;
 }
 
@@ -121,6 +123,28 @@ export interface BuildIdentityGraphAtlasInput {
   friendSuggestionStrengthByAccount?: Record<string, FriendCandidateConfidence>;
 }
 
+export type BuildIdentityGraphAtlasModelInput = Omit<
+  BuildIdentityGraphAtlasInput,
+  "transform" | "quality" | "selectedPersonId" | "selectedAccountId"
+>;
+
+export interface IdentityGraphAtlasModel {
+  nodes: IdentityGraphAtlasNode[];
+  edges: IdentityGraphAtlasEdge[];
+  regions: IdentityGraphAtlasRegion[];
+  bounds: IdentityGraphAtlasBounds;
+}
+
+export interface SliceIdentityGraphAtlasInput {
+  model: IdentityGraphAtlasModel;
+  transform: ViewTransform;
+  width: number;
+  height: number;
+  quality: IdentityGraphAtlasQuality;
+  selectedPersonId?: string | null;
+  selectedAccountId?: string | null;
+}
+
 interface ProviderBucket {
   provider: string;
   accounts: IdentityGraphAtlasNode[];
@@ -133,12 +157,13 @@ const OVERVIEW_NODE_CAP = 220;
 const MIDDLE_NODE_CAP = 520;
 const DETAIL_NODE_CAP = 1_100;
 const MOBILE_OVERVIEW_NODE_CAP = 150;
-const MOBILE_MIDDLE_NODE_CAP = 260;
+const MOBILE_MIDDLE_NODE_CAP = 520;
 const MOBILE_DETAIL_NODE_CAP = 520;
 const INTERACTIVE_NODE_CAP = 140;
 const INTERACTIVE_DESKTOP_NODE_CAP = 240;
 const LABEL_CAP = 120;
 const MOBILE_LABEL_CAP = 56;
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
 function nowMs(): number {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -161,6 +186,10 @@ function seededUnit(value: string): number {
 
 function safeText(value: unknown, fallback = ""): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function normalizedProvider(value: unknown): string {
+  return safeText(value, "other").toLowerCase();
 }
 
 function providerLabel(provider: string): string {
@@ -215,7 +244,7 @@ function personActivity(
   let avatarUrl: string | null = null;
   for (const account of accounts) {
     if (account.personId !== personId || account.kind !== "social") continue;
-    const summary = summaries[socialActivitySummaryKey(account.provider, account.externalId)];
+    const summary = summaries[socialActivitySummaryKey(normalizedProvider(account.provider), account.externalId)];
     count += summary?.itemCount ?? 0;
     latest = Math.max(latest, summary?.latestActivityAt ?? 0, account.lastSeenAt ?? 0);
     avatarUrl = avatarUrl ?? account.avatarUrl ?? summary?.avatarUrl ?? null;
@@ -315,54 +344,68 @@ function nodeSortValue(node: IdentityGraphAtlasNode, selectedPersonId?: string |
   return score;
 }
 
-export function buildIdentityGraphAtlas({
+export function buildIdentityGraphAtlasModel({
   persons,
   accounts,
   feeds,
   activitySummaries,
   mode,
-  transform,
   width,
   height,
-  quality,
-  selectedPersonId,
-  selectedAccountId,
   friendSuggestionStrengthByPerson = {},
   friendSuggestionStrengthByAccount = {},
-}: BuildIdentityGraphAtlasInput): IdentityGraphAtlas {
-  const startedAt = nowMs();
+}: BuildIdentityGraphAtlasModelInput): IdentityGraphAtlasModel {
   const accountValues = Object.values(accounts);
+  const socialAccountsByPersonId = new Map<string, Account[]>();
+  for (const account of accountValues) {
+    if (account.kind !== "social" || !account.personId) continue;
+    const siblings = socialAccountsByPersonId.get(account.personId);
+    if (siblings) siblings.push(account);
+    else socialAccountsByPersonId.set(account.personId, [account]);
+  }
   const visiblePersons = persons
     .filter((person) => mode === "all_content" || person.relationshipStatus === "friend")
     .sort((left, right) =>
       right.careLevel - left.careLevel ||
       safeText(left.relationshipStatus).localeCompare(safeText(right.relationshipStatus)) ||
+      hashValue(left.id) - hashValue(right.id) ||
       safeText(left.name).localeCompare(safeText(right.name)),
     );
   const visiblePersonIds = new Set(visiblePersons.map((person) => person.id));
   const centerX = width / 2;
   const centerY = height / 2;
   const minDimension = Math.min(width, height);
-  const friendBaseRadius = Math.max(120, minDimension * 0.24);
-  const connectionBaseRadius = Math.max(310, minDimension * 0.48);
+  const friendCount = visiblePersons.filter((person) => person.relationshipStatus === "friend").length;
+  const connectionCount = visiblePersons.length - friendCount;
+  const friendFieldRadius = Math.max(360, minDimension * 0.5, Math.sqrt(Math.max(1, friendCount)) * 82);
+  const connectionInnerRadius = friendFieldRadius + 170;
+  const connectionFieldWidth = Math.max(220, Math.sqrt(Math.max(1, connectionCount)) * 48);
   const allNodes: IdentityGraphAtlasNode[] = [];
   const edges: IdentityGraphAtlasEdge[] = [];
   const regions: IdentityGraphAtlasRegion[] = [];
   const providerBuckets = new Map<string, ProviderBucket>();
 
+  let friendIndex = 0;
+  let connectionIndex = 0;
   for (let index = 0; index < visiblePersons.length; index += 1) {
     const person = visiblePersons[index]!;
-    const linkedAccounts = accountValues.filter((account) => account.personId === person.id && account.kind === "social");
+    const linkedAccounts = socialAccountsByPersonId.get(person.id) ?? [];
     const activity = personActivity(person.id, linkedAccounts, activitySummaries.social);
     const friend = person.relationshipStatus === "friend";
-    const bandRadius = friend
-      ? friendBaseRadius + Math.floor(index / 72) * 66
-      : connectionBaseRadius + Math.floor(index / 110) * 58;
-    const angle = -Math.PI / 2 + seededUnit(`person:${person.id}`) * Math.PI * 2;
+    const angle = friend
+      ? -Math.PI / 2 + friendIndex * GOLDEN_ANGLE + (seededUnit(`person:${person.id}:angle`) - 0.5) * 0.16
+      : -Math.PI / 2 + connectionIndex * GOLDEN_ANGLE + (seededUnit(`connection:${person.id}:angle`) - 0.5) * 0.2;
+    const carePull = 1 - ((person.careLevel - 1) / 4) * 0.12;
+    const radius = friend
+      ? Math.sqrt((friendIndex + 0.55) / Math.max(1, friendCount)) * friendFieldRadius * carePull
+      : connectionInnerRadius +
+        Math.sqrt((connectionIndex + 0.5) / Math.max(1, connectionCount)) * connectionFieldWidth;
     const fallback = {
-      x: centerX + Math.cos(angle) * bandRadius,
-      y: centerY + Math.sin(angle) * bandRadius * 0.72,
+      x: centerX + Math.cos(angle) * radius,
+      y: centerY + Math.sin(angle) * radius * 0.74,
     };
+    if (friend) friendIndex += 1;
+    else connectionIndex += 1;
     const position = applyPinnedPosition(person, fallback);
     allNodes.push({
       id: `person:${person.id}`,
@@ -380,6 +423,7 @@ export function buildIdentityGraphAtlas({
       activityCount: activity.count,
       latestActivityAt: activity.latest > 0 ? activity.latest : undefined,
       graphPinned: person.graphPinned,
+      careLevel: person.careLevel,
       friendSuggestionConfidence: friendSuggestionStrengthByPerson[person.id],
     });
   }
@@ -388,36 +432,32 @@ export function buildIdentityGraphAtlas({
   const visibleSocialAccounts = accountValues
     .filter((account) => account.kind === "social")
     .filter((account) => mode === "all_content" || (!!account.personId && visiblePersonIds.has(account.personId)));
-  const visibleSocialAccountsByPersonId = new Map<string, Account[]>();
-  for (const account of visibleSocialAccounts) {
-    if (!account.personId) continue;
-    const siblings = visibleSocialAccountsByPersonId.get(account.personId);
-    if (siblings) {
-      siblings.push(account);
-    } else {
-      visibleSocialAccountsByPersonId.set(account.personId, [account]);
-    }
-  }
 
   for (const account of visibleSocialAccounts) {
+    const provider = normalizedProvider(account.provider);
     const linkedPersonId = account.personId && visiblePersonIds.has(account.personId) ? account.personId : null;
-    const summary = activitySummaries.social[socialActivitySummaryKey(account.provider, account.externalId)];
+    const summary = activitySummaries.social[socialActivitySummaryKey(provider, account.externalId)];
     const linkedPerson = linkedPersonId ? personNodeById.get(linkedPersonId) : null;
     const label = accountLabel(account);
     const activityCount = summary?.itemCount ?? 0;
     const radius = Math.min(linkedPerson ? 21 : 15, Math.max(10, (linkedPerson ? 12 : 10) + Math.log2(activityCount + 1.5) * 1.9));
     let fallback: { x: number; y: number };
     if (linkedPerson) {
-      const siblings = linkedPersonId ? visibleSocialAccountsByPersonId.get(linkedPersonId) ?? [] : [];
+      const siblings = linkedPersonId ? socialAccountsByPersonId.get(linkedPersonId) ?? [] : [];
       const siblingIndex = Math.max(0, siblings.findIndex((entry) => entry.id === account.id));
-      const ringCapacity = linkedPerson.radius >= 60 ? 18 : 14;
-      const ringIndex = Math.floor(siblingIndex / ringCapacity);
-      const indexInRing = siblingIndex % ringCapacity;
-      const orbit = linkedPerson.radius + 18 + ringIndex * 15;
-      const angle = (Math.PI * 2 * (indexInRing + ringIndex * 0.36)) / ringCapacity + seededUnit(`account:${account.id}`) * 0.045;
+      const maximumRingCapacity = linkedPerson.radius >= 60 ? 18 : 14;
+      const ringIndex = Math.floor(siblingIndex / maximumRingCapacity);
+      const indexInRing = siblingIndex % maximumRingCapacity;
+      const ringPopulation = Math.min(
+        maximumRingCapacity,
+        Math.max(1, siblings.length - ringIndex * maximumRingCapacity),
+      );
+      const orbit = linkedPerson.radius + 10 + ringIndex * 12;
+      const orbitRotation = seededUnit(`person:${linkedPersonId}:orbit`) * Math.PI * 2;
+      const angle = orbitRotation + (Math.PI * 2 * (indexInRing + ringIndex * 0.36)) / ringPopulation;
       fallback = {
         x: linkedPerson.x + Math.cos(angle) * orbit,
-        y: linkedPerson.y + Math.sin(angle) * orbit * 0.86,
+        y: linkedPerson.y + Math.sin(angle) * orbit * 0.9,
       };
     } else {
       fallback = {
@@ -435,7 +475,7 @@ export function buildIdentityGraphAtlas({
       radius,
       priority: linkedPerson ? 420 + activityCount : 280 + activityCount,
       accountId: account.id,
-      provider: account.provider,
+      provider,
       linkedPersonId,
       initials: initialsForLabel(label),
       avatarUrl: account.avatarUrl ?? summary?.avatarUrl ?? null,
@@ -453,27 +493,28 @@ export function buildIdentityGraphAtlas({
         targetId: node.id,
       });
     } else {
-      const bucket = providerBuckets.get(account.provider) ?? {
-        provider: account.provider,
+      const bucket = providerBuckets.get(provider) ?? {
+        provider,
         accounts: [],
         feeds: [],
         linkedCount: 0,
       };
       bucket.accounts.push(node);
-      providerBuckets.set(account.provider, bucket);
+      providerBuckets.set(provider, bucket);
     }
   }
 
   for (const account of visibleSocialAccounts) {
     if (!account.personId) continue;
-    const bucket = providerBuckets.get(account.provider) ?? {
-      provider: account.provider,
+    const provider = normalizedProvider(account.provider);
+    const bucket = providerBuckets.get(provider) ?? {
+      provider,
       accounts: [],
       feeds: [],
       linkedCount: 0,
     };
     bucket.linkedCount += 1;
-    providerBuckets.set(account.provider, bucket);
+    providerBuckets.set(provider, bucket);
   }
 
   if (mode === "all_content") {
@@ -506,29 +547,32 @@ export function buildIdentityGraphAtlas({
     }
   }
 
-  const providers = [...providerBuckets.values()].sort((left, right) => left.provider.localeCompare(right.provider));
-  const outerRadius = Math.max(430, minDimension * 0.72);
+  const providers = [...providerBuckets.values()].sort((left, right) =>
+    safeText(left.provider, "other").localeCompare(safeText(right.provider, "other")),
+  );
+  const outerRadius = Math.max(560, friendFieldRadius + connectionFieldWidth + 170);
   for (let providerIndex = 0; providerIndex < providers.length; providerIndex += 1) {
     const bucket = providers[providerIndex]!;
     const unlinked = [...bucket.accounts, ...bucket.feeds].sort((left, right) =>
-      nodeSortValue(right, selectedPersonId, selectedAccountId) - nodeSortValue(left, selectedPersonId, selectedAccountId) ||
-      left.label.localeCompare(right.label),
+      nodeSortValue(right) - nodeSortValue(left) ||
+      safeText(left.label).localeCompare(safeText(right.label)),
     );
     const angle = -Math.PI / 2 + (Math.PI * 2 * providerIndex) / Math.max(1, providers.length);
     const islandRing = Math.floor(providerIndex / 8);
     const islandRadius = outerRadius + islandRing * 140;
     const islandX = centerX + Math.cos(angle) * islandRadius;
     const islandY = centerY + Math.sin(angle) * islandRadius * 0.82;
-    const rows = Math.max(1, Math.ceil(Math.sqrt(unlinked.length)));
-    const islandSize = Math.max(96, Math.ceil(Math.sqrt(unlinked.length)) * 22);
+    const islandSize = Math.max(96, Math.ceil(Math.sqrt(unlinked.length)) * 20);
+    const regionRadiusX = islandSize + 48;
+    const regionRadiusY = islandSize * 0.78 + 38;
     regions.push({
       id: `region:${bucket.provider}`,
       provider: bucket.provider,
       label: providerLabel(bucket.provider),
       x: islandX,
       y: islandY,
-      radiusX: islandSize + 54,
-      radiusY: islandSize * 0.72 + 42,
+      radiusX: regionRadiusX,
+      radiusY: regionRadiusY,
       count: bucket.linkedCount + unlinked.length,
       linkedCount: bucket.linkedCount,
       unlinkedCount: unlinked.length,
@@ -551,11 +595,16 @@ export function buildIdentityGraphAtlas({
     }
 
     unlinked.forEach((node, index) => {
-      const col = index % rows;
-      const row = Math.floor(index / rows);
+      const localPoint = providerGalaxyNodePoint(
+        bucket.provider,
+        index,
+        unlinked.length,
+        regionRadiusX,
+        regionRadiusY,
+      );
       const fallback = {
-        x: islandX + (col - (rows - 1) / 2) * 26 + (seededUnit(`${node.id}:x`) - 0.5) * 8,
-        y: islandY + (row - (Math.ceil(unlinked.length / rows) - 1) / 2) * 26 + (seededUnit(`${node.id}:y`) - 0.5) * 8,
+        x: islandX + localPoint.x,
+        y: islandY + localPoint.y,
       };
       if (node.accountId) {
         const account = accounts[node.accountId];
@@ -571,6 +620,28 @@ export function buildIdentityGraphAtlas({
       allNodes.push(node);
     });
   }
+
+  return {
+    nodes: allNodes,
+    edges,
+    regions,
+    bounds: graphBounds(allNodes, regions),
+  };
+}
+
+export function sliceIdentityGraphAtlas({
+  model,
+  transform,
+  width,
+  height,
+  quality,
+  selectedPersonId,
+  selectedAccountId,
+}: SliceIdentityGraphAtlasInput): IdentityGraphAtlas {
+  const startedAt = nowMs();
+  const allNodes = model.nodes;
+  const edges = model.edges;
+  const regions = model.regions;
 
   const lod = lodForScale(transform.scale);
   const maxNodes = maxNodesForViewport(width, quality, lod);
@@ -627,10 +698,10 @@ export function buildIdentityGraphAtlas({
       })
       .map((region) => ({
         id: `label:${region.id}`,
-        nodeId: region.id,
+        nodeId: `provider:${region.provider}`,
         text: `${region.label} ${region.count.toLocaleString()}`,
         x: region.x,
-        y: region.y - region.radiusY - 20,
+        y: region.y,
         priority: 1_200 + region.count,
         kind: "provider_cluster",
       }));
@@ -638,25 +709,25 @@ export function buildIdentityGraphAtlas({
     ? []
     : visibleNodes
       .filter((node) =>
-        node.kind === "provider_cluster" ||
-        selectedNodeIds.has(node.id) ||
-        (lod === "overview" && node.kind === "friend_person" && node.priority >= 980) ||
-        (lod === "middle" && (node.kind === "friend_person" || node.priority >= 620)) ||
-        (lod === "detail" && node.priority >= 320),
+        node.kind !== "provider_cluster" && (
+          selectedNodeIds.has(node.id) ||
+          (lod === "overview" && node.kind === "friend_person" && node.priority >= 980) ||
+          (lod === "middle" && (node.kind === "friend_person" || node.priority >= 620)) ||
+          (lod === "detail" && node.priority >= 320)
+        ),
       )
       .map((node) => ({
         id: `label:${node.id}`,
         nodeId: node.id,
         text: node.label,
         x: node.x,
-        y: node.y + node.radius + 16,
-        priority: node.priority,
+        y: node.y,
+        priority: node.priority + (selectedNodeIds.has(node.id) ? 10_000 : 0),
         kind: node.kind,
       }));
   const labels = [...regionLabels, ...nodeLabels]
     .sort((left, right) => right.priority - left.priority || left.id.localeCompare(right.id))
     .slice(0, labelCap);
-  const bounds = graphBounds(allNodes, regions);
   const clusterNodeCount = visibleNodes.filter((node) => node.kind === "provider_cluster").length;
 
   return {
@@ -665,7 +736,7 @@ export function buildIdentityGraphAtlas({
     regions,
     labels,
     hitBuckets: buildHitBuckets(visibleNodes),
-    bounds,
+    bounds: model.bounds,
     metrics: {
       sourceNodeCount,
       visibleNodeCount: visibleNodes.length,
@@ -677,6 +748,19 @@ export function buildIdentityGraphAtlas({
       buildMs: nowMs() - startedAt,
     },
   };
+}
+
+export function buildIdentityGraphAtlas(input: BuildIdentityGraphAtlasInput): IdentityGraphAtlas {
+  const model = buildIdentityGraphAtlasModel(input);
+  return sliceIdentityGraphAtlas({
+    model,
+    transform: input.transform,
+    width: input.width,
+    height: input.height,
+    quality: input.quality,
+    selectedPersonId: input.selectedPersonId,
+    selectedAccountId: input.selectedAccountId,
+  });
 }
 
 export function fitTransformToAtlasBounds(

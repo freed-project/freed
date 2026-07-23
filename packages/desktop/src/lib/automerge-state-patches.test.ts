@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultPreferences, type FeedItem } from "@freed/shared";
 import type { DocState } from "./automerge-types";
-import { applyItemPatchesToState, createItemIndex } from "./automerge-state-patches";
+import {
+  applyItemPatchesToState,
+  applyPreferencePatchToState,
+  createItemIndex,
+} from "./automerge-state-patches";
 
 const FEED_URL = "https://example.com/feed.xml";
 
@@ -48,6 +52,7 @@ function makeState(items: FeedItem[]): DocState {
     accounts: {},
     friends: {},
     preferences: createDefaultPreferences(),
+    desktopClientIds: [],
     feedUnreadCounts: { [FEED_URL]: 1 },
     feedTotalCounts: { [FEED_URL]: 2 },
     totalUnreadCount: 1,
@@ -64,6 +69,51 @@ function makeState(items: FeedItem[]): DocState {
 }
 
 describe("Automerge item patch state updates", () => {
+  it("replaces Facebook capture maps so removed groups stay removed", () => {
+    const state = makeState([]);
+    state.preferences.fbCapture = {
+      knownGroups: {
+        one: { id: "one", name: "One", url: "https://facebook.com/groups/one" },
+        two: { id: "two", name: "Two", url: "https://facebook.com/groups/two" },
+      },
+      excludedGroupIds: { one: true },
+    };
+
+    const result = applyPreferencePatchToState(state, {
+      fbCapture: {
+        knownGroups: {
+          two: { id: "two", name: "Two", url: "https://facebook.com/groups/two" },
+        },
+        excludedGroupIds: {},
+      },
+    });
+
+    expect(result.preferences.fbCapture.knownGroups).toEqual({
+      two: { id: "two", name: "Two", url: "https://facebook.com/groups/two" },
+    });
+    expect(result.preferences.fbCapture.excludedGroupIds).toEqual({});
+    expect(result.preferences.display).toEqual(state.preferences.display);
+  });
+
+  it("preserves the omitted Facebook capture map in a partial patch", () => {
+    const state = makeState([]);
+    state.preferences.fbCapture = {
+      knownGroups: {
+        one: { id: "one", name: "One", url: "https://facebook.com/groups/one" },
+      },
+      excludedGroupIds: { one: true },
+    };
+
+    const result = applyPreferencePatchToState(state, {
+      fbCapture: { excludedGroupIds: {} },
+    });
+
+    expect(result.preferences.fbCapture.knownGroups).toEqual(
+      state.preferences.fbCapture.knownGroups,
+    );
+    expect(result.preferences.fbCapture.excludedGroupIds).toEqual({});
+  });
+
   it("updates read and archivable counts without rebuilding every count from items", () => {
     const unread = makeItem("rss:unread");
     const read = makeItem("rss:read", { readAt: 10 });
@@ -117,6 +167,51 @@ describe("Automerge item patch state updates", () => {
     expect(result.itemIndex.get("rss:read")).toBe(0);
     expect(result.state.totalItemCount).toBe(1);
     expect(result.state.totalUnreadCount).toBe(0);
+  });
+
+  it("removes duplicate records and updates counts without hydrating full state", () => {
+    const unread = makeItem("rss:unread");
+    const read = makeItem("rss:read", { readAt: 10 });
+    const state = makeState([unread, read]);
+    const index = createItemIndex(state.items);
+    const patchedRead = makeItem("rss:read", { readAt: 10, saved: true });
+
+    const result = applyItemPatchesToState(state, [{ item: patchedRead }], index, {
+      removedItemIds: ["rss:unread"],
+      searchCorpusVersion: 2,
+    });
+
+    expect(result.state.items).toEqual([patchedRead]);
+    expect(result.itemIndex.has("rss:unread")).toBe(false);
+    expect(result.itemIndex.get("rss:read")).toBe(0);
+    expect(result.state.searchCorpusVersion).toBe(2);
+    expect(result.state.docItemCount).toBe(1);
+    expect(result.state.totalItemCount).toBe(1);
+    expect(result.state.totalUnreadCount).toBe(0);
+    expect(result.state.itemCountByPlatform).toEqual({ rss: 1 });
+    expect(result.state.feedTotalCounts).toEqual({ [FEED_URL]: 1 });
+    expect(result.state.feedUnreadCounts).toEqual({});
+  });
+
+  it("decrements the document count for removed records outside the UI projection", () => {
+    const unread = makeItem("rss:unread");
+    const state = {
+      ...makeState([unread]),
+      docItemCount: 2,
+      totalItemCount: 1,
+      itemCountByPlatform: { rss: 1 },
+      feedTotalCounts: { [FEED_URL]: 1 },
+    };
+    const index = createItemIndex(state.items);
+
+    const result = applyItemPatchesToState(state, [], index, {
+      removedItemIds: ["rss:hidden-duplicate"],
+    });
+
+    expect(result.state.items).toBe(state.items);
+    expect(result.itemIndex).toBe(index);
+    expect(result.state.docItemCount).toBe(1);
+    expect(result.state.totalItemCount).toBe(1);
   });
 
   it("preserves count map identity for count-neutral item patches", () => {

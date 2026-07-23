@@ -30,12 +30,16 @@ export async function extractContent(url: string): Promise<ExtractedContent> {
     throw new Error(`Could not extract article content from ${url}`);
   }
 
-  const text = article.textContent.trim();
+  const text = article.textContent?.trim();
+  const content = article.content;
+  if (!text || !content) {
+    throw new Error(`Readability returned empty content for ${url}`);
+  }
   const wordCount = text.split(/\s+/).filter(Boolean).length;
   const readingTime = Math.max(1, Math.ceil(wordCount / 200)); // 200 WPM
 
   return {
-    html: article.content,
+    html: content,
     text,
     wordCount,
     readingTime,

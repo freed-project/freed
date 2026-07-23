@@ -19,7 +19,10 @@ import { useAppStore } from "./store";
 import { storeFbAuthState } from "./fb-auth";
 import { storeIgAuthState } from "./instagram-auth";
 import { storeLiAuthState } from "./li-auth";
-import { readNativeJsonFile, writeNativeJsonFile } from "./native-json-store";
+import { storeSubstackAuthState } from "./substack-auth";
+import { storeMediumAuthState } from "./medium-auth";
+import { storeYouTubeAuthState } from "./youtube-auth";
+import { readNativeJsonFileRaw, writeNativeJsonFile } from "./native-json-store";
 
 const HEALTH_STORE_FILE = "sync-health.json";
 const HEALTH_STORE_KEY = "provider-health";
@@ -36,14 +39,30 @@ const PROVIDERS: HealthProviderId[] = [
   "facebook",
   "instagram",
   "linkedin",
+  "substack",
+  "medium",
+  "youtube",
   "gdrive",
   "dropbox",
 ];
+const LEGACY_VERSION_ONE_PROVIDERS = new Set<HealthProviderId>([
+  "rss",
+  "x",
+  "facebook",
+  "instagram",
+  "linkedin",
+  "youtube",
+  "gdrive",
+  "dropbox",
+]);
 const SOCIAL_PROVIDERS = new Set<HealthProviderId>([
   "x",
   "facebook",
   "instagram",
   "linkedin",
+  "substack",
+  "medium",
+  "youtube",
 ]);
 const DEFAULT_DAILY_BUCKETS = 7;
 const DEFAULT_HOURLY_BUCKETS = 24;
@@ -51,6 +70,9 @@ const PAUSE_HOURS = [2, 4, 6] as const;
 const RATE_LIMIT_HEURISTIC_WINDOW_MS = 90 * 60 * 1000;
 const FAILING_FEED_OUTAGE_MS = 24 * 60 * 60 * 1000;
 const TRANSIENT_MEMORY_PRESSURE_STATUS_MS = 15 * 60 * 1000;
+const STORAGE_BLOCK_PAUSE_MS = 100 * 365 * 24 * 60 * 60 * 1000;
+const STORAGE_BLOCK_MESSAGE =
+  "Freed paused automatic provider sync because its local request history could not be read. Choose Sync now to preserve the existing record and resume.";
 
 type HealthStage =
   | "fetch"
@@ -112,11 +134,41 @@ interface PersistedHealthState {
   updatedAt: number;
 }
 
+type HealthStorageStatus =
+  | "loading"
+  | "missing"
+  | "supported"
+  | "unsupported"
+  | "corrupt"
+  | "unavailable";
+
+interface HealthStorageIssue {
+  status: "unsupported" | "corrupt" | "unavailable";
+  source: "native" | "fallback" | "mock";
+  reason: string;
+  raw: string | null;
+  detectedAt: number;
+}
+
+interface HealthStateReadResult {
+  status: Exclude<HealthStorageStatus, "loading">;
+  state: PersistedHealthState;
+  issue: HealthStorageIssue | null;
+}
+
+type RawHealthReadResult =
+  | { status: "available"; raw: string; source: "fallback" | "mock" }
+  | { status: "missing" }
+  | { status: "unavailable"; issue: HealthStorageIssue };
+
 let currentState: PersistedHealthState | null = null;
 let initPromise: Promise<void> | null = null;
 let pendingPersistState: PersistedHealthState | null = null;
 let pendingPersistTimer: ReturnType<typeof setTimeout> | null = null;
 let latestFailingRssFeeds: RssFeedHealthSnapshot[] = [];
+let healthStorageStatus: HealthStorageStatus = "loading";
+let healthStorageIssue: HealthStorageIssue | null = null;
+let recoverySequence = 0;
 
 function defaultDailyBuckets(now = Date.now()): HealthDailyBucket[] {
   return Array.from({ length: DEFAULT_DAILY_BUCKETS }, (_unused, index) => {
@@ -171,6 +223,9 @@ function createEmptyState(now = Date.now()): PersistedHealthState {
       facebook: emptyProviderState("facebook", now),
       instagram: emptyProviderState("instagram", now),
       linkedin: emptyProviderState("linkedin", now),
+      substack: emptyProviderState("substack", now),
+      medium: emptyProviderState("medium", now),
+      youtube: emptyProviderState("youtube", now),
       gdrive: emptyProviderState("gdrive", now),
       dropbox: emptyProviderState("dropbox", now),
     },
@@ -179,29 +234,71 @@ function createEmptyState(now = Date.now()): PersistedHealthState {
   };
 }
 
-function fallbackRead(): PersistedHealthState | null {
+function createStorageIssue(
+  status: HealthStorageIssue["status"],
+  source: HealthStorageIssue["source"],
+  reason: string,
+  raw: string | null,
+): HealthStorageIssue {
+  return {
+    status,
+    source,
+    reason,
+    raw,
+    detectedAt: Date.now(),
+  };
+}
+
+function readFallbackRaw(): RawHealthReadResult {
+  if (typeof window === "undefined") {
+    return {
+      status: "unavailable",
+      issue: createStorageIssue(
+        "unavailable",
+        "fallback",
+        "Local storage is unavailable.",
+        null,
+      ),
+    };
+  }
+
   try {
     const raw = window.localStorage.getItem(FALLBACK_STORAGE_KEY);
-    if (raw) {
-      return coercePersistedHealthState(JSON.parse(raw));
-    }
-  } catch {
-    // Ignore fallback storage failures.
+    if (raw !== null) return { status: "available", raw, source: "fallback" };
+  } catch (error) {
+    return {
+      status: "unavailable",
+      issue: createStorageIssue(
+        "unavailable",
+        "fallback",
+        error instanceof Error ? error.message : String(error),
+        null,
+      ),
+    };
   }
 
   try {
     const raw = window.localStorage.getItem(MOCK_STORE_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    return coercePersistedHealthState(parsed[HEALTH_STORE_KEY]);
-  } catch {
-    return null;
+    if (raw !== null) return { status: "available", raw, source: "mock" };
+    return { status: "missing" };
+  } catch (error) {
+    return {
+      status: "unavailable",
+      issue: createStorageIssue(
+        "unavailable",
+        "mock",
+        error instanceof Error ? error.message : String(error),
+        null,
+      ),
+    };
   }
 }
 
-function fallbackWrite(state: PersistedHealthState): void {
+function fallbackWrite(state: PersistedHealthState): boolean {
+  let persisted = false;
   try {
     window.localStorage.setItem(FALLBACK_STORAGE_KEY, JSON.stringify(state));
+    persisted = true;
   } catch {
     // Ignore fallback storage failures.
   }
@@ -212,9 +309,11 @@ function fallbackWrite(state: PersistedHealthState): void {
       raw && raw.length > 0 ? (JSON.parse(raw) as Record<string, unknown>) : {};
     parsed[HEALTH_STORE_KEY] = state;
     window.localStorage.setItem(MOCK_STORE_STORAGE_KEY, JSON.stringify(parsed));
+    persisted = true;
   } catch {
     // Ignore mock store persistence failures.
   }
+  return persisted;
 }
 
 function coerceBuckets<T extends HealthDailyBucket | HealthHourlyBucket>(
@@ -284,7 +383,7 @@ function coerceAttempt(value: unknown): ProviderHealthAttempt | null {
   return {
     id: typeof attempt.id === "string" ? attempt.id : `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     provider: attempt.provider as HealthProviderId,
-    scope: attempt.scope === "rss_feed" ? "rss_feed" : "provider",
+    scope: attempt.provider === "rss" ? "rss_feed" : "provider",
     feedUrl: typeof attempt.feedUrl === "string" ? attempt.feedUrl : undefined,
     feedTitle: compactText(
       typeof attempt.feedTitle === "string" ? attempt.feedTitle : undefined,
@@ -309,7 +408,14 @@ function coerceAttempt(value: unknown): ProviderHealthAttempt | null {
 function coercePause(value: unknown): ProviderPauseState | null {
   if (!value || typeof value !== "object") return null;
   const pause = value as Partial<ProviderPauseState>;
-  if (typeof pause.pausedUntil !== "number" || typeof pause.pauseReason !== "string") {
+  if (
+    typeof pause.pausedUntil !== "number"
+    || !Number.isFinite(pause.pausedUntil)
+    || typeof pause.pauseReason !== "string"
+    || pause.pauseReason.trim().length === 0
+    || (pause.detectedAt !== undefined
+      && (typeof pause.detectedAt !== "number" || !Number.isFinite(pause.detectedAt)))
+  ) {
     return null;
   }
   return {
@@ -599,6 +705,545 @@ function coercePersistedHealthState(value: unknown): PersistedHealthState {
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+const HEALTH_OUTCOMES = new Set<HealthOutcome>([
+  "success",
+  "empty",
+  "error",
+  "cooldown",
+  "provider_rate_limit",
+]);
+const HEALTH_SIGNAL_TYPES = new Set<HealthSignalType>([
+  "none",
+  "explicit",
+  "heuristic",
+]);
+const HEALTH_PROVIDER_IDS = new Set<HealthProviderId>(PROVIDERS);
+
+function hasOwn(value: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function isNonNegativeFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function isOptionalNonNegativeFiniteNumber(value: unknown): boolean {
+  return value === undefined || isNonNegativeFiniteNumber(value);
+}
+
+function isOptionalStringValue(value: unknown): boolean {
+  return value === undefined || typeof value === "string";
+}
+
+function isHealthOutcome(value: unknown): value is HealthOutcome {
+  return typeof value === "string" && HEALTH_OUTCOMES.has(value as HealthOutcome);
+}
+
+function isHealthSignalType(value: unknown): value is HealthSignalType {
+  return typeof value === "string"
+    && HEALTH_SIGNAL_TYPES.has(value as HealthSignalType);
+}
+
+function isPersistedPause(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return (
+    isNonNegativeFiniteNumber(value.pausedUntil)
+    && typeof value.pauseReason === "string"
+    && value.pauseReason.trim().length > 0
+    && (value.pauseLevel === undefined
+      || value.pauseLevel === 1
+      || value.pauseLevel === 2
+      || value.pauseLevel === 3)
+    && isOptionalNonNegativeFiniteNumber(value.detectedAt)
+    && (value.detectedBy === undefined
+      || value.detectedBy === "auto"
+      || value.detectedBy === "manual")
+  );
+}
+
+function isValidBucketKey(
+  value: string,
+  key: "dateKey" | "hourKey",
+): boolean {
+  const expectedPattern = key === "dateKey"
+    ? /^\d{4}-\d{2}-\d{2}$/
+    : /^\d{4}-\d{2}-\d{2}T\d{2}$/;
+  if (!expectedPattern.test(value)) return false;
+
+  const parsed = new Date(
+    key === "dateKey"
+      ? `${value}T00:00:00.000Z`
+      : `${value}:00:00.000Z`,
+  );
+  if (!Number.isFinite(parsed.getTime())) return false;
+  return parsed.toISOString().slice(0, key === "dateKey" ? 10 : 13) === value;
+}
+
+function validatePersistedBucket(
+  value: unknown,
+  key: "dateKey" | "hourKey",
+): string | null {
+  if (
+    !isRecord(value)
+    || typeof value[key] !== "string"
+    || !isValidBucketKey(value[key], key)
+  ) {
+    return `has an invalid ${key}`;
+  }
+  for (const countKey of [
+    "attempts",
+    "successes",
+    "failures",
+    "itemsSeen",
+    "itemsAdded",
+  ] as const) {
+    if (!isNonNegativeFiniteNumber(value[countKey])) {
+      return `has an invalid ${countKey}`;
+    }
+  }
+  if (
+    value.bytesMoved !== undefined
+    && !isNonNegativeFiniteNumber(value.bytesMoved)
+  ) {
+    return "has an invalid bytesMoved";
+  }
+  return null;
+}
+
+function validatePersistedBuckets(
+  value: unknown,
+  key: "dateKey" | "hourKey",
+): string | null {
+  if (!Array.isArray(value)) return "must be an array";
+  const seenKeys = new Set<string>();
+  for (const bucket of value) {
+    const error = validatePersistedBucket(bucket, key);
+    if (error) return error;
+    const bucketKey = (bucket as Record<string, unknown>)[key] as string;
+    if (seenKeys.has(bucketKey)) return `has a duplicate ${key}`;
+    seenKeys.add(bucketKey);
+  }
+  return null;
+}
+
+function validatePersistedAttempt(
+  value: unknown,
+  expectedProvider: HealthProviderId,
+  expectedFeedUrl?: string,
+): string | null {
+  if (!isRecord(value)) return "must contain objects";
+  if (typeof value.id !== "string" || value.id.length === 0) {
+    return "has an invalid id";
+  }
+  if (
+    typeof value.provider !== "string"
+    || !HEALTH_PROVIDER_IDS.has(value.provider as HealthProviderId)
+    || value.provider !== expectedProvider
+  ) {
+    return "has an invalid provider";
+  }
+  const expectedScope = expectedProvider === "rss" ? "rss_feed" : "provider";
+  const isLegacyRssBatchScope = expectedProvider === "rss"
+    && value.scope === "provider"
+    && value.feedUrl === undefined;
+  if (value.scope !== expectedScope && !isLegacyRssBatchScope) {
+    return "has an invalid scope";
+  }
+  if (!isHealthOutcome(value.outcome)) return "has an invalid outcome";
+  if (
+    !isOptionalStringValue(value.feedUrl)
+    || !isOptionalStringValue(value.feedTitle)
+    || !isOptionalStringValue(value.stage)
+    || !isOptionalStringValue(value.reason)
+  ) {
+    return "has an invalid optional text field";
+  }
+  if (
+    expectedFeedUrl !== undefined
+    && (typeof value.feedUrl !== "string" || value.feedUrl.length === 0)
+  ) {
+    return "is missing its RSS feed URL";
+  }
+  if (expectedFeedUrl !== undefined && value.feedUrl !== expectedFeedUrl) {
+    return "does not match its RSS feed";
+  }
+  for (const numberKey of [
+    "startedAt",
+    "finishedAt",
+    "durationMs",
+    "itemsSeen",
+    "itemsAdded",
+    "bytesMoved",
+  ] as const) {
+    if (!isNonNegativeFiniteNumber(value[numberKey])) {
+      return `has an invalid ${numberKey}`;
+    }
+  }
+  if (!isHealthSignalType(value.signalType)) {
+    return "has an invalid signalType";
+  }
+  return null;
+}
+
+function validatePersistedAttempts(
+  value: unknown,
+  expectedProvider: HealthProviderId,
+  expectedFeedUrl?: string,
+  maxAttempts?: number,
+): string | null {
+  if (!Array.isArray(value)) return "must be an array";
+  if (maxAttempts !== undefined && value.length > maxAttempts) {
+    return `contains more than ${maxAttempts.toLocaleString()} attempts`;
+  }
+  for (const attempt of value) {
+    const error = validatePersistedAttempt(
+      attempt,
+      expectedProvider,
+      expectedFeedUrl,
+    );
+    if (error) return error;
+  }
+  return null;
+}
+
+const LEGACY_PROVIDER_KEYS = [
+  "status",
+  "lastAttemptAt",
+  "lastSuccessfulAt",
+  "lastOutcome",
+  "lastError",
+  "currentMessage",
+  "totalSeen7d",
+  "totalAdded7d",
+  "totalBytes7d",
+] as const;
+
+function isLegacyProviderRecord(value: Record<string, unknown>): boolean {
+  return LEGACY_PROVIDER_KEYS.some((key) => hasOwn(value, key));
+}
+
+function validateLegacyProviderFields(value: Record<string, unknown>): string | null {
+  if (
+    value.status !== undefined
+    && value.status !== "idle"
+    && value.status !== "healthy"
+    && value.status !== "degraded"
+    && value.status !== "paused"
+  ) {
+    return "has an invalid legacy status";
+  }
+  if (!isOptionalNonNegativeFiniteNumber(value.lastAttemptAt)) {
+    return "has an invalid legacy lastAttemptAt";
+  }
+  if (!isOptionalNonNegativeFiniteNumber(value.lastSuccessfulAt)) {
+    return "has an invalid legacy lastSuccessfulAt";
+  }
+  if (value.lastOutcome !== undefined && !isHealthOutcome(value.lastOutcome)) {
+    return "has an invalid legacy lastOutcome";
+  }
+  if (
+    !isOptionalStringValue(value.lastError)
+    || !isOptionalStringValue(value.currentMessage)
+  ) {
+    return "has invalid legacy error text";
+  }
+  for (const countKey of [
+    "totalSeen7d",
+    "totalAdded7d",
+    "totalBytes7d",
+  ] as const) {
+    if (!isOptionalNonNegativeFiniteNumber(value[countKey])) {
+      return `has an invalid legacy ${countKey}`;
+    }
+  }
+  return null;
+}
+
+function validatePersistedProvider(
+  provider: HealthProviderId,
+  value: unknown,
+  allowLegacy: boolean,
+): string | null {
+  if (!isRecord(value)) return "must contain an object";
+  const legacy = allowLegacy && isLegacyProviderRecord(value);
+  if (!legacy) {
+    if (value.provider !== provider) return "has an invalid provider id";
+    if (!hasOwn(value, "dailyBuckets")) return "is missing dailyBuckets";
+    if (!hasOwn(value, "hourlyBuckets")) return "is missing hourlyBuckets";
+    if (!hasOwn(value, "latestAttempts")) return "is missing latestAttempts";
+    if (!hasOwn(value, "pause")) return "is missing pause";
+  } else {
+    if (value.provider !== undefined && value.provider !== provider) {
+      return "has an invalid legacy provider id";
+    }
+    const legacyError = validateLegacyProviderFields(value);
+    if (legacyError) return legacyError;
+  }
+
+  if (value.dailyBuckets !== undefined) {
+    const error = validatePersistedBuckets(value.dailyBuckets, "dateKey");
+    if (error) return `has invalid dailyBuckets: ${error}`;
+  }
+  if (value.hourlyBuckets !== undefined) {
+    const error = validatePersistedBuckets(value.hourlyBuckets, "hourKey");
+    if (error) return `has invalid hourlyBuckets: ${error}`;
+  }
+  if (value.latestAttempts !== undefined) {
+    const error = validatePersistedAttempts(
+      value.latestAttempts,
+      provider,
+      undefined,
+      legacy ? undefined : MAX_PROVIDER_ATTEMPTS,
+    );
+    if (error) return `has invalid latestAttempts: ${error}`;
+  }
+  if (value.pause !== undefined && value.pause !== null && !isPersistedPause(value.pause)) {
+    return "has an invalid pause";
+  }
+  if (
+    value.lastPauseLevel !== undefined
+    && value.lastPauseLevel !== 1
+    && value.lastPauseLevel !== 2
+    && value.lastPauseLevel !== 3
+  ) {
+    return "has an invalid lastPauseLevel";
+  }
+  if (!isOptionalNonNegativeFiniteNumber(value.lastPauseDetectedAt)) {
+    return "has an invalid lastPauseDetectedAt";
+  }
+  return null;
+}
+
+function validatePersistedRssFeed(
+  feedUrl: string,
+  value: unknown,
+): string | null {
+  if (!isRecord(value)) return "must contain an object";
+  if (value.feedUrl !== feedUrl) return "has an invalid feedUrl";
+  if (typeof value.feedTitle !== "string" || value.feedTitle.length === 0) {
+    return "has an invalid feedTitle";
+  }
+  const dailyError = validatePersistedBuckets(value.dailyBuckets, "dateKey");
+  if (dailyError) return `has invalid dailyBuckets: ${dailyError}`;
+  const hourlyError = validatePersistedBuckets(value.hourlyBuckets, "hourKey");
+  if (hourlyError) return `has invalid hourlyBuckets: ${hourlyError}`;
+  const attemptsError = validatePersistedAttempts(
+    value.latestAttempts,
+    "rss",
+    feedUrl,
+    MAX_FEED_ATTEMPTS,
+  );
+  return attemptsError
+    ? `has invalid latestAttempts: ${attemptsError}`
+    : null;
+}
+
+function validateLegacyRssFeed(value: unknown): string | null {
+  if (!isRecord(value)) return "must contain objects";
+  if (typeof value.feedUrl !== "string" || value.feedUrl.length === 0) {
+    return "has an invalid feedUrl";
+  }
+  if (
+    value.feedTitle !== undefined
+    && (typeof value.feedTitle !== "string" || value.feedTitle.length === 0)
+  ) {
+    return "has an invalid feedTitle";
+  }
+  if (
+    value.status !== undefined
+    && value.status !== "ok"
+    && value.status !== "failing"
+  ) {
+    return "has an invalid status";
+  }
+  for (const timestampKey of [
+    "outageSince",
+    "lastAttemptAt",
+    "lastSuccessfulAt",
+  ] as const) {
+    if (!isOptionalNonNegativeFiniteNumber(value[timestampKey])) {
+      return `has an invalid ${timestampKey}`;
+    }
+  }
+  if (!isOptionalStringValue(value.lastError)) return "has an invalid lastError";
+  if (
+    value.failedAttemptsSinceSuccess !== undefined
+    && (
+      !Number.isSafeInteger(value.failedAttemptsSinceSuccess)
+      || (value.failedAttemptsSinceSuccess as number) < 0
+    )
+  ) {
+    return "has an invalid failedAttemptsSinceSuccess";
+  }
+  if (value.dailyBuckets !== undefined) {
+    const error = validatePersistedBuckets(value.dailyBuckets, "dateKey");
+    if (error) return `has invalid dailyBuckets: ${error}`;
+  }
+  if (value.hourlyBuckets !== undefined) {
+    const error = validatePersistedBuckets(value.hourlyBuckets, "hourKey");
+    if (error) return `has invalid hourlyBuckets: ${error}`;
+  }
+  if (value.latestAttempts !== undefined) {
+    const error = validatePersistedAttempts(
+      value.latestAttempts,
+      "rss",
+      value.feedUrl,
+    );
+    if (error) return `has invalid latestAttempts: ${error}`;
+  }
+  return null;
+}
+
+function validatePersistedHealthState(value: Record<string, unknown>): string | null {
+  if (!isRecord(value.providers)) return "has an invalid providers field";
+  const providerRecords = value.providers;
+  const hasLegacyFeeds = hasOwn(value, "failingRssFeeds");
+  const providerKeys = Object.keys(providerRecords);
+  const hasLegacyVersionOneProviderSet =
+    !hasLegacyFeeds
+    && providerKeys.length === LEGACY_VERSION_ONE_PROVIDERS.size
+    && providerKeys.every((provider) =>
+      LEGACY_VERSION_ONE_PROVIDERS.has(provider as HealthProviderId),
+    );
+  if (!hasLegacyFeeds && !hasLegacyVersionOneProviderSet) {
+    for (const provider of PROVIDERS) {
+      if (!hasOwn(providerRecords, provider)) {
+        return `is missing its ${provider} provider record`;
+      }
+    }
+    for (const provider of Object.keys(providerRecords)) {
+      if (!HEALTH_PROVIDER_IDS.has(provider as HealthProviderId)) {
+        return `has an unknown ${provider} provider record`;
+      }
+    }
+  }
+  let recognizedProviderCount = 0;
+  for (const provider of PROVIDERS) {
+    const providerValue = providerRecords[provider];
+    if (providerValue === undefined) continue;
+    recognizedProviderCount += 1;
+    const error = validatePersistedProvider(
+      provider,
+      providerValue,
+      hasLegacyFeeds,
+    );
+    if (error) return `has an invalid ${provider} provider record: ${error}`;
+  }
+  if (recognizedProviderCount === 0) return "has no recognized provider records";
+
+  if (!hasLegacyFeeds) {
+    if (!hasOwn(value, "rssFeeds")) return "is missing rssFeeds";
+    if (!hasOwn(value, "updatedAt")) return "is missing updatedAt";
+  }
+  if (value.rssFeeds !== undefined) {
+    if (!isRecord(value.rssFeeds)) return "has an invalid rssFeeds field";
+    for (const [feedUrl, feedState] of Object.entries(value.rssFeeds)) {
+      const error = validatePersistedRssFeed(feedUrl, feedState);
+      if (error) return `has an invalid RSS feed record: ${error}`;
+    }
+  }
+  if (value.failingRssFeeds !== undefined) {
+    if (!Array.isArray(value.failingRssFeeds)) {
+      return "has an invalid legacy failingRssFeeds field";
+    }
+    for (const feedState of value.failingRssFeeds) {
+      const error = validateLegacyRssFeed(feedState);
+      if (error) return `has an invalid legacy RSS feed record: ${error}`;
+    }
+  }
+  if (!isOptionalNonNegativeFiniteNumber(value.updatedAt)) {
+    return "has an invalid updatedAt";
+  }
+  return null;
+}
+
+function failedHealthRead(
+  status: HealthStorageIssue["status"],
+  source: HealthStorageIssue["source"],
+  reason: string,
+  raw: string | null,
+): HealthStateReadResult {
+  const issue = createStorageIssue(status, source, reason, raw);
+  return {
+    status,
+    state: createEmptyState(issue.detectedAt),
+    issue,
+  };
+}
+
+function decodeHealthRaw(
+  raw: string,
+  source: HealthStorageIssue["source"],
+): HealthStateReadResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    return failedHealthRead(
+      "corrupt",
+      source,
+      error instanceof Error ? error.message : String(error),
+      raw,
+    );
+  }
+
+  if (!isRecord(parsed)) {
+    return failedHealthRead(
+      "corrupt",
+      source,
+      "The provider health store must contain an object.",
+      raw,
+    );
+  }
+
+  const storedValue = Object.prototype.hasOwnProperty.call(parsed, HEALTH_STORE_KEY)
+    ? parsed[HEALTH_STORE_KEY]
+    : parsed;
+  if (!isRecord(storedValue)) {
+    return failedHealthRead(
+      "corrupt",
+      source,
+      "The provider health record must contain an object.",
+      raw,
+    );
+  }
+
+  const version = storedValue.version;
+  if (version !== 1) {
+    const isFutureVersion = typeof version === "number"
+      && Number.isSafeInteger(version)
+      && version > 1;
+    return failedHealthRead(
+      isFutureVersion ? "unsupported" : "corrupt",
+      source,
+      isFutureVersion
+        ? `Provider health version ${version.toLocaleString()} is newer than this app supports.`
+        : "The provider health record has an invalid version.",
+      raw,
+    );
+  }
+
+  const validationError = validatePersistedHealthState(storedValue);
+  if (validationError) {
+    return failedHealthRead(
+      "corrupt",
+      source,
+      `The provider health record ${validationError}.`,
+      raw,
+    );
+  }
+
+  return {
+    status: "supported",
+    state: coercePersistedHealthState(storedValue),
+    issue: null,
+  };
+}
+
 function compactPersistedHealthState(state: PersistedHealthState): PersistedHealthState {
   for (const provider of PROVIDERS) {
     state.providers[provider] = {
@@ -764,6 +1409,9 @@ function formatPauseToast(provider: HealthProviderId, pause: ProviderPauseState)
     facebook: "Facebook",
     instagram: "Instagram",
     linkedin: "LinkedIn",
+    substack: "Substack",
+    medium: "Medium",
+    youtube: "YouTube",
     rss: "RSS",
     gdrive: "Google Drive",
     dropbox: "Dropbox",
@@ -817,7 +1465,65 @@ function syncPauseToAuth(provider: HealthProviderId, pause: ProviderPauseState |
     };
     store.setLiAuth(next);
     storeLiAuthState(next);
+    return;
   }
+  if (provider === "substack") {
+    const next = {
+      ...store.substackAuth,
+      pausedUntil: pause?.pausedUntil,
+      pauseReason: pause?.pauseReason,
+      pauseLevel: pause?.pauseLevel,
+    };
+    store.setSubstackAuth(next);
+    storeSubstackAuthState(next);
+    return;
+  }
+  if (provider === "medium") {
+    const next = {
+      ...store.mediumAuth,
+      pausedUntil: pause?.pausedUntil,
+      pauseReason: pause?.pauseReason,
+      pauseLevel: pause?.pauseLevel,
+    };
+    store.setMediumAuth(next);
+    storeMediumAuthState(next);
+    return;
+  }
+  if (provider === "youtube") {
+    const next = {
+      ...store.ytAuth,
+      pausedUntil: pause?.pausedUntil,
+      pauseReason: pause?.pauseReason,
+      pauseLevel: pause?.pauseLevel,
+    };
+    store.setYtAuth(next);
+    storeYouTubeAuthState(next);
+  }
+}
+
+function storageBlocksAutomaticProviderWork(): boolean {
+  return healthStorageStatus !== "supported";
+}
+
+function storageBlockPause(provider: HealthProviderId): ProviderPauseState | null {
+  if (!SOCIAL_PROVIDERS.has(provider) || !storageBlocksAutomaticProviderWork()) {
+    return null;
+  }
+  const detectedAt = healthStorageIssue?.detectedAt ?? Date.now();
+  return {
+    pausedUntil: detectedAt + STORAGE_BLOCK_PAUSE_MS,
+    pauseReason: STORAGE_BLOCK_MESSAGE,
+    pauseLevel: 1,
+    detectedAt,
+    detectedBy: "auto",
+  };
+}
+
+function withStorageBlockPause(
+  providerState: PersistedProviderHealth,
+): PersistedProviderHealth {
+  const pause = storageBlockPause(providerState.provider);
+  return pause ? { ...providerState, pause } : providerState;
 }
 
 function providerStatus(providerState: PersistedProviderHealth): ProviderHealthSnapshot["status"] {
@@ -830,11 +1536,11 @@ function providerStatus(providerState: PersistedProviderHealth): ProviderHealthS
 }
 
 function messageFor(providerState: PersistedProviderHealth): string | undefined {
-  const latest = latestStatusAttempt(providerState);
-  if (!latest) return undefined;
   if (providerState.pause && providerState.pause.pausedUntil > Date.now()) {
     return formatProviderStatusMessage(providerState.pause.pauseReason);
   }
+  const latest = latestStatusAttempt(providerState);
+  if (!latest) return undefined;
   if (latest.outcome === "success") return undefined;
   if (latest.reason) return formatProviderStatusMessage(latest.reason);
   if (latest.outcome === "cooldown") return "Cooling down";
@@ -881,29 +1587,30 @@ function latestStatusAttempt(
 }
 
 function snapshotForProvider(providerState: PersistedProviderHealth): ProviderHealthSnapshot {
-  const latestAttempt = latestStatusAttempt(providerState);
+  const effectiveState = withStorageBlockPause(providerState);
+  const latestAttempt = latestStatusAttempt(effectiveState);
   const latestWasSuccessful = !!latestAttempt && bucketSuccess(latestAttempt.outcome);
   return {
-    provider: providerState.provider,
-    status: providerStatus(providerState),
+    provider: effectiveState.provider,
+    status: providerStatus(effectiveState),
     lastAttemptAt: latestAttempt?.finishedAt,
-    lastSuccessfulAt: lastSuccessfulAt(providerState.latestAttempts),
+    lastSuccessfulAt: lastSuccessfulAt(effectiveState.latestAttempts),
     lastOutcome: latestAttempt?.outcome,
     lastError: latestWasSuccessful ? undefined : formatProviderStatusMessage(latestAttempt?.reason),
-    currentMessage: messageFor(providerState),
-    pause: providerState.pause,
-    dailyBuckets: providerState.dailyBuckets,
-    hourlyBuckets: providerState.hourlyBuckets,
-    latestAttempts: providerState.latestAttempts,
-    totalSeen7d: providerState.dailyBuckets.reduce(
+    currentMessage: messageFor(effectiveState),
+    pause: effectiveState.pause,
+    dailyBuckets: effectiveState.dailyBuckets,
+    hourlyBuckets: effectiveState.hourlyBuckets,
+    latestAttempts: effectiveState.latestAttempts,
+    totalSeen7d: effectiveState.dailyBuckets.reduce(
       (sum, bucket) => sum + bucket.itemsSeen,
       0,
     ),
-    totalAdded7d: providerState.dailyBuckets.reduce(
+    totalAdded7d: effectiveState.dailyBuckets.reduce(
       (sum, bucket) => sum + bucket.itemsAdded,
       0,
     ),
-    totalBytes7d: providerState.dailyBuckets.reduce(
+    totalBytes7d: effectiveState.dailyBuckets.reduce(
       (sum, bucket) => sum + bucket.bytesMoved,
       0,
     ),
@@ -1025,36 +1732,75 @@ function publishState(state: PersistedHealthState, changedFeedUrl?: string): voi
   });
 }
 
-async function persistState(state: PersistedHealthState): Promise<void> {
+async function persistState(state: PersistedHealthState): Promise<boolean> {
+  if (healthStorageStatus !== "supported" && healthStorageStatus !== "missing") {
+    return false;
+  }
   const compactedState = compactPersistedHealthState(state);
-  if (!isTauri()) {
-    fallbackWrite(compactedState);
-    return;
+  const persisted = isTauri()
+    ? await persistNativeState(compactedState)
+    : fallbackWrite(compactedState);
+  if (persisted) {
+    healthStorageStatus = "supported";
+    healthStorageIssue = null;
+    return true;
   }
-  await persistNativeState(compactedState);
+
+  healthStorageStatus = "unavailable";
+  healthStorageIssue = createStorageIssue(
+    "unavailable",
+    isTauri() ? "native" : "fallback",
+    "The provider health record could not be persisted.",
+    null,
+  );
+  if (currentState) publishState(currentState);
+  return false;
 }
 
-async function readState(): Promise<PersistedHealthState> {
-  if (!isTauri()) {
-    return fallbackRead() ?? createEmptyState();
+function readFallbackState(): HealthStateReadResult {
+  const fallback = readFallbackRaw();
+  if (fallback.status === "available") {
+    return decodeHealthRaw(fallback.raw, fallback.source);
   }
+  if (fallback.status === "unavailable") {
+    return {
+      status: "unavailable",
+      state: createEmptyState(fallback.issue.detectedAt),
+      issue: fallback.issue,
+    };
+  }
+  return {
+    status: "missing",
+    state: createEmptyState(),
+    issue: null,
+  };
+}
+
+async function readState(): Promise<HealthStateReadResult> {
+  if (!isTauri()) {
+    return readFallbackState();
+  }
+
+  let raw: string | null;
   try {
-    const parsed = await readNativeJsonFile(HEALTH_STORE_FILE);
-    if (!parsed) return createEmptyState();
-    return coercePersistedHealthState(parsed[HEALTH_STORE_KEY] ?? parsed);
+    raw = await readNativeJsonFileRaw(HEALTH_STORE_FILE);
   } catch (error) {
-    log.error(
-      `[provider-health] failed to read health store, falling back: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+    return failedHealthRead(
+      "unavailable",
+      "native",
+      error instanceof Error ? error.message : String(error),
+      null,
     );
-    return fallbackRead() ?? createEmptyState();
   }
+
+  if (raw !== null) return decodeHealthRaw(raw, "native");
+  return readFallbackState();
 }
 
-async function persistNativeState(state: PersistedHealthState): Promise<void> {
+async function persistNativeState(state: PersistedHealthState): Promise<boolean> {
   try {
     await writeNativeJsonFile(HEALTH_STORE_FILE, { [HEALTH_STORE_KEY]: state }, "provider-health");
+    return true;
   } catch (error) {
     log.error(
       `[provider-health] failed to persist health file, falling back: ${
@@ -1062,6 +1808,7 @@ async function persistNativeState(state: PersistedHealthState): Promise<void> {
       }`,
     );
     fallbackWrite(state);
+    return false;
   }
 }
 
@@ -1088,13 +1835,13 @@ function schedulePersistState(state: PersistedHealthState): void {
   }, RSS_HEALTH_PERSIST_DEBOUNCE_MS);
 }
 
-async function persistStateNow(state: PersistedHealthState): Promise<void> {
+async function persistStateNow(state: PersistedHealthState): Promise<boolean> {
   if (pendingPersistTimer) {
     clearTimeout(pendingPersistTimer);
     pendingPersistTimer = null;
   }
   pendingPersistState = null;
-  await persistState(state);
+  return persistState(state);
 }
 
 function assertState(): PersistedHealthState {
@@ -1168,7 +1915,7 @@ function normalizeAttempt(input: ProviderHealthEventInput): ProviderHealthAttemp
   return {
     id: `${finishedAt}-${Math.random().toString(36).slice(2, 7)}`,
     provider: input.provider,
-    scope: input.scope ?? "provider",
+    scope: input.provider === "rss" ? "rss_feed" : "provider",
     feedUrl: input.feedUrl,
     feedTitle: input.feedTitle,
     outcome: input.outcome,
@@ -1184,28 +1931,84 @@ function normalizeAttempt(input: ProviderHealthEventInput): ProviderHealthAttemp
   };
 }
 
+async function preserveHealthStorageIssue(issue: HealthStorageIssue): Promise<void> {
+  recoverySequence += 1;
+  const recoveryFile = `sync-health.recovery.${Date.now()}.${recoverySequence}.json`;
+  await writeNativeJsonFile(
+    recoveryFile,
+    {
+      version: 1,
+      capturedAt: Date.now(),
+      originalFile: HEALTH_STORE_FILE,
+      status: issue.status,
+      source: issue.source,
+      reason: issue.reason,
+      raw: issue.raw,
+    },
+    "provider-health-recovery",
+  );
+}
+
+async function replaceUnsafeHealthStorage(state: PersistedHealthState): Promise<void> {
+  const issue = healthStorageIssue;
+  if (!issue) {
+    throw new Error("Provider health storage is blocked without recovery evidence.");
+  }
+  await preserveHealthStorageIssue(issue);
+
+  if (pendingPersistTimer) {
+    clearTimeout(pendingPersistTimer);
+    pendingPersistTimer = null;
+  }
+  pendingPersistState = null;
+
+  const compactedState = compactPersistedHealthState(state);
+  if (isTauri()) {
+    await writeNativeJsonFile(
+      HEALTH_STORE_FILE,
+      { [HEALTH_STORE_KEY]: compactedState },
+      "provider-health-repair",
+    );
+  } else if (!fallbackWrite(compactedState)) {
+    throw new Error("Provider health storage could not be repaired.");
+  }
+
+  healthStorageStatus = "supported";
+  healthStorageIssue = null;
+}
+
 export async function initProviderHealth(): Promise<void> {
   if (!initPromise) {
     initPromise = (async () => {
-      currentState = compactPersistedHealthState(await readState());
+      const readResult = await readState();
+      healthStorageStatus = readResult.status;
+      healthStorageIssue = readResult.issue;
+      currentState = compactPersistedHealthState(readResult.state);
       for (const provider of PROVIDERS) {
         currentState.providers[provider] = clearExpiredPause(
           currentState.providers[provider],
         );
       }
+      if (readResult.issue) {
+        log.error(
+          `[provider-health] automatic provider sync paused because the health store is ${readResult.issue.status}: ${readResult.issue.reason}`,
+        );
+      } else {
+        await persistStateNow(currentState);
+      }
       publishState(currentState);
-      await persistStateNow(currentState);
     })();
   }
   await initPromise;
 }
 
 export function isProviderPaused(provider: HealthProviderId): boolean {
-  const state = currentState?.providers[provider];
-  return !!state?.pause && state.pause.pausedUntil > Date.now();
+  return getProviderPause(provider) !== null;
 }
 
 export function getProviderPause(provider: HealthProviderId): ProviderPauseState | null {
+  const storagePause = storageBlockPause(provider);
+  if (storagePause) return storagePause;
   const pause = currentState?.providers[provider]?.pause ?? null;
   if (!pause || pause.pausedUntil <= Date.now()) return null;
   return pause;
@@ -1214,17 +2017,35 @@ export function getProviderPause(provider: HealthProviderId): ProviderPauseState
 export async function clearProviderPause(provider: HealthProviderId): Promise<void> {
   await initProviderHealth();
   const state = assertState();
-  state.providers[provider] = {
-    ...state.providers[provider],
-    pause: null,
+  const nextState: PersistedHealthState = {
+    ...state,
+    providers: {
+      ...state.providers,
+      [provider]: {
+        ...state.providers[provider],
+        pause: null,
+      },
+    },
+    updatedAt: Date.now(),
   };
+
+  if (storageBlocksAutomaticProviderWork()) {
+    try {
+      await replaceUnsafeHealthStorage(nextState);
+    } catch (error) {
+      publishState(state);
+      throw error;
+    }
+  } else if (!await persistStateNow(nextState)) {
+    publishState(state);
+    throw new Error("Provider health storage could not be updated.");
+  }
+
+  currentState = nextState;
   if (SOCIAL_PROVIDERS.has(provider)) {
     syncPauseToAuth(provider, null);
   }
-  state.updatedAt = Date.now();
-  currentState = state;
-  publishState(state);
-  await persistStateNow(state);
+  publishState(nextState);
 }
 
 export async function resetProviderPauseState(provider: HealthProviderId): Promise<void> {

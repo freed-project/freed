@@ -22,6 +22,7 @@ export function tauriInitScript(): string {
       return window[name];
     }
     window.__TAURI_MOCK_IPC_TIMINGS__ = [];
+    window.__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
     function timedHandler(cmd, fn) {
       return function(args) {
         var start = performance.now();
@@ -39,11 +40,12 @@ export function tauriInitScript(): string {
       fetch_binary_url: () => [],
       get_local_ip: () => '127.0.0.1',
       get_all_local_ips: () => [],
-      get_sync_url: () => 'ws://127.0.0.1:8765',
+      get_sync_url: () => 'ws://127.0.0.1:8765?t=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       sha256_file: () => '',
       download_local_ai_model_file: (args) => args && args.request ? args.request.expectedSizeBytes || 0 : 0,
       cancel_local_ai_model_download: () => null,
       get_sync_client_count: () => 0,
+      get_desktop_installation_witness: () => 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       get_desktop_session_state: () => window.__TAURI_MOCK_DESKTOP_SESSION_STATE__ || ({
         available: true,
         screenLocked: false,
@@ -147,6 +149,9 @@ export function tauriInitScript(): string {
       retry_startup_after_crash: () => null,
       export_startup_diagnostics: () => '/Users/test/Downloads/freed-diagnostics-test.json',
       reset_pairing_token: () => null,
+      clear_factory_reset_runtime_artifacts: () => null,
+      factory_reset_sync_relay: () => 'factory-reset-pairing-token',
+      resume_sync_relay_after_factory_reset: () => null,
       get_recent_logs: () => [],
       get_recent_runtime_health: () => [],
       start_relay: () => null,
@@ -200,6 +205,41 @@ export function tauriInitScript(): string {
       li_check_auth: () => true,
       li_scrape_feed: () => null,
       li_disconnect: () => null,
+      substack_show_login: () => null,
+      substack_hide_login: () => null,
+      substack_check_auth: () => true,
+      substack_disconnect: () => null,
+      substack_scrape_graph: () => null,
+      substack_scrape_activity: () => null,
+      substack_scrape_essays: () => null,
+      medium_show_login: () => null,
+      medium_hide_login: () => null,
+      medium_check_auth: () => true,
+      medium_disconnect: () => null,
+      medium_scrape_graph: () => null,
+      medium_scrape_activity: () => null,
+      medium_scrape_essays: () => null,
+      yt_show_login: () => {
+        window.__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = true;
+        return null;
+      },
+      yt_hide_login: () => {
+        window.__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
+        return null;
+      },
+      yt_check_auth: () => true,
+      yt_capture: () => {
+        window.__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
+        return null;
+      },
+      yt_add_to_offline_playlist: () => {
+        window.__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
+        return null;
+      },
+      yt_disconnect: () => {
+        window.__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
+        return null;
+      },
     };
     window.__TAURI_MOCK_INVOCATIONS__ = [];
     window.__TAURI_MOCK_OPENED_URLS__ = [];

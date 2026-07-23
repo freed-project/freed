@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="data:," />
+    <title>Friends Galaxy Renderer Lab</title>
+  </head>
+  <body>
+    <main class="lab-shell">
+      <div id="canvas-host" class="galaxy-canvas-host" aria-hidden="true"></div>
+      <section
+        id="viewport"
+        class="galaxy-viewport"
+        aria-label="Friends Galaxy renderer comparison"
+        aria-describedby="galaxy-description"
+        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight + - Home 0 Escape Enter Shift+F10 ContextMenu"
+        role="region"
+        tabindex="0"
+      ></section>
+      <p id="galaxy-description" class="sr-only">
+        Interactive Friends Galaxy. Use arrow keys to pan, plus and minus to zoom, Home or zero to
+        fit, Enter to open details, Shift plus F10 to open actions, and Escape to clear selection.
+      </p>
+      <div
+        id="galaxy-announcer"
+        class="sr-only"
+        aria-atomic="true"
+        aria-live="polite"
+        role="status"
+      ></div>
+      <aside id="panel" class="lab-panel" aria-label="Renderer controls">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Friends Galaxy</p>
+            <h1>Renderer Lab</h1>
+          </div>
+          <span class="target-badge">30K + 100K</span>
+        </div>
+
+        <label class="field-label" for="backend">Renderer</label>
+        <select id="backend" class="field-control">
+          <option value="raw-webgpu">Raw WebGPU</option>
+          <option value="current-webgl2">WebGL2 fallback</option>
+          <option value="three-webgpu">Three.js reference</option>
+        </select>
+
+        <label class="field-label" for="theme">Theme</label>
+        <select id="theme" class="field-control">
+          <option value="scriptorium">Scriptorium</option>
+          <option value="neon">Neon</option>
+          <option value="midas">Midas</option>
+          <option value="ember">Ember</option>
+        </select>
+
+        <label class="field-label" for="field-style">Cosmic field</label>
+        <select id="field-style" class="field-control">
+          <option value="nebula">Nebula</option>
+          <option value="rings">Star streams</option>
+          <option value="nebula-rings">Cosmic blend</option>
+        </select>
+
+        <div class="button-row">
+          <button id="fit" type="button">Fit galaxy</button>
+          <label class="toggle-control">
+            <input id="ambient-motion" type="checkbox" checked />
+            <span>Ambient motion</span>
+          </label>
+        </div>
+        <button
+          id="copy-diagnostics"
+          class="wide-button"
+          type="button"
+          title="Copy a bounded Friends Galaxy performance snapshot"
+        >
+          Copy diagnostics
+        </button>
+        <button
+          id="simulate-loss"
+          class="wide-button"
+          type="button"
+          title="Simulate a WebGPU device loss and verify compatibility recovery"
+        >
+          Test GPU fallback
+        </button>
+
+        <div id="status" class="status-line">Building deterministic fixture</div>
+        <dl id="metrics" class="metrics-grid"></dl>
+
+        <div class="legend" aria-label="Star legend">
+          <span><i data-swatch="friend"></i>Identity</span>
+          <span><i data-swatch="account"></i>Channel</span>
+          <span><i data-swatch="feed"></i>Feed</span>
+        </div>
+      </aside>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

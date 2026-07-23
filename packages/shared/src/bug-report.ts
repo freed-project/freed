@@ -98,3 +98,17 @@ export interface BugReportBundleData {
 export interface GeneratedBugReportBundle extends BugReportBundleData {
   blob: Blob;
 }
+
+export interface PrivateVulnerabilityReportPayload {
+  title: string;
+  description: string;
+  stackTrace?: string;
+  componentStack?: string;
+  crashFingerprint?: string;
+  stackFingerprint?: string;
+  appMetadata?: Record<string, unknown>;
+}
+
+export interface PrivateVulnerabilityReportResult {
+  advisoryUrl: string;
+}

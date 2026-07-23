@@ -1,13 +1,21 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createGoogleOAuthRelayTarget,
   createGoogleOAuthState,
+  consumePwaOAuthRuntimeGeneration,
   getGoogleOAuthRedirectUri,
   getOAuthCallbackUri,
+  isPwaOAuthRuntimeGenerationValid,
+  storePwaOAuthRuntimeGeneration,
 } from "./oauth-redirect";
 
 describe("OAuth redirect helpers", () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    vi.restoreAllMocks();
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -60,4 +68,15 @@ describe("OAuth redirect helpers", () => {
       "https://preview-aubreyfs-projects.vercel.app/oauth-callback",
     );
   });
+
+  it("requires an exact installation generation for an OAuth callback", () => {
+    storePwaOAuthRuntimeGeneration(7);
+
+    const storedGeneration = consumePwaOAuthRuntimeGeneration();
+    expect(isPwaOAuthRuntimeGenerationValid(storedGeneration, 7)).toBe(true);
+    expect(isPwaOAuthRuntimeGenerationValid(storedGeneration, 8)).toBe(false);
+    expect(consumePwaOAuthRuntimeGeneration()).toBeNull();
+    expect(isPwaOAuthRuntimeGenerationValid(null, 7)).toBe(false);
+  });
+
 });

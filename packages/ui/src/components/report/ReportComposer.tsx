@@ -8,6 +8,7 @@ import type {
 } from "@freed/shared";
 import {
   createDefaultBugReportDraft,
+  buildPrivateVulnerabilityReportPayload,
   createGithubIssueUrl,
   getReportPrivacyTier,
   PRIVATE_ARTIFACTS,
@@ -109,9 +110,12 @@ export function ReportComposer({
     ...createDefaultBugReportDraft(initialIssueType),
     ...(bugReporting?.createDraft?.(initialIssueType) ?? {}),
   }));
-  const [working, setWorking] = useState<null | "export" | "github" | "private-share">(null);
+  const [working, setWorking] = useState<
+    null | "export" | "github" | "private-share" | "private-submit"
+  >(null);
   const [lastBundleName, setLastBundleName] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const privateSubmitInFlightRef = useRef(false);
 
   const privacyTier = getReportPrivacyTier(draft.selectedArtifacts);
   const selectedArtifactSet = useMemo(
@@ -262,6 +266,37 @@ export function ReportComposer({
     }
   };
 
+  const handlePrivateSubmit = async () => {
+    if (
+      !bugReporting.submitPrivateReport ||
+      privacyTier !== "private" ||
+      privateSubmitInFlightRef.current
+    ) {
+      return;
+    }
+    privateSubmitInFlightRef.current = true;
+    setWorking("private-submit");
+    setStatusMessage(null);
+    try {
+      const bundle = await bugReporting.generateBundle({ draft, privacyTier: "private" });
+      const payload = buildPrivateVulnerabilityReportPayload({ draft, bundle });
+      await bugReporting.submitPrivateReport(payload);
+      setStatusMessage(
+        "Private report submitted to the Freed security team through GitHub. The zip bundle stayed on this device.",
+      );
+      toast.info("Private security report submitted.");
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : "The private report could not be submitted.";
+      setStatusMessage(message);
+      toast.error(message);
+    } finally {
+      privateSubmitInFlightRef.current = false;
+      setWorking(null);
+    }
+  };
+
   const issueTypeOptions: Array<{ value: BugReportIssueType; label: string }> = [
     { value: "crash", label: "Crash" },
     { value: "broken-feature", label: "Broken feature" },
@@ -391,7 +426,7 @@ export function ReportComposer({
         <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
           {privacyTier === "public-safe"
             ? "This bundle is intended to be safe for a public GitHub issue."
-            : "This bundle may include details you may not want to post publicly. Use email or private sharing."}
+            : "This bundle may include local details. You can download it, email it, or send a redacted text report privately through GitHub."}
         </p>
         <p className="mt-3 text-xs text-[color:var(--theme-text-muted)]">
           Bundle type: {privacyTier === "public-safe" ? "Public-safe zip" : "Private zip"}
@@ -429,6 +464,17 @@ export function ReportComposer({
         >
           Download and email
         </button>
+        {privacyTier === "private" && bugReporting.submitPrivateReport ? (
+          <button
+            onClick={handlePrivateSubmit}
+            disabled={working !== null}
+            className="btn-secondary rounded-xl px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {working === "private-submit"
+              ? "Submitting private report..."
+              : "Submit private report to GitHub"}
+          </button>
+        ) : null}
         {githubIssueDisabledByPrivacy ? (
           <Tooltip
             label="Turn off private diagnostics first"

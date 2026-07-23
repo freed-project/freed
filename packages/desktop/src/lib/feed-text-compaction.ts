@@ -8,7 +8,6 @@ export interface FeedTextCompactionSummary {
   changed: number;
   contentTextTrimmed: number;
   preservedTextTrimmed: number;
-  htmlFieldsRemoved: number;
 }
 
 export function createFeedTextCompactionSummary(): FeedTextCompactionSummary {
@@ -17,7 +16,6 @@ export function createFeedTextCompactionSummary(): FeedTextCompactionSummary {
     changed: 0,
     contentTextTrimmed: 0,
     preservedTextTrimmed: 0,
-    htmlFieldsRemoved: 0,
   };
 }
 
@@ -33,7 +31,6 @@ function addSummary(
   target.changed += source.changed;
   target.contentTextTrimmed += source.contentTextTrimmed;
   target.preservedTextTrimmed += source.preservedTextTrimmed;
-  target.htmlFieldsRemoved += source.htmlFieldsRemoved;
 }
 
 export function compactFeedItemTextForSync(item: FeedItem): FeedTextCompactionSummary {
@@ -47,11 +44,6 @@ export function compactFeedItemTextForSync(item: FeedItem): FeedTextCompactionSu
   }
 
   const preservedContent = item.preservedContent;
-  if (preservedContent?.html) {
-    delete preservedContent.html;
-    summary.htmlFieldsRemoved = 1;
-  }
-
   const preservedText = preservedContent?.text;
   if (preservedContent && preservedText && preservedText.length > SYNC_PRESERVED_TEXT_LIMIT) {
     preservedContent.text = truncateText(preservedText, SYNC_PRESERVED_TEXT_LIMIT);
@@ -60,8 +52,7 @@ export function compactFeedItemTextForSync(item: FeedItem): FeedTextCompactionSu
 
   if (
     summary.contentTextTrimmed > 0 ||
-    summary.preservedTextTrimmed > 0 ||
-    summary.htmlFieldsRemoved > 0
+    summary.preservedTextTrimmed > 0
   ) {
     summary.changed = 1;
   }
@@ -85,7 +76,6 @@ export function formatFeedTextCompactionSummary(
   return (
     `${summary.changed.toLocaleString()} of ${summary.scanned.toLocaleString()} items compacted` +
     ` content_trimmed=${summary.contentTextTrimmed.toLocaleString()}` +
-    ` preserved_trimmed=${summary.preservedTextTrimmed.toLocaleString()}` +
-    ` html_removed=${summary.htmlFieldsRemoved.toLocaleString()}`
+    ` preserved_trimmed=${summary.preservedTextTrimmed.toLocaleString()}`
   );
 }

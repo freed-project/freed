@@ -5,6 +5,8 @@ set +x
 umask 077
 
 PUBLISHER_CAPABILITY_FILE="${FREED_PUBLISHER_CAPABILITY_FILE:-}"
+PUBLISH_ACQUIRE_OPERATION_ID="${FREED_PUBLISHER_ACQUIRE_OPERATION_ID:-}"
+PUBLISH_ACQUIRE_TOKEN="${FREED_PUBLISHER_ACQUIRE_TOKEN:-}"
 EXPECTED_CONTROL_SHA="${FREED_TRUSTED_CONTROL_SHA:-}"
 PUBLISH_CONTROL_STATE_ROOT="${FREED_TRUSTED_STATE_ROOT:-}"
 TRUSTED_GH_BIN="${FREED_TRUSTED_GH_BIN:-}"
@@ -14,9 +16,12 @@ TRUSTED_NODE_SHA256="${FREED_TRUSTED_NODE_SHA256:-}"
 TRUSTED_DEVELOPER_DIR="${DEVELOPER_DIR:-}"
 builtin unset \
   FREED_PUBLISHER_CAPABILITY_FILE \
+  FREED_PUBLISHER_ACQUIRE_OPERATION_ID \
+  FREED_PUBLISHER_ACQUIRE_TOKEN \
   FREED_PR_PUBLISHER_ACTOR_TOKEN \
   FREED_PR_PUBLISHER_LEASE_TOKEN \
   FREED_AUTOMATION_ACTOR_TOKEN \
+  FREED_AUTOMATION_LEASE_OPERATION_ID \
   FREED_AUTOMATION_LEASE_TOKEN \
   FREED_OWNER_BOOTSTRAP_TOKEN \
   FREED_TRUSTED_CONTROL_SHA \
@@ -28,7 +33,7 @@ builtin unset \
   DEVELOPER_DIR \
   PUBLISH_LEASE_JSON \
   PUBLISH_LEASE_TOKEN
-builtin declare +x PUBLISHER_CAPABILITY_FILE
+builtin declare +x PUBLISHER_CAPABILITY_FILE PUBLISH_ACQUIRE_OPERATION_ID PUBLISH_ACQUIRE_TOKEN
 builtin unset BASH_ENV ENV NODE_BIN NODE_OPTIONS NODE_PATH CDPATH GH_REPO
 
 while builtin read -r _ _ function_name; do
@@ -77,6 +82,14 @@ if [[ "${PUBLISH_CONTROL_STATE_ROOT}" != /* ]]; then
 fi
 if [[ "${PUBLISHER_CAPABILITY_FILE}" != /* || ! -f "${PUBLISHER_CAPABILITY_FILE}" || -L "${PUBLISHER_CAPABILITY_FILE}" ]]; then
   echo "Error: FREED_PUBLISHER_CAPABILITY_FILE must name the private broker-issued capability." >&2
+  exit 1
+fi
+if [[ ! "${PUBLISH_ACQUIRE_OPERATION_ID}" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]; then
+  echo "Error: the broker must provide one caller-retained lease operation ID." >&2
+  exit 1
+fi
+if [[ ${#PUBLISH_ACQUIRE_TOKEN} -lt 32 || ${#PUBLISH_ACQUIRE_TOKEN} -gt 4096 ]]; then
+  echo "Error: the broker must provide one bounded caller-retained lease token." >&2
   exit 1
 fi
 CAPABILITY_MODE="$(/usr/bin/stat -f '%Lp' "${PUBLISHER_CAPABILITY_FILE}")"
@@ -261,41 +274,63 @@ if [[
   exit 1
 fi
 
-PUBLISH_LEASE_TOKEN=""
+PUBLISH_LEASE_TOKEN="${PUBLISH_ACQUIRE_TOKEN}"
+PUBLISH_RELEASE_OPERATION_ID=""
 builtin declare +x PUBLISH_LEASE_TOKEN
+
+new_lease_operation_id() {
+  "${NODE_BIN}" -e 'process.stdout.write(require("node:crypto").randomUUID())'
+}
 
 release_publish_lease() {
   if [[ -n "${PUBLISH_LEASE_TOKEN}" ]]; then
-    /usr/bin/env -i \
-      HOME="${HOME}" \
-      PATH=/usr/bin:/bin \
-      FREED_AUTOMATION_LEASE_TOKEN="${PUBLISH_LEASE_TOKEN}" \
-      "${NODE_BIN}" "${SCRIPT_DIR}/automation-control.mjs" lease release \
-        --state-root "${PUBLISH_CONTROL_STATE_ROOT}" \
-        --name pr-publisher >/dev/null 2>&1 || true
+    if [[ -z "${PUBLISH_RELEASE_OPERATION_ID}" ]]; then
+      PUBLISH_RELEASE_OPERATION_ID="$(new_lease_operation_id)"
+    fi
+    for _ in 1 2; do
+      if /usr/bin/env -i \
+        HOME="${HOME}" \
+        PATH=/usr/bin:/bin \
+        FREED_AUTOMATION_LEASE_OPERATION_ID="${PUBLISH_RELEASE_OPERATION_ID}" \
+        FREED_AUTOMATION_LEASE_TOKEN="${PUBLISH_LEASE_TOKEN}" \
+        "${NODE_BIN}" "${SCRIPT_DIR}/automation-control.mjs" lease release \
+          --state-root "${PUBLISH_CONTROL_STATE_ROOT}" \
+          --name pr-publisher >/dev/null 2>&1; then
+        break
+      fi
+    done
     PUBLISH_LEASE_TOKEN=""
   fi
 }
 
 trap release_publish_lease EXIT
 
-if ! PUBLISH_LEASE_JSON="$(
-  /usr/bin/env -i \
-    HOME="${HOME}" \
-    PATH=/usr/bin:/bin \
-    "${NODE_BIN}" "${SCRIPT_DIR}/automation-control.mjs" lease acquire \
-      --state-root "${PUBLISH_CONTROL_STATE_ROOT}" \
-      --name pr-publisher \
-      --owner freed-pr-publisher \
-      --ttl-seconds 1800 \
-      --capability-file "${PUBLISHER_CAPABILITY_FILE}" \
-      --scope-json "${PUBLISH_SCOPE_JSON}"
-)"; then
+PUBLISH_LEASE_ACQUIRED=false
+for _ in 1 2; do
+  if PUBLISH_LEASE_JSON="$(
+    /usr/bin/env -i \
+      HOME="${HOME}" \
+      PATH=/usr/bin:/bin \
+      FREED_AUTOMATION_LEASE_OPERATION_ID="${PUBLISH_ACQUIRE_OPERATION_ID}" \
+      FREED_AUTOMATION_LEASE_TOKEN="${PUBLISH_ACQUIRE_TOKEN}" \
+      "${NODE_BIN}" "${SCRIPT_DIR}/automation-control.mjs" lease acquire \
+        --state-root "${PUBLISH_CONTROL_STATE_ROOT}" \
+        --name pr-publisher \
+        --owner freed-pr-publisher \
+        --ttl-seconds 1800 \
+        --capability-file "${PUBLISHER_CAPABILITY_FILE}" \
+        --scope-json "${PUBLISH_SCOPE_JSON}"
+  )"; then
+    PUBLISH_LEASE_ACQUIRED=true
+    break
+  fi
+done
+if ! ${PUBLISH_LEASE_ACQUIRED}; then
   PUBLISHER_CAPABILITY_FILE=""
   exit 1
 fi
 PUBLISHER_CAPABILITY_FILE=""
-PUBLISH_LEASE_TOKEN="$(
+RETURNED_PUBLISH_LEASE_TOKEN="$(
   "${NODE_BIN}" -e '
     const input = require("node:fs").readFileSync(0, "utf8");
     const value = JSON.parse(input)?.result?.lease?.token;
@@ -304,6 +339,12 @@ PUBLISH_LEASE_TOKEN="$(
   ' <<<"${PUBLISH_LEASE_JSON}"
 )"
 PUBLISH_LEASE_JSON=""
+if [[ "${RETURNED_PUBLISH_LEASE_TOKEN}" != "${PUBLISH_ACQUIRE_TOKEN}" ]]; then
+  echo "Error: automation control did not return the broker-retained publisher lease token." >&2
+  exit 1
+fi
+RETURNED_PUBLISH_LEASE_TOKEN=""
+PUBLISH_ACQUIRE_TOKEN=""
 
 /usr/bin/env -i \
   HOME="${HOME}" \
