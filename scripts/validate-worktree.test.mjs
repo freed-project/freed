@@ -10,6 +10,7 @@ import {
   isReleasePublisherToolingPath,
   isSocialScrapeLoopPath,
   isSocialProviderFocusedSurface,
+  isToolingSmokeRunnerPath,
   parseArgs,
   REPO_ROOT,
 } from "./validate-worktree.mjs";
@@ -296,6 +297,30 @@ test("feature plan for validation runner changes runs only runner tests", () => 
   );
 
   assert.deepEqual(labels, ["validation runner tests"]);
+});
+
+test("feature plan routes tooling smoke workflow and helper changes through focused tests", () => {
+  const paths = [
+    ".github/workflows/ci.yml",
+    "scripts/run-tooling-smoke-shard.mjs",
+    "scripts/run-tooling-smoke-shard.test.mjs",
+  ];
+  for (const filePath of paths) {
+    assert.equal(isToolingSmokeRunnerPath(filePath), true, filePath);
+  }
+  assert.equal(
+    isToolingSmokeRunnerPath("scripts/automation-control.test.mjs"),
+    false,
+  );
+  const plan = buildValidationPlan("feature", paths);
+  const runnerTests = plan.find(
+    (item) => item.label === "tooling smoke runner tests",
+  );
+  assert.ok(runnerTests);
+  assert.deepEqual(runnerTests.args, [
+    "--test",
+    "scripts/run-tooling-smoke-shard.test.mjs",
+  ]);
 });
 
 test("feature plan for social scrape loop changes runs only loop tests", () => {

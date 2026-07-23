@@ -89,6 +89,12 @@ const RELEASE_PUBLISHER_TEST_FILES = [
   "scripts/validate-release-tag-authority.test.mjs",
 ];
 
+const TOOLING_SMOKE_RUNNER_PATHS = new Set([
+  ".github/workflows/ci.yml",
+  "scripts/run-tooling-smoke-shard.mjs",
+  "scripts/run-tooling-smoke-shard.test.mjs",
+]);
+
 export function normalizeRepoPath(filePath) {
   return filePath.replace(/\\/g, "/").replace(/^\.\//, "");
 }
@@ -390,6 +396,10 @@ export function isValidateRunnerPath(filePath) {
   );
 }
 
+export function isToolingSmokeRunnerPath(filePath) {
+  return TOOLING_SMOKE_RUNNER_PATHS.has(filePath);
+}
+
 export function isSocialScrapeLoopPath(filePath) {
   return (
     filePath === "scripts/social-scrape-loop.mjs" ||
@@ -465,11 +475,7 @@ function socialProviderFocusedE2eCommand() {
 function pwaTestCommands() {
   return [
     npmCommand("pwa unit tests", ["run", "test:unit"], "packages/pwa"),
-    npmCommand(
-      "pwa performance tests",
-      ["run", "test:perf"],
-      "packages/pwa",
-    ),
+    npmCommand("pwa performance tests", ["run", "test:perf"], "packages/pwa"),
   ];
 }
 
@@ -674,6 +680,7 @@ export function buildValidationPlan(mode, changedFiles) {
     isReleasePublisherToolingPath,
   );
   const validateRunnerChanged = changedFiles.some(isValidateRunnerPath);
+  const toolingSmokeRunnerChanged = changedFiles.some(isToolingSmokeRunnerPath);
   const socialScrapeLoopChanged = changedFiles.some(isSocialScrapeLoopPath);
   const captureWorkspaces = unique(
     changedFiles.map(captureWorkspaceForFile).filter(Boolean),
@@ -821,6 +828,16 @@ export function buildValidationPlan(mode, changedFiles) {
       nodeCommand("release publisher tests", [
         "--test",
         ...RELEASE_PUBLISHER_TEST_FILES,
+      ]),
+    );
+  }
+
+  if (toolingSmokeRunnerChanged) {
+    addCommand(
+      plan,
+      nodeCommand("tooling smoke runner tests", [
+        "--test",
+        path.join("scripts", "run-tooling-smoke-shard.test.mjs"),
       ]),
     );
   }

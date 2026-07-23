@@ -18,20 +18,18 @@ env:
 
 jobs:
   tooling-smoke-shards:
-    name: Tooling smoke shard (${{ matrix.label }})
+    name: Tooling smoke shard (${{ matrix.suite }} ${{ matrix.shard }}/8)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - label: general scripts
-            command: >-
-              bash -n scripts/*.sh scripts/lib/*.sh &&
-              node --test $(find scripts -maxdepth 1 -name '*.test.mjs' ! -name 'automation-control.test.mjs' ! -name 'automation-kernel-guard-cutover.test.mjs' -print | sort)
-          - label: automation control
-            command: node --test scripts/automation-control.test.mjs
-          - label: kernel guard cutover
-            command: node --test scripts/automation-kernel-guard-cutover.test.mjs
+        suite:
+          - general
+          - automation-control
+          - kernel-guard-cutover
+          - outcome-ledger-repair
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -46,7 +44,11 @@ jobs:
         run: npm ci
 
       - name: Run tooling smoke shard
-        run: ${{ matrix.command }}
+        run: >-
+          node scripts/run-tooling-smoke-shard.mjs
+          --suite=${{ matrix.suite }}
+          --shard-index=${{ matrix.shard }}
+          --shard-count=8
 
   tooling-smoke:
     name: Tooling smoke
