@@ -13,6 +13,7 @@
 
 import { XMLParser } from "fast-xml-parser";
 import type { ParsedFeed, ParsedFeedItem } from "./types.js";
+import { SECURE_XML_ENTITY_OPTIONS } from "./xml-security.js";
 
 // Re-export everything that is Node-free
 export * from "./types.js";
@@ -41,6 +42,7 @@ const XML = new XMLParser({
   attributeNamePrefix: "@_",
   textNodeName: "#text",
   parseAttributeValue: false,
+  processEntities: SECURE_XML_ENTITY_OPTIONS,
   isArray: (_name, jpath) =>
     jpath === "rss.channel.item" ||
     jpath === "feed.entry" ||
@@ -113,6 +115,7 @@ function parseRss(rss: Rec): ParsedFeed {
     link: text(ch.link),
     feedUrl: "",
     language: text(ch.language),
+    generator: text(ch.generator),
     lastBuildDate: text(ch.lastBuildDate),
     ...(img?.url ? {
       image: {
@@ -171,6 +174,7 @@ function parseAtom(feed: Rec): ParsedFeed {
     description: text(feed.subtitle),
     link: text(altLink?.["@_href"]) ?? text(altLink?.["href"]),
     feedUrl: "",
+    generator: text(feed.generator),
     items: parseAtomItems(feed.entry),
   };
 }

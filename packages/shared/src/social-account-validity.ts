@@ -108,8 +108,40 @@ export function isValidFacebookAuthorIdentity(input: {
   );
 }
 
+/**
+ * Publication channels can be useful accounts without representing a person.
+ * Roster direction does not turn a publication URL into a human identity.
+ */
+export function isPersonLikeSocialAccount(account: Account): boolean {
+  if (
+    account.kind !== "social" ||
+    (account.provider !== "substack" && account.provider !== "medium")
+  ) {
+    return true;
+  }
+  const identityUrl = account.profileUrl ?? account.externalId;
+  try {
+    const url = new URL(identityUrl);
+    const hostname = url.hostname.toLowerCase();
+    const parts = url.pathname.split("/").filter(Boolean);
+    if (account.provider === "medium") {
+      const isPublicationRoot =
+        (hostname === "medium.com" || hostname === "www.medium.com") &&
+        parts.length === 1 &&
+        !parts[0].startsWith("@");
+      return !isPublicationRoot;
+    }
+    const isPublicationRoot =
+      hostname.endsWith(".substack.com") && parts.length === 0;
+    return !isPublicationRoot;
+  } catch {
+    return true;
+  }
+}
+
 export function isValidDiscoveredSocialAccount(account: Account): boolean {
   if (account.kind !== "social") return true;
+  if (!isPersonLikeSocialAccount(account)) return false;
   if (account.provider !== "facebook") return true;
   if (isFacebookUiChromeLabel(account.displayName ?? account.handle ?? account.externalId)) {
     return false;
@@ -131,11 +163,33 @@ export function isPrunableInvalidDiscoveredSocialAccount(account: Account): bool
 }
 
 export function isValidDiscoveredSocialFeedAuthor(item: FeedItem): boolean {
-  if (item.platform !== "facebook") return true;
-  return isValidFacebookAuthorIdentity({
-    displayName: item.author.displayName,
-    profileUrl: item.author.handle && item.author.handle !== "unknown"
-      ? `https://www.facebook.com/${item.author.handle.replace(/^fb:/, "")}`
-      : undefined,
-  });
+  if (item.platform === "facebook") {
+    return isValidFacebookAuthorIdentity({
+      displayName: item.author.displayName,
+      profileUrl: item.author.handle && item.author.handle !== "unknown"
+        ? `https://www.facebook.com/${item.author.handle.replace(/^fb:/, "")}`
+        : undefined,
+    });
+  }
+  if (item.platform === "substack" || item.platform === "medium") {
+    try {
+      const identity = new URL(item.author.id);
+      const hostname = identity.hostname.toLowerCase();
+      const parts = identity.pathname.split("/").filter(Boolean);
+      if (item.platform === "substack") {
+        return (
+          (hostname.endsWith(".substack.com") && parts.length === 0) ||
+          ((hostname === "substack.com" || hostname === "www.substack.com") &&
+            parts.some((part) => part.startsWith("@")))
+        );
+      }
+      return (
+        (hostname === "medium.com" || hostname.endsWith(".medium.com")) &&
+        parts.some((part) => part.startsWith("@"))
+      );
+    } catch {
+      return false;
+    }
+  }
+  return true;
 }

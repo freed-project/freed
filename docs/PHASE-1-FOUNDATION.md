@@ -77,8 +77,8 @@ export interface FeedItem {
 export interface UserPreferences {
   weights: WeightPreferences; // Author, topic, platform weights
   ulysses: UlyssesPreferences; // Feed blocking settings
-  sync: SyncPreferences; // Cloud backup config
-  display: DisplayPreferences; // UI settings
+  sync?: SyncPreferences; // Deprecated legacy shape. Cloud runtime is device-local.
+  display: DisplayPreferences; // Synchronized appearance and reading policy
   xCapture: XCapturePreferences; // X capture mode and lists
 }
 ```
@@ -91,7 +91,7 @@ export interface FreedDoc {
   feedItems: Record<string, FeedItem>; // All captured content
   rssFeeds: Record<string, RssFeed>; // RSS subscriptions
   preferences: UserPreferences; // User settings
-  meta: DocumentMeta; // Device ID, sync state
+  meta: DocumentMeta; // Synchronized document identity only
 }
 
 // CRUD operations
@@ -229,7 +229,7 @@ Branch routing:
 - merges to `dev` redeploy `dev-app.freed.wtf` through native Vercel Git deploys
 - Vercel preview deployments handle PWA branch and PR previews
 - `main` remains the production app release branch
-- production release prep now refuses stale `main` snapshots, so `dev` must be promoted into `main` before a production tag can be prepared or published
+- production release prep starts from exact current `origin/main` and refuses stale product state, so any required `dev` promotion lands before the release-only prep PR
 - `main` no longer redeploys `freed.wtf` as a side effect
 
 Manual preview deploys for this monorepo now go through `./scripts/vercel-deploy-preview.sh website` and `./scripts/vercel-deploy-preview.sh pwa`. The helper stages a temporary monorepo slice with shared workspace packages before uploading to Vercel, which avoids the broken `npm install` failures caused by raw subdirectory deploys.

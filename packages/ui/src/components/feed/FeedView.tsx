@@ -19,6 +19,7 @@ import {
 } from "@freed/shared";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import { animationAwareScrollBehavior, resolveAnimationIntensity } from "../../lib/animation-preferences.js";
+import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
 
 // ─── Compact sidebar panel for dual-column mode ────────────────────────────
 
@@ -265,8 +266,9 @@ export function FeedView() {
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const toggleLiked = useAppStore((s) => s.toggleLiked);
-  const friendsMode = useAppStore((s) => s.preferences.display.friendsMode ?? "all_content");
-  const savedContentSortMode = useAppStore((s) => s.preferences.display.savedContentSortMode ?? "date_saved");
+  const [deviceDisplay] = useDeviceDisplayPreferences();
+  const friendsMode = deviceDisplay.friendsMode;
+  const savedContentSortMode = deviceDisplay.savedContentSortMode;
 
   const handleItemSave = useCallback(
     (item: FeedItem) => toggleSaved(item.globalId),
@@ -332,7 +334,7 @@ export function FeedView() {
     [activeFilter.savedOnly, filteredItems, savedContentSortMode],
   );
 
-  const dualColumnMode = useAppStore((s) => s.preferences.display.reading.dualColumnMode);
+  const dualColumnMode = deviceDisplay.dualColumnMode;
   const markReadOnScroll = useAppStore((s) => s.preferences.display.reading.markReadOnScroll);
   const showReadInGrayscale = useAppStore((s) => s.preferences.display.reading.showReadInGrayscale);
   const animationIntensity = useAppStore((s) =>
@@ -345,7 +347,7 @@ export function FeedView() {
   const canShowInlineReader = !isMobileDevice;
   const showInlineReader = !!selectedItemId && canShowInlineReader;
   const showDualColumn = dualColumnMode && canShowInlineReader && !autoCollapseReaderRail;
-  const desktopSidebarMode = useAppStore((s) => s.preferences.display.sidebarMode ?? "expanded");
+  const desktopSidebarMode = deviceDisplay.sidebarMode;
   const compactRailLeadingOffset =
     !isMobileDevice && desktopSidebarMode !== "closed"
       ? `-${COMPACT_CARD_LEFT_PAD}px`

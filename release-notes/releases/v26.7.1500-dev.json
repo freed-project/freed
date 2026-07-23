@@ -1,0 +1,108 @@
+{
+  "tag": "v26.7.1500-dev",
+  "version": "26.7.1500-dev",
+  "channel": "dev",
+  "dayKey": "26.7.15",
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed 2026-07-15: retained the reviewed Friends Galaxy highlights because the immutable v26.7.1400-dev and v26.7.1402-dev tags published no installer. Rebound this replacement to the exact current dev product commit after the PWA handler type repair, release workflow validation fix, release notes deduplication repair, and Friends selection repair merged."
+  ],
+  "generatedAt": "2026-07-15T07:09:45.075Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.7.1200-dev",
+    "previousPublishedDayTag": "v26.7.1200-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "310a85e625b4af3f5b3bccd5c41e1fadab00034b",
+    "promotedDevCommitSha": null,
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.7.1500-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.7.1500-dev"
+    ],
+    "prNumbers": [
+      642,
+      949,
+      953,
+      955,
+      957,
+      963,
+      964,
+      965,
+      966,
+      968,
+      969,
+      970,
+      972,
+      973,
+      974,
+      975,
+      976,
+      977,
+      978,
+      979,
+      982,
+      983,
+      984,
+      1010,
+      1012,
+      1013,
+      1015,
+      1016,
+      1021,
+      1022
+    ],
+    "commitSubjects": [
+      "fix: stabilize Friends selection atlas updates (#1022)",
+      "fix: avoid duplicate pinned release highlights (#1021)",
+      "fix: unblock dev release validation (#1016)",
+      "chore: prepare v26.7.1402-dev (#1015)",
+      "fix: recognize reviewed main backport history (#1013)",
+      "fix: repair release validation contracts (#1010)",
+      "fix: align tooling fixtures with current policy (#1012)",
+      "feat: add private vulnerability reporting (#968)",
+      "chore: prepare v26.7.1400-dev (#984)",
+      "fix: accept canonical tag ruleset responses (#983)",
+      "fix: allow exact current-task owner approvals (#982)",
+      "feat: build next-generation Friends Galaxy (#953)",
+      "fix: include publisher dependencies in main backports (#979)",
+      "chore: pin release publisher app bypass (#977)",
+      "fix: simplify provider approval workflow (#978)",
+      "feat: add authenticated essay capture (#642)",
+      "fix: stop automation actor keychain prompts (#976)",
+      "fix: stabilize automation actor handoff (#975)",
+      "fix: omit webhook from release app manifest (#974)",
+      "fix: accept canonical heartbeat thread targets (#973)",
+      "feat: add dedicated release tag publisher (#972)",
+      "fix: recognize historical promotion commits",
+      "chore: prepare v26.7.1301-dev (#970)",
+      "fix: complete YouTube capture lifecycle (#969)",
+      "fix: bootstrap automation actor leases (#965)",
+      "test: restore release channel build coverage (#967)",
+      "chore: reverse integrate main into dev (#966)",
+      "fix: bind release lockfile to version bump (#964)",
+      "chore: prepare v26.7.1300-dev (#963)",
+      "fix: harden the stability control plane (#949)",
+      "fix: enable YouTube terminal sync soaks (#955)",
+      "fix: resolve pinned Node when sourced by zsh (#957)"
+    ]
+  },
+  "release": {
+    "deck": "Friends is now a theme-aware personal galaxy with native touch and trackpad navigation, tight identity constellations, and cosmic provider nebulae",
+    "features": [
+      "Explore Friends as a hardware-accelerated 3D galaxy where relationship importance controls depth, identities form tight constellations, and every starfield follows the active Freed theme",
+      "Pan, zoom, and focus the galaxy with a mouse, trackpad, or midpoint-preserving iPhone pinch gestures while billboard labels stay visible and close to their stars",
+      "Use the new Medium and Substack beta sources in Freed Desktop to capture essays, visible relationships, subscriptions, and activity through your signed-in sessions"
+    ],
+    "fixes": [
+      "Friends selection now settles on the current person or account without stale atlas updates, while provider regions form spiral nebulae and identity links stay focused on the active constellation",
+      "YouTube followed-channel and subscription capture now reports bounded progress, cancels stale work, and closes hidden capture sessions when finished",
+      "Security reports can now be submitted privately with redacted diagnostics and hardened fetched-content handling"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.1500-dev\n\nFriends is now a theme-aware personal galaxy with native touch and trackpad navigation, tight identity constellations, and cosmic provider nebulae.\n\n### Features\n\n- Explore Friends as a hardware-accelerated 3D galaxy where relationship importance controls depth, identities form tight constellations, and every starfield follows the active Freed theme\n- Pan, zoom, and focus the galaxy with a mouse, trackpad, or midpoint-preserving iPhone pinch gestures while billboard labels stay visible and close to their stars\n- Use the new Medium and Substack beta sources in Freed Desktop to capture essays, visible relationships, subscriptions, and activity through your signed-in sessions\n\n### Fixes\n\n- Friends selection now settles on the current person or account without stale atlas updates, while provider regions form spiral nebulae and identity links stay focused on the active constellation\n- YouTube followed-channel and subscription capture now reports bounded progress, cancels stale work, and closes hidden capture sessions when finished\n- Security reports can now be submitted privately with redacted diagnostics and hardened fetched-content handling\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

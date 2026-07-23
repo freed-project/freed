@@ -86,6 +86,36 @@ describe("rss poller", () => {
     poller.stopRssPoller();
   });
 
+  it("drains an in-flight refresh before reset cleanup begins", async () => {
+    let releaseRefresh!: () => void;
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    const refreshSettled = vi.fn();
+    refreshAllFeeds.mockImplementationOnce(async () => {
+      await refreshGate;
+      refreshSettled();
+    });
+    runBackgroundJob.mockImplementationOnce(async (task) => task.run());
+
+    const poller = await loadPoller();
+    poller.startRssPoller(30 * 60 * 1000, { startupDelayMs: 0 });
+    await vi.runAllTicks();
+    expect(refreshAllFeeds).toHaveBeenCalledOnce();
+
+    const cleanupStarted = vi.fn();
+    const draining = poller.stopRssPollerAndDrain().then(cleanupStarted);
+    await Promise.resolve();
+    expect(cleanupStarted).not.toHaveBeenCalled();
+
+    releaseRefresh();
+    await draining;
+    expect(refreshSettled).toHaveBeenCalledOnce();
+    expect(refreshSettled.mock.invocationCallOrder[0]).toBeLessThan(
+      cleanupStarted.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
+  });
+
   it("backs off a deferred startup poll before the normal interval", async () => {
     const deferredError = { reason: "waiting_for_renderer_heartbeat:1" };
     runBackgroundJob

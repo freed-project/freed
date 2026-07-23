@@ -52,6 +52,11 @@ import {
   useReaderOfflineCacheMode,
   type ReaderOfflineCacheMode,
 } from "../lib/reader-cache-settings.js";
+import { useFeedCardDensity } from "../lib/feed-card-density.js";
+import {
+  formatInterfaceZoom,
+  useInterfaceZoom,
+} from "../lib/interface-zoom.js";
 import { ProviderStatusIndicator } from "./ProviderStatusIndicator.js";
 import { toast } from "./Toast.js";
 import { UpdateProgressBar } from "./UpdateProgressBar.js";
@@ -68,8 +73,19 @@ import { SettingsToggle } from "./SettingsToggle.js";
 import { ReportComposer } from "./report/ReportComposer.js";
 import { SearchField } from "./SearchField.js";
 import { ThemePreviewButton } from "./ThemePreviewButton.js";
+import {
+  FeedCardDensitySlider,
+  InterfaceZoomSlider,
+} from "./DisplayScaleControls.js";
 import { Tooltip } from "./Tooltip.js";
-import { ExternalLinkIcon, GoogleContactsIcon, StoryWallIcon } from "./icons.js";
+import {
+  ExternalLinkIcon,
+  GoogleContactsIcon,
+  MediumIcon,
+  StoryWallIcon,
+  SubstackIcon,
+  YoutubeIcon,
+} from "./icons.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useHasTouchOnlyPointer } from "../hooks/useHasTouchOnlyPointer.js";
 
@@ -105,7 +121,10 @@ const ANIMATION_OPTIONS: ReadonlyArray<{ value: AnimationIntensity; label: strin
   { value: "detailed", label: "Detailed" },
 ];
 
-type ProviderSectionId = Extract<SectionId, "x" | "facebook" | "instagram" | "linkedin">;
+type ProviderSectionId = Extract<
+  SectionId,
+  "x" | "facebook" | "instagram" | "linkedin" | "substack" | "medium" | "youtube"
+>;
 type ProviderAuthState = {
   isAuthenticated?: boolean;
   lastCaptureError?: string;
@@ -115,6 +134,9 @@ type ProviderAuthSlices = {
   fbAuth?: ProviderAuthState;
   igAuth?: ProviderAuthState;
   liAuth?: ProviderAuthState;
+  substackAuth?: ProviderAuthState;
+  mediumAuth?: ProviderAuthState;
+  ytAuth?: ProviderAuthState;
 };
 const EMPTY_PROVIDER_SECTION_SYNC_COUNTS: Partial<Record<ProviderSectionId, number>> = {};
 const INSTALLED_BUILD_PRESENTATION = describeInstalledBuild(readBuildMetadata());
@@ -180,7 +202,10 @@ function isProviderSection(sectionId: SectionId): sectionId is ProviderSectionId
     sectionId === "x" ||
     sectionId === "facebook" ||
     sectionId === "instagram" ||
-    sectionId === "linkedin"
+    sectionId === "linkedin" ||
+    sectionId === "substack" ||
+    sectionId === "medium" ||
+    sectionId === "youtube"
   );
 }
 
@@ -195,6 +220,9 @@ function ProviderStatusDot({ sectionId }: { sectionId: ProviderSectionId }) {
   const fbAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).fbAuth);
   const igAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).igAuth);
   const liAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).liAuth);
+  const substackAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).substackAuth);
+  const mediumAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).mediumAuth);
+  const ytAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).ytAuth);
 
   const authState =
     sectionId === "x"
@@ -203,7 +231,13 @@ function ProviderStatusDot({ sectionId }: { sectionId: ProviderSectionId }) {
         ? fbAuth
         : sectionId === "instagram"
           ? igAuth
-          : liAuth;
+          : sectionId === "linkedin"
+            ? liAuth
+            : sectionId === "substack"
+              ? substackAuth
+              : sectionId === "medium"
+                ? mediumAuth
+                : ytAuth;
 
   const snapshot = health?.providers[sectionId];
   const isConnected = authState?.isAuthenticated === true;
@@ -408,6 +442,11 @@ const ICONS: Record<SectionId, ReactNode> = {
       <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
     </svg>
   ),
+  substack: <SubstackIcon />,
+  medium: <MediumIcon />,
+  youtube: (
+    <YoutubeIcon />
+  ),
   googleContacts: (
     <GoogleContactsIcon />
   ),
@@ -434,6 +473,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     FacebookSettingsContent,
     InstagramSettingsContent,
     LinkedInSettingsContent,
+    SubstackSettingsContent,
+    MediumSettingsContent,
+    YouTubeSettingsContent,
     GoogleContactsSettingsContent,
     FeedsSettingsContent,
     addRssFeed,
@@ -447,6 +489,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     applyUpdate,
     headerDragRegion,
     factoryReset,
+    factoryResetRevokesMobilePairing,
     activeCloudProviderLabel,
     openUrl,
     seedSocialConnections,
@@ -467,6 +510,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const settingsShellRef = useRef<HTMLDivElement>(null);
   const settingsOverlayRef = useRef<HTMLDivElement>(null);
   const [readerOfflineCacheMode, setReaderOfflineCacheMode] = useReaderOfflineCacheMode();
+  const [feedCardDensity, setFeedCardDensity] = useFeedCardDensity();
+  const [interfaceZoom, setInterfaceZoom] = useInterfaceZoom();
   // Flat section list — drives scrollspy and right-pane rendering.
   // Keywords live in settings-sections.ts so Header's command palette can share them.
   const allSections: Section[] = useMemo(
@@ -481,6 +526,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         hasFacebook: !!FacebookSettingsContent,
         hasInstagram: !!InstagramSettingsContent,
         hasLinkedIn: !!LinkedInSettingsContent,
+        hasSubstack: !!SubstackSettingsContent,
+        hasMedium: !!MediumSettingsContent,
+        hasYouTube: !!YouTubeSettingsContent,
         hasUpdateChecks: !!checkForUpdates,
         hasFactoryReset: !!factoryReset,
       }).map((section) => ({
@@ -496,6 +544,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       FacebookSettingsContent,
       InstagramSettingsContent,
       LinkedInSettingsContent,
+      SubstackSettingsContent,
+      MediumSettingsContent,
+      YouTubeSettingsContent,
       checkForUpdates,
       factoryReset,
       googleContacts,
@@ -527,6 +578,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           ...(sectionById.facebook ? [sectionById.facebook] : []),
           ...(sectionById.instagram ? [sectionById.instagram] : []),
           ...(sectionById.linkedin ? [sectionById.linkedin] : []),
+          ...(sectionById.substack ? [sectionById.substack] : []),
+          ...(sectionById.medium ? [sectionById.medium] : []),
+          ...(sectionById.youtube ? [sectionById.youtube] : []),
           sectionById.feeds!,
         ],
       },
@@ -559,12 +613,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   const handleDisplayChange = useCallback(
     (update: Partial<typeof display>) => {
-      setDisplay((prev) => {
-        const next = { ...prev, ...update };
-        void updatePreferences({ display: next }).catch(() => {
-          toast.error("Could not save settings");
-        });
-        return next;
+      setDisplay((prev) => ({ ...prev, ...update }));
+      void updatePreferences({ display: update } as Parameters<typeof updatePreferences>[0]).catch(() => {
+        toast.error("Could not save settings");
       });
     },
     [updatePreferences],
@@ -572,10 +623,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   const handleReadingChange = useCallback(
     (update: Partial<typeof display.reading>) => {
-      setDisplay((prev) => {
-        const next = { ...prev, reading: { ...prev.reading, ...update } };
-        updatePreferences({ display: next });
-        return next;
+      setDisplay((prev) => ({
+        ...prev,
+        reading: { ...prev.reading, ...update },
+      }));
+      void updatePreferences({
+        display: { reading: update },
+      } as Parameters<typeof updatePreferences>[0]).catch(() => {
+        toast.error("Could not save settings");
       });
     },
     [updatePreferences],
@@ -1474,6 +1529,37 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   </div>
                 </div>
               </div>
+              <div
+                data-testid="settings-display-scale-controls"
+                className="theme-card-soft rounded-2xl p-4 sm:p-5"
+              >
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-text-primary">Card density</p>
+                    <FeedCardDensitySlider
+                      value={feedCardDensity}
+                      onChange={setFeedCardDensity}
+                      fullWidth
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-text-primary">Interface zoom</p>
+                      <span
+                        data-testid="settings-interface-zoom-value"
+                        className="text-xs font-semibold tabular-nums text-text-muted"
+                      >
+                        {formatInterfaceZoom(interfaceZoom)}
+                      </span>
+                    </div>
+                    <InterfaceZoomSlider
+                      value={interfaceZoom}
+                      onChange={setInterfaceZoom}
+                      fullWidth
+                    />
+                  </div>
+                </div>
+              </div>
               <SettingsToggle
                 label="Mark read on scroll"
                 checked={display.reading.markReadOnScroll}
@@ -1622,6 +1708,30 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <>
             <SectionHeading label="LinkedIn" />
             <LinkedInSettingsContent surface="settings" />
+          </>
+        ) : null;
+
+      case "substack":
+        return SubstackSettingsContent ? (
+          <>
+            <SectionHeading label="Substack" stage="beta" />
+            <SubstackSettingsContent surface="settings" />
+          </>
+        ) : null;
+
+      case "medium":
+        return MediumSettingsContent ? (
+          <>
+            <SectionHeading label="Medium" stage="beta" />
+            <MediumSettingsContent surface="settings" />
+          </>
+        ) : null;
+
+      case "youtube":
+        return YouTubeSettingsContent ? (
+          <>
+            <SectionHeading label="YouTube" />
+            <YouTubeSettingsContent surface="settings" />
           </>
         ) : null;
 
@@ -1900,6 +2010,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           {section.icon}
         </span>
         <span>{section.label}</span>
+        {section.stage === "beta" ? (
+          <span className="rounded border border-[var(--theme-border-subtle)] px-1.5 py-0.5 text-[9px] font-semibold uppercase text-[var(--theme-text-muted)]">
+            Beta
+          </span>
+        ) : null}
         {isProviderSection(section.id) ? (
           <ProviderStatusDot sectionId={section.id} />
         ) : null}
@@ -2153,8 +2268,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               <div>
                 <p className="text-sm font-semibold text-text-primary">Reset this device?</p>
                 <p className="mt-0.5 text-xs text-text-secondary">
-                  Clears all local data on this device only.
-                  {!deleteFromCloud && " Cloud sync will re-download your data on next launch."}
+                  Clears this device's Freed library and disconnects active accounts. Freed keeps local request history and downloaded files so reconnecting doesn't repeat work.
+                  {factoryResetRevokesMobilePairing &&
+                    " Connected mobile readers will need to scan the pairing QR code again after reset."}
+                  {!deleteFromCloud &&
+                    " Your cloud data remains available. Reconnect cloud sync after reset to restore it."}
                 </p>
               </div>
             </div>
@@ -2383,14 +2501,27 @@ function UpToDateBadge() {
 
 // ── Section heading ───────────────────────────────────────────────────────────
 
-function SectionHeading({ label, danger }: { label: string; danger?: boolean }) {
+function SectionHeading({
+  label,
+  danger,
+  stage,
+}: {
+  label: string;
+  danger?: boolean;
+  stage?: "beta";
+}) {
   return (
     <h3
-      className={`mb-4 text-base font-semibold uppercase tracking-wide sm:mb-5 sm:text-sm ${
+      className={`mb-4 flex items-center gap-2 text-base font-semibold uppercase tracking-wide sm:mb-5 sm:text-sm ${
         danger ? "text-[rgb(var(--theme-feedback-danger-rgb)/0.64)]" : "text-text-muted"
       }`}
     >
-      {label}
+      <span>{label}</span>
+      {stage === "beta" ? (
+        <span className="rounded border border-[var(--theme-border-subtle)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--theme-text-muted)]">
+          Beta
+        </span>
+      ) : null}
     </h3>
   );
 }

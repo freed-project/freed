@@ -1,0 +1,4 @@
+interface:
+  display_name: "Freed Evidence Capture"
+  short_description: "Capture attributable local stability evidence"
+  default_prompt: "Use $freed-evidence-capture to collect attributable, read-only stability evidence for this incident."

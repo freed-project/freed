@@ -175,5 +175,7 @@ export function buildPlatformActionsRegistry(
   registry.set("github", noopActions);
   registry.set("saved", noopActions);
   registry.set("linkedin", noopActions);
+  registry.set("substack", noopActions);
+  registry.set("medium", noopActions);
   return registry;
 }

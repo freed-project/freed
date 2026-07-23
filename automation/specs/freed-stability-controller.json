@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "freed-stability-controller",
+  "name": "Freed stability controller",
+  "kind": "cron",
+  "promptPath": "automation/prompts/freed-stability-controller.md",
+  "authority": "plan-only",
+  "providerBehavior": "forbidden",
+  "maxBehavioralChangesPerSoak": 0,
+  "stateRoot": "~/.freed/automation",
+  "lease": { "name": "stability-controller", "maxLifetimeMs": 1800000 },
+  "localOverlayFields": [
+    "status",
+    "rrule",
+    "model",
+    "reasoning_effort",
+    "execution_environment",
+    "target",
+    "cwds"
+  ],
+  "requiredHostCapabilities": ["trusted-launcher", "short-lived-lease-handoff"]
+}

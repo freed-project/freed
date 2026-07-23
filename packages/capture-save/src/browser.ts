@@ -91,12 +91,16 @@ export function extractContentBrowser(html: string, url: string): ExtractedConte
     throw new Error(`Readability could not extract content from ${url}`);
   }
 
-  const text = article.textContent.trim();
+  const text = article.textContent?.trim();
+  const content = article.content;
+  if (!text || !content) {
+    throw new Error(`Readability returned empty content for ${url}`);
+  }
   const wordCount = text.split(/\s+/).filter(Boolean).length;
   const readingTime = Math.max(1, Math.ceil(wordCount / 200));
 
   return {
-    html: article.content,
+    html: content,
     text,
     wordCount,
     readingTime,

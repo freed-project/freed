@@ -10,8 +10,13 @@
  * diagnostic panel after the first successful sync.
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import type { XCookies } from "./x-auth";
+import {
+  beginFactoryResetBoundary,
+  resetFactoryResetStateForTests,
+  runFactoryResetOperations,
+} from "@freed/ui/lib/factory-reset";
 
 vi.mock("./store", () => ({
   useAppStore: {
@@ -40,6 +45,10 @@ import rateLimitFixture from "./__fixtures__/x-rate-limit.json";
 
 const fakeCookies: XCookies = { ct0: "fake_ct0", authToken: "fake_auth_token" };
 
+afterEach(() => {
+  resetFactoryResetStateForTests();
+});
+
 /** Requester that always resolves with a serialised fixture object */
 function requesterFor(fixture: object) {
   return vi.fn().mockResolvedValue(JSON.stringify(fixture));
@@ -60,6 +69,44 @@ function brokenJsonRequester() {
 // =============================================================================
 
 describe("fetchXTimeline", () => {
+  it("rejects before calling the requester after the reset boundary closes", async () => {
+    const requester = requesterFor(timelineFixture);
+    beginFactoryResetBoundary();
+
+    await expect(fetchXTimeline(fakeCookies, requester)).rejects.toThrow(
+      "Factory reset is in progress",
+    );
+
+    expect(requester).not.toHaveBeenCalled();
+  });
+
+  it("drains an issued request and rejects its response after reset", async () => {
+    let resolveRequest!: (value: string) => void;
+    const requester = vi.fn(() => new Promise<string>((resolve) => {
+      resolveRequest = resolve;
+    }));
+    const fetch = fetchXTimeline(fakeCookies, requester);
+    await vi.waitFor(() => expect(requester).toHaveBeenCalledOnce());
+    const clearDocument = vi.fn(async () => undefined);
+
+    const reset = runFactoryResetOperations({
+      quiesceLocalWriters: [],
+      clearDeviceStores: () => [],
+      clearLocalSettings: [],
+      clearLocalData: [],
+      clearProviderDataAndConnections: async () => undefined,
+      clearDocument,
+    });
+    await Promise.resolve();
+    expect(clearDocument).not.toHaveBeenCalled();
+
+    resolveRequest(JSON.stringify(timelineFixture));
+    await expect(fetch).rejects.toThrow("Factory reset is in progress");
+    await reset;
+
+    expect(clearDocument).toHaveBeenCalledOnce();
+  });
+
   describe("happy path", () => {
     it("extracts tweets from a well-formed timeline response", async () => {
       const result = await fetchXTimeline(fakeCookies, requesterFor(timelineFixture));

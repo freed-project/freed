@@ -10,7 +10,30 @@
 
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
-export type CloudUploadCause = "subscriber" | "manual" | "poll";
+export interface RuntimeHealthIdentityFields {
+  appVersion: string;
+  buildCommitSha: string | null;
+  buildKind: string;
+  channel: "dev" | "production";
+  appSessionId: string;
+}
+
+const RUNTIME_APP_SESSION_ID =
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `session-${Date.now().toLocaleString()}-${Math.random().toString(36).slice(2)}`;
+
+export function runtimeHealthIdentityFields(): RuntimeHealthIdentityFields {
+  return {
+    appVersion: __APP_VERSION__,
+    buildCommitSha: __BUILD_COMMIT_SHA__,
+    buildKind: __BUILD_KIND__,
+    channel: __BUILD_CHANNEL__,
+    appSessionId: RUNTIME_APP_SESSION_ID,
+  };
+}
+
+export type CloudUploadCause = "subscriber" | "manual" | "poll" | "startup-repair";
 
 export type SocialScrapeTrigger =
   | "manual"
@@ -20,14 +43,30 @@ export type SocialScrapeTrigger =
   | "post_login"
   | "unknown";
 
-export type ScrapeOutcomeProvider = "facebook" | "instagram" | "linkedin" | "x";
+export type ScrapeOutcomeProvider =
+  | "facebook"
+  | "instagram"
+  | "linkedin"
+  | "substack"
+  | "medium"
+  | "youtube"
+  | "x";
+export type RssPullTrigger = "manual" | "scheduled" | "subscription";
+export type FacebookGroupDiscoverySource =
+  | "group_scrape"
+  | "feed_items"
+  | "membership_check"
+  | "legacy_migration"
+  | "factory_reset";
 
 export function recordRuntimeHealthEvent(
   payload: { event: string } & Record<string, unknown>,
 ): void {
   try {
     if (!isTauri()) return;
-    void invoke("record_runtime_health_event", { payload }).catch(() => {});
+    void invoke("record_runtime_health_event", {
+      payload: { ...payload, ...runtimeHealthIdentityFields() },
+    }).catch(() => {});
   } catch {
     // Counters must never propagate into sync or capture paths.
   }
@@ -48,7 +87,21 @@ export function recordCloudUploadAttempt(input: {
 }
 
 /**
- * One line per scrape settlement across all four capture paths.
+ * One line per cloud upload the P1-01 damper skipped because the doc heads
+ * had not moved since the last successful upload. A healthy damper shows
+ * skips replacing the unchanged-heads attempts counted above; a broken sync
+ * would instead show zero attempts AND zero skips.
+ */
+export function recordCloudUploadSkipped(input: {
+  provider: string;
+  cause: CloudUploadCause;
+  reason: "merge_heads_unchanged" | "execution_heads_unchanged";
+}): void {
+  recordRuntimeHealthEvent({ event: "cloud_upload_skipped", ...input });
+}
+
+/**
+ * One line per scrape settlement across authenticated capture paths.
  * `itemsExtracted >= 5 && itemsPersisted == 0` is the scrape_zero_persist
  * signature (F03: results discarded by mid-invoke renderer recovery).
  */
@@ -61,6 +114,52 @@ export function recordScrapeOutcome(input: {
   durationMs: number;
 }): void {
   recordRuntimeHealthEvent({ event: "scrape_outcome", ...input });
+}
+
+/**
+ * One line immediately before a social outbox provider action runs. The event
+ * deliberately excludes item IDs, content, URLs, account identifiers, and
+ * error text. It measures outbox action surface without recording user data.
+ */
+export function recordSocialOutboxAttempt(input: {
+  provider: string;
+  action: "like" | "seen";
+  attempt: number;
+  maxAttempts: number;
+}): void {
+  recordRuntimeHealthEvent({ event: "social_outbox_attempt", ...input });
+}
+
+/** Aggregate group discovery changes without recording group or account data. */
+export function recordFacebookGroupDiscoveryUpdate(input: {
+  source: FacebookGroupDiscoverySource;
+  observedCount: number;
+  storedCount: number;
+  changedCount: number;
+  removedCount: number;
+}): void {
+  recordRuntimeHealthEvent({ event: "facebook_group_discovery_update", ...input });
+}
+
+/** One privacy-safe event immediately before each RSS HTTP pull. */
+export function recordRssPullAttempt(input: { trigger: RssPullTrigger }): void {
+  recordRuntimeHealthEvent({ event: "rss_pull_attempt", ...input });
+}
+
+/** One privacy-safe event immediately before an AI provider request. */
+export function recordAiRequestAttempt(input: {
+  provider: "ollama" | "openai" | "anthropic" | "gemini";
+  purpose: "summarize" | "reachability";
+}): void {
+  recordRuntimeHealthEvent({ event: "ai_request_attempt", ...input });
+}
+
+/** One privacy-safe event immediately before an article page request. */
+export function recordReaderArticleFetchAttempt(input: {
+  source: "reader-open" | "background-cache";
+  pin?: boolean;
+}): void {
+  recordRuntimeHealthEvent({ event: "reader_article_fetch_attempt", ...input });
 }
 
 /**

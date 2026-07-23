@@ -1,0 +1,58 @@
+{
+  "tag": "v26.7.1301-dev",
+  "version": "26.7.1301-dev",
+  "channel": "dev",
+  "dayKey": "26.7.13",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-07-14T04:15:20.327Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.7.1200-dev",
+    "previousPublishedDayTag": "v26.7.1200-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "315559bd7e184172349d3ae786c61098cb2f9b02",
+    "promotedDevCommitSha": null,
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.7.1301-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.7.1301-dev"
+    ],
+    "prNumbers": [
+      949,
+      955,
+      957,
+      963,
+      964,
+      965,
+      966,
+      969
+    ],
+    "commitSubjects": [
+      "fix: complete YouTube capture lifecycle (#969)",
+      "fix: bootstrap automation actor leases (#965)",
+      "test: restore release channel build coverage (#967)",
+      "chore: reverse integrate main into dev (#966)",
+      "fix: bind release lockfile to version bump (#964)",
+      "chore: prepare v26.7.1300-dev (#963)",
+      "fix: harden the stability control plane (#949)",
+      "fix: enable YouTube terminal sync soaks (#955)",
+      "fix: resolve pinned Node when sourced by zsh (#957)"
+    ]
+  },
+  "release": {
+    "deck": "YouTube now completes authenticated background capture and closes its hidden session cleanly",
+    "features": [],
+    "fixes": [
+      "Complete authenticated YouTube subscription and recent video capture",
+      "Close hidden YouTube capture windows after completion, cancellation, or timeout",
+      "Fail safely when YouTube returns incomplete or ambiguous page evidence",
+      "Harden unattended stability checks and release validation"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.1301-dev\n\nYouTube now completes authenticated background capture and closes its hidden session cleanly\n\n### Fixes\n\n- Complete authenticated YouTube subscription and recent video capture\n- Close hidden YouTube capture windows after completion, cancellation, or timeout\n- Fail safely when YouTube returns incomplete or ambiguous page evidence\n- Harden unattended stability checks and release validation\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)\n\n**Windows:** `.exe` (NSIS installer)\n\n**Linux:** `.AppImage`\n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

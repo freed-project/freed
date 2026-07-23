@@ -19,7 +19,7 @@
     "@freed/shared": "*",
     "@automerge/automerge": "^2.2.8",
     "@automerge/automerge-repo": "^1.2.1",
-    "ws": "^8.16.0"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/ws": "^8.5.10",

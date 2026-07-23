@@ -1,10 +1,11 @@
 import { useMemo, type ReactNode } from "react";
 
 import { getWebsiteHostForChannel } from "@freed/shared";
+import { YoutubeIcon } from "@freed/ui/components/icons";
 import { usePlatform, type SyncProviderSectionProps } from "@freed/ui/context";
 import { useAppStore } from "../lib/store";
 
-type SocialPlatform = "x" | "facebook" | "instagram" | "linkedin";
+type SocialPlatform = "x" | "facebook" | "instagram" | "linkedin" | "youtube";
 
 interface ProviderContent {
   label: string;
@@ -55,6 +56,12 @@ const PROVIDER_CONTENT: Record<SocialPlatform, ProviderContent> = {
       </svg>
     ),
     iconClassName: "text-[var(--theme-media-linkedin)]",
+  },
+  youtube: {
+    label: "YouTube",
+    body: "YouTube connections are managed in Freed Desktop. This view shows videos that have synced here.",
+    icon: <YoutubeIcon className="h-10 w-10" />,
+    iconClassName: "text-red-500",
   },
 };
 
@@ -313,4 +320,8 @@ export function PwaInstagramSettings(props: SyncProviderSectionProps) {
 
 export function PwaLinkedInSettings(props: SyncProviderSectionProps) {
   return <PwaSocialProviderSettings platform="linkedin" {...props} />;
+}
+
+export function PwaYouTubeSettings(props: SyncProviderSectionProps) {
+  return <PwaSocialProviderSettings platform="youtube" {...props} />;
 }

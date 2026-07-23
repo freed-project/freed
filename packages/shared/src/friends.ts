@@ -21,9 +21,40 @@ const SOCIAL_PLATFORMS = new Set<Platform>([
   "facebook",
   "instagram",
   "linkedin",
+  "substack",
+  "medium",
 ]);
 
+function profileUrlFromAuthorId(item: FeedItem): string | undefined {
+  try {
+    const url = new URL(item.author.id);
+    const hostname = url.hostname.toLowerCase();
+    const parts = url.pathname.split("/").filter(Boolean);
+    if (item.platform === "substack") {
+      if (hostname.endsWith(".substack.com") && parts.length === 0) {
+        return `${url.origin}/`;
+      }
+      if (hostname === "substack.com" || hostname === "www.substack.com") {
+        const handle = parts.find((part) => part.startsWith("@"));
+        return handle ? `https://substack.com/${handle.toLowerCase()}` : undefined;
+      }
+    }
+    if (
+      item.platform === "medium" &&
+      (hostname === "medium.com" || hostname.endsWith(".medium.com"))
+    ) {
+      const handle = parts.find((part) => part.startsWith("@"));
+      return handle ? `https://medium.com/${handle.toLowerCase()}` : undefined;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 function inferredSocialProfileUrl(item: FeedItem): string | undefined {
+  const authorProfileUrl = profileUrlFromAuthorId(item);
+  if (authorProfileUrl) return authorProfileUrl;
   const handle = item.author.handle?.replace(/^@/, "").trim();
   if (!handle || handle === "unknown") return undefined;
 
@@ -36,6 +67,14 @@ function inferredSocialProfileUrl(item: FeedItem): string | undefined {
     return facebookHandle && facebookHandle !== "unknown"
       ? `https://www.facebook.com/${facebookHandle}`
       : undefined;
+  }
+
+  if (item.platform === "substack") {
+    return `https://substack.com/@${handle}`;
+  }
+
+  if (item.platform === "medium") {
+    return `https://medium.com/@${handle}`;
   }
 
   return undefined;
@@ -106,30 +145,36 @@ export function buildDiscoveredAccountsFromItems(
   );
 
   for (const item of items) {
-    if (!SOCIAL_PLATFORMS.has(item.platform)) continue;
-    if (!isValidDiscoveredSocialFeedAuthor(item)) continue;
+    const account = discoveredSocialAccountFromItem(item);
+    if (!account) continue;
     const key = `${item.platform}:${item.author.id}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const profileUrl = inferredSocialProfileUrl(item);
-    missing.push({
-      id: `social:${item.platform}:${item.author.id}`,
-      kind: "social",
-      provider: item.platform,
-      externalId: item.author.id,
-      handle: item.author.handle,
-      displayName: item.author.displayName,
-      avatarUrl: item.author.avatarUrl,
-      ...(profileUrl ? { profileUrl } : {}),
-      firstSeenAt: item.publishedAt,
-      lastSeenAt: item.publishedAt,
-      discoveredFrom: item.contentType === "story" ? "story_author" : "captured_item",
-      createdAt: item.capturedAt,
-      updatedAt: item.capturedAt,
-    });
+    missing.push(account);
   }
 
   return missing;
+}
+
+export function discoveredSocialAccountFromItem(item: FeedItem): Account | null {
+  if (!SOCIAL_PLATFORMS.has(item.platform)) return null;
+  if (!isValidDiscoveredSocialFeedAuthor(item)) return null;
+  const profileUrl = inferredSocialProfileUrl(item);
+  return {
+    id: `social:${item.platform}:${item.author.id}`,
+    kind: "social",
+    provider: item.platform,
+    externalId: item.author.id,
+    handle: item.author.handle,
+    displayName: item.author.displayName,
+    avatarUrl: item.author.avatarUrl,
+    ...(profileUrl ? { profileUrl } : {}),
+    firstSeenAt: item.publishedAt,
+    lastSeenAt: item.publishedAt,
+    discoveredFrom: item.contentType === "story" ? "story_author" : "captured_item",
+    createdAt: item.capturedAt,
+    updatedAt: item.capturedAt,
+  };
 }
 
 export function personForAuthor(

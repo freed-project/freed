@@ -467,7 +467,7 @@ export function isMemoryPressureCritical(): boolean {
 }
 
 export async function prepareSocialScrapeMemory(
-  provider: "facebook" | "instagram" | "linkedin",
+  provider: "facebook" | "instagram" | "linkedin" | "substack" | "medium",
   operation: string,
 ): Promise<ScrapeMemoryPreparation> {
   if (!canSampleNativeMemoryStats()) {

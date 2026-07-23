@@ -291,6 +291,11 @@ capture-rss recent [count]
 | 2.10 | Normalize RSS items to FeedItem                      | ✓      |
 | 2.11 | Add OPML import/export                               | ✓      |
 | 2.12 | Create OpenClaw skill wrapper for RSS                | ✓      |
+| 2.13 | Bound XML entities in RSS and OPML parsing            | ✓      |
+
+The RSS and OPML parsers accept ordinary document entities, but reject oversized,
+deeply nested, or excessively repeated entity expansion before it can consume
+unbounded memory or CPU.
 
 ---
 

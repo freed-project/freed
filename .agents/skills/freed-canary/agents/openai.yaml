@@ -1,0 +1,4 @@
+interface:
+  display_name: "Freed Canary"
+  short_description: "Judge matched installed-build canary windows"
+  default_prompt: "Use $freed-canary to judge this installed build against comparable historical windows."

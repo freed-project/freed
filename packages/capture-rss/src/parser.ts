@@ -27,7 +27,7 @@ const DEFAULT_USER_AGENT = "Freed/1.0 (https://freed.wtf) Feed Reader";
 function createParser(): Parser {
   return new Parser({
     customFields: {
-      feed: ["language", "image"],
+      feed: ["language", "image", "generator"],
       item: [
         ["media:content", "media:content"],
         ["media:thumbnail", "media:thumbnail"],
@@ -115,6 +115,7 @@ export async function fetchFeed(
       link: parsed.link,
       feedUrl: url,
       language: (parsed as any).language,
+      generator: (parsed as any).generator,
       lastBuildDate: parsed.lastBuildDate,
       image: (parsed as any).image,
       items: (parsed.items || []).map(normalizeItem),
@@ -179,6 +180,7 @@ export async function parseFeedXml(
     link: parsed.link,
     feedUrl: url,
     language: (parsed as any).language,
+    generator: (parsed as any).generator,
     lastBuildDate: parsed.lastBuildDate,
     image: (parsed as any).image,
     items: (parsed.items || []).map(normalizeItem),

@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "phases": [
+    { "id": 1, "status": "complete", "source": "docs/PHASE-1-FOUNDATION.md" },
+    {
+      "id": 2,
+      "status": "complete",
+      "source": "docs/PHASE-2-CAPTURE-SKILLS.md"
+    },
+    {
+      "id": 3,
+      "status": "current",
+      "source": "docs/PHASE-3-SAVE-FOR-LATER.md"
+    },
+    { "id": 4, "status": "current", "source": "docs/PHASE-4-SYNC.md" },
+    { "id": 5, "status": "current", "source": "docs/PHASE-5-DESKTOP.md" },
+    { "id": 6, "status": "complete", "source": "docs/PHASE-6-PWA.md" },
+    {
+      "id": 7,
+      "status": "current",
+      "source": "docs/PHASE-7-SOCIAL-CAPTURE.md"
+    },
+    {
+      "id": 8,
+      "status": "current",
+      "source": "docs/PHASE-8-FRIENDS.md"
+    },
+    {
+      "id": 9,
+      "status": "upcoming",
+      "source": "docs/PHASE-9-BROWSER-EXTENSION.md"
+    },
+    {
+      "id": 10,
+      "status": "upcoming",
+      "source": "docs/PHASE-10-POLISH.md"
+    },
+    { "id": 11, "status": "upcoming", "source": "docs/PHASE-11-OPENCLAW.md" },
+    {
+      "id": 12,
+      "status": "current",
+      "source": "docs/PHASE-12-ADDITIONAL-PLATFORMS.md"
+    },
+    { "id": 13, "status": "upcoming", "source": "docs/PHASE-13-POSSE.md" }
+  ]
+}

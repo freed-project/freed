@@ -70,6 +70,38 @@ function filesThatDifferFromDev(files, { cwd, headRef }) {
   });
 }
 
+function requirePromotionHeadOnCurrentBase({ cwd, baseRef, headRef }) {
+  const headResult = spawnSync(
+    "git",
+    ["rev-list", "--parents", "--max-count=1", headRef],
+    { cwd, encoding: "utf8" },
+  );
+  if (headResult.status !== 0) {
+    die(
+      `Unable to inspect promotion head ${headRef}: ${headResult.stderr || headResult.error?.message || "git rev-list failed"}`,
+    );
+  }
+
+  const baseResult = spawnSync(
+    "git",
+    ["rev-parse", "--verify", `${baseRef}^{commit}`],
+    { cwd, encoding: "utf8" },
+  );
+  if (baseResult.status !== 0) {
+    die(
+      `Unable to resolve promotion base ${baseRef}: ${baseResult.stderr || baseResult.error?.message || "git rev-parse failed"}`,
+    );
+  }
+
+  const headParts = headResult.stdout.trim().split(/\s+/);
+  const baseSha = baseResult.stdout.trim();
+  if (headParts.length !== 2 || headParts[1] !== baseSha) {
+    die(
+      `Promotion PR is stale. ${headRef} must be one commit whose parent is the current ${baseRef} commit ${baseSha}. Recreate the promotion from the current base.`,
+    );
+  }
+}
+
 function parseArgs(argv) {
   const options = {
     cwd: REPO_ROOT,
@@ -200,6 +232,12 @@ function main() {
       `Promotion PR is stale. ${options.headRef} does not match origin/dev on product-owned paths:\n${formatFileList(driftFiles)}`,
     );
   }
+
+  requirePromotionHeadOnCurrentBase({
+    cwd: options.cwd,
+    baseRef: options.baseRef,
+    headRef: options.headRef,
+  });
 
   console.log("Main PR guard passed. Promotion branch matches origin/dev.");
 }

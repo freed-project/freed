@@ -267,6 +267,8 @@ function createPlatform(store: PlatformConfig["store"], overrides: Partial<Platf
     FacebookSettingsContent: null,
     InstagramSettingsContent: null,
     LinkedInSettingsContent: null,
+    SubstackSettingsContent: null,
+    MediumSettingsContent: null,
     GoogleContactsSettingsContent: null,
     ...overrides,
   };

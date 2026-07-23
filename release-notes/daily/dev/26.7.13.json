@@ -1,0 +1,19 @@
+{
+  "channel": "dev",
+  "dayKey": "26.7.13",
+  "date": "2026-07-13",
+  "preferredDeck": "YouTube now completes authenticated background capture and closes its hidden session cleanly",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [
+    "Start the normal authenticated YouTube sync from a dev build through the terminal without foreground clicks.",
+    "Require complete subscription roster evidence, recent Subscriptions media evidence, and exact installed-build identity during the soak."
+  ],
+  "editorialNotes": [
+    "Do not claim historical archive crawling. The authenticated capture reconciles the complete subscription roster and the recent media rendered by the Subscriptions page."
+  ],
+  "updatedAt": "2026-07-14T04:15:20.328Z"
+}

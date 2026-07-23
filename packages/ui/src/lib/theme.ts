@@ -216,6 +216,12 @@ export function persistTheme(themeId: ThemeId): void {
   window.localStorage.setItem(THEME_STORAGE_KEY, themeId);
 }
 
+/** Remove this device's theme choice during a destructive local reset. */
+export function resetThemePreference(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(THEME_STORAGE_KEY);
+}
+
 export function bootstrapDocumentTheme(): ThemeId {
   const themeId = getStoredThemeId();
   applyThemeToDocument(themeId);

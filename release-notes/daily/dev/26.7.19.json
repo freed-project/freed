@@ -1,0 +1,18 @@
+{
+  "channel": "dev",
+  "dayKey": "26.7.19",
+  "date": "2026-07-19",
+  "preferredDeck": "Explore a fluid, fully accelerated Friends Galaxy with theme-aware cosmic fields, intuitive touch and trackpad navigation, and stronger local reliability.",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [
+    "Explore friends, identities, and accounts across a fully GPU-accelerated galactic plane.",
+    "Navigate with inertial touch, Safari, and Mac trackpad gestures while labels remain visible.",
+    "Pin identities and link accounts from searchable node context menus."
+  ],
+  "editorialNotes": [],
+  "updatedAt": "2026-07-19T11:12:09.841Z"
+}

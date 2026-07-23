@@ -15,6 +15,7 @@
 export type { XCookies } from "@freed/capture-x/browser";
 import type { XCookies } from "@freed/capture-x/browser";
 import { selectPlatformUA, clearPlatformUA } from "./user-agent";
+import { isDesktopProviderAuthAllowed } from "./provider-auth-lifecycle";
 
 /**
  * Parse a raw cookie string (e.g. from document.cookie or a browser export)
@@ -58,6 +59,7 @@ const X_COOKIES_KEY = "x_auth_cookies";
  * Consider Tauri's secure storage plugin for production hardening.
  */
 export function storeCookies(cookies: XCookies): void {
+  if (!isDesktopProviderAuthAllowed()) return;
   localStorage.setItem(X_COOKIES_KEY, JSON.stringify(cookies));
 }
 
@@ -70,7 +72,10 @@ export function loadStoredCookies(): XCookies | null {
 
   try {
     const cookies = JSON.parse(stored) as XCookies;
-    if (cookies.ct0 && cookies.authToken) {
+    if (typeof cookies.ct0 === "string"
+      && cookies.ct0.length > 0
+      && typeof cookies.authToken === "string"
+      && cookies.authToken.length > 0) {
       return cookies;
     }
   } catch {
@@ -92,6 +97,7 @@ export function clearStoredCookies(): void {
  * ct0 and auth_token directly from the user).
  */
 export function connectX(ct0: string, authToken: string): XCookies | null {
+  if (!isDesktopProviderAuthAllowed()) return null;
   const ct0Trimmed = ct0.trim();
   const tokenTrimmed = authToken.trim();
   if (!ct0Trimmed || !tokenTrimmed) return null;
