@@ -49,7 +49,10 @@ export function acquireGeneralActorLeaseForTest(options) {
       launcherAttestationSha256,
       launcherSessionId,
       leaseOperationId: leaseOptions.operationId,
-      leaseTokenSha256: secretDigest(leaseOptions.token),
+      leaseTokenSha256:
+        typeof leaseOptions.token === "string"
+          ? secretDigest(leaseOptions.token)
+          : "0".repeat(64),
     },
   });
 }

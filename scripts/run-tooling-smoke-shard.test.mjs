@@ -116,14 +116,15 @@ test("exact name patterns run selected parents and all of their subtests", (t) =
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const filePath = path.join(directory, "fixture.test.mjs");
   const names = ["alpha", "beta", "gamma", "delta"];
+  const fixtureSource = `import test from "node:test";
+test("alpha", async (t) => { console.log("top:alpha"); await t.test("nested", () => console.log("nested:alpha")); });
+test("beta", async (t) => { console.log("top:beta"); await t.test("nested", () => console.log("nested:beta")); });
+test("gamma", async (t) => { console.log("top:gamma"); await t.test("nested", () => console.log("nested:gamma")); });
+test("delta", async (t) => { console.log("top:delta"); await t.test("nested", () => console.log("nested:delta")); });
+`;
   writeFileSync(
     filePath,
-    `import test from "node:test";\n${names
-      .map(
-        (name) =>
-          `test(${JSON.stringify(name)}, async (t) => { console.log(${JSON.stringify(`top:${name}`)}); await t.test("nested", () => console.log(${JSON.stringify(`nested:${name}`)})); });`,
-      )
-      .join("\n")}\n`,
+    fixtureSource,
     { mode: 0o600 },
   );
 

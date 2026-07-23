@@ -90,6 +90,27 @@ function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function pinnedRegularFileSnapshot(filePath) {
+  const descriptor = openSync(
+    filePath,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+  );
+  try {
+    const before = fstatSync(descriptor, { bigint: true });
+    const bytes = readFileSync(descriptor);
+    const after = fstatSync(descriptor, { bigint: true });
+    assert.equal(after.dev, before.dev);
+    assert.equal(after.ino, before.ino);
+    assert.equal(after.mode, before.mode);
+    assert.equal(after.size, before.size);
+    assert.equal(after.mtimeNs, before.mtimeNs);
+    assert.equal(after.ctimeNs, before.ctimeNs);
+    return { bytes, identity: after };
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
 function isUnsafeAuthorityAdmission(error) {
   return (
     error instanceof Error &&
@@ -100,7 +121,7 @@ function isUnsafeAuthorityAdmission(error) {
 function isRepairTopologySafetyError(error) {
   return (
     error instanceof Error &&
-    /hard-linked|could not be admitted safely|operation directory has a foreign entry|topology is not one admitted repair file/i.test(
+    /hard-linked|could not be admitted safely|operation directory has a foreign entry|topology is not one admitted repair file|unsafe outcome ledger repair (?:cleanup temporary preflight|file)/i.test(
       error.message,
     )
   );
@@ -1804,9 +1825,10 @@ test("owner repair preserves a planned event prefix without a trailing newline",
 test("control CLI exposes read-only plan and owner-governed repair", (t) => {
   const { stateRoot, paths } = temporaryStateRoot(t);
   trustedMergedOutcome(stateRoot);
-  const sourceBytes = readFileSync(paths.outcomes);
+  const sourceSnapshot = pinnedRegularFileSnapshot(paths.outcomes);
+  const sourceBytes = sourceSnapshot.bytes;
   const sourceDigest = sha256(sourceBytes);
-  const sourceIdentity = statSync(paths.outcomes);
+  const sourceIdentity = sourceSnapshot.identity;
 
   const planRun = spawnSync(
     process.execPath,
@@ -1827,7 +1849,10 @@ test("control CLI exposes read-only plan and owner-governed repair", (t) => {
   assert.equal(planPayload.ok, true);
   assert.equal(planPayload.action, "outcome-ledger.plan");
   assert.equal(planPayload.result.parameters.sourceDigest, sourceDigest);
-  assert.equal(readFileSync(paths.outcomes).equals(sourceBytes), true);
+  assert.equal(
+    pinnedRegularFileSnapshot(paths.outcomes).bytes.equals(sourceBytes),
+    true,
+  );
 
   const repairRun = spawnSync(
     process.execPath,
@@ -1852,7 +1877,10 @@ test("control CLI exposes read-only plan and owner-governed repair", (t) => {
   assert.equal(repairRun.status, 1);
   const repairPayload = JSON.parse(repairRun.stderr);
   assert.equal(repairPayload.ok, false);
-  assert.equal(readFileSync(paths.outcomes).equals(sourceBytes), true);
+  assert.equal(
+    pinnedRegularFileSnapshot(paths.outcomes).bytes.equals(sourceBytes),
+    true,
+  );
   assert.equal(
     existsSync(path.join(paths.controlRoot, "outcome-ledger-transactions")),
     false,
@@ -1884,10 +1912,11 @@ test("control CLI exposes read-only plan and owner-governed repair", (t) => {
   assert.equal(successfulPayload.ok, true);
   assert.equal(successfulPayload.action, "outcome-ledger.repair");
   assert.equal(successfulPayload.result.changed, true);
-  assert.equal(readFileSync(paths.outcomes).equals(sourceBytes), true);
-  const replacementIdentity = statSync(paths.outcomes);
+  const replacementSnapshot = pinnedRegularFileSnapshot(paths.outcomes);
+  assert.equal(replacementSnapshot.bytes.equals(sourceBytes), true);
+  const replacementIdentity = replacementSnapshot.identity;
   assert.notEqual(replacementIdentity.ino, sourceIdentity.ino);
-  assert.equal(replacementIdentity.mode & 0o7777, 0o600);
+  assert.equal(Number(replacementIdentity.mode & 0o7777n), 0o600);
   const publicationIntentPath = path.join(
     planPayload.result.artifacts.artifactDirectory,
     "publication-intents",
@@ -1943,7 +1972,7 @@ test("byte-identical replacement recovery retains its published inode and audits
     /crash after byte-identical replacement rename/,
   );
 
-  const publishedIdentity = statSync(paths.outcomes);
+  const publishedIdentity = pinnedRegularFileSnapshot(paths.outcomes).identity;
   assert.equal(
     JSON.parse(readFileSync(plan.artifacts.transaction, "utf8")).phase,
     "prepared",
@@ -1968,8 +1997,9 @@ test("byte-identical replacement recovery retains its published inode and audits
     ...owner,
   });
   assert.equal(recovered.changed, true);
-  assert.equal(statSync(paths.outcomes).ino, publishedIdentity.ino);
-  assert.deepEqual(readFileSync(paths.outcomes), sourceBytes);
+  const recoveredSnapshot = pinnedRegularFileSnapshot(paths.outcomes);
+  assert.equal(recoveredSnapshot.identity.ino, publishedIdentity.ino);
+  assert.deepEqual(recoveredSnapshot.bytes, sourceBytes);
   assert.equal(repairAuditEvents(paths, plan.eventId).length, 1);
   const predecessorArchives = readdirSync(
     path.join(plan.artifacts.artifactDirectory, "retired"),
@@ -2014,7 +2044,7 @@ test("byte-identical replacement recovery rejects a foreign canonical inode befo
     /leave recovered replacement published/,
   );
 
-  const publishedInode = statSync(paths.outcomes).ino;
+  const publishedInode = pinnedRegularFileSnapshot(paths.outcomes).identity.ino;
   const displacedPath = `${paths.outcomes}.published-replacement`;
   let foreignInode = null;
   let swapped = false;
@@ -2034,9 +2064,14 @@ test("byte-identical replacement recovery rejects a foreign canonical inode befo
             }
             swapped = true;
             renameSync(paths.outcomes, displacedPath);
-            writeFileSync(paths.outcomes, sourceBytes, { mode: 0o600 });
+            writeFileSync(paths.outcomes, sourceBytes, {
+              mode: 0o600,
+              flag: "wx",
+            });
             chmodSync(paths.outcomes, 0o600);
-            foreignInode = statSync(paths.outcomes).ino;
+            foreignInode = pinnedRegularFileSnapshot(
+              paths.outcomes,
+            ).identity.ino;
           },
         },
       ),
@@ -2044,9 +2079,11 @@ test("byte-identical replacement recovery rejects a foreign canonical inode befo
   );
   assert.equal(swapped, true);
   assert.notEqual(foreignInode, publishedInode);
-  assert.equal(statSync(displacedPath).ino, publishedInode);
-  assert.equal(statSync(paths.outcomes).ino, foreignInode);
-  assert.deepEqual(readFileSync(paths.outcomes), sourceBytes);
+  const displacedSnapshot = pinnedRegularFileSnapshot(displacedPath);
+  const foreignSnapshot = pinnedRegularFileSnapshot(paths.outcomes);
+  assert.equal(displacedSnapshot.identity.ino, publishedInode);
+  assert.equal(foreignSnapshot.identity.ino, foreignInode);
+  assert.deepEqual(foreignSnapshot.bytes, sourceBytes);
   assert.equal(
     JSON.parse(readFileSync(plan.artifacts.transaction, "utf8")).phase,
     "prepared",
@@ -2496,7 +2533,7 @@ test("pinned legacy actor-credential outcome requires one exact ledger row", asy
           },
           { stateRoot: fixture.stateRoot, now: new Date() },
         ),
-      /exact pinned legacy outcome ledger bundle/i,
+      /fully authenticated, healthy outcome ledger within the supported repair boundary/i,
     );
     assert.equal(existsSync(fixture.paths.outcomes), false);
     assert.equal(
@@ -2814,39 +2851,34 @@ test("a repair waiter reacquires completed state under the writer lock", async (
     expectedSourceDigest: sourceDigest,
   });
   const firstOwner = ownerRepairLease(stateRoot, plan);
-  const firstWriter = spawnReadyChild(
+  const firstResult = repairOutcomeLedger({
+    stateRoot,
+    taskId: TASK_ID,
+    expectedSourceDigest: sourceDigest,
+    ...firstOwner,
+  });
+  assert.equal(firstResult.changed, true);
+  const writerLockHolder = spawnReadyChild(
     t,
     `
-      import { repairOutcomeLedger } from ${JSON.stringify(MODULE_URL)};
+      import { withOutcomeLedgerWriterLock } from ${JSON.stringify(NIGHTLY_MODULE_URL)};
       const signal = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
-      repairOutcomeLedger(
-        ${JSON.stringify({
-          stateRoot,
-          taskId: TASK_ID,
-          expectedSourceDigest: sourceDigest,
-          ...firstOwner,
-        })},
-        {
-          checkpoint: (checkpoint) => {
-            if (checkpoint === "receipt-written") {
-              process.stdout.write("READY\\n");
-              Atomics.wait(signal, 0, 0, 900);
-            }
-          },
-        },
-      );
+      withOutcomeLedgerWriterLock(${JSON.stringify(paths.outcomes)}, () => {
+        process.stdout.write("READY\\n");
+        Atomics.wait(signal, 0, 0, 900);
+      });
     `,
   );
-  await waitForReadyChild(firstWriter);
+  await waitForReadyChild(writerLockHolder);
   const waitedResult = repairOutcomeLedger({
     stateRoot,
     taskId: TASK_ID,
     expectedSourceDigest: sourceDigest,
     ...firstOwner,
   });
-  const firstExit = await waitForChildExit(firstWriter);
-  assert.equal(firstExit.code, 0);
-  assert.equal(firstExit.signal, null);
+  const holderExit = await waitForChildExit(writerLockHolder);
+  assert.equal(holderExit.code, 0);
+  assert.equal(holderExit.signal, null);
   assert.equal(waitedResult.changed, false);
   assert.equal(readFileSync(paths.outcomes).length, 0);
   assert.equal(
@@ -4711,18 +4743,27 @@ test("repair staged writers preserve foreign temporary replacements", async (t) 
               checkpoint: (checkpoint) => {
                 if (
                   swapped ||
-                  checkpoint !== scenario.checkpointName ||
-                  !existsSync(temporaryPath)
+                  checkpoint !== scenario.checkpointName
                 ) {
                   return;
                 }
-                renameSync(temporaryPath, displacedPath);
-                writeFileSync(temporaryPath, foreignBytes, { mode: 0o600 });
+                try {
+                  renameSync(temporaryPath, displacedPath);
+                } catch (error) {
+                  if (error?.code === "ENOENT") {
+                    return;
+                  }
+                  throw error;
+                }
+                writeFileSync(temporaryPath, foreignBytes, {
+                  mode: 0o600,
+                  flag: "wx",
+                });
                 swapped = true;
               },
             },
           ),
-        /temporary generation changed|preserved a foreign temporary path/i,
+        /topology changed during a read-only callback|temporary generation changed|preserved a foreign temporary path/i,
       );
       assert.equal(swapped, true);
       assert.equal(existsSync(temporaryPath), true);
@@ -4850,17 +4891,29 @@ test("cleanup preserves a replacement swapped onto the quarantine path", (t) => 
           },
         },
       ),
-    /quarantined temporary generation changed/i,
+    /quarantined temporary generation changed|topology changed during a read-only callback/i,
   );
 
   assert.notEqual(quarantinePath, null);
-  assert.equal(existsSync(temporaryPath), false);
+  assert.equal(
+    existsSync(temporaryPath),
+    false,
+    JSON.stringify({
+      temporaryPath,
+      quarantinePath,
+      displacedPath,
+      artifactEntries: readdirSync(session.plan.artifacts.artifactDirectory),
+    }),
+  );
   assert.equal(statSync(displacedPath).ino, ownedInode);
   assert.deepEqual(readFileSync(displacedPath), ownedBytes);
   assert.equal(statSync(quarantinePath).ino, foreignInode);
   assert.deepEqual(readFileSync(quarantinePath), foreignBytes);
   assert.deepEqual(readFileSync(fixture.paths.outcomes), source);
-  assert.equal(existsSync(session.plan.artifacts.transaction), false);
+  assert.equal(
+    JSON.parse(readFileSync(session.plan.artifacts.transaction, "utf8")).phase,
+    "fenced",
+  );
 });
 
 test("a conflicting deterministic event suffix before replacement preserves the canonical ledger", (t) => {
@@ -5166,10 +5219,18 @@ test("the repair event guard excludes a concurrent suffix writer through transac
     expectedSourceDigest: sourceDigest,
   });
   const owner = ownerRepairLease(stateRoot, plan);
-  const attemptPath = path.join(stateRoot, "suffix-writer-attempted");
-  const donePath = path.join(stateRoot, "suffix-writer-complete");
-  const auditedPath = path.join(stateRoot, "repair-transaction-audited");
-  const suffixEventId = "repair-final-guard-concurrent-suffix";
+  const coordinationRoot = realpathSync(
+    mkdtempSync(path.join(os.tmpdir(), "freed-repair-event-guard-")),
+  );
+  t.after(() => rmSync(coordinationRoot, { recursive: true, force: true }));
+  const attemptPath = path.join(coordinationRoot, "suffix-writer-attempted");
+  const donePath = path.join(coordinationRoot, "suffix-writer-complete");
+  const rejectedPath = path.join(coordinationRoot, "suffix-writer-rejected");
+  const auditedPath = path.join(
+    coordinationRoot,
+    "repair-transaction-audited",
+  );
+  const suffixEventId = "77777777-7777-4777-8777-777777777777";
 
   const repairChild = spawnReadyChild(
     t,
@@ -5217,6 +5278,10 @@ test("the repair event guard excludes a concurrent suffix writer through transac
       if (!result.changed) throw new Error("repair did not change the ledger");
     `,
   );
+  let repairStderr = "";
+  repairChild.stderr.on("data", (chunk) => {
+    repairStderr += String(chunk);
+  });
   await waitForReadyChild(repairChild);
 
   const suffixChild = spawnReadyChild(
@@ -5226,6 +5291,56 @@ test("the repair event guard excludes a concurrent suffix writer through transac
       import { appendControlEvent } from ${JSON.stringify(TRUSTED_ACTOR_CONTROL_MODULE_URL)};
       writeFileSync(${JSON.stringify(attemptPath)}, "attempted\\n");
       process.stdout.write("READY\\n");
+      try {
+        appendControlEvent({
+          stateRoot: ${JSON.stringify(stateRoot)},
+          type: "repair_guard_suffix_appended",
+          taskId: ${JSON.stringify(TASK_ID)},
+          eventId: ${JSON.stringify(suffixEventId)},
+          ...${JSON.stringify(controller)},
+          data: { reason: "prove final repair guard exclusion" },
+          nowMs: ${JSON.stringify(controllerNowMs + 1_000)},
+        });
+        throw new Error("concurrent suffix writer was not fenced");
+      } catch (error) {
+        if (error?.code !== "outcome_ledger_repair_pending") throw error;
+        writeFileSync(
+          ${JSON.stringify(rejectedPath)},
+          JSON.stringify({ code: error.code, phase: error.details?.phase }) + "\\n",
+        );
+      }
+    `,
+  );
+  let suffixStderr = "";
+  suffixChild.stderr.on("data", (chunk) => {
+    suffixStderr += String(chunk);
+  });
+  await waitForReadyChild(suffixChild);
+
+  const [repairExit, suffixExit] = await Promise.all([
+    waitForChildExit(repairChild),
+    waitForChildExit(suffixChild),
+  ]);
+  assert.deepEqual(repairExit, { code: 0, signal: null }, repairStderr);
+  assert.deepEqual(suffixExit, { code: 0, signal: null }, suffixStderr);
+  assert.equal(existsSync(auditedPath), true);
+  assert.equal(existsSync(donePath), false);
+  assert.deepEqual(
+    JSON.parse(readFileSync(rejectedPath, "utf8")),
+    { code: "outcome_ledger_repair_pending", phase: "prepared" },
+  );
+  assert.equal(
+    JSON.parse(readFileSync(plan.artifacts.completedTransaction, "utf8"))
+      .phase,
+    "complete",
+  );
+  assert.equal(existsSync(plan.artifacts.transaction), false);
+
+  const suffixRetry = spawnReadyChild(
+    t,
+    `
+      import { writeFileSync } from "node:fs";
+      import { appendControlEvent } from ${JSON.stringify(TRUSTED_ACTOR_CONTROL_MODULE_URL)};
       appendControlEvent({
         stateRoot: ${JSON.stringify(stateRoot)},
         type: "repair_guard_suffix_appended",
@@ -5236,24 +5351,15 @@ test("the repair event guard excludes a concurrent suffix writer through transac
         nowMs: ${JSON.stringify(controllerNowMs + 1_000)},
       });
       writeFileSync(${JSON.stringify(donePath)}, "complete\\n");
+      process.stdout.write("READY\\n");
     `,
   );
-  await waitForReadyChild(suffixChild);
-
-  const [repairExit, suffixExit] = await Promise.all([
-    waitForChildExit(repairChild),
-    waitForChildExit(suffixChild),
-  ]);
-  assert.deepEqual(repairExit, { code: 0, signal: null });
-  assert.deepEqual(suffixExit, { code: 0, signal: null });
-  assert.equal(existsSync(auditedPath), true);
+  await waitForReadyChild(suffixRetry);
+  assert.deepEqual(await waitForChildExit(suffixRetry), {
+    code: 0,
+    signal: null,
+  });
   assert.equal(existsSync(donePath), true);
-  assert.equal(
-    JSON.parse(readFileSync(plan.artifacts.completedTransaction, "utf8"))
-      .phase,
-    "complete",
-  );
-  assert.equal(existsSync(plan.artifacts.transaction), false);
   const events = parsedEvents(paths);
   const repairEventIndex = events.findIndex(
     (event) => event.eventId === plan.eventId,
