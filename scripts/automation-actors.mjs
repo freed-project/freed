@@ -45,14 +45,14 @@ const MAX_LEASE_LIFETIME_MS = 30 * 60 * 1_000;
 const LEASE_TTL_SECONDS = 30 * 60;
 const MAX_LAUNCHER_HANDOFF_BYTES = 16 * 1_024;
 const MAX_COMMAND_DIAGNOSTIC_BYTES = 4 * 1_024;
-// The native launcher bounds two 30-second acquire attempts, two exact-token
-// release attempts, and two absence inspections to a 190-second lifecycle.
+// The native launcher bounds two 60-second acquire attempts, two exact-token
+// release attempts, and two absence inspections to a 370-second lifecycle.
 // Keep the caller bound above that complete recovery budget so SIGKILL cannot
 // preempt an active bounded child or discard its retained lease token.
-const NATIVE_LAUNCHER_LIFECYCLE_BUDGET_MS = 190_000;
+const NATIVE_LAUNCHER_LIFECYCLE_BUDGET_MS = 370_000;
 const LAUNCHER_ACQUIRE_TIMEOUT_MS =
   NATIVE_LAUNCHER_LIFECYCLE_BUDGET_MS + 10_000;
-const CONTROL_LIFECYCLE_TIMEOUT_MS = 40_000;
+const CONTROL_LIFECYCLE_TIMEOUT_MS = 70_000;
 const PROVISIONER_ACTION_TIMEOUT_MS = 120_000;
 const LIFECYCLE_LOCK_STALE_MS = 30 * 1_000;
 const LIFECYCLE_LOCK_PROTOCOL = "freed-automation-actor-lifecycle-lock-v1";

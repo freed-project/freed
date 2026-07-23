@@ -26030,6 +26030,206 @@ export function writeAutomationAuthorityFile({
   }
 }
 
+export function retireOutcomeLedgerAuthorityStageForRepair({
+  stateRoot,
+  operationId,
+  replacementBytes,
+  beforeRemove = () => {},
+}) {
+  const paths = automationControlPaths(stateRoot);
+  if (
+    !SHA256_PATTERN.test(String(operationId ?? "")) ||
+    !Buffer.isBuffer(replacementBytes) ||
+    replacementBytes.length > OUTCOME_LEDGER_REPAIR_MAX_BYTES ||
+    typeof beforeRemove !== "function"
+  ) {
+    throw new AutomationControlError(
+      "invalid_argument",
+      "Outcome ledger repair authority retirement requires one exact bounded repair plan.",
+    );
+  }
+  const current = readAutomationAuthorityFileSnapshot(paths.outcomes, {
+    allowEmpty: true,
+    privateRoot: paths.stateRoot,
+    maxBytes: OUTCOME_LEDGER_REPAIR_MAX_BYTES,
+    allowedModes: [0o600, 0o640, 0o644],
+    label: "Outcome ledger repair canonical source",
+    invalidCode: "authority_generation_conflict",
+  });
+  if (
+    current.missing ||
+    !current.bytes.equals(replacementBytes)
+  ) {
+    throw new AutomationControlError(
+      "authority_generation_conflict",
+      "Outcome ledger repair canonical source changed before authority retirement.",
+    );
+  }
+
+  const directory = openPinnedLeaseArchiveDirectory(
+    path.dirname(paths.outcomes),
+    "Outcome ledger repair authority parent directory",
+  );
+  try {
+    requireAutomationAuthorityDirectoryGeneration(
+      directory,
+      current.directoryIdentity,
+      "Outcome ledger repair authority parent directory",
+    );
+    const helper = openPinnedLeaseArchiveHelper();
+    const stages = listAutomationAuthorityStages(
+      paths.outcomes,
+      helper,
+      directory,
+    );
+    if (stages.length === 0) {
+      return Object.freeze({ retired: false });
+    }
+    if (stages.length !== 1 || stages[0].kind !== "ready") {
+      throw new AutomationControlError(
+        "authority_generation_conflict",
+        "Outcome ledger repair requires at most one complete predecessor authority witness.",
+      );
+    }
+    const stagePath = path.join(path.dirname(paths.outcomes), stages[0].entry);
+    const stage = readAutomationAuthorityStage(stagePath, {
+      privateRoot: paths.stateRoot,
+      maxBytes: OUTCOME_LEDGER_REPAIR_MAX_BYTES,
+      allowedModes: [0o600],
+      label: "Outcome ledger repair predecessor authority witness",
+    });
+    requireAutomationAuthoritySnapshotDirectory(
+      stage,
+      directory,
+      "Outcome ledger repair predecessor authority witness",
+    );
+    if (
+      stage.missing ||
+      stage.bytes.length > replacementBytes.length ||
+      !replacementBytes.subarray(0, stage.bytes.length).equals(stage.bytes)
+    ) {
+      throw new AutomationControlError(
+        "authority_generation_conflict",
+        "Outcome ledger repair predecessor authority witness is outside the authenticated replacement prefix.",
+      );
+    }
+    removeAutomationAuthorityFile({
+      filePath: stagePath,
+      snapshot: stage,
+      operationId: `outcome-ledger-repair:${operationId}`,
+      privateRoot: paths.stateRoot,
+      maxBytes: OUTCOME_LEDGER_REPAIR_MAX_BYTES,
+      allowedModes: [0o600],
+      label: "Outcome ledger repair predecessor authority witness",
+      beforeRemove,
+      retirementBasename: path.basename(paths.outcomes),
+      rawSource: true,
+    });
+    if (
+      listAutomationAuthorityStages(paths.outcomes, helper, directory).length !==
+      0
+    ) {
+      throw new AutomationControlError(
+        "authority_generation_conflict",
+        "Outcome ledger repair authority witness survived exact retirement.",
+      );
+    }
+    return Object.freeze({ retired: true });
+  } finally {
+    closeSync(directory.descriptor);
+  }
+}
+
+export function preflightOutcomeLedgerAuthorityStageForRepair({
+  stateRoot,
+  sourceBytes,
+  replacementBytes,
+}) {
+  const paths = automationControlPaths(stateRoot);
+  if (
+    !Buffer.isBuffer(sourceBytes) ||
+    !Buffer.isBuffer(replacementBytes) ||
+    sourceBytes.length > OUTCOME_LEDGER_REPAIR_MAX_BYTES ||
+    replacementBytes.length > OUTCOME_LEDGER_REPAIR_MAX_BYTES
+  ) {
+    throw new AutomationControlError(
+      "invalid_argument",
+      "Outcome ledger repair authority preflight requires exact bounded source and replacement bytes.",
+    );
+  }
+  const current = readAutomationAuthorityFileSnapshot(paths.outcomes, {
+    allowEmpty: true,
+    privateRoot: paths.stateRoot,
+    maxBytes: OUTCOME_LEDGER_REPAIR_MAX_BYTES,
+    allowedModes: [0o600, 0o640, 0o644],
+    label: "Outcome ledger repair canonical source",
+    invalidCode: "authority_generation_conflict",
+  });
+  if (
+    current.missing ||
+    ![sourceBytes, replacementBytes].some((bytes) =>
+      current.bytes.equals(bytes),
+    )
+  ) {
+    throw new AutomationControlError(
+      "authority_generation_conflict",
+      "Outcome ledger repair canonical source changed before authority preflight.",
+    );
+  }
+  const directory = openPinnedLeaseArchiveDirectory(
+    path.dirname(paths.outcomes),
+    "Outcome ledger repair authority parent directory",
+  );
+  try {
+    requireAutomationAuthorityDirectoryGeneration(
+      directory,
+      current.directoryIdentity,
+      "Outcome ledger repair authority parent directory",
+    );
+    const stages = listAutomationAuthorityStages(
+      paths.outcomes,
+      openPinnedLeaseArchiveHelper(),
+      directory,
+    );
+    if (stages.length === 0) {
+      return Object.freeze({ present: false });
+    }
+    if (stages.length !== 1 || stages[0].kind !== "ready") {
+      throw new AutomationControlError(
+        "authority_generation_conflict",
+        "Outcome ledger repair requires at most one complete predecessor authority witness.",
+      );
+    }
+    const stage = readAutomationAuthorityStage(
+      path.join(path.dirname(paths.outcomes), stages[0].entry),
+      {
+        privateRoot: paths.stateRoot,
+        maxBytes: OUTCOME_LEDGER_REPAIR_MAX_BYTES,
+        allowedModes: [0o600],
+        label: "Outcome ledger repair predecessor authority witness",
+      },
+    );
+    requireAutomationAuthoritySnapshotDirectory(
+      stage,
+      directory,
+      "Outcome ledger repair predecessor authority witness",
+    );
+    if (
+      stage.missing ||
+      stage.bytes.length > replacementBytes.length ||
+      !replacementBytes.subarray(0, stage.bytes.length).equals(stage.bytes)
+    ) {
+      throw new AutomationControlError(
+        "authority_generation_conflict",
+        "Outcome ledger repair predecessor authority witness is outside the authenticated replacement prefix.",
+      );
+    }
+    return Object.freeze({ present: true });
+  } finally {
+    closeSync(directory.descriptor);
+  }
+}
+
 function readPinnedLeaseArchivePath(context, directory, fileBinding, name) {
   assertPinnedLeaseArchiveDirectory(directory);
   assertPinnedLeaseArchiveFile(fileBinding);
@@ -28607,6 +28807,16 @@ function requireCurrentLeaseOperationRecoveryMatch(
       transaction.operation !== operation ||
       transaction.operationId !== operationId
     ) {
+      // A retained general-actor token may finish durable cleanup after the
+      // original response is lost. Owner governance remains exact-plan fenced.
+      if (
+        transaction.phase === "complete" &&
+        transaction.resultReceipt.lease.owner !== "freed-owner" &&
+        transaction.tokenDigest === tokenDigest
+      ) {
+        recoverLeaseTransactionUnlocked(paths, name, Date.now(), eventsGuard);
+        return;
+      }
       throw new AutomationControlError(
         "lease_transaction_pending",
         `Lease ${name} has a pending transaction that only its exact caller plan may recover.`,

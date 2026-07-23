@@ -32,6 +32,7 @@ import { pathToFileURL } from "node:url";
 
 import {
   AUTOMATION_ACTOR_POLICIES,
+  CONTROL_EVENT_HISTORY_MAX_RECORDS,
   acquireLease,
   automationControlPaths,
   consumeLeaseArchiveHelperInvocationCountForTest,
@@ -1420,6 +1421,39 @@ function appendJsonPaddingToSize(filePath, targetSize, type) {
   }
   appendFileSync(filePath, Buffer.concat(chunks, totalPadding));
   assert.equal(statSync(filePath).size, targetSize);
+}
+
+function appendControlEventPaddingToRecordCount(paths, targetRecordCount) {
+  removeControlEventAuthorityStages(paths);
+  const existing = readFileSync(paths.events, "utf8");
+  const existingRecordCount = existing
+    .split(/\r?\n/)
+    .filter((line) => line !== "").length;
+  assert.ok(targetRecordCount > existingRecordCount);
+  const lines = [];
+  for (
+    let index = existingRecordCount;
+    index < targetRecordCount;
+    index += 1
+  ) {
+    lines.push(
+      JSON.stringify({
+        schemaVersion: 1,
+        eventId: `00000000-0000-4000-8000-${index
+          .toString(16)
+          .padStart(12, "0")}`,
+        type: "test_capacity_padding",
+        ts: "2026-07-22T00:00:00.000Z",
+        actor: "freed-stability-controller",
+        data: { index },
+      }),
+    );
+  }
+  appendFileSync(paths.events, `${lines.join("\n")}\n`);
+  const finalRecordCount = readFileSync(paths.events, "utf8")
+    .split(/\r?\n/)
+    .filter((line) => line !== "").length;
+  assert.equal(finalRecordCount, targetRecordCount);
 }
 
 function outcomeMutationSnapshot(stateRoot, paths) {
@@ -3160,8 +3194,23 @@ test("a prepared repair rejects a live legacy receipt temporary", (t) => {
       .ledgerHealthy,
     false,
   );
-  rmSync(receiptTemporaryPath);
-  assert.equal(executeRepair({ stateRoot, sourceDigest }).changed, true);
+  assert.equal(existsSync(receiptTemporaryPath), false);
+  const retiredReceiptTemps = readdirSync(
+    path.join(session.plan.artifacts.artifactDirectory, "retired"),
+  ).filter(
+    (entry) =>
+      entry.startsWith("temporary-v2.receipt.424215.") &&
+      entry.endsWith(".archive"),
+  );
+  assert.equal(retiredReceiptTemps.length, 1);
+  const retiredLedger = readFileSync(paths.outcomes);
+  const retiredEvents = readFileSync(paths.events);
+  assert.throws(
+    () => executeRepair({ stateRoot, sourceDigest }),
+    /retired receipt temporary exists before audit/,
+  );
+  assert.deepEqual(readFileSync(paths.outcomes), retiredLedger);
+  assert.deepEqual(readFileSync(paths.events), retiredEvents);
 });
 
 test("a post-fence foreign sibling blocks preparation without mutation", (t) => {
@@ -4096,15 +4145,6 @@ for (const variant of [
         .phase,
       variant.phase,
     );
-    releaseLease({
-      stateRoot,
-      name: session.owner.leaseName,
-      operationId: leaseMutationId(`release:pending-audit-${variant.name}`),
-      token: session.owner.leaseToken,
-    });
-    const replacementOwner = ownerRepairLease(stateRoot, session.plan, {
-      nowMs: Date.now() + 1_000,
-    });
     const beforeEvents = readFileSync(paths.events);
     const beforeLedger = readFileSync(paths.outcomes);
     const beforeTransaction = readFileSync(session.plan.artifacts.transaction);
@@ -4115,8 +4155,19 @@ for (const variant of [
     assert.equal(summary.sourceHealth.outcomeLedgerTransactionsHealthy, false);
     assert.throws(
       () =>
-        executeRepair({ stateRoot, sourceDigest }, { owner: replacementOwner }),
-      /requires healthy ledger, control event, and repair transaction sources/,
+        releaseLease({
+          stateRoot,
+          name: session.owner.leaseName,
+          operationId: leaseMutationId(
+            `release:pending-audit-${variant.name}`,
+          ),
+          token: session.owner.leaseToken,
+        }),
+      (error) => error?.code === "outcome_ledger_repair_transaction_invalid",
+    );
+    assert.throws(
+      () => executeRepair({ stateRoot, sourceDigest }),
+      (error) => error?.code === "outcome_ledger_repair_transaction_invalid",
     );
     assert.equal(readFileSync(paths.events).equals(beforeEvents), true);
     assert.equal(readFileSync(paths.outcomes).equals(beforeLedger), true);
@@ -5163,23 +5214,28 @@ test("repair audit capacity is preflighted before ledger transaction or event mu
   const { stateRoot, paths } = temporaryStateRoot(t);
   const source = legacyLine("repair-audit-capacity-preflight");
   const sourceDigest = writeLedger(paths, source);
+  appendControlEventPaddingToRecordCount(
+    paths,
+    CONTROL_EVENT_HISTORY_MAX_RECORDS - 1,
+  );
   const plan = planOutcomeLedgerRepair({
     stateRoot,
     taskId: TASK_ID,
     expectedSourceDigest: sourceDigest,
   });
   const owner = ownerRepairLease(stateRoot, plan);
-  const eventCap = 128 * 1024 * 1024;
-  const targetSize = eventCap - 128;
-  appendJsonPaddingToSize(
-    paths.events,
-    targetSize,
-    "repair_audit_capacity_padding",
-  );
 
   const manifestBefore = readFileSync(paths.taskManifest);
   const taskBefore = readTask({ stateRoot, taskId: TASK_ID });
-  const eventDigestBefore = sha256(readFileSync(paths.events));
+  const eventsBefore = readFileSync(paths.events);
+  const eventDigestBefore = sha256(eventsBefore);
+  assert.equal(
+    eventsBefore.reduce(
+      (count, byte) => count + (byte === 0x0a ? 1 : 0),
+      0,
+    ),
+    CONTROL_EVENT_HISTORY_MAX_RECORDS,
+  );
   const repairTransactionsBefore = flatDirectorySnapshot(
     plan.artifacts.transactionDirectory,
   );
@@ -5196,7 +5252,7 @@ test("repair audit capacity is preflighted before ledger transaction or event mu
   );
 
   assert.equal(readFileSync(paths.outcomes).equals(source), true);
-  assert.equal(statSync(paths.events).size, targetSize);
+  assert.equal(statSync(paths.events).size, eventsBefore.length);
   assert.equal(sha256(readFileSync(paths.events)), eventDigestBefore);
   assert.equal(readFileSync(paths.taskManifest).equals(manifestBefore), true);
   assert.deepEqual(readTask({ stateRoot, taskId: TASK_ID }), taskBefore);
@@ -5539,6 +5595,25 @@ for (const checkpointName of [
       ...owner,
     });
     assert.equal(recovered.changed, true);
+    assert.equal(
+      readdirSync(stateRoot).some((entry) =>
+        entry.startsWith(`.${path.basename(paths.outcomes)}.authority.`),
+      ),
+      false,
+    );
+    const authorityRetirements = path.join(
+      stateRoot,
+      ".authority-retirements",
+    );
+    assert.equal(existsSync(authorityRetirements), true);
+    assert.equal(
+      readdirSync(authorityRetirements).some(
+        (entry) =>
+          entry.startsWith(`${path.basename(paths.outcomes)}.`) &&
+          entry.endsWith(".retired"),
+      ),
+      true,
+    );
     const installed = appendOutcomeLedger(
       paths.outcomes,
       installedEntry,
@@ -5563,6 +5638,29 @@ for (const checkpointName of [
     );
   });
 }
+
+test("repair rejects a foreign outcome authority witness before ledger mutation", (t) => {
+  const { stateRoot, paths } = temporaryStateRoot(t);
+  const source = legacyLine("foreign-outcome-authority-witness");
+  const sourceDigest = writeLedger(paths, source);
+  const session = repairSession(stateRoot, sourceDigest);
+  const witnessPath = path.join(
+    stateRoot,
+    `.${path.basename(paths.outcomes)}.authority.${"a".repeat(64)}.${"b".repeat(64)}.tmp`,
+  );
+  const witnessBytes = Buffer.from("foreign predecessor witness\n", "utf8");
+  writeFileSync(witnessPath, witnessBytes, { mode: 0o600 });
+  const beforeLedger = readFileSync(paths.outcomes);
+
+  assert.throws(
+    () => executeRepair({ stateRoot, sourceDigest }),
+    /predecessor authority witness is outside the authenticated replacement prefix/,
+  );
+  assert.equal(readFileSync(paths.outcomes).equals(beforeLedger), true);
+  assert.equal(readFileSync(witnessPath).equals(witnessBytes), true);
+  assert.equal(existsSync(session.plan.artifacts.transaction), false);
+  assert.equal(existsSync(session.plan.artifacts.artifactDirectory), false);
+});
 
 for (const checkpointName of [
   "outcome-transition-resolved",

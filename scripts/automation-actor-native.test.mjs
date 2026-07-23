@@ -818,7 +818,7 @@ test("native actor lifecycle budget stays below the caller outer ceiling", async
       .replaceAll("_", ""),
   );
   assert.equal(callerBudget, (acquisition + cleanup) * 1_000);
-  assert.equal(control, 30);
+  assert.equal(control, 60);
   assert.ok(acquisition >= control * 2 + 5);
   assert.ok(cleanup >= control * 4 + 5);
 });

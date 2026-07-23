@@ -4114,16 +4114,18 @@ test("actor policies enforce lifecycle ownership and fresh-evidence reopening", 
       nowMs: baseMs + 60 * 60_000,
     }),
   );
-  const reopened = transitionTask({
-    stateRoot,
-    taskId: "policy-reopen",
-    ...reopenController,
-    toState: "triaged",
-    details: {
-      evidenceWindowEnd: new Date(baseMs + 60 * 60_000).toISOString(),
-    },
-    nowMs: baseMs + 61 * 60_000,
-  });
+  const reopened = withTestDateNow(baseMs + 61 * 60_000, () =>
+    transitionTask({
+      stateRoot,
+      taskId: "policy-reopen",
+      ...reopenController,
+      toState: "triaged",
+      details: {
+        evidenceWindowEnd: new Date(baseMs + 60 * 60_000).toISOString(),
+      },
+      nowMs: baseMs + 61 * 60_000,
+    }),
+  );
   assert.equal(reopened.task.state, "triaged");
 });
 
@@ -12708,6 +12710,156 @@ test("completed lease receipt recovery binds the exact retained staged state", (
   );
 });
 
+test("a new exact-token release finishes completed acquisition cleanup after response loss", () => {
+  const stateRoot = temporaryStateRoot();
+  const actor = "freed-release-verifier";
+  const name = AUTOMATION_ACTOR_POLICIES[actor].leaseName;
+  const actorCredentialToken = writeActorCredential(stateRoot, actor);
+  const token = `completed-acquire-cleanup-${"x".repeat(40)}`;
+  const acquireOperationId = nextLeaseOperationId(
+    "completed-acquire-cleanup-acquire",
+  );
+  const nowMs = Date.now();
+
+  assert.throws(
+    () =>
+      acquireLeaseMutation({
+        stateRoot,
+        name,
+        owner: actor,
+        operationId: acquireOperationId,
+        ttlMs: 60_000,
+        nowMs,
+        token,
+        actorCredentialToken,
+        checkpoint: throwAtLeaseCheckpoint("lease-receipt-written"),
+      }),
+    /lease checkpoint lease-receipt-written/,
+  );
+  const acquirePaths = leaseTransactionPaths(
+    stateRoot,
+    name,
+    "acquire",
+    acquireOperationId,
+  );
+  assert.equal(existsSync(acquirePaths.active), true);
+  assert.equal(existsSync(acquirePaths.receipt), true);
+
+  const releaseOperationId = nextLeaseOperationId(
+    "completed-acquire-cleanup-release",
+  );
+  assert.throws(
+    () =>
+      releaseLeaseMutation({
+        stateRoot,
+        name,
+        operationId: releaseOperationId,
+        token: `${token}-wrong`,
+        nowMs: nowMs + 1_000,
+      }),
+    (error) =>
+      isAutomationControlError(error) &&
+      error.code === "lease_transaction_pending",
+  );
+  assert.equal(existsSync(acquirePaths.active), true);
+  assert.equal(existsSync(acquirePaths.receipt), true);
+
+  const released = releaseLeaseMutation({
+    stateRoot,
+    name,
+    operationId: releaseOperationId,
+    token,
+    nowMs: nowMs + 1_000,
+  });
+
+  assert.equal(released.released, true);
+  assert.equal(released.lease.token, undefined);
+  assert.equal(inspectLease({ stateRoot, name }), null);
+  assert.equal(existsSync(acquirePaths.active), false);
+  assert.equal(existsSync(acquirePaths.receipt), true);
+  assert.equal(
+    readControlEvents(stateRoot).filter(
+      (event) => event.eventId === `lease:${acquireOperationId}`,
+    ).length,
+    1,
+  );
+  assert.equal(
+    readControlEvents(stateRoot).filter(
+      (event) => event.eventId === `lease:${releaseOperationId}`,
+    ).length,
+    1,
+  );
+});
+
+test("a different owner operation cannot clean a completed governance transaction", () => {
+  const stateRoot = temporaryStateRoot();
+  const nowMs = Date.now();
+  const taskId = "completed-owner-recovery-fence";
+  const intent = {
+    schemaVersion: 1,
+    action: "task.create",
+    taskId,
+    parameters: {
+      state: "observed",
+      observerAuthority: "merge-safe",
+      providerAuthority: "none",
+      approvalReference: null,
+      details: { behavioral: false },
+    },
+  };
+  const confirmation = writeOwnerConfirmation(stateRoot, taskId, intent, {
+    nowMs,
+  });
+  const token = `completed-owner-recovery-fence-${"x".repeat(40)}`;
+  const acquireOperationId = nextLeaseOperationId(
+    "completed-owner-recovery-fence-acquire",
+  );
+
+  assert.throws(
+    () =>
+      acquireLeaseMutation({
+        stateRoot,
+        name: "owner-governance",
+        owner: "freed-owner",
+        operationId: acquireOperationId,
+        ttlMs: 60_000,
+        nowMs: nowMs + 1,
+        token,
+        ownerConfirmationFile: confirmation.confirmationPath,
+        ownerCapabilityTaskId: taskId,
+        ownerCapabilityIntentDigest: confirmation.intentDigest,
+        checkpoint: throwAtLeaseCheckpoint("lease-receipt-written"),
+      }),
+    /lease checkpoint lease-receipt-written/,
+  );
+  const transactionPaths = leaseTransactionPaths(
+    stateRoot,
+    "owner-governance",
+    "acquire",
+    acquireOperationId,
+  );
+  const before = snapshotLeaseAuthorityState(stateRoot);
+
+  assert.throws(
+    () =>
+      releaseLeaseMutation({
+        stateRoot,
+        name: "owner-governance",
+        operationId: nextLeaseOperationId(
+          "completed-owner-recovery-fence-release",
+        ),
+        token,
+        nowMs: nowMs + 2,
+      }),
+    (error) =>
+      isAutomationControlError(error) &&
+      error.code === "lease_transaction_pending",
+  );
+  assert.deepEqual(snapshotLeaseAuthorityState(stateRoot), before);
+  assert.equal(existsSync(transactionPaths.active), true);
+  assert.equal(existsSync(transactionPaths.receipt), true);
+});
+
 test("complete lease WAL recovery validates retained state before cleanup", () => {
   const stateRoot = temporaryStateRoot();
   const actor = "freed-release-verifier";
@@ -13269,7 +13421,7 @@ test("lease cleanup pins source and destination directory generations across the
               if (
                 swap !== null ||
                 phase !== "lease-cleanup-admitted" ||
-                details.kind !== "staging-before"
+                details.kind !== "staging-after"
               ) {
                 return;
               }
@@ -13279,7 +13431,15 @@ test("lease cleanup pins source and destination directory generations across the
                 const displaced = `${directory}.displaced`;
                 renameSync(directory, displaced);
                 mkdirSync(directory, { mode: 0o700 });
-                swap = { sourceBytes, sourcePath: details.filePath, displaced };
+                swap = {
+                  sourceBytes,
+                  sourcePath: details.filePath,
+                  displaced,
+                  targetArchivePath: path.join(
+                    displaced,
+                    path.basename(details.archivePath),
+                  ),
+                };
               } else {
                 const directory = path.dirname(details.filePath);
                 const displaced = `${directory}.displaced`;
@@ -13295,6 +13455,10 @@ test("lease cleanup pins source and destination directory generations across the
                     path.basename(details.filePath),
                   ),
                   displaced,
+                  targetArchivePath: path.join(
+                    displaced,
+                    path.relative(directory, details.archivePath),
+                  ),
                 };
               }
             },
@@ -13306,12 +13470,7 @@ test("lease cleanup pins source and destination directory generations across the
       );
       assert.ok(swap);
       assert.deepEqual(readFileSync(swap.sourcePath), swap.sourceBytes);
-      assert.equal(
-        readdirSync(swap.displaced, { recursive: true }).some((entry) =>
-          String(entry).startsWith(`${operationId}.`),
-        ),
-        false,
-      );
+      assert.equal(existsSync(swap.targetArchivePath), false);
     });
   }
 });
@@ -19055,7 +19214,7 @@ test("a foreign pending event stage cannot publish an exact current-operation pr
         checkpoint: (phase) => checkpoints.push(phase),
       }),
     (error) =>
-      error instanceof AutomationControlError &&
+      isAutomationControlError(error) &&
       error.code === "authority_generation_conflict",
   );
   assert.deepEqual(checkpoints, []);

@@ -1907,7 +1907,7 @@ test("acquire validates the public binding and invokes its exact launcher", (t) 
     "--ttl-seconds",
     "1800",
   ]);
-  assert.equal(launcherCall.options.timeoutMs, 200_000);
+  assert.equal(launcherCall.options.timeoutMs, 380_000);
   assert.equal(launcherCall.options.killSignal, "SIGKILL");
   assert.equal(launcherCall.options.stdin, "ignore");
 });
@@ -1936,7 +1936,7 @@ test("acquire fails closed when the installed launcher exceeds its outer bound",
     (error) =>
       error instanceof AutomationActorsError &&
       error.code === "command_timeout" &&
-      error.message.includes("200,000"),
+      error.message.includes("380,000"),
   );
 });
 
@@ -2418,7 +2418,7 @@ test("accept-host proves every installed actor lifecycle without exposing lease 
   const controlCalls = value.calls.filter((call) => call.args[1] === "lease");
   assert.equal(controlCalls.length, AUTOMATION_ACTOR_IDS.length * 3);
   for (const call of controlCalls) {
-    assert.equal(call.options.timeoutMs, 40_000);
+    assert.equal(call.options.timeoutMs, 70_000);
     assert.equal(call.options.killSignal, "SIGKILL");
     assert.equal(call.options.stdin, "ignore");
     assert.equal(
@@ -2715,7 +2715,7 @@ test("accept-host reports a bounded lifecycle timeout after releasing in finally
     (error) =>
       error instanceof AutomationActorsError &&
       error.code === "command_timeout" &&
-      error.message.includes("40,000"),
+      error.message.includes("70,000"),
   );
   assert.equal(value.liveLeases.size, 0);
   assert.equal(

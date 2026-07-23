@@ -25,11 +25,13 @@ import {
   CONTROL_EVENT_HISTORY_MAX_BYTES,
   framePinnedLeaseArchiveHelperInvocation,
   ownerGovernanceIntentDigest,
+  preflightOutcomeLedgerAuthorityStageForRepair,
   preauthorizeOutcomeLedgerRepair,
   preflightOutcomeLedgerRepairEvent,
   readAutomationPlanningAdmission,
   readPinnedLeaseArchiveHelperSource,
   reauthorizeOutcomeLedgerRepairLease,
+  retireOutcomeLedgerAuthorityStageForRepair,
   validateOutcomeLedgerRepairEvent,
   withAutomationPlanningReadBundle,
   withMutationLeaseAuthority,
@@ -4791,6 +4793,11 @@ export function repairOutcomeLedger(
       }
       plan = recoveredPlan;
       transaction = recoveredPlan.transaction;
+      preflightOutcomeLedgerAuthorityStageForRepair({
+        stateRoot: root,
+        sourceBytes: plan.material.sourceBytes,
+        replacementBytes: plan.material.trustedBytes,
+      });
       if (transaction.phase === "fenced") {
         preflightRepairTemporaryFiles(plan, { fencedRecovery: true });
         writePreparedArtifacts(
@@ -4826,6 +4833,11 @@ export function repairOutcomeLedger(
         throw new Error("Outcome ledger classification drifted before repair.");
       }
       plan = lockedPlan;
+      preflightOutcomeLedgerAuthorityStageForRepair({
+        stateRoot: root,
+        sourceBytes: plan.material.sourceBytes,
+        replacementBytes: plan.material.trustedBytes,
+      });
       preflightRepairTemporaryFiles(plan, { beforeFirstFence: true });
       preflightOutcomeLedgerRepairEvent({
         stateRoot: root,
@@ -4867,12 +4879,31 @@ export function repairOutcomeLedger(
       transaction = recoveredPlan.transaction;
     }
 
+    const retireLedgerAuthorityStage = (beforeRemove) => {
+      const authorityRetirement =
+        retireOutcomeLedgerAuthorityStageForRepair({
+          stateRoot: root,
+          operationId: plan.operationId,
+          replacementBytes: plan.material.trustedBytes,
+          beforeRemove: () => {
+            guardedCheckpoint(
+              "outcome-ledger-authority-stage-before-retirement",
+            );
+            beforeRemove();
+          },
+        });
+      if (authorityRetirement.retired) {
+        guardedCheckpoint("outcome-ledger-authority-stage-retired");
+      }
+    };
+
     reauthorizeCurrentRepair();
     if (
       transaction?.phase === "complete" &&
       !existsAsPath(plan.artifacts.transaction) &&
       existsAsPath(plan.artifacts.completedTransaction)
     ) {
+      retireLedgerAuthorityStage(reauthorizeCurrentRepair);
       if (hasActionableRepairReplacementTemporary(plan)) {
         verifyCompletedRepair(plan, {
           requireComplete: false,
@@ -4923,6 +4954,7 @@ export function repairOutcomeLedger(
             beforeMutation,
           });
         if (transaction.phase === "complete") {
+          retireLedgerAuthorityStage(beforeMutation);
           cleanupRepairTemporaryFiles(
             plan,
             guardedCheckpoint,
@@ -5109,6 +5141,16 @@ export function repairOutcomeLedger(
               });
               guardedCheckpoint("transaction-replaced");
             }
+            if (
+              !["replaced", "audited", "complete"].includes(
+                transaction.phase,
+              )
+            ) {
+              throw new Error(
+                "Outcome ledger repair cannot retire authority before replacement publication.",
+              );
+            }
+            retireLedgerAuthorityStage(beforeMutation);
             if (!["audited", "complete"].includes(transaction.phase)) {
               appendRepairEvent();
               captureRepairTopology(plan);
