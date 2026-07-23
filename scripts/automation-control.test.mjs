@@ -1258,6 +1258,34 @@ function pinnedLegacyRuntimeObserverTakeover() {
   };
 }
 
+function exactMissingStateScaffoldingAcquisition() {
+  return {
+    schemaVersion: 1,
+    eventId: "lease:edacbfa4-8c08-4f1c-9a52-56ee8583e62d",
+    type: "lease_acquired",
+    ts: "2026-07-23T06:17:55.750Z",
+    actor: "freed-scaffolding-maintainer",
+    leaseName: "scaffolding-writer",
+    data: {
+      expiresAt: "2026-07-23T06:47:55.750Z",
+      observerAuthority: "pr-only",
+      providerAuthority: "forbidden",
+      requestDigest:
+        "02c27dee741004a401d12cb568b33174abfec6e928bca7d21fa0305d16fb9e08",
+      credentialKind: "trusted-launcher-channel",
+      launcherSha256:
+        "a413388c90beddf5a38a9a7c2bdeef41d0434e0695c756be45f9bde934761c20",
+      actorRuntimeDigest:
+        "d5c4600bc7ddedc51c984324350f16b80c36641bbce01d9435f66d8e17c9625e",
+      launcherChannelProtocol: "freed-actor-launcher-channel-v1",
+      launcherAttestationSha256:
+        "20cf3710f077b771879c730b86ca604bbaf7e4f7f05d5d07f13ebdde56139302",
+      launcherSessionId:
+        "da285fb9f7a41c813ce59c4e5b36605fc831eaf212f34816db0531983bd9c871",
+    },
+  };
+}
+
 function leaseHistoryCorruptionEvent(sourceEvent, variant, label) {
   if (variant === "duplicate") return structuredClone(sourceEvent);
   if (variant === "conflicting") {
@@ -5239,6 +5267,264 @@ test("exact lifecycle history admits only the pinned legacy lease acquisition br
   ]);
   assert.equal(unboundCurrent.healthy, false);
   assert.match(unboundCurrent.issues.join("\n"), /lifecycle creation/);
+});
+
+test("exact history admits only the installed missing-state acquisition bridge", () => {
+  const legacyEvents = readFileSync(
+    path.join(__dirname, "fixtures", "legacy-control-event-history.jsonl"),
+    "utf8",
+  )
+    .trimEnd()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  const acquisition = exactMissingStateScaffoldingAcquisition();
+  assert.equal(
+    createHash("sha256")
+      .update(JSON.stringify(canonicalTestValue(acquisition)))
+      .digest("hex"),
+    "67a8dd0129b10ff167dd1707682d930eb199eb194e484e8b66402dbfe69126e0",
+  );
+  const installed = [
+    structuredClone(legacyEvents[0]),
+    structuredClone(legacyEvents[1]),
+    acquisition,
+  ];
+  const exact = inspectExactTaskLifecycleHistory(installed);
+  assert.equal(exact.healthy, true, exact.issues.join("\n"));
+
+  const release = {
+    schemaVersion: 1,
+    eventId: `lease:${"e".repeat(64)}`,
+    type: "lease_released",
+    ts: "2026-07-23T06:48:55.750Z",
+    actor: "freed-scaffolding-maintainer",
+    leaseName: "scaffolding-writer",
+    data: {
+      expired: true,
+      requestDigest: "f".repeat(64),
+    },
+  };
+  const released = inspectExactTaskLifecycleHistory([...installed, release]);
+  assert.equal(released.healthy, true, released.issues.join("\n"));
+
+  const driftCases = [
+    {
+      label: "predecessor acquisition",
+      mutate(events) {
+        events[0].data.expiresAt = "2026-07-10T22:29:02.587Z";
+      },
+    },
+    {
+      label: "predecessor heartbeat",
+      mutate(events) {
+        events[1].data.expiresAt = "2026-07-10T22:32:14.169Z";
+      },
+    },
+    {
+      label: "successor",
+      mutate(events) {
+        events[2].data.requestDigest = "1".repeat(64);
+      },
+    },
+  ];
+  for (const driftCase of driftCases) {
+    const drifted = structuredClone(installed);
+    driftCase.mutate(drifted);
+    const inspection = inspectExactTaskLifecycleHistory(drifted);
+    assert.equal(inspection.healthy, false, driftCase.label);
+  }
+
+  const omittedHeartbeat = inspectExactTaskLifecycleHistory([
+    structuredClone(installed[0]),
+    structuredClone(installed[2]),
+  ]);
+  assert.equal(omittedHeartbeat.healthy, false);
+
+  const secondAcquisition = structuredClone(acquisition);
+  secondAcquisition.eventId = `lease:${"d".repeat(64)}`;
+  secondAcquisition.ts = "2026-07-23T06:48:55.750Z";
+  secondAcquisition.data.expiresAt = "2026-07-23T07:18:55.750Z";
+  const invented = inspectExactTaskLifecycleHistory([
+    ...installed,
+    secondAcquisition,
+  ]);
+  assert.equal(invented.healthy, false);
+});
+
+test("missing legacy lease state acquires through an audited credential upgrade", () => {
+  const stateRoot = temporaryStateRoot();
+  const paths = automationControlPaths(stateRoot);
+  const fixtureBytes = readFileSync(
+    path.join(__dirname, "fixtures", "legacy-control-event-history.jsonl"),
+  );
+  mkdirSync(paths.controlRoot, { recursive: true, mode: 0o700 });
+  writeFileSync(paths.events, fixtureBytes, { mode: 0o600 });
+
+  const actor = "freed-scaffolding-maintainer";
+  const name = AUTOMATION_ACTOR_POLICIES[actor].leaseName;
+  const token = `missing-legacy-state-upgrade-${"x".repeat(40)}`;
+  const acquiredAtMs = Date.parse("2026-07-23T06:17:55.750Z");
+  const acquireOptions = {
+    stateRoot,
+    name,
+    owner: actor,
+    operationId: nextLeaseOperationId("missing-legacy-state-upgrade"),
+    ttlMs: 60_000,
+    nowMs: acquiredAtMs,
+    token,
+  };
+  assert.throws(
+    () =>
+      acquireLeaseMutation({
+        ...acquireOptions,
+        checkpoint: throwAtLeaseCheckpoint("lease-state-committed"),
+      }),
+    /lease checkpoint lease-state-committed/,
+  );
+  const result = acquireLeaseMutation(acquireOptions);
+  assert.equal(result.takeover, true);
+  assert.equal(result.credentialUpgrade, true);
+  assert.deepEqual(result.previous, {
+    owner: actor,
+    expiredAt: "2026-07-10T22:32:14.168Z",
+    heartbeatAt: "2026-07-10T22:02:14.168Z",
+    legacyUncredentialed: true,
+  });
+  assert.equal(readEvents(stateRoot).at(-1).type, "lease_credential_upgraded");
+  const acquired = inspectExactTaskLifecycleHistory(readEvents(stateRoot));
+  assert.equal(acquired.healthy, true, acquired.issues.join("\n"));
+
+  releaseLease({
+    stateRoot,
+    name,
+    operationId: nextLeaseOperationId("missing-legacy-state-release"),
+    token,
+    nowMs: acquiredAtMs + 1_000,
+  });
+  const released = inspectExactTaskLifecycleHistory(readEvents(stateRoot));
+  assert.equal(released.healthy, true, released.issues.join("\n"));
+});
+
+test("missing live legacy lease state fails before lease authority mutation", () => {
+  const stateRoot = temporaryStateRoot();
+  const paths = automationControlPaths(stateRoot);
+  const fixtureEvents = readFileSync(
+    path.join(__dirname, "fixtures", "legacy-control-event-history.jsonl"),
+    "utf8",
+  )
+    .trimEnd()
+    .split("\n")
+    .slice(0, 2);
+  mkdirSync(paths.controlRoot, { recursive: true, mode: 0o700 });
+  writeFileSync(paths.events, `${fixtureEvents.join("\n")}\n`, {
+    mode: 0o600,
+  });
+  const before = snapshotLeaseAuthorityState(stateRoot);
+  const actor = "freed-scaffolding-maintainer";
+  assert.throws(
+    () =>
+      acquireLeaseMutation({
+        stateRoot,
+        name: AUTOMATION_ACTOR_POLICIES[actor].leaseName,
+        owner: actor,
+        operationId: nextLeaseOperationId("missing-live-legacy-state"),
+        ttlMs: 60_000,
+        nowMs: Date.parse("2026-07-10T22:10:00.000Z"),
+        token: `missing-live-legacy-state-${"x".repeat(40)}`,
+      }),
+    (error) => isAutomationControlError(error) && error.code === "lease_busy",
+  );
+  assert.deepEqual(snapshotLeaseAuthorityState(stateRoot), before);
+});
+
+test("missing current lease state requires explicit repair before reacquisition", () => {
+  const stateRoot = temporaryStateRoot();
+  const actor = "freed-release-verifier";
+  const name = AUTOMATION_ACTOR_POLICIES[actor].leaseName;
+  const acquiredAtMs = Date.parse("2026-07-23T07:00:00.000Z");
+  acquireLeaseMutation({
+    stateRoot,
+    name,
+    owner: actor,
+    operationId: nextLeaseOperationId("missing-current-state-initial"),
+    ttlMs: 1_000,
+    nowMs: acquiredAtMs,
+    token: `missing-current-state-initial-${"x".repeat(40)}`,
+  });
+  rmSync(path.join(automationControlPaths(stateRoot).leases, `${name}.lease`), {
+    recursive: true,
+  });
+  const before = snapshotLeaseAuthorityState(stateRoot);
+  assert.throws(
+    () =>
+      acquireLeaseMutation({
+        stateRoot,
+        name,
+        owner: actor,
+        operationId: nextLeaseOperationId("missing-current-state-reacquire"),
+        ttlMs: 60_000,
+        nowMs: acquiredAtMs + 2_000,
+        token: `missing-current-state-reacquire-${"y".repeat(40)}`,
+      }),
+    (error) =>
+      isAutomationControlError(error) && error.code === "lease_repair_required",
+  );
+  assert.deepEqual(snapshotLeaseAuthorityState(stateRoot), before);
+});
+
+test("missing-state takeover recovery binds its predecessor before mutation", () => {
+  const stateRoot = temporaryStateRoot();
+  const actor = "freed-release-verifier";
+  const name = AUTOMATION_ACTOR_POLICIES[actor].leaseName;
+  const operationId = nextLeaseOperationId("invented-missing-state-takeover");
+  const nowMs = Date.parse("2026-07-23T07:30:00.000Z");
+  const options = {
+    stateRoot,
+    name,
+    owner: actor,
+    operationId,
+    ttlMs: 60_000,
+    nowMs,
+    token: `invented-missing-state-takeover-${"x".repeat(40)}`,
+  };
+  assert.throws(
+    () =>
+      acquireLeaseMutation({
+        ...options,
+        checkpoint: throwAtLeaseCheckpoint("lease-state-committed"),
+      }),
+    /lease checkpoint lease-state-committed/,
+  );
+  const files = leaseTransactionPaths(stateRoot, name, "acquire", operationId);
+  const transaction = JSON.parse(readFileSync(files.active, "utf8"));
+  const previous = {
+    owner: actor,
+    expiredAt: new Date(
+      Date.parse(transaction.preparedAt) - 60_000,
+    ).toISOString(),
+    heartbeatAt: new Date(
+      Date.parse(transaction.preparedAt) - 120_000,
+    ).toISOString(),
+    legacyUncredentialed: true,
+  };
+  transaction.takeover = previous;
+  transaction.resultReceipt.takeover = true;
+  transaction.resultReceipt.credentialUpgrade = true;
+  transaction.resultReceipt.previous = previous;
+  transaction.event.type = "lease_credential_upgraded";
+  transaction.event.data.credentialUpgrade = true;
+  transaction.event.data.previous = previous;
+  writeFileSync(files.active, `${JSON.stringify(transaction, null, 2)}\n`, {
+    mode: 0o600,
+  });
+  const before = snapshotLeaseAuthorityState(stateRoot);
+  assert.throws(
+    () => acquireLeaseMutation(options),
+    (error) =>
+      isAutomationControlError(error) &&
+      error.code === "lease_transaction_conflict",
+  );
+  assert.deepEqual(snapshotLeaseAuthorityState(stateRoot), before);
 });
 
 test("the complete installed legacy control history is byte pinned and drift sensitive", () => {

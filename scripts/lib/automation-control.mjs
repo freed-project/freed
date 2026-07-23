@@ -7324,6 +7324,18 @@ const PINNED_LEGACY_LEASE_EVENT_DIGESTS = new Set([
   "fb110936e1ee51c202e5982110a852d57e9d5a75c4656d4602aea10ce7862af2",
   "f648bb3c2d352f3679a4a96d72aa3ab490f3d4c6bf409401226e642eb078badf",
 ]);
+const PINNED_MISSING_STATE_ACQUISITION_BRIDGE = Object.freeze({
+  actor: "freed-scaffolding-maintainer",
+  leaseName: "scaffolding-writer",
+  predecessorAcquisitionDigest:
+    "22e1ef7e106bb242f7829ace4aecd772696877ab736e5c1bd75737105e9aae90",
+  predecessorLastEventDigest:
+    "e879ed4128c7f45f66e3bddfa6d7cce64957b41106768f1d3ccfc5f0fcbd0607",
+  predecessorHeartbeatAt: "2026-07-10T22:02:14.168Z",
+  predecessorExpiresAt: "2026-07-10T22:32:14.168Z",
+  successorDigest:
+    "67a8dd0129b10ff167dd1707682d930eb199eb194e484e8b66402dbfe69126e0",
+});
 const TASK_MANIFEST_EVENT_TYPES = new Set([
   "outcome_reservation_created",
   "outcome_reservation_finalized",
@@ -7367,6 +7379,22 @@ function pinnedLegacyLeaseControlEvent(event) {
     isCanonicalUuidV4(event?.eventId) &&
     LEASE_CONTROL_EVENT_TYPES.has(event?.type) &&
     pinnedControlEventDigest(event, PINNED_LEGACY_LEASE_EVENT_DIGESTS)
+  );
+}
+
+function pinnedMissingStateAcquisitionBridge(event, active) {
+  const bridge = PINNED_MISSING_STATE_ACQUISITION_BRIDGE;
+  return (
+    event?.type === "lease_acquired" &&
+    canonicalControlEventDigest(event) === bridge.successorDigest &&
+    event.actor === bridge.actor &&
+    event.leaseName === bridge.leaseName &&
+    active?.actor === bridge.actor &&
+    active?.legacyUncredentialed === true &&
+    active?.acquisitionEventDigest === bridge.predecessorAcquisitionDigest &&
+    active?.lastEventDigest === bridge.predecessorLastEventDigest &&
+    active?.heartbeatAt === bridge.predecessorHeartbeatAt &&
+    active?.expiresAt === bridge.predecessorExpiresAt
   );
 }
 
@@ -7960,10 +7988,14 @@ function inspectExactLeaseEventHistory(records, eventIdCounts) {
       const pinnedLegacy = pinnedLegacyLeaseControlEvent(event);
       const active = activeByLeaseName.get(event.leaseName);
       const previous = event.data.previous;
+      const missingStateAcquisitionBridge =
+        active !== undefined &&
+        pinnedMissingStateAcquisitionBridge(event, active);
       const beginsAfterExplicitAbsence =
         active === undefined && observedLeaseNames.has(event.leaseName);
       const auditedPredecessorMatches =
         active === undefined ||
+        missingStateAcquisitionBridge ||
         ((event.type === "lease_credential_upgraded") ===
           active.legacyUncredentialed &&
           ["lease_credential_upgraded", "lease_taken_over"].includes(
@@ -7988,6 +8020,7 @@ function inspectExactLeaseEventHistory(records, eventIdCounts) {
       }
       activeByLeaseName.set(event.leaseName, {
         acquisitionEvent: structuredClone(event),
+        acquisitionEventDigest: canonicalControlEventDigest(event),
         acquisitionIndex: record.index,
         actor: event.actor,
         acquiredAtMs: eventAtMs,
@@ -8004,6 +8037,7 @@ function inspectExactLeaseEventHistory(records, eventIdCounts) {
         heartbeatAtMs: eventAtMs,
         heartbeatAt: event.ts,
         lastEventAtMs: eventAtMs,
+        lastEventDigest: canonicalControlEventDigest(event),
         legacyUncredentialed: event.data.credentialKind === undefined,
         scope:
           event.actor === "freed-pr-publisher"
@@ -8049,6 +8083,7 @@ function inspectExactLeaseEventHistory(records, eventIdCounts) {
       active.heartbeatAtMs = eventAtMs;
       active.heartbeatAt = event.ts;
       active.lastEventAtMs = eventAtMs;
+      active.lastEventDigest = canonicalControlEventDigest(event);
       canonicalEventsByIndex.set(
         record.index,
         Object.freeze({
@@ -8095,6 +8130,7 @@ function inspectExactLeaseEventHistory(records, eventIdCounts) {
       }
       active.scope = structuredClone(nextScope);
       active.lastEventAtMs = eventAtMs;
+      active.lastEventDigest = canonicalControlEventDigest(event);
       canonicalEventsByIndex.set(
         record.index,
         Object.freeze({
@@ -18576,7 +18612,7 @@ function validateLeaseStaging(paths, transaction) {
     }
     records[side] = parseLeaseRecordBytes(bytes, transaction.name);
   }
-  validateLeaseTransactionStagedSemantics(transaction, records);
+  validateLeaseTransactionStagedSemantics(paths, transaction, records);
   return records;
 }
 
@@ -18586,7 +18622,54 @@ function leaseRecordWithoutFields(record, fields) {
   return clone;
 }
 
-function validateLeaseTransactionStagedSemantics(transaction, records) {
+function requireExactMissingStateLeaseTakeover(paths, transaction) {
+  const snapshot = readControlEventHistorySnapshot(paths.events);
+  const inspection = requireExactLeaseEventHistory(snapshot.events);
+  const exactEventMatches = snapshot.events.filter(
+    (event) => event?.eventId === transaction.event?.eventId,
+  );
+  if (exactEventMatches.length === 1) {
+    if (!canonicalValuesEqual(exactEventMatches[0], transaction.event)) {
+      throw new AutomationControlError(
+        "lease_transaction_conflict",
+        `Lease acquisition transaction for ${transaction.name} does not match its exact audited event.`,
+      );
+    }
+    return structuredClone(transaction.event.data.previous);
+  }
+  if (exactEventMatches.length !== 0) {
+    throw new AutomationControlError(
+      "lease_transaction_conflict",
+      `Lease acquisition transaction for ${transaction.name} has duplicate audited events.`,
+    );
+  }
+  const active = inspection.activeByLeaseName.get(transaction.name);
+  const expected =
+    active === undefined
+      ? null
+      : {
+          owner: active.actor,
+          expiredAt: active.expiresAt,
+          heartbeatAt: active.heartbeatAt,
+          legacyUncredentialed: true,
+        };
+  if (
+    active === undefined ||
+    active.actor !== transaction.request.owner ||
+    active.legacyUncredentialed !== true ||
+    !pinnedLegacyLeaseControlEvent(active.acquisitionEvent) ||
+    active.expiresAtMs > Date.parse(transaction.preparedAt) ||
+    !canonicalValuesEqual(transaction.event?.data?.previous, expected)
+  ) {
+    throw new AutomationControlError(
+      "lease_transaction_conflict",
+      `Lease acquisition transaction for ${transaction.name} does not match its exact historical predecessor.`,
+    );
+  }
+  return expected;
+}
+
+function validateLeaseTransactionStagedSemantics(paths, transaction, records) {
   const { before: beforeRecord, after: afterRecord } = records;
   const request = transaction.request;
   const tokenRecords =
@@ -18654,6 +18737,19 @@ function validateLeaseTransactionStagedSemantics(transaction, records) {
           );
         }
       }
+    } else if (
+      transaction.event?.type === "lease_credential_upgraded" &&
+      canonicalLeaseTakeoverSummary(transaction.event.data?.previous) &&
+      transaction.event.data.previous.legacyUncredentialed === true &&
+      transaction.event.data.previous.owner === request.owner &&
+      Date.parse(transaction.event.data.previous.expiredAt) <=
+        Date.parse(transaction.preparedAt)
+    ) {
+      expectedTakeover = requireExactMissingStateLeaseTakeover(
+        paths,
+        transaction,
+      );
+      expectedCredentialUpgrade = true;
     }
     if (
       afterRecord === null ||
@@ -18672,7 +18768,8 @@ function validateLeaseTransactionStagedSemantics(transaction, records) {
             transaction.resultReceipt.previous,
             expectedTakeover,
           )) ||
-      (expectedCredentialUpgrade && beforeRecord.owner !== afterRecord.owner)
+      (expectedCredentialUpgrade &&
+        expectedTakeover.owner !== afterRecord.owner)
     ) {
       throw new AutomationControlError(
         "lease_transaction_conflict",
@@ -29077,11 +29174,12 @@ function validateCompletedLeaseReceiptStaging(
     validateLeaseStagingSnapshot(transaction, side, snapshot);
     records[side] = parseLeaseRecordBytes(snapshot.bytes, transaction.name);
   }
-  validateLeaseTransactionStagedSemantics(transaction, records);
+  validateLeaseTransactionStagedSemantics(paths, transaction, records);
   return cleanupPlan;
 }
 
 function validateParsedCompletedLeaseReceiptHealthEvidence(
+  paths,
   transaction,
   admittedParsedCleanupEvidence,
   receiptContentDigest,
@@ -29210,7 +29308,7 @@ function validateParsedCompletedLeaseReceiptHealthEvidence(
     atomicEvidence,
     stagingBytesBySide,
   );
-  validateLeaseTransactionStagedSemantics(transaction, records);
+  validateLeaseTransactionStagedSemantics(paths, transaction, records);
   return Object.freeze({
     operationId: transaction.operationId,
     activeWal: currentWal[0],
@@ -29226,6 +29324,7 @@ function validateCompletedLeaseReceiptHealthEvidence(
 ) {
   if (admission?.admittedParsedCleanupEvidence instanceof Map) {
     return validateParsedCompletedLeaseReceiptHealthEvidence(
+      paths,
       transaction,
       admission.admittedParsedCleanupEvidence,
       admission.receiptContentDigest,
@@ -30210,7 +30309,6 @@ function acquireLeaseAuthorized({
         secretDigest(token),
         eventsGuard,
       );
-      ensurePrivateDirectory(paths.leases);
       recoverLeaseTransactionUnlocked(paths, name, Date.now(), eventsGuard);
       const completed = replayCompletedLeaseReceipt({
         paths,
@@ -30235,6 +30333,9 @@ function acquireLeaseAuthorized({
         normalizePublisherScope(publisherScope);
       }
       const operationNowMs = Date.now();
+      const exactLeaseHistory = requireExactLeaseEventHistory(
+        readControlEventHistorySnapshot(paths.events).events,
+      );
       const beforeState = readLeaseStateSnapshot(paths, name);
       if (
         beforeState.descriptor.directoryExists &&
@@ -30246,6 +30347,51 @@ function acquireLeaseAuthorized({
           { name },
         );
       }
+      let previous = null;
+      let takeover = false;
+      let credentialUpgrade = false;
+      const historicalActive = beforeState.descriptor.directoryExists
+        ? undefined
+        : exactLeaseHistory.activeByLeaseName.get(name);
+      if (historicalActive !== undefined) {
+        if (historicalActive.actor !== owner) {
+          throw new AutomationControlError(
+            "legacy_lease_owner_mismatch",
+            `Historical lease ${name} belongs to ${historicalActive.actor}, not ${owner}.`,
+            { name, owner: historicalActive.actor, actor: owner },
+          );
+        }
+        if (
+          historicalActive.legacyUncredentialed !== true ||
+          !pinnedLegacyLeaseControlEvent(historicalActive.acquisitionEvent)
+        ) {
+          throw new AutomationControlError(
+            "lease_repair_required",
+            `Lease ${name} has current audited authority without canonical state and requires explicit owner-governed repair.`,
+            { name, owner: historicalActive.actor },
+          );
+        }
+        if (historicalActive.expiresAtMs > operationNowMs) {
+          throw new AutomationControlError(
+            "lease_busy",
+            `Historical lease ${name} remains live and requires expiry or an owner-governed migration before credential upgrade.`,
+            {
+              name,
+              owner: historicalActive.actor,
+              expiresAt: historicalActive.expiresAt,
+            },
+          );
+        }
+        previous = {
+          owner: historicalActive.actor,
+          expiredAt: historicalActive.expiresAt,
+          heartbeatAt: historicalActive.heartbeatAt,
+          legacyUncredentialed: true,
+        };
+        takeover = true;
+        credentialUpgrade = true;
+      }
+      ensurePrivateDirectory(paths.leases);
       const ownerCapability =
         owner === "freed-owner" && ownerCapabilityFile !== undefined
           ? readAndValidateOwnerCapability({
@@ -30291,10 +30437,6 @@ function acquireLeaseAuthorized({
           `Actor ${owner} cannot use a publisher capability.`,
         );
       }
-      let previous = null;
-      let takeover = false;
-      let credentialUpgrade = false;
-
       if (beforeState.descriptor.directoryExists) {
         const existing = beforeState.record;
         const isLegacyUncredentialed =
