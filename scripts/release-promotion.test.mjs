@@ -126,6 +126,11 @@ function makeTempRepo() {
     '{\n  "version": "0.0.0"\n}\n',
   );
   writeRepoFile(cwd, "scripts/release.sh", "#!/usr/bin/env bash\n");
+  writeRepoFile(
+    cwd,
+    "automation/specs/freed-runtime-observer.json",
+    '{\n  "version": "main"\n}\n',
+  );
   writeRepoFile(cwd, "docs/PHASE-1-FOUNDATION.md", "# Phase 1\n");
   writeRepoFile(cwd, "website/next.config.ts", "export default {};\n");
   writeRepoFile(
@@ -257,6 +262,11 @@ test("prepare-release-promotion copies the dev product snapshot across squashed 
     path.join(cwd, "packages/pwa/src/current.ts"),
   );
   writeRepoFile(cwd, "docs/NEXT.md", "# Next\n");
+  writeRepoFile(
+    cwd,
+    "automation/specs/freed-runtime-observer.json",
+    '{\n  "version": "dev"\n}\n',
+  );
   rmSync(path.join(cwd, "docs/PHASE-1-FOUNDATION.md"));
   chmodSync(path.join(cwd, "scripts/release.sh"), 0o755);
   writeRepoFile(
@@ -294,12 +304,16 @@ test("prepare-release-promotion copies the dev product snapshot across squashed 
   ]);
 
   assert.equal(prepared.status, 0, prepared.stderr);
-  assert.match(prepared.stdout, /Prepared 9 product paths for promotion/);
+  assert.match(prepared.stdout, /Prepared 10 product paths for promotion/);
   assert.equal(
     git(cwd, ["show", ":packages/pwa/src/app.ts"]),
     "export const value = 'next dev snapshot';",
   );
   assert.equal(git(cwd, ["show", ":docs/NEXT.md"]), "# Next");
+  assert.match(
+    git(cwd, ["show", ":automation/specs/freed-runtime-observer.json"]),
+    /"version": "dev"/,
+  );
   assert.equal(
     git(cwd, ["rev-parse", ":packages/pwa/src/icon.bin"]),
     git(cwd, ["rev-parse", "origin/dev:packages/pwa/src/icon.bin"]),
