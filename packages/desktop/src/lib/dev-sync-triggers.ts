@@ -39,7 +39,7 @@ declare global {
 }
 
 function parseProvider(value: unknown): RetriableSocialProvider | null {
-  return value === "facebook" || value === "instagram" || value === "linkedin"
+  return value === "facebook" || value === "instagram" || value === "linkedin" || value === "youtube"
     ? value
     : null;
 }
@@ -120,7 +120,7 @@ async function runDevSyncTrigger(
       requestId,
       null,
       "ignored",
-      "Unsupported provider. Use facebook, instagram, or linkedin.",
+      "Unsupported provider. Use facebook, instagram, linkedin, or youtube.",
     );
     return;
   }
@@ -183,10 +183,11 @@ function mapRefreshResultToTriggerStatus(
 function formatRefreshResultDetail(
   result: SocialProviderRefreshResult,
 ): string {
+  const itemLabel = result.provider === "youtube" ? "Videos" : "Posts";
   const counts =
     result.postsExtracted === undefined
       ? ""
-      : ` Posts: ${result.postsExtracted.toLocaleString()}. Added: ${(result.itemsAdded ?? 0).toLocaleString()}.`;
+      : ` ${itemLabel}: ${result.postsExtracted.toLocaleString()}. Added: ${(result.itemsAdded ?? 0).toLocaleString()}.`;
   const stage = result.stage ? ` Stage: ${result.stage}.` : "";
   return `${result.detail ?? `${result.provider} sync finished with ${result.status}.`}${stage}${counts}`;
 }
@@ -248,7 +249,7 @@ export function startDevSyncTriggerPoller(
         requestId,
         null,
         "ignored",
-        "Unsupported provider. Use facebook, instagram, or linkedin.",
+        "Unsupported provider. Use facebook, instagram, linkedin, or youtube.",
       );
       return;
     }

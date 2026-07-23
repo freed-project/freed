@@ -5,6 +5,16 @@ interface IconProps {
   style?: React.CSSProperties;
 }
 
+/** Overlapping sheets for copy actions. */
+export function CopyIcon({ className = "w-4 h-4", style }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">
+      <rect x="8" y="8" width="11" height="11" rx="2" />
+      <path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" />
+    </svg>
+  );
+}
+
 // ─── Layout / navigation ────────────────────────────────────────────────────
 
 /** Crystal core mark for the unified feed and all-sources navigation. */
@@ -281,6 +291,22 @@ export function LinkedInIcon({ className = "w-4 h-4", style }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style} aria-hidden="true">
       <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+    </svg>
+  );
+}
+
+export function SubstackIcon({ className = "w-4 h-4", style }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style} aria-hidden="true">
+      <path d="M5 3h14v2.7H5V3zm0 4.8h14v2.7H5V7.8zm0 4.8h14V21l-7-3.9L5 21v-8.4z" />
+    </svg>
+  );
+}
+
+export function MediumIcon({ className = "w-4 h-4", style }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style} aria-hidden="true">
+      <path d="M4.2 7.1c.1-.7-.2-1.4-.8-1.9V4.9h5.5l4.3 9.4 3.8-9.4h5.2v.3c-.5.3-.7.6-.7 1.2v11.2c0 .6.2.9.7 1.2v.3h-7.4v-.3c.6-.3.8-.6.8-1.2V8.3l-4.7 10.8h-.6L5.1 8.5v7.8c0 1 .3 1.8 1.1 2.5v.3H2v-.3c.8-.7 1.2-1.5 1.2-2.5V7.1z" />
     </svg>
   );
 }

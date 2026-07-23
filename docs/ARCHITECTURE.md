@@ -1,10 +1,10 @@
 # Freed Technical Architecture
 
-Accurate as of 2026-07-02 (dev @ v26.7.203-dev). This document describes the system as shipped, not as aspired to. Known defects and program-tracked limitations cite finding IDs from [stability-findings.json](stability-findings.json); the remediation plan is [STABILITY-PROGRAM.md](STABILITY-PROGRAM.md).
+Accurate as of 2026-07-13 (`dev` @ v26.7.1301-dev). This document describes the system as shipped, not as aspired to. Known defects and program-tracked limitations cite finding IDs from [stability-findings.json](stability-findings.json); the remediation plan is [STABILITY-PROGRAM.md](STABILITY-PROGRAM.md).
 
 ## What Freed is
 
-Freed Desktop captures the user's own social feeds (X, Facebook, Instagram, LinkedIn, RSS, saved articles) on their machine using their own authenticated sessions, stores everything locally in one Automerge document, and presents a user-controlled unified feed. A companion PWA at `app.freed.wtf` is the mobile reader. There is no Freed server: sync rides on a LAN relay inside the desktop app and on the user's own cloud storage (Google Drive, Dropbox).
+Freed Desktop captures the user's own social feeds (X, Facebook, Instagram, LinkedIn, Substack beta, Medium beta, YouTube, RSS, saved articles) on their machine using their own authenticated sessions, stores everything locally in one Automerge document, and presents a user-controlled unified feed. A companion PWA at `app.freed.wtf` is the mobile reader. There is no Freed content backend: sync rides on a LAN relay inside the desktop app and on the user's own cloud storage (Google Drive, Dropbox). Small serverless endpoints handle narrow operations such as OAuth token exchange without receiving the Automerge document.
 
 Earlier drafts of this document described a browser add-on capture layer and direct peer-to-peer device sync; neither was ever shipped, and nothing here is aspirational.
 
@@ -17,32 +17,46 @@ npm workspaces monorepo (`packages/*`, `skills/*`, `website`), Node pinned by `.
 | `packages/shared` | Pure functions + types, including the Automerge schema (`src/schema.ts`, backward-compatible changes only). Zero runtime deps. No React. |
 | `packages/ui` | Platform-agnostic React UI (feed, reader, map via MapLibre, search via MiniSearch, zustand stores). Ships raw `.tsx`; no build step. No platform stores, no Tauri APIs. |
 | `packages/sync` | Storage-agnostic sync: IndexedDB and filesystem storage adapters, cloud providers (`cloud/gdrive.ts`, `cloud/dropbox.ts`, `cloud/merge.ts`), LAN relay client (`network/local-relay.ts`). Works in browser and Node. |
-| `packages/capture-x` | X GraphQL response types, endpoint definitions (`https://x.com/i/api/graphql`), and normalizers. |
-| `packages/capture-facebook` / `capture-instagram` / `capture-linkedin` | Per-provider extraction and normalization helpers. Capture packages never import each other. |
-| `packages/capture-rss` | RSS/Atom parsing (rss-parser, fast-xml-parser). |
-| `packages/capture-save` | Save-for-later article capture (Readability, zip import/export). |
-| `packages/desktop` | Tauri shell: React renderer plus `src-tauri/src/lib.rs` (~13k lines of Rust). Imports all capture packages, `@freed/ui`, `@freed/shared`, `@freed/sync`. |
+| `packages/capture-*` | Isolated provider extraction, parsing, and normalization helpers. Capture packages never import each other. |
+| `packages/desktop` | Tauri shell: React renderer plus `src-tauri/src/lib.rs` (~13k lines of Rust). Imports the capture packages used by its native and scheduled providers, plus `@freed/ui`, `@freed/shared`, and `@freed/sync`. |
 | `packages/pwa` | Mobile reader app shell (Vite + React + vite-plugin-pwa/Workbox). Never imports Tauri APIs. |
 | `website` | Marketing site (Next.js App Router) at `freed.wtf`. Lives on the `www` branch lane. |
-| `skills/`, `scripts/` | Agent skills and the automation/release tooling (see AGENTS.md and docs/NIGHTLY-SELF-IMPROVE.md). |
+| `.agents/skills/`, `automation/`, `scripts/` | Governed agent skills, continuous actor prompts and specifications, evidence schemas, and automation or release tooling. |
 
 ## Desktop app
 
 Tauri 2 (Rust backend, WKWebView renderer on macOS). Two runtime halves:
 
-**The React renderer is the orchestrator.** The main window runs the scheduler (`background-runtime-coordinator.ts` job kinds include `rss-poll`, content fetching, cloud upload), the RSS poller, the content fetcher, provider capture drivers (`fb-capture.ts`, `instagram-capture.ts`, `li-capture.ts`, X via `capture.ts`), provider health tracking, and the Automerge worker host. This is a load-bearing architectural fact: killing the main renderer kills every in-flight background job (finding F03; Wave 6 of the stability program moves orchestration into Rust).
+**The React renderer is the orchestrator.** The main window runs the scheduler (`background-runtime-coordinator.ts` job kinds include `rss-poll`, content fetching, cloud upload), the RSS poller, the content fetcher, provider capture drivers (`fb-capture.ts`, `instagram-capture.ts`, `li-capture.ts`, `substack-capture.ts`, `medium-capture.ts`, `youtube-capture.ts`, X via `capture.ts`), provider health tracking, and the Automerge worker host. This is a load-bearing architectural fact: killing the main renderer kills every in-flight background job (finding F03; Wave 6 of the stability program moves orchestration into Rust).
 
 **Rust (`src-tauri/src/lib.rs`) owns native substrate:** window management including hidden scraper WebViews, the LAN sync relay, the renderer watchdog and memory recovery, `runtime-health.jsonl` telemetry, the dev sync trigger watcher, tray/updater/global-shortcut plumbing, and utility commands such as `fetch_binary_url`.
 
 ### Capture strategies per provider
 
-All capture uses the user's own authenticated sessions in app-managed WebViews. Anything that would change provider-visible behavior (loads, navigation, frequency, cookies, headers, extractor scripts) requires the explicit approval lane in AGENTS.md and STABILITY-PROGRAM.md.
+Capture uses provider-specific transports. Anything that would change provider-visible behavior, including loads, navigation, request frequency, cookies, headers, extractor scripts, embeds, or provider API calls, requires the explicit approval lane in AGENTS.md and STABILITY-PROGRAM.md.
 
 - **X:** hidden authenticated WebView calls X's own GraphQL API (`x.com/i/api/graphql`, endpoint definitions in `capture-x/src/endpoints.ts`) and normalizes timeline responses. No DOM scraping.
-- **Facebook / Instagram / LinkedIn:** hidden scraper windows (labels `fb-scraper`, `ig-scraper`, `li-scraper`, each with an isolated WebKit data store) load the provider feed and run DOM extract scripts (`fb-extract-dom`, `instagram-extract-script`, `li-extract-dom`, plus stories and FB groups variants). Results are normalized by the matching `capture-*` package. Facebook extractors have a measured ~2-day half-life against DOM churn; the program forbids hardening passes and prescribes diagnostics (canary classification) instead.
+- **Authenticated websites:** isolated WebView data stores keep each provider session on the user's device. Provider pages are loaded and normalized by the matching `capture-*` package. DOM extractors can change frequently, so the stability program favors diagnostics over speculative hardening.
+- **YouTube:** an isolated authenticated session captures the user's subscription roster and saved playlists through the YouTube-specific native bridge and `capture-youtube` normalization package. Playback remains a reader surface, not a background preload loop.
+- **Substack and Medium beta:** isolated authenticated WebView sessions capture
+  bounded rendered roster, activity, and essay records. Browser-safe capture
+  packages normalize records, and one atomic Automerge change reconciles
+  follow-roster accounts with visible activity. The graph run rejects browser
+  chrome and essay links, and caps itself at 500 unique identities. Missing
+  rows never imply an unfollow. Subscriber management and private communication
+  surfaces are blocked. Essay excerpts embedded inside restacks, likes, and
+  claps are not archived. A dedicated randomized scheduler runs both beta
+  providers outside the RSS poll job. The next allowed capture time is stored
+  outside auth state so cooldowns survive a restart or disconnect. User-added
+  RSS remains the preferred path for full public essay bodies, with canonical
+  reconciliation consolidating legacy duplicates without losing user state.
 - **RSS:** `rss-poller.ts` on the renderer scheduler; parsing in `capture-rss`.
 - **Save-for-later:** URL/clipboard capture through `capture-save` (Readability extraction); also used by the PWA.
-- Social scrapes are currently nested inside the `rss-poll` job, which serializes them behind a Rust mutex and causes the recurring "job timed out kind=rss-poll" cycle (F17; un-nesting is Wave 4).
+- Facebook, Instagram, and LinkedIn social scrapes are currently nested inside
+  the `rss-poll` job, which serializes them behind a Rust mutex and causes the
+  recurring "job timed out kind=rss-poll" cycle (F17; un-nesting is Wave 4).
+  Substack and Medium use their dedicated scheduler and do not enter that nested
+  path.
 
 ### Auth state
 
@@ -52,20 +66,30 @@ Session cookies live in the scraper WebViews' data stores. Known misclassificati
 
 One Automerge document holds items, preferences, and social graph data (`packages/shared/src/schema.ts`). Schema changes must be backward compatible: add optional fields, never delete.
 
+The document only stores state whose meaning survives moving to another device. Content, subscriptions, identity relationships, user-authored organization, ranking policy, capture policy, and accessibility preferences belong in Automerge. Window geometry, shell visibility, view modes, sort and filter selections, graph pin coordinates, machine endpoints, connection scheduling, and transient operation status stay in device-local storage. Central mutation guards enforce this boundary before preference, person, account, feed, or Story Wall changes reach Automerge. Legacy schema fields remain optional and deprecated so older documents still load, but current clients neither create nor update them. The synchronized metadata identifies the document itself. Runtime timestamps, presence, and machine-local settings do not belong in the document.
+
+A minimal Freed Desktop registration map is the deliberate exception because its meaning is cross-device coordination. It lets a library detect that more than one Freed Desktop installation has been configured and warn that provider polling may be duplicated. Each opaque installation identifier originates in local native storage. The synced map records only the stable identifier and first registration time. It does not record PWA readers, online presence, last-seen heartbeats, provider credentials, or machine details.
+
+Older documents can still contain full reader HTML and RSS retry fields. Current clients never create or update those fields in Automerge. Reader HTML remains read-only compatibility data so an upgrade cannot delete another device's only reader copy. It stays out of hydrated list state, is fetched from the worker only for the active reader, and is then cached locally. Deprecated synchronized RSS retry, error, and validator fields are ignored so one device's old failure cannot throttle another device.
+
+RSS subscriptions and the last successful content refresh time sync. Retry windows, failure counters, and fetch errors stay local to the polling device. Deprecated synchronized HTTP validator fields are ignored. The current transport does not persist validators. If conditional requests are added later, their validators must stay local too. A failed network request on one machine must not delay another machine's scheduler.
+
+Graph pin coordinates are migrated once from legacy Person and Account fields into a versioned local layout store. Current person and account mutations strip those fields at the store, optimistic projection, and schema boundaries. Rendering removes any stale synchronized coordinates before overlaying the current device's layout.
+
 - **Worker ownership:** each app runs the document inside a dedicated worker (`automerge.worker.ts` in desktop and PWA). Mutations go through worker messages; `STATE_UPDATE` fans hydrated state back to subscribers. Persistence is IndexedDB with incremental appends plus periodic snapshots (`automerge-persistence.ts`, `snapshots.ts`).
-- **LAN relay:** the desktop Rust side runs a WebSocket relay (default port 8765, `FREED_SYNC_PORT` override). The PWA pairs via QR code and connects as a client. Today the relay broadcasts desktop state to clients but never merges client pushes into the desktop document, and the PWA pushes only once per connection — phone→desktop convergence over LAN does not exist yet and rides on cloud sync instead (F02/F23; Wave 3 builds the inbound path).
-- **Cloud sync:** full-document snapshots to the user's Google Drive or Dropbox with download-merge-upload (`sync/src/cloud/`). Program-tracked defects: every upload re-merges the remote and re-triggers itself through an unfiltered doc-change subscriber, forming a self-sustaining idle upload loop on desktop and PWA (F01/F06); the GDrive changes poll has no self-write filter (F12 lists more); the CRDT merge runs on the main renderer thread (F14). Wave 2 dampers (P1-01..P1-03) break these loops.
-- **Transport cost:** every synced mutation ships the whole document binary as a boxed `number[]` through two JS heaps plus JSON Tauri IPC (~16-20x document size transient, F07/F10), history grows without bound (F08), and archive pruning — the only automatic eviction — is disabled whenever cloud credentials exist (F09). Wave 5 is the demand-side fix (raw-bytes transport, worker lifecycle, eviction re-enable).
+- **LAN relay:** the desktop Rust side runs a WebSocket relay (default port 8765, `FREED_SYNC_PORT` override). The PWA pairs via QR code and connects as a client. Today the relay broadcasts desktop state to clients but never merges client pushes into the desktop document, and the PWA pushes only once per connection. Phone-to-desktop convergence over LAN does not exist yet and rides on cloud sync instead (F02/F23; Wave 3 builds the inbound path).
+- **Cloud sync:** full-document snapshots to the user's Google Drive or Dropbox with download-merge-upload (`sync/src/cloud/`). The shipped desktop P1-01 heads guard suppresses merge-back upload echoes while preserving genuine mutations. The matching PWA damper remains P1-02, and the GDrive changes poll still needs the P1-03 self-write filter. CRDT merge work still runs on the main renderer thread (F14).
+- **Transport cost:** every synced mutation ships the whole document binary as a boxed `number[]` through two JS heaps plus JSON Tauri IPC (~16-20x document size transient, F07/F10), history grows without bound (F08), and archive pruning, the only automatic eviction, is disabled whenever cloud credentials exist (F09). Wave 5 is the demand-side fix (raw-bytes transport, worker lifecycle, eviction re-enable).
 
 ## Watchdog and recovery
 
-The Rust watchdog supervises the renderer via heartbeats (`renderer-heartbeat.ts` → `renderer_heartbeat` events), native memory samples, and WebKit process telemetry, appending structured events to `runtime-health.jsonl` in the app data dir (currently halved at a 5 MiB cap; P0-04 replaces this with daily rotation). Recovery actions include renderer restart and scraper-window recycling.
+The Rust watchdog supervises the renderer via heartbeats (`renderer-heartbeat.ts` to `renderer_heartbeat` events), native memory samples, and WebKit process telemetry. P0-04 now writes daily runtime-health files on Unix, keeps a stable `runtime-health.jsonl` symlink for readers, and retains recent history. Non-Unix builds retain the bounded single-file fallback. Recovery actions include renderer restart and scraper-window recycling.
 
-Known limitations (verified, frozen by program rule until Wave 6): WebKit process attribution is a heuristic that cannot distinguish the main renderer from scrapers — WebKit XPC processes are children of launchd, not the app (F27); `cpu_usage` is always 0.0 so CPU-gated recovery paths are dead code (F28); diagnostics run un-timed subprocesses under the renderer-health write lock (F25); post-scrape recovery can destroy the renderer before a scrape invoke returns (F03/F26); the memory preflight recycles scraper windows without an active-session check (F04/F30). **Do not tune watchdog thresholds**; every threshold change re-opens the fix treadmill the stability program exists to stop.
+Known limitations (verified, frozen by program rule until Wave 6): WebKit process attribution is a heuristic that cannot distinguish the main renderer from scrapers. WebKit XPC processes are children of launchd, not the app (F27); `cpu_usage` is always 0.0 so CPU-gated recovery paths are dead code (F28); diagnostics run un-timed subprocesses under the renderer-health write lock (F25); post-scrape recovery can destroy the renderer before a scrape invoke returns (F03/F26); the memory preflight recycles scraper windows without an active-session check (F04/F30). **Do not tune watchdog thresholds**; every threshold change re-opens the fix treadmill the stability program exists to stop.
 
 ## PWA reader
 
-Vite + React + `vite-plugin-pwa` (Workbox) at `app.freed.wtf` (Vercel). Imports `@freed/ui`, `@freed/shared`, `@freed/sync`, `@freed/capture-save`. Runs its own Automerge worker and IndexedDB persistence, connects to the desktop relay over LAN (QR pairing), and can sync against the same cloud snapshot. It shares the cloud-loop defect with the desktop (F06/F22).
+Vite + React + `vite-plugin-pwa` (Workbox) at `app.freed.wtf` (Vercel). Imports `@freed/ui`, `@freed/shared`, `@freed/sync`, and `@freed/capture-save`. Runs its own Automerge worker and IndexedDB persistence, connects to the desktop relay over LAN (QR pairing), and can sync against the same cloud snapshot. Its P1-02 cloud-loop damper remains separate from the shipped desktop guard (F06/F22).
 
 ## Website
 
@@ -73,7 +97,7 @@ Next.js App Router marketing site at `freed.wtf` (`website/`), deployed to Verce
 
 ## Release lanes and shipping
 
-Three long-lived branches: `dev` (product work, default), `main` (production releases), `www` (public marketing + published changelog). Versioning is CalVer `YY.M.DDBUILD` (AGENTS.md has the encoding). The ship flow is `release.sh` (version + draft notes) → manual note approval → `release-publish.sh` (tag) → tag push triggers `.github/workflows/release.yml` (validation, four-platform build matrix, updater manifest `latest.json`, publish, website/PWA deploys). Desktop self-updates via `tauri-plugin-updater`. The full operator flow is the `freed-ship-build` skill.
+Three long-lived branches: `dev` (product work, default), `main` (production releases), `www` (public marketing + published changelog). Versioning is CalVer `YY.M.DDBUILD` (AGENTS.md has the encoding). Dev release prep starts from current `origin/dev` and returns through a reviewed PR to `dev`. Production release prep starts from current `origin/main` after any required `dev` promotion and returns through a release-only PR to `main`. `release-publish.sh` tags only the exact merged remote commit. Pushing that tag triggers `.github/workflows/release.yml` for validation, platform builds, updater metadata, publication, and website or PWA deployment. Desktop self-updates via `tauri-plugin-updater`. The full operator flow is the `freed-ship-build` skill.
 
 ## Testing and validation
 
@@ -83,8 +107,51 @@ Three long-lived branches: `dev` (product work, default), `main` (production rel
 
 ## Automation substrate
 
-- `scripts/nightly-self-improve.mjs`: nightly planner that turns soak/scan evidence into ranked overnight tasks (docs/NIGHTLY-SELF-IMPROVE.md). Learning state lives in `~/.freed/automation/`.
-- `scripts/doctor.mjs`: machine preflight (pinned Node toolchain, gh, credential helpers, python3) run warn-only by the worktree helpers.
-- `scripts/soak-collect.mjs` / `scripts/soak-assert.mjs`: installed-soak evidence collection and machine-readable verdicts (docs/SOAK-AND-TRIGGERS.md is the canonical soak contract).
+- `scripts/lib/automation-control.mjs` and `scripts/automation-control.mjs`:
+  canonical task state, authenticated actor policy, short-lived leases, provider
+  approval state, append-only events, pending outcome reservations, and atomic
+  lifecycle transitions under `~/.freed/automation/`.
+- `automation/specs/` and `automation/prompts/`: checked-in contracts for the
+  nightly runner, runtime observer, release verifier, scaffolding maintainer,
+  and stability controller. `scripts/validate-automation-specs.mjs` checks the
+  repository contract. `scripts/validate-host-automations.mjs` audits the saved
+  host actors and their owner-supplied overlays without installing them.
+- `scripts/nightly-self-improve.mjs`: planner and executor that turns verified
+  soak, canary, triage, CI, and program evidence into ranked work. Strict
+  `scripts/doctor.mjs --strict` preflight gates mutation and publishing.
+- `scripts/doctor.mjs`: machine preflight for the pinned Node toolchain, GitHub
+  CLI, credential helpers, Python, Xcode license state, automation state, and
+  optional trusted publisher readiness. Worktree setup may warn, but continuous
+  mutation loops stop on strict failures. Missing optional broker provisioning
+  is a warning unless the caller explicitly requires that profile.
+- `scripts/soak-collect.mjs` and `scripts/soak-assert.mjs`: exclusive installed
+  soak collection, raw evidence mirroring, build attribution, source-health
+  checks, comparable workload context, and machine-readable verdicts. See
+  docs/SOAK-AND-TRIGGERS.md.
+- `scripts/canary-context.mjs` and `scripts/canary-summarize.mjs`: rebuild a
+  stored soak, preserve runtime and collector sidecars, compare only verified
+  historical cohorts, and write portable canary ledger bundles.
+- `scripts/build-outcome-verdict.mjs` and `scripts/record-outcome.mjs`: derive
+  task effects from raw registered evidence, then commit one authenticated
+  outcome transaction to the canonical ledger and control event stream.
+- `scripts/triage.mjs`: fold attributable alarms, soak failures, verified
+  canary regressions, and CI issues into one immutable ranked candidate
+  generation while preserving duplicate event multiplicity.
+- `scripts/trusted-publisher-host.swift` and
+  `scripts/trusted-worktree-publish.sh`: optional root-provisioned publisher broker,
+  one-use scoped capabilities, exact leases, pinned executable identities, and
+  final branch and PR rechecks. No reusable publisher secret enters an agent
+  process.
+- `scripts/lib/provider-visible-paths.mjs`, `.github/CODEOWNERS`, and
+  `.github/rulesets/`: canonical provider-risk classification and branch
+  governance. Ruleset creation remains an explicit post-merge owner action.
+- `scripts/stability-artifact.mjs` and `automation/artifact-schemas/`: versioned,
+  content-addressed interchange manifests for evidence capture, memory
+  profiles, sync replays, provider reviews, and controller decisions.
 - `scripts/dev-sync-trigger.mjs`: terminal-driven provider sync trigger for installed dev builds (same doc).
-- The stability program (docs/STABILITY-PROGRAM.md) is the active engineering queue; agents pick tasks from its wave tables under its binding rules.
+- `.agents/skills/` contains the governed operational workflows.
+  `scripts/validate-skills.mjs` checks safe invocation, referenced commands,
+  local links, and agent metadata.
+- The stability program (docs/STABILITY-PROGRAM.md) is the active engineering
+  queue. Continuous actors reconcile its tasks through the control plane rather
+  than inventing a parallel backlog.

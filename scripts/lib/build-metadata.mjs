@@ -1,4 +1,5 @@
 const BUILD_KIND_VALUES = new Set(["release", "snapshot", "preview", "local"]);
+const BUILD_CHANNEL_VALUES = new Set(["dev", "production"]);
 
 function readEnvString(env, key) {
   const value = env[key];
@@ -18,7 +19,8 @@ function inferBuildKind(env) {
   const isVercelBuild = readEnvString(env, "VERCEL") === "1";
   const vercelEnv = readEnvString(env, "VERCEL_ENV");
   const commitRef = readEnvString(env, "VERCEL_GIT_COMMIT_REF");
-  const commitMessage = readEnvString(env, "VERCEL_GIT_COMMIT_MESSAGE")?.toLowerCase() ?? "";
+  const commitMessage =
+    readEnvString(env, "VERCEL_GIT_COMMIT_MESSAGE")?.toLowerCase() ?? "";
   const isReleaseCommit =
     /^release:\s/.test(commitMessage) ||
     /^docs:\sreview release notes for v/.test(commitMessage);
@@ -38,12 +40,45 @@ function inferBuildKind(env) {
   return "preview";
 }
 
+function inferBuildChannel(appVersion, buildKind, commitRef, env) {
+  const explicit = readEnvString(env, "FREED_BUILD_CHANNEL");
+  if (explicit) {
+    if (!BUILD_CHANNEL_VALUES.has(explicit)) {
+      throw new Error(
+        `FREED_BUILD_CHANNEL must be dev or production, received ${explicit}.`,
+      );
+    }
+    return explicit;
+  }
+
+  if (
+    appVersion.endsWith("-dev") ||
+    commitRef === "dev" ||
+    commitRef?.endsWith("-dev") ||
+    buildKind !== "release"
+  ) {
+    return "dev";
+  }
+
+  return "production";
+}
+
 export function getBuildMetadata(appVersion, env = process.env) {
+  const buildKind = inferBuildKind(env);
+  const commitRef =
+    readEnvString(env, "FREED_BUILD_COMMIT_REF") ??
+    readEnvString(env, "VERCEL_GIT_COMMIT_REF") ??
+    readEnvString(env, "GITHUB_REF_NAME");
   return {
     appVersion,
-    buildKind: inferBuildKind(env),
-    commitSha: readEnvString(env, "VERCEL_GIT_COMMIT_SHA"),
-    commitRef: readEnvString(env, "VERCEL_GIT_COMMIT_REF"),
-    deployedAt: readEnvString(env, "FREED_BUILD_TIMESTAMP") ?? new Date().toISOString(),
+    buildKind,
+    channel: inferBuildChannel(appVersion, buildKind, commitRef, env),
+    commitSha:
+      readEnvString(env, "FREED_BUILD_COMMIT_SHA") ??
+      readEnvString(env, "VERCEL_GIT_COMMIT_SHA") ??
+      readEnvString(env, "GITHUB_SHA"),
+    commitRef,
+    deployedAt:
+      readEnvString(env, "FREED_BUILD_TIMESTAMP") ?? new Date().toISOString(),
   };
 }

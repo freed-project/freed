@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.tauri.app/config/2/capability",
+  "identifier": "youtube-session",
+  "description": "Allows the authenticated YouTube session to emit capture results to Freed",
+  "windows": ["youtube-session"],
+  "remote": {
+    "urls": [
+      "https://youtube.com/*",
+      "https://www.youtube.com/*",
+      "https://m.youtube.com/*"
+    ]
+  },
+  "permissions": ["core:event:allow-emit"]
+}

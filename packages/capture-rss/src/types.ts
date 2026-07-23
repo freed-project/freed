@@ -15,6 +15,7 @@ export interface ParsedFeed {
   link?: string;
   feedUrl: string;
   language?: string;
+  generator?: string;
   lastBuildDate?: string;
   image?: {
     url: string;

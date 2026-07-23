@@ -1,54 +1,36 @@
 ---
 name: freed-build-www
-description: Build marketing-site work in a www-based worktree, verify website changes, launch a local website preview, optionally deploy a shareable website preview, and prepare a draft PR targeting www. Use for homepage, public changelog presentation, public roadmap presentation, marketing copy, legal or marketing pages, and website-only changes intended for freed.wtf.
+description: Build Freed marketing-site work in a worktree based on origin/www, verify the website, and publish a pull request to www. Use for freed.wtf pages, marketing copy, legal pages, public changelog presentation, and public roadmap presentation. Use roadmap mode only from an approved docs/roadmap-status.json source commit, never by inferring status from prose or by merging dev into www.
 disable-model-invocation: true
 ---
 
 # Build WWW
 
-Create a marketing worktree branch from `www`, implement the website change, verify it, launch a local website preview, optionally deploy a shareable website preview, and open a draft PR targeting `www`.
+Build one website change in the `www` lane and preserve its source identity through preview and review.
 
-## Workflow
+## Establish the contract
 
-1. Confirm the request is public marketing work targeting `www`.
-2. Reject or reroute product work targeting `dev`; use `freed-build-feature` instead.
-3. Create a new worktree branch from `www` using `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/www --install full --target website`.
-   - When you are spinning up multiple speculative threads at once, prefer `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/www --swarm --target website` so bootstrap stays deferred until that thread actually needs verification or a preview.
-4. If the worktree was created with deferred bootstrap on purpose, recover with `./scripts/worktree-bootstrap.sh <worktree> --target website`.
-5. Keep changes scoped to marketing paths unless the user explicitly changes the destination.
-6. Run website checks from the workspace directory, at minimum `cd website && PATH=../node_modules/.bin:$PATH npm run build`.
-7. Browser tooling is opt-in only. Do not launch Chrome DevTools MCP, Playwright MCP, or Computer Use unless the task explicitly needs browser automation or browser debugging.
-8. Before opening the draft PR, launch the local website preview on an explicit fresh port so parallel agent threads do not reuse or stomp each other's previews.
-   - Compute a port first with `PORT=$(node scripts/lib/find-free-port.mjs 3000)`.
-   - Launch with `./scripts/worktree-preview.sh website --port "$PORT"`.
-   - Do not run `./scripts/dev-session-clean.sh` just to relaunch a preview. That kills tracked previews for other work unless scoped.
-9. Deploy `./scripts/vercel-deploy-preview.sh website` only when a shareable remote preview is needed.
-10. If browser tooling was needed, clean browser automation only after preserving any preview the user still needs. Do not run broad cleanup while the local preview should remain open.
-   - If cleanup is needed before PR merge or thread archive, scope it to this worktree with `./scripts/dev-session-clean.sh --worktree <worktree>`.
-   - Before reporting final status, list this thread's preview with `./scripts/worktree-processes.sh list --worktree <worktree>` so the URL and owner are clear.
-   - When the PR is merged, the worktree is removed, or the thread is archived, stop only this thread's preview with `./scripts/worktree-processes.sh stop --worktree <worktree> --target website`.
-   - Never stop previews from other worktrees unless the user explicitly asks for global cleanup.
-11. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --base www --summary "<user-facing change>" --test "cd website && PATH=../node_modules/.bin:$PATH npm run build" --ready` (omit `--ready` for interim publishes so the PR stays draft while iterating).
-   - If the branch intentionally adds new files, stage them yourself first or re-run `./scripts/worktree-publish.sh` with `--include-untracked`.
-12. Confirm the branch is pushed to `origin`, the PR targets `www` and is marked ready for review (or intentionally left draft with the reason stated), and the closeout includes the local preview URL.
+1. Confirm the destination is `www`. Route product code and product documentation to `freed-build-feature`.
+2. Record the source request, allowed authority, and source commit SHA. Preparing a PR does not grant deployment authority.
+3. Fetch remote refs, then create the worktree with `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/www --install full --target website`.
+4. Keep changes within website and marketing-owned paths unless the user explicitly changes scope.
 
-Never run `npm run <script> --workspace=...` from the repo root in this monorepo. Run website commands from `website/`, and prefix `PATH` with the worktree root `node_modules/.bin` when a hoisted binary like `next` or `tsx` is required.
+## Roadmap mode
 
-## Scope
+1. Require an approved product source commit containing [docs/roadmap-status.json](../../../docs/roadmap-status.json).
+2. Record the source commit SHA and manifest digest in the task and PR body.
+3. Run `node scripts/validate-roadmap-status.mjs` in the source checkout before editing the website.
+4. Map the manifest status exactly into `website/src/app/roadmap/RoadmapContent.tsx`. Do not infer status from phase prose, commit messages, or checkboxes outside the canonical manifest.
+5. Reconcile the public phase description whenever the approved source commit changed that phase document, even when its status stayed the same.
+6. Never merge or fast-forward `www` to `dev`. Transfer only the approved roadmap presentation change through this lane.
 
-Default allowed paths:
+## Verify and publish
 
-- `website/**`
-- marketing docs such as `docs/MARKETING.md`
-- legal docs rendered by the marketing site
-- `.agents/skills/freed-build-www/SKILL.md` when updating this skill
-
-Require rerouting or explicit confirmation before touching:
-
-- `packages/**`
-- `scripts/release*`
-- `.github/workflows/release.yml`
-- `release-notes/**`
-- `packages/desktop/**`
-- `packages/pwa/**`
-- root package files, unless the website build tooling requires it
+1. Run website commands from `website/`, with the worktree root `node_modules/.bin` on `PATH` when a hoisted binary is needed.
+2. Run `npm run build` from `website/`.
+3. Launch `./scripts/worktree-preview.sh website` on a fresh port returned by `scripts/lib/find-free-port.mjs`.
+4. Use browser automation only when the task requires browser inspection. Keep the preview alive while the user is reviewing it.
+5. Deploy a shareable preview only when requested, using `./scripts/vercel-deploy-preview.sh website`.
+6. Publish with `./scripts/worktree-publish.sh --title "<conventional title>" --base www --summary "<change>" --test "cd website && PATH=../node_modules/.bin:$PATH npm run build" --ready` using the caller's existing GitHub authentication. Omit `--ready` while work remains. A deliberately provisioned unattended host may use `FREED_TRUSTED_PUBLISHER` as an optional wrapper around the same helper. Missing broker provisioning does not block the normal website PR path.
+7. Confirm the PR targets `www`, the exact head SHA passed validation, and the PR state matches the granted authority.
+8. Report the source commit, website commit, local preview URL, and remote preview deployment ID when one exists.

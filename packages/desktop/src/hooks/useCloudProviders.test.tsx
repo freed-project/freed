@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   initiateDesktopOAuth: vi.fn(),
   isOAuthCanceledError: vi.fn((error: unknown) => error instanceof Error && error.name === "AbortError"),
   startCloudSync: vi.fn(),
+  captureCloudLifecycle: vi.fn((): { isCurrent: () => boolean } => ({ isCurrent: () => true })),
   storeCloudToken: vi.fn(),
   updateCloudProvider: vi.fn(),
 }));
@@ -19,6 +20,7 @@ vi.mock("../lib/sync", () => ({
   initiateDesktopOAuth: mocks.initiateDesktopOAuth,
   isOAuthCanceledError: mocks.isOAuthCanceledError,
   startCloudSync: mocks.startCloudSync,
+  captureCloudLifecycle: mocks.captureCloudLifecycle,
   storeCloudToken: mocks.storeCloudToken,
 }));
 
@@ -120,5 +122,99 @@ describe("useCloudProviders", () => {
     );
     expect(gdriveCall?.[1]).toEqual({ status: "connected" });
     expect(Object.hasOwn(gdriveCall?.[1] ?? {}, "error")).toBe(false);
+  });
+
+  it("stays connecting until the initial cloud reconciliation completes", async () => {
+    let finishSync: (() => void) | null = null;
+    mocks.initiateDesktopOAuth.mockResolvedValue({ accessToken: "token" });
+    mocks.startCloudSync.mockImplementation(
+      () => new Promise<void>((resolve) => { finishSync = resolve; }),
+    );
+
+    await act(async () => {
+      root.render(<Harness />);
+    });
+    const connectButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Connect Google Drive",
+    );
+    await act(async () => {
+      connectButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector("[data-testid='gdrive-status']")?.textContent).toBe("connecting");
+    expect(mocks.startCloudSync).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      finishSync?.();
+      await Promise.resolve();
+    });
+    expect(container.querySelector("[data-testid='gdrive-status']")?.textContent).toBe("connected");
+  });
+
+  it("clears the token and cloud loop when setup is canceled during initial reconciliation", async () => {
+    let finishSync: (() => void) | null = null;
+    mocks.initiateDesktopOAuth.mockResolvedValue({ accessToken: "token" });
+    mocks.startCloudSync.mockImplementation(
+      () => new Promise<void>((resolve) => { finishSync = resolve; }),
+    );
+
+    await act(async () => {
+      root.render(<Harness />);
+    });
+    const buttons = Array.from(container.querySelectorAll("button"));
+    const connectButton = buttons.find((button) => button.textContent === "Connect Google Drive");
+    const cancelButton = buttons.find((button) => button.textContent === "Cancel Google Drive");
+
+    await act(async () => {
+      connectButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(mocks.storeCloudToken).toHaveBeenCalledTimes(1);
+    expect(mocks.startCloudSync).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      cancelButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(container.querySelector("[data-testid='gdrive-status']")?.textContent).toBe("idle");
+    expect(mocks.clearCloudProvider).toHaveBeenCalledWith("gdrive");
+
+    await act(async () => {
+      finishSync?.();
+      await Promise.resolve();
+    });
+    expect(container.querySelector("[data-testid='gdrive-status']")?.textContent).toBe("idle");
+  });
+
+  it("does not store credentials when the cloud lifecycle changes during OAuth", async () => {
+    let finishOAuth: ((token: { accessToken: string }) => void) | null = null;
+    let lifecycleCurrent = true;
+    mocks.captureCloudLifecycle.mockReturnValue({
+      isCurrent: () => lifecycleCurrent,
+    });
+    mocks.initiateDesktopOAuth.mockImplementation(
+      () => new Promise((resolve) => { finishOAuth = resolve; }),
+    );
+
+    await act(async () => {
+      root.render(<Harness />);
+    });
+    const connectButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Connect Google Drive",
+    );
+    await act(async () => {
+      connectButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    lifecycleCurrent = false;
+    await act(async () => {
+      finishOAuth?.({ accessToken: "stale-token" });
+      await Promise.resolve();
+    });
+
+    expect(mocks.storeCloudToken).not.toHaveBeenCalled();
+    expect(mocks.startCloudSync).not.toHaveBeenCalled();
   });
 });

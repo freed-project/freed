@@ -1,6 +1,6 @@
 # W2-01: Invariant alarms with surgical circuit breakers
 
-runner-safe: false (lib.rs + sync paths) | provider-visible: false | soak-gated: no (may land before its matching dampers — positive control)
+runner-safe: false (lib.rs + sync paths) | provider-visible: true (native, cloud, auth, and provider containment paths) | soak-gated: YES for each deferred circuit breaker (passive alarms are runtime-neutral)
 Findings: measurement/containment layer for F01, F03, F04, F16, F23. Prereq: P0-02, P0-03.
 
 ## Context
@@ -37,5 +37,5 @@ Landed in lib.rs as a passive monitor tapped into `append_runtime_health` (the s
 
 Deferred, by design:
 
-- **Circuit breakers** (cloud_loop → pause cloud 30 min; watchdog_thrash → stop recovering; auth force-recheck/needs-reconnect). Not wired: each is a behavioral change, stop-recovering touches the frozen watchdog, and program rules cap one behavioral change per soak and want the alarm to observe as a positive control first. Records carry `"action":"observe"`. Breakers land next, one per soak cycle, gated + owner-reviewed.
+- **Circuit breakers** (cloud_loop pauses cloud for 30 min; watchdog_thrash stops recovery; auth forces a recheck or needs-reconnect state). Not wired: each is a provider-visible behavioral change, stop-recovering touches the frozen watchdog, and the program has one global behavior slot. The passive alarm observes as a positive control first. Records carry `"action":"observe"`. Each breaker needs its own scoped provider approval, owner-reviewed PR, installed build, bounded soak, and effect outcome before the next behavior begins.
 - **relay_divergence** — no per-client-push event exists to key on until the Wave 3 relay inbound path lands; an alarm today could never fire, so it is not stubbed.

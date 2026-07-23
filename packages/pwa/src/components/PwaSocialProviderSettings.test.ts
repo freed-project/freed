@@ -8,6 +8,7 @@ import {
   PwaFacebookSettings,
   PwaFeedsSettings,
   PwaGoogleContactsSettings,
+  PwaYouTubeSettings,
 } from "./PwaSocialProviderSettings";
 import { useAppStore } from "../lib/store";
 
@@ -54,6 +55,9 @@ function createPlatform(): PlatformConfig {
     FacebookSettingsContent: PwaFacebookSettings,
     InstagramSettingsContent: null,
     LinkedInSettingsContent: null,
+    SubstackSettingsContent: null,
+    MediumSettingsContent: null,
+    YouTubeSettingsContent: PwaYouTubeSettings,
     GoogleContactsSettingsContent: PwaGoogleContactsSettings,
     releaseChannel: "production",
   };
@@ -124,6 +128,30 @@ describe("PWA source provider settings", () => {
     expect(downloadLink?.querySelector("svg")).not.toBeNull();
     expect(downloadLink?.parentElement?.className).toContain("justify-center");
     expect(downloadLink?.parentElement?.className).toContain("pt-3");
+    cleanup();
+  });
+
+  it("shows YouTube sync status without provider management controls", () => {
+    useAppStore.setState({
+      items: [
+        makeItem({
+          globalId: "youtube:item-1",
+          platform: "youtube",
+          contentType: "video",
+          sourceUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        }),
+      ],
+    });
+
+    const { container, cleanup } = renderWithPlatform(
+      createElement(PwaYouTubeSettings, { surface: "settings" }),
+    );
+
+    expect(container.textContent).toContain("YouTube connections are managed in Freed Desktop");
+    expect(container.textContent).toContain("Synced items");
+    expect(container.textContent).toContain("Download Freed Desktop");
+    expect(container.textContent).not.toContain("Connect YouTube");
+    expect(container.textContent).not.toContain("Freed Offline");
     cleanup();
   });
 

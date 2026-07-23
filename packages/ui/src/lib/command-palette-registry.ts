@@ -589,7 +589,7 @@ export function buildCommandPaletteActions({
       keywords: ["reset", "wipe", "device", "danger"],
       confirm: {
         title: "Reset this device?",
-        description: "Type RESET to wipe local data on this device and reload Freed.",
+        description: "Type RESET to clear this device's Freed library and account connections, then reload Freed.",
         token: "RESET",
         confirmLabel: "Reset device",
       },
@@ -605,7 +605,7 @@ export function buildCommandPaletteActions({
         keywords: ["reset", "wipe", "cloud", cloudProviderLabel.toLocaleLowerCase(), "danger"],
         confirm: {
           title: `Reset this device and ${cloudProviderLabel}?`,
-          description: `Type RESET to wipe this device and permanently remove the ${cloudProviderLabel} backup.`,
+          description: `Type RESET to clear this device's Freed library and permanently remove the ${cloudProviderLabel} backup.`,
           token: "RESET",
           confirmLabel: "Reset device and cloud backup",
         },

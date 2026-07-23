@@ -60,6 +60,11 @@ function timedHandler(cmd: string, handler: Handler): Handler {
   };
 }
 
+function setMockYouTubeWindowVisible(visible: boolean): null {
+  (window as unknown as Record<string, unknown>).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = visible;
+  return null;
+}
+
 /**
  * Route an HTTP request through the Vite dev server proxy so it can make
  * real network calls server-side, bypassing CORS. Mirrors what the Rust
@@ -159,7 +164,7 @@ const handlers: Record<string, Handler> = {
   x_api_request: (args: Record<string, unknown>) => proxyFetch(args),
   get_local_ip: () => "127.0.0.1",
   get_all_local_ips: () => [],
-  get_sync_url: () => "ws://127.0.0.1:8765",
+  get_sync_url: () => "ws://127.0.0.1:8765?t=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   sha256_file: () => "",
   download_local_ai_model_file: (args: Record<string, unknown>) => {
     const request = args.request as { expectedSizeBytes?: number } | undefined;
@@ -243,9 +248,13 @@ const handlers: Record<string, Handler> = {
       mayProceed: true,
     };
   },
+  get_desktop_installation_witness: () => "a".repeat(64),
   get_updater_target: () => "darwin-aarch64",
   retry_startup_after_crash: () => null,
   export_startup_diagnostics: () => "/Users/test/Downloads/freed-diagnostics-test.json",
+  clear_factory_reset_runtime_artifacts: () => null,
+  factory_reset_sync_relay: () => "factory-reset-pairing-token",
+  resume_sync_relay_after_factory_reset: () => null,
   reset_pairing_token: () => null,
   get_recent_logs: () => [],
   start_relay: () => null,
@@ -295,6 +304,26 @@ const handlers: Record<string, Handler> = {
   li_check_auth: () => true,
   li_scrape_feed: () => null,
   li_disconnect: () => null,
+  substack_show_login: () => null,
+  substack_hide_login: () => null,
+  substack_check_auth: () => true,
+  substack_disconnect: () => null,
+  substack_scrape_graph: () => null,
+  substack_scrape_activity: () => null,
+  substack_scrape_essays: () => null,
+  medium_show_login: () => null,
+  medium_hide_login: () => null,
+  medium_check_auth: () => true,
+  medium_disconnect: () => null,
+  medium_scrape_graph: () => null,
+  medium_scrape_activity: () => null,
+  medium_scrape_essays: () => null,
+  yt_show_login: () => setMockYouTubeWindowVisible(true),
+  yt_hide_login: () => setMockYouTubeWindowVisible(false),
+  yt_check_auth: () => true,
+  yt_capture: () => setMockYouTubeWindowVisible(false),
+  yt_add_to_offline_playlist: () => setMockYouTubeWindowVisible(false),
+  yt_disconnect: () => setMockYouTubeWindowVisible(false),
 };
 
 // Expose handler map so tests and tauri-init.ts can override defaults.
@@ -304,6 +333,7 @@ const handlers: Record<string, Handler> = {
   cmd: string;
   args: Record<string, unknown> | undefined;
 }>;
+(window as unknown as Record<string, unknown>).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
 
 const callbackStore = (
   (window as unknown as Record<string, unknown>).__TAURI_MOCK_CALLBACKS__ ??

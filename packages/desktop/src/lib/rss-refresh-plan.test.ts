@@ -17,15 +17,26 @@ function feed(url: string, lastFetched?: number, enabled = true): RssFeed {
 }
 
 describe("rss refresh plan", () => {
-  it("keeps manual refreshes complete but stable", () => {
+  it("lets a manual refresh bypass this device's retry window", () => {
+    const now = 1_000;
     const feeds = [
       feed("https://new.example/feed"),
       feed("https://old.example/feed", 10),
+      {
+        ...feed("https://delayed.example/feed", 5),
+        nextFetchAfter: now + 1,
+      },
       feed("https://disabled.example/feed", 1, false),
     ];
 
-    expect(selectRssFeedsForRefresh(feeds).map((entry) => entry.url)).toEqual([
+    expect(
+      selectRssFeedsForRefresh(feeds, {
+        now,
+        respectRetryWindow: false,
+      }).map((entry) => entry.url),
+    ).toEqual([
       "https://new.example/feed",
+      "https://delayed.example/feed",
       "https://old.example/feed",
     ]);
   });
@@ -72,7 +83,7 @@ describe("rss refresh plan", () => {
     ]);
   });
 
-  it("skips feeds whose retry window is still closed", () => {
+  it("keeps scheduled refreshes inside this device's retry window", () => {
     const now = 10 * SCHEDULED_RSS_STALE_AFTER_MS;
     const eligible = feed("https://eligible.example/feed", 100);
     const delayed = {

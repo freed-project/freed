@@ -4,7 +4,7 @@ export type FeedCardDensity = "compact" | "comfortable" | "expansive";
 
 const STORAGE_KEY = "freed-feed-card-density";
 const CHANGE_EVENT = "freed-feed-card-density-change";
-const DEFAULT_DENSITY: FeedCardDensity = "comfortable";
+export const DEFAULT_FEED_CARD_DENSITY: FeedCardDensity = "comfortable";
 
 export const FEED_CARD_DENSITY_OPTIONS: FeedCardDensity[] = [
   "compact",
@@ -29,15 +29,21 @@ export function isFeedCardDensity(value: string | null): value is FeedCardDensit
 }
 
 export function getFeedCardDensity(): FeedCardDensity {
-  if (typeof window === "undefined") return DEFAULT_DENSITY;
+  if (typeof window === "undefined") return DEFAULT_FEED_CARD_DENSITY;
   const stored = window.localStorage.getItem(STORAGE_KEY);
-  return isFeedCardDensity(stored) ? stored : DEFAULT_DENSITY;
+  return isFeedCardDensity(stored) ? stored : DEFAULT_FEED_CARD_DENSITY;
 }
 
 export function setFeedCardDensity(next: FeedCardDensity): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(STORAGE_KEY, next);
   window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: next }));
+}
+
+export function resetFeedCardDensity(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(STORAGE_KEY);
+  window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: DEFAULT_FEED_CARD_DENSITY }));
 }
 
 export function useFeedCardDensity(): [FeedCardDensity, (next: FeedCardDensity) => void] {
@@ -55,7 +61,7 @@ export function useFeedCardDensity(): [FeedCardDensity, (next: FeedCardDensity) 
     };
     const handleStorage = (event: StorageEvent) => {
       if (event.key !== STORAGE_KEY) return;
-      setDensityState(isFeedCardDensity(event.newValue) ? event.newValue : DEFAULT_DENSITY);
+      setDensityState(isFeedCardDensity(event.newValue) ? event.newValue : DEFAULT_FEED_CARD_DENSITY);
     };
 
     window.addEventListener(CHANGE_EVENT, handleChange);

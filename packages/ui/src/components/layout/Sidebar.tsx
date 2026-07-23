@@ -14,12 +14,18 @@ import { toast } from "../Toast.js";
 import { Tooltip } from "../Tooltip.js";
 import { useDebugStore } from "../../lib/debug-store.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
+import {
+  getInterfaceChromeScale,
+  scaleInterfaceChromePx,
+  useInterfaceZoom,
+} from "../../lib/interface-zoom.js";
 import { MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
 import { getTopSourceItems, type SourceNavigationItem } from "../../lib/source-navigation.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { SearchJumpField } from "./SearchJumpField.js";
 import { resolveAnimationIntensity } from "../../lib/animation-preferences.js";
+import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
 import { buildTopLevelTagFilters, childTagsOf, collectAllTags } from "../../lib/tag-navigation.js";
 import { navigateToFeedView } from "../../lib/workspace-navigation.js";
 import {
@@ -134,8 +140,14 @@ function SidebarNavRow({
   const content = (
     <>
       <span data-sidebar-icon-slot="true">{icon}</span>
-      <span className={labelClass}>{label}</span>
-      {afterLabel}
+      {afterLabel ? (
+        <span className="flex min-w-0 flex-1 items-center gap-1">
+          <span className={labelClass}>{label}</span>
+          {afterLabel}
+        </span>
+      ) : (
+        <span className={labelClass}>{label}</span>
+      )}
     </>
   );
 
@@ -564,9 +576,9 @@ const MAX_WIDTH = MAX_PRIMARY_SIDEBAR_WIDTH_PX;
 const DEFAULT_WIDTH = DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX;
 const COMPACT_WIDTH = COMPACT_PRIMARY_SIDEBAR_WIDTH_PX;
 
-function getDesktopModeForWidth(width: number): SidebarMode {
-  if (width <= CLOSED_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX) return "closed";
-  if (width <= COMPACT_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX) return "compact";
+function getDesktopModeForWidth(width: number, interfaceZoom: number): SidebarMode {
+  if (width <= scaleInterfaceChromePx(CLOSED_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX, interfaceZoom)) return "closed";
+  if (width <= scaleInterfaceChromePx(COMPACT_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX, interfaceZoom)) return "compact";
   return "expanded";
 }
 
@@ -578,7 +590,15 @@ export function Sidebar({
   onDesktopDisplayModeChange,
   desktopGapWidthPx,
 }: SidebarProps) {
-  const { SourceIndicator, syncRssNow, syncSourceNow, getSourceStatus } = usePlatform();
+  const {
+    SourceIndicator,
+    SubstackSettingsContent,
+    MediumSettingsContent,
+    YouTubeSettingsContent,
+    syncRssNow,
+    syncSourceNow,
+    getSourceStatus,
+  } = usePlatform();
   const isMobileViewport = useIsMobile();
   const isMobileDevice = useIsMobileDevice();
   const forceCompactDesktopRail = !isMobileDevice && isMobileViewport;
@@ -600,16 +620,34 @@ export function Sidebar({
   const unreadCountByPlatform = useAppStore((s) => s.unreadCountByPlatform);
   const totalItemCount = useAppStore((s) => s.totalItemCount);
   const itemCountByPlatform = useAppStore((s) => s.itemCountByPlatform);
+  const rssUnreadCount = useMemo(
+    () => Object.values(feedUnreadCounts).reduce((total, count) => total + count, 0),
+    [feedUnreadCounts],
+  );
+  const rssItemCount = useMemo(
+    () => Object.values(feedTotalCounts).reduce((total, count) => total + count, 0),
+    [feedTotalCounts],
+  );
   const providerSyncCounts = useAppStore(
     (s) =>
       ((s as unknown as { providerSyncCounts?: Partial<Record<string, number>> })
         .providerSyncCounts ?? EMPTY_PROVIDER_SYNC_COUNTS) as Partial<Record<string, number>>,
   );
-  const persistedSidebarWidth = Math.min(
-    MAX_WIDTH,
-    useAppStore((s) => s.preferences.display.sidebarWidth) ?? DEFAULT_WIDTH,
-  );
-  const updatePreferences = useAppStore((s) => s.updatePreferences);
+  const [interfaceZoom] = useInterfaceZoom();
+  const interfaceChromeScale = getInterfaceChromeScale(interfaceZoom);
+  const maxSidebarWidthPx = scaleInterfaceChromePx(MAX_WIDTH, interfaceZoom);
+  const defaultSidebarWidthPx = scaleInterfaceChromePx(DEFAULT_WIDTH, interfaceZoom);
+  const compactSidebarWidthPx = scaleInterfaceChromePx(COMPACT_WIDTH, interfaceZoom);
+  const narrowLabeledSidebarThresholdPx = scaleInterfaceChromePx(NARROW_LABELED_SIDEBAR_THRESHOLD_PX, interfaceZoom);
+  const expandedSidebarPaddingCrossoverWidthPx = scaleInterfaceChromePx(EXPANDED_SIDEBAR_PADDING_CROSSOVER_WIDTH_PX, interfaceZoom);
+  const compactRailOuterInsetPx = scaleInterfaceChromePx(COMPACT_RAIL_OUTER_INSET_PX, interfaceZoom);
+  const expandedSidebarRoomyPaddingPx = scaleInterfaceChromePx(EXPANDED_SIDEBAR_ROOMY_PADDING_PX, interfaceZoom);
+  const expandedSidebarCondensedPaddingPx = scaleInterfaceChromePx(EXPANDED_SIDEBAR_CONDENSED_PADDING_PX, interfaceZoom);
+  const primarySidebarGapWidthPx = scaleInterfaceChromePx(PRIMARY_SIDEBAR_GAP_WIDTH_PX, interfaceZoom);
+  const friendsSidebarGapWidthPx = scaleInterfaceChromePx(FRIENDS_SIDEBAR_GAP_WIDTH_PX, interfaceZoom);
+  const mobileMenuTopPx = scaleInterfaceChromePx(MOBILE_MENU_TOP_PX, interfaceZoom);
+  const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
+  const persistedSidebarBaseWidth = Math.min(MAX_WIDTH, deviceDisplay.sidebarWidth);
   const items = useAppStore((s) => s.items);
   const activeView = useAppStore((s) => s.activeView);
   const setActiveView = useAppStore((s) => s.setActiveView);
@@ -623,7 +661,7 @@ export function Sidebar({
   const mapFriendCount = useAppStore((s) => s.mapFriendLocationCount);
   const mapAllContentCount = useAppStore((s) => s.mapAllContentLocationCount);
   const effectiveMapMode = resolveMapMode(
-    display.mapMode,
+    deviceDisplay.mapMode,
     mapFriendCount,
     mapAllContentCount,
   );
@@ -633,7 +671,7 @@ export function Sidebar({
 
   const { open: showSettings, openDefault: openSettings, close: closeSettings } = useSettingsStore();
   const [dragWidth, setDragWidth] = useState<number | null>(null);
-  const [committedWidth, setCommittedWidth] = useState(persistedSidebarWidth);
+  const [committedWidth, setCommittedWidth] = useState(persistedSidebarBaseWidth);
   const [rssFeedsOpen, setRssFeedsOpen] = useState(false);
   const [rssFeedPage, setRssFeedPage] = useState(0);
 
@@ -658,7 +696,6 @@ export function Sidebar({
   const [sourceMenuAnchorRect, setSourceMenuAnchorRect] = useState<DOMRect | null>(null);
   const [sourceMenuAnchorElement, setSourceMenuAnchorElement] = useState<HTMLElement | null>(null);
   const dragging = useRef(false);
-  const pendingPersistedWidth = useRef<number | null>(null);
   const previousDesktopMode = useRef(desktopMode);
 
 
@@ -691,45 +728,39 @@ export function Sidebar({
   useEffect(() => {
     if (dragging.current || dragWidth !== null) return;
     if (openingExpandedFromClosed) return;
-    if (pendingPersistedWidth.current !== null) {
-      if (persistedSidebarWidth !== pendingPersistedWidth.current) return;
-      pendingPersistedWidth.current = null;
-    }
-    setCommittedWidth(persistedSidebarWidth);
-  }, [dragWidth, openingExpandedFromClosed, persistedSidebarWidth]);
+    setCommittedWidth(persistedSidebarBaseWidth);
+  }, [dragWidth, openingExpandedFromClosed, persistedSidebarBaseWidth]);
 
   useEffect(() => {
     const wasClosed = previousDesktopMode.current === "closed";
     previousDesktopMode.current = desktopMode;
     if (!wasClosed || desktopMode !== "expanded") return;
 
-    pendingPersistedWidth.current = DEFAULT_WIDTH;
-    setCommittedWidth(DEFAULT_WIDTH);
-    void updatePreferences({ display: { sidebarWidth: DEFAULT_WIDTH } } as Parameters<typeof updatePreferences>[0]).catch(() => {
-      if (pendingPersistedWidth.current === DEFAULT_WIDTH) {
-        pendingPersistedWidth.current = null;
-      }
-    });
-  }, [desktopMode, updatePreferences]);
+    if (setDeviceDisplay({ sidebarWidth: DEFAULT_WIDTH })) {
+      setCommittedWidth(DEFAULT_WIDTH);
+    } else {
+      toast.error("Freed could not save the sidebar width on this device.");
+    }
+  }, [desktopMode, setDeviceDisplay]);
 
   const rawDesktopWidth = dragWidth
     ?? (desktopMode === "compact"
-      ? COMPACT_WIDTH
+      ? compactSidebarWidthPx
       : desktopMode === "closed"
         ? 0
         : openingExpandedFromClosed
-          ? DEFAULT_WIDTH
-          : committedWidth);
+          ? defaultSidebarWidthPx
+          : scaleInterfaceChromePx(committedWidth, interfaceZoom));
   const effectiveGapWidthPx =
     desktopGapWidthPx ?? (
       activeView === "friends"
-        ? FRIENDS_SIDEBAR_GAP_WIDTH_PX
-        : PRIMARY_SIDEBAR_GAP_WIDTH_PX
+        ? friendsSidebarGapWidthPx
+        : primarySidebarGapWidthPx
     );
   const compactReaderRailVisible =
     activeView === "feed" &&
     !!selectedItemId &&
-    display.reading.dualColumnMode &&
+    deviceDisplay.dualColumnMode &&
     !forceCompactDesktopRail;
   const visualGapWidthPx = compactReaderRailVisible
     ? Math.min(effectiveGapWidthPx, COMPACT_READER_RAIL_VISUAL_GAP_WIDTH_PX)
@@ -739,45 +770,45 @@ export function Sidebar({
     : forceCompactDesktopRail
       ? (desktopMode === "closed" ? "closed" : "compact")
     : dragWidth !== null
-      ? getDesktopModeForWidth(dragWidth)
+      ? getDesktopModeForWidth(dragWidth, interfaceZoom)
       : desktopMode;
   const closedPreviewActive = dragWidth !== null && renderMode === "closed";
   const snapPreviewActive = dragWidth !== null && renderMode !== "expanded";
   const desktopWidth = renderMode === "compact"
-    ? COMPACT_WIDTH
+    ? compactSidebarWidthPx
     : renderMode === "closed"
       ? 0
       : rawDesktopWidth;
   const compactRail = renderMode === "compact";
   const narrowLabeledSidebar =
-    renderMode === "expanded" && desktopWidth < NARROW_LABELED_SIDEBAR_THRESHOLD_PX;
+    renderMode === "expanded" && desktopWidth < narrowLabeledSidebarThresholdPx;
   const rowCountsVisible = renderMode === "expanded" && !narrowLabeledSidebar;
   const sourceMenusVisible = renderMode === "expanded";
   const rssAccordionVisible = renderMode === "expanded" && !narrowLabeledSidebar;
   const searchVariant = compactRail ? "trigger" : "inline";
   const expandedSidebarUsesCondensedPadding =
-    renderMode === "expanded" && desktopWidth < EXPANDED_SIDEBAR_PADDING_CROSSOVER_WIDTH_PX;
+    renderMode === "expanded" && desktopWidth < expandedSidebarPaddingCrossoverWidthPx;
   const sidebarPaddingInlinePx = isMobileDevice
     ? 8
     : compactRail
-    ? COMPACT_RAIL_OUTER_INSET_PX
+    ? compactRailOuterInsetPx
     : expandedSidebarUsesCondensedPadding
-      ? EXPANDED_SIDEBAR_CONDENSED_PADDING_PX
-      : EXPANDED_SIDEBAR_ROOMY_PADDING_PX;
+      ? expandedSidebarCondensedPaddingPx
+      : expandedSidebarRoomyPaddingPx;
   const sidebarPaddingBlockPx = isMobileDevice
     ? 8
     : compactRail
-    ? COMPACT_RAIL_OUTER_INSET_PX
+    ? compactRailOuterInsetPx
     : expandedSidebarUsesCondensedPadding
-      ? EXPANDED_SIDEBAR_CONDENSED_PADDING_PX
-      : EXPANDED_SIDEBAR_ROOMY_PADDING_PX;
+      ? expandedSidebarCondensedPaddingPx
+      : expandedSidebarRoomyPaddingPx;
   const sidebarBodyStyle = {
     paddingTop: `${sidebarPaddingBlockPx}px`,
     paddingInline: `${sidebarPaddingInlinePx}px`,
     paddingBottom: isMobileDevice
       ? `${sidebarPaddingBlockPx}px`
       : compactRail
-      ? `${COMPACT_RAIL_OUTER_INSET_PX}px`
+      ? `${compactRailOuterInsetPx}px`
       : `calc(${sidebarPaddingBlockPx}px + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))`,
     transition: animationIntensity === "none"
       ? "none"
@@ -802,7 +833,7 @@ export function Sidebar({
   const sidebarHandleLeftPx =
     sidebarHandleCenterlinePx - RESIZE_HANDLE_HIT_AREA_WIDTH_PX / 2;
   const desktopAsideWidth = desktopWidth;
-  const desktopAsideRenderedWidth = closedPreviewActive ? COMPACT_WIDTH : desktopAsideWidth;
+  const desktopAsideRenderedWidth = closedPreviewActive ? compactSidebarWidthPx : desktopAsideWidth;
   const compactSidebar = compactRail;
   const rowPaddingClass = isMobileDevice
     ? "px-2"
@@ -895,7 +926,9 @@ export function Sidebar({
       e.preventDefault();
       dragging.current = true;
       const startX = e.clientX;
-      const startW = desktopMode === "compact" ? COMPACT_WIDTH : committedWidth;
+      const startW = desktopMode === "compact"
+        ? compactSidebarWidthPx
+        : scaleInterfaceChromePx(committedWidth, interfaceZoom);
       const previousCursor = document.body.style.cursor;
       const previousUserSelect = document.body.style.userSelect;
 
@@ -904,21 +937,28 @@ export function Sidebar({
 
       const onMove = (ev: MouseEvent) => {
         if (!dragging.current) return;
-        const next = Math.min(MAX_WIDTH, Math.max(0, startW + ev.clientX - startX));
+        const next = Math.min(maxSidebarWidthPx, Math.max(0, startW + ev.clientX - startX));
         setDragWidth(next);
       };
       const onUp = (ev: MouseEvent) => {
         dragging.current = false;
-        const final = Math.min(MAX_WIDTH, Math.max(0, startW + ev.clientX - startX));
-        const nextMode = getDesktopModeForWidth(final);
+        const final = Math.min(maxSidebarWidthPx, Math.max(0, startW + ev.clientX - startX));
+        const nextMode = getDesktopModeForWidth(final, interfaceZoom);
         if (nextMode === "expanded") {
-          pendingPersistedWidth.current = final;
-          setCommittedWidth(final);
-          void updatePreferences({ display: { sidebarWidth: final } } as Parameters<typeof updatePreferences>[0]).catch(() => {
-            if (pendingPersistedWidth.current === final) {
-              pendingPersistedWidth.current = null;
-            }
-          });
+          const finalBaseWidth = Math.min(
+            MAX_WIDTH,
+            Math.max(0, Math.round(final / interfaceChromeScale)),
+          );
+          if (!setDeviceDisplay({ sidebarWidth: finalBaseWidth })) {
+            setDragWidth(null);
+            toast.error("Freed could not save the sidebar width on this device.");
+            document.body.style.cursor = previousCursor;
+            document.body.style.userSelect = previousUserSelect;
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+            return;
+          }
+          setCommittedWidth(finalBaseWidth);
         }
         onDesktopModeChange(nextMode);
         setDragWidth(null);
@@ -930,7 +970,18 @@ export function Sidebar({
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     },
-    [committedWidth, desktopMode, forceCompactDesktopRail, isMobileDevice, onDesktopModeChange, updatePreferences],
+    [
+      committedWidth,
+      compactSidebarWidthPx,
+      desktopMode,
+      forceCompactDesktopRail,
+      interfaceChromeScale,
+      interfaceZoom,
+      isMobileDevice,
+      maxSidebarWidthPx,
+      onDesktopModeChange,
+      setDeviceDisplay,
+    ],
   );
 
   const feedList = useMemo(
@@ -1029,12 +1080,16 @@ export function Sidebar({
   const sourceUnreadCount = (source: SourceNavigationItem) =>
     source.id === undefined
       ? totalUnreadCount
-      : (unreadCountByPlatform[source.id] ?? 0);
+      : source.id === "rss"
+        ? rssUnreadCount
+        : (unreadCountByPlatform[source.id] ?? 0);
 
   const sourceTotalCount = (source: SourceNavigationItem) =>
     source.id === undefined
       ? totalItemCount
-      : (itemCountByPlatform[source.id] ?? 0);
+      : source.id === "rss"
+        ? rssItemCount
+        : (itemCountByPlatform[source.id] ?? 0);
 
   const sourceKey = (source: SourceNavigationItem) => source.id ?? "all";
   const topSourceItems = useMemo(
@@ -1056,8 +1111,14 @@ export function Sidebar({
         return "order-8";
       case "linkedin":
         return "order-9";
-      case "rss":
+      case "substack":
         return "order-10";
+      case "medium":
+        return "order-11";
+      case "youtube":
+        return "order-12";
+      case "rss":
+        return "order-[13]";
       default:
         return "";
     }
@@ -1070,6 +1131,9 @@ export function Sidebar({
     if (source.id === "facebook") return "facebook";
     if (source.id === "instagram") return "instagram";
     if (source.id === "linkedin") return "linkedin";
+    if (source.id === "substack") return "substack";
+    if (source.id === "medium") return "medium";
+    if (source.id === "youtube") return "youtube";
     return "sync";
   };
 
@@ -1078,12 +1142,18 @@ export function Sidebar({
     source.id === "x" ||
     source.id === "facebook" ||
     source.id === "instagram" ||
-    source.id === "linkedin";
+    source.id === "linkedin" ||
+    (source.id === "substack" && Boolean(SubstackSettingsContent)) ||
+    (source.id === "medium" && Boolean(MediumSettingsContent)) ||
+    (source.id === "youtube" && Boolean(YouTubeSettingsContent));
   const sourceMenuTriggerBaseClass = rowCountsVisible
     ? "absolute right-0 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)]"
     : "absolute top-[-1px] bottom-[-1px] right-0 flex items-center justify-center rounded-md px-1 transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)]";
   const sourceActionSlotClass = (source: SourceNavigationItem) => {
-    if (rowCountsVisible) return SOURCE_ACTION_SLOT_WITH_COUNTS_CLASS;
+    if (rowCountsVisible) {
+      if (sourceTotalCount(source) > 0) return SOURCE_ACTION_SLOT_WITH_COUNTS_CLASS;
+      return sourceMenusVisible && canShowSourceMenu(source) ? "ml-0 w-8" : "ml-0 w-0";
+    }
     if (!sourceMenusVisible || !canShowSourceMenu(source)) return "ml-0 w-0";
     return openMenuSourceKey === sourceKey(source)
       ? "ml-0 w-[26px]"
@@ -1231,7 +1301,13 @@ export function Sidebar({
   ), []);
 
   const getSourceBadge = useCallback((source: SourceNavigationItem, sourceStatus?: SidebarSourceStatusSummary | null) => {
-    if (source.id && source.id !== "rss" && SourceIndicator) {
+    if (
+      source.id &&
+      source.id !== "rss" &&
+      source.id !== "substack" &&
+      source.id !== "medium" &&
+      SourceIndicator
+    ) {
       return renderSidebarIconBadge(<SourceIndicator sourceId={source.id} />);
     }
 
@@ -1554,7 +1630,7 @@ export function Sidebar({
                     <li key={source.id ?? "all"} className={sourceOrderClass(source)}>
                       {renderCompactRow({
                         key: sourceKey(source),
-                        label: source.label,
+                        label: source.stage === "beta" ? `${source.label}, Beta` : source.label,
                         active: isTopSourceActive(source),
                         onClick: () => handleSourceClick(source),
                         icon: source.icon,
@@ -1719,6 +1795,11 @@ export function Sidebar({
                         labeledSourceIconSizeClass(source.id),
                       )}
                       label={source.label}
+                      afterLabel={source.stage === "beta" ? (
+                        <span className="shrink-0 rounded border border-[color:var(--theme-border-subtle)] px-1 py-0.5 text-[8px] font-semibold uppercase leading-none text-[color:var(--theme-text-muted)]">
+                          Beta
+                        </span>
+                      ) : null}
                       labelClass={sidebarLabelClass}
                       menu={renderSourceMenu(source)}
                       menuOpen={openMenuSourceKey === sourceKey(source)}
@@ -1810,7 +1891,7 @@ export function Sidebar({
       {mobileOpen && (
         <div
           className="fixed bottom-0 left-0 right-0 z-[145] bg-black/60 md:hidden"
-          style={{ top: `calc(env(safe-area-inset-top, 0px) + ${MOBILE_MENU_TOP_PX}px)` }}
+          style={{ top: `calc(env(safe-area-inset-top, 0px) + ${mobileMenuTopPx}px)` }}
           onClick={onMobileClose}
         />
       )}
@@ -1826,9 +1907,9 @@ export function Sidebar({
         style={{
           boxSizing: "border-box",
           width: "100vw",
-          top: `calc(env(safe-area-inset-top, 0px) + ${MOBILE_MENU_TOP_PX}px)`,
-          height: `calc(100dvh - env(safe-area-inset-top, 0px) - ${MOBILE_MENU_TOP_PX}px)`,
-          maxHeight: `calc(100dvh - env(safe-area-inset-top, 0px) - ${MOBILE_MENU_TOP_PX}px)`,
+          top: `calc(env(safe-area-inset-top, 0px) + ${mobileMenuTopPx}px)`,
+          height: `calc(100dvh - env(safe-area-inset-top, 0px) - ${mobileMenuTopPx}px)`,
+          maxHeight: `calc(100dvh - env(safe-area-inset-top, 0px) - ${mobileMenuTopPx}px)`,
         }}
         >
         {sidebarBody}

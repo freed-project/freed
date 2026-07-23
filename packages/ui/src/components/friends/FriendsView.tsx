@@ -25,6 +25,7 @@ import { AccountDetailPanel } from "./AccountDetailPanel.js";
 import { FriendEditor } from "./FriendEditor.js";
 import { ChannelAvatar } from "../ChannelAvatar.js";
 import { SearchField } from "../SearchField.js";
+import { toast } from "../Toast.js";
 import { UsersIcon, MapPinIcon } from "../icons.js";
 import {
   buildFriendOverviewEntries,
@@ -44,6 +45,13 @@ import {
 import { accountSubtitle, accountTitle, providerLabel } from "../../lib/account-labels.js";
 import { buildIdentityGraphActivitySummaries } from "../../lib/identity-graph-activity-summary.js";
 import { px } from "../layout/layoutConstants.js";
+import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
+import {
+  applyDeviceGraphLayout,
+  setDeviceAccountGraphPosition,
+  setDevicePersonGraphPosition,
+  useDeviceGraphLayout,
+} from "../../lib/device-graph-layout.js";
 
 const DEFAULT_SIDEBAR_WIDTH = 360;
 const MIN_SIDEBAR_WIDTH = 280;
@@ -556,13 +564,15 @@ export function FriendsView({
   const openMapForPerson = useAppStore((s) => s.openMapForPerson);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const display = useAppStore((s) => s.preferences.display);
+  const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
+  const deviceGraphLayout = useDeviceGraphLayout();
   const friendSuggestionPreferences = useAppStore((s) => s.preferences.friendSuggestions);
   const savedSidebarWidth = Math.min(
     MAX_SIDEBAR_WIDTH,
-    display.friendsSidebarWidth ?? DEFAULT_SIDEBAR_WIDTH,
+    deviceDisplay.friendsSidebarWidth ?? DEFAULT_SIDEBAR_WIDTH,
   );
   const themeId = display.themeId;
-  const effectiveMode = display.friendsMode ?? "all_content";
+  const effectiveMode = deviceDisplay.friendsMode;
   const updatePreferences = useAppStore((s) => s.updatePreferences);
 
   const [editorState, setEditorState] = useState<EditorState>(null);
@@ -577,7 +587,6 @@ export function FriendsView({
   const friendOverviewScrollRef = useRef<HTMLDivElement>(null);
   const isDraggingSidebar = useRef(false);
   const sidebarDragCleanup = useRef<(() => void) | null>(null);
-  const pendingPersistedSidebarWidth = useRef<number | null>(null);
   const isMobile = useIsMobile();
 
   const { googleContacts } = usePlatform();
@@ -618,6 +627,15 @@ export function FriendsView({
   const allPersons = useMemo(
     () => Object.values(persons).sort((left, right) => personName(left).localeCompare(personName(right))),
     [persons],
+  );
+  const graphEntities = useMemo(
+    () => applyDeviceGraphLayout(persons, accounts, deviceGraphLayout),
+    [accounts, deviceGraphLayout, persons],
+  );
+  const graphPersons = useMemo(
+    () => Object.values(graphEntities.persons)
+      .sort((left, right) => personName(left).localeCompare(personName(right))),
+    [graphEntities.persons],
   );
   const friendsById = useMemo<Record<string, Friend>>(
     () => buildFriendsById(friendPersons, friendsWorkspaceIndexes),
@@ -766,10 +784,6 @@ export function FriendsView({
 
   useEffect(() => {
     if (dragWidth !== null || isDraggingSidebar.current) return;
-    if (pendingPersistedSidebarWidth.current !== null) {
-      if (savedSidebarWidth !== pendingPersistedSidebarWidth.current) return;
-      pendingPersistedSidebarWidth.current = null;
-    }
     setCommittedSidebarWidth(savedSidebarWidth);
   }, [dragWidth, savedSidebarWidth]);
 
@@ -955,27 +969,21 @@ export function FriendsView({
   );
 
   const handlePinPersonPosition = useCallback(
-    async (personId: string, x: number, y: number) => {
-      await updatePerson(personId, {
-        graphX: Math.round(x),
-        graphY: Math.round(y),
-        graphPinned: true,
-        graphUpdatedAt: Date.now(),
-      });
+    (personId: string, x: number, y: number) => {
+      if (!setDevicePersonGraphPosition(personId, Math.round(x), Math.round(y))) {
+        toast.error("Freed could not save this graph position on this device.");
+      }
     },
-    [updatePerson],
+    [],
   );
 
   const handlePinAccountPosition = useCallback(
-    async (accountId: string, x: number, y: number) => {
-      await updateAccount(accountId, {
-        graphX: Math.round(x),
-        graphY: Math.round(y),
-        graphPinned: true,
-        graphUpdatedAt: Date.now(),
-      });
+    (accountId: string, x: number, y: number) => {
+      if (!setDeviceAccountGraphPosition(accountId, Math.round(x), Math.round(y))) {
+        toast.error("Freed could not save this graph position on this device.");
+      }
     },
-    [updateAccount],
+    [],
   );
 
   const handleSetPersonRelationshipLevel = useCallback(async (person: Person, level: RelationshipTierLevel) => {
@@ -1059,7 +1067,9 @@ export function FriendsView({
       friendSuggestions: {
         dismissedSuggestionIds: [...current, suggestionId],
       },
-    } as Parameters<typeof updatePreferences>[0]);
+    } as Parameters<typeof updatePreferences>[0]).catch(() => {
+      toast.error("Freed could not dismiss that suggestion.");
+    });
   }, [friendSuggestionPreferences, updatePreferences]);
 
   const handleSelectFriendCandidate = useCallback((suggestion: FriendCandidateSuggestion) => {
@@ -1145,14 +1155,12 @@ export function FriendsView({
 
     const finishDrag = (finalWidth: number) => {
       isDraggingSidebar.current = false;
-      pendingPersistedSidebarWidth.current = finalWidth;
-      setCommittedSidebarWidth(finalWidth);
       setDragWidth(null);
-      void updatePreferences({ display: { friendsSidebarWidth: finalWidth } } as Parameters<typeof updatePreferences>[0]).catch(() => {
-        if (pendingPersistedSidebarWidth.current === finalWidth) {
-          pendingPersistedSidebarWidth.current = null;
-        }
-      });
+      if (setDeviceDisplay({ friendsSidebarWidth: finalWidth })) {
+        setCommittedSidebarWidth(finalWidth);
+      } else {
+        toast.error("Freed could not save the sidebar width on this device.");
+      }
       cleanup();
     };
 
@@ -1184,7 +1192,7 @@ export function FriendsView({
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onCancel);
     window.addEventListener("blur", onBlur);
-  }, [isMobile, sidebarWidth, updatePreferences]);
+  }, [isMobile, setDeviceDisplay, sidebarWidth]);
 
   const renderOverviewSidebar = () => (
     <div className="flex h-full flex-col bg-transparent">
@@ -1717,21 +1725,27 @@ export function FriendsView({
   const showMobileSidebar = isMobile && mobileSurface === "details";
   const showCollapsedSelectionCard =
     !isMobile && !friendsSidebarOpen && (!!selectedPerson || !!selectedAccount);
+  const graphIsEmpty =
+    (effectiveMode === "friends" && friendList.length === 0) ||
+    (effectiveMode === "all_content" && socialAccountCount === 0 && friendList.length === 0);
 
   return (
-    <div className="app-theme-shell flex h-full flex-col overflow-hidden">
+    <div className="flex h-full flex-col overflow-hidden bg-transparent">
       <div
         className={`relative flex min-h-0 flex-1 ${isMobile ? "flex-col pt-[var(--feed-card-gap,8px)]" : "flex-row"}`}
       >
-        {showGraphSurface ? (
-          <div className="relative min-h-0 min-w-0 flex-1 overflow-visible">
-            {(effectiveMode === "friends" && friendList.length === 0) || (effectiveMode === "all_content" && socialAccountCount === 0 && friendList.length === 0) ? (
+        <div className={`${
+          showGraphSurface
+            ? "relative min-h-0 min-w-0 flex-1 overflow-visible"
+            : "pointer-events-none absolute inset-0 min-h-0 min-w-0 overflow-hidden opacity-0"
+        }`}>
+            {graphIsEmpty ? (
               renderGraphEmptyState()
             ) : (
               <FriendGraph
                 ref={graphRef}
-                persons={allPersons}
-                accounts={accounts}
+                persons={graphPersons}
+                accounts={graphEntities.accounts}
                 feeds={feeds}
                 activitySummaries={graphActivitySummaries}
                 mode={effectiveMode}
@@ -1747,10 +1761,10 @@ export function FriendsView({
                 friendSuggestionStrengthByPerson={friendSuggestionStrengthByPerson}
                 friendSuggestionStrengthByAccount={friendSuggestionStrengthByAccount}
                 themeId={themeId}
+                presentationVisible={showGraphSurface}
               />
             )}
-          </div>
-        ) : null}
+        </div>
 
         {showDesktopSidebar && (
           <div

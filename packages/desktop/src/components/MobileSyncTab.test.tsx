@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
+import { useAppStore } from "../lib/store";
 import { MobileSyncTab } from "./MobileSyncTab";
 
 const mocks = vi.hoisted(() => ({
@@ -57,9 +58,11 @@ describe("MobileSyncTab cloud diagnostics", () => {
   beforeEach(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     vi.clearAllMocks();
+    window.localStorage.clear();
+    useAppStore.setState({ desktopClientIds: ["desktop-current"] });
     useDebugStore.setState({
       docSnapshot: {
-        deviceId: "device-1",
+        documentId: "document-1",
         itemCount: 10288,
         feedCount: 106,
         binarySize: 12_900_000,
@@ -97,6 +100,7 @@ describe("MobileSyncTab cloud diagnostics", () => {
     });
     container.remove();
     useDebugStore.setState({ docSnapshot: null, cloudProviders: null });
+    useAppStore.setState({ desktopClientIds: [] });
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
   });
 
@@ -113,6 +117,7 @@ describe("MobileSyncTab cloud diagnostics", () => {
     expect(diagnostics?.textContent).toContain("No remote changes found.");
     expect(diagnostics?.textContent).toContain("Waiting for local document changes or Sync now.");
     expect(diagnostics?.textContent).toContain("Checked cloud storage. No remote changes found.");
+    expect(container.querySelector("[data-testid='multiple-desktop-client-warning']")).toBeNull();
     expect(syncNow).toBeInstanceOf(HTMLButtonElement);
     expect(syncNow?.disabled).toBe(false);
 
@@ -122,6 +127,34 @@ describe("MobileSyncTab cloud diagnostics", () => {
     });
 
     expect(mocks.syncCloudProviderNow).toHaveBeenCalledWith("gdrive");
+  });
+
+  it("warns when the synced library has multiple Freed Desktop clients", async () => {
+    useAppStore.setState({
+      desktopClientIds: ["desktop-current", "desktop-other"],
+    });
+
+    await act(async () => {
+      root.render(<MobileSyncTab />);
+    });
+
+    const warning = container.querySelector("[data-testid='multiple-desktop-client-warning']");
+    expect(warning?.getAttribute("role")).toBe("alert");
+    expect(warning?.textContent).toContain("Multiple Freed Desktop clients detected");
+    expect(warning?.textContent).toContain("2 Freed Desktop clients are registered");
+    expect(warning?.textContent).toContain("duplicate request traffic for the account");
+    expect(warning?.textContent).toContain("Use one Freed Desktop for polling");
+    expect(warning?.textContent).toContain("PWA devices for reading");
+    expect(warning?.textContent).toContain("not live presence");
+
+    const dismiss = Array.from(warning?.querySelectorAll("button") ?? []).find(
+      (button) => button.textContent === "Got it",
+    );
+    expect(dismiss).toBeDefined();
+    await act(async () => {
+      dismiss?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(container.querySelector("[data-testid='multiple-desktop-client-warning']")).toBeNull();
   });
 
   it("lets the user choose a winner when a destructive cloud merge is blocked", async () => {

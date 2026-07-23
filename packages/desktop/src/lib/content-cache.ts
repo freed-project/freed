@@ -116,6 +116,20 @@ export const contentCache = {
   },
 
   /**
+   * Delete every cached article on this device.
+   */
+  async clear(): Promise<void> {
+    const dir = await getContentDir();
+    try {
+      if (await exists(dir)) {
+        await remove(dir, { recursive: true });
+      }
+    } finally {
+      _contentDir = null;
+    }
+  },
+
+  /**
    * List all globalIds that have cached HTML on this device.
    * Strips the ".html" suffix from each filename.
    */

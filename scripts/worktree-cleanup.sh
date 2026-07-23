@@ -24,23 +24,6 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=./lib/node-tooling.sh
-source "${SCRIPT_DIR}/lib/node-tooling.sh"
-
-# Append a ledger line for a merged PR so the nightly planner learns from it.
-# Best-effort: never blocks cleanup.
-record_merge_outcome() {
-  local branch="$1"
-  local pr_number="$2"
-  "$(resolve_node_bin)" "${SCRIPT_DIR}/record-outcome.mjs" \
-    --id "${branch}" \
-    --kind pr-merge \
-    --status shipped \
-    --pr "${pr_number}" \
-    --notes "auto-recorded by worktree-cleanup.sh" || true
-}
-
 YES=false
 if [[ "${1:-}" == "--yes" ]]; then
   YES=true
@@ -93,8 +76,15 @@ for i in "${!PATHS[@]}"; do
   echo "Checking $branch ($path) ..."
 
   # Ask GitHub if a PR for this branch has been merged.
-  pr_info=$(gh pr list --state merged --head "$branch" --json number,mergedAt --limit 1 2>/dev/null || true)
-  pr_number=$(echo "$pr_info" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d[0]['number'] if d else '')" 2>/dev/null || true)
+  pr_number=$(
+    gh pr list \
+      --state merged \
+      --head "$branch" \
+      --json number \
+      --limit 1 \
+      --jq '.[0].number // ""' \
+      2>/dev/null || true
+  )
 
   if [[ -z "$pr_number" ]]; then
     echo "  -> No merged PR found. Skipping (branch may still be in flight)."
@@ -110,7 +100,6 @@ for i in "${!PATHS[@]}"; do
     # -D because squash merges leave branch commits unreachable from the
     # target branch.
     git branch -D "$branch" 2>/dev/null || true
-    record_merge_outcome "$branch" "$pr_number"
     echo "  Removed."
     removed=$((removed + 1))
   else
@@ -126,13 +115,19 @@ while IFS= read -r line; do
   branch=$(echo "$line" | awk '{print $1}')
   [[ -z "$branch" || "$branch" == "main" || "$branch" == "dev" ]] && continue
 
-  pr_info=$(gh pr list --state merged --head "$branch" --json number --limit 1 2>/dev/null || true)
-  pr_number=$(echo "$pr_info" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d[0]['number'] if d else '')" 2>/dev/null || true)
+  pr_number=$(
+    gh pr list \
+      --state merged \
+      --head "$branch" \
+      --json number \
+      --limit 1 \
+      --jq '.[0].number // ""' \
+      2>/dev/null || true
+  )
   if [[ -n "$pr_number" ]]; then
     echo "  $branch -> PR #$pr_number merged"
     if confirm "Delete local branch '$branch'?"; then
       git branch -D "$branch"
-      record_merge_outcome "$branch" "$pr_number"
       echo "  Deleted."
       removed=$((removed + 1))
     else

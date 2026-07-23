@@ -22,6 +22,7 @@ import {
   type CommandPaletteAction,
 } from "../../lib/command-palette.js";
 import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
+import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import { buildSettingsSectionMetas } from "../../lib/settings-sections.js";
 import {
@@ -46,11 +47,14 @@ import {
   InstagramIcon,
   LinkedInIcon,
   MapPinIcon,
+  MediumIcon,
   RssIcon,
   StoryWallIcon,
+  SubstackIcon,
   TrashIcon,
   UsersIcon,
   XIcon,
+  YoutubeIcon,
 } from "../icons.js";
 
 function groupActionsBySection(actions: readonly CommandPaletteAction[]) {
@@ -156,6 +160,15 @@ function getCommandPaletteIcon(action: CommandPaletteAction): ReactNode {
   }
   if (action.id === "go-source-linkedin" || action.id === "go-settings-linkedin" || action.id.startsWith("go-channel-linkedin-")) {
     return <LinkedInIcon className={iconClass} />;
+  }
+  if (action.id === "go-source-substack" || action.id === "go-settings-substack" || action.id.startsWith("go-channel-substack-")) {
+    return <SubstackIcon className={iconClass} />;
+  }
+  if (action.id === "go-source-medium" || action.id === "go-settings-medium" || action.id.startsWith("go-channel-medium-")) {
+    return <MediumIcon className={iconClass} />;
+  }
+  if (action.id === "go-source-youtube" || action.id === "go-settings-youtube" || action.id.startsWith("go-channel-youtube-")) {
+    return <YoutubeIcon className={iconClass} />;
   }
   if (action.id === "go-settings-googleContacts") {
     return <GoogleContactsIcon className={iconClass} />;
@@ -304,6 +317,9 @@ export function SearchJumpField({
     FacebookSettingsContent,
     InstagramSettingsContent,
     LinkedInSettingsContent,
+    SubstackSettingsContent,
+    MediumSettingsContent,
+    YouTubeSettingsContent,
     GoogleContactsSettingsContent,
     ShortcutsSettingsContent,
     googleContacts,
@@ -340,7 +356,7 @@ export function SearchJumpField({
   const unarchiveSavedItems = useAppStore((s) => s.unarchiveSavedItems);
   const deleteAllArchived = useAppStore((s) => s.deleteAllArchived);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
-  const display = useAppStore((s) => s.preferences.display);
+  const [deviceDisplay] = useDeviceDisplayPreferences();
   const [inputValue, setInputValue] = useState(searchQuery);
   const [isFocused, setIsFocused] = useState(false);
   const [isTriggerOpen, setIsTriggerOpen] = useState(false);
@@ -367,6 +383,7 @@ export function SearchJumpField({
   const showFloatingField = usesFloatingTrigger && isTriggerOpen;
   const showInlineSurface = !usesFloatingTrigger && isFocused;
   const showCommandSurface = showFloatingField || showInlineSurface || !!confirmAction;
+  const inlineBlurTimerRef = useRef<number | null>(null);
 
   const selectedItem = useMemo(
     () => (selectedItemId ? items.find((item) => item.globalId === selectedItemId) ?? null : null),
@@ -378,7 +395,7 @@ export function SearchJumpField({
     searchQuery,
     activeFilter,
     searchCorpusVersion,
-    display.friendsMode ?? "all_content",
+    deviceDisplay.friendsMode,
     persons,
     accounts,
     friends,
@@ -448,6 +465,9 @@ export function SearchJumpField({
         hasFacebook: !!FacebookSettingsContent,
         hasInstagram: !!InstagramSettingsContent,
         hasLinkedIn: !!LinkedInSettingsContent,
+        hasSubstack: !!SubstackSettingsContent,
+        hasMedium: !!MediumSettingsContent,
+        hasYouTube: !!YouTubeSettingsContent,
         hasUpdateChecks: !!checkForUpdates,
         hasFactoryReset: !!factoryReset,
       }),
@@ -456,6 +476,9 @@ export function SearchJumpField({
       GoogleContactsSettingsContent,
       InstagramSettingsContent,
       LinkedInSettingsContent,
+      MediumSettingsContent,
+      SubstackSettingsContent,
+      YouTubeSettingsContent,
       XSettingsContent,
       checkForUpdates,
       factoryReset,
@@ -673,6 +696,12 @@ export function SearchJumpField({
 
   useEffect(() => {
     setMounted(true);
+    return () => {
+      if (inlineBlurTimerRef.current) {
+        window.clearTimeout(inlineBlurTimerRef.current);
+        inlineBlurTimerRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -1114,10 +1143,18 @@ export function SearchJumpField({
         value={inputValue}
         onChange={(event) => setInputValue(event.target.value)}
         onFocus={() => {
+          if (inlineBlurTimerRef.current) {
+            window.clearTimeout(inlineBlurTimerRef.current);
+            inlineBlurTimerRef.current = null;
+          }
           setIsFocused(true);
         }}
         onBlur={() => {
-          window.setTimeout(() => {
+          if (inlineBlurTimerRef.current) {
+            window.clearTimeout(inlineBlurTimerRef.current);
+          }
+          inlineBlurTimerRef.current = window.setTimeout(() => {
+            inlineBlurTimerRef.current = null;
             if (!triggerPaletteRef.current?.matches(":hover")) {
               setIsFocused(false);
             }

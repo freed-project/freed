@@ -19,9 +19,9 @@ import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
 import type { FreedDoc } from "@freed/shared/schema";
 import {
   assertNonDestructiveMerge,
-  choosePopulatedInputForEmptyMerge,
+  compareDocumentHistories,
   createEmptyDoc,
-  createDocFromData,
+  createDocFromTrustedCompatibilityData,
   addAccount,
   addAccounts,
   backfillContentSignals,
@@ -30,11 +30,16 @@ import {
   addFeedItem,
   deduplicateDocFeedItems,
   hasLegacyIdentityGraphData,
+  getRegisteredDesktopClientIds,
   migrateLegacyIdentityGraph,
+  registerDesktopClient,
   addPerson,
   addRssFeed,
   removeRssFeed,
   removeAllFeeds,
+  reconcileYouTubeCapture,
+  reconcileFollowRosterCapture,
+  reconcileProviderEssayItems,
   updateRssFeed,
   updateFeedItem,
   summarizeDocContentSignals,
@@ -47,7 +52,6 @@ import {
   pruneArchivedItems,
   deleteAllArchivedItems,
   updatePreferences,
-  updateLastSync,
   updateAccount,
   updatePerson,
   removeAccount,
@@ -60,12 +64,23 @@ import {
 import {
   countAuthorsWithRecentLocationUpdates,
   countFriendsWithRecentLocationUpdates,
+  collectSavedYouTubeVideoUrls,
   mergeDefaultPreferences,
   rankFeedItems,
+  resolveDocumentId,
   sortByPriority,
+  stripDeviceLocalPreferenceUpdates,
 } from "@freed/shared";
-import type { Account, FeedItem, Friend, LegacyDeviceContact, LegacyFriendSource, Person, RssFeed, UserPreferences } from "@freed/shared";
-import type { DocState, FeedItemPatch, RssFeedPatch, WorkerRequest, WorkerResponse } from "./automerge-types";
+import type { Account, DesktopClientRegistration, FeedItem, Friend, LegacyDeviceContact, LegacyFriendSource, Person, RssFeed, UserPreferences } from "@freed/shared";
+import type {
+  DocState,
+  FeedItemPatch,
+  RssFeedPatch,
+  RssFeedRefreshUpdate,
+  WorkerErrorCode,
+  WorkerRequest,
+  WorkerResponse,
+} from "./automerge-types";
 import {
   createPersistenceState,
   persistDoc,
@@ -87,8 +102,10 @@ let currentDoc: FreedDoc | null = null;
 let currentBinary: Uint8Array | null = null;
 let persistenceState: AutomergePersistenceState = createPersistenceState(null);
 let relayClientCount = 0;
+let activeDesktopClientRegistration: DesktopClientRegistration | null = null;
 let queuedRequestCount = 0;
 let requestChain: Promise<void> = Promise.resolve();
+let acceptingRequests = true;
 let searchCorpusVersion = 0;
 let linkPreviewUrlCounts = new Map<string, number>();
 
@@ -117,8 +134,22 @@ function send(msg: WorkerResponse): void {
   self.postMessage(msg);
 }
 
-function ack(reqId: number, error?: string): void {
-  send({ reqId, type: "ACK", error });
+class CorruptDocumentError extends Error {
+  readonly code: WorkerErrorCode = "CORRUPT_DOCUMENT";
+
+  constructor() {
+    super("The stored Automerge document could not be loaded");
+    this.name = "CorruptDocumentError";
+  }
+}
+
+function ack(reqId: number, error?: string, errorCode?: WorkerErrorCode): void {
+  send({
+    reqId,
+    type: "ACK",
+    ...(error ? { error } : {}),
+    ...(errorCode ? { errorCode } : {}),
+  });
 }
 
 function itemLinkPreviewUrl(item: FeedItem | undefined): string | null {
@@ -142,6 +173,38 @@ function rebuildKnownLinkPreviewUrls(doc: FreedDoc | null): void {
   for (const item of Object.values(doc.feedItems ?? {}) as FeedItem[]) {
     addKnownLinkPreviewUrl(item);
   }
+}
+
+function isAuthenticatedEssayArticle(item: FeedItem): boolean {
+  return (
+    item.contentType === "article" &&
+    (item.platform === "substack" || item.platform === "medium")
+  );
+}
+
+function readerTextLength(item: FeedItem): number {
+  return Math.max(
+    item.content.text?.length ?? 0,
+    item.preservedContent?.text.length ?? 0,
+  );
+}
+
+function shouldMergeEssayRssItem(existing: FeedItem, incoming: FeedItem): boolean {
+  if (!isAuthenticatedEssayArticle(incoming)) return false;
+  if (existing.platform !== incoming.platform || existing.contentType !== "article") return true;
+  if (!existing.rssSource) return true;
+  if (readerTextLength(incoming) > readerTextLength(existing)) return true;
+  if (incoming.content.mediaUrls.some((url) => !existing.content.mediaUrls.includes(url))) return true;
+  const existingPreview = existing.content.linkPreview;
+  const incomingPreview = incoming.content.linkPreview;
+  return Boolean(
+    incomingPreview &&
+    (
+      !existingPreview ||
+      (incomingPreview.title?.length ?? 0) > (existingPreview.title?.length ?? 0) ||
+      (incomingPreview.description?.length ?? 0) > (existingPreview.description?.length ?? 0)
+    )
+  );
 }
 
 function toLegacyContact(account: Account): LegacyDeviceContact {
@@ -297,7 +360,7 @@ function compactLoadedFeedText(
   if (!shouldRebuildForChangedText) return summary.changed > 0;
 
   const plain = A.toJS(currentDoc) as Partial<FreedDoc>;
-  const rebuiltDoc = createDocFromData(plain);
+  const rebuiltDoc = createDocFromTrustedCompatibilityData(plain);
   const rebuiltBinary = A.save(rebuiltDoc);
   const bytesSaved = previousBinaryBytes - rebuiltBinary.byteLength;
   currentDoc = rebuiltDoc;
@@ -594,6 +657,7 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
     accounts,
     friends,
     preferences,
+    desktopClientIds: getRegisteredDesktopClientIds(doc),
     feedUnreadCounts,
     feedTotalCounts,
     totalUnreadCount,
@@ -638,7 +702,7 @@ async function saveAndBroadcast(trace?: RequestTrace): Promise<void> {
 
   const snapshot: Extract<WorkerResponse, { type: "DEBUG_SNAPSHOT" }> = {
     type: "DEBUG_SNAPSHOT",
-    deviceId: (doc.meta?.deviceId as string | undefined) ?? "unknown",
+    documentId: resolveDocumentId(doc.meta),
     itemCount: Object.keys(doc.feedItems ?? {}).length,
     feedCount: Object.keys(doc.rssFeeds ?? {}).length,
     binarySize: binary.byteLength,
@@ -682,7 +746,7 @@ async function hydrateAndBroadcastWithoutPersist(trace?: RequestTrace): Promise<
 
   send({
     type: "DEBUG_SNAPSHOT",
-    deviceId: (doc.meta?.deviceId as string | undefined) ?? "unknown",
+    documentId: resolveDocumentId(doc.meta),
     itemCount: Object.keys(doc.feedItems ?? {}).length,
     feedCount: Object.keys(doc.rssFeeds ?? {}).length,
     binarySize: currentBinary?.byteLength ?? 0,
@@ -717,7 +781,7 @@ async function persistAndBroadcastWithoutHydration(trace?: RequestTrace): Promis
 
   send({
     type: "DEBUG_SNAPSHOT",
-    deviceId: (doc.meta?.deviceId as string | undefined) ?? "unknown",
+    documentId: resolveDocumentId(doc.meta),
     itemCount: Object.keys(doc.feedItems ?? {}).length,
     feedCount: Object.keys(doc.rssFeeds ?? {}).length,
     binarySize: binary.byteLength,
@@ -758,18 +822,20 @@ async function applyPreferenceChange(
   trace?: RequestTrace,
 ): Promise<void> {
   if (!currentDoc) throw new Error("Document not initialized");
+  const syncedUpdates = stripDeviceLocalPreferenceUpdates(updates);
+  if (Object.keys(syncedUpdates).length === 0) return;
   currentDoc = A.change(currentDoc, "Update preferences", (doc) => {
-    updatePreferences(doc, updates);
+    updatePreferences(doc, syncedUpdates);
   });
   send({ type: "DEBUG_EVENT", kind: "change", detail: "Update preferences" });
 
-  if (preferenceUpdateRequiresFullHydration(updates)) {
+  if (preferenceUpdateRequiresFullHydration(syncedUpdates)) {
     await saveAndBroadcast(trace);
     return;
   }
 
   await persistAndBroadcastWithoutHydration(trace);
-  send({ type: "PREFERENCES_PATCH", updates, mutation: trace?.opType });
+  send({ type: "PREFERENCES_PATCH", updates: syncedUpdates, mutation: trace?.opType });
 }
 
 async function applyRssFeedPatchChange(
@@ -904,22 +970,25 @@ async function applyAddFeedItemsPatchChange(items: FeedItem[], trace?: RequestTr
 }
 
 async function applyBatchRefreshFeedsPatchChange(
-  feeds: RssFeed[],
+  feeds: RssFeedRefreshUpdate[],
   items: FeedItem[],
   trace?: RequestTrace,
 ): Promise<void> {
   if (!currentDoc) throw new Error("Document not initialized");
   const feedPatch: RssFeedPatch = { feeds: {}, removedUrls: [] };
   let changedIds: string[] = [];
+  const removedEssayDuplicateIds: string[] = [];
+  const changedIdSet = new Set<string>();
+  const markChanged = (globalId: string) => {
+    if (changedIdSet.has(globalId)) return;
+    changedIdSet.add(globalId);
+    changedIds.push(globalId);
+  };
   currentDoc = A.change(currentDoc, `Refresh ${feeds.length.toLocaleString()} feeds, ${items.length.toLocaleString()} items`, (doc) => {
     for (const feed of feeds) {
       const stored = doc.rssFeeds[feed.url] as RssFeed | undefined;
       if (!stored) continue;
       if (feed.lastFetched !== undefined) stored.lastFetched = feed.lastFetched;
-      if (feed.lastFetchAttemptedAt !== undefined) stored.lastFetchAttemptedAt = feed.lastFetchAttemptedAt;
-      if (feed.nextFetchAfter !== undefined) stored.nextFetchAfter = feed.nextFetchAfter;
-      if (feed.consecutiveFailures !== undefined) stored.consecutiveFailures = feed.consecutiveFailures;
-      if (feed.lastFetchError !== undefined) stored.lastFetchError = feed.lastFetchError;
       if (feed.title && feed.title !== "Untitled Feed" && feed.title !== feed.url) {
         if (stored.title === "Untitled Feed" || stored.title === stored.url) {
           stored.title = feed.title;
@@ -929,19 +998,41 @@ async function applyBatchRefreshFeedsPatchChange(
       feedPatch.feeds[feed.url] = cloneRssFeedForPatch(stored);
     }
 
+    for (const item of items) compactFeedItemTextForSync(item);
+
+    for (const provider of ["substack", "medium"] as const) {
+      const providerItems = items.filter(
+        (item) => item.platform === provider && item.contentType === "article",
+      );
+      const essayResult = reconcileProviderEssayItems(
+        doc,
+        providerItems,
+        provider,
+        { shouldMergeExisting: shouldMergeEssayRssItem },
+      );
+      for (const globalId of essayResult.changedIds) markChanged(globalId);
+      for (const globalId of essayResult.addedIds) {
+        addKnownLinkPreviewUrl(doc.feedItems[globalId] as FeedItem | undefined);
+      }
+      removedEssayDuplicateIds.push(...essayResult.removedIds);
+    }
+
     for (const item of items) {
-      compactFeedItemTextForSync(item);
-      if (doc.feedItems[item.globalId]) continue;
+      if (isAuthenticatedEssayArticle(item)) continue;
+      const existingById = doc.feedItems[item.globalId];
+      if (existingById) continue;
+
       const linkUrl = itemLinkPreviewUrl(item);
       if (hasKnownLinkPreviewUrl(linkUrl)) continue;
       addFeedItem(doc, item);
-      changedIds.push(item.globalId);
+      markChanged(item.globalId);
       addKnownLinkPreviewUrl(item);
     }
   });
+  if (removedEssayDuplicateIds.length > 0) rebuildKnownLinkPreviewUrls(currentDoc);
 
   const feedChanged = Object.keys(feedPatch.feeds).length > 0 || feedPatch.removedUrls.length > 0;
-  if (!feedChanged && changedIds.length === 0) {
+  if (!feedChanged && changedIds.length === 0 && removedEssayDuplicateIds.length === 0) {
     emitWorkerTrace(
       `[automerge-worker] skip op=${trace?.opType ?? "unknown"} reason=no_changes`,
       "change",
@@ -949,14 +1040,16 @@ async function applyBatchRefreshFeedsPatchChange(
     return;
   }
 
-  if (changedIds.length > 0) bumpSearchCorpusVersion();
+  if (changedIds.length > 0 || removedEssayDuplicateIds.length > 0) bumpSearchCorpusVersion();
   send({
     type: "DEBUG_EVENT",
     kind: "change",
     detail:
       `Refresh ${feeds.length.toLocaleString()} feeds, ${items.length.toLocaleString()} items: ` +
-      `${changedIds.length.toLocaleString()} new`,
+      `${changedIds.length.toLocaleString()} changed, ` +
+      `${removedEssayDuplicateIds.length.toLocaleString()} removed`,
   });
+
   await persistAndBroadcastWithoutHydration(trace);
 
   if (feedChanged) {
@@ -965,11 +1058,12 @@ async function applyBatchRefreshFeedsPatchChange(
 
   const doc = currentDoc;
   const patches = cloneRankedFeedItemPatches(doc, changedIds);
-  if (patches.length > 0) {
+  if (patches.length > 0 || removedEssayDuplicateIds.length > 0) {
     send({
       type: "ITEM_PATCH",
       patches,
-      changedItemIds: changedIds,
+      changedItemIds: [...changedIds, ...removedEssayDuplicateIds],
+      removedItemIds: removedEssayDuplicateIds,
       preservePriorityOrder: true,
       searchCorpusVersion,
       mutation: trace?.opType,
@@ -1001,6 +1095,7 @@ async function handleRequest(
 
   if (
     req.type !== "INIT" &&
+    req.type !== "QUIESCE" &&
     req.type !== "CLEAR_LOCAL" &&
     req.type !== "REPLACE_DOC" &&
     req.type !== "GET_DOC_BINARY" &&
@@ -1017,28 +1112,31 @@ async function handleRequest(
 
   try {
     switch (req.type) {
+      case "QUIESCE":
+        ack(req.reqId);
+        break;
+
       case "INIT": {
+        activeDesktopClientRegistration = req.desktopClientRegistration ?? null;
         let loadedDocNeedsPersist = false;
         const saved = await storage.load();
         if (saved) {
+          let loadedDoc: FreedDoc;
           try {
-            currentDoc = A.load<FreedDoc>(saved);
-            currentBinary = saved;
-            persistenceState = createPersistenceState(saved);
-            loadedDocNeedsPersist =
-              migrateLoadedIdentityGraph("Migrate legacy identity graph") || loadedDocNeedsPersist;
-            loadedDocNeedsPersist =
-              compactLoadedFeedText("Compact oversized synced feed text", {
-                rebuildHistory: true,
-                previousBinaryBytes: saved.byteLength,
-              }) || loadedDocNeedsPersist;
+            loadedDoc = A.load<FreedDoc>(saved);
           } catch {
-            await storage.clear();
-            currentDoc = null;
-            currentBinary = null;
-            persistenceState = createPersistenceState(null);
-            send({ type: "DEBUG_EVENT", kind: "init", detail: "corrupt doc cleared, creating fresh" });
+            throw new CorruptDocumentError();
           }
+          currentDoc = loadedDoc;
+          currentBinary = saved;
+          persistenceState = createPersistenceState(saved);
+          loadedDocNeedsPersist =
+            migrateLoadedIdentityGraph("Migrate legacy identity graph") || loadedDocNeedsPersist;
+          loadedDocNeedsPersist =
+            compactLoadedFeedText("Compact oversized synced feed text", {
+              rebuildHistory: true,
+              previousBinaryBytes: saved.byteLength,
+            }) || loadedDocNeedsPersist;
         }
         if (!currentDoc) {
           currentDoc = createEmptyDoc();
@@ -1047,12 +1145,22 @@ async function handleRequest(
           persistenceState = createPersistenceState(binary);
           await storage.save(binary);
         }
+        if (activeDesktopClientRegistration && currentDoc) {
+          const registeredDoc = registerDesktopClient(
+            currentDoc,
+            activeDesktopClientRegistration,
+          );
+          if (registeredDoc !== currentDoc) {
+            currentDoc = registeredDoc;
+            loadedDocNeedsPersist = true;
+          }
+        }
         refreshLastSavedHeads(currentDoc);
         searchCorpusVersion = 1;
         const initializedDoc = currentDoc;
         if (!initializedDoc) throw new Error("Document not initialized");
-        const deviceId = (initializedDoc.meta?.deviceId as string | undefined) ?? "unknown";
-        send({ type: "DEBUG_EVENT", kind: "init", detail: `device ...${deviceId.slice(-8)}` });
+        const documentId = resolveDocumentId(initializedDoc.meta);
+        send({ type: "DEBUG_EVENT", kind: "init", detail: `document ...${documentId.slice(-8)}` });
         if (loadedDocNeedsPersist) {
           await saveAndBroadcast(trace);
         } else {
@@ -1079,8 +1187,13 @@ async function handleRequest(
         ack(req.reqId);
         break;
 
-      case "REPLACE_DOC":
+      case "REPLACE_DOC": {
+        activeDesktopClientRegistration =
+          req.desktopClientRegistration ?? activeDesktopClientRegistration;
         currentDoc = A.load<FreedDoc>(req.binary);
+        if (activeDesktopClientRegistration) {
+          currentDoc = registerDesktopClient(currentDoc, activeDesktopClientRegistration);
+        }
         currentBinary = req.binary;
         refreshLastSavedHeads(currentDoc);
         persistenceState = createPersistenceState(req.binary);
@@ -1093,6 +1206,7 @@ async function handleRequest(
         await saveAndBroadcast(trace);
         ack(req.reqId);
         break;
+      }
 
       case "GET_DOC_BINARY":
         if (!currentBinary) {
@@ -1112,19 +1226,43 @@ async function handleRequest(
         });
         break;
 
+      case "COMPARE_DOC": {
+        const doc = ensureCurrentDocLoaded(req.type);
+        const incomingDoc = A.load<FreedDoc>(req.binary);
+        send({
+          reqId: req.reqId,
+          type: "DOC_RELATIONSHIP",
+          relation: compareDocumentHistories(doc, incomingDoc),
+        });
+        break;
+      }
+
+      case "GET_SAVED_YOUTUBE_URLS": {
+        const doc = ensureCurrentDocLoaded(req.type);
+        const plain = A.view(doc, A.getHeads(doc)) as FreedDoc;
+        send({
+          reqId: req.reqId,
+          type: "SAVED_YOUTUBE_URLS",
+          urls: collectSavedYouTubeVideoUrls(
+            Object.values(plain.feedItems as Record<string, FeedItem>),
+          ),
+        });
+        break;
+      }
+
       case "MERGE_DOC": {
         if (!currentDoc) throw new Error("Document not initialized");
         const beforeCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const incomingDoc = A.load<FreedDoc>(req.binary);
         const mergedDoc = A.merge(currentDoc, incomingDoc);
-        const populatedSide = choosePopulatedInputForEmptyMerge(currentDoc, incomingDoc, mergedDoc);
-        const resolvedDoc =
-          populatedSide === "local" ? currentDoc : populatedSide === "incoming" ? incomingDoc : mergedDoc;
-        const guard = assertNonDestructiveMerge(currentDoc, incomingDoc, resolvedDoc, {
+        const guard = assertNonDestructiveMerge(currentDoc, incomingDoc, mergedDoc, {
           source: "Desktop sync",
         });
-        currentDoc = populatedSide ? A.clone(resolvedDoc) : resolvedDoc;
+        currentDoc = mergedDoc;
         migrateLoadedIdentityGraph("Migrate legacy identity graph");
+        if (activeDesktopClientRegistration && currentDoc) {
+          currentDoc = registerDesktopClient(currentDoc, activeDesktopClientRegistration);
+        }
         compactLoadedFeedText("Compact oversized synced feed text after merge", {
           rebuildHistory: true,
           previousBinaryBytes: Math.max(currentBinary?.byteLength ?? 0, req.binary.byteLength),
@@ -1137,14 +1275,6 @@ async function handleRequest(
           detail: delta !== 0 ? `${delta > 0 ? "+" : ""}${delta} items` : "no new items",
           bytes: req.binary.byteLength,
         });
-        if (populatedSide) {
-          send({
-            type: "DEBUG_EVENT",
-            kind: "merge_ok",
-            detail: `adopted ${populatedSide} document because the other sync input was empty`,
-            bytes: req.binary.byteLength,
-          });
-        }
         if (guard.deletedItemCount > 0) {
           send({
             type: "DEBUG_EVENT",
@@ -1255,6 +1385,22 @@ async function handleRequest(
 
       case "ADD_FEED_ITEMS":
         await applyAddFeedItemsPatchChange(req.items, trace);
+        ack(req.reqId);
+        break;
+
+      case "RECONCILE_YOUTUBE_CAPTURE":
+        await applyRequestChange((doc) => {
+          for (const item of req.items) compactFeedItemTextForSync(item);
+          reconcileYouTubeCapture(doc, req.accounts, req.items, req.options);
+        }, `Reconcile ${req.accounts.length.toLocaleString()} YouTube channels and ${req.items.length.toLocaleString()} videos`, true);
+        ack(req.reqId);
+        break;
+
+      case "RECONCILE_FOLLOW_ROSTER_CAPTURE":
+        await applyRequestChange((doc) => {
+          for (const item of req.items) compactFeedItemTextForSync(item);
+          reconcileFollowRosterCapture(doc, req.accounts, req.items, req.options);
+        }, `Reconcile ${req.accounts.length.toLocaleString()} ${req.options.provider} accounts and ${req.items.length.toLocaleString()} items`, true);
         ack(req.reqId);
         break;
 
@@ -1402,16 +1548,6 @@ async function handleRequest(
 
       case "UPDATE_PREFERENCES":
         await applyPreferenceChange(req.updates, trace);
-        ack(req.reqId);
-        break;
-
-      case "UPDATE_LAST_SYNC":
-        if (!currentDoc) throw new Error("Document not initialized");
-        currentDoc = A.change(currentDoc, "Update last sync", (doc) => {
-          updateLastSync(doc);
-        });
-        send({ type: "DEBUG_EVENT", kind: "change", detail: "Update last sync" });
-        await persistAndBroadcastWithoutHydration(trace);
         ack(req.reqId);
         break;
 
@@ -1580,6 +1716,16 @@ async function handleRequest(
         });
         break;
 
+      case "GET_ITEM_LEGACY_HTML":
+        if (!currentDoc) throw new Error("Document not initialized");
+        send({
+          reqId: req.reqId,
+          type: "ITEM_LEGACY_HTML",
+          globalId: req.globalId,
+          html: currentDoc.feedItems[req.globalId]?.preservedContent?.html ?? null,
+        });
+        break;
+
       case "UPDATE_RELAY_CLIENT_COUNT":
         relayClientCount = req.count;
         ack(req.reqId);
@@ -1600,7 +1746,11 @@ async function handleRequest(
         ` message=${message}`,
       "error",
     );
-    ack(req.reqId, message);
+    ack(
+      req.reqId,
+      message,
+      err instanceof CorruptDocumentError ? err.code : undefined,
+    );
     return;
   }
 
@@ -1644,6 +1794,15 @@ function enqueueRequest(req: WorkerRequest): void {
 
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   const req = event.data;
+  if (req.type === "QUIESCE") {
+    acceptingRequests = false;
+    enqueueRequest(req);
+    return;
+  }
+  if (!acceptingRequests && req.type !== "CLEAR_LOCAL") {
+    ack(req.reqId, "Automerge worker is quiesced for factory reset");
+    return;
+  }
   if (req.type === "UPDATE_RELAY_CLIENT_COUNT") {
     relayClientCount = req.count;
     return;

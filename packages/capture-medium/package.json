@@ -1,0 +1,22 @@
+{
+  "name": "@freed/capture-medium",
+  "version": "0.1.0",
+  "description": "Browser-safe Medium activity and follow-roster normalization for Freed",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./browser": "./src/browser.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@freed/shared": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "vitest": "^4.0.18"
+  }
+}

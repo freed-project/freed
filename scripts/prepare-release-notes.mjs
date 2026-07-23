@@ -22,6 +22,11 @@ import {
   validateReleaseShape,
   versionDayKey,
 } from "./release-notes-shared.mjs";
+import { listPromotionDiffFiles } from "./release-promotion-shared.mjs";
+import {
+  historicalPublishedTagReceipt,
+  releasePreparationReceipt,
+} from "./release-receipt.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -350,6 +355,8 @@ function defaultReleaseArtifact(tag, version, dayKey, channel) {
       previousPublishedTag: null,
       previousPublishedDayTag: null,
       compareRef: "HEAD",
+      productCommitSha: null,
+      promotedDevCommitSha: null,
       isLatestOfDay: true,
       sameDayTagsIncluded: [],
       relatedBuildTags: [],
@@ -488,12 +495,22 @@ function releaseArtifactsMatch(existingArtifact, nextRelease, nextSource) {
     previousPublishedTag: existingArtifact.source?.previousPublishedTag ?? null,
     previousPublishedDayTag: existingArtifact.source?.previousPublishedDayTag ?? null,
     compareRef: existingArtifact.source?.compareRef ?? "HEAD",
+    productCommitSha: existingArtifact.source?.productCommitSha ?? null,
+    promotedDevCommitSha:
+      existingArtifact.source?.promotedDevCommitSha ?? null,
     isLatestOfDay: Boolean(existingArtifact.source?.isLatestOfDay),
     sameDayTagsIncluded: existingArtifact.source?.sameDayTagsIncluded ?? [],
     relatedBuildTags: existingArtifact.source?.relatedBuildTags ?? [],
     prNumbers: existingArtifact.source?.prNumbers ?? [],
     commitSubjects: existingArtifact.source?.commitSubjects ?? [],
   };
+  if (Object.hasOwn(existingArtifact.source ?? {}, "receiptMode")) {
+    existingSource.receiptMode = existingArtifact.source.receiptMode;
+  }
+  if (Object.hasOwn(existingArtifact.source ?? {}, "publishedTagCommitSha")) {
+    existingSource.publishedTagCommitSha =
+      existingArtifact.source.publishedTagCommitSha;
+  }
 
   return (
     JSON.stringify(existingRelease) === JSON.stringify(nextRelease) &&
@@ -538,15 +555,24 @@ async function fetchPull(prNumber) {
 
 function parseArguments(argv) {
   const force = argv.includes("--force");
-  const positional = argv.filter((arg) => arg !== "--force");
+  const historicalPublishedTag = argv.includes("--historical-published-tag");
+  const positional = argv.filter(
+    (arg) => arg !== "--force" && arg !== "--historical-published-tag",
+  );
 
   if (positional.length !== 1) {
-    die("Usage: node scripts/prepare-release-notes.mjs <version-or-tag> [--force]");
+    die(
+      "Usage: node scripts/prepare-release-notes.mjs <version-or-tag> [--force] [--historical-published-tag]",
+    );
+  }
+  if (historicalPublishedTag && !force) {
+    die("--historical-published-tag requires --force.");
   }
 
   return {
     input: positional[0],
     force,
+    historicalPublishedTag,
   };
 }
 
@@ -742,7 +768,54 @@ function collectIntermediaryDevReleases(tag, previousPublishedTag, publishedRele
   });
 }
 
-async function collectReleaseContext(tag, version, channel) {
+async function collectReleaseContext(
+  tag,
+  version,
+  channel,
+  { historicalPublishedTag = false, existingSource = null } = {},
+) {
+  let releaseReceipt;
+  if (historicalPublishedTag) {
+    if (!hasGitRef(tag)) {
+      throw new Error(
+        `Historical release backfill requires the published tag ${tag} to exist locally.`,
+      );
+    }
+    releaseReceipt = historicalPublishedTagReceipt({
+      channel,
+      tagCommitSha: git(["rev-parse", `${tag}^{commit}`]),
+      existingSource,
+    });
+  } else {
+    const productCommitSha = git(["rev-parse", "HEAD"]);
+    let promotedDevCommitSha = null;
+    if (channel === "production") {
+      promotedDevCommitSha = String(
+        process.env.FREED_PROMOTED_DEV_COMMIT_SHA ?? "",
+      ).trim();
+      if (!/^[0-9a-f]{40,64}$/.test(promotedDevCommitSha)) {
+        throw new Error(
+          "Production release preparation requires FREED_PROMOTED_DEV_COMMIT_SHA from the exact validated origin/dev snapshot.",
+        );
+      }
+      git(["cat-file", "-e", `${promotedDevCommitSha}^{commit}`]);
+      const mismatches = listPromotionDiffFiles({
+        fromRef: promotedDevCommitSha,
+        toRef: productCommitSha,
+        cwd: REPO_ROOT,
+      });
+      if (mismatches.length > 0) {
+        throw new Error(
+          `Production product state does not match promoted dev snapshot ${promotedDevCommitSha}: ${mismatches.join(", ")}.`,
+        );
+      }
+    }
+    releaseReceipt = releasePreparationReceipt({
+      channel,
+      productCommitSha,
+      promotedDevCommitSha,
+    });
+  }
   const publishedReleases = await listPublishedReleases(channel);
   const allPublishedReleases =
     channel === "production" ? await listPublishedReleases("all") : publishedReleases;
@@ -845,6 +918,7 @@ async function collectReleaseContext(tag, version, channel) {
     channel,
     dayKey,
     compareRef,
+    releaseReceipt,
     isLatestOfDay,
     previousPublishedTag: previousPublished?.tag_name ?? null,
     previousPublishedDayTag: previousPublishedDay?.tag_name ?? null,
@@ -1035,7 +1109,9 @@ async function generateWithOpenAI(promptInput) {
 }
 
 async function main() {
-  const { input, force } = parseArguments(process.argv.slice(2));
+  const { input, force, historicalPublishedTag } = parseArguments(
+    process.argv.slice(2),
+  );
 
   mkdirp(RELEASES_DIR);
   mkdirp(path.join(DAILY_DIR, "production"));
@@ -1055,7 +1131,10 @@ async function main() {
 
   const existingDaily =
     readDailyArtifact(dayKey, channel) ?? defaultDailyEditorial(dayKey, version, channel);
-  const context = await collectReleaseContext(tag, version, channel);
+  const context = await collectReleaseContext(tag, version, channel, {
+    historicalPublishedTag,
+    existingSource: existingRelease?.source ?? null,
+  });
   const existingSeedRelease = releaseFromArtifact(existingRelease);
   const heuristicRelease = buildHeuristicRelease(context, existingDaily);
   const draftSeedRelease = releaseHasContent(heuristicRelease)
@@ -1155,6 +1234,7 @@ async function main() {
     previousPublishedTag: context.previousPublishedTag,
     previousPublishedDayTag: context.previousPublishedDayTag,
     compareRef: context.compareRef,
+    ...context.releaseReceipt,
     isLatestOfDay: context.isLatestOfDay,
     sameDayTagsIncluded: context.isLatestOfDay
       ? [...context.sameDayPublishedTags.filter((sameDayTag) => compareTags(sameDayTag, tag) < 0), tag]
@@ -1175,7 +1255,9 @@ async function main() {
     version,
     channel,
     dayKey,
-    approved: Boolean(existingRelease?.approved) && shouldKeepApproval,
+    approved:
+      Boolean(existingRelease?.approved) &&
+      (historicalPublishedTag || shouldKeepApproval),
     editorialNotes: existingRelease?.editorialNotes ?? [],
     generatedAt: new Date().toISOString(),
     model: structured ? OPENAI_MODEL : "heuristic",

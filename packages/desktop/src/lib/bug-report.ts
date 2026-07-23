@@ -14,15 +14,20 @@ import {
   buildBugReportSummaryMarkdown,
   getLastFatalRuntimeError,
   getRecentBugReportEvents,
+  recordRuntimeError,
   redactSensitiveText,
   resolveArtifactsForTier,
   summarizeStateForReport,
+  submitPrivateVulnerabilityReport,
 } from "@freed/ui/lib/bug-report";
 import type { BugReportingConfig } from "@freed/ui/context";
 import { useAppStore } from "./store";
 
 const GITHUB_REPO = "freed-project/freed";
 const SUPPORT_EMAIL = "support@freed.wtf";
+const PRIVATE_REPORT_ENDPOINT =
+  import.meta.env.VITE_PRIVATE_VULNERABILITY_REPORT_URL ||
+  "https://app.freed.wtf/api/security-report";
 const APP_NAME = "Freed Desktop";
 
 interface DesktopRuntimeInfo {
@@ -110,6 +115,9 @@ function createStateSummary() {
       facebook: state.fbAuth.isAuthenticated,
       instagram: state.igAuth.isAuthenticated,
       linkedin: state.liAuth.isAuthenticated,
+      substack: state.substackAuth.isAuthenticated,
+      medium: state.mediumAuth.isAuthenticated,
+      youtube: state.ytAuth.isAuthenticated,
     },
     cloudProviders: cloudProviders
       ? {
@@ -132,7 +140,14 @@ async function buildDesktopBundle(input: {
     input.draft.selectedArtifacts,
     input.privacyTier,
   );
-  const fatalError = getLastFatalRuntimeError();
+  const startupError = useAppStore.getState().error;
+  const fatalError = getLastFatalRuntimeError() ?? (startupError
+    ? recordRuntimeError({
+        source: "desktop:startup",
+        error: new Error(startupError),
+        fatal: true,
+      })
+    : null);
   const platform = await getPlatformName();
   const runtimeInfo = getRuntimeInfo(platform);
   const logLines = includedArtifacts.some((artifact) => artifact === "expanded-logs")
@@ -246,6 +261,8 @@ export const desktopBugReporting: BugReportingConfig = {
   githubRepo: GITHUB_REPO,
   privateShareEmail: SUPPORT_EMAIL,
   generateBundle: buildDesktopBundle,
+  submitPrivateReport: (payload) =>
+    submitPrivateVulnerabilityReport(PRIVATE_REPORT_ENDPOINT, payload),
   openUrl: (url) => {
     void shellOpen(url);
   },
