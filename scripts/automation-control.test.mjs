@@ -9319,6 +9319,8 @@ test("legacy backfill finalization rejects a tampered reservation event ID", () 
       );
     },
   );
+  retireReadyAuthorityWitnessForLegacyFixture(fixture.paths.taskManifest);
+  retireReadyAuthorityWitnessForLegacyFixture(fixture.paths.events);
 
   const tamperedEventId = `task-outcome-reserved:${"d".repeat(64)}`;
   const events = readEvents(stateRoot);
@@ -9333,7 +9335,6 @@ test("legacy backfill finalization rejects a tampered reservation event ID", () 
     `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
     { mode: 0o600 },
   );
-  retireReadyAuthorityWitnessForLegacyFixture(fixture.paths.events);
   const ledgerEntries = readFileSync(fixture.paths.outcomes, "utf8")
     .trim()
     .split("\n")
