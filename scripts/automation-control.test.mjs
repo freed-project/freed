@@ -15413,7 +15413,6 @@ test("active WAL recovery preflights every sibling before cleanup", () => {
 });
 
 test("one-use credential and release intermediates recover real process loss", () => {
-  const nowMs = Date.now();
   for (const phase of [
     "lease-credential-directory-created",
     "lease-credential-directory-parent-synced",
@@ -15436,7 +15435,6 @@ test("one-use credential and release intermediates recover real process loss", (
       .digest("hex");
     const token = `process-loss-publisher-${phase}-${"x".repeat(32)}`;
     const capability = writePublisherCapability(publisherRoot, scope, {
-      nowMs,
       leaseOperationId: operationId,
       token,
     });
