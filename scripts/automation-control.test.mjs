@@ -3018,7 +3018,7 @@ test("task mutations atomically replace one sorted current manifest and append v
   );
 });
 
-test("a pending task transaction recovers manifest state and exactly one audit event", () => {
+test("a pending task transaction recovers once and rejects stale resurrection", () => {
   const stateRoot = temporaryStateRoot();
   const nowMs = Date.now();
   const controller = actorLease(stateRoot, "freed-stability-controller", {
@@ -3065,7 +3065,7 @@ test("a pending task transaction recovers manifest state and exactly one audit e
   };
   const transaction = {
     schemaVersion: 1,
-    transactionId: "recoverable-transaction",
+    transactionId: "0f2496f9-6a8f-41ab-a01a-990e2bf53a9c",
     preparedAt: transitionAt,
     previousManifestRevision: current.revision,
     targetManifest,
@@ -3074,11 +3074,28 @@ test("a pending task transaction recovers manifest state and exactly one audit e
   mkdirSync(paths.taskTransactions, { recursive: true });
   const transactionPath = path.join(
     paths.taskTransactions,
-    "000000000002-recoverable-transaction.json",
+    `${String(targetManifest.revision).padStart(12, "0")}-${transaction.transactionId}.json`,
   );
   writeFileSync(transactionPath, `${JSON.stringify(transaction, null, 2)}\n`, {
     mode: 0o600,
   });
+  const predecessor = readAutomationAuthorityFileSnapshot(paths.taskManifest, {
+    privateRoot: paths.controlRoot,
+    label: "Current task manifest",
+  });
+  const proposedBytes = Buffer.from(
+    `${JSON.stringify(targetManifest, null, 2)}\n`,
+  );
+  const stagePath = path.join(
+    paths.controlRoot,
+    authorityStageNameForTest({
+      filePath: paths.taskManifest,
+      proposedBytes,
+      operationId: `task-manifest:${transaction.transactionId}`,
+      previousSnapshot: predecessor,
+    }),
+  );
+  writeFileSync(stagePath, proposedBytes, { mode: 0o600, flag: "wx" });
 
   const recovered = readTaskManifest({ stateRoot });
   assert.equal(recovered.revision, 2);
@@ -3093,13 +3110,23 @@ test("a pending task transaction recovers manifest state and exactly one audit e
   writeFileSync(transactionPath, `${JSON.stringify(transaction, null, 2)}\n`, {
     mode: 0o600,
   });
-  readTaskManifest({ stateRoot });
+  const manifestBeforeResurrection = readFileSync(paths.taskManifest);
+  const eventsBeforeResurrection = readFileSync(paths.events);
+  assert.throws(
+    () => readTaskManifest({ stateRoot }),
+    (error) =>
+      isAutomationControlError(error) &&
+      error.code === "authority_generation_conflict" &&
+      /no unique exact task transaction lineage/i.test(error.details?.cause),
+  );
+  assert.deepEqual(readFileSync(paths.taskManifest), manifestBeforeResurrection);
+  assert.deepEqual(readFileSync(paths.events), eventsBeforeResurrection);
   assert.equal(
     readEvents(stateRoot).filter((item) => item.eventId === event.eventId)
       .length,
     1,
   );
-  assert.equal(existsSync(transactionPath), false);
+  assert.equal(existsSync(transactionPath), true);
 });
 
 test("task transaction recovery rejects conflicting and duplicate audit events before mutation", async (t) => {
