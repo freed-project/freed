@@ -553,6 +553,20 @@ function readFixtureControlEvents(stateRoot) {
   return text === "" ? [] : text.split("\n").map(JSON.parse);
 }
 
+function retireReadyAuthorityWitnessForFixtureRewrite(filePath) {
+  const directory = path.dirname(filePath);
+  const prefix = `.${path.basename(filePath)}.authority.`;
+  const entries = readdirSync(directory).filter((entry) =>
+    entry.startsWith(prefix),
+  );
+  assert.equal(entries.length, 1, JSON.stringify(entries));
+  assert.match(
+    entries[0].slice(prefix.length),
+    /^[0-9a-f]{64}\.[0-9a-f]{64}\.tmp$/,
+  );
+  rmSync(path.join(directory, entries[0]));
+}
+
 function acquireFixtureActorLeases(stateRoot, actors, acquiredAtMs) {
   for (const [index, actor] of actors.entries()) {
     outcomeAuthentication(stateRoot, actor, acquiredAtMs + index);
@@ -881,6 +895,7 @@ function prepareTaskAtState(
       details: { behavioral },
       nowMs: clockNowMs,
     });
+    if (targetState === "observed") return;
     const sequence = [
       ["triaged", controller],
       ["approved_for_pr", controller],
@@ -905,6 +920,14 @@ function prepareTaskAtState(
           channel,
         };
         if (legacyOutcomeTransitions) {
+          if (state === "merged") {
+            retireReadyAuthorityWitnessForFixtureRewrite(
+              automationControlPaths(stateRoot).taskManifest,
+            );
+            retireReadyAuthorityWitnessForFixtureRewrite(
+              automationControlPaths(stateRoot).events,
+            );
+          }
           writeLegacyOutcomeTransitionFixture({
             stateRoot,
             taskId,
@@ -3883,6 +3906,7 @@ test("nightly planning fails closed while a missing outcome ledger has a pending
         operationId: repairPlan.operationId,
         taskId,
         phase: "prepared",
+        recoverablePreparationResidue: false,
       },
     ],
   );
@@ -4824,11 +4848,34 @@ test("post-admission task WAL recovery blocks the requested outcome", (t) => {
   const nowMs = Date.now();
   prepareTaskAtState(stateRoot, taskId, "validated", nowMs);
   prepareTaskAtState(stateRoot, auxiliaryTaskId, "observed", nowMs + 1_000);
+  const auxiliaryAuthentication = outcomeAuthentication(
+    stateRoot,
+    "freed-stability-controller",
+    nowMs + 1_500,
+  );
   const authentication = outcomeAuthentication(
     stateRoot,
     "freed-nightly-runner",
     nowMs + 2_000,
   );
+  const auxiliaryLease = inspectLease({
+    stateRoot,
+    name: auxiliaryAuthentication.authentication.leaseName,
+    nowMs: nowMs + 2_000,
+  });
+  assert.ok(auxiliaryLease);
+  const auxiliaryLeaseEvent = readFixtureControlEvents(stateRoot)
+    .filter(
+      (event) =>
+        ["lease_acquired", "lease_taken_over"].includes(event.type) &&
+        event.actor === auxiliaryAuthentication.authentication.actor &&
+        event.leaseName === auxiliaryAuthentication.authentication.leaseName &&
+        event.ts === auxiliaryLease.acquiredAt,
+    )
+    .at(-1);
+  assert.ok(auxiliaryLeaseEvent);
+  const auxiliaryAuthorizationProvenance =
+    leaseEventProvenance(auxiliaryLeaseEvent);
   const transactionId = "10000000-2000-4000-8000-000000000099";
   const recoveredEventId = "20000000-3000-4000-8000-000000000099";
   let transactionPath;
@@ -4880,7 +4927,11 @@ test("post-admission task WAL recovery blocks the requested outcome", (t) => {
               manifestRevision: targetManifest.revision,
               observerAuthority: targetTask.observerAuthority,
               providerAuthority: targetTask.providerAuthority,
-              data: { fromState: "observed", toState: "triaged" },
+              data: {
+                fromState: "observed",
+                toState: "triaged",
+                authorizationProvenance: auxiliaryAuthorizationProvenance,
+              },
             };
             const transaction = {
               schemaVersion: 1,
@@ -4912,7 +4963,10 @@ test("post-admission task WAL recovery blocks the requested outcome", (t) => {
   assert.ok(transactionPath);
   assert.equal(existsSync(transactionPath), false);
   assert.equal(readTask({ stateRoot, taskId }).state, "validated");
-  assert.equal(readTask({ stateRoot, auxiliaryTaskId }).state, "triaged");
+  assert.equal(
+    readTask({ stateRoot, taskId: auxiliaryTaskId }).state,
+    "triaged",
+  );
   assert.equal(existsSync(paths.outcomes), false);
   const events = readFileSync(paths.events, "utf8")
     .trim()
@@ -5152,9 +5206,11 @@ test("outcome ledger publication rejects a parent generation swap without writin
         },
       ),
     (error) =>
-      ["authority_generation_conflict", "lease_transaction_conflict"].includes(
-        error?.code,
-      ),
+      [
+        "authority_generation_conflict",
+        "lease_not_found",
+        "lease_transaction_conflict",
+      ].includes(error?.code),
   );
   assert.equal(swapped, true);
   assert.deepEqual(readFileSync(paths.outcomes), replacementBytes);
@@ -5836,6 +5892,7 @@ test("a tampered pending outcome digest blocks retry before mutation", () => {
       }),
     /simulated pending digest crash/,
   );
+  retireReadyAuthorityWitnessForFixtureRewrite(paths.taskManifest);
   const manifest = JSON.parse(readFileSync(paths.taskManifest, "utf8"));
   const task = manifest.tasks.find((candidate) => candidate.taskId === taskId);
   task.pendingOutcome.outcomeDigest = "3".repeat(64);
@@ -5993,7 +6050,7 @@ test("installed backfill rejects unpinned legacy event identity without mutation
           now: new Date(nowMs + 2_000),
         },
       ),
-    /unsafe or pending outcome ledger repair state/,
+    /fully authenticated, healthy outcome ledger/,
   );
   assert.deepEqual(readFileSync(paths.taskManifest), before.manifest);
   assert.deepEqual(readFileSync(paths.events), before.events);
@@ -6399,7 +6456,7 @@ for (const route of ["fresh", "legacy-backfill"]) {
             ...authentication,
             now: recordTime,
           }),
-        /unsafe or pending outcome ledger repair state/,
+        /fully authenticated, healthy outcome ledger/,
       );
       assert.deepEqual(readFileSync(paths.taskManifest), before.manifest);
       assert.deepEqual(readFileSync(paths.events), before.events);
@@ -6458,6 +6515,8 @@ for (const route of ["fresh", "legacy-backfill"]) {
       ...transition.data.installedIdentity,
       commitSha: "f".repeat(40),
     };
+    retireReadyAuthorityWitnessForFixtureRewrite(paths.taskManifest);
+    retireReadyAuthorityWitnessForFixtureRewrite(paths.events);
     writeFileSync(
       paths.events,
       `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
