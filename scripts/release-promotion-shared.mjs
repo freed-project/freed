@@ -8,6 +8,7 @@ import {
 export const PROMOTION_SCOPE_PATHS = [
   ".agents",
   ".github",
+  "automation",
   "docs",
   "packages",
   "scripts",
