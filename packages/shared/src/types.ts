@@ -14,13 +14,15 @@
 export type Platform =
   | "x" // X/Twitter
   | "rss" // Generic RSS/Atom
-  | "youtube" // YouTube (via RSS)
+  | "youtube" // YouTube authenticated capture, with optional manual RSS intake
   | "reddit" // Reddit (via RSS)
   | "mastodon" // Mastodon (via RSS)
   | "github" // GitHub (via Atom)
   | "facebook" // Facebook (DOM capture)
   | "instagram" // Instagram (DOM capture)
   | "linkedin" // LinkedIn (DOM capture)
+  | "substack" // Substack (authenticated WebView + RSS)
+  | "medium" // Medium (authenticated WebView + RSS)
   | "saved"; // Manually saved URLs (bookmarks)
 
 /** User-facing display names for each platform. */
@@ -34,6 +36,8 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
   facebook: "Facebook",
   instagram: "Instagram",
   linkedin: "LinkedIn",
+  substack: "Substack",
+  medium: "Medium",
   saved: "Saved",
 };
 
@@ -173,16 +177,14 @@ export interface FbGroupInfo {
  * Preserved article content for reader view
  * Used by capture-save and optionally by capture-rss for full articles
  *
- * Architecture note: `html` is device-local ONLY and must never be stored in
- * Automerge. Large HTML blobs balloon the CRDT history by 3-10x the raw size.
- * Store full HTML in the device content cache (Tauri FS / PWA Cache API) and
- * keep only `text` (short summary) in the synced document.
+ * Architecture note: current clients keep HTML in the device content cache and
+ * never add it to Automerge. Older documents may retain a read-only compatibility
+ * copy so upgrades do not delete another device's only reader payload.
  */
 export interface PreservedContent {
   /**
-   * Extracted article HTML -- device-local only.
-   * Present when the item has been fetched and cached on this device.
-   * Never write this to Automerge; use the content cache layer instead.
+   * @deprecated Read-only compatibility field for older synced documents.
+   * New content must use the device cache layer.
    */
   html?: string;
 
@@ -242,16 +244,17 @@ export interface ContentSignalBackfillSummary {
 }
 
 /**
- * AI provider and model preferences (synced, no secrets here)
+ * AI content-processing intent. Provider, model, and endpoint are legacy
+ * device-local fields retained only for backward-compatible document reads.
  */
 export interface AIPreferences {
-  /** AI provider selection */
-  provider: "none" | "integrated" | "ollama" | "openai" | "anthropic" | "gemini";
+  /** @deprecated Device-local. Use the device AI preference store. */
+  provider?: "none" | "integrated" | "ollama" | "openai" | "anthropic" | "gemini";
 
-  /** Model identifier, when the selected provider exposes a single model name */
-  model: string;
+  /** @deprecated Device-local. Use the device AI preference store. */
+  model?: string;
 
-  /** Ollama base URL (default: "http://localhost:11434") */
+  /** @deprecated Device-local. Use the device AI endpoint preference. */
   ollamaUrl?: string;
 
   /** Summarize articles as they are cached (may incur API costs with frontier providers) */
@@ -284,8 +287,10 @@ export interface StoryWallPublishTarget {
   directory: string;
   pagesUrl?: string;
   lastPublishedAt?: number;
+  /** @deprecated Transient publish errors stay local to the publishing device. */
   lastError?: string;
-  status: StoryWallPublishStatus;
+  /** @deprecated Transient publish progress stays local to the publishing device. */
+  status?: StoryWallPublishStatus;
 }
 
 export interface StoryWallPreferences {
@@ -625,8 +630,8 @@ export interface XCapturePreferences {
  * Facebook capture preferences
  */
 export interface FacebookCapturePreferences {
-  /** Joined groups discovered from the groups directory */
-  knownGroups: Record<string, FbGroupInfo>;
+  /** @deprecated Device-local Facebook group discovery cache. */
+  knownGroups?: Record<string, FbGroupInfo>;
 
   /** Groups to hide from future captures */
   excludedGroupIds: Record<string, true>;
@@ -652,22 +657,22 @@ export interface RssFeed {
   /** Last successful fetch timestamp */
   lastFetched?: number;
 
-  /** Last fetch attempt timestamp, including failed attempts */
+  /** @deprecated Device-local RSS scheduler state. */
   lastFetchAttemptedAt?: number;
 
-  /** Earliest timestamp for the next scheduled retry after a failed fetch */
+  /** @deprecated Device-local RSS scheduler state. */
   nextFetchAfter?: number;
 
-  /** Consecutive fetch failure count used to pace scheduled retries */
+  /** @deprecated Device-local RSS scheduler state. */
   consecutiveFailures?: number;
 
-  /** Last fetch error, used for diagnostics only */
+  /** @deprecated Device-local RSS diagnostics state. */
   lastFetchError?: string;
 
-  /** ETag for conditional GET */
+  /** @deprecated Device-local HTTP cache validator. */
   etag?: string;
 
-  /** Last-Modified header for conditional GET */
+  /** @deprecated Device-local HTTP cache validator. */
   lastModified?: string;
 
   /** Feed image URL */
@@ -782,8 +787,8 @@ export interface ReadingEnhancements {
    */
   showReadInGrayscale: boolean;
 
-  /** Two-column reader layout: compact card thumbnail on left, article on right */
-  dualColumnMode: boolean;
+  /** @deprecated Device-local. Use the device display preference store. */
+  dualColumnMode?: boolean;
 }
 
 export type SidebarMode = "expanded" | "compact" | "closed";
@@ -791,11 +796,11 @@ export type FeedSignalMode = "all" | "inspiring" | "events" | "personal" | "conv
 export type SavedContentSortMode = "date_saved" | "date_published" | "recommended" | "shortest_read";
 
 export interface DisplayPreferences {
-  /** Items per page */
-  itemsPerPage: number;
+  /** @deprecated Unused device-local pagination setting. */
+  itemsPerPage?: number;
 
-  /** Compact mode */
-  compactMode: boolean;
+  /** @deprecated Unused device-local density setting. */
+  compactMode?: boolean;
 
   /** Active visual theme */
   themeId: ThemeId;
@@ -809,40 +814,40 @@ export interface DisplayPreferences {
   /** Reading enhancements */
   reading: ReadingEnhancements;
 
-  /** Sidebar width in pixels (default: 256, min: 180, max: 480) */
+  /** @deprecated Device-local. Use the device display preference store. */
   sidebarWidth?: number;
 
-  /** Desktop sidebar mode (default: expanded) */
+  /** @deprecated Device-local. Use the device display preference store. */
   sidebarMode?: SidebarMode;
 
-  /** Friends workspace sidebar width in pixels (default: 360, min: 280, max: 520) */
+  /** @deprecated Device-local. Use the device display preference store. */
   friendsSidebarWidth?: number;
 
-  /** Friends workspace detail rail visibility (default: true) */
+  /** @deprecated Device-local. Use the device display preference store. */
   friendsSidebarOpen?: boolean;
 
-  /** Saved Friends workspace display mode. Unset defaults to all content. */
+  /** @deprecated Device-local. Use the device display preference store. */
   friendsMode?: MapMode;
 
   /** @deprecated Friend avatar tint is now derived from the active theme. */
   friendAvatarTint?: string;
 
-  /** Debug panel width in pixels (default: 320, min: 280, max: 600) */
+  /** @deprecated Device-local. Use the device display preference store. */
   debugPanelWidth?: number;
 
-  /** Saved map display mode. Unset means compute a default from available data. */
+  /** @deprecated Device-local. Use the device display preference store. */
   mapMode?: MapMode;
 
-  /** Saved map time filter. Unset means default to the current view. */
+  /** @deprecated Device-local. Use the device display preference store. */
   mapTimeMode?: MapTimeMode;
 
-  /** Saved unified feed signal filter mode. Unset means show all items. */
+  /** @deprecated Device-local legacy single-select filter. */
   feedSignalMode?: FeedSignalMode;
 
-  /** Saved unified feed signal filter modes. Empty means show all items. */
+  /** @deprecated Device-local. Use the device display preference store. */
   feedSignalModes?: FeedSignalMode[];
 
-  /** Saved content sort mode. Unset means newest saved items first. */
+  /** @deprecated Device-local. Use the device display preference store. */
   savedContentSortMode?: SavedContentSortMode;
 
   /** Days to keep archived items before pruning (default: 30, 0 = never prune) */
@@ -855,7 +860,8 @@ export interface DisplayPreferences {
 export interface UserPreferences {
   weights: WeightPreferences;
   ulysses: UlyssesPreferences;
-  sync: SyncPreferences;
+  /** @deprecated Cloud connection and scheduling state is device-local. */
+  sync?: SyncPreferences;
   display: DisplayPreferences;
   xCapture: XCapturePreferences;
   fbCapture: FacebookCapturePreferences;
@@ -891,6 +897,8 @@ export type AccountDiscoveredFrom =
   | "contact_import"
   | "manual_entry"
   | "follow_roster";
+
+export type FollowRosterRole = "follower" | "following" | "subscription";
 
 /**
  * Legacy social-profile shape preserved only for migration from the old
@@ -947,9 +955,13 @@ export interface Person {
   reachOutLog?: ReachOutLog[];
   tags?: string[];
   notes?: string;
+  /** @deprecated Legacy synchronized graph placement. New positions are device-local. */
   graphX?: number;
+  /** @deprecated Legacy synchronized graph placement. New positions are device-local. */
   graphY?: number;
+  /** @deprecated Legacy synchronized graph placement. New positions are device-local. */
   graphPinned?: boolean;
+  /** @deprecated Legacy synchronized graph placement. New positions are device-local. */
   graphUpdatedAt?: number;
   /** Internal marker for generated sample data. */
   sampleDataFingerprint?: SampleDataFingerprint;
@@ -978,9 +990,19 @@ export interface Account {
   firstSeenAt: number;
   lastSeenAt: number;
   discoveredFrom: AccountDiscoveredFrom;
+  /** Whether this account has been observed in a provider follow roster capture. */
+  followRosterActive?: boolean;
+  /** Last complete or partial provider roster capture that observed this account. */
+  followRosterSyncedAt?: number;
+  /** Provider relationship directions observed across partial roster captures. */
+  followRosterRoles?: FollowRosterRole[];
+  /** @deprecated Legacy synchronized graph placement. New positions are device-local. */
   graphX?: number;
+  /** @deprecated Legacy synchronized graph placement. New positions are device-local. */
   graphY?: number;
+  /** @deprecated Legacy synchronized graph placement. New positions are device-local. */
   graphPinned?: boolean;
+  /** @deprecated Legacy synchronized graph placement. New positions are device-local. */
   graphUpdatedAt?: number;
   /** Internal marker for generated sample data. */
   sampleDataFingerprint?: SampleDataFingerprint;
@@ -1005,14 +1027,31 @@ export type DeviceContact = LegacyDeviceContact;
 // =============================================================================
 
 /**
+ * One Freed Desktop installation registered with a synchronized library.
+ *
+ * This is intentionally durable coordination metadata, not online presence.
+ * Runtime heartbeats, connection status, and provider scheduling remain local.
+ */
+export interface DesktopClientRegistration {
+  /** Stable, device-local installation identifier. */
+  id: string;
+
+  /** First time this installation registered with the library. */
+  registeredAt: number;
+}
+
+/**
  * Document metadata
  */
 export interface DocumentMeta {
-  /** Unique device identifier */
-  deviceId: string;
+  /** Stable identifier for this synchronized document. */
+  documentId?: string;
 
-  /** Last sync timestamp */
-  lastSync: number;
+  /** @deprecated This value identifies the document, not a device. */
+  deviceId?: string;
+
+  /** @deprecated Sync timestamps are device-local runtime diagnostics. */
+  lastSync?: number;
 
   /** Document version for migrations */
   version: number;
@@ -1042,12 +1081,7 @@ export function createDefaultPreferences(): UserPreferences {
         instagram: ["/direct", "/accounts", "/explore/tags"],
       },
     },
-    sync: {
-      autoBackup: false,
-    },
     display: {
-      itemsPerPage: 20,
-      compactMode: false,
       themeId: "scriptorium",
       showEngagementCounts: false, // Hidden by default
       animationIntensity: "detailed",
@@ -1056,14 +1090,7 @@ export function createDefaultPreferences(): UserPreferences {
         focusIntensity: "normal",
         markReadOnScroll: true,
         showReadInGrayscale: true,
-        dualColumnMode: true,
       },
-      friendsSidebarOpen: true,
-      friendsMode: "all_content",
-      mapTimeMode: "current",
-      feedSignalMode: "all",
-      feedSignalModes: [],
-      savedContentSortMode: "date_saved",
       archivePruneDays: 30,
     },
     xCapture: {
@@ -1074,15 +1101,12 @@ export function createDefaultPreferences(): UserPreferences {
       includeReplies: false,
     },
     fbCapture: {
-      knownGroups: {},
       excludedGroupIds: {},
     },
     friendSuggestions: {
       dismissedSuggestionIds: [],
     },
     ai: {
-      provider: "none",
-      model: "",
       autoSummarize: false,
       extractTopics: false,
     },
@@ -1108,7 +1132,6 @@ export function createDefaultPreferences(): UserPreferences {
         repoName: "freed-story-wall",
         branch: "main",
         directory: "docs",
-        status: "idle",
       },
       featuredItemIds: [],
       hiddenItemIds: [],
@@ -1131,7 +1154,6 @@ export function mergeDefaultPreferences(
   const reading = display?.reading as Partial<ReadingEnhancements> | undefined;
   const weights = preferences.weights as Partial<WeightPreferences> | undefined;
   const ulysses = preferences.ulysses as Partial<UlyssesPreferences> | undefined;
-  const sync = preferences.sync as Partial<SyncPreferences> | undefined;
   const xCapture = preferences.xCapture as Partial<XCapturePreferences> | undefined;
   const fbCapture = preferences.fbCapture as Partial<FacebookCapturePreferences> | undefined;
   const friendSuggestions = preferences.friendSuggestions as Partial<FriendSuggestionPreferences> | undefined;
@@ -1167,10 +1189,6 @@ export function mergeDefaultPreferences(
         ...(ulysses?.allowedPaths ?? {}),
       },
     },
-    sync: {
-      ...defaults.sync,
-      ...sync,
-    },
     display: {
       ...defaults.display,
       ...display,
@@ -1194,10 +1212,6 @@ export function mergeDefaultPreferences(
     fbCapture: {
       ...defaults.fbCapture,
       ...fbCapture,
-      knownGroups: {
-        ...defaults.fbCapture.knownGroups,
-        ...(fbCapture?.knownGroups ?? {}),
-      },
       excludedGroupIds: {
         ...defaults.fbCapture.excludedGroupIds,
         ...(fbCapture?.excludedGroupIds ?? {}),
@@ -1320,8 +1334,11 @@ export interface ContactSyncState {
  */
 export function createDefaultMeta(): DocumentMeta {
   return {
-    deviceId: crypto.randomUUID(),
-    lastSync: 0,
+    documentId: crypto.randomUUID(),
     version: 1,
   };
+}
+
+export function resolveDocumentId(meta: DocumentMeta | null | undefined): string {
+  return meta?.documentId ?? meta?.deviceId ?? "unknown";
 }

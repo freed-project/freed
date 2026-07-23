@@ -46,7 +46,7 @@ export interface SyncEvent {
 }
 
 export interface DocSnapshot {
-  deviceId: string;
+  documentId: string;
   itemCount: number;
   feedCount: number;
   binarySize: number;
@@ -171,6 +171,9 @@ export type HealthProviderId =
   | "facebook"
   | "instagram"
   | "linkedin"
+  | "substack"
+  | "medium"
+  | "youtube"
   | "gdrive"
   | "dropbox";
 

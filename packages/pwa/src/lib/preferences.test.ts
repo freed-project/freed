@@ -12,7 +12,7 @@ describe("mergeDefaultPreferences", () => {
     expect(preferences.display.themeId).toBe("neon");
     expect(preferences.display.reading.markReadOnScroll).toBe(true);
     expect(preferences.display.reading.showReadInGrayscale).toBe(true);
-    expect(preferences.display.reading.dualColumnMode).toBe(true);
+    expect(preferences.display.reading.dualColumnMode).toBeUndefined();
   });
 
   it("preserves explicit reading preferences", () => {

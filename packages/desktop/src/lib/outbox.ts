@@ -9,8 +9,9 @@
  *   - Runs on the desktop only (has WebView sessions + X cookies).
  *   - Debounces 5s to batch rapid changes (e.g. user double-clicking like).
  *   - Processes items sequentially to avoid hammering APIs.
- *   - Retries up to MAX_RETRIES per item; after that writes sentinel -1.
- *   - Retry counts are in-memory only (not persisted across app restarts).
+ *   - Reserves each provider attempt in a device-local persistent ledger.
+ *   - Stops after three attempts for the exact local intent.
+ *   - Synchronizes positive confirmations only. Historical -1 sentinels stay terminal.
  *   - Returns a teardown function; call it to stop the processor.
  *
  * Limitations:
@@ -24,20 +25,65 @@ import type { FeedItem, Platform } from "@freed/shared";
 import type { PlatformActions } from "./platform-actions";
 import type { DocChangeEvent } from "./automerge-types";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
+import { waitForFactoryResetDrain } from "@freed/ui/lib/factory-reset";
 import { scheduleSideEffect } from "./side-effect-scheduler";
 import {
   formatBackgroundRuntimeDeferredReason,
   isBackgroundRuntimeDeferredError,
   runBackgroundJob,
 } from "./background-runtime-coordinator";
+import { recordSocialOutboxAttempt } from "./runtime-health-events";
+import {
+  beginSocialOutboxAttempt,
+  completeSocialOutboxIntent,
+  getExplicitSocialOutboxIntent,
+  markSocialOutboxPlatformConfirmed,
+  recordExplicitSocialOutboxIntent,
+  type SocialOutboxAction,
+  type SocialOutboxIntent,
+} from "./social-outbox-state";
 
 // =============================================================================
 // Constants
 // =============================================================================
 
 const DEBOUNCE_MS = 5_000;
-const MAX_RETRIES = 3;
 const SCAN_YIELD_EVERY = 500;
+const FACTORY_RESET_DRAIN_TIMEOUT_MS = 120_000;
+
+interface ActiveOutboxRuntime {
+  stop(): void;
+}
+
+let activeOutboxRuntime: ActiveOutboxRuntime | null = null;
+let activeDrain: Promise<void> | null = null;
+let factoryResetDrainInProgress = false;
+const activeResetSensitiveOperations = new Set<Promise<unknown>>();
+
+function trackResetSensitiveOperation<T>(operation: Promise<T>): Promise<T> {
+  let tracked: Promise<T>;
+  tracked = operation.finally(() => activeResetSensitiveOperations.delete(tracked));
+  activeResetSensitiveOperations.add(tracked);
+  return tracked;
+}
+
+async function runOutboxDrainExclusive(run: () => Promise<void>): Promise<void> {
+  while (activeDrain) {
+    try {
+      await activeDrain;
+    } catch {
+      // The waiting processor still needs its turn after a prior drain fails.
+    }
+  }
+
+  const currentDrain = Promise.resolve().then(run);
+  activeDrain = currentDrain;
+  try {
+    await currentDrain;
+  } finally {
+    if (activeDrain === currentDrain) activeDrain = null;
+  }
+}
 
 // =============================================================================
 // Types
@@ -67,26 +113,15 @@ export function startOutboxProcessor(
   confirmLiked: ConfirmFn,
   confirmSeen: ConfirmFn,
 ): () => void {
-  // In-memory retry tracking: globalId -> { likeRetries, seenRetries }
-  const retryMap = new Map<string, { likeRetries: number; seenRetries: number }>();
-
-  function getRetries(id: string) {
-    if (!retryMap.has(id)) retryMap.set(id, { likeRetries: 0, seenRetries: 0 });
-    return retryMap.get(id)!;
-  }
-
-  function maybeDeleteRetries(id: string) {
-    const retries = retryMap.get(id);
-    if (!retries) return;
-    if (retries.likeRetries === 0 && retries.seenRetries === 0) {
-      retryMap.delete(id);
-    }
-  }
+  if (factoryResetDrainInProgress) return () => {};
+  activeOutboxRuntime?.stop();
 
   let drainTimer: ReturnType<typeof setTimeout> | null = null;
   let isDraining = false;
   let drainRequested = false;
   let fullScanRequested = true;
+  let stopped = false;
+  let unsubscribe: () => void = () => {};
   const pendingChangedItems = new Map<string, FeedItem>();
 
   function addDrainEvent(event?: DocChangeEvent) {
@@ -100,19 +135,47 @@ export function startOutboxProcessor(
     }
 
     for (const item of event.changedItems) {
+      if (
+        event.mutation === "TOGGLE_LIKED"
+        && item.userState.liked
+        && item.userState.likedSyncedAt === undefined
+      ) {
+        const intent = makeIntent(item, "like", item.userState.likedAt);
+        if (intent) recordExplicitSocialOutboxIntent(intent);
+      }
       pendingChangedItems.set(item.globalId, item);
     }
   }
 
   function requeueItem(item: FeedItem) {
+    if (stopped) return;
     pendingChangedItems.set(item.globalId, item);
   }
 
-  // ── Core drain logic ────────────────────────────────────────────────────
+  function makeIntent(
+    item: FeedItem,
+    action: SocialOutboxAction,
+    intentAt: number | undefined,
+  ): SocialOutboxIntent | null {
+    if (typeof intentAt !== "number" || !Number.isFinite(intentAt) || intentAt < 0) {
+      return null;
+    }
+    return {
+      globalId: item.globalId,
+      platform: item.platform,
+      action,
+      intentAt,
+    };
+  }
+
+  interface PendingAction {
+    item: FeedItem;
+    intent: SocialOutboxIntent;
+  }
 
   async function collectPendingQueues(items: FeedItem[]) {
-    const likeQueue: FeedItem[] = [];
-    const seenQueue: FeedItem[] = [];
+    const likeQueue: PendingAction[] = [];
+    const seenQueue: PendingAction[] = [];
 
     for (let index = 0; index < items.length; index += 1) {
       if (index > 0 && index % SCAN_YIELD_EVERY === 0) {
@@ -122,17 +185,24 @@ export function startOutboxProcessor(
       const item = items[index];
       const us = item.userState;
 
-      if (us.liked && us.likedAt && !us.likedSyncedAt) {
-        const retries = getRetries(item.globalId);
-        if (retries.likeRetries < MAX_RETRIES) {
-          likeQueue.push(item);
+      const explicitLikeIntent = getExplicitSocialOutboxIntent(item.globalId, "like");
+      const canRunLike = us.liked && (
+        us.likedSyncedAt === undefined
+        || (us.likedSyncedAt === -1 && explicitLikeIntent?.platform === item.platform)
+      );
+      if (canRunLike) {
+        const intent = explicitLikeIntent?.platform === item.platform
+          ? explicitLikeIntent
+          : makeIntent(item, "like", us.likedAt);
+        if (intent) {
+          likeQueue.push({ item, intent });
         }
       }
 
-      if (us.readAt && !us.seenSyncedAt && item.sourceUrl) {
-        const retries = getRetries(item.globalId);
-        if (retries.seenRetries < MAX_RETRIES) {
-          seenQueue.push(item);
+      if (us.seenSyncedAt === undefined && item.sourceUrl) {
+        const intent = makeIntent(item, "seen", us.readAt);
+        if (intent) {
+          seenQueue.push({ item, intent });
         }
       }
     }
@@ -140,8 +210,91 @@ export function startOutboxProcessor(
     return { likeQueue, seenQueue };
   }
 
+  async function confirmPositive(
+    pending: PendingAction,
+    confirmedAt: number,
+    confirm: ConfirmFn,
+  ): Promise<boolean> {
+    try {
+      await confirm(pending.item.globalId, confirmedAt);
+      completeSocialOutboxIntent(pending.intent);
+      return true;
+    } catch (error) {
+      addDebugEvent(
+        "error",
+        `[Outbox] ${pending.intent.action} acknowledgement failed on ${pending.item.platform}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      requeueItem(pending.item);
+      return false;
+    }
+  }
+
+  async function processPendingAction(
+    pending: PendingAction,
+    action: (item: FeedItem) => Promise<boolean>,
+    confirm: ConfirmFn,
+  ): Promise<void> {
+    const decision = beginSocialOutboxAttempt(pending.intent);
+    if (decision.kind === "capacity") {
+      addDebugEvent(
+        "error",
+        `[Outbox] local retry ledger is full; skipping ${pending.intent.action} on ${pending.item.platform}`,
+      );
+      return;
+    }
+    if (decision.kind === "exhausted") return;
+    if (decision.kind === "confirmed") {
+      await confirmPositive(pending, decision.confirmedAt, confirm);
+      return;
+    }
+
+    recordSocialOutboxAttempt({
+      provider: pending.item.platform,
+      action: pending.intent.action,
+      attempt: decision.attempt,
+      maxAttempts: decision.maxAttempts,
+    });
+
+    try {
+      const ok = await action(pending.item);
+      if (ok) {
+        const confirmedAt = Date.now();
+        const confirmationPersisted = markSocialOutboxPlatformConfirmed(
+          pending.intent,
+          confirmedAt,
+        );
+        if (!confirmationPersisted) {
+          addDebugEvent(
+            "error",
+            `[Outbox] ${pending.intent.action} provider confirmation could not be stored on this device; keeping a runtime terminal marker on ${pending.item.platform}`,
+          );
+        }
+        await confirmPositive(pending, confirmedAt, confirm);
+        return;
+      }
+
+      addDebugEvent(
+        "change",
+        `[Outbox] ${pending.intent.action} soft failure ${decision.attempt.toLocaleString()} of ${
+          decision.maxAttempts.toLocaleString()
+        } on ${pending.item.platform}`,
+      );
+    } catch (error) {
+      addDebugEvent(
+        "error",
+        `[Outbox] ${pending.intent.action} attempt ${decision.attempt.toLocaleString()} threw on ${
+          pending.item.platform
+        }: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    if (!decision.exhaustedAfterAttempt) requeueItem(pending.item);
+  }
+
   async function drainNow() {
-    if (isDraining) return;
+    if (stopped || isDraining) return;
     isDraining = true;
     drainRequested = false;
 
@@ -168,108 +321,56 @@ export function startOutboxProcessor(
     const { likeQueue, seenQueue } = await collectPendingQueues(items);
 
     if (likeQueue.length > 0) {
-      addDebugEvent("change", `[Outbox] draining ${likeQueue.length} pending like(s)`);
+      addDebugEvent("change", `[Outbox] draining ${likeQueue.length.toLocaleString()} pending like(s)`);
     }
     if (seenQueue.length > 0) {
-      addDebugEvent("change", `[Outbox] draining ${seenQueue.length} pending seen(s)`);
+      addDebugEvent("change", `[Outbox] draining ${seenQueue.length.toLocaleString()} pending seen(s)`);
     }
 
-    for (const item of likeQueue) {
-      const actions = platformActions.get(item.platform);
+    for (const pending of likeQueue) {
+      if (stopped) break;
+      const actions = platformActions.get(pending.item.platform);
       if (!actions) continue;
-
-      const retries = getRetries(item.globalId);
-      try {
-        const ok = await actions.like(item);
-        if (ok) {
-          retries.likeRetries = 0;
-          await confirmLiked(item.globalId);
-          maybeDeleteRetries(item.globalId);
-          addDebugEvent("change", `[Outbox] liked ${item.globalId} on ${item.platform}`);
-        } else {
-          retries.likeRetries++;
-          addDebugEvent("change", `[Outbox] like soft-fail #${retries.likeRetries} for ${item.globalId}`);
-          if (retries.likeRetries >= MAX_RETRIES) {
-            try { await confirmLiked(item.globalId, -1); } catch { /* logged below */ }
-            retries.likeRetries = 0;
-            maybeDeleteRetries(item.globalId);
-            addDebugEvent("error", `[Outbox] like permanently failed for ${item.globalId}`);
-          } else {
-            requeueItem(item);
-          }
-        }
-      } catch (err) {
-        retries.likeRetries++;
-        addDebugEvent("error", `[Outbox] like threw for ${item.globalId}: ${err instanceof Error ? err.message : String(err)}`);
-        if (retries.likeRetries >= MAX_RETRIES) {
-          try { await confirmLiked(item.globalId, -1); } catch { /* already logged */ }
-          retries.likeRetries = 0;
-          maybeDeleteRetries(item.globalId);
-        } else {
-          requeueItem(item);
-        }
-      }
+      await processPendingAction(pending, actions.like.bind(actions), confirmLiked);
     }
 
-    for (const item of seenQueue) {
-      const actions = platformActions.get(item.platform);
+    for (const pending of seenQueue) {
+      if (stopped) break;
+      const actions = platformActions.get(pending.item.platform);
       if (!actions) continue;
-
-      const retries = getRetries(item.globalId);
-      try {
-        const ok = await actions.markSeen(item);
-        if (ok) {
-          retries.seenRetries = 0;
-          await confirmSeen(item.globalId);
-          maybeDeleteRetries(item.globalId);
-        } else {
-          retries.seenRetries++;
-          if (retries.seenRetries >= MAX_RETRIES) {
-            try { await confirmSeen(item.globalId, -1); } catch { /* logged below */ }
-            retries.seenRetries = 0;
-            maybeDeleteRetries(item.globalId);
-          } else {
-            requeueItem(item);
-          }
-        }
-      } catch (err) {
-        retries.seenRetries++;
-        addDebugEvent("error", `[Outbox] seen threw for ${item.globalId}: ${err instanceof Error ? err.message : String(err)}`);
-        if (retries.seenRetries >= MAX_RETRIES) {
-          try { await confirmSeen(item.globalId, -1); } catch { /* already logged */ }
-          retries.seenRetries = 0;
-          maybeDeleteRetries(item.globalId);
-        } else {
-          requeueItem(item);
-        }
-      }
+      await processPendingAction(pending, actions.markSeen.bind(actions), confirmSeen);
     }
 
     isDraining = false;
 
-    if (drainRequested || fullScanRequested || pendingChangedItems.size > 0) {
+    if (!stopped && (drainRequested || fullScanRequested || pendingChangedItems.size > 0)) {
       scheduleDrain();
     }
   }
 
   async function drain() {
-    await scheduleSideEffect({
-      queue: "outbox",
-      source: "outbox",
-      kind: "drain",
-      timeoutMs: 120_000,
-      slowMs: 1_000,
-      run: () =>
-        runBackgroundJob({
-          kind: "outbox",
-          source: "outbox",
-          timeoutMs: 120_000,
-          run: drainNow,
-        }),
+    if (stopped) return;
+    await runOutboxDrainExclusive(async () => {
+      if (stopped) return;
+      await scheduleSideEffect({
+        queue: "outbox",
+        source: "outbox",
+        kind: "drain",
+        timeoutMs: 120_000,
+        slowMs: 1_000,
+        run: () =>
+          runBackgroundJob({
+            kind: "outbox",
+            source: "outbox",
+            timeoutMs: 120_000,
+            run: () => trackResetSensitiveOperation(drainNow()),
+          }),
+      });
     });
   }
 
   function scheduleDrain(event?: DocChangeEvent) {
+    if (stopped) return;
     addDrainEvent(event);
     if (isDraining) {
       drainRequested = true;
@@ -291,8 +392,20 @@ export function startOutboxProcessor(
     }, DEBOUNCE_MS);
   }
 
-  // Subscribe to doc changes
-  const unsubscribe = subscribe(scheduleDrain);
+  unsubscribe = subscribe(scheduleDrain);
+
+  const runtime: ActiveOutboxRuntime = {
+    stop() {
+      if (stopped) return;
+      stopped = true;
+      unsubscribe();
+      if (drainTimer) {
+        clearTimeout(drainTimer);
+        drainTimer = null;
+      }
+    },
+  };
+  activeOutboxRuntime = runtime;
 
   // Run an immediate drain on startup (catch anything queued while offline)
   drain().catch((err) => {
@@ -308,10 +421,20 @@ export function startOutboxProcessor(
 
   // Return teardown
   return () => {
-    unsubscribe();
-    if (drainTimer) {
-      clearTimeout(drainTimer);
-      drainTimer = null;
-    }
+    runtime.stop();
+    if (activeOutboxRuntime === runtime) activeOutboxRuntime = null;
   };
+}
+
+/** Stop future outbox scheduling and wait for an authorized action already in flight. */
+export async function stopAndDrainOutboxProcessor(): Promise<void> {
+  factoryResetDrainInProgress = true;
+  const runtime = activeOutboxRuntime;
+  activeOutboxRuntime = null;
+  runtime?.stop();
+  await waitForFactoryResetDrain(
+    () => Array.from(activeResetSensitiveOperations),
+    "Social outbox",
+    FACTORY_RESET_DRAIN_TIMEOUT_MS,
+  );
 }

@@ -30,6 +30,12 @@ import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
 import { withProviderSyncing } from "../lib/store";
 import { clearProviderPause, resetProviderPauseState } from "../lib/provider-health";
 import { socialProviderCopy } from "../lib/social-provider-copy";
+import {
+  isDesktopProviderAuthAllowed,
+  registerDesktopProviderAuthQuiesceHandler,
+  runDesktopProviderAuthRequest,
+} from "../lib/provider-auth-lifecycle";
+import { desktopXLoginResetController } from "../lib/x-login-reset-controller";
 
 // =============================================================================
 // Types
@@ -144,38 +150,66 @@ function useXLoginPoller(onReady: (ct0: string, authToken: string) => void) {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+  const resetController = desktopXLoginResetController;
 
-  const stop = useCallback(() => {
+  const clearPoller = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-    setPolling(false);
   }, []);
+
+  const stop = useCallback(() => {
+    clearPoller();
+    setPolling(false);
+  }, [clearPoller]);
 
   const start = useCallback(() => {
     stop();
     setPolling(true);
 
     intervalRef.current = setInterval(async () => {
+      if (!isDesktopProviderAuthAllowed()) {
+        clearPoller();
+        return;
+      }
       try {
-        const result = await invoke<XLoginCheckResult>("check_x_login_cookies");
+        const result = await runDesktopProviderAuthRequest(async () =>
+          invoke<XLoginCheckResult>("check_x_login_cookies"),
+        );
+        if (!isDesktopProviderAuthAllowed()) {
+          clearPoller();
+          return;
+        }
 
         if (result.status === "ready") {
+          resetController.markClosed();
           stop();
           onReadyRef.current(result.ct0, result.auth_token);
         } else if (result.status === "closed") {
+          resetController.markClosed();
           stop();
         }
       } catch {
-        stop();
+        if (isDesktopProviderAuthAllowed()) stop();
+        else clearPoller();
       }
     }, POLL_INTERVAL_MS);
-  }, [stop]);
+  }, [clearPoller, resetController, stop]);
 
   useEffect(() => stop, [stop]);
-
-  return { polling, start, stop };
+  useEffect(
+    () => registerDesktopProviderAuthQuiesceHandler(clearPoller),
+    [clearPoller],
+  );
+  return {
+    polling,
+    start,
+    stop,
+    markOpening: resetController.markOpening,
+    trackOpening: resetController.trackOpening,
+    markClosed: resetController.markClosed,
+  };
 }
 
 // =============================================================================
@@ -215,6 +249,7 @@ export function XSettingsSection({
 
   const finishLogin = useCallback(
     async (ct0Val: string, authTokenVal: string) => {
+      if (!isDesktopProviderAuthAllowed()) return;
       setError(null);
       setActionError(null);
       const cookies = connectX(ct0Val, authTokenVal);
@@ -230,11 +265,20 @@ export function XSettingsSection({
 
   const handleSignIn = async () => {
     await confirm(async () => {
+      if (!isDesktopProviderAuthAllowed()) return;
       try {
         setActionError(null);
-        await invoke("open_x_login_window");
+        poller.markOpening();
+        const opening = runDesktopProviderAuthRequest(async () => {
+          await invoke("open_x_login_window");
+        });
+        poller.trackOpening(opening);
+        await opening;
+        if (!isDesktopProviderAuthAllowed()) return;
         poller.start();
       } catch (err) {
+        if (!isDesktopProviderAuthAllowed()) return;
+        poller.markClosed();
         console.error("Failed to open X login window:", err);
         setActionError(err instanceof Error ? err.message : "Failed to open X login window");
       }
@@ -243,12 +287,14 @@ export function XSettingsSection({
 
   const handleCancelLogin = async () => {
     poller.stop();
+    poller.markClosed();
     invoke("close_x_login_window").catch(() => {});
   };
 
   // Manual cookie entry handlers
   const handleManualConnect = async () => {
     await confirm(async () => {
+      if (!isDesktopProviderAuthAllowed()) return;
       setFormError("");
       setError(null);
       setActionError(null);

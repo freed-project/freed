@@ -7,6 +7,8 @@ import type {
   UserPreferences,
 } from "./types.js";
 import type { BaseAppState } from "./store-types.js";
+import { stripDeviceLocalPreferenceUpdates } from "./preferences.js";
+import { sanitizeAccountWrite, sanitizePersonWrite } from "./sync-write-policy.js";
 
 export type OptimisticState = Pick<
   BaseAppState,
@@ -279,6 +281,8 @@ export function projectUpdatePerson(
   updates: Partial<Person>,
   now: number = Date.now(),
 ): OptimisticPatch | null {
+  updates = sanitizePersonWrite(updates, { preserveUndefined: true });
+  if (Object.keys(updates).length === 0) return null;
   const person = state.persons[id];
   if (!person) return null;
 
@@ -313,6 +317,8 @@ export function projectUpdateAccount(
   updates: Partial<Account>,
   now: number = Date.now(),
 ): OptimisticPatch | null {
+  updates = sanitizeAccountWrite(updates, { preserveUndefined: true });
+  if (Object.keys(updates).length === 0) return null;
   const account = state.accounts[id];
   if (!account) return null;
   return {
@@ -330,7 +336,9 @@ export function projectUpdatePreferences(
   state: Pick<OptimisticState, "preferences">,
   updates: Partial<UserPreferences>,
 ): OptimisticPatch | null {
+  const syncedUpdates = stripDeviceLocalPreferenceUpdates(updates);
+  if (Object.keys(syncedUpdates).length === 0) return null;
   return {
-    preferences: mergePreferenceUpdate(state.preferences, updates),
+    preferences: mergePreferenceUpdate(state.preferences, syncedUpdates),
   };
 }

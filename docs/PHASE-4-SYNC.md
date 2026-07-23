@@ -3,7 +3,7 @@
 > **Status:** 🚧 In Progress
 > **Dependencies:** Phase 1-2 (Capture layers ✓)
 >
-> Local relay, Google Drive cloud sync, desktop local snapshot rotation, "Sync Now" button, "Last synced" indicator, proxied Google token exchange for Freed Desktop with a built-in production proxy default, durable Google OAuth refresh, recoverable Google Contacts token-refresh failures, a production callback relay for dev and preview PWA Google OAuth, appDataFolder Drive polling, cloud sync health diagnostics, visible Drive transfer diagnostics in Settings, manual Drive sync from Desktop and PWA Settings, cloud sync activity timelines, global background activity visibility for Desktop cloud work, initial Drive download auth-refresh recovery, merged-upload local convergence, destructive Automerge merge blocking, pinned explicit local wins and cloud wins recovery actions, PWA local-change cloud uploads, PWA document-init-gated cloud startup, runtime-gated cloud upload waits, mobile-safe Drive upload bodies, and the no-cloud-sync launch banner are all working. Dropbox remains behind a coming-soon gate while its provider work is finished. iCloud sync is the remaining open item.
+> Local relay, Google Drive cloud sync, desktop local snapshot rotation, "Sync Now" button, "Last synced" indicator, proxied Google token exchange for Freed Desktop with a built-in production proxy default, durable Google OAuth refresh, recoverable Google Contacts token-refresh failures, a production callback relay for dev and preview PWA Google OAuth, appDataFolder Drive polling, cloud sync health diagnostics, visible Drive transfer diagnostics in Settings, manual Drive sync from Desktop and PWA Settings, cloud sync activity timelines, global background activity visibility for Desktop cloud work, initial Drive download auth-refresh recovery, merged-upload local convergence, destructive Automerge merge blocking, pinned explicit local wins and cloud wins recovery actions, PWA local-change cloud uploads, PWA document-init-gated cloud startup, runtime-gated cloud upload waits, mobile-safe Drive upload bodies, the multi-Desktop request warning, and the no-cloud-sync launch banner are all working. Dropbox remains behind a coming-soon gate while its provider work is finished. iCloud is the remaining core document-sync item. Large offline media uses a separate future transport plan.
 
 ---
 
@@ -242,6 +242,7 @@ The relay requires a 256-bit token in the WebSocket upgrade URI (`?t=<base64url>
 - Token is generated on first launch, persisted to the app data directory, and re-used across restarts so paired devices auto-reconnect.
 - QR code is rendered locally via `react-qr-code` — the user's LAN IP and token are never sent to a third party.
 - "Reset Pairing Token" button (desktop Settings → Mobile Sync) rotates the token and persists the new value; connected devices remain unaffected until they disconnect and attempt to reconnect.
+- Factory reset rotates the token, disconnects active relay clients, clears relay-held document bytes, and requires existing PWA readers to scan the current QR code again.
 - New devices must scan the current QR code to obtain a valid token.
 
 ---
@@ -257,6 +258,23 @@ The relay requires a 256-bit token in the WebSocket upgrade URI (`?t=<base64url>
 | iCloud       | High       | Best for Apple users, web API access is limited |
 
 Each provider stores a single Automerge binary file. CRDT handles merge conflicts automatically.
+
+### Future Large Media Transfer
+
+Automerge and the current document relay are not media pipes. Future offline
+audio and video packages must stay outside the Freed document, snapshots, logs,
+and bug reports.
+
+The planned transfer order is a dedicated authenticated LAN endpoint, then
+chunk-encrypted objects in the user's configured cloud when Freed Desktop is
+unreachable. The PWA verifies and stores each package in device-local media
+storage. A Freed-hosted relay requires a separate owner decision after the
+device-owned paths have been measured for reliability, privacy, provider
+visibility, bandwidth, and cost.
+
+See [YouTube Focus and Offline Integration](YOUTUBE-INTEGRATION.md) for the
+first audio-oriented use case, security model, iPhone constraints, failure
+recovery, telemetry, milestones, and acceptance tests.
 
 ---
 
@@ -281,6 +299,8 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 | 4.15 | Visible cloud transfer diagnostics, manual sync, and initial Drive download recovery | ✓ | Medium |
 | 4.16 | Destructive Automerge merge guard     | ✓      | Medium     |
 | 4.17 | Desktop cloud sync activity in the global background monitor | ✓ | Low |
+| 4.18 | Dedicated large-media transfer lane, LAN first with encrypted user-cloud fallback | ☐ | High |
+| 4.19 | Synced Freed Desktop registration and duplicate provider request warning | ✓ | Low |
 
 ---
 
@@ -295,7 +315,7 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 - [x] PWA falls back to cloud sync when away from home (Google Drive PKCE OAuth, production callback relay for dev and preview app origins, local-change upload subscriptions, Automerge merge-upload)
 - [x] Google Drive uses the server token proxy in Freed Desktop so the Google client secret stays out of the app bundle, watches appDataFolder changes, refreshes stored OAuth credentials before Drive or Contacts calls, and retries Contacts once after a 401 with a forced token refresh
 - [x] Freed Desktop falls back to the production Google token proxy when the build omits `VITE_GDRIVE_TOKEN_PROXY_URL`, so local and dev builds do not silently use direct Google token exchange
-- [x] Google Contacts token lookup and forced refresh failures remain recoverable in sync state instead of opening the fatal recovery screen
+- [x] Google Contacts token lookup and forced refresh failures remain recoverable in sync state instead of opening the fatal recovery screen, while corrupt or unsupported local sync ledgers preserve their raw evidence and block automatic provider requests until explicit repair
 - [x] PWA and Desktop retry the initial Google Drive document download after a 401 token refresh before starting from a fresh Drive changes cursor, so existing remote libraries are not skipped after reconnect
 - [x] PWA cloud sync waits for Automerge worker initialization before Drive downloads, merges, uploads, OAuth callback sync starts, or LAN relay resume can touch the local document
 - [x] Google Drive upload returns the merged local plus remote Automerge binary to the uploading device, so a client that discovers remote changes during upload also converges locally
@@ -309,7 +329,10 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 - [x] Desktop surfaces cloud sync health with retry/reconnect actions, recent failures, and debug charts
 - [x] Desktop no-cloud-sync launch banner self-dismisses after 15 seconds with a gentle countdown ring
 - [x] Desktop writes rotating local snapshots and can restore an older Automerge copy from Settings
+- [x] Each Freed Desktop installation keeps its opaque identity locally, registers durable topology metadata after document initialization and merges, and warns in Sync setup when another Freed Desktop could duplicate RSS or authenticated provider requests. PWA readers do not count toward the warning.
 - [ ] iCloud sync integration
+- [ ] Large media packages transfer outside Automerge through an authenticated,
+      resumable, integrity-checked path with explicit storage and deletion rules
 
 ---
 
@@ -332,7 +355,7 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 
 **Status: ✅ Complete** (branch `feat/secure-pairing-token`)
 
-The relay validates a `?t=<base64url>` token on every WebSocket upgrade request using `accept_hdr_async`. Invalid or missing tokens receive HTTP 401 before any document data is exchanged.
+The relay validates the pairing token on every WebSocket upgrade request using `accept_hdr_async`. Invalid, missing, or reset-stale tokens receive HTTP 401 before any document data is exchanged. An in-process connection generation also rejects sockets that authenticated before a factory reset.
 
 Key files:
 - `packages/desktop/src-tauri/src/lib.rs` — token generation, persistence, relay auth gate

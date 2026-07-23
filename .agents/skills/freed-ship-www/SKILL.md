@@ -1,47 +1,41 @@
 ---
 name: freed-ship-www
-description: Publish freed.wtf from www, refresh the static changelog after releases, ship merged PRs targeting www, or sync approved main changes into www. Use for production marketing deploys and changelog refreshes. Never fast-forward www to dev.
+description: Publish verified Freed marketing changes from www, refresh the public changelog after a release, or apply an approved structured roadmap update. Use for production freed.wtf deployments. Require explicit deployment authority, exact commit and deployment identity, and source-attributed roadmap data. Never fast-forward www to dev.
 disable-model-invocation: true
 ---
 
 # Ship WWW
 
-Publish the public marketing site from `www` or refresh its static changelog.
+Deploy only reviewed state from `www` and prove which commit produced the live site.
+
+## Safety contract
+
+1. Record the task ID, granted deployment authority, source branch, exact commit SHA, and expected public change.
+2. Require a clean `www` checkout whose SHA matches the reviewed PR or approved deployment request.
+3. Never merge or fast-forward `www` to `dev`. Sync approved product-owned files from `main` only when the requested mode requires it.
+4. Use repository Vercel helpers so every command retains the required `aubreyfs-projects` scope. Never run raw Vercel commands from the repository root.
 
 ## Modes
 
-### Ship Current WWW
+### Ship current or merged WWW
 
-1. Check out or update `www`.
-2. Verify the working tree is clean.
-3. Run `./scripts/vercel-deploy-production.sh website`.
-4. Inspect the production deployment and report the URL.
+1. Confirm the requested SHA is present on `origin/www` and required checks passed for that SHA.
+2. Run the website build from `website/`.
+3. Run `./scripts/vercel-deploy-production.sh website` only with explicit deployment authority.
 
-### Ship Merged WWW PR
+### Refresh changelog
 
-1. Verify the PR targeting `www` is merged.
-2. Update local `www` from origin.
-3. Run `./scripts/vercel-deploy-production.sh website`.
-4. Inspect the production deployment and report the URL.
+1. Require the published release ID, tag, channel, source SHA, and approved release-note artifact.
+2. Update the static changelog from current `www` without merging `dev`.
+3. Build, deploy, and verify the release appears on the production URL.
 
-### Refresh Changelog
+### Publish roadmap status
 
-1. Use this after a dev or production desktop release is published.
-2. Update local `www` from origin.
-3. Rebuild and deploy the website from current `www`.
-4. Never merge or fast-forward `www` to `dev`.
+1. Require the approved source commit and digest for [docs/roadmap-status.json](../../../docs/roadmap-status.json).
+2. Run `node scripts/validate-roadmap-status.mjs` against the source data.
+3. Confirm `website/src/app/roadmap/RoadmapContent.tsx` matches the manifest exactly. Do not infer status from phase prose.
+4. Build and deploy from `www`. Do not combine this with unrelated product promotion.
 
-### Sync From Main
+## Close out
 
-1. Fetch `main` and `www`.
-2. If `www` can fast-forward to `main`, fast-forward it.
-3. If `www` has marketing-only commits, merge `main` into `www`.
-4. Reject the sync if divergence includes non-marketing files.
-5. Build and deploy the website from `www`.
-
-## Safety Rules
-
-- Always preserve `--scope aubreyfs-projects` on Vercel CLI calls by using the repo deploy helpers.
-- Never run raw `vercel` from the repo root.
-- Never fast-forward `www` to `dev`.
-- Reject production deploys when the changed path set includes product files unless the user explicitly changes the plan.
+Record the deployed `www` SHA, Vercel deployment ID, deployment time, production URL, build result, and source release or roadmap identity. Verify the production response belongs to the new deployment. An old healthy URL is not evidence that the requested commit shipped.

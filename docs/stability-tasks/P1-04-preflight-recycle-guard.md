@@ -1,6 +1,6 @@
 # P1-04: Preflight recycle guard + login-in-progress latch
 
-runner-safe: false | provider-visible: false (window lifecycle only; no provider traffic change) | soak-gated: YES
+runner-safe: false | provider-visible: true (window lifecycle changes provider-observable session behavior) | soak-gated: YES
 Findings: F04, F05 (sev-5), plus rust-backfill A6. Prereq: P0-02 kill records live (this task's acceptance instrument).
 
 ## Defect

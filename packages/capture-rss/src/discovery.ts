@@ -340,11 +340,18 @@ export function resolveUrl(href: string, base: string): string {
  * Detect the platform from a feed or site URL
  */
 export function detectPlatform(url: string): string {
+  let hostname = "";
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch {
+    // Keep the existing best-effort checks for non-standard feed identifiers.
+  }
+
+  if (hostname === "medium.com" || hostname.endsWith(".medium.com")) return "medium";
+  if (hostname === "substack.com" || hostname.endsWith(".substack.com")) return "substack";
   if (url.includes("youtube.com")) return "youtube";
   if (url.includes("reddit.com")) return "reddit";
   if (url.includes("github.com")) return "github";
-  if (url.includes("medium.com")) return "rss"; // Medium uses standard RSS
-  if (url.includes("substack.com")) return "rss";
   if (url.includes("tumblr.com")) return "rss";
   if (url.includes("blogspot.com")) return "rss";
   if (url.includes("mastodon") || url.match(/@[^\/]+\.rss$/)) return "mastodon";

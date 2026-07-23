@@ -13,6 +13,9 @@ export * from "./ranking";
 // Re-export local content signal inference (browser-safe, no deps)
 export * from "./content-signals";
 export * from "./feed-signal-filters";
+export * from "./preferences";
+export * from "./sync-write-policy";
+export * from "./device-local-graph";
 export * from "./local-ai";
 
 // Re-export OPML utilities (browser-safe, no Automerge)
@@ -31,6 +34,7 @@ export * from "./friend-suggestions";
 export * from "./identity-graph";
 export * from "./contact-sync-state";
 export * from "./social-account-validity";
+export * from "./essay-identity";
 
 // Re-export location extraction utilities (browser-safe, no deps)
 export * from "./location";
@@ -46,7 +50,9 @@ export * from "./release-channel";
 export * from "./legal";
 export * from "./legal-storage";
 export * from "./bug-report";
+export * from "./redact-sensitive";
 export * from "./story-wall";
+export * from "./youtube";
 
 // Note: schema.js is NOT re-exported here because it imports Automerge
 // which uses WebAssembly and requires special bundler configuration.

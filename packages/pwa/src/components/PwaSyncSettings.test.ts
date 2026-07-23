@@ -36,6 +36,8 @@ function createPlatform(): PlatformConfig {
     FacebookSettingsContent: null,
     InstagramSettingsContent: null,
     LinkedInSettingsContent: null,
+    SubstackSettingsContent: null,
+    MediumSettingsContent: null,
     GoogleContactsSettingsContent: null,
     releaseChannel: "production",
   };
@@ -64,7 +66,7 @@ describe("PwaSyncSettings cloud diagnostics", () => {
     });
     useDebugStore.setState({
       docSnapshot: {
-        deviceId: "iphone",
+        documentId: "document-1",
         itemCount: 1,
         feedCount: 0,
         binarySize: 1536,

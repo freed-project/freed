@@ -1,7 +1,11 @@
-import type { FeedItem } from "@freed/shared";
+import type { FeedItem, UserPreferences } from "@freed/shared";
 import type { DocState, FeedItemPatch } from "./automerge-types";
 
 export type ItemIndex = Map<string, number>;
+
+type PreferencePatch = Omit<Partial<UserPreferences>, "fbCapture"> & {
+  fbCapture?: Partial<UserPreferences["fbCapture"]>;
+};
 
 interface CountState {
   feedUnreadCounts: Record<string, number>;
@@ -17,6 +21,46 @@ interface CountState {
 
 export function createItemIndex(items: FeedItem[]): ItemIndex {
   return new Map(items.map((item, index) => [item.globalId, index]));
+}
+
+function isMergeablePreferenceObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function mergePreferencePatch<T extends object>(current: T, update: Partial<T>): T {
+  const next = { ...current };
+
+  for (const key of Object.keys(update) as Array<keyof T>) {
+    const currentValue = current[key];
+    const updateValue = update[key];
+    next[key] = (
+      isMergeablePreferenceObject(currentValue) && isMergeablePreferenceObject(updateValue)
+        ? mergePreferencePatch<Record<string, unknown>>(currentValue, updateValue)
+        : updateValue
+    ) as T[typeof key];
+  }
+
+  return next;
+}
+
+export function applyPreferencePatchToState(
+  state: DocState,
+  updates: PreferencePatch,
+): DocState {
+  const { fbCapture, ...remainingUpdates } = updates;
+  const preferences = mergePreferencePatch(state.preferences, remainingUpdates);
+  if (fbCapture !== undefined) {
+    preferences.fbCapture = {
+      knownGroups: fbCapture.knownGroups !== undefined
+        ? { ...fbCapture.knownGroups }
+        : { ...state.preferences.fbCapture.knownGroups },
+      excludedGroupIds: fbCapture.excludedGroupIds !== undefined
+        ? { ...fbCapture.excludedGroupIds }
+        : { ...state.preferences.fbCapture.excludedGroupIds },
+    };
+  }
+
+  return { ...state, preferences };
 }
 
 function cloneCountState(state: DocState): CountState {
@@ -146,9 +190,12 @@ export function applyItemPatchesToState(
     preservePriorityOrder?: boolean;
     searchCorpusVersion?: number;
     docItemCount?: number;
+    removedItemIds?: string[];
   } = {},
 ): { state: DocState; itemIndex: ItemIndex } {
-  if (patches.length === 0 && !options.orderedItemIds) {
+  const removedItemIds = options.removedItemIds ?? [];
+  const removedItemIdSet = new Set(removedItemIds);
+  if (patches.length === 0 && removedItemIds.length === 0 && !options.orderedItemIds) {
     const metadataChanged =
       options.searchCorpusVersion !== undefined || options.docItemCount !== undefined;
     return metadataChanged
@@ -178,8 +225,33 @@ export function applyItemPatchesToState(
     return counts;
   };
 
+  if (removedItemIds.length > 0) {
+    const visibleRemovals = removedItemIds
+      .map((globalId) => {
+        const index = itemIndex.get(globalId);
+        return index === undefined ? null : { globalId, index };
+      })
+      .filter((entry): entry is { globalId: string; index: number } => entry !== null)
+      .sort((left, right) => right.index - left.index);
+
+    for (const removal of visibleRemovals) {
+      const items = ensureItems();
+      const previous = items[removal.index];
+      if (!previous) continue;
+      applyItemContribution(ensureCounts(), previous, -1);
+      items.splice(removal.index, 1);
+      itemIndex.delete(removal.globalId);
+      indexNeedsRebuild = true;
+    }
+    if (indexNeedsRebuild) {
+      itemIndex = createItemIndex(ensureItems());
+      indexNeedsRebuild = false;
+    }
+  }
+
   for (const patch of patches) {
     const item = patch.item;
+    if (removedItemIdSet.has(item.globalId)) continue;
     const existingIndex = itemIndex.get(item.globalId);
 
     if (existingIndex === undefined) {
@@ -245,7 +317,7 @@ export function applyItemPatchesToState(
 
   if (!nextItems) {
     const docItemCount = options.docItemCount ??
-      (addedDocItemCount > 0 ? state.docItemCount + addedDocItemCount : state.docItemCount);
+      Math.max(0, state.docItemCount + addedDocItemCount - removedItemIds.length);
     return {
       state: {
         ...state,
@@ -257,7 +329,7 @@ export function applyItemPatchesToState(
   }
   const nextIndex = indexNeedsRebuild ? createItemIndex(nextItems) : itemIndex;
   const docItemCount = options.docItemCount ??
-    (addedDocItemCount > 0 ? state.docItemCount + addedDocItemCount : state.docItemCount);
+    Math.max(0, state.docItemCount + addedDocItemCount - removedItemIds.length);
   const metadataState = {
     searchCorpusVersion: options.searchCorpusVersion ?? state.searchCorpusVersion,
     docItemCount,

@@ -1,0 +1,61 @@
+{
+  "tag": "v26.7.1900-dev",
+  "version": "26.7.1900-dev",
+  "channel": "dev",
+  "dayKey": "26.7.19",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-07-19T11:12:09.841Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.7.1501-dev",
+    "previousPublishedDayTag": "v26.7.1501-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "9813bd3d33d76e8887929cf811d6c9aa2b300000",
+    "promotedDevCommitSha": null,
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.7.1900-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.7.1900-dev"
+    ],
+    "prNumbers": [
+      1030,
+      1031,
+      1032,
+      1033,
+      1036,
+      1037,
+      1039
+    ],
+    "commitSubjects": [
+      "feat: ship the next-generation Friends Galaxy (#1039)",
+      "fix: isolate local AI health notifications (#1037)",
+      "fix: serialize runtime health writes (#1036)",
+      "fix: count renderer recovery sequences",
+      "fix: enforce renderer recovery outcome guardrail",
+      "fix: remove registry test filesystem race (#1033)",
+      "fix: harden automation host validation (#1032)",
+      "fix: recognize historical cloud promotions (#1031)",
+      "fix: align Facebook group regression with local state (#1030)",
+      "fix: enforce device-local state boundaries"
+    ]
+  },
+  "release": {
+    "deck": "Explore a fluid, fully accelerated Friends Galaxy with theme-aware cosmic fields, intuitive touch and trackpad navigation, and stronger local reliability.",
+    "features": [
+      "Explore friends, identities, and accounts across a fully GPU-accelerated galactic plane, with relationship prominence mapped to depth, gentle parallax, themed nebula fields, and tightly organized provider constellations.",
+      "Pan, throw, and zoom with one-finger touch, multi-touch pinch, Safari gestures, or a Mac trackpad. Inertial movement, a directional zoom ceiling, and stable billboard labels keep navigation legible.",
+      "Use a node context menu to pin identities or link accounts through a searchable person picker, with accessible keyboard controls and a dedicated mobile Details view."
+    ],
+    "fixes": [
+      "Keep Friends labels, stars, and identity details resident while the camera moves, including during live data updates and WebGL2 recovery.",
+      "Strengthen device-local state boundaries, runtime health persistence, renderer recovery reporting, and local AI health isolation.",
+      "Align Facebook group removal checks with the current device-local state model."
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.1900-dev\n\nExplore a fluid, fully accelerated Friends Galaxy with theme-aware cosmic fields, intuitive touch and trackpad navigation, and stronger local reliability.\n\n### Features\n\n- Explore friends, identities, and accounts across a fully GPU-accelerated galactic plane, with relationship prominence mapped to depth, gentle parallax, themed nebula fields, and tightly organized provider constellations.\n- Pan, throw, and zoom with one-finger touch, multi-touch pinch, Safari gestures, or a Mac trackpad. Inertial movement, a directional zoom ceiling, and stable billboard labels keep navigation legible.\n- Use a node context menu to pin identities or link accounts through a searchable person picker, with accessible keyboard controls and a dedicated mobile Details view.\n\n### Fixes\n\n- Keep Friends labels, stars, and identity details resident while the camera moves, including during live data updates and WebGL2 recovery.\n- Strengthen device-local state boundaries, runtime health persistence, renderer recovery reporting, and local AI health isolation.\n- Align Facebook group removal checks with the current device-local state model.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

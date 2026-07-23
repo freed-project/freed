@@ -124,7 +124,7 @@ Facebook and Instagram feed scrapes now build a memory-aware pass plan after the
 
 ### Permanent Media Archive
 
-Facebook and Instagram settings now expose a local-only media archive for the user's own uploaded media. This is not the standard content cache. Files are copied under the Freed Desktop app-data folder in `media-vault/{provider}` and are kept until the user explicitly deletes the archive, removes that provider archive, or factory-resets Freed Desktop.
+Facebook and Instagram settings now expose a local-only media archive for the user's own uploaded media. This is not the standard content cache. Files are copied under the Freed Desktop app-data folder in `media-vault/{provider}` and are kept until the user explicitly deletes the archive or removes that provider archive.
 
 The archive writes a local manifest with provider, source URL, post ID, media URL, local path, byte size, content hash, captured time, import source, and restore-planning roster hints. Media files, manifest rows, byte counts, failure records, retry state, and provider archive preferences are intentionally excluded from Automerge and are not synced.
 
@@ -138,7 +138,7 @@ Profile backfill is user-started and visible in settings. The current implementa
 
 Freed Desktop now has a Story Wall settings section for owner-controlled memory publishing. It sits under a dedicated Beta settings group with AI, and stays out of the primary app sidebar while the feature is still early. The wall starts from existing Freed history, guides the user through Instagram Accounts Center ZIP export before import, can import those exports into the local media vault, and keeps the synced wall config small in `preferences.storyWall`. Media binaries stay in the device-local vault until a publish run writes static assets to the target. The settings section uses shared theme panels, inputs, and buttons, stays gated until the user enables Story Wall, and only previews media-backed memories from real Freed history or imported archives.
 
-The first publisher target is GitHub Pages. The desktop publisher creates or reuses a user-owned repo, writes a static site under `/docs`, includes `index.html`, `embed.js`, `data/story-wall.json`, `.nojekyll`, and vault assets, then commits through Git blobs, trees, commits, and refs. The UI exposes manual publish now with privacy review copy. GitHub OAuth and automatic settle-window publishing remain follow-up work.
+The first publisher target is GitHub Pages. The desktop publisher creates or reuses a user-owned repo, writes a static site under `/docs`, includes `index.html`, `embed.js`, `data/story-wall.json`, `.nojekyll`, and vault assets, then commits through Git blobs, trees, commits, and refs. Successful destination details sync so another device can find the published wall. In-progress status and error messages remain device-local because they describe one machine's current publish attempt. The UI exposes manual publish now with privacy review copy. GitHub OAuth and automatic settle-window publishing remain follow-up work.
 
 ---
 
@@ -187,6 +187,7 @@ const RATE_LIMITS = {
 | 7.21 | Shared social memory-preflight backoff      | ✓ Complete  |
 | 7.22 | Story Wall grouped settings section and GitHub Pages publisher | 🚧 In Progress |
 | 7.23 | Local social scrape optimization loop       | ✓ Complete  |
+| 7.24 | Shared safety runtime for authenticated Substack and Medium beta capture | ✓ Complete |
 
 ---
 
@@ -204,7 +205,7 @@ const RATE_LIMITS = {
 - [x] Facebook and Instagram login windows stay open after auth so users can finish platform prompts while sync starts, then close only after scrape startup health is confirmed
 - [x] Feed pollution filtering blocks promoted X entries and suggested FB/IG posts
 - [x] Facebook Settings includes per-group include/exclude controls for joined groups inside a filtered inner scroller that prevents late group loads from shifting the outer Settings view, ID-tail fallback labels for groups whose names are still missing, plus a browser handoff action for leaving a group on Facebook
-- [x] Facebook group discovery rejects activity-only labels and numeric ID fallbacks, scrolls the joined-groups directory during explicit refresh, logs group refreshes in the provider activity log, shows row-level progress while a missing-name group is being checked, reads nearby rendered card text and image alt text when group links only expose timestamps, preserves good stored names, repairs missing stored names from already captured group posts or individual group pages, verifies a single group after the leave handoff before removing it locally, and keeps joined-groups refresh behind explicit provider-risk confirmation
+- [x] Facebook group discovery rejects activity-only labels and numeric ID fallbacks, scrolls the joined-groups directory during explicit refresh, logs group refreshes in the provider activity log, shows row-level progress while a missing-name group is being checked, reads nearby rendered card text and image alt text when group links only expose timestamps, preserves good stored names, repairs missing stored names from already captured group posts or individual group pages, verifies a single group after the leave handoff before removing it locally, remains device-local through factory reset so reconnecting does not repeat discovery, and keeps joined-groups refresh behind explicit provider-risk confirmation
 - [x] Desktop Sources settings expose per-source scraper window modes: shown, cloaked, hidden
 - [x] Post-login sync uses the user's selected scraper window mode instead of switching modes for the first scrape
 - [x] Background FB and IG scraper WebViews force provider media silent during scrape and auth-check flows
@@ -221,6 +222,10 @@ const RATE_LIMITS = {
 - [x] Facebook and Instagram feed scrapes now register with the shared background runtime so cloud sync, content fetches, RSS polls, snapshots, outbox drains, and semantic classifiers do not compete with active WebKit scraping
 - [x] Social scrape memory preflight uses adaptive high-memory budgets, native hidden-window runtime samples, and launch-delayed semantic enrichment so provider WebKit sessions get priority during long background runs
 - [x] Local social scrape optimization loop ranks runtime-log evidence into safe local next actions and explicit provider-visible risk decisions
+- [x] Authenticated Substack and Medium beta capture serializes behind the same
+      native social session lock, runs memory preflight before provider loads,
+      registers with the background runtime coordinator, records provider
+      health and scrape outcomes, and uses bounded randomized pacing
 - [x] Facebook, Instagram, and LinkedIn extractors expand common long-text controls before normalization
 - [x] Social provider source menus surface a quick status explanation for warning or reconnect states before routing into full settings
 - [x] Captured social authors can backfill the Phase 8 account catalog so followed accounts exist before identity confirmation

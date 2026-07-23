@@ -177,10 +177,11 @@ policy exactly. The specification declares the recognized schedule, status,
 model, reasoning effort, target, and working-directory fields that a host
 reconciler may overlay. The repository does not install or mutate the saved
 automation. `npm run validate:host-automations` performs a read-only comparison
-against the host definitions and rejects an active actor whose owner-provisioned
-credential is unavailable. Keep actors paused until their credentials and
-trusted launchers exist, then reconcile through the Codex host automation
-controls instead of editing TOML directly.
+against the host definitions and rejects an active actor unless its root-owned
+launcher, complete pinned runtime, and live one-use channel attestation are
+ready. The five general actors store no persistent Keychain credential. Keep
+actors paused until their trusted launchers exist, then reconcile through the
+Codex host automation controls instead of editing TOML directly.
 
 After the owner-reviewed bootstrap helper is merged, provision and verify the
 five general actors from a clean `dev` checkout at exact `origin/dev`:
@@ -192,46 +193,48 @@ npm run automation:actors -- accept-host --all
 npm run validate:host-automations
 ```
 
-If the batch fails, credentials completed earlier in that invocation are
-revoked in reverse order. The failing actor is left untouched in case it had
-state from an earlier owner action. Revoke the actor named by the error, then
-retry. A `provision_rollback_failed` result names any earlier actors that also
-need explicit owner recovery.
+If the batch fails, public bindings installed by that invocation are rolled
+back in reverse order. A completed legacy Keychain deletion is never reversed
+or replaced with invented credential metadata. The old schema 1 binding then
+fails closed, and an exact `provision` retry completes the idempotent migration.
+A `provision_rollback_failed` result names any actor that needs explicit owner
+recovery.
 
 The helper uses deterministic linker output names, so identical native builds
 receive the same linker-generated ad hoc signature. It does not select or need a
 developer signing identity. It installs a root-owned, content-addressed copy of
 the pinned Node and control runtime, plus one actor-specific launcher binding.
-The native provisioner stores the persistent credential in the owner's Keychain
-with access limited to that launcher. Verification checks the digest record and
-binding, then asks the exact installed launcher for a nonmutating readiness
-attestation. It never uses a freshly compiled provisioner to read the secret.
-Keep the saved actors paused until real-host verification and host acceptance
-prove unattended Keychain access. Provisioning does not grant task authority or
-provider approval, and it does not contact a provider.
+The normal host links no Security framework. It creates a fresh operation ID
+and lease token for each acquisition, passes the raw token only through the
+one-use file descriptor channel, and returns only the bounded short lease. A
+separate Security-linked provisioner is built only to delete an installed
+schema 1 Keychain item and digest record before schema 4 replacement.
+Verification checks every public pin and asks the exact installed launcher for
+a nonmutating channel attestation. Keep the saved actors paused until real-host
+verification and host acceptance pass. Provisioning does not grant task
+authority or provider approval, and it does not contact a provider.
 
 The ad hoc signed handoff is cooperative among processes running as the same
-macOS user. It pins the selected role and protects the persistent credential,
-but it cannot prove which saved automation invoked a provisioned general actor
-launcher. Do not provision the five launchers if those roles require hard
-caller isolation. Stored task ceilings, provider approvals, the global behavior
-slot, owner governance, publisher isolation, and GitHub review remain enforced.
+macOS user. It proves the selected role, pinned runtime, live process chain,
+one-use challenge, operation ID, and token digest, but it cannot prove which
+saved automation invoked a provisioned general actor launcher. Do not provision
+the five launchers if those roles require hard caller isolation. Stored task
+ceilings, provider approvals, the global behavior slot, owner governance,
+publisher isolation, and GitHub review remain enforced.
 
-Verify, acquire, and host acceptance disable Keychain user interaction and fail
-closed instead of opening a password dialog. Their child processes, output, and
-lifecycle steps are bounded. `accept-host` proves one acquire, heartbeat, and
-release lifecycle for every actor, attempts release after any successful
-acquisition even when a later step fails, and returns no credential or lease
-token. `rotate` is different because it must read
-the prior secret for rollback. It is an explicit owner-interactive action. If
-macOS asks during rotation, choose one-time **Allow**, never **Always Allow**. A
-prompt from provision, verify, acquire, revoke, or host acceptance is a failure.
+Verify, acquire, and host acceptance never read Keychain. Their child
+processes, output, and lifecycle steps are bounded. `accept-host` proves one
+acquire, heartbeat, and release lifecycle for every actor, attempts exact
+release after any possible successful acquisition, and returns no lease token.
+`rotate` is removed because there is no general actor credential to rotate. A
+Keychain prompt from provision, verify, acquire, revoke, or host acceptance is
+a migration failure.
 
-After the repaired helper reaches `dev`, replace credentials touched by the old
-prompting flow before any actor is activated:
+After the repaired helper reaches `dev`, migrate every old schema 1 actor before
+activation. Do not revoke first because provisioning needs the installed legacy
+binding to validate the exact Keychain item it is deleting:
 
 ```bash
-npm run automation:actors -- revoke --all
 npm run automation:actors -- provision --all
 npm run automation:actors -- verify --all
 npm run automation:actors -- accept-host --all
@@ -258,8 +261,8 @@ findings.
 An active lease means another pass owns the writer. Wait or finish read-only
 work. Do not create a duplicate worktree. Expired lease takeover must use the
 control CLI so the previous ownership is preserved in `events.jsonl`.
-The actor credential file and token are machine-local secrets. The runner must
-never create, log, commit, or include them in generated run artifacts.
+The transient lease token and launcher challenge are machine-local secrets. The
+runner must never log, commit, or include them in generated run artifacts.
 
 Validate the checked-in automation contract with:
 
@@ -272,6 +275,40 @@ node --test scripts/automation-control.test.mjs
 ```
 
 ## Outcome contract
+
+Every outcome, task, lease, and control-event mutation first requires the
+completed `freed-kernel-guard-cutover-v1` receipt and its exact old-compatible
+sentinels. The one-time owner-confirmed cutover keeps the historical guard
+paths permanently occupied for old binaries, then uses `/usr/bin/lockf` on
+macOS or `/usr/bin/flock` on Linux for new mutual exclusion. Missing, partial,
+or pre-cutover state fails closed. Process loss releases only the kernel lock,
+not any sentinel path. Run the documented
+`automation:cutover-kernel-guards` plan and apply operation before the first
+new writer or outcome-history repair.
+
+The immutable cutover plan has one 32 MiB aggregate limit across planning,
+storage, apply, continuous inspection, and strict doctor. A prepared or
+claims-installed transaction whose protected source later drifts may use the
+documented read-only `plan-supersede` command followed by one separately
+owner-confirmed `supersede`. That path restores only the exact planned legacy
+lock bytes, preserves immutable superseded evidence, and retires the canonical
+prepared transaction. It is unavailable after any permanent writer or guard
+marker exists. The permanent PID 1 bootstrap lock is included in filesystem,
+marker, and completed-evidence admission.
+
+In-place claim, marker, and restoration writes are protected by an
+occurrence-bound write-ahead record that preserves the exact inode, source,
+target, mode, and phase. Planned removals use a deterministic private
+quarantine and the same recovery record. Completed inspection also verifies
+the immutable first owner confirmation, every bounded retry confirmation, and
+the final receipt attribution.
+
+Planning and every retry use the same fatal canonical task-manifest validator
+as completed inspection. Before any cutover mutation, local filesystem and
+same-device admission covers the exact write-ahead file and every deterministic
+artifact, archive, authorization, quarantine, and supersede evidence path, not
+only their roots. The supersede receipt also preserves the exact raw owner
+confirmation plus its raw and canonical digests and validation time.
 
 The outcome ledger uses schema version 3. Every entry is bound to a canonical
 control task and an authenticated task transition. Accepted states are `merged`,
@@ -364,17 +401,103 @@ The event binds the actor, canonical lease, ledger path, evidence reference, and
 digest of the complete outcome entry. Replayed, unsigned, or mismatched lines
 remain visible in `rejectedEntries` and cannot suppress work.
 
+Every newly recorded lifecycle outcome uses a durable reservation, including
+`merged` and `installed`. The reservation carries `outcomeRequired: true` and
+blocks later task mutation until the matching control event, ledger row, and
+finalization event are durable. A retry reuses the same reservation and cannot
+duplicate any of those records. Historical ordinary outcomes with an already
+complete authenticated transition, event, and ledger row remain trusted when
+their transition predates this flag. New recording never attaches to that old
+transition. Same-state legacy backfill creates a new reservation that names the
+one historical transition and keeps the lifecycle state unchanged.
+
+`freed-owner` recording uses one composite `outcome.record` plan. The read-only
+plan binds the complete normalized source task, exact transition or legacy
+backfill route, frozen ledger-row timestamp, complete evidence-backed row, and
+row digest. Preserve the plan as a private mode `0600` file before acquiring
+the exact owner lease. Apply derives every mutation field from that file,
+accepts the token only through `FREED_AUTOMATION_LEASE_TOKEN`, and reauthorizes
+each guarded step against the same intent. A crash retry uses the unchanged
+plan and may use a newly acquired lease for that exact digest.
+
+### Repairing rejected outcome history
+
+Normal outcome recording never promotes an unsigned historical line. If
+rejected legacy lines make `outcomes.jsonl` unhealthy, the owner-governed
+history repair contract can preserve already trusted raw lines and quarantine
+rejected raw lines without editing, reserializing, or re-signing either set.
+The immutable, content-addressed artifacts contain the complete source bytes,
+the exact retained and rejected bytes, a decision for every physical line in
+occurrence order, and the final receipt.
+
+The repair intent binds the existing canonical task ID, fixed policy version,
+canonical ledger path, source digest, source size, physical line count, exact
+append-only control-event history prefix digest and byte size, expected trusted
+and rejected counts, replacement digest and size, and the archive, decision,
+and receipt digests. Task state and revision in the plan are informational.
+They are not signed because lifecycle state does not grant this mutation. Live
+mutation requires an exact `freed-owner` `owner-governance` lease for that
+intent. A broad instruction, an automation lease, or a valid repair plan alone
+does not authorize the replacement.
+
+Planning occurs before owner lease acquisition. The acquisition event is an
+expected suffix after the immutable planned prefix. Do not replan for that
+suffix. Under the outcome writer lock, the current full event history must
+remain healthy and must reproduce the same per-line decisions and exact trusted
+and rejected raw byte streams.
+
+Repair and ordinary append share `outcomes.jsonl.writer-lock`. Owner authority
+is rechecked after acquiring that lock, after owned temp cleanup, immediately
+before archive and ledger mutation, and inside the audit-event guard. Expiry
+while waiting leaves new archives and the audit event untouched. A retry needs
+a fresh lease for the same intent. There is no standalone audit-event append.
+The synchronous finalization guard revalidates the exact transaction, every
+prepared archive, and the canonical replacement before it can append, then
+requires the transaction to be durably `audited` before releasing the event
+guard. The immutable source archive is reclassified against the current full
+event history even when recovery starts after canonical replacement.
+`prepared` means source, retained, rejected, and decision artifacts plus the
+transaction are durable, while the receipt may still be absent. `replaced`
+means the canonical-ledger rename and directory sync are durable. `audited`
+means exactly one deterministic reserved
+`outcome_history_repaired` control event is durable. `complete` is written only
+after the receipt, current ledger, immutable archives, and audit event verify.
+
+Recovery performs only missing phases and returns the same receipt for an exact
+retry. It refuses source drift, bound event-prefix drift, unhealthy current
+history, a busy writer, malformed or unsafe input, conflicting artifacts, a
+conflicting audit event, or a changed post-repair ledger. Every completed
+transaction is reverified during normal ledger health checks. Any missing or
+corrupt archive, receipt, or audit event makes the source unhealthy again. Any
+transaction that has not reached `complete` also keeps the outcome source
+unhealthy. The nightly planner therefore keeps the behavior slot closed until
+recovery proves the replacement, audit event, and receipt as one idempotent
+operation.
+
+The supported owner-run sequence is:
+
+1. Run `npm run --silent automation:repair-outcome-ledger -- plan` with the
+   exact task ID and source digest.
+2. Create one private mode `0600` current-task confirmation from
+   `result.intent` and `result.intentDigest`.
+3. Acquire `freed-owner` lease `owner-governance` for that exact digest.
+4. Set only `FREED_AUTOMATION_LEASE_TOKEN` and run the dedicated `repair`
+   command with the same task and source digest.
+5. Release the owner lease after success or failure.
+
 ## Safety Gates
 
 The runner excludes provider-visible tasks by default. Provider-visible peer worktrees are still pulled into the evidence queue so they cannot hide in the local swarm. Do not allow autonomous changes that alter authenticated WebView loads, provider navigation, provider API call frequency, scripted scrolling, cookies, headers, or scraping timing without explicit approval.
 
 Provider approval is scoped evidence, not a general instruction to "proceed
-with everything." Human work publishes as a draft first. The helper posts a
-GitHub review comment bound to the provider-visible path set and provider-only
-binary diff. A CODEOWNER thumbs-up reaction on that comment authorizes the
-ready transition. Provider-visible edits require a new reaction. Unrelated
-branch edits do not. A signed control-task approval remains available for
-unattended publication and must bind the same provider-only fingerprint.
+with everything." Human work records Gate 1 in a healthy provider risk review
+artifact and publishes as a draft with that artifact. The helper posts a GitHub
+review comment bound to the artifact, provider-visible path set, and
+provider-only binary diff. A CODEOWNER thumbs-up reaction on that exact,
+unedited comment authorizes the ready transition. Provider-visible edits or a
+changed Gate 1 artifact require a new reaction. Unrelated branch edits do not.
+A signed control-task approval remains available for unattended publication
+and must bind the same provider-only fingerprint.
 
 Release work is also gated. A dev build should ship only after actual fixes merge into `dev`, not after planning artifacts alone.
 

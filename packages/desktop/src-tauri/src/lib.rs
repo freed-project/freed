@@ -2,10 +2,12 @@
 //!
 //! Native desktop app that bundles capture, sync relay, and reader UI.
 
+mod youtube;
+
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use futures_util::{SinkExt, StreamExt};
 use log::{error, info, warn};
-use rand::RngCore;
+use rand::{Rng, RngCore};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet, VecDeque};
 #[cfg(unix)]
@@ -50,6 +52,9 @@ use objc2_web_kit::WKWebViewConfiguration;
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
 const DEFAULT_SYNC_RELAY_PORT: u16 = 8765;
+const FACTORY_RESET_RELAY_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
+const FACTORY_RESET_RELAY_DRAIN_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const SYNC_RELAY_DOC_SEND_TIMEOUT: Duration = Duration::from_secs(2);
 const MAIN_WINDOW_LABEL: &str = "main";
 const MAIN_WINDOW_RECOVERY_KEEPALIVE_LABEL: &str = "main-recovery-keepalive";
 const PRIMARY_MENU_ITEM_SHOW: &str = "show";
@@ -65,7 +70,13 @@ fn sync_relay_port() -> u16 {
 
 const DEFAULT_WEBKIT_SAFARI_UA: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15";
-const SOCIAL_SCRAPER_WINDOW_LABELS: [&str; 3] = ["fb-scraper", "ig-scraper", "li-scraper"];
+const SOCIAL_SCRAPER_WINDOW_LABELS: [&str; 5] = [
+    "fb-scraper",
+    "ig-scraper",
+    "li-scraper",
+    "substack-scraper",
+    "medium-scraper",
+];
 const FB_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
     0x66, 0x72, 0x65, 0x65, 0x64, 0xfb, 0x00, 0x01, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0xfb, 0x00, 0x01,
 ];
@@ -74,6 +85,12 @@ const IG_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
 ];
 const LI_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
     0x66, 0x72, 0x65, 0x65, 0x64, 0x1d, 0x00, 0x03, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0x1d, 0x00, 0x03,
+];
+const SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
+    0x66, 0x72, 0x65, 0x65, 0x64, 0x5b, 0x00, 0x04, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0x5b, 0x00, 0x04,
+];
+const MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER: [u8; 16] = [
+    0x66, 0x72, 0x65, 0x65, 0x64, 0x6d, 0x00, 0x05, 0x9a, 0x7d, 0x37, 0x01, 0x02, 0x6d, 0x00, 0x05,
 ];
 const BYTES_PER_GIB: u64 = 1024 * 1024 * 1024;
 const MIN_CRITICAL_MEMORY_BYTES: u64 = 7 * BYTES_PER_GIB / 2;
@@ -302,6 +319,8 @@ fn social_scraper_data_store_identifier(label: &str) -> Option<[u8; 16]> {
         "fb-login" | "fb-scraper" => Some(FB_SCRAPER_DATA_STORE_IDENTIFIER),
         "ig-scraper" => Some(IG_SCRAPER_DATA_STORE_IDENTIFIER),
         "li-scraper" => Some(LI_SCRAPER_DATA_STORE_IDENTIFIER),
+        "substack-login" | "substack-scraper" => Some(SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER),
+        "medium-login" | "medium-scraper" => Some(MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER),
         _ => None,
     }
 }
@@ -729,6 +748,8 @@ fn active_job_uses_social_scraper(active_job: Option<&str>) -> bool {
             operation.starts_with("fb_")
                 || operation.starts_with("ig_")
                 || operation.starts_with("li_")
+                || operation.starts_with("substack_")
+                || operation.starts_with("medium_")
         })
         .unwrap_or(false)
 }
@@ -1145,8 +1166,41 @@ fn runtime_health_path(data_dir: &Path) -> PathBuf {
 
 const RUNTIME_HEALTH_RETAIN_DAYS: usize = 14;
 const RUNTIME_HEALTH_HISTORY_MAX_BYTES: u64 = 8 * 1024 * 1024;
+const RUNTIME_HEALTH_WRITER_LOCK_FILE: &str = ".runtime-health.writer.lock";
 
-static RUNTIME_HEALTH_ACTIVE_DATE: StdMutex<Option<String>> = StdMutex::new(None);
+// Serializes every runtime-health mutation on every platform. On Unix this
+// covers date selection, rollover, and whole-record append. On platforms that
+// keep the bounded legacy file it also covers the read, rewrite, and append
+// sequence. Factory reset takes the same lock before removing runtime-health
+// files so a concurrent writer cannot recreate or append to a file mid-reset.
+struct RuntimeHealthWriterState {
+    active_target: Option<(PathBuf, String)>,
+}
+
+static RUNTIME_HEALTH_WRITER_STATE: StdMutex<RuntimeHealthWriterState> =
+    StdMutex::new(RuntimeHealthWriterState {
+        active_target: None,
+    });
+
+struct RuntimeHealthWriteGuard {
+    // Fields drop in declaration order. Release the operating-system lock
+    // before allowing another local writer through the process mutex.
+    _file_lock: fslock::LockFile,
+    state: std::sync::MutexGuard<'static, RuntimeHealthWriterState>,
+}
+
+fn runtime_health_write_guard(data_dir: &Path) -> std::io::Result<RuntimeHealthWriteGuard> {
+    std::fs::create_dir_all(data_dir)?;
+    let state = RUNTIME_HEALTH_WRITER_STATE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut file_lock = fslock::LockFile::open(&data_dir.join(RUNTIME_HEALTH_WRITER_LOCK_FILE))?;
+    file_lock.lock()?;
+    Ok(RuntimeHealthWriteGuard {
+        _file_lock: file_lock,
+        state,
+    })
+}
 
 fn runtime_health_dated_file_name(date: &str) -> String {
     format!("runtime-health-{}.jsonl", date)
@@ -1273,20 +1327,19 @@ fn roll_runtime_health_files(data_dir: &Path, date: &str) -> std::io::Result<Pat
 /// rewrite on the event path (retention bounds total disk use instead).
 #[cfg(unix)]
 fn append_runtime_health_line(data_dir: &Path, line: &str) -> std::io::Result<()> {
+    let mut record = Vec::with_capacity(line.len() + 1);
+    record.extend_from_slice(line.as_bytes());
+    record.push(b'\n');
+
+    let mut write_guard = runtime_health_write_guard(data_dir)?;
     let date = local_date_yyyymmdd();
-    let needs_roll = {
-        let mut active = RUNTIME_HEALTH_ACTIVE_DATE.lock().unwrap();
-        if active.as_deref() == Some(date.as_str()) {
-            false
-        } else {
-            *active = Some(date.clone());
-            true
-        }
-    };
-    if needs_roll {
-        if let Err(error) = roll_runtime_health_files(data_dir, &date) {
-            warn!("[runtime-health] rotation failed for {}: {}", date, error);
-        }
+    let target = (data_dir.to_path_buf(), date.clone());
+    let reader_target = PathBuf::from(runtime_health_dated_file_name(&date));
+    let reader_is_current = std::fs::read_link(runtime_health_path(data_dir))
+        .is_ok_and(|current| current == reader_target);
+    if write_guard.state.active_target.as_ref() != Some(&target) || !reader_is_current {
+        roll_runtime_health_files(data_dir, &date)?;
+        write_guard.state.active_target = Some(target);
     }
 
     let mut file = std::fs::OpenOptions::new()
@@ -1294,18 +1347,33 @@ fn append_runtime_health_line(data_dir: &Path, line: &str) -> std::io::Result<()
         .append(true)
         .open(runtime_health_dated_path(data_dir, &date))?;
     use std::io::Write;
-    writeln!(file, "{}", line)
+    file.write_all(&record)
 }
 
 /// Windows has no reliable unprivileged symlinks for the reader-compat
 /// shim, so it keeps the legacy bounded single-file behavior.
 #[cfg(not(unix))]
 fn append_runtime_health_line(data_dir: &Path, line: &str) -> std::io::Result<()> {
-    append_bounded_jsonl(
-        &runtime_health_path(data_dir),
-        line,
-        RUNTIME_HEALTH_MAX_BYTES,
-    )
+    append_runtime_health_bounded_line(data_dir, line, RUNTIME_HEALTH_MAX_BYTES, || {})
+}
+
+/// The bounded runtime-health path is compiled and tested on every platform,
+/// even though production Unix builds use dated files. The callback exists so
+/// the deterministic concurrency regression can pause one writer only after it
+/// owns both the process mutex and the operating-system file lock.
+#[cfg(any(not(unix), test))]
+fn append_runtime_health_bounded_line<F>(
+    data_dir: &Path,
+    line: &str,
+    max_bytes: u64,
+    after_lock: F,
+) -> std::io::Result<()>
+where
+    F: FnOnce(),
+{
+    let _write_guard = runtime_health_write_guard(data_dir)?;
+    after_lock();
+    append_bounded_jsonl(&runtime_health_path(data_dir), line, max_bytes)
 }
 
 /// Newest `days` runtime-health day files concatenated oldest-first, falling
@@ -1477,12 +1545,20 @@ impl InvariantAlarmState {
         ready
     }
 
-    fn observe_cloud_upload(&mut self, payload: &serde_json::Value, ts: u64, out: &mut Vec<InvariantAlarm>) {
+    fn observe_cloud_upload(
+        &mut self,
+        payload: &serde_json::Value,
+        ts: u64,
+        out: &mut Vec<InvariantAlarm>,
+    ) {
         if payload.get("headsUnchanged").and_then(|v| v.as_bool()) != Some(true) {
             return;
         }
         self.cloud_unchanged_uploads.push_back(ts);
-        prune_before(&mut self.cloud_unchanged_uploads, ts.saturating_sub(ALARM_CLOUD_LOOP_WINDOW_MS));
+        prune_before(
+            &mut self.cloud_unchanged_uploads,
+            ts.saturating_sub(ALARM_CLOUD_LOOP_WINDOW_MS),
+        );
         let count = self.cloud_unchanged_uploads.len();
         if count >= ALARM_CLOUD_LOOP_THRESHOLD && self.take_refire_slot("cloud_loop", ts) {
             out.push(InvariantAlarm {
@@ -1498,8 +1574,16 @@ impl InvariantAlarmState {
         }
     }
 
-    fn observe_scrape_outcome(&mut self, payload: &serde_json::Value, ts: u64, out: &mut Vec<InvariantAlarm>) {
-        let provider = payload.get("provider").and_then(|v| v.as_str()).unwrap_or("unknown");
+    fn observe_scrape_outcome(
+        &mut self,
+        payload: &serde_json::Value,
+        ts: u64,
+        out: &mut Vec<InvariantAlarm>,
+    ) {
+        let provider = payload
+            .get("provider")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
         let extracted = payload.get("itemsExtracted").and_then(|v| v.as_u64());
         let persisted = payload.get("itemsPersisted").and_then(|v| v.as_u64());
         let stage = payload.get("stage").and_then(|v| v.as_str()).unwrap_or("");
@@ -1526,7 +1610,10 @@ impl InvariantAlarmState {
         // then this is a coarse tripwire and the escalation to needs-reconnect
         // stays observation-only.
         if stage == "ok" {
-            let streak = self.auth_empty_streak.entry(provider.to_string()).or_insert(0);
+            let streak = self
+                .auth_empty_streak
+                .entry(provider.to_string())
+                .or_insert(0);
             if extracted == Some(0) {
                 *streak += 1;
                 let streak = *streak;
@@ -1555,13 +1642,22 @@ impl InvariantAlarmState {
         }
     }
 
-    fn observe_window_destroyed(&mut self, payload: &serde_json::Value, ts: u64, out: &mut Vec<InvariantAlarm>) {
-        let reason = payload.get("reasonEnum").and_then(|v| v.as_str()).unwrap_or("");
-        let session_held = payload.get("scraperSessionHeld").and_then(|v| v.as_bool()).unwrap_or(false);
+    fn observe_window_destroyed(
+        &mut self,
+        payload: &serde_json::Value,
+        ts: u64,
+        out: &mut Vec<InvariantAlarm>,
+    ) {
+        let reason = payload
+            .get("reasonEnum")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let session_held = payload
+            .get("scraperSessionHeld")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let is_preflight_or_login = matches!(reason, "preflight_recycle" | "login_flow");
-        if (session_held || is_preflight_or_login)
-            && self.take_refire_slot("preflight_kill", ts)
-        {
+        if (session_held || is_preflight_or_login) && self.take_refire_slot("preflight_kill", ts) {
             out.push(InvariantAlarm {
                 name: "preflight_kill",
                 provider: None,
@@ -1575,9 +1671,13 @@ impl InvariantAlarmState {
 
     fn observe_main_recovery(&mut self, ts: u64, out: &mut Vec<InvariantAlarm>) {
         self.main_recoveries.push_back(ts);
-        prune_before(&mut self.main_recoveries, ts.saturating_sub(ALARM_WATCHDOG_THRASH_WINDOW_MS));
+        prune_before(
+            &mut self.main_recoveries,
+            ts.saturating_sub(ALARM_WATCHDOG_THRASH_WINDOW_MS),
+        );
         let count = self.main_recoveries.len();
-        if count >= ALARM_WATCHDOG_THRASH_THRESHOLD && self.take_refire_slot("watchdog_thrash", ts) {
+        if count >= ALARM_WATCHDOG_THRASH_THRESHOLD && self.take_refire_slot("watchdog_thrash", ts)
+        {
             out.push(InvariantAlarm {
                 name: "watchdog_thrash",
                 provider: None,
@@ -1633,7 +1733,11 @@ fn observe_invariant_alarm_event(data_dir: &Path, payload: &serde_json::Value) {
         });
         if let Ok(line) = serde_json::to_string(&record) {
             if let Err(error) = append_runtime_health_line(data_dir, &line) {
-                warn!("[invariant-alarm] failed to append in {}: {}", data_dir.display(), error);
+                warn!(
+                    "[invariant-alarm] failed to append in {}: {}",
+                    data_dir.display(),
+                    error
+                );
             } else {
                 warn!("[invariant-alarm] {} {}", alarm.name, record["detail"]);
             }
@@ -1699,7 +1803,11 @@ mod invariant_alarm_tests {
         for i in 0..5 {
             state.observe_cloud_upload(&upload(true), base + i, &mut out);
         }
-        assert_eq!(names(&out), vec!["cloud_loop"], "refires after cooldown with a fresh window");
+        assert_eq!(
+            names(&out),
+            vec!["cloud_loop"],
+            "refires after cooldown with a fresh window"
+        );
     }
 
     #[test]
@@ -1709,7 +1817,10 @@ mod invariant_alarm_tests {
         state.observe_scrape_outcome(&scrape("facebook", "ok", 7, 4), 10, &mut out);
         assert!(out.is_empty(), "persisted>0 is fine");
         state.observe_scrape_outcome(&scrape("facebook", "ok", 3, 0), 20, &mut out);
-        assert!(out.is_empty(), "extracted<5 is below the signature threshold");
+        assert!(
+            out.is_empty(),
+            "extracted<5 is below the signature threshold"
+        );
         state.observe_scrape_outcome(&scrape("facebook", "ok", 9, 0), 30, &mut out);
         assert_eq!(names(&out), vec!["scrape_zero_persist"]);
     }
@@ -1722,7 +1833,11 @@ mod invariant_alarm_tests {
         state.observe_scrape_outcome(&scrape("instagram", "ok", 0, 0), 20, &mut out);
         assert!(out.is_empty(), "two empties is below the recheck streak");
         state.observe_scrape_outcome(&scrape("instagram", "ok", 0, 0), 30, &mut out);
-        assert_eq!(names(&out), vec!["auth_zombie"], "third consecutive ok-empty fires recheck");
+        assert_eq!(
+            names(&out),
+            vec!["auth_zombie"],
+            "third consecutive ok-empty fires recheck"
+        );
         out.clear();
         // A real extract resets the streak.
         state.observe_scrape_outcome(&scrape("instagram", "ok", 5, 5), 40, &mut out);
@@ -1976,7 +2091,7 @@ fn is_dev_sync_trigger_terminal_status(status: &str) -> bool {
 }
 
 fn is_supported_dev_sync_provider(provider: &str) -> bool {
-    matches!(provider, "facebook" | "instagram" | "linkedin")
+    matches!(provider, "facebook" | "instagram" | "linkedin" | "youtube")
 }
 
 fn dev_sync_trigger_request_expiration_detail(
@@ -2255,7 +2370,7 @@ fn start_dev_sync_trigger_watcher(app: tauri::AppHandle, data_dir: PathBuf) {
                                     request_id,
                                     None,
                                     "ignored",
-                                    Some("Unsupported provider. Use facebook, instagram, or linkedin."),
+                                    Some("Unsupported provider. Use facebook, instagram, linkedin, or youtube."),
                                 );
                             } else if let Some(detail) =
                                 dev_sync_trigger_lock_deferral_detail(&get_desktop_session_state())
@@ -2778,10 +2893,18 @@ fn prune_snapshots(snapshot_dir: &std::path::Path, now_secs: u64) {
 
 struct SyncRelayState {
     port: u16,
+    /// Serializes token snapshots and document exchange against relay reset.
+    epoch_gate: RwLock<()>,
     /// Broadcast channel — sends doc bytes to all connected clients.
     broadcast_tx: broadcast::Sender<Arc<Vec<u8>>>,
     /// Latest doc binary, served to new joiners immediately on connect.
     current_doc: RwLock<Option<Arc<Vec<u8>>>>,
+    /// Disconnect signal for every connection authenticated before a factory reset.
+    disconnect_tx: broadcast::Sender<u64>,
+    /// Incremented before factory-reset relay state is cleared.
+    generation: std::sync::atomic::AtomicU64,
+    /// Blocks renderer and mobile writes until local document deletion completes.
+    accepting_doc_updates: std::sync::atomic::AtomicBool,
     /// Live connection count (displayed in tray / sync indicator).
     client_count: RwLock<usize>,
     /// Pairing token — must appear as `?t=<token>` in the WS upgrade URI.
@@ -3247,6 +3370,8 @@ struct CaptureState {
     fb_user_agent: std::sync::Mutex<String>,
     ig_user_agent: std::sync::Mutex<String>,
     li_user_agent: std::sync::Mutex<String>,
+    substack_user_agent: std::sync::Mutex<String>,
+    medium_user_agent: std::sync::Mutex<String>,
     scraper_session: Arc<tokio::sync::Mutex<()>>,
     background_runtime: Arc<BackgroundRuntimeCoordinator>,
     x_client: rquest::Client,
@@ -3266,6 +3391,8 @@ impl CaptureState {
             fb_user_agent: std::sync::Mutex::new(String::new()),
             ig_user_agent: std::sync::Mutex::new(String::new()),
             li_user_agent: std::sync::Mutex::new(String::new()),
+            substack_user_agent: std::sync::Mutex::new(String::new()),
+            medium_user_agent: std::sync::Mutex::new(String::new()),
             scraper_session: Arc::new(tokio::sync::Mutex::new(())),
             background_runtime: Arc::new(BackgroundRuntimeCoordinator::new()),
             x_client,
@@ -4895,6 +5022,107 @@ fn get_platform() -> String {
     std::env::consts::OS.to_string()
 }
 
+fn hash_desktop_installation_witness(machine_id: &str, user_id: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"freed-desktop-installation-witness-v1\0");
+    hasher.update(machine_id.trim().as_bytes());
+    hasher.update(b"\0");
+    hasher.update(user_id.trim().as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+#[cfg(target_os = "macos")]
+fn platform_machine_identifier() -> Result<String, String> {
+    let output = Command::new("/usr/sbin/ioreg")
+        .args(["-rd1", "-c", "IOPlatformExpertDevice"])
+        .output()
+        .map_err(|error| format!("failed to read the macOS platform identifier: {error}"))?;
+    if !output.status.success() {
+        return Err("macOS did not return a platform identifier".to_string());
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout
+        .lines()
+        .find(|line| line.contains("\"IOPlatformUUID\""))
+        .and_then(|line| line.split('"').nth(3))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| "macOS returned an invalid platform identifier".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn platform_machine_identifier() -> Result<String, String> {
+    let output = Command::new("reg")
+        .args([
+            "query",
+            r"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Cryptography",
+            "/v",
+            "MachineGuid",
+        ])
+        .output()
+        .map_err(|error| format!("failed to read the Windows machine identifier: {error}"))?;
+    if !output.status.success() {
+        return Err("Windows did not return a machine identifier".to_string());
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout
+        .lines()
+        .find(|line| line.contains("MachineGuid"))
+        .and_then(|line| line.split_whitespace().last())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| "Windows returned an invalid machine identifier".to_string())
+}
+
+#[cfg(target_os = "linux")]
+fn platform_machine_identifier() -> Result<String, String> {
+    ["/etc/machine-id", "/var/lib/dbus/machine-id"]
+        .iter()
+        .find_map(|path| {
+            std::fs::read_to_string(path)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+        .ok_or_else(|| "Linux did not return a machine identifier".to_string())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+fn platform_machine_identifier() -> Result<String, String> {
+    hostname::get()
+        .map_err(|error| format!("failed to read the machine hostname: {error}"))?
+        .into_string()
+        .map_err(|_| "the machine hostname is not valid UTF-8".to_string())
+}
+
+#[cfg(unix)]
+fn platform_user_identifier() -> String {
+    format!("uid:{}", unsafe { libc::geteuid() })
+}
+
+#[cfg(windows)]
+fn platform_user_identifier() -> String {
+    std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("USERNAME"))
+        .unwrap_or_else(|_| "unknown-user".to_string())
+}
+
+#[cfg(not(any(unix, windows)))]
+fn platform_user_identifier() -> String {
+    std::env::var("USER").unwrap_or_else(|_| "unknown-user".to_string())
+}
+
+#[tauri::command]
+fn get_desktop_installation_witness() -> Result<String, String> {
+    let machine_id = platform_machine_identifier()?;
+    Ok(hash_desktop_installation_witness(
+        &machine_id,
+        &platform_user_identifier(),
+    ))
+}
+
 #[tauri::command]
 fn get_updater_target() -> String {
     let os = match std::env::consts::OS {
@@ -5302,14 +5530,14 @@ fn get_all_local_ips() -> Vec<serde_json::Value> {
 /// This URL is encoded into the QR code shown in the Mobile Sync tab.
 /// Only devices that scan the QR code (i.e. know the token) can connect.
 #[tauri::command]
-fn get_sync_url(state: tauri::State<'_, RelayState>) -> String {
+async fn get_sync_url(state: tauri::State<'_, RelayState>) -> Result<String, String> {
+    let _epoch = state.epoch_gate.read().await;
     let port = state.port;
-    // StdRwLock guard is held briefly and dropped before any await — safe.
     let token = state.pairing_token.read().unwrap().clone();
     let ip = local_ip_address::local_ip()
         .map(|ip| ip.to_string())
         .unwrap_or_else(|_| "localhost".to_string());
-    format!("ws://{}:{}?t={}", ip, port, token)
+    Ok(format!("ws://{}:{}?t={}", ip, port, token))
 }
 
 /// Rotates the pairing token and persists the new value to disk.
@@ -5325,9 +5553,128 @@ async fn reset_pairing_token(
     let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let new_token = generate_token();
     std::fs::write(data_dir.join("pairing-token"), &new_token).map_err(|e| e.to_string())?;
+    let _epoch = state.epoch_gate.write().await;
     *state.pairing_token.write().unwrap() = new_token.clone();
     info!("[Sync] Pairing token rotated");
     Ok(new_token)
+}
+
+async fn factory_reset_sync_relay_in(
+    data_dir: &Path,
+    state: &RelayState,
+) -> Result<String, String> {
+    let new_token = generate_token();
+    std::fs::write(data_dir.join("pairing-token"), &new_token).map_err(|e| e.to_string())?;
+
+    let _epoch = state.epoch_gate.write().await;
+    state
+        .accepting_doc_updates
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    let generation = state
+        .generation
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        + 1;
+    *state.current_doc.write().await = None;
+    *state.pairing_token.write().unwrap() = new_token.clone();
+    let _ = state.disconnect_tx.send(generation);
+    Ok(new_token)
+}
+
+async fn wait_for_relay_clients_to_disconnect(
+    state: &RelayState,
+    drain_timeout: Duration,
+) -> Result<(), String> {
+    let deadline = Instant::now() + drain_timeout;
+    loop {
+        let client_count = *state.client_count.read().await;
+        if client_count == 0 {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(format!(
+                "sync relay still has {} client(s) after factory reset drain",
+                client_count
+            ));
+        }
+        tokio::time::sleep(FACTORY_RESET_RELAY_DRAIN_POLL_INTERVAL).await;
+    }
+}
+
+/// Revoke existing mobile sessions, clear held bytes, and drain old connections.
+#[tauri::command]
+async fn factory_reset_sync_relay(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, RelayState>,
+) -> Result<String, String> {
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let token = factory_reset_sync_relay_in(&data_dir, &state).await?;
+    wait_for_relay_clients_to_disconnect(&state, FACTORY_RESET_RELAY_DRAIN_TIMEOUT).await?;
+    info!("[Sync] Relay reset and old mobile clients drained for factory reset");
+    Ok(token)
+}
+
+/// Resume relay document updates only after the local Automerge document is cleared.
+#[tauri::command]
+async fn resume_sync_relay_after_factory_reset(
+    state: tauri::State<'_, RelayState>,
+) -> Result<(), String> {
+    let _epoch = state.epoch_gate.write().await;
+    state
+        .accepting_doc_updates
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
+}
+
+fn remove_factory_reset_file(path: &Path) -> Result<(), String> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("failed to remove {}: {error}", path.display())),
+    }
+}
+
+fn clear_factory_reset_runtime_artifacts_in(data_dir: &Path) -> Result<(), String> {
+    let mut runtime_health_write_guard = runtime_health_write_guard(data_dir)
+        .map_err(|error| format!("failed to lock runtime-health state: {error}"))?;
+    runtime_health_write_guard.state.active_target = None;
+    let mut paths = vec![
+        startup_recovery_state_path(data_dir),
+        runtime_health_path(data_dir),
+        runtime_diagnostics_path(data_dir),
+        dev_sync_trigger_path(data_dir),
+        dev_sync_trigger_result_path(data_dir),
+    ];
+
+    let entries = std::fs::read_dir(data_dir)
+        .map_err(|error| format!("failed to inspect {}: {error}", data_dir.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            format!(
+                "failed to inspect an entry in {}: {error}",
+                data_dir.display()
+            )
+        })?;
+        let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+            continue;
+        };
+        if runtime_health_dated_file_date(&name).is_some() {
+            paths.push(entry.path());
+        }
+    }
+
+    for path in paths {
+        remove_factory_reset_file(&path)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn clear_factory_reset_runtime_artifacts(app: tauri::AppHandle) -> Result<(), String> {
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    clear_factory_reset_runtime_artifacts_in(&data_dir)
 }
 
 #[tauri::command]
@@ -7390,9 +7737,25 @@ async fn broadcast_doc(
     state: tauri::State<'_, RelayState>,
     doc_bytes: Vec<u8>,
 ) -> Result<(), String> {
+    let _epoch = state.epoch_gate.read().await;
+    if !state
+        .accepting_doc_updates
+        .load(std::sync::atomic::Ordering::SeqCst)
+    {
+        return Err("sync relay is being factory reset".to_string());
+    }
     let byte_len = doc_bytes.len() as u64;
     let doc_bytes = Arc::new(doc_bytes);
-    *state.current_doc.write().await = Some(doc_bytes.clone());
+    {
+        let mut current_doc = state.current_doc.write().await;
+        if !state
+            .accepting_doc_updates
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            return Err("sync relay is being factory reset".to_string());
+        }
+        *current_doc = Some(doc_bytes.clone());
+    }
     let _ = state.broadcast_tx.send(doc_bytes);
     let client_count = *state.client_count.read().await as u64;
     note_relay_broadcast(&app, byte_len, client_count);
@@ -9972,6 +10335,8 @@ async fn ig_like_post(
 /// The extraction script injected into the LinkedIn WebView after page load.
 /// Reads posts from the rendered DOM and emits them via Tauri event IPC.
 const LI_EXTRACT_SCRIPT: &str = include_str!("li-extract.js");
+const SUBSTACK_EXTRACT_SCRIPT: &str = include_str!("substack-extract.js");
+const MEDIUM_EXTRACT_SCRIPT: &str = include_str!("medium-extract.js");
 
 /// Show a visible WebView window navigated to linkedin.com/login so the
 /// user can authenticate through the real LinkedIn login flow.
@@ -10385,15 +10750,1292 @@ async fn li_disconnect(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+struct EssayScrapePage {
+    url: &'static str,
+    scope: &'static str,
+    relation: Option<&'static str>,
+    substack_profile_tab: Option<&'static str>,
+}
+
+const ESSAY_ROSTER_MAX_EXTRACTION_PASSES: usize = 20;
+const ESSAY_ROSTER_MAX_SURFACE_DURATION: Duration = Duration::from_secs(60);
+const ESSAY_ROSTER_SCROLL_EVENT: &str = "essay-roster-scroll-state";
+const SUBSTACK_PROFILE_URL_EVENT: &str = "substack-profile-url";
+
+const SUBSTACK_GRAPH_PAGES: [EssayScrapePage; 4] = [
+    EssayScrapePage {
+        url: "https://substack.com/home",
+        scope: "profile_discovery",
+        relation: None,
+        substack_profile_tab: None,
+    },
+    EssayScrapePage {
+        url: "https://substack.com/home",
+        scope: "graph",
+        relation: Some("follower"),
+        substack_profile_tab: Some("followers"),
+    },
+    EssayScrapePage {
+        url: "https://substack.com/home",
+        scope: "graph",
+        relation: Some("following"),
+        substack_profile_tab: Some("following"),
+    },
+    EssayScrapePage {
+        url: "https://substack.com/home",
+        scope: "graph",
+        relation: Some("subscription"),
+        substack_profile_tab: Some("reads"),
+    },
+];
+const SUBSTACK_ACTIVITY_PAGES: [EssayScrapePage; 1] = [EssayScrapePage {
+    url: "https://substack.com/notes",
+    scope: "activity",
+    relation: None,
+    substack_profile_tab: None,
+}];
+const SUBSTACK_ESSAY_PAGES: [EssayScrapePage; 1] = [EssayScrapePage {
+    url: "https://substack.com/home",
+    scope: "essays",
+    relation: None,
+    substack_profile_tab: None,
+}];
+const MEDIUM_GRAPH_PAGES: [EssayScrapePage; 2] = [
+    EssayScrapePage {
+        url: "https://medium.com/me/following",
+        scope: "graph",
+        relation: Some("following"),
+        substack_profile_tab: None,
+    },
+    EssayScrapePage {
+        url: "https://medium.com/me/followers",
+        scope: "graph",
+        relation: Some("follower"),
+        substack_profile_tab: None,
+    },
+];
+const MEDIUM_ACTIVITY_PAGES: [EssayScrapePage; 1] = [EssayScrapePage {
+    url: "https://medium.com/",
+    scope: "activity",
+    relation: None,
+    substack_profile_tab: None,
+}];
+const MEDIUM_ESSAY_PAGES: [EssayScrapePage; 1] = [EssayScrapePage {
+    url: "https://medium.com/me/stories/public",
+    scope: "essays",
+    relation: None,
+    substack_profile_tab: None,
+}];
+
+#[derive(Clone, Copy)]
+struct EssayProviderConfig {
+    label: &'static str,
+    id: &'static str,
+    host: &'static str,
+    login_window_label: &'static str,
+    scraper_window_label: &'static str,
+    data_store_identifier: [u8; 16],
+    login_url: &'static str,
+    auth_check_url: &'static str,
+    auth_operation: &'static str,
+    auth_event: &'static str,
+    capture_event: &'static str,
+    login_closed_event: &'static str,
+    auth_expression: &'static str,
+    login_title: &'static str,
+    lifecycle_prefix: &'static str,
+    extract_script: &'static str,
+}
+
+const SUBSTACK_ESSAY_PROVIDER: EssayProviderConfig = EssayProviderConfig {
+    label: "Substack",
+    id: "substack",
+    host: "substack.com",
+    login_window_label: "substack-login",
+    scraper_window_label: "substack-scraper",
+    data_store_identifier: SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER,
+    login_url: "https://substack.com/sign-in",
+    auth_check_url: "https://substack.com/home",
+    auth_operation: "substack_check_auth",
+    auth_event: "substack-auth-result",
+    capture_event: "substack-feed-data",
+    login_closed_event: "substack-login-window-closed",
+    auth_expression: "window.location.pathname.indexOf('/home') === 0 && !document.querySelector('form[action*=\"sign-in\"]')",
+    login_title: "Connect Substack with Freed",
+    lifecycle_prefix: "substack",
+    extract_script: SUBSTACK_EXTRACT_SCRIPT,
+};
+
+const MEDIUM_ESSAY_PROVIDER: EssayProviderConfig = EssayProviderConfig {
+    label: "Medium",
+    id: "medium",
+    host: "medium.com",
+    login_window_label: "medium-login",
+    scraper_window_label: "medium-scraper",
+    data_store_identifier: MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER,
+    login_url: "https://medium.com/m/signin",
+    auth_check_url: "https://medium.com/me/settings",
+    auth_operation: "medium_check_auth",
+    auth_event: "medium-auth-result",
+    capture_event: "medium-feed-data",
+    login_closed_event: "medium-login-window-closed",
+    auth_expression: "window.location.pathname.indexOf('/me/settings') === 0 && !document.querySelector('form[action*=\"signin\"]')",
+    login_title: "Connect Medium with Freed",
+    lifecycle_prefix: "medium",
+    extract_script: MEDIUM_EXTRACT_SCRIPT,
+};
+
+#[derive(Clone, Copy)]
+struct EssayScrapePlan {
+    provider: EssayProviderConfig,
+    operation: &'static str,
+    pages: &'static [EssayScrapePage],
+}
+
+const SUBSTACK_GRAPH_SCRAPE_PLAN: EssayScrapePlan = EssayScrapePlan {
+    provider: SUBSTACK_ESSAY_PROVIDER,
+    operation: "substack_scrape_graph",
+    pages: &SUBSTACK_GRAPH_PAGES,
+};
+const SUBSTACK_ACTIVITY_SCRAPE_PLAN: EssayScrapePlan = EssayScrapePlan {
+    provider: SUBSTACK_ESSAY_PROVIDER,
+    operation: "substack_scrape_activity",
+    pages: &SUBSTACK_ACTIVITY_PAGES,
+};
+const SUBSTACK_ESSAY_SCRAPE_PLAN: EssayScrapePlan = EssayScrapePlan {
+    provider: SUBSTACK_ESSAY_PROVIDER,
+    operation: "substack_scrape_essays",
+    pages: &SUBSTACK_ESSAY_PAGES,
+};
+const MEDIUM_GRAPH_SCRAPE_PLAN: EssayScrapePlan = EssayScrapePlan {
+    provider: MEDIUM_ESSAY_PROVIDER,
+    operation: "medium_scrape_graph",
+    pages: &MEDIUM_GRAPH_PAGES,
+};
+const MEDIUM_ACTIVITY_SCRAPE_PLAN: EssayScrapePlan = EssayScrapePlan {
+    provider: MEDIUM_ESSAY_PROVIDER,
+    operation: "medium_scrape_activity",
+    pages: &MEDIUM_ACTIVITY_PAGES,
+};
+const MEDIUM_ESSAY_SCRAPE_PLAN: EssayScrapePlan = EssayScrapePlan {
+    provider: MEDIUM_ESSAY_PROVIDER,
+    operation: "medium_scrape_essays",
+    pages: &MEDIUM_ESSAY_PAGES,
+};
+
+fn provider_host_matches(host: &str, provider_host: &str) -> bool {
+    host == provider_host || host.ends_with(&format!(".{}", provider_host))
+}
+
+fn provider_page_requires_login(url: &url::Url, provider_host: &str) -> bool {
+    if !provider_host_matches(url.host_str().unwrap_or_default(), provider_host) {
+        return true;
+    }
+    let path = url.path().to_ascii_lowercase();
+    path.contains("sign-in") || path.contains("signin") || path.contains("login")
+}
+
+fn essay_capture_surface_is_sensitive(url: &url::Url, provider: EssayProviderConfig) -> bool {
+    if provider.id != "substack" {
+        return false;
+    }
+    let path = url.path().to_ascii_lowercase();
+    ["/subscriber", "/audience", "/inbox", "/messages", "/chat"]
+        .iter()
+        .any(|blocked| path.contains(blocked))
+}
+
+fn store_essay_provider_user_agent(
+    user_agent_store: &std::sync::Mutex<String>,
+    user_agent: String,
+) -> Result<String, String> {
+    let normalized = user_agent.trim();
+    if normalized.is_empty() || normalized.len() > 512 || normalized.chars().any(char::is_control) {
+        return Err("Invalid browser identity".to_string());
+    }
+    let normalized = normalized.to_string();
+    *user_agent_store.lock().unwrap() = normalized.clone();
+    Ok(normalized)
+}
+
+fn canonical_substack_profile_root(value: &str) -> Option<url::Url> {
+    let parsed = url::Url::parse(value).ok()?;
+    if parsed.scheme() != "https"
+        || !matches!(parsed.host_str(), Some("substack.com" | "www.substack.com"))
+    {
+        return None;
+    }
+    let first_segment = parsed
+        .path_segments()?
+        .find(|segment| !segment.is_empty())?;
+    let handle = first_segment.strip_prefix('@')?;
+    if handle.is_empty()
+        || handle.len() > 100
+        || !handle.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+        })
+    {
+        return None;
+    }
+    url::Url::parse(&format!("https://substack.com/@{}", handle)).ok()
+}
+
+fn substack_profile_tab_url(root: &url::Url, tab: &str) -> Result<url::Url, String> {
+    if !matches!(tab, "followers" | "following" | "reads") {
+        return Err("Unsupported Substack profile surface".to_string());
+    }
+    let mut result = root.clone();
+    result.set_path(&format!("{}/{}", root.path().trim_end_matches('/'), tab));
+    Ok(result)
+}
+
+fn normalized_surface_path(url: &url::Url) -> &str {
+    let path = url.path().trim_end_matches('/');
+    if path.is_empty() {
+        "/"
+    } else {
+        path
+    }
+}
+
+fn normalized_surface_host(url: &url::Url) -> Option<&str> {
+    url.host_str()
+        .map(|host| host.strip_prefix("www.").unwrap_or(host))
+}
+
+fn essay_surface_origin_matches(current_url: &url::Url, target_url: &url::Url) -> bool {
+    current_url.scheme() == target_url.scheme()
+        && current_url.scheme() == "https"
+        && normalized_surface_host(current_url) == normalized_surface_host(target_url)
+        && current_url.port_or_known_default() == target_url.port_or_known_default()
+}
+
+fn essay_provider_auth_surface_matches(
+    current_url: &url::Url,
+    provider: EssayProviderConfig,
+) -> bool {
+    let Ok(target_url) = url::Url::parse(provider.auth_check_url) else {
+        return false;
+    };
+    essay_surface_origin_matches(current_url, &target_url)
+        && normalized_surface_path(current_url) == normalized_surface_path(&target_url)
+}
+
+fn essay_login_auth_probe_script(provider: EssayProviderConfig) -> Result<String, String> {
+    Ok(format!(
+        r#"
+        (function() {{
+          var attemptsRemaining = 20;
+          function proveAuthenticatedSession() {{
+            try {{
+              if (window.__FREED_ESSAY_LOGIN_AUTH_EMITTED) return;
+              var loggedIn = Boolean({});
+              if (loggedIn) {{
+                window.__FREED_ESSAY_LOGIN_AUTH_EMITTED = true;
+                window.__TAURI__.event.emit({}, {{ loggedIn: true }});
+                return;
+              }}
+            }} catch (_) {{}}
+            attemptsRemaining -= 1;
+            if (attemptsRemaining > 0) window.setTimeout(proveAuthenticatedSession, 250);
+          }}
+          window.setTimeout(proveAuthenticatedSession, 250);
+        }})();
+        "#,
+        provider.auth_expression,
+        serde_json::to_string(provider.auth_event).map_err(|error| error.to_string())?,
+    ))
+}
+
+fn essay_capture_surface_matches(
+    current_url: &url::Url,
+    target_url: &url::Url,
+    _page: &EssayScrapePage,
+) -> bool {
+    essay_surface_origin_matches(current_url, target_url)
+        && normalized_surface_path(current_url) == normalized_surface_path(target_url)
+}
+
+async fn resolve_substack_profile_root(
+    app: &tauri::AppHandle,
+    window: &tauri::WebviewWindow,
+) -> Result<url::Url, String> {
+    let (sender, receiver) = tokio::sync::oneshot::channel::<Option<String>>();
+    let sender = Arc::new(StdMutex::new(Some(sender)));
+    let listener_sender = sender.clone();
+    let listener_id = app.listen(SUBSTACK_PROFILE_URL_EVENT, move |event| {
+        let profile_url = serde_json::from_str::<serde_json::Value>(event.payload())
+            .ok()
+            .and_then(|value| {
+                value
+                    .get("url")
+                    .and_then(|entry| entry.as_str())
+                    .map(str::to_string)
+            });
+        if let Some(sender) = listener_sender.lock().unwrap().take() {
+            let _ = sender.send(profile_url);
+        }
+    });
+
+    let event_name =
+        serde_json::to_string(SUBSTACK_PROFILE_URL_EVENT).map_err(|error| error.to_string())?;
+    let script = format!(
+        r#"
+        (function() {{
+          try {{
+            function profileRoot(value) {{
+              try {{
+                var url = new URL(value, window.location.href);
+                if (url.hostname !== "substack.com" && url.hostname !== "www.substack.com") return "";
+                var match = url.pathname.match(/^\/@[A-Za-z0-9._-]+/);
+                return match ? url.origin + match[0] : "";
+              }} catch (_) {{
+                return "";
+              }}
+            }}
+
+            var current = profileRoot(window.location.href);
+            var best = current ? {{ url: current, score: 100 }} : null;
+            document.querySelectorAll('a[href]').forEach(function(link) {{
+              var url = profileRoot(link.getAttribute('href'));
+              if (!url) return;
+              var chrome = link.closest('nav, [role="banner"], [role="navigation"], [data-testid*="sidebar"], [data-testid*="nav"]');
+              if (!chrome) return;
+              var score = 5;
+              var label = String(link.getAttribute('aria-label') || '').toLowerCase();
+              var testId = String(link.getAttribute('data-testid') || '').toLowerCase();
+              if (label.indexOf('profile') !== -1 || label.indexOf('account') !== -1) score += 8;
+              if (testId.indexOf('profile') !== -1 || testId.indexOf('user') !== -1 || testId.indexOf('avatar') !== -1) score += 6;
+              if (link.querySelector('img')) score += 2;
+              if (!best || score > best.score) best = {{ url: url, score: score }};
+            }});
+            var resolved = best && best.score >= 5 ? best.url : "";
+            window.__TAURI__.event.emit({}, {{ url: resolved || null }});
+          }} catch (_) {{
+            window.__TAURI__.event.emit({}, {{ url: null }});
+          }}
+        }})();
+        "#,
+        event_name, event_name
+    );
+    if let Err(error) = window.eval(&script) {
+        app.unlisten(listener_id);
+        return Err(error.to_string());
+    }
+
+    let profile_url = match timeout(Duration::from_secs(3), receiver).await {
+        Ok(Ok(Some(profile_url))) => Ok(profile_url),
+        Ok(Ok(None)) | Err(_) => {
+            Err("Substack did not expose the signed in profile link".to_string())
+        }
+        Ok(Err(_)) => Err("Substack profile lookup ended before completion".to_string()),
+    };
+    app.unlisten(listener_id);
+    canonical_substack_profile_root(&profile_url?)
+        .ok_or_else(|| "Substack returned an invalid profile link".to_string())
+}
+
+async fn resolve_substack_profile_root_with_fallback(
+    app: &tauri::AppHandle,
+    window: &tauri::WebviewWindow,
+) -> Result<url::Url, String> {
+    match resolve_substack_profile_root(app, window).await {
+        Ok(root) => Ok(root),
+        Err(initial_error) => {
+            window
+                .navigate(
+                    "https://substack.com/profile"
+                        .parse()
+                        .map_err(|error: url::ParseError| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
+            tokio::time::sleep(Duration::from_millis(gaussian_ms(5000.0, 700.0))).await;
+            resolve_substack_profile_root(app, window)
+                .await
+                .map_err(|fallback_error| format!("{}; {}", initial_error, fallback_error))
+        }
+    }
+}
+
+async fn emit_essay_extraction_pass(
+    window: &tauri::WebviewWindow,
+    provider: EssayProviderConfig,
+    page: &EssayScrapePage,
+    capture_token: &str,
+) -> Result<(), String> {
+    let relation_json = page
+        .relation
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|error| error.to_string())?
+        .unwrap_or_else(|| "null".to_string());
+    let script = format!(
+        "window.__FREED_ESSAY_CAPTURE_SCOPE = {}; window.__FREED_ESSAY_RELATION = {}; window.__FREED_ESSAY_CAPTURE_TOKEN = {}; {}",
+        serde_json::to_string(page.scope).map_err(|error| error.to_string())?,
+        relation_json,
+        serde_json::to_string(capture_token).map_err(|error| error.to_string())?,
+        provider.extract_script,
+    );
+    window.eval(&script).map_err(|error| {
+        format!(
+            "Failed to inject {} extraction script: {}",
+            provider.label, error
+        )
+    })?;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let done_script = format!(
+        r#"
+        window.__TAURI__.event.emit({}, {{
+          entries: [], profiles: [], done: true, extractedAt: Date.now(),
+          url: window.location.href, candidateCount: 0, scope: {}, relation: {}
+        }});
+        "#,
+        serde_json::to_string(provider.capture_event).map_err(|error| error.to_string())?,
+        serde_json::to_string(page.scope).map_err(|error| error.to_string())?,
+        relation_json,
+    );
+    window
+        .eval(&done_script)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+async fn scroll_essay_roster_surface(
+    app: &tauri::AppHandle,
+    window: &tauri::WebviewWindow,
+) -> Result<bool, String> {
+    let (sender, receiver) = tokio::sync::oneshot::channel::<bool>();
+    let sender = Arc::new(StdMutex::new(Some(sender)));
+    let listener_sender = sender.clone();
+    let listener_id = app.listen(ESSAY_ROSTER_SCROLL_EVENT, move |event| {
+        let can_continue = serde_json::from_str::<serde_json::Value>(event.payload())
+            .ok()
+            .and_then(|value| value.get("canContinue").and_then(|entry| entry.as_bool()))
+            .unwrap_or(false);
+        if let Some(sender) = listener_sender.lock().unwrap().take() {
+            let _ = sender.send(can_continue);
+        }
+    });
+
+    let scroll_ratio = rand::thread_rng().gen_range(0.72f64..1.28f64);
+    let event_name =
+        serde_json::to_string(ESSAY_ROSTER_SCROLL_EVENT).map_err(|error| error.to_string())?;
+    let script = format!(
+        r#"
+        (function() {{
+          try {{
+            var target = window.__FREED_ESSAY_SCROLL_TARGET;
+            if (!target || !target.isConnected || target.scrollHeight <= target.clientHeight + 24) {{
+              var candidates = [document.scrollingElement].concat(
+                Array.from(document.querySelectorAll('main, [role="main"], [role="list"], [data-testid*="list"], section, div'))
+              ).filter(function(node) {{
+                return node && node.scrollHeight > node.clientHeight + 24;
+              }});
+              candidates.sort(function(left, right) {{
+                return (right.scrollHeight - right.clientHeight) - (left.scrollHeight - left.clientHeight);
+              }});
+              target = candidates[0] || document.scrollingElement;
+              window.__FREED_ESSAY_SCROLL_TARGET = target;
+            }}
+
+            var seen = window.__FREED_ESSAY_ROSTER_IDS;
+            var limitReached = seen instanceof Set && seen.size >= 500;
+            var viewport = target === document.scrollingElement ? window.innerHeight : target.clientHeight;
+            var before = target === document.scrollingElement ? window.scrollY : target.scrollTop;
+            var extentBefore = target ? target.scrollHeight : 0;
+            var atEnd = before + viewport >= extentBefore - 24;
+            if (!limitReached && !atEnd && target) {{
+              var amount = Math.max(320, Math.round(viewport * {}));
+              if (target === document.scrollingElement) {{
+                window.scrollBy({{ top: amount, behavior: 'smooth' }});
+              }} else if (typeof target.scrollBy === 'function') {{
+                target.scrollBy({{ top: amount, behavior: 'smooth' }});
+              }} else {{
+                target.scrollTop += amount;
+              }}
+            }}
+
+            window.setTimeout(function() {{
+              var after = target === document.scrollingElement ? window.scrollY : target.scrollTop;
+              var extentAfter = target ? target.scrollHeight : 0;
+              var moved = after > before + 1 || extentAfter > extentBefore + 1;
+              window.__TAURI__.event.emit({}, {{
+                canContinue: !limitReached && !atEnd && moved,
+                limitReached: limitReached,
+                atEnd: atEnd,
+                offset: after,
+                extent: extentAfter
+              }});
+            }}, 450);
+          }} catch (_) {{
+            window.__TAURI__.event.emit({}, {{ canContinue: false }});
+          }}
+        }})();
+        "#,
+        scroll_ratio, event_name, event_name
+    );
+    if let Err(error) = window.eval(&script) {
+        app.unlisten(listener_id);
+        return Err(error.to_string());
+    }
+
+    let can_continue = timeout(Duration::from_secs(2), receiver)
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or(false);
+    app.unlisten(listener_id);
+    Ok(can_continue)
+}
+
+async fn show_essay_provider_login(
+    app: tauri::AppHandle,
+    user_agent_store: &std::sync::Mutex<String>,
+    user_agent: String,
+    provider: EssayProviderConfig,
+) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+    let user_agent = store_essay_provider_user_agent(user_agent_store, user_agent)?;
+
+    recycle_webview_window(
+        &app,
+        provider.login_window_label,
+        WindowDestroyedReason::LoginFlow,
+        "login restart",
+    );
+
+    let auth_probe_script = essay_login_auth_probe_script(provider)?;
+    let login_window = WebviewWindowBuilder::new(
+        &app,
+        provider.login_window_label,
+        tauri::WebviewUrl::External(
+            provider
+                .login_url
+                .parse()
+                .map_err(|e: url::ParseError| e.to_string())?,
+        ),
+    )
+    .data_store_identifier(provider.data_store_identifier)
+    .user_agent(&user_agent)
+    .initialization_script(include_str!("webkit-mask.js"))
+    .title(provider.login_title)
+    .inner_size(
+        500.0 + rand::thread_rng().gen_range(-8.0f64..8.0),
+        720.0 + rand::thread_rng().gen_range(-10.0f64..10.0),
+    )
+    .center()
+    .visible(true)
+    .on_page_load(move |window, payload| {
+        if payload.event() == tauri::webview::PageLoadEvent::Finished
+            && essay_provider_auth_surface_matches(payload.url(), provider)
+        {
+            let _ = window.eval(&auth_probe_script);
+        }
+    })
+    .build()
+    .map_err(|e| e.to_string())?;
+    observe_window_created(provider.login_window_label);
+
+    let close_app = app.clone();
+    login_window.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { .. } = event {
+            let _ = close_app.emit(
+                provider.login_closed_event,
+                serde_json::json!({ "closed": true }),
+            );
+        }
+    });
+    Ok(())
+}
+
+async fn hide_essay_provider_login(
+    app: tauri::AppHandle,
+    provider: EssayProviderConfig,
+) -> Result<(), String> {
+    let _ = app.emit(
+        provider.login_closed_event,
+        serde_json::json!({ "closed": true }),
+    );
+    recycle_webview_window(
+        &app,
+        provider.login_window_label,
+        WindowDestroyedReason::LoginFlow,
+        "login dismissed",
+    );
+    Ok(())
+}
+
+async fn check_essay_provider_auth(
+    app: tauri::AppHandle,
+    capture: &CaptureState,
+    user_agent_store: &std::sync::Mutex<String>,
+    user_agent: String,
+    provider: EssayProviderConfig,
+) -> Result<bool, String> {
+    use tauri::WebviewWindowBuilder;
+
+    store_essay_provider_user_agent(user_agent_store, user_agent)?;
+    let scraper_user_agent = stored_or_default_user_agent(user_agent_store);
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        provider.label,
+        "auth check",
+        Some(provider.scraper_window_label),
+    )
+    .await?;
+    let _scraper_session =
+        acquire_background_scraper_session(capture, provider.auth_operation).await?;
+    let _recycle_guard = WebviewRecycleGuard::new(
+        app.clone(),
+        provider.scraper_window_label,
+        "auth check complete",
+    );
+    let wv = match app.get_webview_window(provider.scraper_window_label) {
+        Some(window) => {
+            set_background_scraper_media_guard(&window, true)?;
+            window
+                .navigate(
+                    provider
+                        .auth_check_url
+                        .parse()
+                        .map_err(|e: url::ParseError| e.to_string())?,
+                )
+                .map_err(|e| e.to_string())?;
+            window
+        }
+        None => {
+            let window = WebviewWindowBuilder::new(
+                &app,
+                provider.scraper_window_label,
+                tauri::WebviewUrl::External(
+                    provider
+                        .auth_check_url
+                        .parse()
+                        .map_err(|e: url::ParseError| e.to_string())?,
+                ),
+            )
+            .data_store_identifier(provider.data_store_identifier)
+            .user_agent(&scraper_user_agent)
+            .initialization_script(include_str!("webkit-mask.js"))
+            .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
+            .title(format!("Freed {}", provider.label))
+            .inner_size(500.0, 720.0)
+            .visible(false)
+            .build()
+            .map_err(|e| e.to_string())?;
+            observe_window_created(provider.scraper_window_label);
+            window
+        }
+    };
+    set_background_scraper_media_guard(&wv, true)?;
+    tokio::time::sleep(Duration::from_millis(gaussian_ms(5000.0, 700.0))).await;
+
+    let (sender, receiver) = tokio::sync::oneshot::channel::<bool>();
+    let sender = Arc::new(StdMutex::new(Some(sender)));
+    let listener_sender = sender.clone();
+    let listener_id = app.listen(provider.auth_event, move |event| {
+        let logged_in = serde_json::from_str::<serde_json::Value>(event.payload())
+            .ok()
+            .and_then(|value| value.get("loggedIn").and_then(|entry| entry.as_bool()))
+            .unwrap_or(false);
+        if let Some(sender) = listener_sender.lock().unwrap().take() {
+            let _ = sender.send(logged_in);
+        }
+    });
+
+    let auth_script = format!(
+        r#"
+        (function() {{
+          try {{
+            var loggedIn = Boolean({});
+            window.__TAURI__.event.emit({}, {{ loggedIn: loggedIn }});
+          }} catch (error) {{
+            window.__TAURI__.event.emit({}, {{ loggedIn: false, error: String(error && error.message || error) }});
+          }}
+        }})();
+        "#,
+        provider.auth_expression,
+        serde_json::to_string(provider.auth_event).map_err(|e| e.to_string())?,
+        serde_json::to_string(provider.auth_event).map_err(|e| e.to_string())?,
+    );
+    if let Err(error) = wv.eval(&auth_script) {
+        app.unlisten(listener_id);
+        return Err(error.to_string());
+    }
+
+    let logged_in = timeout(Duration::from_secs(5), receiver)
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or(false);
+    app.unlisten(listener_id);
+    Ok(logged_in)
+}
+
+fn build_essay_scraper_window(
+    app: &tauri::AppHandle,
+    window_label: &'static str,
+    data_store_identifier: [u8; 16],
+    initial_url: &'static str,
+    user_agent: &str,
+    title: &str,
+    window_mode: ScraperWindowMode,
+) -> Result<tauri::WebviewWindow, String> {
+    use tauri::WebviewWindowBuilder;
+
+    let mut builder = WebviewWindowBuilder::new(
+        app,
+        window_label,
+        tauri::WebviewUrl::External(
+            initial_url
+                .parse()
+                .map_err(|e: url::ParseError| e.to_string())?,
+        ),
+    )
+    .data_store_identifier(data_store_identifier)
+    .user_agent(user_agent)
+    .initialization_script(include_str!("webkit-mask.js"))
+    .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
+    .title(title)
+    .inner_size(1280.0, 900.0);
+
+    if window_mode == ScraperWindowMode::Shown {
+        builder = builder.center().visible(true);
+    } else if window_mode == ScraperWindowMode::Cloaked {
+        builder = builder
+            .transparent(true)
+            .focused(false)
+            .focusable(false)
+            .decorations(false)
+            .always_on_bottom(true)
+            .skip_taskbar(true)
+            .shadow(false)
+            .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_CLOAK_JS)
+            .visible(true);
+    } else {
+        builder = builder
+            .focused(false)
+            .focusable(false)
+            .decorations(false)
+            .always_on_bottom(true)
+            .skip_taskbar(true)
+            .shadow(false)
+            .visible(false);
+    }
+
+    let window = builder.build().map_err(|e| e.to_string())?;
+    observe_window_created(window_label);
+    Ok(window)
+}
+
+async fn scrape_essay_provider(
+    app: tauri::AppHandle,
+    capture: &CaptureState,
+    user_agent_store: &std::sync::Mutex<String>,
+    user_agent: String,
+    plan: EssayScrapePlan,
+    window_mode: ScraperWindowMode,
+) -> Result<(), String> {
+    let EssayScrapePlan {
+        provider,
+        operation,
+        pages,
+    } = plan;
+    store_essay_provider_user_agent(user_agent_store, user_agent)?;
+    let scraper_user_agent = stored_or_default_user_agent(user_agent_store);
+    ensure_social_scrape_memory(
+        &app,
+        &capture.background_runtime,
+        provider.label,
+        "authenticated capture",
+        None,
+    )
+    .await?;
+    let _scraper_session = acquire_background_scraper_session(capture, operation).await?;
+    let _recycle_guard = WebviewRecycleGuard::new(
+        app.clone(),
+        provider.scraper_window_label,
+        "authenticated capture complete",
+    );
+
+    let first_page = pages
+        .first()
+        .ok_or_else(|| format!("{} capture has no pages", provider.label))?;
+    let wv = match app.get_webview_window(provider.scraper_window_label) {
+        Some(window) => window,
+        None => build_essay_scraper_window(
+            &app,
+            provider.scraper_window_label,
+            provider.data_store_identifier,
+            first_page.url,
+            &scraper_user_agent,
+            &format!("Freed {}", provider.label),
+            window_mode,
+        )?,
+    };
+    prepare_background_scraper_window(&wv, window_mode)?;
+    emit_social_scrape_lifecycle(
+        &app,
+        &format!("{}-scrape-started", provider.lifecycle_prefix),
+        provider.id,
+        Some(&wv),
+        window_mode,
+        None,
+    );
+
+    let mut substack_profile_root = None;
+    let capture_token = format!("{}:{}:{}", provider.id, operation, rand::random::<u64>());
+    for (index, page) in pages.iter().enumerate() {
+        let surface_started = Instant::now();
+        let target_url = if let Some(tab) = page.substack_profile_tab {
+            let profile_root = match substack_profile_root.clone() {
+                Some(root) => root,
+                None => {
+                    let root = resolve_substack_profile_root_with_fallback(&app, &wv).await?;
+                    substack_profile_root = Some(root.clone());
+                    root
+                }
+            };
+            substack_profile_tab_url(&profile_root, tab)?
+        } else {
+            page.url
+                .parse()
+                .map_err(|error: url::ParseError| error.to_string())?
+        };
+        if index > 0
+            || wv
+                .url()
+                .map(|url| url.as_str() != target_url.as_str())
+                .unwrap_or(true)
+        {
+            wv.navigate(target_url.clone())
+                .map_err(|error| error.to_string())?;
+        }
+        tokio::time::sleep(Duration::from_millis(gaussian_ms(6500.0, 1000.0))).await;
+        prepare_background_scraper_window(&wv, window_mode)?;
+
+        let current_url = wv.url().map_err(|e| e.to_string())?;
+        if essay_capture_surface_is_sensitive(&current_url, provider) {
+            let message = "blocked_sensitive_surface";
+            let _ = app.emit(
+                provider.capture_event,
+                serde_json::json!({
+                    "entries": [],
+                    "profiles": [],
+                    "error": message,
+                    "extractedAt": unix_millis_now(),
+                    "url": current_url.as_str(),
+                    "candidateCount": 0
+                }),
+            );
+            return Err(format!(
+                "{} refused a subscriber management surface",
+                provider.label
+            ));
+        }
+        if provider_page_requires_login(&current_url, provider.host) {
+            let _ = app.emit(
+                provider.capture_event,
+                serde_json::json!({
+                    "entries": [],
+                    "profiles": [],
+                    "error": "authentication_required",
+                    "extractedAt": unix_millis_now(),
+                    "url": current_url.as_str(),
+                    "candidateCount": 0,
+                    "done": true
+                }),
+            );
+            emit_social_scrape_lifecycle(
+                &app,
+                &format!("{}-scrape-start-failed", provider.lifecycle_prefix),
+                provider.id,
+                Some(&wv),
+                window_mode,
+                Some("authentication required"),
+            );
+            return Err("authentication_required".to_string());
+        }
+        if !essay_capture_surface_matches(&current_url, &target_url, page) {
+            let surface = page.substack_profile_tab.unwrap_or(page.scope);
+            let message = format!("unexpected_{}_surface", surface);
+            let _ = app.emit(
+                provider.capture_event,
+                serde_json::json!({
+                    "entries": [],
+                    "profiles": [],
+                    "error": message,
+                    "extractedAt": unix_millis_now(),
+                    "url": current_url.as_str(),
+                    "candidateCount": 0
+                }),
+            );
+            return Err(format!(
+                "{} did not open the expected {} surface",
+                provider.label, surface
+            ));
+        }
+
+        if let Err(error) = emit_essay_extraction_pass(&wv, provider, page, &capture_token).await {
+            emit_social_scrape_lifecycle(
+                &app,
+                &format!("{}-scrape-start-failed", provider.lifecycle_prefix),
+                provider.id,
+                Some(&wv),
+                window_mode,
+                Some("extractor injection failed"),
+            );
+            return Err(error);
+        }
+        if index == 0 {
+            emit_social_scrape_lifecycle(
+                &app,
+                &format!("{}-scrape-healthy", provider.lifecycle_prefix),
+                provider.id,
+                Some(&wv),
+                window_mode,
+                Some("first extraction pass injected"),
+            );
+        }
+
+        if page.scope == "graph" && page.relation.is_some() {
+            let mut extraction_passes = 1usize;
+            while extraction_passes < ESSAY_ROSTER_MAX_EXTRACTION_PASSES
+                && surface_started.elapsed() < ESSAY_ROSTER_MAX_SURFACE_DURATION
+            {
+                let remaining =
+                    ESSAY_ROSTER_MAX_SURFACE_DURATION.saturating_sub(surface_started.elapsed());
+                if remaining <= Duration::from_secs(3)
+                    || !scroll_essay_roster_surface(&app, &wv).await?
+                {
+                    break;
+                }
+                let pause = Duration::from_millis(gaussian_ms(1500.0, 450.0).clamp(700, 2800));
+                let remaining =
+                    ESSAY_ROSTER_MAX_SURFACE_DURATION.saturating_sub(surface_started.elapsed());
+                if remaining <= Duration::from_millis(600) {
+                    break;
+                }
+                tokio::time::sleep(pause.min(remaining - Duration::from_millis(550))).await;
+                if surface_started.elapsed() >= ESSAY_ROSTER_MAX_SURFACE_DURATION {
+                    break;
+                }
+                emit_essay_extraction_pass(&wv, provider, page, &capture_token).await?;
+                extraction_passes += 1;
+            }
+        }
+        cleanup_background_scraper_media(&wv);
+    }
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    Ok(())
+}
+
+async fn disconnect_essay_provider(
+    app: tauri::AppHandle,
+    provider: EssayProviderConfig,
+    temporary_label: &'static str,
+) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+
+    let mut cleared = false;
+    let mut cleanup_errors = Vec::new();
+    for label in [provider.login_window_label, provider.scraper_window_label] {
+        if let Some(window) = app.get_webview_window(label) {
+            match window.clear_all_browsing_data() {
+                Ok(()) => cleared = true,
+                Err(error) => cleanup_errors.push(format!("{} data: {}", label, error)),
+            }
+            match window.destroy() {
+                Ok(()) => record_window_destroyed(
+                    &app,
+                    label,
+                    WindowDestroyedReason::User,
+                    "provider disconnect",
+                ),
+                Err(error) => cleanup_errors.push(format!("{} window: {}", label, error)),
+            }
+        }
+    }
+
+    if !cleared {
+        let window = WebviewWindowBuilder::new(
+            &app,
+            temporary_label,
+            tauri::WebviewUrl::External("about:blank".parse().unwrap()),
+        )
+        .data_store_identifier(provider.data_store_identifier)
+        .title(format!("Freed {} disconnect", provider.label))
+        .visible(false)
+        .build()
+        .map_err(|e| e.to_string())?;
+        if let Err(error) = window.clear_all_browsing_data() {
+            cleanup_errors.push(format!("temporary data store: {}", error));
+        }
+        if let Err(error) = window.destroy() {
+            cleanup_errors.push(format!("temporary window: {}", error));
+        }
+    }
+
+    if !cleanup_errors.is_empty() {
+        return Err(format!(
+            "{} disconnect cleanup was incomplete: {}",
+            provider.label,
+            cleanup_errors.join("; ")
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn substack_show_login(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    user_agent: String,
+) -> Result<(), String> {
+    show_essay_provider_login(
+        app,
+        &capture.substack_user_agent,
+        user_agent,
+        SUBSTACK_ESSAY_PROVIDER,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn substack_hide_login(app: tauri::AppHandle) -> Result<(), String> {
+    hide_essay_provider_login(app, SUBSTACK_ESSAY_PROVIDER).await
+}
+
+#[tauri::command]
+async fn substack_check_auth(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    user_agent: String,
+) -> Result<bool, String> {
+    check_essay_provider_auth(
+        app,
+        &capture,
+        &capture.substack_user_agent,
+        user_agent,
+        SUBSTACK_ESSAY_PROVIDER,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn substack_disconnect(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+) -> Result<(), String> {
+    let result =
+        disconnect_essay_provider(app, SUBSTACK_ESSAY_PROVIDER, "substack-disconnect").await;
+    capture.substack_user_agent.lock().unwrap().clear();
+    result
+}
+
+#[tauri::command]
+async fn substack_scrape_graph(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    window_mode: ScraperWindowMode,
+    user_agent: String,
+) -> Result<(), String> {
+    scrape_essay_provider(
+        app,
+        &capture,
+        &capture.substack_user_agent,
+        user_agent,
+        SUBSTACK_GRAPH_SCRAPE_PLAN,
+        window_mode,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn substack_scrape_activity(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    window_mode: ScraperWindowMode,
+    user_agent: String,
+) -> Result<(), String> {
+    scrape_essay_provider(
+        app,
+        &capture,
+        &capture.substack_user_agent,
+        user_agent,
+        SUBSTACK_ACTIVITY_SCRAPE_PLAN,
+        window_mode,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn substack_scrape_essays(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    window_mode: ScraperWindowMode,
+    user_agent: String,
+) -> Result<(), String> {
+    scrape_essay_provider(
+        app,
+        &capture,
+        &capture.substack_user_agent,
+        user_agent,
+        SUBSTACK_ESSAY_SCRAPE_PLAN,
+        window_mode,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn medium_show_login(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    user_agent: String,
+) -> Result<(), String> {
+    show_essay_provider_login(
+        app,
+        &capture.medium_user_agent,
+        user_agent,
+        MEDIUM_ESSAY_PROVIDER,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn medium_hide_login(app: tauri::AppHandle) -> Result<(), String> {
+    hide_essay_provider_login(app, MEDIUM_ESSAY_PROVIDER).await
+}
+
+#[tauri::command]
+async fn medium_check_auth(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    user_agent: String,
+) -> Result<bool, String> {
+    check_essay_provider_auth(
+        app,
+        &capture,
+        &capture.medium_user_agent,
+        user_agent,
+        MEDIUM_ESSAY_PROVIDER,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn medium_disconnect(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+) -> Result<(), String> {
+    let result = disconnect_essay_provider(app, MEDIUM_ESSAY_PROVIDER, "medium-disconnect").await;
+    capture.medium_user_agent.lock().unwrap().clear();
+    result
+}
+
+#[tauri::command]
+async fn medium_scrape_graph(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    window_mode: ScraperWindowMode,
+    user_agent: String,
+) -> Result<(), String> {
+    scrape_essay_provider(
+        app,
+        &capture,
+        &capture.medium_user_agent,
+        user_agent,
+        MEDIUM_GRAPH_SCRAPE_PLAN,
+        window_mode,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn medium_scrape_activity(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    window_mode: ScraperWindowMode,
+    user_agent: String,
+) -> Result<(), String> {
+    scrape_essay_provider(
+        app,
+        &capture,
+        &capture.medium_user_agent,
+        user_agent,
+        MEDIUM_ACTIVITY_SCRAPE_PLAN,
+        window_mode,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn medium_scrape_essays(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    window_mode: ScraperWindowMode,
+    user_agent: String,
+) -> Result<(), String> {
+    scrape_essay_provider(
+        app,
+        &capture,
+        &capture.medium_user_agent,
+        user_agent,
+        MEDIUM_ESSAY_SCRAPE_PLAN,
+        window_mode,
+    )
+    .await
+}
+
 // ---------------------------------------------------------------------------
 // WebSocket relay
 // ---------------------------------------------------------------------------
+
+fn relay_connection_can_exchange_docs(state: &RelayState, connection_generation: u64) -> bool {
+    state
+        .accepting_doc_updates
+        .load(std::sync::atomic::Ordering::SeqCst)
+        && connection_generation == state.generation.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+fn relay_request_token_matches(query: Option<&str>, expected_token: &str) -> bool {
+    query
+        .and_then(|query| {
+            query.split('&').find_map(|pair| {
+                let mut fields = pair.splitn(2, '=');
+                (fields.next() == Some("t"))
+                    .then(|| fields.next())
+                    .flatten()
+            })
+        })
+        .map(|token| token == expected_token)
+        .unwrap_or(false)
+}
+
+async fn store_relay_client_doc_if_current(
+    state: &RelayState,
+    connection_generation: u64,
+    bytes: Arc<Vec<u8>>,
+) -> bool {
+    let _epoch = state.epoch_gate.read().await;
+    let mut current_doc = state.current_doc.write().await;
+    if !relay_connection_can_exchange_docs(state, connection_generation) {
+        return false;
+    }
+    *current_doc = Some(bytes.clone());
+    let _ = state.broadcast_tx.send(bytes);
+    true
+}
 
 /// Authenticate and handle a single WebSocket connection.
 ///
 /// The client must include `?t=<token>` in the upgrade URI.  Any connection
 /// that omits the token or presents an incorrect value is rejected with HTTP
-/// 401 before the WebSocket handshake completes — no data is exchanged.
+/// 401 before the WebSocket handshake completes. No data is exchanged.
 #[cfg_attr(feature = "perf", tracing::instrument(skip(stream, state, app), fields(addr = %addr)))]
 async fn handle_connection(
     stream: TcpStream,
@@ -10403,25 +12045,20 @@ async fn handle_connection(
 ) {
     info!("[Sync] New connection from: {}", addr);
 
-    // Snapshot the token now — the StdRwLock guard is dropped here, so it is
-    // never held across an .await point.
-    let expected_token = state.pairing_token.read().unwrap().clone();
+    let (expected_token, connection_generation) = {
+        let _epoch = state.epoch_gate.read().await;
+        (
+            state.pairing_token.read().unwrap().clone(),
+            state.generation.load(std::sync::atomic::Ordering::SeqCst),
+        )
+    };
+    let handshake_token = expected_token.clone();
+    let mut disconnect_rx = state.disconnect_tx.subscribe();
 
     let ws_stream = match accept_hdr_async(
         stream,
         move |req: &WsRequest, resp: WsResponse| -> Result<WsResponse, ErrorResponse> {
-            let token_ok = req
-                .uri()
-                .query()
-                .and_then(|q| {
-                    // Parse ?t=<value> from the query string
-                    q.split('&').find_map(|pair| {
-                        let mut kv = pair.splitn(2, '=');
-                        (kv.next() == Some("t")).then(|| kv.next()).flatten()
-                    })
-                })
-                .map(|t| t == expected_token.as_str())
-                .unwrap_or(false);
+            let token_ok = relay_request_token_matches(req.uri().query(), &handshake_token);
 
             if token_ok {
                 Ok(resp)
@@ -10447,37 +12084,63 @@ async fn handle_connection(
     };
 
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
+    let mut broadcast_rx = state.broadcast_tx.subscribe();
 
-    // Increment client count and notify frontend
-    {
+    let connected_count = {
+        let _epoch = state.epoch_gate.read().await;
+        let token_is_current =
+            state.pairing_token.read().unwrap().as_str() == expected_token.as_str();
+        if !token_is_current || !relay_connection_can_exchange_docs(&state, connection_generation) {
+            let _ = timeout(
+                SYNC_RELAY_DOC_SEND_TIMEOUT,
+                ws_sender.send(Message::Close(None)),
+            )
+            .await;
+            info!("[Sync] Client {} rejected during relay reset", addr);
+            return;
+        }
+
+        if let Some(doc) = state.current_doc.read().await.clone() {
+            match timeout(
+                SYNC_RELAY_DOC_SEND_TIMEOUT,
+                ws_sender.send(Message::Binary(doc.as_ref().clone().into())),
+            )
+            .await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    error!("[Sync] Failed to send initial doc: {}", error);
+                    return;
+                }
+                Err(_) => {
+                    error!("[Sync] Timed out sending initial doc to {}", addr);
+                    return;
+                }
+            }
+        }
+
         let mut count = state.client_count.write().await;
         *count += 1;
-        let new_count = *count;
-        info!("[Sync] Client connected. Total: {}", new_count);
-        let _ = app.emit("sync-client-count", new_count);
-    }
-
-    // Push current doc to the new client immediately
-    if let Some(doc) = state.current_doc.read().await.clone() {
-        if let Err(e) = ws_sender
-            .send(Message::Binary(doc.as_ref().clone().into()))
-            .await
-        {
-            error!("[Sync] Failed to send initial doc: {}", e);
-        }
-    }
-
-    let mut broadcast_rx = state.broadcast_tx.subscribe();
+        *count
+    };
+    info!("[Sync] Client connected. Total: {}", connected_count);
+    let _ = app.emit("sync-client-count", connected_count);
 
     loop {
         tokio::select! {
             msg = ws_receiver.next() => {
                 match msg {
                     Some(Ok(Message::Binary(data))) => {
-                        // Client pushed a doc update — store and rebroadcast
+                        // The client pushed a document update. Store and rebroadcast it.
                         let bytes = Arc::new(data.to_vec());
-                        *state.current_doc.write().await = Some(bytes.clone());
-                        let _ = state.broadcast_tx.send(bytes);
+                        if !store_relay_client_doc_if_current(
+                            &state,
+                            connection_generation,
+                            bytes,
+                        ).await {
+                            info!("[Sync] Ignored stale client update after relay reset");
+                            break;
+                        }
                     }
                     Some(Ok(Message::Close(_))) | None => {
                         info!("[Sync] Client {} disconnected", addr);
@@ -10495,10 +12158,36 @@ async fn handle_connection(
             }
             broadcast = broadcast_rx.recv() => {
                 if let Ok(doc) = broadcast {
-                    if let Err(e) = ws_sender.send(Message::Binary(doc.as_ref().clone().into())).await {
-                        error!("[Sync] Failed to send to {}: {}", addr, e);
+                    let _epoch = state.epoch_gate.read().await;
+                    if !relay_connection_can_exchange_docs(&state, connection_generation) {
+                        let _ = timeout(
+                            SYNC_RELAY_DOC_SEND_TIMEOUT,
+                            ws_sender.send(Message::Close(None)),
+                        ).await;
+                        info!("[Sync] Client {} rejected a broadcast after relay reset", addr);
                         break;
                     }
+                    match timeout(
+                        SYNC_RELAY_DOC_SEND_TIMEOUT,
+                        ws_sender.send(Message::Binary(doc.as_ref().clone().into())),
+                    ).await {
+                        Ok(Ok(())) => {}
+                        Ok(Err(error)) => {
+                            error!("[Sync] Failed to send to {}: {}", addr, error);
+                            break;
+                        }
+                        Err(_) => {
+                            error!("[Sync] Timed out sending to {}", addr);
+                            break;
+                        }
+                    }
+                }
+            }
+            reset = disconnect_rx.recv() => {
+                if reset.is_ok() {
+                    let _ = ws_sender.send(Message::Close(None)).await;
+                    info!("[Sync] Client {} disconnected by factory reset", addr);
+                    break;
                 }
             }
         }
@@ -11614,11 +13303,16 @@ pub fn run() {
     }
 
     let (broadcast_tx, _) = broadcast::channel::<Arc<Vec<u8>>>(16);
+    let (disconnect_tx, _) = broadcast::channel::<u64>(16);
 
     let relay_state = Arc::new(SyncRelayState {
         port: sync_relay_port(),
+        epoch_gate: RwLock::new(()),
         broadcast_tx,
         current_doc: RwLock::new(None),
+        disconnect_tx,
+        generation: std::sync::atomic::AtomicU64::new(0),
+        accepting_doc_updates: std::sync::atomic::AtomicBool::new(true),
         client_count: RwLock::new(0),
         // Populated from disk in .setup() before the relay starts accepting connections.
         pairing_token: StdRwLock::new(String::new()),
@@ -12819,6 +14513,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_version,
             get_platform,
+            get_desktop_installation_witness,
             get_updater_target,
             retry_startup_after_crash,
             export_startup_diagnostics,
@@ -12845,7 +14540,10 @@ pub fn run() {
             get_social_provider_cookie_state,
             prepare_social_scrape_memory,
             broadcast_doc,
+            clear_factory_reset_runtime_artifacts,
             reset_pairing_token,
+            factory_reset_sync_relay,
+            resume_sync_relay_after_factory_reset,
             show_window,
             open_x_login_window,
             check_x_login_cookies,
@@ -12878,6 +14576,26 @@ pub fn run() {
             li_check_auth,
             li_scrape_feed,
             li_disconnect,
+            substack_show_login,
+            substack_hide_login,
+            substack_check_auth,
+            substack_disconnect,
+            substack_scrape_graph,
+            substack_scrape_activity,
+            substack_scrape_essays,
+            medium_show_login,
+            medium_hide_login,
+            medium_check_auth,
+            medium_disconnect,
+            medium_scrape_graph,
+            medium_scrape_activity,
+            medium_scrape_essays,
+            youtube::yt_show_login,
+            youtube::yt_hide_login,
+            youtube::yt_check_auth,
+            youtube::yt_capture,
+            youtube::yt_add_to_offline_playlist,
+            youtube::yt_disconnect,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Freed")
@@ -12896,6 +14614,193 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn desktop_installation_witness_is_scoped_to_machine_and_user() {
+        let first = hash_desktop_installation_witness("machine-a", "user-a");
+        assert_eq!(first.len(), 64);
+        assert_eq!(
+            first,
+            hash_desktop_installation_witness("machine-a", "user-a")
+        );
+        assert_ne!(
+            first,
+            hash_desktop_installation_witness("machine-b", "user-a")
+        );
+        assert_ne!(
+            first,
+            hash_desktop_installation_witness("machine-a", "user-b")
+        );
+    }
+
+    #[test]
+    fn factory_reset_clears_runtime_artifacts_but_preserves_installation_state() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let cleared_files = [
+            STARTUP_RECOVERY_STATE_FILE,
+            RUNTIME_HEALTH_FILE,
+            RUNTIME_DIAGNOSTICS_FILE,
+            DEV_SYNC_TRIGGER_FILE,
+            DEV_SYNC_TRIGGER_RESULT_FILE,
+            "runtime-health-20260712.jsonl",
+            "runtime-health-20260713.jsonl",
+        ];
+        for name in cleared_files {
+            std::fs::write(data_dir.path().join(name), "private runtime state").unwrap();
+        }
+        let preserved_files = [
+            "release-channel.json",
+            "desktop-client-registration.json",
+            "pairing-token",
+            "scraper-window-preferences.json",
+            "user-agent.json",
+        ];
+        for name in preserved_files {
+            std::fs::write(data_dir.path().join(name), "installation state").unwrap();
+        }
+
+        clear_factory_reset_runtime_artifacts_in(data_dir.path()).unwrap();
+
+        for name in cleared_files {
+            assert!(
+                !data_dir.path().join(name).exists(),
+                "{name} should be cleared"
+            );
+        }
+        for name in preserved_files {
+            assert_eq!(
+                std::fs::read_to_string(data_dir.path().join(name)).unwrap(),
+                "installation state"
+            );
+        }
+        clear_factory_reset_runtime_artifacts_in(data_dir.path()).unwrap();
+    }
+
+    #[tokio::test]
+    async fn factory_reset_relay_rejects_old_clients_and_clears_held_document() {
+        let data_dir = tempfile::tempdir().unwrap();
+        std::fs::write(data_dir.path().join("pairing-token"), "old-token").unwrap();
+        let (broadcast_tx, _) = broadcast::channel::<Arc<Vec<u8>>>(16);
+        let (disconnect_tx, _) = broadcast::channel::<u64>(16);
+        let mut disconnect_rx = disconnect_tx.subscribe();
+        let state = Arc::new(SyncRelayState {
+            port: DEFAULT_SYNC_RELAY_PORT,
+            epoch_gate: RwLock::new(()),
+            broadcast_tx,
+            current_doc: RwLock::new(Some(Arc::new(vec![1, 2, 3]))),
+            disconnect_tx,
+            generation: std::sync::atomic::AtomicU64::new(7),
+            accepting_doc_updates: std::sync::atomic::AtomicBool::new(true),
+            client_count: RwLock::new(1),
+            pairing_token: StdRwLock::new("old-token".to_string()),
+        });
+
+        let mut broadcast_rx = state.broadcast_tx.subscribe();
+        assert!(store_relay_client_doc_if_current(&state, 7, Arc::new(vec![4, 5, 6]),).await);
+        assert_eq!(broadcast_rx.recv().await.unwrap().as_slice(), &[4, 5, 6]);
+
+        let epoch = state.epoch_gate.read().await;
+        let reset_state = state.clone();
+        let reset_data_dir = data_dir.path().to_path_buf();
+        let reset = tokio::spawn(async move {
+            factory_reset_sync_relay_in(&reset_data_dir, &reset_state).await
+        });
+        tokio::task::yield_now().await;
+        assert!(!reset.is_finished());
+        drop(epoch);
+        let new_token = reset.await.unwrap().unwrap();
+
+        assert_ne!(new_token, "old-token");
+        assert_eq!(
+            std::fs::read_to_string(data_dir.path().join("pairing-token")).unwrap(),
+            new_token
+        );
+        assert_eq!(state.pairing_token.read().unwrap().as_str(), new_token);
+        assert!(state.current_doc.read().await.is_none());
+        assert_eq!(
+            state.generation.load(std::sync::atomic::Ordering::SeqCst),
+            8
+        );
+        assert!(!state
+            .accepting_doc_updates
+            .load(std::sync::atomic::Ordering::SeqCst));
+        assert_eq!(disconnect_rx.recv().await.unwrap(), 8);
+
+        assert!(!store_relay_client_doc_if_current(&state, 7, Arc::new(vec![9, 9, 9])).await);
+        assert!(!store_relay_client_doc_if_current(&state, 8, Arc::new(vec![8, 8, 8])).await);
+        assert!(!relay_connection_can_exchange_docs(&state, 7));
+        assert!(!relay_connection_can_exchange_docs(&state, 8));
+        assert!(state.current_doc.read().await.is_none());
+
+        let drain_state = state.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            *drain_state.client_count.write().await = 0;
+        });
+        wait_for_relay_clients_to_disconnect(&state, Duration::from_millis(100))
+            .await
+            .unwrap();
+
+        state
+            .accepting_doc_updates
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(!relay_connection_can_exchange_docs(&state, 7));
+        assert!(relay_connection_can_exchange_docs(&state, 8));
+        assert!(!relay_request_token_matches(
+            Some("t=old-token"),
+            &new_token
+        ));
+        let new_query = format!("t={new_token}");
+        assert!(relay_request_token_matches(Some(&new_query), &new_token));
+    }
+
+    #[tokio::test]
+    async fn factory_reset_relay_persistence_failure_preserves_state_and_sessions() {
+        let data_dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(data_dir.path().join("pairing-token")).unwrap();
+        let (broadcast_tx, _) = broadcast::channel::<Arc<Vec<u8>>>(16);
+        let (disconnect_tx, _) = broadcast::channel::<u64>(16);
+        let mut disconnect_rx = disconnect_tx.subscribe();
+        let state = Arc::new(SyncRelayState {
+            port: DEFAULT_SYNC_RELAY_PORT,
+            epoch_gate: RwLock::new(()),
+            broadcast_tx,
+            current_doc: RwLock::new(Some(Arc::new(vec![1, 2, 3]))),
+            disconnect_tx,
+            generation: std::sync::atomic::AtomicU64::new(7),
+            accepting_doc_updates: std::sync::atomic::AtomicBool::new(true),
+            client_count: RwLock::new(1),
+            pairing_token: StdRwLock::new("old-token".to_string()),
+        });
+
+        assert!(factory_reset_sync_relay_in(data_dir.path(), &state)
+            .await
+            .is_err());
+
+        assert_eq!(state.pairing_token.read().unwrap().as_str(), "old-token");
+        assert_eq!(
+            state.generation.load(std::sync::atomic::Ordering::SeqCst),
+            7
+        );
+        assert!(state
+            .accepting_doc_updates
+            .load(std::sync::atomic::Ordering::SeqCst));
+        assert_eq!(
+            state
+                .current_doc
+                .read()
+                .await
+                .as_deref()
+                .map(|bytes| bytes.as_slice()),
+            Some(&[1, 2, 3][..])
+        );
+        assert_eq!(*state.client_count.read().await, 1);
+        assert!(relay_connection_can_exchange_docs(&state, 7));
+        assert!(matches!(
+            disconnect_rx.try_recv(),
+            Err(broadcast::error::TryRecvError::Empty)
+        ));
+    }
 
     #[cfg(unix)]
     #[test]
@@ -12962,23 +14867,209 @@ mod tests {
     }
 
     #[test]
+    fn runtime_health_concurrent_appends_preserve_every_jsonl_record() {
+        const WRITER_COUNT: usize = 16;
+        const RECORDS_PER_WRITER: usize = 100;
+
+        let temp = tempfile::tempdir().unwrap();
+        let data_dir = Arc::new(temp.path().to_path_buf());
+        let start = Arc::new(std::sync::Barrier::new(WRITER_COUNT));
+        // Keep the full cross-platform run below the bounded writer's 5 MiB
+        // retention threshold. The record is still large enough to expose
+        // interleaving if the shared writer lock is removed.
+        let payload = Arc::new("x".repeat(2 * 1024));
+        let mut writers = Vec::with_capacity(WRITER_COUNT);
+
+        for writer_index in 0..WRITER_COUNT {
+            let data_dir = Arc::clone(&data_dir);
+            let start = Arc::clone(&start);
+            let payload = Arc::clone(&payload);
+            writers.push(std::thread::spawn(move || {
+                start.wait();
+                for record_index in 0..RECORDS_PER_WRITER {
+                    let line = serde_json::json!({
+                        "event": "runtime_health_concurrent_append_test",
+                        "payload": payload.as_str(),
+                        "recordIndex": record_index,
+                        "writerIndex": writer_index,
+                    })
+                    .to_string();
+                    append_runtime_health_line(&data_dir, &line).unwrap();
+                }
+            }));
+        }
+
+        for writer in writers {
+            writer.join().unwrap();
+        }
+
+        #[cfg(unix)]
+        let output_path = runtime_health_dated_path(&data_dir, &local_date_yyyymmdd());
+        #[cfg(not(unix))]
+        let output_path = runtime_health_path(&data_dir);
+        let raw = std::fs::read_to_string(output_path).unwrap();
+        assert!(raw.ends_with('\n'));
+        assert_eq!(raw.lines().count(), WRITER_COUNT * RECORDS_PER_WRITER);
+
+        let mut occurrences = HashMap::<(usize, usize), usize>::new();
+        for (line_index, line) in raw.lines().enumerate() {
+            let record: serde_json::Value = serde_json::from_str(line).unwrap_or_else(|error| {
+                panic!("runtime-health line {line_index} is invalid: {error}")
+            });
+            let writer_index = record["writerIndex"].as_u64().unwrap() as usize;
+            let record_index = record["recordIndex"].as_u64().unwrap() as usize;
+            *occurrences.entry((writer_index, record_index)).or_default() += 1;
+        }
+
+        assert_eq!(occurrences.len(), WRITER_COUNT * RECORDS_PER_WRITER);
+        for writer_index in 0..WRITER_COUNT {
+            for record_index in 0..RECORDS_PER_WRITER {
+                assert_eq!(occurrences.get(&(writer_index, record_index)), Some(&1));
+            }
+        }
+    }
+
+    #[test]
+    fn runtime_health_writer_lock_serializes_bounded_rewrite_and_append() {
+        const MAX_BYTES: u64 = 1_024;
+
+        let temp = tempfile::tempdir().unwrap();
+        let data_dir = Arc::new(temp.path().to_path_buf());
+        let path = runtime_health_path(&data_dir);
+        let seed = (0..160)
+            .map(|index| serde_json::json!({ "seed": index }).to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(&path, format!("{seed}\n")).unwrap();
+        assert!(std::fs::metadata(&path).unwrap().len() > MAX_BYTES);
+
+        let (first_entered_tx, first_entered_rx) = std::sync::mpsc::channel();
+        let (release_first_tx, release_first_rx) = std::sync::mpsc::channel();
+        let first_dir = Arc::clone(&data_dir);
+        let first = std::thread::spawn(move || {
+            append_runtime_health_bounded_line(
+                &first_dir,
+                &serde_json::json!({ "writer": "first" }).to_string(),
+                MAX_BYTES,
+                || {
+                    first_entered_tx.send(()).unwrap();
+                    release_first_rx.recv().unwrap();
+                },
+            )
+            .unwrap();
+        });
+        first_entered_rx.recv().unwrap();
+
+        let (second_entered_tx, second_entered_rx) = std::sync::mpsc::channel();
+        let second_dir = Arc::clone(&data_dir);
+        let second = std::thread::spawn(move || {
+            append_runtime_health_bounded_line(
+                &second_dir,
+                &serde_json::json!({ "writer": "second" }).to_string(),
+                MAX_BYTES,
+                || second_entered_tx.send(()).unwrap(),
+            )
+            .unwrap();
+        });
+
+        assert!(second_entered_rx
+            .recv_timeout(std::time::Duration::from_millis(100))
+            .is_err());
+        release_first_tx.send(()).unwrap();
+        first.join().unwrap();
+        second_entered_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        second.join().unwrap();
+
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.ends_with('\n'));
+        let records = raw
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert!(records.iter().any(|entry| entry["writer"] == "first"));
+        assert!(records.iter().any(|entry| entry["writer"] == "second"));
+    }
+
+    #[test]
+    fn runtime_health_file_lock_excludes_an_independent_handle() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join(RUNTIME_HEALTH_WRITER_LOCK_FILE);
+        let mut first = fslock::LockFile::open(&path).unwrap();
+        let mut second = fslock::LockFile::open(&path).unwrap();
+
+        first.lock().unwrap();
+        assert!(!second.try_lock().unwrap());
+        first.unlock().unwrap();
+        assert!(second.try_lock().unwrap());
+        second.unlock().unwrap();
+    }
+
+    #[test]
+    fn runtime_health_same_date_initializes_each_data_directory() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        append_runtime_health_line(first.path(), r#"{"event":"first"}"#).unwrap();
+        append_runtime_health_line(second.path(), r#"{"event":"second"}"#).unwrap();
+
+        #[cfg(unix)]
+        {
+            let expected = PathBuf::from(runtime_health_dated_file_name(&local_date_yyyymmdd()));
+            assert_eq!(
+                std::fs::read_link(runtime_health_path(first.path())).unwrap(),
+                expected
+            );
+            assert_eq!(
+                std::fs::read_link(runtime_health_path(second.path())).unwrap(),
+                expected
+            );
+        }
+        #[cfg(not(unix))]
+        {
+            assert!(runtime_health_path(first.path()).is_file());
+            assert!(runtime_health_path(second.path()).is_file());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn runtime_health_roll_failure_leaves_target_uncommitted_and_retries() {
+        let temp = tempfile::tempdir().unwrap();
+        let date = local_date_yyyymmdd();
+        let dated = runtime_health_dated_path(temp.path(), &date);
+        std::fs::create_dir(&dated).unwrap();
+        std::fs::write(runtime_health_path(temp.path()), "legacy\n").unwrap();
+
+        assert!(append_runtime_health_line(temp.path(), r#"{"event":"blocked"}"#).is_err());
+        let target = (temp.path().to_path_buf(), date.clone());
+        assert_ne!(
+            RUNTIME_HEALTH_WRITER_STATE
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .active_target
+                .as_ref(),
+            Some(&target)
+        );
+
+        std::fs::remove_dir(&dated).unwrap();
+        append_runtime_health_line(temp.path(), r#"{"event":"retried"}"#).unwrap();
+        let raw = std::fs::read_to_string(&dated).unwrap();
+        assert!(raw.contains("legacy"));
+        assert!(raw.contains("retried"));
+        assert!(!raw.contains("blocked"));
+    }
+
+    #[test]
     fn runtime_health_recent_days_concatenates_newest_files_oldest_first() {
         let temp = tempfile::tempdir().unwrap();
-        std::fs::write(
-            runtime_health_dated_path(temp.path(), "20260630"),
-            "old\n",
-        )
-        .unwrap();
+        std::fs::write(runtime_health_dated_path(temp.path(), "20260630"), "old\n").unwrap();
         std::fs::write(
             runtime_health_dated_path(temp.path(), "20260701"),
             "middle\n",
         )
         .unwrap();
-        std::fs::write(
-            runtime_health_dated_path(temp.path(), "20260702"),
-            "new\n",
-        )
-        .unwrap();
+        std::fs::write(runtime_health_dated_path(temp.path(), "20260702"), "new\n").unwrap();
 
         assert_eq!(
             read_runtime_health_recent_days(temp.path(), 2),
@@ -13095,12 +15186,10 @@ mod tests {
         let start = Instant::now();
 
         assert!(relay_broadcast_aggregate_update(&mut slot, start, 100).is_none());
-        assert!(relay_broadcast_aggregate_update(
-            &mut slot,
-            start + Duration::from_secs(10),
-            200
-        )
-        .is_none());
+        assert!(
+            relay_broadcast_aggregate_update(&mut slot, start + Duration::from_secs(10), 200)
+                .is_none()
+        );
         {
             let aggregate = slot.as_ref().unwrap();
             assert_eq!(aggregate.count, 2);
@@ -13483,10 +15572,18 @@ mod tests {
             data_store_identifier_folder(LI_SCRAPER_DATA_STORE_IDENTIFIER),
             "66726565-641d-0003-9a7d-3701021d0003"
         );
+        assert_eq!(
+            data_store_identifier_folder(SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER),
+            "66726565-645b-0004-9a7d-3701025b0004"
+        );
+        assert_eq!(
+            data_store_identifier_folder(MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER),
+            "66726565-646d-0005-9a7d-3701026d0005"
+        );
     }
 
     #[test]
-    fn dev_sync_trigger_request_parses_supported_provider() {
+    fn dev_sync_trigger_request_parses_and_recognizes_supported_providers() {
         let temp = tempfile::tempdir().unwrap();
         std::fs::write(
             dev_sync_trigger_path(temp.path()),
@@ -13501,6 +15598,9 @@ mod tests {
         assert_eq!(request.provider.as_deref(), Some("facebook"));
         assert_eq!(request.created_at, Some(123456));
         assert!(is_supported_dev_sync_provider("facebook"));
+        assert!(is_supported_dev_sync_provider("instagram"));
+        assert!(is_supported_dev_sync_provider("linkedin"));
+        assert!(is_supported_dev_sync_provider("youtube"));
         assert!(!is_supported_dev_sync_provider("medium"));
     }
 
@@ -14144,14 +16244,263 @@ mod tests {
             social_scraper_data_store_identifier("li-scraper"),
             Some(LI_SCRAPER_DATA_STORE_IDENTIFIER)
         );
+        assert_eq!(
+            social_scraper_data_store_identifier("substack-login"),
+            Some(SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
+        assert_eq!(
+            social_scraper_data_store_identifier("substack-scraper"),
+            Some(SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
+        assert_eq!(
+            social_scraper_data_store_identifier("medium-login"),
+            Some(MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
+        assert_eq!(
+            social_scraper_data_store_identifier("medium-scraper"),
+            Some(MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER)
+        );
         assert_eq!(social_scraper_data_store_identifier("main"), None);
 
         let unique = HashSet::from([
             FB_SCRAPER_DATA_STORE_IDENTIFIER,
             IG_SCRAPER_DATA_STORE_IDENTIFIER,
             LI_SCRAPER_DATA_STORE_IDENTIFIER,
+            SUBSTACK_SCRAPER_DATA_STORE_IDENTIFIER,
+            MEDIUM_SCRAPER_DATA_STORE_IDENTIFIER,
         ]);
-        assert_eq!(unique.len(), 3);
+        assert_eq!(unique.len(), 5);
+    }
+
+    #[test]
+    fn essay_provider_login_detection_rejects_auth_and_foreign_pages() {
+        let substack_home = url::Url::parse("https://substack.com/home").unwrap();
+        let substack_login = url::Url::parse("https://substack.com/sign-in").unwrap();
+        let medium_settings = url::Url::parse("https://medium.com/me/settings").unwrap();
+        let medium_login = url::Url::parse("https://medium.com/m/signin").unwrap();
+        let foreign = url::Url::parse("https://example.com/home").unwrap();
+
+        assert!(!provider_page_requires_login(
+            &substack_home,
+            "substack.com"
+        ));
+        assert!(provider_page_requires_login(
+            &substack_login,
+            "substack.com"
+        ));
+        assert!(!provider_page_requires_login(
+            &medium_settings,
+            "medium.com"
+        ));
+        assert!(provider_page_requires_login(&medium_login, "medium.com"));
+        assert!(provider_page_requires_login(&foreign, "substack.com"));
+    }
+
+    #[test]
+    fn essay_login_auth_requires_the_configured_canonical_surface() {
+        let substack_home = url::Url::parse("https://substack.com/home?redirected=1").unwrap();
+        let substack_www_home = url::Url::parse("https://www.substack.com/home").unwrap();
+        let substack_help = url::Url::parse("https://substack.com/help").unwrap();
+        let substack_article = url::Url::parse("https://substack.com/p/example").unwrap();
+        let substack_tenant_home = url::Url::parse("https://example.substack.com/home").unwrap();
+        let insecure_home = url::Url::parse("http://substack.com/home").unwrap();
+
+        assert!(essay_provider_auth_surface_matches(
+            &substack_home,
+            SUBSTACK_ESSAY_PROVIDER
+        ));
+        assert!(essay_provider_auth_surface_matches(
+            &substack_www_home,
+            SUBSTACK_ESSAY_PROVIDER
+        ));
+        assert!(!essay_provider_auth_surface_matches(
+            &substack_help,
+            SUBSTACK_ESSAY_PROVIDER
+        ));
+        assert!(!essay_provider_auth_surface_matches(
+            &substack_article,
+            SUBSTACK_ESSAY_PROVIDER
+        ));
+        assert!(!essay_provider_auth_surface_matches(
+            &substack_tenant_home,
+            SUBSTACK_ESSAY_PROVIDER
+        ));
+        assert!(!essay_provider_auth_surface_matches(
+            &insecure_home,
+            SUBSTACK_ESSAY_PROVIDER
+        ));
+
+        let script = essay_login_auth_probe_script(SUBSTACK_ESSAY_PROVIDER).unwrap();
+        assert!(script.contains(SUBSTACK_ESSAY_PROVIDER.auth_expression));
+        assert!(script.contains(SUBSTACK_ESSAY_PROVIDER.auth_event));
+        assert!(!script.contains("loggedIn: false"));
+    }
+
+    #[test]
+    fn essay_provider_configurations_keep_sessions_and_events_isolated() {
+        for provider in [SUBSTACK_ESSAY_PROVIDER, MEDIUM_ESSAY_PROVIDER] {
+            let login_url = url::Url::parse(provider.login_url).unwrap();
+            let auth_url = url::Url::parse(provider.auth_check_url).unwrap();
+
+            assert!(provider_host_matches(
+                login_url.host_str().unwrap(),
+                provider.host
+            ));
+            assert!(provider_host_matches(
+                auth_url.host_str().unwrap(),
+                provider.host
+            ));
+            assert_ne!(provider.auth_event, provider.capture_event);
+            assert_ne!(provider.login_window_label, provider.scraper_window_label);
+        }
+
+        assert_ne!(
+            SUBSTACK_ESSAY_PROVIDER.data_store_identifier,
+            MEDIUM_ESSAY_PROVIDER.data_store_identifier
+        );
+        assert_ne!(
+            SUBSTACK_ESSAY_PROVIDER.capture_event,
+            MEDIUM_ESSAY_PROVIDER.capture_event
+        );
+    }
+
+    #[test]
+    fn authenticated_essay_browser_identity_is_validated_and_stored() {
+        let store = std::sync::Mutex::new(String::new());
+        let user_agent = "Mozilla/5.0 AppleWebKit/605.1.15 Safari/605.1.15".to_string();
+
+        assert_eq!(
+            store_essay_provider_user_agent(&store, format!("  {}  ", user_agent)).unwrap(),
+            user_agent
+        );
+        assert_eq!(stored_or_default_user_agent(&store), user_agent);
+        assert!(store_essay_provider_user_agent(&store, "bad\nheader".to_string()).is_err());
+        assert_eq!(stored_or_default_user_agent(&store), user_agent);
+    }
+
+    #[test]
+    fn substack_profile_surfaces_accept_only_public_profile_roots() {
+        let root = canonical_substack_profile_root(
+            "https://substack.com/@Ada_Lovelace/followers?utm_source=test",
+        )
+        .unwrap();
+
+        assert_eq!(root.as_str(), "https://substack.com/@Ada_Lovelace");
+        assert_eq!(
+            substack_profile_tab_url(&root, "following")
+                .unwrap()
+                .as_str(),
+            "https://substack.com/@Ada_Lovelace/following"
+        );
+        assert!(canonical_substack_profile_root("https://evil.example/@ada").is_none());
+        assert!(canonical_substack_profile_root("https://ada.substack.com/").is_none());
+        assert!(
+            canonical_substack_profile_root("https://substack.com/publish/subscribers").is_none()
+        );
+        assert!(substack_profile_tab_url(&root, "subscribers").is_err());
+    }
+
+    #[test]
+    fn essay_roster_capture_has_hard_traversal_limits() {
+        assert_eq!(ESSAY_ROSTER_MAX_EXTRACTION_PASSES, 20);
+        assert_eq!(ESSAY_ROSTER_MAX_SURFACE_DURATION, Duration::from_secs(60));
+        assert_eq!(
+            SUBSTACK_GRAPH_PAGES
+                .iter()
+                .filter_map(|page| page.substack_profile_tab)
+                .collect::<Vec<_>>(),
+            vec!["followers", "following", "reads"]
+        );
+        assert!(MEDIUM_GRAPH_PAGES
+            .iter()
+            .all(|page| page.scope == "graph" && page.relation.is_some()));
+    }
+
+    #[test]
+    fn essay_capture_rejects_redirects_to_the_wrong_provider_surface() {
+        let medium_followers = url::Url::parse("https://medium.com/me/followers").unwrap();
+        let medium_home = url::Url::parse("https://medium.com/").unwrap();
+        let medium_wrong_host =
+            url::Url::parse("https://publication.medium.com/me/followers").unwrap();
+        assert!(essay_capture_surface_matches(
+            &medium_followers,
+            &medium_followers,
+            &MEDIUM_GRAPH_PAGES[1]
+        ));
+        assert!(!essay_capture_surface_matches(
+            &medium_home,
+            &medium_followers,
+            &MEDIUM_GRAPH_PAGES[1]
+        ));
+        assert!(!essay_capture_surface_matches(
+            &medium_wrong_host,
+            &medium_followers,
+            &MEDIUM_GRAPH_PAGES[1]
+        ));
+
+        let substack_profile = url::Url::parse("https://substack.com/@ada/following/").unwrap();
+        let wrong_substack_profile =
+            url::Url::parse("https://substack.com/@grace/following").unwrap();
+        let substack_home = url::Url::parse("https://substack.com/home").unwrap();
+        let substack_wrong_host =
+            url::Url::parse("https://ada.substack.com/@ada/following").unwrap();
+        assert!(essay_capture_surface_matches(
+            &substack_profile,
+            &substack_profile,
+            &SUBSTACK_GRAPH_PAGES[2]
+        ));
+        assert!(!essay_capture_surface_matches(
+            &substack_home,
+            &substack_profile,
+            &SUBSTACK_GRAPH_PAGES[2]
+        ));
+        assert!(!essay_capture_surface_matches(
+            &wrong_substack_profile,
+            &substack_profile,
+            &SUBSTACK_GRAPH_PAGES[2]
+        ));
+        assert!(!essay_capture_surface_matches(
+            &substack_wrong_host,
+            &substack_profile,
+            &SUBSTACK_GRAPH_PAGES[2]
+        ));
+    }
+
+    #[test]
+    fn essay_capture_plan_excludes_subscriber_management_surfaces() {
+        for page in SUBSTACK_GRAPH_PAGES
+            .iter()
+            .chain(SUBSTACK_ACTIVITY_PAGES.iter())
+            .chain(SUBSTACK_ESSAY_PAGES.iter())
+            .chain(MEDIUM_GRAPH_PAGES.iter())
+            .chain(MEDIUM_ACTIVITY_PAGES.iter())
+            .chain(MEDIUM_ESSAY_PAGES.iter())
+        {
+            let path = url::Url::parse(page.url)
+                .unwrap()
+                .path()
+                .to_ascii_lowercase();
+            assert!(!path.contains("subscriber"));
+            assert_ne!(page.substack_profile_tab, Some("subscribers"));
+        }
+
+        for path in [
+            "https://substack.com/publish/subscribers",
+            "https://substack.com/publish/audience",
+            "https://substack.com/inbox",
+            "https://substack.com/messages/thread-1",
+            "https://substack.com/chat/room-1",
+        ] {
+            let url = url::Url::parse(path).unwrap();
+            assert!(essay_capture_surface_is_sensitive(
+                &url,
+                SUBSTACK_ESSAY_PROVIDER
+            ));
+            assert!(!essay_capture_surface_is_sensitive(
+                &url,
+                MEDIUM_ESSAY_PROVIDER
+            ));
+        }
     }
 
     #[test]

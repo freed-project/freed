@@ -38,6 +38,13 @@ export const PROMOTION_BRANCH_PATTERN =
 export const RELEASE_PREP_BRANCH_PATTERN = /^chore\/release-[a-z0-9._-]+$/;
 export const PROMOTION_COMMIT_SUBJECT_PATTERN =
   /^chore: promote dev (?:into|to) main(?: for production release)?(?: \(#\d+\))?$/;
+const HISTORICAL_MAIN_BACKPORT_SUBJECTS = new Set([
+  "fix: backport simplified provider approval (#980)",
+]);
+const HISTORICAL_MAIN_PROMOTION_SUBJECTS = new Set([
+  "chore: promote dev into main for cloud conflict recovery (#784)",
+  "chore: promote dev into main for PWA sync recovery (#798)",
+]);
 export const REVERSE_INTEGRATION_COMMIT_SUBJECT_PATTERN =
   /^(?:chore|fix): (?:merge main (?:back )?into dev(?: .*)?|reverse integrate (?:main|v\d+\.\d+\.\d+)(?: into dev| after v\d+\.\d+\.\d+| production release)?|backflow v\d+\.\d+\.\d+ main into dev|sync main(?: release artifacts)?(?: back)? into dev(?: .*)?)(?: \(#\d+\))?$/;
 
@@ -93,8 +100,17 @@ export function isPromotionScopeFile(filePath) {
   );
 }
 
-export function listChangedFiles({ fromRef, toRef, cwd, pathspec = [] }) {
+export function listChangedFiles({
+  fromRef,
+  toRef,
+  cwd,
+  pathspec = [],
+  detectRenames = true,
+}) {
   const args = ["diff", "--name-only", toRef, fromRef];
+  if (!detectRenames) {
+    args.push("--no-renames");
+  }
   if (pathspec.length > 0) {
     args.push("--", ...pathspec);
   }
@@ -142,6 +158,36 @@ export function listPromotionBranchDiffFiles({ fromRef, toRef, cwd }) {
     toRef,
     cwd,
     pathspec: RELEASE_ONLY_PREFIXES,
+  });
+
+  return uniqueSorted([
+    ...promotionScopeFiles,
+    ...websiteConfigFiles,
+    ...releaseNoteFiles,
+  ]);
+}
+
+export function listPromotionBranchPatchFiles({ fromRef, toRef, cwd }) {
+  const promotionScopeFiles = listChangedFiles({
+    fromRef,
+    toRef,
+    cwd,
+    pathspec: PROMOTION_SCOPE_PATHS,
+    detectRenames: false,
+  });
+  const websiteConfigFiles = listChangedFiles({
+    fromRef,
+    toRef,
+    cwd,
+    pathspec: PROMOTION_WEBSITE_CONFIG_FILES,
+    detectRenames: false,
+  });
+  const releaseNoteFiles = listChangedFiles({
+    fromRef,
+    toRef,
+    cwd,
+    pathspec: RELEASE_ONLY_PREFIXES,
+    detectRenames: false,
   });
 
   return uniqueSorted([
@@ -279,7 +325,9 @@ export function listMainBackflowDiffFiles({ devRef, mainRef, cwd }) {
       if (
         mainBlobId &&
         mainChange &&
-        PROMOTION_COMMIT_SUBJECT_PATTERN.test(mainChange.subject) &&
+        (PROMOTION_COMMIT_SUBJECT_PATTERN.test(mainChange.subject) ||
+          HISTORICAL_MAIN_PROMOTION_SUBJECTS.has(mainChange.subject) ||
+          HISTORICAL_MAIN_BACKPORT_SUBJECTS.has(mainChange.subject)) &&
         blobExistsInHistory(devRef, filePath, mainBlobId, { cwd })
       ) {
         return false;

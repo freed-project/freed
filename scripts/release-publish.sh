@@ -20,7 +20,7 @@ if [[ "$VERSION" == *-dev ]]; then
   CHANNEL="dev"
 fi
 
-if ! git diff --quiet HEAD; then
+if [[ -n "$(git status --porcelain)" ]]; then
   echo "Error: working tree is dirty. Commit the reviewed release notes first." >&2
   exit 1
 fi
@@ -41,10 +41,17 @@ if [[ "$CURRENT_BRANCH" != "$EXPECTED_BRANCH" ]]; then
   exit 1
 fi
 
-if [[ "$CHANNEL" == "production" ]]; then
-  git fetch origin dev main
-  "${NODE_BIN}" scripts/validate-release-promotion.mjs --from-ref=origin/dev --to-ref=HEAD
+git fetch origin dev main --tags
+REMOTE_RELEASE_SHA="$(git rev-parse "origin/${EXPECTED_BRANCH}")"
+LOCAL_RELEASE_SHA="$(git rev-parse HEAD)"
+if [[ "$LOCAL_RELEASE_SHA" != "$REMOTE_RELEASE_SHA" ]]; then
+  echo "Error: HEAD must equal origin/${EXPECTED_BRANCH} before tagging." >&2
+  echo "The release tag must identify the exact commit merged through branch protection." >&2
+  exit 1
 fi
+
+"${NODE_BIN}" scripts/validate-release-identity.mjs --tag="${TAG}" --head-ref=HEAD
+"${NODE_BIN}" scripts/validate-release-tag-authority.mjs --repo=freed-project/freed
 
 APPROVED=$("${NODE_BIN}" -e "
   const fs = require('fs');
@@ -84,8 +91,40 @@ fi
 
 "${NODE_BIN}" scripts/validate-release-notes.mjs "${VALIDATE_ARGS[@]}"
 
-git tag -a "${TAG}" -m "Release ${TAG}"
+if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
+  echo "Error: tag ${TAG} already exists. Release tags are immutable." >&2
+  exit 1
+fi
 
-echo "==> Created tag ${TAG}"
-echo "==> To trigger the release workflow, run:"
-echo "    git push origin ${EXPECTED_BRANCH} --follow-tags"
+if [[ -n "$(git ls-remote --tags origin "refs/tags/${TAG}")" ]]; then
+  echo "Error: remote tag ${TAG} already exists. Release tags are immutable." >&2
+  exit 1
+fi
+
+RELEASE_FILE_SHA256=$("${NODE_BIN}" -e "
+  const crypto = require('crypto');
+  const fs = require('fs');
+  process.stdout.write(crypto.createHash('sha256').update(fs.readFileSync(process.argv[1])).digest('hex'));
+" "$RELEASE_FILE")
+
+"${NODE_BIN}" scripts/release-tag-publisher.mjs publish \
+  --repo freed-project/freed \
+  --worktree "$(pwd -P)" \
+  --tag "${TAG}" \
+  --channel "${CHANNEL}" \
+  --commit "${LOCAL_RELEASE_SHA}" \
+  --branch "${EXPECTED_BRANCH}" \
+  --release-file "${RELEASE_FILE}" \
+  --release-file-sha256 "${RELEASE_FILE_SHA256}"
+
+git fetch origin "refs/tags/${TAG}:refs/tags/${TAG}"
+if [[ "$(git cat-file -t "refs/tags/${TAG}")" != "tag" ]]; then
+  echo "Error: release publisher created a non-annotated tag ${TAG}." >&2
+  exit 1
+fi
+if [[ "$(git rev-list -n 1 "refs/tags/${TAG}")" != "${LOCAL_RELEASE_SHA}" ]]; then
+  echo "Error: release publisher created ${TAG} at the wrong commit." >&2
+  exit 1
+fi
+
+echo "==> Published immutable tag ${TAG} through the dedicated release GitHub App."

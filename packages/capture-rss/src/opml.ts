@@ -9,6 +9,7 @@
 import { XMLParser, XMLBuilder } from "fast-xml-parser";
 import type { OPMLDocument, OPMLOutline, OPMLFeed } from "./types.js";
 import type { RssFeed } from "@freed/shared";
+import { SECURE_XML_ENTITY_OPTIONS } from "./xml-security.js";
 
 // =============================================================================
 // OPML Parsing
@@ -24,6 +25,7 @@ export function parseOPML(xml: string): OPMLFeed[] {
   const parser = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: "@_",
+    processEntities: SECURE_XML_ENTITY_OPTIONS,
   });
 
   let doc: OPMLDocument;

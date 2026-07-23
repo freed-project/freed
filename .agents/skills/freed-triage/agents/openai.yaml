@@ -1,0 +1,4 @@
+interface:
+  display_name: "Freed Triage"
+  short_description: "Turn fresh stability evidence into governed work"
+  default_prompt: "Use $freed-triage to reconcile current stability evidence into governed Freed work."

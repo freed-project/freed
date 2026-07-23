@@ -13,6 +13,7 @@
     { "path": "packages/shared" },
     { "path": "packages/sync" },
     { "path": "packages/capture-rss" },
+    { "path": "packages/capture-youtube" },
     { "path": "packages/capture-x" },
     { "path": "packages/pwa" },
     { "path": "packages/desktop" }

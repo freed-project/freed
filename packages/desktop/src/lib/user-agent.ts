@@ -19,7 +19,7 @@
 // Types
 // =============================================================================
 
-export type Platform = "facebook" | "instagram" | "linkedin" | "x";
+export type Platform = "facebook" | "instagram" | "linkedin" | "substack" | "medium" | "x";
 export type OSFamily = "mac" | "windows" | "linux";
 
 // =============================================================================
@@ -146,10 +146,10 @@ const CHROME_LINUX_POOL: readonly string[] = [
 
 /**
  * Pick the right pool for the current OS and platform type.
- * FB/IG WebViews on macOS should use Safari; everything else uses Chrome.
+ * Native WebViews on macOS should use Safari; everything else uses Chrome.
  */
 function pickPool(platform: Platform, os: OSFamily): readonly string[] {
-  if ((platform === "facebook" || platform === "instagram" || platform === "linkedin") && os === "mac") {
+  if (platform !== "x" && os === "mac") {
     return SAFARI_MACOS_POOL;
   }
   if (os === "windows") return CHROME_WINDOWS_POOL;

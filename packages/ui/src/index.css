@@ -907,31 +907,6 @@ html[data-theme="scriptorium"] .theme-panel-muted {
     0 4px 12px rgb(84 58 35 / 0.025);
 }
 
-.theme-graph-control {
-  background: color-mix(in oklab, var(--theme-bg-surface) 96%, var(--theme-bg-primary) 4%);
-  border: 1px solid color-mix(in oklab, var(--theme-border-subtle) 88%, var(--theme-text-primary) 12%);
-  color: var(--theme-text-primary);
-  cursor: pointer;
-  font-weight: 700;
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.045),
-    0 10px 24px rgb(0 0 0 / 0.12);
-  transition:
-    border-color 0.18s ease,
-    background-color 0.18s ease,
-    color 0.18s ease,
-    box-shadow 0.18s ease;
-}
-
-.theme-graph-control:hover {
-  background: color-mix(in oklab, var(--theme-bg-surface) 90%, var(--theme-control-accent) 10%);
-  border-color: color-mix(in oklab, var(--theme-border-strong) 82%, var(--theme-control-accent) 18%);
-}
-
-.theme-graph-control:active {
-  background: color-mix(in oklab, var(--theme-bg-surface) 84%, var(--theme-control-accent) 16%);
-}
-
 .theme-soft-viewport {
   --theme-soft-viewport-mask-size: 20px;
   --theme-soft-viewport-radius: 20px;
@@ -1771,7 +1746,7 @@ html.freed-mobile-sidebar-open body {
 .theme-toolbar-reader-layout-button {
   display: inline-flex;
   box-sizing: border-box;
-  height: 2rem;
+  height: var(--freed-top-toolbar-height, 100%);
   width: 2rem;
   flex-shrink: 0;
   align-items: center;
@@ -1907,6 +1882,57 @@ html.freed-mobile-sidebar-open body {
   box-shadow:
     0 0 0 2px rgb(var(--theme-accent-secondary-rgb) / 0.18),
     0 2px 8px rgb(0 0 0 / 0.18);
+}
+
+.theme-toolbar-zoom-control {
+  width: 9.5rem;
+}
+
+.theme-toolbar-zoom-icon {
+  display: inline-flex;
+  width: 0.9rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.theme-toolbar-zoom-icon-small {
+  font-size: 0.625rem;
+}
+
+.theme-toolbar-zoom-icon-large {
+  font-size: 0.9rem;
+}
+
+.theme-toolbar-zoom-slider::-webkit-slider-runnable-track {
+  background:
+    linear-gradient(
+      90deg,
+      transparent 0,
+      transparent calc(var(--interface-zoom-default-stop, 20%) - 0.055rem),
+      color-mix(in srgb, var(--theme-text-muted) 72%, transparent) calc(var(--interface-zoom-default-stop, 20%) - 0.055rem),
+      color-mix(in srgb, var(--theme-text-muted) 72%, transparent) calc(var(--interface-zoom-default-stop, 20%) + 0.055rem),
+      transparent calc(var(--interface-zoom-default-stop, 20%) + 0.055rem),
+      transparent 100%
+    ),
+    linear-gradient(90deg, var(--theme-border-subtle), var(--theme-border-subtle));
+}
+
+.theme-toolbar-zoom-slider::-moz-range-track {
+  background:
+    linear-gradient(
+      90deg,
+      transparent 0,
+      transparent calc(var(--interface-zoom-default-stop, 20%) - 0.055rem),
+      color-mix(in srgb, var(--theme-text-muted) 72%, transparent) calc(var(--interface-zoom-default-stop, 20%) - 0.055rem),
+      color-mix(in srgb, var(--theme-text-muted) 72%, transparent) calc(var(--interface-zoom-default-stop, 20%) + 0.055rem),
+      transparent calc(var(--interface-zoom-default-stop, 20%) + 0.055rem),
+      transparent 100%
+    ),
+    linear-gradient(90deg, var(--theme-border-subtle), var(--theme-border-subtle));
 }
 
 .theme-toolbar-select-control {

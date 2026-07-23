@@ -15,7 +15,9 @@ import { usePlatform, useAppStore } from "../../context/PlatformContext.js";
 import {
   FacebookIcon,
   InstagramIcon,
+  MediumIcon,
   RssIcon,
+  SubstackIcon,
   XIcon,
   YoutubeIcon,
   RedditIcon,
@@ -41,6 +43,8 @@ const platformIcons: Record<string, ReactNode> = {
   github: <GithubIcon className={cls} />,
   facebook: <FacebookIcon className={cls} />,
   instagram: <InstagramIcon className={cls} />,
+  substack: <SubstackIcon className={cls} />,
+  medium: <MediumIcon className={cls} />,
   saved: <BookmarkIcon className={cls} />,
 };
 

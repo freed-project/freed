@@ -42,6 +42,7 @@ import { MediaVaultSettingsCard } from "./MediaVaultSettingsCard";
 import { socialProviderCopy } from "../lib/social-provider-copy";
 import { isRuntimeDeferredStage } from "../lib/social-capture-runtime";
 import { usePostLoginAutoSync } from "../hooks/usePostLoginAutoSync";
+import { isDesktopProviderAuthAllowed } from "../lib/provider-auth-lifecycle";
 
 // =============================================================================
 // Diagnostic Panel
@@ -141,6 +142,7 @@ export function InstagramSettingsSection({
 
   const handleAuthResult = useCallback(
     (loggedIn: boolean) => {
+      if (!isDesktopProviderAuthAllowed()) return;
       if (loggedIn) {
         const newState = { isAuthenticated: true, lastCheckedAt: Date.now() };
         setIgAuth(newState);
@@ -172,6 +174,7 @@ export function InstagramSettingsSection({
       try {
         await showIgLogin();
       } catch (err) {
+        if (!isDesktopProviderAuthAllowed()) return;
         setActionError(err instanceof Error ? err.message : "Failed to open login window");
       }
     });
@@ -183,6 +186,7 @@ export function InstagramSettingsSection({
       setActionError(null);
       try {
         const loggedIn = await checkIgAuth();
+        if (!isDesktopProviderAuthAllowed()) return;
         const newState = { isAuthenticated: loggedIn, lastCheckedAt: Date.now() };
         setIgAuth(newState);
         storeIgAuthState(newState);
@@ -191,9 +195,10 @@ export function InstagramSettingsSection({
           setActionError("Not logged in. Please log in through the Instagram window first.");
         }
       } catch (err) {
+        if (!isDesktopProviderAuthAllowed()) return;
         setActionError(err instanceof Error ? err.message : "Auth check failed");
       } finally {
-        setChecking(false);
+        if (isDesktopProviderAuthAllowed()) setChecking(false);
       }
     });
   }, [confirm, setIgAuth]);

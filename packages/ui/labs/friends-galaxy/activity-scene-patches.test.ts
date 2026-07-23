@@ -1,0 +1,185 @@
+import { describe, expect, it } from "vitest";
+import {
+  FriendsGalaxyActivityPatchJournal,
+  FriendsGalaxyActivitySceneFlag,
+  FriendsGalaxyActivityScenePatchEncoder,
+} from "../../src/lib/friends-galaxy-activity-patches.js";
+import type { FriendsGalaxyActivitySummaryPatch } from "../../src/lib/friends-galaxy-activity-index.js";
+
+function summaryPatch(
+  namespace: "social" | "rss",
+  key: string,
+  itemCount: number,
+  options: { avatarUrl?: string; hasLocation?: boolean; latestActivityAt?: number } = {},
+): FriendsGalaxyActivitySummaryPatch {
+  return {
+    namespace,
+    key,
+    summary: {
+      itemCount,
+      latestActivityAt: options.latestActivityAt ?? 1_725_000_000_000,
+      sampleItemIds: ["sample"],
+      hasLocation: options.hasLocation ?? false,
+      avatarUrlCandidates: options.avatarUrl ? [options.avatarUrl] : [],
+    },
+  };
+}
+
+describe("Friends Galaxy activity scene patches", () => {
+  it("encodes source summaries as a stable node-index payload", () => {
+    const encoder = new FriendsGalaxyActivityScenePatchEncoder([
+      { namespace: "social", key: "instagram:alpha", nodeIndex: 7 },
+      { namespace: "rss", key: "https://example.com/feed.xml", nodeIndex: 2 },
+    ]);
+
+    const batch = encoder.encode([
+      summaryPatch("social", "instagram:alpha", 12, {
+        avatarUrl: "https://example.com/avatar.jpg",
+      }),
+      summaryPatch("rss", "https://example.com/feed.xml", 3, { hasLocation: true }),
+    ], 9, 1_725_000_120_000);
+
+    expect(batch.revision).toBe(9);
+    expect(Array.from(batch.nodeIndices)).toEqual([2, 7]);
+    expect(Array.from(batch.itemCounts)).toEqual([3, 12]);
+    expect(Array.from(batch.flags)).toEqual([
+      FriendsGalaxyActivitySceneFlag.HasLocation,
+      FriendsGalaxyActivitySceneFlag.HasAvatar,
+    ]);
+    expect(batch.avatarUrls).toEqual([null, "https://example.com/avatar.jpg"]);
+    expect(batch.sizeScales[0]).toBeGreaterThan(1);
+    expect(batch.brightnessScales[0]).toBeGreaterThan(0.9);
+    expect(batch.unknownSources).toEqual([]);
+  });
+
+  it("represents source removal without item or position payloads", () => {
+    const encoder = new FriendsGalaxyActivityScenePatchEncoder([
+      { namespace: "social", key: "x:removed", nodeIndex: 44 },
+    ]);
+    const batch = encoder.encode([{
+      namespace: "social",
+      key: "x:removed",
+      summary: null,
+    }], 10, 1_725_000_120_000);
+
+    expect(Array.from(batch.nodeIndices)).toEqual([44]);
+    expect(Array.from(batch.itemCounts)).toEqual([0]);
+    expect(Array.from(batch.latestActivityAt)).toEqual([0]);
+    expect(Array.from(batch.flags)).toEqual([FriendsGalaxyActivitySceneFlag.Removed]);
+    expect(batch.sizeScales[0]).toBeCloseTo(0.82, 5);
+    expect(batch.brightnessScales[0]).toBeCloseTo(0.72, 5);
+    expect(batch.avatarUrls).toEqual([null]);
+    expect(batch).not.toHaveProperty("positions");
+    expect(batch).not.toHaveProperty("sampleItemIds");
+  });
+
+  it("fans one source patch out to duplicate scene representations", () => {
+    const encoder = new FriendsGalaxyActivityScenePatchEncoder([
+      { namespace: "rss", key: "feed", nodeIndex: 12 },
+      { namespace: "rss", key: "feed", nodeIndex: 3 },
+      { namespace: "rss", key: "feed", nodeIndex: 12 },
+    ]);
+
+    const batch = encoder.encode([summaryPatch("rss", "feed", 8)], 2, 1_725_000_120_000);
+
+    expect(Array.from(batch.nodeIndices)).toEqual([3, 12]);
+    expect(Array.from(batch.itemCounts)).toEqual([8, 8]);
+  });
+
+  it("rejects invalid or conflicting source bindings", () => {
+    expect(() => new FriendsGalaxyActivityScenePatchEncoder([
+      { namespace: "social", key: "invalid", nodeIndex: -1 },
+    ])).toThrow("requires a 32-bit node index");
+    expect(() => new FriendsGalaxyActivityScenePatchEncoder([
+      { namespace: "social", key: "first", nodeIndex: 4 },
+      { namespace: "rss", key: "second", nodeIndex: 4 },
+    ])).toThrow("cannot bind to multiple activity sources");
+  });
+
+  it("reports unknown sources for a structural atlas refresh", () => {
+    const encoder = new FriendsGalaxyActivityScenePatchEncoder([
+      { namespace: "social", key: "linkedin:known", nodeIndex: 5 },
+    ]);
+
+    const batch = encoder.encode([
+      summaryPatch("social", "instagram:new", 4),
+      summaryPatch("rss", "https://example.com/new.xml", 2),
+    ], 3, 1_725_000_120_000);
+
+    expect(batch.nodeIndices).toHaveLength(0);
+    expect(batch.unknownSources).toEqual([
+      { namespace: "rss", key: "https://example.com/new.xml" },
+      { namespace: "social", key: "instagram:new" },
+    ]);
+  });
+
+  it("keeps a one-source update proportional with 25,000 bindings", () => {
+    const bindings = Array.from({ length: 25_000 }, (_, nodeIndex) => ({
+      namespace: "social" as const,
+      key: `source-${nodeIndex}`,
+      nodeIndex,
+    }));
+    const encoder = new FriendsGalaxyActivityScenePatchEncoder(bindings);
+
+    const batch = encoder.encode([
+      summaryPatch("social", "source-19999", 101, { latestActivityAt: 1_800_000_000_000 }),
+    ], 71, 1_800_000_060_000);
+
+    expect(Array.from(batch.nodeIndices)).toEqual([19_999]);
+    expect(Array.from(batch.itemCounts)).toEqual([101]);
+    expect(batch.latestActivityAt[0]).toBe(1_800_000_000_000);
+    expect(batch.unknownSources).toEqual([]);
+  });
+
+  it("encodes fresh active sources more strongly than stale inactive sources", () => {
+    const encoder = new FriendsGalaxyActivityScenePatchEncoder([
+      { namespace: "social", key: "fresh", nodeIndex: 1 },
+      { namespace: "social", key: "stale", nodeIndex: 2 },
+    ]);
+    const referenceTime = 1_800_000_000_000;
+    const batch = encoder.encode([
+      summaryPatch("social", "fresh", 120, { latestActivityAt: referenceTime - 60_000 }),
+      summaryPatch("social", "stale", 1, {
+        latestActivityAt: referenceTime - 365 * 24 * 60 * 60 * 1_000,
+      }),
+    ], 8, referenceTime);
+
+    expect(batch.sizeScales[0]).toBeGreaterThan(batch.sizeScales[1]!);
+    expect(batch.brightnessScales[0]).toBeGreaterThan(batch.brightnessScales[1]!);
+  });
+
+  it("accumulates latest sparse node state for renderer recovery", () => {
+    const encoder = new FriendsGalaxyActivityScenePatchEncoder([
+      { namespace: "social", key: "first", nodeIndex: 7 },
+      { namespace: "social", key: "second", nodeIndex: 2 },
+    ]);
+    const journal = new FriendsGalaxyActivityPatchJournal(10);
+    journal.record(encoder.encode([
+      summaryPatch("social", "first", 4),
+    ], 1, 1_800_000_000_000));
+    journal.record(encoder.encode([
+      summaryPatch("social", "second", 9),
+      summaryPatch("social", "first", 12),
+    ], 2, 1_800_000_000_000));
+
+    const snapshot = journal.snapshot();
+    expect(snapshot?.revision).toBe(2);
+    expect(Array.from(snapshot?.nodeIndices ?? [])).toEqual([2, 7]);
+    expect(Array.from(snapshot?.itemCounts ?? [])).toEqual([9, 12]);
+    expect(snapshot?.unknownSources).toEqual([]);
+    expect(journal.nodeCount).toBe(2);
+  });
+
+  it("rejects stale recovery journal revisions", () => {
+    const encoder = new FriendsGalaxyActivityScenePatchEncoder([
+      { namespace: "social", key: "first", nodeIndex: 1 },
+    ]);
+    const batch = encoder.encode([
+      summaryPatch("social", "first", 4),
+    ], 2, 1_800_000_000_000);
+    const journal = new FriendsGalaxyActivityPatchJournal(3);
+    journal.record(batch);
+
+    expect(() => journal.record(batch)).toThrow("requires increasing revisions");
+  });
+});

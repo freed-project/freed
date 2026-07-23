@@ -1,0 +1,4 @@
+interface:
+  display_name: "Freed Soak"
+  short_description: "Judge an attributable installed-build window"
+  default_prompt: "Use $freed-soak to run and judge an attributable soak for this installed Freed build."

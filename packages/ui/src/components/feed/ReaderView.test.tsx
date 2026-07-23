@@ -55,7 +55,7 @@ const testStoreState = {
   },
   toggleSaved: vi.fn(),
   toggleArchived: vi.fn(),
-  updatePreferences: vi.fn(),
+  updatePreferences: vi.fn(async () => {}),
 };
 
 const basePlatformConfig = {
@@ -70,6 +70,8 @@ const basePlatformConfig = {
   FacebookSettingsContent: null,
   InstagramSettingsContent: null,
   LinkedInSettingsContent: null,
+  SubstackSettingsContent: null,
+  MediumSettingsContent: null,
   GoogleContactsSettingsContent: null,
 } as unknown as PlatformConfig;
 
@@ -128,6 +130,8 @@ describe("ReaderView cache-first hydration", () => {
   afterEach(() => {
     document.body.innerHTML = "";
     window.localStorage.clear();
+    vi.useRealTimers();
+    vi.clearAllMocks();
     vi.restoreAllMocks();
   });
 
@@ -218,5 +222,194 @@ describe("ReaderView cache-first hydration", () => {
     expect(images[0].getAttribute("alt")).toBe("Article hero");
 
     await act(async () => root.unmount());
+  });
+
+  it("uses focused YouTube actions without article hydration or eager player loading", async () => {
+    Object.defineProperty(window.navigator, "onLine", { configurable: true, value: true });
+    const hydrateReaderItem = vi.fn();
+    const openUrl = vi.fn();
+    const addToOfflinePlaylist = vi.fn(async () => ({
+      playlistId: "playlist-1",
+      playlistUrl: "https://www.youtube.com/playlist?list=playlist-1",
+      added: true,
+    }));
+    const platform = {
+      ...basePlatformConfig,
+      getLocalContent: vi.fn(async () => null),
+      hydrateReaderItem,
+      openUrl,
+      youtube: { addToOfflinePlaylist },
+    } as unknown as PlatformConfig;
+    const item = makeArticleItem({
+      globalId: "youtube:dQw4w9WgXcQ",
+      platform: "youtube",
+      contentType: "video",
+      content: {
+        text: "A deliberate course lesson.",
+        mediaUrls: ["https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"],
+        mediaTypes: ["image"],
+        linkPreview: {
+          url: "https://www.youtube.com/shorts/dQw4w9WgXcQ?feature=share",
+          title: "Focused lesson",
+        },
+      },
+      sourceUrl: "https://www.youtube.com/shorts/dQw4w9WgXcQ?feature=share",
+    });
+
+    const { container, root } = await renderReaderView(platform, item);
+    await flushReaderEffects();
+
+    expect(hydrateReaderItem).not.toHaveBeenCalled();
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(container.textContent).toContain("Watch here in Focus Mode");
+    expect(container.querySelector("img[src*='i.ytimg.com']")).toBeNull();
+
+    const playButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.trim() === "Play in YouTube",
+    );
+    await act(async () => playButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(openUrl).toHaveBeenCalledWith("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+
+    const offlineButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.trim() === "Add to Freed Offline",
+    );
+    await act(async () => offlineButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await flushReaderEffects();
+    expect(testStoreState.toggleSaved).toHaveBeenCalledWith("youtube:dQw4w9WgXcQ");
+    expect(addToOfflinePlaylist).toHaveBeenCalledWith(
+      "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    );
+    expect(container.textContent).toContain("Added to Freed Offline");
+
+    await act(async () => root.unmount());
+  });
+
+  it("does not pin a saved YouTube page through the article cache", async () => {
+    const pinReaderItem = vi.fn();
+    const item = makeArticleItem({
+      globalId: "youtube:dQw4w9WgXcQ",
+      platform: "youtube",
+      contentType: "video",
+      sourceUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      userState: {
+        hidden: false,
+        saved: true,
+        archived: false,
+        tags: [],
+      },
+    });
+    const platform = {
+      ...basePlatformConfig,
+      getLocalContent: vi.fn(async () => null),
+      pinReaderItem,
+    } as unknown as PlatformConfig;
+
+    const { root } = await renderReaderView(platform, item);
+    await flushReaderEffects();
+
+    expect(pinReaderItem).not.toHaveBeenCalled();
+
+    await act(async () => root.unmount());
+  });
+
+  it("does not carry an offline playlist result to a different inline item", async () => {
+    let resolveAdd!: (result: {
+      playlistId: string;
+      playlistUrl: string;
+      added: boolean;
+    }) => void;
+    const addToOfflinePlaylist = vi.fn(() => new Promise<{
+      playlistId: string;
+      playlistUrl: string;
+      added: boolean;
+    }>((resolve) => {
+      resolveAdd = resolve;
+    }));
+    const platform = {
+      ...basePlatformConfig,
+      getLocalContent: vi.fn(async () => null),
+      youtube: { addToOfflinePlaylist },
+    } as unknown as PlatformConfig;
+    const youtubeItem = (videoId: string) => makeArticleItem({
+      globalId: `youtube:yt:video:${videoId}`,
+      platform: "youtube",
+      contentType: "video",
+      sourceUrl: `https://www.youtube.com/watch?v=${videoId}`,
+      userState: {
+        hidden: false,
+        saved: true,
+        archived: false,
+        tags: [],
+      },
+    });
+    const firstItem = youtubeItem("dQw4w9WgXcQ");
+    const secondItem = youtubeItem("9bZkp7q19f0");
+    const { container, root } = await renderReaderView(platform, firstItem);
+    await flushReaderEffects();
+
+    const firstAddButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.trim() === "Add to Freed Offline",
+    );
+    await act(async () => firstAddButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(container.textContent).toContain("Adding to Freed Offline");
+
+    await act(async () => {
+      root.render(
+        <PlatformProvider value={platform}>
+          <ReaderView item={secondItem} onClose={() => {}} inline />
+        </PlatformProvider>,
+      );
+    });
+    expect(container.textContent).not.toContain("Adding to Freed Offline");
+
+    await act(async () => {
+      resolveAdd({
+        playlistId: "playlist-1",
+        playlistUrl: "https://www.youtube.com/playlist?list=playlist-1",
+        added: true,
+      });
+      await Promise.resolve();
+    });
+    expect(container.textContent).not.toContain("Added to Freed Offline");
+
+    await act(async () => {
+      root.render(
+        <PlatformProvider value={platform}>
+          <ReaderView item={firstItem} onClose={() => {}} inline />
+        </PlatformProvider>,
+      );
+    });
+    expect(container.textContent).toContain("Added to Freed Offline");
+    expect(container.textContent).not.toContain("Adding to Freed Offline");
+
+    await act(async () => root.unmount());
+  });
+
+  it("persists only the changed focus mode and cancels a pending save on unmount", async () => {
+    vi.useFakeTimers();
+    const platform = {
+      ...basePlatformConfig,
+      getLocalContent: vi.fn(async () => null),
+    } as unknown as PlatformConfig;
+    const { container, root } = await renderReaderView(platform);
+    const focusButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Toggle focus reading mode"]',
+    );
+    expect(focusButton).not.toBeNull();
+
+    await act(async () => {
+      focusButton?.click();
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(testStoreState.updatePreferences).toHaveBeenCalledOnce();
+    expect(testStoreState.updatePreferences).toHaveBeenCalledWith({
+      display: { reading: { focusMode: true } },
+    });
+
+    testStoreState.updatePreferences.mockClear();
+    await act(async () => focusButton?.click());
+    await act(async () => root.unmount());
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(testStoreState.updatePreferences).not.toHaveBeenCalled();
   });
 });

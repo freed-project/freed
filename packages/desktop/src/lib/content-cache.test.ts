@@ -61,4 +61,18 @@ describe("desktop content cache", () => {
     expect(__readMemfs(cachePath("article-small"))).toBeDefined();
     expect(__readMemfs(cachePath("article-legacy"))).toBeUndefined();
   });
+
+  it("clears every cached article and can cache new content afterward", async () => {
+    await contentCache.set("article-one", "<article>one</article>");
+    await contentCache.set("article-two", "<article>two</article>");
+
+    await contentCache.clear();
+
+    expect(__readMemfs(cachePath("article-one"))).toBeUndefined();
+    expect(__readMemfs(cachePath("article-two"))).toBeUndefined();
+    await expect(contentCache.get("article-one")).resolves.toBeNull();
+
+    await contentCache.set("article-after-reset", "<article>new</article>");
+    await expect(contentCache.get("article-after-reset")).resolves.toContain("new");
+  });
 });

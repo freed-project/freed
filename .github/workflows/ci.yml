@@ -8,48 +8,73 @@ on:
 
 concurrency:
   group: validation-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
-  issues: write
-  pull-requests: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  tooling-smoke:
+  tooling-smoke-shards:
+    name: Tooling smoke shard (${{ matrix.suite }} ${{ matrix.shard }}/8)
     runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - general
+          - automation-control
+          - kernel-guard-cutover
+          - outcome-ledger-repair
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "22"
+          node-version-file: ".nvmrc"
           cache: "npm"
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tooling smoke tests
-        run: npm run test:scripts
+      - name: Run tooling smoke shard
+        run: >-
+          node scripts/run-tooling-smoke-shard.mjs
+          --suite=${{ matrix.suite }}
+          --shard-index=${{ matrix.shard }}
+          --shard-count=8
+
+  tooling-smoke:
+    name: Tooling smoke
+    if: ${{ always() }}
+    needs: tooling-smoke-shards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every tooling smoke shard
+        env:
+          TOOLING_SMOKE_RESULT: ${{ needs.tooling-smoke-shards.result }}
+        run: test "$TOOLING_SMOKE_RESULT" = "success"
 
   main-pr-guard:
+    name: Main PR guard
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "22"
+          node-version-file: ".nvmrc"
 
       - name: Refresh branch refs
         run: git fetch origin dev main
@@ -58,24 +83,28 @@ jobs:
         run: |
           node scripts/validate-main-pr.mjs \
             --base-ref="origin/${{ github.base_ref }}" \
-            --head-ref=HEAD \
+            --head-ref="${{ github.event.pull_request.head.sha }}" \
             --head-branch="${{ github.head_ref }}"
 
   feature:
+    name: Feature validation
     if: github.event_name == 'pull_request' && github.base_ref == 'dev'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "22"
+          node-version-file: ".nvmrc"
           cache: "npm"
 
       - name: Install dependencies
@@ -87,11 +116,43 @@ jobs:
           PLAN_LABELS="$(npm run --silent validate:feature -- --plan-labels)"
           echo "Feature validation plan:"
           printf '%s\n' "$PLAN_LABELS"
-          if printf '%s\n' "$PLAN_LABELS" | grep -q '^desktop e2e '; then
+          if printf '%s\n' "$PLAN_LABELS" | grep -q '^desktop .*e2e'; then
             echo "needs_playwright=true" >> "$GITHUB_OUTPUT"
           else
             echo "needs_playwright=false" >> "$GITHUB_OUTPUT"
           fi
+          if printf '%s\n' "$PLAN_LABELS" | grep -q '^native rust '; then
+            echo "needs_native=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_native=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Rust toolchain
+        if: steps.feature-plan.outputs.needs_native == 'true'
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          components: clippy
+
+      - name: Cache Rust build artifacts
+        if: steps.feature-plan.outputs.needs_native == 'true'
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          workspaces: packages/desktop/src-tauri -> target
+
+      - name: Install native Linux dependencies
+        if: steps.feature-plan.outputs.needs_native == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            clang \
+            cmake \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev
 
       - name: Install Playwright browsers
         if: steps.feature-plan.outputs.needs_playwright == 'true'
@@ -125,14 +186,14 @@ jobs:
         run: cat perf-comparison.md
 
       - name: Comment perf comparison on PR
-        if: always() && hashFiles('perf-comparison.md') != ''
+        if: always() && hashFiles('perf-comparison.md') != '' && github.event.pull_request.head.repo.full_name == github.repository
         run: node scripts/post-perf-comment.mjs
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
       - name: Upload perf results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: perf-results-${{ github.sha }}
           path: packages/desktop/playwright-report/perf-results.json
@@ -141,7 +202,7 @@ jobs:
 
       - name: Upload test artifacts on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-report
           path: packages/desktop/playwright-report/
@@ -149,31 +210,59 @@ jobs:
 
       - name: Upload test results on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: test-results
           path: packages/desktop/test-results/
           retention-days: 7
 
   dev:
+    name: Dev integration
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
+    permissions:
+      contents: read
+      issues: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "22"
+          node-version-file: ".nvmrc"
           cache: "npm"
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          components: clippy
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          workspaces: packages/desktop/src-tauri -> target
+
+      - name: Install native Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            clang \
+            cmake \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev
 
       - name: Install Playwright browsers
         run: |
@@ -188,7 +277,7 @@ jobs:
 
       - name: Upload test artifacts on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-report
           path: packages/desktop/playwright-report/
@@ -196,8 +285,30 @@ jobs:
 
       - name: Upload test results on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: test-results
           path: packages/desktop/test-results/
           retention-days: 7
+
+      # Stability W2-02: red dev CI becomes a triage-readable issue instead of
+      # a problem the nightly planner rediscovers from scratch.
+      - name: Open or update the automation-triage issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="CI failure: dev validation on dev"
+          body="(AI Generated).
+
+          Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          Commit: ${GITHUB_SHA}
+          Job: dev (validate:dev)
+
+          Auto-filed for scripts/triage.mjs (label: automation-triage). Latest failure comments on the open issue; close it when the fix merges."
+          existing=$(gh issue list --label automation-triage --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --label automation-triage --body "$body"
+          fi
