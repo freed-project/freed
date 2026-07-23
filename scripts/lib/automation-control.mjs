@@ -2722,7 +2722,6 @@ function recoverTaskTransactionsUnlocked(
         };
 
         if (current.revision === transaction.previousManifestRevision) {
-          requireExactEvent();
           guardMutation();
           readmitAuthorityStages();
           writeJsonAtomic(paths.taskManifest, target, {
@@ -2731,7 +2730,9 @@ function recoverTaskTransactionsUnlocked(
             privateRoot: paths.controlRoot,
             label: "Current task manifest",
             validateStageSuccessor: (before, after) =>
-              requireTaskManifestSemanticSuccessor(paths, before, after),
+              requireTaskManifestSemanticSuccessor(paths, before, after, {
+                expectedPendingTransactions: [transaction],
+              }),
             buildStagePendingPlans: () => [
               Object.freeze({
                 operationId: `task-manifest:${transaction.transactionId}`,
@@ -2739,6 +2740,9 @@ function recoverTaskTransactionsUnlocked(
               }),
             ],
           });
+          guardMutation();
+          readmitAuthorityStages();
+          requireExactEvent();
         } else if (current.revision === target.revision) {
           if (JSON.stringify(current) !== JSON.stringify(target)) {
             throw new AutomationControlError(
@@ -10180,7 +10184,9 @@ function mutateTaskManifestUnderGuards(
     privateRoot: paths.controlRoot,
     label: "Current task manifest",
     validateStageSuccessor: (before, after) =>
-      requireTaskManifestSemanticSuccessor(paths, before, after),
+      requireTaskManifestSemanticSuccessor(paths, before, after, {
+        expectedPendingTransactions: [transaction],
+      }),
     buildStagePendingPlans: () => [
       Object.freeze({
         operationId: `task-manifest:${transactionId}`,
@@ -24957,7 +24963,45 @@ function readTaskManifestLineageTransactions(
   return candidates;
 }
 
-function requireTaskManifestSemanticSuccessor(paths, before, after) {
+function exactPendingTaskTransactionTailMatches({
+  events,
+  manifest,
+  expectedPendingTransactions,
+}) {
+  if (expectedPendingTransactions.length !== 1 || events.length === 0) {
+    return false;
+  }
+  const transaction = expectedPendingTransactions[0];
+  const transactionEventIndex = events.findIndex((event) =>
+    canonicalValuesEqual(event, transaction.event),
+  );
+  if (
+    transaction.previousManifestRevision !== manifest.revision ||
+    transaction.targetManifest?.revision !== manifest.revision + 1 ||
+    transactionEventIndex === -1 ||
+    events.filter((event) => event?.eventId === transaction.event.eventId)
+      .length !== 1
+  ) {
+    return false;
+  }
+  return (
+    inspectExactTaskManifestHistoryParity(
+      events.slice(0, transactionEventIndex),
+      manifest,
+    ).healthy &&
+    inspectExactTaskManifestHistoryParity(
+      events,
+      transaction.targetManifest,
+    ).healthy
+  );
+}
+
+function requireTaskManifestSemanticSuccessor(
+  paths,
+  before,
+  after,
+  { expectedPendingTransactions = [] } = {},
+) {
   const beforeManifest = parseTaskManifestAuthoritySnapshot(
     before,
     "Current task manifest predecessor",
@@ -25013,11 +25057,19 @@ function requireTaskManifestSemanticSuccessor(paths, before, after) {
     ) {
       return false;
     }
-    if (
-      eventIndexes.length === 1 &&
-      !inspectExactTaskManifestHistoryParity(events, afterManifest).healthy
-    ) {
-      return false;
+    if (eventIndexes.length === 1) {
+      const currentHistoryHealthy =
+        inspectExactTaskManifestHistoryParity(events, afterManifest).healthy;
+      if (
+        !currentHistoryHealthy &&
+        !exactPendingTaskTransactionTailMatches({
+          events,
+          manifest: afterManifest,
+          expectedPendingTransactions,
+        })
+      ) {
+        return false;
+      }
     }
     if (
       eventIndexes.length === 0 &&
@@ -25061,7 +25113,9 @@ function admitTaskManifestAuthorityStage(
         }),
       ),
     validateSuccessor: (before, after) =>
-      requireTaskManifestSemanticSuccessor(paths, before, after),
+      requireTaskManifestSemanticSuccessor(paths, before, after, {
+        expectedPendingTransactions,
+      }),
     label: "Current task manifest",
   });
 }

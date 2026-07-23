@@ -3184,6 +3184,111 @@ test("a pending task transaction recovers once and rejects stale resurrection", 
   assert.equal(existsSync(transactionPath), true);
 });
 
+test("an event-first task transaction recovers against its settled manifest witness", () => {
+  const stateRoot = temporaryStateRoot();
+  const nowMs = Date.now();
+  const controller = actorLease(stateRoot, "freed-stability-controller", {
+    nowMs,
+  });
+  const created = createTask({
+    stateRoot,
+    taskId: "event-first-recoverable-task",
+    ...controller,
+    observerAuthority: "plan-only",
+    providerAuthority: "forbidden",
+    details: { behavioral: false },
+    nowMs: nowMs + 1,
+  });
+
+  const paths = automationControlPaths(stateRoot);
+  const current = readTaskManifest({ stateRoot });
+  const targetManifest = structuredClone(current);
+  const targetTask = targetManifest.tasks[0];
+  const transitionAt = new Date(nowMs + 2).toISOString();
+  targetTask.state = "triaged";
+  targetTask.revision += 1;
+  targetTask.updatedAt = transitionAt;
+  targetManifest.revision += 1;
+  targetManifest.updatedAt = transitionAt;
+  const event = {
+    schemaVersion: 1,
+    eventId: "e9b3b385-5434-4ca5-8cff-0c10e3aa0b19",
+    type: "task_transitioned",
+    ts: transitionAt,
+    actor: "freed-stability-controller",
+    taskId: targetTask.taskId,
+    taskRevision: targetTask.revision,
+    manifestRevision: targetManifest.revision,
+    observerAuthority: targetTask.observerAuthority,
+    providerAuthority: targetTask.providerAuthority,
+    data: {
+      fromState: "observed",
+      toState: "triaged",
+      authorizationProvenance: structuredClone(
+        created.event.data.authorizationProvenance,
+      ),
+    },
+  };
+  const transaction = {
+    schemaVersion: 1,
+    transactionId: "1f2496f9-6a8f-41ab-a01a-990e2bf53a9d",
+    preparedAt: transitionAt,
+    previousManifestRevision: current.revision,
+    targetManifest,
+    event,
+  };
+  mkdirSync(paths.taskTransactions, { recursive: true, mode: 0o700 });
+  const transactionPath = path.join(
+    paths.taskTransactions,
+    `${String(targetManifest.revision).padStart(12, "0")}-${transaction.transactionId}.json`,
+  );
+  writeFileSync(transactionPath, `${JSON.stringify(transaction, null, 2)}\n`, {
+    mode: 0o600,
+  });
+
+  const eventSnapshot = readAutomationAuthorityFileSnapshot(paths.events, {
+    privateRoot: paths.controlRoot,
+    maxBytes: CONTROL_EVENT_HISTORY_MAX_BYTES,
+    allowedModes: [0o600],
+    label: "Event-first task recovery fixture history",
+  });
+  const separator =
+    eventSnapshot.bytes.length > 0 && eventSnapshot.bytes.at(-1) !== 0x0a
+      ? Buffer.from("\n")
+      : Buffer.alloc(0);
+  writeAutomationAuthorityFile({
+    filePath: paths.events,
+    bytes: Buffer.concat([
+      eventSnapshot.bytes,
+      separator,
+      Buffer.from(`${JSON.stringify(event)}\n`),
+    ]),
+    previousSnapshot: eventSnapshot,
+    operationId: `control-event:${event.eventId}`,
+    privateRoot: paths.controlRoot,
+    maxBytes: CONTROL_EVENT_HISTORY_MAX_BYTES,
+    allowedModes: [0o600],
+    label: "Event-first task recovery fixture history",
+  });
+  heartbeatLease({
+    stateRoot,
+    name: controller.leaseName,
+    token: controller.leaseToken,
+    ttlMs: 30 * 60_000,
+    nowMs: nowMs + 3,
+  });
+  assert.equal(readEvents(stateRoot).at(-1)?.type, "lease_heartbeat");
+
+  const recovered = readTaskManifest({ stateRoot });
+  assert.deepEqual(recovered, targetManifest);
+  assert.equal(
+    readEvents(stateRoot).filter((candidate) => candidate.eventId === event.eventId)
+      .length,
+    1,
+  );
+  assert.equal(existsSync(transactionPath), false);
+});
+
 test("task transaction recovery rejects conflicting and duplicate audit events before mutation", async (t) => {
   const prepareFixture = (variant) => {
     const stateRoot = temporaryStateRoot();
