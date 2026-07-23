@@ -2306,12 +2306,38 @@ test("repair retains authenticated lines byte for byte and later appends survive
       .ledgerHealthy,
     true,
   );
+  const authorityStageEntries = readdirSync(stateRoot)
+    .filter((entry) =>
+      entry.startsWith(`.${path.basename(paths.outcomes)}.authority.`),
+    )
+    .sort();
+  assert.equal(authorityStageEntries.length, 1);
+  const authorityStagePath = path.join(stateRoot, authorityStageEntries[0]);
+  const authorityStageBeforeRetry =
+    pinnedRegularFileSnapshot(authorityStagePath);
 
   const retry = executeRepair({ stateRoot, sourceDigest });
   assert.equal(retry.changed, false);
   assert.equal(
     readFileSync(paths.outcomes).equals(afterAuthenticatedAppend),
     true,
+  );
+  assert.deepEqual(
+    readdirSync(stateRoot)
+      .filter((entry) =>
+        entry.startsWith(`.${path.basename(paths.outcomes)}.authority.`),
+      )
+      .sort(),
+    authorityStageEntries,
+  );
+  const authorityStageAfterRetry = pinnedRegularFileSnapshot(authorityStagePath);
+  assert.deepEqual(
+    authorityStageAfterRetry.bytes,
+    authorityStageBeforeRetry.bytes,
+  );
+  assert.equal(
+    authorityStageAfterRetry.identity.ino,
+    authorityStageBeforeRetry.identity.ino,
   );
 });
 
@@ -6760,6 +6786,201 @@ for (const move of [
     });
   }
 }
+
+test("missing canonical recovery rejects a foreign authority witness before mutation", async (t) => {
+  const fixture = temporaryStateRoot(t);
+  const source = legacyLine("missing-canonical-foreign-authority-witness");
+  const sourceDigest = writeLedger(fixture.paths, source);
+  const plan = planOutcomeLedgerRepair({
+    stateRoot: fixture.stateRoot,
+    taskId: TASK_ID,
+    expectedSourceDigest: sourceDigest,
+  });
+  const owner = ownerRepairLease(fixture.stateRoot, plan);
+  const child = spawnNativePausedRepairChild(t, {
+    stateRoot: fixture.stateRoot,
+    sourceDigest,
+    owner,
+    pause: "after-postcheck",
+    operation: "rename-durable",
+    source: path.basename(fixture.paths.outcomes),
+    destination: "",
+  });
+
+  await waitForNativeHelperPause(child, "after-postcheck");
+  killPausedNativeHelper(child);
+  const childExit = await waitForChildExit(child);
+  assert.equal(childExit.code, 1);
+  assert.equal(childExit.signal, null);
+
+  assert.equal(existsSync(fixture.paths.outcomes), false);
+  const transactionBytes = transactionBytesForPlan(plan, "prepared");
+  assert.deepEqual(readFileSync(plan.artifacts.transaction), transactionBytes);
+  assert.equal(existsSync(plan.artifacts.completedTransaction), false);
+  assert.equal(existsSync(plan.artifacts.receiptArtifact), false);
+  assert.equal(repairAuditEvents(fixture.paths, plan.eventId).length, 0);
+
+  const publicationIntentPath = path.join(
+    plan.artifacts.artifactDirectory,
+    "publication-intents",
+    "ledger-replacement.json",
+  );
+  const publicationIntentBytes = readFileSync(publicationIntentPath);
+  const publicationIntent = JSON.parse(publicationIntentBytes.toString("utf8"));
+  assert.equal(publicationIntent.operationId, plan.operationId);
+  assert.equal(publicationIntent.targetPath, fixture.paths.outcomes);
+  assert.equal(publicationIntent.predecessor.digest, sourceDigest);
+  assert.equal(publicationIntent.predecessor.size, source.length);
+  assert.equal(
+    publicationIntent.replacement.digest,
+    plan.parameters.replacementDigest,
+  );
+  assert.equal(
+    publicationIntent.replacement.size,
+    plan.parameters.replacementSize,
+  );
+
+  const predecessorBefore = pinnedRegularFileSnapshot(
+    publicationIntent.predecessor.archivePath,
+  );
+  const replacementBefore = pinnedRegularFileSnapshot(
+    publicationIntent.replacement.path,
+  );
+  assert.deepEqual(predecessorBefore.bytes, source);
+  assert.equal(sha256(predecessorBefore.bytes), sourceDigest);
+  assert.equal(Number(predecessorBefore.identity.mode & 0o7777n), 0o600);
+  assert.equal(predecessorBefore.identity.nlink, 1n);
+  assert.equal(
+    sha256(replacementBefore.bytes),
+    plan.parameters.replacementDigest,
+  );
+  assert.equal(
+    replacementBefore.bytes.length,
+    plan.parameters.replacementSize,
+  );
+  assert.equal(Number(replacementBefore.identity.mode & 0o7777n), 0o600);
+  assert.equal(replacementBefore.identity.nlink, 1n);
+
+  const witnessPath = path.join(
+    fixture.stateRoot,
+    `.${path.basename(fixture.paths.outcomes)}.authority.${"a".repeat(64)}.${"b".repeat(64)}.tmp`,
+  );
+  const witnessBytes = Buffer.from("foreign predecessor witness\n", "utf8");
+  writeFileSync(witnessPath, witnessBytes, { mode: 0o600 });
+  chmodSync(witnessPath, 0o600);
+
+  const before = {
+    tree: snapshotTestTree(fixture.stateRoot),
+    transaction: readFileSync(plan.artifacts.transaction),
+    publicationIntent: readFileSync(publicationIntentPath),
+    predecessor: pinnedRegularFileSnapshot(
+      publicationIntent.predecessor.archivePath,
+    ),
+    replacement: pinnedRegularFileSnapshot(publicationIntent.replacement.path),
+    events: readFileSync(fixture.paths.events),
+    witness: readFileSync(witnessPath),
+    retired: readdirSync(
+      path.join(plan.artifacts.artifactDirectory, "retired"),
+    ).sort(),
+  };
+
+  assert.throws(
+    () =>
+      repairOutcomeLedger({
+        stateRoot: fixture.stateRoot,
+        taskId: TASK_ID,
+        expectedSourceDigest: sourceDigest,
+        ...owner,
+      }),
+    /predecessor authority witness is outside the authenticated replacement prefix/,
+  );
+
+  assert.deepEqual(snapshotTestTree(fixture.stateRoot), before.tree);
+  assert.equal(existsSync(fixture.paths.outcomes), false);
+  assert.deepEqual(readFileSync(plan.artifacts.transaction), before.transaction);
+  assert.equal(existsSync(plan.artifacts.completedTransaction), false);
+  assert.deepEqual(readFileSync(publicationIntentPath), before.publicationIntent);
+  const predecessorAfter = pinnedRegularFileSnapshot(
+    publicationIntent.predecessor.archivePath,
+  );
+  const replacementAfter = pinnedRegularFileSnapshot(
+    publicationIntent.replacement.path,
+  );
+  assert.deepEqual(predecessorAfter.bytes, before.predecessor.bytes);
+  assert.equal(predecessorAfter.identity.ino, before.predecessor.identity.ino);
+  assert.equal(predecessorAfter.identity.dev, before.predecessor.identity.dev);
+  assert.deepEqual(replacementAfter.bytes, before.replacement.bytes);
+  assert.equal(replacementAfter.identity.ino, before.replacement.identity.ino);
+  assert.equal(replacementAfter.identity.dev, before.replacement.identity.dev);
+  assert.deepEqual(readFileSync(fixture.paths.events), before.events);
+  assert.equal(repairAuditEvents(fixture.paths, plan.eventId).length, 0);
+  assert.equal(existsSync(plan.artifacts.receiptArtifact), false);
+  assert.deepEqual(readFileSync(witnessPath), before.witness);
+  assert.deepEqual(
+    readdirSync(path.join(plan.artifacts.artifactDirectory, "retired")).sort(),
+    before.retired,
+  );
+});
+
+test("missing canonical recovery retires an exact authority witness once", async (t) => {
+  const fixture = temporaryStateRoot(t);
+  const source = legacyLine("missing-canonical-exact-authority-witness");
+  const sourceDigest = writeLedger(fixture.paths, source);
+  const plan = planOutcomeLedgerRepair({
+    stateRoot: fixture.stateRoot,
+    taskId: TASK_ID,
+    expectedSourceDigest: sourceDigest,
+  });
+  const owner = ownerRepairLease(fixture.stateRoot, plan);
+  const child = spawnNativePausedRepairChild(t, {
+    stateRoot: fixture.stateRoot,
+    sourceDigest,
+    owner,
+    pause: "after-postcheck",
+    operation: "rename-durable",
+    source: path.basename(fixture.paths.outcomes),
+    destination: "",
+  });
+
+  await waitForNativeHelperPause(child, "after-postcheck");
+  killPausedNativeHelper(child);
+  const childExit = await waitForChildExit(child);
+  assert.equal(childExit.code, 1);
+  assert.equal(childExit.signal, null);
+  assert.equal(existsSync(fixture.paths.outcomes), false);
+  assert.equal(plan.parameters.replacementSize, 0);
+
+  const witnessPath = path.join(
+    fixture.stateRoot,
+    `.${path.basename(fixture.paths.outcomes)}.authority.${"c".repeat(64)}.${"d".repeat(64)}.tmp`,
+  );
+  writeFileSync(witnessPath, Buffer.alloc(0), { mode: 0o600 });
+  chmodSync(witnessPath, 0o600);
+
+  const recovered = repairOutcomeLedger({
+    stateRoot: fixture.stateRoot,
+    taskId: TASK_ID,
+    expectedSourceDigest: sourceDigest,
+    ...owner,
+  });
+  assert.equal(recovered.changed, true);
+  assert.equal(readFileSync(fixture.paths.outcomes).length, 0);
+  assert.equal(existsSync(witnessPath), false);
+  assert.equal(repairAuditEvents(fixture.paths, plan.eventId).length, 1);
+  assert.equal(
+    JSON.parse(readFileSync(plan.artifacts.completedTransaction, "utf8")).phase,
+    "complete",
+  );
+
+  const repeated = repairOutcomeLedger({
+    stateRoot: fixture.stateRoot,
+    taskId: TASK_ID,
+    expectedSourceDigest: sourceDigest,
+    ...owner,
+  });
+  assert.equal(repeated.changed, false);
+  assert.equal(repairAuditEvents(fixture.paths, plan.eventId).length, 1);
+});
 
 for (const pause of [
   "before-exchange-syscall",

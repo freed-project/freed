@@ -26144,20 +26144,24 @@ export function preflightOutcomeLedgerAuthorityStageForRepair({
   stateRoot,
   sourceBytes,
   replacementBytes,
+  canonicalState = "present",
 }) {
   const paths = automationControlPaths(stateRoot);
   if (
     !Buffer.isBuffer(sourceBytes) ||
     !Buffer.isBuffer(replacementBytes) ||
     sourceBytes.length > OUTCOME_LEDGER_REPAIR_MAX_BYTES ||
-    replacementBytes.length > OUTCOME_LEDGER_REPAIR_MAX_BYTES
+    replacementBytes.length > OUTCOME_LEDGER_REPAIR_MAX_BYTES ||
+    !["present", "recoverable-missing", "completed"].includes(canonicalState)
   ) {
     throw new AutomationControlError(
       "invalid_argument",
       "Outcome ledger repair authority preflight requires exact bounded source and replacement bytes.",
     );
   }
+  const canonicalMustBeMissing = canonicalState === "recoverable-missing";
   const current = readAutomationAuthorityFileSnapshot(paths.outcomes, {
+    allowMissing: canonicalMustBeMissing,
     allowEmpty: true,
     privateRoot: paths.stateRoot,
     maxBytes: OUTCOME_LEDGER_REPAIR_MAX_BYTES,
@@ -26165,11 +26169,20 @@ export function preflightOutcomeLedgerAuthorityStageForRepair({
     label: "Outcome ledger repair canonical source",
     invalidCode: "authority_generation_conflict",
   });
+  const canonicalMatchesPlan =
+    canonicalState === "completed"
+      ? !current.missing &&
+        current.bytes.length >= replacementBytes.length &&
+        current.bytes
+          .subarray(0, replacementBytes.length)
+          .equals(replacementBytes)
+      : !current.missing &&
+        [sourceBytes, replacementBytes].some((bytes) =>
+          current.bytes.equals(bytes),
+        );
   if (
-    current.missing ||
-    ![sourceBytes, replacementBytes].some((bytes) =>
-      current.bytes.equals(bytes),
-    )
+    current.missing !== canonicalMustBeMissing ||
+    (!current.missing && !canonicalMatchesPlan)
   ) {
     throw new AutomationControlError(
       "authority_generation_conflict",
@@ -26191,8 +26204,11 @@ export function preflightOutcomeLedgerAuthorityStageForRepair({
       openPinnedLeaseArchiveHelper(),
       directory,
     );
+    const canonicalHasLaterEntries =
+      canonicalState === "completed" &&
+      current.bytes.length > replacementBytes.length;
     if (stages.length === 0) {
-      return Object.freeze({ present: false });
+      return Object.freeze({ present: false, retireable: false });
     }
     if (stages.length !== 1 || stages[0].kind !== "ready") {
       throw new AutomationControlError(
@@ -26216,15 +26232,23 @@ export function preflightOutcomeLedgerAuthorityStageForRepair({
     );
     if (
       stage.missing ||
-      stage.bytes.length > replacementBytes.length ||
-      !replacementBytes.subarray(0, stage.bytes.length).equals(stage.bytes)
+      stage.bytes.length >
+        (canonicalHasLaterEntries
+          ? current.bytes.length
+          : replacementBytes.length) ||
+      !(canonicalHasLaterEntries ? current.bytes : replacementBytes)
+        .subarray(0, stage.bytes.length)
+        .equals(stage.bytes)
     ) {
       throw new AutomationControlError(
         "authority_generation_conflict",
         "Outcome ledger repair predecessor authority witness is outside the authenticated replacement prefix.",
       );
     }
-    return Object.freeze({ present: true });
+    return Object.freeze({
+      present: true,
+      retireable: !canonicalHasLaterEntries,
+    });
   } finally {
     closeSync(directory.descriptor);
   }
