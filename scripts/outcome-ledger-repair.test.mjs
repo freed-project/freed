@@ -5696,13 +5696,19 @@ for (const checkpointName of [
 ]) {
   test(`ordinary outcome retry is exact after ${checkpointName}`, (t) => {
     const fixture = verificationOutcomeFixture(t, checkpointName);
-    let thrown = false;
-    assert.throws(
-      () =>
+    const append = (options = {}) =>
+      withFrozenDateNow(fixture.now.getTime(), () =>
         appendOutcomeLedger(fixture.paths.outcomes, fixture.entry, {
           stateRoot: fixture.stateRoot,
           authentication: fixture.authentication,
           now: fixture.now,
+          ...options,
+        }),
+      );
+    let thrown = false;
+    assert.throws(
+      () =>
+        append({
           checkpoint: (checkpoint) => {
             if (checkpoint === checkpointName && !thrown) {
               thrown = true;
@@ -5714,27 +5720,11 @@ for (const checkpointName of [
     );
     assert.equal(thrown, true);
 
-    const recovered = appendOutcomeLedger(
-      fixture.paths.outcomes,
-      fixture.entry,
-      {
-        stateRoot: fixture.stateRoot,
-        authentication: fixture.authentication,
-        now: fixture.now,
-      },
-    );
+    const recovered = append();
     const manifestAfterRecovery = readFileSync(fixture.paths.taskManifest);
     const eventsAfterRecovery = readFileSync(fixture.paths.events);
     const ledgerAfterRecovery = readFileSync(fixture.paths.outcomes);
-    const idempotent = appendOutcomeLedger(
-      fixture.paths.outcomes,
-      fixture.entry,
-      {
-        stateRoot: fixture.stateRoot,
-        authentication: fixture.authentication,
-        now: fixture.now,
-      },
-    );
+    const idempotent = append();
 
     assert.deepEqual(idempotent, recovered);
     assert.equal(
@@ -6636,7 +6626,7 @@ test("native exchange revalidates both descriptors before and after the syscall"
 
       await waitForNativeHelperPause(child, checkpoint);
       const expectedPhase =
-        checkpoint === "before-exchange-syscall" ? "prepared" : "replaced";
+        checkpoint === "before-exchange-syscall" ? "fenced" : "prepared";
       const expectedBytes = transactionBytesForPlan(plan, expectedPhase);
       assert.deepEqual(readFileSync(plan.artifacts.transaction), expectedBytes);
       writeFileSync(
