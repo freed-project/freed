@@ -44,7 +44,6 @@ const RELEASE_TOOLING_PATHS = new Set([
   "scripts/prepare-release-notes.mjs",
   "scripts/release-governance.test.mjs",
   "scripts/release-publish.sh",
-  "scripts/release-publish.test.mjs",
   "scripts/release-notes-shared.mjs",
   "scripts/release-notes-shared.test.mjs",
   "scripts/release.sh",
@@ -55,22 +54,23 @@ const RELEASE_PUBLISHER_TOOLING_PATHS = new Set([
   ".github/rulesets/release-tag-lockdown.json",
   ".github/rulesets/release-tag-immutability.json",
   ".github/rulesets/release-tags.json",
+  "docs/AUTOMATION-CONTROL-PLANE.md",
+  "docs/RELEASE-SECRETS.md",
+  "scripts/automation-control-docs.test.mjs",
   "scripts/create-release-github-app.mjs",
   "scripts/create-release-github-app.test.mjs",
   "scripts/doctor.mjs",
   "scripts/doctor.test.mjs",
-  "scripts/lib/release-tag-publisher-binding.mjs",
   "scripts/lib/release-tag-publisher.mjs",
   "scripts/lib/release-tag-publisher.test.mjs",
+  "scripts/release-governance.test.mjs",
+  "scripts/release-publish.sh",
   "scripts/release-tag-publisher-build.sh",
   "scripts/release-tag-publisher-host.swift",
   "scripts/release-tag-publisher-install.mjs",
   "scripts/release-tag-publisher-install.test.mjs",
   "scripts/release-tag-publisher-native.test.mjs",
-  "scripts/release-tag-publisher-provision.swift",
   "scripts/release-tag-publisher.mjs",
-  "scripts/release-publish.sh",
-  "scripts/release-publish.test.mjs",
   "scripts/sync-github-rulesets.mjs",
   "scripts/sync-github-rulesets.test.mjs",
   "scripts/validate-release-tag-authority.mjs",
@@ -78,16 +78,22 @@ const RELEASE_PUBLISHER_TOOLING_PATHS = new Set([
 ]);
 
 const RELEASE_PUBLISHER_TEST_FILES = [
+  "scripts/automation-control-docs.test.mjs",
   "scripts/create-release-github-app.test.mjs",
   "scripts/doctor.test.mjs",
   "scripts/lib/release-tag-publisher.test.mjs",
   "scripts/release-governance.test.mjs",
   "scripts/release-tag-publisher-install.test.mjs",
   "scripts/release-tag-publisher-native.test.mjs",
-  "scripts/release-publish.test.mjs",
   "scripts/sync-github-rulesets.test.mjs",
   "scripts/validate-release-tag-authority.test.mjs",
 ];
+
+const TOOLING_SMOKE_RUNNER_PATHS = new Set([
+  ".github/workflows/ci.yml",
+  "scripts/run-tooling-smoke-shard.mjs",
+  "scripts/run-tooling-smoke-shard.test.mjs",
+]);
 
 export function normalizeRepoPath(filePath) {
   return filePath.replace(/\\/g, "/").replace(/^\.\//, "");
@@ -390,6 +396,10 @@ export function isValidateRunnerPath(filePath) {
   );
 }
 
+export function isToolingSmokeRunnerPath(filePath) {
+  return TOOLING_SMOKE_RUNNER_PATHS.has(filePath);
+}
+
 export function isSocialScrapeLoopPath(filePath) {
   return (
     filePath === "scripts/social-scrape-loop.mjs" ||
@@ -670,6 +680,7 @@ export function buildValidationPlan(mode, changedFiles) {
     isReleasePublisherToolingPath,
   );
   const validateRunnerChanged = changedFiles.some(isValidateRunnerPath);
+  const toolingSmokeRunnerChanged = changedFiles.some(isToolingSmokeRunnerPath);
   const socialScrapeLoopChanged = changedFiles.some(isSocialScrapeLoopPath);
   const captureWorkspaces = unique(
     changedFiles.map(captureWorkspaceForFile).filter(Boolean),
@@ -817,6 +828,16 @@ export function buildValidationPlan(mode, changedFiles) {
       nodeCommand("release publisher tests", [
         "--test",
         ...RELEASE_PUBLISHER_TEST_FILES,
+      ]),
+    );
+  }
+
+  if (toolingSmokeRunnerChanged) {
+    addCommand(
+      plan,
+      nodeCommand("tooling smoke runner tests", [
+        "--test",
+        path.join("scripts", "run-tooling-smoke-shard.test.mjs"),
       ]),
     );
   }

@@ -4089,14 +4089,14 @@ test("selection while the initial Friends atlas is pending retains the semantic 
       outbound: [],
     };
 
-    class DelayedIdentityGalaxyWorker extends OriginalWorker {
-      private readonly identityGalaxyWorker: boolean;
+    class DelayedFriendsGalaxyWorker extends OriginalWorker {
+      private readonly friendsGalaxyWorker: boolean;
       private readonly heldMessages: unknown[] = [];
 
       constructor(scriptURL: string | URL, options?: WorkerOptions) {
         super(scriptURL, options);
-        this.identityGalaxyWorker = String(scriptURL).includes("identity-graph-atlas.worker");
-        if (!this.identityGalaxyWorker) return;
+        this.friendsGalaxyWorker = String(scriptURL).includes("friends-galaxy-product.worker");
+        if (!this.friendsGalaxyWorker) return;
         this.addEventListener("message", (event) => {
           if (control.released) return;
           event.stopImmediatePropagation();
@@ -4116,7 +4116,7 @@ test("selection while the initial Friends atlas is pending retains the semantic 
         message: unknown,
         transferOrOptions?: Transferable[] | StructuredSerializeOptions,
       ): void {
-        if (this.identityGalaxyWorker) control.outbound.push(message);
+        if (this.friendsGalaxyWorker) control.outbound.push(message);
         if (transferOrOptions === undefined) {
           OriginalWorker.prototype.postMessage.call(this, message);
         } else {
@@ -4128,7 +4128,7 @@ test("selection while the initial Friends atlas is pending retains the semantic 
     Object.defineProperty(window, "Worker", {
       configurable: true,
       writable: true,
-      value: DelayedIdentityGalaxyWorker,
+      value: DelayedFriendsGalaxyWorker,
     });
     (window as typeof window & {
       __FREED_GALAXY_WORKER_HOLD__?: typeof control;

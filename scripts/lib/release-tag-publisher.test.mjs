@@ -1,38 +1,32 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { mkdtempSync, rmSync, truncateSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
-  invokeReleaseTagPublisherAction,
-  verifyReleaseTagPublisherBinding,
+  loadAndVerifyReleaseTagPublisher,
+  publishReleaseTag,
   verifyReleaseTagPublisherInstallation,
   verifyReleaseTagPublisherInstallationReadiness,
+  verifyReleaseTagPublisherReadiness,
 } from "./release-tag-publisher.mjs";
-import { releaseTagPublisherNativePairSha256 } from "./release-tag-publisher-binding.mjs";
 
 function fixture() {
-  const publisherDigest = "a".repeat(64);
-  const provisionerDigest = "b".repeat(64);
-  const base = {
-    schemaVersion: 3,
+  const digest = "a".repeat(64);
+  const config = {
+    schemaVersion: 1,
     purpose: "freed-release-tag-publisher-binding",
     status: "active",
     repo: "freed-project/freed",
-    appId: 4_296_969,
+    appId: 123456,
     appSlug: "freed-release-publisher",
     publisherPath: "/Library/Application Support/Freed/release-tag-publisher",
-    publisherSha256: publisherDigest,
-    publisherCdHash: "c".repeat(40),
-    provisionerPath:
-      "/Library/Application Support/Freed/release-tag-publisher-provision",
-    provisionerSha256: provisionerDigest,
-    provisionerCdHash: "d".repeat(40),
-  };
-  const config = {
-    ...base,
-    nativePairSha256: releaseTagPublisherNativePairSha256(base),
+    publisherSha256: digest,
   };
   const attestation = {
-    schemaVersion: 3,
+    schemaVersion: 1,
     purpose: "freed-release-tag-publisher-readiness",
     repo: config.repo,
     appId: config.appId,
@@ -42,13 +36,9 @@ function fixture() {
     allowsArbitraryRefs: false,
     allowsUpdates: false,
     allowsDeletions: false,
-    publisherSha256: publisherDigest,
-    publisherCdHash: config.publisherCdHash,
-    provisionerSha256: provisionerDigest,
-    provisionerCdHash: config.provisionerCdHash,
-    nativePairSha256: config.nativePairSha256,
+    digest,
   };
-  return { config, attestation, publisherDigest, provisionerDigest };
+  return { config, attestation, digest };
 }
 
 function installationAttestation() {
@@ -56,7 +46,7 @@ function installationAttestation() {
     schemaVersion: 1,
     purpose: "freed-release-tag-publisher-installation-readiness",
     repo: "freed-project/freed",
-    appId: 4_296_969,
+    appId: 123456,
     appSlug: "freed-release-publisher",
     appName: "Freed Release Publisher",
     appExternalUrl: "https://freed.wtf",
@@ -73,241 +63,17 @@ function installationAttestation() {
   };
 }
 
-test("publisher binding pins the exact App, operation, and native pair", () => {
-  const { config, attestation, publisherDigest, provisionerDigest } = fixture();
-  assert.deepEqual(
-    verifyReleaseTagPublisherBinding(
-      config,
-      publisherDigest,
-      provisionerDigest,
-      attestation,
-    ),
-    {
-      ready: true,
-      publisherDigest,
-      publisherCdHash: config.publisherCdHash,
-      provisionerDigest,
-      provisionerCdHash: config.provisionerCdHash,
-      nativePairDigest: config.nativePairSha256,
-    },
-  );
-  assert.throws(
-    () =>
-      verifyReleaseTagPublisherBinding(
-        config,
-        "c".repeat(64),
-        provisionerDigest,
-        attestation,
-      ),
-    /digest does not match/,
-  );
-  assert.throws(
-    () =>
-      verifyReleaseTagPublisherBinding(
-        config,
-        publisherDigest,
-        "c".repeat(64),
-        attestation,
-      ),
-    /provisioner digest does not match/,
-  );
-  assert.throws(
-    () =>
-      verifyReleaseTagPublisherBinding(
-        config,
-        publisherDigest,
-        provisionerDigest,
-        {
-          ...attestation,
-          operations: ["create-annotated-tag", "delete-tag"],
-        },
-      ),
-    /does not match the pinned short-lived annotated-tag publisher/,
-  );
-  assert.throws(
-    () =>
-      verifyReleaseTagPublisherBinding(
-        { ...config, nativePairSha256: "0".repeat(64) },
-        publisherDigest,
-        provisionerDigest,
-        attestation,
-      ),
-    /native pair digest is invalid/,
-  );
-});
-
-test("each wrapper action invokes only the fixed native host", () => {
-  const { config, attestation } = fixture();
-  const calls = [];
-  const args = [
-    "attest",
-    "--repo",
-    config.repo,
-    "--app-id",
-    String(config.appId),
-    "--app-slug",
-    config.appSlug,
-  ];
-  const value = invokeReleaseTagPublisherAction(config, args, {
-    exec(file, actualArgs, options) {
-      calls.push({ file, args: actualArgs, options });
-      return JSON.stringify(attestation);
-    },
-  });
-  assert.deepEqual(value, attestation);
-  assert.deepEqual(
-    calls.map(({ file, args: actualArgs }) => ({ file, args: actualArgs })),
-    [{ file: config.publisherPath, args }],
-  );
-  assert.equal(calls[0].options.env.PATH, "/usr/bin:/bin");
-  assert.equal(calls[0].options.timeout, 30_000);
-});
-
-test("credential-bearing wrapper actions have hard deadlines", () => {
-  const { config } = fixture();
-  const calls = [];
-  invokeReleaseTagPublisherAction(
-    config,
-    [
-      "verify-installation",
-      "--repo",
-      config.repo,
-      "--app-id",
-      String(config.appId),
-      "--app-slug",
-      config.appSlug,
-    ],
-    {
-      exec(file, args, options) {
-        calls.push({ file, args, options });
-        return JSON.stringify(installationAttestation());
-      },
-    },
-  );
-  const commit = "a".repeat(40);
-  const tag = "v26.7.2200";
-  invokeReleaseTagPublisherAction(
-    config,
-    ["publish", "--tag", tag, "--commit", commit],
-    {
-      exec(file, args, options) {
-        calls.push({ file, args, options });
-        return JSON.stringify({
-          schemaVersion: 1,
-          purpose: "freed-release-tag-publish-result",
-          repo: config.repo,
-          tag,
-          commit,
-          tagObjectSha: "b".repeat(40),
-          recovered: false,
-        });
-      },
-    },
-  );
-  assert.deepEqual(
-    calls.map(({ options }) => options.timeout),
-    [30_000, 120_000],
-  );
-});
-
-test("publish wrapper requires the exact recoverable native result envelope", () => {
-  const { config } = fixture();
-  const commit = "a".repeat(40);
-  const tag = "v26.7.2000-dev";
-  const args = [
-    "publish",
-    "--tag",
-    tag,
-    "--commit",
-    commit,
-  ];
-  const result = {
-    schemaVersion: 1,
-    purpose: "freed-release-tag-publish-result",
-    repo: config.repo,
-    tag,
-    commit,
-    tagObjectSha: "b".repeat(40),
-    recovered: true,
-  };
-  assert.deepEqual(
-    invokeReleaseTagPublisherAction(config, args, {
-      exec: () => JSON.stringify(result),
-    }),
-    result,
-  );
-  for (const invalid of [
-    { ...result, recovered: "true" },
-    Object.fromEntries(
-      Object.entries(result).filter(([key]) => key !== "recovered"),
-    ),
-    { ...result, extra: true },
-  ]) {
-    assert.throws(
-      () =>
-        invokeReleaseTagPublisherAction(config, args, {
-          exec: () => JSON.stringify(invalid),
-        }),
-      /inexact publish result/,
-    );
-  }
-});
-
-test("action-specific native envelopes reject old or secret-bearing shapes", () => {
-  const { config, attestation } = fixture();
-  for (const invalid of [
-    { ...attestation, schemaVersion: 2 },
-    { ...attestation, secret: "forbidden" },
-    { ...attestation, publisherCdHash: "0".repeat(40) },
-    { ...attestation, appId: "4296969" },
-    { ...attestation, appSlug: "Freed-Release-Publisher" },
-  ]) {
-    assert.throws(
-      () =>
-        invokeReleaseTagPublisherAction(
-          config,
-          [
-            "attest",
-            "--repo",
-            config.repo,
-            "--app-id",
-            String(config.appId),
-            "--app-slug",
-            config.appSlug,
-          ],
-          {
-            exec: () => JSON.stringify(invalid),
-          },
-        ),
-      /does not match the pinned short-lived annotated-tag publisher/,
-    );
-  }
-});
-
 test("installation readiness accepts only the exact dedicated App scope", () => {
   const attestation = installationAttestation();
   const expected = {
     repo: "freed-project/freed",
-    releaseAppId: 4_296_969,
+    releaseAppId: 123456,
     releaseAppSlug: "freed-release-publisher",
   };
   assert.deepEqual(
     verifyReleaseTagPublisherInstallationReadiness(attestation, expected),
     { ready: true, installationId: 42, attestation },
   );
-  for (const invalidExpected of [
-    { ...expected, releaseAppId: "4296969" },
-    { ...expected, releaseAppSlug: "Freed-Release-Publisher" },
-  ]) {
-    assert.throws(
-      () =>
-        verifyReleaseTagPublisherInstallationReadiness(
-          attestation,
-          invalidExpected,
-        ),
-      /does not match the dedicated selected-repository App contract/,
-    );
-  }
   for (const invalid of [
     { ...attestation, repositories: ["freed-project/other"] },
     {
@@ -320,10 +86,6 @@ test("installation readiness accepts only the exact dedicated App scope", () => 
       ...attestation,
       appPermissions: { contents: "write", metadata: "read", actions: "read" },
     },
-    { ...attestation, appId: "4296969" },
-    { ...attestation, appSlug: "Freed-Release-Publisher" },
-    { ...attestation, accountLogin: "someone-else" },
-    { ...attestation, accountType: "User" },
     { ...attestation, pem: "secret" },
   ]) {
     assert.throws(
@@ -333,8 +95,39 @@ test("installation readiness accepts only the exact dedicated App scope", () => 
   }
 });
 
+test("publisher readiness accepts only the exact pinned native contract", () => {
+  const { attestation, config, digest } = fixture();
+  const expected = {
+    repo: config.repo,
+    releaseAppId: config.appId,
+    releaseAppSlug: config.appSlug,
+    publisherDigest: digest,
+  };
+  assert.deepEqual(
+    verifyReleaseTagPublisherReadiness(attestation, expected),
+    { ready: true, publisherDigest: digest, attestation },
+  );
+  for (const invalid of [
+    { status: "ready" },
+    { ...attestation, digest: "b".repeat(64) },
+    { ...attestation, operations: ["create-annotated-tag", "delete-tag"] },
+    { ...attestation, credentialMode: "keychain" },
+    { ...attestation, unsupportedField: true },
+  ]) {
+    assert.throws(
+      () => verifyReleaseTagPublisherReadiness(invalid, expected),
+      /does not match the pinned annotated-tag publisher/,
+    );
+  }
+});
+
 test("native installation verification uses only the pinned App identity", () => {
-  const { config: binding } = fixture();
+  const binding = {
+    repo: "freed-project/freed",
+    appId: 123456,
+    appSlug: "freed-release-publisher",
+    publisherPath: "/trusted/release-tag-publisher",
+  };
   const calls = [];
   const result = verifyReleaseTagPublisherInstallation(binding, {
     exec(file, args, options) {
@@ -348,9 +141,155 @@ test("native installation verification uses only the pinned App identity", () =>
     "--repo",
     "freed-project/freed",
     "--app-id",
-    "4296969",
+    "123456",
     "--app-slug",
     "freed-release-publisher",
   ]);
   assert.equal(calls[0].options.encoding, "utf8");
+  assert.equal(calls[0].options.timeout, 30_000);
+  assert.equal(calls[0].options.env.PATH, "/usr/bin:/bin");
+});
+
+test("static binding verification never invokes the native credential path", () => {
+  const publisher = Buffer.from("fixed publisher bytes");
+  const publisherSha256 = createHash("sha256").update(publisher).digest("hex");
+  const configPath = "/fixed/release-tag-publisher.json";
+  const publisherPath = "/fixed/release-tag-publisher";
+  const config = {
+    ...fixture().config,
+    publisherPath,
+    publisherSha256,
+  };
+  const verified = [];
+  const reads = [];
+  const result = loadAndVerifyReleaseTagPublisher({
+    configPath,
+    verifyFile(filePath, options) {
+      verified.push({ filePath, options });
+    },
+    readFile(filePath, maximumBytes) {
+      reads.push({ filePath, maximumBytes });
+      if (filePath === configPath) {
+        return Buffer.from(JSON.stringify(config));
+      }
+      if (filePath === publisherPath) {
+        return publisher;
+      }
+      throw new Error(`Unexpected read: ${filePath}`);
+    },
+  });
+  assert.deepEqual(result, { ...config, configPath });
+  assert.deepEqual(verified, [
+    { filePath: configPath, options: undefined },
+    { filePath: publisherPath, options: { executable: true } },
+  ]);
+  assert.deepEqual(reads, [
+    { filePath: configPath, maximumBytes: 32 * 1_024 },
+    { filePath: publisherPath, maximumBytes: 64 * 1_024 * 1_024 },
+  ]);
+
+  assert.throws(
+    () =>
+      loadAndVerifyReleaseTagPublisher({
+        configPath,
+        verifyFile() {},
+        readFile(filePath) {
+          return filePath === configPath
+            ? Buffer.from(
+                JSON.stringify({ ...config, unsupportedField: true }),
+              )
+            : publisher;
+        },
+      }),
+    /binding is missing or malformed/,
+  );
+
+  assert.throws(
+    () =>
+      loadAndVerifyReleaseTagPublisher({
+        configPath,
+        verifyFile() {},
+        readFile(filePath) {
+          return filePath === configPath
+            ? Buffer.from(
+                JSON.stringify({
+                  ...config,
+                  publisherSha256: "b".repeat(64),
+                }),
+              )
+            : publisher;
+        },
+      }),
+    /executable digest does not match its binding/,
+  );
+
+  const pending = { ...config, status: "pending" };
+  const readPending = (filePath) =>
+    filePath === configPath ? Buffer.from(JSON.stringify(pending)) : publisher;
+  assert.throws(
+    () =>
+      loadAndVerifyReleaseTagPublisher({
+        configPath,
+        verifyFile() {},
+        readFile: readPending,
+      }),
+    /binding is missing or malformed/,
+  );
+  assert.equal(
+    loadAndVerifyReleaseTagPublisher({
+      configPath,
+      requiredStatus: "pending",
+      verifyFile() {},
+      readFile: readPending,
+    }).status,
+    "pending",
+  );
+});
+
+test("static binding verification applies the native file size limits", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "freed-publisher-bounds-"));
+  const configPath = path.join(root, "publisher.json");
+  const publisherPath = path.join(root, "publisher");
+  try {
+    writeFileSync(configPath, Buffer.alloc(32 * 1_024 + 1, 0x20));
+    assert.throws(
+      () =>
+        loadAndVerifyReleaseTagPublisher({ configPath, verifyFile() {} }),
+      /empty or exceeds its size limit/,
+    );
+
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        ...fixture().config,
+        publisherPath,
+      }),
+    );
+    writeFileSync(publisherPath, "x");
+    truncateSync(publisherPath, 64 * 1_024 * 1_024 + 1);
+    assert.throws(
+      () =>
+        loadAndVerifyReleaseTagPublisher({ configPath, verifyFile() {} }),
+      /empty or exceeds its size limit/,
+    );
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("tag publication has one hard native deadline", () => {
+  const binding = fixture().config;
+  const calls = [];
+  const args = ["publish", "--tag", "v26.7.2200"];
+  publishReleaseTag(binding, args, {
+    exec(file, actualArgs, options) {
+      calls.push({ file, args: actualArgs, options });
+      return "";
+    },
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].file, binding.publisherPath);
+  assert.deepEqual(calls[0].args, args);
+  assert.equal(calls[0].options.timeout, 120_000);
+  assert.equal(calls[0].options.env.PATH, "/usr/bin:/bin");
 });

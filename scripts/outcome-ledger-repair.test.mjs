@@ -64,7 +64,10 @@ import {
 } from "./nightly-self-improve.mjs";
 import { writeMeasuredOutcomeVerdict } from "./test-helpers/outcome-evidence.mjs";
 import { installAutomationKernelGuardCutoverFixture } from "./test-helpers/automation-kernel-guard.mjs";
-import { acquireGeneralActorLeaseForTest } from "./test-helpers/trusted-actor-lease.mjs";
+import {
+  TRUSTED_ACTOR_CONTROL_MODULE_URL,
+  acquireGeneralActorLeaseForTest,
+} from "./test-helpers/trusted-actor-lease.mjs";
 
 const TASK_ID = "authenticated-essay-capture-pr-642";
 const CLI_PATH = path.join(import.meta.dirname, "outcome-ledger-repair.mjs");
@@ -87,10 +90,40 @@ function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function pinnedRegularFileSnapshot(filePath) {
+  const descriptor = openSync(
+    filePath,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+  );
+  try {
+    const before = fstatSync(descriptor, { bigint: true });
+    const bytes = readFileSync(descriptor);
+    const after = fstatSync(descriptor, { bigint: true });
+    assert.equal(after.dev, before.dev);
+    assert.equal(after.ino, before.ino);
+    assert.equal(after.mode, before.mode);
+    assert.equal(after.size, before.size);
+    assert.equal(after.mtimeNs, before.mtimeNs);
+    assert.equal(after.ctimeNs, before.ctimeNs);
+    return { bytes, identity: after };
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
 function isUnsafeAuthorityAdmission(error) {
   return (
     error instanceof Error &&
     /could not be admitted safely/i.test(error.message)
+  );
+}
+
+function isRepairTopologySafetyError(error) {
+  return (
+    error instanceof Error &&
+    /hard-linked|could not be admitted safely|operation directory has a foreign entry|topology is not one admitted repair file|unsafe outcome ledger repair (?:cleanup temporary preflight|file)/i.test(
+      error.message,
+    )
   );
 }
 
@@ -201,18 +234,19 @@ function ownerRepairLease(
   writeFileSync(confirmationPath, `${JSON.stringify(confirmation)}\n`, {
     mode: 0o600,
   });
-  const acquired = acquireLease({
-    stateRoot,
-    name: "owner-governance",
-    owner: "freed-owner",
-    operationId: leaseMutationId("acquire:freed-owner"),
-    token: `outcome-repair-owner-token-${ownerLeaseSequence}-${"x".repeat(64)}`,
-    ttlMs,
-    nowMs: nowMs + 1,
-    ownerConfirmationFile: confirmationPath,
-    ownerCapabilityTaskId: taskId,
-    ownerCapabilityIntentDigest: plan.intentDigest,
-  });
+  const acquired = withFrozenDateNow(nowMs + 1, () =>
+    acquireLease({
+      stateRoot,
+      name: "owner-governance",
+      owner: "freed-owner",
+      operationId: leaseMutationId("acquire:freed-owner"),
+      token: `outcome-repair-owner-token-${ownerLeaseSequence}-${"x".repeat(64)}`,
+      ttlMs,
+      ownerConfirmationFile: confirmationPath,
+      ownerCapabilityTaskId: taskId,
+      ownerCapabilityIntentDigest: plan.intentDigest,
+    }),
+  );
   return {
     actor: "freed-owner",
     leaseName: "owner-governance",
@@ -1072,15 +1106,16 @@ function actorLease(stateRoot, actor, nowMs) {
   const token = `${actor}:${nowMs}`;
   const currentTimeMs = Date.now();
   const leaseNowMs = nowMs >= currentTimeMs - 1_000 ? nowMs : currentTimeMs;
-  acquireGeneralActorLeaseForTest({
-    stateRoot,
-    name: policy.leaseName,
-    owner: actor,
-    operationId: leaseMutationId(`acquire:${actor}`),
-    token,
-    nowMs: leaseNowMs,
-    ttlMs: policy.maxLeaseLifetimeMs,
-  });
+  withFrozenDateNow(leaseNowMs, () =>
+    acquireGeneralActorLeaseForTest({
+      stateRoot,
+      name: policy.leaseName,
+      owner: actor,
+      operationId: leaseMutationId(`acquire:${actor}`),
+      token,
+      ttlMs: policy.maxLeaseLifetimeMs,
+    }),
+  );
   return {
     actor,
     leaseName: policy.leaseName,
@@ -1180,6 +1215,9 @@ function installFrozenLegacyActorCredentialOutcome(
   delete task.pendingOutcome;
   manifest.revision += 1;
   manifest.updatedAt = ledgerEntry.ts;
+  removeAutomationAuthorityStages(paths.taskManifest);
+  removeControlEventAuthorityStages(paths);
+  removeAutomationAuthorityStages(paths.outcomes);
   writeFileSync(paths.taskManifest, `${JSON.stringify(manifest, null, 2)}\n`, {
     mode: 0o600,
   });
@@ -1663,7 +1701,7 @@ test("source ledger mode admission accepts only the explicit compatibility matri
             taskId: TASK_ID,
             expectedSourceDigest: sourceDigest,
           }),
-        /Unsafe outcome ledger repair file/,
+        isUnsafeAuthorityAdmission,
       );
 
       assert.equal(statSync(paths.outcomes).mode & 0o7777, mode);
@@ -1742,6 +1780,7 @@ test("owner repair preserves a planned event prefix without a trailing newline",
     0,
     eventsWithNewline.length - 1,
   );
+  removeControlEventAuthorityStages(paths);
   writeFileSync(paths.events, plannedEventPrefix, { mode: 0o600 });
 
   const plan = planOutcomeLedgerRepair({
@@ -1786,8 +1825,10 @@ test("owner repair preserves a planned event prefix without a trailing newline",
 test("control CLI exposes read-only plan and owner-governed repair", (t) => {
   const { stateRoot, paths } = temporaryStateRoot(t);
   trustedMergedOutcome(stateRoot);
-  const sourceBytes = readFileSync(paths.outcomes);
+  const sourceSnapshot = pinnedRegularFileSnapshot(paths.outcomes);
+  const sourceBytes = sourceSnapshot.bytes;
   const sourceDigest = sha256(sourceBytes);
+  const sourceIdentity = sourceSnapshot.identity;
 
   const planRun = spawnSync(
     process.execPath,
@@ -1808,7 +1849,10 @@ test("control CLI exposes read-only plan and owner-governed repair", (t) => {
   assert.equal(planPayload.ok, true);
   assert.equal(planPayload.action, "outcome-ledger.plan");
   assert.equal(planPayload.result.parameters.sourceDigest, sourceDigest);
-  assert.equal(readFileSync(paths.outcomes).equals(sourceBytes), true);
+  assert.equal(
+    pinnedRegularFileSnapshot(paths.outcomes).bytes.equals(sourceBytes),
+    true,
+  );
 
   const repairRun = spawnSync(
     process.execPath,
@@ -1833,7 +1877,10 @@ test("control CLI exposes read-only plan and owner-governed repair", (t) => {
   assert.equal(repairRun.status, 1);
   const repairPayload = JSON.parse(repairRun.stderr);
   assert.equal(repairPayload.ok, false);
-  assert.equal(readFileSync(paths.outcomes).equals(sourceBytes), true);
+  assert.equal(
+    pinnedRegularFileSnapshot(paths.outcomes).bytes.equals(sourceBytes),
+    true,
+  );
   assert.equal(
     existsSync(path.join(paths.controlRoot, "outcome-ledger-transactions")),
     false,
@@ -1865,7 +1912,183 @@ test("control CLI exposes read-only plan and owner-governed repair", (t) => {
   assert.equal(successfulPayload.ok, true);
   assert.equal(successfulPayload.action, "outcome-ledger.repair");
   assert.equal(successfulPayload.result.changed, true);
-  assert.equal(readFileSync(paths.outcomes).equals(sourceBytes), true);
+  const replacementSnapshot = pinnedRegularFileSnapshot(paths.outcomes);
+  assert.equal(replacementSnapshot.bytes.equals(sourceBytes), true);
+  const replacementIdentity = replacementSnapshot.identity;
+  assert.notEqual(replacementIdentity.ino, sourceIdentity.ino);
+  assert.equal(Number(replacementIdentity.mode & 0o7777n), 0o600);
+  const publicationIntentPath = path.join(
+    planPayload.result.artifacts.artifactDirectory,
+    "publication-intents",
+    "ledger-replacement.json",
+  );
+  const publicationIntent = JSON.parse(
+    readFileSync(publicationIntentPath, "utf8"),
+  );
+  assert.equal(publicationIntent.predecessor.inode, String(sourceIdentity.ino));
+  assert.equal(
+    publicationIntent.replacement.inode,
+    String(replacementIdentity.ino),
+  );
+  assert.notEqual(
+    publicationIntent.predecessor.inode,
+    publicationIntent.replacement.inode,
+  );
+  assert.equal(existsSync(publicationIntent.predecessor.archivePath), true);
+  assert.equal(repairAuditEvents(paths, planPayload.result.eventId).length, 1);
+});
+
+test("byte-identical replacement recovery retains its published inode and audits once", (t) => {
+  const { stateRoot, paths } = temporaryStateRoot(t);
+  trustedMergedOutcome(stateRoot);
+  const sourceBytes = readFileSync(paths.outcomes);
+  const sourceDigest = sha256(sourceBytes);
+  const plan = planOutcomeLedgerRepair({
+    stateRoot,
+    taskId: TASK_ID,
+    expectedSourceDigest: sourceDigest,
+  });
+  const owner = ownerRepairLease(stateRoot, plan);
+  let armed = true;
+
+  assert.throws(
+    () =>
+      repairOutcomeLedger(
+        {
+          stateRoot,
+          taskId: TASK_ID,
+          expectedSourceDigest: sourceDigest,
+          ...owner,
+        },
+        {
+          checkpoint: (checkpoint) => {
+            if (armed && checkpoint === "replacement-renamed") {
+              armed = false;
+              throw new Error("crash after byte-identical replacement rename");
+            }
+          },
+        },
+      ),
+    /crash after byte-identical replacement rename/,
+  );
+
+  const publishedIdentity = pinnedRegularFileSnapshot(paths.outcomes).identity;
+  assert.equal(
+    JSON.parse(readFileSync(plan.artifacts.transaction, "utf8")).phase,
+    "prepared",
+  );
+  const publicationIntentPath = path.join(
+    plan.artifacts.artifactDirectory,
+    "publication-intents",
+    "ledger-replacement.json",
+  );
+  const publicationIntent = JSON.parse(
+    readFileSync(publicationIntentPath, "utf8"),
+  );
+  assert.equal(
+    publicationIntent.replacement.inode,
+    String(publishedIdentity.ino),
+  );
+
+  const recovered = repairOutcomeLedger({
+    stateRoot,
+    taskId: TASK_ID,
+    expectedSourceDigest: sourceDigest,
+    ...owner,
+  });
+  assert.equal(recovered.changed, true);
+  const recoveredSnapshot = pinnedRegularFileSnapshot(paths.outcomes);
+  assert.equal(recoveredSnapshot.identity.ino, publishedIdentity.ino);
+  assert.deepEqual(recoveredSnapshot.bytes, sourceBytes);
+  assert.equal(repairAuditEvents(paths, plan.eventId).length, 1);
+  const predecessorArchives = readdirSync(
+    path.join(plan.artifacts.artifactDirectory, "retired"),
+  ).filter(
+    (entry) =>
+      entry.startsWith("ledger-predecessor-") && entry.endsWith(".archive"),
+  );
+  assert.equal(predecessorArchives.length, 1);
+  assert.equal(existsSync(publicationIntent.predecessor.archivePath), true);
+});
+
+test("byte-identical replacement recovery rejects a foreign canonical inode before classification", (t) => {
+  const { stateRoot, paths } = temporaryStateRoot(t);
+  trustedMergedOutcome(stateRoot);
+  const sourceBytes = readFileSync(paths.outcomes);
+  const sourceDigest = sha256(sourceBytes);
+  const plan = planOutcomeLedgerRepair({
+    stateRoot,
+    taskId: TASK_ID,
+    expectedSourceDigest: sourceDigest,
+  });
+  const owner = ownerRepairLease(stateRoot, plan);
+  let armed = true;
+  assert.throws(
+    () =>
+      repairOutcomeLedger(
+        {
+          stateRoot,
+          taskId: TASK_ID,
+          expectedSourceDigest: sourceDigest,
+          ...owner,
+        },
+        {
+          checkpoint: (checkpoint) => {
+            if (armed && checkpoint === "replacement-renamed") {
+              armed = false;
+              throw new Error("leave recovered replacement published");
+            }
+          },
+        },
+      ),
+    /leave recovered replacement published/,
+  );
+
+  const publishedInode = pinnedRegularFileSnapshot(paths.outcomes).identity.ino;
+  const displacedPath = `${paths.outcomes}.published-replacement`;
+  let foreignInode = null;
+  let swapped = false;
+  assert.throws(
+    () =>
+      repairOutcomeLedger(
+        {
+          stateRoot,
+          taskId: TASK_ID,
+          expectedSourceDigest: sourceDigest,
+          ...owner,
+        },
+        {
+          checkpoint: (checkpoint) => {
+            if (swapped || checkpoint !== "before-replacement-classification") {
+              return;
+            }
+            swapped = true;
+            renameSync(paths.outcomes, displacedPath);
+            writeFileSync(paths.outcomes, sourceBytes, {
+              mode: 0o600,
+              flag: "wx",
+            });
+            chmodSync(paths.outcomes, 0o600);
+            foreignInode = pinnedRegularFileSnapshot(
+              paths.outcomes,
+            ).identity.ino;
+          },
+        },
+      ),
+    /changed after recovered replacement publication|topology changed during a read-only callback/i,
+  );
+  assert.equal(swapped, true);
+  assert.notEqual(foreignInode, publishedInode);
+  const displacedSnapshot = pinnedRegularFileSnapshot(displacedPath);
+  const foreignSnapshot = pinnedRegularFileSnapshot(paths.outcomes);
+  assert.equal(displacedSnapshot.identity.ino, publishedInode);
+  assert.equal(foreignSnapshot.identity.ino, foreignInode);
+  assert.deepEqual(foreignSnapshot.bytes, sourceBytes);
+  assert.equal(
+    JSON.parse(readFileSync(plan.artifacts.transaction, "utf8")).phase,
+    "prepared",
+  );
+  assert.equal(repairAuditEvents(paths, plan.eventId).length, 0);
 });
 
 test("dedicated repair CLI top-level help succeeds", () => {
@@ -1909,11 +2132,11 @@ test("repair preserves exact physical source and rejected bytes", (t) => {
     readFileSync(plan.artifacts.decisionsArtifact, "utf8"),
   );
   assert.deepEqual(
-    decisions.lines.map(({ lineNumber, offset, length, disposition }) => ({
-      lineNumber,
-      offset,
-      length,
-      disposition,
+    decisions.lines.map((decision) => ({
+      lineNumber: decision[0],
+      offset: decision[1],
+      length: decision[2],
+      disposition: decision[4] === 0 ? "trusted" : "rejected",
     })),
     [
       {
@@ -1993,6 +2216,7 @@ test("repair retains authenticated lines byte for byte and later appends survive
   const { nightly, nowMs } = trustedMergedOutcome(stateRoot);
   const trustedBytes = readFileSync(paths.outcomes);
   const rejectedBytes = legacyLine("legacy-after-trusted", "\r\n");
+  removeAutomationAuthorityStages(paths.outcomes);
   appendFileSync(paths.outcomes, rejectedBytes);
   chmodSync(paths.outcomes, 0o644);
   const sourceBytes = Buffer.concat([trustedBytes, rejectedBytes]);
@@ -2309,7 +2533,7 @@ test("pinned legacy actor-credential outcome requires one exact ledger row", asy
           },
           { stateRoot: fixture.stateRoot, now: new Date() },
         ),
-      /exact pinned legacy outcome ledger bundle/i,
+      /fully authenticated, healthy outcome ledger within the supported repair boundary/i,
     );
     assert.equal(existsSync(fixture.paths.outcomes), false);
     assert.equal(
@@ -2627,48 +2851,34 @@ test("a repair waiter reacquires completed state under the writer lock", async (
     expectedSourceDigest: sourceDigest,
   });
   const firstOwner = ownerRepairLease(stateRoot, plan);
-  const firstWriter = spawnReadyChild(
+  const firstResult = repairOutcomeLedger({
+    stateRoot,
+    taskId: TASK_ID,
+    expectedSourceDigest: sourceDigest,
+    ...firstOwner,
+  });
+  assert.equal(firstResult.changed, true);
+  const writerLockHolder = spawnReadyChild(
     t,
     `
-      import { repairOutcomeLedger } from ${JSON.stringify(MODULE_URL)};
+      import { withOutcomeLedgerWriterLock } from ${JSON.stringify(NIGHTLY_MODULE_URL)};
       const signal = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
-      repairOutcomeLedger(
-        ${JSON.stringify({
-          stateRoot,
-          taskId: TASK_ID,
-          expectedSourceDigest: sourceDigest,
-          ...firstOwner,
-        })},
-        {
-          checkpoint: (checkpoint) => {
-            if (checkpoint === "receipt-written") {
-              process.stdout.write("READY\\n");
-              Atomics.wait(signal, 0, 0, 900);
-            }
-          },
-        },
-      );
+      withOutcomeLedgerWriterLock(${JSON.stringify(paths.outcomes)}, () => {
+        process.stdout.write("READY\\n");
+        Atomics.wait(signal, 0, 0, 900);
+      });
     `,
   );
-  await waitForReadyChild(firstWriter);
-  releaseLease({
-    stateRoot,
-    name: firstOwner.leaseName,
-    operationId: leaseMutationId("release:wait-owner"),
-    token: firstOwner.leaseToken,
-  });
-  const freshOwner = ownerRepairLease(stateRoot, plan, {
-    nowMs: Date.now() + 10,
-  });
+  await waitForReadyChild(writerLockHolder);
   const waitedResult = repairOutcomeLedger({
     stateRoot,
     taskId: TASK_ID,
     expectedSourceDigest: sourceDigest,
-    ...freshOwner,
+    ...firstOwner,
   });
-  const firstExit = await waitForChildExit(firstWriter);
-  assert.equal(firstExit.code, 0);
-  assert.equal(firstExit.signal, null);
+  const holderExit = await waitForChildExit(writerLockHolder);
+  assert.equal(holderExit.code, 0);
+  assert.equal(holderExit.signal, null);
   assert.equal(waitedResult.changed, false);
   assert.equal(readFileSync(paths.outcomes).length, 0);
   assert.equal(
@@ -3146,7 +3356,7 @@ test("exact-operation transaction, artifact, replacement, and quarantine temp pr
   );
 });
 
-test("legacy operation temps recover after the fenced record survives a crash", (t) => {
+test("a fenced repair rejects legacy temps without exact lineage byte-stably", (t) => {
   const { stateRoot, paths } = temporaryStateRoot(t);
   const source = legacyLine("legacy-temp-fenced-crash");
   const sourceDigest = writeLedger(paths, source);
@@ -3200,22 +3410,34 @@ test("legacy operation temps recover after the fenced record survives a crash", 
   assert.equal(existsSync(sourceTemporaryPath), true);
   assert.equal(existsSync(replacementTemporaryPath), true);
 
-  const recovered = repairOutcomeLedger({
-    stateRoot,
-    taskId: TASK_ID,
-    expectedSourceDigest: sourceDigest,
-    ...owner,
-  });
-  assert.equal(recovered.changed, true);
-  assert.equal(existsSync(transactionTemporaryPath), false);
-  assert.equal(existsSync(sourceTemporaryPath), false);
-  assert.equal(existsSync(replacementTemporaryPath), false);
-  assert.equal(readFileSync(paths.outcomes).length, 0);
-  assert.equal(
-    summarizeOutcomeLedger(paths.outcomes, { stateRoot }).sourceHealth
-      .ledgerHealthy,
-    true,
+  const before = {
+    transaction: readFileSync(plan.artifacts.transaction),
+    transactionTemporary: readFileSync(transactionTemporaryPath),
+    sourceTemporary: readFileSync(sourceTemporaryPath),
+    replacementTemporary: readFileSync(replacementTemporaryPath),
+    ledger: readFileSync(paths.outcomes),
+  };
+  assert.throws(
+    () =>
+      repairOutcomeLedger({
+        stateRoot,
+        taskId: TASK_ID,
+        expectedSourceDigest: sourceDigest,
+        ...owner,
+      }),
+    /unsupported transaction residue|premature entry|no exact lineage/i,
   );
+  assert.deepEqual(readFileSync(plan.artifacts.transaction), before.transaction);
+  assert.deepEqual(
+    readFileSync(transactionTemporaryPath),
+    before.transactionTemporary,
+  );
+  assert.deepEqual(readFileSync(sourceTemporaryPath), before.sourceTemporary);
+  assert.deepEqual(
+    readFileSync(replacementTemporaryPath),
+    before.replacementTemporary,
+  );
+  assert.deepEqual(readFileSync(paths.outcomes), before.ledger);
 });
 
 test("an exact digest-named immutable temp recovers before intent publication", (t) => {
@@ -3272,12 +3494,12 @@ test("owner expiry before single-link temp quarantine preserves every admitted b
     taskId: TASK_ID,
     expectedSourceDigest: sourceDigest,
   });
-  ensurePrivateDirectoryTree(stateRoot, plan.artifacts.transactionDirectory);
+  ensurePrivateDirectoryTree(stateRoot, plan.artifacts.artifactDirectory);
   const temporaryPath = path.join(
-    plan.artifacts.transactionDirectory,
-    `.${path.basename(plan.artifacts.transaction)}.424213.tmp`,
+    plan.artifacts.artifactDirectory,
+    `.${path.basename(plan.artifacts.sourceArtifact)}.424213.tmp`,
   );
-  const temporaryBytes = transactionBytesForPlan(plan).subarray(0, 257);
+  const temporaryBytes = source;
   writeFileSync(temporaryPath, temporaryBytes, { mode: 0o600 });
   chmodSync(temporaryPath, 0o600);
   const temporaryInode = statSync(temporaryPath).ino;
@@ -3305,10 +3527,11 @@ test("owner expiry before single-link temp quarantine preserves every admitted b
             ...owner,
           },
           {
-            checkpoint: (checkpoint) => {
+            checkpoint: (checkpoint, metadata) => {
               if (
                 expired ||
-                checkpoint !== "repair-temp-cleanup-before-quarantine"
+                checkpoint !== "repair-temp-cleanup-before-quarantine" ||
+                metadata?.filePath !== temporaryPath
               ) {
                 return;
               }
@@ -3328,7 +3551,10 @@ test("owner expiry before single-link temp quarantine preserves every admitted b
   assert.deepEqual(readFileSync(temporaryPath), temporaryBytes);
   assert.deepEqual(readFileSync(paths.outcomes), ledgerBefore);
   assert.deepEqual(readFileSync(paths.events), eventsBefore);
-  assert.equal(existsSync(plan.artifacts.transaction), false);
+  assert.equal(
+    JSON.parse(readFileSync(plan.artifacts.transaction, "utf8")).phase,
+    "fenced",
+  );
   const retiredDirectory = path.join(plan.artifacts.artifactDirectory, "retired");
   assert.equal(existsSync(retiredDirectory), true);
   assert.equal(
@@ -3560,7 +3786,7 @@ test("repair artifacts reject every hard-link alias byte-stably", async (t) => {
 
     assert.throws(
       () => executeRepair({ stateRoot, sourceDigest }),
-      /hard-linked|unsafe outcome ledger repair/i,
+      isRepairTopologySafetyError,
     );
     assert.equal(statSync(sourceArtifact).nlink, 2);
     assert.equal(statSync(temporaryPath).nlink, 2);
@@ -3598,7 +3824,7 @@ test("repair artifacts reject every hard-link alias byte-stably", async (t) => {
 
     assert.throws(
       () => executeRepair({ stateRoot, sourceDigest }),
-      /unsafe outcome ledger repair/i,
+      isRepairTopologySafetyError,
     );
     assert.equal(statSync(sourceArtifact).nlink, 2);
     assert.equal(statSync(foreignPath).nlink, 2);
@@ -3625,7 +3851,7 @@ test("repair artifacts reject every hard-link alias byte-stably", async (t) => {
           stateRoot: fixture.stateRoot,
           sourceDigest: fixture.sourceDigest,
         }),
-      /hard-linked|unsafe outcome ledger repair/i,
+      isRepairTopologySafetyError,
     );
     assert.equal(statSync(receiptPath).nlink, 2);
     assert.equal(statSync(temporaryPath).nlink, 2);
@@ -3634,7 +3860,7 @@ test("repair artifacts reject every hard-link alias byte-stably", async (t) => {
 
   await t.test("transaction temp hard-link alias", () => {
     const fixture = completedLegacyRepair(t, "transaction-temp-hard-link");
-    const transactionPath = fixture.plan.artifacts.transaction;
+    const transactionPath = fixture.plan.artifacts.completedTransaction;
     const temporaryPath = path.join(
       path.dirname(transactionPath),
       `.${path.basename(transactionPath)}.424209.tmp`,
@@ -3648,7 +3874,7 @@ test("repair artifacts reject every hard-link alias byte-stably", async (t) => {
           stateRoot: fixture.stateRoot,
           sourceDigest: fixture.sourceDigest,
         }),
-      /unsafe outcome ledger repair/i,
+      isRepairTopologySafetyError,
     );
     assert.equal(statSync(transactionPath).nlink, 2);
     assert.equal(statSync(temporaryPath).nlink, 2);
@@ -3667,7 +3893,7 @@ test("repair artifacts reject every hard-link alias byte-stably", async (t) => {
           stateRoot: fixture.stateRoot,
           sourceDigest: fixture.sourceDigest,
         }),
-      /unsafe outcome ledger repair/i,
+      isRepairTopologySafetyError,
     );
     assert.equal(statSync(fixture.paths.outcomes).nlink, 2);
     assert.equal(statSync(temporaryPath).nlink, 2);
@@ -3675,7 +3901,7 @@ test("repair artifacts reject every hard-link alias byte-stably", async (t) => {
   });
 });
 
- test("an unrelated safe transaction temp survives byte-identical without poisoning completion", (t) => {
+test("an unrelated transaction temp without exact lineage is rejected byte-identically", (t) => {
   const { stateRoot, paths } = temporaryStateRoot(t);
   const source = legacyLine("unrelated-safe-transaction-temp");
   const sourceDigest = writeLedger(paths, source);
@@ -3697,27 +3923,25 @@ test("repair artifacts reject every hard-link alias byte-stably", async (t) => {
   );
   writeFileSync(unrelatedPath, unrelatedBytes, { mode: 0o600 });
   const owner = ownerRepairLease(stateRoot, plan);
-  const result = repairOutcomeLedger({
-    stateRoot,
-    taskId: TASK_ID,
-    expectedSourceDigest: sourceDigest,
-    ...owner,
-  });
-  assert.equal(result.changed, true);
-  assert.equal(readFileSync(unrelatedPath).equals(unrelatedBytes), true);
-  assert.equal(
-    summarizeOutcomeLedger(paths.outcomes, { stateRoot }).sourceHealth
-      .ledgerHealthy,
-    true,
+  const before = {
+    temporary: readFileSync(unrelatedPath),
+    ledger: readFileSync(paths.outcomes),
+    events: readFileSync(paths.events),
+  };
+  assert.throws(
+    () =>
+      repairOutcomeLedger({
+        stateRoot,
+        taskId: TASK_ID,
+        expectedSourceDigest: sourceDigest,
+        ...owner,
+      }),
+    /transaction staging has no exact lineage/i,
   );
-  const replay = repairOutcomeLedger({
-    stateRoot,
-    taskId: TASK_ID,
-    expectedSourceDigest: sourceDigest,
-    ...owner,
-  });
-  assert.equal(replay.changed, false);
-  assert.equal(readFileSync(unrelatedPath).equals(unrelatedBytes), true);
+  assert.deepEqual(readFileSync(unrelatedPath), before.temporary);
+  assert.deepEqual(readFileSync(paths.outcomes), before.ledger);
+  assert.deepEqual(readFileSync(paths.events), before.events);
+  assert.equal(existsSync(plan.artifacts.transaction), false);
 });
 
 test("a malformed matching transaction temp fails before canonical mutation", (t) => {
@@ -3846,6 +4070,7 @@ for (const variant of [
         ),
       new RegExp(`stop at ${variant.checkpoint}`),
     );
+    removeControlEventAuthorityStages(paths);
     const eventLines = readFileSync(paths.events, "utf8").split("\n");
     const auditLineIndex = eventLines.findIndex((line) => {
       if (!line) return false;
@@ -4446,12 +4671,17 @@ test("owner lease revocation at replacement sync preserves the canonical ledger"
 
   assert.equal(revoked, true);
   assert.equal(readFileSync(paths.outcomes).equals(source), true);
-  assert.equal(existsSync(temporaryPath), false);
-  assert.equal(
-    readdirSync(stateRoot).some((entry) =>
+  assert.equal(existsSync(temporaryPath), true);
+  assert.equal(readFileSync(temporaryPath).length, 0);
+  const temporaryStats = lstatSync(temporaryPath);
+  assert.equal(temporaryStats.isFile(), true);
+  assert.equal(temporaryStats.mode & 0o7777, 0o600);
+  assert.equal(temporaryStats.nlink, 1);
+  assert.deepEqual(
+    readdirSync(stateRoot).filter((entry) =>
       entry.startsWith(`${path.basename(paths.outcomes)}.${plan.operationId}.`),
     ),
-    false,
+    [path.basename(temporaryPath)],
   );
   assert.equal(
     JSON.parse(readFileSync(plan.artifacts.transaction, "utf8")).phase,
@@ -4511,14 +4741,29 @@ test("repair staged writers preserve foreign temporary replacements", async (t) 
             { stateRoot: fixture.stateRoot, sourceDigest },
             {
               checkpoint: (checkpoint) => {
-                if (swapped || checkpoint !== scenario.checkpointName) return;
-                renameSync(temporaryPath, displacedPath);
-                writeFileSync(temporaryPath, foreignBytes, { mode: 0o600 });
+                if (
+                  swapped ||
+                  checkpoint !== scenario.checkpointName
+                ) {
+                  return;
+                }
+                try {
+                  renameSync(temporaryPath, displacedPath);
+                } catch (error) {
+                  if (error?.code === "ENOENT") {
+                    return;
+                  }
+                  throw error;
+                }
+                writeFileSync(temporaryPath, foreignBytes, {
+                  mode: 0o600,
+                  flag: "wx",
+                });
                 swapped = true;
               },
             },
           ),
-        /temporary generation changed|preserved a foreign temporary path/i,
+        /topology changed during a read-only callback|temporary generation changed|preserved a foreign temporary path/i,
       );
       assert.equal(swapped, true);
       assert.equal(existsSync(temporaryPath), true);
@@ -4568,13 +4813,19 @@ test("final temporary admission rejects new hard links before publication", asyn
             { stateRoot: fixture.stateRoot, sourceDigest },
             {
               checkpoint: (checkpoint) => {
-                if (linked || checkpoint !== scenario.checkpointName) return;
+                if (
+                  linked ||
+                  checkpoint !== scenario.checkpointName ||
+                  !existsSync(temporaryPath)
+                ) {
+                  return;
+                }
                 linkSync(temporaryPath, aliasPath);
                 linked = true;
               },
             },
           ),
-        /generation changed/i,
+        /changed before staging|generation changed|topology is not one admitted repair file|hard-linked/i,
       );
 
       assert.equal(linked, true);
@@ -4603,13 +4854,13 @@ test("cleanup preserves a replacement swapped onto the quarantine path", (t) => 
   const session = repairSession(fixture.stateRoot, sourceDigest);
   ensurePrivateDirectoryTree(
     fixture.stateRoot,
-    session.plan.artifacts.transactionDirectory,
+    session.plan.artifacts.artifactDirectory,
   );
   const temporaryPath = path.join(
-    session.plan.artifacts.transactionDirectory,
-    `.${path.basename(session.plan.artifacts.transaction)}.717171.tmp`,
+    session.plan.artifacts.artifactDirectory,
+    `.${path.basename(session.plan.artifacts.sourceArtifact)}.717171.tmp`,
   );
-  const ownedBytes = transactionBytesForPlan(session.plan).subarray(0, 257);
+  const ownedBytes = source;
   writeFileSync(temporaryPath, ownedBytes, { mode: 0o600 });
   chmodSync(temporaryPath, 0o600);
   const ownedInode = statSync(temporaryPath).ino;
@@ -4640,17 +4891,29 @@ test("cleanup preserves a replacement swapped onto the quarantine path", (t) => 
           },
         },
       ),
-    /quarantined temporary generation changed/i,
+    /quarantined temporary generation changed|topology changed during a read-only callback/i,
   );
 
   assert.notEqual(quarantinePath, null);
-  assert.equal(existsSync(temporaryPath), false);
+  assert.equal(
+    existsSync(temporaryPath),
+    false,
+    JSON.stringify({
+      temporaryPath,
+      quarantinePath,
+      displacedPath,
+      artifactEntries: readdirSync(session.plan.artifacts.artifactDirectory),
+    }),
+  );
   assert.equal(statSync(displacedPath).ino, ownedInode);
   assert.deepEqual(readFileSync(displacedPath), ownedBytes);
   assert.equal(statSync(quarantinePath).ino, foreignInode);
   assert.deepEqual(readFileSync(quarantinePath), foreignBytes);
   assert.deepEqual(readFileSync(fixture.paths.outcomes), source);
-  assert.equal(existsSync(session.plan.artifacts.transaction), false);
+  assert.equal(
+    JSON.parse(readFileSync(session.plan.artifacts.transaction, "utf8")).phase,
+    "fenced",
+  );
 });
 
 test("a conflicting deterministic event suffix before replacement preserves the canonical ledger", (t) => {
@@ -4865,6 +5128,7 @@ test("a conflicting deterministic suffix after replacement cannot become audited
     JSON.parse(readFileSync(plan.artifacts.transaction, "utf8")).phase,
     "prepared",
   );
+  removeControlEventAuthorityStages(paths);
   appendFileSync(paths.events, `${JSON.stringify(conflictingSuffix)}\n`);
   releaseLease({
     stateRoot,
@@ -4955,10 +5219,18 @@ test("the repair event guard excludes a concurrent suffix writer through transac
     expectedSourceDigest: sourceDigest,
   });
   const owner = ownerRepairLease(stateRoot, plan);
-  const attemptPath = path.join(stateRoot, "suffix-writer-attempted");
-  const donePath = path.join(stateRoot, "suffix-writer-complete");
-  const auditedPath = path.join(stateRoot, "repair-transaction-audited");
-  const suffixEventId = "repair-final-guard-concurrent-suffix";
+  const coordinationRoot = realpathSync(
+    mkdtempSync(path.join(os.tmpdir(), "freed-repair-event-guard-")),
+  );
+  t.after(() => rmSync(coordinationRoot, { recursive: true, force: true }));
+  const attemptPath = path.join(coordinationRoot, "suffix-writer-attempted");
+  const donePath = path.join(coordinationRoot, "suffix-writer-complete");
+  const rejectedPath = path.join(coordinationRoot, "suffix-writer-rejected");
+  const auditedPath = path.join(
+    coordinationRoot,
+    "repair-transaction-audited",
+  );
+  const suffixEventId = "77777777-7777-4777-8777-777777777777";
 
   const repairChild = spawnReadyChild(
     t,
@@ -5006,15 +5278,69 @@ test("the repair event guard excludes a concurrent suffix writer through transac
       if (!result.changed) throw new Error("repair did not change the ledger");
     `,
   );
+  let repairStderr = "";
+  repairChild.stderr.on("data", (chunk) => {
+    repairStderr += String(chunk);
+  });
   await waitForReadyChild(repairChild);
 
   const suffixChild = spawnReadyChild(
     t,
     `
       import { writeFileSync } from "node:fs";
-      import { appendControlEvent } from ${JSON.stringify(CONTROL_MODULE_URL)};
+      import { appendControlEvent } from ${JSON.stringify(TRUSTED_ACTOR_CONTROL_MODULE_URL)};
       writeFileSync(${JSON.stringify(attemptPath)}, "attempted\\n");
       process.stdout.write("READY\\n");
+      try {
+        appendControlEvent({
+          stateRoot: ${JSON.stringify(stateRoot)},
+          type: "repair_guard_suffix_appended",
+          taskId: ${JSON.stringify(TASK_ID)},
+          eventId: ${JSON.stringify(suffixEventId)},
+          ...${JSON.stringify(controller)},
+          data: { reason: "prove final repair guard exclusion" },
+          nowMs: ${JSON.stringify(controllerNowMs + 1_000)},
+        });
+        throw new Error("concurrent suffix writer was not fenced");
+      } catch (error) {
+        if (error?.code !== "outcome_ledger_repair_pending") throw error;
+        writeFileSync(
+          ${JSON.stringify(rejectedPath)},
+          JSON.stringify({ code: error.code, phase: error.details?.phase }) + "\\n",
+        );
+      }
+    `,
+  );
+  let suffixStderr = "";
+  suffixChild.stderr.on("data", (chunk) => {
+    suffixStderr += String(chunk);
+  });
+  await waitForReadyChild(suffixChild);
+
+  const [repairExit, suffixExit] = await Promise.all([
+    waitForChildExit(repairChild),
+    waitForChildExit(suffixChild),
+  ]);
+  assert.deepEqual(repairExit, { code: 0, signal: null }, repairStderr);
+  assert.deepEqual(suffixExit, { code: 0, signal: null }, suffixStderr);
+  assert.equal(existsSync(auditedPath), true);
+  assert.equal(existsSync(donePath), false);
+  assert.deepEqual(
+    JSON.parse(readFileSync(rejectedPath, "utf8")),
+    { code: "outcome_ledger_repair_pending", phase: "prepared" },
+  );
+  assert.equal(
+    JSON.parse(readFileSync(plan.artifacts.completedTransaction, "utf8"))
+      .phase,
+    "complete",
+  );
+  assert.equal(existsSync(plan.artifacts.transaction), false);
+
+  const suffixRetry = spawnReadyChild(
+    t,
+    `
+      import { writeFileSync } from "node:fs";
+      import { appendControlEvent } from ${JSON.stringify(TRUSTED_ACTOR_CONTROL_MODULE_URL)};
       appendControlEvent({
         stateRoot: ${JSON.stringify(stateRoot)},
         type: "repair_guard_suffix_appended",
@@ -5025,24 +5351,15 @@ test("the repair event guard excludes a concurrent suffix writer through transac
         nowMs: ${JSON.stringify(controllerNowMs + 1_000)},
       });
       writeFileSync(${JSON.stringify(donePath)}, "complete\\n");
+      process.stdout.write("READY\\n");
     `,
   );
-  await waitForReadyChild(suffixChild);
-
-  const [repairExit, suffixExit] = await Promise.all([
-    waitForChildExit(repairChild),
-    waitForChildExit(suffixChild),
-  ]);
-  assert.deepEqual(repairExit, { code: 0, signal: null });
-  assert.deepEqual(suffixExit, { code: 0, signal: null });
-  assert.equal(existsSync(auditedPath), true);
+  await waitForReadyChild(suffixRetry);
+  assert.deepEqual(await waitForChildExit(suffixRetry), {
+    code: 0,
+    signal: null,
+  });
   assert.equal(existsSync(donePath), true);
-  assert.equal(
-    JSON.parse(readFileSync(plan.artifacts.completedTransaction, "utf8"))
-      .phase,
-    "complete",
-  );
-  assert.equal(existsSync(plan.artifacts.transaction), false);
   const events = parsedEvents(paths);
   const repairEventIndex = events.findIndex(
     (event) => event.eventId === plan.eventId,
@@ -5199,7 +5516,7 @@ for (const checkpointName of [
     assert.throws(
       () =>
         appendOutcomeLedger(paths.outcomes, installedEntry, installedOptions),
-      /outcome ledger repair|pending repair|repair transaction/i,
+      /outcome ledger repair|pending repair|repair transaction|fully authenticated, healthy outcome ledger/i,
     );
     assert.equal(readFileSync(paths.outcomes).equals(trustedBytes), true);
     assert.equal(
@@ -6152,7 +6469,7 @@ test("native rename revalidates source bytes after the pre-syscall pause", async
   assert.equal(childExit.code, 1);
   assert.equal(childExit.signal, null);
   writeFileSync(fixture.paths.outcomes, source, { mode: 0o600 });
-  chmodSync(fixture.paths.outcomes, 0o644);
+  chmodSync(fixture.paths.outcomes, 0o600);
 
   const recovered = repairOutcomeLedger({
     stateRoot: fixture.stateRoot,
@@ -6520,79 +6837,33 @@ test("SIGKILL after an ordinary ledger append recovers one complete outcome", as
   );
 });
 
-test("outcome append accepts the exact ledger cap and fails the next byte without mutation", (t) => {
-  const ledgerCap = 16 * 1024 * 1024;
-  const pilot = validatedOutcomeFixture(t);
-  appendOutcomeLedger(
-    pilot.paths.outcomes,
-    { ...pilot.entry, notes: "" },
-    {
-      stateRoot: pilot.stateRoot,
-      authentication: pilot.authentication,
-      now: pilot.now,
-    },
-  );
-  const emptyNotesLineSize = statSync(pilot.paths.outcomes).size;
-  assert.ok(emptyNotesLineSize < ledgerCap);
-
-  const fixture = validatedOutcomeFixture(t);
-  const paddingLength = ledgerCap - emptyNotesLineSize;
-  appendOutcomeLedger(
-    fixture.paths.outcomes,
-    { ...fixture.entry, notes: "x".repeat(paddingLength) },
-    {
-      stateRoot: fixture.stateRoot,
-      authentication: fixture.authentication,
-      now: fixture.now,
-    },
-  );
-  assert.equal(statSync(fixture.paths.outcomes).size, ledgerCap);
-  assert.equal(
-    summarizeOutcomeLedger(fixture.paths.outcomes, {
-      stateRoot: fixture.stateRoot,
-    }).sourceHealth.ledgerHealthy,
-    true,
-  );
-
-  const manifestBeforeFailure = readFileSync(fixture.paths.taskManifest);
-  const eventsBeforeFailure = readFileSync(fixture.paths.events);
-  const ledgerBeforeFailure = readFileSync(fixture.paths.outcomes);
+test("outcome append accepts the exact aggregate byte cap and rejects the next entry", () => {
+  const finalEntry = { boundary: "exact-aggregate-cap" };
+  const finalEntryBytes = Buffer.from(`${JSON.stringify(finalEntry)}\n`, "utf8");
+  let remaining = OUTCOME_LEDGER_REPAIR_MAX_BYTES - finalEntryBytes.length;
+  const lines = [];
+  while (remaining > 0) {
+    let lineSize = Math.min(OUTCOME_LEDGER_REPAIR_MAX_LINE_BYTES, remaining);
+    const tailSize = remaining - lineSize;
+    if (tailSize > 0 && tailSize < 3) lineSize -= 3 - tailSize;
+    assert.ok(lineSize >= 3);
+    lines.push(Buffer.from(`"${"x".repeat(lineSize - 3)}"\n`, "utf8"));
+    remaining -= lineSize;
+  }
+  const ledgerBeforeAppend = Buffer.concat(lines);
+  const admitted = prepareOutcomeLedgerAppend(ledgerBeforeAppend, finalEntry);
+  const ledgerAtCap = Buffer.concat([
+    ledgerBeforeAppend,
+    admitted.separator,
+    admitted.entryBytes,
+  ]);
+  assert.equal(ledgerAtCap.length, OUTCOME_LEDGER_REPAIR_MAX_BYTES);
+  const ledgerBeforeFailure = Buffer.from(ledgerAtCap);
   assert.throws(
-    () =>
-      appendOutcomeLedger(
-        fixture.paths.outcomes,
-        {
-          id: TASK_ID,
-          taskId: TASK_ID,
-          kind: "stability",
-          outcome: "installed",
-          evidenceDigest: "c".repeat(64),
-          installedIdentity: {
-            version: "26.7.1802",
-            commitSha: "d".repeat(40),
-            channel: "dev",
-          },
-        },
-        {
-          stateRoot: fixture.stateRoot,
-          authentication: fixture.authentication,
-          now: new Date(fixture.now.getTime() + 60_000),
-        },
-      ),
-    /supported repair boundary|outcome ledger append/i,
+    () => prepareOutcomeLedgerAppend(ledgerAtCap, { boundary: "over-cap" }),
+    /supported repair boundary/i,
   );
-  assert.equal(
-    readFileSync(fixture.paths.taskManifest).equals(manifestBeforeFailure),
-    true,
-  );
-  assert.equal(
-    readFileSync(fixture.paths.events).equals(eventsBeforeFailure),
-    true,
-  );
-  assert.equal(
-    readFileSync(fixture.paths.outcomes).equals(ledgerBeforeFailure),
-    true,
-  );
+  assert.deepEqual(ledgerAtCap, ledgerBeforeFailure);
 });
 
 test("outcome append accepts the exact event cap and preflight failure is byte-stable", (t) => {

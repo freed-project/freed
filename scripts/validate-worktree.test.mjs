@@ -10,6 +10,7 @@ import {
   isReleasePublisherToolingPath,
   isSocialScrapeLoopPath,
   isSocialProviderFocusedSurface,
+  isToolingSmokeRunnerPath,
   parseArgs,
   REPO_ROOT,
 } from "./validate-worktree.mjs";
@@ -298,6 +299,30 @@ test("feature plan for validation runner changes runs only runner tests", () => 
   assert.deepEqual(labels, ["validation runner tests"]);
 });
 
+test("feature plan routes tooling smoke workflow and helper changes through focused tests", () => {
+  const paths = [
+    ".github/workflows/ci.yml",
+    "scripts/run-tooling-smoke-shard.mjs",
+    "scripts/run-tooling-smoke-shard.test.mjs",
+  ];
+  for (const filePath of paths) {
+    assert.equal(isToolingSmokeRunnerPath(filePath), true, filePath);
+  }
+  assert.equal(
+    isToolingSmokeRunnerPath("scripts/automation-control.test.mjs"),
+    false,
+  );
+  const plan = buildValidationPlan("feature", paths);
+  const runnerTests = plan.find(
+    (item) => item.label === "tooling smoke runner tests",
+  );
+  assert.ok(runnerTests);
+  assert.deepEqual(runnerTests.args, [
+    "--test",
+    "scripts/run-tooling-smoke-shard.test.mjs",
+  ]);
+});
+
 test("feature plan for social scrape loop changes runs only loop tests", () => {
   const labels = describePlan(
     buildValidationPlan("feature", [
@@ -453,73 +478,49 @@ test("feature plan for release tooling changes runs script tests and artifact va
   assert.ok(labels.includes("release note artifact validation"));
 });
 
-test("feature plan routes Release Publisher changes through the focused suite", () => {
-  const plan = buildValidationPlan("feature", [
-    "scripts/release-tag-publisher-provision.swift",
-    "scripts/release-tag-publisher-install.mjs",
-    "scripts/lib/release-tag-publisher-binding.mjs",
-    "scripts/release-publish.sh",
-  ]);
-  const labels = describePlan(plan);
-
-  assert.equal(labels[0], "root typecheck");
-  assert.ok(labels.includes("release notes shared tests"));
-  assert.ok(labels.includes("release publisher tests"));
-  assert.ok(
-    plan
-      .find((item) => item.label === "release publisher tests")
-      ?.args.includes("scripts/release-publish.test.mjs"),
-  );
-  assert.ok(
-    plan
-      .find((item) => item.label === "release publisher tests")
-      ?.args.includes("scripts/release-governance.test.mjs"),
-  );
-});
-
-test("feature plan routes every production publisher surface through the complete focused suite", () => {
-  for (const filePath of [
+test("feature plan routes every Release Publisher surface through its focused suite", () => {
+  const publisherPaths = [
     ".github/rulesets/release-tag-lockdown.json",
     ".github/rulesets/release-tag-immutability.json",
     ".github/rulesets/release-tags.json",
+    "docs/AUTOMATION-CONTROL-PLANE.md",
+    "docs/RELEASE-SECRETS.md",
+    "scripts/automation-control-docs.test.mjs",
     "scripts/create-release-github-app.mjs",
     "scripts/create-release-github-app.test.mjs",
     "scripts/doctor.mjs",
     "scripts/doctor.test.mjs",
-    "scripts/lib/release-tag-publisher-binding.mjs",
     "scripts/lib/release-tag-publisher.mjs",
     "scripts/lib/release-tag-publisher.test.mjs",
+    "scripts/release-governance.test.mjs",
+    "scripts/release-publish.sh",
     "scripts/release-tag-publisher-build.sh",
     "scripts/release-tag-publisher-host.swift",
     "scripts/release-tag-publisher-install.mjs",
     "scripts/release-tag-publisher-install.test.mjs",
     "scripts/release-tag-publisher-native.test.mjs",
-    "scripts/release-tag-publisher-provision.swift",
     "scripts/release-tag-publisher.mjs",
-    "scripts/release-publish.sh",
-    "scripts/release-publish.test.mjs",
     "scripts/sync-github-rulesets.mjs",
     "scripts/sync-github-rulesets.test.mjs",
     "scripts/validate-release-tag-authority.mjs",
     "scripts/validate-release-tag-authority.test.mjs",
-  ]) {
-    assert.equal(
-      isReleasePublisherToolingPath(filePath),
-      true,
-      `${filePath} must be classified as Release Publisher tooling`,
-    );
-    const plan = buildValidationPlan("feature", [filePath]);
-    const labels = describePlan(plan);
-    assert.ok(
-      labels.includes("release publisher tests"),
-      `${filePath} must run release publisher tests`,
-    );
-    const publisherSuite = plan.find(
+  ];
+
+  for (const filePath of publisherPaths) {
+    assert.equal(isReleasePublisherToolingPath(filePath), true, filePath);
+    const publisherSuite = buildValidationPlan("feature", [filePath]).find(
       (item) => item.label === "release publisher tests",
     );
+    assert.ok(publisherSuite, filePath);
     assert.ok(
-      publisherSuite?.args.includes("scripts/release-governance.test.mjs"),
-      `${filePath} must run release governance tests`,
+      publisherSuite.args.includes(
+        "scripts/release-tag-publisher-native.test.mjs",
+      ),
+      filePath,
+    );
+    assert.ok(
+      publisherSuite.args.includes("scripts/automation-control-docs.test.mjs"),
+      filePath,
     );
   }
 });

@@ -5,12 +5,11 @@ set +x
 umask 077
 
 usage() {
-  echo "Usage: scripts/release-tag-publisher-build.sh --host-output <absolute-path> --provisioner-output <absolute-path>" >&2
+  echo "Usage: scripts/release-tag-publisher-build.sh --host-output <absolute-path>" >&2
   exit 2
 }
 
 HOST_OUTPUT=""
-PROVISIONER_OUTPUT=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --host-output)
@@ -18,20 +17,11 @@ while [[ $# -gt 0 ]]; do
       HOST_OUTPUT="$2"
       shift 2
       ;;
-    --provisioner-output)
-      [[ $# -ge 2 ]] || usage
-      PROVISIONER_OUTPUT="$2"
-      shift 2
-      ;;
     *) usage ;;
   esac
 done
 
-if [[
-  "${HOST_OUTPUT}" != /* ||
-  "${PROVISIONER_OUTPUT}" != /* ||
-  "${HOST_OUTPUT}" == "${PROVISIONER_OUTPUT}"
-]]; then
+if [[ "${HOST_OUTPUT}" != /* ]]; then
   usage
 fi
 
@@ -62,7 +52,6 @@ validate_parent() {
 }
 
 validate_parent "${HOST_OUTPUT}"
-validate_parent "${PROVISIONER_OUTPUT}"
 
 [[ "$(/usr/bin/uname -s)" == "Darwin" ]] || {
   echo "Error: release tag publisher native tools require macOS." >&2
@@ -84,11 +73,9 @@ fi
 
 SCRIPT_DIR="$(cd -P -- "${BASH_SOURCE[0]%/*}" && pwd)"
 HOST_SOURCE="${SCRIPT_DIR}/release-tag-publisher-host.swift"
-PROVISIONER_SOURCE="${SCRIPT_DIR}/release-tag-publisher-provision.swift"
 HOST_TEMP="$(/usr/bin/mktemp "${HOST_OUTPUT%/*}/.release-tag-publisher.XXXXXX")"
-PROVISIONER_TEMP="$(/usr/bin/mktemp "${PROVISIONER_OUTPUT%/*}/.release-tag-publisher-provision.XXXXXX")"
 cleanup() {
-  /bin/rm -f -- "${HOST_TEMP}" "${PROVISIONER_TEMP}"
+  /bin/rm -f -- "${HOST_TEMP}"
 }
 trap cleanup EXIT
 
@@ -100,17 +87,11 @@ COMMON=(
 )
 "${SWIFTC}" "${COMMON[@]}" "${HOST_SOURCE}" -o "${HOST_TEMP}" \
   -framework Foundation -framework Security -framework CryptoKit
-"${SWIFTC}" "${COMMON[@]}" "${PROVISIONER_SOURCE}" -o "${PROVISIONER_TEMP}" \
-  -framework Foundation -framework Security -framework CryptoKit
 
-/usr/bin/codesign --force --sign - --options runtime "${HOST_TEMP}"
-/usr/bin/codesign --force --sign - --options runtime "${PROVISIONER_TEMP}"
+/usr/bin/codesign --force --sign - "${HOST_TEMP}"
 /usr/bin/codesign --verify --strict --verbose=0 "${HOST_TEMP}"
-/usr/bin/codesign --verify --strict --verbose=0 "${PROVISIONER_TEMP}"
-/bin/chmod 755 "${HOST_TEMP}" "${PROVISIONER_TEMP}"
+/bin/chmod 755 "${HOST_TEMP}"
 /bin/mv -f -- "${HOST_TEMP}" "${HOST_OUTPUT}"
-/bin/mv -f -- "${PROVISIONER_TEMP}" "${PROVISIONER_OUTPUT}"
 trap - EXIT
 
 echo "Built release tag publisher host at ${HOST_OUTPUT}"
-echo "Built release tag publisher provisioner at ${PROVISIONER_OUTPUT}"

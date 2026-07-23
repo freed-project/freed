@@ -7,7 +7,6 @@ import {
   loadRulesets,
   RELEASE_TAG_CREATION_RULESET_NAME,
   RELEASE_TAG_IMMUTABILITY_RULESET_NAME,
-  RELEASE_TAG_LOCKDOWN_RULESET_NAME,
   verifyLiveReleaseTagAuthority,
 } from "./sync-github-rulesets.mjs";
 
@@ -32,46 +31,26 @@ function ghJson(args, { exec = execFileSync } = {}) {
   );
 }
 
-function ghPaginatedArray(endpoint, { exec = execFileSync } = {}) {
-  const pages = ghJson(
-    ["api", "--paginate", "--slurp", endpoint],
-    { exec },
-  );
-  if (
-    !Array.isArray(pages) ||
-    pages.length === 0 ||
-    !pages.every((page) => Array.isArray(page))
-  ) {
-    throw new Error("GitHub returned an invalid paginated ruleset listing.");
-  }
-  return pages.flat();
-}
-
 export function loadLiveReleaseTagRulesets(repo, { exec = execFileSync } = {}) {
-  const summary = ghPaginatedArray(
-    `repos/${repo}/rulesets?targets=tag&per_page=100`,
+  const summary = ghJson(
+    ["api", `repos/${repo}/rulesets?targets=tag&per_page=100`],
     { exec },
   );
-  const creations = summary.filter(
-    (item) => item.name === RELEASE_TAG_CREATION_RULESET_NAME,
+  const names = [
+    RELEASE_TAG_CREATION_RULESET_NAME,
+    RELEASE_TAG_IMMUTABILITY_RULESET_NAME,
+  ];
+  const matches = names.map((name) =>
+    summary.find((item) => item.name === name),
   );
-  const immutabilities = summary.filter(
-    (item) => item.name === RELEASE_TAG_IMMUTABILITY_RULESET_NAME,
-  );
-  if (creations.length === 0 || immutabilities.length === 0) {
+  if (matches.some((match) => !match?.id)) {
     throw new Error(
       `Live release tag creation and immutability rulesets are required for ${repo}. Release tags are blocked until a dedicated release GitHub App and trusted publisher are provisioned.`,
     );
   }
-  const lockdowns = summary.filter(
-    (item) => item.name === RELEASE_TAG_LOCKDOWN_RULESET_NAME,
+  return matches.map((match) =>
+    ghJson(["api", `repos/${repo}/rulesets/${match.id}`], { exec }),
   );
-  return [...creations, ...immutabilities, ...lockdowns].map((match) => {
-    if (!match?.id) {
-      throw new Error("A live release tag ruleset is missing its stable ID.");
-    }
-    return ghJson(["api", `repos/${repo}/rulesets/${match.id}`], { exec });
-  });
 }
 
 function main() {

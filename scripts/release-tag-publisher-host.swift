@@ -5,15 +5,10 @@ import Security
 
 private let productionConfigPath =
   "/Library/Application Support/Freed/release-tag-publisher.json"
-private let productionProvisionerPath =
-  "/Library/Application Support/Freed/release-tag-publisher-provision"
-private let keychainService = "freed-release-tag-publisher"
-private let keychainAccount = "github-app-private-key"
 private let productionAPIBase = "https://api.github.com"
 private let maximumConfigBytes = 32 * 1_024
 private let maximumKeyBytes = 32 * 1_024
 private let requestTimeout: TimeInterval = 30
-private let requiredRuntimeSignatureFlag: UInt32 = 0x0001_0000
 
 private struct HostFailure: Error, CustomStringConvertible {
   let description: String
@@ -29,19 +24,6 @@ private struct PublisherBinding: Decodable {
   let appSlug: String
   let publisherPath: String
   let publisherSha256: String
-  let publisherCdHash: String
-  let provisionerPath: String
-  let provisionerSha256: String
-  let provisionerCdHash: String
-  let nativePairSha256: String
-}
-
-private struct NativePairIdentity {
-  let publisherSha256: String
-  let publisherCdHash: String
-  let provisionerSha256: String
-  let provisionerCdHash: String
-  let nativePairSha256: String
 }
 
 private struct ParsedCommand {
@@ -207,7 +189,6 @@ private func requireTrustedFile(
   let metadata = try fileMetadata(path, followSymlink: true)
   guard (link.st_mode & S_IFMT) != S_IFLNK,
     (metadata.st_mode & S_IFMT) == S_IFREG,
-    metadata.st_nlink == 1,
     metadata.st_mode & 0o022 == 0,
     !executable || metadata.st_mode & 0o111 != 0
   else {
@@ -258,132 +239,6 @@ private func sha256(_ data: Data) -> String {
   SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
 }
 
-private func nativePairSha256(_ binding: PublisherBinding) -> String {
-  sha256(Data([
-    "freed-release-tag-publisher-native-pair-v2",
-    binding.publisherPath,
-    binding.publisherSha256,
-    binding.publisherCdHash,
-    binding.provisionerPath,
-    binding.provisionerSha256,
-    binding.provisionerCdHash,
-    "",
-  ].joined(separator: "\n").utf8))
-}
-
-private func codeHash(_ information: CFDictionary?) throws -> String {
-  guard let dictionary = information as? [CFString: Any],
-    let value = dictionary[kSecCodeInfoUnique] as? Data,
-    value.count >= 20, value.count <= 32
-  else { try fail("A publisher code signature has no canonical CDHash.") }
-  return value.map { String(format: "%02x", $0) }.joined()
-}
-
-private func requireHardenedRuntimeFlags(
-  _ information: CFDictionary?,
-  label: String
-) throws {
-  guard let dictionary = information as? [CFString: Any],
-    let flags = dictionary[kSecCodeInfoFlags] as? NSNumber,
-    flags.uint32Value & requiredRuntimeSignatureFlag == requiredRuntimeSignatureFlag
-  else {
-    try fail("The \(label) is not protected by the hardened runtime.")
-  }
-}
-
-private func requireLiveHardenedRuntimeStatus(
-  _ information: CFDictionary?,
-  label: String
-) throws {
-  guard let dictionary = information as? [CFString: Any],
-    let status = dictionary[kSecCodeInfoStatus] as? NSNumber,
-    status.uint32Value & requiredRuntimeSignatureFlag == requiredRuntimeSignatureFlag
-  else {
-    try fail("The live \(label) does not have the hardened runtime kernel status.")
-  }
-}
-
-private func liveCodeSigningInformation(_ code: SecCode) throws -> CFDictionary {
-  // Security.framework documents Code and StaticCode inputs, but Swift imports
-  // this C API with the narrower SecStaticCode type.
-  let dynamicCode = unsafeBitCast(code, to: SecStaticCode.self)
-  var information: CFDictionary?
-  guard SecCodeCopySigningInformation(
-    dynamicCode,
-    SecCSFlags(rawValue: kSecCSSigningInformation | kSecCSDynamicInformation),
-    &information
-  ) == errSecSuccess, let information else {
-    try fail("The live publisher code status cannot be inspected.")
-  }
-  return information
-}
-
-private func runningCodeHash() throws -> String {
-  var code: SecCode?
-  guard SecCodeCopySelf(SecCSFlags(), &code) == errSecSuccess, let code else {
-    try fail("The running publisher code identity is unavailable.")
-  }
-  guard SecCodeCheckValidity(
-    code,
-    SecCSFlags(rawValue: kSecCSStrictValidate),
-    nil
-  ) == errSecSuccess else {
-    try fail("The running publisher code signature is invalid.")
-  }
-  let liveInformation = try liveCodeSigningInformation(code)
-  try requireHardenedRuntimeFlags(liveInformation, label: "live publisher")
-  try requireLiveHardenedRuntimeStatus(liveInformation, label: "publisher")
-  let liveHash = try codeHash(liveInformation)
-  var staticCode: SecStaticCode?
-  guard SecCodeCopyStaticCode(code, SecCSFlags(), &staticCode) == errSecSuccess,
-    let staticCode
-  else { try fail("The running publisher static code identity is unavailable.") }
-  var information: CFDictionary?
-  guard SecCodeCopySigningInformation(
-    staticCode,
-    SecCSFlags(rawValue: kSecCSSigningInformation),
-    &information
-  ) == errSecSuccess else {
-    try fail("The running publisher code identity cannot be inspected.")
-  }
-  try requireHardenedRuntimeFlags(
-    information,
-    label: "kernel-validated publisher static code")
-  let staticHash = try codeHash(information)
-  guard liveHash == staticHash else {
-    try fail("The live publisher identity does not match its static code.")
-  }
-  return liveHash
-}
-
-private func staticCodeHash(_ path: String) throws -> String {
-  var code: SecStaticCode?
-  guard SecStaticCodeCreateWithPath(
-    URL(fileURLWithPath: path) as CFURL,
-    SecCSFlags(),
-    &code
-  ) == errSecSuccess, let code else {
-    try fail("A bound publisher code identity is unavailable.")
-  }
-  guard SecStaticCodeCheckValidity(
-    code,
-    SecCSFlags(rawValue: kSecCSStrictValidate),
-    nil
-  ) == errSecSuccess else {
-    try fail("A bound publisher code signature is invalid.")
-  }
-  var information: CFDictionary?
-  guard SecCodeCopySigningInformation(
-    code,
-    SecCSFlags(rawValue: kSecCSSigningInformation),
-    &information
-  ) == errSecSuccess else {
-    try fail("A bound publisher code identity cannot be inspected.")
-  }
-  try requireHardenedRuntimeFlags(information, label: "bound publisher static code")
-  return try codeHash(information)
-}
-
 private func validateLowercaseHex(_ value: String, count: Int, label: String) throws {
   guard value.count == count,
     value.unicodeScalars.allSatisfy({
@@ -406,8 +261,7 @@ private func loadBinding(_ path: String) throws -> PublisherBinding {
   let object = try JSONSerialization.jsonObject(with: data)
   let expectedKeys: Set<String> = [
     "schemaVersion", "purpose", "status", "repo", "appId", "appSlug",
-    "publisherPath", "publisherSha256", "publisherCdHash", "provisionerPath",
-    "provisionerSha256", "provisionerCdHash", "nativePairSha256",
+    "publisherPath", "publisherSha256",
   ]
   guard let dictionary = object as? [String: Any], Set(dictionary.keys) == expectedKeys else {
     try fail("The publisher binding contains unsupported or missing fields.")
@@ -418,44 +272,23 @@ private func loadBinding(_ path: String) throws -> PublisherBinding {
   } catch {
     try fail("The publisher binding has invalid field types.")
   }
-  guard binding.schemaVersion == 3,
+  guard binding.schemaVersion == 1,
     binding.purpose == "freed-release-tag-publisher-binding",
-    binding.status == "active",
+    ["active", "pending"].contains(binding.status),
     binding.repo == "freed-project/freed",
-    binding.appId == 4_296_969,
-    binding.appSlug == "freed-release-publisher"
+    binding.appId > 0,
+    !binding.appSlug.isEmpty
   else {
     try fail("The publisher binding identity is invalid.")
   }
   try validateLowercaseHex(binding.publisherSha256, count: 64, label: "publisher digest")
-  guard (40...64).contains(binding.publisherCdHash.count) else {
-    try fail("The publisher CDHash has an invalid length.")
-  }
-  try validateLowercaseHex(
-    binding.publisherCdHash,
-    count: binding.publisherCdHash.count,
-    label: "publisher CDHash")
-  try validateLowercaseHex(
-    binding.provisionerSha256, count: 64, label: "publisher provisioner digest")
-  guard (40...64).contains(binding.provisionerCdHash.count) else {
-    try fail("The publisher provisioner CDHash has an invalid length.")
-  }
-  try validateLowercaseHex(
-    binding.provisionerCdHash,
-    count: binding.provisionerCdHash.count,
-    label: "publisher provisioner CDHash")
-  try validateLowercaseHex(
-    binding.nativePairSha256, count: 64, label: "publisher native pair digest")
-  guard nativePairSha256(binding) == binding.nativePairSha256 else {
-    try fail("The publisher native pair digest is invalid.")
-  }
   return binding
 }
 
 private func validateBinding(
   _ binding: PublisherBinding,
   parsed: ParsedCommand
-) throws -> NativePairIdentity {
+) throws -> String {
   let executable = try currentExecutablePath()
   #if RELEASE_TAG_PUBLISHER_HOST_TESTING
     let testing = parsed.configPath != productionConfigPath
@@ -468,230 +301,108 @@ private func validateBinding(
   guard executable == boundPublisher else {
     try fail("The running publisher does not match the bound publisher path.")
   }
-  let publisherDigest = sha256(
-    try readBoundedFile(executable, maximumBytes: 64 * 1_024 * 1_024))
-  guard publisherDigest == binding.publisherSha256 else {
+  let digest = sha256(try readBoundedFile(executable, maximumBytes: 64 * 1_024 * 1_024))
+  guard digest == binding.publisherSha256 else {
     try fail("The running publisher does not match the bound publisher digest.")
-  }
-  let kernelPublisherCdHash = try runningCodeHash()
-  let staticPublisherCdHash = try staticCodeHash(boundPublisher)
-  guard kernelPublisherCdHash == binding.publisherCdHash,
-    staticPublisherCdHash == binding.publisherCdHash
-  else {
-    try fail("The mapped publisher code does not match the bound static code identity.")
-  }
-  let boundProvisioner = try canonicalExistingPath(
-    binding.provisionerPath, label: "bound publisher provisioner")
-  #if !RELEASE_TAG_PUBLISHER_HOST_TESTING
-    guard boundProvisioner == productionProvisionerPath else {
-      try fail("The publisher provisioner does not use its fixed production path.")
-    }
-  #endif
-  try requireTrustedFile(
-    boundProvisioner, executable: true, testingOwnerAllowed: testing)
-  try requireTrustedParents(boundProvisioner, testingOwnerAllowed: testing)
-  let provisionerDigest = sha256(
-    try readBoundedFile(boundProvisioner, maximumBytes: 64 * 1_024 * 1_024))
-  guard provisionerDigest == binding.provisionerSha256 else {
-    try fail("The publisher provisioner does not match the bound provisioner digest.")
-  }
-  let staticProvisionerCdHash = try staticCodeHash(boundProvisioner)
-  guard staticProvisionerCdHash == binding.provisionerCdHash else {
-    try fail("The publisher provisioner does not match its bound static code identity.")
   }
   guard parsed.values["--repo"] == binding.repo else {
     try fail("Publisher arguments do not match the root-owned App binding.")
   }
+  if parsed.name == "publish" {
+    guard binding.status == "active" else {
+      try fail("The release tag publisher binding is not active.")
+    }
+  }
   if parsed.name != "publish" {
-    guard parsed.values["--app-id"] == String(binding.appId),
-      parsed.values["--app-slug"] == binding.appSlug
+    guard Int(parsed.values["--app-id"] ?? "") == binding.appId,
+      parsed.values["--app-slug"]?.lowercased() == binding.appSlug.lowercased()
     else {
       try fail("Publisher arguments do not match the root-owned App binding.")
     }
   }
-  return NativePairIdentity(
-    publisherSha256: publisherDigest,
-    publisherCdHash: kernelPublisherCdHash,
-    provisionerSha256: provisionerDigest,
-    provisionerCdHash: staticProvisionerCdHash,
-    nativePairSha256: binding.nativePairSha256
-  )
+  return digest
 }
 
-private func trustedApplicationData(_ path: String) throws -> Data {
-  var application: SecTrustedApplication?
-  guard path.withCString({ SecTrustedApplicationCreateFromPath($0, &application) })
-    == errSecSuccess, let application
-  else { try fail("A publisher Keychain application identity could not be created.") }
-  var data: CFData?
-  guard SecTrustedApplicationCopyData(application, &data) == errSecSuccess, let data else {
-    try fail("A publisher Keychain application identity is unreadable.")
+private func productionPrivateKeyPath() throws -> String {
+  guard let account = getpwuid(getuid()) else {
+    try fail("The current user's home directory is unavailable.")
   }
-  return data as Data
+  return URL(fileURLWithPath: String(cString: account.pointee.pw_dir))
+    .appendingPathComponent(".freed")
+    .appendingPathComponent("credentials")
+    .appendingPathComponent("github-apps")
+    .appendingPathComponent("freed-release-publisher.private-key.pem")
+    .path
 }
 
-private func exactKeychainACL(
-  _ item: SecKeychainItem,
-  host: String,
-  provisioner: String
-) throws -> Bool {
-  var access: SecAccess?
-  guard SecKeychainItemCopyAccess(item, &access) == errSecSuccess, let access else {
-    try fail("The release App Keychain ACL is unavailable.")
+private func readPrivateKeyFile(_ path: String) throws -> Data {
+  let canonical = try canonicalExistingPath(path, label: "release App private key")
+  guard canonical == path else {
+    try fail("The release App private key must use its fixed non-symlink path.")
   }
-  let expected = Set(try [host, provisioner].map(trustedApplicationData))
-  guard expected.count == 2,
-    let aclList = SecAccessCopyMatchingACLList(
-      access,
-      kSecACLAuthorizationDecrypt
-    ) as? [SecACL], !aclList.isEmpty
-  else { return false }
-  for acl in aclList {
-    var applications: CFArray?
-    var description: CFString?
-    var selector = SecKeychainPromptSelector()
-    guard SecACLCopyContents(acl, &applications, &description, &selector) == errSecSuccess,
-      let applications = applications as? [SecTrustedApplication],
-      applications.count == 2,
-      selector == SecKeychainPromptSelector()
-    else { return false }
-    let actual = Set(try applications.map { application in
-      var data: CFData?
-      guard SecTrustedApplicationCopyData(application, &data) == errSecSuccess,
-        let data
-      else { try fail("A release App Keychain ACL identity is unreadable.") }
-      return data as Data
-    })
-    guard actual.count == 2, actual == expected else { return false }
-  }
-  return true
-}
-
-private func uniqueKeychainItem(host: String, provisioner: String) throws -> SecKeychainItem {
-  let referenceQuery: [CFString: Any] = [
-    kSecClass: kSecClassGenericPassword,
-    kSecAttrService: keychainService,
-    kSecAttrAccount: keychainAccount,
-    kSecReturnRef: true,
-    kSecMatchLimit: kSecMatchLimitAll,
-    kSecUseAuthenticationUI: kSecUseAuthenticationUIFail,
-  ]
-  var reference: CFTypeRef?
-  let referenceStatus = SecItemCopyMatching(referenceQuery as CFDictionary, &reference)
-  guard referenceStatus == errSecSuccess,
-    let items = reference as? [SecKeychainItem],
-    items.count == 1,
-    let item = items.first
-  else {
-    try fail("The release GitHub App private key must be one unique Keychain item.")
-  }
-  guard try exactKeychainACL(item, host: host, provisioner: provisioner) else {
-    try fail("The release App key ACL does not match the exact bound native pair.")
-  }
-  return item
-}
-
-private func readKeychainSecret(host: String, provisioner: String) throws -> Data {
-  let item = try uniqueKeychainItem(host: host, provisioner: provisioner)
-  var length: UInt32 = 0
-  var content: UnsafeMutableRawPointer?
-  let copyStatus = SecKeychainItemCopyContent(
-    item,
-    nil,
-    nil,
-    &length,
-    &content
-  )
-  guard copyStatus == errSecSuccess, let content else {
-    try fail("The release GitHub App private key is unavailable in Keychain.")
-  }
-  defer {
-    _ = memset_s(content, Int(length), 0, Int(length))
-    SecKeychainItemFreeContent(nil, content)
-  }
-  guard length > 0, length <= UInt32(maximumKeyBytes) else {
-    try fail("The release GitHub App private key is empty or oversized.")
-  }
-  var secret = Data(count: Int(length))
-  secret.withUnsafeMutableBytes { destination in
-    destination.baseAddress?.copyMemory(from: content, byteCount: Int(length))
-  }
-  do {
-    guard try exactKeychainACL(item, host: host, provisioner: provisioner) else {
-      try fail("The release App key ACL changed while its secret was being read.")
+  var current = URL(fileURLWithPath: path).deletingLastPathComponent().path
+  while true {
+    let parent = try fileMetadata(current, followSymlink: true)
+    guard (parent.st_mode & S_IFMT) == S_IFDIR,
+      [uid_t(0), getuid()].contains(parent.st_uid),
+      parent.st_mode & 0o022 == 0
+    else {
+      try fail("The release App private key has an unsafe parent directory.")
     }
-    return secret
-  } catch {
-    secret.resetBytes(in: 0..<secret.count)
-    throw error
+    let next = URL(fileURLWithPath: current).deletingLastPathComponent().path
+    if next == current { break }
+    current = next
   }
+  let descriptor = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
+  guard descriptor >= 0 else {
+    try fail("The release App private key cannot be opened safely.")
+  }
+  defer { close(descriptor) }
+  var metadata = stat()
+  guard fstat(descriptor, &metadata) == 0,
+    (metadata.st_mode & S_IFMT) == S_IFREG,
+    metadata.st_uid == getuid(),
+    metadata.st_nlink == 1,
+    metadata.st_mode & 0o7777 == 0o600
+  else {
+    try fail("The release App private key must be a mode 0600 current-user file with one link.")
+  }
+  let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: false)
+  let data = handle.readData(ofLength: maximumKeyBytes + 1)
+  guard !data.isEmpty, data.count <= maximumKeyBytes else {
+    try fail("The release App private key is empty or exceeds its size limit.")
+  }
+  return data
 }
 
-private func readPrivateKey(_ parsed: ParsedCommand, binding: PublisherBinding) throws -> Data {
+private func readPrivateKey(_ parsed: ParsedCommand) throws -> Data {
   #if RELEASE_TAG_PUBLISHER_HOST_TESTING
     if let path = parsed.testKeyFile {
-      let canonical = try canonicalExistingPath(path, label: "testing private key")
-      guard canonical == path else { try fail("The testing private key path must be canonical.") }
-      let metadata = try fileMetadata(path, followSymlink: true)
-      guard (metadata.st_mode & S_IFMT) == S_IFREG,
-        metadata.st_uid == getuid(),
-        metadata.st_mode & 0o077 == 0
-      else {
-        try fail("The testing private key must be a private file owned by the current user.")
-      }
-      return try readBoundedFile(path, maximumBytes: maximumKeyBytes)
+      return try readPrivateKeyFile(path)
     }
   #endif
-  return try readKeychainSecret(
-    host: binding.publisherPath,
-    provisioner: binding.provisionerPath)
+  return try readPrivateKeyFile(try productionPrivateKeyPath())
 }
 
-private func privateRSAKey(from pem: inout Data) throws -> SecKey {
-  guard !pem.isEmpty, pem.count <= maximumKeyBytes else {
-    try fail("The release App key is empty or oversized.")
+private func privateRSAKey(from pem: Data) throws -> SecKey {
+  guard let text = String(data: pem, encoding: .utf8) else {
+    try fail("The release App key is not UTF-8 PKCS1 PEM.")
   }
-  let begin = Data("-----BEGIN RSA PRIVATE KEY-----".utf8)
-  let end = Data("-----END RSA PRIVATE KEY-----".utf8)
-  guard pem.starts(with: begin) else {
+  let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+  let begin = "-----BEGIN RSA PRIVATE KEY-----"
+  let end = "-----END RSA PRIVATE KEY-----"
+  guard trimmed.hasPrefix(begin), trimmed.hasSuffix(end),
+    !trimmed.contains("BEGIN PRIVATE KEY")
+  else {
     try fail("The release App key must use PKCS1 RSA PRIVATE KEY PEM.")
   }
-  var bodyStart = begin.count
-  if pem.count >= bodyStart + 2, pem[bodyStart] == 0x0d, pem[bodyStart + 1] == 0x0a {
-    bodyStart += 2
-  } else if pem.count > bodyStart, pem[bodyStart] == 0x0a {
-    bodyStart += 1
-  } else {
-    try fail("The release App PKCS1 header must end with a newline.")
-  }
-  var terminalNewlineBytes = 0
-  if pem.last == 0x0a {
-    terminalNewlineBytes = pem.count >= 2 && pem[pem.count - 2] == 0x0d ? 2 : 1
-  }
-  guard pem.count >= bodyStart + end.count + terminalNewlineBytes else {
-    try fail("The release App key must use PKCS1 RSA PRIVATE KEY PEM.")
-  }
-  let footerStart = pem.count - terminalNewlineBytes - end.count
-  guard footerStart > bodyStart,
-    pem[footerStart..<(footerStart + end.count)].elementsEqual(end)
-  else { try fail("The release App key must use PKCS1 RSA PRIVATE KEY PEM.") }
-  var encoded = Data()
-  encoded.reserveCapacity(footerStart - bodyStart)
-  defer { encoded.resetBytes(in: 0..<encoded.count) }
-  for byte in pem[bodyStart..<footerStart] {
-    switch byte {
-    case 0x41...0x5a, 0x61...0x7a, 0x30...0x39, 0x2b, 0x2f, 0x3d:
-      encoded.append(byte)
-    case 0x0a, 0x0d:
-      continue
-    default:
-      try fail("The release App PKCS1 key body contains invalid characters.")
-    }
-  }
-  guard !encoded.isEmpty, var der = Data(base64Encoded: encoded) else {
+  let bodyStart = trimmed.index(trimmed.startIndex, offsetBy: begin.count)
+  let bodyEnd = trimmed.index(trimmed.endIndex, offsetBy: -end.count)
+  let body = trimmed[bodyStart..<bodyEnd]
+    .filter { !$0.isWhitespace }
+  guard !body.isEmpty, let der = Data(base64Encoded: String(body)) else {
     try fail("The release App PKCS1 key body is invalid base64.")
   }
-  defer { der.resetBytes(in: 0..<der.count) }
   let attributes: [CFString: Any] = [
     kSecAttrKeyType: kSecAttrKeyTypeRSA,
     kSecAttrKeyClass: kSecAttrKeyClassPrivate,
@@ -833,7 +544,7 @@ private func installationContext(
   let app = try jsonObject(appResponse.data, label: "GitHub App")
   let expectedAppPermissions = ["contents": "write", "metadata": "read"]
   guard app["id"] as? Int == binding.appId,
-    app["slug"] as? String == binding.appSlug,
+    (app["slug"] as? String)?.lowercased() == binding.appSlug.lowercased(),
     app["name"] as? String == "Freed Release Publisher",
     app["external_url"] as? String == "https://freed.wtf",
     app["events"] as? [String] == [],
@@ -842,7 +553,7 @@ private func installationContext(
     owner["login"] as? String == "freed-project",
     owner["type"] as? String == "Organization"
   else {
-    try fail("The Keychain key does not authenticate the exact private Freed Release Publisher App.")
+    try fail("The local credential does not authenticate the exact private Freed Release Publisher App.")
   }
 
   let installationResponse = try client.request(
@@ -855,9 +566,7 @@ private func installationContext(
   guard let installationId = installation["id"] as? Int, installationId > 0,
     let account = installation["account"] as? [String: Any],
     let accountLogin = account["login"] as? String,
-    accountLogin == "freed-project",
     let accountType = account["type"] as? String,
-    accountType == "Organization",
     let selection = installation["repository_selection"] as? String,
     selection == "selected",
     let permissions = installation["permissions"] as? [String: String],
@@ -1044,87 +753,6 @@ private func remoteReceipt(
   return data
 }
 
-private func verifyAnnotatedTag(
-  binding: PublisherBinding,
-  tag: String,
-  commit: String,
-  expectedTagObjectSHA: String?,
-  token: String,
-  client: GitHubClient
-) throws -> String? {
-  let refResponse = try client.request(
-    method: "GET",
-    path: "/repos/\(binding.repo)/git/ref/tags/\(tag)",
-    token: token,
-    accepted: [200, 404]
-  )
-  if refResponse.status == 404 { return nil }
-  let refObject = try jsonObject(refResponse.data, label: "release tag ref")
-  guard let target = refObject["object"] as? [String: Any],
-    target["type"] as? String == "tag",
-    let tagObjectSHA = target["sha"] as? String
-  else {
-    try fail("The release tag ref does not point at one annotated tag object.")
-  }
-  try validateLowercaseHex(tagObjectSHA, count: 40, label: "annotated tag object SHA")
-  if let expectedTagObjectSHA, tagObjectSHA != expectedTagObjectSHA {
-    try fail("The created release tag ref does not point at the expected annotated tag object.")
-  }
-  try verifyAnnotatedTagObject(
-    binding: binding,
-    tag: tag,
-    commit: commit,
-    tagObjectSHA: tagObjectSHA,
-    token: token,
-    client: client
-  )
-  return tagObjectSHA
-}
-
-private func verifyAnnotatedTagObject(
-  binding: PublisherBinding,
-  tag: String,
-  commit: String,
-  tagObjectSHA: String,
-  token: String,
-  client: GitHubClient
-) throws {
-  try validateLowercaseHex(tagObjectSHA, count: 40, label: "annotated tag object SHA")
-  let tagResponse = try client.request(
-    method: "GET",
-    path: "/repos/\(binding.repo)/git/tags/\(tagObjectSHA)",
-    token: token,
-    accepted: [200]
-  )
-  let annotatedTag = try jsonObject(tagResponse.data, label: "annotated release tag")
-  guard annotatedTag["tag"] as? String == tag,
-    annotatedTag["message"] as? String == "Freed release \(tag)",
-    let targetCommit = annotatedTag["object"] as? [String: Any],
-    targetCommit["type"] as? String == "commit",
-    targetCommit["sha"] as? String == commit
-  else {
-    try fail("The annotated release tag does not identify the exact approved release.")
-  }
-}
-
-private func emitPublishResult(
-  binding: PublisherBinding,
-  tag: String,
-  commit: String,
-  tagObjectSHA: String,
-  recovered: Bool
-) throws {
-  try emitJSON([
-    "schemaVersion": AnyEncodable(1),
-    "purpose": AnyEncodable("freed-release-tag-publish-result"),
-    "repo": AnyEncodable(binding.repo),
-    "tag": AnyEncodable(tag),
-    "commit": AnyEncodable(commit),
-    "tagObjectSha": AnyEncodable(tagObjectSHA),
-    "recovered": AnyEncodable(recovered),
-  ])
-}
-
 private func publish(
   binding: PublisherBinding,
   parsed: ParsedCommand,
@@ -1190,6 +818,9 @@ private func publish(
 
   var context = try installationContext(binding: binding, key: key, client: client)
   do {
+    guard try remoteBranchSHA(
+      binding: binding, branch: branch, token: context.token, client: client) == commit
+    else { try fail("The protected remote branch does not point at the requested release commit.") }
     let committedReceipt = try remoteReceipt(
       binding: binding,
       path: releaseFile,
@@ -1202,27 +833,15 @@ private func publish(
     }
     try validateReceipt(committedReceipt, tag: tag, channel: channel)
 
-    if let recoveredTagObjectSHA = try verifyAnnotatedTag(
-      binding: binding,
-      tag: tag,
-      commit: commit,
-      expectedTagObjectSHA: nil,
+    let absent = try client.request(
+      method: "GET",
+      path: "/repos/\(binding.repo)/git/ref/tags/\(tag)",
       token: context.token,
-      client: client
-    ) {
-      try revokeToken(&context, client: client)
-      try emitPublishResult(
-        binding: binding,
-        tag: tag,
-        commit: commit,
-        tagObjectSHA: recoveredTagObjectSHA,
-        recovered: true
-      )
-      return
+      accepted: [200, 404]
+    )
+    guard absent.status == 404 else {
+      try fail("The requested immutable release tag already exists.")
     }
-    guard try remoteBranchSHA(
-      binding: binding, branch: branch, token: context.token, client: client) == commit
-    else { try fail("The protected remote branch does not point at the requested release commit.") }
     let tagResponse = try client.request(
       method: "POST",
       path: "/repos/\(binding.repo)/git/tags",
@@ -1239,15 +858,6 @@ private func publish(
     guard let tagObjectSHA = tagObject["sha"] as? String else {
       try fail("GitHub did not return the annotated tag object SHA.")
     }
-    try validateLowercaseHex(tagObjectSHA, count: 40, label: "annotated tag object SHA")
-    try verifyAnnotatedTagObject(
-      binding: binding,
-      tag: tag,
-      commit: commit,
-      tagObjectSHA: tagObjectSHA,
-      token: context.token,
-      client: client
-    )
     guard try remoteBranchSHA(
       binding: binding, branch: branch, token: context.token, client: client) == commit
     else { try fail("The protected remote branch changed before tag creation.") }
@@ -1258,24 +868,38 @@ private func publish(
       body: ["ref": "refs/tags/\(tag)", "sha": tagObjectSHA],
       accepted: [201]
     )
-    guard try verifyAnnotatedTag(
-      binding: binding,
-      tag: tag,
-      commit: commit,
-      expectedTagObjectSHA: tagObjectSHA,
+    let refResponse = try client.request(
+      method: "GET",
+      path: "/repos/\(binding.repo)/git/ref/tags/\(tag)",
       token: context.token,
-      client: client
-    ) == tagObjectSHA else {
-      try fail("The created release tag could not be verified.")
-    }
-    try revokeToken(&context, client: client)
-    try emitPublishResult(
-      binding: binding,
-      tag: tag,
-      commit: commit,
-      tagObjectSHA: tagObjectSHA,
-      recovered: false
+      accepted: [200]
     )
+    let refObject = try jsonObject(refResponse.data, label: "created release tag ref")
+    guard let target = refObject["object"] as? [String: Any],
+      target["type"] as? String == "tag",
+      target["sha"] as? String == tagObjectSHA
+    else { try fail("The created release tag ref does not point at the annotated tag object.") }
+    let verifyTagResponse = try client.request(
+      method: "GET",
+      path: "/repos/\(binding.repo)/git/tags/\(tagObjectSHA)",
+      token: context.token,
+      accepted: [200]
+    )
+    let verifiedTag = try jsonObject(verifyTagResponse.data, label: "verified annotated tag")
+    guard verifiedTag["tag"] as? String == tag,
+      let targetCommit = verifiedTag["object"] as? [String: Any],
+      targetCommit["type"] as? String == "commit",
+      targetCommit["sha"] as? String == commit
+    else { try fail("The annotated release tag does not identify the approved commit.") }
+    try revokeToken(&context, client: client)
+    try emitJSON([
+      "schemaVersion": AnyEncodable(1),
+      "purpose": AnyEncodable("freed-release-tag-publish-result"),
+      "repo": AnyEncodable(binding.repo),
+      "tag": AnyEncodable(tag),
+      "commit": AnyEncodable(commit),
+      "tagObjectSha": AnyEncodable(tagObjectSHA),
+    ])
   } catch {
     if !context.token.isEmpty { try? revokeToken(&context, client: client) }
     throw error
@@ -1302,10 +926,10 @@ private func main() -> Int32 {
     clearEnvironment()
     let parsed = try parseCommand(rawArguments)
     let binding = try loadBinding(parsed.configPath)
-    let nativePair = try validateBinding(binding, parsed: parsed)
+    let digest = try validateBinding(binding, parsed: parsed)
     if parsed.name == "attest" {
       try emitJSON([
-        "schemaVersion": AnyEncodable(3),
+        "schemaVersion": AnyEncodable(1),
         "purpose": AnyEncodable("freed-release-tag-publisher-readiness"),
         "repo": AnyEncodable(binding.repo),
         "appId": AnyEncodable(binding.appId),
@@ -1315,17 +939,13 @@ private func main() -> Int32 {
         "allowsArbitraryRefs": AnyEncodable(false),
         "allowsUpdates": AnyEncodable(false),
         "allowsDeletions": AnyEncodable(false),
-        "publisherSha256": AnyEncodable(nativePair.publisherSha256),
-        "publisherCdHash": AnyEncodable(nativePair.publisherCdHash),
-        "provisionerSha256": AnyEncodable(nativePair.provisionerSha256),
-        "provisionerCdHash": AnyEncodable(nativePair.provisionerCdHash),
-        "nativePairSha256": AnyEncodable(nativePair.nativePairSha256),
+        "digest": AnyEncodable(digest),
       ])
       return 0
     }
-    var secret = try readPrivateKey(parsed, binding: binding)
+    var secret = try readPrivateKey(parsed)
     defer { secret.resetBytes(in: 0..<secret.count) }
-    let key = try privateRSAKey(from: &secret)
+    let key = try privateRSAKey(from: secret)
     secret.resetBytes(in: 0..<secret.count)
     let client = try GitHubClient(base: parsed.apiBase)
 

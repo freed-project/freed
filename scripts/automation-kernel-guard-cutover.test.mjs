@@ -524,23 +524,6 @@ function waitForPath(filePath) {
   }
 }
 
-function waitForProcessExit(pid) {
-  assert.equal(Number.isSafeInteger(pid) && pid > 0, true);
-  const deadline = Date.now() + 10_000;
-  while (true) {
-    try {
-      process.kill(pid, 0);
-    } catch (error) {
-      if (error?.code === "ESRCH") return;
-      throw error;
-    }
-    if (Date.now() >= deadline) {
-      throw new Error(`Timed out waiting for killed process ${pid} to exit.`);
-    }
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-  }
-}
-
 function spawnLegacyWriterReplacement(writerPath, readyPath) {
   const source = `
     import { closeSync, fsyncSync, openSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -722,7 +705,6 @@ function runCutoverKilledAtCheckpoint(
       return error?.signal === "SIGKILL";
     },
   );
-  waitForProcessExit(killedProcess.pid);
 }
 
 function runSupersedeKilledAtCheckpoint(
@@ -775,7 +757,6 @@ function runSupersedeKilledAtCheckpoint(
       return error?.signal === "SIGKILL";
     },
   );
-  waitForProcessExit(killedProcess.pid);
 }
 
 function prepareSupersedeWriteAheadCrash(t, { occurrence = 1 } = {}) {
@@ -4666,36 +4647,6 @@ test("existing legacy guard directory keeps its inode and blocks old stale takeo
   } catch (error) {
     assert.equal(error?.code, "EPERM");
   }
-});
-
-test("expected-missing guard retry completes from permanent owner with missing inner lock", (t) => {
-  const fixture = createFixture(t);
-  const plan = planFixture(fixture);
-  const paths = automationKernelGuardCutoverPaths(fixture.stateRoot);
-  const guard = paths.guards.events;
-  privateDirectory(guard.directory);
-  writeFileSync(guard.owner, automationKernelGuardMarkerBytes(), {
-    mode: 0o600,
-  });
-
-  const result = applyAutomationKernelGuardCutover({
-    plan,
-    ownerConfirmationFile: fixture.confirmationFile,
-  });
-
-  assert.equal(result.changed, true);
-  assert.deepEqual(
-    readFileSync(guard.owner),
-    automationKernelGuardMarkerBytes(),
-  );
-  assert.deepEqual(
-    readFileSync(guard.inner),
-    automationKernelGuardMarkerBytes(),
-  );
-  assert.equal(
-    inspectAutomationKernelGuardCutover(fixture.stateRoot).ready,
-    true,
-  );
 });
 
 test("existing stale writer conversion never overwrites a replacement live old writer", (t) => {

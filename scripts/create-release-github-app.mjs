@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 
-import { execFileSync, spawnSync } from "node:child_process";
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import {
+  createPrivateKey,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from "node:crypto";
 import {
   closeSync,
   constants,
@@ -9,17 +14,15 @@ import {
   fchmodSync,
   fstatSync,
   fsyncSync,
-  linkSync,
   lstatSync,
+  linkSync,
   mkdirSync,
   openSync,
-  readSync,
-  readdirSync,
   realpathSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
-  writeSync,
 } from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -30,23 +33,16 @@ import { verifyReleaseTagPublisherInstallationReadiness } from "./lib/release-ta
 
 export const RELEASE_GITHUB_APP_ORGANIZATION = "freed-project";
 export const RELEASE_GITHUB_APP_REPO = "freed-project/freed";
-export const RELEASE_GITHUB_APP_ID = 4_296_969;
 export const RELEASE_GITHUB_APP_NAME = "Freed Release Publisher";
 export const RELEASE_GITHUB_APP_SLUG = "freed-release-publisher";
-export const RELEASE_GITHUB_APP_OPERATION_ID_ENV =
-  "FREED_RELEASE_GITHUB_APP_OPERATION_ID";
 export const RELEASE_TAG_PUBLISHER_PATH =
   "/Library/Application Support/Freed/release-tag-publisher";
-export const RELEASE_TAG_PUBLISHER_PROVISIONER_PATH =
-  "/Library/Application Support/Freed/release-tag-publisher-provision";
 
 const CALLBACK_PATH = "/github-app/callback";
 const BOOTSTRAP_PATH = "/";
 const MANIFEST_TIMEOUT_MS = 15 * 60 * 1000;
 const INSTALLATION_TIMEOUT_MS = 15 * 60 * 1000;
 const INSTALLATION_POLL_MS = 2_000;
-const RELEASE_TAG_PUBLISHER_VERIFY_TIMEOUT_MS = 30_000;
-const DARWIN_O_CLOEXEC = 0x01000000;
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 export const RELEASE_TAG_PUBLISHER_INSTALLER_PATH = path.join(
   SCRIPT_DIRECTORY,
@@ -123,6 +119,96 @@ function openPrivateDirectory(directory, { recursive, label }) {
   }
 }
 
+function verifyCurrentUserDirectory(directory, label) {
+  if (
+    !path.isAbsolute(directory) ||
+    realpathSync(directory) !== directory
+  ) {
+    throw new Error(`${label} must use a canonical absolute path.`);
+  }
+  const link = lstatSync(directory);
+  const metadata = statSync(directory);
+  if (
+    link.isSymbolicLink() ||
+    !metadata.isDirectory() ||
+    metadata.uid !== process.getuid() ||
+    (metadata.mode & 0o022) !== 0
+  ) {
+    throw new Error(`${label} must be a protected current-user directory.`);
+  }
+}
+
+function verifyProtectedHomeChain(homeDirectory) {
+  verifyCurrentUserDirectory(homeDirectory, "The release credential home");
+  let current = path.dirname(homeDirectory);
+  while (true) {
+    const link = lstatSync(current);
+    const metadata = statSync(current);
+    if (
+      link.isSymbolicLink() ||
+      !metadata.isDirectory() ||
+      ![0, process.getuid()].includes(metadata.uid) ||
+      (metadata.mode & 0o022) !== 0
+    ) {
+      throw new Error(
+        "The release credential home has an unsafe parent directory.",
+      );
+    }
+    const next = path.dirname(current);
+    if (next === current) break;
+    current = next;
+  }
+}
+
+function verifyExistingCredentialDirectoryChain(homeDirectory) {
+  verifyProtectedHomeChain(homeDirectory);
+  for (const [directory, label] of [
+    [path.join(homeDirectory, ".freed"), "The Freed state root"],
+    [
+      path.join(homeDirectory, ".freed", "credentials"),
+      "The release credential root",
+    ],
+    [
+      path.join(homeDirectory, ".freed", "credentials", "github-apps"),
+      "The release GitHub App credential directory",
+    ],
+  ]) {
+    try {
+      lstatSync(directory);
+    } catch (error) {
+      if (error?.code === "ENOENT") break;
+      throw error;
+    }
+    verifyCurrentUserDirectory(directory, label);
+  }
+}
+
+function releaseAppPrivateKeyPath(homeDirectory = os.userInfo().homedir) {
+  return path.join(
+    homeDirectory,
+    ".freed",
+    "credentials",
+    "github-apps",
+    "freed-release-publisher.private-key.pem",
+  );
+}
+
+export function assertReleaseAppPrivateKeyAbsent({
+  homeDirectory = os.userInfo().homedir,
+} = {}) {
+  verifyExistingCredentialDirectoryChain(homeDirectory);
+  const filePath = releaseAppPrivateKeyPath(homeDirectory);
+  try {
+    lstatSync(filePath);
+  } catch (error) {
+    if (error?.code === "ENOENT") return { ready: true, filePath };
+    throw error;
+  }
+  throw new Error(
+    `A release GitHub App credential already exists at ${filePath}. Refusing to create an orphaned replacement App.`,
+  );
+}
+
 function verifyPreparedExecutable(filePath, label) {
   if (
     !path.isAbsolute(filePath) ||
@@ -160,14 +246,9 @@ function verifyPreparedExecutable(filePath, label) {
 
 export function verifyPreparedReleaseTagPublisher({
   publisherPath = RELEASE_TAG_PUBLISHER_PATH,
-  provisionerPath = RELEASE_TAG_PUBLISHER_PROVISIONER_PATH,
 } = {}) {
   verifyPreparedExecutable(publisherPath, "The release tag publisher host");
-  verifyPreparedExecutable(
-    provisionerPath,
-    "The release tag publisher provisioner",
-  );
-  return { ready: true, publisherPath, provisionerPath };
+  return { ready: true, publisherPath };
 }
 
 export function buildReleaseGitHubAppManifest({ origin }) {
@@ -247,12 +328,12 @@ export async function exchangeManifestCode(
 }
 
 export function validateManifestConversion(conversion) {
-  const appId = conversion?.id;
-  const ownerId = conversion?.owner?.id;
+  const appId = Number(conversion?.id);
+  const ownerId = Number(conversion?.owner?.id);
   const pem = conversion?.pem;
   if (
     !Number.isSafeInteger(appId) ||
-    appId !== RELEASE_GITHUB_APP_ID ||
+    appId <= 0 ||
     conversion?.slug !== RELEASE_GITHUB_APP_SLUG ||
     conversion?.name !== RELEASE_GITHUB_APP_NAME ||
     conversion?.external_url !== "https://freed.wtf" ||
@@ -288,40 +369,98 @@ export function validateManifestConversion(conversion) {
   return { identity, pem };
 }
 
-export function requireReleaseGitHubAppPromotionReadiness() {
-  throw new Error(
-    "Release GitHub App creation and credential promotion are unavailable until one-use kernel-attested owner authorization and staged authoritative GitHub identity proof are integrated.",
-  );
-}
-
 export function provisionReleaseAppPrivateKey(
   pem,
-  {
-    operationId,
-    requirePromotionReadiness = requireReleaseGitHubAppPromotionReadiness,
-    spawn = spawnSync,
-    provisionerPath = RELEASE_TAG_PUBLISHER_PROVISIONER_PATH,
-    publisherPath = RELEASE_TAG_PUBLISHER_PATH,
-  } = {},
+  { homeDirectory = os.userInfo().homedir } = {},
 ) {
-  requireOperationId(operationId);
-  requirePromotionReadiness({
-    action: "release-tag-publisher.create-existing-app",
-    operationId,
+  if (
+    typeof pem !== "string" ||
+    Buffer.byteLength(pem, "utf8") > 32 * 1_024 ||
+    !pem.trim().startsWith("-----BEGIN RSA PRIVATE KEY-----") ||
+    !pem.trim().endsWith("-----END RSA PRIVATE KEY-----")
+  ) {
+    throw new Error("The release GitHub App private key is not valid PKCS1 PEM.");
+  }
+  let parsedKey;
+  try {
+    parsedKey = createPrivateKey(pem);
+  } catch {
+    throw new Error("The release GitHub App private key is not valid PKCS1 PEM.");
+  }
+  assertReleaseAppPrivateKeyStrength(parsedKey);
+  if (
+    !path.isAbsolute(homeDirectory) ||
+    path.resolve(homeDirectory) !== homeDirectory
+  ) {
+    throw new Error("The release credential home directory must be canonical and absolute.");
+  }
+  verifyExistingCredentialDirectoryChain(homeDirectory);
+  const freedRoot = path.join(homeDirectory, ".freed");
+  try {
+    mkdirSync(freedRoot, { mode: 0o755 });
+  } catch (error) {
+    if (error?.code !== "EEXIST") throw error;
+  }
+  verifyCurrentUserDirectory(freedRoot, "The Freed state root");
+  const credentialRoot = path.join(freedRoot, "credentials");
+  const directory = path.join(credentialRoot, "github-apps");
+  const filePath = releaseAppPrivateKeyPath(homeDirectory);
+  const rootDescriptor = openPrivateDirectory(credentialRoot, {
+    recursive: false,
+    label: "The release credential root",
   });
-  const result = spawn(
-    provisionerPath,
-    ["provision", "--host", publisherPath],
-    {
-      input: pem,
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "pipe"],
-      maxBuffer: 1024 * 1024,
-    },
+  let canonicalPem;
+  let directoryDescriptor;
+  const temporaryPath = path.join(
+    directory,
+    `.release-key.${process.pid.toLocaleString("en-US", { useGrouping: false })}.${randomUUID()}.tmp`,
   );
-  if (result?.error || result?.status !== 0) {
+  let descriptor;
+  try {
+    canonicalPem = Buffer.from(
+      parsedKey.export({ format: "pem", type: "pkcs1" }),
+    );
+    if (
+      canonicalPem.length > 32 * 1_024 ||
+      !canonicalPem
+        .toString("ascii")
+        .startsWith("-----BEGIN RSA PRIVATE KEY-----\n")
+    ) {
+      throw new Error("The release GitHub App private key is not valid PKCS1 PEM.");
+    }
+    directoryDescriptor = openPrivateDirectory(directory, {
+      recursive: false,
+      label: "The release GitHub App credential directory",
+    });
+    descriptor = openSync(temporaryPath, "wx", 0o600);
+    fchmodSync(descriptor, 0o600);
+    writeFileSync(descriptor, canonicalPem);
+    fsyncSync(descriptor);
+    closeSync(descriptor);
+    descriptor = undefined;
+    linkSync(temporaryPath, filePath);
+    rmSync(temporaryPath);
+    fsyncSync(directoryDescriptor);
+    fsyncSync(rootDescriptor);
+    return filePath;
+  } catch (error) {
+    if (descriptor !== undefined) closeSync(descriptor);
+    rmSync(temporaryPath, { force: true });
+    throw error;
+  } finally {
+    canonicalPem?.fill(0);
+    if (directoryDescriptor !== undefined) closeSync(directoryDescriptor);
+    closeSync(rootDescriptor);
+  }
+}
+
+export function assertReleaseAppPrivateKeyStrength(parsedKey) {
+  if (
+    parsedKey?.asymmetricKeyType !== "rsa" ||
+    Number(parsedKey?.asymmetricKeyDetails?.modulusLength ?? 0) < 2_048
+  ) {
     throw new Error(
-      "The installed release tag publisher provisioner rejected the GitHub App private key.",
+      "The release GitHub App private key must be an RSA key of at least 2,048 bits.",
     );
   }
 }
@@ -329,18 +468,11 @@ export function provisionReleaseAppPrivateKey(
 export function activateReleaseTagPublisherBinding(
   identity,
   {
-    operationId,
-    requirePromotionReadiness = requireReleaseGitHubAppPromotionReadiness,
     exec = execFileSync,
     nodePath = process.execPath,
     installerPath = RELEASE_TAG_PUBLISHER_INSTALLER_PATH,
   } = {},
 ) {
-  requireOperationId(operationId);
-  requirePromotionReadiness({
-    action: "release-tag-publisher.create-existing-app",
-    operationId,
-  });
   try {
     exec(
       nodePath,
@@ -361,6 +493,20 @@ export function activateReleaseTagPublisherBinding(
   }
 }
 
+export function finalizeReleaseTagPublisherBinding({
+  exec = execFileSync,
+  nodePath = process.execPath,
+  installerPath = RELEASE_TAG_PUBLISHER_INSTALLER_PATH,
+} = {}) {
+  try {
+    exec(nodePath, [installerPath, "finalize"], { stdio: "inherit" });
+  } catch {
+    throw new Error(
+      "The release tag publisher installer could not finalize the App binding.",
+    );
+  }
+}
+
 export function releaseAppIdentityPath(candidateStateRoot = undefined) {
   return path.join(
     stateRoot(candidateStateRoot),
@@ -369,333 +515,10 @@ export function releaseAppIdentityPath(candidateStateRoot = undefined) {
   );
 }
 
-function inspectIdentityPath(filePath, expected, allowedLinkCounts) {
-  let descriptor;
-  const buffer = Buffer.alloc(expected.length + 1);
-  try {
-    const canonicalFilePath = path.join(
-      realpathSync(path.dirname(filePath)),
-      path.basename(filePath),
-    );
-    let resolvedFilePath;
-    try {
-      resolvedFilePath = realpathSync(filePath);
-    } catch (error) {
-      if (error?.code === "ENOENT") return null;
-      throw error;
-    }
-    if (resolvedFilePath !== canonicalFilePath) {
-      throw new Error("The release GitHub App identity path is not canonical.");
-    }
-    const link = lstatSync(filePath, { bigint: true });
-    descriptor = openSync(
-      filePath,
-      constants.O_RDONLY |
-        constants.O_NOFOLLOW |
-        constants.O_NONBLOCK |
-        (constants.O_CLOEXEC ?? DARWIN_O_CLOEXEC),
-    );
-    const before = fstatSync(descriptor, { bigint: true });
-    if (
-      !link.isFile() ||
-      !before.isFile() ||
-      link.dev !== before.dev ||
-      link.ino !== before.ino ||
-      before.uid !== BigInt(process.getuid()) ||
-      !allowedLinkCounts.includes(before.nlink) ||
-      (before.mode & 0o777n) !== 0o600n ||
-      before.size !== BigInt(expected.length)
-    ) {
-      throw new Error("The release GitHub App identity path is unsafe.");
-    }
-    let offset = 0;
-    while (offset < buffer.length) {
-      const count = readSync(
-        descriptor,
-        buffer,
-        offset,
-        buffer.length - offset,
-        offset,
-      );
-      if (count === 0) break;
-      offset += count;
-    }
-    const after = fstatSync(descriptor, { bigint: true });
-    if (
-      offset !== expected.length ||
-      before.dev !== after.dev ||
-      before.ino !== after.ino ||
-      before.size !== after.size ||
-      before.mode !== after.mode ||
-      before.uid !== after.uid ||
-      before.nlink !== after.nlink ||
-      before.mtimeNs !== after.mtimeNs ||
-      before.ctimeNs !== after.ctimeNs ||
-      !timingSafeEqual(buffer.subarray(0, expected.length), expected)
-    ) {
-      throw new Error(
-        "The release GitHub App identity file exists with unexpected content or changed during admission.",
-      );
-    }
-    const finalLink = lstatSync(filePath, { bigint: true });
-    if (
-      finalLink.dev !== after.dev ||
-      finalLink.ino !== after.ino ||
-      finalLink.nlink !== after.nlink
-    ) {
-      throw new Error(
-        "The release GitHub App identity path changed during admission.",
-      );
-    }
-    return { dev: after.dev, ino: after.ino, nlink: after.nlink };
-  } finally {
-    buffer.fill(0);
-    if (descriptor !== undefined) closeSync(descriptor);
-  }
-}
-
-function sameIdentityInode(left, right) {
-  return left.dev === right.dev && left.ino === right.ino;
-}
-
-function requireOperationId(operationId) {
-  if (
-    typeof operationId !== "string" ||
-    !(
-      /^[0-9a-f]{64}$/.test(operationId) ||
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
-        operationId,
-      )
-    )
-  ) {
-    throw new Error(
-      "The release GitHub App identity write requires one canonical operation ID.",
-    );
-  }
-  return operationId;
-}
-
-function identityPendingPath(directory, identityBytes, operationId) {
-  const identityDigest = createHash("sha256").update(identityBytes).digest("hex");
-  const transactionDigest = createHash("sha256")
-    .update("freed-release-github-app-identity-write-v1\n")
-    .update(operationId)
-    .update("\n")
-    .update(identityDigest)
-    .update("\n")
-    .digest("hex");
-  return path.join(directory, `.github-app.${transactionDigest}.pending`);
-}
-
-function inspectPendingIdentityPath(filePath, expected) {
-  let descriptor;
-  let buffer;
-  try {
-    const canonicalFilePath = path.join(
-      realpathSync(path.dirname(filePath)),
-      path.basename(filePath),
-    );
-    let resolvedFilePath;
-    try {
-      resolvedFilePath = realpathSync(filePath);
-    } catch (error) {
-      if (error?.code === "ENOENT") return null;
-      throw error;
-    }
-    if (resolvedFilePath !== canonicalFilePath) {
-      throw new Error("The pending release GitHub App identity path is not canonical.");
-    }
-    const link = lstatSync(filePath, { bigint: true });
-    descriptor = openSync(
-      filePath,
-      constants.O_RDWR |
-        constants.O_NOFOLLOW |
-        constants.O_NONBLOCK |
-        (constants.O_CLOEXEC ?? DARWIN_O_CLOEXEC),
-    );
-    const before = fstatSync(descriptor, { bigint: true });
-    if (
-      !link.isFile() ||
-      !before.isFile() ||
-      link.dev !== before.dev ||
-      link.ino !== before.ino ||
-      before.uid !== BigInt(process.getuid()) ||
-      ![1n, 2n].includes(before.nlink) ||
-      (before.size < BigInt(expected.length) && before.nlink !== 1n) ||
-      (before.mode & 0o777n) !== 0o600n ||
-      before.size < 0n ||
-      before.size > BigInt(expected.length)
-    ) {
-      throw new Error("The pending release GitHub App identity path is unsafe.");
-    }
-    const size = Number(before.size);
-    buffer = Buffer.alloc(size);
-    let offset = 0;
-    while (offset < size) {
-      const count = readSync(
-        descriptor,
-        buffer,
-        offset,
-        size - offset,
-        offset,
-      );
-      if (count === 0) {
-        throw new Error("The pending release GitHub App identity ended early.");
-      }
-      offset += count;
-    }
-    const after = fstatSync(descriptor, { bigint: true });
-    const finalLink = lstatSync(filePath, { bigint: true });
-    if (
-      before.dev !== after.dev ||
-      before.ino !== after.ino ||
-      before.size !== after.size ||
-      before.mode !== after.mode ||
-      before.uid !== after.uid ||
-      before.nlink !== after.nlink ||
-      before.mtimeNs !== after.mtimeNs ||
-      before.ctimeNs !== after.ctimeNs ||
-      finalLink.dev !== after.dev ||
-      finalLink.ino !== after.ino ||
-      finalLink.nlink !== after.nlink ||
-      !timingSafeEqual(buffer, expected.subarray(0, size))
-    ) {
-      throw new Error(
-        "The pending release GitHub App identity is not the exact request-bound prefix.",
-      );
-    }
-    buffer.fill(0);
-    buffer = undefined;
-    return {
-      descriptor,
-      size,
-      dev: after.dev,
-      ino: after.ino,
-      nlink: after.nlink,
-    };
-  } catch (error) {
-    buffer?.fill(0);
-    if (descriptor !== undefined) closeSync(descriptor);
-    throw error;
-  }
-}
-
-function writeIdentityRemainder(descriptor, identityBytes, offset, checkpoint) {
-  let cursor = offset;
-  const firstBoundary =
-    offset === 0
-      ? Math.max(1, Math.floor(identityBytes.length / 2))
-      : identityBytes.length;
-  while (cursor < identityBytes.length) {
-    const boundary =
-      cursor < firstBoundary ? firstBoundary : identityBytes.length;
-    const count = writeSync(
-      descriptor,
-      identityBytes,
-      cursor,
-      boundary - cursor,
-      cursor,
-    );
-    if (count <= 0) {
-      throw new Error("The release GitHub App identity write made no progress.");
-    }
-    cursor += count;
-    if (offset === 0 && cursor >= firstBoundary && cursor < identityBytes.length) {
-      fsyncSync(descriptor);
-      checkpoint("identity-partial-fsynced");
-    }
-  }
-  checkpoint("identity-full-written");
-  fsyncSync(descriptor);
-  checkpoint("identity-full-fsynced");
-}
-
-function reconcileIdentityTransaction({
-  filePath,
-  temporaryPath,
-  identityBytes,
-  directoryDescriptor,
-  checkpoint,
-}) {
-  const finalState = inspectIdentityPath(filePath, identityBytes, [1n, 2n]);
-  const pendingAdmission = inspectPendingIdentityPath(
-    temporaryPath,
-    identityBytes,
-  );
-  if (pendingAdmission && pendingAdmission.size < identityBytes.length) {
-    try {
-      writeIdentityRemainder(
-        pendingAdmission.descriptor,
-        identityBytes,
-        pendingAdmission.size,
-        checkpoint,
-      );
-    } finally {
-      closeSync(pendingAdmission.descriptor);
-    }
-  } else if (pendingAdmission) {
-    closeSync(pendingAdmission.descriptor);
-  }
-  const pendingState = inspectIdentityPath(temporaryPath, identityBytes, [1n, 2n]);
-  if (finalState && pendingState) {
-    if (sameIdentityInode(finalState, pendingState)) {
-      if (finalState.nlink !== 2n || pendingState.nlink !== 2n) {
-        throw new Error(
-          "The release GitHub App identity transaction has an unsafe link count.",
-        );
-      }
-    } else if (finalState.nlink !== 1n || pendingState.nlink !== 1n) {
-      throw new Error(
-        "The release GitHub App identity transaction is ambiguous.",
-      );
-    }
-    rmSync(temporaryPath);
-    fsyncSync(directoryDescriptor);
-    const recovered = inspectIdentityPath(filePath, identityBytes, [1n]);
-    if (!recovered) {
-      throw new Error(
-        "The release GitHub App identity transaction could not be recovered.",
-      );
-    }
-    return true;
-  }
-  if (finalState) {
-    if (finalState.nlink !== 1n) {
-      throw new Error(
-        "The release GitHub App identity has an unexplained hard link.",
-      );
-    }
-    return true;
-  }
-  if (pendingState) {
-    if (pendingState.nlink !== 1n) {
-      throw new Error(
-        "The pending release GitHub App identity has an unexplained hard link.",
-      );
-    }
-    linkSync(temporaryPath, filePath);
-    fsyncSync(directoryDescriptor);
-    rmSync(temporaryPath);
-    fsyncSync(directoryDescriptor);
-    if (!inspectIdentityPath(filePath, identityBytes, [1n])) {
-      throw new Error(
-        "The pending release GitHub App identity could not be committed.",
-      );
-    }
-    return true;
-  }
-  return false;
-}
-
 export function writeReleaseAppIdentity(
   identity,
-  {
-    stateRoot: candidateStateRoot = undefined,
-    operationId,
-    checkpoint = () => {},
-  } = {},
+  { stateRoot: candidateStateRoot = undefined } = {},
 ) {
-  requireOperationId(operationId);
   if (
     !hasExactKeys(identity, [
       "appId",
@@ -711,7 +534,7 @@ export function writeReleaseAppIdentity(
     identity.organization !== RELEASE_GITHUB_APP_ORGANIZATION ||
     identity.repo !== RELEASE_GITHUB_APP_REPO ||
     !Number.isSafeInteger(identity.appId) ||
-    identity.appId !== RELEASE_GITHUB_APP_ID ||
+    identity.appId <= 0 ||
     identity.appSlug !== RELEASE_GITHUB_APP_SLUG ||
     !Number.isSafeInteger(identity.ownerId) ||
     identity.ownerId <= 0
@@ -726,61 +549,29 @@ export function writeReleaseAppIdentity(
     label: "The release GitHub App state root",
   });
   let directoryDescriptor;
-  let descriptor;
-  const identityBytes = Buffer.from(`${JSON.stringify(identity, null, 2)}\n`);
-  const temporaryPath = identityPendingPath(
+  const temporaryPath = path.join(
     directory,
-    identityBytes,
-    operationId,
+    `.github-app.${process.pid.toLocaleString("en-US", { useGrouping: false })}.${randomUUID()}.tmp`,
   );
+  let descriptor;
   try {
     directoryDescriptor = openPrivateDirectory(directory, {
       recursive: false,
       label: "The release GitHub App identity directory",
     });
-    const expectedPendingName = path.basename(temporaryPath);
-    const foreignPending = readdirSync(directory).find(
-      (name) =>
-        name.startsWith(".github-app.") &&
-        name.endsWith(".pending") &&
-        name !== expectedPendingName,
-    );
-    if (foreignPending) {
-      throw new Error(
-        "A different release GitHub App identity operation is still pending.",
-      );
-    }
-    if (
-      reconcileIdentityTransaction({
-        filePath,
-        temporaryPath,
-        identityBytes,
-        directoryDescriptor,
-        checkpoint,
-      })
-    ) {
-      fsyncSync(rootDescriptor);
-      return filePath;
-    }
     descriptor = openSync(temporaryPath, "wx", 0o600);
-    checkpoint("identity-before-write");
-    writeIdentityRemainder(descriptor, identityBytes, 0, checkpoint);
+    writeFileSync(descriptor, `${JSON.stringify(identity, null, 2)}\n`, "utf8");
+    fsyncSync(descriptor);
     closeSync(descriptor);
     descriptor = undefined;
-    linkSync(temporaryPath, filePath);
+    renameSync(temporaryPath, filePath);
     fsyncSync(directoryDescriptor);
-    checkpoint("identity-linked-fsynced");
-    rmSync(temporaryPath);
-    fsyncSync(directoryDescriptor);
-    if (!inspectIdentityPath(filePath, identityBytes, [1n])) {
-      throw new Error("The release GitHub App identity commit is incomplete.");
-    }
     fsyncSync(rootDescriptor);
   } catch (error) {
     if (descriptor !== undefined) closeSync(descriptor);
+    rmSync(temporaryPath, { force: true });
     throw error;
   } finally {
-    identityBytes.fill(0);
     if (directoryDescriptor !== undefined) closeSync(directoryDescriptor);
     closeSync(rootDescriptor);
   }
@@ -816,7 +607,11 @@ export function verifyInstalledReleaseApp(
     {
       encoding: "utf8",
       maxBuffer: 1024 * 1024,
-      timeout: RELEASE_TAG_PUBLISHER_VERIFY_TIMEOUT_MS,
+      timeout: 30_000,
+      env: {
+        HOME: process.env.HOME ?? "",
+        PATH: "/usr/bin:/bin",
+      },
     },
   );
   let attestation;
@@ -860,33 +655,28 @@ export async function pollReleaseAppInstallation(
 export async function completeReleaseGitHubAppCreation(
   conversion,
   {
-    operationId,
-    requirePromotionReadiness = requireReleaseGitHubAppPromotionReadiness,
     provisionPrivateKey = provisionReleaseAppPrivateKey,
     writeIdentity = writeReleaseAppIdentity,
     activatePublisher = activateReleaseTagPublisherBinding,
+    finalizePublisher = finalizeReleaseTagPublisherBinding,
     openUrl = (url) =>
       execFileSync("/usr/bin/open", [url], { stdio: "ignore" }),
     pollInstallation = pollReleaseAppInstallation,
     onStatus = () => {},
   } = {},
 ) {
-  requireOperationId(operationId);
-  requirePromotionReadiness({
-    action: "release-tag-publisher.create-existing-app",
-    operationId,
-  });
   const { identity, pem } = validateManifestConversion(conversion);
-  onStatus("Recording the nonsecret release App identity.");
-  writeIdentity(identity, { operationId });
-  onStatus("Installing the private App credential in the release publisher.");
-  provisionPrivateKey(pem, { operationId, requirePromotionReadiness });
+  onStatus("Saving the private App credential in local private storage.");
+  provisionPrivateKey(pem);
+  writeIdentity(identity);
   onStatus("Activating the root-owned App identity binding.");
-  activatePublisher(identity, { operationId, requirePromotionReadiness });
+  activatePublisher(identity);
   const installationUrl = releaseAppInstallationUrl(identity);
   onStatus("Opening the selected-repository installation page.");
   openUrl(installationUrl);
   const installation = await pollInstallation(identity);
+  onStatus("Finalizing the verified root-owned App identity binding.");
+  finalizePublisher();
   return {
     status: "ready",
     repo: identity.repo,
@@ -983,34 +773,24 @@ function createCallbackServer({ state, timeoutMs = MANIFEST_TIMEOUT_MS }) {
 }
 
 export async function createReleaseGitHubApp({
-  operationId,
-  requirePromotionReadiness = requireReleaseGitHubAppPromotionReadiness,
+  verifyCredentialAbsent = assertReleaseAppPrivateKeyAbsent,
   verifyPreparedHost = verifyPreparedReleaseTagPublisher,
-  createListener = createCallbackServer,
   openUrl = (url) => execFileSync("/usr/bin/open", [url], { stdio: "ignore" }),
   exchangeCode = exchangeManifestCode,
   completeCreation = completeReleaseGitHubAppCreation,
   onStatus = () => {},
 } = {}) {
-  requireOperationId(operationId);
-  requirePromotionReadiness({
-    action: "release-tag-publisher.create-existing-app",
-    operationId,
-  });
+  verifyCredentialAbsent();
   verifyPreparedHost();
   const state = randomBytes(32).toString("hex");
-  const listener = createListener({ state });
+  const listener = createCallbackServer({ state });
   try {
     await listener.listening;
     onStatus("Opening the private GitHub App manifest.");
     openUrl(`${listener.origin}${BOOTSTRAP_PATH}`);
     const { code } = await listener.callback;
     const conversion = await exchangeCode(code);
-    return await completeCreation(conversion, {
-      operationId,
-      onStatus,
-      requirePromotionReadiness,
-    });
+    return await completeCreation(conversion, { onStatus });
   } finally {
     listener.close();
   }
@@ -1023,7 +803,7 @@ function main() {
       ["--help", "-h"].includes(process.argv[2])
     ) {
       process.stdout.write(
-        `Usage: ${RELEASE_GITHUB_APP_OPERATION_ID_ENV}=<caller-retained UUIDv4 or lowercase 64-hex operation ID> node scripts/create-release-github-app.mjs\n`,
+        "Usage: node scripts/create-release-github-app.mjs\n",
       );
       return;
     }
@@ -1039,7 +819,6 @@ function main() {
     );
   }
   createReleaseGitHubApp({
-    operationId: process.env[RELEASE_GITHUB_APP_OPERATION_ID_ENV],
     onStatus(message) {
       process.stderr.write(`${message}\n`);
     },

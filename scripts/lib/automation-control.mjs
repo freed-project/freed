@@ -2584,7 +2584,7 @@ function reconcileTaskTransactionAuthorityStages(
         maxBytes: TASK_CONTROL_FILE_MAX_BYTES,
         allowedModes: [0o600],
         label: `Task transaction ${stage.transactionId} partial pre-WAL staging`,
-        retirementBasename: stage.canonicalName,
+        retirementBasename: "raw-task-pre-wal",
         rawSource: true,
       });
     }
@@ -28269,6 +28269,11 @@ function executeLeaseCleanupPlan(
       );
     }
     validateExactLeaseCleanupArchiveSet(context, plan, terminalTargets);
+    requireLeaseCleanupArchiveCapacity(paths, {
+      entries: 0,
+      bytes: 0,
+      oldestMtimeMs: null,
+    });
   } finally {
     closeLeaseCleanupDescriptorContext(context);
   }
