@@ -44,14 +44,15 @@ const ATTESTATION_PROTOCOL = ACTOR_LAUNCHER_ATTESTATION_PROTOCOL;
 const MAX_LEASE_LIFETIME_MS = 30 * 60 * 1_000;
 const LEASE_TTL_SECONDS = 30 * 60;
 const MAX_LAUNCHER_HANDOFF_BYTES = 16 * 1_024;
-// The native launcher bounds two acquire attempts, two exact-token release
-// attempts, and two absence inspections to a 65-second lifecycle. Keep the
-// caller bound above that complete recovery budget so SIGKILL cannot preempt
-// an active bounded child or discard its retained lease token.
-const NATIVE_LAUNCHER_LIFECYCLE_BUDGET_MS = 65_000;
+const MAX_COMMAND_DIAGNOSTIC_BYTES = 4 * 1_024;
+// The native launcher bounds two 30-second acquire attempts, two exact-token
+// release attempts, and two absence inspections to a 190-second lifecycle.
+// Keep the caller bound above that complete recovery budget so SIGKILL cannot
+// preempt an active bounded child or discard its retained lease token.
+const NATIVE_LAUNCHER_LIFECYCLE_BUDGET_MS = 190_000;
 const LAUNCHER_ACQUIRE_TIMEOUT_MS =
   NATIVE_LAUNCHER_LIFECYCLE_BUDGET_MS + 10_000;
-const CONTROL_LIFECYCLE_TIMEOUT_MS = 15_000;
+const CONTROL_LIFECYCLE_TIMEOUT_MS = 40_000;
 const PROVISIONER_ACTION_TIMEOUT_MS = 120_000;
 const LIFECYCLE_LOCK_STALE_MS = 30 * 1_000;
 const LIFECYCLE_LOCK_PROTOCOL = "freed-automation-actor-lifecycle-lock-v1";
@@ -83,15 +84,16 @@ export const AUTOMATION_ACTOR_IDS = Object.freeze(
 );
 
 export class AutomationActorsError extends Error {
-  constructor(code, message) {
+  constructor(code, message, details = undefined) {
     super(message);
     this.name = "AutomationActorsError";
     this.code = code;
+    if (details !== undefined) this.details = details;
   }
 }
 
-function fail(code, message) {
-  throw new AutomationActorsError(code, message);
+function fail(code, message, details = undefined) {
+  throw new AutomationActorsError(code, message, details);
 }
 
 function usage() {
@@ -222,7 +224,23 @@ function normalizedRunResult(result) {
     status: result?.status,
     error: result?.error,
     stdout: String(result?.stdout ?? ""),
+    stderr: String(result?.stderr ?? ""),
   };
+}
+
+function boundedCommandDiagnostic(stderr) {
+  const value = String(stderr ?? "")
+    .trim()
+    .replaceAll("\0", "");
+  let result = "";
+  let encodedBytes = 0;
+  for (const scalar of value) {
+    const scalarBytes = Buffer.byteLength(scalar, "utf8");
+    if (encodedBytes + scalarBytes > MAX_COMMAND_DIAGNOSTIC_BYTES) break;
+    result += scalar;
+    encodedBytes += scalarBytes;
+  }
+  return result === "" ? undefined : result;
 }
 
 function runChecked(
@@ -236,6 +254,7 @@ function runChecked(
     additionalEnv = {},
     stdin = "inherit",
     onFailure = undefined,
+    preserveStderr = false,
   } = {},
 ) {
   const result = normalizedRunResult(
@@ -261,7 +280,14 @@ function runChecked(
     const status = Number.isInteger(result.status)
       ? ` with status ${result.status.toLocaleString()}`
       : "";
-    fail("command_failed", `${purpose} failed${status}.`);
+    const diagnostic = preserveStderr
+      ? boundedCommandDiagnostic(result.stderr)
+      : undefined;
+    fail(
+      "command_failed",
+      `${purpose} failed${status}.`,
+      diagnostic === undefined ? undefined : { stderr: diagnostic },
+    );
   }
   return result.stdout.trim();
 }
@@ -1570,6 +1596,7 @@ function acquireActor(
       purpose: "Automation actor lease acquisition",
       timeoutMs: dependencies.launcherAcquireTimeoutMs,
       stdin: "ignore",
+      preserveStderr: true,
       onFailure: (result) => {
         const failedHandoff = parseAcquisitionHandoff(
           result.stdout,
@@ -2125,6 +2152,9 @@ if (process.argv[1] && realpathSync(process.argv[1]) === __filename) {
           ? error.code
           : "automation_actor_failure",
       message: error instanceof Error ? error.message : String(error),
+      ...(error instanceof AutomationActorsError && error.details !== undefined
+        ? { details: error.details }
+        : {}),
     };
     process.stderr.write(`${JSON.stringify(payload)}\n`);
     process.exitCode = 1;

@@ -24,21 +24,22 @@ private let maximumBindingBytes = 32 * 1_024
 private let maximumControlOutputBytes = 64 * 1_024
 private let maximumAttestationBytes = 16 * 1_024
 private let maximumChannelFrameBytes = 8 * 1_024
-private let controlTimeoutMilliseconds: UInt64 = 10 * 1_000
+private let controlTimeoutMilliseconds: UInt64 = 30 * 1_000
 private let channelTimeoutMilliseconds: Int32 = 5 * 1_000
 #if AUTOMATION_ACTOR_HOST_TESTING
   private let testControlTimeoutMilliseconds: UInt64 = 250
-  private let nativeAcquisitionWindowMilliseconds: UInt64 = 5_000
+  private let nativeAcquisitionWindowMilliseconds: UInt64 = 15_000
   private let nativeCleanupReserveMilliseconds: UInt64 = 3_000
   private let TEST_LAUNCHER_CHALLENGE_SHA256 = String(repeating: "e", count: 64)
   private let TEST_LAUNCHER_ATTESTATION_SHA256 = String(repeating: "c", count: 64)
   private let TEST_LAUNCHER_SESSION_ID = String(repeating: "d", count: 64)
 #else
-  // Validation and channel verification share the acquisition window. Once an
-  // acquire child may have run, the final 45 seconds belong only to two
-  // exact-token release attempts and two absence inspections.
-  private let nativeAcquisitionWindowMilliseconds: UInt64 = 20 * 1_000
-  private let nativeCleanupReserveMilliseconds: UInt64 = 45 * 1_000
+  // Validation and channel verification share the acquisition window. Two
+  // durable acquire attempts receive 30 seconds each plus a five-second
+  // boundary margin. Once an acquire child may have run, the final 125 seconds
+  // belong only to two exact-token release attempts and two absence inspections.
+  private let nativeAcquisitionWindowMilliseconds: UInt64 = 65 * 1_000
+  private let nativeCleanupReserveMilliseconds: UInt64 = 125 * 1_000
 #endif
 private let nativeLifecycleBudgetMilliseconds =
   nativeAcquisitionWindowMilliseconds + nativeCleanupReserveMilliseconds
