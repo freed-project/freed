@@ -28364,49 +28364,6 @@ function recoverLeaseTransactionUnlocked(
     } else {
       validateLeaseStaging(paths, transaction);
     }
-    if (
-      transaction.phase === "prepared" &&
-      transaction.operation === "acquire" &&
-      transaction.before.directoryExists === false
-    ) {
-      const leasePath = leasePathFor(paths, transaction.name);
-      if (pathEntryExists(leasePath)) {
-        const intermediate = readLeaseDirectorySnapshot(
-          paths,
-          transaction.name,
-          leasePath,
-        );
-        if (
-          intermediate.descriptor.directoryExists === true &&
-          intermediate.descriptor.recordDigest === null
-        ) {
-          const matchedIntermediateEvent = matchingLeaseEventUnlocked(
-            paths,
-            transaction,
-          );
-          if (matchedIntermediateEvent.event !== null) {
-            throw new AutomationControlError(
-              "lease_transaction_conflict",
-              `Prepared lease transaction for ${name} has an audit event before authority state publication.`,
-            );
-          }
-          retireLeaseDirectoryDurable(
-            paths,
-            transaction,
-            "aborted-empty-acquire",
-            intermediate.descriptor,
-          );
-          abortPreparedLeaseTransaction(
-            paths,
-            files,
-            transaction,
-            undefined,
-            activeEventsGuard,
-          );
-          return null;
-        }
-      }
-    }
     reconcileLeaseStateIntermediate(paths, transaction);
     const current = readLeaseStateSnapshot(paths, name);
     const matchesBefore = leaseStateMatches(
@@ -28644,15 +28601,6 @@ function requireCurrentLeaseOperationRecoveryMatch(
     leaseTransactionDirectories(paths).transactions,
     `${name}.json`,
   );
-  const predecessor = readLeaseStateSnapshot(paths, name).descriptor;
-  const activeTemporaryPath = leaseAtomicTemporaryPath(activePath, {
-    name,
-    operation,
-    operationId,
-    requestDigest,
-    tokenDigest,
-    predecessor,
-  });
   const transaction = readLeaseTransactionFile(activePath, paths, name);
   if (transaction !== null) {
     if (
@@ -28680,6 +28628,15 @@ function requireCurrentLeaseOperationRecoveryMatch(
     }
     return;
   }
+  const predecessor = readLeaseStateSnapshot(paths, name).descriptor;
+  const activeTemporaryPath = leaseAtomicTemporaryPath(activePath, {
+    name,
+    operation,
+    operationId,
+    requestDigest,
+    tokenDigest,
+    predecessor,
+  });
   const namespaceOperation = {
     name,
     operation,

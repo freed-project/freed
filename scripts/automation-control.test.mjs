@@ -4689,6 +4689,8 @@ test("legacy outcome backfill rejects inexact lifecycle history before mutation"
     details: { behavioral: false },
     nowMs: nowMs + 50,
   });
+  retireReadyAuthorityWitnessForLegacyFixture(fixture.paths.taskManifest);
+  retireReadyAuthorityWitnessForLegacyFixture(fixture.paths.events);
   const canonicalEvents = readEvents(stateRoot);
   const canonicalHistory = inspectExactOutcomeControlHistory(canonicalEvents, {
     ledgerPath: fixture.paths.outcomes,
