@@ -387,14 +387,7 @@ export function provisionReleaseAppPrivateKey(
   } catch {
     throw new Error("The release GitHub App private key is not valid PKCS1 PEM.");
   }
-  if (
-    parsedKey.asymmetricKeyType !== "rsa" ||
-    Number(parsedKey.asymmetricKeyDetails?.modulusLength ?? 0) < 2_048
-  ) {
-    throw new Error(
-      "The release GitHub App private key must be an RSA key of at least 2,048 bits.",
-    );
-  }
+  assertReleaseAppPrivateKeyStrength(parsedKey);
   if (
     !path.isAbsolute(homeDirectory) ||
     path.resolve(homeDirectory) !== homeDirectory
@@ -416,6 +409,7 @@ export function provisionReleaseAppPrivateKey(
     recursive: false,
     label: "The release credential root",
   });
+  let canonicalPem;
   let directoryDescriptor;
   const temporaryPath = path.join(
     directory,
@@ -423,13 +417,24 @@ export function provisionReleaseAppPrivateKey(
   );
   let descriptor;
   try {
+    canonicalPem = Buffer.from(
+      parsedKey.export({ format: "pem", type: "pkcs1" }),
+    );
+    if (
+      canonicalPem.length > 32 * 1_024 ||
+      !canonicalPem
+        .toString("ascii")
+        .startsWith("-----BEGIN RSA PRIVATE KEY-----\n")
+    ) {
+      throw new Error("The release GitHub App private key is not valid PKCS1 PEM.");
+    }
     directoryDescriptor = openPrivateDirectory(directory, {
       recursive: false,
       label: "The release GitHub App credential directory",
     });
     descriptor = openSync(temporaryPath, "wx", 0o600);
     fchmodSync(descriptor, 0o600);
-    writeFileSync(descriptor, `${pem.trim()}\n`, "utf8");
+    writeFileSync(descriptor, canonicalPem);
     fsyncSync(descriptor);
     closeSync(descriptor);
     descriptor = undefined;
@@ -443,8 +448,20 @@ export function provisionReleaseAppPrivateKey(
     rmSync(temporaryPath, { force: true });
     throw error;
   } finally {
+    canonicalPem?.fill(0);
     if (directoryDescriptor !== undefined) closeSync(directoryDescriptor);
     closeSync(rootDescriptor);
+  }
+}
+
+export function assertReleaseAppPrivateKeyStrength(parsedKey) {
+  if (
+    parsedKey?.asymmetricKeyType !== "rsa" ||
+    Number(parsedKey?.asymmetricKeyDetails?.modulusLength ?? 0) < 2_048
+  ) {
+    throw new Error(
+      "The release GitHub App private key must be an RSA key of at least 2,048 bits.",
+    );
   }
 }
 

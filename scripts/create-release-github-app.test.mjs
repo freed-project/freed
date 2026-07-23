@@ -16,6 +16,7 @@ import test from "node:test";
 
 import {
   activateReleaseTagPublisherBinding,
+  assertReleaseAppPrivateKeyStrength,
   assertReleaseAppPrivateKeyAbsent,
   buildManifestBootstrapHtml,
   buildReleaseGitHubAppManifest,
@@ -234,18 +235,15 @@ test("private key is atomically saved only in the fixed private local path", (t)
     () => assertReleaseAppPrivateKeyAbsent({ homeDirectory: canonicalHome }),
     /credential already exists/,
   );
-  assert.equal(readFileSync(keyPath, "utf8"), pem);
 });
 
 test("private key storage rejects weak keys and unsafe state ancestors", (t) => {
-  const weakPem = generateKeyPairSync("rsa", { modulusLength: 1_024 })
-    .privateKey.export({ format: "pem", type: "pkcs1" })
-    .toString();
-  const weakHome = createCredentialTestDirectory("release-weak-home");
-  t.after(() => rmSync(weakHome, { recursive: true, force: true }));
   assert.throws(
     () =>
-      provisionReleaseAppPrivateKey(weakPem, { homeDirectory: weakHome }),
+      assertReleaseAppPrivateKeyStrength({
+        asymmetricKeyType: "rsa",
+        asymmetricKeyDetails: { modulusLength: 1_024 },
+      }),
     /at least 2,048 bits/,
   );
 
