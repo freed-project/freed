@@ -749,6 +749,33 @@ function leaseCleanupQuarantines(filePath, operationId) {
     .map((entry) => path.join(directoryPath, entry));
 }
 
+function exactLeaseCleanupQuarantines(filePath, operationId) {
+  return leaseCleanupQuarantines(filePath, operationId).filter(
+    (archivePath) => {
+      const bytes = readFileSync(archivePath);
+      const stats = lstatSync(archivePath, { bigint: true });
+      return (
+        path.basename(archivePath) ===
+        `${operationId}.${leaseCleanupGenerationDigestForIdentity(
+          filePath,
+          stats,
+          bytes,
+        )}.json`
+      );
+    },
+  );
+}
+
+function exactLeaseCleanupQuarantine(filePath, operationId) {
+  const matches = exactLeaseCleanupQuarantines(filePath, operationId);
+  assert.equal(
+    matches.length,
+    1,
+    `${path.basename(filePath)} must have one exact cleanup archive`,
+  );
+  return matches[0];
+}
+
 function leaseTransactionWalArchivePaths(transactionPaths, operationId) {
   const directoryPath = leaseCleanupQuarantineDirectory(
     transactionPaths.active,
@@ -4082,9 +4109,11 @@ test("actor policies enforce lifecycle ownership and fresh-evidence reopening", 
       error instanceof AutomationControlError &&
       error.code === "stale_reopen_evidence",
   );
-  const reopenController = actorLease(stateRoot, "freed-stability-controller", {
-    nowMs: baseMs + 60 * 60_000,
-  });
+  const reopenController = withTestDateNow(baseMs + 60 * 60_000, () =>
+    actorLease(stateRoot, "freed-stability-controller", {
+      nowMs: baseMs + 60 * 60_000,
+    }),
+  );
   const reopened = transitionTask({
     stateRoot,
     taskId: "policy-reopen",
@@ -4660,6 +4689,8 @@ test("legacy outcome backfill rejects inexact lifecycle history before mutation"
     details: { behavioral: false },
     nowMs: nowMs + 50,
   });
+  retireReadyAuthorityWitnessForLegacyFixture(fixture.paths.taskManifest);
+  retireReadyAuthorityWitnessForLegacyFixture(fixture.paths.events);
   const canonicalEvents = readEvents(stateRoot);
   const canonicalHistory = inspectExactOutcomeControlHistory(canonicalEvents, {
     ledgerPath: fixture.paths.outcomes,
@@ -6948,21 +6979,10 @@ test("lease transaction history detects a same-inode same-length retained stagin
     "heartbeat",
     heartbeatOperationId,
   );
-  const afterArchives = leaseCleanupQuarantines(
+  const afterArchives = exactLeaseCleanupQuarantines(
     transactionPaths.after,
     heartbeatOperationId,
-  ).filter((archivePath) => {
-    const bytes = readFileSync(archivePath);
-    const stats = lstatSync(archivePath, { bigint: true });
-    return (
-      path.basename(archivePath) ===
-      `${heartbeatOperationId}.${leaseCleanupGenerationDigestForIdentity(
-        transactionPaths.after,
-        stats,
-        bytes,
-      )}.json`
-    );
-  });
+  );
   assert.equal(afterArchives.length, 1);
   const archivePath = afterArchives[0];
   const archiveBefore = readFileSync(archivePath);
@@ -7038,21 +7058,10 @@ test("receipt-only lease recovery is not continuous health evidence without its 
     heartbeatOperationId,
   );
   assert.equal(existsSync(transactionPaths.active), false);
-  const activeWalArchives = leaseCleanupQuarantines(
+  const activeWalArchives = exactLeaseCleanupQuarantines(
     transactionPaths.active,
     heartbeatOperationId,
-  ).filter((archivePath) => {
-    const bytes = readFileSync(archivePath);
-    const stats = lstatSync(archivePath, { bigint: true });
-    return (
-      path.basename(archivePath) ===
-      `${heartbeatOperationId}.${leaseCleanupGenerationDigestForIdentity(
-        transactionPaths.active,
-        stats,
-        bytes,
-      )}.json`
-    );
-  });
+  );
   assert.equal(activeWalArchives.length, 1);
   rmSync(activeWalArchives[0]);
   assert.equal(existsSync(transactionPaths.receipt), true);
@@ -8788,7 +8797,6 @@ test("outcome finalization admits canonical ledger and event snapshots safely", 
       const runner = prepareValidatedTask(stateRoot, taskId, nowMs);
       let manifestBefore;
       let hostileTarget = null;
-      const startedAt = Date.now();
       assert.throws(
         () =>
           completeGuardedOutcome({
@@ -8860,7 +8868,6 @@ test("outcome finalization admits canonical ledger and event snapshots safely", 
       }
       if (shape === "events-fifo") {
         assert.equal(lstatSync(paths.events).isFIFO(), true);
-        assert.ok(Date.now() - startedAt < 10_000);
       }
     });
   }
@@ -9326,6 +9333,7 @@ test("legacy backfill finalization rejects a tampered reservation event ID", () 
     `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
     { mode: 0o600 },
   );
+  retireReadyAuthorityWitnessForLegacyFixture(fixture.paths.events);
   const ledgerEntries = readFileSync(fixture.paths.outcomes, "utf8")
     .trim()
     .split("\n")
@@ -11717,19 +11725,10 @@ test("lease cleanup writes exact bigint archive generation names", () => {
     token: `exact-generation-name-${"x".repeat(48)}`,
     actorCredentialToken: writeActorCredential(stateRoot, actor),
   });
-  const archivePaths = leaseCleanupQuarantines(
+  const exactArchivePaths = exactLeaseCleanupQuarantines(
     transactionPaths.after,
     operationId,
   );
-  const exactArchivePaths = archivePaths.filter((archivePath) => {
-    const stats = lstatSync(archivePath, { bigint: true });
-    const expected = leaseCleanupGenerationDigestForIdentity(
-      transactionPaths.after,
-      stats,
-      readFileSync(archivePath),
-    );
-    return path.basename(archivePath) === `${operationId}.${expected}.json`;
-  });
   assert.equal(
     exactArchivePaths.length,
     1,
@@ -11805,11 +11804,16 @@ test("planned stale receipt age is admitted before staging", () => {
     token,
     actorCredentialToken: writeActorCredential(stateRoot, actor),
   });
+  const heartbeatOperationIds = [];
   for (let index = 0; index < 8; index += 1) {
+    const heartbeatOperationId = nextLeaseOperationId(
+      `stale-receipt-age-${index}`,
+    );
+    heartbeatOperationIds.push(heartbeatOperationId);
     heartbeatLeaseMutation({
       stateRoot,
       name,
-      operationId: nextLeaseOperationId(`stale-receipt-age-${index}`),
+      operationId: heartbeatOperationId,
       token,
       ttlMs: 30 * 60_000,
       nowMs: startedAt + index + 1,
@@ -11826,7 +11830,11 @@ test("planned stale receipt age is admitted before staging", () => {
     .filter((entry) => entry.startsWith(`${name}.heartbeat.`))
     .sort();
   assert.equal(heartbeatReceipts.length, 8);
-  const stalePath = path.join(heartbeatReceiptDirectory, heartbeatReceipts[0]);
+  const stalePath = path.join(
+    heartbeatReceiptDirectory,
+    `${name}.heartbeat.${heartbeatOperationIds[0]}.json`,
+  );
+  assert.equal(heartbeatReceipts.includes(path.basename(stalePath)), true);
   const tooOld = new Date(startedAt - 367 * 24 * 60 * 60 * 1_000);
   utimesSync(stalePath, tooOld, tooOld);
   const operationId = nextLeaseOperationId("stale-receipt-age-current");
@@ -12466,10 +12474,12 @@ test("lease cleanup preserves a replacement installed after terminal archive val
   );
   assert.ok(swap);
   assert.equal(existsSync(transactionPaths.active), false);
-  assert.equal(
-    leaseCleanupQuarantines(transactionPaths.active, operationId).length,
-    3,
-  );
+  const terminalArchivePaths = [
+    exactLeaseCleanupQuarantine(transactionPaths.before, operationId),
+    exactLeaseCleanupQuarantine(transactionPaths.after, operationId),
+    exactLeaseCleanupQuarantine(transactionPaths.active, operationId),
+  ];
+  assert.equal(new Set(terminalArchivePaths).size, 3);
   assert.equal(existsSync(transactionPaths.receipt), false);
   assert.deepEqual(readFileSync(swap.quarantinePath), swap.currentBytes);
   renameSync(swap.quarantinePath, transactionPaths.receipt);
@@ -12568,11 +12578,10 @@ test("completed receipt validation precedes every staging cleanup mutation", () 
           }),
         (error) =>
           isAutomationControlError(error) &&
-          (scenario.startsWith("event-")
-            ? error.code === "authority_generation_conflict"
-            : ["lease_transaction_conflict", "control_event_conflict"].includes(
-                error.code,
-              )),
+          error.code ===
+            (scenario === "event-conflict"
+              ? "control_event_conflict"
+              : "lease_transaction_conflict"),
         `${transactionState}:${scenario}`,
       );
       assert.deepEqual(
@@ -13259,7 +13268,7 @@ test("lease cleanup pins source and destination directory generations across the
               if (
                 swap !== null ||
                 phase !== "lease-cleanup-admitted" ||
-                details.kind !== "staging-after"
+                details.kind !== "staging-before"
               ) {
                 return;
               }
@@ -13376,7 +13385,7 @@ test("descriptor-relative archive ancestry rejects a swapped held parent without
         },
       }),
     (error) =>
-      error instanceof AutomationControlError &&
+      isAutomationControlError(error) &&
       error.code === "lease_transaction_conflict",
   );
   assert.ok(displaced);
@@ -13723,7 +13732,7 @@ test("lease cleanup preflights every mixed current-operation archive before muta
     "invalid-before",
     "invalid-after",
     "wrong-digest",
-    "duplicate-mapping",
+    "conflicting-mapping",
     "wrong-path",
   ]) {
     const stateRoot = temporaryStateRoot();
@@ -13761,11 +13770,10 @@ test("lease cleanup preflights every mixed current-operation archive before muta
         }),
       new RegExp(`preflight setup ${scenario}`),
     );
-    const validArchive = leaseCleanupQuarantines(
+    const validArchive = exactLeaseCleanupQuarantine(
       transactionPaths.after,
       operationId,
-    )[0];
-    assert.ok(validArchive);
+    );
     const archiveDirectory = path.dirname(validArchive);
     if (scenario === "invalid-before" || scenario === "invalid-after") {
       const suffix = scenario === "invalid-before" ? "!" : "zz";
@@ -13785,10 +13793,23 @@ test("lease cleanup preflights every mixed current-operation archive before muta
         archiveDirectory,
         `.preflight-${scenario}.tmp`,
       );
-      writeFileSync(temporaryPath, readFileSync(validArchive), { mode: 0o600 });
+      const validArchiveBytes = readFileSync(validArchive);
+      if (scenario === "conflicting-mapping") {
+        const conflictingRecord = JSON.parse(
+          validArchiveBytes.toString("utf8"),
+        );
+        conflictingRecord.token = `${conflictingRecord.token}-conflict`;
+        writeFileSync(
+          temporaryPath,
+          `${JSON.stringify(conflictingRecord, null, 2)}\n`,
+          { mode: 0o600 },
+        );
+      } else {
+        writeFileSync(temporaryPath, validArchiveBytes, { mode: 0o600 });
+      }
       publishExactLeaseCleanupFixture(
         temporaryPath,
-        scenario === "duplicate-mapping"
+        scenario === "conflicting-mapping"
           ? transactionPaths.after
           : transactionPaths.before,
         operationId,
@@ -13810,10 +13831,7 @@ test("lease cleanup preflights every mixed current-operation archive before muta
         }),
       (error) =>
         isAutomationControlError(error) &&
-        (error.code === "lease_transaction_conflict" ||
-          (scenario === "duplicate-mapping" &&
-            error.code === "invalid_state" &&
-            /unsupported record/.test(error.message))),
+        error.code === "lease_transaction_conflict",
       scenario,
     );
     assert.deepEqual(
@@ -13869,10 +13887,10 @@ test("lease cleanup rejects a wrong-side staging archive before mutation", () =>
       }),
     /wrong side setup/,
   );
-  const validBeforeArchive = leaseCleanupQuarantines(
+  const validBeforeArchive = exactLeaseCleanupQuarantine(
     transactionPaths.before,
     operationId,
-  )[0];
+  );
   const temporaryPath = path.join(
     path.dirname(validBeforeArchive),
     ".wrong-side.tmp",
@@ -14270,7 +14288,7 @@ test("lease acquisition recovers real process loss at atomic and canonical state
             actorCredentialToken: competingCredential,
           }),
         (error) =>
-          error instanceof AutomationControlError &&
+          isAutomationControlError(error) &&
           error.code === "lease_transaction_pending",
       );
       assert.deepEqual(
@@ -14765,7 +14783,7 @@ test("wrong authority cannot mutate prepared or successor WAL temporaries", () =
           token: `wrong-wal-authority-${occurrence.toLocaleString()}-${"y".repeat(40)}`,
         }),
       (error) =>
-        error instanceof AutomationControlError &&
+        isAutomationControlError(error) &&
         error.code === "lease_transaction_conflict",
     );
     assert.deepEqual(
@@ -14829,7 +14847,7 @@ test("same operation pre-WAL sibling namespace drift fails closed", () => {
   assert.throws(
     () => acquireLeaseLive(options),
     (error) =>
-      error instanceof AutomationControlError &&
+      isAutomationControlError(error) &&
       error.code === "lease_transaction_conflict",
   );
   assert.deepEqual(snapshotLeaseAuthorityState(stateRoot), beforeRecovery);
@@ -14938,7 +14956,7 @@ test("active WAL recovery preflights every sibling before cleanup", () => {
   assert.throws(
     () => acquireLeaseLive(options),
     (error) =>
-      error instanceof AutomationControlError &&
+      isAutomationControlError(error) &&
       error.code === "lease_transaction_pending",
   );
   assert.deepEqual(snapshotLeaseAuthorityState(stateRoot), beforeRecovery);

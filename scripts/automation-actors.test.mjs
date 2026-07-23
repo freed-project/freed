@@ -1907,7 +1907,7 @@ test("acquire validates the public binding and invokes its exact launcher", (t) 
     "--ttl-seconds",
     "1800",
   ]);
-  assert.equal(launcherCall.options.timeoutMs, 75_000);
+  assert.equal(launcherCall.options.timeoutMs, 200_000);
   assert.equal(launcherCall.options.killSignal, "SIGKILL");
   assert.equal(launcherCall.options.stdin, "ignore");
 });
@@ -1936,7 +1936,42 @@ test("acquire fails closed when the installed launcher exceeds its outer bound",
     (error) =>
       error instanceof AutomationActorsError &&
       error.code === "command_timeout" &&
-      error.message.includes("75,000"),
+      error.message.includes("200,000"),
+  );
+});
+
+test("acquire preserves one bounded native launcher diagnostic", (t) => {
+  const value = fixture(t);
+  const actor = "freed-nightly-runner";
+  const binding = writeAcquisitionBinding(value, actor);
+  const originalRunner = value.dependencies.runner;
+  const diagnosticPrefix = "native launcher deadline:";
+  value.dependencies.runner = (executable, args, options) =>
+    executable === binding.launcherPath && args[0] === "--acquire-lease"
+      ? {
+          status: 1,
+          stdout: "",
+          stderr: `${diagnosticPrefix}${"x".repeat(
+            4_095 - Buffer.byteLength(diagnosticPrefix, "utf8"),
+          )}é${"y".repeat(8_192)}\0`,
+        }
+      : originalRunner(executable, args, options);
+
+  assert.throws(
+    () =>
+      executeCommand(
+        { action: "acquire", actor, stateRoot: value.stateRoot },
+        value.dependencies,
+      ),
+    (error) =>
+      error instanceof AutomationActorsError &&
+      error.code === "command_failed" &&
+      error.message ===
+        "Automation actor lease acquisition failed with status 1." &&
+      error.details.stderr.startsWith(diagnosticPrefix) &&
+      Buffer.byteLength(error.details.stderr, "utf8") === 4_095 &&
+      !error.details.stderr.includes("\0") &&
+      !error.details.stderr.includes("�"),
   );
 });
 
@@ -2383,7 +2418,7 @@ test("accept-host proves every installed actor lifecycle without exposing lease 
   const controlCalls = value.calls.filter((call) => call.args[1] === "lease");
   assert.equal(controlCalls.length, AUTOMATION_ACTOR_IDS.length * 3);
   for (const call of controlCalls) {
-    assert.equal(call.options.timeoutMs, 15_000);
+    assert.equal(call.options.timeoutMs, 40_000);
     assert.equal(call.options.killSignal, "SIGKILL");
     assert.equal(call.options.stdin, "ignore");
     assert.equal(
@@ -2680,7 +2715,7 @@ test("accept-host reports a bounded lifecycle timeout after releasing in finally
     (error) =>
       error instanceof AutomationActorsError &&
       error.code === "command_timeout" &&
-      error.message.includes("15,000"),
+      error.message.includes("40,000"),
   );
   assert.equal(value.liveLeases.size, 0);
   assert.equal(

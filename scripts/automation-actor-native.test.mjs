@@ -316,6 +316,9 @@ if (verification.status !== 0) {
   process.exit(1);
 }
 const channel = JSON.parse(verification.stdout);
+if (MODE === "slow-process-success") {
+  await new Promise((resolve) => setTimeout(resolve, 11_000));
+}
 if (options["--action"] === "attest") {
   const readiness = {
     schemaVersion: 1,
@@ -806,13 +809,18 @@ test("native actor lifecycle budget stays below the caller outer ceiling", async
   const cleanup = Number(
     /nativeCleanupReserveMilliseconds: UInt64 = (\d+) \* 1_000/.exec(host)[1],
   );
+  const control = Number(
+    /controlTimeoutMilliseconds: UInt64 = (\d+) \* 1_000/.exec(host)[1],
+  );
   const callerBudget = Number(
     /NATIVE_LAUNCHER_LIFECYCLE_BUDGET_MS = ([\d_]+);/
       .exec(caller)[1]
       .replaceAll("_", ""),
   );
   assert.equal(callerBudget, (acquisition + cleanup) * 1_000);
-  assert.ok(cleanup >= 45);
+  assert.equal(control, 30);
+  assert.ok(acquisition >= control * 2 + 5);
+  assert.ok(cleanup >= control * 4 + 5);
 });
 
 test(
@@ -906,6 +914,37 @@ test(
       assert.equal(records[0].operationId, records[1].operationId);
       assert.equal(records[0].leaseTokenSha256, records[1].leaseTokenSha256);
       assert.ok(records.every((record) => record.channelAuthorityPresent));
+    });
+  },
+);
+
+test(
+  "native process acquisition returns a durable success beyond the former child deadline",
+  { skip: !darwinOnly, timeout: 25_000 },
+  async () => {
+    await withFixture({ mode: "slow-process-success" }, async (fixture) => {
+      const startedAt = Date.now();
+      const result = spawnSync(
+        fixture.host,
+        acquisitionArguments(fixture, { controlMode: "process" }),
+        {
+          encoding: "utf8",
+          env: { ...process.env },
+          timeout: 20_000,
+        },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      assert.ok(Date.now() - startedAt >= 11_000);
+      const handoff = JSON.parse(result.stdout);
+      assert.equal(handoff.actor, fixture.binding.actor);
+      assert.equal(handoff.leaseName, fixture.binding.leaseName);
+      assert.equal(handoff.leaseTokenSha256, sha256(handoff.leaseToken));
+      assert.equal(
+        await readFile(`${fixture.environmentCapturePath}.error`, "utf8").catch(
+          () => "",
+        ),
+        "",
+      );
     });
   },
 );

@@ -2575,7 +2575,9 @@ test("repair planning rejects corrupted owner transition provenance before mutat
     stateRoot,
     now,
   });
-  const owner = ownerRepairLease(stateRoot, ownerPlan);
+  const owner = ownerRepairLease(stateRoot, ownerPlan, {
+    nowMs: now.getTime() - 1,
+  });
   const recorded = appendOutcomeLedger(paths.outcomes, entry, {
     stateRoot,
     authentication: owner,
@@ -2596,6 +2598,8 @@ test("repair planning rejects corrupted owner transition provenance before mutat
       .ledgerHealthy,
     true,
   );
+  removeAutomationAuthorityStages(paths.taskManifest);
+  removeControlEventAuthorityStages(paths);
 
   const baseline = outcomeMutationSnapshot(stateRoot, paths);
   const variants = [
