@@ -124,6 +124,7 @@ import { initSubstackAuth, type SubstackAuthState } from "./substack-auth";
 import { initMediumAuth, type MediumAuthState } from "./medium-auth";
 import { initYouTubeAuth, type YouTubeAuthState } from "./youtube-auth";
 import { recordDocumentHydrated } from "./memory-monitor";
+import { onCloudReconciled } from "./cloud-reconcile-signal";
 import { reconcileSocialAuthStateHints } from "./social-auth-cookie-state";
 import { getOrCreateDesktopClientRegistration } from "./desktop-client-registration";
 import {
@@ -133,6 +134,9 @@ import {
 
 let outboxTeardown: (() => void) | null = null;
 let startupMaintenanceTimer: ReturnType<typeof setTimeout> | null = null;
+// Unsubscribes the pending "run maintenance once cloud reconciles" waiter, so a
+// re-initialize does not stack duplicate waiters.
+let cancelPendingCloudReconcileMaintenance: (() => void) | null = null;
 let startupContentSignalTimer: ReturnType<typeof setTimeout> | null = null;
 let startupContentSignalBackfillRunning = false;
 let appInitializationPromise: Promise<void> | null = null;
@@ -792,11 +796,26 @@ export const useAppStore = create<AppState>((set, get) => ({
         );
 
         // Do not mutate the local doc before cloud sync has reconciled it.
-        if (!hasStoredCloudSyncCredentials()) {
-          // Run cleanup migrations later. On large local libraries, immediate
-          // maintenance can force another full Automerge load while the renderer is
-          // still recovering from initial hydration.
-          scheduleStartupMigrations(docState.preferences.display.archivePruneDays ?? 30);
+        //
+        // Run cleanup migrations later either way. On large local libraries,
+        // immediate maintenance can force another full Automerge load while the
+        // renderer is still recovering from initial hydration.
+        //
+        // With cloud credentials present this used to skip maintenance outright,
+        // which made the deferral permanent rather than deferred: archive
+        // pruning never ran on a machine with a cloud provider connected, and
+        // the document grew without bound. Wait for the reconciliation signal
+        // instead, so pruning still happens, just after the remote copy has been
+        // merged in.
+        const archivePruneDays = docState.preferences.display.archivePruneDays ?? 30;
+        if (hasStoredCloudSyncCredentials()) {
+          cancelPendingCloudReconcileMaintenance?.();
+          cancelPendingCloudReconcileMaintenance = onCloudReconciled(() => {
+            cancelPendingCloudReconcileMaintenance = null;
+            scheduleStartupMigrations(archivePruneDays);
+          });
+        } else {
+          scheduleStartupMigrations(archivePruneDays);
         }
       } catch (error) {
         recordRuntimeError({ source: "desktop:initialize", error, fatal: false });

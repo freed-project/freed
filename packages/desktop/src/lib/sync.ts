@@ -10,6 +10,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { workerCloudMerge } from "./cloud-merge";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
+import { markCloudReconciled } from "./cloud-reconcile-signal";
 import {
   gdriveUploadSafe,
   gdriveUploadReplace,
@@ -1504,6 +1505,14 @@ async function runStartupCloudReconciliation(
   generation: number,
 ): Promise<void> {
   const result = await runInitialCloudDownload(provider, signal, resolveToken, generation);
+
+  // The local document has now been merged with the remote copy, so deferred
+  // startup maintenance is safe to run. Signal before the startup-repair branch
+  // below: a document that needs no repair is still fully reconciled, and that
+  // is the common case. Missing it here is what previously left archive pruning
+  // permanently disabled on machines with a cloud provider connected.
+  if (result) markCloudReconciled(provider);
+
   if (
     !result?.needsStartupRepair
     || !isCloudGenerationCurrent(provider, generation, signal)
