@@ -1,3 +1,11 @@
+# Every dependabot PR launches the full Validation matrix, so ungrouped bumps are
+# the single largest consumer of runner time in this repo. Group by risk class
+# instead of by package: routine minor and patch bumps batch into one PR, major
+# bumps batch separately so a risky upgrade is never buried in a safe batch, and
+# security fixes get their own group so a broken routine bump can never block them.
+#
+# open-pull-requests-limit does not apply to security updates, so grouping is the
+# only lever that bounds their PR count.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -6,13 +14,34 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     groups:
       development-tooling:
+        applies-to: version-updates
         dependency-type: development
         update-types:
           - minor
           - patch
+        patterns:
+          - "*"
+      production-dependencies:
+        applies-to: version-updates
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+        patterns:
+          - "*"
+      major-updates:
+        applies-to: version-updates
+        update-types:
+          - major
+        patterns:
+          - "*"
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   - package-ecosystem: cargo
     directory: /packages/desktop/src-tauri
@@ -20,7 +49,25 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
+    groups:
+      cargo-updates:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+        patterns:
+          - "*"
+      cargo-major-updates:
+        applies-to: version-updates
+        update-types:
+          - major
+        patterns:
+          - "*"
+      cargo-security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   - package-ecosystem: github-actions
     directory: /
@@ -28,4 +75,13 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
+    groups:
+      github-actions-updates:
+        applies-to: version-updates
+        patterns:
+          - "*"
+      github-actions-security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
