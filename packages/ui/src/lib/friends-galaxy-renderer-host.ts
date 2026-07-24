@@ -198,18 +198,24 @@ export class FriendsGalaxyRendererHost {
     else backend.setViewDetail(detail);
   }
 
+  setPresentationAtlas(atlas: IdentityGraphAtlas): void {
+    this.scene = { ...this.scene, atlas };
+    const backend = this.activeBackend;
+    if (!backend || this.activeScene?.scene !== this.scene.scene) return;
+    backend.setPresentationAtlas(atlas);
+    this.activeScene = this.scene;
+  }
+
   setSettledPresentation(
     atlas: IdentityGraphAtlas,
     detail: FriendsGalaxyViewDetail,
     transform: FriendsGalaxyTransform,
   ): void {
-    this.scene = { ...this.scene, atlas };
+    this.setPresentationAtlas(atlas);
     this.detail = detail;
     this.settledTransform = { ...transform };
     const backend = this.activeBackend;
     if (!backend || this.activeScene?.scene !== this.scene.scene) return;
-    backend.setPresentationAtlas(atlas);
-    this.activeScene = this.scene;
     if (backend.setSettledView) backend.setSettledView(detail, this.settledTransform);
     else backend.setViewDetail(detail);
   }

@@ -122,6 +122,7 @@ interface GraphSurfacePerfSnapshot {
   sceneSyncMs: number;
   labelPassMs: number;
   sceneSyncCount: number;
+  presentationSyncCount: number;
   contentSyncCount: number;
   transformOnlySyncCount: number;
   edgeRebuildCount: number;
@@ -166,6 +167,7 @@ interface GraphDiagnosticState {
   sourceDurationMs: number;
   sceneSyncMs: number;
   sceneSyncCount: number;
+  presentationSyncCount: number;
   sourceAdmissionCount: number;
   transformOnlySyncCount: number;
   lastTransform: FriendsGalaxyTransform | null;
@@ -412,6 +414,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     sourceDurationMs: 0,
     sceneSyncMs: 0,
     sceneSyncCount: 0,
+    presentationSyncCount: 0,
     sourceAdmissionCount: 0,
     transformOnlySyncCount: 0,
     lastTransform: null,
@@ -580,6 +583,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       sceneSyncMs: diagnostic.sceneSyncMs,
       labelPassMs: 0,
       sceneSyncCount: diagnostic.sceneSyncCount,
+      presentationSyncCount: diagnostic.presentationSyncCount,
       contentSyncCount: diagnostic.sourceAdmissionCount,
       transformOnlySyncCount: diagnostic.transformOnlySyncCount,
       edgeRebuildCount: renderer?.contextualEdgeCount ?? 0,
@@ -697,7 +701,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   presentationReadyRef.current = (response) => {
     const diagnostic = diagnosticsRef.current;
     diagnostic.presentationAtlas = response.atlas;
-    diagnostic.sceneSyncCount += 1;
+    diagnostic.presentationSyncCount += 1;
     diagnostic.sceneSyncMs = 0;
     controllerRef.current?.wake();
     publishDiagnosticsRef.current();

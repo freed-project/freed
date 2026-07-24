@@ -92,7 +92,8 @@ export class CurrentWebGl2Backend implements FriendsGalaxyRendererBackend {
   setPresentationAtlas(atlas: IdentityGraphAtlas): void {
     if (!this.fixture) return;
     this.fixture = { ...this.fixture, atlas };
-    this.syncScene();
+    this.engine?.setPresentationAtlas(atlas);
+    this.bufferUploadCount += 1;
   }
 
   setAmbientMotionEnabled(enabled: boolean): void {

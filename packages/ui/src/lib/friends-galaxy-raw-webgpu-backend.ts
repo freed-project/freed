@@ -6,7 +6,10 @@ import type {
   FriendsGalaxyRendererScene,
   FriendsGalaxyViewDetail,
 } from "./friends-galaxy-renderer.js";
-import { friendsGalaxyRenderPixelRatio } from "./friends-galaxy-renderer.js";
+import {
+  friendsGalaxyRenderPixelRatio,
+  friendsGalaxyViewDetailForScale,
+} from "./friends-galaxy-renderer.js";
 import type { FriendsGalaxyActivityScenePatchBatch } from "./friends-galaxy-activity-patches.js";
 import { FriendsGalaxyBackendHealth } from "./friends-galaxy-backend-health.js";
 import type { FriendsGalaxyAvatarAtlas } from "./friends-galaxy-avatar-atlas.js";
@@ -17,6 +20,7 @@ import {
 import {
   FRIENDS_GALAXY_BILLBOARD_INSTANCE_STRIDE,
   type FriendsGalaxyLabelAtlas,
+  writeFriendsGalaxyLabelInstances,
 } from "./friends-galaxy-billboard-atlas.js";
 import type { FriendsGalaxyTransform } from "./friends-galaxy-viewport.js";
 import type { IdentityGraphAtlas } from "./identity-graph-atlas.js";
@@ -49,8 +53,10 @@ import {
 import { writeFriendsGalaxyInteractionInstances } from "./friends-galaxy-interaction-instances.js";
 import {
   createFriendsGalaxyRendererAvatarAtlas,
-  createFriendsGalaxyRendererLabelAtlas,
+  createFriendsGalaxyRendererLabelPoolAtlas,
   friendsGalaxyAvatarAtlasRosterKey,
+  friendsGalaxyLabelSourceKey,
+  selectFriendsGalaxyVisibleLabelSeeds,
   type FriendsGalaxyAvatarCandidateSource,
   type FriendsGalaxyNodePresentationResolver,
 } from "./friends-galaxy-presentation.js";
@@ -342,19 +348,17 @@ fn vertexMain(input: VertexInput) -> VertexOutput {
     mix(baseColor.a, selectionColor.a, input.appearance.z) * input.appearance.w,
   );
   var twinkle = 1.0;
-  if (uniforms.time >= 0.0) {
+  if (
+    uniforms.time >= 0.0 &&
+    role == ${String(FriendsGalaxyStarColorRole.Background)}u
+  ) {
     let phase = input.center.x * 0.017 + input.center.y * 0.011 + input.center.z * 0.007;
     let sparkleSeed = fract(sin(phase * 5.731) * 43758.5453);
     let sparkleMask = smoothstep(0.18, 1.0, sparkleSeed);
     let backgroundStrength = 0.05 + sparkleSeed * 0.11;
-    let semanticStrength = 0.025 + sparkleSeed * 0.075;
-    let strength = select(
-      semanticStrength,
-      backgroundStrength,
-      role == ${String(FriendsGalaxyStarColorRole.Background)}u,
-    );
     let rate = 0.52 + sparkleSeed * 1.1;
-    twinkle = 1.0 + sin(uniforms.time * rate + phase) * strength * sparkleMask;
+    twinkle = 1.0 + sin(uniforms.time * rate + phase) *
+      backgroundStrength * sparkleMask;
   }
   output.twinkle = twinkle;
   return output;
@@ -365,16 +369,6 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let radiusSquared = dot(input.corner, input.corner);
   if (radiusSquared > 1.0) {
     discard;
-  }
-  if (uniforms.cameraScale < 0.0) {
-    let radial = 1.0 - radiusSquared;
-    let core = radial * radial;
-    let alpha = min(1.0, core + radial * 0.22) * input.color.a;
-    if (alpha < 0.006) {
-      discard;
-    }
-    let radiance = 0.74 + core * 0.72;
-    return vec4<f32>(input.color.rgb * radiance, alpha);
   }
   let distance = sqrt(radiusSquared);
   let core = exp(-radiusSquared * 10.0);
@@ -560,6 +554,14 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
   private providerFields: FriendsGalaxyProviderFields | null = null;
   private edgeData = new Float32Array(MAX_CONTEXTUAL_EDGES * EDGE_INSTANCE_FLOATS);
   private labelAtlas: FriendsGalaxyLabelAtlas | null = null;
+  private labelSourceKey = "";
+  private labelInstanceData = new Float32Array(0);
+  private labelRosterKey = "";
+  private visibleLabelCount = 0;
+  private labelLayoutCount = 0;
+  private lastLabelTransformX = Number.NaN;
+  private lastLabelTransformY = Number.NaN;
+  private lastLabelTransformScale = Number.NaN;
   private avatarAtlas: FriendsGalaxyAvatarAtlas | null = null;
   private avatarImages: ReadonlyMap<string, CanvasImageSource> = new Map();
   private palette: FriendsGalaxyRendererPalette | null = null;
@@ -896,6 +898,9 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.canvas.width = Math.max(1, Math.floor(this.width * this.pixelRatio));
     this.canvas.height = Math.max(1, Math.floor(this.height * this.pixelRatio));
     if (this.settledProjectionValid) this.updateSettledProjection();
+    this.lastLabelTransformX = Number.NaN;
+    this.lastLabelTransformY = Number.NaN;
+    this.lastLabelTransformScale = Number.NaN;
     const compactLabels = this.width < 720;
     if (compactLabels !== this.compactLabels) {
       this.rebuildLabels(compactLabels);
@@ -986,16 +991,26 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
   setPresentationAtlas(atlas: IdentityGraphAtlas): void {
     if (!this.fixture) return;
     this.fixture = { ...this.fixture, atlas };
+    const compact = this.compactLabels ?? this.width < 720;
+    if (friendsGalaxyLabelSourceKey(
+      this.fixture,
+      compact,
+      this.viewDetail,
+      this.interaction.selectedNodeId,
+    ) !== this.labelSourceKey) {
+      this.rebuildLabels(compact);
+    }
   }
 
   setSettledView(detail: FriendsGalaxyViewDetail, transform: FriendsGalaxyTransform): void {
+    const detailChanged = detail !== this.viewDetail;
     this.viewDetail = detail;
     this.settledTransform.x = transform.x;
     this.settledTransform.y = transform.y;
     this.settledTransform.scale = transform.scale;
     this.settledProjectionValid = true;
     this.updateSettledProjection();
-    this.rebuildLabels(this.compactLabels ?? this.width < 720);
+    if (detailChanged) this.rebuildLabels(this.compactLabels ?? this.width < 720);
     if (detail === "close") {
       this.rebuildAvatars(
         this.compactLabels ?? this.width < 720,
@@ -1038,6 +1053,12 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
       this.width,
       this.height,
     );
+    const liveDetail = friendsGalaxyViewDetailForScale(transform.scale);
+    if (liveDetail !== this.viewDetail) {
+      this.viewDetail = liveDetail;
+      this.rebuildLabels(this.compactLabels ?? this.width < 720);
+    }
+    this.updateVisibleLabels(transform);
     this.uniformData.set(this.viewProjection, 0);
     this.uniformData[16] = this.width;
     this.uniformData[17] = this.height;
@@ -1101,11 +1122,12 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
         (this.labelAtlas && this.labelAtlas.labels.length > 0 ? 1 : 0) +
         (this.avatarBundleVisible ? 1 : 0) +
         (this.contextualEdgeCount > 0 ? 1 : 0),
-      labelCount: this.labelAtlas?.labels.length ?? 0,
+      labelCount: this.visibleLabelCount,
       avatarCount: this.avatarAtlas?.itemCount ?? 0,
       identityDetailOpacity: this.identityDetailFade.currentOpacity,
       identityDetailTransitionActive: this.identityDetailFade.isActive,
       labelAtlasBuildCount: this.labelAtlasBuildCount,
+      labelLayoutCount: this.labelLayoutCount,
       avatarAtlasBuildCount: this.avatarAtlasBuildCount,
       contextualEdgeCount: this.contextualEdgeCount,
       bufferUploadCount: this.bufferUploadCount,
@@ -1189,6 +1211,13 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.activityBrightnessScales = null;
     this.providerFields = null;
     this.labelAtlas = null;
+    this.labelSourceKey = "";
+    this.labelInstanceData = new Float32Array(0);
+    this.labelRosterKey = "";
+    this.visibleLabelCount = 0;
+    this.lastLabelTransformX = Number.NaN;
+    this.lastLabelTransformY = Number.NaN;
+    this.lastLabelTransformScale = Number.NaN;
     this.avatarAtlas = null;
     this.avatarImages = new Map();
     this.palette = null;
@@ -1201,6 +1230,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.appliedActivityNodeCount = 0;
     this.residentStarUploadCount = 0;
     this.labelAtlasBuildCount = 0;
+    this.labelLayoutCount = 0;
     this.avatarAtlasBuildCount = 0;
     this.avatarCandidateSource = "atlas";
     this.avatarRosterKey = "";
@@ -1217,22 +1247,30 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     this.compactLabels = compact;
     this.labelRenderBundle = null;
     this.rebuildFrameRenderBundles();
-    const atlas = createFriendsGalaxyRendererLabelAtlas(
+    const atlas = createFriendsGalaxyRendererLabelPoolAtlas(
       this.fixture,
       this.palette,
       this.resolvePresentation,
       compact,
       this.viewDetail,
       this.interaction.selectedNodeId,
-      undefined,
-      this.settledProjectionValid ? this.settledProjection : undefined,
+    );
+    this.labelSourceKey = friendsGalaxyLabelSourceKey(
+      this.fixture,
+      compact,
+      this.viewDetail,
+      this.interaction.selectedNodeId,
     );
     this.labelAtlasBuildCount += 1;
     this.labelBuffer?.destroy();
     this.labelTexture?.destroy();
+    this.labelInstanceData = new Float32Array(Math.max(
+      FRIENDS_GALAXY_BILLBOARD_INSTANCE_STRIDE / Float32Array.BYTES_PER_ELEMENT,
+      atlas.instanceData.length,
+    ));
     this.labelBuffer = createBuffer(
       this.device,
-      atlas.instanceData,
+      this.labelInstanceData,
       GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     );
     this.labelTexture = this.device.createTexture({
@@ -1257,6 +1295,11 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
       ],
     });
     this.labelAtlas = atlas;
+    this.labelRosterKey = "";
+    this.visibleLabelCount = 0;
+    this.lastLabelTransformX = Number.NaN;
+    this.lastLabelTransformY = Number.NaN;
+    this.lastLabelTransformScale = Number.NaN;
     this.labelRenderBundle = this.recordBillboardRenderBundle(
       "Friends Galaxy label bundle",
       this.labelBindGroup,
@@ -1265,6 +1308,44 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     );
     this.rebuildFrameRenderBundles();
     this.bufferUploadCount += 2;
+  }
+
+  private updateVisibleLabels(transform: FriendsGalaxyTransform): void {
+    if (!this.device || !this.labelBuffer || !this.labelAtlas) return;
+    if (
+      transform.x === this.lastLabelTransformX &&
+      transform.y === this.lastLabelTransformY &&
+      transform.scale === this.lastLabelTransformScale
+    ) return;
+    this.lastLabelTransformX = transform.x;
+    this.lastLabelTransformY = transform.y;
+    this.lastLabelTransformScale = transform.scale;
+    this.labelLayoutCount += 1;
+    const labels = selectFriendsGalaxyVisibleLabelSeeds(
+      this.labelAtlas.labels,
+      this.compactLabels ?? this.width < 720,
+      this.viewDetail,
+      {
+        viewProjection: this.viewProjection,
+        width: this.width,
+        height: this.height,
+      },
+    );
+    const rosterKey = labels.map((label) => label.id).join("\u0000");
+    if (rosterKey === this.labelRosterKey) return;
+    this.labelRosterKey = rosterKey;
+    this.visibleLabelCount = writeFriendsGalaxyLabelInstances(
+      this.labelInstanceData,
+      labels,
+    );
+    this.device.queue.writeBuffer(
+      this.labelBuffer,
+      0,
+      this.labelInstanceData.buffer as ArrayBuffer,
+      this.labelInstanceData.byteOffset,
+      this.labelInstanceData.byteLength,
+    );
+    this.bufferUploadCount += 1;
   }
 
   private trackedGpuDataBytes(): number {
@@ -1277,7 +1358,7 @@ export class RawWebGpuBackend implements FriendsGalaxyRendererBackend {
     bytes += this.backgroundData?.byteLength ?? 0;
     bytes += this.providerFields?.instanceData.byteLength ?? 0;
     if (this.labelAtlas && this.labelTexture) {
-      bytes += this.labelAtlas.instanceData.byteLength;
+      bytes += this.labelInstanceData.byteLength;
       bytes += this.labelAtlas.canvas.width * this.labelAtlas.canvas.height * 4;
     }
     if (this.avatarAtlas && this.avatarTexture) {

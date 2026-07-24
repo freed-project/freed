@@ -1,5 +1,6 @@
 export const FRIENDS_GALAXY_SETTLED_STAR_VERTEX_COUNT = 4;
-export const FRIENDS_GALAXY_MOTION_STAR_VERTEX_COUNT = 8;
+export const FRIENDS_GALAXY_MOTION_STAR_VERTEX_COUNT =
+  FRIENDS_GALAXY_SETTLED_STAR_VERTEX_COUNT;
 export const FRIENDS_GALAXY_MOTION_BACKGROUND_STAR_CAP = 50_000;
 
 export interface FriendsGalaxyStarGeometry {
@@ -8,24 +9,15 @@ export interface FriendsGalaxyStarGeometry {
 }
 
 export function createFriendsGalaxyStarGeometry(): FriendsGalaxyStarGeometry {
-  const diagonal = Math.SQRT1_2;
+  const settled = new Float32Array([
+    -1, -1,
+    1, -1,
+    -1, 1,
+    1, 1,
+  ]);
   return {
-    settled: new Float32Array([
-      -1, -1,
-      1, -1,
-      -1, 1,
-      1, 1,
-    ]),
-    motion: new Float32Array([
-      -1, 0,
-      -diagonal, -diagonal,
-      -diagonal, diagonal,
-      0, -1,
-      0, 1,
-      diagonal, -diagonal,
-      diagonal, diagonal,
-      1, 0,
-    ]),
+    settled,
+    motion: settled.slice(),
   };
 }
 

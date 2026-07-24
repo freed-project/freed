@@ -374,6 +374,7 @@ test.describe("Friends graph touch gestures in WebKit", () => {
           sceneSyncCount?: number;
           rendererLabelCount?: number;
           readyRendererLabelCount?: number;
+          labelLayoutCount?: number;
         };
       }
     ).__FREED_GRAPH_PERF__ ?? null);
@@ -409,6 +410,7 @@ test.describe("Friends graph touch gestures in WebKit", () => {
           sceneSyncCount?: number;
           rendererLabelCount?: number;
           readyRendererLabelCount?: number;
+          labelLayoutCount?: number;
         };
         __FREED_GRAPH_DEBUG__?: {
           transform?: { scale?: number };
@@ -441,6 +443,9 @@ test.describe("Friends graph touch gestures in WebKit", () => {
       JSON.stringify(result),
     ).toBeGreaterThan(before!.transformScale ?? 0);
     expect(result.during?.sceneSyncCount).toBe(before!.sceneSyncCount);
+    expect(result.during?.labelLayoutCount ?? 0).toBeGreaterThan(
+      before!.labelLayoutCount ?? 0,
+    );
     expect(result.during?.rendererLabelCount ?? 0).toBeGreaterThan(0);
     expect(result.during?.readyRendererLabelCount ?? 0).toBeGreaterThan(0);
     expect(await page.evaluate(() => window.visualViewport?.scale ?? 1)).toBe(1);

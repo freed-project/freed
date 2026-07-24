@@ -51,6 +51,30 @@ export interface FriendsGalaxyAvatarExclusion {
   size: number;
 }
 
+export function writeFriendsGalaxyLabelInstances(
+  target: Float32Array,
+  labels: readonly FriendsGalaxyBillboardLabel[],
+): number {
+  const requiredLength = labels.length * LABEL_INSTANCE_FLOATS;
+  if (target.length < requiredLength) {
+    throw new Error("Friends Galaxy label instance buffer is too small.");
+  }
+  target.fill(0);
+  for (let index = 0; index < labels.length; index += 1) {
+    const label = labels[index]!;
+    const offset = index * LABEL_INSTANCE_FLOATS;
+    target[offset] = label.anchorX;
+    target[offset + 1] = label.anchorY;
+    target[offset + 2] = label.anchorZ;
+    target[offset + 3] = 0;
+    target[offset + 4] = label.gapY + label.height * 0.5;
+    target[offset + 5] = label.width;
+    target[offset + 6] = label.height;
+    target.set(label.uv, offset + 7);
+  }
+  return labels.length;
+}
+
 export function placeFriendsGalaxyLabelsAroundAvatars(
   seeds: readonly FriendsGalaxyLabelSeed[],
   avatars: readonly FriendsGalaxyAvatarExclusion[],
@@ -142,17 +166,6 @@ export function createFriendsGalaxyLabelAtlas(
     };
   });
   const instanceData = new Float32Array(labels.length * LABEL_INSTANCE_FLOATS);
-  for (let index = 0; index < labels.length; index += 1) {
-    const label = labels[index]!;
-    const offset = index * LABEL_INSTANCE_FLOATS;
-    instanceData[offset] = label.anchorX;
-    instanceData[offset + 1] = label.anchorY;
-    instanceData[offset + 2] = label.anchorZ;
-    instanceData[offset + 3] = 0;
-    instanceData[offset + 4] = label.gapY + label.height * 0.5;
-    instanceData[offset + 5] = label.width;
-    instanceData[offset + 6] = label.height;
-    instanceData.set(label.uv, offset + 7);
-  }
+  writeFriendsGalaxyLabelInstances(instanceData, labels);
   return { canvas, labels, itemCount: labels.length, instanceData };
 }
