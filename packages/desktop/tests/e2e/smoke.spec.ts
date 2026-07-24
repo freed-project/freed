@@ -17,6 +17,7 @@ import {
   resolveViteFsModulePath,
 } from "./fixtures/app";
 import { tauriInitScript } from "./fixtures/tauri-init";
+import { TOP_TOOLBAR_HEIGHT_PX } from "../../../ui/src/components/layout/layoutConstants";
 
 const SIDEBAR_ALIGNMENT_TOLERANCE_PX = 4;
 const SIDEBAR_ICON_ALIGNMENT_TOLERANCE_PX = 10;
@@ -25,9 +26,7 @@ const LAYOUT_CONTROL_SPLIT_OFFSET_PX = 24;
 const READER_LAYOUT_CONTROL_SPLIT_OFFSET_PX = 16;
 const LAYOUT_CONTROL_GAP_PX = 8;
 const READER_LAYOUT_CONTROL_GAP_PX = 0;
-const COMPACT_PRIMARY_SIDEBAR_WIDTH_PX = 48;
 const PRIMARY_SIDEBAR_GAP_WIDTH_PX = 8;
-const TOP_TOOLBAR_HEIGHT_PX = COMPACT_PRIMARY_SIDEBAR_WIDTH_PX + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2;
 const MACOS_TRAFFIC_LIGHT_INSET_PX = 100;
 const TOOLBAR_CENTER_ALIGNMENT_TOLERANCE_PX = 3;
 const TOOLBAR_VERTICAL_ALIGNMENT_TOLERANCE_PX = 2;
@@ -1069,6 +1068,7 @@ test("desktop layout controls fill the toolbar hitbox and center their icons", a
   });
 
   expect(geometry).not.toBeNull();
+  expect(geometry?.toolbarHeight).toBe(TOP_TOOLBAR_HEIGHT_PX);
   expect(geometry?.sidebar.height).toBe(geometry?.toolbarHeight);
   expect(geometry?.preview.height).toBe(geometry?.toolbarHeight);
   expect(geometry?.sidebar.iconCenterY).toBe(geometry?.toolbarCenterY);

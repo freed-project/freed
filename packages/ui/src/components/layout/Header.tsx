@@ -69,8 +69,8 @@ import {
   noDragRegionStyle as noDrag,
 } from "../../lib/native-drag-region.js";
 import {
-  COMPACT_PRIMARY_SIDEBAR_WIDTH_PX,
   PRIMARY_SIDEBAR_GAP_WIDTH_PX,
+  TOP_TOOLBAR_HEIGHT_PX,
   TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX,
   px,
 } from "./layoutConstants.js";
@@ -98,8 +98,6 @@ interface ToolbarOverflowAction {
 }
 
 const toolbarControlStyle = { ...noDrag, userSelect: "none" } as CSSProperties;
-const TOP_TOOLBAR_HEIGHT_PX =
-  COMPACT_PRIMARY_SIDEBAR_WIDTH_PX + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2;
 const TOOLBAR_ICON_BUTTON_CLASS =
   "theme-toolbar-icon-button rounded-lg";
 const TOOLBAR_READER_LAYOUT_TOGGLE_BUTTON_CLASS =
