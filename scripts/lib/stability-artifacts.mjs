@@ -32,6 +32,14 @@ const STABILITY_ARTIFACT_FILENAME_PATTERN =
 const STABILITY_ARTIFACT_TASK_PATTERN =
   /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
+export class StabilityArtifactValidationError extends Error {
+  constructor(errors) {
+    super(`Invalid stability artifact:\n- ${errors.join("\n- ")}`);
+    this.name = "StabilityArtifactValidationError";
+    this.errors = [...errors];
+  }
+}
+
 export const STABILITY_ARTIFACT_CONTRACTS = Object.freeze({
   "evidence-capture": Object.freeze({
     statuses: Object.freeze(["attributable", "inconclusive"]),
@@ -471,7 +479,7 @@ export function validateStabilityArtifact(
     errors.push("artifactDigest does not match the artifact content");
   }
   if (errors.length > 0) {
-    throw new Error(`Invalid stability artifact:\n- ${errors.join("\n- ")}`);
+    throw new StabilityArtifactValidationError(errors);
   }
   return structuredClone(artifact);
 }
@@ -553,9 +561,33 @@ function safeArtifactFileRead(filePath) {
 }
 
 function directoryEntries(directoryPath) {
-  return readdirSync(directoryPath, { withFileTypes: true }).sort((left, right) =>
-    left.name.localeCompare(right.name, "en"),
+  return readdirSync(directoryPath, { withFileTypes: true }).sort(
+    (left, right) => left.name.localeCompare(right.name, "en"),
   );
+}
+
+function directoryGeneration(directoryPath) {
+  const stats = lstatSync(directoryPath);
+  return {
+    dev: stats.dev,
+    ino: stats.ino,
+    mtimeMs: stats.mtimeMs,
+    ctimeMs: stats.ctimeMs,
+  };
+}
+
+function sameDirectoryGeneration(directoryPath, expected) {
+  try {
+    const current = directoryGeneration(directoryPath);
+    return (
+      current.dev === expected.dev &&
+      current.ino === expected.ino &&
+      current.mtimeMs === expected.mtimeMs &&
+      current.ctimeMs === expected.ctimeMs
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -601,7 +633,7 @@ export function readStabilityArtifactIndex({
       ],
     };
   }
-
+  const rootGeneration = directoryGeneration(root);
   for (const kindEntry of directoryEntries(root)) {
     const kindPath = path.join(root, kindEntry.name);
     if (
@@ -640,6 +672,7 @@ export function readStabilityArtifactIndex({
       );
       continue;
     }
+    const kindGeneration = directoryGeneration(kindPath);
     for (const taskEntry of directoryEntries(kindPath)) {
       const taskRelative = path.join(kindEntry.name, taskEntry.name);
       const taskPath = path.join(kindPath, taskEntry.name);
@@ -658,6 +691,7 @@ export function readStabilityArtifactIndex({
         );
         continue;
       }
+      const taskGeneration = directoryGeneration(taskPath);
       for (const fileEntry of directoryEntries(taskPath)) {
         const relativePath = path.join(taskRelative, fileEntry.name);
         const filePath = path.join(taskPath, fileEntry.name);
@@ -720,9 +754,12 @@ export function readStabilityArtifactIndex({
         } catch (error) {
           const reason =
             error instanceof Error ? error.message : String(error);
-          const historicalContractDrift = reason.includes(
-            "registered stability metric",
-          );
+          const historicalContractDrift =
+            error instanceof StabilityArtifactValidationError &&
+            error.errors.length === 1 &&
+            error.errors[0].startsWith(
+              "payload.metricId must name a registered stability metric:",
+            );
           records.push(
             artifactIndexRecord(
               relativePath,
@@ -739,7 +776,36 @@ export function readStabilityArtifactIndex({
           );
         }
       }
+      if (!sameDirectoryGeneration(taskPath, taskGeneration)) {
+        records.push(
+          artifactIndexRecord(
+            taskRelative,
+            "malformed",
+            "artifact task directory changed during indexing",
+            { kind: kindEntry.name, taskId: taskEntry.name },
+          ),
+        );
+      }
     }
+    if (!sameDirectoryGeneration(kindPath, kindGeneration)) {
+      records.push(
+        artifactIndexRecord(
+          kindEntry.name,
+          "malformed",
+          "artifact kind directory changed during indexing",
+          { kind: kindEntry.name },
+        ),
+      );
+    }
+  }
+  if (!sameDirectoryGeneration(root, rootGeneration)) {
+    records.push(
+      artifactIndexRecord(
+        ".",
+        "malformed",
+        "artifact root changed during indexing",
+      ),
+    );
   }
 
   const counts = {

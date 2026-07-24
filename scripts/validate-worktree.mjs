@@ -407,6 +407,26 @@ export function isSocialScrapeLoopPath(filePath) {
   );
 }
 
+const STABILITY_STATUS_PATHS = new Set([
+  "scripts/stability-status.mjs",
+  "scripts/lib/stability-status.mjs",
+  "scripts/lib/stability-artifacts.mjs",
+  "scripts/stability-status.test.mjs",
+  "scripts/stability-artifact.test.mjs",
+]);
+
+export function isStabilityStatusPath(filePath) {
+  return STABILITY_STATUS_PATHS.has(filePath);
+}
+
+function stabilityStatusTestsCommand() {
+  return nodeCommand("stability status tests", [
+    "--test",
+    path.join("scripts", "stability-status.test.mjs"),
+    path.join("scripts", "stability-artifact.test.mjs"),
+  ]);
+}
+
 function workspacePackageJson(workspacePath) {
   return path.join(REPO_ROOT, workspacePath, "package.json");
 }
@@ -595,7 +615,7 @@ export function buildValidationPlan(mode, changedFiles) {
   }
 
   if (normalizedMode === "dev") {
-    return [
+    const plan = [
       npmCommand("root build", ["run", "build"]),
       npmCommand("root typecheck", ["run", "typecheck"]),
       npmCommand("root lint", ["run", "lint"]),
@@ -628,6 +648,10 @@ export function buildValidationPlan(mode, changedFiles) {
       ),
       ...nativeRustChecks(),
     ];
+    if (changedFiles.some(isStabilityStatusPath)) {
+      addCommand(plan, stabilityStatusTestsCommand());
+    }
+    return plan;
   }
 
   if (normalizedMode === "production") {
@@ -682,6 +706,7 @@ export function buildValidationPlan(mode, changedFiles) {
   const validateRunnerChanged = changedFiles.some(isValidateRunnerPath);
   const toolingSmokeRunnerChanged = changedFiles.some(isToolingSmokeRunnerPath);
   const socialScrapeLoopChanged = changedFiles.some(isSocialScrapeLoopPath);
+  const stabilityStatusChanged = changedFiles.some(isStabilityStatusPath);
   const captureWorkspaces = unique(
     changedFiles.map(captureWorkspaceForFile).filter(Boolean),
   ).sort();
@@ -860,6 +885,10 @@ export function buildValidationPlan(mode, changedFiles) {
         path.join("scripts", "social-scrape-loop.test.mjs"),
       ]),
     );
+  }
+
+  if (stabilityStatusChanged) {
+    addCommand(plan, stabilityStatusTestsCommand());
   }
 
   if (releaseToolingChanged) {

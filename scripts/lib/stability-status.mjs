@@ -1,7 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  closeSync,
+  constants,
+  fstatSync,
   lstatSync,
+  openSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -9,12 +13,19 @@ import {
 import path from "node:path";
 
 import {
-  AUTOMATION_OUTCOME_STATES,
   automationControlPaths,
+  inspectLeaseTransactionEventHistory,
+  readAutomationAuthorityFileSnapshot,
   validateTaskManifest,
 } from "./automation-control.mjs";
 import { readStabilityArtifactIndex } from "./stability-artifacts.mjs";
-import { buildBehavioralTaskGate } from "../nightly-self-improve.mjs";
+import { STABILITY_METRIC_REGISTRY_VERSION } from "./stability-metrics.mjs";
+import {
+  authenticateOutcomeHistorySnapshots,
+  buildBehavioralTaskGate,
+} from "../nightly-self-improve.mjs";
+import { VERDICT_SCHEMA_VERSION } from "../soak-assert.mjs";
+import { SOAK_SCHEMA_VERSION } from "../soak-collect.mjs";
 import { validateAutomationSpecs } from "../validate-automation-specs.mjs";
 
 export const STABILITY_STATUS_SCHEMA_VERSION = 1;
@@ -51,37 +62,45 @@ function readRegularFile(
   filePath,
   { allowMissing = false, maxBytes = STATUS_FILE_MAX_BYTES } = {},
 ) {
-  let before;
+  let descriptor;
   try {
-    before = lstatSync(filePath);
+    descriptor = openSync(
+      filePath,
+      constants.O_RDONLY |
+        (constants.O_NOFOLLOW ?? 0) |
+        (constants.O_NONBLOCK ?? 0),
+    );
   } catch (error) {
     if (allowMissing && error?.code === "ENOENT") return null;
     throw error;
   }
-  if (
-    !before.isFile() ||
-    before.isSymbolicLink() ||
-    before.nlink !== 1 ||
-    before.size < 0 ||
-    before.size > maxBytes ||
-    realpathSync(filePath) !== path.resolve(filePath)
-  ) {
-    throw new Error(`${filePath} is not a safe bounded regular file.`);
+  try {
+    const before = fstatSync(descriptor);
+    if (
+      !before.isFile() ||
+      before.nlink !== 1 ||
+      before.size < 0 ||
+      before.size > maxBytes ||
+      realpathSync(filePath) !== path.resolve(filePath)
+    ) {
+      throw new Error(`${filePath} is not a safe bounded regular file.`);
+    }
+    const text = readFileSync(descriptor, "utf8");
+    const after = fstatSync(descriptor);
+    if (
+      !after.isFile() ||
+      after.dev !== before.dev ||
+      after.ino !== before.ino ||
+      after.size !== before.size ||
+      after.mtimeMs !== before.mtimeMs ||
+      after.ctimeMs !== before.ctimeMs
+    ) {
+      throw new Error(`${filePath} changed while it was read.`);
+    }
+    return text;
+  } finally {
+    closeSync(descriptor);
   }
-  const text = readFileSync(filePath, "utf8");
-  const after = lstatSync(filePath);
-  if (
-    after.isSymbolicLink() ||
-    !after.isFile() ||
-    after.dev !== before.dev ||
-    after.ino !== before.ino ||
-    after.size !== before.size ||
-    after.mtimeMs !== before.mtimeMs ||
-    after.ctimeMs !== before.ctimeMs
-  ) {
-    throw new Error(`${filePath} changed while it was read.`);
-  }
-  return text;
 }
 
 function parseJsonFile(filePath, options = {}) {
@@ -91,11 +110,28 @@ function parseJsonFile(filePath, options = {}) {
 
 function localGit(execFile, repoRoot, args, options = {}) {
   return String(
-    execFile("git", args, {
-      cwd: repoRoot,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", options.allowFailure ? "ignore" : "pipe"],
-    }),
+    execFile(
+      "git",
+      [
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "core.untrackedCache=false",
+        ...args,
+      ],
+      {
+        cwd: repoRoot,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          GIT_CONFIG_GLOBAL: "/dev/null",
+          GIT_CONFIG_NOSYSTEM: "1",
+          GIT_OPTIONAL_LOCKS: "0",
+          GIT_TERMINAL_PROMPT: "0",
+        },
+        stdio: ["ignore", "pipe", options.allowFailure ? "ignore" : "pipe"],
+      },
+    ),
   ).trim();
 }
 
@@ -122,12 +158,9 @@ export function readRepositoryStatus({
     let originUrl = null;
     try {
       originUrl =
-        localGit(
-          execFile,
-          root,
-          ["config", "--get", "remote.origin.url"],
-          { allowFailure: true },
-        ) || null;
+        localGit(execFile, root, ["config", "--get", "remote.origin.url"], {
+          allowFailure: true,
+        }) || null;
     } catch {
       originUrl = null;
     }
@@ -181,8 +214,7 @@ function taskTransactionHealth(paths) {
   );
   if (
     retirementDirectory &&
-    (!retirementDirectory.isDirectory() ||
-      retirementDirectory.isSymbolicLink())
+    (!retirementDirectory.isDirectory() || retirementDirectory.isSymbolicLink())
   ) {
     return {
       health: "malformed",
@@ -215,8 +247,20 @@ function taskTransactionHealth(paths) {
 export function readControlStatus({ stateRoot } = {}) {
   const paths = automationControlPaths(stateRoot);
   try {
-    const manifest = parseJsonFile(paths.taskManifest, { allowMissing: true });
-    if (manifest === null) {
+    const manifestSnapshot = readAutomationAuthorityFileSnapshot(
+      paths.taskManifest,
+      {
+        allowMissing: true,
+        allowEmpty: false,
+        privateRoot: paths.controlRoot,
+        maxBytes: STATUS_FILE_MAX_BYTES,
+        allowedModes: [0o600],
+        label: "Current task manifest",
+        missingCode: "invalid_state",
+        invalidCode: "invalid_state",
+      },
+    );
+    if (manifestSnapshot.missing) {
       return {
         health: "unavailable",
         revision: null,
@@ -226,6 +270,9 @@ export function readControlStatus({ stateRoot } = {}) {
         tasks: [],
       };
     }
+    const manifest = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(manifestSnapshot.bytes),
+    );
     const validated = validateTaskManifest(structuredClone(manifest));
     const transactions = taskTransactionHealth(paths);
     return {
@@ -250,24 +297,14 @@ export function readControlStatus({ stateRoot } = {}) {
   }
 }
 
-function canonicalOutcomeEntry(entry) {
-  return (
-    entry?.schemaVersion === 3 &&
-    typeof entry.taskId === "string" &&
-    entry.taskId.length > 0 &&
-    AUTOMATION_OUTCOME_STATES.includes(entry.outcome) &&
-    typeof entry.ts === "string" &&
-    Number.isFinite(Date.parse(entry.ts)) &&
-    typeof entry.authentication?.outcomeDigest === "string" &&
-    /^[0-9a-f]{64}$/.test(entry.authentication.outcomeDigest) &&
-    Number.isSafeInteger(entry.authentication?.taskRevision)
-  );
-}
-
 export function readOutcomeStatus({ stateRoot } = {}) {
-  const ledgerPath = automationControlPaths(stateRoot).outcomes;
+  const paths = automationControlPaths(stateRoot);
+  const ledgerPath = paths.outcomes;
   try {
     const text = readRegularFile(ledgerPath, { allowMissing: true });
+    const eventHistoryText = readRegularFile(paths.events, {
+      allowMissing: true,
+    });
     if (text === null) {
       return {
         health: "unavailable",
@@ -280,42 +317,47 @@ export function readOutcomeStatus({ stateRoot } = {}) {
         canonicalEntries: [],
       };
     }
-    const entries = [];
-    let malformedCount = 0;
-    const lines = text.split(/\r?\n/);
-    for (const [index, line] of lines.entries()) {
-      const trailingTerminator = index === lines.length - 1 && line === "";
-      if (trailingTerminator) continue;
-      if (line === "") {
-        malformedCount += 1;
-        continue;
-      }
-      try {
-        entries.push(JSON.parse(line));
-      } catch {
-        malformedCount += 1;
-      }
-    }
-    const canonicalEntries = entries.filter(canonicalOutcomeEntry);
-    malformedCount += entries.filter(
-      (entry) => entry?.schemaVersion === 3 && !canonicalOutcomeEntry(entry),
-    ).length;
-    const legacyCount = entries.filter(
-      (entry) => entry?.schemaVersion !== 3,
-    ).length;
+    const authenticated = authenticateOutcomeHistorySnapshots({
+      stateRoot,
+      ledgerPath,
+      ledgerText: text,
+      eventHistoryText,
+      leaseTransactionHistory: inspectLeaseTransactionEventHistory({
+        stateRoot,
+        events: String(eventHistoryText ?? "")
+          .split(/\r?\n/)
+          .filter(Boolean)
+          .map((line) => {
+            try {
+              return JSON.parse(line);
+            } catch {
+              return null;
+            }
+          }),
+      }),
+    });
+    const entries = text
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+    const canonicalEntries = authenticated.trustedEntries;
     const latest = canonicalEntries.at(-1) ?? entries.at(-1) ?? null;
     return {
-      health:
-        malformedCount > 0
-          ? "malformed"
-          : legacyCount > 0
-            ? "stale"
-            : "healthy",
+      health: authenticated.health,
       entryCount: entries.length,
       canonicalCount: canonicalEntries.length,
-      legacyCount,
-      malformedCount,
+      legacyCount: authenticated.legacyCount,
+      malformedCount: authenticated.rejectedEntries.length,
       sourceDigest: createHash("sha256").update(text).digest("hex"),
+      controlHistoryHealthy: authenticated.sourceHealth.controlHistoryHealthy,
+      pendingOutcomeTransitions: authenticated.pendingOutcomeTransitions,
       latest:
         latest === null
           ? null
@@ -388,6 +430,33 @@ function safeSoakDirectory(stateRoot, pointerText) {
   return candidate;
 }
 
+function captureDirectoryGeneration(directory) {
+  const stats = lstatSync(directory);
+  if (!stats.isDirectory() || stats.isSymbolicLink()) {
+    throw new Error("expected a real directory generation");
+  }
+  return {
+    dev: stats.dev,
+    ino: stats.ino,
+    mtimeMs: stats.mtimeMs,
+    ctimeMs: stats.ctimeMs,
+  };
+}
+
+function directoryGenerationMatches(directory, expected) {
+  try {
+    const current = captureDirectoryGeneration(directory);
+    return (
+      current.dev === expected.dev &&
+      current.ino === expected.ino &&
+      current.mtimeMs === expected.mtimeMs &&
+      current.ctimeMs === expected.ctimeMs
+    );
+  } catch {
+    return false;
+  }
+}
+
 function collectorLifecycle(soakDirectory) {
   const eventsPath = path.join(soakDirectory, "collector-events.jsonl");
   const text = readRegularFile(eventsPath, { allowMissing: true });
@@ -439,10 +508,13 @@ export function readSoakStatus({
       };
     }
     const directory = safeSoakDirectory(stateRoot, pointer);
+    const soakRoot = path.join(path.resolve(stateRoot), "soaks");
+    const soakRootGeneration = captureDirectoryGeneration(soakRoot);
+    const soakGeneration = captureDirectoryGeneration(directory);
     const info = parseJsonFile(path.join(directory, "soak-info.json"));
     if (
       !Number.isFinite(Date.parse(String(info?.startedAt ?? ""))) ||
-      !Number.isSafeInteger(info?.schemaVersion)
+      info?.schemaVersion !== SOAK_SCHEMA_VERSION
     ) {
       throw new Error("soak-info.json has an unsupported shape");
     }
@@ -452,8 +524,10 @@ export function readSoakStatus({
     });
     if (
       verdict !== null &&
-      (!Number.isFinite(Date.parse(String(verdict.generatedAt ?? ""))) ||
-        typeof verdict.status !== "string")
+      (verdict.schemaVersion !== VERDICT_SCHEMA_VERSION ||
+        verdict.metricRegistryVersion !== STABILITY_METRIC_REGISTRY_VERSION ||
+        !Number.isFinite(Date.parse(String(verdict.generatedAt ?? ""))) ||
+        !new Set(["pass", "fail", "inconclusive"]).has(verdict.status))
     ) {
       throw new Error("soak-verdict.json has an unsupported shape");
     }
@@ -465,13 +539,15 @@ export function readSoakStatus({
         : verdict === null
           ? "stopped-awaiting-verdict"
           : "verdict-ready";
+    if (
+      !directoryGenerationMatches(directory, soakGeneration) ||
+      !directoryGenerationMatches(soakRoot, soakRootGeneration)
+    ) {
+      throw new Error("soak namespace changed during status collection");
+    }
     return {
       model: {
-        health: sourceHealthFromTimestamp(
-          latestTimestamp,
-          nowMs,
-          staleAfterMs,
-        ),
+        health: sourceHealthFromTimestamp(latestTimestamp, nowMs, staleAfterMs),
         maturity,
         soakId: path.basename(directory),
         startedAt: info.startedAt,
@@ -484,8 +560,7 @@ export function readSoakStatus({
                 generatedAt: verdict.generatedAt,
                 windowStart: verdict.windowStart ?? null,
                 windowEnd: verdict.windowEnd ?? null,
-                evidenceDigest:
-                  verdict.evidenceFingerprint?.digest ?? null,
+                evidenceDigest: verdict.evidenceFingerprint?.digest ?? null,
               },
       },
       directory,
@@ -522,27 +597,65 @@ export function readRuntimeStatus({
     if (text === null) return { health: "unavailable", identity: null };
     const lines = text.split(/\r?\n/).filter(Boolean);
     let identity = null;
+    let unattributedCount = 0;
+    let mixedBuildIdentity = false;
     for (let index = lines.length - 1; index >= 0; index -= 1) {
       const event = JSON.parse(lines[index]);
+      const timestampMs = Number(event.tsMs);
       if (
         typeof event.appVersion === "string" &&
+        /^\d{2}\.\d{1,2}\.\d{3,4}(?:-dev)?$/.test(event.appVersion) &&
         typeof event.buildCommitSha === "string" &&
-        /^[0-9a-f]{40,64}$/.test(event.buildCommitSha) &&
-        typeof event.channel === "string" &&
+        /^[0-9a-f]{40}$/.test(event.buildCommitSha) &&
+        new Set(["dev", "production"]).has(event.channel) &&
+        new Set(["release", "snapshot", "preview", "local"]).has(
+          event.buildKind,
+        ) &&
         typeof event.appSessionId === "string" &&
-        Number.isFinite(Number(event.tsMs))
+        event.appSessionId.trim() !== "" &&
+        Number.isSafeInteger(timestampMs) &&
+        timestampMs > 0 &&
+        timestampMs <= nowMs + 5 * 60 * 1_000
       ) {
-        identity = {
+        const candidate = {
           version: event.appVersion,
           commitSha: event.buildCommitSha,
           channel: event.channel,
-          buildKind: event.buildKind ?? null,
+          buildKind: event.buildKind,
           nativeBootId: event.nativeBootId ?? null,
           appSessionId: event.appSessionId,
-          observedAt: new Date(Number(event.tsMs)).toISOString(),
+          observedAt: new Date(timestampMs).toISOString(),
         };
-        break;
+        if (identity === null) {
+          identity = candidate;
+        } else if (
+          identity.version !== candidate.version ||
+          identity.commitSha !== candidate.commitSha ||
+          identity.channel !== candidate.channel ||
+          identity.buildKind !== candidate.buildKind
+        ) {
+          mixedBuildIdentity = true;
+        }
+      } else {
+        unattributedCount += 1;
       }
+    }
+    if (identity !== null && mixedBuildIdentity) {
+      return {
+        health: "malformed",
+        identity,
+        unattributedCount,
+        reason: "runtime health mixes multiple build identities",
+      };
+    }
+    if (identity !== null && unattributedCount > 0) {
+      return {
+        health: "malformed",
+        identity,
+        unattributedCount,
+        reason:
+          "runtime health mixes attributable and unattributed build evidence",
+      };
     }
     if (identity === null) {
       return {
@@ -580,13 +693,45 @@ function selectedExecutionTask(tasks) {
 }
 
 export function deriveStabilityNextAction(model) {
+  if (model.control.health !== "healthy") {
+    return {
+      id: "repair_control_state",
+      taskId: null,
+      reason: "atomic task authority is not healthy",
+    };
+  }
   const selected = selectedExecutionTask(model.control.tasks);
   if (selected) {
+    const nonbehavioralStatusRepair =
+      selected.behavioral === false &&
+      selected.details?.behavioral === false &&
+      selected.providerAuthority === "forbidden" &&
+      selected.state === "implemented" &&
+      selected.taskId === "github-issue-1107";
+    if (model.outcomes.health !== "healthy" && !nonbehavioralStatusRepair) {
+      return {
+        id: "repair_outcome_ledger",
+        taskId: null,
+        reason:
+          "outcome authority must be repaired before executable work can advance",
+      };
+    }
     if (selected.providerAuthority !== "forbidden") {
       return {
         id: "prepare_provider_approval",
         taskId: selected.taskId,
         reason: "selected work is provider visible and cannot run unattended",
+      };
+    }
+    if (
+      selected.behavioral === true &&
+      (model.behaviorSlot.status !== "reserved" ||
+        model.behaviorSlot.authorizedTaskId !== selected.taskId)
+    ) {
+      return {
+        id: "repair_behavior_authority",
+        taskId: selected.taskId,
+        reason: "the global behavior gate does not authorize the exact task",
       };
     }
     const actionByState = {
@@ -601,11 +746,12 @@ export function deriveStabilityNextAction(model) {
       reason: `controller selected task is ${selected.state}`,
     };
   }
-  if (model.control.health === "malformed") {
+  if (model.outcomes.health !== "healthy") {
     return {
-      id: "repair_control_state",
+      id: "repair_outcome_ledger",
       taskId: null,
-      reason: "atomic task state is malformed",
+      reason:
+        "regenerate and approve outcome-ledger.repair, then separately approve the pending outcome.record backfill",
     };
   }
   if (model.behaviorSlot.status === "awaiting-soak-outcome") {
@@ -629,13 +775,6 @@ export function deriveStabilityNextAction(model) {
       reason: "checked-in actor bindings do not match runtime policy",
     };
   }
-  if (model.outcomes.health === "malformed") {
-    return {
-      id: "repair_outcome_ledger",
-      taskId: null,
-      reason: "outcome source is malformed",
-    };
-  }
   return {
     id: "run_stability_controller",
     taskId: null,
@@ -647,8 +786,29 @@ function stableStatusProjection(model) {
   const projection = structuredClone(model);
   delete projection.observedAt;
   delete projection.stableDigest;
-  delete projection.repository.root;
-  delete projection.artifacts.root;
+  const stripDiagnostics = (value) => {
+    if (Array.isArray(value)) {
+      value.forEach(stripDiagnostics);
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    for (const key of Object.keys(value)) {
+      if (
+        key === "reason" ||
+        key === "root" ||
+        key === "originUrl" ||
+        key === "directory" ||
+        key === "observedAt" ||
+        key === "nativeBootId" ||
+        key === "appSessionId"
+      ) {
+        delete value[key];
+      } else {
+        stripDiagnostics(value[key]);
+      }
+    }
+  };
+  stripDiagnostics(projection);
   return projection;
 }
 
@@ -688,11 +848,11 @@ export function buildStabilityStatus({
     staleAfterMs,
   });
   const artifacts = (
-    readers.artifacts ??
-    ((options) => readStabilityArtifactIndex(options))
+    readers.artifacts ?? ((options) => readStabilityArtifactIndex(options))
   )({ artifactRoot });
   const behaviorGate = buildBehavioralTaskGate(control.tasks, {
     outcomeEntries: canonicalOutcomeEntries,
+    pendingOutcomeTransitions: outcomeRead.pendingOutcomeTransitions ?? null,
     outcomeLedgerHealthy: outcomes.health === "healthy",
   });
   const behaviorSlot = {
@@ -725,9 +885,7 @@ export function formatStabilityStatus(model) {
   const runtime = model.runtime.identity
     ? `${model.runtime.identity.version} ${model.runtime.identity.channel} ${model.runtime.identity.commitSha.slice(0, 12)}`
     : "unavailable";
-  const task = model.nextAction.taskId
-    ? ` for ${model.nextAction.taskId}`
-    : "";
+  const task = model.nextAction.taskId ? ` for ${model.nextAction.taskId}` : "";
   return [
     "Freed stability status",
     `Repository: ${model.repository.health} at ${model.repository.commitSha ?? "unknown"}`,

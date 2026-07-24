@@ -306,3 +306,40 @@ test("stability artifact index rejects unsafe shapes and stale embedded digests"
     /artifactDigest does not match/,
   );
 });
+
+test("retired metrics are stale only when they are the sole validation error", () => {
+  const root = mkdtempSync(
+    path.join(os.tmpdir(), "freed-stability-artifact-retired-"),
+  );
+  const directory = path.join(root, "stability-controller", "P1-04");
+  mkdirSync(directory, { recursive: true });
+  const writeCanonical = (artifact) => {
+    const digest = stabilityArtifactDigest(artifact);
+    const stored = { ...artifact, artifactDigest: digest };
+    const target = path.join(directory, `20260710200000000-${digest}.json`);
+    writeFileSync(target, `${JSON.stringify(stored)}\n`);
+    return target;
+  };
+  writeCanonical(
+    controllerArtifact({
+      payload: {
+        ...controllerArtifact().payload,
+        metricId: "retired-metric-contract",
+      },
+    }),
+  );
+  writeCanonical({
+    ...controllerArtifact({
+      payload: {
+        ...controllerArtifact().payload,
+        metricId: "retired-metric-with-corruption",
+      },
+    }),
+    schemaVersion: 99,
+  });
+
+  const index = readStabilityArtifactIndex({ artifactRoot: root });
+  assert.equal(index.counts.stale, 1);
+  assert.equal(index.counts.malformed, 1);
+  assert.equal(index.health, "malformed");
+});

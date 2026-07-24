@@ -1431,6 +1431,117 @@ function authenticateOutcomeEntry(
   return { trusted: true };
 }
 
+export function authenticateOutcomeHistorySnapshots({
+  stateRoot,
+  ledgerPath,
+  ledgerText,
+  eventHistoryText,
+  leaseTransactionHistory,
+} = {}) {
+  const root = path.resolve(stateRoot);
+  const canonicalLedgerPath = automationControlPaths(root).outcomes;
+  if (path.resolve(ledgerPath) !== canonicalLedgerPath) {
+    throw new Error("Outcome ledger path is not canonical for the state root.");
+  }
+  const ledgerBytes = Buffer.from(String(ledgerText ?? ""), "utf8");
+  const eventBytes = Buffer.from(String(eventHistoryText ?? ""), "utf8");
+  let ledgerBoundaryIssue = null;
+  let eventBoundaryIssue = null;
+  try {
+    requireOutcomeLedgerPhysicalBoundary(ledgerBytes);
+  } catch (error) {
+    ledgerBoundaryIssue =
+      error instanceof Error ? error.message : String(error);
+  }
+  try {
+    requireControlEventPhysicalBoundary(eventBytes);
+  } catch (error) {
+    eventBoundaryIssue =
+      error instanceof Error ? error.message : String(error);
+  }
+  const ledgerSource = parseJsonLinesWithHealth(String(ledgerText ?? ""), {
+    exists: ledgerText !== null && ledgerText !== undefined,
+  });
+  const eventSource = parseJsonLinesWithHealth(
+    String(eventHistoryText ?? ""),
+    {
+      exists: eventHistoryText !== null && eventHistoryText !== undefined,
+    },
+  );
+  const eventHistory = trustedOutcomeEventHistoryFromSource(
+    eventSource,
+    canonicalLedgerPath,
+    root,
+    eventBoundaryIssue,
+    leaseTransactionHistory ?? {
+      healthy: false,
+      issues: ["lease transaction history was not coherently admitted"],
+      retainedReceiptCount: 0,
+      pendingTransactionArtifactCount: 0,
+    },
+  );
+  const consumedEventIds = new Set();
+  const consumedOutcomeKeys = new Set();
+  const trustedEntries = [];
+  const rejectedEntries = [];
+  let legacyCount = 0;
+  for (const record of ledgerSource.records) {
+    if (record.malformed) {
+      rejectedEntries.push({
+        lineNumber: record.lineNumber,
+        entry: null,
+        reason: "malformed outcome ledger row",
+      });
+      continue;
+    }
+    if (record.entry?.schemaVersion !== OUTCOME_SCHEMA_VERSION) {
+      legacyCount += 1;
+      continue;
+    }
+    const authentication = authenticateOutcomeEntry(
+      record.entry,
+      canonicalLedgerPath,
+      eventHistory,
+      consumedEventIds,
+      consumedOutcomeKeys,
+    );
+    if (authentication.trusted) {
+      trustedEntries.push(record.entry);
+    } else {
+      rejectedEntries.push({
+        lineNumber: record.lineNumber,
+        entry: record.entry,
+        reason: authentication.reason,
+      });
+    }
+  }
+  const malformed =
+    !ledgerSource.healthy ||
+    ledgerBoundaryIssue !== null ||
+    !eventHistory.source.healthy ||
+    rejectedEntries.length > 0;
+  return {
+    health: malformed ? "malformed" : legacyCount > 0 ? "stale" : "healthy",
+    trustedEntries,
+    rejectedEntries,
+    legacyCount,
+    pendingOutcomeTransitions:
+      findPendingOutcomeTransitionsFromTrustedHistory(
+        trustedEntries,
+        eventHistory,
+      ),
+    sourceHealth: {
+      ledgerHealthy:
+        ledgerSource.healthy &&
+        ledgerBoundaryIssue === null &&
+        rejectedEntries.length === 0,
+      controlHistoryHealthy: eventHistory.source.healthy,
+      ledgerBoundaryIssue,
+      eventBoundaryIssue,
+    },
+  };
+}
+
 export function summarizeOutcomeLedger(
   filePath,
   {
