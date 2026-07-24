@@ -637,13 +637,16 @@ export function buildValidationPlan(mode, changedFiles) {
         "--test",
         path.join("scripts", "release-notes-shared.test.mjs"),
       ]),
-      npmCommand("website production build", ["run", "build"], "website"),
+      // The website is a separate lane. It ships from `www` through the
+      // publish-website job against the reviewed marketing branch, so building
+      // it here proved nothing about the Desktop release and coupled two lanes
+      // that AGENTS.md keeps apart.
+      //
+      // The desktop production build is also gone: the release matrix runs the
+      // real signed build on all four platforms, so building the frontend once
+      // more on ubuntu made it five builds to gate four artifacts. A frontend
+      // break still fails, just in the build that actually ships.
       npmCommand("pwa production build", ["run", "build"], "packages/pwa"),
-      npmCommand(
-        "desktop production build",
-        ["run", "build"],
-        "packages/desktop",
-      ),
     ];
 
     const releaseArtifacts = collectReleaseArtifactsToValidate(

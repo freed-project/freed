@@ -2,18 +2,17 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
-const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.dirname(SCRIPT_DIRECTORY);
-const SHARDED_TEST_FILES = Object.freeze({
-  "automation-control": "scripts/automation-control.test.mjs",
-  "kernel-guard-cutover": "scripts/automation-kernel-guard-cutover.test.mjs",
-  "outcome-ledger-repair": "scripts/outcome-ledger-repair.test.mjs",
-});
+import {
+  REPO_ROOT,
+  SHARDED_TEST_FILES,
+  generalTestFiles,
+  shellFiles,
+} from "./lib/tooling-smoke-suites.mjs";
 
 function fail(message) {
   throw new Error(message);
@@ -330,43 +329,6 @@ export function partitionWeightedTestUnits(units, shardCount) {
   return shards.map(({ units: assignedUnits }) => Object.freeze(assignedUnits));
 }
 
-function generalTestFiles(repoRoot) {
-  const specialFiles = new Set(Object.values(SHARDED_TEST_FILES));
-  const visit = (relativeDirectory) =>
-    readdirSync(path.join(repoRoot, relativeDirectory), {
-      withFileTypes: true,
-    }).flatMap((entry) => {
-      const relativePath = path.posix.join(relativeDirectory, entry.name);
-      if (entry.isDirectory()) return visit(relativePath);
-      if (
-        !entry.isFile() ||
-        !entry.name.endsWith(".test.mjs") ||
-        specialFiles.has(relativePath)
-      ) {
-        return [];
-      }
-      return [relativePath];
-    });
-  return visit("scripts").sort();
-}
-
-function shellFiles(repoRoot) {
-  return ["scripts", path.join("scripts", "lib")]
-    .flatMap((relativeDirectory) =>
-      readdirSync(path.join(repoRoot, relativeDirectory), {
-        withFileTypes: true,
-      })
-        .filter((entry) => entry.isFile() && entry.name.endsWith(".sh"))
-        .map((entry) =>
-          path.posix.join(
-            relativeDirectory.split(path.sep).join("/"),
-            entry.name,
-          ),
-        ),
-    )
-    .sort();
-}
-
 export function buildToolingSmokeShardPlan(
   { suite, shardIndex, shardCount },
   { repoRoot = REPO_ROOT } = {},
@@ -427,11 +389,16 @@ function runChecked(command, args, repoRoot) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
+// node --test defaults to no per-test timeout, so one blocked test pins a shard
+// until the job-level timeout kills the whole run with no useful signal. Any
+// tooling test slower than this in a blocking lane is a defect, not a long test.
+export const SHARD_TEST_TIMEOUT_MS = 300_000;
+
 export function runToolingSmokeShard(plan, { repoRoot = REPO_ROOT } = {}) {
   if (plan.shellFiles.length > 0) {
     runChecked("bash", ["-n", ...plan.shellFiles], repoRoot);
   }
-  const args = ["--test"];
+  const args = ["--test", `--test-timeout=${SHARD_TEST_TIMEOUT_MS}`];
   if (plan.testNamePattern !== null) {
     args.push(`--test-name-pattern=${plan.testNamePattern}`);
   }

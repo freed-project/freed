@@ -438,7 +438,7 @@ test("dev plan runs desktop smoke, regression, perf, and visual lanes", () => {
   assert.ok(!labels.includes("desktop e2e full"));
 });
 
-test("production plan includes dev desktop gates and production builds", () => {
+test("production plan includes dev desktop gates without duplicating shipped builds", () => {
   const labels = describePlan(buildValidationPlan("production", []));
 
   assert.ok(labels.includes("desktop e2e smoke"));
@@ -446,7 +446,25 @@ test("production plan includes dev desktop gates and production builds", () => {
   assert.ok(labels.includes("desktop e2e perf"));
   assert.ok(labels.includes("desktop e2e visual"));
   assert.ok(!labels.includes("desktop e2e full"));
-  assert.ok(labels.includes("desktop production build"));
+
+  // The PWA is not otherwise built by the release workflow, so it stays.
+  assert.ok(labels.includes("pwa production build"));
+
+  // The release matrix runs the real signed desktop build on all four
+  // platforms. Building the frontend once more here made it five builds to
+  // gate four artifacts, and a frontend break still fails the build that ships.
+  assert.ok(
+    !labels.includes("desktop production build"),
+    "the desktop build must not be duplicated ahead of the release matrix",
+  );
+
+  // The website ships from `www` through publish-website against the reviewed
+  // marketing branch. Building it in the Desktop release lane couples two
+  // branch lanes that AGENTS.md keeps apart.
+  assert.ok(
+    !labels.includes("website production build"),
+    "the Desktop release lane must not build the website",
+  );
 });
 
 test("release mode remains a compatibility alias for production", () => {

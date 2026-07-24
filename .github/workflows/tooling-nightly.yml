@@ -1,0 +1,155 @@
+name: Nightly exhaustive
+
+# The blocking lanes are deliberately narrow. This is where the expensive work
+# lives: every suite unsharded, repeated runs to surface flake, and the native
+# acceptance tests on a real macOS runner.
+#
+# Nothing here gates a pull request. When it finds something it files debt the
+# same way the dev lane files incidents, so a slow suite or a flaky test becomes
+# a tracked issue instead of a surprise in someone's PR.
+
+on:
+  schedule:
+    # 07:00 UTC, comfortably after the usual working day in the owner's timezone.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+    inputs:
+      repeat:
+        description: "Runs per suite for flake discovery"
+        required: false
+        default: "2"
+
+concurrency:
+  group: tooling-nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  exhaustive-tooling:
+    name: Exhaustive tooling suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Measure every suite and look for flake
+        id: measure
+        run: |
+          node scripts/measure-tooling-smoke.mjs \
+            --repeat="${{ github.event.inputs.repeat || '2' }}" \
+            > tooling-smoke-measured.json 2> tooling-smoke-measured.log
+          cat tooling-smoke-measured.log
+
+      - name: Report timings and drift
+        if: always()
+        run: node scripts/report-tooling-smoke-drift.mjs tooling-smoke-measured.json
+
+      - name: Upload measurements
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tooling-smoke-measurements
+          path: |
+            tooling-smoke-measured.json
+            tooling-smoke-measured.log
+          retention-days: 30
+          if-no-files-found: warn
+
+      # Flake and drift are debt, not incidents. One issue, deduplicated, so the
+      # backlog stays the single source per the repo debt contract.
+      - name: File or update the tooling debt issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Nightly exhaustive tooling lane needs attention"
+          body="(AI Generated).
+
+          Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          Commit: ${GITHUB_SHA}
+
+          The nightly exhaustive lane failed, went flaky, or drifted far enough
+          from scripts/tooling-smoke-durations.json that shard balance is stale.
+          Refresh durations with: node scripts/measure-tooling-smoke.mjs --write"
+          existing=$(gh issue list --label debt --state open \
+            --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --label debt --body "$body"
+          fi
+
+  native-acceptance:
+    name: Native actor acceptance (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run native acceptance tests
+        run: node scripts/run-native-acceptance.mjs
+
+  desktop-e2e:
+    name: Desktop e2e (full)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/azure-cli.list \
+            /etc/apt/sources.list.d/azure-cli.sources
+          npx playwright install --with-deps chromium
+        working-directory: packages/desktop
+
+      - name: Run the full desktop e2e suite
+        run: npm run test:e2e
+        working-directory: packages/desktop
+
+      - name: Upload reports on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nightly-playwright-report
+          path: packages/desktop/playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore
