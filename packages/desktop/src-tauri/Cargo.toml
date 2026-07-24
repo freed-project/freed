@@ -31,7 +31,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 rquest = { version = "5", features = ["json"] }
 rquest-util = "2"
 tokio = { version = "1", features = ["full"] }
-tokio-tungstenite = "0.26"
+tokio-tungstenite = "0.30"
 futures-util = "0.3"
 fslock = "0.2.1"
 local-ip-address = "0.6"
