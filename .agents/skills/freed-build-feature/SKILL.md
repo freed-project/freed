@@ -11,12 +11,12 @@ Build one attributable product change from the latest `origin/dev`. Keep the cha
 ## Establish the contract
 
 1. Confirm the destination is `dev`. Route public website work to `freed-build-www`.
-2. Record a stable task ID. For stability work, use the existing program task ID. Do not invent a second task for the same root cause.
+2. Search open GitHub Issues labeled `debt` before creating work for a tracked root cause. Keep the existing issue as the canonical debt record. When governed execution needs a control task, use the selected task ID and store the issue as `details.githubIssue: { number, url }`.
 3. Record canonical task authority as `observe-only`, `plan-only`, `pr-only`, or `merge-safe`. Record provider authority separately as `forbidden`, `approval-required`, or `approved`. Also record which external actions the user explicitly granted, such as publishing a PR, merging, releasing, or deploying. None of these fields substitutes for another.
 4. For sync, capture, memory, or recovery work, name the metric-registry entry that will judge the change. Record its event predicate, denominator, target, baseline window, minimum coverage, and expected direction.
 5. Treat missing build identity, mixed-build evidence, insufficient coverage, or broken sources as `inconclusive`. Do not turn absence of evidence into a passing result.
 6. Record the source build identity for every baseline: app version, channel, git SHA, native boot ID, app session ID, and exact start and end timestamps when available.
-7. Read [docs/STABILITY-PROGRAM.md](../../../docs/STABILITY-PROGRAM.md). Preserve the watchdog freeze and one global behavioral product change until its installed-build soak outcome completes.
+7. Read [docs/STABILITY-PROGRAM.md](../../../docs/STABILITY-PROGRAM.md) for durable stability policy and read the selected GitHub issue for scope and completion criteria. Preserve the watchdog freeze and one global behavioral product change until its installed-build soak outcome completes.
 8. If the change can alter provider-visible behavior, stop and use `freed-provider-risk-review`. Preparation is not approval. A materially changed provider-visible diff requires renewed approval.
 
 ## Build the slice
@@ -56,11 +56,11 @@ When product work changes any `docs/PHASE-*.md` file:
    path. A partial trusted handoff still fails closed.
 2. Confirm the PR targets `dev`, required checks passed for the exact head SHA, and the PR state matches the granted authority.
 3. Do not merge owner-review or provider-visible work autonomously.
-4. For governed stability or control-plane work, record the canonical task ID
-   through the outcome helper after merge while the task is in `validated`,
-   using the live actor lease and exact merged-head evidence. The helper must
-   perform the `validated` to `merged` transition. General product work without
-   a canonical control task does not invent an outcome record. A completed task
-   stays closed unless fresh post-build evidence from a later window proves
-   regression.
+4. For governed stability or control-plane work, record the issue-linked
+   operational task ID through the outcome helper after merge while the task is
+   in `validated`, using the live actor lease and exact merged-head evidence.
+   The helper must perform the `validated` to `merged` transition. General
+   product work without a control task does not invent an outcome record. A
+   closed debt issue stays closed unless fresh post-build evidence from a later
+   window proves regression.
 5. Stop only this worktree's preview when the PR merges, the worktree is removed, or the task is archived.

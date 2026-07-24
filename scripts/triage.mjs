@@ -2,17 +2,15 @@
 /**
  * triage.mjs (stability W2-02)
  *
- * Evidence in, ranked tasks out. Reads four evidence streams —
+ * Evidence in, ranked candidates out. Reads four evidence streams:
  * invariant-alarm aggregates from rotated runtime-health, the latest
- * soak-verdict.json failures, canary-ledger regression entries (W2-03), and
- * open `automation-triage` CI-failure issues — dedupes them into root-cause
- * buckets, ranks by severity x frequency x freshness, and emits one task
- * file per bucket (docs/stability-tasks format, evidence pointers included)
- * into an immutable generation, then atomically moves the current manifest.
+ * soak-verdict.json failures, canary-ledger regression entries, and open
+ * `automation-triage` CI-failure issues. It deduplicates them into root-cause
+ * buckets, ranks by severity x frequency x freshness, and emits attributable
+ * evidence candidates into an immutable generation.
  *
- * Buckets deliberately map to EXISTING program tasks where one exists: the
- * emitted candidate says "execute P1-04, here is tonight's evidence", so the
- * queue converges on the program instead of forking it.
+ * GitHub Issues carrying the `debt` label are the only debt backlog. Generated
+ * candidates point to those issues and never become a second backlog.
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -61,9 +59,8 @@ const DEFAULT_LEDGER_DIR = path.join(REPO_ROOT, "canary-ledger");
 const MAX_ACTIONABLE_EVIDENCE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * Root-cause buckets. Each maps the signals that indict it (alarm names,
- * soak-verdict assertion ids, canary metrics) to the program task that fixes
- * it. severity 1-5 follows stability-findings.json.
+ * Root-cause buckets map evidence signals to one canonical GitHub debt issue.
+ * Severity is an evidence-ranking input, not a second issue priority system.
  */
 const BUCKET_DEFINITIONS = [
   {
@@ -71,8 +68,7 @@ const BUCKET_DEFINITIONS = [
     taskId: "P1-01",
     title: "Idle cloud upload loop is live",
     severity: 5,
-    programTask: "P1-01-cloud-loop-damper-desktop.md (then P1-02/P1-03)",
-    findings: "F01/F06",
+    debtIssueNumber: 1066,
     providerVisible: true,
     behavioral: true,
     soakExclusivityKey: "cloud-sync-behavior",
@@ -84,8 +80,7 @@ const BUCKET_DEFINITIONS = [
     taskId: "P1-04",
     title: "Window recycles are killing held scraper/login sessions",
     severity: 5,
-    programTask: "P1-04-preflight-recycle-guard.md",
-    findings: "F04",
+    debtIssueNumber: 1070,
     providerVisible: true,
     behavioral: true,
     soakExclusivityKey: "provider-window-lifecycle",
@@ -97,8 +92,7 @@ const BUCKET_DEFINITIONS = [
     taskId: "P1-05",
     title: "Novel scrape items are not persisted",
     severity: 5,
-    programTask: "P1-05-recovery-invoke-latch.md",
-    findings: "F03",
+    debtIssueNumber: 1071,
     providerVisible: true,
     behavioral: true,
     soakExclusivityKey: "provider-window-lifecycle",
@@ -110,9 +104,7 @@ const BUCKET_DEFINITIONS = [
     taskId: "wave1-renderer-churn",
     title: "Watchdog is thrashing the main renderer",
     severity: 4,
-    programTask:
-      "demand-side dampers first (P1-*); thresholds stay frozen per program rules",
-    findings: "F16/F23",
+    debtIssueNumber: 1097,
     providerVisible: true,
     behavioral: true,
     soakExclusivityKey: "renderer-recovery-behavior",
@@ -124,8 +116,7 @@ const BUCKET_DEFINITIONS = [
     taskId: "wave4-auth-truth",
     title: "A provider is scraping empty while believed authenticated",
     severity: 3,
-    programTask: "Wave 4 auth-truth tasks (see docs/STABILITY-PROGRAM.md)",
-    findings: "auth misclassification theme",
+    debtIssueNumber: 1078,
     providerVisible: true,
     behavioral: true,
     soakExclusivityKey: "provider-auth-behavior",
@@ -137,8 +128,7 @@ const BUCKET_DEFINITIONS = [
     taskId: "wave5-memory-demand",
     title: "Idle memory footprint is growing or peaking high",
     severity: 4,
-    programTask: "Wave 5 demand-side tasks (see docs/STABILITY-PROGRAM.md)",
-    findings: "F-memory themes",
+    debtIssueNumber: 1082,
     providerVisible: false,
     behavioral: true,
     soakExclusivityKey: "memory-demand-behavior",
@@ -150,8 +140,7 @@ const BUCKET_DEFINITIONS = [
     taskId: "wave5-worker-lifecycle",
     title: "Automerge worker INIT churn",
     severity: 3,
-    programTask: "Wave 5 worker lifecycle task",
-    findings: "F20",
+    debtIssueNumber: 1084,
     providerVisible: false,
     behavioral: true,
     soakExclusivityKey: "worker-lifecycle-behavior",
@@ -163,8 +152,7 @@ const BUCKET_DEFINITIONS = [
     taskId: "ci-red",
     title: "CI is red",
     severity: 5,
-    programTask: "fix the failing job first; nothing ships over red CI",
-    findings: "ci",
+    debtIssueNumber: null,
     providerVisible: false,
     behavioral: false,
     soakExclusivityKey: null,
@@ -512,6 +500,7 @@ export function buildCandidates({
         buildIdentities: [],
         sourceHealthStatuses: [],
         sourceFingerprints: [],
+        incidentIssues: [],
       });
     }
     return candidates.get(bucketId);
@@ -638,6 +627,10 @@ export function buildCandidates({
       kind: "ci-issue",
       digest: createHash("sha256").update(JSON.stringify(issue)).digest("hex"),
     });
+    candidate.incidentIssues.push({
+      number: issue.number,
+      url: issue.url,
+    });
     candidate.lastEvidenceMs = Math.max(
       candidate.lastEvidenceMs,
       issueUpdatedAtMs,
@@ -680,6 +673,16 @@ export function buildCandidates({
         }),
       )
       .digest("hex");
+    const incidentIssues = [
+      ...new Map(
+        candidate.incidentIssues.map((issue) => [issue.number, issue]),
+      ).values(),
+    ].sort((left, right) => left.number - right.number);
+    const githubIssueNumber =
+      candidate.bucket.debtIssueNumber ?? incidentIssues.at(-1)?.number ?? null;
+    const githubIssueUrl = candidate.bucket.debtIssueNumber
+      ? `https://github.com/freed-project/freed/issues/${String(candidate.bucket.debtIssueNumber)}`
+      : (incidentIssues.at(-1)?.url ?? null);
     return {
       ...candidate,
       evidenceWindowEnd,
@@ -690,6 +693,8 @@ export function buildCandidates({
       )
         ? "healthy"
         : "inconclusive",
+      githubIssueNumber,
+      githubIssueUrl,
       evidenceFingerprint,
       score: Number(
         (
@@ -703,15 +708,15 @@ export function buildCandidates({
   return scored.sort((a, b) => b.score - a.score);
 }
 
-/** Render one ranked candidate as a docs/stability-tasks-format task file. */
-export function renderTaskFile(candidate, rank, generatedAtIso) {
+/** Render one ranked evidence candidate linked to its canonical issue. */
+export function renderEvidenceCandidate(candidate, rank, generatedAtIso) {
   const { bucket } = candidate;
   const lines = [
     `# T-${rank.toLocaleString()}: ${bucket.title}`,
     "",
-    `runner-safe: false (triage candidate; the mapped program task's own header governs) | provider-visible: ${bucket.providerVisible ? "true" : "false"} | soak-gated: ${bucket.behavioral ? "yes" : "no"}`,
-    `Findings: ${bucket.findings}. Generated by scripts/triage.mjs at ${generatedAtIso}. Score ${candidate.score.toLocaleString()} (severity ${bucket.severity.toLocaleString()}, ${candidate.hits.toLocaleString()} evidence hit${candidate.hits === 1 ? "" : "s"}).`,
+    `Generated by scripts/triage.mjs at ${generatedAtIso}. Score ${candidate.score.toLocaleString()} (severity ${bucket.severity.toLocaleString()}, ${candidate.hits.toLocaleString()} evidence hit${candidate.hits === 1 ? "" : "s"}).`,
     `Task ID: ${bucket.taskId}`,
+    `Canonical issue: ${candidate.githubIssueUrl}`,
     `Evidence fingerprint: ${candidate.evidenceFingerprint}`,
     `Generated at: ${generatedAtIso}`,
     `Evidence window end: ${candidate.evidenceWindowEnd || generatedAtIso}`,
@@ -724,9 +729,7 @@ export function renderTaskFile(candidate, rank, generatedAtIso) {
     "",
     "## Context",
     "",
-    `Live evidence indicts this root-cause bucket. Do not re-derive: execute the mapped program task with tonight's evidence attached.`,
-    "",
-    `Program task: ${bucket.programTask}`,
+    `Live evidence indicts this root-cause bucket. Update the canonical issue with this evidence before selecting implementation.`,
     "",
     "## Evidence",
     "",
@@ -734,7 +737,7 @@ export function renderTaskFile(candidate, rank, generatedAtIso) {
     "",
     "## Verify",
     "",
-    "- The program task's own counter-based verification governs; a follow-up soak/canary window must show this bucket's signals at or trending to target (docs/STABILITY-PROGRAM.md scorecard).",
+    "- The canonical issue's completion criteria and the registered metric contract govern. A follow-up soak or canary window must show the signal at or trending to target.",
     "",
   ];
   return lines.join("\n");
@@ -757,7 +760,7 @@ export function emitCandidates(
     const rank = index + 1;
     const name = `T-${String(rank).padStart(2, "0")}-${candidate.bucket.id}.md`;
     const filePath = path.join(temporaryDir, name);
-    writeFileSync(filePath, renderTaskFile(candidate, rank, nowIso));
+    writeFileSync(filePath, renderEvidenceCandidate(candidate, rank, nowIso));
     written.push(path.join(generationDir, name));
   });
 
@@ -769,6 +772,9 @@ export function emitCandidates(
     hits: candidate.hits,
     evidenceWindowEnd: candidate.evidenceWindowEnd || nowIso,
     taskId: candidate.bucket.taskId,
+    issueKind: candidate.bucket.debtIssueNumber ? "debt" : "incident",
+    githubIssueNumber: candidate.githubIssueNumber,
+    githubIssueUrl: candidate.githubIssueUrl,
     rootCauseBucket: candidate.bucket.id,
     metricRegistryIds: candidate.bucket.metricRegistryIds,
     evidenceFingerprint: candidate.evidenceFingerprint,
@@ -816,7 +822,7 @@ export function emitCandidates(
   writeFileSync(temporaryCurrentPath, `${JSON.stringify(manifest, null, 2)}\n`);
   renameSync(temporaryCurrentPath, currentPath);
 
-  // Remove legacy top-level task files after the atomic pointer has moved.
+  // Remove legacy top-level evidence files after the atomic pointer has moved.
   // Immutable generation directories remain available for audit history.
   for (const name of readdirSync(candidateDir)) {
     if (!/^T-\d{2}-.+\.md$/.test(name)) continue;
@@ -898,23 +904,26 @@ function main() {
   if (args.json) {
     process.stdout.write(
       `${JSON.stringify(
-        ranked.map(({ bucket, hits, score, evidence }) => ({
+        ranked.map(
+          ({ bucket, githubIssueNumber, hits, score, evidence }) => ({
           id: bucket.id,
+          githubIssueNumber,
           hits,
           score,
           evidence,
-        })),
+          }),
+        ),
         null,
         2,
       )}\n`,
     );
   }
   process.stdout.write(
-    `${ranked.length.toLocaleString()} candidate bucket${ranked.length === 1 ? "" : "s"} -> ${written.length.toLocaleString()} task file${written.length === 1 ? "" : "s"} in ${args.candidateDir}\n`,
+    `${ranked.length.toLocaleString()} candidate bucket${ranked.length === 1 ? "" : "s"} -> ${written.length.toLocaleString()} evidence file${written.length === 1 ? "" : "s"} in ${args.candidateDir}\n`,
   );
   for (const [index, candidate] of ranked.entries()) {
     process.stdout.write(
-      `  ${(index + 1).toLocaleString()}. [${candidate.score.toLocaleString()}] ${candidate.bucket.id} (${candidate.hits.toLocaleString()} hits) -> ${candidate.bucket.programTask}\n`,
+      `  ${(index + 1).toLocaleString()}. [${candidate.score.toLocaleString()}] ${candidate.bucket.id} (${candidate.hits.toLocaleString()} hits) -> ${candidate.bucket.debtIssueNumber ? `#${candidate.bucket.debtIssueNumber.toLocaleString()}` : "CI incident"}\n`,
     );
   }
 }

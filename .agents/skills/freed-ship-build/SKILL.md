@@ -11,7 +11,7 @@ Publish from the correct release lane and prove which artifact was installed aft
 ## Establish authority and identity
 
 1. Confirm `dev` or `production` release mode. Production is the default for `./scripts/release.sh`. Dev release prep requires `--channel=dev`.
-2. Record the release task ID and granted authority. Preparing notes, pushing a tag, publishing, and deploying are distinct external actions.
+2. Record the release task ID and granted authority. If the release repays tracked debt, also record each canonical GitHub issue. Preparing notes, pushing a tag, publishing, and deploying are distinct external actions.
 3. Fetch `origin/dev` and `origin/main`, require a clean tree, and record the source git SHA.
 4. For production, run `node scripts/validate-release-promotion.mjs --from-ref=origin/dev --to-ref=origin/main`. If it fails because main is behind approved product state, run `./scripts/promote-dev-to-main.sh <worktree-path>`, merge that reviewed PR, and fetch the new `origin/main` before release prep.
 5. If the release contains provider-visible work, confirm its approval packet names the provider, observable behavior, approved diff, and owner reference. A materially different release diff requires renewed approval.
@@ -33,11 +33,12 @@ Publish from the correct release lane and prove which artifact was installed aft
 
 1. Record GitHub release ID, tag, source SHA, workflow run ID, channel, bundle version, and artifact checksums where available.
 2. After installation, verify the app-reported version, channel, and git SHA match the published artifact. Do not infer identity from the latest tag or current checkout.
-3. For every changed stability task, keep its existing canonical task ID. Record
-   the `installed` transition with the exact release identity, then have an
-   authorized lifecycle actor transition that task to `soaking`. Do not create
-   one aggregate verification task for the release.
-4. Hand each soaking task and the installed build to `freed-soak`, then
+3. For every changed stability issue with an operational task, keep the
+   issue-linked task ID. Record the `installed` transition with the exact
+   release identity, then have an authorized lifecycle actor transition that
+   task to `soaking`. Do not create one aggregate verification task for the
+   release.
+4. Hand each soaking issue, operational task, and installed build to `freed-soak`, then
    `freed-canary`. Include its metric IDs, scenario, immutable window, minimum
    coverage, and thresholds. Missing identity or coverage produces
    `inconclusive`, not a successful release verdict.
