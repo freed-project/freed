@@ -1334,6 +1334,7 @@ export function Sidebar({
     ? renderSidebarIconBadge(<span className="flex h-2.5 w-2.5 rounded-full bg-[var(--theme-accent-secondary)]" />)
     : undefined;
   const sidebarLabelClass = `min-w-0 flex-1 truncate whitespace-nowrap ${narrowLabeledSidebar ? "pr-0" : "pr-0.5"}`;
+  const sidebarAdjacentBadgeLabelClass = `min-w-0 truncate whitespace-nowrap ${narrowLabeledSidebar ? "pr-0" : "pr-0.5"}`;
   const sidebarFeedLabelClass = `${sidebarLabelClass} text-xs`;
   const renderSimpleCount = (count: number, active = false) => (
     <span className={active ? "text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"}>
@@ -1800,7 +1801,7 @@ export function Sidebar({
                           Beta
                         </span>
                       ) : null}
-                      labelClass={sidebarLabelClass}
+                      labelClass={source.stage === "beta" ? sidebarAdjacentBadgeLabelClass : sidebarLabelClass}
                       menu={renderSourceMenu(source)}
                       menuOpen={openMenuSourceKey === sourceKey(source)}
                       onClick={() => handleSourceClick(source)}

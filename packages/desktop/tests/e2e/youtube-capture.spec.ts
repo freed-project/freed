@@ -33,6 +33,32 @@ async function emitTauriEvent(
   );
 }
 
+test("beta source badges stay beside their source names", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  for (const source of ["substack", "medium", "youtube"] as const) {
+    const row = app.page.getByTestId(`source-row-${source}`);
+    const label = row.getByText(
+      source === "substack" ? "Substack" : source === "medium" ? "Medium" : "YouTube",
+      { exact: true },
+    );
+    const badge = row.getByText("Beta", { exact: true });
+
+    await expect(row).toContainText("Beta");
+    await expect(label).toBeVisible();
+    await expect(badge).toBeVisible();
+
+    const [labelBox, badgeBox] = await Promise.all([
+      label.boundingBox(),
+      badge.boundingBox(),
+    ]);
+    expect(labelBox).not.toBeNull();
+    expect(badgeBox).not.toBeNull();
+    expect(badgeBox!.x - (labelBox!.x + labelBox!.width)).toBeLessThanOrEqual(8);
+  }
+});
+
 test("authenticated YouTube login captures followed channels and recent videos", async ({
   app,
   page,

@@ -29,7 +29,7 @@ export function getTopSourceItems(useShortLabels = false): readonly SourceNaviga
     { id: "linkedin", label: "LinkedIn", icon: <LinkedInIcon /> },
     { id: "substack", label: "Substack", icon: <SubstackIcon />, stage: "beta" },
     { id: "medium", label: "Medium", icon: <MediumIcon />, stage: "beta" },
-    { id: "youtube", label: "YouTube", icon: <YoutubeIcon /> },
+    { id: "youtube", label: "YouTube", icon: <YoutubeIcon />, stage: "beta" },
   ] as const;
 }
 
