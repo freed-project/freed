@@ -23,7 +23,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@automerge/automerge": "^2.2.0"
+    "@automerge/automerge": "^3.3.2"
   },
   "devDependencies": {
     "typescript": "^5.3.0"

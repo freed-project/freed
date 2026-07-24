@@ -67,7 +67,7 @@
     "@types/d3-force": "^3.0.10",
     "d3-force": "^3.0.0",
     "date-fns": "^4.1.0",
-    "maplibre-gl": "^5.11.0",
+    "maplibre-gl": "^6.0.0",
     "minisearch": "^7.2.0",
     "pixi.js": "^8.18.1",
     "three": "^0.184.0",
