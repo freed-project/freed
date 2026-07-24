@@ -17,7 +17,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@floating-ui/react": "^0.27.17",
+    "@floating-ui/react": "^0.27.20",
     "@freed/shared": "*",
     "@freed/ui": "*",
     "@radix-ui/react-tooltip": "^1.2.8",
