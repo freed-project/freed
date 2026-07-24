@@ -1,6 +1,6 @@
 # Friends Galaxy Architecture
 
-Status: Product cutover implementation and integrated acceptance are complete as of July 19, 2026. Dev release publication is pending.
+Status: The initial product cutover shipped in production v26.7.2300. Installed acceptance then identified live-label, semantic-star intensity, and shared-sidebar regressions addressed by the current correction.
 
 ## Historical Summary
 
