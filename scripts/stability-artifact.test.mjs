@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
 import {
+  readStabilityArtifactIndex,
   stabilityArtifactDigest,
   validateStabilityArtifact,
   writeStabilityArtifact,
@@ -238,5 +245,64 @@ test("memory profile artifacts require an immutable source and typed budget", ()
         }),
       ),
     /source.references\[0\]\.digest must be SHA-256[\s\S]*payload.budget must be an object/,
+  );
+});
+
+test("stability artifact index admits canonical records and classifies foreign records", () => {
+  const root = mkdtempSync(
+    path.join(os.tmpdir(), "freed-stability-artifact-index-"),
+  );
+  const written = writeStabilityArtifact(controllerArtifact(), {
+    artifactRoot: root,
+  });
+  mkdirSync(path.join(root, "kernel-guard-cutover"));
+  writeFileSync(
+    path.join(
+      root,
+      "stability-controller",
+      "P1-04",
+      "historical-approval.json",
+    ),
+    "{}\n",
+  );
+
+  const index = readStabilityArtifactIndex({ artifactRoot: root });
+  assert.equal(index.health, "healthy");
+  assert.equal(index.counts.valid, 1);
+  assert.equal(index.counts.unsupported, 2);
+  assert.equal(
+    index.records.find((record) => record.classification === "valid").digest,
+    written.artifact.artifactDigest,
+  );
+});
+
+test("stability artifact index rejects unsafe shapes and stale embedded digests", () => {
+  const root = mkdtempSync(
+    path.join(os.tmpdir(), "freed-stability-artifact-unsafe-"),
+  );
+  const written = writeStabilityArtifact(controllerArtifact(), {
+    artifactRoot: root,
+  });
+  const unsafeTarget = path.join(root, "outside.json");
+  writeFileSync(unsafeTarget, "{}\n");
+  symlinkSync(
+    unsafeTarget,
+    path.join(root, "stability-controller", "P1-04", "unsafe.json"),
+  );
+  const stored = JSON.parse(readFileSync(written.path, "utf8"));
+  stored.payload.currentState = "implemented";
+  writeFileSync(written.path, `${JSON.stringify(stored)}\n`);
+
+  const index = readStabilityArtifactIndex({ artifactRoot: root });
+  assert.equal(index.health, "malformed");
+  assert.equal(index.counts.malformed, 2);
+  assert.match(
+    index.records.find((record) => record.path.endsWith("unsafe.json")).reason,
+    /canonical regular file/,
+  );
+  assert.match(
+    index.records.find((record) => record.path === path.relative(root, written.path))
+      .reason,
+    /artifactDigest does not match/,
   );
 });

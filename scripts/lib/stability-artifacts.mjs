@@ -1,8 +1,15 @@
 import { createHash } from "node:crypto";
 import {
+  closeSync,
+  constants as fsConstants,
+  fstatSync,
   linkSync,
+  lstatSync,
   mkdirSync,
+  openSync,
+  readdirSync,
   readFileSync,
+  readSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -18,6 +25,12 @@ export const DEFAULT_STABILITY_ARTIFACT_ROOT = path.join(
   "automation",
   "artifacts",
 );
+export const STABILITY_ARTIFACT_INDEX_SCHEMA_VERSION = 1;
+const STABILITY_ARTIFACT_MAX_BYTES = 4 * 1024 * 1024;
+const STABILITY_ARTIFACT_FILENAME_PATTERN =
+  /^([0-9]{17})-([0-9a-f]{64})\.json$/;
+const STABILITY_ARTIFACT_TASK_PATTERN =
+  /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 export const STABILITY_ARTIFACT_CONTRACTS = Object.freeze({
   "evidence-capture": Object.freeze({
@@ -467,6 +480,291 @@ export function stabilityArtifactDigest(artifact) {
   const payload = structuredClone(artifact);
   delete payload.artifactDigest;
   return createHash("sha256").update(stableJson(payload)).digest("hex");
+}
+
+function artifactIndexRecord(relativePath, classification, reason, extra = {}) {
+  return {
+    path: relativePath.split(path.sep).join("/"),
+    classification,
+    reason,
+    ...extra,
+  };
+}
+
+function safeArtifactFileRead(filePath) {
+  if (
+    typeof fsConstants.O_NOFOLLOW !== "number" ||
+    typeof fsConstants.O_NONBLOCK !== "number"
+  ) {
+    throw new Error("Safe nonblocking artifact reads are unavailable.");
+  }
+  let descriptor;
+  try {
+    descriptor = openSync(
+      filePath,
+      fsConstants.O_RDONLY |
+        fsConstants.O_NOFOLLOW |
+        fsConstants.O_NONBLOCK,
+    );
+    const before = fstatSync(descriptor);
+    if (
+      !before.isFile() ||
+      before.nlink !== 1 ||
+      before.size < 1 ||
+      before.size > STABILITY_ARTIFACT_MAX_BYTES
+    ) {
+      throw new Error(
+        "Artifact must be a nonempty, singly linked regular file within the size limit.",
+      );
+    }
+    const bytes = Buffer.alloc(before.size);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const count = readSync(
+        descriptor,
+        bytes,
+        offset,
+        bytes.length - offset,
+        null,
+      );
+      if (count === 0) break;
+      offset += count;
+    }
+    const after = fstatSync(descriptor);
+    const current = lstatSync(filePath);
+    if (
+      offset !== before.size ||
+      current.isSymbolicLink() ||
+      !current.isFile() ||
+      current.dev !== before.dev ||
+      current.ino !== before.ino ||
+      after.dev !== before.dev ||
+      after.ino !== before.ino ||
+      after.size !== before.size ||
+      after.mtimeMs !== before.mtimeMs ||
+      after.ctimeMs !== before.ctimeMs
+    ) {
+      throw new Error("Artifact changed while it was read.");
+    }
+    return bytes.toString("utf8");
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+function directoryEntries(directoryPath) {
+  return readdirSync(directoryPath, { withFileTypes: true }).sort((left, right) =>
+    left.name.localeCompare(right.name, "en"),
+  );
+}
+
+/**
+ * Build a read-only index of canonical stability artifacts.
+ *
+ * Recognized artifacts must exist at exactly <kind>/<task>/<timestamp>-<digest>.json.
+ * Foreign top-level namespaces are reported as unsupported without being traversed.
+ * Symlinks and other unsafe shapes are malformed, never followed.
+ */
+export function readStabilityArtifactIndex({
+  artifactRoot = DEFAULT_STABILITY_ARTIFACT_ROOT,
+} = {}) {
+  const root = path.resolve(artifactRoot);
+  const records = [];
+  let rootStats;
+  try {
+    rootStats = lstatSync(root);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return {
+        schemaVersion: STABILITY_ARTIFACT_INDEX_SCHEMA_VERSION,
+        health: "unavailable",
+        root,
+        counts: {
+          valid: 0,
+          stale: 0,
+          malformed: 0,
+          unsupported: 0,
+        },
+        records,
+      };
+    }
+    throw error;
+  }
+  if (!rootStats.isDirectory() || rootStats.isSymbolicLink()) {
+    return {
+      schemaVersion: STABILITY_ARTIFACT_INDEX_SCHEMA_VERSION,
+      health: "malformed",
+      root,
+      counts: { valid: 0, stale: 0, malformed: 1, unsupported: 0 },
+      records: [
+        artifactIndexRecord(".", "malformed", "artifact root is unsafe"),
+      ],
+    };
+  }
+
+  for (const kindEntry of directoryEntries(root)) {
+    const kindPath = path.join(root, kindEntry.name);
+    if (
+      kindEntry.isSymbolicLink() ||
+      (!kindEntry.isDirectory() && !kindEntry.isFile())
+    ) {
+      records.push(
+        artifactIndexRecord(
+          kindEntry.name,
+          "malformed",
+          "artifact root contains an unsafe filesystem shape",
+          { kind: kindEntry.name },
+        ),
+      );
+      continue;
+    }
+    if (!Object.hasOwn(STABILITY_ARTIFACT_CONTRACTS, kindEntry.name)) {
+      records.push(
+        artifactIndexRecord(
+          kindEntry.name,
+          "unsupported",
+          "foreign artifact namespace",
+          { kind: kindEntry.name },
+        ),
+      );
+      continue;
+    }
+    if (!kindEntry.isDirectory() || kindEntry.isSymbolicLink()) {
+      records.push(
+        artifactIndexRecord(
+          kindEntry.name,
+          "malformed",
+          "recognized artifact kind is not a real directory",
+          { kind: kindEntry.name },
+        ),
+      );
+      continue;
+    }
+    for (const taskEntry of directoryEntries(kindPath)) {
+      const taskRelative = path.join(kindEntry.name, taskEntry.name);
+      const taskPath = path.join(kindPath, taskEntry.name);
+      if (
+        !taskEntry.isDirectory() ||
+        taskEntry.isSymbolicLink() ||
+        !STABILITY_ARTIFACT_TASK_PATTERN.test(taskEntry.name)
+      ) {
+        records.push(
+          artifactIndexRecord(
+            taskRelative,
+            "malformed",
+            "artifact task segment is unsafe",
+            { kind: kindEntry.name, taskId: taskEntry.name },
+          ),
+        );
+        continue;
+      }
+      for (const fileEntry of directoryEntries(taskPath)) {
+        const relativePath = path.join(taskRelative, fileEntry.name);
+        const filePath = path.join(taskPath, fileEntry.name);
+        const filenameMatch = fileEntry.name.match(
+          STABILITY_ARTIFACT_FILENAME_PATTERN,
+        );
+        if (!fileEntry.isFile() || fileEntry.isSymbolicLink()) {
+          records.push(
+            artifactIndexRecord(
+              relativePath,
+              "malformed",
+              "artifact is not a canonical regular file at the exact depth",
+              { kind: kindEntry.name, taskId: taskEntry.name },
+            ),
+          );
+          continue;
+        }
+        if (!filenameMatch) {
+          records.push(
+            artifactIndexRecord(
+              relativePath,
+              "unsupported",
+              "foreign record in a recognized artifact namespace",
+              { kind: kindEntry.name, taskId: taskEntry.name },
+            ),
+          );
+          continue;
+        }
+        let contentDigest = null;
+        try {
+          const text = safeArtifactFileRead(filePath);
+          contentDigest = createHash("sha256").update(text).digest("hex");
+          const artifact = JSON.parse(text);
+          validateStabilityArtifact(artifact, {
+            expectedKind: kindEntry.name,
+          });
+          const expectedTimestamp = new Date(artifact.createdAt)
+            .toISOString()
+            .replace(/[^0-9]/g, "")
+            .slice(0, 17);
+          if (
+            artifact.taskId !== taskEntry.name ||
+            artifact.artifactDigest !== filenameMatch[2] ||
+            stabilityArtifactDigest(artifact) !== filenameMatch[2] ||
+            expectedTimestamp !== filenameMatch[1]
+          ) {
+            throw new Error(
+              "Artifact path, timestamp, task, or digest does not match its content.",
+            );
+          }
+          records.push(
+            artifactIndexRecord(relativePath, "valid", "canonical artifact", {
+              kind: kindEntry.name,
+              taskId: taskEntry.name,
+              status: artifact.status,
+              createdAt: artifact.createdAt,
+              digest: artifact.artifactDigest,
+            }),
+          );
+        } catch (error) {
+          const reason =
+            error instanceof Error ? error.message : String(error);
+          const historicalContractDrift = reason.includes(
+            "registered stability metric",
+          );
+          records.push(
+            artifactIndexRecord(
+              relativePath,
+              historicalContractDrift ? "stale" : "malformed",
+              historicalContractDrift
+                ? "artifact references a retired metric contract"
+                : reason,
+              {
+                kind: kindEntry.name,
+                taskId: taskEntry.name,
+                ...(contentDigest ? { contentDigest } : {}),
+              },
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  const counts = {
+    valid: records.filter((record) => record.classification === "valid").length,
+    stale: records.filter((record) => record.classification === "stale").length,
+    malformed: records.filter(
+      (record) => record.classification === "malformed",
+    ).length,
+    unsupported: records.filter(
+      (record) => record.classification === "unsupported",
+    ).length,
+  };
+  const health =
+    counts.malformed > 0
+      ? "malformed"
+      : counts.valid === 0 && counts.stale > 0
+        ? "stale"
+        : "healthy";
+  return {
+    schemaVersion: STABILITY_ARTIFACT_INDEX_SCHEMA_VERSION,
+    health,
+    root,
+    counts,
+    records,
+  };
 }
 
 export function writeStabilityArtifact(
