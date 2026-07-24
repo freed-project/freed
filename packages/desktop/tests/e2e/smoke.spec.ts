@@ -4241,11 +4241,13 @@ test("selection while the initial Friends atlas is pending retains the semantic 
       return debug?.nodes.some((node) => node.personId === "friend-ada") ?? false;
     }, { timeout: 10_000 })
     .toBe(true);
-  const drawError = await page.evaluate(() => {
-    return (window as typeof window & { __FREED_GRAPH_DRAW_ERROR__?: string })
-      .__FREED_GRAPH_DRAW_ERROR__ ?? null;
-  });
-  expect(drawError).toBeNull();
+  await expect(page.getByTestId("friend-graph-canvas")).toBeVisible({ timeout: 10_000 });
+  await expect
+    .poll(() => page.evaluate(() => {
+      return (window as typeof window & { __FREED_GRAPH_DRAW_ERROR__?: string })
+        .__FREED_GRAPH_DRAW_ERROR__ ?? null;
+    }), { timeout: 10_000 })
+    .toBeNull();
 });
 
 test("selected Friends graph person shows a compact detail card when the detail rail is closed", async ({ app, page }) => {
