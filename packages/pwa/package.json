@@ -17,7 +17,7 @@
     "test:headed": "node ../../node_modules/playwright/cli.js test --headed"
   },
   "dependencies": {
-    "@automerge/automerge": "^2.2.8",
+    "@automerge/automerge": "^3.3.2",
     "@freed/capture-save": "*",
     "@freed/shared": "*",
     "@freed/sync": "*",

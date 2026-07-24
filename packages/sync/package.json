@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@freed/shared": "*",
-    "@automerge/automerge": "^2.2.8",
+    "@automerge/automerge": "^3.3.2",
     "@automerge/automerge-repo": "^1.2.1",
     "ws": "^8.21.0"
   },
