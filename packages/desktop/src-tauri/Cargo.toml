@@ -53,7 +53,7 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 objc2-web-kit = { version = "0.3", features = ["WKWebViewConfiguration"] }
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 tempfile = "3"
 
 [[bench]]
