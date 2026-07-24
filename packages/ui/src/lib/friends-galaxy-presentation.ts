@@ -198,7 +198,115 @@ function truncateLabel(value: string): string {
     : `${characters.slice(0, 27).join("")}...`;
 }
 
-export function selectFriendsGalaxyLabels(
+export function friendsGalaxyLabelCap(
+  compact: boolean,
+  detail: FriendsGalaxyViewDetail,
+): number {
+  return detail === "overview"
+    ? compact ? 8 : 13
+    : detail === "middle"
+      ? compact ? 20 : 36
+      : compact ? 32 : 64;
+}
+
+export function friendsGalaxyLabelSourceKey(
+  scene: FriendsGalaxyRendererScene,
+  compact: boolean,
+  detail: FriendsGalaxyViewDetail,
+  selectedNodeId: string | null,
+): string {
+  return [
+    compact ? "compact" : "wide",
+    detail,
+    selectedNodeId ?? "",
+    ...scene.atlas.nodes.map((node) => [
+      node.id,
+      node.label,
+      node.kind,
+      node.priority.toFixed(2),
+      node.initials ?? "",
+    ].join(":")),
+    ...scene.atlas.labels.map((label) => [
+      label.id,
+      label.nodeId,
+      label.text,
+      label.kind,
+      label.x.toFixed(2),
+      label.y.toFixed(2),
+      label.priority.toFixed(2),
+    ].join(":")),
+  ].join("\u0000");
+}
+
+export function selectFriendsGalaxyVisibleLabelSeeds<
+  Label extends FriendsGalaxyLabelSeed,
+>(
+  seeds: readonly Label[],
+  compact: boolean,
+  detail: FriendsGalaxyViewDetail,
+  projection?: FriendsGalaxyViewportProjection,
+): readonly Label[] {
+  const cap = friendsGalaxyLabelCap(compact, detail);
+  const projectionScratch = new Float32Array(2);
+  const labelIsVisible = (label: Label): boolean => !projection ||
+    projectFriendsGalaxyWorldPoint(
+      projectionScratch,
+      projection,
+      label.anchorX,
+      label.anchorY,
+      label.anchorZ,
+      160,
+    );
+  const providers = seeds.filter((label) => label.provider && labelIsVisible(label));
+  const semantic = seeds
+    .filter((label) => !label.provider && labelIsVisible(label))
+    .sort((left, right) => right.priority - left.priority || left.id.localeCompare(right.id));
+  const semanticCap = Math.max(0, cap - providers.length);
+  if (semanticCap === 0) return providers;
+  const minimumDistance = (detail === "overview" ? 760 : detail === "middle" ? 280 : 90) *
+    (compact ? 1.3 : 1);
+  const minimumScreenDistance = (detail === "overview" ? 96 : detail === "middle" ? 92 : 82) *
+    (compact ? 1.08 : 1);
+  const selectedSemantic: Label[] = [];
+  const selectedScreenPositions = new Float32Array(semanticCap * 2);
+  for (const candidate of semantic) {
+    let separated = true;
+    if (projection) {
+      projectFriendsGalaxyWorldPoint(
+        projectionScratch,
+        projection,
+        candidate.anchorX,
+        candidate.anchorY,
+        candidate.anchorZ,
+        160,
+      );
+      for (let index = 0; index < selectedSemantic.length; index += 1) {
+        if (Math.hypot(
+          projectionScratch[0]! - selectedScreenPositions[index * 2]!,
+          projectionScratch[1]! - selectedScreenPositions[index * 2 + 1]!,
+        ) < minimumScreenDistance) {
+          separated = false;
+          break;
+        }
+      }
+    } else {
+      separated = selectedSemantic.every((selected) => Math.hypot(
+        candidate.anchorX - selected.anchorX,
+        candidate.anchorY - selected.anchorY,
+      ) >= minimumDistance);
+    }
+    if (!separated) continue;
+    if (projection) {
+      selectedScreenPositions[selectedSemantic.length * 2] = projectionScratch[0]!;
+      selectedScreenPositions[selectedSemantic.length * 2 + 1] = projectionScratch[1]!;
+    }
+    selectedSemantic.push(candidate);
+    if (selectedSemantic.length >= semanticCap) break;
+  }
+  return [...providers, ...selectedSemantic];
+}
+
+function buildFriendsGalaxyLabelSeeds(
   scene: FriendsGalaxyRendererScene,
   resolvePresentation: FriendsGalaxyNodePresentationResolver,
   compact: boolean,
@@ -206,12 +314,9 @@ export function selectFriendsGalaxyLabels(
   selectedNodeId: string | null = null,
   projection?: FriendsGalaxyViewportProjection,
   candidateSource?: FriendsGalaxyPresentationCandidateSource,
+  selectVisible = true,
 ): readonly FriendsGalaxyLabelSeed[] {
-  const cap = detail === "overview"
-    ? compact ? 8 : 13
-    : detail === "middle"
-      ? compact ? 20 : 36
-      : compact ? 32 : 64;
+  const cap = friendsGalaxyLabelCap(compact, detail);
   const selectedPersonId = friendsGalaxySelectedPersonNodeId(scene, selectedNodeId);
   const seedForAtlasLabel = (
     label: FriendsGalaxyRendererScene["atlas"]["labels"][number],
@@ -329,65 +434,33 @@ export function selectFriendsGalaxyLabels(
     );
     if (nodeIndex !== null) seeds.push(seedForPersonNode(nodeIndex));
   }
-  const projectionScratch = new Float32Array(2);
-  const labelIsVisible = (label: FriendsGalaxyLabelSeed): boolean => !projection ||
-    projectFriendsGalaxyWorldPoint(
-      projectionScratch,
-      projection,
-      label.anchorX,
-      label.anchorY,
-      label.anchorZ,
-      160,
-    );
-  const providers = seeds.filter((label) => label.provider && labelIsVisible(label));
-  const semantic = seeds
-    .filter((label) => !label.provider && labelIsVisible(label))
-    .sort((left, right) => right.priority - left.priority || left.id.localeCompare(right.id));
-  const semanticCap = Math.max(0, cap - providers.length);
-  const minimumDistance = (detail === "overview" ? 760 : detail === "middle" ? 280 : 90) *
-    (compact ? 1.3 : 1);
-  const minimumScreenDistance = (detail === "overview" ? 96 : detail === "middle" ? 92 : 82) *
-    (compact ? 1.08 : 1);
-  const selectedSemantic: FriendsGalaxyLabelSeed[] = [];
-  const selectedScreenPositions = new Float32Array(semanticCap * 2);
-  for (const candidate of semantic) {
-    let separated = true;
-    if (projection) {
-      projectFriendsGalaxyWorldPoint(
-        projectionScratch,
-        projection,
-        candidate.anchorX,
-        candidate.anchorY,
-        candidate.anchorZ,
-        160,
-      );
-      for (let index = 0; index < selectedSemantic.length; index += 1) {
-        if (Math.hypot(
-          projectionScratch[0]! - selectedScreenPositions[index * 2]!,
-          projectionScratch[1]! - selectedScreenPositions[index * 2 + 1]!,
-        ) < minimumScreenDistance) {
-          separated = false;
-          break;
-        }
-      }
-    } else {
-      separated = selectedSemantic.every((selected) => Math.hypot(
-        candidate.anchorX - selected.anchorX,
-        candidate.anchorY - selected.anchorY,
-      ) >= minimumDistance);
-    }
-    if (!separated) continue;
-    if (projection) {
-      selectedScreenPositions[selectedSemantic.length * 2] = projectionScratch[0]!;
-      selectedScreenPositions[selectedSemantic.length * 2 + 1] = projectionScratch[1]!;
-    }
-    selectedSemantic.push(candidate);
-    if (selectedSemantic.length >= semanticCap) break;
-  }
-  return [...providers, ...selectedSemantic];
+  return selectVisible
+    ? selectFriendsGalaxyVisibleLabelSeeds(seeds, compact, detail, projection)
+    : seeds;
 }
 
-export function createFriendsGalaxyRendererLabelAtlas(
+export function selectFriendsGalaxyLabels(
+  scene: FriendsGalaxyRendererScene,
+  resolvePresentation: FriendsGalaxyNodePresentationResolver,
+  compact: boolean,
+  detail: FriendsGalaxyViewDetail,
+  selectedNodeId: string | null = null,
+  projection?: FriendsGalaxyViewportProjection,
+  candidateSource?: FriendsGalaxyPresentationCandidateSource,
+): readonly FriendsGalaxyLabelSeed[] {
+  return buildFriendsGalaxyLabelSeeds(
+    scene,
+    resolvePresentation,
+    compact,
+    detail,
+    selectedNodeId,
+    projection,
+    candidateSource,
+    true,
+  );
+}
+
+export function createFriendsGalaxyRendererLabelPoolAtlas(
   scene: FriendsGalaxyRendererScene,
   palette: FriendsGalaxyRendererPalette,
   resolvePresentation: FriendsGalaxyNodePresentationResolver,
@@ -395,7 +468,6 @@ export function createFriendsGalaxyRendererLabelAtlas(
   detail: FriendsGalaxyViewDetail,
   selectedNodeId: string | null = null,
   fontFamily = "Inter, ui-sans-serif, system-ui, sans-serif",
-  projection?: FriendsGalaxyViewportProjection,
 ): FriendsGalaxyLabelAtlas {
   const avatars = selectFriendsGalaxyAvatars(
     scene,
@@ -404,18 +476,19 @@ export function createFriendsGalaxyRendererLabelAtlas(
     selectedNodeId,
     compact,
     detail,
-    projection,
+    undefined,
     scene.presentationCandidateSource,
   );
   const seeds = placeFriendsGalaxyLabelsAroundAvatars(
-    selectFriendsGalaxyLabels(
+    buildFriendsGalaxyLabelSeeds(
       scene,
       resolvePresentation,
       compact,
       detail,
       selectedNodeId,
-      projection,
+      undefined,
       scene.presentationCandidateSource,
+      false,
     ),
     avatars,
   );

@@ -148,11 +148,8 @@ export function AppShell({ children }: AppShellProps) {
   const mainRef = useRef<HTMLElement | null>(null);
   const [mapViewportInsets, setMapViewportInsets] = useState<CanvasViewportInsets>(EMPTY_CANVAS_VIEWPORT_INSETS);
   const usesFullCanvasFrame = activeView === "friends";
-  const contentFrameSpacingClass = usesFullCanvasFrame
-      ? desktopSidebarMode === "closed"
-        ? ""
-        : "pl-[var(--feed-card-gap,8px)]"
-      : "px-[var(--feed-card-gap,8px)] pb-[var(--feed-card-gap,8px)]";
+  const contentFrameSpacingClass =
+    "px-[var(--feed-card-gap,8px)] pb-[var(--feed-card-gap,8px)]";
   const [desktopSidebarDisplayMode, setDesktopSidebarDisplayMode] = useState<SidebarMode>(persistedDesktopSidebarMode);
   const dragging = useRef(false);
   const lastNonClosedDesktopSidebarModeRef = useRef<SidebarMode>(

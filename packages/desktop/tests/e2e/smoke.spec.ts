@@ -484,6 +484,7 @@ async function readGraphDebug(page: Page) {
           sceneSyncMs: number;
           labelPassMs: number;
           sceneSyncCount: number;
+          presentationSyncCount: number;
           contentSyncCount: number;
           transformOnlySyncCount: number;
           edgeRebuildCount: number;
@@ -519,6 +520,7 @@ async function readGraphSummary(page: Page) {
           sceneSyncMs: number;
           labelPassMs: number;
           sceneSyncCount: number;
+          presentationSyncCount: number;
           contentSyncCount: number;
           transformOnlySyncCount: number;
           edgeRebuildCount: number;
@@ -559,7 +561,8 @@ async function waitForGraphPerfToSettle(page: Page, timeout = 15_000) {
       next &&
       next.qualityMode === "settled" &&
       next.metrics.edgeRebuildCount === previous.metrics.edgeRebuildCount &&
-      next.metrics.sceneSyncCount === previous.metrics.sceneSyncCount
+      next.metrics.sceneSyncCount === previous.metrics.sceneSyncCount &&
+      next.metrics.presentationSyncCount === previous.metrics.presentationSyncCount
     ) {
       return next;
     }
@@ -569,17 +572,24 @@ async function waitForGraphPerfToSettle(page: Page, timeout = 15_000) {
   throw new Error("Friends graph perf metrics did not settle in time");
 }
 
-async function waitForGraphSceneSyncAfter(page: Page, previousSceneSyncCount: number, timeout = 8_000) {
+async function waitForGraphPresentationSyncAfter(
+  page: Page,
+  previousPresentationSyncCount: number,
+  timeout = 8_000,
+) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     await page.waitForTimeout(50);
     const next = await readGraphDebug(page);
-    if (next && next.metrics.sceneSyncCount > previousSceneSyncCount) {
+    if (
+      next &&
+      next.metrics.presentationSyncCount > previousPresentationSyncCount
+    ) {
       return next;
     }
   }
 
-  throw new Error("Friends graph scene sync did not advance in time");
+  throw new Error("Friends graph presentation sync did not advance in time");
 }
 
 async function seedStressIdentityGraph(page: Page) {
@@ -3292,6 +3302,53 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
   await expect(page.getByPlaceholder("Search friends")).toBeVisible({ timeout: 10_000 });
 });
 
+test("Friends keeps the source sidebar inset while its galaxy background stays full frame", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1_280, height: 720 });
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+
+  const readLayout = () => page.evaluate(() => {
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    const background = document.querySelector(
+      '[data-testid="friends-background-layer"]',
+    ) as HTMLElement | null;
+    const sidebarRect = sidebar?.getBoundingClientRect();
+    const backgroundRect = background?.getBoundingClientRect();
+    const rootStyle = getComputedStyle(document.documentElement);
+    const gap = Number.parseFloat(rootStyle.getPropertyValue("--feed-card-gap")) || 8;
+    return {
+      viewportHeight: window.innerHeight,
+      gap,
+      sidebarBottom: sidebarRect?.bottom ?? 0,
+      backgroundBottom: backgroundRect?.bottom ?? 0,
+      backgroundLeft: backgroundRect?.left ?? 0,
+      backgroundRight: backgroundRect?.right ?? 0,
+    };
+  });
+
+  const feedLayout = await readLayout();
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { setActiveView: (view: string) => void } }
+      | undefined;
+    store?.getState().setActiveView("friends");
+  });
+  await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 10_000 });
+  const friendsLayout = await readLayout();
+
+  expect(Math.abs(friendsLayout.sidebarBottom - feedLayout.sidebarBottom)).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(
+      friendsLayout.viewportHeight - friendsLayout.sidebarBottom - friendsLayout.gap,
+    ),
+  ).toBeLessThanOrEqual(1);
+  expect(Math.abs(friendsLayout.backgroundBottom - friendsLayout.viewportHeight))
+    .toBeLessThanOrEqual(1);
+  expect(friendsLayout.backgroundLeft).toBe(0);
+  expect(Math.abs(friendsLayout.backgroundRight - 1_280)).toBeLessThanOrEqual(1);
+});
+
 test("Map view popup exposes friend actions and supports post navigation", async ({ app }) => {
   test.setTimeout(60_000);
   await app.goto();
@@ -4184,11 +4241,13 @@ test("selection while the initial Friends atlas is pending retains the semantic 
       return debug?.nodes.some((node) => node.personId === "friend-ada") ?? false;
     }, { timeout: 10_000 })
     .toBe(true);
-  const drawError = await page.evaluate(() => {
-    return (window as typeof window & { __FREED_GRAPH_DRAW_ERROR__?: string })
-      .__FREED_GRAPH_DRAW_ERROR__ ?? null;
-  });
-  expect(drawError).toBeNull();
+  await expect(page.getByTestId("friend-graph-canvas")).toBeVisible({ timeout: 10_000 });
+  await expect
+    .poll(() => page.evaluate(() => {
+      return (window as typeof window & { __FREED_GRAPH_DRAW_ERROR__?: string })
+        .__FREED_GRAPH_DRAW_ERROR__ ?? null;
+    }), { timeout: 10_000 })
+    .toBeNull();
 });
 
 test("selected Friends graph person shows a compact detail card when the detail rail is closed", async ({ app, page }) => {
@@ -4245,13 +4304,21 @@ test("selected Friends graph person shows a compact detail card when the detail 
   const compactCard = page.getByTestId("friends-collapsed-selection-card");
   await expect(compactCard).toBeVisible({ timeout: 5_000 });
   await expect(compactCard).toContainText("Ada Lovelace");
-  await waitForGraphSceneSyncAfter(page, beforeSelection!.metrics.sceneSyncCount);
+  await waitForGraphPresentationSyncAfter(
+    page,
+    beforeSelection!.metrics.presentationSyncCount,
+  );
   const afterSelection = await waitForGraphPerfToSettle(page);
   expect(afterSelection).not.toBeNull();
   expect(afterSelection!.transform.x).toBeCloseTo(beforeSelection!.transform.x, 1);
   expect(afterSelection!.transform.y).toBeCloseTo(beforeSelection!.transform.y, 1);
   expect(afterSelection!.transform.scale).toBeCloseTo(beforeSelection!.transform.scale, 3);
-  expect(afterSelection!.metrics.sceneSyncCount).toBe(beforeSelection!.metrics.sceneSyncCount + 1);
+  expect(afterSelection!.metrics.sceneSyncCount).toBe(
+    beforeSelection!.metrics.sceneSyncCount,
+  );
+  expect(afterSelection!.metrics.presentationSyncCount).toBe(
+    beforeSelection!.metrics.presentationSyncCount + 1,
+  );
   expect(afterSelection!.metrics.edgeRebuildCount).toBeLessThanOrEqual(beforeSelection!.metrics.edgeRebuildCount + 2);
   expect(afterSelection!.metrics.nodeRestyleCount).toBeLessThanOrEqual(beforeSelection!.metrics.nodeRestyleCount + 2);
   await expect.poll(() => readDeviceDisplayPreference(page, "friendsSidebarOpen"), { timeout: 5_000 })
@@ -5669,10 +5736,16 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
         }, { timeout: 10_000 })
         .toBe(true);
     }
-    await waitForGraphSceneSyncAfter(page, beforeSelection!.metrics.sceneSyncCount);
+    await waitForGraphPresentationSyncAfter(
+      page,
+      beforeSelection!.metrics.presentationSyncCount,
+    );
     const afterSelection = await waitForGraphPerfToSettle(page);
     expect(afterSelection!.metrics.sceneSyncCount).toBe(
-      beforeSelection!.metrics.sceneSyncCount + 1,
+      beforeSelection!.metrics.sceneSyncCount,
+    );
+    expect(afterSelection!.metrics.presentationSyncCount).toBe(
+      beforeSelection!.metrics.presentationSyncCount + 1,
     );
   };
   await selectExternalIdentity({
@@ -5713,7 +5786,10 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
   expect(afterHover!.metrics.sceneSyncMs).toBeLessThan(250);
 
   await page.mouse.click(benchmarkPoint!.x, benchmarkPoint!.y);
-  const afterSelection = await waitForGraphSceneSyncAfter(page, afterHover!.metrics.sceneSyncCount);
+  const afterSelection = await waitForGraphPresentationSyncAfter(
+    page,
+    afterHover!.metrics.presentationSyncCount,
+  );
   expect(afterSelection).not.toBeNull();
   expect(afterSelection!.metrics.sceneSyncMs).toBeLessThan(250);
 
@@ -5736,8 +5812,12 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
 
     duringPan = await readGraphDebug(page);
     expect(duringPan).not.toBeNull();
-    expect(duringPan!.metrics.visibleLabelCount).toBe(initial!.metrics.visibleLabelCount);
-    expect(duringPan!.metrics.rendererLabelCount).toBe(initial!.metrics.rendererLabelCount);
+    expect(duringPan!.metrics.visibleLabelCount).toBeGreaterThan(0);
+    expect(duringPan!.metrics.rendererLabelCount).toBeGreaterThan(0);
+    expect(duringPan!.metrics.rendererLabelCount).toBeLessThanOrEqual(64);
+    expect(duringPan!.metrics.labelLayoutCount).toBeGreaterThan(
+      initial!.metrics.labelLayoutCount,
+    );
     expect(duringPan!.metrics.readyRendererLabelCount).toBeGreaterThan(0);
     await page.mouse.move(startX + 300, startY + 90, { steps: 4 });
     await page.waitForTimeout(250);
@@ -5745,7 +5825,8 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
     expect(steadyPan).not.toBeNull();
     expect(steadyPan!.metrics.sceneSyncCount).toBe(duringPan!.metrics.sceneSyncCount);
     expect(steadyPan!.metrics.edgeRebuildCount).toBe(duringPan!.metrics.edgeRebuildCount);
-    expect(steadyPan!.metrics.rendererLabelCount).toBe(duringPan!.metrics.rendererLabelCount);
+    expect(steadyPan!.metrics.rendererLabelCount).toBeGreaterThan(0);
+    expect(steadyPan!.metrics.rendererLabelCount).toBeLessThanOrEqual(64);
     expect(steadyPan!.metrics.readyRendererLabelCount).toBeGreaterThan(0);
     expect(steadyPan!.metrics.readyRendererLabelCount).toBeLessThanOrEqual(
       steadyPan!.metrics.rendererLabelCount,
@@ -5777,7 +5858,11 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
     })
     .toBeGreaterThan(beforeZoom!.transform.scale);
 
-  const afterZoom = await waitForGraphSceneSyncAfter(page, beforeZoom!.metrics.sceneSyncCount, 8_000);
+  const afterZoom = await waitForGraphPresentationSyncAfter(
+    page,
+    beforeZoom!.metrics.presentationSyncCount,
+    8_000,
+  );
   expect(afterZoom).not.toBeNull();
   expect(afterZoom!.metrics.sceneSyncMs).toBeLessThan(250);
   expect(afterZoom!.transform.scale).toBeGreaterThan(beforeZoom!.transform.scale);

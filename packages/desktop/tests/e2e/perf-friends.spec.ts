@@ -92,6 +92,7 @@ async function readGraphPerf(page: Page) {
         denseInteractionNodeCount?: number;
         denseInteractionRebuildCount?: number;
         sceneSyncCount?: number;
+        presentationSyncCount?: number;
         edgeRebuildCount?: number;
         labelLayoutCount?: number;
         transformOnlySyncCount?: number;
@@ -397,8 +398,11 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
       expect(afterWheelPerf!.rendererType).toBe(duringWheelBaseline!.rendererType);
       expect(afterWheelPerf!.sceneSyncCount).toBe(duringWheelBaseline!.sceneSyncCount);
       expect(afterWheelPerf!.edgeRebuildCount).toBe(duringWheelBaseline!.edgeRebuildCount);
-      expect(afterWheelPerf!.labelLayoutCount).toBe(duringWheelBaseline!.labelLayoutCount);
-      expect(afterWheelPerf!.rendererLabelCount).toBe(duringWheelBaseline!.rendererLabelCount);
+      expect(afterWheelPerf!.labelLayoutCount ?? 0).toBeGreaterThan(
+        duringWheelBaseline!.labelLayoutCount ?? 0,
+      );
+      expect(afterWheelPerf!.rendererLabelCount ?? 0).toBeGreaterThan(0);
+      expect(afterWheelPerf!.rendererLabelCount ?? 0).toBeLessThanOrEqual(64);
       expect(afterWheelPerf!.readyRendererLabelCount ?? 0).toBeGreaterThan(0);
 
       await page.evaluate(() => performance.mark("friends-drag-start"));
@@ -414,7 +418,11 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
       expect(duringPanPerf).not.toBeNull();
       expect(duringPanPerf!.sceneSyncCount).toBe(beforePanPerf!.sceneSyncCount);
       expect(duringPanPerf!.edgeRebuildCount).toBe(beforePanPerf!.edgeRebuildCount);
-      expect(duringPanPerf!.rendererLabelCount).toBe(beforePanPerf!.rendererLabelCount);
+      expect(duringPanPerf!.labelLayoutCount ?? 0).toBeGreaterThan(
+        beforePanPerf!.labelLayoutCount ?? 0,
+      );
+      expect(duringPanPerf!.rendererLabelCount ?? 0).toBeGreaterThan(0);
+      expect(duringPanPerf!.rendererLabelCount ?? 0).toBeLessThanOrEqual(64);
       expect(duringPanPerf!.readyRendererLabelCount ?? 0).toBeGreaterThan(0);
       await page.mouse.up();
       await page.evaluate(() => performance.mark("friends-drag-end"));

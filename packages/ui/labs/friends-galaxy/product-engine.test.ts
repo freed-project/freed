@@ -380,7 +380,7 @@ describe("Friends Galaxy product engine", () => {
     expect(worker.messages).toHaveLength(1);
   });
 
-  it("drops stale settled presentation that arrives while the camera is moving", async () => {
+  it("admits bounded presentation metadata while the camera is moving", async () => {
     const worker = new ControlledProductWorker();
     const service = new FriendsGalaxyProductWorkerService();
     const presentationRevisions: number[] = [];
@@ -401,12 +401,53 @@ describe("Friends Galaxy product engine", () => {
     engine.requestSource(sourceRequest());
     worker.emit(response(service, worker, 0));
     await flushActivation();
+    const settledEventCount = backend.events.filter((event) =>
+      event.startsWith("settled:")
+    ).length;
     engine.requestSettledPresentation(presentationRequest());
     engine.setCameraMotion(true);
     worker.emit(response(service, worker, 1));
 
-    expect(presentationRevisions).toEqual([]);
-    expect(backend.presentationAtlas).toBeNull();
+    expect(presentationRevisions).toEqual([1]);
+    expect(backend.presentationAtlas).not.toBeNull();
+    expect(backend.presentationAtlas?.nodes.length).toBeLessThanOrEqual(192);
+    expect(backend.events.filter((event) => event.startsWith("settled:"))).toHaveLength(
+      settledEventCount,
+    );
+  });
+
+  it("does not promote a late motion presentation reply to settled state", async () => {
+    const worker = new ControlledProductWorker();
+    const service = new FriendsGalaxyProductWorkerService();
+    const backend = new ProductRendererBackend("raw-webgpu");
+    const engine = new FriendsGalaxyProductEngine({
+      palette: FRIENDS_GALAXY_THEME_PALETTES.scriptorium,
+      createWorker: () => worker,
+      createSurface: () => ({}) as HTMLCanvasElement,
+      mountSurface: () => undefined,
+      showSurface: () => undefined,
+      removeSurface: () => undefined,
+      createBackend: async () => backend,
+    });
+
+    engine.resize(390, 844, 1);
+    engine.requestSource(sourceRequest());
+    worker.emit(response(service, worker, 0));
+    await flushActivation();
+    engine.setCameraMotion(true);
+    engine.panCameraBy(18, -12);
+    expect(engine.requestCameraPresentation(1)).toBe(2);
+    const settledEventCount = backend.events.filter((event) =>
+      event.startsWith("settled:")
+    ).length;
+
+    engine.setCameraMotion(false);
+    worker.emit(response(service, worker, 1));
+
+    expect(backend.presentationAtlas).not.toBeNull();
+    expect(backend.events.filter((event) => event.startsWith("settled:"))).toHaveLength(
+      settledEventCount,
+    );
   });
 
   it("defers a fresh source scene until active camera motion settles", async () => {

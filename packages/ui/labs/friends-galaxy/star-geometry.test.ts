@@ -29,23 +29,12 @@ describe("Friends Galaxy star geometry", () => {
     expect(stripArea(geometry.settled)).toBeCloseTo(4, 6);
   });
 
-  it("orders the moving octagon as one non-overlapping triangle strip", () => {
+  it("keeps moving stars identical to settled stars", () => {
     const geometry = createFriendsGalaxyStarGeometry();
 
     expect(geometry.motion).toHaveLength(FRIENDS_GALAXY_MOTION_STAR_VERTEX_COUNT * 2);
-    expect(stripArea(geometry.motion)).toBeCloseTo(2 * Math.SQRT2, 6);
-  });
-
-  it("preserves both axis diameters while reducing raster coverage", () => {
-    const { settled, motion } = createFriendsGalaxyStarGeometry();
-    const xs = Array.from(motion.filter((_, index) => index % 2 === 0));
-    const ys = Array.from(motion.filter((_, index) => index % 2 === 1));
-
-    expect(Math.min(...xs)).toBe(-1);
-    expect(Math.max(...xs)).toBe(1);
-    expect(Math.min(...ys)).toBe(-1);
-    expect(Math.max(...ys)).toBe(1);
-    expect(stripArea(motion) / stripArea(settled)).toBeCloseTo(Math.SQRT1_2, 6);
+    expect(geometry.motion).toEqual(geometry.settled);
+    expect(stripArea(geometry.motion)).toBeCloseTo(4, 6);
   });
 
   it("caps only decorative motion stars", () => {

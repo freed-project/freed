@@ -59,6 +59,11 @@ export interface FriendsGalaxyProductEngineOptions extends Omit<
   onActivityReady?(response: FriendsGalaxyProductWorkerActivityResponse): void;
 }
 
+interface FriendsGalaxyPresentationRequestState {
+  input: FriendsGalaxyProductWorkerPresentationInput;
+  cameraMotion: boolean;
+}
+
 export class FriendsGalaxyProductEngine {
   private readonly presentation = new FriendsGalaxyProductPresentationIndex();
   private readonly worker: FriendsGalaxyProductWorkerClient;
@@ -94,7 +99,7 @@ export class FriendsGalaxyProductEngine {
   private settledDetail: FriendsGalaxyViewDetail = "overview";
   private settledTransform: FriendsGalaxyTransform | null = null;
   private activityPatches: FriendsGalaxyActivityScenePatchBatch | null = null;
-  private latestPresentation: FriendsGalaxyProductWorkerPresentationInput | null = null;
+  private latestPresentation: FriendsGalaxyPresentationRequestState | null = null;
   private pendingSourceResponse: FriendsGalaxyProductWorkerSourceResponse | null = null;
   private admittedSourceRevision: number | null = null;
   private disposed = false;
@@ -204,14 +209,24 @@ export class FriendsGalaxyProductEngine {
   requestSettledPresentation(
     input: FriendsGalaxyProductWorkerPresentationInput,
   ): number | null {
+    return this.requestPresentation(input, false);
+  }
+
+  private requestPresentation(
+    input: FriendsGalaxyProductWorkerPresentationInput,
+    cameraMotion: boolean,
+  ): number | null {
     this.assertActive();
     const previousPresentation = this.latestPresentation;
     this.latestPresentation = {
-      ...input,
-      viewport: {
-        ...input.viewport,
-        transform: { ...input.viewport.transform },
+      input: {
+        ...input,
+        viewport: {
+          ...input.viewport,
+          transform: { ...input.viewport.transform },
+        },
       },
+      cameraMotion,
     };
     const requestId = this.worker.requestPresentation(input);
     if (requestId === null) this.latestPresentation = previousPresentation;
@@ -233,7 +248,7 @@ export class FriendsGalaxyProductEngine {
     const navigation = this.navigation;
     const sourceRevision = this.worker.activeSourceRevision;
     if (!navigation || sourceRevision === null) return null;
-    return this.requestSettledPresentation({
+    return this.requestPresentation({
       kind: "presentation",
       sourceRevision,
       presentationRevision,
@@ -243,7 +258,7 @@ export class FriendsGalaxyProductEngine {
         transform: { ...navigation.transform },
         ...selection,
       },
-    });
+    }, this.cameraMotion);
   }
 
   activateRenderer(
@@ -510,22 +525,26 @@ export class FriendsGalaxyProductEngine {
   private receivePresentation(
     response: FriendsGalaxyProductWorkerPresentationResponse,
   ): void {
-    const request = this.latestPresentation;
+    const requestState = this.latestPresentation;
+    const request = requestState?.input;
     if (
       !request ||
       request.sourceRevision !== response.sourceRevision ||
       request.presentationRevision !== response.presentationRevision
     ) return;
-    if (this.cameraMotion) return;
     this.presentation.replace(response.atlas);
     const detail = friendsGalaxyViewDetailForScale(request.viewport.transform.scale);
-    this.settledDetail = detail;
-    this.settledTransform = { ...request.viewport.transform };
-    this.renderer?.setSettledPresentation(
-      response.atlas,
-      detail,
-      this.settledTransform,
-    );
+    if (requestState.cameraMotion || this.cameraMotion) {
+      this.renderer?.setPresentationAtlas(response.atlas);
+    } else {
+      this.settledDetail = detail;
+      this.settledTransform = { ...request.viewport.transform };
+      this.renderer?.setSettledPresentation(
+        response.atlas,
+        detail,
+        this.settledTransform,
+      );
+    }
     this.onPresentationReady?.(response);
   }
 
