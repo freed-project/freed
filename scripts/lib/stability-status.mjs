@@ -1,7 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  closeSync,
+  constants,
+  fstatSync,
   lstatSync,
+  openSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -51,37 +55,43 @@ function readRegularFile(
   filePath,
   { allowMissing = false, maxBytes = STATUS_FILE_MAX_BYTES } = {},
 ) {
-  let before;
+  let descriptor;
   try {
-    before = lstatSync(filePath);
+    descriptor = openSync(
+      filePath,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+    );
   } catch (error) {
     if (allowMissing && error?.code === "ENOENT") return null;
     throw error;
   }
-  if (
-    !before.isFile() ||
-    before.isSymbolicLink() ||
-    before.nlink !== 1 ||
-    before.size < 0 ||
-    before.size > maxBytes ||
-    realpathSync(filePath) !== path.resolve(filePath)
-  ) {
-    throw new Error(`${filePath} is not a safe bounded regular file.`);
+  try {
+    const before = fstatSync(descriptor);
+    if (
+      !before.isFile() ||
+      before.nlink !== 1 ||
+      before.size < 0 ||
+      before.size > maxBytes ||
+      realpathSync(filePath) !== path.resolve(filePath)
+    ) {
+      throw new Error(`${filePath} is not a safe bounded regular file.`);
+    }
+    const text = readFileSync(descriptor, "utf8");
+    const after = fstatSync(descriptor);
+    if (
+      !after.isFile() ||
+      after.dev !== before.dev ||
+      after.ino !== before.ino ||
+      after.size !== before.size ||
+      after.mtimeMs !== before.mtimeMs ||
+      after.ctimeMs !== before.ctimeMs
+    ) {
+      throw new Error(`${filePath} changed while it was read.`);
+    }
+    return text;
+  } finally {
+    closeSync(descriptor);
   }
-  const text = readFileSync(filePath, "utf8");
-  const after = lstatSync(filePath);
-  if (
-    after.isSymbolicLink() ||
-    !after.isFile() ||
-    after.dev !== before.dev ||
-    after.ino !== before.ino ||
-    after.size !== before.size ||
-    after.mtimeMs !== before.mtimeMs ||
-    after.ctimeMs !== before.ctimeMs
-  ) {
-    throw new Error(`${filePath} changed while it was read.`);
-  }
-  return text;
 }
 
 function parseJsonFile(filePath, options = {}) {

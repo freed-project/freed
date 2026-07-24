@@ -2,9 +2,13 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
+  closeSync,
+  constants,
+  fstatSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -112,6 +116,21 @@ function fixedReaders() {
 
 function snapshotTree(root) {
   const rows = [];
+  function digestFile(target) {
+    const descriptor = openSync(
+      target,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+    );
+    try {
+      const stats = fstatSync(descriptor);
+      assert.equal(stats.isFile(), true);
+      return createHash("sha256")
+        .update(readFileSync(descriptor))
+        .digest("hex");
+    } finally {
+      closeSync(descriptor);
+    }
+  }
   function visit(directory) {
     for (const name of readdirSync(directory).sort()) {
       const target = path.join(directory, name);
@@ -131,9 +150,7 @@ function snapshotTree(root) {
           type: "file",
           mode: stats.mode,
           mtimeMs: stats.mtimeMs,
-          digest: createHash("sha256")
-            .update(readFileSync(target))
-            .digest("hex"),
+          digest: digestFile(target),
         });
       }
     }
