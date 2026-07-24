@@ -3965,6 +3965,28 @@ test("nightly JSON plan exposes only sanitized control-task state", () => {
   execFileSync("git", ["commit", "-m", "test"], { cwd: repo });
   execFileSync("git", ["branch", "-M", "dev"], { cwd: repo });
 
+  const githubIssue = (number) => ({
+    number,
+    url: `https://github.com/freed-project/freed/issues/${String(number)}`,
+  });
+  const openGithubIssues = new Map([
+    [
+      11_001,
+      {
+        url: githubIssue(11_001).url,
+        kind: "debt",
+        title: "Sanitized runnable task",
+      },
+    ],
+    [
+      11_002,
+      {
+        url: githubIssue(11_002).url,
+        kind: "debt",
+        title: "Sanitized planning-only task",
+      },
+    ],
+  ]);
   const nowMs = Date.now();
   const controller = outcomeAuthentication(
     stateRoot,
@@ -3981,6 +4003,7 @@ test("nightly JSON plan exposes only sanitized control-task state", () => {
     providerAuthority: "forbidden",
     details: {
       behavioral: true,
+      githubIssue: githubIssue(11_001),
       privateNote: "must-not-appear-in-json",
     },
     nowMs: nowMs + 1,
@@ -4011,7 +4034,10 @@ test("nightly JSON plan exposes only sanitized control-task state", () => {
     leaseToken: controller.authentication.leaseToken,
     observerAuthority: "pr-only",
     providerAuthority: "forbidden",
-    details: { behavioral: false },
+    details: {
+      behavioral: false,
+      githubIssue: githubIssue(11_002),
+    },
     nowMs: nowMs + 4,
   });
   transitionTask({
@@ -4048,6 +4074,7 @@ test("nightly JSON plan exposes only sanitized control-task state", () => {
       "--dry-run",
       "--json",
     ]),
+    { openGithubIssues },
   );
   const serialized = JSON.stringify(plan);
 
