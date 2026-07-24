@@ -1,8 +1,8 @@
 # Nightly Self Improvement Runner
 
-The nightly system has two layers. `scripts/nightly-self-improve.mjs` turns existing evidence into ranked candidates and run artifacts. The checked-in `freed-nightly-runner` automation executes only the tasks and authority recorded in the durable [automation control plane](AUTOMATION-CONTROL-PLANE.md).
+The nightly system has two layers. `scripts/nightly-self-improve.mjs` ranks eligible GitHub debt issues against current evidence and writes run artifacts. The checked-in `freed-nightly-runner` automation executes only work authorized in the durable [automation control plane](AUTOMATION-CONTROL-PLANE.md).
 
-Evidence comes first. A planner candidate is not execution authority. Weak evidence may produce a review prompt, but it cannot authorize a fix.
+GitHub Issues carrying the `debt` label are the sole canonical backlog. Evidence comes first, and an issue is not execution authority. The active task manifest may authorize one issue for execution. Weak evidence may update an issue or produce a review prompt, but it cannot authorize a fix.
 
 ## What It Reads
 
@@ -12,30 +12,36 @@ Evidence comes first. A planner candidate is not execution authority. Weak evide
 - Daily bug scan memory at `/Users/aubreyfalconer/.codex/automations/daily-bug-scan/memory.md`
 - Crash-watch automation state
 - Hourly dev bot memory as a legacy ranking fallback, never as execution authority
-- Structured phase status in `docs/roadmap-status.json`; broad roadmap prose cannot authorize work
+- Open GitHub Issues carrying the `debt` label
+- Structured phase status in `docs/roadmap-status.json` as context only; broad roadmap prose cannot create debt or authorize work
 - Git state for the current checkout
 - Local git worktrees with unmerged or uncommitted changes
 - Duplicate peer work indicators such as shared changed files, shared package surfaces, and shared provider-visible risk
 - Provider-visible peer worktrees, even when they are not runner branches
 - Prior outcome ledger at `~/.freed/automation/outcomes.jsonl` (legacy `/tmp/freed-nightly-self-improve/outcomes.jsonl` is still read and migrated for one release)
-- Atomic task state at `~/.freed/automation/control/current-tasks.json`
+- Atomic active execution state at `~/.freed/automation/control/current-tasks.json`; each debt-derived task stores `details.githubIssue: { number, url }`
 - Append-only control history at `~/.freed/automation/control/events.jsonl`
 - Active writer lease state under `~/.freed/automation/control/leases/`
 - Checked-in automation specifications and prompts under `automation/`
 - Preflight risks such as dirty worktrees, generated artifacts, stale or thin soak samples, missing dependencies, missing evidence files, and paused automations
 - Preflight actions that separate safe local commands from manual or agent-tool-only remediation
 
-## Target Types
+Evidence sources that identify a new root cause create or update its GitHub
+issue before nightly execution. Peer worktrees, bug scans, crash records,
+roadmap text, and local memories never enter the executable queue directly.
 
-- Peer worktree: active local branch work that may contain useful fixes or measurement
-- Performance: WebKit memory, event loop lag, DOM growth, stale heartbeat cycles
-- Bug fix: recent commit scans using the existing daily bug scan rules
-- Stability: crash-watch and blank-window evidence
-- Release: dev build readiness after real fixes land
-- Roadmap: small autonomous product work after evidence-backed targets are exhausted
-- Blocked: provider-visible ideas that need explicit approval before execution
+When no open debt issue exists, the stability controller performs a bounded
+discovery pass over the next package or subsystem in its persisted rotation.
+The pass declares its dependency boundary, requires concrete evidence, creates
+or updates issues, records its evidence cutoff, and stops. The nightly executor
+cannot implement debt created by that same discovery pass.
 
-The planner can rank more than one target when the night has enough budget. It aims to queue at least three machine hours of safe work when evidence supports it. The executor must still acquire one writer lease and obey each task's authority. It may group runtime-neutral scaffolding, but it may execute at most one product behavior change globally until that change has an installed-build soak outcome.
+## Issue Classes
+
+- Product debt: a user-visible or runtime defect with a reproducible completion check
+- Process debt: repository, automation, release, or governance friction with an exact workflow check
+- Measurement debt: missing or unreliable evidence that blocks trustworthy judgment
+- Blocked debt: an issue whose authority, provider approval, prerequisite, or evidence is incomplete
 
 ## Usage
 
@@ -46,7 +52,7 @@ npm run nightly:self-improve
 Useful direct form:
 
 ```bash
-node scripts/nightly-self-improve.mjs --max-targets 6 --duration-minutes 480 --minimum-night-minutes 180
+node scripts/nightly-self-improve.mjs --max-targets 6 --duration-minutes 480
 ```
 
 Compare a known peer branch directly:
@@ -83,8 +89,8 @@ Record a lifecycle outcome through the authenticated control plane:
 
 ```bash
 node scripts/record-outcome.mjs \
-  --id webkit-memory-pressure \
-  --task-id webkit-memory-pressure \
+  --id github-issue-1090 \
+  --task-id github-issue-1090 \
   --kind performance \
   --status merged \
   --pr 617 \
@@ -143,24 +149,23 @@ State files live under `~/.freed/automation/` so they survive reboots. This incl
 The generated run directory contains:
 
 - `report.md`: morning-readable summary
-- `targets.json`: full machine-readable candidate list
+- `targets.json`: full machine-readable list of eligible debt issues
 - `risk-snapshot.md` and `risk-snapshot.json`: preflight blockers, warnings, evidence, and remediation steps
 - `preflight-actions.md` and `preflight-actions.json`: machine-readable local, manual, and automation-tool risk actions
 - `duplicate-work.md` and `duplicate-work.json`: peer worktree overlap by file and surface
-- `tasks/*.md`: one implementation prompt per selected target
+- `tasks/*.md`: transient implementation prompts for selected issues; these are run artifacts, not a backlog
 - `execution-plan.md` and `execution-plan.json`: ordered phases, command hints, and stop gates
 - `outcome-closeout.md`: one authenticated lifecycle command template per registered selected target
 - `outcome-template.jsonl`: authenticated command stubs to run after a merge; never append the raw template as ledger truth
 
 Reports include an execution phase list so the night can move from evidence, to peer comparison, to implementation, validation, dev build shipping, installed-build soak, ledger closeout, and the morning digest.
 
-The queue is no longer allowed to stop after one short task. The default selector
-keeps adding safe targets until it reaches the three-hour floor, the budget runs
-out, or the candidate list is exhausted. Runtime-neutral work may batch freely.
-Behavioral candidates carry a soak exclusivity key for deduplication and audit,
-but the selector admits at most one behavioral candidate in the entire run. A
-second product behavior waits for the first change's isolated installed-build
-soak verdict.
+The selector ranks only open, executable debt issues. It stops when no eligible
+issue remains or the run budget expires. Runtime-neutral work may batch when it
+does not overlap active delivery. Behavioral candidates carry a soak
+exclusivity key for deduplication and audit, but the selector admits at most
+one behavioral candidate in the entire run. A second product behavior waits
+for the first change's isolated installed-build soak verdict.
 
 Stale dirty peer worktrees still stay in the evidence queue, but they no longer jump ahead of a fresh bug scan just because they touch nightly runner files. If a peer is read-only, behind current `dev`, and has no commits ahead of `origin/dev`, treat it as comparison material, not as the first thing to ship. Daily bug scan summaries now also recognize explicit "no new repo commits" outcomes and avoid treating an unmerged regression note as if a fix already landed.
 
@@ -250,13 +255,14 @@ Before mutation, the executor must:
 5. Heartbeat the lease while it owns mutable work.
 6. Release the lease on success, no-op, or controlled failure.
 
-Only canonical tasks in a runnable state with `merge-safe`, provider-forbidden
-authority can enter the nightly selected queue. The scaffolding lane owns
-`pr-only` tasks. Missing or contradictory behavioral classification blocks the
-global behavior slot. A verification transition cannot release that slot until
-the authenticated outcome ledger contains the matching task ID, state, and
-transition revision. Generated outcome commands are omitted for unregistered
-findings.
+Only active tasks that reference an open `debt` issue, are in a runnable state,
+and carry `merge-safe`, provider-forbidden authority can enter the nightly
+selected queue. The scaffolding lane owns `pr-only` tasks. Missing issue
+identity, contradictory behavioral classification, or issue scope that no
+longer matches the task blocks execution. A verification transition cannot
+release the global behavior slot until the authenticated outcome ledger
+contains the matching task ID, state, and transition revision. Generated
+outcome commands are omitted when the selected issue has no valid active task.
 
 An active lease means another pass owns the writer. Wait or finish read-only
 work. Do not create a duplicate worktree. Expired lease takeover must use the

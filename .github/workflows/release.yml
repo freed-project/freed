@@ -596,9 +596,8 @@ jobs:
           fi
           ./scripts/vercel-deploy-production.sh pwa "$VERCEL_TOKEN"
 
-  # Stability W2-02: a red release pipeline becomes a triage-readable issue
-  # (label automation-triage) that scripts/triage.mjs ranks against alarms,
-  # soak verdicts, and canary regressions.
+  # A red release pipeline stays an automation-triage incident. Durable debt
+  # gets a separate issue carrying `debt`.
   triage-on-failure:
     needs:
       [
@@ -628,7 +627,7 @@ jobs:
           Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
           Ref: ${GITHUB_REF_NAME} (${GITHUB_SHA})
 
-          One or more jobs failed in the Release Desktop App workflow. Open the run to see which platform or stage went red. Auto-filed for scripts/triage.mjs; close after the follow-up release ships."
+          One or more jobs failed in the Release Desktop App workflow. Open the run to see which platform or stage went red. This is an incident, not the debt backlog. Close it after the follow-up release ships."
           existing=$(gh issue list --label automation-triage --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "$body"

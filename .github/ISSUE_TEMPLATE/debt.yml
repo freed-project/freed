@@ -1,0 +1,49 @@
+name: Technical debt
+description: Record one independently closable root cause
+title: ""
+labels:
+  - debt
+body:
+  - type: markdown
+    attributes:
+      value: "(AI Generated)."
+  - type: textarea
+    id: root_cause
+    attributes:
+      label: Root cause
+      description: Describe one independently closable debt element.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Link the failing behavior, code, logs, tests, or measurements.
+    validations:
+      required: true
+  - type: textarea
+    id: deferral_reason
+    attributes:
+      label: Why this is deferred
+      description: Explain why this does not block the active delivery.
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: State the observable result that closes this issue.
+    validations:
+      required: true
+  - type: textarea
+    id: scope_gates
+    attributes:
+      label: Scope and gates
+      description: Name the affected surface and any provider, owner review, release, or other gate.
+    validations:
+      required: true
+  - type: input
+    id: legacy_references
+    attributes:
+      label: Legacy references
+      description: Optional prior finding or task IDs.

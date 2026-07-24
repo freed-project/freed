@@ -171,13 +171,13 @@ const DEFAULT_OUTCOME_LEDGER = path.join(
   "outcomes.jsonl",
 );
 const LEGACY_SOAK_ROOT = "/tmp/freed-perf-soak";
-// Ranked task files emitted by scripts/triage.mjs (stability W2-02).
+// Ranked evidence candidates emitted by scripts/triage.mjs.
 export const DEFAULT_TRIAGE_CANDIDATE_DIR = path.join(
   AUTOMATION_STATE_DIR,
   "triage",
   "candidates",
 );
-// Triage evidence older than this no longer outranks roadmap work.
+// Triage evidence older than this receives a lower execution score.
 const TRIAGE_FRESH_MS = 48 * 60 * 60 * 1000;
 
 export function resolveStatePathWithLegacyFallback(
@@ -219,7 +219,6 @@ const MAX_PEER_EVIDENCE_FILES = 12;
 const STALE_SOAK_MS = 2 * 60 * 60 * 1000;
 const MIN_PERFORMANCE_SOAK_SAMPLES = 3;
 const DEFAULT_MAX_TARGETS = 6;
-const DEFAULT_MINIMUM_NIGHT_MINUTES = 180;
 const UNATTENDED_APP_INTERACTION_RULES = [
   "Do not stop an unattended run because the next useful validation or testing step needs a Freed Desktop button press.",
   "Use terminal diagnostics and shipped triggers first, including `node scripts/dev-sync-trigger.mjs <provider>` for installed dev-channel provider sync soaks.",
@@ -272,7 +271,6 @@ Options:
   --record-evidence-window-end <iso>  Evidence window used for freshness.
   --max-targets <count>         Maximum targets to select. Defaults to 6.
   --duration-minutes <count>    Planning budget for one night. Defaults to 480.
-  --minimum-night-minutes <n>   Keep batching safe work until at least this many machine minutes are queued. Defaults to 180.
   --memory-gib <count>          WebKit RSS budget before memory work wins. Defaults to 2.5.
   Provider-visible targets are never executable in the unattended nightly lane.
   --dry-run                     Print the plan without writing files.
@@ -317,7 +315,6 @@ export function parseArgs(argv) {
     expectedBranch: "dev",
     maxTargets: DEFAULT_MAX_TARGETS,
     durationMinutes: 480,
-    minimumNightMinutes: DEFAULT_MINIMUM_NIGHT_MINUTES,
     memoryGib: 2.5,
     allowProviderVisible: false,
     dryRun: false,
@@ -447,10 +444,6 @@ export function parseArgs(argv) {
         args.durationMinutes = Number.parseInt(argv[index + 1] ?? "", 10);
         index += 1;
         break;
-      case "--minimum-night-minutes":
-        args.minimumNightMinutes = Number.parseInt(argv[index + 1] ?? "", 10);
-        index += 1;
-        break;
       case "--memory-gib":
         args.memoryGib = Number.parseFloat(argv[index + 1] ?? "");
         index += 1;
@@ -546,17 +539,6 @@ export function parseArgs(argv) {
   }
   if (!Number.isFinite(args.durationMinutes) || args.durationMinutes < 30) {
     throw new Error("durationMinutes must be at least 30.");
-  }
-  if (
-    !Number.isFinite(args.minimumNightMinutes) ||
-    args.minimumNightMinutes < 30
-  ) {
-    throw new Error("minimumNightMinutes must be at least 30.");
-  }
-  if (args.minimumNightMinutes > args.durationMinutes) {
-    throw new Error(
-      "minimumNightMinutes must be less than or equal to durationMinutes.",
-    );
   }
   if (!Number.isFinite(args.memoryGib) || args.memoryGib <= 0) {
     throw new Error("memoryGib must be greater than 0.");
@@ -4300,18 +4282,16 @@ export function collectRiskSnapshot({
 }
 
 /**
- * Read ranked triage task files (scripts/triage.mjs, stability W2-02). New
- * writers atomically point current.json at an immutable generation directory.
- * Legacy top-level T-<rank>-<bucket>.md files remain readable. Evidence older
- * than TRIAGE_FRESH_MS still loads but is marked stale so ranking can drop it
- * below roadmap work.
+ * Read issue-backed triage evidence (scripts/triage.mjs). Writers atomically
+ * point current.json at an immutable generation directory. Legacy generations
+ * without canonical issue identity fail closed.
  */
 export function loadTriageCandidates(
   dirPath = DEFAULT_TRIAGE_CANDIDATE_DIR,
   nowMs = Date.now(),
 ) {
   if (!existsSync(dirPath)) return [];
-  let sourceDir = dirPath;
+  let sourceDir = null;
   let manifest = null;
   const currentPath = path.join(dirPath, "current.json");
   if (existsSync(currentPath)) {
@@ -4327,9 +4307,10 @@ export function loadTriageCandidates(
         manifest = parsed;
       }
     } catch {
-      // Fall through to the legacy top-level directory.
+      return [];
     }
   }
+  if (!sourceDir || !manifest) return [];
   const candidates = [];
   for (const name of readdirSync(sourceDir).sort()) {
     const match = name.match(/^T-(\d{2})-(.+)\.md$/);
@@ -4343,7 +4324,7 @@ export function loadTriageCandidates(
     }
     if (text.startsWith("# stale:")) continue;
     const titleMatch = text.match(/^# T-\d+: (.+)$/m);
-    const programTaskMatch = text.match(/^Program task: (.+)$/m);
+    const canonicalIssueMatch = text.match(/^Canonical issue: (.+)$/m);
     const generatedAtMatch = text.match(/^Generated at: (.+)$/m);
     const evidenceWindowEndMatch = text.match(/^Evidence window end: (.+)$/m);
     const evidence = [...text.matchAll(/^- (.+)$/gm)]
@@ -4358,18 +4339,24 @@ export function loadTriageCandidates(
     const generatedAt = generatedAtMatch?.[1] ?? manifest?.generatedAt ?? null;
     const evidenceWindowEnd =
       evidenceWindowEndMatch?.[1] ?? manifest?.evidenceWindowEnd ?? generatedAt;
-    const programTask = programTaskMatch?.[1] ?? null;
-    const programTaskContract = readProgramTaskContract(programTask);
     const manifestCandidate = manifest?.candidates?.find(
       (candidate) => candidate.file === name || candidate.id === match[2],
     );
     if (
-      manifestCandidate &&
-      (manifestCandidate.sourceHealth !== "healthy" ||
-        !/^[0-9a-f]{64}$/.test(
-          String(manifestCandidate.evidenceFingerprint ?? ""),
-        ))
+      !manifestCandidate ||
+      manifestCandidate.sourceHealth !== "healthy" ||
+      !["debt", "incident"].includes(manifestCandidate.issueKind) ||
+      !Number.isInteger(manifestCandidate.githubIssueNumber) ||
+      manifestCandidate.githubIssueNumber <= 0 ||
+      manifestCandidate.githubIssueUrl !==
+        `https://github.com/freed-project/freed/issues/${String(manifestCandidate.githubIssueNumber)}` ||
+      !/^[0-9a-f]{64}$/.test(
+        String(manifestCandidate.evidenceFingerprint ?? ""),
+      )
     ) {
+      continue;
+    }
+    if (canonicalIssueMatch?.[1] !== manifestCandidate.githubIssueUrl) {
       continue;
     }
     const evidenceWindowEndMs = Date.parse(evidenceWindowEnd ?? "");
@@ -4380,19 +4367,16 @@ export function loadTriageCandidates(
       rank: Number(match[1]),
       bucketId: match[2],
       title: titleMatch?.[1] ?? match[2],
-      taskId: manifestCandidate?.taskId ?? null,
-      programTask,
-      providerVisible:
-        manifestCandidate?.providerVisible ??
-        programTaskContract.providerVisible,
-      behavioral:
-        manifestCandidate?.behavioral ?? programTaskContract.behavioral,
-      soakExclusivityKey:
-        manifestCandidate?.soakExclusivityKey ??
-        programTaskContract.soakExclusivityKey,
-      evidenceFingerprint: manifestCandidate?.evidenceFingerprint ?? null,
-      sourceHealth: manifestCandidate?.sourceHealth ?? null,
-      observerAuthority: manifestCandidate?.observerAuthority ?? null,
+      taskId: manifestCandidate.taskId ?? null,
+      issueKind: manifestCandidate.issueKind,
+      githubIssueNumber: manifestCandidate.githubIssueNumber,
+      githubIssueUrl: manifestCandidate.githubIssueUrl,
+      providerVisible: manifestCandidate.providerVisible,
+      behavioral: manifestCandidate.behavioral,
+      soakExclusivityKey: manifestCandidate.soakExclusivityKey,
+      evidenceFingerprint: manifestCandidate.evidenceFingerprint,
+      sourceHealth: manifestCandidate.sourceHealth,
+      observerAuthority: manifestCandidate.observerAuthority ?? null,
       evidence,
       filePath,
       generation: manifest?.generation ?? null,
@@ -4404,38 +4388,64 @@ export function loadTriageCandidates(
   return candidates.sort((left, right) => left.rank - right.rank);
 }
 
-function readProgramTaskContract(programTask) {
-  const taskFileName = String(programTask ?? "").match(
-    /([A-Za-z0-9-]+\.md)\b/,
-  )?.[1];
-  if (!taskFileName) {
-    return {
-      providerVisible: true,
-      behavioral: true,
-      soakExclusivityKey: DEFAULT_BEHAVIOR_SOAK_EXCLUSIVITY_KEY,
-    };
+export function readOpenGovernedGithubIssues({ exec = execFileSync } = {}) {
+  let parsed;
+  try {
+    parsed = JSON.parse(
+      exec(
+        "gh",
+        [
+          "issue",
+          "list",
+          "--repo",
+          "freed-project/freed",
+          "--state",
+          "open",
+          "--limit",
+          "1000",
+          "--json",
+          "number,url,title,labels",
+        ],
+        { encoding: "utf8" },
+      ),
+    );
+  } catch (error) {
+    throw new Error(
+      "Open GitHub issue state is unavailable. Nightly execution stopped.",
+      { cause: error },
+    );
   }
-  const taskText = readText(
-    path.join(REPO_ROOT, "docs", "stability-tasks", taskFileName),
-  );
-  const contractLine =
-    taskText
-      .split(/\r?\n/)
-      .find((line) => /provider-visible:|soak-gated:/i.test(line)) ?? "";
-  const providerVisible = /provider-visible:\s*true\b/i.test(contractLine);
-  const behavioral = contractLine
-    ? /soak-gated:\s*yes\b/i.test(contractLine)
-    : true;
-  const explicitKey =
-    contractLine.match(/soak-exclusivity-key:\s*([A-Za-z0-9._:-]+)/i)?.[1] ??
-    null;
-  return {
-    providerVisible,
-    behavioral,
-    soakExclusivityKey: behavioral
-      ? (explicitKey ?? DEFAULT_BEHAVIOR_SOAK_EXCLUSIVITY_KEY)
-      : null,
-  };
+  if (!Array.isArray(parsed)) {
+    throw new Error(
+      "Open GitHub issue state has an unsupported response shape.",
+    );
+  }
+  const issues = new Map();
+  for (const issue of parsed) {
+    const labels = Array.isArray(issue?.labels)
+      ? issue.labels.map((label) => label?.name)
+      : [];
+    if (!labels.includes("debt") && !labels.includes("automation-triage")) {
+      continue;
+    }
+    if (
+      !Number.isInteger(issue.number) ||
+      issue.number <= 0 ||
+      issue.url !==
+        `https://github.com/freed-project/freed/issues/${String(issue.number)}`
+    ) {
+      throw new Error("Open GitHub issue state contains an invalid identity.");
+    }
+    issues.set(issue.number, {
+      url: issue.url,
+      kind: labels.includes("debt") ? "debt" : "incident",
+      title:
+        typeof issue.title === "string" && issue.title.trim()
+          ? issue.title.trim()
+          : `GitHub issue ${issue.number.toLocaleString()}`,
+    });
+  }
+  return issues;
 }
 
 function peerMayContainBehavior(peer) {
@@ -4464,6 +4474,9 @@ function target({
   evidenceWindowEnd = null,
   behavioral = false,
   soakExclusivityKey = null,
+  issueKind = null,
+  githubIssueNumber = null,
+  githubIssueUrl = null,
 }) {
   const normalizedSoakExclusivityKey = behavioral
     ? (soakExclusivityKey ?? DEFAULT_BEHAVIOR_SOAK_EXCLUSIVITY_KEY)
@@ -4481,11 +4494,78 @@ function target({
     evidenceWindowEnd,
     behavioral,
     soakExclusivityKey: normalizedSoakExclusivityKey,
+    issueKind,
+    githubIssueNumber,
+    githubIssueUrl,
     rationale,
     evidence,
     prompt,
     validation,
   };
+}
+
+export function buildIssueBackedTaskCandidates(
+  controlTasks,
+  openGithubIssues,
+) {
+  if (openGithubIssues === null) return [];
+  const stateScore = {
+    approved_for_pr: 90,
+    implemented: 95,
+    validated: 98,
+  };
+  const candidates = [];
+  for (const task of controlTasks) {
+    const githubIssue = taskGithubIssueReference(task);
+    if (
+      !RUNNABLE_NIGHTLY_TASK_STATES.has(task.state) ||
+      !matchesOpenDebtIssue(githubIssue, openGithubIssues)
+    ) {
+      continue;
+    }
+    const estimatedMinutes = task?.details?.estimatedMinutes;
+    if (
+      !Number.isSafeInteger(estimatedMinutes) ||
+      estimatedMinutes <= 0
+    ) {
+      continue;
+    }
+    const issue = openGithubIssues.get(githubIssue.number);
+    const behavioral = taskBehavioralClassification(task);
+    candidates.push(
+      target({
+        id: `github-issue-${String(githubIssue.number)}`,
+        taskId: task.taskId,
+        kind: "debt",
+        title: issue.title,
+        score: stateScore[task.state],
+        confidence: 0.9,
+        estimatedMinutes,
+        behavioral,
+        soakExclusivityKey:
+          typeof task?.details?.soakExclusivityKey === "string"
+            ? task.details.soakExclusivityKey
+            : null,
+        providerVisible: task.providerAuthority !== "forbidden",
+        canModify: task.observerAuthority === "merge-safe",
+        issueKind: "debt",
+        githubIssueNumber: githubIssue.number,
+        githubIssueUrl: githubIssue.url,
+        rationale:
+          "The stability controller selected this open debt issue for governed execution.",
+        evidence: [githubIssue.url],
+        prompt:
+          `Read ${githubIssue.url}. Implement only its stated root cause and completion criteria. ` +
+          "Record adjacent deferrable findings as separate debt issues and resume this plan.",
+        validation: [
+          "Satisfy the issue's observable completion criteria.",
+          "Run focused tests for the changed boundary.",
+          "Run validate:feature before publication.",
+        ],
+      }),
+    );
+  }
+  return candidates;
 }
 
 export function buildCandidates({
@@ -4503,10 +4583,7 @@ export function buildCandidates({
   const candidates = [];
   const soakEvidenceQuality = assessSoakEvidenceQuality(soak);
 
-  // Triage loop output (stability W2-02): evidence-ranked task files from
-  // scripts/triage.mjs. Fresh alarm/verdict/canary evidence ranks ABOVE
-  // roadmap work (score 94 down by rank vs roadmap's 48); stale files sink
-  // below it instead of silently vanishing.
+  // Triage output is evidence for an existing issue, not another backlog.
   for (const triage of triageCandidates.slice(0, 3)) {
     candidates.push(
       target({
@@ -4520,20 +4597,23 @@ export function buildCandidates({
         providerVisible: triage.providerVisible === true,
         behavioral: triage.behavioral === true,
         soakExclusivityKey: triage.soakExclusivityKey,
+        issueKind: triage.issueKind,
+        githubIssueNumber: triage.githubIssueNumber,
+        githubIssueUrl: triage.githubIssueUrl,
         rationale:
-          "The triage loop folded live runtime-health alarms, the latest soak verdict, canary regressions, and CI state into this ranked bucket. Execute the mapped stability-program task instead of re-deriving the problem.",
+          "The triage loop folded attributable evidence into an existing GitHub issue. Execution still requires a matching runnable operational task.",
         evidence: [
           `Triage file: ${triage.filePath}`,
-          ...(triage.programTask
-            ? [`Program task: ${triage.programTask}`]
+          ...(triage.githubIssueUrl
+            ? [`Canonical issue: ${triage.githubIssueUrl}`]
             : []),
           ...triage.evidence,
         ],
         prompt:
-          `Read ${triage.filePath} and the program task it maps to (${triage.programTask ?? "see file"}). ` +
-          "Execute that task under its own runner-safe/provider-visible/soak-gated header rules. A runner-safe:false task means open the PR and stop for owner review. Attach the triage evidence to the PR body.",
+          `Read ${triage.filePath} and ${triage.githubIssueUrl}. ` +
+          "Execute only when the issue is open and the controller has created a matching runnable operational task. Attach the triage evidence to the pull request body.",
         validation: [
-          "The mapped program task's counter-based verification governs; cite the counters that must move.",
+          "The canonical issue's completion criteria and registered metrics govern.",
           "Respect docs/STABILITY-PROGRAM.md rules: watchdog freeze, one behavioral change per soak cycle, provider-visible approval lane.",
         ],
         evidenceWindowEnd: triage.evidenceWindowEnd,
@@ -4755,29 +4835,7 @@ export function buildCandidates({
     );
   }
 
-  if (devBotMemoryExists) {
-    candidates.push(
-      target({
-        id: "roadmap-autonomous-task",
-        kind: "roadmap",
-        title: "Choose the next small roadmap task after evidence targets",
-        score: 48,
-        confidence: 0.6,
-        estimatedMinutes: 120,
-        behavioral: true,
-        rationale:
-          "The paused hourly dev bot already records autonomous roadmap selection. It should be a fallback target after performance, crashes, and bugs.",
-        evidence: [DEFAULT_DEV_BOT_MEMORY],
-        prompt:
-          "Compare current repo state to docs/PHASE files and choose one small, validation-friendly product task. Do not touch provider-visible scraping, auth, cookies, timing, or background navigation without explicit approval.",
-        validation: [
-          "Update affected docs/PHASE files and roadmap status or copy.",
-          "Run focused tests for the changed product surface.",
-          "Run validate:feature before publishing.",
-        ],
-      }),
-    );
-  }
+  void devBotMemoryExists;
 
   if (!repo.status) {
     candidates.push(
@@ -4804,27 +4862,6 @@ export function buildCandidates({
       }),
     );
   }
-
-  candidates.push(
-    target({
-      id: "provider-visible-backlog",
-      kind: "blocked",
-      title: "List provider-visible optimizations that need explicit approval",
-      score: 35,
-      confidence: 0.95,
-      estimatedMinutes: 20,
-      providerVisible: true,
-      canModify: false,
-      rationale:
-        "Some tempting performance wins involve changing how Freed touches third-party providers. Those must stay out of autonomous execution until approved.",
-      evidence: ["Provider fingerprinting guardrail"],
-      prompt:
-        "Prepare a short approval request before changing authenticated WebView loads, provider navigation, background API calls, scripted scrolling, cookie behavior, headers, or provider contact frequency.",
-      validation: [
-        "No code changes are allowed for this target without approval.",
-      ],
-    }),
-  );
 
   return candidates.sort((left, right) => right.score - left.score);
 }
@@ -4890,10 +4927,6 @@ export function applyOutcomeFeedback(candidates, outcomeLedger) {
 
 export function selectTargets(candidates, options) {
   const budget = options.durationMinutes;
-  const minimumNightMinutes = Math.min(
-    options.minimumNightMinutes ?? DEFAULT_MINIMUM_NIGHT_MINUTES,
-    budget,
-  );
   const behaviorGate =
     options.behaviorGate ?? buildBehavioralTaskGate(options.controlTasks ?? []);
   if (
@@ -4943,6 +4976,13 @@ export function selectTargets(candidates, options) {
       continue;
     }
     if (
+      canonicalPolicy &&
+      (candidate.githubIssueNumber !== canonicalPolicy.githubIssueNumber ||
+        candidate.githubIssueUrl !== canonicalPolicy.githubIssueUrl)
+    ) {
+      continue;
+    }
+    if (
       candidate.outcomeFeedback?.suppressed ||
       candidate.canModify === false
     ) {
@@ -4965,9 +5005,6 @@ export function selectTargets(candidates, options) {
     }
     if (soakExclusivityKey && behavioralSelected) {
       continue;
-    }
-    if (selected.length > 0 && used >= minimumNightMinutes) {
-      break;
     }
     if (selected.length >= options.maxTargets) {
       break;
@@ -5109,6 +5146,27 @@ function taskBehavioralClassification(task) {
   return typeof task?.behavioral === "boolean"
     ? task.behavioral
     : task?.details?.behavioral;
+}
+
+export function taskGithubIssueReference(task) {
+  const number = task?.details?.githubIssue?.number;
+  const url = task?.details?.githubIssue?.url;
+  if (
+    !Number.isInteger(number) ||
+    number <= 0 ||
+    url !==
+      `https://github.com/freed-project/freed/issues/${String(number)}`
+  ) {
+    return null;
+  }
+  return { number, url };
+}
+
+export function matchesOpenDebtIssue(githubIssue, openGithubIssues) {
+  if (githubIssue === null) return false;
+  if (openGithubIssues === null) return true;
+  const openIssue = openGithubIssues.get(githubIssue.number);
+  return openIssue?.kind === "debt" && openIssue.url === githubIssue.url;
 }
 
 export function buildBehavioralTaskGate(
@@ -5321,7 +5379,6 @@ export function buildReport({
     `Generated: ${new Date().toISOString()}`,
     `Repo: ${repo.branch || "unknown"} at ${repo.head || "unknown"}`,
     `Budget: ${numberFormatter.format(options.durationMinutes)} min`,
-    `Three-hour floor: ${numberFormatter.format(options.minimumNightMinutes ?? DEFAULT_MINIMUM_NIGHT_MINUTES)} min`,
     `Selected targets: ${numberFormatter.format(selected.length)}`,
     `Selected machine time: ${numberFormatter.format(selectedMinutes)} min`,
     "",
@@ -5958,7 +6015,7 @@ export function writeRunPlan({
   };
 }
 
-export function planNightlyRun(args) {
+export function planNightlyRun(args, { openGithubIssues = null } = {}) {
   const soak = resolveReadableSoak(args.soakDir, args.soakPointer);
   const dailyBug = summarizeDailyBugMemory(args.dailyBugMemory);
   const repo = collectRepoSnapshot(args.repo);
@@ -5990,6 +6047,17 @@ export function planNightlyRun(args) {
     stateRoot: args.automationStateRoot,
     planningBundle,
   });
+  const triageCandidates = loadTriageCandidates().filter(
+    (candidate) =>
+      candidate.issueKind === "debt" &&
+      matchesOpenDebtIssue(
+        {
+          number: candidate.githubIssueNumber,
+          url: candidate.githubIssueUrl,
+        },
+        openGithubIssues,
+      ),
+  );
   const baseCandidates = buildCandidates({
     soak,
     dailyBug,
@@ -6000,8 +6068,20 @@ export function planNightlyRun(args) {
     crashAutomationExists: existsSync(args.crashAutomation),
     devBotMemoryExists: existsSync(args.devBotMemory),
     memoryBudgetBytes: args.memoryGib * GIB,
-    triageCandidates: loadTriageCandidates(),
+    triageCandidates,
   });
+  const triageTaskIds = new Set(
+    baseCandidates
+      .filter((candidate) => candidate.issueKind === "debt")
+      .map((candidate) => candidate.taskId),
+  );
+  baseCandidates.push(
+    ...buildIssueBackedTaskCandidates(
+      controlTaskManifest.tasks,
+      openGithubIssues,
+    ).filter((candidate) => !triageTaskIds.has(candidate.taskId)),
+  );
+  baseCandidates.sort((left, right) => right.score - left.score);
   const behavioralTaskIds = baseCandidates
     .filter((candidate) => candidate.behavioral === true)
     .map((candidate) => candidate.taskId ?? candidate.id)
@@ -6027,21 +6107,30 @@ export function planNightlyRun(args) {
         outcomeLedger.sourceHealth.controlEventAppendReady &&
         outcomeLedger.sourceHealth.pendingOutcomeLedgerRepairs.length === 0),
   });
-  const canonicalTaskPolicies = controlTaskManifest.tasks.map((task) => ({
-    taskId: task.taskId,
-    state: task.state,
-    behavioral: taskBehavioralClassification(task),
-    observerAuthority: task.observerAuthority,
-    providerAuthority: task.providerAuthority,
-  }));
+  const canonicalTaskPolicies = controlTaskManifest.tasks.map((task) => {
+    const githubIssue = taskGithubIssueReference(task);
+    const issueOpen = matchesOpenDebtIssue(githubIssue, openGithubIssues);
+    return {
+      taskId: task.taskId,
+      state: task.state,
+      behavioral: taskBehavioralClassification(task),
+      observerAuthority: task.observerAuthority,
+      providerAuthority: task.providerAuthority,
+      githubIssueNumber: issueOpen ? githubIssue.number : null,
+      githubIssueUrl: issueOpen ? githubIssue.url : null,
+    };
+  });
   const runnableTaskIds = controlTaskManifest.tasks
-    .filter(
-      (task) =>
+    .filter((task) => {
+      const githubIssue = taskGithubIssueReference(task);
+      return (
         RUNNABLE_NIGHTLY_TASK_STATES.has(task.state) &&
         task.observerAuthority === "merge-safe" &&
         task.providerAuthority === "forbidden" &&
-        typeof taskBehavioralClassification(task) === "boolean",
-    )
+        typeof taskBehavioralClassification(task) === "boolean" &&
+        matchesOpenDebtIssue(githubIssue, openGithubIssues)
+      );
+    })
     .map((task) => task.taskId);
   const candidates = applyOutcomeFeedback(baseCandidates, outcomeLedger);
   const selected = selectTargets(candidates, {
@@ -6064,6 +6153,17 @@ export function planNightlyRun(args) {
     outcomeLedger,
     runnableTaskIds,
     behaviorGate: summarizeBehaviorGate(behaviorGate),
+    openDebtIssueCount:
+      openGithubIssues === null
+        ? null
+        : [...openGithubIssues.values()].filter(
+            (issue) => issue.kind === "debt",
+          ).length,
+    debtDiscoveryRequired:
+      openGithubIssues !== null &&
+      [...openGithubIssues.values()].every(
+        (issue) => issue.kind !== "debt",
+      ),
     candidates,
     selected,
   };
@@ -6081,6 +6181,9 @@ function textSummary(plan, writeResult, args) {
     `Peer worktrees with changes: ${numberFormatter.format(plan.peerWorktrees.length)}.`,
     `Prior outcomes loaded: ${numberFormatter.format(plan.outcomeLedger.entries.length)}.`,
     `Rejected outcomes: ${numberFormatter.format(plan.outcomeLedger.rejectedEntries.length)}.`,
+    plan.openDebtIssueCount === null
+      ? "Debt backlog was not refreshed in this planning call."
+      : `Open debt issues: ${numberFormatter.format(plan.openDebtIssueCount)}. Discovery ${plan.debtDiscoveryRequired ? "required" : "not required"}.`,
     `Behavior gate: ${plan.behaviorGate.status}. Active tasks: ${
       plan.behaviorGate.activeTasks.length > 0
         ? plan.behaviorGate.activeTasks
@@ -6140,7 +6243,10 @@ export function runNightlyMachinePreflight({
 
 export function main(
   argv = process.argv.slice(2),
-  { runPreflight = runNightlyMachinePreflight } = {},
+  {
+    runPreflight = runNightlyMachinePreflight,
+    readOpenIssues = readOpenGovernedGithubIssues,
+  } = {},
 ) {
   const args = parseArgs(argv);
   if (args.help) {
@@ -6215,7 +6321,9 @@ export function main(
     throw new Error(`Repo path does not exist: ${args.repo}`);
   }
 
-  const plan = planNightlyRun(args);
+  const plan = planNightlyRun(args, {
+    openGithubIssues: readOpenIssues(),
+  });
   const writeResult = args.dryRun
     ? null
     : writeRunPlan({

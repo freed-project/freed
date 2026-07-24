@@ -10,14 +10,19 @@ This is coordination substrate. It does not grant an automation permission to
 change product behavior, contact a provider, merge owner-review work, or ship a
 release.
 
+GitHub Issues carrying the `debt` label are the sole canonical technical debt
+backlog. The control plane may activate work from that backlog, but it must not
+copy the backlog into local task state.
+
 ## Sources of truth
 
 | Source                                                     | Purpose                                                                                                                                                   |
 | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GitHub Issues with the `debt` label                        | Canonical technical debt backlog, evidence, gates, completion criteria, and disposition                                                                   |
 | `automation/specs/*.json`                                  | Checked-in automation identity, authority, provider policy, prompt path, soak limit, allowed local overlay fields, and required host handoff capabilities |
 | `automation/prompts/*.md`                                  | Checked-in behavioral contract for each automation                                                                                                        |
 | `.github/rulesets/*.json`                                  | Checked-in dev, main, and www PR governance, plus split release-tag creation and no-bypass immutability policies                                          |
-| `~/.freed/automation/control/current-tasks.json`           | Atomic current task state                                                                                                                                 |
+| `~/.freed/automation/control/current-tasks.json`           | Atomic active execution authority; every task references its canonical GitHub issue                                                                       |
 | `~/.freed/automation/control/task-transactions/`           | Recoverable write-ahead records that bind each task revision to its audit event                                                                           |
 | `~/.freed/automation/control/outcome-ledger-transactions/` | Recoverable owner-governed outcome history repairs                                                                                                        |
 | `~/.freed/automation/control/events.jsonl`                 | Append-only audit history for task, authority, lease, and observer events                                                                                 |
@@ -177,10 +182,18 @@ Provisioning grants no provider traffic and no task authority.
 
 ## Atomic current task manifest
 
-`current-tasks.json` is the current-state authority. It has a schema version,
-manifest revision, update timestamp, and a stable sorted array of tasks. Each
-task has its own revision, stable task ID, state, timestamps, execution
-authority, provider authority, and JSON details.
+`current-tasks.json` is active execution authority, not a backlog. It has a
+schema version, manifest revision, update timestamp, and a stable sorted array
+of tasks. Each task has its own revision, stable task ID, state, timestamps,
+execution authority, provider authority, and JSON details. A task selected from
+the debt backlog stores its issue as
+`details.githubIssue: { number, url }`. The URL must exactly match
+`https://github.com/freed-project/freed/issues/<number>`. The nightly runner
+rejects missing or mismatched references. Closing or labeling an issue does not
+grant execution authority. Task state does not replace issue evidence, scope,
+gates, completion criteria, or disposition. A selected task also records a
+positive integer `details.estimatedMinutes`; the runner does not invent scope
+or timing for unestimated work.
 
 Task writes use this sequence:
 
@@ -943,7 +956,7 @@ For a task authority update, the canonical object is:
 {
   "schemaVersion": 1,
   "action": "task.authorize",
-  "taskId": "P1-04",
+  "taskId": "github-issue-1070",
   "parameters": {
     "observerAuthority": "merge-safe",
     "providerAuthority": "approved",
@@ -963,7 +976,7 @@ node scripts/automation-control.mjs owner intent-digest \
   --intent-json '<exact canonical operation JSON>'
 
 "$FREED_TRUSTED_PUBLISHER" owner-capability \
-  --task-id P1-04 \
+  --task-id github-issue-1070 \
   --intent-digest <sha256> \
   --ttl-seconds 600
 ```
@@ -994,18 +1007,18 @@ private mode `0600` JSON file outside the repository:
 {
   "schemaVersion": 1,
   "kind": "owner-confirmation",
-  "confirmationId": "authenticated-essay-capture-create",
+  "confirmationId": "github-issue-1070-create",
   "approvedBy": "AubreyF",
   "ownerApprovalReference": "Owner approved this exact lifecycle operation in the current task.",
   "approvalSource": {
     "kind": "current-task",
-    "reference": "authenticated-essay-capture-pr-642"
+    "reference": "current-delivery-task"
   },
-  "taskId": "authenticated-essay-capture-pr-642",
+  "taskId": "github-issue-1070",
   "intent": {
     "schemaVersion": 1,
     "action": "task.create",
-    "taskId": "authenticated-essay-capture-pr-642",
+    "taskId": "github-issue-1070",
     "parameters": {
       "state": "observed",
       "observerAuthority": "merge-safe",
@@ -1013,7 +1026,11 @@ private mode `0600` JSON file outside the repository:
       "approvalReference": "<provider approval reference>",
       "details": {
         "behavioral": true,
-        "metricId": "renderer-recovery-count"
+        "metricId": "renderer-recovery-count",
+        "githubIssue": {
+          "number": 1070,
+          "url": "https://github.com/freed-project/freed/issues/1070"
+        }
       }
     }
   },
@@ -1200,15 +1217,15 @@ BASELINE=/absolute/path/to/baseline-soak-verdict.json
 VERDICT=/absolute/path/to/outcome-verdict.json
 node scripts/build-outcome-verdict.mjs \
   --soak-verdict "$RAW_VERDICT" \
-  --task-id P1-01 \
+  --task-id github-issue-1066 \
   --outcome verified_effective \
   --metric unchanged-cloud-upload-rate \
   --baseline-reference "$BASELINE" \
   --out "$VERDICT"
 
 node scripts/record-outcome.mjs \
-  --id P1-01 \
-  --task-id P1-01 \
+  --id github-issue-1066 \
+  --task-id github-issue-1066 \
   --kind task \
   --status verified_effective \
   --evidence-window-end 2026-07-10T12:00:00Z \
@@ -1407,10 +1424,11 @@ entry names a phase ID, its `docs/PHASE-*.md` source, and one of `complete`,
 `current`, or `upcoming`. `npm run validate:roadmap` derives status from each
 phase document and fails when the manifest disagrees.
 
-The manifest supplies status, not implementation authority. Agents must not
-invent work from broad roadmap prose. Public roadmap presentation remains a
-separate `www` branch change. Product and automation work remains in the `dev`
-lane.
+The manifest supplies phase status, not implementation authority or a debt
+backlog. Agents must not invent work from broad roadmap prose. Open GitHub
+Issues carrying the `debt` label are the only canonical debt candidates.
+Public roadmap presentation remains a separate `www` branch change. Product
+and automation work remains in the `dev` lane.
 
 ## Provider approval records
 
@@ -1444,9 +1462,8 @@ provisioning is optional and does not block the GitHub reaction path.
 The signed source does not replace external review policy. The direct path uses
 the CODEOWNER reaction itself as the structured GitHub authorization event.
 
-See [W1-06](stability-tasks/W1-06-provider-visible-single-source.md) and the
-fingerprinting stop sign in [AGENTS.md](../AGENTS.md) for the full publish
-contract.
+See the fingerprinting stop sign in [AGENTS.md](../AGENTS.md) for the full
+publish contract.
 
 ## Operator checks
 

@@ -291,8 +291,8 @@ jobs:
           path: packages/desktop/test-results/
           retention-days: 7
 
-      # Stability W2-02: red dev CI becomes a triage-readable issue instead of
-      # a problem the nightly planner rediscovers from scratch.
+      # A red dev build stays an incident issue. If it exposes durable debt,
+      # the stability controller links a separate issue carrying `debt`.
       - name: Open or update the automation-triage issue on failure
         if: failure()
         env:
@@ -305,7 +305,7 @@ jobs:
           Commit: ${GITHUB_SHA}
           Job: dev (validate:dev)
 
-          Auto-filed for scripts/triage.mjs (label: automation-triage). Latest failure comments on the open issue; close it when the fix merges."
+          Auto-filed for scripts/triage.mjs (label: automation-triage). This is an incident, not the debt backlog. Latest failures comment here; close it when the fix merges."
           existing=$(gh issue list --label automation-triage --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "$body"
