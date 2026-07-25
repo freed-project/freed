@@ -138,13 +138,25 @@ jobs:
         run: |
           # A cancelled dependency can still reach here when individual jobs were
           # cancelled without the whole run being cancelled. Name it for what it
-          # is. "result was cancelled" alongside a pile of green shards is the
-          # single most misread signal in this lane, and it is not a test failure
-          # anyone can fix by changing code.
+          # is: "result was cancelled" next to a pile of green shards is the most
+          # misread signal in this lane, and no diff change fixes it.
+          #
+          # Two different things produce it, and they want opposite responses, so
+          # do not guess between them here. A superseded run just needs running
+          # again. A shard killed by timeout-minutes also reports cancelled, and
+          # re-running that only burns the same ninety minutes a second time; it
+          # needs more shards or a longer budget. Point at both.
           if [ "$PLAN_RESULT" = "cancelled" ] || [ "$SHARD_RESULT" = "cancelled" ]; then
             echo "Tooling smoke was cancelled, not failed. No verdict was produced."
             echo "  planner: $PLAN_RESULT, shards: $SHARD_RESULT"
-            echo "Re-run the workflow. Nothing in the diff needs changing for this."
+            echo ""
+            echo "Check the shard durations before re-running:"
+            echo "  - Any shard sitting at exactly the job timeout was killed, not"
+            echo "    cancelled by a newer run. Re-running reproduces it. That suite"
+            echo "    needs more shards, which means fixing its entry in"
+            echo "    scripts/tooling-smoke-durations.json or raising the job budget."
+            echo "  - Otherwise a newer run superseded this one and re-running is"
+            echo "    the whole fix. Nothing in the diff needs changing."
             exit 1
           fi
 
