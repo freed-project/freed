@@ -733,6 +733,7 @@ async function writeProviderReviewArtifact(
     observableBehavior = "The reviewed provider extraction behavior changes only as described in this fixture.",
     fingerprintingRisk = "The provider can observe a changed request or extraction pattern.",
     lowestProfileAlternative = "Keep the current provider behavior and collect passive diagnostics.",
+    providerDiffSha = null,
   } = {},
 ) {
   const artifact = {
@@ -756,6 +757,7 @@ async function writeProviderReviewArtifact(
       fingerprintingRisk,
       lowestProfileAlternative,
       allowedBehavior: observableBehavior,
+      ...(providerDiffSha ? { providerDiffSha } : {}),
     },
   };
   const stored = {
@@ -2025,7 +2027,13 @@ test("worktree-publish publishes an injected provider file only as a reviewed dr
   const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
   assert.equal(state.comments.length, 1);
   assert.match(state.comments[0].body, /media-vault\.ts/);
-  assert.match(state.comments[0].body, /React with a GitHub thumbs-up/);
+  // The comment must state honestly that it is a record, not a gate. Claiming
+  // the subdiff is re-checked would be false under behavior-only approval.
+  assert.match(state.comments[0].body, /Audit record only/);
+  assert.match(
+    state.comments[0].body,
+    /approves the described behavior, not this exact diff/,
+  );
 });
 
 test("worktree-publish requires a provider review artifact before provider draft publication", async (t) => {
@@ -2604,7 +2612,10 @@ test("worktree-publish accepts signed control-task authority for provider ready 
   assert.equal(createCall.args.includes("--draft"), false);
 });
 
-test("worktree-publish accepts a CODEOWNER thumbs-up for an unchanged provider subdiff", async (t) => {
+// The Gate 1 artifact, bound to the exact provider subdiff, is the whole
+// authority. No reaction is set up anywhere in this test on purpose: the ready
+// transition must succeed on the artifact alone.
+test("worktree-publish promotes a provider branch to ready on the Gate 1 artifact alone", async (t) => {
   const fixture = await createPublishFixture(t, {
     preacquirePublisherLease: false,
   });
@@ -2645,15 +2656,6 @@ test("worktree-publish accepts a CODEOWNER thumbs-up for an unchanged provider s
       isDraft: true,
     },
   ];
-  state.reactions = {
-    [state.comments[0].id]: [
-      {
-        content: "+1",
-        created_at: "2026-07-14T12:00:00Z",
-        user: { login: "AubreyF" },
-      },
-    ],
-  };
   await fs.writeFile(fixture.ghStateFile, JSON.stringify(state));
 
   await fs.writeFile(
@@ -2693,7 +2695,7 @@ test("worktree-publish accepts a CODEOWNER thumbs-up for an unchanged provider s
   assert.equal(readyState.comments.length, 1);
 });
 
-test("worktree-publish requires a new reaction when provider review context changes", async (t) => {
+test("worktree-publish rejects a Gate 1 artifact scoped to the wrong provider", async (t) => {
   const fixture = await createPublishFixture(t, {
     preacquirePublisherLease: false,
   });
@@ -2701,9 +2703,14 @@ test("worktree-publish requires a new reaction when provider review context chan
     taskId: "provider-review-context",
     observableBehavior: "The first approved Facebook behavior.",
   });
+  // Approved for a different provider than the diff actually touches. Under
+  // behavior-only approval this is the remaining machine-enforced guard: the
+  // artifact's provider set must match the provider-visible diff, so an
+  // approval for Instagram cannot authorize a Facebook extractor change.
   const secondReview = await writeProviderReviewArtifact(fixture, {
     taskId: "provider-review-context",
-    observableBehavior: "The revised approved Facebook behavior.",
+    providers: ["instagram"],
+    observableBehavior: "An approval scoped to a different provider.",
   });
   const relativeExtractorPath =
     "packages/desktop/src-tauri/src/fb-extract.js";
@@ -2764,28 +2771,17 @@ test("worktree-publish requires a new reaction when provider review context chan
   );
 
   assert.notEqual(readyResult.status, 0);
-  assert.match(readyResult.stderr, /need a fresh GitHub thumbs-up reaction/);
+  assert.match(
+    readyResult.stderr,
+    /artifact providers do not match the current provider-visible diff/,
+  );
   const changedState = JSON.parse(
     await fs.readFile(fixture.ghStateFile, "utf8"),
   );
-  assert.equal(changedState.comments.length, 2);
-  assert.match(
-    changedState.comments[1].body,
-    new RegExp(secondReview.artifact.artifactDigest),
-  );
   assert.equal(changedState.prList[0].isDraft, true);
 
-  const editedCommentBody = changedState.comments[1].body;
-  const originalCommentId = changedState.comments[0].id;
-  changedState.comments = [
-    {
-      ...changedState.comments[0],
-      body: editedCommentBody,
-      updated_at: "2026-07-14T12:00:02Z",
-    },
-  ];
-  await fs.writeFile(fixture.ghStateFile, JSON.stringify(changedState));
-
+  // The mismatch is deterministic, so a retry with the same wrong-provider
+  // artifact must fail identically rather than wearing the gate down.
   const replayResult = run(
     "bash",
     [
@@ -2802,25 +2798,18 @@ test("worktree-publish requires a new reaction when provider review context chan
   assert.notEqual(replayResult.status, 0);
   assert.match(
     replayResult.stderr,
-    /need a fresh GitHub thumbs-up reaction/,
-  );
-  const replayState = JSON.parse(
-    await fs.readFile(fixture.ghStateFile, "utf8"),
-  );
-  assert.equal(replayState.comments.length, 2);
-  assert.equal(replayState.comments[0].id, originalCommentId);
-  assert.notEqual(replayState.comments[1].id, originalCommentId);
-  assert.equal(replayState.comments[1].body, editedCommentBody);
-  assert.equal(
-    replayState.comments[1].created_at,
-    replayState.comments[1].updated_at,
+    /artifact providers do not match the current provider-visible diff/,
   );
 });
 
-test("worktree-publish keeps a provider pull request draft without a CODEOWNER reaction", async (t) => {
+// Previously this asserted that a provider branch stayed draft until a
+// CODEOWNER reacted. The reaction gate is gone, so the contract that remains is
+// the one that still protects anything: a bound review comment must exist for
+// the exact subdiff and artifact, and it is created exactly once.
+test("worktree-publish promotes a provider branch to ready and binds exactly one review comment", async (t) => {
   const fixture = await createPublishFixture(t);
   const review = await writeProviderReviewArtifact(fixture, {
-    taskId: "provider-review-without-reaction",
+    taskId: "provider-review-artifact-authority",
   });
   const relativeExtractorPath =
     "packages/desktop/src-tauri/src/fb-extract.js";
@@ -2859,8 +2848,7 @@ test("worktree-publish keeps a provider pull request draft without a CODEOWNER r
     { cwd: fixture.worktree, env: fixture.env },
   );
 
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /need a fresh GitHub thumbs-up reaction/);
+  assertSuccess(result);
   const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
   assert.equal(state.comments.length, 1);
 });
