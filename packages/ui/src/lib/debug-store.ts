@@ -106,6 +106,26 @@ export interface RuntimeMemorySnapshot {
   rendererHeapUsedBytes?: number;
   rendererHeapTotalBytes?: number;
   rendererHeapLimitBytes?: number;
+  /**
+   * False on the shipping desktop app: `performance.memory` is a Chrome
+   * extension and WebKit does not implement it, so the three fields above are
+   * always undefined there. Without this flag their absence reads as zero and
+   * invites the conclusion that the JS heap is negligible, which is a claim
+   * nobody has measured.
+   */
+  rendererHeapAvailable?: boolean;
+  /**
+   * WebKit resident bytes sampled before the Automerge document was hydrated,
+   * captured once per launch. This is the WebKit shell plus React baseline, the
+   * largest single unmeasured term in the storage roadmap's floor estimates
+   * (independent passes put it anywhere from 60 to 250 MB).
+   */
+  shellBaselineWebkitResidentBytes?: number;
+  /** Current WebKit resident minus the shell baseline: the measured cost of everything Freed loads on top of an empty renderer. */
+  webkitResidentOverShellBaselineBytes?: number;
+  shellBaselineAgeMs?: number;
+  /** Whether the document had been hydrated when this sample was taken. A baseline is only valid from a pre-hydration sample. */
+  documentHydrated?: boolean;
   domNodeCount?: number;
   sampleTs: number;
 }
