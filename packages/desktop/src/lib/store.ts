@@ -123,6 +123,7 @@ import { initLiAuth, storeLiAuthState, type LiAuthState } from "./li-auth";
 import { initSubstackAuth, type SubstackAuthState } from "./substack-auth";
 import { initMediumAuth, type MediumAuthState } from "./medium-auth";
 import { initYouTubeAuth, type YouTubeAuthState } from "./youtube-auth";
+import { recordDocumentHydrated } from "./memory-monitor";
 import { reconcileSocialAuthStateHints } from "./social-auth-cookie-state";
 import { getOrCreateDesktopClientRegistration } from "./desktop-client-registration";
 import {
@@ -694,6 +695,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         const desktopClientRegistration = await getOrCreateDesktopClientRegistration();
         assertDesktopStoreWritable();
         const docState = await initDoc(desktopClientRegistration);
+        // Closes the shell-baseline window. Any memory sample after this point
+        // includes the Automerge document, so it cannot serve as a baseline.
+        recordDocumentHydrated();
         assertDesktopStoreWritable();
         migrateLegacyDeviceDisplayPreferences(docState.preferences.display);
         migrateLegacyDeviceAIPreferences(docState.preferences.ai);

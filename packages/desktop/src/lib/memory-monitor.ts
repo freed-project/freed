@@ -87,10 +87,51 @@ interface BrowserMemoryStats {
   jsHeapSizeLimit: number;
 }
 
+/**
+ * `performance.memory` is a Chrome extension to the Performance interface and
+ * does not exist in WebKit, which is what Tauri uses on macOS. So on the actual
+ * product this has always returned null, and every rendererHeap* field in the
+ * telemetry has been silently absent.
+ *
+ * That absence read as zero in analysis and invited the conclusion that the JS
+ * heap was negligible. It is not measured, which is a different claim. The
+ * `rendererHeapAvailable` flag below makes the difference explicit so nobody
+ * else draws a conclusion from a missing number.
+ */
 function getRendererMemoryStats(): BrowserMemoryStats | null {
   if (typeof performance === "undefined") return null;
   const perf = performance as Performance & { memory?: BrowserMemoryStats };
   return perf.memory ?? null;
+}
+
+/**
+ * WebKit resident bytes captured before the Automerge document is loaded.
+ *
+ * This is the single largest unmeasured term in the storage roadmap's floor
+ * estimates: the WebKit shell plus React baseline, which four independent
+ * design passes estimated anywhere from 60 to 250 MB. Everything else in the
+ * renderer budget is derived by subtracting from the observed total, so a 4x
+ * uncertainty here makes every ratio in that document soft.
+ *
+ * Recorded once per app launch, at the first sample taken before hydration.
+ */
+let shellBaselineWebkitResidentBytes: number | undefined;
+let shellBaselineCapturedAtMs: number | undefined;
+let documentHydratedAtMs: number | undefined;
+
+export function recordDocumentHydrated(): void {
+  documentHydratedAtMs ??= Date.now();
+}
+
+export function getShellBaselineBytes(): number | undefined {
+  return shellBaselineWebkitResidentBytes;
+}
+
+/** Test seam: clears the once-per-launch baseline. */
+export function resetMemoryAttributionForTests(): void {
+  shellBaselineWebkitResidentBytes = undefined;
+  shellBaselineCapturedAtMs = undefined;
+  documentHydratedAtMs = undefined;
 }
 
 function getDomNodeCount(): number | undefined {
@@ -287,6 +328,22 @@ async function sampleRuntimeMemory(
     ? await invoke<NativeRuntimeMemoryStats>("get_runtime_memory_stats", nativeOptions)
     : emptyNativeRuntimeMemoryStats();
   const nativeSampleDurationMs = Math.round(performance.now() - nativeStartedAt);
+
+  // Capture the shell baseline exactly once, and only from a sample taken
+  // before the document is hydrated. Taking it later would fold the Automerge
+  // document into the "baseline" and make the delta meaningless, which is the
+  // specific way this measurement is easy to get wrong.
+  const baselineCandidateBytes = native.webkitTotalResidentBytes;
+  if (
+    shellBaselineWebkitResidentBytes === undefined &&
+    documentHydratedAtMs === undefined &&
+    native.webkitTelemetryAvailable &&
+    baselineCandidateBytes !== undefined &&
+    baselineCandidateBytes > 0
+  ) {
+    shellBaselineWebkitResidentBytes = baselineCandidateBytes;
+    shellBaselineCapturedAtMs = Date.now();
+  }
   const limits = {
     highBytes:
       native.memoryHighBytes ??
@@ -355,6 +412,27 @@ async function sampleRuntimeMemory(
     rendererHeapUsedBytes: renderer?.usedJSHeapSize,
     rendererHeapTotalBytes: renderer?.totalJSHeapSize,
     rendererHeapLimitBytes: renderer?.jsHeapSizeLimit,
+    // Absent is not zero. WebKit has no performance.memory, so on the shipping
+    // desktop app the three fields above are always undefined; without this
+    // flag that reads as "the JS heap is negligible" rather than "unmeasured".
+    rendererHeapAvailable: renderer !== null,
+    // Attribution terms. shellBaseline is captured once per launch before the
+    // document is hydrated; the delta against it is the measured cost of
+    // everything Freed loads on top of an empty renderer.
+    shellBaselineWebkitResidentBytes,
+    webkitResidentOverShellBaselineBytes:
+      shellBaselineWebkitResidentBytes === undefined ||
+      native.webkitTotalResidentBytes === undefined
+        ? undefined
+        : Math.max(
+            0,
+            native.webkitTotalResidentBytes - shellBaselineWebkitResidentBytes,
+          ),
+    shellBaselineAgeMs:
+      shellBaselineCapturedAtMs === undefined
+        ? undefined
+        : Date.now() - shellBaselineCapturedAtMs,
+    documentHydrated: documentHydratedAtMs !== undefined,
     domNodeCount,
     sampleTs: Date.now(),
   };
