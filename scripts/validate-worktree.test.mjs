@@ -10,6 +10,7 @@ import {
   isReleasePublisherToolingPath,
   isSocialScrapeLoopPath,
   isSocialProviderFocusedSurface,
+  isStabilityStatusPath,
   isToolingSmokeRunnerPath,
   parseArgs,
   REPO_ROOT,
@@ -342,6 +343,34 @@ test("social scrape loop path detection is scoped to loop files", () => {
   );
   assert.equal(
     isSocialScrapeLoopPath("scripts/nightly-self-improve.mjs"),
+    false,
+  );
+});
+
+test("stability status paths route focused tests in feature and dev plans", () => {
+  const paths = [
+    "scripts/stability-status.mjs",
+    "scripts/lib/stability-status.mjs",
+    "scripts/lib/stability-artifacts.mjs",
+    "scripts/stability-status.test.mjs",
+    "scripts/stability-artifact.test.mjs",
+  ];
+  for (const filePath of paths) {
+    assert.equal(isStabilityStatusPath(filePath), true, filePath);
+    for (const mode of ["feature", "dev"]) {
+      const item = buildValidationPlan(mode, [filePath]).find(
+        (candidate) => candidate.label === "stability status tests",
+      );
+      assert.ok(item, `${mode}: ${filePath}`);
+      assert.deepEqual(item.args, [
+        "--test",
+        "scripts/stability-status.test.mjs",
+        "scripts/stability-artifact.test.mjs",
+      ]);
+    }
+  }
+  assert.equal(
+    isStabilityStatusPath("scripts/nightly-self-improve.mjs"),
     false,
   );
 });

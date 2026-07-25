@@ -26,6 +26,7 @@
     "session:clean": "bash scripts/dev-session-clean.sh",
     "social:scrape-loop": "node scripts/social-scrape-loop.mjs",
     "stability:artifact": "node scripts/stability-artifact.mjs",
+    "stability:status": "node scripts/stability-status.mjs",
     "test": "node scripts/run-workspace-fanout.mjs test",
     "test:friends-galaxy-lab": "vitest run packages/ui/labs/friends-galaxy/*.test.ts",
     "test:scripts": "bash -n scripts/*.sh scripts/lib/*.sh && node --test $(find scripts -maxdepth 1 -name '*.test.mjs' ! -name 'automation-control.test.mjs' ! -name 'automation-kernel-guard-cutover.test.mjs' -print | sort) && node --test scripts/automation-control.test.mjs && node --test scripts/automation-kernel-guard-cutover.test.mjs",
