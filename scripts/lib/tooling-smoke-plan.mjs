@@ -288,6 +288,12 @@ export const DURATIONS_FILE = "scripts/tooling-smoke-durations.json";
 export const DEFAULT_MAX_JOBS = 8;
 
 /**
+ * The `timeout-minutes` on a tooling smoke shard job, in seconds. Kept here so
+ * the planner can predict an overrun rather than discover one.
+ */
+export const DEFAULT_SHARD_TIMEOUT_SECONDS = 90 * 60;
+
+/**
  * Measured suite seconds when the nightly lane has recorded them, falling back
  * to source size. Size is a poor predictor of runtime, which is why the nightly
  * lane writes real timings back into the durations file.
@@ -306,18 +312,63 @@ export function suiteWeights({ repoRoot = REPO_ROOT, durations = null } = {}) {
     })();
   const weights = new Map();
   for (const suite of SUITE_NAMES) {
-    const measured = Number(recorded?.suites?.[suite]?.seconds);
+    const entry = recorded?.suites?.[suite];
+    const measured = Number(entry?.seconds);
     if (Number.isFinite(measured) && measured > 0) {
-      weights.set(suite, { weight: measured, measured: true });
+      // A run that was killed by the job timeout did not measure anything. It
+      // established a floor. Recording it as a measurement is what made this
+      // lane unable to correct itself: the truncated number is smaller than the
+      // truth, so the planner under-shards, so the shards are killed again, so
+      // the number never grows. `capped` breaks that loop by keeping the
+      // distinction the durations file previously only stated in prose.
+      weights.set(suite, {
+        weight: measured,
+        measured: entry?.capped !== true,
+        capped: entry?.capped === true,
+      });
       continue;
     }
     let size = 0;
     for (const testFile of suiteTestFiles(suite, repoRoot)) {
       size += readIfPresent(repoRoot, testFile)?.length ?? 0;
     }
-    weights.set(suite, { weight: Math.max(1, size), measured: false });
+    weights.set(suite, { weight: Math.max(1, size), measured: false, capped: false });
   }
   return weights;
+}
+
+/**
+ * Per-shard seconds the plan implies, and whether that fits the job timeout.
+ *
+ * The lane used to schedule work it could have predicted would not fit, wait
+ * ninety minutes, and then report the cancellation as a test failure. Predicting
+ * it costs one division. A capped weight is a floor rather than a measurement,
+ * so `atLeast` says the real figure is higher by an unknown amount.
+ */
+export function projectShardRuntime(allocation, weights, timeoutSeconds) {
+  return allocation.map(({ suite, shardCount }) => {
+    const entry = weights.get(suite);
+    const weight = entry?.weight ?? 0;
+    const capped = entry?.capped === true;
+    // The size fallback weighs source bytes, not seconds. Dividing bytes by
+    // shards and comparing the result to a timeout would be a unit error that
+    // happens to typecheck, so that case predicts nothing and blocks nothing.
+    const isSeconds = entry?.measured === true || capped;
+    const perShardSeconds = shardCount > 0 ? weight / shardCount : weight;
+    return {
+      suite,
+      shardCount,
+      perShardSeconds: isSeconds ? perShardSeconds : null,
+      atLeast: capped,
+      // Only a real measurement can clear the check. A capped weight already
+      // exceeded a timeout once, so treating "the floor fits" as "it fits"
+      // would reproduce the bug this function exists to catch.
+      fits: capped
+        ? false
+        : !isSeconds || !Number.isFinite(timeoutSeconds) || perShardSeconds <= timeoutSeconds,
+      predictedFrom: capped ? "capped" : entry?.measured === true ? "measured" : "size",
+    };
+  });
 }
 
 /**
@@ -361,10 +412,12 @@ export function buildToolingSmokeMatrix({
   maxJobs = DEFAULT_MAX_JOBS,
   repoRoot = REPO_ROOT,
   durations = null,
+  shardTimeoutSeconds = DEFAULT_SHARD_TIMEOUT_SECONDS,
 } = {}) {
   const selection = selectApplicableSuites(changedFiles, { repoRoot });
   const weights = suiteWeights({ repoRoot, durations });
   const allocation = allocateShardBudget(selection.suites, maxJobs, weights);
+  const projection = projectShardRuntime(allocation, weights, shardTimeoutSeconds);
   const include = allocation.flatMap(({ suite, shardCount }) =>
     Array.from({ length: shardCount }, (_, index) => ({
       suite,
@@ -384,5 +437,11 @@ export function buildToolingSmokeMatrix({
     weightsAreMeasured:
       selection.suites.length > 0 &&
       selection.suites.every((suite) => weights.get(suite)?.measured === true),
+    projection,
+    shardTimeoutSeconds,
+    // Suites this plan predicts will not finish inside the job timeout. The
+    // caller decides what to do about it; the point is that it is known before
+    // the jobs run rather than ninety minutes later.
+    overrunSuites: projection.filter((entry) => !entry.fits).map((entry) => entry.suite),
   });
 }

@@ -28,7 +28,8 @@
       "runs": 1,
       "failures": 0,
       "flaky": false,
-      "source": "ci-shard hit the 90m job cap at 5415s, so this is a LOWER BOUND"
+      "capped": true,
+      "source": "ci-shard killed by the 90m job cap at 5415s; a floor, not a measurement (issue #1147)"
     }
   }
 }

@@ -97,11 +97,34 @@ function main(argv) {
   );
   process.stderr.write(`  reason: ${plan.reason}\n`);
   process.stderr.write(
-    `  shard weights: ${plan.weightsAreMeasured ? "measured runtimes" : "source size fallback"}\n`,
+    // Three cases, not two. Saying "source size fallback" when the weights are
+    // real recorded runtimes with one capped entry describes the wrong problem.
+    `  shard weights: ${
+      plan.weightsAreMeasured
+        ? "measured runtimes"
+        : plan.projection.some((entry) => entry.predictedFrom === "capped")
+          ? "recorded runtimes, at least one a timeout floor rather than a measurement"
+          : "source size fallback"
+    }\n`,
   );
-  for (const suite of plan.suites) {
-    const shards = plan.include.filter((entry) => entry.suite === suite).length;
-    process.stderr.write(`  ${suite}: ${shards.toLocaleString()} shard(s)\n`);
+  for (const entry of plan.projection) {
+    const predicted =
+      entry.perShardSeconds === null
+        ? "runtime unknown, weighted by source size"
+        : `${entry.atLeast ? "at least " : ""}${Math.round(entry.perShardSeconds / 60).toLocaleString()} min per shard`;
+    process.stderr.write(
+      `  ${entry.suite}: ${entry.shardCount.toLocaleString()} shard(s), ${predicted}\n`,
+    );
+  }
+  if (plan.overrunSuites.length > 0) {
+    // Say this before the jobs start. The failure it describes previously took
+    // ninety minutes to surface and then reported as a test failure rather than
+    // as a scheduling problem.
+    process.stderr.write(
+      `\n  WARNING: ${plan.overrunSuites.join(", ")} is not expected to finish inside the ${Math.round(plan.shardTimeoutSeconds / 60).toLocaleString()} minute shard timeout.\n` +
+        "  A shard killed by the timeout reports as cancelled, which the lane surfaces as a failure.\n" +
+        "  Tracked as issue #1147. Raising the timeout is not the fix.\n",
+    );
   }
   if (!plan.applicable) {
     process.stderr.write(
