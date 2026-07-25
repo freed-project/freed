@@ -80,13 +80,14 @@ Stages local changes, commits them when needed, pushes the current branch to ori
 and opens a draft pull request.
 
 Branches whose diff touches provider-visible paths require one validated
-provider-risk-review artifact, and post one GitHub comment bound to both that
-artifact and the provider subdiff as the audit record. That artifact is the
-authority: no reaction or second approval step is needed, and such a branch may
-open directly as ready. Changing any provider-visible file produces a new
-subdiff, which invalidates the binding and requires a fresh artifact. Unrelated
-file changes do not. A signed control-task approval file remains available for
-unattended publication.
+provider-risk-review artifact, and post one GitHub comment naming that artifact
+and the provider subdiff as the audit record. That artifact is the authority:
+no reaction or second approval step is needed, and such a branch may open
+directly as ready. The artifact approves a described provider behavior, not one
+exact diff, so a later commit does not invalidate it; every publish that touches
+a provider-visible path posts its own audit comment. A behavior change beyond
+what was approved requires a fresh Gate 1 artifact. A signed control-task
+approval file remains available for unattended publication.
 EOF
 }
 
@@ -464,20 +465,32 @@ ensure_provider_review_comment() {
     --jq .id >/dev/null
 }
 
-# Provider authority is the Gate 1 artifact, bound to the exact provider
-# subdiff. The owner approves the specific behavior and risk before code, that
-# decision is recorded as a validated provider-risk-review artifact, and the
-# artifact digest plus subdiff SHA are bound into the review comment below.
+# Provider authority is the Gate 1 artifact. The owner approves a specific
+# observable provider behavior and its risk before any code exists, and that
+# decision is recorded as a validated provider-risk-review artifact.
 #
-# The previous second gate required a CODEOWNER thumbs-up reaction on that
+# The previous second gate required a CODEOWNER thumbs-up reaction on the review
 # comment before a ready transition. It was removed on owner instruction: on a
 # single-maintainer repository the reaction was the same person re-confirming a
 # decision they had already made and recorded, and it forced a
 # draft-then-react-then-republish cycle for every provider-visible change.
 #
-# The protection that mattered is unchanged. Touching any provider-visible file
-# produces a new subdiff SHA, which invalidates the binding and requires a fresh
-# Gate 1 artifact before the branch can go ready.
+# Be precise about what that leaves, because the wording is easy to get wrong in
+# a way that reads as a stronger guarantee than exists. The artifact approves a
+# DESCRIBED BEHAVIOR, not one exact diff. A later commit that touches a
+# provider-visible file does not invalidate it and is not blocked here. Binding
+# to a diff SHA was considered and rejected: it inverts Gate 1 by requiring the
+# code to exist before it can be approved, which is the opposite of approving
+# risk before code.
+#
+# So the enforcement this script still performs is CLASSIFICATION, not
+# authorisation: every provider-visible path in the diff is detected, including
+# files renamed out of the provider tree, and each publish posts an audit
+# comment naming them. What stops an unapproved behavior change is the owner's
+# standing rule plus that audit record, not a hash comparison. Anything that
+# alters provider request patterns, navigation, cookies, headers, timing,
+# extractor scripts, or provider API calls beyond the approved behavior returns
+# to Gate 1 for a new approval.
 verify_provider_ready_authority() {
   local pr_number="$1"
   [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]] || return 0

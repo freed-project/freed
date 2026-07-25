@@ -2294,15 +2294,6 @@ test("worktree-publish treats a provider file renamed outside the provider tree 
       isDraft: true,
     },
   ];
-  state.reactions = {
-    [state.comments[0].id]: [
-      {
-        content: "+1",
-        created_at: "2026-07-14T12:00:00Z",
-        user: { login: "AubreyF" },
-      },
-    ],
-  };
   await fs.writeFile(fixture.ghStateFile, JSON.stringify(state));
   await fs.appendFile(
     path.join(fixture.worktree, "archive/fb-extract.js"),
@@ -2329,8 +2320,15 @@ test("worktree-publish treats a provider file renamed outside the provider tree 
     ],
     { cwd: fixture.worktree, env: directPublishEnv(fixture) },
   );
-  assert.notEqual(changedResult.status, 0);
-  assert.match(changedResult.stderr, /need a fresh GitHub thumbs-up reaction/);
+  // Under artifact-only authorisation the Gate 1 artifact approves a described
+  // behavior, not one exact diff, so a further commit does not have to be
+  // re-approved and this publish is allowed. What must NOT change is detection:
+  // that is the subject of this test. `archive/fb-extract.js` lives nowhere
+  // near the provider tree, and the whole risk is that a rename quietly drops a
+  // provider file out of the classifier's sight. It is still classified as
+  // provider-visible, and it still produces its own audit comment naming the
+  // moved path, so the change remains on the record for review.
+  assertSuccess(changedResult);
   const changedState = JSON.parse(
     await fs.readFile(fixture.ghStateFile, "utf8"),
   );
