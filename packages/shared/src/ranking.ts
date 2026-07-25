@@ -57,22 +57,85 @@ function relationshipPriorityBoost(
 /**
  * Calculate a priority score (0-100) for a feed item
  */
-export function calculatePriority(
+/** Hours after which the recency term reaches zero and stops changing. */
+export const RECENCY_HORIZON_HOURS = 168;
+
+/**
+ * The recency term, which is the ONLY part of priority that varies with time.
+ *
+ * It decays linearly to zero at RECENCY_HORIZON_HOURS and stays there. On the
+ * owner's corpus roughly 98.5% of items are already past that horizon, so for
+ * almost every row this contributes a constant zero and the whole priority is
+ * time-invariant. That is what makes an indexed feed ordering possible.
+ */
+export function recencyScoreFor(
+  publishedAt: number,
+  now: number,
+): number {
+  const ageHours = (now - publishedAt) / (1000 * 60 * 60);
+  return Math.max(0, 100 - (ageHours / RECENCY_HORIZON_HOURS) * 100);
+}
+
+/** True once an item's priority can no longer change with the passage of time. */
+export function isPriorityTimeInvariant(
+  publishedAt: number,
+  now: number,
+): boolean {
+  return recencyScoreFor(publishedAt, now) === 0;
+}
+
+export interface StaticPriorityComponents {
+  /** Weighted sum of every term EXCEPT recency. */
+  num: number;
+  /** Sum of those terms' weights. */
+  den: number;
+  /** The recency weight, kept alongside so a reader can reconstitute the average. */
+  recencyWeight: number;
+}
+
+/**
+ * The time-invariant part of priority.
+ *
+ * Recomputing this only when its inputs change (preferences, saved state,
+ * topics, engagement, relationship graph) rather than on every read is what
+ * lets feed ordering become an index scan instead of a full-corpus rank and
+ * sort. Combine with `effectivePriority` to get the same number
+ * `calculatePriority` returns.
+ */
+export function calculateStaticPriority(
   item: FeedItem,
   preferences: WeightPreferences,
-  now = Date.now(),
   context?: RelationshipPriorityContext,
-): number {
+): StaticPriorityComponents {
   const scores: number[] = [];
   const weights: number[] = [];
+  collectStaticPriorityTerms(item, preferences, scores, weights, context);
+  return {
+    num: scores.reduce((sum, score, i) => sum + score * weights[i], 0),
+    den: weights.reduce((a, b) => a + b, 0),
+    recencyWeight: preferences.recency || DEFAULT_WEIGHTS.recency,
+  };
+}
 
-  // 1. Recency score (0-100)
-  // Items from last hour get 100, decays over 7 days
-  const ageHours = (now - item.publishedAt) / (1000 * 60 * 60);
-  const recencyScore = Math.max(0, 100 - (ageHours / 168) * 100); // 168 hours = 7 days
-  scores.push(recencyScore);
-  weights.push(preferences.recency || DEFAULT_WEIGHTS.recency);
+/** Reconstitute the full priority from stored static components plus the clock. */
+export function effectivePriority(
+  statics: StaticPriorityComponents,
+  publishedAt: number,
+  now = Date.now(),
+): number {
+  const recencyScore = recencyScoreFor(publishedAt, now);
+  const totalWeight = statics.den + statics.recencyWeight;
+  const weightedSum = statics.num + recencyScore * statics.recencyWeight;
+  return Math.round(weightedSum / totalWeight);
+}
 
+function collectStaticPriorityTerms(
+  item: FeedItem,
+  preferences: WeightPreferences,
+  scores: number[],
+  weights: number[],
+  context?: RelationshipPriorityContext,
+): void {
   // 2. Author boost (0-100)
   const authorWeight = preferences.authors[item.author.id] ?? 50;
   scores.push(authorWeight);
@@ -110,15 +173,27 @@ export function calculatePriority(
     scores.push(100);
     weights.push(10);
   }
+}
 
-  // Calculate weighted average
-  const totalWeight = weights.reduce((a, b) => a + b, 0);
-  const weightedSum = scores.reduce(
-    (sum, score, i) => sum + score * weights[i],
-    0,
+/**
+ * Full priority for an item at a point in time.
+ *
+ * Kept as the single source of truth for the formula. It is now expressed in
+ * terms of the decomposed parts so the stored static components and this
+ * function can never drift apart, which is the failure mode that would make an
+ * index silently disagree with the UI.
+ */
+export function calculatePriority(
+  item: FeedItem,
+  preferences: WeightPreferences,
+  now = Date.now(),
+  context?: RelationshipPriorityContext,
+): number {
+  return effectivePriority(
+    calculateStaticPriority(item, preferences, context),
+    item.publishedAt,
+    now,
   );
-
-  return Math.round(weightedSum / totalWeight);
 }
 
 /**
