@@ -409,7 +409,14 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseDraft: true
           prerelease: ${{ needs.notes.outputs.is_prerelease == 'true' }}
-          includeUpdaterJson: false
+          # tauri-action v1 renamed includeUpdaterJson to uploadUpdaterJson, and
+          # the new name defaults to true. Actions silently ignores unknown
+          # inputs, so leaving the old name here would not error, it would just
+          # let the action publish its own per-matrix latest.json that the
+          # updater-manifest job below then has to clobber. Keep it off: that job
+          # owns latest.json, built from the .sig files this action uploads
+          # (uploadUpdaterSignatures defaults to true, which is what we want).
+          uploadUpdaterJson: false
           args: ${{ matrix.args }}
 
       # Upload a stable-named copy for /releases/latest/download/ links
