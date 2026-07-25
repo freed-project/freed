@@ -22,7 +22,7 @@ Capture your social/rss/newsletter feeds locally. Tune the ranking algo yourself
 - 🌊 **Unified feed** — X, RSS, YouTube, newsletters, podcasts in one timeline
 - ⚖️ **Your ranking** — Weight by recency, author, topic, custom semantics. Not engagement
 - 🔒 **Local-first** — All data on your device, we can't see it
-- 🔄 **Cross-device sync** — Automerge CRDT via local relay and cloud backup
+- 🔄 **Cross-device sync** — Your devices stay in step directly, with your own cloud storage as backup
 - 📌 **Save for later** — Capture any URL with reader view
 - ⚓ **Ulysses mode** — Block platform feeds, stay intentional
 - 📍 **Friend map** — See where your people are posting from
@@ -34,7 +34,7 @@ Capture your social/rss/newsletter feeds locally. Tune the ranking algo yourself
 ```
   Capture Layers              Sync                    Clients
  ─────────────────      ─────────────────      ─────────────────
-  X, RSS, Facebook,  →   Automerge CRDT   →    Desktop App
+  X, RSS, Facebook,  →   Sync + Storage   →    Desktop App
   Instagram, etc.        Local + Cloud          Phone PWA
                                                 Extension
 ```
@@ -62,7 +62,7 @@ Capture your social/rss/newsletter feeds locally. Tune the ranking algo yourself
 
 ### [Phase 1: Foundation](docs/PHASE-1-FOUNDATION.md) ✓
 
-Marketing site, monorepo, Automerge schema, CI/CD.
+Marketing site, monorepo, sync schema, CI/CD.
 
 ### [Phase 2: Capture Skills](docs/PHASE-2-CAPTURE-SKILLS.md) ✓
 
@@ -118,7 +118,7 @@ Compose and publish through your own site.
 
 1. **Desktop App as hub** — Capture + sync + UI in one installable package
 2. **Zero external infrastructure** — Local relay + user's cloud storage (GDrive, Dropbox, iCloud)
-3. **Automerge CRDT** — Conflict-free multi-device sync
+3. **Local-first sync** — Devices reconcile without a server; your cloud storage is backup, not the source of truth
 4. **Shared React codebase** — `packages/pwa/` embedded in Desktop AND deployed standalone
 5. **TypeScript capture via subprocess** — Capture packages run as TypeScript, not compiled into Tauri's Rust core. Easier to extend, easier to debug.
 6. **Ranking on core, display on edge** — Desktop/OpenClaw computes `priority`, PWA just displays
@@ -222,7 +222,7 @@ npm run typecheck  # Type-check all packages
 }
 ```
 
-**Subscriptions & preferences** sync via Automerge document.
+**Subscriptions & preferences** sync across your devices.
 
 ---
 
