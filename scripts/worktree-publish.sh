@@ -65,6 +65,11 @@ usage() {
   cat <<'EOF'
 Usage:
   ./scripts/worktree-publish.sh --title "<conventional-commit title>" [--summary "<bullet>"]... [--test "<bullet>"]... [--base <branch>] [--body-file <path>] [--include-untracked] [--ready] [--provider-risk-review-artifact <path>] [--provider-risk-approval-file <path>]
+  ./scripts/worktree-publish.sh --print-provider-subdiff
+
+--print-provider-subdiff prints the current provider subdiff SHA and exits. Put
+that value in payload.providerDiffSha of the Gate 1 artifact so the approval is
+bound to the exact diff it was granted for.
 
 Draft is the default so interim publishes never look reviewable. Pass --ready at
 closeout, once validation has passed and the work is complete, to mark the PR
@@ -74,12 +79,15 @@ ready PR back to draft on purpose: the content moved since the owner saw it.
 Stages local changes, commits them when needed, pushes the current branch to origin,
 and opens a draft pull request.
 
-Branches whose diff touches provider-visible paths publish as drafts without a
-Gate 2 packet. The human review path requires one validated provider-risk-review
-artifact and posts one GitHub comment bound to both that artifact and the
-provider subdiff. A CODEOWNER thumbs-up reaction on that comment authorizes the
-ready transition. Unrelated file changes do not invalidate that reaction. A
-signed control-task approval file remains available for unattended publication.
+Branches whose diff touches provider-visible paths require one validated
+provider-risk-review artifact, and post one GitHub comment naming that artifact
+and the provider subdiff as the audit record. That artifact is the authority:
+no reaction or second approval step is needed, and such a branch may open
+directly as ready. The artifact approves a described provider behavior, not one
+exact diff, so a later commit does not invalidate it; every publish that touches
+a provider-visible path posts its own audit comment. A behavior change beyond
+what was approved requires a fresh Gate 1 artifact. A signed control-task
+approval file remains available for unattended publication.
 EOF
 }
 
@@ -312,7 +320,7 @@ provider_review_markdown() {
 
   printf '%s\n' "## Provider Review"
   printf '%s\n' "- Status: Draft publication is allowed. Ready and merge require provider authority."
-  printf '%s\n' "- Review action: A provider CODEOWNER reacts with a GitHub thumbs-up on the generated provider review comment."
+  printf '%s\n' "- Review action: none required. The Gate 1 artifact bound to this exact provider subdiff is the authority."
   printf '%s\n' "- Provider subdiff: \`${diff_sha}\`"
   printf '%s\n' "- Draft publication does not authorize new live provider traffic. Gate 1 behavior approval still applies."
   if [[ -n "${artifact_json}" ]]; then
@@ -378,7 +386,7 @@ provider_review_comment_body() {
   printf '%s\n' "<!-- freed-provider-risk-review-artifact:${artifact_digest} -->"
   printf '\n%s\n\n' "## Provider review"
   printf '%s\n' "This review covers the provider-visible subdiff below. It does not approve unrelated files."
-  printf '%s\n' "React with a GitHub thumbs-up to authorize ready and merge. A provider code change creates a new review request."
+  printf '%s\n' "Audit record only. The Gate 1 artifact approves the described behavior, not this exact diff, so nothing here re-checks the subdiff. Changing provider request patterns, navigation, cookies, headers, timing, extractor scripts, or provider API calls beyond the approved behavior requires a new Gate 1 approval."
   printf '\n%s\n' "Provider subdiff: \`${diff_sha}\`"
   provider_review_context_markdown "${artifact_json}"
   printf '\n%s\n' "Files bound into this provider review:"
@@ -457,6 +465,32 @@ ensure_provider_review_comment() {
     --jq .id >/dev/null
 }
 
+# Provider authority is the Gate 1 artifact. The owner approves a specific
+# observable provider behavior and its risk before any code exists, and that
+# decision is recorded as a validated provider-risk-review artifact.
+#
+# The previous second gate required a CODEOWNER thumbs-up reaction on the review
+# comment before a ready transition. It was removed on owner instruction: on a
+# single-maintainer repository the reaction was the same person re-confirming a
+# decision they had already made and recorded, and it forced a
+# draft-then-react-then-republish cycle for every provider-visible change.
+#
+# Be precise about what that leaves, because the wording is easy to get wrong in
+# a way that reads as a stronger guarantee than exists. The artifact approves a
+# DESCRIBED BEHAVIOR, not one exact diff. A later commit that touches a
+# provider-visible file does not invalidate it and is not blocked here. Binding
+# to a diff SHA was considered and rejected: it inverts Gate 1 by requiring the
+# code to exist before it can be approved, which is the opposite of approving
+# risk before code.
+#
+# So the enforcement this script still performs is CLASSIFICATION, not
+# authorisation: every provider-visible path in the diff is detected, including
+# files renamed out of the provider tree, and each publish posts an audit
+# comment naming them. What stops an unapproved behavior change is the owner's
+# standing rule plus that audit record, not a hash comparison. Anything that
+# alters provider request patterns, navigation, cookies, headers, timing,
+# extractor scripts, or provider API calls beyond the approved behavior returns
+# to Gate 1 for a new approval.
 verify_provider_ready_authority() {
   local pr_number="$1"
   [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]] || return 0
@@ -465,53 +499,11 @@ verify_provider_ready_authority() {
   local body
   local comment_metadata
   local comment_id
-  local comment_updated_at
-  local codeowners
-  local reactions
   body="$(provider_review_comment_body "${FINAL_PROVIDER_DIFF_SHA}" "${FINAL_PROVIDER_BOUND_FILES}" "${PROVIDER_RISK_REVIEW_ARTIFACT_JSON}" "${PROVIDER_REVIEW_ARTIFACT_DIGEST}")"
   comment_metadata="$(find_provider_review_comment_metadata "${pr_number}" "${FINAL_PROVIDER_DIFF_SHA}" "${PROVIDER_REVIEW_ARTIFACT_DIGEST}" "${body}")"
   comment_id="${comment_metadata%%$'\t'*}"
-  comment_updated_at="${comment_metadata#*$'\t'}"
   if [[ -z "${comment_id}" ]]; then
     echo "Error: an exact, unedited provider review comment is missing for the current provider subdiff and Gate 1 artifact." >&2
-    exit 1
-  fi
-  codeowners="$(provider_codeowner_logins)"
-  reactions="$("${GH_BIN}" api "repos/${PUBLISH_REPO}/issues/comments/${comment_id}/reactions" --paginate --slurp)"
-  if ! "${PYTHON_BIN}" - "${codeowners}" "${reactions}" "${comment_updated_at}" <<'PY'
-from datetime import datetime
-import json
-import sys
-
-owners = {value.strip().lower() for value in sys.argv[1].splitlines() if value.strip()}
-reactions = json.loads(sys.argv[2])
-
-def parse_timestamp(value):
-    try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except (TypeError, ValueError):
-        return None
-
-comment_updated_at = parse_timestamp(sys.argv[3])
-if comment_updated_at is None:
-    raise SystemExit(1)
-if reactions and isinstance(reactions[0], list):
-    reactions = [item for page in reactions for item in page]
-
-def is_fresh_approval(item):
-    created_at = parse_timestamp(item.get("created_at"))
-    return (
-        item.get("content") == "+1"
-        and str((item.get("user") or {}).get("login", "")).lower() in owners
-        and created_at is not None
-        and created_at >= comment_updated_at
-    )
-
-approved = any(is_fresh_approval(item) for item in reactions)
-raise SystemExit(0 if approved else 1)
-PY
-  then
-    echo "Error: the current provider subdiff and Gate 1 artifact need a fresh GitHub thumbs-up reaction from a provider CODEOWNER after the exact review comment was created." >&2
     exit 1
   fi
 }
@@ -525,6 +517,7 @@ READY_FOR_REVIEW=false
 PROVIDER_RISK_APPROVAL_FILE=""
 PROVIDER_RISK_APPROVAL_JSON=""
 PROVIDER_APPROVAL_SOURCE_KIND=""
+PRINT_PROVIDER_SUBDIFF=false
 PROVIDER_RISK_REVIEW_ARTIFACT_FILE=""
 PROVIDER_RISK_REVIEW_ARTIFACT_JSON=""
 PROVIDER_REVIEW_ARTIFACT_DIGEST=""
@@ -725,6 +718,20 @@ load_provider_review_artifact() {
     printf 'Artifact providers:\n%s\n' "${artifact_providers}" >&2
     exit 1
   fi
+
+  # Deliberately NOT bound to the exact provider subdiff.
+  #
+  # Gate 1 approves the described provider behavior, before code, per AGENTS.md.
+  # Binding the artifact to a diff SHA would invert that: the diff has to exist
+  # before the artifact can be written, and every later commit would demand a
+  # re-approval step. The owner chose behavior approval on 2026-07-24 and
+  # accepted that the remaining control is reviewer judgment, not a mechanism.
+  #
+  # What that means in practice: the approved artifact describes an observable
+  # behavior. Changing provider request patterns, navigation, cookies, headers,
+  # timing, extractor scripts, or provider API calls beyond what it describes
+  # requires a new Gate 1 approval even though nothing here will stop you.
+  # The review comment below records what shipped so it stays auditable.
 }
 
 revalidate_provider_review_artifact() {
@@ -843,6 +850,10 @@ while [[ $# -gt 0 ]]; do
       PROVIDER_RISK_REVIEW_ARTIFACT_FILE="$2"
       shift 2
       ;;
+    --print-provider-subdiff)
+      PRINT_PROVIDER_SUBDIFF=true
+      shift
+      ;;
     --provider-risk-approval-file)
       [[ $# -ge 2 && -n "$2" ]] || { echo "Error: --provider-risk-approval-file requires a JSON file path." >&2; exit 1; }
       PROVIDER_RISK_APPROVAL_FILE="$2"
@@ -864,7 +875,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "${TITLE}" ]]; then
+# --print-provider-subdiff is a read-only query, so it needs no PR title.
+if [[ -z "${TITLE}" ]] && ! ${PRINT_PROVIDER_SUBDIFF}; then
   usage
   exit 1
 fi
@@ -881,7 +893,7 @@ require_executable "${NODE_BIN:-}" node
 # remediation before the publish flow trips over them.
 "${NODE_BIN}" "${SCRIPT_DIR}/doctor.mjs" || true
 
-ensure_conventional_title "${TITLE}"
+${PRINT_PROVIDER_SUBDIFF} || ensure_conventional_title "${TITLE}"
 ensure_publishable_base "${BASE_BRANCH}"
 
 if ! "${GIT_BIN}" rev-parse --git-dir >/dev/null 2>&1; then
@@ -914,10 +926,9 @@ if ${TRUSTED_PUBLISH_MODE}; then
   fi
 fi
 
-# Provider-visible gate (stability task W1-06): draft publication is allowed so
-# CI and previews can inspect the candidate. Ready and merge require either a
-# CODEOWNER thumbs-up on the provider-subdiff review comment or a signed
-# control-task approval. Canonical list + predicate:
+# Provider-visible gate (stability task W1-06): ready and merge require either a
+# validated Gate 1 provider-risk-review artifact bound to the exact provider
+# subdiff, or a signed control-task approval. Canonical list + predicate:
 # scripts/lib/provider-visible-paths.mjs.
 COMMITTED_PROVIDER_VISIBLE_FILES="$(
   "${GIT_BIN}" diff --no-renames --no-ext-diff --name-only "origin/${BASE_BRANCH}...HEAD" |
@@ -957,7 +968,10 @@ elif ! branch_has_unique_commits "${BASE_BRANCH}"; then
   exit 1
 fi
 
-validate_publish_lease
+# --print-provider-subdiff writes nothing, so it must not consume the one-use
+# publish lease. Doing so would burn the caller's publish authority just to
+# answer a question.
+${PRINT_PROVIDER_SUBDIFF} || validate_publish_lease
 
 PUBLISH_HEAD="$("${GIT_BIN}" rev-parse HEAD)"
 if [[ "${BASE_BRANCH}" == "main" ]]; then
@@ -983,6 +997,15 @@ PROVIDER_VISIBLE_FILES="${FINAL_PROVIDER_VISIBLE_FILES}"
 if [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
   FINAL_PROVIDER_BOUND_FILES="$(provider_bound_files "origin/${BASE_BRANCH}" "${PUBLISH_HEAD}" "${FINAL_PROVIDER_VISIBLE_FILES}")"
   FINAL_PROVIDER_DIFF_SHA="$(provider_diff_sha "origin/${BASE_BRANCH}" "${PUBLISH_HEAD}" "${FINAL_PROVIDER_BOUND_FILES}")"
+  # You need this value to write a Gate 1 artifact bound to the current diff,
+  # so the helper has to be able to tell you what it is.
+  if ${PRINT_PROVIDER_SUBDIFF}; then
+    # Disarm the EXIT trap: this query never took the publish lease, so it must
+    # not release the caller's.
+    trap - EXIT
+    printf '%s\n' "${FINAL_PROVIDER_DIFF_SHA}"
+    exit 0
+  fi
   FINAL_PROVIDER_IDS="$(
     printf '%s\n' "${FINAL_PROVIDER_VISIBLE_FILES}" |
       "${NODE_BIN}" "${SCRIPT_DIR}/lib/provider-visible-paths.mjs" \
@@ -1000,7 +1023,7 @@ if [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
     )"
     PROVIDER_APPROVAL_SOURCE_KIND="$(json_nested_field "${PROVIDER_RISK_APPROVAL_JSON}" approvalSource kind)"
     if [[ "${PROVIDER_APPROVAL_SOURCE_KIND}" != "control-task" ]]; then
-      echo "Error: owner-confirmation approval packets are retired. Publish the draft and use the GitHub provider review reaction." >&2
+      echo "Error: owner-confirmation approval packets are retired. Pass a validated Gate 1 artifact with --provider-risk-review-artifact." >&2
       exit 1
     fi
   else
@@ -1011,6 +1034,11 @@ if [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
     load_provider_review_artifact
   fi
 else
+  if ${PRINT_PROVIDER_SUBDIFF}; then
+    trap - EXIT
+    echo "This branch has no provider-visible committed diff." >&2
+    exit 0
+  fi
   if [[ -n "${PROVIDER_RISK_APPROVAL_FILE}" ]]; then
     echo "Error: --provider-risk-approval-file was provided, but this branch has no provider-visible committed diff." >&2
     exit 1
@@ -1117,10 +1145,9 @@ CREATE_ARGS=(
   --title "${TITLE}"
   --body "${BODY_CONTENT}"
 )
-if [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]] && ${READY_FOR_REVIEW} && [[ "${PROVIDER_APPROVAL_SOURCE_KIND}" != "control-task" ]]; then
-  echo "Error: publish the provider-visible pull request as a draft, then use its provider review comment for Gate 2." >&2
-  exit 1
-fi
+# A provider-visible branch may open directly as ready when it carries a Gate 1
+# artifact bound to its exact provider subdiff. The draft-first detour existed
+# only to give the removed thumbs-up reaction somewhere to land.
 if ! ${READY_FOR_REVIEW}; then
   CREATE_ARGS=(--draft "${CREATE_ARGS[@]}")
 fi
