@@ -7,7 +7,7 @@ mod youtube;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use futures_util::{SinkExt, StreamExt};
 use log::{error, info, warn};
-use rand::{Rng, RngCore};
+use rand::{Rng, RngExt};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet, VecDeque};
 #[cfg(unix)]
@@ -1015,7 +1015,7 @@ async fn restore_scraper_feed(
 /// base64url without padding (43 ASCII characters).
 fn generate_token() -> String {
     let mut bytes = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
@@ -5022,13 +5022,29 @@ fn get_platform() -> String {
     std::env::consts::OS.to_string()
 }
 
+// sha2 0.11 returns a hybrid-array `Array`, which dropped the `LowerHex` impl
+// that `format!("{:x}", ..)` relied on under 0.10. Encode by hand so the string
+// stays exactly what it was: lower case, zero padded, no separators. Both
+// callers compare against digests persisted by earlier builds, so a change in
+// encoding would read as a changed hash and invalidate them.
+fn hex_digest(bytes: impl AsRef<[u8]>) -> String {
+    use std::fmt::Write as _;
+
+    let bytes = bytes.as_ref();
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
 fn hash_desktop_installation_witness(machine_id: &str, user_id: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"freed-desktop-installation-witness-v1\0");
     hasher.update(machine_id.trim().as_bytes());
     hasher.update(b"\0");
     hasher.update(user_id.trim().as_bytes());
-    format!("{:x}", hasher.finalize())
+    hex_digest(hasher.finalize())
 }
 
 #[cfg(target_os = "macos")]
@@ -5734,7 +5750,7 @@ async fn sha256_file(app: tauri::AppHandle, path: String) -> Result<String, Stri
         hasher.update(&buffer[..read]);
     }
 
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hex_digest(hasher.finalize()))
 }
 
 fn validate_local_ai_download_url(raw: &str) -> Result<(), String> {
@@ -8141,10 +8157,10 @@ async fn close_x_login_window(app: tauri::AppHandle) -> Result<(), String> {
 /// Uses the Box-Muller transform to convert two uniform samples to a normal
 /// variate, which is fast and requires no external crate.
 fn gaussian_ms(mean: f64, std_dev: f64) -> u64 {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-    let u1: f64 = rng.gen_range(f64::EPSILON..1.0);
-    let u2: f64 = rng.gen_range(0.0..1.0);
+    use rand::RngExt;
+    let mut rng = rand::rng();
+    let u1: f64 = rng.random_range(f64::EPSILON..1.0);
+    let u2: f64 = rng.random_range(0.0..1.0);
     let z = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos();
     (mean + z * std_dev).max(400.0) as u64
 }
@@ -8546,12 +8562,12 @@ async fn fb_show_login(
     .title("Connect Facebook — Freed")
     .inner_size(
         460.0 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(-8.0f64..8.0)
+            use rand::RngExt;
+            rand::rng().random_range(-8.0f64..8.0)
         },
         700.0 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(-10.0f64..10.0)
+            use rand::RngExt;
+            rand::rng().random_range(-10.0f64..10.0)
         },
     )
     .center()
@@ -8682,7 +8698,7 @@ async fn fb_check_auth(
 /// Bails early if the story viewer closes (overlay no longer present) or
 /// if `max_frames` have been viewed.
 async fn scrape_fb_stories(wv: &tauri::WebviewWindow, max_frames: usize) {
-    use rand::Rng;
+    use rand::RngExt;
 
     let _ = set_background_scraper_media_guard(wv, true);
     info!("[FB] story scrape start, max_frames={}", max_frames);
@@ -8737,7 +8753,7 @@ async fn scrape_fb_stories(wv: &tauri::WebviewWindow, max_frames: usize) {
         }
 
         // Pause to let the user "view" this story frame (2-4s normally, ~8% chance of 6-8s)
-        let view_pause = if rand::thread_rng().gen_bool(0.08) {
+        let view_pause = if rand::rng().random_bool(0.08) {
             gaussian_ms(7000.0, 1000.0)
         } else {
             gaussian_ms(3000.0, 700.0)
@@ -8794,7 +8810,7 @@ async fn scrape_fb_stories(wv: &tauri::WebviewWindow, max_frames: usize) {
 /// row of circular avatars at the top of the Following feed), then advances
 /// through frames using the right-side click area.
 async fn scrape_ig_stories(wv: &tauri::WebviewWindow, max_frames: usize) {
-    use rand::Rng;
+    use rand::RngExt;
 
     let _ = set_background_scraper_media_guard(wv, true);
     info!("[IG] story scrape start, max_frames={}", max_frames);
@@ -8844,7 +8860,7 @@ async fn scrape_ig_stories(wv: &tauri::WebviewWindow, max_frames: usize) {
         }
 
         // "View" pause: 2-4s normally, ~8% chance of 6-8s (lingering on a story)
-        let view_pause = if rand::thread_rng().gen_bool(0.08) {
+        let view_pause = if rand::rng().random_bool(0.08) {
             gaussian_ms(7000.0, 1000.0)
         } else {
             gaussian_ms(3000.0, 600.0)
@@ -9098,16 +9114,16 @@ async fn fb_scrape_feed(
     let skip_stories = scrape_plan.skip_stories
         || !optional_story_scrape_may_continue(&app, "Facebook", "feed scrape")
         || {
-            use rand::Rng;
-            rand::thread_rng().gen_bool(0.15)
+            use rand::RngExt;
+            rand::rng().random_bool(0.15)
         };
     let stories_first = !skip_stories && {
-        use rand::Rng;
-        rand::thread_rng().gen_bool(0.50)
+        use rand::RngExt;
+        rand::rng().random_bool(0.50)
     };
     let story_frame_cap = {
-        use rand::Rng;
-        rand::thread_rng().gen_range(2usize..=4)
+        use rand::RngExt;
+        rand::rng().random_range(2usize..=4)
     };
 
     if stories_first {
@@ -9124,15 +9140,15 @@ async fn fb_scrape_feed(
     // they're near the viewport, and are unmounted when scrolled away.
     // We must scroll incrementally, extracting at each position.
     let num_passes = {
-        use rand::Rng;
-        rand::thread_rng().gen_range(scrape_plan.min_passes.max(1)..=scrape_plan.max_passes.max(1))
+        use rand::RngExt;
+        rand::rng().random_range(scrape_plan.min_passes.max(1)..=scrape_plan.max_passes.max(1))
     };
     // If doing feed-first, split the passes: 2-4 passes before stories, rest after.
     let early_passes = if !stories_first && !skip_stories {
-        use rand::Rng;
+        use rand::RngExt;
         let upper = 4usize.min(num_passes.saturating_sub(1).max(1));
         let lower = 2usize.min(upper);
-        rand::thread_rng().gen_range(lower..=upper)
+        rand::rng().random_range(lower..=upper)
     } else {
         num_passes // all passes in one go
     };
@@ -9152,8 +9168,8 @@ async fn fb_scrape_feed(
         }
 
         let scroll_amount = {
-            use rand::Rng;
-            rand::thread_rng().gen_range(280u64..520)
+            use rand::RngExt;
+            rand::rng().random_range(280u64..520)
         };
         let scroll_js = social_feed_scroll_script(scroll_amount as i64);
         wv.eval(&scroll_js).map_err(|e| e.to_string())?;
@@ -9161,12 +9177,12 @@ async fn fb_scrape_feed(
 
         // Occasional micro-backscroll (~12% probability) simulates re-reading.
         if {
-            use rand::Rng;
-            rand::thread_rng().gen_bool(0.12)
+            use rand::RngExt;
+            rand::rng().random_bool(0.12)
         } {
             let back = {
-                use rand::Rng;
-                rand::thread_rng().gen_range(80u64..250)
+                use rand::RngExt;
+                rand::rng().random_range(80u64..250)
             };
             let back_js = social_feed_scroll_script(-(back as i64));
             let _ = wv.eval(&back_js);
@@ -9175,8 +9191,8 @@ async fn fb_scrape_feed(
 
         // Gaussian pause between scroll passes; ~25% chance of a longer "reading" pause.
         let pause = if {
-            use rand::Rng;
-            rand::thread_rng().gen_bool(0.25)
+            use rand::RngExt;
+            rand::rng().random_bool(0.25)
         } {
             gaussian_ms(6000.0, 1500.0)
         } else {
@@ -9675,12 +9691,12 @@ async fn ig_show_login(
     .title("Connect Instagram — Freed")
     .inner_size(
         460.0 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(-8.0f64..8.0)
+            use rand::RngExt;
+            rand::rng().random_range(-8.0f64..8.0)
         },
         700.0 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(-10.0f64..10.0)
+            use rand::RngExt;
+            rand::rng().random_range(-10.0f64..10.0)
         },
     )
     .center()
@@ -9959,16 +9975,16 @@ async fn ig_scrape_feed(
     let skip_stories = scrape_plan.skip_stories
         || !optional_story_scrape_may_continue(&app, "Instagram", "feed scrape")
         || (!placeholder_feed && {
-            use rand::Rng;
-            rand::thread_rng().gen_bool(0.15)
+            use rand::RngExt;
+            rand::rng().random_bool(0.15)
         });
     let stories_first = !skip_stories && {
-        use rand::Rng;
-        placeholder_feed || rand::thread_rng().gen_bool(0.50)
+        use rand::RngExt;
+        placeholder_feed || rand::rng().random_bool(0.50)
     };
     let story_frame_cap = {
-        use rand::Rng;
-        rand::thread_rng().gen_range(2usize..=4)
+        use rand::RngExt;
+        rand::rng().random_range(2usize..=4)
     };
 
     if stories_first {
@@ -9988,15 +10004,15 @@ async fn ig_scrape_feed(
     // Instagram virtualizes its feed similarly to Facebook. Scroll
     // incrementally, extracting at each position.
     let num_passes = {
-        use rand::Rng;
-        rand::thread_rng().gen_range(scrape_plan.min_passes.max(1)..=scrape_plan.max_passes.max(1))
+        use rand::RngExt;
+        rand::rng().random_range(scrape_plan.min_passes.max(1)..=scrape_plan.max_passes.max(1))
     };
     // Feed-first: scrape stories after the first 2-4 passes
     let early_passes = if !stories_first && !skip_stories {
-        use rand::Rng;
+        use rand::RngExt;
         let upper = 4usize.min(num_passes.saturating_sub(1).max(1));
         let lower = 2usize.min(upper);
-        rand::thread_rng().gen_range(lower..=upper)
+        rand::rng().random_range(lower..=upper)
     } else {
         num_passes
     };
@@ -10026,8 +10042,8 @@ async fn ig_scrape_feed(
         }
 
         let scroll_amount = {
-            use rand::Rng;
-            rand::thread_rng().gen_range(380u64..720)
+            use rand::RngExt;
+            rand::rng().random_range(380u64..720)
         };
         let scroll_js = social_feed_scroll_script(scroll_amount as i64);
         wv.eval(&scroll_js).map_err(|e| e.to_string())?;
@@ -10035,12 +10051,12 @@ async fn ig_scrape_feed(
 
         // Micro-backscroll ~12% of the time.
         if {
-            use rand::Rng;
-            rand::thread_rng().gen_bool(0.12)
+            use rand::RngExt;
+            rand::rng().random_bool(0.12)
         } {
             let back = {
-                use rand::Rng;
-                rand::thread_rng().gen_range(80u64..250)
+                use rand::RngExt;
+                rand::rng().random_range(80u64..250)
             };
             let back_js = social_feed_scroll_script(-(back as i64));
             let _ = wv.eval(&back_js);
@@ -10049,8 +10065,8 @@ async fn ig_scrape_feed(
 
         // Gaussian pause; ~25% chance of longer "reading" pause.
         let pause = if {
-            use rand::Rng;
-            rand::thread_rng().gen_bool(0.25)
+            use rand::RngExt;
+            rand::rng().random_bool(0.25)
         } {
             gaussian_ms(5500.0, 1500.0)
         } else {
@@ -10401,12 +10417,12 @@ async fn li_show_login(
     .title("Connect LinkedIn with Freed")
     .inner_size(
         460.0 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(-8.0f64..8.0)
+            use rand::RngExt;
+            rand::rng().random_range(-8.0f64..8.0)
         },
         700.0 + {
-            use rand::Rng;
-            rand::thread_rng().gen_range(-10.0f64..10.0)
+            use rand::RngExt;
+            rand::rng().random_range(-10.0f64..10.0)
         },
     )
     .center()
@@ -10641,8 +10657,8 @@ async fn li_scrape_feed(
     // LinkedIn virtualizes its feed: scroll incrementally, extracting at each
     // position. Fewer passes than FB (LinkedIn loads fewer posts per scroll).
     let num_passes = {
-        use rand::Rng;
-        rand::thread_rng().gen_range(4usize..=8)
+        use rand::RngExt;
+        rand::rng().random_range(4usize..=8)
     };
 
     // Inject the extract script as a const so we can append done=true on last pass.
@@ -10690,8 +10706,8 @@ async fn li_scrape_feed(
         }
 
         let scroll_amount = {
-            use rand::Rng;
-            rand::thread_rng().gen_range(350u64..650)
+            use rand::RngExt;
+            rand::rng().random_range(350u64..650)
         };
         let scroll_js = social_feed_scroll_script(scroll_amount as i64);
         wv.eval(&scroll_js).map_err(|e| e.to_string())?;
@@ -10699,12 +10715,12 @@ async fn li_scrape_feed(
 
         // Occasional micro-backscroll (~12% probability).
         if {
-            use rand::Rng;
-            rand::thread_rng().gen_bool(0.12)
+            use rand::RngExt;
+            rand::rng().random_bool(0.12)
         } {
             let back = {
-                use rand::Rng;
-                rand::thread_rng().gen_range(80u64..200)
+                use rand::RngExt;
+                rand::rng().random_range(80u64..200)
             };
             let back_js = social_feed_scroll_script(-(back as i64));
             let _ = wv.eval(&back_js);
@@ -10713,8 +10729,8 @@ async fn li_scrape_feed(
 
         // Gaussian pause; longer pauses more common than FB (LinkedIn users scroll slower).
         let pause = if {
-            use rand::Rng;
-            rand::thread_rng().gen_bool(0.30)
+            use rand::RngExt;
+            rand::rng().random_bool(0.30)
         } {
             gaussian_ms(7000.0, 2000.0)
         } else {
@@ -11247,7 +11263,7 @@ async fn scroll_essay_roster_surface(
         }
     });
 
-    let scroll_ratio = rand::thread_rng().gen_range(0.72f64..1.28f64);
+    let scroll_ratio = rand::rng().random_range(0.72f64..1.28f64);
     let event_name =
         serde_json::to_string(ESSAY_ROSTER_SCROLL_EVENT).map_err(|error| error.to_string())?;
     let script = format!(
@@ -11350,8 +11366,8 @@ async fn show_essay_provider_login(
     .initialization_script(include_str!("webkit-mask.js"))
     .title(provider.login_title)
     .inner_size(
-        500.0 + rand::thread_rng().gen_range(-8.0f64..8.0),
-        720.0 + rand::thread_rng().gen_range(-10.0f64..10.0),
+        500.0 + rand::rng().random_range(-8.0f64..8.0),
+        720.0 + rand::rng().random_range(-10.0f64..10.0),
     )
     .center()
     .visible(true)
@@ -14658,6 +14674,20 @@ mod tests {
         assert_ne!(
             first,
             hash_desktop_installation_witness("machine-a", "user-b")
+        );
+    }
+
+    // Pins the digest itself, not just its length. Witnesses are persisted by
+    // earlier builds and compared on later launches, so the hex encoding is
+    // part of the format. The sha2 0.11 upgrade had to replace the `{:x}`
+    // formatting this once relied on, and a silent shift to upper case or a
+    // separator would still have satisfied the length and scoping assertions
+    // above while invalidating every stored witness.
+    #[test]
+    fn desktop_installation_witness_encoding_is_stable() {
+        assert_eq!(
+            hash_desktop_installation_witness("machine-a", "user-a"),
+            "220d7bdd4df1bf6ce110652b6b5ca6f1425c4429f55fb1096be194dd26ac32bb"
         );
     }
 

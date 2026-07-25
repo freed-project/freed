@@ -25,23 +25,23 @@ tauri-plugin-clipboard-manager = "=2.3.2"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-window-vibrancy = "0.6"
+window-vibrancy = "0.8"
 # default-features = false drops native-tls (OpenSSL) which conflicts with rquest's BoringSSL on Linux.
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rquest = { version = "5", features = ["json"] }
 rquest-util = "2"
 tokio = { version = "1", features = ["full"] }
-tokio-tungstenite = "0.26"
+tokio-tungstenite = "0.30"
 futures-util = "0.3"
 fslock = "0.2.1"
 local-ip-address = "0.6"
-mdns-sd = "0.11"
+mdns-sd = "0.20"
 hostname = "0.4"
-rand = "0.8"
-base64 = "0.22"
+rand = "0.10"
+base64 = "0.23"
 url = "2"
-sysinfo = "0.37"
-sha2 = "0.10"
+sysinfo = "0.39"
+sha2 = "0.11"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -53,7 +53,7 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 objc2-web-kit = { version = "0.3", features = ["WKWebViewConfiguration"] }
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 tempfile = "3"
 
 [[bench]]
