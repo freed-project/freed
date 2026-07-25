@@ -499,7 +499,11 @@ test("friends graph controls align to the graph lane between sidebars", async ({
     leftGapPx: 0,
     topGapPx: 0,
     rightGapPx: 0,
-    bottomGapPx: 0,
+    // The content frame keeps its --feed-card-gap bottom padding in the friends
+    // view, so the graph lane sits one gap above the window edge. Horizontal
+    // gaps stay 0 because they are measured against the sidebar and the handle,
+    // which the same padding shifts.
+    bottomGapPx: 8,
     fitAllTopGapPx: 16,
     controlsRightGapPx: 16,
   });
