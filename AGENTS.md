@@ -189,6 +189,19 @@ Treat `dev`, `main`, and `www` as separate lanes with explicit promotion points.
 - `npm run validate:release` is the heaviest lane for release-prep work on `main`.
 - Do not default feature threads to the full integration suite when the touched surface is narrow.
 
+### Test Economy
+
+The binding standard is [docs/TESTING-STANDARD.md](docs/TESTING-STANDARD.md). Read it before adding, moving, or deleting a permanent test.
+
+- **Admission.** A new permanent test must protect a distinct user, data-integrity, security, authority, provider, release, migration, or operational contract. Search for existing same-layer coverage first and prefer extending it. State the unique failure it detects, use the cheapest deterministic layer, assign a tier, and measure its runtime. Individual test additions do not need owner approval, they need judgment.
+- **Tiers.** Changed-path suites for ordinary PRs, one full integration proof on the latest `dev` tree, release-delta checks at tag and promotion, exhaustive coverage nightly. A test can be release-critical through an exact inherited receipt without rerunning in the release workflow.
+- **Local coverage is not automatically a release gate.** A test earns a blocking lane by protecting a contract in the universal release gate list, not by having caught something once.
+- **No real sleeps or production-duration timeouts in blocking lanes.** Use injected clocks. Tooling shards run with a 5 minute per-test timeout; anything slower in a blocking lane is a defect.
+- **Delete temporary probes before publishing.** Exact pixel offsets, one-off geometry checks, and fixture self-tests already covered by real workflows do not survive to `main`.
+- **Platform honesty.** A test that skips itself wholesale on the runner it executes on is not coverage. Route it to the lane where it actually asserts something.
+- **The tooling smoke matrix is computed, never hardcoded.** `scripts/plan-tooling-smoke.mjs` derives applicable suites from changed paths and caps the lane at 8 jobs. Do not reintroduce a literal suite or shard list in `ci.yml`.
+- **Prune continuously.** Move expensive-but-useful tests to nightly, merge duplicate assertions, and quarantine flaky noncritical tests behind one debt issue with an owner. Never quarantine data integrity, authority, provider safety, signing, release identity, or updater protection without an equivalent deterministic blocker.
+
 **Never use `git log main..branch` to check whether a branch has been merged.** Squash merge creates a new commit hash on `main`, so the original branch commits are never reachable from `main`'s history. The branch always looks "ahead" even when its content is fully shipped. Use these instead:
 
 ```bash

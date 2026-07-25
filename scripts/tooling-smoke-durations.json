@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "note": "Measured on ubuntu-latest CI, run 30140909175 / 30143xxxxx (2026-07-25). Seconds are per-suite totals summed across that run's shards. Source size is a poor runtime proxy: within the general suite the byte-weighted split produced shards of 41s and 4,909s, a 120x spread. Refresh with: node scripts/measure-tooling-smoke.mjs --write, or from CI shard durations.",
+  "suites": {
+    "general": {
+      "seconds": 6679,
+      "runs": 1,
+      "failures": 0,
+      "flaky": false,
+      "source": "ci-shards 41+406+1323+4909"
+    },
+    "automation-control": {
+      "seconds": 8689,
+      "runs": 1,
+      "failures": 0,
+      "flaky": false,
+      "source": "ci-shards 3985+4704"
+    },
+    "kernel-guard-cutover": {
+      "seconds": 3648,
+      "runs": 1,
+      "failures": 0,
+      "flaky": false,
+      "source": "ci-shard 3648 (single shard, completed)"
+    },
+    "outcome-ledger-repair": {
+      "seconds": 5415,
+      "runs": 1,
+      "failures": 0,
+      "flaky": false,
+      "capped": true,
+      "source": "ci-shard killed by the 90m job cap at 5415s; a floor, not a measurement (issue #1147)"
+    }
+  }
+}

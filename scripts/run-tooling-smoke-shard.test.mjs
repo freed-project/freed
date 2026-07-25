@@ -12,6 +12,10 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  DARWIN_ONLY_TEST_FILES,
+  NATIVE_ACCEPTANCE_TEST_FILES,
+} from "./lib/tooling-smoke-suites.mjs";
+import {
   buildToolingSmokeShardPlan,
   exactTestNamePattern,
   exactTestUnitPattern,
@@ -178,10 +182,40 @@ test("repository plans are nonempty and cover each named suite", () => {
         "scripts/automation-kernel-guard-cutover.test.mjs",
         "scripts/outcome-ledger-repair.test.mjs",
       ]);
+      // The darwin-only files moved to the macOS lane. They gate every test
+      // behind one module-level platform check, so running them on Linux only
+      // ever skipped them.
+      const routedElsewhere = new Set([
+        ...specialFiles,
+        ...DARWIN_ONLY_TEST_FILES,
+      ]);
       assert.deepEqual(
         files,
-        repositoryTestFiles().filter((filePath) => !specialFiles.has(filePath)),
+        repositoryTestFiles().filter(
+          (filePath) => !routedElsewhere.has(filePath),
+        ),
       );
+
+      // Nothing may silently fall out of the lane. Every repository test file
+      // must be claimed by a sharded suite, the general suite, or the macOS
+      // native lane.
+      const covered = new Set([
+        ...files,
+        ...specialFiles,
+        ...NATIVE_ACCEPTANCE_TEST_FILES,
+      ]);
+      const orphaned = repositoryTestFiles().filter(
+        (filePath) => !covered.has(filePath),
+      );
+      assert.deepEqual(orphaned, [], "every test file must run somewhere");
+
+      // Each darwin-only file must actually be claimed by the native lane.
+      for (const darwinOnly of DARWIN_ONLY_TEST_FILES) {
+        assert.ok(
+          NATIVE_ACCEPTANCE_TEST_FILES.includes(darwinOnly),
+          `${darwinOnly} left the general suite and must run on the macOS lane`,
+        );
+      }
     } else {
       const names = plans.flatMap((plan) => plan.testNames);
       assert.equal(names.length, new Set(names).size);
@@ -200,19 +234,39 @@ test("validation workflow preserves the complete tooling smoke gate", () => {
     path.join(process.cwd(), ".github", "workflows", "ci.yml"),
     "utf8",
   );
-  for (const suite of [
-    "general",
-    "automation-control",
-    "kernel-guard-cutover",
-    "outcome-ledger-repair",
-  ]) {
-    assert.match(workflow, new RegExp(`^          - ${suite}$`, "m"));
-  }
-  assert.match(workflow, /^        shard: \[1, 2, 3, 4, 5, 6, 7, 8\]$/m);
+  // The matrix is computed, never hardcoded. A literal suite list here would
+  // silently reintroduce the fixed 32 job lane this planner replaced.
   assert.match(
     workflow,
-    /^          node scripts\/run-tooling-smoke-shard\.mjs$/m,
+    /matrix: \$\{\{ fromJSON\(needs\.tooling-smoke-plan\.outputs\.matrix\) \}\}/,
+  );
+  assert.match(workflow, /node scripts\/plan-tooling-smoke\.mjs/);
+  assert.match(workflow, /--shard-count=\$\{\{ matrix\.shardCount \}\}/);
+
+  // A push to dev must still run every suite. That run is the full integration
+  // proof, so scoping it by changed paths would break release admission.
+  assert.match(workflow, /plan-tooling-smoke\.mjs --all --github-output/);
+
+  // The gate observes the planner, the shards, and the native lane together.
+  assert.match(
+    workflow,
+    /needs: \[tooling-smoke-plan, tooling-smoke-shards, native-acceptance\]/,
   );
   assert.match(workflow, /^  tooling-smoke:\n    name: Tooling smoke$/m);
-  assert.match(workflow, /^    needs: tooling-smoke-shards$/m);
+
+  // Fail-closed wiring: a skipped shard job is acceptable only when the planner
+  // said the lane was not applicable, and a failed planner always fails.
+  assert.match(workflow, /if \[ "\$PLAN_RESULT" != "success" \]/);
+  assert.match(workflow, /if \[ "\$SHARD_RESULT" != "skipped" \]/);
+  // The macOS lane is observe-only until the first-run hang is diagnosed, so it
+  // must warn rather than exit. It must still be wired up and still fail closed
+  // when it runs unexpectedly, which the next assertion covers.
+  assert.match(workflow, /observe-only, not gating yet/);
+  assert.match(
+    workflow,
+    /Native acceptance was not required but reported \$NATIVE_RESULT/,
+  );
+
+  // Superseded dev runs cancel.
+  assert.match(workflow, /^  cancel-in-progress: true$/m);
 });
