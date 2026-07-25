@@ -2,6 +2,7 @@
 //!
 //! Native desktop app that bundles capture, sync relay, and reader UI.
 
+mod shadow_store;
 mod youtube;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
@@ -14539,6 +14540,11 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            shadow_store::shadow_store_upsert,
+            shadow_store::shadow_store_delete,
+            shadow_store::shadow_store_count,
+            shadow_store::shadow_store_counts,
+            shadow_store::shadow_store_ids,
             get_version,
             get_platform,
             get_desktop_installation_witness,

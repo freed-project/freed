@@ -42,6 +42,12 @@ base64 = "0.22"
 url = "2"
 sysinfo = "0.37"
 sha2 = "0.10"
+# Stage 5 of the storage roadmap: the shadow store lives here rather than in the
+# renderer, which is the entire point. `bundled` compiles SQLite from source so
+# every install runs the same engine version; linking whatever libsqlite3 a
+# user's machine happens to ship would make FTS5 availability and STRICT table
+# support vary per machine, and the projection contract depends on both.
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
