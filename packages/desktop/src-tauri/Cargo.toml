@@ -41,7 +41,7 @@ rand = "0.8"
 base64 = "0.22"
 url = "2"
 sysinfo = "0.37"
-sha2 = "0.10"
+sha2 = "0.11"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
