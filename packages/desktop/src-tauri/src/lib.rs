@@ -3365,7 +3365,7 @@ impl BackgroundRuntimeCoordinator {
 // ---------------------------------------------------------------------------
 
 /// Per-session user agent strings set by TypeScript at platform connect time,
-/// plus a shared rquest HTTP client with persistent connection pooling.
+/// plus a shared wreq HTTP client with persistent connection pooling.
 struct CaptureState {
     fb_user_agent: std::sync::Mutex<String>,
     ig_user_agent: std::sync::Mutex<String>,
@@ -3374,18 +3374,18 @@ struct CaptureState {
     medium_user_agent: std::sync::Mutex<String>,
     scraper_session: Arc<tokio::sync::Mutex<()>>,
     background_runtime: Arc<BackgroundRuntimeCoordinator>,
-    x_client: rquest::Client,
+    x_client: wreq::Client,
 }
 
 impl CaptureState {
     fn new() -> Self {
-        // rquest 5.x uses rquest_util::Emulation for Chrome TLS fingerprinting.
-        let x_client = rquest::Client::builder()
-            .emulation(rquest_util::Emulation::Chrome131)
+        // wreq 5.x uses wreq_util::Emulation for Chrome TLS fingerprinting.
+        let x_client = wreq::Client::builder()
+            .emulation(wreq_util::Emulation::Chrome131)
             .no_proxy()
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .expect("Failed to build rquest client");
+            .expect("Failed to build wreq client");
 
         Self {
             fb_user_agent: std::sync::Mutex::new(String::new()),
@@ -5503,7 +5503,7 @@ async fn x_api_request(
     headers: Vec<(String, String)>,
     method: Option<String>,
 ) -> Result<String, String> {
-    // Use the shared rquest client (Chrome TLS fingerprint, persistent connection pool).
+    // Use the shared wreq client (Chrome TLS fingerprint, persistent connection pool).
     let client = &capture.x_client;
 
     let req_builder = if method.as_deref() == Some("GET") {
