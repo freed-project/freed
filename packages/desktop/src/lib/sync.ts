@@ -8,6 +8,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { workerCloudMerge } from "./cloud-merge";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import {
   gdriveUploadSafe,
@@ -2170,7 +2171,12 @@ async function runCloudUpload(
     if (provider === "gdrive") {
       const result = options.authoritativeReplace
         ? await gdriveUploadReplace(uploadToken, binary, googleDriveFetch)
-        : await gdriveUploadSafe(uploadToken, binary, googleDriveFetch);
+        : await gdriveUploadSafe(
+            uploadToken,
+            binary,
+            googleDriveFetch,
+            workerCloudMerge,
+          );
       if (!isCloudGenerationCurrent(provider, options.generation)) return;
       if (result.mergedRemote) {
         markCloudAttempt(provider, "merge", "Merging remote data discovered during upload.");
@@ -2198,7 +2204,7 @@ async function runCloudUpload(
       if (options.authoritativeReplace) {
         await dropboxUploadReplace(uploadToken, binary);
       } else {
-        await dropboxUploadSafe(uploadToken, binary);
+        await dropboxUploadSafe(uploadToken, binary, workerCloudMerge);
       }
       if (!isCloudGenerationCurrent(provider, options.generation)) return;
       recordSuccessfulUploadSnapshot(provider, snapshot);

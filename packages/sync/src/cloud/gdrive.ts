@@ -9,7 +9,11 @@
  * Poll interval: 5 s via the Changes API cursor (no long-poll on GDrive).
  */
 
-import { mergeBinaries, delay } from "./merge.js";
+import {
+  delay,
+  inProcessCloudMerge,
+  type CloudMergeStrategy,
+} from "./merge.js";
 
 const FILE_NAME = "freed.automerge";
 const GDRIVE_FILES = "https://www.googleapis.com/drive/v3/files";
@@ -148,12 +152,15 @@ export async function gdriveUploadSafe(
   token: string,
   localBinary: Uint8Array,
   googleFetch: GoogleDriveFetch = fetch,
+  mergeStrategy: CloudMergeStrategy = inProcessCloudMerge,
 ): Promise<CloudUploadResult> {
   const fileId = await ensureFile(token, undefined, googleFetch);
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const { binary: remoteBinary, etag } = await download(token, fileId, undefined, googleFetch);
-    const merged = remoteBinary ? mergeBinaries(localBinary, remoteBinary) : localBinary;
+    const merged = remoteBinary
+      ? await mergeStrategy(localBinary, remoteBinary)
+      : localBinary;
 
     const res = await googleFetch(`${GDRIVE_UPLOAD}/${fileId}?uploadType=media`, {
       method: "PATCH",

@@ -48,6 +48,33 @@ function restorePopulatedFeedAfterBlockedEmptyMerge(
 }
 
 /**
+ * How a caller performs the cloud CRDT merge.
+ *
+ * `mergeBinaries` loads two full documents and merges them, which on the
+ * owner's real 15,846-item document peaks at 1,356 MB. WebAssembly.Memory
+ * grows and never shrinks, so whichever thread runs it keeps that peak as a
+ * permanent floor for the life of the instance.
+ *
+ * Desktop therefore injects a strategy that runs the merge in a worker it
+ * terminates afterward, which is the only way to give the memory back. This
+ * stays an injected strategy rather than an import because packages/sync must
+ * remain storage-agnostic and run in a browser, in Node, and in the PWA, none
+ * of which have the desktop's worker.
+ */
+export type CloudMergeStrategy = (
+  local: Uint8Array,
+  remote: Uint8Array,
+  options?: DestructiveMergeGuardOptions,
+) => Promise<Uint8Array>;
+
+/** Default strategy: merge in the calling thread. */
+export const inProcessCloudMerge: CloudMergeStrategy = async (
+  local,
+  remote,
+  options,
+) => mergeBinaries(local, remote, options);
+
+/**
  * CRDT-merge two raw Automerge binaries and return the merged binary.
  * Neither input is mutated — a fresh document is produced each time.
  */
