@@ -17,12 +17,12 @@
   },
   "dependencies": {
     "@freed/shared": "*",
-    "@automerge/automerge": "^2.2.8",
-    "@automerge/automerge-repo": "^1.2.1",
+    "@automerge/automerge": "^3.3.2",
+    "@automerge/automerge-repo": "^2.5.6",
     "ws": "^8.21.1"
   },
   "devDependencies": {
     "@types/ws": "^8.5.10",
-    "typescript": "^5.3.0"
+    "typescript": "^7.0.2"
   }
 }
