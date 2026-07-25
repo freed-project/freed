@@ -100,11 +100,32 @@ async function proxyFetchBinary(args: Record<string, unknown>): Promise<number[]
   return Array.from(new Uint8Array(await resp.arrayBuffer()));
 }
 
+// Mirrors the real command: bodies cross the IPC boundary as base64, never as
+// a JSON number array. See NativeHttpResponse in src-tauri/src/lib.rs.
+function mockBytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 32_768) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 32_768));
+  }
+  return btoa(binary);
+}
+
+function mockBase64ToBytes(encoded: string): Uint8Array {
+  if (!encoded) return new Uint8Array(0);
+  const binary = atob(encoded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
 async function proxyGoogleDriveRequest(args: Record<string, unknown>): Promise<{
   status: number;
   headers: Array<[string, string]>;
-  body: number[];
+  bodyB64: string;
 }> {
+  const requestBody = typeof args.bodyB64 === "string"
+    ? Array.from(mockBase64ToBytes(args.bodyB64))
+    : [];
   const resp = await fetch("/api/proxy", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -112,13 +133,13 @@ async function proxyGoogleDriveRequest(args: Record<string, unknown>): Promise<{
       url: args.url,
       headers: args.headers ?? [],
       method: args.method ?? "GET",
-      body: args.body ?? [],
+      body: requestBody,
     }),
   });
   return {
     status: resp.status,
     headers: Array.from(resp.headers.entries()),
-    body: Array.from(new Uint8Array(await resp.arrayBuffer())),
+    bodyB64: mockBytesToBase64(new Uint8Array(await resp.arrayBuffer())),
   };
 }
 

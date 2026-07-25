@@ -5228,11 +5228,33 @@ async fn fetch_url(url: String, max_bytes: Option<usize>) -> Result<String, Stri
     Ok(String::from_utf8_lossy(&body).into_owned())
 }
 
+/// Native HTTP response handed back to the renderer.
+///
+/// `body_b64` is base64 rather than `Vec<u8>` on purpose. Tauri serialises a
+/// `Vec<u8>` field as a JSON array of numbers, so a 38 MB cloud document
+/// crossed the IPC boundary as 38 million boxed JS numbers, roughly 300 MB of
+/// renderer heap plus the JSON string Tauri built to carry it. Because WebKit's
+/// allocator does not return that to the OS promptly, every cloud sync ratcheted
+/// the renderer. One base64 string is ~1.33x the byte length and a single
+/// allocation.
 #[derive(serde::Serialize)]
 struct NativeHttpResponse {
     status: u16,
     headers: Vec<(String, String)>,
-    body: Vec<u8>,
+    #[serde(rename = "bodyB64")]
+    body_b64: String,
+}
+
+/// Encode a response body for IPC. See `NativeHttpResponse` for why.
+fn encode_ipc_body(bytes: &[u8]) -> String {
+    base64::engine::general_purpose::STANDARD.encode(bytes)
+}
+
+/// Decode a request body received from the renderer over IPC.
+fn decode_ipc_body(encoded: &str) -> Result<Vec<u8>, String> {
+    base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|e| format!("Invalid base64 request body: {}", e))
 }
 
 fn response_headers(response: &reqwest::Response) -> Vec<(String, String)> {
@@ -5291,7 +5313,7 @@ async fn google_api_request(
     Ok(NativeHttpResponse {
         status,
         headers,
-        body,
+        body_b64: encode_ipc_body(&body),
     })
 }
 
@@ -5301,8 +5323,14 @@ async fn google_drive_request(
     url: String,
     method: Option<String>,
     headers: Option<Vec<(String, String)>>,
-    body: Option<Vec<u8>>,
+    #[allow(non_snake_case)] bodyB64: Option<String>,
 ) -> Result<NativeHttpResponse, String> {
+    // Base64 rather than Vec<u8>: see NativeHttpResponse. Uploading a 38 MB
+    // document as a JSON number array cost the renderer ~300 MB per sync.
+    let body: Option<Vec<u8>> = match bodyB64.as_deref() {
+        Some(encoded) => Some(decode_ipc_body(encoded)?),
+        None => None,
+    };
     let parsed =
         url::Url::parse(&url).map_err(|e| format!("Invalid Google Drive API URL: {}", e))?;
     let allowed_path =
@@ -5352,7 +5380,7 @@ async fn google_drive_request(
     Ok(NativeHttpResponse {
         status,
         headers,
-        body,
+        body_b64: encode_ipc_body(&body),
     })
 }
 
@@ -5415,7 +5443,7 @@ async fn google_oauth_proxy_request(
     Ok(NativeHttpResponse {
         status,
         headers,
-        body,
+        body_b64: encode_ipc_body(&body),
     })
 }
 
