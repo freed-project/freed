@@ -311,11 +311,18 @@ describe("desktop cloud sync auth refresh", () => {
       expect.any(AbortSignal),
       undefined,
     );
+    // The fourth argument is the merge strategy, and it must be the worker one.
+    // Passing it is what keeps A.load x2 + A.merge (measured 1,356 MB peak) off
+    // the renderer's main thread, where WASM growth would be permanent.
     expect(gdriveUploadSafeMock).toHaveBeenCalledWith(
       "valid-access-token",
       expect.any(Uint8Array),
       undefined,
+      expect.any(Function),
     );
+    const passedStrategy = gdriveUploadSafeMock.mock.calls[0]?.[3];
+    expect(passedStrategy).toBeDefined();
+    expect((passedStrategy as { name?: string }).name).toBe("workerCloudMerge");
     expect(updateCloudProviderMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
       statusMessage: "Manual sync requested.",
       pendingReason: "Checking cloud storage, then uploading the local document.",

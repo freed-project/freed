@@ -9,7 +9,11 @@
  * (~1-4 s latency) without continuous polling overhead.
  */
 
-import { mergeBinaries, delay } from "./merge.js";
+import {
+  delay,
+  inProcessCloudMerge,
+  type CloudMergeStrategy,
+} from "./merge.js";
 
 const FILE_NAME = "freed.automerge";
 const DBX_UPLOAD = "https://content.dropboxapi.com/2/files/upload";
@@ -59,10 +63,16 @@ async function download(token: string, signal?: AbortSignal): Promise<DownloadRe
  * Safe upload: download → CRDT-merge → upload with rev check.
  * A `conflict/wrong_rev` response means another device wrote first → retry.
  */
-export async function dropboxUploadSafe(token: string, localBinary: Uint8Array): Promise<void> {
+export async function dropboxUploadSafe(
+  token: string,
+  localBinary: Uint8Array,
+  mergeStrategy: CloudMergeStrategy = inProcessCloudMerge,
+): Promise<void> {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const { binary: remoteBinary, rev } = await download(token);
-    const merged = remoteBinary ? mergeBinaries(localBinary, remoteBinary) : localBinary;
+    const merged = remoteBinary
+      ? await mergeStrategy(localBinary, remoteBinary)
+      : localBinary;
 
     // On first upload (rev is empty) use overwrite; afterwards use update +
     // revision ID so a concurrent write is detected and rejected.
