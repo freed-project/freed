@@ -3,10 +3,21 @@
   "version": "26.7.2500-dev",
   "channel": "dev",
   "dayKey": "26.7.25",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Owner review replaced the heuristic draft: the generated deck and feature list led with scripts-only tooling work (deterministic stability status #1115, debt tracking consolidation #1102) that ships nothing to users.",
+    "Verified v26.7.1501-dev contains no friends-galaxy sources, so this is the first tagged dev build that actually ships the next-generation Friends Galaxy (#1039) plus its live-motion label work (#1111).",
+    "Added user-visible fixes the draft omitted: macOS titlebar centering (#1103), sidebar beta badge placement (#1101), local AI lifecycle notification isolation (#1037), and serialized runtime health writes (#1036).",
+    "Dropped the generated follow-ups: dependabot bumps, an earlier release-prep commit, and a reverse integration are not pending user-facing work. Dependency updates are stated once as a fix.",
+    "Dropped the Facebook group bullet: #1030 only changes packages/desktop/tests/e2e/provider-health.spec.ts in this range, so it is not a user-visible fix here.",
+    "Excluded #1137: it corrects a stale friends graph lane e2e expectation that blocked Dev integration, and changes no shipped behavior.",
+    "Promoted #1134 to a headline feature. Its own worker header records a 1,356 MB merge peak on a 15,846 item document that the main thread previously kept for the process lifetime, because WASM memory never shrinks. That reclaim matters more to real users than any interface change here, so it does not belong under perf trivia.",
+    "Demoted the multi-Desktop request warning to a fix to make room, and summarized #1138 as one renderer memory measurement line rather than a feature, since it changes diagnostics rather than shipped behavior.",
+    "Led the fixes with #1132. Its own module header states that expressing the deferral as 'skip maintenance whenever cloud credentials exist' meant archive pruning never ran at all on a Drive-connected machine, so this is a real unbounded-growth fix rather than a scheduling tweak.",
+    "Excluded #1141 (publish tooling and AGENTS.md) and #1142 (the locality and deletion contract). #1142 classifies fields for storage tiering that has not shipped yet, so it changes no behavior a user can observe in this build."
+  ],
   "generatedAt": "2026-07-25T16:37:15.122Z",
-  "model": "heuristic",
+  "model": "reviewed",
   "source": {
     "channel": "dev",
     "previousPublishedTag": "v26.7.1501-dev",
@@ -110,29 +121,25 @@
     ]
   },
   "release": {
-    "deck": "The locality and deletion contract, deterministic stability status, and bump serialize-javascript and workbox-build",
+    "deck": "Freed Desktop gets the 3D Friends Galaxy, hands the cloud merge its own disposable worker so its peak memory goes back to the system, and starts pruning the archive again on machines with cloud sync connected",
     "features": [
-      "The locality and deletion contract",
-      "Attribute renderer memory against a pre-hydration shell baseline",
-      "Deterministic stability status"
+      "Freed Desktop now renders Friends as a navigable 3D galaxy on WebGPU or WebGL2, keeping billboard labels readable while you pan, zoom, and focus",
+      "Cloud sync now merges in a short-lived worker that Freed shuts down once the merge finishes, so the peak the merge needed goes back to the system instead of staying claimed for as long as the app runs. On a 15,846 item library that peak measured 1,356 MB",
+      "Each device now keeps its own Friends layout, so dragging or pinning a person no longer moves them on your other devices"
     ],
     "fixes": [
-      "Sync and update reliability fixes",
-      "Release build and type-safety cleanup",
-      "Registry test filesystem race removed",
-      "Align Facebook group regression with local state"
+      "Archive pruning runs again on machines with cloud sync connected. It used to be skipped outright whenever cloud credentials existed, so on a Drive-connected machine it never ran at all. It now waits for the first cloud reconciliation and then runs, along with feed-item dedupe and title healing",
+      "Reading priority is now computed on each device instead of being synced, which takes it out of the merged document entirely",
+      "Renderer memory readings now measure against a pre-hydration shell baseline, so the empty window's own footprint no longer counts against loaded content",
+      "Freed now warns when more than one Freed Desktop is registered to make the same provider requests, and lets you acknowledge that warning per device",
+      "Window controls on macOS now sit centered in the Freed titlebar",
+      "Beta badges now stay beside their source names in the sidebar instead of wrapping onto their own line",
+      "The local relay now rejects pairing tokens issued before a factory reset, including sockets that authenticated earlier",
+      "Local AI settings no longer report a model lifecycle change when the on-device classifier only records telemetry",
+      "Runtime health writes are now serialized inside Freed Desktop so concurrent updates cannot interleave",
+      "Bundled Rust and PWA build dependencies moved to current patched versions"
     ],
-    "followUps": [
-      "The provider Gate 2 reaction with artifact-only authority",
-      "Run the cloud CRDT merge in a terminable worker",
-      "Send cloud IPC bodies as base64 instead of a JSON number array",
-      "Bump futures-util from 0.3.31 to 0.3.33 in /packages/desktop/src-tauri",
-      "Consolidate debt tracking in GitHub Issues",
-      "Reverse integrate v26.7.2300 into dev",
-      "Align outcome repair crash fixtures",
-      "Prepare v26.7.1900-dev",
-      "Ship the next-generation Friends Galaxy"
-    ]
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.7.2500-dev\n\nThe locality and deletion contract, deterministic stability status, and bump serialize-javascript and workbox-build\n\n### Features\n\n- The locality and deletion contract\n- Attribute renderer memory against a pre-hydration shell baseline\n- Deterministic stability status\n\n### Fixes\n\n- Sync and update reliability fixes\n- Release build and type-safety cleanup\n- Registry test filesystem race removed\n- Align Facebook group regression with local state\n\n### Follow-ups\n\n- The provider Gate 2 reaction with artifact-only authority\n- Run the cloud CRDT merge in a terminable worker\n- Send cloud IPC bodies as base64 instead of a JSON number array\n- Bump futures-util from 0.3.31 to 0.3.33 in /packages/desktop/src-tauri\n- Consolidate debt tracking in GitHub Issues\n- Reverse integrate v26.7.2300 into dev\n- Align outcome repair crash fixtures\n- Prepare v26.7.1900-dev\n- Ship the next-generation Friends Galaxy\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.2500-dev\n\nFreed Desktop gets the 3D Friends Galaxy, hands the cloud merge its own disposable worker so its peak memory goes back to the system, and starts pruning the archive again on machines with cloud sync connected\n\n### Features\n\n- Freed Desktop now renders Friends as a navigable 3D galaxy on WebGPU or WebGL2, keeping billboard labels readable while you pan, zoom, and focus\n- Cloud sync now merges in a short-lived worker that Freed shuts down once the merge finishes, so the peak the merge needed goes back to the system instead of staying claimed for as long as the app runs. On a 15,846 item library that peak measured 1,356 MB\n- Each device now keeps its own Friends layout, so dragging or pinning a person no longer moves them on your other devices\n\n### Fixes\n\n- Archive pruning runs again on machines with cloud sync connected. It used to be skipped outright whenever cloud credentials existed, so on a Drive-connected machine it never ran at all. It now waits for the first cloud reconciliation and then runs, along with feed-item dedupe and title healing\n- Reading priority is now computed on each device instead of being synced, which takes it out of the merged document entirely\n- Renderer memory readings now measure against a pre-hydration shell baseline, so the empty window's own footprint no longer counts against loaded content\n- Freed now warns when more than one Freed Desktop is registered to make the same provider requests, and lets you acknowledge that warning per device\n- Window controls on macOS now sit centered in the Freed titlebar\n- Beta badges now stay beside their source names in the sidebar instead of wrapping onto their own line\n- The local relay now rejects pairing tokens issued before a factory reset, including sockets that authenticated earlier\n- Local AI settings no longer report a model lifecycle change when the on-device classifier only records telemetry\n- Runtime health writes are now serialized inside Freed Desktop so concurrent updates cannot interleave\n- Bundled Rust and PWA build dependencies moved to current patched versions\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
