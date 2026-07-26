@@ -119,9 +119,16 @@ jobs:
   # when a scheduled shard fails, and when shards are missing while the planner
   # said they were required. A not-applicable plan is the only path to a green
   # gate without shard execution.
+  #
+  # !cancelled() rather than always(), because always() also runs during a
+  # cancelled run. That is what made a superseded or manually cancelled run
+  # report a hard red gate while every shard it managed to finish had passed:
+  # cancellation is the absence of a verdict, not a failing one, and reporting
+  # it as failure taught everyone to read a red gate as noise. A cancelled run
+  # now skips the gate instead, which leaves no verdict rather than a wrong one.
   tooling-smoke:
     name: Tooling smoke
-    if: ${{ always() }}
+    if: ${{ !cancelled() }}
     needs: [tooling-smoke-plan, tooling-smoke-shards, native-acceptance]
     runs-on: ubuntu-latest
     steps:
@@ -134,6 +141,30 @@ jobs:
           NATIVE_REQUIRED: ${{ needs.tooling-smoke-plan.outputs.native }}
           JOB_COUNT: ${{ needs.tooling-smoke-plan.outputs.job-count }}
         run: |
+          # A cancelled dependency can still reach here when individual jobs were
+          # cancelled without the whole run being cancelled. Name it for what it
+          # is: "result was cancelled" next to a pile of green shards is the most
+          # misread signal in this lane, and no diff change fixes it.
+          #
+          # Two different things produce it, and they want opposite responses, so
+          # do not guess between them here. A superseded run just needs running
+          # again. A shard killed by timeout-minutes also reports cancelled, and
+          # re-running that only burns the same ninety minutes a second time; it
+          # needs more shards or a longer budget. Point at both.
+          if [ "$PLAN_RESULT" = "cancelled" ] || [ "$SHARD_RESULT" = "cancelled" ]; then
+            echo "Tooling smoke was cancelled, not failed. No verdict was produced."
+            echo "  planner: $PLAN_RESULT, shards: $SHARD_RESULT"
+            echo ""
+            echo "Check the shard durations before re-running:"
+            echo "  - Any shard sitting at exactly the job timeout was killed, not"
+            echo "    cancelled by a newer run. Re-running reproduces it. That suite"
+            echo "    needs more shards, which means fixing its entry in"
+            echo "    scripts/tooling-smoke-durations.json or raising the job budget."
+            echo "  - Otherwise a newer run superseded this one and re-running is"
+            echo "    the whole fix. Nothing in the diff needs changing."
+            exit 1
+          fi
+
           if [ "$PLAN_RESULT" != "success" ]; then
             echo "Tooling smoke planner did not succeed: $PLAN_RESULT"
             exit 1
