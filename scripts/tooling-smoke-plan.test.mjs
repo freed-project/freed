@@ -113,18 +113,23 @@ test("the source-size fallback predicts nothing rather than comparing bytes to s
   assert.equal(projected.predictedFrom, "size");
 });
 
-test("the real plan reports the overrun this repository currently has", () => {
-  // Reads the checked-in durations file rather than a fixture, so if the
-  // outcome-ledger-repair cost is ever genuinely fixed and re-measured, this
-  // test fails and someone has to decide whether the guard is still needed.
+test("the real plan fits every suite inside the shard timeout", () => {
+  // This used to assert the opposite, that the repository had a live overrun,
+  // and invited whoever fixed it to decide whether the guard was still needed.
+  // outcome-ledger-repair has since been re-measured from a run where all
+  // eight of its shards completed, 17,266s against the 5,415s floor a killed
+  // shard had left behind, and the job budget was raised to 12 so the
+  // allocator can actually spread it.
+  //
+  // Kept pointing at the checked-in durations file rather than a fixture, and
+  // simply flipped. Under-shard any suite again, by understating a duration or
+  // by lowering the budget, and this fails.
   const plan = buildToolingSmokeMatrix({ changedFiles: [] });
   assert.ok(plan.projection.length > 0);
-  assert.deepEqual(plan.overrunSuites, ["outcome-ledger-repair"]);
+  assert.deepEqual(plan.overrunSuites, []);
   assert.equal(plan.shardTimeoutSeconds, DEFAULT_SHARD_TIMEOUT_SECONDS);
 
-  // Every other suite has a real measurement and is expected to fit.
   for (const entry of plan.projection) {
-    if (entry.suite === "outcome-ledger-repair") continue;
     assert.equal(entry.fits, true, `${entry.suite} was expected to fit`);
     assert.equal(entry.predictedFrom, "measured");
   }
@@ -135,7 +140,19 @@ test("the plan still schedules work when a suite is predicted to overrun", () =>
   // lane outage, and the shards do produce real signal before they are killed.
   // The guard exists to make the overrun visible and attributable, not to stop
   // the lane. Changing this to a hard failure is a policy decision.
-  const plan = buildToolingSmokeMatrix({ changedFiles: [] });
+  //
+  // Driven from a fixture now that the real durations file no longer overruns.
+  // The behaviour still needs covering: it is what the lane does the next time
+  // a suite outgrows its budget.
+  const plan = buildToolingSmokeMatrix({
+    changedFiles: [],
+    maxJobs: 2,
+    durations: {
+      suites: {
+        "outcome-ledger-repair": { seconds: 100_000, runs: 1 },
+      },
+    },
+  });
   assert.ok(plan.overrunSuites.includes("outcome-ledger-repair"));
   assert.equal(plan.applicable, true);
   assert.ok(
