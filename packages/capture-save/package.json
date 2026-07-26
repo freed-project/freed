@@ -25,7 +25,7 @@
   },
   "devDependencies": {
     "@types/jsdom": "^21.1.6",
-    "@types/jszip": "^3.4.0",
+    "@types/jszip": "^3.4.1",
     "typescript": "^5.3.0"
   }
 }
