@@ -289,8 +289,15 @@ function useDataFlow(layout: (typeof LAYOUT)["desktop"]) {
   );
   const nextId = useRef(0);
   const frameRef = useRef<number>(0);
+  // spawnParticle runs from an interval rather than from render, so it reads the
+  // layout through a ref to stay stable instead of tearing down the frame loop
+  // every time the breakpoint changes. Sync the ref after commit: assigning it
+  // during render is what react-hooks flags, and the interval cannot observe the
+  // value until after commit anyway.
   const layoutRef = useRef(layout);
-  layoutRef.current = layout;
+  useEffect(() => {
+    layoutRef.current = layout;
+  }, [layout]);
 
   const pulseCapture = useCallback((index: number) => {
     setCapturePulseKeys((prev) => {
