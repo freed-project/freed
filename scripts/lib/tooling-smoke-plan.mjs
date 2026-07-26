@@ -285,7 +285,30 @@ export function selectNativeAcceptance(
 }
 
 export const DURATIONS_FILE = "scripts/tooling-smoke-durations.json";
-export const DEFAULT_MAX_JOBS = 8;
+
+/**
+ * Total shard jobs the lane may schedule.
+ *
+ * 12, not 8. At 8 the allocator could not fit the measured suites inside the
+ * 90 minute shard timeout no matter how it spread them: outcome-ledger-repair
+ * needs at least 4 shards and general at least 2, and the arithmetic only
+ * closes from 10 upward. Every npm dependency PR selects all four suites,
+ * because package-lock.json is a global tooling input, so an unfittable budget
+ * meant the gate was structurally red for the entire class.
+ *
+ * This raises parallelism, not the clock. Issue #1147 rules out a longer
+ * `timeout-minutes` because that hides the cost and finds out later; splitting
+ * further keeps total runner seconds flat, adds only per-job setup, and lets
+ * the suite actually finish, which is also the only way its duration entry can
+ * ever be a measurement instead of a timeout floor.
+ *
+ * It is a mitigation and not the fix. outcome-ledger-repair is ~4.8 hours of
+ * work because it spawns a pinned Python interpreter per lease-archive
+ * operation, roughly 466 of them per test. Cutting that is #1147 and it
+ * touches a deliberate security boundary. Once it lands this should come back
+ * down.
+ */
+export const DEFAULT_MAX_JOBS = 12;
 
 /**
  * The `timeout-minutes` on a tooling smoke shard job, in seconds. Kept here so
