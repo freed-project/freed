@@ -618,6 +618,32 @@ test("filter menu interface zoom slider persists locally", async ({ app, page })
   await expect.poll(() => page.evaluate(() =>
     Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize),
   )).toBeGreaterThan(baseFontSize * 1.4);
+
+  // The root font size applies instantly, but the sidebar width is a CSS
+  // transition (120-300ms depending on animation intensity). Measuring as soon
+  // as the font has grown reads a sidebar that is still mid-animation: narrower
+  // than its final width, with the text already at full size, so labels appear
+  // clipped when they will fit perfectly a frame later.
+  //
+  // This is why the clippedLabels assertion below failed intermittently, and
+  // only under load: the width assertion still passed, because a partly-grown
+  // sidebar is already past 1.25x on its way to 1.5x. Wait for the width to
+  // stop changing before reading any geometry.
+  await expect.poll(async () => {
+    const first = await page.evaluate(() =>
+      Math.round(
+        document.querySelector('[data-testid="app-sidebar"]')?.getBoundingClientRect().width ?? -1,
+      ),
+    );
+    await page.waitForTimeout(80);
+    const second = await page.evaluate(() =>
+      Math.round(
+        document.querySelector('[data-testid="app-sidebar"]')?.getBoundingClientRect().width ?? -1,
+      ),
+    );
+    return first === second && first > 0 ? first : null;
+  }, { timeout: 5_000 }).not.toBeNull();
+
   const zoomedGeometry = await page.evaluate(() => {
     const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
     const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
