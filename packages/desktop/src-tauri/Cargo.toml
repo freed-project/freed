@@ -26,10 +26,14 @@ log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 window-vibrancy = "0.8"
-# default-features = false drops native-tls (OpenSSL) which conflicts with rquest's BoringSSL on Linux.
+# default-features = false drops native-tls (OpenSSL) which conflicts with wreq's BoringSSL on Linux.
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-rquest = { version = "5", features = ["json"] }
-rquest-util = "2"
+# wreq is rquest renamed. The author renamed the crate and yanked every rquest
+# release, all 152 of them, so `rquest = "5"` no longer resolves at all and any
+# fresh dependency resolution fails outright. Version numbering carried straight
+# over: rquest 5.1.0 is wreq 5.1.0, and 5.3.0 continues that line.
+wreq = { version = "5.3", features = ["json"] }
+wreq-util = "2.2"
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = "0.30"
 futures-util = "0.3"
