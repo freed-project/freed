@@ -289,12 +289,24 @@ export const DURATIONS_FILE = "scripts/tooling-smoke-durations.json";
 /**
  * Total shard jobs the lane may schedule.
  *
- * 12, not 8. At 8 the allocator could not fit the measured suites inside the
- * 90 minute shard timeout no matter how it spread them: outcome-ledger-repair
- * needs at least 4 shards and general at least 2, and the arithmetic only
- * closes from 10 upward. Every npm dependency PR selects all four suites,
- * because package-lock.json is a global tooling input, so an unfittable budget
- * meant the gate was structurally red for the entire class.
+ * 16, not 8. At 8 the allocator could not fit the measured suites inside the
+ * 90 minute shard timeout no matter how it spread them. Every npm dependency
+ * PR selects all four suites, because package-lock.json is a global tooling
+ * input, so an unfittable budget meant the gate was structurally red for the
+ * entire class.
+ *
+ * 12 was the first attempt and was not enough. The projection here divides a
+ * suite total by its shard count, which assumes the shards are even, and they
+ * are not: sharding is per test file, so one heavy file dominates. Measured
+ * gap between projection and the actual worst shard is about 1.5x. At 12 that
+ * left `general` on two shards running 82 to 90 minutes against a 90 minute
+ * cap across eight consecutive runs. It passed at 89 minutes once and was
+ * killed at 90 the next time, which is a coin flip, not a gate.
+ *
+ * 16 gives general a third shard, which isolates its heavy file at about 66
+ * minutes, and gives kernel-guard-cutover a second. That is the practical
+ * floor: the largest single test file in `general` is ~66 minutes on its own
+ * and no shard count splits it further.
  *
  * This raises parallelism, not the clock. Issue #1147 rules out a longer
  * `timeout-minutes` because that hides the cost and finds out later; splitting
@@ -308,7 +320,7 @@ export const DURATIONS_FILE = "scripts/tooling-smoke-durations.json";
  * touches a deliberate security boundary. Once it lands this should come back
  * down.
  */
-export const DEFAULT_MAX_JOBS = 12;
+export const DEFAULT_MAX_JOBS = 16;
 
 /**
  * The `timeout-minutes` on a tooling smoke shard job, in seconds. Kept here so
