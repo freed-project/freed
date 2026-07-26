@@ -17,11 +17,11 @@
       "source": "ci-shards 3985+4704"
     },
     "kernel-guard-cutover": {
-      "seconds": 3648,
+      "seconds": 4800,
       "runs": 1,
       "failures": 0,
       "flaky": false,
-      "source": "ci-shard 3648 (single shard, completed)"
+      "source": "ci-shard 4800 (single shard, 80 min, observed 2026-07-25). Replaces 3648s, which was a third low and left this suite one shard away from the 90 minute cap."
     },
     "outcome-ledger-repair": {
       "seconds": 17266,
