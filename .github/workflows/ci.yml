@@ -62,7 +62,7 @@ jobs:
           {
             echo "### Tooling smoke plan"
             echo ""
-            echo "- jobs: ${{ steps.plan.outputs.job-count }} (cap 8, was a fixed 32)"
+            echo "- jobs: ${{ steps.plan.outputs.job-count }} (cap 12, was a fixed 32)"
             echo "- reason: ${{ steps.plan.outputs.reason }}"
             echo "- native acceptance lane: ${{ steps.plan.outputs.native }}"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -76,10 +76,15 @@ jobs:
     # 90 minutes, matching the pre-planner lane, NOT a shorter budget.
     #
     # Fewer shards means each one does more work. The old lane ran 32 shards at
-    # 90 minutes; capping at 8 quadruples the work per shard, so halving the
+    # 90 minutes; a cap of 12 still concentrates the work, so halving the
     # timeout was exactly backwards. A first attempt at 45 minutes killed
     # kernel-guard-cutover mid-run at 45:54 with every test passing, which reads
     # as a test failure and is not one.
+    #
+    # The cap was 8 until outcome-ledger-repair was re-measured. At 8 the
+    # allocator could not fit the measured suites under this timeout at all, so
+    # every PR touching package-lock.json was structurally red. See
+    # DEFAULT_MAX_JOBS in scripts/lib/tooling-smoke-plan.mjs.
     #
     # This is a ceiling for the full lane, not a target. Ordinary PRs select
     # zero or one suite and finish in minutes; only a scripts/ change or a push
