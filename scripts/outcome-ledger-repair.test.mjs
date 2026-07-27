@@ -2221,7 +2221,7 @@ test("repair and completed recovery keep lease helper work inside a finite budge
     `initial repair: ${repairHelperCalls.toLocaleString()} helper calls in ${repairDurationMs.toLocaleString()} ms`,
   );
   assert.ok(
-    repairHelperCalls > 0 && repairHelperCalls <= 400,
+    repairHelperCalls > 0 && repairHelperCalls <= 320,
     `initial repair used ${repairHelperCalls.toLocaleString()} lease helper calls`,
   );
 
@@ -2240,7 +2240,7 @@ test("repair and completed recovery keep lease helper work inside a finite budge
     `completed recovery: ${recoveryHelperCalls.toLocaleString()} helper calls in ${recoveryDurationMs.toLocaleString()} ms`,
   );
   assert.ok(
-    recoveryHelperCalls > 0 && recoveryHelperCalls <= 64,
+    recoveryHelperCalls > 0 && recoveryHelperCalls <= 56,
     `completed recovery used ${recoveryHelperCalls.toLocaleString()} lease helper calls`,
   );
 });

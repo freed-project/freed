@@ -695,7 +695,10 @@ and archive listings are relative to held directory descriptors. The
 destination directory is synced before the source directory. Missing native
 syscalls, directory sync, local filesystem admission, or exact readback fail
 closed. Its admitted operations are `rename-durable`, `exchange-durable`,
-`retire-directory-durable`, and `list-bounded`. General actor runtime schema v3
+`retire-directory-durable`, `list-bounded`, and `list-bounded-batch`. Capacity
+accounting uses one descriptor-bound batch snapshot before inspecting archive
+entries and one after. This preserves the exact-generation comparison without
+launching a separate pinned interpreter for every directory. General actor runtime schema v3
 copies and digests the helper, the kernel guard contract, and the outcome ledger
 repair contract beside the pinned control library. The installed control entry
 must load from that content-addressed runtime without access to the source
