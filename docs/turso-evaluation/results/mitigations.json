@@ -1,0 +1,52 @@
+{
+ "corpusRows": 110922,
+ "corpusTextMB": 160,
+ "sidecarBuild": {
+  "val": {
+   "copyMs": 959,
+   "indexMs": 6284,
+   "climateHits": 644,
+   "sidecarMB": 371.3
+  },
+  "ms": 7460,
+  "beforeMB": 253.1,
+  "peakMB": 965.4,
+  "deltaMB": 712.3,
+  "samples": 632
+ },
+ "sidecarQuery": {
+  "climate": {
+   "p50": 1.19,
+   "p95": 1.26
+  },
+  "that": {
+   "p50": 1.38,
+   "p95": 1.53
+  },
+  "zzznotfound": {
+   "p50": 1.09,
+   "p95": 1.17
+  }
+ },
+ "rebuildAndSwap": {
+  "rebuildMs": 7746,
+  "rebuildPeakDeltaMB": 109.6,
+  "queriesServedDuringRebuild": 17,
+  "queriesFailedDuringRebuild": 0,
+  "maxQueryLatencyDuringRebuildMs": 1.78,
+  "swapMs": 247,
+  "climateHitsAfterSwap": 1144,
+  "burstHitsAfterSwap": 780
+ },
+ "pureTursoDML": {
+  "dmlMs": 361,
+  "tursoCount": 32000,
+  "tursoIntegrity": "{\"integrity_check\":\"ok\"}",
+  "sqliteCount": 32000,
+  "sqliteFullScanCount": 32000,
+  "sqliteIndexScanCount": 32000,
+  "sqlitePkProbe": 1,
+  "sqliteIntegrity": "[{\"integrity_check\":\"ok\"}]",
+  "AGREE": true
+ }
+}
