@@ -221,11 +221,10 @@ jobs:
     needs: tooling-smoke-plan
     if: needs.tooling-smoke-plan.outputs.native == 'true'
     runs-on: macos-latest
-    # 60, not 30. Measured on a hosted macOS runner the publish tests take
-    # 175-250s each, and this lane currently re-runs all 35 of them even though
-    # only 7 are darwin-gated. Issue #1133 tracks narrowing the lane to the
-    # darwin-only subset, which is the real fix; this is the honest budget until
-    # then. The lane is observe-only, so a slow run costs time, not a red gate.
+    # The runner executes the three fully Darwin-gated files plus the seven
+    # Darwin-gated cases from worktree-publish.test.mjs. The other publication
+    # cases already run in the Linux tooling lane and do not need a second pass
+    # on the scarce macOS runner.
     timeout-minutes: 60
     steps:
       - name: Checkout

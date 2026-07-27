@@ -119,6 +119,8 @@ const TOOLING_SMOKE_RUNNER_PATHS = new Set([
   "scripts/measure-tooling-smoke.mjs",
   "scripts/measure-tooling-smoke.test.mjs",
   "scripts/plan-tooling-smoke.mjs",
+  "scripts/run-native-acceptance.mjs",
+  "scripts/run-native-acceptance.test.mjs",
   "scripts/run-tooling-smoke-shard.mjs",
   "scripts/run-tooling-smoke-shard.test.mjs",
   "scripts/tooling-smoke-plan.test.mjs",
@@ -951,6 +953,7 @@ export function buildValidationPlan(mode, changedFiles) {
       nodeCommand("tooling smoke runner tests", [
         "--test",
         path.join("scripts", "measure-tooling-smoke.test.mjs"),
+        path.join("scripts", "run-native-acceptance.test.mjs"),
         path.join("scripts", "tooling-smoke-plan.test.mjs"),
         path.join("scripts", "run-tooling-smoke-shard.test.mjs"),
       ]),

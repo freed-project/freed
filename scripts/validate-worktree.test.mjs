@@ -367,6 +367,8 @@ test("feature plan routes tooling smoke workflow and helper changes through focu
     ".github/workflows/ci.yml",
     "scripts/measure-tooling-smoke.mjs",
     "scripts/measure-tooling-smoke.test.mjs",
+    "scripts/run-native-acceptance.mjs",
+    "scripts/run-native-acceptance.test.mjs",
     "scripts/run-tooling-smoke-shard.mjs",
     "scripts/run-tooling-smoke-shard.test.mjs",
   ];
@@ -385,6 +387,7 @@ test("feature plan routes tooling smoke workflow and helper changes through focu
   assert.deepEqual(runnerTests.args, [
     "--test",
     "scripts/measure-tooling-smoke.test.mjs",
+    "scripts/run-native-acceptance.test.mjs",
     "scripts/tooling-smoke-plan.test.mjs",
     "scripts/run-tooling-smoke-shard.test.mjs",
   ]);
