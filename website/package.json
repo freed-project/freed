@@ -20,7 +20,7 @@
     "@floating-ui/react": "^0.27.20",
     "@freed/shared": "*",
     "@freed/ui": "*",
-    "@radix-ui/react-tooltip": "^1.2.15",
+    "@radix-ui/react-tooltip": "^1.2.16",
     "feed": "^5.2.0",
     "framer-motion": "^12.42.2",
     "next": "^15.5.21",
