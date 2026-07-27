@@ -3,7 +3,7 @@
   "version": "26.7.2701-dev",
   "channel": "dev",
   "dayKey": "26.7.27",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-07-27T18:23:33.854Z",
   "model": "heuristic",
@@ -179,21 +179,21 @@
     ]
   },
   "release": {
-    "deck": "Project feed items to flat rows with a losslessness proof, the locality and deletion contract, and sync, cloud, and pairing infrastructure",
+    "deck": "Lays the measured foundation for moving the corpus out of the renderer, reduces cloud merge overhead, and hardens sync and automation",
     "features": [
-      "Project feed items to flat rows with a losslessness proof",
-      "The locality and deletion contract",
-      "Attribute renderer memory against a pre-hydration shell baseline"
+      "Adds renderer memory attribution against a pre-hydration shell baseline",
+      "Defines item locality and deletion semantics with a lossless flat feed projection",
+      "Moves cloud merges off the main thread and replaces JSON number arrays with compact IPC bodies"
     ],
     "fixes": [
-      "Release build and type-safety cleanup",
-      "Sync the roadmap layout ref after commit instead of during render",
-      "Defer archive pruning to cloud reconciliation instead of skipping it",
-      "Registry test filesystem race removed",
-      "Recognize historical cloud promotions",
-      "Align Facebook group regression with local state"
+      "Runs archive pruning after cloud reconciliation instead of skipping it",
+      "Stabilizes local AI health, runtime health, and renderer recovery accounting",
+      "Hardens automation control, release validation, and dependency safety",
+      "Keeps Friends Galaxy labels live during motion"
     ],
-    "followUps": []
+    "followUps": [
+      "Facebook and Instagram may still pause at the WebKit memory gate. The corpus remains resident in Automerge until the storage migration removes it from the renderer."
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.7.2701-dev\n\nProject feed items to flat rows with a losslessness proof, the locality and deletion contract, and sync, cloud, and pairing infrastructure\n\n### Features\n\n- Project feed items to flat rows with a losslessness proof\n- The locality and deletion contract\n- Attribute renderer memory against a pre-hydration shell baseline\n\n### Fixes\n\n- Release build and type-safety cleanup\n- Sync the roadmap layout ref after commit instead of during render\n- Defer archive pruning to cloud reconciliation instead of skipping it\n- Registry test filesystem race removed\n- Recognize historical cloud promotions\n- Align Facebook group regression with local state\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.2701-dev\n\nLays the measured foundation for moving the corpus out of the renderer, reduces cloud merge overhead, and hardens sync and automation\n\n### Features\n\n- Adds renderer memory attribution against a pre-hydration shell baseline\n- Defines item locality and deletion semantics with a lossless flat feed projection\n- Moves cloud merges off the main thread and replaces JSON number arrays with compact IPC bodies\n\n### Fixes\n\n- Runs archive pruning after cloud reconciliation instead of skipping it\n- Stabilizes local AI health, runtime health, and renderer recovery accounting\n- Hardens automation control, release validation, and dependency safety\n- Keeps Friends Galaxy labels live during motion\n\n### Follow-ups\n\n- Facebook and Instagram may still pause at the WebKit memory gate. The corpus remains resident in Automerge until the storage migration removes it from the renderer.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
