@@ -1909,18 +1909,12 @@ export function withAutomationOutcomeLedgerWriterGuard(
         paths.stateRoot,
         context,
       );
-      OUTCOME_WRITER_AUTHORITY_SNAPSHOT_CACHES.set(context, new Map());
-      OUTCOME_WRITER_LEASE_HISTORY_CACHES.set(context, null);
-      OUTCOME_WRITER_DIRECTORY_CHILD_PROOF_CACHES.set(context, new Set());
-      OUTCOME_WRITER_DIRECTORY_NAME_CACHES.set(context, new Map());
+      openAuthorityCacheScope(paths.stateRoot, context);
       try {
         return operation(context);
       } finally {
         active = false;
-        OUTCOME_WRITER_AUTHORITY_SNAPSHOT_CACHES.delete(context);
-        OUTCOME_WRITER_LEASE_HISTORY_CACHES.delete(context);
-        OUTCOME_WRITER_DIRECTORY_CHILD_PROOF_CACHES.delete(context);
-        OUTCOME_WRITER_DIRECTORY_NAME_CACHES.delete(context);
+        closeAuthorityCacheScope(paths.stateRoot, context);
         ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT.delete(paths.stateRoot);
         ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS.delete(context);
       }
@@ -2002,8 +1996,56 @@ function withFilesystemGuard(
 
 const ACTIVE_AUTOMATION_EVENTS_GUARDS = new WeakSet();
 const ACTIVE_AUTOMATION_EVENTS_GUARDS_BY_ROOT = new Map();
+// Authority read caches hang off whichever exclusive kernel-guard scope is
+// active for a state root. The outcome ledger writer guard was the first such
+// scope; the automation events guard is the second. Both hold an exclusive
+// kernel file guard for the whole scope, both are single-instance per state
+// root, and both drop their caches when the scope unwinds, so a cached
+// generation can never outlive the guard that admitted it.
+const ACTIVE_AUTHORITY_CACHE_SCOPES_BY_ROOT = new Map();
 const AUTOMATION_EVENTS_GUARD_STAGE_ADMISSIONS = new WeakMap();
 const OUTCOME_REPAIR_OWNER_LEASE_BYPASSES = new WeakMap();
+
+function openAuthorityCacheScope(stateRoot, scope) {
+  OUTCOME_WRITER_AUTHORITY_SNAPSHOT_CACHES.set(scope, new Map());
+  OUTCOME_WRITER_LEASE_HISTORY_CACHES.set(scope, null);
+  OUTCOME_WRITER_DIRECTORY_CHILD_PROOF_CACHES.set(scope, new Set());
+  OUTCOME_WRITER_DIRECTORY_NAME_CACHES.set(scope, new Map());
+  const stack = ACTIVE_AUTHORITY_CACHE_SCOPES_BY_ROOT.get(stateRoot);
+  if (stack === undefined) {
+    ACTIVE_AUTHORITY_CACHE_SCOPES_BY_ROOT.set(stateRoot, [scope]);
+    return;
+  }
+  stack.push(scope);
+}
+
+function closeAuthorityCacheScope(stateRoot, scope) {
+  OUTCOME_WRITER_AUTHORITY_SNAPSHOT_CACHES.delete(scope);
+  OUTCOME_WRITER_LEASE_HISTORY_CACHES.delete(scope);
+  OUTCOME_WRITER_DIRECTORY_CHILD_PROOF_CACHES.delete(scope);
+  OUTCOME_WRITER_DIRECTORY_NAME_CACHES.delete(scope);
+  const stack = ACTIVE_AUTHORITY_CACHE_SCOPES_BY_ROOT.get(stateRoot);
+  if (stack === undefined) return;
+  const index = stack.lastIndexOf(scope);
+  if (index !== -1) stack.splice(index, 1);
+  if (stack.length === 0) {
+    ACTIVE_AUTHORITY_CACHE_SCOPES_BY_ROOT.delete(stateRoot);
+  }
+}
+
+// An outcome ledger writer context keeps its own cache for the whole guard, so
+// it stays the preferred scope whenever one is active for the root. That keeps
+// writer-guard behavior byte for byte identical and confines the widened
+// caching to the events-guard scopes that previously had none.
+function activeAuthorityCacheScopeForRoot(stateRoot) {
+  const writerContext =
+    ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT.get(stateRoot);
+  if (writerContext !== undefined) return writerContext;
+  const stack = ACTIVE_AUTHORITY_CACHE_SCOPES_BY_ROOT.get(stateRoot);
+  return stack === undefined || stack.length === 0
+    ? null
+    : stack[stack.length - 1];
+}
 
 function requireActiveAutomationEventsGuard(token) {
   if (
@@ -2049,6 +2091,7 @@ function withActiveAutomationEventsGuard(
       }
       ACTIVE_AUTOMATION_EVENTS_GUARDS.add(token);
       ACTIVE_AUTOMATION_EVENTS_GUARDS_BY_ROOT.set(paths.stateRoot, token);
+      openAuthorityCacheScope(paths.stateRoot, token);
       try {
         if (authorizeOutcomeRepairBypass !== null) {
           if (typeof authorizeOutcomeRepairBypass !== "function") {
@@ -2087,6 +2130,7 @@ function withActiveAutomationEventsGuard(
         }
         return result;
       } finally {
+        closeAuthorityCacheScope(paths.stateRoot, token);
         AUTOMATION_EVENTS_GUARD_STAGE_ADMISSIONS.delete(token);
         ACTIVE_AUTOMATION_EVENTS_GUARDS_BY_ROOT.delete(paths.stateRoot);
         OUTCOME_REPAIR_OWNER_LEASE_BYPASSES.delete(token);
@@ -15274,13 +15318,10 @@ function automationAuthoritySnapshotGenerationFingerprint(filePath) {
   return before === after ? digestBytes(Buffer.from(after, "utf8")) : null;
 }
 
-function activeOutcomeWriterContextForPath(filePath) {
-  let matchingContext = null;
+function longestActiveStateRootForPath(filePath, stateRoots) {
+  let matchingRoot = null;
   let matchingRootLength = -1;
-  for (const [
-    stateRoot,
-    context,
-  ] of ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT) {
+  for (const stateRoot of stateRoots) {
     const relative = path.relative(stateRoot, filePath);
     if (
       relative !== "" &&
@@ -15289,11 +15330,34 @@ function activeOutcomeWriterContextForPath(filePath) {
       !path.isAbsolute(relative) &&
       stateRoot.length > matchingRootLength
     ) {
-      matchingContext = context;
+      matchingRoot = stateRoot;
       matchingRootLength = stateRoot.length;
     }
   }
-  return matchingContext;
+  return matchingRoot;
+}
+
+function activeAuthorityCacheScopeForPath(filePath) {
+  const stateRoot = longestActiveStateRootForPath(
+    filePath,
+    ACTIVE_AUTHORITY_CACHE_SCOPES_BY_ROOT.keys(),
+  );
+  return stateRoot === null
+    ? null
+    : activeAuthorityCacheScopeForRoot(stateRoot);
+}
+
+// Private batch re-admission skips a pinned-helper verification outright rather
+// than reusing an already-admitted value, so it stays bound to the outcome
+// ledger writer guard that originally admitted the skip.
+function activeOutcomeLedgerWriterContextForPath(filePath) {
+  const stateRoot = longestActiveStateRootForPath(
+    filePath,
+    ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT.keys(),
+  );
+  return stateRoot === null
+    ? null
+    : (ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT.get(stateRoot) ?? null);
 }
 
 function cloneAutomationAuthoritySnapshot(snapshot) {
@@ -15318,7 +15382,7 @@ function readAutomationAuthorityFileSnapshotWithPolicy(
       label,
       invalidCode,
     );
-  const context = activeOutcomeWriterContextForPath(normalizedFilePath);
+  const context = activeAuthorityCacheScopeForPath(normalizedFilePath);
   const helperTestPause = options?.helperTestPause;
   if (context === null || helperTestPause !== undefined) {
     return readAutomationAuthorityFileSnapshotWithPolicyUncached(
@@ -17117,10 +17181,8 @@ function leaseAuthorityTreeGenerationFingerprint(paths) {
 }
 
 function inspectLeaseTransactionEventHistoryForPlanning(paths, events) {
-  const context = ACTIVE_OUTCOME_LEDGER_WRITER_CONTEXTS_BY_ROOT.get(
-    paths.stateRoot,
-  );
-  if (context === undefined) {
+  const context = activeAuthorityCacheScopeForRoot(paths.stateRoot);
+  if (context === null) {
     return inspectLeaseTransactionEventHistoryInternal({
       stateRoot: paths.stateRoot,
       events,
@@ -20251,7 +20313,7 @@ function requirePinnedLeaseArchiveDirectoryChild(helper, parent, child, label) {
   }
   assertPinnedLeaseArchiveDirectory(parent);
   assertPinnedLeaseArchiveDirectory(child);
-  const writerContext = activeOutcomeWriterContextForPath(parent.path);
+  const writerContext = activeAuthorityCacheScopeForPath(parent.path);
   const proofCache =
     writerContext === null
       ? undefined
@@ -21334,7 +21396,7 @@ function requirePrivateBatchInventoryUnchanged(
     }
   };
   if (
-    activeOutcomeWriterContextForPath(directory.path) !== null &&
+    activeOutcomeLedgerWriterContextForPath(directory.path) !== null &&
     currentGenerationMatches() &&
     currentGenerationMatches()
   ) {
@@ -21388,7 +21450,7 @@ function automationPlanningReadNames(
       return null;
     }
   };
-  const context = activeOutcomeWriterContextForPath(directory.path);
+  const context = activeAuthorityCacheScopeForPath(directory.path);
   const cache =
     context === null
       ? undefined
