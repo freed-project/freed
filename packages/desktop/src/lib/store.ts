@@ -123,7 +123,11 @@ import { initLiAuth, storeLiAuthState, type LiAuthState } from "./li-auth";
 import { initSubstackAuth, type SubstackAuthState } from "./substack-auth";
 import { initMediumAuth, type MediumAuthState } from "./medium-auth";
 import { initYouTubeAuth, type YouTubeAuthState } from "./youtube-auth";
-import { recordDocumentHydrated } from "./memory-monitor";
+import {
+  captureShellMemoryBaseline,
+  recordDocumentHydrated,
+  recordDocumentHydrationStarted,
+} from "./memory-monitor";
 import { onCloudReconciled } from "./cloud-reconcile-signal";
 import { reconcileSocialAuthStateHints } from "./social-auth-cookie-state";
 import { getOrCreateDesktopClientRegistration } from "./desktop-client-registration";
@@ -695,8 +699,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       try {
         set({ isLoading: true });
 
-        // initDoc() now returns DocState (pre-hydrated, WASM ran in worker).
+        // Prime the empty-shell probe before initDoc materializes the corpus.
+        // This is intentionally fire-and-forget: telemetry must never delay
+        // startup. The hydration-start marker below rejects a late result.
+        void captureShellMemoryBaseline();
         const desktopClientRegistration = await getOrCreateDesktopClientRegistration();
+
+        // initDoc() now returns DocState (pre-hydrated, WASM ran in worker).
+        recordDocumentHydrationStarted();
         assertDesktopStoreWritable();
         const docState = await initDoc(desktopClientRegistration);
         // Closes the shell-baseline window. Any memory sample after this point

@@ -2956,6 +2956,8 @@ struct RuntimeMemoryStats {
 #[serde(rename_all = "camelCase")]
 struct WebkitProcessRuntimeStats {
     process_id: u32,
+    started_at_unix_seconds: u64,
+    started_at_unix_micros: Option<u64>,
     resident_bytes: u64,
     footprint_bytes: Option<u64>,
     virtual_bytes: u64,
@@ -6338,8 +6340,48 @@ fn macos_process_has_open_file_under_roots(pid: u32, roots: &[PathBuf]) -> bool 
         .any(|path| path_is_under_any_root(Path::new(path), roots))
 }
 
-fn webkit_process_started_after_app_start(webkit_age_seconds: u64, app_age_seconds: u64) -> bool {
-    webkit_age_seconds <= app_age_seconds.saturating_add(WEBKIT_PROCESS_START_GRACE_SECONDS)
+fn unix_micros_from_process_start(seconds: u64, microseconds: u64) -> Option<u64> {
+    if seconds == 0 || microseconds >= 1_000_000 {
+        return None;
+    }
+    seconds
+        .checked_mul(1_000_000)
+        .and_then(|value| value.checked_add(microseconds))
+}
+
+#[cfg(target_os = "macos")]
+fn macos_process_started_at_unix_micros(pid: u32) -> Option<u64> {
+    let mut info = MaybeUninit::<libc::proc_bsdinfo>::uninit();
+    let expected_size = std::mem::size_of::<libc::proc_bsdinfo>();
+    let result = unsafe {
+        libc::proc_pidinfo(
+            pid as libc::c_int,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            info.as_mut_ptr().cast(),
+            expected_size as libc::c_int,
+        )
+    };
+    if result != expected_size as libc::c_int {
+        return None;
+    }
+    let info = unsafe { info.assume_init() };
+    unix_micros_from_process_start(info.pbi_start_tvsec, info.pbi_start_tvusec)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn macos_process_started_at_unix_micros(_pid: u32) -> Option<u64> {
+    None
+}
+
+fn webkit_process_started_at_or_after_app(
+    webkit_started_at_unix_micros: Option<u64>,
+    app_started_at_unix_micros: Option<u64>,
+) -> bool {
+    matches!(
+        (webkit_started_at_unix_micros, app_started_at_unix_micros),
+        (Some(webkit), Some(app)) if app > 0 && webkit >= app
+    )
 }
 
 fn webkit_process_started_with_app(webkit_age_seconds: u64, app_age_seconds: u64) -> bool {
@@ -6362,15 +6404,19 @@ fn webkit_process_matches_renderer_uptime(
 
 fn freed_webkit_process_role(
     has_open_file_under_roots: bool,
+    webkit_started_at_unix_micros: Option<u64>,
+    app_started_at_unix_micros: Option<u64>,
     webkit_age_seconds: u64,
     app_age_seconds: u64,
 ) -> Option<&'static str> {
+    if !webkit_process_started_at_or_after_app(
+        webkit_started_at_unix_micros,
+        app_started_at_unix_micros,
+    ) {
+        return None;
+    }
     if has_open_file_under_roots {
-        if webkit_process_started_after_app_start(webkit_age_seconds, app_age_seconds) {
-            Some("freed-webcontent")
-        } else {
-            None
-        }
+        Some("freed-webcontent")
     } else if webkit_process_started_with_app(webkit_age_seconds, app_age_seconds) {
         Some("freed-webcontent-age-matched")
     } else {
@@ -6402,6 +6448,7 @@ fn macos_process_physical_footprint_bytes(_pid: u32) -> Option<u64> {
 fn freed_webkit_memory_stats(
     system: &System,
     roots: &[PathBuf],
+    app_started_at_unix_micros: Option<u64>,
     app_age_seconds: u64,
     precise_attribution: bool,
 ) -> WebkitMemoryStats {
@@ -6421,11 +6468,28 @@ fn freed_webkit_memory_stats(
             }
             let pid_u32 = pid.as_u32();
             let age_seconds = process.run_time();
+            let started_at_unix_seconds = process.start_time();
+            let started_at_unix_micros = macos_process_started_at_unix_micros(pid_u32);
+            // A WebKit process older than Freed cannot belong to this app.
+            // Skip it before lsof so precise startup attribution does not scan
+            // every Safari or unrelated WebKit process on the machine.
+            if precise_attribution
+                && !webkit_process_started_at_or_after_app(
+                    started_at_unix_micros,
+                    app_started_at_unix_micros,
+                )
+            {
+                continue;
+            }
             let has_open_file_under_roots =
                 precise_attribution && macos_process_has_open_file_under_roots(pid_u32, roots);
-            let Some(role) =
-                freed_webkit_process_role(has_open_file_under_roots, age_seconds, app_age_seconds)
-            else {
+            let Some(role) = freed_webkit_process_role(
+                has_open_file_under_roots,
+                started_at_unix_micros,
+                app_started_at_unix_micros,
+                age_seconds,
+                app_age_seconds,
+            ) else {
                 continue;
             };
             let resident = process.memory();
@@ -6439,6 +6503,8 @@ fn freed_webkit_memory_stats(
             process_count += 1;
             let stats = WebkitProcessRuntimeStats {
                 process_id: pid_u32,
+                started_at_unix_seconds,
+                started_at_unix_micros,
                 resident_bytes: resident,
                 footprint_bytes: footprint,
                 virtual_bytes,
@@ -6513,6 +6579,7 @@ fn collect_runtime_memory_stats_with_options(
             )
         })
         .unwrap_or((0, 0, 0));
+    let process_started_at_unix_micros = macos_process_started_at_unix_micros(std::process::id());
     let process_footprint_bytes = macos_process_physical_footprint_bytes(std::process::id());
     system.refresh_processes_specifics(
         ProcessesToUpdate::All,
@@ -6523,6 +6590,7 @@ fn collect_runtime_memory_stats_with_options(
     let webkit = freed_webkit_memory_stats(
         &system,
         &app_storage_roots(app),
+        process_started_at_unix_micros,
         process_age_seconds,
         options.precise_webkit_attribution,
     );
@@ -16563,16 +16631,24 @@ mod tests {
 
     #[test]
     fn webkit_process_filter_excludes_prior_launches() {
+        let app_started_at = 1_783_000_000_500_000;
         let app_age = 60;
 
-        assert!(webkit_process_started_after_app_start(0, app_age));
-        assert!(webkit_process_started_after_app_start(
-            app_age + WEBKIT_PROCESS_START_GRACE_SECONDS,
-            app_age
+        assert!(webkit_process_started_at_or_after_app(
+            Some(app_started_at),
+            Some(app_started_at)
         ));
-        assert!(!webkit_process_started_after_app_start(
-            app_age + WEBKIT_PROCESS_START_GRACE_SECONDS + 1,
-            app_age
+        assert!(webkit_process_started_at_or_after_app(
+            Some(app_started_at + 1),
+            Some(app_started_at)
+        ));
+        assert!(!webkit_process_started_at_or_after_app(
+            Some(app_started_at - 1),
+            Some(app_started_at)
+        ));
+        assert!(!webkit_process_started_at_or_after_app(
+            Some(app_started_at),
+            None
         ));
 
         assert!(webkit_process_started_with_app(app_age, app_age));
@@ -16585,20 +16661,35 @@ mod tests {
 
     #[test]
     fn webkit_process_role_counts_rooted_current_launches() {
+        let app_started_at = 1_783_000_000_500_000;
         let app_age = 60;
 
         assert_eq!(
-            freed_webkit_process_role(true, app_age, app_age),
-            Some("freed-webcontent")
-        );
-        assert_eq!(
-            freed_webkit_process_role(true, 0, app_age),
+            freed_webkit_process_role(
+                true,
+                Some(app_started_at),
+                Some(app_started_at),
+                app_age,
+                app_age
+            ),
             Some("freed-webcontent")
         );
         assert_eq!(
             freed_webkit_process_role(
                 true,
-                app_age + WEBKIT_PROCESS_START_GRACE_SECONDS + 1,
+                Some(app_started_at + 1),
+                Some(app_started_at),
+                0,
+                app_age
+            ),
+            Some("freed-webcontent")
+        );
+        assert_eq!(
+            freed_webkit_process_role(
+                true,
+                Some(app_started_at - 1),
+                Some(app_started_at),
+                app_age + 1,
                 app_age
             ),
             None
@@ -16607,24 +16698,44 @@ mod tests {
 
     #[test]
     fn webkit_process_role_keeps_only_app_start_rootless_processes() {
+        let app_started_at = 1_783_000_000_500_000;
         let app_age = 60;
 
         assert_eq!(
-            freed_webkit_process_role(false, app_age, app_age),
+            freed_webkit_process_role(
+                false,
+                Some(app_started_at),
+                Some(app_started_at),
+                app_age,
+                app_age
+            ),
             Some("freed-webcontent-age-matched")
         );
         assert_eq!(
             freed_webkit_process_role(
                 false,
+                Some(app_started_at + 1),
+                Some(app_started_at),
                 app_age.saturating_sub(WEBKIT_PROCESS_START_GRACE_SECONDS),
                 app_age
             ),
             Some("freed-webcontent-age-matched")
         );
-        assert_eq!(freed_webkit_process_role(false, 0, app_age), None);
         assert_eq!(
             freed_webkit_process_role(
                 false,
+                Some(app_started_at + 1),
+                Some(app_started_at),
+                0,
+                app_age
+            ),
+            None
+        );
+        assert_eq!(
+            freed_webkit_process_role(
+                false,
+                Some(app_started_at - 1),
+                Some(app_started_at),
                 app_age + WEBKIT_PROCESS_START_GRACE_SECONDS + 1,
                 app_age
             ),
@@ -16635,6 +16746,8 @@ mod tests {
     fn webkit_process_stats(process_id: u32, resident_bytes: u64) -> WebkitProcessRuntimeStats {
         WebkitProcessRuntimeStats {
             process_id,
+            started_at_unix_seconds: 1_783_000_000,
+            started_at_unix_micros: Some(1_783_000_000_500_000),
             resident_bytes,
             footprint_bytes: Some(resident_bytes),
             virtual_bytes: resident_bytes.saturating_mul(2),
