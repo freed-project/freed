@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import {
+  execFileSync as nodeExecFileSync,
+  spawnSync as nodeSpawnSync,
+} from "node:child_process";
 import { createHash } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import {
   chmodSync,
   existsSync,
   linkSync,
   lstatSync,
   mkdirSync,
-  mkdtempSync,
+  mkdtempSync as nodeMkdtempSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -18,7 +22,7 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import test from "node:test";
+import nodeTest from "node:test";
 
 import {
   acquireLease,
@@ -97,6 +101,75 @@ import {
   TEST_TRUSTED_LAUNCHER_PROVENANCE,
   acquireGeneralActorLeaseForTest,
 } from "./test-helpers/trusted-actor-lease.mjs";
+
+const CHILD_OPERATION_TIMEOUT_MS = 30_000;
+const TEST_CASE_TIMEOUT_MS = 5 * 60_000;
+const fixtureContext = new AsyncLocalStorage();
+
+function activeFixtureLabel() {
+  return fixtureContext.getStore()?.name ?? "module setup";
+}
+
+function reportFixtureOperation(command, args) {
+  process.stderr.write(
+    `[nightly fixture] test=${activeFixtureLabel()} operation=${[command, ...args].join(" ")}\n`,
+  );
+}
+
+function execFileSync(command, args, options = {}) {
+  reportFixtureOperation(command, args);
+  return nodeExecFileSync(command, args, {
+    timeout: CHILD_OPERATION_TIMEOUT_MS,
+    killSignal: "SIGKILL",
+    ...options,
+  });
+}
+
+function spawnSync(command, args, options = {}) {
+  reportFixtureOperation(command, args);
+  return nodeSpawnSync(command, args, {
+    timeout: CHILD_OPERATION_TIMEOUT_MS,
+    killSignal: "SIGKILL",
+    ...options,
+  });
+}
+
+function mkdtempSync(prefix, options) {
+  const directory = nodeMkdtempSync(prefix, options);
+  fixtureContext.getStore()?.tempDirectories.add(directory);
+  return directory;
+}
+
+function test(name, optionsOrFn, maybeFn) {
+  const options =
+    typeof optionsOrFn === "function" ? {} : { ...(optionsOrFn ?? {}) };
+  const callback =
+    typeof optionsOrFn === "function" ? optionsOrFn : maybeFn;
+  if (typeof callback !== "function") {
+    throw new TypeError(`Test ${name} requires a callback.`);
+  }
+  options.timeout = Math.min(
+    options.timeout ?? TEST_CASE_TIMEOUT_MS,
+    TEST_CASE_TIMEOUT_MS,
+  );
+
+  return nodeTest(name, options, async (context) => {
+    const state = { name, tempDirectories: new Set() };
+    context.after(() => {
+      for (const directory of [...state.tempDirectories].reverse()) {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    });
+    process.stderr.write(`[nightly fixture] start test=${name}\n`);
+    return fixtureContext.run(state, async () => {
+      try {
+        return await callback(context);
+      } finally {
+        process.stderr.write(`[nightly fixture] finish test=${name}\n`);
+      }
+    });
+  });
+}
 
 const GIB = 1024 * 1024 * 1024;
 const NIGHTLY_MODULE_URL = new URL(
@@ -1193,6 +1266,18 @@ function writeOutcomeVerdict(
       : { sourceStartMs: Date.parse(windowStart) }),
   }).verdictPath;
 }
+
+test("nightly fixture child operations fail inside their explicit bound", () => {
+  assert.throws(
+    () =>
+      execFileSync(
+        process.execPath,
+        ["-e", "setInterval(() => {}, 1_000)"],
+        { stdio: "ignore", timeout: 25 },
+      ),
+    (error) => error?.code === "ETIMEDOUT",
+  );
+});
 
 test("summarizeSoak reads WebKit memory, heartbeat, and DOM evidence", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "freed-soak-test-"));
