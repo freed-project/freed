@@ -53,13 +53,19 @@ These are latent only because PWA to desktop convergence does not exist. Fixing 
 | MVCC | Experimental; all statements on a connection share one transaction |
 | in-place `VACUUM` / `incremental_vacuum` | Experimental / No |
 
-The fatal one is FTS. The entire justification for accepting a pre-1.0 dependency was that SQLite file-format compatibility makes the swap reversible. **A Tantivy index is not SQLite B-tree pages**, and the `CREATE INDEX` statement is not parseable by stock SQLite. The escape hatch preserves the data but not the search index, on the one subsystem that is load-bearing rather than an optimisation.
+> **This section's original reasoning has been retracted and replaced by measurement.** It argued the fatal flaw was that "a Tantivy index is not SQLite B-tree pages", so the escape hatch preserves data but not the search index. That objection is weak and the owner correctly rejected it: indexes are derived data, you rebuild them. Do not use it.
+>
+> Turso was then benchmarked properly against the real corpus. **The verdict is unchanged but the reasons are different and much stronger.** See [TURSO-EVALUATION.md](TURSO-EVALUATION.md) for the full record, the reproduction scripts, and the adoption gate. In brief:
+>
+> - **Incremental FTS ingest scales with index size**: 313 ms/row into a 95,076-row index versus SQLite's flat 0.20 ms/row, about 1,570x. Plain writes are fine, so "Turso writes get slower as the database grows" is the wrong summary and will send you after the wrong thing.
+> - **Silent, total index corruption.** Any virtual-table module Turso does not implement causes it to open a connection with no indexes at all and skip index maintenance on every write, while reporting success. Measured: 650 writes, zero reflected in any index, stale pre-update values left indexed. Traced to a swallowed error at `core/lib.rs:1514-1519`. Unfixed on `main` and unreported upstream.
+> - **Turso costs 48x more peak RSS to build an index** (+153.5 MB vs SQLite's +3.2 MB) and carries ~474 MB more resident on the same corpus. For a project whose blocker is renderer memory, that alone decides it.
 
 **The PWA unlock is not Turso-specific.** Official SQLite WASM over OPFS delivers identical page-cache physics, at 1.0, with FTS5 and `STORED` generated columns. The physics win is *a paged store instead of a CRDT*. It was never Turso.
 
-Decision: **rusqlite on desktop, official sqlite-wasm on the phone, Turso as a read-only CI conformance track** from Stage 4 — open every fixture with both engines and diff. Cheap, keeps the option genuinely alive, generates real readiness signal.
+Decision: **rusqlite on desktop, official sqlite-wasm on the phone.** The originally planned "Turso as a read-only CI conformance track from Stage 4" is dropped: stock SQLite cannot open a Turso-FTS file at all, so the diff it was meant to generate is not possible, and a conformance track against an engine that silently drops index writes would manufacture false confidence rather than readiness signal.
 
-Adoption gate, written down so it is checkable: revisit when generated columns are `STORED` and stable without an experimental flag, `changes()` supports triggers, and either FTS5 is supported or the FTS index is fully external to the database file.
+Adoption gate: see [TURSO-EVALUATION.md](TURSO-EVALUATION.md). The trigger is specific probes passing, not a version number.
 
 ## The floor
 
