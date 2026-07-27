@@ -84,6 +84,10 @@ test("release publication delegates one exact tag to the trusted App publisher",
     /validate-release-tag-authority\.mjs --repo=freed-project\/freed/,
   );
   assert.match(
+    releasePublish,
+    /validate-dev-integration-receipt\.mjs[\s\S]*--sha="\$\{LOCAL_RELEASE_SHA\}"[\s\S]*--branch=dev[\s\S]*--workflow=ci\.yml/,
+  );
+  assert.match(
     releasePrep,
     /FREED_PROMOTED_DEV_COMMIT_SHA="\$\{PROMOTED_DEV_COMMIT_SHA\}"/,
   );
@@ -111,6 +115,25 @@ test("release publication delegates one exact tag to the trusted App publisher",
     releaseWorkflow,
     /validate-release-promotion\.mjs --from-ref=origin\/dev/,
   );
+});
+
+test("dev tag validation inherits the exact successful dev integration receipt", () => {
+  const validationJob = releaseWorkflow.slice(
+    releaseWorkflow.indexOf("\n  validation:"),
+    releaseWorkflow.indexOf("\n  create-release:"),
+  );
+
+  assert.match(validationJob, /actions:\s*read/);
+  assert.match(
+    validationJob,
+    /validate-dev-integration-receipt\.mjs[\s\S]*--sha="\$GITHUB_SHA"[\s\S]*--branch=dev[\s\S]*--workflow=ci\.yml/,
+  );
+  assert.doesNotMatch(
+    validationJob,
+    /release_channel \}\}" == "dev"[\s\S]*npm run validate:dev/,
+  );
+  assert.match(validationJob, /release_channel != 'dev'/);
+  assert.match(validationJob, /npm run validate:production/);
 });
 
 test("release failure triage binds GitHub CLI to the triggering repository", () => {

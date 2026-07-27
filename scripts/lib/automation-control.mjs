@@ -157,7 +157,7 @@ const LEASE_ARCHIVE_MOVE_HELPER = fileURLToPath(
   new URL("./lease-archive-move.py", import.meta.url),
 );
 const LEASE_ARCHIVE_MOVE_HELPER_SHA256 =
-  "d23a65379acad43c7fb601d65fc150c29f1d214796121362f2a44c7e6c305a3e";
+  "a91265dd02399ef3f362e1feed269d4907311cd0a6fb492a956915e67ace666e";
 const LEASE_ARCHIVE_HELPER_MAX_BYTES = 256 * 1024;
 const LEASE_ARCHIVE_MOVE_PYTHON_BOOTSTRAP = [
   "import hashlib,sys",
@@ -171,6 +171,8 @@ const LEASE_ARCHIVE_LIST_MAX_ENTRY_BYTES =
   64 + 1 + 64 + Buffer.byteLength(".json");
 const LEASE_ARCHIVE_LIST_MAX_BUFFER =
   LEASE_ARCHIVE_MAX_ENTRIES * (LEASE_ARCHIVE_LIST_MAX_ENTRY_BYTES + 1);
+const LEASE_ARCHIVE_LIST_BATCH_MAX_DIRECTORIES = 16;
+const LEASE_ARCHIVE_LIST_BATCH_MAX_BUFFER = 128 * 1024 * 1024;
 const LEASE_PRIVATE_BATCH_MAX_BUFFER = 128 * 1024 * 1024;
 const LEASE_PRIVATE_BATCH_MAX_REQUEST_BYTES = 1024 * 1024;
 const LEASE_PRIVATE_BATCH_MAX_SELECTED_ENTRIES = 4_096;
@@ -20184,6 +20186,8 @@ function runLeaseArchiveHelper(
               "private-lease-state-batch-read",
             ].includes(operation)
           ? LEASE_PRIVATE_BATCH_MAX_BUFFER
+          : operation === "list-bounded-batch"
+            ? LEASE_ARCHIVE_LIST_BATCH_MAX_BUFFER
           : operation === "list" || operation === "list-bounded"
             ? LEASE_ARCHIVE_LIST_MAX_BUFFER
             : 2 * LEASE_TRANSACTION_MAX_BYTES,
@@ -26776,6 +26780,97 @@ function listPinnedLeaseArchiveDirectory(context, binding) {
   return entries;
 }
 
+function listPinnedLeaseArchiveDirectories(context, bindings) {
+  if (
+    bindings.length === 0 ||
+    bindings.length > LEASE_ARCHIVE_LIST_BATCH_MAX_DIRECTORIES
+  ) {
+    throw new AutomationControlError(
+      "lease_archive_capacity_invalid",
+      "Lease archive batch listing has an invalid directory count.",
+    );
+  }
+  for (const binding of bindings) {
+    assertPinnedLeaseArchiveDirectory(binding);
+  }
+  const result = runLeaseArchiveHelper(
+    context.helperDescriptor,
+    "list-bounded-batch",
+    [
+      bindings.length.toString(),
+      ...bindings.flatMap((binding) => [
+        LEASE_ARCHIVE_MAX_ENTRIES.toString(),
+        Math.min(
+          LEASE_ARCHIVE_LIST_MAX_BUFFER,
+          LEASE_BOUNDED_DIRECTORY_MAX_BYTES,
+        ).toString(),
+        ...pinnedDirectoryArguments(binding),
+      ]),
+    ],
+    bindings.map(({ descriptor }) => descriptor),
+  );
+  let receipt;
+  try {
+    receipt = JSON.parse(result.toString("utf8"));
+  } catch {
+    throw new AutomationControlError(
+      "lease_archive_capacity_invalid",
+      "Lease archive batch listing returned invalid JSON.",
+    );
+  }
+  if (
+    Object.keys(receipt ?? {})
+      .sort()
+      .join("\n") !== ["listings", "protocol"].sort().join("\n") ||
+    receipt.protocol !== LEASE_ARCHIVE_MOVE_PROTOCOL ||
+    !Array.isArray(receipt.listings) ||
+    receipt.listings.length !== bindings.length
+  ) {
+    throw new AutomationControlError(
+      "lease_archive_capacity_invalid",
+      "Lease archive batch listing returned an invalid receipt.",
+    );
+  }
+  const listings = receipt.listings.map((encoded, index) => {
+    if (typeof encoded !== "string") {
+      throw new AutomationControlError(
+        "lease_archive_capacity_invalid",
+        "Lease archive batch listing returned invalid entry bytes.",
+      );
+    }
+    const bytes = Buffer.from(encoded, "base64");
+    if (bytes.toString("base64") !== encoded) {
+      throw new AutomationControlError(
+        "lease_archive_capacity_invalid",
+        "Lease archive batch listing returned noncanonical entry bytes.",
+      );
+    }
+    if (bytes.length === 0) return [];
+    const entries = bytes.toString("utf8").split("\0");
+    if (
+      entries.length > LEASE_ARCHIVE_MAX_ENTRIES ||
+      entries.some(
+        (entry) =>
+          entry.length === 0 ||
+          entry === "." ||
+          entry === ".." ||
+          entry.includes("/") ||
+          entry.includes("\0"),
+      )
+    ) {
+      throw new AutomationControlError(
+        "lease_archive_capacity_invalid",
+        `${bindings[index].label} contains an invalid entry name.`,
+      );
+    }
+    return entries;
+  });
+  for (const binding of bindings) {
+    assertPinnedLeaseArchiveDirectory(binding);
+  }
+  return listings;
+}
+
 function inspectLeaseArchiveEntry(binding, entry, expectedDevice) {
   const entryPath = path.join(binding.path, entry);
   let descriptor;
@@ -26990,12 +27085,35 @@ export function inspectLeaseCleanupArchiveCapacity(
     let oldestMtimeMs = null;
     const archiveNamePattern =
       /^(?:[0-9a-f]{64}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?:\.[0-9a-f]{64})?\.[0-9a-f]{64}\.json$/;
+    const stateArchiveDirectory = leaseStateQuarantineDirectory(paths);
+    const capacityBindings = [
+      ...leaseCleanupArchiveDirectories(paths),
+      stateArchiveDirectory,
+    ].map((directoryPath) =>
+      directoryBindings.find((binding) => binding.path === directoryPath),
+    );
+    if (capacityBindings.some((binding) => binding === undefined)) {
+      throw new AutomationControlError(
+        "lease_archive_capacity_invalid",
+        "Lease archive capacity directories are incomplete.",
+      );
+    }
+    const beforeListings = listPinnedLeaseArchiveDirectories(
+      context,
+      capacityBindings,
+    );
+    const beforeEntriesByPath = new Map(
+      capacityBindings.map((binding, index) => [
+        binding.path,
+        beforeListings[index],
+      ]),
+    );
     for (const archiveDirectory of leaseCleanupArchiveDirectories(paths)) {
       const binding = directoryBindings.find(
         (candidate) => candidate.path === archiveDirectory,
       );
       if (binding === undefined) continue;
-      const beforeEntries = listPinnedLeaseArchiveDirectory(context, binding);
+      const beforeEntries = beforeEntriesByPath.get(binding.path);
       for (const entry of beforeEntries) {
         if (!archiveNamePattern.test(entry)) {
           throw new AutomationControlError(
@@ -27011,23 +27129,12 @@ export function inspectLeaseCleanupArchiveCapacity(
             ? inspected.mtimeMs
             : Math.min(oldestMtimeMs, inspected.mtimeMs);
       }
-      const afterEntries = listPinnedLeaseArchiveDirectory(context, binding);
-      if (beforeEntries.join("\0") !== afterEntries.join("\0")) {
-        throw new AutomationControlError(
-          "lease_archive_capacity_invalid",
-          `${binding.label} changed during capacity accounting.`,
-        );
-      }
     }
-    const stateArchiveDirectory = leaseStateQuarantineDirectory(paths);
     const stateArchiveBinding = directoryBindings.find(
       (candidate) => candidate.path === stateArchiveDirectory,
     );
     const stateArchiveNamePattern = /^[0-9a-f]{64}\.[0-9a-f]{64}\.lease$/;
-    const stateEntriesBefore = listPinnedLeaseArchiveDirectory(
-      context,
-      stateArchiveBinding,
-    );
+    const stateEntriesBefore = beforeEntriesByPath.get(stateArchiveBinding.path);
     for (const entry of stateEntriesBefore) {
       if (!stateArchiveNamePattern.test(entry)) {
         throw new AutomationControlError(
@@ -27048,15 +27155,17 @@ export function inspectLeaseCleanupArchiveCapacity(
           ? inspected.mtimeMs
           : Math.min(oldestMtimeMs, inspected.mtimeMs);
     }
-    const stateEntriesAfter = listPinnedLeaseArchiveDirectory(
+    const afterListings = listPinnedLeaseArchiveDirectories(
       context,
-      stateArchiveBinding,
+      capacityBindings,
     );
-    if (stateEntriesBefore.join("\0") !== stateEntriesAfter.join("\0")) {
-      throw new AutomationControlError(
-        "lease_archive_capacity_invalid",
-        `${stateArchiveBinding.label} changed during capacity accounting.`,
-      );
+    for (const [index, binding] of capacityBindings.entries()) {
+      if (beforeListings[index].join("\0") !== afterListings[index].join("\0")) {
+        throw new AutomationControlError(
+          "lease_archive_capacity_invalid",
+          `${binding.label} changed during capacity accounting.`,
+        );
+      }
     }
     const oldestAgeMs =
       oldestMtimeMs === null ? 0 : Math.max(0, nowMs - oldestMtimeMs);

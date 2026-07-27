@@ -5,6 +5,8 @@ import {
   DEFAULT_SHARD_TIMEOUT_SECONDS,
   buildToolingSmokeMatrix,
   projectShardRuntime,
+  selectApplicableSuites,
+  selectNativeAcceptance,
   suiteWeights,
 } from "./lib/tooling-smoke-plan.mjs";
 
@@ -158,4 +160,32 @@ test("the plan still schedules work when a suite is predicted to overrun", () =>
   assert.ok(
     plan.include.some((entry) => entry.suite === "outcome-ledger-repair"),
   );
+});
+
+test("release admission and repository configuration changes use focused feature tests", () => {
+  const selection = selectApplicableSuites([
+    ".github/dependabot.yml",
+    ".github/workflows/release.yml",
+    "scripts/release-governance.test.mjs",
+    "scripts/release-workflow-matrix.test.mjs",
+    "scripts/repository-config.test.mjs",
+    "scripts/validate-dev-integration-receipt.mjs",
+    "scripts/validate-dev-integration-receipt.test.mjs",
+  ]);
+
+  assert.deepEqual(selection.suites, []);
+  assert.match(selection.reason, /explicit focused feature-validation/);
+});
+
+test("product fixture literals do not schedule unrelated tooling or native lanes", () => {
+  const changedFiles = [
+    "packages/pwa/src/App.tsx",
+    "packages/pwa/src/components/SyncConnectDialog.tsx",
+  ];
+
+  assert.deepEqual(selectApplicableSuites(changedFiles).suites, []);
+  assert.deepEqual(selectNativeAcceptance(changedFiles), {
+    required: false,
+    files: [],
+  });
 });

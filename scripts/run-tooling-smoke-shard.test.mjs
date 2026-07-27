@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -23,6 +24,7 @@ import {
   extractTopLevelTestUnits,
   partitionToolingSmokeItems,
   partitionWeightedTestUnits,
+  runToolingSmokeShard,
 } from "./run-tooling-smoke-shard.mjs";
 
 function repositoryTestFiles(relativeDirectory = "scripts") {
@@ -115,6 +117,61 @@ test("weighted shard assignment is deterministic, complete, and balanced", () =>
   );
 });
 
+test("recorded unit durations override source size when building shards", (t) => {
+  const repoRoot = mkdtempSync(path.join(os.tmpdir(), "freed-unit-weights-"));
+  t.after(() => rmSync(repoRoot, { recursive: true, force: true }));
+  mkdirSync(path.join(repoRoot, "scripts", "lib"), { recursive: true });
+  for (const name of ["alpha", "beta", "gamma"]) {
+    writeFileSync(
+      path.join(repoRoot, "scripts", `${name}.test.mjs`),
+      `import test from "node:test";\ntest("${name}", () => undefined);\n`,
+    );
+  }
+
+  const durations = {
+    suites: {
+      general: {
+        units: {
+          "scripts/alpha.test.mjs": { seconds: 1 },
+          "scripts/beta.test.mjs": { seconds: 1 },
+          "scripts/gamma.test.mjs": { seconds: 100 },
+        },
+      },
+    },
+  };
+  const plans = [1, 2].map((shardIndex) =>
+    buildToolingSmokeShardPlan(
+      { suite: "general", shardIndex, shardCount: 2 },
+      { repoRoot, durations },
+    ),
+  );
+
+  assert.deepEqual(plans[0].testFiles, ["scripts/gamma.test.mjs"]);
+  assert.deepEqual(plans[1].testFiles.sort(), [
+    "scripts/alpha.test.mjs",
+    "scripts/beta.test.mjs",
+  ]);
+
+  const fallback = buildToolingSmokeShardPlan(
+    { suite: "general", shardIndex: 1, shardCount: 2 },
+    { repoRoot, durations: { suites: { general: { units: {} } } } },
+  );
+  const partial = buildToolingSmokeShardPlan(
+    { suite: "general", shardIndex: 1, shardCount: 2 },
+    {
+      repoRoot,
+      durations: {
+        suites: {
+          general: {
+            units: { "scripts/gamma.test.mjs": { seconds: 100 } },
+          },
+        },
+      },
+    },
+  );
+  assert.deepEqual(partial, fallback);
+});
+
 test("exact name patterns run selected parents and all of their subtests", (t) => {
   const directory = mkdtempSync(path.join(os.tmpdir(), "freed-test-shard-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
@@ -154,6 +211,35 @@ test("delta", async (t) => { console.log("top:delta"); await t.test("nested", ()
     assert.equal(output.match(new RegExp(`top:${name}`, "g"))?.length, 1);
     assert.equal(output.match(new RegExp(`nested:${name}`, "g"))?.length, 1);
   }
+});
+
+test("shard execution preserves JUnit unit timings", (t) => {
+  const repoRoot = mkdtempSync(path.join(os.tmpdir(), "freed-shard-junit-"));
+  t.after(() => rmSync(repoRoot, { recursive: true, force: true }));
+  mkdirSync(path.join(repoRoot, "scripts"), { recursive: true });
+  writeFileSync(
+    path.join(repoRoot, "scripts", "fixture.test.mjs"),
+    'import test from "node:test";\ntest("measured", () => undefined);\n',
+  );
+
+  runToolingSmokeShard(
+    {
+      suite: "general",
+      shardIndex: 1,
+      shardCount: 1,
+      shellFiles: [],
+      testFiles: ["scripts/fixture.test.mjs"],
+      testNames: [],
+      testNamePattern: null,
+    },
+    { repoRoot },
+  );
+
+  const junit = readFileSync(
+    path.join(repoRoot, "tooling-smoke-results", "general-1-of-1.xml"),
+    "utf8",
+  );
+  assert.match(junit, /<testcase name="measured"/);
 });
 
 test("repository plans are nonempty and cover each named suite", () => {
@@ -242,6 +328,7 @@ test("validation workflow preserves the complete tooling smoke gate", () => {
   );
   assert.match(workflow, /node scripts\/plan-tooling-smoke\.mjs/);
   assert.match(workflow, /--shard-count=\$\{\{ matrix\.shardCount \}\}/);
+  assert.match(workflow, /tooling-smoke-results\/\*\.xml/);
 
   // A push to dev must still run every suite. That run is the full integration
   // proof, so scoping it by changed paths would break release admission.

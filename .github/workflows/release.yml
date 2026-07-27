@@ -160,6 +160,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
+      actions: read
       contents: read
     steps:
       - name: Checkout
@@ -174,19 +175,23 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
+        if: needs.notes.outputs.release_channel != 'dev'
         run: npm ci
 
       - name: Install Rust toolchain
+        if: needs.notes.outputs.release_channel != 'dev'
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         with:
           components: clippy
 
       - name: Cache Rust build artifacts
+        if: needs.notes.outputs.release_channel != 'dev'
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           workspaces: packages/desktop/src-tauri -> target
 
       - name: Install native Linux dependencies
+        if: needs.notes.outputs.release_channel != 'dev'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -201,6 +206,7 @@ jobs:
             libxdo-dev
 
       - name: Install Playwright browsers
+        if: needs.notes.outputs.release_channel != 'dev'
         run: |
           sudo rm -f /etc/apt/sources.list.d/azure-cli.list /etc/apt/sources.list.d/azure-cli.sources
           npx playwright install --with-deps chromium
@@ -210,12 +216,17 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ needs.notes.outputs.release_channel }}" == "dev" ]]; then
-            npm run validate:dev
+            node scripts/validate-dev-integration-receipt.mjs \
+              --repo="${{ github.repository }}" \
+              --sha="$GITHUB_SHA" \
+              --branch=dev \
+              --workflow=ci.yml
           else
             npm run validate:production
           fi
         env:
           CI: "true"
+          GITHUB_TOKEN: ${{ github.token }}
 
   create-release:
     needs: [notes, validation]

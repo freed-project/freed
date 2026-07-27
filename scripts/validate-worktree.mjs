@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   isProviderVisiblePath,
+  providerIdsForPath,
   PROVIDER_VISIBLE_EXTRA_PACKAGE_PREFIXES,
   SOCIAL_PROVIDER_DESKTOP_FILES,
   SOCIAL_PROVIDER_PACKAGE_PREFIXES,
@@ -47,7 +48,30 @@ const RELEASE_TOOLING_PATHS = new Set([
   "scripts/release-notes-shared.mjs",
   "scripts/release-notes-shared.test.mjs",
   "scripts/release.sh",
+  "scripts/validate-dev-integration-receipt.mjs",
+  "scripts/validate-dev-integration-receipt.test.mjs",
   "scripts/validate-release-notes.mjs",
+]);
+
+const RELEASE_ADMISSION_PATHS = new Set([
+  ".github/workflows/release.yml",
+  "scripts/release-governance.test.mjs",
+  "scripts/release-publish.sh",
+  "scripts/release-workflow-matrix.test.mjs",
+  "scripts/validate-dev-integration-receipt.mjs",
+  "scripts/validate-dev-integration-receipt.test.mjs",
+]);
+
+const RELEASE_ADMISSION_TEST_FILES = [
+  "scripts/validate-dev-integration-receipt.test.mjs",
+  "scripts/release-governance.test.mjs",
+  "scripts/release-workflow-matrix.test.mjs",
+];
+
+const REPOSITORY_CONFIG_PATHS = new Set([
+  ".github/dependabot.yml",
+  "packages/pwa/vercel.json",
+  "scripts/repository-config.test.mjs",
 ]);
 
 const RELEASE_PUBLISHER_TOOLING_PATHS = new Set([
@@ -91,8 +115,15 @@ const RELEASE_PUBLISHER_TEST_FILES = [
 
 const TOOLING_SMOKE_RUNNER_PATHS = new Set([
   ".github/workflows/ci.yml",
+  "scripts/lib/tooling-smoke-plan.mjs",
+  "scripts/measure-tooling-smoke.mjs",
+  "scripts/measure-tooling-smoke.test.mjs",
+  "scripts/plan-tooling-smoke.mjs",
+  "scripts/run-native-acceptance.mjs",
+  "scripts/run-native-acceptance.test.mjs",
   "scripts/run-tooling-smoke-shard.mjs",
   "scripts/run-tooling-smoke-shard.test.mjs",
+  "scripts/tooling-smoke-plan.test.mjs",
 ]);
 
 export function normalizeRepoPath(filePath) {
@@ -326,7 +357,6 @@ export function isSocialProviderFocusedSurface(filePath) {
 
 export function isDesktopPerfSensitiveSurface(filePath) {
   return (
-    filePath === ".github/workflows/ci.yml" ||
     filePath === "scripts/perf-compare.ts" ||
     filePath === "packages/desktop/tests/e2e/perf-feed.spec.ts" ||
     filePath === "packages/desktop/tests/e2e/perf-friends.spec.ts" ||
@@ -387,6 +417,14 @@ export function isReleaseToolingPath(filePath) {
 
 export function isReleasePublisherToolingPath(filePath) {
   return RELEASE_PUBLISHER_TOOLING_PATHS.has(filePath);
+}
+
+export function isReleaseAdmissionPath(filePath) {
+  return RELEASE_ADMISSION_PATHS.has(filePath);
+}
+
+export function isRepositoryConfigPath(filePath) {
+  return REPOSITORY_CONFIG_PATHS.has(filePath);
 }
 
 export function isValidateRunnerPath(filePath) {
@@ -691,6 +729,28 @@ export function buildValidationPlan(mode, changedFiles) {
     return plan;
   }
 
+  const releaseAdmissionOnlyChanged =
+    changedFiles.length > 0 && changedFiles.every(isReleaseAdmissionPath);
+  if (releaseAdmissionOnlyChanged) {
+    return [
+      nodeCommand("release admission tests", [
+        "--test",
+        ...RELEASE_ADMISSION_TEST_FILES,
+      ]),
+    ];
+  }
+
+  const repositoryConfigOnlyChanged =
+    changedFiles.length > 0 && changedFiles.every(isRepositoryConfigPath);
+  if (repositoryConfigOnlyChanged) {
+    return [
+      nodeCommand("repository configuration tests", [
+        "--test",
+        path.join("scripts", "repository-config.test.mjs"),
+      ]),
+    ];
+  }
+
   const plan = [npmCommand("root typecheck", ["run", "typecheck"])];
   const sharedSurfaceChanged = changedFiles.some(isSharedSurface);
   const desktopSurfaceChanged =
@@ -703,8 +763,12 @@ export function buildValidationPlan(mode, changedFiles) {
     sharedSurfaceChanged || changedFiles.some(isPwaSurface);
   const websiteSurfaceChanged = changedFiles.some(isWebsiteSurface);
   const releaseToolingChanged = changedFiles.some(isReleaseToolingPath);
+  const releaseAdmissionChanged = changedFiles.some(isReleaseAdmissionPath);
+  const repositoryConfigChanged = changedFiles.some(isRepositoryConfigPath);
   const releasePublisherToolingChanged = changedFiles.some(
-    isReleasePublisherToolingPath,
+    (filePath) =>
+      isReleasePublisherToolingPath(filePath) &&
+      !isReleaseAdmissionPath(filePath),
   );
   const validateRunnerChanged = changedFiles.some(isValidateRunnerPath);
   const toolingSmokeRunnerChanged = changedFiles.some(isToolingSmokeRunnerPath);
@@ -717,6 +781,9 @@ export function buildValidationPlan(mode, changedFiles) {
     changedFiles.length > 0 &&
     changedFiles.every(isSocialProviderFocusedSurface);
   const providerVisibleChanged = changedFiles.some(isProviderVisiblePath);
+  const socialProviderVisibleChanged = changedFiles.some((filePath) =>
+    providerIdsForPath(filePath).some((provider) => provider !== "other"),
+  );
   const desktopRustSurfaceChanged = changedFiles.some(
     (filePath) =>
       filePath.startsWith("packages/desktop/src-tauri/") &&
@@ -762,7 +829,7 @@ export function buildValidationPlan(mode, changedFiles) {
     return plan;
   }
 
-  if (providerVisibleChanged) {
+  if (providerVisibleChanged && socialProviderVisibleChanged) {
     addCommand(plan, socialProviderFocusedTestsCommand());
     addCommand(plan, socialProviderFocusedE2eCommand());
   }
@@ -850,6 +917,26 @@ export function buildValidationPlan(mode, changedFiles) {
     );
   }
 
+  if (releaseAdmissionChanged) {
+    addCommand(
+      plan,
+      nodeCommand("release admission tests", [
+        "--test",
+        ...RELEASE_ADMISSION_TEST_FILES,
+      ]),
+    );
+  }
+
+  if (repositoryConfigChanged) {
+    addCommand(
+      plan,
+      nodeCommand("repository configuration tests", [
+        "--test",
+        path.join("scripts", "repository-config.test.mjs"),
+      ]),
+    );
+  }
+
   if (releasePublisherToolingChanged) {
     addCommand(
       plan,
@@ -865,6 +952,9 @@ export function buildValidationPlan(mode, changedFiles) {
       plan,
       nodeCommand("tooling smoke runner tests", [
         "--test",
+        path.join("scripts", "measure-tooling-smoke.test.mjs"),
+        path.join("scripts", "run-native-acceptance.test.mjs"),
+        path.join("scripts", "tooling-smoke-plan.test.mjs"),
         path.join("scripts", "run-tooling-smoke-shard.test.mjs"),
       ]),
     );
@@ -894,10 +984,13 @@ export function buildValidationPlan(mode, changedFiles) {
     addCommand(plan, stabilityStatusTestsCommand());
   }
 
-  if (releaseToolingChanged) {
+  if (
+    releaseToolingChanged &&
+    changedFiles.some(isPreparedReleaseArtifactPath)
+  ) {
     const releaseArtifacts = collectReleaseArtifactsToValidate(
       changedFiles,
-      !changedFiles.some(isPreparedReleaseArtifactPath),
+      false,
     );
     if (releaseArtifacts.length > 0) {
       plan.push(

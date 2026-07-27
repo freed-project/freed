@@ -45,7 +45,7 @@ A test may be release-critical through an exact inherited receipt without rerunn
 
 ## How tier 1 is computed
 
-`scripts/plan-tooling-smoke.mjs` derives the applicable suites from the changed path set and emits a GitHub Actions matrix. It never exceeds **8 jobs**, against the previous fixed 32.
+`scripts/plan-tooling-smoke.mjs` derives the applicable suites from the changed path set and emits a GitHub Actions matrix. Its temporary cap is **16 jobs** while the security-boundary runtime defect in issue #1147 remains. Return the cap to **8 jobs** when the measured suites fit the blocking timeout.
 
 Attribution uses two signals, because neither alone is correct:
 
@@ -56,7 +56,7 @@ A path literal counts as a dependency edge only when it is concrete. Bare roots 
 
 The planner fails closed. Any change under `scripts/` or `automation/` that cannot be attributed selects every suite, as does any change to a global input such as `package.json`, `.nvmrc`, or the workflow itself. An empty plan is reported as a quick not-applicable success, and the gate then requires that the shard job was genuinely skipped rather than failed.
 
-Shard budget is distributed across the selected suites by highest averages, weighted by measured runtime from `scripts/tooling-smoke-durations.json` when available and source size otherwise. Source size is a poor predictor, which is why the nightly lane measures and reports drift.
+Shard budget is distributed across the selected suites by highest averages. Within each suite, complete per-file or per-test timings from `scripts/tooling-smoke-durations.json` replace source-size weights. Partial timing sets are ignored rather than mixing seconds with bytes. Every shard uploads JUnit timings so a completed integration run can refresh the exact units that need balancing.
 
 ## Platform routing
 
@@ -96,7 +96,7 @@ The Website is a separate lane. It ships from `www` through its own job against 
 
 ## Continuous maintenance
 
-Collect per-suite runtime, flake rate, runner cost, skipped-platform coverage, and unique defect catches. The nightly lane writes timings and opens one deduplicated debt issue when a suite goes flaky or drifts by more than 2x.
+Collect per-suite runtime, flake rate, runner cost, skipped-platform coverage, and unique defect catches. The nightly lane uploads timings and opens one deduplicated debt issue when a suite goes flaky or drifts by more than 2x.
 
 Continuously:
 

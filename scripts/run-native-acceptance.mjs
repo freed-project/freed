@@ -12,7 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  NATIVE_ACCEPTANCE_TEST_FILES,
+  DARWIN_ONLY_TEST_FILES,
   REPO_ROOT,
 } from "./lib/tooling-smoke-suites.mjs";
 
@@ -27,8 +27,38 @@ import {
 // slow at all is separate debt, tracked on the native acceptance issue.
 export const NATIVE_TEST_TIMEOUT_MS = 420_000;
 
+export const WORKTREE_PUBLISH_NATIVE_TEST_NAMES = Object.freeze([
+  "trusted publisher launcher consumes a signed capability without a persistent credential",
+  "trusted publisher launcher fails closed against a legacy unbound capability",
+  "trusted publisher launcher rejects an unpinned GitHub CLI",
+  "trusted publisher launcher rejects an ungoverned main branch",
+  "trusted publisher launcher accepts a prebound release-only main prep",
+  "trusted publisher launcher rejects a main head changed after capability issuance",
+  "trusted publisher launcher rejects a tampered broker capability",
+]);
+
 export function nativeAcceptanceIsMeaningful(platform = process.platform) {
   return platform === "darwin";
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function nativeAcceptanceCommands() {
+  const timeout = `--test-timeout=${NATIVE_TEST_TIMEOUT_MS}`;
+  const worktreePattern = `^(?:${WORKTREE_PUBLISH_NATIVE_TEST_NAMES.map(
+    escapeRegex,
+  ).join("|")})$`;
+  return Object.freeze([
+    Object.freeze(["--test", timeout, ...DARWIN_ONLY_TEST_FILES]),
+    Object.freeze([
+      "--test",
+      timeout,
+      `--test-name-pattern=${worktreePattern}`,
+      "scripts/worktree-publish.test.mjs",
+    ]),
+  ]);
 }
 
 function main(argv) {
@@ -42,27 +72,28 @@ function main(argv) {
     return;
   }
   process.stderr.write(
-    `Running ${NATIVE_ACCEPTANCE_TEST_FILES.length.toLocaleString()} native acceptance files on ${process.platform}.\n`,
+    `Running ${DARWIN_ONLY_TEST_FILES.length.toLocaleString()} native-only files and ${WORKTREE_PUBLISH_NATIVE_TEST_NAMES.length.toLocaleString()} selected worktree publication cases on ${process.platform}.\n`,
   );
   // Without this the run has no per-test timeout, so one stuck test consumes the
   // whole job budget and reports only "cancelled" with nothing to act on. These
   // files had never executed on a real macOS runner before this lane existed;
   // the first run hung for the full 30 minute job timeout. A named timeout
   // failure is the difference between a diagnosable defect and a mystery.
-  const result = spawnSync(
-    process.execPath,
-    [
-      "--test",
-      `--test-timeout=${NATIVE_TEST_TIMEOUT_MS}`,
-      ...NATIVE_ACCEPTANCE_TEST_FILES,
-    ],
-    { cwd: REPO_ROOT, env: process.env, stdio: "inherit" },
-  );
-  if (result.error) throw result.error;
-  if (result.signal !== null) {
-    throw new Error(`Native acceptance stopped on signal ${result.signal}.`);
+  for (const command of nativeAcceptanceCommands()) {
+    const result = spawnSync(process.execPath, command, {
+      cwd: REPO_ROOT,
+      env: process.env,
+      stdio: "inherit",
+    });
+    if (result.error) throw result.error;
+    if (result.signal !== null) {
+      throw new Error(`Native acceptance stopped on signal ${result.signal}.`);
+    }
+    if ((result.status ?? 1) !== 0) {
+      process.exitCode = result.status ?? 1;
+      return;
+    }
   }
-  process.exitCode = result.status ?? 1;
 }
 
 if (

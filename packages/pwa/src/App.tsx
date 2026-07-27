@@ -200,7 +200,7 @@ function App() {
   // effect regardless. Not worth reshaping a consent gate at the same time as a
   // lint upgrade, so this is suppressed deliberately rather than papered over.
   // Tracked for a proper pass.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  /* eslint-disable react-hooks/set-state-in-effect -- bounded gate bootstrap described above */
   useEffect(() => {
     if (IS_FEATURE_PREVIEW) {
       acceptPwaBundle();
@@ -212,6 +212,7 @@ function App() {
     setLegalAccepted(hasAcceptedPwaBundle());
     setLegalResolved(true);
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (!legalAccepted) return;
@@ -286,7 +287,7 @@ function App() {
   // value, then subscribe. It cannot become a lazy initialiser as it stands,
   // because it must not run until the gate resolves. Suppressed with the rest
   // and tracked together.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  /* eslint-disable react-hooks/set-state-in-effect -- deferred external-state bootstrap described above */
   useEffect(() => {
     if (!legalResolved) return;
 
@@ -303,6 +304,7 @@ function App() {
       },
     });
   }, [legalResolved]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const checkForUpdates =
     useCallback(async (): Promise<AvailableUpdateInfo | null> => {

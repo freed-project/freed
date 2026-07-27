@@ -2,11 +2,12 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
+import { DURATIONS_FILE } from "./lib/tooling-smoke-plan.mjs";
 import {
   REPO_ROOT,
   SHARDED_TEST_FILES,
@@ -329,14 +330,45 @@ export function partitionWeightedTestUnits(units, shardCount) {
   return shards.map(({ units: assignedUnits }) => Object.freeze(assignedUnits));
 }
 
+function readRecordedDurations(repoRoot) {
+  try {
+    return JSON.parse(
+      readFileSync(path.join(repoRoot, DURATIONS_FILE), "utf8"),
+    );
+  } catch {
+    return null;
+  }
+}
+
+function completeMeasuredUnitWeights(durations, suite, names) {
+  const units = durations?.suites?.[suite]?.units;
+  if (units === null || typeof units !== "object") return null;
+  const weights = new Map();
+  for (const name of names) {
+    const seconds = Number(units?.[name]?.seconds);
+    if (!Number.isFinite(seconds) || seconds <= 0) return null;
+    weights.set(name, seconds);
+  }
+  return weights;
+}
+
 export function buildToolingSmokeShardPlan(
   { suite, shardIndex, shardCount },
-  { repoRoot = REPO_ROOT } = {},
+  { repoRoot = REPO_ROOT, durations = null } = {},
 ) {
+  const recorded = durations ?? readRecordedDurations(repoRoot);
   if (suite === "general") {
-    const generalUnits = generalTestFiles(repoRoot).map((testFile) => ({
+    const testFiles = generalTestFiles(repoRoot);
+    const measuredWeights = completeMeasuredUnitWeights(
+      recorded,
+      suite,
+      testFiles,
+    );
+    const generalUnits = testFiles.map((testFile) => ({
       name: testFile,
-      weight: readFileSync(path.join(repoRoot, testFile), "utf8").length,
+      weight:
+        measuredWeights?.get(testFile) ??
+        readFileSync(path.join(repoRoot, testFile), "utf8").length,
     }));
     const files = partitionWeightedTestUnits(generalUnits, shardCount)[
       shardIndex - 1
@@ -359,7 +391,16 @@ export function buildToolingSmokeShardPlan(
   }
   const testFile = SHARDED_TEST_FILES[suite];
   const source = readFileSync(path.join(repoRoot, testFile), "utf8");
-  const allUnits = extractTopLevelTestUnits(source, testFile);
+  const extractedUnits = extractTopLevelTestUnits(source, testFile);
+  const measuredWeights = completeMeasuredUnitWeights(
+    recorded,
+    suite,
+    extractedUnits.map(({ name }) => name),
+  );
+  const allUnits = extractedUnits.map((unit) => ({
+    ...unit,
+    weight: measuredWeights?.get(unit.name) ?? unit.weight,
+  }));
   const selectedUnits = partitionWeightedTestUnits(allUnits, shardCount)[
     shardIndex - 1
   ];
@@ -377,9 +418,11 @@ export function buildToolingSmokeShardPlan(
 }
 
 function runChecked(command, args, repoRoot) {
+  const childEnvironment = { ...process.env };
+  delete childEnvironment.NODE_TEST_CONTEXT;
   const result = spawnSync(command, args, {
     cwd: repoRoot,
-    env: process.env,
+    env: childEnvironment,
     stdio: "inherit",
   });
   if (result.error) throw result.error;
@@ -399,6 +442,18 @@ export function runToolingSmokeShard(plan, { repoRoot = REPO_ROOT } = {}) {
     runChecked("bash", ["-n", ...plan.shellFiles], repoRoot);
   }
   const args = ["--test", `--test-timeout=${SHARD_TEST_TIMEOUT_MS}`];
+  const resultsDirectory = path.join(repoRoot, "tooling-smoke-results");
+  mkdirSync(resultsDirectory, { recursive: true });
+  const junitPath = path.join(
+    resultsDirectory,
+    `${plan.suite}-${plan.shardIndex}-of-${plan.shardCount}.xml`,
+  );
+  args.push(
+    "--test-reporter=spec",
+    "--test-reporter-destination=stdout",
+    "--test-reporter=junit",
+    `--test-reporter-destination=${junitPath}`,
+  );
   if (plan.testNamePattern !== null) {
     args.push(`--test-name-pattern=${plan.testNamePattern}`);
   }

@@ -287,13 +287,14 @@ export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnec
   // an event handler would mean the dialog no longer starts scanning when mode
   // changes. Suppressed deliberately; the permission flow is not something to
   // restructure alongside a lint upgrade.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  /* eslint-disable react-hooks/set-state-in-effect -- camera permission effect described above */
   useEffect(() => {
     if (mode === "scanning") {
       startCamera();
     }
     return () => stopCamera();
   }, [mode, startCamera, stopCamera]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleConnect = async () => {
     const trimmedIp = ip.trim();
