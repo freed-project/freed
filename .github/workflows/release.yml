@@ -383,7 +383,7 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN_PATH"
 
       - name: Build and release
-        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -409,14 +409,7 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseDraft: true
           prerelease: ${{ needs.notes.outputs.is_prerelease == 'true' }}
-          # tauri-action v1 renamed includeUpdaterJson to uploadUpdaterJson, and
-          # the new name defaults to true. Actions silently ignores unknown
-          # inputs, so leaving the old name here would not error, it would just
-          # let the action publish its own per-matrix latest.json that the
-          # updater-manifest job below then has to clobber. Keep it off: that job
-          # owns latest.json, built from the .sig files this action uploads
-          # (uploadUpdaterSignatures defaults to true, which is what we want).
-          uploadUpdaterJson: false
+          includeUpdaterJson: false
           args: ${{ matrix.args }}
 
       # Upload a stable-named copy for /releases/latest/download/ links

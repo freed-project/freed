@@ -71,6 +71,12 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    # The organization Actions policy currently permits only the pinned v0
+    # Tauri action. Remove this ignore when that policy is updated for v1.
+    ignore:
+      - dependency-name: tauri-apps/tauri-action
+        versions:
+          - ">=1.0.0"
     groups:
       github-actions-updates:
         applies-to: version-updates
