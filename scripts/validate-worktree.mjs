@@ -36,15 +36,38 @@ const VALID_MODES = new Set([
   "release",
 ]);
 
+const LIBRARY_CORE_RELEASE_ACTIVATION_PATHS = new Set([
+  ".agents/skills/freed-library-core/SKILL.md",
+  ".agents/skills/freed-ship-build/SKILL.md",
+  "docs/LIBRARY-CORE-CONTRACT.md",
+  "docs/STORAGE-ARCHITECTURE-ROADMAP.md",
+  "docs/library-core-activation-manifest.json",
+  "scripts/library-core-release-activation.mjs",
+  "scripts/library-core-release-activation.test.mjs",
+  "scripts/lib/git-path-at-ref.mjs",
+  "scripts/lib/git-path-at-ref.test.mjs",
+  "scripts/lib/github-release-publications.mjs",
+  "scripts/lib/github-release-publications.test.mjs",
+  "scripts/lib/library-core-release-activation.mjs",
+  "scripts/lib/library-core-release-activation.test.mjs",
+  "scripts/prepare-release-notes.mjs",
+  "scripts/release-receipt.mjs",
+  "scripts/release-receipt.test.mjs",
+  "scripts/validate-library-core-activation-manifest.mjs",
+  "scripts/validate-release-identity.mjs",
+  "scripts/validate-release-identity.test.mjs",
+]);
+
 const RELEASE_TOOLING_PATHS = new Set([
-  ".github/workflows/ci.yml",
-  ".github/workflows/main-release-validation.yml",
+  ...LIBRARY_CORE_RELEASE_ACTIVATION_PATHS,
   ".github/workflows/release.yml",
   "scripts/generate-tauri-latest-from-release.mjs",
   "scripts/generate-tauri-latest-from-release.test.mjs",
   "scripts/prepare-release-notes.mjs",
   "scripts/release-governance.test.mjs",
   "scripts/release-publish.sh",
+  "scripts/post-perf-comment.mjs",
+  "scripts/post-perf-comment.test.mjs",
   "scripts/release-notes-shared.mjs",
   "scripts/release-notes-shared.test.mjs",
   "scripts/release.sh",
@@ -54,7 +77,11 @@ const RELEASE_TOOLING_PATHS = new Set([
 ]);
 
 const RELEASE_ADMISSION_PATHS = new Set([
+  ".github/workflows/ci.yml",
+  ".github/workflows/main-release-validation.yml",
   ".github/workflows/release.yml",
+  "scripts/post-perf-comment.mjs",
+  "scripts/post-perf-comment.test.mjs",
   "scripts/release-governance.test.mjs",
   "scripts/release-publish.sh",
   "scripts/release-workflow-matrix.test.mjs",
@@ -93,7 +120,6 @@ const RELEASE_PUBLISHER_TOOLING_PATHS = new Set([
   "scripts/doctor.test.mjs",
   "scripts/lib/release-tag-publisher.mjs",
   "scripts/lib/release-tag-publisher.test.mjs",
-  "scripts/release-governance.test.mjs",
   "scripts/release-publish.sh",
   "scripts/release-tag-publisher-build.sh",
   "scripts/release-tag-publisher-host.swift",
@@ -117,6 +143,15 @@ const RELEASE_PUBLISHER_TEST_FILES = [
   "scripts/release-tag-publisher-native.test.mjs",
   "scripts/sync-github-rulesets.test.mjs",
   "scripts/validate-release-tag-authority.test.mjs",
+];
+
+const PULL_REQUEST_PUBLISHER_TOOLING_PATHS = new Set([
+  "scripts/worktree-publish.sh",
+  "scripts/worktree-publish.test.mjs",
+]);
+
+const PULL_REQUEST_PUBLISHER_TEST_FILES = [
+  "scripts/worktree-publish.test.mjs",
 ];
 
 const TOOLING_SMOKE_RUNNER_PATHS = new Set([
@@ -417,12 +452,29 @@ export function isReleaseToolingPath(filePath) {
   return (
     filePath.startsWith("release-notes/") ||
     RELEASE_TOOLING_PATHS.has(filePath) ||
-    RELEASE_PUBLISHER_TOOLING_PATHS.has(filePath)
+    RELEASE_PUBLISHER_TOOLING_PATHS.has(filePath) ||
+    PULL_REQUEST_PUBLISHER_TOOLING_PATHS.has(filePath)
+  );
+}
+
+export function isLibraryCoreReleaseActivationPath(filePath) {
+  return LIBRARY_CORE_RELEASE_ACTIVATION_PATHS.has(filePath);
+}
+
+export function isSkillValidationPath(filePath) {
+  return (
+    filePath.startsWith(".agents/skills/") ||
+    filePath === "scripts/validate-skills.mjs" ||
+    filePath === "scripts/validate-skills.test.mjs"
   );
 }
 
 export function isReleasePublisherToolingPath(filePath) {
   return RELEASE_PUBLISHER_TOOLING_PATHS.has(filePath);
+}
+
+export function isPullRequestPublisherToolingPath(filePath) {
+  return PULL_REQUEST_PUBLISHER_TOOLING_PATHS.has(filePath);
 }
 
 export function isReleaseAdmissionPath(filePath) {
@@ -626,6 +678,21 @@ export function collectReleaseArtifactsToValidate(
   return [...artifacts].sort();
 }
 
+export function collectChangedReleaseIdentityArtifacts(changedFiles) {
+  return unique(
+    changedFiles
+      .map(normalizeRepoPath)
+      .map((filePath) => {
+        const match =
+          /^(release-notes\/releases\/v\d+\.\d+\.\d+(?:-dev)?)\.(?:json|md)$/.exec(
+            filePath,
+          );
+        return match ? `${match[1]}.json` : null;
+      })
+      .filter(Boolean),
+  ).sort();
+}
+
 function priorReleaseArtifactsFor(filePath) {
   const absolutePath = path.join(REPO_ROOT, filePath);
   const artifact = JSON.parse(readFileSync(absolutePath, "utf8"));
@@ -646,6 +713,92 @@ function releaseValidationItem(label, files) {
     label,
     files,
   };
+}
+
+function releaseIdentityValidationItem(label, files) {
+  return {
+    kind: "release-identity-validation",
+    label,
+    files,
+  };
+}
+
+function releaseTagForArtifactPath(filePath) {
+  const normalizedPath = normalizeRepoPath(filePath);
+  const match =
+    /^release-notes\/releases\/(v\d+\.\d+\.\d+(?:-dev)?)\.json$/.exec(
+      normalizedPath,
+    );
+  if (!match) {
+    throw new Error(
+      `Release identity validation requires a canonical release JSON path: ${normalizedPath}.`,
+    );
+  }
+  return match[1];
+}
+
+function releaseBaseRefForTag(tag) {
+  return tag.endsWith("-dev") ? "origin/dev" : "origin/main";
+}
+
+export function releaseArtifactExistsAtRef(
+  filePath,
+  ref,
+  execute = (command, args, options) =>
+    spawnSync(command, args, options),
+) {
+  const result = execute(
+    "git",
+    ["ls-tree", "--name-only", "-z", ref, "--", filePath],
+    { cwd: REPO_ROOT, encoding: "utf8" },
+  );
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `Could not inspect ${filePath} at ${ref}: ${String(
+        result.stderr ?? "",
+      ).trim() || `git exited ${String(result.status)}`}.`,
+    );
+  }
+  const entries = String(result.stdout ?? "")
+    .split("\0")
+    .filter(Boolean);
+  if (entries.length === 0) return false;
+  if (entries.length === 1 && entries[0] === filePath) return true;
+  throw new Error(
+    `Release artifact lookup at ${ref} returned an unexpected path set.`,
+  );
+}
+
+export function releaseIdentityValidationArgsForArtifact(
+  filePath,
+  artifact,
+  { baseArtifactExists = false } = {},
+) {
+  const tag = releaseTagForArtifactPath(filePath);
+  if (baseArtifactExists) {
+    return [
+      path.join("scripts", "validate-release-identity.mjs"),
+      `--tag=${tag}`,
+      "--historical-release-note-correction",
+      `--branch-ref=${releaseBaseRefForTag(tag)}`,
+    ];
+  }
+  if (artifact?.source?.receiptMode === "historical-published-tag") {
+    return [
+      path.join("scripts", "validate-release-identity.mjs"),
+      `--tag=${tag}`,
+      "--historical-published-tag",
+      `--branch-ref=${releaseBaseRefForTag(tag)}`,
+    ];
+  }
+  return [
+    path.join("scripts", "validate-release-identity.mjs"),
+    `--tag=${tag}`,
+    "--head-ref=HEAD",
+  ];
 }
 
 export function buildValidationPlan(mode, changedFiles) {
@@ -731,12 +884,25 @@ export function buildValidationPlan(mode, changedFiles) {
         ),
       );
     }
+    const identityArtifacts =
+      collectChangedReleaseIdentityArtifacts(changedFiles);
+    if (identityArtifacts.length > 0) {
+      plan.push(
+        releaseIdentityValidationItem(
+          "release identity validation",
+          identityArtifacts,
+        ),
+      );
+    }
 
     return plan;
   }
 
   const releaseAdmissionOnlyChanged =
-    changedFiles.length > 0 && changedFiles.every(isReleaseAdmissionPath);
+    changedFiles.length > 0 &&
+    changedFiles.every(isReleaseAdmissionPath) &&
+    !changedFiles.some(isReleasePublisherToolingPath) &&
+    !changedFiles.some(isToolingSmokeRunnerPath);
   if (releaseAdmissionOnlyChanged) {
     return [
       nodeCommand("release admission tests", [
@@ -768,16 +934,25 @@ export function buildValidationPlan(mode, changedFiles) {
   const pwaSurfaceChanged =
     sharedSurfaceChanged || changedFiles.some(isPwaSurface);
   const websiteSurfaceChanged = changedFiles.some(isWebsiteSurface);
-  const releaseToolingChanged = changedFiles.some(isReleaseToolingPath);
+  const releaseToolingChanged = changedFiles.some(
+    (filePath) =>
+      filePath.startsWith("release-notes/") ||
+      RELEASE_TOOLING_PATHS.has(filePath),
+  );
+  const libraryCoreReleaseActivationChanged = changedFiles.some(
+    isLibraryCoreReleaseActivationPath,
+  );
+  const skillValidationChanged = changedFiles.some(isSkillValidationPath);
   const releaseAdmissionChanged = changedFiles.some(isReleaseAdmissionPath);
   const updaterManifestChanged = changedFiles.some((filePath) =>
     UPDATER_MANIFEST_PATHS.has(filePath),
   );
   const repositoryConfigChanged = changedFiles.some(isRepositoryConfigPath);
   const releasePublisherToolingChanged = changedFiles.some(
-    (filePath) =>
-      isReleasePublisherToolingPath(filePath) &&
-      !isReleaseAdmissionPath(filePath),
+    isReleasePublisherToolingPath,
+  );
+  const pullRequestPublisherToolingChanged = changedFiles.some(
+    isPullRequestPublisherToolingPath,
   );
   const validateRunnerChanged = changedFiles.some(isValidateRunnerPath);
   const toolingSmokeRunnerChanged = changedFiles.some(isToolingSmokeRunnerPath);
@@ -926,6 +1101,41 @@ export function buildValidationPlan(mode, changedFiles) {
     );
   }
 
+  if (libraryCoreReleaseActivationChanged) {
+    addCommand(
+      plan,
+      nodeCommand("Library Core activation manifest validation", [
+        path.join("scripts", "validate-library-core-activation-manifest.mjs"),
+      ]),
+    );
+    addCommand(
+      plan,
+      nodeCommand("Library Core release activation tests", [
+        "--test",
+        path.join("scripts", "release-receipt.test.mjs"),
+        path.join("scripts", "library-core-release-activation.test.mjs"),
+        path.join("scripts", "lib", "git-path-at-ref.test.mjs"),
+        path.join("scripts", "lib", "github-release-publications.test.mjs"),
+        path.join("scripts", "lib", "library-core-release-activation.test.mjs"),
+        path.join("scripts", "validate-release-identity.test.mjs"),
+      ]),
+    );
+  }
+
+  if (skillValidationChanged) {
+    addCommand(
+      plan,
+      nodeCommand("skill validation tests", [
+        "--test",
+        path.join("scripts", "validate-skills.test.mjs"),
+      ]),
+    );
+    addCommand(
+      plan,
+      npmCommand("skill validation", ["run", "validate:skills"]),
+    );
+  }
+
   if (releaseAdmissionChanged) {
     addCommand(
       plan,
@@ -962,6 +1172,16 @@ export function buildValidationPlan(mode, changedFiles) {
       nodeCommand("release publisher tests", [
         "--test",
         ...RELEASE_PUBLISHER_TEST_FILES,
+      ]),
+    );
+  }
+
+  if (pullRequestPublisherToolingChanged) {
+    addCommand(
+      plan,
+      nodeCommand("pull request publisher tests", [
+        "--test",
+        ...PULL_REQUEST_PUBLISHER_TEST_FILES,
       ]),
     );
   }
@@ -1019,6 +1239,16 @@ export function buildValidationPlan(mode, changedFiles) {
         ),
       );
     }
+    const identityArtifacts =
+      collectChangedReleaseIdentityArtifacts(changedFiles);
+    if (identityArtifacts.length > 0) {
+      plan.push(
+        releaseIdentityValidationItem(
+          "release identity validation",
+          identityArtifacts,
+        ),
+      );
+    }
   }
 
   return plan;
@@ -1058,6 +1288,30 @@ function runReleaseValidations(files) {
   }
 }
 
+export function executeReleaseIdentityValidation(
+  filePath,
+  artifact,
+  execute = runProcess,
+  artifactExistsAtRef = releaseArtifactExistsAtRef,
+) {
+  const tag = releaseTagForArtifactPath(filePath);
+  const baseRef = releaseBaseRefForTag(tag);
+  const args = releaseIdentityValidationArgsForArtifact(filePath, artifact, {
+    baseArtifactExists: artifactExistsAtRef(filePath, baseRef),
+  });
+  execute(`validate identity ${filePath}`, NODE_BIN, args, REPO_ROOT);
+  return true;
+}
+
+function runReleaseIdentityValidations(files) {
+  for (const filePath of files) {
+    const artifact = JSON.parse(
+      readFileSync(path.join(REPO_ROOT, filePath), "utf8"),
+    );
+    executeReleaseIdentityValidation(filePath, artifact);
+  }
+}
+
 export function describePlan(plan) {
   return plan.map((item) => item.label);
 }
@@ -1089,6 +1343,12 @@ export function runValidationPlan(plan) {
     if (item.kind === "release-validation") {
       console.log(`\n==> ${item.label}`);
       runReleaseValidations(item.files);
+      continue;
+    }
+
+    if (item.kind === "release-identity-validation") {
+      console.log(`\n==> ${item.label}`);
+      runReleaseIdentityValidations(item.files);
       continue;
     }
 

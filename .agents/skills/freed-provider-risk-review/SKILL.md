@@ -1,6 +1,6 @@
 ---
 name: freed-provider-risk-review
-description: Prepare and verify both owner gates for any Freed change that could alter behavior visible to X, Facebook, Instagram, LinkedIn, or another provider. Use before implementation that changes WebView loads, navigation, requests, retries, cadence, cookies, headers, scrolling, clicking, extraction scripts, media loading, login behavior, or provider timing, and again before making the pull request ready. Preparing a review never grants approval.
+description: Prepare and verify the owner behavior gate for any Freed change that could alter behavior visible to X, Facebook, Instagram, LinkedIn, or another provider. Use before implementation that changes WebView loads, navigation, requests, retries, cadence, cookies, headers, scrolling, clicking, extraction scripts, media loading, login behavior, or provider timing. Also use to classify a provider-visible path change that has no provider-observable behavior change. Preparing a review never grants live provider traffic.
 disable-model-invocation: true
 ---
 
@@ -15,7 +15,7 @@ Make the observable change and its fingerprinting risk explicit before implement
 3. Treat the native social WebView monolith as provider-visible until provider-specific Rust modules make ownership precise.
 4. Name each affected provider. Do not use a generic social-provider label when behavior differs.
 
-## Gate 1: behavior approval before implementation
+## Behavior approval before implementation
 
 Include:
 
@@ -34,58 +34,71 @@ Include:
 
 Stop before code until the owner explicitly approves the named observable
 behavior after seeing its provider, fingerprinting risk, and lower-profile
-alternative in the current task. Record a stable reference to that decision.
-This first gate authorizes only implementation within the described behavior.
-It is not publish approval. General permission to proceed with a plan, program,
-or broad batch of work does not satisfy this gate.
+alternative. Record a stable task and decision reference. A later implementing
+task may reuse that decision only when it loads and cites the exact reference,
+the decision has no expiry or has not expired, and the provider, contact
+frequency, timing, and observable flow remain inside its stated scope. Never
+infer reusable authority from roadmap prose or general permission to proceed
+with a plan, program, or broad batch. This Gate 1 decision authorizes
+implementation only within the described behavior. It is not live provider
+traffic, merge, release, or install authority.
 
-## Gate 2: provider diff authorization before ready
+## Record the reviewed behavior
 
 After implementation and validation, write the approved Gate 1 decision as a
-healthy `provider-risk-review` stability artifact. Publish the candidate as a
-draft with `--provider-risk-review-artifact <path>`. Draft publication does not
-authorize provider traffic. The publication helper posts one GitHub review
-comment bound to both the artifact and the current provider subdiff. It records:
+healthy `provider-risk-review` stability artifact and publish with
+`--provider-risk-review-artifact <path>`. The publication helper posts one
+GitHub review comment that records:
 
 - Exact provider-visible path set and provider-only binary diff hash
 - Inferred provider set
 - Observable behavior, fingerprinting risk, and lowest-profile alternative
 
-The human Gate 2 action is a CODEOWNER's GitHub thumbs-up reaction on that
-exact, unedited comment. GitHub records the acting account. Rerun the helper
-with the same artifact and `--ready` after the reaction exists. The helper
-verifies that the reaction came from a CODEOWNER after the comment was created,
-and that both the artifact and provider-visible diff still match.
-
-Changes outside the provider-visible path set preserve the approval. A change
-to any provider-visible file or to the Gate 1 artifact creates a new review
-comment and a new reaction requirement. A material behavior change also
-returns to Gate 1 before implementation continues.
+The comment is an audit record, not a second approval. A healthy artifact with
+`behavior_approved` may publish directly as ready when its provider set matches
+the current classified diff. The artifact approves the described behavior, not
+one exact byte diff. A materially different observable behavior returns to
+Gate 1 before implementation continues.
 
 For unattended publication, use a signed `control-task` approval record outside
-the repository. Bind its digest to the same provider-only diff, set provider
+the repository. Bind its digest to the provider-only diff, set provider
 authority to `approved`, and preserve the owner capability event. Broker
-provisioning is optional and does not block the GitHub reaction path.
+provisioning is optional and does not change the behavior-approval rule.
+
+## Classified path with no behavior change
+
+Path classification is deliberately broader than provider behavior. A native
+storage, type, test, telemetry, or refactor change may touch a classified file
+without changing requests, navigation, timing, cookies, headers, extraction,
+or provider activity.
+
+For that case:
+
+1. state why the observable behavior is byte-for-byte or semantically
+   unchanged;
+2. name the classified providers and exact paths;
+3. record a healthy `diff_authorized` artifact;
+4. publish with the artifact so the helper posts the audit comment.
+
+Do not fabricate fingerprinting risk for a behavior-neutral diff. If behavioral
+judgment is uncertain, return to Gate 1 before code.
 
 ## Approval rules
 
-- General permission to improve stability, build a feature, or "proceed with everything" is not a substitute for either scoped gate.
+- General permission to improve stability, build a feature, or "proceed with everything" is not a substitute for scoped behavior approval.
 - Behavior approval applies only to the described contact frequency, timing,
   provider, paths, and observable flow.
-- Do not contact a provider while preparing the draft or review comment.
-- Treat the GitHub reaction as the direct human authorization record. Do not
-  ask the owner to copy or type a digest into the task.
+- Do not contact a provider while preparing the artifact or review comment.
 - Treat `control-task` as the optional machine-verifiable route. Require the
   matching task digest, approved provider authority, and owner capability event.
-- Publish provider-visible work as a draft first. Use `--ready` only after the
-  CODEOWNER reaction exists, or provide a valid signed control-task approval.
+- Publication readiness does not authorize provider traffic.
 
 ## Result
 
-Return the state of both gates: `behavior_approved`, `diff_authorized`,
-`blocked_by_owner`, or `needs_revision`. Include the exact allowed behavior and,
-when Gate 2 is complete, the GitHub review comment reference. Hand behavior-approved
-implementation to `freed-build-feature`. Keep every out-of-scope idea blocked.
+Return `behavior_approved`, `diff_authorized`, `blocked_by_owner`, or
+`needs_revision`. Include the exact allowed behavior and the audit comment
+reference after publication. Hand approved implementation to
+`freed-build-feature`. Keep every out-of-scope idea blocked.
 
 Record that decision with kind `provider-risk-review` in the version 1
 [stability artifact
@@ -93,5 +106,4 @@ schema](../../../automation/artifact-schemas/stability-artifact-v1.schema.json).
 Validate and atomically store it with `node scripts/stability-artifact.mjs write
 --input <manifest.json>`. The canonical result lives under
 `~/.freed/automation/artifacts/provider-risk-review/<task-id>/`. This manifest
-describes the gate state. It does not replace the explicit Gate 1 decision or
-the CODEOWNER's GitHub reaction.
+describes the gate state. It does not replace the explicit Gate 1 decision.

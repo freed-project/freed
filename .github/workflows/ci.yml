@@ -286,7 +286,7 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
 
     steps:
       - name: Checkout
@@ -358,6 +358,7 @@ jobs:
         run: npm run validate:feature
         env:
           CI: "true"
+          GH_TOKEN: ${{ github.token }}
 
       # Write the comparison to a file instead of piping through `tee`: the
       # pipe swallowed perf-compare's exit(1), so the gate could never fail.
@@ -376,13 +377,9 @@ jobs:
 
       - name: Print perf comparison
         if: always() && hashFiles('perf-comparison.md') != ''
-        run: cat perf-comparison.md
-
-      - name: Comment perf comparison on PR
-        if: always() && hashFiles('perf-comparison.md') != '' && github.event.pull_request.head.repo.full_name == github.repository
-        run: node scripts/post-perf-comment.mjs
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cat perf-comparison.md
+          cat perf-comparison.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload perf results
         if: always()

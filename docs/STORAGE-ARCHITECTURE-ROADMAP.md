@@ -1,123 +1,215 @@
 # Storage Architecture Roadmap
 
-Status: **Proposed.** Nothing here is authorized to build beyond Stage 0 and Stage 1.
+Status: **Approved direction. Activation remains gated.**
 
-Every number in this document is measured on the owner's real 15,846-item document (v26.7.2300, 2026-07-24/25) unless explicitly marked as an estimate. Estimates are marked because the difference matters.
+The normative architecture lives in
+[LIBRARY-CORE-CONTRACT.md](LIBRARY-CORE-CONTRACT.md). This roadmap records why
+the work exists, what evidence is real, and the safest delivery order.
 
-## The finding
+## What the evidence establishes
 
-Automerge costs about **30 KB of resident memory per feed item**, linear, metadata only. Measured: 15,846 items at 545 MB, 31,692 items at 959 MB. Those same items are 217 bytes each on disk, so the amplification is roughly 148x for metadata alone. Body text is only 44 percent of the cost and history only 17 percent, which is why compaction and pruning never converged.
+On the owner's 15,846-item production document, the current Automerge and
+WebKit design amplifies a small serialized corpus into hundreds of MiB of
+resident memory. Larger synthetic documents scale roughly linearly. Full
+document hydration, full-array derivations, binary copies, search indexes, and
+provider WebViews then compete inside one memory-constrained application.
 
-The same 15,846 items in SQLite cost **3.8 MB resident**, and 100,000 items cost **3.7 MB**. Flat, because only queried rows materialise.
+The evidence supports these conclusions:
 
-`WebAssembly.Memory` has `grow()` and no `shrink()`. Peak resident becomes a permanent floor for the life of the instance. That is the mechanism behind 52 WebKit memory fixes that did not converge: they tuned thresholds against an allocation that structurally cannot shrink.
+- A paged row store can answer bounded library queries without materializing
+  the corpus in the renderer.
+- `WebAssembly.Memory` does not shrink, so terminating an idle legacy worker is
+  more reliable than hoping its peak allocation returns to the operating
+  system.
+- Desktop search is built from truncated text today.
+- The PWA's 2,500-item hydration cap limits the final message, not the
+  full-corpus work performed before it.
+- Facebook and Instagram captures have been blocked by memory pressure. Lower
+  library memory can allow existing scheduled attempts to complete.
 
-## What that costs today
+The evidence does not yet establish a universal 200 MiB renderer floor,
+15 millisecond cold start, multi-million-item ceiling, or a precise amount of
+memory attributable to Automerge alone. Those are hypotheses until the
+process-safe attribution harness and matched fixtures measure them.
 
-The renderer sits around 4.26 GB. Consequences verified in telemetry:
+## Corrections to the earlier roadmap
 
-- **100 percent of Facebook and Instagram scrapes return `stage: "memory_pressure"`, `itemsExtracted: 0`, `itemsPersisted: 0`.** A hidden authenticated WebView cannot open without headroom. X is unaffected because it intercepts GraphQL and needs no WebView.
-- **Desktop full-text search is silently broken.** `DESKTOP_UI_PRESERVED_TEXT_LIMIT = 0` and `DESKTOP_UI_CONTENT_TEXT_LIMIT = 280` mean the search index is built over truncated text and empty preserved bodies.
-- **The PWA does not hold a browsable full corpus**, despite loading one. `HYDRATED_FEED_ITEM_LIMIT = 2_500` is applied *after* every full-corpus pass has run, so it caps `postMessage` size, not memory. Worst of both.
+The previous version contained five unsafe premises:
 
-## Do we need CRDTs
+1. **Cloud convergence already exists.** Desktop and PWA cloud paths merge
+   Automerge documents. The ETag compare-and-swap prevents one manifest or blob
+   replacement from blindly overwriting another. It is not the semantic merge.
+2. **Automerge cannot be deleted before replacement sync exists.** Doing so
+   would turn two writable clients into divergent databases.
+3. **A SQL writer flip is not independently reversible.** Rollback is safe only
+   from a compatibility state proven at the same frontier.
+4. **A filtered UI projection is not migration input.** Hidden records,
+   truncated text, absent values, relationships, and source-head identity must
+   come from an immutable raw source.
+5. **A Web Worker is still a WebKit process.** The corpus leaves renderer
+   memory only when the worker no longer retains it.
 
-No. One merge concept survives and it is not a library.
+The implementation order below is built around those corrections.
 
-`mergeUserState` (`packages/shared/src/schema.ts:901`) contains all of Freed's sophisticated merge logic. It has **exactly one caller** (`:1192`), reachable only from dedup and capture-reconcile. **It has never run on cross-device sync.** Automerge does plain last-writer-wins there. Freed pays 30 KB per item for what a timestamp column does free.
+## Engine decision
 
-Cloud conflict control is already the ETag/If-Match compare-and-swap in `gdrive.ts`, not the CRDT. `A.merge` exists only because the transport ships one opaque blob.
+Desktop uses stock SQLite through Rust.
 
-There is no sequence-CRDT use case anywhere in the schema. `content.text`, `preservedContent.text`, notes and highlights are all replaced wholesale.
+The PWA uses the same logical Library Core contract through a capability-tested
+browser adapter. SQLite WASM with OPFS is preferred only where it proves
+durability, compatibility, and bounded memory. A row-oriented IndexedDB
+adapter remains the fallback. One full Automerge binary in IndexedDB is not the
+fallback.
 
-What replaces it: `userState` as a bounded join-semilattice expressed as `ON CONFLICT DO UPDATE`, plus a hybrid logical clock. The HLC is not optional. Without it every last-writer-wins rule is permanently winnable by one device with a fast clock, silently, with no marker and no self-healing.
+Private-corpus Automerge decoding runs only on an elected installation that
+holds the current authenticated migration claim. It is resumable, uses the
+external-memory decoder, stays under the fixed 384, 512, or 768 MiB tier
+ceiling, and proves enough private staging capacity for source-sized runs.
+Other installations bootstrap by streaming and verifying the accepted logical
+checkpoint, blob roots, and operation segments. Every adapter proves public
+migration vectors and its own installation-qualified, fenced device-local
+source contribution. A low-memory browser does not decode the owner's full
+legacy corpus merely to prove that it can run Library Core.
 
-### Three bugs the current lattice already has
+Turso remains rejected for this role. The measured evaluation in
+[TURSO-EVALUATION.md](TURSO-EVALUATION.md) found unacceptable incremental FTS
+behavior, resident memory, and silent index-maintenance failure. Adoption
+depends on those probes changing, not on a version number.
 
-These are latent only because PWA to desktop convergence does not exist. Fixing convergence without fixing these would introduce them.
+## Delivery order
 
-1. **No un-operation can propagate.** `mergeUserState` ORs the flags: `target.saved = target.saved || source.saved`, same for `hidden`, `archived`, `liked`. Once true, forever true. Un-saving on one device can never reach another.
-2. **Mark-as-unread always loses.** `mergeTimestamp` returns the defined side when one operand is `undefined`.
-3. **Unlike-then-relike never reaches the platform.** `likedSyncedAt` is three-state (undefined / -1 terminal / positive) and a grow-only max register cannot model it.
+Each step is separately reviewable. "Dark" means code may ship but cannot own
+user data yet.
 
-## Turso
-
-**Rejected for now, on evidence from its own compatibility matrix**, not on caution. Every property it was nominated for fails:
-
-| property | Turso COMPAT.md |
-| --- | --- |
-| FTS5 | No. Uses Tantivy with Turso-specific `CREATE INDEX ... USING fts` |
-| `GENERATED` | Virtual columns only, no `ALTER`, requires an experimental flag |
-| `changes()` / `total_changes()` | Partial, no trigger support |
-| `PRAGMA recursive_triggers` | No |
-| MVCC | Experimental; all statements on a connection share one transaction |
-| in-place `VACUUM` / `incremental_vacuum` | Experimental / No |
-
-> **This section's original reasoning has been retracted and replaced by measurement.** It argued the fatal flaw was that "a Tantivy index is not SQLite B-tree pages", so the escape hatch preserves data but not the search index. That objection is weak and the owner correctly rejected it: indexes are derived data, you rebuild them. Do not use it.
->
-> Turso was then benchmarked properly against the real corpus. **The verdict is unchanged but the reasons are different and much stronger.** See [TURSO-EVALUATION.md](TURSO-EVALUATION.md) for the full record, the reproduction scripts, and the adoption gate. In brief:
->
-> - **Incremental FTS ingest scales with index size**: 313 ms/row into a 95,076-row index versus SQLite's flat 0.20 ms/row, about 1,570x. Plain writes are fine, so "Turso writes get slower as the database grows" is the wrong summary and will send you after the wrong thing.
-> - **Silent, total index corruption.** Any virtual-table module Turso does not implement causes it to open a connection with no indexes at all and skip index maintenance on every write, while reporting success. Measured: 650 writes, zero reflected in any index, stale pre-update values left indexed. Traced to a swallowed error at `core/lib.rs:1514-1519`. Unfixed on `main` and unreported upstream.
-> - **Turso costs 48x more peak RSS to build an index** (+153.5 MB vs SQLite's +3.2 MB) and carries ~474 MB more resident on the same corpus. For a project whose blocker is renderer memory, that alone decides it.
-
-**The PWA unlock is not Turso-specific.** Official SQLite WASM over OPFS delivers identical page-cache physics, at 1.0, with FTS5 and `STORED` generated columns. The physics win is *a paged store instead of a CRDT*. It was never Turso.
-
-Decision: **rusqlite on desktop, official sqlite-wasm on the phone.** The originally planned "Turso as a read-only CI conformance track from Stage 4" is dropped: stock SQLite cannot open a Turso-FTS file at all, so the diff it was meant to generate is not possible, and a conformance track against an engine that silently drops index writes would manufacture false confidence rather than readiness signal.
-
-Adoption gate: see [TURSO-EVALUATION.md](TURSO-EVALUATION.md). The trigger is specific probes passing, not a version number.
-
-## The floor
-
-Estimates, because the dominant term is not yet measured. Stage 0 exists to fix that.
-
-| | today | target |
+| step | delivery | activation condition |
 | --- | --- | --- |
-| desktop renderer, steady | ~4,260 MB | ~200-350 MB |
-| desktop renderer, during scrape | blocked | ~550-1,150 MB |
-| desktop Rust, data-attributable | — | ~52 MB, flat |
-| PWA on a phone | 545 MB at 15.8k, ~2.9 GB at 100k, surfacing only 2,500 | ~140-260 MB, flat, genuinely complete |
-| cold start | 1,700-1,900 ms | ~15-35 ms desktop, ~120-360 ms PWA |
-| scale ceiling | fails past ~50k | desktop ~2M, phone ~250-300k |
+| 0 | Process-safe memory attribution and matched tier fixtures | Exact build and process-generation evidence, no startup stall |
+| 1 | Freeze the Library Core registries, authority, and legacy epoch bootstrap | Every synchronized field has algebra, locality, deletion, and storage policy; signed actor and global epoch-transition contracts are exhaustive; one durable control transaction records the initial epoch |
+| 2 | Dormant Rust SQLite core and shared operation fixtures | Crash-safe complete transaction receipts, signature and fork rejection, and identical cross-platform materialization |
+| 3 | Authenticated elected Automerge migration authority plus bounded device-local source contributions | Candidate registration is the first claim-bound mutation, and registration races state-correct candidate-absent abandonment and cleanup in one serialization domain; cloud claims use authenticated store time and expiry; local claims use null timestamps and never self-expire; every claim-bound source, candidate-registry, and cutover mutation uses a closed noncircular payload-bound grant; cloud source commits require the original runtime-owned process generation and live monotonic attempt handle; migration and rollback split corpus-sized prepared proofs from a maximum 65-fence, 2 MiB activation sidecar committed in one atomic authority bundle; rollback uses its own signed reservation and activation schema; full-field private-corpus diff, composite source identity, resumable receipts, changed-head rejection, and adapter fixture parity pass |
+| 4 | Bounded Desktop query API | Stable cursors, explicit limits, cancellation, count and search parity |
+| 5 | Desktop surfaces read verified SQL projection | No visible surface requires the full item array |
+| 6 | Short-lived legacy compatibility engine | Automerge worker terminates after bounded work; provider WebViews do not overlap it |
+| 7 | Dormant PWA Library Core adapter | Browser durability matrix, operation fixture parity, and bounded accepted-checkpoint bootstrap without private-corpus Automerge decode |
+| 8 | Immutable operation-segment cloud sync | Two-device offline and CAS-conflict convergence through signed actors and one global authority pointer |
+| 9 | Coordinated storage-epoch cutover | Desktop and PWA switch writer and protocol through one signed transition certificate; legacy clients are fenced into their retired namespace |
+| 10 | Installed-build soak and rollback window | Tier memory, sync, provider extraction, recovery, export, and import gates pass |
+| 11 | Automerge retirement | No supported writer needs it and roll-forward recovery is proven |
 
-Memory stops being the binding constraint at any scale on either platform. Disk becomes the limit, which is the correct place for one to live.
+The first large memory win arrives at steps 5 and 6. SQL can serve bounded
+reads while the authoritative legacy worker becomes short-lived. The final
+architectural simplification arrives only after step 9.
 
-## Stages
+Before step 5 completes, every full-corpus product and UI consumer must move
+behind the bounded core: classification, content fetch, provider-action
+derivation, product-facing cloud and LAN sync, search, Friends, map, counts,
+startup maintenance, duplicate analysis, snapshot, backup, and export. The
+registered short-lived legacy migration and replication bridges may remain
+through Gate D until Gate E replaces them. Moving only React while another
+WebKit product worker keeps scanning the corpus is not renderer eviction.
 
-Each stage is independently shippable, reversible, and soak-verifiable. One behavioral change at a time.
+## Provider boundary
 
-| # | stage | why |
-| --- | --- | --- |
-| 0 | Memory attribution harness | Every floor claim has one unmeasured dominant term. Zero behavior change |
-| 1 | Raw-bytes cloud IPC | `bodyToBytes` boxes a 38 MB binary as 38M JS numbers. ~300-450 MB transient per sync |
-| 2 | Priority decomposed and device-local | `priority` is synced and time-decaying, so no indexed sort key can exist until this lands |
-| 3 | Locality and deletion contract | Types only. Forces the field-by-field argument, and forces a deletion decision that does not exist today |
-| 4 | Shadow store with continuous projector | Proves the projection lossless against real data before anything reads it |
-| 5 | Feed page and counts from SQL | First surface that does not read the array |
-| 6 | Search, friends graph, map from SQL | Restores full-body search, which is broken today |
-| 7 | **The corpus leaves the renderer** | **The memory floor, and where FB/IG becomes structurally reliable** |
-| 8 | SQL becomes the writer; tombstones | Cold start collapses. Closes the deletion hole before a second writer exists |
-| 9 | Delete Automerge; **scope** the gate | Two data models become one |
-| 10 | Content-addressed segment sync | PWA to desktop convergence starts existing |
+This program does not add provider requests, navigation, scrolling, clicking,
+cookies, headers, or a faster schedule.
 
-### Two things to get right
+The first slice capable of turning a memory-rejected Facebook or Instagram
+attempt into real provider contact is provider-observable. The owner approved
+this exact effect for the existing Facebook and Instagram schedule in
+`codex-task:019f4ce3-2ee3-76b2-bc0c-eb7f4958a7de`: "You are fully authorized to
+continue this optimization in ways which will increase provider pull frequency
+by fixing cases where we were previously unable to pull." The provider can see
+successful contact where memory rejection previously produced none. The
+lowest-profile alternative is to keep rejecting those attempts and leave that
+data unsynced. The decision remains in scope only while cadence, retry policy,
+requests, navigation, cookies, headers, and extraction behavior remain
+unchanged. The first active slice must cite that exact decision and write and
+validate its healthy Gate 1 artifact before publication. It does not need
+another approval for the same behavior. Dormant storage, migration, and query
+work remains provider-free. Any later change to provider cadence, retry policy,
+request shape, WebView behavior, cookies, headers, or extraction code requires
+its own provider-risk decision before implementation.
 
-**The scrape gate is scoped, not deleted.** `scrape_memory_may_proceed` is a three-term conjunction. Two terms derive from `memory_high` / `memory_critical`, which are machine-derived and still meaningful on a small machine. Only the Automerge-ratchet compensation goes.
+Provider extraction follows a two-phase memory boundary during migration:
 
-**Stage 8 is a one-way boundary.** Once writes go to SQL the Automerge document stops receiving them. A field the projector silently drops becomes unrecoverable once the retained copy is pruned. Stage 4's nightly field-level differ exists to catch that before Stage 8, not after.
+1. capture results enter a durable local capture journal;
+2. the provider WebView closes;
+3. the library engine wakes and materializes the journal;
+4. the library engine returns to its settled budget or terminates.
 
-## What gets deleted
+No in-memory handoff may require both the full legacy corpus and the provider
+WebView to stay resident.
 
-Both Automerge workers (1,819 + 845 lines), `merge.ts`, the three CRDT containment guards, all full-document transport, the idle-unload and worker-termination machinery, `feed-text-compaction.ts`, `trimFeedItemForDesktopUi`, the MiniSearch main-thread index, `store.items` and its 13 subscribers, `HYDRATED_FEED_ITEM_LIMIT`, and the five full-corpus dedup passes per ingest batch.
+## Integrity work that cannot be skipped
 
-A smaller system is a deliverable, not a side effect. Most of this is scar tissue from working around the CRDT memory problem and disappears with it.
+The storage cutover must also repair these existing boundaries:
 
-## Residual risks
+- Markdown export is a sharing format, not a complete backup.
+- Import reports parsed items before all durable phases finish and is not one
+  resumable transaction.
+- Current snapshots write Automerge and contact state as separate files.
+- Current destructive deduplication is heuristic and order-sensitive.
+- Deletion lacks a durable row-level tombstone contract.
+- Several current field policies still describe PWA convergence as absent,
+  which is no longer factually correct.
 
-- **The WebKit shell baseline is unmeasured and is the dominant term.** Estimates spanned 60-250 MB, a 4x spread on the largest line in the renderer floor. Stage 0 exists for this.
-- **About 1.4 GB of today's 4.26 GB is unattributed to any named mechanism.** The itemised removals sum to roughly 2.6-2.8 GB and that sum already double-counts. Do not promise the difference.
-- **We now own convergence correctness.** A bug in `apply` makes devices diverge silently, which Automerge would have prevented outright. A digest checker converts silent divergence into an alert; it does not prevent it.
-- **Dedup is not a semilattice operation and may not converge.** Union-find across four grouping strategies with a ±5-minute window is order-dependent.
-- **CRDT history is discarded permanently.** Per-change provenance for the pre-migration corpus is gone.
-- **Primary death.** The lease with monotone fencing detects and rejects dual-primary but does not promote. If the primary dies permanently nobody drains the outbound queue.
-- **OPFS eviction on the phone.** There is no `navigator.storage.persist()` call anywhere in `packages/pwa` today, and iOS evicts non-persisted origins aggressively.
+These are part of Library Core correctness. They are not reasons to preserve
+the current full-document architecture.
+
+## Test and evidence routing
+
+The following blocking-proof groups are illustrative. The closed universal
+gate registry and proof requirements in
+[LIBRARY-CORE-CONTRACT.md](LIBRARY-CORE-CONTRACT.md) are binding:
+
+- transaction crash recovery;
+- actor signature, retirement, fork detection, and deterministic repair;
+- complete transaction-member delivery without partial materialization;
+- future-clock quarantine and certified repair;
+- migration claim races, response loss, interruption, and source change;
+- exact payload-bound operation grants, grant-bound live source attempts,
+  candidate registration versus absent-state abandonment, reservation and
+  activation races, dead-claimant abandonment, state-correct absent cleanup,
+  persistent registered-candidate cleanup, and deleted-payload closure;
+- prepared migration and rollback proofs, signed rollback fences, exact
+  prepared-proof binding, 65-fence and 2 MiB finalization boundaries, one
+  atomic sidecar bundle, deadline release, and no corpus or genesis-closure
+  work while fences are active;
+- global epoch and same-epoch manifest races, compound authority-state
+  compare-and-swap, prepared-transition recovery, and legacy fencing;
+- cutover, rollback, authority recovery, and concurrent-restore receipts;
+- recovery supersession for a consumed active or abandoned migration lifecycle;
+- duplicate and response-loss replay;
+- two-device offline convergence through authenticated branch-qualified
+  manifests;
+- schema and database-plus-blob snapshot atomicity, including missing and
+  corrupt replicated blobs;
+- bidirectional Desktop and PWA encrypted backup and restore, including
+  paged-inventory bootstrap, recursive media-exclusion lineage, and busy
+  same-transition descendant registration;
+- complete reader lookup plans and authenticated hit, missing, or error probe
+  outcomes without Cache enumeration or network fallback;
+- import idempotency;
+- bounded query, full semantics beyond the legacy 2,500-item cap, and activated
+  4 GiB startup admission.
+
+The private corpus, 100,000-item performance, large randomized convergence
+matrix, browser compatibility sweep, and six-hour memory slope remain
+mandatory evidence in dedicated or nightly lanes. They do not belong in every
+ordinary feature or release workflow.
+
+## Completion
+
+The roadmap is complete only when:
+
+- Desktop and PWA use one replicated operation contract;
+- every visible library read is bounded;
+- one atomic epoch owns writes;
+- delete, offline conflict, replay, response loss, migration, rollback, import,
+  snapshot, and recovery have deterministic proof;
+- the installed application meets the tier budgets in the Library Core
+  contract;
+- Facebook and Instagram can run their existing schedule without library
+  memory starvation;
+- Automerge and its full-document containment machinery are removed from every
+  supported writer.

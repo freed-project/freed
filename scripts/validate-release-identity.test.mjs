@@ -12,9 +12,21 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  createLibraryCoreReleaseActivation,
+  inspectLibraryCoreActivationManifest,
+} from "./lib/library-core-release-activation.mjs";
+import {
+  RELEASE_RANGE_START_MODES,
+  releaseInspectionRange,
+} from "./release-receipt.mjs";
+import {
   parseReleaseTag,
+  validateHistoricalPublishedTagIdentity,
+  validateHistoricalReleaseNoteCorrectionIdentity,
+  validateLibraryCoreReviewDraftIdentity,
   validateReleaseIdentity,
 } from "./validate-release-identity.mjs";
+import { renderReleaseBody } from "./release-notes-shared.mjs";
 
 function git(cwd, args) {
   return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
@@ -27,6 +39,11 @@ function writeRepoFile(cwd, relativePath, contents) {
 }
 
 function writeVersionFiles(cwd, version) {
+  writeRepoFile(
+    cwd,
+    "docs/library-core-activation-manifest.json",
+    `${JSON.stringify({ schemaVersion: 1, transitions: [] }, null, 2)}\n`,
+  );
   writeRepoFile(
     cwd,
     "packages/desktop/package.json",
@@ -59,6 +76,83 @@ function commitAll(cwd, message) {
   git(cwd, ["commit", "-m", message]);
 }
 
+function validateFixtureReleaseIdentity(options) {
+  return validateReleaseIdentity({
+    publicationFacts: [],
+    ...options,
+  });
+}
+
+function validateHistoricalFixtureIdentity(options) {
+  return validateHistoricalPublishedTagIdentity({
+    baseRef: "origin/dev",
+    ...options,
+  });
+}
+
+function publishedDevReleaseFact(tag, overrides = {}) {
+  return {
+    id: 1,
+    tag_name: tag,
+    draft: false,
+    prerelease: true,
+    published_at: "2026-07-27T12:00:00Z",
+    ...overrides,
+  };
+}
+
+function withCanonicalReleaseCopy(tag, artifact, release = null) {
+  const nextRelease =
+    release ??
+    artifact.release ?? {
+      deck: "Historical release copy.",
+      features: [],
+      fixes: ["Fixed one thing."],
+      followUps: [],
+    };
+  return {
+    ...artifact,
+    release: nextRelease,
+    releaseBody: renderReleaseBody(tag, nextRelease),
+  };
+}
+
+function writeReleaseArtifactAndMarkdown(cwd, artifactPath, artifact) {
+  writeRepoFile(
+    cwd,
+    artifactPath,
+    `${JSON.stringify(artifact, null, 2)}\n`,
+  );
+  writeRepoFile(
+    cwd,
+    artifactPath.replace(/\.json$/, ".md"),
+    artifact.releaseBody,
+  );
+}
+
+function reviewedNoActivation({ channel, productCommitSha }) {
+  const range = releaseInspectionRange({
+    channel,
+    productCommitSha,
+  });
+  return createLibraryCoreReleaseActivation({
+    range,
+    manifestInspection: emptyManifestInspection(),
+  });
+}
+
+function emptyManifestInspection({ previousPresent = false } = {}) {
+  const contents = `${JSON.stringify(
+    { schemaVersion: 1, transitions: [] },
+    null,
+    2,
+  )}\n`;
+  return inspectLibraryCoreActivationManifest({
+    previousContents: previousPresent ? contents : null,
+    currentContents: contents,
+  });
+}
+
 function makeReleaseRepo() {
   const cwd = mkdtempSync(path.join(tmpdir(), "freed-release-identity-"));
   git(cwd, ["init", "-b", "dev"]);
@@ -84,7 +178,15 @@ function makeReleaseRepo() {
         channel: "dev",
         dayKey: "26.7.13",
         approved: true,
-        source: { channel: "dev", productCommitSha },
+        source: {
+          channel: "dev",
+          previousPublishedTag: null,
+          productCommitSha,
+          libraryCoreActivation: reviewedNoActivation({
+            channel: "dev",
+            productCommitSha,
+          }),
+        },
       },
       null,
       2,
@@ -123,8 +225,13 @@ function makeProductionReleaseRepo() {
         approved: true,
         source: {
           channel: "production",
+          previousPublishedTag: null,
           productCommitSha,
           promotedDevCommitSha,
+          libraryCoreActivation: reviewedNoActivation({
+            channel: "production",
+            productCommitSha,
+          }),
         },
       },
       null,
@@ -133,6 +240,214 @@ function makeProductionReleaseRepo() {
   );
   commitAll(cwd, "release: v26.7.1300");
   return { cwd, productCommitSha, promotedDevCommitSha };
+}
+
+function makeReleaseRepoWithImmutablePreviousReceipt() {
+  const cwd = mkdtempSync(path.join(tmpdir(), "freed-release-range-identity-"));
+  git(cwd, ["init", "-b", "dev"]);
+  git(cwd, ["config", "user.name", "Freed Test"]);
+  git(cwd, ["config", "user.email", "test@freed.invalid"]);
+  writeVersionFiles(cwd, "26.7.1100");
+  writeRepoFile(
+    cwd,
+    "packages/desktop/src/app.ts",
+    "export const value = 1;\n",
+  );
+  commitAll(cwd, "feat: previous product state");
+  const previousProductCommitSha = git(cwd, ["rev-parse", "HEAD"]);
+
+  writeVersionFiles(cwd, "26.7.1200");
+  writeRepoFile(
+    cwd,
+    "release-notes/releases/v26.7.1200-dev.json",
+    `${JSON.stringify(
+      {
+        tag: "v26.7.1200-dev",
+        version: "26.7.1200-dev",
+        channel: "dev",
+        dayKey: "26.7.12",
+        approved: true,
+        source: {
+          channel: "dev",
+          previousPublishedTag: null,
+          productCommitSha: previousProductCommitSha,
+          promotedDevCommitSha: null,
+          libraryCoreActivation: reviewedNoActivation({
+            channel: "dev",
+            productCommitSha: previousProductCommitSha,
+          }),
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  commitAll(cwd, "release: v26.7.1200-dev");
+  git(cwd, ["tag", "v26.7.1200-dev"]);
+  const previousTagCommitSha = git(cwd, ["rev-parse", "HEAD"]);
+
+  writeRepoFile(
+    cwd,
+    "packages/desktop/src/app.ts",
+    "export const value = 2;\n",
+  );
+  const currentPreviousArtifact = JSON.parse(
+    readFileSync(
+      path.join(cwd, "release-notes/releases/v26.7.1200-dev.json"),
+      "utf8",
+    ),
+  );
+  currentPreviousArtifact.source.productCommitSha = "f".repeat(40);
+  writeRepoFile(
+    cwd,
+    "release-notes/releases/v26.7.1200-dev.json",
+    `${JSON.stringify(currentPreviousArtifact, null, 2)}\n`,
+  );
+  commitAll(cwd, "feat: next product state");
+  const productCommitSha = git(cwd, ["rev-parse", "HEAD"]);
+
+  const range = releaseInspectionRange({
+    channel: "dev",
+    previousPublishedTag: "v26.7.1200-dev",
+    previousSource: {
+      channel: "dev",
+      productCommitSha: previousProductCommitSha,
+      promotedDevCommitSha: null,
+    },
+    previousTagCommitSha,
+    productCommitSha,
+    isAncestor: () => true,
+  });
+  writeVersionFiles(cwd, "26.7.1300");
+  writeRepoFile(
+    cwd,
+    "release-notes/releases/v26.7.1300-dev.json",
+    `${JSON.stringify(
+      {
+        tag: "v26.7.1300-dev",
+        version: "26.7.1300-dev",
+        channel: "dev",
+        dayKey: "26.7.13",
+        approved: true,
+        source: {
+          channel: "dev",
+          previousPublishedTag: "v26.7.1200-dev",
+          productCommitSha,
+          libraryCoreActivation: createLibraryCoreReleaseActivation({
+            range,
+            manifestInspection: emptyManifestInspection({
+              previousPresent: true,
+            }),
+          }),
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  commitAll(cwd, "release: v26.7.1300-dev");
+  return { cwd, previousProductCommitSha };
+}
+
+function makeReleaseRepoWithForkedPreviousReceipt() {
+  const cwd = mkdtempSync(path.join(tmpdir(), "freed-forked-release-range-"));
+  git(cwd, ["init", "-b", "dev"]);
+  git(cwd, ["config", "user.name", "Freed Test"]);
+  git(cwd, ["config", "user.email", "test@freed.invalid"]);
+  writeVersionFiles(cwd, "26.7.1100");
+  writeRepoFile(
+    cwd,
+    "packages/desktop/src/app.ts",
+    "export const value = 1;\n",
+  );
+  commitAll(cwd, "feat: shared release base");
+
+  git(cwd, ["checkout", "-b", "claimed-product"]);
+  writeRepoFile(
+    cwd,
+    "packages/desktop/src/claimed.ts",
+    "export const claimed = true;\n",
+  );
+  commitAll(cwd, "feat: forked claimed product");
+  const claimedProductCommitSha = git(cwd, ["rev-parse", "HEAD"]);
+
+  git(cwd, ["checkout", "dev"]);
+  writeVersionFiles(cwd, "26.7.1200");
+  writeRepoFile(
+    cwd,
+    "release-notes/releases/v26.7.1200-dev.json",
+    `${JSON.stringify(
+      {
+        tag: "v26.7.1200-dev",
+        version: "26.7.1200-dev",
+        channel: "dev",
+        dayKey: "26.7.12",
+        approved: true,
+        source: {
+          channel: "dev",
+          previousPublishedTag: null,
+          productCommitSha: claimedProductCommitSha,
+          promotedDevCommitSha: null,
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  commitAll(cwd, "release: v26.7.1200-dev");
+  git(cwd, ["tag", "v26.7.1200-dev"]);
+
+  git(cwd, [
+    "merge",
+    "--no-ff",
+    "claimed-product",
+    "-m",
+    "test: merge fork after published tag",
+  ]);
+  writeRepoFile(
+    cwd,
+    "packages/desktop/src/app.ts",
+    "export const value = 2;\n",
+  );
+  commitAll(cwd, "feat: current product state");
+  const productCommitSha = git(cwd, ["rev-parse", "HEAD"]);
+
+  const range = {
+    channel: "dev",
+    previousPublishedTag: "v26.7.1200-dev",
+    startMode: RELEASE_RANGE_START_MODES.PREVIOUS_PRODUCT_COMMIT,
+    fromExclusiveCommitSha: claimedProductCommitSha,
+    toInclusiveProductCommitSha: productCommitSha,
+  };
+  writeVersionFiles(cwd, "26.7.1300");
+  writeRepoFile(
+    cwd,
+    "release-notes/releases/v26.7.1300-dev.json",
+    `${JSON.stringify(
+      {
+        tag: "v26.7.1300-dev",
+        version: "26.7.1300-dev",
+        channel: "dev",
+        dayKey: "26.7.13",
+        approved: true,
+        source: {
+          channel: "dev",
+          previousPublishedTag: "v26.7.1200-dev",
+          productCommitSha,
+          libraryCoreActivation: createLibraryCoreReleaseActivation({
+            range,
+            manifestInspection: emptyManifestInspection({
+              previousPresent: true,
+            }),
+          }),
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  commitAll(cwd, "release: v26.7.1300-dev");
+  return { cwd };
 }
 
 test("release tags accept only numeric CalVer and one exact dev suffix", () => {
@@ -147,18 +462,481 @@ test("release tags accept only numeric CalVer and one exact dev suffix", () => {
   assert.throws(() => parseReleaseTag("v26.7.1300-dev.1"), /numeric CalVer/);
 });
 
+test("historical backfill identity requires the published tag and its immutable product versions", (t) => {
+  const cwd = mkdtempSync(path.join(tmpdir(), "freed-historical-identity-"));
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  git(cwd, ["init", "-b", "dev"]);
+  git(cwd, ["config", "user.name", "Freed Test"]);
+  git(cwd, ["config", "user.email", "test@freed.invalid"]);
+  writeVersionFiles(cwd, "26.7.2700");
+  commitAll(cwd, "release: historical product");
+  git(cwd, ["tag", "v26.7.2700-dev"]);
+  const tagCommitSha = git(cwd, ["rev-parse", "v26.7.2700-dev^{commit}"]);
+  git(cwd, [
+    "update-ref",
+    "refs/remotes/origin/dev",
+    tagCommitSha,
+  ]);
+  const artifactPath = "release-notes/releases/v26.7.2700-dev.json";
+  const validArtifact = withCanonicalReleaseCopy(
+    "v26.7.2700-dev",
+    {
+      tag: "v26.7.2700-dev",
+      version: "26.7.2700-dev",
+      channel: "dev",
+      dayKey: "26.7.27",
+      approved: false,
+      source: {
+        channel: "dev",
+        receiptMode: "historical-published-tag",
+        productCommitSha: null,
+        promotedDevCommitSha: null,
+        publishedTagCommitSha: tagCommitSha,
+      },
+    },
+  );
+  writeReleaseArtifactAndMarkdown(cwd, artifactPath, validArtifact);
+  commitAll(cwd, "chore: backfill historical release receipt");
+  const backfillCommitSha = git(cwd, ["rev-parse", "HEAD"]);
+  const publicationFacts = [
+    publishedDevReleaseFact("v26.7.2700-dev"),
+  ];
+
+  const result = validateHistoricalFixtureIdentity({
+    cwd,
+    tag: "v26.7.2700-dev",
+    publicationFacts,
+  });
+  assert.equal(result.tagCommitSha, tagCommitSha);
+  assert.equal(result.publication.tag, "v26.7.2700-dev");
+
+  const mismatchedBodyArtifact = structuredClone(validArtifact);
+  mismatchedBodyArtifact.releaseBody = "forged release body\n";
+  writeRepoFile(
+    cwd,
+    artifactPath,
+    `${JSON.stringify(mismatchedBodyArtifact, null, 2)}\n`,
+  );
+  assert.throws(
+    () =>
+      validateHistoricalFixtureIdentity({
+        cwd,
+        tag: "v26.7.2700-dev",
+        publicationFacts,
+      }),
+    /releaseBody does not match the canonical rendered release copy/,
+  );
+
+  writeReleaseArtifactAndMarkdown(cwd, artifactPath, validArtifact);
+  writeRepoFile(
+    cwd,
+    artifactPath.replace(/\.json$/, ".md"),
+    "stale Markdown\n",
+  );
+  assert.throws(
+    () =>
+      validateHistoricalFixtureIdentity({
+        cwd,
+        tag: "v26.7.2700-dev",
+        publicationFacts,
+      }),
+    /Markdown does not match releaseBody/,
+  );
+  writeReleaseArtifactAndMarkdown(cwd, artifactPath, validArtifact);
+
+  assert.throws(
+    () =>
+      validateHistoricalFixtureIdentity({
+        cwd,
+        tag: "v26.7.2700-dev",
+        publicationFacts: [
+          publishedDevReleaseFact("v26.7.2700-dev", { draft: true }),
+        ],
+      }),
+    /not an exact successful published GitHub release/,
+  );
+
+  const artifact = JSON.parse(
+    readFileSync(path.join(cwd, artifactPath), "utf8"),
+  );
+  artifact.source.publishedTagCommitSha = "f".repeat(40);
+  writeRepoFile(cwd, artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
+  assert.throws(
+    () =>
+      validateHistoricalFixtureIdentity({
+        cwd,
+        tag: "v26.7.2700-dev",
+        publicationFacts,
+      }),
+    /publishedTagCommitSha is .* expected/,
+  );
+
+  artifact.source = {
+    channel: "dev",
+    productCommitSha: tagCommitSha,
+    promotedDevCommitSha: null,
+  };
+  writeRepoFile(cwd, artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
+  assert.throws(
+    () =>
+      validateHistoricalFixtureIdentity({
+        cwd,
+        tag: "v26.7.2700-dev",
+        publicationFacts,
+      }),
+    /historical release source receiptMode is undefined, expected historical-published-tag/,
+  );
+
+  const unknownAuthorityArtifact = structuredClone(validArtifact);
+  unknownAuthorityArtifact.source.futureAuthority = "invented";
+  writeRepoFile(
+    cwd,
+    artifactPath,
+    `${JSON.stringify(unknownAuthorityArtifact, null, 2)}\n`,
+  );
+  assert.throws(
+    () =>
+      validateHistoricalFixtureIdentity({
+        cwd,
+        tag: "v26.7.2700-dev",
+        publicationFacts,
+      }),
+    /unsupported source fields: futureAuthority/,
+  );
+
+  writeReleaseArtifactAndMarkdown(cwd, artifactPath, validArtifact);
+  git(cwd, [
+    "update-ref",
+    "refs/remotes/origin/dev",
+    backfillCommitSha,
+  ]);
+  assert.throws(
+    () =>
+      validateHistoricalFixtureIdentity({
+        cwd,
+        tag: "v26.7.2700-dev",
+        publicationFacts,
+      }),
+    /requires the first backfill/,
+  );
+});
+
+test("historical backfill may append only its exact receipt when the tag already contains release metadata", (t) => {
+  const cwd = mkdtempSync(path.join(tmpdir(), "freed-tagged-release-backfill-"));
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  git(cwd, ["init", "-b", "dev"]);
+  git(cwd, ["config", "user.name", "Freed Test"]);
+  git(cwd, ["config", "user.email", "test@freed.invalid"]);
+  writeVersionFiles(cwd, "26.7.2700");
+  const artifactPath = "release-notes/releases/v26.7.2700-dev.json";
+  const taggedArtifact = withCanonicalReleaseCopy(
+    "v26.7.2700-dev",
+    {
+      tag: "v26.7.2700-dev",
+      version: "26.7.2700-dev",
+      channel: "dev",
+      dayKey: "26.7.27",
+      approved: false,
+      source: { channel: "dev" },
+    },
+    {
+      deck: "Immutable tagged release copy.",
+      features: [],
+      fixes: ["Fixed one thing."],
+      followUps: [],
+    },
+  );
+  writeReleaseArtifactAndMarkdown(cwd, artifactPath, taggedArtifact);
+  commitAll(cwd, "release: tagged historical metadata");
+  git(cwd, ["tag", "v26.7.2700-dev"]);
+  const tagCommitSha = git(cwd, ["rev-parse", "v26.7.2700-dev^{commit}"]);
+  git(cwd, [
+    "update-ref",
+    "refs/remotes/origin/dev",
+    tagCommitSha,
+  ]);
+  const backfilledArtifact = {
+    ...taggedArtifact,
+    source: {
+      ...taggedArtifact.source,
+      receiptMode: "historical-published-tag",
+      productCommitSha: null,
+      promotedDevCommitSha: null,
+      publishedTagCommitSha: tagCommitSha,
+    },
+  };
+  writeRepoFile(
+    cwd,
+    artifactPath,
+    `${JSON.stringify(backfilledArtifact, null, 2)}\n`,
+  );
+  const publicationFacts = [publishedDevReleaseFact("v26.7.2700-dev")];
+
+  assert.doesNotThrow(() =>
+    validateHistoricalFixtureIdentity({
+      cwd,
+      tag: "v26.7.2700-dev",
+      publicationFacts,
+    }),
+  );
+
+  const rewrittenRelease = {
+    ...backfilledArtifact.release,
+    deck: "Rewritten after publication.",
+  };
+  const rewrittenArtifact = withCanonicalReleaseCopy(
+    "v26.7.2700-dev",
+    backfilledArtifact,
+    rewrittenRelease,
+  );
+  writeReleaseArtifactAndMarkdown(cwd, artifactPath, rewrittenArtifact);
+  assert.throws(
+    () =>
+      validateHistoricalFixtureIdentity({
+        cwd,
+        tag: "v26.7.2700-dev",
+        publicationFacts,
+      }),
+    /may add only the exact receipt/,
+  );
+});
+
+test("historical validation cannot rewrite a modern receipt already stored in the tag", (t) => {
+  const cwd = mkdtempSync(path.join(tmpdir(), "freed-tagged-modern-receipt-"));
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  git(cwd, ["init", "-b", "dev"]);
+  git(cwd, ["config", "user.name", "Freed Test"]);
+  git(cwd, ["config", "user.email", "test@freed.invalid"]);
+  writeVersionFiles(cwd, "26.7.2700");
+  commitAll(cwd, "feat: immutable product state");
+  const productCommitSha = git(cwd, ["rev-parse", "HEAD"]);
+  const artifactPath = "release-notes/releases/v26.7.2700-dev.json";
+  const taggedArtifact = withCanonicalReleaseCopy(
+    "v26.7.2700-dev",
+    {
+      tag: "v26.7.2700-dev",
+      version: "26.7.2700-dev",
+      channel: "dev",
+      dayKey: "26.7.27",
+      approved: true,
+      source: {
+        channel: "dev",
+        productCommitSha,
+        promotedDevCommitSha: null,
+      },
+    },
+  );
+  writeReleaseArtifactAndMarkdown(cwd, artifactPath, taggedArtifact);
+  commitAll(cwd, "release: immutable modern receipt");
+  git(cwd, ["tag", "v26.7.2700-dev"]);
+  git(cwd, [
+    "update-ref",
+    "refs/remotes/origin/dev",
+    git(cwd, ["rev-parse", "HEAD"]),
+  ]);
+  const publicationFacts = [publishedDevReleaseFact("v26.7.2700-dev")];
+
+  assert.doesNotThrow(() =>
+    validateHistoricalFixtureIdentity({
+      cwd,
+      tag: "v26.7.2700-dev",
+      publicationFacts,
+    }),
+  );
+
+  const rewrittenArtifact = structuredClone(taggedArtifact);
+  rewrittenArtifact.source.productCommitSha = "f".repeat(40);
+  writeRepoFile(
+    cwd,
+    artifactPath,
+    `${JSON.stringify(rewrittenArtifact, null, 2)}\n`,
+  );
+  assert.throws(
+    () =>
+      validateHistoricalFixtureIdentity({
+        cwd,
+        tag: "v26.7.2700-dev",
+        publicationFacts,
+      }),
+    /historical release source productCommitSha .* expected|may add only the exact receipt/,
+  );
+});
+
+test("historical release-note correction preserves immutable identity and canonical rendering", (t) => {
+  const { cwd } = makeReleaseRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const tag = "v26.7.1300-dev";
+  const artifactPath = path.join(
+    cwd,
+    "release-notes",
+    "releases",
+    `${tag}.json`,
+  );
+  const markdownPath = path.join(
+    cwd,
+    "release-notes",
+    "releases",
+    `${tag}.md`,
+  );
+  const baseArtifact = JSON.parse(readFileSync(artifactPath, "utf8"));
+  baseArtifact.release = {
+    deck: "Original release copy.",
+    features: [],
+    fixes: ["Fixed one thing."],
+    followUps: [],
+  };
+  baseArtifact.releaseBody = renderReleaseBody(tag, baseArtifact.release);
+  writeFileSync(artifactPath, `${JSON.stringify(baseArtifact, null, 2)}\n`);
+  writeFileSync(markdownPath, baseArtifact.releaseBody);
+  commitAll(cwd, "release: add canonical release copy");
+  const baseCommitSha = git(cwd, ["rev-parse", "HEAD"]);
+  git(cwd, [
+    "update-ref",
+    "refs/remotes/origin/dev",
+    baseCommitSha,
+  ]);
+  git(cwd, ["tag", tag]);
+  const publicationFacts = [publishedDevReleaseFact(tag)];
+
+  const correctedArtifact = structuredClone(baseArtifact);
+  correctedArtifact.release.deck = "Corrected release copy.";
+  correctedArtifact.releaseBody = renderReleaseBody(
+    tag,
+    correctedArtifact.release,
+  );
+  writeFileSync(
+    artifactPath,
+    `${JSON.stringify(correctedArtifact, null, 2)}\n`,
+  );
+  writeFileSync(markdownPath, correctedArtifact.releaseBody);
+
+  assert.throws(
+    () =>
+      validateHistoricalReleaseNoteCorrectionIdentity({
+        cwd,
+        tag,
+        baseRef: "origin/dev",
+        publicationFacts: [],
+      }),
+    /not an exact successful published GitHub release/,
+  );
+  const result = validateHistoricalReleaseNoteCorrectionIdentity({
+    cwd,
+    tag,
+    baseRef: "origin/dev",
+    publicationFacts,
+  });
+  assert.equal(result.baseCommitSha, baseCommitSha);
+
+  assert.throws(
+    () =>
+      validateHistoricalReleaseNoteCorrectionIdentity({
+        cwd,
+        tag,
+        baseRef: "HEAD",
+        publicationFacts,
+      }),
+    /requires --branch-ref=origin\/dev/,
+  );
+
+  const rewrittenIdentity = structuredClone(correctedArtifact);
+  rewrittenIdentity.source.productCommitSha = "f".repeat(40);
+  writeFileSync(
+    artifactPath,
+    `${JSON.stringify(rewrittenIdentity, null, 2)}\n`,
+  );
+  assert.throws(
+    () =>
+      validateHistoricalReleaseNoteCorrectionIdentity({
+        cwd,
+        tag,
+        baseRef: "origin/dev",
+        publicationFacts,
+      }),
+    /may change only release and releaseBody/,
+  );
+
+  writeFileSync(
+    artifactPath,
+    `${JSON.stringify(correctedArtifact, null, 2)}\n`,
+  );
+  writeFileSync(markdownPath, "stale rendered copy\n");
+  assert.throws(
+    () =>
+      validateHistoricalReleaseNoteCorrectionIdentity({
+        cwd,
+        tag,
+        baseRef: "origin/dev",
+        publicationFacts,
+      }),
+    /Markdown does not match releaseBody/,
+  );
+});
+
 test("release identity binds the tag, app versions, and prepared product commit", (t) => {
   const { cwd, productCommitSha } = makeReleaseRepo();
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
 
-  const result = validateReleaseIdentity({ cwd, tag: "v26.7.1300-dev" });
+  const result = validateFixtureReleaseIdentity({
+    cwd,
+    tag: "v26.7.1300-dev",
+  });
   assert.equal(result.productCommitSha, productCommitSha);
   assert.equal(result.channel, "dev");
 
   writeVersionFiles(cwd, "26.7.1301");
   assert.throws(
-    () => validateReleaseIdentity({ cwd, tag: "v26.7.1300-dev" }),
+    () =>
+      validateFixtureReleaseIdentity({
+        cwd,
+        tag: "v26.7.1300-dev",
+      }),
     /Desktop package version is 26\.7\.1301, expected 26\.7\.1300/,
+  );
+});
+
+test("release identity requires explicit release artifact approval", (t) => {
+  const { cwd } = makeReleaseRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const releasePath = path.join(
+    cwd,
+    "release-notes/releases/v26.7.1300-dev.json",
+  );
+  const artifact = JSON.parse(readFileSync(releasePath, "utf8"));
+  artifact.approved = false;
+  writeFileSync(releasePath, `${JSON.stringify(artifact, null, 2)}\n`);
+
+  assert.throws(
+    () =>
+      validateFixtureReleaseIdentity({
+        cwd,
+        tag: "v26.7.1300-dev",
+      }),
+    /release artifact must be explicitly approved/,
+  );
+});
+
+test("release identity requires the current manifest at the product commit", (t) => {
+  const { cwd } = makeReleaseRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  rmSync(path.join(cwd, "docs/library-core-activation-manifest.json"));
+  commitAll(cwd, "test: remove current manifest");
+  const productCommitSha = git(cwd, ["rev-parse", "HEAD"]);
+  const releasePath = path.join(
+    cwd,
+    "release-notes/releases/v26.7.1300-dev.json",
+  );
+  const artifact = JSON.parse(readFileSync(releasePath, "utf8"));
+  artifact.source.productCommitSha = productCommitSha;
+  writeFileSync(releasePath, `${JSON.stringify(artifact, null, 2)}\n`);
+
+  assert.throws(
+    () =>
+      validateFixtureReleaseIdentity({
+        cwd,
+        tag: "v26.7.1300-dev",
+      }),
+    /library-core-activation-manifest\.json is missing from exact release source/,
   );
 });
 
@@ -167,17 +945,170 @@ test("release identity treats the Rust lockfile version as release-only metadata
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
 
   assert.doesNotThrow(() =>
-    validateReleaseIdentity({ cwd, tag: "v26.7.1300-dev" }),
+    validateFixtureReleaseIdentity({ cwd, tag: "v26.7.1300-dev" }),
+  );
+});
+
+test("Library Core draft review preflight cannot weaken a no-activation release", (t) => {
+  const { cwd } = makeReleaseRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  assert.throws(
+    () =>
+      validateLibraryCoreReviewDraftIdentity({
+        cwd,
+        tag: "v26.7.1300-dev",
+        publicationFacts: [],
+      }),
+    /requires one unreviewed nonempty activation delta/,
+  );
+});
+
+test("release identity blocks an unreviewed Library Core activation inspection", (t) => {
+  const { cwd } = makeReleaseRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const transition = {
+    activationId: "migration-private-corpus-v1",
+    gate: "C",
+    kind: "migration_candidate_execution",
+    rollbackTrigger:
+      "The accepted checkpoint does not match the source frontier.",
+    receiptExpectations: [
+      "migration_receipt",
+      "same_frontier_rollback_receipt",
+    ],
+  };
+  const currentManifestContents = `${JSON.stringify(
+    { schemaVersion: 1, transitions: [transition] },
+    null,
+    2,
+  )}\n`;
+  writeRepoFile(
+    cwd,
+    "docs/library-core-activation-manifest.json",
+    currentManifestContents,
+  );
+  commitAll(cwd, "feat: declare Library Core activation");
+  const productCommitSha = git(cwd, ["rev-parse", "HEAD"]);
+  const releasePath = path.join(
+    cwd,
+    "release-notes/releases/v26.7.1300-dev.json",
+  );
+  const artifact = JSON.parse(readFileSync(releasePath, "utf8"));
+  artifact.source.productCommitSha = productCommitSha;
+  artifact.source.libraryCoreActivation = createLibraryCoreReleaseActivation({
+    range: releaseInspectionRange({
+      channel: "dev",
+      productCommitSha,
+    }),
+    manifestInspection: inspectLibraryCoreActivationManifest({
+      currentContents: currentManifestContents,
+    }),
+  });
+  writeFileSync(releasePath, `${JSON.stringify(artifact, null, 2)}\n`);
+
+  assert.throws(
+    () =>
+      validateFixtureReleaseIdentity({
+        cwd,
+        tag: "v26.7.1300-dev",
+      }),
+    /Library Core activation inspection remains review_required/,
+  );
+  const draftReview = validateLibraryCoreReviewDraftIdentity({
+    cwd,
+    tag: "v26.7.1300-dev",
+    publicationFacts: [],
+  });
+  assert.equal(
+    draftReview.libraryCoreActivation.decision.state,
+    "review_required",
+  );
+  assert.equal(draftReview.libraryCoreActivation.transitions.length, 1);
+});
+
+test("release identity reads the previous receipt from its immutable tag instead of a rewritten current-tree copy", (t) => {
+  const { cwd, previousProductCommitSha } =
+    makeReleaseRepoWithImmutablePreviousReceipt();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  const result = validateFixtureReleaseIdentity({
+    cwd,
+    tag: "v26.7.1300-dev",
+    publicationFacts: [publishedDevReleaseFact("v26.7.1200-dev")],
+  });
+  assert.equal(
+    result.libraryCoreActivation.range.fromExclusiveCommitSha,
+    previousProductCommitSha,
+  );
+});
+
+test("release identity derives the previous boundary from successful publication facts", (t) => {
+  const { cwd } = makeReleaseRepoWithImmutablePreviousReceipt();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  const baseFacts = [
+    publishedDevReleaseFact("v26.7.1200-dev"),
+    publishedDevReleaseFact("v26.7.1250-dev", {
+      id: 2,
+      draft: true,
+      published_at: null,
+    }),
+    publishedDevReleaseFact("v26.7.1260-dev", {
+      id: 3,
+      status: "failed",
+    }),
+    publishedDevReleaseFact("v26.7.1400-dev", {
+      id: 4,
+    }),
+  ];
+  assert.doesNotThrow(() =>
+    validateFixtureReleaseIdentity({
+      cwd,
+      tag: "v26.7.1300-dev",
+      publicationFacts: baseFacts,
+    }),
+  );
+
+  assert.throws(
+    () =>
+      validateFixtureReleaseIdentity({
+        cwd,
+        tag: "v26.7.1300-dev",
+        publicationFacts: [
+          ...baseFacts,
+          publishedDevReleaseFact("v26.7.1270-dev", {
+            id: 5,
+          }),
+        ],
+      }),
+    /canonical publication history requires v26\.7\.1270-dev/,
+  );
+});
+
+test("release identity rejects a modern receipt whose product commit is outside its tag history", (t) => {
+  const { cwd } = makeReleaseRepoWithForkedPreviousReceipt();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  assert.throws(
+    () =>
+      validateFixtureReleaseIdentity({
+        cwd,
+        tag: "v26.7.1300-dev",
+        publicationFacts: [publishedDevReleaseFact("v26.7.1200-dev")],
+      }),
+    /product commit .* is not an ancestor of its published tag commit/,
   );
 });
 
 const cargoLockDriftCases = [
   [
     "dependency package",
-    (contents) => contents.replace(
-      'name = "fixture-dependency"',
-      'name = "fixture-dependency-renamed"',
-    ),
+    (contents) =>
+      contents.replace(
+        'name = "fixture-dependency"',
+        'name = "fixture-dependency-renamed"',
+      ),
   ],
   [
     "dependency version",
@@ -185,24 +1116,27 @@ const cargoLockDriftCases = [
   ],
   [
     "dependency source",
-    (contents) => contents.replace(
-      "registry+https://github.com/rust-lang/crates.io-index",
-      "registry+https://example.invalid/index",
-    ),
+    (contents) =>
+      contents.replace(
+        "registry+https://github.com/rust-lang/crates.io-index",
+        "registry+https://example.invalid/index",
+      ),
   ],
   [
     "dependency checksum",
-    (contents) => contents.replace(
-      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    ),
+    (contents) =>
+      contents.replace(
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      ),
   ],
   [
     "root dependency list",
-    (contents) => contents.replace(
-      ' "fixture-dependency",',
-      ' "fixture-dependency-renamed",',
-    ),
+    (contents) =>
+      contents.replace(
+        ' "fixture-dependency",',
+        ' "fixture-dependency-renamed",',
+      ),
   ],
 ];
 
@@ -215,7 +1149,11 @@ for (const [label, mutate] of cargoLockDriftCases) {
     commitAll(cwd, `chore: inject ${label} drift`);
 
     assert.throws(
-      () => validateReleaseIdentity({ cwd, tag: "v26.7.1300-dev" }),
+      () =>
+        validateFixtureReleaseIdentity({
+          cwd,
+          tag: "v26.7.1300-dev",
+        }),
       /Cargo\.lock may only change the freed-desktop package version/,
     );
   });
@@ -235,7 +1173,11 @@ test("release identity rejects a mismatched freed-desktop lockfile version", (t)
   commitAll(cwd, "chore: inject mismatched root lockfile version");
 
   assert.throws(
-    () => validateReleaseIdentity({ cwd, tag: "v26.7.1300-dev" }),
+    () =>
+      validateFixtureReleaseIdentity({
+        cwd,
+        tag: "v26.7.1300-dev",
+      }),
     /Cargo\.lock freed-desktop package version is 26\.7\.1299, expected 26\.7\.1300/,
   );
 });
@@ -252,7 +1194,11 @@ test("release identity rejects product drift after notes were prepared", (t) => 
   commitAll(cwd, "feat: late product change");
 
   assert.throws(
-    () => validateReleaseIdentity({ cwd, tag: "v26.7.1300-dev" }),
+    () =>
+      validateFixtureReleaseIdentity({
+        cwd,
+        tag: "v26.7.1300-dev",
+      }),
     /product files changed after release notes were prepared: packages\/desktop\/src\/app\.ts/,
   );
 });
@@ -262,7 +1208,10 @@ test("production identity stays bound to the recorded dev snapshot after dev adv
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
 
   assert.equal(
-    validateReleaseIdentity({ cwd, tag: "v26.7.1300" }).promotedDevCommitSha,
+    validateFixtureReleaseIdentity({
+      cwd,
+      tag: "v26.7.1300",
+    }).promotedDevCommitSha,
     promotedDevCommitSha,
   );
 
@@ -276,7 +1225,10 @@ test("production identity stays bound to the recorded dev snapshot after dev adv
   git(cwd, ["checkout", "main"]);
 
   assert.equal(
-    validateReleaseIdentity({ cwd, tag: "v26.7.1300" }).channel,
+    validateFixtureReleaseIdentity({
+      cwd,
+      tag: "v26.7.1300",
+    }).channel,
     "production",
   );
 });
@@ -300,7 +1252,11 @@ test("production identity rejects a recorded dev snapshot that differs from prod
   writeFileSync(releasePath, `${JSON.stringify(artifact, null, 2)}\n`);
 
   assert.throws(
-    () => validateReleaseIdentity({ cwd, tag: "v26.7.1300" }),
+    () =>
+      validateFixtureReleaseIdentity({
+        cwd,
+        tag: "v26.7.1300",
+      }),
     /recorded promoted dev snapshot does not match the prepared product commit: packages\/desktop\/src\/app\.ts/,
   );
 });
@@ -312,7 +1268,7 @@ test("protected branch ancestry allows branch advance and rejects an off-branch 
 
   git(cwd, ["commit", "--allow-empty", "-m", "docs: later main metadata"]);
   assert.equal(
-    validateReleaseIdentity({
+    validateFixtureReleaseIdentity({
       cwd,
       tag: "v26.7.1300",
       headRef: releaseHead,
@@ -327,7 +1283,7 @@ test("protected branch ancestry allows branch advance and rejects an off-branch 
   git(cwd, ["checkout", "main"]);
   assert.throws(
     () =>
-      validateReleaseIdentity({
+      validateFixtureReleaseIdentity({
         cwd,
         tag: "v26.7.1300",
         headRef: unreviewedHead,

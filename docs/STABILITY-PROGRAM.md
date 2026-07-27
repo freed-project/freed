@@ -23,7 +23,13 @@ The original audit findings and task prompts were migrated to those issues. Git 
 - **Watchdog freeze.** Do not change watchdog thresholds, recovery reasons, or process-attribution heuristics until the measurement and attribution work in issues #1089 through #1091 is complete. When a soak shows recovery churn, prefer a demand-side fix.
 - **One global behavioral change.** Product behavior changes land one at a time. The slot reopens only after the change is installed, its bounded soak completes, and its effect outcome is recorded. Runtime-neutral scripts, skills, docs, CI, and measurement may proceed together only when they cannot affect the observed runtime metric.
 - **Alarm before damper when cheap.** If an invariant alarm can observe the pathology first, land it as a positive control before changing behavior.
-- **Provider-visible lane.** Any change to provider loads, navigation, request frequency, cookies, headers, extractor scripts, or provider API calls requires both provider-risk gates defined in `AGENTS.md`. Draft publication does not authorize live provider traffic.
+- **Provider-visible lane.** Any change to provider loads, navigation, request
+  frequency, cookies, headers, extractor scripts, or provider API calls
+  requires the behavior-scoped Gate 1 decision defined in `AGENTS.md`. A
+  classified-path change with no observable behavior change uses a healthy
+  `diff_authorized` audit artifact. The generated GitHub comment is an audit
+  record, not a second approval. Publication does not authorize live provider
+  traffic.
 - **Governance.** Runner-safe work may proceed under the checked-in actor authority and normal validation gates. Recovery, relay, sync merge, auth state, and other owner-review surfaces remain owner reviewed. Automation authority comes from checked-in specifications and the active execution manifest, not from issue status or prose.
 - **Verification is counters, not intuition.** Every product issue names the registered runtime-health counter or test that proves it. Shared metric IDs, event contracts, aggregation, minimum coverage, and thresholds live in `scripts/lib/stability-metrics.mjs`. Missing required fields or coverage produces `skipped` or `inconclusive`.
 - **Outcome recording.** Record `merged` only through the canonical task transaction. Record `installed` at the install boundary. After a valid evidence window, record `verified_effective`, `verified_neutral`, `regressed`, or `inconclusive` against the exact verdict and task. A merge is not proof of effect.

@@ -5780,15 +5780,23 @@ function buildPublishCommand(selected) {
   const providerVisible = selected.some(
     (candidate) => candidate.providerVisible === true,
   );
+  const command = [
+    "./scripts/worktree-publish.sh",
+    `--title ${JSON.stringify(deriveCandidatePrTitle(primary))}`,
+    '--summary "<summary>"',
+    '--test "<tests>"',
+  ];
+  if (providerVisible) {
+    return {
+      closeout: "provider-artifact-required",
+      command:
+        "# Stop before publication. Record a healthy behavior_approved or diff_authorized provider-risk artifact, then run: " +
+        `${command.join(" ")} --provider-risk-review-artifact <path> --ready`,
+    };
+  }
   return {
-    closeout: providerVisible ? "draft" : "ready",
-    command: [
-      "./scripts/worktree-publish.sh",
-      `--title ${JSON.stringify(deriveCandidatePrTitle(primary))}`,
-      '--summary "<summary>"',
-      '--test "<tests>"',
-      ...(providerVisible ? [] : ["--ready"]),
-    ].join(" "),
+    closeout: "ready",
+    command: [...command, "--ready"].join(" "),
   };
 }
 
@@ -5872,20 +5880,24 @@ export function buildExecutionPlan(selected) {
 
   if (selected.length > 0) {
     const publish = buildPublishCommand(selected);
+    const providerArtifactRequired =
+      publish.closeout === "provider-artifact-required";
     phases.push(
       afterStrictPreflight({
         id: "publish",
         title:
           publish.closeout === "ready"
             ? "Publish ready PR after closeout"
-            : "Publish draft PR for owner review",
+            : "Stop for provider artifact before publication",
         stopGate:
-          publish.closeout === "ready"
+          providerArtifactRequired
+            ? "Stop before publication until a healthy provider-risk artifact exists and the implementation remains within its approved observable behavior."
+            : publish.closeout === "ready"
             ? "Stop if implementation, focused validation, feature validation, or closeout evidence is incomplete."
-            : "Keep provider-visible work in draft and stop for explicit owner review and provider-risk approval.",
+            : "Stop because the publication state is unsupported.",
         commands: [publish.command],
         closeout: publish.closeout,
-        mutates: true,
+        mutates: !providerArtifactRequired,
       }),
     );
   }

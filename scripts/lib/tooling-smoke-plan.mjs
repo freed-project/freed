@@ -28,7 +28,11 @@ export const GLOBAL_INVALIDATION_PATHS = Object.freeze(
 // Changes under these roots can reach the tooling lane through a spawned shell
 // script or a fixture that no static edge records, so an unattributed change
 // here fails closed to the full lane instead of being silently dropped.
-const FAIL_CLOSED_ROOTS = Object.freeze(["scripts/", "automation/"]);
+const FAIL_CLOSED_ROOTS = Object.freeze([
+  ".agents/",
+  "scripts/",
+  "automation/",
+]);
 
 // These paths have explicit, changed-path contract tests in validate:feature.
 // Selecting the entire general suite as well turns a workflow or repository
@@ -36,21 +40,63 @@ const FAIL_CLOSED_ROOTS = Object.freeze(["scripts/", "automation/"]);
 export const FOCUSED_FEATURE_VALIDATION_PATHS = Object.freeze(
   new Set([
     ".github/dependabot.yml",
+    ".github/workflows/main-release-validation.yml",
     ".github/workflows/release.yml",
+    ".agents/skills/freed-library-core/SKILL.md",
+    ".agents/skills/freed-ship-build/SKILL.md",
+    "docs/LIBRARY-CORE-CONTRACT.md",
+    "docs/STORAGE-ARCHITECTURE-ROADMAP.md",
+    "docs/library-core-activation-manifest.json",
     "packages/pwa/vercel.json",
+    "scripts/automation-control-docs.test.mjs",
+    "scripts/create-release-github-app.mjs",
+    "scripts/create-release-github-app.test.mjs",
+    "scripts/doctor.mjs",
+    "scripts/doctor.test.mjs",
     "scripts/generate-tauri-latest-from-release.mjs",
     "scripts/generate-tauri-latest-from-release.test.mjs",
+    "scripts/library-core-release-activation.mjs",
+    "scripts/library-core-release-activation.test.mjs",
+    "scripts/lib/git-path-at-ref.mjs",
+    "scripts/lib/git-path-at-ref.test.mjs",
+    "scripts/lib/github-release-publications.mjs",
+    "scripts/lib/github-release-publications.test.mjs",
+    "scripts/lib/library-core-release-activation.mjs",
+    "scripts/lib/library-core-release-activation.test.mjs",
+    "scripts/lib/release-tag-publisher.mjs",
+    "scripts/lib/release-tag-publisher.test.mjs",
     "scripts/lib/tooling-smoke-plan.mjs",
+    "scripts/post-perf-comment.mjs",
+    "scripts/post-perf-comment.test.mjs",
+    "scripts/prepare-release-notes.mjs",
     "scripts/release-governance.test.mjs",
+    "scripts/release-publish.sh",
+    "scripts/release-receipt.mjs",
+    "scripts/release-receipt.test.mjs",
+    "scripts/release-tag-publisher-build.sh",
     "scripts/release-tag-publisher-host.swift",
+    "scripts/release-tag-publisher-install.mjs",
+    "scripts/release-tag-publisher-install.test.mjs",
     "scripts/release-tag-publisher-native.test.mjs",
+    "scripts/release-tag-publisher.mjs",
     "scripts/release-workflow-matrix.test.mjs",
     "scripts/repository-config.test.mjs",
+    "scripts/sync-github-rulesets.mjs",
+    "scripts/sync-github-rulesets.test.mjs",
     "scripts/tooling-smoke-plan.test.mjs",
+    "scripts/validate-library-core-activation-manifest.mjs",
     "scripts/validate-dev-integration-receipt.mjs",
     "scripts/validate-dev-integration-receipt.test.mjs",
+    "scripts/validate-release-identity.mjs",
+    "scripts/validate-release-identity.test.mjs",
+    "scripts/validate-release-tag-authority.mjs",
+    "scripts/validate-release-tag-authority.test.mjs",
+    "scripts/validate-skills.mjs",
+    "scripts/validate-skills.test.mjs",
     "scripts/validate-worktree.mjs",
     "scripts/validate-worktree.test.mjs",
+    "scripts/worktree-publish.sh",
+    "scripts/worktree-publish.test.mjs",
   ]),
 );
 
@@ -58,6 +104,7 @@ const REPO_PATH_LITERAL =
   /(?<=["'`])(?:scripts|packages|website|docs|automation|release-notes|skills|\.github)\/[A-Za-z0-9._*/-]*/g;
 
 const TOP_LEVEL_ROOTS = Object.freeze([
+  ".agents/",
   ".github/",
   "automation/",
   "docs/",
@@ -217,6 +264,14 @@ function isRepoSurface(changedFile) {
   return TOP_LEVEL_ROOTS.some((root) => changedFile.startsWith(root));
 }
 
+function hasFocusedFeatureValidation(changedFile) {
+  return (
+    FOCUSED_FEATURE_VALIDATION_PATHS.has(changedFile) ||
+    /^\.agents\/skills\/[^/]+\/SKILL\.md$/.test(changedFile) ||
+    /^\.agents\/skills\/[^/]+\/agents\/openai\.yaml$/.test(changedFile)
+  );
+}
+
 /**
  * Decide which suites a changed path set can actually affect.
  *
@@ -239,7 +294,7 @@ export function selectApplicableSuites(
   }
 
   const smokeFiles = files.filter(
-    (file) => !FOCUSED_FEATURE_VALIDATION_PATHS.has(file),
+    (file) => !hasFocusedFeatureValidation(file),
   );
   if (smokeFiles.length === 0) {
     return Object.freeze({
