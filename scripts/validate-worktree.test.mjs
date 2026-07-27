@@ -8,6 +8,8 @@ import {
   isDesktopNativeSurface,
   isDesktopPerfSensitiveSurface,
   isReleasePublisherToolingPath,
+  isReleaseAdmissionPath,
+  isRepositoryConfigPath,
   isSocialScrapeLoopPath,
   isSocialProviderFocusedSurface,
   isStabilityStatusPath,
@@ -300,6 +302,66 @@ test("feature plan for validation runner changes runs only runner tests", () => 
   assert.deepEqual(labels, ["validation runner tests"]);
 });
 
+test("feature plan for release admission changes runs only its contract tests", () => {
+  const paths = [
+    ".github/workflows/release.yml",
+    "scripts/validate-dev-integration-receipt.mjs",
+    "scripts/validate-dev-integration-receipt.test.mjs",
+  ];
+  for (const filePath of paths) {
+    assert.equal(isReleaseAdmissionPath(filePath), true, filePath);
+  }
+
+  const plan = buildValidationPlan("feature", paths);
+  assert.deepEqual(describePlan(plan), ["release admission tests"]);
+  assert.deepEqual(plan[0].args, [
+    "--test",
+    "scripts/validate-dev-integration-receipt.test.mjs",
+    "scripts/release-governance.test.mjs",
+    "scripts/release-workflow-matrix.test.mjs",
+  ]);
+});
+
+test("feature plan for repository configuration runs only its parser contract", () => {
+  const paths = [
+    ".github/dependabot.yml",
+    "packages/pwa/vercel.json",
+    "scripts/repository-config.test.mjs",
+  ];
+  for (const filePath of paths) {
+    assert.equal(isRepositoryConfigPath(filePath), true, filePath);
+  }
+
+  assert.deepEqual(describePlan(buildValidationPlan("feature", paths)), [
+    "repository configuration tests",
+  ]);
+});
+
+test("PWA-only provider-visible changes stay in the PWA validation lane", () => {
+  const labels = describePlan(
+    buildValidationPlan("feature", [
+      "packages/pwa/src/App.tsx",
+      "packages/pwa/src/components/SyncConnectDialog.tsx",
+    ]),
+  );
+
+  assert.ok(labels.includes("pwa production build"));
+  assert.ok(labels.includes("pwa unit tests"));
+  assert.ok(!labels.includes("desktop social provider unit tests"));
+  assert.ok(!labels.includes("desktop social provider e2e"));
+});
+
+test("mixed feature plans retain repository configuration coverage", () => {
+  assert.ok(
+    describePlan(
+      buildValidationPlan("feature", [
+        ".github/dependabot.yml",
+        "packages/shared/src/schema.ts",
+      ]),
+    ).includes("repository configuration tests"),
+  );
+});
+
 test("feature plan routes tooling smoke workflow and helper changes through focused tests", () => {
   const paths = [
     ".github/workflows/ci.yml",
@@ -320,6 +382,7 @@ test("feature plan routes tooling smoke workflow and helper changes through focu
   assert.ok(runnerTests);
   assert.deepEqual(runnerTests.args, [
     "--test",
+    "scripts/tooling-smoke-plan.test.mjs",
     "scripts/run-tooling-smoke-shard.test.mjs",
   ]);
 });
@@ -515,14 +578,14 @@ test("feature plan for capture-only changes runs the touched workspace checks", 
   ]);
 });
 
-test("feature plan for release tooling changes runs script tests and artifact validation", () => {
+test("feature plan for release tooling changes runs code contract tests without replaying historical artifacts", () => {
   const labels = describePlan(
     buildValidationPlan("feature", ["scripts/prepare-release-notes.mjs"]),
   );
 
   assert.equal(labels[0], "root typecheck");
   assert.ok(labels.includes("release notes shared tests"));
-  assert.ok(labels.includes("release note artifact validation"));
+  assert.ok(!labels.includes("release note artifact validation"));
 });
 
 test("feature plan routes every Release Publisher surface through its focused suite", () => {
@@ -539,8 +602,6 @@ test("feature plan routes every Release Publisher surface through its focused su
     "scripts/doctor.test.mjs",
     "scripts/lib/release-tag-publisher.mjs",
     "scripts/lib/release-tag-publisher.test.mjs",
-    "scripts/release-governance.test.mjs",
-    "scripts/release-publish.sh",
     "scripts/release-tag-publisher-build.sh",
     "scripts/release-tag-publisher-host.swift",
     "scripts/release-tag-publisher-install.mjs",
@@ -570,6 +631,14 @@ test("feature plan routes every Release Publisher surface through its focused su
       filePath,
     );
   }
+
+  assert.equal(isReleasePublisherToolingPath("scripts/release-publish.sh"), true);
+  assert.deepEqual(
+    describePlan(
+      buildValidationPlan("feature", ["scripts/release-publish.sh"]),
+    ),
+    ["release admission tests"],
+  );
 });
 
 test("collectReleaseArtifactsToValidate resolves markdown artifacts to their json pairs", () => {

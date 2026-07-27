@@ -31,6 +31,22 @@ export const GLOBAL_INVALIDATION_PATHS = Object.freeze(
 // here fails closed to the full lane instead of being silently dropped.
 const FAIL_CLOSED_ROOTS = Object.freeze(["scripts/", "automation/"]);
 
+// These paths have explicit, changed-path contract tests in validate:feature.
+// Selecting the entire general suite as well turns a workflow or repository
+// configuration edit into hours of unrelated automation tests.
+export const FOCUSED_FEATURE_VALIDATION_PATHS = Object.freeze(
+  new Set([
+    ".github/dependabot.yml",
+    ".github/workflows/release.yml",
+    "packages/pwa/vercel.json",
+    "scripts/release-governance.test.mjs",
+    "scripts/release-workflow-matrix.test.mjs",
+    "scripts/repository-config.test.mjs",
+    "scripts/validate-dev-integration-receipt.mjs",
+    "scripts/validate-dev-integration-receipt.test.mjs",
+  ]),
+);
+
 const REPO_PATH_LITERAL =
   /(?<=["'`])(?:scripts|packages|website|docs|automation|release-notes|skills|\.github)\/[A-Za-z0-9._*/-]*/g;
 
@@ -205,7 +221,21 @@ export function selectApplicableSuites(
     });
   }
 
-  const globalHits = files.filter((file) => GLOBAL_INVALIDATION_PATHS.has(file));
+  const smokeFiles = files.filter(
+    (file) => !FOCUSED_FEATURE_VALIDATION_PATHS.has(file),
+  );
+  if (smokeFiles.length === 0) {
+    return Object.freeze({
+      suites: Object.freeze([]),
+      reason:
+        "every changed path has an explicit focused feature-validation contract",
+      unattributed: Object.freeze([]),
+    });
+  }
+
+  const globalHits = smokeFiles.filter((file) =>
+    GLOBAL_INVALIDATION_PATHS.has(file),
+  );
   if (globalHits.length > 0) {
     return Object.freeze({
       suites: Object.freeze([...SUITE_NAMES]),
@@ -218,7 +248,7 @@ export function selectApplicableSuites(
   const selected = new Set();
   const attributed = new Set();
   for (const [suite, { modules, literals }] of graph) {
-    for (const file of files) {
+    for (const file of smokeFiles) {
       const hit =
         modules.has(file) ||
         [...literals].some((literal) => literalMatches(literal, file));
@@ -229,7 +259,7 @@ export function selectApplicableSuites(
     }
   }
 
-  const unattributed = files.filter(
+  const unattributed = smokeFiles.filter(
     (file) => !attributed.has(file) && isUnderFailClosedRoot(file),
   );
   if (unattributed.length > 0) {
@@ -242,11 +272,11 @@ export function selectApplicableSuites(
 
   const suites = SUITE_NAMES.filter((suite) => selected.has(suite));
   if (suites.length === 0) {
-    const offRepo = files.filter((file) => !isRepoSurface(file));
+    const offRepo = smokeFiles.filter((file) => !isRepoSurface(file));
     return Object.freeze({
       suites: Object.freeze([]),
       reason:
-        offRepo.length === files.length
+        offRepo.length === smokeFiles.length
           ? "no changed file touches a tracked repo surface"
           : "no changed file reaches the tooling smoke lane",
       unattributed: Object.freeze([]),
