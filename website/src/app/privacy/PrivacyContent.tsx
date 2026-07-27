@@ -95,8 +95,8 @@ export default function PrivacyContent() {
                     Your feed data stays on your device.
                   </strong>
                   Posts captured from X, RSS, YouTube, or any other source are
-                  written to local storage: IndexedDB in the browser, the
-                  filesystem in the desktop app. None of this ever touches our
+                  written to storage on your own device, in the browser or in
+                  the desktop app itself. None of this ever touches our
                   infrastructure, because we have no infrastructure to touch.
                 </li>
                 <li>
@@ -158,7 +158,8 @@ export default function PrivacyContent() {
               <p>
                 Desktop provider warnings for X, Facebook, Instagram, and
                 LinkedIn are also stored locally on that device. These records
-                are not synced through Automerge and are not transmitted to us.
+                stay on that device, are not synced to your other devices, and
+                are not transmitted to us.
               </p>
             </section>
 

@@ -204,7 +204,7 @@ const features = [
     icon: <SyncIcon />,
     title: "Cross-Device Sync",
     description:
-      "CRDT-powered sync across all your devices. No cloud required. Peer-to-peer when you want it.",
+      "Every device stays in step, automatically. No account, no server, no cloud required.",
   },
   {
     icon: <OpenSourceIcon />,
