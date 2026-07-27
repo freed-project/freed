@@ -5,14 +5,14 @@
   "dayKey": "26.7.27",
   "approved": true,
   "editorialNotes": [],
-  "generatedAt": "2026-07-27T18:23:33.854Z",
+  "generatedAt": "2026-07-27T23:24:06.573Z",
   "model": "heuristic",
   "source": {
     "channel": "dev",
     "previousPublishedTag": "v26.7.1501-dev",
     "previousPublishedDayTag": "v26.7.1501-dev",
     "compareRef": "HEAD",
-    "productCommitSha": "eda98a7418f55d5ad1f82fd8aa3129677e339a87",
+    "productCommitSha": "39d6d157897e5d411feabf54d720d80fd4ee2077",
     "promotedDevCommitSha": null,
     "isLatestOfDay": true,
     "sameDayTagsIncluded": [
@@ -93,9 +93,13 @@
       1184,
       1185,
       1186,
-      1192
+      1192,
+      1194,
+      1195
     ],
     "commitSubjects": [
+      "perf: unblock and streamline dev validation (#1195)",
+      "chore: prepare v26.7.2701-dev (#1194)",
       "chore: prepare v26.7.2700-dev (#1192)",
       "release: v26.7.2600-dev (#1181)",
       "perf(automation): widen the authority read caches to any exclusive guard scope (#1184)",
