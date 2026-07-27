@@ -191,6 +191,16 @@ function App() {
     legalAcceptedRef.current = legalAccepted;
   }, [legalAccepted]);
 
+  // Reads a synchronous localStorage flag once on mount, so the extra render
+  // pass react-hooks/set-state-in-effect warns about is real but bounded: it
+  // costs one paint of the blank shell below before the gate resolves.
+  //
+  // Lazy useState initialisers would remove it, but this decides whether the
+  // legal gate is shown, and the acceptPwaBundle() write has to stay in an
+  // effect regardless. Not worth reshaping a consent gate at the same time as a
+  // lint upgrade, so this is suppressed deliberately rather than papered over.
+  // Tracked for a proper pass.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     if (IS_FEATURE_PREVIEW) {
       acceptPwaBundle();
@@ -272,6 +282,11 @@ function App() {
     };
   }, [legalAccepted]);
 
+  // Same shape as the gate above: seed the notice from its current external
+  // value, then subscribe. It cannot become a lazy initialiser as it stands,
+  // because it must not run until the gate resolves. Suppressed with the rest
+  // and tracked together.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     if (!legalResolved) return;
 
