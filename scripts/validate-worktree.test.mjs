@@ -365,6 +365,8 @@ test("mixed feature plans retain repository configuration coverage", () => {
 test("feature plan routes tooling smoke workflow and helper changes through focused tests", () => {
   const paths = [
     ".github/workflows/ci.yml",
+    "scripts/measure-tooling-smoke.mjs",
+    "scripts/measure-tooling-smoke.test.mjs",
     "scripts/run-tooling-smoke-shard.mjs",
     "scripts/run-tooling-smoke-shard.test.mjs",
   ];
@@ -382,6 +384,7 @@ test("feature plan routes tooling smoke workflow and helper changes through focu
   assert.ok(runnerTests);
   assert.deepEqual(runnerTests.args, [
     "--test",
+    "scripts/measure-tooling-smoke.test.mjs",
     "scripts/tooling-smoke-plan.test.mjs",
     "scripts/run-tooling-smoke-shard.test.mjs",
   ]);
