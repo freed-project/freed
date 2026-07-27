@@ -115,6 +115,15 @@ jobs:
           echo "shard ${{ matrix.name }} took $(( $(date +%s) - started ))s" \
             >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Upload tooling smoke unit timings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tooling-smoke-timings-${{ matrix.suite }}-${{ matrix.shard }}-of-${{ matrix.shardCount }}
+          path: tooling-smoke-results/*.xml
+          retention-days: 14
+          if-no-files-found: warn
+
   # The gate is the branch-visible contract. It fails when the planner fails,
   # when a scheduled shard fails, and when shards are missing while the planner
   # said they were required. A not-applicable plan is the only path to a green

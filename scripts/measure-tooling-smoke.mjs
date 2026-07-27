@@ -3,8 +3,9 @@
 // fails on a rerun. The planner shards by these numbers, so a suite that gets
 // slower automatically gets more shards without anyone editing a workflow.
 //
-// The nightly exhaustive lane runs this and commits the result. Source size is
-// only a fallback for a suite that has never been measured.
+// The exhaustive lane runs this and uploads the result. A reviewed refresh can
+// write it back with --write. Source size is only a fallback until every unit
+// in a suite has been measured.
 
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -13,9 +14,11 @@ import path from "node:path";
 import { DURATIONS_FILE } from "./lib/tooling-smoke-plan.mjs";
 import {
   REPO_ROOT,
+  SHARDED_TEST_FILES,
   SUITE_NAMES,
   suiteTestFiles,
 } from "./lib/tooling-smoke-suites.mjs";
+import { extractTopLevelTestUnits } from "./run-tooling-smoke-shard.mjs";
 
 function parseArgs(argv) {
   const parsed = { repeat: 1, suites: [...SUITE_NAMES], write: false };
@@ -44,16 +47,96 @@ function parseArgs(argv) {
   return parsed;
 }
 
+function decodeXmlAttribute(value) {
+  return value
+    .replaceAll("&quot;", '"')
+    .replaceAll("&apos;", "'")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
+}
+
+export function parseJUnitTestCases(xml, repoRoot = REPO_ROOT) {
+  const testCases = [];
+  const pattern =
+    /<testcase\s+name="([^"]*)"\s+time="([^"]*)"\s+classname="[^"]*"\s+file="([^"]*)"[^>]*>/g;
+  for (const match of xml.matchAll(pattern)) {
+    const seconds = Number(match[2]);
+    if (!Number.isFinite(seconds) || seconds < 0) continue;
+    const absoluteFile = decodeXmlAttribute(match[3]);
+    testCases.push({
+      name: decodeXmlAttribute(match[1]),
+      file: path.relative(repoRoot, absoluteFile).replaceAll(path.sep, "/"),
+      seconds,
+    });
+  }
+  return testCases;
+}
+
+export function unitDurationsForSuite(
+  suite,
+  testCases,
+  { repoRoot = REPO_ROOT } = {},
+) {
+  const totals = new Map();
+  if (suite === "general") {
+    for (const testCase of testCases) {
+      totals.set(
+        testCase.file,
+        (totals.get(testCase.file) ?? 0) + testCase.seconds,
+      );
+    }
+  } else {
+    const testFile = SHARDED_TEST_FILES[suite];
+    const source = readFileSync(path.join(repoRoot, testFile), "utf8");
+    const units = extractTopLevelTestUnits(source, testFile);
+    for (const testCase of testCases.filter(
+      (entry) => entry.file === testFile,
+    )) {
+      const matches = units.filter((unit) =>
+        new RegExp(`^(?:${unit.patternFragment})$`, "u").test(testCase.name),
+      );
+      if (matches.length !== 1) continue;
+      const [unit] = matches;
+      totals.set(unit.name, (totals.get(unit.name) ?? 0) + testCase.seconds);
+    }
+  }
+  return Object.fromEntries(
+    [...totals]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([name, seconds]) => [name, seconds]),
+  );
+}
+
 function runSuiteOnce(suite) {
   const files = suiteTestFiles(suite, REPO_ROOT);
   const startedAt = process.hrtime.bigint();
-  const result = spawnSync(process.execPath, ["--test", ...files], {
-    cwd: REPO_ROOT,
-    env: process.env,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--test",
+      "--test-reporter=spec",
+      "--test-reporter-destination=stderr",
+      "--test-reporter=junit",
+      "--test-reporter-destination=stdout",
+      ...files,
+    ],
+    {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
   const seconds = Number(process.hrtime.bigint() - startedAt) / 1e9;
-  return { seconds, ok: result.status === 0 };
+  return {
+    seconds,
+    ok: result.status === 0,
+    units: unitDurationsForSuite(
+      suite,
+      parseJUnitTestCases(result.stdout, REPO_ROOT),
+    ),
+  };
 }
 
 export function measureSuites(suites, repeat) {
@@ -68,6 +151,24 @@ export function measureSuites(suites, repeat) {
       );
     }
     const failures = runs.filter(({ ok }) => !ok).length;
+    const unitNames = new Set(runs.flatMap(({ units }) => Object.keys(units)));
+    const units = Object.fromEntries(
+      [...unitNames].sort().map((name) => {
+        const observations = runs
+          .map((run) => run.units[name])
+          .filter((seconds) => Number.isFinite(seconds));
+        const seconds =
+          observations.reduce((total, value) => total + value, 0) /
+          observations.length;
+        return [
+          name,
+          {
+            seconds: Number(seconds.toFixed(3)),
+            runs: observations.length,
+          },
+        ];
+      }),
+    );
     measured[suite] = {
       seconds: Number(
         (runs.reduce((total, { seconds }) => total + seconds, 0) / runs.length).toFixed(1),
@@ -77,6 +178,7 @@ export function measureSuites(suites, repeat) {
       // A suite that passes sometimes and fails sometimes across identical runs
       // is flaky by definition, and the report says so rather than hiding it.
       flaky: failures > 0 && failures < runs.length,
+      units,
     };
   }
   return measured;
