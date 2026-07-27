@@ -8,6 +8,30 @@ disable-model-invocation: true
 
 Publish from the correct release lane and prove which artifact was installed afterward.
 
+## Run this end to end without stopping
+
+Once invoked, carry the release all the way to a tagged, verified build. Do not
+return to the owner between steps for confirmation they have already given by
+asking for the release. Specifically:
+
+- **Set `"approved": true` yourself.** That review is the agent's, not the
+  owner's. See "Prepare and publish" step 2.
+- **Merge your own release PRs** once their checks are green. A release-prep PR
+  and a release-fix PR are yours to land; the branch protection and the tag
+  rulesets are the controls, not a second human read.
+- **Run every script here rather than reproducing what it does by hand.** Every
+  release error in this repository's history came from improvising a step this
+  file already specifies. `release.sh` knows that package versions are plain
+  CalVer while only the tag carries `-dev`; hand-editing five version files does
+  not. `release-publish.sh` knows the tag can only be created through the
+  root-owned publisher binding; `git tag && git push` is rejected by the
+  `Freed release tag creation` ruleset, which permits exactly one App as bypass.
+
+Stop and ask only for a genuine decision: waiving a failing gate, shipping a
+known defect, or anything that changes provider-observable behavior. A dirty
+tree, a red check, or a validation error is a problem to fix and then continue
+through, not a reason to hand the release back.
+
 ## Establish authority and identity
 
 1. Confirm `dev` or `production` release mode. Production is the default for `./scripts/release.sh`. Dev release prep requires `--channel=dev`.
@@ -19,6 +43,7 @@ Publish from the correct release lane and prove which artifact was installed aft
 ## Prepare and publish
 
 1. Create a fresh `chore/release-<version>` worktree with `./scripts/worktree-add.sh <worktree-path> -b chore/release-<version> origin/main --target shared` for production, or use `origin/dev` for dev. Run `./scripts/release.sh` for production or `./scripts/release.sh --channel=dev` for dev. The script accepts only numeric CalVer with the one exact `-dev` tag suffix, updates package versions, records the source product commit and fixed promoted dev snapshot in the production release artifact, generates release-note artifacts, commits the draft, and refuses a stale or incorrect base.
+   **Run the script. Do not bump versions by hand.** The tag carries `-dev`; the five version files carry plain CalVer with no suffix (v26.7.1501-dev shipped `26.7.1501` in `package.json`). Writing the tag string into the version files makes `validate-release-identity` reject the publish on all five, and hand-editing product files after the notes are generated makes it reject again for "product files changed after release notes were prepared". `release.sh` gets both right and leaves an already-approved release file untouched, so it is safe to re-run to repair a botched prep.
 2. Review every generated release-note artifact yourself, rewrite it if it is thin or misleading, then set `"approved": true` in the release JSON and commit that approval. **This review is yours, not the owner's.** Do not stop and ask them to flip the flag: `release-publish.sh` refuses to tag until it is true, so bouncing it back turns a one-command ship into a round trip. The generator produces a first draft from commit subjects, which is frequently a poor summary — it leads with whatever churned most rather than what the reader cares about. Rewriting it is part of this step, not an optional extra.
    Check the generated draft against `scripts/release-notes-shared.mjs`: features are capped at `MAX_FEATURES` (3), fixes and follow-ups at 15. Run `node scripts/validate-release-notes.mjs <release json>` before committing.
 3. Run `npm run validate:release` for production or `npm run validate:feature` for dev on the exact release commit. Native changes require Rust formatting, linting, and tests through the repository validation lane.
