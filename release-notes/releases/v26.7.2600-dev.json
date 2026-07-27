@@ -3,7 +3,7 @@
   "version": "26.7.2600-dev",
   "channel": "dev",
   "dayKey": "26.7.26",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-07-26T22:35:17.309Z",
   "model": "heuristic",
@@ -146,21 +146,28 @@
     ]
   },
   "release": {
-    "deck": "Project feed items to flat rows with a losslessness proof, the locality and deletion contract, and release workflow and build-system work",
+    "deck": "The first dev build in eleven days, carrying 62 commits of storage and memory work",
     "features": [
-      "Project feed items to flat rows with a losslessness proof",
-      "The locality and deletion contract",
-      "Attribute renderer memory against a pre-hydration shell baseline"
+      "The cloud merge now runs in a worker that is terminated after each merge, so its peak no longer becomes a permanent floor",
+      "Renderer memory is attributed against a pre-hydration baseline, so growth can be traced to a cause rather than guessed at",
+      "Archive pruning runs again for cloud-synced libraries, where startup maintenance had never run at all"
     ],
     "fixes": [
-      "Release build and type-safety cleanup",
-      "Sync the roadmap layout ref after commit instead of during render",
-      "Defer archive pruning to cloud reconciliation instead of skipping it",
-      "Registry test filesystem race removed",
-      "Recognize historical cloud promotions",
-      "Align Facebook group regression with local state"
+      "Cloud sync bodies cross the native boundary as raw bytes instead of a JSON number array",
+      "Feed ranking is split into a time-invariant part and a live recency term, and no longer syncs between devices",
+      "Every synced field now declares where it lives and what happens when it is deleted",
+      "Feed items can be projected into flat rows, proved lossless against a real 15,846-item library",
+      "Moved off a Rust HTTP dependency that had been fully yanked upstream",
+      "The tooling lane runs only suites a change can reach, and warns before scheduling work that cannot finish in time",
+      "Sidebar label measurement in the zoom test no longer reads geometry mid-animation",
+      "Roadmap layout ref syncs after commit rather than during render",
+      "Historical cloud promotions are recognised again",
+      "Facebook group regression aligned with local state"
     ],
-    "followUps": []
+    "followUps": [
+      "This build is not expected to unblock Facebook and Instagram. Those are refused when the renderer sits above a 4 GB scrape budget, and moving the library out of the renderer is still ahead",
+      "Reading the memory telemetry from this build is what tells us whether the changes above moved the renderer at all"
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.7.2600-dev\n\nProject feed items to flat rows with a losslessness proof, the locality and deletion contract, and release workflow and build-system work\n\n### Features\n\n- Project feed items to flat rows with a losslessness proof\n- The locality and deletion contract\n- Attribute renderer memory against a pre-hydration shell baseline\n\n### Fixes\n\n- Release build and type-safety cleanup\n- Sync the roadmap layout ref after commit instead of during render\n- Defer archive pruning to cloud reconciliation instead of skipping it\n- Registry test filesystem race removed\n- Recognize historical cloud promotions\n- Align Facebook group regression with local state\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.2600-dev\n\nThe first dev build in eleven days, carrying 62 commits of storage and memory work\n\n### Features\n\n- The cloud merge now runs in a worker that is terminated after each merge, so its peak no longer becomes a permanent floor\n- Renderer memory is attributed against a pre-hydration baseline, so growth can be traced to a cause rather than guessed at\n- Archive pruning runs again for cloud-synced libraries, where startup maintenance had never run at all\n\n### Fixes\n\n- Cloud sync bodies cross the native boundary as raw bytes instead of a JSON number array\n- Feed ranking is split into a time-invariant part and a live recency term, and no longer syncs between devices\n- Every synced field now declares where it lives and what happens when it is deleted\n- Feed items can be projected into flat rows, proved lossless against a real 15,846-item library\n- Moved off a Rust HTTP dependency that had been fully yanked upstream\n- The tooling lane runs only suites a change can reach, and warns before scheduling work that cannot finish in time\n- Sidebar label measurement in the zoom test no longer reads geometry mid-animation\n- Roadmap layout ref syncs after commit rather than during render\n- Historical cloud promotions are recognised again\n- Facebook group regression aligned with local state\n\n### Known limits\n\n- This build is not expected to unblock Facebook and Instagram. Those are refused when the renderer sits above a 4 GB scrape budget, and moving the library out of the renderer is still ahead\n- Reading the memory telemetry from this build is what tells us whether the changes above moved the renderer at all\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
