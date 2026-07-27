@@ -54,6 +54,16 @@ export * from "./redact-sensitive";
 export * from "./story-wall";
 export * from "./youtube";
 
+// Storage roadmap stages 4 and 5. Browser-safe: the projection is pure, and the
+// store module declares its own narrow database interface rather than importing
+// a driver, so desktop can bind rusqlite and the PWA sqlite-wasm without either
+// dependency reaching this barrel.
+export * from "./projection";
+export * from "./shadow-store";
+
 // Note: schema.js is NOT re-exported here because it imports Automerge
 // which uses WebAssembly and requires special bundler configuration.
 // For schema operations, import directly from '@freed/shared/schema' in Node.js/Tauri.
+//
+// shadow-projector.js is likewise NOT re-exported: its drift detection takes a
+// FreedDoc, so it imports schema.js and carries the same Automerge constraint.
