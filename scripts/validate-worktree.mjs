@@ -353,7 +353,6 @@ export function isSocialProviderFocusedSurface(filePath) {
 
 export function isDesktopPerfSensitiveSurface(filePath) {
   return (
-    filePath === ".github/workflows/ci.yml" ||
     filePath === "scripts/perf-compare.ts" ||
     filePath === "packages/desktop/tests/e2e/perf-feed.spec.ts" ||
     filePath === "packages/desktop/tests/e2e/perf-friends.spec.ts" ||

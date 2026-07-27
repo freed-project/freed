@@ -440,6 +440,10 @@ test("stability status paths route focused tests in feature and dev plans", () =
 
 test("desktop perf sensitivity is scoped to hot paths and perf harnesses", () => {
   assert.equal(
+    isDesktopPerfSensitiveSurface(".github/workflows/ci.yml"),
+    false,
+  );
+  assert.equal(
     isDesktopPerfSensitiveSurface(
       "packages/desktop/src/lib/automerge.worker.ts",
     ),
