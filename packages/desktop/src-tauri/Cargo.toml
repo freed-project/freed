@@ -27,7 +27,14 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 window-vibrancy = "0.8"
 # default-features = false drops native-tls (OpenSSL) which conflicts with wreq's BoringSSL on Linux.
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+#
+# "stream" is used directly: lib.rs calls Response::bytes_stream to download the
+# local AI model without buffering it whole. It was never declared here, and the
+# build only worked because tauri-plugin-updater 2.9.0 happened to turn it on
+# and cargo unifies features across the graph. That is a borrowed guarantee: the
+# updater bump to 2.10.1 drops it and the call site stops compiling. Declare what
+# we use so the build does not depend on another crate's feature choices.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 # wreq is rquest renamed. The author renamed the crate and yanked every rquest
 # release, all 152 of them, so `rquest = "5"` no longer resolves at all and any
 # fresh dependency resolution fails outright. Version numbering carried straight
