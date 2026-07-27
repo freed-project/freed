@@ -6,6 +6,7 @@ import {
   buildToolingSmokeMatrix,
   projectShardRuntime,
   selectApplicableSuites,
+  selectNativeAcceptance,
   suiteWeights,
 } from "./lib/tooling-smoke-plan.mjs";
 
@@ -174,4 +175,17 @@ test("release admission and repository configuration changes use focused feature
 
   assert.deepEqual(selection.suites, []);
   assert.match(selection.reason, /explicit focused feature-validation/);
+});
+
+test("product fixture literals do not schedule unrelated tooling or native lanes", () => {
+  const changedFiles = [
+    "packages/pwa/src/App.tsx",
+    "packages/pwa/src/components/SyncConnectDialog.tsx",
+  ];
+
+  assert.deepEqual(selectApplicableSuites(changedFiles).suites, []);
+  assert.deepEqual(selectNativeAcceptance(changedFiles), {
+    required: false,
+    files: [],
+  });
 });

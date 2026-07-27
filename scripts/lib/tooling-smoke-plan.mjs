@@ -61,6 +61,13 @@ const TOP_LEVEL_ROOTS = Object.freeze([
   "website/",
 ]);
 
+// Product source paths often appear in planner and validation tests as fixture
+// inputs. A quoted fixture path is not a runtime dependency. Treating it as one
+// sent ordinary PWA changes into three tooling suites plus the macOS actor lane.
+// Product code still selects a suite when a test actually imports it through
+// the module graph. Its normal behavioral coverage belongs to validate:feature.
+const PRODUCT_SOURCE_ROOTS = Object.freeze(["packages/", "website/"]);
+
 function toPosix(filePath) {
   return filePath.replace(/\\/g, "/").replace(/^\.\//, "");
 }
@@ -164,6 +171,9 @@ export function moduleClosure(entryFiles, { repoRoot = REPO_ROOT } = {}) {
 }
 
 function literalMatches(literal, changedFile) {
+  if (PRODUCT_SOURCE_ROOTS.some((root) => changedFile.startsWith(root))) {
+    return false;
+  }
   if (literal === changedFile) return true;
   // A literal naming a directory, or a prefix such as "docs/PHASE-", covers
   // every file beneath or beginning with it. Bare roots never reach here:
