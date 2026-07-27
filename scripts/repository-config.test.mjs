@@ -34,6 +34,6 @@ test("Dependabot configuration keeps the expected versioned update contracts", (
 test("PWA deployments ignore commits outside their dependency surface", () => {
   assert.equal(
     pwaVercel.ignoreCommand,
-    "git diff HEAD^ HEAD --quiet -- . ../../packages/shared ../../packages/sync ../../packages/ui ../../package.json ../../package-lock.json ../../tsconfig.json",
+    "git diff HEAD^ HEAD --quiet -- . ../../packages/shared ../../packages/sync ../../packages/ui ../../.nvmrc ../../package.json ../../package-lock.json ../../tsconfig.base.json ../../tsconfig.json",
   );
 });

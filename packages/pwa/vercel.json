@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "buildCommand": "PATH=../../node_modules/.bin:$PATH npm run build",
-  "ignoreCommand": "git diff HEAD^ HEAD --quiet -- . ../../packages/shared ../../packages/sync ../../packages/ui ../../package.json ../../package-lock.json ../../tsconfig.json",
+  "ignoreCommand": "git diff HEAD^ HEAD --quiet -- . ../../packages/shared ../../packages/sync ../../packages/ui ../../.nvmrc ../../package.json ../../package-lock.json ../../tsconfig.base.json ../../tsconfig.json",
   "outputDirectory": "dist",
   "functions": {
     "api/security-report.ts": {
