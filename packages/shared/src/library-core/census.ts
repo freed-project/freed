@@ -8,6 +8,7 @@
  */
 export const LIBRARY_CORE_CENSUS_BLOCKERS = [
   "actor_and_global_authority_contracts_unimplemented",
+  "authenticated_adopter_pairing_unimplemented",
   "legacy_epoch_bootstrap_transaction_unimplemented",
   "local_authority_retention_and_migration_incomplete",
   "materializers_and_storage_adapters_unimplemented",
@@ -28,6 +29,9 @@ export const LIBRARY_CORE_CENSUS = Object.freeze({
   runtimeBehaviorChanged: false,
   activeEngine: "automerge_legacy",
   replicationProtocol: "automerge_blob_v1",
+  legacyEpochBootstrapContract: "closed_dormant_v1",
+  legacyEpochBootstrapTrust: "tofu_read_only",
+  legacyEpochBootstrapTransactionImplemented: false,
   registrySurfaces: [
     "field",
     "root",
@@ -37,6 +41,7 @@ export const LIBRARY_CORE_CENSUS = Object.freeze({
     "desktop_worker_message",
     "pwa_worker_message",
     "local_authority",
+    "legacy_epoch_bootstrap_contract",
   ],
   blockers: LIBRARY_CORE_CENSUS_BLOCKERS,
 } as const);

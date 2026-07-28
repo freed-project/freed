@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  LIBRARY_CORE_CENSUS,
-  LIBRARY_CORE_CENSUS_BLOCKERS,
-} from "./census.js";
+import { LIBRARY_CORE_CENSUS, LIBRARY_CORE_CENSUS_BLOCKERS } from "./census.js";
 
 describe("Library Core dormant census", () => {
   it("cannot be mistaken for writer or activation authority", () => {
@@ -13,6 +10,9 @@ describe("Library Core dormant census", () => {
       runtimeBehaviorChanged: false,
       activeEngine: "automerge_legacy",
       replicationProtocol: "automerge_blob_v1",
+      legacyEpochBootstrapContract: "closed_dormant_v1",
+      legacyEpochBootstrapTrust: "tofu_read_only",
+      legacyEpochBootstrapTransactionImplemented: false,
     });
   });
 
@@ -36,6 +36,7 @@ describe("Library Core dormant census", () => {
       "desktop_worker_message",
       "pwa_worker_message",
       "local_authority",
+      "legacy_epoch_bootstrap_contract",
     ]);
   });
 });

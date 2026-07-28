@@ -178,6 +178,7 @@ recovery-capability-change
 recovery-capability-change-authority
 authority-key
 authority-key-possession
+legacy-epoch-bootstrap-record
 automerge-source
 automerge-heads
 migration-source-set
@@ -498,20 +499,31 @@ other implementation to bless.
 
 Every installation stores one `library_control` record:
 
-| field | meaning |
-| --- | --- |
-| `library_id` | Stable opaque library identity |
-| `installation_id` | Stable identity for this installation |
-| `active_epoch` | Monotone storage epoch number |
-| `active_epoch_id` | Globally unique opaque incarnation for that epoch |
-| `active_engine` | `automerge_legacy` or `library_core_v1` |
-| `schema_version` | Materialized schema version |
-| `replication_protocol` | `automerge_blob_v1` or `op_segments_v1` |
-| `frontier_digest` | Digest of the accepted causal frontier |
-| `authority_key_id` | Active target authority key installed for this epoch |
-| `transition_digest` | Exact committed epoch-transition certificate |
-| `updated_by_operation_id` | Operation that changed authority |
-| `migration_claim_pointer` | Null or the current typed local migration lifecycle pointer |
+| field                     | meaning                                                                           |
+| ------------------------- | --------------------------------------------------------------------------------- |
+| `format`                  | Exact literal `freed_library_control_v1`                                          |
+| `library_id`              | Stable opaque library identity                                                    |
+| `installation_id`         | Stable identity for this installation                                             |
+| `active_epoch`            | Monotone storage epoch number                                                     |
+| `active_epoch_id`         | Globally unique opaque incarnation for that epoch                                 |
+| `active_engine`           | `automerge_legacy` or `library_core_v1`                                           |
+| `schema_version`          | Materialized schema version                                                       |
+| `replication_protocol`    | `automerge_blob_v1` or `op_segments_v1`                                           |
+| `frontier_digest`         | Digest of the accepted causal frontier                                            |
+| `bootstrap_record_digest` | Required only by the legacy bootstrap form; names its synchronized TOFU record    |
+| `authority_key_id`        | Required only after authenticated Library Core authority exists                   |
+| `transition_digest`       | Required only after an authenticated epoch transition exists                      |
+| `updated_by_operation_id` | Operation that changed this local control                                         |
+| `migration_claim_pointer` | Null or the current typed local migration lifecycle pointer                       |
+| `storage_generation`      | Nonnegative local storage-incarnation generation interpreted by the active engine |
+| `local_access`            | Installation-local creator, read-only adopter, or later authenticated actor mode  |
+
+The exact control body is an engine-specific closed union. The legacy bootstrap
+form contains `bootstrap_record_digest` and `local_access`, but omits
+`authority_key_id` and `transition_digest`. The authenticated Library Core form
+contains authority and transition fields under its later closed contract. An
+implementation never fills an inapplicable authority field with a synchronized
+self-assertion.
 
 Every read, write, migration receipt, snapshot, outbox entry, and replication
 manifest carries `library_id`, `active_epoch`, and `active_epoch_id`. A process
@@ -524,6 +536,265 @@ The legacy installation receives one bootstrapped epoch through an explicit,
 durable initialization transaction. The value is chosen once and read back.
 Migration code must not guess an epoch, infer one from a database file, or
 silently replace an existing control record.
+
+The bootstrap is a separate dormant protocol before Library Core activation.
+One explicit local owner action chooses the creator installation and durably
+prepares one exact operation journal. Startup absence never chooses a creator.
+A synchronized Automerge value cannot prove that the owner approved it because
+every current legacy writer can create synchronized values. The protocol
+therefore stores a bootstrap record, not an authority certificate.
+
+The closed synchronized record is:
+
+```text
+legacy_epoch_bootstrap_record_body = {
+  format: "freed_legacy_epoch_bootstrap_record_v1",
+  library_id,
+  creator_installation_id,
+  active_epoch: 1,
+  active_epoch_id,
+  active_engine: "automerge_legacy",
+  schema_version,
+  replication_protocol: "automerge_blob_v1",
+  source_heads_body: {
+    heads
+  },
+  source_heads_digest,
+  bootstrap_operation_id,
+  trust_model: "tofu_read_only_until_authenticated_pairing",
+  migration_claim_pointer: null
+}
+
+legacy_epoch_bootstrap_record_digest = D(
+  "legacy-epoch-bootstrap-record",
+  legacy_epoch_bootstrap_record_body
+)
+
+legacy_epoch_bootstrap_record = {
+  record_body: legacy_epoch_bootstrap_record_body,
+  record_digest: legacy_epoch_bootstrap_record_digest
+}
+```
+
+`library_id`, `creator_installation_id`, and `active_epoch_id` are independent
+32-byte random values encoded as 64 lowercase hexadecimal characters.
+`bootstrap_operation_id` uses the bounded v1 operation-ID codec.
+`schema_version` is zero or one. `heads` contains 1 through 65 unique
+pre-bootstrap Automerge heads, encoded as 64 lowercase hexadecimal characters
+and sorted by decoded bytes. Every supported Freed document has at least one
+head because document creation uses `Automerge.from` with the required root
+shape. A raw zero-head `Automerge.init` value is not a supported Freed document.
+`source_heads_digest` recomputes as
+`D("automerge-heads", { heads })`.
+
+The record deliberately has no authority key, signature, or proof of owner
+consent. A key created and signed by the same app process would prove only that
+the app possesses the key it just created. It would not authenticate the owner
+or another installation. The future Library Core authority key remains
+unprovisioned until a real user-present or authenticated authority-holder
+protocol exists.
+
+The record synchronizes inside the existing Automerge document under exactly
+`libraryCoreLegacyBootstrapRecord:<record_digest>`. It adds no cloud sidecar,
+provider object, request, or cadence. Readers must complete one closed scan of
+the entire current reserved root namespace and every Automerge conflict value,
+plus the complete historical set of reserved root keys:
+
+```text
+legacy_epoch_bootstrap_scan = {
+  format: "freed_legacy_epoch_bootstrap_scan_v1",
+  scan_complete,
+  history_scan_complete,
+  overflow,
+  reserved_root_key_count,
+  occurrence_count,
+  occurrences: [{
+    root_key,
+    conflict_value
+  }],
+  historical_root_key_count,
+  historical_root_keys
+}
+```
+
+The scan accepts at most 65 current reserved root keys, 65 current
+occurrences, and 65 unique historical reserved root keys. It checks those
+counts before allocation. `historical_root_keys` is the unique byte-sorted set
+of every reserved root key ever written in the accepted Automerge change
+graph, including keys that are currently deleted. The future scanner must
+derive that set with bounded streaming change inspection. It must not
+materialize every historical document snapshot.
+
+An incomplete current or historical scan is not absence. Overflow is a
+distinct resource-limit failure. Every current root suffix must equal the
+recomputed record digest. Every historical root must still have a current
+valid occurrence, and every current root must appear in history. A deleted or
+tombstoned record therefore blocks as `record_history_violation` instead of
+becoming a fresh library. Exact duplicates collapse to one logical record.
+Two unequal valid records remain preserved and block as
+`multiple_record_conflict`.
+
+The installation-local control body is:
+
+```text
+library_control = {
+  format: "freed_library_control_v1",
+  library_id,
+  installation_id,
+  active_epoch: 1,
+  active_epoch_id,
+  active_engine: "automerge_legacy",
+  schema_version,
+  replication_protocol: "automerge_blob_v1",
+  frontier_digest,
+  bootstrap_record_digest,
+  updated_by_operation_id,
+  migration_claim_pointer: null,
+  storage_generation,
+  local_access:
+    "creator_local_owner_confirmed" |
+    "adopter_tofu_read_only"
+}
+```
+
+The creator mode is valid only with the matching prepared journal and complete
+transaction receipt. A synchronized record cannot recreate either local
+object. An adopter may pin the record into local control only with
+`adopter_tofu_read_only`. That mode cannot produce accepted writes. Writable
+adoption remains blocked until a separate authenticated pairing binds the
+record digest, both installation identities, a fresh actor key, a challenge,
+and a real authority-holder or user-present proof. Ordinary sync bytes,
+self-signatures, copied credentials, and an in-document key cannot satisfy
+that pairing.
+
+The explicit owner action creates this local prepared journal once:
+
+```text
+legacy_epoch_bootstrap_prepared_body = {
+  format: "freed_legacy_epoch_bootstrap_prepared_v1",
+  phase: "prepared",
+  bootstrap_operation_id,
+  creator_installation_id,
+  source_storage_generation,
+  target_storage_generation,
+  source_save_revision,
+  candidate_save_revision,
+  source_binary_digest,
+  candidate_binary_digest,
+  source_heads_digest,
+  candidate_heads_body,
+  candidate_heads_digest,
+  record,
+  record_digest,
+  record_root_key,
+  candidate_control,
+  candidate_control_digest
+}
+
+legacy_epoch_bootstrap_prepared_digest = D(
+  "legacy-epoch-bootstrap-prepared",
+  legacy_epoch_bootstrap_prepared_body
+)
+```
+
+The source and target storage generations are equal because bootstrap does not
+replace the storage incarnation. `candidate_save_revision` is exactly
+`source_save_revision + 1`. The candidate binary and head digests differ from
+the source digests. The candidate control is the exact creator control at the
+candidate frontier. Candidate bytes live in bounded local staging addressed by
+the operation ID and binary digest. The pure classifier receives digests and
+closed control values, not a second unbounded document copy.
+
+The transaction receipt is:
+
+```text
+legacy_epoch_bootstrap_receipt_body = {
+  format: "freed_legacy_epoch_bootstrap_receipt_v1",
+  bootstrap_operation_id,
+  prepared_digest,
+  record_digest,
+  creator_installation_id,
+  source_storage_generation,
+  committed_storage_generation,
+  source_save_revision,
+  committed_save_revision,
+  source_binary_digest,
+  committed_binary_digest,
+  source_heads_digest,
+  committed_heads_digest,
+  control_digest
+}
+
+legacy_epoch_bootstrap_receipt_digest = D(
+  "legacy-epoch-bootstrap-receipt",
+  legacy_epoch_bootstrap_receipt_body
+)
+```
+
+The digest graph is acyclic. The record is digested first, then the candidate
+control, then the prepared operation, then the receipt. No earlier object
+contains the receipt digest.
+
+Prepared validation proves that the candidate frontier descends from the exact
+source frontier. The future executable adapter must also load the staged bytes
+named by `candidate_binary_digest`, verify that they yield the bound candidate
+heads, and verify the record occurrence before compare-and-swap. The dormant
+classifier receives digests and heads rather than candidate bytes, so it does
+not pretend to prove bytes it never reads.
+
+The future executable transaction compare-and-swaps the exact storage
+generation, save revision, source binary digest, and source heads. It then
+writes the candidate document, creator control, completion receipt, retained
+prepared journal, and next save revision in one local transaction. The receipt
+completes that exact journal. A live owner action is required only to create
+the prepared journal. Exact retry after process loss or response loss reads the
+same prepared or committed objects by operation ID and never asks again,
+regenerates identities, or rebases an old approval onto changed source bytes.
+A changed source requires explicit abandonment and a fresh owner action.
+
+The pure classifier states are:
+
+| state                      | required interpretation                                                                                                                                                            |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `absent`                   | Complete current and historical scans found no record root, and no local journal, receipt, or control exists. Do nothing.                                                         |
+| `creator_prepared`         | One exact local prepared operation matches the current generation, revision, binary, heads, and schema. The later transaction may attempt its one compare-and-swap.                |
+| `creator_committed`        | The prepared operation, synchronized record, creator control, and receipt describe one complete transaction. Later saves preserve the committed candidate frontier as an ancestor. |
+| `adopter_record_unpinned`  | One valid synchronized record exists without local control. It grants no write authority.                                                                                          |
+| `adopter_tofu_read_only`   | One valid record and matching local TOFU control exist. Reads may continue. Writes remain blocked pending authenticated pairing.                                                   |
+| `prepared_source_changed`  | The source generation, revision, binary, heads, or schema changed after preparation. Do not rebase the old action.                                                                 |
+| `record_history_violation` | A historical reserved root is no longer current, or a current root is missing from complete history. Preserve evidence and block rebootstrap.                                     |
+| `mismatched_or_corrupt`    | A shape, digest, identity, frontier, transaction member, generation, or partial local tuple is inconsistent. Block without repair.                                                 |
+| `multiple_record_conflict` | More than one unequal record exists. Preserve every occurrence and block without selecting a winner.                                                                               |
+| `incomplete_scan`          | Reserved-namespace enumeration did not complete. Do not interpret omitted values as absence.                                                                                       |
+| `resource_limit_exceeded`  | A bounded heads or occurrence limit was exceeded. Stop before allocation or mutation.                                                                                              |
+| `unsupported_newer`        | A later record, journal, receipt, control, epoch, schema, engine, or protocol is present. Preserve it and block.                                                                   |
+
+Only the wholly prepared tuple or wholly committed tuple is recoverable.
+Document-only, control-only, receipt-only, and every other partial combination
+are corruption. No isolated local control row is recovery authority.
+
+The prepared candidate and exact first commit use the bootstrap operation ID
+as `updated_by_operation_id`. A later ordinary save or a local TOFU pin uses
+its own bounded local operation ID. The bootstrap operation is immutable in
+the synchronized record, but current local-control provenance is not falsified
+to look like the bootstrap action forever.
+
+Trusted history compaction and compatibility rebuilds must preserve the record
+roots and their Automerge ancestry exactly. The current Desktop `A.toJS()` then
+`A.from()` compatibility rebuild discards that ancestry. A2 must fence the
+value-only path after a record exists or replace it with a proven
+history-preserving transition before bootstrap activation. Lost ancestry is
+corruption, not permission to prepare another record.
+
+Every decoder snapshots each closed input field and bounded nested array once
+into new immutable plain values before digest, ancestry, or state evaluation.
+It never return-casts an untrusted object, retains an input array by reference,
+or rereads a getter or proxy after validation.
+
+The local journal and receipt provide exact operation recovery on one
+installation. They do not claim rollback resistance if an attacker can restore
+the entire device state. Strong rollback resistance requires a hardware,
+server, passkey, or other external monotonic anchor and remains outside A1.
 
 For a library with no cloud authority record, `library_control` is also the
 single durable local claim compare-and-swap record. Its

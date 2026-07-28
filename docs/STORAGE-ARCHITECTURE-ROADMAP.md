@@ -8,17 +8,24 @@ the work exists, what evidence is real, and the safest delivery order.
 
 ## Current implementation boundary
 
-The first Gate A delivery is a dormant census. It makes the current synchronized
-schema, shared store surface, Desktop and PWA worker messages, planned operation
-and query vocabulary, and device-local authorities reviewable by the compiler.
-It does not activate Library Core, change a writer, migrate data, or claim that
-unresolved codecs, field algebra, query projections, retention limits, or the
-legacy epoch bootstrap are complete.
+Gate A is a dormant census. A1 adds the package-internal closed legacy
+bootstrap record, journal, control, receipt, bounded current and historical
+reserved-root scan, and state classifier. Together they make the current
+synchronized schema, shared store surface, Desktop and PWA worker messages,
+planned operation and query vocabulary, device-local authorities, and
+bootstrap transaction boundary reviewable by the compiler. They do not
+activate Library Core, change a writer, migrate data, or claim that unresolved
+codecs, field algebra, query projections, retention limits, authenticated
+adopter pairing, or the executable bootstrap transaction are complete.
 
 Every planned successor remains `planned_blocked`. The combined census reports
 `activationAllowed: false` until the executable contracts and one durable
 legacy bootstrap transaction exist. Registry presence is not an activation
 receipt.
+
+The pure bootstrap classifier remains package-internal during step 1a. Step 1b
+adds the first production caller and may then expose the contract through the
+shared Library Core entry point. Step 1a does not ship an unused public API.
 
 ## What the evidence establishes
 
@@ -98,7 +105,8 @@ user data yet.
 | step | delivery | activation condition |
 | --- | --- | --- |
 | 0 | Process-safe memory attribution and matched tier fixtures | Exact build and process-generation evidence, no startup stall |
-| 1 | Freeze the Library Core registries, authority, and legacy epoch bootstrap | The dormant census is complete; every synchronized field then gains executable algebra, locality, deletion, storage, operation, and query contracts; signed actor and global epoch-transition contracts are exhaustive; one durable control transaction records the initial epoch |
+| 1a | Close the Library Core registries and legacy epoch bootstrap contract | The dormant census is complete; every synchronized field then gains executable algebra, locality, deletion, storage, operation, and query contracts; the exact digest-addressed in-document bootstrap record, bounded complete current and historical reserved-root scan, source-descended prepared journal, local control, receipt, identity codecs, digest equations, creator and TOFU read-only adopter states, conflict rules, and value-only history-rebuild fence are closed and runtime-neutral |
+| 1b | Implement the dormant legacy epoch bootstrap transaction | One explicit local owner action prepares an exact journal; the adapter loads staged candidate bytes by digest, proves their bound heads and record occurrence, then one compare-and-swap commits the record-bearing Automerge document, creator control, receipt, retained journal, and next revision atomically; another installation pins only TOFU read-only control until authenticated authority-holder pairing exists; ordinary saves update the current control frontier atomically with their own operation provenance; exact retry does not re-prompt; startup absence requires empty current and historical reserved-root scans and never prepares authority; deleted roots and unequal records block without winner selection; any compatibility rebuild preserves recorded history or is fenced after bootstrap |
 | 2 | Dormant Rust SQLite core and shared operation fixtures | Crash-safe complete transaction receipts, signature and fork rejection, and identical cross-platform materialization |
 | 3 | Authenticated elected Automerge migration authority plus bounded device-local source contributions | Candidate registration is the first claim-bound mutation, and registration races state-correct candidate-absent abandonment and cleanup in one serialization domain; cloud claims use authenticated store time and expiry; local claims use null timestamps and never self-expire; every claim-bound source, candidate-registry, and cutover mutation uses a closed noncircular payload-bound grant; cloud source commits require the original runtime-owned process generation and live monotonic attempt handle; migration and rollback split corpus-sized prepared proofs from a maximum 65-fence, 2 MiB activation sidecar committed in one atomic authority bundle; rollback uses its own signed reservation and activation schema; full-field private-corpus diff, composite source identity, resumable receipts, changed-head rejection, and adapter fixture parity pass |
 | 4 | Bounded Desktop query API | Stable cursors, explicit limits, cancellation, count and search parity |

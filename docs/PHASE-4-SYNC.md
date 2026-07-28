@@ -302,6 +302,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.18 | Dedicated large-media transfer lane, LAN first with encrypted user-cloud fallback | ☐ | High |
 | 4.19 | Synced Freed Desktop registration and duplicate provider request warning | ✓ | Low |
 | 4.20 | Dormant Library Core schema, mutation, query, worker-message, and local-authority census | ✓ | Medium |
+| 4.21 | Closed dormant legacy epoch bootstrap record, bounded scan, prepared journal, local control, receipt, and TOFU adopter state contract | ✓ | Medium |
 
 ---
 
@@ -332,6 +333,7 @@ recovery, telemetry, milestones, and acceptance tests.
 - [x] Desktop writes rotating local snapshots and can restore an older Automerge copy from Settings
 - [x] Each Freed Desktop installation keeps its opaque identity locally, registers durable topology metadata after document initialization and merges, and warns in Sync setup when another Freed Desktop could duplicate RSS or authenticated provider requests. PWA readers do not count toward the warning.
 - [x] The dormant Library Core census makes current synchronized fields, shared store surfaces, Desktop and PWA worker messages, planned operations and queries, and retained local authorities reviewable without changing the active Automerge writer or claiming Gate A activation
+- [x] The dormant legacy epoch bootstrap contract closes the exact digest-addressed in-document record occurrence, complete bounded current and historical reserved-root scan with deleted-root rejection, source-descended prepared owner operation, local control, completion receipt, identity codecs, current-frontier tracking, creator and TOFU read-only adopter states, response-loss readback, partial-transaction rejection, conflict behavior, and the activation block on value-only Automerge history rebuilds without adding provider objects or requests, generating authority keys, writing storage, choosing a creator at startup, or activating Library Core
 - [ ] iCloud sync integration
 - [ ] Large media packages transfer outside Automerge through an authenticated,
       resumable, integrity-checked path with explicit storage and deletion rules
