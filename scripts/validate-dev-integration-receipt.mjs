@@ -4,6 +4,12 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  CARGO_LOCK_PATH,
+  inspectCargoLockReleaseChange,
+} from "./lib/cargo-lock-release.mjs";
+import { isReleaseOnlyFile } from "./release-promotion-shared.mjs";
+
 const DEFAULT_REPOSITORY = "freed-project/freed";
 const DEFAULT_BRANCH = "dev";
 const DEFAULT_WORKFLOW = "ci.yml";
@@ -68,10 +74,40 @@ function normalizeRuns(payload) {
   return payload.workflow_runs;
 }
 
+function successfulRun(payload, { branch, sha }) {
+  return normalizeRuns(payload)
+    .filter(
+      (run) =>
+        run.head_sha === sha &&
+        run.head_branch === branch &&
+        run.event === "push",
+    )
+    .sort((left, right) => Number(right.id) - Number(left.id))
+    .find((run) => run.status === "completed" && run.conclusion === "success");
+}
+
+function receiptFromRun(run, options, overrides = {}) {
+  return Object.freeze({
+    schemaVersion: 1,
+    repository: options.repository,
+    workflow: options.workflow,
+    branch: options.branch,
+    event: "push",
+    headSha: options.sha,
+    runId: run.id,
+    runAttempt: run.run_attempt ?? 1,
+    conclusion: run.conclusion,
+    completedAt: run.updated_at,
+    url: run.html_url,
+    ...overrides,
+  });
+}
+
 export function selectExactIntegrationReceipt(
   payload,
-  { branch, repository, sha, workflow },
+  options,
 ) {
+  const { branch, sha } = options;
   const exact = normalizeRuns(payload)
     .filter(
       (run) =>
@@ -81,23 +117,9 @@ export function selectExactIntegrationReceipt(
     )
     .sort((left, right) => Number(right.id) - Number(left.id));
 
-  const successful = exact.find(
-    (run) => run.status === "completed" && run.conclusion === "success",
-  );
+  const successful = successfulRun(payload, options);
   if (successful) {
-    return Object.freeze({
-      schemaVersion: 1,
-      repository,
-      workflow,
-      branch,
-      event: "push",
-      headSha: sha,
-      runId: successful.id,
-      runAttempt: successful.run_attempt ?? 1,
-      conclusion: successful.conclusion,
-      completedAt: successful.updated_at,
-      url: successful.html_url,
-    });
+    return receiptFromRun(successful, options);
   }
 
   const pending = exact.find((run) => run.status !== "completed");
@@ -117,6 +139,82 @@ export function selectExactIntegrationReceipt(
   fail(
     `No push validation receipt exists for ${branch} at ${sha}. Merge through the protected branch and wait for Validation to finish.`,
   );
+}
+
+function runGit(args, cwd) {
+  return execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  }).trim();
+}
+
+export function releaseOnlyParent(sha, { cwd = process.cwd() } = {}) {
+  try {
+    const parents = runGit(["show", "-s", "--format=%P", sha], cwd)
+      .split(/\s+/)
+      .filter(Boolean);
+    if (parents.length !== 1) return null;
+
+    const [parent] = parents;
+    const files = runGit(
+      ["diff", "--name-only", "--no-renames", parent, sha],
+      cwd,
+    )
+      .split(/\r?\n/)
+      .map((file) => file.trim())
+      .filter(Boolean);
+    if (files.length === 0) return null;
+
+    const releaseOnly = files.every((file) => {
+      if (isReleaseOnlyFile(file)) return true;
+      if (file !== CARGO_LOCK_PATH) return false;
+      return inspectCargoLockReleaseChange({
+        fromRef: parent,
+        toRef: sha,
+        cwd,
+      }).ok;
+    });
+    return releaseOnly ? parent : null;
+  } catch {
+    return null;
+  }
+}
+
+export function selectIntegrationReceipt(
+  payload,
+  options,
+  { inheritedFromSha = null } = {},
+) {
+  const exactRuns = normalizeRuns(payload).filter(
+    (run) =>
+      run.head_sha === options.sha &&
+      run.head_branch === options.branch &&
+      run.event === "push",
+  );
+  const exactFailure = exactRuns.find(
+    (run) => run.status === "completed" && run.conclusion !== "success",
+  );
+  if (exactFailure || !inheritedFromSha) {
+    return selectExactIntegrationReceipt(payload, options);
+  }
+
+  const exactSuccess = successfulRun(payload, options);
+  if (exactSuccess) return receiptFromRun(exactSuccess, options);
+
+  const inherited = successfulRun(payload, {
+    ...options,
+    sha: inheritedFromSha,
+  });
+  if (!inherited) return selectExactIntegrationReceipt(payload, options);
+
+  return receiptFromRun(inherited, options, {
+    schemaVersion: 2,
+    inherited: true,
+    inheritedFromSha,
+    validationHeadSha: inheritedFromSha,
+    changeScope: "release-only",
+  });
 }
 
 export async function fetchWorkflowRuns(
@@ -153,7 +251,9 @@ export async function fetchWorkflowRuns(
 
 export async function validateDevIntegrationReceipt(options, dependencies) {
   const payload = await fetchWorkflowRuns(options, dependencies);
-  return selectExactIntegrationReceipt(payload, options);
+  return selectIntegrationReceipt(payload, options, {
+    inheritedFromSha: releaseOnlyParent(options.sha, dependencies),
+  });
 }
 
 async function main(argv) {
