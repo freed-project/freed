@@ -3,13 +3,20 @@ import { CONTACT_SYNC_STORAGE_KEY } from "@freed/shared";
 
 const {
   mockDocBinary,
+  mockCommittedDoc,
   mockDocState,
   mockReplaceLocalDoc,
   subscribers,
 } = vi.hoisted(() => ({
   mockDocBinary: vi.fn<() => Uint8Array | Promise<Uint8Array>>(),
+  mockCommittedDoc: vi.fn(),
   mockDocState: vi.fn(),
-  mockReplaceLocalDoc: vi.fn<(binary: Uint8Array) => Promise<void>>(),
+  mockReplaceLocalDoc: vi.fn<
+    (
+      binary: Uint8Array,
+      revision: { generation: number; saveRevision: number },
+    ) => Promise<void>
+  >(),
   subscribers: new Set<() => void>(),
 }));
 
@@ -28,7 +35,7 @@ vi.mock("@tauri-apps/plugin-fs", async () => {
 });
 
 vi.mock("./automerge", () => ({
-  getDocBinary: mockDocBinary,
+  getCommittedDoc: mockCommittedDoc,
   getDocState: mockDocState,
   replaceLocalDoc: mockReplaceLocalDoc,
   subscribe: (listener: () => void) => {
@@ -65,6 +72,7 @@ describe("snapshots", () => {
     subscribers.clear();
     mockReplaceLocalDoc.mockReset();
     mockDocBinary.mockReset();
+    mockCommittedDoc.mockReset();
     mockDocState.mockReset();
     stopSnapshotManager();
     await clearSnapshots();
@@ -76,6 +84,17 @@ describe("snapshots", () => {
         "friend-1": { id: "friend-1" },
       },
       docItemCount: 2,
+    });
+    mockCommittedDoc.mockImplementation(async () => {
+      const binary = await mockDocBinary();
+      const state = mockDocState();
+      return {
+        binary,
+        heads: ["committed-head"],
+        revision: { generation: 7, saveRevision: 11 },
+        itemCount: state?.docItemCount ?? 0,
+        friendCount: Object.keys(state?.friends ?? {}).length,
+      };
     });
     localStorage.setItem(
       CONTACT_SYNC_STORAGE_KEY,
@@ -150,6 +169,59 @@ describe("snapshots", () => {
     expect(restored.pendingMatches).toHaveLength(1);
   });
 
+  it("keeps the pre-read revision on a stale snapshot restore and leaves contact state untouched", async () => {
+    const snapshot = await createSnapshot("manual");
+    expect(snapshot).not.toBeNull();
+    const expectedRevision = { generation: 7, saveRevision: 11 };
+    mockCommittedDoc.mockResolvedValue({
+      binary: new Uint8Array([1, 2, 3, 4]),
+      heads: ["committed-head"],
+      revision: expectedRevision,
+      itemCount: 2,
+      friendCount: 1,
+    });
+
+    const currentContactsRaw = JSON.stringify({
+      syncToken: "newer-contact-state",
+      cachedContacts: [],
+      pendingMatches: [],
+    });
+    localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, currentContactsRaw);
+
+    const originalReadFile = fs.readFile;
+    let releaseRead!: () => void;
+    const readGate = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+    const readStarted = vi.fn();
+    const read = vi.spyOn(fs, "readFile").mockImplementationOnce(
+      async (...args: Parameters<typeof fs.readFile>) => {
+        readStarted();
+        await readGate;
+        return originalReadFile(...args);
+      },
+    );
+    mockReplaceLocalDoc.mockRejectedValueOnce(
+      new Error("Automerge persistence state is stale"),
+    );
+
+    const restoring = restoreSnapshot(snapshot!.id);
+    await vi.waitFor(() => expect(readStarted).toHaveBeenCalledOnce());
+    releaseRead();
+
+    await expect(restoring).rejects.toThrow(
+      "Automerge persistence state is stale",
+    );
+    expect(mockReplaceLocalDoc).toHaveBeenCalledWith(
+      new Uint8Array([1, 2, 3, 4]),
+      expectedRevision,
+    );
+    expect(localStorage.getItem(CONTACT_SYNC_STORAGE_KEY)).toBe(
+      currentContactsRaw,
+    );
+    read.mockRestore();
+  });
+
   it("preserves an unreadable contact sync ledger through snapshot restore", async () => {
     const corruptRaw = "{unreadable-contact-sync-state";
     localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, corruptRaw);
@@ -167,16 +239,18 @@ describe("snapshots", () => {
   });
 
   it("does not create a snapshot when contact sync storage cannot be read", async () => {
-    const originalGetItem = Storage.prototype.getItem;
-    const getItem = vi.spyOn(Storage.prototype, "getItem").mockImplementation(function (
-      this: Storage,
-      key: string,
-    ) {
-      if (key === CONTACT_SYNC_STORAGE_KEY) {
-        throw new Error("contact sync storage unavailable");
-      }
-      return originalGetItem.call(this, key);
-    });
+    const originalGetItem = window.localStorage.getItem.bind(window.localStorage);
+    const localStoragePrototype = Object.getPrototypeOf(
+      window.localStorage,
+    ) as Storage;
+    const getItem = vi
+      .spyOn(localStoragePrototype, "getItem")
+      .mockImplementation((key: string) => {
+        if (key === CONTACT_SYNC_STORAGE_KEY) {
+          throw new Error("contact sync storage unavailable");
+        }
+        return originalGetItem(key);
+      });
 
     await expect(createSnapshot("manual")).rejects.toThrow("contact sync storage unavailable");
     getItem.mockRestore();

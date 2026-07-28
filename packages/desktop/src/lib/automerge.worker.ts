@@ -15,7 +15,14 @@
  */
 
 import * as A from "@automerge/automerge";
+import type { StorageRevision } from "@freed/sync/types";
 import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
+import {
+  classifyDocumentLoadFailure,
+  RepeatableAutomergePersistence,
+  StaleAutomergePersistenceStateError,
+  type AutomergePersistenceOptions,
+} from "@freed/sync/storage/repeatable-automerge-persistence";
 import type { FreedDoc } from "@freed/shared/schema";
 import {
   assertNonDestructiveMerge,
@@ -71,7 +78,17 @@ import {
   sortByPriority,
   stripDeviceLocalPreferenceUpdates,
 } from "@freed/shared";
-import type { Account, DesktopClientRegistration, FeedItem, Friend, LegacyDeviceContact, LegacyFriendSource, Person, RssFeed, UserPreferences } from "@freed/shared";
+import type {
+  Account,
+  DesktopClientRegistration,
+  FeedItem,
+  Friend,
+  LegacyDeviceContact,
+  LegacyFriendSource,
+  Person,
+  RssFeed,
+  UserPreferences,
+} from "@freed/shared";
 import type {
   DocState,
   FeedItemPatch,
@@ -81,11 +98,6 @@ import type {
   WorkerRequest,
   WorkerResponse,
 } from "./automerge-types";
-import {
-  createPersistenceState,
-  persistDoc,
-  type AutomergePersistenceState,
-} from "./automerge-persistence";
 import {
   createFeedTextCompactionSummary,
   compactFeedItemTextForSync,
@@ -98,9 +110,9 @@ import {
 // ---------------------------------------------------------------------------
 
 const storage = new IndexedDBStorage();
+let persistence = new RepeatableAutomergePersistence(storage);
 let currentDoc: FreedDoc | null = null;
 let currentBinary: Uint8Array | null = null;
-let persistenceState: AutomergePersistenceState = createPersistenceState(null);
 let relayClientCount = 0;
 let activeDesktopClientRegistration: DesktopClientRegistration | null = null;
 let queuedRequestCount = 0;
@@ -108,6 +120,10 @@ let requestChain: Promise<void> = Promise.resolve();
 let acceptingRequests = true;
 let searchCorpusVersion = 0;
 let linkPreviewUrlCounts = new Map<string, number>();
+let lastCommittedItemCount = 0;
+let lastCommittedFriendCount = 0;
+let persistenceFailure: Error | null = null;
+let corruptStorageRevision: StorageRevision | null = null;
 
 const SLOW_QUEUE_WAIT_MS = 1_000;
 const SLOW_REQUEST_PROCESS_MS = 5_000;
@@ -143,6 +159,33 @@ class CorruptDocumentError extends Error {
   }
 }
 
+class DocumentLoadFailedError extends Error {
+  readonly code: WorkerErrorCode = "DOCUMENT_LOAD_FAILED";
+
+  constructor(byteLength: number, cause: unknown) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    super(
+      `Loading the stored Automerge document failed at ${byteLength.toLocaleString()} bytes: ${detail}`,
+    );
+    this.name = "DocumentLoadFailedError";
+    this.cause = cause;
+  }
+}
+
+class AutomergePersistenceError extends Error {
+  readonly code: WorkerErrorCode = "AUTOMERGE_PERSISTENCE_FAILED";
+
+  constructor(cause: unknown) {
+    super(
+      cause instanceof Error
+        ? cause.message
+        : `Automerge persistence failed: ${String(cause)}`,
+    );
+    this.name = "AutomergePersistenceError";
+    this.cause = cause;
+  }
+}
+
 function ack(reqId: number, error?: string, errorCode?: WorkerErrorCode): void {
   send({
     reqId,
@@ -161,10 +204,6 @@ function addKnownLinkPreviewUrl(item: FeedItem | undefined): void {
   const url = itemLinkPreviewUrl(item);
   if (!url) return;
   linkPreviewUrlCounts.set(url, (linkPreviewUrlCounts.get(url) ?? 0) + 1);
-}
-
-function hasKnownLinkPreviewUrl(url: string | null): boolean {
-  return Boolean(url && (linkPreviewUrlCounts.get(url) ?? 0) > 0);
 }
 
 function rebuildKnownLinkPreviewUrls(doc: FreedDoc | null): void {
@@ -189,21 +228,33 @@ function readerTextLength(item: FeedItem): number {
   );
 }
 
-function shouldMergeEssayRssItem(existing: FeedItem, incoming: FeedItem): boolean {
+function shouldMergeEssayRssItem(
+  existing: FeedItem,
+  incoming: FeedItem,
+): boolean {
   if (!isAuthenticatedEssayArticle(incoming)) return false;
-  if (existing.platform !== incoming.platform || existing.contentType !== "article") return true;
+  if (
+    existing.platform !== incoming.platform ||
+    existing.contentType !== "article"
+  )
+    return true;
   if (!existing.rssSource) return true;
   if (readerTextLength(incoming) > readerTextLength(existing)) return true;
-  if (incoming.content.mediaUrls.some((url) => !existing.content.mediaUrls.includes(url))) return true;
+  if (
+    incoming.content.mediaUrls.some(
+      (url) => !existing.content.mediaUrls.includes(url),
+    )
+  )
+    return true;
   const existingPreview = existing.content.linkPreview;
   const incomingPreview = incoming.content.linkPreview;
   return Boolean(
     incomingPreview &&
-    (
-      !existingPreview ||
-      (incomingPreview.title?.length ?? 0) > (existingPreview.title?.length ?? 0) ||
-      (incomingPreview.description?.length ?? 0) > (existingPreview.description?.length ?? 0)
-    )
+    (!existingPreview ||
+      (incomingPreview.title?.length ?? 0) >
+        (existingPreview.title?.length ?? 0) ||
+      (incomingPreview.description?.length ?? 0) >
+        (existingPreview.description?.length ?? 0)),
   );
 }
 
@@ -231,7 +282,7 @@ function toLegacyContact(account: Account): LegacyDeviceContact {
 
 function projectLegacyFriends(
   persons: Record<string, Person>,
-  accounts: Record<string, Account>
+  accounts: Record<string, Account>,
 ): Record<string, Friend> {
   const accountsByPerson = new Map<string, Account[]>();
   for (const account of Object.values(accounts)) {
@@ -257,13 +308,18 @@ function projectLegacyFriends(
           avatarUrl: account.avatarUrl,
           profileUrl: account.profileUrl,
         }));
-      const contactAccount = personAccounts.find((account) => account.kind === "contact");
-      return [person.id, {
-        ...person,
-        sources,
-        contact: contactAccount ? toLegacyContact(contactAccount) : undefined,
-      }];
-    })
+      const contactAccount = personAccounts.find(
+        (account) => account.kind === "contact",
+      );
+      return [
+        person.id,
+        {
+          ...person,
+          sources,
+          contact: contactAccount ? toLegacyContact(contactAccount) : undefined,
+        },
+      ];
+    }),
   );
 }
 
@@ -304,7 +360,6 @@ function cancelDocIdleUnload(): void {
 function scheduleDocIdleUnload(): void {
   if (!currentDoc || !currentBinary || queuedRequestCount > 0) return;
   currentDoc = null;
-  persistenceState = createPersistenceState(currentBinary);
   emitWorkerTrace(
     "[automerge-worker] released idle document after request queue drained",
     "change",
@@ -317,7 +372,6 @@ function ensureCurrentDocLoaded(reason: WorkerRequest["type"]): FreedDoc {
 
   const startedAt = performance.now();
   currentDoc = A.load<FreedDoc>(currentBinary);
-  persistenceState = createPersistenceState(currentBinary);
   rebuildKnownLinkPreviewUrls(currentDoc);
   emitWorkerTrace(
     `[automerge-worker] reloaded idle document op=${reason}` +
@@ -328,56 +382,106 @@ function ensureCurrentDocLoaded(reason: WorkerRequest["type"]): FreedDoc {
   return currentDoc;
 }
 
-function migrateLoadedIdentityGraph(message: string): boolean {
-  if (!currentDoc || !hasLegacyIdentityGraphData(currentDoc)) return false;
-  currentDoc = A.change(currentDoc, message, (doc) => {
-    migrateLegacyIdentityGraph(doc);
+function migrateLoadedIdentityGraph(
+  source: FreedDoc,
+  message: string,
+): { doc: FreedDoc; changed: boolean } {
+  if (!hasLegacyIdentityGraphData(source)) {
+    return { doc: source, changed: false };
+  }
+  const doc = A.change(source, message, (draft) => {
+    migrateLegacyIdentityGraph(draft);
   });
-  return true;
+  return { doc, changed: true };
+}
+
+interface FeedTextCompactionResult {
+  doc: FreedDoc;
+  changed: boolean;
+  rebuiltHistory: boolean;
+  debugDetail: string | null;
 }
 
 function compactLoadedFeedText(
+  source: FreedDoc,
   message: string,
   options: { rebuildHistory?: boolean; previousBinaryBytes?: number } = {},
-): boolean {
-  if (!currentDoc) return false;
+): FeedTextCompactionResult {
   let summary = createFeedTextCompactionSummary();
-  currentDoc = A.change(currentDoc, message, (doc) => {
-    summary = compactFeedItemsTextForSync(Object.values(doc.feedItems) as FeedItem[]);
-  });
-  if (summary.changed > 0) {
-    bumpSearchCorpusVersion();
-    emitWorkerTrace(
-      `[automerge-worker] ${message}: ${formatFeedTextCompactionSummary(summary)}`,
-      "change",
+  let doc = A.change(source, message, (draft) => {
+    summary = compactFeedItemsTextForSync(
+      Object.values(draft.feedItems) as FeedItem[],
     );
+  });
+  let debugDetail: string | null =
+    summary.changed > 0
+      ? `[automerge-worker] ${message}: ${formatFeedTextCompactionSummary(summary)}`
+      : null;
+
+  const previousBinaryBytes =
+    options.previousBinaryBytes ?? currentBinary?.byteLength ?? 0;
+  const shouldRebuildForChangedText =
+    options.rebuildHistory === true &&
+    summary.changed > 0 &&
+    previousBinaryBytes >= FRESH_DOC_REBUILD_MIN_CHANGED_BINARY_BYTES;
+  if (!shouldRebuildForChangedText) {
+    return {
+      doc,
+      changed: summary.changed > 0,
+      rebuiltHistory: false,
+      debugDetail,
+    };
   }
 
-  const previousBinaryBytes = options.previousBinaryBytes ?? currentBinary?.byteLength ?? 0;
-  if (!options.rebuildHistory) return summary.changed > 0;
-  const shouldRebuildForChangedText =
-    summary.changed > 0 && previousBinaryBytes >= FRESH_DOC_REBUILD_MIN_CHANGED_BINARY_BYTES;
-  if (!shouldRebuildForChangedText) return summary.changed > 0;
-
-  const plain = A.toJS(currentDoc) as Partial<FreedDoc>;
-  const rebuiltDoc = createDocFromTrustedCompatibilityData(plain);
-  const rebuiltBinary = A.save(rebuiltDoc);
-  const bytesSaved = previousBinaryBytes - rebuiltBinary.byteLength;
-  currentDoc = rebuiltDoc;
-  currentBinary = rebuiltBinary;
-  refreshLastSavedHeads(rebuiltDoc);
-  persistenceState = createPersistenceState(rebuiltBinary);
-  emitWorkerTrace(
+  const plain = A.toJS(doc) as Partial<FreedDoc>;
+  doc = createDocFromTrustedCompatibilityData(plain);
+  const rebuiltBytes = A.save(doc).byteLength;
+  debugDetail =
     `[automerge-worker] rebuilt compacted document` +
-      ` previous_bytes=${previousBinaryBytes.toLocaleString()}` +
-      ` rebuilt_bytes=${rebuiltBinary.byteLength.toLocaleString()}` +
-      ` saved_bytes=${Math.max(0, bytesSaved).toLocaleString()}`,
-    "change",
-  );
-  return true;
+    ` previous_bytes=${previousBinaryBytes.toLocaleString()}` +
+    ` rebuilt_bytes=${rebuiltBytes.toLocaleString()}` +
+    ` saved_bytes=${Math.max(0, previousBinaryBytes - rebuiltBytes).toLocaleString()}`;
+  return {
+    doc,
+    changed: true,
+    rebuiltHistory: true,
+    debugDetail,
+  };
 }
 
-function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean {
+/*
+ * Candidate preparation is deliberately side-effect free. The caller installs
+ * the resulting document and emits its diagnostics only after the storage CAS
+ * commits.
+ */
+function prepareLoadedDocument(
+  source: FreedDoc,
+  identityMessage: string,
+  compactionMessage: string,
+  options: { rebuildHistory?: boolean; previousBinaryBytes?: number } = {},
+): {
+  doc: FreedDoc;
+  changed: boolean;
+  identityMigrated: boolean;
+  compaction: FeedTextCompactionResult;
+} {
+  const identity = migrateLoadedIdentityGraph(source, identityMessage);
+  const compaction = compactLoadedFeedText(
+    identity.doc,
+    compactionMessage,
+    options,
+  );
+  return {
+    doc: compaction.doc,
+    changed: identity.changed || compaction.changed,
+    identityMigrated: identity.changed,
+    compaction,
+  };
+}
+
+function feedItemUpdatesAffectSearchCorpus(
+  updates: Partial<FeedItem>,
+): boolean {
   if (
     "author" in updates ||
     "contentSignals" in updates ||
@@ -410,7 +514,28 @@ function cloneRssFeedForPatch(feed: RssFeed): RssFeed {
   return JSON.parse(JSON.stringify(feed)) as RssFeed;
 }
 
-function cloneRecordValues<T>(record: Record<string, T> | undefined): Record<string, T> {
+function findRssFeedByUrl(
+  feeds: Record<string, RssFeed>,
+  url: string,
+): RssFeed | undefined {
+  return Object.values(feeds).find((feed) => feed.url === url);
+}
+
+function rssFeedPatchRecord(
+  url: string,
+  feed: RssFeed | undefined,
+): Record<string, RssFeed> {
+  return feed
+    ? (Object.fromEntries([[url, cloneRssFeedForPatch(feed)]]) as Record<
+        string,
+        RssFeed
+      >)
+    : {};
+}
+
+function cloneRecordValues<T>(
+  record: Record<string, T> | undefined,
+): Record<string, T> {
   const cloned: Record<string, T> = {};
   for (const [key, value] of Object.entries(record ?? {})) {
     cloned[key] = JSON.parse(JSON.stringify(value)) as T;
@@ -418,7 +543,9 @@ function cloneRecordValues<T>(record: Record<string, T> | undefined): Record<str
   return cloned;
 }
 
-function cloneFeedItemsForDesktopUi(record: Record<string, FeedItem> | undefined): {
+function cloneFeedItemsForDesktopUi(
+  record: Record<string, FeedItem> | undefined,
+): {
   items: FeedItem[];
   totalCount: number;
 } {
@@ -458,7 +585,10 @@ function trimFeedItemForDesktopUi(item: FeedItem): FeedItem {
         ? {
             url: linkPreview.url,
             title: linkPreview.title,
-            description: linkDescription?.slice(0, DESKTOP_UI_LINK_DESCRIPTION_LIMIT),
+            description: linkDescription?.slice(
+              0,
+              DESKTOP_UI_LINK_DESCRIPTION_LIMIT,
+            ),
           }
         : undefined,
     },
@@ -466,7 +596,9 @@ function trimFeedItemForDesktopUi(item: FeedItem): FeedItem {
     location: item.location
       ? {
           ...item.location,
-          coordinates: item.location.coordinates ? { ...item.location.coordinates } : undefined,
+          coordinates: item.location.coordinates
+            ? { ...item.location.coordinates }
+            : undefined,
         }
       : undefined,
     timeRange: item.timeRange ? { ...item.timeRange } : undefined,
@@ -487,10 +619,15 @@ function trimFeedItemForDesktopUi(item: FeedItem): FeedItem {
     userState: {
       ...item.userState,
       tags: [...item.userState.tags],
-      highlights: item.userState.highlights?.map((highlight) => ({ ...highlight })),
+      highlights: item.userState.highlights?.map((highlight) => ({
+        ...highlight,
+      })),
     },
     topics: [...item.topics],
-    contentSignals: tags.length > 0 ? ({ tags: [...tags] } as FeedItem["contentSignals"]) : undefined,
+    contentSignals:
+      tags.length > 0
+        ? ({ tags: [...tags] } as FeedItem["contentSignals"])
+        : undefined,
     eventCandidate: eventCandidate
       ? {
           ...eventCandidate,
@@ -516,7 +653,11 @@ function markAllVisibleAsRead(doc: FreedDoc, platform?: string): string[] {
   return changedIds;
 }
 
-function archiveAllReadableUnsaved(doc: FreedDoc, platform?: string, feedUrl?: string): string[] {
+function archiveAllReadableUnsaved(
+  doc: FreedDoc,
+  platform?: string,
+  feedUrl?: string,
+): string[] {
   const now = Date.now();
   const changedIds: string[] = [];
   for (const item of Object.values(doc.feedItems) as FeedItem[]) {
@@ -548,12 +689,15 @@ function unarchiveSavedItemIds(doc: FreedDoc): string[] {
 function healUntitledFeedTitles(doc: FreedDoc): number {
   let changed = 0;
   for (const feed of Object.values(doc.rssFeeds) as RssFeed[]) {
-    const isUntitled = feed.title === "Untitled Feed" || feed.title === feed.url;
+    const isUntitled =
+      feed.title === "Untitled Feed" || feed.title === feed.url;
     if (!isUntitled) continue;
     let healed: string | undefined;
     try {
       healed = new URL(feed.url).hostname.replace(/^(?:www|feeds?)\./, "");
-    } catch { /* non-fatal */ }
+    } catch {
+      /* non-fatal */
+    }
     if (!healed || healed === feed.title) continue;
     feed.title = healed;
     changed++;
@@ -562,13 +706,16 @@ function healUntitledFeedTitles(doc: FreedDoc): number {
 }
 
 function rankedPatchItemsFromDoc(doc: FreedDoc, items: FeedItem[]): FeedItem[] {
-  const preferences = mergeDefaultPreferences(doc.preferences as Partial<UserPreferences> | undefined);
+  const preferences = mergeDefaultPreferences(
+    doc.preferences as Partial<UserPreferences> | undefined,
+  );
   const persons = doc.persons as Record<string, Person> | undefined;
   const accounts = doc.accounts as Record<string, Account> | undefined;
 
   return rankFeedItems(
     [...items].sort((a, b) => {
-      const timeDelta = (b.publishedAt || b.capturedAt) - (a.publishedAt || a.capturedAt);
+      const timeDelta =
+        (b.publishedAt || b.capturedAt) - (a.publishedAt || a.capturedAt);
       return timeDelta || a.globalId.localeCompare(b.globalId);
     }),
     preferences.weights,
@@ -579,7 +726,10 @@ function rankedPatchItemsFromDoc(doc: FreedDoc, items: FeedItem[]): FeedItem[] {
   );
 }
 
-function cloneRankedFeedItemPatches(doc: FreedDoc | null, changedIds: string[]): FeedItemPatch[] {
+function cloneRankedFeedItemPatches(
+  doc: FreedDoc | null,
+  changedIds: string[],
+): FeedItemPatch[] {
   const items = changedIds
     .map((globalId) => doc?.feedItems[globalId] as FeedItem | undefined)
     .filter((item): item is FeedItem => Boolean(item))
@@ -595,14 +745,23 @@ function cloneRankedFeedItemPatches(doc: FreedDoc | null, changedIds: string[]):
  * trimmed before we hold a full deep clone of the document in worker memory.
  */
 function hydrateFromDoc(doc: FreedDoc): DocState {
-  const { items: plainItems, totalCount: docItemCount } = cloneFeedItemsForDesktopUi(
-    doc.feedItems as Record<string, FeedItem> | undefined,
+  const { items: plainItems, totalCount: docItemCount } =
+    cloneFeedItemsForDesktopUi(
+      doc.feedItems as Record<string, FeedItem> | undefined,
+    );
+  const feeds = cloneRecordValues(
+    doc.rssFeeds as Record<string, RssFeed> | undefined,
   );
-  const feeds = cloneRecordValues(doc.rssFeeds as Record<string, RssFeed> | undefined);
-  const persons = cloneRecordValues(doc.persons as Record<string, Person> | undefined);
-  const accounts = cloneRecordValues(doc.accounts as Record<string, Account> | undefined);
+  const persons = cloneRecordValues(
+    doc.persons as Record<string, Person> | undefined,
+  );
+  const accounts = cloneRecordValues(
+    doc.accounts as Record<string, Account> | undefined,
+  );
   const friends = projectLegacyFriends(persons, accounts);
-  const preferences = mergeDefaultPreferences(doc.preferences as Partial<UserPreferences> | undefined);
+  const preferences = mergeDefaultPreferences(
+    doc.preferences as Partial<UserPreferences> | undefined,
+  );
 
   const visibleItems = plainItems.filter((item) => !item.userState.hidden);
   const rankedItems = sortByPriority(
@@ -626,14 +785,16 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
   for (const item of plainItems) {
     if (item.userState.hidden || item.userState.archived) continue;
     totalItemCount++;
-    itemCountByPlatform[item.platform] = (itemCountByPlatform[item.platform] ?? 0) + 1;
+    itemCountByPlatform[item.platform] =
+      (itemCountByPlatform[item.platform] ?? 0) + 1;
     if (item.rssSource) {
       const url = item.rssSource.feedUrl;
       feedTotalCounts[url] = (feedTotalCounts[url] ?? 0) + 1;
     }
     if (!item.userState.readAt) {
       totalUnreadCount++;
-      unreadCountByPlatform[item.platform] = (unreadCountByPlatform[item.platform] ?? 0) + 1;
+      unreadCountByPlatform[item.platform] =
+        (unreadCountByPlatform[item.platform] ?? 0) + 1;
       if (item.rssSource) {
         const url = item.rssSource.feedUrl;
         feedUnreadCounts[url] = (feedUnreadCounts[url] ?? 0) + 1;
@@ -667,13 +828,20 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
     totalArchivableCount,
     archivableCountByPlatform,
     archivableFeedCounts,
-    mapFriendLocationCount: countFriendsWithRecentLocationUpdates(rankedItems, persons, accounts),
-    mapAllContentLocationCount: countAuthorsWithRecentLocationUpdates(rankedItems),
+    mapFriendLocationCount: countFriendsWithRecentLocationUpdates(
+      rankedItems,
+      persons,
+      accounts,
+    ),
+    mapAllContentLocationCount:
+      countAuthorsWithRecentLocationUpdates(rankedItems),
     docItemCount,
   };
 }
 
-function preferenceUpdateRequiresFullHydration(updates: Partial<UserPreferences>): boolean {
+function preferenceUpdateRequiresFullHydration(
+  updates: Partial<UserPreferences>,
+): boolean {
   return updates.weights !== undefined;
 }
 
@@ -683,21 +851,72 @@ function preferenceUpdateRequiresFullHydration(updates: Partial<UserPreferences>
  * work stays in the worker, and the main thread only asks for the full binary
  * later when snapshots or cloud sync actually need it.
  */
-async function saveAndBroadcast(trace?: RequestTrace): Promise<void> {
-  const doc = currentDoc;
-  if (!doc) return;
+interface CommitCandidateOptions {
+  persistence?: AutomergePersistenceOptions;
+  searchCorpusChanged?: boolean;
+  searchCorpusVersionOverride?: number;
+  diagnostics?: string[];
+}
 
-  const startedAt = performance.now();
-  const persisted = persistDoc(doc, persistenceState);
-  const binary = persisted.binary;
-  persistenceState = persisted.persistence;
-  currentBinary = binary;
+function installCommittedDocument(
+  doc: FreedDoc,
+  binary: Uint8Array,
+  searchCorpusChanged: boolean,
+): void {
+  currentDoc = doc;
+  currentBinary = Uint8Array.from(binary);
   refreshLastSavedHeads(doc);
-  const afterSerializeAt = performance.now();
-  await storage.save(binary);
+  if (searchCorpusChanged) bumpSearchCorpusVersion();
+  rebuildKnownLinkPreviewUrls(doc);
+  lastCommittedItemCount = Object.keys(doc.feedItems ?? {}).length;
+  lastCommittedFriendCount = Object.keys(doc.persons ?? {}).length;
+}
+
+async function commitCandidate(
+  doc: FreedDoc,
+  options: CommitCandidateOptions = {},
+): Promise<{
+  binary: Uint8Array;
+  persistMode: "compact" | "incremental" | "replace";
+}> {
+  const persistenceOptions = options.persistence ?? {};
+  try {
+    await persistence.persist(doc, persistenceOptions);
+  } catch (error) {
+    if (error instanceof StaleAutomergePersistenceStateError) throw error;
+    throw new AutomergePersistenceError(error);
+  }
+  const snapshot = persistence.snapshot();
+  if (!snapshot.bytes) {
+    throw new Error("Committed Automerge document has no durable bytes");
+  }
+  installCommittedDocument(
+    doc,
+    snapshot.bytes,
+    options.searchCorpusChanged === true,
+  );
+  if (options.searchCorpusVersionOverride !== undefined) {
+    searchCorpusVersion = options.searchCorpusVersionOverride;
+  }
+  for (const detail of options.diagnostics ?? []) {
+    emitWorkerTrace(detail, "change");
+  }
+  return {
+    binary: snapshot.bytes,
+    persistMode: persistenceOptions.mode ?? "incremental",
+  };
+}
+
+async function saveAndBroadcast(
+  doc: FreedDoc,
+  trace?: RequestTrace,
+  options: CommitCandidateOptions = {},
+): Promise<void> {
+  const startedAt = performance.now();
+  const committed = await commitCandidate(doc, options);
+  const binary = committed.binary;
   const afterPersistAt = performance.now();
   const state = hydrateFromDoc(doc);
-  rebuildKnownLinkPreviewUrls(doc);
   const afterHydrateAt = performance.now();
 
   const snapshot: Extract<WorkerResponse, { type: "DEBUG_SNAPSHOT" }> = {
@@ -720,25 +939,25 @@ async function saveAndBroadcast(trace?: RequestTrace): Promise<void> {
   const totalMs = completedAt - startedAt;
   if (
     trace &&
-    (trace.opType === "UPDATE_PREFERENCES" || totalMs >= SLOW_SAVE_AND_BROADCAST_MS)
+    (trace.opType === "UPDATE_PREFERENCES" ||
+      totalMs >= SLOW_SAVE_AND_BROADCAST_MS)
   ) {
     emitWorkerTrace(
       `[automerge-worker] save op=${trace.opType} reqId=${trace.reqId}` +
-        ` serialize_ms=${formatMs(afterSerializeAt - startedAt)}` +
-        ` persist_ms=${formatMs(afterPersistAt - afterSerializeAt)}` +
+        ` persist_ms=${formatMs(afterPersistAt - startedAt)}` +
         ` hydrate_ms=${formatMs(afterHydrateAt - afterPersistAt)}` +
         ` emit_ms=${formatMs(completedAt - afterHydrateAt)}` +
         ` total_ms=${formatMs(totalMs)}` +
-        ` persist_mode=${persisted.usedIncremental ? "incremental" : "snapshot"}` +
+        ` persist_mode=${committed.persistMode}` +
         ` bytes=${binary.byteLength.toLocaleString()}`,
     );
   }
 }
 
-async function hydrateAndBroadcastWithoutPersist(trace?: RequestTrace): Promise<void> {
-  const doc = currentDoc;
-  if (!doc) return;
-
+async function hydrateAndBroadcastWithoutPersist(
+  doc: FreedDoc,
+  trace?: RequestTrace,
+): Promise<void> {
   const startedAt = performance.now();
   const state = hydrateFromDoc(doc);
   rebuildKnownLinkPreviewUrls(doc);
@@ -765,18 +984,14 @@ async function hydrateAndBroadcastWithoutPersist(trace?: RequestTrace): Promise<
   }
 }
 
-async function persistAndBroadcastWithoutHydration(trace?: RequestTrace): Promise<void> {
-  const doc = currentDoc;
-  if (!doc) return;
-
+async function persistAndBroadcastWithoutHydration(
+  doc: FreedDoc,
+  trace?: RequestTrace,
+  options: CommitCandidateOptions = {},
+): Promise<void> {
   const startedAt = performance.now();
-  const persisted = persistDoc(doc, persistenceState);
-  const binary = persisted.binary;
-  persistenceState = persisted.persistence;
-  currentBinary = binary;
-  refreshLastSavedHeads(doc);
-  const afterSerializeAt = performance.now();
-  await storage.save(binary);
+  const committed = await commitCandidate(doc, options);
+  const binary = committed.binary;
   const afterPersistAt = performance.now();
 
   send({
@@ -795,10 +1010,9 @@ async function persistAndBroadcastWithoutHydration(trace?: RequestTrace): Promis
   if (trace && totalMs >= SLOW_SAVE_AND_BROADCAST_MS) {
     emitWorkerTrace(
       `[automerge-worker] patch-save op=${trace.opType} reqId=${trace.reqId}` +
-        ` serialize_ms=${formatMs(afterSerializeAt - startedAt)}` +
-        ` persist_ms=${formatMs(afterPersistAt - afterSerializeAt)}` +
+        ` persist_ms=${formatMs(afterPersistAt - startedAt)}` +
         ` total_ms=${formatMs(totalMs)}` +
-        ` persist_mode=${persisted.usedIncremental ? "incremental" : "snapshot"}` +
+        ` persist_mode=${committed.persistMode}` +
         ` bytes=${binary.byteLength.toLocaleString()}`,
     );
   }
@@ -811,10 +1025,11 @@ async function applyChange(
   searchCorpusChanged = false,
 ): Promise<void> {
   if (!currentDoc) throw new Error("Document not initialized");
-  currentDoc = A.change(currentDoc, message, changeFn);
-  if (searchCorpusChanged) bumpSearchCorpusVersion();
-  send({ type: "DEBUG_EVENT", kind: "change", detail: message });
-  await saveAndBroadcast(trace);
+  const candidate = A.change(currentDoc, message, changeFn);
+  await saveAndBroadcast(candidate, trace, {
+    searchCorpusChanged,
+    diagnostics: [message],
+  });
 }
 
 async function applyPreferenceChange(
@@ -824,18 +1039,25 @@ async function applyPreferenceChange(
   if (!currentDoc) throw new Error("Document not initialized");
   const syncedUpdates = stripDeviceLocalPreferenceUpdates(updates);
   if (Object.keys(syncedUpdates).length === 0) return;
-  currentDoc = A.change(currentDoc, "Update preferences", (doc) => {
+  const candidate = A.change(currentDoc, "Update preferences", (doc) => {
     updatePreferences(doc, syncedUpdates);
   });
-  send({ type: "DEBUG_EVENT", kind: "change", detail: "Update preferences" });
 
   if (preferenceUpdateRequiresFullHydration(syncedUpdates)) {
-    await saveAndBroadcast(trace);
+    await saveAndBroadcast(candidate, trace, {
+      diagnostics: ["Update preferences"],
+    });
     return;
   }
 
-  await persistAndBroadcastWithoutHydration(trace);
-  send({ type: "PREFERENCES_PATCH", updates: syncedUpdates, mutation: trace?.opType });
+  await persistAndBroadcastWithoutHydration(candidate, trace, {
+    diagnostics: ["Update preferences"],
+  });
+  send({
+    type: "PREFERENCES_PATCH",
+    updates: syncedUpdates,
+    mutation: trace?.opType,
+  });
 }
 
 async function applyRssFeedPatchChange(
@@ -845,11 +1067,12 @@ async function applyRssFeedPatchChange(
 ): Promise<void> {
   if (!currentDoc) throw new Error("Document not initialized");
   let patch: RssFeedPatch = { feeds: {}, removedUrls: [] };
-  currentDoc = A.change(currentDoc, message, (doc) => {
+  const candidate = A.change(currentDoc, message, (doc) => {
     patch = changeFn(doc);
   });
-  send({ type: "DEBUG_EVENT", kind: "change", detail: message });
-  await persistAndBroadcastWithoutHydration(trace);
+  await persistAndBroadcastWithoutHydration(candidate, trace, {
+    diagnostics: [message],
+  });
   send({ type: "FEEDS_PATCH", patch, mutation: trace?.opType });
 }
 
@@ -861,7 +1084,7 @@ async function applyCountedChange(
 ): Promise<number> {
   if (!currentDoc) throw new Error("Document not initialized");
   let changedCount = 0;
-  currentDoc = A.change(currentDoc, message, (doc) => {
+  const candidate = A.change(currentDoc, message, (doc) => {
     changedCount = changeFn(doc);
   });
 
@@ -873,13 +1096,10 @@ async function applyCountedChange(
     return changedCount;
   }
 
-  if (searchCorpusChanged) bumpSearchCorpusVersion();
-  send({
-    type: "DEBUG_EVENT",
-    kind: "change",
-    detail: `${message}: ${changedCount.toLocaleString()} changed`,
+  await saveAndBroadcast(candidate, trace, {
+    searchCorpusChanged,
+    diagnostics: [`${message}: ${changedCount.toLocaleString()} changed`],
   });
-  await saveAndBroadcast(trace);
   return changedCount;
 }
 
@@ -890,14 +1110,15 @@ async function applyItemPatchChange(
 ): Promise<void> {
   if (!currentDoc) throw new Error("Document not initialized");
   let changedIds: string[] = [];
-  currentDoc = A.change(currentDoc, message, (doc) => {
+  const candidate = A.change(currentDoc, message, (doc) => {
     changedIds = changeFn(doc);
   });
-  send({ type: "DEBUG_EVENT", kind: "change", detail: message });
-  await persistAndBroadcastWithoutHydration(trace);
+  await persistAndBroadcastWithoutHydration(candidate, trace, {
+    diagnostics: [message],
+  });
 
   const patches = changedIds
-    .map((globalId) => currentDoc?.feedItems[globalId] as FeedItem | undefined)
+    .map((globalId) => candidate.feedItems[globalId] as FeedItem | undefined)
     .filter((item): item is FeedItem => Boolean(item))
     .map((item) => ({ item: cloneFeedItemForPatch(item) }));
   if (patches.length > 0) {
@@ -910,25 +1131,34 @@ async function applyItemPatchChange(
   }
 }
 
-async function applyAddFeedItemsPatchChange(items: FeedItem[], trace?: RequestTrace): Promise<void> {
+async function applyAddFeedItemsPatchChange(
+  items: FeedItem[],
+  trace?: RequestTrace,
+): Promise<void> {
   if (!currentDoc) throw new Error("Document not initialized");
   let changedIds: string[] = [];
   let dedupedCount = 0;
-  currentDoc = A.change(currentDoc, `Add ${items.length.toLocaleString()} feed items`, (doc) => {
-    for (const item of items) {
-      compactFeedItemTextForSync(item);
-      if (doc.feedItems[item.globalId]) continue;
-      addFeedItem(doc, item);
-      changedIds.push(item.globalId);
-      addKnownLinkPreviewUrl(item);
-    }
-    if (
-      changedIds.length > 0 &&
-      items.some((item) => item.platform === "facebook" || item.platform === "instagram")
-    ) {
-      dedupedCount = deduplicateDocFeedItems(doc);
-    }
-  });
+  const candidate = A.change(
+    currentDoc,
+    `Add ${items.length.toLocaleString()} feed items`,
+    (doc) => {
+      for (const item of items) {
+        compactFeedItemTextForSync(item);
+        if (doc.feedItems[item.globalId]) continue;
+        addFeedItem(doc, item);
+        changedIds.push(item.globalId);
+      }
+      if (
+        changedIds.length > 0 &&
+        items.some(
+          (item) =>
+            item.platform === "facebook" || item.platform === "instagram",
+        )
+      ) {
+        dedupedCount = deduplicateDocFeedItems(doc);
+      }
+    },
+  );
 
   if (changedIds.length === 0 && dedupedCount === 0) {
     emitWorkerTrace(
@@ -938,24 +1168,26 @@ async function applyAddFeedItemsPatchChange(items: FeedItem[], trace?: RequestTr
     return;
   }
 
-  bumpSearchCorpusVersion();
-  send({
-    type: "DEBUG_EVENT",
-    kind: "change",
-    detail: `Add ${items.length.toLocaleString()} feed items: ${changedIds.length.toLocaleString()} changed`,
-  });
+  const diagnostics = [
+    `Add ${items.length.toLocaleString()} feed items: ${changedIds.length.toLocaleString()} changed`,
+  ];
 
   if (dedupedCount > 0) {
-    emitWorkerTrace(
+    diagnostics.push(
       `[automerge-worker] full-hydrate op=${trace?.opType ?? "unknown"} reason=social_dedup deleted=${dedupedCount.toLocaleString()}`,
     );
-    await saveAndBroadcast(trace);
+    await saveAndBroadcast(candidate, trace, {
+      searchCorpusChanged: true,
+      diagnostics,
+    });
     return;
   }
 
-  await persistAndBroadcastWithoutHydration(trace);
-  const doc = currentDoc;
-  const patches = cloneRankedFeedItemPatches(doc, changedIds);
+  await persistAndBroadcastWithoutHydration(candidate, trace, {
+    searchCorpusChanged: true,
+    diagnostics,
+  });
+  const patches = cloneRankedFeedItemPatches(candidate, changedIds);
 
   if (patches.length > 0) {
     send({
@@ -975,64 +1207,99 @@ async function applyBatchRefreshFeedsPatchChange(
   trace?: RequestTrace,
 ): Promise<void> {
   if (!currentDoc) throw new Error("Document not initialized");
-  const feedPatch: RssFeedPatch = { feeds: {}, removedUrls: [] };
+  const patchedFeeds = new Map<string, RssFeed>();
   let changedIds: string[] = [];
   const removedEssayDuplicateIds: string[] = [];
   const changedIdSet = new Set<string>();
+  const candidateLinkPreviewUrlCounts = new Map(linkPreviewUrlCounts);
+  const candidateHasKnownLinkPreviewUrl = (url: string | null): boolean =>
+    Boolean(url && (candidateLinkPreviewUrlCounts.get(url) ?? 0) > 0);
+  const candidateAddKnownLinkPreviewUrl = (
+    item: FeedItem | undefined,
+  ): void => {
+    const url = itemLinkPreviewUrl(item);
+    if (!url) return;
+    candidateLinkPreviewUrlCounts.set(
+      url,
+      (candidateLinkPreviewUrlCounts.get(url) ?? 0) + 1,
+    );
+  };
   const markChanged = (globalId: string) => {
     if (changedIdSet.has(globalId)) return;
     changedIdSet.add(globalId);
     changedIds.push(globalId);
   };
-  currentDoc = A.change(currentDoc, `Refresh ${feeds.length.toLocaleString()} feeds, ${items.length.toLocaleString()} items`, (doc) => {
-    for (const feed of feeds) {
-      const stored = doc.rssFeeds[feed.url] as RssFeed | undefined;
-      if (!stored) continue;
-      if (feed.lastFetched !== undefined) stored.lastFetched = feed.lastFetched;
-      if (feed.title && feed.title !== "Untitled Feed" && feed.title !== feed.url) {
-        if (stored.title === "Untitled Feed" || stored.title === stored.url) {
-          stored.title = feed.title;
+  const candidate = A.change(
+    currentDoc,
+    `Refresh ${feeds.length.toLocaleString()} feeds, ${items.length.toLocaleString()} items`,
+    (doc) => {
+      for (const feed of feeds) {
+        const stored = findRssFeedByUrl(
+          doc.rssFeeds as Record<string, RssFeed>,
+          feed.url,
+        );
+        if (!stored) continue;
+        if (feed.lastFetched !== undefined)
+          stored.lastFetched = feed.lastFetched;
+        if (
+          feed.title &&
+          feed.title !== "Untitled Feed" &&
+          feed.title !== feed.url
+        ) {
+          if (stored.title === "Untitled Feed" || stored.title === stored.url) {
+            stored.title = feed.title;
+          }
         }
+        if (feed.siteUrl && !stored.siteUrl) stored.siteUrl = feed.siteUrl;
+        patchedFeeds.set(feed.url, cloneRssFeedForPatch(stored));
       }
-      if (feed.siteUrl && !stored.siteUrl) stored.siteUrl = feed.siteUrl;
-      feedPatch.feeds[feed.url] = cloneRssFeedForPatch(stored);
-    }
 
-    for (const item of items) compactFeedItemTextForSync(item);
+      for (const item of items) compactFeedItemTextForSync(item);
 
-    for (const provider of ["substack", "medium"] as const) {
-      const providerItems = items.filter(
-        (item) => item.platform === provider && item.contentType === "article",
-      );
-      const essayResult = reconcileProviderEssayItems(
-        doc,
-        providerItems,
-        provider,
-        { shouldMergeExisting: shouldMergeEssayRssItem },
-      );
-      for (const globalId of essayResult.changedIds) markChanged(globalId);
-      for (const globalId of essayResult.addedIds) {
-        addKnownLinkPreviewUrl(doc.feedItems[globalId] as FeedItem | undefined);
+      for (const provider of ["substack", "medium"] as const) {
+        const providerItems = items.filter(
+          (item) =>
+            item.platform === provider && item.contentType === "article",
+        );
+        const essayResult = reconcileProviderEssayItems(
+          doc,
+          providerItems,
+          provider,
+          { shouldMergeExisting: shouldMergeEssayRssItem },
+        );
+        for (const globalId of essayResult.changedIds) markChanged(globalId);
+        for (const globalId of essayResult.addedIds) {
+          candidateAddKnownLinkPreviewUrl(
+            doc.feedItems[globalId] as FeedItem | undefined,
+          );
+        }
+        removedEssayDuplicateIds.push(...essayResult.removedIds);
       }
-      removedEssayDuplicateIds.push(...essayResult.removedIds);
-    }
 
-    for (const item of items) {
-      if (isAuthenticatedEssayArticle(item)) continue;
-      const existingById = doc.feedItems[item.globalId];
-      if (existingById) continue;
+      for (const item of items) {
+        if (isAuthenticatedEssayArticle(item)) continue;
+        const existingById = doc.feedItems[item.globalId];
+        if (existingById) continue;
 
-      const linkUrl = itemLinkPreviewUrl(item);
-      if (hasKnownLinkPreviewUrl(linkUrl)) continue;
-      addFeedItem(doc, item);
-      markChanged(item.globalId);
-      addKnownLinkPreviewUrl(item);
-    }
-  });
-  if (removedEssayDuplicateIds.length > 0) rebuildKnownLinkPreviewUrls(currentDoc);
+        const linkUrl = itemLinkPreviewUrl(item);
+        if (candidateHasKnownLinkPreviewUrl(linkUrl)) continue;
+        addFeedItem(doc, item);
+        markChanged(item.globalId);
+        candidateAddKnownLinkPreviewUrl(item);
+      }
+    },
+  );
 
-  const feedChanged = Object.keys(feedPatch.feeds).length > 0 || feedPatch.removedUrls.length > 0;
-  if (!feedChanged && changedIds.length === 0 && removedEssayDuplicateIds.length === 0) {
+  const feedPatch: RssFeedPatch = {
+    feeds: Object.fromEntries(patchedFeeds),
+    removedUrls: [],
+  };
+  const feedChanged = patchedFeeds.size > 0;
+  if (
+    !feedChanged &&
+    changedIds.length === 0 &&
+    removedEssayDuplicateIds.length === 0
+  ) {
     emitWorkerTrace(
       `[automerge-worker] skip op=${trace?.opType ?? "unknown"} reason=no_changes`,
       "change",
@@ -1040,24 +1307,23 @@ async function applyBatchRefreshFeedsPatchChange(
     return;
   }
 
-  if (changedIds.length > 0 || removedEssayDuplicateIds.length > 0) bumpSearchCorpusVersion();
-  send({
-    type: "DEBUG_EVENT",
-    kind: "change",
-    detail:
-      `Refresh ${feeds.length.toLocaleString()} feeds, ${items.length.toLocaleString()} items: ` +
+  const diagnostics = [
+    `Refresh ${feeds.length.toLocaleString()} feeds, ${items.length.toLocaleString()} items: ` +
       `${changedIds.length.toLocaleString()} changed, ` +
       `${removedEssayDuplicateIds.length.toLocaleString()} removed`,
-  });
+  ];
 
-  await persistAndBroadcastWithoutHydration(trace);
+  await persistAndBroadcastWithoutHydration(candidate, trace, {
+    searchCorpusChanged:
+      changedIds.length > 0 || removedEssayDuplicateIds.length > 0,
+    diagnostics,
+  });
 
   if (feedChanged) {
     send({ type: "FEEDS_PATCH", patch: feedPatch, mutation: trace?.opType });
   }
 
-  const doc = currentDoc;
-  const patches = cloneRankedFeedItemPatches(doc, changedIds);
+  const patches = cloneRankedFeedItemPatches(candidate, changedIds);
   if (patches.length > 0 || removedEssayDuplicateIds.length > 0) {
     send({
       type: "ITEM_PATCH",
@@ -1093,12 +1359,18 @@ async function handleRequest(
   }
   cancelDocIdleUnload();
 
+  if (persistenceFailure) {
+    ack(req.reqId, persistenceFailure.message, "AUTOMERGE_PERSISTENCE_FAILED");
+    return;
+  }
+
   if (
     req.type !== "INIT" &&
     req.type !== "QUIESCE" &&
     req.type !== "CLEAR_LOCAL" &&
     req.type !== "REPLACE_DOC" &&
     req.type !== "GET_DOC_BINARY" &&
+    req.type !== "GET_COMMITTED_DOC" &&
     req.type !== "GET_HEADS"
   ) {
     ensureCurrentDocLoaded(req.type);
@@ -1117,55 +1389,88 @@ async function handleRequest(
         break;
 
       case "INIT": {
-        activeDesktopClientRegistration = req.desktopClientRegistration ?? null;
-        let loadedDocNeedsPersist = false;
-        const saved = await storage.load();
-        if (saved) {
-          let loadedDoc: FreedDoc;
+        const requestedDesktopClientRegistration =
+          req.desktopClientRegistration ?? null;
+        let loaded;
+        try {
+          loaded = await persistence.load<FreedDoc>();
+        } catch (error) {
+          let snapshot: ReturnType<typeof persistence.snapshot> | null = null;
           try {
-            loadedDoc = A.load<FreedDoc>(saved);
+            snapshot = persistence.snapshot();
           } catch {
+            // Storage failed before a committed revision could be captured.
+          }
+          if (
+            snapshot?.bytes &&
+            classifyDocumentLoadFailure(error) === "corrupt"
+          ) {
+            corruptStorageRevision = { ...snapshot.revision };
             throw new CorruptDocumentError();
           }
-          currentDoc = loadedDoc;
-          currentBinary = saved;
-          persistenceState = createPersistenceState(saved);
-          loadedDocNeedsPersist =
-            migrateLoadedIdentityGraph("Migrate legacy identity graph") || loadedDocNeedsPersist;
-          loadedDocNeedsPersist =
-            compactLoadedFeedText("Compact oversized synced feed text", {
-              rebuildHistory: true,
-              previousBinaryBytes: saved.byteLength,
-            }) || loadedDocNeedsPersist;
-        }
-        if (!currentDoc) {
-          currentDoc = createEmptyDoc();
-          const binary = A.save(currentDoc);
-          currentBinary = binary;
-          persistenceState = createPersistenceState(binary);
-          await storage.save(binary);
-        }
-        if (activeDesktopClientRegistration && currentDoc) {
-          const registeredDoc = registerDesktopClient(
-            currentDoc,
-            activeDesktopClientRegistration,
+          throw new DocumentLoadFailedError(
+            snapshot?.bytes?.byteLength ?? 0,
+            error,
           );
-          if (registeredDoc !== currentDoc) {
-            currentDoc = registeredDoc;
+        }
+        corruptStorageRevision = null;
+        let candidate = loaded.document ?? createEmptyDoc();
+        const prepared = prepareLoadedDocument(
+          candidate,
+          "Migrate legacy identity graph",
+          "Compact oversized synced feed text",
+          {
+            rebuildHistory: true,
+            previousBinaryBytes: loaded.committed.byteLength,
+          },
+        );
+        candidate = prepared.doc;
+        let loadedDocNeedsPersist =
+          loaded.document === null || prepared.changed;
+        if (requestedDesktopClientRegistration) {
+          const registeredDoc = registerDesktopClient(
+            candidate,
+            requestedDesktopClientRegistration,
+          );
+          if (registeredDoc !== candidate) {
+            candidate = registeredDoc;
             loadedDocNeedsPersist = true;
           }
         }
-        refreshLastSavedHeads(currentDoc);
-        searchCorpusVersion = 1;
-        const initializedDoc = currentDoc;
-        if (!initializedDoc) throw new Error("Document not initialized");
-        const documentId = resolveDocumentId(initializedDoc.meta);
-        send({ type: "DEBUG_EVENT", kind: "init", detail: `document ...${documentId.slice(-8)}` });
+        const documentId = resolveDocumentId(candidate.meta);
+        const diagnostics = [
+          ...(prepared.identityMigrated
+            ? ["[automerge-worker] migrated legacy identity graph"]
+            : []),
+          ...(prepared.compaction.debugDetail
+            ? [prepared.compaction.debugDetail]
+            : []),
+          `document ...${documentId.slice(-8)}`,
+        ];
         if (loadedDocNeedsPersist) {
-          await saveAndBroadcast(trace);
+          await saveAndBroadcast(candidate, trace, {
+            persistence: prepared.compaction.rebuiltHistory
+              ? {
+                  mode: "replace",
+                  expectedRevision: loaded.committed.revision,
+                }
+              : {},
+            diagnostics,
+            searchCorpusVersionOverride: 1,
+          });
         } else {
-          await hydrateAndBroadcastWithoutPersist(trace);
+          const snapshot = persistence.snapshot();
+          if (!snapshot.bytes) {
+            throw new Error("Loaded Automerge document has no durable bytes");
+          }
+          installCommittedDocument(candidate, snapshot.bytes, false);
+          searchCorpusVersion = 1;
+          for (const detail of diagnostics) {
+            emitWorkerTrace(detail, "change");
+          }
+          await hydrateAndBroadcastWithoutPersist(candidate, trace);
         }
+        activeDesktopClientRegistration = requestedDesktopClientRegistration;
         send({
           type: "INIT_STATS",
           durationMs: Math.round(performance.now() - startedAt),
@@ -1177,46 +1482,91 @@ async function handleRequest(
 
       case "CLEAR_LOCAL":
         cancelDocIdleUnload();
-        await storage.clear();
+        try {
+          if (corruptStorageRevision) {
+            await storage.clear(corruptStorageRevision);
+            persistence = new RepeatableAutomergePersistence(storage);
+            await persistence.load<FreedDoc>();
+            corruptStorageRevision = null;
+          } else {
+            await persistence.clear(persistence.current().revision);
+          }
+        } catch (error) {
+          throw new AutomergePersistenceError(error);
+        }
         currentDoc = null;
         currentBinary = null;
         refreshLastSavedHeads(null);
-        persistenceState = createPersistenceState(null);
         linkPreviewUrlCounts = new Map();
+        lastCommittedItemCount = 0;
+        lastCommittedFriendCount = 0;
         searchCorpusVersion = 0;
         ack(req.reqId);
         break;
 
       case "REPLACE_DOC": {
-        activeDesktopClientRegistration =
+        const candidateDesktopClientRegistration =
           req.desktopClientRegistration ?? activeDesktopClientRegistration;
-        currentDoc = A.load<FreedDoc>(req.binary);
-        if (activeDesktopClientRegistration) {
-          currentDoc = registerDesktopClient(currentDoc, activeDesktopClientRegistration);
+        let candidate = A.load<FreedDoc>(req.binary);
+        if (candidateDesktopClientRegistration) {
+          candidate = registerDesktopClient(
+            candidate,
+            candidateDesktopClientRegistration,
+          );
         }
-        currentBinary = req.binary;
-        refreshLastSavedHeads(currentDoc);
-        persistenceState = createPersistenceState(req.binary);
-        migrateLoadedIdentityGraph("Migrate legacy identity graph");
-        compactLoadedFeedText("Compact oversized synced feed text", {
-          rebuildHistory: true,
-          previousBinaryBytes: req.binary.byteLength,
+        const prepared = prepareLoadedDocument(
+          candidate,
+          "Migrate legacy identity graph",
+          "Compact oversized synced feed text",
+          {
+            rebuildHistory: true,
+            previousBinaryBytes: req.binary.byteLength,
+          },
+        );
+        candidate = prepared.doc;
+        await saveAndBroadcast(candidate, trace, {
+          persistence: {
+            mode: "replace",
+            expectedRevision: req.expectedRevision,
+          },
+          searchCorpusChanged: true,
+          diagnostics: [
+            ...(prepared.identityMigrated
+              ? ["[automerge-worker] migrated legacy identity graph"]
+              : []),
+            ...(prepared.compaction.debugDetail
+              ? [prepared.compaction.debugDetail]
+              : []),
+          ],
         });
-        bumpSearchCorpusVersion();
-        await saveAndBroadcast(trace);
+        activeDesktopClientRegistration = candidateDesktopClientRegistration;
         ack(req.reqId);
         break;
       }
 
       case "GET_DOC_BINARY":
-        if (!currentBinary) {
-          const doc = ensureCurrentDocLoaded(req.type);
-          currentBinary = A.save(doc);
-          refreshLastSavedHeads(doc);
-          persistenceState = createPersistenceState(currentBinary);
-        }
-        send({ reqId: req.reqId, type: "DOC_BINARY", binary: currentBinary });
+        if (!currentBinary) throw new Error("Document not initialized");
+        send({
+          reqId: req.reqId,
+          type: "DOC_BINARY",
+          binary: Uint8Array.from(currentBinary),
+        });
         break;
+
+      case "GET_COMMITTED_DOC": {
+        const snapshot = persistence.snapshot();
+        if (!snapshot.bytes) throw new Error("Document not initialized");
+        send({
+          reqId: req.reqId,
+          type: "COMMITTED_DOC",
+          binary: Uint8Array.from(snapshot.bytes),
+          heads: [...snapshot.heads],
+          revision: { ...snapshot.revision },
+          itemCount: lastCommittedItemCount,
+          friendCount: lastCommittedFriendCount,
+        });
+        break;
+      }
 
       case "GET_HEADS":
         send({
@@ -1254,25 +1604,60 @@ async function handleRequest(
         if (!currentDoc) throw new Error("Document not initialized");
         const beforeCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const incomingDoc = A.load<FreedDoc>(req.binary);
-        const mergedDoc = A.merge(currentDoc, incomingDoc);
-        const guard = assertNonDestructiveMerge(currentDoc, incomingDoc, mergedDoc, {
-          source: "Desktop sync",
-        });
-        currentDoc = mergedDoc;
-        migrateLoadedIdentityGraph("Migrate legacy identity graph");
-        if (activeDesktopClientRegistration && currentDoc) {
-          currentDoc = registerDesktopClient(currentDoc, activeDesktopClientRegistration);
+        let candidate = A.merge(currentDoc, incomingDoc);
+        const guard = assertNonDestructiveMerge(
+          currentDoc,
+          incomingDoc,
+          candidate,
+          {
+            source: "Desktop sync",
+          },
+        );
+        const prepared = prepareLoadedDocument(
+          candidate,
+          "Migrate legacy identity graph",
+          "Compact oversized synced feed text after merge",
+          {
+            rebuildHistory: true,
+            previousBinaryBytes: Math.max(
+              currentBinary?.byteLength ?? 0,
+              req.binary.byteLength,
+            ),
+          },
+        );
+        candidate = prepared.doc;
+        if (activeDesktopClientRegistration) {
+          candidate = registerDesktopClient(
+            candidate,
+            activeDesktopClientRegistration,
+          );
         }
-        compactLoadedFeedText("Compact oversized synced feed text after merge", {
-          rebuildHistory: true,
-          previousBinaryBytes: Math.max(currentBinary?.byteLength ?? 0, req.binary.byteLength),
-        });
-        const afterCount = Object.keys(currentDoc.feedItems ?? {}).length;
+        const afterCount = Object.keys(candidate.feedItems ?? {}).length;
         const delta = afterCount - beforeCount;
+        await saveAndBroadcast(candidate, trace, {
+          persistence: prepared.compaction.rebuiltHistory
+            ? {
+                mode: "replace",
+                expectedRevision: persistence.current().revision,
+              }
+            : {},
+          searchCorpusChanged: true,
+          diagnostics: [
+            ...(prepared.identityMigrated
+              ? ["[automerge-worker] migrated legacy identity graph"]
+              : []),
+            ...(prepared.compaction.debugDetail
+              ? [prepared.compaction.debugDetail]
+              : []),
+          ],
+        });
         send({
           type: "DEBUG_EVENT",
           kind: "merge_ok",
-          detail: delta !== 0 ? `${delta > 0 ? "+" : ""}${delta} items` : "no new items",
+          detail:
+            delta !== 0
+              ? `${delta > 0 ? "+" : ""}${delta} items`
+              : "no new items",
           bytes: req.binary.byteLength,
         });
         if (guard.deletedItemCount > 0) {
@@ -1283,17 +1668,19 @@ async function handleRequest(
             bytes: req.binary.byteLength,
           });
         }
-        bumpSearchCorpusVersion();
-        await saveAndBroadcast(trace);
         ack(req.reqId);
         break;
       }
 
       case "MARK_AS_READ":
-        await applyItemPatchChange((doc) => {
-          markAsRead(doc, req.globalId);
-          return [req.globalId];
-        }, "Mark as read", trace);
+        await applyItemPatchChange(
+          (doc) => {
+            markAsRead(doc, req.globalId);
+            return [req.globalId];
+          },
+          "Mark as read",
+          trace,
+        );
         ack(req.reqId);
         break;
 
@@ -1319,18 +1706,26 @@ async function handleRequest(
         break;
 
       case "TOGGLE_SAVED":
-        await applyItemPatchChange((doc) => {
-          toggleSaved(doc, req.globalId);
-          return [req.globalId];
-        }, "Toggle saved", trace);
+        await applyItemPatchChange(
+          (doc) => {
+            toggleSaved(doc, req.globalId);
+            return [req.globalId];
+          },
+          "Toggle saved",
+          trace,
+        );
         ack(req.reqId);
         break;
 
       case "TOGGLE_ARCHIVED":
-        await applyItemPatchChange((doc) => {
-          toggleArchived(doc, req.globalId);
-          return [req.globalId];
-        }, "Toggle archived", trace);
+        await applyItemPatchChange(
+          (doc) => {
+            toggleArchived(doc, req.globalId);
+            return [req.globalId];
+          },
+          "Toggle archived",
+          trace,
+        );
         ack(req.reqId);
         break;
 
@@ -1344,10 +1739,14 @@ async function handleRequest(
         break;
 
       case "TOGGLE_LIKED":
-        await applyItemPatchChange((doc) => {
-          toggleLiked(doc, req.globalId);
-          return [req.globalId];
-        }, "Toggle liked", trace);
+        await applyItemPatchChange(
+          (doc) => {
+            toggleLiked(doc, req.globalId);
+            return [req.globalId];
+          },
+          "Toggle liked",
+          trace,
+        );
         ack(req.reqId);
         break;
 
@@ -1376,10 +1775,14 @@ async function handleRequest(
         break;
 
       case "ADD_FEED_ITEM":
-        await applyRequestChange((doc) => {
-          compactFeedItemTextForSync(req.item);
-          if (!doc.feedItems[req.item.globalId]) addFeedItem(doc, req.item);
-        }, "Add feed item", true);
+        await applyRequestChange(
+          (doc) => {
+            compactFeedItemTextForSync(req.item);
+            if (!doc.feedItems[req.item.globalId]) addFeedItem(doc, req.item);
+          },
+          "Add feed item",
+          true,
+        );
         ack(req.reqId);
         break;
 
@@ -1389,48 +1792,73 @@ async function handleRequest(
         break;
 
       case "RECONCILE_YOUTUBE_CAPTURE":
-        await applyRequestChange((doc) => {
-          for (const item of req.items) compactFeedItemTextForSync(item);
-          reconcileYouTubeCapture(doc, req.accounts, req.items, req.options);
-        }, `Reconcile ${req.accounts.length.toLocaleString()} YouTube channels and ${req.items.length.toLocaleString()} videos`, true);
+        await applyRequestChange(
+          (doc) => {
+            for (const item of req.items) compactFeedItemTextForSync(item);
+            reconcileYouTubeCapture(doc, req.accounts, req.items, req.options);
+          },
+          `Reconcile ${req.accounts.length.toLocaleString()} YouTube channels and ${req.items.length.toLocaleString()} videos`,
+          true,
+        );
         ack(req.reqId);
         break;
 
       case "RECONCILE_FOLLOW_ROSTER_CAPTURE":
-        await applyRequestChange((doc) => {
-          for (const item of req.items) compactFeedItemTextForSync(item);
-          reconcileFollowRosterCapture(doc, req.accounts, req.items, req.options);
-        }, `Reconcile ${req.accounts.length.toLocaleString()} ${req.options.provider} accounts and ${req.items.length.toLocaleString()} items`, true);
+        await applyRequestChange(
+          (doc) => {
+            for (const item of req.items) compactFeedItemTextForSync(item);
+            reconcileFollowRosterCapture(
+              doc,
+              req.accounts,
+              req.items,
+              req.options,
+            );
+          },
+          `Reconcile ${req.accounts.length.toLocaleString()} ${req.options.provider} accounts and ${req.items.length.toLocaleString()} items`,
+          true,
+        );
         ack(req.reqId);
         break;
 
       case "ADD_SAMPLE_LIBRARY_DATA":
-        await applyRequestChange((doc) => {
-          for (const feed of req.feeds) {
-            addRssFeed(doc, feed);
-          }
-          for (const item of req.items) {
-            compactFeedItemTextForSync(item);
-            if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
-          }
-          for (const person of req.persons) {
-            addPerson(doc, person);
-          }
-          addAccounts(doc, req.accounts);
-        }, `Add sample library data: ${req.items.length.toLocaleString()} items`, true);
+        await applyRequestChange(
+          (doc) => {
+            for (const feed of req.feeds) {
+              addRssFeed(doc, feed);
+            }
+            for (const item of req.items) {
+              compactFeedItemTextForSync(item);
+              if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
+            }
+            for (const person of req.persons) {
+              addPerson(doc, person);
+            }
+            addAccounts(doc, req.accounts);
+          },
+          `Add sample library data: ${req.items.length.toLocaleString()} items`,
+          true,
+        );
         ack(req.reqId);
         break;
 
       case "REMOVE_FEED_ITEM":
-        await applyRequestChange((doc) => removeFeedItem(doc, req.globalId), "Remove feed item", true);
+        await applyRequestChange(
+          (doc) => removeFeedItem(doc, req.globalId),
+          "Remove feed item",
+          true,
+        );
         ack(req.reqId);
         break;
 
       case "CLEAR_SAMPLE_DATA": {
         let summary = { feeds: 0, items: 0, persons: 0, accounts: 0, total: 0 };
-        await applyRequestChange((doc) => {
-          summary = clearSampleData(doc);
-        }, "Clear sample data", true);
+        await applyRequestChange(
+          (doc) => {
+            summary = clearSampleData(doc);
+          },
+          "Clear sample data",
+          true,
+        );
         send({ reqId: req.reqId, type: "SAMPLE_DATA_CLEAR_RESULT", summary });
         break;
       }
@@ -1489,9 +1917,12 @@ async function handleRequest(
         await applyRssFeedPatchChange(
           (doc) => {
             addRssFeed(doc, req.feed);
-            const stored = doc.rssFeeds[req.feed.url] as RssFeed | undefined;
+            const stored = findRssFeedByUrl(
+              doc.rssFeeds as Record<string, RssFeed>,
+              req.feed.url,
+            );
             return {
-              feeds: stored ? { [req.feed.url]: cloneRssFeedForPatch(stored) } : {},
+              feeds: rssFeedPatchRecord(req.feed.url, stored),
               removedUrls: [],
             };
           },
@@ -1524,10 +1955,17 @@ async function handleRequest(
       case "UPDATE_RSS_FEED":
         await applyRssFeedPatchChange(
           (doc) => {
-            updateRssFeed(doc, req.url, req.updates as Parameters<typeof updateRssFeed>[2]);
-            const stored = doc.rssFeeds[req.url] as RssFeed | undefined;
+            updateRssFeed(
+              doc,
+              req.url,
+              req.updates as Parameters<typeof updateRssFeed>[2],
+            );
+            const stored = findRssFeedByUrl(
+              doc.rssFeeds as Record<string, RssFeed>,
+              req.url,
+            );
             return {
-              feeds: stored ? { [req.url]: cloneRssFeedForPatch(stored) } : {},
+              feeds: rssFeedPatchRecord(req.url, stored),
               removedUrls: [],
             };
           },
@@ -1540,7 +1978,9 @@ async function handleRequest(
       case "REMOVE_ALL_FEEDS":
         await applyRequestChange(
           (doc) => removeAllFeeds(doc, req.includeItems),
-          req.includeItems ? "Remove all feeds and articles" : "Remove all feeds",
+          req.includeItems
+            ? "Remove all feeds and articles"
+            : "Remove all feeds",
           true,
         );
         ack(req.reqId);
@@ -1552,7 +1992,10 @@ async function handleRequest(
         break;
 
       case "ADD_PERSON":
-        await applyRequestChange((doc) => addPerson(doc, req.person), "Add person");
+        await applyRequestChange(
+          (doc) => addPerson(doc, req.person),
+          "Add person",
+        );
         ack(req.reqId);
         break;
 
@@ -1567,7 +2010,8 @@ async function handleRequest(
 
       case "UPDATE_PERSON":
         await applyRequestChange(
-          (doc) => updatePerson(doc, req.personId, req.updates as Partial<Person>),
+          (doc) =>
+            updatePerson(doc, req.personId, req.updates as Partial<Person>),
           "Update person",
         );
         ack(req.reqId);
@@ -1584,7 +2028,8 @@ async function handleRequest(
             }
             for (const accountId of candidate.accountIds) {
               const account = doc.accounts[accountId];
-              if (!account || account.personId === candidate.person.id) continue;
+              if (!account || account.personId === candidate.person.id)
+                continue;
               updateAccount(doc, accountId, {
                 personId: candidate.person.id,
                 updatedAt: now,
@@ -1596,7 +2041,10 @@ async function handleRequest(
         break;
 
       case "REMOVE_PERSON":
-        await applyRequestChange((doc) => removePerson(doc, req.personId), "Remove person");
+        await applyRequestChange(
+          (doc) => removePerson(doc, req.personId),
+          "Remove person",
+        );
         ack(req.reqId);
         break;
 
@@ -1609,22 +2057,34 @@ async function handleRequest(
         break;
 
       case "ADD_ACCOUNT":
-        await applyRequestChange((doc) => addAccount(doc, req.account), "Add account");
+        await applyRequestChange(
+          (doc) => addAccount(doc, req.account),
+          "Add account",
+        );
         ack(req.reqId);
         break;
 
       case "ADD_ACCOUNTS":
-        await applyRequestChange((doc) => addAccounts(doc, req.accounts), `Add ${req.accounts.length.toLocaleString()} accounts`);
+        await applyRequestChange(
+          (doc) => addAccounts(doc, req.accounts),
+          `Add ${req.accounts.length.toLocaleString()} accounts`,
+        );
         ack(req.reqId);
         break;
 
       case "UPDATE_ACCOUNT":
-        await applyRequestChange((doc) => updateAccount(doc, req.accountId, req.updates), "Update account");
+        await applyRequestChange(
+          (doc) => updateAccount(doc, req.accountId, req.updates),
+          "Update account",
+        );
         ack(req.reqId);
         break;
 
       case "REMOVE_ACCOUNT":
-        await applyRequestChange((doc) => removeAccount(doc, req.accountId), "Remove account");
+        await applyRequestChange(
+          (doc) => removeAccount(doc, req.accountId),
+          "Remove account",
+        );
         ack(req.reqId);
         break;
 
@@ -1640,13 +2100,21 @@ async function handleRequest(
         for (let i = 0; i < items.length; i += CHUNK) {
           const chunkIndex = Math.floor(i / CHUNK);
           const chunk = items.slice(i, i + CHUNK);
-          await applyRequestChange((doc) => {
-            for (const item of chunk) {
-              compactFeedItemTextForSync(item);
-              if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
-            }
-          }, `Batch import chunk ${chunkIndex + 1}/${totalChunks}`, true);
-          send({ type: "IMPORT_PROGRESS", chunkIndex: chunkIndex + 1, totalChunks });
+          await applyRequestChange(
+            (doc) => {
+              for (const item of chunk) {
+                compactFeedItemTextForSync(item);
+                if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
+              }
+            },
+            `Batch import chunk ${chunkIndex + 1}/${totalChunks}`,
+            true,
+          );
+          send({
+            type: "IMPORT_PROGRESS",
+            chunkIndex: chunkIndex + 1,
+            totalChunks,
+          });
         }
         ack(req.reqId);
         break;
@@ -1677,20 +2145,26 @@ async function handleRequest(
         let summary = summarizeDocContentSignals(currentDoc);
         const pendingCount = countContentSignalBackfillItems(currentDoc);
         if (pendingCount > 0) {
-          currentDoc = A.change(currentDoc, "Backfill content signals", (doc) => {
-            summary = backfillContentSignals(doc, req.batchSize);
-          });
-          bumpSearchCorpusVersion();
-          send({
-            type: "DEBUG_EVENT",
-            kind: "change",
-            detail:
+          const candidate = A.change(
+            currentDoc,
+            "Backfill content signals",
+            (doc) => {
+              summary = backfillContentSignals(doc, req.batchSize);
+            },
+          );
+          await saveAndBroadcast(candidate, trace, {
+            searchCorpusChanged: true,
+            diagnostics: [
               `[content-signals] backfilled ${summary.updated.toLocaleString()} items, ` +
-              `${summary.remaining.toLocaleString()} remaining`,
+                `${summary.remaining.toLocaleString()} remaining`,
+            ],
           });
-          await saveAndBroadcast(trace);
         }
-        send({ reqId: req.reqId, type: "CONTENT_SIGNAL_BACKFILL_RESULT", summary });
+        send({
+          reqId: req.reqId,
+          type: "CONTENT_SIGNAL_BACKFILL_RESULT",
+          summary,
+        });
         break;
       }
 
@@ -1722,7 +2196,8 @@ async function handleRequest(
           reqId: req.reqId,
           type: "ITEM_LEGACY_HTML",
           globalId: req.globalId,
-          html: currentDoc.feedItems[req.globalId]?.preservedContent?.html ?? null,
+          html:
+            currentDoc.feedItems[req.globalId]?.preservedContent?.html ?? null,
         });
         break;
 
@@ -1734,11 +2209,28 @@ async function handleRequest(
       default: {
         const _exhaustive: never = req;
         void _exhaustive;
-        ack((req as WorkerRequest).reqId, `Unknown request type: ${(req as { type: string }).type}`);
+        ack(
+          (req as WorkerRequest).reqId,
+          `Unknown request type: ${(req as { type: string }).type}`,
+        );
       }
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    const errorCode: WorkerErrorCode | undefined =
+      err instanceof CorruptDocumentError
+        ? err.code
+        : err instanceof DocumentLoadFailedError
+          ? err.code
+          : err instanceof StaleAutomergePersistenceStateError
+            ? "STALE_DOCUMENT_REVISION"
+            : err instanceof AutomergePersistenceError
+              ? err.code
+              : undefined;
+    if (err instanceof AutomergePersistenceError) {
+      persistenceFailure = err;
+      acceptingRequests = false;
+    }
     emitWorkerTrace(
       `[automerge-worker] error op=${req.type} reqId=${req.reqId}` +
         ` wait_ms=${formatMs(waitMs)}` +
@@ -1746,11 +2238,7 @@ async function handleRequest(
         ` message=${message}`,
       "error",
     );
-    ack(
-      req.reqId,
-      message,
-      err instanceof CorruptDocumentError ? err.code : undefined,
-    );
+    ack(req.reqId, message, errorCode);
     return;
   }
 
@@ -1794,6 +2282,10 @@ function enqueueRequest(req: WorkerRequest): void {
 
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   const req = event.data;
+  if (persistenceFailure) {
+    ack(req.reqId, persistenceFailure.message, "AUTOMERGE_PERSISTENCE_FAILED");
+    return;
+  }
   if (req.type === "QUIESCE") {
     acceptingRequests = false;
     enqueueRequest(req);

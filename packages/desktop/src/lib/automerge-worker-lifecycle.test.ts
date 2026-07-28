@@ -342,7 +342,10 @@ describe("automerge worker lifecycle", () => {
     await vi.advanceTimersByTimeAsync(1_000);
     expect(firstWorker.terminated).toBe(true);
 
-    const replace = automerge.replaceLocalDoc(new Uint8Array([1, 2, 3]));
+    const replace = automerge.replaceLocalDoc(
+      new Uint8Array([1, 2, 3]),
+      { generation: 0, saveRevision: 0 },
+    );
     const secondWorker = MockWorker.instances[1];
     secondWorker.emitMessage({ type: "READY" });
 
@@ -353,7 +356,10 @@ describe("automerge worker lifecycle", () => {
     secondWorker.emitMessage({ reqId: initRequest.reqId, type: "ACK" });
 
     const replaceRequest = await waitForWorkerRequest(secondWorker, "REPLACE_DOC");
-    expect(replaceRequest).toMatchObject({ desktopClientRegistration: registration });
+    expect(replaceRequest).toMatchObject({
+      desktopClientRegistration: registration,
+      expectedRevision: { generation: 0, saveRevision: 0 },
+    });
     secondWorker.emitMessage({ reqId: replaceRequest.reqId, type: "ACK" });
     await expect(replace).resolves.toBeUndefined();
   });
@@ -380,6 +386,82 @@ describe("automerge worker lifecycle", () => {
     await mutation;
     await vi.advanceTimersByTimeAsync(1_000);
     expect(worker.terminated).toBe(true);
+  });
+
+  it("retires a persistence-failed generation, rejects all pending work, and reloads before fresh work", async () => {
+    const automerge = await import("./automerge");
+    const failedWorker = MockWorker.instances[0];
+    failedWorker.emitMessage({ type: "READY" });
+    await completeWorkerInit(failedWorker, automerge.initDoc());
+
+    const first = automerge.docAddFeedItem(makeItem());
+    const second = automerge.docAddFeedItem({
+      ...makeItem(),
+      globalId: "saved:queued-after-failure",
+    });
+    const failedResults = Promise.allSettled([first, second]);
+    const firstRequest = await waitForWorkerRequest(
+      failedWorker,
+      "ADD_FEED_ITEM",
+      0,
+    );
+    await waitForWorkerRequest(failedWorker, "ADD_FEED_ITEM", 1);
+
+    failedWorker.emitMessage({
+      reqId: firstRequest.reqId,
+      type: "ACK",
+      error: "forced storage save failure",
+      errorCode: "AUTOMERGE_PERSISTENCE_FAILED",
+    });
+
+    expect(failedWorker.terminated).toBe(true);
+    const [firstResult, secondResult] = await failedResults;
+    expect(firstResult).toMatchObject({
+      status: "rejected",
+      reason: expect.objectContaining({
+        message: "forced storage save failure",
+      }),
+    });
+    expect(secondResult).toMatchObject({
+      status: "rejected",
+      reason: expect.objectContaining({
+        message: "forced storage save failure",
+      }),
+    });
+    expect(automerge.getDocState()).toBeNull();
+
+    const fresh = automerge.docAddFeedItem({
+      ...makeItem(),
+      globalId: "saved:fresh-generation",
+    });
+    const replacementWorker = MockWorker.instances[1];
+    replacementWorker.emitMessage({ type: "READY" });
+    const reinitRequest = await waitForWorkerRequest(
+      replacementWorker,
+      "INIT",
+    );
+    replacementWorker.emitMessage({
+      type: "STATE_UPDATE",
+      state: makeState(),
+    });
+    replacementWorker.emitMessage({
+      type: "INIT_STATS",
+      durationMs: 6,
+      docBytes: 1_024,
+    });
+    replacementWorker.emitMessage({
+      reqId: reinitRequest.reqId,
+      type: "ACK",
+    });
+    const freshRequest = await waitForWorkerRequest(
+      replacementWorker,
+      "ADD_FEED_ITEM",
+    );
+    replacementWorker.emitMessage({
+      reqId: freshRequest.reqId,
+      type: "ACK",
+    });
+    await expect(fresh).resolves.toBeUndefined();
   });
 
   it("strips device-local RSS state before posting refreshes to the worker", async () => {

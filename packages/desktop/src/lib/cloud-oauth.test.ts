@@ -21,6 +21,13 @@ vi.mock("@tauri-apps/plugin-shell", () => ({
 }));
 
 vi.mock("./automerge", () => ({
+  getCommittedDoc: vi.fn(async () => ({
+    binary: new Uint8Array(),
+    heads: [],
+    revision: { generation: 0, saveRevision: 0 },
+    itemCount: 0,
+    friendCount: 0,
+  })),
   getDocBinary: vi.fn(async () => new Uint8Array()),
   mergeDoc: vi.fn(),
   setRelayClientCount: vi.fn(),

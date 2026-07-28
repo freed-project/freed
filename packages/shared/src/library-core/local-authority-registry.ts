@@ -237,14 +237,18 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
     physicalStores: [{
       kind: "indexeddb",
       platforms: ["desktop", "pwa"],
-      locator: "origin:indexedDB/freed@1/automerge",
-      keys: ["feed", "feed:installation-generation"],
+      locator: "origin:indexedDB/freed@2/automerge",
+      keys: [
+        "feed",
+        "feed:installation-generation",
+        "feed:save-revision",
+      ],
     }],
     retention: { kind: "until-reset" },
     backup: "include-private",
     export: "legacy-compatibility",
     redaction: "retain-private-bytes",
-    resetSemantics: "Factory reset atomically clears feed and advances feed:installation-generation.",
+    resetSemantics: "Factory reset atomically clears feed, advances feed:installation-generation, and resets feed:save-revision to zero.",
     snapshot: "portable-snapshot-required",
     migration: "migrate-to-library-core",
     cutover: {
@@ -2109,11 +2113,17 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
     sourcePath: "packages/sync/src/storage/indexeddb.ts",
     sourceTokens: [
       'const DB_NAME = "freed"',
+      "const DB_VERSION = 2",
       'const STORE_NAME = "automerge"',
       'const DOC_KEY = "feed"',
       'const DOCUMENT_GENERATION_KEY = "feed:installation-generation"',
+      'const SAVE_REVISION_KEY = "feed:save-revision"',
     ],
-    registeredKeys: ["feed", "feed:installation-generation"],
+    registeredKeys: [
+      "feed",
+      "feed:installation-generation",
+      "feed:save-revision",
+    ],
   },
   {
     registryKey: "clipboard-save-shortcut",

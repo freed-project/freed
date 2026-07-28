@@ -20,6 +20,7 @@ import type {
   UserPreferences,
 } from "@freed/shared";
 import type { DocumentHistoryRelation } from "@freed/shared/schema";
+import type { StorageRevision } from "@freed/sync/types";
 
 export type { DocumentHistoryRelation } from "@freed/shared/schema";
 
@@ -49,6 +50,12 @@ export interface DocState {
   mapAllContentLocationCount: number;
 }
 
+export interface CommittedAutomergeDoc {
+  binary: Uint8Array;
+  heads: string[];
+  revision: StorageRevision;
+}
+
 // ---------------------------------------------------------------------------
 // Main thread → worker
 // ---------------------------------------------------------------------------
@@ -63,8 +70,18 @@ export type WorkerRequest =
   | { reqId: number; type: "TOGGLE_ARCHIVED"; globalId: string }
   | { reqId: number; type: "ARCHIVE_ITEMS"; globalIds: string[] }
   | { reqId: number; type: "TOGGLE_LIKED"; globalId: string }
-  | { reqId: number; type: "CONFIRM_LIKED_SYNCED"; globalId: string; syncedAt?: number }
-  | { reqId: number; type: "CONFIRM_SEEN_SYNCED"; globalId: string; syncedAt?: number }
+  | {
+      reqId: number;
+      type: "CONFIRM_LIKED_SYNCED";
+      globalId: string;
+      syncedAt?: number;
+    }
+  | {
+      reqId: number;
+      type: "CONFIRM_SEEN_SYNCED";
+      globalId: string;
+      syncedAt?: number;
+    }
   | { reqId: number; type: "ADD_FEED_ITEM"; item: FeedItem }
   | { reqId: number; type: "ADD_FEED_ITEMS"; items: FeedItem[] }
   | {
@@ -77,29 +94,73 @@ export type WorkerRequest =
     }
   | { reqId: number; type: "REMOVE_FEED_ITEM"; globalId: string }
   | { reqId: number; type: "CLEAR_SAMPLE_DATA" }
-  | { reqId: number; type: "UPDATE_FEED_ITEM"; globalId: string; updates: Partial<FeedItem> }
-  | { reqId: number; type: "ARCHIVE_ALL_READ_UNSAVED"; platform?: string; feedUrl?: string }
+  | {
+      reqId: number;
+      type: "UPDATE_FEED_ITEM";
+      globalId: string;
+      updates: Partial<FeedItem>;
+    }
+  | {
+      reqId: number;
+      type: "ARCHIVE_ALL_READ_UNSAVED";
+      platform?: string;
+      feedUrl?: string;
+    }
   | { reqId: number; type: "UNARCHIVE_SAVED_ITEMS" }
   | { reqId: number; type: "PRUNE_ARCHIVED_ITEMS"; maxAgeMs?: number }
   | { reqId: number; type: "DELETE_ALL_ARCHIVED" }
   | { reqId: number; type: "ADD_RSS_FEED"; feed: RssFeed }
-  | { reqId: number; type: "REMOVE_RSS_FEED"; url: string; includeItems?: boolean }
-  | { reqId: number; type: "UPDATE_RSS_FEED"; url: string; updates: Partial<RssFeed> }
+  | {
+      reqId: number;
+      type: "REMOVE_RSS_FEED";
+      url: string;
+      includeItems?: boolean;
+    }
+  | {
+      reqId: number;
+      type: "UPDATE_RSS_FEED";
+      url: string;
+      updates: Partial<RssFeed>;
+    }
   | { reqId: number; type: "REMOVE_ALL_FEEDS"; includeItems: boolean }
-  | { reqId: number; type: "UPDATE_PREFERENCES"; updates: Partial<UserPreferences> }
+  | {
+      reqId: number;
+      type: "UPDATE_PREFERENCES";
+      updates: Partial<UserPreferences>;
+    }
   | { reqId: number; type: "ADD_PERSON"; person: Person }
   | { reqId: number; type: "ADD_PERSONS"; persons: Person[] }
-  | { reqId: number; type: "UPDATE_PERSON"; personId: string; updates: Partial<Person> }
-  | { reqId: number; type: "UPSERT_CONNECTION_PERSONS"; candidates: Array<{ person: Person; accountIds: string[] }> }
+  | {
+      reqId: number;
+      type: "UPDATE_PERSON";
+      personId: string;
+      updates: Partial<Person>;
+    }
+  | {
+      reqId: number;
+      type: "UPSERT_CONNECTION_PERSONS";
+      candidates: Array<{ person: Person; accountIds: string[] }>;
+    }
   | { reqId: number; type: "REMOVE_PERSON"; personId: string }
-  | { reqId: number; type: "LOG_REACH_OUT"; personId: string; entry: ReachOutLog }
+  | {
+      reqId: number;
+      type: "LOG_REACH_OUT";
+      personId: string;
+      entry: ReachOutLog;
+    }
   | { reqId: number; type: "ADD_ACCOUNT"; account: Account }
   | { reqId: number; type: "ADD_ACCOUNTS"; accounts: Account[] }
-  | { reqId: number; type: "UPDATE_ACCOUNT"; accountId: string; updates: Partial<Account> }
+  | {
+      reqId: number;
+      type: "UPDATE_ACCOUNT";
+      accountId: string;
+      updates: Partial<Account>;
+    }
   | { reqId: number; type: "REMOVE_ACCOUNT"; accountId: string }
   | { reqId: number; type: "ADD_STUB_ITEM"; url: string; tags: string[] }
   | { reqId: number; type: "BACKFILL_CONTENT_SIGNALS"; batchSize?: number }
   | { reqId: number; type: "MERGE_DOC"; binary: Uint8Array }
+  | { reqId: number; type: "GET_COMMITTED_DOC" }
   | { reqId: number; type: "GET_DOC_BINARY" }
   | { reqId: number; type: "GET_HEADS" }
   | { reqId: number; type: "COMPARE_DOC"; binary: Uint8Array }
@@ -110,7 +171,11 @@ export type WorkerRequest =
 // Worker → main thread
 // ---------------------------------------------------------------------------
 
-export type WorkerErrorCode = "CORRUPT_DOCUMENT";
+export type WorkerErrorCode =
+  | "AUTOMERGE_PERSISTENCE_FAILED"
+  | "CORRUPT_DOCUMENT"
+  | "DOCUMENT_LOAD_FAILED"
+  | "STALE_DOCUMENT_REVISION";
 
 export type WorkerResponse =
   /** Simple acknowledgement for mutations that return void */
@@ -123,19 +188,49 @@ export type WorkerResponse =
       mutation?: WorkerRequest["type"];
     }
   | { reqId: number; type: "DOC_BINARY"; binary: Uint8Array }
+  | {
+      reqId: number;
+      type: "COMMITTED_DOC";
+      binary: Uint8Array;
+      heads: string[];
+      revision: StorageRevision;
+    }
   /** Current Automerge heads for upload-loop accounting; null before INIT. */
   | { reqId: number; type: "DOC_HEADS"; heads: string[] | null }
   /** Automerge history containment of an incoming document relative to local. */
-  | { reqId: number; type: "DOC_RELATIONSHIP"; relation: DocumentHistoryRelation }
-  | { reqId: number; type: "ITEM_LEGACY_HTML"; globalId: string; html: string | null }
+  | {
+      reqId: number;
+      type: "DOC_RELATIONSHIP";
+      relation: DocumentHistoryRelation;
+    }
+  | {
+      reqId: number;
+      type: "ITEM_LEGACY_HTML";
+      globalId: string;
+      html: string | null;
+    }
   /** Sent once per INIT with its cost, for the worker-INIT debug counter. */
   | { type: "INIT_STATS"; durationMs: number; docBytes: number }
   /** Debug panel event forwarding */
   | { type: "DEBUG_EVENT"; kind: string; detail?: string; bytes?: number }
   /** Doc size snapshot for the debug panel */
-  | { type: "DEBUG_SNAPSHOT"; documentId: string; itemCount: number; feedCount: number; binarySize: number }
+  | {
+      type: "DEBUG_SNAPSHOT";
+      documentId: string;
+      itemCount: number;
+      feedCount: number;
+      binarySize: number;
+    }
   /** One-batch content signal backfill summary. */
-  | { reqId: number; type: "CONTENT_SIGNAL_BACKFILL_RESULT"; summary: ContentSignalBackfillSummary }
-  | { reqId: number; type: "SAMPLE_DATA_CLEAR_RESULT"; summary: SampleDataClearSummary }
+  | {
+      reqId: number;
+      type: "CONTENT_SIGNAL_BACKFILL_RESULT";
+      summary: ContentSignalBackfillSummary;
+    }
+  | {
+      reqId: number;
+      type: "SAMPLE_DATA_CLEAR_RESULT";
+      summary: SampleDataClearSummary;
+    }
   /** Sent once when the worker module finishes loading and is ready for messages */
   | { type: "READY" };

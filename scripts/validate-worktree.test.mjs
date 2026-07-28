@@ -75,6 +75,25 @@ test("feature plan for shared changes covers both desktop and pwa surfaces", () 
   ]);
 });
 
+test("feature plan for sync changes runs the sync package tests", () => {
+  const labels = describePlan(
+    buildValidationPlan("feature", [
+      "packages/sync/src/storage/indexeddb.ts",
+    ]),
+  );
+
+  assert.deepEqual(labels, [
+    "root typecheck",
+    "sync unit tests",
+    "pwa production build",
+    "pwa typecheck",
+    "pwa unit tests",
+    "pwa performance tests",
+    "desktop unit tests",
+    "desktop e2e smoke",
+  ]);
+});
+
 test("feature plan for feed UI changes runs desktop perf checks", () => {
   const labels = describePlan(
     buildValidationPlan("feature", [

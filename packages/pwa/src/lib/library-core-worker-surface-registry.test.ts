@@ -43,12 +43,20 @@ describe("PWA Library Core worker surface census", () => {
       ).toContain("provider_intent");
     }
     expect(
+      PWA_AUTOMERGE_WORKER_REQUEST_SURFACE_REGISTRY.GET_COMMITTED_DOC
+        .classification,
+    ).toBe("legacy_unbounded_read");
+    expect(
       PWA_AUTOMERGE_WORKER_REQUEST_SURFACE_REGISTRY.GET_DOC_BINARY
         .classification,
     ).toBe("legacy_unbounded_read");
     expect(
       PWA_AUTOMERGE_WORKER_REQUEST_SURFACE_REGISTRY.MERGE_DOC.classification,
     ).toBe("legacy_replication_authority");
+    expect(
+      PWA_AUTOMERGE_WORKER_RESPONSE_SURFACE_REGISTRY.COMMITTED_DOC
+        .classification,
+    ).toBe("legacy_unbounded_transport");
     expect(
       PWA_AUTOMERGE_WORKER_RESPONSE_SURFACE_REGISTRY.STATE_UPDATE
         .classification,

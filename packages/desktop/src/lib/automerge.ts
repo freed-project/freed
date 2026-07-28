@@ -33,6 +33,7 @@ import type {
   DesktopClientRegistration,
 } from "@freed/shared";
 import type {
+  CommittedDocSnapshot,
   DocChangeEvent,
   DocState,
   DocStats,
@@ -41,6 +42,7 @@ import type {
   WorkerRequest,
   WorkerResponse,
 } from "./automerge-types";
+import type { StorageRevision } from "@freed/sync/types";
 import {
   applyItemPatchesToState,
   applyPreferencePatchToState,
@@ -90,6 +92,15 @@ class InitDataError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "InitDataError";
+  }
+}
+
+export class StaleDocumentRevisionError extends Error {
+  readonly code = "STALE_DOCUMENT_REVISION";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "StaleDocumentRevisionError";
   }
 }
 
@@ -146,6 +157,7 @@ function rejectPendingWorkerRequests(generationId: number, error: Error): void {
   rejectPendingMap(pending, generationId, error);
   rejectPendingMap(pendingAllItemIds, generationId, error);
   rejectPendingMap(pendingDocBinary, generationId, error);
+  rejectPendingMap(pendingCommittedDoc, generationId, error);
   rejectPendingMap(pendingDocHeads, generationId, error);
   rejectPendingMap(pendingDocRelationship, generationId, error);
   rejectPendingMap(pendingSavedYouTubeUrls, generationId, error);
@@ -287,6 +299,7 @@ function hasPendingWorkerRequests(): boolean {
     pending.size > 0 ||
     pendingAllItemIds.size > 0 ||
     pendingDocBinary.size > 0 ||
+    pendingCommittedDoc.size > 0 ||
     pendingDocHeads.size > 0 ||
     pendingDocRelationship.size > 0 ||
     pendingSavedYouTubeUrls.size > 0 ||
@@ -355,6 +368,10 @@ type PendingRequest<T> = PendingRequestFailureHandler & {
 const pending = new Map<number, PendingRequest<void>>();
 const pendingAllItemIds = new Map<number, PendingRequest<string[]>>();
 const pendingDocBinary = new Map<number, PendingRequest<Uint8Array>>();
+const pendingCommittedDoc = new Map<
+  number,
+  PendingRequest<CommittedDocSnapshot>
+>();
 const pendingDocHeads = new Map<number, PendingRequest<string[] | null>>();
 const pendingDocRelationship = new Map<number, PendingRequest<DocumentHistoryRelation>>();
 const pendingSavedYouTubeUrls = new Map<number, PendingRequest<string[]>>();
@@ -544,6 +561,20 @@ function handleWorkerMessage(
 
   if (msg.type === "READY") return;
 
+  if (
+    msg.type === "ACK"
+    && msg.error
+    && msg.errorCode === "AUTOMERGE_PERSISTENCE_FAILED"
+  ) {
+    resetFailedWorker(
+      sourceWorker,
+      generationId,
+      new WorkerLifecycleError(msg.error),
+      "runtime_persistence_failed",
+    );
+    return;
+  }
+
   if (msg.type === "STATE_UPDATE") {
     publishState(msg.state, {
       source: "state_update",
@@ -672,6 +703,25 @@ function handleWorkerMessage(
     return;
   }
 
+  if (msg.type === "COMMITTED_DOC") {
+    const pendingSnapshot = getGenerationPending(
+      pendingCommittedDoc,
+      msg.reqId,
+      generationId,
+    );
+    if (!pendingSnapshot) return;
+    clearTimeout(pendingSnapshot.timer);
+    pendingCommittedDoc.delete(msg.reqId);
+    pendingSnapshot.resolve({
+      binary: Uint8Array.from(msg.binary),
+      heads: [...msg.heads],
+      revision: { ...msg.revision },
+      itemCount: msg.itemCount,
+      friendCount: msg.friendCount,
+    });
+    return;
+  }
+
   if (msg.type === "DOC_HEADS") {
     const pendingHeads = getGenerationPending(pendingDocHeads, msg.reqId, generationId);
     if (!pendingHeads) return;
@@ -780,6 +830,18 @@ function handleWorkerMessage(
     return;
   }
 
+  const pendingSnapshot = getGenerationPending(
+    pendingCommittedDoc,
+    msg.reqId,
+    generationId,
+  );
+  if (pendingSnapshot && msg.error) {
+    clearTimeout(pendingSnapshot.timer);
+    pendingCommittedDoc.delete(msg.reqId);
+    pendingSnapshot.reject(new Error(msg.error));
+    return;
+  }
+
   const pendingHeads = getGenerationPending(pendingDocHeads, msg.reqId, generationId);
   if (pendingHeads && msg.error) {
     clearTimeout(pendingHeads.timer);
@@ -836,7 +898,13 @@ function handleWorkerMessage(
   if (!p) return;
   clearTimeout(p.timer);
   pending.delete(msg.reqId);
-  if (msg.error) p.reject(new Error(msg.error));
+  if (msg.error) {
+    p.reject(
+      msg.errorCode === "STALE_DOCUMENT_REVISION"
+        ? new StaleDocumentRevisionError(msg.error)
+        : new Error(msg.error),
+    );
+  }
   else p.resolve();
 }
 
@@ -1065,6 +1133,17 @@ export async function getDocBinary(): Promise<Uint8Array> {
   );
 }
 
+/** Exact durable bytes, heads, revision, and summary from one worker turn. */
+export async function getCommittedDoc(): Promise<CommittedDocSnapshot> {
+  await ensureWorkerDocumentReadyFor("GET_COMMITTED_DOC");
+  const activeWorker = getWorker();
+  return requestResultOnWorker(
+    activeWorker,
+    pendingCommittedDoc,
+    { reqId: nextReqId++, type: "GET_COMMITTED_DOC" } satisfies WorkerRequest,
+  );
+}
+
 /**
  * Current document heads for upload-loop accounting (stability P0-03).
  * Never forces a document load or a worker re-INIT: an idle worker answers
@@ -1160,12 +1239,16 @@ export function quiesceDesktopAutomergeForFactoryReset(): Promise<void> {
   return automergeQuiescePromise;
 }
 
-export async function replaceLocalDoc(binary: Uint8Array): Promise<void> {
+export async function replaceLocalDoc(
+  binary: Uint8Array,
+  expectedRevision: StorageRevision,
+): Promise<void> {
   const reqId = nextReqId++;
   return request({
     reqId,
     type: "REPLACE_DOC",
     binary,
+    expectedRevision: { ...expectedRevision },
     desktopClientRegistration: desktopClientRegistration ?? undefined,
   });
 }

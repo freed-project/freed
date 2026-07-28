@@ -27,7 +27,7 @@ import {
 } from "@freed/sync/cloud";
 import {
   compareDoc,
-  getDocBinary,
+  getCommittedDoc,
   getDocHeads,
   mergeDoc,
   replaceLocalDoc,
@@ -1930,12 +1930,13 @@ export async function resolveCloudSyncConflict(
       timeoutMs: 180_000,
       waitForActiveJobMs: CONFLICT_RECOVERY_ACTIVE_JOB_WAIT_MS,
       run: async () => {
+        const expectedRevision = (await getCommittedDoc()).revision;
         const remote = provider === "gdrive"
           ? await gdriveDownloadLatest(token, controller.signal, googleDriveFetch)
           : await dropboxDownloadLatest(token, controller.signal);
         if (!isCloudGenerationCurrent(provider, generation, controller.signal)) return;
         if (!remote) throw new Error("No cloud backup found.");
-        await replaceLocalDoc(remote);
+        await replaceLocalDoc(remote, expectedRevision);
       },
     });
     try {
@@ -1992,8 +1993,6 @@ const lastUploadHeadsByProvider = new Map<CloudProvider, string>();
  */
 const lastSuccessfulUploadHeadsByProvider = new Map<CloudProvider, string>();
 
-const CLOUD_DOCUMENT_SNAPSHOT_MAX_ATTEMPTS = 3;
-
 interface CloudDocumentSnapshot {
   binary: Uint8Array;
   representedHeads: string[] | null;
@@ -2010,56 +2009,17 @@ async function currentHeadsKey(): Promise<string | null> {
 }
 
 /**
- * Capture bytes with the heads they represent. The worker serializes these
- * requests, so equal heads immediately before and after getDocBinary prove
- * that no document change crossed the binary read. If the document keeps
- * moving, return the latest bytes without represented heads. That makes the
- * upload damper fail open and prevents a newer edit from being marked as
- * already uploaded.
+ * Capture bytes and heads from the same committed worker response. The
+ * revision-fenced worker clones the durable binary and its exact heads in one
+ * serialized turn, so upload accounting cannot attach newer heads to older
+ * bytes.
  */
 async function captureCloudDocumentSnapshot(): Promise<CloudDocumentSnapshot> {
-  let latestBinary: Uint8Array | null = null;
-
-  for (let attempt = 0; attempt < CLOUD_DOCUMENT_SNAPSHOT_MAX_ATTEMPTS; attempt += 1) {
-    let headsBefore: string[] | null;
-    try {
-      headsBefore = await getDocHeads();
-    } catch {
-      return {
-        binary: await getDocBinary(),
-        representedHeads: null,
-        representedHeadsKey: null,
-      };
-    }
-
-    latestBinary = await getDocBinary();
-
-    let headsAfter: string[] | null;
-    try {
-      headsAfter = await getDocHeads();
-    } catch {
-      return {
-        binary: latestBinary,
-        representedHeads: null,
-        representedHeadsKey: null,
-      };
-    }
-
-    const beforeKey = headsKey(headsBefore);
-    const afterKey = headsKey(headsAfter);
-    if (beforeKey !== null && beforeKey === afterKey) {
-      return {
-        binary: latestBinary,
-        representedHeads: headsAfter,
-        representedHeadsKey: afterKey,
-      };
-    }
-  }
-
+  const committed = await getCommittedDoc();
   return {
-    binary: latestBinary ?? await getDocBinary(),
-    representedHeads: null,
-    representedHeadsKey: null,
+    binary: committed.binary,
+    representedHeads: committed.heads,
+    representedHeadsKey: headsKey(committed.heads),
   };
 }
 

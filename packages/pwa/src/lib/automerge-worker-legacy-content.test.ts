@@ -14,23 +14,54 @@ import type { WorkerRequest, WorkerResponse } from "./automerge-types";
 const storageHarness = vi.hoisted(() => ({
   binary: null as Uint8Array | null,
   failSave: false,
+  saveFailureCode: null as string | null,
+  saveCount: 0,
   clearCount: 0,
+  revision: { generation: 0, saveRevision: 0 },
 }));
 
 vi.mock("@freed/sync/storage/indexeddb", () => ({
   IndexedDBStorage: class {
-    async load(): Promise<Uint8Array | null> {
-      return storageHarness.binary?.slice() ?? null;
+    async load() {
+      return {
+        data: storageHarness.binary?.slice() ?? null,
+        revision: { ...storageHarness.revision },
+      };
     }
 
-    async save(binary: Uint8Array): Promise<void> {
-      if (storageHarness.failSave) throw new Error("forced IndexedDB save failure");
+    async save(
+      binary: Uint8Array,
+      expectedRevision: { generation: number; saveRevision: number },
+    ) {
+      if (storageHarness.failSave) {
+        throw Object.assign(
+          new Error("forced IndexedDB save failure"),
+          storageHarness.saveFailureCode
+            ? { code: storageHarness.saveFailureCode }
+            : {},
+        );
+      }
+      expect(expectedRevision).toEqual(storageHarness.revision);
       storageHarness.binary = binary.slice();
+      storageHarness.saveCount += 1;
+      storageHarness.revision = {
+        generation: storageHarness.revision.generation,
+        saveRevision: storageHarness.revision.saveRevision + 1,
+      };
+      return { ...storageHarness.revision };
     }
 
-    async clear(): Promise<void> {
+    async clear(
+      expectedRevision: { generation: number; saveRevision: number },
+    ) {
+      expect(expectedRevision).toEqual(storageHarness.revision);
       storageHarness.binary = null;
       storageHarness.clearCount += 1;
+      storageHarness.revision = {
+        generation: storageHarness.revision.generation + 1,
+        saveRevision: 0,
+      };
+      return { ...storageHarness.revision };
     }
   },
 }));
@@ -95,7 +126,10 @@ describe("PWA Automerge worker legacy reader compatibility", () => {
     vi.resetModules();
     storageHarness.binary = A.save(makeLegacyDoc());
     storageHarness.failSave = false;
+    storageHarness.saveFailureCode = null;
+    storageHarness.saveCount = 0;
     storageHarness.clearCount = 0;
+    storageHarness.revision = { generation: 0, saveRevision: 1 };
     posts = [];
     scope = {
       onmessage: null,
@@ -160,24 +194,180 @@ describe("PWA Automerge worker legacy reader compatibility", () => {
     expect(storageHarness.binary).toEqual(new Uint8Array([1, 2, 3, 4]));
   });
 
-  it("preserves a valid document when INIT cannot save", async () => {
-    const original = storageHarness.binary!.slice();
+  it("makes a generation permanently nonaccepting when its first INIT cannot persist", async () => {
+    storageHarness.binary = null;
+    storageHarness.revision = { generation: 0, saveRevision: 0 };
     storageHarness.failSave = true;
     if (!scope.onmessage) throw new Error("Worker message handler missing");
 
     scope.onmessage({ data: { reqId: 31, type: "INIT" } } as MessageEvent<WorkerRequest>);
+    scope.onmessage({
+      data: { reqId: 32, type: "MARK_ALL_AS_READ" },
+    } as MessageEvent<WorkerRequest>);
     const failure = await waitForPost(
       posts,
       (message) => message.type === "ACK" && message.reqId === 31,
+    );
+    const queuedFailure = await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 32,
+    );
+    scope.onmessage({
+      data: { reqId: 33, type: "GET_HEADS" },
+    } as MessageEvent<WorkerRequest>);
+    const laterFailure = await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 33,
     );
 
     expect(failure).toMatchObject({
       type: "ACK",
       error: "forced IndexedDB save failure",
+      errorCode: "AUTOMERGE_PERSISTENCE_FAILED",
     });
-    expect(failure).not.toHaveProperty("errorCode");
+    expect(queuedFailure).toMatchObject({
+      type: "ACK",
+      error: "forced IndexedDB save failure",
+      errorCode: "AUTOMERGE_PERSISTENCE_FAILED",
+    });
+    expect(laterFailure).toMatchObject({
+      type: "ACK",
+      error: "forced IndexedDB save failure",
+      errorCode: "AUTOMERGE_PERSISTENCE_FAILED",
+    });
     expect(storageHarness.clearCount).toBe(0);
-    expect(storageHarness.binary).toEqual(original);
+    expect(storageHarness.binary).toBeNull();
+    expect(posts.some((message) => message.type === "STATE_UPDATE")).toBe(false);
+  });
+
+  it("rejects a failed mutation queue without leaking state and a fresh generation reloads durable bytes", async () => {
+    if (!scope.onmessage) throw new Error("Worker message handler missing");
+    scope.onmessage({ data: { reqId: 40, type: "INIT" } } as MessageEvent<WorkerRequest>);
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 40,
+    );
+    const durableBefore = storageHarness.binary!.slice();
+    const revisionBefore = { ...storageHarness.revision };
+    const saveCountBefore = storageHarness.saveCount;
+
+    posts.length = 0;
+    storageHarness.failSave = true;
+    storageHarness.saveFailureCode = "STALE_STORAGE_REVISION";
+    scope.onmessage({
+      data: { reqId: 41, type: "MARK_ALL_AS_READ" },
+    } as MessageEvent<WorkerRequest>);
+    scope.onmessage({
+      data: {
+        reqId: 42,
+        type: "TOGGLE_SAVED",
+        globalId: "saved:legacy-reader",
+      },
+    } as MessageEvent<WorkerRequest>);
+
+    for (const reqId of [41, 42]) {
+      const failure = await waitForPost(
+        posts,
+        (message) => message.type === "ACK" && message.reqId === reqId,
+      );
+      expect(failure).toMatchObject({
+        type: "ACK",
+        errorCode: "STALE_DOCUMENT_REVISION",
+      });
+    }
+    expect(
+      posts.some((message) => message.type === "STATE_UPDATE"),
+    ).toBe(false);
+    expect(storageHarness.binary).toEqual(durableBefore);
+    expect(storageHarness.revision).toEqual(revisionBefore);
+    expect(storageHarness.saveCount).toBe(saveCountBefore);
+
+    storageHarness.failSave = false;
+    vi.resetModules();
+    posts = [];
+    scope = {
+      onmessage: null,
+      postMessage(message) {
+        posts.push(message);
+      },
+    };
+    vi.stubGlobal("self", scope);
+    await import("./automerge.worker");
+    if (!scope.onmessage) throw new Error("Replacement worker handler missing");
+    scope.onmessage({ data: { reqId: 43, type: "INIT" } } as MessageEvent<WorkerRequest>);
+    const reloaded = await waitForPost(
+      posts,
+      (message) => message.type === "STATE_UPDATE",
+    );
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 43,
+    );
+    if (reloaded.type !== "STATE_UPDATE") {
+      throw new Error("Expected replacement state update");
+    }
+    expect(reloaded.state.items[0].userState.readAt).toBeUndefined();
+    expect(reloaded.state.items[0].userState.saved).toBe(true);
+  });
+
+  it("persists an empty INIT once and returns defensive committed snapshots", async () => {
+    storageHarness.binary = null;
+    storageHarness.revision = { generation: 0, saveRevision: 0 };
+    vi.resetModules();
+    posts = [];
+    scope = {
+      onmessage: null,
+      postMessage(message) {
+        posts.push(message);
+      },
+    };
+    vi.stubGlobal("self", scope);
+    await import("./automerge.worker");
+    if (!scope.onmessage) throw new Error("Worker message handler missing");
+
+    scope.onmessage({ data: { reqId: 50, type: "INIT" } } as MessageEvent<WorkerRequest>);
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 50,
+    );
+    expect(storageHarness.saveCount).toBe(1);
+    expect(storageHarness.revision).toEqual({
+      generation: 0,
+      saveRevision: 1,
+    });
+
+    scope.onmessage({
+      data: { reqId: 51, type: "GET_COMMITTED_DOC" },
+    } as MessageEvent<WorkerRequest>);
+    const first = await waitForPost(
+      posts,
+      (message) => message.type === "COMMITTED_DOC" && message.reqId === 51,
+    );
+    if (first.type !== "COMMITTED_DOC") {
+      throw new Error("Expected committed document");
+    }
+    const expectedBinary = first.binary.slice();
+    const expectedHeads = [...first.heads];
+    first.binary.fill(255);
+    first.heads.push("forged-head");
+    first.revision.saveRevision = 999;
+
+    scope.onmessage({
+      data: { reqId: 52, type: "GET_COMMITTED_DOC" },
+    } as MessageEvent<WorkerRequest>);
+    const second = await waitForPost(
+      posts,
+      (message) => message.type === "COMMITTED_DOC" && message.reqId === 52,
+    );
+    expect(second).toMatchObject({
+      type: "COMMITTED_DOC",
+      heads: expectedHeads,
+      revision: { generation: 0, saveRevision: 1 },
+    });
+    if (second.type !== "COMMITTED_DOC") {
+      throw new Error("Expected committed document");
+    }
+    expect(second.binary).toEqual(expectedBinary);
   });
 
   it("keeps local RSS and preferences without resurrecting a deleted feed item", async () => {

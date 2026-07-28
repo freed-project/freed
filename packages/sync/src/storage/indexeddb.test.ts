@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { IndexedDBStorage } from "./indexeddb.js";
+import {
+  IndexedDBStorage,
+  StaleStorageRevisionError,
+} from "./indexeddb.js";
 
 type RequestHandler<T> =
   ((this: IDBRequest<T>, event: Event) => unknown) | null;
@@ -9,8 +12,10 @@ interface MutableRequest<T> {
   error: DOMException | null;
   onsuccess: RequestHandler<T>;
   onerror: RequestHandler<T>;
+  onblocked?: ((this: IDBOpenDBRequest, event: Event) => unknown) | null;
   onupgradeneeded?:
     ((this: IDBOpenDBRequest, event: IDBVersionChangeEvent) => unknown) | null;
+  transaction?: IDBTransaction | null;
 }
 
 function requestAsIdb<T>(request: MutableRequest<T>): IDBRequest<T> {
@@ -23,13 +28,20 @@ class FakeTransaction {
   onabort: ((this: IDBTransaction, event: Event) => unknown) | null = null;
   error: DOMException | null = null;
   requestSuccessCount = 0;
+  private readonly workingRecords: Map<IDBValidKey, unknown>;
   private pendingRequests = 0;
   private completed = false;
+  private aborted = false;
 
   constructor(
     private readonly records: Map<IDBValidKey, unknown>,
+    private readonly mode: IDBTransactionMode,
     private readonly autoComplete: boolean,
-  ) {}
+    private readonly afterComplete?: () => void,
+    private readonly afterAbort?: () => void,
+  ) {
+    this.workingRecords = new Map(records);
+  }
 
   objectStore(): IDBObjectStore {
     const enqueue = <T>(operation: () => T): IDBRequest<T> => {
@@ -41,10 +53,20 @@ class FakeTransaction {
       };
       this.pendingRequests += 1;
       queueMicrotask(() => {
-        request.result = operation();
-        this.requestSuccessCount += 1;
-        request.onsuccess?.call(requestAsIdb(request), {} as Event);
-        this.pendingRequests -= 1;
+        if (this.aborted) return;
+        try {
+          request.result = operation();
+          this.requestSuccessCount += 1;
+          request.onsuccess?.call(requestAsIdb(request), {} as Event);
+        } catch (error) {
+          request.error = new DOMException(String(error), "UnknownError");
+          request.onerror?.call(requestAsIdb(request), {} as Event);
+          this.error = request.error;
+          this.abort();
+          return;
+        } finally {
+          this.pendingRequests -= 1;
+        }
         if (this.autoComplete && this.pendingRequests === 0) {
           queueMicrotask(() => this.complete());
         }
@@ -53,29 +75,54 @@ class FakeTransaction {
     };
 
     return {
-      get: (key: IDBValidKey) => enqueue(() => this.records.get(key)),
+      get: (key: IDBValidKey) =>
+        enqueue(() => this.workingRecords.get(key)),
       count: (key?: IDBValidKey | IDBKeyRange) =>
         enqueue(() =>
-          key !== undefined && this.records.has(key as IDBValidKey) ? 1 : 0,
+          key !== undefined &&
+          this.workingRecords.has(key as IDBValidKey)
+            ? 1
+            : 0,
         ),
       put: (value: unknown, key?: IDBValidKey) =>
         enqueue(() => {
-          if (key === undefined)
+          if (this.mode === "readonly") {
+            throw new Error("Readonly transaction cannot write");
+          }
+          if (key === undefined) {
             throw new Error("Fake IndexedDB requires an explicit key");
-          this.records.set(key, value);
+          }
+          this.workingRecords.set(key, value);
           return key;
         }),
       delete: (key: IDBValidKey | IDBKeyRange) =>
         enqueue(() => {
-          this.records.delete(key as IDBValidKey);
+          if (this.mode === "readonly") {
+            throw new Error("Readonly transaction cannot delete");
+          }
+          this.workingRecords.delete(key as IDBValidKey);
         }),
     } as unknown as IDBObjectStore;
   }
 
+  abort(): void {
+    if (this.completed || this.aborted) return;
+    this.aborted = true;
+    this.onabort?.call(this as unknown as IDBTransaction, {} as Event);
+    this.afterAbort?.();
+  }
+
   complete(): void {
-    if (this.completed) return;
+    if (this.completed || this.aborted) return;
     this.completed = true;
+    if (this.mode !== "readonly") {
+      this.records.clear();
+      for (const [key, value] of this.workingRecords) {
+        this.records.set(key, value);
+      }
+    }
     this.oncomplete?.call(this as unknown as IDBTransaction, {} as Event);
+    this.afterComplete?.();
   }
 }
 
@@ -83,67 +130,200 @@ class FakeDatabase {
   readonly records = new Map<IDBValidKey, unknown>();
   readonly transactions: FakeTransaction[] = [];
   autoCompleteTransactions = true;
+  closeCount = 0;
+  onversionchange:
+    ((this: IDBDatabase, event: IDBVersionChangeEvent) => unknown) | null =
+    null;
+  storeExists: boolean;
+  upgradeTransaction: FakeTransaction | null = null;
 
-  transaction(): IDBTransaction {
+  constructor(
+    public version: number,
+    records: Iterable<readonly [IDBValidKey, unknown]> = [],
+  ) {
+    this.storeExists = version > 0;
+    for (const [key, value] of records) this.records.set(key, value);
+  }
+
+  get objectStoreNames(): DOMStringList {
+    return {
+      contains: (name: string) =>
+        name === "automerge" && this.storeExists,
+    } as DOMStringList;
+  }
+
+  createObjectStore(): IDBObjectStore {
+    this.storeExists = true;
+    if (!this.upgradeTransaction) {
+      throw new Error("Object store creation requires an upgrade transaction");
+    }
+    return this.upgradeTransaction.objectStore();
+  }
+
+  transaction(
+    _storeNames?: string | string[],
+    mode: IDBTransactionMode = "readonly",
+  ): IDBTransaction {
     const transaction = new FakeTransaction(
       this.records,
+      mode,
       this.autoCompleteTransactions,
     );
     this.transactions.push(transaction);
     return transaction as unknown as IDBTransaction;
   }
+
+  close(): void {
+    this.closeCount += 1;
+  }
 }
 
-function createStorage(database = new FakeDatabase()): {
+class FakeIndexedDBFactory {
+  readonly openVersions: number[] = [];
+  blocked = false;
+
+  constructor(readonly database: FakeDatabase) {}
+
+  open(_name: string, version?: number): IDBOpenDBRequest {
+    const requestedVersion = version ?? this.database.version;
+    this.openVersions.push(requestedVersion);
+    const request: MutableRequest<IDBDatabase> = {
+      result: this.database as unknown as IDBDatabase,
+      error: null,
+      onsuccess: null,
+      onerror: null,
+      onblocked: null,
+      onupgradeneeded: null,
+      transaction: null,
+    };
+
+    queueMicrotask(() => {
+      if (this.blocked) {
+        request.onblocked?.call(
+          request as unknown as IDBOpenDBRequest,
+          {} as Event,
+        );
+        return;
+      }
+
+      if (this.database.version < requestedVersion) {
+        const oldVersion = this.database.version;
+        const upgrade = new FakeTransaction(
+          this.database.records,
+          "versionchange",
+          true,
+          () => {
+            this.database.version = requestedVersion;
+            this.database.upgradeTransaction = null;
+            request.onsuccess?.call(
+              requestAsIdb(request),
+              {} as Event,
+            );
+          },
+          () => {
+            request.error = new DOMException(
+              "Versionchange transaction aborted",
+              "AbortError",
+            );
+            request.onerror?.call(requestAsIdb(request), {} as Event);
+          },
+        );
+        this.database.upgradeTransaction = upgrade;
+        request.transaction = upgrade as unknown as IDBTransaction;
+        request.onupgradeneeded?.call(
+          request as unknown as IDBOpenDBRequest,
+          {
+            oldVersion,
+            newVersion: requestedVersion,
+            target: request,
+          } as unknown as IDBVersionChangeEvent,
+        );
+        return;
+      }
+
+      request.onsuccess?.call(requestAsIdb(request), {} as Event);
+    });
+
+    return request as unknown as IDBOpenDBRequest;
+  }
+}
+
+function createStorage(
+  database = new FakeDatabase(2, [
+    ["feed:installation-generation", 0],
+    ["feed:save-revision", 0],
+  ]),
+): {
   database: FakeDatabase;
+  factory: FakeIndexedDBFactory;
   storage: IndexedDBStorage;
 } {
-  const openRequest: MutableRequest<IDBDatabase> = {
-    result: database as unknown as IDBDatabase,
-    error: null,
-    onsuccess: null,
-    onerror: null,
-    onupgradeneeded: null,
+  const factory = new FakeIndexedDBFactory(database);
+  return {
+    database,
+    factory,
+    storage: new IndexedDBStorage(factory as unknown as IDBFactory),
   };
-  const factory = {
-    open: () => {
-      queueMicrotask(() => {
-        const event = {
-          target: openRequest,
-        } as unknown as IDBVersionChangeEvent;
-        openRequest.onsuccess?.call(
-          requestAsIdb(openRequest),
-          event as unknown as Event,
-        );
-      });
-      return openRequest as unknown as IDBOpenDBRequest;
-    },
-  } as unknown as IDBFactory;
-
-  return { database, storage: new IndexedDBStorage(factory) };
 }
 
 async function flushMicrotasks(): Promise<void> {
-  for (let index = 0; index < 6; index += 1) await Promise.resolve();
+  for (let index = 0; index < 8; index += 1) await Promise.resolve();
 }
 
 describe("IndexedDBStorage", () => {
-  it("returns null only when the document key is absent", async () => {
-    const { database, storage } = createStorage();
+  it("creates v2 metadata and returns an exact empty revision", async () => {
+    const { database, factory, storage } = createStorage(
+      new FakeDatabase(0),
+    );
 
-    await expect(storage.load()).resolves.toBeNull();
+    await expect(storage.load()).resolves.toEqual({
+      data: null,
+      revision: { generation: 0, saveRevision: 0 },
+    });
+    expect(factory.openVersions).toEqual([2]);
     expect(database.records.get("feed:installation-generation")).toBe(0);
+    expect(database.records.get("feed:save-revision")).toBe(0);
   });
 
-  it("migrates a legacy document without changing its bytes", async () => {
-    const { database, storage } = createStorage();
+  it("upgrades v1 bytes exactly and starts save revision zero", async () => {
     const legacy = new Uint8Array([4, 5, 6]).buffer;
-    database.records.set("feed", legacy);
+    const { database, storage } = createStorage(
+      new FakeDatabase(1, [
+        ["feed", legacy],
+        ["feed:installation-generation", 7],
+      ]),
+    );
 
-    await expect(storage.load()).resolves.toEqual(new Uint8Array([4, 5, 6]));
-
+    await expect(storage.load()).resolves.toEqual({
+      data: new Uint8Array([4, 5, 6]),
+      revision: { generation: 7, saveRevision: 0 },
+    });
     expect(database.records.get("feed")).toBe(legacy);
-    expect(database.records.get("feed:installation-generation")).toBe(0);
+    expect(database.records.get("feed:save-revision")).toBe(0);
+  });
+
+  it("fails closed when another connection blocks the v2 upgrade", async () => {
+    const database = new FakeDatabase(1, [
+      ["feed", new Uint8Array([1]).buffer],
+    ]);
+    const { factory, storage } = createStorage(database);
+    factory.blocked = true;
+
+    await expect(storage.load()).rejects.toThrow(
+      "IndexedDB v2 upgrade is blocked by another open Freed connection",
+    );
+  });
+
+  it("closes its connection when a later database version arrives", async () => {
+    const { database, storage } = createStorage();
+    await storage.load();
+
+    database.onversionchange?.call(
+      database as unknown as IDBDatabase,
+      {} as IDBVersionChangeEvent,
+    );
+
+    expect(database.closeCount).toBe(1);
   });
 
   it.each([
@@ -159,11 +339,29 @@ describe("IndexedDBStorage", () => {
     );
   });
 
-  it("stores only the bytes visible through a Uint8Array view", async () => {
+  it("rejects a partial record with a save revision but no document bytes", async () => {
+    const { storage } = createStorage(
+      new FakeDatabase(2, [
+        ["feed:installation-generation", 0],
+        ["feed:save-revision", 1],
+      ]),
+    );
+
+    await expect(storage.load()).rejects.toThrow(
+      "Stored Automerge data is corrupt: save revision exists without document bytes",
+    );
+  });
+
+  it("saves only the view bytes and returns the committed next revision", async () => {
     const { database, storage } = createStorage();
     const source = new Uint8Array([99, 1, 2, 3, 88]);
 
-    await storage.save(source.subarray(1, 4));
+    await expect(
+      storage.save(source.subarray(1, 4), {
+        generation: 0,
+        saveRevision: 0,
+      }),
+    ).resolves.toEqual({ generation: 0, saveRevision: 1 });
 
     const stored = database.records.get("feed");
     expect(stored).toBeInstanceOf(ArrayBuffer);
@@ -171,110 +369,86 @@ describe("IndexedDBStorage", () => {
       1, 2, 3,
     ]);
     expect((stored as ArrayBuffer).byteLength).toBe(3);
+    expect(database.records.get("feed:save-revision")).toBe(1);
   });
 
-  it("rejects an old worker save after reset advances the document generation", async () => {
-    const database = new FakeDatabase();
-    const oldWorker = createStorage(database).storage;
-    const resetStorage = createStorage(database).storage;
-    await oldWorker.save(new Uint8Array([1, 2, 3]));
+  it("rejects a stale save revision without replacing newer bytes", async () => {
+    const database = new FakeDatabase(2, [
+      ["feed:installation-generation", 0],
+      ["feed:save-revision", 0],
+    ]);
+    const first = createStorage(database).storage;
+    const stale = createStorage(database).storage;
+    const firstLoad = await first.load();
+    const staleLoad = await stale.load();
+    await first.save(new Uint8Array([1]), firstLoad.revision);
 
-    await resetStorage.clear();
-    await expect(oldWorker.save(new Uint8Array([9, 9, 9]))).rejects.toThrow(
-      "IndexedDB document generation is stale: expected 0, current 1",
+    const saving = stale.save(new Uint8Array([9]), staleLoad.revision);
+
+    await expect(saving).rejects.toBeInstanceOf(
+      StaleStorageRevisionError,
     );
+    await expect(saving).rejects.toThrow(
+      "IndexedDB document revision is stale: expected 0:0, current 0:1",
+    );
+    expect(
+      Array.from(
+        new Uint8Array(database.records.get("feed") as ArrayBuffer),
+      ),
+    ).toEqual([1]);
+  });
+
+  it("clears bytes, advances generation, resets revision, and fences old writers", async () => {
+    const database = new FakeDatabase(2, [
+      ["feed", new Uint8Array([1]).buffer],
+      ["feed:installation-generation", 3],
+      ["feed:save-revision", 8],
+    ]);
+    const resetter = createStorage(database).storage;
+    const oldWriter = createStorage(database).storage;
+    const resetRevision = (await resetter.load()).revision;
+    const oldRevision = (await oldWriter.load()).revision;
+
+    await expect(resetter.clear(resetRevision)).resolves.toEqual({
+      generation: 4,
+      saveRevision: 0,
+    });
+    await expect(
+      oldWriter.save(new Uint8Array([9]), oldRevision),
+    ).rejects.toBeInstanceOf(StaleStorageRevisionError);
 
     expect(database.records.has("feed")).toBe(false);
-    expect(database.records.get("feed:installation-generation")).toBe(1);
+    expect(database.records.get("feed:installation-generation")).toBe(4);
+    expect(database.records.get("feed:save-revision")).toBe(0);
   });
 
-  it("allows the current generation to persist after clear", async () => {
-    const database = new FakeDatabase();
-    const storage = createStorage(database).storage;
-    await storage.save(new Uint8Array([1]));
-    await storage.clear();
-
-    await storage.save(new Uint8Array([7, 8]));
-
-    await expect(storage.load()).resolves.toEqual(new Uint8Array([7, 8]));
-    expect(database.records.get("feed:installation-generation")).toBe(1);
-  });
-
-  it("rejects an old worker clear without deleting the current generation", async () => {
-    const database = new FakeDatabase();
-    const oldWorker = createStorage(database).storage;
-    const resetStorage = createStorage(database).storage;
-    const currentWorker = createStorage(database).storage;
-    await oldWorker.save(new Uint8Array([1]));
-    await resetStorage.clear();
-    await currentWorker.save(new Uint8Array([7, 8]));
-
-    await expect(oldWorker.clear()).rejects.toThrow(
-      "IndexedDB document generation is stale: expected 0, current 1",
-    );
-
-    await expect(currentWorker.load()).resolves.toEqual(new Uint8Array([7, 8]));
-    expect(database.records.get("feed:installation-generation")).toBe(1);
-  });
-
-  it("retains the cleared generation across a crash and reload", async () => {
-    const database = new FakeDatabase();
-    const oldWorker = createStorage(database).storage;
-    await oldWorker.save(new Uint8Array([1, 2, 3]));
-
-    await createStorage(database).storage.clear();
-
-    const reloadedWorker = createStorage(database).storage;
-    await expect(reloadedWorker.load()).resolves.toBeNull();
-    await reloadedWorker.save(new Uint8Array([4, 5, 6]));
-    await expect(reloadedWorker.load()).resolves.toEqual(
-      new Uint8Array([4, 5, 6]),
-    );
-    await expect(oldWorker.save(new Uint8Array([9]))).rejects.toThrow(
-      "IndexedDB document generation is stale: expected 0, current 1",
-    );
-    expect(database.records.get("feed:installation-generation")).toBe(1);
-  });
-
-  it("does not resolve save until its readwrite transaction completes", async () => {
-    const database = new FakeDatabase();
+  it("resolves writes only after the atomic transaction commits", async () => {
+    const database = new FakeDatabase(2, [
+      ["feed:installation-generation", 0],
+      ["feed:save-revision", 0],
+    ]);
     database.autoCompleteTransactions = false;
     const { storage } = createStorage(database);
     let resolved = false;
 
-    const saving = storage.save(new Uint8Array([1, 2, 3])).then(() => {
-      resolved = true;
-    });
+    const saving = storage
+      .save(new Uint8Array([1, 2, 3]), {
+        generation: 0,
+        saveRevision: 0,
+      })
+      .then(() => {
+        resolved = true;
+      });
     await flushMicrotasks();
 
     const transaction = database.transactions.at(-1);
-    expect(transaction?.requestSuccessCount).toBe(3);
+    expect(transaction?.requestSuccessCount).toBe(4);
     expect(resolved).toBe(false);
+    expect(database.records.has("feed")).toBe(false);
 
     transaction?.complete();
     await saving;
     expect(resolved).toBe(true);
-  });
-
-  it("does not resolve clear until its readwrite transaction completes", async () => {
-    const database = new FakeDatabase();
-    database.records.set("feed", new Uint8Array([1]).buffer);
-    database.autoCompleteTransactions = false;
-    const { storage } = createStorage(database);
-    let resolved = false;
-
-    const clearing = storage.clear().then(() => {
-      resolved = true;
-    });
-    await flushMicrotasks();
-
-    const transaction = database.transactions.at(-1);
-    expect(transaction?.requestSuccessCount).toBe(3);
-    expect(resolved).toBe(false);
-
-    transaction?.complete();
-    await clearing;
-    expect(resolved).toBe(true);
-    expect(database.records.has("feed")).toBe(false);
+    expect(database.records.has("feed")).toBe(true);
   });
 });

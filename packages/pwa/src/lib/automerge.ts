@@ -22,8 +22,10 @@ import type {
   UserPreferences,
 } from "@freed/shared";
 import type {
+  CommittedAutomergeDoc,
   DocState,
   DocumentHistoryRelation,
+  WorkerErrorCode,
   WorkerRequest,
   WorkerResponse,
 } from "./automerge-types";
@@ -85,6 +87,7 @@ let activeGeneration: WorkerGeneration | null = null;
 let nextGenerationId = 1;
 let pendingInitialization: PendingInitialization | null = null;
 let appDocumentInitialized = false;
+let durableReloadRequired = false;
 let automergeQuiesced = false;
 let automergeQuiescePromise: Promise<void> | null = null;
 
@@ -106,6 +109,10 @@ const pendingDocBinary = new Map<
   number,
   GenerationOwnedRequest<Uint8Array>
 >();
+const pendingCommittedDoc = new Map<
+  number,
+  GenerationOwnedRequest<CommittedAutomergeDoc>
+>();
 const pendingDocHeads = new Map<
   number,
   GenerationOwnedRequest<string[] | null>
@@ -124,6 +131,7 @@ const pendingMaps: Array<Map<number, GenerationOwnedRequest<unknown>>> = [
   pendingContentSignalBackfill as Map<number, GenerationOwnedRequest<unknown>>,
   pendingSampleDataClear as Map<number, GenerationOwnedRequest<unknown>>,
   pendingDocBinary as Map<number, GenerationOwnedRequest<unknown>>,
+  pendingCommittedDoc as Map<number, GenerationOwnedRequest<unknown>>,
   pendingDocHeads as Map<number, GenerationOwnedRequest<unknown>>,
   pendingDocRelationship as Map<number, GenerationOwnedRequest<unknown>>,
   pendingLegacyHtml as Map<number, GenerationOwnedRequest<unknown>>,
@@ -131,6 +139,33 @@ const pendingMaps: Array<Map<number, GenerationOwnedRequest<unknown>>> = [
 
 function lifecycleError(message: string): WorkerLifecycleError {
   return new WorkerLifecycleError(message);
+}
+
+function isFatalPersistenceCode(
+  errorCode: WorkerErrorCode | undefined,
+): errorCode is "AUTOMERGE_PERSISTENCE_FAILED" | "STALE_DOCUMENT_REVISION" {
+  return (
+    errorCode === "AUTOMERGE_PERSISTENCE_FAILED" ||
+    errorCode === "STALE_DOCUMENT_REVISION"
+  );
+}
+
+function handleFatalPersistenceAck(
+  generation: WorkerGeneration,
+  message: Extract<WorkerResponse, { type: "ACK" }>,
+): boolean {
+  if (!message.error || !isFatalPersistenceCode(message.errorCode)) {
+    return false;
+  }
+  durableReloadRequired = true;
+  failWorkerGeneration(
+    generation,
+    lifecycleError(message.error),
+    message.errorCode === "STALE_DOCUMENT_REVISION"
+      ? "stale_document_revision"
+      : "persistence_failure",
+  );
+  return true;
 }
 
 function workerErrorMessage(event: ErrorEvent | MessageEvent): string {
@@ -354,7 +389,7 @@ async function getGenerationForRequest(type: WorkerRequest["type"]): Promise<Wor
   if (
     type !== "INIT" &&
     type !== "CLEAR_LOCAL" &&
-    appDocumentInitialized &&
+    (appDocumentInitialized || durableReloadRequired) &&
     !generation.documentInitialized
   ) {
     await initDoc();
@@ -422,6 +457,9 @@ function handleWorkerMessage(
   const msg = event.data;
 
   if (msg.type === "READY") return;
+  if (msg.type === "ACK" && handleFatalPersistenceAck(generation, msg)) {
+    return;
+  }
 
   if (msg.type === "STATE_UPDATE") {
     if (msg.binary) lastBinary = msg.binary;
@@ -436,6 +474,26 @@ function handleWorkerMessage(
     pendingDocBinary.delete(msg.reqId);
     lastBinary = msg.binary;
     pendingBinary.resolve(msg.binary);
+    return;
+  }
+
+  if (msg.type === "COMMITTED_DOC") {
+    const pendingSnapshot = getOwnedRequest(
+      pendingCommittedDoc,
+      msg.reqId,
+      generation.id,
+    );
+    if (!pendingSnapshot) return;
+    pendingCommittedDoc.delete(msg.reqId);
+    lastBinary = Uint8Array.from(msg.binary);
+    pendingSnapshot.resolve({
+      binary: Uint8Array.from(msg.binary),
+      heads: [...msg.heads],
+      revision: {
+        generation: msg.revision.generation,
+        saveRevision: msg.revision.saveRevision,
+      },
+    });
     return;
   }
 
@@ -535,6 +593,17 @@ function handleWorkerMessage(
     return;
   }
 
+  const pendingSnapshot = getOwnedRequest(
+    pendingCommittedDoc,
+    msg.reqId,
+    generation.id,
+  );
+  if (pendingSnapshot && msg.error) {
+    pendingCommittedDoc.delete(msg.reqId);
+    pendingSnapshot.reject(new Error(msg.error));
+    return;
+  }
+
   const pendingHeads = getOwnedRequest(pendingDocHeads, msg.reqId, generation.id);
   if (pendingHeads && msg.error) {
     pendingDocHeads.delete(msg.reqId);
@@ -602,6 +671,7 @@ function sendInit(generation: WorkerGeneration): Promise<DocState> {
       cleanup();
       generation.documentInitialized = true;
       appDocumentInitialized = true;
+      durableReloadRequired = false;
       try {
         registerDocAccessors(
           () => null,
@@ -623,6 +693,7 @@ function sendInit(generation: WorkerGeneration): Promise<DocState> {
         initialState = msg.state;
         tryResolve();
       } else if (msg.type === "ACK" && msg.reqId === reqId) {
+        if (handleFatalPersistenceAck(generation, msg)) return;
         if (msg.error) {
           settled = true;
           cleanup();
@@ -713,10 +784,15 @@ export function initDoc(): Promise<DocState> {
 
 /** Binary snapshot of the current doc — used by sync.ts for relay/cloud upload. */
 export async function getDocBinary(): Promise<Uint8Array> {
+  return (await getCommittedDoc()).binary;
+}
+
+/** One defensive snapshot of the exact durable bytes, heads, and revision. */
+export async function getCommittedDoc(): Promise<CommittedAutomergeDoc> {
   const reqId = nextReqId++;
   return requestResult(
-    pendingDocBinary,
-    { reqId, type: "GET_DOC_BINARY" } satisfies WorkerRequest,
+    pendingCommittedDoc,
+    { reqId, type: "GET_COMMITTED_DOC" } satisfies WorkerRequest,
   );
 }
 
@@ -814,6 +890,7 @@ export function quiescePwaAutomergeForFactoryReset(): Promise<void> {
       lastDocState = null;
       initPromise = null;
       appDocumentInitialized = false;
+      durableReloadRequired = false;
     }
     if (quiesceFailure) throw quiesceFailure;
   })();
@@ -825,7 +902,9 @@ export async function clearLocalDocAfterPwaQuiesce(): Promise<void> {
   if (!automergeQuiesced) {
     throw new Error("Automerge must be quiesced before factory reset clears IndexedDB");
   }
-  await new IndexedDBStorage().clear();
+  const storage = new IndexedDBStorage();
+  const stored = await storage.load();
+  await storage.clear(stored.revision);
 }
 
 registerPwaFactoryResetQuiesceHandler(

@@ -15,6 +15,7 @@ const gdriveUploadReplaceMock = vi.fn();
 const gdriveDeleteFileMock = vi.fn();
 const replaceLocalDocMock = vi.fn();
 const compareDocMock = vi.fn();
+const getCommittedDocMock = vi.fn();
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
@@ -43,6 +44,7 @@ vi.mock("@freed/sync/cloud", () => ({
 
 vi.mock("./automerge", () => ({
   compareDoc: compareDocMock,
+  getCommittedDoc: getCommittedDocMock,
   getDocBinary: vi.fn(async () => new Uint8Array()),
   getDocHeads: vi.fn(async () => ["test-head"]),
   mergeDoc: vi.fn(),
@@ -93,7 +95,15 @@ describe("desktop cloud sync auth refresh", () => {
     gdriveDeleteFileMock.mockReset();
     replaceLocalDocMock.mockReset();
     compareDocMock.mockReset();
+    getCommittedDocMock.mockReset();
     compareDocMock.mockResolvedValue("equal");
+    getCommittedDocMock.mockResolvedValue({
+      binary: new Uint8Array(),
+      heads: ["test-head"],
+      revision: { generation: 3, saveRevision: 5 },
+      itemCount: 0,
+      friendCount: 0,
+    });
     gdriveUploadSafeMock.mockResolvedValue({
       fileId: "file-1",
       uploadedBinary: new Uint8Array(),
@@ -524,12 +534,71 @@ describe("desktop cloud sync auth refresh", () => {
     await resolveCloudSyncConflict("gdrive", "cloud");
     stopAllCloudSyncs();
 
-    expect(replaceLocalDocMock).toHaveBeenCalledWith(remote);
+    expect(replaceLocalDocMock).toHaveBeenCalledWith(
+      remote,
+      { generation: 3, saveRevision: 5 },
+    );
     expect(gdriveDeleteFileMock).not.toHaveBeenCalled();
     expect(gdriveUploadSafeMock).not.toHaveBeenCalled();
     expect(updateCloudProviderMock).toHaveBeenCalledWith("gdrive", expect.objectContaining({
       statusMessage: "This device now uses the cloud backup.",
     }));
+  });
+
+  it("rejects cloud-wins replacement when the local revision moves during download", async () => {
+    const remote = new Uint8Array([9, 8, 7]);
+    let releaseDownload!: (binary: Uint8Array) => void;
+    const download = new Promise<Uint8Array>((resolve) => {
+      releaseDownload = resolve;
+    });
+    gdriveDownloadLatestMock.mockReturnValueOnce(download);
+    const capturedRevision = { generation: 3, saveRevision: 5 };
+    getCommittedDocMock.mockResolvedValueOnce({
+      binary: new Uint8Array([1]),
+      heads: ["before-download"],
+      revision: capturedRevision,
+      itemCount: 1,
+      friendCount: 0,
+    });
+    replaceLocalDocMock.mockRejectedValueOnce(
+      new Error("Automerge persistence state is stale"),
+    );
+
+    const { resolveCloudSyncConflict, storeCloudToken, stopAllCloudSyncs } =
+      await import("./sync");
+    storeCloudToken("gdrive", {
+      accessToken: "valid-access-token",
+      refreshToken: "refresh-token",
+      expiresAt: Date.now() + 3_600_000,
+    });
+
+    const recovery = resolveCloudSyncConflict("gdrive", "cloud");
+    await vi.waitFor(() =>
+      expect(gdriveDownloadLatestMock).toHaveBeenCalledOnce(),
+    );
+    getCommittedDocMock.mockResolvedValue({
+      binary: new Uint8Array([2]),
+      heads: ["newer-local"],
+      revision: { generation: 3, saveRevision: 6 },
+      itemCount: 2,
+      friendCount: 0,
+    });
+    releaseDownload(remote);
+
+    await expect(recovery).rejects.toThrow(
+      "Automerge persistence state is stale",
+    );
+    stopAllCloudSyncs();
+    expect(replaceLocalDocMock).toHaveBeenCalledWith(
+      remote,
+      capturedRevision,
+    );
+    expect(updateCloudProviderMock).not.toHaveBeenCalledWith(
+      "gdrive",
+      expect.objectContaining({
+        statusMessage: "This device now uses the cloud backup.",
+      }),
+    );
   });
 
   it("does not crash startup when the Google token proxy is missing its secret", async () => {

@@ -928,6 +928,9 @@ export function buildValidationPlan(mode, changedFiles) {
   const sharedPackageChanged = changedFiles.some((filePath) =>
     filePath.startsWith("packages/shared/"),
   );
+  const syncPackageChanged = changedFiles.some((filePath) =>
+    filePath.startsWith("packages/sync/"),
+  );
   const sharedSurfaceChanged = changedFiles.some(isSharedSurface);
   const desktopSurfaceChanged =
     sharedSurfaceChanged || changedFiles.some(isDesktopSurface);
@@ -1034,6 +1037,13 @@ export function buildValidationPlan(mode, changedFiles) {
     addCommand(
       plan,
       npmCommand("shared unit tests", ["run", "test"], "packages/shared"),
+    );
+  }
+
+  if (syncPackageChanged) {
+    addCommand(
+      plan,
+      npmCommand("sync unit tests", ["run", "test"], "packages/sync"),
     );
   }
 

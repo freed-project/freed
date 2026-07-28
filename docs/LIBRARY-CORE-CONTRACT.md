@@ -2836,6 +2836,30 @@ During the read-migration period:
   retry a non-idempotent legacy mutation merely because projection repair
   failed.
 
+The active legacy IndexedDB bridge uses schema version 2 before the bootstrap
+transaction is wired. Version 1 feed bytes migrate byte for byte with save
+revision zero. Every load returns the bytes plus the exact nonnegative
+`{ generation, saveRevision }`. A save compares both values and increments
+only `saveRevision` in the same readwrite transaction that replaces the
+bytes. A clear compares both values, deletes the bytes, increments
+`generation`, and resets `saveRevision` to zero in one transaction. A blocked
+upgrade, missing or malformed metadata, revision overflow, or mismatch fails
+closed. Connections close on `versionchange`.
+
+Ordinary persistence derives a repeatable payload with `saveSince` from the
+last committed Automerge heads and appends it to the last committed bytes. It
+never uses Automerge's mutable incremental-save cursor. Compaction and
+explicit full replacement write a complete save. Full replacement also
+requires the caller revision captured before its asynchronous work began.
+Candidate bytes, heads, revision, search indexes, and other derived worker
+state become committed only after the storage compare-and-swap succeeds.
+If the loaded bytes do not decode, recovery retains the bytes and revision
+from that exact read. It never re-reads storage to obtain broader permission
+to clear. Only a recognized Automerge decode failure classifies the bytes as
+corrupt. Allocation exhaustion and unknown load failures preserve the bytes
+and fail closed. A clear still compares the exact failed-read revision, so a
+newer concurrent save cannot be deleted by an older recovery attempt.
+
 During protocol activation:
 
 1. Desktop and PWA ship dormant `library_core_v1` readers, writers, and sync.
