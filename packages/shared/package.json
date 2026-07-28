@@ -15,17 +15,20 @@
     "./google-contacts": "./src/google-contacts.ts",
     "./google-contacts-automation": "./src/google-contacts-automation.ts",
     "./redact-sensitive": "./src/redact-sensitive.ts",
-    "./contact-matching": "./src/contact-matching.ts"
+    "./contact-matching": "./src/contact-matching.ts",
+    "./library-core": "./src/library-core/index.ts"
   },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
+    "test": "node ../../node_modules/vitest/vitest.mjs run --maxWorkers=1",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@automerge/automerge": "^2.2.0"
   },
   "devDependencies": {
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vitest": "^4.1.10"
   }
 }

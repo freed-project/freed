@@ -64,6 +64,7 @@ test("feature plan for shared changes covers both desktop and pwa surfaces", () 
     "root typecheck",
     "desktop social provider unit tests",
     "desktop social provider e2e",
+    "shared unit tests",
     "pwa production build",
     "pwa typecheck",
     "pwa unit tests",
@@ -567,6 +568,7 @@ test("dev plan runs desktop smoke, regression, perf, and visual lanes", () => {
   assert.ok(labels.includes("desktop e2e perf"));
   assert.ok(labels.includes("desktop e2e visual"));
   assert.ok(labels.includes("pwa performance tests"));
+  assert.ok(labels.includes("shared unit tests"));
   assert.ok(labels.includes("native rust clippy"));
   assert.ok(labels.includes("native rust tests"));
   assert.ok(!labels.includes("desktop e2e full"));

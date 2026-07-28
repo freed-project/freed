@@ -301,6 +301,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.17 | Desktop cloud sync activity in the global background monitor | ✓ | Low |
 | 4.18 | Dedicated large-media transfer lane, LAN first with encrypted user-cloud fallback | ☐ | High |
 | 4.19 | Synced Freed Desktop registration and duplicate provider request warning | ✓ | Low |
+| 4.20 | Dormant Library Core schema, mutation, query, worker-message, and local-authority census | ✓ | Medium |
 
 ---
 
@@ -330,6 +331,7 @@ recovery, telemetry, milestones, and acceptance tests.
 - [x] Desktop no-cloud-sync launch banner self-dismisses after 15 seconds with a gentle countdown ring
 - [x] Desktop writes rotating local snapshots and can restore an older Automerge copy from Settings
 - [x] Each Freed Desktop installation keeps its opaque identity locally, registers durable topology metadata after document initialization and merges, and warns in Sync setup when another Freed Desktop could duplicate RSS or authenticated provider requests. PWA readers do not count toward the warning.
+- [x] The dormant Library Core census makes current synchronized fields, shared store surfaces, Desktop and PWA worker messages, planned operations and queries, and retained local authorities reviewable without changing the active Automerge writer or claiming Gate A activation
 - [ ] iCloud sync integration
 - [ ] Large media packages transfer outside Automerge through an authenticated,
       resumable, integrity-checked path with explicit storage and deletion rules

@@ -36,6 +36,35 @@ Gate A includes the one-time legacy epoch bootstrap. Record it through one
 durable initialization transaction, then read it back. Never guess an initial
 epoch or infer authority from file presence.
 
+## Keep the dormant census honest
+
+The checked-in Gate A census is a compiler-enforced inventory, not activation
+authority:
+
+- synchronized schema work updates
+  `packages/shared/src/library-core/field-registry.ts`;
+- shared store contract work updates
+  `packages/shared/src/library-core/store-surface-registry.ts`;
+- Desktop and PWA worker message changes update the platform-owned
+  `library-core-worker-surface-registry.ts` beside each worker type union;
+- planned operation or query vocabulary changes update the corresponding
+  shared registry;
+- localStorage, IndexedDB, Cache API, Tauri store, native file, Keychain, or
+  operating-system session ownership changes update
+  `local-authority-registry.ts`.
+
+Run the focused registry tests and the affected platform typechecks. A new
+schema leaf, store method, or worker message must fail typecheck until
+classified. Current authority and planned authority remain separate. An
+unresolved codec, algebra, projection, retention limit, platform locator, or
+migration rule stays typed as blocked instead of receiving a plausible
+placeholder.
+
+Never infer activation from registry presence. The combined census must keep
+`activationAllowed: false` until every blocker is closed and the exact
+transition is recorded through the activation manifest and its required
+receipt.
+
 ## Preserve the invariants
 
 1. Keep exactly one active writer epoch. Advance it only with a signed immutable
