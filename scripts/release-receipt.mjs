@@ -417,15 +417,10 @@ export function releaseInspectionRange({
       `Previous release product commit ${fromExclusiveCommitSha} is not an ancestor of its published tag commit ${resolvedTagCommitSha}.`,
     );
   }
-  for (const ancestorStart of new Set([
-    resolvedTagCommitSha,
-    fromExclusiveCommitSha,
-  ])) {
-    if (!isAncestor(ancestorStart, toInclusiveProductCommitSha)) {
-      throw new Error(
-        `Previous release range boundary ${ancestorStart} is not an ancestor of current product commit ${toInclusiveProductCommitSha}.`,
-      );
-    }
+  if (!isAncestor(fromExclusiveCommitSha, toInclusiveProductCommitSha)) {
+    throw new Error(
+      `Previous release range boundary ${fromExclusiveCommitSha} is not an ancestor of current product commit ${toInclusiveProductCommitSha}.`,
+    );
   }
 
   return {
