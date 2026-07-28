@@ -133,6 +133,25 @@ test("a failed exact run cannot be replaced by an inherited receipt", () => {
   );
 });
 
+test("a cancelled metadata-only run may inherit the successful parent receipt", () => {
+  const parentSha = "b".repeat(40);
+  const receipt = selectIntegrationReceipt(
+    {
+      workflow_runs: [
+        run({ conclusion: "cancelled" }),
+        run({ id: 41, head_sha: parentSha }),
+      ],
+    },
+    OPTIONS,
+    { inheritedFromSha: parentSha },
+  );
+
+  assert.equal(receipt.schemaVersion, 2);
+  assert.equal(receipt.headSha, OPTIONS.sha);
+  assert.equal(receipt.validationHeadSha, parentSha);
+  assert.equal(receipt.runId, 41);
+});
+
 function git(cwd, args) {
   return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 }

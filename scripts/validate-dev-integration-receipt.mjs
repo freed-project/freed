@@ -13,6 +13,11 @@ import { isReleaseOnlyFile } from "./release-promotion-shared.mjs";
 const DEFAULT_REPOSITORY = "freed-project/freed";
 const DEFAULT_BRANCH = "dev";
 const DEFAULT_WORKFLOW = "ci.yml";
+const BLOCKING_CONCLUSIONS = new Set([
+  "action_required",
+  "failure",
+  "timed_out",
+]);
 
 function fail(message) {
   throw new Error(message);
@@ -193,7 +198,9 @@ export function selectIntegrationReceipt(
       run.event === "push",
   );
   const exactFailure = exactRuns.find(
-    (run) => run.status === "completed" && run.conclusion !== "success",
+    (run) =>
+      run.status === "completed" &&
+      BLOCKING_CONCLUSIONS.has(run.conclusion),
   );
   if (exactFailure || !inheritedFromSha) {
     return selectExactIntegrationReceipt(payload, options);
