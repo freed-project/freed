@@ -146,28 +146,25 @@
     ]
   },
   "release": {
-    "deck": "The first dev build in eleven days, carrying 62 commits of storage and memory work",
+    "deck": "Lower cloud-merge memory, traceable renderer growth, and safer synced-library cleanup",
     "features": [
-      "The cloud merge now runs in a worker that is terminated after each merge, so its peak no longer becomes a permanent floor",
-      "Renderer memory is attributed against a pre-hydration baseline, so growth can be traced to a cause rather than guessed at",
-      "Archive pruning runs again for cloud-synced libraries, where startup maintenance had never run at all"
+      "Cloud merges now run in a short-lived worker, releasing temporary memory after each merge instead of keeping it in Freed Desktop",
+      "Renderer memory reports now separate startup overhead from loaded-library growth, making regressions easier to trace",
+      "Cloud-synced libraries now run archive cleanup during reconciliation, preventing deleted history from accumulating indefinitely"
     ],
     "fixes": [
-      "Cloud sync bodies cross the native boundary as raw bytes instead of a JSON number array",
-      "Feed ranking is split into a time-invariant part and a live recency term, and no longer syncs between devices",
-      "Every synced field now declares where it lives and what happens when it is deleted",
-      "Feed items can be projected into flat rows, proved lossless against a real 15,846-item library",
-      "Moved off a Rust HTTP dependency that had been fully yanked upstream",
-      "The tooling lane runs only suites a change can reach, and warns before scheduling work that cannot finish in time",
-      "Sidebar label measurement in the zoom test no longer reads geometry mid-animation",
-      "Roadmap layout ref syncs after commit rather than during render",
-      "Historical cloud promotions are recognised again",
-      "Facebook group regression aligned with local state"
+      "Cloud sync moves document payloads across the native boundary as compact encoded data instead of large number arrays",
+      "Feed ranking no longer syncs device-specific recency data between devices",
+      "Every synced field now has an explicit storage and deletion policy",
+      "Large feeds can be projected into compact rows without losing source data",
+      "Replaced a withdrawn Rust networking dependency used by Freed Desktop",
+      "Historical cloud promotions are recognized again",
+      "Facebook group state now stays aligned with the local library"
     ],
     "followUps": [
-      "This build is not expected to unblock Facebook and Instagram. Those are refused when the renderer sits above a 4 GB scrape budget, and moving the library out of the renderer is still ahead",
-      "Reading the memory telemetry from this build is what tells us whether the changes above moved the renderer at all"
+      "This build does not change the 4 GB renderer safety limit for Facebook or Instagram sync. Those providers can still pause when a large library pushes the renderer above that limit",
+      "The new memory reporting measures where growth occurs. Moving the library corpus out of the renderer remains future work"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.7.2600-dev\n\nThe first dev build in eleven days, carrying 62 commits of storage and memory work\n\n### Features\n\n- The cloud merge now runs in a worker that is terminated after each merge, so its peak no longer becomes a permanent floor\n- Renderer memory is attributed against a pre-hydration baseline, so growth can be traced to a cause rather than guessed at\n- Archive pruning runs again for cloud-synced libraries, where startup maintenance had never run at all\n\n### Fixes\n\n- Cloud sync bodies cross the native boundary as raw bytes instead of a JSON number array\n- Feed ranking is split into a time-invariant part and a live recency term, and no longer syncs between devices\n- Every synced field now declares where it lives and what happens when it is deleted\n- Feed items can be projected into flat rows, proved lossless against a real 15,846-item library\n- Moved off a Rust HTTP dependency that had been fully yanked upstream\n- The tooling lane runs only suites a change can reach, and warns before scheduling work that cannot finish in time\n- Sidebar label measurement in the zoom test no longer reads geometry mid-animation\n- Roadmap layout ref syncs after commit rather than during render\n- Historical cloud promotions are recognised again\n- Facebook group regression aligned with local state\n\n### Known limits\n\n- This build is not expected to unblock Facebook and Instagram. Those are refused when the renderer sits above a 4 GB scrape budget, and moving the library out of the renderer is still ahead\n- Reading the memory telemetry from this build is what tells us whether the changes above moved the renderer at all\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.2600-dev\n\nLower cloud-merge memory, traceable renderer growth, and safer synced-library cleanup\n\n### Features\n\n- Cloud merges now run in a short-lived worker, releasing temporary memory after each merge instead of keeping it in Freed Desktop\n- Renderer memory reports now separate startup overhead from loaded-library growth, making regressions easier to trace\n- Cloud-synced libraries now run archive cleanup during reconciliation, preventing deleted history from accumulating indefinitely\n\n### Fixes\n\n- Cloud sync moves document payloads across the native boundary as compact encoded data instead of large number arrays\n- Feed ranking no longer syncs device-specific recency data between devices\n- Every synced field now has an explicit storage and deletion policy\n- Large feeds can be projected into compact rows without losing source data\n- Replaced a withdrawn Rust networking dependency used by Freed Desktop\n- Historical cloud promotions are recognized again\n- Facebook group state now stays aligned with the local library\n\n### Known limits\n\n- This build does not change the 4 GB renderer safety limit for Facebook or Instagram sync. Those providers can still pause when a large library pushes the renderer above that limit\n- The new memory reporting measures where growth occurs. Moving the library corpus out of the renderer remains future work\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

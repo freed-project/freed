@@ -66,6 +66,10 @@ grouped card.
 2. Open the generated `release-notes/releases/vX.Y.Z.json`
 3. Tighten the `deck`, `features`, `fixes`, and `followUps`
    The deck should read like `X, Y, and Z`, not a sentence
+   Lead with shipped outcomes. Never use elapsed time since another release,
+   channel cadence, commit counts, or release-process trivia as the deck. The
+   changelog mixes production and dev releases, so channel-only cadence claims
+   are misleading even when their arithmetic is technically correct.
    Features should use shipped-product language, not commit tense
    If fixes or follow-ups run long, consolidate related items into one line
 4. Add or update `pinnedHighlights` in the matching daily file when a theme
