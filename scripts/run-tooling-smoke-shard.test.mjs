@@ -330,9 +330,22 @@ test("validation workflow preserves the complete tooling smoke gate", () => {
   assert.match(workflow, /--shard-count=\$\{\{ matrix\.shardCount \}\}/);
   assert.match(workflow, /tooling-smoke-results\/\*\.xml/);
 
-  // A push to dev must still run every suite. That run is the full integration
-  // proof, so scoping it by changed paths would break release admission.
+  // Dev retains the full application integration job, while tooling smoke
+  // scopes itself to the merged delta. Missing push history fails closed.
+  assert.match(workflow, /--base-ref "\$BEFORE_SHA"/);
+  assert.match(workflow, /git cat-file -e "\$\{BEFORE_SHA\}\^\{commit\}"/);
   assert.match(workflow, /plan-tooling-smoke\.mjs --all --github-output/);
+
+  const nightlyWorkflow = readFileSync(
+    path.join(
+      process.cwd(),
+      ".github",
+      "workflows",
+      "tooling-nightly.yml",
+    ),
+    "utf8",
+  );
+  assert.match(nightlyWorkflow, /node scripts\/measure-tooling-smoke\.mjs/);
 
   // The gate observes the planner, the shards, and the native lane together.
   assert.match(

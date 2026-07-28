@@ -2,9 +2,9 @@
 // Decide which tooling smoke suites a change can actually affect, and spread a
 // fixed job budget across them. Emits a GitHub Actions matrix.
 //
-// Ordinary pull requests get changed-path scoping. A push to dev gets the full
-// lane, because dev carries the one full integration proof that release
-// admission later inherits.
+// Pull requests and pushes to dev get changed-path scoping. The separate dev
+// integration job carries the full application proof that release admission
+// later inherits. Exhaustive tooling coverage runs nightly.
 
 import { spawnSync } from "node:child_process";
 import { appendFileSync } from "node:fs";

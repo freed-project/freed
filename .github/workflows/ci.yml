@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [dev, main]
 
-# Superseded dev pushes cancel too. Only the latest dev tree carries the full
+# Superseded dev pushes cancel too. Only the latest dev tree carries the
 # integration proof that release admission inherits, so validating an
 # intermediate commit that a newer push already replaced is wasted runner time.
 concurrency:
@@ -43,13 +43,24 @@ jobs:
         with:
           node-version-file: ".nvmrc"
 
-      # A push to dev runs the full lane. That is the one full integration proof
-      # on the protected tree, and release admission inherits it by receipt.
+      # Dev keeps the full application integration job below. Tooling smoke is
+      # scoped to the merged delta because exhaustive tooling coverage belongs
+      # to the nightly lane. A missing push base fails closed to the full lane.
       - name: Resolve tooling smoke plan
         id: plan
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
-            node scripts/plan-tooling-smoke.mjs --all --github-output
+            if [ -n "$BEFORE_SHA" ] \
+              && ! [[ "$BEFORE_SHA" =~ ^0+$ ]] \
+              && git cat-file -e "${BEFORE_SHA}^{commit}"; then
+              node scripts/plan-tooling-smoke.mjs \
+                --base-ref "$BEFORE_SHA" \
+                --github-output
+            else
+              node scripts/plan-tooling-smoke.mjs --all --github-output
+            fi
           else
             git fetch --no-tags origin "${{ github.base_ref }}"
             node scripts/plan-tooling-smoke.mjs \
@@ -87,8 +98,9 @@ jobs:
     # DEFAULT_MAX_JOBS in scripts/lib/tooling-smoke-plan.mjs.
     #
     # This is a ceiling for the full lane, not a target. Ordinary PRs select
-    # zero or one suite and finish in minutes; only a scripts/ change or a push
-    # to dev pays the whole cost. Suite runtimes are tracked separately as debt.
+    # zero or one suite and finish in minutes. Only a change that invalidates
+    # the planner itself pays the whole cost. Suite runtimes are tracked
+    # separately as debt.
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.tooling-smoke-plan.outputs.matrix) }}
