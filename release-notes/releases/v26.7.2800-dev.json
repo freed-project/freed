@@ -1,0 +1,77 @@
+{
+  "tag": "v26.7.2800-dev",
+  "version": "26.7.2800-dev",
+  "channel": "dev",
+  "dayKey": "26.7.28",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-07-28T17:11:36.705Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.7.2703-dev",
+    "previousPublishedDayTag": "v26.7.2703-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "7a2dbe6df63762fe7c0b83fc903dafc94ef16c30",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.7.2703-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "57e62362600063000df18ed19aec50bd845f1035",
+        "toInclusiveProductCommitSha": "7a2dbe6df63762fe7c0b83fc903dafc94ef16c30"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": false,
+        "previousDigest": "sha256:96a22914b0b629c540ede98c41fb586b9695f139324fe033faae374dc83b3ccb",
+        "currentDigest": "sha256:96a22914b0b629c540ede98c41fb586b9695f139324fe033faae374dc83b3ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:fb3087a064ba238e3803103d0dfb98c0ddbd9727cf06a889f428db15a9886457",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.7.2800-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.7.2800-dev"
+    ],
+    "prNumbers": [
+      1197,
+      1198,
+      1205,
+      1207,
+      1209,
+      1210,
+      1211,
+      1214
+    ],
+    "commitSubjects": [
+      "fix: verify release ancestry against GitHub graph (#1214)",
+      "fix: use product receipt as release range boundary (#1211)",
+      "fix: harden release ancestry validation (#1210)",
+      "perf: skip unrelated tooling for release notes (#1209)",
+      "fix: make startup memory attribution process-safe (#1197)",
+      "chore: establish Library Core architecture contract (#1198)",
+      "perf: scope dev tooling validation to changed paths (#1205)",
+      "fix: recognize promoted updater manifest backflow (#1207)",
+      "docs: improve v26.7.2600-dev release notes (#1206)"
+    ]
+  },
+  "release": {
+    "deck": "Recognize promoted updater manifest backflow and product receipt as release range boundary now uses the correct path",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.2800-dev\n\nRecognize promoted updater manifest backflow and product receipt as release range boundary now uses the correct path\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
