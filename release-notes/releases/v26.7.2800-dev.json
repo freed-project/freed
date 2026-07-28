@@ -3,7 +3,7 @@
   "version": "26.7.2800-dev",
   "channel": "dev",
   "dayKey": "26.7.28",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-07-28T17:11:36.705Z",
   "model": "heuristic",
@@ -68,10 +68,23 @@
     ]
   },
   "release": {
-    "deck": "Recognize promoted updater manifest backflow and product receipt as release range boundary now uses the correct path",
-    "features": [],
-    "fixes": [],
-    "followUps": []
+    "deck": "Makes startup memory attribution reliable across app restarts and establishes the guarded path for moving the saved library out of the renderer",
+    "features": [
+      "Startup memory reports now bind the pre-hydration baseline to both the app process and renderer process, preventing comparisons across launches or reused process IDs",
+      "The new Library Core contract defines how saved items, indexes, projections, migrations, rollback, and deletion must behave before storage moves out of renderer memory",
+      "A release activation manifest now makes any future storage transition explicit and reviewable instead of allowing runtime migration by accident"
+    ],
+    "fixes": [
+      "Old or cross-process baselines are rejected instead of being reported as current renderer growth",
+      "Local runtime-health telemetry can attribute startup memory without changing provider requests, navigation, cookies, headers, retries, or cadence",
+      "Dev validation now scopes tooling checks to changed paths and skips unrelated tooling for generated release notes, while retaining full application integration proof and exhaustive nightly coverage",
+      "Release validation now follows the recorded product receipt boundary and verifies exact ancestry against GitHub when a CI checkout reports an incomplete local graph",
+      "Production updater metadata already promoted from main is recognized during backflow validation, while novel or rolled-back content still fails closed"
+    ],
+    "followUps": [
+      "This build does not move the saved corpus out of renderer memory or change the 4 GB Facebook and Instagram safety limit",
+      "The Library Core activation manifest declares no storage transition for this release"
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.7.2800-dev\n\nRecognize promoted updater manifest backflow and product receipt as release range boundary now uses the correct path\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.2800-dev\n\nMakes startup memory attribution reliable across app restarts and establishes the guarded path for moving the saved library out of the renderer\n\n### Features\n\n- Startup memory reports now bind the pre-hydration baseline to both the app process and renderer process, preventing comparisons across launches or reused process IDs\n- The new Library Core contract defines how saved items, indexes, projections, migrations, rollback, and deletion must behave before storage moves out of renderer memory\n- A release activation manifest now makes any future storage transition explicit and reviewable instead of allowing runtime migration by accident\n\n### Fixes\n\n- Old or cross-process baselines are rejected instead of being reported as current renderer growth\n- Local runtime-health telemetry can attribute startup memory without changing provider requests, navigation, cookies, headers, retries, or cadence\n- Dev validation now scopes tooling checks to changed paths and skips unrelated tooling for generated release notes, while retaining full application integration proof and exhaustive nightly coverage\n- Release validation now follows the recorded product receipt boundary and verifies exact ancestry against GitHub when a CI checkout reports an incomplete local graph\n- Production updater metadata already promoted from main is recognized during backflow validation, while novel or rolled-back content still fails closed\n\n### Known limits\n\n- This build does not move the saved corpus out of renderer memory or change the 4 GB Facebook and Instagram safety limit\n- The Library Core activation manifest declares no storage transition for this release\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
