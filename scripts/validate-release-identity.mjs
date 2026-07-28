@@ -15,7 +15,10 @@ import {
   validatePreviousLibraryCoreActivationContinuity,
 } from "./lib/library-core-release-activation.mjs";
 import { readGitPathAtRef } from "./lib/git-path-at-ref.mjs";
-import { readGithubReleasePublications } from "./lib/github-release-publications.mjs";
+import {
+  readGithubCommitAncestry,
+  readGithubReleasePublications,
+} from "./lib/github-release-publications.mjs";
 import {
   compareTags,
   renderReleaseBody,
@@ -149,6 +152,10 @@ export function gitIsAncestor(
   fromRef,
   toRef,
   spawn = spawnSync,
+  {
+    environment = process.env,
+    remoteIsAncestor = readGithubCommitAncestry,
+  } = {},
 ) {
   const direct = spawn(
     "git",
@@ -175,13 +182,43 @@ export function gitIsAncestor(
     },
   );
   const resolvedFromSha = String(resolvedFrom.stdout ?? "").trim();
-  return (
+  const reachable =
     reachableHistory.status === 0 &&
     resolvedFrom.status === 0 &&
     String(reachableHistory.stdout ?? "")
       .split(/\s+/)
-      .includes(resolvedFromSha)
-  );
+      .includes(resolvedFromSha);
+  if (reachable) {
+    return true;
+  }
+
+  if (
+    environment.GITHUB_ACTIONS !== "true" ||
+    !environment.GITHUB_REPOSITORY
+  ) {
+    return false;
+  }
+  const origin = spawn("git", ["remote", "get-url", "origin"], {
+    cwd,
+    encoding: "utf8",
+  });
+  const repository = environment.GITHUB_REPOSITORY;
+  const originUrl = String(origin.stdout ?? "").trim();
+  const expectedOrigins = new Set([
+    `https://github.com/${repository}`,
+    `https://github.com/${repository}.git`,
+    `git@github.com:${repository}`,
+    `git@github.com:${repository}.git`,
+  ]);
+  if (origin.status !== 0 || !expectedOrigins.has(originUrl)) {
+    return false;
+  }
+  return remoteIsAncestor({
+    repository,
+    fromRef: resolvedFromSha || fromRef,
+    toRef,
+    environment,
+  });
 }
 
 function expectedLibraryCoreActivationRange({

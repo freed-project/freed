@@ -3,10 +3,15 @@ import test from "node:test";
 
 import { canonicalPreviousPublishedRelease } from "../release-receipt.mjs";
 import {
+  GITHUB_COMPARE_MAX_BYTES,
   GITHUB_RELEASE_PAGE_MAX_BYTES,
+  readGithubCommitAncestry,
   readGithubReleasePublications,
   resolveGithubReadToken,
 } from "./github-release-publications.mjs";
+
+const FROM_SHA = "a".repeat(40);
+const TO_SHA = "b".repeat(40);
 
 function release(tag, overrides = {}) {
   return {
@@ -141,4 +146,56 @@ test("GitHub release reads fail closed without authenticated access", () => {
       }),
     /Authenticated GitHub release reads require .*not logged in/,
   );
+});
+
+test("GitHub commit ancestry accepts an exact ahead comparison", () => {
+  let request = null;
+  const isAncestor = readGithubCommitAncestry({
+    repository: "freed-project/freed",
+    fromRef: FROM_SHA,
+    toRef: TO_SHA,
+    environment: { GH_TOKEN: "fixture-token" },
+    spawn: (command, args, options) => {
+      request = { command, args, options };
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          status: "ahead",
+          ahead_by: 9,
+          behind_by: 0,
+          merge_base_commit: { sha: FROM_SHA },
+        }),
+        stderr: "",
+      };
+    },
+  });
+
+  assert.equal(isAncestor, true);
+  assert.equal(request.command, "/usr/bin/curl");
+  assert.equal(request.options.maxBuffer, GITHUB_COMPARE_MAX_BYTES);
+  assert.equal(request.args.includes("fixture-token"), false);
+  assert.equal(
+    request.options.input,
+    'header = "Authorization: Bearer fixture-token"\n',
+  );
+});
+
+test("GitHub commit ancestry rejects a diverged comparison", () => {
+  const isAncestor = readGithubCommitAncestry({
+    fromRef: FROM_SHA,
+    toRef: TO_SHA,
+    environment: { GH_TOKEN: "fixture-token" },
+    spawn: () => ({
+      status: 0,
+      stdout: JSON.stringify({
+        status: "diverged",
+        ahead_by: 4,
+        behind_by: 2,
+        merge_base_commit: { sha: "c".repeat(40) },
+      }),
+      stderr: "",
+    }),
+  });
+
+  assert.equal(isAncestor, false);
 });

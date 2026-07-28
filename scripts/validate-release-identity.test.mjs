@@ -43,6 +43,42 @@ test("git ancestry falls back to an exact history walk after a direct probe fail
   assert.equal(gitIsAncestor("/tmp", "abc123", "def456", spawn), true);
 });
 
+test("git ancestry uses the authenticated server graph after CI local probes fail", () => {
+  const fromRef = "a".repeat(40);
+  const toRef = "b".repeat(40);
+  let comparison = null;
+  const spawn = (_command, args) => {
+    if (args[0] === "rev-parse") {
+      return { status: 0, stdout: `${fromRef}\n`, stderr: "" };
+    }
+    if (args[0] === "remote") {
+      return {
+        status: 0,
+        stdout: "https://github.com/freed-project/freed.git\n",
+        stderr: "",
+      };
+    }
+    return { status: 1, stdout: "", stderr: "local graph unavailable" };
+  };
+
+  const isAncestor = gitIsAncestor("/tmp", fromRef, toRef, spawn, {
+    environment: {
+      GITHUB_ACTIONS: "true",
+      GITHUB_REPOSITORY: "freed-project/freed",
+      GH_TOKEN: "fixture-token",
+    },
+    remoteIsAncestor: (request) => {
+      comparison = request;
+      return true;
+    },
+  });
+
+  assert.equal(isAncestor, true);
+  assert.equal(comparison.repository, "freed-project/freed");
+  assert.equal(comparison.fromRef, fromRef);
+  assert.equal(comparison.toRef, toRef);
+});
+
 function git(cwd, args) {
   return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 }
