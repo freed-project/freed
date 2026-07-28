@@ -267,6 +267,10 @@ function isRepoSurface(changedFile) {
 function hasFocusedFeatureValidation(changedFile) {
   return (
     FOCUSED_FEATURE_VALIDATION_PATHS.has(changedFile) ||
+    /^release-notes\/daily\/(?:dev|production)\/[^/]+\.json$/.test(
+      changedFile,
+    ) ||
+    /^release-notes\/releases\/v[^/]+\.(?:json|md)$/.test(changedFile) ||
     /^\.agents\/skills\/[^/]+\/SKILL\.md$/.test(changedFile) ||
     /^\.agents\/skills\/[^/]+\/agents\/openai\.yaml$/.test(changedFile)
   );
