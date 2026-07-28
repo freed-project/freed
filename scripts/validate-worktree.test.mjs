@@ -674,3 +674,53 @@ test("collectReleaseArtifactsToValidate resolves markdown artifacts to their jso
 
   assert.deepEqual(artifacts, ["release-notes/releases/v26.4.1602.json"]);
 });
+
+test("daily release metadata does not replay the historical release archive", () => {
+  const dailyArtifact = [
+    "release-notes",
+    "daily",
+    "dev",
+    "26.7.27.json",
+  ].join("/");
+  const releaseArtifact = [
+    "release-notes",
+    "releases",
+    "v26.7.2701-dev",
+  ].join("/");
+
+  assert.deepEqual(
+    collectReleaseArtifactsToValidate([dailyArtifact]),
+    [],
+  );
+
+  assert.deepEqual(
+    collectReleaseArtifactsToValidate([
+      dailyArtifact,
+      `${releaseArtifact}.json`,
+      `${releaseArtifact}.md`,
+    ]),
+    [`${releaseArtifact}.json`],
+  );
+});
+
+test("feature release prep validates only the changed release artifact", () => {
+  const dailyArtifact = [
+    "release-notes",
+    "daily",
+    "dev",
+    "26.7.27.json",
+  ].join("/");
+  const releaseArtifact = [
+    "release-notes",
+    "releases",
+    "v26.7.2701-dev",
+  ].join("/");
+  const releaseValidation = buildValidationPlan("feature", [
+    dailyArtifact,
+    `${releaseArtifact}.json`,
+    `${releaseArtifact}.md`,
+  ]).find((item) => item.label === "release note artifact validation");
+
+  assert.ok(releaseValidation);
+  assert.deepEqual(releaseValidation.files, [`${releaseArtifact}.json`]);
+});

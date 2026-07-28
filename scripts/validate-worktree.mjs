@@ -596,7 +596,7 @@ export function collectReleaseArtifactsToValidate(
   validateAll = false,
 ) {
   const artifacts = new Set();
-  let shouldValidateAll = validateAll;
+  const shouldValidateAll = validateAll;
 
   for (const filePath of changedFiles) {
     if (/^release-notes\/releases\/.+\.json$/.test(filePath)) {
@@ -611,12 +611,12 @@ export function collectReleaseArtifactsToValidate(
       }
       continue;
     }
-
-    if (/^release-notes\/daily\/.+\.json$/.test(filePath)) {
-      shouldValidateAll = true;
-    }
   }
 
+  // Daily artifacts contain editorial guidance, not release contracts. A
+  // release-prep change also carries its exact release JSON, which is added
+  // above. Replaying every historical release because the daily timestamp
+  // changed adds no distinct coverage.
   if (shouldValidateAll) {
     for (const artifactPath of listAllReleaseArtifacts()) {
       artifacts.add(artifactPath);
