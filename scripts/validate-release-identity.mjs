@@ -144,12 +144,43 @@ function readTaggedJson(cwd, tag, relativePath, label, ref = tag) {
   }
 }
 
-function gitIsAncestor(cwd, fromRef, toRef) {
-  return (
-    spawnSync("git", ["merge-base", "--is-ancestor", fromRef, toRef], {
+export function gitIsAncestor(
+  cwd,
+  fromRef,
+  toRef,
+  spawn = spawnSync,
+) {
+  const direct = spawn(
+    "git",
+    ["merge-base", "--is-ancestor", fromRef, toRef],
+    {
       cwd,
       encoding: "utf8",
-    }).status === 0
+    },
+  );
+  if (direct.status === 0) {
+    return true;
+  }
+
+  const reachableHistory = spawn("git", ["rev-list", toRef], {
+    cwd,
+    encoding: "utf8",
+  });
+  const resolvedFrom = spawn(
+    "git",
+    ["rev-parse", `${fromRef}^{commit}`],
+    {
+      cwd,
+      encoding: "utf8",
+    },
+  );
+  const resolvedFromSha = String(resolvedFrom.stdout ?? "").trim();
+  return (
+    reachableHistory.status === 0 &&
+    resolvedFrom.status === 0 &&
+    String(reachableHistory.stdout ?? "")
+      .split(/\s+/)
+      .includes(resolvedFromSha)
   );
 }
 

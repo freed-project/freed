@@ -20,6 +20,7 @@ import {
   releaseInspectionRange,
 } from "./release-receipt.mjs";
 import {
+  gitIsAncestor,
   parseReleaseTag,
   validateHistoricalPublishedTagIdentity,
   validateHistoricalReleaseNoteCorrectionIdentity,
@@ -27,6 +28,20 @@ import {
   validateReleaseIdentity,
 } from "./validate-release-identity.mjs";
 import { renderReleaseBody } from "./release-notes-shared.mjs";
+
+test("git ancestry falls back to an exact history walk after a direct probe fails", () => {
+  const spawn = (_command, args) => {
+    if (args.includes("--is-ancestor")) {
+      return { status: 1, stdout: "", stderr: "" };
+    }
+    if (args[0] === "rev-list") {
+      return { status: 0, stdout: "def456\nabc123\n", stderr: "" };
+    }
+    return { status: 0, stdout: "abc123\n", stderr: "" };
+  };
+
+  assert.equal(gitIsAncestor("/tmp", "abc123", "def456", spawn), true);
+});
 
 function git(cwd, args) {
   return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
