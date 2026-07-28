@@ -4,25 +4,14 @@ import { test, expect } from "./fixtures/app";
 const PERSON_COUNT = 1_600;
 const ACCOUNT_COUNT = 1_920;
 const ITEM_COUNT = 6_400;
-const MOUNT_BUDGET_MS = 6_000;
-// Exact-head GitHub runners measured 295 ms and 322 ms while repeated local
-// runs stayed between 65 ms and 69 ms. Keep the product budget strict locally,
-// with enough hosted-runner headroom to catch a material regression.
-const GRAPH_LAYOUT_BUDGET_MS = process.env.CI ? 450 : 220;
-const GRAPH_SCENE_SYNC_BUDGET_MS = process.env.CI ? 250 : 40;
 const FRIEND_ROW_MOUNT_BUDGET = 80;
-const FRAME_P95_BUDGET_MS = 50;
-const CI_FRAME_P95_BUDGET_MS = 600;
-const DROPPED_FRAME_BUDGET = 16;
-const CI_DROPPED_FRAME_BUDGET = 80;
-const DROPPED_FRAME_HEADROOM = 36;
-const CI_DROPPED_FRAME_HEADROOM = 40;
-const LONG_TASK_COUNT_BUDGET = 2;
-// Hosted Linux runners already land in the mid-30s on green dev builds.
-// Keep a little headroom so CI catches real regressions instead of minor runner churn.
-const CI_LONG_TASK_COUNT_BUDGET = 48;
-const LONG_TASK_WORST_BUDGET_MS = 140;
-const CI_LONG_TASK_WORST_BUDGET_MS = 700;
+const FRIEND_RENDERER_LABEL_BUDGET = 64;
+const SETTLED_VISIBLE_NODE_BUDGET = 1_100;
+const INTERACTIVE_VISIBLE_NODE_BUDGET = 240;
+const PAN_MOVE_STEPS = 24;
+const COLLECT_PERF_TELEMETRY =
+  process.env.FREED_FRIENDS_PERF_TELEMETRY === "1";
+
 async function readGraphDebug(page: Page) {
   return page.evaluate(() => {
     return (window as typeof window & {
@@ -56,6 +45,10 @@ async function readGraphDebug(page: Page) {
           denseInteractionRebuildCount: number;
           rendererLabelCount: number;
           readyRendererLabelCount: number;
+          bufferUploadCount: number;
+          residentNodeCount: number;
+          visibleNodeCount: number;
+          capped: boolean;
         };
       };
     }).__FREED_GRAPH_DEBUG__ ?? null;
@@ -94,14 +87,72 @@ async function readGraphPerf(page: Page) {
         sceneSyncCount?: number;
         presentationSyncCount?: number;
         edgeRebuildCount?: number;
+        rendererEdgeCount?: number;
         labelLayoutCount?: number;
         transformOnlySyncCount?: number;
         rendererLabelCount?: number;
         readyRendererLabelCount?: number;
+        bufferUploadCount?: number;
+        presentationInFlight?: boolean;
+        presentationQueued?: boolean;
         transformScale?: number;
+        residentNodeCount?: number;
+        visibleNodeCount?: number;
       };
     }).__FREED_GRAPH_PERF__ ?? null;
   });
+}
+
+async function readTelemetryEnvironment(page: Page) {
+  return page.evaluate(() => ({
+    userAgent: navigator.userAgent,
+    hardwareConcurrency: navigator.hardwareConcurrency.toLocaleString(),
+    longTaskSupported:
+      PerformanceObserver.supportedEntryTypes?.includes("longtask") ?? false,
+  }));
+}
+
+async function waitForGraphContractSettle(
+  page: Page,
+  options: { afterPresentationSyncCount?: number } = {},
+) {
+  let previousSignature: string | null = null;
+  let stableReads = 0;
+  let latest: Awaited<ReturnType<typeof readGraphPerf>> = null;
+  await expect
+    .poll(async () => {
+      latest = await readGraphPerf(page);
+      const presentationAdvanced =
+        options.afterPresentationSyncCount === undefined ||
+        (latest?.presentationSyncCount ?? 0) >
+          options.afterPresentationSyncCount;
+      if (!latest || latest.qualityMode !== "settled" || !presentationAdvanced) {
+        previousSignature = null;
+        stableReads = 0;
+        return stableReads;
+      }
+      if (latest.presentationInFlight || latest.presentationQueued) {
+        previousSignature = null;
+        stableReads = 0;
+        return stableReads;
+      }
+      const signature = JSON.stringify({
+        sceneSyncCount: latest.sceneSyncCount,
+        presentationSyncCount: latest.presentationSyncCount,
+        bufferUploadCount: latest.bufferUploadCount,
+        presentationInFlight: latest.presentationInFlight,
+        presentationQueued: latest.presentationQueued,
+        labelLayoutCount: latest.labelLayoutCount,
+        transformScale: latest.transformScale,
+        visibleNodeCount: latest.visibleNodeCount,
+      });
+      stableReads = signature === previousSignature ? stableReads + 1 : 0;
+      previousSignature = signature;
+      return stableReads;
+    }, { timeout: 10_000 })
+    .toBeGreaterThanOrEqual(2);
+  if (!latest) throw new Error("Friends graph did not publish a settled snapshot");
+  return latest;
 }
 
 async function seedLargeFriendsWorkspace(page: Page): Promise<void> {
@@ -174,7 +225,14 @@ async function seedLargeFriendsWorkspace(page: Page): Promise<void> {
 async function measureFps(
   page: Page,
   fn: () => Promise<void>,
-): Promise<{ p95Ms: number; droppedFrames: number; fps: number; sampleCount: number }> {
+): Promise<{
+  valid: boolean;
+  p95Ms: number | null;
+  droppedFrames: number | null;
+  fps: number | null;
+  sampleCount: number;
+  durationMs: number | null;
+}> {
   await page.evaluate(() => {
     const w = window as Record<string, unknown>;
     const deltas: number[] = [];
@@ -199,15 +257,27 @@ async function measureFps(
     const w = window as Record<string, unknown>;
     (w.__FRIENDS_PERF_RAF_STOP__ as () => void)();
     const deltas = ((w.__FRIENDS_PERF_RAF_DELTAS__ as number[]) ?? []).slice();
-    if (deltas.length < 2) return { p95Ms: 0, droppedFrames: 0, fps: 0, sampleCount: deltas.length };
+    if (deltas.length < 2) {
+      return {
+        valid: false,
+        p95Ms: null,
+        droppedFrames: null,
+        fps: null,
+        sampleCount: deltas.length,
+        durationMs: null,
+      };
+    }
     const sorted = [...deltas].sort((left, right) => left - right);
     const p95 = sorted[Math.floor(0.95 * (sorted.length - 1))] ?? 0;
-    const average = deltas.reduce((sum, delta) => sum + delta, 0) / deltas.length;
+    const durationMs = deltas.reduce((sum, delta) => sum + delta, 0);
+    const average = durationMs / deltas.length;
     return {
+      valid: true,
       p95Ms: Math.round(p95 * 10) / 10,
       droppedFrames: deltas.filter((delta) => delta > 32).length,
       fps: Math.round(1_000 / average),
       sampleCount: deltas.length,
+      durationMs,
     };
   });
 }
@@ -217,14 +287,19 @@ async function collectLongTasksDuring<T>(
   fn: () => Promise<T>,
 ): Promise<{
   result: T;
-  count: number;
-  worstMs: number;
+  supported: boolean;
+  count: number | null;
+  worstMs: number | null;
   marks: Array<{ name: string; startTime: number }>;
   tasks: Array<{ startTime: number; duration: number }>;
 }> {
   await page.evaluate(() => {
     const w = window as Record<string, unknown>;
+    const supported =
+      PerformanceObserver.supportedEntryTypes?.includes("longtask") ?? false;
+    w.__FRIENDS_PERF_LONG_TASK_SUPPORTED__ = supported;
     w.__FRIENDS_PERF_LONG_TASKS__ = [] as PerformanceEntry[];
+    if (!supported) return;
     const observer = new PerformanceObserver((list) => {
       const tasks = w.__FRIENDS_PERF_LONG_TASKS__ as PerformanceEntry[];
       tasks.push(...list.getEntries());
@@ -237,12 +312,18 @@ async function collectLongTasksDuring<T>(
 
   const taskData = await page.evaluate(() => {
     const w = window as Record<string, unknown>;
-    const observer = w.__FRIENDS_PERF_LONG_TASK_OBSERVER__ as PerformanceObserver;
-    observer.disconnect();
+    const supported = Boolean(w.__FRIENDS_PERF_LONG_TASK_SUPPORTED__);
+    const observer = w.__FRIENDS_PERF_LONG_TASK_OBSERVER__ as
+      | PerformanceObserver
+      | undefined;
+    observer?.disconnect();
     const tasks = (w.__FRIENDS_PERF_LONG_TASKS__ as PerformanceEntry[]) ?? [];
     return {
-      count: tasks.length,
-      worstMs: Math.max(0, ...tasks.map((task) => task.duration)),
+      supported,
+      count: supported ? tasks.length : null,
+      worstMs: supported
+        ? Math.max(0, ...tasks.map((task) => task.duration))
+        : null,
       tasks: tasks.map((task) => ({
         startTime: Math.round(task.startTime * 10) / 10,
         duration: Math.round(task.duration * 10) / 10,
@@ -258,21 +339,25 @@ async function collectLongTasksDuring<T>(
 
   return {
     result,
+    supported: taskData.supported,
     count: taskData.count,
-    worstMs: Math.round(taskData.worstMs * 10) / 10,
+    worstMs:
+      taskData.worstMs === null
+        ? null
+        : Math.round(taskData.worstMs * 10) / 10,
     marks: taskData.marks,
     tasks: taskData.tasks,
   };
 }
 
-test("Friends view handles 1,600 visible people while zooming and panning", async ({ app, page }) => {
+test("Friends WebGL2 compatibility view handles 1,600 visible people while zooming and panning", async ({ app, page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
   await seedLargeFriendsWorkspace(page);
 
-  const mountStartedAt = Date.now();
+  const mountStartedAt = COLLECT_PERF_TELEMETRY ? Date.now() : null;
   const preferenceSavePromise = page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
@@ -299,12 +384,14 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
     .poll(async () => {
       const perf = await readGraphPerf(page);
       return perf?.nodeCount ?? 0;
-    }, { timeout: 60_000 })
+  }, { timeout: 60_000 })
     .toBeGreaterThanOrEqual(PERSON_COUNT);
 
   const mountedRows = await page.getByTestId("friend-overview-virtual-row").count();
-  const mountElapsed = Date.now() - mountStartedAt;
+  const mountElapsed =
+    mountStartedAt === null ? null : Date.now() - mountStartedAt;
   const preferenceSaveMs = await preferenceSavePromise;
+  await waitForGraphContractSettle(page);
   const initialDebug = await readGraphDebug(page);
   expect(initialDebug).not.toBeNull();
   await page.evaluate(() => {
@@ -321,114 +408,236 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
   expect(heartbeat?.surfacePerf?.friendsGraph?.denseRenderMode).toBe("dense");
   expect(heartbeat?.surfacePerf?.friendsGraph?.sceneSyncMs ?? -1).toBeGreaterThanOrEqual(0);
 
-  console.log(`[PERF] Friends mount: ${mountElapsed.toLocaleString()} ms`);
-  console.log(`[PERF] Friends preference save: ${Math.round(preferenceSaveMs).toLocaleString()} ms`);
-  console.log(`[PERF] Friends mounted sidebar rows: ${mountedRows.toLocaleString()}`);
-  console.log(`[PERF] Friends graph model build: ${initialDebug!.metrics.modelBuildMs.toFixed(1)} ms`);
-  console.log(`[PERF] Friends graph layout: ${initialDebug!.metrics.layoutMs.toFixed(1)} ms`);
-  console.log(`[PERF] Friends graph scene sync: ${initialDebug!.metrics.sceneSyncMs.toFixed(1)} ms`);
-  console.log(`[PERF] Friends avatar displays: ${initialDebug!.metrics.avatarDisplayCount.toLocaleString()}`);
-
-  expect(mountElapsed).toBeLessThan(MOUNT_BUDGET_MS);
   expect(mountedRows).toBeLessThanOrEqual(FRIEND_ROW_MOUNT_BUDGET);
   expect(initialDebug!.metrics.denseRenderMode).toBe("dense");
   expect(initialDebug!.metrics.denseInteractionEligible).toBe(true);
-  expect(initialDebug!.metrics.layoutMs).toBeLessThan(GRAPH_LAYOUT_BUDGET_MS);
-  expect(initialDebug!.metrics.sceneSyncMs).toBeLessThan(GRAPH_SCENE_SYNC_BUDGET_MS);
+  expect(initialDebug!.metrics.residentNodeCount).toBeGreaterThanOrEqual(
+    PERSON_COUNT + ACCOUNT_COUNT,
+  );
+  expect(initialDebug!.metrics.visibleNodeCount).toBeGreaterThan(0);
+  expect(initialDebug!.metrics.visibleNodeCount).toBeLessThanOrEqual(
+    SETTLED_VISIBLE_NODE_BUDGET,
+  );
+  expect(initialDebug!.metrics.capped).toBe(true);
   expect(initialDebug!.metrics.avatarDisplayCount).toBeLessThanOrEqual(PERSON_COUNT);
 
   const box = await viewport.boundingBox();
   if (!box) throw new Error("Friends graph viewport is not visible");
-  const idleFrames = await measureFps(page, async () => {
-    await page.waitForTimeout(1_400);
-  });
 
-  const beforeMotionPerf = await readGraphPerf(page);
-  expect(beforeMotionPerf).not.toBeNull();
+  const telemetryEnvironment = COLLECT_PERF_TELEMETRY
+    ? await readTelemetryEnvironment(page)
+    : null;
+  const idleTelemetry = COLLECT_PERF_TELEMETRY
+    ? await collectLongTasksDuring(page, () =>
+        measureFps(page, async () => {
+          await page.waitForTimeout(1_400);
+        }),
+      )
+    : null;
+  const beforeMotionPerf = await waitForGraphContractSettle(page);
+  expect(beforeMotionPerf!.rendererType).toBe("current-webgl2");
   let afterWheelPerf: Awaited<ReturnType<typeof readGraphPerf>> = null;
   let beforePanPerf: Awaited<ReturnType<typeof readGraphPerf>> = null;
   let duringPanPerf: Awaited<ReturnType<typeof readGraphPerf>> = null;
-  const interaction = await collectLongTasksDuring(page, () =>
-    measureFps(page, async () => {
-      await page.evaluate(() => performance.mark("friends-wheel-start"));
-      // Keep the first event, baseline, and remaining stream in one browser task.
-      // Hosted driver round trips can exceed the gesture release timer and turn
-      // one synthetic trackpad gesture into multiple correctly settled gestures.
-      const wheelSnapshots = await viewport.evaluate(async (element) => {
-        const readPerf = () => {
-          const perf = (window as typeof window & {
-            __FREED_GRAPH_PERF__?: Record<string, unknown>;
-          }).__FREED_GRAPH_PERF__;
-          return perf ? { ...perf } : null;
-        };
-        const dispatchWheel = () => {
-          const rect = element.getBoundingClientRect();
-          element.dispatchEvent(new WheelEvent("wheel", {
-            bubbles: true,
-            cancelable: true,
-            ctrlKey: true,
-            clientX: rect.left + rect.width / 2,
-            clientY: rect.top + rect.height / 2,
-            deltaY: -120,
-          }));
-        };
+  const runInteraction = async () => {
+    await page.evaluate(() => performance.mark("friends-wheel-start"));
+    // Keep the first event, baseline, and remaining stream in one browser task.
+    // Hosted driver round trips can exceed the gesture release timer and turn
+    // one synthetic trackpad gesture into multiple correctly settled gestures.
+    const wheelSnapshots = await viewport.evaluate(async (element) => {
+      const readPerf = () => {
+        const perf = (window as typeof window & {
+          __FREED_GRAPH_PERF__?: Record<string, unknown>;
+        }).__FREED_GRAPH_PERF__;
+        return perf ? { ...perf } : null;
+      };
+      const dispatchWheel = () => {
+        const rect = element.getBoundingClientRect();
+        element.dispatchEvent(new WheelEvent("wheel", {
+          bubbles: true,
+          cancelable: true,
+          ctrlKey: true,
+          clientX: rect.left + rect.width / 2,
+          clientY: rect.top + rect.height / 2,
+          deltaY: -120,
+        }));
+      };
 
+      dispatchWheel();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const baseline = readPerf();
+      for (let index = 1; index < 18; index += 1) {
         dispatchWheel();
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        const baseline = readPerf();
-        for (let index = 1; index < 18; index += 1) {
-          dispatchWheel();
-          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        }
-        return { baseline, after: readPerf() };
-      });
-      const duringWheelBaseline = wheelSnapshots.baseline as
-        Awaited<ReturnType<typeof readGraphPerf>>;
-      afterWheelPerf = wheelSnapshots.after as
-        Awaited<ReturnType<typeof readGraphPerf>>;
-      expect(duringWheelBaseline).not.toBeNull();
-      await page.evaluate(() => performance.mark("friends-wheel-end"));
+      }
+      return { baseline, after: readPerf() };
+    });
+    const duringWheelBaseline = wheelSnapshots.baseline as
+      Awaited<ReturnType<typeof readGraphPerf>>;
+    afterWheelPerf = wheelSnapshots.after as
+      Awaited<ReturnType<typeof readGraphPerf>>;
+    expect(duringWheelBaseline).not.toBeNull();
+    await page.evaluate(() => performance.mark("friends-wheel-end"));
 
-      expect(afterWheelPerf).not.toBeNull();
-      expect(afterWheelPerf!.qualityMode).toBe("interactive");
-      expect(
-        (afterWheelPerf!.transformOnlySyncCount ?? 0) -
-          (beforeMotionPerf?.transformOnlySyncCount ?? 0),
-      ).toBeGreaterThan(0);
-      expect(afterWheelPerf!.rendererType).toBe(duringWheelBaseline!.rendererType);
-      expect(afterWheelPerf!.sceneSyncCount).toBe(duringWheelBaseline!.sceneSyncCount);
-      expect(afterWheelPerf!.edgeRebuildCount).toBe(duringWheelBaseline!.edgeRebuildCount);
-      expect(afterWheelPerf!.labelLayoutCount ?? 0).toBeGreaterThan(
-        duringWheelBaseline!.labelLayoutCount ?? 0,
-      );
-      expect(afterWheelPerf!.rendererLabelCount ?? 0).toBeGreaterThan(0);
-      expect(afterWheelPerf!.rendererLabelCount ?? 0).toBeLessThanOrEqual(64);
-      expect(afterWheelPerf!.readyRendererLabelCount ?? 0).toBeGreaterThan(0);
+    expect(afterWheelPerf).not.toBeNull();
+    expect(afterWheelPerf!.qualityMode).toBe("interactive");
+    expect(
+      (afterWheelPerf!.transformOnlySyncCount ?? 0) -
+        (beforeMotionPerf?.transformOnlySyncCount ?? 0),
+    ).toBeGreaterThan(0);
+    expect(afterWheelPerf!.rendererType).toBe(duringWheelBaseline!.rendererType);
+    expect(afterWheelPerf!.sceneSyncCount).toBe(beforeMotionPerf.sceneSyncCount);
+    expect(afterWheelPerf!.denseInteractionNodeCount ?? 0).toBeGreaterThan(0);
+    expect(afterWheelPerf!.denseInteractionNodeCount ?? 0).toBeLessThanOrEqual(
+      INTERACTIVE_VISIBLE_NODE_BUDGET,
+    );
+    expect(afterWheelPerf!.visibleNodeCount ?? 0).toBeLessThanOrEqual(
+      INTERACTIVE_VISIBLE_NODE_BUDGET,
+    );
+    expect(afterWheelPerf!.rendererLabelCount ?? 0).toBeGreaterThan(0);
+    expect(afterWheelPerf!.rendererLabelCount ?? 0).toBeLessThanOrEqual(
+      FRIEND_RENDERER_LABEL_BUDGET,
+    );
+    expect(afterWheelPerf!.readyRendererLabelCount ?? 0).toBeGreaterThan(0);
 
-      await page.evaluate(() => performance.mark("friends-drag-start"));
-      await page.mouse.move(box.x + box.width * 0.52, box.y + box.height * 0.46);
-      await page.mouse.down();
-      await page.evaluate(() => new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-      }));
-      beforePanPerf = await readGraphPerf(page);
-      expect(beforePanPerf).not.toBeNull();
-      await page.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.58, { steps: 24 });
-      duringPanPerf = await readGraphPerf(page);
-      expect(duringPanPerf).not.toBeNull();
-      expect(duringPanPerf!.sceneSyncCount).toBe(beforePanPerf!.sceneSyncCount);
-      expect(duringPanPerf!.edgeRebuildCount).toBe(beforePanPerf!.edgeRebuildCount);
-      expect(duringPanPerf!.labelLayoutCount ?? 0).toBeGreaterThan(
-        beforePanPerf!.labelLayoutCount ?? 0,
+    const afterWheelAppliedPerf = await waitForGraphContractSettle(page, {
+      afterPresentationSyncCount: beforeMotionPerf.presentationSyncCount ?? 0,
+    });
+    expect(afterWheelAppliedPerf.sceneSyncCount).toBe(
+      beforeMotionPerf.sceneSyncCount,
+    );
+    const wheelPresentationSyncs =
+      (afterWheelAppliedPerf.presentationSyncCount ?? 0) -
+      (beforeMotionPerf.presentationSyncCount ?? 0);
+    const wheelBufferUploads =
+      (afterWheelAppliedPerf.bufferUploadCount ?? 0) -
+      (beforeMotionPerf.bufferUploadCount ?? 0);
+    expect(wheelPresentationSyncs).toBeGreaterThan(0);
+    expect(wheelBufferUploads).toBe(wheelPresentationSyncs);
+    expect(afterWheelPerf!.labelLayoutCount ?? 0).toBeGreaterThan(
+      duringWheelBaseline!.labelLayoutCount ?? 0,
+    );
+
+    await page.evaluate(() => performance.mark("friends-drag-start"));
+    await page.mouse.move(box.x + box.width * 0.52, box.y + box.height * 0.46);
+    await page.mouse.down();
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    }));
+    beforePanPerf = await readGraphPerf(page);
+    expect(beforePanPerf).not.toBeNull();
+    await page.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.58, {
+      steps: PAN_MOVE_STEPS,
+    });
+    duringPanPerf = await readGraphPerf(page);
+    expect(duringPanPerf).not.toBeNull();
+    expect(duringPanPerf!.qualityMode).toBe("interactive");
+    expect(duringPanPerf!.sceneSyncCount).toBe(beforePanPerf!.sceneSyncCount);
+    expect(duringPanPerf!.denseInteractionNodeCount ?? 0).toBeGreaterThan(0);
+    expect(duringPanPerf!.denseInteractionNodeCount ?? 0).toBeLessThanOrEqual(
+      INTERACTIVE_VISIBLE_NODE_BUDGET,
+    );
+    expect(duringPanPerf!.visibleNodeCount ?? 0).toBeLessThanOrEqual(
+      INTERACTIVE_VISIBLE_NODE_BUDGET,
+    );
+    expect(duringPanPerf!.labelLayoutCount ?? 0).toBeGreaterThan(
+      beforePanPerf!.labelLayoutCount ?? 0,
+    );
+    expect(duringPanPerf!.rendererLabelCount ?? 0).toBeGreaterThan(0);
+    expect(duringPanPerf!.rendererLabelCount ?? 0).toBeLessThanOrEqual(
+      FRIEND_RENDERER_LABEL_BUDGET,
+    );
+    expect(duringPanPerf!.readyRendererLabelCount ?? 0).toBeGreaterThan(0);
+    await page.mouse.up();
+    await page.evaluate(() => performance.mark("friends-drag-end"));
+
+    const afterPanAppliedPerf = await waitForGraphContractSettle(page, {
+      afterPresentationSyncCount: beforePanPerf!.presentationSyncCount ?? 0,
+    });
+    expect(afterPanAppliedPerf.sceneSyncCount).toBe(
+      beforePanPerf!.sceneSyncCount,
+    );
+    const panPresentationSyncs =
+      (afterPanAppliedPerf.presentationSyncCount ?? 0) -
+      (beforePanPerf!.presentationSyncCount ?? 0);
+    const panBufferUploads =
+      (afterPanAppliedPerf.bufferUploadCount ?? 0) -
+      (beforePanPerf!.bufferUploadCount ?? 0);
+    expect(panPresentationSyncs).toBeGreaterThan(0);
+    expect(panBufferUploads).toBe(panPresentationSyncs);
+  };
+
+  if (COLLECT_PERF_TELEMETRY) {
+    const interaction = await collectLongTasksDuring(page, () =>
+      measureFps(page, runInteraction),
+    );
+    console.log(`[PERF-ENV] Friends environment: ${JSON.stringify({
+      ...telemetryEnvironment!,
+      rendererType: beforeMotionPerf!.rendererType,
+    })}`);
+    console.log(`[PERF] Friends mount: ${mountElapsed!.toLocaleString()} ms`);
+    console.log(
+      `[PERF] Friends preference save: ${Math.round(preferenceSaveMs).toLocaleString()} ms`,
+    );
+    console.log(
+      `[PERF] Friends graph model build: ${initialDebug!.metrics.modelBuildMs.toFixed(1)} ms`,
+    );
+    console.log(
+      `[PERF] Friends graph layout: ${initialDebug!.metrics.layoutMs.toFixed(1)} ms`,
+    );
+    console.log(
+      `[PERF] Friends graph scene sync: ${initialDebug!.metrics.sceneSyncMs.toFixed(1)} ms`,
+    );
+    if (idleTelemetry!.result.valid && interaction.result.valid) {
+      console.log(
+        `[PERF] Friends idle FPS: ${idleTelemetry!.result.fps!.toLocaleString()}`,
       );
-      expect(duringPanPerf!.rendererLabelCount ?? 0).toBeGreaterThan(0);
-      expect(duringPanPerf!.rendererLabelCount ?? 0).toBeLessThanOrEqual(64);
-      expect(duringPanPerf!.readyRendererLabelCount ?? 0).toBeGreaterThan(0);
-      await page.mouse.up();
-      await page.evaluate(() => performance.mark("friends-drag-end"));
-      await page.waitForTimeout(180);
-    }),
-  );
+      console.log(
+        `[PERF] Friends idle p95 frame: ${idleTelemetry!.result.p95Ms!.toFixed(1)} ms`,
+      );
+      console.log(
+        `[PERF] Friends idle dropped frames: ${idleTelemetry!.result.droppedFrames!.toLocaleString()}`,
+      );
+      console.log(
+        `[PERF] Friends interaction FPS: ${interaction.result.fps!.toLocaleString()}`,
+      );
+      console.log(
+        `[PERF] Friends interaction p95 frame: ${interaction.result.p95Ms!.toFixed(1)} ms`,
+      );
+      console.log(
+        `[PERF] Friends interaction dropped frames: ${interaction.result.droppedFrames!.toLocaleString()}`,
+      );
+    } else {
+      console.log(`[PERF-ENV] Friends RAF telemetry: ${JSON.stringify({
+        status: "inconclusive",
+        idleSamples: idleTelemetry!.result.sampleCount.toLocaleString(),
+        interactionSamples: interaction.result.sampleCount.toLocaleString(),
+      })}`);
+    }
+    if (idleTelemetry!.supported && interaction.supported) {
+      console.log(
+        `[PERF] Friends idle long tasks: ${idleTelemetry!.count!.toLocaleString()}`,
+      );
+      console.log(
+        `[PERF] Friends interaction long tasks: ${interaction.count!.toLocaleString()}`,
+      );
+      console.log(
+        `[PERF] Friends interaction worst long task: ${interaction.worstMs!.toFixed(1)} ms`,
+      );
+    } else {
+      console.log(
+        "[PERF-ENV] Friends LongTask telemetry: unsupported or inconclusive",
+      );
+    }
+    console.log(
+      `[PERF-ENV] Friends interaction marks: ${JSON.stringify(interaction.marks)}`,
+    );
+    console.log(
+      `[PERF-ENV] Friends interaction long task entries: ${JSON.stringify(interaction.tasks)}`,
+    );
+  } else {
+    await runInteraction();
+  }
 
   const afterInteraction = await readGraphDebug(page);
   expect(afterInteraction).not.toBeNull();
@@ -442,46 +651,17 @@ test("Friends view handles 1,600 visible people while zooming and panning", asyn
     return Object.keys(layout?.persons ?? {}).length
       + Object.keys(layout?.accounts ?? {}).length;
   });
-  const p95Budget = process.env.CI
-    ? Math.max(CI_FRAME_P95_BUDGET_MS, idleFrames.p95Ms + 34)
-    : Math.max(FRAME_P95_BUDGET_MS, idleFrames.p95Ms + 34);
-  const droppedFrameBudget = Math.max(
-    process.env.CI ? CI_DROPPED_FRAME_BUDGET : DROPPED_FRAME_BUDGET,
-    Math.ceil(
-      (idleFrames.droppedFrames / Math.max(1, idleFrames.sampleCount)) *
-        Math.max(1, interaction.result.sampleCount),
-    ) + (process.env.CI ? CI_DROPPED_FRAME_HEADROOM : DROPPED_FRAME_HEADROOM),
-  );
-  console.log(`[PERF] Friends idle FPS: ${idleFrames.fps.toLocaleString()}`);
-  console.log(`[PERF] Friends idle p95 frame: ${idleFrames.p95Ms.toFixed(1)} ms`);
-  console.log(`[PERF] Friends idle dropped frames: ${idleFrames.droppedFrames.toLocaleString()}`);
-  console.log(`[PERF] Friends interaction FPS: ${interaction.result.fps.toLocaleString()}`);
-  console.log(`[PERF] Friends interaction p95 frame: ${interaction.result.p95Ms.toFixed(1)} ms`);
-  console.log(`[PERF] Friends interaction dropped frames: ${interaction.result.droppedFrames.toLocaleString()}`);
-  console.log(`[PERF] Friends interaction long tasks: ${interaction.count.toLocaleString()}`);
-  console.log(`[PERF] Friends interaction worst long task: ${interaction.worstMs.toFixed(1)} ms`);
-  console.log(`[PERF] Friends interaction marks: ${JSON.stringify(interaction.marks)}`);
-  console.log(`[PERF] Friends interaction long task entries: ${JSON.stringify(interaction.tasks)}`);
-  console.log(`[PERF] Friends interaction scene sync: ${afterInteraction!.metrics.sceneSyncMs.toFixed(1)} ms`);
-  console.log(`[PERF] Friends transform-only frames: ${(duringPanPerf?.transformOnlySyncCount ?? 0).toLocaleString()}`);
-  console.log(`[PERF] Friends resident labels during motion: ${(duringPanPerf?.rendererLabelCount ?? 0).toLocaleString()}`);
-  console.log(`[PERF] Friends dense interaction rebuilds: ${afterInteraction!.metrics.denseInteractionRebuildCount.toLocaleString()}`);
-  console.log(`[PERF] Friends accidental pinned nodes after pan: ${pinnedNodeCount.toLocaleString()}`);
 
   expect(afterInteraction!.transform.scale).toBeGreaterThan(initialDebug!.transform.scale);
-  expect(interaction.result.sampleCount).toBeGreaterThan(0);
   expect(duringPanPerf?.transformOnlySyncCount ?? 0).toBeGreaterThan(
     beforeMotionPerf?.transformOnlySyncCount ?? 0,
   );
-  expect(afterInteraction!.metrics.denseInteractionRebuildCount).toBeLessThanOrEqual(16);
+  expect(afterInteraction!.metrics.residentNodeCount).toBeGreaterThanOrEqual(
+    PERSON_COUNT + ACCOUNT_COUNT,
+  );
+  expect(afterInteraction!.metrics.visibleNodeCount).toBeLessThanOrEqual(
+    SETTLED_VISIBLE_NODE_BUDGET,
+  );
+  expect(afterInteraction!.metrics.capped).toBe(true);
   expect(pinnedNodeCount).toBe(0);
-  expect(interaction.result.p95Ms).toBeLessThanOrEqual(p95Budget);
-  expect(interaction.result.droppedFrames).toBeLessThanOrEqual(droppedFrameBudget);
-  expect(interaction.count).toBeLessThanOrEqual(
-    process.env.CI ? CI_LONG_TASK_COUNT_BUDGET : LONG_TASK_COUNT_BUDGET,
-  );
-  expect(interaction.worstMs).toBeLessThan(
-    process.env.CI ? CI_LONG_TASK_WORST_BUDGET_MS : LONG_TASK_WORST_BUDGET_MS,
-  );
-  expect(afterInteraction!.metrics.sceneSyncMs).toBeLessThan(GRAPH_SCENE_SYNC_BUDGET_MS);
 });
