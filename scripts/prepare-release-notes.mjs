@@ -1049,7 +1049,6 @@ async function generateWithOpenAI(promptInput) {
 
   const system = [
     "You write polished release notes for Freed.",
-    "Lead the deck with shipped product outcomes. Never use elapsed time since another release, channel cadence, commit counts, or release-process trivia as the deck.",
     "Return concise, professional release-note copy.",
     "Features must be executive-level, user-facing headline copy.",
     "Fixes are concrete bug repairs and corrections.",
