@@ -817,6 +817,7 @@ export function buildValidationPlan(mode, changedFiles) {
       npmCommand("root typecheck", ["run", "typecheck"]),
       npmCommand("root lint", ["run", "lint"]),
       npmCommand("website tests", ["run", "test"], "website"),
+      npmCommand("shared unit tests", ["run", "test"], "packages/shared"),
       ...pwaTestCommands(),
       npmCommand(
         "desktop unit tests",
@@ -924,6 +925,9 @@ export function buildValidationPlan(mode, changedFiles) {
   }
 
   const plan = [npmCommand("root typecheck", ["run", "typecheck"])];
+  const sharedPackageChanged = changedFiles.some((filePath) =>
+    filePath.startsWith("packages/shared/"),
+  );
   const sharedSurfaceChanged = changedFiles.some(isSharedSurface);
   const desktopSurfaceChanged =
     sharedSurfaceChanged || changedFiles.some(isDesktopSurface);
@@ -1024,6 +1028,13 @@ export function buildValidationPlan(mode, changedFiles) {
       npmCommand("website production build", ["run", "build"], "website"),
     );
     addCommand(plan, npmCommand("website tests", ["run", "test"], "website"));
+  }
+
+  if (sharedPackageChanged) {
+    addCommand(
+      plan,
+      npmCommand("shared unit tests", ["run", "test"], "packages/shared"),
+    );
   }
 
   if (pwaSurfaceChanged) {

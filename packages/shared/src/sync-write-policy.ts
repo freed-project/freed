@@ -481,19 +481,20 @@ export const FEED_ITEM_WRITE_POLICY = {
   publishedAt: "sync",
   author: "nested",
   // Measured: 52.1% of the serialized corpus. Immutable once captured and never
-  // concurrently edited, so it gains nothing from merge semantics. Cascades on
-  // delete because the bytes are addressed by the item and reachable from
-  // nothing else.
-  content: { disposition: "nested", tier: "blob", delete: "cascade" },
+  // concurrently edited, so it gains nothing from merge semantics. The future
+  // blob store is content-addressed, so equal bytes may be shared by more than
+  // one item. Deleting one row therefore leaves the blob orphaned until a
+  // verified reachability pass proves that physical collection is safe.
+  content: { disposition: "nested", tier: "blob", delete: "orphan" },
   engagement: "nested",
   location: "nested",
   timeRange: "nested",
   rssSource: "nested",
   fbGroup: "nested",
   // Measured: a further 22.9%, present on 6,778 of 15,846 items, and its text
-  // does not overlap content.text — these are two independent bodies of prose,
-  // not a duplicate. Same reasoning as content.
-  preservedContent: { disposition: "nested", tier: "blob", delete: "cascade" },
+  // does not overlap content.text. These are two independent bodies of prose,
+  // not a duplicate. Same reachability-verified collection rule as content.
+  preservedContent: { disposition: "nested", tier: "blob", delete: "orphan" },
   // Read, saved, archived, tags. Small, edited from any device, and read on
   // every feed query for filtering and counts, so it stays hot and resident
   // even after the prose moves out.

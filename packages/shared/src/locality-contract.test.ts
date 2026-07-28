@@ -39,8 +39,8 @@ describe("locality and deletion contract", () => {
     // edited, so it gains nothing from merge semantics.
     expect(tierOf(FEED_ITEM_WRITE_POLICY.content)).toBe("blob");
     expect(tierOf(FEED_ITEM_WRITE_POLICY.preservedContent)).toBe("blob");
-    expect(deleteBehaviorOf(FEED_ITEM_WRITE_POLICY.content)).toBe("cascade");
-    expect(deleteBehaviorOf(FEED_ITEM_WRITE_POLICY.preservedContent)).toBe("cascade");
+    expect(deleteBehaviorOf(FEED_ITEM_WRITE_POLICY.content)).toBe("orphan");
+    expect(deleteBehaviorOf(FEED_ITEM_WRITE_POLICY.preservedContent)).toBe("orphan");
   });
 
   it("keeps userState hot, because filtering and counts read it on every query", () => {

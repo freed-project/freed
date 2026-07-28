@@ -146,7 +146,8 @@ export function createDocFromTrustedCompatibilityData(
   ) as unknown as FreedDoc;
 }
 
-const DESKTOP_CLIENT_KEY_PREFIX = "desktopClient:";
+export const DESKTOP_CLIENT_KEY_PREFIX = "desktopClient:" as const;
+export type DesktopClientKeyPrefix = typeof DESKTOP_CLIENT_KEY_PREFIX;
 const LEGACY_MIGRATED_ROOT_KEYS = new Set(["friends"]);
 
 // Registrations use namespaced root keys at runtime so concurrent clients add
@@ -239,7 +240,7 @@ export function getRegisteredDesktopClientIds(doc: FreedDoc): string[] {
   return getRegisteredDesktopClients(doc).map((registration) => registration.id);
 }
 
-interface LegacyFriend {
+export interface LegacyFriend {
   id: string;
   name: string;
   avatarUrl?: string;
