@@ -68,8 +68,9 @@ Usage:
   ./scripts/worktree-publish.sh --print-provider-subdiff
 
 --print-provider-subdiff prints the current provider subdiff SHA and exits. Put
-that value in payload.providerDiffSha of the Gate 1 artifact so the approval is
-bound to the exact diff it was granted for.
+that value in the audit record when useful. A human Gate 1 artifact approves
+the described provider behavior and provider set, not one exact diff. The
+optional signed control-task route remains exact-diff bound.
 
 Draft is the default so interim publishes never look reviewable. Pass --ready at
 closeout, once validation has passed and the work is complete, to mark the PR
@@ -239,7 +240,10 @@ for key in sys.argv[2:]:
     value = value[key]
 if value is None:
     raise SystemExit(0)
-print(value)
+if isinstance(value, bool):
+    print("true" if value else "false")
+else:
+    print(value)
 PY
 }
 
@@ -304,8 +308,9 @@ payload = artifact["payload"]
 def one_line(value):
     return " ".join(str(value).split())
 
-print(f"- Gate 1 task: `{one_line(artifact['taskId'])}`")
-print(f"- Gate 1 artifact: `{artifact['artifactDigest']}`")
+print(f"- Provider review task: `{one_line(artifact['taskId'])}`")
+print(f"- Provider review decision: `{one_line(artifact['status'])}`")
+print(f"- Provider review artifact: `{artifact['artifactDigest']}`")
 print(f"- Providers: {', '.join(sorted(payload['providers']))}")
 print(f"- Observable behavior: {one_line(payload['observableBehavior'])}")
 print(f"- Fingerprinting risk: {one_line(payload['fingerprintingRisk'])}")
@@ -319,10 +324,18 @@ provider_review_markdown() {
   local artifact_json="${3:-}"
 
   printf '%s\n' "## Provider Review"
-  printf '%s\n' "- Status: Draft publication is allowed. Ready and merge require provider authority."
-  printf '%s\n' "- Review action: none required. The Gate 1 artifact bound to this exact provider subdiff is the authority."
+  if ${READY_FOR_REVIEW}; then
+    printf '%s\n' "- Status: Provider authority is validated for ready publication."
+  else
+    printf '%s\n' "- Status: Draft publication was requested. Provider authority is validated, but no ready transition was requested."
+  fi
+  if [[ "${PROVIDER_APPROVAL_SOURCE_KIND}" == "control-task" ]]; then
+    printf '%s\n' "- Review action: none required. The signed control task authorizes this exact provider subdiff and provider set; the subdiff below is its audit subject."
+  else
+    printf '%s\n' "- Review action: none required. The provider-risk artifact records the behavior authority decision; this exact provider subdiff is the audit subject."
+  fi
   printf '%s\n' "- Provider subdiff: \`${diff_sha}\`"
-  printf '%s\n' "- Draft publication does not authorize new live provider traffic. Gate 1 behavior approval still applies."
+  printf '%s\n' "- Publication does not authorize new live provider traffic. Gate 1 behavior approval still applies when observable behavior changes."
   if [[ -n "${artifact_json}" ]]; then
     provider_review_context_markdown "${artifact_json}"
   fi
@@ -378,17 +391,26 @@ for path in sorted(bound):
 provider_review_comment_body() {
   local diff_sha="$1"
   local files="$2"
-  local artifact_json="$3"
-  local artifact_digest="$4"
+  local authority_marker
+  authority_marker="$(provider_review_authority_marker)"
 
   printf '%s\n' '(AI Generated).'
   printf '\n%s\n' "<!-- freed-provider-review:${diff_sha} -->"
-  printf '%s\n' "<!-- freed-provider-risk-review-artifact:${artifact_digest} -->"
+  printf '%s\n' "${authority_marker}"
   printf '\n%s\n\n' "## Provider review"
   printf '%s\n' "This review covers the provider-visible subdiff below. It does not approve unrelated files."
-  printf '%s\n' "Audit record only. The Gate 1 artifact approves the described behavior, not this exact diff, so nothing here re-checks the subdiff. Changing provider request patterns, navigation, cookies, headers, timing, extractor scripts, or provider API calls beyond the approved behavior requires a new Gate 1 approval."
+  if [[ "${PROVIDER_APPROVAL_SOURCE_KIND}" == "control-task" ]]; then
+    printf '%s\n' "Audit record only. The signed control task authorizes this exact provider subdiff and provider set. Publication does not grant live provider traffic."
+  else
+    printf '%s\n' "Audit record only. The Gate 1 artifact approves the described behavior, not this exact diff, so nothing here re-checks the subdiff. Changing provider request patterns, navigation, cookies, headers, timing, extractor scripts, or provider API calls beyond the approved behavior requires a new Gate 1 approval."
+  fi
   printf '\n%s\n' "Provider subdiff: \`${diff_sha}\`"
-  provider_review_context_markdown "${artifact_json}"
+  if [[ "${PROVIDER_APPROVAL_SOURCE_KIND}" == "control-task" ]]; then
+    printf '\n'
+    provider_approval_markdown "${PROVIDER_RISK_APPROVAL_JSON}"
+  else
+    provider_review_context_markdown "${PROVIDER_RISK_REVIEW_ARTIFACT_JSON}"
+  fi
   printf '\n%s\n' "Files bound into this provider review:"
   while IFS= read -r file_path; do
     [[ -n "${file_path}" ]] || continue
@@ -396,39 +418,29 @@ provider_review_comment_body() {
   done <<< "${files}"
 }
 
-provider_codeowner_logins() {
-  "${PYTHON_BIN}" - "${SCRIPT_DIR}/../.github/CODEOWNERS" <<'PY'
-import pathlib
-import re
-import sys
-
-owners = set()
-for raw_line in pathlib.Path(sys.argv[1]).read_text().splitlines():
-    line = raw_line.split("#", 1)[0].strip()
-    if not line:
-        continue
-    for token in line.split()[1:]:
-        if re.fullmatch(r"@[A-Za-z0-9-]+", token):
-            owners.add(token[1:].lower())
-for owner in sorted(owners):
-    print(owner)
-PY
+provider_review_authority_marker() {
+  if [[ "${PROVIDER_APPROVAL_SOURCE_KIND}" == "control-task" ]]; then
+    local authorization_digest
+    authorization_digest="$(json_nested_field "${PROVIDER_RISK_APPROVAL_JSON}" authorizationDigest)"
+    printf '%s\n' "<!-- freed-provider-control-approval:${authorization_digest} -->"
+    return
+  fi
+  printf '%s\n' "<!-- freed-provider-risk-review-artifact:${PROVIDER_REVIEW_ARTIFACT_DIGEST} -->"
 }
 
 find_provider_review_comment_metadata() {
   local pr_number="$1"
   local diff_sha="$2"
-  local artifact_digest="$3"
+  local authority_marker="$3"
   local expected_body="$4"
   local marker="<!-- freed-provider-review:${diff_sha} -->"
-  local artifact_marker="<!-- freed-provider-risk-review-artifact:${artifact_digest} -->"
 
   "${GH_BIN}" api "repos/${PUBLISH_REPO}/issues/${pr_number}/comments" --paginate --slurp |
     "${PYTHON_BIN}" -c '
 import json
 import sys
 marker = sys.argv[1]
-artifact_marker = sys.argv[2]
+authority_marker = sys.argv[2]
 expected_body = sys.argv[3]
 comments = json.load(sys.stdin)
 if comments and isinstance(comments[0], list):
@@ -437,26 +449,27 @@ matches = [
     "{}\t{}".format(item.get("id"), item.get("updated_at"))
     for item in comments
     if marker in str(item.get("body", ""))
-    and artifact_marker in str(item.get("body", ""))
+    and authority_marker in str(item.get("body", ""))
     and str(item.get("body", "")) == expected_body
     and item.get("created_at")
     and item.get("created_at") == item.get("updated_at")
 ]
 if matches:
     print(matches[-1])
-' "${marker}" "${artifact_marker}" "${expected_body}"
+' "${marker}" "${authority_marker}" "${expected_body}"
 }
 
 ensure_provider_review_comment() {
   local pr_number="$1"
   [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]] || return 0
-  [[ "${PROVIDER_APPROVAL_SOURCE_KIND}" == "control-task" ]] && return 0
 
   local comment_metadata
   local comment_id
   local body
-  body="$(provider_review_comment_body "${FINAL_PROVIDER_DIFF_SHA}" "${FINAL_PROVIDER_BOUND_FILES}" "${PROVIDER_RISK_REVIEW_ARTIFACT_JSON}" "${PROVIDER_REVIEW_ARTIFACT_DIGEST}")"
-  comment_metadata="$(find_provider_review_comment_metadata "${pr_number}" "${FINAL_PROVIDER_DIFF_SHA}" "${PROVIDER_REVIEW_ARTIFACT_DIGEST}" "${body}")"
+  local authority_marker
+  body="$(provider_review_comment_body "${FINAL_PROVIDER_DIFF_SHA}" "${FINAL_PROVIDER_BOUND_FILES}")"
+  authority_marker="$(provider_review_authority_marker)"
+  comment_metadata="$(find_provider_review_comment_metadata "${pr_number}" "${FINAL_PROVIDER_DIFF_SHA}" "${authority_marker}" "${body}")"
   comment_id="${comment_metadata%%$'\t'*}"
   [[ -n "${comment_id}" ]] && return 0
   "${GH_BIN}" api "repos/${PUBLISH_REPO}/issues/${pr_number}/comments" \
@@ -494,13 +507,14 @@ ensure_provider_review_comment() {
 verify_provider_ready_authority() {
   local pr_number="$1"
   [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]] || return 0
-  [[ "${PROVIDER_APPROVAL_SOURCE_KIND}" == "control-task" ]] && return 0
 
   local body
   local comment_metadata
   local comment_id
-  body="$(provider_review_comment_body "${FINAL_PROVIDER_DIFF_SHA}" "${FINAL_PROVIDER_BOUND_FILES}" "${PROVIDER_RISK_REVIEW_ARTIFACT_JSON}" "${PROVIDER_REVIEW_ARTIFACT_DIGEST}")"
-  comment_metadata="$(find_provider_review_comment_metadata "${pr_number}" "${FINAL_PROVIDER_DIFF_SHA}" "${PROVIDER_REVIEW_ARTIFACT_DIGEST}" "${body}")"
+  local authority_marker
+  body="$(provider_review_comment_body "${FINAL_PROVIDER_DIFF_SHA}" "${FINAL_PROVIDER_BOUND_FILES}")"
+  authority_marker="$(provider_review_authority_marker)"
+  comment_metadata="$(find_provider_review_comment_metadata "${pr_number}" "${FINAL_PROVIDER_DIFF_SHA}" "${authority_marker}" "${body}")"
   comment_id="${comment_metadata%%$'\t'*}"
   if [[ -z "${comment_id}" ]]; then
     echo "Error: an exact, unedited provider review comment is missing for the current provider subdiff and Gate 1 artifact." >&2
@@ -674,12 +688,27 @@ revalidate_provider_approval() {
   if [[ -z "${FINAL_PROVIDER_VISIBLE_FILES}" || -z "${PROVIDER_RISK_APPROVAL_FILE}" ]]; then
     return
   fi
-  printf '%s\n' "${FINAL_PROVIDER_VISIBLE_FILES}" |
+  local current_json
+  local current_kind
+  local current_digest
+  local inspected_kind
+  local inspected_digest
+  current_json="$(
+    printf '%s\n' "${FINAL_PROVIDER_VISIBLE_FILES}" |
     "${NODE_BIN}" "${SCRIPT_DIR}/lib/provider-visible-paths.mjs" \
       --stdin \
       --validate-approval "${PROVIDER_RISK_APPROVAL_FILE}" \
       --diff-sha "${FINAL_PROVIDER_DIFF_SHA}" \
-      --control-state-root "${PUBLISH_CONTROL_STATE_ROOT}" >/dev/null
+      --control-state-root "${PUBLISH_CONTROL_STATE_ROOT}"
+  )"
+  current_kind="$(json_nested_field "${current_json}" approvalSource kind)"
+  current_digest="$(json_nested_field "${current_json}" authorizationDigest)"
+  inspected_kind="$(json_nested_field "${PROVIDER_RISK_APPROVAL_JSON}" approvalSource kind)"
+  inspected_digest="$(json_nested_field "${PROVIDER_RISK_APPROVAL_JSON}" authorizationDigest)"
+  if [[ "${current_kind}" != "${inspected_kind}" || "${current_digest}" != "${inspected_digest}" ]]; then
+    echo "Error: provider approval authority changed after publish inspection." >&2
+    exit 1
+  fi
 }
 
 load_provider_review_artifact() {
@@ -779,6 +808,61 @@ verify_pr_target() {
   verify_pr_target_head "$1" "${PUBLISH_HEAD}"
 }
 
+verify_pr_draft_state() {
+  local pr_reference="$1"
+  local expected_is_draft="$2"
+  local pr_json
+  local is_draft
+  if ! pr_json="$(
+    "${GH_BIN}" pr view "${pr_reference}" \
+      --repo "${PUBLISH_REPO}" \
+      --json isDraft
+  )"; then
+    return 1
+  fi
+  is_draft="$(json_nested_field "${pr_json}" isDraft)"
+  [[ "${is_draft}" == "${expected_is_draft}" ]]
+}
+
+verify_pr_is_draft() {
+  verify_pr_draft_state "$1" "true"
+}
+
+verify_pr_is_ready() {
+  verify_pr_draft_state "$1" "false"
+}
+
+restore_pr_draft_after_failed_ready() {
+  local pr_reference="$1"
+  "${GH_BIN}" pr ready "${pr_reference}" \
+    --repo "${PUBLISH_REPO}" \
+    --undo >/dev/null 2>&1 || true
+  verify_pr_is_draft "${pr_reference}"
+}
+
+promote_pr_ready_with_rollback() {
+  local pr_reference="$1"
+  local failure_reason=""
+
+  if ! "${GH_BIN}" pr ready "${pr_reference}" \
+    --repo "${PUBLISH_REPO}" >/dev/null; then
+    failure_reason="the ready transition returned an error or lost its response"
+  elif ! verify_pr_is_ready "${pr_reference}"; then
+    failure_reason="the pull request could not be verified ready after the ready transition"
+  elif ! (verify_pr_target "${pr_reference}"); then
+    failure_reason="the pull request target or canonical base changed during the ready transition"
+  else
+    return 0
+  fi
+
+  if ! restore_pr_draft_after_failed_ready "${pr_reference}"; then
+    echo "Error: ${failure_reason}, and the pull request could not be verified back in draft state." >&2
+    return 1
+  fi
+  echo "Error: ${failure_reason}; the pull request was returned to draft." >&2
+  return 1
+}
+
 ensure_provider_pr_draft_before_push() {
   if [[ -z "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
     return
@@ -799,13 +883,62 @@ ensure_provider_pr_draft_before_push() {
   existing_number="$(pr_field "${existing_json}" number)"
   existing_is_draft="$(pr_field "${existing_json}" isDraft)"
   existing_head="$(pr_field "${existing_json}" headRefOid)"
-  if [[ -z "${existing_number}" || "${existing_is_draft}" == "true" ]]; then
+  if [[ -z "${existing_number}" ]]; then
+    return
+  fi
+  verify_pr_target_head "${existing_number}" "${existing_head}"
+  if [[ "${existing_is_draft}" == "true" ]]; then
+    if ! verify_pr_is_draft "${existing_number}"; then
+      echo "Error: provider-visible pull request draft state changed before publication." >&2
+      exit 1
+    fi
     return
   fi
   validate_publish_lease
-  verify_canonical_base
-  verify_pr_target_head "${existing_number}" "${existing_head}"
-  "${GH_BIN}" pr ready "${existing_number}" --repo "${PUBLISH_REPO}" --undo >/dev/null
+  if ! "${GH_BIN}" pr ready "${existing_number}" \
+    --repo "${PUBLISH_REPO}" \
+    --undo >/dev/null 2>&1; then
+    if verify_pr_is_draft "${existing_number}"; then
+      return
+    fi
+    echo "Error: provider-visible pull request could not be returned to draft before publication." >&2
+    exit 1
+  fi
+  if ! verify_pr_is_draft "${existing_number}"; then
+    echo "Error: provider-visible pull request could not be verified in draft state before publication." >&2
+    exit 1
+  fi
+}
+
+verify_provider_pr_draft_after_push() {
+  if [[ -z "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
+    return
+  fi
+  local existing_json
+  local existing_number
+  existing_json="$(
+    "${GH_BIN}" pr list \
+      --repo "${PUBLISH_REPO}" \
+      --head "${BRANCH_NAME}" \
+      --base "${BASE_BRANCH}" \
+      --state open \
+      --json number,isDraft,headRefOid,baseRefName \
+      --limit 1
+  )"
+  existing_number="$(pr_field "${existing_json}" number)"
+  if [[ -z "${existing_number}" ]]; then
+    return
+  fi
+  verify_pr_target "${existing_number}"
+  if verify_pr_is_draft "${existing_number}"; then
+    return
+  fi
+  if ! restore_pr_draft_after_failed_ready "${existing_number}"; then
+    echo "Error: provider-visible pull request became ready during publication and could not be returned to draft." >&2
+    exit 1
+  fi
+  echo "Error: provider-visible pull request became ready during publication and was returned to draft." >&2
+  exit 1
 }
 
 trap release_publish_lease EXIT
@@ -927,8 +1060,8 @@ if ${TRUSTED_PUBLISH_MODE}; then
 fi
 
 # Provider-visible gate (stability task W1-06): ready and merge require either a
-# validated Gate 1 provider-risk-review artifact bound to the exact provider
-# subdiff, or a signed control-task approval. Canonical list + predicate:
+# validated behavior-scoped Gate 1 provider-risk-review artifact with the exact
+# provider set, or a signed exact-diff control-task approval. Canonical list + predicate:
 # scripts/lib/provider-visible-paths.mjs.
 COMMITTED_PROVIDER_VISIBLE_FILES="$(
   "${GIT_BIN}" diff --no-renames --no-ext-diff --name-only "origin/${BASE_BRANCH}...HEAD" |
@@ -997,8 +1130,8 @@ PROVIDER_VISIBLE_FILES="${FINAL_PROVIDER_VISIBLE_FILES}"
 if [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
   FINAL_PROVIDER_BOUND_FILES="$(provider_bound_files "origin/${BASE_BRANCH}" "${PUBLISH_HEAD}" "${FINAL_PROVIDER_VISIBLE_FILES}")"
   FINAL_PROVIDER_DIFF_SHA="$(provider_diff_sha "origin/${BASE_BRANCH}" "${PUBLISH_HEAD}" "${FINAL_PROVIDER_BOUND_FILES}")"
-  # You need this value to write a Gate 1 artifact bound to the current diff,
-  # so the helper has to be able to tell you what it is.
+  # This value identifies the provider-only bytes in the audit comment and in
+  # the optional exact-diff control-task route.
   if ${PRINT_PROVIDER_SUBDIFF}; then
     # Disarm the EXIT trap: this query never took the publish lease, so it must
     # not release the caller's.
@@ -1056,6 +1189,7 @@ ensure_provider_pr_draft_before_push
 verify_canonical_base
 "${GIT_BIN}" push -u origin "${PUBLISH_HEAD}:refs/heads/${BRANCH_NAME}"
 verify_remote_head
+verify_provider_pr_draft_after_push
 "${GIT_BIN}" branch \
   --set-upstream-to="origin/${BRANCH_NAME}" \
   "${BRANCH_NAME}" >/dev/null
@@ -1104,6 +1238,14 @@ EXISTING_PR_HEAD="$(pr_field "${EXISTING_PR_JSON}" "headRefOid")"
 EXISTING_PR_BASE="$(pr_field "${EXISTING_PR_JSON}" "baseRefName")"
 
 if [[ -n "${EXISTING_PR_NUMBER}" ]]; then
+  if [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" && "${EXISTING_PR_IS_DRAFT}" != "true" ]]; then
+    if ! restore_pr_draft_after_failed_ready "${EXISTING_PR_NUMBER}"; then
+      echo "Error: provider-visible pull request was ready before its audit record and could not be returned to draft." >&2
+      exit 1
+    fi
+    echo "Error: provider-visible pull request was ready before its audit record and was returned to draft." >&2
+    exit 1
+  fi
   if [[ "${EXISTING_PR_HEAD}" != "${PUBLISH_HEAD}" || "${EXISTING_PR_BASE}" != "${BASE_BRANCH}" ]]; then
     echo "Error: existing pull request target does not match the inspected publish head and base." >&2
     exit 1
@@ -1117,9 +1259,10 @@ if [[ -n "${EXISTING_PR_NUMBER}" ]]; then
     if [[ "${EXISTING_PR_IS_DRAFT}" == "true" ]]; then
       assert_publish_write_ready
       verify_pr_target "${EXISTING_PR_NUMBER}"
-      "${GH_BIN}" pr ready "${EXISTING_PR_NUMBER}" --repo "${PUBLISH_REPO}" >/dev/null
+      promote_pr_ready_with_rollback "${EXISTING_PR_NUMBER}"
+    else
+      verify_pr_target "${EXISTING_PR_NUMBER}"
     fi
-    verify_pr_target "${EXISTING_PR_NUMBER}"
     printf 'Updated PR (ready for review): %s\n' "${EXISTING_PR_URL}"
     exit 0
   fi
@@ -1135,6 +1278,14 @@ if [[ -n "${EXISTING_PR_NUMBER}" ]]; then
   "${GH_BIN}" pr edit "${EXISTING_PR_NUMBER}" --repo "${PUBLISH_REPO}" --title "${TITLE}" --body "${BODY_CONTENT}" >/dev/null
   ensure_provider_review_comment "${EXISTING_PR_NUMBER}"
   verify_pr_target "${EXISTING_PR_NUMBER}"
+  if [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]] && ! verify_pr_is_draft "${EXISTING_PR_NUMBER}"; then
+    if ! restore_pr_draft_after_failed_ready "${EXISTING_PR_NUMBER}"; then
+      echo "Error: provider-visible pull request left draft state during audit and could not be returned to draft." >&2
+      exit 1
+    fi
+    echo "Error: provider-visible pull request left draft state during audit and was returned to draft." >&2
+    exit 1
+  fi
   printf 'Updated draft PR: %s\n' "${EXISTING_PR_URL}"
   exit 0
 fi
@@ -1145,10 +1296,10 @@ CREATE_ARGS=(
   --title "${TITLE}"
   --body "${BODY_CONTENT}"
 )
-# A provider-visible branch may open directly as ready when it carries a Gate 1
-# artifact bound to its exact provider subdiff. The draft-first detour existed
-# only to give the removed thumbs-up reaction somewhere to land.
-if ! ${READY_FOR_REVIEW}; then
+# A new provider-visible PR always starts as a draft. The audit comment must be
+# created and read back before a requested ready transition, so a GitHub comment
+# failure cannot leave the PR ready without its audit record.
+if ! ${READY_FOR_REVIEW} || [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
   CREATE_ARGS=(--draft "${CREATE_ARGS[@]}")
 fi
 assert_publish_write_ready
@@ -1156,6 +1307,27 @@ CREATED_PR_URL="$("${GH_BIN}" pr create --repo "${PUBLISH_REPO}" "${CREATE_ARGS[
 verify_pr_target "${BRANCH_NAME}"
 if [[ -n "${FINAL_PROVIDER_VISIBLE_FILES}" ]]; then
   CREATED_PR_NUMBER="${CREATED_PR_URL##*/}"
+  if ! verify_pr_is_draft "${CREATED_PR_NUMBER}"; then
+    if ! restore_pr_draft_after_failed_ready "${CREATED_PR_NUMBER}"; then
+      echo "Error: new provider-visible pull request was not draft and could not be returned to draft." >&2
+      exit 1
+    fi
+    echo "Error: new provider-visible pull request was unexpectedly ready and was returned to draft." >&2
+    exit 1
+  fi
   ensure_provider_review_comment "${CREATED_PR_NUMBER}"
+  verify_provider_ready_authority "${CREATED_PR_NUMBER}"
+  if ${READY_FOR_REVIEW}; then
+    assert_publish_write_ready
+    verify_pr_target "${CREATED_PR_NUMBER}"
+    promote_pr_ready_with_rollback "${CREATED_PR_NUMBER}"
+  elif ! verify_pr_is_draft "${CREATED_PR_NUMBER}"; then
+    if ! restore_pr_draft_after_failed_ready "${CREATED_PR_NUMBER}"; then
+      echo "Error: new provider-visible pull request left draft state during audit and could not be returned to draft." >&2
+      exit 1
+    fi
+    echo "Error: new provider-visible pull request left draft state during audit and was returned to draft." >&2
+    exit 1
+  fi
 fi
 printf '%s\n' "${CREATED_PR_URL}"

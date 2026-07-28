@@ -996,9 +996,9 @@ therefore cannot authorize another governance operation.
 
 The repository does not install the broker, root config, Keychain key, or owner
 capability. Missing host trust keeps broker-backed owner acquisition closed, but
-does not block normal publication. Provider work can use the signing-free
-GitHub reaction path described below. GitHub records the CODEOWNER account that
-made the human Gate 2 decision.
+does not block normal publication. Provider work uses the behavior-scoped Gate
+1 artifact described below. The generated GitHub comment records the
+provider-visible paths and diff for audit. It is not a second approval.
 
 ### Current-task owner confirmation
 
@@ -1070,8 +1070,8 @@ events.
 
 This route is cooperative evidence. The JSON does not prove who wrote it, so
 the current task must contain the owner's explicit decision. It does not grant
-provider contact and cannot replace Gate 1, Gate 2, or exact-diff CODEOWNER
-review. The signed broker remains the stronger machine-verifiable option.
+provider contact and cannot replace the provider behavior gate. The signed
+broker remains the stronger machine-verifiable option.
 
 ## Authority model
 
@@ -1084,17 +1084,15 @@ Checked-in automation authority is one of:
 
 Provider authority is separate. `forbidden` prohibits provider activity.
 `approval-required` may prepare a draft, but it cannot implement or make
-provider-visible work ready without the owner's scoped Gate 1 decision and the
-Gate 2 CODEOWNER reaction. A task may move to provider authority
-`approved` only with an approval reference. Only the `freed-owner` lease may
-change task authority. That lease can be bound to either the optional signed
-owner capability or one exact current-task owner confirmation. The
-confirmation file does not authenticate the owner. It records the owner's
-explicit current-task decision and the canonical operation intent. The direct
-provider Gate 2 route remains the CODEOWNER's GitHub thumbs-up on the generated
-provider review comment, and that reaction does not itself mutate task
-authority. Task authority never substitutes for the publish gate or CODEOWNER
-review. Creating a task
+provider-visible work ready without the owner's scoped Gate 1 decision. A task
+may move to provider authority `approved` only with an approval reference. Only
+the `freed-owner` lease may change task authority. That lease can be bound to
+either the optional signed owner capability or one exact current-task owner
+confirmation. The confirmation file does not authenticate the owner. It
+records the owner's explicit current-task decision and canonical operation
+intent. The generated provider review comment is an audit record and does not
+mutate task authority. Task authority never substitutes for publication,
+merge, release, install, or live provider authority. Creating a task
 directly with provider authority `approved` also requires an approval reference.
 The current manifest retains that reference, and every task event carries the
 same approval snapshot.
@@ -1435,35 +1433,34 @@ and automation work remains in the `dev` lane.
 
 ## Provider approval records
 
-Provider approval JSON belongs outside the repository because the approved
-provider branch must remain clean. The record cannot be future-dated, may last
-at most seven days, must still be unexpired, and must name the exact
-provider-visible path set. Its `diffSha` must equal the provider-only binary
-diff hash. It records `approvedBy`, one provider scope for every approved path,
-and a `control-task` approval source. Provider names inferred from
-provider-specific paths must match that scope. Any provider-visible edit
-invalidates the record.
+The normal human path uses a healthy `provider-risk-review` stability artifact.
+It records the provider set, observable behavior, fingerprinting risk,
+lowest-profile alternative, and allowed behavior. The current task preserves
+the owner's explicit decision and stable reference. Provider names inferred
+from the current classified diff must match the artifact provider set.
 
 Gate 1 happens before code. The owner must explicitly approve the named
 provider, observable behavior, fingerprinting risk, and lowest-profile
 alternative. General permission to proceed with a plan or program is not this
 approval.
 
-Gate 2 happens after the provider-visible diff is committed and published as a
-draft. The helper posts a GitHub review comment containing the providers,
+After code, the helper posts a GitHub review comment containing the providers,
 provider-visible paths, behavior, risk, alternative, and provider-only diff
-fingerprint. The direct human authorization is a CODEOWNER thumbs-up reaction
-on that comment. The helper verifies the actor and fingerprint before marking
-the pull request ready. Unrelated branch edits preserve the reaction.
+fingerprint. The comment is the audit record. It is not a second owner gate.
+The artifact approves the described behavior rather than one exact diff. A
+material behavior change requires a new Gate 1 decision. A path-only change
+with no observable behavior uses `diff_authorized`.
 
-For machine-verifiable unattended authorization, set `approvalSource.kind` to
-`control-task`. Use the optional signed broker to authorize the same packet
-digest on the referenced task. The publish helper verifies the task manifest,
-approved provider authority, and matching owner capability event. Broker
-provisioning is optional and does not block the GitHub reaction path.
+The optional machine-verifiable `control-task` approval record is a separate
+route. That JSON lives outside the repository, cannot be future-dated, lasts at
+most seven days, and binds the exact provider-visible path set and
+provider-only `diffSha`. The publish helper verifies the task manifest,
+approved provider authority, matching owner capability event, and exact diff.
+Broker provisioning is optional and does not block normal artifact-backed
+publication.
 
-The signed source does not replace external review policy. The direct path uses
-the CODEOWNER reaction itself as the structured GitHub authorization event.
+The signed source does not replace external review policy, merge authority, or
+live provider authority.
 
 See the fingerprinting stop sign in [AGENTS.md](../AGENTS.md) for the full
 publish contract.

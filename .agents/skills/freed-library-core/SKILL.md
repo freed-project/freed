@@ -1,0 +1,309 @@
+---
+name: freed-library-core
+description: Build or migrate Freed's bounded-memory Library Core across Desktop and PWA. Use for native SQLite storage, browser row storage, operation journals, causal merge rules, tombstones, bounded queries, Automerge migration, storage-epoch cutover, rollback, snapshots, imports, operation-segment sync, renderer corpus eviction, or any change that can alter durable library authority.
+disable-model-invocation: true
+---
+
+# Library Core
+
+Treat storage authority as product behavior. Read
+[LIBRARY-CORE-CONTRACT.md](../../../docs/LIBRARY-CORE-CONTRACT.md) before
+designing or editing a Library Core slice.
+
+## Declare the slice
+
+Record:
+
+- active engine, storage epoch, schema version, and replication protocol before
+  and after the change;
+- current global epoch-transition certificate, authority key ID, and exact
+  compound cloud authority tuple, including manifest authentication,
+  generation, recovery capability, spent-redemption, and migration-claim
+  fields;
+- immutable source revision and frontier;
+- actor enrollment, signature, chain, and transaction-completeness rules;
+- operation and field-algebra entries affected;
+- bounded query or migration receipt affected;
+- rollback input and exact rollback condition;
+- memory and latency budgets;
+- focused fault boundary;
+- whether provider-observable behavior changes.
+
+If any item is unknown, inspect the current implementation. Do not invent a
+placeholder authority or a temporary second writer.
+
+Gate A includes the one-time legacy epoch bootstrap. Record it through one
+durable initialization transaction, then read it back. Never guess an initial
+epoch or infer authority from file presence.
+
+## Preserve the invariants
+
+1. Keep exactly one active writer epoch. Advance it only with a signed immutable
+   transition certificate and one compare-and-swap of the complete cloud
+   authority tuple. Local file presence or an incremented number is not
+   authority.
+2. Acknowledge a mutation only after the operation, rows, tombstones, cursor,
+   and outbox commit together.
+3. Reuse the same operation ID after timeout or response loss.
+4. Derive core-body, transaction, actor-chain, and signature digests in the
+   contract's non-circular phases. Desktop and PWA must produce identical
+   canonical bytes.
+5. Use causal context for later intent and the registered algebra for
+   concurrent intent. Do not use SQL order or wall time as the merge contract.
+6. Enroll device-local actor keys through the library authority and verify every
+   operation signature, sequence, previous-operation link, and chain digest.
+   Rotate actor identity only for a new installation incarnation, clone
+   recovery, or restore. Preserve it across ordinary app updates. Reject stale
+   epochs, retired actors, gaps, forks, unknown schemas, and changed migration
+   sources.
+7. Preserve forked suffixes as immutable quarantine evidence. Recovery emits
+   new signed repair operations with source references. Never rewrite or replay
+   the compromised envelopes.
+8. Buffer a remote transaction until count, contiguous member indexes,
+   signatures, individual digests, and aggregate digest all verify. Never
+   materialize or acknowledge a partial transaction.
+9. Read migration data from an immutable complete source, never UI state.
+10. Return bounded DTOs with one source revision. Never cross a full corpus into
+   React, Zustand, or a Web Worker that remains resident.
+11. Keep Automerge authoritative until both Desktop and PWA can use the
+   replacement replication epoch.
+12. Fence every retired epoch through epoch-bound operation and manifest
+    authentication. Treat old-client uploads and late writes as explicit orphan
+    recovery input, never active authority.
+13. Authenticate manifests and preserve branch-qualified actor tips. Never
+    sequence-max incompatible forks for sync, acknowledgment, or compaction.
+14. Roll back only from a receipt at the same frontier. Otherwise roll forward.
+15. Make external blobs durable before an authoritative database reference,
+    replicate and verify them before applying a referencing transaction, and
+    snapshot the database plus its pinned reachable blob set at one frontier.
+16. Keep provider traffic off during development. The first slice capable of
+    turning a memory-rejected provider attempt into real provider contact is
+    provider-observable. The owner approved the exact effect of existing
+    scheduled Facebook and Instagram pulls succeeding after memory relief in
+    `codex-task:019f4ce3-2ee3-76b2-bc0c-eb7f4958a7de`, with the statement "You
+    are fully authorized to continue this optimization in ways which will
+    increase provider pull frequency by fixing cases where we were previously
+    unable to pull." The provider can therefore observe successful contact where memory
+    rejection previously produced none. The lowest-profile alternative is to
+    preserve the memory rejection and leave that data unsynced. This decision
+    does not expire while the existing schedule, retry policy, requests,
+    navigation, cookies, headers, and extraction behavior remain unchanged.
+    Cite that exact decision and write and validate its healthy artifact before
+    publishing the first active slice. Do not ask the owner to approve the same
+    behavior again. Dormant storage work remains provider-free. Cadence,
+    request, navigation, cookie, header, or extractor changes require their own
+    decision.
+17. Keep cloud replication and provider-action outboxes separate. A remote
+    library operation never directly triggers provider activity.
+18. Advance materializer work by local ingest sequence, not HLC.
+19. Commit materialized state through the canonical persistent Merkle Patricia
+    trie. Update only touched leaves and ancestor paths in ordinary writes and
+    migration batches. Never rehash the complete corpus per transaction.
+20. Elect one capable migration authority for the exact immutable Automerge
+    source through the authenticated response-loss-safe candidate claim. Cloud
+    claims expire only by authenticated store time. Local claims never expire
+    and require explicit abandonment or winning cutover. Require the live exact
+    claim and an exact payload-bound one-use grant for candidate registration,
+    source contribution, fence reservation, fence activation, candidate-object
+    commit, and cutover. Candidate registration is the first claim-bound
+    authority mutation. While its registry entry is absent, no other operation
+    grant may issue or consume. Registration and candidate-absent abandonment
+    serialize over the same claim pointer and registry state. Cloud operations
+    consume the grant in the authority store. Local operations bind it inside
+    the same local control transaction. A cloud source grant binds a
+    runtime-owned process generation and monotonic anchor created before grant
+    acquisition. Commit requires the original nonserializable live attempt
+    handle and the current runtime-owned generation. Serialized equality cannot
+    revive an attempt after restart. A pause consumes the allowance but does
+    not invalidate an otherwise timely attempt. A pause that exhausts the
+    allowance, a restart, a missing live handle, a changed generation, or an
+    invalid clock sample requires a fresh operation ID and grant. Cutover grants
+    bind the closed transition-core payload, then the final certificate binds
+    that payload, grant, and consumption without a hash cycle. Other
+    installations prove adapter fixtures and bootstrap from the accepted
+    checkpoint and operation segments. Do not make every browser decode the
+    owner's private corpus. A second unreconciled permanent media vault blocks
+    cutover.
+21. Bound startup recovery by item count and elapsed time. Verify a referenced
+    blob before exposing that entity, quarantine only affected state, and
+    resume the remaining integrity scan from a durable background cursor.
+    Never block startup on a full blob-corpus walk.
+22. Keep every migration fence secret out of portable evidence. Persist only a
+    domain-separated token digest in authority records, proofs, receipts,
+    backups, and logs. The source owner generates and retains the private token
+    only in protected, crash-recoverable operation state. A coordinator never
+    publishes or retains it.
+23. Serialize source-fence acquire, release, and abandonment revocation through
+    one durable source-local authority domain. Prepare corpus-sized candidate
+    work, prepared proof, reservations, and genesis closure before fence
+    activation. Activate every fence only for the final bounded
+    compare-and-swap window. Library Core v1 permits at most 64 local sources,
+    65 fences including Automerge, a 2 MiB activation-evidence sidecar, 1,024
+    sidecar objects, 65 source mutations, and 60 seconds. The sidecar contains
+    only activation entries, authenticated-set nodes, the bounded final proof,
+    and dependency-acyclic wrappers. It excludes the genesis closure, receipt,
+    cutover payload, certificate, and manifest authentication object. Commit
+    sidecar, final proof, receipt, cutover authority records, certificate,
+    manifest authentication, and target tuple in one atomic authority bundle.
+    No full decode, cache census, filesystem walk, external sort, arbitrary
+    upload, closure mutation, or prepared-proof traversal runs while a source
+    fence is active. While active, acknowledge a new source write only after
+    its exact epoch-neutral replay intent is durable. Otherwise reject it before
+    acknowledgment.
+24. Decode Automerge through bounded external-memory runs. Never use
+    `Automerge.load`, keep a source-sized change graph resident, or grant a
+    large-host exception. Admission proves both the fixed memory ceiling and
+    private staging capacity.
+25. Build PWA reader manifests from both registered Cache namespaces and the
+    durable logical lookup plan. Use one plan row and one probe per unique
+    physical locator with sorted candidate bindings. Call only exact
+    `cache.match` with every ignore option false and no network fallback.
+    Persist one authenticated hit, missing, or error outcome for every plan row.
+    Never enumerate the full Cache API key set. Resolve native reader files
+    beneath one pinned root handle with
+    no-follow semantics and reject links, reparse points, mount crossings, and
+    root replacement. A mapped target identity must equal independently
+    verified source identity.
+26. Capture backups from one immutable checkpoint and media-vault generation,
+    then release writers. Finalization may proceed across authenticated
+    ordinary same-transition descendants without changing captured backup,
+    bundle, delegation, or encrypted payload bytes. Keep one stable registration
+    ID. Use a fresh attempt operation ID whenever the predecessor tuple,
+    descendant proof, or signed certificate bytes change; exact retry means
+    byte-identical attempt bytes. A busy library must not starve backup merely
+    because new writes continue.
+27. Commit cleanup through persistent candidate-census, source-fence, and
+    terminal-disposition sets. Candidate size may delay physical deletion but
+    never blocks ordinary legacy writes. An unreachable authoritative source
+    blocks registered-candidate cleanup and a successor migration claim until
+    it reconnects or is retired through policy. A claim abandoned before
+    candidate registration uses the bounded candidate-absent cleanup branch:
+    null candidate fields, canonical empty disposition sets, no source
+    revocation, and no claim that unregistered temporary bytes were deleted. It
+    is never blocked on source reachability. Same-library recovery is the
+    cleanup-free authority escape hatch.
+    Same-library recovery may supersede an active or abandoned lifecycle with
+    its canonical proof before distributed cleanup. Later cleanup is garbage
+    collection, not authority. Represent it with the recovery-supersession
+    selector, signed disposition receipts, and the optional signed recovery-GC
+    aggregate. Never fabricate an abandonment digest for an active-claim
+    recovery.
+
+## Build in the safe order
+
+Use `freed-build-feature` for worktree and publication mechanics. Within the
+Library Core program, prefer this sequence:
+
+1. measurement and budgets;
+2. exhaustive field, operation, query, deletion, and locality registries;
+3. dormant native or browser core;
+4. one elected immutable resumable migration, bounded device-local source
+   contributions, and full-field verification;
+5. bounded reads at one revision;
+6. exhaustive full-corpus consumer cutover, renderer eviction, and a
+   short-lived compatibility engine;
+7. dormant replacement replication on Desktop and PWA;
+8. one coordinated writer and protocol epoch cutover;
+9. installed soak and rollback window;
+10. Automerge retirement.
+
+Do not activate a later step because its code exists. Require the preceding
+receipt and exact source frontier.
+
+## Validate economically
+
+During implementation, run the smallest deterministic proof for the contract
+changed. At the publish checkpoint, run changed-path feature validation.
+
+Blocking Library Core proofs are:
+
+- transaction crash atomicity on every writable Desktop and PWA adapter;
+- duplicate operation and response-loss recovery;
+- actor enrollment and signature rejection, restore rotation, retirement, fork
+  detection, and deterministic repair convergence;
+- incomplete and corrupted transaction-member rejection without partial apply;
+- future-clock quarantine and certified repair convergence;
+- concurrent delete, update, and explicit restore;
+- elected migration claim races and response loss, interruption,
+  cloud expiry and local non-expiry, operation-grant consumption,
+  grant-bound live source attempts across process restart, source-revision
+  drift, registration versus candidate-absent abandonment, state-correct
+  absent cleanup, dead-claimant abandonment, recovery supersession, persistent
+  registered-candidate cleanup sets larger than one page, external-memory
+  decode, prepared migration and rollback proofs, valid rollback fences,
+  65-fence and 2 MiB finalization boundaries, atomic sidecar publication,
+  short fence activation, composite device-local source identity, pinned-root
+  native traversal, lookup-plan Cache probes without `Cache.keys()`,
+  reader-target identity equality, authoritative reader-content and permanent
+  media-vault closure, adapter fixture parity, and bounded checkpoint
+  bootstrap;
+- global epoch races, same-epoch manifest races, compound authority-state
+  compare-and-swap, remote genesis closure, prepared-transition recovery,
+  stale-writer fencing, and legacy-namespace isolation;
+- cutover, rollback, authority recovery, and concurrent-restore receipts;
+- same-revision page and count behavior;
+- two-device offline convergence through cloud manifest conflicts;
+- authenticated manifest generation, exact branch acknowledgment, and safe
+  compaction;
+- schema and database-plus-blob snapshot atomicity, including blob crash
+  boundaries;
+- bidirectional Desktop and PWA encrypted backup and restore vectors, including
+  a busy same-transition source that advances during backup construction;
+- import idempotency;
+- bounded query enforcement and full semantics beyond the legacy 2,500-item cap
+  on every supported adapter.
+
+For a read cutover, typecheck is also a consumer inventory: removing the
+full-corpus state field must expose every remaining reader. Preserve existing
+search semantics with parity fixtures or deliberately version the query after
+an explicit product decision. A native feed query alone is not a memory
+cutover while navigation, settings, search, content fetch, provider-action
+derivation, backup, export, or product/UI sync still scans the complete corpus.
+The registered short-lived legacy migration and replication bridges may
+continue through Gate D until Gate E replaces them; they do not excuse another
+full-corpus product reader.
+
+Use `freed-sync-replay` for fault injection and `freed-memory-profile` for
+memory admission. Route large fuzz matrices, private-corpus migration,
+100,000-item performance, browser permutations, and long slopes to dedicated
+or nightly evidence. Do not add them to every PR or release.
+
+## Close the slice
+
+Before publication:
+
+1. Confirm every changed export has a real caller.
+2. Confirm no unbounded DTO or whole-document transport was introduced.
+3. Record exact head, tree, schema, epoch, source frontier, focused tests,
+   runtime, rollback plan, and exact rollback trigger. If this slice executed
+   a transition, also record the same-frontier rollback or recovery receipt.
+   Dormant code and measurement do not invent a receipt for a transition that
+   never occurred.
+4. Classify provider-visible paths by behavior. A path-only change with no
+   observable provider effect uses the approved `diff_authorized` audit path.
+5. Dormant code and measurement may be merge-safe. Any Gate C through Gate H
+   dormant-to-active transition is owner-reviewed work. This includes claiming
+   or executing a migration candidate, source admission fencing, SQL read
+   cutover, legacy-worker or renderer-corpus eviction, an active writer,
+   replication protocol, storage epoch, rollback, restore, authority-key
+   rotation, recovery transition, installed-soak activation at Gate G, or
+   legacy-engine retirement. Stop at an
+   owner-reviewed PR and obtain separate release, install, and activation
+   authority. Task or merge authority alone never activates one of these
+   transitions.
+6. Do not append to
+   `docs/library-core-activation-manifest.json` for dormant implementation. The
+   exact product PR that deliberately makes the next release cross a Gate C
+   through Gate H boundary appends one closed transition entry with its stable
+   activation ID, rollback trigger, and receipt expectations. Never delete,
+   edit, reorder, or reuse an earlier entry. Release tooling derives the exact
+   activation delta from this history. It never trusts a handwritten
+   `no_activation_declared` assertion.
+7. A first `complete_history` release with no previous published boundary must
+   set `previousPresent: false`. When a previous boundary exists, a release may
+   set `previousPresent: false` only after an exact Git tree lookup at that
+   resolved commit proves the activation manifest path is absent. Missing
+   objects, invalid refs, wrong object kinds, permission errors, and read
+   failures block release validation. After any prior release artifact records
+   activation evidence, require `previousPresent: true` and exact digest
+   continuity.

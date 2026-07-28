@@ -1,12 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { FOCUSED_FEATURE_VALIDATION_PATHS } from "./lib/tooling-smoke-plan.mjs";
 import {
   buildValidationPlan,
+  collectChangedReleaseIdentityArtifacts,
   collectReleaseArtifactsToValidate,
   describePlan,
+  executeReleaseIdentityValidation,
   isDesktopNativeSurface,
   isDesktopPerfSensitiveSurface,
+  isLibraryCoreReleaseActivationPath,
+  isPullRequestPublisherToolingPath,
   isReleasePublisherToolingPath,
   isReleaseAdmissionPath,
   isRepositoryConfigPath,
@@ -15,6 +20,8 @@ import {
   isStabilityStatusPath,
   isToolingSmokeRunnerPath,
   parseArgs,
+  releaseArtifactExistsAtRef,
+  releaseIdentityValidationArgsForArtifact,
   REPO_ROOT,
 } from "./validate-worktree.mjs";
 
@@ -304,6 +311,7 @@ test("feature plan for validation runner changes runs only runner tests", () => 
 
 test("feature plan for release admission changes runs only its contract tests", () => {
   const paths = [
+    ".github/workflows/main-release-validation.yml",
     ".github/workflows/release.yml",
     "scripts/validate-dev-integration-receipt.mjs",
     "scripts/validate-dev-integration-receipt.test.mjs",
@@ -383,7 +391,11 @@ test("feature plan routes tooling smoke workflow and helper changes through focu
   const runnerTests = plan.find(
     (item) => item.label === "tooling smoke runner tests",
   );
+  const releaseAdmissionTests = plan.find(
+    (item) => item.label === "release admission tests",
+  );
   assert.ok(runnerTests);
+  assert.ok(releaseAdmissionTests);
   assert.deepEqual(runnerTests.args, [
     "--test",
     "scripts/measure-tooling-smoke.test.mjs",
@@ -391,6 +403,26 @@ test("feature plan routes tooling smoke workflow and helper changes through focu
     "scripts/tooling-smoke-plan.test.mjs",
     "scripts/run-tooling-smoke-shard.test.mjs",
   ]);
+});
+
+test("deleted performance comment paths route their exact replacement contract", () => {
+  for (const filePath of [
+    "scripts/post-perf-comment.mjs",
+    "scripts/post-perf-comment.test.mjs",
+  ]) {
+    const labels = describePlan(buildValidationPlan("feature", [filePath]));
+    assert.ok(labels.includes("release admission tests"), filePath);
+  }
+});
+
+test("every tooling-smoke focused exemption has a feature validation route", () => {
+  for (const filePath of FOCUSED_FEATURE_VALIDATION_PATHS) {
+    const labels = describePlan(buildValidationPlan("feature", [filePath]));
+    assert.ok(
+      labels.some((label) => label !== "root typecheck"),
+      `${filePath}: ${labels.join(", ")}`,
+    );
+  }
 });
 
 test("feature plan for social scrape loop changes runs only loop tests", () => {
@@ -614,7 +646,82 @@ test("feature plan for updater manifest changes runs its complete-platform contr
   ]);
 });
 
-test("feature plan routes every Release Publisher surface through its focused suite", () => {
+test("feature plan routes Library Core release activation changes through the focused contract suite", () => {
+  const plan = buildValidationPlan("feature", [
+    "scripts/lib/library-core-release-activation.mjs",
+  ]);
+  const command = plan.find(
+    (item) => item.label === "Library Core release activation tests",
+  );
+  const manifestCommand = plan.find(
+    (item) => item.label === "Library Core activation manifest validation",
+  );
+
+  assert.equal(
+    isLibraryCoreReleaseActivationPath(
+      "scripts/lib/library-core-release-activation.mjs",
+    ),
+    true,
+  );
+  assert.equal(
+    isLibraryCoreReleaseActivationPath(
+      "docs/library-core-activation-manifest.json",
+    ),
+    true,
+  );
+  assert.deepEqual(manifestCommand?.args, [
+    "scripts/validate-library-core-activation-manifest.mjs",
+  ]);
+  assert.deepEqual(command?.args, [
+    "--test",
+    "scripts/release-receipt.test.mjs",
+    "scripts/library-core-release-activation.test.mjs",
+    "scripts/lib/git-path-at-ref.test.mjs",
+    "scripts/lib/github-release-publications.test.mjs",
+    "scripts/lib/library-core-release-activation.test.mjs",
+    "scripts/validate-release-identity.test.mjs",
+  ]);
+});
+
+test("normative Library Core docs and skills route contract and skill validation", () => {
+  for (const filePath of [
+    ".agents/skills/freed-library-core/SKILL.md",
+    "docs/LIBRARY-CORE-CONTRACT.md",
+    "docs/STORAGE-ARCHITECTURE-ROADMAP.md",
+  ]) {
+    assert.equal(isLibraryCoreReleaseActivationPath(filePath), true, filePath);
+    const labels = describePlan(buildValidationPlan("feature", [filePath]));
+    assert.ok(
+      labels.includes("Library Core release activation tests"),
+      filePath,
+    );
+    assert.ok(
+      labels.includes("Library Core activation manifest validation"),
+      filePath,
+    );
+    assert.equal(
+      labels.includes("skill validation"),
+      filePath.startsWith(".agents/skills/"),
+      filePath,
+    );
+  }
+});
+
+test("every Freed skill and its validator route focused skill checks", () => {
+  for (const filePath of [
+    ".agents/skills/freed-provider-risk-review/SKILL.md",
+    ".agents/skills/freed-memory-profile/SKILL.md",
+    "scripts/validate-skills.mjs",
+    "scripts/validate-skills.test.mjs",
+  ]) {
+    const plan = buildValidationPlan("feature", [filePath]);
+    const labels = describePlan(plan);
+    assert.ok(labels.includes("skill validation tests"), filePath);
+    assert.ok(labels.includes("skill validation"), filePath);
+  }
+});
+
+test("feature plan routes every Release Publisher surface through its full suite", () => {
   const publisherPaths = [
     ".github/rulesets/release-tag-lockdown.json",
     ".github/rulesets/release-tag-immutability.json",
@@ -628,6 +735,7 @@ test("feature plan routes every Release Publisher surface through its focused su
     "scripts/doctor.test.mjs",
     "scripts/lib/release-tag-publisher.mjs",
     "scripts/lib/release-tag-publisher.test.mjs",
+    "scripts/release-publish.sh",
     "scripts/release-tag-publisher-build.sh",
     "scripts/release-tag-publisher-host.swift",
     "scripts/release-tag-publisher-install.mjs",
@@ -639,6 +747,17 @@ test("feature plan routes every Release Publisher surface through its focused su
     "scripts/validate-release-tag-authority.mjs",
     "scripts/validate-release-tag-authority.test.mjs",
   ];
+  const publisherTests = [
+    "scripts/automation-control-docs.test.mjs",
+    "scripts/create-release-github-app.test.mjs",
+    "scripts/doctor.test.mjs",
+    "scripts/lib/release-tag-publisher.test.mjs",
+    "scripts/release-governance.test.mjs",
+    "scripts/release-tag-publisher-install.test.mjs",
+    "scripts/release-tag-publisher-native.test.mjs",
+    "scripts/sync-github-rulesets.test.mjs",
+    "scripts/validate-release-tag-authority.test.mjs",
+  ];
 
   for (const filePath of publisherPaths) {
     assert.equal(isReleasePublisherToolingPath(filePath), true, filePath);
@@ -646,25 +765,34 @@ test("feature plan routes every Release Publisher surface through its focused su
       (item) => item.label === "release publisher tests",
     );
     assert.ok(publisherSuite, filePath);
-    assert.ok(
-      publisherSuite.args.includes(
-        "scripts/release-tag-publisher-native.test.mjs",
-      ),
-      filePath,
+    assert.deepEqual(publisherSuite.args, ["--test", ...publisherTests]);
+  }
+});
+
+test("feature plan isolates pull request publication from tag publisher host suites", () => {
+  for (const filePath of [
+    "scripts/worktree-publish.sh",
+    "scripts/worktree-publish.test.mjs",
+  ]) {
+    assert.equal(isPullRequestPublisherToolingPath(filePath), true, filePath);
+    assert.equal(isReleasePublisherToolingPath(filePath), false, filePath);
+    const plan = buildValidationPlan("feature", [filePath]);
+    const pullRequestSuite = plan.find(
+      (item) => item.label === "pull request publisher tests",
     );
-    assert.ok(
-      publisherSuite.args.includes("scripts/automation-control-docs.test.mjs"),
-      filePath,
+    assert.deepEqual(pullRequestSuite?.args, [
+      "--test",
+      "scripts/worktree-publish.test.mjs",
+    ]);
+    assert.equal(
+      plan.some((item) => item.label === "release publisher tests"),
+      false,
+    );
+    assert.equal(
+      plan.some((item) => item.label === "release notes shared tests"),
+      false,
     );
   }
-
-  assert.equal(isReleasePublisherToolingPath("scripts/release-publish.sh"), true);
-  assert.deepEqual(
-    describePlan(
-      buildValidationPlan("feature", ["scripts/release-publish.sh"]),
-    ),
-    ["release admission tests"],
-  );
 });
 
 test("collectReleaseArtifactsToValidate resolves markdown artifacts to their json pairs", () => {
@@ -723,4 +851,203 @@ test("feature release prep validates only the changed release artifact", () => {
 
   assert.ok(releaseValidation);
   assert.deepEqual(releaseValidation.files, [`${releaseArtifact}.json`]);
+});
+
+test("release identity validation maps changed release JSON and Markdown to one artifact", () => {
+  assert.deepEqual(
+    collectChangedReleaseIdentityArtifacts([
+      "release-notes/releases/v26.7.2800-dev.json",
+      "release-notes/releases/v26.7.2800-dev.md",
+      "release-notes/daily/26.7.28-dev.json",
+      "release-notes/releases/v26.7.2800-dev.json",
+    ]),
+    ["release-notes/releases/v26.7.2800-dev.json"],
+  );
+  assert.deepEqual(
+    collectChangedReleaseIdentityArtifacts([
+      "release-notes/releases/v26.7.2800-dev.md",
+    ]),
+    ["release-notes/releases/v26.7.2800-dev.json"],
+  );
+  assert.throws(
+    () =>
+      releaseIdentityValidationArgsForArtifact(
+        "release-notes/releases/not-a-release.json",
+        {},
+      ),
+    /requires a canonical release JSON path/,
+  );
+});
+
+test("release artifact base inspection distinguishes absence from Git failure", () => {
+  assert.equal(
+    releaseArtifactExistsAtRef(
+      "release-notes/releases/v26.7.2600-dev.json",
+      "origin/dev",
+      () => ({
+        status: 0,
+        stdout: "release-notes/releases/v26.7.2600-dev.json\0",
+        stderr: "",
+      }),
+    ),
+    true,
+  );
+  assert.equal(
+    releaseArtifactExistsAtRef(
+      "release-notes/releases/v26.7.2900-dev.json",
+      "origin/dev",
+      () => ({
+        status: 0,
+        stdout: "",
+        stderr: "",
+      }),
+    ),
+    false,
+  );
+  assert.throws(
+    () =>
+      releaseArtifactExistsAtRef(
+        "release-notes/releases/v26.7.2600-dev.json",
+        "origin/dev",
+        () => ({
+          status: 128,
+          stdout: "",
+          stderr: "repository unavailable",
+        }),
+      ),
+    /repository unavailable/,
+  );
+});
+
+test("feature and production plans validate changed release identity directly", () => {
+  for (const [mode, artifactPath, dailyPath] of [
+    [
+      "feature",
+      "release-notes/releases/v26.7.2800-dev.json",
+      "release-notes/daily/26.7.28-dev.json",
+    ],
+    [
+      "production",
+      "release-notes/releases/v26.7.2800.json",
+      "release-notes/daily/26.7.28.json",
+    ],
+  ]) {
+    const identityItem = buildValidationPlan(mode, [
+      artifactPath,
+      dailyPath,
+    ]).find((item) => item.label === "release identity validation");
+    assert.deepEqual(
+      identityItem,
+      {
+        kind: "release-identity-validation",
+        label: "release identity validation",
+        files: [artifactPath],
+      },
+      mode,
+    );
+  }
+});
+
+test("release identity execution separates modern releases, historical corrections, and backfills", () => {
+  const filePath = "release-notes/releases/v26.7.2800-dev.json";
+  const artifact = {
+    tag: "v26.7.2800-dev",
+    source: { productCommitSha: "a".repeat(40) },
+  };
+  assert.deepEqual(
+    releaseIdentityValidationArgsForArtifact(filePath, artifact),
+    [
+      "scripts/validate-release-identity.mjs",
+      "--tag=v26.7.2800-dev",
+      "--head-ref=HEAD",
+    ],
+  );
+  assert.deepEqual(
+    releaseIdentityValidationArgsForArtifact(
+      "release-notes/releases/v26.7.2800.json",
+      {
+        tag: "v26.7.2800",
+        source: { productCommitSha: "b".repeat(40) },
+      },
+    ),
+    [
+      "scripts/validate-release-identity.mjs",
+      "--tag=v26.7.2800",
+      "--head-ref=HEAD",
+    ],
+  );
+
+  let execution = null;
+  assert.equal(
+    executeReleaseIdentityValidation(
+      filePath,
+      artifact,
+      (label, command, args, cwd) => {
+        execution = { label, command, args, cwd };
+      },
+      () => false,
+    ),
+    true,
+  );
+  assert.deepEqual(execution, {
+    label: `validate identity ${filePath}`,
+    command: process.execPath,
+    args: [
+      "scripts/validate-release-identity.mjs",
+      "--tag=v26.7.2800-dev",
+      "--head-ref=HEAD",
+    ],
+    cwd: REPO_ROOT,
+  });
+
+  let historicalExecution = null;
+  assert.equal(
+    executeReleaseIdentityValidation(
+      filePath,
+      {
+        ...artifact,
+        source: { receiptMode: "historical-published-tag" },
+      },
+      (label, command, args, cwd) => {
+        historicalExecution = { label, command, args, cwd };
+      },
+      () => false,
+    ),
+    true,
+  );
+  assert.deepEqual(historicalExecution, {
+    label: `validate identity ${filePath}`,
+    command: process.execPath,
+    args: [
+      "scripts/validate-release-identity.mjs",
+      "--tag=v26.7.2800-dev",
+      "--historical-published-tag",
+      "--branch-ref=origin/dev",
+    ],
+    cwd: REPO_ROOT,
+  });
+
+  let historicalCorrectionExecution = null;
+  assert.equal(
+    executeReleaseIdentityValidation(
+      filePath,
+      artifact,
+      (label, command, args, cwd) => {
+        historicalCorrectionExecution = { label, command, args, cwd };
+      },
+      () => true,
+    ),
+    true,
+  );
+  assert.deepEqual(historicalCorrectionExecution, {
+    label: `validate identity ${filePath}`,
+    command: process.execPath,
+    args: [
+      "scripts/validate-release-identity.mjs",
+      "--tag=v26.7.2800-dev",
+      "--historical-release-note-correction",
+      "--branch-ref=origin/dev",
+    ],
+    cwd: REPO_ROOT,
+  });
 });

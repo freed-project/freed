@@ -497,13 +497,14 @@ The runner excludes provider-visible tasks by default. Provider-visible peer wor
 
 Provider approval is scoped evidence, not a general instruction to "proceed
 with everything." Human work records Gate 1 in a healthy provider risk review
-artifact and publishes as a draft with that artifact. The helper posts a GitHub
-review comment bound to the artifact, provider-visible path set, and
-provider-only binary diff. A CODEOWNER thumbs-up reaction on that exact,
-unedited comment authorizes the ready transition. Provider-visible edits or a
-changed Gate 1 artifact require a new reaction. Unrelated branch edits do not.
-A signed control-task approval remains available for unattended publication
-and must bind the same provider-only fingerprint.
+artifact. The helper posts a GitHub review comment naming the artifact,
+provider-visible path set, and provider-only binary diff. That comment is the
+audit record, not a second approval. A healthy `behavior_approved` artifact may
+publish directly as ready when its provider set matches the classified diff.
+A classified-path change with no observable provider behavior uses a healthy
+`diff_authorized` artifact. A new Gate 1 decision is required when observable
+behavior exceeds the approved scope, not merely because bytes changed. A signed
+control-task approval remains available for unattended publication.
 
 Release work is also gated. A dev build should ship only after actual fixes merge into `dev`, not after planning artifacts alone.
 

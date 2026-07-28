@@ -7877,9 +7877,16 @@ test("execution plan includes peer review and release soak gates", () => {
       prompt: "Wait for provider approval.",
     },
   ]).find((phase) => phase.id === "publish");
-  assert.equal(providerPublish?.closeout, "draft");
-  assert.doesNotMatch(providerPublish?.commands[0] ?? "", /--ready/);
-  assert.match(providerPublish?.stopGate ?? "", /provider-risk approval/);
+  assert.equal(providerPublish?.closeout, "provider-artifact-required");
+  assert.equal(providerPublish?.mutates, false);
+  assert.match(providerPublish?.commands[0] ?? "", /^# Stop before publication/);
+  assert.match(
+    providerPublish?.commands[0] ?? "",
+    /--provider-risk-review-artifact <path> --ready$/,
+  );
+  assert.match(providerPublish?.stopGate ?? "", /provider-risk artifact/);
+  assert.match(providerPublish?.stopGate ?? "", /approved observable behavior/);
+  assert.doesNotMatch(providerPublish?.title ?? "", /owner review/i);
   assert.equal(
     deriveCandidatePrTitle({
       id: "unsafe",

@@ -12,6 +12,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -71,6 +72,7 @@ jobs:
         run: npm run validate:production
         env:
           CI: "true"
+          GH_TOKEN: ${{ github.token }}
 
       - name: Upload test artifacts on failure
         if: failure()

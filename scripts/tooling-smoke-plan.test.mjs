@@ -185,6 +185,68 @@ test("release admission and repository configuration changes use focused feature
   assert.match(selection.reason, /explicit focused feature-validation/);
 });
 
+test("Library Core and pull request publisher paths do not duplicate focused feature validation", () => {
+  const selection = selectApplicableSuites([
+    ".github/workflows/main-release-validation.yml",
+    ".agents/skills/freed-library-core/SKILL.md",
+    "docs/LIBRARY-CORE-CONTRACT.md",
+    "docs/STORAGE-ARCHITECTURE-ROADMAP.md",
+    "docs/library-core-activation-manifest.json",
+    "scripts/library-core-release-activation.mjs",
+    "scripts/library-core-release-activation.test.mjs",
+    "scripts/lib/git-path-at-ref.mjs",
+    "scripts/lib/git-path-at-ref.test.mjs",
+    "scripts/lib/github-release-publications.mjs",
+    "scripts/lib/github-release-publications.test.mjs",
+    "scripts/lib/library-core-release-activation.mjs",
+    "scripts/lib/library-core-release-activation.test.mjs",
+    "scripts/post-perf-comment.mjs",
+    "scripts/post-perf-comment.test.mjs",
+    "scripts/prepare-release-notes.mjs",
+    "scripts/release-receipt.mjs",
+    "scripts/release-receipt.test.mjs",
+    "scripts/validate-library-core-activation-manifest.mjs",
+    "scripts/validate-release-identity.mjs",
+    "scripts/validate-release-identity.test.mjs",
+    "scripts/validate-skills.test.mjs",
+    "scripts/worktree-publish.sh",
+    "scripts/worktree-publish.test.mjs",
+  ]);
+
+  assert.deepEqual(selection.suites, []);
+  assert.match(selection.reason, /explicit focused feature-validation/);
+});
+
+test("every Freed skill path relies on its focused skill validator", () => {
+  for (const filePath of [
+    ".agents/skills/freed-provider-risk-review/SKILL.md",
+    ".agents/skills/freed-provider-risk-review/agents/openai.yaml",
+    ".agents/skills/freed-memory-profile/SKILL.md",
+    ".agents/skills/future-skill/SKILL.md",
+    "scripts/validate-skills.mjs",
+    "scripts/validate-skills.test.mjs",
+  ]) {
+    const selection = selectApplicableSuites([filePath]);
+    assert.deepEqual(selection.suites, [], filePath);
+    assert.match(
+      selection.reason,
+      /explicit focused feature-validation/,
+      filePath,
+    );
+  }
+});
+
+test("unvalidated skill support files fail closed to the tooling lane", () => {
+  const selection = selectApplicableSuites([
+    ".agents/skills/freed-memory-profile/scripts/helper.mjs",
+  ]);
+  assert.ok(selection.suites.length > 0);
+  assert.deepEqual(selection.unattributed, [
+    ".agents/skills/freed-memory-profile/scripts/helper.mjs",
+  ]);
+  assert.match(selection.reason, /fails closed/);
+});
+
 test("release publisher source still requires native acceptance", () => {
   const selection = selectNativeAcceptance([
     "scripts/release-tag-publisher-host.swift",

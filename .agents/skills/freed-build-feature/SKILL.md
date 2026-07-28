@@ -17,7 +17,8 @@ Build one attributable product change from the latest `origin/dev`. Keep the cha
 5. Treat missing build identity, mixed-build evidence, insufficient coverage, or broken sources as `inconclusive`. Do not turn absence of evidence into a passing result.
 6. Record the source build identity for every baseline: app version, channel, git SHA, native boot ID, app session ID, and exact start and end timestamps when available.
 7. Read [docs/STABILITY-PROGRAM.md](../../../docs/STABILITY-PROGRAM.md) for durable stability policy and read the selected GitHub issue for scope and completion criteria. Preserve the watchdog freeze and one global behavioral product change until its installed-build soak outcome completes.
-8. If the change can alter provider-visible behavior, stop and use `freed-provider-risk-review`. Preparation is not approval. A materially changed provider-visible diff requires renewed approval.
+8. If the change can alter provider-visible behavior, stop and use `freed-provider-risk-review`. Preparation is not approval. A materially changed observable behavior requires renewed approval. A classified-path-only change with no provider-observable effect uses the `diff_authorized` audit path.
+9. For native library storage, operation journals, migration, bounded library queries, renderer corpus eviction, snapshots, imports, or replacement sync, use `freed-library-core` for the authority and activation contract.
 
 ## Build the slice
 
@@ -49,7 +50,7 @@ When product work changes any `docs/PHASE-*.md` file:
 
 ## Publish and close out
 
-1. Publish with `./scripts/worktree-publish.sh --title "<conventional title>" --summary "<change>" --test "<focused check>"` using the caller's existing GitHub authentication. When provider-visible paths changed, first write the approved Gate 1 decision as a healthy `provider-risk-review` stability artifact, then publish the draft with `--provider-risk-review-artifact <path>`. The helper posts a review comment bound to both that artifact and the provider-only diff. After a CODEOWNER adds a GitHub thumbs-up reaction to that exact comment, rerun the helper with the same artifact and `--ready`. A valid signed control-task approval may authorize an unattended ready transition.
+1. Publish with `./scripts/worktree-publish.sh --title "<conventional title>" --summary "<change>" --test "<focused check>"` using the caller's existing GitHub authentication. When provider-visible paths changed, first write a healthy `provider-risk-review` artifact. Use `behavior_approved` for an approved observable behavior and `diff_authorized` for a classified-path change with no observable provider effect. Publish with `--provider-risk-review-artifact <path>`. The helper posts the provider-path and subdiff audit comment. No reaction-based second gate exists, so an authorized candidate may publish directly with `--ready`.
    A host that deliberately provisions `FREED_TRUSTED_PUBLISHER` may invoke the
    same helper through its capability and lease handoff for unattended work.
    Missing optional broker provisioning does not block the normal publication
