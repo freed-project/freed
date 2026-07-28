@@ -166,15 +166,35 @@ test("release admission and repository configuration changes use focused feature
   const selection = selectApplicableSuites([
     ".github/dependabot.yml",
     ".github/workflows/release.yml",
+    "scripts/generate-tauri-latest-from-release.mjs",
+    "scripts/generate-tauri-latest-from-release.test.mjs",
+    "scripts/lib/tooling-smoke-plan.mjs",
     "scripts/release-governance.test.mjs",
+    "scripts/release-tag-publisher-host.swift",
+    "scripts/release-tag-publisher-native.test.mjs",
     "scripts/release-workflow-matrix.test.mjs",
     "scripts/repository-config.test.mjs",
+    "scripts/tooling-smoke-plan.test.mjs",
     "scripts/validate-dev-integration-receipt.mjs",
     "scripts/validate-dev-integration-receipt.test.mjs",
+    "scripts/validate-worktree.mjs",
+    "scripts/validate-worktree.test.mjs",
   ]);
 
   assert.deepEqual(selection.suites, []);
   assert.match(selection.reason, /explicit focused feature-validation/);
+});
+
+test("release publisher source still requires native acceptance", () => {
+  const selection = selectNativeAcceptance([
+    "scripts/release-tag-publisher-host.swift",
+    "scripts/release-tag-publisher-native.test.mjs",
+  ]);
+
+  assert.equal(selection.required, true);
+  assert.ok(
+    selection.files.includes("scripts/release-tag-publisher-native.test.mjs"),
+  );
 });
 
 test("product fixture literals do not schedule unrelated tooling or native lanes", () => {

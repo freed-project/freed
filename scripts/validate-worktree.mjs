@@ -68,6 +68,12 @@ const RELEASE_ADMISSION_TEST_FILES = [
   "scripts/release-workflow-matrix.test.mjs",
 ];
 
+const UPDATER_MANIFEST_PATHS = new Set([
+  ".github/workflows/release.yml",
+  "scripts/generate-tauri-latest-from-release.mjs",
+  "scripts/generate-tauri-latest-from-release.test.mjs",
+]);
+
 const REPOSITORY_CONFIG_PATHS = new Set([
   ".github/dependabot.yml",
   "packages/pwa/vercel.json",
@@ -764,6 +770,9 @@ export function buildValidationPlan(mode, changedFiles) {
   const websiteSurfaceChanged = changedFiles.some(isWebsiteSurface);
   const releaseToolingChanged = changedFiles.some(isReleaseToolingPath);
   const releaseAdmissionChanged = changedFiles.some(isReleaseAdmissionPath);
+  const updaterManifestChanged = changedFiles.some((filePath) =>
+    UPDATER_MANIFEST_PATHS.has(filePath),
+  );
   const repositoryConfigChanged = changedFiles.some(isRepositoryConfigPath);
   const releasePublisherToolingChanged = changedFiles.some(
     (filePath) =>
@@ -923,6 +932,16 @@ export function buildValidationPlan(mode, changedFiles) {
       nodeCommand("release admission tests", [
         "--test",
         ...RELEASE_ADMISSION_TEST_FILES,
+      ]),
+    );
+  }
+
+  if (updaterManifestChanged) {
+    addCommand(
+      plan,
+      nodeCommand("updater manifest tests", [
+        "--test",
+        path.join("scripts", "generate-tauri-latest-from-release.test.mjs"),
       ]),
     );
   }

@@ -598,6 +598,22 @@ test("feature plan for release tooling changes runs code contract tests without 
   assert.ok(!labels.includes("release note artifact validation"));
 });
 
+test("feature plan for updater manifest changes runs its complete-platform contract", () => {
+  const plan = buildValidationPlan("feature", [
+    "scripts/generate-tauri-latest-from-release.mjs",
+    "scripts/generate-tauri-latest-from-release.test.mjs",
+  ]);
+
+  const updaterTests = plan.find(
+    (item) => item.label === "updater manifest tests",
+  );
+  assert.ok(updaterTests);
+  assert.deepEqual(updaterTests.args, [
+    "--test",
+    "scripts/generate-tauri-latest-from-release.test.mjs",
+  ]);
+});
+
 test("feature plan routes every Release Publisher surface through its focused suite", () => {
   const publisherPaths = [
     ".github/rulesets/release-tag-lockdown.json",
