@@ -175,7 +175,6 @@ test("release inspection ranges select the exact modern, historical, or complete
   );
   assert.deepEqual(ancestryChecks, [
     [PRODUCT_SHA, TAG_SHA],
-    [TAG_SHA, CURRENT_PRODUCT_SHA],
     [PRODUCT_SHA, CURRENT_PRODUCT_SHA],
   ]);
 
@@ -327,6 +326,37 @@ test("modern release ranges reject a product commit from a fork outside the publ
       }),
     /product commit .* is not an ancestor of its published tag commit/,
   );
+});
+
+test("modern release continuity follows the recorded product boundary, not its metadata tag", () => {
+  const ancestryChecks = [];
+  const range = releaseInspectionRange({
+    channel: "dev",
+    previousPublishedTag: "v26.7.2701-dev",
+    previousSource: {
+      channel: "dev",
+      productCommitSha: PRODUCT_SHA,
+      promotedDevCommitSha: null,
+    },
+    previousTagCommitSha: TAG_SHA,
+    productCommitSha: CURRENT_PRODUCT_SHA,
+    isAncestor(from, to) {
+      ancestryChecks.push([from, to]);
+      return (
+        (from === PRODUCT_SHA && to === TAG_SHA) ||
+        (from === PRODUCT_SHA && to === CURRENT_PRODUCT_SHA)
+      );
+    },
+  });
+
+  assert.equal(
+    range.fromExclusiveCommitSha,
+    PRODUCT_SHA,
+  );
+  assert.deepEqual(ancestryChecks, [
+    [PRODUCT_SHA, TAG_SHA],
+    [PRODUCT_SHA, CURRENT_PRODUCT_SHA],
+  ]);
 });
 
 test("release inspection ranges fail closed on unsupported or unproven boundaries", () => {
