@@ -5,6 +5,9 @@ import { existsSync } from "node:fs";
 export const GITHUB_RELEASE_PAGE_SIZE = 100;
 export const MAX_GITHUB_RELEASE_PAGES = 50;
 export const GITHUB_RELEASE_PAGE_MAX_BYTES = 16 * 1024 * 1024;
+export const GITHUB_COMPARE_MAX_BYTES = 16 * 1024 * 1024;
+
+const FULL_COMMIT_SHA_PATTERN = /^[0-9a-f]{40,64}$/;
 
 function githubBinary(environment) {
   const candidates = [
@@ -65,6 +68,85 @@ function requestFailure(result) {
     result.stderr?.trim() ||
     result.error?.message ||
     (result.signal ? `terminated by ${result.signal}` : "curl failed")
+  );
+}
+
+export function readGithubCommitAncestry({
+  repository = "freed-project/freed",
+  fromRef,
+  toRef,
+  environment = process.env,
+  execFile = execFileSync,
+  spawn = spawnSync,
+  curlBinary = "/usr/bin/curl",
+} = {}) {
+  const fromSha = String(fromRef ?? "").trim();
+  const toSha = String(toRef ?? "").trim();
+  if (
+    !FULL_COMMIT_SHA_PATTERN.test(fromSha) ||
+    !FULL_COMMIT_SHA_PATTERN.test(toSha)
+  ) {
+    throw new Error(
+      "Authenticated GitHub ancestry reads require two full commit SHAs.",
+    );
+  }
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
+    throw new Error("Authenticated GitHub ancestry reads require owner/repo.");
+  }
+
+  const token = resolveGithubReadToken({ environment, execFile });
+  const result = spawn(
+    curlBinary,
+    [
+      "--disable",
+      "--fail",
+      "--silent",
+      "--show-error",
+      "--proto",
+      "=https",
+      "--tlsv1.2",
+      "--config",
+      "-",
+      "--connect-timeout",
+      "10",
+      "--max-time",
+      "30",
+      "--retry",
+      "2",
+      "--retry-all-errors",
+      "--header",
+      "Accept: application/vnd.github+json",
+      "--header",
+      "X-GitHub-Api-Version: 2022-11-28",
+      `https://api.github.com/repos/${repository}/compare/${fromSha}...${toSha}`,
+    ],
+    {
+      encoding: "utf8",
+      input: `header = "Authorization: Bearer ${token}"\n`,
+      timeout: 35_000,
+      maxBuffer: GITHUB_COMPARE_MAX_BYTES,
+    },
+  );
+  if (result.status !== 0) {
+    throw new Error(
+      `Could not read canonical GitHub commit ancestry: ${requestFailure(result)}.`,
+    );
+  }
+
+  let comparison;
+  try {
+    comparison = JSON.parse(result.stdout);
+  } catch {
+    throw new Error("Canonical GitHub commit comparison is invalid JSON.");
+  }
+
+  if (comparison?.status === "identical") {
+    return fromSha === toSha;
+  }
+  return (
+    comparison?.status === "ahead" &&
+    comparison?.behind_by === 0 &&
+    comparison?.merge_base_commit?.sha === fromSha
   );
 }
 
