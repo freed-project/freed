@@ -144,12 +144,16 @@ jobs:
       - name: Run the full desktop e2e suite
         run: npm run test:e2e
         working-directory: packages/desktop
+        env:
+          FREED_FRIENDS_PERF_TELEMETRY: "1"
 
-      - name: Upload reports on failure
-        if: failure()
+      - name: Upload reports and telemetry
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: nightly-playwright-report
-          path: packages/desktop/playwright-report/
+          name: nightly-desktop-e2e-artifacts
+          path: |
+            packages/desktop/playwright-report/
+            packages/desktop/test-results/
           retention-days: 14
           if-no-files-found: ignore

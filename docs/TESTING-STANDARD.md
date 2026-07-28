@@ -74,6 +74,17 @@ Three files gate every test behind a single module-level `process.platform === "
 
 Shards run with a per-test timeout of 5 minutes. `node --test` defaults to no timeout, which let one blocked test pin a shard until the job-level timeout with no useful signal. Any tooling test slower than this in a blocking lane is a defect, not a long test.
 
+## Performance gates
+
+Tier 1 and Tier 2 may block on deterministic performance contracts such as
+bounded work, allocation, residency, rebuild counts, and output size.
+
+Raw elapsed time, animation-frame rate, LongTask entries, heap demand, and GPU
+timing from a virtualized browser belong in Tier 4 unless the lane fixes the
+hardware, browser, renderer, workload, and statistical comparison rule. A
+missing or unsupported instrument is inconclusive. It must never be recorded as
+zero work.
+
 ## Universal release gate
 
 Keep this list small. These are the only checks that gate every release:

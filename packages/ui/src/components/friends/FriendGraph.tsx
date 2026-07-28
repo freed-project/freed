@@ -135,6 +135,9 @@ interface GraphSurfacePerfSnapshot {
   rendererLabelCount: number;
   readyRendererLabelCount: number;
   rendererEdgeCount: number;
+  bufferUploadCount: number;
+  presentationInFlight: boolean;
+  presentationQueued: boolean;
   denseRenderMode: "dense" | "containers";
   denseInteractionEligible: boolean;
   denseInteractionNodeCount: number;
@@ -596,6 +599,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       rendererLabelCount: renderer?.labelCount ?? 0,
       readyRendererLabelCount: renderer?.labelCount ?? 0,
       rendererEdgeCount: renderer?.contextualEdgeCount ?? 0,
+      bufferUploadCount: renderer?.bufferUploadCount ?? 0,
+      presentationInFlight: engine.presentationInFlight,
+      presentationQueued: engine.presentationQueued,
       denseRenderMode: residentNodeCount >= 1_200 ? "dense" : "containers",
       denseInteractionEligible: residentNodeCount >= 1_200,
       denseInteractionNodeCount: qualityMode === "interactive" ? visibleNodeCount : 0,

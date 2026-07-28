@@ -158,6 +158,14 @@ export class FriendsGalaxyProductEngine {
     return this.worker.sourceReady;
   }
 
+  get presentationInFlight(): boolean {
+    return this.worker.presentationInFlight;
+  }
+
+  get presentationQueued(): boolean {
+    return this.worker.presentationQueued;
+  }
+
   get requestedSourceRevision(): number | null {
     return this.worker.activeSourceRevision;
   }

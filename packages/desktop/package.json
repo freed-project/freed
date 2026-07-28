@@ -21,6 +21,7 @@
     "test:e2e:perf:feed": "node ../../node_modules/playwright/cli.js test perf-feed.spec.ts",
     "test:e2e:perf:graph": "node ../../node_modules/playwright/cli.js test smoke.spec.ts --grep \"stress Friends graph keeps labels resident\"",
     "test:e2e:perf:friends": "node ../../node_modules/playwright/cli.js test perf-friends.spec.ts",
+    "test:e2e:perf:friends:telemetry": "FREED_FRIENDS_PERF_TELEMETRY=1 node ../../node_modules/playwright/cli.js test perf-friends.spec.ts",
     "test:e2e:perf:map": "node ../../node_modules/playwright/cli.js test perf-map.spec.ts",
     "test:e2e:perf:sidebar": "node ../../node_modules/playwright/cli.js test perf-sidebar.spec.ts",
     "test:e2e:perf:settings": "node ../../node_modules/playwright/cli.js test perf-settings.spec.ts",
