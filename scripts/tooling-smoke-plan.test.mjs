@@ -185,6 +185,20 @@ test("release admission and repository configuration changes use focused feature
   assert.match(selection.reason, /explicit focused feature-validation/);
 });
 
+test("generated release artifacts do not replay unrelated tooling suites", () => {
+  const selection = selectApplicableSuites([
+    "release-notes/daily/dev/26.7.28.json",
+    "release-notes/daily/production/26.7.28.json",
+    "release-notes/releases/v26.7.2800-dev.json",
+    "release-notes/releases/v26.7.2800-dev.md",
+    "release-notes/releases/v26.7.2800.json",
+    "release-notes/releases/v26.7.2800.md",
+  ]);
+
+  assert.deepEqual(selection.suites, []);
+  assert.match(selection.reason, /explicit focused feature-validation/);
+});
+
 test("Library Core and pull request publisher paths do not duplicate focused feature validation", () => {
   const selection = selectApplicableSuites([
     ".github/workflows/main-release-validation.yml",
