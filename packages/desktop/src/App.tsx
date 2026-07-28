@@ -171,7 +171,11 @@ import { importMetaExportFiles } from "./lib/meta-export-import";
 import { summarizeMediaVault } from "./lib/media-vault";
 import { publishStoryWallToGitHubPages } from "./lib/story-wall-publisher";
 import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-report";
-import { startMemoryMonitor, stopMemoryMonitor } from "./lib/memory-monitor";
+import {
+  captureShellMemoryBaseline,
+  startMemoryMonitor,
+  stopMemoryMonitor,
+} from "./lib/memory-monitor";
 import {
   getBackgroundRuntimeStatus,
   noteMemoryPressure,
@@ -376,6 +380,13 @@ function App() {
   const fatalError = useFatalRuntimeError();
 
   useDesktopNavigationHistory(legalAccepted);
+
+  useEffect(() => {
+    if (!tauriRuntimeAvailable) return;
+    // Give the nonblocking shell probe the legal and lock checks as headroom.
+    // Document initialization closes the window and discards a late result.
+    void captureShellMemoryBaseline();
+  }, [tauriRuntimeAvailable]);
 
   useEffect(() => {
     if (

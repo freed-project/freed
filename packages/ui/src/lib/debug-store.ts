@@ -75,6 +75,7 @@ export interface RuntimeMemorySnapshot {
   webkitLargestRole?: string;
   webkitProcesses?: Array<{
     processId: number;
+    startedAtUnixSeconds?: number;
     residentBytes: number;
     footprintBytes?: number;
     virtualBytes: number;
@@ -114,15 +115,18 @@ export interface RuntimeMemorySnapshot {
    * nobody has measured.
    */
   rendererHeapAvailable?: boolean;
-  /**
-   * WebKit resident bytes sampled before the Automerge document was hydrated,
-   * captured once per launch. This is the WebKit shell plus React baseline, the
-   * largest single unmeasured term in the storage roadmap's floor estimates
-   * (independent passes put it anywhere from 60 to 250 MB).
-   */
-  shellBaselineWebkitResidentBytes?: number;
-  /** Current WebKit resident minus the shell baseline: the measured cost of everything Freed loads on top of an empty renderer. */
-  webkitResidentOverShellBaselineBytes?: number;
+  /** Main renderer RSS sampled before Automerge hydration, captured once per launch. */
+  shellBaselineMainRendererResidentBytes?: number;
+  /** PID that owns the shell baseline. Later samples are comparable only while this process survives. */
+  shellBaselineMainRendererProcessId?: number;
+  /** Native process start time paired with the PID so PID reuse cannot resurrect an old baseline. */
+  shellBaselineMainRendererStartedAtUnixSeconds?: number;
+  /** Native microsecond process start identity used for exact same-process comparisons. */
+  shellBaselineMainRendererStartedAtUnixMicros?: number;
+  /** Same-process main renderer growth since the shell baseline. This is undefined after renderer replacement. */
+  mainRendererResidentOverShellBaselineBytes?: number;
+  /** Why a same-process comparison is or is not available for this sample. */
+  shellBaselineComparisonStatus?: "not_captured" | "same_process" | "process_unavailable";
   shellBaselineAgeMs?: number;
   /** Whether the document had been hydrated when this sample was taken. A baseline is only valid from a pre-hydration sample. */
   documentHydrated?: boolean;

@@ -14,7 +14,10 @@ const {
   mockDocDeduplicateFeedItems,
   mockDocHealUntitledFeedTitles,
   mockDocPruneArchivedItems,
+  mockCaptureShellMemoryBaseline,
   mockInitDoc,
+  mockRecordDocumentHydrated,
+  mockRecordDocumentHydrationStarted,
   mockRunBackgroundJob,
   mockStartOutboxProcessor,
   mockSubscribe,
@@ -24,7 +27,10 @@ const {
   mockDocDeduplicateFeedItems: vi.fn(),
   mockDocHealUntitledFeedTitles: vi.fn(),
   mockDocPruneArchivedItems: vi.fn(),
+  mockCaptureShellMemoryBaseline: vi.fn(),
   mockInitDoc: vi.fn(),
+  mockRecordDocumentHydrated: vi.fn(),
+  mockRecordDocumentHydrationStarted: vi.fn(),
   mockRunBackgroundJob: vi.fn(),
   mockStartOutboxProcessor: vi.fn(),
   mockSubscribe: vi.fn(),
@@ -84,6 +90,12 @@ vi.mock("./platform-actions", () => ({
 
 vi.mock("./outbox", () => ({
   startOutboxProcessor: mockStartOutboxProcessor,
+}));
+
+vi.mock("./memory-monitor", () => ({
+  captureShellMemoryBaseline: mockCaptureShellMemoryBaseline,
+  recordDocumentHydrated: mockRecordDocumentHydrated,
+  recordDocumentHydrationStarted: mockRecordDocumentHydrationStarted,
 }));
 
 vi.mock("./desktop-client-registration", () => ({
@@ -154,6 +166,8 @@ describe("store startup migrations", () => {
     mockDocHealUntitledFeedTitles.mockResolvedValue(undefined);
     mockDocPruneArchivedItems.mockReset();
     mockDocPruneArchivedItems.mockResolvedValue(undefined);
+    mockCaptureShellMemoryBaseline.mockReset();
+    mockCaptureShellMemoryBaseline.mockResolvedValue(true);
     mockInitDoc.mockReset();
     mockInitDoc.mockResolvedValue(createDocState());
     mockRunBackgroundJob.mockReset();
@@ -163,6 +177,8 @@ describe("store startup migrations", () => {
     mockSubscribe.mockReset();
     mockSubscribe.mockReturnValue(mockUnsubscribe);
     mockUnsubscribe.mockReset();
+    mockRecordDocumentHydrated.mockReset();
+    mockRecordDocumentHydrationStarted.mockReset();
     localStorage.clear();
     resetDeviceDisplayPreferencesForTests();
     resetFacebookGroupDiscoveryForTests();
@@ -171,6 +187,49 @@ describe("store startup migrations", () => {
   afterEach(() => {
     vi.useRealTimers();
     localStorage.clear();
+  });
+
+  it("primes the shell baseline and closes its window before loading the document", async () => {
+    const order: string[] = [];
+    mockCaptureShellMemoryBaseline.mockImplementation(async () => {
+      order.push("baseline");
+      return true;
+    });
+    mockRecordDocumentHydrationStarted.mockImplementation(() => {
+      order.push("hydration-started");
+    });
+    mockInitDoc.mockImplementation(async () => {
+      order.push("document");
+      return createDocState();
+    });
+    mockRecordDocumentHydrated.mockImplementation(() => {
+      order.push("hydrated");
+    });
+    const { useAppStore } = await import("./store");
+
+    await useAppStore.getState().initialize();
+
+    expect(order.slice(0, 4)).toEqual([
+      "baseline",
+      "hydration-started",
+      "document",
+      "hydrated",
+    ]);
+  });
+
+  it("does not await a stalled shell measurement", async () => {
+    mockCaptureShellMemoryBaseline.mockReturnValue(new Promise(() => {}));
+    const { useAppStore } = await import("./store");
+
+    await expect(useAppStore.getState().initialize()).resolves.toBeUndefined();
+
+    expect(mockInitDoc).toHaveBeenCalledTimes(1);
+    expect(mockRecordDocumentHydrationStarted.mock.invocationCallOrder[0]).toBeLessThan(
+      mockInitDoc.mock.invocationCallOrder[0],
+    );
+    expect(mockRecordDocumentHydrated.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mockInitDoc.mock.invocationCallOrder[0],
+    );
   });
 
   it("defers startup maintenance instead of running it during launch", async () => {

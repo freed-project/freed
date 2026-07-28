@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { setRuntimeMemory, type RuntimeMemorySnapshot } from "@freed/ui/lib/debug-store";
 import { getStatus as getContentFetcherStatus } from "./content-fetcher";
 import { log } from "./logger";
+import { recordRuntimeHealthEvent } from "./runtime-health-events";
 
 const MEMORY_SAMPLE_INTERVAL_MS = 60_000;
 const MEMORY_LOG_INTERVAL = 4;
@@ -35,6 +36,8 @@ interface NativeRuntimeMemoryStats {
   webkitLargestRole?: string;
   webkitProcesses?: Array<{
     processId: number;
+    startedAtUnixSeconds?: number;
+    startedAtUnixMicros?: number;
     residentBytes: number;
     footprintBytes?: number;
     virtualBytes: number;
@@ -115,22 +118,152 @@ function getRendererMemoryStats(): BrowserMemoryStats | null {
  *
  * Recorded once per app launch, at the first sample taken before hydration.
  */
-let shellBaselineWebkitResidentBytes: number | undefined;
+let shellBaselineMainRendererResidentBytes: number | undefined;
+let shellBaselineMainRendererProcessId: number | undefined;
+let shellBaselineMainRendererStartedAtUnixSeconds: number | undefined;
+let shellBaselineMainRendererStartedAtUnixMicros: number | undefined;
 let shellBaselineCapturedAtMs: number | undefined;
+let shellBaselineCapturePromise: Promise<boolean> | undefined;
+let documentHydrationStartedAtMs: number | undefined;
 let documentHydratedAtMs: number | undefined;
 
+export function recordDocumentHydrationStarted(): void {
+  documentHydrationStartedAtMs ??= Date.now();
+}
+
 export function recordDocumentHydrated(): void {
-  documentHydratedAtMs ??= Date.now();
+  if (documentHydratedAtMs !== undefined) return;
+  recordDocumentHydrationStarted();
+  documentHydratedAtMs = Date.now();
+  recordRuntimeHealthEvent({
+    event: "memory_document_hydrated",
+    shellBaselineMainRendererResidentBytes,
+    shellBaselineMainRendererProcessId,
+    shellBaselineMainRendererStartedAtUnixSeconds,
+    shellBaselineMainRendererStartedAtUnixMicros,
+    shellBaselineCaptured: shellBaselineMainRendererResidentBytes !== undefined,
+  });
 }
 
 export function getShellBaselineBytes(): number | undefined {
-  return shellBaselineWebkitResidentBytes;
+  return shellBaselineMainRendererResidentBytes;
+}
+
+function findMainRendererProcess(
+  native: Pick<
+    NativeRuntimeMemoryStats,
+    "webkitAttributionPrecise" | "webkitProcesses"
+  >,
+): NonNullable<NativeRuntimeMemoryStats["webkitProcesses"]>[number] | undefined {
+  if (!native.webkitAttributionPrecise) return undefined;
+  const rootedCandidates =
+    native.webkitProcesses?.filter(
+      (process) =>
+        process.role === "freed-webcontent" &&
+        process.startedAtUnixSeconds !== undefined &&
+        process.startedAtUnixSeconds > 0 &&
+        process.startedAtUnixMicros !== undefined &&
+        Number.isSafeInteger(process.startedAtUnixMicros) &&
+        process.startedAtUnixMicros > 0,
+    ) ?? [];
+  return rootedCandidates.length === 1 ? rootedCandidates[0] : undefined;
+}
+
+function captureShellBaselineFromNative(
+  native: Pick<
+    NativeRuntimeMemoryStats,
+    "webkitAttributionPrecise" | "webkitTelemetryAvailable" | "webkitProcesses"
+  >,
+): boolean {
+  const mainRenderer = findMainRendererProcess(native);
+  if (
+    shellBaselineMainRendererResidentBytes !== undefined ||
+    documentHydrationStartedAtMs !== undefined ||
+    !native.webkitTelemetryAvailable ||
+    !mainRenderer ||
+    mainRenderer.residentBytes <= 0
+  ) {
+    return false;
+  }
+  shellBaselineMainRendererResidentBytes = mainRenderer.residentBytes;
+  shellBaselineMainRendererProcessId = mainRenderer.processId;
+  shellBaselineMainRendererStartedAtUnixSeconds =
+    mainRenderer.startedAtUnixSeconds;
+  shellBaselineMainRendererStartedAtUnixMicros =
+    mainRenderer.startedAtUnixMicros;
+  shellBaselineCapturedAtMs = Date.now();
+  return true;
+}
+
+/**
+ * Capture the WebKit shell before the Automerge document starts loading.
+ *
+ * `startMemoryMonitor()` runs only after the store reports initialized. Calling
+ * it there is correct for pressure handling but too late for attribution. App
+ * startup primes this probe before legal and document initialization. The store
+ * also primes it as a fallback, then closes the baseline window before
+ * `initDoc()` begins.
+ *
+ * Measurement is never a startup dependency. Callers deliberately do not await
+ * this promise. The sample disables storage scans but requires rooted WebKit
+ * attribution and a process start time. If it does not finish before hydration
+ * starts, or cannot prove one exact main renderer, it is discarded.
+ */
+export async function captureShellMemoryBaseline(): Promise<boolean> {
+  if (
+    shellBaselineMainRendererResidentBytes !== undefined ||
+    documentHydrationStartedAtMs !== undefined ||
+    !canSampleNativeMemoryStats()
+  ) {
+    return false;
+  }
+  if (shellBaselineCapturePromise) return shellBaselineCapturePromise;
+
+  const capture = (async () => {
+    try {
+      const native = await invoke<NativeRuntimeMemoryStats>("get_runtime_memory_stats", {
+        includeStorageSizes: false,
+        preciseWebkitAttribution: true,
+      });
+      const captured = captureShellBaselineFromNative(native);
+      if (captured) {
+        recordRuntimeHealthEvent({
+          event: "memory_shell_baseline",
+          mainRendererProcessId: shellBaselineMainRendererProcessId,
+          mainRendererStartedAtUnixSeconds:
+            shellBaselineMainRendererStartedAtUnixSeconds,
+          mainRendererStartedAtUnixMicros:
+            shellBaselineMainRendererStartedAtUnixMicros,
+          mainRendererResidentBytes: shellBaselineMainRendererResidentBytes,
+          webkitProcessCount: native.webkitProcessCount,
+          webkitAttributionPrecise: native.webkitAttributionPrecise,
+        });
+      }
+      return captured;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log.warn(`[memory] shell baseline unavailable: ${message}`);
+      return false;
+    }
+  })();
+  shellBaselineCapturePromise = capture;
+  void capture.then(() => {
+    if (shellBaselineCapturePromise === capture) {
+      shellBaselineCapturePromise = undefined;
+    }
+  });
+  return capture;
 }
 
 /** Test seam: clears the once-per-launch baseline. */
 export function resetMemoryAttributionForTests(): void {
-  shellBaselineWebkitResidentBytes = undefined;
+  shellBaselineMainRendererResidentBytes = undefined;
+  shellBaselineMainRendererProcessId = undefined;
+  shellBaselineMainRendererStartedAtUnixSeconds = undefined;
+  shellBaselineMainRendererStartedAtUnixMicros = undefined;
   shellBaselineCapturedAtMs = undefined;
+  shellBaselineCapturePromise = undefined;
+  documentHydrationStartedAtMs = undefined;
   documentHydratedAtMs = undefined;
 }
 
@@ -333,17 +466,7 @@ async function sampleRuntimeMemory(
   // before the document is hydrated. Taking it later would fold the Automerge
   // document into the "baseline" and make the delta meaningless, which is the
   // specific way this measurement is easy to get wrong.
-  const baselineCandidateBytes = native.webkitTotalResidentBytes;
-  if (
-    shellBaselineWebkitResidentBytes === undefined &&
-    documentHydratedAtMs === undefined &&
-    native.webkitTelemetryAvailable &&
-    baselineCandidateBytes !== undefined &&
-    baselineCandidateBytes > 0
-  ) {
-    shellBaselineWebkitResidentBytes = baselineCandidateBytes;
-    shellBaselineCapturedAtMs = Date.now();
-  }
+  captureShellBaselineFromNative(native);
   const limits = {
     highBytes:
       native.memoryHighBytes ??
@@ -366,6 +489,22 @@ async function sampleRuntimeMemory(
     native.webkitTotalResidentBytes ?? native.webkitResidentBytes ?? 0,
   );
   peakRelayDocBytes = Math.max(peakRelayDocBytes, native.relayDocBytes);
+  const baselineMainRenderer =
+    shellBaselineMainRendererProcessId === undefined ||
+    shellBaselineMainRendererStartedAtUnixMicros === undefined
+      ? undefined
+      : native.webkitProcesses?.find(
+          (process) =>
+            process.processId === shellBaselineMainRendererProcessId &&
+            process.startedAtUnixMicros ===
+              shellBaselineMainRendererStartedAtUnixMicros,
+        );
+  const shellBaselineComparisonStatus =
+    shellBaselineMainRendererResidentBytes === undefined
+      ? "not_captured"
+      : baselineMainRenderer
+        ? "same_process"
+        : "process_unavailable";
 
   const snapshot: RuntimeMemorySnapshot = {
     totalPhysicalMemoryBytes: native.totalPhysicalMemoryBytes,
@@ -416,18 +555,24 @@ async function sampleRuntimeMemory(
     // desktop app the three fields above are always undefined; without this
     // flag that reads as "the JS heap is negligible" rather than "unmeasured".
     rendererHeapAvailable: renderer !== null,
-    // Attribution terms. shellBaseline is captured once per launch before the
-    // document is hydrated; the delta against it is the measured cost of
-    // everything Freed loads on top of an empty renderer.
-    shellBaselineWebkitResidentBytes,
-    webkitResidentOverShellBaselineBytes:
-      shellBaselineWebkitResidentBytes === undefined ||
-      native.webkitTotalResidentBytes === undefined
+    // Attribution terms. The baseline is one main renderer process captured
+    // before document hydration. A delta is valid only while that exact PID is
+    // still present. Provider WebViews and renderer replacements must never be
+    // folded into a number that looks like corpus cost.
+    shellBaselineMainRendererResidentBytes,
+    shellBaselineMainRendererProcessId,
+    shellBaselineMainRendererStartedAtUnixSeconds,
+    shellBaselineMainRendererStartedAtUnixMicros,
+    mainRendererResidentOverShellBaselineBytes:
+      shellBaselineMainRendererResidentBytes === undefined ||
+      baselineMainRenderer === undefined
         ? undefined
         : Math.max(
             0,
-            native.webkitTotalResidentBytes - shellBaselineWebkitResidentBytes,
+            baselineMainRenderer.residentBytes -
+              shellBaselineMainRendererResidentBytes,
           ),
+    shellBaselineComparisonStatus,
     shellBaselineAgeMs:
       shellBaselineCapturedAtMs === undefined
         ? undefined
@@ -448,6 +593,34 @@ async function sampleRuntimeMemory(
     native.relayDocBytes >= HIGH_RELAY_DOC_BYTES;
 
   if (!shouldLog) return;
+
+  recordRuntimeHealthEvent({
+    event: "renderer_memory_attribution",
+    reason,
+    documentHydrated: snapshot.documentHydrated,
+    shellBaselineMainRendererResidentBytes:
+      snapshot.shellBaselineMainRendererResidentBytes,
+    shellBaselineMainRendererProcessId:
+      snapshot.shellBaselineMainRendererProcessId,
+    shellBaselineMainRendererStartedAtUnixSeconds:
+      snapshot.shellBaselineMainRendererStartedAtUnixSeconds,
+    shellBaselineMainRendererStartedAtUnixMicros:
+      snapshot.shellBaselineMainRendererStartedAtUnixMicros,
+    mainRendererResidentOverShellBaselineBytes:
+      snapshot.mainRendererResidentOverShellBaselineBytes,
+    shellBaselineComparisonStatus: snapshot.shellBaselineComparisonStatus,
+    appResidentBytes: snapshot.appResidentBytes,
+    appMemoryPressureBytes: snapshot.appMemoryPressureBytes,
+    webkitTotalResidentBytes: snapshot.webkitTotalResidentBytes,
+    webkitLargestProcessId: snapshot.webkitLargestProcessId,
+    webkitLargestResidentBytes: snapshot.webkitLargestResidentBytes,
+    webkitProcessCount: snapshot.webkitProcessCount,
+    automergeBinaryBytes: snapshot.automergeBinaryBytes,
+    automergeItemCount: snapshot.automergeItemCount,
+    indexedDbBytes: snapshot.indexedDbBytes,
+    webkitCacheBytes: snapshot.webkitCacheBytes,
+    rendererHeapAvailable: snapshot.rendererHeapAvailable,
+  });
 
   const level =
     pressureLevel !== "normal" ||

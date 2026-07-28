@@ -116,6 +116,8 @@ Background scrape and auth-check sessions now force provider media elements sile
 
 Social memory preflight now has shared backoff across Facebook, Instagram, and LinkedIn. When one provider cannot start because Freed Desktop memory is high after cleanup, the next providers reuse that deferred result instead of immediately opening more WebKit work. High-memory Freed Desktop installs now get larger adaptive scrape budgets, and low-priority semantic enrichment waits through launch so Facebook and Instagram scraping does not lose the first background window to Automerge maintenance.
 
+Startup memory attribution now primes a nonblocking native sample before document hydration and records one rooted main-renderer process identity. Later deltas require the same PID and native microsecond process start time. Renderer replacement, rapid relaunch, PID reuse, ambiguous WebKit candidates, and late samples are recorded as incomparable instead of being mislabeled as document or provider memory.
+
 Provider health now treats memory-pressure preflight blocks as transient deferrals instead of durable provider failures. The attempts stay in local diagnostics for review, but after the recovery window they stop driving sidebar warnings or stale source-menu copy.
 
 Facebook and Instagram feed scrapes now build a memory-aware pass plan after the WebView has loaded. When memory is healthy they keep the normal randomized session. When Freed Desktop is close to the scrape budget, they skip story collection and reduce scroll passes instead of opening a full story-plus-feed session that is likely to pause or trigger memory recovery. Each plan is written to runtime health diagnostics with the provider, pass range, story decision, margin, and memory budgets.
@@ -188,6 +190,7 @@ const RATE_LIMITS = {
 | 7.22 | Story Wall grouped settings section and GitHub Pages publisher | 🚧 In Progress |
 | 7.23 | Local social scrape optimization loop       | ✓ Complete  |
 | 7.24 | Shared safety runtime for authenticated Substack and Medium beta capture | ✓ Complete |
+| 7.25 | Process-matched startup memory attribution  | ✓ Complete  |
 
 ---
 
@@ -221,6 +224,7 @@ const RATE_LIMITS = {
 - [x] Memory-pressure preflight deferrals stay in diagnostics but age out of the current sidebar and source-menu warning state
 - [x] Facebook and Instagram feed scrapes now register with the shared background runtime so cloud sync, content fetches, RSS polls, snapshots, outbox drains, and semantic classifiers do not compete with active WebKit scraping
 - [x] Social scrape memory preflight uses adaptive high-memory budgets, native hidden-window runtime samples, and launch-delayed semantic enrichment so provider WebKit sessions get priority during long background runs
+- [x] Startup memory attribution never blocks initialization and rejects cross-process, recycled-PID, ambiguous, or post-hydration comparisons
 - [x] Local social scrape optimization loop ranks runtime-log evidence into safe local next actions and explicit provider-visible risk decisions
 - [x] Authenticated Substack and Medium beta capture serializes behind the same
       native social session lock, runs memory preflight before provider loads,
