@@ -179,7 +179,13 @@ test("large document survives real worker idle termination and reinitialization"
     const automerge = (
       window as Window & {
         __FREED_AUTOMERGE__?: {
-          replaceLocalDoc: (value: Uint8Array) => Promise<void>;
+          getCommittedDoc: () => Promise<{
+            revision: { generation: number; saveRevision: number };
+          }>;
+          replaceLocalDoc: (
+            value: Uint8Array,
+            expectedRevision: { generation: number; saveRevision: number },
+          ) => Promise<void>;
           getDocState: () => {
             docItemCount: number;
             items: Array<{
@@ -191,7 +197,8 @@ test("large document survives real worker idle termination and reinitialization"
       }
     ).__FREED_AUTOMERGE__;
     if (!automerge) throw new Error("Automerge test API is unavailable");
-    await automerge.replaceLocalDoc(binary);
+    const committed = await automerge.getCommittedDoc();
+    await automerge.replaceLocalDoc(binary, committed.revision);
     const state = automerge.getDocState();
     return {
       binaryBytes: binary.byteLength,

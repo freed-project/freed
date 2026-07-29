@@ -158,6 +158,7 @@ export const PWA_AUTOMERGE_WORKER_REQUEST_SURFACE_REGISTRY = {
     "hidden_legacy_write_contract_unresolved",
     "unbounded_payload",
   ),
+  GET_COMMITTED_DOC: unboundedReadRequest(),
   GET_DOC_BINARY: unboundedReadRequest(),
   GET_HEADS: unboundedReadRequest(),
   COMPARE_DOC: unboundedReadRequest(),
@@ -326,6 +327,7 @@ export const PWA_AUTOMERGE_REQUEST_EFFECT_REGISTRY = {
       "replication_contract_unresolved",
     ],
   ),
+  GET_COMMITTED_DOC: noWriteEffect(),
   GET_DOC_BINARY: noWriteEffect(),
   GET_HEADS: noWriteEffect(),
   COMPARE_DOC: noWriteEffect(),
@@ -354,6 +356,11 @@ export const PWA_AUTOMERGE_WORKER_RESPONSE_SURFACE_REGISTRY = {
     "unbounded_payload",
   ),
   DOC_BINARY: blockedSurface(
+    "legacy_unbounded_transport",
+    "response_transport_not_cut_over",
+    "unbounded_payload",
+  ),
+  COMMITTED_DOC: blockedSurface(
     "legacy_unbounded_transport",
     "response_transport_not_cut_over",
     "unbounded_payload",

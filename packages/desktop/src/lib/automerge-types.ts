@@ -22,6 +22,7 @@ import type {
   DesktopClientRegistration,
 } from "@freed/shared";
 import type { DocumentHistoryRelation } from "@freed/shared/schema";
+import type { StorageRevision } from "@freed/sync/types";
 
 export type { DocumentHistoryRelation } from "@freed/shared/schema";
 
@@ -87,6 +88,7 @@ export type WorkerRequest =
       reqId: number;
       type: "REPLACE_DOC";
       binary: Uint8Array;
+      expectedRevision: StorageRevision;
       desktopClientRegistration?: DesktopClientRegistration;
     }
   // Mutations shared with PWA
@@ -97,8 +99,18 @@ export type WorkerRequest =
   | { reqId: number; type: "TOGGLE_ARCHIVED"; globalId: string }
   | { reqId: number; type: "ARCHIVE_ITEMS"; globalIds: string[] }
   | { reqId: number; type: "TOGGLE_LIKED"; globalId: string }
-  | { reqId: number; type: "CONFIRM_LIKED_SYNCED"; globalId: string; syncedAt?: number }
-  | { reqId: number; type: "CONFIRM_SEEN_SYNCED"; globalId: string; syncedAt?: number }
+  | {
+      reqId: number;
+      type: "CONFIRM_LIKED_SYNCED";
+      globalId: string;
+      syncedAt?: number;
+    }
+  | {
+      reqId: number;
+      type: "CONFIRM_SEEN_SYNCED";
+      globalId: string;
+      syncedAt?: number;
+    }
   | { reqId: number; type: "ADD_FEED_ITEM"; item: FeedItem }
   | { reqId: number; type: "ADD_FEED_ITEMS"; items: FeedItem[] }
   | {
@@ -125,25 +137,68 @@ export type WorkerRequest =
     }
   | { reqId: number; type: "REMOVE_FEED_ITEM"; globalId: string }
   | { reqId: number; type: "CLEAR_SAMPLE_DATA" }
-  | { reqId: number; type: "UPDATE_FEED_ITEM"; globalId: string; updates: Partial<FeedItem> }
-  | { reqId: number; type: "ARCHIVE_ALL_READ_UNSAVED"; platform?: string; feedUrl?: string }
+  | {
+      reqId: number;
+      type: "UPDATE_FEED_ITEM";
+      globalId: string;
+      updates: Partial<FeedItem>;
+    }
+  | {
+      reqId: number;
+      type: "ARCHIVE_ALL_READ_UNSAVED";
+      platform?: string;
+      feedUrl?: string;
+    }
   | { reqId: number; type: "UNARCHIVE_SAVED_ITEMS" }
   | { reqId: number; type: "PRUNE_ARCHIVED_ITEMS"; maxAgeMs?: number }
   | { reqId: number; type: "DELETE_ALL_ARCHIVED" }
   | { reqId: number; type: "ADD_RSS_FEED"; feed: RssFeed }
-  | { reqId: number; type: "REMOVE_RSS_FEED"; url: string; includeItems?: boolean }
-  | { reqId: number; type: "UPDATE_RSS_FEED"; url: string; updates: Partial<RssFeed> }
+  | {
+      reqId: number;
+      type: "REMOVE_RSS_FEED";
+      url: string;
+      includeItems?: boolean;
+    }
+  | {
+      reqId: number;
+      type: "UPDATE_RSS_FEED";
+      url: string;
+      updates: Partial<RssFeed>;
+    }
   | { reqId: number; type: "REMOVE_ALL_FEEDS"; includeItems: boolean }
-  | { reqId: number; type: "UPDATE_PREFERENCES"; updates: Partial<UserPreferences> }
+  | {
+      reqId: number;
+      type: "UPDATE_PREFERENCES";
+      updates: Partial<UserPreferences>;
+    }
   | { reqId: number; type: "ADD_PERSON"; person: Person }
   | { reqId: number; type: "ADD_PERSONS"; persons: Person[] }
-  | { reqId: number; type: "UPDATE_PERSON"; personId: string; updates: Partial<Person> }
-  | { reqId: number; type: "UPSERT_CONNECTION_PERSONS"; candidates: Array<{ person: Person; accountIds: string[] }> }
+  | {
+      reqId: number;
+      type: "UPDATE_PERSON";
+      personId: string;
+      updates: Partial<Person>;
+    }
+  | {
+      reqId: number;
+      type: "UPSERT_CONNECTION_PERSONS";
+      candidates: Array<{ person: Person; accountIds: string[] }>;
+    }
   | { reqId: number; type: "REMOVE_PERSON"; personId: string }
-  | { reqId: number; type: "LOG_REACH_OUT"; personId: string; entry: ReachOutLog }
+  | {
+      reqId: number;
+      type: "LOG_REACH_OUT";
+      personId: string;
+      entry: ReachOutLog;
+    }
   | { reqId: number; type: "ADD_ACCOUNT"; account: Account }
   | { reqId: number; type: "ADD_ACCOUNTS"; accounts: Account[] }
-  | { reqId: number; type: "UPDATE_ACCOUNT"; accountId: string; updates: Partial<Account> }
+  | {
+      reqId: number;
+      type: "UPDATE_ACCOUNT";
+      accountId: string;
+      updates: Partial<Account>;
+    }
   | { reqId: number; type: "REMOVE_ACCOUNT"; accountId: string }
   | { reqId: number; type: "MERGE_DOC"; binary: Uint8Array }
   // Desktop-specific mutations
@@ -159,6 +214,7 @@ export type WorkerRequest =
   | { reqId: number; type: "BACKFILL_CONTENT_SIGNALS"; batchSize?: number }
   | { reqId: number; type: "GET_ALL_ITEM_IDS" }
   | { reqId: number; type: "GET_DOC_BINARY" }
+  | { reqId: number; type: "GET_COMMITTED_DOC" }
   | { reqId: number; type: "GET_HEADS" }
   | { reqId: number; type: "COMPARE_DOC"; binary: Uint8Array }
   | { reqId: number; type: "GET_SAVED_YOUTUBE_URLS" }
@@ -201,7 +257,19 @@ export type DocChangeEvent =
 // Worker → main thread
 // ---------------------------------------------------------------------------
 
-export type WorkerErrorCode = "CORRUPT_DOCUMENT";
+export type WorkerErrorCode =
+  | "AUTOMERGE_PERSISTENCE_FAILED"
+  | "CORRUPT_DOCUMENT"
+  | "DOCUMENT_LOAD_FAILED"
+  | "STALE_DOCUMENT_REVISION";
+
+export interface CommittedDocSnapshot {
+  binary: Uint8Array;
+  heads: string[];
+  revision: StorageRevision;
+  itemCount: number;
+  friendCount: number;
+}
 
 export type WorkerResponse =
   /** Simple acknowledgement for mutations that return void */
@@ -209,7 +277,11 @@ export type WorkerResponse =
   /** Broadcast on every doc mutation - main thread uses this to update UI */
   | { type: "STATE_UPDATE"; state: DocState; mutation?: WorkerRequest["type"] }
   /** Preference-only mutation that avoids cloning, ranking, and hydrating every feed item. */
-  | { type: "PREFERENCES_PATCH"; updates: Partial<UserPreferences>; mutation?: WorkerRequest["type"] }
+  | {
+      type: "PREFERENCES_PATCH";
+      updates: Partial<UserPreferences>;
+      mutation?: WorkerRequest["type"];
+    }
   /** Small mutation update that avoids cloning and hydrating the full document. */
   | {
       type: "ITEM_PATCH";
@@ -223,11 +295,21 @@ export type WorkerResponse =
       docItemCount?: number;
     }
   /** RSS feed metadata mutation that avoids hydrating every feed item. */
-  | { type: "FEEDS_PATCH"; patch: RssFeedPatch; mutation?: WorkerRequest["type"] }
+  | {
+      type: "FEEDS_PATCH";
+      patch: RssFeedPatch;
+      mutation?: WorkerRequest["type"];
+    }
   /** Debug panel event forwarding */
   | { type: "DEBUG_EVENT"; kind: string; detail?: string; bytes?: number }
   /** Doc size snapshot for the debug panel */
-  | { type: "DEBUG_SNAPSHOT"; documentId: string; itemCount: number; feedCount: number; binarySize: number }
+  | {
+      type: "DEBUG_SNAPSHOT";
+      documentId: string;
+      itemCount: number;
+      feedCount: number;
+      binarySize: number;
+    }
   /** Sent once when the worker module finishes loading */
   | { type: "READY" }
   /**
@@ -241,24 +323,48 @@ export type WorkerResponse =
   | { reqId: number; type: "ALL_ITEM_IDS"; ids: string[] }
   /** On-demand full document binary for relay, snapshots, and cloud uploads. */
   | { reqId: number; type: "DOC_BINARY"; binary: Uint8Array }
+  /** One defensive view of the exact durable document and its revision. */
+  | ({ reqId: number; type: "COMMITTED_DOC" } & CommittedDocSnapshot)
   /**
    * Current Automerge heads (or heads at last save when the doc is idle-
    * unloaded). Never forces a document load; null before the first INIT.
    */
   | { reqId: number; type: "DOC_HEADS"; heads: string[] | null }
   /** Automerge history containment of an incoming document relative to local. */
-  | { reqId: number; type: "DOC_RELATIONSHIP"; relation: DocumentHistoryRelation }
+  | {
+      reqId: number;
+      type: "DOC_RELATIONSHIP";
+      relation: DocumentHistoryRelation;
+    }
   /** Canonical URLs for every saved YouTube item in the complete document. */
   | { reqId: number; type: "SAVED_YOUTUBE_URLS"; urls: string[] }
   /** Sent once per INIT with its cost, for the worker-INIT runtime counter. */
   | { type: "INIT_STATS"; durationMs: number; docBytes: number }
   /** On-demand preserved article text for the active reader item. */
-  | { reqId: number; type: "ITEM_PRESERVED_TEXT"; globalId: string; text: string | null }
+  | {
+      reqId: number;
+      type: "ITEM_PRESERVED_TEXT";
+      globalId: string;
+      text: string | null;
+    }
   /** On-demand compatibility HTML retained from older synced documents. */
-  | { reqId: number; type: "ITEM_LEGACY_HTML"; globalId: string; html: string | null }
+  | {
+      reqId: number;
+      type: "ITEM_LEGACY_HTML";
+      globalId: string;
+      html: string | null;
+    }
   /** One-batch content signal backfill summary. */
-  | { reqId: number; type: "CONTENT_SIGNAL_BACKFILL_RESULT"; summary: ContentSignalBackfillSummary }
+  | {
+      reqId: number;
+      type: "CONTENT_SIGNAL_BACKFILL_RESULT";
+      summary: ContentSignalBackfillSummary;
+    }
   /** Clear generated sample data result. */
-  | { reqId: number; type: "SAMPLE_DATA_CLEAR_RESULT"; summary: SampleDataClearSummary }
+  | {
+      reqId: number;
+      type: "SAMPLE_DATA_CLEAR_RESULT";
+      summary: SampleDataClearSummary;
+    }
   /** Progress reporting for BATCH_IMPORT_ITEMS. */
   | { type: "IMPORT_PROGRESS"; chunkIndex: number; totalChunks: number };

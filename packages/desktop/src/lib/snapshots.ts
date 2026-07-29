@@ -10,7 +10,12 @@ import {
   writeFile,
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
-import { getDocBinary, getDocState, replaceLocalDoc, subscribe } from "./automerge";
+import {
+  getCommittedDoc,
+  getDocState,
+  replaceLocalDoc,
+  subscribe,
+} from "./automerge";
 import { log } from "./logger.js";
 import { readContactSyncState, readContactSyncStateJson, writeContactSyncStateJson } from "./contact-sync-storage.js";
 import {
@@ -277,15 +282,16 @@ async function createSnapshotInternal(
 
   const createdAt = Date.now();
   const id = String(createdAt);
-  const binary = await getDocBinary();
+  const committed = await getCommittedDoc();
+  const binary = committed.binary;
   const contactSyncState = readContactSyncState();
 
   const summary: SnapshotSummary = {
     id,
     createdAt,
     byteSize: binary.byteLength,
-    itemCount: state.docItemCount,
-    friendCount: Object.keys(state.friends).length,
+    itemCount: committed.itemCount,
+    friendCount: committed.friendCount,
     contactCount: contactSyncState.cachedContacts.length,
     pendingMatchCount: contactSyncState.pendingSuggestions.length,
     reason,
@@ -365,13 +371,17 @@ function scheduleAutoSnapshot(): void {
 }
 
 async function restoreSnapshotInternal(snapshotId: string): Promise<SnapshotSummary> {
+  const expectedRevision = (await getCommittedDoc()).revision;
   if (!canUseNativeSnapshotStorage()) {
     const snapshot = readBrowserSnapshotState().snapshots.find((entry) => entry.summary.id === snapshotId);
     if (!snapshot) {
       throw new Error(`Snapshot ...${snapshotId.slice(-8)} not found`);
     }
 
-    await replaceLocalDoc(base64ToUint8Array(snapshot.binaryBase64));
+    await replaceLocalDoc(
+      base64ToUint8Array(snapshot.binaryBase64),
+      expectedRevision,
+    );
     writeContactSyncStateJson(snapshot.contactsRaw);
     log.info(`[snapshots] restored snapshot ...${snapshotId.slice(-8)}`);
     notifySnapshotListeners();
@@ -392,7 +402,7 @@ async function restoreSnapshotInternal(snapshotId: string): Promise<SnapshotSumm
       : Promise.resolve(null),
   ]);
 
-  await replaceLocalDoc(binary);
+  await replaceLocalDoc(binary, expectedRevision);
   writeContactSyncStateJson(contactsRaw);
   log.info(`[snapshots] restored snapshot ...${snapshotId.slice(-8)}`);
   notifySnapshotListeners();

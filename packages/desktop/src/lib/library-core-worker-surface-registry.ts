@@ -201,6 +201,7 @@ export const DESKTOP_AUTOMERGE_WORKER_REQUEST_SURFACE_REGISTRY = {
   BACKFILL_CONTENT_SIGNALS: bulkOrRepairRequest(),
   GET_ALL_ITEM_IDS: unboundedReadRequest(),
   GET_DOC_BINARY: unboundedReadRequest(),
+  GET_COMMITTED_DOC: unboundedReadRequest(),
   GET_HEADS: unboundedReadRequest(),
   COMPARE_DOC: unboundedReadRequest(),
   GET_SAVED_YOUTUBE_URLS: unboundedReadRequest(),
@@ -435,6 +436,7 @@ export const DESKTOP_AUTOMERGE_REQUEST_EFFECT_REGISTRY = {
   ),
   GET_ALL_ITEM_IDS: noWriteEffect(),
   GET_DOC_BINARY: noWriteEffect(),
+  GET_COMMITTED_DOC: noWriteEffect(),
   GET_HEADS: noWriteEffect(),
   COMPARE_DOC: noWriteEffect(),
   GET_SAVED_YOUTUBE_URLS: noWriteEffect(),
@@ -503,6 +505,11 @@ export const DESKTOP_AUTOMERGE_WORKER_RESPONSE_SURFACE_REGISTRY = {
     "unbounded_payload",
   ),
   DOC_BINARY: blockedSurface(
+    "legacy_unbounded_transport",
+    "response_transport_not_cut_over",
+    "unbounded_payload",
+  ),
+  COMMITTED_DOC: blockedSurface(
     "legacy_unbounded_transport",
     "response_transport_not_cut_over",
     "unbounded_payload",

@@ -13,6 +13,13 @@ const compareDocMock = vi.fn();
 const mergeDocMock = vi.fn(async () => {});
 const getDocBinaryMock = vi.fn(async () => new Uint8Array([1, 2, 3]));
 const getDocHeadsMock = vi.fn(async () => ["local-head"]);
+const getCommittedDocMock = vi.fn(async () => ({
+  binary: await getDocBinaryMock(),
+  heads: await getDocHeadsMock(),
+  revision: { generation: 0, saveRevision: 0 },
+  itemCount: 0,
+  friendCount: 0,
+}));
 const subscribeMock = vi.fn(() => vi.fn());
 const recordCloudUploadAttemptMock = vi.fn();
 
@@ -35,6 +42,7 @@ vi.mock("@freed/sync/cloud", () => ({
 
 vi.mock("./automerge", () => ({
   compareDoc: compareDocMock,
+  getCommittedDoc: getCommittedDocMock,
   getDocBinary: getDocBinaryMock,
   getDocHeads: getDocHeadsMock,
   mergeDoc: mergeDocMock,

@@ -91,6 +91,18 @@ Derive incremental persistence from the last committed heads with repeatable
 `saveSince` semantics. Never let `saveIncremental` advance its process-local
 cursor before the storage transaction commits. Storage failure and response
 loss must leave the exact same changes available for retry.
+The legacy IndexedDB bridge uses schema version 2. A load returns exact bytes,
+generation, and save revision. Every save and clear compares both version
+fields in the transaction that changes bytes. Clear advances generation and
+resets save revision to zero. Preserve version 1 bytes exactly at revision
+zero, close connections on `versionchange`, and fail closed when an upgrade is
+blocked. Full replacement requires the caller revision captured before its
+asynchronous work began. Publish candidate bytes, heads, and derived worker
+state only after storage commit. A failed decode retains the exact bytes and
+revision from that read. Never re-read storage to broaden a later clear.
+Recognized Automerge decode failures may enter explicit revision-fenced
+recovery. Allocation exhaustion and unknown failures preserve the bytes and
+fail closed.
 Do not activate bootstrap while a compatibility rebuild can replace an
 Automerge document through value-only export and import. Such a rebuild loses
 the recorded change graph. Fence it after any bootstrap record exists or replace

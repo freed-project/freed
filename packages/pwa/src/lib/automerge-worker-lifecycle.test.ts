@@ -225,6 +225,58 @@ describe("PWA Automerge worker lifecycle", () => {
     expect(requestsOfType(worker, "CLEAR_LOCAL")).toHaveLength(0);
   });
 
+  it("retires a fatal INIT and makes the next caller reload durable state first", async () => {
+    const automerge = await import("./automerge");
+    const worker = MockWorker.instances[0];
+    worker.emitMessage({ type: "READY" });
+
+    const initialization = automerge.initDoc();
+    const failedInit = await waitForRequest(worker, "INIT");
+    worker.emitMessage({
+      reqId: failedInit.reqId,
+      type: "ACK",
+      error: "IndexedDB compare-and-swap failed",
+      errorCode: "AUTOMERGE_PERSISTENCE_FAILED",
+    });
+    expect(worker.terminated).toBe(true);
+
+    await vi.waitFor(() => expect(MockWorker.instances).toHaveLength(2));
+    const replacementWorker = MockWorker.instances[1];
+    replacementWorker.emitMessage({ type: "READY" });
+    const replacementInit = await waitForRequest(replacementWorker, "INIT");
+    replacementWorker.emitMessage({
+      reqId: replacementInit.reqId,
+      type: "ACK",
+      error: "IndexedDB compare-and-swap still failed",
+      errorCode: "AUTOMERGE_PERSISTENCE_FAILED",
+    });
+    await expect(initialization).rejects.toThrow(
+      "IndexedDB compare-and-swap still failed",
+    );
+    expect(replacementWorker.terminated).toBe(true);
+
+    const mutation = automerge.docMarkAllAsRead();
+    await vi.waitFor(() => expect(MockWorker.instances).toHaveLength(3));
+    const durableWorker = MockWorker.instances[2];
+    durableWorker.emitMessage({ type: "READY" });
+    const durableInit = await waitForRequest(durableWorker, "INIT");
+    expect(requestsOfType(durableWorker, "MARK_ALL_AS_READ")).toHaveLength(0);
+    durableWorker.emitMessage({ type: "STATE_UPDATE", state: makeState() });
+    durableWorker.emitMessage({
+      reqId: durableInit.reqId,
+      type: "ACK",
+    });
+    const replacementMutation = await waitForRequest(
+      durableWorker,
+      "MARK_ALL_AS_READ",
+    );
+    durableWorker.emitMessage({
+      reqId: replacementMutation.reqId,
+      type: "ACK",
+    });
+    await expect(mutation).resolves.toBeUndefined();
+  });
+
   it("times out INIT, removes its listener, and retries without clearing local data", async () => {
     const automerge = await import("./automerge");
     const firstWorker = MockWorker.instances[0];
@@ -255,7 +307,7 @@ describe("PWA Automerge worker lifecycle", () => {
     },
     {
       label: "result",
-      requestType: "GET_DOC_BINARY",
+      requestType: "GET_COMMITTED_DOC",
       start: (automerge: typeof import("./automerge")) => automerge.getDocBinary(),
     },
   ])("retires a silent generation after a $label request timeout and reinitializes before reuse", async ({
@@ -296,7 +348,7 @@ describe("PWA Automerge worker lifecycle", () => {
     await completeInit(worker, automerge.initDoc());
 
     const binaryRequest = automerge.getDocBinary();
-    await waitForRequest(worker, "GET_DOC_BINARY");
+    await waitForRequest(worker, "GET_COMMITTED_DOC");
     worker.emitError("worker crashed with a request pending");
 
     await expect(binaryRequest).rejects.toThrow("worker crashed with a request pending");
@@ -315,6 +367,59 @@ describe("PWA Automerge worker lifecycle", () => {
     replacementWorker.emitMessage({ reqId: mutation.reqId, type: "ACK" });
     await expect(retry).resolves.toBeUndefined();
     expect(requestsOfType(replacementWorker, "CLEAR_LOCAL")).toHaveLength(0);
+  });
+
+  it("retires a fatal persistence generation, rejects every pending request, and ignores its delayed messages", async () => {
+    const automerge = await import("./automerge");
+    const worker = MockWorker.instances[0];
+    worker.emitMessage({ type: "READY" });
+    await completeInit(worker, automerge.initDoc());
+
+    const subscriber = vi.fn();
+    const unsubscribe = automerge.subscribe(subscriber);
+    const mutation = automerge.docMarkAllAsRead();
+    const snapshot = automerge.getDocBinary();
+    const mutationRequest = await waitForRequest(worker, "MARK_ALL_AS_READ");
+    const snapshotRequest = await waitForRequest(worker, "GET_COMMITTED_DOC");
+
+    worker.emitMessage({
+      reqId: mutationRequest.reqId,
+      type: "ACK",
+      error: "forced IndexedDB failure",
+      errorCode: "AUTOMERGE_PERSISTENCE_FAILED",
+    });
+
+    await expect(mutation).rejects.toThrow("forced IndexedDB failure");
+    await expect(snapshot).rejects.toThrow("forced IndexedDB failure");
+    expect(worker.terminated).toBe(true);
+    expect(MockWorker.instances).toHaveLength(1);
+
+    worker.emitMessage({ type: "STATE_UPDATE", state: makeState() });
+    worker.emitMessage({
+      reqId: snapshotRequest.reqId,
+      type: "COMMITTED_DOC",
+      binary: new Uint8Array([9]),
+      heads: ["stale"],
+      revision: { generation: 0, saveRevision: 99 },
+    });
+    expect(subscriber).not.toHaveBeenCalled();
+
+    const retry = automerge.docMarkAllAsRead();
+    await vi.waitFor(() => expect(MockWorker.instances).toHaveLength(2));
+    const replacementWorker = MockWorker.instances[1];
+    replacementWorker.emitMessage({ type: "READY" });
+    const init = await waitForRequest(replacementWorker, "INIT");
+    replacementWorker.emitMessage({ type: "STATE_UPDATE", state: makeState() });
+    replacementWorker.emitMessage({ reqId: init.reqId, type: "ACK" });
+    const retryRequest = await waitForRequest(
+      replacementWorker,
+      "MARK_ALL_AS_READ",
+    );
+    replacementWorker.emitMessage({ reqId: retryRequest.reqId, type: "ACK" });
+
+    await expect(retry).resolves.toBeUndefined();
+    expect(subscriber).toHaveBeenCalledTimes(1);
+    unsubscribe();
   });
 
   it("rejects a worker response that arrives after the PWA generation changes", async () => {

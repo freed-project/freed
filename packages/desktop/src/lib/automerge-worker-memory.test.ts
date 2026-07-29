@@ -56,8 +56,7 @@ describe("automerge worker memory routing", () => {
       /async function persistAndBroadcastWithoutHydration[\s\S]*?\n}/,
     )?.[0] ?? "";
 
-    expect(body).toContain("persistDoc");
-    expect(body).toContain("storage.save");
+    expect(body).toContain("commitCandidate(doc, options)");
     expect(body).not.toContain("hydrateFromDoc");
     expect(body).not.toContain("STATE_UPDATE");
   });
@@ -72,10 +71,14 @@ describe("automerge worker memory routing", () => {
     expect(workerSource).toContain("DESKTOP_UI_EVENT_EVIDENCE_LIMIT = 220");
     expect(body).toContain("contentText?.slice(0, DESKTOP_UI_CONTENT_TEXT_LIMIT)");
     expect(body).toContain("preservedText?.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT)");
-    expect(workerSource).toContain("linkDescription?.slice(0, DESKTOP_UI_LINK_DESCRIPTION_LIMIT)");
+    expect(workerSource).toMatch(
+      /linkDescription\?\.slice\(\s*0,\s*DESKTOP_UI_LINK_DESCRIPTION_LIMIT,\s*\)/,
+    );
     expect(workerSource).toContain("eventEvidence?.slice(0, DESKTOP_UI_EVENT_EVIDENCE_LIMIT)");
     expect(workerSource).toContain("const tags = item.contentSignals?.tags ?? []");
-    expect(workerSource).toContain("contentSignals: tags.length > 0 ? ({ tags: [...tags] } as FeedItem[\"contentSignals\"]) : undefined");
+    expect(workerSource).toMatch(
+      /contentSignals:\s*tags\.length > 0\s*\?\s*\(\{\s*tags:\s*\[\.\.\.tags\]\s*\}\s*as FeedItem\["contentSignals"\]\)\s*:\s*undefined/,
+    );
     expect(workerSource).toContain("cloneFeedItemsForDesktopUi");
     expect(patchBody).toContain("trimFeedItemForDesktopUi(item)");
     expect(patchBody).not.toContain("JSON.parse(JSON.stringify(item))");
@@ -86,7 +89,7 @@ describe("automerge worker memory routing", () => {
 
     expect(body).not.toContain("A.toJS(doc)");
     expect(body).toContain("cloneFeedItemsForDesktopUi");
-    expect(body).toContain("cloneRecordValues(doc.rssFeeds");
+    expect(body).toMatch(/cloneRecordValues\(\s*doc\.rssFeeds/);
     expect(body).toContain("docItemCount");
   });
 
@@ -104,10 +107,14 @@ describe("automerge worker memory routing", () => {
 
     expect(workerSource).toContain("compactLoadedFeedText");
     expect(workerSource).toContain("FRESH_DOC_REBUILD_MIN_CHANGED_BINARY_BYTES = 4 * 1024 * 1024");
-    expect(initBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text\",");
-    expect(replaceBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text\",");
-    expect(mergeBody).toContain("compactLoadedFeedText(\"Compact oversized synced feed text after merge\",");
-    expect(initBody.indexOf("compactLoadedFeedText")).toBeLessThan(initBody.indexOf("hydrateAndBroadcastWithoutPersist"));
+    expect(initBody).toContain("\"Compact oversized synced feed text\"");
+    expect(replaceBody).toContain("\"Compact oversized synced feed text\"");
+    expect(mergeBody).toContain(
+      "\"Compact oversized synced feed text after merge\"",
+    );
+    expect(initBody.indexOf("prepareLoadedDocument")).toBeLessThan(
+      initBody.indexOf("hydrateAndBroadcastWithoutPersist"),
+    );
   });
 
   it("clean startup hydration avoids serializing and rewriting the loaded document", () => {
@@ -119,11 +126,12 @@ describe("automerge worker memory routing", () => {
     expect(workerSource).toContain("hydrateAndBroadcastWithoutPersist");
     expect(helperBody).toContain("hydrateFromDoc");
     expect(helperBody).toContain("STATE_UPDATE");
-    expect(helperBody).not.toContain("persistDoc");
-    expect(helperBody).not.toContain("storage.save");
+    expect(helperBody).not.toContain("commitCandidate");
     expect(helperBody).not.toContain("A.save");
     expect(initBody).toContain("loadedDocNeedsPersist");
-    expect(initBody).toContain("hydrateAndBroadcastWithoutPersist(trace)");
+    expect(initBody).toContain(
+      "hydrateAndBroadcastWithoutPersist(candidate, trace)",
+    );
   });
 
   it("releases the Automerge document after idle and reloads it on demand", () => {
@@ -133,7 +141,7 @@ describe("automerge worker memory routing", () => {
     const handleBody = functionBody("handleRequest");
 
     expect(scheduleBody).toContain("currentDoc = null");
-    expect(scheduleBody).toContain("createPersistenceState(currentBinary)");
+    expect(scheduleBody).not.toContain("currentBinary = null");
     expect(scheduleBody).toContain("request queue drained");
     expect(ensureBody).toContain("A.load<FreedDoc>(currentBinary)");
     expect(enqueueBody).toContain("scheduleDocIdleUnload()");
@@ -169,8 +177,12 @@ describe("automerge worker memory routing", () => {
     expect(compactBody).not.toContain("shouldProbeLargeHistory");
     expect(compactBody).not.toContain("kept existing compacted document history");
     expect(workerSource).not.toContain("FRESH_DOC_REBUILD_MIN_HISTORY_BINARY_BYTES");
-    expect(initBody.indexOf("currentBinary = saved")).toBeLessThan(initBody.indexOf("compactLoadedFeedText"));
-    expect(replaceBody.indexOf("currentBinary = req.binary")).toBeLessThan(replaceBody.indexOf("compactLoadedFeedText"));
+    expect(initBody).toContain("prepareLoadedDocument");
+    expect(initBody).toContain("saveAndBroadcast(candidate, trace");
+    expect(replaceBody).toContain("prepareLoadedDocument");
+    expect(replaceBody).toContain("saveAndBroadcast(candidate, trace");
+    expect(initBody).not.toContain("currentBinary =");
+    expect(replaceBody).not.toContain("currentBinary =");
     expect(replaceBody).not.toContain("await storage.save(req.binary)");
   });
 
@@ -201,7 +213,7 @@ describe("automerge worker memory routing", () => {
     expect(helperBody).toContain("type: \"FEEDS_PATCH\"");
     expect(helperBody).toContain("type: \"ITEM_PATCH\"");
     expect(helperBody).toContain("removedItemIds: removedEssayDuplicateIds");
-    expect(helperBody).toContain("hasKnownLinkPreviewUrl");
+    expect(helperBody).toContain("candidateHasKnownLinkPreviewUrl");
     expect(helperBody).not.toContain("Object.values(doc.feedItems");
     expect(helperBody).not.toContain("saveAndBroadcast");
   });
@@ -213,7 +225,14 @@ describe("automerge worker memory routing", () => {
     expect(body).not.toContain("applyRequestChange");
     expect(body).not.toContain("saveAndBroadcast");
     expect(workerSource).toContain("async function applyAddFeedItemsPatchChange");
-    expect(workerSource).toContain("await persistAndBroadcastWithoutHydration(trace)");
+    expect(
+      sectionBody(
+        "async function applyAddFeedItemsPatchChange",
+        "async function applyBatchRefreshFeedsPatchChange",
+      ),
+    ).toContain(
+      "await persistAndBroadcastWithoutHydration(candidate, trace",
+    );
     expect(workerSource).toContain("type: \"ITEM_PATCH\"");
     expect(workerSource).toContain("preservePriorityOrder: true");
     expect(workerSource).toContain("cloneRankedFeedItemPatches");
@@ -257,7 +276,7 @@ describe("automerge worker memory routing", () => {
     expect(body).not.toContain("applyRequestChange");
     expect(applyBody).toContain("persistAndBroadcastWithoutHydration");
     expect(applyBody).toContain("PREFERENCES_PATCH");
-    expect(applyBody).toContain("updates: syncedUpdates, mutation");
+    expect(applyBody).toMatch(/updates:\s*syncedUpdates,\s*mutation/);
     expect(applyBody).toContain("stripDeviceLocalPreferenceUpdates(updates)");
     expect(applyBody).toContain("saveAndBroadcast");
     expect(workerSource).not.toContain("A.toJS(doc.preferences");

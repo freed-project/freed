@@ -24,6 +24,13 @@ const gdriveUploadReplaceMock = vi.fn();
 const gdriveDeleteFileMock = vi.fn();
 const getDocBinaryMock = vi.fn(async () => new Uint8Array([1, 2, 3]));
 const getDocHeadsMock = vi.fn(async (): Promise<string[] | null> => ["h1"]);
+const getCommittedDocMock = vi.fn(async () => ({
+  binary: await getDocBinaryMock(),
+  heads: await getDocHeadsMock(),
+  revision: { generation: 0, saveRevision: 0 },
+  itemCount: 0,
+  friendCount: 0,
+}));
 const mergeDocMock = vi.fn(async () => {});
 const compareDocMock = vi.fn(async () => "equal" as const);
 const recordCloudUploadAttemptMock = vi.fn();
@@ -48,6 +55,7 @@ vi.mock("@freed/sync/cloud", () => ({
 
 vi.mock("./automerge", () => ({
   compareDoc: compareDocMock,
+  getCommittedDoc: getCommittedDocMock,
   getDocBinary: getDocBinaryMock,
   getDocHeads: getDocHeadsMock,
   mergeDoc: mergeDocMock,
