@@ -14,9 +14,7 @@ import {
   type LibraryCoreLowercaseHex64,
 } from "./protocol-scalars.js";
 
-const CLOSED_ACTOR_ENROLLMENT_CERTIFICATE = Symbol(
-  "closed Library Core actor enrollment certificate",
-);
+const CLOSED_ACTOR_ENROLLMENT_CERTIFICATES = new WeakSet<object>();
 
 export interface LibraryCoreActorEnrollmentCertificateBodyV1 {
   readonly actor_enrollment_body: LibraryCoreActorEnrollmentBodyV1;
@@ -57,11 +55,11 @@ function requireSignature(
 }
 
 function digest(
-  dependencies: LibraryCoreActorEnrollmentCertificateDependencies,
+  digestValue: LibraryCoreActorEnrollmentCertificateDependencies["digest"],
   domain: "actor-enrollment-certificate" | "actor-chain-genesis",
   value: unknown,
 ): LibraryCoreLowercaseHex64 {
-  const result = dependencies.digest(domain, value);
+  const result = digestValue(domain, value);
   if (!isLibraryCoreLowercaseHex64(result)) {
     throw new TypeError(
       `${domain} digest dependency returned an invalid digest`,
@@ -76,18 +74,10 @@ export function isLibraryCoreActorEnrollmentCertificateConstructionV1(
   if (typeof value !== "object" || value === null || !Object.isFrozen(value)) {
     return false;
   }
-  const brand = Object.getOwnPropertyDescriptor(
-    value,
-    CLOSED_ACTOR_ENROLLMENT_CERTIFICATE,
-  );
   const candidate =
     value as Partial<LibraryCoreActorEnrollmentCertificateConstructionV1>;
   return (
-    brand !== undefined &&
-    !brand.enumerable &&
-    !brand.configurable &&
-    !brand.writable &&
-    brand.value === true &&
+    CLOSED_ACTOR_ENROLLMENT_CERTIFICATES.has(value) &&
     typeof candidate.certificate === "object" &&
     candidate.certificate !== null &&
     Object.isFrozen(candidate.certificate) &&
@@ -112,6 +102,18 @@ export async function constructLibraryCoreActorEnrollmentCertificateV1(
       "actor enrollment body must come from the closed construction contract",
     );
   }
+  const signActorProof = dependencies.signActorProof;
+  const signAuthorityCertificate = dependencies.signAuthorityCertificate;
+  const digestCertificate = dependencies.digest;
+  if (
+    typeof signActorProof !== "function" ||
+    typeof signAuthorityCertificate !== "function" ||
+    typeof digestCertificate !== "function"
+  ) {
+    throw new TypeError(
+      "actor enrollment certificate dependencies must be callable",
+    );
+  }
   const actorProofInput = encodeLibraryCoreSignatureInput(
     "actor-enrollment-proof",
     {
@@ -119,7 +121,7 @@ export async function constructLibraryCoreActorEnrollmentCertificateV1(
     },
   );
   const actorProof = requireSignature(
-    await dependencies.signActorProof(actorProofInput),
+    await signActorProof(actorProofInput),
     "actor proof",
   );
   const certificateBody = Object.freeze({
@@ -128,7 +130,7 @@ export async function constructLibraryCoreActorEnrollmentCertificateV1(
     actor_proof: actorProof,
   }) satisfies LibraryCoreActorEnrollmentCertificateBodyV1;
   const certificateDigest = digest(
-    dependencies,
+    digestCertificate,
     "actor-enrollment-certificate",
     certificateBody,
   );
@@ -139,7 +141,7 @@ export async function constructLibraryCoreActorEnrollmentCertificateV1(
     },
   );
   const authoritySignature = requireSignature(
-    await dependencies.signAuthorityCertificate(authoritySignatureInput),
+    await signAuthorityCertificate(authoritySignatureInput),
     "authority signature",
   );
   const certificate = Object.freeze({
@@ -147,25 +149,16 @@ export async function constructLibraryCoreActorEnrollmentCertificateV1(
     certificate_digest: certificateDigest,
     authority_signature: authoritySignature,
   }) satisfies LibraryCoreActorEnrollmentCertificateV1;
-  const actorChainGenesis = digest(dependencies, "actor-chain-genesis", {
+  const actorChainGenesis = digest(digestCertificate, "actor-chain-genesis", {
     enrollment_certificate_digest: certificateDigest,
     actor_id: bodyConstruction.body.actor_id,
     epoch_id: bodyConstruction.body.epoch_id,
   } satisfies LibraryCoreCanonicalValue);
 
-  return Object.freeze(
-    Object.defineProperty(
-      {
-        certificate,
-        actor_chain_genesis: actorChainGenesis,
-      },
-      CLOSED_ACTOR_ENROLLMENT_CERTIFICATE,
-      {
-        value: true,
-        enumerable: false,
-        configurable: false,
-        writable: false,
-      },
-    ),
-  );
+  const construction = Object.freeze({
+    certificate,
+    actor_chain_genesis: actorChainGenesis,
+  });
+  CLOSED_ACTOR_ENROLLMENT_CERTIFICATES.add(construction);
+  return construction;
 }

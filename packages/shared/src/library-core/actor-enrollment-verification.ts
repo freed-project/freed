@@ -24,9 +24,7 @@ import {
   type LibraryCoreLowercaseHex64,
 } from "./protocol-scalars.js";
 
-const VERIFIED_ACTOR_ENROLLMENT_CERTIFICATE = Symbol(
-  "verified Library Core actor enrollment certificate",
-);
+const VERIFIED_ACTOR_ENROLLMENT_CERTIFICATES = new WeakSet<object>();
 
 const CERTIFICATE_KEYS = [
   "certificate_body",
@@ -96,6 +94,7 @@ function requireClosedRecord<const Keys extends readonly string[]>(
   ) {
     throw new TypeError(`${label} has an invalid field set`);
   }
+  const snapshot: Record<string, unknown> = {};
   for (const key of keys) {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (
@@ -107,8 +106,9 @@ function requireClosedRecord<const Keys extends readonly string[]>(
         `${label}.${key} must be an enumerable data property`,
       );
     }
+    snapshot[key] = descriptor.value;
   }
-  return value as Readonly<Record<Keys[number], unknown>>;
+  return Object.freeze(snapshot) as Readonly<Record<Keys[number], unknown>>;
 }
 
 function requireHex64(
@@ -259,17 +259,7 @@ export function isLibraryCoreVerifiedActorEnrollmentCertificateV1(
   if (typeof value !== "object" || value === null || !Object.isFrozen(value)) {
     return false;
   }
-  const brand = Object.getOwnPropertyDescriptor(
-    value,
-    VERIFIED_ACTOR_ENROLLMENT_CERTIFICATE,
-  );
-  return (
-    brand !== undefined &&
-    !brand.enumerable &&
-    !brand.configurable &&
-    !brand.writable &&
-    brand.value === true
-  );
+  return VERIFIED_ACTOR_ENROLLMENT_CERTIFICATES.has(value);
 }
 
 /**
@@ -285,6 +275,20 @@ export async function verifyLibraryCoreActorEnrollmentCertificateV1(
   acceptedAuthorityState: unknown,
   dependencies: LibraryCoreActorEnrollmentVerificationDependencies,
 ): Promise<LibraryCoreVerifiedActorEnrollmentCertificateV1> {
+  const digestValue = dependencies.digest;
+  const verifySignature = dependencies.verifySignature;
+  if (
+    typeof digestValue !== "function" ||
+    typeof verifySignature !== "function"
+  ) {
+    throw new TypeError(
+      "actor enrollment verification dependencies must be callable",
+    );
+  }
+  const verificationDependencies = Object.freeze({
+    digest: digestValue,
+    verifySignature,
+  }) satisfies LibraryCoreActorEnrollmentVerificationDependencies;
   const decoded = decodeLibraryCoreCanonicalValue(certificateBytes);
   const certificate = requireClosedRecord(
     decoded,
@@ -330,7 +334,7 @@ export async function verifyLibraryCoreActorEnrollmentCertificateV1(
       observed_frontier: receivedBody.observed_frontier,
       created_at_ms: receivedBody.created_at_ms,
     },
-    dependencies,
+    verificationDependencies,
   );
   requireCanonicalEquality(
     receivedBody,
@@ -339,7 +343,7 @@ export async function verifyLibraryCoreActorEnrollmentCertificateV1(
   );
   const authorityState = snapshotAuthorityState(
     acceptedAuthorityState,
-    dependencies,
+    verificationDependencies,
   );
   assertAuthorityBinding(derivedBody.body, authorityState);
 
@@ -354,7 +358,7 @@ export async function verifyLibraryCoreActorEnrollmentCertificateV1(
     certificateBody.actor_proof,
     "actor enrollment certificate body.actor_proof",
   );
-  const actorProofValid = await dependencies.verifySignature({
+  const actorProofValid = await verifySignature({
     publicKeyHex: derivedBody.body.actor_public_key,
     signatureHex: actorProof,
     message: encodeLibraryCoreSignatureInput("actor-enrollment-proof", {
@@ -370,7 +374,7 @@ export async function verifyLibraryCoreActorEnrollmentCertificateV1(
     "actor enrollment certificate.certificate_digest",
   );
   const expectedCertificateDigest = digest(
-    dependencies,
+    verificationDependencies,
     "actor-enrollment-certificate",
     certificateBody,
   );
@@ -383,7 +387,7 @@ export async function verifyLibraryCoreActorEnrollmentCertificateV1(
     certificate.authority_signature,
     "actor enrollment certificate.authority_signature",
   );
-  const authoritySignatureValid = await dependencies.verifySignature({
+  const authoritySignatureValid = await verifySignature({
     publicKeyHex: authorityState.authority_public_key,
     signatureHex: authoritySignature,
     message: encodeLibraryCoreSignatureInput("actor-enrollment-authority", {
@@ -394,11 +398,15 @@ export async function verifyLibraryCoreActorEnrollmentCertificateV1(
     throw new TypeError("actor enrollment authority signature is invalid");
   }
 
-  const actorChainGenesis = digest(dependencies, "actor-chain-genesis", {
-    enrollment_certificate_digest: certificateDigest,
-    actor_id: derivedBody.body.actor_id,
-    epoch_id: derivedBody.body.epoch_id,
-  });
+  const actorChainGenesis = digest(
+    verificationDependencies,
+    "actor-chain-genesis",
+    {
+      enrollment_certificate_digest: certificateDigest,
+      actor_id: derivedBody.body.actor_id,
+      epoch_id: derivedBody.body.epoch_id,
+    },
+  );
   const verifiedCertificate = Object.freeze({
     certificate_body: Object.freeze({
       actor_enrollment_body: derivedBody.body,
@@ -409,20 +417,11 @@ export async function verifyLibraryCoreActorEnrollmentCertificateV1(
     authority_signature: authoritySignature,
   }) satisfies LibraryCoreActorEnrollmentCertificateV1;
 
-  return Object.freeze(
-    Object.defineProperty(
-      {
-        certificate: verifiedCertificate,
-        actor_chain_genesis: actorChainGenesis,
-        authority_state: authorityState,
-      },
-      VERIFIED_ACTOR_ENROLLMENT_CERTIFICATE,
-      {
-        value: true,
-        enumerable: false,
-        configurable: false,
-        writable: false,
-      },
-    ),
-  );
+  const verified = Object.freeze({
+    certificate: verifiedCertificate,
+    actor_chain_genesis: actorChainGenesis,
+    authority_state: authorityState,
+  });
+  VERIFIED_ACTOR_ENROLLMENT_CERTIFICATES.add(verified);
+  return verified;
 }

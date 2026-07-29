@@ -146,6 +146,7 @@ describe("Library Core actor enrollment body construction", () => {
     const genuine = constructLibraryCoreActorEnrollmentBodyV1(input(), {
       digest,
     });
+    expect(Object.getOwnPropertySymbols(genuine)).toStrictEqual([]);
     expect(
       isLibraryCoreActorEnrollmentBodyConstructionV1(
         Object.freeze({
@@ -154,5 +155,42 @@ describe("Library Core actor enrollment body construction", () => {
         }),
       ),
     ).toBe(false);
+    expect(
+      isLibraryCoreActorEnrollmentBodyConstructionV1(
+        Object.freeze(Object.create(genuine)),
+      ),
+    ).toBe(false);
+  });
+
+  it("snapshots input descriptors and the digest capability exactly once", () => {
+    const source = input() as unknown as Record<string, unknown>;
+    const descriptorReads = new Map<PropertyKey, number>();
+    const proxiedInput = new Proxy(source, {
+      getOwnPropertyDescriptor(target, property) {
+        descriptorReads.set(property, (descriptorReads.get(property) ?? 0) + 1);
+        return Reflect.getOwnPropertyDescriptor(target, property);
+      },
+      get(_target, property) {
+        throw new Error(`unexpected property read: ${String(property)}`);
+      },
+    });
+    let digestReads = 0;
+    const dependencies = {
+      get digest() {
+        digestReads += 1;
+        return digest;
+      },
+    };
+
+    const result = constructLibraryCoreActorEnrollmentBodyV1(
+      proxiedInput as never,
+      dependencies,
+    );
+
+    expect(result.body.actor_public_key).toBe(HEX.publicKey);
+    expect(digestReads).toBe(1);
+    for (const property of Object.keys(source)) {
+      expect(descriptorReads.get(property)).toBe(1);
+    }
   });
 });

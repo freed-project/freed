@@ -119,15 +119,26 @@ describe("Library Core actor enrollment verification", () => {
       ),
     ]);
     expect(result.actor_chain_genesis).toBe(fixture.actor_chain_genesis);
-    expect(encodeLibraryCoreCanonicalValue(result.certificate as never)).toEqual(
-      certificateBytes,
-    );
+    expect(
+      encodeLibraryCoreCanonicalValue(result.certificate as never),
+    ).toEqual(certificateBytes);
     expect(isLibraryCoreVerifiedActorEnrollmentCertificateV1(result)).toBe(
       true,
     );
     expect(Object.isFrozen(result)).toBe(true);
     expect(Object.isFrozen(result.certificate)).toBe(true);
     expect(Object.isFrozen(result.authority_state)).toBe(true);
+    expect(Object.getOwnPropertySymbols(result)).toStrictEqual([]);
+    expect(
+      isLibraryCoreVerifiedActorEnrollmentCertificateV1(
+        Object.freeze({ ...result }),
+      ),
+    ).toBe(false);
+    expect(
+      isLibraryCoreVerifiedActorEnrollmentCertificateV1(
+        Object.freeze(Object.create(result)),
+      ),
+    ).toBe(false);
   });
 
   it("rejects noncanonical bytes, derived-body tampering, and authority-state mismatch before signature verification", async () => {
@@ -211,5 +222,56 @@ describe("Library Core actor enrollment verification", () => {
         { digest, verifySignature },
       ),
     ).rejects.toThrow(/authority signature/);
+  });
+
+  it("snapshots accepted authority descriptors without reading proxy values", async () => {
+    const fixture = await certificateFixture();
+    const source = authorityState();
+    const proxiedAuthority = new Proxy(source, {
+      get(_target, property) {
+        throw new Error(`unexpected property read: ${String(property)}`);
+      },
+    });
+
+    await expect(
+      verifyLibraryCoreActorEnrollmentCertificateV1(
+        encodeLibraryCoreCanonicalValue(fixture.certificate as never),
+        proxiedAuthority,
+        { digest, verifySignature: async () => true },
+      ),
+    ).resolves.toMatchObject({
+      actor_chain_genesis: fixture.actor_chain_genesis,
+    });
+  });
+
+  it("uses verification capabilities captured before the first await", async () => {
+    const fixture = await certificateFixture();
+    let calls = 0;
+    const dependencies = {
+      digest,
+      async verifySignature() {
+        calls += 1;
+        if (calls === 1) {
+          dependencies.digest = () => {
+            throw new Error("swapped digest");
+          };
+          dependencies.verifySignature = async () => {
+            throw new Error("swapped verifier");
+          };
+        }
+        return true;
+      },
+    };
+
+    await expect(
+      verifyLibraryCoreActorEnrollmentCertificateV1(
+        encodeLibraryCoreCanonicalValue(fixture.certificate as never),
+        authorityState(),
+        dependencies,
+      ),
+    ).resolves.toMatchObject({
+      actor_chain_genesis: fixture.actor_chain_genesis,
+    });
+    expect(calls).toBe(2);
   });
 });

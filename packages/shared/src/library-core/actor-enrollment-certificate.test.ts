@@ -104,6 +104,17 @@ describe("Library Core actor enrollment certificate construction", () => {
     expect(Object.isFrozen(result)).toBe(true);
     expect(Object.isFrozen(result.certificate)).toBe(true);
     expect(Object.isFrozen(result.certificate.certificate_body)).toBe(true);
+    expect(Object.getOwnPropertySymbols(result)).toStrictEqual([]);
+    expect(
+      isLibraryCoreActorEnrollmentCertificateConstructionV1(
+        Object.freeze({ ...result }),
+      ),
+    ).toBe(false);
+    expect(
+      isLibraryCoreActorEnrollmentCertificateConstructionV1(
+        Object.freeze(Object.create(result)),
+      ),
+    ).toBe(false);
   });
 
   it("rejects a body lookalike before invoking either signer", async () => {
@@ -182,5 +193,39 @@ describe("Library Core actor enrollment certificate construction", () => {
         },
       }),
     ).rejects.toThrow(/invalid digest/);
+  });
+
+  it("uses the signer and digest capabilities captured before the first await", async () => {
+    let releaseActorProof!: () => void;
+    const actorProofStarted = new Promise<void>((resolve) => {
+      releaseActorProof = resolve;
+    });
+    const dependencies = {
+      async signActorProof() {
+        await actorProofStarted;
+        return HEX.actorProof;
+      },
+      async signAuthorityCertificate() {
+        return HEX.authoritySignature;
+      },
+      digest,
+    };
+    const construction = constructLibraryCoreActorEnrollmentCertificateV1(
+      bodyConstruction(),
+      dependencies,
+    );
+    dependencies.signAuthorityCertificate = async () => {
+      throw new Error("swapped authority signer");
+    };
+    dependencies.digest = () => {
+      throw new Error("swapped digest");
+    };
+    releaseActorProof();
+
+    await expect(construction).resolves.toMatchObject({
+      certificate: {
+        authority_signature: HEX.authoritySignature,
+      },
+    });
   });
 });
