@@ -29,9 +29,7 @@ import {
   type LibraryCoreOperationInstanceId,
 } from "./protocol-scalars.js";
 
-const VERIFIED_OPERATION_TRANSACTION = Symbol(
-  "verified Library Core operation transaction",
-);
+const VERIFIED_OPERATION_TRANSACTIONS = new WeakSet<object>();
 
 const ENVELOPE_KEYS = [
   "operation_id",
@@ -137,6 +135,7 @@ function requireClosedRecord<const Keys extends readonly string[]>(
   ) {
     throw new TypeError(`${label} has an invalid field set`);
   }
+  const snapshot: Record<string, unknown> = {};
   for (const key of keys) {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (
@@ -148,8 +147,9 @@ function requireClosedRecord<const Keys extends readonly string[]>(
         `${label}.${key} must be an enumerable data property`,
       );
     }
+    snapshot[key] = descriptor.value;
   }
-  return value as Readonly<Record<Keys[number], unknown>>;
+  return Object.freeze(snapshot) as Readonly<Record<Keys[number], unknown>>;
 }
 
 function requireHex64(
@@ -182,11 +182,11 @@ function requirePositiveSafeInteger(value: unknown, label: string): number {
 }
 
 function digest(
-  dependencies: LibraryCoreOperationVerificationDependencies,
+  digestValue: LibraryCoreOperationVerificationDependencies["digest"],
   domain: LibraryCoreConstructionDigestDomain | "operation-envelope",
   value: unknown,
 ): LibraryCoreLowercaseHex64 {
-  const result = dependencies.digest(domain, value);
+  const result = digestValue(domain, value);
   if (!isLibraryCoreLowercaseHex64(result)) {
     throw new TypeError(
       `${domain} digest dependency returned an invalid digest`,
@@ -282,14 +282,25 @@ function requireDenseEnvelopeBytes(
   if (!Array.isArray(value)) {
     throw new TypeError("operation envelope bytes must be an array");
   }
-  if (value.length === 0 || value.length > 1_000) {
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+  if (
+    lengthDescriptor === undefined ||
+    lengthDescriptor.enumerable ||
+    !("value" in lengthDescriptor) ||
+    !Number.isSafeInteger(lengthDescriptor.value) ||
+    lengthDescriptor.value < 0
+  ) {
+    throw new TypeError("operation envelope bytes require an own array length");
+  }
+  const length = lengthDescriptor.value;
+  if (length === 0 || length > 1_000) {
     throw new RangeError(
       "a verified transaction must contain between 1 and 1,000 envelopes",
     );
   }
   const names = Object.getOwnPropertyNames(value);
   if (
-    names.length !== value.length + 1 ||
+    names.length !== length + 1 ||
     names[names.length - 1] !== "length" ||
     Object.getOwnPropertySymbols(value).length !== 0
   ) {
@@ -299,7 +310,7 @@ function requireDenseEnvelopeBytes(
   }
   let total = 0;
   const snapshots: Uint8Array[] = [];
-  for (let index = 0; index < value.length; index += 1) {
+  for (let index = 0; index < length; index += 1) {
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
     if (
       descriptor === undefined ||
@@ -311,13 +322,14 @@ function requireDenseEnvelopeBytes(
         "operation envelope bytes require enumerable Uint8Array data elements",
       );
     }
-    total += descriptor.value.byteLength;
+    const snapshot = new Uint8Array(descriptor.value);
+    total += snapshot.byteLength;
     if (total > LIBRARY_CORE_MAX_TRANSACTION_ENVELOPE_BYTES) {
       throw new RangeError(
         "transaction canonical envelope bytes exceed 4,194,304",
       );
     }
-    snapshots.push(new Uint8Array(descriptor.value));
+    snapshots.push(snapshot);
   }
   return Object.freeze(snapshots);
 }
@@ -351,17 +363,7 @@ export function isLibraryCoreVerifiedOperationTransactionV1(
   if (typeof value !== "object" || value === null || !Object.isFrozen(value)) {
     return false;
   }
-  const brand = Object.getOwnPropertyDescriptor(
-    value,
-    VERIFIED_OPERATION_TRANSACTION,
-  );
-  return (
-    brand !== undefined &&
-    !brand.enumerable &&
-    !brand.configurable &&
-    !brand.writable &&
-    brand.value === true
-  );
+  return VERIFIED_OPERATION_TRANSACTIONS.has(value);
 }
 
 /**
@@ -378,6 +380,15 @@ export async function verifyLibraryCoreOperationTransactionV1(
   acceptedActorState: unknown,
   dependencies: LibraryCoreOperationVerificationDependencies,
 ): Promise<LibraryCoreVerifiedOperationTransactionV1> {
+  const digestValue = dependencies.digest;
+  const verifySignature = dependencies.verifySignature;
+  if (
+    typeof digestValue !== "function" ||
+    typeof verifySignature !== "function"
+  ) {
+    throw new TypeError("operation verification dependencies must be callable");
+  }
+  const digestDependencies = Object.freeze({ digest: digestValue });
   const actorState = snapshotAcceptedActorState(acceptedActorState);
   const byteSnapshots = requireDenseEnvelopeBytes(envelopeBytes);
   const decodedEnvelopes = byteSnapshots.map((bytes, index) =>
@@ -390,7 +401,7 @@ export async function verifyLibraryCoreOperationTransactionV1(
   const memberConstructions = decodedEnvelopes.map((envelope) =>
     FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
       memberInputFromEnvelope(envelope),
-      dependencies,
+      digestDependencies,
     ),
   );
   const firstBody = memberConstructions[0].body;
@@ -417,7 +428,7 @@ export async function verifyLibraryCoreOperationTransactionV1(
   const assembled = assembleLibraryCoreTransactionV1(
     memberConstructions,
     actorState.previous_actor_chain_digest,
-    dependencies,
+    digestDependencies,
   );
   const signatures: LibraryCoreEd25519SignatureHex[] = [];
   for (let index = 0; index < decodedEnvelopes.length; index += 1) {
@@ -440,7 +451,7 @@ export async function verifyLibraryCoreOperationTransactionV1(
   }
 
   for (let index = 0; index < assembled.members.length; index += 1) {
-    const valid = await dependencies.verifySignature({
+    const valid = await verifySignature({
       publicKeyHex: actorState.actor_public_key,
       signatureHex: signatures[index],
       message: encodeLibraryCoreOperationSignatureInput({
@@ -464,7 +475,7 @@ export async function verifyLibraryCoreOperationTransactionV1(
       envelope,
       member_digest: member.member_digest,
       signing_body_digest: member.signing_body_digest,
-      envelope_digest: digest(dependencies, "operation-envelope", envelope),
+      envelope_digest: digest(digestValue, "operation-envelope", envelope),
       canonical_envelope_json: textDecoder.decode(byteSnapshots[index]),
       canonical_envelope_bytes: byteSnapshots[index].byteLength,
     });
@@ -474,22 +485,13 @@ export async function verifyLibraryCoreOperationTransactionV1(
     0,
   );
 
-  return Object.freeze(
-    Object.defineProperty(
-      {
-        transaction_body: assembled.transaction_body,
-        transaction_digest: assembled.transaction_digest,
-        members: Object.freeze(verifiedMembers),
-        canonical_envelope_bytes: canonicalEnvelopeBytes,
-        accepted_actor_state: actorState,
-      },
-      VERIFIED_OPERATION_TRANSACTION,
-      {
-        value: true,
-        enumerable: false,
-        configurable: false,
-        writable: false,
-      },
-    ),
-  );
+  const verified = Object.freeze({
+    transaction_body: assembled.transaction_body,
+    transaction_digest: assembled.transaction_digest,
+    members: Object.freeze(verifiedMembers),
+    canonical_envelope_bytes: canonicalEnvelopeBytes,
+    accepted_actor_state: actorState,
+  });
+  VERIFIED_OPERATION_TRANSACTIONS.add(verified);
+  return verified;
 }

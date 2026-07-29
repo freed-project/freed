@@ -140,6 +140,15 @@ describe("Library Core operation transaction verification", () => {
     expect(Object.isFrozen(result.members[0])).toBe(true);
     expect(Object.isFrozen(result.members[0].envelope)).toBe(true);
     expect(Object.isFrozen(result.accepted_actor_state)).toBe(true);
+    expect(Object.getOwnPropertySymbols(result)).toStrictEqual([]);
+    expect(
+      isLibraryCoreVerifiedOperationTransactionV1(Object.freeze({ ...result })),
+    ).toBe(false);
+    expect(
+      isLibraryCoreVerifiedOperationTransactionV1(
+        Object.freeze(Object.create(result)),
+      ),
+    ).toBe(false);
   });
 
   it("rejects noncanonical, duplicate, and derived-field tampering before signature verification", async () => {
@@ -180,10 +189,7 @@ describe("Library Core operation transaction verification", () => {
     decoded.payload_digest = "77".repeat(32);
     await expect(
       verifyLibraryCoreOperationTransactionV1(
-        [
-          encodeLibraryCoreCanonicalValue(decoded as never),
-          envelopeBytes[1],
-        ],
+        [encodeLibraryCoreCanonicalValue(decoded as never), envelopeBytes[1]],
         acceptedActorState(),
         { digest, verifySignature },
       ),
@@ -235,5 +241,63 @@ describe("Library Core operation transaction verification", () => {
       ),
     ).rejects.toThrow(/envelope\[1\] signature/);
     expect(verifySignature).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses validated actor-state and envelope-array descriptors", async () => {
+    const sourceState = acceptedActorState();
+    const proxiedState = new Proxy(sourceState, {
+      get(_target, property) {
+        throw new Error(`unexpected actor-state read: ${String(property)}`);
+      },
+    });
+    const envelopes = await fixture();
+    let lengthReads = 0;
+    const proxiedEnvelopes = new Proxy(envelopes, {
+      get(target, property, receiver) {
+        if (property === "length") lengthReads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    await expect(
+      verifyLibraryCoreOperationTransactionV1(proxiedEnvelopes, proxiedState, {
+        digest,
+        verifySignature: async () => true,
+      }),
+    ).resolves.toMatchObject({
+      members: [{}, {}],
+    });
+    expect(lengthReads).toBe(0);
+  });
+
+  it("uses digest and verifier capabilities captured before the first await", async () => {
+    const envelopes = await fixture();
+    let calls = 0;
+    const dependencies = {
+      digest,
+      async verifySignature() {
+        calls += 1;
+        if (calls === 1) {
+          dependencies.digest = () => {
+            throw new Error("swapped digest");
+          };
+          dependencies.verifySignature = async () => {
+            throw new Error("swapped verifier");
+          };
+        }
+        return true;
+      },
+    };
+
+    await expect(
+      verifyLibraryCoreOperationTransactionV1(
+        envelopes,
+        acceptedActorState(),
+        dependencies,
+      ),
+    ).resolves.toMatchObject({
+      members: [{}, {}],
+    });
+    expect(calls).toBe(2);
   });
 });
