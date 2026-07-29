@@ -334,6 +334,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.50 | Private-cache literal authoritative SQLite opens that reject final-component symbolic links and URI parameters | ✓ | Low |
 | 4.51 | Per-connection SQLite parser, row, attachment, variable, trigger, and worker limits aligned with bounded Library Core payloads and fixed SQL | ✓ | Low |
 | 4.52 | macOS `F_FULLFSYNC` barriers for authoritative SQLite commits and WAL checkpoints | ✓ | Low |
+| 4.53 | Strict SQLite identifier and string quoting for authoritative schema and data statements | ✓ | Low |
 
 ---
 
@@ -387,6 +388,7 @@ recovery, telemetry, milestones, and acceptance tests.
 - [x] Every dormant authoritative SQLite file open treats the configured path literally and enables private-cache, extended-result-code, and `SQLITE_OPEN_NOFOLLOW` flags, so it cannot join a process-global shared cache and SQLite URI parameters or final-component symbolic links cannot redirect the accepted database. Parent-directory identity remains an explicit production-opener requirement. This adds no runtime opener, provider action, or writer authority
 - [x] Every dormant authoritative SQLite connection lowers the engine's general-purpose run-time limits before compiling schema or query SQL. Strings and rows remain above the 4 MiB canonical payload ceiling while SQL text, columns, expression depth, compound selects, function arguments, attached databases, pattern bytes, variable indexes, trigger depth, and auxiliary worker threads are capped to the checked-in schema and fixed query surface. These limits bound parser and row allocations from malformed files or accidental future queries without replacing canonical payload validation, bounded result paging, database-size policy, a production file locator, provider controls, or activation authority
 - [x] On macOS, every dormant authoritative SQLite connection pairs `synchronous=FULL` with `fullfsync=ON`, so successful journal commits and WAL checkpoints request `F_FULLFSYNC` instead of relying on ordinary `fsync` while the drive may still hold volatile or reordered writes. The later activation gate must measure the stronger barrier's commit latency on supported storage. This adds no runtime opener, provider action, or writer authority
+- [x] Every dormant authoritative SQLite connection disables the legacy double-quoted string-literal fallback for schema and data statements. Checked-in SQL uses standard quoting, so a misspelled double-quoted identifier fails during statement preparation instead of silently becoming a string literal with different semantics. This adds no runtime opener, provider action, or writer authority
 - [ ] iCloud sync integration
 - [ ] Large media packages transfer outside Automerge through an authenticated,
       resumable, integrity-checked path with explicit storage and deletion rules

@@ -204,6 +204,11 @@ leave data in a drive's volatile cache. The later activation gate must measure
 the resulting commit latency on supported storage. Do not weaken this receipt
 durability promise to hide a slow device.
 
+Disable SQLite's legacy double-quoted string-literal fallback for both schema
+and data statements. Checked-in SQL must use double quotes only for identifiers
+and single quotes for string literals. A misspelled identifier must fail instead
+of silently changing query meaning.
+
 Apply projection upserts, deletions, and the monotone projection revision in
 one database transaction. A bounded page or count binds one revision. A later
 page using a cursor from an older revision fails closed instead of walking

@@ -616,6 +616,13 @@ impl LibraryCoreJournal {
             .set_db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true)?;
         self.connection
             .set_db_config(DbConfig::SQLITE_DBCONFIG_TRUSTED_SCHEMA, false)?;
+        // Reject SQLite's legacy fallback that silently treats a misspelled
+        // double-quoted identifier as a string literal. All checked-in schema
+        // and queries use standard SQL quoting, so ambiguity is a defect.
+        self.connection
+            .set_db_config(DbConfig::SQLITE_DBCONFIG_DQS_DDL, false)?;
+        self.connection
+            .set_db_config(DbConfig::SQLITE_DBCONFIG_DQS_DML, false)?;
         #[cfg(target_os = "macos")]
         self.connection.pragma_update(None, "fullfsync", "ON")?;
         self.connection.pragma_update(None, "journal_mode", "WAL")?;
@@ -1748,6 +1755,14 @@ mod tests {
             .connection
             .db_config(DbConfig::SQLITE_DBCONFIG_TRUSTED_SCHEMA)
             .expect("trusted schema");
+        let double_quoted_ddl_literals = journal
+            .connection
+            .db_config(DbConfig::SQLITE_DBCONFIG_DQS_DDL)
+            .expect("double-quoted DDL literals");
+        let double_quoted_dml_literals = journal
+            .connection
+            .db_config(DbConfig::SQLITE_DBCONFIG_DQS_DML)
+            .expect("double-quoted DML literals");
         assert_eq!(journal_mode, "wal");
         assert_eq!(synchronous, 2);
         assert_eq!(foreign_keys, 1);
@@ -1758,6 +1773,8 @@ mod tests {
         assert_eq!(fullfsync, 1);
         assert!(defensive);
         assert!(!trusted_schema);
+        assert!(!double_quoted_ddl_literals);
+        assert!(!double_quoted_dml_literals);
         assert_eq!(
             journal.connection.limit(Limit::SQLITE_LIMIT_LENGTH),
             SQLITE_MAX_VALUE_BYTES

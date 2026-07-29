@@ -2354,6 +2354,12 @@ may return while a drive still buffers or reorders writes. The activation gate
 must measure this stronger barrier's commit latency on supported storage. A
 slow device does not authorize a weaker durability receipt.
 
+Authoritative connections disable SQLite's legacy double-quoted string-literal
+fallback for both schema and data statements. Checked-in SQL uses double quotes
+only for identifiers and single quotes for strings. A misspelled identifier
+therefore fails during preparation instead of silently becoming a string
+literal with different semantics.
+
 The dormant native projection kernel is a deliberately smaller predecessor to
 this authoritative store. It consumes the same checked-in schema as the shared
 TypeScript shadow-store contract, applies row upserts and deletions with one
