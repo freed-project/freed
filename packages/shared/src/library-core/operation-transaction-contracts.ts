@@ -100,20 +100,18 @@ function snapshotDenseConstructionArray(
         "transaction members require enumerable data elements",
       );
     }
-    snapshot.push(
-      descriptor.value as LibraryCoreTransactionMemberConstruction,
-    );
+    snapshot.push(descriptor.value as LibraryCoreTransactionMemberConstruction);
   }
   return Object.freeze(snapshot);
 }
 
 function digest(
-  dependencies: LibraryCoreOperationDigestDependencies,
+  digestValue: LibraryCoreOperationDigestDependencies["digest"],
   domain: "transaction" | "actor-chain" | "operation-signing-body",
   value: LibraryCoreCanonicalValue,
 ): LibraryCoreLowercaseHex64 {
   return requireDigest(
-    dependencies.digest(domain, value),
+    digestValue(domain, value),
     `${domain} digest dependency result`,
   );
 }
@@ -130,6 +128,10 @@ export function assembleLibraryCoreTransactionV1(
   initialPreviousActorChainDigest: unknown,
   dependencies: LibraryCoreOperationDigestDependencies,
 ): LibraryCoreAssembledTransactionV1 {
+  const digestValue = dependencies.digest;
+  if (typeof digestValue !== "function") {
+    throw new TypeError("transaction digest dependency must be callable");
+  }
   const memberSnapshot = snapshotDenseConstructionArray(members);
   if (memberSnapshot.length === 0 || memberSnapshot.length > 1_000) {
     throw new RangeError(
@@ -212,7 +214,7 @@ export function assembleLibraryCoreTransactionV1(
     transaction_member_digests: Object.freeze(memberDigests),
   }) satisfies LibraryCoreTransactionBodyV1;
   const transactionDigest = digest(
-    dependencies,
+    digestValue,
     "transaction",
     transactionBody as unknown as LibraryCoreCanonicalValue,
   );
@@ -221,7 +223,7 @@ export function assembleLibraryCoreTransactionV1(
   let previousChainDigest = initialChainDigest;
   for (let index = 0; index < memberSnapshot.length; index += 1) {
     const construction = memberSnapshot[index];
-    const actorChainDigest = digest(dependencies, "actor-chain", {
+    const actorChainDigest = digest(digestValue, "actor-chain", {
       previous_actor_chain_digest: previousChainDigest,
       transaction_member_digest: construction.member_digest,
       transaction_digest: transactionDigest,
@@ -233,7 +235,7 @@ export function assembleLibraryCoreTransactionV1(
       transaction_digest: transactionDigest,
     }) satisfies FeedItemReadAssignmentSigningBodyV1;
     const signingBodyDigest = digest(
-      dependencies,
+      digestValue,
       "operation-signing-body",
       signingBody as unknown as LibraryCoreCanonicalValue,
     );

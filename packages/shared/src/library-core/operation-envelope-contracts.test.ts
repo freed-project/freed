@@ -128,6 +128,39 @@ describe("Library Core read-assignment transaction-member schema", () => {
     );
   });
 
+  it("uses validated descriptors and one captured digest capability", () => {
+    const source = validInput() as unknown as Record<string, unknown>;
+    const frontier = source.causal_frontier as unknown[];
+    let frontierLengthReads = 0;
+    source.causal_frontier = new Proxy(frontier, {
+      get(target, property, receiver) {
+        if (property === "length") frontierLengthReads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    let digestReads = 0;
+    const dependencies = {
+      get digest() {
+        digestReads += 1;
+        return digest;
+      },
+    };
+
+    const result =
+      FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+        new Proxy(source, {
+          get(_target, property) {
+            throw new Error(`unexpected property read: ${String(property)}`);
+          },
+        }) as never,
+        dependencies,
+      );
+
+    expect(result.body.causal_frontier).toHaveLength(2);
+    expect(frontierLengthReads).toBe(0);
+    expect(digestReads).toBe(1);
+  });
+
   it("rejects malformed identity, sequence, payload, and member bounds", () => {
     for (const patch of [
       { library_id: "AB".repeat(32) },

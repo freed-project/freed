@@ -207,6 +207,25 @@ describe("Library Core transaction assembly", () => {
     expect(numericReads).toBe(0);
   });
 
+  it("captures the transaction digest capability once", () => {
+    let digestReads = 0;
+    const dependencies = {
+      get digest() {
+        digestReads += 1;
+        return digest;
+      },
+    };
+
+    const result = assembleLibraryCoreTransactionV1(
+      members(2),
+      HEX.chain,
+      dependencies,
+    );
+
+    expect(result.members).toHaveLength(2);
+    expect(digestReads).toBe(1);
+  });
+
   it("rejects empty, sparse, oversized, and invalid-chain inputs", () => {
     expect(() =>
       assembleLibraryCoreTransactionV1([], HEX.chain, { digest }),

@@ -170,7 +170,21 @@ function requirePlainClosedRecord(
   ) {
     throw new TypeError(`${label} has an invalid field set`);
   }
-  return value as Record<string, unknown>;
+  const snapshot: Record<string, unknown> = {};
+  for (const key of keys) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (
+      descriptor === undefined ||
+      !descriptor.enumerable ||
+      !("value" in descriptor)
+    ) {
+      throw new TypeError(
+        `${label}.${key} must be an enumerable data property`,
+      );
+    }
+    snapshot[key] = descriptor.value;
+  }
+  return Object.freeze(snapshot);
 }
 
 function readDataProperty(
@@ -241,14 +255,25 @@ function snapshotCausalFrontier(
   if (!Array.isArray(value)) {
     throw new TypeError("causal_frontier must be an array");
   }
-  if (value.length > LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS) {
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+  if (
+    lengthDescriptor === undefined ||
+    lengthDescriptor.enumerable ||
+    !("value" in lengthDescriptor) ||
+    !Number.isSafeInteger(lengthDescriptor.value) ||
+    lengthDescriptor.value < 0
+  ) {
+    throw new TypeError("causal_frontier requires an own array length");
+  }
+  const length = lengthDescriptor.value;
+  if (length > LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS) {
     throw new RangeError(
       `causal_frontier exceeds ${LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS.toLocaleString()} tips`,
     );
   }
   const names = Object.getOwnPropertyNames(value);
   if (
-    names.length !== value.length + 1 ||
+    names.length !== length + 1 ||
     names[names.length - 1] !== "length" ||
     Object.getOwnPropertySymbols(value).length !== 0
   ) {
@@ -256,7 +281,7 @@ function snapshotCausalFrontier(
   }
 
   const snapshot: LibraryCoreCausalTipV1[] = [];
-  for (let index = 0; index < value.length; index += 1) {
+  for (let index = 0; index < length; index += 1) {
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
     if (
       descriptor === undefined ||
@@ -316,6 +341,10 @@ function constructFeedItemReadAssignmentTransactionMember(
   input: FeedItemReadAssignmentTransactionMemberInputV1,
   dependencies: LibraryCoreOperationDigestDependencies,
 ): LibraryCoreTransactionMemberConstruction {
+  const digestValue = dependencies.digest;
+  if (typeof digestValue !== "function") {
+    throw new TypeError("digest dependency must be callable");
+  }
   const record = requirePlainClosedRecord(
     input,
     INPUT_KEYS,
@@ -390,7 +419,7 @@ function constructFeedItemReadAssignmentTransactionMember(
   if (!payloadResult.ok) {
     throw new TypeError(payloadResult.reason);
   }
-  const payloadDigest = dependencies.digest("operation-payload", {
+  const payloadDigest = digestValue("operation-payload", {
     schema_version: 1,
     operation_type: "feed_item_read_assignment",
     payload: payloadResult.value,
@@ -449,7 +478,7 @@ function constructFeedItemReadAssignmentTransactionMember(
     ),
     signature_algorithm: "ed25519",
   }) satisfies FeedItemReadAssignmentTransactionMemberBodyV1;
-  const memberDigest = dependencies.digest("transaction-member", body);
+  const memberDigest = digestValue("transaction-member", body);
   if (!isLibraryCoreLowercaseHex64(memberDigest)) {
     throw new TypeError("digest dependency returned an invalid member digest");
   }
