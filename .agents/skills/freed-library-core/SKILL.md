@@ -204,6 +204,11 @@ Sort object names by UTF-16 code units and do not normalize Unicode. Domain
 prefixes include their terminal zero byte. A generic string label is not a
 registered digest domain. Desktop and PWA must match the same exact bytes and
 digest vectors before either path may construct authoritative operations.
+Before constructing or verifying an epoch transition, require the shared and
+native canonical codecs to register identical `epoch-transition-certificate`
+digest and signature prefixes plus the `authority-key-possession` signature
+prefix. Registering these domains grants no authority and does not validate a
+transition body, certificate chain, recovery delegation, or cloud compare-and-swap.
 
 The construction encoder is not an inbound verifier. Never verify received
 bytes by calling `JSON.parse` or a duplicate-erasing native JSON parser because

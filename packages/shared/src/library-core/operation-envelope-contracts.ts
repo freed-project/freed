@@ -75,6 +75,7 @@ export type LibraryCoreConstructionDigestDomain =
   | "actor-id"
   | "actor-enrollment-body"
   | "actor-enrollment-certificate"
+  | "epoch-transition-certificate"
   | "actor-chain-genesis"
   | "operation-payload"
   | "transaction-member"

@@ -99,6 +99,37 @@ describe("Library Core canonical codec", () => {
     ).toBe(
       'freed.library-core.v1/signature/actor-enrollment-authority\u0000{"certificate_digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}',
     );
+    expect(
+      decoder.decode(
+        encodeLibraryCoreDigestInput("epoch-transition-certificate", {
+          transition_reason: "authority_rotation",
+        }),
+      ),
+    ).toBe(
+      'freed.library-core.v1/digest/epoch-transition-certificate\u0000{"transition_reason":"authority_rotation"}',
+    );
+    expect(
+      decoder.decode(
+        encodeLibraryCoreSignatureInput("epoch-transition-certificate", {
+          certificate_digest:
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        }),
+      ),
+    ).toBe(
+      'freed.library-core.v1/signature/epoch-transition-certificate\u0000{"certificate_digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}',
+    );
+    expect(
+      decoder.decode(
+        encodeLibraryCoreSignatureInput("authority-key-possession", {
+          certificate_digest:
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          target_authority_key_id:
+            "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+        }),
+      ),
+    ).toBe(
+      'freed.library-core.v1/signature/authority-key-possession\u0000{"certificate_digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","target_authority_key_id":"fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"}',
+    );
     expect(() =>
       encodeLibraryCoreOperationSignatureInput(null, { maximumBytes: 20 }),
     ).toThrow(/prefix/);

@@ -4,12 +4,13 @@ use std::collections::HashSet;
 const MAX_DIRECT_CANONICAL_BYTES: usize = 4_194_304;
 const MAX_CANONICAL_NESTING_DEPTH: usize = 128;
 const MAX_CANONICAL_NODES: usize = 65_536;
-const OPERATION_DIGEST_DOMAINS: [&str; 13] = [
+const DIGEST_DOMAINS: [&str; 14] = [
     "authority-key",
     "actor-public-key",
     "actor-id",
     "actor-enrollment-body",
     "actor-enrollment-certificate",
+    "epoch-transition-certificate",
     "operation-payload",
     "operation-signing-body",
     "transaction-member",
@@ -19,10 +20,12 @@ const OPERATION_DIGEST_DOMAINS: [&str; 13] = [
     "operation-envelope",
     "causal-frontier",
 ];
-const SIGNATURE_DOMAINS: [&str; 3] = [
+const SIGNATURE_DOMAINS: [&str; 5] = [
     "operation-envelope",
     "actor-enrollment-proof",
     "actor-enrollment-authority",
+    "epoch-transition-certificate",
+    "authority-key-possession",
 ];
 const SAFE_INTEGER_MAX: u64 = 9_007_199_254_740_991;
 
@@ -157,7 +160,7 @@ pub(crate) fn encode_operation_digest_input(
     value: &Value,
     maximum_bytes: usize,
 ) -> Result<Vec<u8>, CanonicalEncodingError> {
-    if !OPERATION_DIGEST_DOMAINS.contains(&domain) {
+    if !DIGEST_DOMAINS.contains(&domain) {
         return Err(CanonicalEncodingError::UnregisteredDomain);
     }
     let prefix = format!("freed.library-core.v1/digest/{domain}\0");
@@ -637,6 +640,43 @@ mod tests {
         assert_eq!(
             authority_signature_input,
             b"freed.library-core.v1/signature/actor-enrollment-authority\0{\"certificate_digest\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}"
+        );
+        let transition_digest_input = encode_operation_digest_input(
+            "epoch-transition-certificate",
+            &serde_json::json!({
+                "transition_reason": "authority_rotation",
+            }),
+            MAX_DIRECT_CANONICAL_BYTES,
+        )
+        .expect("epoch transition digest input");
+        assert_eq!(
+            transition_digest_input,
+            b"freed.library-core.v1/digest/epoch-transition-certificate\0{\"transition_reason\":\"authority_rotation\"}"
+        );
+        let transition_signature_input = encode_signature_input(
+            "epoch-transition-certificate",
+            &serde_json::json!({
+                "certificate_digest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            }),
+            MAX_DIRECT_CANONICAL_BYTES,
+        )
+        .expect("epoch transition signature input");
+        assert_eq!(
+            transition_signature_input,
+            b"freed.library-core.v1/signature/epoch-transition-certificate\0{\"certificate_digest\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}"
+        );
+        let authority_possession_input = encode_signature_input(
+            "authority-key-possession",
+            &serde_json::json!({
+                "certificate_digest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                "target_authority_key_id": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+            }),
+            MAX_DIRECT_CANONICAL_BYTES,
+        )
+        .expect("authority possession signature input");
+        assert_eq!(
+            authority_possession_input,
+            b"freed.library-core.v1/signature/authority-key-possession\0{\"certificate_digest\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"target_authority_key_id\":\"fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210\"}"
         );
     }
 
