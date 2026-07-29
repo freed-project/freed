@@ -27,7 +27,7 @@ use std::fs::File;
 use std::io::Read;
 
 const STAGE_APPLICATION_ID: i64 = 0x4652_4f53;
-const STAGE_SCHEMA_VERSION: i64 = 8;
+const STAGE_SCHEMA_VERSION: i64 = 9;
 
 const STAGE_SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS external_layout_stage_receipt (
@@ -255,6 +255,34 @@ CREATE TABLE IF NOT EXISTS external_resolved_value_receipt (
     resolvedValuesSha256 = lower(resolvedValuesSha256)
   )
 ) STRICT;
+
+CREATE TABLE IF NOT EXISTS external_sequence_elements (
+  objectActorIndex INTEGER NOT NULL CHECK (objectActorIndex >= 0),
+  objectCounter BLOB NOT NULL CHECK (length(objectCounter) = 8),
+  sequenceOrdinal INTEGER NOT NULL CHECK (sequenceOrdinal >= 0),
+  insertionOperationIndex INTEGER NOT NULL UNIQUE
+    REFERENCES external_operations(operationIndex) ON DELETE CASCADE,
+  PRIMARY KEY (objectActorIndex, objectCounter, sequenceOrdinal),
+  FOREIGN KEY (objectActorIndex, objectCounter)
+    REFERENCES external_operations(idActorIndex, idCounter)
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS external_sequence_element_receipt (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  graphSha256 TEXT NOT NULL CHECK (
+    length(graphSha256) = 64 AND graphSha256 = lower(graphSha256)
+  ),
+  resolvedValuesSha256 TEXT NOT NULL CHECK (
+    length(resolvedValuesSha256) = 64 AND
+    resolvedValuesSha256 = lower(resolvedValuesSha256)
+  ),
+  sequenceObjectCount INTEGER NOT NULL CHECK (sequenceObjectCount >= 0),
+  sequenceElementCount INTEGER NOT NULL CHECK (sequenceElementCount >= 0),
+  sequenceElementsSha256 TEXT NOT NULL CHECK (
+    length(sequenceElementsSha256) = 64 AND
+    sequenceElementsSha256 = lower(sequenceElementsSha256)
+  )
+) STRICT;
 "#;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -307,6 +335,15 @@ struct ExternalResolvedValueReceipt {
     resolved_value_count: u64,
     winner_count: u64,
     resolved_values_sha256: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ExternalSequenceElementReceipt {
+    graph_sha256: String,
+    resolved_values_sha256: String,
+    sequence_object_count: u64,
+    sequence_element_count: u64,
+    sequence_elements_sha256: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -830,6 +867,60 @@ fn materialize_resolved_values(
     Ok(receipt)
 }
 
+fn materialize_sequence_elements(
+    connection: &mut Connection,
+) -> StageResult<ExternalSequenceElementReceipt> {
+    configure_connection(connection)?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    initialize_or_validate_schema(&transaction)?;
+    let graph_receipt =
+        read_graph_receipt(&transaction)?.ok_or(ExternalSqliteStageError::IncompleteStage)?;
+    if graph_content_sha256(&transaction)? != graph_receipt.graph_sha256 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    let resolved_receipt = read_resolved_value_receipt(&transaction)?
+        .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+    validate_resolved_value_set(&transaction)?;
+    materialize_or_validate_counter_values(&transaction, true)?;
+    if resolved_receipt.graph_sha256 != graph_receipt.graph_sha256
+        || resolved_values_sha256(&transaction)? != resolved_receipt.resolved_values_sha256
+    {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    validate_sequence_insert_graph(&transaction)?;
+
+    let stored_receipt = read_sequence_element_receipt(&transaction)?;
+    let existing_count = transaction.query_row(
+        "SELECT COUNT(*) FROM external_sequence_elements;",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if stored_receipt.is_none() && existing_count != 0 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+
+    let (sequence_object_count, sequence_element_count) =
+        walk_sequence_elements(&transaction, stored_receipt.is_some())?;
+    validate_sequence_element_set(&transaction)?;
+    let receipt = ExternalSequenceElementReceipt {
+        graph_sha256: graph_receipt.graph_sha256,
+        resolved_values_sha256: resolved_receipt.resolved_values_sha256,
+        sequence_object_count,
+        sequence_element_count,
+        sequence_elements_sha256: sequence_elements_sha256(&transaction)?,
+    };
+    if let Some(stored) = stored_receipt {
+        if stored != receipt {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        transaction.commit()?;
+        return Ok(receipt);
+    }
+    insert_sequence_element_receipt(&transaction, &receipt)?;
+    transaction.commit()?;
+    Ok(receipt)
+}
+
 fn configure_connection(connection: &Connection) -> StageResult<()> {
     connection.pragma_update(None, "foreign_keys", "ON")?;
     // Winner selection may sort a source-sized operation set. Force SQLite to
@@ -1145,6 +1236,50 @@ fn insert_resolved_value_receipt(
             i64::try_from(receipt.winner_count)
                 .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
             receipt.resolved_values_sha256,
+        ],
+    )?;
+    Ok(())
+}
+
+fn read_sequence_element_receipt(
+    transaction: &Transaction<'_>,
+) -> StageResult<Option<ExternalSequenceElementReceipt>> {
+    transaction
+        .query_row(
+            "SELECT graphSha256, resolvedValuesSha256, sequenceObjectCount, \
+                    sequenceElementCount, sequenceElementsSha256 \
+             FROM external_sequence_element_receipt WHERE singleton = 1;",
+            [],
+            |row| {
+                Ok(ExternalSequenceElementReceipt {
+                    graph_sha256: row.get(0)?,
+                    resolved_values_sha256: row.get(1)?,
+                    sequence_object_count: row.get::<_, i64>(2)? as u64,
+                    sequence_element_count: row.get::<_, i64>(3)? as u64,
+                    sequence_elements_sha256: row.get(4)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(ExternalSqliteStageError::from)
+}
+
+fn insert_sequence_element_receipt(
+    transaction: &Transaction<'_>,
+    receipt: &ExternalSequenceElementReceipt,
+) -> StageResult<()> {
+    transaction.execute(
+        "INSERT INTO external_sequence_element_receipt (\
+         singleton, graphSha256, resolvedValuesSha256, sequenceObjectCount, \
+         sequenceElementCount, sequenceElementsSha256) VALUES (1, ?1, ?2, ?3, ?4, ?5);",
+        params![
+            receipt.graph_sha256,
+            receipt.resolved_values_sha256,
+            i64::try_from(receipt.sequence_object_count)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            i64::try_from(receipt.sequence_element_count)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            receipt.sequence_elements_sha256,
         ],
     )?;
     Ok(())
@@ -1692,6 +1827,287 @@ fn validate_resolved_value_set(transaction: &Transaction<'_>) -> StageResult<()>
     Ok(())
 }
 
+fn validate_sequence_insert_graph(transaction: &Transaction<'_>) -> StageResult<()> {
+    let invalid_insert = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT 1 \
+           FROM external_operations AS child \
+           JOIN external_actors AS childActor \
+             ON childActor.actorIndex = child.idActorIndex \
+           LEFT JOIN external_operations AS objectOperation \
+             ON objectOperation.idActorIndex = child.objectActorIndex \
+            AND objectOperation.idCounter = child.objectCounter \
+           LEFT JOIN external_operations AS anchor \
+             ON anchor.idActorIndex = child.keyActorIndex \
+            AND anchor.idCounter = child.keyCounter \
+           LEFT JOIN external_actors AS anchorActor \
+             ON anchorActor.actorIndex = anchor.idActorIndex \
+           WHERE child.insertFlag = 1 \
+             AND (\
+               child.objectKind != 'operation' \
+               OR objectOperation.action NOT IN (2, 4) \
+               OR child.keyKind NOT IN ('head', 'element') \
+               OR (child.keyKind = 'element' AND (\
+                 anchor.operationIndex IS NULL \
+                 OR anchor.insertFlag != 1 \
+                 OR anchor.objectKind IS NOT child.objectKind \
+                 OR anchor.objectActorIndex IS NOT child.objectActorIndex \
+                 OR anchor.objectCounter IS NOT child.objectCounter \
+                 OR NOT (\
+                   child.idCounter > anchor.idCounter \
+                   OR (child.idCounter = anchor.idCounter \
+                       AND childActor.actorId > anchorActor.actorId)\
+                 )\
+               ))\
+             )\
+         );",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if invalid_insert != 0 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    Ok(())
+}
+
+fn walk_sequence_elements(
+    transaction: &Transaction<'_>,
+    validate_only: bool,
+) -> StageResult<(u64, u64)> {
+    const OBJECT_PAGE_SIZE: i64 = 64;
+    transaction.execute_batch(
+        "CREATE TEMP TABLE IF NOT EXISTS external_sequence_walk_stack (\
+           stackIndex INTEGER PRIMARY KEY CHECK (stackIndex >= 0), \
+           operationIndex INTEGER NOT NULL UNIQUE\
+         ) STRICT; \
+         DELETE FROM external_sequence_walk_stack;",
+    )?;
+
+    let mut after_actor_index = -1_i64;
+    let mut after_counter = Vec::<u8>::new();
+    let mut object_count = 0_u64;
+    let mut element_count = 0_u64;
+    loop {
+        let objects = {
+            let mut statement = transaction.prepare(
+                "SELECT DISTINCT objectActorIndex, objectCounter \
+                 FROM external_operations \
+                 WHERE insertFlag = 1 \
+                   AND (\
+                     ?1 < 0 \
+                     OR objectActorIndex > ?1 \
+                     OR (objectActorIndex = ?1 AND objectCounter > ?2)\
+                   ) \
+                 ORDER BY objectActorIndex, objectCounter \
+                 LIMIT ?3;",
+            )?;
+            let rows = statement.query_map(
+                params![after_actor_index, after_counter, OBJECT_PAGE_SIZE],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Vec<u8>>(1)?)),
+            )?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        };
+        if objects.is_empty() {
+            break;
+        }
+        for (object_actor_index, object_counter) in &objects {
+            transaction.execute("DELETE FROM external_sequence_walk_stack;", [])?;
+            push_sequence_children(transaction, *object_actor_index, object_counter, None)?;
+            let mut ordinal = 0_i64;
+            loop {
+                let next = transaction
+                    .query_row(
+                        "SELECT stackIndex, operationIndex \
+                         FROM external_sequence_walk_stack \
+                         ORDER BY stackIndex DESC LIMIT 1;",
+                        [],
+                        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+                    )
+                    .optional()?;
+                let Some((stack_index, operation_index)) = next else {
+                    break;
+                };
+                let deleted = transaction.execute(
+                    "DELETE FROM external_sequence_walk_stack WHERE stackIndex = ?1;",
+                    [stack_index],
+                )?;
+                if deleted != 1 {
+                    return Err(ExternalSqliteStageError::IncompleteStage);
+                }
+                if validate_only {
+                    let stored = transaction
+                        .query_row(
+                            "SELECT objectActorIndex, objectCounter, sequenceOrdinal \
+                             FROM external_sequence_elements \
+                             WHERE insertionOperationIndex = ?1;",
+                            [operation_index],
+                            |row| {
+                                Ok((
+                                    row.get::<_, i64>(0)?,
+                                    row.get::<_, Vec<u8>>(1)?,
+                                    row.get::<_, i64>(2)?,
+                                ))
+                            },
+                        )
+                        .optional()?;
+                    if stored != Some((*object_actor_index, object_counter.clone(), ordinal)) {
+                        return Err(ExternalSqliteStageError::IncompleteStage);
+                    }
+                } else {
+                    transaction.execute(
+                        "INSERT INTO external_sequence_elements (\
+                         objectActorIndex, objectCounter, sequenceOrdinal, \
+                         insertionOperationIndex) VALUES (?1, ?2, ?3, ?4);",
+                        params![object_actor_index, object_counter, ordinal, operation_index],
+                    )?;
+                }
+                ordinal = ordinal
+                    .checked_add(1)
+                    .ok_or(ExternalSqliteStageError::RangeOverflow)?;
+                push_sequence_children(
+                    transaction,
+                    *object_actor_index,
+                    object_counter,
+                    Some(operation_index),
+                )?;
+            }
+            let expected = transaction.query_row(
+                "SELECT COUNT(*) FROM external_operations \
+                 WHERE insertFlag = 1 AND objectActorIndex = ?1 AND objectCounter = ?2;",
+                params![object_actor_index, object_counter],
+                |row| row.get::<_, i64>(0),
+            )?;
+            if ordinal != expected {
+                return Err(ExternalSqliteStageError::IncompleteStage);
+            }
+            object_count = object_count
+                .checked_add(1)
+                .ok_or(ExternalSqliteStageError::RangeOverflow)?;
+            element_count = element_count
+                .checked_add(
+                    u64::try_from(ordinal).map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+                )
+                .ok_or(ExternalSqliteStageError::RangeOverflow)?;
+        }
+        let (last_actor_index, last_counter) = objects
+            .last()
+            .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+        after_actor_index = *last_actor_index;
+        after_counter = last_counter.clone();
+    }
+    transaction.execute("DELETE FROM external_sequence_walk_stack;", [])?;
+    Ok((object_count, element_count))
+}
+
+fn push_sequence_children(
+    transaction: &Transaction<'_>,
+    object_actor_index: i64,
+    object_counter: &[u8],
+    parent_operation_index: Option<i64>,
+) -> StageResult<()> {
+    if let Some(parent_operation_index) = parent_operation_index {
+        transaction.execute(
+            "WITH base AS (\
+               SELECT COALESCE(MAX(stackIndex), -1) AS maximum \
+               FROM external_sequence_walk_stack\
+             ), children AS (\
+               SELECT child.operationIndex, \
+                      ROW_NUMBER() OVER (\
+                        ORDER BY child.idCounter, actor.actorId COLLATE BINARY\
+                      ) AS offset \
+               FROM external_operations AS parent \
+               JOIN external_operations AS child \
+                 ON child.keyActorIndex = parent.idActorIndex \
+                AND child.keyCounter = parent.idCounter \
+               JOIN external_actors AS actor \
+                 ON actor.actorIndex = child.idActorIndex \
+               WHERE parent.operationIndex = ?1 \
+                 AND child.insertFlag = 1 \
+                 AND child.objectActorIndex = ?2 \
+                 AND child.objectCounter = ?3\
+             ) \
+             INSERT INTO external_sequence_walk_stack (stackIndex, operationIndex) \
+             SELECT base.maximum + children.offset, children.operationIndex \
+             FROM base CROSS JOIN children;",
+            params![parent_operation_index, object_actor_index, object_counter],
+        )?;
+    } else {
+        transaction.execute(
+            "WITH base AS (\
+               SELECT COALESCE(MAX(stackIndex), -1) AS maximum \
+               FROM external_sequence_walk_stack\
+             ), children AS (\
+               SELECT child.operationIndex, \
+                      ROW_NUMBER() OVER (\
+                        ORDER BY child.idCounter, actor.actorId COLLATE BINARY\
+                      ) AS offset \
+               FROM external_operations AS child \
+               JOIN external_actors AS actor \
+                 ON actor.actorIndex = child.idActorIndex \
+               WHERE child.insertFlag = 1 \
+                 AND child.keyKind = 'head' \
+                 AND child.objectActorIndex = ?1 \
+                 AND child.objectCounter = ?2\
+             ) \
+             INSERT INTO external_sequence_walk_stack (stackIndex, operationIndex) \
+             SELECT base.maximum + children.offset, children.operationIndex \
+             FROM base CROSS JOIN children;",
+            params![object_actor_index, object_counter],
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_sequence_element_set(transaction: &Transaction<'_>) -> StageResult<()> {
+    let membership_mismatch = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT insertionOperationIndex FROM external_sequence_elements \
+           EXCEPT \
+           SELECT operationIndex FROM external_operations WHERE insertFlag = 1\
+         ) OR EXISTS(\
+           SELECT operationIndex FROM external_operations WHERE insertFlag = 1 \
+           EXCEPT \
+           SELECT insertionOperationIndex FROM external_sequence_elements\
+         );",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    let descriptor_mismatch = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT 1 \
+           FROM external_sequence_elements AS element \
+           JOIN external_operations AS operation \
+             ON operation.operationIndex = element.insertionOperationIndex \
+           WHERE operation.objectActorIndex != element.objectActorIndex \
+              OR operation.objectCounter != element.objectCounter\
+         );",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    let ordinal_mismatch = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT 1 \
+           FROM external_sequence_elements \
+           GROUP BY objectActorIndex, objectCounter \
+           HAVING MIN(sequenceOrdinal) != 0 \
+              OR MAX(sequenceOrdinal) != COUNT(*) - 1\
+         );",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if membership_mismatch != 0
+        || descriptor_mismatch != 0
+        || ordinal_mismatch != 0
+        || foreign_key_check_has_row(
+            transaction,
+            "PRAGMA foreign_key_check(external_sequence_elements);",
+        )?
+    {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    Ok(())
+}
+
 fn validate_actor_operation_intervals(
     transaction: &Transaction<'_>,
     actor_count: u64,
@@ -1887,6 +2303,26 @@ fn resolved_values_sha256(connection: &Connection) -> StageResult<String> {
         "external_operations",
         "valuePayload",
         "SELECT operationIndex FROM external_resolved_values ORDER BY operationIndex;",
+    )?;
+    Ok(lower_hex(&hasher.finalize()))
+}
+
+fn sequence_elements_sha256(connection: &Connection) -> StageResult<String> {
+    let mut hasher = Sha256::new();
+    hash_field(&mut hasher, b"freed-automerge-sequence-elements-v1");
+    hash_query_rows(
+        connection,
+        &mut hasher,
+        "sequence-elements",
+        "SELECT element.objectActorIndex, element.objectCounter, \
+                element.sequenceOrdinal, element.insertionOperationIndex, \
+                operation.idActorIndex, operation.idCounter, operation.keyKind, \
+                operation.keyActorIndex, operation.keyCounter \
+         FROM external_sequence_elements AS element \
+         JOIN external_operations AS operation \
+           ON operation.operationIndex = element.insertionOperationIndex \
+         ORDER BY element.objectActorIndex, element.objectCounter, \
+                  element.sequenceOrdinal;",
     )?;
     Ok(lower_hex(&hasher.finalize()))
 }
@@ -2649,6 +3085,57 @@ mod tests {
             .unwrap();
     }
 
+    fn make_minimal_list_root(connection: &Connection) {
+        connection
+            .execute(
+                "UPDATE external_operations \
+                 SET keyName = 'list', action = 2 \
+                 WHERE operationIndex = 0;",
+                [],
+            )
+            .unwrap();
+    }
+
+    fn insert_list_value(
+        connection: &Connection,
+        operation_index: i64,
+        counter: u64,
+        object_counter: u64,
+        anchor_counter: Option<u64>,
+        value: &str,
+    ) {
+        let (key_kind, key_actor_index, key_counter) = if let Some(anchor) = anchor_counter {
+            ("element", Some(0_i64), Some(anchor.to_be_bytes().to_vec()))
+        } else {
+            ("head", None, None)
+        };
+        connection
+            .execute(
+                "INSERT INTO external_operations \
+                 (operationIndex, idActorIndex, idCounter, objectKind, objectActorIndex, \
+                  objectCounter, keyKind, keyName, keyActorIndex, keyCounter, insertFlag, \
+                  action, valueKind, valueText, valueTypeCode, valuePayload, expandFlag, markName) \
+                 VALUES (?1, 0, ?2, 'operation', 0, ?3, ?4, NULL, ?5, ?6, \
+                         1, 1, 'string', ?7, NULL, X'', 0, NULL);",
+                params![
+                    operation_index,
+                    counter.to_be_bytes(),
+                    object_counter.to_be_bytes(),
+                    key_kind,
+                    key_actor_index,
+                    key_counter,
+                    value,
+                ],
+            )
+            .unwrap();
+    }
+
+    fn materialize_through_resolved_values(connection: &mut Connection) {
+        seal_staged_graph(connection).unwrap();
+        materialize_current_operations(connection).unwrap();
+        materialize_resolved_values(connection).unwrap();
+    }
+
     #[test]
     fn seals_and_replays_one_complete_graph_then_detects_same_count_tampering() {
         let mut connection = complete_minimal_graph();
@@ -3199,5 +3686,153 @@ mod tests {
             materialize_resolved_values(&mut connection),
             Err(ExternalSqliteStageError::RangeOverflow)
         ));
+    }
+
+    #[test]
+    fn sequence_materialization_requires_resolved_values_and_replays_exact_order() {
+        let mut connection = complete_minimal_graph();
+        make_minimal_list_root(&connection);
+        insert_list_value(&connection, 1, 2, 1, None, "a");
+        insert_list_value(&connection, 2, 3, 1, Some(2), "b");
+        insert_list_value(&connection, 3, 4, 1, Some(2), "c");
+        set_operation_bounds(&connection, 4, 4, 0);
+        seal_staged_graph(&mut connection).unwrap();
+        materialize_current_operations(&mut connection).unwrap();
+        assert!(matches!(
+            materialize_sequence_elements(&mut connection),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+        materialize_resolved_values(&mut connection).unwrap();
+
+        let receipt = materialize_sequence_elements(&mut connection).unwrap();
+        assert_eq!(receipt.sequence_object_count, 1);
+        assert_eq!(receipt.sequence_element_count, 3);
+        let order = connection
+            .prepare(
+                "SELECT insertionOperationIndex FROM external_sequence_elements \
+                 ORDER BY sequenceOrdinal;",
+            )
+            .unwrap()
+            .query_map([], |row| row.get::<_, i64>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(order, vec![1, 3, 2]);
+        assert_eq!(
+            materialize_sequence_elements(&mut connection).unwrap(),
+            receipt
+        );
+
+        connection
+            .execute(
+                "UPDATE external_sequence_elements SET sequenceOrdinal = 99 \
+                 WHERE insertionOperationIndex = 3;",
+                [],
+            )
+            .unwrap();
+        assert!(matches!(
+            materialize_sequence_elements(&mut connection),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+    }
+
+    #[test]
+    fn sequence_materialization_keeps_deleted_anchors_in_the_order_graph() {
+        let mut connection = complete_minimal_graph();
+        make_minimal_list_root(&connection);
+        insert_list_value(&connection, 1, 2, 1, None, "deleted anchor");
+        insert_list_value(&connection, 2, 3, 1, Some(2), "visible child");
+        connection
+            .execute(
+                "INSERT INTO external_operation_successors \
+                 (operationIndex, successorOrdinal, actorIndex, counter) \
+                 VALUES (1, 0, 0, ?1);",
+                [4_u64.to_be_bytes()],
+            )
+            .unwrap();
+        set_operation_bounds(&connection, 4, 3, 1);
+
+        materialize_through_resolved_values(&mut connection);
+        let receipt = materialize_sequence_elements(&mut connection).unwrap();
+        assert_eq!(receipt.sequence_element_count, 2);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM external_resolved_values \
+                     WHERE operationIndex = 1;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            0
+        );
+        let order = connection
+            .prepare(
+                "SELECT insertionOperationIndex FROM external_sequence_elements \
+                 ORDER BY sequenceOrdinal;",
+            )
+            .unwrap()
+            .query_map([], |row| row.get::<_, i64>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(order, vec![1, 2]);
+    }
+
+    #[test]
+    fn sequence_materialization_rejects_cross_object_anchors() {
+        let mut connection = complete_minimal_graph();
+        make_minimal_list_root(&connection);
+        insert_list_value(&connection, 1, 2, 1, None, "first list");
+        insert_root_property_operation(&connection, 2, 3, "otherList", 2, "null", None);
+        insert_list_value(&connection, 3, 4, 3, Some(2), "wrong object");
+        set_operation_bounds(&connection, 4, 4, 0);
+
+        materialize_through_resolved_values(&mut connection);
+        assert!(matches!(
+            materialize_sequence_elements(&mut connection),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+    }
+
+    #[test]
+    fn sequence_materialization_has_no_recursive_depth_ceiling() {
+        const ELEMENT_COUNT: u64 = 1_100;
+        let mut connection = complete_minimal_graph();
+        make_minimal_list_root(&connection);
+        for index in 0..ELEMENT_COUNT {
+            let counter = index + 2;
+            let anchor = (index > 0).then_some(counter - 1);
+            insert_list_value(
+                &connection,
+                i64::try_from(index + 1).unwrap(),
+                counter,
+                1,
+                anchor,
+                "value",
+            );
+        }
+        set_operation_bounds(
+            &connection,
+            ELEMENT_COUNT + 1,
+            i64::try_from(ELEMENT_COUNT + 1).unwrap(),
+            0,
+        );
+
+        materialize_through_resolved_values(&mut connection);
+        let receipt = materialize_sequence_elements(&mut connection).unwrap();
+        assert_eq!(receipt.sequence_object_count, 1);
+        assert_eq!(receipt.sequence_element_count, ELEMENT_COUNT);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT MIN(sequenceOrdinal), MAX(sequenceOrdinal) \
+                     FROM external_sequence_elements;",
+                    [],
+                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+                )
+                .unwrap(),
+            (0, i64::try_from(ELEMENT_COUNT - 1).unwrap())
+        );
     }
 }

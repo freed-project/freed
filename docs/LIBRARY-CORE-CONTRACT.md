@@ -9733,6 +9733,23 @@ current-operation receipts. This stage still does not order list elements,
 reconstruct objects, select registered entities, open a production database,
 or activate SQLite.
 
+One later immutable sequence receipt orders every insertion in each list or
+text object with Automerge's reference traversal. Children of one anchor are
+visited in descending Lamport order, and each child's descendants are visited
+before the next sibling. Deleted insertions remain anchors in this ordering
+graph even though their resolved values are absent. This preserves the
+positions of visible descendants without resurrecting deleted values.
+
+The traversal pages sequence objects and uses a temporary SQLite stack rather
+than a source-sized Rust collection or recursive call stack. Every insertion
+must target a list or text object. A non-head anchor must resolve to an earlier
+insertion in the same object. Cross-object anchors, non-sequence parents,
+missing or duplicate insertion rows, ordinal gaps, and changed replay results
+fail closed. Exact replay recomputes the full order and binds every object,
+ordinal, and insertion operation to the sealed graph and resolved-value
+receipt. This stage still does not reconstruct objects, select registered
+entities, open a production database, or activate SQLite.
+
 The migration worker's attributed resident ceiling is 384 MiB on a 4 GiB host,
 512 MiB on an 8 GiB host, and 768 MiB on a host with 16 GiB or more. Admission
 proves enough private staging capacity for the measured source, target,

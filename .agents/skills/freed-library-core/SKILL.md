@@ -584,8 +584,13 @@ Fault injection must prove rollback from the latest write in that transaction.
     Page counter bases through a fixed bound, reject orphan, non-counter,
     malformed, or overflowing increments, and bind the complete winner and
     counter projection to the sealed graph and current-operation receipts.
-    This does not order list elements, reconstruct objects, or select registered
-    product entities.
+    The later sequence stage orders every list and text insertion through one
+    disk-backed iterative depth-first walk. Visit concurrent siblings in
+    descending Lamport order and descendants before the next sibling. Retain
+    deleted insertions as ordering anchors without restoring their resolved
+    values. Page objects, reject cross-object or non-sequence anchors, and bind
+    exact replay to the graph and resolved-value receipts. This does not
+    reconstruct objects or select registered product entities.
     Every staged head must resolve to a staged change before the change receipt
     is accepted. Change and operation receipts in one stage must bind the same
     exact source identity. Missing rows, changed layout entries, dangling graph
