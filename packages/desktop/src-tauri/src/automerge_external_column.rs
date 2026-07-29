@@ -5,15 +5,17 @@
 //! memory. Composite value and grouped columns are joined by later slices. No
 //! command or production caller activates this module.
 
+use crate::automerge_external_common::lower_hex;
 use crate::automerge_external_decoder::{verify_source_identity, AutomergeExternalDecoderError};
 use crate::automerge_external_document::DocumentColumnType;
 use flate2::read::DeflateDecoder;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::fmt;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom, Take, Write};
 
-const COLUMN_TOKEN_SCHEMA_VERSION: u32 = 1;
+pub(super) const COLUMN_TOKEN_SCHEMA_VERSION: u32 = 1;
 const COLUMN_INPUT_BUFFER_BYTES: usize = 64 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -31,11 +33,13 @@ pub(super) struct ExternalColumnDecodeLimits {
     pub max_string_bytes: u64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct ExternalColumnDecodeSummary {
     pub token_count: u64,
     pub decoded_byte_length: u64,
+    pub token_run_prefix_byte_length: u64,
+    pub token_run_prefix_sha256: String,
 }
 
 #[derive(Debug)]
@@ -274,13 +278,17 @@ enum ColumnRecord<'a> {
 /// `action`. Nothing is publishable unless the closure and the final complete
 /// source verification both succeed. This avoids a corpus-sized digest pass
 /// for every individual column.
-pub(super) fn with_verified_column_decode_session<T>(
+pub(super) fn with_verified_column_decode_session<T, E>(
     source: &mut File,
     expected_source_byte_length: u64,
     expected_source_sha256: &str,
-    action: impl FnOnce(&mut ExternalColumnDecodeSession<'_>) -> ColumnResult<T>,
-) -> ColumnResult<T> {
-    verify_source_identity(source, expected_source_byte_length, expected_source_sha256)?;
+    action: impl FnOnce(&mut ExternalColumnDecodeSession<'_>) -> Result<T, E>,
+) -> Result<T, E>
+where
+    E: From<AutomergeExternalDecoderError>,
+{
+    verify_source_identity(source, expected_source_byte_length, expected_source_sha256)
+        .map_err(E::from)?;
     let result = {
         let mut session = ExternalColumnDecodeSession {
             source,
@@ -289,7 +297,8 @@ pub(super) fn with_verified_column_decode_session<T>(
         };
         action(&mut session)
     };
-    verify_source_identity(source, expected_source_byte_length, expected_source_sha256)?;
+    verify_source_identity(source, expected_source_byte_length, expected_source_sha256)
+        .map_err(E::from)?;
     result
 }
 
@@ -300,6 +309,17 @@ pub(super) struct ExternalColumnDecodeSession<'a> {
 }
 
 impl ExternalColumnDecodeSession<'_> {
+    /// Borrow the already verified source for one higher-layer join.
+    ///
+    /// The outer session still performs the mandatory complete source
+    /// verification after every higher-layer operation returns.
+    pub(super) fn with_source_context<T, E>(
+        &mut self,
+        action: impl FnOnce(&mut File, u64, &str) -> Result<T, E>,
+    ) -> Result<T, E> {
+        action(self.source, self.source_byte_length, &self.source_sha256)
+    }
+
     /// Decode one exact primitive Automerge column into an unpublished bounded
     /// token run.
     pub(super) fn write_decoded_column_tokens(
@@ -312,8 +332,9 @@ impl ExternalColumnDecodeSession<'_> {
         if input.column_type == DocumentColumnType::Value {
             return Err(ExternalColumnDecodeError::UnsupportedRawValueColumn);
         }
+        let mut hashed_output = HashingWriter::new(output);
         write_record(
-            output,
+            &mut hashed_output,
             &ColumnRecord::Begin {
                 schema_version: COLUMN_TOKEN_SCHEMA_VERSION,
                 source_byte_length: self.source_byte_length,
@@ -336,7 +357,7 @@ impl ExternalColumnDecodeSession<'_> {
                 &mut reader,
                 limits.max_token_count,
                 &mut token_count,
-                |reader| read_unsigned_required(reader),
+                read_unsigned_required,
                 |index, value, output| {
                     if let Some(value) = value {
                         let value = value.to_string();
@@ -351,7 +372,7 @@ impl ExternalColumnDecodeSession<'_> {
                         write_null(index, output)
                     }
                 },
-                output,
+                &mut hashed_output,
             )?,
             DocumentColumnType::DeltaInteger => {
                 let mut absolute = 0_i64;
@@ -359,7 +380,7 @@ impl ExternalColumnDecodeSession<'_> {
                     &mut reader,
                     limits.max_token_count,
                     &mut token_count,
-                    |reader| read_signed_required(reader),
+                    read_signed_required,
                     |index, value, output| {
                         if let Some(delta) = value {
                             absolute = absolute
@@ -377,7 +398,7 @@ impl ExternalColumnDecodeSession<'_> {
                             write_null(index, output)
                         }
                     },
-                    output,
+                    &mut hashed_output,
                 )?;
             }
             DocumentColumnType::Boolean => {
@@ -385,7 +406,7 @@ impl ExternalColumnDecodeSession<'_> {
                     &mut reader,
                     limits.max_token_count,
                     &mut token_count,
-                    output,
+                    &mut hashed_output,
                 )?;
             }
             DocumentColumnType::String => decode_rle(
@@ -399,24 +420,63 @@ impl ExternalColumnDecodeSession<'_> {
                             output,
                             &ColumnRecord::Token {
                                 index,
-                                token: ColumnTokenValue::String(&value),
+                                token: ColumnTokenValue::String(value),
                             },
                         )
                     } else {
                         write_null(index, output)
                     }
                 },
-                output,
+                &mut hashed_output,
             )?,
             DocumentColumnType::Value => unreachable!("raw values returned before decoding"),
         }
         let decoded_byte_length = reader.finish(input.byte_length)?;
+        let (token_run_prefix_byte_length, token_run_prefix_sha256) = hashed_output.finish();
         let summary = ExternalColumnDecodeSummary {
             token_count,
             decoded_byte_length,
+            token_run_prefix_byte_length,
+            token_run_prefix_sha256,
         };
         write_record(output, &ColumnRecord::Complete { summary: &summary })?;
         Ok(summary)
+    }
+}
+
+struct HashingWriter<'a, W: Write> {
+    output: &'a mut W,
+    hasher: Sha256,
+    byte_length: u64,
+}
+
+impl<'a, W: Write> HashingWriter<'a, W> {
+    fn new(output: &'a mut W) -> Self {
+        Self {
+            output,
+            hasher: Sha256::new(),
+            byte_length: 0,
+        }
+    }
+
+    fn finish(self) -> (u64, String) {
+        (self.byte_length, lower_hex(&self.hasher.finalize()))
+    }
+}
+
+impl<W: Write> Write for HashingWriter<'_, W> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        let written = self.output.write(bytes)?;
+        self.hasher.update(&bytes[..written]);
+        self.byte_length = self
+            .byte_length
+            .checked_add(written as u64)
+            .ok_or_else(|| std::io::Error::other("Automerge token run length overflows"))?;
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.output.flush()
     }
 }
 
@@ -743,13 +803,10 @@ mod tests {
     #[test]
     fn decodes_unsigned_delta_boolean_and_string_columns() {
         let (unsigned, summary) = decode(&[2, 7, 0x7e, 1, 2, 0, 2], DocumentColumnType::Integer);
-        assert_eq!(
-            summary,
-            ExternalColumnDecodeSummary {
-                token_count: 6,
-                decoded_byte_length: 7,
-            }
-        );
+        assert_eq!(summary.token_count, 6);
+        assert_eq!(summary.decoded_byte_length, 7);
+        assert!(summary.token_run_prefix_byte_length > 0);
+        assert_eq!(summary.token_run_prefix_sha256.len(), 64);
         assert_eq!(unsigned.matches("\"kind\":\"unsigned\"").count(), 4);
         assert_eq!(unsigned.matches("\"kind\":\"null\"").count(), 2);
         assert!(unsigned.contains("\"value\":\"7\""));
@@ -813,7 +870,7 @@ mod tests {
                     limits(),
                     &mut key_output,
                 )?;
-                Ok(())
+                Ok::<(), ExternalColumnDecodeError>(())
             },
         )
         .unwrap();

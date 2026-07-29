@@ -10,7 +10,7 @@ use crate::automerge_external_decoder::{
     read_canonical_uleb128_value, verify_chunk, verify_source_identity, AutomergeChunkDescriptor,
     AutomergeChunkKind, AutomergeExternalDecoderError,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -34,7 +34,7 @@ pub(super) enum DocumentColumnSection {
     Operations,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(super) enum DocumentColumnType {
     Group,
