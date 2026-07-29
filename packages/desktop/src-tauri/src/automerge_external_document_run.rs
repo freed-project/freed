@@ -74,7 +74,7 @@ impl ExternalVerifiedDocumentLayout {
     pub(super) fn change_specifications(&self) -> impl Iterator<Item = u32> + '_ {
         self.change_columns
             .iter()
-            .map(|column| column.specification)
+            .map(|column| normalized_specification(column.specification))
     }
 
     pub(super) fn operation_column(
@@ -82,6 +82,12 @@ impl ExternalVerifiedDocumentLayout {
         specification: u32,
     ) -> LayoutRunResult<Option<ExternalColumnInput>> {
         exact_column(&self.operation_columns, specification)
+    }
+
+    pub(super) fn operation_specifications(&self) -> impl Iterator<Item = u32> + '_ {
+        self.operation_columns
+            .iter()
+            .map(|column| normalized_specification(column.specification))
     }
 }
 
@@ -542,14 +548,19 @@ fn exact_column(
     columns: &[VerifiedColumn],
     specification: u32,
 ) -> LayoutRunResult<Option<ExternalColumnInput>> {
+    let normalized = normalized_specification(specification);
     let mut matches = columns
         .iter()
-        .filter(|column| column.specification == specification);
+        .filter(|column| normalized_specification(column.specification) == normalized);
     let result = matches.next().map(|column| column.input);
     if matches.next().is_some() {
         return Err(ExternalDocumentLayoutRunError::AmbiguousColumn);
     }
     Ok(result)
+}
+
+fn normalized_specification(specification: u32) -> u32 {
+    specification & !0b1000
 }
 
 fn is_lower_hex(value: &str) -> bool {
@@ -795,5 +806,38 @@ mod tests {
             Err(ExternalDocumentLayoutRunError::RecordOrder)
                 | Err(ExternalDocumentLayoutRunError::ContractMismatch)
         ));
+    }
+
+    #[test]
+    fn resolves_columns_by_normalized_specification_after_deflate() {
+        let input = ExternalColumnInput {
+            offset: 100,
+            byte_length: 20,
+            column_type: DocumentColumnType::Actor,
+            deflated: true,
+        };
+        let layout = ExternalVerifiedDocumentLayout {
+            source_byte_length: 200,
+            source_sha256: "0".repeat(64),
+            actor_ids: Vec::new(),
+            heads: Vec::new(),
+            change_columns: vec![VerifiedColumn {
+                specification: 1 | 0b1000,
+                input,
+            }],
+            operation_columns: vec![VerifiedColumn {
+                specification: 33 | 0b1000,
+                input,
+            }],
+            head_change_indices: Vec::new(),
+        };
+
+        assert_eq!(layout.change_column(1).unwrap(), Some(input));
+        assert_eq!(layout.operation_column(33).unwrap(), Some(input));
+        assert_eq!(layout.change_specifications().collect::<Vec<_>>(), vec![1]);
+        assert_eq!(
+            layout.operation_specifications().collect::<Vec<_>>(),
+            vec![33]
+        );
     }
 }
