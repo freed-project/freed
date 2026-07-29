@@ -541,6 +541,10 @@ export function FeedView() {
   } satisfies React.CSSProperties;
   const railContentStyle = {
     width: `${panelWidth + COMPACT_PANEL_RESIZE_HANDLE_WIDTH}px`,
+    // Keep the rail inside both sidebar frame gaps while primary content spans
+    // the full height below the toolbar.
+    height: "calc(100% - var(--feed-card-gap, 8px) - var(--feed-card-gap, 8px))",
+    marginTop: "var(--feed-card-gap, 8px)",
   } satisfies React.CSSProperties;
 
   const handleRailTransitionEnd = useCallback(
@@ -593,7 +597,7 @@ export function FeedView() {
               style={railSlotStyle}
               onTransitionEnd={handleRailTransitionEnd}
             >
-              <div className="flex h-full" style={railContentStyle}>
+              <div className="flex" style={railContentStyle}>
                 <CompactFeedPanel
                   items={readerItems}
                   selectedId={selectedItem.globalId}
@@ -606,9 +610,6 @@ export function FeedView() {
                 />
                 <div
                   className="theme-resize-gap-handle w-4 shrink-0 self-stretch"
-                  style={{
-                    marginTop: "var(--feed-card-gap, 8px)",
-                  }}
                   onPointerDown={handleDragStart}
                   onPointerMove={handleDragMove}
                   onPointerUp={handleDragEnd}

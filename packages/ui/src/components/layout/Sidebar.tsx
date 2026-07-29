@@ -822,6 +822,7 @@ export function Sidebar({
   const desktopShellTopPadding = renderMode !== "closed" || closedPreviewActive
     ? "var(--feed-card-gap, 8px)"
     : 0;
+  const desktopShellBottomPadding = desktopShellTopPadding;
   const sidebarHandleCenterlinePx =
     renderMode === "closed" && !closedPreviewActive
       ? effectiveGapWidthPx / 2
@@ -1951,6 +1952,7 @@ export function Sidebar({
         style={{
           width: desktopShellWidth,
           paddingTop: desktopShellTopPadding,
+          paddingBottom: desktopShellBottomPadding,
           transition: desktopShellTransition,
         }}
       >
