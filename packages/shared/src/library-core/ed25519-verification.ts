@@ -71,9 +71,11 @@ export async function verifyLibraryCoreEd25519WithWebCrypto(
   if (verifier === undefined) {
     throw new Error("Ed25519 Web Crypto verification is unavailable");
   }
+  const importKey = verifier.importKey.bind(verifier);
+  const verify = verifier.verify.bind(verifier);
   let publicKey: CryptoKey;
   try {
-    publicKey = await verifier.importKey(
+    publicKey = await importKey(
       "raw",
       snapshot.publicKey,
       { name: "Ed25519" },
@@ -89,7 +91,7 @@ export async function verifyLibraryCoreEd25519WithWebCrypto(
     }
     throw error;
   }
-  return verifier.verify(
+  return verify(
     { name: "Ed25519" },
     publicKey,
     snapshot.signature,

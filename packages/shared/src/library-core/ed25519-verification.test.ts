@@ -113,6 +113,38 @@ describe("Library Core Web Crypto Ed25519 verification", () => {
     });
   });
 
+  it("snapshots Web Crypto methods before importing the key", async () => {
+    const vector = vectors.vectors[0];
+    const subtle = {
+      async importKey() {
+        (
+          subtle as unknown as {
+            importKey: () => Promise<CryptoKey>;
+            verify: () => Promise<boolean>;
+          }
+        ).verify = async () => false;
+        await Promise.resolve();
+        return {} as CryptoKey;
+      },
+      async verify() {
+        return true;
+      },
+    } as Pick<SubtleCrypto, "importKey" | "verify"> as SubtleCrypto;
+
+    await expect(
+      verifyLibraryCoreEd25519WithWebCrypto(
+        {
+          publicKeyHex:
+            vector.public_key_hex as LibraryCoreEd25519PublicKeyHex,
+          signatureHex:
+            vector.signature_hex as LibraryCoreEd25519SignatureHex,
+          message: decodeHex(vector.message_hex),
+        },
+        subtle,
+      ),
+    ).resolves.toBe(true);
+  });
+
   it("rejects malformed encodings and oversized messages before Web Crypto", async () => {
     const subtle = {
       importKey() {

@@ -78,6 +78,16 @@ export async function finalizeLibraryCoreTransactionV1(
       "transaction must come from the closed assembly contract",
     );
   }
+  const signOperation = dependencies.signOperation;
+  const digestEnvelope = dependencies.digest;
+  if (
+    typeof signOperation !== "function" ||
+    typeof digestEnvelope !== "function"
+  ) {
+    throw new TypeError(
+      "operation finalization dependencies must be callable",
+    );
+  }
 
   const memberByteLengths = assembled.members.map((member) =>
     canonicalEnvelopeBytes(member.signing_body, PLACEHOLDER_SIGNATURE),
@@ -100,7 +110,7 @@ export async function finalizeLibraryCoreTransactionV1(
     const signatureInput = encodeLibraryCoreOperationSignatureInput({
       operation_signing_body_digest: member.signing_body_digest,
     });
-    const signature = await dependencies.signOperation(signatureInput);
+    const signature = await signOperation(signatureInput);
     if (!isLibraryCoreEd25519SignatureHex(signature)) {
       throw new TypeError(
         "operation signer must return 128 lowercase hexadecimal characters",
@@ -123,7 +133,7 @@ export async function finalizeLibraryCoreTransactionV1(
         "signature changed the canonical envelope byte contract",
       );
     }
-    const envelopeDigest = dependencies.digest("operation-envelope", envelope);
+    const envelopeDigest = digestEnvelope("operation-envelope", envelope);
     if (!isLibraryCoreLowercaseHex64(envelopeDigest)) {
       throw new TypeError(
         "operation-envelope digest dependency returned an invalid digest",

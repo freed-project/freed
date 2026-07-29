@@ -15,6 +15,7 @@ import {
 import {
   finalizeLibraryCoreTransactionV1,
   isLibraryCoreFinalizedTransactionV1,
+  type LibraryCoreOperationFinalizationDependencies,
 } from "./operation-envelope-finalization.js";
 import { assembleLibraryCoreTransactionV1 } from "./operation-transaction-contracts.js";
 
@@ -176,6 +177,37 @@ describe("Library Core operation envelope finalization", () => {
         },
       }),
     ).rejects.toThrow(/invalid digest/);
+  });
+
+  it("snapshots signer and digest capabilities before the first await", async () => {
+    const transaction = assembled(2);
+    const dependencies: LibraryCoreOperationFinalizationDependencies = {
+      async signOperation() {
+        (
+          dependencies as {
+            signOperation: () => Promise<string>;
+            digest: () => string;
+          }
+        ).signOperation = async () => "invalid";
+        (
+          dependencies as {
+            signOperation: () => Promise<string>;
+            digest: () => string;
+          }
+        ).digest = () => "invalid";
+        await Promise.resolve();
+        return HEX.signature;
+      },
+      digest(domain, value) {
+        return digest(domain, value);
+      },
+    };
+
+    await expect(
+      finalizeLibraryCoreTransactionV1(transaction, dependencies),
+    ).resolves.toMatchObject({
+      members: [{ envelope: { signature: HEX.signature } }, {}],
+    });
   });
 
   it("rejects an oversized final envelope transaction before signing", async () => {
