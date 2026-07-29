@@ -590,7 +590,15 @@ Fault injection must prove rollback from the latest write in that transaction.
     deleted insertions as ordering anchors without restoring their resolved
     values. Page objects, reject cross-object or non-sequence anchors, and bind
     exact replay to the graph and resolved-value receipts. This does not
-    reconstruct objects or select registered product entities.
+    reconstruct objects or select registered product entities. The later
+    FeedItem topology stage selects one winning `feedItems` map, admits only
+    map-valued entities with bounded IDs, and reconstructs their winning map
+    and sequence nodes in temporary SQLite. Omit deleted entities and their
+    still-current descendants, densely renumber visible sequence values, cap
+    nesting at 128 levels, and reject shared nodes, malformed container
+    children, scalar parents with children, and replay drift. Bind the complete
+    entity topology to the graph, resolved-value, and sequence receipts before
+    serializing any FeedItem or populating a published generation.
     Every staged head must resolve to a staged change before the change receipt
     is accepted. Change and operation receipts in one stage must bind the same
     exact source identity. Missing rows, changed layout entries, dangling graph

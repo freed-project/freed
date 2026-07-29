@@ -361,6 +361,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.77 | Immutable current-operation materialization with omitted-delete removal, counter-increment visibility, conflict preservation, graph-bound receipts, and exact replay | ✓ | High |
 | 4.78 | Bounded immutable value resolution with conflict preservation, disk-spilled Lamport winner selection, exact counter arithmetic, and receipt-bound replay | ✓ | High |
 | 4.79 | Bounded immutable list and text order with deleted-anchor retention, disk-backed iterative traversal, and receipt-bound exact replay | ✓ | High |
+| 4.80 | Bounded FeedItem topology reconstruction with deleted-entity omission, visible-sequence renumbering, depth admission, and receipt-bound exact replay | ✓ | High |
 
 ---
 

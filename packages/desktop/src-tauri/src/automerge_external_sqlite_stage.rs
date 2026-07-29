@@ -27,7 +27,8 @@ use std::fs::File;
 use std::io::Read;
 
 const STAGE_APPLICATION_ID: i64 = 0x4652_4f53;
-const STAGE_SCHEMA_VERSION: i64 = 9;
+const STAGE_SCHEMA_VERSION: i64 = 10;
+const MAX_FEED_ITEM_OBJECT_DEPTH: i64 = 128;
 
 const STAGE_SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS external_layout_stage_receipt (
@@ -283,6 +284,55 @@ CREATE TABLE IF NOT EXISTS external_sequence_element_receipt (
     sequenceElementsSha256 = lower(sequenceElementsSha256)
   )
 ) STRICT;
+
+CREATE TABLE IF NOT EXISTS external_feed_item_entities (
+  entityOperationIndex INTEGER PRIMARY KEY
+    REFERENCES external_resolved_values(operationIndex) ON DELETE CASCADE,
+  globalId TEXT NOT NULL UNIQUE CHECK (length(CAST(globalId AS BLOB)) BETWEEN 1 AND 4096)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS external_feed_item_nodes (
+  valueOperationIndex INTEGER PRIMARY KEY
+    REFERENCES external_resolved_values(operationIndex) ON DELETE CASCADE,
+  entityOperationIndex INTEGER NOT NULL
+    REFERENCES external_feed_item_entities(entityOperationIndex) ON DELETE CASCADE,
+  parentValueOperationIndex INTEGER
+    REFERENCES external_feed_item_nodes(valueOperationIndex) ON DELETE CASCADE,
+  depth INTEGER NOT NULL CHECK (depth BETWEEN 0 AND 128),
+  segmentKind TEXT NOT NULL CHECK (segmentKind IN ('entity', 'property', 'sequence')),
+  propertyName TEXT,
+  sequenceOrdinal INTEGER CHECK (sequenceOrdinal IS NULL OR sequenceOrdinal >= 0),
+  CHECK (
+    (segmentKind = 'entity' AND parentValueOperationIndex IS NULL
+      AND depth = 0 AND propertyName IS NULL AND sequenceOrdinal IS NULL) OR
+    (segmentKind = 'property' AND parentValueOperationIndex IS NOT NULL
+      AND depth > 0 AND propertyName IS NOT NULL AND sequenceOrdinal IS NULL) OR
+    (segmentKind = 'sequence' AND parentValueOperationIndex IS NOT NULL
+      AND depth > 0 AND propertyName IS NULL AND sequenceOrdinal IS NOT NULL)
+  ),
+  UNIQUE (entityOperationIndex, parentValueOperationIndex, segmentKind, propertyName),
+  UNIQUE (entityOperationIndex, parentValueOperationIndex, segmentKind, sequenceOrdinal)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS external_feed_item_node_receipt (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  graphSha256 TEXT NOT NULL CHECK (
+    length(graphSha256) = 64 AND graphSha256 = lower(graphSha256)
+  ),
+  resolvedValuesSha256 TEXT NOT NULL CHECK (
+    length(resolvedValuesSha256) = 64 AND
+    resolvedValuesSha256 = lower(resolvedValuesSha256)
+  ),
+  sequenceElementsSha256 TEXT NOT NULL CHECK (
+    length(sequenceElementsSha256) = 64 AND
+    sequenceElementsSha256 = lower(sequenceElementsSha256)
+  ),
+  feedItemCount INTEGER NOT NULL CHECK (feedItemCount >= 0),
+  feedItemNodeCount INTEGER NOT NULL CHECK (feedItemNodeCount >= 0),
+  feedItemNodesSha256 TEXT NOT NULL CHECK (
+    length(feedItemNodesSha256) = 64 AND feedItemNodesSha256 = lower(feedItemNodesSha256)
+  )
+) STRICT;
 "#;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -344,6 +394,16 @@ struct ExternalSequenceElementReceipt {
     sequence_object_count: u64,
     sequence_element_count: u64,
     sequence_elements_sha256: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ExternalFeedItemNodeReceipt {
+    graph_sha256: String,
+    resolved_values_sha256: String,
+    sequence_elements_sha256: String,
+    feed_item_count: u64,
+    feed_item_node_count: u64,
+    feed_item_nodes_sha256: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -921,6 +981,98 @@ fn materialize_sequence_elements(
     Ok(receipt)
 }
 
+fn materialize_feed_item_nodes(
+    connection: &mut Connection,
+) -> StageResult<ExternalFeedItemNodeReceipt> {
+    configure_connection(connection)?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    initialize_or_validate_schema(&transaction)?;
+    let graph_receipt =
+        read_graph_receipt(&transaction)?.ok_or(ExternalSqliteStageError::IncompleteStage)?;
+    if graph_content_sha256(&transaction)? != graph_receipt.graph_sha256 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    let resolved_receipt = read_resolved_value_receipt(&transaction)?
+        .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+    let sequence_receipt = read_sequence_element_receipt(&transaction)?
+        .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+    validate_resolved_value_set(&transaction)?;
+    materialize_or_validate_counter_values(&transaction, true)?;
+    validate_sequence_element_set(&transaction)?;
+    if resolved_receipt.graph_sha256 != graph_receipt.graph_sha256
+        || sequence_receipt.graph_sha256 != graph_receipt.graph_sha256
+        || sequence_receipt.resolved_values_sha256 != resolved_receipt.resolved_values_sha256
+        || resolved_values_sha256(&transaction)? != resolved_receipt.resolved_values_sha256
+        || sequence_elements_sha256(&transaction)? != sequence_receipt.sequence_elements_sha256
+    {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+
+    build_expected_feed_item_nodes(&transaction)?;
+    let stored_receipt = read_feed_item_node_receipt(&transaction)?;
+    let stored_entity_count = transaction.query_row(
+        "SELECT COUNT(*) FROM external_feed_item_entities;",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    let stored_node_count = transaction.query_row(
+        "SELECT COUNT(*) FROM external_feed_item_nodes;",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if stored_receipt.is_none() {
+        if stored_entity_count != 0 || stored_node_count != 0 {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        transaction.execute(
+            "INSERT INTO external_feed_item_entities (entityOperationIndex, globalId) \
+             SELECT entityOperationIndex, globalId \
+             FROM temp.external_expected_feed_item_entities \
+             ORDER BY entityOperationIndex;",
+            [],
+        )?;
+        transaction.execute(
+            "INSERT INTO external_feed_item_nodes (\
+             valueOperationIndex, entityOperationIndex, parentValueOperationIndex, \
+             depth, segmentKind, propertyName, sequenceOrdinal) \
+             SELECT valueOperationIndex, entityOperationIndex, parentValueOperationIndex, \
+                    depth, segmentKind, propertyName, sequenceOrdinal \
+             FROM temp.external_expected_feed_item_nodes \
+             ORDER BY valueOperationIndex;",
+            [],
+        )?;
+    }
+    validate_feed_item_node_set(&transaction)?;
+
+    let (feed_item_count, feed_item_node_count) = transaction.query_row(
+        "SELECT \
+           (SELECT COUNT(*) FROM external_feed_item_entities), \
+           (SELECT COUNT(*) FROM external_feed_item_nodes);",
+        [],
+        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+    )?;
+    let receipt = ExternalFeedItemNodeReceipt {
+        graph_sha256: graph_receipt.graph_sha256,
+        resolved_values_sha256: resolved_receipt.resolved_values_sha256,
+        sequence_elements_sha256: sequence_receipt.sequence_elements_sha256,
+        feed_item_count: u64::try_from(feed_item_count)
+            .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+        feed_item_node_count: u64::try_from(feed_item_node_count)
+            .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+        feed_item_nodes_sha256: feed_item_nodes_sha256(&transaction)?,
+    };
+    if let Some(stored) = stored_receipt {
+        if stored != receipt {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        transaction.commit()?;
+        return Ok(receipt);
+    }
+    insert_feed_item_node_receipt(&transaction, &receipt)?;
+    transaction.commit()?;
+    Ok(receipt)
+}
+
 fn configure_connection(connection: &Connection) -> StageResult<()> {
     connection.pragma_update(None, "foreign_keys", "ON")?;
     // Winner selection may sort a source-sized operation set. Force SQLite to
@@ -1280,6 +1432,53 @@ fn insert_sequence_element_receipt(
             i64::try_from(receipt.sequence_element_count)
                 .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
             receipt.sequence_elements_sha256,
+        ],
+    )?;
+    Ok(())
+}
+
+fn read_feed_item_node_receipt(
+    transaction: &Transaction<'_>,
+) -> StageResult<Option<ExternalFeedItemNodeReceipt>> {
+    transaction
+        .query_row(
+            "SELECT graphSha256, resolvedValuesSha256, sequenceElementsSha256, \
+                    feedItemCount, feedItemNodeCount, feedItemNodesSha256 \
+             FROM external_feed_item_node_receipt WHERE singleton = 1;",
+            [],
+            |row| {
+                Ok(ExternalFeedItemNodeReceipt {
+                    graph_sha256: row.get(0)?,
+                    resolved_values_sha256: row.get(1)?,
+                    sequence_elements_sha256: row.get(2)?,
+                    feed_item_count: row.get::<_, i64>(3)? as u64,
+                    feed_item_node_count: row.get::<_, i64>(4)? as u64,
+                    feed_item_nodes_sha256: row.get(5)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(ExternalSqliteStageError::from)
+}
+
+fn insert_feed_item_node_receipt(
+    transaction: &Transaction<'_>,
+    receipt: &ExternalFeedItemNodeReceipt,
+) -> StageResult<()> {
+    transaction.execute(
+        "INSERT INTO external_feed_item_node_receipt (\
+         singleton, graphSha256, resolvedValuesSha256, sequenceElementsSha256, \
+         feedItemCount, feedItemNodeCount, feedItemNodesSha256) \
+         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6);",
+        params![
+            receipt.graph_sha256,
+            receipt.resolved_values_sha256,
+            receipt.sequence_elements_sha256,
+            i64::try_from(receipt.feed_item_count)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            i64::try_from(receipt.feed_item_node_count)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            receipt.feed_item_nodes_sha256,
         ],
     )?;
     Ok(())
@@ -2108,6 +2307,374 @@ fn validate_sequence_element_set(transaction: &Transaction<'_>) -> StageResult<(
     Ok(())
 }
 
+fn build_expected_feed_item_nodes(transaction: &Transaction<'_>) -> StageResult<()> {
+    transaction.execute_batch(
+        "CREATE TEMP TABLE IF NOT EXISTS external_expected_feed_item_entities (\
+           entityOperationIndex INTEGER PRIMARY KEY, \
+           globalId TEXT NOT NULL UNIQUE\
+         ) STRICT; \
+         CREATE TEMP TABLE IF NOT EXISTS external_expected_feed_item_nodes (\
+           valueOperationIndex INTEGER PRIMARY KEY, \
+           entityOperationIndex INTEGER NOT NULL, \
+           parentValueOperationIndex INTEGER, \
+           depth INTEGER NOT NULL, \
+           segmentKind TEXT NOT NULL, \
+           propertyName TEXT, \
+           sequenceOrdinal INTEGER, \
+           UNIQUE (entityOperationIndex, parentValueOperationIndex, segmentKind, propertyName), \
+           UNIQUE (entityOperationIndex, parentValueOperationIndex, segmentKind, sequenceOrdinal)\
+         ) STRICT; \
+         DELETE FROM temp.external_expected_feed_item_nodes; \
+         DELETE FROM temp.external_expected_feed_item_entities;",
+    )?;
+
+    let feed_items_root = {
+        let mut statement = transaction.prepare(
+            "SELECT operation.operationIndex, operation.idActorIndex, \
+                    operation.idCounter, operation.action \
+             FROM external_resolved_values AS resolved \
+             JOIN external_operations AS operation USING (operationIndex) \
+             WHERE resolved.isWinner = 1 \
+               AND operation.objectKind = 'root' \
+               AND operation.keyKind = 'property' \
+               AND operation.keyName = 'feedItems' \
+             ORDER BY operation.operationIndex;",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, Vec<u8>>(2)?,
+                row.get::<_, i64>(3)?,
+            ))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>()?
+    };
+    let [(feed_items_operation_index, feed_items_actor_index, feed_items_counter, action)] =
+        feed_items_root.as_slice()
+    else {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    };
+    if *action != 0 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+
+    let invalid_entity = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT 1 \
+           FROM external_resolved_values AS resolved \
+           JOIN external_operations AS operation USING (operationIndex) \
+           WHERE resolved.isWinner = 1 \
+             AND operation.objectKind = 'operation' \
+             AND operation.objectActorIndex = ?1 \
+             AND operation.objectCounter = ?2 \
+             AND (operation.insertFlag != 0 \
+               OR operation.keyKind != 'property' \
+               OR operation.action != 0 \
+               OR length(CAST(operation.keyName AS BLOB)) NOT BETWEEN 1 AND 4096)\
+         );",
+        params![feed_items_actor_index, feed_items_counter],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if invalid_entity != 0 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    transaction.execute(
+        "INSERT INTO temp.external_expected_feed_item_entities \
+         (entityOperationIndex, globalId) \
+         SELECT operation.operationIndex, operation.keyName \
+         FROM external_resolved_values AS resolved \
+         JOIN external_operations AS operation USING (operationIndex) \
+         WHERE resolved.isWinner = 1 \
+           AND operation.objectKind = 'operation' \
+           AND operation.objectActorIndex = ?1 \
+           AND operation.objectCounter = ?2 \
+         ORDER BY operation.operationIndex;",
+        params![feed_items_actor_index, feed_items_counter],
+    )?;
+    transaction.execute(
+        "INSERT INTO temp.external_expected_feed_item_nodes (\
+         valueOperationIndex, entityOperationIndex, parentValueOperationIndex, \
+         depth, segmentKind, propertyName, sequenceOrdinal) \
+         SELECT entityOperationIndex, entityOperationIndex, NULL, \
+                0, 'entity', NULL, NULL \
+         FROM temp.external_expected_feed_item_entities \
+         ORDER BY entityOperationIndex;",
+        [],
+    )?;
+
+    for parent_depth in 0..MAX_FEED_ITEM_OBJECT_DEPTH {
+        reject_invalid_feed_item_children(transaction, parent_depth)?;
+        let map_children = transaction.execute(
+            "INSERT INTO temp.external_expected_feed_item_nodes (\
+             valueOperationIndex, entityOperationIndex, parentValueOperationIndex, \
+             depth, segmentKind, propertyName, sequenceOrdinal) \
+             SELECT child.operationIndex, parent.entityOperationIndex, \
+                    parent.valueOperationIndex, ?1 + 1, 'property', child.keyName, NULL \
+             FROM temp.external_expected_feed_item_nodes AS parent \
+             JOIN external_operations AS parentOperation \
+               ON parentOperation.operationIndex = parent.valueOperationIndex \
+             JOIN external_operations AS child \
+               ON child.objectKind = 'operation' \
+              AND child.objectActorIndex = parentOperation.idActorIndex \
+              AND child.objectCounter = parentOperation.idCounter \
+             JOIN external_resolved_values AS resolved \
+               ON resolved.operationIndex = child.operationIndex \
+              AND resolved.isWinner = 1 \
+             WHERE parent.depth = ?1 \
+               AND parentOperation.action = 0 \
+             ORDER BY child.operationIndex;",
+            [parent_depth],
+        )?;
+        let sequence_children = transaction.execute(
+            "INSERT INTO temp.external_expected_feed_item_nodes (\
+             valueOperationIndex, entityOperationIndex, parentValueOperationIndex, \
+             depth, segmentKind, propertyName, sequenceOrdinal) \
+             SELECT valueOperationIndex, entityOperationIndex, parentValueOperationIndex, \
+                    ?1 + 1, 'sequence', NULL, visibleOrdinal \
+             FROM (\
+               SELECT child.operationIndex AS valueOperationIndex, \
+                      parent.entityOperationIndex AS entityOperationIndex, \
+                      parent.valueOperationIndex AS parentValueOperationIndex, \
+                      ROW_NUMBER() OVER (\
+                        PARTITION BY parent.valueOperationIndex \
+                        ORDER BY sequence.sequenceOrdinal\
+                      ) - 1 AS visibleOrdinal \
+               FROM temp.external_expected_feed_item_nodes AS parent \
+               JOIN external_operations AS parentOperation \
+                 ON parentOperation.operationIndex = parent.valueOperationIndex \
+               JOIN external_sequence_elements AS sequence \
+                 ON sequence.objectActorIndex = parentOperation.idActorIndex \
+                AND sequence.objectCounter = parentOperation.idCounter \
+               JOIN external_operations AS insertion \
+                 ON insertion.operationIndex = sequence.insertionOperationIndex \
+               JOIN external_operations AS child \
+                 ON child.objectKind = 'operation' \
+                AND child.objectActorIndex = parentOperation.idActorIndex \
+                AND child.objectCounter = parentOperation.idCounter \
+                AND (\
+                  (child.insertFlag = 1 \
+                    AND child.idActorIndex = insertion.idActorIndex \
+                    AND child.idCounter = insertion.idCounter) \
+                  OR \
+                  (child.insertFlag = 0 AND child.keyKind = 'element' \
+                    AND child.keyActorIndex = insertion.idActorIndex \
+                    AND child.keyCounter = insertion.idCounter)\
+                ) \
+               JOIN external_resolved_values AS resolved \
+                 ON resolved.operationIndex = child.operationIndex \
+                AND resolved.isWinner = 1 \
+               WHERE parent.depth = ?1 \
+                 AND parentOperation.action IN (2, 4)\
+             ) \
+             ORDER BY valueOperationIndex;",
+            [parent_depth],
+        )?;
+        if map_children == 0 && sequence_children == 0 {
+            break;
+        }
+    }
+    reject_feed_item_depth_overflow(transaction)?;
+    validate_expected_feed_item_nodes(transaction, *feed_items_operation_index)?;
+    Ok(())
+}
+
+fn reject_invalid_feed_item_children(
+    transaction: &Transaction<'_>,
+    parent_depth: i64,
+) -> StageResult<()> {
+    let invalid = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT 1 \
+           FROM temp.external_expected_feed_item_nodes AS parent \
+           JOIN external_operations AS parentOperation \
+             ON parentOperation.operationIndex = parent.valueOperationIndex \
+           JOIN external_operations AS child \
+             ON child.objectKind = 'operation' \
+            AND child.objectActorIndex = parentOperation.idActorIndex \
+            AND child.objectCounter = parentOperation.idCounter \
+           JOIN external_resolved_values AS resolved \
+             ON resolved.operationIndex = child.operationIndex \
+            AND resolved.isWinner = 1 \
+           WHERE parent.depth = ?1 \
+             AND (\
+               (parentOperation.action = 0 \
+                 AND (child.insertFlag != 0 OR child.keyKind != 'property')) \
+               OR \
+               (parentOperation.action IN (2, 4) \
+                 AND NOT EXISTS (\
+                   SELECT 1 \
+                   FROM external_sequence_elements AS sequence \
+                   JOIN external_operations AS insertion \
+                     ON insertion.operationIndex = sequence.insertionOperationIndex \
+                   WHERE sequence.objectActorIndex = parentOperation.idActorIndex \
+                     AND sequence.objectCounter = parentOperation.idCounter \
+                     AND (\
+                       (child.insertFlag = 1 \
+                         AND child.idActorIndex = insertion.idActorIndex \
+                         AND child.idCounter = insertion.idCounter) \
+                       OR \
+                       (child.insertFlag = 0 AND child.keyKind = 'element' \
+                         AND child.keyActorIndex = insertion.idActorIndex \
+                         AND child.keyCounter = insertion.idCounter)\
+                     )\
+                 )) \
+               OR \
+               (parentOperation.action NOT IN (0, 2, 4))\
+             )\
+         );",
+        [parent_depth],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if invalid != 0 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    Ok(())
+}
+
+fn reject_feed_item_depth_overflow(transaction: &Transaction<'_>) -> StageResult<()> {
+    let overflow = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT 1 \
+           FROM temp.external_expected_feed_item_nodes AS parent \
+           JOIN external_operations AS parentOperation \
+             ON parentOperation.operationIndex = parent.valueOperationIndex \
+           JOIN external_operations AS child \
+             ON child.objectKind = 'operation' \
+            AND child.objectActorIndex = parentOperation.idActorIndex \
+            AND child.objectCounter = parentOperation.idCounter \
+           JOIN external_resolved_values AS resolved \
+             ON resolved.operationIndex = child.operationIndex \
+            AND resolved.isWinner = 1 \
+           WHERE parent.depth = ?1\
+         );",
+        [MAX_FEED_ITEM_OBJECT_DEPTH],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if overflow != 0 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    Ok(())
+}
+
+fn validate_expected_feed_item_nodes(
+    transaction: &Transaction<'_>,
+    feed_items_operation_index: i64,
+) -> StageResult<()> {
+    let entity_mismatch = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT 1 \
+           FROM temp.external_expected_feed_item_entities AS entity \
+           JOIN temp.external_expected_feed_item_nodes AS node \
+             ON node.valueOperationIndex = entity.entityOperationIndex \
+           JOIN external_operations AS operation \
+             ON operation.operationIndex = entity.entityOperationIndex \
+           WHERE node.entityOperationIndex != entity.entityOperationIndex \
+              OR node.parentValueOperationIndex IS NOT NULL \
+              OR node.depth != 0 \
+              OR node.segmentKind != 'entity' \
+              OR operation.action != 0\
+         ) OR EXISTS(\
+           SELECT entityOperationIndex \
+           FROM temp.external_expected_feed_item_entities \
+           EXCEPT \
+           SELECT entityOperationIndex \
+           FROM temp.external_expected_feed_item_nodes WHERE segmentKind = 'entity'\
+         );",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    let node_mismatch = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT 1 \
+           FROM temp.external_expected_feed_item_nodes AS node \
+           LEFT JOIN temp.external_expected_feed_item_entities AS entity \
+             ON entity.entityOperationIndex = node.entityOperationIndex \
+           LEFT JOIN temp.external_expected_feed_item_nodes AS parent \
+             ON parent.valueOperationIndex = node.parentValueOperationIndex \
+           LEFT JOIN external_resolved_values AS resolved \
+             ON resolved.operationIndex = node.valueOperationIndex \
+           WHERE entity.entityOperationIndex IS NULL \
+              OR resolved.isWinner IS NOT 1 \
+              OR (node.depth > 0 AND (\
+                parent.valueOperationIndex IS NULL \
+                OR parent.entityOperationIndex != node.entityOperationIndex \
+                OR parent.depth + 1 != node.depth\
+              ))\
+         );",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    let root_is_nested = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT 1 \
+           FROM temp.external_expected_feed_item_nodes AS node \
+           JOIN external_operations AS operation \
+             ON operation.operationIndex = node.valueOperationIndex \
+           WHERE node.valueOperationIndex = ?1\
+         );",
+        [feed_items_operation_index],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if entity_mismatch != 0 || node_mismatch != 0 || root_is_nested != 0 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    Ok(())
+}
+
+fn validate_feed_item_node_set(transaction: &Transaction<'_>) -> StageResult<()> {
+    let entity_mismatch = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT entityOperationIndex, globalId FROM external_feed_item_entities \
+           EXCEPT \
+           SELECT entityOperationIndex, globalId \
+           FROM temp.external_expected_feed_item_entities\
+         ) OR EXISTS(\
+           SELECT entityOperationIndex, globalId \
+           FROM temp.external_expected_feed_item_entities \
+           EXCEPT \
+           SELECT entityOperationIndex, globalId FROM external_feed_item_entities\
+         );",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    let node_mismatch = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT valueOperationIndex, entityOperationIndex, parentValueOperationIndex, \
+                  depth, segmentKind, propertyName, sequenceOrdinal \
+           FROM external_feed_item_nodes \
+           EXCEPT \
+           SELECT valueOperationIndex, entityOperationIndex, parentValueOperationIndex, \
+                  depth, segmentKind, propertyName, sequenceOrdinal \
+           FROM temp.external_expected_feed_item_nodes\
+         ) OR EXISTS(\
+           SELECT valueOperationIndex, entityOperationIndex, parentValueOperationIndex, \
+                  depth, segmentKind, propertyName, sequenceOrdinal \
+           FROM temp.external_expected_feed_item_nodes \
+           EXCEPT \
+           SELECT valueOperationIndex, entityOperationIndex, parentValueOperationIndex, \
+                  depth, segmentKind, propertyName, sequenceOrdinal \
+           FROM external_feed_item_nodes\
+         );",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if entity_mismatch != 0
+        || node_mismatch != 0
+        || foreign_key_check_has_row(
+            transaction,
+            "PRAGMA foreign_key_check(external_feed_item_entities);",
+        )?
+        || foreign_key_check_has_row(
+            transaction,
+            "PRAGMA foreign_key_check(external_feed_item_nodes);",
+        )?
+    {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    Ok(())
+}
+
 fn validate_actor_operation_intervals(
     transaction: &Transaction<'_>,
     actor_count: u64,
@@ -2323,6 +2890,48 @@ fn sequence_elements_sha256(connection: &Connection) -> StageResult<String> {
            ON operation.operationIndex = element.insertionOperationIndex \
          ORDER BY element.objectActorIndex, element.objectCounter, \
                   element.sequenceOrdinal;",
+    )?;
+    Ok(lower_hex(&hasher.finalize()))
+}
+
+fn feed_item_nodes_sha256(connection: &Connection) -> StageResult<String> {
+    let mut hasher = Sha256::new();
+    hash_field(&mut hasher, b"freed-automerge-feed-item-nodes-v1");
+    hash_query_rows(
+        connection,
+        &mut hasher,
+        "feed-item-entities",
+        "SELECT entity.entityOperationIndex, entity.globalId, \
+                operation.idActorIndex, operation.idCounter \
+         FROM external_feed_item_entities AS entity \
+         JOIN external_operations AS operation \
+           ON operation.operationIndex = entity.entityOperationIndex \
+         ORDER BY entity.entityOperationIndex;",
+    )?;
+    hash_query_rows(
+        connection,
+        &mut hasher,
+        "feed-item-nodes",
+        "SELECT node.valueOperationIndex, node.entityOperationIndex, \
+                node.parentValueOperationIndex, node.depth, node.segmentKind, \
+                node.propertyName, node.sequenceOrdinal, operation.action, \
+                operation.valueKind, operation.valueText, operation.valueTypeCode, \
+                resolved.resolvedCounterText \
+         FROM external_feed_item_nodes AS node \
+         JOIN external_operations AS operation \
+           ON operation.operationIndex = node.valueOperationIndex \
+         JOIN external_resolved_values AS resolved \
+           ON resolved.operationIndex = node.valueOperationIndex \
+         ORDER BY node.entityOperationIndex, node.valueOperationIndex;",
+    )?;
+    hash_blob_column(
+        connection,
+        &mut hasher,
+        "feed-item-node-payloads",
+        "external_operations",
+        "valuePayload",
+        "SELECT valueOperationIndex FROM external_feed_item_nodes \
+         ORDER BY entityOperationIndex, valueOperationIndex;",
     )?;
     Ok(lower_hex(&hasher.finalize()))
 }
@@ -3130,10 +3739,46 @@ mod tests {
             .unwrap();
     }
 
+    fn insert_map_value(
+        connection: &Connection,
+        operation_index: i64,
+        counter: u64,
+        object_counter: u64,
+        key: &str,
+        action: i64,
+        value_kind: &str,
+        value_text: Option<&str>,
+    ) {
+        connection
+            .execute(
+                "INSERT INTO external_operations \
+                 (operationIndex, idActorIndex, idCounter, objectKind, objectActorIndex, \
+                  objectCounter, keyKind, keyName, keyActorIndex, keyCounter, insertFlag, \
+                  action, valueKind, valueText, valueTypeCode, valuePayload, expandFlag, markName) \
+                 VALUES (?1, 0, ?2, 'operation', 0, ?3, 'property', ?4, NULL, NULL, \
+                         0, ?5, ?6, ?7, NULL, X'', 0, NULL);",
+                params![
+                    operation_index,
+                    counter.to_be_bytes(),
+                    object_counter.to_be_bytes(),
+                    key,
+                    action,
+                    value_kind,
+                    value_text,
+                ],
+            )
+            .unwrap();
+    }
+
     fn materialize_through_resolved_values(connection: &mut Connection) {
         seal_staged_graph(connection).unwrap();
         materialize_current_operations(connection).unwrap();
         materialize_resolved_values(connection).unwrap();
+    }
+
+    fn materialize_through_sequences(connection: &mut Connection) {
+        materialize_through_resolved_values(connection);
+        materialize_sequence_elements(connection).unwrap();
     }
 
     #[test]
@@ -3834,5 +4479,278 @@ mod tests {
                 .unwrap(),
             (0, i64::try_from(ELEMENT_COUNT - 1).unwrap())
         );
+    }
+
+    #[test]
+    fn feed_item_nodes_materialize_nested_maps_and_visible_sequence_order() {
+        let mut connection = complete_minimal_graph();
+        connection
+            .execute(
+                "UPDATE external_operations SET keyName = 'feedItems', action = 0 \
+                 WHERE operationIndex = 0;",
+                [],
+            )
+            .unwrap();
+        insert_map_value(&connection, 1, 2, 1, "rss:item", 0, "null", None);
+        insert_map_value(
+            &connection,
+            2,
+            3,
+            2,
+            "globalId",
+            1,
+            "string",
+            Some("rss:item"),
+        );
+        insert_map_value(&connection, 3, 4, 2, "author", 0, "null", None);
+        insert_map_value(&connection, 4, 5, 4, "id", 1, "string", Some("author"));
+        insert_map_value(&connection, 5, 6, 2, "topics", 2, "null", None);
+        insert_list_value(&connection, 6, 7, 6, None, "alpha");
+        insert_list_value(&connection, 7, 8, 6, Some(7), "beta");
+        set_operation_bounds(&connection, 8, 8, 0);
+
+        materialize_through_sequences(&mut connection);
+        let receipt = materialize_feed_item_nodes(&mut connection).unwrap();
+        assert_eq!(receipt.feed_item_count, 1);
+        assert_eq!(receipt.feed_item_node_count, 7);
+        let nodes = connection
+            .prepare(
+                "SELECT node.valueOperationIndex, node.parentValueOperationIndex, \
+                        node.depth, node.segmentKind, node.propertyName, node.sequenceOrdinal \
+                 FROM external_feed_item_nodes AS node \
+                 ORDER BY node.valueOperationIndex;",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, Option<i64>>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<i64>>(5)?,
+                ))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(
+            nodes,
+            vec![
+                (1, None, 0, "entity".to_string(), None, None),
+                (
+                    2,
+                    Some(1),
+                    1,
+                    "property".to_string(),
+                    Some("globalId".to_string()),
+                    None
+                ),
+                (
+                    3,
+                    Some(1),
+                    1,
+                    "property".to_string(),
+                    Some("author".to_string()),
+                    None
+                ),
+                (
+                    4,
+                    Some(3),
+                    2,
+                    "property".to_string(),
+                    Some("id".to_string()),
+                    None
+                ),
+                (
+                    5,
+                    Some(1),
+                    1,
+                    "property".to_string(),
+                    Some("topics".to_string()),
+                    None
+                ),
+                (6, Some(5), 2, "sequence".to_string(), None, Some(0)),
+                (7, Some(5), 2, "sequence".to_string(), None, Some(1)),
+            ]
+        );
+        assert_eq!(
+            materialize_feed_item_nodes(&mut connection).unwrap(),
+            receipt
+        );
+
+        connection
+            .execute(
+                "UPDATE external_feed_item_nodes SET depth = 4 \
+                 WHERE valueOperationIndex = 4;",
+                [],
+            )
+            .unwrap();
+        assert!(matches!(
+            materialize_feed_item_nodes(&mut connection),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+    }
+
+    #[test]
+    fn feed_item_nodes_omit_a_deleted_entity_and_its_still_current_descendants() {
+        let mut connection = complete_minimal_graph();
+        connection
+            .execute(
+                "UPDATE external_operations SET keyName = 'feedItems', action = 0 \
+                 WHERE operationIndex = 0;",
+                [],
+            )
+            .unwrap();
+        insert_map_value(&connection, 1, 2, 1, "rss:deleted", 0, "null", None);
+        insert_map_value(
+            &connection,
+            2,
+            3,
+            2,
+            "globalId",
+            1,
+            "string",
+            Some("rss:deleted"),
+        );
+        connection
+            .execute(
+                "INSERT INTO external_operation_successors \
+                 (operationIndex, successorOrdinal, actorIndex, counter) \
+                 VALUES (1, 0, 0, ?1);",
+                [4_u64.to_be_bytes()],
+            )
+            .unwrap();
+        set_operation_bounds(&connection, 4, 3, 1);
+
+        materialize_through_sequences(&mut connection);
+        let receipt = materialize_feed_item_nodes(&mut connection).unwrap();
+        assert_eq!(receipt.feed_item_count, 0);
+        assert_eq!(receipt.feed_item_node_count, 0);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM external_resolved_values \
+                     WHERE operationIndex = 2;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn feed_item_nodes_renumber_visible_sequence_values_after_a_deleted_anchor() {
+        let mut connection = complete_minimal_graph();
+        connection
+            .execute(
+                "UPDATE external_operations SET keyName = 'feedItems', action = 0 \
+                 WHERE operationIndex = 0;",
+                [],
+            )
+            .unwrap();
+        insert_map_value(&connection, 1, 2, 1, "rss:item", 0, "null", None);
+        insert_map_value(&connection, 2, 3, 2, "topics", 2, "null", None);
+        insert_list_value(&connection, 3, 4, 3, None, "deleted");
+        insert_list_value(&connection, 4, 5, 3, Some(4), "visible");
+        connection
+            .execute(
+                "INSERT INTO external_operation_successors \
+                 (operationIndex, successorOrdinal, actorIndex, counter) \
+                 VALUES (3, 0, 0, ?1);",
+                [6_u64.to_be_bytes()],
+            )
+            .unwrap();
+        set_operation_bounds(&connection, 6, 5, 1);
+
+        materialize_through_sequences(&mut connection);
+        materialize_feed_item_nodes(&mut connection).unwrap();
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT sequenceOrdinal FROM external_feed_item_nodes \
+                     WHERE valueOperationIndex = 4;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM external_feed_item_nodes \
+                     WHERE valueOperationIndex = 3;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn feed_item_nodes_reject_a_nonmap_entity_value() {
+        let mut connection = complete_minimal_graph();
+        connection
+            .execute(
+                "UPDATE external_operations SET keyName = 'feedItems', action = 0 \
+                 WHERE operationIndex = 0;",
+                [],
+            )
+            .unwrap();
+        insert_map_value(
+            &connection,
+            1,
+            2,
+            1,
+            "rss:not-an-object",
+            1,
+            "string",
+            Some("bad"),
+        );
+        set_operation_bounds(&connection, 2, 2, 0);
+
+        materialize_through_sequences(&mut connection);
+        assert!(matches!(
+            materialize_feed_item_nodes(&mut connection),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+    }
+
+    #[test]
+    fn feed_item_nodes_reject_more_than_128_nested_object_levels() {
+        let mut connection = complete_minimal_graph();
+        connection
+            .execute(
+                "UPDATE external_operations SET keyName = 'feedItems', action = 0 \
+                 WHERE operationIndex = 0;",
+                [],
+            )
+            .unwrap();
+        insert_map_value(&connection, 1, 2, 1, "rss:deep", 0, "null", None);
+        let mut parent_counter = 2_u64;
+        for depth in 1..=129_u64 {
+            let counter = depth + 2;
+            insert_map_value(
+                &connection,
+                i64::try_from(depth + 1).unwrap(),
+                counter,
+                parent_counter,
+                "child",
+                0,
+                "null",
+                None,
+            );
+            parent_counter = counter;
+        }
+        set_operation_bounds(&connection, 131, 131, 0);
+
+        materialize_through_sequences(&mut connection);
+        assert!(matches!(
+            materialize_feed_item_nodes(&mut connection),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
     }
 }

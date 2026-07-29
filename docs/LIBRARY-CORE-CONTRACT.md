@@ -9750,6 +9750,25 @@ ordinal, and insertion operation to the sealed graph and resolved-value
 receipt. This stage still does not reconstruct objects, select registered
 entities, open a production database, or activate SQLite.
 
+One later immutable FeedItem topology receipt selects exactly one winning
+root `feedItems` map and admits only map-valued entity entries with nonempty
+bounded IDs. It reconstructs each entity's complete winning map and sequence
+node graph in temporary SQLite. Every node records its entity, exact parent,
+depth, property name or visible sequence ordinal, and winning value operation.
+Deleted entities omit descendants that remain independently current in the
+Automerge graph. Deleted sequence anchors remain in the earlier ordering graph,
+but do not receive materialized nodes, and visible elements are renumbered
+densely.
+
+The topology walk is iterative and disk-backed. It admits at most 128 nested
+object levels. A shared value node, malformed map or sequence child, scalar
+parent with children, non-map entity, missing parent, cross-entity parent,
+depth overflow, changed payload, or stored topology drift fails closed. Exact
+replay rebuilds the expected temporary topology and binds every entity and
+node to the sealed graph, resolved-value, and sequence receipts. This stage
+still does not serialize complete FeedItems, populate a published generation,
+open a production database, or activate SQLite.
+
 The migration worker's attributed resident ceiling is 384 MiB on a 4 GiB host,
 512 MiB on an 8 GiB host, and 768 MiB on a host with 16 GiB or more. Admission
 proves enough private staging capacity for the measured source, target,
