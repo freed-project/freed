@@ -1119,15 +1119,20 @@ impl LibraryCoreJournal {
 
     fn causal_tip_exists(
         transaction: &Transaction<'_>,
+        library_id: &str,
+        epoch_id: &str,
         tip: &VerifiedCausalTip,
     ) -> SqlResult<bool> {
         transaction.query_row(
             "SELECT EXISTS(
                SELECT 1 FROM library_core_operations
-               WHERE actorId = ?1 AND actorSequence = ?2
-                 AND operationId = ?3 AND actorChainDigest = ?4
+               WHERE libraryId = ?1 AND epochId = ?2
+                 AND actorId = ?3 AND actorSequence = ?4
+                 AND operationId = ?5 AND actorChainDigest = ?6
              );",
             params![
+                library_id,
+                epoch_id,
                 tip.actor_id,
                 tip.sequence,
                 tip.operation_id,
@@ -1208,7 +1213,12 @@ impl LibraryCoreJournal {
         }
         for member in &verified.members {
             for tip in &member.causal_tips {
-                if !Self::causal_tip_exists(&transaction, tip)? {
+                if !Self::causal_tip_exists(
+                    &transaction,
+                    &verified.library_id,
+                    &verified.epoch_id,
+                    tip,
+                )? {
                     return Err(JournalError::UnknownCausalTip {
                         operation_id: member.operation_id.clone(),
                     });
@@ -2632,6 +2642,120 @@ mod tests {
         journal
             .commit_read_transaction(&unknown, 1_200)
             .expect("known exact causal tip");
+    }
+
+    #[test]
+    fn causal_tips_cannot_cross_library_or_epoch_authority() {
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_actor_authority(&mut journal);
+        let local_enrollment = actor();
+        journal
+            .enroll_actor(&local_enrollment)
+            .expect("enroll local actor");
+
+        let mut foreign_library_enrollment = local_enrollment.clone();
+        foreign_library_enrollment.library_id = digest("b");
+        foreign_library_enrollment.enrollment_operation_id =
+            "op:actor:enroll:foreign-library".to_string();
+        foreign_library_enrollment.enrollment_certificate_digest = digest("c");
+        journal
+            .install_fixture_authority(
+                &foreign_library_enrollment.library_id,
+                foreign_library_enrollment.epoch,
+                &foreign_library_enrollment.epoch_id,
+            )
+            .expect("install foreign-library authority");
+        journal
+            .enroll_actor(&foreign_library_enrollment)
+            .expect("enroll foreign-library actor");
+        let mut foreign_library_transaction = transaction(
+            "tx:read:foreign-library",
+            1,
+            None,
+            &foreign_library_enrollment.actor_chain_genesis,
+            &[("rss:item:foreign-library", 900)],
+        );
+        foreign_library_transaction.library_id = foreign_library_enrollment.library_id.clone();
+        journal
+            .commit_read_transaction(&foreign_library_transaction, 1_100)
+            .expect("commit foreign-library transaction");
+
+        let foreign_library_member = &foreign_library_transaction.members[0];
+        let mut local_with_foreign_library_tip = transaction(
+            "tx:read:local-with-foreign-library-tip",
+            1,
+            None,
+            &local_enrollment.actor_chain_genesis,
+            &[("rss:item:local", 901)],
+        );
+        local_with_foreign_library_tip.members[0]
+            .causal_tips
+            .push(VerifiedCausalTip {
+                actor_id: foreign_library_enrollment.actor_id.clone(),
+                sequence: foreign_library_member.actor_sequence,
+                operation_id: foreign_library_member.operation_id.clone(),
+                chain_digest: foreign_library_member.actor_chain_digest.clone(),
+            });
+        assert!(matches!(
+            journal.commit_read_transaction(&local_with_foreign_library_tip, 1_200),
+            Err(JournalError::UnknownCausalTip { .. })
+        ));
+
+        let mut epoch_journal = LibraryCoreJournal::open_in_memory().expect("open epoch journal");
+        install_actor_authority(&mut epoch_journal);
+        let epoch_one_enrollment = actor();
+        epoch_journal
+            .enroll_actor(&epoch_one_enrollment)
+            .expect("enroll epoch-one actor");
+        let epoch_one_transaction = transaction(
+            "tx:read:epoch-one-causal-source",
+            1,
+            None,
+            &epoch_one_enrollment.actor_chain_genesis,
+            &[("rss:item:epoch-one", 902)],
+        );
+        epoch_journal
+            .commit_read_transaction(&epoch_one_transaction, 1_300)
+            .expect("commit epoch-one transaction");
+
+        let mut foreign_epoch_enrollment = local_enrollment.clone();
+        foreign_epoch_enrollment.epoch = 2;
+        foreign_epoch_enrollment.epoch_id = digest("d");
+        foreign_epoch_enrollment.enrollment_operation_id =
+            "op:actor:enroll:foreign-epoch".to_string();
+        foreign_epoch_enrollment.enrollment_certificate_digest = digest("e");
+        epoch_journal
+            .install_fixture_authority(
+                &foreign_epoch_enrollment.library_id,
+                foreign_epoch_enrollment.epoch,
+                &foreign_epoch_enrollment.epoch_id,
+            )
+            .expect("install epoch-two authority");
+        epoch_journal
+            .enroll_actor(&foreign_epoch_enrollment)
+            .expect("enroll foreign-epoch actor");
+        let mut epoch_two_transaction = transaction(
+            "tx:read:epoch-two-with-epoch-one-tip",
+            1,
+            None,
+            &foreign_epoch_enrollment.actor_chain_genesis,
+            &[("rss:item:epoch-two", 903)],
+        );
+        epoch_two_transaction.epoch = foreign_epoch_enrollment.epoch;
+        epoch_two_transaction.epoch_id = foreign_epoch_enrollment.epoch_id;
+        let epoch_one_member = &epoch_one_transaction.members[0];
+        epoch_two_transaction.members[0]
+            .causal_tips
+            .push(VerifiedCausalTip {
+                actor_id: epoch_one_enrollment.actor_id,
+                sequence: epoch_one_member.actor_sequence,
+                operation_id: epoch_one_member.operation_id.clone(),
+                chain_digest: epoch_one_member.actor_chain_digest.clone(),
+            });
+        assert!(matches!(
+            epoch_journal.commit_read_transaction(&epoch_two_transaction, 1_400),
+            Err(JournalError::UnknownCausalTip { .. })
+        ));
     }
 
     #[test]
