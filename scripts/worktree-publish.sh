@@ -54,7 +54,7 @@ else
   source "${SCRIPT_DIR}/lib/node-tooling.sh"
   NODE_BIN="$(resolve_node_bin)"
   GIT_BIN="$(command -v git || true)"
-  GH_BIN="$(command -v gh || true)"
+  GH_BIN="$("${NODE_BIN}" "${SCRIPT_DIR}/lib/github-tooling.mjs")"
   PYTHON_BIN="$(command -v python3 || true)"
   PUBLISH_CONTROL_STATE_ROOT="${HOME}/.freed/automation"
   PUBLISH_SCOPE_JSON=""

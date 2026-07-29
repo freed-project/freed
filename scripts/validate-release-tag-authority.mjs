@@ -9,6 +9,7 @@ import {
   RELEASE_TAG_IMMUTABILITY_RULESET_NAME,
   verifyLiveReleaseTagAuthority,
 } from "./sync-github-rulesets.mjs";
+import { resolveGitHubCli } from "./lib/github-tooling.mjs";
 
 export function parseArgs(argv) {
   let repo = "freed-project/freed";
@@ -25,16 +26,25 @@ export function parseArgs(argv) {
   return { help: false, repo };
 }
 
-function ghJson(args, { exec = execFileSync } = {}) {
+function ghJson(
+  args,
+  { exec = execFileSync, githubCli = resolveGitHubCli() } = {},
+) {
   return JSON.parse(
-    exec("gh", args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }),
+    exec(githubCli, args, {
+      encoding: "utf8",
+      maxBuffer: 16 * 1024 * 1024,
+    }),
   );
 }
 
-export function loadLiveReleaseTagRulesets(repo, { exec = execFileSync } = {}) {
+export function loadLiveReleaseTagRulesets(
+  repo,
+  { exec = execFileSync, githubCli = resolveGitHubCli() } = {},
+) {
   const summary = ghJson(
     ["api", `repos/${repo}/rulesets?targets=tag&per_page=100`],
-    { exec },
+    { exec, githubCli },
   );
   const names = [
     RELEASE_TAG_CREATION_RULESET_NAME,
@@ -49,7 +59,10 @@ export function loadLiveReleaseTagRulesets(repo, { exec = execFileSync } = {}) {
     );
   }
   return matches.map((match) =>
-    ghJson(["api", `repos/${repo}/rulesets/${match.id}`], { exec }),
+    ghJson(["api", `repos/${repo}/rulesets/${match.id}`], {
+      exec,
+      githubCli,
+    }),
   );
 }
 
