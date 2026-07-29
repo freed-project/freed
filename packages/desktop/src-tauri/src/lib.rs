@@ -10,6 +10,8 @@ mod automerge_external_common;
 #[cfg_attr(not(test), allow(dead_code))]
 mod automerge_external_decoder;
 #[cfg_attr(not(test), allow(dead_code))]
+mod automerge_external_document;
+#[cfg_attr(not(test), allow(dead_code))]
 mod automerge_external_spool;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_canonical;

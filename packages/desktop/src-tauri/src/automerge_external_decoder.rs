@@ -265,7 +265,7 @@ pub(super) fn write_verified_chunk_index(
     Ok(summary)
 }
 
-fn verify_chunk(
+pub(super) fn verify_chunk(
     source: &mut File,
     ordinal: u64,
     offset: u64,
@@ -362,7 +362,7 @@ impl EncodedUleb128 {
     }
 }
 
-fn read_canonical_uleb128(source: &mut File) -> DecoderResult<(u64, EncodedUleb128)> {
+fn read_canonical_uleb128(source: &mut impl Read) -> DecoderResult<(u64, EncodedUleb128)> {
     let mut encoded = EncodedUleb128 {
         bytes: [0; 10],
         length: 0,
@@ -387,6 +387,10 @@ fn read_canonical_uleb128(source: &mut File) -> DecoderResult<(u64, EncodedUleb1
         }
     }
     Err(AutomergeExternalDecoderError::InvalidLengthEncoding)
+}
+
+pub(super) fn read_canonical_uleb128_value(source: &mut impl Read) -> DecoderResult<u64> {
+    read_canonical_uleb128(source).map(|(value, _)| value)
 }
 
 fn encode_uleb128(mut value: u64) -> EncodedUleb128 {
@@ -504,7 +508,7 @@ fn hash_exact_bytes(
     Ok(())
 }
 
-fn read_exact_or_truncated(source: &mut File, bytes: &mut [u8]) -> DecoderResult<()> {
+fn read_exact_or_truncated(source: &mut impl Read, bytes: &mut [u8]) -> DecoderResult<()> {
     match source.read_exact(bytes) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::UnexpectedEof => {
@@ -526,6 +530,23 @@ fn digest_source(source: &mut File, mut remaining: u64) -> DecoderResult<String>
         remaining -= requested as u64;
     }
     Ok(lower_hex(&hasher.finalize()))
+}
+
+pub(super) fn verify_source_identity(
+    source: &mut File,
+    expected_source_byte_length: u64,
+    expected_source_sha256: &str,
+) -> DecoderResult<()> {
+    if expected_source_byte_length == 0 || !is_lower_sha256(expected_source_sha256) {
+        return Err(AutomergeExternalDecoderError::InvalidSourceIdentity);
+    }
+    if source.metadata()?.len() != expected_source_byte_length {
+        return Err(AutomergeExternalDecoderError::SourceLengthMismatch);
+    }
+    if digest_source(source, expected_source_byte_length)? != expected_source_sha256 {
+        return Err(AutomergeExternalDecoderError::SourceDigestMismatch);
+    }
+    Ok(())
 }
 
 fn first_four(digest: impl AsRef<[u8]>) -> [u8; 4] {
