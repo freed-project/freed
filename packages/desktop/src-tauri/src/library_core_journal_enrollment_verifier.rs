@@ -545,13 +545,49 @@ mod tests {
                 field: "actor_proof"
             })
         ));
-        let rows: i64 = journal
+        let rows: (i64, i64) = journal
             .connection
-            .query_row("SELECT COUNT(*) FROM library_core_actors;", [], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM library_core_actors),
+                   (SELECT COUNT(*) FROM library_core_actor_enrollment_outbox);",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
             .expect("actor rows");
-        assert_eq!(rows, 0);
+        assert_eq!(rows, (0, 0));
+
+        let mut value = decode_canonical_value(&certificate, MAX_TRANSACTION_ENVELOPE_BYTES)
+            .expect("decode certificate")
+            .into_value();
+        let signature = value["authority_signature"]
+            .as_str()
+            .expect("authority signature");
+        let replacement = if signature.ends_with('0') { '1' } else { '0' };
+        value["authority_signature"] = Value::String(format!(
+            "{}{replacement}",
+            &signature[..signature.len() - 1]
+        ));
+        let tampered =
+            encode_canonical_value(&value, MAX_TRANSACTION_ENVELOPE_BYTES).expect("tamper");
+
+        assert!(matches!(
+            journal.verify_and_enroll_actor(&tampered, &authority),
+            Err(JournalError::EnrollmentVerification {
+                field: "authority_signature"
+            })
+        ));
+        let rows: (i64, i64) = journal
+            .connection
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM library_core_actors),
+                   (SELECT COUNT(*) FROM library_core_actor_enrollment_outbox);",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("actor rows");
+        assert_eq!(rows, (0, 0));
     }
 
     #[test]
