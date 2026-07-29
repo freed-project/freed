@@ -139,7 +139,7 @@ CREATE TABLE library_core_operations (
   ),
   committedAtMs               INTEGER NOT NULL CHECK (committedAtMs BETWEEN 0 AND 9007199254740991),
   FOREIGN KEY (transactionId) REFERENCES library_core_transactions (transactionId),
-  UNIQUE (actorId, actorSequence),
+  UNIQUE (libraryId, epochId, actorId, actorSequence),
   UNIQUE (transactionId, transactionMemberIndex),
   CHECK (transactionMemberIndex < transactionMemberCount),
   CHECK (
@@ -173,7 +173,7 @@ CREATE TABLE library_core_operations (
 ) STRICT;
 
 CREATE INDEX library_core_operations_actor_chain
-  ON library_core_operations (actorId, actorSequence);
+  ON library_core_operations (libraryId, epochId, actorId, actorSequence);
 
 CREATE TABLE library_core_operation_causal_tips (
   operationId  TEXT    NOT NULL,

@@ -305,6 +305,9 @@ that merely resembles a verified transaction. Commit the immutable journal,
 causal-tip references, projection updates, actor-tip compare-and-swap, exact
 retry receipt, projection revision, and the applicable enrollment or operation
 replication outbox in one immediate `synchronous=FULL` SQLite transaction.
+Scope actor-sequence uniqueness and compare-and-swap state to the exact
+library, epoch ID, and actor. Actor sequence restarts at one after an epoch
+transition even when actor identity remains stable.
 Fault injection must prove rollback from the latest write in that transaction.
 
 ## Preserve the invariants

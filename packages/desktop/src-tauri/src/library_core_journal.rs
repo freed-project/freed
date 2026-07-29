@@ -1241,6 +1241,80 @@ mod tests {
     }
 
     #[test]
+    fn actor_sequence_restarts_are_scoped_to_the_authority_epoch() {
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        let first_enrollment = actor();
+        journal
+            .enroll_actor(&first_enrollment)
+            .expect("enroll first epoch actor");
+        journal
+            .commit_read_transaction(
+                &transaction(
+                    "tx:read:epoch-one",
+                    1,
+                    None,
+                    &first_enrollment.actor_chain_genesis,
+                    &[("rss:item:epoch-one", 900)],
+                ),
+                1_100,
+            )
+            .expect("commit first epoch operation");
+
+        let second_enrollment = VerifiedActorEnrollment {
+            epoch: 2,
+            epoch_id: digest("8"),
+            enrollment_operation_id: "op:actor:enroll:epoch-two".to_string(),
+            enrollment_certificate_digest: digest("9"),
+            actor_chain_genesis: digest("a"),
+            enrolled_at_ms: 1_200,
+            ..first_enrollment
+        };
+        journal
+            .enroll_actor(&second_enrollment)
+            .expect("enroll same actor in second epoch");
+        let second_transaction = VerifiedReadTransaction {
+            epoch: second_enrollment.epoch,
+            epoch_id: second_enrollment.epoch_id.clone(),
+            ..transaction(
+                "tx:read:epoch-two",
+                1,
+                None,
+                &second_enrollment.actor_chain_genesis,
+                &[("rss:item:epoch-two", 901)],
+            )
+        };
+        journal
+            .commit_read_transaction(&second_transaction, 1_300)
+            .expect("commit second epoch sequence one");
+
+        let sequences: Vec<(i64, String, i64)> = {
+            let mut statement = journal
+                .connection
+                .prepare(
+                    "SELECT epoch, epochId, actorSequence
+                     FROM library_core_operations
+                     WHERE actorId = ?1
+                     ORDER BY epoch;",
+                )
+                .expect("prepare actor sequence query");
+            statement
+                .query_map(params![second_enrollment.actor_id], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                })
+                .expect("query actor sequences")
+                .collect::<SqlResult<Vec<_>>>()
+                .expect("collect actor sequences")
+        };
+        assert_eq!(
+            sequences,
+            vec![
+                (1, digest("2"), 1),
+                (2, second_enrollment.epoch_id, 1)
+            ]
+        );
+    }
+
+    #[test]
     fn rejects_cross_runtime_unsafe_integers_before_sqlite() {
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
         let mut enrollment = actor();
