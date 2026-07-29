@@ -9,6 +9,7 @@ import {
   encodeLibraryCoreCanonicalValue,
   encodeLibraryCoreDigestInput,
   encodeLibraryCoreOperationSignatureInput,
+  encodeLibraryCoreSignatureInput,
   LIBRARY_CORE_MAX_CANONICAL_NODES,
   LIBRARY_CORE_MAX_CANONICAL_NESTING_DEPTH,
 } from "./canonical-codec.js";
@@ -43,14 +44,69 @@ describe("Library Core canonical codec", () => {
     expect(createHash("sha256").update(digestInput).digest("hex")).toBe(
       "5192eab75edf78a8181905197adec6ae800e93ce7d568aaf4f1b6f2e98d28285",
     );
+    expect(
+      decoder.decode(
+        encodeLibraryCoreDigestInput("actor-public-key", {
+          signature_algorithm: "ed25519",
+          actor_public_key:
+            "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+        }),
+      ),
+    ).toBe(
+      'freed.library-core.v1/digest/actor-public-key\u0000{"actor_public_key":"d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a","signature_algorithm":"ed25519"}',
+    );
+    expect(
+      decoder.decode(
+        encodeLibraryCoreDigestInput("authority-key", {
+          signature_algorithm: "ed25519",
+          authority_public_key:
+            "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+        }),
+      ),
+    ).toBe(
+      'freed.library-core.v1/digest/authority-key\u0000{"authority_public_key":"d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a","signature_algorithm":"ed25519"}',
+    );
     expect(decoder.decode(signatureInput)).toBe(
       'freed.library-core.v1/signature/operation-envelope\u0000{"operation_signing_body_digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}',
+    );
+    expect(
+      decoder.decode(
+        encodeLibraryCoreSignatureInput("actor-enrollment-proof", {
+          enrollment_body_digest:
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        }),
+      ),
+    ).toBe(
+      'freed.library-core.v1/signature/actor-enrollment-proof\u0000{"enrollment_body_digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}',
+    );
+    expect(
+      decoder.decode(
+        encodeLibraryCoreDigestInput("actor-enrollment-certificate", {
+          enrollment_body_digest:
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        }),
+      ),
+    ).toBe(
+      'freed.library-core.v1/digest/actor-enrollment-certificate\u0000{"enrollment_body_digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}',
+    );
+    expect(
+      decoder.decode(
+        encodeLibraryCoreSignatureInput("actor-enrollment-authority", {
+          certificate_digest:
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        }),
+      ),
+    ).toBe(
+      'freed.library-core.v1/signature/actor-enrollment-authority\u0000{"certificate_digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}',
     );
     expect(() =>
       encodeLibraryCoreOperationSignatureInput(null, { maximumBytes: 20 }),
     ).toThrow(/prefix/);
     expect(() =>
       encodeLibraryCoreDigestInput("made-up-domain" as never, null),
+    ).toThrow(/unregistered/);
+    expect(() =>
+      encodeLibraryCoreSignatureInput("made-up-domain" as never, null),
     ).toThrow(/unregistered/);
   });
 

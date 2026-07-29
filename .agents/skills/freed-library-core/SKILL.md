@@ -273,6 +273,32 @@ journal text in the verified result. Causal-tip authority, retry identity,
 operation conflicts, and the actor-tip recheck still belong inside the later
 authoritative SQLite transaction.
 
+Construct enrollment identity without self-reference. Derive the public-key
+fingerprint first, then derive the actor ID from the exact library,
+installation incarnation, public key, and random actor nonce, then derive the
+closed enrollment-body digest. Reuse the same sorted bounded causal-tip
+contract for the observed frontier. Body construction is not proof of key
+possession, an authority certificate, committed enrollment, or writer
+authority.
+
+Construct an enrollment certificate only from the provenance-branded body.
+Sign the exact enrollment-body digest through the actor-proof domain, close and
+digest the certificate body, sign that digest through the enrollment-authority
+domain, and derive actor-chain genesis from the certificate digest, actor ID,
+and epoch ID. Reject malformed signer or digest output and return no partial
+certificate. Construction alone does not verify either signature, establish
+current authority state, commit enrollment, persist a key, or grant writer
+authority.
+
+Verify enrollment from canonical received bytes, never a duplicate-erased
+object. Recompute the authority key ID from the accepted authority public key,
+then recompute the actor fingerprint, actor ID, body digest, certificate digest,
+and chain genesis. Require exact accepted library, epoch, epoch ID, authority
+key ID, schema, algorithm, and observed frontier. Verify actor possession before
+the active-authority signature. A verified certificate is still not committed
+enrollment: retry identity, operation and actor conflicts, sequence allocation,
+and authority-state mutation remain one later atomic transaction.
+
 ## Preserve the invariants
 
 1. Keep exactly one active writer epoch. Advance it only with a signed immutable
