@@ -492,6 +492,18 @@ numeric interpretation. Passing a scalar predicate proves only the encoded
 shape. Randomness, digest derivation, signature validity, authority, and
 field-specific semantics remain separate checks.
 
+The v1 `feed_item_read_assignment` payload schema is the exact closed object
+`{ read_at_ms }`. `read_at_ms` is a nonnegative safe integer, including zero
+and excluding negative zero. Unknown, missing, accessor, symbol, inherited, or
+non-data fields are invalid. Validation returns an immutable snapshot rather
+than retaining the caller's object. The operation registry also binds this
+operation to the shared v1 entity-ID codec. Every other dormant operation
+retains a typed `entity_id_schema_unresolved` blocker until its exact key syntax
+is bound. These schemas close payload and entity-key syntax only. Entity
+existence, touched-field registry binding, field algebra, SQLite materializer,
+provider-intent separation, and runtime authority remain blocked. The payload
+does not itself schedule or authorize a provider-visible seen action.
+
 Canonical sets use their field-specific sort before `C`. `causal_frontier`
 sorts ascending by `(actor_id, sequence, operation_id, chain_digest)`,
 comparing numeric sequence numerically and the remaining ASCII identifiers

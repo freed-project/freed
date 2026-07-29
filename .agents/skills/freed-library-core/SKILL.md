@@ -212,6 +212,14 @@ allocate encoded copies merely to count a bounded entity ID. Scalar syntax does
 not prove randomness, cryptographic derivation, authority, or semantic
 ownership.
 
+Closing one operation payload or entity-ID schema does not close the operation.
+Keep entity existence, touched fields, field algebra, materialization, provider
+intent, and runtime authority independently blocked until each has an
+executable contract. Every operation without an exact entity-key binding keeps
+the typed `entity_id_schema_unresolved` blocker. The initial
+`feed_item_read_assignment` payload is local read-state syntax only. It never
+authorizes or schedules a provider-visible seen action.
+
 ## Preserve the invariants
 
 1. Keep exactly one active writer epoch. Advance it only with a signed immutable

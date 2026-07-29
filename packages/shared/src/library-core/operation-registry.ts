@@ -1,5 +1,13 @@
 import type { BaseAppState } from "../store-types.js";
+import {
+  FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
+  type LibraryCoreOperationPayloadSchema,
+} from "./operation-payload-contracts.js";
 import type { LibraryCoreEntity } from "./protocol-registry.js";
+import {
+  LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+  type LibraryCoreEntityIdCodec,
+} from "./protocol-scalars.js";
 
 export type BaseAppFunctionKey = {
   [Key in keyof BaseAppState]-?: NonNullable<BaseAppState[Key]> extends (
@@ -74,6 +82,7 @@ export type LibraryCoreRelationshipEffect =
 
 export type LibraryCoreOperationBlocker =
   | "capture_source_authority_unresolved"
+  | "entity_id_schema_unresolved"
   | "field_algebra_unresolved"
   | "frozen_bulk_contract_unresolved"
   | "legacy_friend_account_replacement_unresolved"
@@ -95,10 +104,15 @@ export interface LibraryCoreOperationDefinition {
   readonly schemaVersion: 1;
   readonly entityType: LibraryCoreOperationEntity;
   /**
-   * Gate A has not closed payload schemas or their exact field algebra. Keeping
-   * these values null prevents a name from masquerading as an executable codec.
+   * A non-null schema closes only payload syntax for that operation. It does
+   * not close touched fields, algebra, materialization, or runtime authority.
    */
-  readonly payloadSchema: null;
+  readonly payloadSchema: LibraryCoreOperationPayloadSchema<
+    string,
+    unknown
+  > | null;
+  /** Exact entity-key syntax only. This does not prove the entity exists. */
+  readonly entityIdCodec: LibraryCoreEntityIdCodec | null;
   readonly touchedFieldRegistryKeys: null;
   readonly fieldAlgebra: null;
   readonly materializer: null;
@@ -131,10 +145,11 @@ interface PlannedOperationInput {
     | "provider_capture_reconciliation"
     | "system_repair";
   readonly additionalBlockers?: readonly LibraryCoreOperationBlocker[];
+  readonly payloadSchema?: LibraryCoreOperationPayloadSchema<string, unknown>;
+  readonly entityIdCodec?: LibraryCoreEntityIdCodec;
 }
 
 const BASE_OPERATION_BLOCKERS = [
-  "payload_schema_unresolved",
   "touched_fields_unresolved",
   "field_algebra_unresolved",
   "materializer_unimplemented",
@@ -144,11 +159,24 @@ const BASE_OPERATION_BLOCKERS = [
 function plannedOperation(
   input: PlannedOperationInput,
 ): LibraryCoreOperationDefinition {
+  const blockers: NonEmptyBlockers = [
+    "touched_fields_unresolved",
+    ...(input.entityIdCodec === undefined
+      ? (["entity_id_schema_unresolved"] as const)
+      : []),
+    ...(input.payloadSchema === undefined
+      ? (["payload_schema_unresolved"] as const)
+      : []),
+    ...BASE_OPERATION_BLOCKERS.slice(1),
+    ...(input.additionalBlockers ?? []),
+  ];
+
   return {
     status: "planned_blocked",
     schemaVersion: 1,
     entityType: input.entityType,
-    payloadSchema: null,
+    payloadSchema: input.payloadSchema ?? null,
+    entityIdCodec: input.entityIdCodec ?? null,
     touchedFieldRegistryKeys: null,
     fieldAlgebra: null,
     materializer: null,
@@ -162,10 +190,7 @@ function plannedOperation(
     candidateStoreSurfaces: input.candidateStoreSurfaces ?? [],
     legacyWorkerRequests: input.legacyWorkerRequests ?? [],
     intendedAuthority: input.intendedAuthority,
-    blockers: [
-      ...BASE_OPERATION_BLOCKERS,
-      ...(input.additionalBlockers ?? []),
-    ],
+    blockers,
   };
 }
 
@@ -259,6 +284,8 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   feed_item_read_assignment: localUserOperation({
     entityType: "FeedItem",
+    payloadSchema: FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
     candidateStoreSurfaces: ["markAsRead"],
     legacyWorkerRequests: ["MARK_AS_READ"],
     additionalBlockers: ["provider_intent_separation_unresolved"],

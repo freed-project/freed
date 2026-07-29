@@ -6,6 +6,7 @@ import {
   LIBRARY_CORE_OPERATION_IDS,
   LIBRARY_CORE_OPERATION_REGISTRY,
 } from "./operation-registry.js";
+import { LIBRARY_CORE_ENTITY_ID_CODEC_V1 } from "./protocol-scalars.js";
 import {
   LIBRARY_CORE_INTERACTIVE_SNAPSHOT_POOL,
   LIBRARY_CORE_QUERY_IDS,
@@ -27,12 +28,33 @@ describe("Library Core operation registry", () => {
     );
   });
 
-  it("does not claim executable schemas, algebra, materializers, or authority", () => {
-    for (const definition of Object.values(
+  it("does not claim unresolved algebra, materializers, or authority", () => {
+    for (const [operationId, definition] of Object.entries(
       LIBRARY_CORE_OPERATION_REGISTRY,
     )) {
       expect(definition.status).toBe("planned_blocked");
-      expect(definition.payloadSchema).toBeNull();
+      if (operationId === "feed_item_read_assignment") {
+        expect(definition.payloadSchema).toMatchObject({
+          schemaId: "feed_item_read_assignment_payload_v1",
+          schemaVersion: 1,
+          operationType: "feed_item_read_assignment",
+          canonicalKeys: ["read_at_ms"],
+        });
+        expect(definition.blockers).not.toContain("payload_schema_unresolved");
+        expect(definition.entityIdCodec).toBe(
+          LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+        );
+        expect(definition.blockers).not.toContain(
+          "entity_id_schema_unresolved",
+        );
+      } else {
+        expect(definition.payloadSchema).toBeNull();
+        expect(definition.blockers).toContain("payload_schema_unresolved");
+        expect(definition.entityIdCodec).toBeNull();
+        expect(definition.blockers).toContain(
+          "entity_id_schema_unresolved",
+        );
+      }
       expect(definition.touchedFieldRegistryKeys).toBeNull();
       expect(definition.fieldAlgebra).toBeNull();
       expect(definition.materializer).toBeNull();
