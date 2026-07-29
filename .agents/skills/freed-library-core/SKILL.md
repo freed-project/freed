@@ -306,6 +306,8 @@ causal-tip references, projection updates, actor-tip compare-and-swap, exact
 retry receipt, contiguous per-operation ingest sequence, materializer frontier,
 projection revision, and the applicable enrollment or operation replication
 outbox in one immediate `synchronous=FULL` SQLite transaction.
+Outbox rows reference the immutable canonical journal row by primary key. Do
+not copy canonical operation or enrollment bytes into a second hot table.
 Scope actor-sequence uniqueness and compare-and-swap state to the exact
 library, epoch ID, and actor. Actor sequence restarts at one after an epoch
 transition even when actor identity remains stable.

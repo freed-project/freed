@@ -57,12 +57,11 @@ CREATE TABLE library_core_actors (
 ) STRICT;
 
 CREATE TABLE library_core_actor_enrollment_outbox (
-  enrollmentOperationId              TEXT    NOT NULL PRIMARY KEY,
-  canonicalEnrollmentCertificateJson TEXT    NOT NULL,
-  enqueuedAtMs                       INTEGER NOT NULL CHECK (
+  enrollmentOperationId TEXT    NOT NULL PRIMARY KEY,
+  enqueuedAtMs          INTEGER NOT NULL CHECK (
     enqueuedAtMs BETWEEN 0 AND 9007199254740991
   ),
-  acknowledgedAtMs                   INTEGER CHECK (
+  acknowledgedAtMs      INTEGER CHECK (
     acknowledgedAtMs IS NULL
     OR acknowledgedAtMs BETWEEN enqueuedAtMs AND 9007199254740991
   ),
@@ -225,10 +224,9 @@ CREATE TABLE library_core_feed_item_read_state (
 ) STRICT;
 
 CREATE TABLE library_core_replication_outbox (
-  operationId           TEXT    NOT NULL PRIMARY KEY,
-  canonicalEnvelopeJson TEXT    NOT NULL,
-  enqueuedAtMs          INTEGER NOT NULL CHECK (enqueuedAtMs BETWEEN 0 AND 9007199254740991),
-  acknowledgedAtMs      INTEGER CHECK (
+  operationId      TEXT    NOT NULL PRIMARY KEY,
+  enqueuedAtMs     INTEGER NOT NULL CHECK (enqueuedAtMs BETWEEN 0 AND 9007199254740991),
+  acknowledgedAtMs INTEGER CHECK (
     acknowledgedAtMs IS NULL
     OR acknowledgedAtMs BETWEEN enqueuedAtMs AND 9007199254740991
   ),

@@ -529,12 +529,10 @@ impl LibraryCoreJournal {
         )?;
         transaction.execute(
             "INSERT INTO library_core_actor_enrollment_outbox (
-               enrollmentOperationId, canonicalEnrollmentCertificateJson,
-               enqueuedAtMs, acknowledgedAtMs
-             ) VALUES (?1, ?2, ?3, NULL);",
+               enrollmentOperationId, enqueuedAtMs, acknowledgedAtMs
+             ) VALUES (?1, ?2, NULL);",
             params![
                 enrollment.enrollment_operation_id,
-                enrollment.canonical_enrollment_certificate_json,
                 enrollment.enrolled_at_ms,
             ],
         )?;
@@ -829,14 +827,9 @@ impl LibraryCoreJournal {
             )?;
             transaction.execute(
                 "INSERT INTO library_core_replication_outbox (
-                   operationId, canonicalEnvelopeJson, enqueuedAtMs,
-                   acknowledgedAtMs
-                 ) VALUES (?1, ?2, ?3, NULL);",
-                params![
-                    member.operation_id,
-                    member.canonical_envelope_json,
-                    committed_at_ms,
-                ],
+                   operationId, enqueuedAtMs, acknowledgedAtMs
+                 ) VALUES (?1, ?2, NULL);",
+                params![member.operation_id, committed_at_ms],
             )?;
         }
         let updated = transaction.execute(
@@ -1120,6 +1113,46 @@ mod tests {
                 .expect("collect ingest sequences")
         };
         assert_eq!(ingest_sequences, vec![1, 2]);
+        let queued_envelopes: Vec<String> = {
+            let mut statement = journal
+                .connection
+                .prepare(
+                    "SELECT operation.canonicalEnvelopeJson
+                     FROM library_core_replication_outbox AS outbox
+                     JOIN library_core_operations AS operation
+                       ON operation.operationId = outbox.operationId
+                     ORDER BY operation.ingestSequence;",
+                )
+                .expect("prepare outbox join");
+            statement
+                .query_map([], |row| row.get(0))
+                .expect("query queued envelopes")
+                .collect::<SqlResult<Vec<_>>>()
+                .expect("collect queued envelopes")
+        };
+        assert_eq!(
+            queued_envelopes,
+            verified
+                .members
+                .iter()
+                .map(|member| member.canonical_envelope_json.clone())
+                .collect::<Vec<_>>()
+        );
+        let queued_enrollment: String = journal
+            .connection
+            .query_row(
+                "SELECT actor.canonicalEnrollmentCertificateJson
+                 FROM library_core_actor_enrollment_outbox AS outbox
+                 JOIN library_core_actors AS actor
+                   ON actor.enrollmentOperationId = outbox.enrollmentOperationId;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("queued enrollment certificate");
+        assert_eq!(
+            queued_enrollment,
+            enrollment.canonical_enrollment_certificate_json
+        );
     }
 
     #[test]
