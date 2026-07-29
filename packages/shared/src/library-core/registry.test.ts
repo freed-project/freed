@@ -175,8 +175,16 @@ describe("Library Core query registry", () => {
       expect(definition.projection).toBeNull();
       expect(definition.sourceIdentity).toBeNull();
       expect(definition.nestedBounds).toBeNull();
-      expect(definition.stableSort).toBeNull();
-      expect(definition.tieBreakKey).toBeNull();
+      // A contract field and its blocker move together. Asserting the sort is
+      // always null would have forbidden ever resolving one; asserting the
+      // relation catches the failure that actually matters, which is a query
+      // claiming a resolved ordering while still advertising it as unresolved,
+      // or clearing the blocker without stating an ordering at all.
+      const sortBlocked = definition.blockers.includes(
+        "sort_contract_unresolved",
+      );
+      expect(definition.stableSort === null).toBe(sortBlocked);
+      expect(definition.tieBreakKey === null).toBe(sortBlocked);
       expect(definition.source.currentKinds).toStrictEqual([]);
       expect(definition.intendedAdapters.length).toBeGreaterThan(0);
       expect(definition.blockers.length).toBeGreaterThan(0);

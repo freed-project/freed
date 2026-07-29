@@ -126,6 +126,35 @@ interface QuerySourceInventory {
   readonly currentKinds: readonly string[];
 }
 
+export interface ResolvedQuerySortColumn {
+  readonly column: string;
+  readonly direction: "asc" | "desc";
+}
+
+/**
+ * A resolved ordering, stated so an adapter can satisfy it with an index rather
+ * than a sort.
+ *
+ * Every field here exists because getting it wrong is silent. Columns are
+ * columns and never expressions, because a leading expression such as
+ * `publishedAt IS NULL` is not index-satisfiable and quietly turns each keyset
+ * page into a sort of the whole remaining set: the page stays bounded while the
+ * work behind it grows with the corpus. Text comparison is pinned to BINARY
+ * because a cursor that compares differently from the database skips or repeats
+ * rows at the page boundary, and JavaScript's `localeCompare` treats ids that
+ * differ only in case as equal where SQLite does not. The null ordering is
+ * declared rather than assumed so that a later nullable sort column cannot be
+ * added without confronting the first rule.
+ */
+export interface ResolvedQuerySortContract {
+  readonly columns: readonly [
+    ResolvedQuerySortColumn,
+    ...ResolvedQuerySortColumn[],
+  ];
+  readonly textCollation: "binary";
+  readonly nullOrdering: "all_sort_columns_not_null";
+}
+
 export interface PlannedBlockedLibraryCoreQueryDefinition {
   readonly status: "planned_blocked";
   readonly querySchemaVersion: 1;
@@ -138,8 +167,8 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
   readonly projection: null;
   readonly sourceIdentity: null;
   readonly nestedBounds: null;
-  readonly stableSort: null;
-  readonly tieBreakKey: null;
+  readonly stableSort: ResolvedQuerySortContract | null;
+  readonly tieBreakKey: string | null;
   readonly defaultLimit: number;
   readonly maximumLimit: number;
   readonly maximumRows: number;
@@ -222,11 +251,49 @@ interface PlannedQueryInput {
   readonly invalidationKeyIntent: readonly string[];
   readonly intendedAdapters?: readonly LibraryCoreQueryAdapter[];
   readonly additionalBlockers?: readonly LibraryCoreQueryBlocker[];
+  /**
+   * Supplying both clears `sort_contract_unresolved` for this query. They move
+   * together on purpose: an ordering without a tie-break is not stable, and a
+   * keyset cursor built on an unstable order drops and repeats rows.
+   */
+  readonly stableSort?: ResolvedQuerySortContract;
+  readonly tieBreakKey?: string;
+}
+
+function nonEmptyBlockers(
+  blockers: readonly LibraryCoreQueryBlocker[],
+): NonEmptyQueryBlockers {
+  const [first, ...rest] = blockers;
+  if (!first) {
+    throw new Error("a planned query must declare at least one blocker");
+  }
+  return [first, ...rest];
 }
 
 function plannedQuery(
   input: PlannedQueryInput,
 ): PlannedBlockedLibraryCoreQueryDefinition {
+  const stableSort = input.stableSort ?? null;
+  const tieBreakKey = input.tieBreakKey ?? null;
+
+  if ((stableSort === null) !== (tieBreakKey === null)) {
+    throw new Error(
+      "a resolved sort contract requires both stableSort and tieBreakKey",
+    );
+  }
+  if (stableSort && tieBreakKey) {
+    // The tie-break has to be the final ordering term, not merely present
+    // somewhere in it. If an earlier column followed it, rows sharing every
+    // preceding value would still have no defined order between them and the
+    // cursor would have nothing unique to resume from.
+    const last = stableSort.columns[stableSort.columns.length - 1];
+    if (last?.column !== tieBreakKey) {
+      throw new Error(
+        `tie-break ${tieBreakKey} must be the last sort column, found ${last?.column}`,
+      );
+    }
+  }
+
   return {
     status: "planned_blocked",
     querySchemaVersion: 1,
@@ -239,8 +306,8 @@ function plannedQuery(
     projection: null,
     sourceIdentity: null,
     nestedBounds: null,
-    stableSort: null,
-    tieBreakKey: null,
+    stableSort,
+    tieBreakKey,
     defaultLimit: input.defaultLimit,
     maximumLimit: input.maximumLimit,
     maximumRows: input.maximumRows,
@@ -255,10 +322,13 @@ function plannedQuery(
       : null,
     invalidationKeyIntent: input.invalidationKeyIntent,
     intendedAdapters: input.intendedAdapters ?? ALL_INTENDED_ADAPTERS,
-    blockers: [
-      ...BASE_QUERY_BLOCKERS,
+    blockers: nonEmptyBlockers([
+      ...BASE_QUERY_BLOCKERS.filter(
+        (blocker) =>
+          stableSort === null || blocker !== "sort_contract_unresolved",
+      ),
       ...(input.additionalBlockers ?? []),
-    ],
+    ]),
   };
 }
 
@@ -347,6 +417,20 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     totalCountIntent: "snapshot_exact",
     rendererCache: true,
     invalidationKeyIntent: ["feed:{normalized_filter_digest}", "feed-facets"],
+    // Newest first, then by id so the order is total. `sortAt` is the shadow
+    // store's derived sort key rather than `publishedAt`: the authoritative
+    // column stays nullable because absence is data the projection must be able
+    // to reproduce, and ordering by it would need a null-handling expression
+    // that no index can satisfy. See SORT_AT_ABSENT in shadow-store.ts.
+    stableSort: {
+      columns: [
+        { column: "sortAt", direction: "desc" },
+        { column: "globalId", direction: "asc" },
+      ],
+      textCollation: "binary",
+      nullOrdering: "all_sort_columns_not_null",
+    },
+    tieBreakKey: "globalId",
   }),
   feed_subscription_page_v1: plannedQuery({
     defaultLimit: 64,

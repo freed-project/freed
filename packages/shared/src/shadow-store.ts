@@ -70,9 +70,50 @@ export const SHADOW_COLUMNS = [
 export type ShadowColumn = (typeof SHADOW_COLUMNS)[number];
 
 /**
- * INTEGER for the timestamps and flags, TEXT for everything else. `rest` is the
- * only NOT NULL column besides the key: every other column is legitimately
- * absent on some item, and the projection records that absence inside `rest`.
+ * Derived columns exist only so the query planner can order without sorting.
+ * They are written, never read back, and never reconstructed, which is why they
+ * are deliberately absent from `SHADOW_COLUMNS` and from `FeedItemRow`: the
+ * round-trip differ compares authoritative data, and a derived value has
+ * nothing to say about whether the projection lost anything.
+ */
+export const SHADOW_DERIVED_COLUMNS = ["sortAt"] as const;
+
+/**
+ * Sort position for an item whose `publishedAt` is absent, null, or a value the
+ * column cannot hold. Ordering is `sortAt DESC`, so this places undated items
+ * at the far end of the timeline.
+ *
+ * This is not a timestamp and is never presented as one. `publishedAt` stays
+ * nullable and authoritative, and `__absent` still records that the field was
+ * missing, so nothing here fabricates a date. That distinction is the whole
+ * reason for a separate column rather than `COALESCE(publishedAt, 0)` in the
+ * schema: writing the sentinel into `publishedAt` itself would be exactly the
+ * irreversible fabrication the projection was built to prevent.
+ *
+ * An item genuinely published at epoch zero shares this sort position. The two
+ * remain distinguishable in `publishedAt`, and the `globalId` tie-break keeps
+ * the total order strict either way.
+ */
+export const SORT_AT_ABSENT = 0;
+
+/**
+ * The sort key is defensive because it must satisfy NOT NULL for every row the
+ * table will accept. A non-integer `publishedAt` cannot reach a STRICT INTEGER
+ * column at all, so the fallback is unreachable in practice; it exists so the
+ * invariant is guaranteed by construction rather than by that argument holding
+ * forever.
+ */
+export function sortKeyOf(row: FeedItemRow): number {
+  return Number.isSafeInteger(row.publishedAt)
+    ? (row.publishedAt as number)
+    : SORT_AT_ABSENT;
+}
+
+/**
+ * INTEGER for the timestamps and flags, TEXT for everything else. `rest` and
+ * the derived `sortAt` are the only NOT NULL columns besides the key: every
+ * other column is legitimately absent on some item, and the projection records
+ * that absence inside `rest`.
  */
 export const SHADOW_TABLE_DDL = `
 CREATE TABLE IF NOT EXISTS feed_items (
@@ -94,7 +135,8 @@ CREATE TABLE IF NOT EXISTS feed_items (
   tags              TEXT,
   contentBlob       TEXT,
   preservedBlob     TEXT,
-  rest              TEXT    NOT NULL
+  rest              TEXT    NOT NULL,
+  sortAt            INTEGER NOT NULL
 ) STRICT;
 `.trim();
 
@@ -105,10 +147,24 @@ CREATE TABLE IF NOT EXISTS feed_items (
  */
 export const SHADOW_INDEX_DDL = [
   // The feed's default ordering, filtered to what is not archived or hidden.
+  //
+  // Both columns of the feed_page_v1 sort contract are in the index, and in its
+  // exact direction, so a keyset page is an index range scan. Ordering by the
+  // nullable `publishedAt` instead would force `ORDER BY publishedAt IS NULL,
+  // ...` to keep undated items at the end, and that leading expression is not
+  // index-satisfiable: SQLite falls back to USE TEMP B-TREE FOR ORDER BY and
+  // sorts the whole remaining set on every page. Measured first-page cost with
+  // that shape was 0.24ms at 4k rows, 4.22ms at 64k and 15.82ms at 256k, rising
+  // with the corpus; against this index it is flat at ~0.03ms across the same
+  // range. A bounded result with unbounded work is the failure Library Core
+  // exists to remove, so the sort key is a column rather than an expression.
   `CREATE INDEX IF NOT EXISTS feed_items_timeline
-     ON feed_items (publishedAt DESC)
+     ON feed_items (sortAt DESC, globalId ASC)
      WHERE archived IS NOT 1 AND hidden IS NOT 1;`,
-  // Saved and archived views, and the counts beside them.
+  // Saved and archived views, and the counts beside them. These still order by
+  // the authoritative column: their queries' sort contracts are unresolved, and
+  // switching them would presuppose decisions this slice has not measured. Each
+  // needs the same treatment when its contract is resolved.
   `CREATE INDEX IF NOT EXISTS feed_items_saved ON feed_items (saved, publishedAt DESC) WHERE saved = 1;`,
   `CREATE INDEX IF NOT EXISTS feed_items_archived ON feed_items (archivedAt DESC) WHERE archived = 1;`,
   // Per-source and per-author grouping.
@@ -116,11 +172,21 @@ export const SHADOW_INDEX_DDL = [
   `CREATE INDEX IF NOT EXISTS feed_items_author ON feed_items (authorId, publishedAt DESC);`,
 ].map((sql) => sql.trim());
 
+/**
+ * Written columns are the authoritative ones plus the derived ones. Reads stay
+ * on `SHADOW_COLUMNS` alone, so a derived value can never re-enter the document
+ * it was computed from.
+ */
+const SHADOW_WRITE_COLUMNS = [
+  ...SHADOW_COLUMNS,
+  ...SHADOW_DERIVED_COLUMNS,
+] as const;
+
 export const SHADOW_UPSERT_SQL = `
-INSERT INTO feed_items (${SHADOW_COLUMNS.join(", ")})
-VALUES (${SHADOW_COLUMNS.map(() => "?").join(", ")})
+INSERT INTO feed_items (${SHADOW_WRITE_COLUMNS.join(", ")})
+VALUES (${SHADOW_WRITE_COLUMNS.map(() => "?").join(", ")})
 ON CONFLICT(globalId) DO UPDATE SET
-${SHADOW_COLUMNS.filter((c) => c !== "globalId")
+${SHADOW_WRITE_COLUMNS.filter((c) => c !== "globalId")
   .map((c) => `  ${c} = excluded.${c}`)
   .join(",\n")};
 `.trim();
@@ -145,9 +211,9 @@ export function createShadowSchema(db: ShadowDatabase): void {
   for (const sql of SHADOW_INDEX_DDL) db.exec(sql);
 }
 
-/** Bind order matches SHADOW_COLUMNS by construction rather than by hand. */
+/** Bind order matches SHADOW_WRITE_COLUMNS by construction rather than by hand. */
 export function rowToParams(row: FeedItemRow): (string | number | null)[] {
-  return SHADOW_COLUMNS.map((column) => row[column]);
+  return [...SHADOW_COLUMNS.map((column) => row[column]), sortKeyOf(row)];
 }
 
 /**
