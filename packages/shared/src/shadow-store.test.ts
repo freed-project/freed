@@ -10,6 +10,7 @@ import {
   SHADOW_BATCH_RECEIPT_DDL,
   SHADOW_INDEX_DDL,
   SHADOW_META_DDL,
+  SHADOW_READ_AT_ASSIGNMENT_SQL,
   SHADOW_SCHEMA_VERSION_DDL,
   SHADOW_TABLE_DDL,
   SHADOW_V1_SCHEMA_VERSION_DDL,
@@ -74,6 +75,16 @@ describe("shadow store", () => {
     );
     expect(normalizeSql(canonicalV2)).toBe(
       normalizeSql([SHADOW_BATCH_RECEIPT_DDL, SHADOW_SCHEMA_VERSION_DDL].join("\n")),
+    );
+    const readAssignmentSql = readFileSync(
+      new URL(
+        "./library-core/read-assignment-projection-v1.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    expect(normalizeSql(readAssignmentSql)).toBe(
+      normalizeSql(SHADOW_READ_AT_ASSIGNMENT_SQL),
     );
   });
 

@@ -229,6 +229,11 @@ ${SHADOW_WRITE_COLUMNS.filter((c) => c !== "globalId")
 export const SHADOW_SELECT_ALL_SQL = `SELECT ${SHADOW_COLUMNS.join(", ")} FROM feed_items;`;
 export const SHADOW_SELECT_ONE_SQL = `SELECT ${SHADOW_COLUMNS.join(", ")} FROM feed_items WHERE globalId = ?;`;
 export const SHADOW_DELETE_SQL = `DELETE FROM feed_items WHERE globalId = ?;`;
+export const SHADOW_READ_AT_ASSIGNMENT_SQL = `
+UPDATE feed_items
+SET readAt = ?2
+WHERE globalId = ?1;
+`.trim();
 
 /** The slice of a SQLite driver this module needs. rusqlite, sqlite-wasm and node:sqlite all fit. */
 export interface ShadowStatement {

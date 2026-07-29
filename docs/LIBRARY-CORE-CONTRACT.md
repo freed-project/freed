@@ -510,6 +510,17 @@ concurrent assignments retain the earliest valid timestamp. Invalid current or
 incoming values fail closed. The payload does not itself schedule or authorize
 a provider-visible seen action.
 
+The dark native projection may apply a validated read assignment through one
+column-local SQLite update. It reads and validates the current projected
+`readAt`, applies the same minimum-present algebra, updates only `readAt`,
+advances the projection revision, and writes the existing derived projection
+batch receipt in one immediate transaction. A missing entity, malformed current
+value, stale revision, changed replay tuple, or receipt failure rolls back
+without widening the update to a full row. Exact response-loss retry returns
+the original projection receipt. This is still derived projection maintenance.
+It stores no authoritative operation, grants no write authority, and has no
+production caller.
+
 Canonical sets use their field-specific sort before `C`. `causal_frontier`
 sorts ascending by `(actor_id, sequence, operation_id, chain_digest)`,
 comparing numeric sequence numerically and the remaining ASCII identifiers

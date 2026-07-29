@@ -182,6 +182,14 @@ may compile into Freed Desktop behind an explicit dark-module boundary. A
 command registration, startup open, backfill, read route, or writer route is an
 activation change and follows the corresponding gate.
 
+When a closed field operation reaches the dark projection, update only its
+registered columns. Do not rebuild or overwrite the full row. Validate current
+projected state, apply the shared field algebra, advance the projection
+revision, and commit the derived receipt in one transaction. Missing entities,
+malformed current values, stale revisions, and receipt failures roll back
+without repair. This derived path does not satisfy the authoritative operation
+materializer blocker.
+
 ## Keep canonical operation bytes honest
 
 Use the shared cross-runtime vectors for every canonical construction change.

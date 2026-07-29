@@ -313,6 +313,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.29 | Typed entity-ID blocker for every dormant operation and exact v1 entity-key binding for `feed_item_read_assignment` | ✓ | Low |
 | 4.30 | Exact `feed_item_read_assignment` touched-field binding without claiming merge algebra or write authority | ✓ | Low |
 | 4.31 | Executable minimum-present `readAt` merge algebra shared by the operation and field registries | ✓ | Low |
+| 4.32 | Crash-safe column-local SQLite read-assignment projection with exact derived receipt retry and no runtime caller | ✓ | Medium |
 
 ---
 
