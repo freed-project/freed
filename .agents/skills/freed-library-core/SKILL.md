@@ -554,8 +554,14 @@ Fault injection must prove rollback from the latest write in that transaction.
     large-host exception. A row consumer may stream only the exact
     receipt-bound payload range for its current row through a fixed buffer into
     an uncommitted target transaction. Rehash the complete spool after
-    consumption and commit only after that verification succeeds. Admission
-    proves both the fixed memory ceiling and private staging capacity.
+    consumption and commit only after that verification succeeds. A scratch
+    SQLite stage preserves counters as fixed-width sortable bytes, writes
+    payloads through incremental blobs, verifies its exact schema catalog, and
+    commits rows, successors, payloads, and the source receipt together. Exact
+    retry returns that receipt only while the receipted row, successor, and
+    payload counts remain complete. Missing rows, unreceipted rows, or changed
+    input fail closed. Admission proves both the fixed memory ceiling and
+    private staging capacity.
 25. Build PWA reader manifests from both registered Cache namespaces and the
     durable logical lookup plan. Use one plan row and one probe per unique
     physical locator with sorted candidate bindings. Call only exact

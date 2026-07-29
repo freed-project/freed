@@ -1103,11 +1103,16 @@ mod tests {
     use crate::automerge_external_document_run::{
         read_verified_document_layout, ExternalDocumentLayoutRunLimits,
     };
+    use crate::automerge_external_operation_stage::{
+        stage_verified_operation_rows, stage_verified_operation_rows_with_test_fault,
+        ExternalOperationStageError,
+    };
     use crate::automerge_external_row_run::{
         with_verified_operation_rows, with_verified_operation_rows_and_payload,
         ExternalRowRunConsumeError, ExternalRowRunError, ExternalRowRunLimits,
     };
     use crate::automerge_external_value::{write_decoded_value_tokens, ExternalValueDecodeLimits};
+    use rusqlite::Connection;
     use std::convert::Infallible;
     use std::io::{Read, Seek, SeekFrom};
     use tempfile::NamedTempFile;
@@ -1579,6 +1584,226 @@ mod tests {
         assert_eq!(read_summary, summary);
         assert_eq!(descriptor_bytes, summary.value_payload_spool_byte_length);
         assert_eq!(streamed_payload, value_payload);
+    }
+
+    #[test]
+    fn stages_verified_operations_and_payloads_atomically_in_sqlite() {
+        let bytes = decode_test_hex(SUCCESSOR_DOCUMENT_HEX);
+        let source_byte_length = bytes.len() as u64;
+        let source_sha256 = digest(&bytes);
+        let (summary, successor_spool, value_payload, rows, layout) = reconstruct(&bytes).unwrap();
+        let mut row_file = fixture(&rows);
+        let mut successor_file = fixture(&successor_spool);
+        let mut value_payload_file = fixture(&value_payload);
+        let mut connection = Connection::open_in_memory().unwrap();
+
+        let receipt = stage_verified_operation_rows(
+            &mut connection,
+            row_file.as_file_mut(),
+            successor_file.as_file_mut(),
+            value_payload_file.as_file_mut(),
+            source_byte_length,
+            &source_sha256,
+            &layout,
+            &summary,
+            operation_limits(),
+            row_run_limits(),
+        )
+        .unwrap();
+        assert_eq!(receipt.source_byte_length, source_byte_length);
+        assert_eq!(receipt.source_sha256, source_sha256);
+        assert_eq!(receipt.summary, summary);
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM external_operations;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap(),
+            summary.operation_count as i64
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM external_operation_successors;",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            summary.successor_count as i64
+        );
+        let mut statement = connection
+            .prepare("SELECT valuePayload FROM external_operations ORDER BY operationIndex;")
+            .unwrap();
+        let stored_payloads = statement
+            .query_map([], |row| row.get::<_, Vec<u8>>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+            .concat();
+        assert_eq!(stored_payloads, value_payload);
+        drop(statement);
+
+        let retried = stage_verified_operation_rows(
+            &mut connection,
+            row_file.as_file_mut(),
+            successor_file.as_file_mut(),
+            value_payload_file.as_file_mut(),
+            source_byte_length,
+            &source_sha256,
+            &layout,
+            &summary,
+            operation_limits(),
+            row_run_limits(),
+        )
+        .unwrap();
+        assert_eq!(retried, receipt);
+
+        let mut conflicting_summary = summary.clone();
+        conflicting_summary.operation_count += 1;
+        assert!(matches!(
+            stage_verified_operation_rows(
+                &mut connection,
+                row_file.as_file_mut(),
+                successor_file.as_file_mut(),
+                value_payload_file.as_file_mut(),
+                source_byte_length,
+                &source_sha256,
+                &layout,
+                &conflicting_summary,
+                operation_limits(),
+                row_run_limits(),
+            ),
+            Err(ExternalOperationStageError::ReceiptConflict)
+        ));
+
+        connection
+            .execute_batch("DROP INDEX external_operations_object;")
+            .unwrap();
+        assert!(matches!(
+            stage_verified_operation_rows(
+                &mut connection,
+                row_file.as_file_mut(),
+                successor_file.as_file_mut(),
+                value_payload_file.as_file_mut(),
+                source_byte_length,
+                &source_sha256,
+                &layout,
+                &summary,
+                operation_limits(),
+                row_run_limits(),
+            ),
+            Err(ExternalOperationStageError::SchemaContractMismatch)
+        ));
+
+        let mut tampered_payload = value_payload.clone();
+        tampered_payload[0] ^= 0xff;
+        let mut tampered_row_file = fixture(&rows);
+        let mut tampered_successor_file = fixture(&successor_spool);
+        let mut tampered_payload_file = fixture(&tampered_payload);
+        let mut rejected_connection = Connection::open_in_memory().unwrap();
+        assert!(matches!(
+            stage_verified_operation_rows(
+                &mut rejected_connection,
+                tampered_row_file.as_file_mut(),
+                tampered_successor_file.as_file_mut(),
+                tampered_payload_file.as_file_mut(),
+                source_byte_length,
+                &source_sha256,
+                &layout,
+                &summary,
+                operation_limits(),
+                row_run_limits(),
+            ),
+            Err(ExternalOperationStageError::RowRun(
+                ExternalRowRunError::SpoolMismatch
+            ))
+        ));
+        assert_eq!(
+            rejected_connection
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table';",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn rolls_back_partial_staging_and_rejects_an_incomplete_receipted_stage() {
+        let bytes = decode_test_hex(SUCCESSOR_DOCUMENT_HEX);
+        let source_byte_length = bytes.len() as u64;
+        let source_sha256 = digest(&bytes);
+        let (summary, successor_spool, value_payload, rows, layout) = reconstruct(&bytes).unwrap();
+        let mut row_file = fixture(&rows);
+        let mut successor_file = fixture(&successor_spool);
+        let mut value_payload_file = fixture(&value_payload);
+        let mut interrupted_connection = Connection::open_in_memory().unwrap();
+
+        assert!(matches!(
+            stage_verified_operation_rows_with_test_fault(
+                &mut interrupted_connection,
+                row_file.as_file_mut(),
+                successor_file.as_file_mut(),
+                value_payload_file.as_file_mut(),
+                source_byte_length,
+                &source_sha256,
+                &layout,
+                &summary,
+                operation_limits(),
+                row_run_limits(),
+                0,
+            ),
+            Err(ExternalOperationStageError::ReceiptConflict)
+        ));
+        assert_eq!(
+            interrupted_connection
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table';",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+
+        let mut staged_connection = Connection::open_in_memory().unwrap();
+        stage_verified_operation_rows(
+            &mut staged_connection,
+            row_file.as_file_mut(),
+            successor_file.as_file_mut(),
+            value_payload_file.as_file_mut(),
+            source_byte_length,
+            &source_sha256,
+            &layout,
+            &summary,
+            operation_limits(),
+            row_run_limits(),
+        )
+        .unwrap();
+        staged_connection
+            .execute(
+                "DELETE FROM external_operations \
+                 WHERE operationIndex = (SELECT MIN(operationIndex) FROM external_operations);",
+                [],
+            )
+            .unwrap();
+        assert!(matches!(
+            stage_verified_operation_rows(
+                &mut staged_connection,
+                row_file.as_file_mut(),
+                successor_file.as_file_mut(),
+                value_payload_file.as_file_mut(),
+                source_byte_length,
+                &source_sha256,
+                &layout,
+                &summary,
+                operation_limits(),
+                row_run_limits(),
+            ),
+            Err(ExternalOperationStageError::IncompleteStage)
+        ));
     }
 
     #[test]
