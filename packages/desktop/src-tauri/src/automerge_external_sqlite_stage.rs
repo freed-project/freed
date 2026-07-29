@@ -1,18 +1,20 @@
-//! Atomic SQLite staging for receipt-bound Automerge operation rows.
+//! Atomic SQLite staging for receipt-bound Automerge rows.
 //!
 //! This dormant layer copies verified rows and their exact payload bytes into a
 //! scratch SQLite database without allocating a source-sized value buffer. The
 //! complete row and companion-spool receipts are rechecked before the staging
 //! transaction commits. No command or production caller opens this store.
 
+use crate::automerge_external_change_rows::{ExternalChangeRowLimits, ExternalChangeRowSummary};
 use crate::automerge_external_document_run::ExternalVerifiedDocumentLayout;
 use crate::automerge_external_operation_rows::{
     ExternalOperationRowLimits, ExternalOperationRowSummary, ObjectReference, OperationKey,
     OperationScalar,
 };
 use crate::automerge_external_row_run::{
-    with_verified_operation_rows_and_payload, ExternalRowRunConsumeError, ExternalRowRunError,
-    ExternalRowRunLimits, ExternalVerifiedOperationRow, ExternalVerifiedPayloadReader,
+    with_verified_change_rows_and_payload, with_verified_operation_rows_and_payload,
+    ExternalRowRunConsumeError, ExternalRowRunError, ExternalRowRunLimits,
+    ExternalVerifiedChangeRow, ExternalVerifiedOperationRow, ExternalVerifiedPayloadReader,
 };
 use rusqlite::blob::ZeroBlob;
 use rusqlite::{
@@ -22,9 +24,53 @@ use std::fmt;
 use std::fs::File;
 
 const STAGE_APPLICATION_ID: i64 = 0x4652_4f53;
-const STAGE_SCHEMA_VERSION: i64 = 1;
+const STAGE_SCHEMA_VERSION: i64 = 2;
 
 const STAGE_SCHEMA_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS external_change_stage_receipt (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  sourceByteLength INTEGER NOT NULL CHECK (sourceByteLength >= 0),
+  sourceSha256 TEXT NOT NULL CHECK (
+    length(sourceSha256) = 64 AND sourceSha256 = lower(sourceSha256)
+  ),
+  changeCount INTEGER NOT NULL CHECK (changeCount >= 0),
+  dependencyCount INTEGER NOT NULL CHECK (dependencyCount >= 0),
+  dependencySpoolByteLength INTEGER NOT NULL CHECK (dependencySpoolByteLength >= 0),
+  dependencySpoolSha256 TEXT NOT NULL CHECK (
+    length(dependencySpoolSha256) = 64 AND dependencySpoolSha256 = lower(dependencySpoolSha256)
+  ),
+  extraPayloadSpoolByteLength INTEGER NOT NULL CHECK (extraPayloadSpoolByteLength >= 0),
+  extraPayloadSpoolSha256 TEXT NOT NULL CHECK (
+    length(extraPayloadSpoolSha256) = 64 AND extraPayloadSpoolSha256 = lower(extraPayloadSpoolSha256)
+  ),
+  rowRunPrefixByteLength INTEGER NOT NULL CHECK (rowRunPrefixByteLength >= 0),
+  rowRunPrefixSha256 TEXT NOT NULL CHECK (
+    length(rowRunPrefixSha256) = 64 AND rowRunPrefixSha256 = lower(rowRunPrefixSha256)
+  )
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS external_changes (
+  changeIndex INTEGER PRIMARY KEY CHECK (changeIndex >= 0),
+  actorIndex INTEGER NOT NULL CHECK (actorIndex >= 0),
+  sequence BLOB NOT NULL CHECK (length(sequence) = 8),
+  maxOperation BLOB NOT NULL CHECK (length(maxOperation) = 8),
+  timestamp INTEGER NOT NULL,
+  message TEXT,
+  extraPayload BLOB NOT NULL,
+  UNIQUE (actorIndex, sequence)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS external_change_dependencies (
+  changeIndex INTEGER NOT NULL REFERENCES external_changes(changeIndex) ON DELETE CASCADE,
+  dependencyOrdinal INTEGER NOT NULL CHECK (dependencyOrdinal >= 0),
+  dependencyIndex INTEGER NOT NULL CHECK (dependencyIndex >= 0),
+  PRIMARY KEY (changeIndex, dependencyOrdinal),
+  UNIQUE (changeIndex, dependencyIndex)
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS external_changes_actor_max_operation
+  ON external_changes(actorIndex, maxOperation);
+
 CREATE TABLE IF NOT EXISTS external_operation_stage_receipt (
   singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
   sourceByteLength INTEGER NOT NULL CHECK (sourceByteLength >= 0),
@@ -95,6 +141,13 @@ CREATE INDEX IF NOT EXISTS external_operations_object
 "#;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct ExternalChangeStageReceipt {
+    pub source_byte_length: u64,
+    pub source_sha256: String,
+    pub summary: ExternalChangeRowSummary,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ExternalOperationStageReceipt {
     pub source_byte_length: u64,
     pub source_sha256: String,
@@ -102,7 +155,7 @@ pub(super) struct ExternalOperationStageReceipt {
 }
 
 #[derive(Debug)]
-pub(super) enum ExternalOperationStageError {
+pub(super) enum ExternalSqliteStageError {
     Sql(rusqlite::Error),
     RowRun(ExternalRowRunError),
     InvalidDatabaseIdentity,
@@ -113,48 +166,194 @@ pub(super) enum ExternalOperationStageError {
     PayloadTooLarge,
 }
 
-impl From<rusqlite::Error> for ExternalOperationStageError {
+impl From<rusqlite::Error> for ExternalSqliteStageError {
     fn from(error: rusqlite::Error) -> Self {
         Self::Sql(error)
     }
 }
 
-impl From<ExternalRowRunError> for ExternalOperationStageError {
+impl From<ExternalRowRunError> for ExternalSqliteStageError {
     fn from(error: ExternalRowRunError) -> Self {
         Self::RowRun(error)
     }
 }
 
-impl fmt::Display for ExternalOperationStageError {
+impl fmt::Display for ExternalSqliteStageError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Sql(error) => write!(formatter, "Automerge operation stage SQL failed: {error}"),
+            Self::Sql(error) => write!(formatter, "Automerge SQLite stage SQL failed: {error}"),
             Self::RowRun(error) => error.fmt(formatter),
             Self::InvalidDatabaseIdentity => {
-                formatter.write_str("Automerge operation stage database identity is invalid")
+                formatter.write_str("Automerge SQLite stage database identity is invalid")
             }
             Self::SchemaContractMismatch => {
-                formatter.write_str("Automerge operation stage schema contract is invalid")
+                formatter.write_str("Automerge SQLite stage schema contract is invalid")
             }
-            Self::IncompleteStage => {
-                formatter.write_str("Automerge operation stage contains unreceipted rows")
-            }
+            Self::IncompleteStage => formatter.write_str("Automerge SQLite stage is incomplete"),
             Self::ReceiptConflict => {
-                formatter.write_str("Automerge operation stage receipt conflicts with this source")
+                formatter.write_str("Automerge SQLite stage receipt conflicts with this source")
             }
-            Self::RangeOverflow => {
-                formatter.write_str("Automerge operation stage range overflows SQLite")
-            }
+            Self::RangeOverflow => formatter.write_str("Automerge SQLite stage range overflows"),
             Self::PayloadTooLarge => {
-                formatter.write_str("Automerge operation payload exceeds SQLite blob limits")
+                formatter.write_str("Automerge payload exceeds SQLite blob limits")
             }
         }
     }
 }
 
-impl std::error::Error for ExternalOperationStageError {}
+impl std::error::Error for ExternalSqliteStageError {}
 
-type StageResult<T> = Result<T, ExternalOperationStageError>;
+type StageResult<T> = Result<T, ExternalSqliteStageError>;
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn stage_verified_change_rows(
+    connection: &mut Connection,
+    row_run: &mut File,
+    dependency_spool: &mut File,
+    extra_payload_spool: &mut File,
+    source_byte_length: u64,
+    source_sha256: &str,
+    layout: &ExternalVerifiedDocumentLayout,
+    expected_summary: &ExternalChangeRowSummary,
+    row_limits: ExternalChangeRowLimits,
+    run_limits: ExternalRowRunLimits,
+) -> StageResult<ExternalChangeStageReceipt> {
+    stage_verified_change_rows_with_after_stage(
+        connection,
+        row_run,
+        dependency_spool,
+        extra_payload_spool,
+        source_byte_length,
+        source_sha256,
+        layout,
+        expected_summary,
+        row_limits,
+        run_limits,
+        |_row| Ok(()),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn stage_verified_change_rows_with_after_stage(
+    connection: &mut Connection,
+    row_run: &mut File,
+    dependency_spool: &mut File,
+    extra_payload_spool: &mut File,
+    source_byte_length: u64,
+    source_sha256: &str,
+    layout: &ExternalVerifiedDocumentLayout,
+    expected_summary: &ExternalChangeRowSummary,
+    row_limits: ExternalChangeRowLimits,
+    run_limits: ExternalRowRunLimits,
+    mut after_stage: impl FnMut(&ExternalVerifiedChangeRow) -> StageResult<()>,
+) -> StageResult<ExternalChangeStageReceipt> {
+    configure_connection(connection)?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    initialize_or_validate_schema(&transaction)?;
+
+    if let Some(operation_receipt) = read_operation_receipt(&transaction)? {
+        require_stage_source_identity(
+            operation_receipt.source_byte_length,
+            &operation_receipt.source_sha256,
+            source_byte_length,
+            source_sha256,
+        )?;
+    }
+    if let Some(receipt) = read_change_receipt(&transaction)? {
+        require_matching_change_receipt(
+            &receipt,
+            source_byte_length,
+            source_sha256,
+            expected_summary,
+        )?;
+        require_complete_change_stage(&transaction, &receipt.summary)?;
+        transaction.commit()?;
+        return Ok(receipt);
+    }
+    let change_count =
+        transaction.query_row("SELECT COUNT(*) FROM external_changes;", [], |row| {
+            row.get::<_, i64>(0)
+        })?;
+    let dependency_count = transaction.query_row(
+        "SELECT COUNT(*) FROM external_change_dependencies;",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if change_count != 0 || dependency_count != 0 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+
+    let read_summary = with_verified_change_rows_and_payload(
+        row_run,
+        dependency_spool,
+        extra_payload_spool,
+        source_byte_length,
+        source_sha256,
+        layout,
+        expected_summary,
+        row_limits,
+        run_limits,
+        |row, payload| {
+            stage_change(&transaction, row, payload)?;
+            after_stage(row)
+        },
+    )
+    .map_err(|error| match error {
+        ExternalRowRunConsumeError::Run(error) => ExternalSqliteStageError::RowRun(error),
+        ExternalRowRunConsumeError::Consumer(error) => error,
+    })?;
+    if read_summary != *expected_summary {
+        return Err(ExternalSqliteStageError::ReceiptConflict);
+    }
+    require_complete_change_stage(&transaction, &read_summary)?;
+    insert_change_receipt(
+        &transaction,
+        source_byte_length,
+        source_sha256,
+        &read_summary,
+    )?;
+    transaction.commit()?;
+    Ok(ExternalChangeStageReceipt {
+        source_byte_length,
+        source_sha256: source_sha256.to_string(),
+        summary: read_summary,
+    })
+}
+
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub(super) fn stage_verified_change_rows_with_test_fault(
+    connection: &mut Connection,
+    row_run: &mut File,
+    dependency_spool: &mut File,
+    extra_payload_spool: &mut File,
+    source_byte_length: u64,
+    source_sha256: &str,
+    layout: &ExternalVerifiedDocumentLayout,
+    expected_summary: &ExternalChangeRowSummary,
+    row_limits: ExternalChangeRowLimits,
+    run_limits: ExternalRowRunLimits,
+    fail_after_change_index: u64,
+) -> StageResult<ExternalChangeStageReceipt> {
+    stage_verified_change_rows_with_after_stage(
+        connection,
+        row_run,
+        dependency_spool,
+        extra_payload_spool,
+        source_byte_length,
+        source_sha256,
+        layout,
+        expected_summary,
+        row_limits,
+        run_limits,
+        |row| {
+            if row.index == fail_after_change_index {
+                return Err(ExternalSqliteStageError::ReceiptConflict);
+            }
+            Ok(())
+        },
+    )
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn stage_verified_operation_rows(
@@ -202,14 +401,22 @@ fn stage_verified_operation_rows_with_after_stage(
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     initialize_or_validate_schema(&transaction)?;
 
-    if let Some(receipt) = read_receipt(&transaction)? {
-        require_matching_receipt(
+    if let Some(change_receipt) = read_change_receipt(&transaction)? {
+        require_stage_source_identity(
+            change_receipt.source_byte_length,
+            &change_receipt.source_sha256,
+            source_byte_length,
+            source_sha256,
+        )?;
+    }
+    if let Some(receipt) = read_operation_receipt(&transaction)? {
+        require_matching_operation_receipt(
             &receipt,
             source_byte_length,
             source_sha256,
             expected_summary,
         )?;
-        require_complete_stage(&transaction, &receipt.summary)?;
+        require_complete_operation_stage(&transaction, &receipt.summary)?;
         transaction.commit()?;
         return Ok(receipt);
     }
@@ -223,7 +430,7 @@ fn stage_verified_operation_rows_with_after_stage(
         |row| row.get::<_, i64>(0),
     )?;
     if operation_count != 0 || successor_count != 0 {
-        return Err(ExternalOperationStageError::IncompleteStage);
+        return Err(ExternalSqliteStageError::IncompleteStage);
     }
 
     let read_summary = with_verified_operation_rows_and_payload(
@@ -242,14 +449,14 @@ fn stage_verified_operation_rows_with_after_stage(
         },
     )
     .map_err(|error| match error {
-        ExternalRowRunConsumeError::Run(error) => ExternalOperationStageError::RowRun(error),
+        ExternalRowRunConsumeError::Run(error) => ExternalSqliteStageError::RowRun(error),
         ExternalRowRunConsumeError::Consumer(error) => error,
     })?;
     if read_summary != *expected_summary {
-        return Err(ExternalOperationStageError::ReceiptConflict);
+        return Err(ExternalSqliteStageError::ReceiptConflict);
     }
-    require_complete_stage(&transaction, &read_summary)?;
-    insert_receipt(
+    require_complete_operation_stage(&transaction, &read_summary)?;
+    insert_operation_receipt(
         &transaction,
         source_byte_length,
         source_sha256,
@@ -269,6 +476,18 @@ fn configure_connection(connection: &Connection) -> StageResult<()> {
     Ok(())
 }
 
+fn require_stage_source_identity(
+    stored_byte_length: u64,
+    stored_sha256: &str,
+    source_byte_length: u64,
+    source_sha256: &str,
+) -> StageResult<()> {
+    if stored_byte_length != source_byte_length || stored_sha256 != source_sha256 {
+        return Err(ExternalSqliteStageError::ReceiptConflict);
+    }
+    Ok(())
+}
+
 fn initialize_or_validate_schema(transaction: &Transaction<'_>) -> StageResult<()> {
     let application_id =
         transaction.pragma_query_value(None, "application_id", |row| row.get::<_, i64>(0))?;
@@ -285,7 +504,7 @@ fn initialize_or_validate_schema(transaction: &Transaction<'_>) -> StageResult<(
         transaction.pragma_update(None, "user_version", STAGE_SCHEMA_VERSION)?;
         transaction.execute_batch(STAGE_SCHEMA_SQL)?;
     } else if application_id != STAGE_APPLICATION_ID || user_version != STAGE_SCHEMA_VERSION {
-        return Err(ExternalOperationStageError::InvalidDatabaseIdentity);
+        return Err(ExternalSqliteStageError::InvalidDatabaseIdentity);
     }
     verify_schema_catalog(transaction)?;
     Ok(())
@@ -303,7 +522,7 @@ fn schema_catalog(connection: &Connection) -> StageResult<Vec<(String, String, S
             Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
         })?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(ExternalOperationStageError::Sql)?;
+        .map_err(ExternalSqliteStageError::Sql)?;
     Ok(catalog)
 }
 
@@ -311,7 +530,61 @@ fn verify_schema_catalog(connection: &Connection) -> StageResult<()> {
     let reference = Connection::open_in_memory()?;
     reference.execute_batch(STAGE_SCHEMA_SQL)?;
     if schema_catalog(connection)? != schema_catalog(&reference)? {
-        return Err(ExternalOperationStageError::SchemaContractMismatch);
+        return Err(ExternalSqliteStageError::SchemaContractMismatch);
+    }
+    Ok(())
+}
+
+fn stage_change(
+    transaction: &Transaction<'_>,
+    row: &ExternalVerifiedChangeRow,
+    payload: &mut ExternalVerifiedPayloadReader<'_>,
+) -> StageResult<()> {
+    let change_index =
+        i64::try_from(row.index).map_err(|_| ExternalSqliteStageError::RangeOverflow)?;
+    let actor_index =
+        i64::try_from(row.actor_index).map_err(|_| ExternalSqliteStageError::RangeOverflow)?;
+    let payload_bytes = i32::try_from(payload.byte_length())
+        .map_err(|_| ExternalSqliteStageError::PayloadTooLarge)?;
+    transaction.execute(
+        "INSERT INTO external_changes (\
+         changeIndex, actorIndex, sequence, maxOperation, timestamp, message, extraPayload) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);",
+        params![
+            change_index,
+            actor_index,
+            row.sequence.to_be_bytes().as_slice(),
+            row.max_operation.to_be_bytes().as_slice(),
+            row.timestamp,
+            row.message,
+            ZeroBlob(payload_bytes),
+        ],
+    )?;
+    if payload_bytes > 0 {
+        let mut blob = transaction.blob_open(
+            DatabaseName::Main,
+            "external_changes",
+            "extraPayload",
+            change_index,
+            false,
+        )?;
+        let copied = payload.copy_to(&mut blob)?;
+        if copied != payload.byte_length() {
+            return Err(ExternalSqliteStageError::ReceiptConflict);
+        }
+        blob.close()?;
+    }
+    let mut insert_dependency = transaction.prepare_cached(
+        "INSERT INTO external_change_dependencies (\
+         changeIndex, dependencyOrdinal, dependencyIndex) VALUES (?1, ?2, ?3);",
+    )?;
+    for (ordinal, dependency_index) in row.dependencies.iter().enumerate() {
+        insert_dependency.execute(params![
+            change_index,
+            i64::try_from(ordinal).map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            i64::try_from(*dependency_index)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+        ])?;
     }
     Ok(())
 }
@@ -322,18 +595,18 @@ fn stage_operation(
     payload: &mut ExternalVerifiedPayloadReader<'_>,
 ) -> StageResult<()> {
     let operation_index =
-        i64::try_from(row.index).map_err(|_| ExternalOperationStageError::RangeOverflow)?;
-    let id_actor_index = i64::try_from(row.id.actor_index)
-        .map_err(|_| ExternalOperationStageError::RangeOverflow)?;
+        i64::try_from(row.index).map_err(|_| ExternalSqliteStageError::RangeOverflow)?;
+    let id_actor_index =
+        i64::try_from(row.id.actor_index).map_err(|_| ExternalSqliteStageError::RangeOverflow)?;
     let (object_kind, object_actor_index, object_counter) = object_columns(&row.object)?;
     let (key_kind, key_name, key_actor_index, key_counter) = key_columns(&row.key)?;
     let (value_kind, value_text, value_type_code, descriptor_payload_bytes) =
         value_columns(&row.value);
     if descriptor_payload_bytes != payload.byte_length() {
-        return Err(ExternalOperationStageError::ReceiptConflict);
+        return Err(ExternalSqliteStageError::ReceiptConflict);
     }
     let payload_bytes = i32::try_from(payload.byte_length())
-        .map_err(|_| ExternalOperationStageError::PayloadTooLarge)?;
+        .map_err(|_| ExternalSqliteStageError::PayloadTooLarge)?;
     transaction.execute(
         "INSERT INTO external_operations (\
          operationIndex, idActorIndex, idCounter, objectKind, objectActorIndex, objectCounter, \
@@ -352,7 +625,7 @@ fn stage_operation(
             key_actor_index,
             key_counter,
             i64::from(row.insert),
-            i64::try_from(row.action).map_err(|_| ExternalOperationStageError::RangeOverflow)?,
+            i64::try_from(row.action).map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
             value_kind,
             value_text,
             value_type_code,
@@ -371,7 +644,7 @@ fn stage_operation(
         )?;
         let copied = payload.copy_to(&mut blob)?;
         if copied != payload.byte_length() {
-            return Err(ExternalOperationStageError::ReceiptConflict);
+            return Err(ExternalSqliteStageError::ReceiptConflict);
         }
         blob.close()?;
     }
@@ -382,16 +655,45 @@ fn stage_operation(
     for (ordinal, successor) in row.successors.iter().enumerate() {
         insert_successor.execute(params![
             operation_index,
-            i64::try_from(ordinal).map_err(|_| ExternalOperationStageError::RangeOverflow)?,
+            i64::try_from(ordinal).map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
             i64::try_from(successor.actor_index)
-                .map_err(|_| ExternalOperationStageError::RangeOverflow)?,
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
             successor.counter.to_be_bytes().as_slice(),
         ])?;
     }
     Ok(())
 }
 
-fn require_complete_stage(
+fn require_complete_change_stage(
+    transaction: &Transaction<'_>,
+    summary: &ExternalChangeRowSummary,
+) -> StageResult<()> {
+    let (change_count, payload_byte_length) = transaction.query_row(
+        "SELECT COUNT(*), COALESCE(SUM(length(extraPayload)), 0) FROM external_changes;",
+        [],
+        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+    )?;
+    let dependency_count = transaction.query_row(
+        "SELECT COUNT(*) FROM external_change_dependencies;",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    let change_count =
+        u64::try_from(change_count).map_err(|_| ExternalSqliteStageError::IncompleteStage)?;
+    let dependency_count =
+        u64::try_from(dependency_count).map_err(|_| ExternalSqliteStageError::IncompleteStage)?;
+    let payload_byte_length = u64::try_from(payload_byte_length)
+        .map_err(|_| ExternalSqliteStageError::IncompleteStage)?;
+    if change_count != summary.change_count
+        || dependency_count != summary.dependency_count
+        || payload_byte_length != summary.extra_payload_spool_byte_length
+    {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    Ok(())
+}
+
+fn require_complete_operation_stage(
     transaction: &Transaction<'_>,
     summary: &ExternalOperationRowSummary,
 ) -> StageResult<()> {
@@ -406,16 +708,16 @@ fn require_complete_stage(
         |row| row.get::<_, i64>(0),
     )?;
     let operation_count =
-        u64::try_from(operation_count).map_err(|_| ExternalOperationStageError::IncompleteStage)?;
+        u64::try_from(operation_count).map_err(|_| ExternalSqliteStageError::IncompleteStage)?;
     let successor_count =
-        u64::try_from(successor_count).map_err(|_| ExternalOperationStageError::IncompleteStage)?;
+        u64::try_from(successor_count).map_err(|_| ExternalSqliteStageError::IncompleteStage)?;
     let payload_byte_length = u64::try_from(payload_byte_length)
-        .map_err(|_| ExternalOperationStageError::IncompleteStage)?;
+        .map_err(|_| ExternalSqliteStageError::IncompleteStage)?;
     if operation_count != summary.operation_count
         || successor_count != summary.successor_count
         || payload_byte_length != summary.value_payload_spool_byte_length
     {
-        return Err(ExternalOperationStageError::IncompleteStage);
+        return Err(ExternalSqliteStageError::IncompleteStage);
     }
     Ok(())
 }
@@ -448,7 +750,7 @@ pub(super) fn stage_verified_operation_rows_with_test_fault(
         run_limits,
         |row| {
             if row.index == fail_after_operation_index {
-                return Err(ExternalOperationStageError::ReceiptConflict);
+                return Err(ExternalSqliteStageError::ReceiptConflict);
             }
             Ok(())
         },
@@ -465,10 +767,7 @@ fn object_columns(object: &ObjectReference) -> StageResult<ObjectColumns> {
             counter,
         } => Ok((
             "operation",
-            Some(
-                i64::try_from(*actor_index)
-                    .map_err(|_| ExternalOperationStageError::RangeOverflow)?,
-            ),
+            Some(i64::try_from(*actor_index).map_err(|_| ExternalSqliteStageError::RangeOverflow)?),
             Some(counter.to_be_bytes().to_vec()),
         )),
     }
@@ -486,10 +785,7 @@ fn key_columns(key: &OperationKey) -> StageResult<KeyColumns<'_>> {
         } => Ok((
             "element",
             None,
-            Some(
-                i64::try_from(*actor_index)
-                    .map_err(|_| ExternalOperationStageError::RangeOverflow)?,
-            ),
+            Some(i64::try_from(*actor_index).map_err(|_| ExternalSqliteStageError::RangeOverflow)?),
             Some(counter.to_be_bytes().to_vec()),
         )),
     }
@@ -523,7 +819,87 @@ fn value_columns(value: &OperationScalar) -> ValueColumns<'_> {
     }
 }
 
-fn insert_receipt(
+fn insert_change_receipt(
+    transaction: &Transaction<'_>,
+    source_byte_length: u64,
+    source_sha256: &str,
+    summary: &ExternalChangeRowSummary,
+) -> StageResult<()> {
+    transaction.execute(
+        "INSERT INTO external_change_stage_receipt (\
+         singleton, sourceByteLength, sourceSha256, changeCount, dependencyCount, \
+         dependencySpoolByteLength, dependencySpoolSha256, extraPayloadSpoolByteLength, \
+         extraPayloadSpoolSha256, rowRunPrefixByteLength, rowRunPrefixSha256) \
+         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);",
+        params![
+            i64::try_from(source_byte_length)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            source_sha256,
+            i64::try_from(summary.change_count)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            i64::try_from(summary.dependency_count)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            i64::try_from(summary.dependency_spool_byte_length)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            summary.dependency_spool_sha256,
+            i64::try_from(summary.extra_payload_spool_byte_length)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            summary.extra_payload_spool_sha256,
+            i64::try_from(summary.row_run_prefix_byte_length)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            summary.row_run_prefix_sha256,
+        ],
+    )?;
+    Ok(())
+}
+
+fn read_change_receipt(
+    transaction: &Transaction<'_>,
+) -> StageResult<Option<ExternalChangeStageReceipt>> {
+    transaction
+        .query_row(
+            "SELECT sourceByteLength, sourceSha256, changeCount, dependencyCount, \
+             dependencySpoolByteLength, dependencySpoolSha256, extraPayloadSpoolByteLength, \
+             extraPayloadSpoolSha256, rowRunPrefixByteLength, rowRunPrefixSha256 \
+             FROM external_change_stage_receipt WHERE singleton = 1;",
+            [],
+            |row| {
+                Ok(ExternalChangeStageReceipt {
+                    source_byte_length: row.get::<_, i64>(0)? as u64,
+                    source_sha256: row.get(1)?,
+                    summary: ExternalChangeRowSummary {
+                        change_count: row.get::<_, i64>(2)? as u64,
+                        dependency_count: row.get::<_, i64>(3)? as u64,
+                        dependency_spool_byte_length: row.get::<_, i64>(4)? as u64,
+                        dependency_spool_sha256: row.get(5)?,
+                        extra_payload_spool_byte_length: row.get::<_, i64>(6)? as u64,
+                        extra_payload_spool_sha256: row.get(7)?,
+                        row_run_prefix_byte_length: row.get::<_, i64>(8)? as u64,
+                        row_run_prefix_sha256: row.get(9)?,
+                    },
+                })
+            },
+        )
+        .optional()
+        .map_err(ExternalSqliteStageError::Sql)
+}
+
+fn require_matching_change_receipt(
+    receipt: &ExternalChangeStageReceipt,
+    source_byte_length: u64,
+    source_sha256: &str,
+    summary: &ExternalChangeRowSummary,
+) -> StageResult<()> {
+    if receipt.source_byte_length != source_byte_length
+        || receipt.source_sha256 != source_sha256
+        || receipt.summary != *summary
+    {
+        return Err(ExternalSqliteStageError::ReceiptConflict);
+    }
+    Ok(())
+}
+
+fn insert_operation_receipt(
     transaction: &Transaction<'_>,
     source_byte_length: u64,
     source_sha256: &str,
@@ -537,27 +913,27 @@ fn insert_receipt(
          VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);",
         params![
             i64::try_from(source_byte_length)
-                .map_err(|_| ExternalOperationStageError::RangeOverflow)?,
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
             source_sha256,
             i64::try_from(summary.operation_count)
-                .map_err(|_| ExternalOperationStageError::RangeOverflow)?,
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
             i64::try_from(summary.successor_count)
-                .map_err(|_| ExternalOperationStageError::RangeOverflow)?,
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
             i64::try_from(summary.successor_spool_byte_length)
-                .map_err(|_| ExternalOperationStageError::RangeOverflow)?,
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
             summary.successor_spool_sha256,
             i64::try_from(summary.value_payload_spool_byte_length)
-                .map_err(|_| ExternalOperationStageError::RangeOverflow)?,
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
             summary.value_payload_spool_sha256,
             i64::try_from(summary.row_run_prefix_byte_length)
-                .map_err(|_| ExternalOperationStageError::RangeOverflow)?,
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
             summary.row_run_prefix_sha256,
         ],
     )?;
     Ok(())
 }
 
-fn read_receipt(
+fn read_operation_receipt(
     transaction: &Transaction<'_>,
 ) -> StageResult<Option<ExternalOperationStageReceipt>> {
     transaction
@@ -585,10 +961,10 @@ fn read_receipt(
             },
         )
         .optional()
-        .map_err(ExternalOperationStageError::Sql)
+        .map_err(ExternalSqliteStageError::Sql)
 }
 
-fn require_matching_receipt(
+fn require_matching_operation_receipt(
     receipt: &ExternalOperationStageReceipt,
     source_byte_length: u64,
     source_sha256: &str,
@@ -598,7 +974,7 @@ fn require_matching_receipt(
         || receipt.source_sha256 != source_sha256
         || receipt.summary != *summary
     {
-        return Err(ExternalOperationStageError::ReceiptConflict);
+        return Err(ExternalSqliteStageError::ReceiptConflict);
     }
     Ok(())
 }

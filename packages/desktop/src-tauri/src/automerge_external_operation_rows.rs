@@ -1103,13 +1103,13 @@ mod tests {
     use crate::automerge_external_document_run::{
         read_verified_document_layout, ExternalDocumentLayoutRunLimits,
     };
-    use crate::automerge_external_operation_stage::{
-        stage_verified_operation_rows, stage_verified_operation_rows_with_test_fault,
-        ExternalOperationStageError,
-    };
     use crate::automerge_external_row_run::{
         with_verified_operation_rows, with_verified_operation_rows_and_payload,
         ExternalRowRunConsumeError, ExternalRowRunError, ExternalRowRunLimits,
+    };
+    use crate::automerge_external_sqlite_stage::{
+        stage_verified_operation_rows, stage_verified_operation_rows_with_test_fault,
+        ExternalSqliteStageError,
     };
     use crate::automerge_external_value::{write_decoded_value_tokens, ExternalValueDecodeLimits};
     use rusqlite::Connection;
@@ -1673,7 +1673,7 @@ mod tests {
                 operation_limits(),
                 row_run_limits(),
             ),
-            Err(ExternalOperationStageError::ReceiptConflict)
+            Err(ExternalSqliteStageError::ReceiptConflict)
         ));
 
         connection
@@ -1692,7 +1692,7 @@ mod tests {
                 operation_limits(),
                 row_run_limits(),
             ),
-            Err(ExternalOperationStageError::SchemaContractMismatch)
+            Err(ExternalSqliteStageError::SchemaContractMismatch)
         ));
 
         let mut tampered_payload = value_payload.clone();
@@ -1714,7 +1714,7 @@ mod tests {
                 operation_limits(),
                 row_run_limits(),
             ),
-            Err(ExternalOperationStageError::RowRun(
+            Err(ExternalSqliteStageError::RowRun(
                 ExternalRowRunError::SpoolMismatch
             ))
         ));
@@ -1755,7 +1755,7 @@ mod tests {
                 row_run_limits(),
                 0,
             ),
-            Err(ExternalOperationStageError::ReceiptConflict)
+            Err(ExternalSqliteStageError::ReceiptConflict)
         ));
         assert_eq!(
             interrupted_connection
@@ -1802,7 +1802,7 @@ mod tests {
                 operation_limits(),
                 row_run_limits(),
             ),
-            Err(ExternalOperationStageError::IncompleteStage)
+            Err(ExternalSqliteStageError::IncompleteStage)
         ));
     }
 

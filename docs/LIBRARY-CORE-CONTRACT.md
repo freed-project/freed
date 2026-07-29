@@ -9665,16 +9665,17 @@ transaction. The complete spool receipt is verified again after consumption,
 and the target transaction commits only after that final verification
 succeeds.
 
-Verified operation rows enter one private scratch SQLite transaction. The
-stage stores every operation, successor, scalar descriptor, and payload byte
-with the exact source and run receipt. It preserves unsigned Automerge counters
-as fixed-width big-endian bytes instead of narrowing them into signed SQLite
-integers. Large payloads enter preallocated SQLite blobs through the same fixed
-transfer buffer. The stage verifies its exact schema catalog before use and
-commits nothing unless the complete row and companion-spool verification
-succeeds. Exact retry returns the stored receipt only while the receipted row,
-successor, and payload counts remain complete. A changed source, changed
-summary, incomplete stage, or schema drift fails closed.
+Verified change and operation rows enter private scratch SQLite transactions.
+The stage stores every change, operation, dependency, successor, scalar
+descriptor, and payload byte with its exact source and run receipt. It
+preserves unsigned Automerge counters as fixed-width big-endian bytes instead
+of narrowing them into signed SQLite integers. Large payloads enter
+preallocated SQLite blobs through the same fixed transfer buffer. The stage
+verifies its exact schema catalog before use and commits nothing unless the
+complete row and companion-spool verification succeeds. Exact retry returns
+the stored receipt only while the receipted row, relationship, and payload
+counts remain complete. A changed source, changed summary, incomplete stage,
+mixed change and operation source identity, or schema drift fails closed.
 
 The migration worker's attributed resident ceiling is 384 MiB on a 4 GiB host,
 512 MiB on an 8 GiB host, and 768 MiB on a host with 16 GiB or more. Admission
