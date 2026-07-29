@@ -314,6 +314,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.30 | Exact `feed_item_read_assignment` touched-field binding without claiming merge algebra or write authority | ✓ | Low |
 | 4.31 | Executable minimum-present `readAt` merge algebra shared by the operation and field registries | ✓ | Low |
 | 4.32 | Crash-safe column-local SQLite read-assignment projection with exact derived receipt retry and no runtime caller | ✓ | Medium |
+| 4.33 | Closed immutable read-assignment transaction-member construction with bounded causal frontier and exact payload/member digest derivation | ✓ | Medium |
 
 ---
 

@@ -521,6 +521,18 @@ the original projection receipt. This is still derived projection maintenance.
 It stores no authoritative operation, grants no write authority, and has no
 production caller.
 
+The first closed transaction-member construction schema is limited to
+`feed_item_read_assignment`. It snapshots a closed input, binds exact v1
+library, epoch, actor, transaction, entity, payload, HLC, and causal-frontier
+fields, derives the payload and member digests through the registered domains,
+requires empty blob references, and emits the exact member body that omits
+`previous_actor_chain_digest`, `actor_chain_digest`, `transaction_digest`, and
+`signature`. Its causal frontier contains at most 4,096 strictly sorted unique
+tips. This closes only construction of one transaction member. Transaction
+aggregation, actor-chain derivation, signature encoding and verification,
+inbound envelope verification, authoritative journaling, materialization,
+outbox insertion, and runtime authority remain blocked.
+
 Canonical sets use their field-specific sort before `C`. `causal_frontier`
 sorts ascending by `(actor_id, sequence, operation_id, chain_digest)`,
 comparing numeric sequence numerically and the remaining ASCII identifiers

@@ -4,6 +4,9 @@ import {
   LIBRARY_CORE_FIELD_REGISTRY,
 } from "./field-registry.js";
 import {
+  FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+} from "./operation-envelope-contracts.js";
+import {
   FEED_ITEM_READ_AT_FIELD_ALGEBRA,
   LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
 } from "./operation-field-algebra-contracts.js";
@@ -62,6 +65,12 @@ describe("Library Core operation registry", () => {
           FEED_ITEM_READ_AT_FIELD_ALGEBRA,
         );
         expect(definition.blockers).not.toContain("field_algebra_unresolved");
+        expect(definition.transactionMemberSchema).toBe(
+          FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+        );
+        expect(definition.blockers).not.toContain(
+          "transaction_member_schema_unresolved",
+        );
       } else {
         expect(definition.payloadSchema).toBeNull();
         expect(definition.blockers).toContain("payload_schema_unresolved");
@@ -73,6 +82,10 @@ describe("Library Core operation registry", () => {
         expect(definition.blockers).toContain("touched_fields_unresolved");
         expect(definition.fieldAlgebra).toBeNull();
         expect(definition.blockers).toContain("field_algebra_unresolved");
+        expect(definition.transactionMemberSchema).toBeNull();
+        expect(definition.blockers).toContain(
+          "transaction_member_schema_unresolved",
+        );
       }
       expect(definition.materializer).toBeNull();
       expect(definition.frozenBulkContract).toBeNull();

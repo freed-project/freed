@@ -232,6 +232,14 @@ retains the earliest valid assignment under duplicate, reordered, or
 concurrent delivery. It never authorizes or schedules a provider-visible seen
 action.
 
+Close transaction-member construction one operation at a time. Snapshot a
+closed input, enforce the registered payload and entity codecs, bound the
+causal frontier before allocation, and derive payload and member digests only
+through registered domains. A member-body schema omits chain, transaction, and
+signature fields exactly where the protocol says to omit them. It does not
+claim transaction completeness, actor-chain validity, signature verification,
+materialization, journaling, or runtime authority.
+
 ## Preserve the invariants
 
 1. Keep exactly one active writer epoch. Advance it only with a signed immutable

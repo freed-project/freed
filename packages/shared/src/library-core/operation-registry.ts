@@ -8,6 +8,10 @@ import {
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
   type LibraryCoreOperationPayloadSchema,
 } from "./operation-payload-contracts.js";
+import {
+  FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  type LibraryCoreTransactionMemberSchemaDescriptor,
+} from "./operation-envelope-contracts.js";
 import type { LibraryCoreEntity } from "./protocol-registry.js";
 import {
   LIBRARY_CORE_ENTITY_ID_CODEC_V1,
@@ -97,6 +101,7 @@ export type LibraryCoreOperationBlocker =
   | "provider_action_lifecycle_contract_unresolved"
   | "provider_intent_separation_unresolved"
   | "runtime_authority_inactive"
+  | "transaction_member_schema_unresolved"
   | "touched_fields_unresolved";
 
 type NonEmptyBlockers = readonly [
@@ -121,6 +126,9 @@ export interface LibraryCoreOperationDefinition {
   readonly touchedFieldRegistryKeys: readonly string[] | null;
   readonly fieldAlgebra:
     | LibraryCoreOperationFieldAlgebraContract<unknown>
+    | null;
+  readonly transactionMemberSchema:
+    | LibraryCoreTransactionMemberSchemaDescriptor
     | null;
   readonly materializer: null;
   readonly frozenBulkContract: null;
@@ -156,6 +164,7 @@ interface PlannedOperationInput {
   readonly entityIdCodec?: LibraryCoreEntityIdCodec;
   readonly touchedFieldRegistryKeys?: readonly string[];
   readonly fieldAlgebra?: LibraryCoreOperationFieldAlgebraContract<unknown>;
+  readonly transactionMemberSchema?: LibraryCoreTransactionMemberSchemaDescriptor;
 }
 
 const BASE_OPERATION_BLOCKERS = [
@@ -180,6 +189,9 @@ function plannedOperation(
     ...(input.payloadSchema === undefined
       ? (["payload_schema_unresolved"] as const)
       : []),
+    ...(input.transactionMemberSchema === undefined
+      ? (["transaction_member_schema_unresolved"] as const)
+      : []),
     ...BASE_OPERATION_BLOCKERS.slice(1),
     ...(input.additionalBlockers ?? []),
   ];
@@ -192,6 +204,7 @@ function plannedOperation(
     entityIdCodec: input.entityIdCodec ?? null,
     touchedFieldRegistryKeys: input.touchedFieldRegistryKeys ?? null,
     fieldAlgebra: input.fieldAlgebra ?? null,
+    transactionMemberSchema: input.transactionMemberSchema ?? null,
     materializer: null,
     frozenBulkContract: null,
     transactionLimits: {
@@ -303,6 +316,8 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
       LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
     ],
     fieldAlgebra: FEED_ITEM_READ_AT_FIELD_ALGEBRA,
+    transactionMemberSchema:
+      FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
     candidateStoreSurfaces: ["markAsRead"],
     legacyWorkerRequests: ["MARK_AS_READ"],
     additionalBlockers: ["provider_intent_separation_unresolved"],
