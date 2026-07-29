@@ -1,3 +1,5 @@
+import "./test-helpers/lease-archive-python-runtime.mjs";
+
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
