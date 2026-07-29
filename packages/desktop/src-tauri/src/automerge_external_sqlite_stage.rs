@@ -27,7 +27,7 @@ use std::fs::File;
 use std::io::Read;
 
 const STAGE_APPLICATION_ID: i64 = 0x4652_4f53;
-const STAGE_SCHEMA_VERSION: i64 = 5;
+const STAGE_SCHEMA_VERSION: i64 = 7;
 
 const STAGE_SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS external_layout_stage_receipt (
@@ -161,17 +161,41 @@ CREATE TABLE IF NOT EXISTS external_operations (
 CREATE TABLE IF NOT EXISTS external_operation_successors (
   operationIndex INTEGER NOT NULL REFERENCES external_operations(operationIndex) ON DELETE CASCADE,
   successorOrdinal INTEGER NOT NULL CHECK (successorOrdinal >= 0),
-  actorIndex INTEGER NOT NULL CHECK (actorIndex >= 0),
+  actorIndex INTEGER NOT NULL REFERENCES external_actors(actorIndex) CHECK (actorIndex >= 0),
   counter BLOB NOT NULL CHECK (length(counter) = 8),
   PRIMARY KEY (operationIndex, successorOrdinal),
-  UNIQUE (operationIndex, actorIndex, counter),
-  FOREIGN KEY (actorIndex, counter)
-    REFERENCES external_operations(idActorIndex, idCounter)
-    DEFERRABLE INITIALLY DEFERRED
+  UNIQUE (operationIndex, actorIndex, counter)
 ) STRICT, WITHOUT ROWID;
 
 CREATE INDEX IF NOT EXISTS external_operations_object
   ON external_operations(objectKind, objectActorIndex, objectCounter, keyKind, keyName);
+
+CREATE TABLE IF NOT EXISTS external_omitted_deletes (
+  actorIndex INTEGER NOT NULL REFERENCES external_actors(actorIndex) CHECK (actorIndex >= 0),
+  counter BLOB NOT NULL CHECK (length(counter) = 8),
+  objectKind TEXT NOT NULL CHECK (objectKind IN ('root', 'operation')),
+  objectActorIndex INTEGER CHECK (objectActorIndex IS NULL OR objectActorIndex >= 0),
+  objectCounter BLOB CHECK (objectCounter IS NULL OR length(objectCounter) = 8),
+  keyKind TEXT NOT NULL CHECK (keyKind IN ('property', 'element')),
+  keyName TEXT,
+  keyActorIndex INTEGER CHECK (keyActorIndex IS NULL OR keyActorIndex >= 0),
+  keyCounter BLOB CHECK (keyCounter IS NULL OR length(keyCounter) = 8),
+  PRIMARY KEY (actorIndex, counter),
+  FOREIGN KEY (objectActorIndex, objectCounter)
+    REFERENCES external_operations(idActorIndex, idCounter)
+    DEFERRABLE INITIALLY DEFERRED,
+  FOREIGN KEY (keyActorIndex, keyCounter)
+    REFERENCES external_operations(idActorIndex, idCounter)
+    DEFERRABLE INITIALLY DEFERRED,
+  CHECK (
+    (objectKind = 'root' AND objectActorIndex IS NULL AND objectCounter IS NULL) OR
+    (objectKind = 'operation' AND objectActorIndex IS NOT NULL AND objectCounter IS NOT NULL)
+  ),
+  CHECK (
+    (keyKind = 'property' AND keyName IS NOT NULL AND keyActorIndex IS NULL AND keyCounter IS NULL) OR
+    (keyKind = 'element' AND keyName IS NULL AND keyActorIndex IS NOT NULL AND keyCounter IS NOT NULL)
+  )
+) STRICT, WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS external_graph_stage_receipt (
   singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
@@ -185,8 +209,26 @@ CREATE TABLE IF NOT EXISTS external_graph_stage_receipt (
   dependencyCount INTEGER NOT NULL CHECK (dependencyCount >= 0),
   operationCount INTEGER NOT NULL CHECK (operationCount >= 0),
   successorCount INTEGER NOT NULL CHECK (successorCount >= 0),
+  omittedDeleteCount INTEGER NOT NULL CHECK (omittedDeleteCount >= 0),
   graphSha256 TEXT NOT NULL CHECK (
     length(graphSha256) = 64 AND graphSha256 = lower(graphSha256)
+  )
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS external_current_operations (
+  operationIndex INTEGER PRIMARY KEY
+    REFERENCES external_operations(operationIndex) ON DELETE CASCADE
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS external_current_operation_receipt (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  graphSha256 TEXT NOT NULL CHECK (
+    length(graphSha256) = 64 AND graphSha256 = lower(graphSha256)
+  ),
+  currentOperationCount INTEGER NOT NULL CHECK (currentOperationCount >= 0),
+  currentOperationsSha256 TEXT NOT NULL CHECK (
+    length(currentOperationsSha256) = 64 AND
+    currentOperationsSha256 = lower(currentOperationsSha256)
   )
 ) STRICT;
 "#;
@@ -223,7 +265,26 @@ pub(super) struct ExternalGraphStageReceipt {
     pub dependency_count: u64,
     pub operation_count: u64,
     pub successor_count: u64,
+    pub omitted_delete_count: u64,
     pub graph_sha256: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ExternalCurrentOperationReceipt {
+    pub graph_sha256: String,
+    pub current_operation_count: u64,
+    pub current_operations_sha256: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ExternalOperationTarget {
+    object_kind: String,
+    object_actor_index: Option<i64>,
+    object_counter: Option<Vec<u8>>,
+    key_kind: String,
+    key_name: Option<String>,
+    key_actor_index: Option<i64>,
+    key_counter: Option<Vec<u8>>,
 }
 
 #[derive(Debug)]
@@ -579,6 +640,10 @@ pub(super) fn seal_staged_graph(
     require_complete_change_stage(&transaction, &change_receipt.summary)?;
     require_complete_operation_stage(&transaction, &operation_receipt.summary)?;
     validate_layout_counts(&transaction, &layout_receipt)?;
+    let existing_graph_receipt = read_graph_receipt(&transaction)?;
+    let omitted_delete_count =
+        stage_or_validate_omitted_deletes(&transaction, existing_graph_receipt.is_some())?;
+    validate_successor_graph(&transaction)?;
     validate_actor_operation_intervals(&transaction, layout_receipt.actor_count)?;
 
     let receipt = ExternalGraphStageReceipt {
@@ -590,9 +655,10 @@ pub(super) fn seal_staged_graph(
         dependency_count: change_receipt.summary.dependency_count,
         operation_count: operation_receipt.summary.operation_count,
         successor_count: operation_receipt.summary.successor_count,
+        omitted_delete_count,
         graph_sha256: graph_content_sha256(&transaction)?,
     };
-    if let Some(stored) = read_graph_receipt(&transaction)? {
+    if let Some(stored) = existing_graph_receipt {
         if stored != receipt {
             return Err(ExternalSqliteStageError::IncompleteStage);
         }
@@ -600,6 +666,70 @@ pub(super) fn seal_staged_graph(
         return Ok(receipt);
     }
     insert_graph_receipt(&transaction, &receipt)?;
+    transaction.commit()?;
+    Ok(receipt)
+}
+
+fn materialize_current_operations(
+    connection: &mut Connection,
+) -> StageResult<ExternalCurrentOperationReceipt> {
+    configure_connection(connection)?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    initialize_or_validate_schema(&transaction)?;
+    let graph_receipt =
+        read_graph_receipt(&transaction)?.ok_or(ExternalSqliteStageError::IncompleteStage)?;
+    if graph_content_sha256(&transaction)? != graph_receipt.graph_sha256 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+
+    let stored_receipt = read_current_operation_receipt(&transaction)?;
+    if stored_receipt.is_none() {
+        let existing_count = transaction.query_row(
+            "SELECT COUNT(*) FROM external_current_operations;",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?;
+        if existing_count != 0 {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        transaction.execute(
+            "INSERT INTO external_current_operations (operationIndex) \
+             SELECT operationIndex FROM external_operations AS operation \
+             WHERE operation.action != 5 \
+               AND NOT EXISTS (\
+                 SELECT 1 \
+                 FROM external_operation_successors AS edge \
+                 LEFT JOIN external_operations AS successor \
+                   ON successor.idActorIndex = edge.actorIndex \
+                  AND successor.idCounter = edge.counter \
+                 WHERE edge.operationIndex = operation.operationIndex \
+                   AND (successor.operationIndex IS NULL OR successor.action != 5)\
+             ) \
+             ORDER BY operationIndex;",
+            [],
+        )?;
+    }
+
+    validate_current_operation_set(&transaction)?;
+    let current_operation_count = transaction.query_row(
+        "SELECT COUNT(*) FROM external_current_operations;",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    let receipt = ExternalCurrentOperationReceipt {
+        graph_sha256: graph_receipt.graph_sha256,
+        current_operation_count: u64::try_from(current_operation_count)
+            .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+        current_operations_sha256: current_operations_sha256(&transaction)?,
+    };
+    if let Some(stored) = stored_receipt {
+        if stored != receipt {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        transaction.commit()?;
+        return Ok(receipt);
+    }
+    insert_current_operation_receipt(&transaction, &receipt)?;
     transaction.commit()?;
     Ok(receipt)
 }
@@ -782,7 +912,7 @@ fn read_graph_receipt(
     transaction
         .query_row(
             "SELECT sourceByteLength, sourceSha256, actorCount, headCount, changeCount, \
-             dependencyCount, operationCount, successorCount, graphSha256 \
+             dependencyCount, operationCount, successorCount, omittedDeleteCount, graphSha256 \
              FROM external_graph_stage_receipt WHERE singleton = 1;",
             [],
             |row| {
@@ -795,7 +925,8 @@ fn read_graph_receipt(
                     dependency_count: row.get::<_, i64>(5)? as u64,
                     operation_count: row.get::<_, i64>(6)? as u64,
                     successor_count: row.get::<_, i64>(7)? as u64,
-                    graph_sha256: row.get(8)?,
+                    omitted_delete_count: row.get::<_, i64>(8)? as u64,
+                    graph_sha256: row.get(9)?,
                 })
             },
         )
@@ -810,8 +941,8 @@ fn insert_graph_receipt(
     transaction.execute(
         "INSERT INTO external_graph_stage_receipt (\
          singleton, sourceByteLength, sourceSha256, actorCount, headCount, changeCount, \
-         dependencyCount, operationCount, successorCount, graphSha256) \
-         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9);",
+         dependencyCount, operationCount, successorCount, omittedDeleteCount, graphSha256) \
+         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);",
         params![
             i64::try_from(receipt.source_byte_length)
                 .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
@@ -828,7 +959,47 @@ fn insert_graph_receipt(
                 .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
             i64::try_from(receipt.successor_count)
                 .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            i64::try_from(receipt.omitted_delete_count)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
             receipt.graph_sha256,
+        ],
+    )?;
+    Ok(())
+}
+
+fn read_current_operation_receipt(
+    transaction: &Transaction<'_>,
+) -> StageResult<Option<ExternalCurrentOperationReceipt>> {
+    transaction
+        .query_row(
+            "SELECT graphSha256, currentOperationCount, currentOperationsSha256 \
+             FROM external_current_operation_receipt WHERE singleton = 1;",
+            [],
+            |row| {
+                Ok(ExternalCurrentOperationReceipt {
+                    graph_sha256: row.get(0)?,
+                    current_operation_count: row.get::<_, i64>(1)? as u64,
+                    current_operations_sha256: row.get(2)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(ExternalSqliteStageError::from)
+}
+
+fn insert_current_operation_receipt(
+    transaction: &Transaction<'_>,
+    receipt: &ExternalCurrentOperationReceipt,
+) -> StageResult<()> {
+    transaction.execute(
+        "INSERT INTO external_current_operation_receipt (\
+         singleton, graphSha256, currentOperationCount, currentOperationsSha256) \
+         VALUES (1, ?1, ?2, ?3);",
+        params![
+            receipt.graph_sha256,
+            i64::try_from(receipt.current_operation_count)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            receipt.current_operations_sha256,
         ],
     )?;
     Ok(())
@@ -876,6 +1047,240 @@ fn validate_layout_counts(
     Ok(())
 }
 
+fn stage_or_validate_omitted_deletes(
+    transaction: &Transaction<'_>,
+    validate_only: bool,
+) -> StageResult<u64> {
+    let existing_count = transaction.query_row(
+        "SELECT COUNT(*) FROM external_omitted_deletes;",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if !validate_only && existing_count != 0 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+
+    let mut expected_statement = transaction.prepare(
+        "SELECT s.actorIndex, s.counter, \
+                p.objectKind, p.objectActorIndex, p.objectCounter, \
+                CASE WHEN p.insertFlag = 1 THEN 'element' ELSE p.keyKind END, \
+                CASE WHEN p.insertFlag = 1 THEN NULL ELSE p.keyName END, \
+                CASE WHEN p.insertFlag = 1 THEN p.idActorIndex ELSE p.keyActorIndex END, \
+                CASE WHEN p.insertFlag = 1 THEN p.idCounter ELSE p.keyCounter END \
+         FROM external_operation_successors AS s \
+         JOIN external_operations AS p ON p.operationIndex = s.operationIndex \
+         LEFT JOIN external_operations AS successor \
+           ON successor.idActorIndex = s.actorIndex AND successor.idCounter = s.counter \
+         WHERE successor.operationIndex IS NULL \
+         ORDER BY s.actorIndex, s.counter, p.operationIndex;",
+    )?;
+    let mut expected_rows = expected_statement.query([])?;
+    let mut previous_id: Option<(i64, Vec<u8>)> = None;
+    let mut previous_target: Option<ExternalOperationTarget> = None;
+    let mut unique_count = 0_u64;
+    while let Some(row) = expected_rows.next()? {
+        let actor_index = row.get::<_, i64>(0)?;
+        let counter = row.get::<_, Vec<u8>>(1)?;
+        let target = ExternalOperationTarget {
+            object_kind: row.get(2)?,
+            object_actor_index: row.get(3)?,
+            object_counter: row.get(4)?,
+            key_kind: row.get(5)?,
+            key_name: row.get(6)?,
+            key_actor_index: row.get(7)?,
+            key_counter: row.get(8)?,
+        };
+        let id = (actor_index, counter.clone());
+        if previous_id.as_ref() == Some(&id) {
+            if previous_target.as_ref() != Some(&target) {
+                return Err(ExternalSqliteStageError::IncompleteStage);
+            }
+            continue;
+        }
+
+        unique_count = unique_count
+            .checked_add(1)
+            .ok_or(ExternalSqliteStageError::RangeOverflow)?;
+        if validate_only {
+            let stored = transaction
+                .query_row(
+                    "SELECT objectKind, objectActorIndex, objectCounter, keyKind, keyName, \
+                            keyActorIndex, keyCounter \
+                     FROM external_omitted_deletes WHERE actorIndex = ?1 AND counter = ?2;",
+                    params![actor_index, counter],
+                    |stored| {
+                        Ok(ExternalOperationTarget {
+                            object_kind: stored.get(0)?,
+                            object_actor_index: stored.get(1)?,
+                            object_counter: stored.get(2)?,
+                            key_kind: stored.get(3)?,
+                            key_name: stored.get(4)?,
+                            key_actor_index: stored.get(5)?,
+                            key_counter: stored.get(6)?,
+                        })
+                    },
+                )
+                .optional()?;
+            if stored.as_ref() != Some(&target) {
+                return Err(ExternalSqliteStageError::IncompleteStage);
+            }
+        } else {
+            transaction.execute(
+                "INSERT INTO external_omitted_deletes (\
+                 actorIndex, counter, objectKind, objectActorIndex, objectCounter, \
+                 keyKind, keyName, keyActorIndex, keyCounter) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9);",
+                params![
+                    actor_index,
+                    counter,
+                    target.object_kind,
+                    target.object_actor_index,
+                    target.object_counter,
+                    target.key_kind,
+                    target.key_name,
+                    target.key_actor_index,
+                    target.key_counter,
+                ],
+            )?;
+        }
+        previous_id = Some(id);
+        previous_target = Some(target);
+    }
+
+    let actual_count = transaction.query_row(
+        "SELECT COUNT(*) FROM external_omitted_deletes;",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if u64::try_from(actual_count).ok() != Some(unique_count) {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    if foreign_key_check_has_row(
+        transaction,
+        "PRAGMA foreign_key_check(external_omitted_deletes);",
+    )? {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    Ok(unique_count)
+}
+
+fn validate_successor_graph(transaction: &Transaction<'_>) -> StageResult<()> {
+    let invalid_operation = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT 1 FROM external_operations \
+           WHERE action = 3 \
+              OR (insertFlag = 1 AND keyKind = 'property') \
+              OR (insertFlag = 0 AND keyKind = 'head')\
+         );",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if invalid_operation != 0 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+
+    let non_lamport_successor = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT 1 \
+           FROM external_operation_successors AS s \
+           JOIN external_operations AS predecessor ON predecessor.operationIndex = s.operationIndex \
+           JOIN external_actors AS predecessorActor \
+             ON predecessorActor.actorIndex = predecessor.idActorIndex \
+           JOIN external_actors AS successorActor ON successorActor.actorIndex = s.actorIndex \
+           WHERE NOT (\
+             s.counter > predecessor.idCounter OR \
+             (s.counter = predecessor.idCounter AND successorActor.actorId > predecessorActor.actorId)\
+           )\
+         );",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if non_lamport_successor != 0 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+
+    let mismatched_explicit_target = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT 1 \
+           FROM external_operation_successors AS edge \
+           JOIN external_operations AS predecessor \
+             ON predecessor.operationIndex = edge.operationIndex \
+           JOIN external_operations AS successor \
+             ON successor.idActorIndex = edge.actorIndex AND successor.idCounter = edge.counter \
+           WHERE predecessor.objectKind IS NOT successor.objectKind \
+              OR predecessor.objectActorIndex IS NOT successor.objectActorIndex \
+              OR predecessor.objectCounter IS NOT successor.objectCounter \
+              OR (CASE WHEN predecessor.insertFlag = 1 THEN 'element' ELSE predecessor.keyKind END) \
+                   IS NOT \
+                 (CASE WHEN successor.insertFlag = 1 THEN 'element' ELSE successor.keyKind END) \
+              OR (CASE WHEN predecessor.insertFlag = 1 THEN NULL ELSE predecessor.keyName END) \
+                   IS NOT \
+                 (CASE WHEN successor.insertFlag = 1 THEN NULL ELSE successor.keyName END) \
+              OR (CASE WHEN predecessor.insertFlag = 1 \
+                       THEN predecessor.idActorIndex ELSE predecessor.keyActorIndex END) \
+                   IS NOT \
+                 (CASE WHEN successor.insertFlag = 1 \
+                       THEN successor.idActorIndex ELSE successor.keyActorIndex END) \
+              OR (CASE WHEN predecessor.insertFlag = 1 \
+                       THEN predecessor.idCounter ELSE predecessor.keyCounter END) \
+                   IS NOT \
+                 (CASE WHEN successor.insertFlag = 1 \
+                       THEN successor.idCounter ELSE successor.keyCounter END)\
+         );",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if mismatched_explicit_target != 0 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    Ok(())
+}
+
+fn validate_current_operation_set(transaction: &Transaction<'_>) -> StageResult<()> {
+    let mismatch = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT operationIndex FROM external_current_operations \
+           EXCEPT \
+           SELECT operationIndex FROM external_operations AS operation \
+           WHERE operation.action != 5 \
+             AND NOT EXISTS (\
+               SELECT 1 \
+               FROM external_operation_successors AS edge \
+               LEFT JOIN external_operations AS successor \
+                 ON successor.idActorIndex = edge.actorIndex \
+                AND successor.idCounter = edge.counter \
+               WHERE edge.operationIndex = operation.operationIndex \
+                 AND (successor.operationIndex IS NULL OR successor.action != 5)\
+             )\
+         ) OR EXISTS(\
+           SELECT operationIndex FROM external_operations AS operation \
+           WHERE operation.action != 5 \
+             AND NOT EXISTS (\
+               SELECT 1 \
+               FROM external_operation_successors AS edge \
+               LEFT JOIN external_operations AS successor \
+                 ON successor.idActorIndex = edge.actorIndex \
+                AND successor.idCounter = edge.counter \
+               WHERE edge.operationIndex = operation.operationIndex \
+                 AND (successor.operationIndex IS NULL OR successor.action != 5)\
+             ) \
+           EXCEPT \
+           SELECT operationIndex FROM external_current_operations\
+         );",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if mismatch != 0
+        || foreign_key_check_has_row(
+            transaction,
+            "PRAGMA foreign_key_check(external_current_operations);",
+        )?
+    {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    Ok(())
+}
+
 fn validate_actor_operation_intervals(
     transaction: &Transaction<'_>,
     actor_count: u64,
@@ -903,8 +1308,11 @@ fn validate_actor_operation_intervals(
         }
 
         let mut operation_statement = transaction.prepare(
-            "SELECT idCounter FROM external_operations \
-             WHERE idActorIndex = ?1 ORDER BY idCounter;",
+            "SELECT counter FROM (\
+               SELECT idCounter AS counter FROM external_operations WHERE idActorIndex = ?1 \
+               UNION \
+               SELECT counter FROM external_omitted_deletes WHERE actorIndex = ?1\
+             ) ORDER BY counter;",
         )?;
         let mut operation_rows = operation_statement.query([actor_index])?;
         let mut expected_counter = 0_u64;
@@ -936,7 +1344,7 @@ fn sortable_u64(value: ValueRef<'_>) -> StageResult<u64> {
 
 fn graph_content_sha256(connection: &Connection) -> StageResult<String> {
     let mut hasher = Sha256::new();
-    hash_field(&mut hasher, b"freed-automerge-scratch-graph-v1");
+    hash_field(&mut hasher, b"freed-automerge-scratch-graph-v2");
     for (label, query) in [
         (
             "layout-receipt",
@@ -987,6 +1395,12 @@ fn graph_content_sha256(connection: &Connection) -> StageResult<String> {
             "SELECT operationIndex, successorOrdinal, actorIndex, counter \
              FROM external_operation_successors ORDER BY operationIndex, successorOrdinal;",
         ),
+        (
+            "omitted-deletes",
+            "SELECT actorIndex, counter, objectKind, objectActorIndex, objectCounter, \
+                    keyKind, keyName, keyActorIndex, keyCounter \
+             FROM external_omitted_deletes ORDER BY actorIndex, counter;",
+        ),
     ] {
         hash_query_rows(connection, &mut hasher, label, query)?;
     }
@@ -1005,6 +1419,34 @@ fn graph_content_sha256(connection: &Connection) -> StageResult<String> {
         "external_operations",
         "valuePayload",
         "SELECT operationIndex FROM external_operations ORDER BY operationIndex;",
+    )?;
+    Ok(lower_hex(&hasher.finalize()))
+}
+
+fn current_operations_sha256(connection: &Connection) -> StageResult<String> {
+    let mut hasher = Sha256::new();
+    hash_field(&mut hasher, b"freed-automerge-current-operation-set-v1");
+    hash_query_rows(
+        connection,
+        &mut hasher,
+        "current-operations",
+        "SELECT current.operationIndex, operation.idActorIndex, operation.idCounter, \
+                operation.objectKind, operation.objectActorIndex, operation.objectCounter, \
+                operation.keyKind, operation.keyName, operation.keyActorIndex, \
+                operation.keyCounter, operation.insertFlag, operation.action, \
+                operation.valueKind, operation.valueText, operation.valueTypeCode, \
+                operation.expandFlag, operation.markName \
+         FROM external_current_operations AS current \
+         JOIN external_operations AS operation USING (operationIndex) \
+         ORDER BY current.operationIndex;",
+    )?;
+    hash_blob_column(
+        connection,
+        &mut hasher,
+        "current-operation-payloads",
+        "external_operations",
+        "valuePayload",
+        "SELECT operationIndex FROM external_current_operations ORDER BY operationIndex;",
     )?;
     Ok(lower_hex(&hasher.finalize()))
 }
@@ -1723,6 +2165,7 @@ mod tests {
         assert_eq!(receipt.head_count, 1);
         assert_eq!(receipt.change_count, 1);
         assert_eq!(receipt.operation_count, 1);
+        assert_eq!(receipt.omitted_delete_count, 0);
         assert_eq!(receipt.graph_sha256.len(), 64);
         assert_eq!(seal_staged_graph(&mut connection).unwrap(), receipt);
 
@@ -1760,6 +2203,323 @@ mod tests {
                 )
                 .unwrap(),
             0
+        );
+    }
+
+    #[test]
+    fn seals_a_graph_with_an_omitted_delete_successor() {
+        let mut connection = complete_minimal_graph();
+        connection
+            .execute(
+                "UPDATE external_changes SET maxOperation = ?1 WHERE changeIndex = 0;",
+                [2_u64.to_be_bytes()],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "UPDATE external_operation_stage_receipt \
+                 SET successorCount = 1, successorSpoolByteLength = 16 \
+                 WHERE singleton = 1;",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO external_operation_successors \
+                 (operationIndex, successorOrdinal, actorIndex, counter) \
+                 VALUES (0, 0, 0, ?1);",
+                [2_u64.to_be_bytes()],
+            )
+            .unwrap();
+
+        let receipt = seal_staged_graph(&mut connection).unwrap();
+        assert_eq!(receipt.operation_count, 1);
+        assert_eq!(receipt.successor_count, 1);
+        assert_eq!(receipt.omitted_delete_count, 1);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT actorIndex, counter, objectKind, keyKind, keyName \
+                     FROM external_omitted_deletes;",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, Vec<u8>>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, String>(4)?,
+                        ))
+                    },
+                )
+                .unwrap(),
+            (
+                0,
+                2_u64.to_be_bytes().to_vec(),
+                "root".to_string(),
+                "property".to_string(),
+                "title".to_string(),
+            )
+        );
+        assert_eq!(seal_staged_graph(&mut connection).unwrap(), receipt);
+    }
+
+    #[test]
+    fn rejects_one_omitted_delete_id_attached_to_different_targets() {
+        let mut connection = complete_minimal_graph();
+        connection
+            .execute(
+                "UPDATE external_changes SET maxOperation = ?1 WHERE changeIndex = 0;",
+                [3_u64.to_be_bytes()],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO external_operations \
+                 (operationIndex, idActorIndex, idCounter, objectKind, objectActorIndex, \
+                  objectCounter, keyKind, keyName, keyActorIndex, keyCounter, insertFlag, \
+                  action, valueKind, valueText, valueTypeCode, valuePayload, expandFlag, markName) \
+                 VALUES (1, 0, ?1, 'root', NULL, NULL, 'property', 'other', NULL, NULL, \
+                         0, 1, 'null', NULL, NULL, X'', 0, NULL);",
+                [2_u64.to_be_bytes()],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "UPDATE external_operation_stage_receipt \
+                 SET operationCount = 2, successorCount = 2, successorSpoolByteLength = 32 \
+                 WHERE singleton = 1;",
+                [],
+            )
+            .unwrap();
+        for operation_index in [0_i64, 1_i64] {
+            connection
+                .execute(
+                    "INSERT INTO external_operation_successors \
+                     (operationIndex, successorOrdinal, actorIndex, counter) \
+                     VALUES (?1, 0, 0, ?2);",
+                    params![operation_index, 3_u64.to_be_bytes()],
+                )
+                .unwrap();
+        }
+
+        assert!(matches!(
+            seal_staged_graph(&mut connection),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+    }
+
+    #[test]
+    fn rejects_an_explicit_successor_attached_to_a_different_target() {
+        let mut connection = complete_minimal_graph();
+        connection
+            .execute(
+                "UPDATE external_changes SET maxOperation = ?1 WHERE changeIndex = 0;",
+                [2_u64.to_be_bytes()],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO external_operations \
+                 (operationIndex, idActorIndex, idCounter, objectKind, objectActorIndex, \
+                  objectCounter, keyKind, keyName, keyActorIndex, keyCounter, insertFlag, \
+                  action, valueKind, valueText, valueTypeCode, valuePayload, expandFlag, markName) \
+                 VALUES (1, 0, ?1, 'root', NULL, NULL, 'property', 'other', NULL, NULL, \
+                         0, 1, 'null', NULL, NULL, X'', 0, NULL);",
+                [2_u64.to_be_bytes()],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "UPDATE external_operation_stage_receipt \
+                 SET operationCount = 2, successorCount = 1, successorSpoolByteLength = 16 \
+                 WHERE singleton = 1;",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO external_operation_successors \
+                 (operationIndex, successorOrdinal, actorIndex, counter) \
+                 VALUES (0, 0, 0, ?1);",
+                [2_u64.to_be_bytes()],
+            )
+            .unwrap();
+
+        assert!(matches!(
+            seal_staged_graph(&mut connection),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+    }
+
+    #[test]
+    fn materializes_and_replays_the_exact_current_operation_set() {
+        let mut connection = complete_minimal_graph();
+        assert!(matches!(
+            materialize_current_operations(&mut connection),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+
+        let graph_receipt = seal_staged_graph(&mut connection).unwrap();
+        let receipt = materialize_current_operations(&mut connection).unwrap();
+        assert_eq!(receipt.graph_sha256, graph_receipt.graph_sha256);
+        assert_eq!(receipt.current_operation_count, 1);
+        assert_eq!(receipt.current_operations_sha256.len(), 64);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT operationIndex FROM external_current_operations;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            materialize_current_operations(&mut connection).unwrap(),
+            receipt
+        );
+
+        connection
+            .execute("DELETE FROM external_current_operations;", [])
+            .unwrap();
+        assert!(matches!(
+            materialize_current_operations(&mut connection),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+    }
+
+    #[test]
+    fn omitted_delete_removes_its_predecessor_from_the_current_set() {
+        let mut connection = complete_minimal_graph();
+        connection
+            .execute(
+                "UPDATE external_changes SET maxOperation = ?1 WHERE changeIndex = 0;",
+                [2_u64.to_be_bytes()],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "UPDATE external_operation_stage_receipt \
+                 SET successorCount = 1, successorSpoolByteLength = 16 \
+                 WHERE singleton = 1;",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO external_operation_successors \
+                 (operationIndex, successorOrdinal, actorIndex, counter) \
+                 VALUES (0, 0, 0, ?1);",
+                [2_u64.to_be_bytes()],
+            )
+            .unwrap();
+
+        seal_staged_graph(&mut connection).unwrap();
+        let receipt = materialize_current_operations(&mut connection).unwrap();
+        assert_eq!(receipt.current_operation_count, 0);
+    }
+
+    #[test]
+    fn counter_increment_keeps_only_the_counter_base_current() {
+        let mut connection = complete_minimal_graph();
+        connection
+            .execute(
+                "UPDATE external_operations \
+                 SET valueKind = 'counter', valueText = '10' \
+                 WHERE operationIndex = 0;",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "UPDATE external_changes SET maxOperation = ?1 WHERE changeIndex = 0;",
+                [2_u64.to_be_bytes()],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO external_operations \
+                 (operationIndex, idActorIndex, idCounter, objectKind, objectActorIndex, \
+                  objectCounter, keyKind, keyName, keyActorIndex, keyCounter, insertFlag, \
+                  action, valueKind, valueText, valueTypeCode, valuePayload, expandFlag, markName) \
+                 VALUES (1, 0, ?1, 'root', NULL, NULL, 'property', 'title', NULL, NULL, \
+                         0, 5, 'signed', '2', NULL, X'', 0, NULL);",
+                [2_u64.to_be_bytes()],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO external_operation_successors \
+                 (operationIndex, successorOrdinal, actorIndex, counter) \
+                 VALUES (0, 0, 0, ?1);",
+                [2_u64.to_be_bytes()],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "UPDATE external_operation_stage_receipt \
+                 SET operationCount = 2, successorCount = 1, successorSpoolByteLength = 16 \
+                 WHERE singleton = 1;",
+                [],
+            )
+            .unwrap();
+
+        seal_staged_graph(&mut connection).unwrap();
+        let receipt = materialize_current_operations(&mut connection).unwrap();
+        assert_eq!(receipt.current_operation_count, 1);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT operationIndex FROM external_current_operations;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn current_operation_materialization_preserves_concurrent_conflicts() {
+        let mut connection = complete_minimal_graph();
+        connection
+            .execute(
+                "UPDATE external_changes SET maxOperation = ?1 WHERE changeIndex = 0;",
+                [2_u64.to_be_bytes()],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO external_operations \
+                 (operationIndex, idActorIndex, idCounter, objectKind, objectActorIndex, \
+                 objectCounter, keyKind, keyName, keyActorIndex, keyCounter, insertFlag, \
+                  action, valueKind, valueText, valueTypeCode, valuePayload, expandFlag, markName) \
+                 VALUES (1, 0, ?1, 'root', NULL, NULL, 'property', 'title', NULL, NULL, \
+                         0, 1, 'null', NULL, NULL, X'', 0, NULL);",
+                [2_u64.to_be_bytes()],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "UPDATE external_operation_stage_receipt \
+                 SET operationCount = 2 WHERE singleton = 1;",
+                [],
+            )
+            .unwrap();
+
+        seal_staged_graph(&mut connection).unwrap();
+        let receipt = materialize_current_operations(&mut connection).unwrap();
+        assert_eq!(receipt.current_operation_count, 2);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM external_current_operations;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            2
         );
     }
 }

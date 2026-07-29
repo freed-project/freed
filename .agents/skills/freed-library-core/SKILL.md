@@ -562,7 +562,22 @@ Fault injection must prove rollback from the latest write in that transaction.
     corresponding source receipt together. Exact retry returns that receipt
     only while the layout and receipted row, relationship, and payload counts
     remain complete. The scratch schema enforces actor, change dependency,
-    operation object, element-key, and successor references with foreign keys.
+    operation object and element-key references with foreign keys. Automerge
+    document chunks intentionally omit delete rows. A successor therefore
+    resolves either to one exact staged operation or to one reconstructed
+    omitted-delete identity whose object and effective property or list-element
+    target matches every predecessor. Reject explicitly encoded delete rows,
+    unequal targets for one omitted delete, non-Lamport successor edges, and
+    explicit successors attached to another target. Actor operation intervals
+    close over the union of stored operations and reconstructed delete IDs.
+    Derive the immutable current-operation set only after graph sealing.
+    Preserve every visible non-increment operation whose successors are all
+    explicit increments. Exclude increment rows themselves and operations
+    superseded by any explicit non-increment or omitted-delete successor.
+    Retain concurrent current operations without choosing a winner. Bind the
+    exact set and payload bytes to the graph digest in a replay-checked receipt
+    before object or entity materialization. Apply counter increments only in
+    the later value projection and keep that arithmetic receipt-bound.
     Every staged head must resolve to a staged change before the change receipt
     is accepted. Change and operation receipts in one stage must bind the same
     exact source identity. Missing rows, changed layout entries, dangling graph

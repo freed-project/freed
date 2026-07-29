@@ -9674,23 +9674,43 @@ integers. Large payloads enter preallocated SQLite blobs through the same fixed
 transfer buffer. The stage verifies its exact schema catalog before use and
 commits nothing unless the complete row and companion-spool verification
 succeeds. Foreign keys bind every change to its actor, every dependency to a
-staged change, and every operation object, element key, and successor to an
-exact staged operation ID. Every staged head must resolve to a staged change
-before the change receipt is accepted. Exact retry returns the stored receipt
-only while the layout, receipted row, relationship, payload, and graph-closure
-checks remain complete. A changed source, changed layout entry, changed
-summary, dangling reference, incomplete stage, mixed change and operation
-source identity, or schema drift fails closed.
+staged change, and every operation object and element key to an exact staged
+operation ID. Automerge document chunks intentionally omit delete rows and
+encode those operation IDs only as successors. Each successor therefore
+resolves either to one exact staged operation or one reconstructed omitted
+delete identity. Every predecessor for one omitted delete must name the same
+object and effective property or list-element target. Explicit delete rows,
+non-Lamport successor edges, explicit successors attached to another target,
+and unequal targets for one omitted delete fail closed. Every staged head must
+resolve to a staged change before the change receipt is accepted. Exact retry
+returns the stored receipt only while the layout, receipted row, relationship,
+payload, and graph-closure checks remain complete. A changed source, changed
+layout entry, changed summary, dangling reference, incomplete stage, mixed
+change and operation source identity, or schema drift fails closed.
 
 The complete scratch graph receives one seal only after actor indexes and head
 indexes are dense, each actor's change sequence is contiguous, maximum
-operation counters never regress, and its operation IDs exactly cover counters
-one through the final change maximum without a gap. One canonical SHA-256
-projection covers the source and row receipts, actor and head catalogs, every
-change and operation descriptor, every dependency and successor, and every
-payload byte streamed from SQLite through a fixed 64 KiB buffer. Exact seal
-retry recomputes the projection. Same-count metadata or payload tampering,
+operation counters never regress, and the union of stored operation IDs and
+reconstructed omitted-delete IDs exactly covers counters one through the final
+change maximum without a gap. One canonical SHA-256 projection covers the
+source and row receipts, actor and head catalogs, every change, stored
+operation, and omitted-delete descriptor, every dependency and successor, and
+every payload byte streamed from SQLite through a fixed 64 KiB buffer. Exact
+seal retry recomputes the projection. Same-count metadata or payload tampering,
 counter gaps, incomplete actor intervals, and receipt drift fail closed.
+
+After graph sealing, one separate immutable receipt selects every visible
+non-increment operation whose successors are all explicit increments.
+Increment rows do not become independently visible, and their edges do not
+hide the counter value they adjust. Omitted delete identities never become
+visible value rows. Their edges, and every explicit non-increment successor,
+remove the superseded predecessor from this current set. Concurrent visible
+operations all remain present. This stage does not apply counter arithmetic,
+choose a conflict winner, order sequence elements, reconstruct objects, or
+claim a registered materialized entity. Its digest binds the exact sealed
+graph, every selected operation descriptor, and every selected payload byte.
+Exact retry recomputes both the selection and digest. A missing, extra,
+changed, or pre-seal row fails closed.
 
 The migration worker's attributed resident ceiling is 384 MiB on a 4 GiB host,
 512 MiB on an 8 GiB host, and 768 MiB on a host with 16 GiB or more. Admission
