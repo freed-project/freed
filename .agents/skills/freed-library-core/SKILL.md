@@ -299,6 +299,16 @@ the active-authority signature. A verified certificate is still not committed
 enrollment: retry identity, operation and actor conflicts, sequence allocation,
 and authority-state mutation remain one later atomic transaction.
 
+Repeat complete operation verification inside the native authoritative
+boundary. Shared TypeScript verification is useful for early rejection and
+cross-runtime parity, but it is not authority for SQLite. Rust must parse the
+original canonical bytes, load the enrolled actor tip from the authoritative
+database, reconstruct every digest and chain link, verify every signature, then
+create the sealed journal input privately. The atomic commit must recheck actor
+and causal tips after verification. Never expose a renderer command that
+accepts a preverified-looking object or a digest bundle assembled by
+JavaScript.
+
 Keep the native authoritative commit input sealed inside the verifier and
 journal module. Renderer IPC must never gain authority by sending an object
 that merely resembles a verified transaction. Commit the immutable journal,

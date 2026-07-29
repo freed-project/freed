@@ -161,15 +161,14 @@ pub(crate) fn encode_operation_digest_input(
         return Err(CanonicalEncodingError::UnregisteredDomain);
     }
     let prefix = format!("freed.library-core.v1/digest/{domain}\0");
-    let canonical_budget = maximum_bytes
-        .checked_sub(prefix.len())
-        .filter(|budget| *budget > 0)
-        .ok_or(CanonicalEncodingError::InvalidMaximumBytes)?;
-    let canonical = encode_canonical_value(value, canonical_budget)?;
-    let mut result = Vec::with_capacity(prefix.len() + canonical.len());
-    result.extend_from_slice(prefix.as_bytes());
-    result.extend_from_slice(&canonical);
-    Ok(result)
+    if maximum_bytes <= prefix.len() {
+        return Err(CanonicalEncodingError::InvalidMaximumBytes);
+    }
+    let mut writer = BoundedWriter::new(maximum_bytes)?;
+    writer.write(prefix.as_bytes())?;
+    let mut node_count = 0;
+    write_value(&mut writer, value, 0, &mut node_count)?;
+    Ok(writer.bytes)
 }
 
 pub(crate) fn encode_signature_input(
@@ -181,15 +180,14 @@ pub(crate) fn encode_signature_input(
         return Err(CanonicalEncodingError::UnregisteredDomain);
     }
     let prefix = format!("freed.library-core.v1/signature/{domain}\0");
-    let canonical_budget = maximum_bytes
-        .checked_sub(prefix.len())
-        .filter(|budget| *budget > 0)
-        .ok_or(CanonicalEncodingError::InvalidMaximumBytes)?;
-    let canonical = encode_canonical_value(value, canonical_budget)?;
-    let mut result = Vec::with_capacity(prefix.len() + canonical.len());
-    result.extend_from_slice(prefix.as_bytes());
-    result.extend_from_slice(&canonical);
-    Ok(result)
+    if maximum_bytes <= prefix.len() {
+        return Err(CanonicalEncodingError::InvalidMaximumBytes);
+    }
+    let mut writer = BoundedWriter::new(maximum_bytes)?;
+    writer.write(prefix.as_bytes())?;
+    let mut node_count = 0;
+    write_value(&mut writer, value, 0, &mut node_count)?;
+    Ok(writer.bytes)
 }
 
 pub(crate) fn encode_operation_signature_input(
@@ -464,6 +462,10 @@ pub(crate) struct DecodedCanonicalValue {
 impl DecodedCanonicalValue {
     pub(crate) fn value(&self) -> &Value {
         &self.value
+    }
+
+    pub(crate) fn into_value(self) -> Value {
+        self.value
     }
 
     pub(crate) fn canonical_bytes(&self) -> &[u8] {

@@ -13,6 +13,9 @@ use std::fmt;
 use std::path::Path;
 use std::time::Duration;
 
+#[path = "library_core_journal_operation_verifier.rs"]
+mod operation_verifier;
+
 const AUTHORITATIVE_SCHEMA_VERSION: i64 = 1;
 const AUTHORITATIVE_SCHEMA_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/authoritative-schema-v1.sql");
@@ -36,6 +39,7 @@ enum JournalError {
     StaleActorTip { actor_id: String },
     TransactionReplayConflict { transaction_id: String },
     UnknownCausalTip { operation_id: String },
+    OperationVerification { index: usize, field: &'static str },
 }
 
 impl From<rusqlite::Error> for JournalError {
@@ -74,6 +78,12 @@ impl fmt::Display for JournalError {
                 write!(
                     formatter,
                     "operation has an unknown causal tip: {operation_id}"
+                )
+            }
+            Self::OperationVerification { index, field } => {
+                write!(
+                    formatter,
+                    "operation envelope {index} failed verification at {field}"
                 )
             }
         }
@@ -475,6 +485,63 @@ impl LibraryCoreJournal {
                 },
             )
             .optional()
+    }
+
+    fn actor_state(
+        &self,
+        library_id: &str,
+        epoch_id: &str,
+        actor_id: &str,
+    ) -> JournalResult<Option<ActorState>> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT libraryId, epoch, epochId, actorId, actorPublicKey, \
+                 enrollmentOperationId, enrollmentCertificateDigest,
+                 canonicalEnrollmentCertificateJson, actorChainGenesis,
+                 nextSequence, previousOperationId, previousChainDigest
+                 FROM library_core_actors
+                 WHERE libraryId = ?1 AND epochId = ?2 AND actorId = ?3;",
+                params![library_id, epoch_id, actor_id],
+                |row| {
+                    Ok(ActorState {
+                        library_id: row.get(0)?,
+                        epoch: row.get(1)?,
+                        epoch_id: row.get(2)?,
+                        actor_id: row.get(3)?,
+                        actor_public_key: row.get(4)?,
+                        enrollment_operation_id: row.get(5)?,
+                        enrollment_certificate_digest: row.get(6)?,
+                        canonical_enrollment_certificate_json: row.get(7)?,
+                        actor_chain_genesis: row.get(8)?,
+                        next_sequence: row.get(9)?,
+                        previous_operation_id: row.get(10)?,
+                        previous_chain_digest: row.get(11)?,
+                    })
+                },
+            )
+            .optional()?)
+    }
+
+    fn verify_read_transaction(
+        &self,
+        canonical_envelopes: &[Vec<u8>],
+    ) -> JournalResult<VerifiedReadTransaction> {
+        operation_verifier::verify_read_transaction(canonical_envelopes, |identity| {
+            self.actor_state(&identity.library_id, &identity.epoch_id, &identity.actor_id)?
+                .ok_or_else(|| JournalError::ActorNotFound {
+                    actor_id: identity.actor_id.clone(),
+                })
+        })
+    }
+
+    fn verify_and_commit_read_transaction(
+        &mut self,
+        canonical_envelopes: &[Vec<u8>],
+        committed_at_ms: i64,
+    ) -> JournalResult<TransactionReceipt> {
+        let verified = self.verify_read_transaction(canonical_envelopes)?;
+        self.commit_read_transaction(&verified, committed_at_ms)
     }
 
     fn enroll_actor(&mut self, enrollment: &VerifiedActorEnrollment) -> JournalResult<ActorState> {
