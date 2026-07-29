@@ -6,11 +6,21 @@
  */
 
 declare const lowercaseHex64Brand: unique symbol;
+declare const ed25519PublicKeyHexBrand: unique symbol;
+declare const ed25519SignatureHexBrand: unique symbol;
 declare const entityIdBrand: unique symbol;
 declare const operationInstanceIdBrand: unique symbol;
 
 export type LibraryCoreLowercaseHex64 = string & {
   readonly [lowercaseHex64Brand]: true;
+};
+
+export type LibraryCoreEd25519PublicKeyHex = string & {
+  readonly [ed25519PublicKeyHexBrand]: true;
+};
+
+export type LibraryCoreEd25519SignatureHex = string & {
+  readonly [ed25519SignatureHexBrand]: true;
 };
 
 export type LibraryCoreEntityId = string & {
@@ -31,12 +41,25 @@ export interface LibraryCoreEntityIdCodec {
 }
 
 const LOWERCASE_HEX_64 = /^[0-9a-f]{64}$/;
+const LOWERCASE_HEX_128 = /^[0-9a-f]{128}$/;
 const OPERATION_INSTANCE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 export function isLibraryCoreLowercaseHex64(
   value: unknown,
 ): value is LibraryCoreLowercaseHex64 {
   return typeof value === "string" && LOWERCASE_HEX_64.test(value);
+}
+
+export function isLibraryCoreEd25519PublicKeyHex(
+  value: unknown,
+): value is LibraryCoreEd25519PublicKeyHex {
+  return typeof value === "string" && LOWERCASE_HEX_64.test(value);
+}
+
+export function isLibraryCoreEd25519SignatureHex(
+  value: unknown,
+): value is LibraryCoreEd25519SignatureHex {
+  return typeof value === "string" && LOWERCASE_HEX_128.test(value);
 }
 
 /**

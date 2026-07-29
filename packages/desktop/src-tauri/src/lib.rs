@@ -8,6 +8,8 @@
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_canonical;
 #[cfg_attr(not(test), allow(dead_code))]
+mod library_core_ed25519;
+#[cfg_attr(not(test), allow(dead_code))]
 mod shadow_store;
 mod youtube;
 

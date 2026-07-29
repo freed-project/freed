@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   LIBRARY_CORE_ENTITY_ID_CODEC_V1,
   LIBRARY_CORE_MAX_ENTITY_ID_UTF8_BYTES,
+  isLibraryCoreEd25519PublicKeyHex,
+  isLibraryCoreEd25519SignatureHex,
   isLibraryCoreLowercaseHex64,
   isLibraryCoreNonnegativeSafeInteger,
   isLibraryCoreOperationInstanceId,
@@ -23,6 +25,31 @@ describe("Library Core protocol scalar codecs", () => {
       new Uint8Array(64),
     ]) {
       expect(isLibraryCoreLowercaseHex64(invalid)).toBe(false);
+    }
+  });
+
+  it("closes the exact lowercase Ed25519 public-key and signature encodings", () => {
+    expect(isLibraryCoreEd25519PublicKeyHex("ab".repeat(32))).toBe(true);
+    expect(isLibraryCoreEd25519SignatureHex("cd".repeat(64))).toBe(true);
+
+    for (const invalid of [
+      "",
+      "a".repeat(63),
+      "A".repeat(64),
+      "g".repeat(64),
+      new Uint8Array(32),
+    ]) {
+      expect(isLibraryCoreEd25519PublicKeyHex(invalid)).toBe(false);
+    }
+    for (const invalid of [
+      "",
+      "a".repeat(127),
+      "a".repeat(129),
+      "A".repeat(128),
+      "g".repeat(128),
+      new Uint8Array(64),
+    ]) {
+      expect(isLibraryCoreEd25519SignatureHex(invalid)).toBe(false);
     }
   });
 

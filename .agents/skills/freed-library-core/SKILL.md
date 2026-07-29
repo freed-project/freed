@@ -232,6 +232,38 @@ retains the earliest valid assignment under duplicate, reordered, or
 concurrent delivery. It never authorizes or schedules a provider-visible seen
 action.
 
+Close transaction-member construction one operation at a time. Snapshot a
+closed input, enforce the registered payload and entity codecs, bound the
+causal frontier before allocation, and derive payload and member digests only
+through registered domains. A member-body schema omits chain, transaction, and
+signature fields exactly where the protocol says to omit them. It does not
+claim transaction completeness, actor-chain validity, signature verification,
+materialization, journaling, or runtime authority.
+
+Aggregate a transaction only from closed member constructions. Bound count and
+canonical member bytes before returning it. Require one library, epoch, actor,
+transaction ID, contiguous member indexes, contiguous actor sequences, unique
+operation IDs, and exact previous-operation links. Derive the transaction
+digest before actor-chain digests and derive signing-body digests only after
+both are fixed. Unsigned construction grants no persistence or authority.
+
+Finalize operation envelopes only from a provenance-branded assembled
+transaction. Close public keys as 32-byte lowercase hexadecimal Ed25519 values
+and signatures as 64-byte lowercase hexadecimal Ed25519 values. Preflight the
+complete canonical envelope budget before invoking the signer, sign only the
+domain-separated signing-body digest input, and return no transaction unless
+every signature and envelope digest succeeds. Finalization remains construction
+only until strict inbound verification, actor enrollment, journaling,
+materialization, and replication land independently.
+
+Prove Ed25519 verification across browser and native runtimes with the same
+public vector before an envelope verifier can become authoritative. Snapshot
+the bounded message bytes before the first asynchronous platform call. Reuse an
+audited cryptographic implementation already present in the runtime when it
+supports strict Ed25519 verification. Do not add a second elliptic-curve stack,
+write custom cryptography, generate keys, or infer actor enrollment from a
+syntactically valid public key.
+
 ## Preserve the invariants
 
 1. Keep exactly one active writer epoch. Advance it only with a signed immutable
