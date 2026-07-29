@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 const HASH_BUFFER_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug)]
-enum ProjectionGenerationReaderError {
+pub(super) enum ProjectionGenerationReaderError {
     Registry(ProjectionGenerationRegistryError),
     Store(ShadowStoreError),
     Io(std::io::Error),
@@ -75,9 +75,9 @@ impl fmt::Display for ProjectionGenerationReaderError {
 
 impl std::error::Error for ProjectionGenerationReaderError {}
 
-type ReaderResult<T> = Result<T, ProjectionGenerationReaderError>;
+pub(super) type ReaderResult<T> = Result<T, ProjectionGenerationReaderError>;
 
-struct ProjectionGenerationReader {
+pub(super) struct ProjectionGenerationReader {
     selection: ProjectionGenerationReaderSelection,
     store: ShadowStore,
     // Pin the exact inode for the lifetime of the SQLite connection. A later
@@ -88,7 +88,7 @@ struct ProjectionGenerationReader {
 }
 
 impl ProjectionGenerationReader {
-    fn open(registry_path: &Path, generation_root: &Path) -> ReaderResult<Self> {
+    pub(super) fn open(registry_path: &Path, generation_root: &Path) -> ReaderResult<Self> {
         if !registry_path.is_absolute() || !generation_root.is_absolute() {
             return Err(ProjectionGenerationReaderError::InvalidRoot);
         }
@@ -164,15 +164,19 @@ impl ProjectionGenerationReader {
         })
     }
 
-    fn generation_id(&self) -> &str {
+    pub(super) fn generation_id(&self) -> &str {
         &self.selection.generation.generation_id
     }
 
-    fn transition_sequence(&self) -> i64 {
+    pub(super) fn transition_sequence(&self) -> i64 {
         self.selection.transition_sequence
     }
 
-    fn feed_page(&self, cursor: Option<&PageCursor>, limit: u32) -> ReaderResult<FeedPage> {
+    pub(super) fn feed_page(
+        &self,
+        cursor: Option<&PageCursor>,
+        limit: u32,
+    ) -> ReaderResult<FeedPage> {
         self.store.feed_page(cursor, limit).map_err(Into::into)
     }
 }

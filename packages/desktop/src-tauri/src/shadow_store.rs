@@ -262,26 +262,26 @@ const SORT_AT_ABSENT: i64 = 0;
 /// One lossless projected row. Field order matches `SHADOW_COLUMNS`.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct FeedItemRow {
-    pub global_id: String,
-    pub platform: Option<String>,
-    pub content_type: Option<String>,
-    pub published_at: Option<i64>,
-    pub captured_at: Option<i64>,
-    pub author_id: Option<String>,
-    pub author_display_name: Option<String>,
-    pub author_handle: Option<String>,
-    pub source_url: Option<String>,
-    pub hidden: Option<i64>,
-    pub saved: Option<i64>,
-    pub archived: Option<i64>,
-    pub read_at: Option<i64>,
-    pub archived_at: Option<i64>,
-    pub liked_at: Option<i64>,
-    pub tags: Option<String>,
-    pub content_blob: Option<String>,
-    pub preserved_blob: Option<String>,
-    pub rest: String,
+pub(super) struct FeedItemRow {
+    pub(super) global_id: String,
+    pub(super) platform: Option<String>,
+    pub(super) content_type: Option<String>,
+    pub(super) published_at: Option<i64>,
+    pub(super) captured_at: Option<i64>,
+    pub(super) author_id: Option<String>,
+    pub(super) author_display_name: Option<String>,
+    pub(super) author_handle: Option<String>,
+    pub(super) source_url: Option<String>,
+    pub(super) hidden: Option<i64>,
+    pub(super) saved: Option<i64>,
+    pub(super) archived: Option<i64>,
+    pub(super) read_at: Option<i64>,
+    pub(super) archived_at: Option<i64>,
+    pub(super) liked_at: Option<i64>,
+    pub(super) tags: Option<String>,
+    pub(super) content_blob: Option<String>,
+    pub(super) preserved_blob: Option<String>,
+    pub(super) rest: String,
 }
 
 impl FeedItemRow {
@@ -520,19 +520,19 @@ pub(super) struct ProjectionSourceV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ProjectionRebuildState {
-    rebuild_id: String,
-    source: ProjectionSourceV1,
-    total_rows: usize,
-    next_batch_index: i64,
-    projection_revision: i64,
-    projected_rows: usize,
-    complete: bool,
+    pub(super) rebuild_id: String,
+    pub(super) source: ProjectionSourceV1,
+    pub(super) total_rows: usize,
+    pub(super) next_batch_index: i64,
+    pub(super) projection_revision: i64,
+    pub(super) projected_rows: usize,
+    pub(super) complete: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ProjectionRebuildCommit {
+pub(super) struct ProjectionRebuildCommit {
     projection: ProjectionCommit,
-    state: ProjectionRebuildState,
+    pub(super) state: ProjectionRebuildState,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1495,7 +1495,7 @@ impl ShadowStore {
     /// duplicating rows. This remains a derived-store receipt. It does not
     /// authorize Library Core migration or cutover.
     #[allow(clippy::too_many_arguments)]
-    fn apply_projection_rebuild_batch(
+    pub(super) fn apply_projection_rebuild_batch(
         &mut self,
         rebuild_id: &str,
         source: &ProjectionSourceV1,
