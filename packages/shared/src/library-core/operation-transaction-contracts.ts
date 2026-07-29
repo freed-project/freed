@@ -49,12 +49,19 @@ export interface LibraryCoreAssembledTransactionV1 {
 export function isLibraryCoreAssembledTransactionV1(
   value: unknown,
 ): value is LibraryCoreAssembledTransactionV1 {
+  if (typeof value !== "object" || value === null || !Object.isFrozen(value)) {
+    return false;
+  }
+  const brand = Object.getOwnPropertyDescriptor(
+    value,
+    ASSEMBLED_LIBRARY_CORE_TRANSACTION,
+  );
   return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as Record<PropertyKey, unknown>)[
-      ASSEMBLED_LIBRARY_CORE_TRANSACTION
-    ] === true
+    brand !== undefined &&
+    !brand.enumerable &&
+    !brand.configurable &&
+    !brand.writable &&
+    brand.value === true
   );
 }
 

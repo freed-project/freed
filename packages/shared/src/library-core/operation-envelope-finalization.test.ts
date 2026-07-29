@@ -111,6 +111,11 @@ describe("Library Core operation envelope finalization", () => {
       assembled().canonical_member_bytes,
     );
     expect(isLibraryCoreFinalizedTransactionV1(result)).toBe(true);
+    expect(
+      isLibraryCoreFinalizedTransactionV1(
+        Object.freeze(Object.create(result)),
+      ),
+    ).toBe(false);
     expect(Object.isFrozen(result)).toBe(true);
     expect(Object.isFrozen(result.members)).toBe(true);
     expect(Object.isFrozen(result.members[0])).toBe(true);
@@ -120,14 +125,19 @@ describe("Library Core operation envelope finalization", () => {
   it("rejects an assembled lookalike before signing", async () => {
     const genuine = assembled(1);
     const signOperation = vi.fn(async () => HEX.signature);
-    await expect(
-      finalizeLibraryCoreTransactionV1(Object.freeze({ ...genuine }), {
-        signOperation,
-        digest(domain, value) {
-          return digest(domain, value);
-        },
-      }),
-    ).rejects.toThrow(/closed assembly contract/);
+    for (const forged of [
+      Object.freeze({ ...genuine }),
+      Object.freeze(Object.create(genuine)),
+    ]) {
+      await expect(
+        finalizeLibraryCoreTransactionV1(forged, {
+          signOperation,
+          digest(domain, value) {
+            return digest(domain, value);
+          },
+        }),
+      ).rejects.toThrow(/closed assembly contract/);
+    }
     expect(signOperation).not.toHaveBeenCalled();
   });
 
