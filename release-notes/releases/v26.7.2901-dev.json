@@ -1,0 +1,120 @@
+{
+  "tag": "v26.7.2901-dev",
+  "version": "26.7.2901-dev",
+  "channel": "dev",
+  "dayKey": "26.7.29",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-07-29T21:31:35.242Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.7.2800-dev",
+    "previousPublishedDayTag": "v26.7.2800-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "792cc907cae274069746467a2b5b34390686d222",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.7.2800-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "7a2dbe6df63762fe7c0b83fc903dafc94ef16c30",
+        "toInclusiveProductCommitSha": "792cc907cae274069746467a2b5b34390686d222"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:96a22914b0b629c540ede98c41fb586b9695f139324fe033faae374dc83b3ccb",
+        "currentDigest": "sha256:96a22914b0b629c540ede98c41fb586b9695f139324fe033faae374dc83b3ccb"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:1912a21502eb4f224a4fae502507c1d8f77c3e3d6263d27700584067e12e383a",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.7.2901-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.7.2901-dev"
+    ],
+    "prNumbers": [
+      1212,
+      1216,
+      1218,
+      1219,
+      1220,
+      1221,
+      1222,
+      1223,
+      1224,
+      1225,
+      1227,
+      1228,
+      1229,
+      1231,
+      1232,
+      1233,
+      1236,
+      1238,
+      1239
+    ],
+    "commitSubjects": [
+      "fix: align Friends graph layout contract (#1239)",
+      "chore: prepare v26.7.2900-dev (#1238)",
+      "fix: resolve GitHub CLI outside shell PATH (#1236)",
+      "feat: add dormant native Library Core journal (#1229)",
+      "fix: isolate lease archive runtime in CI tests (#1233)",
+      "feat: add Starship and Dark Star themes",
+      "fix: make doctor archive tests hermetic (#1232)",
+      "fix: align preview fade with sidebar (#1231)",
+      "feat: enroll Library Core actors (#1228)",
+      "feat: verify Library Core operation transactions (#1227)",
+      "feat: close Library Core operation envelopes (#1225)",
+      "feat: materialize Library Core read assignments (#1224)",
+      "feat: add canonical Library Core protocol codecs (#1223)",
+      "feat: add crash-safe SQLite projection receipts (#1222)",
+      "feat(storage): add dormant native SQLite projection kernel (#1221)",
+      "fix(sync): fence Automerge saves on an exact storage revision (#1220)",
+      "feat: resolve the feed page sort contract on an indexable key (#1219)",
+      "feat: close legacy epoch bootstrap contract (#1218)",
+      "feat: add dormant Library Core boundary census (#1212)",
+      "fix: make Friends performance gate deterministic (#1216)"
+    ]
+  },
+  "release": {
+    "deck": "Dormant native Library Core journal, starship and Dark Star themes, and verify Library Core operation transactions",
+    "features": [
+      "Dormant native Library Core journal",
+      "Starship and Dark Star themes",
+      "Verify Library Core operation transactions"
+    ],
+    "fixes": [
+      "Align Friends graph layout contract",
+      "GitHub CLI outside shell PATH resolved",
+      "Isolate lease archive runtime in CI tests",
+      "Make doctor archive tests hermetic",
+      "Align feed fade boundaries",
+      "Fence Automerge saves on an exact storage revision",
+      "Make Friends performance gate deterministic"
+    ],
+    "followUps": [
+      "Prepare v26.7.2900-dev",
+      "Enroll Library Core actors",
+      "Materialize Library Core read assignments",
+      "Canonical Library Core protocol codecs",
+      "Crash-safe SQLite projection receipts",
+      "Dormant native SQLite projection kernel",
+      "Resolve the feed page sort contract on an indexable key",
+      "Close legacy epoch bootstrap contract"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.2901-dev\n\nDormant native Library Core journal, starship and Dark Star themes, and verify Library Core operation transactions\n\n### Features\n\n- Dormant native Library Core journal\n- Starship and Dark Star themes\n- Verify Library Core operation transactions\n\n### Fixes\n\n- Align Friends graph layout contract\n- GitHub CLI outside shell PATH resolved\n- Isolate lease archive runtime in CI tests\n- Make doctor archive tests hermetic\n- Align feed fade boundaries\n- Fence Automerge saves on an exact storage revision\n- Make Friends performance gate deterministic\n\n### Follow-ups\n\n- Prepare v26.7.2900-dev\n- Enroll Library Core actors\n- Materialize Library Core read assignments\n- Canonical Library Core protocol codecs\n- Crash-safe SQLite projection receipts\n- Dormant native SQLite projection kernel\n- Resolve the feed page sort contract on an indexable key\n- Close legacy epoch bootstrap contract\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
