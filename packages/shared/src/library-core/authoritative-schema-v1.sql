@@ -33,6 +33,7 @@ CREATE TABLE library_core_authority_epochs (
   ),
   PRIMARY KEY (libraryId, epochId),
   UNIQUE (libraryId, epoch),
+  UNIQUE (libraryId, epoch, epochId),
   UNIQUE (libraryId, transitionCertificateDigest),
   UNIQUE (libraryId, epoch, epochId, transitionCertificateDigest),
   CHECK (length(libraryId) = 64 AND libraryId NOT GLOB '*[^0-9a-f]*'),
@@ -103,7 +104,10 @@ CREATE TABLE library_core_actors (
   previousChainDigest         TEXT    NOT NULL,
   enrolledAtMs                INTEGER NOT NULL CHECK (enrolledAtMs BETWEEN 0 AND 9007199254740991),
   PRIMARY KEY (libraryId, epochId, actorId),
+  UNIQUE (libraryId, epoch, epochId, actorId),
   UNIQUE (libraryId, epochId, enrollmentCertificateDigest),
+  FOREIGN KEY (libraryId, epoch, epochId)
+    REFERENCES library_core_authority_epochs (libraryId, epoch, epochId),
   CHECK (length(libraryId) = 64 AND libraryId NOT GLOB '*[^0-9a-f]*'),
   CHECK (length(epochId) = 64 AND epochId NOT GLOB '*[^0-9a-f]*'),
   CHECK (length(actorId) = 64 AND actorId NOT GLOB '*[^0-9a-f]*'),
@@ -170,8 +174,8 @@ CREATE TABLE library_core_transactions (
     committedRevision = previousRevision + 1
   ),
   committedAtMs               INTEGER NOT NULL CHECK (committedAtMs BETWEEN 0 AND 9007199254740991),
-  FOREIGN KEY (libraryId, epochId, actorId)
-    REFERENCES library_core_actors (libraryId, epochId, actorId),
+  FOREIGN KEY (libraryId, epoch, epochId, actorId)
+    REFERENCES library_core_actors (libraryId, epoch, epochId, actorId),
   CHECK (
     length(transactionDigest) = 64
     AND transactionDigest NOT GLOB '*[^0-9a-f]*'

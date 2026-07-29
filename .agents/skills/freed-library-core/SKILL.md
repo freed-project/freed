@@ -316,6 +316,10 @@ Store immutable accepted authority epochs separately from the one active
 authority pointer. Enrollment and ordinary operation commits must recheck that
 pointer after beginning their SQLite write transaction. Verification completed
 before an epoch change never authorizes a write after the change.
+An exact retry of an enrollment that already committed is not a new authority
+write and must still return its existing actor state after a later epoch
+advance. New enrollment under an inactive epoch must fail closed. Encode the
+epoch relationship in SQLite foreign keys as well as native admission code.
 
 Keep the native authoritative commit input sealed inside the verifier and
 journal module. Renderer IPC must never gain authority by sending an object

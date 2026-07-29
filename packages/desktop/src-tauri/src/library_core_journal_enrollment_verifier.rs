@@ -588,7 +588,7 @@ mod tests {
             encode_canonical_value(&value, MAX_TRANSACTION_ENVELOPE_BYTES).expect("tamper");
 
         assert!(matches!(
-            journal.verify_and_enroll_actor(&tampered, &authority),
+            journal.verify_and_enroll_actor(&tampered, &authority.library_id),
             Err(JournalError::EnrollmentVerification {
                 field: "authority_signature"
             })
@@ -646,6 +646,52 @@ mod tests {
             )
             .expect("row counts");
         assert_eq!(rows, (0, 0));
+    }
+
+    #[test]
+    fn committed_enrollment_retry_survives_authority_epoch_advance() {
+        let actor_key = Ed25519KeyPair::from_seed_unchecked(&[18_u8; 32]).expect("actor key");
+        let authority_key =
+            Ed25519KeyPair::from_seed_unchecked(&[19_u8; 32]).expect("authority key");
+        let accepted = authority(&authority_key);
+        let certificate = certificate(&actor_key, &authority_key, &accepted);
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_authority(&mut journal, &accepted);
+        let verified = journal
+            .verify_actor_enrollment(&certificate, &accepted)
+            .expect("verify enrollment");
+        let first = journal
+            .enroll_actor_under_authority(&verified, &accepted)
+            .expect("enroll actor");
+
+        let mut next = accepted.clone();
+        next.epoch = 2;
+        next.epoch_id = "9".repeat(64);
+        journal
+            .install_authority_epoch(&VerifiedAuthorityEpoch {
+                authority: next,
+                transition_certificate_digest: "7".repeat(64),
+                canonical_transition_certificate_json: "{\"transition\":\"next-epoch-fixture\"}"
+                    .to_owned(),
+                accepted_at_ms: 1_100,
+            })
+            .expect("advance authority epoch");
+
+        let retry = journal
+            .enroll_actor_under_authority(&verified, &accepted)
+            .expect("retry committed enrollment");
+        assert_eq!(retry, first);
+        let rows: (i64, i64) = journal
+            .connection
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM library_core_actors),
+                   (SELECT COUNT(*) FROM library_core_actor_enrollment_outbox);",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("row counts");
+        assert_eq!(rows, (1, 1));
     }
 
     #[test]

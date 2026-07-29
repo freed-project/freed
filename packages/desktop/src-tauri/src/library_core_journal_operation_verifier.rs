@@ -754,6 +754,13 @@ mod tests {
             &[("rss:item:stale-fork", 902)],
         );
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        journal
+            .install_fixture_authority(
+                &enrollment.library_id,
+                enrollment.epoch,
+                &enrollment.epoch_id,
+            )
+            .expect("install authority");
         journal.enroll_actor(&enrollment).expect("enroll actor");
         journal
             .verify_and_commit_read_transaction(&first, 1_500)

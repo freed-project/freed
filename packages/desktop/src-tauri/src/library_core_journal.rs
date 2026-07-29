@@ -597,15 +597,7 @@ impl LibraryCoreJournal {
             &enrollment.epoch_id,
             &enrollment.actor_id,
         )? {
-            if existing.epoch == enrollment.epoch
-                && existing.actor_public_key == enrollment.actor_public_key
-                && existing.enrollment_operation_id == enrollment.enrollment_operation_id
-                && existing.enrollment_certificate_digest
-                    == enrollment.enrollment_certificate_digest
-                && existing.canonical_enrollment_certificate_json
-                    == enrollment.canonical_enrollment_certificate_json
-                && existing.actor_chain_genesis == enrollment.actor_chain_genesis
-            {
+            if Self::actor_matches_enrollment(&existing, enrollment) {
                 return Ok(existing);
             }
             return Err(JournalError::ActorEnrollmentConflict {
@@ -656,6 +648,19 @@ impl LibraryCoreJournal {
         Ok(state)
     }
 
+    fn actor_matches_enrollment(
+        existing: &ActorState,
+        enrollment: &VerifiedActorEnrollment,
+    ) -> bool {
+        existing.epoch == enrollment.epoch
+            && existing.actor_public_key == enrollment.actor_public_key
+            && existing.enrollment_operation_id == enrollment.enrollment_operation_id
+            && existing.enrollment_certificate_digest == enrollment.enrollment_certificate_digest
+            && existing.canonical_enrollment_certificate_json
+                == enrollment.canonical_enrollment_certificate_json
+            && existing.actor_chain_genesis == enrollment.actor_chain_genesis
+    }
+
     fn enroll_actor_under_authority(
         &mut self,
         enrollment: &VerifiedActorEnrollment,
@@ -673,6 +678,20 @@ impl LibraryCoreJournal {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(existing) = Self::actor_state_in(
+            &transaction,
+            &enrollment.library_id,
+            &enrollment.epoch_id,
+            &enrollment.actor_id,
+        )? {
+            if Self::actor_matches_enrollment(&existing, enrollment) {
+                transaction.commit()?;
+                return Ok(existing);
+            }
+            return Err(JournalError::ActorEnrollmentConflict {
+                actor_id: enrollment.actor_id.clone(),
+            });
+        }
         authority::require_active_authority(&transaction, expected_authority)?;
         let state = Self::enroll_actor_in(&transaction, enrollment)?;
         transaction.commit()?;
@@ -1373,6 +1392,7 @@ mod tests {
         );
         let receipt = {
             let mut journal = LibraryCoreJournal::open(&path).expect("open journal");
+            install_actor_authority(&mut journal);
             journal.enroll_actor(&enrollment).expect("enroll actor");
             journal
                 .commit_read_transaction(&verified, 1_100)
@@ -1525,6 +1545,7 @@ mod tests {
     #[test]
     fn failure_after_actor_tip_update_rolls_back_every_authoritative_write() {
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_actor_authority(&mut journal);
         let enrollment = actor();
         journal.enroll_actor(&enrollment).expect("enroll actor");
         journal
@@ -1717,6 +1738,7 @@ mod tests {
     #[test]
     fn actor_sequence_restarts_are_scoped_to_the_authority_epoch() {
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_actor_authority(&mut journal);
         let first_enrollment = actor();
         journal
             .enroll_actor(&first_enrollment)
@@ -1743,6 +1765,13 @@ mod tests {
             enrolled_at_ms: 1_200,
             ..first_enrollment
         };
+        journal
+            .install_fixture_authority(
+                &second_enrollment.library_id,
+                second_enrollment.epoch,
+                &second_enrollment.epoch_id,
+            )
+            .expect("install second authority epoch");
         journal
             .enroll_actor(&second_enrollment)
             .expect("enroll same actor in second epoch");
