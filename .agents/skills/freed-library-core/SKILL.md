@@ -171,6 +171,14 @@ file may have identity zero before first initialization. Any other preexisting
 identity, or any missing or changed identity on a versioned file, fails closed.
 The header marker proves database kind only. It does not prove page integrity.
 
+Enable defensive mode, disable trusted-schema behavior, and enable
+`cell_size_check` on every authoritative SQLite connection. This blocks
+dangerous database configuration changes, prevents schema text from invoking
+privileged application functions, and checks B-tree cell structure when each
+page is read. It adds bounded incremental corruption detection without a full
+startup walk. It does not validate unread pages, cross-page relationships,
+application invariants, or external blobs.
+
 Apply projection upserts, deletions, and the monotone projection revision in
 one database transaction. A bounded page or count binds one revision. A later
 page using a cursor from an older revision fails closed instead of walking

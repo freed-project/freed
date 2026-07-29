@@ -6,6 +6,7 @@
 //! module so renderer IPC cannot manufacture authority by matching a Rust
 //! struct's shape.
 
+use rusqlite::config::DbConfig;
 use rusqlite::{
     params, Connection, OptionalExtension, Result as SqlResult, Transaction, TransactionBehavior,
 };
@@ -535,6 +536,10 @@ impl LibraryCoreJournal {
     }
 
     fn configure(&self) -> JournalResult<()> {
+        self.connection
+            .set_db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true)?;
+        self.connection
+            .set_db_config(DbConfig::SQLITE_DBCONFIG_TRUSTED_SCHEMA, false)?;
         self.connection.pragma_update(None, "journal_mode", "WAL")?;
         // Unlike the rebuildable shadow projection, this log is authoritative.
         // A successful commit must survive process loss and power loss.
@@ -545,6 +550,8 @@ impl LibraryCoreJournal {
             .pragma_update(None, "cache_size", BASE_CACHE_KIB)?;
         self.connection.pragma_update(None, "mmap_size", 0)?;
         self.connection.pragma_update(None, "temp_store", "FILE")?;
+        self.connection
+            .pragma_update(None, "cell_size_check", "ON")?;
         Ok(())
     }
 
@@ -1646,11 +1653,26 @@ mod tests {
             .connection
             .pragma_query_value(None, "application_id", |row| row.get(0))
             .expect("application ID");
+        let cell_size_check: i64 = journal
+            .connection
+            .pragma_query_value(None, "cell_size_check", |row| row.get(0))
+            .expect("cell-size check");
+        let defensive = journal
+            .connection
+            .db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE)
+            .expect("defensive mode");
+        let trusted_schema = journal
+            .connection
+            .db_config(DbConfig::SQLITE_DBCONFIG_TRUSTED_SCHEMA)
+            .expect("trusted schema");
         assert_eq!(journal_mode, "wal");
         assert_eq!(synchronous, 2);
         assert_eq!(foreign_keys, 1);
         assert_eq!(version, AUTHORITATIVE_SCHEMA_VERSION);
         assert_eq!(application_id, AUTHORITATIVE_APPLICATION_ID);
+        assert_eq!(cell_size_check, 1);
+        assert!(defensive);
+        assert!(!trusted_schema);
     }
 
     #[test]
