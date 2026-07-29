@@ -38,7 +38,6 @@ import {
   buildSocialAccountsFromAuthorIds,
   createContactAccountFromGoogleContact,
 } from "@freed/shared/google-contacts-automation";
-import { applyThemeToDocument, persistTheme } from "../../lib/theme.js";
 import {
   applyAnimationIntensityToDocument,
   resolveAnimationIntensity,
@@ -114,7 +113,6 @@ export function AppShell({ children }: AppShellProps) {
   const removeAccount = useAppStore((s) => s.removeAccount);
   const createConnectionPersonsFromCandidates = useAppStore((s) => s.createConnectionPersonsFromCandidates);
   const isInitialized = useAppStore((s) => s.isInitialized);
-  const themeId = useAppStore((s) => s.preferences.display.themeId);
   const animationIntensity = useAppStore((s) =>
     resolveAnimationIntensity(s.preferences.display.animationIntensity),
   );
@@ -344,12 +342,6 @@ export function AppShell({ children }: AppShellProps) {
   useLayoutEffect(() => {
     applyInterfaceZoomToDocument();
   }, []);
-
-  useEffect(() => {
-    if (!isInitialized) return;
-    applyThemeToDocument(themeId);
-    persistTheme(themeId);
-  }, [isInitialized, themeId]);
 
   useEffect(() => {
     if (!isInitialized) return;

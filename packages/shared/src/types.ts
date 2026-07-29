@@ -760,7 +760,9 @@ export type ThemeId =
   | "neon"
   | "midas"
   | "ember"
-  | "scriptorium";
+  | "scriptorium"
+  | "starship"
+  | "dark-star";
 
 /**
  * Reading enhancements configuration

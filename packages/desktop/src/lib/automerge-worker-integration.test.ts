@@ -944,6 +944,7 @@ describe("real Automerge worker module", () => {
         display: {
           sidebarMode: "closed",
           themeId: "midas",
+          showEngagementCounts: true,
         },
       } as never,
     });
@@ -961,11 +962,12 @@ describe("real Automerge worker module", () => {
       throw new Error("Expected preference patch");
     }
     expect(patchPost.message.updates).toEqual({
-      display: { themeId: "midas" },
+      display: { showEngagementCounts: true },
     });
 
     const saved = A.load<FreedDoc>(storageHarness.binary!);
-    expect(saved.preferences.display.themeId).toBe("midas");
+    expect(saved.preferences.display.themeId).toBe("scriptorium");
     expect(saved.preferences.display.sidebarMode).toBeUndefined();
+    expect(saved.preferences.display.showEngagementCounts).toBe(true);
   }, 30_000);
 });

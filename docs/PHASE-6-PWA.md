@@ -23,7 +23,7 @@ Mobile companion to Freed Desktop for on-the-go reading. Timeline-focused, minim
 - **Blank-state testing escape hatch** — PWA empty states now include a secondary sample-data section below the main handoff prompt for quick local testing
 - **Archived saved-item repair control** — Archived views now surface a one-click `Unarchive Saved Content` action when legacy or imported items end up both saved and archived
 - **Safe optimistic user mutations:** Feed actions, read marks, item edits, feed renames, person edits, account edits, and synced preference changes update visible UI state immediately before Automerge worker reconciliation. Device display controls and Friends graph pins persist locally without an Automerge round trip. Concurrent startup effects share one initialization and one permanent worker subscription.
-- **Mobile chrome polish:** The PWA mobile toolbar uses balanced menu and format controls, the mobile drawer starts with search, Settings stacks compact sections, and the reader keeps fixed menus plus sane article spacing
+- **Mobile chrome polish:** The PWA mobile toolbar uses balanced menu and format controls, every top-level view keeps Theme and Zoom at the top of the far-right menu, the mobile drawer starts with search, Settings stacks compact sections, and the reader keeps fixed menus plus sane article spacing
 
 ---
 

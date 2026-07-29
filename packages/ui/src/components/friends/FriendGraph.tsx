@@ -182,6 +182,7 @@ interface GraphDiagnosticState {
 
 const BACKGROUND_STAR_COUNT = 100_000;
 const CONTROL_BASE = "btn-secondary rounded-lg px-3 py-1.5 text-xs shadow-sm";
+const CANVAS_CONTROL_BASE = `${CONTROL_BASE} theme-canvas-control`;
 const MENU_WIDTH = 264;
 const MENU_ESTIMATED_HEIGHT = 376;
 
@@ -1296,12 +1297,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         data-graph-gesture-ignore="true"
         className="absolute right-3 top-3 z-20 flex items-center gap-2 sm:right-4 sm:top-4"
       >
-        <button type="button" className={CONTROL_BASE} onClick={fitAll}>
+        <button type="button" className={CANVAS_CONTROL_BASE} onClick={fitAll}>
           Fit all
         </button>
         <button
           type="button"
-          className={`${CONTROL_BASE} inline-flex items-center gap-1.5 px-2 sm:px-3`}
+          className={`${CANVAS_CONTROL_BASE} inline-flex items-center gap-1.5 px-2 sm:px-3`}
           onClick={() => void handleCopyDiagnostics()}
           aria-label="Copy diagnostics"
           title="Copy diagnostics"

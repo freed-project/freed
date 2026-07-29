@@ -218,7 +218,6 @@ describe("synchronized write policies", () => {
         allowedPaths: { x: ["/messages"] },
       },
       display: {
-        themeId: "ember",
         showEngagementCounts: true,
         animationIntensity: "light",
         reading: {
@@ -548,6 +547,7 @@ describe("synchronized write policies", () => {
 
   it("enforces the policies at every generic Automerge mutation boundary", () => {
     let doc = createEmptyDoc();
+    const initialThemeId = doc.preferences.display.themeId;
     doc = A.change(doc, (draft) => {
       addFeedItem(draft, {
         ...makeItem(),
@@ -597,7 +597,7 @@ describe("synchronized write policies", () => {
         futureUpdateField: "drop",
       } as unknown as Partial<Account>);
       updatePreferences(draft, {
-        display: { themeId: "ember", sidebarWidth: 333, futureDisplayField: "drop" },
+        display: { themeId: "dark-star", sidebarWidth: 333, futureDisplayField: "drop" },
         futurePreferenceField: "drop",
       } as unknown as Partial<UserPreferences>);
     });
@@ -608,7 +608,7 @@ describe("synchronized write policies", () => {
     expect(doc.rssFeeds["https://example.com/feed"].title).toBe("Current");
     expect(doc.persons.person.name).toBe("Current person");
     expect(doc.accounts.account.displayName).toBe("Current account");
-    expect(doc.preferences.display.themeId).toBe("ember");
+    expect(doc.preferences.display.themeId).toBe(initialThemeId);
 
     const itemRecord = doc.feedItems["rss:item"] as unknown as Record<string, unknown>;
     const feedRecord = doc.rssFeeds["https://example.com/feed"] as unknown as Record<string, unknown>;

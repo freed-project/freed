@@ -909,7 +909,7 @@ const displayPreferencesSchema = object({
     leaf("boolean", "compatibility-only", unresolvedFutureSemantics),
   ),
   themeId: required(
-    leaf("typescript-string", "sync", unresolvedFutureSemantics),
+    leaf("typescript-string", "device-local", unresolvedFutureSemantics),
   ),
   showEngagementCounts: required(
     leaf("boolean", "sync", unresolvedFutureSemantics),

@@ -4,11 +4,13 @@ import {
   THEME_STORAGE_KEY,
   getStoredThemeId,
   resetThemePreference,
+  resetThemePreferenceForTests,
 } from "@freed/ui/lib/theme";
 
 describe("theme factory reset", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    resetThemePreferenceForTests();
     vi.restoreAllMocks();
   });
 
@@ -18,6 +20,16 @@ describe("theme factory reset", () => {
     resetThemePreference();
 
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBeNull();
+    expect(getStoredThemeId()).toBe(DEFAULT_THEME_ID);
+  });
+
+  it("does not resurrect the legacy Automerge theme after a reset", async () => {
+    const { migrateLegacyThemePreference } = await import("@freed/ui/lib/theme");
+    expect(migrateLegacyThemePreference("ember")).toBe(true);
+
+    resetThemePreference();
+
+    expect(migrateLegacyThemePreference("dark-star")).toBe(false);
     expect(getStoredThemeId()).toBe(DEFAULT_THEME_ID);
   });
 

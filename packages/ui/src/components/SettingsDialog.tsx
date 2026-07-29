@@ -38,7 +38,7 @@ import {
 } from "../lib/sample-library-seed.js";
 import {
   applyThemeToDocument,
-  persistTheme,
+  useThemePreference,
   useThemePreviewController,
 } from "../lib/theme.js";
 import { animationAwareScrollBehavior } from "../lib/animation-preferences.js";
@@ -503,15 +503,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const toggleDebug = useDebugStore((s) => s.toggle);
   const themeBlurRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollOptimizationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const themeSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingThemeIdRef = useRef<ThemeId | null>(null);
-  const pendingThemeSaveSeqRef = useRef(0);
-  const committedThemeIdRef = useRef(preferences.display.themeId);
-  const settingsShellRef = useRef<HTMLDivElement>(null);
   const settingsOverlayRef = useRef<HTMLDivElement>(null);
+  const settingsShellRef = useRef<HTMLDivElement>(null);
   const [readerOfflineCacheMode, setReaderOfflineCacheMode] = useReaderOfflineCacheMode();
   const [feedCardDensity, setFeedCardDensity] = useFeedCardDensity();
   const [interfaceZoom, setInterfaceZoom] = useInterfaceZoom();
+  const [themeId, setThemePreference] = useThemePreference();
   // Flat section list — drives scrollspy and right-pane rendering.
   // Keywords live in settings-sections.ts so Header's command palette can share them.
   const allSections: Section[] = useMemo(
@@ -607,10 +604,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [themePreviewTouchActive, setThemePreviewTouchActive] = useState(false);
   const hasCoarsePointer = useHasTouchOnlyPointer();
 
-  useEffect(() => {
-    committedThemeIdRef.current = preferences.display.themeId;
-  }, [preferences.display.themeId]);
-
   const handleDisplayChange = useCallback(
     (update: Partial<typeof display>) => {
       setDisplay((prev) => ({ ...prev, ...update }));
@@ -640,32 +633,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     setDisplay(preferences.display);
   }, [preferences.display]);
 
-  const flushPendingThemeSelection = useCallback((themeId: ThemeId, saveSeq: number) => {
-    pendingThemeIdRef.current = null;
-    void updatePreferences({ display: { themeId } } as Parameters<typeof updatePreferences>[0]).catch(() => {
-      if (pendingThemeSaveSeqRef.current !== saveSeq) {
-        return;
-      }
-
-      const committedThemeId = committedThemeIdRef.current;
-      applyThemeToDocument(committedThemeId);
-      persistTheme(committedThemeId);
-      setDisplay((prev) => ({ ...prev, themeId: committedThemeId }));
-      toast.error("Could not save settings");
-    });
-  }, [updatePreferences]);
-
-  const flushPendingThemeSelectionNow = useCallback(() => {
-    if (themeSaveTimerRef.current) {
-      clearTimeout(themeSaveTimerRef.current);
-      themeSaveTimerRef.current = null;
-    }
-    const pendingThemeId = pendingThemeIdRef.current;
-    if (!pendingThemeId) {
-      return;
-    }
-    flushPendingThemeSelection(pendingThemeId, pendingThemeSaveSeqRef.current);
-  }, [flushPendingThemeSelection]);
   useEffect(() => {
     if (open) return;
     setThemePreviewHovering(false);
@@ -680,8 +647,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       clearTimeout(scrollOptimizationTimerRef.current);
       scrollOptimizationTimerRef.current = null;
     }
-    flushPendingThemeSelectionNow();
-  }, [flushPendingThemeSelectionNow, open]);
+  }, [open]);
 
   useEffect(() => {
     return () => {
@@ -693,9 +659,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       }
       delete settingsShellRef.current?.dataset.moving;
       delete settingsOverlayRef.current?.dataset.moving;
-      flushPendingThemeSelectionNow();
     };
-  }, [flushPendingThemeSelectionNow]);
+  }, []);
 
   const activateTouchThemePreview = useCallback(() => {
     if (!hasCoarsePointer) return;
@@ -729,38 +694,20 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }, SETTINGS_SCROLL_OPTIMIZATION_RESTORE_MS);
   }, []);
 
-  const handleThemeCommit = useCallback((themeId: ThemeId) => {
+  const handleThemeCommit = useCallback((nextThemeId: ThemeId) => {
     activateTouchThemePreview();
-    setDisplay((prev) => (
-      prev.themeId === themeId
-        ? prev
-        : { ...prev, themeId }
-    ));
-    persistTheme(themeId);
-
-    pendingThemeSaveSeqRef.current += 1;
-    const saveSeq = pendingThemeSaveSeqRef.current;
-    pendingThemeIdRef.current = themeId;
-
-    if (themeSaveTimerRef.current) {
-      clearTimeout(themeSaveTimerRef.current);
+    if (!setThemePreference(nextThemeId)) {
+      applyThemeToDocument(themeId);
+      toast.error("Could not save the theme on this device");
     }
-    themeSaveTimerRef.current = setTimeout(() => {
-      themeSaveTimerRef.current = null;
-      const pendingThemeId = pendingThemeIdRef.current;
-      if (!pendingThemeId) {
-        return;
-      }
-      flushPendingThemeSelection(pendingThemeId, saveSeq);
-    }, 500);
-  }, [activateTouchThemePreview, flushPendingThemeSelection]);
+  }, [activateTouchThemePreview, setThemePreference, themeId]);
 
   const {
     revertPreview: revertThemePreview,
     previewTheme,
     commitTheme,
   } = useThemePreviewController({
-    committedThemeId: display.themeId,
+    committedThemeId: themeId,
     onCommitTheme: handleThemeCommit,
   });
 
@@ -1494,7 +1441,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         return (
           <>
             <SectionHeading label="Appearance" />
-            <div className="space-y-5">
+            <div data-testid="settings-display-scale-controls" className="space-y-5">
               <div
                 className="theme-card-soft theme-settings-theme-card rounded-2xl p-4 sm:p-5"
                 onMouseEnter={handleThemeCardMouseEnter}
@@ -1506,7 +1453,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   <p className="theme-settings-theme-card__label text-sm font-semibold text-text-primary">Theme</p>
                   <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
                     {THEME_DEFINITIONS.map((theme) => {
-                      const isActive = display.themeId === theme.id;
+                      const isActive = themeId === theme.id;
                       return (
                         <Tooltip
                           key={theme.id}
@@ -1528,36 +1475,33 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                     })}
                   </div>
                 </div>
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-text-primary">Zoom</p>
+                    <span
+                      data-testid="settings-interface-zoom-value"
+                      className="text-xs font-semibold tabular-nums text-text-muted"
+                    >
+                      {formatInterfaceZoom(interfaceZoom)}
+                    </span>
+                  </div>
+                  <InterfaceZoomSlider
+                    value={interfaceZoom}
+                    onChange={setInterfaceZoom}
+                    fullWidth
+                  />
+                </div>
               </div>
               <div
-                data-testid="settings-display-scale-controls"
                 className="theme-card-soft rounded-2xl p-4 sm:p-5"
               >
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold text-text-primary">Card density</p>
-                    <FeedCardDensitySlider
-                      value={feedCardDensity}
-                      onChange={setFeedCardDensity}
-                      fullWidth
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-text-primary">Interface zoom</p>
-                      <span
-                        data-testid="settings-interface-zoom-value"
-                        className="text-xs font-semibold tabular-nums text-text-muted"
-                      >
-                        {formatInterfaceZoom(interfaceZoom)}
-                      </span>
-                    </div>
-                    <InterfaceZoomSlider
-                      value={interfaceZoom}
-                      onChange={setInterfaceZoom}
-                      fullWidth
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-text-primary">Card density</p>
+                  <FeedCardDensitySlider
+                    value={feedCardDensity}
+                    onChange={setFeedCardDensity}
+                    fullWidth
+                  />
                 </div>
               </div>
               <SettingsToggle
