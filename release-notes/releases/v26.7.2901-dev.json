@@ -3,8 +3,11 @@
   "version": "26.7.2901-dev",
   "channel": "dev",
   "dayKey": "26.7.29",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Lead with the visible theme work.",
+    "Keep Library Core explicitly dormant."
+  ],
   "generatedAt": "2026-07-29T21:31:35.242Z",
   "model": "heuristic",
   "source": {
@@ -90,31 +93,24 @@
     ]
   },
   "release": {
-    "deck": "Dormant native Library Core journal, starship and Dark Star themes, and verify Library Core operation transactions",
+    "deck": "Adds the source-faithful Starship and Dark Star themes, polishes theme controls across Freed, and expands the dormant Library Core without activating a new storage writer",
     "features": [
-      "Dormant native Library Core journal",
-      "Starship and Dark Star themes",
-      "Verify Library Core operation transactions"
+      "Starship and Dark Star bring AubOS-inspired color, type, radius, shadow, and map treatments to every main Freed surface",
+      "Theme previews and shared Theme and Zoom controls now appear at the top of the expanded right-side menu in Unified Feed, Friends, and Map",
+      "The dormant Library Core now includes a native authoritative journal, actor enrollment, signed transaction verification, projection receipts, and bounded feed queries"
     ],
     "fixes": [
-      "Align Friends graph layout contract",
-      "GitHub CLI outside shell PATH resolved",
-      "Isolate lease archive runtime in CI tests",
-      "Make doctor archive tests hermetic",
-      "Align feed fade boundaries",
-      "Fence Automerge saves on an exact storage revision",
-      "Make Friends performance gate deterministic"
+      "Theme changes no longer bounce through the previous persisted setting before settling on the new theme",
+      "Settings blur, spacing, shadows, active tile borders, hover outlines, button fills, feed fades, and right-side panel placement now stay consistent across themes",
+      "Release and publication tools now find the GitHub CLI in non-interactive shells, with hermetic authority tests on GitHub's Linux runners",
+      "The Friends graph regression contract now preserves the intended edge-to-edge canvas while keeping floating sidebars inset",
+      "Automerge saves are fenced to an exact storage revision, and the Friends performance gate is deterministic",
+      "Feed pages now use an indexable sort key while the active Automerge writer stays unchanged"
     ],
     "followUps": [
-      "Prepare v26.7.2900-dev",
-      "Enroll Library Core actors",
-      "Materialize Library Core read assignments",
-      "Canonical Library Core protocol codecs",
-      "Crash-safe SQLite projection receipts",
-      "Dormant native SQLite projection kernel",
-      "Resolve the feed page sort contract on an indexable key",
-      "Close legacy epoch bootstrap contract"
+      "Library Core remains dormant in this build. Automerge stays the active writer, and no migration or storage epoch activates",
+      "The new themes do not change provider requests, navigation, cookies, headers, retries, or cadence"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.7.2901-dev\n\nDormant native Library Core journal, starship and Dark Star themes, and verify Library Core operation transactions\n\n### Features\n\n- Dormant native Library Core journal\n- Starship and Dark Star themes\n- Verify Library Core operation transactions\n\n### Fixes\n\n- Align Friends graph layout contract\n- GitHub CLI outside shell PATH resolved\n- Isolate lease archive runtime in CI tests\n- Make doctor archive tests hermetic\n- Align feed fade boundaries\n- Fence Automerge saves on an exact storage revision\n- Make Friends performance gate deterministic\n\n### Follow-ups\n\n- Prepare v26.7.2900-dev\n- Enroll Library Core actors\n- Materialize Library Core read assignments\n- Canonical Library Core protocol codecs\n- Crash-safe SQLite projection receipts\n- Dormant native SQLite projection kernel\n- Resolve the feed page sort contract on an indexable key\n- Close legacy epoch bootstrap contract\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.2901-dev\n\nAdds the source-faithful Starship and Dark Star themes, polishes theme controls across Freed, and expands the dormant Library Core without activating a new storage writer\n\n### Features\n\n- Starship and Dark Star bring AubOS-inspired color, type, radius, shadow, and map treatments to every main Freed surface\n- Theme previews and shared Theme and Zoom controls now appear at the top of the expanded right-side menu in Unified Feed, Friends, and Map\n- The dormant Library Core now includes a native authoritative journal, actor enrollment, signed transaction verification, projection receipts, and bounded feed queries\n\n### Fixes\n\n- Theme changes no longer bounce through the previous persisted setting before settling on the new theme\n- Settings blur, spacing, shadows, active tile borders, hover outlines, button fills, feed fades, and right-side panel placement now stay consistent across themes\n- Release and publication tools now find the GitHub CLI in non-interactive shells, with hermetic authority tests on GitHub's Linux runners\n- The Friends graph regression contract now preserves the intended edge-to-edge canvas while keeping floating sidebars inset\n- Automerge saves are fenced to an exact storage revision, and the Friends performance gate is deterministic\n- Feed pages now use an indexable sort key while the active Automerge writer stays unchanged\n\n### Known limits\n\n- Library Core remains dormant in this build. Automerge stays the active writer, and no migration or storage epoch activates\n- The new themes do not change provider requests, navigation, cookies, headers, retries, or cadence\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
