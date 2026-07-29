@@ -335,6 +335,11 @@ projection revision, and the applicable enrollment or operation replication
 outbox in one immediate `synchronous=FULL` SQLite transaction.
 Outbox rows reference the immutable canonical journal row by primary key. Do
 not copy canonical operation or enrollment bytes into a second hot table.
+Read pending outbox entries through bounded keyset pages with both row and byte
+ceilings. Order from indexed outbox or ingest keys and prove the query plan
+does not build a temporary sort. Return canonical payloads only by joining the
+single immutable journal or enrollment row. A dormant page reader grants no
+network, acknowledgment, deletion, or runtime replication authority.
 Scope actor-sequence uniqueness and compare-and-swap state to the exact
 library, epoch ID, and actor. Actor sequence restarts at one after an epoch
 transition even when actor identity remains stable.

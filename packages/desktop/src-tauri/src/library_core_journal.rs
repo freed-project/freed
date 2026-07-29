@@ -31,6 +31,36 @@ const MAX_CAUSAL_TIPS_PER_OPERATION: usize = 4_096;
 const MAX_ENTITY_ID_BYTES: usize = 4_096;
 const MAX_OPERATION_ID_BYTES: usize = 128;
 const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
+const MAX_OUTBOX_PAGE_ENTRIES: usize = 256;
+const MAX_OUTBOX_PAGE_BYTES: usize = 4_194_304;
+const OPERATION_OUTBOX_PAGE_SQL: &str = "
+    SELECT operation.operationId, outbox.ingestSequence,
+           outbox.enqueuedAtMs,
+           length(CAST(operation.canonicalEnvelopeJson AS BLOB)),
+           operation.canonicalEnvelopeJson
+    FROM library_core_replication_outbox AS outbox
+    JOIN library_core_operations AS operation
+      ON operation.operationId = outbox.operationId
+     AND operation.ingestSequence = outbox.ingestSequence
+    WHERE outbox.acknowledgedAtMs IS NULL
+      AND outbox.ingestSequence > ?1
+    ORDER BY outbox.ingestSequence
+    LIMIT ?2;";
+const ENROLLMENT_OUTBOX_PAGE_SQL: &str = "
+    SELECT actor.enrollmentOperationId, outbox.enqueuedAtMs,
+           length(CAST(actor.canonicalEnrollmentCertificateJson AS BLOB)),
+           actor.canonicalEnrollmentCertificateJson
+    FROM library_core_actors AS actor
+    JOIN library_core_actor_enrollment_outbox AS outbox
+      ON outbox.enrollmentOperationId = actor.enrollmentOperationId
+     AND outbox.acknowledgedAtMs IS NULL
+    WHERE outbox.enqueuedAtMs > ?1
+       OR (
+         outbox.enqueuedAtMs = ?1
+         AND outbox.enrollmentOperationId > ?2 COLLATE BINARY
+       )
+    ORDER BY outbox.enqueuedAtMs, outbox.enrollmentOperationId COLLATE BINARY
+    LIMIT ?3;";
 
 #[derive(Debug)]
 enum JournalError {
@@ -228,6 +258,41 @@ struct ReadState {
     source_actor_id: String,
     source_sequence: i64,
     source_chain_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct OperationOutboxEntry {
+    operation_id: String,
+    ingest_sequence: i64,
+    enqueued_at_ms: i64,
+    canonical_envelope_json: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct OperationOutboxPage {
+    entries: Vec<OperationOutboxEntry>,
+    next_after_ingest_sequence: Option<i64>,
+    has_more: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EnrollmentOutboxCursor {
+    enqueued_at_ms: i64,
+    enrollment_operation_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EnrollmentOutboxEntry {
+    enrollment_operation_id: String,
+    enqueued_at_ms: i64,
+    canonical_enrollment_certificate_json: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EnrollmentOutboxPage {
+    entries: Vec<EnrollmentOutboxEntry>,
+    next_cursor: Option<EnrollmentOutboxCursor>,
+    has_more: bool,
 }
 
 struct LibraryCoreJournal {
@@ -1038,9 +1103,13 @@ impl LibraryCoreJournal {
             )?;
             transaction.execute(
                 "INSERT INTO library_core_replication_outbox (
-                   operationId, enqueuedAtMs, acknowledgedAtMs
-                 ) VALUES (?1, ?2, NULL);",
-                params![member.operation_id, committed_at_ms],
+                   operationId, ingestSequence, enqueuedAtMs, acknowledgedAtMs
+                 ) VALUES (?1, ?2, ?3, NULL);",
+                params![
+                    member.operation_id,
+                    first_ingest_sequence + index as i64,
+                    committed_at_ms
+                ],
             )?;
         }
         let updated = transaction.execute(
@@ -1144,6 +1213,201 @@ impl LibraryCoreJournal {
             )
             .optional()?)
     }
+
+    fn operation_outbox_page(
+        &self,
+        after_ingest_sequence: i64,
+        maximum_entries: usize,
+    ) -> JournalResult<OperationOutboxPage> {
+        self.operation_outbox_page_with_budget(
+            after_ingest_sequence,
+            maximum_entries,
+            MAX_OUTBOX_PAGE_BYTES,
+        )
+    }
+
+    fn operation_outbox_page_with_budget(
+        &self,
+        after_ingest_sequence: i64,
+        maximum_entries: usize,
+        maximum_bytes: usize,
+    ) -> JournalResult<OperationOutboxPage> {
+        if !(0..=MAX_SAFE_INTEGER).contains(&after_ingest_sequence) {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "outbox_after_ingest_sequence",
+            });
+        }
+        if maximum_entries == 0 || maximum_entries > MAX_OUTBOX_PAGE_ENTRIES {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "outbox_maximum_entries",
+            });
+        }
+        if maximum_bytes == 0 || maximum_bytes > MAX_OUTBOX_PAGE_BYTES {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "outbox_maximum_bytes",
+            });
+        }
+
+        let row_limit =
+            maximum_entries
+                .checked_add(1)
+                .ok_or(JournalError::InvalidVerifiedInput {
+                    field: "outbox_maximum_entries",
+                })?;
+        let mut statement = self.connection.prepare(OPERATION_OUTBOX_PAGE_SQL)?;
+        let mut rows = statement.query(params![after_ingest_sequence, row_limit as i64])?;
+        let mut entries = Vec::with_capacity(maximum_entries);
+        let mut retained_bytes = 0usize;
+        let mut has_more = false;
+
+        while let Some(row) = rows.next()? {
+            if entries.len() == maximum_entries {
+                has_more = true;
+                break;
+            }
+            let entry_bytes: i64 = row.get(3)?;
+            if !(1..=MAX_OUTBOX_PAGE_BYTES as i64).contains(&entry_bytes) {
+                return Err(JournalError::InvalidVerifiedInput {
+                    field: "outbox_entry_bytes",
+                });
+            }
+            let entry_bytes = entry_bytes as usize;
+            if entries.is_empty() && entry_bytes > maximum_bytes {
+                return Err(JournalError::InvalidVerifiedInput {
+                    field: "outbox_entry_bytes",
+                });
+            }
+            if retained_bytes
+                .checked_add(entry_bytes)
+                .is_none_or(|next| next > maximum_bytes)
+            {
+                has_more = true;
+                break;
+            }
+            let canonical_envelope_json: String = row.get(4)?;
+            if canonical_envelope_json.len() != entry_bytes {
+                return Err(JournalError::InvalidVerifiedInput {
+                    field: "outbox_entry_bytes",
+                });
+            }
+            retained_bytes += entry_bytes;
+            entries.push(OperationOutboxEntry {
+                operation_id: row.get(0)?,
+                ingest_sequence: row.get(1)?,
+                enqueued_at_ms: row.get(2)?,
+                canonical_envelope_json,
+            });
+        }
+
+        let next_after_ingest_sequence = entries.last().map(|entry| entry.ingest_sequence);
+        Ok(OperationOutboxPage {
+            entries,
+            next_after_ingest_sequence,
+            has_more,
+        })
+    }
+
+    fn enrollment_outbox_page(
+        &self,
+        after: Option<&EnrollmentOutboxCursor>,
+        maximum_entries: usize,
+    ) -> JournalResult<EnrollmentOutboxPage> {
+        self.enrollment_outbox_page_with_budget(after, maximum_entries, MAX_OUTBOX_PAGE_BYTES)
+    }
+
+    fn enrollment_outbox_page_with_budget(
+        &self,
+        after: Option<&EnrollmentOutboxCursor>,
+        maximum_entries: usize,
+        maximum_bytes: usize,
+    ) -> JournalResult<EnrollmentOutboxPage> {
+        if maximum_entries == 0 || maximum_entries > MAX_OUTBOX_PAGE_ENTRIES {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "outbox_maximum_entries",
+            });
+        }
+        if maximum_bytes == 0 || maximum_bytes > MAX_OUTBOX_PAGE_BYTES {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "outbox_maximum_bytes",
+            });
+        }
+        let (after_ms, after_id) = match after {
+            Some(cursor)
+                if (0..=MAX_SAFE_INTEGER).contains(&cursor.enqueued_at_ms)
+                    && is_operation_id(&cursor.enrollment_operation_id) =>
+            {
+                (
+                    cursor.enqueued_at_ms,
+                    cursor.enrollment_operation_id.as_str(),
+                )
+            }
+            Some(_) => {
+                return Err(JournalError::InvalidVerifiedInput {
+                    field: "enrollment_outbox_cursor",
+                });
+            }
+            None => (-1, ""),
+        };
+        let row_limit =
+            maximum_entries
+                .checked_add(1)
+                .ok_or(JournalError::InvalidVerifiedInput {
+                    field: "outbox_maximum_entries",
+                })?;
+        let mut statement = self.connection.prepare(ENROLLMENT_OUTBOX_PAGE_SQL)?;
+        let mut rows = statement.query(params![after_ms, after_id, row_limit as i64])?;
+        let mut entries = Vec::with_capacity(maximum_entries);
+        let mut retained_bytes = 0usize;
+        let mut has_more = false;
+
+        while let Some(row) = rows.next()? {
+            if entries.len() == maximum_entries {
+                has_more = true;
+                break;
+            }
+            let entry_bytes: i64 = row.get(2)?;
+            if !(1..=MAX_OUTBOX_PAGE_BYTES as i64).contains(&entry_bytes) {
+                return Err(JournalError::InvalidVerifiedInput {
+                    field: "outbox_entry_bytes",
+                });
+            }
+            let entry_bytes = entry_bytes as usize;
+            if entries.is_empty() && entry_bytes > maximum_bytes {
+                return Err(JournalError::InvalidVerifiedInput {
+                    field: "outbox_entry_bytes",
+                });
+            }
+            if retained_bytes
+                .checked_add(entry_bytes)
+                .is_none_or(|next| next > maximum_bytes)
+            {
+                has_more = true;
+                break;
+            }
+            let canonical_enrollment_certificate_json: String = row.get(3)?;
+            if canonical_enrollment_certificate_json.len() != entry_bytes {
+                return Err(JournalError::InvalidVerifiedInput {
+                    field: "outbox_entry_bytes",
+                });
+            }
+            entries.push(EnrollmentOutboxEntry {
+                enrollment_operation_id: row.get(0)?,
+                enqueued_at_ms: row.get(1)?,
+                canonical_enrollment_certificate_json,
+            });
+            retained_bytes += entry_bytes;
+        }
+
+        let next_cursor = entries.last().map(|entry| EnrollmentOutboxCursor {
+            enqueued_at_ms: entry.enqueued_at_ms,
+            enrollment_operation_id: entry.enrollment_operation_id.clone(),
+        });
+        Ok(EnrollmentOutboxPage {
+            entries,
+            next_cursor,
+            has_more,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -1166,6 +1430,20 @@ mod tests {
             canonical_enrollment_certificate_json: "{\"certificate\":\"fixture\"}".to_string(),
             actor_chain_genesis: digest("6"),
             enrolled_at_ms: 1_000,
+        }
+    }
+
+    fn actor_variant(hex_digit: &str, operation_suffix: &str) -> VerifiedActorEnrollment {
+        VerifiedActorEnrollment {
+            actor_id: digest(hex_digit),
+            actor_public_key: digest(if hex_digit == "f" { "e" } else { "f" }),
+            enrollment_operation_id: format!("op:actor:enroll:{operation_suffix}"),
+            enrollment_certificate_digest: digest(hex_digit),
+            canonical_enrollment_certificate_json: format!(
+                "{{\"certificate\":\"{operation_suffix}\"}}"
+            ),
+            actor_chain_genesis: digest(if hex_digit == "b" { "a" } else { "b" }),
+            ..actor()
         }
     }
 
@@ -1376,6 +1654,160 @@ mod tests {
             queued_enrollment,
             enrollment.canonical_enrollment_certificate_json
         );
+    }
+
+    #[test]
+    fn operation_outbox_pages_by_ingest_sequence_and_byte_budget() {
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_actor_authority(&mut journal);
+        let enrollment = actor();
+        journal.enroll_actor(&enrollment).expect("enroll actor");
+        let verified = transaction(
+            "tx:read:outbox-page",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[
+                ("rss:item:outbox-1", 901),
+                ("rss:item:outbox-2", 902),
+                ("rss:item:outbox-3", 903),
+            ],
+        );
+        journal
+            .commit_read_transaction(&verified, 1_100)
+            .expect("commit transaction");
+
+        let first = journal
+            .operation_outbox_page(0, 2)
+            .expect("first operation page");
+        assert_eq!(first.entries.len(), 2);
+        assert_eq!(
+            first
+                .entries
+                .iter()
+                .map(|entry| entry.ingest_sequence)
+                .collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+        assert_eq!(
+            first
+                .entries
+                .iter()
+                .map(|entry| entry.canonical_envelope_json.as_str())
+                .collect::<Vec<_>>(),
+            verified.members[..2]
+                .iter()
+                .map(|member| member.canonical_envelope_json.as_str())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(first.next_after_ingest_sequence, Some(2));
+        assert!(first.has_more);
+
+        let second = journal
+            .operation_outbox_page(
+                first.next_after_ingest_sequence.expect("first page cursor"),
+                2,
+            )
+            .expect("second operation page");
+        assert_eq!(second.entries.len(), 1);
+        assert_eq!(second.entries[0].ingest_sequence, 3);
+        assert_eq!(second.next_after_ingest_sequence, Some(3));
+        assert!(!second.has_more);
+
+        let first_entry_bytes = verified.members[0].canonical_envelope_json.len();
+        let byte_bounded = journal
+            .operation_outbox_page_with_budget(0, 3, first_entry_bytes)
+            .expect("byte-bounded operation page");
+        assert_eq!(byte_bounded.entries.len(), 1);
+        assert_eq!(byte_bounded.next_after_ingest_sequence, Some(1));
+        assert!(byte_bounded.has_more);
+    }
+
+    #[test]
+    fn enrollment_outbox_keyset_preserves_equal_timestamps() {
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_actor_authority(&mut journal);
+        let first_actor = actor_variant("8", "page-a");
+        let second_actor = actor_variant("9", "page-b");
+        journal
+            .enroll_actor(&first_actor)
+            .expect("enroll first actor");
+        journal
+            .enroll_actor(&second_actor)
+            .expect("enroll second actor");
+
+        let first = journal
+            .enrollment_outbox_page(None, 1)
+            .expect("first enrollment page");
+        assert_eq!(first.entries.len(), 1);
+        assert_eq!(
+            first.entries[0].canonical_enrollment_certificate_json,
+            first_actor.canonical_enrollment_certificate_json
+        );
+        assert!(first.has_more);
+
+        let second = journal
+            .enrollment_outbox_page(first.next_cursor.as_ref(), 1)
+            .expect("second enrollment page");
+        assert_eq!(second.entries.len(), 1);
+        assert_eq!(
+            second.entries[0].canonical_enrollment_certificate_json,
+            second_actor.canonical_enrollment_certificate_json
+        );
+        assert!(!second.has_more);
+
+        let byte_bounded = journal
+            .enrollment_outbox_page_with_budget(
+                None,
+                2,
+                first_actor.canonical_enrollment_certificate_json.len(),
+            )
+            .expect("byte-bounded enrollment page");
+        assert_eq!(byte_bounded.entries.len(), 1);
+        assert!(byte_bounded.has_more);
+    }
+
+    #[test]
+    fn outbox_queries_use_index_order_without_temporary_sorts() {
+        let journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        for (sql, params, expected_index) in [
+            (
+                OPERATION_OUTBOX_PAGE_SQL,
+                vec![rusqlite::types::Value::Integer(0), 2.into()],
+                "library_core_replication_outbox_order",
+            ),
+            (
+                ENROLLMENT_OUTBOX_PAGE_SQL,
+                vec![
+                    rusqlite::types::Value::Integer(-1),
+                    rusqlite::types::Value::Text(String::new()),
+                    2.into(),
+                ],
+                "library_core_actor_enrollment_outbox_order",
+            ),
+        ] {
+            let mut statement = journal
+                .connection
+                .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+                .expect("prepare query plan");
+            let details = statement
+                .query_map(rusqlite::params_from_iter(params), |row| {
+                    row.get::<_, String>(3)
+                })
+                .expect("query plan")
+                .collect::<SqlResult<Vec<_>>>()
+                .expect("collect query plan");
+            assert!(
+                details
+                    .iter()
+                    .all(|detail| !detail.contains("USE TEMP B-TREE")),
+                "outbox keyset query must not sort an unbounded table: {details:?}"
+            );
+            assert!(
+                details.iter().any(|detail| detail.contains(expected_index)),
+                "outbox keyset query must use {expected_index}: {details:?}"
+            );
+        }
     }
 
     #[test]

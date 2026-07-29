@@ -144,6 +144,11 @@ CREATE TABLE library_core_actor_enrollment_outbox (
     ON DELETE CASCADE
 ) STRICT;
 
+CREATE INDEX library_core_actor_enrollment_outbox_order
+  ON library_core_actor_enrollment_outbox (
+    acknowledgedAtMs, enqueuedAtMs, enrollmentOperationId
+  );
+
 CREATE TABLE library_core_transactions (
   transactionId               TEXT    NOT NULL PRIMARY KEY,
   transactionDigest           TEXT    NOT NULL,
@@ -225,6 +230,7 @@ CREATE TABLE library_core_operations (
   ),
   committedAtMs               INTEGER NOT NULL CHECK (committedAtMs BETWEEN 0 AND 9007199254740991),
   FOREIGN KEY (transactionId) REFERENCES library_core_transactions (transactionId),
+  UNIQUE (operationId, ingestSequence),
   UNIQUE (libraryId, epochId, actorId, actorSequence),
   UNIQUE (transactionId, transactionMemberIndex),
   CHECK (transactionMemberIndex < transactionMemberCount),
@@ -298,14 +304,23 @@ CREATE TABLE library_core_feed_item_read_state (
 ) STRICT;
 
 CREATE TABLE library_core_replication_outbox (
-  operationId      TEXT    NOT NULL PRIMARY KEY,
-  enqueuedAtMs     INTEGER NOT NULL CHECK (enqueuedAtMs BETWEEN 0 AND 9007199254740991),
+  operationId       TEXT    NOT NULL PRIMARY KEY,
+  ingestSequence    INTEGER NOT NULL UNIQUE CHECK (
+    ingestSequence BETWEEN 1 AND 9007199254740991
+  ),
+  enqueuedAtMs      INTEGER NOT NULL CHECK (
+    enqueuedAtMs BETWEEN 0 AND 9007199254740991
+  ),
   acknowledgedAtMs INTEGER CHECK (
     acknowledgedAtMs IS NULL
     OR acknowledgedAtMs BETWEEN enqueuedAtMs AND 9007199254740991
   ),
-  FOREIGN KEY (operationId) REFERENCES library_core_operations (operationId)
+  FOREIGN KEY (operationId, ingestSequence)
+    REFERENCES library_core_operations (operationId, ingestSequence)
     ON DELETE CASCADE
 ) STRICT;
+
+CREATE INDEX library_core_replication_outbox_order
+  ON library_core_replication_outbox (acknowledgedAtMs, ingestSequence);
 
 PRAGMA user_version = 1;
