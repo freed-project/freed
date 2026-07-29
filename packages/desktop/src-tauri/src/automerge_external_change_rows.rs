@@ -21,7 +21,7 @@ use crate::automerge_external_value_run::{
     ExternalScalarValue, ExternalValueTokenRunError, ExternalValueTokenRunLimits,
     ExternalValueTokenRunReader,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt;
 use std::fs::File;
@@ -72,13 +72,15 @@ pub(super) struct ExternalChangeColumns<'a> {
     pub extra: ExternalScalarChangeColumn<'a>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct ExternalChangeRowSummary {
     pub change_count: u64,
     pub dependency_count: u64,
     pub dependency_spool_byte_length: u64,
     pub dependency_spool_sha256: String,
+    pub extra_payload_spool_byte_length: u64,
+    pub extra_payload_spool_sha256: String,
     pub row_run_prefix_byte_length: u64,
     pub row_run_prefix_sha256: String,
 }
@@ -372,6 +374,7 @@ fn write_external_change_rows_in_session(
         extra.summary,
         scalar_limits,
     )?;
+    let extra_payload_receipt = extra.summary.clone();
 
     let mut hashed_output = ExternalHashingWriter::new(output);
     write_record(
@@ -500,6 +503,8 @@ fn write_external_change_rows_in_session(
         dependency_count: total_dependency_count,
         dependency_spool_byte_length,
         dependency_spool_sha256: lower_hex(&dependency_hasher.finalize()),
+        extra_payload_spool_byte_length: extra_payload_receipt.payload_spool_byte_length,
+        extra_payload_spool_sha256: extra_payload_receipt.payload_spool_sha256,
         row_run_prefix_byte_length,
         row_run_prefix_sha256,
     };
@@ -652,12 +657,24 @@ mod tests {
     use crate::automerge_external_document_run::{
         read_verified_document_layout, ExternalDocumentLayoutRunLimits,
     };
+    use crate::automerge_external_row_run::{
+        with_verified_change_rows, ExternalRowRunConsumeError, ExternalRowRunError,
+        ExternalRowRunLimits,
+    };
     use crate::automerge_external_value::{write_decoded_value_tokens, ExternalValueDecodeLimits};
+    use std::convert::Infallible;
+    use std::io::{Read, Seek, SeekFrom};
     use tempfile::NamedTempFile;
 
     const TWO_CHANGE_DOCUMENT_HEX: &str = "856f4a831499aa09008b0101100123456789abcdef0123456789abcdef012634b9788580400fabbe7706673be5d73cbcf82a063623b209eed1852c4d0f6d080102030213022307350e4003430256020815052102230234014202560257028001020200020102017ec791a9d306007e056669727374067365636f6e647e00017f0002077e016101620200020102020102140102020001";
 
-    type FixtureReconstruction = (ExternalChangeRowSummary, Vec<u8>, Vec<u8>);
+    type FixtureReconstruction = (
+        ExternalChangeRowSummary,
+        Vec<u8>,
+        Vec<u8>,
+        Vec<u8>,
+        ExternalVerifiedDocumentLayout,
+    );
     type FixtureResult = Result<FixtureReconstruction, Box<dyn std::error::Error>>;
 
     fn digest(bytes: &[u8]) -> String {
@@ -715,6 +732,13 @@ mod tests {
             max_primitive_run_bytes: 16 * 1024,
             max_scalar_run_bytes: 16 * 1024,
             max_line_bytes: 4 * 1024,
+        }
+    }
+
+    fn row_run_limits() -> ExternalRowRunLimits {
+        ExternalRowRunLimits {
+            max_run_bytes: 1024 * 1024,
+            max_line_bytes: 16 * 1024,
         }
     }
 
@@ -890,7 +914,12 @@ mod tests {
                 )?)
             },
         )?;
-        Ok((summary, dependency_spool, rows))
+        extra_payload.as_file_mut().seek(SeekFrom::Start(0))?;
+        let mut extra_payload_bytes = Vec::new();
+        extra_payload
+            .as_file_mut()
+            .read_to_end(&mut extra_payload_bytes)?;
+        Ok((summary, dependency_spool, extra_payload_bytes, rows, layout))
     }
 
     fn change_records(rows: &[u8]) -> Vec<serde_json::Value> {
@@ -905,12 +934,17 @@ mod tests {
     #[test]
     fn reconstructs_the_official_change_row_without_a_resident_dependency_graph() {
         let bytes = decode_test_hex(OFFICIAL_NONEMPTY_DOCUMENT_HEX);
-        let (summary, dependency_spool, rows) = reconstruct(&bytes).unwrap();
+        let (summary, dependency_spool, extra_payload, rows, _) = reconstruct(&bytes).unwrap();
         assert_eq!(summary.change_count, 1);
         assert_eq!(summary.dependency_count, 0);
         assert_eq!(summary.dependency_spool_byte_length, 0);
         assert!(dependency_spool.is_empty());
         assert_eq!(summary.dependency_spool_sha256, digest(&[]));
+        assert_eq!(
+            summary.extra_payload_spool_byte_length,
+            extra_payload.len() as u64
+        );
+        assert_eq!(summary.extra_payload_spool_sha256, digest(&extra_payload));
         assert!(summary.row_run_prefix_byte_length > 0);
         assert_eq!(summary.row_run_prefix_sha256.len(), 64);
         let changes = change_records(&rows);
@@ -926,7 +960,7 @@ mod tests {
     #[test]
     fn spools_dependencies_and_preserves_optional_messages_for_multiple_changes() {
         let bytes = decode_test_hex(TWO_CHANGE_DOCUMENT_HEX);
-        let (summary, dependency_spool, rows) = reconstruct(&bytes).unwrap();
+        let (summary, dependency_spool, _, rows, _) = reconstruct(&bytes).unwrap();
 
         assert_eq!(summary.change_count, 2);
         assert_eq!(summary.dependency_count, 1);
@@ -942,5 +976,100 @@ mod tests {
         assert_eq!(changes[1]["message"], "second");
         assert_eq!(changes[1]["dependencyByteOffset"], 0);
         assert_eq!(changes[1]["dependencyCount"], 1);
+    }
+
+    #[test]
+    fn verifies_complete_change_rows_and_rejects_a_changed_dependency_spool() {
+        let bytes = decode_test_hex(TWO_CHANGE_DOCUMENT_HEX);
+        let source_byte_length = bytes.len() as u64;
+        let source_sha256 = digest(&bytes);
+        let (summary, dependency_spool, extra_payload, rows, layout) = reconstruct(&bytes).unwrap();
+        let mut row_file = fixture(&rows);
+        let mut dependency_file = fixture(&dependency_spool);
+        let mut extra_payload_file = fixture(&extra_payload);
+        let mut verified = Vec::new();
+
+        let read_summary = with_verified_change_rows(
+            row_file.as_file_mut(),
+            dependency_file.as_file_mut(),
+            extra_payload_file.as_file_mut(),
+            source_byte_length,
+            &source_sha256,
+            &layout,
+            &summary,
+            change_limits(),
+            row_run_limits(),
+            |row| {
+                verified.push(row.clone());
+                Ok::<(), Infallible>(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(read_summary, summary);
+        assert_eq!(verified.len(), 2);
+        assert_eq!(verified[0].dependencies, Vec::<u64>::new());
+        assert_eq!(verified[1].dependencies, vec![0]);
+
+        let first_line_end = rows.iter().position(|byte| *byte == b'\n').unwrap();
+        let mut trailing_row_file = fixture(&rows);
+        trailing_row_file
+            .as_file_mut()
+            .seek(SeekFrom::End(0))
+            .unwrap();
+        trailing_row_file
+            .as_file_mut()
+            .write_all(&rows[..=first_line_end])
+            .unwrap();
+        trailing_row_file.as_file_mut().sync_all().unwrap();
+        let mut consumer_calls = 0_u64;
+        assert!(matches!(
+            with_verified_change_rows(
+                trailing_row_file.as_file_mut(),
+                dependency_file.as_file_mut(),
+                extra_payload_file.as_file_mut(),
+                source_byte_length,
+                &source_sha256,
+                &layout,
+                &summary,
+                change_limits(),
+                row_run_limits(),
+                |_| {
+                    consumer_calls += 1;
+                    Ok::<(), Infallible>(())
+                }
+            ),
+            Err(ExternalRowRunConsumeError::Run(
+                ExternalRowRunError::ContractMismatch
+            ))
+        ));
+        assert_eq!(consumer_calls, 0);
+
+        dependency_file
+            .as_file_mut()
+            .seek(SeekFrom::Start(0))
+            .unwrap();
+        dependency_file
+            .as_file_mut()
+            .write_all(&1_u64.to_le_bytes())
+            .unwrap();
+        dependency_file.as_file_mut().sync_all().unwrap();
+        assert!(matches!(
+            with_verified_change_rows(
+                row_file.as_file_mut(),
+                dependency_file.as_file_mut(),
+                extra_payload_file.as_file_mut(),
+                source_byte_length,
+                &source_sha256,
+                &layout,
+                &summary,
+                change_limits(),
+                row_run_limits(),
+                |_| Ok::<(), Infallible>(())
+            ),
+            Err(ExternalRowRunConsumeError::Run(
+                ExternalRowRunError::SpoolMismatch
+            ))
+        ));
     }
 }

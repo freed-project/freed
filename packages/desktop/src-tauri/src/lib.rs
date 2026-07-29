@@ -20,6 +20,8 @@ mod automerge_external_document_run;
 #[cfg_attr(not(test), allow(dead_code))]
 mod automerge_external_operation_rows;
 #[cfg_attr(not(test), allow(dead_code))]
+mod automerge_external_row_run;
+#[cfg_attr(not(test), allow(dead_code))]
 mod automerge_external_spool;
 #[cfg_attr(not(test), allow(dead_code))]
 mod automerge_external_token_run;
