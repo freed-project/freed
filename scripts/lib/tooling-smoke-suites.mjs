@@ -10,6 +10,7 @@ export const REPO_ROOT = path.resolve(LIB_DIRECTORY, "..", "..");
 export const SHARDED_TEST_FILES = Object.freeze({
   "automation-control": "scripts/automation-control.test.mjs",
   "kernel-guard-cutover": "scripts/automation-kernel-guard-cutover.test.mjs",
+  "nightly-self-improve": "scripts/nightly-self-improve.test.mjs",
   "outcome-ledger-repair": "scripts/outcome-ledger-repair.test.mjs",
 });
 

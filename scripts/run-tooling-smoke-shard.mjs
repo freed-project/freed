@@ -184,7 +184,45 @@ function patternsCanOverlap(left, right) {
   return prefixesCompatible && suffixesCompatible;
 }
 
-export function extractTopLevelTestUnits(source, label = "test source") {
+function transparentLocalTestWrapper(node) {
+  if (
+    !ts.isFunctionDeclaration(node) ||
+    node.name?.text !== "test" ||
+    node.parent === undefined ||
+    !ts.isSourceFile(node.parent) ||
+    node.parameters.length === 0 ||
+    !ts.isIdentifier(node.parameters[0].name) ||
+    node.body === undefined
+  ) {
+    return false;
+  }
+  const nameParameter = node.parameters[0].name.text;
+  const delegatedReturns = [];
+  const inspect = (child) => {
+    if (
+      ts.isReturnStatement(child) &&
+      child.expression !== undefined &&
+      ts.isCallExpression(child.expression) &&
+      ts.isIdentifier(child.expression.expression) &&
+      child.expression.expression.text === "nodeTest"
+    ) {
+      delegatedReturns.push(child.expression);
+    }
+    ts.forEachChild(child, inspect);
+  };
+  inspect(node.body);
+  return (
+    delegatedReturns.length === 1 &&
+    ts.isIdentifier(delegatedReturns[0].arguments[0]) &&
+    delegatedReturns[0].arguments[0].text === nameParameter
+  );
+}
+
+export function extractTopLevelTestUnits(
+  source,
+  label = "test source",
+  { allowTransparentLocalWrapper = false } = {},
+) {
   const sourceFile = ts.createSourceFile(
     label,
     source,
@@ -238,7 +276,11 @@ export function extractTopLevelTestUnits(source, label = "test source") {
         (ts.isImportClause(node.parent) && node.parent.name === node) ||
         (ts.isCallExpression(node.parent) && node.parent.expression === node) ||
         (ts.isPropertyAccessExpression(node.parent) &&
-          node.parent.name === node)
+          node.parent.name === node) ||
+        (allowTransparentLocalWrapper &&
+          ts.isFunctionDeclaration(node.parent) &&
+          node.parent.name === node &&
+          transparentLocalTestWrapper(node.parent))
       )
     ) {
       fail(`${label} aliases or passes the top-level test registrar.`);
@@ -391,7 +433,9 @@ export function buildToolingSmokeShardPlan(
   }
   const testFile = SHARDED_TEST_FILES[suite];
   const source = readFileSync(path.join(repoRoot, testFile), "utf8");
-  const extractedUnits = extractTopLevelTestUnits(source, testFile);
+  const extractedUnits = extractTopLevelTestUnits(source, testFile, {
+    allowTransparentLocalWrapper: suite === "nightly-self-improve",
+  });
   const measuredWeights = completeMeasuredUnitWeights(
     recorded,
     suite,

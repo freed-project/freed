@@ -5819,7 +5819,7 @@ for (const [state, requiredControlEvents] of Object.entries({
   implemented: 4,
   validated: 3,
 })) {
-  test(`${state} target requires ${requiredControlEvents.toLocaleString()} control event slots and one outcome slot`, () => {
+  test(`target state ${state} requires ${requiredControlEvents.toLocaleString()} control event slots and one outcome slot`, () => {
     const candidate = {
       id: `capacity-${state}`,
       taskId: `capacity-${state}`,
@@ -6743,7 +6743,7 @@ test("appendOutcomeLedger crash recovery reserves merged and installed outcomes 
 });
 
 for (const route of ["fresh", "legacy-backfill"]) {
-  test(`${route} installed identity drift blocks finalization and continuous trust`, () => {
+  test(`installed identity route ${route} drift blocks finalization and continuous trust`, () => {
     const stateRoot = temporaryOutcomeStateRoot(
       `freed-installed-${route}-finalization-`,
     );

@@ -120,7 +120,7 @@ test("the real plan fits every suite inside the shard timeout", () => {
   // and invited whoever fixed it to decide whether the guard was still needed.
   // outcome-ledger-repair has since been re-measured from a run where all
   // eight of its shards completed, 17,266s against the 5,415s floor a killed
-  // shard had left behind, and the job budget was raised to 12 so the
+  // shard had left behind, and the job budget was raised to 16 so the
   // allocator can actually spread it.
   //
   // Kept pointing at the checked-in durations file rather than a fixture, and
@@ -135,6 +135,11 @@ test("the real plan fits every suite inside the shard timeout", () => {
     assert.equal(entry.fits, true, `${entry.suite} was expected to fit`);
     assert.equal(entry.predictedFrom, "measured");
   }
+  assert.ok(
+    plan.include.filter((entry) => entry.suite === "nightly-self-improve")
+      .length >= 2,
+    "the observed 82-minute nightly file must not collapse back into one shard",
+  );
 });
 
 test("the plan still schedules work when a suite is predicted to overrun", () => {
