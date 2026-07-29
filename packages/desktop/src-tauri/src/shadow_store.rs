@@ -24,12 +24,13 @@
 //!    this migration exists to remove, so a test asserts the query plan.
 
 use rusqlite::{
-    params, Connection, OptionalExtension, Result as SqlResult, Row, Transaction,
+    params, Connection, OpenFlags, OptionalExtension, Result as SqlResult, Row, Transaction,
     TransactionBehavior,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::path::Path;
+use std::fs::{File, OpenOptions};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 const SHADOW_SCHEMA_VERSION: i64 = 3;
@@ -52,30 +53,91 @@ const BASE_CACHE_KIB: i64 = -32 * 1024;
 #[derive(Debug)]
 enum ShadowStoreError {
     Sql(rusqlite::Error),
-    StaleRevision { expected: i64, actual: i64 },
-    InvalidPageLimit { requested: u32, maximum: u32 },
-    InvalidProjectionBatchIdentity { field: &'static str },
-    InvalidProjectionBatchSize { requested: usize, maximum: usize },
-    InvalidProjectionBatchBytes { requested: usize, maximum: usize },
+    StaleRevision {
+        expected: i64,
+        actual: i64,
+    },
+    InvalidPageLimit {
+        requested: u32,
+        maximum: u32,
+    },
+    InvalidProjectionBatchIdentity {
+        field: &'static str,
+    },
+    InvalidProjectionBatchSize {
+        requested: usize,
+        maximum: usize,
+    },
+    InvalidProjectionBatchBytes {
+        requested: usize,
+        maximum: usize,
+    },
     InvalidProjectionEntityId,
-    InvalidReadAssignment { field: &'static str },
-    InvalidFeedCardProjection { field: &'static str },
-    FeedCardExceedsResponseBudget { requested: usize, maximum: usize },
-    ProjectionEntityNotFound { entity_id: String },
-    ProjectionBatchReplayConflict { batch_id: String },
-    InvalidProjectionRebuild { field: &'static str },
-    ProjectionRebuildConflict { rebuild_id: String },
+    InvalidReadAssignment {
+        field: &'static str,
+    },
+    InvalidFeedCardProjection {
+        field: &'static str,
+    },
+    FeedCardExceedsResponseBudget {
+        requested: usize,
+        maximum: usize,
+    },
+    ProjectionEntityNotFound {
+        entity_id: String,
+    },
+    ProjectionBatchReplayConflict {
+        batch_id: String,
+    },
+    InvalidProjectionRebuild {
+        field: &'static str,
+    },
+    ProjectionRebuildConflict {
+        rebuild_id: String,
+    },
     ProjectionRebuildNotEmpty,
-    ProjectionRebuildIncomplete { rebuild_id: String },
-    ProjectionRebuildBatchOutOfOrder { expected: i64, actual: i64 },
-    ProjectionRebuildRowCountMismatch { expected: usize, actual: usize },
-    UnsupportedSchemaVersion { expected: i64, actual: i64 },
+    ProjectionRebuildIncomplete {
+        rebuild_id: String,
+    },
+    ProjectionRebuildBatchOutOfOrder {
+        expected: i64,
+        actual: i64,
+    },
+    ProjectionRebuildRowCountMismatch {
+        expected: usize,
+        actual: usize,
+    },
+    ProjectionPublicationInvalid {
+        field: &'static str,
+    },
+    ProjectionPublicationConflict {
+        path: PathBuf,
+    },
+    ProjectionCheckpointBusy {
+        busy: i64,
+        log_frames: i64,
+        checkpointed_frames: i64,
+    },
+    ProjectionIntegrityCheckFailed {
+        result: String,
+    },
+    UnsupportedSchemaVersion {
+        expected: i64,
+        actual: i64,
+    },
     UnversionedSchemaPresent,
+    Io(std::io::Error),
 }
 
 impl From<rusqlite::Error> for ShadowStoreError {
     fn from(error: rusqlite::Error) -> Self {
         Self::Sql(error)
+    }
+}
+
+impl From<std::io::Error> for ShadowStoreError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error)
     }
 }
 
@@ -143,6 +205,26 @@ impl fmt::Display for ShadowStoreError {
                 formatter,
                 "projection rebuild expected {expected} projected rows, received {actual}"
             ),
+            Self::ProjectionPublicationInvalid { field } => {
+                write!(formatter, "invalid projection publication {field}")
+            }
+            Self::ProjectionPublicationConflict { path } => write!(
+                formatter,
+                "projection publication destination already exists: {}",
+                path.display()
+            ),
+            Self::ProjectionCheckpointBusy {
+                busy,
+                log_frames,
+                checkpointed_frames,
+            } => write!(
+                formatter,
+                "projection checkpoint remained busy ({busy}, {log_frames} log frames, \
+                 {checkpointed_frames} checkpointed)"
+            ),
+            Self::ProjectionIntegrityCheckFailed { result } => {
+                write!(formatter, "projection integrity check failed: {result}")
+            }
             Self::UnsupportedSchemaVersion { expected, actual } => write!(
                 formatter,
                 "shadow schema version {actual} is unsupported, expected {expected}"
@@ -150,6 +232,7 @@ impl fmt::Display for ShadowStoreError {
             Self::UnversionedSchemaPresent => {
                 formatter.write_str("unversioned shadow schema objects are present")
             }
+            Self::Io(error) => write!(formatter, "projection file error: {error}"),
         }
     }
 }
@@ -452,6 +535,16 @@ struct ProjectionRebuildCommit {
     state: ProjectionRebuildState,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PublishedProjectionGeneration {
+    path: PathBuf,
+    rebuild_id: String,
+    source: ProjectionSourceV1,
+    total_rows: usize,
+    projection_revision: i64,
+    byte_length: u64,
+}
+
 #[derive(Debug, PartialEq)]
 struct RevisionedCount {
     revision: i64,
@@ -589,14 +682,63 @@ const CURRENT_REVISION_SQL: &str =
 const ADVANCE_REVISION_SQL: &str =
     "UPDATE library_meta SET integerValue = integerValue + 1 WHERE key = 'projectionRevision';";
 
+#[cfg(unix)]
+fn publish_projection_file(staging: &Path, destination: &Path) -> std::io::Result<()> {
+    let parent = destination
+        .parent()
+        .expect("validated publication destination has a parent");
+    // Creating the second hard link is the atomic publication point and fails
+    // when the immutable destination already exists. A plain Unix rename would
+    // replace a destination created after the caller's preflight check.
+    std::fs::hard_link(staging, destination)?;
+    File::open(parent)?.sync_all()?;
+    std::fs::remove_file(staging)?;
+    File::open(parent)?.sync_all()
+}
+
+#[cfg(windows)]
+fn publish_projection_file(staging: &Path, destination: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_WRITE_THROUGH};
+
+    let staging_wide = staging
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let destination_wide = destination
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let moved = unsafe {
+        MoveFileExW(
+            staging_wide.as_ptr(),
+            destination_wide.as_ptr(),
+            MOVEFILE_WRITE_THROUGH,
+        )
+    };
+    if moved == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(not(any(unix, windows)))]
+fn publish_projection_file(staging: &Path, destination: &Path) -> std::io::Result<()> {
+    std::fs::rename(staging, destination)
+}
+
 struct ShadowStore {
     conn: Connection,
+    path: Option<PathBuf>,
 }
 
 impl ShadowStore {
     fn open(path: &Path) -> StoreResult<Self> {
         let mut store = Self {
             conn: Connection::open(path)?,
+            path: Some(path.to_path_buf()),
         };
         store.configure()?;
         store.migrate()?;
@@ -606,6 +748,7 @@ impl ShadowStore {
     fn open_in_memory() -> StoreResult<Self> {
         let mut store = Self {
             conn: Connection::open_in_memory()?,
+            path: None,
         };
         store.configure()?;
         store.migrate()?;
@@ -875,6 +1018,174 @@ impl ShadowStore {
             }
         }
         Ok(())
+    }
+
+    fn require_complete_projection_rebuild(
+        conn: &Connection,
+        rebuild_id: &str,
+        source: &ProjectionSourceV1,
+        total_rows: usize,
+    ) -> StoreResult<ProjectionRebuildState> {
+        let transaction = conn.unchecked_transaction()?;
+        let state = Self::projection_rebuild_state_in(&transaction)?.ok_or(
+            ShadowStoreError::ProjectionPublicationInvalid {
+                field: "missing_rebuild_state",
+            },
+        )?;
+        let state =
+            Self::require_matching_projection_rebuild(state, rebuild_id, source, total_rows)?;
+        Self::verify_projection_rebuild_state_in(&transaction, &state)?;
+        if !state.complete {
+            return Err(ShadowStoreError::ProjectionRebuildIncomplete {
+                rebuild_id: state.rebuild_id,
+            });
+        }
+        transaction.commit()?;
+        Ok(state)
+    }
+
+    fn verify_quick_check(conn: &Connection) -> StoreResult<()> {
+        let mut statement = conn.prepare("PRAGMA quick_check;")?;
+        let results = statement
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<SqlResult<Vec<_>>>()?;
+        if results.as_slice() != ["ok"] {
+            return Err(ShadowStoreError::ProjectionIntegrityCheckFailed {
+                result: results.join("; "),
+            });
+        }
+        Ok(())
+    }
+
+    fn inspect_published_projection_generation(
+        path: &Path,
+        rebuild_id: &str,
+        source: &ProjectionSourceV1,
+        total_rows: usize,
+    ) -> StoreResult<PublishedProjectionGeneration> {
+        Self::validate_projection_rebuild_identity(rebuild_id, source, total_rows)?;
+        let metadata = std::fs::symlink_metadata(path)?;
+        if !metadata.file_type().is_file() {
+            return Err(ShadowStoreError::ProjectionPublicationInvalid {
+                field: "published_file_type",
+            });
+        }
+        let conn = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY
+                | OpenFlags::SQLITE_OPEN_NO_MUTEX
+                | OpenFlags::SQLITE_OPEN_NOFOLLOW,
+        )?;
+        let version = conn.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
+        if version != SHADOW_SCHEMA_VERSION {
+            return Err(ShadowStoreError::UnsupportedSchemaVersion {
+                expected: SHADOW_SCHEMA_VERSION,
+                actual: version,
+            });
+        }
+        Self::verify_quick_check(&conn)?;
+        let state =
+            Self::require_complete_projection_rebuild(&conn, rebuild_id, source, total_rows)?;
+        Ok(PublishedProjectionGeneration {
+            path: path.to_path_buf(),
+            rebuild_id: state.rebuild_id,
+            source: state.source,
+            total_rows: state.total_rows,
+            projection_revision: state.projection_revision,
+            byte_length: metadata.len(),
+        })
+    }
+
+    /// Seals one complete derived-shadow rebuild into an immutable generation.
+    ///
+    /// The staging and destination files must be distinct absolute paths in the
+    /// same directory. Publication checkpoints and removes WAL mode, verifies
+    /// the complete rebuild and SQLite quick check, closes and syncs the
+    /// staging file, then performs one durable rename to a destination that
+    /// must not already exist. The destination is verified read-only before the
+    /// receipt returns. This publishes bytes only. Assigning the generation to
+    /// a reader is a later activation boundary.
+    fn publish_complete_projection_generation(
+        self,
+        destination: &Path,
+        rebuild_id: &str,
+        source: &ProjectionSourceV1,
+        total_rows: usize,
+    ) -> StoreResult<PublishedProjectionGeneration> {
+        Self::validate_projection_rebuild_identity(rebuild_id, source, total_rows)?;
+        let staging =
+            self.path
+                .as_deref()
+                .ok_or(ShadowStoreError::ProjectionPublicationInvalid {
+                    field: "in_memory_store",
+                })?;
+        if !staging.is_absolute()
+            || !destination.is_absolute()
+            || staging == destination
+            || staging.parent().is_none()
+            || staging.parent() != destination.parent()
+            || staging.file_name().is_none()
+            || destination.file_name().is_none()
+        {
+            return Err(ShadowStoreError::ProjectionPublicationInvalid { field: "paths" });
+        }
+        if !std::fs::symlink_metadata(staging)?.file_type().is_file() {
+            return Err(ShadowStoreError::ProjectionPublicationInvalid {
+                field: "staging_file_type",
+            });
+        }
+        match std::fs::symlink_metadata(destination) {
+            Ok(_) => {
+                return Err(ShadowStoreError::ProjectionPublicationConflict {
+                    path: destination.to_path_buf(),
+                })
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+
+        Self::require_complete_projection_rebuild(&self.conn, rebuild_id, source, total_rows)?;
+        let (busy, log_frames, checkpointed_frames) =
+            self.conn
+                .query_row("PRAGMA wal_checkpoint(TRUNCATE);", [], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                })?;
+        if busy != 0 || log_frames != checkpointed_frames {
+            return Err(ShadowStoreError::ProjectionCheckpointBusy {
+                busy,
+                log_frames,
+                checkpointed_frames,
+            });
+        }
+        let journal_mode = self
+            .conn
+            .query_row("PRAGMA journal_mode = DELETE;", [], |row| {
+                row.get::<_, String>(0)
+            })?;
+        if journal_mode != "delete" {
+            return Err(ShadowStoreError::ProjectionPublicationInvalid {
+                field: "journal_mode",
+            });
+        }
+        Self::verify_quick_check(&self.conn)?;
+
+        let ShadowStore { conn, path } = self;
+        conn.close()
+            .map_err(|(_, error)| ShadowStoreError::Sql(error))?;
+        let staging = path.expect("disk store path was validated");
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&staging)?
+            .sync_all()?;
+        publish_projection_file(&staging, destination)?;
+        File::open(destination)?.sync_all()?;
+
+        Self::inspect_published_projection_generation(destination, rebuild_id, source, total_rows)
     }
 
     fn begin_projection_rebuild(
@@ -2449,6 +2760,217 @@ mod tests {
             0
         );
         transaction.commit().expect("close inspection");
+    }
+
+    #[test]
+    fn complete_rebuild_publishes_one_self_contained_immutable_generation() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let directory = std::fs::canonicalize(std::env::temp_dir())
+            .expect("resolve publication temp root")
+            .join(format!(
+                "freed-shadow-publish-{}-{nonce}",
+                std::process::id()
+            ));
+        std::fs::create_dir(&directory).expect("create publication directory");
+        let staging = directory.join("rebuild.staging.sqlite");
+        let published = directory.join("generation-91.sqlite");
+        let source = projection_source(91);
+        let rows = corpus(3);
+
+        let mut store = ShadowStore::open(&staging).expect("open staging store");
+        store
+            .begin_projection_rebuild("rebuild-91", &source, rows.len())
+            .expect("begin rebuild");
+        store
+            .apply_projection_rebuild_batch(
+                "rebuild-91",
+                &source,
+                rows.len(),
+                0,
+                "rebuild-91-batch-0",
+                &digest(92),
+                rows.len(),
+                true,
+                &rows,
+            )
+            .expect("complete rebuild");
+        let receipt = store
+            .publish_complete_projection_generation(&published, "rebuild-91", &source, rows.len())
+            .expect("publish complete generation");
+
+        assert_eq!(receipt.path, published);
+        assert_eq!(receipt.rebuild_id, "rebuild-91");
+        assert_eq!(receipt.source, source);
+        assert_eq!(receipt.total_rows, rows.len());
+        assert_eq!(receipt.projection_revision, 1);
+        assert!(receipt.byte_length > 0);
+        assert!(!staging.exists());
+        assert!(published.is_file());
+        for path in [
+            format!("{}-wal", staging.display()),
+            format!("{}-shm", staging.display()),
+            format!("{}-wal", published.display()),
+            format!("{}-shm", published.display()),
+        ] {
+            assert!(!Path::new(&path).exists(), "sealed generation left {path}");
+        }
+
+        let readback = ShadowStore::inspect_published_projection_generation(
+            &published,
+            "rebuild-91",
+            &source,
+            rows.len(),
+        )
+        .expect("read back response-loss receipt");
+        assert_eq!(readback, receipt);
+        let reopened = ShadowStore::open(&published).expect("open published generation");
+        assert_eq!(
+            reopened.total_count().expect("published count"),
+            rows.len() as i64
+        );
+        drop(reopened);
+
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", published.display()));
+        }
+        std::fs::remove_dir(directory).expect("remove publication directory");
+    }
+
+    #[test]
+    fn incomplete_rebuild_cannot_publish_and_remains_resumable() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let directory = std::fs::canonicalize(std::env::temp_dir())
+            .expect("resolve publication temp root")
+            .join(format!(
+                "freed-shadow-incomplete-publish-{}-{nonce}",
+                std::process::id()
+            ));
+        std::fs::create_dir(&directory).expect("create publication directory");
+        let staging = directory.join("rebuild.staging.sqlite");
+        let published = directory.join("generation-101.sqlite");
+        let source = projection_source(101);
+        let rows = corpus(2);
+        let mut store = ShadowStore::open(&staging).expect("open staging store");
+        store
+            .begin_projection_rebuild("rebuild-101", &source, rows.len())
+            .expect("begin rebuild");
+        store
+            .apply_projection_rebuild_batch(
+                "rebuild-101",
+                &source,
+                rows.len(),
+                0,
+                "rebuild-101-batch-0",
+                &digest(102),
+                1,
+                false,
+                &rows[..1],
+            )
+            .expect("commit partial rebuild");
+
+        assert!(matches!(
+            store
+                .publish_complete_projection_generation(
+                    &published,
+                    "rebuild-101",
+                    &source,
+                    rows.len(),
+                )
+                .expect_err("incomplete rebuild must not publish"),
+            ShadowStoreError::ProjectionRebuildIncomplete { .. }
+        ));
+        assert!(staging.is_file());
+        assert!(!published.exists());
+        let mut resumed = ShadowStore::open(&staging).expect("reopen incomplete staging store");
+        let state = resumed
+            .begin_projection_rebuild("rebuild-101", &source, rows.len())
+            .expect("resume incomplete rebuild");
+        assert_eq!(state.next_batch_index, 1);
+        assert_eq!(state.projected_rows, 1);
+        assert!(!state.complete);
+        drop(resumed);
+
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", staging.display()));
+        }
+        std::fs::remove_dir(directory).expect("remove publication directory");
+    }
+
+    #[test]
+    fn publication_never_replaces_an_existing_generation() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let directory = std::fs::canonicalize(std::env::temp_dir())
+            .expect("resolve publication temp root")
+            .join(format!(
+                "freed-shadow-publish-conflict-{}-{nonce}",
+                std::process::id()
+            ));
+        std::fs::create_dir(&directory).expect("create publication directory");
+        let staging = directory.join("rebuild.staging.sqlite");
+        let published = directory.join("generation-111.sqlite");
+        let sentinel = b"existing immutable generation";
+        std::fs::write(&published, sentinel).expect("seed existing destination");
+        let source = projection_source(111);
+        let rows = corpus(1);
+        let mut store = ShadowStore::open(&staging).expect("open staging store");
+        store
+            .begin_projection_rebuild("rebuild-111", &source, rows.len())
+            .expect("begin rebuild");
+        store
+            .apply_projection_rebuild_batch(
+                "rebuild-111",
+                &source,
+                rows.len(),
+                0,
+                "rebuild-111-batch-0",
+                &digest(112),
+                rows.len(),
+                true,
+                &rows,
+            )
+            .expect("complete rebuild");
+
+        assert!(matches!(
+            store
+                .publish_complete_projection_generation(
+                    &published,
+                    "rebuild-111",
+                    &source,
+                    rows.len(),
+                )
+                .expect_err("existing generation must block"),
+            ShadowStoreError::ProjectionPublicationConflict { .. }
+        ));
+        assert_eq!(
+            std::fs::read(&published).expect("read existing generation"),
+            sentinel
+        );
+        assert!(staging.is_file());
+        assert!(
+            publish_projection_file(&staging, &published).is_err(),
+            "the publication primitive itself must refuse replacement"
+        );
+        assert_eq!(
+            std::fs::read(&published).expect("read destination after primitive"),
+            sentinel
+        );
+        assert!(staging.is_file());
+
+        for path in [&staging, &published] {
+            for suffix in ["", "-wal", "-shm"] {
+                let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+            }
+        }
+        std::fs::remove_dir(directory).expect("remove publication directory");
     }
 
     #[test]

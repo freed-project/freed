@@ -67,9 +67,16 @@ inside one database. A fresh staging file records the exact source identity,
 sequential batch receipts, projected row count, revision, and completion state.
 Rows and receipts roll back together, an interrupted process resumes at the
 exact next batch, and bounded reads reject the database until the declared and
-actual row counts both close. File publication is still separate. The native
-adapter must verify and atomically publish a closed staging file before any
-reader can treat it as the current derived generation.
+actual row counts both close.
+
+The dormant native publisher now seals a complete staging database into one
+immutable generation file. It checkpoints and removes WAL mode, verifies
+SQLite and the exact rebuild state, syncs the bytes, performs a same-directory
+durable no-replace publication, and verifies the destination read-only. Unix
+uses an exclusive hard-link publication point, so a racing destination cannot
+be overwritten. Selecting that file for a reader remains separate. The
+production storage-root handle, generation transition, stale-reader lifetime,
+rollback pointer, and cleanup policy are still blocked.
 
 ## What the evidence establishes
 

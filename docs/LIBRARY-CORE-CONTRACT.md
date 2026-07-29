@@ -2418,10 +2418,26 @@ state update rolls the transaction back.
 An incomplete rebuild is not readable through feed pages or counts. The final
 batch may mark the generation complete only when its cumulative projected row
 count and the actual SQLite row count both equal the declared source row count.
-The database remains a staging generation after completion. A later native
-adapter must close and verify the file, then publish that complete file through
-the registered generation transition. This record does not make an in-place
-partial generation safe, publish a database file, or grant reader authority.
+The database remains a staging generation after completion.
+
+The dormant native publisher accepts only distinct absolute staging and
+destination paths in one directory. It requires a complete exact-source
+rebuild, checkpoints every WAL frame, changes the closed generation to
+self-contained delete-journal mode, passes SQLite `quick_check`, closes and
+syncs the staging file, and atomically publishes it to a destination that must
+not already exist. Unix creates the destination through an exclusive hard link,
+syncs the parent, removes the staging name, and syncs the parent again. A crash
+may retain both names for the same complete inode, never a partial destination.
+Windows uses a write-through no-replace move. The destination is then reopened
+read-only with no-follow semantics and the exact complete rebuild is verified
+again. That readback is the response-loss recovery path.
+
+Publication creates one immutable generation file. It does not select that
+generation for a reader, replace an existing generation, clean an abandoned
+staging file, authenticate the production storage root, or grant reader
+authority. The later native adapter must bind the trusted storage-root handle
+and commit the registered generation transition before any surface can read
+the published file.
 
 The dormant Desktop derived-shadow projection probe exposes this input through
 one bounded worker session. Session admission binds the exact durable
