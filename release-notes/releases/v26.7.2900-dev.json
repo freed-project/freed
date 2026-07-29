@@ -3,8 +3,10 @@
   "version": "26.7.2900-dev",
   "channel": "dev",
   "dayKey": "26.7.29",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed and rewritten to lead with the shipped appearance work, local preference stability, and the dormant Library Core boundary."
+  ],
   "generatedAt": "2026-07-29T17:12:43.754Z",
   "model": "heuristic",
   "source": {
@@ -80,27 +82,22 @@
     ]
   },
   "release": {
-    "deck": "Starship and Dark Star themes, verify Library Core operation transactions, and materialize Library Core read assignments",
+    "deck": "Adds Starship and Dark Star themes, keeps theme switching stable, and strengthens the dormant Library Core foundation",
     "features": [
-      "Starship and Dark Star themes",
-      "Verify Library Core operation transactions",
-      "Materialize Library Core read assignments"
+      "Starship and Dark Star bring AubOS-inspired appearance choices to Freed, including matching map and Friends Galaxy palettes",
+      "Theme and zoom controls now appear in the shared view menus, with hover previews and device-local persistence",
+      "The dormant Library Core foundation now includes canonical operation codecs, signed actor enrollment, transaction verification, and crash-safe SQLite projection receipts"
     ],
     "fixes": [
-      "Make doctor archive tests hermetic",
-      "Align feed fade boundaries",
-      "Fence Automerge saves on an exact storage revision",
-      "Make Friends performance gate deterministic"
+      "Theme changes no longer bounce through stale Automerge values, and local interface preferences no longer sync between devices",
+      "Settings preserve their frosted backdrop while scrolling without exceeding the interaction performance budget",
+      "Automerge saves now require the exact IndexedDB storage revision, preventing stale worker results from replacing newer local state",
+      "Feed fading now aligns with the sidebar, and Friends performance checks use a deterministic workload"
     ],
     "followUps": [
-      "Enroll Library Core actors",
-      "Canonical Library Core protocol codecs",
-      "Crash-safe SQLite projection receipts",
-      "Dormant native SQLite projection kernel",
-      "Resolve the feed page sort contract on an indexable key",
-      "Close legacy epoch bootstrap contract",
-      "Dormant Library Core boundary census"
+      "Library Core remains dormant in this build. It does not migrate saved items, activate SQLite reads or writes, or retire the current engine",
+      "Provider requests, navigation, cookies, headers, extraction, timing, and background activity are unchanged"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.7.2900-dev\n\nStarship and Dark Star themes, verify Library Core operation transactions, and materialize Library Core read assignments\n\n### Features\n\n- Starship and Dark Star themes\n- Verify Library Core operation transactions\n- Materialize Library Core read assignments\n\n### Fixes\n\n- Make doctor archive tests hermetic\n- Align feed fade boundaries\n- Fence Automerge saves on an exact storage revision\n- Make Friends performance gate deterministic\n\n### Follow-ups\n\n- Enroll Library Core actors\n- Canonical Library Core protocol codecs\n- Crash-safe SQLite projection receipts\n- Dormant native SQLite projection kernel\n- Resolve the feed page sort contract on an indexable key\n- Close legacy epoch bootstrap contract\n- Dormant Library Core boundary census\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.2900-dev\n\nAdds Starship and Dark Star themes, keeps theme switching stable, and strengthens the dormant Library Core foundation\n\n### Features\n\n- Starship and Dark Star bring AubOS-inspired appearance choices to Freed, including matching map and Friends Galaxy palettes\n- Theme and zoom controls now appear in the shared view menus, with hover previews and device-local persistence\n- The dormant Library Core foundation now includes canonical operation codecs, signed actor enrollment, transaction verification, and crash-safe SQLite projection receipts\n\n### Fixes\n\n- Theme changes no longer bounce through stale Automerge values, and local interface preferences no longer sync between devices\n- Settings preserve their frosted backdrop while scrolling without exceeding the interaction performance budget\n- Automerge saves now require the exact IndexedDB storage revision, preventing stale worker results from replacing newer local state\n- Feed fading now aligns with the sidebar, and Friends performance checks use a deterministic workload\n\n### Follow-ups\n\n- Library Core remains dormant in this build. It does not migrate saved items, activate SQLite reads or writes, or retire the current engine\n- Provider requests, navigation, cookies, headers, extraction, timing, and background activity are unchanged\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
