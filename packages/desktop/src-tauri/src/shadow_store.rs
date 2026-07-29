@@ -23,12 +23,18 @@
 //!    is bounded while the work behind it is not. That is the exact failure
 //!    this migration exists to remove, so a test asserts the query plan.
 
-use rusqlite::{params, Connection, Result as SqlResult, Row, Transaction};
+use rusqlite::{
+    params, Connection, OptionalExtension, Result as SqlResult, Row, Transaction,
+    TransactionBehavior,
+};
 use std::path::Path;
 use std::time::Duration;
 
-const SHADOW_SCHEMA_VERSION: i64 = 1;
+const SHADOW_SCHEMA_VERSION: i64 = 2;
 const MAX_FEED_PAGE_LIMIT: u32 = 128;
+const MAX_PROJECTION_BATCH_ID_BYTES: usize = 128;
+const MAX_PROJECTION_BATCH_ITEMS: usize = 1_000;
+const MAX_PROJECTION_BATCH_BYTES: usize = 4 * 1024 * 1024;
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const BASE_CACHE_KIB: i64 = -32 * 1024;
 
@@ -37,6 +43,10 @@ enum ShadowStoreError {
     Sql(rusqlite::Error),
     StaleRevision { expected: i64, actual: i64 },
     InvalidPageLimit { requested: u32, maximum: u32 },
+    InvalidProjectionBatchIdentity { field: &'static str },
+    InvalidProjectionBatchSize { requested: usize, maximum: usize },
+    InvalidProjectionBatchBytes { requested: usize, maximum: usize },
+    ProjectionBatchReplayConflict { batch_id: String },
     UnsupportedSchemaVersion { expected: i64, actual: i64 },
     UnversionedSchemaPresent,
 }
@@ -52,8 +62,10 @@ type StoreResult<T> = std::result::Result<T, ShadowStoreError>;
 /// One canonical schema is consumed by the native engine and checked against
 /// the shared TypeScript DDL. This avoids maintaining a second handwritten
 /// schema in Rust.
-const SHADOW_SCHEMA_SQL: &str =
+const SHADOW_SCHEMA_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/shadow-schema-v1.sql");
+const SHADOW_SCHEMA_V2_SQL: &str =
+    include_str!("../../../shared/src/library-core/shadow-schema-v2.sql");
 
 /// Sort position for an item whose `publishedAt` is absent or unusable.
 ///
@@ -93,6 +105,40 @@ impl FeedItemRow {
     /// else sorts at its own value.
     pub fn sort_key(&self) -> i64 {
         self.published_at.unwrap_or(SORT_AT_ABSENT)
+    }
+
+    fn projected_size_bytes(&self) -> usize {
+        let string_bytes = [
+            Some(self.global_id.as_str()),
+            self.platform.as_deref(),
+            self.content_type.as_deref(),
+            self.author_id.as_deref(),
+            self.author_display_name.as_deref(),
+            self.author_handle.as_deref(),
+            self.source_url.as_deref(),
+            self.tags.as_deref(),
+            self.content_blob.as_deref(),
+            self.preserved_blob.as_deref(),
+            Some(self.rest.as_str()),
+        ]
+        .into_iter()
+        .flatten()
+        .fold(0usize, |total, value| total.saturating_add(value.len()));
+        let numeric_bytes = [
+            self.published_at,
+            self.captured_at,
+            self.hidden,
+            self.saved,
+            self.archived,
+            self.read_at,
+            self.archived_at,
+            self.liked_at,
+        ]
+        .into_iter()
+        .flatten()
+        .count()
+        .saturating_mul(std::mem::size_of::<i64>());
+        string_bytes.saturating_add(numeric_bytes)
     }
 
     fn from_row(row: &Row<'_>) -> SqlResult<Self> {
@@ -140,6 +186,9 @@ struct FeedPage {
 
 #[derive(Debug, PartialEq)]
 struct ProjectionCommit {
+    batch_id: String,
+    input_digest: String,
+    previous_revision: i64,
     revision: i64,
     upserted: usize,
     deleted: usize,
@@ -198,7 +247,7 @@ struct ShadowStore {
 
 impl ShadowStore {
     fn open(path: &Path) -> StoreResult<Self> {
-        let store = Self {
+        let mut store = Self {
             conn: Connection::open(path)?,
         };
         store.configure()?;
@@ -207,7 +256,7 @@ impl ShadowStore {
     }
 
     fn open_in_memory() -> StoreResult<Self> {
-        let store = Self {
+        let mut store = Self {
             conn: Connection::open_in_memory()?,
         };
         store.configure()?;
@@ -237,17 +286,21 @@ impl ShadowStore {
         Ok(())
     }
 
-    fn migrate(&self) -> StoreResult<()> {
-        let prior = self
+    fn migrate(&mut self) -> StoreResult<()> {
+        // Take the writer lock before inspecting version or schema objects.
+        // Otherwise another opener could create an incompatible table between
+        // inspection and migration and have CREATE IF NOT EXISTS bless it.
+        let tx = self
             .conn
-            .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
-        if prior != 0 && prior != SHADOW_SCHEMA_VERSION {
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let prior = tx.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
+        if !(0..=SHADOW_SCHEMA_VERSION).contains(&prior) {
             return Err(ShadowStoreError::UnsupportedSchemaVersion {
                 expected: SHADOW_SCHEMA_VERSION,
                 actual: prior,
             });
         }
-        let has_unversioned_tables = self.conn.query_row(
+        let has_unversioned_tables = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM sqlite_schema \
              WHERE type = 'table' AND name NOT LIKE 'sqlite_%');",
             [],
@@ -256,16 +309,20 @@ impl ShadowStore {
         if prior == 0 && has_unversioned_tables {
             return Err(ShadowStoreError::UnversionedSchemaPresent);
         }
-        self.conn.execute_batch(SHADOW_SCHEMA_SQL)?;
-        let actual = self
-            .conn
-            .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
+        if prior == 0 {
+            tx.execute_batch(SHADOW_SCHEMA_V1_SQL)?;
+        }
+        if prior < 2 {
+            tx.execute_batch(SHADOW_SCHEMA_V2_SQL)?;
+        }
+        let actual = tx.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
         if actual != SHADOW_SCHEMA_VERSION {
             return Err(ShadowStoreError::UnsupportedSchemaVersion {
                 expected: SHADOW_SCHEMA_VERSION,
                 actual,
             });
         }
+        tx.commit()?;
         Ok(())
     }
 
@@ -273,15 +330,106 @@ impl ShadowStore {
         transaction.query_row(CURRENT_REVISION_SQL, [], |row| row.get(0))
     }
 
-    /// Applies one projection delta and advances its revision in the same
-    /// transaction. A reader therefore sees the old rows and old revision or
-    /// the new rows and new revision, never a mixed projection.
+    fn validate_projection_batch_identity(batch_id: &str, input_digest: &str) -> StoreResult<()> {
+        if batch_id.is_empty() || batch_id.len() > MAX_PROJECTION_BATCH_ID_BYTES {
+            return Err(ShadowStoreError::InvalidProjectionBatchIdentity { field: "batch_id" });
+        }
+        if input_digest.len() != 64
+            || !input_digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(ShadowStoreError::InvalidProjectionBatchIdentity {
+                field: "input_digest",
+            });
+        }
+        Ok(())
+    }
+
+    fn projection_receipt_in(
+        transaction: &Transaction<'_>,
+        batch_id: &str,
+    ) -> SqlResult<Option<ProjectionCommit>> {
+        transaction
+            .query_row(
+                "SELECT batchId, inputDigest, previousRevision, committedRevision, \
+                 upserted, deleted FROM projection_batches WHERE batchId = ?1;",
+                params![batch_id],
+                |row| {
+                    Ok(ProjectionCommit {
+                        batch_id: row.get(0)?,
+                        input_digest: row.get(1)?,
+                        previous_revision: row.get(2)?,
+                        revision: row.get(3)?,
+                        upserted: row.get::<_, i64>(4)? as usize,
+                        deleted: row.get::<_, i64>(5)? as usize,
+                    })
+                },
+            )
+            .optional()
+    }
+
+    /// Applies one projection delta, advances its revision, and records its
+    /// durable retry receipt in the same transaction.
+    ///
+    /// Exact retry after response loss returns the original receipt without
+    /// reapplying rows. Reusing a batch ID with different input or a different
+    /// previous revision fails closed. This receipt belongs only to the dark
+    /// derived projection. It is not an authoritative Library Core operation
+    /// receipt and grants no mutation authority.
     fn apply_projection_batch(
         &mut self,
+        batch_id: &str,
+        input_digest: &str,
+        expected_revision: i64,
         rows: &[FeedItemRow],
         deleted_ids: &[String],
     ) -> StoreResult<ProjectionCommit> {
-        let tx: Transaction<'_> = self.conn.transaction()?;
+        Self::validate_projection_batch_identity(batch_id, input_digest)?;
+        let requested = rows.len().saturating_add(deleted_ids.len());
+        if !(1..=MAX_PROJECTION_BATCH_ITEMS).contains(&requested) {
+            return Err(ShadowStoreError::InvalidProjectionBatchSize {
+                requested,
+                maximum: MAX_PROJECTION_BATCH_ITEMS,
+            });
+        }
+        let projected_bytes = rows
+            .iter()
+            .fold(0usize, |total, row| {
+                total.saturating_add(row.projected_size_bytes())
+            })
+            .saturating_add(
+                deleted_ids
+                    .iter()
+                    .fold(0usize, |total, id| total.saturating_add(id.len())),
+            );
+        if projected_bytes > MAX_PROJECTION_BATCH_BYTES {
+            return Err(ShadowStoreError::InvalidProjectionBatchBytes {
+                requested: projected_bytes,
+                maximum: MAX_PROJECTION_BATCH_BYTES,
+            });
+        }
+        let tx: Transaction<'_> = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(receipt) = Self::projection_receipt_in(&tx, batch_id)? {
+            if receipt.input_digest == input_digest
+                && receipt.previous_revision == expected_revision
+            {
+                tx.commit()?;
+                return Ok(receipt);
+            }
+            return Err(ShadowStoreError::ProjectionBatchReplayConflict {
+                batch_id: batch_id.to_string(),
+            });
+        }
+        let actual_revision = Self::revision_in(&tx)?;
+        if actual_revision != expected_revision {
+            return Err(ShadowStoreError::StaleRevision {
+                expected: expected_revision,
+                actual: actual_revision,
+            });
+        }
         {
             let mut statement = tx.prepare_cached(UPSERT_SQL)?;
             for row in rows {
@@ -318,16 +466,27 @@ impl ShadowStore {
         }
         tx.execute(ADVANCE_REVISION_SQL, [])?;
         let revision = Self::revision_in(&tx)?;
+        tx.execute(
+            "INSERT INTO projection_batches (batchId, inputDigest, previousRevision, \
+             committedRevision, upserted, deleted) VALUES (?1, ?2, ?3, ?4, ?5, ?6);",
+            params![
+                batch_id,
+                input_digest,
+                expected_revision,
+                revision,
+                rows.len() as i64,
+                deleted as i64,
+            ],
+        )?;
         tx.commit()?;
         Ok(ProjectionCommit {
+            batch_id: batch_id.to_string(),
+            input_digest: input_digest.to_string(),
+            previous_revision: expected_revision,
             revision,
             upserted: rows.len(),
             deleted,
         })
-    }
-
-    fn upsert_batch(&mut self, rows: &[FeedItemRow]) -> StoreResult<ProjectionCommit> {
-        self.apply_projection_batch(rows, &[])
     }
 
     /// Reads one bounded page of the timeline.
@@ -477,9 +636,24 @@ mod tests {
             .collect()
     }
 
+    fn digest(index: usize) -> String {
+        format!("{index:064x}")
+    }
+
     fn seeded(count: usize) -> ShadowStore {
         let mut store = ShadowStore::open_in_memory().expect("open");
-        store.upsert_batch(&corpus(count)).expect("seed");
+        let rows = corpus(count);
+        for (index, chunk) in rows.chunks(MAX_PROJECTION_BATCH_ITEMS).enumerate() {
+            store
+                .apply_projection_batch(
+                    &format!("seed-{index}"),
+                    &digest(index + 1),
+                    index as i64,
+                    chunk,
+                    &[],
+                )
+                .expect("seed");
+        }
         store
     }
 
@@ -496,7 +670,9 @@ mod tests {
 
         {
             let mut store = ShadowStore::open(&path).expect("open disk store");
-            let commit = store.upsert_batch(&corpus(32)).expect("seed disk store");
+            let commit = store
+                .apply_projection_batch("disk-seed", &digest(1), 0, &corpus(32), &[])
+                .expect("seed disk store");
             assert_eq!(commit.revision, 1);
             assert_eq!(store.total_count().expect("count"), 32);
         }
@@ -590,7 +766,9 @@ mod tests {
         assert_eq!(cursor.revision, first.revision);
 
         let changed = row(999_999, Some(1_790_000_000_000));
-        let commit = store.upsert_batch(&[changed]).expect("advance projection");
+        let commit = store
+            .apply_projection_batch("cursor-change", &digest(2), 1, &[changed], &[])
+            .expect("advance projection");
         assert!(commit.revision > cursor.revision);
 
         let error = store
@@ -752,12 +930,95 @@ mod tests {
     }
 
     #[test]
+    fn a_v1_store_migrates_forward_without_losing_rows() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "freed-shadow-store-v1-migration-{}-{nonce}.sqlite",
+            std::process::id()
+        ));
+        {
+            let conn = Connection::open(&path).expect("create v1 store");
+            conn.execute_batch(SHADOW_SCHEMA_V1_SQL)
+                .expect("install v1 schema");
+            conn.execute(
+                "INSERT INTO feed_items (globalId, rest, sortAt) VALUES ('x:legacy', '{}', 0);",
+                [],
+            )
+            .expect("seed v1 row");
+        }
+
+        let store = ShadowStore::open(&path).expect("migrate v1 store");
+        assert_eq!(store.total_count().expect("count"), 1);
+        let version: i64 = store
+            .conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("version");
+        assert_eq!(version, SHADOW_SCHEMA_VERSION);
+        let receipt_table_exists: bool = store
+            .conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_schema \
+                 WHERE type = 'table' AND name = 'projection_batches');",
+                [],
+                |row| row.get(0),
+            )
+            .expect("receipt table");
+        assert!(receipt_table_exists);
+
+        drop(store);
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        }
+    }
+
+    #[test]
+    fn a_conflicting_v2_schema_cannot_be_blessed_or_partially_migrated() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "freed-shadow-store-v2-conflict-{}-{nonce}.sqlite",
+            std::process::id()
+        ));
+        {
+            let conn = Connection::open(&path).expect("create v1 store");
+            conn.execute_batch(SHADOW_SCHEMA_V1_SQL)
+                .expect("install v1 schema");
+            conn.execute(
+                "CREATE TABLE projection_batches (batchId TEXT PRIMARY KEY) STRICT;",
+                [],
+            )
+            .expect("install conflicting table");
+        }
+
+        let error = match ShadowStore::open(&path) {
+            Ok(_) => panic!("conflicting migration must block"),
+            Err(error) => error,
+        };
+        assert!(matches!(error, ShadowStoreError::Sql(_)));
+        let conn = Connection::open(&path).expect("inspect blocked store");
+        let version: i64 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("version");
+        assert_eq!(version, 1, "failed migration cannot advance its version");
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn one_projection_transaction_upserts_deletes_and_advances_once() {
         let mut store = seeded(32);
         let removed = "x:000001".to_string();
         let replacement = row(999_999, Some(1_790_000_000_000));
         let commit = store
             .apply_projection_batch(
+                "mixed-projection",
+                &digest(2),
+                1,
                 std::slice::from_ref(&replacement),
                 std::slice::from_ref(&removed),
             )
@@ -766,6 +1027,9 @@ mod tests {
         assert_eq!(
             commit,
             ProjectionCommit {
+                batch_id: "mixed-projection".to_string(),
+                input_digest: digest(2),
+                previous_revision: 1,
                 revision: 2,
                 upserted: 1,
                 deleted: 1,
@@ -779,6 +1043,152 @@ mod tests {
             .iter()
             .any(|item| item.global_id == replacement.global_id));
         assert!(!page.rows.iter().any(|item| item.global_id == removed));
+    }
+
+    #[test]
+    fn response_loss_retry_returns_the_original_receipt_after_reopen() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "freed-shadow-store-retry-{}-{nonce}.sqlite",
+            std::process::id()
+        ));
+        let rows = corpus(24);
+        let original = {
+            let mut store = ShadowStore::open(&path).expect("open");
+            store
+                .apply_projection_batch("stable-batch", &digest(42), 0, &rows, &[])
+                .expect("commit before response loss")
+        };
+
+        let mut reopened = ShadowStore::open(&path).expect("reopen after response loss");
+        let retried = reopened
+            .apply_projection_batch("stable-batch", &digest(42), 0, &rows, &[])
+            .expect("read durable receipt");
+        assert_eq!(retried, original);
+        assert_eq!(retried.revision, 1);
+        assert_eq!(reopened.total_count().expect("count"), rows.len() as i64);
+
+        for (input_digest, expected_revision) in [(digest(43), 0), (digest(42), 1)] {
+            match reopened
+                .apply_projection_batch(
+                    "stable-batch",
+                    &input_digest,
+                    expected_revision,
+                    &rows,
+                    &[],
+                )
+                .expect_err("changed replay tuple must fail")
+            {
+                ShadowStoreError::ProjectionBatchReplayConflict { batch_id } => {
+                    assert_eq!(batch_id, "stable-batch");
+                }
+                error => panic!("unexpected replay error: {error:?}"),
+            }
+        }
+        assert_eq!(
+            reopened.total_count().expect("final count"),
+            rows.len() as i64
+        );
+
+        drop(reopened);
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        }
+    }
+
+    #[test]
+    fn receipt_write_failure_rolls_back_rows_and_revision() {
+        let mut store = ShadowStore::open_in_memory().expect("open");
+        store
+            .conn
+            .execute_batch(
+                "CREATE TEMP TRIGGER reject_projection_receipt \
+                 BEFORE INSERT ON projection_batches \
+                 BEGIN SELECT RAISE(ABORT, 'injected receipt failure'); END;",
+            )
+            .expect("install failure injection");
+
+        let error = store
+            .apply_projection_batch("must-rollback", &digest(1), 0, &corpus(8), &[])
+            .expect_err("receipt failure must fail the transaction");
+        assert!(matches!(error, ShadowStoreError::Sql(_)));
+        assert_eq!(store.total_count().expect("rolled back rows"), 0);
+        assert_eq!(
+            store.visible_count(Some(0)).expect("rolled back revision"),
+            RevisionedCount {
+                revision: 0,
+                count: 0,
+            }
+        );
+        let receipts: i64 = store
+            .conn
+            .query_row("SELECT COUNT(*) FROM projection_batches;", [], |row| {
+                row.get(0)
+            })
+            .expect("receipt count");
+        assert_eq!(receipts, 0);
+    }
+
+    #[test]
+    fn projection_batch_identity_and_revision_fail_closed() {
+        let mut store = ShadowStore::open_in_memory().expect("open");
+        for (batch_id, input_digest, field) in [
+            (String::new(), digest(1), "batch_id"),
+            (
+                "x".repeat(MAX_PROJECTION_BATCH_ID_BYTES + 1),
+                digest(1),
+                "batch_id",
+            ),
+            ("batch".to_string(), "ABC".to_string(), "input_digest"),
+        ] {
+            match store
+                .apply_projection_batch(&batch_id, &input_digest, 0, &[], &[])
+                .expect_err("invalid identity must fail")
+            {
+                ShadowStoreError::InvalidProjectionBatchIdentity { field: actual } => {
+                    assert_eq!(actual, field);
+                }
+                error => panic!("unexpected identity error: {error:?}"),
+            }
+        }
+        for rows in [Vec::new(), corpus(MAX_PROJECTION_BATCH_ITEMS + 1)] {
+            match store
+                .apply_projection_batch("sized", &digest(2), 0, &rows, &[])
+                .expect_err("out-of-contract batch size must fail")
+            {
+                ShadowStoreError::InvalidProjectionBatchSize { requested, maximum } => {
+                    assert_eq!(requested, rows.len());
+                    assert_eq!(maximum, MAX_PROJECTION_BATCH_ITEMS);
+                }
+                error => panic!("unexpected batch size error: {error:?}"),
+            }
+        }
+        let mut oversized = row(1, None);
+        oversized.content_blob = Some("x".repeat(MAX_PROJECTION_BATCH_BYTES + 1));
+        match store
+            .apply_projection_batch("oversized", &digest(2), 0, &[oversized], &[])
+            .expect_err("oversized projected bytes must fail")
+        {
+            ShadowStoreError::InvalidProjectionBatchBytes { requested, maximum } => {
+                assert!(requested > MAX_PROJECTION_BATCH_BYTES);
+                assert_eq!(maximum, MAX_PROJECTION_BATCH_BYTES);
+            }
+            error => panic!("unexpected batch byte error: {error:?}"),
+        }
+        match store
+            .apply_projection_batch("stale", &digest(2), 1, &[row(1, None)], &[])
+            .expect_err("unearned revision must fail")
+        {
+            ShadowStoreError::StaleRevision { expected, actual } => {
+                assert_eq!(expected, 1);
+                assert_eq!(actual, 0);
+            }
+            error => panic!("unexpected revision error: {error:?}"),
+        }
+        assert_eq!(store.total_count().expect("count"), 0);
     }
 
     #[test]
@@ -804,13 +1214,19 @@ mod tests {
     fn upsert_is_idempotent_and_updates_in_place() {
         let mut store = ShadowStore::open_in_memory().expect("open");
         let rows = corpus(32);
-        store.upsert_batch(&rows).expect("first");
-        store.upsert_batch(&rows).expect("second");
+        store
+            .apply_projection_batch("first", &digest(1), 0, &rows, &[])
+            .expect("first");
+        store
+            .apply_projection_batch("second", &digest(2), 1, &rows, &[])
+            .expect("second");
         assert_eq!(store.total_count().expect("count"), 32);
 
         let mut changed = rows[0].clone();
         changed.content_blob = Some("edited".to_string());
-        store.upsert_batch(&[changed]).expect("update");
+        store
+            .apply_projection_batch("update", &digest(3), 2, &[changed], &[])
+            .expect("update");
         assert_eq!(store.total_count().expect("count"), 32);
 
         let page = store.feed_page(None, 64).expect("page");
@@ -828,7 +1244,9 @@ mod tests {
         let mut rows = corpus(16);
         rows[0].hidden = Some(1);
         rows[1].archived = Some(1);
-        store.upsert_batch(&rows).expect("seed");
+        store
+            .apply_projection_batch("visibility", &digest(1), 0, &rows, &[])
+            .expect("seed");
 
         assert_eq!(store.total_count().expect("total"), 16);
         let visible = store.visible_count(None).expect("visible");
