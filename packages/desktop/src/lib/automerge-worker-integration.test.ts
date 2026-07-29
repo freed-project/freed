@@ -22,6 +22,8 @@ const storageHarness = vi.hoisted(() => ({
   saveBytes: [] as number[],
   clearCount: 0,
   loadCount: 0,
+  rawLoadCount: 0,
+  revisionReadCount: 0,
   failSave: false,
   replacementAfterLoad: null as Uint8Array | null,
 }));
@@ -46,6 +48,22 @@ vi.mock("@freed/sync/storage/indexeddb", () => ({
         };
       }
       return loaded;
+    }
+
+    async loadRawSnapshotForExternalMigration(): Promise<{
+      data: Uint8Array | null;
+      revision: StorageRevision;
+    }> {
+      storageHarness.rawLoadCount += 1;
+      return {
+        data: storageHarness.binary,
+        revision: { ...storageHarness.revision },
+      };
+    }
+
+    async currentRevision(): Promise<StorageRevision> {
+      storageHarness.revisionReadCount += 1;
+      return { ...storageHarness.revision };
     }
 
     async save(
@@ -197,6 +215,8 @@ describe("real Automerge worker module", () => {
     storageHarness.saveBytes = [];
     storageHarness.clearCount = 0;
     storageHarness.loadCount = 0;
+    storageHarness.rawLoadCount = 0;
+    storageHarness.revisionReadCount = 0;
     storageHarness.failSave = false;
     storageHarness.replacementAfterLoad = null;
     vi.stubGlobal("self", scope);
@@ -205,6 +225,184 @@ describe("real Automerge worker module", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("exports one undecoded revision through replayable bounded transferred chunks", async () => {
+    const compatibleBinary = storageHarness.binary;
+    const chunkBytes = 1_048_576;
+    const externalBytes = new Uint8Array(chunkBytes + 13);
+    externalBytes.fill(0x5a);
+    storageHarness.binary = externalBytes;
+    storageHarness.revision = { generation: 7, saveRevision: 9 };
+
+    sendRequest(scope, {
+      reqId: 480,
+      type: "BEGIN_LIBRARY_CORE_EXTERNAL_EXPORT",
+      sessionId: "external-export-1",
+    });
+    const started = await waitForPost(
+      posts,
+      (message) =>
+        message.type === "LIBRARY_CORE_EXTERNAL_EXPORT_STARTED" &&
+        message.reqId === 480,
+    );
+    expect(started.message).toMatchObject({
+      sessionId: "external-export-1",
+      source: {
+        schemaVersion: 1,
+        storageRevision: { generation: 7, saveRevision: 9 },
+        byteLength: chunkBytes + 13,
+      },
+      maximumChunkBytes: chunkBytes,
+    });
+    expect(storageHarness.rawLoadCount).toBe(1);
+    expect(storageHarness.loadCount).toBe(0);
+
+    sendRequest(scope, { reqId: 481, type: "INIT" });
+    const blockedInit = await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 481,
+    );
+    expect(blockedInit.message).toMatchObject({
+      error:
+        "Library Core external export session external-export-1 is active",
+    });
+    expect(storageHarness.loadCount).toBe(0);
+
+    sendRequest(scope, {
+      reqId: 482,
+      type: "READ_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK",
+      sessionId: "external-export-1",
+      offset: 0,
+    });
+    const firstChunk = await waitForPost(
+      posts,
+      (message) =>
+        message.type === "LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK" &&
+        message.reqId === 482,
+    );
+    if (firstChunk.message.type !== "LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK") {
+      throw new Error("Expected Library Core external export chunk");
+    }
+    expect(firstChunk.message).toMatchObject({
+      sessionId: "external-export-1",
+      offset: 0,
+      nextOffset: chunkBytes,
+      done: false,
+    });
+    expect(
+      Buffer.from(firstChunk.message.bytes).equals(
+        Buffer.from(externalBytes.buffer, 0, chunkBytes),
+      ),
+    ).toBe(true);
+    expect(firstChunk.transferCount).toBe(1);
+    expect(firstChunk.transferBytes).toBe(chunkBytes);
+
+    sendRequest(scope, {
+      reqId: 483,
+      type: "READ_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK",
+      sessionId: "external-export-1",
+      offset: 0,
+    });
+    const retriedChunk = await waitForPost(
+      posts,
+      (message) =>
+        message.type === "LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK" &&
+        message.reqId === 483,
+    );
+    if (retriedChunk.message.type !== "LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK") {
+      throw new Error("Expected retried Library Core external export chunk");
+    }
+    expect(
+      Buffer.from(retriedChunk.message.bytes).equals(
+        Buffer.from(firstChunk.message.bytes),
+      ),
+    ).toBe(true);
+    expect(retriedChunk.transferBytes).toBe(chunkBytes);
+
+    sendRequest(scope, {
+      reqId: 484,
+      type: "READ_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK",
+      sessionId: "external-export-1",
+      offset: chunkBytes,
+    });
+    const finalChunk = await waitForPost(
+      posts,
+      (message) =>
+        message.type === "LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK" &&
+        message.reqId === 484,
+    );
+    if (finalChunk.message.type !== "LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK") {
+      throw new Error("Expected final Library Core external export chunk");
+    }
+    expect(finalChunk.message).toMatchObject({
+      offset: chunkBytes,
+      nextOffset: chunkBytes + 13,
+      done: true,
+    });
+    expect(
+      Buffer.from(finalChunk.message.bytes).equals(
+        Buffer.from(externalBytes.buffer, chunkBytes),
+      ),
+    ).toBe(true);
+    expect(finalChunk.transferBytes).toBe(13);
+
+    sendRequest(scope, {
+      reqId: 485,
+      type: "CONFIRM_LIBRARY_CORE_EXTERNAL_EXPORT",
+      sessionId: "external-export-1",
+    });
+    await waitForPost(
+      posts,
+      (message) =>
+        message.type === "LIBRARY_CORE_EXTERNAL_EXPORT_CONFIRMED" &&
+        message.reqId === 485,
+    );
+    sendRequest(scope, {
+      reqId: 486,
+      type: "CANCEL_LIBRARY_CORE_EXTERNAL_EXPORT",
+      sessionId: "external-export-1",
+    });
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 486,
+    );
+
+    sendRequest(scope, {
+      reqId: 487,
+      type: "BEGIN_LIBRARY_CORE_EXTERNAL_EXPORT",
+      sessionId: "external-export-2",
+    });
+    await waitForPost(
+      posts,
+      (message) =>
+        message.type === "LIBRARY_CORE_EXTERNAL_EXPORT_STARTED" &&
+        message.reqId === 487,
+    );
+    storageHarness.revision = { generation: 7, saveRevision: 10 };
+    sendRequest(scope, {
+      reqId: 488,
+      type: "CONFIRM_LIBRARY_CORE_EXTERNAL_EXPORT",
+      sessionId: "external-export-2",
+    });
+    const changed = await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 488,
+    );
+    expect(changed.message).toMatchObject({
+      error: "Library Core external export source changed",
+    });
+
+    storageHarness.binary = compatibleBinary;
+    sendRequest(scope, { reqId: 489, type: "INIT" });
+    const initialized = await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 489,
+    );
+    expect(initialized.message).toMatchObject({ type: "ACK" });
+    expect(initialized.message).not.toHaveProperty("error");
+    expect(storageHarness.loadCount).toBe(1);
+    expect(storageHarness.revisionReadCount).toBeGreaterThanOrEqual(5);
   });
 
   it("projects one durable revision through replayable bounded batches", async () => {

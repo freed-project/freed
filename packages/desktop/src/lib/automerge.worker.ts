@@ -96,6 +96,7 @@ import type {
 import type {
   DocState,
   FeedItemPatch,
+  LibraryCoreExternalSnapshotV1,
   LibraryCoreProjectionBatchV1,
   LibraryCoreProjectionSourceV1,
   RssFeedPatch,
@@ -131,6 +132,7 @@ const LIBRARY_CORE_PROJECTION_ENVELOPE_RESERVE_BYTES = 64 * 1_024;
 const MAX_LIBRARY_CORE_PROJECTION_INDEX_ENTRIES = 250_000;
 const MAX_LIBRARY_CORE_PROJECTION_INDEX_BYTES = 16 * 1_048_576;
 const MAX_LIBRARY_CORE_PROJECTION_ENTITY_ID_BYTES = 4_096;
+const MAX_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK_BYTES = 1_048_576;
 
 interface LibraryCoreProjectionSession {
   readonly sessionId: string;
@@ -144,6 +146,15 @@ interface LibraryCoreProjectionSession {
 }
 
 let libraryCoreProjectionSession: LibraryCoreProjectionSession | null = null;
+
+interface LibraryCoreExternalExportSession {
+  readonly sessionId: string;
+  readonly source: LibraryCoreExternalSnapshotV1;
+  readonly bytes: Uint8Array;
+}
+
+let libraryCoreExternalExportSession: LibraryCoreExternalExportSession | null =
+  null;
 let searchCorpusVersion = 0;
 let linkPreviewUrlCounts = new Map<string, number>();
 let lastCommittedItemCount = 0;
@@ -174,6 +185,13 @@ interface RequestTrace {
 
 function send(msg: WorkerResponse): void {
   self.postMessage(msg);
+}
+
+function sendTransferred(
+  msg: WorkerResponse,
+  transfer: Transferable[],
+): void {
+  self.postMessage(msg, { transfer });
 }
 
 class CorruptDocumentError extends Error {
@@ -233,6 +251,111 @@ function validateProjectionSessionId(sessionId: string): void {
       `Library Core projection session ID must contain 1 through ${MAX_LIBRARY_CORE_PROJECTION_SESSION_ID_BYTES.toLocaleString()} UTF-8 bytes`,
     );
   }
+}
+
+function validateExternalExportSessionId(sessionId: string): void {
+  const byteLength = projectionTextEncoder.encode(sessionId).byteLength;
+  if (
+    byteLength === 0 ||
+    byteLength > MAX_LIBRARY_CORE_PROJECTION_SESSION_ID_BYTES
+  ) {
+    throw new Error(
+      `Library Core external export session ID must contain 1 through ${MAX_LIBRARY_CORE_PROJECTION_SESSION_ID_BYTES.toLocaleString()} UTF-8 bytes`,
+    );
+  }
+}
+
+function sameStorageRevision(
+  left: StorageRevision,
+  right: StorageRevision,
+): boolean {
+  return (
+    left.generation === right.generation &&
+    left.saveRevision === right.saveRevision
+  );
+}
+
+async function requireCurrentExternalExport(
+  sessionId: string,
+): Promise<LibraryCoreExternalExportSession> {
+  validateExternalExportSessionId(sessionId);
+  const session = libraryCoreExternalExportSession;
+  if (!session || session.sessionId !== sessionId) {
+    throw new Error("Library Core external export session is not active");
+  }
+  const currentRevision = await storage.currentRevision();
+  if (!sameStorageRevision(currentRevision, session.source.storageRevision)) {
+    libraryCoreExternalExportSession = null;
+    throw new Error("Library Core external export source changed");
+  }
+  return session;
+}
+
+async function startLibraryCoreExternalExport(
+  sessionId: string,
+): Promise<LibraryCoreExternalExportSession> {
+  validateExternalExportSessionId(sessionId);
+  if (currentDoc || currentBinary) {
+    throw new Error(
+      "Library Core external export must begin before Automerge is loaded",
+    );
+  }
+  if (libraryCoreProjectionSession && !libraryCoreProjectionSession.completed) {
+    throw new Error(
+      `Library Core projection session ${libraryCoreProjectionSession.sessionId} is already active`,
+    );
+  }
+  const active = libraryCoreExternalExportSession;
+  if (active) {
+    if (active.sessionId !== sessionId) {
+      throw new Error(
+        `Library Core external export session ${active.sessionId} is already active`,
+      );
+    }
+    return requireCurrentExternalExport(sessionId);
+  }
+
+  const snapshot = await storage.loadRawSnapshotForExternalMigration();
+  const bytes = snapshot.data ?? new Uint8Array(0);
+  const session: LibraryCoreExternalExportSession = {
+    sessionId,
+    source: {
+      schemaVersion: 1,
+      storageRevision: { ...snapshot.revision },
+      byteLength: bytes.byteLength,
+    },
+    bytes,
+  };
+  libraryCoreExternalExportSession = session;
+  return session;
+}
+
+async function readLibraryCoreExternalExportChunk(
+  sessionId: string,
+  offset: number,
+): Promise<{
+  session: LibraryCoreExternalExportSession;
+  bytes: Uint8Array;
+  nextOffset: number;
+  done: boolean;
+}> {
+  if (!Number.isSafeInteger(offset) || offset < 0) {
+    throw new Error("Library Core external export offset is invalid");
+  }
+  const session = await requireCurrentExternalExport(sessionId);
+  if (offset > session.source.byteLength) {
+    throw new Error("Library Core external export offset exceeds its source");
+  }
+  const nextOffset = Math.min(
+    offset + MAX_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK_BYTES,
+    session.source.byteLength,
+  );
+  return {
+    session,
+    bytes: session.bytes.slice(offset, nextOffset),
+    nextOffset,
+    done: nextOffset === session.source.byteLength,
+  };
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
@@ -1625,6 +1748,23 @@ async function handleRequest(
     return;
   }
 
+  const isExternalExportRequest =
+    req.type === "BEGIN_LIBRARY_CORE_EXTERNAL_EXPORT" ||
+    req.type === "READ_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK" ||
+    req.type === "CONFIRM_LIBRARY_CORE_EXTERNAL_EXPORT" ||
+    req.type === "CANCEL_LIBRARY_CORE_EXTERNAL_EXPORT";
+  if (
+    libraryCoreExternalExportSession &&
+    req.type !== "QUIESCE" &&
+    !isExternalExportRequest
+  ) {
+    ack(
+      req.reqId,
+      `Library Core external export session ${libraryCoreExternalExportSession.sessionId} is active`,
+    );
+    return;
+  }
+
   if (
     req.type !== "INIT" &&
     req.type !== "QUIESCE" &&
@@ -1635,7 +1775,8 @@ async function handleRequest(
     req.type !== "GET_HEADS" &&
     req.type !== "BEGIN_LIBRARY_CORE_PROJECTION" &&
     req.type !== "NEXT_LIBRARY_CORE_PROJECTION_BATCH" &&
-    req.type !== "CANCEL_LIBRARY_CORE_PROJECTION"
+    req.type !== "CANCEL_LIBRARY_CORE_PROJECTION" &&
+    !isExternalExportRequest
   ) {
     ensureCurrentDocLoaded(req.type);
   }
@@ -1649,11 +1790,13 @@ async function handleRequest(
   try {
     switch (req.type) {
       case "QUIESCE":
+        libraryCoreExternalExportSession = null;
         ack(req.reqId);
         break;
 
       case "INIT": {
         libraryCoreProjectionSession = null;
+        libraryCoreExternalExportSession = null;
         const requestedDesktopClientRegistration =
           req.desktopClientRegistration ?? null;
         let loaded;
@@ -1760,6 +1903,7 @@ async function handleRequest(
           throw new AutomergePersistenceError(error);
         }
         libraryCoreProjectionSession = null;
+        libraryCoreExternalExportSession = null;
         currentDoc = null;
         currentBinary = null;
         refreshLastSavedHeads(null);
@@ -2507,6 +2651,62 @@ async function handleRequest(
           );
         }
         libraryCoreProjectionSession = null;
+        ack(req.reqId);
+        break;
+
+      case "BEGIN_LIBRARY_CORE_EXTERNAL_EXPORT": {
+        const session = await startLibraryCoreExternalExport(req.sessionId);
+        send({
+          reqId: req.reqId,
+          type: "LIBRARY_CORE_EXTERNAL_EXPORT_STARTED",
+          sessionId: session.sessionId,
+          source: session.source,
+          maximumChunkBytes: MAX_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK_BYTES,
+        });
+        break;
+      }
+
+      case "READ_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK": {
+        const chunk = await readLibraryCoreExternalExportChunk(
+          req.sessionId,
+          req.offset,
+        );
+        const response: WorkerResponse = {
+          reqId: req.reqId,
+          type: "LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK",
+          sessionId: chunk.session.sessionId,
+          source: chunk.session.source,
+          offset: req.offset,
+          nextOffset: chunk.nextOffset,
+          bytes: chunk.bytes,
+          done: chunk.done,
+        };
+        sendTransferred(response, [chunk.bytes.buffer]);
+        break;
+      }
+
+      case "CONFIRM_LIBRARY_CORE_EXTERNAL_EXPORT": {
+        const session = await requireCurrentExternalExport(req.sessionId);
+        send({
+          reqId: req.reqId,
+          type: "LIBRARY_CORE_EXTERNAL_EXPORT_CONFIRMED",
+          sessionId: session.sessionId,
+          source: session.source,
+        });
+        break;
+      }
+
+      case "CANCEL_LIBRARY_CORE_EXTERNAL_EXPORT":
+        validateExternalExportSessionId(req.sessionId);
+        if (
+          libraryCoreExternalExportSession &&
+          libraryCoreExternalExportSession.sessionId !== req.sessionId
+        ) {
+          throw new Error(
+            `Library Core external export session ${libraryCoreExternalExportSession.sessionId} is active`,
+          );
+        }
+        libraryCoreExternalExportSession = null;
         ack(req.reqId);
         break;
 

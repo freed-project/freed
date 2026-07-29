@@ -193,7 +193,9 @@ export class IndexedDBStorage implements RevisionedStorageAdapter {
     }
   }
 
-  async load(): Promise<RevisionedStorageValue> {
+  private async loadSnapshot(
+    copyDocumentBytes: boolean,
+  ): Promise<RevisionedStorageValue> {
     const db = await this.getDB();
 
     return new Promise((resolve, reject) => {
@@ -248,13 +250,18 @@ export class IndexedDBStorage implements RevisionedStorageAdapter {
           const result = documentRequest.result;
           if (result instanceof ArrayBuffer) {
             resolve({
-              data: Uint8Array.from(new Uint8Array(result)),
+              data: copyDocumentBytes
+                ? Uint8Array.from(new Uint8Array(result))
+                : new Uint8Array(result),
               revision,
             });
             return;
           }
           if (result instanceof Uint8Array) {
-            resolve({ data: Uint8Array.from(result), revision });
+            resolve({
+              data: copyDocumentBytes ? Uint8Array.from(result) : result,
+              revision,
+            });
             return;
           }
 
@@ -267,6 +274,66 @@ export class IndexedDBStorage implements RevisionedStorageAdapter {
           throw new Error(
             `Stored Automerge data is corrupt: expected binary data, found ${storedType}`,
           );
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
+      };
+    });
+  }
+
+  async load(): Promise<RevisionedStorageValue> {
+    return this.loadSnapshot(true);
+  }
+
+  /**
+   * Loads one exact revision for bounded external migration without making a
+   * second full-document copy inside the storage adapter.
+   *
+   * IndexedDB still materializes one structured-clone result. The caller must
+   * treat these bytes as immutable, export bounded copied chunks, and release
+   * the snapshot. This API does not decode Automerge or change the active
+   * persistence contract.
+   */
+  async loadRawSnapshotForExternalMigration(): Promise<RevisionedStorageValue> {
+    return this.loadSnapshot(false);
+  }
+
+  /** Reads only the revision fence, never the document bytes. */
+  async currentRevision(): Promise<StorageRevision> {
+    const db = await this.getDB();
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, "readonly");
+      const store = transaction.objectStore(STORE_NAME);
+      const generationRequest = store.get(DOCUMENT_GENERATION_KEY);
+      const revisionRequest = store.get(SAVE_REVISION_KEY);
+
+      transaction.onerror = () =>
+        reject(
+          transaction.error ??
+            generationRequest.error ??
+            revisionRequest.error ??
+            new Error("IndexedDB revision read failed without an error"),
+        );
+      transaction.onabort = () =>
+        reject(
+          transaction.error ??
+            generationRequest.error ??
+            revisionRequest.error ??
+            new Error("IndexedDB revision read aborted"),
+        );
+      transaction.oncomplete = () => {
+        try {
+          resolve({
+            generation: assertRevisionPart(
+              generationRequest.result,
+              "document generation",
+            ),
+            saveRevision: assertRevisionPart(
+              revisionRequest.result,
+              "save revision",
+            ),
+          });
         } catch (error) {
           reject(error instanceof Error ? error : new Error(String(error)));
         }

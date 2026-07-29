@@ -847,6 +847,16 @@ function handleWorkerMessage(
     return;
   }
 
+  // Migration export responses remain dormant until the native staging
+  // adapter owns their exact request lifecycle.
+  if (
+    msg.type === "LIBRARY_CORE_EXTERNAL_EXPORT_STARTED" ||
+    msg.type === "LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK" ||
+    msg.type === "LIBRARY_CORE_EXTERNAL_EXPORT_CONFIRMED"
+  ) {
+    return;
+  }
+
   // ACK
   const pendingBackfill = getGenerationPending(
     pendingContentSignalBackfill,
