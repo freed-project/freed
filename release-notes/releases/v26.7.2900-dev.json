@@ -8,14 +8,14 @@
     "Lead with the visible theme work.",
     "Keep Library Core explicitly dormant."
   ],
-  "generatedAt": "2026-07-29T20:13:23.037Z",
+  "generatedAt": "2026-07-29T21:27:06.836Z",
   "model": "heuristic",
   "source": {
     "channel": "dev",
     "previousPublishedTag": "v26.7.2800-dev",
     "previousPublishedDayTag": "v26.7.2800-dev",
     "compareRef": "HEAD",
-    "productCommitSha": "e8195cace3f9810f0f6dd2d2cc364f21b307503f",
+    "productCommitSha": "792cc907cae274069746467a2b5b34390686d222",
     "promotedDevCommitSha": null,
     "libraryCoreActivation": {
       "schemaVersion": 1,
@@ -24,7 +24,7 @@
         "previousPublishedTag": "v26.7.2800-dev",
         "startMode": "previous_product_commit",
         "fromExclusiveCommitSha": "7a2dbe6df63762fe7c0b83fc903dafc94ef16c30",
-        "toInclusiveProductCommitSha": "e8195cace3f9810f0f6dd2d2cc364f21b307503f"
+        "toInclusiveProductCommitSha": "792cc907cae274069746467a2b5b34390686d222"
       },
       "manifest": {
         "path": "docs/library-core-activation-manifest.json",
@@ -33,7 +33,7 @@
         "currentDigest": "sha256:96a22914b0b629c540ede98c41fb586b9695f139324fe033faae374dc83b3ccb"
       },
       "transitions": [],
-      "inspectionDigest": "sha256:c0eb42a4fa70462b14c1af89ecdea41e3bed898547c5260985710d874728eb3c",
+      "inspectionDigest": "sha256:1912a21502eb4f224a4fae502507c1d8f77c3e3d6263d27700584067e12e383a",
       "decision": {
         "state": "no_activation_declared",
         "ownerApprovalReference": null,
@@ -65,9 +65,13 @@
       1231,
       1232,
       1233,
-      1236
+      1236,
+      1238,
+      1239
     ],
     "commitSubjects": [
+      "fix: align Friends graph layout contract (#1239)",
+      "chore: prepare v26.7.2900-dev (#1238)",
       "fix: resolve GitHub CLI outside shell PATH (#1236)",
       "feat: add dormant native Library Core journal (#1229)",
       "fix: isolate lease archive runtime in CI tests (#1233)",
@@ -99,6 +103,7 @@
       "Theme changes no longer bounce through the previous persisted setting before settling on the new theme",
       "Settings blur, spacing, shadows, active tile borders, hover outlines, button fills, feed fades, and right-side panel placement now stay consistent across themes",
       "Release and publication tools now find the GitHub CLI in non-interactive shells, with hermetic authority tests on GitHub's Linux runners",
+      "The Friends graph regression contract now preserves the intended edge-to-edge canvas while keeping floating sidebars inset",
       "Automerge saves are fenced to an exact storage revision, and the Friends performance gate is deterministic",
       "Feed pages now use an indexable sort key while the active Automerge writer stays unchanged"
     ],
@@ -107,5 +112,5 @@
       "The new themes do not change provider requests, navigation, cookies, headers, retries, or cadence"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.7.2900-dev\n\nAdds the source-faithful Starship and Dark Star themes, polishes theme controls across Freed, and expands the dormant Library Core without activating a new storage writer\n\n### Features\n\n- Starship and Dark Star bring AubOS-inspired color, type, radius, shadow, and map treatments to every main Freed surface\n- Theme previews and shared Theme and Zoom controls now appear at the top of the expanded right-side menu in Unified Feed, Friends, and Map\n- The dormant Library Core now includes a native authoritative journal, actor enrollment, signed transaction verification, projection receipts, and bounded feed queries\n\n### Fixes\n\n- Theme changes no longer bounce through the previous persisted setting before settling on the new theme\n- Settings blur, spacing, shadows, active tile borders, hover outlines, button fills, feed fades, and right-side panel placement now stay consistent across themes\n- Release and publication tools now find the GitHub CLI in non-interactive shells, with hermetic authority tests on GitHub's Linux runners\n- Automerge saves are fenced to an exact storage revision, and the Friends performance gate is deterministic\n- Feed pages now use an indexable sort key while the active Automerge writer stays unchanged\n\n### Known limits\n\n- Library Core remains dormant in this build. Automerge stays the active writer, and no migration or storage epoch activates\n- The new themes do not change provider requests, navigation, cookies, headers, retries, or cadence\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.2900-dev\n\nAdds the source-faithful Starship and Dark Star themes, polishes theme controls across Freed, and expands the dormant Library Core without activating a new storage writer\n\n### Features\n\n- Starship and Dark Star bring AubOS-inspired color, type, radius, shadow, and map treatments to every main Freed surface\n- Theme previews and shared Theme and Zoom controls now appear at the top of the expanded right-side menu in Unified Feed, Friends, and Map\n- The dormant Library Core now includes a native authoritative journal, actor enrollment, signed transaction verification, projection receipts, and bounded feed queries\n\n### Fixes\n\n- Theme changes no longer bounce through the previous persisted setting before settling on the new theme\n- Settings blur, spacing, shadows, active tile borders, hover outlines, button fills, feed fades, and right-side panel placement now stay consistent across themes\n- Release and publication tools now find the GitHub CLI in non-interactive shells, with hermetic authority tests on GitHub's Linux runners\n- The Friends graph regression contract now preserves the intended edge-to-edge canvas while keeping floating sidebars inset\n- Automerge saves are fenced to an exact storage revision, and the Friends performance gate is deterministic\n- Feed pages now use an indexable sort key while the active Automerge writer stays unchanged\n\n### Known limits\n\n- Library Core remains dormant in this build. Automerge stays the active writer, and no migration or storage epoch activates\n- The new themes do not change provider requests, navigation, cookies, headers, retries, or cadence\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
