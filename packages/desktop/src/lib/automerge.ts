@@ -797,6 +797,15 @@ function handleWorkerMessage(
     return;
   }
 
+  // Migration projection responses remain dormant until the native staging
+  // adapter owns their exact request lifecycle.
+  if (
+    msg.type === "LIBRARY_CORE_PROJECTION_STARTED" ||
+    msg.type === "LIBRARY_CORE_PROJECTION_BATCH"
+  ) {
+    return;
+  }
+
   // ACK
   const pendingBackfill = getGenerationPending(
     pendingContentSignalBackfill,

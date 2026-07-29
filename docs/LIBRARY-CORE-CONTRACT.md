@@ -2405,6 +2405,28 @@ present table with an incompatible shape. This is derived-store retry evidence,
 not a signed Library Core operation receipt. It cannot authorize a mutation,
 epoch transition, bootstrap, cutover, or provider action.
 
+The dormant Desktop derived-shadow projection probe exposes this input through
+one bounded worker session. Session admission binds the exact durable
+Automerge document ID, the SHA-256 digest and count of its sorted heads, and the
+storage generation and save revision. Every new batch reloads the current
+durable binary, reproduces that complete source identity, and fails closed if
+it changed. A document commit invalidates the session before the new document
+becomes visible.
+
+One session retains only sorted entity IDs capped at 250,000 entries and
+16 MiB, plus its most recent response batch. It returns at most 1,000 rows and
+4 MiB per batch, rejects an individual row that cannot fit, permits exact
+replay of only the most recent batch after response loss, and rejects skipped
+or reordered batch indexes.
+After each request drains, the worker releases the decoded Automerge document.
+The next batch may pay another decode cost, but an abandoned migration cannot
+pin the complete document in memory. No main-thread adapter consumes these
+responses yet. This compatibility probe still uses `Automerge.load` and
+therefore cannot satisfy the external-memory Gate C migration contract,
+produce an authoritative migration candidate, or authorize storage cutover. It
+does not open SQLite, create a projection receipt, change the active Automerge
+writer, or contact a provider.
+
 Blob content is content-addressed and may live outside hot tables. Before an
 authoritative row may reference a new external blob, native code writes and
 fsyncs a temporary file, atomically renames it to the content-addressed path,

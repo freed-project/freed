@@ -130,6 +130,28 @@ describe("Desktop Library Core worker surface census", () => {
     }
   });
 
+  it("classifies the migration projector as bounded without granting runtime authority", () => {
+    for (const kind of [
+      "BEGIN_LIBRARY_CORE_PROJECTION",
+      "NEXT_LIBRARY_CORE_PROJECTION_BATCH",
+      "CANCEL_LIBRARY_CORE_PROJECTION",
+    ] as const) {
+      const definition =
+        DESKTOP_AUTOMERGE_WORKER_REQUEST_SURFACE_REGISTRY[kind];
+      expect(definition.classification, kind).toBe(
+        "bounded_projection_transport",
+      );
+      expect(definition.blockers, kind).not.toContain("unbounded_payload");
+      expect(definition.blockers, kind).toContain(
+        "library_core_runtime_inactive",
+      );
+    }
+    expect(
+      DESKTOP_AUTOMERGE_WORKER_RESPONSE_SURFACE_REGISTRY
+        .LIBRARY_CORE_PROJECTION_BATCH.classification,
+    ).toBe("bounded_projection_transport");
+  });
+
   it("records non-document runtime writes instead of reporting a false zero", () => {
     expect(
       DESKTOP_AUTOMERGE_REQUEST_EFFECT_REGISTRY.QUIESCE,

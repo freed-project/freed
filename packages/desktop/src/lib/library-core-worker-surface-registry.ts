@@ -5,6 +5,7 @@ export type DesktopAutomergeWorkerRequestKind = WorkerRequest["type"];
 export type DesktopAutomergeWorkerResponseKind = WorkerResponse["type"];
 
 export type LibraryCoreWorkerSurfaceClassification =
+  | "bounded_projection_transport"
   | "diagnostic_transport"
   | "legacy_bulk_or_repair_authority"
   | "legacy_full_state_transport"
@@ -103,6 +104,12 @@ const unboundedReadRequest = () =>
     "legacy_unbounded_read",
     "query_contract_unresolved",
     "unbounded_payload",
+  );
+const boundedProjectionTransport = () =>
+  blockedSurface(
+    "bounded_projection_transport",
+    "query_contract_unresolved",
+    "response_transport_not_cut_over",
   );
 
 /**
@@ -207,6 +214,9 @@ export const DESKTOP_AUTOMERGE_WORKER_REQUEST_SURFACE_REGISTRY = {
   GET_SAVED_YOUTUBE_URLS: unboundedReadRequest(),
   GET_ITEM_PRESERVED_TEXT: unboundedReadRequest(),
   GET_ITEM_LEGACY_HTML: unboundedReadRequest(),
+  BEGIN_LIBRARY_CORE_PROJECTION: boundedProjectionTransport(),
+  NEXT_LIBRARY_CORE_PROJECTION_BATCH: boundedProjectionTransport(),
+  CANCEL_LIBRARY_CORE_PROJECTION: boundedProjectionTransport(),
   UPDATE_RELAY_CLIENT_COUNT: blockedSurface(
     "relay_control",
     "lifecycle_contract_unresolved",
@@ -442,6 +452,9 @@ export const DESKTOP_AUTOMERGE_REQUEST_EFFECT_REGISTRY = {
   GET_SAVED_YOUTUBE_URLS: noWriteEffect(),
   GET_ITEM_PRESERVED_TEXT: noWriteEffect(),
   GET_ITEM_LEGACY_HTML: noWriteEffect(),
+  BEGIN_LIBRARY_CORE_PROJECTION: noWriteEffect(),
+  NEXT_LIBRARY_CORE_PROJECTION_BATCH: noWriteEffect(),
+  CANCEL_LIBRARY_CORE_PROJECTION: noWriteEffect(),
   UPDATE_RELAY_CLIENT_COUNT: hiddenWrite(
     ["legacy_runtime_state_write"],
     ["lifecycle_contract_unresolved"],
@@ -543,6 +556,8 @@ export const DESKTOP_AUTOMERGE_WORKER_RESPONSE_SURFACE_REGISTRY = {
     "response_transport_not_cut_over",
     "unbounded_payload",
   ),
+  LIBRARY_CORE_PROJECTION_STARTED: boundedProjectionTransport(),
+  LIBRARY_CORE_PROJECTION_BATCH: boundedProjectionTransport(),
   CONTENT_SIGNAL_BACKFILL_RESULT: blockedSurface(
     "legacy_progress_transport",
     "response_transport_not_cut_over",

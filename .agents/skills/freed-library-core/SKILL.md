@@ -238,6 +238,15 @@ migration objects fail closed, and a receipt write failure rolls back the whole
 batch. Keep this derived receipt explicitly separate from signed authoritative
 operation receipts. It grants no mutation or activation authority.
 
+A short-lived Automerge worker may populate and verify the derived shadow store
+while Automerge remains authoritative. Bind that probe to one exact durable
+frontier and storage revision, bound its retained index and every response, and
+release the decoded document between requests. This is a compatibility bridge,
+not the Gate C migration decoder. Any path that calls `Automerge.load`, retains
+the complete change graph, or allocates source-sized memory cannot produce an
+authoritative migration candidate, satisfy the external-memory migration
+contract, or authorize cutover.
+
 A dormant engine has no production caller, opens no user database, emits no
 authority receipt, and does not append an activation-manifest transition. It
 may compile into Freed Desktop behind an explicit dark-module boundary. A

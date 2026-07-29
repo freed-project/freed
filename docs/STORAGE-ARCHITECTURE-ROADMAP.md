@@ -48,9 +48,19 @@ omitted instead of coerced into plausible data. The dark base tier pins its
 busy timeout, 32 MiB page cache, file-backed temporary work, and disabled mmap.
 The module is compiled into Freed Desktop but has no production caller and
 opens no user database. This is progress inside Gate B and step 4, not a claim
-that either gate is complete. The request envelope, source identity, opaque
-cursor, cancellation, PWA adapter parity, and runtime registration remain
-blocked.
+that either gate is complete.
+
+The Desktop derived-shadow path now also has a dormant bounded projection
+probe. It pins one exact durable Automerge frontier and storage revision, emits
+deterministic batches capped at 1,000 rows and 4 MiB, retains only a
+250,000-entry, 16 MiB entity-ID index plus one replayable batch, and releases
+the decoded Automerge document between requests. It still calls
+`Automerge.load`, so it is a temporary compatibility path for building and
+testing the derived SQL reader while Automerge remains authoritative. It cannot
+satisfy the external-memory Gate C migration contract or authorize cutover. No
+production caller consumes the responses yet. Native staging, a complete
+derived receipt, an opaque read cursor, cancellation across the main-to-native
+boundary, PWA adapter parity, and runtime registration remain blocked.
 
 ## What the evidence establishes
 
