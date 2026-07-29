@@ -24,7 +24,7 @@ use std::fmt;
 use std::fs::File;
 
 const STAGE_APPLICATION_ID: i64 = 0x4652_4f53;
-const STAGE_SCHEMA_VERSION: i64 = 3;
+const STAGE_SCHEMA_VERSION: i64 = 4;
 
 const STAGE_SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS external_layout_stage_receipt (
@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS external_change_stage_receipt (
 
 CREATE TABLE IF NOT EXISTS external_changes (
   changeIndex INTEGER PRIMARY KEY CHECK (changeIndex >= 0),
-  actorIndex INTEGER NOT NULL CHECK (actorIndex >= 0),
+  actorIndex INTEGER NOT NULL REFERENCES external_actors(actorIndex) CHECK (actorIndex >= 0),
   sequence BLOB NOT NULL CHECK (length(sequence) = 8),
   maxOperation BLOB NOT NULL CHECK (length(maxOperation) = 8),
   timestamp INTEGER NOT NULL,
@@ -84,7 +84,8 @@ CREATE TABLE IF NOT EXISTS external_changes (
 CREATE TABLE IF NOT EXISTS external_change_dependencies (
   changeIndex INTEGER NOT NULL REFERENCES external_changes(changeIndex) ON DELETE CASCADE,
   dependencyOrdinal INTEGER NOT NULL CHECK (dependencyOrdinal >= 0),
-  dependencyIndex INTEGER NOT NULL CHECK (dependencyIndex >= 0),
+  dependencyIndex INTEGER NOT NULL REFERENCES external_changes(changeIndex)
+    CHECK (dependencyIndex >= 0),
   PRIMARY KEY (changeIndex, dependencyOrdinal),
   UNIQUE (changeIndex, dependencyIndex)
 ) STRICT, WITHOUT ROWID;
@@ -116,7 +117,7 @@ CREATE TABLE IF NOT EXISTS external_operation_stage_receipt (
 
 CREATE TABLE IF NOT EXISTS external_operations (
   operationIndex INTEGER PRIMARY KEY CHECK (operationIndex >= 0),
-  idActorIndex INTEGER NOT NULL CHECK (idActorIndex >= 0),
+  idActorIndex INTEGER NOT NULL REFERENCES external_actors(actorIndex) CHECK (idActorIndex >= 0),
   idCounter BLOB NOT NULL CHECK (length(idCounter) = 8),
   objectKind TEXT NOT NULL CHECK (objectKind IN ('root', 'operation')),
   objectActorIndex INTEGER CHECK (objectActorIndex IS NULL OR objectActorIndex >= 0),
@@ -137,6 +138,12 @@ CREATE TABLE IF NOT EXISTS external_operations (
   expandFlag INTEGER NOT NULL CHECK (expandFlag IN (0, 1)),
   markName TEXT,
   UNIQUE (idActorIndex, idCounter),
+  FOREIGN KEY (objectActorIndex, objectCounter)
+    REFERENCES external_operations(idActorIndex, idCounter)
+    DEFERRABLE INITIALLY DEFERRED,
+  FOREIGN KEY (keyActorIndex, keyCounter)
+    REFERENCES external_operations(idActorIndex, idCounter)
+    DEFERRABLE INITIALLY DEFERRED,
   CHECK (
     (objectKind = 'root' AND objectActorIndex IS NULL AND objectCounter IS NULL) OR
     (objectKind = 'operation' AND objectActorIndex IS NOT NULL AND objectCounter IS NOT NULL)
@@ -154,7 +161,10 @@ CREATE TABLE IF NOT EXISTS external_operation_successors (
   actorIndex INTEGER NOT NULL CHECK (actorIndex >= 0),
   counter BLOB NOT NULL CHECK (length(counter) = 8),
   PRIMARY KEY (operationIndex, successorOrdinal),
-  UNIQUE (operationIndex, actorIndex, counter)
+  UNIQUE (operationIndex, actorIndex, counter),
+  FOREIGN KEY (actorIndex, counter)
+    REFERENCES external_operations(idActorIndex, idCounter)
+    DEFERRABLE INITIALLY DEFERRED
 ) STRICT, WITHOUT ROWID;
 
 CREATE INDEX IF NOT EXISTS external_operations_object
@@ -875,6 +885,21 @@ fn require_complete_change_stage(
         [],
         |row| row.get::<_, i64>(0),
     )?;
+    let unresolved_head_count = transaction.query_row(
+        "SELECT COUNT(*) \
+         FROM external_heads AS head \
+         LEFT JOIN external_changes AS change_row \
+           ON change_row.changeIndex = head.changeIndex \
+         WHERE change_row.changeIndex IS NULL;",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    let has_dangling_reference =
+        foreign_key_check_has_row(transaction, "PRAGMA foreign_key_check(external_changes);")?
+            || foreign_key_check_has_row(
+                transaction,
+                "PRAGMA foreign_key_check(external_change_dependencies);",
+            )?;
     let change_count =
         u64::try_from(change_count).map_err(|_| ExternalSqliteStageError::IncompleteStage)?;
     let dependency_count =
@@ -884,6 +909,8 @@ fn require_complete_change_stage(
     if change_count != summary.change_count
         || dependency_count != summary.dependency_count
         || payload_byte_length != summary.extra_payload_spool_byte_length
+        || unresolved_head_count != 0
+        || has_dangling_reference
     {
         return Err(ExternalSqliteStageError::IncompleteStage);
     }
@@ -904,6 +931,13 @@ fn require_complete_operation_stage(
         [],
         |row| row.get::<_, i64>(0),
     )?;
+    let has_dangling_reference = foreign_key_check_has_row(
+        transaction,
+        "PRAGMA foreign_key_check(external_operations);",
+    )? || foreign_key_check_has_row(
+        transaction,
+        "PRAGMA foreign_key_check(external_operation_successors);",
+    )?;
     let operation_count =
         u64::try_from(operation_count).map_err(|_| ExternalSqliteStageError::IncompleteStage)?;
     let successor_count =
@@ -913,10 +947,17 @@ fn require_complete_operation_stage(
     if operation_count != summary.operation_count
         || successor_count != summary.successor_count
         || payload_byte_length != summary.value_payload_spool_byte_length
+        || has_dangling_reference
     {
         return Err(ExternalSqliteStageError::IncompleteStage);
     }
     Ok(())
+}
+
+fn foreign_key_check_has_row(connection: &Connection, pragma: &'static str) -> StageResult<bool> {
+    let mut statement = connection.prepare(pragma)?;
+    let mut rows = statement.query([])?;
+    Ok(rows.next()?.is_some())
 }
 
 #[cfg(test)]

@@ -1283,8 +1283,11 @@ mod tests {
         ));
 
         connection
+            .execute_batch("PRAGMA foreign_keys = OFF;")
+            .unwrap();
+        connection
             .execute(
-                "DELETE FROM external_changes \
+                "UPDATE external_changes SET actorIndex = 999 \
                  WHERE changeIndex = (SELECT MIN(changeIndex) FROM external_changes);",
                 [],
             )

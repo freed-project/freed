@@ -9673,10 +9673,14 @@ as fixed-width big-endian bytes instead of narrowing them into signed SQLite
 integers. Large payloads enter preallocated SQLite blobs through the same fixed
 transfer buffer. The stage verifies its exact schema catalog before use and
 commits nothing unless the complete row and companion-spool verification
-succeeds. Exact retry returns the stored receipt only while the layout,
-receipted row, relationship, and payload counts remain complete. A changed
-source, changed layout entry, changed summary, incomplete stage, mixed change
-and operation source identity, or schema drift fails closed.
+succeeds. Foreign keys bind every change to its actor, every dependency to a
+staged change, and every operation object, element key, and successor to an
+exact staged operation ID. Every staged head must resolve to a staged change
+before the change receipt is accepted. Exact retry returns the stored receipt
+only while the layout, receipted row, relationship, payload, and graph-closure
+checks remain complete. A changed source, changed layout entry, changed
+summary, dangling reference, incomplete stage, mixed change and operation
+source identity, or schema drift fails closed.
 
 The migration worker's attributed resident ceiling is 384 MiB on a 4 GiB host,
 512 MiB on an 8 GiB host, and 768 MiB on a host with 16 GiB or more. Admission

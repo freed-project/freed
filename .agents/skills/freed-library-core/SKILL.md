@@ -561,10 +561,13 @@ Fault injection must prove rollback from the latest write in that transaction.
     change or operation rows, dependencies or successors, payloads, and the
     corresponding source receipt together. Exact retry returns that receipt
     only while the layout and receipted row, relationship, and payload counts
-    remain complete. Change and operation receipts in one stage must bind the
-    same exact source identity. Missing rows, changed layout entries,
-    unreceipted rows, mixed sources, or changed input fail closed. Admission
-    proves both the fixed memory ceiling and private staging capacity.
+    remain complete. The scratch schema enforces actor, change dependency,
+    operation object, element-key, and successor references with foreign keys.
+    Every staged head must resolve to a staged change before the change receipt
+    is accepted. Change and operation receipts in one stage must bind the same
+    exact source identity. Missing rows, changed layout entries, dangling graph
+    references, unreceipted rows, mixed sources, or changed input fail closed.
+    Admission proves both the fixed memory ceiling and private staging capacity.
 25. Build PWA reader manifests from both registered Cache namespaces and the
     durable logical lookup plan. Use one plan row and one probe per unique
     physical locator with sorted candidate bindings. Call only exact

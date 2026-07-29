@@ -1783,9 +1783,13 @@ mod tests {
         )
         .unwrap();
         staged_connection
+            .execute_batch("PRAGMA foreign_keys = OFF;")
+            .unwrap();
+        staged_connection
             .execute(
-                "DELETE FROM external_operations \
-                 WHERE operationIndex = (SELECT MIN(operationIndex) FROM external_operations);",
+                "UPDATE external_operation_successors SET actorIndex = 999 \
+                 WHERE operationIndex = (SELECT MIN(operationIndex) \
+                   FROM external_operation_successors);",
                 [],
             )
             .unwrap();

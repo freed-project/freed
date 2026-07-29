@@ -58,9 +58,18 @@ the decoded Automerge document between requests. It still calls
 `Automerge.load`, so it is a temporary compatibility path for building and
 testing the derived SQL reader while Automerge remains authoritative. It cannot
 satisfy the external-memory Gate C migration contract or authorize cutover. No
-production caller consumes the responses yet. Native staging, a complete
-derived receipt, an opaque read cursor, cancellation across the main-to-native
-boundary, PWA adapter parity, and runtime registration remain blocked.
+production caller consumes the responses yet. Immutable entity materialization,
+a complete derived receipt, an opaque read cursor, cancellation across the
+main-to-native boundary, PWA adapter parity, and runtime registration remain
+blocked.
+
+The bounded migration path now verifies the immutable Automerge source through
+fixed-memory external runs and atomically stages its actor, head, change,
+dependency, operation, element-key, successor, and payload graph in private
+SQLite. The schema enforces every graph reference, and its receipts bind one
+exact source identity. This closes migration ingestion, but immutable entity
+materialization, full-corpus parity, memory admission, and activation remain
+blocked.
 
 Physical shadow schema version 3 now closes the native staging transaction
 inside one database. A fresh staging file records the exact source identity,
