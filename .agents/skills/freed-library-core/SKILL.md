@@ -299,6 +299,14 @@ the active-authority signature. A verified certificate is still not committed
 enrollment: retry identity, operation and actor conflicts, sequence allocation,
 and authority-state mutation remain one later atomic transaction.
 
+Keep the native authoritative commit input sealed inside the verifier and
+journal module. Renderer IPC must never gain authority by sending an object
+that merely resembles a verified transaction. Commit the immutable journal,
+causal-tip references, projection updates, actor-tip compare-and-swap, exact
+retry receipt, projection revision, and the applicable enrollment or operation
+replication outbox in one immediate `synchronous=FULL` SQLite transaction.
+Fault injection must prove rollback from the latest write in that transaction.
+
 ## Preserve the invariants
 
 1. Keep exactly one active writer epoch. Advance it only with a signed immutable
