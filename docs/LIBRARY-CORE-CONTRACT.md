@@ -9682,6 +9682,16 @@ checks remain complete. A changed source, changed layout entry, changed
 summary, dangling reference, incomplete stage, mixed change and operation
 source identity, or schema drift fails closed.
 
+The complete scratch graph receives one seal only after actor indexes and head
+indexes are dense, each actor's change sequence is contiguous, maximum
+operation counters never regress, and its operation IDs exactly cover counters
+one through the final change maximum without a gap. One canonical SHA-256
+projection covers the source and row receipts, actor and head catalogs, every
+change and operation descriptor, every dependency and successor, and every
+payload byte streamed from SQLite through a fixed 64 KiB buffer. Exact seal
+retry recomputes the projection. Same-count metadata or payload tampering,
+counter gaps, incomplete actor intervals, and receipt drift fail closed.
+
 The migration worker's attributed resident ceiling is 384 MiB on a 4 GiB host,
 512 MiB on an 8 GiB host, and 768 MiB on a host with 16 GiB or more. Admission
 proves enough private staging capacity for the measured source, target,

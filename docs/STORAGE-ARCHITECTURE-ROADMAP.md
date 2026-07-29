@@ -67,9 +67,11 @@ The bounded migration path now verifies the immutable Automerge source through
 fixed-memory external runs and atomically stages its actor, head, change,
 dependency, operation, element-key, successor, and payload graph in private
 SQLite. The schema enforces every graph reference, and its receipts bind one
-exact source identity. This closes migration ingestion, but immutable entity
-materialization, full-corpus parity, memory admission, and activation remain
-blocked.
+exact source identity. A final bounded seal verifies contiguous per-actor
+change sequences and operation counters, then streams one canonical digest
+over all staged metadata, relationships, and payload bytes. This closes
+migration ingestion, but immutable entity materialization, full-corpus parity,
+memory admission, and activation remain blocked.
 
 Physical shadow schema version 3 now closes the native staging transaction
 inside one database. A fresh staging file records the exact source identity,

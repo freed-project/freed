@@ -17,14 +17,17 @@ use crate::automerge_external_row_run::{
     ExternalVerifiedChangeRow, ExternalVerifiedOperationRow, ExternalVerifiedPayloadReader,
 };
 use rusqlite::blob::ZeroBlob;
+use rusqlite::types::ValueRef;
 use rusqlite::{
     params, Connection, DatabaseName, OptionalExtension, Transaction, TransactionBehavior,
 };
+use sha2::{Digest, Sha256};
 use std::fmt;
 use std::fs::File;
+use std::io::Read;
 
 const STAGE_APPLICATION_ID: i64 = 0x4652_4f53;
-const STAGE_SCHEMA_VERSION: i64 = 4;
+const STAGE_SCHEMA_VERSION: i64 = 5;
 
 const STAGE_SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS external_layout_stage_receipt (
@@ -169,6 +172,23 @@ CREATE TABLE IF NOT EXISTS external_operation_successors (
 
 CREATE INDEX IF NOT EXISTS external_operations_object
   ON external_operations(objectKind, objectActorIndex, objectCounter, keyKind, keyName);
+
+CREATE TABLE IF NOT EXISTS external_graph_stage_receipt (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  sourceByteLength INTEGER NOT NULL CHECK (sourceByteLength >= 0),
+  sourceSha256 TEXT NOT NULL CHECK (
+    length(sourceSha256) = 64 AND sourceSha256 = lower(sourceSha256)
+  ),
+  actorCount INTEGER NOT NULL CHECK (actorCount >= 0),
+  headCount INTEGER NOT NULL CHECK (headCount >= 0),
+  changeCount INTEGER NOT NULL CHECK (changeCount >= 0),
+  dependencyCount INTEGER NOT NULL CHECK (dependencyCount >= 0),
+  operationCount INTEGER NOT NULL CHECK (operationCount >= 0),
+  successorCount INTEGER NOT NULL CHECK (successorCount >= 0),
+  graphSha256 TEXT NOT NULL CHECK (
+    length(graphSha256) = 64 AND graphSha256 = lower(graphSha256)
+  )
+) STRICT;
 "#;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -193,9 +213,23 @@ pub(super) struct ExternalOperationStageReceipt {
     pub summary: ExternalOperationRowSummary,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct ExternalGraphStageReceipt {
+    pub source_byte_length: u64,
+    pub source_sha256: String,
+    pub actor_count: u64,
+    pub head_count: u64,
+    pub change_count: u64,
+    pub dependency_count: u64,
+    pub operation_count: u64,
+    pub successor_count: u64,
+    pub graph_sha256: String,
+}
+
 #[derive(Debug)]
 pub(super) enum ExternalSqliteStageError {
     Sql(rusqlite::Error),
+    Io(std::io::Error),
     RowRun(ExternalRowRunError),
     InvalidDatabaseIdentity,
     SchemaContractMismatch,
@@ -211,6 +245,12 @@ impl From<rusqlite::Error> for ExternalSqliteStageError {
     }
 }
 
+impl From<std::io::Error> for ExternalSqliteStageError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+
 impl From<ExternalRowRunError> for ExternalSqliteStageError {
     fn from(error: ExternalRowRunError) -> Self {
         Self::RowRun(error)
@@ -221,6 +261,7 @@ impl fmt::Display for ExternalSqliteStageError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Sql(error) => write!(formatter, "Automerge SQLite stage SQL failed: {error}"),
+            Self::Io(error) => write!(formatter, "Automerge SQLite stage I/O failed: {error}"),
             Self::RowRun(error) => error.fmt(formatter),
             Self::InvalidDatabaseIdentity => {
                 formatter.write_str("Automerge SQLite stage database identity is invalid")
@@ -511,6 +552,58 @@ fn stage_verified_operation_rows_with_after_stage(
     })
 }
 
+pub(super) fn seal_staged_graph(
+    connection: &mut Connection,
+) -> StageResult<ExternalGraphStageReceipt> {
+    configure_connection(connection)?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    initialize_or_validate_schema(&transaction)?;
+    let layout_receipt =
+        read_layout_receipt(&transaction)?.ok_or(ExternalSqliteStageError::IncompleteStage)?;
+    let change_receipt =
+        read_change_receipt(&transaction)?.ok_or(ExternalSqliteStageError::IncompleteStage)?;
+    let operation_receipt =
+        read_operation_receipt(&transaction)?.ok_or(ExternalSqliteStageError::IncompleteStage)?;
+    require_stage_source_identity(
+        change_receipt.source_byte_length,
+        &change_receipt.source_sha256,
+        layout_receipt.source_byte_length,
+        &layout_receipt.source_sha256,
+    )?;
+    require_stage_source_identity(
+        operation_receipt.source_byte_length,
+        &operation_receipt.source_sha256,
+        layout_receipt.source_byte_length,
+        &layout_receipt.source_sha256,
+    )?;
+    require_complete_change_stage(&transaction, &change_receipt.summary)?;
+    require_complete_operation_stage(&transaction, &operation_receipt.summary)?;
+    validate_layout_counts(&transaction, &layout_receipt)?;
+    validate_actor_operation_intervals(&transaction, layout_receipt.actor_count)?;
+
+    let receipt = ExternalGraphStageReceipt {
+        source_byte_length: layout_receipt.source_byte_length,
+        source_sha256: layout_receipt.source_sha256,
+        actor_count: layout_receipt.actor_count,
+        head_count: layout_receipt.head_count,
+        change_count: change_receipt.summary.change_count,
+        dependency_count: change_receipt.summary.dependency_count,
+        operation_count: operation_receipt.summary.operation_count,
+        successor_count: operation_receipt.summary.successor_count,
+        graph_sha256: graph_content_sha256(&transaction)?,
+    };
+    if let Some(stored) = read_graph_receipt(&transaction)? {
+        if stored != receipt {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        transaction.commit()?;
+        return Ok(receipt);
+    }
+    insert_graph_receipt(&transaction, &receipt)?;
+    transaction.commit()?;
+    Ok(receipt)
+}
+
 fn configure_connection(connection: &Connection) -> StageResult<()> {
     connection.pragma_update(None, "foreign_keys", "ON")?;
     connection.busy_timeout(std::time::Duration::from_millis(2_000))?;
@@ -681,6 +774,333 @@ fn read_layout_receipt(
         )
         .optional()
         .map_err(ExternalSqliteStageError::Sql)
+}
+
+fn read_graph_receipt(
+    transaction: &Transaction<'_>,
+) -> StageResult<Option<ExternalGraphStageReceipt>> {
+    transaction
+        .query_row(
+            "SELECT sourceByteLength, sourceSha256, actorCount, headCount, changeCount, \
+             dependencyCount, operationCount, successorCount, graphSha256 \
+             FROM external_graph_stage_receipt WHERE singleton = 1;",
+            [],
+            |row| {
+                Ok(ExternalGraphStageReceipt {
+                    source_byte_length: row.get::<_, i64>(0)? as u64,
+                    source_sha256: row.get(1)?,
+                    actor_count: row.get::<_, i64>(2)? as u64,
+                    head_count: row.get::<_, i64>(3)? as u64,
+                    change_count: row.get::<_, i64>(4)? as u64,
+                    dependency_count: row.get::<_, i64>(5)? as u64,
+                    operation_count: row.get::<_, i64>(6)? as u64,
+                    successor_count: row.get::<_, i64>(7)? as u64,
+                    graph_sha256: row.get(8)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(ExternalSqliteStageError::Sql)
+}
+
+fn insert_graph_receipt(
+    transaction: &Transaction<'_>,
+    receipt: &ExternalGraphStageReceipt,
+) -> StageResult<()> {
+    transaction.execute(
+        "INSERT INTO external_graph_stage_receipt (\
+         singleton, sourceByteLength, sourceSha256, actorCount, headCount, changeCount, \
+         dependencyCount, operationCount, successorCount, graphSha256) \
+         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9);",
+        params![
+            i64::try_from(receipt.source_byte_length)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            receipt.source_sha256,
+            i64::try_from(receipt.actor_count)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            i64::try_from(receipt.head_count)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            i64::try_from(receipt.change_count)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            i64::try_from(receipt.dependency_count)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            i64::try_from(receipt.operation_count)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            i64::try_from(receipt.successor_count)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            receipt.graph_sha256,
+        ],
+    )?;
+    Ok(())
+}
+
+fn validate_layout_counts(
+    transaction: &Transaction<'_>,
+    receipt: &ExternalLayoutStageReceipt,
+) -> StageResult<()> {
+    let mut actor_statement =
+        transaction.prepare("SELECT actorIndex FROM external_actors ORDER BY actorIndex;")?;
+    let mut actor_rows = actor_statement.query([])?;
+    let mut expected_actor_index = 0_u64;
+    while let Some(row) = actor_rows.next()? {
+        let actual = u64::try_from(row.get::<_, i64>(0)?)
+            .map_err(|_| ExternalSqliteStageError::IncompleteStage)?;
+        if actual != expected_actor_index {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        expected_actor_index = expected_actor_index
+            .checked_add(1)
+            .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+    }
+    if expected_actor_index != receipt.actor_count {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+
+    let mut head_statement =
+        transaction.prepare("SELECT headIndex FROM external_heads ORDER BY headIndex;")?;
+    let mut head_rows = head_statement.query([])?;
+    let mut expected_head_index = 0_u64;
+    while let Some(row) = head_rows.next()? {
+        let actual = u64::try_from(row.get::<_, i64>(0)?)
+            .map_err(|_| ExternalSqliteStageError::IncompleteStage)?;
+        if actual != expected_head_index {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        expected_head_index = expected_head_index
+            .checked_add(1)
+            .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+    }
+    if expected_head_index != receipt.head_count {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    Ok(())
+}
+
+fn validate_actor_operation_intervals(
+    transaction: &Transaction<'_>,
+    actor_count: u64,
+) -> StageResult<()> {
+    for actor_index in 0..actor_count {
+        let actor_index =
+            i64::try_from(actor_index).map_err(|_| ExternalSqliteStageError::RangeOverflow)?;
+        let mut change_statement = transaction.prepare(
+            "SELECT sequence, maxOperation FROM external_changes \
+             WHERE actorIndex = ?1 ORDER BY sequence;",
+        )?;
+        let mut change_rows = change_statement.query([actor_index])?;
+        let mut expected_sequence = 0_u64;
+        let mut final_max_operation = 0_u64;
+        while let Some(row) = change_rows.next()? {
+            let sequence = sortable_u64(row.get_ref(0)?)?;
+            let max_operation = sortable_u64(row.get_ref(1)?)?;
+            expected_sequence = expected_sequence
+                .checked_add(1)
+                .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+            if sequence != expected_sequence || max_operation < final_max_operation {
+                return Err(ExternalSqliteStageError::IncompleteStage);
+            }
+            final_max_operation = max_operation;
+        }
+
+        let mut operation_statement = transaction.prepare(
+            "SELECT idCounter FROM external_operations \
+             WHERE idActorIndex = ?1 ORDER BY idCounter;",
+        )?;
+        let mut operation_rows = operation_statement.query([actor_index])?;
+        let mut expected_counter = 0_u64;
+        while let Some(row) = operation_rows.next()? {
+            let counter = sortable_u64(row.get_ref(0)?)?;
+            expected_counter = expected_counter
+                .checked_add(1)
+                .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+            if counter != expected_counter {
+                return Err(ExternalSqliteStageError::IncompleteStage);
+            }
+        }
+        if expected_counter != final_max_operation {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+    }
+    Ok(())
+}
+
+fn sortable_u64(value: ValueRef<'_>) -> StageResult<u64> {
+    let ValueRef::Blob(bytes) = value else {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    };
+    let bytes: [u8; 8] = bytes
+        .try_into()
+        .map_err(|_| ExternalSqliteStageError::IncompleteStage)?;
+    Ok(u64::from_be_bytes(bytes))
+}
+
+fn graph_content_sha256(connection: &Connection) -> StageResult<String> {
+    let mut hasher = Sha256::new();
+    hash_field(&mut hasher, b"freed-automerge-scratch-graph-v1");
+    for (label, query) in [
+        (
+            "layout-receipt",
+            "SELECT singleton, sourceByteLength, sourceSha256, actorCount, headCount \
+             FROM external_layout_stage_receipt ORDER BY singleton;",
+        ),
+        (
+            "change-receipt",
+            "SELECT singleton, sourceByteLength, sourceSha256, changeCount, dependencyCount, \
+             dependencySpoolByteLength, dependencySpoolSha256, extraPayloadSpoolByteLength, \
+             extraPayloadSpoolSha256, rowRunPrefixByteLength, rowRunPrefixSha256 \
+             FROM external_change_stage_receipt ORDER BY singleton;",
+        ),
+        (
+            "operation-receipt",
+            "SELECT singleton, sourceByteLength, sourceSha256, operationCount, successorCount, \
+             successorSpoolByteLength, successorSpoolSha256, valuePayloadSpoolByteLength, \
+             valuePayloadSpoolSha256, rowRunPrefixByteLength, rowRunPrefixSha256 \
+             FROM external_operation_stage_receipt ORDER BY singleton;",
+        ),
+        (
+            "actors",
+            "SELECT actorIndex, actorId FROM external_actors ORDER BY actorIndex;",
+        ),
+        (
+            "heads",
+            "SELECT headIndex, changeIndex, hash FROM external_heads ORDER BY headIndex;",
+        ),
+        (
+            "changes",
+            "SELECT changeIndex, actorIndex, sequence, maxOperation, timestamp, message \
+             FROM external_changes ORDER BY changeIndex;",
+        ),
+        (
+            "dependencies",
+            "SELECT changeIndex, dependencyOrdinal, dependencyIndex \
+             FROM external_change_dependencies ORDER BY changeIndex, dependencyOrdinal;",
+        ),
+        (
+            "operations",
+            "SELECT operationIndex, idActorIndex, idCounter, objectKind, objectActorIndex, \
+             objectCounter, keyKind, keyName, keyActorIndex, keyCounter, insertFlag, action, \
+             valueKind, valueText, valueTypeCode, expandFlag, markName \
+             FROM external_operations ORDER BY operationIndex;",
+        ),
+        (
+            "successors",
+            "SELECT operationIndex, successorOrdinal, actorIndex, counter \
+             FROM external_operation_successors ORDER BY operationIndex, successorOrdinal;",
+        ),
+    ] {
+        hash_query_rows(connection, &mut hasher, label, query)?;
+    }
+    hash_blob_column(
+        connection,
+        &mut hasher,
+        "change-payloads",
+        "external_changes",
+        "extraPayload",
+        "SELECT changeIndex FROM external_changes ORDER BY changeIndex;",
+    )?;
+    hash_blob_column(
+        connection,
+        &mut hasher,
+        "operation-payloads",
+        "external_operations",
+        "valuePayload",
+        "SELECT operationIndex FROM external_operations ORDER BY operationIndex;",
+    )?;
+    Ok(lower_hex(&hasher.finalize()))
+}
+
+fn hash_query_rows(
+    connection: &Connection,
+    hasher: &mut Sha256,
+    label: &str,
+    query: &'static str,
+) -> StageResult<()> {
+    hash_field(hasher, label.as_bytes());
+    let mut statement = connection.prepare(query)?;
+    let column_count = statement.column_count();
+    let mut rows = statement.query([])?;
+    while let Some(row) = rows.next()? {
+        hasher.update(b"R");
+        for index in 0..column_count {
+            match row.get_ref(index)? {
+                ValueRef::Null => hasher.update(b"N"),
+                ValueRef::Integer(value) => {
+                    hasher.update(b"I");
+                    hasher.update(value.to_be_bytes());
+                }
+                ValueRef::Real(value) => {
+                    hasher.update(b"F");
+                    hasher.update(value.to_bits().to_be_bytes());
+                }
+                ValueRef::Text(value) => {
+                    hasher.update(b"T");
+                    hash_field(hasher, value);
+                }
+                ValueRef::Blob(value) => {
+                    hasher.update(b"B");
+                    hash_field(hasher, value);
+                }
+            }
+        }
+    }
+    hasher.update(b"E");
+    Ok(())
+}
+
+fn hash_blob_column(
+    connection: &Connection,
+    hasher: &mut Sha256,
+    label: &str,
+    table: &'static str,
+    column: &'static str,
+    row_id_query: &'static str,
+) -> StageResult<()> {
+    hash_field(hasher, label.as_bytes());
+    let mut statement = connection.prepare(row_id_query)?;
+    let mut rows = statement.query([])?;
+    let mut buffer = [0_u8; 64 * 1024];
+    while let Some(row) = rows.next()? {
+        let row_id = row.get::<_, i64>(0)?;
+        hasher.update(b"R");
+        hasher.update(row_id.to_be_bytes());
+        let mut blob = connection.blob_open(DatabaseName::Main, table, column, row_id, true)?;
+        hasher.update(
+            u64::try_from(blob.len())
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?
+                .to_be_bytes(),
+        );
+        let mut total = 0_usize;
+        loop {
+            let read = blob.read(&mut buffer)?;
+            if read == 0 {
+                break;
+            }
+            total = total
+                .checked_add(read)
+                .ok_or(ExternalSqliteStageError::RangeOverflow)?;
+            hasher.update(&buffer[..read]);
+        }
+        if total != blob.len() {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+    }
+    hasher.update(b"E");
+    Ok(())
+}
+
+fn hash_field(hasher: &mut Sha256, value: &[u8]) {
+    hasher.update((value.len() as u64).to_be_bytes());
+    hasher.update(value);
+}
+
+fn lower_hex(value: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut output = String::with_capacity(value.len() * 2);
+    for byte in value {
+        output.push(HEX[(byte >> 4) as usize] as char);
+        output.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    output
 }
 
 fn require_stage_source_identity(
@@ -1215,4 +1635,131 @@ fn require_matching_operation_receipt(
         return Err(ExternalSqliteStageError::ReceiptConflict);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SOURCE_SHA256: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+    const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+    fn complete_minimal_graph() -> Connection {
+        let mut connection = Connection::open_in_memory().unwrap();
+        configure_connection(&connection).unwrap();
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .unwrap();
+        initialize_or_validate_schema(&transaction).unwrap();
+        transaction
+            .execute(
+                "INSERT INTO external_layout_stage_receipt \
+                 (singleton, sourceByteLength, sourceSha256, actorCount, headCount) \
+                 VALUES (1, 1, ?1, 1, 1);",
+                [SOURCE_SHA256],
+            )
+            .unwrap();
+        transaction
+            .execute(
+                "INSERT INTO external_actors (actorIndex, actorId) VALUES (0, 'aa');",
+                [],
+            )
+            .unwrap();
+        transaction
+            .execute(
+                "INSERT INTO external_changes \
+                 (changeIndex, actorIndex, sequence, maxOperation, timestamp, message, extraPayload) \
+                 VALUES (0, 0, ?1, ?2, 0, NULL, X'');",
+                params![1_u64.to_be_bytes(), 1_u64.to_be_bytes()],
+            )
+            .unwrap();
+        transaction
+            .execute(
+                "INSERT INTO external_heads (headIndex, changeIndex, hash) VALUES \
+                 (0, 0, '2222222222222222222222222222222222222222222222222222222222222222');",
+                [],
+            )
+            .unwrap();
+        transaction
+            .execute(
+                "INSERT INTO external_change_stage_receipt \
+                 (singleton, sourceByteLength, sourceSha256, changeCount, dependencyCount, \
+                  dependencySpoolByteLength, dependencySpoolSha256, extraPayloadSpoolByteLength, \
+                  extraPayloadSpoolSha256, rowRunPrefixByteLength, rowRunPrefixSha256) \
+                 VALUES (1, 1, ?1, 1, 0, 0, ?2, 0, ?2, 1, ?1);",
+                params![SOURCE_SHA256, EMPTY_SHA256],
+            )
+            .unwrap();
+        transaction
+            .execute(
+                "INSERT INTO external_operations \
+                 (operationIndex, idActorIndex, idCounter, objectKind, objectActorIndex, \
+                  objectCounter, keyKind, keyName, keyActorIndex, keyCounter, insertFlag, \
+                  action, valueKind, valueText, valueTypeCode, valuePayload, expandFlag, markName) \
+                 VALUES (0, 0, ?1, 'root', NULL, NULL, 'property', 'title', NULL, NULL, \
+                         0, 1, 'null', NULL, NULL, X'', 0, NULL);",
+                [1_u64.to_be_bytes()],
+            )
+            .unwrap();
+        transaction
+            .execute(
+                "INSERT INTO external_operation_stage_receipt \
+                 (singleton, sourceByteLength, sourceSha256, operationCount, successorCount, \
+                  successorSpoolByteLength, successorSpoolSha256, valuePayloadSpoolByteLength, \
+                  valuePayloadSpoolSha256, rowRunPrefixByteLength, rowRunPrefixSha256) \
+                 VALUES (1, 1, ?1, 1, 0, 0, ?2, 0, ?2, 1, ?1);",
+                params![SOURCE_SHA256, EMPTY_SHA256],
+            )
+            .unwrap();
+        transaction.commit().unwrap();
+        connection
+    }
+
+    #[test]
+    fn seals_and_replays_one_complete_graph_then_detects_same_count_tampering() {
+        let mut connection = complete_minimal_graph();
+        let receipt = seal_staged_graph(&mut connection).unwrap();
+        assert_eq!(receipt.actor_count, 1);
+        assert_eq!(receipt.head_count, 1);
+        assert_eq!(receipt.change_count, 1);
+        assert_eq!(receipt.operation_count, 1);
+        assert_eq!(receipt.graph_sha256.len(), 64);
+        assert_eq!(seal_staged_graph(&mut connection).unwrap(), receipt);
+
+        connection
+            .execute(
+                "UPDATE external_operations SET valueText = 'tampered' WHERE operationIndex = 0;",
+                [],
+            )
+            .unwrap();
+        assert!(matches!(
+            seal_staged_graph(&mut connection),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+    }
+
+    #[test]
+    fn rejects_a_noncontiguous_operation_interval_before_sealing() {
+        let mut connection = complete_minimal_graph();
+        connection
+            .execute(
+                "UPDATE external_operations SET idCounter = ?1 WHERE operationIndex = 0;",
+                [2_u64.to_be_bytes()],
+            )
+            .unwrap();
+        assert!(matches!(
+            seal_staged_graph(&mut connection),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM external_graph_stage_receipt;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            0
+        );
+    }
 }
