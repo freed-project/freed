@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   encodeLibraryCoreDigestInput,
   type LibraryCoreCanonicalValue,
-  type LibraryCoreOperationDigestDomain,
+  type LibraryCoreDigestDomain,
 } from "./canonical-codec.js";
 import {
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
@@ -31,7 +31,7 @@ function digest(
   return createHash("sha256")
     .update(
       encodeLibraryCoreDigestInput(
-        domain as LibraryCoreOperationDigestDomain,
+        domain as LibraryCoreDigestDomain,
         value as LibraryCoreCanonicalValue,
       ),
     )

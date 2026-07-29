@@ -2325,6 +2325,54 @@ rebuildable, and it never issues an authoritative durability receipt. Cache,
 temporary storage, reader count, and mmap limits are explicit and measured.
 "Let SQLite decide" is not a memory budget.
 
+An authoritative database open treats its configured path as a literal
+filesystem path, never as a SQLite URI. It selects a private page cache,
+extended result codes, and `SQLITE_OPEN_NOFOLLOW`, so the connection cannot
+join SQLite's discouraged process-global shared cache and the final database
+component cannot redirect through a symbolic link. It resolves the
+already-existing parent directory first so a system path alias such as macOS
+`/var` does not make a literal final file unusable. This does not prove
+parent-directory identity or authorize a production path. The later production
+opener must pin and recheck its storage root independently.
+
+Every authoritative connection lowers SQLite's general-purpose run-time limits
+before compiling the checked-in schema or fixed queries. One string, BLOB, or
+row is capped at 8 MiB, SQL text at 1 MiB, columns at 128, expression depth at
+64, compound-select terms at 8, function arguments at 32, LIKE or GLOB pattern
+bytes at 4,096, variable indexes at 64, and trigger depth at 8. Attached
+databases and auxiliary SQLite statement workers are disabled. These ceilings
+stay above the registered 4 MiB canonical payload and current 20-parameter
+query surface while containing parser and row allocations from malformed
+files or accidental future queries. They do not replace canonical payload
+validation, bounded result pages, database-size policy, or the authenticated
+production file locator.
+
+On macOS, the authoritative journal also enables SQLite `fullfsync` alongside
+`synchronous=FULL`. SQLite therefore requests `F_FULLFSYNC` for every commit
+and checkpoint synchronization instead of relying on ordinary `fsync`, which
+may return while a drive still buffers or reorders writes. The activation gate
+must measure this stronger barrier's commit latency on supported storage. A
+slow device does not authorize a weaker durability receipt.
+
+Authoritative connections disable SQLite's legacy double-quoted string-literal
+fallback for both schema and data statements. Checked-in SQL uses double quotes
+only for identifiers and single quotes for strings. A misspelled identifier
+therefore fails during preparation instead of silently becoming a string
+literal with different semantics.
+
+An existing authoritative file is inspected through a no-follow,
+private-cache, read-only connection before SQLite receives writable authority.
+That preflight verifies the application identity, physical version, and exact
+live catalog. Foreign, future, unversioned, and changed files are rejected
+without changing their database bytes or first receiving a writable database
+handle. SQLite may still create ephemeral coordination sidecars while reading
+a WAL-mode database. This keeps rejected database contents unchanged. It does
+not yet authorize WAL configuration. The exact read-write handle repeats the
+identity, version, and catalog verification before receiving that
+configuration, so a path replacement between the two opens also fails without
+database mutation. This does not close the separate production storage-root
+handle and root-identity contract.
+
 The dormant native projection kernel is a deliberately smaller predecessor to
 this authoritative store. It consumes the same checked-in schema as the shared
 TypeScript shadow-store contract, applies row upserts and deletions with one

@@ -158,6 +158,68 @@ files with `include_str!`; the shared TypeScript contract must prove its
 generated DDL is byte-equivalent after whitespace normalization. Do not add a
 second handwritten native schema.
 
+Do not trust `PRAGMA user_version` by itself. Before accepting an authoritative
+database, compare its complete non-internal table, index, trigger, and view
+catalog against a fresh reference generated from the checked-in schema for
+that version. A missing or additional object fails closed before authority
+state is read or written. Integrity checking and catalog identity are separate
+contracts. Neither substitutes for the other.
+
+Bind every authoritative physical schema to one fixed SQLite `application_id`
+and verify it with `user_version` before accepting the live catalog. A blank
+file may have identity zero before first initialization. Any other preexisting
+identity, or any missing or changed identity on a versioned file, fails closed.
+The header marker proves database kind only. It does not prove page integrity.
+
+Enable defensive mode, disable trusted-schema behavior, and enable
+`cell_size_check` on every authoritative SQLite connection. This blocks
+dangerous database configuration changes, prevents schema text from invoking
+privileged application functions, and checks B-tree cell structure when each
+page is read. It adds bounded incremental corruption detection without a full
+startup walk. It does not validate unread pages, cross-page relationships,
+application invariants, or external blobs.
+
+Open an authoritative SQLite database with URI interpretation disabled and
+private-cache, extended-result-code, and `SQLITE_OPEN_NOFOLLOW` flags enabled.
+A configured path names one ordinary database file. It cannot smuggle SQLite
+URI parameters, join SQLite's discouraged process-global shared cache, or
+redirect the final component through a symbolic link. Resolve the existing
+parent directory before opening so a system-level path alias does not defeat
+the final-file check. Parent-directory and root identity remain a separate
+production-opener contract before activation.
+
+Lower SQLite's per-connection run-time limits to the registered Library Core
+contract before compiling schema or query SQL. Bound strings and rows above
+the 4 MiB canonical payload ceiling, and cap SQL length, columns, expression
+depth, compound terms, function arguments, attached databases, pattern bytes,
+variable indexes, trigger depth, and auxiliary worker threads. These limits
+contain parser and row allocations for malformed files or accidental future
+queries. They do not replace payload validation, bounded result paging,
+database-size policy, or an authenticated production file locator.
+
+On macOS, pair `synchronous=FULL` with SQLite `fullfsync=ON` for the
+authoritative journal. This makes SQLite request `F_FULLFSYNC` for commit and
+checkpoint synchronization instead of relying on ordinary `fsync`, which may
+leave data in a drive's volatile cache. The later activation gate must measure
+the resulting commit latency on supported storage. Do not weaken this receipt
+durability promise to hide a slow device.
+
+Disable SQLite's legacy double-quoted string-literal fallback for both schema
+and data statements. Checked-in SQL must use double quotes only for identifiers
+and single quotes for string literals. A misspelled identifier must fail instead
+of silently changing query meaning.
+
+Before opening an existing authoritative file for writing, inspect its database
+identity, physical version, and exact live catalog through a no-follow,
+private-cache, read-only connection. A foreign, future, unversioned, or changed
+file must be rejected without changing its database bytes or first receiving a
+writable database handle. SQLite may still create ephemeral coordination
+sidecars while reading a WAL-mode database. This preflight reduces accidental
+mutation. Recheck the same identity and catalog on the exact read-write handle
+before applying WAL or durability configuration, so a path replacement between
+the two opens also fails without database mutation. This does not replace the
+later authenticated storage-root handle and root-identity contract.
+
 Apply projection upserts, deletions, and the monotone projection revision in
 one database transaction. A bounded page or count binds one revision. A later
 page using a cursor from an older revision fails closed instead of walking
@@ -204,6 +266,11 @@ Sort object names by UTF-16 code units and do not normalize Unicode. Domain
 prefixes include their terminal zero byte. A generic string label is not a
 registered digest domain. Desktop and PWA must match the same exact bytes and
 digest vectors before either path may construct authoritative operations.
+Before constructing or verifying an epoch transition, require the shared and
+native canonical codecs to register identical `epoch-transition-certificate`
+digest and signature prefixes plus the `authority-key-possession` signature
+prefix. Registering these domains grants no authority and does not validate a
+transition body, certificate chain, recovery delegation, or cloud compare-and-swap.
 
 The construction encoder is not an inbound verifier. Never verify received
 bytes by calling `JSON.parse` or a duplicate-erasing native JSON parser because
@@ -298,6 +365,47 @@ key ID, schema, algorithm, and observed frontier. Verify actor possession before
 the active-authority signature. A verified certificate is still not committed
 enrollment: retry identity, operation and actor conflicts, sequence allocation,
 and authority-state mutation remain one later atomic transaction.
+
+Repeat complete operation verification inside the native authoritative
+boundary. Shared TypeScript verification is useful for early rejection and
+cross-runtime parity, but it is not authority for SQLite. Rust must parse the
+original canonical bytes, load the immutable enrolled actor identity and public
+key from the authoritative database, reconstruct every digest and claimed chain
+link, verify every signature, then create the sealed journal input privately.
+The atomic commit must distinguish an exact stored retry from a fresh current
+tip and reject every stale fork. Never expose a renderer command that accepts a
+preverified-looking object or a digest bundle assembled by JavaScript.
+Native enrollment may construct the same kind of sealed input only from an
+exact private authority snapshot. Do not expose a verify-and-enroll path until
+that authority epoch is itself stored authoritatively and rechecked inside the
+same enrollment transaction.
+Store immutable accepted authority epochs separately from the one active
+authority pointer. Enrollment and ordinary operation commits must recheck that
+pointer after beginning their SQLite write transaction. Verification completed
+before an epoch change never authorizes a write after the change.
+An exact retry of an enrollment that already committed is not a new authority
+write and must still return its existing actor state after a later epoch
+advance. New enrollment under an inactive epoch must fail closed. Encode the
+epoch relationship in SQLite foreign keys as well as native admission code.
+
+Keep the native authoritative commit input sealed inside the verifier and
+journal module. Renderer IPC must never gain authority by sending an object
+that merely resembles a verified transaction. Commit the immutable journal,
+causal-tip references, projection updates, actor-tip compare-and-swap, exact
+retry receipt, contiguous per-operation ingest sequence, materializer frontier,
+projection revision, and the applicable enrollment or operation replication
+outbox in one immediate `synchronous=FULL` SQLite transaction.
+Outbox rows reference the immutable canonical journal row by primary key. Do
+not copy canonical operation or enrollment bytes into a second hot table.
+Read pending outbox entries through bounded keyset pages with both row and byte
+ceilings. Order from indexed outbox or ingest keys and prove the query plan
+does not build a temporary sort. Return canonical payloads only by joining the
+single immutable journal or enrollment row. A dormant page reader grants no
+network, acknowledgment, deletion, or runtime replication authority.
+Scope actor-sequence uniqueness and compare-and-swap state to the exact
+library, epoch ID, and actor. Actor sequence restarts at one after an epoch
+transition even when actor identity remains stable.
+Fault injection must prove rollback from the latest write in that transaction.
 
 ## Preserve the invariants
 

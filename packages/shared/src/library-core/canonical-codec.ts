@@ -11,12 +11,13 @@ export const LIBRARY_CORE_MAX_DIRECT_CANONICAL_BYTES = 4_194_304;
 export const LIBRARY_CORE_MAX_CANONICAL_NESTING_DEPTH = 128;
 export const LIBRARY_CORE_MAX_CANONICAL_NODES = 65_536;
 
-export const LIBRARY_CORE_OPERATION_DIGEST_DOMAINS = [
+export const LIBRARY_CORE_DIGEST_DOMAINS = [
   "authority-key",
   "actor-public-key",
   "actor-id",
   "actor-enrollment-body",
   "actor-enrollment-certificate",
+  "epoch-transition-certificate",
   "operation-payload",
   "operation-signing-body",
   "transaction-member",
@@ -27,13 +28,15 @@ export const LIBRARY_CORE_OPERATION_DIGEST_DOMAINS = [
   "causal-frontier",
 ] as const;
 
-export type LibraryCoreOperationDigestDomain =
-  (typeof LIBRARY_CORE_OPERATION_DIGEST_DOMAINS)[number];
+export type LibraryCoreDigestDomain =
+  (typeof LIBRARY_CORE_DIGEST_DOMAINS)[number];
 
 export const LIBRARY_CORE_SIGNATURE_DOMAINS = [
   "operation-envelope",
   "actor-enrollment-proof",
   "actor-enrollment-authority",
+  "epoch-transition-certificate",
+  "authority-key-possession",
 ] as const;
 
 export type LibraryCoreSignatureDomain =
@@ -271,14 +274,12 @@ export function encodeLibraryCoreCanonicalValue(
 }
 
 export function encodeLibraryCoreDigestInput(
-  domain: LibraryCoreOperationDigestDomain,
+  domain: LibraryCoreDigestDomain,
   value: LibraryCoreCanonicalValue,
   options: LibraryCoreCanonicalEncodingOptions = {},
 ): Uint8Array {
-  if (!LIBRARY_CORE_OPERATION_DIGEST_DOMAINS.includes(domain)) {
-    throw new TypeError(
-      `unregistered Library Core operation domain: ${domain}`,
-    );
+  if (!LIBRARY_CORE_DIGEST_DOMAINS.includes(domain)) {
+    throw new TypeError(`unregistered Library Core digest domain: ${domain}`);
   }
   const prefix = textEncoder.encode(
     `freed.library-core.v1/digest/${domain}\u0000`,
