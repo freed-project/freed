@@ -1145,6 +1145,22 @@ mod tests {
                 .unwrap(),
             summary.dependency_count as i64
         );
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM external_actors;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap(),
+            layout.actor_count() as i64
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM external_heads;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap(),
+            layout.head_count() as i64
+        );
         let mut statement = connection
             .prepare("SELECT extraPayload FROM external_changes ORDER BY changeIndex;")
             .unwrap();
@@ -1238,6 +1254,32 @@ mod tests {
                 row_run_limits(),
             ),
             Err(ExternalSqliteStageError::ReceiptConflict)
+        ));
+        mixed_connection
+            .execute("DELETE FROM external_operation_stage_receipt;", [])
+            .unwrap();
+        mixed_connection
+            .execute(
+                "UPDATE external_actors \
+                 SET actorId = 'ffffffffffffffffffffffffffffffff' \
+                 WHERE actorIndex = 0;",
+                [],
+            )
+            .unwrap();
+        assert!(matches!(
+            stage_verified_change_rows(
+                &mut mixed_connection,
+                row_file.as_file_mut(),
+                dependency_file.as_file_mut(),
+                extra_payload_file.as_file_mut(),
+                source_byte_length,
+                &source_sha256,
+                &layout,
+                &summary,
+                change_limits(),
+                row_run_limits(),
+            ),
+            Err(ExternalSqliteStageError::IncompleteStage)
         ));
 
         connection

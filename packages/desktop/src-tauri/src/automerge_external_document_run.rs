@@ -60,6 +60,10 @@ impl ExternalVerifiedDocumentLayout {
         self.heads.get(index).map(String::as_str)
     }
 
+    pub(super) fn head_count(&self) -> u64 {
+        self.heads.len() as u64
+    }
+
     pub(super) fn head_change_index(&self, index: usize) -> Option<u64> {
         self.head_change_indices.get(index).copied()
     }

@@ -24,9 +24,30 @@ use std::fmt;
 use std::fs::File;
 
 const STAGE_APPLICATION_ID: i64 = 0x4652_4f53;
-const STAGE_SCHEMA_VERSION: i64 = 2;
+const STAGE_SCHEMA_VERSION: i64 = 3;
 
 const STAGE_SCHEMA_SQL: &str = r#"
+CREATE TABLE IF NOT EXISTS external_layout_stage_receipt (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  sourceByteLength INTEGER NOT NULL CHECK (sourceByteLength >= 0),
+  sourceSha256 TEXT NOT NULL CHECK (
+    length(sourceSha256) = 64 AND sourceSha256 = lower(sourceSha256)
+  ),
+  actorCount INTEGER NOT NULL CHECK (actorCount >= 0),
+  headCount INTEGER NOT NULL CHECK (headCount >= 0)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS external_actors (
+  actorIndex INTEGER PRIMARY KEY CHECK (actorIndex >= 0),
+  actorId TEXT NOT NULL UNIQUE CHECK (length(actorId) > 0 AND actorId = lower(actorId))
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS external_heads (
+  headIndex INTEGER PRIMARY KEY CHECK (headIndex >= 0),
+  changeIndex INTEGER NOT NULL UNIQUE CHECK (changeIndex >= 0),
+  hash TEXT NOT NULL UNIQUE CHECK (length(hash) = 64 AND hash = lower(hash))
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS external_change_stage_receipt (
   singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
   sourceByteLength INTEGER NOT NULL CHECK (sourceByteLength >= 0),
@@ -148,6 +169,14 @@ pub(super) struct ExternalChangeStageReceipt {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+struct ExternalLayoutStageReceipt {
+    source_byte_length: u64,
+    source_sha256: String,
+    actor_count: u64,
+    head_count: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ExternalOperationStageReceipt {
     pub source_byte_length: u64,
     pub source_sha256: String,
@@ -250,6 +279,7 @@ fn stage_verified_change_rows_with_after_stage(
     configure_connection(connection)?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     initialize_or_validate_schema(&transaction)?;
+    stage_or_validate_layout(&transaction, source_byte_length, source_sha256, layout)?;
 
     if let Some(operation_receipt) = read_operation_receipt(&transaction)? {
         require_stage_source_identity(
@@ -400,6 +430,7 @@ fn stage_verified_operation_rows_with_after_stage(
     configure_connection(connection)?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     initialize_or_validate_schema(&transaction)?;
+    stage_or_validate_layout(&transaction, source_byte_length, source_sha256, layout)?;
 
     if let Some(change_receipt) = read_change_receipt(&transaction)? {
         require_stage_source_identity(
@@ -474,6 +505,172 @@ fn configure_connection(connection: &Connection) -> StageResult<()> {
     connection.pragma_update(None, "foreign_keys", "ON")?;
     connection.busy_timeout(std::time::Duration::from_millis(2_000))?;
     Ok(())
+}
+
+fn stage_or_validate_layout(
+    transaction: &Transaction<'_>,
+    source_byte_length: u64,
+    source_sha256: &str,
+    layout: &ExternalVerifiedDocumentLayout,
+) -> StageResult<()> {
+    if !layout.matches_source(source_byte_length, source_sha256) {
+        return Err(ExternalSqliteStageError::ReceiptConflict);
+    }
+    if let Some(receipt) = read_layout_receipt(transaction)? {
+        require_stage_source_identity(
+            receipt.source_byte_length,
+            &receipt.source_sha256,
+            source_byte_length,
+            source_sha256,
+        )?;
+        if receipt.actor_count != layout.actor_count() || receipt.head_count != layout.head_count()
+        {
+            return Err(ExternalSqliteStageError::ReceiptConflict);
+        }
+        require_complete_layout_stage(transaction, layout)?;
+        return Ok(());
+    }
+
+    let actor_count =
+        transaction.query_row("SELECT COUNT(*) FROM external_actors;", [], |row| {
+            row.get::<_, i64>(0)
+        })?;
+    let head_count = transaction.query_row("SELECT COUNT(*) FROM external_heads;", [], |row| {
+        row.get::<_, i64>(0)
+    })?;
+    if actor_count != 0 || head_count != 0 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+
+    let mut insert_actor = transaction
+        .prepare_cached("INSERT INTO external_actors (actorIndex, actorId) VALUES (?1, ?2);")?;
+    for index in 0..layout.actor_count() {
+        let actor_id = layout
+            .actor_id(usize::try_from(index).map_err(|_| ExternalSqliteStageError::RangeOverflow)?)
+            .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+        insert_actor.execute(params![
+            i64::try_from(index).map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            actor_id,
+        ])?;
+    }
+    drop(insert_actor);
+
+    let mut insert_head = transaction.prepare_cached(
+        "INSERT INTO external_heads (headIndex, changeIndex, hash) VALUES (?1, ?2, ?3);",
+    )?;
+    for index in 0..layout.head_count() {
+        let position =
+            usize::try_from(index).map_err(|_| ExternalSqliteStageError::RangeOverflow)?;
+        let hash = layout
+            .head(position)
+            .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+        let change_index = layout
+            .head_change_index(position)
+            .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+        insert_head.execute(params![
+            i64::try_from(index).map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            i64::try_from(change_index).map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            hash,
+        ])?;
+    }
+    drop(insert_head);
+
+    transaction.execute(
+        "INSERT INTO external_layout_stage_receipt (\
+         singleton, sourceByteLength, sourceSha256, actorCount, headCount) \
+         VALUES (1, ?1, ?2, ?3, ?4);",
+        params![
+            i64::try_from(source_byte_length)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            source_sha256,
+            i64::try_from(layout.actor_count())
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            i64::try_from(layout.head_count())
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+        ],
+    )?;
+    Ok(())
+}
+
+fn require_complete_layout_stage(
+    transaction: &Transaction<'_>,
+    layout: &ExternalVerifiedDocumentLayout,
+) -> StageResult<()> {
+    let actor_count =
+        transaction.query_row("SELECT COUNT(*) FROM external_actors;", [], |row| {
+            row.get::<_, i64>(0)
+        })?;
+    let head_count = transaction.query_row("SELECT COUNT(*) FROM external_heads;", [], |row| {
+        row.get::<_, i64>(0)
+    })?;
+    if u64::try_from(actor_count).ok() != Some(layout.actor_count())
+        || u64::try_from(head_count).ok() != Some(layout.head_count())
+    {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    for index in 0..layout.actor_count() {
+        let expected = layout
+            .actor_id(usize::try_from(index).map_err(|_| ExternalSqliteStageError::RangeOverflow)?)
+            .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+        let stored = transaction
+            .query_row(
+                "SELECT actorId FROM external_actors WHERE actorIndex = ?1;",
+                [i64::try_from(index).map_err(|_| ExternalSqliteStageError::RangeOverflow)?],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        if stored.as_deref() != Some(expected) {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+    }
+    for index in 0..layout.head_count() {
+        let position =
+            usize::try_from(index).map_err(|_| ExternalSqliteStageError::RangeOverflow)?;
+        let expected_hash = layout
+            .head(position)
+            .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+        let expected_change = layout
+            .head_change_index(position)
+            .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+        let stored = transaction
+            .query_row(
+                "SELECT changeIndex, hash FROM external_heads WHERE headIndex = ?1;",
+                [i64::try_from(index).map_err(|_| ExternalSqliteStageError::RangeOverflow)?],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+            )
+            .optional()?;
+        if stored
+            != Some((
+                i64::try_from(expected_change)
+                    .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+                expected_hash.to_string(),
+            ))
+        {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+    }
+    Ok(())
+}
+
+fn read_layout_receipt(
+    transaction: &Transaction<'_>,
+) -> StageResult<Option<ExternalLayoutStageReceipt>> {
+    transaction
+        .query_row(
+            "SELECT sourceByteLength, sourceSha256, actorCount, headCount \
+             FROM external_layout_stage_receipt WHERE singleton = 1;",
+            [],
+            |row| {
+                Ok(ExternalLayoutStageReceipt {
+                    source_byte_length: row.get::<_, i64>(0)? as u64,
+                    source_sha256: row.get(1)?,
+                    actor_count: row.get::<_, i64>(2)? as u64,
+                    head_count: row.get::<_, i64>(3)? as u64,
+                })
+            },
+        )
+        .optional()
+        .map_err(ExternalSqliteStageError::Sql)
 }
 
 fn require_stage_source_identity(
