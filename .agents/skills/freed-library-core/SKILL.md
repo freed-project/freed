@@ -219,8 +219,10 @@ executable contract. Every operation without an exact entity-key binding keeps
 the typed `entity_id_schema_unresolved` blocker. Bind touched fields by their
 exact field-registry keys and keep `touched_fields_unresolved` until the full
 set is closed. The initial `feed_item_read_assignment` payload is local
-read-state syntax only. It never authorizes or schedules a provider-visible
-seen action.
+read-state syntax only. Its `readAt` algebra treats absence as unread and
+retains the earliest valid assignment under duplicate, reordered, or
+concurrent delivery. It never authorizes or schedules a provider-visible seen
+action.
 
 ## Preserve the invariants
 

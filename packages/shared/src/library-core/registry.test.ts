@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
   LIBRARY_CORE_FIELD_REGISTRY,
 } from "./field-registry.js";
+import {
+  FEED_ITEM_READ_AT_FIELD_ALGEBRA,
+  LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
+} from "./operation-field-algebra-contracts.js";
 import {
   LIBRARY_CORE_MAX_CANONICAL_TRANSACTION_BYTES,
   LIBRARY_CORE_MAX_TRANSACTION_MEMBERS,
@@ -55,6 +58,10 @@ describe("Library Core operation registry", () => {
           LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
         ]);
         expect(definition.blockers).not.toContain("touched_fields_unresolved");
+        expect(definition.fieldAlgebra).toBe(
+          FEED_ITEM_READ_AT_FIELD_ALGEBRA,
+        );
+        expect(definition.blockers).not.toContain("field_algebra_unresolved");
       } else {
         expect(definition.payloadSchema).toBeNull();
         expect(definition.blockers).toContain("payload_schema_unresolved");
@@ -64,8 +71,9 @@ describe("Library Core operation registry", () => {
         );
         expect(definition.touchedFieldRegistryKeys).toBeNull();
         expect(definition.blockers).toContain("touched_fields_unresolved");
+        expect(definition.fieldAlgebra).toBeNull();
+        expect(definition.blockers).toContain("field_algebra_unresolved");
       }
-      expect(definition.fieldAlgebra).toBeNull();
       expect(definition.materializer).toBeNull();
       expect(definition.frozenBulkContract).toBeNull();
       expect(definition.blockers.length).toBeGreaterThan(0);
@@ -81,12 +89,17 @@ describe("Library Core operation registry", () => {
     expect(LIBRARY_CORE_MAX_TRANSACTION_MEMBERS).toBe(1_000);
     expect(LIBRARY_CORE_MAX_CANONICAL_TRANSACTION_BYTES).toBe(4 * 1_048_576);
     expect(
-      LIBRARY_CORE_FIELD_REGISTRY.some(
+      LIBRARY_CORE_FIELD_REGISTRY.find(
         (entry) =>
           entry.registryKey ===
           LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
       ),
-    ).toBe(true);
+    ).toMatchObject({
+      mergeAlgebra: "minimum_present_nonnegative_safe_integer_v1",
+      activation: {
+        blockers: expect.not.arrayContaining(["merge_algebra_undecided"]),
+      },
+    });
   });
 
   it("keeps frozen membership, provider intent, and execution receipts unresolved", () => {

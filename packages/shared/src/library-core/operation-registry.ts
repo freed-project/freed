@@ -1,5 +1,9 @@
 import type { BaseAppState } from "../store-types.js";
-import { LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY } from "./field-registry.js";
+import {
+  FEED_ITEM_READ_AT_FIELD_ALGEBRA,
+  LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
+  type LibraryCoreOperationFieldAlgebraContract,
+} from "./operation-field-algebra-contracts.js";
 import {
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
   type LibraryCoreOperationPayloadSchema,
@@ -115,7 +119,9 @@ export interface LibraryCoreOperationDefinition {
   /** Exact entity-key syntax only. This does not prove the entity exists. */
   readonly entityIdCodec: LibraryCoreEntityIdCodec | null;
   readonly touchedFieldRegistryKeys: readonly string[] | null;
-  readonly fieldAlgebra: null;
+  readonly fieldAlgebra:
+    | LibraryCoreOperationFieldAlgebraContract<unknown>
+    | null;
   readonly materializer: null;
   readonly frozenBulkContract: null;
   readonly transactionLimits: {
@@ -149,10 +155,10 @@ interface PlannedOperationInput {
   readonly payloadSchema?: LibraryCoreOperationPayloadSchema<string, unknown>;
   readonly entityIdCodec?: LibraryCoreEntityIdCodec;
   readonly touchedFieldRegistryKeys?: readonly string[];
+  readonly fieldAlgebra?: LibraryCoreOperationFieldAlgebraContract<unknown>;
 }
 
 const BASE_OPERATION_BLOCKERS = [
-  "field_algebra_unresolved",
   "materializer_unimplemented",
   "runtime_authority_inactive",
 ] as const satisfies NonEmptyBlockers;
@@ -161,7 +167,10 @@ function plannedOperation(
   input: PlannedOperationInput,
 ): LibraryCoreOperationDefinition {
   const blockers: NonEmptyBlockers = [
-    "field_algebra_unresolved",
+    "materializer_unimplemented",
+    ...(input.fieldAlgebra === undefined
+      ? (["field_algebra_unresolved"] as const)
+      : []),
     ...(input.touchedFieldRegistryKeys === undefined
       ? (["touched_fields_unresolved"] as const)
       : []),
@@ -182,7 +191,7 @@ function plannedOperation(
     payloadSchema: input.payloadSchema ?? null,
     entityIdCodec: input.entityIdCodec ?? null,
     touchedFieldRegistryKeys: input.touchedFieldRegistryKeys ?? null,
-    fieldAlgebra: null,
+    fieldAlgebra: input.fieldAlgebra ?? null,
     materializer: null,
     frozenBulkContract: null,
     transactionLimits: {
@@ -293,6 +302,7 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
     touchedFieldRegistryKeys: [
       LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
     ],
+    fieldAlgebra: FEED_ITEM_READ_AT_FIELD_ALGEBRA,
     candidateStoreSurfaces: ["markAsRead"],
     legacyWorkerRequests: ["MARK_AS_READ"],
     additionalBlockers: ["provider_intent_separation_unresolved"],

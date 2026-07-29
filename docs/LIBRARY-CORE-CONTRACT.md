@@ -502,9 +502,13 @@ retains a typed `entity_id_schema_unresolved` blocker until its exact key syntax
 is bound. The read assignment also binds its sole touched field to
 `library-core-v1:feedItems.{globalId}.userState.readAt`. These contracts close
 payload syntax, entity-key syntax, and the touched-field set only. Entity
-existence, field algebra, SQLite materializer, provider-intent separation, and
-runtime authority remain blocked. The payload does not itself schedule or
-authorize a provider-visible seen action.
+existence, SQLite materializer, provider-intent separation, and runtime
+authority remain blocked. `readAt` uses the executable
+`minimum_present_nonnegative_safe_integer_v1` algebra: absence means unread,
+the first assignment establishes the value, and duplicate, reordered, or
+concurrent assignments retain the earliest valid timestamp. Invalid current or
+incoming values fail closed. The payload does not itself schedule or authorize
+a provider-visible seen action.
 
 Canonical sets use their field-specific sort before `C`. `causal_frontier`
 sorts ascending by `(actor_id, sequence, operation_id, chain_digest)`,
