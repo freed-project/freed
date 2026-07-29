@@ -7,6 +7,7 @@
 //! struct's shape.
 
 use rusqlite::config::DbConfig;
+use rusqlite::limits::Limit;
 use rusqlite::{
     params, Connection, OpenFlags, OptionalExtension, Result as SqlResult, Transaction,
     TransactionBehavior,
@@ -40,6 +41,17 @@ const MAX_OUTBOX_PAGE_BYTES: usize = 4_194_304;
 const MAX_SCHEMA_CATALOG_ENTRIES: usize = 256;
 const MAX_SCHEMA_CATALOG_IDENTIFIER_BYTES: i64 = 256;
 const MAX_SCHEMA_CATALOG_BYTES: i64 = 1_048_576;
+const SQLITE_MAX_VALUE_BYTES: i32 = 8 * 1024 * 1024;
+const SQLITE_MAX_SQL_BYTES: i32 = 1024 * 1024;
+const SQLITE_MAX_COLUMNS: i32 = 128;
+const SQLITE_MAX_EXPRESSION_DEPTH: i32 = 64;
+const SQLITE_MAX_COMPOUND_SELECTS: i32 = 8;
+const SQLITE_MAX_FUNCTION_ARGUMENTS: i32 = 32;
+const SQLITE_MAX_ATTACHED_DATABASES: i32 = 0;
+const SQLITE_MAX_PATTERN_BYTES: i32 = 4_096;
+const SQLITE_MAX_VARIABLE_NUMBER: i32 = 64;
+const SQLITE_MAX_TRIGGER_DEPTH: i32 = 8;
+const SQLITE_MAX_WORKER_THREADS: i32 = 0;
 const OPERATION_OUTBOX_PAGE_SQL: &str = "
     SELECT operation.operationId, outbox.ingestSequence,
            outbox.enqueuedAtMs,
@@ -564,6 +576,42 @@ impl LibraryCoreJournal {
     }
 
     fn configure(&self) -> JournalResult<()> {
+        // The journal executes checked-in SQL with at most 20 parameters and
+        // accepts canonical payloads capped at 4 MiB. Keep SQLite's parser and
+        // row allocations close to that contract instead of inheriting its
+        // much larger general-purpose defaults.
+        self.connection
+            .set_limit(Limit::SQLITE_LIMIT_LENGTH, SQLITE_MAX_VALUE_BYTES);
+        self.connection
+            .set_limit(Limit::SQLITE_LIMIT_SQL_LENGTH, SQLITE_MAX_SQL_BYTES);
+        self.connection
+            .set_limit(Limit::SQLITE_LIMIT_COLUMN, SQLITE_MAX_COLUMNS);
+        self.connection
+            .set_limit(Limit::SQLITE_LIMIT_EXPR_DEPTH, SQLITE_MAX_EXPRESSION_DEPTH);
+        self.connection.set_limit(
+            Limit::SQLITE_LIMIT_COMPOUND_SELECT,
+            SQLITE_MAX_COMPOUND_SELECTS,
+        );
+        self.connection.set_limit(
+            Limit::SQLITE_LIMIT_FUNCTION_ARG,
+            SQLITE_MAX_FUNCTION_ARGUMENTS,
+        );
+        self.connection
+            .set_limit(Limit::SQLITE_LIMIT_ATTACHED, SQLITE_MAX_ATTACHED_DATABASES);
+        self.connection.set_limit(
+            Limit::SQLITE_LIMIT_LIKE_PATTERN_LENGTH,
+            SQLITE_MAX_PATTERN_BYTES,
+        );
+        self.connection.set_limit(
+            Limit::SQLITE_LIMIT_VARIABLE_NUMBER,
+            SQLITE_MAX_VARIABLE_NUMBER,
+        );
+        self.connection
+            .set_limit(Limit::SQLITE_LIMIT_TRIGGER_DEPTH, SQLITE_MAX_TRIGGER_DEPTH);
+        self.connection.set_limit(
+            Limit::SQLITE_LIMIT_WORKER_THREADS,
+            SQLITE_MAX_WORKER_THREADS,
+        );
         self.connection
             .set_db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true)?;
         self.connection
@@ -1701,6 +1749,56 @@ mod tests {
         assert_eq!(cell_size_check, 1);
         assert!(defensive);
         assert!(!trusted_schema);
+        assert_eq!(
+            journal.connection.limit(Limit::SQLITE_LIMIT_LENGTH),
+            SQLITE_MAX_VALUE_BYTES
+        );
+        assert_eq!(
+            journal.connection.limit(Limit::SQLITE_LIMIT_SQL_LENGTH),
+            SQLITE_MAX_SQL_BYTES
+        );
+        assert_eq!(
+            journal.connection.limit(Limit::SQLITE_LIMIT_COLUMN),
+            SQLITE_MAX_COLUMNS
+        );
+        assert_eq!(
+            journal.connection.limit(Limit::SQLITE_LIMIT_EXPR_DEPTH),
+            SQLITE_MAX_EXPRESSION_DEPTH
+        );
+        assert_eq!(
+            journal
+                .connection
+                .limit(Limit::SQLITE_LIMIT_COMPOUND_SELECT),
+            SQLITE_MAX_COMPOUND_SELECTS
+        );
+        assert_eq!(
+            journal.connection.limit(Limit::SQLITE_LIMIT_FUNCTION_ARG),
+            SQLITE_MAX_FUNCTION_ARGUMENTS
+        );
+        assert_eq!(
+            journal.connection.limit(Limit::SQLITE_LIMIT_ATTACHED),
+            SQLITE_MAX_ATTACHED_DATABASES
+        );
+        assert_eq!(
+            journal
+                .connection
+                .limit(Limit::SQLITE_LIMIT_LIKE_PATTERN_LENGTH),
+            SQLITE_MAX_PATTERN_BYTES
+        );
+        assert_eq!(
+            journal
+                .connection
+                .limit(Limit::SQLITE_LIMIT_VARIABLE_NUMBER),
+            SQLITE_MAX_VARIABLE_NUMBER
+        );
+        assert_eq!(
+            journal.connection.limit(Limit::SQLITE_LIMIT_TRIGGER_DEPTH),
+            SQLITE_MAX_TRIGGER_DEPTH
+        );
+        assert_eq!(
+            journal.connection.limit(Limit::SQLITE_LIMIT_WORKER_THREADS),
+            SQLITE_MAX_WORKER_THREADS
+        );
     }
 
     #[test]

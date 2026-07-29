@@ -332,6 +332,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.48 | Fixed SQLite application identity verified with the physical version and schema catalog before database acceptance | ✓ | Low |
 | 4.49 | Defensive untrusted-schema SQLite connections with B-tree cell validation on every page read | ✓ | Low |
 | 4.50 | Private-cache literal authoritative SQLite opens that reject final-component symbolic links and URI parameters | ✓ | Low |
+| 4.51 | Per-connection SQLite parser, row, attachment, variable, trigger, and worker limits aligned with bounded Library Core payloads and fixed SQL | ✓ | Low |
 
 ---
 
@@ -383,6 +384,7 @@ recovery, telemetry, milestones, and acceptance tests.
 - [x] The dormant authoritative SQLite schema writes the fixed `FREE` application identity into SQLite's header and every open verifies it alongside the physical schema version before accepting the exact live catalog. A wrong nonzero identity on an empty file and a missing or changed identity on a versioned file fail closed instead of being claimed as Library Core storage. This identity marker is not an integrity check, a production opener, a provider action, or runtime authority
 - [x] Every dormant authoritative SQLite connection enables defensive mode, disables trusted-schema behavior, and enables `cell_size_check`. Dangerous configuration writes are rejected, schema text cannot invoke privileged application functions, and SQLite validates each B-tree cell when its page is read instead of waiting for a full database scan. This catches malformed cell structure on accessed pages with bounded incremental work. It does not claim that unread pages, cross-page relationships, or application semantics are healthy, and it does not add a startup scan, runtime opener, provider action, or writer authority
 - [x] Every dormant authoritative SQLite file open treats the configured path literally and enables private-cache, extended-result-code, and `SQLITE_OPEN_NOFOLLOW` flags, so it cannot join a process-global shared cache and SQLite URI parameters or final-component symbolic links cannot redirect the accepted database. Parent-directory identity remains an explicit production-opener requirement. This adds no runtime opener, provider action, or writer authority
+- [x] Every dormant authoritative SQLite connection lowers the engine's general-purpose run-time limits before compiling schema or query SQL. Strings and rows remain above the 4 MiB canonical payload ceiling while SQL text, columns, expression depth, compound selects, function arguments, attached databases, pattern bytes, variable indexes, trigger depth, and auxiliary worker threads are capped to the checked-in schema and fixed query surface. These limits bound parser and row allocations from malformed files or accidental future queries without replacing canonical payload validation, bounded result paging, database-size policy, a production file locator, provider controls, or activation authority
 - [ ] iCloud sync integration
 - [ ] Large media packages transfer outside Automerge through an authenticated,
       resumable, integrity-checked path with explicit storage and deletion rules

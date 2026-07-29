@@ -188,6 +188,15 @@ parent directory before opening so a system-level path alias does not defeat
 the final-file check. Parent-directory and root identity remain a separate
 production-opener contract before activation.
 
+Lower SQLite's per-connection run-time limits to the registered Library Core
+contract before compiling schema or query SQL. Bound strings and rows above
+the 4 MiB canonical payload ceiling, and cap SQL length, columns, expression
+depth, compound terms, function arguments, attached databases, pattern bytes,
+variable indexes, trigger depth, and auxiliary worker threads. These limits
+contain parser and row allocations for malformed files or accidental future
+queries. They do not replace payload validation, bounded result paging,
+database-size policy, or an authenticated production file locator.
+
 Apply projection upserts, deletions, and the monotone projection revision in
 one database transaction. A bounded page or count binds one revision. A later
 page using a cursor from an older revision fails closed instead of walking

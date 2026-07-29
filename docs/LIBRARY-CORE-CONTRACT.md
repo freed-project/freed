@@ -2335,6 +2335,18 @@ already-existing parent directory first so a system path alias such as macOS
 parent-directory identity or authorize a production path. The later production
 opener must pin and recheck its storage root independently.
 
+Every authoritative connection lowers SQLite's general-purpose run-time limits
+before compiling the checked-in schema or fixed queries. One string, BLOB, or
+row is capped at 8 MiB, SQL text at 1 MiB, columns at 128, expression depth at
+64, compound-select terms at 8, function arguments at 32, LIKE or GLOB pattern
+bytes at 4,096, variable indexes at 64, and trigger depth at 8. Attached
+databases and auxiliary SQLite statement workers are disabled. These ceilings
+stay above the registered 4 MiB canonical payload and current 20-parameter
+query surface while containing parser and row allocations from malformed
+files or accidental future queries. They do not replace canonical payload
+validation, bounded result pages, database-size policy, or the authenticated
+production file locator.
+
 The dormant native projection kernel is a deliberately smaller predecessor to
 this authoritative store. It consumes the same checked-in schema as the shared
 TypeScript shadow-store contract, applies row upserts and deletions with one
