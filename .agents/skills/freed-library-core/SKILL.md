@@ -597,8 +597,18 @@ Fault injection must prove rollback from the latest write in that transaction.
     still-current descendants, densely renumber visible sequence values, cap
     nesting at 128 levels, and reject shared nodes, malformed container
     children, scalar parents with children, and replay drift. Bind the complete
-    entity topology to the graph, resolved-value, and sequence receipts before
-    serializing any FeedItem or populating a published generation.
+    entity topology to the graph, resolved-value, and sequence receipts. The
+    next document stage reconstructs binary-key-ordered maps, visible-order
+    lists, text, and JSON-compatible scalar values from that topology. Limit
+    each entity to 4 MiB, require its embedded `globalId` to equal the owning
+    map key, preserve nonfinite floats through the canonical `__nonFinite`
+    escape, reject unsafe integers, negative zero, bytes, unknown scalar
+    extensions, malformed text chunks, and any user property that collides
+    with the reserved nonfinite escape, and bind every exact JSON byte to a
+    replayable document receipt. Keep temporary node values in SQLite and hold
+    at most one bounded output plus one bounded child or scalar payload in
+    native memory. Do not populate a published generation until the later
+    schema-projection stage validates the complete FeedItem domain.
     Every staged head must resolve to a staged change before the change receipt
     is accepted. Change and operation receipts in one stage must bind the same
     exact source identity. Missing rows, changed layout entries, dangling graph

@@ -24,11 +24,12 @@ use rusqlite::{
 use sha2::{Digest, Sha256};
 use std::fmt;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 
 const STAGE_APPLICATION_ID: i64 = 0x4652_4f53;
-const STAGE_SCHEMA_VERSION: i64 = 10;
+const STAGE_SCHEMA_VERSION: i64 = 11;
 const MAX_FEED_ITEM_OBJECT_DEPTH: i64 = 128;
+const MAX_FEED_ITEM_JSON_BYTES: usize = 4 * 1024 * 1024;
 
 const STAGE_SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS external_layout_stage_receipt (
@@ -333,6 +334,33 @@ CREATE TABLE IF NOT EXISTS external_feed_item_node_receipt (
     length(feedItemNodesSha256) = 64 AND feedItemNodesSha256 = lower(feedItemNodesSha256)
   )
 ) STRICT;
+
+CREATE TABLE IF NOT EXISTS external_feed_item_documents (
+  entityOperationIndex INTEGER PRIMARY KEY
+    REFERENCES external_feed_item_entities(entityOperationIndex) ON DELETE CASCADE,
+  globalId TEXT NOT NULL UNIQUE,
+  jsonText TEXT NOT NULL CHECK (
+    json_valid(jsonText) AND length(CAST(jsonText AS BLOB)) BETWEEN 1 AND 4194304
+  ),
+  jsonByteLength INTEGER NOT NULL CHECK (jsonByteLength BETWEEN 1 AND 4194304),
+  jsonSha256 TEXT NOT NULL CHECK (
+    length(jsonSha256) = 64 AND jsonSha256 = lower(jsonSha256)
+  ),
+  CHECK (jsonByteLength = length(CAST(jsonText AS BLOB)))
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS external_feed_item_document_receipt (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  feedItemNodesSha256 TEXT NOT NULL CHECK (
+    length(feedItemNodesSha256) = 64 AND feedItemNodesSha256 = lower(feedItemNodesSha256)
+  ),
+  feedItemCount INTEGER NOT NULL CHECK (feedItemCount >= 0),
+  jsonByteLength INTEGER NOT NULL CHECK (jsonByteLength >= 0),
+  feedItemDocumentsSha256 TEXT NOT NULL CHECK (
+    length(feedItemDocumentsSha256) = 64 AND
+    feedItemDocumentsSha256 = lower(feedItemDocumentsSha256)
+  )
+) STRICT;
 "#;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -404,6 +432,14 @@ struct ExternalFeedItemNodeReceipt {
     feed_item_count: u64,
     feed_item_node_count: u64,
     feed_item_nodes_sha256: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ExternalFeedItemDocumentReceipt {
+    feed_item_nodes_sha256: String,
+    feed_item_count: u64,
+    json_byte_length: u64,
+    feed_item_documents_sha256: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1073,6 +1109,68 @@ fn materialize_feed_item_nodes(
     Ok(receipt)
 }
 
+fn materialize_feed_item_documents(
+    connection: &mut Connection,
+) -> StageResult<ExternalFeedItemDocumentReceipt> {
+    configure_connection(connection)?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    initialize_or_validate_schema(&transaction)?;
+    let node_receipt = read_feed_item_node_receipt(&transaction)?
+        .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+    build_expected_feed_item_nodes(&transaction)?;
+    validate_feed_item_node_set(&transaction)?;
+    if feed_item_nodes_sha256(&transaction)? != node_receipt.feed_item_nodes_sha256 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+
+    build_expected_feed_item_documents(&transaction)?;
+    let stored_receipt = read_feed_item_document_receipt(&transaction)?;
+    let stored_count = transaction.query_row(
+        "SELECT COUNT(*) FROM external_feed_item_documents;",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if stored_receipt.is_none() {
+        if stored_count != 0 {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        transaction.execute(
+            "INSERT INTO external_feed_item_documents (\
+             entityOperationIndex, globalId, jsonText, jsonByteLength, jsonSha256) \
+             SELECT entityOperationIndex, globalId, jsonText, jsonByteLength, jsonSha256 \
+             FROM temp.external_expected_feed_item_documents \
+             ORDER BY entityOperationIndex;",
+            [],
+        )?;
+    }
+    validate_feed_item_document_set(&transaction)?;
+
+    let (feed_item_count, json_byte_length) = transaction.query_row(
+        "SELECT COUNT(*), COALESCE(SUM(jsonByteLength), 0) \
+         FROM external_feed_item_documents;",
+        [],
+        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+    )?;
+    let receipt = ExternalFeedItemDocumentReceipt {
+        feed_item_nodes_sha256: node_receipt.feed_item_nodes_sha256,
+        feed_item_count: u64::try_from(feed_item_count)
+            .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+        json_byte_length: u64::try_from(json_byte_length)
+            .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+        feed_item_documents_sha256: feed_item_documents_sha256(&transaction)?,
+    };
+    if let Some(stored) = stored_receipt {
+        if stored != receipt {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        transaction.commit()?;
+        return Ok(receipt);
+    }
+    insert_feed_item_document_receipt(&transaction, &receipt)?;
+    transaction.commit()?;
+    Ok(receipt)
+}
+
 fn configure_connection(connection: &Connection) -> StageResult<()> {
     connection.pragma_update(None, "foreign_keys", "ON")?;
     // Winner selection may sort a source-sized operation set. Force SQLite to
@@ -1479,6 +1577,49 @@ fn insert_feed_item_node_receipt(
             i64::try_from(receipt.feed_item_node_count)
                 .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
             receipt.feed_item_nodes_sha256,
+        ],
+    )?;
+    Ok(())
+}
+
+fn read_feed_item_document_receipt(
+    transaction: &Transaction<'_>,
+) -> StageResult<Option<ExternalFeedItemDocumentReceipt>> {
+    transaction
+        .query_row(
+            "SELECT feedItemNodesSha256, feedItemCount, jsonByteLength, \
+                    feedItemDocumentsSha256 \
+             FROM external_feed_item_document_receipt WHERE singleton = 1;",
+            [],
+            |row| {
+                Ok(ExternalFeedItemDocumentReceipt {
+                    feed_item_nodes_sha256: row.get(0)?,
+                    feed_item_count: row.get::<_, i64>(1)? as u64,
+                    json_byte_length: row.get::<_, i64>(2)? as u64,
+                    feed_item_documents_sha256: row.get(3)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(ExternalSqliteStageError::from)
+}
+
+fn insert_feed_item_document_receipt(
+    transaction: &Transaction<'_>,
+    receipt: &ExternalFeedItemDocumentReceipt,
+) -> StageResult<()> {
+    transaction.execute(
+        "INSERT INTO external_feed_item_document_receipt (\
+         singleton, feedItemNodesSha256, feedItemCount, jsonByteLength, \
+         feedItemDocumentsSha256) \
+         VALUES (1, ?1, ?2, ?3, ?4);",
+        params![
+            receipt.feed_item_nodes_sha256,
+            i64::try_from(receipt.feed_item_count)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            i64::try_from(receipt.json_byte_length)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            receipt.feed_item_documents_sha256,
         ],
     )?;
     Ok(())
@@ -2675,6 +2816,501 @@ fn validate_feed_item_node_set(transaction: &Transaction<'_>) -> StageResult<()>
     Ok(())
 }
 
+fn build_expected_feed_item_documents(transaction: &Transaction<'_>) -> StageResult<()> {
+    transaction.execute_batch(
+        "CREATE TEMP TABLE IF NOT EXISTS external_expected_feed_item_json_values (\
+           valueOperationIndex INTEGER PRIMARY KEY, \
+           jsonText TEXT NOT NULL, \
+           jsonByteLength INTEGER NOT NULL\
+         ) STRICT; \
+         CREATE TEMP TABLE IF NOT EXISTS external_expected_feed_item_documents (\
+           entityOperationIndex INTEGER PRIMARY KEY, \
+           globalId TEXT NOT NULL UNIQUE, \
+           jsonText TEXT NOT NULL, \
+           jsonByteLength INTEGER NOT NULL, \
+           jsonSha256 TEXT NOT NULL\
+         ) STRICT; \
+         DELETE FROM temp.external_expected_feed_item_json_values; \
+         DELETE FROM temp.external_expected_feed_item_documents;",
+    )?;
+
+    validate_feed_item_global_ids(transaction)?;
+    validate_feed_item_reserved_escapes(transaction)?;
+    materialize_scalar_json_values(transaction)?;
+    for depth in (0..=MAX_FEED_ITEM_OBJECT_DEPTH).rev() {
+        let mut after_operation_index = -1_i64;
+        loop {
+            let containers = {
+                let mut statement = transaction.prepare(
+                    "SELECT node.valueOperationIndex, operation.action, \
+                            operation.valueKind, length(operation.valuePayload) \
+                     FROM external_feed_item_nodes AS node \
+                     JOIN external_operations AS operation \
+                       ON operation.operationIndex = node.valueOperationIndex \
+                     WHERE node.depth = ?1 \
+                       AND node.valueOperationIndex > ?2 \
+                       AND operation.action IN (0, 2, 4) \
+                     ORDER BY node.valueOperationIndex LIMIT 256;",
+                )?;
+                let rows = statement.query_map(params![depth, after_operation_index], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, i64>(3)?,
+                    ))
+                })?;
+                rows.collect::<Result<Vec<_>, _>>()?
+            };
+            if containers.is_empty() {
+                break;
+            }
+            for (operation_index, action, value_kind, payload_bytes) in &containers {
+                if value_kind != "null" || *payload_bytes != 0 {
+                    return Err(ExternalSqliteStageError::IncompleteStage);
+                }
+                let json = serialize_feed_item_container(transaction, *operation_index, *action)?;
+                insert_expected_json_value(transaction, *operation_index, &json)?;
+            }
+            after_operation_index = containers
+                .last()
+                .map(|container| container.0)
+                .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+        }
+    }
+
+    let (node_count, value_count) = transaction.query_row(
+        "SELECT \
+           (SELECT COUNT(*) FROM external_feed_item_nodes), \
+           (SELECT COUNT(*) FROM temp.external_expected_feed_item_json_values);",
+        [],
+        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+    )?;
+    if node_count != value_count {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+
+    let mut after_entity_operation_index = -1_i64;
+    let mut entity_statement = transaction.prepare(
+        "SELECT entity.entityOperationIndex, entity.globalId, value.jsonText \
+         FROM external_feed_item_entities AS entity \
+         JOIN temp.external_expected_feed_item_json_values AS value \
+           ON value.valueOperationIndex = entity.entityOperationIndex \
+         WHERE entity.entityOperationIndex > ?1 \
+         ORDER BY entity.entityOperationIndex LIMIT 1;",
+    )?;
+    loop {
+        let entity = entity_statement
+            .query_row([after_entity_operation_index], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .optional()?;
+        let Some((operation_index, global_id, json)) = entity else {
+            break;
+        };
+        let json_byte_length =
+            i64::try_from(json.len()).map_err(|_| ExternalSqliteStageError::RangeOverflow)?;
+        transaction.execute(
+            "INSERT INTO temp.external_expected_feed_item_documents (\
+             entityOperationIndex, globalId, jsonText, jsonByteLength, jsonSha256) \
+             VALUES (?1, ?2, ?3, ?4, ?5);",
+            params![
+                operation_index,
+                global_id,
+                json,
+                json_byte_length,
+                lower_hex(&Sha256::digest(json.as_bytes())),
+            ],
+        )?;
+        after_entity_operation_index = operation_index;
+    }
+    Ok(())
+}
+
+fn validate_feed_item_global_ids(transaction: &Transaction<'_>) -> StageResult<()> {
+    let mismatch = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT 1 \
+           FROM external_feed_item_entities AS entity \
+           LEFT JOIN external_feed_item_nodes AS node \
+             ON node.entityOperationIndex = entity.entityOperationIndex \
+            AND node.parentValueOperationIndex = entity.entityOperationIndex \
+            AND node.segmentKind = 'property' \
+            AND node.propertyName = 'globalId' \
+           LEFT JOIN external_operations AS operation \
+             ON operation.operationIndex = node.valueOperationIndex \
+           WHERE node.valueOperationIndex IS NULL \
+              OR operation.action != 1 \
+              OR operation.valueKind != 'string' \
+              OR operation.valueText IS NOT NULL \
+              OR operation.valueTypeCode IS NOT NULL \
+              OR operation.valuePayload != CAST(entity.globalId AS BLOB)\
+         );",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if mismatch != 0 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    Ok(())
+}
+
+fn validate_feed_item_reserved_escapes(transaction: &Transaction<'_>) -> StageResult<()> {
+    let collision = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT 1 FROM external_feed_item_nodes \
+           WHERE segmentKind = 'property' AND propertyName = '__nonFinite'\
+         );",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if collision != 0 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    Ok(())
+}
+
+fn materialize_scalar_json_values(transaction: &Transaction<'_>) -> StageResult<()> {
+    let mut after_operation_index = -1_i64;
+    let mut scalar_statement = transaction.prepare(
+        "SELECT node.valueOperationIndex, operation.valueKind, \
+                operation.valueText, operation.valuePayload, \
+                resolved.resolvedCounterText \
+         FROM external_feed_item_nodes AS node \
+         JOIN external_operations AS operation \
+           ON operation.operationIndex = node.valueOperationIndex \
+         JOIN external_resolved_values AS resolved \
+           ON resolved.operationIndex = node.valueOperationIndex \
+         WHERE node.valueOperationIndex > ?1 AND operation.action = 1 \
+         ORDER BY node.valueOperationIndex LIMIT 1;",
+    )?;
+    loop {
+        let scalar = scalar_statement
+            .query_row([after_operation_index], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Vec<u8>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                ))
+            })
+            .optional()?;
+        let Some((operation_index, value_kind, value_text, value_payload, resolved_counter_text)) =
+            scalar
+        else {
+            break;
+        };
+        let json = scalar_json_value(
+            &value_kind,
+            value_text.as_deref(),
+            &value_payload,
+            resolved_counter_text.as_deref(),
+        )?;
+        insert_expected_json_value(transaction, operation_index, &json)?;
+        after_operation_index = operation_index;
+    }
+    Ok(())
+}
+
+fn scalar_json_value(
+    value_kind: &str,
+    value_text: Option<&str>,
+    value_payload: &[u8],
+    resolved_counter_text: Option<&str>,
+) -> StageResult<String> {
+    const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+    if value_kind != "string" && !value_payload.is_empty() {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    match value_kind {
+        "null" if value_text.is_none() && resolved_counter_text.is_none() => Ok("null".to_string()),
+        "boolean" if resolved_counter_text.is_none() => match value_text {
+            Some("true") => Ok("true".to_string()),
+            Some("false") => Ok("false".to_string()),
+            _ => Err(ExternalSqliteStageError::IncompleteStage),
+        },
+        "unsigned" if resolved_counter_text.is_none() => {
+            let value = value_text
+                .ok_or(ExternalSqliteStageError::IncompleteStage)?
+                .parse::<u64>()
+                .map_err(|_| ExternalSqliteStageError::IncompleteStage)?;
+            if value > MAX_SAFE_INTEGER {
+                return Err(ExternalSqliteStageError::IncompleteStage);
+            }
+            Ok(value.to_string())
+        }
+        "signed" | "timestamp" if resolved_counter_text.is_none() => {
+            let value = value_text
+                .ok_or(ExternalSqliteStageError::IncompleteStage)?
+                .parse::<i64>()
+                .map_err(|_| ExternalSqliteStageError::IncompleteStage)?;
+            if value.unsigned_abs() > MAX_SAFE_INTEGER {
+                return Err(ExternalSqliteStageError::IncompleteStage);
+            }
+            Ok(value.to_string())
+        }
+        "counter" => {
+            let value = resolved_counter_text
+                .ok_or(ExternalSqliteStageError::IncompleteStage)?
+                .parse::<i64>()
+                .map_err(|_| ExternalSqliteStageError::IncompleteStage)?;
+            if value.unsigned_abs() > MAX_SAFE_INTEGER {
+                return Err(ExternalSqliteStageError::IncompleteStage);
+            }
+            Ok(value.to_string())
+        }
+        "float" if resolved_counter_text.is_none() => {
+            let bits = value_text.ok_or(ExternalSqliteStageError::IncompleteStage)?;
+            if bits.len() != 16 || !bits.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+                return Err(ExternalSqliteStageError::IncompleteStage);
+            }
+            let mut bytes = [0_u8; 8];
+            for (index, byte) in bytes.iter_mut().enumerate() {
+                *byte = u8::from_str_radix(&bits[index * 2..index * 2 + 2], 16)
+                    .map_err(|_| ExternalSqliteStageError::IncompleteStage)?;
+            }
+            let value = f64::from_le_bytes(bytes);
+            if value == 0.0 && value.is_sign_negative() {
+                return Err(ExternalSqliteStageError::IncompleteStage);
+            }
+            if !value.is_finite() {
+                let label = if value.is_nan() {
+                    "NaN"
+                } else if value.is_sign_positive() {
+                    "Infinity"
+                } else {
+                    "-Infinity"
+                };
+                return Ok(format!("{{\"__nonFinite\":\"{label}\"}}"));
+            }
+            let number = serde_json::Number::from_f64(value)
+                .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+            Ok(number.to_string())
+        }
+        "string" if value_text.is_none() && resolved_counter_text.is_none() => {
+            let value = std::str::from_utf8(value_payload)
+                .map_err(|_| ExternalSqliteStageError::IncompleteStage)?;
+            encode_json_string(value)
+        }
+        _ => Err(ExternalSqliteStageError::IncompleteStage),
+    }
+}
+
+fn serialize_feed_item_container(
+    transaction: &Transaction<'_>,
+    operation_index: i64,
+    action: i64,
+) -> StageResult<String> {
+    match action {
+        0 => serialize_feed_item_map(transaction, operation_index),
+        2 => serialize_feed_item_list(transaction, operation_index),
+        4 => serialize_feed_item_text(transaction, operation_index),
+        _ => Err(ExternalSqliteStageError::IncompleteStage),
+    }
+}
+
+fn serialize_feed_item_map(
+    transaction: &Transaction<'_>,
+    operation_index: i64,
+) -> StageResult<String> {
+    let mut writer = BoundedJsonWriter::new();
+    write_json_bytes(&mut writer, b"{")?;
+    let mut statement = transaction.prepare(
+        "SELECT node.propertyName, value.jsonText \
+         FROM external_feed_item_nodes AS node \
+         JOIN temp.external_expected_feed_item_json_values AS value \
+           ON value.valueOperationIndex = node.valueOperationIndex \
+         WHERE node.parentValueOperationIndex = ?1 AND node.segmentKind = 'property' \
+         ORDER BY node.propertyName COLLATE BINARY;",
+    )?;
+    let mut rows = statement.query([operation_index])?;
+    let mut first = true;
+    while let Some(row) = rows.next()? {
+        if !first {
+            write_json_bytes(&mut writer, b",")?;
+        }
+        first = false;
+        let property_name = row.get::<_, String>(0)?;
+        let property_json = encode_json_string(&property_name)?;
+        let value_json = row.get::<_, String>(1)?;
+        write_json_bytes(&mut writer, property_json.as_bytes())?;
+        write_json_bytes(&mut writer, b":")?;
+        write_json_bytes(&mut writer, value_json.as_bytes())?;
+    }
+    write_json_bytes(&mut writer, b"}")?;
+    writer.into_string()
+}
+
+fn serialize_feed_item_list(
+    transaction: &Transaction<'_>,
+    operation_index: i64,
+) -> StageResult<String> {
+    let mut writer = BoundedJsonWriter::new();
+    write_json_bytes(&mut writer, b"[")?;
+    let mut statement = transaction.prepare(
+        "SELECT node.sequenceOrdinal, value.jsonText \
+         FROM external_feed_item_nodes AS node \
+         JOIN temp.external_expected_feed_item_json_values AS value \
+           ON value.valueOperationIndex = node.valueOperationIndex \
+         WHERE node.parentValueOperationIndex = ?1 AND node.segmentKind = 'sequence' \
+         ORDER BY node.sequenceOrdinal;",
+    )?;
+    let mut rows = statement.query([operation_index])?;
+    let mut expected_ordinal = 0_i64;
+    while let Some(row) = rows.next()? {
+        let ordinal = row.get::<_, i64>(0)?;
+        if ordinal != expected_ordinal {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        if expected_ordinal != 0 {
+            write_json_bytes(&mut writer, b",")?;
+        }
+        write_json_bytes(&mut writer, row.get::<_, String>(1)?.as_bytes())?;
+        expected_ordinal = expected_ordinal
+            .checked_add(1)
+            .ok_or(ExternalSqliteStageError::RangeOverflow)?;
+    }
+    write_json_bytes(&mut writer, b"]")?;
+    writer.into_string()
+}
+
+fn serialize_feed_item_text(
+    transaction: &Transaction<'_>,
+    operation_index: i64,
+) -> StageResult<String> {
+    let mut writer = BoundedJsonWriter::new();
+    write_json_bytes(&mut writer, b"\"")?;
+    let mut statement = transaction.prepare(
+        "SELECT node.sequenceOrdinal, operation.valueKind, operation.valuePayload \
+         FROM external_feed_item_nodes AS node \
+         JOIN external_operations AS operation \
+           ON operation.operationIndex = node.valueOperationIndex \
+         WHERE node.parentValueOperationIndex = ?1 AND node.segmentKind = 'sequence' \
+         ORDER BY node.sequenceOrdinal;",
+    )?;
+    let mut rows = statement.query([operation_index])?;
+    let mut expected_ordinal = 0_i64;
+    while let Some(row) = rows.next()? {
+        let ordinal = row.get::<_, i64>(0)?;
+        let value_kind = row.get::<_, String>(1)?;
+        let payload = row.get::<_, Vec<u8>>(2)?;
+        if ordinal != expected_ordinal || value_kind != "string" {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        let chunk =
+            std::str::from_utf8(&payload).map_err(|_| ExternalSqliteStageError::IncompleteStage)?;
+        let encoded = encode_json_string(chunk)?;
+        write_json_bytes(&mut writer, &encoded.as_bytes()[1..encoded.len() - 1])?;
+        expected_ordinal = expected_ordinal
+            .checked_add(1)
+            .ok_or(ExternalSqliteStageError::RangeOverflow)?;
+    }
+    write_json_bytes(&mut writer, b"\"")?;
+    writer.into_string()
+}
+
+fn insert_expected_json_value(
+    transaction: &Transaction<'_>,
+    operation_index: i64,
+    json: &str,
+) -> StageResult<()> {
+    if json.is_empty() || json.len() > MAX_FEED_ITEM_JSON_BYTES {
+        return Err(ExternalSqliteStageError::PayloadTooLarge);
+    }
+    transaction.execute(
+        "INSERT INTO temp.external_expected_feed_item_json_values (\
+         valueOperationIndex, jsonText, jsonByteLength) VALUES (?1, ?2, ?3);",
+        params![
+            operation_index,
+            json,
+            i64::try_from(json.len()).map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+        ],
+    )?;
+    Ok(())
+}
+
+fn validate_feed_item_document_set(transaction: &Transaction<'_>) -> StageResult<()> {
+    let mismatch = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT entityOperationIndex, globalId, jsonText, jsonByteLength, jsonSha256 \
+           FROM external_feed_item_documents \
+           EXCEPT \
+           SELECT entityOperationIndex, globalId, jsonText, jsonByteLength, jsonSha256 \
+           FROM temp.external_expected_feed_item_documents\
+         ) OR EXISTS(\
+           SELECT entityOperationIndex, globalId, jsonText, jsonByteLength, jsonSha256 \
+           FROM temp.external_expected_feed_item_documents \
+           EXCEPT \
+           SELECT entityOperationIndex, globalId, jsonText, jsonByteLength, jsonSha256 \
+           FROM external_feed_item_documents\
+         );",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if mismatch != 0
+        || foreign_key_check_has_row(
+            transaction,
+            "PRAGMA foreign_key_check(external_feed_item_documents);",
+        )?
+    {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    Ok(())
+}
+
+struct BoundedJsonWriter {
+    bytes: Vec<u8>,
+}
+
+impl BoundedJsonWriter {
+    fn new() -> Self {
+        Self {
+            bytes: Vec::with_capacity(256),
+        }
+    }
+
+    fn into_string(self) -> StageResult<String> {
+        String::from_utf8(self.bytes).map_err(|_| ExternalSqliteStageError::IncompleteStage)
+    }
+}
+
+impl Write for BoundedJsonWriter {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        let next_length = self
+            .bytes
+            .len()
+            .checked_add(buffer.len())
+            .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
+        if next_length > MAX_FEED_ITEM_JSON_BYTES {
+            return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
+        }
+        self.bytes.extend_from_slice(buffer);
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn write_json_bytes(writer: &mut BoundedJsonWriter, bytes: &[u8]) -> StageResult<()> {
+    writer
+        .write_all(bytes)
+        .map_err(|_| ExternalSqliteStageError::PayloadTooLarge)
+}
+
+fn encode_json_string(value: &str) -> StageResult<String> {
+    let mut writer = BoundedJsonWriter::new();
+    serde_json::to_writer(&mut writer, value)
+        .map_err(|_| ExternalSqliteStageError::PayloadTooLarge)?;
+    writer.into_string()
+}
+
 fn validate_actor_operation_intervals(
     transaction: &Transaction<'_>,
     actor_count: u64,
@@ -2932,6 +3568,19 @@ fn feed_item_nodes_sha256(connection: &Connection) -> StageResult<String> {
         "valuePayload",
         "SELECT valueOperationIndex FROM external_feed_item_nodes \
          ORDER BY entityOperationIndex, valueOperationIndex;",
+    )?;
+    Ok(lower_hex(&hasher.finalize()))
+}
+
+fn feed_item_documents_sha256(connection: &Connection) -> StageResult<String> {
+    let mut hasher = Sha256::new();
+    hash_field(&mut hasher, b"freed-automerge-feed-item-documents-v1");
+    hash_query_rows(
+        connection,
+        &mut hasher,
+        "feed-item-documents",
+        "SELECT entityOperationIndex, globalId, jsonByteLength, jsonSha256, jsonText \
+         FROM external_feed_item_documents ORDER BY entityOperationIndex;",
     )?;
     Ok(lower_hex(&hasher.finalize()))
 }
@@ -3677,6 +4326,18 @@ mod tests {
         operation_count: i64,
         successor_count: i64,
     ) {
+        let mut payload_hasher = Sha256::new();
+        let mut payload_byte_length = 0_i64;
+        let mut payload_statement = connection
+            .prepare("SELECT valuePayload FROM external_operations ORDER BY operationIndex;")
+            .unwrap();
+        let mut payload_rows = payload_statement.query([]).unwrap();
+        while let Some(row) = payload_rows.next().unwrap() {
+            let payload = row.get::<_, Vec<u8>>(0).unwrap();
+            payload_byte_length += i64::try_from(payload.len()).unwrap();
+            payload_hasher.update(payload);
+        }
+        let payload_sha256 = lower_hex(&payload_hasher.finalize());
         connection
             .execute(
                 "UPDATE external_changes SET maxOperation = ?1 WHERE changeIndex = 0;",
@@ -3687,9 +4348,16 @@ mod tests {
             .execute(
                 "UPDATE external_operation_stage_receipt \
                  SET operationCount = ?1, successorCount = ?2, \
-                     successorSpoolByteLength = ?2 * 16 \
+                     successorSpoolByteLength = ?2 * 16, \
+                     valuePayloadSpoolByteLength = ?3, \
+                     valuePayloadSpoolSha256 = ?4 \
                  WHERE singleton = 1;",
-                params![operation_count, successor_count],
+                params![
+                    operation_count,
+                    successor_count,
+                    payload_byte_length,
+                    payload_sha256
+                ],
             )
             .unwrap();
     }
@@ -3722,10 +4390,10 @@ mod tests {
             .execute(
                 "INSERT INTO external_operations \
                  (operationIndex, idActorIndex, idCounter, objectKind, objectActorIndex, \
-                  objectCounter, keyKind, keyName, keyActorIndex, keyCounter, insertFlag, \
+                 objectCounter, keyKind, keyName, keyActorIndex, keyCounter, insertFlag, \
                   action, valueKind, valueText, valueTypeCode, valuePayload, expandFlag, markName) \
                  VALUES (?1, 0, ?2, 'operation', 0, ?3, ?4, NULL, ?5, ?6, \
-                         1, 1, 'string', ?7, NULL, X'', 0, NULL);",
+                         1, 1, 'string', NULL, NULL, ?7, 0, NULL);",
                 params![
                     operation_index,
                     counter.to_be_bytes(),
@@ -3733,7 +4401,7 @@ mod tests {
                     key_kind,
                     key_actor_index,
                     key_counter,
-                    value,
+                    value.as_bytes(),
                 ],
             )
             .unwrap();
@@ -3749,14 +4417,19 @@ mod tests {
         value_kind: &str,
         value_text: Option<&str>,
     ) {
+        let (stored_value_text, value_payload) = if value_kind == "string" {
+            (None, value_text.unwrap_or_default().as_bytes().to_vec())
+        } else {
+            (value_text, Vec::new())
+        };
         connection
             .execute(
                 "INSERT INTO external_operations \
                  (operationIndex, idActorIndex, idCounter, objectKind, objectActorIndex, \
-                  objectCounter, keyKind, keyName, keyActorIndex, keyCounter, insertFlag, \
+                 objectCounter, keyKind, keyName, keyActorIndex, keyCounter, insertFlag, \
                   action, valueKind, valueText, valueTypeCode, valuePayload, expandFlag, markName) \
                  VALUES (?1, 0, ?2, 'operation', 0, ?3, 'property', ?4, NULL, NULL, \
-                         0, ?5, ?6, ?7, NULL, X'', 0, NULL);",
+                         0, ?5, ?6, ?7, NULL, ?8, 0, NULL);",
                 params![
                     operation_index,
                     counter.to_be_bytes(),
@@ -3764,7 +4437,8 @@ mod tests {
                     key,
                     action,
                     value_kind,
-                    value_text,
+                    stored_value_text,
+                    value_payload,
                 ],
             )
             .unwrap();
@@ -4507,12 +5181,15 @@ mod tests {
         insert_map_value(&connection, 5, 6, 2, "topics", 2, "null", None);
         insert_list_value(&connection, 6, 7, 6, None, "alpha");
         insert_list_value(&connection, 7, 8, 6, Some(7), "beta");
-        set_operation_bounds(&connection, 8, 8, 0);
+        insert_map_value(&connection, 8, 9, 2, "summary", 4, "null", None);
+        insert_list_value(&connection, 9, 10, 9, None, "hello ");
+        insert_list_value(&connection, 10, 11, 9, Some(10), "\"world\"\n");
+        set_operation_bounds(&connection, 11, 11, 0);
 
         materialize_through_sequences(&mut connection);
         let receipt = materialize_feed_item_nodes(&mut connection).unwrap();
         assert_eq!(receipt.feed_item_count, 1);
-        assert_eq!(receipt.feed_item_node_count, 7);
+        assert_eq!(receipt.feed_item_node_count, 10);
         let nodes = connection
             .prepare(
                 "SELECT node.valueOperationIndex, node.parentValueOperationIndex, \
@@ -4572,12 +5249,53 @@ mod tests {
                 ),
                 (6, Some(5), 2, "sequence".to_string(), None, Some(0)),
                 (7, Some(5), 2, "sequence".to_string(), None, Some(1)),
+                (
+                    8,
+                    Some(1),
+                    1,
+                    "property".to_string(),
+                    Some("summary".to_string()),
+                    None
+                ),
+                (9, Some(8), 2, "sequence".to_string(), None, Some(0)),
+                (10, Some(8), 2, "sequence".to_string(), None, Some(1)),
             ]
         );
         assert_eq!(
             materialize_feed_item_nodes(&mut connection).unwrap(),
             receipt
         );
+        let document_receipt = materialize_feed_item_documents(&mut connection).unwrap();
+        assert_eq!(document_receipt.feed_item_count, 1);
+        let stored_json = connection
+            .query_row(
+                "SELECT jsonText FROM external_feed_item_documents \
+                 WHERE globalId = 'rss:item';",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap();
+        assert_eq!(
+            stored_json,
+            "{\"author\":{\"id\":\"author\"},\"globalId\":\"rss:item\",\
+             \"summary\":\"hello \\\"world\\\"\\n\",\"topics\":[\"alpha\",\"beta\"]}"
+        );
+        assert_eq!(
+            materialize_feed_item_documents(&mut connection).unwrap(),
+            document_receipt
+        );
+        connection
+            .execute(
+                "UPDATE external_feed_item_documents \
+                 SET jsonText = replace(jsonText, 'alpha', 'gamma') \
+                 WHERE globalId = 'rss:item';",
+                [],
+            )
+            .unwrap();
+        assert!(matches!(
+            materialize_feed_item_documents(&mut connection),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
 
         connection
             .execute(
@@ -4715,6 +5433,111 @@ mod tests {
         materialize_through_sequences(&mut connection);
         assert!(matches!(
             materialize_feed_item_nodes(&mut connection),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+    }
+
+    #[test]
+    fn feed_item_documents_reject_an_entity_whose_global_id_disagrees_with_its_map_key() {
+        let mut connection = complete_minimal_graph();
+        connection
+            .execute(
+                "UPDATE external_operations SET keyName = 'feedItems', action = 0 \
+                 WHERE operationIndex = 0;",
+                [],
+            )
+            .unwrap();
+        insert_map_value(&connection, 1, 2, 1, "rss:map-key", 0, "null", None);
+        insert_map_value(
+            &connection,
+            2,
+            3,
+            2,
+            "globalId",
+            1,
+            "string",
+            Some("rss:different"),
+        );
+        set_operation_bounds(&connection, 3, 3, 0);
+
+        materialize_through_sequences(&mut connection);
+        materialize_feed_item_nodes(&mut connection).unwrap();
+        assert!(matches!(
+            materialize_feed_item_documents(&mut connection),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+    }
+
+    #[test]
+    fn feed_item_documents_reject_a_reserved_nonfinite_escape_collision() {
+        let mut connection = complete_minimal_graph();
+        connection
+            .execute(
+                "UPDATE external_operations SET keyName = 'feedItems', action = 0 \
+                 WHERE operationIndex = 0;",
+                [],
+            )
+            .unwrap();
+        insert_map_value(&connection, 1, 2, 1, "rss:item", 0, "null", None);
+        insert_map_value(
+            &connection,
+            2,
+            3,
+            2,
+            "globalId",
+            1,
+            "string",
+            Some("rss:item"),
+        );
+        insert_map_value(
+            &connection,
+            3,
+            4,
+            2,
+            "__nonFinite",
+            1,
+            "string",
+            Some("user-data"),
+        );
+        set_operation_bounds(&connection, 4, 4, 0);
+
+        materialize_through_sequences(&mut connection);
+        materialize_feed_item_nodes(&mut connection).unwrap();
+        assert!(matches!(
+            materialize_feed_item_documents(&mut connection),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+    }
+
+    #[test]
+    fn feed_item_json_scalars_preserve_javascript_number_limits() {
+        let negative_zero = lower_hex(&(-0.0_f64).to_le_bytes());
+        assert!(matches!(
+            scalar_json_value("float", Some(&negative_zero), &[], None),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+
+        let infinity = lower_hex(&f64::INFINITY.to_le_bytes());
+        assert_eq!(
+            scalar_json_value("float", Some(&infinity), &[], None).unwrap(),
+            "{\"__nonFinite\":\"Infinity\"}"
+        );
+        let negative_infinity = lower_hex(&f64::NEG_INFINITY.to_le_bytes());
+        assert_eq!(
+            scalar_json_value("float", Some(&negative_infinity), &[], None).unwrap(),
+            "{\"__nonFinite\":\"-Infinity\"}"
+        );
+        let nan = lower_hex(&f64::NAN.to_le_bytes());
+        assert_eq!(
+            scalar_json_value("float", Some(&nan), &[], None).unwrap(),
+            "{\"__nonFinite\":\"NaN\"}"
+        );
+        assert!(matches!(
+            scalar_json_value("unsigned", Some("9007199254740992"), &[], None),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+        assert!(matches!(
+            scalar_json_value("bytes", None, b"opaque", None),
             Err(ExternalSqliteStageError::IncompleteStage)
         ));
     }

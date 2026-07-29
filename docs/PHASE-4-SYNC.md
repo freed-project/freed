@@ -362,6 +362,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.78 | Bounded immutable value resolution with conflict preservation, disk-spilled Lamport winner selection, exact counter arithmetic, and receipt-bound replay | ✓ | High |
 | 4.79 | Bounded immutable list and text order with deleted-anchor retention, disk-backed iterative traversal, and receipt-bound exact replay | ✓ | High |
 | 4.80 | Bounded FeedItem topology reconstruction with deleted-entity omission, visible-sequence renumbering, depth admission, and receipt-bound exact replay | ✓ | High |
+| 4.81 | Bounded lossless FeedItem JSON reconstruction with exact map, list, text, scalar, entity-identity, and replay receipts | ✓ | High |
 
 ---
 

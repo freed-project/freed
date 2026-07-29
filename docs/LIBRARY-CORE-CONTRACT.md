@@ -9769,6 +9769,28 @@ node to the sealed graph, resolved-value, and sequence receipts. This stage
 still does not serialize complete FeedItems, populate a published generation,
 open a production database, or activate SQLite.
 
+The following immutable FeedItem document receipt reconstructs each admitted
+entity from that topology. Map keys use binary order, lists use their visible
+sequence ordinals, text concatenates only ordered string payloads, and scalar
+values retain their exact JSON-compatible Automerge meaning. One document is
+limited to 4 MiB. Integers outside JavaScript's safe range, bytes, unknown
+scalar extensions, malformed text values, and an embedded `globalId` that
+differs from the owning `feedItems` key fail closed. The existing canonical
+`__nonFinite` escape preserves NaN and infinities without turning them into
+null. Negative zero fails closed because JSON would silently rewrite it as
+positive zero. A user property named `__nonFinite` also fails closed at this
+stage, which makes the escape unambiguous instead of silently reinterpreting
+user data.
+
+Temporary node JSON remains in SQLite. Native code holds at most one bounded
+output plus one bounded child or scalar payload while assembling a document,
+so neither the document set nor the source graph becomes a Rust allocation.
+The durable document set records each entity's exact JSON bytes, byte length,
+and SHA-256 digest. Its receipt binds the complete set to the FeedItem topology
+receipt and exact replay rebuilds and compares every row. This stage still
+does not project FeedItem columns, publish a generation, open a production
+database, or activate SQLite.
+
 The migration worker's attributed resident ceiling is 384 MiB on a 4 GiB host,
 512 MiB on an 8 GiB host, and 768 MiB on a host with 16 GiB or more. Admission
 proves enough private staging capacity for the measured source, target,
