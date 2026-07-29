@@ -27,11 +27,18 @@ use rusqlite::{
     params, Connection, OptionalExtension, Result as SqlResult, Row, Transaction,
     TransactionBehavior,
 };
+use serde::Serialize;
+use std::fmt;
 use std::path::Path;
 use std::time::Duration;
 
 const SHADOW_SCHEMA_VERSION: i64 = 2;
 const MAX_FEED_PAGE_LIMIT: u32 = 128;
+const MAX_FEED_PAGE_RESPONSE_BYTES: usize = 2 * 1_048_576;
+const FEED_PAGE_ENVELOPE_RESERVE_BYTES: usize = 16 * 1_024;
+const MAX_FEED_CARD_MEDIA: usize = 8;
+const MAX_FEED_CARD_TAGS: usize = 32;
+const MAX_FEED_CARD_SIGNAL_TAGS: usize = 32;
 const MAX_PROJECTION_BATCH_ID_BYTES: usize = 128;
 const MAX_PROJECTION_BATCH_ITEMS: usize = 1_000;
 const MAX_PROJECTION_BATCH_BYTES: usize = 4 * 1024 * 1024;
@@ -48,7 +55,10 @@ enum ShadowStoreError {
     InvalidProjectionBatchIdentity { field: &'static str },
     InvalidProjectionBatchSize { requested: usize, maximum: usize },
     InvalidProjectionBatchBytes { requested: usize, maximum: usize },
+    InvalidProjectionEntityId,
     InvalidReadAssignment { field: &'static str },
+    InvalidFeedCardProjection { field: &'static str },
+    FeedCardExceedsResponseBudget { requested: usize, maximum: usize },
     ProjectionEntityNotFound { entity_id: String },
     ProjectionBatchReplayConflict { batch_id: String },
     UnsupportedSchemaVersion { expected: i64, actual: i64 },
@@ -60,6 +70,62 @@ impl From<rusqlite::Error> for ShadowStoreError {
         Self::Sql(error)
     }
 }
+
+impl fmt::Display for ShadowStoreError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Sql(error) => write!(formatter, "SQLite error: {error}"),
+            Self::StaleRevision { expected, actual } => write!(
+                formatter,
+                "projection revision changed from {expected} to {actual}"
+            ),
+            Self::InvalidPageLimit { requested, maximum } => write!(
+                formatter,
+                "feed page limit {requested} exceeds the supported range 1 through {maximum}"
+            ),
+            Self::InvalidProjectionBatchIdentity { field } => {
+                write!(formatter, "invalid projection batch {field}")
+            }
+            Self::InvalidProjectionBatchSize { requested, maximum } => write!(
+                formatter,
+                "projection batch contains {requested} operations, maximum {maximum}"
+            ),
+            Self::InvalidProjectionBatchBytes { requested, maximum } => write!(
+                formatter,
+                "projection batch contains {requested} bytes, maximum {maximum}"
+            ),
+            Self::InvalidProjectionEntityId => {
+                formatter.write_str("projection entity ID is empty or exceeds its byte bound")
+            }
+            Self::InvalidReadAssignment { field } => {
+                write!(formatter, "invalid read assignment {field}")
+            }
+            Self::InvalidFeedCardProjection { field } => {
+                write!(formatter, "invalid feed-card projection {field}")
+            }
+            Self::FeedCardExceedsResponseBudget { requested, maximum } => write!(
+                formatter,
+                "one feed card requires {requested} serialized bytes, maximum {maximum}"
+            ),
+            Self::ProjectionEntityNotFound { entity_id } => {
+                write!(formatter, "projection entity {entity_id} was not found")
+            }
+            Self::ProjectionBatchReplayConflict { batch_id } => write!(
+                formatter,
+                "projection batch {batch_id} was retried with different input"
+            ),
+            Self::UnsupportedSchemaVersion { expected, actual } => write!(
+                formatter,
+                "shadow schema version {actual} is unsupported, expected {expected}"
+            ),
+            Self::UnversionedSchemaPresent => {
+                formatter.write_str("unversioned shadow schema objects are present")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ShadowStoreError {}
 
 type StoreResult<T> = std::result::Result<T, ShadowStoreError>;
 
@@ -79,7 +145,7 @@ const READ_ASSIGNMENT_PROJECTION_V1_SQL: &str =
 /// the timeline. It is not a timestamp and is never presented as one.
 const SORT_AT_ABSENT: i64 = 0;
 
-/// One projected row. Field order matches `SHADOW_COLUMNS`.
+/// One lossless projected row. Field order matches `SHADOW_COLUMNS`.
 #[derive(Debug, Clone, PartialEq)]
 struct FeedItemRow {
     pub global_id: String,
@@ -146,7 +212,88 @@ impl FeedItemRow {
         .saturating_mul(std::mem::size_of::<i64>());
         string_bytes.saturating_add(numeric_bytes)
     }
+}
 
+/// One compact feed-card DTO.
+///
+/// This is intentionally not a `FeedItemRow`. The lossless row contains full
+/// content, preserved reader bodies, and the unmodelled-field escape object.
+/// Returning those from a nominally bounded page would cap row count while
+/// leaving response bytes proportional to corpus contents. This DTO selects
+/// only the fields the feed card can render, with independent nested limits.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FeedCardRow {
+    global_id: String,
+    platform: Option<String>,
+    content_type: Option<String>,
+    published_at: Option<i64>,
+    captured_at: Option<i64>,
+    author_id: Option<String>,
+    author_display_name: Option<String>,
+    author_handle: Option<String>,
+    author_avatar_url: Option<String>,
+    source_url: Option<String>,
+    read_at: Option<i64>,
+    saved: Option<bool>,
+    archived: Option<bool>,
+    liked: Option<bool>,
+    liked_at: Option<i64>,
+    liked_synced_at: Option<i64>,
+    content_text: Option<String>,
+    media_urls: Vec<String>,
+    media_types: Vec<String>,
+    link_preview_title: Option<String>,
+    tags: Vec<String>,
+    engagement_likes: Option<i64>,
+    engagement_comments: Option<i64>,
+    location_name: Option<String>,
+    reading_time_minutes: Option<i64>,
+    content_signal_tags: Vec<String>,
+    event_starts_at: Option<i64>,
+    event_confidence_basis_points: Option<i64>,
+    #[serde(skip)]
+    sort_at: i64,
+}
+
+fn decode_bounded_string_array(
+    encoded: String,
+    maximum: usize,
+    field: &'static str,
+) -> SqlResult<Vec<String>> {
+    let values = serde_json::from_str::<Vec<String>>(&encoded).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(error))
+    })?;
+    if values.len() > maximum {
+        return Err(rusqlite::Error::FromSqlConversionFailure(
+            0,
+            rusqlite::types::Type::Text,
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("{field} exceeded its nested row bound"),
+            )),
+        ));
+    }
+    Ok(values)
+}
+
+fn optional_boolean(row: &Row<'_>, index: usize) -> SqlResult<Option<bool>> {
+    match row.get::<_, Option<i64>>(index)? {
+        None => Ok(None),
+        Some(0) => Ok(Some(false)),
+        Some(1) => Ok(Some(true)),
+        Some(_) => Err(rusqlite::Error::FromSqlConversionFailure(
+            index,
+            rusqlite::types::Type::Integer,
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "feed-card boolean must be zero, one, or null",
+            )),
+        )),
+    }
+}
+
+impl FeedCardRow {
     fn from_row(row: &Row<'_>) -> SqlResult<Self> {
         Ok(Self {
             global_id: row.get(0)?,
@@ -157,35 +304,82 @@ impl FeedItemRow {
             author_id: row.get(5)?,
             author_display_name: row.get(6)?,
             author_handle: row.get(7)?,
-            source_url: row.get(8)?,
-            hidden: row.get(9)?,
-            saved: row.get(10)?,
-            archived: row.get(11)?,
-            read_at: row.get(12)?,
-            archived_at: row.get(13)?,
+            author_avatar_url: row.get(8)?,
+            source_url: row.get(9)?,
+            read_at: row.get(10)?,
+            saved: optional_boolean(row, 11)?,
+            archived: optional_boolean(row, 12)?,
+            liked: optional_boolean(row, 13)?,
             liked_at: row.get(14)?,
-            tags: row.get(15)?,
-            content_blob: row.get(16)?,
-            preserved_blob: row.get(17)?,
-            rest: row.get(18)?,
+            liked_synced_at: row.get(15)?,
+            content_text: row.get(16)?,
+            media_urls: decode_bounded_string_array(
+                row.get(17)?,
+                MAX_FEED_CARD_MEDIA,
+                "media_urls",
+            )?,
+            media_types: decode_bounded_string_array(
+                row.get(18)?,
+                MAX_FEED_CARD_MEDIA,
+                "media_types",
+            )?,
+            link_preview_title: row.get(19)?,
+            tags: decode_bounded_string_array(row.get(20)?, MAX_FEED_CARD_TAGS, "tags")?,
+            engagement_likes: row.get(21)?,
+            engagement_comments: row.get(22)?,
+            location_name: row.get(23)?,
+            reading_time_minutes: row.get(24)?,
+            content_signal_tags: decode_bounded_string_array(
+                row.get(25)?,
+                MAX_FEED_CARD_SIGNAL_TAGS,
+                "content_signal_tags",
+            )?,
+            event_starts_at: row.get(26)?,
+            event_confidence_basis_points: row.get(27)?,
+            sort_at: row.get(28)?,
         })
+    }
+
+    fn serialized_size_bytes(&self) -> StoreResult<usize> {
+        serde_json::to_vec(self)
+            .map(|bytes| bytes.len())
+            .map_err(|_| ShadowStoreError::InvalidFeedCardProjection {
+                field: "serialized_row",
+            })
+    }
+
+    fn sort_key(&self) -> i64 {
+        self.sort_at
     }
 }
 
 /// Opaque resume point for the next page. Both parts are required: `sort_at`
 /// alone is not unique, and a cursor that cannot resume uniquely drops or
 /// repeats rows at the page boundary.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct PageCursor {
     revision: i64,
     pub sort_at: i64,
     pub global_id: String,
 }
 
+impl PageCursor {
+    fn serialized_size_bytes(&self) -> StoreResult<usize> {
+        serde_json::to_vec(self)
+            .map(|bytes| bytes.len())
+            .map_err(|_| ShadowStoreError::InvalidFeedCardProjection {
+                field: "serialized_cursor",
+            })
+    }
+}
+
 #[derive(Debug)]
 struct FeedPage {
     revision: i64,
-    pub rows: Vec<FeedItemRow>,
+    total_count: i64,
+    serialized_row_bytes: usize,
+    pub rows: Vec<FeedCardRow>,
     /// `None` when the page reached the end of the feed.
     pub next_cursor: Option<PageCursor>,
 }
@@ -213,15 +407,105 @@ const VISIBLE_PREDICATE: &str = "archived IS NOT 1 AND hidden IS NOT 1";
 /// Two statements rather than one with a nullable cursor. A single statement
 /// would need `(?1 IS NULL OR sortAt < ?1 ...)`, and a leading expression the
 /// index cannot satisfy is precisely what forces a temp B-tree sort.
-const PAGE_FIRST_SQL: &str = "SELECT globalId, platform, contentType, publishedAt, capturedAt, \
-authorId, authorDisplayName, authorHandle, sourceUrl, hidden, saved, archived, readAt, \
-archivedAt, likedAt, tags, contentBlob, preservedBlob, rest, sortAt \
+const PAGE_FIRST_SQL: &str = "SELECT globalId, substr(platform, 1, 64), \
+substr(contentType, 1, 128), publishedAt, capturedAt, \
+substr(authorId, 1, 4096), substr(authorDisplayName, 1, 512), substr(authorHandle, 1, 256), \
+CASE WHEN json_type(rest, '$.__author.avatarUrl') = 'text' \
+  THEN substr(json_extract(rest, '$.__author.avatarUrl'), 1, 2048) END, \
+substr(sourceUrl, 1, 2048), readAt, saved, archived, \
+CASE json_type(rest, '$.__userState.liked') \
+  WHEN 'true' THEN 1 WHEN 'false' THEN 0 END, likedAt, \
+CASE WHEN json_type(rest, '$.__userState.likedSyncedAt') = 'integer' \
+  THEN json_extract(rest, '$.__userState.likedSyncedAt') END, \
+CASE WHEN json_type(contentBlob, '$.text') = 'text' \
+  THEN substr(json_extract(contentBlob, '$.text'), 1, 1500) END, \
+CASE WHEN json_type(contentBlob, '$.mediaUrls') = 'array' THEN \
+  COALESCE((SELECT json_group_array(value) FROM (\
+  SELECT substr(value, 1, 2048) AS value \
+  FROM json_each(contentBlob, '$.mediaUrls') WHERE type = 'text' LIMIT 8\
+  )), '[]') ELSE '[]' END, \
+CASE WHEN json_type(contentBlob, '$.mediaTypes') = 'array' THEN \
+  COALESCE((SELECT json_group_array(value) FROM (\
+  SELECT substr(value, 1, 16) AS value \
+  FROM json_each(contentBlob, '$.mediaTypes') WHERE type = 'text' LIMIT 8\
+  )), '[]') ELSE '[]' END, \
+CASE WHEN json_type(contentBlob, '$.linkPreview.title') = 'text' \
+  THEN substr(json_extract(contentBlob, '$.linkPreview.title'), 1, 512) END, \
+CASE WHEN json_type(tags) = 'array' THEN \
+  COALESCE((SELECT json_group_array(value) FROM (\
+  SELECT substr(value, 1, 256) AS value \
+  FROM json_each(tags) WHERE type = 'text' LIMIT 32\
+  )), '[]') ELSE '[]' END, \
+CASE WHEN json_type(rest, '$.engagement.likes') = 'integer' \
+  THEN json_extract(rest, '$.engagement.likes') END, \
+CASE WHEN json_type(rest, '$.engagement.comments') = 'integer' \
+  THEN json_extract(rest, '$.engagement.comments') END, \
+CASE WHEN json_type(rest, '$.location.name') = 'text' \
+  THEN substr(json_extract(rest, '$.location.name'), 1, 512) END, \
+CASE WHEN json_type(preservedBlob, '$.readingTime') = 'integer' \
+  THEN json_extract(preservedBlob, '$.readingTime') END, \
+CASE WHEN json_type(rest, '$.contentSignals.tags') = 'array' THEN \
+  COALESCE((SELECT json_group_array(value) FROM (\
+  SELECT substr(value, 1, 64) AS value \
+  FROM json_each(rest, '$.contentSignals.tags') WHERE type = 'text' LIMIT 32\
+  )), '[]') ELSE '[]' END, \
+CASE WHEN json_type(rest, '$.eventCandidate.startsAt') = 'integer' \
+  THEN json_extract(rest, '$.eventCandidate.startsAt') END, \
+CASE WHEN json_type(rest, '$.eventCandidate.confidence') IN ('integer', 'real') \
+  AND json_extract(rest, '$.eventCandidate.confidence') BETWEEN 0 AND 1 \
+  THEN CAST(ROUND(json_extract(rest, '$.eventCandidate.confidence') * 10000) AS INTEGER) END, \
+sortAt \
 FROM feed_items WHERE archived IS NOT 1 AND hidden IS NOT 1 \
 ORDER BY sortAt DESC, globalId ASC LIMIT ?1;";
 
-const PAGE_AFTER_SQL: &str = "SELECT globalId, platform, contentType, publishedAt, capturedAt, \
-authorId, authorDisplayName, authorHandle, sourceUrl, hidden, saved, archived, readAt, \
-archivedAt, likedAt, tags, contentBlob, preservedBlob, rest, sortAt \
+const PAGE_AFTER_SQL: &str = "SELECT globalId, substr(platform, 1, 64), \
+substr(contentType, 1, 128), publishedAt, capturedAt, \
+substr(authorId, 1, 4096), substr(authorDisplayName, 1, 512), substr(authorHandle, 1, 256), \
+CASE WHEN json_type(rest, '$.__author.avatarUrl') = 'text' \
+  THEN substr(json_extract(rest, '$.__author.avatarUrl'), 1, 2048) END, \
+substr(sourceUrl, 1, 2048), readAt, saved, archived, \
+CASE json_type(rest, '$.__userState.liked') \
+  WHEN 'true' THEN 1 WHEN 'false' THEN 0 END, likedAt, \
+CASE WHEN json_type(rest, '$.__userState.likedSyncedAt') = 'integer' \
+  THEN json_extract(rest, '$.__userState.likedSyncedAt') END, \
+CASE WHEN json_type(contentBlob, '$.text') = 'text' \
+  THEN substr(json_extract(contentBlob, '$.text'), 1, 1500) END, \
+CASE WHEN json_type(contentBlob, '$.mediaUrls') = 'array' THEN \
+  COALESCE((SELECT json_group_array(value) FROM (\
+  SELECT substr(value, 1, 2048) AS value \
+  FROM json_each(contentBlob, '$.mediaUrls') WHERE type = 'text' LIMIT 8\
+  )), '[]') ELSE '[]' END, \
+CASE WHEN json_type(contentBlob, '$.mediaTypes') = 'array' THEN \
+  COALESCE((SELECT json_group_array(value) FROM (\
+  SELECT substr(value, 1, 16) AS value \
+  FROM json_each(contentBlob, '$.mediaTypes') WHERE type = 'text' LIMIT 8\
+  )), '[]') ELSE '[]' END, \
+CASE WHEN json_type(contentBlob, '$.linkPreview.title') = 'text' \
+  THEN substr(json_extract(contentBlob, '$.linkPreview.title'), 1, 512) END, \
+CASE WHEN json_type(tags) = 'array' THEN \
+  COALESCE((SELECT json_group_array(value) FROM (\
+  SELECT substr(value, 1, 256) AS value \
+  FROM json_each(tags) WHERE type = 'text' LIMIT 32\
+  )), '[]') ELSE '[]' END, \
+CASE WHEN json_type(rest, '$.engagement.likes') = 'integer' \
+  THEN json_extract(rest, '$.engagement.likes') END, \
+CASE WHEN json_type(rest, '$.engagement.comments') = 'integer' \
+  THEN json_extract(rest, '$.engagement.comments') END, \
+CASE WHEN json_type(rest, '$.location.name') = 'text' \
+  THEN substr(json_extract(rest, '$.location.name'), 1, 512) END, \
+CASE WHEN json_type(preservedBlob, '$.readingTime') = 'integer' \
+  THEN json_extract(preservedBlob, '$.readingTime') END, \
+CASE WHEN json_type(rest, '$.contentSignals.tags') = 'array' THEN \
+  COALESCE((SELECT json_group_array(value) FROM (\
+  SELECT substr(value, 1, 64) AS value \
+  FROM json_each(rest, '$.contentSignals.tags') WHERE type = 'text' LIMIT 32\
+  )), '[]') ELSE '[]' END, \
+CASE WHEN json_type(rest, '$.eventCandidate.startsAt') = 'integer' \
+  THEN json_extract(rest, '$.eventCandidate.startsAt') END, \
+CASE WHEN json_type(rest, '$.eventCandidate.confidence') IN ('integer', 'real') \
+  AND json_extract(rest, '$.eventCandidate.confidence') BETWEEN 0 AND 1 \
+  THEN CAST(ROUND(json_extract(rest, '$.eventCandidate.confidence') * 10000) AS INTEGER) END, \
+sortAt \
 FROM feed_items WHERE archived IS NOT 1 AND hidden IS NOT 1 \
 AND (sortAt < ?1 OR (sortAt = ?1 AND globalId > ?2)) \
 ORDER BY sortAt DESC, globalId ASC LIMIT ?3;";
@@ -457,6 +741,15 @@ impl ShadowStore {
                 maximum: MAX_PROJECTION_BATCH_ITEMS,
             });
         }
+        if rows
+            .iter()
+            .any(|row| row.global_id.is_empty() || row.global_id.len() > MAX_ENTITY_ID_UTF8_BYTES)
+            || deleted_ids
+                .iter()
+                .any(|id| id.is_empty() || id.len() > MAX_ENTITY_ID_UTF8_BYTES)
+        {
+            return Err(ShadowStoreError::InvalidProjectionEntityId);
+        }
         let projected_bytes = rows
             .iter()
             .fold(0usize, |total, row| {
@@ -619,25 +912,63 @@ impl ShadowStore {
             }
         }
 
-        let rows = match cursor {
+        let candidates = match cursor {
             None => {
                 let mut statement = tx.prepare_cached(PAGE_FIRST_SQL)?;
-                let mapped = statement.query_map(params![limit], FeedItemRow::from_row)?;
+                let mapped = statement.query_map(params![limit], FeedCardRow::from_row)?;
                 mapped.collect::<SqlResult<Vec<_>>>()?
             }
             Some(cursor) => {
                 let mut statement = tx.prepare_cached(PAGE_AFTER_SQL)?;
                 let mapped = statement
                     .query_map(params![cursor.sort_at, cursor.global_id, limit], |row| {
-                        FeedItemRow::from_row(row)
+                        FeedCardRow::from_row(row)
                     })?;
                 mapped.collect::<SqlResult<Vec<_>>>()?
             }
         };
+        let total_count = tx.query_row(
+            &format!("SELECT COUNT(*) FROM feed_items WHERE {VISIBLE_PREDICATE};"),
+            [],
+            |row| row.get(0),
+        )?;
+        let row_budget =
+            MAX_FEED_PAGE_RESPONSE_BYTES.saturating_sub(FEED_PAGE_ENVELOPE_RESERVE_BYTES);
+        let mut rows = Vec::with_capacity(candidates.len());
+        let mut serialized_row_bytes = 0usize;
+        let mut truncated_by_bytes = false;
+        for candidate in candidates {
+            let candidate_bytes = candidate.serialized_size_bytes()?;
+            let next_row_bytes = serialized_row_bytes
+                .saturating_add(candidate_bytes)
+                .saturating_add(usize::from(!rows.is_empty()));
+            // The next cursor repeats the final row's identity. Measure its
+            // encoded form instead of its raw string bytes because JSON escaping
+            // can expand one input byte into six output bytes.
+            let candidate_cursor = PageCursor {
+                revision,
+                sort_at: candidate.sort_key(),
+                global_id: candidate.global_id.clone(),
+            };
+            let next_bounded_bytes =
+                next_row_bytes.saturating_add(candidate_cursor.serialized_size_bytes()?);
+            if next_bounded_bytes > row_budget {
+                if rows.is_empty() {
+                    return Err(ShadowStoreError::FeedCardExceedsResponseBudget {
+                        requested: next_bounded_bytes,
+                        maximum: row_budget,
+                    });
+                }
+                truncated_by_bytes = true;
+                break;
+            }
+            serialized_row_bytes = next_row_bytes;
+            rows.push(candidate);
+        }
 
         // A short page means the feed ended. Handing back a cursor there would
         // invite one more round trip that can only return nothing.
-        let next_cursor = if rows.len() as u32 == limit {
+        let next_cursor = if truncated_by_bytes || rows.len() as u32 == limit {
             rows.last().map(|row| PageCursor {
                 revision,
                 sort_at: row.sort_key(),
@@ -650,6 +981,8 @@ impl ShadowStore {
         tx.commit()?;
         Ok(FeedPage {
             revision,
+            total_count,
+            serialized_row_bytes,
             rows,
             next_cursor,
         })
@@ -721,10 +1054,12 @@ mod tests {
             read_at: None,
             archived_at: None,
             liked_at: None,
-            tags: None,
-            content_blob: Some("body".to_string()),
-            preserved_blob: None,
-            rest: "{}".to_string(),
+            tags: Some("[\"important\"]".to_string()),
+            content_blob: Some(
+                "{\"text\":\"body\",\"mediaUrls\":[],\"mediaTypes\":[]}".to_string(),
+            ),
+            preserved_blob: Some("{\"readingTime\":3}".to_string()),
+            rest: "{\"__author\":{\"avatarUrl\":\"https://example.test/avatar.png\"},\"__userState\":{\"liked\":false},\"engagement\":{\"likes\":3,\"comments\":1}}".to_string(),
         }
     }
 
@@ -864,6 +1199,207 @@ mod tests {
 
         assert_eq!(seen.len(), total, "every row exactly once");
         assert_eq!(undated, total / 8, "undated items survived as undated");
+    }
+
+    #[test]
+    fn feed_pages_expose_only_bounded_card_fields() {
+        let mut store = ShadowStore::open_in_memory().expect("open");
+        let mut projected = row(1, Some(1_780_000_000_000));
+        projected.source_url = Some(format!("https://example.test/{}", "s".repeat(4_096)));
+        projected.tags = Some(
+            serde_json::to_string(
+                &(0..40)
+                    .map(|index| format!("tag-{index}"))
+                    .collect::<Vec<_>>(),
+            )
+            .expect("tags"),
+        );
+        projected.content_blob = Some(
+            serde_json::json!({
+                "text": "t".repeat(2_000),
+                "mediaUrls": (0..12)
+                    .map(|index| format!("https://media.test/{index}/{}", "m".repeat(3_000)))
+                    .collect::<Vec<_>>(),
+                "mediaTypes": (0..12).map(|_| "image").collect::<Vec<_>>(),
+                "linkPreview": {
+                    "title": "l".repeat(700),
+                    "description": "FULL_CONTENT_MUST_NOT_ESCAPE"
+                }
+            })
+            .to_string(),
+        );
+        projected.preserved_blob = Some(
+            serde_json::json!({
+                "readingTime": 17,
+                "text": "FULL_PRESERVED_BODY_MUST_NOT_ESCAPE".repeat(1_000)
+            })
+            .to_string(),
+        );
+        projected.rest = serde_json::json!({
+            "__author": {
+                "avatarUrl": format!("https://avatar.test/{}", "a".repeat(3_000))
+            },
+            "__userState": {
+                "liked": true,
+                "likedSyncedAt": 1_780_000_000_001_i64
+            },
+            "engagement": { "likes": 42, "comments": 7 },
+            "location": { "name": "Somewhere" },
+            "contentSignals": {
+                "tags": (0..40)
+                    .map(|index| format!("signal-{index}"))
+                    .collect::<Vec<_>>()
+            },
+            "eventCandidate": {
+                "startsAt": 1_780_000_000_002_i64,
+                "confidence": 0.875
+            },
+            "unmodelledPrivateField": "FULL_REST_MUST_NOT_ESCAPE"
+        })
+        .to_string();
+        store
+            .apply_projection_batch("bounded-card", &digest(1), 0, &[projected], &[])
+            .expect("project");
+
+        let page = store.feed_page(None, 1).expect("page");
+        assert_eq!(page.total_count, 1);
+        assert_eq!(page.rows.len(), 1);
+        let card = &page.rows[0];
+        assert_eq!(card.content_text.as_ref().map(String::len), Some(1_500));
+        assert_eq!(card.media_urls.len(), MAX_FEED_CARD_MEDIA);
+        assert!(card.media_urls.iter().all(|value| value.len() <= 2_048));
+        assert_eq!(card.media_types.len(), MAX_FEED_CARD_MEDIA);
+        assert_eq!(card.link_preview_title.as_ref().map(String::len), Some(512));
+        assert_eq!(card.tags.len(), MAX_FEED_CARD_TAGS);
+        assert_eq!(card.content_signal_tags.len(), MAX_FEED_CARD_SIGNAL_TAGS);
+        assert_eq!(card.reading_time_minutes, Some(17));
+        assert_eq!(card.event_confidence_basis_points, Some(8_750));
+        let serialized = serde_json::to_string(card).expect("serialize card");
+        for forbidden in [
+            "FULL_CONTENT_MUST_NOT_ESCAPE",
+            "FULL_PRESERVED_BODY_MUST_NOT_ESCAPE",
+            "FULL_REST_MUST_NOT_ESCAPE",
+        ] {
+            assert!(!serialized.contains(forbidden));
+        }
+    }
+
+    #[test]
+    fn feed_cards_never_coerce_malformed_optional_fields() {
+        let mut store = ShadowStore::open_in_memory().expect("open");
+        let mut projected = row(1, Some(1_780_000_000_000));
+        projected.tags = Some(serde_json::json!("not-an-array").to_string());
+        projected.content_blob = Some(
+            serde_json::json!({
+                "text": 42,
+                "mediaUrls": "not-an-array",
+                "mediaTypes": { "image": true },
+                "linkPreview": { "title": false }
+            })
+            .to_string(),
+        );
+        projected.preserved_blob = Some(
+            serde_json::json!({
+                "readingTime": "17"
+            })
+            .to_string(),
+        );
+        projected.rest = serde_json::json!({
+            "__author": { "avatarUrl": 42 },
+            "__userState": {
+                "liked": "true",
+                "likedSyncedAt": 1.5
+            },
+            "engagement": {
+                "likes": 42.5,
+                "comments": "7"
+            },
+            "location": { "name": 42 },
+            "contentSignals": { "tags": "event" },
+            "eventCandidate": {
+                "startsAt": "tomorrow",
+                "confidence": 1.5
+            }
+        })
+        .to_string();
+        store
+            .apply_projection_batch("malformed-card", &digest(1), 0, &[projected], &[])
+            .expect("project");
+
+        let page = store.feed_page(None, 1).expect("page");
+        let card = &page.rows[0];
+        assert_eq!(card.author_avatar_url, None);
+        assert_eq!(card.liked, None);
+        assert_eq!(card.liked_synced_at, None);
+        assert_eq!(card.content_text, None);
+        assert!(card.media_urls.is_empty());
+        assert!(card.media_types.is_empty());
+        assert_eq!(card.link_preview_title, None);
+        assert!(card.tags.is_empty());
+        assert_eq!(card.engagement_likes, None);
+        assert_eq!(card.engagement_comments, None);
+        assert_eq!(card.location_name, None);
+        assert_eq!(card.reading_time_minutes, None);
+        assert!(card.content_signal_tags.is_empty());
+        assert_eq!(card.event_starts_at, None);
+        assert_eq!(card.event_confidence_basis_points, None);
+    }
+
+    #[test]
+    fn feed_page_bytes_are_bounded_even_when_the_requested_row_limit_fits() {
+        let mut store = ShadowStore::open_in_memory().expect("open");
+        let media = (0..MAX_FEED_CARD_MEDIA)
+            .map(|index| format!("https://media.test/{index}/{}", "m".repeat(2_048)))
+            .collect::<Vec<_>>();
+        let mut rows = corpus(MAX_FEED_PAGE_LIMIT as usize);
+        for projected in &mut rows {
+            projected.source_url = Some(format!("https://source.test/{}", "s".repeat(2_048)));
+            projected.content_blob = Some(
+                serde_json::json!({
+                    "text": "t".repeat(1_500),
+                    "mediaUrls": media,
+                    "mediaTypes": vec!["image"; MAX_FEED_CARD_MEDIA],
+                })
+                .to_string(),
+            );
+            projected.rest = serde_json::json!({
+                "__author": {
+                    "avatarUrl": format!("https://avatar.test/{}", "a".repeat(2_048))
+                }
+            })
+            .to_string();
+        }
+        store
+            .apply_projection_batch("large-cards", &digest(1), 0, &rows, &[])
+            .expect("project");
+
+        let page = store
+            .feed_page(None, MAX_FEED_PAGE_LIMIT)
+            .expect("bounded page");
+        assert_eq!(page.total_count, i64::from(MAX_FEED_PAGE_LIMIT));
+        assert!(page.rows.len() < MAX_FEED_PAGE_LIMIT as usize);
+        assert!(page.next_cursor.is_some());
+        assert!(
+            page.serialized_row_bytes
+                + page.next_cursor.as_ref().map_or(0, |cursor| cursor
+                    .serialized_size_bytes()
+                    .expect("cursor bytes"))
+                <= MAX_FEED_PAGE_RESPONSE_BYTES - FEED_PAGE_ENVELOPE_RESERVE_BYTES
+        );
+    }
+
+    #[test]
+    fn feed_page_cursor_budget_counts_json_escape_expansion() {
+        let cursor = PageCursor {
+            revision: 1,
+            sort_at: 2,
+            global_id: "\u{0000}".repeat(MAX_ENTITY_ID_UTF8_BYTES),
+        };
+
+        assert!(
+            cursor.serialized_size_bytes().expect("cursor bytes") > cursor.global_id.len() * 5,
+            "the response budget must count encoded cursor bytes, not raw ID bytes"
+        );
     }
 
     #[test]
@@ -1554,6 +2090,19 @@ mod tests {
                 error => panic!("unexpected batch size error: {error:?}"),
             }
         }
+        let mut invalid_row = row(1, Some(1));
+        invalid_row.global_id = "x".repeat(MAX_ENTITY_ID_UTF8_BYTES + 1);
+        for (rows, deleted_ids) in [
+            (vec![invalid_row], Vec::new()),
+            (Vec::new(), vec![String::new()]),
+        ] {
+            assert!(matches!(
+                store
+                    .apply_projection_batch("invalid-entity", &digest(2), 0, &rows, &deleted_ids,)
+                    .expect_err("invalid projection entity ID must fail"),
+                ShadowStoreError::InvalidProjectionEntityId
+            ));
+        }
         let mut oversized = row(1, None);
         oversized.content_blob = Some("x".repeat(MAX_PROJECTION_BATCH_BYTES + 1));
         match store
@@ -1611,7 +2160,8 @@ mod tests {
         assert_eq!(store.total_count().expect("count"), 32);
 
         let mut changed = rows[0].clone();
-        changed.content_blob = Some("edited".to_string());
+        changed.content_blob =
+            Some("{\"text\":\"edited\",\"mediaUrls\":[],\"mediaTypes\":[]}".to_string());
         store
             .apply_projection_batch("update", &digest(3), 2, &[changed], &[])
             .expect("update");
@@ -1623,7 +2173,19 @@ mod tests {
             .iter()
             .find(|item| item.global_id == rows[0].global_id)
             .expect("row present");
-        assert_eq!(stored.content_blob.as_deref(), Some("edited"));
+        assert_eq!(stored.global_id, rows[0].global_id);
+        let stored_content: Option<String> = store
+            .conn
+            .query_row(
+                "SELECT contentBlob FROM feed_items WHERE globalId = ?1;",
+                params![rows[0].global_id],
+                |row| row.get(0),
+            )
+            .expect("stored content");
+        assert_eq!(
+            stored_content.as_deref(),
+            Some("{\"text\":\"edited\",\"mediaUrls\":[],\"mediaTypes\":[]}")
+        );
     }
 
     #[test]

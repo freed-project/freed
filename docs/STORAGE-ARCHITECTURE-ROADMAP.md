@@ -40,12 +40,17 @@ kernel. Rust and the shared TypeScript adapter are checked against one
 versioned canonical SQL file. Native projection batches atomically upsert and
 delete rows while advancing one projection revision, and bounded keyset cursors
 fail closed if that revision changes between pages. The registered 128-row
-maximum is enforced at the adapter, and the dark base tier pins its busy
-timeout, 32 MiB page cache, file-backed temporary work, and disabled mmap. The
-module is compiled into Freed Desktop but has no production caller and opens no
-user database. This is progress inside Gate B, not a claim that Gate B is
-complete. Signed operation fixtures, transaction receipts, fork rejection,
-browser adapter parity, and authoritative materialization remain blocked.
+maximum and 2 MiB serialized response ceiling are enforced at the adapter.
+Feed rows select only compact card fields inside SQLite, cap media and tag
+collections independently, and never return full content, preserved reader
+bodies, or the unmodelled-field escape object. Malformed optional values are
+omitted instead of coerced into plausible data. The dark base tier pins its
+busy timeout, 32 MiB page cache, file-backed temporary work, and disabled mmap.
+The module is compiled into Freed Desktop but has no production caller and
+opens no user database. This is progress inside Gate B and step 4, not a claim
+that either gate is complete. The request envelope, source identity, opaque
+cursor, cancellation, PWA adapter parity, and runtime registration remain
+blocked.
 
 ## What the evidence establishes
 

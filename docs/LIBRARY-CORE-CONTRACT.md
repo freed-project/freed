@@ -2381,10 +2381,16 @@ and counts to that revision. A cursor from an older revision fails closed
 instead of mixing projections. While Automerge remains authoritative this
 derived store may use `synchronous=NORMAL`, emits no authoritative receipt, and
 is fully rebuildable. Its first physical schema is versioned, `feed_page_v1`
-enforces its registered 128-row ceiling, and the dormant base tier pins a
-5-second busy timeout, 32 MiB page cache, file-backed temporary work, and no
-mmap. Shipping this dark module does not open a user database, activate a
-reader, satisfy Gate B, or authorize any Gate C through Gate H transition.
+enforces its registered 128-row ceiling and 2 MiB serialized response ceiling,
+and the dormant base tier pins a 5-second busy timeout, 32 MiB page cache,
+file-backed temporary work, and no mmap. The compact feed projection selects
+only card fields inside SQLite. It caps media summaries at 8, tags at 32, and
+content-signal tags at 32, bounds selected display strings, and never returns
+full content blobs, preserved reader bodies, or the unmodelled-field escape
+object. Invalid optional JSON shapes are omitted instead of coerced into
+plausible card data. Shipping this dark module does not open a user database,
+activate a reader, satisfy Gate B, or authorize any Gate C through Gate H
+transition.
 
 The derived store records one projection batch receipt in the same transaction
 as its rows, deletions, and revision advance. Its identity is the stable batch
