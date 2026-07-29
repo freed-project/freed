@@ -510,12 +510,12 @@ struct ProjectionCommit {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ProjectionSourceV1 {
-    document_id: String,
-    heads_digest: String,
-    head_count: i64,
-    storage_generation: i64,
-    storage_save_revision: i64,
+pub(super) struct ProjectionSourceV1 {
+    pub(super) document_id: String,
+    pub(super) heads_digest: String,
+    pub(super) head_count: i64,
+    pub(super) storage_generation: i64,
+    pub(super) storage_save_revision: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -536,13 +536,13 @@ struct ProjectionRebuildCommit {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct PublishedProjectionGeneration {
-    path: PathBuf,
-    rebuild_id: String,
-    source: ProjectionSourceV1,
-    total_rows: usize,
-    projection_revision: i64,
-    byte_length: u64,
+pub(super) struct PublishedProjectionGeneration {
+    pub(super) path: PathBuf,
+    pub(super) rebuild_id: String,
+    pub(super) source: ProjectionSourceV1,
+    pub(super) total_rows: usize,
+    pub(super) projection_revision: i64,
+    pub(super) byte_length: u64,
 }
 
 #[derive(Debug, PartialEq)]
@@ -683,7 +683,7 @@ const ADVANCE_REVISION_SQL: &str =
     "UPDATE library_meta SET integerValue = integerValue + 1 WHERE key = 'projectionRevision';";
 
 #[cfg(unix)]
-fn publish_projection_file(staging: &Path, destination: &Path) -> std::io::Result<()> {
+pub(super) fn publish_projection_file(staging: &Path, destination: &Path) -> std::io::Result<()> {
     let parent = destination
         .parent()
         .expect("validated publication destination has a parent");
@@ -697,7 +697,7 @@ fn publish_projection_file(staging: &Path, destination: &Path) -> std::io::Resul
 }
 
 #[cfg(windows)]
-fn publish_projection_file(staging: &Path, destination: &Path) -> std::io::Result<()> {
+pub(super) fn publish_projection_file(staging: &Path, destination: &Path) -> std::io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_WRITE_THROUGH};
 
@@ -725,7 +725,7 @@ fn publish_projection_file(staging: &Path, destination: &Path) -> std::io::Resul
 }
 
 #[cfg(not(any(unix, windows)))]
-fn publish_projection_file(staging: &Path, destination: &Path) -> std::io::Result<()> {
+pub(super) fn publish_projection_file(staging: &Path, destination: &Path) -> std::io::Result<()> {
     std::fs::rename(staging, destination)
 }
 
@@ -1057,7 +1057,7 @@ impl ShadowStore {
         Ok(())
     }
 
-    fn inspect_published_projection_generation(
+    pub(super) fn inspect_published_projection_generation(
         path: &Path,
         rebuild_id: &str,
         source: &ProjectionSourceV1,

@@ -12,6 +12,8 @@ mod library_core_ed25519;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_journal;
 #[cfg_attr(not(test), allow(dead_code))]
+mod projection_generation_registry;
+#[cfg_attr(not(test), allow(dead_code))]
 mod shadow_store;
 mod youtube;
 
