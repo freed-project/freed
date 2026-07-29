@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
+  LIBRARY_CORE_FIELD_REGISTRY,
+} from "./field-registry.js";
+import {
   LIBRARY_CORE_MAX_CANONICAL_TRANSACTION_BYTES,
   LIBRARY_CORE_MAX_TRANSACTION_MEMBERS,
   LIBRARY_CORE_OPERATION_IDS,
@@ -47,6 +51,10 @@ describe("Library Core operation registry", () => {
         expect(definition.blockers).not.toContain(
           "entity_id_schema_unresolved",
         );
+        expect(definition.touchedFieldRegistryKeys).toStrictEqual([
+          LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
+        ]);
+        expect(definition.blockers).not.toContain("touched_fields_unresolved");
       } else {
         expect(definition.payloadSchema).toBeNull();
         expect(definition.blockers).toContain("payload_schema_unresolved");
@@ -54,8 +62,9 @@ describe("Library Core operation registry", () => {
         expect(definition.blockers).toContain(
           "entity_id_schema_unresolved",
         );
+        expect(definition.touchedFieldRegistryKeys).toBeNull();
+        expect(definition.blockers).toContain("touched_fields_unresolved");
       }
-      expect(definition.touchedFieldRegistryKeys).toBeNull();
       expect(definition.fieldAlgebra).toBeNull();
       expect(definition.materializer).toBeNull();
       expect(definition.frozenBulkContract).toBeNull();
@@ -71,6 +80,13 @@ describe("Library Core operation registry", () => {
 
     expect(LIBRARY_CORE_MAX_TRANSACTION_MEMBERS).toBe(1_000);
     expect(LIBRARY_CORE_MAX_CANONICAL_TRANSACTION_BYTES).toBe(4 * 1_048_576);
+    expect(
+      LIBRARY_CORE_FIELD_REGISTRY.some(
+        (entry) =>
+          entry.registryKey ===
+          LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
+      ),
+    ).toBe(true);
   });
 
   it("keeps frozen membership, provider intent, and execution receipts unresolved", () => {

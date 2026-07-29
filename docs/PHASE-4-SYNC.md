@@ -311,6 +311,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.27 | Shared exact protocol scalar predicates, including bounded entity IDs, reused by legacy bootstrap and future closed-schema validators | ✓ | Low |
 | 4.28 | Closed immutable `feed_item_read_assignment` payload syntax without materializer, provider action, or runtime activation | ✓ | Low |
 | 4.29 | Typed entity-ID blocker for every dormant operation and exact v1 entity-key binding for `feed_item_read_assignment` | ✓ | Low |
+| 4.30 | Exact `feed_item_read_assignment` touched-field binding without claiming merge algebra or write authority | ✓ | Low |
 
 ---
 

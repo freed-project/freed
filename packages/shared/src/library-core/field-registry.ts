@@ -1623,6 +1623,9 @@ export const LIBRARY_CORE_FIELD_REGISTRY = [
   ...retainedEntries,
 ].sort((left, right) => compareCodeUnits(left.registryKey, right.registryKey));
 
+export const LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY =
+  "library-core-v1:feedItems.{globalId}.userState.readAt";
+
 const staticRootKinds = exactKeyObject<keyof FreedDoc>()({
   accounts: "entity-map",
   feedItems: "entity-map",

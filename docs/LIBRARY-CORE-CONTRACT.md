@@ -499,10 +499,12 @@ non-data fields are invalid. Validation returns an immutable snapshot rather
 than retaining the caller's object. The operation registry also binds this
 operation to the shared v1 entity-ID codec. Every other dormant operation
 retains a typed `entity_id_schema_unresolved` blocker until its exact key syntax
-is bound. These schemas close payload and entity-key syntax only. Entity
-existence, touched-field registry binding, field algebra, SQLite materializer,
-provider-intent separation, and runtime authority remain blocked. The payload
-does not itself schedule or authorize a provider-visible seen action.
+is bound. The read assignment also binds its sole touched field to
+`library-core-v1:feedItems.{globalId}.userState.readAt`. These contracts close
+payload syntax, entity-key syntax, and the touched-field set only. Entity
+existence, field algebra, SQLite materializer, provider-intent separation, and
+runtime authority remain blocked. The payload does not itself schedule or
+authorize a provider-visible seen action.
 
 Canonical sets use their field-specific sort before `C`. `causal_frontier`
 sorts ascending by `(actor_id, sequence, operation_id, chain_digest)`,

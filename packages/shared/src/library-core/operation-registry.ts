@@ -1,4 +1,5 @@
 import type { BaseAppState } from "../store-types.js";
+import { LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY } from "./field-registry.js";
 import {
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
   type LibraryCoreOperationPayloadSchema,
@@ -113,7 +114,7 @@ export interface LibraryCoreOperationDefinition {
   > | null;
   /** Exact entity-key syntax only. This does not prove the entity exists. */
   readonly entityIdCodec: LibraryCoreEntityIdCodec | null;
-  readonly touchedFieldRegistryKeys: null;
+  readonly touchedFieldRegistryKeys: readonly string[] | null;
   readonly fieldAlgebra: null;
   readonly materializer: null;
   readonly frozenBulkContract: null;
@@ -147,10 +148,10 @@ interface PlannedOperationInput {
   readonly additionalBlockers?: readonly LibraryCoreOperationBlocker[];
   readonly payloadSchema?: LibraryCoreOperationPayloadSchema<string, unknown>;
   readonly entityIdCodec?: LibraryCoreEntityIdCodec;
+  readonly touchedFieldRegistryKeys?: readonly string[];
 }
 
 const BASE_OPERATION_BLOCKERS = [
-  "touched_fields_unresolved",
   "field_algebra_unresolved",
   "materializer_unimplemented",
   "runtime_authority_inactive",
@@ -160,7 +161,10 @@ function plannedOperation(
   input: PlannedOperationInput,
 ): LibraryCoreOperationDefinition {
   const blockers: NonEmptyBlockers = [
-    "touched_fields_unresolved",
+    "field_algebra_unresolved",
+    ...(input.touchedFieldRegistryKeys === undefined
+      ? (["touched_fields_unresolved"] as const)
+      : []),
     ...(input.entityIdCodec === undefined
       ? (["entity_id_schema_unresolved"] as const)
       : []),
@@ -177,7 +181,7 @@ function plannedOperation(
     entityType: input.entityType,
     payloadSchema: input.payloadSchema ?? null,
     entityIdCodec: input.entityIdCodec ?? null,
-    touchedFieldRegistryKeys: null,
+    touchedFieldRegistryKeys: input.touchedFieldRegistryKeys ?? null,
     fieldAlgebra: null,
     materializer: null,
     frozenBulkContract: null,
@@ -286,6 +290,9 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
     entityType: "FeedItem",
     payloadSchema: FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
     entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys: [
+      LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
+    ],
     candidateStoreSurfaces: ["markAsRead"],
     legacyWorkerRequests: ["MARK_AS_READ"],
     additionalBlockers: ["provider_intent_separation_unresolved"],
