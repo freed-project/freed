@@ -149,7 +149,7 @@ export function AppShell({ children }: AppShellProps) {
   const [mapViewportInsets, setMapViewportInsets] = useState<CanvasViewportInsets>(EMPTY_CANVAS_VIEWPORT_INSETS);
   const usesFullCanvasFrame = activeView === "friends";
   const contentFrameSpacingClass =
-    "px-[var(--feed-card-gap,8px)] pb-[var(--feed-card-gap,8px)]";
+    "px-[var(--feed-card-gap,8px)]";
   const [desktopSidebarDisplayMode, setDesktopSidebarDisplayMode] = useState<SidebarMode>(persistedDesktopSidebarMode);
   const dragging = useRef(false);
   const lastNonClosedDesktopSidebarModeRef = useRef<SidebarMode>(
@@ -573,7 +573,7 @@ export function AppShell({ children }: AppShellProps) {
 
           <div
             data-testid="debug-panel-drawer"
-            className="relative z-10 hidden sm:flex flex-none overflow-hidden"
+            className="relative z-10 hidden flex-none overflow-hidden pb-[var(--feed-card-gap,8px)] sm:flex"
             style={{
               width: debugVisible ? debugWidth + AUXILIARY_DRAWER_GAP_WIDTH_PX : 0,
               opacity: debugVisible ? 1 : 0,
