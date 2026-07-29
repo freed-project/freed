@@ -1036,6 +1036,45 @@ mod tests {
     }
 
     #[test]
+    fn response_loss_retry_returns_the_exact_receipt_after_reopen() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("library-core.sqlite");
+        let enrollment = actor();
+        let verified = transaction(
+            "tx:read:reopen-retry",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:reopen", 900)],
+        );
+        let receipt = {
+            let mut journal = LibraryCoreJournal::open(&path).expect("open journal");
+            journal.enroll_actor(&enrollment).expect("enroll actor");
+            journal
+                .commit_read_transaction(&verified, 1_100)
+                .expect("commit transaction")
+        };
+
+        let mut reopened = LibraryCoreJournal::open(&path).expect("reopen journal");
+        let retry = reopened
+            .commit_read_transaction(&verified, 9_999)
+            .expect("response-loss retry after reopen");
+        assert_eq!(retry, receipt);
+        let counts: (i64, i64, i64) = reopened
+            .connection
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM library_core_transactions),
+                   (SELECT COUNT(*) FROM library_core_operations),
+                   (SELECT COUNT(*) FROM library_core_replication_outbox);",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("row counts");
+        assert_eq!(counts, (1, 1, 1));
+    }
+
+    #[test]
     fn commit_is_atomic_across_journal_projection_outbox_tip_and_receipt() {
         let mut enrollment_journal =
             LibraryCoreJournal::open_in_memory().expect("open enrollment journal");
@@ -1101,6 +1140,75 @@ mod tests {
                 .expect("table count");
             assert_eq!(count, 0, "{table} must roll back");
         }
+        let state = journal
+            .connection
+            .query_row(
+                "SELECT nextSequence, previousOperationId, previousChainDigest
+                 FROM library_core_actors WHERE actorId = ?1;",
+                params![enrollment.actor_id],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .expect("actor state");
+        assert_eq!(state, (1, None, enrollment.actor_chain_genesis));
+    }
+
+    #[test]
+    fn failure_after_actor_tip_update_rolls_back_every_authoritative_write() {
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        let enrollment = actor();
+        journal.enroll_actor(&enrollment).expect("enroll actor");
+        journal
+            .connection
+            .execute_batch(
+                "CREATE TEMP TRIGGER reject_projection_revision
+                 BEFORE UPDATE ON library_core_meta
+                 WHEN OLD.key = 'projectionRevision'
+                 BEGIN
+                   SELECT RAISE(ABORT, 'injected projection revision failure');
+                 END;",
+            )
+            .expect("install late failpoint");
+        let verified = transaction(
+            "tx:read:late-rollback",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:late-rollback", 900)],
+        );
+        assert!(matches!(
+            journal.commit_read_transaction(&verified, 1_100),
+            Err(JournalError::Sql(_))
+        ));
+
+        let counts: (i64, i64, i64, i64, i64) = journal
+            .connection
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM library_core_transactions),
+                   (SELECT COUNT(*) FROM library_core_operations),
+                   (SELECT COUNT(*) FROM library_core_feed_item_read_state),
+                   (SELECT COUNT(*) FROM library_core_replication_outbox),
+                   (SELECT integerValue FROM library_core_meta
+                    WHERE key = 'projectionRevision');",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .expect("post-rollback counts");
+        assert_eq!(counts, (0, 0, 0, 0, 0));
         let state = journal
             .connection
             .query_row(
