@@ -256,6 +256,14 @@ every signature and envelope digest succeeds. Finalization remains construction
 only until strict inbound verification, actor enrollment, journaling,
 materialization, and replication land independently.
 
+Prove Ed25519 verification across browser and native runtimes with the same
+public vector before an envelope verifier can become authoritative. Snapshot
+the bounded message bytes before the first asynchronous platform call. Reuse an
+audited cryptographic implementation already present in the runtime when it
+supports strict Ed25519 verification. Do not add a second elliptic-curve stack,
+write custom cryptography, generate keys, or infer actor enrollment from a
+syntactically valid public key.
+
 ## Preserve the invariants
 
 1. Keep exactly one active writer epoch. Advance it only with a signed immutable
