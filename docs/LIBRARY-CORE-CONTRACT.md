@@ -9658,6 +9658,13 @@ proportional to source byte length. Decode, canonical ordering, target
 construction, and verification use external merge with fixed-size pages and
 restartable cursors.
 
+An external row consumer receives only the payload range named by its current
+verified row. It cannot seek elsewhere in the companion spool. Payload bytes
+cross that boundary through a fixed 64 KiB buffer into an uncommitted target
+transaction. The complete spool receipt is verified again after consumption,
+and the target transaction commits only after that final verification
+succeeds.
+
 The migration worker's attributed resident ceiling is 384 MiB on a 4 GiB host,
 512 MiB on an 8 GiB host, and 768 MiB on a host with 16 GiB or more. Admission
 proves enough private staging capacity for the measured source, target,

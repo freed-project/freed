@@ -551,8 +551,11 @@ Fault injection must prove rollback from the latest write in that transaction.
     acknowledgment.
 24. Decode Automerge through bounded external-memory runs. Never use
     `Automerge.load`, keep a source-sized change graph resident, or grant a
-    large-host exception. Admission proves both the fixed memory ceiling and
-    private staging capacity.
+    large-host exception. A row consumer may stream only the exact
+    receipt-bound payload range for its current row through a fixed buffer into
+    an uncommitted target transaction. Rehash the complete spool after
+    consumption and commit only after that verification succeeds. Admission
+    proves both the fixed memory ceiling and private staging capacity.
 25. Build PWA reader manifests from both registered Cache namespaces and the
     durable logical lookup plan. Use one plan row and one probe per unique
     physical locator with sorted candidate bindings. Call only exact

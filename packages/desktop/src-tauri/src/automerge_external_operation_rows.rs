@@ -1104,8 +1104,8 @@ mod tests {
         read_verified_document_layout, ExternalDocumentLayoutRunLimits,
     };
     use crate::automerge_external_row_run::{
-        with_verified_operation_rows, ExternalRowRunConsumeError, ExternalRowRunError,
-        ExternalRowRunLimits,
+        with_verified_operation_rows, with_verified_operation_rows_and_payload,
+        ExternalRowRunConsumeError, ExternalRowRunError, ExternalRowRunLimits,
     };
     use crate::automerge_external_value::{write_decoded_value_tokens, ExternalValueDecodeLimits};
     use std::convert::Infallible;
@@ -1544,6 +1544,41 @@ mod tests {
                 ExternalRowRunError::SpoolMismatch
             ))
         ));
+    }
+
+    #[test]
+    fn streams_each_verified_operation_payload_without_widening_its_range() {
+        let bytes = decode_test_hex(SUCCESSOR_DOCUMENT_HEX);
+        let source_byte_length = bytes.len() as u64;
+        let source_sha256 = digest(&bytes);
+        let (summary, successor_spool, value_payload, rows, layout) = reconstruct(&bytes).unwrap();
+        let mut row_file = fixture(&rows);
+        let mut successor_file = fixture(&successor_spool);
+        let mut value_payload_file = fixture(&value_payload);
+        let mut streamed_payload = Vec::new();
+        let mut descriptor_bytes = 0_u64;
+
+        let read_summary = with_verified_operation_rows_and_payload(
+            row_file.as_file_mut(),
+            successor_file.as_file_mut(),
+            value_payload_file.as_file_mut(),
+            source_byte_length,
+            &source_sha256,
+            &layout,
+            &summary,
+            operation_limits(),
+            row_run_limits(),
+            |_row, payload| {
+                descriptor_bytes += payload.byte_length();
+                payload.copy_to(&mut streamed_payload)?;
+                Ok::<(), ExternalRowRunError>(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(read_summary, summary);
+        assert_eq!(descriptor_bytes, summary.value_payload_spool_byte_length);
+        assert_eq!(streamed_payload, value_payload);
     }
 
     #[test]

@@ -18,7 +18,7 @@ use sha2::{Digest, Sha256};
 use std::convert::Infallible;
 use std::fmt;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 
 const CHANGE_ROW_SCHEMA_VERSION: u32 = 1;
 const OPERATION_ROW_SCHEMA_VERSION: u32 = 1;
@@ -26,6 +26,7 @@ const DEPENDENCY_INDEX_BYTES: u64 = 8;
 const SUCCESSOR_ID_BYTES: u64 = 16;
 const MAX_SUPPORTED_ACTION: u64 = 7;
 const HASH_BUFFER_BYTES: usize = 64 * 1024;
+const PAYLOAD_COPY_BUFFER_BYTES: usize = 64 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct ExternalRowRunLimits {
@@ -64,6 +65,51 @@ pub(super) struct ExternalVerifiedOperationRow {
     pub successors: Vec<ExternalVerifiedOperationId>,
     pub expand: bool,
     pub mark_name: Option<String>,
+}
+
+/// Exact payload range attached to one verified external row.
+///
+/// The reader exposes no arbitrary seek. A consumer can therefore stream only
+/// the bytes named by the current receipt-bound row into its uncommitted
+/// destination transaction. The enclosing row reader rehashes the complete
+/// spool after consumption, so callers commit only after it returns success.
+pub(super) struct ExternalVerifiedPayloadReader<'a> {
+    file: &'a mut File,
+    offset: u64,
+    byte_length: u64,
+}
+
+impl ExternalVerifiedPayloadReader<'_> {
+    fn new(file: &mut File, offset: u64, byte_length: u64) -> ExternalVerifiedPayloadReader<'_> {
+        ExternalVerifiedPayloadReader {
+            file,
+            offset,
+            byte_length,
+        }
+    }
+
+    pub(super) fn byte_length(&self) -> u64 {
+        self.byte_length
+    }
+
+    /// Streams the exact row-owned payload through a fixed 64 KiB buffer.
+    pub(super) fn copy_to(&mut self, output: &mut impl Write) -> RowRunResult<u64> {
+        self.file.seek(SeekFrom::Start(self.offset))?;
+        let mut remaining = self.byte_length;
+        let mut copied = 0_u64;
+        let mut buffer = [0_u8; PAYLOAD_COPY_BUFFER_BYTES];
+        while remaining > 0 {
+            let read_limit = usize::try_from(remaining.min(buffer.len() as u64))
+                .map_err(|_| ExternalRowRunError::RangeOverflow)?;
+            self.file.read_exact(&mut buffer[..read_limit])?;
+            output.write_all(&buffer[..read_limit])?;
+            remaining -= read_limit as u64;
+            copied = copied
+                .checked_add(read_limit as u64)
+                .ok_or(ExternalRowRunError::RangeOverflow)?;
+        }
+        Ok(copied)
+    }
 }
 
 #[derive(Debug)]
@@ -236,6 +282,36 @@ pub(super) fn with_verified_change_rows<E>(
     run_limits: ExternalRowRunLimits,
     mut consumer: impl FnMut(&ExternalVerifiedChangeRow) -> Result<(), E>,
 ) -> Result<ExternalChangeRowSummary, ExternalRowRunConsumeError<E>> {
+    with_verified_change_rows_and_payload(
+        row_run,
+        dependency_spool,
+        extra_payload_spool,
+        source_byte_length,
+        source_sha256,
+        layout,
+        expected_summary,
+        row_limits,
+        run_limits,
+        |row, _payload| consumer(row),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn with_verified_change_rows_and_payload<E>(
+    row_run: &mut File,
+    dependency_spool: &mut File,
+    extra_payload_spool: &mut File,
+    source_byte_length: u64,
+    source_sha256: &str,
+    layout: &ExternalVerifiedDocumentLayout,
+    expected_summary: &ExternalChangeRowSummary,
+    row_limits: ExternalChangeRowLimits,
+    run_limits: ExternalRowRunLimits,
+    mut consumer: impl FnMut(
+        &ExternalVerifiedChangeRow,
+        &mut ExternalVerifiedPayloadReader<'_>,
+    ) -> Result<(), E>,
+) -> Result<ExternalChangeRowSummary, ExternalRowRunConsumeError<E>> {
     validate_common_contract(
         row_run,
         source_byte_length,
@@ -268,7 +344,8 @@ pub(super) fn with_verified_change_rows<E>(
         expected_summary,
         row_limits,
         run_limits,
-        |_| Ok::<(), Infallible>(()),
+        extra_payload_spool,
+        |_, _| Ok::<(), Infallible>(()),
     )
     .map_err(|error| match error {
         ExternalRowRunConsumeError::Run(error) => ExternalRowRunConsumeError::Run(error),
@@ -283,7 +360,8 @@ pub(super) fn with_verified_change_rows<E>(
         expected_summary,
         row_limits,
         run_limits,
-        |row| consumer(row),
+        extra_payload_spool,
+        |row, payload| consumer(row, payload),
     )?;
     if first_summary != second_summary {
         return Err(ExternalRowRunConsumeError::Run(
@@ -318,6 +396,36 @@ pub(super) fn with_verified_operation_rows<E>(
     run_limits: ExternalRowRunLimits,
     mut consumer: impl FnMut(&ExternalVerifiedOperationRow) -> Result<(), E>,
 ) -> Result<ExternalOperationRowSummary, ExternalRowRunConsumeError<E>> {
+    with_verified_operation_rows_and_payload(
+        row_run,
+        successor_spool,
+        value_payload_spool,
+        source_byte_length,
+        source_sha256,
+        layout,
+        expected_summary,
+        row_limits,
+        run_limits,
+        |row, _payload| consumer(row),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn with_verified_operation_rows_and_payload<E>(
+    row_run: &mut File,
+    successor_spool: &mut File,
+    value_payload_spool: &mut File,
+    source_byte_length: u64,
+    source_sha256: &str,
+    layout: &ExternalVerifiedDocumentLayout,
+    expected_summary: &ExternalOperationRowSummary,
+    row_limits: ExternalOperationRowLimits,
+    run_limits: ExternalRowRunLimits,
+    mut consumer: impl FnMut(
+        &ExternalVerifiedOperationRow,
+        &mut ExternalVerifiedPayloadReader<'_>,
+    ) -> Result<(), E>,
+) -> Result<ExternalOperationRowSummary, ExternalRowRunConsumeError<E>> {
     validate_common_contract(
         row_run,
         source_byte_length,
@@ -350,7 +458,8 @@ pub(super) fn with_verified_operation_rows<E>(
         expected_summary,
         row_limits,
         run_limits,
-        |_| Ok::<(), Infallible>(()),
+        value_payload_spool,
+        |_, _| Ok::<(), Infallible>(()),
     )
     .map_err(|error| match error {
         ExternalRowRunConsumeError::Run(error) => ExternalRowRunConsumeError::Run(error),
@@ -365,7 +474,8 @@ pub(super) fn with_verified_operation_rows<E>(
         expected_summary,
         row_limits,
         run_limits,
-        |row| consumer(row),
+        value_payload_spool,
+        |row, payload| consumer(row, payload),
     )?;
     if first_summary != second_summary {
         return Err(ExternalRowRunConsumeError::Run(
@@ -397,7 +507,11 @@ fn scan_change_rows<E>(
     expected_summary: &ExternalChangeRowSummary,
     row_limits: ExternalChangeRowLimits,
     run_limits: ExternalRowRunLimits,
-    mut consumer: impl FnMut(&ExternalVerifiedChangeRow) -> Result<(), E>,
+    extra_payload_spool: &mut File,
+    mut consumer: impl FnMut(
+        &ExternalVerifiedChangeRow,
+        &mut ExternalVerifiedPayloadReader<'_>,
+    ) -> Result<(), E>,
 ) -> Result<ExternalChangeRowSummary, ExternalRowRunConsumeError<E>> {
     row_run
         .seek(SeekFrom::Start(0))
@@ -516,7 +630,12 @@ fn scan_change_rows<E>(
                 };
                 hash_line(&mut hasher, &mut prefix_byte_length, &line)
                     .map_err(ExternalRowRunConsumeError::Run)?;
-                consumer(&row).map_err(ExternalRowRunConsumeError::Consumer)?;
+                let mut payload = ExternalVerifiedPayloadReader::new(
+                    extra_payload_spool,
+                    row.extra_payload_offset,
+                    row.extra_byte_length,
+                );
+                consumer(&row, &mut payload).map_err(ExternalRowRunConsumeError::Consumer)?;
                 next_index = next_index
                     .checked_add(1)
                     .ok_or(ExternalRowRunConsumeError::Run(
@@ -560,7 +679,11 @@ fn scan_operation_rows<E>(
     expected_summary: &ExternalOperationRowSummary,
     row_limits: ExternalOperationRowLimits,
     run_limits: ExternalRowRunLimits,
-    mut consumer: impl FnMut(&ExternalVerifiedOperationRow) -> Result<(), E>,
+    value_payload_spool: &mut File,
+    mut consumer: impl FnMut(
+        &ExternalVerifiedOperationRow,
+        &mut ExternalVerifiedPayloadReader<'_>,
+    ) -> Result<(), E>,
 ) -> Result<ExternalOperationRowSummary, ExternalRowRunConsumeError<E>> {
     row_run
         .seek(SeekFrom::Start(0))
@@ -635,14 +758,15 @@ fn scan_operation_rows<E>(
                 validate_object(actor_count, &object).map_err(ExternalRowRunConsumeError::Run)?;
                 validate_key(actor_count, &key, row_limits.max_key_bytes)
                     .map_err(ExternalRowRunConsumeError::Run)?;
-                validate_scalar_payload(
+                let payload_range = scalar_payload_range(
                     &value,
                     value_payload_end,
                     expected_summary.value_payload_spool_byte_length,
                 )
                 .map_err(ExternalRowRunConsumeError::Run)?;
-                value_payload_end = scalar_payload_end(&value, value_payload_end)
-                    .map_err(ExternalRowRunConsumeError::Run)?;
+                value_payload_end = payload_range.0.checked_add(payload_range.1).ok_or(
+                    ExternalRowRunConsumeError::Run(ExternalRowRunError::RangeOverflow),
+                )?;
                 if action > MAX_SUPPORTED_ACTION
                     || successor_count > row_limits.max_successors_per_operation
                     || recorded_successor_offset != successor_byte_offset
@@ -685,7 +809,12 @@ fn scan_operation_rows<E>(
                 };
                 hash_line(&mut hasher, &mut prefix_byte_length, &line)
                     .map_err(ExternalRowRunConsumeError::Run)?;
-                consumer(&row).map_err(ExternalRowRunConsumeError::Consumer)?;
+                let mut payload = ExternalVerifiedPayloadReader::new(
+                    value_payload_spool,
+                    payload_range.0,
+                    payload_range.1,
+                );
+                consumer(&row, &mut payload).map_err(ExternalRowRunConsumeError::Consumer)?;
                 next_index = next_index
                     .checked_add(1)
                     .ok_or(ExternalRowRunConsumeError::Run(
@@ -944,16 +1073,16 @@ fn validate_key(actor_count: u64, key: &OperationKey, max_key_bytes: u64) -> Row
     }
 }
 
-fn validate_scalar_payload(
+fn scalar_payload_range(
     value: &OperationScalar,
     expected_offset: u64,
     payload_byte_length: u64,
-) -> RowRunResult<()> {
+) -> RowRunResult<(u64, u64)> {
     let end = scalar_payload_end(value, expected_offset)?;
     if end > payload_byte_length {
         return Err(ExternalRowRunError::InvalidPayloadRange);
     }
-    Ok(())
+    Ok((expected_offset, end - expected_offset))
 }
 
 fn scalar_payload_end(value: &OperationScalar, expected_offset: u64) -> RowRunResult<u64> {
@@ -1048,5 +1177,56 @@ fn read_bounded_line(
         let consumed = available.len();
         line.extend_from_slice(available);
         reader.consume(consumed);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::NamedTempFile;
+
+    #[derive(Default)]
+    struct ChunkRecorder {
+        bytes: Vec<u8>,
+        maximum_write: usize,
+    }
+
+    impl Write for ChunkRecorder {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.maximum_write = self.maximum_write.max(bytes.len());
+            self.bytes.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn payload_reader_exposes_only_its_range_through_fixed_chunks() {
+        let prefix = vec![0x11; 17];
+        let payload = (0..(PAYLOAD_COPY_BUFFER_BYTES * 3 + 29))
+            .map(|index| (index % 251) as u8)
+            .collect::<Vec<_>>();
+        let suffix = vec![0x22; 19];
+        let mut file = NamedTempFile::new().expect("payload spool");
+        file.write_all(&prefix).expect("prefix");
+        file.write_all(&payload).expect("payload");
+        file.write_all(&suffix).expect("suffix");
+        file.as_file_mut().sync_all().expect("sync");
+
+        let mut reader = ExternalVerifiedPayloadReader::new(
+            file.as_file_mut(),
+            prefix.len() as u64,
+            payload.len() as u64,
+        );
+        let mut output = ChunkRecorder::default();
+        let copied = reader.copy_to(&mut output).expect("copy exact range");
+
+        assert_eq!(reader.byte_length(), payload.len() as u64);
+        assert_eq!(copied, payload.len() as u64);
+        assert_eq!(output.bytes, payload);
+        assert!(output.maximum_write <= PAYLOAD_COPY_BUFFER_BYTES);
     }
 }
