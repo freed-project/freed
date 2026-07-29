@@ -553,6 +553,10 @@ impl LibraryCoreJournal {
         // such as macOS /var do not make a literal final file unusable.
         let resolved_path = parent.canonicalize()?.join(file_name);
         let existing_file = Self::preflight_existing_file(&resolved_path)?;
+        Self::open_after_preflight(&resolved_path, existing_file)
+    }
+
+    fn open_after_preflight(resolved_path: &Path, existing_file: bool) -> JournalResult<Self> {
         let mut open_flags = OpenFlags::SQLITE_OPEN_READ_WRITE
             | OpenFlags::SQLITE_OPEN_NO_MUTEX
             | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
@@ -561,14 +565,13 @@ impl LibraryCoreJournal {
         if !existing_file {
             open_flags |= OpenFlags::SQLITE_OPEN_CREATE;
         }
-        let connection = Connection::open_with_flags(&resolved_path, open_flags)?;
-        if existing_file {
-            // Recheck the exact handle that will receive write configuration.
-            // If the path changed between the read-only preflight and this
-            // open, the replacement is rejected before WAL negotiation.
-            Self::configure_validation_connection(&connection)?;
-            Self::validate_existing_connection(&connection)?;
-        }
+        let connection = Connection::open_with_flags(resolved_path, open_flags)?;
+        // Recheck every exact handle that will receive write configuration,
+        // including the CREATE path. A foreign file can appear after an
+        // absent-file preflight but before this open. It must be rejected
+        // before WAL negotiation changes its bytes or creates sidecars.
+        Self::configure_validation_connection(&connection)?;
+        Self::validate_existing_connection(&connection)?;
         let mut journal = Self { connection };
         journal.configure()?;
         journal.migrate()?;
@@ -628,7 +631,7 @@ impl LibraryCoreJournal {
                 Ok(())
             };
         }
-        Self::verify_schema_contract(&connection)?;
+        Self::verify_schema_contract(connection)?;
         Ok(())
     }
 
@@ -1979,6 +1982,43 @@ mod tests {
             .expect("user version");
         assert_eq!(schema_object_count, 0);
         assert_eq!(version, 0);
+    }
+
+    #[test]
+    fn absent_file_preflight_cannot_race_a_foreign_database_into_writable_configuration() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory
+            .path()
+            .canonicalize()
+            .expect("canonical temporary directory")
+            .join("library-core.sqlite");
+        assert!(
+            !LibraryCoreJournal::preflight_existing_file(&path).expect("preflight absent database")
+        );
+
+        let connection = Connection::open(&path).expect("race foreign database into place");
+        connection
+            .execute_batch("CREATE TABLE foreign_records (id INTEGER PRIMARY KEY) STRICT;")
+            .expect("create foreign schema");
+        drop(connection);
+        let bytes_before_rejection = std::fs::read(&path).expect("read foreign database");
+
+        match LibraryCoreJournal::open_after_preflight(&path, false) {
+            Err(JournalError::UnversionedSchemaPresent) => {}
+            Err(error) => panic!("unexpected raced-database error: {error}"),
+            Ok(_) => panic!("raced foreign database must fail closed"),
+        }
+        assert_eq!(
+            std::fs::read(&path).expect("reread foreign database"),
+            bytes_before_rejection
+        );
+        let sidecar_path = |suffix: &str| {
+            let mut value = path.as_os_str().to_owned();
+            value.push(suffix);
+            std::path::PathBuf::from(value)
+        };
+        assert!(!sidecar_path("-wal").exists());
+        assert!(!sidecar_path("-shm").exists());
     }
 
     #[test]
