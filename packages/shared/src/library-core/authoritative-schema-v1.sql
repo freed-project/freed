@@ -323,4 +323,5 @@ CREATE TABLE library_core_replication_outbox (
 CREATE INDEX library_core_replication_outbox_order
   ON library_core_replication_outbox (acknowledgedAtMs, ingestSequence);
 
+PRAGMA application_id = 1179796805;
 PRAGMA user_version = 1;

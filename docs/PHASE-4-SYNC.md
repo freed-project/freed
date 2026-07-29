@@ -329,6 +329,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.45 | Shared and native epoch-transition digest, authority signature, and target-key possession domain prefixes | ✓ | Medium |
 | 4.46 | Bounded indexed enrollment and operation replication-outbox keyset pages joined to one immutable canonical payload source | ✓ | Medium |
 | 4.47 | Exact authoritative SQLite live-catalog verification against the checked-in schema before database acceptance | ✓ | Medium |
+| 4.48 | Fixed SQLite application identity verified with the physical version and schema catalog before database acceptance | ✓ | Low |
 
 ---
 
@@ -377,6 +378,7 @@ recovery, telemetry, milestones, and acceptance tests.
 - [x] Shared TypeScript and native Rust canonical codecs register identical domain-separated inputs for the epoch-transition certificate digest, its applicable authority signature, and the target authority key-possession proof. Exact byte assertions pin all three prefixes across runtimes. This closes only the cryptographic input namespace. It does not construct or verify a transition body, accept an epoch, generate or store a key, mutate the authority pointer, contact a provider, or activate a writer
 - [x] The dormant native authoritative journal reads pending enrollment and operation replication entries through keyset pages capped at 256 entries and 4 MiB of canonical payload. Operation pages advance by contiguous ingest sequence. Enrollment pages use an exact timestamp plus operation-ID cursor, so equal timestamps cannot skip actors. Both queries join their immutable canonical payload from the sole actor or operation row, and query-plan tests reject hidden temporary sorts. This adds no acknowledgment, deletion, network caller, provider request, runtime command, or active replication authority
 - [x] Every dormant authoritative SQLite open compares the complete live non-internal table, index, trigger, and view catalog against a fresh reference generated from the checked-in v1 schema after confirming the physical version. A database with the correct `user_version` but a missing or unregistered object fails closed before commit. This catalog identity check does not replace future page-level integrity inspection, open a production database, register a command, contact a provider, or activate authority
+- [x] The dormant authoritative SQLite schema writes the fixed `FREE` application identity into SQLite's header and every open verifies it alongside the physical schema version before accepting the exact live catalog. A wrong nonzero identity on an empty file and a missing or changed identity on a versioned file fail closed instead of being claimed as Library Core storage. This identity marker is not an integrity check, a production opener, a provider action, or runtime authority
 - [ ] iCloud sync integration
 - [ ] Large media packages transfer outside Automerge through an authenticated,
       resumable, integrity-checked path with explicit storage and deletion rules

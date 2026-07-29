@@ -21,6 +21,8 @@ mod enrollment_verifier;
 mod operation_verifier;
 
 const AUTHORITATIVE_SCHEMA_VERSION: i64 = 1;
+// ASCII "FREE" in SQLite's 32-bit application_id header field.
+const AUTHORITATIVE_APPLICATION_ID: i64 = 0x4652_4545;
 const AUTHORITATIVE_SCHEMA_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/authoritative-schema-v1.sql");
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -69,6 +71,7 @@ const ENROLLMENT_OUTBOX_PAGE_SQL: &str = "
 enum JournalError {
     Sql(rusqlite::Error),
     UnsupportedSchemaVersion { expected: i64, actual: i64 },
+    DatabaseIdentityMismatch { expected: i64, actual: i64 },
     UnversionedSchemaPresent,
     SchemaContractMismatch,
     InvalidVerifiedInput { field: &'static str },
@@ -97,6 +100,12 @@ impl fmt::Display for JournalError {
                 write!(
                     formatter,
                     "unsupported schema version: expected {expected}, got {actual}"
+                )
+            }
+            Self::DatabaseIdentityMismatch { expected, actual } => {
+                write!(
+                    formatter,
+                    "authoritative database identity mismatch: expected {expected}, got {actual}"
                 )
             }
             Self::UnversionedSchemaPresent => {
@@ -545,10 +554,20 @@ impl LibraryCoreJournal {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let prior =
             transaction.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
+        let prior_application_id =
+            transaction.pragma_query_value(None, "application_id", |row| row.get::<_, i64>(0))?;
         if !(0..=AUTHORITATIVE_SCHEMA_VERSION).contains(&prior) {
             return Err(JournalError::UnsupportedSchemaVersion {
                 expected: AUTHORITATIVE_SCHEMA_VERSION,
                 actual: prior,
+            });
+        }
+        if (prior == 0 && prior_application_id != 0)
+            || (prior > 0 && prior_application_id != AUTHORITATIVE_APPLICATION_ID)
+        {
+            return Err(JournalError::DatabaseIdentityMismatch {
+                expected: AUTHORITATIVE_APPLICATION_ID,
+                actual: prior_application_id,
             });
         }
         let has_unversioned_tables = transaction.query_row(
@@ -565,10 +584,18 @@ impl LibraryCoreJournal {
         }
         let actual =
             transaction.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
+        let actual_application_id =
+            transaction.pragma_query_value(None, "application_id", |row| row.get::<_, i64>(0))?;
         if actual != AUTHORITATIVE_SCHEMA_VERSION {
             return Err(JournalError::UnsupportedSchemaVersion {
                 expected: AUTHORITATIVE_SCHEMA_VERSION,
                 actual,
+            });
+        }
+        if actual_application_id != AUTHORITATIVE_APPLICATION_ID {
+            return Err(JournalError::DatabaseIdentityMismatch {
+                expected: AUTHORITATIVE_APPLICATION_ID,
+                actual: actual_application_id,
             });
         }
         Self::verify_schema_contract(&transaction)?;
@@ -1615,10 +1642,73 @@ mod tests {
             .connection
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("user version");
+        let application_id: i64 = journal
+            .connection
+            .pragma_query_value(None, "application_id", |row| row.get(0))
+            .expect("application ID");
         assert_eq!(journal_mode, "wal");
         assert_eq!(synchronous, 2);
         assert_eq!(foreign_keys, 1);
         assert_eq!(version, AUTHORITATIVE_SCHEMA_VERSION);
+        assert_eq!(application_id, AUTHORITATIVE_APPLICATION_ID);
+    }
+
+    #[test]
+    fn opening_rejects_a_mismatched_database_identity() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("library-core.sqlite");
+        let journal = LibraryCoreJournal::open(&path).expect("create journal");
+        drop(journal);
+        let connection = Connection::open(&path).expect("open raw database");
+        connection
+            .pragma_update(None, "application_id", 0)
+            .expect("remove authoritative database identity");
+        drop(connection);
+
+        match LibraryCoreJournal::open(&path) {
+            Err(JournalError::DatabaseIdentityMismatch { expected, actual }) => {
+                assert_eq!(expected, AUTHORITATIVE_APPLICATION_ID);
+                assert_eq!(actual, 0);
+            }
+            Err(error) => panic!("unexpected database identity error: {error}"),
+            Ok(_) => panic!("mismatched database identity must fail closed"),
+        }
+    }
+
+    #[test]
+    fn opening_rejects_a_foreign_blank_database_before_schema_creation() {
+        const FOREIGN_APPLICATION_ID: i64 = 0x1234_5678;
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("library-core.sqlite");
+        let connection = Connection::open(&path).expect("create raw database");
+        connection
+            .pragma_update(None, "application_id", FOREIGN_APPLICATION_ID)
+            .expect("set foreign database identity");
+        drop(connection);
+
+        match LibraryCoreJournal::open(&path) {
+            Err(JournalError::DatabaseIdentityMismatch { expected, actual }) => {
+                assert_eq!(expected, AUTHORITATIVE_APPLICATION_ID);
+                assert_eq!(actual, FOREIGN_APPLICATION_ID);
+            }
+            Err(error) => panic!("unexpected database identity error: {error}"),
+            Ok(_) => panic!("foreign blank database must fail closed"),
+        }
+
+        let connection = Connection::open(&path).expect("reopen raw database");
+        let schema_object_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%';",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count schema objects");
+        let version: i64 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("user version");
+        assert_eq!(schema_object_count, 0);
+        assert_eq!(version, 0);
     }
 
     #[test]

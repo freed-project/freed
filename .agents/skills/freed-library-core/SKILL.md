@@ -165,6 +165,12 @@ that version. A missing or additional object fails closed before authority
 state is read or written. Integrity checking and catalog identity are separate
 contracts. Neither substitutes for the other.
 
+Bind every authoritative physical schema to one fixed SQLite `application_id`
+and verify it with `user_version` before accepting the live catalog. A blank
+file may have identity zero before first initialization. Any other preexisting
+identity, or any missing or changed identity on a versioned file, fails closed.
+The header marker proves database kind only. It does not prove page integrity.
+
 Apply projection upserts, deletions, and the monotone projection revision in
 one database transaction. A bounded page or count binds one revision. A later
 page using a cursor from an older revision fails closed instead of walking
