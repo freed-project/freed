@@ -315,6 +315,11 @@ function snapshotCausalFrontier(
         "causal_frontier must be strictly sorted with no duplicate tips",
       );
     }
+    if (snapshot[index - 1].actor_id === snapshot[index].actor_id) {
+      throw new TypeError(
+        "causal_frontier may contain only one accepted tip per actor",
+      );
+    }
   }
   return Object.freeze(snapshot);
 }

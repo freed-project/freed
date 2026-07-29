@@ -169,6 +169,30 @@ describe("Library Core read-assignment transaction-member schema", () => {
       ),
     ).toThrow(/strictly sorted/);
 
+    const actorTip = frontier[0] as {
+      actor_id: string;
+      sequence: number;
+      operation_id: string;
+      chain_digest: string;
+    };
+    expect(() =>
+      FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          ...validInput(),
+          causal_frontier: [
+            actorTip,
+            {
+              ...actorTip,
+              sequence: actorTip.sequence + 1,
+              operation_id: "op:read:fixture:1",
+              chain_digest: HEX.chainB,
+            },
+          ],
+        },
+        { digest },
+      ),
+    ).toThrow(/only one accepted tip per actor/);
+
     const sparse = new Array(2);
     sparse[1] = frontier[0];
     expect(() =>
