@@ -81,6 +81,38 @@ describe("Library Core Web Crypto Ed25519 verification", () => {
     await expect(result).resolves.toBe(true);
   });
 
+  it("reads each caller-owned input property exactly once", async () => {
+    const vector = vectors.vectors[0];
+    const reads = {
+      publicKeyHex: 0,
+      signatureHex: 0,
+      message: 0,
+    };
+    const input = {
+      get publicKeyHex() {
+        reads.publicKeyHex += 1;
+        return vector.public_key_hex as LibraryCoreEd25519PublicKeyHex;
+      },
+      get signatureHex() {
+        reads.signatureHex += 1;
+        return vector.signature_hex as LibraryCoreEd25519SignatureHex;
+      },
+      get message() {
+        reads.message += 1;
+        return decodeHex(vector.message_hex);
+      },
+    };
+
+    await expect(verifyLibraryCoreEd25519WithWebCrypto(input)).resolves.toBe(
+      true,
+    );
+    expect(reads).toStrictEqual({
+      publicKeyHex: 1,
+      signatureHex: 1,
+      message: 1,
+    });
+  });
+
   it("rejects malformed encodings and oversized messages before Web Crypto", async () => {
     const subtle = {
       importKey() {

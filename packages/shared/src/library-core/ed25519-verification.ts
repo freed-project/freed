@@ -26,27 +26,30 @@ function snapshotInput(input: LibraryCoreEd25519VerificationInput): Readonly<{
   signature: Uint8Array<ArrayBuffer>;
   message: Uint8Array<ArrayBuffer>;
 }> {
-  if (!isLibraryCoreEd25519PublicKeyHex(input.publicKeyHex)) {
+  const publicKeyHex = input.publicKeyHex;
+  const signatureHex = input.signatureHex;
+  const inputMessage = input.message;
+  if (!isLibraryCoreEd25519PublicKeyHex(publicKeyHex)) {
     throw new TypeError(
       "Ed25519 public key must be 64 lowercase hexadecimal characters",
     );
   }
-  if (!isLibraryCoreEd25519SignatureHex(input.signatureHex)) {
+  if (!isLibraryCoreEd25519SignatureHex(signatureHex)) {
     throw new TypeError(
       "Ed25519 signature must be 128 lowercase hexadecimal characters",
     );
   }
-  if (!(input.message instanceof Uint8Array)) {
+  if (!(inputMessage instanceof Uint8Array)) {
     throw new TypeError("Ed25519 message must be a Uint8Array");
   }
-  if (input.message.byteLength > LIBRARY_CORE_MAX_SIGNATURE_INPUT_BYTES) {
+  if (inputMessage.byteLength > LIBRARY_CORE_MAX_SIGNATURE_INPUT_BYTES) {
     throw new RangeError("Ed25519 message exceeds 4,194,304 bytes");
   }
-  const message = new Uint8Array(input.message.byteLength);
-  message.set(input.message);
+  const message = new Uint8Array(inputMessage.byteLength);
+  message.set(inputMessage);
   return Object.freeze({
-    publicKey: decodeLowercaseHex(input.publicKeyHex),
-    signature: decodeLowercaseHex(input.signatureHex),
+    publicKey: decodeLowercaseHex(publicKeyHex),
+    signature: decodeLowercaseHex(signatureHex),
     message,
   });
 }
