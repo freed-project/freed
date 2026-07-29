@@ -2018,25 +2018,34 @@ test("settings backdrop stays blurred while settings contents scroll", async ({ 
 
   const scrollContainer = page.getByTestId("settings-scroll-container");
   const styles = await scrollContainer.evaluate((element) => {
-    const maxScrollTop = element.scrollHeight - element.clientHeight;
-    element.scrollTop = Math.min(Math.max(maxScrollTop, 0), 360);
-    element.dispatchEvent(new Event("scroll", { bubbles: true }));
-
     const overlay = document.querySelector(".theme-settings-overlay");
     const shell = document.querySelector(".theme-settings-shell");
     if (!(overlay instanceof HTMLElement) || !(shell instanceof HTMLElement)) {
       throw new Error("Settings dialog styles were not mounted");
     }
 
-    const overlayStyle = window.getComputedStyle(overlay);
-    const shellStyle = window.getComputedStyle(shell);
+    const overlayStyleBeforeScroll = window.getComputedStyle(overlay);
+    const overlayFilterBeforeScroll =
+      overlayStyleBeforeScroll.backdropFilter || overlayStyleBeforeScroll.webkitBackdropFilter;
+    const overlayBackgroundBeforeScroll = overlayStyleBeforeScroll.background;
+    const maxScrollTop = element.scrollHeight - element.clientHeight;
+    element.scrollTop = Math.min(Math.max(maxScrollTop, 0), 360);
+    element.dispatchEvent(new Event("scroll", { bubbles: true }));
+
+    const overlayStyleWhileScrolling = window.getComputedStyle(overlay);
+    const shellStyleWhileScrolling = window.getComputedStyle(shell);
     return {
       maxScrollTop,
       scrollTop: element.scrollTop,
       overlayMoving: overlay.dataset.moving,
       shellMoving: shell.dataset.moving,
-      overlayFilter: overlayStyle.backdropFilter || overlayStyle.webkitBackdropFilter,
-      shellFilter: shellStyle.backdropFilter || shellStyle.webkitBackdropFilter,
+      overlayFilterBeforeScroll,
+      overlayFilterWhileScrolling:
+        overlayStyleWhileScrolling.backdropFilter || overlayStyleWhileScrolling.webkitBackdropFilter,
+      overlayBackgroundBeforeScroll,
+      overlayBackgroundWhileScrolling: overlayStyleWhileScrolling.background,
+      shellFilterWhileScrolling:
+        shellStyleWhileScrolling.backdropFilter || shellStyleWhileScrolling.webkitBackdropFilter,
     };
   });
 
@@ -2044,9 +2053,12 @@ test("settings backdrop stays blurred while settings contents scroll", async ({ 
   expect(styles.scrollTop).toBeGreaterThan(0);
   expect(styles.overlayMoving).toBe("true");
   expect(styles.shellMoving).toBe("true");
-  expect(styles.overlayFilter).toBe("none");
-  expect(styles.shellFilter).toContain("blur");
-  expect(styles.shellFilter).not.toBe("none");
+  expect(styles.overlayFilterBeforeScroll).toContain("blur");
+  expect(styles.overlayFilterWhileScrolling).toBe("none");
+  expect(styles.overlayBackgroundWhileScrolling).not.toBe(styles.overlayBackgroundBeforeScroll);
+  expect(styles.overlayBackgroundWhileScrolling).toMatch(/\/ 0\.92\)/);
+  expect(styles.shellFilterWhileScrolling).toContain("blur");
+  expect(styles.shellFilterWhileScrolling).not.toBe("none");
 });
 
 test("settings dialog closes from the mobile header close button", async ({ app, page }) => {
@@ -2277,7 +2289,14 @@ test("provider risk eyebrow stays readable across themes", async ({ app, page })
   const eyebrow = page.getByTestId("provider-risk-eyebrow-facebook");
   await expect(eyebrow).toBeVisible({ timeout: 5_000 });
 
-  const themeIds = ["scriptorium", "neon", "midas", "ember"] as const;
+  const themeIds = [
+    "scriptorium",
+    "neon",
+    "midas",
+    "ember",
+    "starship",
+    "dark-star",
+  ] as const;
   for (const themeId of themeIds) {
     const contrast = await eyebrow.evaluate((element, nextThemeId) => {
       document.documentElement.dataset.theme = nextThemeId;
@@ -2727,6 +2746,8 @@ test("narrow feed filter menu labels collapsed sections", async ({ app, page }) 
   await filterButton.click();
 
   const filterMenu = page.getByTestId("feed-signal-filter-menu");
+  await expect(filterMenu.getByText("Theme", { exact: true })).toBeVisible();
+  await expect(filterMenu.getByText("Zoom", { exact: true })).toBeVisible();
   await expect(filterMenu.getByText("Card density", { exact: true })).toBeVisible();
   await expect(filterMenu.getByText("Format", { exact: true })).toBeVisible();
   await expect(filterMenu.getByText("Connections", { exact: true })).toBeVisible();

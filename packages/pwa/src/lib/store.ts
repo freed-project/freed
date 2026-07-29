@@ -59,6 +59,7 @@ import {
   migrateLegacyDeviceDisplayPreferences,
   setDeviceDisplayPreferences,
 } from "@freed/ui/lib/device-display-preferences";
+import { migrateLegacyThemePreference } from "@freed/ui/lib/theme";
 import {
   migrateLegacyDeviceAIPreferences,
   setDeviceAIPreferences,
@@ -394,6 +395,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (storeQuiesced)
           throw new Error("PWA store is quiesced for factory reset");
         migrateLegacyDeviceDisplayPreferences(state.preferences.display);
+        migrateLegacyThemePreference(state.preferences.display.themeId);
         migrateLegacyDeviceAIPreferences(state.preferences.ai);
         migrateLegacyDeviceGraphLayout(state.persons, state.accounts);
 

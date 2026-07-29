@@ -10,6 +10,7 @@ import { useAppStore } from "../../context/PlatformContext.js";
 import { useResolvedLocations } from "../../hooks/useResolvedLocations.js";
 import { openAccountFromMap, openFriendFromMap, openPostFromMap } from "../../lib/map-navigation.js";
 import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
+import { useThemePreference } from "../../lib/theme.js";
 import { MapSurface } from "./MapSurface.js";
 
 const timeRangeFormatter = new Intl.DateTimeFormat(undefined, {
@@ -149,9 +150,8 @@ export function MapView({ viewportInsets }: MapViewProps) {
   const setActiveView = useAppStore((state) => state.setActiveView);
   const setFilter = useAppStore((state) => state.setFilter);
   const setSearchQuery = useAppStore((state) => state.setSearchQuery);
-  const display = useAppStore((state) => state.preferences.display);
   const [deviceDisplay] = useDeviceDisplayPreferences();
-  const themeId = display.themeId;
+  const [themeId] = useThemePreference();
   const [rangeSelection, setRangeSelection] = useState<LocationTimeRange | null>(null);
 
   const { resolvedItems } = useResolvedLocations(items, persons, accounts);

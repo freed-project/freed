@@ -5,6 +5,10 @@ const SETTINGS_STORE_PATH = resolveViteFsModulePath(
   "../../../ui/src/lib/settings-store.ts",
   import.meta.url,
 );
+const THEME_MODULE_PATH = resolveViteFsModulePath(
+  "../../../ui/src/lib/theme.ts",
+  import.meta.url,
+);
 
 async function dismissCloudSyncNudgeIfPresent(page: Page) {
   const dismissButton = page.getByRole("button", { name: "Dismiss", exact: true });
@@ -13,7 +17,7 @@ async function dismissCloudSyncNudgeIfPresent(page: Page) {
   }
 }
 
-test("switching themes in settings applies the selected theme immediately", async ({ app, page }) => {
+test("switching to both AubOS themes applies the selected theme immediately", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
 
@@ -27,24 +31,84 @@ test("switching themes in settings applies the selected theme immediately", asyn
   const initialThemeId = await page.evaluate(() => document.documentElement.dataset.theme);
   expect(initialThemeId).toBe("scriptorium");
 
-  await page.getByRole("button", { name: /^Neon\./ }).click();
+  await page.getByRole("button", { name: /^Dark Star\./ }).click();
 
   await expect.poll(async () => {
     return page.evaluate(() => document.documentElement.dataset.theme);
-  }).toBe("neon");
+  }).toBe("dark-star");
 
   await expect.poll(async () => {
-    return page.evaluate(() => {
-      const w = window as Record<string, unknown>;
-      const store = w.__FREED_STORE__ as
-        | { getState: () => { preferences: { display: { themeId: string } } } }
-        | undefined;
-      return store?.getState().preferences.display.themeId;
-    });
-  }).toBe("neon");
+    return page.evaluate(() => window.localStorage.getItem("freed-theme"));
+  }).toBe("dark-star");
+  await expect(page.getByRole("button", { name: /^Dark Star\./ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+
+  await page.getByRole("button", { name: /^Starship\./ }).click();
+
+  await expect.poll(async () => {
+    return page.evaluate(() => document.documentElement.dataset.theme);
+  }).toBe("starship");
+
+  await expect.poll(async () => {
+    return page.evaluate(() => window.localStorage.getItem("freed-theme"));
+  }).toBe("starship");
+  await expect(page.getByRole("button", { name: /^Starship\./ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(await page.evaluate(() =>
+    window.__FREED_STORE__?.getState().preferences.display.themeId,
+  )).toBe("scriptorium");
 });
 
-test("theme switching repaints the app even before preferences finish saving", async ({ app, page }) => {
+test("committing a hovered settings theme does not restore the old theme", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async (settingsStorePath) => {
+    const mod = await import(settingsStorePath);
+    mod.useSettingsStore.getState().openTo("appearance");
+  }, SETTINGS_STORE_PATH);
+  await expect(page.getByText("Appearance").first()).toBeVisible({ timeout: 5_000 });
+
+  const darkStarButton = page.getByRole("button", { name: /^Dark Star\./ });
+  await darkStarButton.hover();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark-star");
+  await page.evaluate(() => {
+    const testWindow = window as Window & {
+      __FREED_THEME_SEQUENCE__?: string[];
+      __FREED_THEME_SEQUENCE_OBSERVER__?: MutationObserver;
+    };
+    testWindow.__FREED_THEME_SEQUENCE__ = [document.documentElement.dataset.theme ?? ""];
+    testWindow.__FREED_THEME_SEQUENCE_OBSERVER__?.disconnect();
+    testWindow.__FREED_THEME_SEQUENCE_OBSERVER__ = new MutationObserver(() => {
+      testWindow.__FREED_THEME_SEQUENCE__?.push(document.documentElement.dataset.theme ?? "");
+    });
+    testWindow.__FREED_THEME_SEQUENCE_OBSERVER__.observe(document.documentElement, {
+      attributeFilter: ["data-theme"],
+    });
+  });
+  await darkStarButton.click();
+  await page.getByText("Card density", { exact: true }).hover();
+
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark-star");
+  await expect.poll(() => page.evaluate(() =>
+    document.documentElement.dataset.themeTransition,
+  )).toBeUndefined();
+  const committedThemeSequence = await page.evaluate(() => {
+    const testWindow = window as Window & {
+      __FREED_THEME_SEQUENCE__?: string[];
+      __FREED_THEME_SEQUENCE_OBSERVER__?: MutationObserver;
+    };
+    testWindow.__FREED_THEME_SEQUENCE_OBSERVER__?.disconnect();
+    return testWindow.__FREED_THEME_SEQUENCE__ ?? [];
+  });
+  expect(committedThemeSequence).not.toContain("scriptorium");
+});
+
+test("a later Automerge snapshot cannot overwrite the device-local theme", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
 
@@ -58,11 +122,19 @@ test("theme switching repaints the app even before preferences finish saving", a
   await page.evaluate(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
-      getState: () => { updatePreferences: (update: unknown) => Promise<void> };
+      getState: () => {
+        preferences: { display: { themeId: string } };
+      };
       setState: (partial: unknown) => void;
     };
     store.setState({
-      updatePreferences: async () => await new Promise<void>(() => {}),
+      preferences: {
+        ...store.getState().preferences,
+        display: {
+          ...store.getState().preferences.display,
+          themeId: "scriptorium",
+        },
+      },
     });
   });
 
@@ -73,17 +145,36 @@ test("theme switching repaints the app even before preferences finish saving", a
   }).toBe("neon");
 
   await expect.poll(async () => {
-    return page.evaluate(() => {
-      const w = window as Record<string, unknown>;
-      const store = w.__FREED_STORE__ as
-        | { getState: () => { preferences: { display: { themeId: string } } } }
-        | undefined;
-      return store?.getState().preferences.display.themeId;
+    return page.evaluate(() => window.localStorage.getItem("freed-theme"));
+  }).toBe("neon");
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        preferences: { display: { themeId: string } };
+      };
+      setState: (partial: unknown) => void;
+    };
+    store.setState({
+      preferences: {
+        ...store.getState().preferences,
+        display: {
+          ...store.getState().preferences.display,
+          themeId: "midas",
+        },
+      },
     });
-  }).toBe("scriptorium");
+  });
+
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "neon");
+  await expect(page.getByRole("button", { name: /^Neon\./ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 });
 
-test("rapid theme browsing only persists the final selected theme", async ({ app, page }) => {
+test("rapid theme browsing stays local and never writes theme into Automerge", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
 
@@ -109,14 +200,11 @@ test("rapid theme browsing only persists the final selected theme", async ({ app
       throw new Error("Freed store not found");
     }
 
-    const originalUpdatePreferences = store.getState().updatePreferences;
     w.__FREED_THEME_SAVE_PATCHES__ = [];
 
     store.setState({
       updatePreferences: async (patch: { display?: { themeId?: string } }) => {
         (w.__FREED_THEME_SAVE_PATCHES__ as Array<{ display?: { themeId?: string } }>).push(patch);
-        await new Promise((resolve) => window.setTimeout(resolve, 250));
-        await originalUpdatePreferences(patch);
       },
     });
   });
@@ -137,7 +225,7 @@ test("rapid theme browsing only persists the final selected theme", async ({ app
     return page.evaluate(() => document.documentElement.dataset.theme);
   }).toBe("ember");
 
-  await page.waitForTimeout(700);
+  await page.waitForTimeout(100);
 
   await expect.poll(async () => {
     return page.evaluate(() => {
@@ -146,22 +234,55 @@ test("rapid theme browsing only persists the final selected theme", async ({ app
         ?.map((patch) => patch.display?.themeId)
         .filter((themeId): themeId is string => typeof themeId === "string");
     });
-  }).toEqual(["ember"]);
+  }).toEqual([]);
 
   await expect.poll(async () => {
-    return page.evaluate(() => {
-      const w = window as Record<string, unknown>;
-      const store = w.__FREED_STORE__ as
-        | { getState: () => { preferences: { display: { themeId: string } } } }
-        | undefined;
-      return store?.getState().preferences.display.themeId;
-    });
+    return page.evaluate(() => window.localStorage.getItem("freed-theme"));
   }).toBe("ember");
 
   await expect.poll(async () => {
     return page.evaluate(() => document.documentElement.dataset.theme);
   }).toBe("ember");
 });
+
+test("global appearance controls lead the far-right menu in every workspace view", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await dismissCloudSyncNudgeIfPresent(page);
+
+  for (const view of ["feed", "friends", "map"] as const) {
+    await page.evaluate((nextView) => {
+      const w = window as Record<string, unknown>;
+      const store = w.__FREED_STORE__ as
+        | { getState: () => { setActiveView: (activeView: string) => void } }
+        | undefined;
+      store?.getState().setActiveView(nextView);
+    }, view);
+
+    const menuButton = page.getByTestId("mobile-toolbar-filter-button");
+    await expect(menuButton).toBeVisible({ timeout: 5_000 });
+    await menuButton.click();
+
+    const menu = page.getByTestId("feed-signal-filter-menu");
+    const appearance = menu.getByTestId("view-menu-appearance-section");
+    await expect(appearance.getByText("Theme", { exact: true })).toBeVisible();
+    await expect(appearance.getByText("Zoom", { exact: true })).toBeVisible();
+    await expect(appearance.getByRole("slider", { name: "Zoom" })).toBeVisible();
+    await expect(menu.getByTestId("feed-filter-density-section")).toHaveCount(
+      view === "feed" ? 1 : 0,
+    );
+
+    const themeDividerWidth = await appearance
+      .getByTestId("feed-filter-theme-section")
+      .evaluate((section) => getComputedStyle(section).borderBottomWidth);
+    expect(themeDividerWidth).toBe("0px");
+
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+  }
+});
+
 test("map view repaints across all themes without using the old canvas filter", async ({ app, page }) => {
   const stableMapSurfaceWidth = process.platform === "linux" ? 996 : 992;
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -322,20 +443,11 @@ test("map view repaints across all themes without using the old canvas filter", 
   const themeIds = ["ember", "neon", "midas", "scriptorium"] as const;
 
   for (const themeId of themeIds) {
-    await page.evaluate(async (nextThemeId) => {
-      const w = window as Record<string, unknown>;
-      const store = w.__FREED_STORE__ as {
-        getState: () => {
-          updatePreferences: (update: { display: { themeId: string } }) => Promise<void>;
-        };
-      };
-
-      await store.getState().updatePreferences({
-        display: {
-          themeId: nextThemeId,
-        },
-      });
-    }, themeId);
+    await page.evaluate(async ({ nextThemeId, themeModulePath }) => {
+      const mod = await import(themeModulePath);
+      mod.applyThemeToDocument(nextThemeId);
+      mod.setThemePreference(nextThemeId);
+    }, { nextThemeId: themeId, themeModulePath: THEME_MODULE_PATH });
 
     await expect.poll(async () => {
       return page.evaluate(() => document.documentElement.dataset.theme);
@@ -471,12 +583,14 @@ test("friends graph controls align to the graph lane between sidebars", async ({
       );
       const controls = document.querySelector('[data-testid="friend-graph-controls"]');
       const sidebar = document.querySelector('[data-testid="app-sidebar"]');
+      const friendsSidebar = document.querySelector('[data-testid="friends-sidebar"]');
       const handle = document.querySelector('[aria-label="Resize friends sidebar"]');
       const header = document.querySelector("header");
       if (!(graph instanceof HTMLElement)) return null;
       if (!(fitAll instanceof HTMLElement)) return null;
       if (!(controls instanceof HTMLElement)) return null;
       if (!(sidebar instanceof HTMLElement)) return null;
+      if (!(friendsSidebar instanceof HTMLElement)) return null;
       if (!(handle instanceof HTMLElement)) return null;
       if (!(header instanceof HTMLElement)) return null;
 
@@ -484,6 +598,7 @@ test("friends graph controls align to the graph lane between sidebars", async ({
       const fitAllRect = fitAll.getBoundingClientRect();
       const controlsRect = controls.getBoundingClientRect();
       const sidebarRect = sidebar.getBoundingClientRect();
+      const friendsSidebarRect = friendsSidebar.getBoundingClientRect();
       const handleRect = handle.getBoundingClientRect();
       const headerRect = header.getBoundingClientRect();
       return {
@@ -493,6 +608,8 @@ test("friends graph controls align to the graph lane between sidebars", async ({
         bottomGapPx: Math.round(window.innerHeight - graphRect.bottom),
         fitAllTopGapPx: Math.round(fitAllRect.top - graphRect.top),
         controlsRightGapPx: Math.round(graphRect.right - controlsRect.right),
+        friendsSidebarTopGapPx: Math.round(friendsSidebarRect.top - headerRect.bottom),
+        sidebarTopDeltaPx: Math.round(friendsSidebarRect.top - sidebarRect.top),
       };
     });
   }).toEqual({
@@ -506,6 +623,8 @@ test("friends graph controls align to the graph lane between sidebars", async ({
     bottomGapPx: 8,
     fitAllTopGapPx: 16,
     controlsRightGapPx: 16,
+    friendsSidebarTopGapPx: 8,
+    sidebarTopDeltaPx: 0,
   });
 
   const controlBackgrounds = await page
@@ -516,6 +635,7 @@ test("friends graph controls align to the graph lane between sidebars", async ({
   for (const background of controlBackgrounds) {
     expect(background).not.toBe("transparent");
     expect(background).not.toBe("rgba(0, 0, 0, 0)");
+    expect(background).not.toMatch(/^rgba\(/);
   }
   await expect(page.getByTestId("friend-graph-viewport")).toHaveAttribute(
     "data-graph-renderer",

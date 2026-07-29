@@ -51,9 +51,10 @@ export type ContentType = "post" | "story" | "article" | "video" | "podcast";
 export type ThemeId =
   | "neon"
   | "midas"
-  | "vesper"
   | "ember"
-  | "porcelain";
+  | "scriptorium"
+  | "starship"
+  | "dark-star";
 
 // Core feed item structure
 export interface FeedItem {
@@ -135,13 +136,15 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 - Marketing homepage now stays in its single-column mobile layout through tablet widths, including the mobile nav, compact hero treatment, and stacked content grids, before switching to desktop layouts at `lg`
 - Marketing-site manifesto buttons now use the shared theme secondary button treatment consistently, including both `Read the Manifesto` and `Why We Built This`
 - Shared cross-surface theme system for the marketing site, Freed Desktop, and the PWA
+- Freed Desktop and Freed Web now include AubOS's current Starship and Dark Star themes, with Barlow typography, command-deck geometry, live preview art, theme-native maps, and Friends Galaxy palettes
+- The shared far-right view menu now exposes all six theme swatches and the global Zoom control in one appearance section across Feed, Friends, and Map, while feed-only Card density stays in its own section below
 - Neon now uses the original randomized marketing-site background logic as the canonical shared theme background across the marketing site, Freed Desktop, and Freed Web, while the other themes keep their current shared rendering
 - Marketing site no longer inherits the shared app scrollbar chrome, while Freed Desktop and Freed Web keep the themed scrollbar treatment inside app shells and dialogs
 - Theme-aware form controls across the marketing site and shared UI package
 - Shared theme-aware tooltip primitive across the marketing site and shared UI package
 - Homepage footer theme picker uses the same preview swatches as Freed Desktop, with hover tooltips for each theme
-- Five authored themes: Neon, Midas, Vesper, Ember, and Scriptorium
-- Synced theme preference with `Neon` as the default for fresh installs
+- Six authored themes: Starship, Dark Star, Neon, Midas, Ember, and Scriptorium
+- Device-local theme preference with `Scriptorium` as the default for fresh installs
 - Mobile-responsive design
 - Mobile landing layout uses wider gutters, denser feature and step cards, and a compact hero animation footprint for tighter one-hand browsing
 - Glassmorphic dark theme
@@ -281,6 +284,8 @@ Production release closeout now also requires a dedicated `main` back into `dev`
 | 1.10 | Add public legal docs and versioned website clickwrap | ✓ |
 | 1.11 | Add unified shared theme system across website, Freed Desktop, and PWA | ✓ |
 | 1.12 | Add ready-to-run worktree bootstrap controls, deferred swarm worktrees, safer root command routing, tracked preview and draft PR tooling, tiered validation commands, and reverse-integration policy | ✓ |
+| 1.13 | Add the current AubOS Starship and Dark Star themes to Freed Desktop and Freed Web | ✓ |
+| 1.14 | Add the compact six-theme selection row and global Zoom control to the shared far-right view menu | ✓ |
 
 ---
 

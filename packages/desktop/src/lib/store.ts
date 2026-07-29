@@ -31,6 +31,7 @@ import {
   migrateLegacyDeviceDisplayPreferences,
   setDeviceDisplayPreferences,
 } from "@freed/ui/lib/device-display-preferences";
+import { migrateLegacyThemePreference } from "@freed/ui/lib/theme";
 import {
   applyDeviceAccountGraphPositionUpdate,
   applyDevicePersonGraphPositionUpdate,
@@ -714,6 +715,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         recordDocumentHydrated();
         assertDesktopStoreWritable();
         migrateLegacyDeviceDisplayPreferences(docState.preferences.display);
+        migrateLegacyThemePreference(docState.preferences.display.themeId);
         migrateLegacyDeviceAIPreferences(docState.preferences.ai);
         migrateLegacyDeviceGraphLayout(docState.persons, docState.accounts);
         migrateLegacyFacebookGroupDiscovery(docState.preferences.fbCapture?.knownGroups);

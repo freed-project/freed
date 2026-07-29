@@ -52,7 +52,14 @@ describe("buildThemedMapStyle", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { buildThemedMapStyle } = await loadBuilder();
-    const themeIds: ThemeId[] = ["ember", "neon", "midas", "scriptorium"];
+    const themeIds: ThemeId[] = [
+      "ember",
+      "neon",
+      "midas",
+      "scriptorium",
+      "starship",
+      "dark-star",
+    ];
 
     for (const themeId of themeIds) {
       const style = await buildThemedMapStyle(themeId);

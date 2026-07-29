@@ -323,6 +323,16 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await expect(brokenCard).toContainText(BROKEN_TITLE);
 
   await facebookCard.hover();
+  await expect(facebookCard).toHaveCSS("border-width", "1px");
+  const focusedEdge = await facebookCard.evaluate((card) => {
+    const style = window.getComputedStyle(card);
+    return {
+      boxShadow: style.boxShadow,
+      outlineStyle: style.outlineStyle,
+    };
+  });
+  expect(focusedEdge.boxShadow).not.toMatch(/0px 0px 0px [12]px inset/);
+  expect(focusedEdge.outlineStyle).toBe("none");
   const likeButton = facebookCard.locator('button[aria-label="Like"]').last();
   await likeButton.hover();
   await expect(facebookCard.locator('button[aria-label="Love"]')).toBeVisible();
@@ -346,6 +356,28 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   const compactRailCard = app.page.locator('[data-testid="compact-feed-panel-scroll-container"] [data-feed-item-id="test-facebook-card-ui-overhaul"]');
   const compactRailImage = compactRailCard.locator(`img[src="${FACEBOOK_MEDIA_URL}"]`).first();
   await expect(compactRailImage).toHaveCount(0);
+  await expect(compactRailCard).toHaveAttribute("data-selected", "true");
+
+  await app.page.mouse.move(0, 0);
+  const selectedCardRestingStyle = await compactRailCard.evaluate((card) => {
+    const style = getComputedStyle(card);
+    return {
+      backgroundColor: style.backgroundColor,
+      borderLeftColor: style.borderLeftColor,
+      borderLeftWidth: style.borderLeftWidth,
+    };
+  });
+  await compactRailCard.hover();
+  const selectedCardHoverStyle = await compactRailCard.evaluate((card) => {
+    const style = getComputedStyle(card);
+    return {
+      backgroundColor: style.backgroundColor,
+      borderLeftColor: style.borderLeftColor,
+      borderLeftWidth: style.borderLeftWidth,
+    };
+  });
+  expect(selectedCardRestingStyle.borderLeftWidth).toBe("2px");
+  expect(selectedCardHoverStyle).toEqual(selectedCardRestingStyle);
 
   const openReaderButton = app.page.getByRole("button", { name: "Open", exact: true }).first();
   await expect(openReaderButton).toBeVisible();
@@ -573,6 +605,133 @@ test("filter menu card density slider persists locally", async ({ app, page }) =
   await expect(page.getByTestId("feed-signal-filter-menu").getByTestId("feed-card-density-slider")).toHaveValue("2");
 });
 
+test("filter menu theme row fits one line and preserves the settings swatch height", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await injectCardUiItems(page);
+
+  await page.getByTestId("mobile-toolbar-filter-button").click();
+  const themeRow = page.getByTestId("feed-filter-theme-row");
+  const themeButtons = themeRow.getByRole("button");
+  await expect(themeButtons).toHaveCount(6);
+
+  const rowGeometry = await themeRow.evaluate((row) => {
+    const rowRect = row.getBoundingClientRect();
+    const surfaceRects = Array.from(
+      row.querySelectorAll<HTMLElement>(".theme-preview-button-surface"),
+      (surface) => surface.getBoundingClientRect(),
+    );
+    return {
+      rowLeft: Math.round(rowRect.left),
+      rowRight: Math.round(rowRect.right),
+      surfaceLeft: Math.round(Math.min(...surfaceRects.map((rect) => rect.left))),
+      surfaceRight: Math.round(Math.max(...surfaceRects.map((rect) => rect.right))),
+      centerYs: surfaceRects.map((rect) => Math.round(rect.top + rect.height / 2)),
+    };
+  });
+  expect(rowGeometry.surfaceLeft).toBeGreaterThanOrEqual(rowGeometry.rowLeft);
+  expect(rowGeometry.surfaceRight).toBeLessThanOrEqual(rowGeometry.rowRight);
+  expect(new Set(rowGeometry.centerYs).size).toBe(1);
+
+  const darkStarButton = themeRow.getByRole("button", { name: /^Dark Star\./ });
+  const densitySection = page.getByTestId("feed-filter-density-section");
+  await darkStarButton.hover();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark-star");
+  await densitySection.getByText("Card density", { exact: true }).hover();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "scriptorium");
+
+  await darkStarButton.hover();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark-star");
+  await page.evaluate(() => {
+    const testWindow = window as Window & {
+      __FREED_THEME_SEQUENCE__?: Array<{
+        documentTheme: string;
+        deviceTheme: string;
+        transition: string;
+      }>;
+      __FREED_THEME_SEQUENCE_OBSERVER__?: MutationObserver;
+    };
+    const readThemeState = () => ({
+      documentTheme: document.documentElement.dataset.theme ?? "",
+      deviceTheme: window.localStorage.getItem("freed-theme") ?? "",
+      transition: document.documentElement.dataset.themeTransition ?? "",
+    });
+    testWindow.__FREED_THEME_SEQUENCE__ = [readThemeState()];
+    testWindow.__FREED_THEME_SEQUENCE_OBSERVER__?.disconnect();
+    testWindow.__FREED_THEME_SEQUENCE_OBSERVER__ = new MutationObserver(() => {
+      testWindow.__FREED_THEME_SEQUENCE__?.push(readThemeState());
+    });
+    testWindow.__FREED_THEME_SEQUENCE_OBSERVER__.observe(document.documentElement, {
+      attributeFilter: ["data-theme"],
+    });
+  });
+  await darkStarButton.click();
+  await densitySection.getByText("Card density", { exact: true }).hover();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark-star");
+  await expect.poll(() => page.evaluate(() =>
+    window.localStorage.getItem("freed-theme"),
+  )).toBe("dark-star");
+  expect(await page.evaluate(() =>
+    window.__FREED_STORE__?.getState().preferences.display.themeId,
+  )).toBe("scriptorium");
+  await expect.poll(() => page.evaluate(() =>
+    document.documentElement.dataset.themeTransition,
+  )).toBeUndefined();
+  const committedThemeSequence = await page.evaluate(() => {
+    const testWindow = window as Window & {
+      __FREED_THEME_SEQUENCE__?: Array<{
+        documentTheme: string;
+        deviceTheme: string;
+        transition: string;
+      }>;
+      __FREED_THEME_SEQUENCE_OBSERVER__?: MutationObserver;
+    };
+    testWindow.__FREED_THEME_SEQUENCE_OBSERVER__?.disconnect();
+    return testWindow.__FREED_THEME_SEQUENCE__ ?? [];
+  });
+  expect(committedThemeSequence).not.toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ documentTheme: "scriptorium" }),
+    ]),
+  );
+
+  const menuActiveSurface = darkStarButton.locator(".theme-preview-button-surface");
+  await menuActiveSurface.evaluate(async (surface) => {
+    await Promise.all(
+      surface.getAnimations().map((animation) => animation.finished.catch(() => undefined)),
+    );
+  });
+  const menuActiveGeometry = await menuActiveSurface.evaluate((surface) => {
+    const style = window.getComputedStyle(surface);
+    return {
+      width: Math.round(Number.parseFloat(style.width)),
+      height: Math.round(Number.parseFloat(style.height)),
+    };
+  });
+
+  await page.keyboard.press("Escape");
+  await page.getByTestId("sidebar-settings-button").click();
+  const settingsDarkStarButton = page.getByRole("button", { name: /^Dark Star\./ });
+  await expect(settingsDarkStarButton).toBeVisible();
+  const settingsActiveSurface = settingsDarkStarButton.locator(".theme-preview-button-surface");
+  await settingsActiveSurface.evaluate(async (surface) => {
+    await Promise.all(
+      surface.getAnimations().map((animation) => animation.finished.catch(() => undefined)),
+    );
+  });
+  const settingsActiveGeometry = await settingsActiveSurface.evaluate((surface) => {
+    const style = window.getComputedStyle(surface);
+    return {
+      width: Math.round(Number.parseFloat(style.width)),
+      height: Math.round(Number.parseFloat(style.height)),
+    };
+  });
+
+  expect(menuActiveGeometry.height).toBe(settingsActiveGeometry.height);
+  expect(menuActiveGeometry.width).toBeLessThan(settingsActiveGeometry.width);
+});
+
 test("filter menu interface zoom slider persists locally", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(() => {
@@ -731,7 +890,7 @@ test("filter menu stays visually stable while interface zoom is dragged", async 
   await page.mouse.up();
 });
 
-test("appearance settings expose card density and interface zoom controls", async ({ app, page }) => {
+test("appearance settings place Theme and Zoom above Card density", async ({ app, page }) => {
   await page.setViewportSize({ width: 1280, height: 850 });
   await page.addInitScript(() => {
     window.localStorage.removeItem("freed-feed-card-density");
@@ -747,7 +906,20 @@ test("appearance settings expose card density and interface zoom controls", asyn
 
   const settingsControls = page.getByTestId("settings-display-scale-controls");
   await expect(settingsControls.getByText("Card density", { exact: true })).toBeVisible();
-  await expect(settingsControls.getByText("Interface zoom", { exact: true })).toBeVisible();
+  await expect(settingsControls.getByText("Zoom", { exact: true })).toBeVisible();
+
+  const settingsControlOrder = await settingsControls.evaluate((controls) => {
+    const labels = ["Theme", "Zoom", "Card density"];
+    return labels.map((label) => {
+      const match = Array.from(controls.querySelectorAll("p")).find(
+        (element) => element.textContent?.trim() === label,
+      );
+      if (!match) throw new Error(`Missing ${label}`);
+      return Math.round(match.getBoundingClientRect().top);
+    });
+  });
+  expect(settingsControlOrder[0]).toBeLessThan(settingsControlOrder[1]);
+  expect(settingsControlOrder[1]).toBeLessThan(settingsControlOrder[2]);
 
   const densitySlider = settingsControls.getByTestId("feed-card-density-slider");
   await expect(densitySlider).toHaveValue("1");

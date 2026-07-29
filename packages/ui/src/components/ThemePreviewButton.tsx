@@ -37,7 +37,11 @@ export function ThemePreviewButton({
         aria-label={`${theme.name}. ${theme.description}`}
         className={`theme-preview-button theme-preview-button-compact ${active ? "theme-preview-button-active" : ""} ${className}`}
       >
-        <span className="theme-preview-button-surface" aria-hidden="true">
+        <span
+          className="theme-preview-button-surface"
+          data-theme-preview={theme.id}
+          aria-hidden="true"
+        >
           <span
             className="theme-preview-button-fill"
             style={{ background: theme.previewGradient }}

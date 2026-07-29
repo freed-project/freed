@@ -152,7 +152,7 @@ export const READING_ENHANCEMENTS_WRITE_POLICY = {
 export const DISPLAY_PREFERENCES_WRITE_POLICY = {
   itemsPerPage: "compatibility-only",
   compactMode: "compatibility-only",
-  themeId: "sync",
+  themeId: "device-local",
   showEngagementCounts: "sync",
   animationIntensity: "sync",
   reading: "nested",

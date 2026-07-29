@@ -52,6 +52,7 @@ import {
   setDevicePersonGraphPosition,
   useDeviceGraphLayout,
 } from "../../lib/device-graph-layout.js";
+import { useThemePreference } from "../../lib/theme.js";
 
 const DEFAULT_SIDEBAR_WIDTH = 360;
 const MIN_SIDEBAR_WIDTH = 280;
@@ -563,15 +564,14 @@ export function FriendsView({
   const setActiveView = useAppStore((s) => s.setActiveView);
   const openMapForPerson = useAppStore((s) => s.openMapForPerson);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
-  const display = useAppStore((s) => s.preferences.display);
   const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
   const deviceGraphLayout = useDeviceGraphLayout();
+  const [themeId] = useThemePreference();
   const friendSuggestionPreferences = useAppStore((s) => s.preferences.friendSuggestions);
   const savedSidebarWidth = Math.min(
     MAX_SIDEBAR_WIDTH,
     deviceDisplay.friendsSidebarWidth ?? DEFAULT_SIDEBAR_WIDTH,
   );
-  const themeId = display.themeId;
   const effectiveMode = deviceDisplay.friendsMode;
   const updatePreferences = useAppStore((s) => s.updatePreferences);
 
@@ -1791,7 +1791,7 @@ export function FriendsView({
         ) : showDesktopSidebar ? (
           <div
             data-testid="friends-sidebar-shell"
-            className="flex shrink-0 overflow-hidden"
+            className="flex shrink-0 overflow-hidden pt-[var(--feed-card-gap,8px)]"
             style={{ width: `${sidebarWidth}px` }}
           >
             <aside

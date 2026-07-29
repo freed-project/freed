@@ -21,9 +21,11 @@ import {
   type SocialContentFilter,
   resolveMapMode,
 } from "@freed/shared";
+import { THEME_DEFINITIONS, type ThemeId } from "@freed/shared/themes";
 import { Tooltip } from "../Tooltip.js";
 import { toast } from "../Toast.js";
 import { BackgroundActivityPopover } from "../BackgroundActivityPopover.js";
+import { ThemePreviewButton } from "../ThemePreviewButton.js";
 import {
   ArchiveIcon,
   CloseIcon,
@@ -40,6 +42,11 @@ import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { useBackgroundActivityStore } from "../../lib/background-activity-store.js";
 import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
+import {
+  applyThemeToDocument,
+  useThemePreference,
+  useThemePreviewController,
+} from "../../lib/theme.js";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
   MACOS_TRAFFIC_LIGHT_INSET,
@@ -368,6 +375,7 @@ export function Header({
   const setFilter = useAppStore((s) => s.setFilter);
   const display = useAppStore((s) => s.preferences.display);
   const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
+  const [themeId, setThemePreference] = useThemePreference();
   const activeSearchQuery = searchQuery.trim();
   const [feedCardDensity, setFeedCardDensity] = useFeedCardDensity();
   const [interfaceZoom, setInterfaceZoom] = useInterfaceZoom();
@@ -453,21 +461,9 @@ export function Header({
     !selectedItem &&
     !isMobile;
   const hideMobileDrawerToolbarActions = mobileSidebarOpen;
-  const showCollapsedFeedControlMenu =
-    showFeedSignalFilter ||
-    showSavedSortControl ||
-    showFeedCardDensityControl;
   const showCollapsedToolbarFilterMenu =
     !hideMobileDrawerToolbarActions &&
-    !selectedItem &&
-    (
-      showCollapsedFeedControlMenu ||
-      (collapseToolbarViewControls && (
-        showWorkspaceIdentityControls ||
-        showSocialContentControls ||
-        showSavedSortControl
-      ))
-    );
+    !selectedItem;
   const showInlineFeedSignalFilter =
     !hideMobileDrawerToolbarActions &&
     showFeedSignalFilter &&
@@ -476,6 +472,14 @@ export function Header({
     showSavedSortControl && !showCollapsedToolbarFilterMenu;
   const showFilterMenuFeedCardDensityControl =
     showFeedCardDensityControl;
+  const showFilterMenuContextControls =
+    showFilterMenuFeedCardDensityControl ||
+    (collapseToolbarViewControls && (
+      showSocialContentControls ||
+      showWorkspaceIdentityControls
+    )) ||
+    showSavedSortControl ||
+    showFeedSignalFilter;
   const showInlineReaderBookmark =
     !!selectedItem && !isBelowReaderBookmarkToolbar;
   const collapsedReaderBaseActionWidthRem = selectedItem?.sourceUrl
@@ -806,6 +810,26 @@ export function Header({
       toast.error("Freed could not save the sort order on this device.");
     }
   }, [setDeviceDisplay]);
+
+  const handleThemeCommit = useCallback((nextThemeId: ThemeId) => {
+    if (nextThemeId === themeId) {
+      return;
+    }
+
+    if (!setThemePreference(nextThemeId)) {
+      applyThemeToDocument(themeId);
+      toast.error("Freed could not save the theme on this device.");
+    }
+  }, [setThemePreference, themeId]);
+
+  const {
+    commitTheme,
+    previewTheme,
+    revertPreview: revertThemePreview,
+  } = useThemePreviewController({
+    committedThemeId: themeId,
+    onCommitTheme: handleThemeCommit,
+  });
 
   const handleCloseReader = useCallback(() => {
     if (deviceDisplay.dualColumnMode && !isMobile && selectedItemId) {
@@ -1388,8 +1412,9 @@ export function Header({
   useEffect(() => {
     if (!signalFilterMenuOpen) {
       setSignalFilterMenuZoomDrag(null);
+      revertThemePreview();
     }
-  }, [signalFilterMenuOpen]);
+  }, [revertThemePreview, signalFilterMenuOpen]);
 
   useEffect(() => {
     if (activeFilter.archivedOnly) {
@@ -2024,7 +2049,7 @@ export function Header({
         </div>
       ) : null}
 
-      {signalFilterMenuOpen && (showFeedSignalFilter || showCollapsedToolbarFilterMenu) ? (
+      {signalFilterMenuOpen && showCollapsedToolbarFilterMenu ? (
         <div
           ref={signalFilterMenuRef}
           data-testid="feed-signal-filter-menu"
@@ -2032,6 +2057,75 @@ export function Header({
           className="theme-dialog-shell theme-menu-shell fixed z-[300] w-[20rem] max-w-[calc(100vw-1rem)] py-2 shadow-2xl shadow-black/35"
           style={signalFilterMenuStyle}
         >
+          <div
+            data-testid="view-menu-appearance-section"
+            className={`${showFilterMenuContextControls ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 pb-3 pt-1`}
+          >
+            <div data-testid="feed-filter-theme-section">
+              <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                Theme
+              </p>
+              <div
+                data-testid="feed-filter-theme-row"
+                className="theme-filter-menu-theme-row"
+                role="group"
+                aria-label="Theme"
+                onMouseLeave={revertThemePreview}
+                onBlurCapture={(event) => {
+                  if (
+                    event.relatedTarget
+                    && event.currentTarget.contains(event.relatedTarget)
+                  ) {
+                    return;
+                  }
+                  revertThemePreview();
+                }}
+              >
+                {THEME_DEFINITIONS.map((theme) => (
+                  <Tooltip
+                    key={theme.id}
+                    side="top"
+                    label={theme.name}
+                    description={theme.description}
+                    className="theme-filter-menu-theme-trigger"
+                  >
+                    <ThemePreviewButton
+                      theme={theme}
+                      active={themeId === theme.id}
+                      variant="compact"
+                      onMouseEnter={() => previewTheme(theme.id)}
+                      onFocus={() => previewTheme(theme.id)}
+                      onClick={() => commitTheme(theme.id)}
+                      className="theme-filter-menu-theme-button"
+                    />
+                  </Tooltip>
+                ))}
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                  Zoom
+                </p>
+                <span
+                  data-testid="interface-zoom-value"
+                  className="text-[0.68rem] font-semibold tabular-nums text-[var(--theme-text-soft)]"
+                >
+                  {interfaceZoom.toLocaleString()}%
+                </span>
+              </div>
+              <InterfaceZoomSlider
+                value={interfaceZoom}
+                onChange={setInterfaceZoom}
+                fullWidth
+                style={headerDragRegion ? toolbarControlStyle : undefined}
+                dragStabilization="parent"
+                onDragStart={handleSignalFilterZoomDragStart}
+                onDragEnd={handleSignalFilterZoomDragEnd}
+              />
+            </div>
+          </div>
+
           {showFilterMenuFeedCardDensityControl ? (
             <div
               data-testid="feed-filter-density-section"
@@ -2046,28 +2140,6 @@ export function Header({
                 fullWidth
                 style={headerDragRegion ? toolbarControlStyle : undefined}
               />
-              <div className="mt-3">
-                <div className="mb-2 flex items-center justify-between gap-3 px-1">
-                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
-                    Interface zoom
-                  </p>
-                  <span
-                    data-testid="interface-zoom-value"
-                    className="text-[0.68rem] font-semibold tabular-nums text-[var(--theme-text-soft)]"
-                  >
-                    {interfaceZoom.toLocaleString()}%
-                  </span>
-                </div>
-                <InterfaceZoomSlider
-                  value={interfaceZoom}
-                  onChange={setInterfaceZoom}
-                  fullWidth
-                  style={headerDragRegion ? toolbarControlStyle : undefined}
-                  dragStabilization="parent"
-                  onDragStart={handleSignalFilterZoomDragStart}
-                  onDragEnd={handleSignalFilterZoomDragEnd}
-                />
-              </div>
             </div>
           ) : null}
 
