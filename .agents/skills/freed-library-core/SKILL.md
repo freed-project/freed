@@ -302,12 +302,12 @@ and authority-state mutation remain one later atomic transaction.
 Repeat complete operation verification inside the native authoritative
 boundary. Shared TypeScript verification is useful for early rejection and
 cross-runtime parity, but it is not authority for SQLite. Rust must parse the
-original canonical bytes, load the enrolled actor tip from the authoritative
-database, reconstruct every digest and chain link, verify every signature, then
-create the sealed journal input privately. The atomic commit must recheck actor
-and causal tips after verification. Never expose a renderer command that
-accepts a preverified-looking object or a digest bundle assembled by
-JavaScript.
+original canonical bytes, load the immutable enrolled actor identity and public
+key from the authoritative database, reconstruct every digest and claimed chain
+link, verify every signature, then create the sealed journal input privately.
+The atomic commit must distinguish an exact stored retry from a fresh current
+tip and reject every stale fork. Never expose a renderer command that accepts a
+preverified-looking object or a digest bundle assembled by JavaScript.
 
 Keep the native authoritative commit input sealed inside the verifier and
 journal module. Renderer IPC must never gain authority by sending an object

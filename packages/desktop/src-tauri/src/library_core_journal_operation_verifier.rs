@@ -399,10 +399,8 @@ where
             || actor.epoch != first.epoch
             || actor.epoch_id != first.epoch_id
             || actor.actor_id != first.actor_id
-            || actor.next_sequence != first.actor_sequence
-            || actor.previous_operation_id != first.previous_actor_operation_id
         {
-            return Err(invalid(0, "accepted_actor_state"));
+            return Err(invalid(0, "enrolled_actor_identity"));
         }
         actor
     };
@@ -449,12 +447,12 @@ where
         "transaction_member_count": parsed.len() as i64,
         "actor_id": first.actor_id,
         "initial_previous_actor_operation_id": first.previous_actor_operation_id,
-        "initial_previous_actor_chain_digest": actor.previous_chain_digest,
+        "initial_previous_actor_chain_digest": first.previous_actor_chain_digest,
         "transaction_member_digests": member_digests,
     });
     let transaction_digest = digest_hex("transaction", &transaction_body, 0)?;
 
-    let mut previous_chain_digest = actor.previous_chain_digest.clone();
+    let mut previous_chain_digest = first.previous_actor_chain_digest.clone();
     let mut verified_members = Vec::with_capacity(parsed.len());
     for (index, member) in parsed.iter().enumerate() {
         if member.previous_actor_chain_digest != previous_chain_digest
@@ -548,8 +546,27 @@ mod tests {
         key_pair: &Ed25519KeyPair,
         enrollment: &VerifiedActorEnrollment,
     ) -> Vec<Vec<u8>> {
-        let transaction_id = "tx:read:native-verified";
         let entities = [("rss:item:1", 900_i64), ("rss:item:2", 901_i64)];
+        signed_envelopes_from_tip(
+            key_pair,
+            enrollment,
+            "tx:read:native-verified",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &entities,
+        )
+    }
+
+    fn signed_envelopes_from_tip(
+        key_pair: &Ed25519KeyPair,
+        enrollment: &VerifiedActorEnrollment,
+        transaction_id: &str,
+        first_sequence: i64,
+        previous_operation_id: Option<&str>,
+        previous_chain_digest: &str,
+        entities: &[(&str, i64)],
+    ) -> Vec<Vec<u8>> {
         let mut member_bodies = Vec::new();
         let mut member_digests = Vec::new();
         for (index, (entity_id, read_at_ms)) in entities.iter().enumerate() {
@@ -571,11 +588,13 @@ mod tests {
                 "epoch_id": enrollment.epoch_id,
                 "schema_version": 1,
                 "actor_id": enrollment.actor_id,
-                "actor_sequence": index as i64 + 1,
+                "actor_sequence": first_sequence + index as i64,
                 "previous_actor_operation_id": if index == 0 {
-                    Value::Null
+                    previous_operation_id
+                        .map(|value| Value::String(value.to_owned()))
+                        .unwrap_or(Value::Null)
                 } else {
-                    Value::String(format!("{transaction_id}:member:0"))
+                    Value::String(format!("{transaction_id}:member:{}", index - 1))
                 },
                 "causal_frontier": [],
                 "hlc_wall_ms": 1_000 + index as i64,
@@ -602,15 +621,17 @@ mod tests {
                 "transaction_id": transaction_id,
                 "transaction_member_count": entities.len() as i64,
                 "actor_id": enrollment.actor_id,
-                "initial_previous_actor_operation_id": Value::Null,
-                "initial_previous_actor_chain_digest": enrollment.actor_chain_genesis,
+                "initial_previous_actor_operation_id": previous_operation_id
+                    .map(|value| Value::String(value.to_owned()))
+                    .unwrap_or(Value::Null),
+                "initial_previous_actor_chain_digest": previous_chain_digest,
                 "transaction_member_digests": member_digests,
             }),
             0,
         )
         .expect("transaction digest");
 
-        let mut previous_chain = enrollment.actor_chain_genesis.clone();
+        let mut previous_chain = previous_chain_digest.to_owned();
         member_bodies
             .into_iter()
             .enumerate()
@@ -683,6 +704,10 @@ mod tests {
         let receipt = journal
             .verify_and_commit_read_transaction(&envelopes, 1_500)
             .expect("verify and commit");
+        let retry = journal
+            .verify_and_commit_read_transaction(&envelopes, 9_999)
+            .expect("verify exact response-loss retry after actor tip advance");
+        assert_eq!(retry, receipt);
         assert_eq!(receipt.member_count, 2);
         assert_eq!(
             journal
@@ -705,6 +730,42 @@ mod tests {
             )
             .expect("row counts");
         assert_eq!(rows, (1, 2, 2));
+    }
+
+    #[test]
+    fn verified_stale_fork_fails_at_the_atomic_actor_tip_check() {
+        let key_pair = Ed25519KeyPair::from_seed_unchecked(&[10_u8; 32]).expect("key pair");
+        let enrollment = enrollment(&key_pair);
+        let first = signed_envelopes(&key_pair, &enrollment);
+        let stale_fork = signed_envelopes_from_tip(
+            &key_pair,
+            &enrollment,
+            "tx:read:stale-native-fork",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:stale-fork", 902)],
+        );
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        journal.enroll_actor(&enrollment).expect("enroll actor");
+        journal
+            .verify_and_commit_read_transaction(&first, 1_500)
+            .expect("commit first transaction");
+
+        assert!(matches!(
+            journal.verify_and_commit_read_transaction(&stale_fork, 1_600),
+            Err(JournalError::StaleActorTip { actor_id })
+                if actor_id == enrollment.actor_id
+        ));
+        let transaction_rows: i64 = journal
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM library_core_transactions;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("transaction row count");
+        assert_eq!(transaction_rows, 1);
     }
 
     #[test]
