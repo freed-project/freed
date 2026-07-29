@@ -492,6 +492,35 @@ numeric interpretation. Passing a scalar predicate proves only the encoded
 shape. Randomness, digest derivation, signature validity, authority, and
 field-specific semantics remain separate checks.
 
+The v1 `feed_item_read_assignment` payload schema is the exact closed object
+`{ read_at_ms }`. `read_at_ms` is a nonnegative safe integer, including zero
+and excluding negative zero. Unknown, missing, accessor, symbol, inherited, or
+non-data fields are invalid. Validation returns an immutable snapshot rather
+than retaining the caller's object. The operation registry also binds this
+operation to the shared v1 entity-ID codec. Every other dormant operation
+retains a typed `entity_id_schema_unresolved` blocker until its exact key syntax
+is bound. The read assignment also binds its sole touched field to
+`library-core-v1:feedItems.{globalId}.userState.readAt`. These contracts close
+payload syntax, entity-key syntax, and the touched-field set only. Entity
+existence, SQLite materializer, provider-intent separation, and runtime
+authority remain blocked. `readAt` uses the executable
+`minimum_present_nonnegative_safe_integer_v1` algebra: absence means unread,
+the first assignment establishes the value, and duplicate, reordered, or
+concurrent assignments retain the earliest valid timestamp. Invalid current or
+incoming values fail closed. The payload does not itself schedule or authorize
+a provider-visible seen action.
+
+The dark native projection may apply a validated read assignment through one
+column-local SQLite update. It reads and validates the current projected
+`readAt`, applies the same minimum-present algebra, updates only `readAt`,
+advances the projection revision, and writes the existing derived projection
+batch receipt in one immediate transaction. A missing entity, malformed current
+value, stale revision, changed replay tuple, or receipt failure rolls back
+without widening the update to a full row. Exact response-loss retry returns
+the original projection receipt. This is still derived projection maintenance.
+It stores no authoritative operation, grants no write authority, and has no
+production caller.
+
 Canonical sets use their field-specific sort before `C`. `causal_frontier`
 sorts ascending by `(actor_id, sequence, operation_id, chain_digest)`,
 comparing numeric sequence numerically and the remaining ASCII identifiers

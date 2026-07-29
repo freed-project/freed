@@ -2,6 +2,8 @@ export * from "./census.js";
 export * from "./field-registry.js";
 export * from "./local-authority-registry.js";
 export * from "./operation-registry.js";
+export * from "./operation-field-algebra-contracts.js";
+export * from "./operation-payload-contracts.js";
 export * from "./protocol-registry.js";
 export * from "./protocol-scalars.js";
 export * from "./query-registry.js";

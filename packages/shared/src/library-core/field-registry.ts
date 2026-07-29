@@ -55,6 +55,10 @@ import type {
   LibraryCorePresence,
   LibraryCoreRootRegistryEntry,
 } from "./protocol-registry.js";
+import {
+  FEED_ITEM_READ_AT_FIELD_ALGEBRA,
+  LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
+} from "./operation-field-algebra-contracts.js";
 
 type Primitive = string | number | boolean;
 
@@ -1621,7 +1625,26 @@ export const LIBRARY_CORE_FIELD_REGISTRY = [
   ...typedEntries,
   ...unregisteredDescendantEntries,
   ...retainedEntries,
-].sort((left, right) => compareCodeUnits(left.registryKey, right.registryKey));
+]
+  .map((entry) => {
+    if (
+      entry.registryKey !==
+      LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY
+    ) {
+      return entry;
+    }
+    return {
+      ...entry,
+      mergeAlgebra: FEED_ITEM_READ_AT_FIELD_ALGEBRA.algebraId,
+      activation: {
+        status: "blocked" as const,
+        blockers: entry.activation.blockers.filter(
+          (blocker) => blocker !== "merge_algebra_undecided",
+        ),
+      },
+    };
+  })
+  .sort((left, right) => compareCodeUnits(left.registryKey, right.registryKey));
 
 const staticRootKinds = exactKeyObject<keyof FreedDoc>()({
   accounts: "entity-map",

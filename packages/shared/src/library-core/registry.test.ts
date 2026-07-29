@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  LIBRARY_CORE_FIELD_REGISTRY,
+} from "./field-registry.js";
+import {
+  FEED_ITEM_READ_AT_FIELD_ALGEBRA,
+  LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
+} from "./operation-field-algebra-contracts.js";
+import {
   LIBRARY_CORE_MAX_CANONICAL_TRANSACTION_BYTES,
   LIBRARY_CORE_MAX_TRANSACTION_MEMBERS,
   LIBRARY_CORE_OPERATION_IDS,
   LIBRARY_CORE_OPERATION_REGISTRY,
 } from "./operation-registry.js";
+import { LIBRARY_CORE_ENTITY_ID_CODEC_V1 } from "./protocol-scalars.js";
 import {
   LIBRARY_CORE_INTERACTIVE_SNAPSHOT_POOL,
   LIBRARY_CORE_QUERY_IDS,
@@ -27,14 +35,45 @@ describe("Library Core operation registry", () => {
     );
   });
 
-  it("does not claim executable schemas, algebra, materializers, or authority", () => {
-    for (const definition of Object.values(
+  it("does not claim unresolved algebra, materializers, or authority", () => {
+    for (const [operationId, definition] of Object.entries(
       LIBRARY_CORE_OPERATION_REGISTRY,
     )) {
       expect(definition.status).toBe("planned_blocked");
-      expect(definition.payloadSchema).toBeNull();
-      expect(definition.touchedFieldRegistryKeys).toBeNull();
-      expect(definition.fieldAlgebra).toBeNull();
+      if (operationId === "feed_item_read_assignment") {
+        expect(definition.payloadSchema).toMatchObject({
+          schemaId: "feed_item_read_assignment_payload_v1",
+          schemaVersion: 1,
+          operationType: "feed_item_read_assignment",
+          canonicalKeys: ["read_at_ms"],
+        });
+        expect(definition.blockers).not.toContain("payload_schema_unresolved");
+        expect(definition.entityIdCodec).toBe(
+          LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+        );
+        expect(definition.blockers).not.toContain(
+          "entity_id_schema_unresolved",
+        );
+        expect(definition.touchedFieldRegistryKeys).toStrictEqual([
+          LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
+        ]);
+        expect(definition.blockers).not.toContain("touched_fields_unresolved");
+        expect(definition.fieldAlgebra).toBe(
+          FEED_ITEM_READ_AT_FIELD_ALGEBRA,
+        );
+        expect(definition.blockers).not.toContain("field_algebra_unresolved");
+      } else {
+        expect(definition.payloadSchema).toBeNull();
+        expect(definition.blockers).toContain("payload_schema_unresolved");
+        expect(definition.entityIdCodec).toBeNull();
+        expect(definition.blockers).toContain(
+          "entity_id_schema_unresolved",
+        );
+        expect(definition.touchedFieldRegistryKeys).toBeNull();
+        expect(definition.blockers).toContain("touched_fields_unresolved");
+        expect(definition.fieldAlgebra).toBeNull();
+        expect(definition.blockers).toContain("field_algebra_unresolved");
+      }
       expect(definition.materializer).toBeNull();
       expect(definition.frozenBulkContract).toBeNull();
       expect(definition.blockers.length).toBeGreaterThan(0);
@@ -49,6 +88,18 @@ describe("Library Core operation registry", () => {
 
     expect(LIBRARY_CORE_MAX_TRANSACTION_MEMBERS).toBe(1_000);
     expect(LIBRARY_CORE_MAX_CANONICAL_TRANSACTION_BYTES).toBe(4 * 1_048_576);
+    expect(
+      LIBRARY_CORE_FIELD_REGISTRY.find(
+        (entry) =>
+          entry.registryKey ===
+          LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
+      ),
+    ).toMatchObject({
+      mergeAlgebra: "minimum_present_nonnegative_safe_integer_v1",
+      activation: {
+        blockers: expect.not.arrayContaining(["merge_algebra_undecided"]),
+      },
+    });
   });
 
   it("keeps frozen membership, provider intent, and execution receipts unresolved", () => {

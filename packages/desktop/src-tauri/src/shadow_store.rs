@@ -35,6 +35,8 @@ const MAX_FEED_PAGE_LIMIT: u32 = 128;
 const MAX_PROJECTION_BATCH_ID_BYTES: usize = 128;
 const MAX_PROJECTION_BATCH_ITEMS: usize = 1_000;
 const MAX_PROJECTION_BATCH_BYTES: usize = 4 * 1024 * 1024;
+const MAX_ENTITY_ID_UTF8_BYTES: usize = 4_096;
+const MAX_JAVASCRIPT_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const BASE_CACHE_KIB: i64 = -32 * 1024;
 
@@ -46,6 +48,8 @@ enum ShadowStoreError {
     InvalidProjectionBatchIdentity { field: &'static str },
     InvalidProjectionBatchSize { requested: usize, maximum: usize },
     InvalidProjectionBatchBytes { requested: usize, maximum: usize },
+    InvalidReadAssignment { field: &'static str },
+    ProjectionEntityNotFound { entity_id: String },
     ProjectionBatchReplayConflict { batch_id: String },
     UnsupportedSchemaVersion { expected: i64, actual: i64 },
     UnversionedSchemaPresent,
@@ -66,6 +70,8 @@ const SHADOW_SCHEMA_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/shadow-schema-v1.sql");
 const SHADOW_SCHEMA_V2_SQL: &str =
     include_str!("../../../shared/src/library-core/shadow-schema-v2.sql");
+const READ_ASSIGNMENT_PROJECTION_V1_SQL: &str =
+    include_str!("../../../shared/src/library-core/read-assignment-projection-v1.sql");
 
 /// Sort position for an item whose `publishedAt` is absent or unusable.
 ///
@@ -369,6 +375,64 @@ impl ShadowStore {
             .optional()
     }
 
+    fn begin_projection_batch_in(
+        transaction: &Transaction<'_>,
+        batch_id: &str,
+        input_digest: &str,
+        expected_revision: i64,
+    ) -> StoreResult<Option<ProjectionCommit>> {
+        if let Some(receipt) = Self::projection_receipt_in(transaction, batch_id)? {
+            if receipt.input_digest == input_digest
+                && receipt.previous_revision == expected_revision
+            {
+                return Ok(Some(receipt));
+            }
+            return Err(ShadowStoreError::ProjectionBatchReplayConflict {
+                batch_id: batch_id.to_string(),
+            });
+        }
+        let actual_revision = Self::revision_in(transaction)?;
+        if actual_revision != expected_revision {
+            return Err(ShadowStoreError::StaleRevision {
+                expected: expected_revision,
+                actual: actual_revision,
+            });
+        }
+        Ok(None)
+    }
+
+    fn finish_projection_batch_in(
+        transaction: &Transaction<'_>,
+        batch_id: &str,
+        input_digest: &str,
+        expected_revision: i64,
+        upserted: usize,
+        deleted: usize,
+    ) -> StoreResult<ProjectionCommit> {
+        transaction.execute(ADVANCE_REVISION_SQL, [])?;
+        let revision = Self::revision_in(transaction)?;
+        transaction.execute(
+            "INSERT INTO projection_batches (batchId, inputDigest, previousRevision, \
+             committedRevision, upserted, deleted) VALUES (?1, ?2, ?3, ?4, ?5, ?6);",
+            params![
+                batch_id,
+                input_digest,
+                expected_revision,
+                revision,
+                upserted as i64,
+                deleted as i64,
+            ],
+        )?;
+        Ok(ProjectionCommit {
+            batch_id: batch_id.to_string(),
+            input_digest: input_digest.to_string(),
+            previous_revision: expected_revision,
+            revision,
+            upserted,
+            deleted,
+        })
+    }
+
     /// Applies one projection delta, advances its revision, and records its
     /// durable retry receipt in the same transaction.
     ///
@@ -412,23 +476,11 @@ impl ShadowStore {
         let tx: Transaction<'_> = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        if let Some(receipt) = Self::projection_receipt_in(&tx, batch_id)? {
-            if receipt.input_digest == input_digest
-                && receipt.previous_revision == expected_revision
-            {
-                tx.commit()?;
-                return Ok(receipt);
-            }
-            return Err(ShadowStoreError::ProjectionBatchReplayConflict {
-                batch_id: batch_id.to_string(),
-            });
-        }
-        let actual_revision = Self::revision_in(&tx)?;
-        if actual_revision != expected_revision {
-            return Err(ShadowStoreError::StaleRevision {
-                expected: expected_revision,
-                actual: actual_revision,
-            });
+        if let Some(receipt) =
+            Self::begin_projection_batch_in(&tx, batch_id, input_digest, expected_revision)?
+        {
+            tx.commit()?;
+            return Ok(receipt);
         }
         {
             let mut statement = tx.prepare_cached(UPSERT_SQL)?;
@@ -464,29 +516,85 @@ impl ShadowStore {
                 deleted += statement.execute(params![global_id])?;
             }
         }
-        tx.execute(ADVANCE_REVISION_SQL, [])?;
-        let revision = Self::revision_in(&tx)?;
-        tx.execute(
-            "INSERT INTO projection_batches (batchId, inputDigest, previousRevision, \
-             committedRevision, upserted, deleted) VALUES (?1, ?2, ?3, ?4, ?5, ?6);",
-            params![
-                batch_id,
-                input_digest,
-                expected_revision,
-                revision,
-                rows.len() as i64,
-                deleted as i64,
-            ],
+        let commit = Self::finish_projection_batch_in(
+            &tx,
+            batch_id,
+            input_digest,
+            expected_revision,
+            rows.len(),
+            deleted,
         )?;
         tx.commit()?;
-        Ok(ProjectionCommit {
-            batch_id: batch_id.to_string(),
-            input_digest: input_digest.to_string(),
-            previous_revision: expected_revision,
-            revision,
-            upserted: rows.len(),
-            deleted,
-        })
+        Ok(commit)
+    }
+
+    /// Applies one already validated local read assignment to the dark derived
+    /// projection without reconstructing or rewriting the rest of the item.
+    ///
+    /// This reuses projection-batch receipts for exact response-loss retry. It
+    /// remains derived-store bookkeeping, not an authoritative operation
+    /// receipt, and has no production caller.
+    fn apply_read_assignment_projection_batch(
+        &mut self,
+        batch_id: &str,
+        input_digest: &str,
+        expected_revision: i64,
+        entity_id: &str,
+        incoming_read_at: i64,
+    ) -> StoreResult<ProjectionCommit> {
+        Self::validate_projection_batch_identity(batch_id, input_digest)?;
+        if entity_id.is_empty() || entity_id.len() > MAX_ENTITY_ID_UTF8_BYTES {
+            return Err(ShadowStoreError::InvalidReadAssignment { field: "entity_id" });
+        }
+        if !(0..=MAX_JAVASCRIPT_SAFE_INTEGER).contains(&incoming_read_at) {
+            return Err(ShadowStoreError::InvalidReadAssignment {
+                field: "read_at_ms",
+            });
+        }
+
+        let tx = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(receipt) =
+            Self::begin_projection_batch_in(&tx, batch_id, input_digest, expected_revision)?
+        {
+            tx.commit()?;
+            return Ok(receipt);
+        }
+
+        let current_read_at = tx
+            .query_row(
+                "SELECT readAt FROM feed_items WHERE globalId = ?1;",
+                params![entity_id],
+                |row| row.get::<_, Option<i64>>(0),
+            )
+            .optional()?
+            .ok_or_else(|| ShadowStoreError::ProjectionEntityNotFound {
+                entity_id: entity_id.to_string(),
+            })?;
+        if current_read_at.is_some_and(|value| !(0..=MAX_JAVASCRIPT_SAFE_INTEGER).contains(&value))
+        {
+            return Err(ShadowStoreError::InvalidReadAssignment {
+                field: "current_read_at",
+            });
+        }
+        let next_read_at = current_read_at
+            .map(|current| current.min(incoming_read_at))
+            .unwrap_or(incoming_read_at);
+        let updated = tx.execute(
+            READ_ASSIGNMENT_PROJECTION_V1_SQL,
+            params![entity_id, next_read_at],
+        )?;
+        if updated != 1 {
+            return Err(ShadowStoreError::ProjectionEntityNotFound {
+                entity_id: entity_id.to_string(),
+            });
+        }
+
+        let commit =
+            Self::finish_projection_batch_in(&tx, batch_id, input_digest, expected_revision, 1, 0)?;
+        tx.commit()?;
+        Ok(commit)
     }
 
     /// Reads one bounded page of the timeline.
@@ -1093,10 +1201,290 @@ mod tests {
             rows.len() as i64
         );
 
+        let read_entity_id = rows[0].global_id.clone();
+        let original_read = reopened
+            .apply_read_assignment_projection_batch(
+                "stable-read",
+                &digest(44),
+                1,
+                &read_entity_id,
+                25,
+            )
+            .expect("commit read before response loss");
+        drop(reopened);
+        let mut reopened = ShadowStore::open(&path).expect("reopen read receipt");
+        let retried_read = reopened
+            .apply_read_assignment_projection_batch(
+                "stable-read",
+                &digest(44),
+                1,
+                &read_entity_id,
+                25,
+            )
+            .expect("read durable read receipt");
+        assert_eq!(retried_read, original_read);
+        assert_eq!(
+            reopened
+                .feed_page(None, 128)
+                .expect("read projected page")
+                .rows
+                .into_iter()
+                .find(|row| row.global_id == read_entity_id)
+                .expect("read entity")
+                .read_at,
+            Some(25)
+        );
+        for (input_digest, expected_revision) in [(digest(45), 1), (digest(44), 2)] {
+            assert!(matches!(
+                reopened
+                    .apply_read_assignment_projection_batch(
+                        "stable-read",
+                        &input_digest,
+                        expected_revision,
+                        &read_entity_id,
+                        25,
+                    )
+                    .expect_err("changed read replay tuple must fail"),
+                ShadowStoreError::ProjectionBatchReplayConflict { .. }
+            ));
+        }
         drop(reopened);
         for suffix in ["", "-wal", "-shm"] {
             let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
         }
+    }
+
+    #[test]
+    fn read_assignment_updates_only_read_at_and_retries_exactly() {
+        let mut store = seeded(1);
+        let before = store
+            .feed_page(None, 1)
+            .expect("read before assignment")
+            .rows
+            .into_iter()
+            .next()
+            .expect("seeded row");
+
+        let first = store
+            .apply_read_assignment_projection_batch(
+                "read-first",
+                &digest(50),
+                1,
+                &before.global_id,
+                30,
+            )
+            .expect("first read assignment");
+        assert_eq!(
+            first,
+            ProjectionCommit {
+                batch_id: "read-first".to_string(),
+                input_digest: digest(50),
+                previous_revision: 1,
+                revision: 2,
+                upserted: 1,
+                deleted: 0,
+            }
+        );
+        let after_first = store
+            .feed_page(None, 1)
+            .expect("read after assignment")
+            .rows
+            .into_iter()
+            .next()
+            .expect("materialized row");
+        let mut expected = before.clone();
+        expected.read_at = Some(30);
+        assert_eq!(after_first, expected, "no other column may be rewritten");
+
+        let retried = store
+            .apply_read_assignment_projection_batch(
+                "read-first",
+                &digest(50),
+                1,
+                &before.global_id,
+                30,
+            )
+            .expect("response-loss retry");
+        assert_eq!(retried, first);
+
+        let later = store
+            .apply_read_assignment_projection_batch(
+                "read-later",
+                &digest(51),
+                2,
+                &before.global_id,
+                40,
+            )
+            .expect("later assignment");
+        assert_eq!(later.revision, 3);
+        assert_eq!(
+            store
+                .feed_page(None, 1)
+                .expect("read after later assignment")
+                .rows[0]
+                .read_at,
+            Some(30),
+            "the earliest assignment must survive"
+        );
+
+        let earlier = store
+            .apply_read_assignment_projection_batch(
+                "read-earlier",
+                &digest(52),
+                3,
+                &before.global_id,
+                20,
+            )
+            .expect("earlier assignment");
+        assert_eq!(earlier.revision, 4);
+        assert_eq!(
+            store
+                .feed_page(None, 1)
+                .expect("read after earlier assignment")
+                .rows[0]
+                .read_at,
+            Some(20)
+        );
+    }
+
+    #[test]
+    fn read_assignment_rejects_invalid_or_missing_projection_state() {
+        let mut store = seeded(1);
+        let entity_id = store.feed_page(None, 1).expect("seed page").rows[0]
+            .global_id
+            .clone();
+        let oversized_entity_id = "a".repeat(MAX_ENTITY_ID_UTF8_BYTES + 1);
+
+        for (batch_id, candidate_entity_id, read_at, field) in [
+            ("empty-entity", "", 1, "entity_id"),
+            (
+                "oversized-entity",
+                oversized_entity_id.as_str(),
+                1,
+                "entity_id",
+            ),
+            ("negative-read", entity_id.as_str(), -1, "read_at_ms"),
+            (
+                "unsafe-read",
+                entity_id.as_str(),
+                MAX_JAVASCRIPT_SAFE_INTEGER + 1,
+                "read_at_ms",
+            ),
+        ] {
+            match store
+                .apply_read_assignment_projection_batch(
+                    batch_id,
+                    &digest(60),
+                    1,
+                    candidate_entity_id,
+                    read_at,
+                )
+                .expect_err("invalid assignment must fail")
+            {
+                ShadowStoreError::InvalidReadAssignment { field: actual } => {
+                    assert_eq!(actual, field);
+                }
+                error => panic!("unexpected assignment error: {error:?}"),
+            }
+        }
+
+        match store
+            .apply_read_assignment_projection_batch(
+                "missing-entity",
+                &digest(61),
+                1,
+                "x:missing",
+                1,
+            )
+            .expect_err("missing row must fail")
+        {
+            ShadowStoreError::ProjectionEntityNotFound { entity_id } => {
+                assert_eq!(entity_id, "x:missing");
+            }
+            error => panic!("unexpected missing-row error: {error:?}"),
+        }
+
+        store
+            .conn
+            .execute(
+                "UPDATE feed_items SET readAt = -1 WHERE globalId = ?1;",
+                params![entity_id],
+            )
+            .expect("inject invalid current projection");
+        match store
+            .apply_read_assignment_projection_batch(
+                "invalid-current",
+                &digest(62),
+                1,
+                &entity_id,
+                1,
+            )
+            .expect_err("invalid current projection must fail")
+        {
+            ShadowStoreError::InvalidReadAssignment { field } => {
+                assert_eq!(field, "current_read_at");
+            }
+            error => panic!("unexpected current-state error: {error:?}"),
+        }
+
+        assert_eq!(
+            store.visible_count(Some(1)).expect("unchanged revision"),
+            RevisionedCount {
+                revision: 1,
+                count: 1,
+            }
+        );
+        let receipts: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM projection_batches WHERE batchId LIKE 'read-%' \
+                 OR batchId IN ('missing-entity', 'invalid-current');",
+                [],
+                |row| row.get(0),
+            )
+            .expect("receipt count");
+        assert_eq!(receipts, 0);
+    }
+
+    #[test]
+    fn read_assignment_receipt_failure_rolls_back_the_field_and_revision() {
+        let mut store = seeded(1);
+        let entity_id = store.feed_page(None, 1).expect("seed page").rows[0]
+            .global_id
+            .clone();
+        store
+            .conn
+            .execute_batch(
+                "CREATE TEMP TRIGGER reject_read_assignment_receipt \
+                 BEFORE INSERT ON projection_batches \
+                 WHEN NEW.batchId = 'read-must-rollback' \
+                 BEGIN SELECT RAISE(ABORT, 'injected receipt failure'); END;",
+            )
+            .expect("install failure injection");
+
+        let error = store
+            .apply_read_assignment_projection_batch(
+                "read-must-rollback",
+                &digest(70),
+                1,
+                &entity_id,
+                10,
+            )
+            .expect_err("receipt failure must roll back");
+        assert!(matches!(error, ShadowStoreError::Sql(_)));
+        assert_eq!(
+            store.feed_page(None, 1).expect("row after rollback").rows[0].read_at,
+            None
+        );
+        assert_eq!(
+            store
+                .visible_count(Some(1))
+                .expect("revision after rollback"),
+            RevisionedCount {
+                revision: 1,
+                count: 1,
+            }
+        );
     }
 
     #[test]

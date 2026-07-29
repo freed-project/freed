@@ -182,6 +182,14 @@ may compile into Freed Desktop behind an explicit dark-module boundary. A
 command registration, startup open, backfill, read route, or writer route is an
 activation change and follows the corresponding gate.
 
+When a closed field operation reaches the dark projection, update only its
+registered columns. Do not rebuild or overwrite the full row. Validate current
+projected state, apply the shared field algebra, advance the projection
+revision, and commit the derived receipt in one transaction. Missing entities,
+malformed current values, stale revisions, and receipt failures roll back
+without repair. This derived path does not satisfy the authoritative operation
+materializer blocker.
+
 ## Keep canonical operation bytes honest
 
 Use the shared cross-runtime vectors for every canonical construction change.
@@ -211,6 +219,18 @@ nonnegative safe integers. Do not create artifact-specific regex copies or
 allocate encoded copies merely to count a bounded entity ID. Scalar syntax does
 not prove randomness, cryptographic derivation, authority, or semantic
 ownership.
+
+Closing one operation payload or entity-ID schema does not close the operation.
+Keep entity existence, touched fields, field algebra, materialization, provider
+intent, and runtime authority independently blocked until each has an
+executable contract. Every operation without an exact entity-key binding keeps
+the typed `entity_id_schema_unresolved` blocker. Bind touched fields by their
+exact field-registry keys and keep `touched_fields_unresolved` until the full
+set is closed. The initial `feed_item_read_assignment` payload is local
+read-state syntax only. Its `readAt` algebra treats absence as unread and
+retains the earliest valid assignment under duplicate, reordered, or
+concurrent delivery. It never authorizes or schedules a provider-visible seen
+action.
 
 ## Preserve the invariants
 
