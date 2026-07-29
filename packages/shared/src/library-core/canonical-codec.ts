@@ -15,6 +15,7 @@ export const LIBRARY_CORE_OPERATION_DIGEST_DOMAINS = [
   "actor-public-key",
   "actor-id",
   "actor-enrollment-body",
+  "actor-enrollment-certificate",
   "operation-payload",
   "operation-signing-body",
   "transaction-member",
@@ -27,6 +28,15 @@ export const LIBRARY_CORE_OPERATION_DIGEST_DOMAINS = [
 
 export type LibraryCoreOperationDigestDomain =
   (typeof LIBRARY_CORE_OPERATION_DIGEST_DOMAINS)[number];
+
+export const LIBRARY_CORE_SIGNATURE_DOMAINS = [
+  "operation-envelope",
+  "actor-enrollment-proof",
+  "actor-enrollment-authority",
+] as const;
+
+export type LibraryCoreSignatureDomain =
+  (typeof LIBRARY_CORE_SIGNATURE_DOMAINS)[number];
 
 export type LibraryCoreCanonicalValue =
   | null
@@ -285,12 +295,18 @@ export function encodeLibraryCoreDigestInput(
   return input;
 }
 
-export function encodeLibraryCoreOperationSignatureInput(
+export function encodeLibraryCoreSignatureInput(
+  domain: LibraryCoreSignatureDomain,
   value: LibraryCoreCanonicalValue,
   options: LibraryCoreCanonicalEncodingOptions = {},
 ): Uint8Array {
+  if (!LIBRARY_CORE_SIGNATURE_DOMAINS.includes(domain)) {
+    throw new TypeError(
+      `unregistered Library Core signature domain: ${domain}`,
+    );
+  }
   const prefix = textEncoder.encode(
-    "freed.library-core.v1/signature/operation-envelope\u0000",
+    `freed.library-core.v1/signature/${domain}\u0000`,
   );
   const maximumBytes = normalizedMaximumBytes(options);
   if (prefix.byteLength >= maximumBytes) {
@@ -303,6 +319,13 @@ export function encodeLibraryCoreOperationSignatureInput(
   input.set(prefix);
   input.set(canonical, prefix.byteLength);
   return input;
+}
+
+export function encodeLibraryCoreOperationSignatureInput(
+  value: LibraryCoreCanonicalValue,
+  options: LibraryCoreCanonicalEncodingOptions = {},
+): Uint8Array {
+  return encodeLibraryCoreSignatureInput("operation-envelope", value, options);
 }
 
 class CanonicalJsonParser {

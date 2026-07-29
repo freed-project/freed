@@ -73,6 +73,8 @@ export type LibraryCoreConstructionDigestDomain =
   | "actor-public-key"
   | "actor-id"
   | "actor-enrollment-body"
+  | "actor-enrollment-certificate"
+  | "actor-chain-genesis"
   | "operation-payload"
   | "transaction-member"
   | "transaction"

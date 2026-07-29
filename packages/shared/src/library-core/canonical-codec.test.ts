@@ -9,6 +9,7 @@ import {
   encodeLibraryCoreCanonicalValue,
   encodeLibraryCoreDigestInput,
   encodeLibraryCoreOperationSignatureInput,
+  encodeLibraryCoreSignatureInput,
   LIBRARY_CORE_MAX_CANONICAL_NODES,
   LIBRARY_CORE_MAX_CANONICAL_NESTING_DEPTH,
 } from "./canonical-codec.js";
@@ -57,11 +58,44 @@ describe("Library Core canonical codec", () => {
     expect(decoder.decode(signatureInput)).toBe(
       'freed.library-core.v1/signature/operation-envelope\u0000{"operation_signing_body_digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}',
     );
+    expect(
+      decoder.decode(
+        encodeLibraryCoreSignatureInput("actor-enrollment-proof", {
+          enrollment_body_digest:
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        }),
+      ),
+    ).toBe(
+      'freed.library-core.v1/signature/actor-enrollment-proof\u0000{"enrollment_body_digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}',
+    );
+    expect(
+      decoder.decode(
+        encodeLibraryCoreDigestInput("actor-enrollment-certificate", {
+          enrollment_body_digest:
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        }),
+      ),
+    ).toBe(
+      'freed.library-core.v1/digest/actor-enrollment-certificate\u0000{"enrollment_body_digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}',
+    );
+    expect(
+      decoder.decode(
+        encodeLibraryCoreSignatureInput("actor-enrollment-authority", {
+          certificate_digest:
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        }),
+      ),
+    ).toBe(
+      'freed.library-core.v1/signature/actor-enrollment-authority\u0000{"certificate_digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}',
+    );
     expect(() =>
       encodeLibraryCoreOperationSignatureInput(null, { maximumBytes: 20 }),
     ).toThrow(/prefix/);
     expect(() =>
       encodeLibraryCoreDigestInput("made-up-domain" as never, null),
+    ).toThrow(/unregistered/);
+    expect(() =>
+      encodeLibraryCoreSignatureInput("made-up-domain" as never, null),
     ).toThrow(/unregistered/);
   });
 

@@ -4,10 +4,11 @@ use std::collections::HashSet;
 const MAX_DIRECT_CANONICAL_BYTES: usize = 4_194_304;
 const MAX_CANONICAL_NESTING_DEPTH: usize = 128;
 const MAX_CANONICAL_NODES: usize = 65_536;
-const OPERATION_DIGEST_DOMAINS: [&str; 11] = [
+const OPERATION_DIGEST_DOMAINS: [&str; 12] = [
     "actor-public-key",
     "actor-id",
     "actor-enrollment-body",
+    "actor-enrollment-certificate",
     "operation-payload",
     "operation-signing-body",
     "transaction-member",
@@ -16,6 +17,11 @@ const OPERATION_DIGEST_DOMAINS: [&str; 11] = [
     "actor-chain",
     "operation-envelope",
     "causal-frontier",
+];
+const SIGNATURE_DOMAINS: [&str; 3] = [
+    "operation-envelope",
+    "actor-enrollment-proof",
+    "actor-enrollment-authority",
 ];
 const SAFE_INTEGER_MAX: u64 = 9_007_199_254_740_991;
 
@@ -165,20 +171,31 @@ pub(crate) fn encode_operation_digest_input(
     Ok(result)
 }
 
-pub(crate) fn encode_operation_signature_input(
+pub(crate) fn encode_signature_input(
+    domain: &str,
     value: &Value,
     maximum_bytes: usize,
 ) -> Result<Vec<u8>, CanonicalEncodingError> {
-    let prefix = b"freed.library-core.v1/signature/operation-envelope\0";
+    if !SIGNATURE_DOMAINS.contains(&domain) {
+        return Err(CanonicalEncodingError::UnregisteredDomain);
+    }
+    let prefix = format!("freed.library-core.v1/signature/{domain}\0");
     let canonical_budget = maximum_bytes
         .checked_sub(prefix.len())
         .filter(|budget| *budget > 0)
         .ok_or(CanonicalEncodingError::InvalidMaximumBytes)?;
     let canonical = encode_canonical_value(value, canonical_budget)?;
     let mut result = Vec::with_capacity(prefix.len() + canonical.len());
-    result.extend_from_slice(prefix);
+    result.extend_from_slice(prefix.as_bytes());
     result.extend_from_slice(&canonical);
     Ok(result)
+}
+
+pub(crate) fn encode_operation_signature_input(
+    value: &Value,
+    maximum_bytes: usize,
+) -> Result<Vec<u8>, CanonicalEncodingError> {
+    encode_signature_input("operation-envelope", value, maximum_bytes)
 }
 
 struct CanonicalJsonParser<'a> {
@@ -565,6 +582,45 @@ mod tests {
             signature_input,
             b"freed.library-core.v1/signature/operation-envelope\0{\"operation_signing_body_digest\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}"
         );
+        let actor_proof_input = encode_signature_input(
+            "actor-enrollment-proof",
+            &serde_json::json!({
+                "enrollment_body_digest":
+                    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            }),
+            MAX_DIRECT_CANONICAL_BYTES,
+        )
+        .expect("actor proof input");
+        assert_eq!(
+            actor_proof_input,
+            b"freed.library-core.v1/signature/actor-enrollment-proof\0{\"enrollment_body_digest\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}"
+        );
+        let certificate_digest_input = encode_operation_digest_input(
+            "actor-enrollment-certificate",
+            &serde_json::json!({
+                "enrollment_body_digest":
+                    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            }),
+            MAX_DIRECT_CANONICAL_BYTES,
+        )
+        .expect("actor enrollment certificate digest input");
+        assert_eq!(
+            certificate_digest_input,
+            b"freed.library-core.v1/digest/actor-enrollment-certificate\0{\"enrollment_body_digest\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}"
+        );
+        let authority_signature_input = encode_signature_input(
+            "actor-enrollment-authority",
+            &serde_json::json!({
+                "certificate_digest":
+                    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            }),
+            MAX_DIRECT_CANONICAL_BYTES,
+        )
+        .expect("actor enrollment authority signature input");
+        assert_eq!(
+            authority_signature_input,
+            b"freed.library-core.v1/signature/actor-enrollment-authority\0{\"certificate_digest\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}"
+        );
     }
 
     #[test]
@@ -594,6 +650,10 @@ mod tests {
         assert_eq!(
             encode_operation_signature_input(&Value::Null, 20),
             Err(CanonicalEncodingError::InvalidMaximumBytes)
+        );
+        assert_eq!(
+            encode_signature_input("made-up-domain", &Value::Null, MAX_DIRECT_CANONICAL_BYTES),
+            Err(CanonicalEncodingError::UnregisteredDomain)
         );
     }
 

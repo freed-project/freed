@@ -272,6 +272,15 @@ contract for the observed frontier. Body construction is not proof of key
 possession, an authority certificate, committed enrollment, or writer
 authority.
 
+Construct an enrollment certificate only from the provenance-branded body.
+Sign the exact enrollment-body digest through the actor-proof domain, close and
+digest the certificate body, sign that digest through the enrollment-authority
+domain, and derive actor-chain genesis from the certificate digest, actor ID,
+and epoch ID. Reject malformed signer or digest output and return no partial
+certificate. Construction alone does not verify either signature, establish
+current authority state, commit enrollment, persist a key, or grant writer
+authority.
+
 ## Preserve the invariants
 
 1. Keep exactly one active writer epoch. Advance it only with a signed immutable
