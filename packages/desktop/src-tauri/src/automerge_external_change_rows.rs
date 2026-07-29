@@ -1,0 +1,930 @@
+//! Bounded reconstruction of Automerge document change rows.
+//!
+//! This dormant layer joins verified primitive and scalar token runs without
+//! loading the change table or dependency graph into memory. Dependencies are
+//! written as fixed-width little-endian indices in a separate spool. No
+//! command or production caller activates this module.
+
+use crate::automerge_external_column::{
+    ExternalColumnDecodeSession, ExternalColumnDecodeSummary, ExternalColumnInput,
+};
+use crate::automerge_external_common::{lower_hex, ExternalHashingWriter};
+use crate::automerge_external_document::DocumentColumnType;
+use crate::automerge_external_token_run::{
+    ExternalColumnTokenRunError, ExternalColumnTokenRunLimits, ExternalColumnTokenRunReader,
+    ExternalColumnTokenValue,
+};
+use crate::automerge_external_value::ExternalValueDecodeSummary;
+use crate::automerge_external_value_run::{
+    ExternalScalarValue, ExternalValueTokenRunError, ExternalValueTokenRunLimits,
+    ExternalValueTokenRunReader,
+};
+use serde::Serialize;
+use sha2::{Digest, Sha256};
+use std::fmt;
+use std::fs::File;
+use std::io::Write;
+
+const CHANGE_ROW_SCHEMA_VERSION: u32 = 1;
+const ACTOR_SPECIFICATION: u32 = 1;
+const SEQUENCE_SPECIFICATION: u32 = 3;
+const MAX_OPERATION_SPECIFICATION: u32 = 19;
+const TIMESTAMP_SPECIFICATION: u32 = 35;
+const MESSAGE_SPECIFICATION: u32 = 53;
+const DEPENDENCY_COUNT_SPECIFICATION: u32 = 64;
+const DEPENDENCY_INDEX_SPECIFICATION: u32 = 67;
+const EXTRA_METADATA_SPECIFICATION: u32 = 86;
+const EXTRA_RAW_SPECIFICATION: u32 = 87;
+const DEPENDENCY_INDEX_BYTES: u64 = 8;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct ExternalChangeRowLimits {
+    pub max_change_count: u64,
+    pub max_dependencies_per_change: u64,
+    pub max_total_dependencies: u64,
+    pub max_message_bytes: u64,
+    pub max_primitive_run_bytes: u64,
+    pub max_scalar_run_bytes: u64,
+    pub max_line_bytes: usize,
+}
+
+pub(super) struct ExternalPrimitiveChangeColumn<'a> {
+    pub specification: u32,
+    pub input: ExternalColumnInput,
+    pub summary: &'a ExternalColumnDecodeSummary,
+    pub run: &'a mut File,
+}
+
+pub(super) struct ExternalScalarChangeColumn<'a> {
+    pub metadata_specification: u32,
+    pub metadata_input: ExternalColumnInput,
+    pub raw_specification: Option<u32>,
+    pub raw_input: Option<ExternalColumnInput>,
+    pub summary: &'a ExternalValueDecodeSummary,
+    pub run: &'a mut File,
+    pub payload_spool: &'a mut File,
+}
+
+pub(super) struct ExternalChangeColumns<'a> {
+    pub actor_count: u64,
+    pub actor: ExternalPrimitiveChangeColumn<'a>,
+    pub sequence: ExternalPrimitiveChangeColumn<'a>,
+    pub max_operation: ExternalPrimitiveChangeColumn<'a>,
+    pub timestamp: ExternalPrimitiveChangeColumn<'a>,
+    pub message: Option<ExternalPrimitiveChangeColumn<'a>>,
+    pub dependency_count: ExternalPrimitiveChangeColumn<'a>,
+    pub dependency_index: Option<ExternalPrimitiveChangeColumn<'a>>,
+    pub extra: ExternalScalarChangeColumn<'a>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ExternalChangeRowSummary {
+    pub change_count: u64,
+    pub dependency_count: u64,
+    pub dependency_spool_byte_length: u64,
+    pub dependency_spool_sha256: String,
+    pub row_run_prefix_byte_length: u64,
+    pub row_run_prefix_sha256: String,
+}
+
+#[derive(Debug)]
+pub(super) enum ExternalChangeRowError {
+    Io(std::io::Error),
+    ColumnRun(ExternalColumnTokenRunError),
+    ValueRun(ExternalValueTokenRunError),
+    InvalidLimits,
+    InvalidActorCount,
+    InvalidColumnContract,
+    ChangeCountLimit,
+    DependencyCountLimit,
+    TotalDependencyLimit,
+    MessageByteLimit,
+    RowCountMismatch,
+    MissingDependencyColumn,
+    UnexpectedDependencyColumn,
+    InvalidActor,
+    InvalidUnsigned,
+    InvalidTimestamp,
+    InvalidMessage,
+    InvalidDependency,
+    InvalidExtra,
+    RangeOverflow,
+}
+
+impl From<std::io::Error> for ExternalChangeRowError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+
+impl From<ExternalColumnTokenRunError> for ExternalChangeRowError {
+    fn from(error: ExternalColumnTokenRunError) -> Self {
+        Self::ColumnRun(error)
+    }
+}
+
+impl From<ExternalValueTokenRunError> for ExternalChangeRowError {
+    fn from(error: ExternalValueTokenRunError) -> Self {
+        Self::ValueRun(error)
+    }
+}
+
+impl fmt::Display for ExternalChangeRowError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io(error) => write!(formatter, "Automerge change row I/O failed: {error}"),
+            Self::ColumnRun(error) => error.fmt(formatter),
+            Self::ValueRun(error) => error.fmt(formatter),
+            Self::InvalidLimits => formatter.write_str("Automerge change row limits are invalid"),
+            Self::InvalidActorCount => {
+                formatter.write_str("Automerge change actor count is invalid")
+            }
+            Self::InvalidColumnContract => {
+                formatter.write_str("Automerge change columns do not match the required schema")
+            }
+            Self::ChangeCountLimit => {
+                formatter.write_str("Automerge changes exceed the admitted count")
+            }
+            Self::DependencyCountLimit => {
+                formatter.write_str("Automerge change dependencies exceed the admitted row count")
+            }
+            Self::TotalDependencyLimit => {
+                formatter.write_str("Automerge change dependencies exceed the admitted total")
+            }
+            Self::MessageByteLimit => {
+                formatter.write_str("Automerge change message exceeds the admitted bytes")
+            }
+            Self::RowCountMismatch => {
+                formatter.write_str("Automerge change column row counts do not agree")
+            }
+            Self::MissingDependencyColumn => {
+                formatter.write_str("Automerge dependency values are missing")
+            }
+            Self::UnexpectedDependencyColumn => {
+                formatter.write_str("Automerge dependency values are unexpectedly present")
+            }
+            Self::InvalidActor => formatter.write_str("Automerge change actor is invalid"),
+            Self::InvalidUnsigned => {
+                formatter.write_str("Automerge change unsigned value is invalid")
+            }
+            Self::InvalidTimestamp => formatter.write_str("Automerge change timestamp is invalid"),
+            Self::InvalidMessage => formatter.write_str("Automerge change message is invalid"),
+            Self::InvalidDependency => {
+                formatter.write_str("Automerge change dependency is invalid")
+            }
+            Self::InvalidExtra => formatter.write_str("Automerge change extra value is invalid"),
+            Self::RangeOverflow => formatter.write_str("Automerge change row range overflows"),
+        }
+    }
+}
+
+impl std::error::Error for ExternalChangeRowError {}
+
+type ChangeResult<T> = Result<T, ExternalChangeRowError>;
+
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum ChangeRowRecord<'a> {
+    Begin {
+        #[serde(rename = "schemaVersion")]
+        schema_version: u32,
+        #[serde(rename = "sourceByteLength")]
+        source_byte_length: u64,
+        #[serde(rename = "sourceSha256")]
+        source_sha256: &'a str,
+        #[serde(rename = "actorCount")]
+        actor_count: u64,
+    },
+    Change {
+        index: u64,
+        #[serde(rename = "actorIndex")]
+        actor_index: u64,
+        sequence: u64,
+        #[serde(rename = "maxOperation")]
+        max_operation: u64,
+        timestamp: i64,
+        message: Option<&'a str>,
+        #[serde(rename = "dependencyByteOffset")]
+        dependency_byte_offset: u64,
+        #[serde(rename = "dependencyCount")]
+        dependency_count: u64,
+        #[serde(rename = "extraPayloadOffset")]
+        extra_payload_offset: u64,
+        #[serde(rename = "extraByteLength")]
+        extra_byte_length: u64,
+    },
+    Complete {
+        summary: &'a ExternalChangeRowSummary,
+    },
+}
+
+/// Join one exact set of verified Automerge change columns.
+///
+/// The column specifications must come from a verified document-layout reader.
+/// The caller keeps both output files private until the enclosing verified
+/// source session returns successfully.
+pub(super) fn write_external_change_rows(
+    session: &mut ExternalColumnDecodeSession<'_>,
+    columns: ExternalChangeColumns<'_>,
+    limits: ExternalChangeRowLimits,
+    dependency_spool: &mut impl Write,
+    output: &mut impl Write,
+) -> ChangeResult<ExternalChangeRowSummary> {
+    session.with_source_context(|_, source_byte_length, source_sha256| {
+        write_external_change_rows_in_session(
+            source_byte_length,
+            source_sha256,
+            columns,
+            limits,
+            dependency_spool,
+            output,
+        )
+    })
+}
+
+fn write_external_change_rows_in_session(
+    source_byte_length: u64,
+    source_sha256: &str,
+    columns: ExternalChangeColumns<'_>,
+    limits: ExternalChangeRowLimits,
+    dependency_spool: &mut impl Write,
+    output: &mut impl Write,
+) -> ChangeResult<ExternalChangeRowSummary> {
+    validate_limits(limits)?;
+    validate_columns(&columns)?;
+
+    let ExternalChangeColumns {
+        actor_count,
+        actor,
+        sequence,
+        max_operation,
+        timestamp,
+        message,
+        dependency_count,
+        dependency_index,
+        extra,
+    } = columns;
+
+    let primitive_limits = ExternalColumnTokenRunLimits {
+        max_run_bytes: limits.max_primitive_run_bytes,
+        max_line_bytes: limits.max_line_bytes,
+    };
+    let scalar_limits = ExternalValueTokenRunLimits {
+        max_run_bytes: limits.max_scalar_run_bytes,
+        max_line_bytes: limits.max_line_bytes,
+    };
+    let mut actors = ExternalColumnTokenRunReader::open(
+        actor.run,
+        source_byte_length,
+        source_sha256,
+        actor.input,
+        actor.summary,
+        primitive_limits,
+    )?;
+    let mut sequences = ExternalColumnTokenRunReader::open(
+        sequence.run,
+        source_byte_length,
+        source_sha256,
+        sequence.input,
+        sequence.summary,
+        primitive_limits,
+    )?;
+    let mut max_operations = ExternalColumnTokenRunReader::open(
+        max_operation.run,
+        source_byte_length,
+        source_sha256,
+        max_operation.input,
+        max_operation.summary,
+        primitive_limits,
+    )?;
+    let mut timestamps = ExternalColumnTokenRunReader::open(
+        timestamp.run,
+        source_byte_length,
+        source_sha256,
+        timestamp.input,
+        timestamp.summary,
+        primitive_limits,
+    )?;
+    let mut messages = message
+        .map(|column| {
+            ExternalColumnTokenRunReader::open(
+                column.run,
+                source_byte_length,
+                source_sha256,
+                column.input,
+                column.summary,
+                primitive_limits,
+            )
+        })
+        .transpose()?;
+    let mut dependency_counts = ExternalColumnTokenRunReader::open(
+        dependency_count.run,
+        source_byte_length,
+        source_sha256,
+        dependency_count.input,
+        dependency_count.summary,
+        primitive_limits,
+    )?;
+    let mut dependency_indices = dependency_index
+        .map(|column| {
+            ExternalColumnTokenRunReader::open(
+                column.run,
+                source_byte_length,
+                source_sha256,
+                column.input,
+                column.summary,
+                primitive_limits,
+            )
+        })
+        .transpose()?;
+    let mut extras = ExternalValueTokenRunReader::open(
+        extra.run,
+        extra.payload_spool,
+        source_byte_length,
+        source_sha256,
+        extra.metadata_input,
+        extra.raw_input,
+        extra.summary,
+        scalar_limits,
+    )?;
+
+    let mut hashed_output = ExternalHashingWriter::new(output);
+    write_record(
+        &mut hashed_output,
+        &ChangeRowRecord::Begin {
+            schema_version: CHANGE_ROW_SCHEMA_VERSION,
+            source_byte_length,
+            source_sha256,
+            actor_count,
+        },
+    )?;
+
+    let mut change_count = 0_u64;
+    let mut total_dependency_count = 0_u64;
+    let mut dependency_spool_byte_length = 0_u64;
+    let mut dependency_hasher = Sha256::new();
+
+    while let Some(actor_token) = actors.next_token()? {
+        if change_count >= limits.max_change_count {
+            return Err(ExternalChangeRowError::ChangeCountLimit);
+        }
+        let actor_index = required_unsigned(actor_token.value)?;
+        if actor_index >= actor_count {
+            return Err(ExternalChangeRowError::InvalidActor);
+        }
+        let sequence = required_nonnegative_delta(next_required(&mut sequences)?)?;
+        let max_operation = required_nonnegative_delta(next_required(&mut max_operations)?)?;
+        let timestamp = required_timestamp(next_required(&mut timestamps)?)?;
+        let message = next_message(messages.as_mut())?;
+        if message
+            .as_ref()
+            .is_some_and(|value| value.len() as u64 > limits.max_message_bytes)
+        {
+            return Err(ExternalChangeRowError::MessageByteLimit);
+        }
+        let row_dependency_count = required_unsigned(next_required(&mut dependency_counts)?)?;
+        if row_dependency_count > limits.max_dependencies_per_change {
+            return Err(ExternalChangeRowError::DependencyCountLimit);
+        }
+        total_dependency_count = total_dependency_count
+            .checked_add(row_dependency_count)
+            .ok_or(ExternalChangeRowError::RangeOverflow)?;
+        if total_dependency_count > limits.max_total_dependencies {
+            return Err(ExternalChangeRowError::TotalDependencyLimit);
+        }
+        let dependency_byte_offset = dependency_spool_byte_length;
+        for _ in 0..row_dependency_count {
+            let dependency = dependency_indices
+                .as_mut()
+                .ok_or(ExternalChangeRowError::MissingDependencyColumn)
+                .and_then(next_required)
+                .and_then(required_nonnegative_delta)?;
+            if dependency >= change_count {
+                return Err(ExternalChangeRowError::InvalidDependency);
+            }
+            let bytes = dependency.to_le_bytes();
+            dependency_spool.write_all(&bytes)?;
+            dependency_hasher.update(bytes);
+            dependency_spool_byte_length = dependency_spool_byte_length
+                .checked_add(DEPENDENCY_INDEX_BYTES)
+                .ok_or(ExternalChangeRowError::RangeOverflow)?;
+        }
+        let extra_value = extras
+            .next_value()?
+            .ok_or(ExternalChangeRowError::RowCountMismatch)?;
+        let (extra_payload_offset, extra_byte_length) = match extra_value.value {
+            ExternalScalarValue::Bytes {
+                payload_offset,
+                byte_length,
+            } => (payload_offset, byte_length),
+            _ => return Err(ExternalChangeRowError::InvalidExtra),
+        };
+        write_record(
+            &mut hashed_output,
+            &ChangeRowRecord::Change {
+                index: change_count,
+                actor_index,
+                sequence,
+                max_operation,
+                timestamp,
+                message: message.as_deref(),
+                dependency_byte_offset,
+                dependency_count: row_dependency_count,
+                extra_payload_offset,
+                extra_byte_length,
+            },
+        )?;
+        change_count = change_count
+            .checked_add(1)
+            .ok_or(ExternalChangeRowError::RangeOverflow)?;
+    }
+
+    if sequences.next_token()?.is_some()
+        || max_operations.next_token()?.is_some()
+        || timestamps.next_token()?.is_some()
+        || dependency_counts.next_token()?.is_some()
+        || extras.next_value()?.is_some()
+        || messages
+            .as_mut()
+            .map(|reader| reader.next_token())
+            .transpose()?
+            .flatten()
+            .is_some()
+    {
+        return Err(ExternalChangeRowError::RowCountMismatch);
+    }
+    if dependency_indices
+        .as_mut()
+        .map(|reader| reader.next_token())
+        .transpose()?
+        .flatten()
+        .is_some()
+    {
+        return Err(ExternalChangeRowError::UnexpectedDependencyColumn);
+    }
+    if total_dependency_count == 0 && dependency_indices.is_some() {
+        return Err(ExternalChangeRowError::UnexpectedDependencyColumn);
+    }
+    if total_dependency_count > 0 && dependency_indices.is_none() {
+        return Err(ExternalChangeRowError::MissingDependencyColumn);
+    }
+
+    let (row_run_prefix_byte_length, row_run_prefix_sha256) = hashed_output.finish();
+    let summary = ExternalChangeRowSummary {
+        change_count,
+        dependency_count: total_dependency_count,
+        dependency_spool_byte_length,
+        dependency_spool_sha256: lower_hex(&dependency_hasher.finalize()),
+        row_run_prefix_byte_length,
+        row_run_prefix_sha256,
+    };
+    write_record(output, &ChangeRowRecord::Complete { summary: &summary })?;
+    Ok(summary)
+}
+
+fn validate_limits(limits: ExternalChangeRowLimits) -> ChangeResult<()> {
+    if limits.max_change_count == 0
+        || limits.max_dependencies_per_change == 0
+        || limits.max_total_dependencies == 0
+        || limits.max_message_bytes == 0
+        || limits.max_primitive_run_bytes == 0
+        || limits.max_scalar_run_bytes == 0
+        || limits.max_line_bytes == 0
+    {
+        return Err(ExternalChangeRowError::InvalidLimits);
+    }
+    Ok(())
+}
+
+fn validate_columns(columns: &ExternalChangeColumns<'_>) -> ChangeResult<()> {
+    if columns.actor_count == 0 {
+        return Err(ExternalChangeRowError::InvalidActorCount);
+    }
+    let exact = |column: &ExternalPrimitiveChangeColumn<'_>,
+                 specification: u32,
+                 column_type: DocumentColumnType| {
+        column.specification == specification && column.input.column_type == column_type
+    };
+    if !exact(
+        &columns.actor,
+        ACTOR_SPECIFICATION,
+        DocumentColumnType::Actor,
+    ) || !exact(
+        &columns.sequence,
+        SEQUENCE_SPECIFICATION,
+        DocumentColumnType::DeltaInteger,
+    ) || !exact(
+        &columns.max_operation,
+        MAX_OPERATION_SPECIFICATION,
+        DocumentColumnType::DeltaInteger,
+    ) || !exact(
+        &columns.timestamp,
+        TIMESTAMP_SPECIFICATION,
+        DocumentColumnType::DeltaInteger,
+    ) || !exact(
+        &columns.dependency_count,
+        DEPENDENCY_COUNT_SPECIFICATION,
+        DocumentColumnType::Group,
+    ) || columns
+        .message
+        .as_ref()
+        .is_some_and(|column| !exact(column, MESSAGE_SPECIFICATION, DocumentColumnType::String))
+        || columns.dependency_index.as_ref().is_some_and(|column| {
+            !exact(
+                column,
+                DEPENDENCY_INDEX_SPECIFICATION,
+                DocumentColumnType::DeltaInteger,
+            )
+        })
+        || columns.extra.metadata_specification != EXTRA_METADATA_SPECIFICATION
+        || columns.extra.metadata_input.column_type != DocumentColumnType::ValueMetadata
+        || columns.extra.raw_specification
+            != columns.extra.raw_input.map(|_| EXTRA_RAW_SPECIFICATION)
+        || columns
+            .extra
+            .raw_input
+            .is_some_and(|input| input.column_type != DocumentColumnType::Value)
+    {
+        return Err(ExternalChangeRowError::InvalidColumnContract);
+    }
+    Ok(())
+}
+
+fn next_required(
+    reader: &mut ExternalColumnTokenRunReader<'_>,
+) -> ChangeResult<ExternalColumnTokenValue> {
+    reader
+        .next_token()?
+        .map(|token| token.value)
+        .ok_or(ExternalChangeRowError::RowCountMismatch)
+}
+
+fn required_unsigned(value: ExternalColumnTokenValue) -> ChangeResult<u64> {
+    match value {
+        ExternalColumnTokenValue::Unsigned(value) => value
+            .parse::<u64>()
+            .map_err(|_| ExternalChangeRowError::InvalidUnsigned),
+        _ => Err(ExternalChangeRowError::InvalidUnsigned),
+    }
+}
+
+fn required_nonnegative_delta(value: ExternalColumnTokenValue) -> ChangeResult<u64> {
+    match value {
+        ExternalColumnTokenValue::Signed(value) => value
+            .parse::<i64>()
+            .ok()
+            .and_then(|value| u64::try_from(value).ok())
+            .ok_or(ExternalChangeRowError::InvalidUnsigned),
+        _ => Err(ExternalChangeRowError::InvalidUnsigned),
+    }
+}
+
+fn required_timestamp(value: ExternalColumnTokenValue) -> ChangeResult<i64> {
+    match value {
+        ExternalColumnTokenValue::Signed(value) => value
+            .parse::<i64>()
+            .map_err(|_| ExternalChangeRowError::InvalidTimestamp),
+        _ => Err(ExternalChangeRowError::InvalidTimestamp),
+    }
+}
+
+fn next_message(
+    reader: Option<&mut ExternalColumnTokenRunReader<'_>>,
+) -> ChangeResult<Option<String>> {
+    let Some(reader) = reader else {
+        return Ok(None);
+    };
+    match next_required(reader)? {
+        ExternalColumnTokenValue::Null => Ok(None),
+        ExternalColumnTokenValue::String(value) => Ok(Some(value)),
+        _ => Err(ExternalChangeRowError::InvalidMessage),
+    }
+}
+
+fn write_record(output: &mut impl Write, record: &ChangeRowRecord<'_>) -> ChangeResult<()> {
+    serde_json::to_writer(&mut *output, record)
+        .map_err(|error| ExternalChangeRowError::Io(std::io::Error::other(error)))?;
+    output.write_all(b"\n")?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::automerge_external_column::{
+        with_verified_column_decode_session, ExternalColumnDecodeLimits,
+    };
+    use crate::automerge_external_common::{decode_test_hex, OFFICIAL_NONEMPTY_DOCUMENT_HEX};
+    use crate::automerge_external_value::{write_decoded_value_tokens, ExternalValueDecodeLimits};
+    use tempfile::NamedTempFile;
+
+    const TWO_CHANGE_DOCUMENT_HEX: &str = "856f4a831499aa09008b0101100123456789abcdef0123456789abcdef012634b9788580400fabbe7706673be5d73cbcf82a063623b209eed1852c4d0f6d080102030213022307350e4003430256020815052102230234014202560257028001020200020102017ec791a9d306007e056669727374067365636f6e647e00017f0002077e016101620200020102020102140102020001";
+
+    #[derive(Clone, Copy)]
+    struct FixtureColumns {
+        actor: ExternalColumnInput,
+        sequence: ExternalColumnInput,
+        max_operation: ExternalColumnInput,
+        timestamp: ExternalColumnInput,
+        message: Option<ExternalColumnInput>,
+        dependency_count: ExternalColumnInput,
+        dependency_index: Option<ExternalColumnInput>,
+        extra_metadata: ExternalColumnInput,
+    }
+
+    type FixtureReconstruction = (ExternalChangeRowSummary, Vec<u8>, Vec<u8>);
+    type FixtureResult = Result<FixtureReconstruction, Box<dyn std::error::Error>>;
+
+    fn digest(bytes: &[u8]) -> String {
+        lower_hex(&Sha256::digest(bytes))
+    }
+
+    fn fixture(bytes: &[u8]) -> NamedTempFile {
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(bytes).unwrap();
+        file.as_file_mut().sync_all().unwrap();
+        file
+    }
+
+    fn input(
+        offset: u64,
+        byte_length: u64,
+        column_type: DocumentColumnType,
+    ) -> ExternalColumnInput {
+        ExternalColumnInput {
+            offset,
+            byte_length,
+            column_type,
+            deflated: false,
+        }
+    }
+
+    fn column_limits() -> ExternalColumnDecodeLimits {
+        ExternalColumnDecodeLimits {
+            max_token_count: 128,
+            max_decoded_column_bytes: 4 * 1024,
+            max_string_bytes: 1024,
+        }
+    }
+
+    fn value_limits() -> ExternalValueDecodeLimits {
+        ExternalValueDecodeLimits {
+            max_value_count: 128,
+            max_decoded_raw_bytes: 4 * 1024,
+            max_string_bytes: 1024,
+            max_metadata_run_bytes: 16 * 1024,
+            max_metadata_line_bytes: 4 * 1024,
+        }
+    }
+
+    fn change_limits() -> ExternalChangeRowLimits {
+        ExternalChangeRowLimits {
+            max_change_count: 128,
+            max_dependencies_per_change: 32,
+            max_total_dependencies: 512,
+            max_message_bytes: 1024,
+            max_primitive_run_bytes: 16 * 1024,
+            max_scalar_run_bytes: 16 * 1024,
+            max_line_bytes: 4 * 1024,
+        }
+    }
+
+    fn reconstruct(bytes: &[u8], inputs: FixtureColumns) -> FixtureResult {
+        let source_byte_length = bytes.len() as u64;
+        let source_sha256 = digest(bytes);
+        let mut source = fixture(bytes);
+
+        let mut actor_run = NamedTempFile::new().unwrap();
+        let mut sequence_run = NamedTempFile::new().unwrap();
+        let mut max_operation_run = NamedTempFile::new().unwrap();
+        let mut timestamp_run = NamedTempFile::new().unwrap();
+        let mut message_run = NamedTempFile::new().unwrap();
+        let mut dependency_count_run = NamedTempFile::new().unwrap();
+        let mut dependency_index_run = NamedTempFile::new().unwrap();
+        let mut extra_metadata_run = NamedTempFile::new().unwrap();
+        let mut extra_value_run = NamedTempFile::new().unwrap();
+        let mut extra_payload = NamedTempFile::new().unwrap();
+        let mut dependency_spool = Vec::new();
+        let mut rows = Vec::new();
+
+        let summary = with_verified_column_decode_session(
+            source.as_file_mut(),
+            source_byte_length,
+            &source_sha256,
+            |session| -> Result<ExternalChangeRowSummary, Box<dyn std::error::Error>> {
+                let actor_summary = session.write_decoded_column_tokens(
+                    inputs.actor,
+                    column_limits(),
+                    actor_run.as_file_mut(),
+                )?;
+                let sequence_summary = session.write_decoded_column_tokens(
+                    inputs.sequence,
+                    column_limits(),
+                    sequence_run.as_file_mut(),
+                )?;
+                let max_operation_summary = session.write_decoded_column_tokens(
+                    inputs.max_operation,
+                    column_limits(),
+                    max_operation_run.as_file_mut(),
+                )?;
+                let timestamp_summary = session.write_decoded_column_tokens(
+                    inputs.timestamp,
+                    column_limits(),
+                    timestamp_run.as_file_mut(),
+                )?;
+                let message_summary = inputs
+                    .message
+                    .map(|column| {
+                        session.write_decoded_column_tokens(
+                            column,
+                            column_limits(),
+                            message_run.as_file_mut(),
+                        )
+                    })
+                    .transpose()?;
+                let dependency_count_summary = session.write_decoded_column_tokens(
+                    inputs.dependency_count,
+                    column_limits(),
+                    dependency_count_run.as_file_mut(),
+                )?;
+                let dependency_index_summary = inputs
+                    .dependency_index
+                    .map(|column| {
+                        session.write_decoded_column_tokens(
+                            column,
+                            column_limits(),
+                            dependency_index_run.as_file_mut(),
+                        )
+                    })
+                    .transpose()?;
+                let extra_metadata_summary = session.write_decoded_column_tokens(
+                    inputs.extra_metadata,
+                    column_limits(),
+                    extra_metadata_run.as_file_mut(),
+                )?;
+                let extra_summary = write_decoded_value_tokens(
+                    session,
+                    inputs.extra_metadata,
+                    &extra_metadata_summary,
+                    extra_metadata_run.as_file_mut(),
+                    None,
+                    value_limits(),
+                    extra_payload.as_file_mut(),
+                    extra_value_run.as_file_mut(),
+                )?;
+                let message = match (inputs.message, message_summary.as_ref()) {
+                    (Some(input), Some(summary)) => Some(ExternalPrimitiveChangeColumn {
+                        specification: MESSAGE_SPECIFICATION,
+                        input,
+                        summary,
+                        run: message_run.as_file_mut(),
+                    }),
+                    (None, None) => None,
+                    _ => unreachable!("message input and summary are constructed together"),
+                };
+                let dependency_index =
+                    match (inputs.dependency_index, dependency_index_summary.as_ref()) {
+                        (Some(input), Some(summary)) => Some(ExternalPrimitiveChangeColumn {
+                            specification: DEPENDENCY_INDEX_SPECIFICATION,
+                            input,
+                            summary,
+                            run: dependency_index_run.as_file_mut(),
+                        }),
+                        (None, None) => None,
+                        _ => {
+                            unreachable!("dependency input and summary are constructed together")
+                        }
+                    };
+                Ok(write_external_change_rows(
+                    session,
+                    ExternalChangeColumns {
+                        actor_count: 1,
+                        actor: ExternalPrimitiveChangeColumn {
+                            specification: ACTOR_SPECIFICATION,
+                            input: inputs.actor,
+                            summary: &actor_summary,
+                            run: actor_run.as_file_mut(),
+                        },
+                        sequence: ExternalPrimitiveChangeColumn {
+                            specification: SEQUENCE_SPECIFICATION,
+                            input: inputs.sequence,
+                            summary: &sequence_summary,
+                            run: sequence_run.as_file_mut(),
+                        },
+                        max_operation: ExternalPrimitiveChangeColumn {
+                            specification: MAX_OPERATION_SPECIFICATION,
+                            input: inputs.max_operation,
+                            summary: &max_operation_summary,
+                            run: max_operation_run.as_file_mut(),
+                        },
+                        timestamp: ExternalPrimitiveChangeColumn {
+                            specification: TIMESTAMP_SPECIFICATION,
+                            input: inputs.timestamp,
+                            summary: &timestamp_summary,
+                            run: timestamp_run.as_file_mut(),
+                        },
+                        message,
+                        dependency_count: ExternalPrimitiveChangeColumn {
+                            specification: DEPENDENCY_COUNT_SPECIFICATION,
+                            input: inputs.dependency_count,
+                            summary: &dependency_count_summary,
+                            run: dependency_count_run.as_file_mut(),
+                        },
+                        dependency_index,
+                        extra: ExternalScalarChangeColumn {
+                            metadata_specification: EXTRA_METADATA_SPECIFICATION,
+                            metadata_input: inputs.extra_metadata,
+                            raw_specification: None,
+                            raw_input: None,
+                            summary: &extra_summary,
+                            run: extra_value_run.as_file_mut(),
+                            payload_spool: extra_payload.as_file_mut(),
+                        },
+                    },
+                    change_limits(),
+                    &mut dependency_spool,
+                    &mut rows,
+                )?)
+            },
+        )?;
+        Ok((summary, dependency_spool, rows))
+    }
+
+    fn change_records(rows: &[u8]) -> Vec<serde_json::Value> {
+        std::str::from_utf8(rows)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .filter(|record: &serde_json::Value| record["type"] == "change")
+            .collect()
+    }
+
+    #[test]
+    fn reconstructs_the_official_change_row_without_a_resident_dependency_graph() {
+        let bytes = decode_test_hex(OFFICIAL_NONEMPTY_DOCUMENT_HEX);
+        let (summary, dependency_spool, rows) = reconstruct(
+            &bytes,
+            FixtureColumns {
+                actor: input(97, 2, DocumentColumnType::Actor),
+                sequence: input(99, 2, DocumentColumnType::DeltaInteger),
+                max_operation: input(101, 2, DocumentColumnType::DeltaInteger),
+                timestamp: input(103, 6, DocumentColumnType::DeltaInteger),
+                message: None,
+                dependency_count: input(109, 2, DocumentColumnType::Group),
+                dependency_index: None,
+                extra_metadata: input(111, 2, DocumentColumnType::ValueMetadata),
+            },
+        )
+        .unwrap();
+        assert_eq!(summary.change_count, 1);
+        assert_eq!(summary.dependency_count, 0);
+        assert_eq!(summary.dependency_spool_byte_length, 0);
+        assert!(dependency_spool.is_empty());
+        assert_eq!(summary.dependency_spool_sha256, digest(&[]));
+        assert!(summary.row_run_prefix_byte_length > 0);
+        assert_eq!(summary.row_run_prefix_sha256.len(), 64);
+        let changes = change_records(&rows);
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0]["actorIndex"], 0);
+        assert_eq!(changes[0]["sequence"], 1);
+        assert_eq!(changes[0]["maxOperation"], 7);
+        assert_eq!(changes[0]["timestamp"], 1785347609_i64);
+        assert_eq!(changes[0]["dependencyCount"], 0);
+        assert_eq!(changes[0]["extraByteLength"], 0);
+    }
+
+    #[test]
+    fn spools_dependencies_and_preserves_optional_messages_for_multiple_changes() {
+        let bytes = decode_test_hex(TWO_CHANGE_DOCUMENT_HEX);
+        let (summary, dependency_spool, rows) = reconstruct(
+            &bytes,
+            FixtureColumns {
+                actor: input(97, 2, DocumentColumnType::Actor),
+                sequence: input(99, 2, DocumentColumnType::DeltaInteger),
+                max_operation: input(101, 2, DocumentColumnType::DeltaInteger),
+                timestamp: input(103, 7, DocumentColumnType::DeltaInteger),
+                message: Some(input(110, 14, DocumentColumnType::String)),
+                dependency_count: input(124, 3, DocumentColumnType::Group),
+                dependency_index: Some(input(127, 2, DocumentColumnType::DeltaInteger)),
+                extra_metadata: input(129, 2, DocumentColumnType::ValueMetadata),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(summary.change_count, 2);
+        assert_eq!(summary.dependency_count, 1);
+        assert_eq!(summary.dependency_spool_byte_length, 8);
+        assert_eq!(dependency_spool, 0_u64.to_le_bytes());
+        assert_eq!(summary.dependency_spool_sha256, digest(&dependency_spool));
+        let changes = change_records(&rows);
+        assert_eq!(changes.len(), 2);
+        assert_eq!(changes[0]["sequence"], 1);
+        assert_eq!(changes[0]["message"], "first");
+        assert_eq!(changes[0]["dependencyCount"], 0);
+        assert_eq!(changes[1]["sequence"], 2);
+        assert_eq!(changes[1]["message"], "second");
+        assert_eq!(changes[1]["dependencyByteOffset"], 0);
+        assert_eq!(changes[1]["dependencyCount"], 1);
+    }
+}

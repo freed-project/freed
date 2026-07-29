@@ -6,6 +6,8 @@
 // production entry point may open the store until the activation contract is
 // reviewed.
 #[cfg_attr(not(test), allow(dead_code))]
+mod automerge_external_change_rows;
+#[cfg_attr(not(test), allow(dead_code))]
 mod automerge_external_column;
 #[cfg_attr(not(test), allow(dead_code))]
 mod automerge_external_common;
@@ -16,7 +18,11 @@ mod automerge_external_document;
 #[cfg_attr(not(test), allow(dead_code))]
 mod automerge_external_spool;
 #[cfg_attr(not(test), allow(dead_code))]
+mod automerge_external_token_run;
+#[cfg_attr(not(test), allow(dead_code))]
 mod automerge_external_value;
+#[cfg_attr(not(test), allow(dead_code))]
+mod automerge_external_value_run;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_canonical;
 #[cfg_attr(not(test), allow(dead_code))]

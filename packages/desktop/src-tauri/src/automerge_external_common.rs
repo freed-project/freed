@@ -1,5 +1,8 @@
 //! Shared fixed-size codecs for the dormant external-memory Automerge path.
 
+use sha2::{Digest, Sha256};
+use std::io::Write;
+
 pub(super) fn is_lower_sha256(value: &str) -> bool {
     value.len() == 64
         && value
@@ -15,6 +18,42 @@ pub(super) fn lower_hex(bytes: &[u8]) -> String {
         output.push(DIGITS[(byte & 0x0f) as usize] as char);
     }
     output
+}
+
+pub(super) struct ExternalHashingWriter<'a, W: Write> {
+    output: &'a mut W,
+    hasher: Sha256,
+    byte_length: u64,
+}
+
+impl<'a, W: Write> ExternalHashingWriter<'a, W> {
+    pub(super) fn new(output: &'a mut W) -> Self {
+        Self {
+            output,
+            hasher: Sha256::new(),
+            byte_length: 0,
+        }
+    }
+
+    pub(super) fn finish(self) -> (u64, String) {
+        (self.byte_length, lower_hex(&self.hasher.finalize()))
+    }
+}
+
+impl<W: Write> Write for ExternalHashingWriter<'_, W> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        let written = self.output.write(bytes)?;
+        self.hasher.update(&bytes[..written]);
+        self.byte_length = self
+            .byte_length
+            .checked_add(written as u64)
+            .ok_or_else(|| std::io::Error::other("Automerge derived run length overflows"))?;
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.output.flush()
+    }
 }
 
 #[cfg(test)]

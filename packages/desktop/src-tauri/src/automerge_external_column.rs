@@ -5,12 +5,11 @@
 //! memory. Composite value and grouped columns are joined by later slices. No
 //! command or production caller activates this module.
 
-use crate::automerge_external_common::lower_hex;
+use crate::automerge_external_common::ExternalHashingWriter;
 use crate::automerge_external_decoder::{verify_source_identity, AutomergeExternalDecoderError};
 use crate::automerge_external_document::DocumentColumnType;
 use flate2::read::DeflateDecoder;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::fmt;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom, Take, Write};
@@ -332,7 +331,7 @@ impl ExternalColumnDecodeSession<'_> {
         if input.column_type == DocumentColumnType::Value {
             return Err(ExternalColumnDecodeError::UnsupportedRawValueColumn);
         }
-        let mut hashed_output = HashingWriter::new(output);
+        let mut hashed_output = ExternalHashingWriter::new(output);
         write_record(
             &mut hashed_output,
             &ColumnRecord::Begin {
@@ -441,42 +440,6 @@ impl ExternalColumnDecodeSession<'_> {
         };
         write_record(output, &ColumnRecord::Complete { summary: &summary })?;
         Ok(summary)
-    }
-}
-
-struct HashingWriter<'a, W: Write> {
-    output: &'a mut W,
-    hasher: Sha256,
-    byte_length: u64,
-}
-
-impl<'a, W: Write> HashingWriter<'a, W> {
-    fn new(output: &'a mut W) -> Self {
-        Self {
-            output,
-            hasher: Sha256::new(),
-            byte_length: 0,
-        }
-    }
-
-    fn finish(self) -> (u64, String) {
-        (self.byte_length, lower_hex(&self.hasher.finalize()))
-    }
-}
-
-impl<W: Write> Write for HashingWriter<'_, W> {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        let written = self.output.write(bytes)?;
-        self.hasher.update(&bytes[..written]);
-        self.byte_length = self
-            .byte_length
-            .checked_add(written as u64)
-            .ok_or_else(|| std::io::Error::other("Automerge token run length overflows"))?;
-        Ok(written)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.output.flush()
     }
 }
 
