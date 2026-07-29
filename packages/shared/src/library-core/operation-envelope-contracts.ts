@@ -70,6 +70,9 @@ export interface LibraryCoreTransactionMemberConstruction<
 }
 
 export type LibraryCoreConstructionDigestDomain =
+  | "actor-public-key"
+  | "actor-id"
+  | "actor-enrollment-body"
   | "operation-payload"
   | "transaction-member"
   | "transaction"
@@ -249,11 +252,12 @@ function compareCausalTips(
   return 0;
 }
 
-function snapshotCausalFrontier(
+export function snapshotLibraryCoreCausalFrontier(
   value: unknown,
+  label = "causal_frontier",
 ): readonly LibraryCoreCausalTipV1[] {
   if (!Array.isArray(value)) {
-    throw new TypeError("causal_frontier must be an array");
+    throw new TypeError(`${label} must be an array`);
   }
   const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
   if (
@@ -268,7 +272,7 @@ function snapshotCausalFrontier(
   const length = lengthDescriptor.value;
   if (length > LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS) {
     throw new RangeError(
-      `causal_frontier exceeds ${LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS.toLocaleString()} tips`,
+      `${label} exceeds ${LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS.toLocaleString()} tips`,
     );
   }
   const names = Object.getOwnPropertyNames(value);
@@ -277,7 +281,7 @@ function snapshotCausalFrontier(
     names[names.length - 1] !== "length" ||
     Object.getOwnPropertySymbols(value).length !== 0
   ) {
-    throw new TypeError("causal_frontier must be a dense undecorated array");
+    throw new TypeError(`${label} must be a dense undecorated array`);
   }
 
   const snapshot: LibraryCoreCausalTipV1[] = [];
@@ -288,17 +292,17 @@ function snapshotCausalFrontier(
       !descriptor.enumerable ||
       !("value" in descriptor)
     ) {
-      throw new TypeError("causal_frontier requires enumerable data elements");
+      throw new TypeError(`${label} requires enumerable data elements`);
     }
-    const label = `causal_frontier[${index.toLocaleString()}]`;
+    const tipLabel = `${label}[${index.toLocaleString()}]`;
     const record = requirePlainClosedRecord(
       descriptor.value,
       CAUSAL_TIP_KEYS,
-      label,
+      tipLabel,
     );
     const sequence = requireNonnegativeSafeInteger(
-      readDataProperty(record, "sequence", label),
-      `${label}.sequence`,
+      readDataProperty(record, "sequence", tipLabel),
+      `${tipLabel}.sequence`,
     );
     if (sequence === 0) {
       throw new TypeError("causal frontier tips must have positive sequence");
@@ -306,17 +310,17 @@ function snapshotCausalFrontier(
     snapshot.push(
       Object.freeze({
         actor_id: requireHex64(
-          readDataProperty(record, "actor_id", label),
-          `${label}.actor_id`,
+          readDataProperty(record, "actor_id", tipLabel),
+          `${tipLabel}.actor_id`,
         ),
         sequence,
         operation_id: requireOperationId(
-          readDataProperty(record, "operation_id", label),
-          `${label}.operation_id`,
+          readDataProperty(record, "operation_id", tipLabel),
+          `${tipLabel}.operation_id`,
         ),
         chain_digest: requireHex64(
-          readDataProperty(record, "chain_digest", label),
-          `${label}.chain_digest`,
+          readDataProperty(record, "chain_digest", tipLabel),
+          `${tipLabel}.chain_digest`,
         ),
       }),
     );
@@ -325,7 +329,7 @@ function snapshotCausalFrontier(
   for (let index = 1; index < snapshot.length; index += 1) {
     if (compareCausalTips(snapshot[index - 1], snapshot[index]) >= 0) {
       throw new TypeError(
-        "causal_frontier must be strictly sorted with no duplicate tips",
+        `${label} must be strictly sorted with no duplicate tips`,
       );
     }
     if (snapshot[index - 1].actor_id === snapshot[index].actor_id) {
@@ -449,7 +453,7 @@ function constructFeedItemReadAssignmentTransactionMember(
     ),
     actor_sequence: actorSequence,
     previous_actor_operation_id: previousOperationId,
-    causal_frontier: snapshotCausalFrontier(
+    causal_frontier: snapshotLibraryCoreCausalFrontier(
       readDataProperty(record, "causal_frontier", "transaction member input"),
     ),
     hlc_wall_ms: requireNonnegativeSafeInteger(

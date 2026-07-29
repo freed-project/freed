@@ -264,14 +264,13 @@ supports strict Ed25519 verification. Do not add a second elliptic-curve stack,
 write custom cryptography, generate keys, or infer actor enrollment from a
 syntactically valid public key.
 
-Verify received operations as one complete transaction from canonical bytes,
-not independently decoded objects. Snapshot the accepted actor tip first.
-Reconstruct the closed member bodies and aggregate transaction, then require
-exact actor, epoch, predecessor, sequence, payload, transaction, and actor-chain
-derivations before checking every actor signature. Preserve the exact canonical
-journal text in the verified result. Causal-tip authority, retry identity,
-operation conflicts, and the actor-tip recheck still belong inside the later
-authoritative SQLite transaction.
+Construct enrollment identity without self-reference. Derive the public-key
+fingerprint first, then derive the actor ID from the exact library,
+installation incarnation, public key, and random actor nonce, then derive the
+closed enrollment-body digest. Reuse the same sorted bounded causal-tip
+contract for the observed frontier. Body construction is not proof of key
+possession, an authority certificate, committed enrollment, or writer
+authority.
 
 ## Preserve the invariants
 

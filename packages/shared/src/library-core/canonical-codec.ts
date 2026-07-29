@@ -12,6 +12,9 @@ export const LIBRARY_CORE_MAX_CANONICAL_NESTING_DEPTH = 128;
 export const LIBRARY_CORE_MAX_CANONICAL_NODES = 65_536;
 
 export const LIBRARY_CORE_OPERATION_DIGEST_DOMAINS = [
+  "actor-public-key",
+  "actor-id",
+  "actor-enrollment-body",
   "operation-payload",
   "operation-signing-body",
   "transaction-member",

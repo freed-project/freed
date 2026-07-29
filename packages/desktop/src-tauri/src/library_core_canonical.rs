@@ -4,7 +4,10 @@ use std::collections::HashSet;
 const MAX_DIRECT_CANONICAL_BYTES: usize = 4_194_304;
 const MAX_CANONICAL_NESTING_DEPTH: usize = 128;
 const MAX_CANONICAL_NODES: usize = 65_536;
-const OPERATION_DIGEST_DOMAINS: [&str; 8] = [
+const OPERATION_DIGEST_DOMAINS: [&str; 11] = [
+    "actor-public-key",
+    "actor-id",
+    "actor-enrollment-body",
     "operation-payload",
     "operation-signing-body",
     "transaction-member",
@@ -534,6 +537,20 @@ mod tests {
         assert_eq!(
             digest_hex,
             "5192eab75edf78a8181905197adec6ae800e93ce7d568aaf4f1b6f2e98d28285"
+        );
+        let actor_public_key_input = encode_operation_digest_input(
+            "actor-public-key",
+            &serde_json::json!({
+                "signature_algorithm": "ed25519",
+                "actor_public_key":
+                    "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
+            }),
+            MAX_DIRECT_CANONICAL_BYTES,
+        )
+        .expect("actor public key digest input");
+        assert_eq!(
+            actor_public_key_input,
+            b"freed.library-core.v1/digest/actor-public-key\0{\"actor_public_key\":\"d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a\",\"signature_algorithm\":\"ed25519\"}"
         );
 
         let signature_input = encode_operation_signature_input(
