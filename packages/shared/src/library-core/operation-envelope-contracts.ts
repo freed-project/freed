@@ -69,9 +69,16 @@ export interface LibraryCoreTransactionMemberConstruction<
   readonly member_digest: LibraryCoreLowercaseHex64;
 }
 
+export type LibraryCoreConstructionDigestDomain =
+  | "operation-payload"
+  | "transaction-member"
+  | "transaction"
+  | "actor-chain"
+  | "operation-signing-body";
+
 export interface LibraryCoreOperationDigestDependencies {
   readonly digest: (
-    domain: "operation-payload" | "transaction-member",
+    domain: LibraryCoreConstructionDigestDomain,
     value: unknown,
   ) => unknown;
 }
@@ -121,6 +128,37 @@ const CAUSAL_TIP_KEYS = [
 ] as const;
 
 const EMPTY_BLOB_REFERENCES = Object.freeze([]) as readonly [];
+const CLOSED_TRANSACTION_MEMBER = Symbol(
+  "closed Library Core transaction member",
+);
+
+export function isLibraryCoreTransactionMemberConstruction(
+  value: unknown,
+): value is LibraryCoreTransactionMemberConstruction {
+  if (typeof value !== "object" || value === null || !Object.isFrozen(value)) {
+    return false;
+  }
+  const brand = Object.getOwnPropertyDescriptor(
+    value,
+    CLOSED_TRANSACTION_MEMBER,
+  );
+  if (
+    brand === undefined ||
+    brand.enumerable ||
+    brand.configurable ||
+    brand.writable ||
+    brand.value !== true
+  ) {
+    return false;
+  }
+  const candidate = value as Partial<LibraryCoreTransactionMemberConstruction>;
+  return (
+    typeof candidate.body === "object" &&
+    candidate.body !== null &&
+    Object.isFrozen(candidate.body) &&
+    isLibraryCoreLowercaseHex64(candidate.member_digest)
+  );
+}
 
 function requirePlainClosedRecord(
   value: unknown,
@@ -422,7 +460,18 @@ function constructFeedItemReadAssignmentTransactionMember(
   if (!isLibraryCoreLowercaseHex64(memberDigest)) {
     throw new TypeError("digest dependency returned an invalid member digest");
   }
-  return Object.freeze({ body, member_digest: memberDigest });
+  return Object.freeze(
+    Object.defineProperty(
+      { body, member_digest: memberDigest },
+      CLOSED_TRANSACTION_MEMBER,
+      {
+        value: true,
+        enumerable: false,
+        configurable: false,
+        writable: false,
+      },
+    ),
+  );
 }
 
 /**

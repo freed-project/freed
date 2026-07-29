@@ -315,6 +315,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.31 | Executable minimum-present `readAt` merge algebra shared by the operation and field registries | ✓ | Low |
 | 4.32 | Crash-safe column-local SQLite read-assignment projection with exact derived receipt retry and no runtime caller | ✓ | Medium |
 | 4.33 | Closed immutable read-assignment transaction-member construction with bounded causal frontier and exact payload/member digest derivation | ✓ | Medium |
+| 4.34 | Bounded read-assignment transaction aggregation with contiguous actor-chain and signing-body digest derivation | ✓ | Medium |
 
 ---
 

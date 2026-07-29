@@ -240,6 +240,13 @@ signature fields exactly where the protocol says to omit them. It does not
 claim transaction completeness, actor-chain validity, signature verification,
 materialization, journaling, or runtime authority.
 
+Aggregate a transaction only from closed member constructions. Bound count and
+canonical member bytes before returning it. Require one library, epoch, actor,
+transaction ID, contiguous member indexes, contiguous actor sequences, unique
+operation IDs, and exact previous-operation links. Derive the transaction
+digest before actor-chain digests and derive signing-body digests only after
+both are fixed. Unsigned construction grants no persistence or authority.
+
 ## Preserve the invariants
 
 1. Keep exactly one active writer epoch. Advance it only with a signed immutable

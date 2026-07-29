@@ -9,6 +9,7 @@ import {
 import {
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+  type LibraryCoreConstructionDigestDomain,
   type FeedItemReadAssignmentTransactionMemberInputV1,
 } from "./operation-envelope-contracts.js";
 
@@ -22,7 +23,7 @@ const HEX = {
 } as const;
 
 function digest(
-  domain: "operation-payload" | "transaction-member",
+  domain: LibraryCoreConstructionDigestDomain,
   value: unknown,
 ): string {
   return createHash("sha256")

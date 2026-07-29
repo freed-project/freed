@@ -533,6 +533,15 @@ aggregation, actor-chain derivation, signature encoding and verification,
 inbound envelope verification, authoritative journaling, materialization,
 outbox insertion, and runtime authority remain blocked.
 
+The next construction phase accepts only a dense array of closed member
+constructions. It requires 1 through 1,000 members, at most 4 MiB of canonical
+member bytes, one exact library, epoch, actor, and transaction identity,
+contiguous indexes, contiguous actor sequences, unique operation IDs, and
+exact previous-operation links. It derives the aggregate transaction digest,
+then each actor-chain digest in member order, then each signing-body digest.
+The result remains unsigned and unpersisted. It is not an inbound verifier and
+does not advance any actor, transaction, materializer, receipt, or outbox.
+
 Canonical sets use their field-specific sort before `C`. `causal_frontier`
 sorts ascending by `(actor_id, sequence, operation_id, chain_digest)`,
 comparing numeric sequence numerically and the remaining ASCII identifiers
