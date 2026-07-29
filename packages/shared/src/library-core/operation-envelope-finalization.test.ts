@@ -111,6 +111,7 @@ describe("Library Core operation envelope finalization", () => {
       assembled().canonical_member_bytes,
     );
     expect(isLibraryCoreFinalizedTransactionV1(result)).toBe(true);
+    expect(Object.getOwnPropertySymbols(result)).toHaveLength(0);
     expect(
       isLibraryCoreFinalizedTransactionV1(
         Object.freeze(Object.create(result)),

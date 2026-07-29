@@ -126,6 +126,7 @@ describe("Library Core transaction assembly", () => {
     expect(Object.isFrozen(result.members[0].signing_body)).toBe(true);
     expect(result.canonical_member_bytes).toBeGreaterThan(0);
     expect(isLibraryCoreAssembledTransactionV1(result)).toBe(true);
+    expect(Object.getOwnPropertySymbols(result)).toHaveLength(0);
     expect(
       isLibraryCoreAssembledTransactionV1(Object.freeze(Object.create(result))),
     ).toBe(false);

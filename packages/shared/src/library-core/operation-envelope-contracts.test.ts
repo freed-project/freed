@@ -109,6 +109,7 @@ describe("Library Core read-assignment transaction-member schema", () => {
     expect(Object.isFrozen(result.body.causal_frontier)).toBe(true);
     expect(Object.isFrozen(result.body.causal_frontier[0])).toBe(true);
     expect(Object.isFrozen(result.body.blob_references)).toBe(true);
+    expect(Object.getOwnPropertySymbols(result)).toHaveLength(0);
   });
 
   it("snapshots caller-owned values before later mutation", () => {

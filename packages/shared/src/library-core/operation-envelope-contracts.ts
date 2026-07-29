@@ -128,9 +128,7 @@ const CAUSAL_TIP_KEYS = [
 ] as const;
 
 const EMPTY_BLOB_REFERENCES = Object.freeze([]) as readonly [];
-const CLOSED_TRANSACTION_MEMBER = Symbol(
-  "closed Library Core transaction member",
-);
+const CLOSED_TRANSACTION_MEMBERS = new WeakSet<object>();
 
 export function isLibraryCoreTransactionMemberConstruction(
   value: unknown,
@@ -138,17 +136,7 @@ export function isLibraryCoreTransactionMemberConstruction(
   if (typeof value !== "object" || value === null || !Object.isFrozen(value)) {
     return false;
   }
-  const brand = Object.getOwnPropertyDescriptor(
-    value,
-    CLOSED_TRANSACTION_MEMBER,
-  );
-  if (
-    brand === undefined ||
-    brand.enumerable ||
-    brand.configurable ||
-    brand.writable ||
-    brand.value !== true
-  ) {
+  if (!CLOSED_TRANSACTION_MEMBERS.has(value)) {
     return false;
   }
   const candidate = value as Partial<LibraryCoreTransactionMemberConstruction>;
@@ -465,18 +453,12 @@ function constructFeedItemReadAssignmentTransactionMember(
   if (!isLibraryCoreLowercaseHex64(memberDigest)) {
     throw new TypeError("digest dependency returned an invalid member digest");
   }
-  return Object.freeze(
-    Object.defineProperty(
-      { body, member_digest: memberDigest },
-      CLOSED_TRANSACTION_MEMBER,
-      {
-        value: true,
-        enumerable: false,
-        configurable: false,
-        writable: false,
-      },
-    ),
-  );
+  const construction = Object.freeze({
+    body,
+    member_digest: memberDigest,
+  });
+  CLOSED_TRANSACTION_MEMBERS.add(construction);
+  return construction;
 }
 
 /**

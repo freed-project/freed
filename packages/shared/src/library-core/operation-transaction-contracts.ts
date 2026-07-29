@@ -14,9 +14,7 @@ import type {
 } from "./operation-envelope-contracts.js";
 import { isLibraryCoreTransactionMemberConstruction } from "./operation-envelope-contracts.js";
 
-const ASSEMBLED_LIBRARY_CORE_TRANSACTION = Symbol(
-  "assembled-library-core-transaction-v1",
-);
+const ASSEMBLED_LIBRARY_CORE_TRANSACTIONS = new WeakSet<object>();
 
 export interface LibraryCoreTransactionBodyV1 {
   readonly transaction_id: LibraryCoreOperationInstanceId;
@@ -52,17 +50,7 @@ export function isLibraryCoreAssembledTransactionV1(
   if (typeof value !== "object" || value === null || !Object.isFrozen(value)) {
     return false;
   }
-  const brand = Object.getOwnPropertyDescriptor(
-    value,
-    ASSEMBLED_LIBRARY_CORE_TRANSACTION,
-  );
-  return (
-    brand !== undefined &&
-    !brand.enumerable &&
-    !brand.configurable &&
-    !brand.writable &&
-    brand.value === true
-  );
+  return ASSEMBLED_LIBRARY_CORE_TRANSACTIONS.has(value);
 }
 
 function requireDigest(
@@ -259,21 +247,12 @@ export function assembleLibraryCoreTransactionV1(
     previousChainDigest = actorChainDigest;
   }
 
-  return Object.freeze(
-    Object.defineProperty(
-      {
-        transaction_body: transactionBody,
-        transaction_digest: transactionDigest,
-        members: Object.freeze(signingMembers),
-        canonical_member_bytes: canonicalMemberBytes,
-      },
-      ASSEMBLED_LIBRARY_CORE_TRANSACTION,
-      {
-        value: true,
-        enumerable: false,
-        configurable: false,
-        writable: false,
-      },
-    ),
-  );
+  const assembled = Object.freeze({
+    transaction_body: transactionBody,
+    transaction_digest: transactionDigest,
+    members: Object.freeze(signingMembers),
+    canonical_member_bytes: canonicalMemberBytes,
+  });
+  ASSEMBLED_LIBRARY_CORE_TRANSACTIONS.add(assembled);
+  return assembled;
 }

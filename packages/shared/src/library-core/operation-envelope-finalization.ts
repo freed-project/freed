@@ -18,9 +18,7 @@ import {
 
 export const LIBRARY_CORE_MAX_TRANSACTION_ENVELOPE_BYTES = 4_194_304;
 
-const FINALIZED_LIBRARY_CORE_TRANSACTION = Symbol(
-  "finalized-library-core-transaction-v1",
-);
+const FINALIZED_LIBRARY_CORE_TRANSACTIONS = new WeakSet<object>();
 const PLACEHOLDER_SIGNATURE = "0".repeat(128);
 
 export interface FeedItemReadAssignmentEnvelopeV1 extends FeedItemReadAssignmentSigningBodyV1 {
@@ -50,17 +48,7 @@ export function isLibraryCoreFinalizedTransactionV1(
   if (typeof value !== "object" || value === null || !Object.isFrozen(value)) {
     return false;
   }
-  const brand = Object.getOwnPropertyDescriptor(
-    value,
-    FINALIZED_LIBRARY_CORE_TRANSACTION,
-  );
-  return (
-    brand !== undefined &&
-    !brand.enumerable &&
-    !brand.configurable &&
-    !brand.writable &&
-    brand.value === true
-  );
+  return FINALIZED_LIBRARY_CORE_TRANSACTIONS.has(value);
 }
 
 function canonicalEnvelopeBytes(
@@ -149,21 +137,12 @@ export async function finalizeLibraryCoreTransactionV1(
     );
   }
 
-  return Object.freeze(
-    Object.defineProperty(
-      {
-        transaction_body: assembled.transaction_body,
-        transaction_digest: assembled.transaction_digest,
-        members: Object.freeze(finalizedMembers),
-        canonical_envelope_bytes: canonicalEnvelopeByteTotal,
-      },
-      FINALIZED_LIBRARY_CORE_TRANSACTION,
-      {
-        value: true,
-        enumerable: false,
-        configurable: false,
-        writable: false,
-      },
-    ),
-  );
+  const finalized = Object.freeze({
+    transaction_body: assembled.transaction_body,
+    transaction_digest: assembled.transaction_digest,
+    members: Object.freeze(finalizedMembers),
+    canonical_envelope_bytes: canonicalEnvelopeByteTotal,
+  });
+  FINALIZED_LIBRARY_CORE_TRANSACTIONS.add(finalized);
+  return finalized;
 }
