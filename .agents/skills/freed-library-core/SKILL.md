@@ -197,6 +197,13 @@ contain parser and row allocations for malformed files or accidental future
 queries. They do not replace payload validation, bounded result paging,
 database-size policy, or an authenticated production file locator.
 
+On macOS, pair `synchronous=FULL` with SQLite `fullfsync=ON` for the
+authoritative journal. This makes SQLite request `F_FULLFSYNC` for commit and
+checkpoint synchronization instead of relying on ordinary `fsync`, which may
+leave data in a drive's volatile cache. The later activation gate must measure
+the resulting commit latency on supported storage. Do not weaken this receipt
+durability promise to hide a slow device.
+
 Apply projection upserts, deletions, and the monotone projection revision in
 one database transaction. A bounded page or count binds one revision. A later
 page using a cursor from an older revision fails closed instead of walking

@@ -616,6 +616,8 @@ impl LibraryCoreJournal {
             .set_db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true)?;
         self.connection
             .set_db_config(DbConfig::SQLITE_DBCONFIG_TRUSTED_SCHEMA, false)?;
+        #[cfg(target_os = "macos")]
+        self.connection.pragma_update(None, "fullfsync", "ON")?;
         self.connection.pragma_update(None, "journal_mode", "WAL")?;
         // Unlike the rebuildable shadow projection, this log is authoritative.
         // A successful commit must survive process loss and power loss.
@@ -1733,6 +1735,11 @@ mod tests {
             .connection
             .pragma_query_value(None, "cell_size_check", |row| row.get(0))
             .expect("cell-size check");
+        #[cfg(target_os = "macos")]
+        let fullfsync: i64 = journal
+            .connection
+            .pragma_query_value(None, "fullfsync", |row| row.get(0))
+            .expect("full filesystem sync");
         let defensive = journal
             .connection
             .db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE)
@@ -1747,6 +1754,8 @@ mod tests {
         assert_eq!(version, AUTHORITATIVE_SCHEMA_VERSION);
         assert_eq!(application_id, AUTHORITATIVE_APPLICATION_ID);
         assert_eq!(cell_size_check, 1);
+        #[cfg(target_os = "macos")]
+        assert_eq!(fullfsync, 1);
         assert!(defensive);
         assert!(!trusted_schema);
         assert_eq!(
