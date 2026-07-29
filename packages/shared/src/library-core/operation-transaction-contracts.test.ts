@@ -12,7 +12,10 @@ import {
   type FeedItemReadAssignmentTransactionMemberInputV1,
   type LibraryCoreConstructionDigestDomain,
 } from "./operation-envelope-contracts.js";
-import { assembleLibraryCoreTransactionV1 } from "./operation-transaction-contracts.js";
+import {
+  assembleLibraryCoreTransactionV1,
+  isLibraryCoreAssembledTransactionV1,
+} from "./operation-transaction-contracts.js";
 
 const HEX = {
   library: "11".repeat(32),
@@ -122,6 +125,10 @@ describe("Library Core transaction assembly", () => {
     expect(Object.isFrozen(result.members)).toBe(true);
     expect(Object.isFrozen(result.members[0].signing_body)).toBe(true);
     expect(result.canonical_member_bytes).toBeGreaterThan(0);
+    expect(isLibraryCoreAssembledTransactionV1(result)).toBe(true);
+    expect(Object.keys(result)).not.toContain(
+      "assembled-library-core-transaction-v1",
+    );
   });
 
   it("rejects gaps, reordering, mixed identities, and broken predecessor links", () => {

@@ -14,6 +14,10 @@ import type {
 } from "./operation-envelope-contracts.js";
 import { isLibraryCoreTransactionMemberConstruction } from "./operation-envelope-contracts.js";
 
+const ASSEMBLED_LIBRARY_CORE_TRANSACTION = Symbol(
+  "assembled-library-core-transaction-v1",
+);
+
 export interface LibraryCoreTransactionBodyV1 {
   readonly transaction_id: LibraryCoreOperationInstanceId;
   readonly transaction_member_count: number;
@@ -40,6 +44,18 @@ export interface LibraryCoreAssembledTransactionV1 {
   readonly transaction_digest: LibraryCoreLowercaseHex64;
   readonly members: readonly LibraryCoreSigningMemberV1[];
   readonly canonical_member_bytes: number;
+}
+
+export function isLibraryCoreAssembledTransactionV1(
+  value: unknown,
+): value is LibraryCoreAssembledTransactionV1 {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<PropertyKey, unknown>)[
+      ASSEMBLED_LIBRARY_CORE_TRANSACTION
+    ] === true
+  );
 }
 
 function requireDigest(
@@ -222,10 +238,21 @@ export function assembleLibraryCoreTransactionV1(
     previousChainDigest = actorChainDigest;
   }
 
-  return Object.freeze({
-    transaction_body: transactionBody,
-    transaction_digest: transactionDigest,
-    members: Object.freeze(signingMembers),
-    canonical_member_bytes: canonicalMemberBytes,
-  });
+  return Object.freeze(
+    Object.defineProperty(
+      {
+        transaction_body: transactionBody,
+        transaction_digest: transactionDigest,
+        members: Object.freeze(signingMembers),
+        canonical_member_bytes: canonicalMemberBytes,
+      },
+      ASSEMBLED_LIBRARY_CORE_TRANSACTION,
+      {
+        value: true,
+        enumerable: false,
+        configurable: false,
+        writable: false,
+      },
+    ),
+  );
 }

@@ -247,6 +247,15 @@ operation IDs, and exact previous-operation links. Derive the transaction
 digest before actor-chain digests and derive signing-body digests only after
 both are fixed. Unsigned construction grants no persistence or authority.
 
+Finalize operation envelopes only from a provenance-branded assembled
+transaction. Close public keys as 32-byte lowercase hexadecimal Ed25519 values
+and signatures as 64-byte lowercase hexadecimal Ed25519 values. Preflight the
+complete canonical envelope budget before invoking the signer, sign only the
+domain-separated signing-body digest input, and return no transaction unless
+every signature and envelope digest succeeds. Finalization remains construction
+only until strict inbound verification, actor enrollment, journaling,
+materialization, and replication land independently.
+
 ## Preserve the invariants
 
 1. Keep exactly one active writer epoch. Advance it only with a signed immutable

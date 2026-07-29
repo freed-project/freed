@@ -316,6 +316,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.32 | Crash-safe column-local SQLite read-assignment projection with exact derived receipt retry and no runtime caller | ✓ | Medium |
 | 4.33 | Closed immutable read-assignment transaction-member construction with bounded causal frontier and exact payload/member digest derivation | ✓ | Medium |
 | 4.34 | Bounded read-assignment transaction aggregation with contiguous actor-chain and signing-body digest derivation | ✓ | Medium |
+| 4.35 | Exact Ed25519 wire scalars and bounded all-or-nothing operation-envelope finalization without persistence or runtime activation | ✓ | Medium |
 
 ---
 
@@ -351,6 +352,7 @@ recovery, telemetry, milestones, and acceptance tests.
 - [x] The dormant native SQLite projection engine compiles bundled SQLite into Freed Desktop, consumes one versioned canonical schema shared with the TypeScript contract, applies row upserts and deletions with one projection revision in one transaction, reopens committed disk rows, rejects stale page cursors and out-of-contract page sizes, pins its smallest memory tier, and serves the default feed through an index-backed bounded keyset query without opening a production database or changing durable authority
 - [x] Every dormant native SQLite projection batch binds one stable batch ID, canonical input digest, expected prior revision, and ceilings of 1,000 items and 4 MiB of projected input to rows, deletions, the next revision, and a durable derived receipt in one transaction. Exact retry after response loss returns the original receipt after process restart. Changed replay tuples, oversized batches, conflicting migrations, and partial receipt failures fail closed without advancing rows or revision. These receipts do not replace signed Library Core operation receipts or grant mutation authority
 - [x] Shared TypeScript and native Rust construction encoders produce identical bounded RFC 8785 bytes and operation domain inputs for safe integers, UTF-16 object-key ordering, Unicode, nested arrays and objects, and registered fractional wrappers. They reject unsupported JavaScript values, non-plain or behavior-bearing objects, negative zero, fractions, unsafe integers, excessive bytes, more than 65,536 nodes, and more than 128 nesting levels. The construction path remains dark and cannot verify inbound bytes until a duplicate-preserving decoder and closed envelope validator land
+- [x] Dormant operation finalization accepts only provenance-branded transaction assemblies, preflights the complete 4 MiB envelope budget before signing, signs the exact domain-separated signing-body digest input, accepts only lowercase 32-byte Ed25519 public-key and 64-byte signature encodings, and returns immutable envelopes only after every signature and envelope digest succeeds. It does not implement key storage, enrollment, inbound verification, journaling, materialization, replication, provider behavior, or runtime authority
 - [ ] iCloud sync integration
 - [ ] Large media packages transfer outside Automerge through an authenticated,
       resumable, integrity-checked path with explicit storage and deletion rules
