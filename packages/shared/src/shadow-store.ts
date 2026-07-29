@@ -141,6 +141,24 @@ CREATE TABLE IF NOT EXISTS feed_items (
 `.trim();
 
 /**
+ * Projection revision is advanced in the same transaction as row changes.
+ * Readers bind page and count results to it so a cursor cannot silently walk
+ * across two different projections.
+ */
+export const SHADOW_META_DDL = `
+CREATE TABLE IF NOT EXISTS library_meta (
+  key          TEXT    NOT NULL PRIMARY KEY,
+  integerValue INTEGER NOT NULL
+) STRICT;
+
+INSERT OR IGNORE INTO library_meta (key, integerValue)
+VALUES ('projectionRevision', 0);
+`.trim();
+
+/** Version of the physical shadow schema consumed by every SQLite adapter. */
+export const SHADOW_SCHEMA_VERSION_DDL = "PRAGMA user_version = 1;";
+
+/**
  * Indexes the Stage 5 and 6 surfaces will read through. Declared here with the
  * schema so the shape the query planner sees is reviewed alongside the columns,
  * not bolted on once a surface is already slow.
@@ -208,7 +226,9 @@ export interface ShadowDatabase {
 
 export function createShadowSchema(db: ShadowDatabase): void {
   db.exec(SHADOW_TABLE_DDL);
+  db.exec(SHADOW_META_DDL);
   for (const sql of SHADOW_INDEX_DDL) db.exec(sql);
+  db.exec(SHADOW_SCHEMA_VERSION_DDL);
 }
 
 /** Bind order matches SHADOW_WRITE_COLUMNS by construction rather than by hand. */

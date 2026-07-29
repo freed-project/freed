@@ -150,6 +150,28 @@ Never infer activation from registry presence. The combined census must keep
 transition is recorded through the activation manifest and its required
 receipt.
 
+## Keep dormant SQLite honest
+
+The native and browser shadow stores share
+`packages/shared/src/library-core/shadow-schema-v1.sql`. Rust consumes that
+file with `include_str!`; the shared TypeScript contract must prove its
+generated DDL is byte-equivalent after whitespace normalization. Do not add a
+second handwritten native schema.
+
+Apply projection upserts, deletions, and the monotone projection revision in
+one database transaction. A bounded page or count binds one revision. A later
+page using a cursor from an older revision fails closed instead of walking
+across mixed projections. Prove the query plan uses the declared keyset index
+without a temporary sort. Enforce the registered query limit at the adapter
+boundary. Pin a physical schema version and set bounded busy handling, cache,
+temporary storage, and mmap behavior explicitly even while the store is dark.
+
+A dormant engine has no production caller, opens no user database, emits no
+authority receipt, and does not append an activation-manifest transition. It
+may compile into Freed Desktop behind an explicit dark-module boundary. A
+command registration, startup open, backfill, read route, or writer route is an
+activation change and follows the corresponding gate.
+
 ## Preserve the invariants
 
 1. Keep exactly one active writer epoch. Advance it only with a signed immutable

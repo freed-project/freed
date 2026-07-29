@@ -7,6 +7,9 @@ import { projectFeedItem, reconstructFeedItem } from "./projection.js";
 import {
   SHADOW_COLUMNS,
   SHADOW_DERIVED_COLUMNS,
+  SHADOW_INDEX_DDL,
+  SHADOW_META_DDL,
+  SHADOW_SCHEMA_VERSION_DDL,
   SHADOW_TABLE_DDL,
   createShadowSchema,
   sortKeyOf,
@@ -31,6 +34,10 @@ function openStore(): ShadowDatabase {
   return db;
 }
 
+function normalizeSql(sql: string): string {
+  return sql.replace(/\s+/g, " ").trim();
+}
+
 const item: Record<string, unknown> = {
   globalId: "x:1",
   platform: "x",
@@ -44,6 +51,37 @@ const item: Record<string, unknown> = {
 };
 
 describe("shadow store", () => {
+  it("keeps the shared DDL identical to the SQL consumed by Rust", () => {
+    const canonical = readFileSync(
+      new URL("./library-core/shadow-schema-v1.sql", import.meta.url),
+      "utf8",
+    );
+    expect(normalizeSql(canonical)).toBe(
+      normalizeSql(
+        [
+          SHADOW_TABLE_DDL,
+          SHADOW_META_DDL,
+          ...SHADOW_INDEX_DDL,
+          SHADOW_SCHEMA_VERSION_DDL,
+        ].join("\n"),
+      ),
+    );
+  });
+
+  it("initializes the projection revision and schema version", () => {
+    const db = openStore();
+    const [meta] = db
+      .prepare(
+        "SELECT integerValue FROM library_meta WHERE key = 'projectionRevision'",
+      )
+      .all() as Array<{ integerValue: number }>;
+    expect(meta?.integerValue).toBe(0);
+    const [version] = db.prepare("PRAGMA user_version").all() as Array<{
+      user_version: number;
+    }>;
+    expect(version?.user_version).toBe(1);
+  });
+
   it("demonstrates the affinity hazard this module exists to avoid", () => {
     // Not a test of our code. This pins the SQLite behavior the design is a
     // response to, so that if a future reader doubts the precaution is needed,

@@ -35,6 +35,18 @@ retains the exact loaded bytes and revision for recovery. It does not re-read
 storage before a clear, and it never treats allocation exhaustion or an
 unknown load failure as proof of corruption.
 
+The first dormant step 2 slice now provides the native SQLite projection
+kernel. Rust and the shared TypeScript adapter are checked against one
+versioned canonical SQL file. Native projection batches atomically upsert and
+delete rows while advancing one projection revision, and bounded keyset cursors
+fail closed if that revision changes between pages. The registered 128-row
+maximum is enforced at the adapter, and the dark base tier pins its busy
+timeout, 32 MiB page cache, file-backed temporary work, and disabled mmap. The
+module is compiled into Freed Desktop but has no production caller and opens no
+user database. This is progress inside Gate B, not a claim that Gate B is
+complete. Signed operation fixtures, transaction receipts, fork rejection,
+browser adapter parity, and authoritative materialization remain blocked.
+
 ## What the evidence establishes
 
 On the owner's 15,846-item production document, the current Automerge and

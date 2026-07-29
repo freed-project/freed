@@ -2,6 +2,11 @@
 //!
 //! Native desktop app that bundles capture, sync relay, and reader UI.
 
+// Gate B ships the SQLite engine dark. Its tests exercise the module, but no
+// production entry point may open the store until the activation contract is
+// reviewed.
+#[cfg_attr(not(test), allow(dead_code))]
+mod shadow_store;
 mod youtube;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
