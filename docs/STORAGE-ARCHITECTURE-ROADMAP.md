@@ -93,9 +93,13 @@ columns, and preserves every other value through explicit absence, raw,
 nested-rest, and blob-tier escapes. Its receipt binds the complete projected
 row sequence to the exact reconstructed-document receipt. Rust and TypeScript
 use the same recursive UTF-8 object-key order for projected JSON, and replay
-reprojects every document before accepting stored rows. Immutable generation
-population, full-corpus parity, production storage admission, and activation
-remain blocked.
+reprojects every document before accepting stored rows. A bounded population
+bridge now pins one verified scratch snapshot and copies those rows into the
+existing crash-resumable generation in deterministic receipt-bound pages. It
+resumes from the destination's durable row count after response loss and never
+retains the projected corpus in Rust memory. Immutable file publication,
+full-corpus parity, production storage admission, and activation remain
+blocked.
 
 Physical shadow schema version 3 now closes the native staging transaction
 inside one database. A fresh staging file records the exact source identity,

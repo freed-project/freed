@@ -2398,8 +2398,10 @@ ID, canonical input digest, and expected previous projection revision. Exact
 retry after timeout, process restart, or response loss returns the original
 receipt without replaying the batch. Reusing the batch ID with a different
 digest or previous revision fails closed. A batch contains between one and
-1,000 combined row upserts and deletion intents and at most 4 MiB of projected
-input. Failure to write the receipt rolls back the entire projection
+1,000 combined row upserts and deletion intents. It admits one 4 MiB canonical
+source document plus at most 64 KiB of bounded projection metadata, so every
+valid source document can fit in one batch without weakening the source
+payload ceiling. Failure to write the receipt rolls back the entire projection
 transaction. Physical migrations are atomic and cannot bless an already
 present table with an incompatible shape. This is derived-store retry evidence,
 not a signed Library Core operation receipt. It cannot authorize a mutation,
@@ -9817,6 +9819,19 @@ sort key, foreign-key error, or changed receipt fails closed. This stage still
 does not populate an immutable published generation, open a production
 database, register a command, contact a provider, change the active writer, or
 activate SQLite.
+
+The dormant population bridge opens one transaction-pinned, receipt-verified
+snapshot of those scratch rows and copies them into one fresh derived
+generation. It retains at most one page of 1,000 rows and one 4 MiB source
+document plus 64 KiB of projection metadata. Every page digest binds the
+complete scratch receipt, source operation indexes, and exact projected row
+bytes. The destination commits each page through the existing rebuild receipt.
+A response-loss retry derives its source cursor from the durable projected-row
+count and continues without reapplying earlier rows. Source tampering,
+receipt drift, an oversized row, a changed rebuild identity, or an incomplete
+page fails closed. The bridge does not publish or select the completed file,
+register a command, contact a provider, change the active writer, or activate
+SQLite.
 
 The migration worker's attributed resident ceiling is 384 MiB on a 4 GiB host,
 512 MiB on an 8 GiB host, and 768 MiB on a host with 16 GiB or more. Admission

@@ -19,11 +19,11 @@ use crate::automerge_external_row_run::{
     ExternalRowRunConsumeError, ExternalRowRunError, ExternalRowRunLimits,
     ExternalVerifiedChangeRow, ExternalVerifiedOperationRow, ExternalVerifiedPayloadReader,
 };
-use crate::shadow_store::FeedItemRow;
+use crate::shadow_store::{FeedItemRow, MAX_PROJECTION_BATCH_BYTES, MAX_PROJECTION_BATCH_ITEMS};
 use rusqlite::blob::ZeroBlob;
 use rusqlite::types::ValueRef;
 use rusqlite::{
-    params, Connection, DatabaseName, OptionalExtension, Transaction, TransactionBehavior,
+    params, Connection, DatabaseName, OptionalExtension, Row, Transaction, TransactionBehavior,
 };
 use sha2::{Digest, Sha256};
 use std::fmt;
@@ -486,10 +486,121 @@ struct ExternalFeedItemDocumentReceipt {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct ExternalFeedItemProjectionReceipt {
-    feed_item_documents_sha256: String,
-    feed_item_count: u64,
-    feed_item_projection_rows_sha256: String,
+pub(super) struct ExternalFeedItemProjectionReceipt {
+    pub(super) feed_item_documents_sha256: String,
+    pub(super) feed_item_count: u64,
+    pub(super) feed_item_projection_rows_sha256: String,
+}
+
+#[derive(Debug, PartialEq)]
+pub(super) struct ExternalFeedItemProjectionPage {
+    pub(super) rows: Vec<FeedItemRow>,
+    pub(super) last_entity_operation_index: i64,
+    pub(super) complete: bool,
+    pub(super) input_digest: String,
+}
+
+/// One stable, receipt-verified view of the scratch projection rows.
+///
+/// The transaction pins a single SQLite snapshot while the caller copies
+/// bounded pages into a separate immutable generation. A concurrent scratch
+/// writer cannot make later pages observe a different source.
+pub(super) struct ExternalFeedItemProjectionSnapshot<'connection> {
+    transaction: Transaction<'connection>,
+    receipt: ExternalFeedItemProjectionReceipt,
+}
+
+impl ExternalFeedItemProjectionSnapshot<'_> {
+    pub(super) fn receipt(&self) -> &ExternalFeedItemProjectionReceipt {
+        &self.receipt
+    }
+
+    pub(super) fn cursor_for_projected_rows(
+        &self,
+        projected_rows: usize,
+    ) -> StageResult<Option<i64>> {
+        if projected_rows
+            > usize::try_from(self.receipt.feed_item_count)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?
+        {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        if projected_rows == 0 {
+            return Ok(None);
+        }
+        self.transaction
+            .query_row(
+                "SELECT entityOperationIndex FROM external_feed_item_projection_rows \
+                 ORDER BY entityOperationIndex LIMIT 1 OFFSET ?1;",
+                [i64::try_from(projected_rows - 1)
+                    .map_err(|_| ExternalSqliteStageError::RangeOverflow)?],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?
+            .ok_or(ExternalSqliteStageError::IncompleteStage)
+            .map(Some)
+    }
+
+    pub(super) fn read_page(
+        &self,
+        after_entity_operation_index: Option<i64>,
+        maximum_rows: usize,
+        maximum_bytes: usize,
+    ) -> StageResult<Option<ExternalFeedItemProjectionPage>> {
+        if !(1..=MAX_PROJECTION_BATCH_ITEMS).contains(&maximum_rows)
+            || !(1..=MAX_PROJECTION_BATCH_BYTES).contains(&maximum_bytes)
+        {
+            return Err(ExternalSqliteStageError::RangeOverflow);
+        }
+        let mut entries = Vec::with_capacity(maximum_rows);
+        let mut projected_bytes = 0usize;
+        let mut cursor = after_entity_operation_index.unwrap_or(-1);
+        let mut statement = self.transaction.prepare(
+            "SELECT entityOperationIndex, globalId, platform, contentType, publishedAt, \
+                    capturedAt, authorId, authorDisplayName, authorHandle, sourceUrl, hidden, \
+                    saved, archived, readAt, archivedAt, likedAt, tags, contentBlob, \
+                    preservedBlob, rest \
+             FROM external_feed_item_projection_rows \
+             WHERE entityOperationIndex > ?1 \
+             ORDER BY entityOperationIndex LIMIT ?2;",
+        )?;
+        let mut rows = statement.query(params![
+            cursor,
+            i64::try_from(maximum_rows).map_err(|_| ExternalSqliteStageError::RangeOverflow)?
+        ])?;
+        while let Some(source_row) = rows.next()? {
+            let entity_operation_index = source_row.get::<_, i64>(0)?;
+            let row = read_feed_item_projection_row(source_row, 1)?;
+            let row_bytes = row.projected_size_bytes();
+            if projected_bytes.saturating_add(row_bytes) > maximum_bytes {
+                if entries.is_empty() {
+                    return Err(ExternalSqliteStageError::PayloadTooLarge);
+                }
+                break;
+            }
+            projected_bytes = projected_bytes.saturating_add(row_bytes);
+            cursor = entity_operation_index;
+            entries.push((entity_operation_index, row));
+        }
+        if entries.is_empty() {
+            return Ok(None);
+        }
+        let complete = self.transaction.query_row(
+            "SELECT NOT EXISTS (\
+               SELECT 1 FROM external_feed_item_projection_rows \
+               WHERE entityOperationIndex > ?1\
+             );",
+            [cursor],
+            |row| row.get::<_, i64>(0),
+        )? == 1;
+        let input_digest = feed_item_projection_page_sha256(&self.receipt, &entries)?;
+        Ok(Some(ExternalFeedItemProjectionPage {
+            rows: entries.into_iter().map(|(_, row)| row).collect(),
+            last_entity_operation_index: cursor,
+            complete,
+            input_digest,
+        }))
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1229,7 +1340,7 @@ fn materialize_feed_item_documents(
     Ok(receipt)
 }
 
-fn materialize_feed_item_projection_rows(
+pub(super) fn materialize_feed_item_projection_rows(
     connection: &mut Connection,
 ) -> StageResult<ExternalFeedItemProjectionReceipt> {
     configure_connection(connection)?;
@@ -1280,6 +1391,24 @@ fn materialize_feed_item_projection_rows(
     insert_feed_item_projection_receipt(&transaction, &receipt)?;
     transaction.commit()?;
     Ok(receipt)
+}
+
+pub(super) fn open_feed_item_projection_snapshot(
+    connection: &mut Connection,
+) -> StageResult<ExternalFeedItemProjectionSnapshot<'_>> {
+    configure_connection(connection)?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    initialize_or_validate_schema(&transaction)?;
+    let receipt = read_feed_item_projection_receipt(&transaction)?
+        .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+    validate_feed_item_projection_row_set(&transaction)?;
+    if feed_item_projection_rows_sha256(&transaction)? != receipt.feed_item_projection_rows_sha256 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    Ok(ExternalFeedItemProjectionSnapshot {
+        transaction,
+        receipt,
+    })
 }
 
 fn populate_feed_item_projection_rows(transaction: &Transaction<'_>) -> StageResult<()> {
@@ -1384,6 +1513,30 @@ fn validate_feed_item_projection_row_set(transaction: &Transaction<'_>) -> Stage
         return Err(ExternalSqliteStageError::IncompleteStage);
     }
     Ok(())
+}
+
+fn read_feed_item_projection_row(row: &Row<'_>, offset: usize) -> rusqlite::Result<FeedItemRow> {
+    Ok(FeedItemRow {
+        global_id: row.get(offset)?,
+        platform: row.get(offset + 1)?,
+        content_type: row.get(offset + 2)?,
+        published_at: row.get(offset + 3)?,
+        captured_at: row.get(offset + 4)?,
+        author_id: row.get(offset + 5)?,
+        author_display_name: row.get(offset + 6)?,
+        author_handle: row.get(offset + 7)?,
+        source_url: row.get(offset + 8)?,
+        hidden: row.get(offset + 9)?,
+        saved: row.get(offset + 10)?,
+        archived: row.get(offset + 11)?,
+        read_at: row.get(offset + 12)?,
+        archived_at: row.get(offset + 13)?,
+        liked_at: row.get(offset + 14)?,
+        tags: row.get(offset + 15)?,
+        content_blob: row.get(offset + 16)?,
+        preserved_blob: row.get(offset + 17)?,
+        rest: row.get(offset + 18)?,
+    })
 }
 
 fn visit_feed_item_documents(
@@ -3883,6 +4036,26 @@ fn feed_item_projection_rows_sha256(connection: &Connection) -> StageResult<Stri
     Ok(lower_hex(&hasher.finalize()))
 }
 
+fn feed_item_projection_page_sha256(
+    receipt: &ExternalFeedItemProjectionReceipt,
+    entries: &[(i64, FeedItemRow)],
+) -> StageResult<String> {
+    let mut hasher = Sha256::new();
+    hash_field(&mut hasher, b"freed-automerge-feed-item-projection-page-v1");
+    hash_field(
+        &mut hasher,
+        receipt.feed_item_projection_rows_sha256.as_bytes(),
+    );
+    hasher.update(receipt.feed_item_count.to_be_bytes());
+    for (entity_operation_index, row) in entries {
+        hasher.update(entity_operation_index.to_be_bytes());
+        let encoded =
+            serde_json::to_vec(row).map_err(|_| FeedItemProjectionError::Serialization)?;
+        hash_field(&mut hasher, &encoded);
+    }
+    Ok(lower_hex(&hasher.finalize()))
+}
+
 fn hash_query_rows(
     connection: &Connection,
     hasher: &mut Sha256,
@@ -5453,8 +5626,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn feed_item_nodes_materialize_nested_maps_and_visible_sequence_order() {
+    fn one_feed_item_graph() -> Connection {
         let mut connection = complete_minimal_graph();
         connection
             .execute(
@@ -5485,6 +5657,55 @@ mod tests {
         set_operation_bounds(&connection, 11, 11, 0);
 
         materialize_through_sequences(&mut connection);
+        connection
+    }
+
+    fn simple_feed_item_graph(global_ids: &[&str]) -> Connection {
+        let mut connection = complete_minimal_graph();
+        connection
+            .execute(
+                "UPDATE external_operations SET keyName = 'feedItems', action = 0 \
+                 WHERE operationIndex = 0;",
+                [],
+            )
+            .unwrap();
+        let mut operation_index = 1_i64;
+        let mut counter = 2_u64;
+        for global_id in global_ids {
+            let entity_counter = counter;
+            insert_map_value(
+                &connection,
+                operation_index,
+                counter,
+                1,
+                global_id,
+                0,
+                "null",
+                None,
+            );
+            operation_index += 1;
+            counter += 1;
+            insert_map_value(
+                &connection,
+                operation_index,
+                counter,
+                entity_counter,
+                "globalId",
+                1,
+                "string",
+                Some(global_id),
+            );
+            operation_index += 1;
+            counter += 1;
+        }
+        set_operation_bounds(&connection, counter - 1, operation_index, 0);
+        materialize_through_sequences(&mut connection);
+        connection
+    }
+
+    #[test]
+    fn feed_item_nodes_materialize_nested_maps_and_visible_sequence_order() {
+        let mut connection = one_feed_item_graph();
         let receipt = materialize_feed_item_nodes(&mut connection).unwrap();
         assert_eq!(receipt.feed_item_count, 1);
         assert_eq!(receipt.feed_item_node_count, 10);
@@ -5653,6 +5874,158 @@ mod tests {
             materialize_feed_item_nodes(&mut connection),
             Err(ExternalSqliteStageError::IncompleteStage)
         ));
+    }
+
+    #[test]
+    fn verified_projection_rows_populate_and_resume_one_bounded_generation() {
+        use crate::automerge_external_projection_population::{
+            populate_projection_generation_from_external_stage,
+            populate_projection_generation_with_test_limits, ExternalProjectionPopulationError,
+        };
+        use crate::shadow_store::{ProjectionSourceV1, ShadowStore, MAX_PROJECTION_BATCH_BYTES};
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let mut connection = simple_feed_item_graph(&["rss:first", "rss:second"]);
+        materialize_feed_item_nodes(&mut connection).unwrap();
+        materialize_feed_item_documents(&mut connection).unwrap();
+        let receipt = materialize_feed_item_projection_rows(&mut connection).unwrap();
+        {
+            let snapshot = open_feed_item_projection_snapshot(&mut connection).unwrap();
+            for (maximum_rows, maximum_bytes) in [
+                (0, MAX_PROJECTION_BATCH_BYTES),
+                (MAX_PROJECTION_BATCH_ITEMS + 1, MAX_PROJECTION_BATCH_BYTES),
+                (MAX_PROJECTION_BATCH_ITEMS, 0),
+                (MAX_PROJECTION_BATCH_ITEMS, MAX_PROJECTION_BATCH_BYTES + 1),
+            ] {
+                assert!(matches!(
+                    snapshot.read_page(None, maximum_rows, maximum_bytes),
+                    Err(ExternalSqliteStageError::RangeOverflow)
+                ));
+            }
+        }
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "freed-external-projection-population-{}-{nonce}.sqlite",
+            std::process::id()
+        ));
+        let source = ProjectionSourceV1 {
+            document_id: "library".to_string(),
+            heads_digest: "33".repeat(32),
+            head_count: 1,
+            storage_generation: 4,
+            storage_save_revision: 9,
+        };
+
+        let partial = populate_projection_generation_with_test_limits(
+            &mut connection,
+            &path,
+            "external-feed-items-v1",
+            &source,
+            1,
+            MAX_PROJECTION_BATCH_BYTES,
+            1,
+        )
+        .unwrap();
+        assert!(!partial.complete);
+        assert_eq!(partial.projected_rows, 1);
+        assert_eq!(partial.next_batch_index, 1);
+
+        let state = populate_projection_generation_from_external_stage(
+            &mut connection,
+            &path,
+            "external-feed-items-v1",
+            &source,
+        )
+        .unwrap();
+        assert!(state.complete);
+        assert_eq!(state.projected_rows, receipt.feed_item_count as usize);
+        assert_eq!(state.next_batch_index, 2);
+        assert_eq!(
+            populate_projection_generation_from_external_stage(
+                &mut connection,
+                &path,
+                "external-feed-items-v1",
+                &source,
+            )
+            .unwrap(),
+            state
+        );
+
+        let store = ShadowStore::open(&path).unwrap();
+        let page = store.feed_page(None, 8).unwrap();
+        assert_eq!(page.total_count, 2);
+        assert_eq!(page.rows.len(), 2);
+        drop(store);
+
+        connection
+            .execute(
+                "UPDATE external_feed_item_projection_rows \
+                 SET rest = json_set(rest, '$.tampered', 1);",
+                [],
+            )
+            .unwrap();
+        assert!(matches!(
+            populate_projection_generation_from_external_stage(
+                &mut connection,
+                &path,
+                "external-feed-items-v1",
+                &source,
+            ),
+            Err(ExternalProjectionPopulationError::Stage(
+                ExternalSqliteStageError::IncompleteStage
+            ))
+        ));
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn empty_verified_projection_completes_without_an_artificial_batch() {
+        use crate::automerge_external_projection_population::populate_projection_generation_from_external_stage;
+        use crate::shadow_store::{ProjectionSourceV1, ShadowStore};
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let mut connection = simple_feed_item_graph(&[]);
+        materialize_feed_item_nodes(&mut connection).unwrap();
+        materialize_feed_item_documents(&mut connection).unwrap();
+        let receipt = materialize_feed_item_projection_rows(&mut connection).unwrap();
+        assert_eq!(receipt.feed_item_count, 0);
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "freed-empty-external-projection-population-{}-{nonce}.sqlite",
+            std::process::id()
+        ));
+        let source = ProjectionSourceV1 {
+            document_id: "empty-library".to_string(),
+            heads_digest: "44".repeat(32),
+            head_count: 1,
+            storage_generation: 1,
+            storage_save_revision: 1,
+        };
+
+        let state = populate_projection_generation_from_external_stage(
+            &mut connection,
+            &path,
+            "empty-external-feed-items-v1",
+            &source,
+        )
+        .unwrap();
+        assert!(state.complete);
+        assert_eq!(state.projected_rows, 0);
+        assert_eq!(state.next_batch_index, 0);
+
+        let store = ShadowStore::open(&path).unwrap();
+        let page = store.feed_page(None, 8).unwrap();
+        assert_eq!(page.total_count, 0);
+        assert!(page.rows.is_empty());
+        drop(store);
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]

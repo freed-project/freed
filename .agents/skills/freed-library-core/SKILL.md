@@ -231,7 +231,9 @@ temporary storage, and mmap behavior explicitly even while the store is dark.
 Bind every derived projection batch to one stable batch ID, canonical input
 digest, and expected previous projection revision. Commit its rows, deletions,
 revision advance, and durable receipt together. Bound each batch to at most
-1,000 combined row upserts and deletion intents and 4 MiB of projected input.
+1,000 combined row upserts and deletion intents. Admit one 4 MiB canonical
+source document plus no more than 64 KiB of bounded projection metadata so an
+accepted source row always fits without weakening the source ceiling.
 Exact retry after response loss returns the original receipt without
 reapplying. Changed replay tuples, oversized batches, and incompatible
 migration objects fail closed, and a receipt write failure rolls back the whole
@@ -620,7 +622,12 @@ Fault injection must prove rollback from the latest write in that transaction.
     negative zero because JSON cannot preserve its sign. Bind the complete row
     sequence and derived sort keys to the document receipt, then reproject and
     compare every row on replay. Do not batch complete projected documents in
-    Rust memory or publish a generation before the row receipt closes.
+    Rust memory or publish a generation before the row receipt closes. Populate
+    the derived generation from one transaction-pinned scratch snapshot. Bind
+    every bounded page to the complete row receipt, source operation indexes,
+    and exact projected bytes. Resume from the destination's durable row count
+    after response loss, and fail closed on source drift, oversized rows, or an
+    incomplete page. Population does not publish or select the generation.
     Every staged head must resolve to a staged change before the change receipt
     is accepted. Change and operation receipts in one stage must bind the same
     exact source identity. Missing rows, changed layout entries, dangling graph
