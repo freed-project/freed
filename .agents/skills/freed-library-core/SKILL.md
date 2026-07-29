@@ -179,6 +179,15 @@ page is read. It adds bounded incremental corruption detection without a full
 startup walk. It does not validate unread pages, cross-page relationships,
 application invariants, or external blobs.
 
+Open an authoritative SQLite database with URI interpretation disabled and
+private-cache, extended-result-code, and `SQLITE_OPEN_NOFOLLOW` flags enabled.
+A configured path names one ordinary database file. It cannot smuggle SQLite
+URI parameters, join SQLite's discouraged process-global shared cache, or
+redirect the final component through a symbolic link. Resolve the existing
+parent directory before opening so a system-level path alias does not defeat
+the final-file check. Parent-directory and root identity remain a separate
+production-opener contract before activation.
+
 Apply projection upserts, deletions, and the monotone projection revision in
 one database transaction. A bounded page or count binds one revision. A later
 page using a cursor from an older revision fails closed instead of walking

@@ -2325,6 +2325,16 @@ rebuildable, and it never issues an authoritative durability receipt. Cache,
 temporary storage, reader count, and mmap limits are explicit and measured.
 "Let SQLite decide" is not a memory budget.
 
+An authoritative database open treats its configured path as a literal
+filesystem path, never as a SQLite URI. It selects a private page cache,
+extended result codes, and `SQLITE_OPEN_NOFOLLOW`, so the connection cannot
+join SQLite's discouraged process-global shared cache and the final database
+component cannot redirect through a symbolic link. It resolves the
+already-existing parent directory first so a system path alias such as macOS
+`/var` does not make a literal final file unusable. This does not prove
+parent-directory identity or authorize a production path. The later production
+opener must pin and recheck its storage root independently.
+
 The dormant native projection kernel is a deliberately smaller predecessor to
 this authoritative store. It consumes the same checked-in schema as the shared
 TypeScript shadow-store contract, applies row upserts and deletions with one

@@ -8,7 +8,8 @@
 
 use rusqlite::config::DbConfig;
 use rusqlite::{
-    params, Connection, OptionalExtension, Result as SqlResult, Transaction, TransactionBehavior,
+    params, Connection, OpenFlags, OptionalExtension, Result as SqlResult, Transaction,
+    TransactionBehavior,
 };
 use std::fmt;
 use std::path::Path;
@@ -70,6 +71,7 @@ const ENROLLMENT_OUTBOX_PAGE_SQL: &str = "
 
 #[derive(Debug)]
 enum JournalError {
+    Io(std::io::Error),
     Sql(rusqlite::Error),
     UnsupportedSchemaVersion { expected: i64, actual: i64 },
     DatabaseIdentityMismatch { expected: i64, actual: i64 },
@@ -93,9 +95,16 @@ impl From<rusqlite::Error> for JournalError {
     }
 }
 
+impl From<std::io::Error> for JournalError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+
 impl fmt::Display for JournalError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Io(error) => write!(formatter, "filesystem error: {error}"),
             Self::Sql(error) => write!(formatter, "SQLite error: {error}"),
             Self::UnsupportedSchemaVersion { expected, actual } => {
                 write!(
@@ -520,7 +529,26 @@ fn validate_transaction(transaction: &VerifiedReadTransaction) -> JournalResult<
 
 impl LibraryCoreJournal {
     fn open(path: &Path) -> JournalResult<Self> {
-        let connection = Connection::open(path)?;
+        let file_name = path.file_name().ok_or(JournalError::InvalidVerifiedInput {
+            field: "database_path",
+        })?;
+        let parent = path
+            .parent()
+            .filter(|candidate| !candidate.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        // SQLite's NOFOLLOW flag rejects a symlink in any path component.
+        // Resolve the already-existing parent first so ordinary system aliases
+        // such as macOS /var do not make a literal final file unusable.
+        let resolved_path = parent.canonicalize()?.join(file_name);
+        let connection = Connection::open_with_flags(
+            &resolved_path,
+            OpenFlags::SQLITE_OPEN_READ_WRITE
+                | OpenFlags::SQLITE_OPEN_CREATE
+                | OpenFlags::SQLITE_OPEN_NO_MUTEX
+                | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
+                | OpenFlags::SQLITE_OPEN_NOFOLLOW
+                | OpenFlags::SQLITE_OPEN_EXRESCODE,
+        )?;
         let mut journal = Self { connection };
         journal.configure()?;
         journal.migrate()?;
@@ -1695,6 +1723,29 @@ mod tests {
             Err(error) => panic!("unexpected database identity error: {error}"),
             Ok(_) => panic!("mismatched database identity must fail closed"),
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn opening_rejects_a_symbolic_link_to_an_authoritative_database() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let target_path = directory.path().join("authoritative.sqlite");
+        let link_path = directory.path().join("library-core.sqlite");
+        let journal =
+            LibraryCoreJournal::open(&target_path).expect("create authoritative database");
+        drop(journal);
+        symlink(&target_path, &link_path).expect("create database symbolic link");
+
+        match LibraryCoreJournal::open(&link_path) {
+            Err(JournalError::Sql(_)) => {}
+            Err(error) => panic!("unexpected symbolic-link error: {error}"),
+            Ok(_) => panic!("symbolic-link database path must fail closed"),
+        }
+
+        LibraryCoreJournal::open(&target_path)
+            .expect("direct authoritative database path remains valid");
     }
 
     #[test]
