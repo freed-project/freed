@@ -307,6 +307,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.23 | Dormant native SQLite projection engine with one canonical schema, atomic revisioned batches, and bounded keyset pages | ✓ | Medium |
 | 4.24 | Crash-safe, idempotent derived SQLite projection batch receipts with exact response-loss recovery | ✓ | Medium |
 | 4.25 | Bounded cross-runtime canonical operation construction codec and domain-separated input vectors | ✓ | Medium |
+| 4.26 | Bounded duplicate-preserving shared and native canonical-value decoders with exact byte rejection vectors | ✓ | Medium |
 
 ---
 

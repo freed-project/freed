@@ -198,11 +198,12 @@ registered digest domain. Desktop and PWA must match the same exact bytes and
 digest vectors before either path may construct authoritative operations.
 
 The construction encoder is not an inbound verifier. Never verify received
-bytes by calling `JSON.parse` and re-encoding the result because duplicate
-object names have already been erased. The inbound path needs a bounded
-duplicate-preserving parser, byte-for-byte canonical comparison, closed-schema
-validation, exact digest derivation, and strict signature verification before
-materialization.
+bytes by calling `JSON.parse` or a duplicate-erasing native JSON parser because
+duplicate object names have already been erased. Use the shared bounded
+duplicate-preserving parser and byte-for-byte canonical comparison first. That
+parser establishes only canonical Library Core value bytes. The authoritative
+inbound path still needs closed-schema validation, exact digest derivation, and
+strict signature verification before materialization.
 
 ## Preserve the invariants
 

@@ -1,4 +1,5 @@
 use serde_json::Value;
+use std::collections::HashSet;
 
 const MAX_DIRECT_CANONICAL_BYTES: usize = 4_194_304;
 const MAX_CANONICAL_NESTING_DEPTH: usize = 128;
@@ -24,6 +25,10 @@ pub(crate) enum CanonicalEncodingError {
     UnsupportedNumber,
     UnregisteredDomain,
     JsonStringEncoding,
+    InvalidUtf8,
+    InvalidJson,
+    DuplicateObjectName,
+    NonCanonicalBytes,
 }
 
 struct BoundedWriter {
@@ -173,6 +178,299 @@ pub(crate) fn encode_operation_signature_input(
     Ok(result)
 }
 
+struct CanonicalJsonParser<'a> {
+    source: &'a str,
+    bytes: &'a [u8],
+    index: usize,
+    node_count: usize,
+}
+
+impl<'a> CanonicalJsonParser<'a> {
+    fn new(source: &'a str) -> Self {
+        Self {
+            source,
+            bytes: source.as_bytes(),
+            index: 0,
+            node_count: 0,
+        }
+    }
+
+    fn parse(mut self) -> Result<Value, CanonicalEncodingError> {
+        let value = self.parse_value(0)?;
+        if self.index != self.bytes.len() {
+            return Err(CanonicalEncodingError::InvalidJson);
+        }
+        Ok(value)
+    }
+
+    fn count_node(&mut self, depth: usize) -> Result<(), CanonicalEncodingError> {
+        self.node_count = self
+            .node_count
+            .checked_add(1)
+            .ok_or(CanonicalEncodingError::MaximumNodesExceeded)?;
+        if self.node_count > MAX_CANONICAL_NODES {
+            return Err(CanonicalEncodingError::MaximumNodesExceeded);
+        }
+        if depth > MAX_CANONICAL_NESTING_DEPTH {
+            return Err(CanonicalEncodingError::MaximumDepthExceeded);
+        }
+        Ok(())
+    }
+
+    fn parse_value(&mut self, depth: usize) -> Result<Value, CanonicalEncodingError> {
+        self.count_node(depth)?;
+        match self.bytes.get(self.index).copied() {
+            Some(b'"') => self.parse_string().map(Value::String),
+            Some(b'[') => self.parse_array(depth),
+            Some(b'{') => self.parse_object(depth),
+            Some(b't') => {
+                self.parse_keyword(b"true")?;
+                Ok(Value::Bool(true))
+            }
+            Some(b'f') => {
+                self.parse_keyword(b"false")?;
+                Ok(Value::Bool(false))
+            }
+            Some(b'n') => {
+                self.parse_keyword(b"null")?;
+                Ok(Value::Null)
+            }
+            Some(b'-' | b'0'..=b'9') => self.parse_integer(),
+            _ => Err(CanonicalEncodingError::InvalidJson),
+        }
+    }
+
+    fn parse_keyword(&mut self, keyword: &[u8]) -> Result<(), CanonicalEncodingError> {
+        if self
+            .bytes
+            .get(self.index..self.index.saturating_add(keyword.len()))
+            != Some(keyword)
+        {
+            return Err(CanonicalEncodingError::InvalidJson);
+        }
+        self.index += keyword.len();
+        Ok(())
+    }
+
+    fn parse_integer(&mut self) -> Result<Value, CanonicalEncodingError> {
+        let start = self.index;
+        if self.bytes.get(self.index) == Some(&b'-') {
+            self.index += 1;
+        }
+        match self.bytes.get(self.index).copied() {
+            Some(b'0') => {
+                self.index += 1;
+                if matches!(self.bytes.get(self.index), Some(b'0'..=b'9')) {
+                    return Err(CanonicalEncodingError::InvalidJson);
+                }
+            }
+            Some(b'1'..=b'9') => {
+                self.index += 1;
+                while matches!(self.bytes.get(self.index), Some(b'0'..=b'9')) {
+                    self.index += 1;
+                }
+            }
+            _ => return Err(CanonicalEncodingError::InvalidJson),
+        }
+        if matches!(self.bytes.get(self.index), Some(b'.' | b'e' | b'E')) {
+            return Err(CanonicalEncodingError::UnsupportedNumber);
+        }
+        let lexeme = &self.source[start..self.index];
+        if lexeme == "-0" {
+            return Err(CanonicalEncodingError::UnsupportedNumber);
+        }
+        let integer = lexeme
+            .parse::<i64>()
+            .map_err(|_| CanonicalEncodingError::UnsupportedNumber)?;
+        if integer.unsigned_abs() > SAFE_INTEGER_MAX {
+            return Err(CanonicalEncodingError::UnsupportedNumber);
+        }
+        Ok(Value::Number(integer.into()))
+    }
+
+    fn parse_string(&mut self) -> Result<String, CanonicalEncodingError> {
+        if self.bytes.get(self.index) != Some(&b'"') {
+            return Err(CanonicalEncodingError::InvalidJson);
+        }
+        self.index += 1;
+        let mut result = String::new();
+        while let Some(byte) = self.bytes.get(self.index).copied() {
+            match byte {
+                b'"' => {
+                    self.index += 1;
+                    return Ok(result);
+                }
+                b'\\' => {
+                    self.index += 1;
+                    result.push_str(&self.parse_escape()?);
+                }
+                0x00..=0x1f => return Err(CanonicalEncodingError::InvalidJson),
+                0x20..=0x7f => {
+                    result.push(char::from(byte));
+                    self.index += 1;
+                }
+                _ => {
+                    let character = self.source[self.index..]
+                        .chars()
+                        .next()
+                        .ok_or(CanonicalEncodingError::InvalidJson)?;
+                    result.push(character);
+                    self.index += character.len_utf8();
+                }
+            }
+        }
+        Err(CanonicalEncodingError::InvalidJson)
+    }
+
+    fn parse_escape(&mut self) -> Result<String, CanonicalEncodingError> {
+        let escaped = self
+            .bytes
+            .get(self.index)
+            .copied()
+            .ok_or(CanonicalEncodingError::InvalidJson)?;
+        self.index += 1;
+        match escaped {
+            b'"' => Ok("\"".to_owned()),
+            b'\\' => Ok("\\".to_owned()),
+            b'/' => Ok("/".to_owned()),
+            b'b' => Ok("\u{0008}".to_owned()),
+            b'f' => Ok("\u{000c}".to_owned()),
+            b'n' => Ok("\n".to_owned()),
+            b'r' => Ok("\r".to_owned()),
+            b't' => Ok("\t".to_owned()),
+            b'u' => self.parse_unicode_escape(),
+            _ => Err(CanonicalEncodingError::InvalidJson),
+        }
+    }
+
+    fn parse_unicode_escape(&mut self) -> Result<String, CanonicalEncodingError> {
+        let high = self.parse_hex_code_unit()?;
+        let scalar = if (0xd800..=0xdbff).contains(&high) {
+            if self.bytes.get(self.index..self.index.saturating_add(2)) != Some(b"\\u") {
+                return Err(CanonicalEncodingError::InvalidJson);
+            }
+            self.index += 2;
+            let low = self.parse_hex_code_unit()?;
+            if !(0xdc00..=0xdfff).contains(&low) {
+                return Err(CanonicalEncodingError::InvalidJson);
+            }
+            0x10000 + ((u32::from(high) - 0xd800) << 10) + (u32::from(low) - 0xdc00)
+        } else if (0xdc00..=0xdfff).contains(&high) {
+            return Err(CanonicalEncodingError::InvalidJson);
+        } else {
+            u32::from(high)
+        };
+        char::from_u32(scalar)
+            .map(|value| value.to_string())
+            .ok_or(CanonicalEncodingError::InvalidJson)
+    }
+
+    fn parse_hex_code_unit(&mut self) -> Result<u16, CanonicalEncodingError> {
+        let bytes = self
+            .bytes
+            .get(self.index..self.index.saturating_add(4))
+            .ok_or(CanonicalEncodingError::InvalidJson)?;
+        let mut value = 0_u16;
+        for byte in bytes {
+            let digit = match byte {
+                b'0'..=b'9' => u16::from(*byte - b'0'),
+                b'a'..=b'f' => u16::from(*byte - b'a' + 10),
+                b'A'..=b'F' => u16::from(*byte - b'A' + 10),
+                _ => return Err(CanonicalEncodingError::InvalidJson),
+            };
+            value = (value << 4) | digit;
+        }
+        self.index += 4;
+        Ok(value)
+    }
+
+    fn parse_array(&mut self, depth: usize) -> Result<Value, CanonicalEncodingError> {
+        self.index += 1;
+        let mut values = Vec::new();
+        if self.bytes.get(self.index) == Some(&b']') {
+            self.index += 1;
+            return Ok(Value::Array(values));
+        }
+        loop {
+            values.push(self.parse_value(depth + 1)?);
+            match self.bytes.get(self.index).copied() {
+                Some(b']') => {
+                    self.index += 1;
+                    return Ok(Value::Array(values));
+                }
+                Some(b',') => self.index += 1,
+                _ => return Err(CanonicalEncodingError::InvalidJson),
+            }
+        }
+    }
+
+    fn parse_object(&mut self, depth: usize) -> Result<Value, CanonicalEncodingError> {
+        self.index += 1;
+        let mut values = serde_json::Map::new();
+        let mut names = HashSet::new();
+        if self.bytes.get(self.index) == Some(&b'}') {
+            self.index += 1;
+            return Ok(Value::Object(values));
+        }
+        loop {
+            let name = self.parse_string()?;
+            if !names.insert(name.clone()) {
+                return Err(CanonicalEncodingError::DuplicateObjectName);
+            }
+            if self.bytes.get(self.index) != Some(&b':') {
+                return Err(CanonicalEncodingError::InvalidJson);
+            }
+            self.index += 1;
+            values.insert(name, self.parse_value(depth + 1)?);
+            match self.bytes.get(self.index).copied() {
+                Some(b'}') => {
+                    self.index += 1;
+                    return Ok(Value::Object(values));
+                }
+                Some(b',') => self.index += 1,
+                _ => return Err(CanonicalEncodingError::InvalidJson),
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DecodedCanonicalValue {
+    value: Value,
+    canonical_bytes: Vec<u8>,
+}
+
+impl DecodedCanonicalValue {
+    pub(crate) fn value(&self) -> &Value {
+        &self.value
+    }
+
+    pub(crate) fn canonical_bytes(&self) -> &[u8] {
+        &self.canonical_bytes
+    }
+}
+
+pub(crate) fn decode_canonical_value(
+    bytes: &[u8],
+    maximum_bytes: usize,
+) -> Result<DecodedCanonicalValue, CanonicalEncodingError> {
+    if maximum_bytes == 0 || maximum_bytes > MAX_DIRECT_CANONICAL_BYTES {
+        return Err(CanonicalEncodingError::InvalidMaximumBytes);
+    }
+    if bytes.len() > maximum_bytes {
+        return Err(CanonicalEncodingError::MaximumBytesExceeded);
+    }
+    let source = std::str::from_utf8(bytes).map_err(|_| CanonicalEncodingError::InvalidUtf8)?;
+    let value = CanonicalJsonParser::new(source).parse()?;
+    if encode_canonical_value(&value, maximum_bytes)? != bytes {
+        return Err(CanonicalEncodingError::NonCanonicalBytes);
+    }
+    Ok(DecodedCanonicalValue {
+        value,
+        canonical_bytes: bytes.to_vec(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,11 +484,25 @@ mod tests {
         canonical: String,
     }
 
+    #[derive(Deserialize)]
+    struct DecoderVector {
+        name: String,
+        input: String,
+        accepted: bool,
+    }
+
     fn vectors() -> Vec<CanonicalVector> {
         serde_json::from_str(include_str!(
             "../../../shared/src/library-core/canonical-codec-vectors.json"
         ))
         .expect("cross-runtime canonical vectors must parse")
+    }
+
+    fn decoder_vectors() -> Vec<DecoderVector> {
+        serde_json::from_str(include_str!(
+            "../../../shared/src/library-core/canonical-decoder-vectors.json"
+        ))
+        .expect("cross-runtime canonical decoder vectors must parse")
     }
 
     #[test]
@@ -286,6 +598,61 @@ mod tests {
         assert_eq!(
             encode_canonical_value(&value, MAX_DIRECT_CANONICAL_BYTES),
             Err(CanonicalEncodingError::MaximumNodesExceeded)
+        );
+    }
+
+    #[test]
+    fn matches_cross_runtime_duplicate_preserving_decoder_vectors() {
+        for vector in decoder_vectors() {
+            let decoded =
+                decode_canonical_value(vector.input.as_bytes(), MAX_DIRECT_CANONICAL_BYTES);
+            assert_eq!(
+                decoded.is_ok(),
+                vector.accepted,
+                "{} returned {decoded:?}",
+                vector.name
+            );
+            if let Ok(decoded) = decoded {
+                assert_eq!(decoded.canonical_bytes(), vector.input.as_bytes());
+                assert_eq!(
+                    encode_canonical_value(decoded.value(), MAX_DIRECT_CANONICAL_BYTES)
+                        .expect("decoded value re-encodes"),
+                    vector.input.as_bytes()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn decoder_rejects_invalid_utf8_and_inbound_limits() {
+        assert_eq!(
+            decode_canonical_value(&[0xc3, 0x28], MAX_DIRECT_CANONICAL_BYTES),
+            Err(CanonicalEncodingError::InvalidUtf8)
+        );
+        assert_eq!(
+            decode_canonical_value(br#""12345""#, 6),
+            Err(CanonicalEncodingError::MaximumBytesExceeded)
+        );
+
+        let excessive_nodes = format!(
+            "[{}]",
+            std::iter::repeat_n("null", MAX_CANONICAL_NODES)
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        assert_eq!(
+            decode_canonical_value(excessive_nodes.as_bytes(), MAX_DIRECT_CANONICAL_BYTES),
+            Err(CanonicalEncodingError::MaximumNodesExceeded)
+        );
+
+        let excessive_depth = format!(
+            "{}null{}",
+            "[".repeat(MAX_CANONICAL_NESTING_DEPTH + 1),
+            "]".repeat(MAX_CANONICAL_NESTING_DEPTH + 1)
+        );
+        assert_eq!(
+            decode_canonical_value(excessive_depth.as_bytes(), MAX_DIRECT_CANONICAL_BYTES),
+            Err(CanonicalEncodingError::MaximumDepthExceeded)
         );
     }
 }

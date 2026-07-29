@@ -3,7 +3,9 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import vectors from "./canonical-codec-vectors.json";
+import decoderVectors from "./canonical-decoder-vectors.json";
 import {
+  decodeLibraryCoreCanonicalValue,
   encodeLibraryCoreCanonicalValue,
   encodeLibraryCoreDigestInput,
   encodeLibraryCoreOperationSignatureInput,
@@ -12,13 +14,17 @@ import {
 } from "./canonical-codec.js";
 
 const decoder = new TextDecoder();
+const encoder = new TextEncoder();
 
 describe("Library Core canonical codec", () => {
-  it.each(vectors)("$name matches the cross-runtime canonical vector", (test) => {
-    expect(
-      decoder.decode(encodeLibraryCoreCanonicalValue(test.value as never)),
-    ).toBe(test.canonical);
-  });
+  it.each(vectors)(
+    "$name matches the cross-runtime canonical vector",
+    (test) => {
+      expect(
+        decoder.decode(encodeLibraryCoreCanonicalValue(test.value as never)),
+      ).toBe(test.canonical);
+    },
+  );
 
   it("builds exact domain-separated digest and signature inputs", () => {
     const value = { schema_version: 1, operation_type: "person_upsert" };
@@ -70,10 +76,7 @@ describe("Library Core canonical codec", () => {
     sparse[1] = "present";
     const decorated: unknown[] & { extra?: string } = [];
     decorated.extra = "hidden protocol input";
-    const symbolRecord = { valid: true } as Record<
-      string | symbol,
-      unknown
-    >;
+    const symbolRecord = { valid: true } as Record<string | symbol, unknown>;
     symbolRecord[Symbol("hidden")] = true;
     const accessor = Object.defineProperty({}, "value", {
       enumerable: true,
@@ -114,17 +117,69 @@ describe("Library Core canonical codec", () => {
     ) {
       nested = [nested];
     }
-    expect(() =>
-      encodeLibraryCoreCanonicalValue(nested as never),
-    ).toThrow(/nesting/);
+    expect(() => encodeLibraryCoreCanonicalValue(nested as never)).toThrow(
+      /nesting/,
+    );
 
     expect(() =>
       encodeLibraryCoreCanonicalValue(
-        Array.from(
-          { length: LIBRARY_CORE_MAX_CANONICAL_NODES },
-          () => null,
-        ),
+        Array.from({ length: LIBRARY_CORE_MAX_CANONICAL_NODES }, () => null),
       ),
     ).toThrow(/nodes/);
+  });
+
+  it.each(decoderVectors)(
+    "$name has the same duplicate-preserving decoder verdict",
+    (test) => {
+      const decode = () =>
+        decodeLibraryCoreCanonicalValue(encoder.encode(test.input));
+      if (test.accepted) {
+        expect(decode()).toEqual(JSON.parse(test.input));
+      } else {
+        expect(decode).toThrowError();
+      }
+    },
+  );
+
+  it("rejects invalid UTF-8 and enforces inbound byte, node, and depth ceilings", () => {
+    expect(() =>
+      decodeLibraryCoreCanonicalValue(new Uint8Array([0xc3, 0x28])),
+    ).toThrow(/UTF-8/);
+    expect(() =>
+      decodeLibraryCoreCanonicalValue(encoder.encode('"12345"'), {
+        maximumBytes: 6,
+      }),
+    ).toThrow(/exceeds/);
+
+    const excessiveNodes = `[${Array.from(
+      { length: LIBRARY_CORE_MAX_CANONICAL_NODES },
+      () => "null",
+    ).join(",")}]`;
+    expect(() =>
+      decodeLibraryCoreCanonicalValue(encoder.encode(excessiveNodes)),
+    ).toThrow(/nodes/);
+
+    const excessiveDepth =
+      "[".repeat(LIBRARY_CORE_MAX_CANONICAL_NESTING_DEPTH + 1) +
+      "null" +
+      "]".repeat(LIBRARY_CORE_MAX_CANONICAL_NESTING_DEPTH + 1);
+    expect(() =>
+      decodeLibraryCoreCanonicalValue(encoder.encode(excessiveDepth)),
+    ).toThrow(/nesting/);
+  });
+
+  it("returns immutable arrays and null-prototype immutable records", () => {
+    const value = decodeLibraryCoreCanonicalValue(
+      encoder.encode('{"array":[1],"record":{"safe":true}}'),
+    ) as {
+      readonly array: readonly number[];
+      readonly record: Readonly<Record<string, boolean>>;
+    };
+
+    expect(Object.isFrozen(value)).toBe(true);
+    expect(Object.getPrototypeOf(value)).toBeNull();
+    expect(Object.isFrozen(value.array)).toBe(true);
+    expect(Object.isFrozen(value.record)).toBe(true);
+    expect(Object.getPrototypeOf(value.record)).toBeNull();
   });
 });

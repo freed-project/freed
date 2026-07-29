@@ -84,6 +84,15 @@ The construction encoder is not an inbound verifier. In particular, passing
 received bytes through `JSON.parse` before canonicalization is invalid because
 that parser has already erased duplicate object names.
 
+The dormant shared and native construction modules include matching bounded
+inbound canonical-value parsers. They preserve object-name occurrences until
+duplicate rejection, accept only valid UTF-8 and Unicode scalar strings,
+enforce the same 4 MiB, 128-level, 65,536-node, and safe-integer ceilings, and
+require an exact re-encoding match before returning an immutable value. These
+parsers deliberately stop before operation-schema, digest, signature, actor,
+and causal validation. They are a prerequisite for an authoritative verifier,
+not an activation path or an authority receipt.
+
 An otherwise valid v1 outer operation envelope with an unknown operation type
 or payload schema preserves the received canonical payload as opaque evidence,
 verifies the outer digests and signature, stops the apply cursor, and does not
