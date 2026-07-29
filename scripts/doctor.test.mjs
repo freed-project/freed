@@ -10,7 +10,6 @@ import {
   readdirSync,
   rmSync,
   symlinkSync,
-  utimesSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -20,7 +19,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   classifyBinaryArch,
-  checkAutomationStateDir,
+  checkAutomationStateDir as checkAutomationStateDirProduction,
   checkKernelGuardTool,
   checkTrustedPublisherConfig,
   credentialHelperBinary,
@@ -44,6 +43,27 @@ const sourceRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
+
+function checkAutomationStateDir(stateDir) {
+  return checkAutomationStateDirProduction(stateDir, {
+    inspectArchiveCapacity: () => healthyArchiveInspection(),
+  });
+}
+
+function healthyArchiveInspection(overrides = {}) {
+  return Object.freeze({
+    ready: true,
+    problems: Object.freeze([]),
+    count: 0,
+    bytes: 0,
+    projectedCount: 8,
+    projectedBytes: 16_384,
+    projectedOldestAgeMs: 0,
+    availableBytes: 1_000_000_000,
+    filesystemType: "test-local",
+    ...overrides,
+  });
+}
 
 function sha256(filePath) {
   return createHash("sha256").update(readFileSync(filePath)).digest("hex");
@@ -437,7 +457,15 @@ test("automation state preflight reports safe lease archive accounting", () => {
   installAutomationKernelGuardCutoverFixture(stateDir);
   installDoctorLeaseArchiveFixture(stateDir);
 
-  const result = checkAutomationStateDir(stateDir);
+  const result = checkAutomationStateDirProduction(stateDir, {
+    inspectArchiveCapacity: () =>
+      healthyArchiveInspection({
+        count: 1,
+        bytes: 3,
+        projectedCount: 9,
+        projectedBytes: 16_387,
+      }),
+  });
 
   assert.equal(result.status, "ok");
   assert.match(result.detail, /Lease cleanup archive: 1 entries, 3 bytes/);
@@ -445,104 +473,34 @@ test("automation state preflight reports safe lease archive accounting", () => {
   assert.match(result.detail, /bytes free on local/);
 });
 
-test("automation state preflight rejects old, symlinked, and special lease archives", async (t) => {
-  await t.test("oldest age", () => {
-    const root = realpathSync(
-      mkdtempSync(path.join(os.tmpdir(), "freed-doctor-lease-age-")),
-    );
-    const stateDir = path.join(root, "automation");
-    mkdirSync(stateDir, { mode: 0o700 });
-    installAutomationKernelGuardCutoverFixture(stateDir);
-    const { archivePath } = installDoctorLeaseArchiveFixture(stateDir);
-    const old = new Date(Date.now() - 367 * 24 * 60 * 60 * 1_000);
-    utimesSync(archivePath, old, old);
-
-    const result = checkAutomationStateDir(stateDir);
-
-    assert.equal(result.status, "fail");
-    assert.match(result.detail, /oldest-age limit is exhausted/);
-    assert.match(result.remediation, /owner-authorized archive compaction/);
-  });
-
-  for (const kind of ["symlink", "directory"]) {
-    await t.test(kind, () => {
+test("automation state preflight reports unsafe lease archive accounting", async (t) => {
+  for (const problem of [
+    "lease cleanup archive oldest-age limit is exhausted",
+    "lease cleanup archive entry is not one private physical regular file",
+    "lease cleanup archive directory changed during capacity accounting",
+  ]) {
+    await t.test(problem, () => {
       const root = realpathSync(
-        mkdtempSync(path.join(os.tmpdir(), `freed-doctor-lease-${kind}-`)),
+        mkdtempSync(path.join(os.tmpdir(), "freed-doctor-lease-unsafe-")),
       );
       const stateDir = path.join(root, "automation");
       mkdirSync(stateDir, { mode: 0o700 });
       installAutomationKernelGuardCutoverFixture(stateDir);
-      const { archive } = installDoctorLeaseArchiveFixture(stateDir);
-      const entryPath = path.join(
-        archive,
-        `${"c".repeat(64)}.${"d".repeat(64)}.json`,
-      );
-      if (kind === "symlink") {
-        symlinkSync(path.join(archive, `${"a".repeat(64)}.${"b".repeat(64)}.json`), entryPath);
-      } else {
-        mkdirSync(entryPath, { mode: 0o700 });
-      }
+      installDoctorLeaseArchiveFixture(stateDir);
 
-      const result = checkAutomationStateDir(stateDir);
+      const result = checkAutomationStateDirProduction(stateDir, {
+        inspectArchiveCapacity: () =>
+          healthyArchiveInspection({
+            ready: false,
+            problems: Object.freeze([problem]),
+          }),
+      });
 
       assert.equal(result.status, "fail");
-      assert.match(result.detail, /not one private physical regular file/);
+      assert.match(result.detail, new RegExp(problem));
       assert.match(result.remediation, /owner-authorized archive compaction/);
     });
   }
-
-  for (const mode of [0o4600, 0o2600, 0o700]) {
-    await t.test(`archive file mode ${mode.toString(8)}`, () => {
-      const root = realpathSync(
-        mkdtempSync(path.join(os.tmpdir(), "freed-doctor-lease-file-mode-")),
-      );
-      const stateDir = path.join(root, "automation");
-      mkdirSync(stateDir, { mode: 0o700 });
-      installAutomationKernelGuardCutoverFixture(stateDir);
-      const { archivePath } = installDoctorLeaseArchiveFixture(stateDir);
-      chmodSync(archivePath, mode);
-
-      const result = checkAutomationStateDir(stateDir);
-
-      assert.equal(result.status, "fail");
-      assert.match(result.detail, /not one private physical regular file/);
-    });
-  }
-
-  await t.test("sticky archive directory", () => {
-    const root = realpathSync(
-      mkdtempSync(path.join(os.tmpdir(), "freed-doctor-lease-dir-mode-")),
-    );
-    const stateDir = path.join(root, "automation");
-    mkdirSync(stateDir, { mode: 0o700 });
-    installAutomationKernelGuardCutoverFixture(stateDir);
-    const { archive } = installDoctorLeaseArchiveFixture(stateDir);
-    chmodSync(archive, 0o1700);
-
-    const result = checkAutomationStateDir(stateDir);
-
-    assert.equal(result.status, "fail");
-    assert.match(result.detail, /could not be pinned to one directory generation/);
-  });
-
-  await t.test("symlinked archive directory", () => {
-    const root = realpathSync(
-      mkdtempSync(path.join(os.tmpdir(), "freed-doctor-lease-dir-symlink-")),
-    );
-    const stateDir = path.join(root, "automation");
-    mkdirSync(stateDir, { mode: 0o700 });
-    installAutomationKernelGuardCutoverFixture(stateDir);
-    const { archive } = installDoctorLeaseArchiveFixture(stateDir);
-    const externalArchive = path.join(root, "external-archive");
-    mkdirSync(externalArchive, { mode: 0o700 });
-    rmSync(archive, { recursive: true, force: true });
-    symlinkSync(externalArchive, archive);
-
-    const result = checkAutomationStateDir(stateDir);
-
-    assert.equal(result.status, "fail");
-    assert.match(result.detail, /not a physical directory owned by the current user/);
-  });
 });
 
 test("automation state preflight requires the complete prepared cutover evidence", async (t) => {

@@ -515,7 +515,10 @@ function automationKernelGuardCutoverRemediation(stateDir) {
   ].join("\n");
 }
 
-export function checkAutomationStateDir(stateDir) {
+export function checkAutomationStateDir(
+  stateDir,
+  { inspectArchiveCapacity = inspectLeaseCleanupArchiveCapacity } = {},
+) {
   if (existsSync(stateDir)) {
     const currentUid =
       typeof process.getuid === "function" ? process.getuid() : null;
@@ -594,7 +597,7 @@ export function checkAutomationStateDir(stateDir) {
         const reservation = conservativeLeaseCleanupArchiveReservation(
           stateDir,
         );
-        archiveInspection = inspectLeaseCleanupArchiveCapacity(stateDir, {
+        archiveInspection = inspectArchiveCapacity(stateDir, {
           reservation,
         });
         if (!archiveInspection.ready) {
