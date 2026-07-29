@@ -9791,6 +9791,33 @@ receipt and exact replay rebuilds and compares every row. This stage still
 does not project FeedItem columns, publish a generation, open a production
 database, or activate SQLite.
 
+The next immutable FeedItem projection receipt converts those exact documents
+into the same lossless row shape used by the native shadow store. It reads and
+projects one document at a time. Native memory therefore holds one bounded
+document tree and one bounded projected row rather than a corpus-sized
+collection. Strings and booleans enter their typed columns only without
+coercion. Numeric columns admit only JavaScript-safe integers because the
+canonical SQLite columns are `INTEGER`. Fractional, unsafe, nonfinite, and
+wrong-type values keep a null typed column and survive under the exact `__raw`
+escape. Missing fields remain distinct from present nulls through `__absent`.
+Unknown root, author, and user-state fields remain in `rest`; full content and
+preserved content remain in their dedicated JSON columns. Every JSON object in
+those columns uses recursive UTF-8 key order in both Rust and TypeScript.
+Reserved nonfinite-tag collisions and invalid Unicode fail closed, so semantic
+equivalence cannot conceal adapter-specific row bytes. Negative zero also
+fails closed because JSON cannot preserve its sign.
+
+The scratch schema stores every projected column, its derived sort key, and
+the source entity operation. One canonical digest covers the exact typed row
+sequence, and the receipt binds that digest and count to the complete FeedItem
+document receipt. Replay reprojects every document and compares the complete
+row set before accepting the stored receipt. An identity mismatch, malformed
+document, reserved escape collision, partial row set, changed column, changed
+sort key, foreign-key error, or changed receipt fails closed. This stage still
+does not populate an immutable published generation, open a production
+database, register a command, contact a provider, change the active writer, or
+activate SQLite.
+
 The migration worker's attributed resident ceiling is 384 MiB on a 4 GiB host,
 512 MiB on an 8 GiB host, and 768 MiB on a host with 16 GiB or more. Admission
 proves enough private staging capacity for the measured source, target,

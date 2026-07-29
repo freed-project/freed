@@ -84,6 +84,19 @@ the current-operation frontier. Counter arithmetic, object and sequence
 reconstruction, registered entity materialization, full-corpus parity, memory
 admission, and activation remain blocked.
 
+The dormant migration chain now continues through complete FeedItem topology,
+bounded JSON reconstruction, and lossless native row projection. It keeps
+temporary object values in scratch SQLite and holds only one bounded document
+and row in native memory. The row stage shares the native shadow-store shape,
+admits only faithful strings, booleans, and JavaScript-safe integers into typed
+columns, and preserves every other value through explicit absence, raw,
+nested-rest, and blob-tier escapes. Its receipt binds the complete projected
+row sequence to the exact reconstructed-document receipt. Rust and TypeScript
+use the same recursive UTF-8 object-key order for projected JSON, and replay
+reprojects every document before accepting stored rows. Immutable generation
+population, full-corpus parity, production storage admission, and activation
+remain blocked.
+
 Physical shadow schema version 3 now closes the native staging transaction
 inside one database. A fresh staging file records the exact source identity,
 sequential batch receipts, projected row count, revision, and completion state.

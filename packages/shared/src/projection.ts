@@ -88,6 +88,12 @@ const MODELLED_USER_STATE: ReadonlySet<string> = new Set([
 
 /** author keys with their own column. The rest ride along in `__author`. */
 const MODELLED_AUTHOR: ReadonlySet<string> = new Set(["id", "displayName", "handle"]);
+const RESERVED_REST_KEYS: ReadonlySet<string> = new Set([
+  "__absent",
+  "__author",
+  "__raw",
+  "__userState",
+]);
 
 /**
  * Tracks the two ways a typed column can fail to be the whole truth.
@@ -172,11 +178,71 @@ class ColumnEscapes {
  */
 const NON_FINITE_TAG = "__nonFinite";
 
+function compareUtf8Bytes(left: string, right: string): number {
+  let leftIndex = 0;
+  let rightIndex = 0;
+  while (leftIndex < left.length && rightIndex < right.length) {
+    const leftScalar = unicodeScalarAt(left, leftIndex);
+    const rightScalar = unicodeScalarAt(right, rightIndex);
+    if (leftScalar.value !== rightScalar.value) {
+      return leftScalar.value - rightScalar.value;
+    }
+    leftIndex = leftScalar.nextIndex;
+    rightIndex = rightScalar.nextIndex;
+  }
+  return left.length - right.length;
+}
+
+function unicodeScalarAt(
+  value: string,
+  index: number,
+): { value: number; nextIndex: number } {
+  const first = value.charCodeAt(index);
+  if (first >= 0xd800 && first <= 0xdbff) {
+    const second = value.charCodeAt(index + 1);
+    if (!(second >= 0xdc00 && second <= 0xdfff)) {
+      throw new TypeError("projection JSON contains an unpaired high surrogate");
+    }
+    return {
+      value: 0x10000 + ((first - 0xd800) << 10) + (second - 0xdc00),
+      nextIndex: index + 2,
+    };
+  }
+  if (first >= 0xdc00 && first <= 0xdfff) {
+    throw new TypeError("projection JSON contains an unpaired low surrogate");
+  }
+  return { value: first, nextIndex: index + 1 };
+}
+
+function assertUnicodeScalarString(value: string): void {
+  let index = 0;
+  while (index < value.length) {
+    index = unicodeScalarAt(value, index).nextIndex;
+  }
+}
+
 function jsonReplacer(this: unknown, _key: string, value: unknown): unknown {
   // `this[key]` would give the pre-toJSON value; `value` is what gets written,
   // which is what has to survive, so test that.
+  if (typeof value === "number" && Object.is(value, -0)) {
+    throw new TypeError("projection JSON cannot represent negative zero");
+  }
   if (typeof value === "number" && !Number.isFinite(value)) {
     return { [NON_FINITE_TAG]: String(value) };
+  }
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    if (Object.prototype.hasOwnProperty.call(value, NON_FINITE_TAG)) {
+      throw new TypeError(
+        `projection JSON uses reserved key ${NON_FINITE_TAG}`,
+      );
+    }
+    const entries = Object.entries(value);
+    for (const [key] of entries) assertUnicodeScalarString(key);
+    return Object.fromEntries(
+      entries.sort(([left], [right]) =>
+        compareUtf8Bytes(left, right),
+      ),
+    );
   }
   return value;
 }
@@ -197,9 +263,14 @@ export function decodeJson(text: string): unknown {
 }
 
 function asNumberColumn(value: unknown): number | null {
-  // Only finite numbers survive a SQLite numeric column and a JSON round trip.
-  // Anything else is left for the differ to flag rather than silently coerced.
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+  // The native projection columns are SQLite INTEGER. Preserve fractional,
+  // unsafe, and nonfinite values in the raw escape rather than failing later
+  // at the STRICT table boundary or silently changing their value.
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    !Object.is(value, -0)
+    ? value
+    : null;
 }
 
 function asStringColumn(value: unknown): string | null {
@@ -213,6 +284,14 @@ function asBoolColumn(value: unknown): number | null {
 export function projectFeedItem(item: FeedItem): FeedItemRow {
   const absent = new ColumnEscapes();
   const raw = item as unknown as Record<string, unknown>;
+  if (typeof raw.globalId !== "string" || raw.globalId.length === 0) {
+    throw new TypeError("FeedItem globalId must be a nonempty string");
+  }
+  for (const key of RESERVED_REST_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(raw, key)) {
+      throw new TypeError(`FeedItem uses reserved projection key ${key}`);
+    }
+  }
 
   // `author` and `userState` are spread across several columns each, so a value
   // that is present but not an object has nowhere to go. Route it to the raw
@@ -271,7 +350,7 @@ export function projectFeedItem(item: FeedItem): FeedItemRow {
   const tags = userState && absent.read(userState, "tags", "userState.tags");
 
   const row: FeedItemRow = {
-    globalId: String(item.globalId),
+    globalId: raw.globalId,
     platform: absent.column(platform, "platform", asStringColumn),
     contentType: absent.column(contentType, "contentType", asStringColumn),
     publishedAt: absent.column(publishedAt, "publishedAt", asNumberColumn),

@@ -18,6 +18,8 @@ mod automerge_external_document;
 #[cfg_attr(not(test), allow(dead_code))]
 mod automerge_external_document_run;
 #[cfg_attr(not(test), allow(dead_code))]
+mod automerge_external_feed_item_projection;
+#[cfg_attr(not(test), allow(dead_code))]
 mod automerge_external_operation_rows;
 #[cfg_attr(not(test), allow(dead_code))]
 mod automerge_external_row_run;

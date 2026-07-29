@@ -608,7 +608,19 @@ Fault injection must prove rollback from the latest write in that transaction.
     replayable document receipt. Keep temporary node values in SQLite and hold
     at most one bounded output plus one bounded child or scalar payload in
     native memory. Do not populate a published generation until the later
-    schema-projection stage validates the complete FeedItem domain.
+    schema-projection stage validates the complete FeedItem domain. That next
+    stage must consume one receipt-verified document at a time and produce the
+    exact shared shadow-row shape. Admit only faithful strings, booleans, and
+    JavaScript-safe integers into typed columns. Preserve missing paths in
+    `__absent`, unrepresentable values in `__raw`, unknown author and user-state
+    members in their reserved rest objects, and full content in its dedicated
+    JSON columns. Encode every projected JSON object in one recursive UTF-8
+    key order shared by Rust and TypeScript, and reject reserved nonfinite tags
+    or invalid Unicode instead of producing adapter-specific bytes. Reject
+    negative zero because JSON cannot preserve its sign. Bind the complete row
+    sequence and derived sort keys to the document receipt, then reproject and
+    compare every row on replay. Do not batch complete projected documents in
+    Rust memory or publish a generation before the row receipt closes.
     Every staged head must resolve to a staged change before the change receipt
     is accepted. Change and operation receipts in one stage must bind the same
     exact source identity. Missing rows, changed layout entries, dangling graph

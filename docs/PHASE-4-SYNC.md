@@ -363,6 +363,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.79 | Bounded immutable list and text order with deleted-anchor retention, disk-backed iterative traversal, and receipt-bound exact replay | ✓ | High |
 | 4.80 | Bounded FeedItem topology reconstruction with deleted-entity omission, visible-sequence renumbering, depth admission, and receipt-bound exact replay | ✓ | High |
 | 4.81 | Bounded lossless FeedItem JSON reconstruction with exact map, list, text, scalar, entity-identity, and replay receipts | ✓ | High |
+| 4.82 | Lossless native FeedItem row projection with safe-integer columns, canonical cross-runtime JSON, exact absence and raw escapes, one-document memory bounds, and receipt-bound replay | ✓ | High |
 
 ---
 

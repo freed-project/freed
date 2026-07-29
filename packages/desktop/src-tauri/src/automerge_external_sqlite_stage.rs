@@ -7,6 +7,9 @@
 
 use crate::automerge_external_change_rows::{ExternalChangeRowLimits, ExternalChangeRowSummary};
 use crate::automerge_external_document_run::ExternalVerifiedDocumentLayout;
+use crate::automerge_external_feed_item_projection::{
+    project_feed_item_document, FeedItemProjectionError,
+};
 use crate::automerge_external_operation_rows::{
     ExternalOperationRowLimits, ExternalOperationRowSummary, ObjectReference, OperationKey,
     OperationScalar,
@@ -16,6 +19,7 @@ use crate::automerge_external_row_run::{
     ExternalRowRunConsumeError, ExternalRowRunError, ExternalRowRunLimits,
     ExternalVerifiedChangeRow, ExternalVerifiedOperationRow, ExternalVerifiedPayloadReader,
 };
+use crate::shadow_store::FeedItemRow;
 use rusqlite::blob::ZeroBlob;
 use rusqlite::types::ValueRef;
 use rusqlite::{
@@ -27,7 +31,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 
 const STAGE_APPLICATION_ID: i64 = 0x4652_4f53;
-const STAGE_SCHEMA_VERSION: i64 = 11;
+const STAGE_SCHEMA_VERSION: i64 = 12;
 const MAX_FEED_ITEM_OBJECT_DEPTH: i64 = 128;
 const MAX_FEED_ITEM_JSON_BYTES: usize = 4 * 1024 * 1024;
 
@@ -361,6 +365,45 @@ CREATE TABLE IF NOT EXISTS external_feed_item_document_receipt (
     feedItemDocumentsSha256 = lower(feedItemDocumentsSha256)
   )
 ) STRICT;
+
+CREATE TABLE IF NOT EXISTS external_feed_item_projection_rows (
+  entityOperationIndex INTEGER PRIMARY KEY
+    REFERENCES external_feed_item_documents(entityOperationIndex) ON DELETE CASCADE,
+  globalId TEXT NOT NULL UNIQUE CHECK (length(CAST(globalId AS BLOB)) BETWEEN 1 AND 4096),
+  platform TEXT,
+  contentType TEXT,
+  publishedAt INTEGER,
+  capturedAt INTEGER,
+  authorId TEXT,
+  authorDisplayName TEXT,
+  authorHandle TEXT,
+  sourceUrl TEXT,
+  hidden INTEGER CHECK (hidden IS NULL OR hidden IN (0, 1)),
+  saved INTEGER CHECK (saved IS NULL OR saved IN (0, 1)),
+  archived INTEGER CHECK (archived IS NULL OR archived IN (0, 1)),
+  readAt INTEGER,
+  archivedAt INTEGER,
+  likedAt INTEGER,
+  tags TEXT CHECK (tags IS NULL OR json_valid(tags)),
+  contentBlob TEXT CHECK (contentBlob IS NULL OR json_valid(contentBlob)),
+  preservedBlob TEXT CHECK (preservedBlob IS NULL OR json_valid(preservedBlob)),
+  rest TEXT NOT NULL CHECK (json_valid(rest) AND json_type(rest) = 'object'),
+  sortAt INTEGER NOT NULL,
+  CHECK (sortAt = COALESCE(publishedAt, 0))
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS external_feed_item_projection_receipt (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  feedItemDocumentsSha256 TEXT NOT NULL CHECK (
+    length(feedItemDocumentsSha256) = 64 AND
+    feedItemDocumentsSha256 = lower(feedItemDocumentsSha256)
+  ),
+  feedItemCount INTEGER NOT NULL CHECK (feedItemCount >= 0),
+  feedItemProjectionRowsSha256 TEXT NOT NULL CHECK (
+    length(feedItemProjectionRowsSha256) = 64 AND
+    feedItemProjectionRowsSha256 = lower(feedItemProjectionRowsSha256)
+  )
+) STRICT;
 "#;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -443,6 +486,13 @@ struct ExternalFeedItemDocumentReceipt {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+struct ExternalFeedItemProjectionReceipt {
+    feed_item_documents_sha256: String,
+    feed_item_count: u64,
+    feed_item_projection_rows_sha256: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct ExternalOperationTarget {
     object_kind: String,
     object_actor_index: Option<i64>,
@@ -458,6 +508,7 @@ pub(super) enum ExternalSqliteStageError {
     Sql(rusqlite::Error),
     Io(std::io::Error),
     RowRun(ExternalRowRunError),
+    Projection(FeedItemProjectionError),
     InvalidDatabaseIdentity,
     SchemaContractMismatch,
     IncompleteStage,
@@ -484,12 +535,19 @@ impl From<ExternalRowRunError> for ExternalSqliteStageError {
     }
 }
 
+impl From<FeedItemProjectionError> for ExternalSqliteStageError {
+    fn from(error: FeedItemProjectionError) -> Self {
+        Self::Projection(error)
+    }
+}
+
 impl fmt::Display for ExternalSqliteStageError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Sql(error) => write!(formatter, "Automerge SQLite stage SQL failed: {error}"),
             Self::Io(error) => write!(formatter, "Automerge SQLite stage I/O failed: {error}"),
             Self::RowRun(error) => error.fmt(formatter),
+            Self::Projection(error) => error.fmt(formatter),
             Self::InvalidDatabaseIdentity => {
                 formatter.write_str("Automerge SQLite stage database identity is invalid")
             }
@@ -1171,6 +1229,193 @@ fn materialize_feed_item_documents(
     Ok(receipt)
 }
 
+fn materialize_feed_item_projection_rows(
+    connection: &mut Connection,
+) -> StageResult<ExternalFeedItemProjectionReceipt> {
+    configure_connection(connection)?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    initialize_or_validate_schema(&transaction)?;
+    let document_receipt = read_feed_item_document_receipt(&transaction)?
+        .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+    build_expected_feed_item_nodes(&transaction)?;
+    validate_feed_item_node_set(&transaction)?;
+    build_expected_feed_item_documents(&transaction)?;
+    validate_feed_item_document_set(&transaction)?;
+    if feed_item_documents_sha256(&transaction)? != document_receipt.feed_item_documents_sha256 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+
+    let stored_receipt = read_feed_item_projection_receipt(&transaction)?;
+    let stored_count = transaction.query_row(
+        "SELECT COUNT(*) FROM external_feed_item_projection_rows;",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if stored_receipt.is_none() {
+        if stored_count != 0 {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        populate_feed_item_projection_rows(&transaction)?;
+    }
+    validate_feed_item_projection_row_set(&transaction)?;
+
+    let feed_item_count = transaction.query_row(
+        "SELECT COUNT(*) FROM external_feed_item_projection_rows;",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    let receipt = ExternalFeedItemProjectionReceipt {
+        feed_item_documents_sha256: document_receipt.feed_item_documents_sha256,
+        feed_item_count: u64::try_from(feed_item_count)
+            .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+        feed_item_projection_rows_sha256: feed_item_projection_rows_sha256(&transaction)?,
+    };
+    if let Some(stored) = stored_receipt {
+        if stored != receipt {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        transaction.commit()?;
+        return Ok(receipt);
+    }
+    insert_feed_item_projection_receipt(&transaction, &receipt)?;
+    transaction.commit()?;
+    Ok(receipt)
+}
+
+fn populate_feed_item_projection_rows(transaction: &Transaction<'_>) -> StageResult<()> {
+    visit_feed_item_documents(transaction, |entity_operation_index, global_id, json| {
+        let row = project_feed_item_document(json)?;
+        if row.global_id != global_id {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        transaction.execute(
+            "INSERT INTO external_feed_item_projection_rows (\
+             entityOperationIndex, globalId, platform, contentType, publishedAt, capturedAt, \
+             authorId, authorDisplayName, authorHandle, sourceUrl, hidden, saved, archived, \
+             readAt, archivedAt, likedAt, tags, contentBlob, preservedBlob, rest, sortAt) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, \
+                     ?16, ?17, ?18, ?19, ?20, ?21);",
+            params![
+                entity_operation_index,
+                row.global_id,
+                row.platform,
+                row.content_type,
+                row.published_at,
+                row.captured_at,
+                row.author_id,
+                row.author_display_name,
+                row.author_handle,
+                row.source_url,
+                row.hidden,
+                row.saved,
+                row.archived,
+                row.read_at,
+                row.archived_at,
+                row.liked_at,
+                row.tags,
+                row.content_blob,
+                row.preserved_blob,
+                row.rest,
+                row.sort_key(),
+            ],
+        )?;
+        Ok(())
+    })
+}
+
+fn validate_feed_item_projection_row_set(transaction: &Transaction<'_>) -> StageResult<()> {
+    let (document_count, projection_count) = transaction.query_row(
+        "SELECT \
+           (SELECT COUNT(*) FROM external_feed_item_documents), \
+           (SELECT COUNT(*) FROM external_feed_item_projection_rows);",
+        [],
+        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+    )?;
+    if document_count != projection_count {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    visit_feed_item_documents(transaction, |entity_operation_index, global_id, json| {
+        let expected = project_feed_item_document(json)?;
+        if expected.global_id != global_id {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        let actual = transaction
+            .query_row(
+                "SELECT globalId, platform, contentType, publishedAt, capturedAt, authorId, \
+                        authorDisplayName, authorHandle, sourceUrl, hidden, saved, archived, \
+                        readAt, archivedAt, likedAt, tags, contentBlob, preservedBlob, rest \
+                 FROM external_feed_item_projection_rows WHERE entityOperationIndex = ?1;",
+                [entity_operation_index],
+                |row| {
+                    Ok(FeedItemRow {
+                        global_id: row.get(0)?,
+                        platform: row.get(1)?,
+                        content_type: row.get(2)?,
+                        published_at: row.get(3)?,
+                        captured_at: row.get(4)?,
+                        author_id: row.get(5)?,
+                        author_display_name: row.get(6)?,
+                        author_handle: row.get(7)?,
+                        source_url: row.get(8)?,
+                        hidden: row.get(9)?,
+                        saved: row.get(10)?,
+                        archived: row.get(11)?,
+                        read_at: row.get(12)?,
+                        archived_at: row.get(13)?,
+                        liked_at: row.get(14)?,
+                        tags: row.get(15)?,
+                        content_blob: row.get(16)?,
+                        preserved_blob: row.get(17)?,
+                        rest: row.get(18)?,
+                    })
+                },
+            )
+            .optional()?
+            .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+        if actual != expected {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        Ok(())
+    })?;
+    if foreign_key_check_has_row(
+        transaction,
+        "PRAGMA foreign_key_check(external_feed_item_projection_rows);",
+    )? {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    Ok(())
+}
+
+fn visit_feed_item_documents(
+    transaction: &Transaction<'_>,
+    mut visitor: impl FnMut(i64, &str, &str) -> StageResult<()>,
+) -> StageResult<()> {
+    let mut after_entity_operation_index = -1_i64;
+    let mut statement = transaction.prepare(
+        "SELECT entityOperationIndex, globalId, jsonText \
+         FROM external_feed_item_documents \
+         WHERE entityOperationIndex > ?1 \
+         ORDER BY entityOperationIndex LIMIT 1;",
+    )?;
+    loop {
+        let document = statement
+            .query_row([after_entity_operation_index], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .optional()?;
+        let Some((entity_operation_index, global_id, json)) = document else {
+            break;
+        };
+        visitor(entity_operation_index, &global_id, &json)?;
+        after_entity_operation_index = entity_operation_index;
+    }
+    Ok(())
+}
+
 fn configure_connection(connection: &Connection) -> StageResult<()> {
     connection.pragma_update(None, "foreign_keys", "ON")?;
     // Winner selection may sort a source-sized operation set. Force SQLite to
@@ -1620,6 +1865,44 @@ fn insert_feed_item_document_receipt(
             i64::try_from(receipt.json_byte_length)
                 .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
             receipt.feed_item_documents_sha256,
+        ],
+    )?;
+    Ok(())
+}
+
+fn read_feed_item_projection_receipt(
+    transaction: &Transaction<'_>,
+) -> StageResult<Option<ExternalFeedItemProjectionReceipt>> {
+    transaction
+        .query_row(
+            "SELECT feedItemDocumentsSha256, feedItemCount, feedItemProjectionRowsSha256 \
+             FROM external_feed_item_projection_receipt WHERE singleton = 1;",
+            [],
+            |row| {
+                Ok(ExternalFeedItemProjectionReceipt {
+                    feed_item_documents_sha256: row.get(0)?,
+                    feed_item_count: row.get::<_, i64>(1)? as u64,
+                    feed_item_projection_rows_sha256: row.get(2)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(ExternalSqliteStageError::from)
+}
+
+fn insert_feed_item_projection_receipt(
+    transaction: &Transaction<'_>,
+    receipt: &ExternalFeedItemProjectionReceipt,
+) -> StageResult<()> {
+    transaction.execute(
+        "INSERT INTO external_feed_item_projection_receipt (\
+         singleton, feedItemDocumentsSha256, feedItemCount, feedItemProjectionRowsSha256) \
+         VALUES (1, ?1, ?2, ?3);",
+        params![
+            receipt.feed_item_documents_sha256,
+            i64::try_from(receipt.feed_item_count)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            receipt.feed_item_projection_rows_sha256,
         ],
     )?;
     Ok(())
@@ -3585,6 +3868,21 @@ fn feed_item_documents_sha256(connection: &Connection) -> StageResult<String> {
     Ok(lower_hex(&hasher.finalize()))
 }
 
+fn feed_item_projection_rows_sha256(connection: &Connection) -> StageResult<String> {
+    let mut hasher = Sha256::new();
+    hash_field(&mut hasher, b"freed-automerge-feed-item-projection-rows-v1");
+    hash_query_rows(
+        connection,
+        &mut hasher,
+        "feed-item-projection-rows",
+        "SELECT entityOperationIndex, globalId, platform, contentType, publishedAt, capturedAt, \
+                authorId, authorDisplayName, authorHandle, sourceUrl, hidden, saved, archived, \
+                readAt, archivedAt, likedAt, tags, contentBlob, preservedBlob, rest, sortAt \
+         FROM external_feed_item_projection_rows ORDER BY entityOperationIndex;",
+    )?;
+    Ok(lower_hex(&hasher.finalize()))
+}
+
 fn hash_query_rows(
     connection: &Connection,
     hasher: &mut Sha256,
@@ -5284,6 +5582,53 @@ mod tests {
             materialize_feed_item_documents(&mut connection).unwrap(),
             document_receipt
         );
+        let projection_receipt = materialize_feed_item_projection_rows(&mut connection).unwrap();
+        assert_eq!(projection_receipt.feed_item_count, 1);
+        let projected = connection
+            .query_row(
+                "SELECT globalId, authorId, platform, rest, sortAt \
+                 FROM external_feed_item_projection_rows \
+                 WHERE entityOperationIndex = 1;",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, i64>(4)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(projected.0, "rss:item");
+        assert_eq!(projected.1.as_deref(), Some("author"));
+        assert_eq!(projected.2, None);
+        assert_eq!(projected.4, 0);
+        let rest = serde_json::from_str::<serde_json::Value>(&projected.3).unwrap();
+        assert_eq!(rest["topics"], serde_json::json!(["alpha", "beta"]));
+        assert_eq!(rest["summary"], "hello \"world\"\n");
+        assert!(rest["__absent"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|path| path == "platform"));
+        assert_eq!(
+            materialize_feed_item_projection_rows(&mut connection).unwrap(),
+            projection_receipt
+        );
+        connection
+            .execute(
+                "UPDATE external_feed_item_projection_rows \
+                 SET rest = json_set(rest, '$.intruder', 1) \
+                 WHERE entityOperationIndex = 1;",
+                [],
+            )
+            .unwrap();
+        assert!(matches!(
+            materialize_feed_item_projection_rows(&mut connection),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
         connection
             .execute(
                 "UPDATE external_feed_item_documents \
@@ -5507,6 +5852,62 @@ mod tests {
             materialize_feed_item_documents(&mut connection),
             Err(ExternalSqliteStageError::IncompleteStage)
         ));
+    }
+
+    #[test]
+    fn feed_item_projection_rejects_reserved_rest_collisions_without_partial_rows() {
+        let mut connection = complete_minimal_graph();
+        connection
+            .execute(
+                "UPDATE external_operations SET keyName = 'feedItems', action = 0 \
+                 WHERE operationIndex = 0;",
+                [],
+            )
+            .unwrap();
+        insert_map_value(&connection, 1, 2, 1, "rss:item", 0, "null", None);
+        insert_map_value(
+            &connection,
+            2,
+            3,
+            2,
+            "globalId",
+            1,
+            "string",
+            Some("rss:item"),
+        );
+        insert_map_value(
+            &connection,
+            3,
+            4,
+            2,
+            "__raw",
+            1,
+            "string",
+            Some("user-data"),
+        );
+        set_operation_bounds(&connection, 4, 4, 0);
+
+        materialize_through_sequences(&mut connection);
+        materialize_feed_item_nodes(&mut connection).unwrap();
+        materialize_feed_item_documents(&mut connection).unwrap();
+        assert!(matches!(
+            materialize_feed_item_projection_rows(&mut connection),
+            Err(ExternalSqliteStageError::Projection(
+                FeedItemProjectionError::ReservedRestKey { .. }
+            ))
+        ));
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT \
+                       (SELECT COUNT(*) FROM external_feed_item_projection_rows), \
+                       (SELECT COUNT(*) FROM external_feed_item_projection_receipt);",
+                    [],
+                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+                )
+                .unwrap(),
+            (0, 0)
+        );
     }
 
     #[test]
