@@ -20106,7 +20106,35 @@ export function framePinnedLeaseArchiveHelperInvocation(
 
 function openPinnedLeaseArchiveHelper() {
   try {
-    const pythonRuntime = resolveLeaseArchivePythonRuntime();
+    // Tooling tests exercise the real descriptor and helper protocol, but a
+    // GitHub runner's /usr directory is not part of the host trust contract.
+    // The explicit Node test context may supply one private copied runtime.
+    // Ordinary CLI and actor processes always take the fixed root-owned path.
+    const testRuntime =
+      typeof process.env.NODE_TEST_CONTEXT === "string" &&
+      process.env.NODE_TEST_CONTEXT !== ""
+        ? {
+            entryPath:
+              process.env.FREED_TEST_LEASE_ARCHIVE_PYTHON_RUNTIME ?? "",
+            trustedRoot:
+              process.env.FREED_TEST_LEASE_ARCHIVE_PYTHON_ROOT ?? "",
+            requiredUid: Number(
+              process.env.FREED_TEST_LEASE_ARCHIVE_PYTHON_UID ?? Number.NaN,
+            ),
+          }
+        : null;
+    const hasCompleteTestRuntime =
+      testRuntime !== null &&
+      path.isAbsolute(testRuntime.entryPath) &&
+      path.isAbsolute(testRuntime.trustedRoot) &&
+      Number.isSafeInteger(testRuntime.requiredUid) &&
+      testRuntime.requiredUid >= 0;
+    const pythonRuntime = hasCompleteTestRuntime
+      ? resolveLeaseArchivePythonRuntime(testRuntime.entryPath, {
+          requiredUid: testRuntime.requiredUid,
+          trustedRoot: testRuntime.trustedRoot,
+        })
+      : resolveLeaseArchivePythonRuntime();
     const source = readPinnedLeaseArchiveHelperSource();
     return Object.freeze({ source, pythonRuntime });
   } catch (error) {
