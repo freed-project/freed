@@ -6,7 +6,10 @@ import { describe, expect, it } from "vitest";
 import { projectFeedItem, reconstructFeedItem } from "./projection.js";
 import {
   SHADOW_COLUMNS,
+  SHADOW_DERIVED_COLUMNS,
+  SHADOW_TABLE_DDL,
   createShadowSchema,
+  sortKeyOf,
   diffThroughStore,
   readAllRows,
   reconstructAllFromStore,
@@ -127,13 +130,32 @@ describe("shadow store", () => {
 
   it("binds every declared column, in order", () => {
     // Guards the failure mode where a column is added to the table and missed
-    // in the INSERT, which SQLite would accept as a silent NULL.
+    // in the INSERT, which SQLite would accept as a silent NULL. Read the
+    // column list out of the DDL rather than trusting the same constant the
+    // INSERT is built from, so the check is against the table as declared.
+    const declared = SHADOW_TABLE_DDL.slice(
+      SHADOW_TABLE_DDL.indexOf("(") + 1,
+      SHADOW_TABLE_DDL.lastIndexOf(")"),
+    )
+      .split(",")
+      .map((line) => line.trim().split(/\s+/)[0])
+      .filter((name): name is string => Boolean(name));
+    expect(declared).toStrictEqual([
+      ...SHADOW_COLUMNS,
+      ...SHADOW_DERIVED_COLUMNS,
+    ]);
+
     const row = projectFeedItem(item as unknown as FeedItem);
     const params = rowToParams(row);
-    expect(params).toHaveLength(SHADOW_COLUMNS.length);
-    params.forEach((value, index) => {
-      expect(value).toStrictEqual(row[SHADOW_COLUMNS[index]!]);
+    expect(params).toHaveLength(declared.length);
+    // Authoritative columns bind by position; the derived tail is computed and
+    // has no counterpart on the row.
+    SHADOW_COLUMNS.forEach((column, index) => {
+      expect(params[index]).toStrictEqual(row[column]);
     });
+    expect(params.slice(SHADOW_COLUMNS.length)).toStrictEqual([
+      sortKeyOf(row),
+    ]);
   });
 
   it("rejects a value STRICT should not accept", () => {
