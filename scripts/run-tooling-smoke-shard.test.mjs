@@ -90,6 +90,33 @@ for (const variant of ["one", "two"]) {
   assert.equal(pattern.test("not registered"), false);
 });
 
+test("top-level extraction admits only a name-transparent local test wrapper", () => {
+  const transparent = `
+    import nodeTest from "node:test";
+    function test(name, callback) {
+      return nodeTest(name, async (context) => callback(context));
+    }
+    test("first", () => {});
+  `;
+  assert.deepEqual(
+    extractTopLevelTestUnits(transparent, "wrapped.test.mjs", {
+      allowTransparentLocalWrapper: true,
+    }).map(({ name }) => name),
+    ["first"],
+  );
+  const renamed = transparent.replace(
+    "return nodeTest(name,",
+    "return nodeTest(`wrapped: ${name}`,",
+  );
+  assert.throws(
+    () =>
+      extractTopLevelTestUnits(renamed, "renamed.test.mjs", {
+        allowTransparentLocalWrapper: true,
+      }),
+    /aliases or passes/,
+  );
+});
+
 test("shard assignment covers every item exactly once", () => {
   const items = Array.from({ length: 64 }, (_, index) => `test ${index}`);
   const assignments = Array.from({ length: 8 }, (_, index) =>
@@ -247,6 +274,7 @@ test("repository plans are nonempty and cover each named suite", () => {
     "general",
     "automation-control",
     "kernel-guard-cutover",
+    "nightly-self-improve",
     "outcome-ledger-repair",
   ]) {
     const plans = Array.from({ length: 8 }, (_, index) =>
@@ -266,6 +294,7 @@ test("repository plans are nonempty and cover each named suite", () => {
       const specialFiles = new Set([
         "scripts/automation-control.test.mjs",
         "scripts/automation-kernel-guard-cutover.test.mjs",
+        "scripts/nightly-self-improve.test.mjs",
         "scripts/outcome-ledger-repair.test.mjs",
       ]);
       // The darwin-only files moved to the macOS lane. They gate every test
@@ -309,7 +338,9 @@ test("repository plans are nonempty and cover each named suite", () => {
       const source = readFileSync(path.join(process.cwd(), testFile), "utf8");
       assert.equal(
         names.length,
-        extractTopLevelTestUnits(source, testFile).length,
+        extractTopLevelTestUnits(source, testFile, {
+          allowTransparentLocalWrapper: suite === "nightly-self-improve",
+        }).length,
       );
     }
   }
