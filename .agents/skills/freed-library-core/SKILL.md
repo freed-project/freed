@@ -158,6 +158,13 @@ files with `include_str!`; the shared TypeScript contract must prove its
 generated DDL is byte-equivalent after whitespace normalization. Do not add a
 second handwritten native schema.
 
+Do not trust `PRAGMA user_version` by itself. Before accepting an authoritative
+database, compare its complete non-internal table, index, trigger, and view
+catalog against a fresh reference generated from the checked-in schema for
+that version. A missing or additional object fails closed before authority
+state is read or written. Integrity checking and catalog identity are separate
+contracts. Neither substitutes for the other.
+
 Apply projection upserts, deletions, and the monotone projection revision in
 one database transaction. A bounded page or count binds one revision. A later
 page using a cursor from an older revision fails closed instead of walking

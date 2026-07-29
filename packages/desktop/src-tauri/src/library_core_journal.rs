@@ -33,6 +33,9 @@ const MAX_OPERATION_ID_BYTES: usize = 128;
 const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 const MAX_OUTBOX_PAGE_ENTRIES: usize = 256;
 const MAX_OUTBOX_PAGE_BYTES: usize = 4_194_304;
+const MAX_SCHEMA_CATALOG_ENTRIES: usize = 256;
+const MAX_SCHEMA_CATALOG_IDENTIFIER_BYTES: i64 = 256;
+const MAX_SCHEMA_CATALOG_BYTES: i64 = 1_048_576;
 const OPERATION_OUTBOX_PAGE_SQL: &str = "
     SELECT operation.operationId, outbox.ingestSequence,
            outbox.enqueuedAtMs,
@@ -67,6 +70,7 @@ enum JournalError {
     Sql(rusqlite::Error),
     UnsupportedSchemaVersion { expected: i64, actual: i64 },
     UnversionedSchemaPresent,
+    SchemaContractMismatch,
     InvalidVerifiedInput { field: &'static str },
     ActorEnrollmentConflict { actor_id: String },
     ActorNotFound { actor_id: String },
@@ -97,6 +101,9 @@ impl fmt::Display for JournalError {
             }
             Self::UnversionedSchemaPresent => {
                 formatter.write_str("unversioned authoritative schema is present")
+            }
+            Self::SchemaContractMismatch => {
+                formatter.write_str("authoritative schema does not match its checked-in contract")
             }
             Self::InvalidVerifiedInput { field } => {
                 write!(formatter, "invalid verified input field: {field}")
@@ -293,6 +300,14 @@ struct EnrollmentOutboxPage {
     entries: Vec<EnrollmentOutboxEntry>,
     next_cursor: Option<EnrollmentOutboxCursor>,
     has_more: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SchemaCatalogEntry {
+    object_type: String,
+    name: String,
+    table_name: String,
+    sql: String,
 }
 
 struct LibraryCoreJournal {
@@ -556,7 +571,79 @@ impl LibraryCoreJournal {
                 actual,
             });
         }
+        Self::verify_schema_contract(&transaction)?;
         transaction.commit()?;
+        Ok(())
+    }
+
+    fn schema_catalog(connection: &Connection) -> JournalResult<Vec<SchemaCatalogEntry>> {
+        let mut statement = connection.prepare(
+            "SELECT
+               length(CAST(type AS BLOB)),
+               length(CAST(name AS BLOB)),
+               length(CAST(tbl_name AS BLOB)),
+               length(CAST(sql AS BLOB)),
+               type, name, tbl_name, sql
+             FROM sqlite_schema
+             WHERE type IN ('table', 'index', 'trigger', 'view')
+               AND name NOT LIKE 'sqlite_%'
+             ORDER BY type COLLATE BINARY, name COLLATE BINARY,
+                      tbl_name COLLATE BINARY
+             LIMIT ?1;",
+        )?;
+        let mut rows = statement.query(params![MAX_SCHEMA_CATALOG_ENTRIES as i64 + 1])?;
+        let mut entries = Vec::new();
+        let mut retained_bytes = 0i64;
+        while let Some(row) = rows.next()? {
+            if entries.len() == MAX_SCHEMA_CATALOG_ENTRIES {
+                return Err(JournalError::SchemaContractMismatch);
+            }
+            let type_bytes: Option<i64> = row.get(0)?;
+            let name_bytes: Option<i64> = row.get(1)?;
+            let table_name_bytes: Option<i64> = row.get(2)?;
+            let sql_bytes: Option<i64> = row.get(3)?;
+            let (type_bytes, name_bytes, table_name_bytes, sql_bytes) =
+                match (type_bytes, name_bytes, table_name_bytes, sql_bytes) {
+                    (
+                        Some(type_bytes),
+                        Some(name_bytes),
+                        Some(table_name_bytes),
+                        Some(sql_bytes),
+                    ) if (1..=16).contains(&type_bytes)
+                        && (1..=MAX_SCHEMA_CATALOG_IDENTIFIER_BYTES).contains(&name_bytes)
+                        && (1..=MAX_SCHEMA_CATALOG_IDENTIFIER_BYTES)
+                            .contains(&table_name_bytes)
+                        && (1..=MAX_SCHEMA_CATALOG_BYTES).contains(&sql_bytes) =>
+                    {
+                        (type_bytes, name_bytes, table_name_bytes, sql_bytes)
+                    }
+                    _ => return Err(JournalError::SchemaContractMismatch),
+                };
+            retained_bytes = retained_bytes
+                .checked_add(type_bytes)
+                .and_then(|bytes| bytes.checked_add(name_bytes))
+                .and_then(|bytes| bytes.checked_add(table_name_bytes))
+                .and_then(|bytes| bytes.checked_add(sql_bytes))
+                .filter(|bytes| *bytes <= MAX_SCHEMA_CATALOG_BYTES)
+                .ok_or(JournalError::SchemaContractMismatch)?;
+            entries.push(SchemaCatalogEntry {
+                object_type: row.get(4)?,
+                name: row.get(5)?,
+                table_name: row.get(6)?,
+                sql: row.get(7)?,
+            });
+        }
+        Ok(entries)
+    }
+
+    fn verify_schema_contract(connection: &Connection) -> JournalResult<()> {
+        let reference = Connection::open_in_memory()?;
+        reference.execute_batch(AUTHORITATIVE_SCHEMA_V1_SQL)?;
+        let expected = Self::schema_catalog(&reference)?;
+        let actual = Self::schema_catalog(connection)?;
+        if actual != expected {
+            return Err(JournalError::SchemaContractMismatch);
+        }
         Ok(())
     }
 
@@ -1532,6 +1619,30 @@ mod tests {
         assert_eq!(synchronous, 2);
         assert_eq!(foreign_keys, 1);
         assert_eq!(version, AUTHORITATIVE_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn opening_rejects_missing_or_unregistered_schema_objects() {
+        for mutation in [
+            "DROP INDEX library_core_replication_outbox_order;",
+            "CREATE TABLE unregistered_authority_state (id TEXT PRIMARY KEY) STRICT;",
+        ] {
+            let directory = tempfile::tempdir().expect("temporary directory");
+            let path = directory.path().join("library-core.sqlite");
+            let journal = LibraryCoreJournal::open(&path).expect("create journal");
+            drop(journal);
+            let connection = Connection::open(&path).expect("open raw database");
+            connection
+                .execute_batch(mutation)
+                .expect("mutate schema without changing user version");
+            drop(connection);
+
+            match LibraryCoreJournal::open(&path) {
+                Err(JournalError::SchemaContractMismatch) => {}
+                Err(error) => panic!("unexpected schema error: {error}"),
+                Ok(_) => panic!("schema mutation must fail closed: {mutation}"),
+            }
+        }
     }
 
     #[test]
