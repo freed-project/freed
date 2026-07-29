@@ -1,3 +1,5 @@
+import "./test-helpers/lease-archive-python-runtime.mjs";
+
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import {
@@ -1958,14 +1960,24 @@ test("kernel guard cutover admits only an explicit local filesystem type", () =>
   );
 });
 
-test("kernel guard filesystem resolver has explicit macOS and Linux allowlists", () => {
+test("kernel guard filesystem resolver admits supported macOS APFS registrations and explicit Linux types", () => {
   const stateRoot = temporaryStateRoot();
-  assert.equal(
-    resolveAutomationKernelGuardFilesystemType(stateRoot, {
-      platform: "darwin",
-      statfs: () => ({ type: 0x1an }),
-    }),
-    "apfs",
+  for (const type of [0x19n, 0x1an]) {
+    assert.equal(
+      resolveAutomationKernelGuardFilesystemType(stateRoot, {
+        platform: "darwin",
+        statfs: () => ({ type }),
+      }),
+      "apfs",
+    );
+  }
+  assert.throws(
+    () =>
+      resolveAutomationKernelGuardFilesystemType(stateRoot, {
+        platform: "darwin",
+        statfs: () => ({ type: 0x1bn }),
+      }),
+    /not in the darwin local allowlist/,
   );
   for (const [type, expected] of [
     [0xef53n, "ext"],
