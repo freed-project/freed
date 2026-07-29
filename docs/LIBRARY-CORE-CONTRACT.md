@@ -48,6 +48,12 @@ protocol input. Binary values, digests, public keys, nonces, and signatures use
 fixed-length lowercase hexadecimal strings. SHA-256 digests, Ed25519 public
 keys, and 32-byte nonces are exactly 64 characters. Ed25519 signatures are
 exactly 128 characters. Private keys never enter a canonical value.
+Direct canonical values and domain-separated digest or signature inputs have a
+maximum nesting depth of 128. The 4 MiB direct-input ceiling includes the
+domain prefix, and one value may contain at most 65,536 nodes. A construction
+encoder rejects accessors, symbol keys,
+non-enumerable properties, non-plain objects, decorated arrays, and cycles
+rather than interpreting JavaScript object behavior as protocol data.
 
 Registered fields that contain fractional values do not use JSON numbers in
 canonical protocol objects. Their field contract stores a closed
@@ -74,6 +80,18 @@ An inbound canonical artifact is accepted only when its received bytes equal
 Unicode before constructing the parsed value. It does not drop unknown fields
 and then verify a reconstructed object. This prevents alternate JSON spellings
 from producing a second signed representation of the same apparent value.
+The construction encoder is not an inbound verifier. In particular, passing
+received bytes through `JSON.parse` before canonicalization is invalid because
+that parser has already erased duplicate object names.
+
+The dormant shared and native construction modules include matching bounded
+inbound canonical-value parsers. They preserve object-name occurrences until
+duplicate rejection, accept only valid UTF-8 and Unicode scalar strings,
+enforce the same 4 MiB, 128-level, 65,536-node, and safe-integer ceilings, and
+require an exact re-encoding match before returning an immutable value. These
+parsers deliberately stop before operation-schema, digest, signature, actor,
+and causal validation. They are a prerequisite for an authoritative verifier,
+not an activation path or an authority receipt.
 
 An otherwise valid v1 outer operation envelope with an unknown operation type
 or payload schema preserves the received canonical payload as opaque evidence,
@@ -462,6 +480,17 @@ logical operation always uses a new ID. `transaction_id`,
 `fence_acquire_operation_id`, `export_operation_id`, and every field named
 `*_operation_id` use this codec unless a closed schema explicitly fixes that
 field to another already registered opaque identifier.
+
+The dormant shared protocol-scalar module is the executable source for the
+64-character lowercase hexadecimal, operation-instance-ID, entity-ID, and
+nonnegative-safe-integer syntax checks. A v1 entity ID is a nonempty Unicode
+scalar string whose UTF-8 encoding is at most 4,096 bytes. It is not normalized.
+The validator counts bytes without allocating an encoded copy and rejects lone
+UTF-16 surrogates. The legacy epoch bootstrap validator consumes the shared
+fixed-width and numeric predicates instead of carrying a second regex or
+numeric interpretation. Passing a scalar predicate proves only the encoded
+shape. Randomness, digest derivation, signature validity, authority, and
+field-specific semantics remain separate checks.
 
 Canonical sets use their field-specific sort before `C`. `causal_frontier`
 sorts ascending by `(actor_id, sequence, operation_id, chain_digest)`,
