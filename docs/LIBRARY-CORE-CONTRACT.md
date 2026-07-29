@@ -2246,6 +2246,19 @@ rebuildable, and it never issues an authoritative durability receipt. Cache,
 temporary storage, reader count, and mmap limits are explicit and measured.
 "Let SQLite decide" is not a memory budget.
 
+The dormant native projection kernel is a deliberately smaller predecessor to
+this authoritative store. It consumes the same checked-in schema as the shared
+TypeScript shadow-store contract, applies row upserts and deletions with one
+monotone projection revision in one SQLite transaction, and binds keyset pages
+and counts to that revision. A cursor from an older revision fails closed
+instead of mixing projections. While Automerge remains authoritative this
+derived store may use `synchronous=NORMAL`, emits no authoritative receipt, and
+is fully rebuildable. Its first physical schema is versioned, `feed_page_v1`
+enforces its registered 128-row ceiling, and the dormant base tier pins a
+5-second busy timeout, 32 MiB page cache, file-backed temporary work, and no
+mmap. Shipping this dark module does not open a user database, activate a
+reader, satisfy Gate B, or authorize any Gate C through Gate H transition.
+
 Blob content is content-addressed and may live outside hot tables. Before an
 authoritative row may reference a new external blob, native code writes and
 fsyncs a temporary file, atomically renames it to the content-addressed path,
