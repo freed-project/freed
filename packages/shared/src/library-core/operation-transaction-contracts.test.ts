@@ -183,6 +183,29 @@ describe("Library Core transaction assembly", () => {
     ).toThrow(/closed member construction schema/);
   });
 
+  it("assembles only the dense element descriptors it snapshots", () => {
+    const genuine = members(1);
+    let numericReads = 0;
+    const adversarial = new Proxy(genuine, {
+      get(target, property, receiver) {
+        if (property === "0") {
+          numericReads += 1;
+          return Object.freeze({
+            body: target[0].body,
+            member_digest: target[0].member_digest,
+          });
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    expect(
+      assembleLibraryCoreTransactionV1(adversarial, HEX.chain, { digest })
+        .members,
+    ).toHaveLength(1);
+    expect(numericReads).toBe(0);
+  });
+
   it("rejects empty, sparse, oversized, and invalid-chain inputs", () => {
     expect(() =>
       assembleLibraryCoreTransactionV1([], HEX.chain, { digest }),

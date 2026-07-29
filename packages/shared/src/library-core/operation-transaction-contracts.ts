@@ -75,15 +75,24 @@ function requireDigest(
   return value;
 }
 
-function requireDenseConstructionArray(
+function snapshotDenseConstructionArray(
   value: readonly LibraryCoreTransactionMemberConstruction[],
-): void {
+): readonly LibraryCoreTransactionMemberConstruction[] {
   if (!Array.isArray(value)) {
     throw new TypeError("transaction members must be an array");
   }
   const names = Object.getOwnPropertyNames(value);
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
   if (
-    names.length !== value.length + 1 ||
+    lengthDescriptor === undefined ||
+    lengthDescriptor.enumerable ||
+    !("value" in lengthDescriptor)
+  ) {
+    throw new TypeError("transaction members require an own length");
+  }
+  const length = lengthDescriptor.value as number;
+  if (
+    names.length !== length + 1 ||
     names[names.length - 1] !== "length" ||
     Object.getOwnPropertySymbols(value).length !== 0
   ) {
@@ -91,7 +100,8 @@ function requireDenseConstructionArray(
       "transaction members must be a dense undecorated array",
     );
   }
-  for (let index = 0; index < value.length; index += 1) {
+  const snapshot: LibraryCoreTransactionMemberConstruction[] = [];
+  for (let index = 0; index < length; index += 1) {
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
     if (
       descriptor === undefined ||
@@ -102,7 +112,11 @@ function requireDenseConstructionArray(
         "transaction members require enumerable data elements",
       );
     }
+    snapshot.push(
+      descriptor.value as LibraryCoreTransactionMemberConstruction,
+    );
   }
+  return Object.freeze(snapshot);
 }
 
 function digest(
@@ -128,8 +142,8 @@ export function assembleLibraryCoreTransactionV1(
   initialPreviousActorChainDigest: unknown,
   dependencies: LibraryCoreOperationDigestDependencies,
 ): LibraryCoreAssembledTransactionV1 {
-  requireDenseConstructionArray(members);
-  if (members.length === 0 || members.length > 1_000) {
+  const memberSnapshot = snapshotDenseConstructionArray(members);
+  if (memberSnapshot.length === 0 || memberSnapshot.length > 1_000) {
     throw new RangeError(
       "a transaction must contain between 1 and 1,000 members",
     );
@@ -138,18 +152,18 @@ export function assembleLibraryCoreTransactionV1(
     initialPreviousActorChainDigest,
     "initial previous actor chain digest",
   );
-  if (!isLibraryCoreTransactionMemberConstruction(members[0])) {
+  if (!isLibraryCoreTransactionMemberConstruction(memberSnapshot[0])) {
     throw new TypeError(
       "transaction members must come from a closed member construction schema",
     );
   }
-  const first = members[0].body;
+  const first = memberSnapshot[0].body;
   const memberDigests: LibraryCoreLowercaseHex64[] = [];
   const operationIds = new Set<string>();
   let canonicalMemberBytes = 0;
 
-  for (let index = 0; index < members.length; index += 1) {
-    const construction = members[index];
+  for (let index = 0; index < memberSnapshot.length; index += 1) {
+    const construction = memberSnapshot[index];
     if (!isLibraryCoreTransactionMemberConstruction(construction)) {
       throw new TypeError(
         "transaction members must come from a closed member construction schema",
@@ -163,7 +177,7 @@ export function assembleLibraryCoreTransactionV1(
       member.schema_version !== first.schema_version ||
       member.actor_id !== first.actor_id ||
       member.transaction_id !== first.transaction_id ||
-      member.transaction_member_count !== members.length ||
+      member.transaction_member_count !== memberSnapshot.length ||
       member.transaction_member_index !== index
     ) {
       throw new TypeError(
@@ -180,7 +194,7 @@ export function assembleLibraryCoreTransactionV1(
     if (
       index > 0 &&
       member.previous_actor_operation_id !==
-        members[index - 1].body.operation_id
+        memberSnapshot[index - 1].body.operation_id
     ) {
       throw new TypeError(
         "each transaction member must name the previous member operation",
@@ -203,7 +217,7 @@ export function assembleLibraryCoreTransactionV1(
 
   const transactionBody = Object.freeze({
     transaction_id: first.transaction_id,
-    transaction_member_count: members.length,
+    transaction_member_count: memberSnapshot.length,
     actor_id: first.actor_id,
     initial_previous_actor_operation_id: first.previous_actor_operation_id,
     initial_previous_actor_chain_digest: initialChainDigest,
@@ -217,8 +231,8 @@ export function assembleLibraryCoreTransactionV1(
 
   const signingMembers: LibraryCoreSigningMemberV1[] = [];
   let previousChainDigest = initialChainDigest;
-  for (let index = 0; index < members.length; index += 1) {
-    const construction = members[index];
+  for (let index = 0; index < memberSnapshot.length; index += 1) {
+    const construction = memberSnapshot[index];
     const actorChainDigest = digest(dependencies, "actor-chain", {
       previous_actor_chain_digest: previousChainDigest,
       transaction_member_digest: construction.member_digest,
