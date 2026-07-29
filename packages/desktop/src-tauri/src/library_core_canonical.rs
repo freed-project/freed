@@ -4,7 +4,8 @@ use std::collections::HashSet;
 const MAX_DIRECT_CANONICAL_BYTES: usize = 4_194_304;
 const MAX_CANONICAL_NESTING_DEPTH: usize = 128;
 const MAX_CANONICAL_NODES: usize = 65_536;
-const OPERATION_DIGEST_DOMAINS: [&str; 12] = [
+const OPERATION_DIGEST_DOMAINS: [&str; 13] = [
+    "authority-key",
     "actor-public-key",
     "actor-id",
     "actor-enrollment-body",
@@ -568,6 +569,20 @@ mod tests {
         assert_eq!(
             actor_public_key_input,
             b"freed.library-core.v1/digest/actor-public-key\0{\"actor_public_key\":\"d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a\",\"signature_algorithm\":\"ed25519\"}"
+        );
+        let authority_key_input = encode_operation_digest_input(
+            "authority-key",
+            &serde_json::json!({
+                "signature_algorithm": "ed25519",
+                "authority_public_key":
+                    "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
+            }),
+            MAX_DIRECT_CANONICAL_BYTES,
+        )
+        .expect("authority key digest input");
+        assert_eq!(
+            authority_key_input,
+            b"freed.library-core.v1/digest/authority-key\0{\"authority_public_key\":\"d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a\",\"signature_algorithm\":\"ed25519\"}"
         );
 
         let signature_input = encode_operation_signature_input(

@@ -55,6 +55,17 @@ describe("Library Core canonical codec", () => {
     ).toBe(
       'freed.library-core.v1/digest/actor-public-key\u0000{"actor_public_key":"d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a","signature_algorithm":"ed25519"}',
     );
+    expect(
+      decoder.decode(
+        encodeLibraryCoreDigestInput("authority-key", {
+          signature_algorithm: "ed25519",
+          authority_public_key:
+            "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+        }),
+      ),
+    ).toBe(
+      'freed.library-core.v1/digest/authority-key\u0000{"authority_public_key":"d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a","signature_algorithm":"ed25519"}',
+    );
     expect(decoder.decode(signatureInput)).toBe(
       'freed.library-core.v1/signature/operation-envelope\u0000{"operation_signing_body_digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}',
     );

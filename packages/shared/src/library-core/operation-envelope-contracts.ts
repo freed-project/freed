@@ -70,6 +70,7 @@ export interface LibraryCoreTransactionMemberConstruction<
 }
 
 export type LibraryCoreConstructionDigestDomain =
+  | "authority-key"
   | "actor-public-key"
   | "actor-id"
   | "actor-enrollment-body"
