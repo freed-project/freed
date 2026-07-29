@@ -155,8 +155,25 @@ INSERT OR IGNORE INTO library_meta (key, integerValue)
 VALUES ('projectionRevision', 0);
 `.trim();
 
-/** Version of the physical shadow schema consumed by every SQLite adapter. */
-export const SHADOW_SCHEMA_VERSION_DDL = "PRAGMA user_version = 1;";
+/**
+ * A projection batch receipt makes retry after response loss exact. The
+ * receipt is derived-store bookkeeping, not a Library Core operation receipt
+ * and never grants mutation authority.
+ */
+export const SHADOW_BATCH_RECEIPT_DDL = `
+CREATE TABLE projection_batches (
+  batchId             TEXT    NOT NULL PRIMARY KEY,
+  inputDigest         TEXT    NOT NULL,
+  previousRevision    INTEGER NOT NULL CHECK (previousRevision >= 0),
+  committedRevision   INTEGER NOT NULL CHECK (committedRevision = previousRevision + 1),
+  upserted             INTEGER NOT NULL CHECK (upserted >= 0),
+  deleted              INTEGER NOT NULL CHECK (deleted >= 0)
+) STRICT;
+`.trim();
+
+/** Physical schema versions consumed by every SQLite adapter. */
+export const SHADOW_V1_SCHEMA_VERSION_DDL = "PRAGMA user_version = 1;";
+export const SHADOW_SCHEMA_VERSION_DDL = "PRAGMA user_version = 2;";
 
 /**
  * Indexes the Stage 5 and 6 surfaces will read through. Declared here with the
@@ -225,10 +242,24 @@ export interface ShadowDatabase {
 }
 
 export function createShadowSchema(db: ShadowDatabase): void {
-  db.exec(SHADOW_TABLE_DDL);
-  db.exec(SHADOW_META_DDL);
-  for (const sql of SHADOW_INDEX_DDL) db.exec(sql);
-  db.exec(SHADOW_SCHEMA_VERSION_DDL);
+  db.exec("BEGIN IMMEDIATE;");
+  try {
+    db.exec(SHADOW_TABLE_DDL);
+    db.exec(SHADOW_META_DDL);
+    for (const sql of SHADOW_INDEX_DDL) db.exec(sql);
+    db.exec(SHADOW_V1_SCHEMA_VERSION_DDL);
+    db.exec(SHADOW_BATCH_RECEIPT_DDL);
+    db.exec(SHADOW_SCHEMA_VERSION_DDL);
+    db.exec("COMMIT;");
+  } catch (error) {
+    try {
+      db.exec("ROLLBACK;");
+    } catch {
+      // Preserve the original migration error. The adapter's recovery path
+      // will reject any store that cannot roll back its schema transaction.
+    }
+    throw error;
+  }
 }
 
 /** Bind order matches SHADOW_WRITE_COLUMNS by construction rather than by hand. */

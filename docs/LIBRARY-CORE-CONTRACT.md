@@ -2259,6 +2259,19 @@ enforces its registered 128-row ceiling, and the dormant base tier pins a
 mmap. Shipping this dark module does not open a user database, activate a
 reader, satisfy Gate B, or authorize any Gate C through Gate H transition.
 
+The derived store records one projection batch receipt in the same transaction
+as its rows, deletions, and revision advance. Its identity is the stable batch
+ID, canonical input digest, and expected previous projection revision. Exact
+retry after timeout, process restart, or response loss returns the original
+receipt without replaying the batch. Reusing the batch ID with a different
+digest or previous revision fails closed. A batch contains between one and
+1,000 combined row upserts and deletion intents and at most 4 MiB of projected
+input. Failure to write the receipt rolls back the entire projection
+transaction. Physical migrations are atomic and cannot bless an already
+present table with an incompatible shape. This is derived-store retry evidence,
+not a signed Library Core operation receipt. It cannot authorize a mutation,
+epoch transition, bootstrap, cutover, or provider action.
+
 Blob content is content-addressed and may live outside hot tables. Before an
 authoritative row may reference a new external blob, native code writes and
 fsyncs a temporary file, atomically renames it to the content-addressed path,

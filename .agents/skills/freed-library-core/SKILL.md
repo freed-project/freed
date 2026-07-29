@@ -152,9 +152,9 @@ receipt.
 
 ## Keep dormant SQLite honest
 
-The native and browser shadow stores share
-`packages/shared/src/library-core/shadow-schema-v1.sql`. Rust consumes that
-file with `include_str!`; the shared TypeScript contract must prove its
+The native and browser shadow stores share the versioned migrations under
+`packages/shared/src/library-core/shadow-schema-v*.sql`. Rust consumes those
+files with `include_str!`; the shared TypeScript contract must prove its
 generated DDL is byte-equivalent after whitespace normalization. Do not add a
 second handwritten native schema.
 
@@ -165,6 +165,16 @@ across mixed projections. Prove the query plan uses the declared keyset index
 without a temporary sort. Enforce the registered query limit at the adapter
 boundary. Pin a physical schema version and set bounded busy handling, cache,
 temporary storage, and mmap behavior explicitly even while the store is dark.
+
+Bind every derived projection batch to one stable batch ID, canonical input
+digest, and expected previous projection revision. Commit its rows, deletions,
+revision advance, and durable receipt together. Bound each batch to at most
+1,000 combined row upserts and deletion intents and 4 MiB of projected input.
+Exact retry after response loss returns the original receipt without
+reapplying. Changed replay tuples, oversized batches, and incompatible
+migration objects fail closed, and a receipt write failure rolls back the whole
+batch. Keep this derived receipt explicitly separate from signed authoritative
+operation receipts. It grants no mutation or activation authority.
 
 A dormant engine has no production caller, opens no user database, emits no
 authority receipt, and does not append an activation-manifest transition. It

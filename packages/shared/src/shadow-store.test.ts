@@ -7,10 +7,12 @@ import { projectFeedItem, reconstructFeedItem } from "./projection.js";
 import {
   SHADOW_COLUMNS,
   SHADOW_DERIVED_COLUMNS,
+  SHADOW_BATCH_RECEIPT_DDL,
   SHADOW_INDEX_DDL,
   SHADOW_META_DDL,
   SHADOW_SCHEMA_VERSION_DDL,
   SHADOW_TABLE_DDL,
+  SHADOW_V1_SCHEMA_VERSION_DDL,
   createShadowSchema,
   sortKeyOf,
   diffThroughStore,
@@ -51,20 +53,27 @@ const item: Record<string, unknown> = {
 };
 
 describe("shadow store", () => {
-  it("keeps the shared DDL identical to the SQL consumed by Rust", () => {
-    const canonical = readFileSync(
+  it("keeps both shared migrations identical to the SQL consumed by Rust", () => {
+    const canonicalV1 = readFileSync(
       new URL("./library-core/shadow-schema-v1.sql", import.meta.url),
       "utf8",
     );
-    expect(normalizeSql(canonical)).toBe(
+    expect(normalizeSql(canonicalV1)).toBe(
       normalizeSql(
         [
           SHADOW_TABLE_DDL,
           SHADOW_META_DDL,
           ...SHADOW_INDEX_DDL,
-          SHADOW_SCHEMA_VERSION_DDL,
+          SHADOW_V1_SCHEMA_VERSION_DDL,
         ].join("\n"),
       ),
+    );
+    const canonicalV2 = readFileSync(
+      new URL("./library-core/shadow-schema-v2.sql", import.meta.url),
+      "utf8",
+    );
+    expect(normalizeSql(canonicalV2)).toBe(
+      normalizeSql([SHADOW_BATCH_RECEIPT_DDL, SHADOW_SCHEMA_VERSION_DDL].join("\n")),
     );
   });
 
@@ -76,6 +85,27 @@ describe("shadow store", () => {
       )
       .all() as Array<{ integerValue: number }>;
     expect(meta?.integerValue).toBe(0);
+    const [version] = db.prepare("PRAGMA user_version").all() as Array<{
+      user_version: number;
+    }>;
+    expect(version?.user_version).toBe(2);
+  });
+
+  it("rolls back a conflicting physical migration without advancing its version", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec(
+      [
+        SHADOW_TABLE_DDL,
+        SHADOW_META_DDL,
+        ...SHADOW_INDEX_DDL,
+        SHADOW_V1_SCHEMA_VERSION_DDL,
+        "CREATE TABLE projection_batches (batchId TEXT PRIMARY KEY) STRICT;",
+      ].join("\n"),
+    );
+
+    expect(() =>
+      createShadowSchema(db as unknown as ShadowDatabase),
+    ).toThrow();
     const [version] = db.prepare("PRAGMA user_version").all() as Array<{
       user_version: number;
     }>;
