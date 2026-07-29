@@ -10,7 +10,10 @@ CREATE TABLE library_core_meta (
 ) STRICT;
 
 INSERT INTO library_core_meta (key, integerValue)
-VALUES ('projectionRevision', 0);
+VALUES
+  ('projectionRevision', 0),
+  ('nextIngestSequence', 1),
+  ('materializerIngestSequence', 0);
 
 CREATE TABLE library_core_actors (
   libraryId                   TEXT    NOT NULL,
@@ -87,6 +90,12 @@ CREATE TABLE library_core_transactions (
   canonicalEnvelopeBytes      INTEGER NOT NULL CHECK (
     canonicalEnvelopeBytes BETWEEN 1 AND 4194304
   ),
+  firstIngestSequence         INTEGER NOT NULL CHECK (
+    firstIngestSequence BETWEEN 1 AND 9007199254740991
+  ),
+  lastIngestSequence          INTEGER NOT NULL CHECK (
+    lastIngestSequence BETWEEN firstIngestSequence AND 9007199254740991
+  ),
   previousRevision            INTEGER NOT NULL CHECK (previousRevision BETWEEN 0 AND 9007199254740990),
   committedRevision           INTEGER NOT NULL CHECK (
     committedRevision = previousRevision + 1
@@ -109,7 +118,8 @@ CREATE TABLE library_core_transactions (
     length(committedChainDigest) = 64
     AND committedChainDigest NOT GLOB '*[^0-9a-f]*'
   ),
-  CHECK (lastSequence = firstSequence + memberCount - 1)
+  CHECK (lastSequence = firstSequence + memberCount - 1),
+  CHECK (lastIngestSequence = firstIngestSequence + memberCount - 1)
 ) STRICT;
 
 CREATE TABLE library_core_operations (
@@ -124,6 +134,9 @@ CREATE TABLE library_core_operations (
   epochId                     TEXT    NOT NULL,
   actorId                     TEXT    NOT NULL,
   actorSequence               INTEGER NOT NULL CHECK (actorSequence BETWEEN 1 AND 9007199254740990),
+  ingestSequence              INTEGER NOT NULL UNIQUE CHECK (
+    ingestSequence BETWEEN 1 AND 9007199254740991
+  ),
   previousActorOperationId    TEXT,
   previousActorChainDigest    TEXT    NOT NULL,
   actorChainDigest            TEXT    NOT NULL,
@@ -174,6 +187,9 @@ CREATE TABLE library_core_operations (
 
 CREATE INDEX library_core_operations_actor_chain
   ON library_core_operations (libraryId, epochId, actorId, actorSequence);
+
+CREATE INDEX library_core_operations_ingest_sequence
+  ON library_core_operations (ingestSequence);
 
 CREATE TABLE library_core_operation_causal_tips (
   operationId  TEXT    NOT NULL,

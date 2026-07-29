@@ -160,6 +160,8 @@ struct TransactionReceipt {
     last_sequence: i64,
     committed_operation_id: String,
     committed_chain_digest: String,
+    first_ingest_sequence: i64,
+    last_ingest_sequence: i64,
     previous_revision: i64,
     committed_revision: i64,
     committed_at_ms: i64,
@@ -557,7 +559,8 @@ impl LibraryCoreJournal {
             .query_row(
                 "SELECT transactionId, transactionDigest, actorId, memberCount,
                  firstSequence, lastSequence, committedOperationId,
-                 committedChainDigest, previousRevision, committedRevision,
+                 committedChainDigest, firstIngestSequence,
+                 lastIngestSequence, previousRevision, committedRevision,
                  committedAtMs
                  FROM library_core_transactions WHERE transactionId = ?1;",
                 params![transaction_id],
@@ -571,9 +574,11 @@ impl LibraryCoreJournal {
                         last_sequence: row.get(5)?,
                         committed_operation_id: row.get(6)?,
                         committed_chain_digest: row.get(7)?,
-                        previous_revision: row.get(8)?,
-                        committed_revision: row.get(9)?,
-                        committed_at_ms: row.get(10)?,
+                        first_ingest_sequence: row.get(8)?,
+                        last_ingest_sequence: row.get(9)?,
+                        previous_revision: row.get(10)?,
+                        committed_revision: row.get(11)?,
+                        committed_at_ms: row.get(12)?,
                     })
                 },
             )
@@ -605,6 +610,14 @@ impl LibraryCoreJournal {
             "SELECT integerValue FROM library_core_meta
              WHERE key = 'projectionRevision';",
             [],
+            |row| row.get(0),
+        )
+    }
+
+    fn meta_integer_in(transaction: &Transaction<'_>, key: &str) -> SqlResult<i64> {
+        transaction.query_row(
+            "SELECT integerValue FROM library_core_meta WHERE key = ?1;",
+            params![key],
             |row| row.get(0),
         )
     }
@@ -680,16 +693,36 @@ impl LibraryCoreJournal {
             .members
             .last()
             .ok_or(JournalError::InvalidVerifiedInput { field: "members" })?;
+        let first_ingest_sequence = Self::meta_integer_in(&transaction, "nextIngestSequence")?;
+        if !(1..=MAX_SAFE_INTEGER).contains(&first_ingest_sequence) {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "next_ingest_sequence",
+            });
+        }
+        let last_ingest_sequence = first_ingest_sequence
+            .checked_add(verified.members.len() as i64 - 1)
+            .filter(|value| *value <= MAX_SAFE_INTEGER)
+            .ok_or(JournalError::InvalidVerifiedInput {
+                field: "ingest_sequence",
+            })?;
+        let prior_materializer_sequence =
+            Self::meta_integer_in(&transaction, "materializerIngestSequence")?;
+        if prior_materializer_sequence != first_ingest_sequence - 1 {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "materializer_ingest_sequence",
+            });
+        }
         transaction.execute(
             "INSERT INTO library_core_transactions (
                transactionId, transactionDigest, libraryId, epoch, epochId,
                actorId, memberCount, firstSequence, lastSequence,
                previousOperationId, previousChainDigest, committedOperationId,
-               committedChainDigest, canonicalEnvelopeBytes, previousRevision,
+               committedChainDigest, canonicalEnvelopeBytes,
+               firstIngestSequence, lastIngestSequence, previousRevision,
                committedRevision, committedAtMs
              ) VALUES (
                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-               ?14, ?15, ?16, ?17
+               ?14, ?15, ?16, ?17, ?18, ?19
              );",
             params![
                 verified.transaction_id,
@@ -706,6 +739,8 @@ impl LibraryCoreJournal {
                 last.operation_id,
                 last.actor_chain_digest,
                 verified.canonical_envelope_bytes as i64,
+                first_ingest_sequence,
+                last_ingest_sequence,
                 previous_revision,
                 committed_revision,
                 committed_at_ms,
@@ -717,15 +752,15 @@ impl LibraryCoreJournal {
                 "INSERT INTO library_core_operations (
                    operationId, transactionId, transactionMemberIndex,
                    transactionMemberCount, libraryId, epoch, epochId, actorId,
-                   actorSequence, previousActorOperationId,
+                   actorSequence, ingestSequence, previousActorOperationId,
                    previousActorChainDigest, actorChainDigest,
                    transactionDigest, memberDigest, signingBodyDigest,
                    envelopeDigest, operationType, entityType, entityId,
                    canonicalEnvelopeJson, committedAtMs
                  ) VALUES (
                    ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                   ?13, ?14, ?15, ?16, 'feed_item_read_assignment',
-                   'FeedItem', ?17, ?18, ?19
+                   ?13, ?14, ?15, ?16, ?17, 'feed_item_read_assignment',
+                   'FeedItem', ?18, ?19, ?20
                  );",
                 params![
                     member.operation_id,
@@ -737,6 +772,7 @@ impl LibraryCoreJournal {
                     verified.epoch_id,
                     verified.actor_id,
                     member.actor_sequence,
+                    first_ingest_sequence + index as i64,
                     member.previous_actor_operation_id,
                     member.previous_actor_chain_digest,
                     member.actor_chain_digest,
@@ -828,6 +864,32 @@ impl LibraryCoreJournal {
                 actor_id: verified.actor_id.clone(),
             });
         }
+        let next_ingest_sequence = last_ingest_sequence
+            .checked_add(1)
+            .filter(|value| *value <= MAX_SAFE_INTEGER)
+            .ok_or(JournalError::InvalidVerifiedInput {
+                field: "next_ingest_sequence",
+            })?;
+        let ingest_updated = transaction.execute(
+            "UPDATE library_core_meta SET integerValue = ?1
+             WHERE key = 'nextIngestSequence' AND integerValue = ?2;",
+            params![next_ingest_sequence, first_ingest_sequence],
+        )?;
+        if ingest_updated != 1 {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "next_ingest_sequence",
+            });
+        }
+        let materializer_updated = transaction.execute(
+            "UPDATE library_core_meta SET integerValue = ?1
+             WHERE key = 'materializerIngestSequence' AND integerValue = ?2;",
+            params![last_ingest_sequence, prior_materializer_sequence],
+        )?;
+        if materializer_updated != 1 {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "materializer_ingest_sequence",
+            });
+        }
         let revision_updated = transaction.execute(
             "UPDATE library_core_meta SET integerValue = ?1
              WHERE key = 'projectionRevision' AND integerValue = ?2;",
@@ -847,6 +909,8 @@ impl LibraryCoreJournal {
             last_sequence: last.actor_sequence,
             committed_operation_id: last.operation_id.clone(),
             committed_chain_digest: last.actor_chain_digest.clone(),
+            first_ingest_sequence,
+            last_ingest_sequence,
             previous_revision,
             committed_revision,
             committed_at_ms,
@@ -999,6 +1063,8 @@ mod tests {
             .commit_read_transaction(&verified, 9_999)
             .expect("response-loss retry");
         assert_eq!(receipt, replay);
+        assert_eq!(receipt.first_ingest_sequence, 1);
+        assert_eq!(receipt.last_ingest_sequence, 2);
         assert_eq!(receipt.previous_revision, 0);
         assert_eq!(receipt.committed_revision, 1);
         let late_enrollment_retry = journal
@@ -1010,7 +1076,7 @@ mod tests {
             Some("tx:read:one:member:1")
         );
 
-        let counts: (i64, i64, i64, i64, i64) = journal
+        let counts: (i64, i64, i64, i64, i64, i64, i64) = journal
             .connection
             .query_row(
                 "SELECT
@@ -1019,7 +1085,11 @@ mod tests {
                    (SELECT COUNT(*) FROM library_core_replication_outbox),
                    (SELECT COUNT(*) FROM library_core_actor_enrollment_outbox),
                    (SELECT integerValue FROM library_core_meta
-                    WHERE key = 'projectionRevision');",
+                    WHERE key = 'projectionRevision'),
+                   (SELECT integerValue FROM library_core_meta
+                    WHERE key = 'nextIngestSequence'),
+                   (SELECT integerValue FROM library_core_meta
+                    WHERE key = 'materializerIngestSequence');",
                 [],
                 |row| {
                     Ok((
@@ -1028,11 +1098,28 @@ mod tests {
                         row.get(2)?,
                         row.get(3)?,
                         row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
                     ))
                 },
             )
             .expect("counts");
-        assert_eq!(counts, (1, 2, 2, 1, 1));
+        assert_eq!(counts, (1, 2, 2, 1, 1, 3, 2));
+        let ingest_sequences: Vec<i64> = {
+            let mut statement = journal
+                .connection
+                .prepare(
+                    "SELECT ingestSequence FROM library_core_operations
+                     ORDER BY ingestSequence;",
+                )
+                .expect("prepare ingest query");
+            statement
+                .query_map([], |row| row.get(0))
+                .expect("query ingest sequences")
+                .collect::<SqlResult<Vec<_>>>()
+                .expect("collect ingest sequences")
+        };
+        assert_eq!(ingest_sequences, vec![1, 2]);
     }
 
     #[test]
@@ -1060,6 +1147,8 @@ mod tests {
             .commit_read_transaction(&verified, 9_999)
             .expect("response-loss retry after reopen");
         assert_eq!(retry, receipt);
+        assert_eq!(retry.first_ingest_sequence, 1);
+        assert_eq!(retry.last_ingest_sequence, 1);
         let counts: (i64, i64, i64) = reopened
             .connection
             .query_row(
@@ -1415,10 +1504,7 @@ mod tests {
         };
         assert_eq!(
             sequences,
-            vec![
-                (1, digest("2"), 1),
-                (2, second_enrollment.epoch_id, 1)
-            ]
+            vec![(1, digest("2"), 1), (2, second_enrollment.epoch_id, 1)]
         );
     }
 

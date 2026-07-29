@@ -303,8 +303,9 @@ Keep the native authoritative commit input sealed inside the verifier and
 journal module. Renderer IPC must never gain authority by sending an object
 that merely resembles a verified transaction. Commit the immutable journal,
 causal-tip references, projection updates, actor-tip compare-and-swap, exact
-retry receipt, projection revision, and the applicable enrollment or operation
-replication outbox in one immediate `synchronous=FULL` SQLite transaction.
+retry receipt, contiguous per-operation ingest sequence, materializer frontier,
+projection revision, and the applicable enrollment or operation replication
+outbox in one immediate `synchronous=FULL` SQLite transaction.
 Scope actor-sequence uniqueness and compare-and-swap state to the exact
 library, epoch ID, and actor. Actor sequence restarts at one after an epoch
 transition even when actor identity remains stable.
