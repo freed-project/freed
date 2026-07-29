@@ -552,19 +552,84 @@ impl LibraryCoreJournal {
         // Resolve the already-existing parent first so ordinary system aliases
         // such as macOS /var do not make a literal final file unusable.
         let resolved_path = parent.canonicalize()?.join(file_name);
+        let existing_file = Self::preflight_existing_file(&resolved_path)?;
+        let mut open_flags = OpenFlags::SQLITE_OPEN_READ_WRITE
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX
+            | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
+            | OpenFlags::SQLITE_OPEN_NOFOLLOW
+            | OpenFlags::SQLITE_OPEN_EXRESCODE;
+        if !existing_file {
+            open_flags |= OpenFlags::SQLITE_OPEN_CREATE;
+        }
+        let connection = Connection::open_with_flags(&resolved_path, open_flags)?;
+        if existing_file {
+            // Recheck the exact handle that will receive write configuration.
+            // If the path changed between the read-only preflight and this
+            // open, the replacement is rejected before WAL negotiation.
+            Self::configure_validation_connection(&connection)?;
+            Self::validate_existing_connection(&connection)?;
+        }
+        let mut journal = Self { connection };
+        journal.configure()?;
+        journal.migrate()?;
+        Ok(journal)
+    }
+
+    fn preflight_existing_file(path: &Path) -> JournalResult<bool> {
+        if !path.try_exists()? {
+            return Ok(false);
+        }
+        // Reject a foreign, future, or structurally changed file through a
+        // read-only handle. The later writable open must not be the operation
+        // that discovers the file is not an accepted Library Core database,
+        // because WAL negotiation can change the header and create sidecars.
         let connection = Connection::open_with_flags(
-            &resolved_path,
-            OpenFlags::SQLITE_OPEN_READ_WRITE
-                | OpenFlags::SQLITE_OPEN_CREATE
+            path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY
                 | OpenFlags::SQLITE_OPEN_NO_MUTEX
                 | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
                 | OpenFlags::SQLITE_OPEN_NOFOLLOW
                 | OpenFlags::SQLITE_OPEN_EXRESCODE,
         )?;
-        let mut journal = Self { connection };
-        journal.configure()?;
-        journal.migrate()?;
-        Ok(journal)
+        Self::configure_validation_connection(&connection)?;
+        Self::validate_existing_connection(&connection)?;
+        Ok(true)
+    }
+
+    fn validate_existing_connection(connection: &Connection) -> JournalResult<()> {
+        let version =
+            connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
+        let application_id =
+            connection.pragma_query_value(None, "application_id", |row| row.get::<_, i64>(0))?;
+        if !(0..=AUTHORITATIVE_SCHEMA_VERSION).contains(&version) {
+            return Err(JournalError::UnsupportedSchemaVersion {
+                expected: AUTHORITATIVE_SCHEMA_VERSION,
+                actual: version,
+            });
+        }
+        if (version == 0 && application_id != 0)
+            || (version > 0 && application_id != AUTHORITATIVE_APPLICATION_ID)
+        {
+            return Err(JournalError::DatabaseIdentityMismatch {
+                expected: AUTHORITATIVE_APPLICATION_ID,
+                actual: application_id,
+            });
+        }
+        let has_unversioned_tables = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema \
+             WHERE type = 'table' AND name NOT LIKE 'sqlite_%');",
+            [],
+            |row| row.get::<_, bool>(0),
+        )?;
+        if version == 0 {
+            return if has_unversioned_tables {
+                Err(JournalError::UnversionedSchemaPresent)
+            } else {
+                Ok(())
+            };
+        }
+        Self::verify_schema_contract(&connection)?;
+        Ok(())
     }
 
     fn open_in_memory() -> JournalResult<Self> {
@@ -576,53 +641,7 @@ impl LibraryCoreJournal {
     }
 
     fn configure(&self) -> JournalResult<()> {
-        // The journal executes checked-in SQL with at most 20 parameters and
-        // accepts canonical payloads capped at 4 MiB. Keep SQLite's parser and
-        // row allocations close to that contract instead of inheriting its
-        // much larger general-purpose defaults.
-        self.connection
-            .set_limit(Limit::SQLITE_LIMIT_LENGTH, SQLITE_MAX_VALUE_BYTES);
-        self.connection
-            .set_limit(Limit::SQLITE_LIMIT_SQL_LENGTH, SQLITE_MAX_SQL_BYTES);
-        self.connection
-            .set_limit(Limit::SQLITE_LIMIT_COLUMN, SQLITE_MAX_COLUMNS);
-        self.connection
-            .set_limit(Limit::SQLITE_LIMIT_EXPR_DEPTH, SQLITE_MAX_EXPRESSION_DEPTH);
-        self.connection.set_limit(
-            Limit::SQLITE_LIMIT_COMPOUND_SELECT,
-            SQLITE_MAX_COMPOUND_SELECTS,
-        );
-        self.connection.set_limit(
-            Limit::SQLITE_LIMIT_FUNCTION_ARG,
-            SQLITE_MAX_FUNCTION_ARGUMENTS,
-        );
-        self.connection
-            .set_limit(Limit::SQLITE_LIMIT_ATTACHED, SQLITE_MAX_ATTACHED_DATABASES);
-        self.connection.set_limit(
-            Limit::SQLITE_LIMIT_LIKE_PATTERN_LENGTH,
-            SQLITE_MAX_PATTERN_BYTES,
-        );
-        self.connection.set_limit(
-            Limit::SQLITE_LIMIT_VARIABLE_NUMBER,
-            SQLITE_MAX_VARIABLE_NUMBER,
-        );
-        self.connection
-            .set_limit(Limit::SQLITE_LIMIT_TRIGGER_DEPTH, SQLITE_MAX_TRIGGER_DEPTH);
-        self.connection.set_limit(
-            Limit::SQLITE_LIMIT_WORKER_THREADS,
-            SQLITE_MAX_WORKER_THREADS,
-        );
-        self.connection
-            .set_db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true)?;
-        self.connection
-            .set_db_config(DbConfig::SQLITE_DBCONFIG_TRUSTED_SCHEMA, false)?;
-        // Reject SQLite's legacy fallback that silently treats a misspelled
-        // double-quoted identifier as a string literal. All checked-in schema
-        // and queries use standard SQL quoting, so ambiguity is a defect.
-        self.connection
-            .set_db_config(DbConfig::SQLITE_DBCONFIG_DQS_DDL, false)?;
-        self.connection
-            .set_db_config(DbConfig::SQLITE_DBCONFIG_DQS_DML, false)?;
+        Self::configure_validation_connection(&self.connection)?;
         #[cfg(target_os = "macos")]
         self.connection.pragma_update(None, "fullfsync", "ON")?;
         self.connection.pragma_update(None, "journal_mode", "WAL")?;
@@ -630,13 +649,52 @@ impl LibraryCoreJournal {
         // A successful commit must survive process loss and power loss.
         self.connection.pragma_update(None, "synchronous", "FULL")?;
         self.connection.pragma_update(None, "foreign_keys", "ON")?;
-        self.connection.busy_timeout(BUSY_TIMEOUT)?;
-        self.connection
-            .pragma_update(None, "cache_size", BASE_CACHE_KIB)?;
-        self.connection.pragma_update(None, "mmap_size", 0)?;
-        self.connection.pragma_update(None, "temp_store", "FILE")?;
-        self.connection
-            .pragma_update(None, "cell_size_check", "ON")?;
+        Ok(())
+    }
+
+    fn configure_validation_connection(connection: &Connection) -> JournalResult<()> {
+        // The journal executes checked-in SQL with at most 20 parameters and
+        // accepts canonical payloads capped at 4 MiB. Keep SQLite's parser and
+        // row allocations close to that contract instead of inheriting its
+        // much larger general-purpose defaults.
+        connection.set_limit(Limit::SQLITE_LIMIT_LENGTH, SQLITE_MAX_VALUE_BYTES);
+        connection.set_limit(Limit::SQLITE_LIMIT_SQL_LENGTH, SQLITE_MAX_SQL_BYTES);
+        connection.set_limit(Limit::SQLITE_LIMIT_COLUMN, SQLITE_MAX_COLUMNS);
+        connection.set_limit(Limit::SQLITE_LIMIT_EXPR_DEPTH, SQLITE_MAX_EXPRESSION_DEPTH);
+        connection.set_limit(
+            Limit::SQLITE_LIMIT_COMPOUND_SELECT,
+            SQLITE_MAX_COMPOUND_SELECTS,
+        );
+        connection.set_limit(
+            Limit::SQLITE_LIMIT_FUNCTION_ARG,
+            SQLITE_MAX_FUNCTION_ARGUMENTS,
+        );
+        connection.set_limit(Limit::SQLITE_LIMIT_ATTACHED, SQLITE_MAX_ATTACHED_DATABASES);
+        connection.set_limit(
+            Limit::SQLITE_LIMIT_LIKE_PATTERN_LENGTH,
+            SQLITE_MAX_PATTERN_BYTES,
+        );
+        connection.set_limit(
+            Limit::SQLITE_LIMIT_VARIABLE_NUMBER,
+            SQLITE_MAX_VARIABLE_NUMBER,
+        );
+        connection.set_limit(Limit::SQLITE_LIMIT_TRIGGER_DEPTH, SQLITE_MAX_TRIGGER_DEPTH);
+        connection.set_limit(
+            Limit::SQLITE_LIMIT_WORKER_THREADS,
+            SQLITE_MAX_WORKER_THREADS,
+        );
+        connection.set_db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true)?;
+        connection.set_db_config(DbConfig::SQLITE_DBCONFIG_TRUSTED_SCHEMA, false)?;
+        // Reject SQLite's legacy fallback that silently treats a misspelled
+        // double-quoted identifier as a string literal. All checked-in schema
+        // and queries use standard SQL quoting, so ambiguity is a defect.
+        connection.set_db_config(DbConfig::SQLITE_DBCONFIG_DQS_DDL, false)?;
+        connection.set_db_config(DbConfig::SQLITE_DBCONFIG_DQS_DML, false)?;
+        connection.busy_timeout(BUSY_TIMEOUT)?;
+        connection.pragma_update(None, "cache_size", BASE_CACHE_KIB)?;
+        connection.pragma_update(None, "mmap_size", 0)?;
+        connection.pragma_update(None, "temp_store", "FILE")?;
+        connection.pragma_update(None, "cell_size_check", "ON")?;
         Ok(())
     }
 
@@ -1838,6 +1896,7 @@ mod tests {
             .pragma_update(None, "application_id", 0)
             .expect("remove authoritative database identity");
         drop(connection);
+        let bytes_before_rejection = std::fs::read(&path).expect("read mismatched database");
 
         match LibraryCoreJournal::open(&path) {
             Err(JournalError::DatabaseIdentityMismatch { expected, actual }) => {
@@ -1847,6 +1906,10 @@ mod tests {
             Err(error) => panic!("unexpected database identity error: {error}"),
             Ok(_) => panic!("mismatched database identity must fail closed"),
         }
+        assert_eq!(
+            std::fs::read(&path).expect("reread mismatched database"),
+            bytes_before_rejection
+        );
     }
 
     #[cfg(unix)]
@@ -1923,12 +1986,18 @@ mod tests {
                 .execute_batch(mutation)
                 .expect("mutate schema without changing user version");
             drop(connection);
+            let bytes_before_rejection =
+                std::fs::read(&path).expect("read changed-schema database");
 
             match LibraryCoreJournal::open(&path) {
                 Err(JournalError::SchemaContractMismatch) => {}
                 Err(error) => panic!("unexpected schema error: {error}"),
                 Ok(_) => panic!("schema mutation must fail closed: {mutation}"),
             }
+            assert_eq!(
+                std::fs::read(&path).expect("reread changed-schema database"),
+                bytes_before_rejection
+            );
         }
     }
 
@@ -2677,6 +2746,46 @@ mod tests {
 
     #[test]
     fn opening_rejects_unversioned_or_future_schema() {
+        let unversioned_directory = tempfile::tempdir().expect("unversioned directory");
+        let unversioned_path = unversioned_directory.path().join("library-core.sqlite");
+        let unversioned_connection = Connection::open(&unversioned_path).expect("unversioned file");
+        unversioned_connection
+            .execute_batch("CREATE TABLE unexpected (id INTEGER) STRICT;")
+            .expect("unversioned table");
+        drop(unversioned_connection);
+        let unversioned_bytes = std::fs::read(&unversioned_path).expect("read unversioned file");
+        assert!(matches!(
+            LibraryCoreJournal::open(&unversioned_path),
+            Err(JournalError::UnversionedSchemaPresent)
+        ));
+        assert_eq!(
+            std::fs::read(&unversioned_path).expect("reread unversioned file"),
+            unversioned_bytes
+        );
+
+        let future_directory = tempfile::tempdir().expect("future directory");
+        let future_path = future_directory.path().join("library-core.sqlite");
+        let future_connection = Connection::open(&future_path).expect("future file");
+        future_connection
+            .pragma_update(None, "application_id", AUTHORITATIVE_APPLICATION_ID)
+            .expect("future application ID");
+        future_connection
+            .pragma_update(None, "user_version", 99)
+            .expect("future version");
+        drop(future_connection);
+        let future_bytes = std::fs::read(&future_path).expect("read future file");
+        assert!(matches!(
+            LibraryCoreJournal::open(&future_path),
+            Err(JournalError::UnsupportedSchemaVersion {
+                expected: AUTHORITATIVE_SCHEMA_VERSION,
+                actual: 99
+            })
+        ));
+        assert_eq!(
+            std::fs::read(&future_path).expect("reread future file"),
+            future_bytes
+        );
+
         let mut unversioned = LibraryCoreJournal {
             connection: Connection::open_in_memory().expect("connection"),
         };

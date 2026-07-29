@@ -209,6 +209,17 @@ and data statements. Checked-in SQL must use double quotes only for identifiers
 and single quotes for string literals. A misspelled identifier must fail instead
 of silently changing query meaning.
 
+Before opening an existing authoritative file for writing, inspect its database
+identity, physical version, and exact live catalog through a no-follow,
+private-cache, read-only connection. A foreign, future, unversioned, or changed
+file must be rejected without changing its database bytes or first receiving a
+writable database handle. SQLite may still create ephemeral coordination
+sidecars while reading a WAL-mode database. This preflight reduces accidental
+mutation. Recheck the same identity and catalog on the exact read-write handle
+before applying WAL or durability configuration, so a path replacement between
+the two opens also fails without database mutation. This does not replace the
+later authenticated storage-root handle and root-identity contract.
+
 Apply projection upserts, deletions, and the monotone projection revision in
 one database transaction. A bounded page or count binds one revision. A later
 page using a cursor from an older revision fails closed instead of walking

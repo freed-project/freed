@@ -2360,6 +2360,19 @@ only for identifiers and single quotes for strings. A misspelled identifier
 therefore fails during preparation instead of silently becoming a string
 literal with different semantics.
 
+An existing authoritative file is inspected through a no-follow,
+private-cache, read-only connection before SQLite receives writable authority.
+That preflight verifies the application identity, physical version, and exact
+live catalog. Foreign, future, unversioned, and changed files are rejected
+without changing their database bytes or first receiving a writable database
+handle. SQLite may still create ephemeral coordination sidecars while reading
+a WAL-mode database. This keeps rejected database contents unchanged. It does
+not yet authorize WAL configuration. The exact read-write handle repeats the
+identity, version, and catalog verification before receiving that
+configuration, so a path replacement between the two opens also fails without
+database mutation. This does not close the separate production storage-root
+handle and root-identity contract.
+
 The dormant native projection kernel is a deliberately smaller predecessor to
 this authoritative store. It consumes the same checked-in schema as the shared
 TypeScript shadow-store contract, applies row upserts and deletions with one
