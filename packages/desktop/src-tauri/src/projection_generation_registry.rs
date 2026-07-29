@@ -24,7 +24,7 @@ const HASH_BUFFER_BYTES: usize = 1024 * 1024;
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug)]
-enum ProjectionGenerationRegistryError {
+pub(super) enum ProjectionGenerationRegistryError {
     Sql(rusqlite::Error),
     Io(std::io::Error),
     InvalidRegistryIdentity { field: &'static str },
@@ -34,6 +34,7 @@ enum ProjectionGenerationRegistryError {
     StaleCurrentGeneration,
     MissingRollbackGeneration,
     AlreadySelectedGeneration,
+    NoSelectedGeneration,
 }
 
 impl From<rusqlite::Error> for ProjectionGenerationRegistryError {
@@ -74,26 +75,31 @@ impl fmt::Display for ProjectionGenerationRegistryError {
             Self::AlreadySelectedGeneration => {
                 formatter.write_str("projection generation is already selected")
             }
+            Self::NoSelectedGeneration => {
+                formatter.write_str("projection reader has no selected generation")
+            }
         }
     }
 }
 
+impl std::error::Error for ProjectionGenerationRegistryError {}
+
 type RegistryResult<T> = Result<T, ProjectionGenerationRegistryError>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct RegisteredProjectionGeneration {
-    generation_id: String,
-    file_name: String,
-    rebuild_id: String,
-    source_document_id: String,
-    source_heads_digest: String,
-    source_head_count: i64,
-    source_generation: i64,
-    source_save_revision: i64,
-    total_rows: usize,
-    projection_revision: i64,
-    byte_length: u64,
-    registered_sequence: i64,
+pub(super) struct RegisteredProjectionGeneration {
+    pub(super) generation_id: String,
+    pub(super) file_name: String,
+    pub(super) rebuild_id: String,
+    pub(super) source_document_id: String,
+    pub(super) source_heads_digest: String,
+    pub(super) source_head_count: i64,
+    pub(super) source_generation: i64,
+    pub(super) source_save_revision: i64,
+    pub(super) total_rows: usize,
+    pub(super) projection_revision: i64,
+    pub(super) byte_length: u64,
+    pub(super) registered_sequence: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,6 +107,12 @@ struct ProjectionReaderState {
     current_generation_id: Option<String>,
     rollback_generation_id: Option<String>,
     transition_sequence: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ProjectionGenerationReaderSelection {
+    pub(super) generation: RegisteredProjectionGeneration,
+    pub(super) transition_sequence: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -119,7 +131,7 @@ impl ProjectionGenerationTransitionKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ProjectionGenerationTransition {
+pub(super) struct ProjectionGenerationTransition {
     transition_id: String,
     transition_digest: String,
     kind: ProjectionGenerationTransitionKind,
@@ -130,13 +142,56 @@ struct ProjectionGenerationTransition {
     committed_sequence: i64,
 }
 
-struct ProjectionGenerationRegistry {
+pub(super) struct ProjectionGenerationRegistry {
     conn: Connection,
     generation_root: PathBuf,
 }
 
 impl ProjectionGenerationRegistry {
-    fn open(path: &Path, generation_root: &Path) -> RegistryResult<Self> {
+    pub(super) fn read_selected_generation(
+        path: &Path,
+    ) -> RegistryResult<ProjectionGenerationReaderSelection> {
+        if !path.is_absolute() || path.file_name().is_none() {
+            return Err(ProjectionGenerationRegistryError::InvalidRegistryIdentity {
+                field: "path",
+            });
+        }
+        let conn = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY
+                | OpenFlags::SQLITE_OPEN_NO_MUTEX
+                | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
+                | OpenFlags::SQLITE_OPEN_NOFOLLOW
+                | OpenFlags::SQLITE_OPEN_EXRESCODE,
+        )?;
+        conn.busy_timeout(BUSY_TIMEOUT)?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
+        verify_registry_integrity(&conn)?;
+        verify_registry_identity(&conn)?;
+        let state = validate_reader_state(conn.query_row(
+            "SELECT currentGenerationId, rollbackGenerationId, transitionSequence
+             FROM projection_reader_state WHERE singleton = 1;",
+            [],
+            read_reader_state,
+        )?)?;
+        let generation_id = state
+            .current_generation_id
+            .as_deref()
+            .ok_or(ProjectionGenerationRegistryError::NoSelectedGeneration)?;
+        let generation = read_registered_generation_by_id(&conn, generation_id)?.ok_or(
+            ProjectionGenerationRegistryError::InvalidRegistryIdentity {
+                field: "selected_generation",
+            },
+        )?;
+        verify_registry_integrity(&conn)?;
+        verify_registry_identity(&conn)?;
+        Ok(ProjectionGenerationReaderSelection {
+            generation,
+            transition_sequence: state.transition_sequence,
+        })
+    }
+
+    pub(super) fn open(path: &Path, generation_root: &Path) -> RegistryResult<Self> {
         if !path.is_absolute()
             || !generation_root.is_absolute()
             || path.file_name().is_none()
@@ -184,7 +239,7 @@ impl ProjectionGenerationRegistry {
         Ok(registry)
     }
 
-    fn register(
+    pub(super) fn register(
         &mut self,
         published: &PublishedProjectionGeneration,
     ) -> RegistryResult<RegisteredProjectionGeneration> {
@@ -277,7 +332,7 @@ impl ProjectionGenerationRegistry {
         validate_reader_state(state)
     }
 
-    fn select(
+    pub(super) fn select(
         &mut self,
         transition_id: &str,
         expected_current_generation_id: Option<&str>,
@@ -291,7 +346,7 @@ impl ProjectionGenerationRegistry {
         )
     }
 
-    fn rollback(
+    pub(super) fn rollback(
         &mut self,
         transition_id: &str,
         expected_current_generation_id: Option<&str>,
@@ -783,6 +838,55 @@ fn read_registered_generation(
             .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(10, byte_length))?,
         registered_sequence: row.get(11)?,
     })
+}
+
+fn read_registered_generation_by_id(
+    conn: &Connection,
+    generation_id: &str,
+) -> RegistryResult<Option<RegisteredProjectionGeneration>> {
+    validate_digest(generation_id, "generation_id")?;
+    let generation = conn
+        .query_row(
+            "SELECT generationId, fileName, rebuildId, sourceDocumentId,
+                    sourceHeadsDigest, sourceHeadCount, sourceGeneration,
+                    sourceSaveRevision, totalRows, projectionRevision, byteLength,
+                    registeredSequence
+             FROM projection_generations
+             WHERE generationId = ?1;",
+            params![generation_id],
+            read_registered_generation,
+        )
+        .optional()?;
+    generation.map(validate_registered_generation).transpose()
+}
+
+fn validate_registered_generation(
+    generation: RegisteredProjectionGeneration,
+) -> RegistryResult<RegisteredProjectionGeneration> {
+    validate_digest(&generation.generation_id, "generation_id")?;
+    validate_digest(&generation.source_heads_digest, "source_heads_digest")?;
+    if generation.file_name.is_empty()
+        || generation.file_name.len() > 255
+        || generation.file_name == "."
+        || generation.file_name == ".."
+        || generation.file_name.contains(['/', '\\'])
+        || generation.rebuild_id.is_empty()
+        || generation.rebuild_id.len() > MAX_TRANSITION_ID_BYTES
+        || generation.source_document_id.is_empty()
+        || generation.source_document_id.len() > 4_096
+        || generation.source_head_count < 0
+        || generation.source_generation < 0
+        || generation.source_save_revision < 0
+        || generation.total_rows > 250_000
+        || generation.projection_revision < 0
+        || generation.byte_length == 0
+        || generation.registered_sequence <= 0
+    {
+        return Err(ProjectionGenerationRegistryError::InvalidRegistryIdentity {
+            field: "selected_generation",
+        });
+    }
+    Ok(generation)
 }
 
 fn find_registered_generation(

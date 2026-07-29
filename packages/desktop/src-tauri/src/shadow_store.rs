@@ -51,7 +51,7 @@ const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const BASE_CACHE_KIB: i64 = -32 * 1024;
 
 #[derive(Debug)]
-enum ShadowStoreError {
+pub(super) enum ShadowStoreError {
     Sql(rusqlite::Error),
     StaleRevision {
         expected: i64,
@@ -239,7 +239,7 @@ impl fmt::Display for ShadowStoreError {
 
 impl std::error::Error for ShadowStoreError {}
 
-type StoreResult<T> = std::result::Result<T, ShadowStoreError>;
+pub(super) type StoreResult<T> = std::result::Result<T, ShadowStoreError>;
 
 /// One canonical schema is consumed by the native engine and checked against
 /// the shared TypeScript DDL. This avoids maintaining a second handwritten
@@ -338,7 +338,7 @@ impl FeedItemRow {
 /// only the fields the feed card can render, with independent nested limits.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct FeedCardRow {
+pub(super) struct FeedCardRow {
     global_id: String,
     platform: Option<String>,
     content_type: Option<String>,
@@ -473,8 +473,8 @@ impl FeedCardRow {
 /// repeats rows at the page boundary.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct PageCursor {
-    revision: i64,
+pub(super) struct PageCursor {
+    pub(super) revision: i64,
     pub sort_at: i64,
     pub global_id: String,
 }
@@ -490,11 +490,11 @@ impl PageCursor {
 }
 
 #[derive(Debug)]
-struct FeedPage {
-    revision: i64,
-    total_count: i64,
-    serialized_row_bytes: usize,
-    pub rows: Vec<FeedCardRow>,
+pub(super) struct FeedPage {
+    pub(super) revision: i64,
+    pub(super) total_count: i64,
+    pub(super) serialized_row_bytes: usize,
+    pub(super) rows: Vec<FeedCardRow>,
     /// `None` when the page reached the end of the feed.
     pub next_cursor: Option<PageCursor>,
 }
@@ -519,7 +519,7 @@ pub(super) struct ProjectionSourceV1 {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ProjectionRebuildState {
+pub(super) struct ProjectionRebuildState {
     rebuild_id: String,
     source: ProjectionSourceV1,
     total_rows: usize,
@@ -729,13 +729,13 @@ pub(super) fn publish_projection_file(staging: &Path, destination: &Path) -> std
     std::fs::rename(staging, destination)
 }
 
-struct ShadowStore {
+pub(super) struct ShadowStore {
     conn: Connection,
     path: Option<PathBuf>,
 }
 
 impl ShadowStore {
-    fn open(path: &Path) -> StoreResult<Self> {
+    pub(super) fn open(path: &Path) -> StoreResult<Self> {
         let mut store = Self {
             conn: Connection::open(path)?,
             path: Some(path.to_path_buf()),
@@ -1057,15 +1057,52 @@ impl ShadowStore {
         Ok(())
     }
 
-    pub(super) fn inspect_published_projection_generation(
+    fn verify_foreign_keys(conn: &Connection) -> StoreResult<()> {
+        let problem = conn
+            .query_row("PRAGMA foreign_key_check;", [], |_| Ok(()))
+            .optional()?;
+        if problem.is_some() {
+            return Err(ShadowStoreError::ProjectionPublicationInvalid {
+                field: "foreign_keys",
+            });
+        }
+        Ok(())
+    }
+
+    fn schema_catalog(conn: &Connection) -> StoreResult<Vec<(String, String, String, String)>> {
+        let mut statement = conn.prepare(
+            "SELECT type, name, tbl_name, COALESCE(sql, '')
+             FROM sqlite_schema
+             WHERE name NOT LIKE 'sqlite_%'
+             ORDER BY type, name, tbl_name;",
+        )?;
+        let catalog = statement
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })?
+            .collect::<SqlResult<Vec<_>>>()?;
+        Ok(catalog)
+    }
+
+    fn verify_schema_catalog(conn: &Connection) -> StoreResult<()> {
+        let reference = Self::open_in_memory()?;
+        if Self::schema_catalog(conn)? != Self::schema_catalog(&reference.conn)? {
+            return Err(ShadowStoreError::ProjectionPublicationInvalid {
+                field: "schema_catalog",
+            });
+        }
+        Ok(())
+    }
+
+    pub(super) fn open_published_projection_generation_read_only(
         path: &Path,
         rebuild_id: &str,
         source: &ProjectionSourceV1,
         total_rows: usize,
-    ) -> StoreResult<PublishedProjectionGeneration> {
+    ) -> StoreResult<(Self, PublishedProjectionGeneration)> {
         Self::validate_projection_rebuild_identity(rebuild_id, source, total_rows)?;
-        let metadata = std::fs::symlink_metadata(path)?;
-        if !metadata.file_type().is_file() {
+        let before = std::fs::symlink_metadata(path)?;
+        if !before.file_type().is_file() {
             return Err(ShadowStoreError::ProjectionPublicationInvalid {
                 field: "published_file_type",
             });
@@ -1074,8 +1111,15 @@ impl ShadowStore {
             path,
             OpenFlags::SQLITE_OPEN_READ_ONLY
                 | OpenFlags::SQLITE_OPEN_NO_MUTEX
-                | OpenFlags::SQLITE_OPEN_NOFOLLOW,
+                | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
+                | OpenFlags::SQLITE_OPEN_NOFOLLOW
+                | OpenFlags::SQLITE_OPEN_EXRESCODE,
         )?;
+        conn.busy_timeout(BUSY_TIMEOUT)?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
+        conn.pragma_update(None, "cache_size", BASE_CACHE_KIB)?;
+        conn.pragma_update(None, "mmap_size", 0)?;
+        conn.pragma_update(None, "temp_store", "FILE")?;
         let version = conn.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
         if version != SHADOW_SCHEMA_VERSION {
             return Err(ShadowStoreError::UnsupportedSchemaVersion {
@@ -1084,16 +1128,43 @@ impl ShadowStore {
             });
         }
         Self::verify_quick_check(&conn)?;
+        Self::verify_foreign_keys(&conn)?;
+        Self::verify_schema_catalog(&conn)?;
         let state =
             Self::require_complete_projection_rebuild(&conn, rebuild_id, source, total_rows)?;
-        Ok(PublishedProjectionGeneration {
+        let after = std::fs::symlink_metadata(path)?;
+        if !after.file_type().is_file() || !same_published_file_generation(&before, &after) {
+            return Err(ShadowStoreError::ProjectionPublicationInvalid {
+                field: "published_file_generation",
+            });
+        }
+        let generation = PublishedProjectionGeneration {
             path: path.to_path_buf(),
             rebuild_id: state.rebuild_id,
             source: state.source,
             total_rows: state.total_rows,
             projection_revision: state.projection_revision,
-            byte_length: metadata.len(),
-        })
+            byte_length: after.len(),
+        };
+        Ok((
+            Self {
+                conn,
+                path: Some(path.to_path_buf()),
+            },
+            generation,
+        ))
+    }
+
+    pub(super) fn inspect_published_projection_generation(
+        path: &Path,
+        rebuild_id: &str,
+        source: &ProjectionSourceV1,
+        total_rows: usize,
+    ) -> StoreResult<PublishedProjectionGeneration> {
+        let (_, generation) = Self::open_published_projection_generation_read_only(
+            path, rebuild_id, source, total_rows,
+        )?;
+        Ok(generation)
     }
 
     /// Seals one complete derived-shadow rebuild into an immutable generation.
@@ -1105,7 +1176,7 @@ impl ShadowStore {
     /// must not already exist. The destination is verified read-only before the
     /// receipt returns. This publishes bytes only. Assigning the generation to
     /// a reader is a later activation boundary.
-    fn publish_complete_projection_generation(
+    pub(super) fn publish_complete_projection_generation(
         self,
         destination: &Path,
         rebuild_id: &str,
@@ -1188,7 +1259,7 @@ impl ShadowStore {
         Self::inspect_published_projection_generation(destination, rebuild_id, source, total_rows)
     }
 
-    fn begin_projection_rebuild(
+    pub(super) fn begin_projection_rebuild(
         &mut self,
         rebuild_id: &str,
         source: &ProjectionSourceV1,
@@ -1659,7 +1730,11 @@ impl ShadowStore {
     ///
     /// `limit` is a hard bound, not a hint. The caller gets at most that many
     /// rows and a cursor, never the whole library.
-    fn feed_page(&self, cursor: Option<&PageCursor>, limit: u32) -> StoreResult<FeedPage> {
+    pub(super) fn feed_page(
+        &self,
+        cursor: Option<&PageCursor>,
+        limit: u32,
+    ) -> StoreResult<FeedPage> {
         if !(1..=MAX_FEED_PAGE_LIMIT).contains(&limit) {
             return Err(ShadowStoreError::InvalidPageLimit {
                 requested: limit,
@@ -1799,6 +1874,30 @@ impl ShadowStore {
         };
         Ok(details.join(" | "))
     }
+}
+
+#[cfg(unix)]
+fn same_published_file_generation(left: &std::fs::Metadata, right: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    left.dev() == right.dev()
+        && left.ino() == right.ino()
+        && left.mode() == right.mode()
+        && left.nlink() == right.nlink()
+        && left.uid() == right.uid()
+        && left.gid() == right.gid()
+        && left.size() == right.size()
+        && left.mtime() == right.mtime()
+        && left.mtime_nsec() == right.mtime_nsec()
+        && left.ctime() == right.ctime()
+        && left.ctime_nsec() == right.ctime_nsec()
+}
+
+#[cfg(not(unix))]
+fn same_published_file_generation(left: &std::fs::Metadata, right: &std::fs::Metadata) -> bool {
+    left.len() == right.len()
+        && left.modified().ok() == right.modified().ok()
+        && left.created().ok() == right.created().ok()
 }
 
 #[cfg(test)]
