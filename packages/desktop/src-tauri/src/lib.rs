@@ -6,6 +6,8 @@
 // production entry point may open the store until the activation contract is
 // reviewed.
 #[cfg_attr(not(test), allow(dead_code))]
+mod library_core_canonical;
+#[cfg_attr(not(test), allow(dead_code))]
 mod shadow_store;
 mod youtube;
 

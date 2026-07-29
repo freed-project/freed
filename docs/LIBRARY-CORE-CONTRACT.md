@@ -48,6 +48,12 @@ protocol input. Binary values, digests, public keys, nonces, and signatures use
 fixed-length lowercase hexadecimal strings. SHA-256 digests, Ed25519 public
 keys, and 32-byte nonces are exactly 64 characters. Ed25519 signatures are
 exactly 128 characters. Private keys never enter a canonical value.
+Direct canonical values and domain-separated digest or signature inputs have a
+maximum nesting depth of 128. The 4 MiB direct-input ceiling includes the
+domain prefix, and one value may contain at most 65,536 nodes. A construction
+encoder rejects accessors, symbol keys,
+non-enumerable properties, non-plain objects, decorated arrays, and cycles
+rather than interpreting JavaScript object behavior as protocol data.
 
 Registered fields that contain fractional values do not use JSON numbers in
 canonical protocol objects. Their field contract stores a closed
@@ -74,6 +80,9 @@ An inbound canonical artifact is accepted only when its received bytes equal
 Unicode before constructing the parsed value. It does not drop unknown fields
 and then verify a reconstructed object. This prevents alternate JSON spellings
 from producing a second signed representation of the same apparent value.
+The construction encoder is not an inbound verifier. In particular, passing
+received bytes through `JSON.parse` before canonicalization is invalid because
+that parser has already erased duplicate object names.
 
 An otherwise valid v1 outer operation envelope with an unknown operation type
 or payload schema preserves the received canonical payload as opaque evidence,

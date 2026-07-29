@@ -182,6 +182,28 @@ may compile into Freed Desktop behind an explicit dark-module boundary. A
 command registration, startup open, backfill, read route, or writer route is an
 activation change and follows the corresponding gate.
 
+## Keep canonical operation bytes honest
+
+Use the shared cross-runtime vectors for every canonical construction change.
+Library Core v1 accepts only null, booleans, Unicode scalar strings, dense
+arrays, plain closed records, and safe integers. Reject negative zero,
+fractions, unsafe or nonfinite numbers, sparse or decorated arrays, accessors,
+symbol keys, non-enumerable fields, non-plain objects, invalid Unicode, cycles,
+more than 128 nesting levels, and a direct domain input above 4 MiB including
+its prefix. Reject more than 65,536 nodes even when their canonical bytes fit.
+
+Sort object names by UTF-16 code units and do not normalize Unicode. Domain
+prefixes include their terminal zero byte. A generic string label is not a
+registered digest domain. Desktop and PWA must match the same exact bytes and
+digest vectors before either path may construct authoritative operations.
+
+The construction encoder is not an inbound verifier. Never verify received
+bytes by calling `JSON.parse` and re-encoding the result because duplicate
+object names have already been erased. The inbound path needs a bounded
+duplicate-preserving parser, byte-for-byte canonical comparison, closed-schema
+validation, exact digest derivation, and strict signature verification before
+materialization.
+
 ## Preserve the invariants
 
 1. Keep exactly one active writer epoch. Advance it only with a signed immutable
