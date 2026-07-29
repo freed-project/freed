@@ -185,12 +185,6 @@ CREATE TABLE library_core_operations (
   )
 ) STRICT;
 
-CREATE INDEX library_core_operations_actor_chain
-  ON library_core_operations (libraryId, epochId, actorId, actorSequence);
-
-CREATE INDEX library_core_operations_ingest_sequence
-  ON library_core_operations (ingestSequence);
-
 CREATE TABLE library_core_operation_causal_tips (
   operationId  TEXT    NOT NULL,
   tipIndex     INTEGER NOT NULL CHECK (tipIndex >= 0),
