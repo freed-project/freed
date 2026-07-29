@@ -13,6 +13,8 @@ use std::fmt;
 use std::path::Path;
 use std::time::Duration;
 
+#[path = "library_core_journal_enrollment_verifier.rs"]
+mod enrollment_verifier;
 #[path = "library_core_journal_operation_verifier.rs"]
 mod operation_verifier;
 
@@ -40,6 +42,7 @@ enum JournalError {
     TransactionReplayConflict { transaction_id: String },
     UnknownCausalTip { operation_id: String },
     OperationVerification { index: usize, field: &'static str },
+    EnrollmentVerification { field: &'static str },
 }
 
 impl From<rusqlite::Error> for JournalError {
@@ -86,6 +89,12 @@ impl fmt::Display for JournalError {
                     "operation envelope {index} failed verification at {field}"
                 )
             }
+            Self::EnrollmentVerification { field } => {
+                write!(
+                    formatter,
+                    "actor enrollment certificate failed verification at {field}"
+                )
+            }
         }
     }
 }
@@ -124,12 +133,22 @@ struct VerifiedActorEnrollment {
     enrolled_at_ms: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct VerifiedCausalTip {
     actor_id: String,
     sequence: i64,
     operation_id: String,
     chain_digest: String,
+}
+
+#[derive(Debug, Clone)]
+struct AcceptedAuthorityState {
+    library_id: String,
+    epoch: i64,
+    epoch_id: String,
+    authority_key_id: String,
+    authority_public_key: String,
+    observed_frontier: Vec<VerifiedCausalTip>,
 }
 
 #[derive(Debug, Clone)]
@@ -614,6 +633,24 @@ impl LibraryCoreJournal {
         })?;
         transaction.commit()?;
         Ok(state)
+    }
+
+    fn verify_actor_enrollment(
+        &self,
+        canonical_certificate: &[u8],
+        authority: &AcceptedAuthorityState,
+    ) -> JournalResult<VerifiedActorEnrollment> {
+        enrollment_verifier::verify_actor_enrollment(canonical_certificate, authority)
+    }
+
+    #[cfg(test)]
+    fn verify_and_enroll_actor(
+        &mut self,
+        canonical_certificate: &[u8],
+        authority: &AcceptedAuthorityState,
+    ) -> JournalResult<ActorState> {
+        let enrollment = self.verify_actor_enrollment(canonical_certificate, authority)?;
+        self.enroll_actor(&enrollment)
     }
 
     fn transaction_receipt_in(

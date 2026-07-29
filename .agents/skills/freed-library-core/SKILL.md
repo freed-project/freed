@@ -308,6 +308,10 @@ link, verify every signature, then create the sealed journal input privately.
 The atomic commit must distinguish an exact stored retry from a fresh current
 tip and reject every stale fork. Never expose a renderer command that accepts a
 preverified-looking object or a digest bundle assembled by JavaScript.
+Native enrollment may construct the same kind of sealed input only from an
+exact private authority snapshot. Do not expose a verify-and-enroll path until
+that authority epoch is itself stored authoritatively and rechecked inside the
+same enrollment transaction.
 
 Keep the native authoritative commit input sealed inside the verifier and
 journal module. Renderer IPC must never gain authority by sending an object
