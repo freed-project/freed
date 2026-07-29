@@ -27,7 +27,7 @@ use std::fs::File;
 use std::io::Read;
 
 const STAGE_APPLICATION_ID: i64 = 0x4652_4f53;
-const STAGE_SCHEMA_VERSION: i64 = 7;
+const STAGE_SCHEMA_VERSION: i64 = 8;
 
 const STAGE_SCHEMA_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS external_layout_stage_receipt (
@@ -231,6 +231,30 @@ CREATE TABLE IF NOT EXISTS external_current_operation_receipt (
     currentOperationsSha256 = lower(currentOperationsSha256)
   )
 ) STRICT;
+
+CREATE TABLE IF NOT EXISTS external_resolved_values (
+  operationIndex INTEGER PRIMARY KEY
+    REFERENCES external_current_operations(operationIndex) ON DELETE CASCADE,
+  isWinner INTEGER NOT NULL CHECK (isWinner IN (0, 1)),
+  resolvedCounterText TEXT
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS external_resolved_value_receipt (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  graphSha256 TEXT NOT NULL CHECK (
+    length(graphSha256) = 64 AND graphSha256 = lower(graphSha256)
+  ),
+  currentOperationsSha256 TEXT NOT NULL CHECK (
+    length(currentOperationsSha256) = 64 AND
+    currentOperationsSha256 = lower(currentOperationsSha256)
+  ),
+  resolvedValueCount INTEGER NOT NULL CHECK (resolvedValueCount >= 0),
+  winnerCount INTEGER NOT NULL CHECK (winnerCount >= 0),
+  resolvedValuesSha256 TEXT NOT NULL CHECK (
+    length(resolvedValuesSha256) = 64 AND
+    resolvedValuesSha256 = lower(resolvedValuesSha256)
+  )
+) STRICT;
 "#;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -274,6 +298,15 @@ struct ExternalCurrentOperationReceipt {
     pub graph_sha256: String,
     pub current_operation_count: u64,
     pub current_operations_sha256: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ExternalResolvedValueReceipt {
+    graph_sha256: String,
+    current_operations_sha256: String,
+    resolved_value_count: u64,
+    winner_count: u64,
+    resolved_values_sha256: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -734,8 +767,76 @@ fn materialize_current_operations(
     Ok(receipt)
 }
 
+fn materialize_resolved_values(
+    connection: &mut Connection,
+) -> StageResult<ExternalResolvedValueReceipt> {
+    configure_connection(connection)?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    initialize_or_validate_schema(&transaction)?;
+    let graph_receipt =
+        read_graph_receipt(&transaction)?.ok_or(ExternalSqliteStageError::IncompleteStage)?;
+    if graph_content_sha256(&transaction)? != graph_receipt.graph_sha256 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    let current_receipt = read_current_operation_receipt(&transaction)?
+        .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+    validate_current_operation_set(&transaction)?;
+    if current_receipt.graph_sha256 != graph_receipt.graph_sha256
+        || current_operations_sha256(&transaction)? != current_receipt.current_operations_sha256
+    {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    validate_increment_operations(&transaction)?;
+
+    let stored_receipt = read_resolved_value_receipt(&transaction)?;
+    let existing_count = transaction.query_row(
+        "SELECT COUNT(*) FROM external_resolved_values;",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if stored_receipt.is_none() && existing_count != 0 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+
+    if stored_receipt.is_none() {
+        populate_resolved_value_winners(&transaction)?;
+    }
+    materialize_or_validate_counter_values(&transaction, stored_receipt.is_some())?;
+    validate_resolved_value_set(&transaction)?;
+
+    let (resolved_value_count, winner_count) = transaction.query_row(
+        "SELECT COUNT(*), COALESCE(SUM(isWinner), 0) FROM external_resolved_values;",
+        [],
+        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+    )?;
+    let receipt = ExternalResolvedValueReceipt {
+        graph_sha256: graph_receipt.graph_sha256,
+        current_operations_sha256: current_receipt.current_operations_sha256,
+        resolved_value_count: u64::try_from(resolved_value_count)
+            .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+        winner_count: u64::try_from(winner_count)
+            .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+        resolved_values_sha256: resolved_values_sha256(&transaction)?,
+    };
+    if let Some(stored) = stored_receipt {
+        if stored != receipt {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        transaction.commit()?;
+        return Ok(receipt);
+    }
+    insert_resolved_value_receipt(&transaction, &receipt)?;
+    transaction.commit()?;
+    Ok(receipt)
+}
+
 fn configure_connection(connection: &Connection) -> StageResult<()> {
     connection.pragma_update(None, "foreign_keys", "ON")?;
+    // Winner selection may sort a source-sized operation set. Force SQLite to
+    // spill that work to disk instead of turning migration into a second
+    // whole-library resident copy.
+    connection.pragma_update(None, "temp_store", "FILE")?;
+    connection.pragma_update(None, "cache_size", -4_096_i64)?;
     connection.busy_timeout(std::time::Duration::from_millis(2_000))?;
     Ok(())
 }
@@ -1000,6 +1101,50 @@ fn insert_current_operation_receipt(
             i64::try_from(receipt.current_operation_count)
                 .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
             receipt.current_operations_sha256,
+        ],
+    )?;
+    Ok(())
+}
+
+fn read_resolved_value_receipt(
+    transaction: &Transaction<'_>,
+) -> StageResult<Option<ExternalResolvedValueReceipt>> {
+    transaction
+        .query_row(
+            "SELECT graphSha256, currentOperationsSha256, resolvedValueCount, \
+                    winnerCount, resolvedValuesSha256 \
+             FROM external_resolved_value_receipt WHERE singleton = 1;",
+            [],
+            |row| {
+                Ok(ExternalResolvedValueReceipt {
+                    graph_sha256: row.get(0)?,
+                    current_operations_sha256: row.get(1)?,
+                    resolved_value_count: row.get::<_, i64>(2)? as u64,
+                    winner_count: row.get::<_, i64>(3)? as u64,
+                    resolved_values_sha256: row.get(4)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(ExternalSqliteStageError::from)
+}
+
+fn insert_resolved_value_receipt(
+    transaction: &Transaction<'_>,
+    receipt: &ExternalResolvedValueReceipt,
+) -> StageResult<()> {
+    transaction.execute(
+        "INSERT INTO external_resolved_value_receipt (\
+         singleton, graphSha256, currentOperationsSha256, resolvedValueCount, \
+         winnerCount, resolvedValuesSha256) VALUES (1, ?1, ?2, ?3, ?4, ?5);",
+        params![
+            receipt.graph_sha256,
+            receipt.current_operations_sha256,
+            i64::try_from(receipt.resolved_value_count)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            i64::try_from(receipt.winner_count)
+                .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+            receipt.resolved_values_sha256,
         ],
     )?;
     Ok(())
@@ -1281,6 +1426,272 @@ fn validate_current_operation_set(transaction: &Transaction<'_>) -> StageResult<
     Ok(())
 }
 
+fn validate_increment_operations(transaction: &Transaction<'_>) -> StageResult<()> {
+    let invalid_shape = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT 1 \
+           FROM external_operations AS increment \
+           WHERE increment.action = 5 \
+             AND (\
+               increment.insertFlag != 0 \
+               OR increment.valueKind NOT IN ('signed', 'unsigned') \
+               OR increment.valueText IS NULL \
+               OR length(increment.valuePayload) != 0 \
+               OR NOT EXISTS (\
+                 SELECT 1 \
+                 FROM external_operation_successors AS edge \
+                 WHERE edge.actorIndex = increment.idActorIndex \
+                   AND edge.counter = increment.idCounter\
+               ) \
+               OR EXISTS (\
+                 SELECT 1 \
+                 FROM external_operation_successors AS edge \
+                 JOIN external_operations AS predecessor \
+                   ON predecessor.operationIndex = edge.operationIndex \
+                 WHERE edge.actorIndex = increment.idActorIndex \
+                   AND edge.counter = increment.idCounter \
+                   AND (predecessor.action != 1 OR predecessor.valueKind != 'counter')\
+               )\
+             )\
+         );",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if invalid_shape != 0 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+
+    let mut statement = transaction.prepare(
+        "SELECT valueKind, valueText FROM external_operations \
+         WHERE action = 5 ORDER BY operationIndex;",
+    )?;
+    let mut rows = statement.query([])?;
+    while let Some(row) = rows.next()? {
+        parse_increment(
+            row.get::<_, String>(0)?.as_str(),
+            row.get::<_, String>(1)?.as_str(),
+        )?;
+    }
+    Ok(())
+}
+
+fn populate_resolved_value_winners(transaction: &Transaction<'_>) -> StageResult<()> {
+    transaction.execute(
+        "INSERT INTO external_resolved_values \
+         (operationIndex, isWinner, resolvedCounterText) \
+         SELECT operationIndex, CASE WHEN winnerRank = 1 THEN 1 ELSE 0 END, NULL \
+         FROM (\
+           SELECT operation.operationIndex, \
+                  ROW_NUMBER() OVER (\
+                    PARTITION BY \
+                      operation.objectKind, operation.objectActorIndex, \
+                      operation.objectCounter, \
+                      CASE WHEN operation.insertFlag = 1 \
+                           THEN 'element' ELSE operation.keyKind END, \
+                      CASE WHEN operation.insertFlag = 1 \
+                           THEN NULL ELSE operation.keyName END, \
+                      CASE WHEN operation.insertFlag = 1 \
+                           THEN operation.idActorIndex ELSE operation.keyActorIndex END, \
+                      CASE WHEN operation.insertFlag = 1 \
+                           THEN operation.idCounter ELSE operation.keyCounter END \
+                    ORDER BY operation.idCounter DESC, actor.actorId COLLATE BINARY DESC\
+                  ) AS winnerRank \
+           FROM external_current_operations AS current \
+           JOIN external_operations AS operation USING (operationIndex) \
+           JOIN external_actors AS actor \
+             ON actor.actorIndex = operation.idActorIndex\
+         ) \
+         ORDER BY operationIndex;",
+        [],
+    )?;
+    Ok(())
+}
+
+fn materialize_or_validate_counter_values(
+    transaction: &Transaction<'_>,
+    validate_only: bool,
+) -> StageResult<()> {
+    const PAGE_SIZE: i64 = 256;
+    let mut after_operation_index = -1_i64;
+    loop {
+        let page = {
+            let mut statement = transaction.prepare(
+                "SELECT current.operationIndex \
+                 FROM external_current_operations AS current \
+                 JOIN external_operations AS operation USING (operationIndex) \
+                 WHERE current.operationIndex > ?1 AND operation.valueKind = 'counter' \
+                 ORDER BY current.operationIndex LIMIT ?2;",
+            )?;
+            let rows = statement.query_map(params![after_operation_index, PAGE_SIZE], |row| {
+                row.get::<_, i64>(0)
+            })?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        };
+        if page.is_empty() {
+            break;
+        }
+        for operation_index in &page {
+            let expected = resolved_counter_text(transaction, *operation_index)?
+                .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+            if validate_only {
+                let stored = transaction
+                    .query_row(
+                        "SELECT resolvedCounterText FROM external_resolved_values \
+                         WHERE operationIndex = ?1;",
+                        [operation_index],
+                        |row| row.get::<_, Option<String>>(0),
+                    )
+                    .optional()?;
+                if stored != Some(Some(expected)) {
+                    return Err(ExternalSqliteStageError::IncompleteStage);
+                }
+            } else {
+                let updated = transaction.execute(
+                    "UPDATE external_resolved_values SET resolvedCounterText = ?2 \
+                     WHERE operationIndex = ?1;",
+                    params![operation_index, expected],
+                )?;
+                if updated != 1 {
+                    return Err(ExternalSqliteStageError::IncompleteStage);
+                }
+            }
+        }
+        after_operation_index = *page
+            .last()
+            .ok_or(ExternalSqliteStageError::IncompleteStage)?;
+    }
+    Ok(())
+}
+
+fn resolved_counter_text(
+    transaction: &Transaction<'_>,
+    operation_index: i64,
+) -> StageResult<Option<String>> {
+    let (action, value_kind, value_text) = transaction.query_row(
+        "SELECT action, valueKind, valueText FROM external_operations \
+         WHERE operationIndex = ?1;",
+        [operation_index],
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        },
+    )?;
+    if value_kind != "counter" {
+        return Ok(None);
+    }
+    if action != 1 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    let mut value = value_text
+        .ok_or(ExternalSqliteStageError::IncompleteStage)?
+        .parse::<i64>()
+        .map_err(|_| ExternalSqliteStageError::IncompleteStage)?;
+    let mut statement = transaction.prepare(
+        "SELECT successor.valueKind, successor.valueText \
+         FROM external_operation_successors AS edge \
+         JOIN external_operations AS successor \
+           ON successor.idActorIndex = edge.actorIndex \
+          AND successor.idCounter = edge.counter \
+         WHERE edge.operationIndex = ?1 AND successor.action = 5 \
+         ORDER BY successor.idCounter, successor.idActorIndex;",
+    )?;
+    let mut rows = statement.query([operation_index])?;
+    while let Some(row) = rows.next()? {
+        let kind = row.get::<_, String>(0)?;
+        let text = row.get::<_, String>(1)?;
+        value = value
+            .checked_add(parse_increment(&kind, &text)?)
+            .ok_or(ExternalSqliteStageError::RangeOverflow)?;
+    }
+    Ok(Some(value.to_string()))
+}
+
+fn parse_increment(kind: &str, text: &str) -> StageResult<i64> {
+    match kind {
+        "signed" => text
+            .parse::<i64>()
+            .map_err(|_| ExternalSqliteStageError::IncompleteStage),
+        "unsigned" => {
+            let value = text
+                .parse::<u64>()
+                .map_err(|_| ExternalSqliteStageError::IncompleteStage)?;
+            i64::try_from(value).map_err(|_| ExternalSqliteStageError::RangeOverflow)
+        }
+        _ => Err(ExternalSqliteStageError::IncompleteStage),
+    }
+}
+
+fn validate_resolved_value_set(transaction: &Transaction<'_>) -> StageResult<()> {
+    let mismatch = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT operationIndex FROM external_resolved_values \
+           EXCEPT \
+           SELECT operationIndex FROM external_current_operations\
+         ) OR EXISTS(\
+           SELECT operationIndex FROM external_current_operations \
+           EXCEPT \
+           SELECT operationIndex FROM external_resolved_values\
+         );",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    let invalid_counter_shape = transaction.query_row(
+        "SELECT EXISTS(\
+           SELECT 1 \
+           FROM external_resolved_values AS resolved \
+           JOIN external_operations AS operation USING (operationIndex) \
+           WHERE (operation.valueKind = 'counter') != \
+                 (resolved.resolvedCounterText IS NOT NULL)\
+         );",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    let invalid_winner = transaction.query_row(
+        "WITH expected AS (\
+           SELECT operation.operationIndex, \
+                  CASE WHEN ROW_NUMBER() OVER (\
+                    PARTITION BY \
+                      operation.objectKind, operation.objectActorIndex, \
+                      operation.objectCounter, \
+                      CASE WHEN operation.insertFlag = 1 \
+                           THEN 'element' ELSE operation.keyKind END, \
+                      CASE WHEN operation.insertFlag = 1 \
+                           THEN NULL ELSE operation.keyName END, \
+                      CASE WHEN operation.insertFlag = 1 \
+                           THEN operation.idActorIndex ELSE operation.keyActorIndex END, \
+                      CASE WHEN operation.insertFlag = 1 \
+                           THEN operation.idCounter ELSE operation.keyCounter END \
+                    ORDER BY operation.idCounter DESC, actor.actorId COLLATE BINARY DESC\
+                  ) = 1 THEN 1 ELSE 0 END AS isWinner \
+           FROM external_current_operations AS current \
+           JOIN external_operations AS operation USING (operationIndex) \
+           JOIN external_actors AS actor \
+             ON actor.actorIndex = operation.idActorIndex\
+         ) \
+         SELECT EXISTS(\
+           SELECT 1 FROM expected \
+           JOIN external_resolved_values AS resolved USING (operationIndex) \
+           WHERE expected.isWinner != resolved.isWinner\
+         );",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if mismatch != 0
+        || invalid_counter_shape != 0
+        || invalid_winner != 0
+        || foreign_key_check_has_row(
+            transaction,
+            "PRAGMA foreign_key_check(external_resolved_values);",
+        )?
+    {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    Ok(())
+}
+
 fn validate_actor_operation_intervals(
     transaction: &Transaction<'_>,
     actor_count: u64,
@@ -1447,6 +1858,35 @@ fn current_operations_sha256(connection: &Connection) -> StageResult<String> {
         "external_operations",
         "valuePayload",
         "SELECT operationIndex FROM external_current_operations ORDER BY operationIndex;",
+    )?;
+    Ok(lower_hex(&hasher.finalize()))
+}
+
+fn resolved_values_sha256(connection: &Connection) -> StageResult<String> {
+    let mut hasher = Sha256::new();
+    hash_field(&mut hasher, b"freed-automerge-resolved-values-v1");
+    hash_query_rows(
+        connection,
+        &mut hasher,
+        "resolved-values",
+        "SELECT resolved.operationIndex, resolved.isWinner, resolved.resolvedCounterText, \
+                operation.idActorIndex, operation.idCounter, operation.objectKind, \
+                operation.objectActorIndex, operation.objectCounter, operation.keyKind, \
+                operation.keyName, operation.keyActorIndex, operation.keyCounter, \
+                operation.insertFlag, operation.action, operation.valueKind, \
+                operation.valueText, operation.valueTypeCode, operation.expandFlag, \
+                operation.markName \
+         FROM external_resolved_values AS resolved \
+         JOIN external_operations AS operation USING (operationIndex) \
+         ORDER BY resolved.operationIndex;",
+    )?;
+    hash_blob_column(
+        connection,
+        &mut hasher,
+        "resolved-value-payloads",
+        "external_operations",
+        "valuePayload",
+        "SELECT operationIndex FROM external_resolved_values ORDER BY operationIndex;",
     )?;
     Ok(lower_hex(&hasher.finalize()))
 }
@@ -2157,6 +2597,58 @@ mod tests {
         connection
     }
 
+    fn insert_root_property_operation(
+        connection: &Connection,
+        operation_index: i64,
+        counter: u64,
+        key: &str,
+        action: i64,
+        value_kind: &str,
+        value_text: Option<&str>,
+    ) {
+        connection
+            .execute(
+                "INSERT INTO external_operations \
+                 (operationIndex, idActorIndex, idCounter, objectKind, objectActorIndex, \
+                  objectCounter, keyKind, keyName, keyActorIndex, keyCounter, insertFlag, \
+                  action, valueKind, valueText, valueTypeCode, valuePayload, expandFlag, markName) \
+                 VALUES (?1, 0, ?2, 'root', NULL, NULL, 'property', ?3, NULL, NULL, \
+                         0, ?4, ?5, ?6, NULL, X'', 0, NULL);",
+                params![
+                    operation_index,
+                    counter.to_be_bytes(),
+                    key,
+                    action,
+                    value_kind,
+                    value_text,
+                ],
+            )
+            .unwrap();
+    }
+
+    fn set_operation_bounds(
+        connection: &Connection,
+        max_operation: u64,
+        operation_count: i64,
+        successor_count: i64,
+    ) {
+        connection
+            .execute(
+                "UPDATE external_changes SET maxOperation = ?1 WHERE changeIndex = 0;",
+                [max_operation.to_be_bytes()],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "UPDATE external_operation_stage_receipt \
+                 SET operationCount = ?1, successorCount = ?2, \
+                     successorSpoolByteLength = ?2 * 16 \
+                 WHERE singleton = 1;",
+                params![operation_count, successor_count],
+            )
+            .unwrap();
+    }
+
     #[test]
     fn seals_and_replays_one_complete_graph_then_detects_same_count_tampering() {
         let mut connection = complete_minimal_graph();
@@ -2521,5 +3013,191 @@ mod tests {
                 .unwrap(),
             2
         );
+    }
+
+    #[test]
+    fn resolved_values_require_current_materialization_and_replay_exactly() {
+        let mut connection = complete_minimal_graph();
+        seal_staged_graph(&mut connection).unwrap();
+        assert!(matches!(
+            materialize_resolved_values(&mut connection),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+
+        materialize_current_operations(&mut connection).unwrap();
+        let receipt = materialize_resolved_values(&mut connection).unwrap();
+        assert_eq!(receipt.resolved_value_count, 1);
+        assert_eq!(receipt.winner_count, 1);
+        assert_eq!(
+            materialize_resolved_values(&mut connection).unwrap(),
+            receipt
+        );
+
+        connection
+            .execute(
+                "UPDATE external_resolved_values SET isWinner = 0 \
+                 WHERE operationIndex = 0;",
+                [],
+            )
+            .unwrap();
+        assert!(matches!(
+            materialize_resolved_values(&mut connection),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+    }
+
+    #[test]
+    fn counter_resolution_keeps_the_base_visible_and_applies_increment_successors() {
+        let mut connection = complete_minimal_graph();
+        connection
+            .execute(
+                "UPDATE external_operations \
+                 SET valueKind = 'counter', valueText = '10' \
+                 WHERE operationIndex = 0;",
+                [],
+            )
+            .unwrap();
+        insert_root_property_operation(&connection, 1, 2, "title", 5, "signed", Some("2"));
+        connection
+            .execute(
+                "INSERT INTO external_operation_successors \
+                 (operationIndex, successorOrdinal, actorIndex, counter) \
+                 VALUES (0, 0, 0, ?1);",
+                [2_u64.to_be_bytes()],
+            )
+            .unwrap();
+        set_operation_bounds(&connection, 2, 2, 1);
+
+        seal_staged_graph(&mut connection).unwrap();
+        materialize_current_operations(&mut connection).unwrap();
+        let receipt = materialize_resolved_values(&mut connection).unwrap();
+        assert_eq!(receipt.resolved_value_count, 1);
+        assert_eq!(receipt.winner_count, 1);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT operationIndex, isWinner, resolvedCounterText \
+                     FROM external_resolved_values;",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, String>(2)?,
+                        ))
+                    },
+                )
+                .unwrap(),
+            (0, 1, "12".to_string())
+        );
+        connection
+            .execute(
+                "UPDATE external_resolved_values SET resolvedCounterText = '13' \
+                 WHERE operationIndex = 0;",
+                [],
+            )
+            .unwrap();
+        assert!(matches!(
+            materialize_resolved_values(&mut connection),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+    }
+
+    #[test]
+    fn register_resolution_preserves_conflicts_and_marks_only_the_lamport_maximum() {
+        let mut connection = complete_minimal_graph();
+        insert_root_property_operation(&connection, 1, 2, "title", 1, "string", Some("later"));
+        set_operation_bounds(&connection, 2, 2, 0);
+
+        seal_staged_graph(&mut connection).unwrap();
+        materialize_current_operations(&mut connection).unwrap();
+        let receipt = materialize_resolved_values(&mut connection).unwrap();
+        assert_eq!(receipt.resolved_value_count, 2);
+        assert_eq!(receipt.winner_count, 1);
+        let rows = connection
+            .prepare(
+                "SELECT operationIndex, isWinner FROM external_resolved_values \
+                 ORDER BY operationIndex;",
+            )
+            .unwrap()
+            .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(rows, vec![(0, 0), (1, 1)]);
+    }
+
+    #[test]
+    fn register_resolution_marks_one_winner_for_each_distinct_target() {
+        let mut connection = complete_minimal_graph();
+        insert_root_property_operation(&connection, 1, 2, "other", 1, "string", Some("value"));
+        set_operation_bounds(&connection, 2, 2, 0);
+
+        seal_staged_graph(&mut connection).unwrap();
+        materialize_current_operations(&mut connection).unwrap();
+        let receipt = materialize_resolved_values(&mut connection).unwrap();
+        assert_eq!(receipt.resolved_value_count, 2);
+        assert_eq!(receipt.winner_count, 2);
+    }
+
+    #[test]
+    fn register_resolution_rejects_orphan_and_noncounter_increments() {
+        let mut orphan = complete_minimal_graph();
+        insert_root_property_operation(&orphan, 1, 2, "title", 5, "signed", Some("1"));
+        set_operation_bounds(&orphan, 2, 2, 0);
+        seal_staged_graph(&mut orphan).unwrap();
+        materialize_current_operations(&mut orphan).unwrap();
+        assert!(matches!(
+            materialize_resolved_values(&mut orphan),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+
+        let mut noncounter = complete_minimal_graph();
+        insert_root_property_operation(&noncounter, 1, 2, "title", 5, "signed", Some("1"));
+        noncounter
+            .execute(
+                "INSERT INTO external_operation_successors \
+                 (operationIndex, successorOrdinal, actorIndex, counter) \
+                 VALUES (0, 0, 0, ?1);",
+                [2_u64.to_be_bytes()],
+            )
+            .unwrap();
+        set_operation_bounds(&noncounter, 2, 2, 1);
+        seal_staged_graph(&mut noncounter).unwrap();
+        materialize_current_operations(&mut noncounter).unwrap();
+        assert!(matches!(
+            materialize_resolved_values(&mut noncounter),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+    }
+
+    #[test]
+    fn counter_resolution_rejects_integer_overflow() {
+        let mut connection = complete_minimal_graph();
+        connection
+            .execute(
+                "UPDATE external_operations \
+                 SET valueKind = 'counter', valueText = ?1 \
+                 WHERE operationIndex = 0;",
+                [i64::MAX.to_string()],
+            )
+            .unwrap();
+        insert_root_property_operation(&connection, 1, 2, "title", 5, "unsigned", Some("1"));
+        connection
+            .execute(
+                "INSERT INTO external_operation_successors \
+                 (operationIndex, successorOrdinal, actorIndex, counter) \
+                 VALUES (0, 0, 0, ?1);",
+                [2_u64.to_be_bytes()],
+            )
+            .unwrap();
+        set_operation_bounds(&connection, 2, 2, 1);
+
+        seal_staged_graph(&mut connection).unwrap();
+        materialize_current_operations(&mut connection).unwrap();
+        assert!(matches!(
+            materialize_resolved_values(&mut connection),
+            Err(ExternalSqliteStageError::RangeOverflow)
+        ));
     }
 }

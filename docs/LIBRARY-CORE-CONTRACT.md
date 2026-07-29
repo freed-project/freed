@@ -9712,6 +9712,27 @@ graph, every selected operation descriptor, and every selected payload byte.
 Exact retry recomputes both the selection and digest. A missing, extra,
 changed, or pre-seal row fails closed.
 
+One later immutable resolved-value receipt retains every current conflict and
+marks exactly one winner for each effective map property or list element.
+Winner order is Automerge Lamport order: the unsigned operation counter first,
+then the actor bytes in binary lexical order. Insert operations target their
+own operation ID, while later sequence updates target that inserted element
+ID. Winner selection runs as one SQLite window operation with temporary data
+forced to disk. It must not execute one complete conflict scan per current
+operation.
+
+Counter increment operations never become visible values. Each increment must
+be an explicit successor of at least one counter base, must contain one
+canonical signed or unsigned integer, and adjusts every current counter base
+it names. Orphan increments, increments attached to a non-counter,
+malformed integer text, unsigned values above the signed projection range, and
+arithmetic overflow fail closed. Counter bases are processed through fixed
+pages. Exact replay recomputes winner membership and counter values, then binds
+every resolved row, descriptor, and payload byte to the sealed graph and
+current-operation receipts. This stage still does not order list elements,
+reconstruct objects, select registered entities, open a production database,
+or activate SQLite.
+
 The migration worker's attributed resident ceiling is 384 MiB on a 4 GiB host,
 512 MiB on an 8 GiB host, and 768 MiB on a host with 16 GiB or more. Admission
 proves enough private staging capacity for the measured source, target,

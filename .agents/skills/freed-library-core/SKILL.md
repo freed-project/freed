@@ -576,8 +576,16 @@ Fault injection must prove rollback from the latest write in that transaction.
     superseded by any explicit non-increment or omitted-delete successor.
     Retain concurrent current operations without choosing a winner. Bind the
     exact set and payload bytes to the graph digest in a replay-checked receipt
-    before object or entity materialization. Apply counter increments only in
-    the later value projection and keep that arithmetic receipt-bound.
+    before object or entity materialization. The later resolved-value stage
+    preserves every concurrent value, marks exactly one Lamport-maximum winner
+    per effective map or list target, and applies explicit increment successors
+    only to their current counter bases. Compute winners in one disk-spilling
+    SQLite window pass instead of scanning all conflicts once per operation.
+    Page counter bases through a fixed bound, reject orphan, non-counter,
+    malformed, or overflowing increments, and bind the complete winner and
+    counter projection to the sealed graph and current-operation receipts.
+    This does not order list elements, reconstruct objects, or select registered
+    product entities.
     Every staged head must resolve to a staged change before the change receipt
     is accepted. Change and operation receipts in one stage must bind the same
     exact source identity. Missing rows, changed layout entries, dangling graph
