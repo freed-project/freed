@@ -205,6 +205,13 @@ parser establishes only canonical Library Core value bytes. The authoritative
 inbound path still needs closed-schema validation, exact digest derivation, and
 strict signature verification before materialization.
 
+Reuse the shared protocol scalar predicates for fixed lowercase hexadecimal
+values, operation-instance IDs, bounded Unicode-scalar entity IDs, and
+nonnegative safe integers. Do not create artifact-specific regex copies or
+allocate encoded copies merely to count a bounded entity ID. Scalar syntax does
+not prove randomness, cryptographic derivation, authority, or semantic
+ownership.
+
 ## Preserve the invariants
 
 1. Keep exactly one active writer epoch. Advance it only with a signed immutable

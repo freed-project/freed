@@ -308,6 +308,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.24 | Crash-safe, idempotent derived SQLite projection batch receipts with exact response-loss recovery | ✓ | Medium |
 | 4.25 | Bounded cross-runtime canonical operation construction codec and domain-separated input vectors | ✓ | Medium |
 | 4.26 | Bounded duplicate-preserving shared and native canonical-value decoders with exact byte rejection vectors | ✓ | Medium |
+| 4.27 | Shared exact protocol scalar predicates, including bounded entity IDs, reused by legacy bootstrap and future closed-schema validators | ✓ | Low |
 
 ---
 

@@ -481,6 +481,17 @@ logical operation always uses a new ID. `transaction_id`,
 `*_operation_id` use this codec unless a closed schema explicitly fixes that
 field to another already registered opaque identifier.
 
+The dormant shared protocol-scalar module is the executable source for the
+64-character lowercase hexadecimal, operation-instance-ID, entity-ID, and
+nonnegative-safe-integer syntax checks. A v1 entity ID is a nonempty Unicode
+scalar string whose UTF-8 encoding is at most 4,096 bytes. It is not normalized.
+The validator counts bytes without allocating an encoded copy and rejects lone
+UTF-16 surrogates. The legacy epoch bootstrap validator consumes the shared
+fixed-width and numeric predicates instead of carrying a second regex or
+numeric interpretation. Passing a scalar predicate proves only the encoded
+shape. Randomness, digest derivation, signature validity, authority, and
+field-specific semantics remain separate checks.
+
 Canonical sets use their field-specific sort before `C`. `causal_frontier`
 sorts ascending by `(actor_id, sequence, operation_id, chain_digest)`,
 comparing numeric sequence numerically and the remaining ASCII identifiers

@@ -11,16 +11,17 @@
  * write storage, activate Library Core, or perform platform cryptography.
  */
 
-declare const lowercaseHex64Brand: unique symbol;
-declare const operationIdBrand: unique symbol;
+import {
+  isLibraryCoreLowercaseHex64 as isLowercaseHex64,
+  isLibraryCoreNonnegativeSafeInteger as isNonnegativeSafeInteger,
+  isLibraryCoreOperationInstanceId as isOperationId,
+  type LibraryCoreLowercaseHex64,
+  type LibraryCoreOperationInstanceId,
+} from "./protocol-scalars.js";
 
-export type LibraryCoreLowercaseHex64 = string & {
-  readonly [lowercaseHex64Brand]: true;
-};
+export type { LibraryCoreLowercaseHex64 } from "./protocol-scalars.js";
 
-export type LegacyEpochBootstrapOperationId = string & {
-  readonly [operationIdBrand]: true;
-};
+export type LegacyEpochBootstrapOperationId = LibraryCoreOperationInstanceId;
 
 export const LEGACY_EPOCH_BOOTSTRAP_MAX_HEADS = 65;
 export const LEGACY_EPOCH_BOOTSTRAP_MAX_RECORD_OCCURRENCES = 65;
@@ -210,9 +211,6 @@ export interface LegacyEpochBootstrapStateInput {
   readonly library_control: unknown | null;
 }
 
-const HEX_64 = /^[0-9a-f]{64}$/;
-const OPERATION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-
 const HEADS_KEYS = ["heads"] as const;
 const RECORD_BODY_KEYS = [
   "format",
@@ -398,16 +396,6 @@ function snapshotArray(
   return success(Object.freeze(snapshot));
 }
 
-function isLowercaseHex64(value: unknown): value is LibraryCoreLowercaseHex64 {
-  return typeof value === "string" && HEX_64.test(value);
-}
-
-function isOperationId(
-  value: unknown,
-): value is LegacyEpochBootstrapOperationId {
-  return typeof value === "string" && OPERATION_ID.test(value);
-}
-
 function isBootstrapRecordRootKey(value: unknown): value is string {
   return (
     typeof value === "string" &&
@@ -415,15 +403,6 @@ function isBootstrapRecordRootKey(value: unknown): value is string {
     isLowercaseHex64(
       value.slice(LEGACY_EPOCH_BOOTSTRAP_RECORD_ROOT_PREFIX.length),
     )
-  );
-}
-
-function isNonnegativeSafeInteger(value: unknown): value is number {
-  return (
-    typeof value === "number" &&
-    Number.isSafeInteger(value) &&
-    value >= 0 &&
-    !Object.is(value, -0)
   );
 }
 
