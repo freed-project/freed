@@ -247,6 +247,16 @@ the complete change graph, or allocates source-sized memory cannot produce an
 authoritative migration candidate, satisfy the external-memory migration
 contract, or authorize cutover.
 
+Build a derived shadow generation in a fresh staging database. Bind the durable
+rebuild record to the exact source identity and declared row count. Commit each
+sequential batch's rows, derived receipt, batch mapping, revision, cumulative
+row count, and completion state in one transaction. Exact retry returns the
+stored result. Partial generations are never readable. Close a rebuild only
+when declared, projected, and actual row counts agree. Completion inside the
+database is not file publication. A native adapter must close, verify, and
+atomically publish the complete staging file before assigning it to a reader.
+This remains derived shadow work and does not satisfy Gate C.
+
 A dormant engine has no production caller, opens no user database, emits no
 authority receipt, and does not append an activation-manifest transition. It
 may compile into Freed Desktop behind an explicit dark-module boundary. A

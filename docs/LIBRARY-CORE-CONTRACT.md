@@ -2405,6 +2405,24 @@ present table with an incompatible shape. This is derived-store retry evidence,
 not a signed Library Core operation receipt. It cannot authorize a mutation,
 epoch transition, bootstrap, cutover, or provider action.
 
+Physical schema version 3 adds one crash-resumable derived rebuild record. A
+rebuild binds its exact identifier to the durable source document, sorted-head
+digest and count, storage generation, save revision, and expected row count.
+It starts only in a fresh empty staging database at projection revision zero.
+Each sequential batch commits its rows, ordinary projection receipt, batch
+mapping, next batch index, projected row count, revision, and completion flag
+in one transaction. Exact retry returns the durable batch receipt and current
+rebuild state. A changed source, skipped batch, conflicting retry, or partial
+state update rolls the transaction back.
+
+An incomplete rebuild is not readable through feed pages or counts. The final
+batch may mark the generation complete only when its cumulative projected row
+count and the actual SQLite row count both equal the declared source row count.
+The database remains a staging generation after completion. A later native
+adapter must close and verify the file, then publish that complete file through
+the registered generation transition. This record does not make an in-place
+partial generation safe, publish a database file, or grant reader authority.
+
 The dormant Desktop derived-shadow projection probe exposes this input through
 one bounded worker session. Session admission binds the exact durable
 Automerge document ID, the SHA-256 digest and count of its sorted heads, and the

@@ -27,12 +27,12 @@ use rusqlite::{
     params, Connection, OptionalExtension, Result as SqlResult, Row, Transaction,
     TransactionBehavior,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::Path;
 use std::time::Duration;
 
-const SHADOW_SCHEMA_VERSION: i64 = 2;
+const SHADOW_SCHEMA_VERSION: i64 = 3;
 const MAX_FEED_PAGE_LIMIT: u32 = 128;
 const MAX_FEED_PAGE_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const FEED_PAGE_ENVELOPE_RESERVE_BYTES: usize = 16 * 1_024;
@@ -43,6 +43,8 @@ const MAX_PROJECTION_BATCH_ID_BYTES: usize = 128;
 const MAX_PROJECTION_BATCH_ITEMS: usize = 1_000;
 const MAX_PROJECTION_BATCH_BYTES: usize = 4 * 1024 * 1024;
 const MAX_ENTITY_ID_UTF8_BYTES: usize = 4_096;
+const MAX_PROJECTION_REBUILD_ROWS: usize = 250_000;
+const MAX_PROJECTION_SOURCE_DOCUMENT_ID_BYTES: usize = 4_096;
 const MAX_JAVASCRIPT_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const BASE_CACHE_KIB: i64 = -32 * 1024;
@@ -61,6 +63,12 @@ enum ShadowStoreError {
     FeedCardExceedsResponseBudget { requested: usize, maximum: usize },
     ProjectionEntityNotFound { entity_id: String },
     ProjectionBatchReplayConflict { batch_id: String },
+    InvalidProjectionRebuild { field: &'static str },
+    ProjectionRebuildConflict { rebuild_id: String },
+    ProjectionRebuildNotEmpty,
+    ProjectionRebuildIncomplete { rebuild_id: String },
+    ProjectionRebuildBatchOutOfOrder { expected: i64, actual: i64 },
+    ProjectionRebuildRowCountMismatch { expected: usize, actual: usize },
     UnsupportedSchemaVersion { expected: i64, actual: i64 },
     UnversionedSchemaPresent,
 }
@@ -114,6 +122,27 @@ impl fmt::Display for ShadowStoreError {
                 formatter,
                 "projection batch {batch_id} was retried with different input"
             ),
+            Self::InvalidProjectionRebuild { field } => {
+                write!(formatter, "invalid projection rebuild {field}")
+            }
+            Self::ProjectionRebuildConflict { rebuild_id } => write!(
+                formatter,
+                "projection rebuild {rebuild_id} does not match its durable state"
+            ),
+            Self::ProjectionRebuildNotEmpty => {
+                formatter.write_str("projection rebuild requires an empty staging store")
+            }
+            Self::ProjectionRebuildIncomplete { rebuild_id } => {
+                write!(formatter, "projection rebuild {rebuild_id} is incomplete")
+            }
+            Self::ProjectionRebuildBatchOutOfOrder { expected, actual } => write!(
+                formatter,
+                "projection rebuild expected batch {expected}, received {actual}"
+            ),
+            Self::ProjectionRebuildRowCountMismatch { expected, actual } => write!(
+                formatter,
+                "projection rebuild expected {expected} projected rows, received {actual}"
+            ),
             Self::UnsupportedSchemaVersion { expected, actual } => write!(
                 formatter,
                 "shadow schema version {actual} is unsupported, expected {expected}"
@@ -136,6 +165,8 @@ const SHADOW_SCHEMA_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/shadow-schema-v1.sql");
 const SHADOW_SCHEMA_V2_SQL: &str =
     include_str!("../../../shared/src/library-core/shadow-schema-v2.sql");
+const SHADOW_SCHEMA_V3_SQL: &str =
+    include_str!("../../../shared/src/library-core/shadow-schema-v3.sql");
 const READ_ASSIGNMENT_PROJECTION_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/read-assignment-projection-v1.sql");
 
@@ -146,7 +177,8 @@ const READ_ASSIGNMENT_PROJECTION_V1_SQL: &str =
 const SORT_AT_ABSENT: i64 = 0;
 
 /// One lossless projected row. Field order matches `SHADOW_COLUMNS`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct FeedItemRow {
     pub global_id: String,
     pub platform: Option<String>,
@@ -384,7 +416,7 @@ struct FeedPage {
     pub next_cursor: Option<PageCursor>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ProjectionCommit {
     batch_id: String,
     input_digest: String,
@@ -392,6 +424,32 @@ struct ProjectionCommit {
     revision: i64,
     upserted: usize,
     deleted: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProjectionSourceV1 {
+    document_id: String,
+    heads_digest: String,
+    head_count: i64,
+    storage_generation: i64,
+    storage_save_revision: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProjectionRebuildState {
+    rebuild_id: String,
+    source: ProjectionSourceV1,
+    total_rows: usize,
+    next_batch_index: i64,
+    projection_revision: i64,
+    projected_rows: usize,
+    complete: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProjectionRebuildCommit {
+    projection: ProjectionCommit,
+    state: ProjectionRebuildState,
 }
 
 #[derive(Debug, PartialEq)]
@@ -605,6 +663,9 @@ impl ShadowStore {
         if prior < 2 {
             tx.execute_batch(SHADOW_SCHEMA_V2_SQL)?;
         }
+        if prior < 3 {
+            tx.execute_batch(SHADOW_SCHEMA_V3_SQL)?;
+        }
         let actual = tx.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
         if actual != SHADOW_SCHEMA_VERSION {
             return Err(ShadowStoreError::UnsupportedSchemaVersion {
@@ -634,6 +695,242 @@ impl ShadowStore {
             });
         }
         Ok(())
+    }
+
+    fn validate_projection_batch_payload(
+        rows: &[FeedItemRow],
+        deleted_ids: &[String],
+    ) -> StoreResult<()> {
+        let requested = rows.len().saturating_add(deleted_ids.len());
+        if !(1..=MAX_PROJECTION_BATCH_ITEMS).contains(&requested) {
+            return Err(ShadowStoreError::InvalidProjectionBatchSize {
+                requested,
+                maximum: MAX_PROJECTION_BATCH_ITEMS,
+            });
+        }
+        if rows
+            .iter()
+            .any(|row| row.global_id.is_empty() || row.global_id.len() > MAX_ENTITY_ID_UTF8_BYTES)
+            || deleted_ids
+                .iter()
+                .any(|id| id.is_empty() || id.len() > MAX_ENTITY_ID_UTF8_BYTES)
+        {
+            return Err(ShadowStoreError::InvalidProjectionEntityId);
+        }
+        let projected_bytes = rows
+            .iter()
+            .fold(0usize, |total, row| {
+                total.saturating_add(row.projected_size_bytes())
+            })
+            .saturating_add(
+                deleted_ids
+                    .iter()
+                    .fold(0usize, |total, id| total.saturating_add(id.len())),
+            );
+        if projected_bytes > MAX_PROJECTION_BATCH_BYTES {
+            return Err(ShadowStoreError::InvalidProjectionBatchBytes {
+                requested: projected_bytes,
+                maximum: MAX_PROJECTION_BATCH_BYTES,
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_projection_rebuild_identity(
+        rebuild_id: &str,
+        source: &ProjectionSourceV1,
+        total_rows: usize,
+    ) -> StoreResult<()> {
+        if rebuild_id.is_empty() || rebuild_id.len() > MAX_PROJECTION_BATCH_ID_BYTES {
+            return Err(ShadowStoreError::InvalidProjectionRebuild {
+                field: "rebuild_id",
+            });
+        }
+        if source.document_id.is_empty()
+            || source.document_id.len() > MAX_PROJECTION_SOURCE_DOCUMENT_ID_BYTES
+        {
+            return Err(ShadowStoreError::InvalidProjectionRebuild {
+                field: "source_document_id",
+            });
+        }
+        if source.heads_digest.len() != 64
+            || !source
+                .heads_digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(ShadowStoreError::InvalidProjectionRebuild {
+                field: "source_heads_digest",
+            });
+        }
+        if !(0..=MAX_JAVASCRIPT_SAFE_INTEGER).contains(&source.head_count) {
+            return Err(ShadowStoreError::InvalidProjectionRebuild {
+                field: "source_head_count",
+            });
+        }
+        if !(0..=MAX_JAVASCRIPT_SAFE_INTEGER).contains(&source.storage_generation) {
+            return Err(ShadowStoreError::InvalidProjectionRebuild {
+                field: "source_generation",
+            });
+        }
+        if !(0..=MAX_JAVASCRIPT_SAFE_INTEGER).contains(&source.storage_save_revision) {
+            return Err(ShadowStoreError::InvalidProjectionRebuild {
+                field: "source_save_revision",
+            });
+        }
+        if total_rows > MAX_PROJECTION_REBUILD_ROWS {
+            return Err(ShadowStoreError::InvalidProjectionRebuild {
+                field: "total_rows",
+            });
+        }
+        Ok(())
+    }
+
+    fn projection_rebuild_state_in(
+        transaction: &Transaction<'_>,
+    ) -> SqlResult<Option<ProjectionRebuildState>> {
+        transaction
+            .query_row(
+                "SELECT rebuildId, sourceDocumentId, sourceHeadsDigest, sourceHeadCount, \
+                 sourceGeneration, sourceSaveRevision, totalRows, nextBatchIndex, \
+                 projectionRevision, projectedRows, complete \
+                 FROM projection_rebuild_state WHERE singleton = 1;",
+                [],
+                |row| {
+                    Ok(ProjectionRebuildState {
+                        rebuild_id: row.get(0)?,
+                        source: ProjectionSourceV1 {
+                            document_id: row.get(1)?,
+                            heads_digest: row.get(2)?,
+                            head_count: row.get(3)?,
+                            storage_generation: row.get(4)?,
+                            storage_save_revision: row.get(5)?,
+                        },
+                        total_rows: row.get::<_, i64>(6)? as usize,
+                        next_batch_index: row.get(7)?,
+                        projection_revision: row.get(8)?,
+                        projected_rows: row.get::<_, i64>(9)? as usize,
+                        complete: row.get::<_, i64>(10)? == 1,
+                    })
+                },
+            )
+            .optional()
+    }
+
+    fn require_matching_projection_rebuild(
+        state: ProjectionRebuildState,
+        rebuild_id: &str,
+        source: &ProjectionSourceV1,
+        total_rows: usize,
+    ) -> StoreResult<ProjectionRebuildState> {
+        if state.rebuild_id != rebuild_id
+            || state.source != *source
+            || state.total_rows != total_rows
+        {
+            return Err(ShadowStoreError::ProjectionRebuildConflict {
+                rebuild_id: rebuild_id.to_string(),
+            });
+        }
+        Ok(state)
+    }
+
+    fn verify_projection_rebuild_state_in(
+        transaction: &Transaction<'_>,
+        state: &ProjectionRebuildState,
+    ) -> StoreResult<()> {
+        let projection_revision = Self::revision_in(transaction)?;
+        let stored_rows = transaction.query_row("SELECT COUNT(*) FROM feed_items;", [], |row| {
+            row.get::<_, i64>(0)
+        })? as usize;
+        let rebuild_batches = transaction.query_row(
+            "SELECT COUNT(*) FROM projection_rebuild_batches \
+             WHERE rebuildId = ?1;",
+            params![state.rebuild_id],
+            |row| row.get::<_, i64>(0),
+        )?;
+        let projection_receipts =
+            transaction.query_row("SELECT COUNT(*) FROM projection_batches;", [], |row| {
+                row.get::<_, i64>(0)
+            })?;
+        if state.projection_revision != projection_revision
+            || state.projected_rows != stored_rows
+            || state.next_batch_index != rebuild_batches
+            || rebuild_batches != projection_receipts
+            || state.complete != (state.projected_rows == state.total_rows)
+        {
+            return Err(ShadowStoreError::ProjectionRebuildConflict {
+                rebuild_id: state.rebuild_id.clone(),
+            });
+        }
+        Ok(())
+    }
+
+    fn require_readable_projection_in(transaction: &Transaction<'_>) -> StoreResult<()> {
+        if let Some(state) = Self::projection_rebuild_state_in(transaction)? {
+            if !state.complete {
+                Self::verify_projection_rebuild_state_in(transaction, &state)?;
+                return Err(ShadowStoreError::ProjectionRebuildIncomplete {
+                    rebuild_id: state.rebuild_id,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn begin_projection_rebuild(
+        &mut self,
+        rebuild_id: &str,
+        source: &ProjectionSourceV1,
+        total_rows: usize,
+    ) -> StoreResult<ProjectionRebuildState> {
+        Self::validate_projection_rebuild_identity(rebuild_id, source, total_rows)?;
+        let transaction = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(state) = Self::projection_rebuild_state_in(&transaction)? {
+            let state =
+                Self::require_matching_projection_rebuild(state, rebuild_id, source, total_rows)?;
+            Self::verify_projection_rebuild_state_in(&transaction, &state)?;
+            transaction.commit()?;
+            return Ok(state);
+        }
+
+        let projection_revision = Self::revision_in(&transaction)?;
+        let existing_rows =
+            transaction.query_row("SELECT COUNT(*) FROM feed_items;", [], |row| {
+                row.get::<_, i64>(0)
+            })?;
+        let existing_receipts =
+            transaction.query_row("SELECT COUNT(*) FROM projection_batches;", [], |row| {
+                row.get::<_, i64>(0)
+            })?;
+        if projection_revision != 0 || existing_rows != 0 || existing_receipts != 0 {
+            return Err(ShadowStoreError::ProjectionRebuildNotEmpty);
+        }
+
+        let complete = total_rows == 0;
+        transaction.execute(
+            "INSERT INTO projection_rebuild_state (\
+             singleton, rebuildId, sourceSchemaVersion, sourceDocumentId, \
+             sourceHeadsDigest, sourceHeadCount, sourceGeneration, \
+             sourceSaveRevision, totalRows, nextBatchIndex, projectionRevision, \
+             projectedRows, complete) \
+             VALUES (1, ?1, 1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 0, 0, ?8);",
+            params![
+                rebuild_id,
+                source.document_id,
+                source.heads_digest,
+                source.head_count,
+                source.storage_generation,
+                source.storage_save_revision,
+                total_rows as i64,
+                i64::from(complete),
+            ],
+        )?;
+        let state = Self::projection_rebuild_state_in(&transaction)?
+            .expect("projection rebuild state was inserted in this transaction");
+        transaction.commit()?;
+        Ok(state)
     }
 
     fn projection_receipt_in(
@@ -717,66 +1014,21 @@ impl ShadowStore {
         })
     }
 
-    /// Applies one projection delta, advances its revision, and records its
-    /// durable retry receipt in the same transaction.
-    ///
-    /// Exact retry after response loss returns the original receipt without
-    /// reapplying rows. Reusing a batch ID with different input or a different
-    /// previous revision fails closed. This receipt belongs only to the dark
-    /// derived projection. It is not an authoritative Library Core operation
-    /// receipt and grants no mutation authority.
-    fn apply_projection_batch(
-        &mut self,
+    fn apply_projection_batch_in(
+        transaction: &Transaction<'_>,
         batch_id: &str,
         input_digest: &str,
         expected_revision: i64,
         rows: &[FeedItemRow],
         deleted_ids: &[String],
     ) -> StoreResult<ProjectionCommit> {
-        Self::validate_projection_batch_identity(batch_id, input_digest)?;
-        let requested = rows.len().saturating_add(deleted_ids.len());
-        if !(1..=MAX_PROJECTION_BATCH_ITEMS).contains(&requested) {
-            return Err(ShadowStoreError::InvalidProjectionBatchSize {
-                requested,
-                maximum: MAX_PROJECTION_BATCH_ITEMS,
-            });
-        }
-        if rows
-            .iter()
-            .any(|row| row.global_id.is_empty() || row.global_id.len() > MAX_ENTITY_ID_UTF8_BYTES)
-            || deleted_ids
-                .iter()
-                .any(|id| id.is_empty() || id.len() > MAX_ENTITY_ID_UTF8_BYTES)
-        {
-            return Err(ShadowStoreError::InvalidProjectionEntityId);
-        }
-        let projected_bytes = rows
-            .iter()
-            .fold(0usize, |total, row| {
-                total.saturating_add(row.projected_size_bytes())
-            })
-            .saturating_add(
-                deleted_ids
-                    .iter()
-                    .fold(0usize, |total, id| total.saturating_add(id.len())),
-            );
-        if projected_bytes > MAX_PROJECTION_BATCH_BYTES {
-            return Err(ShadowStoreError::InvalidProjectionBatchBytes {
-                requested: projected_bytes,
-                maximum: MAX_PROJECTION_BATCH_BYTES,
-            });
-        }
-        let tx: Transaction<'_> = self
-            .conn
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
         if let Some(receipt) =
-            Self::begin_projection_batch_in(&tx, batch_id, input_digest, expected_revision)?
+            Self::begin_projection_batch_in(transaction, batch_id, input_digest, expected_revision)?
         {
-            tx.commit()?;
             return Ok(receipt);
         }
         {
-            let mut statement = tx.prepare_cached(UPSERT_SQL)?;
+            let mut statement = transaction.prepare_cached(UPSERT_SQL)?;
             for row in rows {
                 statement.execute(params![
                     row.global_id,
@@ -804,21 +1056,223 @@ impl ShadowStore {
         }
         let mut deleted = 0usize;
         {
-            let mut statement = tx.prepare_cached(DELETE_SQL)?;
+            let mut statement = transaction.prepare_cached(DELETE_SQL)?;
             for global_id in deleted_ids {
                 deleted += statement.execute(params![global_id])?;
             }
         }
-        let commit = Self::finish_projection_batch_in(
-            &tx,
+        Self::finish_projection_batch_in(
+            transaction,
             batch_id,
             input_digest,
             expected_revision,
             rows.len(),
             deleted,
+        )
+    }
+
+    /// Applies one projection delta, advances its revision, and records its
+    /// durable retry receipt in the same transaction.
+    ///
+    /// Exact retry after response loss returns the original receipt without
+    /// reapplying rows. Reusing a batch ID with different input or a different
+    /// previous revision fails closed. This receipt belongs only to the dark
+    /// derived projection. It is not an authoritative Library Core operation
+    /// receipt and grants no mutation authority.
+    fn apply_projection_batch(
+        &mut self,
+        batch_id: &str,
+        input_digest: &str,
+        expected_revision: i64,
+        rows: &[FeedItemRow],
+        deleted_ids: &[String],
+    ) -> StoreResult<ProjectionCommit> {
+        Self::validate_projection_batch_identity(batch_id, input_digest)?;
+        Self::validate_projection_batch_payload(rows, deleted_ids)?;
+        let tx: Transaction<'_> = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let commit = Self::apply_projection_batch_in(
+            &tx,
+            batch_id,
+            input_digest,
+            expected_revision,
+            rows,
+            deleted_ids,
         )?;
         tx.commit()?;
         Ok(commit)
+    }
+
+    /// Applies one sequential batch to a fresh derived-shadow rebuild.
+    ///
+    /// The rebuild state, projected rows, ordinary projection receipt, batch
+    /// mapping, revision, and completion marker share one transaction. An
+    /// interrupted caller can reopen the staging store, read the exact next
+    /// batch and row offsets, and retry the last committed batch without
+    /// duplicating rows. This remains a derived-store receipt. It does not
+    /// authorize Library Core migration or cutover.
+    #[allow(clippy::too_many_arguments)]
+    fn apply_projection_rebuild_batch(
+        &mut self,
+        rebuild_id: &str,
+        source: &ProjectionSourceV1,
+        total_rows: usize,
+        batch_index: i64,
+        batch_id: &str,
+        input_digest: &str,
+        projected_rows: usize,
+        complete: bool,
+        rows: &[FeedItemRow],
+    ) -> StoreResult<ProjectionRebuildCommit> {
+        Self::validate_projection_rebuild_identity(rebuild_id, source, total_rows)?;
+        Self::validate_projection_batch_identity(batch_id, input_digest)?;
+        Self::validate_projection_batch_payload(rows, &[])?;
+        if !(0..=MAX_JAVASCRIPT_SAFE_INTEGER).contains(&batch_index) {
+            return Err(ShadowStoreError::InvalidProjectionRebuild {
+                field: "batch_index",
+            });
+        }
+
+        let transaction = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let state = Self::projection_rebuild_state_in(&transaction)?.ok_or(
+            ShadowStoreError::InvalidProjectionRebuild {
+                field: "missing_state",
+            },
+        )?;
+        let state =
+            Self::require_matching_projection_rebuild(state, rebuild_id, source, total_rows)?;
+        Self::verify_projection_rebuild_state_in(&transaction, &state)?;
+
+        let prior = transaction
+            .query_row(
+                "SELECT b.batchId, p.inputDigest, p.previousRevision, \
+                 p.committedRevision, p.upserted, p.deleted, \
+                 b.projectedRows, b.complete \
+                 FROM projection_rebuild_batches b \
+                 JOIN projection_batches p ON p.batchId = b.batchId \
+                 WHERE b.rebuildId = ?1 AND b.batchIndex = ?2;",
+                params![rebuild_id, batch_index],
+                |row| {
+                    Ok((
+                        ProjectionCommit {
+                            batch_id: row.get(0)?,
+                            input_digest: row.get(1)?,
+                            previous_revision: row.get(2)?,
+                            revision: row.get(3)?,
+                            upserted: row.get::<_, i64>(4)? as usize,
+                            deleted: row.get::<_, i64>(5)? as usize,
+                        },
+                        row.get::<_, i64>(6)? as usize,
+                        row.get::<_, i64>(7)? == 1,
+                    ))
+                },
+            )
+            .optional()?;
+        if let Some((projection, prior_projected_rows, prior_complete)) = prior {
+            if projection.batch_id != batch_id
+                || projection.input_digest != input_digest
+                || projection.upserted != rows.len()
+                || projection.deleted != 0
+                || prior_projected_rows != projected_rows
+                || prior_complete != complete
+            {
+                return Err(ShadowStoreError::ProjectionRebuildConflict {
+                    rebuild_id: rebuild_id.to_string(),
+                });
+            }
+            transaction.commit()?;
+            return Ok(ProjectionRebuildCommit { projection, state });
+        }
+
+        if state.complete {
+            return Err(ShadowStoreError::ProjectionRebuildConflict {
+                rebuild_id: rebuild_id.to_string(),
+            });
+        }
+        if batch_index != state.next_batch_index {
+            return Err(ShadowStoreError::ProjectionRebuildBatchOutOfOrder {
+                expected: state.next_batch_index,
+                actual: batch_index,
+            });
+        }
+        let expected_projected_rows = state.projected_rows.saturating_add(rows.len());
+        if projected_rows != expected_projected_rows || projected_rows > total_rows {
+            return Err(ShadowStoreError::ProjectionRebuildRowCountMismatch {
+                expected: expected_projected_rows,
+                actual: projected_rows,
+            });
+        }
+        if complete != (projected_rows == total_rows) {
+            return Err(ShadowStoreError::InvalidProjectionRebuild { field: "complete" });
+        }
+        if Self::projection_receipt_in(&transaction, batch_id)?.is_some() {
+            return Err(ShadowStoreError::ProjectionRebuildConflict {
+                rebuild_id: rebuild_id.to_string(),
+            });
+        }
+
+        let projection = Self::apply_projection_batch_in(
+            &transaction,
+            batch_id,
+            input_digest,
+            state.projection_revision,
+            rows,
+            &[],
+        )?;
+        if complete {
+            let stored_rows =
+                transaction.query_row("SELECT COUNT(*) FROM feed_items;", [], |row| {
+                    row.get::<_, i64>(0)
+                })? as usize;
+            if stored_rows != total_rows {
+                return Err(ShadowStoreError::ProjectionRebuildRowCountMismatch {
+                    expected: total_rows,
+                    actual: stored_rows,
+                });
+            }
+        }
+        transaction.execute(
+            "INSERT INTO projection_rebuild_batches (\
+             rebuildId, batchIndex, batchId, projectedRows, complete) \
+             VALUES (?1, ?2, ?3, ?4, ?5);",
+            params![
+                rebuild_id,
+                batch_index,
+                batch_id,
+                projected_rows as i64,
+                i64::from(complete),
+            ],
+        )?;
+        let updated = transaction.execute(
+            "UPDATE projection_rebuild_state \
+             SET nextBatchIndex = ?2, projectionRevision = ?3, \
+                 projectedRows = ?4, complete = ?5 \
+             WHERE singleton = 1 AND rebuildId = ?1 \
+               AND nextBatchIndex = ?6 AND projectionRevision = ?7 \
+               AND projectedRows = ?8 AND complete = 0;",
+            params![
+                rebuild_id,
+                batch_index + 1,
+                projection.revision,
+                projected_rows as i64,
+                i64::from(complete),
+                state.next_batch_index,
+                state.projection_revision,
+                state.projected_rows as i64,
+            ],
+        )?;
+        if updated != 1 {
+            return Err(ShadowStoreError::ProjectionRebuildConflict {
+                rebuild_id: rebuild_id.to_string(),
+            });
+        }
+        let state = Self::projection_rebuild_state_in(&transaction)?
+            .expect("projection rebuild state remains present after its batch");
+        transaction.commit()?;
+        Ok(ProjectionRebuildCommit { projection, state })
     }
 
     /// Applies one already validated local read assignment to the dark derived
@@ -902,6 +1356,7 @@ impl ShadowStore {
             });
         }
         let tx = self.conn.unchecked_transaction()?;
+        Self::require_readable_projection_in(&tx)?;
         let revision = Self::revision_in(&tx)?;
         if let Some(cursor) = cursor {
             if cursor.revision != revision {
@@ -990,6 +1445,7 @@ impl ShadowStore {
 
     fn visible_count(&self, expected_revision: Option<i64>) -> StoreResult<RevisionedCount> {
         let tx = self.conn.unchecked_transaction()?;
+        Self::require_readable_projection_in(&tx)?;
         let revision = Self::revision_in(&tx)?;
         if let Some(expected) = expected_revision {
             if expected != revision {
@@ -1009,9 +1465,12 @@ impl ShadowStore {
     }
 
     fn total_count(&self) -> StoreResult<i64> {
-        Ok(self
-            .conn
-            .query_row("SELECT COUNT(*) FROM feed_items;", [], |row| row.get(0))?)
+        let transaction = self.conn.unchecked_transaction()?;
+        Self::require_readable_projection_in(&transaction)?;
+        let count =
+            transaction.query_row("SELECT COUNT(*) FROM feed_items;", [], |row| row.get(0))?;
+        transaction.commit()?;
+        Ok(count)
     }
 
     /// Query plan for a statement, used by the tests that guard page cost.
@@ -1081,6 +1540,16 @@ mod tests {
 
     fn digest(index: usize) -> String {
         format!("{index:064x}")
+    }
+
+    fn projection_source(index: usize) -> ProjectionSourceV1 {
+        ProjectionSourceV1 {
+            document_id: format!("document-{index}"),
+            heads_digest: digest(index),
+            head_count: 2,
+            storage_generation: 3,
+            storage_save_revision: 5,
+        }
     }
 
     fn seeded(count: usize) -> ShadowStore {
@@ -1601,16 +2070,18 @@ mod tests {
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("version");
         assert_eq!(version, SHADOW_SCHEMA_VERSION);
-        let receipt_table_exists: bool = store
-            .conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM sqlite_schema \
-                 WHERE type = 'table' AND name = 'projection_batches');",
-                [],
-                |row| row.get(0),
-            )
-            .expect("receipt table");
-        assert!(receipt_table_exists);
+        for table in ["projection_batches", "projection_rebuild_state"] {
+            let table_exists: bool = store
+                .conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_schema \
+                     WHERE type = 'table' AND name = ?1);",
+                    params![table],
+                    |row| row.get(0),
+                )
+                .expect("migrated table");
+            assert!(table_exists, "{table} should be installed by migration");
+        }
 
         drop(store);
         for suffix in ["", "-wal", "-shm"] {
@@ -1788,6 +2259,196 @@ mod tests {
         for suffix in ["", "-wal", "-shm"] {
             let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
         }
+    }
+
+    #[test]
+    fn derived_rebuild_resumes_exactly_and_exposes_only_a_complete_generation() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "freed-shadow-rebuild-resume-{}-{nonce}.sqlite",
+            std::process::id()
+        ));
+        let source = projection_source(71);
+        let rows = corpus(3);
+        let first_commit = {
+            let mut store = ShadowStore::open(&path).expect("open staging store");
+            let started = store
+                .begin_projection_rebuild("rebuild-71", &source, rows.len())
+                .expect("begin rebuild");
+            assert_eq!(started.next_batch_index, 0);
+            assert_eq!(started.projection_revision, 0);
+            assert_eq!(started.projected_rows, 0);
+            assert!(!started.complete);
+
+            assert!(matches!(
+                store
+                    .apply_projection_rebuild_batch(
+                        "rebuild-71",
+                        &source,
+                        rows.len(),
+                        1,
+                        "rebuild-71-batch-1",
+                        &digest(72),
+                        2,
+                        false,
+                        &rows[..2],
+                    )
+                    .expect_err("out-of-order batch must fail"),
+                ShadowStoreError::ProjectionRebuildBatchOutOfOrder {
+                    expected: 0,
+                    actual: 1
+                }
+            ));
+
+            let committed = store
+                .apply_projection_rebuild_batch(
+                    "rebuild-71",
+                    &source,
+                    rows.len(),
+                    0,
+                    "rebuild-71-batch-0",
+                    &digest(73),
+                    2,
+                    false,
+                    &rows[..2],
+                )
+                .expect("commit first batch");
+            assert_eq!(committed.state.next_batch_index, 1);
+            assert_eq!(committed.state.projection_revision, 1);
+            assert_eq!(committed.state.projected_rows, 2);
+            assert!(!committed.state.complete);
+            assert!(matches!(
+                store
+                    .total_count()
+                    .expect_err("partial rebuild must not be readable"),
+                ShadowStoreError::ProjectionRebuildIncomplete { .. }
+            ));
+            committed
+        };
+
+        let mut reopened = ShadowStore::open(&path).expect("reopen staging store");
+        let resumed = reopened
+            .begin_projection_rebuild("rebuild-71", &source, rows.len())
+            .expect("resume exact rebuild");
+        assert_eq!(resumed, first_commit.state);
+        let retried = reopened
+            .apply_projection_rebuild_batch(
+                "rebuild-71",
+                &source,
+                rows.len(),
+                0,
+                "rebuild-71-batch-0",
+                &digest(73),
+                2,
+                false,
+                &rows[..2],
+            )
+            .expect("retry committed batch");
+        assert_eq!(retried, first_commit);
+
+        let completed = reopened
+            .apply_projection_rebuild_batch(
+                "rebuild-71",
+                &source,
+                rows.len(),
+                1,
+                "rebuild-71-batch-1",
+                &digest(74),
+                3,
+                true,
+                &rows[2..],
+            )
+            .expect("complete rebuild");
+        assert!(completed.state.complete);
+        assert_eq!(completed.state.projected_rows, rows.len());
+        assert_eq!(completed.state.next_batch_index, 2);
+        assert_eq!(completed.state.projection_revision, 2);
+        assert_eq!(reopened.total_count().expect("complete count"), 3);
+
+        let changed_source = projection_source(75);
+        assert!(matches!(
+            reopened
+                .begin_projection_rebuild("rebuild-71", &changed_source, rows.len())
+                .expect_err("changed source must not resume"),
+            ShadowStoreError::ProjectionRebuildConflict { .. }
+        ));
+
+        drop(reopened);
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        }
+    }
+
+    #[test]
+    fn derived_rebuild_state_failure_rolls_back_rows_receipts_and_revision() {
+        let mut store = ShadowStore::open_in_memory().expect("open staging store");
+        let source = projection_source(81);
+        let started = store
+            .begin_projection_rebuild("rebuild-81", &source, 1)
+            .expect("begin rebuild");
+        store
+            .conn
+            .execute_batch(
+                "CREATE TEMP TRIGGER reject_rebuild_state \
+                 BEFORE UPDATE ON projection_rebuild_state \
+                 BEGIN SELECT RAISE(FAIL, 'forced rebuild-state failure'); END;",
+            )
+            .expect("install fault");
+
+        assert!(matches!(
+            store
+                .apply_projection_rebuild_batch(
+                    "rebuild-81",
+                    &source,
+                    1,
+                    0,
+                    "rebuild-81-batch-0",
+                    &digest(82),
+                    1,
+                    true,
+                    &[row(1, Some(1_780_000_000_000))],
+                )
+                .expect_err("state failure must roll back"),
+            ShadowStoreError::Sql(_)
+        ));
+        let transaction = store.conn.unchecked_transaction().expect("inspect");
+        assert_eq!(
+            transaction
+                .query_row("SELECT COUNT(*) FROM feed_items;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("rolled-back rows"),
+            0
+        );
+        assert_eq!(ShadowStore::revision_in(&transaction).expect("revision"), 0);
+        assert_eq!(
+            ShadowStore::projection_rebuild_state_in(&transaction)
+                .expect("state")
+                .expect("rebuild state"),
+            started
+        );
+        assert_eq!(
+            transaction
+                .query_row("SELECT COUNT(*) FROM projection_batches;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("receipt count"),
+            0
+        );
+        assert_eq!(
+            transaction
+                .query_row(
+                    "SELECT COUNT(*) FROM projection_rebuild_batches;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("rebuild batch count"),
+            0
+        );
+        transaction.commit().expect("close inspection");
     }
 
     #[test]

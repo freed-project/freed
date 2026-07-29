@@ -62,6 +62,15 @@ production caller consumes the responses yet. Native staging, a complete
 derived receipt, an opaque read cursor, cancellation across the main-to-native
 boundary, PWA adapter parity, and runtime registration remain blocked.
 
+Physical shadow schema version 3 now closes the native staging transaction
+inside one database. A fresh staging file records the exact source identity,
+sequential batch receipts, projected row count, revision, and completion state.
+Rows and receipts roll back together, an interrupted process resumes at the
+exact next batch, and bounded reads reject the database until the declared and
+actual row counts both close. File publication is still separate. The native
+adapter must verify and atomically publish a closed staging file before any
+reader can treat it as the current derived generation.
+
 ## What the evidence establishes
 
 On the owner's 15,846-item production document, the current Automerge and
