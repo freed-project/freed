@@ -699,6 +699,13 @@ mod tests {
         let enrollment = enrollment(&key_pair);
         let envelopes = signed_envelopes(&key_pair, &enrollment);
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        journal
+            .install_fixture_authority(
+                &enrollment.library_id,
+                enrollment.epoch,
+                &enrollment.epoch_id,
+            )
+            .expect("install authority");
         journal.enroll_actor(&enrollment).expect("enroll actor");
 
         let receipt = journal
@@ -790,6 +797,13 @@ mod tests {
             encode_canonical_value(&value, MAX_TRANSACTION_ENVELOPE_BYTES).expect("encode tamper");
 
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        journal
+            .install_fixture_authority(
+                &enrollment.library_id,
+                enrollment.epoch,
+                &enrollment.epoch_id,
+            )
+            .expect("install authority");
         journal.enroll_actor(&enrollment).expect("enroll actor");
         assert!(matches!(
             journal.verify_and_commit_read_transaction(&envelopes, 1_500),
@@ -813,6 +827,13 @@ mod tests {
         let enrollment = enrollment(&key_pair);
         let envelopes = signed_envelopes(&key_pair, &enrollment);
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        journal
+            .install_fixture_authority(
+                &enrollment.library_id,
+                enrollment.epoch,
+                &enrollment.epoch_id,
+            )
+            .expect("install authority");
         journal.enroll_actor(&enrollment).expect("enroll actor");
 
         assert!(matches!(

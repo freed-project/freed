@@ -5,6 +5,8 @@
 //! certificate binds one actor key to that exact authority state before the
 //! sealed enrollment input can enter SQLite.
 
+#[cfg(test)]
+use super::VerifiedAuthorityEpoch;
 use super::{
     is_lower_hex, is_operation_id, AcceptedAuthorityState, JournalError, JournalResult,
     VerifiedActorEnrollment, VerifiedCausalTip, MAX_CAUSAL_TIPS_PER_OPERATION, MAX_SAFE_INTEGER,
@@ -492,6 +494,18 @@ mod tests {
         .expect("canonical certificate")
     }
 
+    fn install_authority(journal: &mut LibraryCoreJournal, authority: &AcceptedAuthorityState) {
+        journal
+            .install_authority_epoch(&VerifiedAuthorityEpoch {
+                authority: authority.clone(),
+                transition_certificate_digest: "8".repeat(64),
+                canonical_transition_certificate_json:
+                    "{\"transition\":\"native-enrollment-fixture\"}".to_owned(),
+                accepted_at_ms: 900,
+            })
+            .expect("install authority epoch");
+    }
+
     #[test]
     fn verifies_both_signatures_before_enrolling_the_actor() {
         let actor_key = Ed25519KeyPair::from_seed_unchecked(&[10_u8; 32]).expect("actor key");
@@ -500,9 +514,10 @@ mod tests {
         let authority = authority(&authority_key);
         let certificate = certificate(&actor_key, &authority_key, &authority);
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_authority(&mut journal, &authority);
 
         let actor = journal
-            .verify_and_enroll_actor(&certificate, &authority)
+            .verify_and_enroll_actor(&certificate, &authority.library_id)
             .expect("verify and enroll");
         assert_eq!(actor.actor_public_key, hex(actor_key.public_key().as_ref()));
         assert_eq!(actor.next_sequence, 1);
@@ -538,9 +553,10 @@ mod tests {
         let tampered =
             encode_canonical_value(&value, MAX_TRANSACTION_ENVELOPE_BYTES).expect("tamper");
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_authority(&mut journal, &authority);
 
         assert!(matches!(
-            journal.verify_and_enroll_actor(&tampered, &authority),
+            journal.verify_and_enroll_actor(&tampered, &authority.library_id),
             Err(JournalError::EnrollmentVerification {
                 field: "actor_proof"
             })
@@ -587,6 +603,48 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .expect("actor rows");
+        assert_eq!(rows, (0, 0));
+    }
+
+    #[test]
+    fn authority_epoch_change_fences_a_previously_verified_enrollment() {
+        let actor_key = Ed25519KeyPair::from_seed_unchecked(&[16_u8; 32]).expect("actor key");
+        let authority_key =
+            Ed25519KeyPair::from_seed_unchecked(&[17_u8; 32]).expect("authority key");
+        let accepted = authority(&authority_key);
+        let certificate = certificate(&actor_key, &authority_key, &accepted);
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_authority(&mut journal, &accepted);
+        let verified = journal
+            .verify_actor_enrollment(&certificate, &accepted)
+            .expect("verify enrollment");
+        let mut next = accepted.clone();
+        next.epoch = 2;
+        next.epoch_id = "9".repeat(64);
+        journal
+            .install_authority_epoch(&VerifiedAuthorityEpoch {
+                authority: next,
+                transition_certificate_digest: "7".repeat(64),
+                canonical_transition_certificate_json: "{\"transition\":\"next-epoch-fixture\"}"
+                    .to_owned(),
+                accepted_at_ms: 1_100,
+            })
+            .expect("advance authority epoch");
+
+        assert!(matches!(
+            journal.enroll_actor_under_authority(&verified, &accepted),
+            Err(JournalError::StaleAuthority { .. })
+        ));
+        let rows: (i64, i64) = journal
+            .connection
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM library_core_actors),
+                   (SELECT COUNT(*) FROM library_core_actor_enrollment_outbox);",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("row counts");
         assert_eq!(rows, (0, 0));
     }
 

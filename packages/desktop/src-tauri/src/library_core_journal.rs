@@ -13,6 +13,8 @@ use std::fmt;
 use std::path::Path;
 use std::time::Duration;
 
+#[path = "library_core_journal_authority.rs"]
+mod authority;
 #[path = "library_core_journal_enrollment_verifier.rs"]
 mod enrollment_verifier;
 #[path = "library_core_journal_operation_verifier.rs"]
@@ -38,6 +40,8 @@ enum JournalError {
     InvalidVerifiedInput { field: &'static str },
     ActorEnrollmentConflict { actor_id: String },
     ActorNotFound { actor_id: String },
+    AuthorityNotFound { library_id: String },
+    StaleAuthority { library_id: String },
     StaleActorTip { actor_id: String },
     TransactionReplayConflict { transaction_id: String },
     UnknownCausalTip { operation_id: String },
@@ -71,6 +75,18 @@ impl fmt::Display for JournalError {
                 write!(formatter, "actor enrollment conflicts for {actor_id}")
             }
             Self::ActorNotFound { actor_id } => write!(formatter, "actor not found: {actor_id}"),
+            Self::AuthorityNotFound { library_id } => {
+                write!(
+                    formatter,
+                    "active authority not found for library {library_id}"
+                )
+            }
+            Self::StaleAuthority { library_id } => {
+                write!(
+                    formatter,
+                    "active authority is stale for library {library_id}"
+                )
+            }
             Self::StaleActorTip { actor_id } => {
                 write!(formatter, "actor tip is stale: {actor_id}")
             }
@@ -141,7 +157,7 @@ struct VerifiedCausalTip {
     chain_digest: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct AcceptedAuthorityState {
     library_id: String,
     epoch: i64,
@@ -149,6 +165,14 @@ struct AcceptedAuthorityState {
     authority_key_id: String,
     authority_public_key: String,
     observed_frontier: Vec<VerifiedCausalTip>,
+}
+
+#[derive(Debug, Clone)]
+struct VerifiedAuthorityEpoch {
+    authority: AcceptedAuthorityState,
+    transition_certificate_digest: String,
+    canonical_transition_certificate_json: String,
+    accepted_at_ms: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -563,13 +587,12 @@ impl LibraryCoreJournal {
         self.commit_read_transaction(&verified, committed_at_ms)
     }
 
-    fn enroll_actor(&mut self, enrollment: &VerifiedActorEnrollment) -> JournalResult<ActorState> {
-        validate_actor_enrollment(enrollment)?;
-        let transaction = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+    fn enroll_actor_in(
+        transaction: &Transaction<'_>,
+        enrollment: &VerifiedActorEnrollment,
+    ) -> JournalResult<ActorState> {
         if let Some(existing) = Self::actor_state_in(
-            &transaction,
+            transaction,
             &enrollment.library_id,
             &enrollment.epoch_id,
             &enrollment.actor_id,
@@ -583,7 +606,6 @@ impl LibraryCoreJournal {
                     == enrollment.canonical_enrollment_certificate_json
                 && existing.actor_chain_genesis == enrollment.actor_chain_genesis
             {
-                transaction.commit()?;
                 return Ok(existing);
             }
             return Err(JournalError::ActorEnrollmentConflict {
@@ -623,7 +645,7 @@ impl LibraryCoreJournal {
             ],
         )?;
         let state = Self::actor_state_in(
-            &transaction,
+            transaction,
             &enrollment.library_id,
             &enrollment.epoch_id,
             &enrollment.actor_id,
@@ -631,8 +653,39 @@ impl LibraryCoreJournal {
         .ok_or_else(|| JournalError::ActorNotFound {
             actor_id: enrollment.actor_id.clone(),
         })?;
+        Ok(state)
+    }
+
+    fn enroll_actor_under_authority(
+        &mut self,
+        enrollment: &VerifiedActorEnrollment,
+        expected_authority: &AcceptedAuthorityState,
+    ) -> JournalResult<ActorState> {
+        validate_actor_enrollment(enrollment)?;
+        if enrollment.library_id != expected_authority.library_id
+            || enrollment.epoch != expected_authority.epoch
+            || enrollment.epoch_id != expected_authority.epoch_id
+        {
+            return Err(JournalError::StaleAuthority {
+                library_id: enrollment.library_id.clone(),
+            });
+        }
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        authority::require_active_authority(&transaction, expected_authority)?;
+        let state = Self::enroll_actor_in(&transaction, enrollment)?;
         transaction.commit()?;
         Ok(state)
+    }
+
+    #[cfg(test)]
+    fn enroll_actor(&mut self, enrollment: &VerifiedActorEnrollment) -> JournalResult<ActorState> {
+        let authority = authority::active_authority(&self.connection, &enrollment.library_id)?
+            .ok_or_else(|| JournalError::AuthorityNotFound {
+                library_id: enrollment.library_id.clone(),
+            })?;
+        self.enroll_actor_under_authority(enrollment, &authority)
     }
 
     fn verify_actor_enrollment(
@@ -643,14 +696,43 @@ impl LibraryCoreJournal {
         enrollment_verifier::verify_actor_enrollment(canonical_certificate, authority)
     }
 
-    #[cfg(test)]
     fn verify_and_enroll_actor(
         &mut self,
         canonical_certificate: &[u8],
-        authority: &AcceptedAuthorityState,
+        library_id: &str,
     ) -> JournalResult<ActorState> {
-        let enrollment = self.verify_actor_enrollment(canonical_certificate, authority)?;
-        self.enroll_actor(&enrollment)
+        let authority =
+            authority::active_authority(&self.connection, library_id)?.ok_or_else(|| {
+                JournalError::AuthorityNotFound {
+                    library_id: library_id.to_owned(),
+                }
+            })?;
+        let enrollment = self.verify_actor_enrollment(canonical_certificate, &authority)?;
+        self.enroll_actor_under_authority(&enrollment, &authority)
+    }
+
+    #[cfg(test)]
+    fn install_fixture_authority(
+        &mut self,
+        library_id: &str,
+        epoch: i64,
+        epoch_id: &str,
+    ) -> JournalResult<AcceptedAuthorityState> {
+        self.install_authority_epoch(&VerifiedAuthorityEpoch {
+            authority: AcceptedAuthorityState {
+                library_id: library_id.to_owned(),
+                epoch,
+                epoch_id: epoch_id.to_owned(),
+                authority_key_id: "a".repeat(64),
+                authority_public_key: "b".repeat(64),
+                observed_frontier: Vec::new(),
+            },
+            transition_certificate_digest: format!("{epoch:064x}"),
+            canonical_transition_certificate_json: format!(
+                "{{\"transition\":\"fixture-{epoch}\"}}"
+            ),
+            accepted_at_ms: 900,
+        })
     }
 
     fn transaction_receipt_in(
@@ -751,6 +833,12 @@ impl LibraryCoreJournal {
                 transaction_id: verified.transaction_id.clone(),
             });
         }
+        authority::require_active_epoch(
+            &transaction,
+            &verified.library_id,
+            verified.epoch,
+            &verified.epoch_id,
+        )?;
         let actor = Self::actor_state_in(
             &transaction,
             &verified.library_id,
@@ -1062,6 +1150,17 @@ mod tests {
         }
     }
 
+    fn install_actor_authority(journal: &mut LibraryCoreJournal) {
+        let enrollment = actor();
+        journal
+            .install_fixture_authority(
+                &enrollment.library_id,
+                enrollment.epoch,
+                &enrollment.epoch_id,
+            )
+            .expect("install authority");
+    }
+
     fn transaction(
         transaction_id: &str,
         first_sequence: i64,
@@ -1141,6 +1240,7 @@ mod tests {
     #[test]
     fn enrollment_and_response_loss_retry_are_idempotent() {
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_actor_authority(&mut journal);
         let enrollment = actor();
         let first = journal.enroll_actor(&enrollment).expect("enroll actor");
         let retry = journal.enroll_actor(&enrollment).expect("retry enrollment");
@@ -1301,9 +1401,46 @@ mod tests {
     }
 
     #[test]
+    fn authority_epoch_change_fences_uncommitted_old_epoch_operations() {
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_actor_authority(&mut journal);
+        let enrollment = actor();
+        journal.enroll_actor(&enrollment).expect("enroll actor");
+        let verified = transaction(
+            "tx:read:stale-epoch",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:stale", 900)],
+        );
+
+        journal
+            .install_fixture_authority(&enrollment.library_id, 2, &digest("9"))
+            .expect("advance authority epoch");
+        assert!(matches!(
+            journal.commit_read_transaction(&verified, 1_100),
+            Err(JournalError::StaleAuthority { .. })
+        ));
+        let counts: (i64, i64, i64) = journal
+            .connection
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM library_core_operations),
+                   (SELECT COUNT(*) FROM library_core_replication_outbox),
+                   (SELECT integerValue FROM library_core_meta
+                    WHERE key = 'projectionRevision');",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("old epoch counts");
+        assert_eq!(counts, (0, 0, 0));
+    }
+
+    #[test]
     fn commit_is_atomic_across_journal_projection_outbox_tip_and_receipt() {
         let mut enrollment_journal =
             LibraryCoreJournal::open_in_memory().expect("open enrollment journal");
+        install_actor_authority(&mut enrollment_journal);
         enrollment_journal
             .connection
             .execute_batch(
@@ -1327,6 +1464,7 @@ mod tests {
         assert_eq!(enrollment_rows, 0);
 
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_actor_authority(&mut journal);
         let enrollment = actor();
         journal.enroll_actor(&enrollment).expect("enroll actor");
         journal
@@ -1456,6 +1594,7 @@ mod tests {
     #[test]
     fn monotone_read_projection_survives_later_and_equal_assignments() {
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_actor_authority(&mut journal);
         let enrollment = actor();
         journal.enroll_actor(&enrollment).expect("enroll actor");
         let first = transaction(
@@ -1510,6 +1649,7 @@ mod tests {
     #[test]
     fn stale_tips_replays_and_unknown_causal_tips_fail_closed() {
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_actor_authority(&mut journal);
         let enrollment = actor();
         journal.enroll_actor(&enrollment).expect("enroll actor");
         let first = transaction(
@@ -1648,6 +1788,7 @@ mod tests {
     #[test]
     fn rejects_cross_runtime_unsafe_integers_before_sqlite() {
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_actor_authority(&mut journal);
         let mut enrollment = actor();
         enrollment.enrolled_at_ms = MAX_SAFE_INTEGER + 1;
         assert!(matches!(

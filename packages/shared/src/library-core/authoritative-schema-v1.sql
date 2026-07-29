@@ -15,6 +15,76 @@ VALUES
   ('nextIngestSequence', 1),
   ('materializerIngestSequence', 0);
 
+CREATE TABLE library_core_authority_epochs (
+  libraryId                         TEXT    NOT NULL,
+  epoch                             INTEGER NOT NULL CHECK (
+    epoch BETWEEN 1 AND 9007199254740991
+  ),
+  epochId                           TEXT    NOT NULL,
+  transitionCertificateDigest      TEXT    NOT NULL,
+  canonicalTransitionCertificateJson TEXT  NOT NULL CHECK (
+    length(CAST(canonicalTransitionCertificateJson AS BLOB))
+      BETWEEN 1 AND 4194304
+  ),
+  authorityKeyId                    TEXT    NOT NULL,
+  authorityPublicKey                TEXT    NOT NULL,
+  acceptedAtMs                      INTEGER NOT NULL CHECK (
+    acceptedAtMs BETWEEN 0 AND 9007199254740991
+  ),
+  PRIMARY KEY (libraryId, epochId),
+  UNIQUE (libraryId, epoch),
+  UNIQUE (libraryId, transitionCertificateDigest),
+  UNIQUE (libraryId, epoch, epochId, transitionCertificateDigest),
+  CHECK (length(libraryId) = 64 AND libraryId NOT GLOB '*[^0-9a-f]*'),
+  CHECK (length(epochId) = 64 AND epochId NOT GLOB '*[^0-9a-f]*'),
+  CHECK (
+    length(transitionCertificateDigest) = 64
+    AND transitionCertificateDigest NOT GLOB '*[^0-9a-f]*'
+  ),
+  CHECK (
+    length(authorityKeyId) = 64
+    AND authorityKeyId NOT GLOB '*[^0-9a-f]*'
+  ),
+  CHECK (
+    length(authorityPublicKey) = 64
+    AND authorityPublicKey NOT GLOB '*[^0-9a-f]*'
+  )
+) STRICT;
+
+CREATE TABLE library_core_authority_frontier (
+  libraryId     TEXT    NOT NULL,
+  epochId       TEXT    NOT NULL,
+  tipIndex      INTEGER NOT NULL CHECK (tipIndex >= 0),
+  actorId       TEXT    NOT NULL,
+  sequence      INTEGER NOT NULL CHECK (
+    sequence BETWEEN 1 AND 9007199254740991
+  ),
+  operationId   TEXT    NOT NULL,
+  chainDigest   TEXT    NOT NULL,
+  PRIMARY KEY (libraryId, epochId, tipIndex),
+  FOREIGN KEY (libraryId, epochId)
+    REFERENCES library_core_authority_epochs (libraryId, epochId)
+    ON DELETE CASCADE,
+  CHECK (length(actorId) = 64 AND actorId NOT GLOB '*[^0-9a-f]*'),
+  CHECK (
+    length(chainDigest) = 64
+    AND chainDigest NOT GLOB '*[^0-9a-f]*'
+  )
+) STRICT;
+
+CREATE TABLE library_core_active_authority (
+  libraryId                    TEXT    NOT NULL PRIMARY KEY,
+  epoch                        INTEGER NOT NULL CHECK (
+    epoch BETWEEN 1 AND 9007199254740991
+  ),
+  epochId                      TEXT    NOT NULL,
+  transitionCertificateDigest TEXT    NOT NULL,
+  FOREIGN KEY (libraryId, epoch, epochId, transitionCertificateDigest)
+    REFERENCES library_core_authority_epochs (
+      libraryId, epoch, epochId, transitionCertificateDigest
+    )
+) STRICT;
+
 CREATE TABLE library_core_actors (
   libraryId                   TEXT    NOT NULL,
   epoch                       INTEGER NOT NULL CHECK (epoch BETWEEN 1 AND 9007199254740991),

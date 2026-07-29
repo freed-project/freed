@@ -312,6 +312,10 @@ Native enrollment may construct the same kind of sealed input only from an
 exact private authority snapshot. Do not expose a verify-and-enroll path until
 that authority epoch is itself stored authoritatively and rechecked inside the
 same enrollment transaction.
+Store immutable accepted authority epochs separately from the one active
+authority pointer. Enrollment and ordinary operation commits must recheck that
+pointer after beginning their SQLite write transaction. Verification completed
+before an epoch change never authorizes a write after the change.
 
 Keep the native authoritative commit input sealed inside the verifier and
 journal module. Renderer IPC must never gain authority by sending an object
