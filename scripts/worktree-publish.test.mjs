@@ -1,4 +1,6 @@
 import test from "node:test";
+import "./test-helpers/lease-archive-python-runtime.mjs";
+
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
