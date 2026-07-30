@@ -9,8 +9,9 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBeha
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt;
-use std::io::Write;
-use std::path::Path;
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 const SCHEMA_V1_SQL: &str =
@@ -27,6 +28,7 @@ const MAXIMUM_FILTER_BYTES: usize = 1_048_576;
 const MAXIMUM_CARD_BYTES: usize = 262_144;
 const BASE_CACHE_KIB: i64 = -4 * 1_024;
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
+const HASH_BUFFER_BYTES: usize = 1_048_576;
 
 #[derive(Debug)]
 pub(super) enum FeedBrowseStoreError {
@@ -136,11 +138,74 @@ pub(super) struct FeedBrowseGenerationProgress {
     pub(super) complete: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct PublishedFeedBrowseGeneration {
+    pub(super) path: PathBuf,
+    pub(super) binding: FeedBrowseGenerationBinding,
+    pub(super) progress: FeedBrowseGenerationProgress,
+    pub(super) byte_length: u64,
+    pub(super) file_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum ExistingFeedBrowseGeneration {
+    Empty,
+    Staging(FeedBrowseGenerationProgress),
+    CompleteUnsealed(FeedBrowseGenerationProgress),
+    Sealed(PublishedFeedBrowseGeneration),
+}
+
 pub(super) struct FeedBrowseGenerationStore {
     connection: Connection,
 }
 
 impl FeedBrowseGenerationStore {
+    pub(super) fn inspect_existing(
+        path: &Path,
+        expected_binding: &FeedBrowseGenerationBinding,
+    ) -> StoreResult<ExistingFeedBrowseGeneration> {
+        validate_binding(expected_binding)?;
+        let resolved_path = resolve_existing_path(path)?;
+        let connection = Connection::open_with_flags(
+            &resolved_path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY
+                | OpenFlags::SQLITE_OPEN_NO_MUTEX
+                | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
+                | OpenFlags::SQLITE_OPEN_NOFOLLOW
+                | OpenFlags::SQLITE_OPEN_EXRESCODE,
+        )?;
+        validate_open_identity(&connection)?;
+        let Some((binding, complete)) = read_binding_from_connection(&connection).optional()?
+        else {
+            return Ok(ExistingFeedBrowseGeneration::Empty);
+        };
+        if binding != *expected_binding {
+            return Err(FeedBrowseStoreError::IdentityConflict);
+        }
+        let progress = read_progress(&connection)?;
+        if !complete || !progress.complete {
+            return Ok(ExistingFeedBrowseGeneration::Staging(progress));
+        }
+        verify_complete_rows(&connection, &progress)?;
+        verify_quick_check(&connection)?;
+        let journal_mode =
+            connection.pragma_query_value(None, "journal_mode", |row| row.get::<_, String>(0))?;
+        drop(connection);
+        if journal_mode != "delete" || sidecars_exist(&resolved_path)? {
+            return Ok(ExistingFeedBrowseGeneration::CompleteUnsealed(progress));
+        }
+        let (byte_length, file_digest) = stable_file_digest(&resolved_path)?;
+        Ok(ExistingFeedBrowseGeneration::Sealed(
+            PublishedFeedBrowseGeneration {
+                path: resolved_path,
+                binding,
+                progress,
+                byte_length,
+                file_digest,
+            },
+        ))
+    }
+
     pub(super) fn open(path: &Path) -> StoreResult<Self> {
         let file_name = path
             .file_name()
@@ -386,22 +451,61 @@ impl FeedBrowseGenerationStore {
         Ok(())
     }
 
-    pub(super) fn progress(&self) -> StoreResult<FeedBrowseGenerationProgress> {
+    pub(super) fn seal(
+        self,
+        path: &Path,
+        expected_binding: &FeedBrowseGenerationBinding,
+    ) -> StoreResult<PublishedFeedBrowseGeneration> {
+        validate_binding(expected_binding)?;
+        let resolved_path = resolve_existing_path(path)?;
+        let (stored_binding, complete) = read_binding_from_connection(&self.connection)
+            .optional()?
+            .ok_or(FeedBrowseStoreError::Incomplete)?;
+        if stored_binding != *expected_binding {
+            return Err(FeedBrowseStoreError::IdentityConflict);
+        }
+        let progress = read_progress(&self.connection)?;
+        if !complete || !progress.complete || progress.written_rows != progress.total_rows {
+            return Err(FeedBrowseStoreError::Incomplete);
+        }
+        verify_complete_rows(&self.connection, &progress)?;
+        let (busy, log_frames, checkpointed_frames) =
+            self.connection
+                .query_row("PRAGMA wal_checkpoint(TRUNCATE);", [], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                })?;
+        if busy != 0 || log_frames != checkpointed_frames {
+            return Err(FeedBrowseStoreError::Invalid("checkpoint"));
+        }
+        let journal_mode =
+            self.connection
+                .query_row("PRAGMA journal_mode = DELETE;", [], |row| {
+                    row.get::<_, String>(0)
+                })?;
+        if journal_mode != "delete" {
+            return Err(FeedBrowseStoreError::Invalid("journal mode"));
+        }
+        verify_quick_check(&self.connection)?;
         self.connection
-            .query_row(
-                "SELECT nextBatchIndex, writtenRows, totalRows, complete
-                 FROM feed_browse_generation WHERE singleton = 1;",
-                [],
-                |row| {
-                    Ok(FeedBrowseGenerationProgress {
-                        next_batch_index: row.get(0)?,
-                        written_rows: row.get(1)?,
-                        total_rows: row.get(2)?,
-                        complete: row.get(3)?,
-                    })
-                },
-            )
-            .map_err(FeedBrowseStoreError::from)
+            .close()
+            .map_err(|(_, error)| FeedBrowseStoreError::Sql(error))?;
+        sync_generation_file(&resolved_path)?;
+        sync_parent(&resolved_path)?;
+        if sidecars_exist(&resolved_path)? {
+            return Err(FeedBrowseStoreError::Invalid("sealed sidecar"));
+        }
+        match Self::inspect_existing(&resolved_path, expected_binding)? {
+            ExistingFeedBrowseGeneration::Sealed(published) => Ok(published),
+            _ => Err(FeedBrowseStoreError::Invalid("sealed generation")),
+        }
+    }
+
+    pub(super) fn progress(&self) -> StoreResult<FeedBrowseGenerationProgress> {
+        read_progress(&self.connection)
     }
 
     pub(super) fn read_page(
@@ -470,6 +574,25 @@ impl FeedBrowseGenerationStore {
     }
 }
 
+fn resolve_existing_path(path: &Path) -> StoreResult<PathBuf> {
+    let file_name = path
+        .file_name()
+        .ok_or(FeedBrowseStoreError::Invalid("database path"))?;
+    let parent = path
+        .parent()
+        .filter(|candidate| !candidate.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
+        .canonicalize()?;
+    let resolved_path = parent.join(file_name);
+    if !std::fs::symlink_metadata(&resolved_path)?
+        .file_type()
+        .is_file()
+    {
+        return Err(FeedBrowseStoreError::Invalid("database path"));
+    }
+    Ok(resolved_path)
+}
+
 fn validate_open_identity(connection: &Connection) -> StoreResult<()> {
     let version =
         connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
@@ -487,6 +610,191 @@ fn validate_open_identity(connection: &Connection) -> StoreResult<()> {
         return Ok(());
     }
     Err(FeedBrowseStoreError::Invalid("schema identity"))
+}
+
+fn read_binding_from_connection(
+    connection: &Connection,
+) -> rusqlite::Result<(FeedBrowseGenerationBinding, bool)> {
+    connection.query_row(
+        "SELECT generationId, sourceDocumentId, sourceHeadsDigest, sourceHeadCount,
+                transitionSequence, projectionRevision, filterJson, rankingClockMs,
+                recommendationOrderSchemaVersion, totalRows, complete
+         FROM feed_browse_generation WHERE singleton = 1;",
+        [],
+        |row| {
+            Ok((
+                FeedBrowseGenerationBinding {
+                    generation_id: row.get(0)?,
+                    source_document_id: row.get(1)?,
+                    source_heads_digest: row.get(2)?,
+                    source_head_count: row.get(3)?,
+                    transition_sequence: row.get(4)?,
+                    projection_revision: row.get(5)?,
+                    filter_json: row.get(6)?,
+                    ranking_clock_ms: row.get(7)?,
+                    recommendation_order_schema_version: row.get(8)?,
+                    total_rows: row.get(9)?,
+                },
+                row.get(10)?,
+            ))
+        },
+    )
+}
+
+fn read_progress(connection: &Connection) -> StoreResult<FeedBrowseGenerationProgress> {
+    connection
+        .query_row(
+            "SELECT nextBatchIndex, writtenRows, totalRows, complete
+             FROM feed_browse_generation WHERE singleton = 1;",
+            [],
+            |row| {
+                Ok(FeedBrowseGenerationProgress {
+                    next_batch_index: row.get(0)?,
+                    written_rows: row.get(1)?,
+                    total_rows: row.get(2)?,
+                    complete: row.get(3)?,
+                })
+            },
+        )
+        .map_err(FeedBrowseStoreError::from)
+}
+
+fn verify_quick_check(connection: &Connection) -> StoreResult<()> {
+    let result = connection.query_row("PRAGMA quick_check;", [], |row| row.get::<_, String>(0))?;
+    if result == "ok" {
+        Ok(())
+    } else {
+        Err(FeedBrowseStoreError::Invalid("database integrity"))
+    }
+}
+
+fn verify_complete_rows(
+    connection: &Connection,
+    progress: &FeedBrowseGenerationProgress,
+) -> StoreResult<()> {
+    let physical_rows =
+        connection.query_row("SELECT COUNT(*) FROM feed_browse_rows;", [], |row| {
+            row.get::<_, i64>(0)
+        })?;
+    if progress.written_rows == progress.total_rows && physical_rows == progress.total_rows {
+        Ok(())
+    } else {
+        Err(FeedBrowseStoreError::Incomplete)
+    }
+}
+
+fn sidecar_path(path: &Path, suffix: &str) -> PathBuf {
+    let mut value = path.as_os_str().to_os_string();
+    value.push(suffix);
+    PathBuf::from(value)
+}
+
+fn sidecars_exist(path: &Path) -> StoreResult<bool> {
+    Ok(sidecar_path(path, "-wal").try_exists()? || sidecar_path(path, "-shm").try_exists()?)
+}
+
+fn open_digest_file(path: &Path) -> StoreResult<File> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW);
+    }
+    options.open(path).map_err(Into::into)
+}
+
+fn sync_generation_file(path: &Path) -> StoreResult<()> {
+    let path_before = std::fs::symlink_metadata(path)?;
+    if !path_before.file_type().is_file() {
+        return Err(FeedBrowseStoreError::Invalid("database path"));
+    }
+    let mut options = OpenOptions::new();
+    options.read(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW);
+    }
+    let file = options.open(path)?;
+    let opened = file.metadata()?;
+    if !same_fs_entry(&path_before, &opened) {
+        return Err(FeedBrowseStoreError::Invalid("database replacement"));
+    }
+    file.sync_all()?;
+    let path_after = std::fs::symlink_metadata(path)?;
+    let opened_after = file.metadata()?;
+    if !same_fs_entry(&opened, &opened_after) || !same_fs_entry(&opened, &path_after) {
+        return Err(FeedBrowseStoreError::Invalid("database replacement"));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn sync_parent(path: &Path) -> StoreResult<()> {
+    if let Some(parent) = path.parent() {
+        File::open(parent)?.sync_all()?;
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn sync_parent(_path: &Path) -> StoreResult<()> {
+    Ok(())
+}
+
+fn stable_file_digest(path: &Path) -> StoreResult<(u64, String)> {
+    let path_before = std::fs::symlink_metadata(path)?;
+    if !path_before.file_type().is_file() {
+        return Err(FeedBrowseStoreError::Invalid("database path"));
+    }
+    let mut file = open_digest_file(path)?;
+    let opened = file.metadata()?;
+    if !same_fs_entry(&path_before, &opened) {
+        return Err(FeedBrowseStoreError::Invalid("database replacement"));
+    }
+    let mut digest = Sha256::new();
+    let mut buffer = vec![0_u8; HASH_BUFFER_BYTES];
+    loop {
+        let count = file.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        digest.update(&buffer[..count]);
+    }
+    let path_after = std::fs::symlink_metadata(path)?;
+    let opened_after = file.metadata()?;
+    if !same_fs_entry(&opened, &opened_after) || !same_fs_entry(&opened, &path_after) {
+        return Err(FeedBrowseStoreError::Invalid("database replacement"));
+    }
+    if opened.len() > MAXIMUM_SAFE_INTEGER as u64 {
+        return Err(FeedBrowseStoreError::Invalid("database bytes"));
+    }
+    Ok((opened.len(), lower_hex(&digest.finalize())))
+}
+
+#[cfg(unix)]
+fn same_fs_entry(left: &std::fs::Metadata, right: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    left.dev() == right.dev()
+        && left.ino() == right.ino()
+        && left.mode() == right.mode()
+        && left.nlink() == right.nlink()
+        && left.uid() == right.uid()
+        && left.gid() == right.gid()
+        && left.size() == right.size()
+        && left.mtime() == right.mtime()
+        && left.mtime_nsec() == right.mtime_nsec()
+        && left.ctime() == right.ctime()
+        && left.ctime_nsec() == right.ctime_nsec()
+}
+
+#[cfg(not(unix))]
+fn same_fs_entry(left: &std::fs::Metadata, right: &std::fs::Metadata) -> bool {
+    left.len() == right.len()
+        && left.modified().ok() == right.modified().ok()
+        && left.created().ok() == right.created().ok()
 }
 
 fn read_binding(

@@ -4,8 +4,9 @@
 //! authenticated generation at a time. No product caller selects or reads it.
 
 use crate::library_core_feed_browse_store::{
-    FeedBrowseGenerationBinding, FeedBrowseGenerationProgress, FeedBrowseGenerationState,
-    FeedBrowseGenerationStore, FeedBrowseProjectedRow,
+    ExistingFeedBrowseGeneration, FeedBrowseGenerationBinding, FeedBrowseGenerationProgress,
+    FeedBrowseGenerationState, FeedBrowseGenerationStore, FeedBrowseProjectedRow,
+    PublishedFeedBrowseGeneration,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -72,11 +73,14 @@ pub(super) struct BrowseGenerationStatusV1 {
     written_rows: i64,
     total_rows: i64,
     complete: bool,
+    sealed_file_digest: Option<String>,
+    sealed_byte_length: Option<u64>,
 }
 
 struct ActiveGeneration {
     session_id: String,
     binding: FeedBrowseGenerationBinding,
+    path: PathBuf,
     store: FeedBrowseGenerationStore,
 }
 
@@ -156,6 +160,7 @@ fn validate_session_id(value: &str) -> RuntimeResult<()> {
 fn status(
     generation_id: String,
     progress: FeedBrowseGenerationProgress,
+    published: Option<&PublishedFeedBrowseGeneration>,
 ) -> BrowseGenerationStatusV1 {
     BrowseGenerationStatusV1 {
         generation_id,
@@ -163,6 +168,8 @@ fn status(
         written_rows: progress.written_rows,
         total_rows: progress.total_rows,
         complete: progress.complete,
+        sealed_file_digest: published.map(|receipt| receipt.file_digest.clone()),
+        sealed_byte_length: published.map(|receipt| receipt.byte_length),
     }
 }
 
@@ -184,23 +191,54 @@ fn begin_at_root(
         return Ok(status(
             active.binding.generation_id.clone(),
             active.store.progress()?,
+            None,
         ));
     }
     let path = generation_path(base, &binding.generation_id)?;
+    if path.try_exists()? {
+        match FeedBrowseGenerationStore::inspect_existing(&path, &binding)? {
+            ExistingFeedBrowseGeneration::Sealed(published) => {
+                return Ok(status(
+                    binding.generation_id,
+                    published.progress.clone(),
+                    Some(&published),
+                ));
+            }
+            ExistingFeedBrowseGeneration::CompleteUnsealed(_) => {
+                let mut store = FeedBrowseGenerationStore::open(&path)?;
+                if store.begin(&binding)? != FeedBrowseGenerationState::Complete {
+                    return Err(BrowseRuntimeError::Invalid("completed state"));
+                }
+                let published = store.seal(&path, &binding)?;
+                return Ok(status(
+                    binding.generation_id,
+                    published.progress.clone(),
+                    Some(&published),
+                ));
+            }
+            ExistingFeedBrowseGeneration::Empty | ExistingFeedBrowseGeneration::Staging(_) => {}
+        }
+    }
     let mut store = FeedBrowseGenerationStore::open(&path)?;
     let state = store.begin(&binding)?;
     let progress = store.progress()?;
     let complete = state == FeedBrowseGenerationState::Complete;
     if complete {
-        *guard = None;
+        let published = store.seal(&path, &binding)?;
+        Ok(status(
+            binding.generation_id,
+            published.progress.clone(),
+            Some(&published),
+        ))
     } else {
         *guard = Some(ActiveGeneration {
             session_id,
             binding: binding.clone(),
+            path,
             store,
         });
+        Ok(status(binding.generation_id, progress, None))
     }
-    Ok(status(binding.generation_id, progress))
 }
 
 fn append_at_root(
@@ -220,6 +258,7 @@ fn append_at_root(
     Ok(status(
         active.binding.generation_id.clone(),
         active.store.progress()?,
+        None,
     ))
 }
 
@@ -232,17 +271,20 @@ fn finalize_at_root(
         .0
         .lock()
         .map_err(|_| BrowseRuntimeError::StatePoisoned)?;
-    let active = guard.as_mut().ok_or(BrowseRuntimeError::ActiveMismatch)?;
-    if active.session_id != session_id {
-        return Err(BrowseRuntimeError::ActiveMismatch);
+    {
+        let active = guard.as_mut().ok_or(BrowseRuntimeError::ActiveMismatch)?;
+        if active.session_id != session_id {
+            return Err(BrowseRuntimeError::ActiveMismatch);
+        }
+        active.store.finalize()?;
     }
-    active.store.finalize()?;
-    let status = status(
-        active.binding.generation_id.clone(),
-        active.store.progress()?,
-    );
-    *guard = None;
-    Ok(status)
+    let active = guard.take().expect("active generation was just validated");
+    let published = active.store.seal(&active.path, &active.binding)?;
+    Ok(status(
+        active.binding.generation_id,
+        published.progress.clone(),
+        Some(&published),
+    ))
 }
 
 fn cancel_at_root(
@@ -261,6 +303,7 @@ fn cancel_at_root(
     let status = status(
         active.binding.generation_id.clone(),
         active.store.progress()?,
+        None,
     );
     *guard = None;
     Ok(status)
@@ -358,6 +401,12 @@ mod tests {
         }
     }
 
+    fn sidecar(path: &Path, suffix: &str) -> PathBuf {
+        let mut value = path.as_os_str().to_os_string();
+        value.push(suffix);
+        PathBuf::from(value)
+    }
+
     #[test]
     fn stages_replays_and_clears_one_generation() {
         let temporary = tempfile::tempdir().expect("tempdir");
@@ -392,6 +441,15 @@ mod tests {
         assert_eq!(finalized.written_rows, 1);
         assert_eq!(finalized.total_rows, 1);
         assert!(finalized.complete);
+        let sealed_digest = finalized.sealed_file_digest.clone().expect("sealed digest");
+        let sealed_length = finalized.sealed_byte_length.expect("sealed length");
+        assert!(is_lower_sha256(&sealed_digest));
+        assert!(sealed_length > 0);
+        let sealed_path = generation_path(&base, &binding(1).generation_id).expect("path");
+        let sealed_bytes = std::fs::read(&sealed_path).expect("sealed bytes");
+        assert_eq!(sealed_bytes.len() as u64, sealed_length);
+        assert!(!sidecar(&sealed_path, "-wal").exists());
+        assert!(!sidecar(&sealed_path, "-shm").exists());
 
         let replayed =
             begin_at_root(&runtime, &base, "session-1".to_string(), binding(1)).expect("replay");
@@ -399,6 +457,16 @@ mod tests {
         assert_eq!(replayed.written_rows, 1);
         assert_eq!(replayed.total_rows, 1);
         assert!(replayed.complete);
+        assert_eq!(
+            replayed.sealed_file_digest.as_deref(),
+            Some(sealed_digest.as_str())
+        );
+        assert_eq!(replayed.sealed_byte_length, Some(sealed_length));
+        assert_eq!(
+            std::fs::read(&sealed_path).expect("replayed bytes"),
+            sealed_bytes,
+            "a completed replay must not mutate the sealed SQLite file"
+        );
         assert!(
             append_at_root(
                 &runtime,
@@ -413,6 +481,40 @@ mod tests {
         );
         clear_library_core_feed_browse_runtime_in(&runtime, &base).expect("clear");
         assert!(!base.join(ROOT_DIRECTORY).exists());
+    }
+
+    #[test]
+    fn recovers_a_completed_generation_when_the_seal_response_was_lost() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let base = std::fs::canonicalize(temporary.path()).expect("base");
+        let identity = binding(1);
+        let path = generation_path(&base, &identity.generation_id).expect("path");
+        {
+            let mut store = FeedBrowseGenerationStore::open(&path).expect("store");
+            store.begin(&identity).expect("begin");
+            store.append_page(0, &[row("rss:item-1")]).expect("append");
+            store.finalize().expect("finalize before lost response");
+        }
+        assert!(matches!(
+            FeedBrowseGenerationStore::inspect_existing(&path, &identity)
+                .expect("inspect unsealed"),
+            ExistingFeedBrowseGeneration::CompleteUnsealed(_)
+        ));
+
+        let runtime = LibraryCoreFeedBrowseRuntimeState::default();
+        let recovered =
+            begin_at_root(&runtime, &base, "session-2".to_string(), identity).expect("recover");
+        assert!(recovered.complete);
+        assert!(recovered.sealed_file_digest.is_some());
+        assert!(recovered.sealed_byte_length.is_some());
+        assert!(
+            runtime
+                .0
+                .lock()
+                .expect("runtime lock")
+                .as_ref()
+                .is_none()
+        );
     }
 
     #[test]
