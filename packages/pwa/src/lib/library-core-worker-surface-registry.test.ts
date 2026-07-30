@@ -126,6 +126,36 @@ describe("PWA Library Core worker surface census", () => {
     });
   });
 
+  it("keeps the dormant Library Core feed transport bounded and read-only", () => {
+    expect(
+      PWA_AUTOMERGE_WORKER_REQUEST_SURFACE_REGISTRY
+        .READ_LIBRARY_CORE_FEED_PAGE,
+    ).toStrictEqual({
+      status: "planned_blocked",
+      classification: "library_core_bounded_read",
+      blockers: [
+        "library_core_runtime_inactive",
+        "response_transport_not_cut_over",
+      ],
+    });
+    expect(
+      PWA_AUTOMERGE_WORKER_REQUEST_SURFACE_REGISTRY
+        .CANCEL_LIBRARY_CORE_FEED_READER.classification,
+    ).toBe("library_core_lifecycle_control");
+    expect(
+      PWA_AUTOMERGE_REQUEST_EFFECT_REGISTRY
+        .READ_LIBRARY_CORE_FEED_PAGE,
+    ).toStrictEqual({
+      legacyWriteEffects: [],
+      successorOperationIds: [],
+      blockers: [],
+    });
+    expect(
+      PWA_AUTOMERGE_WORKER_RESPONSE_SURFACE_REGISTRY
+        .LIBRARY_CORE_FEED_PAGE_RESULT.classification,
+    ).toBe("library_core_bounded_transport");
+  });
+
   it("keeps every successor operation linked back to its current request", () => {
     for (const [kind, effect] of Object.entries(
       PWA_AUTOMERGE_REQUEST_EFFECT_REGISTRY,

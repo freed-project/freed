@@ -21,6 +21,7 @@ import type {
   SampleDataClearSummary,
   UserPreferences,
 } from "@freed/shared";
+import type { LibraryCoreFeedPageRequestV1 } from "@freed/shared/library-core";
 import type {
   CommittedAutomergeDoc,
   DocState,
@@ -31,6 +32,7 @@ import type {
 } from "./automerge-types";
 import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
 import { persistWorkerDebugEvent } from "./automerge-worker-debug";
+import type { PwaLibraryCoreFeedReaderResult } from "./library-core-feed-reader-runtime";
 import {
   capturePwaRuntimeLifecycle,
   registerPwaFactoryResetQuiesceHandler,
@@ -125,6 +127,14 @@ const pendingLegacyHtml = new Map<
   number,
   GenerationOwnedRequest<string | null>
 >();
+const pendingLibraryCoreFeedPage = new Map<
+  number,
+  GenerationOwnedRequest<PwaLibraryCoreFeedReaderResult>
+>();
+const pendingLibraryCoreFeedReaderCancellation = new Map<
+  number,
+  GenerationOwnedRequest<boolean>
+>();
 
 const pendingMaps: Array<Map<number, GenerationOwnedRequest<unknown>>> = [
   pending as Map<number, GenerationOwnedRequest<unknown>>,
@@ -135,6 +145,14 @@ const pendingMaps: Array<Map<number, GenerationOwnedRequest<unknown>>> = [
   pendingDocHeads as Map<number, GenerationOwnedRequest<unknown>>,
   pendingDocRelationship as Map<number, GenerationOwnedRequest<unknown>>,
   pendingLegacyHtml as Map<number, GenerationOwnedRequest<unknown>>,
+  pendingLibraryCoreFeedPage as Map<
+    number,
+    GenerationOwnedRequest<unknown>
+  >,
+  pendingLibraryCoreFeedReaderCancellation as Map<
+    number,
+    GenerationOwnedRequest<unknown>
+  >,
 ];
 
 function lifecycleError(message: string): WorkerLifecycleError {
@@ -521,6 +539,30 @@ function handleWorkerMessage(
     return;
   }
 
+  if (msg.type === "LIBRARY_CORE_FEED_PAGE_RESULT") {
+    const pendingPage = getOwnedRequest(
+      pendingLibraryCoreFeedPage,
+      msg.reqId,
+      generation.id,
+    );
+    if (!pendingPage) return;
+    pendingLibraryCoreFeedPage.delete(msg.reqId);
+    pendingPage.resolve(msg.result);
+    return;
+  }
+
+  if (msg.type === "LIBRARY_CORE_FEED_READER_CANCEL_RESULT") {
+    const pendingCancellation = getOwnedRequest(
+      pendingLibraryCoreFeedReaderCancellation,
+      msg.reqId,
+      generation.id,
+    );
+    if (!pendingCancellation) return;
+    pendingLibraryCoreFeedReaderCancellation.delete(msg.reqId);
+    pendingCancellation.resolve(msg.cancelled);
+    return;
+  }
+
   if (msg.type === "INIT_STATS") {
     // Worker-INIT counter (stability P0-03) on the PWA debug channel, same
     // field names as the desktop runtime-health worker_init event.
@@ -626,6 +668,28 @@ function handleWorkerMessage(
   if (pendingHtml && msg.error) {
     pendingLegacyHtml.delete(msg.reqId);
     pendingHtml.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingFeedPage = getOwnedRequest(
+    pendingLibraryCoreFeedPage,
+    msg.reqId,
+    generation.id,
+  );
+  if (pendingFeedPage && msg.error) {
+    pendingLibraryCoreFeedPage.delete(msg.reqId);
+    pendingFeedPage.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingFeedCancellation = getOwnedRequest(
+    pendingLibraryCoreFeedReaderCancellation,
+    msg.reqId,
+    generation.id,
+  );
+  if (pendingFeedCancellation && msg.error) {
+    pendingLibraryCoreFeedReaderCancellation.delete(msg.reqId);
+    pendingFeedCancellation.reject(new Error(msg.error));
     return;
   }
 
@@ -828,6 +892,41 @@ export async function getItemLegacyHtml(globalId: string): Promise<string | null
   return requestResult(
     pendingLegacyHtml,
     { reqId, type: "GET_ITEM_LEGACY_HTML", globalId } satisfies WorkerRequest,
+  );
+}
+
+/**
+ * Dormant bounded PWA feed-page reader. No product surface calls this before
+ * the governed Library Core read cutover.
+ */
+export async function readLibraryCoreFeedPage(
+  pageRequest: LibraryCoreFeedPageRequestV1,
+): Promise<PwaLibraryCoreFeedReaderResult> {
+  const reqId = nextReqId++;
+  return requestResult(
+    pendingLibraryCoreFeedPage,
+    {
+      reqId,
+      type: "READ_LIBRARY_CORE_FEED_PAGE",
+      request: pageRequest,
+    } satisfies WorkerRequest,
+  );
+}
+
+/** Cancel exactly one dormant bounded PWA feed reader session. */
+export async function cancelLibraryCoreFeedReader(
+  readerSessionId: string,
+  cancellationId: string,
+): Promise<boolean> {
+  const reqId = nextReqId++;
+  return requestResult(
+    pendingLibraryCoreFeedReaderCancellation,
+    {
+      reqId,
+      type: "CANCEL_LIBRARY_CORE_FEED_READER",
+      readerSessionId,
+      cancellationId,
+    } satisfies WorkerRequest,
   );
 }
 

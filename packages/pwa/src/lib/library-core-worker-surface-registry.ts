@@ -6,6 +6,9 @@ export type PwaAutomergeWorkerResponseKind = WorkerResponse["type"];
 
 export type LibraryCoreWorkerSurfaceClassification =
   | "diagnostic_transport"
+  | "library_core_bounded_read"
+  | "library_core_bounded_transport"
+  | "library_core_lifecycle_control"
   | "legacy_bulk_or_repair_authority"
   | "legacy_full_state_transport"
   | "legacy_lifecycle_control"
@@ -163,6 +166,14 @@ export const PWA_AUTOMERGE_WORKER_REQUEST_SURFACE_REGISTRY = {
   GET_HEADS: unboundedReadRequest(),
   COMPARE_DOC: unboundedReadRequest(),
   GET_ITEM_LEGACY_HTML: unboundedReadRequest(),
+  READ_LIBRARY_CORE_FEED_PAGE: blockedSurface(
+    "library_core_bounded_read",
+    "response_transport_not_cut_over",
+  ),
+  CANCEL_LIBRARY_CORE_FEED_READER: blockedSurface(
+    "library_core_lifecycle_control",
+    "response_transport_not_cut_over",
+  ),
   CLEAR_LOCAL: blockedSurface(
     "legacy_lifecycle_control",
     "lifecycle_contract_unresolved",
@@ -332,6 +343,8 @@ export const PWA_AUTOMERGE_REQUEST_EFFECT_REGISTRY = {
   GET_HEADS: noWriteEffect(),
   COMPARE_DOC: noWriteEffect(),
   GET_ITEM_LEGACY_HTML: noWriteEffect(),
+  READ_LIBRARY_CORE_FEED_PAGE: noWriteEffect(),
+  CANCEL_LIBRARY_CORE_FEED_READER: noWriteEffect(),
   CLEAR_LOCAL: hiddenWrite(
     ["legacy_local_authority_reset"],
     ["local_authority_reset_contract_unresolved"],
@@ -379,6 +392,14 @@ export const PWA_AUTOMERGE_WORKER_RESPONSE_SURFACE_REGISTRY = {
     "legacy_unbounded_transport",
     "response_transport_not_cut_over",
     "unbounded_payload",
+  ),
+  LIBRARY_CORE_FEED_PAGE_RESULT: blockedSurface(
+    "library_core_bounded_transport",
+    "response_transport_not_cut_over",
+  ),
+  LIBRARY_CORE_FEED_READER_CANCEL_RESULT: blockedSurface(
+    "library_core_lifecycle_control",
+    "response_transport_not_cut_over",
   ),
   INIT_STATS: blockedSurface(
     "diagnostic_transport",

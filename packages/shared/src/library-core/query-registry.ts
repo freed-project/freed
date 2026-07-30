@@ -270,6 +270,10 @@ interface PlannedQueryInput {
   readonly invalidationKeyIntent: readonly string[];
   readonly intendedAdapters?: readonly LibraryCoreQueryAdapter[];
   readonly additionalBlockers?: readonly LibraryCoreQueryBlocker[];
+  readonly resolvedImplementationBlockers?: readonly Extract<
+    LibraryCoreQueryBlocker,
+    "runtime_adapter_unimplemented"
+  >[];
   readonly currentKinds?: readonly string[];
   readonly requestSchema?: typeof LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA;
   readonly responseSchema?: typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA;
@@ -354,6 +358,12 @@ function plannedQuery(
     intendedAdapters: input.intendedAdapters ?? ALL_INTENDED_ADAPTERS,
     blockers: nonEmptyBlockers([
       ...BASE_QUERY_BLOCKERS.filter((blocker) => {
+        if (
+          blocker === "runtime_adapter_unimplemented" &&
+          input.resolvedImplementationBlockers?.includes(blocker)
+        ) {
+          return false;
+        }
         if (blocker === "request_schema_unresolved") {
           return requestSchema === null;
         }
@@ -468,6 +478,8 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     currentKinds: [
       "ProjectionReadSession::feed_page",
       "read_library_core_feed_page",
+      "PwaLibraryCoreFeedReaderRuntime.readFeedPage",
+      "READ_LIBRARY_CORE_FEED_PAGE",
     ],
     requestSchema: LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA,
     responseSchema: LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA,
@@ -488,6 +500,7 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
       nullOrdering: "all_sort_columns_not_null",
     },
     tieBreakKey: "globalId",
+    resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   feed_subscription_page_v1: plannedQuery({
     defaultLimit: 64,

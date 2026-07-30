@@ -20,7 +20,9 @@ import type {
   UserPreferences,
 } from "@freed/shared";
 import type { DocumentHistoryRelation } from "@freed/shared/schema";
+import type { LibraryCoreFeedPageRequestV1 } from "@freed/shared/library-core";
 import type { StorageRevision } from "@freed/sync/types";
+import type { PwaLibraryCoreFeedReaderResult } from "./library-core-feed-reader-runtime";
 
 export type { DocumentHistoryRelation } from "@freed/shared/schema";
 
@@ -165,6 +167,17 @@ export type WorkerRequest =
   | { reqId: number; type: "GET_HEADS" }
   | { reqId: number; type: "COMPARE_DOC"; binary: Uint8Array }
   | { reqId: number; type: "GET_ITEM_LEGACY_HTML"; globalId: string }
+  | {
+      reqId: number;
+      type: "READ_LIBRARY_CORE_FEED_PAGE";
+      request: LibraryCoreFeedPageRequestV1;
+    }
+  | {
+      reqId: number;
+      type: "CANCEL_LIBRARY_CORE_FEED_READER";
+      readerSessionId: string;
+      cancellationId: string;
+    }
   | { reqId: number; type: "CLEAR_LOCAL" };
 
 // ---------------------------------------------------------------------------
@@ -208,6 +221,16 @@ export type WorkerResponse =
       type: "ITEM_LEGACY_HTML";
       globalId: string;
       html: string | null;
+    }
+  | {
+      reqId: number;
+      type: "LIBRARY_CORE_FEED_PAGE_RESULT";
+      result: PwaLibraryCoreFeedReaderResult;
+    }
+  | {
+      reqId: number;
+      type: "LIBRARY_CORE_FEED_READER_CANCEL_RESULT";
+      cancelled: boolean;
     }
   /** Sent once per INIT with its cost, for the worker-INIT debug counter. */
   | { type: "INIT_STATS"; durationMs: number; docBytes: number }

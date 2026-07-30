@@ -82,6 +82,7 @@ import type {
   WorkerRequest,
   WorkerResponse,
 } from "./automerge-types";
+import { createPwaLibraryCoreFeedReaderRuntime } from "./library-core-feed-reader-runtime";
 
 // ---------------------------------------------------------------------------
 // State
@@ -89,9 +90,22 @@ import type {
 
 const storage = new IndexedDBStorage();
 const persistence = new RepeatableAutomergePersistence(storage);
+let libraryCoreFeedReader: ReturnType<
+  typeof createPwaLibraryCoreFeedReaderRuntime
+> | null = null;
 let currentDoc: FreedDoc | null = null;
 let searchCorpusVersion = 0;
 let requestChain: Promise<void> = Promise.resolve();
+
+function getLibraryCoreFeedReader() {
+  libraryCoreFeedReader ??= createPwaLibraryCoreFeedReaderRuntime({
+    databaseName: "freed-library-core-feed-v1",
+    indexedDb: indexedDB,
+    keyRange: IDBKeyRange,
+    subtle: crypto.subtle,
+  });
+  return libraryCoreFeedReader;
+}
 let acceptingRequests = true;
 let fatalPersistenceFailure: FatalPersistenceError | null = null;
 const HYDRATED_FEED_ITEM_LIMIT = 2_500;
@@ -473,6 +487,7 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
   try {
     switch (req.type) {
       case "QUIESCE":
+        await libraryCoreFeedReader?.quiesce();
         ack(req.reqId);
         break;
 
@@ -1048,6 +1063,26 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
           globalId: req.globalId,
           html:
             currentDoc.feedItems[req.globalId]?.preservedContent?.html ?? null,
+        });
+        break;
+
+      case "READ_LIBRARY_CORE_FEED_PAGE":
+        send({
+          reqId: req.reqId,
+          type: "LIBRARY_CORE_FEED_PAGE_RESULT",
+          result: await getLibraryCoreFeedReader().readFeedPage(req.request),
+        });
+        break;
+
+      case "CANCEL_LIBRARY_CORE_FEED_READER":
+        send({
+          reqId: req.reqId,
+          type: "LIBRARY_CORE_FEED_READER_CANCEL_RESULT",
+          cancelled:
+            libraryCoreFeedReader?.cancelReader(
+              req.readerSessionId,
+              req.cancellationId,
+            ) ?? false,
         });
         break;
 

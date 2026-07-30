@@ -551,7 +551,7 @@ export function parseLibraryCoreFeedPageRequestV1(
   );
 }
 
-function parseSource(
+export function parseLibraryCoreFeedPageSourceV1(
   value: unknown,
 ): LibraryCoreFeedPageParseResult<LibraryCoreFeedPageSourceV1> {
   const record = snapshotClosedRecord(value, SOURCE_KEYS, "response.source");
@@ -573,7 +573,7 @@ function parseSource(
   );
 }
 
-function parseFeedCard(
+export function parseLibraryCoreFeedCardV1(
   value: unknown,
 ): LibraryCoreFeedPageParseResult<LibraryCoreFeedCardV1> {
   const record = snapshotClosedRecord(value, FEED_CARD_KEYS, "feed card");
@@ -685,7 +685,7 @@ export function parseLibraryCoreFeedPageResponseV1(
   ) {
     return failure("response identity or top-level bounds are invalid");
   }
-  const source = parseSource(input.source);
+  const source = parseLibraryCoreFeedPageSourceV1(input.source);
   if (!source.ok) return source;
   if (request.value.cursor !== null) {
     const requestCursor = decodeLibraryCoreFeedPageCursorV1(
@@ -712,7 +712,7 @@ export function parseLibraryCoreFeedPageResponseV1(
     if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
       return failure("response rows must be one dense data array");
     }
-    const parsed = parseFeedCard(descriptor.value);
+    const parsed = parseLibraryCoreFeedCardV1(descriptor.value);
     if (!parsed.ok) return parsed;
     serializedRowsBytes += textEncoder.encode(
       JSON.stringify(parsed.value),

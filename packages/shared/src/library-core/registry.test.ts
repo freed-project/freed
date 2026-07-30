@@ -257,7 +257,15 @@ describe("Library Core query registry", () => {
       }
       expect(definition.intendedAdapters.length).toBeGreaterThan(0);
       expect(definition.blockers.length).toBeGreaterThan(0);
-      expect(definition.blockers).toContain("runtime_adapter_unimplemented");
+      if (definition === LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1) {
+        expect(definition.blockers).not.toContain(
+          "runtime_adapter_unimplemented",
+        );
+      } else {
+        expect(definition.blockers).toContain(
+          "runtime_adapter_unimplemented",
+        );
+      }
       expect("supportedAdapters" in definition).toBe(false);
 
       expect(definition.defaultLimit).toBeGreaterThan(0);
@@ -273,7 +281,7 @@ describe("Library Core query registry", () => {
     }
   });
 
-  it("records the dormant Desktop feed runtime without claiming a product adapter", () => {
+  it("records both dormant feed runtimes without claiming a product adapter", () => {
     const definition = LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1;
     expect(definition).toMatchObject({
       status: "planned_blocked",
@@ -282,6 +290,8 @@ describe("Library Core query registry", () => {
         currentKinds: [
           "ProjectionReadSession::feed_page",
           "read_library_core_feed_page",
+          "PwaLibraryCoreFeedReaderRuntime.readFeedPage",
+          "READ_LIBRARY_CORE_FEED_PAGE",
         ],
       },
       requestSchema: LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA,
@@ -293,7 +303,7 @@ describe("Library Core query registry", () => {
       maximumLimit: 128,
       maximumRows: 128,
       maximumResponseBytes: 2 * 1_048_576,
-      blockers: ["adapter_proof_missing", "runtime_adapter_unimplemented"],
+      blockers: ["adapter_proof_missing"],
     });
     expect(definition.blockers).not.toEqual(
       expect.arrayContaining([
