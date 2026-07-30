@@ -60,25 +60,37 @@ discarded, or silently merged into active authority.
 SQLite is local client storage. No transport may synchronize a live SQLite
 database, WAL, SHM, rollback journal, or mutable database replacement. Cloud
 transport consists of immutable, content-addressed protocol objects plus the
-small `control/library-control.json` compare-and-swap pointer. One library has
-one active authority transport. Google Drive `appDataFolder` is the current
-transport. A future Dropbox App Folder adapter uses the same protocol, but it
-cannot maintain an independent active pointer.
+small flat `freed-v2-control-{library}.json` compare-and-swap pointer. One
+library has one active authority transport. Google Drive `appDataFolder` is
+the current transport. A future Dropbox App Folder adapter uses the same
+protocol, but it cannot maintain an independent active pointer. Drive file IDs
+are locators. Names and app properties describe objects, but never establish
+authority.
 
 PWA installations are intent producers in v1, not canonical writers. Their
-local SQLite/OPFS or IndexedDB adapters materialize the same logical rows and
-append immutable intent objects. The designated Desktop verifies and accepts
-an intent into canonical SQLite before publishing an acceptance receipt.
-Provider acceptance is separate from provider completion. A PWA cannot display
-provider success until the Desktop records the actual provider result.
+required MVP store is a bounded row-oriented IndexedDB adapter. SQLite WASM and
+OPFS are not on the MVP critical path. They may be added later behind the same
+adapter and conformance suite. The designated Desktop verifies and accepts an
+intent into canonical SQLite before publishing an acceptance receipt. Provider
+acceptance is separate from provider completion. A PWA cannot display provider
+success until the Desktop records the actual provider result.
 
-The initial package-internal immutable transport contract closes the object-key
-families, one active transport field, non-expiring epoch and writer identity,
-monotone control generation, causal-frontier digest, and manifest locator. It
-does not perform cloud I/O, activate SQLite authority, retire Automerge, or
-change provider behavior. The later provider adapter must upload dependencies,
-verify digest and size by readback, upload the manifest, then compare and swap
-the control pointer against the provider's exact current revision.
+The package-internal immutable transport contract closes one flat namespace for
+epoch and enrollment JSON, checkpoint manifests and pages, canonical operation
+segments, PWA intent and result segments, search artifacts, blobs, and backup
+manifests. Mutable control, intent-head, and result-head names cannot pass
+immutable-object validation. Active sync has no SQLite checkpoint object.
+Scrubbed closed SQLite checkpoints belong only to retained backups. The
+contract performs no cloud I/O, authority activation, or provider behavior.
+
+Control records, manifests, certificates, and individual signed envelopes use
+canonical UTF-8 JSON. Checkpoint, operation, intent, result, and search objects
+use a versioned frame of length-prefixed canonical JSON records followed by
+gzip. The frame caps one record at 1 MiB, one object at 4,096 records and 32
+MiB decoded, and one stored object below 5 MB. Incremental receipt rejects
+future versions, wrong families, truncation, trailing bytes, count drift,
+oversize records, noncanonical JSON, and duplicate identities. SHA-256 names
+the exact stored gzip bytes.
 
 The dormant publication coordinator performs that ordering against an injected
 transport adapter. It streams a bounded dependency sequence, requires exact
@@ -2839,11 +2851,13 @@ side-effect execution.
 
 ## PWA durable store
 
-The PWA implements the same operation and materialization contract behind a
-browser storage adapter.
+The PWA implements the same logical operation and materialization contract
+behind one browser storage adapter. IndexedDB is the required MVP engine. It
+stores bounded record pages, tombstones, search postings, cursors, intent
+queues, and result receipts without holding the corpus in JavaScript memory.
 
-The preferred adapter may use SQLite WASM with OPFS only after the supported
-browser matrix proves:
+SQLite WASM with OPFS may be added later as a measured adapter only after the
+supported browser matrix proves:
 
 - durable reopen and crash recovery;
 - worker-only access where required;
@@ -2852,29 +2866,23 @@ browser matrix proves:
 - correct behavior without cross-origin isolation where Freed must run;
 - a visible answer from `navigator.storage.persisted()`.
 
-Devices that cannot satisfy that contract use a row-oriented IndexedDB
-adapter, not one full-library binary value. A fallback adapter may expose a
-separately versioned, explicitly surfaced reduced search mode only after the
-product decision required by the query compatibility rule. It cannot return
-ordinary search success while silently omitting records or changing stable
-order. An unsupported query returns a typed unsupported result. Every adapter
-preserves all operations and convergence.
+The future adapter must pass the same conformance suite and rebuild from
+immutable cloud objects into a verified generation. It never mutates or
+translates an active IndexedDB store in place.
 
 Freed requests persistent storage when the user enables a local library and
 reports whether the browser granted it. A denial is a durability warning, not a
 silent success.
 
-One dedicated worker owns the PWA authority connection. Tabs, service workers,
-and obsolete application versions are fenced from concurrent writes. Existing
-but unreadable or partially missing storage enters recovery. It never becomes
-a successful empty-library bootstrap.
+One dedicated worker owns the PWA adapter connection. Tabs, service workers,
+and obsolete application versions are fenced from concurrent local intent
+writes. Existing but unreadable storage enters recovery, never an empty-library
+bootstrap.
 
-Every writable PWA adapter commits the operation envelope, actor and
-transaction validation state, materialized rows, tombstones, ingest cursor,
-receipt, and replication outbox atomically before acknowledgment. Its crash
-proof injects failure at every adapter-specific commit boundary and reopens the
-store. An IndexedDB fallback is not writable unless that proof passes. OPFS or
-SQLite WASM cannot borrow Desktop's crash evidence.
+IndexedDB commits each intent envelope, local rows, tombstones, ingest cursor,
+receipt, and intent outbox atomically before acknowledgment. Its crash proof
+injects failure at every adapter-specific commit boundary and reopens the
+store. A future SQLite WASM adapter cannot borrow IndexedDB or Desktop evidence.
 
 ## Replication protocol
 
@@ -10090,8 +10098,8 @@ unusable:
    alternate hex case, malformed or noncanonical public keys, `R`, or `S`, bad
    signatures, and domain substitution. Public backup vectors fix Argon2id
    output, key wrapping, file AEAD, signed manifest, delegation, bundle, and
-   recovery-transition bytes. Desktop-created fixtures restore through every
-   supported PWA adapter and PWA-created fixtures restore on Desktop. Desktop
+   recovery-transition bytes. Desktop-created fixtures materialize through
+   IndexedDB and round-trip through adapter-neutral checkpoint pages. Desktop
    and PWA must reject the same invalid bytes. Using the same body under two
    domain labels must produce different digests and signatures.
 2. The executable field registry is compile-time exhaustive against every raw
@@ -10099,10 +10107,10 @@ unusable:
    payload, backup and export behavior, and every local authority. An unknown
    current field blocks cutover.
 3. Mutation crash recovery at every commit boundary on every writable adapter:
-   Desktop SQLite, supported PWA SQLite or OPFS, and IndexedDB fallback. Each
-   fixture reopens before acknowledgment and proves operation, rows,
+   Desktop SQLite for canonical mutations and IndexedDB for PWA intents. Each
+   fixture reopens before acknowledgment and proves operation or intent, rows,
    tombstones, actor state, cursor, receipt, and outbox are all committed or
-   all absent.
+   all absent. A future SQLite WASM adapter earns separate crash evidence.
 4. Actor enrollment and signature rejection, sequence and chain fork detection,
    deterministic fork-repair convergence, and actor retirement.
 5. Incomplete, duplicated, reordered, and digest-mismatched transaction-member

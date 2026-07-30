@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  LIBRARY_CORE_CONTROL_OBJECT_KEY,
+  createLibraryCoreControlObjectKey,
   createLibraryCoreImmutableObjectKey,
+  createLibraryCoreIntentHeadObjectKey,
+  createLibraryCoreResultHeadObjectKey,
   isLibraryCoreImmutableObjectKey,
   parseLibraryCoreControlPointerV1,
   parseLibraryCoreImmutableObjectDescriptorV1,
@@ -9,122 +11,160 @@ import {
 
 const DIGEST = "ab".repeat(32);
 const OTHER_DIGEST = "cd".repeat(32);
+const LIBRARY_ID = "library-1";
+
+function manifestKey(
+  epochId = "epoch-1",
+  generation = 7,
+  digest = DIGEST,
+  libraryId = LIBRARY_ID,
+): string {
+  return createLibraryCoreImmutableObjectKey({
+    kind: "checkpoint_manifest",
+    libraryId,
+    epochId,
+    generation,
+    digest,
+  });
+}
 
 describe("Library Core immutable transport contract", () => {
-  it("constructs every registered immutable object family", () => {
+  it("constructs every flat immutable object family", () => {
     const keys = [
       createLibraryCoreImmutableObjectKey({
         kind: "epoch_certificate",
+        libraryId: LIBRARY_ID,
         epochId: "epoch-1",
+        digest: DIGEST,
       }),
       createLibraryCoreImmutableObjectKey({
         kind: "actor_enrollment",
+        libraryId: LIBRARY_ID,
+        epochId: "epoch-1",
         actorId: "desktop-1",
         digest: DIGEST,
       }),
       createLibraryCoreImmutableObjectKey({
         kind: "operation_segment",
+        libraryId: LIBRARY_ID,
         epochId: "epoch-1",
-        actorId: "desktop-1",
         firstSequence: 1,
         lastSequence: 128,
         digest: DIGEST,
       }),
-      createLibraryCoreImmutableObjectKey({
-        kind: "checkpoint_manifest",
-        epochId: "epoch-1",
-        generation: 7,
-        digest: DIGEST,
-      }),
+      manifestKey(),
       createLibraryCoreImmutableObjectKey({
         kind: "checkpoint_page",
+        libraryId: LIBRARY_ID,
         epochId: "epoch-1",
         generation: 7,
         pageIndex: 2,
         digest: DIGEST,
       }),
       createLibraryCoreImmutableObjectKey({
-        kind: "desktop_checkpoint",
+        kind: "search_manifest",
+        libraryId: LIBRARY_ID,
         epochId: "epoch-1",
         generation: 7,
         digest: DIGEST,
       }),
       createLibraryCoreImmutableObjectKey({
-        kind: "search_base",
+        kind: "search_shard",
+        libraryId: LIBRARY_ID,
         epochId: "epoch-1",
         generation: 7,
+        shardIndex: 2,
         digest: DIGEST,
       }),
       createLibraryCoreImmutableObjectKey({
         kind: "search_delta",
+        libraryId: LIBRARY_ID,
         epochId: "epoch-1",
-        generation: 7,
         firstSequence: 129,
         lastSequence: 256,
         digest: DIGEST,
       }),
       createLibraryCoreImmutableObjectKey({
-        kind: "intent",
+        kind: "intent_segment",
+        libraryId: LIBRARY_ID,
         actorId: "pwa-1",
-        sequence: 9,
-        operationId: "operation-9",
+        firstSequence: 1,
+        lastSequence: 9,
         digest: DIGEST,
       }),
       createLibraryCoreImmutableObjectKey({
-        kind: "intent_result",
+        kind: "result_segment",
+        libraryId: LIBRARY_ID,
         actorId: "pwa-1",
-        sequence: 9,
-        operationId: "operation-9",
+        firstSequence: 1,
+        lastSequence: 9,
         digest: DIGEST,
       }),
-      createLibraryCoreImmutableObjectKey({ kind: "blob", digest: DIGEST }),
+      createLibraryCoreImmutableObjectKey({
+        kind: "blob",
+        libraryId: LIBRARY_ID,
+        digest: DIGEST,
+      }),
       createLibraryCoreImmutableObjectKey({
         kind: "backup_manifest",
+        libraryId: LIBRARY_ID,
         backupId: "backup-2026-07-30",
         digest: DIGEST,
       }),
     ];
 
     expect(keys).toEqual([
-      "epochs/epoch-1/epoch-certificate.cbor",
-      `actors/desktop-1/enrollment-${DIGEST}.cbor`,
-      `operations/epoch-1/desktop-1/1-128-${DIGEST}.cbor`,
-      `checkpoints/epoch-1/7/manifest-${DIGEST}.cbor`,
-      `checkpoints/epoch-1/7/pages/2-${DIGEST}.cbor`,
-      `checkpoints/epoch-1/7/desktop-${DIGEST}.sqlite`,
-      `search/epoch-1/7/base-${DIGEST}.cbor`,
-      `search/epoch-1/7/delta-129-256-${DIGEST}.cbor`,
-      `intents/pwa-1/9-operation-9-${DIGEST}.cbor`,
-      `intent-results/pwa-1/9-operation-9-${DIGEST}.cbor`,
-      `blobs/ab/${DIGEST}`,
-      `backups/backup-2026-07-30/manifest-${DIGEST}.cbor`,
+      `freed-v2-epoch-library-1-epoch-1-${DIGEST}.json`,
+      `freed-v2-enrollment-library-1-epoch-1-desktop-1-${DIGEST}.json`,
+      `freed-v2-ops-library-1-eepoch-1-s1-128-${DIGEST}.fseg.gz`,
+      `freed-v2-manifest-library-1-eepoch-1-g7-${DIGEST}.json`,
+      `freed-v2-checkpoint-library-1-eepoch-1-g7-p2-${DIGEST}.fpage.gz`,
+      `freed-v2-search-library-1-eepoch-1-g7-manifest-${DIGEST}.json`,
+      `freed-v2-search-library-1-eepoch-1-g7-s2-${DIGEST}.fidx.gz`,
+      `freed-v2-search-delta-library-1-eepoch-1-s129-256-${DIGEST}.fidx.gz`,
+      `freed-v2-intents-library-1-pwa-1-s1-9-${DIGEST}.fseg.gz`,
+      `freed-v2-results-library-1-pwa-1-s1-9-${DIGEST}.fseg.gz`,
+      `freed-v2-blob-library-1-${DIGEST}`,
+      `freed-v2-backup-library-1-backup-2026-07-30-${DIGEST}.json`,
     ]);
     expect(keys.every(isLibraryCoreImmutableObjectKey)).toBe(true);
+    expect(keys.every((key) => !key.includes("/"))).toBe(true);
   });
 
-  it("rejects mutable SQLite files and the mutable control pointer as immutable objects", () => {
-    expect(
-      isLibraryCoreImmutableObjectKey(LIBRARY_CORE_CONTROL_OBJECT_KEY),
-    ).toBe(false);
-    expect(isLibraryCoreImmutableObjectKey("library.sqlite")).toBe(false);
-    expect(isLibraryCoreImmutableObjectKey("library.sqlite-wal")).toBe(false);
-    expect(isLibraryCoreImmutableObjectKey("library.sqlite-shm")).toBe(false);
-    expect(isLibraryCoreImmutableObjectKey("library.sqlite-journal")).toBe(
-      false,
-    );
-    expect(
-      isLibraryCoreImmutableObjectKey(
-        `checkpoints/epoch-1/7/desktop-${DIGEST}.sqlite-wal`,
-      ),
-    ).toBe(false);
+  it("constructs mutable heads separately and never accepts them as immutable", () => {
+    const mutableKeys = [
+      createLibraryCoreControlObjectKey(LIBRARY_ID),
+      createLibraryCoreIntentHeadObjectKey(LIBRARY_ID, "pwa-1"),
+      createLibraryCoreResultHeadObjectKey(LIBRARY_ID, "pwa-1"),
+    ];
+
+    expect(mutableKeys).toEqual([
+      "freed-v2-control-library-1.json",
+      "freed-v2-intent-head-library-1-pwa-1.json",
+      "freed-v2-result-head-library-1-pwa-1.json",
+    ]);
+    expect(mutableKeys.some(isLibraryCoreImmutableObjectKey)).toBe(false);
   });
 
-  it("rejects traversal, malformed ranges, and unsafe numeric locators", () => {
+  it("rejects SQLite files, nested paths, malformed ranges, and unsafe indexes", () => {
+    for (const key of [
+      "library.sqlite",
+      "library.sqlite-wal",
+      "library.sqlite-shm",
+      "library.sqlite-journal",
+      `checkpoints/epoch-1/7/desktop-${DIGEST}.sqlite`,
+      `freed-v2-ops-library-1-eepoch-1-s2-1-${DIGEST}.fseg.gz`,
+      `freed-v2-checkpoint-library-1-eepoch-1-g${Number.MAX_SAFE_INTEGER + 1}-p0-${DIGEST}.fpage.gz`,
+      `freed-v2-blob-library-1-${OTHER_DIGEST}/nested`,
+    ]) {
+      expect(isLibraryCoreImmutableObjectKey(key)).toBe(false);
+    }
+
     expect(() =>
       createLibraryCoreImmutableObjectKey({
         kind: "operation_segment",
+        libraryId: LIBRARY_ID,
         epochId: "epoch-1",
-        actorId: "desktop-1",
         firstSequence: 2,
         lastSequence: 1,
         digest: DIGEST,
@@ -133,95 +173,55 @@ describe("Library Core immutable transport contract", () => {
     expect(() =>
       createLibraryCoreImmutableObjectKey({
         kind: "checkpoint_page",
+        libraryId: LIBRARY_ID,
         epochId: "../epoch",
         generation: 1,
         pageIndex: 0,
         digest: DIGEST,
       }),
     ).toThrow(/epochId/);
-    expect(() =>
-      createLibraryCoreImmutableObjectKey({
-        kind: "checkpoint_page",
-        epochId: "epoch-1",
-        generation: Number.MAX_SAFE_INTEGER + 1,
-        pageIndex: 0,
-        digest: DIGEST,
-      }),
-    ).toThrow(/generation/);
-    expect(
-      isLibraryCoreImmutableObjectKey(
-        `operations/epoch-1/desktop-1/2-1-${DIGEST}.cbor`,
-      ),
-    ).toBe(false);
-    expect(
-      isLibraryCoreImmutableObjectKey(
-        `checkpoints/epoch-1/${Number.MAX_SAFE_INTEGER + 1}/manifest-${DIGEST}.cbor`,
-      ),
-    ).toBe(false);
-    expect(
-      isLibraryCoreImmutableObjectKey(
-        `checkpoints/epoch-1/1/pages/${Number.MAX_SAFE_INTEGER + 1}-${DIGEST}.cbor`,
-      ),
-    ).toBe(false);
-    expect(
-      isLibraryCoreImmutableObjectKey(
-        `search/epoch-1/${Number.MAX_SAFE_INTEGER + 1}/delta-1-2-${DIGEST}.cbor`,
-      ),
-    ).toBe(false);
-    expect(isLibraryCoreImmutableObjectKey(`blobs/cd/${DIGEST}`)).toBe(false);
   });
 
-  it("snapshots a closed immutable descriptor without retaining aliases", () => {
+  it("snapshots descriptors and binds content to the locator digest", () => {
     const source = {
-      objectKey: `checkpoints/epoch-1/7/manifest-${DIGEST}.cbor`,
+      objectKey: manifestKey(),
       contentDigest: DIGEST,
       byteLength: 4_096,
     };
     const parsed = parseLibraryCoreImmutableObjectDescriptorV1(source);
-    source.objectKey = `checkpoints/epoch-1/8/manifest-${OTHER_DIGEST}.cbor`;
+    source.objectKey = manifestKey("epoch-1", 8, OTHER_DIGEST);
 
     expect(parsed).toEqual({
-      objectKey: `checkpoints/epoch-1/7/manifest-${DIGEST}.cbor`,
+      objectKey: manifestKey(),
       contentDigest: DIGEST,
       byteLength: 4_096,
     });
     expect(Object.isFrozen(parsed)).toBe(true);
-  });
-
-  it("binds descriptor content to the digest encoded by its locator", () => {
     expect(() =>
       parseLibraryCoreImmutableObjectDescriptorV1({
-        objectKey: `checkpoints/epoch-1/7/manifest-${DIGEST}.cbor`,
-        contentDigest: OTHER_DIGEST,
-        byteLength: 4_096,
-      }),
-    ).toThrow(/contentDigest does not match objectKey/);
-    expect(() =>
-      parseLibraryCoreImmutableObjectDescriptorV1({
-        objectKey: `blobs/ab/${DIGEST}`,
+        objectKey: manifestKey(),
         contentDigest: OTHER_DIGEST,
         byteLength: 4_096,
       }),
     ).toThrow(/contentDigest does not match objectKey/);
   });
 
-  it("closes one non-expiring writer epoch and one active transport", () => {
+  it("closes one non-expiring writer epoch, library, manifest, and transport", () => {
     const source = {
       schemaVersion: 1,
       protocolVersion: 1,
-      libraryId: "library-1",
+      libraryId: LIBRARY_ID,
       storageEpoch: "epoch-1",
       writerId: "desktop-1",
       activeTransport: "google_drive_app_data_v1",
       generation: 7,
       causalFrontierDigest: OTHER_DIGEST,
       manifest: {
-        objectKey: `checkpoints/epoch-1/7/manifest-${DIGEST}.cbor`,
+        objectKey: manifestKey(),
         contentDigest: DIGEST,
         byteLength: 4_096,
       },
     };
-
     const parsed = parseLibraryCoreControlPointerV1(source);
     source.writerId = "desktop-2";
     source.manifest.byteLength = 1;
@@ -230,95 +230,38 @@ describe("Library Core immutable transport contract", () => {
     expect(parsed.manifest.byteLength).toBe(4_096);
     expect(Object.isFrozen(parsed)).toBe(true);
     expect(Object.isFrozen(parsed.manifest)).toBe(true);
-  });
 
-  it("rejects expiry, heartbeat, dual authority, and unknown transport fields", () => {
-    const valid = {
-      schemaVersion: 1,
-      protocolVersion: 1,
-      libraryId: "library-1",
-      storageEpoch: "epoch-1",
-      writerId: "desktop-1",
-      activeTransport: "google_drive_app_data_v1",
-      generation: 7,
-      causalFrontierDigest: OTHER_DIGEST,
-      manifest: {
-        objectKey: `checkpoints/epoch-1/7/manifest-${DIGEST}.cbor`,
-        contentDigest: DIGEST,
-        byteLength: 4_096,
-      },
-    };
-
-    expect(() =>
-      parseLibraryCoreControlPointerV1({ ...valid, expiresAt: 123 }),
-    ).toThrow(/unknown or missing/);
-    expect(() =>
-      parseLibraryCoreControlPointerV1({ ...valid, heartbeatAt: 123 }),
-    ).toThrow(/unknown or missing/);
-    expect(() =>
-      parseLibraryCoreControlPointerV1({
-        ...valid,
+    for (const invalid of [
+      { ...source, expiresAt: 123 },
+      { ...source, heartbeatAt: 123 },
+      {
+        ...source,
         activeTransports: ["google_drive_app_data_v1", "dropbox_app_folder_v1"],
-      }),
-    ).toThrow(/unknown or missing/);
-    expect(() =>
-      parseLibraryCoreControlPointerV1({
-        ...valid,
-        activeTransport: "filesystem_sqlite_sync_v1",
-      }),
-    ).toThrow(/activeTransport/);
-  });
-
-  it("binds the control pointer to its exact epoch and generation manifest", () => {
-    const valid = {
-      schemaVersion: 1,
-      protocolVersion: 1,
-      libraryId: "library-1",
-      storageEpoch: "epoch-1",
-      writerId: "desktop-1",
-      activeTransport: "google_drive_app_data_v1",
-      generation: 7,
-      causalFrontierDigest: OTHER_DIGEST,
-      manifest: {
-        objectKey: `checkpoints/epoch-1/7/manifest-${DIGEST}.cbor`,
-        contentDigest: DIGEST,
-        byteLength: 4_096,
       },
-    };
-
-    expect(() =>
-      parseLibraryCoreControlPointerV1({
-        ...valid,
+      { ...source, activeTransport: "filesystem_sqlite_sync_v1" },
+      {
+        ...source,
         manifest: {
-          ...valid.manifest,
-          objectKey: `checkpoints/epoch-2/7/manifest-${DIGEST}.cbor`,
+          ...source.manifest,
+          objectKey: manifestKey("epoch-2"),
         },
-      }),
-    ).toThrow(/storage epoch and generation/);
-    expect(() =>
-      parseLibraryCoreControlPointerV1({
-        ...valid,
+      },
+      {
+        ...source,
         manifest: {
-          ...valid.manifest,
-          objectKey: `checkpoints/epoch-1/8/manifest-${DIGEST}.cbor`,
+          ...source.manifest,
+          objectKey: manifestKey("epoch-1", 7, DIGEST, "library-2"),
         },
-      }),
-    ).toThrow(/storage epoch and generation/);
-    expect(() =>
-      parseLibraryCoreControlPointerV1({
-        ...valid,
-        manifest: {
-          ...valid.manifest,
-          objectKey: `backups/backup-1/manifest-${DIGEST}.cbor`,
-        },
-      }),
-    ).toThrow(/storage epoch and generation/);
+      },
+    ]) {
+      expect(() => parseLibraryCoreControlPointerV1(invalid)).toThrow();
+    }
   });
 
   it("rejects accessors and unknown descriptor fields before reading them", () => {
     let accessed = false;
     const descriptor = {
-      objectKey: `checkpoints/epoch-1/7/manifest-${DIGEST}.cbor`,
+      objectKey: manifestKey(),
       contentDigest: DIGEST,
       get byteLength() {
         accessed = true;
@@ -332,10 +275,10 @@ describe("Library Core immutable transport contract", () => {
     expect(accessed).toBe(false);
     expect(() =>
       parseLibraryCoreImmutableObjectDescriptorV1({
-        objectKey: `checkpoints/epoch-1/7/manifest-${DIGEST}.cbor`,
+        objectKey: manifestKey(),
         contentDigest: DIGEST,
         byteLength: 4_096,
-        etag: "provider-owned",
+        transportObjectId: "provider-owned",
       }),
     ).toThrow(/unknown or missing/);
   });

@@ -35,8 +35,8 @@ function operationObject(
     descriptor: parseLibraryCoreImmutableObjectDescriptorV1({
       objectKey: createLibraryCoreImmutableObjectKey({
         kind: "operation_segment",
+        libraryId: "library-1",
         epochId: "epoch-1",
-        actorId: "desktop-1",
         firstSequence: sequence,
         lastSequence: sequence,
         digest: contentDigest,
@@ -72,6 +72,7 @@ function preparedManifest(
   const descriptor = parseLibraryCoreImmutableObjectDescriptorV1({
     objectKey: createLibraryCoreImmutableObjectKey({
       kind: "checkpoint_manifest",
+      libraryId: "library-1",
       epochId,
       generation,
       digest: contentDigest,
@@ -233,8 +234,8 @@ describe("Library Core immutable publication", () => {
       `put:${dependency2.descriptor.objectKey}`,
       `verify:${dependency2.descriptor.objectKey}`,
       "prepare-manifest",
-      expect.stringMatching(/^put:checkpoints\/epoch-1\/0\/manifest-/),
-      expect.stringMatching(/^verify:checkpoints\/epoch-1\/0\/manifest-/),
+      expect.stringMatching(/^put:freed-v2-manifest-library-1-eepoch-1-g0-/),
+      expect.stringMatching(/^verify:freed-v2-manifest-library-1-eepoch-1-g0-/),
       "compare-and-swap-control",
     ]);
     expect(adapter.control.revision).toBe("revision-1");
@@ -275,7 +276,9 @@ describe("Library Core immutable publication", () => {
     ).rejects.toThrow(/verification failed/);
 
     expect(
-      adapter.events.some((event) => event.startsWith("put:checkpoints/")),
+      adapter.events.some((event) =>
+        event.startsWith("put:freed-v2-manifest-"),
+      ),
     ).toBe(false);
     expect(adapter.events).not.toContain("compare-and-swap-control");
   });
@@ -448,7 +451,9 @@ describe("Library Core immutable publication", () => {
       }),
     ).rejects.toThrow(/repeats object key/);
     expect(
-      adapter.events.some((event) => event.startsWith("put:checkpoints/")),
+      adapter.events.some((event) =>
+        event.startsWith("put:freed-v2-manifest-"),
+      ),
     ).toBe(false);
   });
 });
