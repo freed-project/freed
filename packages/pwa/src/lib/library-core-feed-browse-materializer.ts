@@ -131,6 +131,10 @@ export async function materializePwaLibraryCoreFeedBrowseGeneration(
   }
 
   const state = await input.writer.beginBrowseGeneration({
+    filter,
+    rankingClockMs: input.rankingClockMs,
+    recommendationOrderSchemaVersion:
+      LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
     source,
     totalCount,
   });

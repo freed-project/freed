@@ -22,12 +22,16 @@ import type {
 import type { DocumentHistoryRelation } from "@freed/shared/schema";
 import type {
   LibraryCoreFeedBrowseFilterInputV1,
+  LibraryCoreFeedBrowsePageRequestV1,
   LibraryCoreFeedPageRequestV1,
   LibraryCoreFeedPageSourceV1,
 } from "@freed/shared/library-core";
 import type { StorageRevision } from "@freed/sync/types";
 import type { MaterializePwaLibraryCoreFeedBrowseGenerationResult } from "./library-core-feed-browse-materializer";
-import type { PwaLibraryCoreFeedReaderResult } from "./library-core-feed-reader-runtime";
+import type {
+  PwaLibraryCoreFeedBrowseReaderResult,
+  PwaLibraryCoreFeedReaderResult,
+} from "./library-core-feed-reader-runtime";
 
 export type { DocumentHistoryRelation } from "@freed/shared/schema";
 
@@ -186,6 +190,11 @@ export type WorkerRequest =
     }
   | {
       reqId: number;
+      type: "READ_LIBRARY_CORE_FEED_BROWSE_PAGE";
+      request: LibraryCoreFeedBrowsePageRequestV1;
+    }
+  | {
+      reqId: number;
       type: "CANCEL_LIBRARY_CORE_FEED_READER";
       readerSessionId: string;
       cancellationId: string;
@@ -249,6 +258,11 @@ export type WorkerResponse =
       reqId: number;
       type: "LIBRARY_CORE_FEED_PAGE_RESULT";
       result: PwaLibraryCoreFeedReaderResult;
+    }
+  | {
+      reqId: number;
+      type: "LIBRARY_CORE_FEED_BROWSE_PAGE_RESULT";
+      result: PwaLibraryCoreFeedBrowseReaderResult;
     }
   | {
       reqId: number;

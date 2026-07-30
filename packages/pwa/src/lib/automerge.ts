@@ -23,6 +23,7 @@ import type {
 } from "@freed/shared";
 import type {
   LibraryCoreFeedBrowseFilterInputV1,
+  LibraryCoreFeedBrowsePageRequestV1,
   LibraryCoreFeedPageRequestV1,
 } from "@freed/shared/library-core";
 import type {
@@ -37,7 +38,10 @@ import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
 import { persistWorkerDebugEvent } from "./automerge-worker-debug";
 import type { MaterializePwaLibraryCoreFeedBrowseGenerationResult } from "./library-core-feed-browse-materializer";
 import type { MaterializePwaLibraryCoreFeedGenerationResult } from "./library-core-feed-materializer";
-import type { PwaLibraryCoreFeedReaderResult } from "./library-core-feed-reader-runtime";
+import type {
+  PwaLibraryCoreFeedBrowseReaderResult,
+  PwaLibraryCoreFeedReaderResult,
+} from "./library-core-feed-reader-runtime";
 import {
   capturePwaRuntimeLifecycle,
   registerPwaFactoryResetQuiesceHandler,
@@ -144,6 +148,10 @@ const pendingLibraryCoreFeedPage = new Map<
   number,
   GenerationOwnedRequest<PwaLibraryCoreFeedReaderResult>
 >();
+const pendingLibraryCoreFeedBrowsePage = new Map<
+  number,
+  GenerationOwnedRequest<PwaLibraryCoreFeedBrowseReaderResult>
+>();
 const pendingLibraryCoreFeedReaderCancellation = new Map<
   number,
   GenerationOwnedRequest<boolean>
@@ -167,6 +175,10 @@ const pendingMaps: Array<Map<number, GenerationOwnedRequest<unknown>>> = [
     GenerationOwnedRequest<unknown>
   >,
   pendingLibraryCoreFeedPage as Map<
+    number,
+    GenerationOwnedRequest<unknown>
+  >,
+  pendingLibraryCoreFeedBrowsePage as Map<
     number,
     GenerationOwnedRequest<unknown>
   >,
@@ -599,6 +611,18 @@ function handleWorkerMessage(
     return;
   }
 
+  if (msg.type === "LIBRARY_CORE_FEED_BROWSE_PAGE_RESULT") {
+    const pendingPage = getOwnedRequest(
+      pendingLibraryCoreFeedBrowsePage,
+      msg.reqId,
+      generation.id,
+    );
+    if (!pendingPage) return;
+    pendingLibraryCoreFeedBrowsePage.delete(msg.reqId);
+    pendingPage.resolve(msg.result);
+    return;
+  }
+
   if (msg.type === "LIBRARY_CORE_FEED_READER_CANCEL_RESULT") {
     const pendingCancellation = getOwnedRequest(
       pendingLibraryCoreFeedReaderCancellation,
@@ -749,6 +773,17 @@ function handleWorkerMessage(
   if (pendingFeedPage && msg.error) {
     pendingLibraryCoreFeedPage.delete(msg.reqId);
     pendingFeedPage.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingFeedBrowsePage = getOwnedRequest(
+    pendingLibraryCoreFeedBrowsePage,
+    msg.reqId,
+    generation.id,
+  );
+  if (pendingFeedBrowsePage && msg.error) {
+    pendingLibraryCoreFeedBrowsePage.delete(msg.reqId);
+    pendingFeedBrowsePage.reject(new Error(msg.error));
     return;
   }
 
@@ -1013,6 +1048,24 @@ export async function readLibraryCoreFeedPage(
     {
       reqId,
       type: "READ_LIBRARY_CORE_FEED_PAGE",
+      request: pageRequest,
+    } satisfies WorkerRequest,
+  );
+}
+
+/**
+ * Dormant bounded PWA browse-page reader. No product surface calls this before
+ * the governed Library Core read cutover.
+ */
+export async function readLibraryCoreFeedBrowsePage(
+  pageRequest: LibraryCoreFeedBrowsePageRequestV1,
+): Promise<PwaLibraryCoreFeedBrowseReaderResult> {
+  const reqId = nextReqId++;
+  return requestResult(
+    pendingLibraryCoreFeedBrowsePage,
+    {
+      reqId,
+      type: "READ_LIBRARY_CORE_FEED_BROWSE_PAGE",
       request: pageRequest,
     } satisfies WorkerRequest,
   );
