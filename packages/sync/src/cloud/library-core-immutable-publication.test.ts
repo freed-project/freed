@@ -9,6 +9,7 @@ import {
 } from "@freed/shared/library-core";
 import {
   publishLibraryCoreImmutableGenerationV1,
+  reassignLibraryCoreWriterV1,
   type LibraryCoreControlReadV1,
   type LibraryCoreImmutablePublicationAdapterV1,
   type LibraryCorePublishedImmutableObjectReceiptV1,
@@ -25,6 +26,7 @@ function bytes(value: string): Uint8Array {
 function operationObject(
   sequence: number,
   value = `operation-${sequence}`,
+  epochId = "epoch-1",
 ): {
   descriptor: LibraryCoreImmutableObjectDescriptorV1;
   source: Uint8Array;
@@ -36,9 +38,30 @@ function operationObject(
       objectKey: createLibraryCoreImmutableObjectKey({
         kind: "operation_segment",
         libraryId: "library-1",
-        epochId: "epoch-1",
+        epochId,
         firstSequence: sequence,
         lastSequence: sequence,
+        digest: contentDigest,
+      }),
+      contentDigest,
+      byteLength: source.byteLength,
+    }),
+    source,
+  };
+}
+
+function epochCertificateObject(
+  epochId: string,
+  value = `epoch-certificate-${epochId}`,
+): ReturnType<typeof operationObject> {
+  const source = bytes(value);
+  const contentDigest = digest(source);
+  return {
+    descriptor: parseLibraryCoreImmutableObjectDescriptorV1({
+      objectKey: createLibraryCoreImmutableObjectKey({
+        kind: "epoch_certificate",
+        libraryId: "library-1",
+        epochId,
         digest: contentDigest,
       }),
       contentDigest,
@@ -52,6 +75,7 @@ function preparedManifest(
   generation: number,
   dependencies: readonly LibraryCorePublishedImmutableObjectReceiptV1[],
   epochId = "epoch-1",
+  writerId = "desktop-1",
 ): {
   manifest: {
     descriptor: LibraryCoreImmutableObjectDescriptorV1;
@@ -87,7 +111,7 @@ function preparedManifest(
       protocolVersion: 1,
       libraryId: "library-1",
       storageEpoch: epochId,
-      writerId: "desktop-1",
+      writerId,
       activeTransport: "google_drive_app_data_v1",
       generation,
       causalFrontierDigest: "fe".repeat(32),
@@ -207,6 +231,42 @@ async function publish(
     prepareManifest(dependencies) {
       input.onPrepareManifest?.();
       return preparedManifest(input.generation, dependencies);
+    },
+  });
+}
+
+async function reassign(
+  adapter: FakeImmutableAdapter,
+  current: {
+    revision: string;
+    controlPointer: LibraryCoreControlPointerV1;
+  },
+  options: {
+    targetStorageEpoch?: string;
+    targetWriterId?: string;
+    onPrepareManifest?: () => void;
+  } = {},
+) {
+  const targetStorageEpoch = options.targetStorageEpoch ?? "epoch-2";
+  const targetWriterId = options.targetWriterId ?? "desktop-2";
+  return reassignLibraryCoreWriterV1({
+    adapter,
+    expectedControl: {
+      revision: current.revision,
+      pointer: current.controlPointer,
+    },
+    targetStorageEpoch,
+    targetWriterId,
+    epochCertificate: epochCertificateObject(targetStorageEpoch),
+    dependencies: [operationObject(1, "epoch-transition", targetStorageEpoch)],
+    prepareManifest(dependencies) {
+      options.onPrepareManifest?.();
+      return preparedManifest(
+        0,
+        dependencies,
+        targetStorageEpoch,
+        targetWriterId,
+      );
     },
   });
 }
@@ -346,6 +406,213 @@ describe("Library Core immutable publication", () => {
       "compare-and-swap-control",
       "read-control",
     ]);
+  });
+
+  it("reassigns authority only by committing generation zero of a new writer epoch", async () => {
+    const adapter = new FakeImmutableAdapter();
+    const first = await publish(adapter, {
+      expectedControl: { revision: null, pointer: null },
+      generation: 0,
+    });
+    if (first.status !== "committed") throw new Error("setup failed");
+
+    const result = await reassign(adapter, first);
+
+    expect(result).toMatchObject({
+      status: "committed",
+      revision: "revision-2",
+      controlPointer: {
+        libraryId: "library-1",
+        storageEpoch: "epoch-2",
+        writerId: "desktop-2",
+        activeTransport: "google_drive_app_data_v1",
+        generation: 0,
+      },
+    });
+    expect(
+      adapter.events.find((event) =>
+        event.startsWith("put:freed-v2-epoch-library-1-epoch-2-"),
+      ),
+    ).toBeDefined();
+    expect(adapter.events.at(-1)).toBe("compare-and-swap-control");
+  });
+
+  it("returns a stale writer reassignment conflict before staging objects", async () => {
+    const adapter = new FakeImmutableAdapter();
+    const first = await publish(adapter, {
+      expectedControl: { revision: null, pointer: null },
+      generation: 0,
+    });
+    if (first.status !== "committed") throw new Error("setup failed");
+    const second = await publish(adapter, {
+      expectedControl: {
+        revision: first.revision,
+        pointer: first.controlPointer,
+      },
+      generation: 1,
+      dependencies: [operationObject(2)],
+    });
+    if (second.status !== "committed") throw new Error("setup failed");
+    const eventCount = adapter.events.length;
+
+    const result = await reassign(adapter, first);
+
+    expect(result).toMatchObject({
+      status: "conflict",
+      currentRevision: second.revision,
+      currentControlPointer: second.controlPointer,
+    });
+    expect(adapter.events.slice(eventCount)).toEqual(["read-control"]);
+  });
+
+  it("recovers writer reassignment after the exact control commit response is lost", async () => {
+    const adapter = new FakeImmutableAdapter();
+    const first = await publish(adapter, {
+      expectedControl: { revision: null, pointer: null },
+      generation: 0,
+    });
+    if (first.status !== "committed") throw new Error("setup failed");
+    adapter.loseCompareAndSwapResponse = true;
+
+    const result = await reassign(adapter, first);
+
+    expect(result).toMatchObject({
+      status: "recovered_after_response_loss",
+      revision: "revision-2",
+      controlPointer: {
+        storageEpoch: "epoch-2",
+        writerId: "desktop-2",
+      },
+    });
+    expect(adapter.events.slice(-2)).toEqual([
+      "compare-and-swap-control",
+      "read-control",
+    ]);
+  });
+
+  it("rejects same-epoch or same-writer targets before transport work", async () => {
+    const adapter = new FakeImmutableAdapter();
+    const first = await publish(adapter, {
+      expectedControl: { revision: null, pointer: null },
+      generation: 0,
+    });
+    if (first.status !== "committed") throw new Error("setup failed");
+    const eventCount = adapter.events.length;
+
+    await expect(
+      reassign(adapter, first, { targetStorageEpoch: "epoch-1" }),
+    ).rejects.toThrow(/new epoch and new writer/);
+    await expect(
+      reassign(adapter, first, { targetWriterId: "desktop-1" }),
+    ).rejects.toThrow(/new epoch and new writer/);
+    expect(adapter.events).toHaveLength(eventCount);
+  });
+
+  it("rejects an epoch certificate bound to another target before transport work", async () => {
+    const adapter = new FakeImmutableAdapter();
+    const first = await publish(adapter, {
+      expectedControl: { revision: null, pointer: null },
+      generation: 0,
+    });
+    if (first.status !== "committed") throw new Error("setup failed");
+    const eventCount = adapter.events.length;
+
+    await expect(
+      reassignLibraryCoreWriterV1({
+        adapter,
+        expectedControl: {
+          revision: first.revision,
+          pointer: first.controlPointer,
+        },
+        targetStorageEpoch: "epoch-2",
+        targetWriterId: "desktop-2",
+        epochCertificate: epochCertificateObject("epoch-3"),
+        dependencies: [],
+        prepareManifest(dependencies) {
+          return preparedManifest(0, dependencies, "epoch-2", "desktop-2");
+        },
+      }),
+    ).rejects.toThrow(/certificate does not match/);
+    expect(adapter.events).toHaveLength(eventCount);
+  });
+
+  it("never publishes authority after epoch-certificate verification fails", async () => {
+    const adapter = new FakeImmutableAdapter();
+    const first = await publish(adapter, {
+      expectedControl: { revision: null, pointer: null },
+      generation: 0,
+    });
+    if (first.status !== "committed") throw new Error("setup failed");
+    const certificate = epochCertificateObject("epoch-2");
+    adapter.corruptVerificationForKey = certificate.descriptor.objectKey;
+    const eventCount = adapter.events.length;
+
+    await expect(
+      reassignLibraryCoreWriterV1({
+        adapter,
+        expectedControl: {
+          revision: first.revision,
+          pointer: first.controlPointer,
+        },
+        targetStorageEpoch: "epoch-2",
+        targetWriterId: "desktop-2",
+        epochCertificate: certificate,
+        dependencies: [],
+        prepareManifest(dependencies) {
+          return preparedManifest(0, dependencies, "epoch-2", "desktop-2");
+        },
+      }),
+    ).rejects.toThrow(/verification failed/);
+    expect(adapter.events.slice(eventCount)).toEqual([
+      "read-control",
+      `put:${certificate.descriptor.objectKey}`,
+      `verify:${certificate.descriptor.objectKey}`,
+    ]);
+    expect(adapter.control.revision).toBe(first.revision);
+  });
+
+  it("never transfers authority across an unverified causal frontier", async () => {
+    const adapter = new FakeImmutableAdapter();
+    const first = await publish(adapter, {
+      expectedControl: { revision: null, pointer: null },
+      generation: 0,
+    });
+    if (first.status !== "committed") throw new Error("setup failed");
+    const certificate = epochCertificateObject("epoch-2");
+    const eventCount = adapter.events.length;
+
+    await expect(
+      reassignLibraryCoreWriterV1({
+        adapter,
+        expectedControl: {
+          revision: first.revision,
+          pointer: first.controlPointer,
+        },
+        targetStorageEpoch: "epoch-2",
+        targetWriterId: "desktop-2",
+        epochCertificate: certificate,
+        dependencies: [],
+        prepareManifest(dependencies) {
+          const prepared = preparedManifest(
+            0,
+            dependencies,
+            "epoch-2",
+            "desktop-2",
+          );
+          return {
+            ...prepared,
+            nextControlPointer: parseLibraryCoreControlPointerV1({
+              ...prepared.nextControlPointer,
+              causalFrontierDigest: "aa".repeat(32),
+            }),
+          };
+        },
+      }),
+    ).rejects.toThrow(/exact causal frontier/);
+    expect(adapter.events.slice(eventCount)).not.toContain(
+      "compare-and-swap-control",
+    );
+    expect(adapter.control.revision).toBe(first.revision);
   });
 
   it("rejects oversized control bytes before uploading", async () => {
