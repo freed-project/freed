@@ -257,6 +257,7 @@ export type WorkerRequest =
   | { reqId: number; type: "GET_DOC_BINARY" }
   | { reqId: number; type: "GET_COMMITTED_DOC" }
   | { reqId: number; type: "GET_HEADS" }
+  | { reqId: number; type: "GET_LIBRARY_CORE_PROJECTION_SOURCE" }
   | { reqId: number; type: "COMPARE_DOC"; binary: Uint8Array }
   | { reqId: number; type: "GET_SAVED_YOUTUBE_URLS" }
   | { reqId: number; type: "GET_ITEM_PRESERVED_TEXT"; globalId: string }
@@ -445,6 +446,12 @@ export type WorkerResponse =
    * unloaded). Never forces a document load; null before the first INIT.
    */
   | { reqId: number; type: "DOC_HEADS"; heads: string[] | null }
+  /** Exact durable source identity without retaining or returning the corpus. */
+  | {
+      reqId: number;
+      type: "LIBRARY_CORE_PROJECTION_SOURCE";
+      source: LibraryCoreProjectionSourceV1;
+    }
   /** Automerge history containment of an incoming document relative to local. */
   | {
       reqId: number;

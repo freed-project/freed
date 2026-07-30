@@ -10,7 +10,8 @@ use crate::library_core_feed_browse_registry::{
     FeedBrowseGenerationRegistryError,
 };
 use crate::library_core_feed_browse_store::{
-    FeedBrowseCursor, FeedBrowseGenerationStore, FeedBrowsePage, FeedBrowseStoreError,
+    FeedBrowseCursor, FeedBrowseGenerationBinding, FeedBrowseGenerationStore, FeedBrowsePage,
+    FeedBrowseStoreError,
 };
 use sha2::{Digest, Sha256};
 use std::fmt;
@@ -155,7 +156,11 @@ impl FeedBrowseGenerationReader {
         &self.selection.generation.binding.generation_id
     }
 
-    pub(super) fn transition_sequence(&self) -> i64 {
+    pub(super) fn binding(&self) -> &FeedBrowseGenerationBinding {
+        &self.selection.generation.binding
+    }
+
+    pub(super) fn selection_sequence(&self) -> i64 {
         self.selection.transition_sequence
     }
 
@@ -333,7 +338,7 @@ mod tests {
             FeedBrowseGenerationReader::open(&fixture.registry_path, &fixture.generation_root)
                 .expect("reader");
         assert_eq!(reader.generation_id(), registered.binding.generation_id);
-        assert_eq!(reader.transition_sequence(), 1);
+        assert_eq!(reader.selection_sequence(), 1);
         let page = reader.read_page(None, 32).expect("page");
         assert_eq!(page.binding, registered.binding);
         assert_eq!(page.rows, vec![row("item-1")]);
@@ -406,6 +411,6 @@ mod tests {
             FeedBrowseGenerationReader::open(&fixture.registry_path, &fixture.generation_root)
                 .expect("reader");
         assert_eq!(reader.generation_id(), first.binding.generation_id);
-        assert_eq!(reader.transition_sequence(), 3);
+        assert_eq!(reader.selection_sequence(), 3);
     }
 }

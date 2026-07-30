@@ -5,8 +5,12 @@ import { ReaderView } from "./ReaderView.js";
 import { FeedItem as FeedItemCard } from "./FeedItem.js";
 import { useReadOnScrollTracker } from "./useReadOnScrollTracker.js";
 import { buildReadTrackListKey } from "./read-on-scroll.js";
+import { useBoundedFeedItems } from "./useBoundedFeedItems.js";
 import { AddFeedDialog } from "../AddFeedDialog.js";
-import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
+import {
+  useAppStore,
+  usePlatform,
+} from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
@@ -31,6 +35,7 @@ const COMPACT_CARD_GAP = 8;
 const COMPACT_CARD_LEFT_PAD = 8;
 const COMPACT_CARD_RIGHT_PAD = 4;
 const COMPACT_PANEL_RESIZE_HANDLE_WIDTH = 16;
+const EMPTY_FEED_ITEMS: FeedItem[] = [];
 
 // Card geometry: all cards are square (width × width), including story tiles.
 // Wrapper padding and row spacing match the nav-button radius token at 10px.
@@ -47,6 +52,8 @@ interface CompactFeedPanelProps {
   markItemsAsRead: (ids: string[]) => Promise<void>;
   width: number;
   leadingOffset?: string;
+  onLoadMore?: () => void;
+  hasMore?: boolean;
 }
 
 const CompactFeedPanel = memo(function CompactFeedPanel({
@@ -59,6 +66,8 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
   markItemsAsRead,
   width,
   leadingOffset,
+  onLoadMore,
+  hasMore = false,
 }: CompactFeedPanelProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const scrollAnchorRef = useRef<{ index: number; offset: number } | null>(null);
@@ -119,6 +128,16 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     getScrollMetrics: getReadScrollMetrics,
     markItemsAsRead,
   });
+  const requestMoreNearTail = useCallback(
+    (virtualItems: readonly { index: number }[]) => {
+      if (!hasMore || !onLoadMore || items.length === 0) return;
+      const finalVisible = virtualItems[virtualItems.length - 1];
+      if (finalVisible && finalVisible.index >= Math.max(0, items.length - 5)) {
+        onLoadMore();
+      }
+    },
+    [hasMore, items.length, onLoadMore],
+  );
 
   const virtualizer = useVirtualizer({
     count: items.length,
@@ -127,6 +146,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     overscan: 3,
     onChange: (instance) => {
       processReadOnScroll(instance, "element");
+      requestMoreNearTail(instance.getVirtualItems());
     },
   });
 
@@ -247,7 +267,8 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 export function FeedView() {
-  const { addRssFeed } = usePlatform();
+  const platform = usePlatform();
+  const { addRssFeed, openBoundedFeedReader, openUrl } = platform;
   const canAddFeeds = !!addRssFeed;
   const items = useAppStore((s) => s.items);
   const feeds = useAppStore((s) => s.feeds);
@@ -257,12 +278,14 @@ export function FeedView() {
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
+  const isInitialized = useAppStore((s) => s.isInitialized);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const setSelectedAccount = useAppStore((s) => s.setSelectedAccount);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const addAccount = useAppStore((s) => s.addAccount);
   const markAsRead = useAppStore((s) => s.markAsRead);
+  const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const toggleLiked = useAppStore((s) => s.toggleLiked);
@@ -270,21 +293,6 @@ export function FeedView() {
   const friendsMode = deviceDisplay.friendsMode;
   const savedContentSortMode = deviceDisplay.savedContentSortMode;
 
-  const handleItemSave = useCallback(
-    (item: FeedItem) => toggleSaved(item.globalId),
-    [toggleSaved],
-  );
-  // Only offer archive action on non-archived views; archived view shows the item already
-  const handleItemArchive = useCallback(
-    (item: FeedItem) => toggleArchived(item.globalId),
-    [toggleArchived],
-  );
-  const handleItemLike = useCallback(
-    (item: FeedItem) => toggleLiked?.(item.globalId),
-    [toggleLiked],
-  );
-
-  const { openUrl } = usePlatform();
   const handleOpenCommentUrl = useCallback((url: string) => {
     if (openUrl) {
       openUrl(url);
@@ -314,11 +322,89 @@ export function FeedView() {
 
   const [addFeedOpen, setAddFeedOpen] = useState(false);
   const [readerOrderIds, setReaderOrderIds] = useState<string[] | null>(null);
+  const boundedFeedEligible =
+    Boolean(openBoundedFeedReader) &&
+    isInitialized &&
+    searchQuery.trim() === "" &&
+    friendsMode === "all_content" &&
+    !activeFilter.savedOnly;
+  const {
+    feed: boundedFeed,
+    loadMore: loadMoreBoundedItems,
+    patchItems: patchBoundedItems,
+  } = useBoundedFeedItems({
+    activeFilter,
+    eligible: boundedFeedEligible,
+    openReader: openBoundedFeedReader,
+    sourceVersion: searchCorpusVersion,
+  });
+  const handleItemSave = useCallback(
+    (item: FeedItem) => {
+      patchBoundedItems((candidate) =>
+        candidate.globalId === item.globalId
+          ? {
+              ...candidate,
+              userState: {
+                ...candidate.userState,
+                saved: !candidate.userState.saved,
+              },
+            }
+          : candidate,
+      );
+      return toggleSaved(item.globalId);
+    },
+    [patchBoundedItems, toggleSaved],
+  );
+  // Only offer archive action on non-archived views; archived view shows the item already.
+  const handleItemArchive = useCallback(
+    (item: FeedItem) => {
+      patchBoundedItems((candidate) =>
+        candidate.globalId === item.globalId ? null : candidate,
+      );
+      return toggleArchived(item.globalId);
+    },
+    [patchBoundedItems, toggleArchived],
+  );
+  const handleItemLike = useCallback(
+    (item: FeedItem) => {
+      patchBoundedItems((candidate) =>
+        candidate.globalId === item.globalId
+          ? {
+              ...candidate,
+              userState: {
+                ...candidate.userState,
+                liked: !candidate.userState.liked,
+              },
+            }
+          : candidate,
+      );
+      return toggleLiked?.(item.globalId);
+    },
+    [patchBoundedItems, toggleLiked],
+  );
+  const markBoundedItemsAsRead = useCallback(
+    async (ids: string[]) => {
+      if (ids.length > 0) {
+        const readIds = new Set(ids);
+        const readAt = Date.now();
+        patchBoundedItems((candidate) =>
+          readIds.has(candidate.globalId) && !candidate.userState.readAt
+            ? {
+                ...candidate,
+                userState: { ...candidate.userState, readAt },
+              }
+            : candidate,
+        );
+      }
+      await markItemsAsRead(ids);
+    },
+    [markItemsAsRead, patchBoundedItems],
+  );
 
   // useSearchResults handles both the search and the normal ranked+filtered path.
   // When searchQuery is empty it behaves identically to the previous useMemo.
   const { filteredItems, isSearching } = useSearchResults(
-    items,
+    boundedFeed.status === "ready" ? EMPTY_FEED_ITEMS : items,
     searchQuery,
     activeFilter,
     searchCorpusVersion,
@@ -328,10 +414,19 @@ export function FeedView() {
     friends,
   );
   const visibleItems = useMemo(
-    () => activeFilter.savedOnly
-      ? sortSavedFeedItems(filteredItems, savedContentSortMode)
-      : filteredItems,
-    [activeFilter.savedOnly, filteredItems, savedContentSortMode],
+    () => {
+      if (boundedFeed.status === "ready") return boundedFeed.items;
+      return activeFilter.savedOnly
+        ? sortSavedFeedItems(filteredItems, savedContentSortMode)
+        : filteredItems;
+    },
+    [
+      activeFilter.savedOnly,
+      boundedFeed.items,
+      boundedFeed.status,
+      filteredItems,
+      savedContentSortMode,
+    ],
   );
 
   const dualColumnMode = deviceDisplay.dualColumnMode;
@@ -340,7 +435,6 @@ export function FeedView() {
   const animationIntensity = useAppStore((s) =>
     resolveAnimationIntensity(s.preferences.display.animationIntensity),
   );
-  const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
   const isMobileViewport = useIsMobile();
   const isMobileDevice = useIsMobileDevice();
   const autoCollapseReaderRail = !isMobileDevice && isMobileViewport;
@@ -363,7 +457,12 @@ export function FeedView() {
     const stableItems = readerOrderIds
       .map((id) => itemById.get(id))
       .filter((item): item is FeedItem => Boolean(item));
-    return stableItems.length > 0 ? stableItems : visibleItems;
+    if (stableItems.length === 0) return visibleItems;
+    const stableIds = new Set(stableItems.map((item) => item.globalId));
+    return [
+      ...stableItems,
+      ...visibleItems.filter((item) => !stableIds.has(item.globalId)),
+    ];
   }, [readerOrderIds, visibleItems]);
   // Store only the ID so the rendered item stays in sync with the store.
   // Holding the full FeedItem in state would freeze userState (saved, archived,
@@ -381,6 +480,15 @@ export function FeedView() {
   const openItem = useCallback(
     (item: FeedItem) => {
       const selectItem = () => {
+        const readAt = Date.now();
+        patchBoundedItems((candidate) =>
+          candidate.globalId === item.globalId && !candidate.userState.readAt
+            ? {
+                ...candidate,
+                userState: { ...candidate.userState, readAt },
+              }
+            : candidate,
+        );
         setSelectedItem(item.globalId);
         markAsRead(item.globalId);
       };
@@ -393,7 +501,7 @@ export function FeedView() {
 
       selectItem();
     },
-    [markAsRead, runFeedLayoutTransition, selectedItemId, setSelectedItem, showDualColumn, visibleItems],
+    [markAsRead, patchBoundedItems, runFeedLayoutTransition, selectedItemId, setSelectedItem, showDualColumn, visibleItems],
   );
 
   const openItemDirect = useCallback((item: FeedItem) => {
@@ -605,8 +713,10 @@ export function FeedView() {
                   onItemClick={openItemDirect}
                   markReadOnScroll={markReadOnScroll}
                   showReadInGrayscale={showReadInGrayscale}
-                  markItemsAsRead={markItemsAsRead}
+                  markItemsAsRead={markBoundedItemsAsRead}
                   width={panelWidth}
+                  onLoadMore={loadMoreBoundedItems}
+                  hasMore={boundedFeed.status === "ready" && boundedFeed.hasMore}
                 />
                 <div
                   className="theme-resize-gap-handle w-4 shrink-0 self-stretch"
@@ -651,6 +761,9 @@ export function FeedView() {
         onOpenCommentUrl={handleOpenCommentUrl}
         isSearching={isSearching}
         searchQuery={searchQuery}
+        onLoadMore={loadMoreBoundedItems}
+        hasMore={boundedFeed.status === "ready" && boundedFeed.hasMore}
+        markItemsAsReadOverride={markBoundedItemsAsRead}
       />
 
       {selectedItem && (

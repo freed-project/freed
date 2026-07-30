@@ -66,6 +66,7 @@ import {
   getItemLegacyHtml,
   getItemPreservedText,
 } from "./lib/automerge";
+import { openBoundedDesktopFeedReader } from "./lib/library-core-feed-browse-reader-runtime";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -1419,6 +1420,9 @@ function App() {
       },
       publishStoryWall: publishStoryWallToGitHubPages,
       openUrl: (url: string) => { void shellOpen(url); },
+      openBoundedFeedReader: tauriRuntimeAvailable
+        ? openBoundedDesktopFeedReader
+        : undefined,
       pickContact: pickContactViaTauri,
       googleContacts: tauriRuntimeAvailable
         ? {

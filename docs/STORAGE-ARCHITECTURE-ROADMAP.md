@@ -159,13 +159,22 @@ generation. The durable spool identity survives renderer replacement, and
 failure releases live handles while preserving retry evidence and falling back
 to Automerge. After both sides confirm, the bridge deletes that revision's
 spool and scratch graph and retains only the selected and exact rollback
-projection generations. This is not Gate C. IndexedDB still creates one source-sized
-structured clone, no elected migration authority or source fence exists, and
-every product reader still uses Automerge. The next active milestone is the
-authenticated migration claim and fixed-memory source admission, followed by
-the exhaustive Gate D consumer conversion. A local rollback switch disables
-the startup bridge without deleting the Automerge source or prior SQLite
-evidence.
+projection generations.
+
+The first Gate D product read is now ready for owner-reviewed activation.
+Freed Desktop's all-content feed can bind the exact durable Automerge source to
+one query-specific sealed generation and page compact cards from SQLite. Search,
+Friends-only filtering, saved-content sorting, PWA, and every other full-corpus
+consumer still use the legacy path. Source mismatch or reader failure returns
+to Automerge. The temporary React window also returns to Automerge before it
+could exceed 512 compact cards because reverse paging is not active yet. The device-local
+`freed.libraryCore.feedBrowseReaderV1.disabled=1` switch disables this reader
+before projection work. This slice does not satisfy Gate C or complete Gate D.
+IndexedDB still creates one source-sized structured clone, Automerge remains
+authoritative, and the renderer still carries the full corpus. The next active
+milestone is the authenticated migration claim and fixed-memory source
+admission, followed by the remaining exhaustive Gate D consumer conversion and
+renderer-corpus eviction.
 
 ## What the evidence establishes
 
