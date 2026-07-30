@@ -79,7 +79,8 @@ impl std::error::Error for FeedBrowseStoreError {}
 
 type StoreResult<T> = Result<T, FeedBrowseStoreError>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct FeedBrowseGenerationBinding {
     pub(super) generation_id: String,
     pub(super) transition_sequence: i64,
@@ -122,6 +123,14 @@ pub(super) struct FeedBrowsePage {
 pub(super) enum FeedBrowseGenerationState {
     Staging,
     Complete,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct FeedBrowseGenerationProgress {
+    pub(super) next_batch_index: i64,
+    pub(super) written_rows: i64,
+    pub(super) total_rows: i64,
+    pub(super) complete: bool,
 }
 
 pub(super) struct FeedBrowseGenerationStore {
@@ -368,6 +377,24 @@ impl FeedBrowseGenerationStore {
         )?;
         transaction.commit()?;
         Ok(())
+    }
+
+    pub(super) fn progress(&self) -> StoreResult<FeedBrowseGenerationProgress> {
+        self.connection
+            .query_row(
+                "SELECT nextBatchIndex, writtenRows, totalRows, complete
+                 FROM feed_browse_generation WHERE singleton = 1;",
+                [],
+                |row| {
+                    Ok(FeedBrowseGenerationProgress {
+                        next_batch_index: row.get(0)?,
+                        written_rows: row.get(1)?,
+                        total_rows: row.get(2)?,
+                        complete: row.get(3)?,
+                    })
+                },
+            )
+            .map_err(FeedBrowseStoreError::from)
     }
 
     pub(super) fn read_page(

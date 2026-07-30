@@ -66,10 +66,14 @@ binding. Desktop now has the parallel crash-resumable SQLite generation store:
 it binds the same query identity, admits only 128-row and 2 MiB pages with exact
 replay receipts, finalizes only an exact physical row count, and performs the
 full keyset order through its checked index with a private 4 MiB page cache.
-The worker materializer, selected-generation registry, native runtime
-transport, renderer-cache eviction, and product caller proof remain explicit
-blockers. This is progress inside Gate B and step 4, not a claim that either
-gate is complete.
+Freed Desktop now exposes that store through a dormant session-bound writer
+transport. Begin, append, finalize, and cancel return exact durable progress,
+so a lost response can resume from the stored next batch without guessing.
+Only one generation can write at a time, and factory reset first drops that
+connection before deleting the derived files. The worker materializer,
+selected-generation registry, native browse reader, renderer-cache eviction,
+and product caller proof remain explicit blockers. This is progress inside
+Gate B and step 4, not a claim that either gate is complete.
 
 The Desktop derived-shadow path now also has a dormant bounded projection
 probe. It pins one exact durable Automerge frontier and storage revision, emits

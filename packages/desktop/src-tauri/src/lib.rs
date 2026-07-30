@@ -40,6 +40,8 @@ mod library_core_canonical;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_ed25519;
 #[cfg_attr(not(test), allow(dead_code))]
+mod library_core_feed_browse_runtime;
+#[cfg_attr(not(test), allow(dead_code))]
 mod library_core_feed_browse_store;
 mod library_core_feed_reader_runtime;
 #[cfg_attr(not(test), allow(dead_code))]
@@ -5740,9 +5742,14 @@ fn remove_factory_reset_file(path: &Path) -> Result<(), String> {
 
 fn clear_factory_reset_runtime_artifacts_in(
     data_dir: &Path,
+    browse_runtime: &library_core_feed_browse_runtime::LibraryCoreFeedBrowseRuntimeState,
     feed_reader_runtime: &library_core_feed_reader_runtime::LibraryCoreFeedReaderRuntimeState,
     shadow_runtime: &library_core_shadow_runtime::LibraryCoreShadowRuntimeState,
 ) -> Result<(), String> {
+    library_core_feed_browse_runtime::clear_library_core_feed_browse_runtime_in(
+        browse_runtime,
+        data_dir,
+    )?;
     library_core_feed_reader_runtime::quiesce_library_core_feed_reader_runtime(
         feed_reader_runtime,
     )?;
@@ -5784,6 +5791,10 @@ fn clear_factory_reset_runtime_artifacts_in(
 #[tauri::command]
 fn clear_factory_reset_runtime_artifacts(
     app: tauri::AppHandle,
+    browse_runtime: tauri::State<
+        '_,
+        library_core_feed_browse_runtime::LibraryCoreFeedBrowseRuntimeState,
+    >,
     feed_reader_runtime: tauri::State<
         '_,
         library_core_feed_reader_runtime::LibraryCoreFeedReaderRuntimeState,
@@ -5794,7 +5805,12 @@ fn clear_factory_reset_runtime_artifacts(
         .path()
         .app_data_dir()
         .map_err(|error| error.to_string())?;
-    clear_factory_reset_runtime_artifacts_in(&data_dir, &feed_reader_runtime, &shadow_runtime)
+    clear_factory_reset_runtime_artifacts_in(
+        &data_dir,
+        &browse_runtime,
+        &feed_reader_runtime,
+        &shadow_runtime,
+    )
 }
 
 #[tauri::command]
@@ -13535,6 +13551,7 @@ pub fn run() {
         .manage(relay_state)
         .manage(LocalAIModelDownloadState::default())
         .manage(CaptureState::new())
+        .manage(library_core_feed_browse_runtime::LibraryCoreFeedBrowseRuntimeState::default())
         .manage(library_core_feed_reader_runtime::LibraryCoreFeedReaderRuntimeState::default())
         .manage(library_core_shadow_runtime::LibraryCoreShadowRuntimeState::default());
 
@@ -14734,6 +14751,10 @@ pub fn run() {
             get_desktop_session_state,
             get_social_provider_cookie_state,
             prepare_social_scrape_memory,
+            library_core_feed_browse_runtime::begin_library_core_feed_browse_generation,
+            library_core_feed_browse_runtime::append_library_core_feed_browse_generation_page,
+            library_core_feed_browse_runtime::finalize_library_core_feed_browse_generation,
+            library_core_feed_browse_runtime::cancel_library_core_feed_browse_generation,
             library_core_feed_reader_runtime::read_library_core_feed_page,
             library_core_feed_reader_runtime::cancel_library_core_feed_reader,
             library_core_shadow_runtime::begin_library_core_shadow_projection,
@@ -14902,6 +14923,7 @@ mod tests {
 
         clear_factory_reset_runtime_artifacts_in(
             data_dir.path(),
+            &library_core_feed_browse_runtime::LibraryCoreFeedBrowseRuntimeState::default(),
             &library_core_feed_reader_runtime::LibraryCoreFeedReaderRuntimeState::default(),
             &library_core_shadow_runtime::LibraryCoreShadowRuntimeState::default(),
         )
@@ -14921,6 +14943,7 @@ mod tests {
         }
         clear_factory_reset_runtime_artifacts_in(
             data_dir.path(),
+            &library_core_feed_browse_runtime::LibraryCoreFeedBrowseRuntimeState::default(),
             &library_core_feed_reader_runtime::LibraryCoreFeedReaderRuntimeState::default(),
             &library_core_shadow_runtime::LibraryCoreShadowRuntimeState::default(),
         )
