@@ -63,7 +63,8 @@ normalized filter, one ranking clock, and the order version. It streams at most
 published-time, and source-sequence order. A closed dormant request and cursor
 now read that physical order with the same filter, clock, and order-version
 binding. Desktop now has the parallel crash-resumable SQLite generation store:
-it binds the same query identity, admits only 128-row and 2 MiB pages with exact
+it stores the exact source document, sorted-head digest and count, storage
+revisions, and query identity, admits only 128-row and 2 MiB pages with exact
 replay receipts, finalizes only an exact physical row count, and performs the
 full keyset order through its checked index with a private 4 MiB page cache.
 Freed Desktop now exposes that store through a dormant session-bound writer

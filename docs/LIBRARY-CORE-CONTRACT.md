@@ -2611,11 +2611,13 @@ generation. The PWA worker transport exposes the request, response, and shared
 exact cancellation path, but no product surface calls them.
 
 The dormant native browse store now closes the physical SQLite half of that
-same query. One immutable generation binds the exact source transition and
-projection revisions, canonical filter JSON, ranking clock, recommendation
-order version, and total row count. Pages admit at most 128 compact rows and
-2 MiB of encoded input, retain exact replay receipts, and become readable only
-after the declared, receipted, and physical row counts agree. SQLite performs
+same query. One immutable generation stores the exact source document ID,
+sorted-head digest and count, transition and projection revisions, canonical
+filter JSON, ranking clock, recommendation order version, and total row count.
+The generation digest is therefore not the native layer's only source proof.
+Pages admit at most 128 compact rows and 2 MiB of encoded input, retain exact
+replay receipts, and become readable only after the declared, receipted, and
+physical row counts agree. SQLite performs
 the complete priority-descending, published-time-descending,
 source-sequence-ascending, binary-identity-ascending keyset order through one
 checked index without a temporary sort. The private connection uses a 4 MiB

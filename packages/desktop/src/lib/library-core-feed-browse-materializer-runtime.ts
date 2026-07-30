@@ -98,6 +98,9 @@ function sameBinding(
 ): boolean {
   return (
     left.generationId === right.generationId &&
+    left.sourceDocumentId === right.sourceDocumentId &&
+    left.sourceHeadsDigest === right.sourceHeadsDigest &&
+    left.sourceHeadCount === right.sourceHeadCount &&
     left.transitionSequence === right.transitionSequence &&
     left.projectionRevision === right.projectionRevision &&
     left.filterJson === right.filterJson &&

@@ -84,6 +84,9 @@ export interface LibraryCoreExternalSnapshotV1 {
 
 export interface LibraryCoreFeedBrowseGenerationBindingV1 {
   readonly generationId: string;
+  readonly sourceDocumentId: string;
+  readonly sourceHeadsDigest: string;
+  readonly sourceHeadCount: number;
   readonly transitionSequence: number;
   readonly projectionRevision: number;
   readonly filterJson: string;
