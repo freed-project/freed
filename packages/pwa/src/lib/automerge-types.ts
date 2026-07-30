@@ -20,7 +20,10 @@ import type {
   UserPreferences,
 } from "@freed/shared";
 import type { DocumentHistoryRelation } from "@freed/shared/schema";
-import type { LibraryCoreFeedPageRequestV1 } from "@freed/shared/library-core";
+import type {
+  LibraryCoreFeedPageRequestV1,
+  LibraryCoreFeedPageSourceV1,
+} from "@freed/shared/library-core";
 import type { StorageRevision } from "@freed/sync/types";
 import type { PwaLibraryCoreFeedReaderResult } from "./library-core-feed-reader-runtime";
 
@@ -167,6 +170,7 @@ export type WorkerRequest =
   | { reqId: number; type: "GET_HEADS" }
   | { reqId: number; type: "COMPARE_DOC"; binary: Uint8Array }
   | { reqId: number; type: "GET_ITEM_LEGACY_HTML"; globalId: string }
+  | { reqId: number; type: "MATERIALIZE_LIBRARY_CORE_FEED_GENERATION" }
   | {
       reqId: number;
       type: "READ_LIBRARY_CORE_FEED_PAGE";
@@ -221,6 +225,12 @@ export type WorkerResponse =
       type: "ITEM_LEGACY_HTML";
       globalId: string;
       html: string | null;
+    }
+  | {
+      reqId: number;
+      type: "LIBRARY_CORE_FEED_GENERATION_RESULT";
+      source: LibraryCoreFeedPageSourceV1;
+      totalCount: number;
     }
   | {
       reqId: number;

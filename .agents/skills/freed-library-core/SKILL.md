@@ -259,6 +259,17 @@ database is not file publication. A native adapter must close, verify, and
 atomically publish the complete staging file before assigning it to a reader.
 This remains derived shadow work and does not satisfy Gate C.
 
+A browser shadow materializer may scan the already resident immutable
+Automerge document only while the legacy worker remains authoritative. Derive
+its source identity from the exact committed heads and storage revision, never
+from renderer-supplied metadata. Count and project with bounded iteration.
+Stage no more than one registered page at a time and let the row store's
+compound key provide query order instead of allocating a corpus-sized sort
+array. Each page needs an exact replay receipt and generation-plus-entity
+uniqueness. A complete selected browser generation remains derived cache state,
+does not prove the external-memory Gate C migration, and cannot receive a
+product caller before the Gate D reader and renderer-eviction contract lands.
+
 Publish a derived generation as a new immutable file. Checkpoint and remove
 WAL mode, verify SQLite and the exact completed rebuild, close and sync the
 staging bytes, perform one same-directory durable no-replace publication, then
