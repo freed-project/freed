@@ -62,9 +62,8 @@ import {
   countAuthorsWithRecentLocationUpdates,
   countFriendsWithRecentLocationUpdates,
   mergeDefaultPreferences,
-  rankFeedItems,
+  rankFeedItemsInRecommendedOrder,
   resolveDocumentId,
-  sortByPriority,
 } from "@freed/shared";
 import type {
   Account,
@@ -322,12 +321,10 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
   );
 
   const visibleItems = plainItems.filter((item) => !item.userState.hidden);
-  const rankedItems = sortByPriority(
-    rankFeedItems(
-      visibleItems.sort((a, b) => b.publishedAt - a.publishedAt),
-      preferences.weights,
-      { persons, accounts },
-    ),
+  const rankedItems = rankFeedItemsInRecommendedOrder(
+    visibleItems,
+    preferences.weights,
+    { persons, accounts },
   );
   const hydratedItems =
     rankedItems.length > HYDRATED_FEED_ITEM_LIMIT

@@ -1,6 +1,7 @@
 export * from "./census.js";
 export * from "./feed-browse-filter-contract.js";
 export * from "./feed-page-contracts.js";
+export * from "./feed-recommendation-order-contract.js";
 export * from "./field-registry.js";
 export * from "./local-authority-registry.js";
 export * from "./operation-registry.js";
