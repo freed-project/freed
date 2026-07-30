@@ -396,6 +396,18 @@ test("dormant browse projection upgrades v1 and persists exact recommendation or
       projectionRevision: 11,
       transitionSequence: 6,
     };
+    const filter = {
+      archivedOnly: false,
+      authorId: null,
+      feedUrl: null,
+      platform: "x",
+      savedOnly: false,
+      schemaVersion: 1,
+      showHidden: false,
+      signals: [],
+      socialContentFilter: "all",
+      tags: [],
+    };
     const row = (globalId: string, publishedAt: number) => ({
       archived: false,
       authorAvatarUrl: null,
@@ -427,7 +439,13 @@ test("dormant browse projection upgrades v1 and persists exact recommendation or
       tags: [],
     });
 
-    await runtime.beginBrowseGeneration({ source, totalCount: 4 });
+    await runtime.beginBrowseGeneration({
+      filter,
+      rankingClockMs: 1_000,
+      recommendationOrderSchemaVersion: 1,
+      source,
+      totalCount: 4,
+    });
     await runtime.appendBrowseGenerationPage({
       source,
       batchIndex: 0,
@@ -439,6 +457,29 @@ test("dormant browse projection upgrades v1 and persists exact recommendation or
       ],
     });
     await runtime.finalizeBrowseGeneration(source);
+    const firstPage = await runtime.readBrowseFeedPage({
+      cancellationId: "browse-page-1",
+      cursor: null,
+      filter,
+      limit: 2,
+      queryId: "feed_browse_page_v1",
+      rankingClockMs: 1_000,
+      readerSessionId: "browse-session",
+      recommendationOrderSchemaVersion: 1,
+      schemaVersion: 1,
+    });
+    const firstValue = firstPage.ok ? firstPage.value : null;
+    const secondPage = await runtime.readBrowseFeedPage({
+      cancellationId: "browse-page-2",
+      cursor: firstValue?.nextCursor ?? null,
+      filter,
+      limit: 2,
+      queryId: "feed_browse_page_v1",
+      rankingClockMs: 1_000,
+      readerSessionId: "browse-session",
+      recommendationOrderSchemaVersion: 1,
+      schemaVersion: 1,
+    });
     await runtime.quiesce();
 
     const orderedRows = await new Promise<
@@ -477,6 +518,14 @@ test("dormant browse projection upgrades v1 and persists exact recommendation or
       uniqueOrderKeys: new Set(
         orderedRows.map(({ orderKey }) => orderKey),
       ).size,
+      pages: [
+        firstPage.ok
+          ? firstPage.value.rows.map(({ globalId }) => globalId)
+          : firstPage,
+        secondPage.ok
+          ? secondPage.value.rows.map(({ globalId }) => globalId)
+          : secondPage,
+      ],
     };
   });
 
@@ -486,6 +535,10 @@ test("dormant browse projection upgrades v1 and persists exact recommendation or
       "source-earlier",
       "source-second",
       "source-first",
+    ],
+    pages: [
+      ["newer-high", "source-earlier"],
+      ["source-second", "source-first"],
     ],
     uniqueOrderKeys: 4,
   });
@@ -557,6 +610,17 @@ test("committed Automerge heads materialize one resumable bounded feed generatio
       readerSessionId: "materializer-reader",
       schemaVersion: 1,
     });
+    const browsePageResult = await client.readLibraryCoreFeedBrowsePage({
+      cancellationId: "browse-materializer-cancellation",
+      cursor: null,
+      filter: browse.filter,
+      limit: 10,
+      queryId: "feed_browse_page_v1",
+      rankingClockMs: browse.rankingClockMs,
+      readerSessionId: "browse-materializer-reader",
+      recommendationOrderSchemaVersion: 1,
+      schemaVersion: 1,
+    });
     await client.quiescePwaAutomergeForFactoryReset();
     await client.clearLocalDocAfterPwaQuiesce();
     await new Promise<void>((resolve, reject) => {
@@ -568,7 +632,7 @@ test("committed Automerge heads materialize one resumable bounded feed generatio
       deletion.onblocked = () =>
         reject(new Error("test database deletion was blocked"));
     });
-    return { browse, first, pageResult, replay };
+    return { browse, browsePageResult, first, pageResult, replay };
   });
 
   expect(result.first).toStrictEqual(result.replay);
@@ -580,6 +644,15 @@ test("committed Automerge heads materialize one resumable bounded feed generatio
   expect(result.browse.source.generationId).not.toBe(
     result.first.source.generationId,
   );
+  expect(result.browsePageResult).toMatchObject({
+    ok: true,
+    value: {
+      filter: { savedOnly: true, schemaVersion: 1 },
+      rankingClockMs: 1_000,
+      rows: [{ globalId: "x:newer" }],
+      totalCount: 1,
+    },
+  });
   expect(result.first).toMatchObject({ totalCount: 2 });
   expect(result.first.source.generationId).toMatch(/^[0-9a-f]{64}$/);
   expect(result.first.source.projectionRevision).toBeGreaterThan(0);

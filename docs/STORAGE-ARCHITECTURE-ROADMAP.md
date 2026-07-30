@@ -60,9 +60,10 @@ source-enumeration tie semantics. The PWA can now materialize a separate
 query-specific browse generation whose authenticated identity binds the
 normalized filter, one ranking clock, and the order version. It streams at most
 128 projected rows at a time and lets IndexedDB enforce the exact priority,
-published-time, and source-sequence order. A bounded browse request, cursor,
-and response contract, native execution, renderer-cache eviction, and product
-caller proof remain explicit blockers. This is progress inside Gate B and step
+published-time, and source-sequence order. A closed dormant request and cursor
+now read that physical order with the same filter, clock, and order-version
+binding. Native execution, renderer-cache eviction, and product caller proof
+remain explicit blockers. This is progress inside Gate B and step
 4, not a claim that either gate is complete.
 
 The Desktop derived-shadow path now also has a dormant bounded projection

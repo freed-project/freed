@@ -1107,6 +1107,16 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
         });
         break;
 
+      case "READ_LIBRARY_CORE_FEED_BROWSE_PAGE":
+        send({
+          reqId: req.reqId,
+          type: "LIBRARY_CORE_FEED_BROWSE_PAGE_RESULT",
+          result: await getLibraryCoreFeedReader().readBrowseFeedPage(
+            req.request,
+          ),
+        });
+        break;
+
       case "CANCEL_LIBRARY_CORE_FEED_READER":
         send({
           reqId: req.reqId,

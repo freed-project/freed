@@ -1,10 +1,20 @@
 import {
+  LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
+  decodeLibraryCoreFeedBrowsePageCursorV1,
   decodeLibraryCoreFeedPageCursorV1,
+  encodeLibraryCoreFeedBrowsePageCursorV1,
   encodeLibraryCoreFeedPageCursorV1,
+  parseLibraryCoreFeedBrowseFilterV1,
+  parseLibraryCoreFeedBrowsePageRequestV1,
+  parseLibraryCoreFeedBrowsePageResponseV1,
   parseLibraryCoreFeedCardV1,
   parseLibraryCoreFeedPageRequestV1,
   parseLibraryCoreFeedPageResponseV1,
   parseLibraryCoreFeedPageSourceV1,
+  type LibraryCoreFeedBrowseFilterV1,
+  type LibraryCoreFeedBrowsePageCursorV1,
+  type LibraryCoreFeedBrowsePageRequestV1,
+  type LibraryCoreFeedBrowsePageResponseV1,
   type LibraryCoreFeedCardV1,
   type LibraryCoreFeedPageCursorV1,
   type LibraryCoreFeedPageRequestV1,
@@ -67,6 +77,13 @@ interface GenerationRecord extends LibraryCoreFeedPageSourceV1 {
   readonly selectedSequence: number | null;
 }
 
+interface BrowseGenerationRecord extends GenerationRecord {
+  readonly filter: LibraryCoreFeedBrowseFilterV1;
+  readonly rankingClockMs: number;
+  readonly recommendationOrderSchemaVersion:
+    typeof LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION;
+}
+
 interface FeedRowRecord {
   readonly generationId: string;
   readonly orderKey: string;
@@ -107,6 +124,13 @@ interface ReaderSession {
   lastRequest: ReaderRequestIdentity | null;
 }
 
+interface BrowseReaderSession extends ReaderSession {
+  readonly filter: LibraryCoreFeedBrowseFilterV1;
+  readonly rankingClockMs: number;
+  readonly recommendationOrderSchemaVersion:
+    typeof LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION;
+}
+
 interface ReaderRequestIdentity {
   readonly cancellationId: string;
   readonly cursor: string | null;
@@ -133,6 +157,16 @@ type SessionAdmission =
       result: PwaLibraryCoreFeedReaderResult;
     }>;
 
+type BrowseSessionAdmission =
+  | Readonly<{
+      ok: true;
+      cursor: LibraryCoreFeedBrowsePageCursorV1 | null;
+    }>
+  | Readonly<{
+      ok: false;
+      result: PwaLibraryCoreFeedReaderFailure;
+    }>;
+
 export type PwaLibraryCoreFeedReaderErrorCode =
   | "RUNTIME_INACTIVE"
   | "CURSOR_STALE"
@@ -141,16 +175,25 @@ export type PwaLibraryCoreFeedReaderErrorCode =
   | "RESPONSE_TOO_LARGE"
   | "READER_UNAVAILABLE";
 
+export type PwaLibraryCoreFeedReaderFailure = Readonly<{
+  ok: false;
+  code: PwaLibraryCoreFeedReaderErrorCode;
+  message: string;
+}>;
+
 export type PwaLibraryCoreFeedReaderResult =
   | Readonly<{
       ok: true;
       value: LibraryCoreFeedPageResponseV1;
     }>
+  | PwaLibraryCoreFeedReaderFailure;
+
+export type PwaLibraryCoreFeedBrowseReaderResult =
   | Readonly<{
-      ok: false;
-      code: PwaLibraryCoreFeedReaderErrorCode;
-      message: string;
-    }>;
+      ok: true;
+      value: LibraryCoreFeedBrowsePageResponseV1;
+    }>
+  | PwaLibraryCoreFeedReaderFailure;
 
 export interface PwaLibraryCoreFeedReaderRuntimeOptions {
   readonly databaseName: string;
@@ -178,6 +221,10 @@ export interface PwaLibraryCoreBrowseProjectedRowV1 {
 }
 
 export interface BeginPwaLibraryCoreBrowseGenerationInput {
+  readonly filter: LibraryCoreFeedBrowseFilterV1;
+  readonly rankingClockMs: number;
+  readonly recommendationOrderSchemaVersion:
+    typeof LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION;
   readonly source: LibraryCoreFeedPageSourceV1;
   readonly totalCount: number;
 }
@@ -260,6 +307,16 @@ function browseFeedRowOrderKey(
   )}`;
 }
 
+function browseCursorOrderKey(
+  value: LibraryCoreFeedBrowsePageCursorV1,
+): string {
+  return `${(100 - value.priority).toString(16).padStart(2, "0")}\u0000${
+    reverseSortKey(value.publishedAt)
+  }\u0000${forwardSortKey(value.sourceSequence)}\u0000${lowerHex(
+    TEXT_ENCODER.encode(value.globalId).buffer,
+  )}`;
+}
+
 function generationRange(
   keyRange: typeof IDBKeyRange,
   generationId: string,
@@ -294,7 +351,7 @@ function sourceOfGeneration(
 function readerFailure(
   code: PwaLibraryCoreFeedReaderErrorCode,
   message: string,
-): PwaLibraryCoreFeedReaderResult {
+): PwaLibraryCoreFeedReaderFailure {
   return Object.freeze({ ok: false, code, message });
 }
 
@@ -305,6 +362,14 @@ function snapshotSource(
   if (!parsed.ok) {
     throw new TypeError(parsed.error);
   }
+  return parsed.value;
+}
+
+function snapshotBrowseFilter(
+  value: unknown,
+): LibraryCoreFeedBrowseFilterV1 {
+  const parsed = parseLibraryCoreFeedBrowseFilterV1(value);
+  if (!parsed.ok) throw new TypeError(parsed.error);
   return parsed.value;
 }
 
@@ -407,6 +472,7 @@ class PwaLibraryCoreFeedReaderRuntime {
   readonly #subtle: SubtleCrypto;
   readonly #now: () => number;
   readonly #sessions = new Map<string, ReaderSession>();
+  readonly #browseSessions = new Map<string, BrowseReaderSession>();
   #databasePromise: Promise<IDBDatabase> | null = null;
   #quiesced = false;
 
@@ -434,8 +500,17 @@ class PwaLibraryCoreFeedReaderRuntime {
   async beginBrowseGeneration(
     input: BeginPwaLibraryCoreBrowseGenerationInput,
   ): Promise<PwaLibraryCoreFeedGenerationState> {
+    const filter = snapshotBrowseFilter(input.filter);
+    if (
+      !Number.isSafeInteger(input.rankingClockMs) ||
+      input.rankingClockMs < 0 ||
+      input.recommendationOrderSchemaVersion !==
+        LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION
+    ) {
+      throw new TypeError("browse generation binding is invalid");
+    }
     return this.#beginStoredGeneration(
-      input,
+      { ...input, filter },
       BROWSE_GENERATION_STORES,
       "browse generation",
     );
@@ -529,6 +604,7 @@ class PwaLibraryCoreFeedReaderRuntime {
       BROWSE_GENERATION_STORES,
       "browse generation",
     );
+    this.#browseSessions.clear();
     await this.#pruneStoredGenerations(
       source.generationId,
       BROWSE_GENERATION_STORES,
@@ -672,6 +748,179 @@ class PwaLibraryCoreFeedReaderRuntime {
     }
   }
 
+  async readBrowseFeedPage(
+    requestValue: unknown,
+  ): Promise<PwaLibraryCoreFeedBrowseReaderResult> {
+    if (this.#quiesced) {
+      return readerFailure("READER_UNAVAILABLE", "reader is quiesced");
+    }
+    const request = parseLibraryCoreFeedBrowsePageRequestV1(requestValue);
+    if (!request.ok) {
+      return readerFailure("INVALID_REQUEST", request.error);
+    }
+    this.#expireSessions();
+
+    try {
+      const database = await this.#database();
+      const transaction = database.transaction(
+        [
+          BROWSE_GENERATIONS_STORE,
+          BROWSE_ROWS_STORE,
+          BROWSE_CONTROL_STORE,
+        ],
+        "readonly",
+      );
+      const selected = (await requestResult(
+        transaction.objectStore(BROWSE_CONTROL_STORE).get(
+          SELECTED_BROWSE_GENERATION_KEY,
+        ),
+      )) as SelectedGenerationRecord | undefined;
+      if (!selected) {
+        await transactionDone(transaction);
+        return readerFailure(
+          "RUNTIME_INACTIVE",
+          "no complete PWA Library Core browse generation is selected",
+        );
+      }
+      const generation = (await requestResult(
+        transaction.objectStore(BROWSE_GENERATIONS_STORE).get(
+          selected.generationId,
+        ),
+      )) as BrowseGenerationRecord | undefined;
+      if (
+        !generation ||
+        generation.status !== "complete" ||
+        generation.selectedSequence !== selected.selectionSequence ||
+        generation.rankingClockMs !== request.value.rankingClockMs ||
+        generation.recommendationOrderSchemaVersion !==
+          request.value.recommendationOrderSchemaVersion ||
+        JSON.stringify(generation.filter) !==
+          JSON.stringify(request.value.filter)
+      ) {
+        transaction.abort();
+        return readerFailure(
+          "CURSOR_STALE",
+          "selected browse generation does not match the requested query",
+        );
+      }
+      const source = sourceOfGeneration(generation);
+      const sessionResult = this.#admitBrowseSession(
+        request.value,
+        source,
+        generation,
+      );
+      if (!sessionResult.ok) {
+        transaction.abort();
+        return sessionResult.result;
+      }
+
+      let lowerOrderKey = "";
+      if (sessionResult.cursor) {
+        lowerOrderKey = browseCursorOrderKey(sessionResult.cursor);
+      }
+      const range = this.#keyRange.bound(
+        [source.generationId, lowerOrderKey],
+        [source.generationId, "\uffff"],
+        request.value.cursor !== null,
+        false,
+      );
+      const rowsStore = transaction.objectStore(BROWSE_ROWS_STORE);
+      const rows: LibraryCoreFeedCardV1[] = [];
+      let finalRecord: BrowseFeedRowRecord | null = null;
+      let cursor = await openCursor(rowsStore.openCursor(range, "next"));
+      while (cursor && rows.length < request.value.limit) {
+        const record = cursor.value as BrowseFeedRowRecord;
+        const parsed = parseLibraryCoreFeedCardV1(record.row);
+        if (
+          !parsed.ok ||
+          record.globalId !== parsed.value.globalId ||
+          record.publishedAt !== (parsed.value.publishedAt ?? 0) ||
+          !Number.isSafeInteger(record.priority) ||
+          record.priority < 0 ||
+          record.priority > 100 ||
+          !Number.isSafeInteger(record.sourceSequence) ||
+          record.sourceSequence < 0 ||
+          record.orderKey !== browseFeedRowOrderKey({
+            priority: record.priority,
+            row: parsed.value,
+            sourceSequence: record.sourceSequence,
+          })
+        ) {
+          transaction.abort();
+          return readerFailure(
+            "READER_UNAVAILABLE",
+            parsed.ok ? "stored browse row ordering is inconsistent" : parsed.error,
+          );
+        }
+        rows.push(parsed.value);
+        finalRecord = record;
+        cursor.continue();
+        cursor = await openCursor(cursor.request);
+      }
+      await transactionDone(transaction);
+      const nextCursor =
+        finalRecord && rows.length === request.value.limit
+          ? encodeLibraryCoreFeedBrowsePageCursorV1({
+              ...source,
+              priority: finalRecord.priority,
+              publishedAt: finalRecord.publishedAt,
+              sourceSequence: finalRecord.sourceSequence,
+              globalId: rows[rows.length - 1]!.globalId,
+            })
+          : null;
+      const nextOrder = nextCursor && finalRecord
+        ? {
+            globalId: rows[rows.length - 1]!.globalId,
+            priority: finalRecord.priority,
+            publishedAt: finalRecord.publishedAt,
+            sourceSequence: finalRecord.sourceSequence,
+          }
+        : null;
+      const response = parseLibraryCoreFeedBrowsePageResponseV1({
+        filter: generation.filter,
+        nextCursor,
+        nextOrder,
+        queryId: request.value.queryId,
+        rankingClockMs: generation.rankingClockMs,
+        recommendationOrderSchemaVersion:
+          generation.recommendationOrderSchemaVersion,
+        rows,
+        schemaVersion: request.value.schemaVersion,
+        source,
+        totalCount: generation.totalCount,
+      }, request.value);
+      if (!response.ok) {
+        return readerFailure(
+          response.error.includes("exceeds")
+            ? "RESPONSE_TOO_LARGE"
+            : "READER_UNAVAILABLE",
+          response.error,
+        );
+      }
+      const session = this.#browseSessions.get(request.value.readerSessionId);
+      if (!session) {
+        return readerFailure(
+          "CURSOR_STALE",
+          "browse reader session expired before its response completed",
+        );
+      }
+      session.lastRequest = {
+        cancellationId: request.value.cancellationId,
+        cursor: request.value.cursor,
+        limit: request.value.limit,
+      };
+      if (nextCursor === null) {
+        this.#browseSessions.delete(request.value.readerSessionId);
+      }
+      return Object.freeze({ ok: true, value: response.value });
+    } catch (error) {
+      return readerFailure(
+        "READER_UNAVAILABLE",
+        error instanceof Error ? error.message : "IndexedDB browse reader failed",
+      );
+    }
+  }
+
   cancelReader(
     readerSessionId: string,
     cancellationId: string,
@@ -685,14 +934,18 @@ class PwaLibraryCoreFeedReaderRuntime {
       schemaVersion: 1,
     });
     if (!request.ok) return false;
-    const session = this.#sessions.get(readerSessionId);
+    const session = this.#sessions.get(readerSessionId) ??
+      this.#browseSessions.get(readerSessionId);
     if (session?.lastRequest?.cancellationId !== cancellationId) return false;
-    return this.#sessions.delete(readerSessionId);
+    const deletedDefault = this.#sessions.delete(readerSessionId);
+    const deletedBrowse = this.#browseSessions.delete(readerSessionId);
+    return deletedDefault || deletedBrowse;
   }
 
   async quiesce(): Promise<void> {
     this.#quiesced = true;
     this.#sessions.clear();
+    this.#browseSessions.clear();
     const databasePromise = this.#databasePromise;
     this.#databasePromise = null;
     if (!databasePromise) return;
@@ -729,6 +982,14 @@ class PwaLibraryCoreFeedReaderRuntime {
           ),
         };
       }
+    } else if (this.#browseSessions.has(request.readerSessionId)) {
+      return {
+        ok: false,
+        result: readerFailure(
+          "INVALID_REQUEST",
+          "reader session identity is already used by another query",
+        ),
+      };
     } else if (request.cursor !== null) {
       return {
         ok: false,
@@ -737,7 +998,10 @@ class PwaLibraryCoreFeedReaderRuntime {
           "cursor cannot resume an absent or expired reader session",
         ),
       };
-    } else if (this.#sessions.size >= MAXIMUM_READER_SESSIONS) {
+    } else if (
+      this.#sessions.size + this.#browseSessions.size >=
+        MAXIMUM_READER_SESSIONS
+    ) {
       return {
         ok: false,
         result: readerFailure(
@@ -767,10 +1031,101 @@ class PwaLibraryCoreFeedReaderRuntime {
     return Object.freeze({ ok: true, cursor: cursor.value });
   }
 
+  #admitBrowseSession(
+    request: LibraryCoreFeedBrowsePageRequestV1,
+    source: LibraryCoreFeedPageSourceV1,
+    generation: BrowseGenerationRecord,
+  ): BrowseSessionAdmission {
+    const existing = this.#browseSessions.get(request.readerSessionId);
+    if (existing) {
+      if (
+        !sourceMatches(existing.source, source) ||
+        existing.rankingClockMs !== request.rankingClockMs ||
+        existing.recommendationOrderSchemaVersion !==
+          request.recommendationOrderSchemaVersion ||
+        JSON.stringify(existing.filter) !== JSON.stringify(request.filter)
+      ) {
+        this.#browseSessions.delete(request.readerSessionId);
+        return {
+          ok: false,
+          result: readerFailure(
+            "CURSOR_STALE",
+            "browse reader session identity or query changed",
+          ),
+        };
+      }
+      if (
+        existing.lastRequest?.cancellationId === request.cancellationId &&
+        (existing.lastRequest.cursor !== request.cursor ||
+          existing.lastRequest.limit !== request.limit)
+      ) {
+        return {
+          ok: false,
+          result: readerFailure(
+            "INVALID_REQUEST",
+            "cancellation identity was replayed for a different request",
+          ),
+        };
+      }
+    } else if (this.#sessions.has(request.readerSessionId)) {
+      return {
+        ok: false,
+        result: readerFailure(
+          "INVALID_REQUEST",
+          "reader session identity is already used by another query",
+        ),
+      };
+    } else if (request.cursor !== null) {
+      return {
+        ok: false,
+        result: readerFailure(
+          "CURSOR_STALE",
+          "cursor cannot resume an absent or expired browse session",
+        ),
+      };
+    } else if (
+      this.#sessions.size + this.#browseSessions.size >=
+        MAXIMUM_READER_SESSIONS
+    ) {
+      return {
+        ok: false,
+        result: readerFailure(
+          "SESSION_LIMIT",
+          "PWA Library Core reader session limit reached",
+        ),
+      };
+    } else {
+      this.#browseSessions.set(request.readerSessionId, {
+        source,
+        expiresAtMs: this.#now() + SESSION_MAXIMUM_AGE_MS,
+        lastRequest: null,
+        filter: generation.filter,
+        rankingClockMs: generation.rankingClockMs,
+        recommendationOrderSchemaVersion:
+          generation.recommendationOrderSchemaVersion,
+      });
+    }
+    if (request.cursor === null) return Object.freeze({ ok: true, cursor: null });
+    const cursor = decodeLibraryCoreFeedBrowsePageCursorV1(request.cursor);
+    if (!cursor.ok || !sourceMatches(cursor.value, source)) {
+      return {
+        ok: false,
+        result: readerFailure(
+          "CURSOR_STALE",
+          "browse cursor source is no longer selected",
+        ),
+      };
+    }
+    return Object.freeze({ ok: true, cursor: cursor.value });
+  }
+
   #expireSessions(): void {
     const now = this.#now();
     for (const [sessionId, session] of this.#sessions) {
       if (session.expiresAtMs <= now) this.#sessions.delete(sessionId);
+    }
+    for (const [sessionId, session] of this.#browseSessions) {
+      if (session.expiresAtMs <= now) this.#browseSessions.delete(sessionId);
     }
   }
 
@@ -781,7 +1136,9 @@ class PwaLibraryCoreFeedReaderRuntime {
   }
 
   async #beginStoredGeneration(
-    input: BeginPwaLibraryCoreFeedGenerationInput,
+    input:
+      | BeginPwaLibraryCoreFeedGenerationInput
+      | BeginPwaLibraryCoreBrowseGenerationInput,
     stores: GenerationStoreNames,
     label: string,
   ): Promise<PwaLibraryCoreFeedGenerationState> {
@@ -799,13 +1156,39 @@ class PwaLibraryCoreFeedReaderRuntime {
       "readwrite",
     );
     const store = transaction.objectStore(stores.generations);
+    const browseBinding =
+      "filter" in input
+        ? Object.freeze({
+            filter: snapshotBrowseFilter(input.filter),
+            rankingClockMs: input.rankingClockMs,
+            recommendationOrderSchemaVersion:
+              input.recommendationOrderSchemaVersion,
+          })
+        : null;
+    if (
+      browseBinding &&
+      (!Number.isSafeInteger(browseBinding.rankingClockMs) ||
+        browseBinding.rankingClockMs < 0 ||
+        browseBinding.recommendationOrderSchemaVersion !==
+          LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION)
+    ) {
+      transaction.abort();
+      throw new TypeError("browse generation binding is invalid");
+    }
     const existing = (await requestResult(
       store.get(source.generationId),
     )) as GenerationRecord | undefined;
     if (existing) {
+      const existingBrowse = existing as Partial<BrowseGenerationRecord>;
       if (
         sourceMatches(existing, source) &&
-        existing.totalCount === input.totalCount
+        existing.totalCount === input.totalCount &&
+        (!browseBinding ||
+          (existingBrowse.rankingClockMs === browseBinding.rankingClockMs &&
+            existingBrowse.recommendationOrderSchemaVersion ===
+              browseBinding.recommendationOrderSchemaVersion &&
+            JSON.stringify(existingBrowse.filter) ===
+              JSON.stringify(browseBinding.filter)))
       ) {
         await transactionDone(transaction);
         return existing.status;
@@ -827,6 +1210,7 @@ class PwaLibraryCoreFeedReaderRuntime {
 
     store.add({
       ...source,
+      ...(browseBinding ?? {}),
       status: "staging",
       totalCount: input.totalCount,
       writtenCount: 0,

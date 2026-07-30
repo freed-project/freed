@@ -202,8 +202,21 @@ describe("PWA Library Core worker surface census", () => {
       blockers: [],
     });
     expect(
+      PWA_AUTOMERGE_REQUEST_EFFECT_REGISTRY
+        .READ_LIBRARY_CORE_FEED_BROWSE_PAGE,
+    ).toStrictEqual({
+      legacyWriteEffects: [],
+      libraryCoreWriteEffects: [],
+      successorOperationIds: [],
+      blockers: [],
+    });
+    expect(
       PWA_AUTOMERGE_WORKER_RESPONSE_SURFACE_REGISTRY
         .LIBRARY_CORE_FEED_PAGE_RESULT.classification,
+    ).toBe("library_core_bounded_transport");
+    expect(
+      PWA_AUTOMERGE_WORKER_RESPONSE_SURFACE_REGISTRY
+        .LIBRARY_CORE_FEED_BROWSE_PAGE_RESULT.classification,
     ).toBe("library_core_bounded_transport");
     expect(
       PWA_AUTOMERGE_WORKER_RESPONSE_SURFACE_REGISTRY

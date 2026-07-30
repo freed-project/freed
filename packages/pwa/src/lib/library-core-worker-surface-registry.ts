@@ -179,6 +179,10 @@ export const PWA_AUTOMERGE_WORKER_REQUEST_SURFACE_REGISTRY = {
     "library_core_bounded_read",
     "response_transport_not_cut_over",
   ),
+  READ_LIBRARY_CORE_FEED_BROWSE_PAGE: blockedSurface(
+    "library_core_bounded_read",
+    "response_transport_not_cut_over",
+  ),
   CANCEL_LIBRARY_CORE_FEED_READER: blockedSurface(
     "library_core_lifecycle_control",
     "response_transport_not_cut_over",
@@ -369,6 +373,7 @@ export const PWA_AUTOMERGE_REQUEST_EFFECT_REGISTRY = {
   MATERIALIZE_LIBRARY_CORE_FEED_BROWSE_GENERATION:
     libraryCoreProjectionWrite(),
   READ_LIBRARY_CORE_FEED_PAGE: noWriteEffect(),
+  READ_LIBRARY_CORE_FEED_BROWSE_PAGE: noWriteEffect(),
   CANCEL_LIBRARY_CORE_FEED_READER: noWriteEffect(),
   CLEAR_LOCAL: hiddenWrite(
     ["legacy_local_authority_reset"],
@@ -427,6 +432,10 @@ export const PWA_AUTOMERGE_WORKER_RESPONSE_SURFACE_REGISTRY = {
     "response_transport_not_cut_over",
   ),
   LIBRARY_CORE_FEED_PAGE_RESULT: blockedSurface(
+    "library_core_bounded_transport",
+    "response_transport_not_cut_over",
+  ),
+  LIBRARY_CORE_FEED_BROWSE_PAGE_RESULT: blockedSurface(
     "library_core_bounded_transport",
     "response_transport_not_cut_over",
   ),

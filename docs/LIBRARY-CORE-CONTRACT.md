@@ -2598,7 +2598,17 @@ sequence, push the full order into its storage query, and bind the order
 version and clock identity to its cursor. The dormant PWA projector now freezes
 one safe ranking clock, retains source sequence, and writes the complete order
 tuple into its IndexedDB compound key. The bounded browse request and cursor
-that consume those rows remain unregistered.
+that consume those rows are now registered as `feed_browse_page_v1`.
+
+The request carries one bounded canonical filter, one safe ranking clock, the
+recommendation-order schema version, one reader-session identity, one
+cancellation identity, a limit from 1 through 128, and an optional opaque
+cursor. The cursor binds the authenticated generation plus priority, published
+time, source sequence, and UTF-8 entity identity. The selected generation
+stores the same canonical filter, clock, and order version. Any mismatch fails
+closed instead of applying a cursor to a differently filtered or scored
+generation. The PWA worker transport exposes the request, response, and shared
+exact cancellation path, but no product surface calls them.
 
 The cursor is versioned binary data encoded as canonical unpadded base64url. It
 binds the immutable generation digest, transition sequence, projection
@@ -2656,8 +2666,9 @@ The product filter predicate is now defined once and used by the current
 renderer. The current recommendation order is also defined once and used by
 both active workers. The PWA now also persists exact filtered recommendation
 order in a separate query-specific IndexedDB generation while holding at most
-one 128-row output page. Native execution, a closed bounded browse transport,
-renderer-cache eviction, and product caller proof remain absent.
+one 128-row output page, then serves it through the closed dormant browse
+protocol. Native execution, renderer-cache eviction, and product caller proof
+remain absent.
 `adapter_proof_missing` therefore still blocks the query. Authenticated PWA
 materialization, runtime registration, shared semantic contracts, and dormant
 browse projection do not assign a product reader or activate Gate D.
