@@ -78,8 +78,8 @@ import {
   collectSavedYouTubeVideoUrls,
   mergeDefaultPreferences,
   rankFeedItems,
+  rankFeedItemsInRecommendedOrder,
   resolveDocumentId,
-  sortByPriority,
   stripDeviceLocalPreferenceUpdates,
 } from "@freed/shared";
 import type {
@@ -1145,12 +1145,10 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
   );
 
   const visibleItems = plainItems.filter((item) => !item.userState.hidden);
-  const rankedItems = sortByPriority(
-    rankFeedItems(
-      visibleItems.sort((a, b) => b.publishedAt - a.publishedAt),
-      preferences.weights,
-      { persons, accounts },
-    ),
+  const rankedItems = rankFeedItemsInRecommendedOrder(
+    visibleItems,
+    preferences.weights,
+    { persons, accounts },
   );
 
   const feedUnreadCounts: Record<string, number> = {};

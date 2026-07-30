@@ -11,6 +11,10 @@ import {
   normalizeLibraryCoreFeedBrowseFilterV1,
   type LibraryCoreFeedBrowseFilterInputV1,
 } from "./library-core/feed-browse-filter-contract.js";
+import {
+  compareLibraryCoreFeedPriorityV1,
+  sortLibraryCoreFeedRecommendationV1,
+} from "./library-core/feed-recommendation-order-contract.js";
 
 export {
   matchesLibraryCoreFeedBrowseFilterV1,
@@ -21,6 +25,16 @@ export type {
   LibraryCoreFeedBrowseFilterSourceV1,
   LibraryCoreFeedBrowseFilterV1,
 } from "./library-core/feed-browse-filter-contract.js";
+export {
+  compareLibraryCoreFeedPriorityV1,
+  compareLibraryCoreFeedPublishedAtV1,
+  LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
+  LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_V1,
+  sortLibraryCoreFeedRecommendationV1,
+} from "./library-core/feed-recommendation-order-contract.js";
+export type {
+  LibraryCoreFeedRecommendationOrderSourceV1,
+} from "./library-core/feed-recommendation-order-contract.js";
 
 /**
  * Default weights for ranking factors
@@ -235,7 +249,7 @@ function normalizeEngagement(engagement: {
  * Sort feed items by priority (highest first)
  */
 export function sortByPriority(items: FeedItem[]): FeedItem[] {
-  return [...items].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+  return [...items].sort(compareLibraryCoreFeedPriorityV1);
 }
 
 function compareNewestTimestamp(
@@ -285,8 +299,8 @@ export function rankFeedItems(
   items: FeedItem[],
   preferences: WeightPreferences,
   context?: RelationshipPriorityContext,
+  now = Date.now(),
 ): FeedItem[] {
-  const now = Date.now();
   const rankingContext = context
     ? { ...context, personByAuthorKey: context.personByAuthorKey ?? buildPersonByAuthorKey(context) ?? undefined }
     : undefined;
@@ -296,6 +310,20 @@ export function rankFeedItems(
     if (item.priority === newPriority) return item;
     return { ...item, priority: newPriority, priorityComputedAt: now };
   });
+}
+
+/**
+ * Rank and order one worker hydration with the exact cross-runtime contract.
+ */
+export function rankFeedItemsInRecommendedOrder(
+  items: FeedItem[],
+  preferences: WeightPreferences,
+  context?: RelationshipPriorityContext,
+  now = Date.now(),
+): FeedItem[] {
+  return sortLibraryCoreFeedRecommendationV1(
+    rankFeedItems(items, preferences, context, now),
+  );
 }
 
 /**
