@@ -2602,11 +2602,29 @@ at 2 MiB, and releases the session on exact cancellation, cursor exhaustion, or
 expiry. Authenticated generation handles may remain cached after a logical
 session closes, but the pool remains capped at two handles, avoids a corpus-file
 rehash on every short feed refresh, and is fully quiesced before factory reset.
-TypeScript and Rust share one exact canonical cursor vector. PWA
-adapters, product filter and recommendation-order equivalence, renderer-cache
-eviction, and product caller proof remain absent, so `adapter_proof_missing` and
-`runtime_adapter_unimplemented` remain at the cross-platform query level.
-Runtime registration alone does not assign a product reader or activate Gate D.
+TypeScript and Rust share one exact canonical cursor vector.
+
+The dormant PWA runtime implements the same protocol over a row-oriented
+IndexedDB generation. A staging generation accepts only contiguous pages of at
+most 128 already bounded feed cards in exact keyset order. Each page has an
+exact SHA-256 replay receipt, generation-plus-entity uniqueness, and a durable
+cumulative row count. Selection becomes visible in one transaction only after
+the staged and physical row counts equal the declared total. Restart can resume
+the next page, exact page and finalization replays are idempotent, and a new
+selection retains at most one complete rollback generation. Dedicated bounded
+request and response kinds in the existing Automerge worker transport admit at
+most two logical sessions for 60 seconds, reject an expired or replaced source,
+bind exact cancellation identity, and release an exhausted cursor. IndexedDB
+order keys encode entity IDs as canonical UTF-8 byte hex so their final
+tie-break ordering matches SQLite binary collation instead of browser UTF-16
+string ordering.
+
+Both platform runtimes are now implemented, so
+`runtime_adapter_unimplemented` is resolved for `feed_page_v1`.
+Product filter and recommendation-order equivalence, renderer-cache eviction,
+product caller proof, and the authenticated PWA materializer remain absent, so
+`adapter_proof_missing` still blocks the query. Runtime registration alone does
+not assign a product reader or activate Gate D.
 
 An interactive cursor does not pin an unbounded SQLite read transaction or WAL.
 If an adapter uses a pinned snapshot, the query registry declares its maximum

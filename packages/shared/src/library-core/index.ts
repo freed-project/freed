@@ -1,4 +1,5 @@
 export * from "./census.js";
+export * from "./feed-page-contracts.js";
 export * from "./field-registry.js";
 export * from "./local-authority-registry.js";
 export * from "./operation-registry.js";
