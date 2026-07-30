@@ -1,4 +1,5 @@
 export * from "./census.js";
+export * from "./canonical-codec.js";
 export * from "./feed-browse-filter-contract.js";
 export * from "./feed-browse-page-contracts.js";
 export * from "./feed-page-contracts.js";
@@ -13,3 +14,4 @@ export * from "./protocol-registry.js";
 export * from "./protocol-scalars.js";
 export * from "./query-registry.js";
 export * from "./store-surface-registry.js";
+export * from "./wire-frame.js";

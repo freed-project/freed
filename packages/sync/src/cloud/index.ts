@@ -37,3 +37,8 @@ export {
   type LibraryCorePreparedImmutableObjectV1,
   type LibraryCorePublishedImmutableObjectReceiptV1,
 } from "./library-core-immutable-publication.js";
+export {
+  LIBRARY_CORE_STORED_WIRE_OBJECT_BYTE_CEILING,
+  decodeLibraryCoreWireObjectV1,
+  encodeLibraryCoreWireObjectV1,
+} from "./library-core-wire-object.js";

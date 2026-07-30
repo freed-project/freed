@@ -6,9 +6,6 @@ import {
   type LibraryCoreOperationInstanceId,
 } from "./protocol-scalars.js";
 
-export const LIBRARY_CORE_CONTROL_OBJECT_KEY =
-  "control/library-control.json" as const;
-
 export const LIBRARY_CORE_REPLICATION_PROTOCOL_VERSION = 1 as const;
 
 export const LIBRARY_CORE_CLOUD_TRANSPORT_IDS = [
@@ -19,80 +16,85 @@ export const LIBRARY_CORE_CLOUD_TRANSPORT_IDS = [
 export type LibraryCoreCloudTransportId =
   (typeof LIBRARY_CORE_CLOUD_TRANSPORT_IDS)[number];
 
+interface LibraryScopedObjectRequest {
+  readonly libraryId: string;
+}
+
 export type LibraryCoreImmutableObjectKeyRequest =
-  | {
+  | (LibraryScopedObjectRequest & {
       readonly kind: "epoch_certificate";
       readonly epochId: string;
-    }
-  | {
-      readonly kind: "actor_enrollment";
-      readonly actorId: string;
       readonly digest: string;
-    }
-  | {
-      readonly kind: "operation_segment";
+    })
+  | (LibraryScopedObjectRequest & {
+      readonly kind: "actor_enrollment";
       readonly epochId: string;
       readonly actorId: string;
+      readonly digest: string;
+    })
+  | (LibraryScopedObjectRequest & {
+      readonly kind: "operation_segment";
+      readonly epochId: string;
       readonly firstSequence: number;
       readonly lastSequence: number;
       readonly digest: string;
-    }
-  | {
+    })
+  | (LibraryScopedObjectRequest & {
       readonly kind: "checkpoint_manifest";
       readonly epochId: string;
       readonly generation: number;
       readonly digest: string;
-    }
-  | {
+    })
+  | (LibraryScopedObjectRequest & {
       readonly kind: "checkpoint_page";
       readonly epochId: string;
       readonly generation: number;
       readonly pageIndex: number;
       readonly digest: string;
-    }
-  | {
-      readonly kind: "desktop_checkpoint";
+    })
+  | (LibraryScopedObjectRequest & {
+      readonly kind: "search_manifest";
       readonly epochId: string;
       readonly generation: number;
       readonly digest: string;
-    }
-  | {
-      readonly kind: "search_base";
+    })
+  | (LibraryScopedObjectRequest & {
+      readonly kind: "search_shard";
       readonly epochId: string;
       readonly generation: number;
+      readonly shardIndex: number;
       readonly digest: string;
-    }
-  | {
+    })
+  | (LibraryScopedObjectRequest & {
       readonly kind: "search_delta";
       readonly epochId: string;
-      readonly generation: number;
       readonly firstSequence: number;
       readonly lastSequence: number;
       readonly digest: string;
-    }
-  | {
-      readonly kind: "intent";
+    })
+  | (LibraryScopedObjectRequest & {
+      readonly kind: "intent_segment";
       readonly actorId: string;
-      readonly sequence: number;
-      readonly operationId: string;
+      readonly firstSequence: number;
+      readonly lastSequence: number;
       readonly digest: string;
-    }
-  | {
-      readonly kind: "intent_result";
+    })
+  | (LibraryScopedObjectRequest & {
+      readonly kind: "result_segment";
       readonly actorId: string;
-      readonly sequence: number;
-      readonly operationId: string;
+      readonly firstSequence: number;
+      readonly lastSequence: number;
       readonly digest: string;
-    }
-  | {
+    })
+  | (LibraryScopedObjectRequest & {
       readonly kind: "blob";
       readonly digest: string;
-    }
-  | {
+    })
+  | (LibraryScopedObjectRequest & {
       readonly kind: "backup_manifest";
       readonly backupId: string;
       readonly digest: string;
-    };
+    });
 
 export interface LibraryCoreImmutableObjectDescriptorV1 {
   readonly objectKey: string;
@@ -147,87 +149,98 @@ function assertSequenceRange(
   }
 }
 
+export function createLibraryCoreControlObjectKey(libraryId: string): string {
+  assertIdentifier(libraryId, "libraryId");
+  return `freed-v2-control-${libraryId}.json`;
+}
+
+export function createLibraryCoreIntentHeadObjectKey(
+  libraryId: string,
+  actorId: string,
+): string {
+  assertIdentifier(libraryId, "libraryId");
+  assertIdentifier(actorId, "actorId");
+  return `freed-v2-intent-head-${libraryId}-${actorId}.json`;
+}
+
+export function createLibraryCoreResultHeadObjectKey(
+  libraryId: string,
+  actorId: string,
+): string {
+  assertIdentifier(libraryId, "libraryId");
+  assertIdentifier(actorId, "actorId");
+  return `freed-v2-result-head-${libraryId}-${actorId}.json`;
+}
+
 /**
- * Construct one canonical locator for an immutable replication object.
+ * Construct one flat canonical locator for an immutable replication object.
  *
- * The mutable control pointer is deliberately absent. SQLite WAL, SHM, and
- * rollback-journal paths cannot be constructed through this contract.
+ * Drive file IDs remain the locators of record. These names are descriptive,
+ * never authority, and never depend on folder or filename uniqueness.
  */
 export function createLibraryCoreImmutableObjectKey(
   request: LibraryCoreImmutableObjectKeyRequest,
 ): string {
+  assertIdentifier(request.libraryId, "libraryId");
   switch (request.kind) {
-    case "epoch_certificate": {
+    case "epoch_certificate":
       assertIdentifier(request.epochId, "epochId");
-      return `epochs/${request.epochId}/epoch-certificate.cbor`;
-    }
-    case "actor_enrollment": {
-      assertIdentifier(request.actorId, "actorId");
       assertDigest(request.digest, "digest");
-      return `actors/${request.actorId}/enrollment-${request.digest}.cbor`;
-    }
-    case "operation_segment": {
+      return `freed-v2-epoch-${request.libraryId}-${request.epochId}-${request.digest}.json`;
+    case "actor_enrollment":
       assertIdentifier(request.epochId, "epochId");
       assertIdentifier(request.actorId, "actorId");
       assertDigest(request.digest, "digest");
+      return `freed-v2-enrollment-${request.libraryId}-${request.epochId}-${request.actorId}-${request.digest}.json`;
+    case "operation_segment":
+      assertIdentifier(request.epochId, "epochId");
       assertSequenceRange(request.firstSequence, request.lastSequence);
-      return `operations/${request.epochId}/${request.actorId}/${request.firstSequence}-${request.lastSequence}-${request.digest}.cbor`;
-    }
-    case "checkpoint_manifest": {
+      assertDigest(request.digest, "digest");
+      return `freed-v2-ops-${request.libraryId}-e${request.epochId}-s${request.firstSequence}-${request.lastSequence}-${request.digest}.fseg.gz`;
+    case "checkpoint_manifest":
       assertIdentifier(request.epochId, "epochId");
       assertIndex(request.generation, "generation");
       assertDigest(request.digest, "digest");
-      return `checkpoints/${request.epochId}/${request.generation}/manifest-${request.digest}.cbor`;
-    }
-    case "checkpoint_page": {
+      return `freed-v2-manifest-${request.libraryId}-e${request.epochId}-g${request.generation}-${request.digest}.json`;
+    case "checkpoint_page":
       assertIdentifier(request.epochId, "epochId");
       assertIndex(request.generation, "generation");
       assertIndex(request.pageIndex, "pageIndex");
       assertDigest(request.digest, "digest");
-      return `checkpoints/${request.epochId}/${request.generation}/pages/${request.pageIndex}-${request.digest}.cbor`;
-    }
-    case "desktop_checkpoint": {
+      return `freed-v2-checkpoint-${request.libraryId}-e${request.epochId}-g${request.generation}-p${request.pageIndex}-${request.digest}.fpage.gz`;
+    case "search_manifest":
       assertIdentifier(request.epochId, "epochId");
       assertIndex(request.generation, "generation");
       assertDigest(request.digest, "digest");
-      return `checkpoints/${request.epochId}/${request.generation}/desktop-${request.digest}.sqlite`;
-    }
-    case "search_base": {
+      return `freed-v2-search-${request.libraryId}-e${request.epochId}-g${request.generation}-manifest-${request.digest}.json`;
+    case "search_shard":
       assertIdentifier(request.epochId, "epochId");
       assertIndex(request.generation, "generation");
+      assertIndex(request.shardIndex, "shardIndex");
       assertDigest(request.digest, "digest");
-      return `search/${request.epochId}/${request.generation}/base-${request.digest}.cbor`;
-    }
-    case "search_delta": {
+      return `freed-v2-search-${request.libraryId}-e${request.epochId}-g${request.generation}-s${request.shardIndex}-${request.digest}.fidx.gz`;
+    case "search_delta":
       assertIdentifier(request.epochId, "epochId");
-      assertIndex(request.generation, "generation");
-      assertDigest(request.digest, "digest");
       assertSequenceRange(request.firstSequence, request.lastSequence);
-      return `search/${request.epochId}/${request.generation}/delta-${request.firstSequence}-${request.lastSequence}-${request.digest}.cbor`;
-    }
-    case "intent": {
+      assertDigest(request.digest, "digest");
+      return `freed-v2-search-delta-${request.libraryId}-e${request.epochId}-s${request.firstSequence}-${request.lastSequence}-${request.digest}.fidx.gz`;
+    case "intent_segment":
       assertIdentifier(request.actorId, "actorId");
-      assertIndex(request.sequence, "sequence");
-      assertIdentifier(request.operationId, "operationId");
+      assertSequenceRange(request.firstSequence, request.lastSequence);
       assertDigest(request.digest, "digest");
-      return `intents/${request.actorId}/${request.sequence}-${request.operationId}-${request.digest}.cbor`;
-    }
-    case "intent_result": {
+      return `freed-v2-intents-${request.libraryId}-${request.actorId}-s${request.firstSequence}-${request.lastSequence}-${request.digest}.fseg.gz`;
+    case "result_segment":
       assertIdentifier(request.actorId, "actorId");
-      assertIndex(request.sequence, "sequence");
-      assertIdentifier(request.operationId, "operationId");
+      assertSequenceRange(request.firstSequence, request.lastSequence);
       assertDigest(request.digest, "digest");
-      return `intent-results/${request.actorId}/${request.sequence}-${request.operationId}-${request.digest}.cbor`;
-    }
-    case "blob": {
+      return `freed-v2-results-${request.libraryId}-${request.actorId}-s${request.firstSequence}-${request.lastSequence}-${request.digest}.fseg.gz`;
+    case "blob":
       assertDigest(request.digest, "digest");
-      return `blobs/${request.digest.slice(0, 2)}/${request.digest}`;
-    }
-    case "backup_manifest": {
+      return `freed-v2-blob-${request.libraryId}-${request.digest}`;
+    case "backup_manifest":
       assertIdentifier(request.backupId, "backupId");
       assertDigest(request.digest, "digest");
-      return `backups/${request.backupId}/manifest-${request.digest}.cbor`;
-    }
+      return `freed-v2-backup-${request.libraryId}-${request.backupId}-${request.digest}.json`;
   }
 }
 
@@ -245,7 +258,6 @@ function ownEnumerableDataRecord(
   ) {
     throw new TypeError(`${label} must be a plain closed record`);
   }
-
   const keys = Object.keys(value).sort();
   const expected = [...expectedKeys].sort();
   if (
@@ -254,7 +266,6 @@ function ownEnumerableDataRecord(
   ) {
     throw new TypeError(`${label} has unknown or missing fields`);
   }
-
   for (const key of keys) {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (
@@ -267,7 +278,6 @@ function ownEnumerableDataRecord(
       );
     }
   }
-
   return value as Record<string, unknown>;
 }
 
@@ -293,12 +303,11 @@ export function parseLibraryCoreImmutableObjectDescriptorV1(
     );
   }
   const embeddedDigest = embeddedObjectKeyDigest(record.objectKey);
-  if (embeddedDigest !== null && embeddedDigest !== record.contentDigest) {
+  if (embeddedDigest !== record.contentDigest) {
     throw new TypeError(
       "immutable object descriptor contentDigest does not match objectKey",
     );
   }
-
   return Object.freeze({
     objectKey: record.objectKey,
     contentDigest: record.contentDigest,
@@ -324,7 +333,6 @@ export function parseLibraryCoreControlPointerV1(
     ],
     "library control pointer",
   );
-
   if (record.schemaVersion !== 1 || record.protocolVersion !== 1) {
     throw new TypeError("library control pointer uses an unsupported version");
   }
@@ -346,16 +354,16 @@ export function parseLibraryCoreControlPointerV1(
   const manifest = parseLibraryCoreImmutableObjectDescriptorV1(record.manifest);
   const expectedManifestKey = createLibraryCoreImmutableObjectKey({
     kind: "checkpoint_manifest",
+    libraryId: record.libraryId,
     epochId: record.storageEpoch,
     generation: record.generation,
     digest: manifest.contentDigest,
   });
   if (manifest.objectKey !== expectedManifestKey) {
     throw new TypeError(
-      "library control pointer manifest does not match its storage epoch and generation",
+      "library control pointer manifest does not match its library, storage epoch, and generation",
     );
   }
-
   return Object.freeze({
     schemaVersion: 1,
     protocolVersion: 1,
@@ -374,22 +382,11 @@ const DIGEST = "[0-9a-f]{64}";
 const INDEX = "(?:0|[1-9][0-9]*)";
 
 function embeddedObjectKeyDigest(objectKey: string): string | null {
-  const blobMatch = new RegExp(`^blobs/[0-9a-f]{2}/(${DIGEST})$`).exec(
-    objectKey,
-  );
-  if (blobMatch?.[1]) return blobMatch[1];
-
-  const suffixedMatch = new RegExp(`-(${DIGEST})(?:\\.cbor|\\.sqlite)$`).exec(
-    objectKey,
-  );
-  return suffixedMatch?.[1] ?? null;
+  const match = new RegExp(
+    `-(${DIGEST})(?:\\.json|\\.fseg\\.gz|\\.fpage\\.gz|\\.fidx\\.gz)?$`,
+  ).exec(objectKey);
+  return match?.[1] ?? null;
 }
-
-const SIMPLE_IMMUTABLE_OBJECT_KEY_PATTERNS = [
-  new RegExp(`^epochs/${ID}/epoch-certificate\\.cbor$`),
-  new RegExp(`^actors/${ID}/enrollment-${DIGEST}\\.cbor$`),
-  new RegExp(`^backups/${ID}/manifest-${DIGEST}\\.cbor$`),
-] as const;
 
 function isCanonicalSafeIndexText(value: string): boolean {
   const parsed = Number(value);
@@ -398,70 +395,85 @@ function isCanonicalSafeIndexText(value: string): boolean {
   );
 }
 
-interface IndexedObjectKeyPattern {
+interface ObjectKeyPattern {
   readonly pattern: RegExp;
-  readonly numericCaptures: readonly number[];
+  readonly numericCaptures?: readonly number[];
   readonly rangeCaptures?: readonly [number, number];
 }
 
-const INDEXED_IMMUTABLE_OBJECT_KEY_PATTERNS: readonly IndexedObjectKeyPattern[] =
-  [
-    {
-      pattern: new RegExp(
-        `^operations/${ID}/${ID}/(${INDEX})-(${INDEX})-${DIGEST}\\.cbor$`,
-      ),
-      numericCaptures: [1, 2],
-      rangeCaptures: [1, 2],
-    },
-    {
-      pattern: new RegExp(
-        `^checkpoints/${ID}/(${INDEX})/manifest-${DIGEST}\\.cbor$`,
-      ),
-      numericCaptures: [1],
-    },
-    {
-      pattern: new RegExp(
-        `^checkpoints/${ID}/(${INDEX})/pages/(${INDEX})-${DIGEST}\\.cbor$`,
-      ),
-      numericCaptures: [1, 2],
-    },
-    {
-      pattern: new RegExp(
-        `^checkpoints/${ID}/(${INDEX})/desktop-${DIGEST}\\.sqlite$`,
-      ),
-      numericCaptures: [1],
-    },
-    {
-      pattern: new RegExp(`^search/${ID}/(${INDEX})/base-${DIGEST}\\.cbor$`),
-      numericCaptures: [1],
-    },
-    {
-      pattern: new RegExp(
-        `^search/${ID}/(${INDEX})/delta-(${INDEX})-(${INDEX})-${DIGEST}\\.cbor$`,
-      ),
-      numericCaptures: [1, 2, 3],
-      rangeCaptures: [2, 3],
-    },
-    {
-      pattern: new RegExp(`^intents/${ID}/(${INDEX})-${ID}-${DIGEST}\\.cbor$`),
-      numericCaptures: [1],
-    },
-    {
-      pattern: new RegExp(
-        `^intent-results/${ID}/(${INDEX})-${ID}-${DIGEST}\\.cbor$`,
-      ),
-      numericCaptures: [1],
-    },
-  ];
+const IMMUTABLE_OBJECT_KEY_PATTERNS: readonly ObjectKeyPattern[] = [
+  { pattern: new RegExp(`^freed-v2-epoch-${ID}-${ID}-${DIGEST}\\.json$`) },
+  {
+    pattern: new RegExp(
+      `^freed-v2-enrollment-${ID}-${ID}-${ID}-${DIGEST}\\.json$`,
+    ),
+  },
+  {
+    pattern: new RegExp(
+      `^freed-v2-ops-${ID}-e${ID}-s(${INDEX})-(${INDEX})-${DIGEST}\\.fseg\\.gz$`,
+    ),
+    numericCaptures: [1, 2],
+    rangeCaptures: [1, 2],
+  },
+  {
+    pattern: new RegExp(
+      `^freed-v2-manifest-${ID}-e${ID}-g(${INDEX})-${DIGEST}\\.json$`,
+    ),
+    numericCaptures: [1],
+  },
+  {
+    pattern: new RegExp(
+      `^freed-v2-checkpoint-${ID}-e${ID}-g(${INDEX})-p(${INDEX})-${DIGEST}\\.fpage\\.gz$`,
+    ),
+    numericCaptures: [1, 2],
+  },
+  {
+    pattern: new RegExp(
+      `^freed-v2-search-${ID}-e${ID}-g(${INDEX})-manifest-${DIGEST}\\.json$`,
+    ),
+    numericCaptures: [1],
+  },
+  {
+    pattern: new RegExp(
+      `^freed-v2-search-${ID}-e${ID}-g(${INDEX})-s(${INDEX})-${DIGEST}\\.fidx\\.gz$`,
+    ),
+    numericCaptures: [1, 2],
+  },
+  {
+    pattern: new RegExp(
+      `^freed-v2-search-delta-${ID}-e${ID}-s(${INDEX})-(${INDEX})-${DIGEST}\\.fidx\\.gz$`,
+    ),
+    numericCaptures: [1, 2],
+    rangeCaptures: [1, 2],
+  },
+  {
+    pattern: new RegExp(
+      `^freed-v2-intents-${ID}-${ID}-s(${INDEX})-(${INDEX})-${DIGEST}\\.fseg\\.gz$`,
+    ),
+    numericCaptures: [1, 2],
+    rangeCaptures: [1, 2],
+  },
+  {
+    pattern: new RegExp(
+      `^freed-v2-results-${ID}-${ID}-s(${INDEX})-(${INDEX})-${DIGEST}\\.fseg\\.gz$`,
+    ),
+    numericCaptures: [1, 2],
+    rangeCaptures: [1, 2],
+  },
+  { pattern: new RegExp(`^freed-v2-blob-${ID}-${DIGEST}$`) },
+  {
+    pattern: new RegExp(`^freed-v2-backup-${ID}-${ID}-${DIGEST}\\.json$`),
+  },
+];
 
-function matchesIndexedObjectKeyPattern(
+function matchesObjectKeyPattern(
   value: string,
-  definition: IndexedObjectKeyPattern,
+  definition: ObjectKeyPattern,
 ): boolean {
   const match = definition.pattern.exec(value);
   if (match === null) return false;
   if (
-    definition.numericCaptures.some((capture) => {
+    definition.numericCaptures?.some((capture) => {
       const text = match[capture];
       return text === undefined || !isCanonicalSafeIndexText(text);
     })
@@ -476,28 +488,16 @@ function matchesIndexedObjectKeyPattern(
 export function isLibraryCoreImmutableObjectKey(
   value: unknown,
 ): value is string {
-  if (
-    typeof value !== "string" ||
-    value === LIBRARY_CORE_CONTROL_OBJECT_KEY ||
-    value.includes("..")
-  ) {
-    return false;
-  }
-
-  if (
-    SIMPLE_IMMUTABLE_OBJECT_KEY_PATTERNS.some((pattern) => pattern.test(value))
-  ) {
-    return true;
-  }
-
-  if (
-    INDEXED_IMMUTABLE_OBJECT_KEY_PATTERNS.some((definition) =>
-      matchesIndexedObjectKeyPattern(value, definition),
+  return (
+    typeof value === "string" &&
+    !value.includes("/") &&
+    !value.includes("..") &&
+    !value.includes(".sqlite") &&
+    !value.includes(".wal") &&
+    !value.includes(".shm") &&
+    !value.includes(".journal") &&
+    IMMUTABLE_OBJECT_KEY_PATTERNS.some((definition) =>
+      matchesObjectKeyPattern(value, definition),
     )
-  ) {
-    return true;
-  }
-
-  const blobMatch = new RegExp(`^blobs/([0-9a-f]{2})/(${DIGEST})$`).exec(value);
-  return blobMatch !== null && blobMatch[1] === blobMatch[2]?.slice(0, 2);
+  );
 }
