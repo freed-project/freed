@@ -12,12 +12,17 @@ import {
   type LibraryCoreFeedPageSourceV1,
 } from "@freed/shared/library-core";
 
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const GENERATIONS_STORE = "generations";
 const ROWS_STORE = "feed_rows";
 const BATCHES_STORE = "generation_batches";
 const CONTROL_STORE = "control";
+const BROWSE_GENERATIONS_STORE = "browse_generations";
+const BROWSE_ROWS_STORE = "browse_rows";
+const BROWSE_BATCHES_STORE = "browse_generation_batches";
+const BROWSE_CONTROL_STORE = "browse_control";
 const SELECTED_GENERATION_KEY = "selected_generation";
+const SELECTED_BROWSE_GENERATION_KEY = "selected_browse_generation";
 const SESSION_MAXIMUM_AGE_MS = 60_000;
 const MAXIMUM_READER_SESSIONS = 2;
 const MAXIMUM_STAGING_PAGE_ROWS = 128;
@@ -26,6 +31,32 @@ const MAXIMUM_SAFE_SORT_KEY = Number.MAX_SAFE_INTEGER;
 const TEXT_ENCODER = new TextEncoder();
 
 type GenerationStatus = "staging" | "complete";
+
+interface GenerationStoreNames {
+  readonly batches: string;
+  readonly control: string;
+  readonly generations: string;
+  readonly rows: string;
+  readonly selectedKey:
+    | typeof SELECTED_GENERATION_KEY
+    | typeof SELECTED_BROWSE_GENERATION_KEY;
+}
+
+const DEFAULT_GENERATION_STORES: GenerationStoreNames = Object.freeze({
+  batches: BATCHES_STORE,
+  control: CONTROL_STORE,
+  generations: GENERATIONS_STORE,
+  rows: ROWS_STORE,
+  selectedKey: SELECTED_GENERATION_KEY,
+});
+
+const BROWSE_GENERATION_STORES: GenerationStoreNames = Object.freeze({
+  batches: BROWSE_BATCHES_STORE,
+  control: BROWSE_CONTROL_STORE,
+  generations: BROWSE_GENERATIONS_STORE,
+  rows: BROWSE_ROWS_STORE,
+  selectedKey: SELECTED_BROWSE_GENERATION_KEY,
+});
 
 interface GenerationRecord extends LibraryCoreFeedPageSourceV1 {
   readonly generationId: LibraryCoreFeedPageSourceV1["generationId"];
@@ -44,6 +75,16 @@ interface FeedRowRecord {
   readonly row: LibraryCoreFeedCardV1;
 }
 
+interface BrowseFeedRowRecord {
+  readonly generationId: string;
+  readonly orderKey: string;
+  readonly globalId: string;
+  readonly priority: number;
+  readonly publishedAt: number;
+  readonly sourceSequence: number;
+  readonly row: LibraryCoreFeedCardV1;
+}
+
 interface GenerationBatchRecord {
   readonly generationId: string;
   readonly batchIndex: number;
@@ -53,7 +94,9 @@ interface GenerationBatchRecord {
 }
 
 interface SelectedGenerationRecord {
-  readonly key: typeof SELECTED_GENERATION_KEY;
+  readonly key:
+    | typeof SELECTED_GENERATION_KEY
+    | typeof SELECTED_BROWSE_GENERATION_KEY;
   readonly generationId: string;
   readonly selectionSequence: number;
 }
@@ -68,6 +111,16 @@ interface ReaderRequestIdentity {
   readonly cancellationId: string;
   readonly cursor: string | null;
   readonly limit: number;
+}
+
+interface AppendStoredGenerationPageInput {
+  readonly batchIndex: number;
+  readonly label: string;
+  readonly rowCount: number;
+  readonly rowsDigest: string;
+  readonly source: LibraryCoreFeedPageSourceV1;
+  readonly stores: GenerationStoreNames;
+  readonly writeRows: (store: IDBObjectStore) => void;
 }
 
 type SessionAdmission =
@@ -116,6 +169,23 @@ export interface AppendPwaLibraryCoreFeedGenerationPageInput {
   readonly source: LibraryCoreFeedPageSourceV1;
   readonly batchIndex: number;
   readonly rows: readonly LibraryCoreFeedCardV1[];
+}
+
+export interface PwaLibraryCoreBrowseProjectedRowV1 {
+  readonly priority: number;
+  readonly row: LibraryCoreFeedCardV1;
+  readonly sourceSequence: number;
+}
+
+export interface BeginPwaLibraryCoreBrowseGenerationInput {
+  readonly source: LibraryCoreFeedPageSourceV1;
+  readonly totalCount: number;
+}
+
+export interface AppendPwaLibraryCoreBrowseGenerationPageInput {
+  readonly source: LibraryCoreFeedPageSourceV1;
+  readonly batchIndex: number;
+  readonly rows: readonly PwaLibraryCoreBrowseProjectedRowV1[];
 }
 
 export type PwaLibraryCoreFeedGenerationState = "complete" | "staging";
@@ -173,6 +243,20 @@ function feedRowOrderKey(row: LibraryCoreFeedCardV1): string {
   const sortAt = row.publishedAt ?? 0;
   return `${reverseSortKey(sortAt)}\u0000${lowerHex(
     TEXT_ENCODER.encode(row.globalId).buffer,
+  )}`;
+}
+
+function forwardSortKey(value: number): string {
+  return value.toString(16).padStart(14, "0");
+}
+
+function browseFeedRowOrderKey(
+  value: PwaLibraryCoreBrowseProjectedRowV1,
+): string {
+  return `${(100 - value.priority).toString(16).padStart(2, "0")}\u0000${
+    reverseSortKey(value.row.publishedAt ?? 0)
+  }\u0000${forwardSortKey(value.sourceSequence)}\u0000${lowerHex(
+    TEXT_ENCODER.encode(value.row.globalId).buffer,
   )}`;
 }
 
@@ -256,6 +340,59 @@ function snapshotRows(
   return Object.freeze(rows);
 }
 
+function snapshotBrowseRows(
+  value: readonly PwaLibraryCoreBrowseProjectedRowV1[],
+): readonly PwaLibraryCoreBrowseProjectedRowV1[] {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > MAXIMUM_STAGING_PAGE_ROWS
+  ) {
+    throw new TypeError(
+      "a PWA Library Core browse generation page must contain 1 through 128 rows",
+    );
+  }
+
+  const rows: PwaLibraryCoreBrowseProjectedRowV1[] = [];
+  const orderKeys = new Set<string>();
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
+      throw new TypeError("browse generation rows must be one dense data array");
+    }
+    const candidate = descriptor.value as Partial<PwaLibraryCoreBrowseProjectedRowV1>;
+    const parsed = parseLibraryCoreFeedCardV1(candidate?.row);
+    if (!parsed.ok) throw new TypeError(parsed.error);
+    if (
+      !Number.isSafeInteger(candidate.priority) ||
+      (candidate.priority ?? -1) < 0 ||
+      (candidate.priority ?? 101) > 100
+    ) {
+      throw new TypeError("browse generation row priority must be 0 through 100");
+    }
+    if (
+      !Number.isSafeInteger(candidate.sourceSequence) ||
+      (candidate.sourceSequence ?? -1) < 0
+    ) {
+      throw new TypeError(
+        "browse generation row sourceSequence must be nonnegative and safe",
+      );
+    }
+    const row = Object.freeze({
+      priority: candidate.priority,
+      row: parsed.value,
+      sourceSequence: candidate.sourceSequence,
+    }) as PwaLibraryCoreBrowseProjectedRowV1;
+    const orderKey = browseFeedRowOrderKey(row);
+    if (orderKeys.has(orderKey)) {
+      throw new TypeError("browse generation page repeats one ordered row");
+    }
+    orderKeys.add(orderKey);
+    rows.push(row);
+  }
+  return Object.freeze(rows);
+}
+
 /**
  * Dormant row-oriented browser implementation of `feed_page_v1`.
  *
@@ -287,50 +424,21 @@ class PwaLibraryCoreFeedReaderRuntime {
   async beginGeneration(
     input: BeginPwaLibraryCoreFeedGenerationInput,
   ): Promise<PwaLibraryCoreFeedGenerationState> {
-    this.#requireAvailable();
-    const source = snapshotSource(input.source);
-    if (!Number.isSafeInteger(input.totalCount) || input.totalCount < 0) {
-      throw new TypeError("generation totalCount must be nonnegative and safe");
-    }
-
-    const database = await this.#database();
-    const transaction = database.transaction(
-      [GENERATIONS_STORE],
-      "readwrite",
+    return this.#beginStoredGeneration(
+      input,
+      DEFAULT_GENERATION_STORES,
+      "generation",
     );
-    const store = transaction.objectStore(GENERATIONS_STORE);
-    const existing = (await requestResult(
-      store.get(source.generationId),
-    )) as GenerationRecord | undefined;
-    if (existing) {
-      if (
-        sourceMatches(existing, source) &&
-        existing.totalCount === input.totalCount
-      ) {
-        await transactionDone(transaction);
-        return existing.status;
-      }
-      transaction.abort();
-      throw new Error("generation identity already exists with different state");
-    }
-    const generations = (await requestResult(
-      store.getAll(),
-    )) as GenerationRecord[];
-    if (generations.some((generation) => generation.status === "staging")) {
-      transaction.abort();
-      throw new Error("another PWA Library Core generation is still staging");
-    }
+  }
 
-    store.add({
-      ...source,
-      status: "staging",
-      totalCount: input.totalCount,
-      writtenCount: 0,
-      nextBatchIndex: 0,
-      selectedSequence: null,
-    } satisfies GenerationRecord);
-    await transactionDone(transaction);
-    return "staging";
+  async beginBrowseGeneration(
+    input: BeginPwaLibraryCoreBrowseGenerationInput,
+  ): Promise<PwaLibraryCoreFeedGenerationState> {
+    return this.#beginStoredGeneration(
+      input,
+      BROWSE_GENERATION_STORES,
+      "browse generation",
+    );
   }
 
   async appendGenerationPage(
@@ -342,166 +450,89 @@ class PwaLibraryCoreFeedReaderRuntime {
       throw new TypeError("generation batchIndex must be nonnegative and safe");
     }
     const rows = snapshotRows(input.rows);
-    const encodedRows = TEXT_ENCODER.encode(JSON.stringify(rows));
-    const rowsDigest = lowerHex(
-      await this.#subtle.digest("SHA-256", encodedRows),
-    );
-    const database = await this.#database();
-    const transaction = database.transaction(
-      [GENERATIONS_STORE, ROWS_STORE, BATCHES_STORE],
-      "readwrite",
-    );
-    const generations = transaction.objectStore(GENERATIONS_STORE);
-    const feedRows = transaction.objectStore(ROWS_STORE);
-    const batches = transaction.objectStore(BATCHES_STORE);
-    const generation = (await requestResult(
-      generations.get(source.generationId),
-    )) as GenerationRecord | undefined;
-    if (
-      !generation ||
-      generation.status !== "staging" ||
-      !sourceMatches(generation, source)
-    ) {
-      transaction.abort();
-      throw new Error("generation is absent, complete, or source-mismatched");
-    }
-
-    const existingBatch = (await requestResult(
-      batches.get([source.generationId, input.batchIndex]),
-    )) as GenerationBatchRecord | undefined;
-    if (existingBatch) {
-      if (
-        existingBatch.rowsDigest === rowsDigest &&
-        existingBatch.rowCount === rows.length &&
-        existingBatch.writtenCountAfter <= generation.writtenCount &&
-        generation.nextBatchIndex > input.batchIndex
-      ) {
-        await transactionDone(transaction);
-        return;
-      }
-      transaction.abort();
-      throw new Error("generation batch replay changed its exact rows");
-    }
-    if (
-      generation.nextBatchIndex !== input.batchIndex ||
-      generation.writtenCount + rows.length > generation.totalCount
-    ) {
-      transaction.abort();
-      throw new Error("generation page is skipped, reordered, or oversized");
-    }
-
-    for (const row of rows) {
-      const sortAt = row.publishedAt ?? 0;
-      feedRows.add({
-        generationId: source.generationId,
-        orderKey: feedRowOrderKey(row),
-        globalId: row.globalId,
-        sortAt,
-        row,
-      } satisfies FeedRowRecord);
-    }
-    batches.add({
-      generationId: source.generationId,
+    await this.#appendStoredGenerationPage({
       batchIndex: input.batchIndex,
+      label: "generation",
       rowCount: rows.length,
-      rowsDigest,
-      writtenCountAfter: generation.writtenCount + rows.length,
-    } satisfies GenerationBatchRecord);
-    generations.put({
-      ...generation,
-      writtenCount: generation.writtenCount + rows.length,
-      nextBatchIndex: generation.nextBatchIndex + 1,
-    } satisfies GenerationRecord);
-    await transactionDone(transaction);
+      rowsDigest: await this.#rowsDigest(rows),
+      source,
+      stores: DEFAULT_GENERATION_STORES,
+      writeRows(feedRows) {
+        for (const row of rows) {
+          const sortAt = row.publishedAt ?? 0;
+          feedRows.add({
+            generationId: source.generationId,
+            orderKey: feedRowOrderKey(row),
+            globalId: row.globalId,
+            sortAt,
+            row,
+          } satisfies FeedRowRecord);
+        }
+      },
+    });
+  }
+
+  async appendBrowseGenerationPage(
+    input: AppendPwaLibraryCoreBrowseGenerationPageInput,
+  ): Promise<void> {
+    this.#requireAvailable();
+    const source = snapshotSource(input.source);
+    if (!Number.isSafeInteger(input.batchIndex) || input.batchIndex < 0) {
+      throw new TypeError(
+        "browse generation batchIndex must be nonnegative and safe",
+      );
+    }
+    const rows = snapshotBrowseRows(input.rows);
+    await this.#appendStoredGenerationPage({
+      batchIndex: input.batchIndex,
+      label: "browse generation",
+      rowCount: rows.length,
+      rowsDigest: await this.#rowsDigest(rows),
+      source,
+      stores: BROWSE_GENERATION_STORES,
+      writeRows(feedRows) {
+        for (const projected of rows) {
+          feedRows.add({
+            generationId: source.generationId,
+            orderKey: browseFeedRowOrderKey(projected),
+            globalId: projected.row.globalId,
+            priority: projected.priority,
+            publishedAt: projected.row.publishedAt ?? 0,
+            sourceSequence: projected.sourceSequence,
+            row: projected.row,
+          } satisfies BrowseFeedRowRecord);
+        }
+      },
+    });
   }
 
   async finalizeGeneration(
     sourceValue: LibraryCoreFeedPageSourceV1,
   ): Promise<void> {
-    this.#requireAvailable();
-    const source = snapshotSource(sourceValue);
-    const database = await this.#database();
-    const transaction = database.transaction(
-      [GENERATIONS_STORE, ROWS_STORE, CONTROL_STORE],
-      "readwrite",
+    const source = await this.#finalizeStoredGeneration(
+      sourceValue,
+      DEFAULT_GENERATION_STORES,
+      "generation",
     );
-    const generations = transaction.objectStore(GENERATIONS_STORE);
-    const rows = transaction.objectStore(ROWS_STORE);
-    const control = transaction.objectStore(CONTROL_STORE);
-    const generation = (await requestResult(
-      generations.get(source.generationId),
-    )) as GenerationRecord | undefined;
-    const selected = (await requestResult(
-      control.get(SELECTED_GENERATION_KEY),
-    )) as SelectedGenerationRecord | undefined;
-    if (generation?.status === "complete" && sourceMatches(generation, source)) {
-      if (
-        selected?.generationId === source.generationId &&
-        generation.selectedSequence !== selected.selectionSequence
-      ) {
-        transaction.abort();
-        throw new Error(
-          "completed generation selection sequence is inconsistent",
-        );
-      }
-      if (selected?.generationId !== source.generationId) {
-        const selectionSequence = (selected?.selectionSequence ?? 0) + 1;
-        if (!Number.isSafeInteger(selectionSequence)) {
-          transaction.abort();
-          throw new Error("generation selection sequence exhausted");
-        }
-        generations.put({
-          ...generation,
-          selectedSequence: selectionSequence,
-        } satisfies GenerationRecord);
-        control.put({
-          key: SELECTED_GENERATION_KEY,
-          generationId: source.generationId,
-          selectionSequence,
-        } satisfies SelectedGenerationRecord);
-      }
-      await transactionDone(transaction);
-      this.#sessions.clear();
-      await this.#pruneOldGenerations(source.generationId);
-      return;
-    }
-    if (
-      !generation ||
-      generation.status !== "staging" ||
-      !sourceMatches(generation, source)
-    ) {
-      transaction.abort();
-      throw new Error("generation is absent, complete, or source-mismatched");
-    }
-    const actualCount = await requestResult(
-      rows.count(generationRange(this.#keyRange, source.generationId)),
-    );
-    if (
-      generation.writtenCount !== generation.totalCount ||
-      actualCount !== generation.totalCount
-    ) {
-      transaction.abort();
-      throw new Error("generation cannot publish before every row is durable");
-    }
-
-    const selectionSequence = (selected?.selectionSequence ?? 0) + 1;
-    if (!Number.isSafeInteger(selectionSequence)) {
-      transaction.abort();
-      throw new Error("generation selection sequence exhausted");
-    }
-    generations.put({
-      ...generation,
-      status: "complete",
-      selectedSequence: selectionSequence,
-    } satisfies GenerationRecord);
-    control.put({
-      key: SELECTED_GENERATION_KEY,
-      generationId: source.generationId,
-      selectionSequence,
-    } satisfies SelectedGenerationRecord);
-    await transactionDone(transaction);
     this.#sessions.clear();
-    await this.#pruneOldGenerations(source.generationId);
+    await this.#pruneStoredGenerations(
+      source.generationId,
+      DEFAULT_GENERATION_STORES,
+    );
+  }
+
+  async finalizeBrowseGeneration(
+    sourceValue: LibraryCoreFeedPageSourceV1,
+  ): Promise<void> {
+    const source = await this.#finalizeStoredGeneration(
+      sourceValue,
+      BROWSE_GENERATION_STORES,
+      "browse generation",
+    );
+    await this.#pruneStoredGenerations(
+      source.generationId,
+      BROWSE_GENERATION_STORES,
+    );
   }
 
   async readFeedPage(
@@ -749,6 +780,229 @@ class PwaLibraryCoreFeedReaderRuntime {
     }
   }
 
+  async #beginStoredGeneration(
+    input: BeginPwaLibraryCoreFeedGenerationInput,
+    stores: GenerationStoreNames,
+    label: string,
+  ): Promise<PwaLibraryCoreFeedGenerationState> {
+    this.#requireAvailable();
+    const source = snapshotSource(input.source);
+    if (!Number.isSafeInteger(input.totalCount) || input.totalCount < 0) {
+      throw new TypeError(
+        `${label} totalCount must be nonnegative and safe`,
+      );
+    }
+
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [stores.generations],
+      "readwrite",
+    );
+    const store = transaction.objectStore(stores.generations);
+    const existing = (await requestResult(
+      store.get(source.generationId),
+    )) as GenerationRecord | undefined;
+    if (existing) {
+      if (
+        sourceMatches(existing, source) &&
+        existing.totalCount === input.totalCount
+      ) {
+        await transactionDone(transaction);
+        return existing.status;
+      }
+      transaction.abort();
+      throw new Error(
+        `${label} identity already exists with different state`,
+      );
+    }
+    const generations = (await requestResult(
+      store.getAll(),
+    )) as GenerationRecord[];
+    if (generations.some((generation) => generation.status === "staging")) {
+      transaction.abort();
+      throw new Error(
+        `another PWA Library Core ${label} is still staging`,
+      );
+    }
+
+    store.add({
+      ...source,
+      status: "staging",
+      totalCount: input.totalCount,
+      writtenCount: 0,
+      nextBatchIndex: 0,
+      selectedSequence: null,
+    } satisfies GenerationRecord);
+    await transactionDone(transaction);
+    return "staging";
+  }
+
+  async #rowsDigest(value: unknown): Promise<string> {
+    return lowerHex(
+      await this.#subtle.digest(
+        "SHA-256",
+        TEXT_ENCODER.encode(JSON.stringify(value)),
+      ),
+    );
+  }
+
+  async #appendStoredGenerationPage(
+    input: AppendStoredGenerationPageInput,
+  ): Promise<void> {
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [input.stores.generations, input.stores.rows, input.stores.batches],
+      "readwrite",
+    );
+    const generations = transaction.objectStore(input.stores.generations);
+    const rows = transaction.objectStore(input.stores.rows);
+    const batches = transaction.objectStore(input.stores.batches);
+    const generation = (await requestResult(
+      generations.get(input.source.generationId),
+    )) as GenerationRecord | undefined;
+    if (
+      !generation ||
+      generation.status !== "staging" ||
+      !sourceMatches(generation, input.source)
+    ) {
+      transaction.abort();
+      throw new Error(
+        `${input.label} is absent, complete, or source-mismatched`,
+      );
+    }
+
+    const existingBatch = (await requestResult(
+      batches.get([input.source.generationId, input.batchIndex]),
+    )) as GenerationBatchRecord | undefined;
+    if (existingBatch) {
+      if (
+        existingBatch.rowsDigest === input.rowsDigest &&
+        existingBatch.rowCount === input.rowCount &&
+        existingBatch.writtenCountAfter <= generation.writtenCount &&
+        generation.nextBatchIndex > input.batchIndex
+      ) {
+        await transactionDone(transaction);
+        return;
+      }
+      transaction.abort();
+      throw new Error(`${input.label} batch replay changed its exact rows`);
+    }
+    if (
+      generation.nextBatchIndex !== input.batchIndex ||
+      generation.writtenCount + input.rowCount > generation.totalCount
+    ) {
+      transaction.abort();
+      throw new Error(
+        `${input.label} page is skipped, reordered, or oversized`,
+      );
+    }
+
+    input.writeRows(rows);
+    batches.add({
+      generationId: input.source.generationId,
+      batchIndex: input.batchIndex,
+      rowCount: input.rowCount,
+      rowsDigest: input.rowsDigest,
+      writtenCountAfter: generation.writtenCount + input.rowCount,
+    } satisfies GenerationBatchRecord);
+    generations.put({
+      ...generation,
+      writtenCount: generation.writtenCount + input.rowCount,
+      nextBatchIndex: generation.nextBatchIndex + 1,
+    } satisfies GenerationRecord);
+    await transactionDone(transaction);
+  }
+
+  async #finalizeStoredGeneration(
+    sourceValue: LibraryCoreFeedPageSourceV1,
+    stores: GenerationStoreNames,
+    label: string,
+  ): Promise<LibraryCoreFeedPageSourceV1> {
+    this.#requireAvailable();
+    const source = snapshotSource(sourceValue);
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [stores.generations, stores.rows, stores.control],
+      "readwrite",
+    );
+    const generations = transaction.objectStore(stores.generations);
+    const rows = transaction.objectStore(stores.rows);
+    const control = transaction.objectStore(stores.control);
+    const generation = (await requestResult(
+      generations.get(source.generationId),
+    )) as GenerationRecord | undefined;
+    const selected = (await requestResult(
+      control.get(stores.selectedKey),
+    )) as SelectedGenerationRecord | undefined;
+    if (generation?.status === "complete" && sourceMatches(generation, source)) {
+      if (
+        selected?.generationId === source.generationId &&
+        generation.selectedSequence !== selected.selectionSequence
+      ) {
+        transaction.abort();
+        throw new Error(
+          `completed ${label} selection sequence is inconsistent`,
+        );
+      }
+      if (selected?.generationId !== source.generationId) {
+        const selectionSequence = (selected?.selectionSequence ?? 0) + 1;
+        if (!Number.isSafeInteger(selectionSequence)) {
+          transaction.abort();
+          throw new Error(`${label} selection sequence exhausted`);
+        }
+        generations.put({
+          ...generation,
+          selectedSequence: selectionSequence,
+        } satisfies GenerationRecord);
+        control.put({
+          key: stores.selectedKey,
+          generationId: source.generationId,
+          selectionSequence,
+        } satisfies SelectedGenerationRecord);
+      }
+      await transactionDone(transaction);
+      return source;
+    }
+    if (
+      !generation ||
+      generation.status !== "staging" ||
+      !sourceMatches(generation, source)
+    ) {
+      transaction.abort();
+      throw new Error(`${label} is absent, complete, or source-mismatched`);
+    }
+    const actualCount = await requestResult(
+      rows.count(generationRange(this.#keyRange, source.generationId)),
+    );
+    if (
+      generation.writtenCount !== generation.totalCount ||
+      actualCount !== generation.totalCount
+    ) {
+      transaction.abort();
+      throw new Error(
+        `${label} cannot publish before every row is durable`,
+      );
+    }
+
+    const selectionSequence = (selected?.selectionSequence ?? 0) + 1;
+    if (!Number.isSafeInteger(selectionSequence)) {
+      transaction.abort();
+      throw new Error(`${label} selection sequence exhausted`);
+    }
+    generations.put({
+      ...generation,
+      status: "complete",
+      selectedSequence: selectionSequence,
+    } satisfies GenerationRecord);
+    control.put({
+      key: stores.selectedKey,
+      generationId: source.generationId,
+      selectionSequence,
+    } satisfies SelectedGenerationRecord);
+    await transactionDone(transaction);
+    return source;
+  }
+
   #database(): Promise<IDBDatabase> {
     this.#requireAvailable();
     if (!this.#databasePromise) {
@@ -782,6 +1036,36 @@ class PwaLibraryCoreFeedReaderRuntime {
           if (!database.objectStoreNames.contains(CONTROL_STORE)) {
             database.createObjectStore(CONTROL_STORE, { keyPath: "key" });
           }
+          if (!database.objectStoreNames.contains(BROWSE_GENERATIONS_STORE)) {
+            database.createObjectStore(BROWSE_GENERATIONS_STORE, {
+              keyPath: "generationId",
+            });
+          }
+          if (!database.objectStoreNames.contains(BROWSE_ROWS_STORE)) {
+            const browseRows = database.createObjectStore(BROWSE_ROWS_STORE, {
+              keyPath: ["generationId", "orderKey"],
+            });
+            browseRows.createIndex(
+              "browse_generation_global_id",
+              ["generationId", "globalId"],
+              { unique: true },
+            );
+            browseRows.createIndex(
+              "browse_generation_source_sequence",
+              ["generationId", "sourceSequence"],
+              { unique: true },
+            );
+          }
+          if (!database.objectStoreNames.contains(BROWSE_BATCHES_STORE)) {
+            database.createObjectStore(BROWSE_BATCHES_STORE, {
+              keyPath: ["generationId", "batchIndex"],
+            });
+          }
+          if (!database.objectStoreNames.contains(BROWSE_CONTROL_STORE)) {
+            database.createObjectStore(BROWSE_CONTROL_STORE, {
+              keyPath: "key",
+            });
+          }
         });
         request.addEventListener(
           "success",
@@ -813,14 +1097,17 @@ class PwaLibraryCoreFeedReaderRuntime {
     return this.#databasePromise;
   }
 
-  async #pruneOldGenerations(selectedGenerationId: string): Promise<void> {
+  async #pruneStoredGenerations(
+    selectedGenerationId: string,
+    stores: GenerationStoreNames,
+  ): Promise<void> {
     const database = await this.#database();
     const transaction = database.transaction(
-      [GENERATIONS_STORE],
+      [stores.generations],
       "readonly",
     );
     const generations = (await requestResult(
-      transaction.objectStore(GENERATIONS_STORE).getAll(),
+      transaction.objectStore(stores.generations).getAll(),
     )) as GenerationRecord[];
     await transactionDone(transaction);
     const retained = generations
@@ -835,25 +1122,28 @@ class PwaLibraryCoreFeedReaderRuntime {
       );
     const obsolete = retained.slice(MAXIMUM_RETAINED_GENERATIONS - 1);
     for (const generation of obsolete) {
-      await this.#deleteGeneration(generation.generationId);
+      await this.#deleteStoredGeneration(generation.generationId, stores);
     }
   }
 
-  async #deleteGeneration(generationId: string): Promise<void> {
+  async #deleteStoredGeneration(
+    generationId: string,
+    stores: GenerationStoreNames,
+  ): Promise<void> {
     const database = await this.#database();
     const transaction = database.transaction(
-      [GENERATIONS_STORE, ROWS_STORE, BATCHES_STORE],
+      [stores.generations, stores.rows, stores.batches],
       "readwrite",
     );
     const range = generationRange(this.#keyRange, generationId);
-    transaction.objectStore(ROWS_STORE).delete(range);
-    transaction.objectStore(BATCHES_STORE).delete(
+    transaction.objectStore(stores.rows).delete(range);
+    transaction.objectStore(stores.batches).delete(
       this.#keyRange.bound(
         [generationId, 0],
         [generationId, Number.MAX_SAFE_INTEGER],
       ),
     );
-    transaction.objectStore(GENERATIONS_STORE).delete(generationId);
+    transaction.objectStore(stores.generations).delete(generationId);
     await transactionDone(transaction);
   }
 }

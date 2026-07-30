@@ -356,6 +356,141 @@ test("dormant IndexedDB feed reader preserves bounded session and generation sem
   expect(result.workerBridgeCancellation).toBe(false);
 });
 
+test("dormant browse projection upgrades v1 and persists exact recommendation order", async ({
+  page,
+}) => {
+  await page.goto("/favicon.svg");
+
+  const result = await page.evaluate(async () => {
+    const databaseName = `freed-library-core-browse-${crypto.randomUUID()}`;
+    const legacyDatabase = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(databaseName, 1);
+      request.onupgradeneeded = () => {
+        const database = request.result;
+        database.createObjectStore("generations", {
+          keyPath: "generationId",
+        });
+        database.createObjectStore("feed_rows", {
+          keyPath: ["generationId", "orderKey"],
+        });
+        database.createObjectStore("generation_batches", {
+          keyPath: ["generationId", "batchIndex"],
+        });
+        database.createObjectStore("control", { keyPath: "key" });
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    legacyDatabase.close();
+
+    const modulePath = "/src/lib/library-core-feed-reader-runtime.ts";
+    const { createPwaLibraryCoreFeedReaderRuntime } = await import(modulePath);
+    const runtime = createPwaLibraryCoreFeedReaderRuntime({
+      databaseName,
+      indexedDb: indexedDB,
+      keyRange: IDBKeyRange,
+      subtle: crypto.subtle,
+    });
+    const source = {
+      generationId: "c".repeat(64),
+      projectionRevision: 11,
+      transitionSequence: 6,
+    };
+    const row = (globalId: string, publishedAt: number) => ({
+      archived: false,
+      authorAvatarUrl: null,
+      authorDisplayName: null,
+      authorHandle: null,
+      authorId: null,
+      capturedAt: publishedAt,
+      contentSignalTags: [],
+      contentText: globalId,
+      contentType: "post",
+      engagementComments: null,
+      engagementLikes: null,
+      eventConfidenceBasisPoints: null,
+      eventStartsAt: null,
+      globalId,
+      liked: false,
+      likedAt: null,
+      likedSyncedAt: null,
+      linkPreviewTitle: null,
+      locationName: null,
+      mediaTypes: [],
+      mediaUrls: [],
+      platform: "x",
+      publishedAt,
+      readAt: null,
+      readingTimeMinutes: null,
+      saved: false,
+      sourceUrl: null,
+      tags: [],
+    });
+
+    await runtime.beginBrowseGeneration({ source, totalCount: 4 });
+    await runtime.appendBrowseGenerationPage({
+      source,
+      batchIndex: 0,
+      rows: [
+        { priority: 40, row: row("source-first", 100), sourceSequence: 0 },
+        { priority: 80, row: row("newer-high", 300), sourceSequence: 1 },
+        { priority: 80, row: row("source-second", 200), sourceSequence: 3 },
+        { priority: 80, row: row("source-earlier", 200), sourceSequence: 2 },
+      ],
+    });
+    await runtime.finalizeBrowseGeneration(source);
+    await runtime.quiesce();
+
+    const orderedRows = await new Promise<
+      Array<{ globalId: string; orderKey: string }>
+    >((resolve, reject) => {
+      const request = indexedDB.open(databaseName, 2);
+      request.onsuccess = () => {
+        const database = request.result;
+        const transaction = database.transaction("browse_rows", "readonly");
+        const rows: Array<{ globalId: string; orderKey: string }> = [];
+        const cursorRequest = transaction.objectStore("browse_rows").openCursor();
+        cursorRequest.onsuccess = () => {
+          const cursor = cursorRequest.result;
+          if (!cursor) return;
+          rows.push(cursor.value);
+          cursor.continue();
+        };
+        transaction.oncomplete = () => {
+          database.close();
+          resolve(rows);
+        };
+        transaction.onerror = () => reject(transaction.error);
+      };
+      request.onerror = () => reject(request.error);
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      const deletion = indexedDB.deleteDatabase(databaseName);
+      deletion.onsuccess = () => resolve();
+      deletion.onerror = () => reject(deletion.error);
+      deletion.onblocked = () =>
+        reject(new Error("browse test database deletion was blocked"));
+    });
+    return {
+      orderedIds: orderedRows.map(({ globalId }) => globalId),
+      uniqueOrderKeys: new Set(
+        orderedRows.map(({ orderKey }) => orderKey),
+      ).size,
+    };
+  });
+
+  expect(result).toStrictEqual({
+    orderedIds: [
+      "newer-high",
+      "source-earlier",
+      "source-second",
+      "source-first",
+    ],
+    uniqueOrderKeys: 4,
+  });
+});
+
 test("committed Automerge heads materialize one resumable bounded feed generation", async ({
   page,
 }) => {
@@ -405,11 +540,15 @@ test("committed Automerge heads materialize one resumable bounded feed generatio
     await client.docAddFeedItems([
       item("x:older", 100),
       item("x:hidden", 400, { hidden: true }),
-      item("x:newer", 300),
+      item("x:newer", 300, { saved: true }),
       item("x:archived", 500, { archived: true }),
     ]);
     const first = await client.materializeLibraryCoreFeedGeneration();
     const replay = await client.materializeLibraryCoreFeedGeneration();
+    const browse = await client.materializeLibraryCoreFeedBrowseGeneration(
+      { savedOnly: true },
+      1_000,
+    );
     const pageResult = await client.readLibraryCoreFeedPage({
       cancellationId: "materializer-cancellation",
       cursor: null,
@@ -429,10 +568,18 @@ test("committed Automerge heads materialize one resumable bounded feed generatio
       deletion.onblocked = () =>
         reject(new Error("test database deletion was blocked"));
     });
-    return { first, pageResult, replay };
+    return { browse, first, pageResult, replay };
   });
 
   expect(result.first).toStrictEqual(result.replay);
+  expect(result.browse).toMatchObject({
+    filter: { savedOnly: true, schemaVersion: 1 },
+    rankingClockMs: 1_000,
+    totalCount: 1,
+  });
+  expect(result.browse.source.generationId).not.toBe(
+    result.first.source.generationId,
+  );
   expect(result.first).toMatchObject({ totalCount: 2 });
   expect(result.first.source.generationId).toMatch(/^[0-9a-f]{64}$/);
   expect(result.first.source.projectionRevision).toBeGreaterThan(0);

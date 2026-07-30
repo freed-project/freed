@@ -171,6 +171,10 @@ export const PWA_AUTOMERGE_WORKER_REQUEST_SURFACE_REGISTRY = {
     "library_core_local_projection",
     "response_transport_not_cut_over",
   ),
+  MATERIALIZE_LIBRARY_CORE_FEED_BROWSE_GENERATION: blockedSurface(
+    "library_core_local_projection",
+    "response_transport_not_cut_over",
+  ),
   READ_LIBRARY_CORE_FEED_PAGE: blockedSurface(
     "library_core_bounded_read",
     "response_transport_not_cut_over",
@@ -362,6 +366,8 @@ export const PWA_AUTOMERGE_REQUEST_EFFECT_REGISTRY = {
   COMPARE_DOC: noWriteEffect(),
   GET_ITEM_LEGACY_HTML: noWriteEffect(),
   MATERIALIZE_LIBRARY_CORE_FEED_GENERATION: libraryCoreProjectionWrite(),
+  MATERIALIZE_LIBRARY_CORE_FEED_BROWSE_GENERATION:
+    libraryCoreProjectionWrite(),
   READ_LIBRARY_CORE_FEED_PAGE: noWriteEffect(),
   CANCEL_LIBRARY_CORE_FEED_READER: noWriteEffect(),
   CLEAR_LOCAL: hiddenWrite(
@@ -413,6 +419,10 @@ export const PWA_AUTOMERGE_WORKER_RESPONSE_SURFACE_REGISTRY = {
     "unbounded_payload",
   ),
   LIBRARY_CORE_FEED_GENERATION_RESULT: blockedSurface(
+    "library_core_bounded_transport",
+    "response_transport_not_cut_over",
+  ),
+  LIBRARY_CORE_FEED_BROWSE_GENERATION_RESULT: blockedSurface(
     "library_core_bounded_transport",
     "response_transport_not_cut_over",
   ),

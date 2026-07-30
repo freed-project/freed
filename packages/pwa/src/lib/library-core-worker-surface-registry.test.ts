@@ -157,6 +157,28 @@ describe("PWA Library Core worker surface census", () => {
     });
     expect(
       PWA_AUTOMERGE_WORKER_REQUEST_SURFACE_REGISTRY
+        .MATERIALIZE_LIBRARY_CORE_FEED_BROWSE_GENERATION,
+    ).toStrictEqual({
+      status: "planned_blocked",
+      classification: "library_core_local_projection",
+      blockers: [
+        "library_core_runtime_inactive",
+        "response_transport_not_cut_over",
+      ],
+    });
+    expect(
+      PWA_AUTOMERGE_REQUEST_EFFECT_REGISTRY
+        .MATERIALIZE_LIBRARY_CORE_FEED_BROWSE_GENERATION,
+    ).toStrictEqual({
+      legacyWriteEffects: [],
+      libraryCoreWriteEffects: [
+        "library_core_projection_generation_write",
+      ],
+      successorOperationIds: [],
+      blockers: ["response_transport_not_cut_over"],
+    });
+    expect(
+      PWA_AUTOMERGE_WORKER_REQUEST_SURFACE_REGISTRY
         .READ_LIBRARY_CORE_FEED_PAGE,
     ).toStrictEqual({
       status: "planned_blocked",
@@ -186,6 +208,10 @@ describe("PWA Library Core worker surface census", () => {
     expect(
       PWA_AUTOMERGE_WORKER_RESPONSE_SURFACE_REGISTRY
         .LIBRARY_CORE_FEED_GENERATION_RESULT.classification,
+    ).toBe("library_core_bounded_transport");
+    expect(
+      PWA_AUTOMERGE_WORKER_RESPONSE_SURFACE_REGISTRY
+        .LIBRARY_CORE_FEED_BROWSE_GENERATION_RESULT.classification,
     ).toBe("library_core_bounded_transport");
   });
 

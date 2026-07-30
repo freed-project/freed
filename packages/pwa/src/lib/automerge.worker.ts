@@ -82,6 +82,7 @@ import type {
   WorkerResponse,
 } from "./automerge-types";
 import { materializePwaLibraryCoreFeedGeneration } from "./library-core-feed-materializer";
+import { materializePwaLibraryCoreFeedBrowseGeneration } from "./library-core-feed-browse-materializer";
 import { createPwaLibraryCoreFeedReaderRuntime } from "./library-core-feed-reader-runtime";
 
 // ---------------------------------------------------------------------------
@@ -1077,6 +1078,23 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
           type: "LIBRARY_CORE_FEED_GENERATION_RESULT",
           source: result.source,
           totalCount: result.totalCount,
+        });
+        break;
+      }
+
+      case "MATERIALIZE_LIBRARY_CORE_FEED_BROWSE_GENERATION": {
+        if (!currentDoc) throw new Error("Document not initialized");
+        send({
+          reqId: req.reqId,
+          type: "LIBRARY_CORE_FEED_BROWSE_GENERATION_RESULT",
+          result: await materializePwaLibraryCoreFeedBrowseGeneration({
+            committed: persistence.current(),
+            document: currentDoc,
+            filter: req.filter,
+            rankingClockMs: req.rankingClockMs,
+            subtle: crypto.subtle,
+            writer: getLibraryCoreFeedReader(),
+          }),
         });
         break;
       }

@@ -21,10 +21,12 @@ import type {
 } from "@freed/shared";
 import type { DocumentHistoryRelation } from "@freed/shared/schema";
 import type {
+  LibraryCoreFeedBrowseFilterInputV1,
   LibraryCoreFeedPageRequestV1,
   LibraryCoreFeedPageSourceV1,
 } from "@freed/shared/library-core";
 import type { StorageRevision } from "@freed/sync/types";
+import type { MaterializePwaLibraryCoreFeedBrowseGenerationResult } from "./library-core-feed-browse-materializer";
 import type { PwaLibraryCoreFeedReaderResult } from "./library-core-feed-reader-runtime";
 
 export type { DocumentHistoryRelation } from "@freed/shared/schema";
@@ -173,6 +175,12 @@ export type WorkerRequest =
   | { reqId: number; type: "MATERIALIZE_LIBRARY_CORE_FEED_GENERATION" }
   | {
       reqId: number;
+      type: "MATERIALIZE_LIBRARY_CORE_FEED_BROWSE_GENERATION";
+      filter?: LibraryCoreFeedBrowseFilterInputV1;
+      rankingClockMs: number;
+    }
+  | {
+      reqId: number;
       type: "READ_LIBRARY_CORE_FEED_PAGE";
       request: LibraryCoreFeedPageRequestV1;
     }
@@ -231,6 +239,11 @@ export type WorkerResponse =
       type: "LIBRARY_CORE_FEED_GENERATION_RESULT";
       source: LibraryCoreFeedPageSourceV1;
       totalCount: number;
+    }
+  | {
+      reqId: number;
+      type: "LIBRARY_CORE_FEED_BROWSE_GENERATION_RESULT";
+      result: MaterializePwaLibraryCoreFeedBrowseGenerationResult;
     }
   | {
       reqId: number;

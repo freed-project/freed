@@ -21,7 +21,10 @@ import type {
   SampleDataClearSummary,
   UserPreferences,
 } from "@freed/shared";
-import type { LibraryCoreFeedPageRequestV1 } from "@freed/shared/library-core";
+import type {
+  LibraryCoreFeedBrowseFilterInputV1,
+  LibraryCoreFeedPageRequestV1,
+} from "@freed/shared/library-core";
 import type {
   CommittedAutomergeDoc,
   DocState,
@@ -32,6 +35,7 @@ import type {
 } from "./automerge-types";
 import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
 import { persistWorkerDebugEvent } from "./automerge-worker-debug";
+import type { MaterializePwaLibraryCoreFeedBrowseGenerationResult } from "./library-core-feed-browse-materializer";
 import type { MaterializePwaLibraryCoreFeedGenerationResult } from "./library-core-feed-materializer";
 import type { PwaLibraryCoreFeedReaderResult } from "./library-core-feed-reader-runtime";
 import {
@@ -132,6 +136,10 @@ const pendingLibraryCoreFeedGeneration = new Map<
   number,
   GenerationOwnedRequest<MaterializePwaLibraryCoreFeedGenerationResult>
 >();
+const pendingLibraryCoreFeedBrowseGeneration = new Map<
+  number,
+  GenerationOwnedRequest<MaterializePwaLibraryCoreFeedBrowseGenerationResult>
+>();
 const pendingLibraryCoreFeedPage = new Map<
   number,
   GenerationOwnedRequest<PwaLibraryCoreFeedReaderResult>
@@ -151,6 +159,10 @@ const pendingMaps: Array<Map<number, GenerationOwnedRequest<unknown>>> = [
   pendingDocRelationship as Map<number, GenerationOwnedRequest<unknown>>,
   pendingLegacyHtml as Map<number, GenerationOwnedRequest<unknown>>,
   pendingLibraryCoreFeedGeneration as Map<
+    number,
+    GenerationOwnedRequest<unknown>
+  >,
+  pendingLibraryCoreFeedBrowseGeneration as Map<
     number,
     GenerationOwnedRequest<unknown>
   >,
@@ -563,6 +575,18 @@ function handleWorkerMessage(
     return;
   }
 
+  if (msg.type === "LIBRARY_CORE_FEED_BROWSE_GENERATION_RESULT") {
+    const pendingGeneration = getOwnedRequest(
+      pendingLibraryCoreFeedBrowseGeneration,
+      msg.reqId,
+      generation.id,
+    );
+    if (!pendingGeneration) return;
+    pendingLibraryCoreFeedBrowseGeneration.delete(msg.reqId);
+    pendingGeneration.resolve(msg.result);
+    return;
+  }
+
   if (msg.type === "LIBRARY_CORE_FEED_PAGE_RESULT") {
     const pendingPage = getOwnedRequest(
       pendingLibraryCoreFeedPage,
@@ -703,6 +727,17 @@ function handleWorkerMessage(
   if (pendingFeedGeneration && msg.error) {
     pendingLibraryCoreFeedGeneration.delete(msg.reqId);
     pendingFeedGeneration.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingFeedBrowseGeneration = getOwnedRequest(
+    pendingLibraryCoreFeedBrowseGeneration,
+    msg.reqId,
+    generation.id,
+  );
+  if (pendingFeedBrowseGeneration && msg.error) {
+    pendingLibraryCoreFeedBrowseGeneration.delete(msg.reqId);
+    pendingFeedBrowseGeneration.reject(new Error(msg.error));
     return;
   }
 
@@ -941,6 +976,26 @@ export async function materializeLibraryCoreFeedGeneration(): Promise<Materializ
     {
       reqId,
       type: "MATERIALIZE_LIBRARY_CORE_FEED_GENERATION",
+    } satisfies WorkerRequest,
+  );
+}
+
+/**
+ * Build one dormant, query-specific PWA row generation from the committed
+ * worker document. No product surface calls this before governed cutover.
+ */
+export async function materializeLibraryCoreFeedBrowseGeneration(
+  filter: LibraryCoreFeedBrowseFilterInputV1,
+  rankingClockMs: number,
+): Promise<MaterializePwaLibraryCoreFeedBrowseGenerationResult> {
+  const reqId = nextReqId++;
+  return requestResult(
+    pendingLibraryCoreFeedBrowseGeneration,
+    {
+      reqId,
+      type: "MATERIALIZE_LIBRARY_CORE_FEED_BROWSE_GENERATION",
+      filter,
+      rankingClockMs,
     } satisfies WorkerRequest,
   );
 }

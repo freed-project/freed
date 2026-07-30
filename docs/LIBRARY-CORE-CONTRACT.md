@@ -2581,20 +2581,24 @@ binary-sorts set-like tag and signal inputs, and pins hidden, archived,
 platform, RSS identity, author, feed URL, post/story, saved, tag, and signal
 semantics. The renderer normalizes once per browse pass and applies the same
 predicate without allocating one adapter object per item. This closes the
-semantic filter definition, not its storage execution. `feed_page_v1` remains
-the narrower default page. A later registered query must push every normalized
-predicate into SQLite and IndexedDB, bind that normalized filter to its cursor,
-store archived rows in a separately safe generation contract, and prove exact
-result parity before a product reader can use it. Recommendation ordering is
-also not silently approximated. Version 1 preserves the current two stable
-passes exactly: published time descending, then computed priority descending.
+semantic filter definition. `feed_page_v1` remains the narrower default page.
+The dormant PWA browse projector now applies every normalized predicate while
+building a query-specific IndexedDB generation, including archived and hidden
+variants without changing the default generation. A later registered query
+must still bind that normalized filter to its request and cursor, implement the
+same execution in SQLite, and prove exact result parity before a product reader
+can use it. Recommendation ordering is not silently approximated. Version 1
+preserves the current two stable passes exactly: published time descending,
+then computed priority descending.
 The complete order is therefore priority descending, published time
 descending, then source-map enumeration sequence ascending. Both current
 workers use one shared comparator contract. A bounded adapter must compute
 priority from one generation-bound clock, retain the source enumeration
 sequence, push the full order into its storage query, and bind the order
-version and clock identity to its cursor. Defining this order does not yet
-implement that storage query.
+version and clock identity to its cursor. The dormant PWA projector now freezes
+one safe ranking clock, retains source sequence, and writes the complete order
+tuple into its IndexedDB compound key. The bounded browse request and cursor
+that consume those rows remain unregistered.
 
 The cursor is versioned binary data encoded as canonical unpadded base64url. It
 binds the immutable generation digest, transition sequence, projection
@@ -2650,11 +2654,13 @@ Both platform runtimes are now implemented, so
 `runtime_adapter_unimplemented` is resolved for `feed_page_v1`.
 The product filter predicate is now defined once and used by the current
 renderer. The current recommendation order is also defined once and used by
-both active workers, but native and IndexedDB predicate and ordering execution,
+both active workers. The PWA now also persists exact filtered recommendation
+order in a separate query-specific IndexedDB generation while holding at most
+one 128-row output page. Native execution, a closed bounded browse transport,
 renderer-cache eviction, and product caller proof remain absent.
 `adapter_proof_missing` therefore still blocks the query. Authenticated PWA
-materialization, runtime registration, and shared semantic contracts do not
-assign a product reader or activate Gate D.
+materialization, runtime registration, shared semantic contracts, and dormant
+browse projection do not assign a product reader or activate Gate D.
 
 An interactive cursor does not pin an unbounded SQLite read transaction or WAL.
 If an adapter uses a pinned snapshot, the query registry declares its maximum
