@@ -465,7 +465,10 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     totalCountIntent: "snapshot_exact",
     rendererCache: true,
     invalidationKeyIntent: ["feed:default", "feed-facets"],
-    currentKinds: ["ProjectionReadSession::feed_page"],
+    currentKinds: [
+      "ProjectionReadSession::feed_page",
+      "read_library_core_feed_page",
+    ],
     requestSchema: LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA,
     responseSchema: LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA,
     projection: LIBRARY_CORE_FEED_PAGE_PROJECTION,
