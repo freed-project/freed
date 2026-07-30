@@ -1,8 +1,9 @@
-//! Replay-safe orchestration for dormant Library Core projection generations.
+//! Replay-safe orchestration for derived Library Core projection generations.
 //!
 //! This module composes the already isolated rebuild, publication, registry,
-//! selection, and bounded reader contracts. It has no command registration,
-//! production path locator, cleanup authority, or active Automerge caller.
+//! selection, bounded retention, and reader contracts. The startup migration
+//! bridge reaches it through the shadow runtime, but it assigns no product
+//! reader or Automerge authority.
 
 use crate::projection_generation_reader::{
     ProjectionGenerationReader, ProjectionGenerationReaderError,
@@ -205,6 +206,7 @@ pub(super) fn finalize_and_open_projection(
         expected_current_generation_id,
         &generation.generation_id,
     )?;
+    registry.prune_unselected_generations()?;
     drop(registry);
 
     Ok(ProjectionReadSession {

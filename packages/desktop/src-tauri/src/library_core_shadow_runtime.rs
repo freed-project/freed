@@ -14,12 +14,16 @@ use crate::projection_generation_registry::{
     ProjectionGenerationRegistryError,
 };
 use crate::shadow_store::{FeedItemRow, ProjectionRebuildState, ProjectionSourceV1};
+use crate::{
+    automerge_external_pipeline::{populate_staged_projection, ExternalStagedProjection},
+    automerge_external_sqlite_stage::materialize_feed_item_projection,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
 const SHADOW_ROOT_DIRECTORY: &str = "library-core-shadow-v1";
@@ -31,7 +35,7 @@ const MAXIMUM_BATCH_BYTES: usize = 4 * 1_048_576;
 const MAXIMUM_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
 #[derive(Debug)]
-enum ShadowRuntimeError {
+pub(super) enum ShadowRuntimeError {
     Coordinator(ProjectionCoordinatorError),
     Registry(ProjectionGenerationRegistryError),
     Io(std::io::Error),
@@ -40,6 +44,7 @@ enum ShadowRuntimeError {
     IncompleteProjection,
     AmbiguousPublication,
     ActiveProjectionDuringReset,
+    ExternalProjection(String),
     StatePoisoned,
 }
 
@@ -79,6 +84,9 @@ impl fmt::Display for ShadowRuntimeError {
             }
             Self::ActiveProjectionDuringReset => {
                 formatter.write_str("SQLite shadow projection is active during factory reset")
+            }
+            Self::ExternalProjection(error) => {
+                write!(formatter, "external SQLite projection failed: {error}")
             }
             Self::StatePoisoned => {
                 formatter.write_str("SQLite shadow runtime state is unavailable")
@@ -188,8 +196,8 @@ struct ActiveProjection {
     state: ProjectionRebuildState,
 }
 
-#[derive(Default)]
-pub(super) struct LibraryCoreShadowRuntimeState(Mutex<Option<ActiveProjection>>);
+#[derive(Clone, Default)]
+pub(super) struct LibraryCoreShadowRuntimeState(Arc<Mutex<Option<ActiveProjection>>>);
 
 fn is_lower_hex_digest(value: &str) -> bool {
     value.len() == 64
@@ -281,7 +289,7 @@ fn runtime_paths(base: &Path, key: &str) -> RuntimeResult<RuntimePaths> {
 /// Resolves the already-created shadow reader paths without creating or
 /// modifying any application data.
 ///
-/// A missing root is a normal dormant state. Existing paths must be physical,
+/// A missing root is a normal uninitialized state. Existing paths must be physical,
 /// private directories beneath the exact app-data root so a reader cannot be
 /// redirected through a replacement link.
 pub(super) fn resolve_library_core_shadow_reader_paths(
@@ -615,6 +623,81 @@ fn finalize_at_root(
     let status = status_from_selection(active.source_key.clone(), &selection);
     *guard = None;
     Ok(status)
+}
+
+pub(super) fn publish_external_projection_at_root(
+    runtime: &LibraryCoreShadowRuntimeState,
+    base: &Path,
+    staged: &mut ExternalStagedProjection,
+) -> RuntimeResult<ShadowProjectionStatus> {
+    let row_receipt = materialize_feed_item_projection(&mut staged.connection)
+        .map_err(|error| ShadowRuntimeError::ExternalProjection(error.to_string()))?;
+    let total_rows = usize::try_from(row_receipt.feed_item_count)
+        .map_err(|_| ShadowRuntimeError::InvalidInput("external projection row count"))?;
+    if total_rows > MAXIMUM_ROWS {
+        return Err(ShadowRuntimeError::InvalidInput(
+            "external projection row count",
+        ));
+    }
+
+    let guard = runtime
+        .0
+        .lock()
+        .map_err(|_| ShadowRuntimeError::StatePoisoned)?;
+    if guard.is_some() {
+        return Err(ShadowRuntimeError::ActiveProjectionMismatch);
+    }
+
+    let key = source_key(&staged.source, total_rows);
+    let paths = runtime_paths(base, &key)?;
+    let selected = current_selection(&paths.registry_path)?;
+    if let Some(selection) = selected.as_ref() {
+        if selection_matches(selection, &staged.source, total_rows) {
+            ProjectionGenerationRegistry::open(&paths.registry_path, &paths.generation_root)?
+                .prune_unselected_generations()?;
+            return Ok(status_from_selection(key, selection));
+        }
+    }
+    let expected_current_generation_id = selected
+        .as_ref()
+        .map(|selection| selection.generation.generation_id.as_str());
+    let rebuild_id = format!("external-{key}");
+    let transition_id = format!("select-external-{key}");
+    let staging_exists = paths.staging_path.try_exists()?;
+    let destination_exists = paths.destination_path.try_exists()?;
+    if staging_exists && destination_exists {
+        return Err(ShadowRuntimeError::AmbiguousPublication);
+    }
+
+    if !destination_exists {
+        let receipt = populate_staged_projection(staged, &paths.staging_path, &rebuild_id)
+            .map_err(|error| ShadowRuntimeError::ExternalProjection(error.to_string()))?;
+        if !receipt.projection.complete
+            || receipt.projection.total_rows != total_rows
+            || receipt.projection.projected_rows != total_rows
+        {
+            return Err(ShadowRuntimeError::IncompleteProjection);
+        }
+    }
+
+    let read_session = finalize_and_open_projection(
+        &paths.staging_path,
+        &paths.destination_path,
+        &paths.registry_path,
+        &paths.generation_root,
+        &rebuild_id,
+        &staged.source,
+        total_rows,
+        &transition_id,
+        expected_current_generation_id,
+    )?;
+    let selection = ProjectionGenerationRegistry::read_selected_generation(&paths.registry_path)?;
+    if read_session.generation_id() != selection.generation.generation_id
+        || !selection_matches(&selection, &staged.source, total_rows)
+    {
+        return Err(ShadowRuntimeError::InvalidInput("selected generation"));
+    }
+    Ok(status_from_selection(key, &selection))
 }
 
 pub(super) fn clear_library_core_shadow_runtime_in(

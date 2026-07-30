@@ -1,9 +1,9 @@
 //! Atomic SQLite staging for receipt-bound Automerge rows.
 //!
-//! This dormant layer copies verified rows and their exact payload bytes into a
+//! This layer copies verified rows and their exact payload bytes into a
 //! scratch SQLite database without allocating a source-sized value buffer. The
 //! complete row and companion-spool receipts are rechecked before the staging
-//! transaction commits. No command or production caller opens this store.
+//! transaction commits.
 
 use crate::automerge_external_change_rows::{ExternalChangeRowLimits, ExternalChangeRowSummary};
 use crate::automerge_external_document_run::ExternalVerifiedDocumentLayout;
@@ -19,7 +19,9 @@ use crate::automerge_external_row_run::{
     ExternalRowRunConsumeError, ExternalRowRunError, ExternalRowRunLimits,
     ExternalVerifiedChangeRow, ExternalVerifiedOperationRow, ExternalVerifiedPayloadReader,
 };
-use crate::shadow_store::{FeedItemRow, MAX_PROJECTION_BATCH_BYTES, MAX_PROJECTION_BATCH_ITEMS};
+use crate::shadow_store::{
+    FeedItemRow, ProjectionSourceV1, MAX_PROJECTION_BATCH_BYTES, MAX_PROJECTION_BATCH_ITEMS,
+};
 use rusqlite::blob::ZeroBlob;
 use rusqlite::types::ValueRef;
 use rusqlite::{
@@ -1005,6 +1007,135 @@ pub(super) fn seal_staged_graph(
     Ok(receipt)
 }
 
+/// Derives the exact projection identity from one sealed external graph.
+///
+/// The worker cannot expose this identity without hydrating Automerge. The
+/// native decoder already has the authenticated heads and resolved root
+/// metadata on disk, so it reconstructs the same source tuple without adding a
+/// second document-sized resident copy.
+pub(super) fn derive_projection_source(
+    connection: &mut Connection,
+    storage_generation: i64,
+    storage_save_revision: i64,
+) -> StageResult<ProjectionSourceV1> {
+    if storage_generation < 0 || storage_save_revision < 0 {
+        return Err(ExternalSqliteStageError::RangeOverflow);
+    }
+    materialize_current_operations(connection)?;
+    materialize_resolved_values(connection)?;
+    configure_connection(connection)?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    initialize_or_validate_schema(&transaction)?;
+    let graph_receipt =
+        read_graph_receipt(&transaction)?.ok_or(ExternalSqliteStageError::IncompleteStage)?;
+    if graph_content_sha256(&transaction)? != graph_receipt.graph_sha256 {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+
+    let mut meta_statement = transaction.prepare(
+        "SELECT operation.idActorIndex, operation.idCounter, operation.action \
+         FROM external_resolved_values AS resolved \
+         JOIN external_operations AS operation USING (operationIndex) \
+         WHERE resolved.isWinner = 1 \
+           AND operation.objectKind = 'root' \
+           AND operation.keyKind = 'property' \
+           AND operation.keyName = 'meta' \
+         ORDER BY operation.operationIndex;",
+    )?;
+    let meta_rows = meta_statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, Vec<u8>>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(meta_statement);
+    if meta_rows.len() > 1 || meta_rows.first().is_some_and(|row| row.2 != 0) {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+
+    let read_meta_string = |property: &str| -> StageResult<Option<String>> {
+        let Some((actor_index, counter, _)) = meta_rows.first() else {
+            return Ok(None);
+        };
+        let mut statement = transaction.prepare(
+            "SELECT operation.valuePayload, operation.action, operation.valueKind, \
+                    operation.valueText, operation.valueTypeCode \
+             FROM external_resolved_values AS resolved \
+             JOIN external_operations AS operation USING (operationIndex) \
+             WHERE resolved.isWinner = 1 \
+               AND operation.objectKind = 'operation' \
+               AND operation.objectActorIndex = ?1 \
+               AND operation.objectCounter = ?2 \
+               AND operation.keyKind = 'property' \
+               AND operation.keyName = ?3 \
+             ORDER BY operation.operationIndex;",
+        )?;
+        let rows = statement
+            .query_map(params![actor_index, counter, property], |row| {
+                Ok((
+                    row.get::<_, Vec<u8>>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        if rows.len() > 1 {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        let Some((payload, action, value_kind, value_text, value_type_code)) = rows.first() else {
+            return Ok(None);
+        };
+        if *action != 1
+            || value_kind != "string"
+            || value_text.is_some()
+            || value_type_code.is_some()
+        {
+            return Err(ExternalSqliteStageError::IncompleteStage);
+        }
+        let value = std::str::from_utf8(payload)
+            .map_err(|_| ExternalSqliteStageError::IncompleteStage)?
+            .to_string();
+        Ok(Some(value))
+    };
+    let document_id = read_meta_string("documentId")?
+        .or(read_meta_string("deviceId")?)
+        .unwrap_or_else(|| "unknown".to_string());
+    if document_id.is_empty() || document_id.len() > 4_096 {
+        return Err(ExternalSqliteStageError::RangeOverflow);
+    }
+
+    let mut head_statement =
+        transaction.prepare("SELECT hash FROM external_heads ORDER BY hash COLLATE BINARY;")?;
+    let heads = head_statement
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(head_statement);
+    if heads.len() as u64 != graph_receipt.head_count {
+        return Err(ExternalSqliteStageError::IncompleteStage);
+    }
+    let mut hasher = Sha256::new();
+    hasher.update(b"library-core-projection-heads-v1");
+    for head in &heads {
+        hasher.update(b"\n");
+        hasher.update(head.as_bytes());
+    }
+    let source = ProjectionSourceV1 {
+        document_id,
+        heads_digest: lower_hex(&hasher.finalize()),
+        head_count: i64::try_from(heads.len())
+            .map_err(|_| ExternalSqliteStageError::RangeOverflow)?,
+        storage_generation,
+        storage_save_revision,
+    };
+    transaction.commit()?;
+    Ok(source)
+}
+
 fn materialize_current_operations(
     connection: &mut Connection,
 ) -> StageResult<ExternalCurrentOperationReceipt> {
@@ -1340,7 +1471,18 @@ fn materialize_feed_item_documents(
     Ok(receipt)
 }
 
-pub(super) fn materialize_feed_item_projection_rows(
+pub(super) fn materialize_feed_item_projection(
+    connection: &mut Connection,
+) -> StageResult<ExternalFeedItemProjectionReceipt> {
+    materialize_current_operations(connection)?;
+    materialize_resolved_values(connection)?;
+    materialize_sequence_elements(connection)?;
+    materialize_feed_item_nodes(connection)?;
+    materialize_feed_item_documents(connection)?;
+    materialize_feed_item_projection_rows(connection)
+}
+
+fn materialize_feed_item_projection_rows(
     connection: &mut Connection,
 ) -> StageResult<ExternalFeedItemProjectionReceipt> {
     configure_connection(connection)?;

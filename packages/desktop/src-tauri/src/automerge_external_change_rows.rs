@@ -1,9 +1,8 @@
 //! Bounded reconstruction of Automerge document change rows.
 //!
-//! This dormant layer joins verified primitive and scalar token runs without
+//! This layer joins verified primitive and scalar token runs without
 //! loading the change table or dependency graph into memory. Dependencies are
-//! written as fixed-width little-endian indices in a separate spool. No
-//! command or production caller activates this module.
+//! written as fixed-width little-endian indices in a separate spool.
 
 use crate::automerge_external_column::{
     ExternalColumnDecodeSession, ExternalColumnDecodeSummary, ExternalColumnInput,
@@ -28,15 +27,15 @@ use std::fs::File;
 use std::io::Write;
 
 const CHANGE_ROW_SCHEMA_VERSION: u32 = 1;
-const ACTOR_SPECIFICATION: u32 = 1;
-const SEQUENCE_SPECIFICATION: u32 = 3;
-const MAX_OPERATION_SPECIFICATION: u32 = 19;
-const TIMESTAMP_SPECIFICATION: u32 = 35;
-const MESSAGE_SPECIFICATION: u32 = 53;
-const DEPENDENCY_COUNT_SPECIFICATION: u32 = 64;
-const DEPENDENCY_INDEX_SPECIFICATION: u32 = 67;
-const EXTRA_METADATA_SPECIFICATION: u32 = 86;
-const EXTRA_RAW_SPECIFICATION: u32 = 87;
+pub(super) const ACTOR_SPECIFICATION: u32 = 1;
+pub(super) const SEQUENCE_SPECIFICATION: u32 = 3;
+pub(super) const MAX_OPERATION_SPECIFICATION: u32 = 19;
+pub(super) const TIMESTAMP_SPECIFICATION: u32 = 35;
+pub(super) const MESSAGE_SPECIFICATION: u32 = 53;
+pub(super) const DEPENDENCY_COUNT_SPECIFICATION: u32 = 64;
+pub(super) const DEPENDENCY_INDEX_SPECIFICATION: u32 = 67;
+pub(super) const EXTRA_METADATA_SPECIFICATION: u32 = 86;
+pub(super) const EXTRA_RAW_SPECIFICATION: u32 = 87;
 const DEPENDENCY_INDEX_BYTES: u64 = 8;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

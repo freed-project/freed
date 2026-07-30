@@ -66,6 +66,14 @@ import {
   type LibraryCoreProjectionWorkerClient,
 } from "./library-core-shadow-runtime";
 import {
+  migrateLibraryCoreExternalSnapshot,
+  tauriLibraryCoreExternalMigrationNativeClient,
+  type LibraryCoreExternalExportChunkV1,
+  type LibraryCoreExternalExportConfirmedV1,
+  type LibraryCoreExternalExportStartedV1,
+  type LibraryCoreExternalExportWorkerClient,
+} from "./library-core-external-migration-runtime";
+import {
   materializeDesktopLibraryCoreFeedBrowseGeneration,
   tauriLibraryCoreFeedBrowseNativeClient,
   type LibraryCoreFeedBrowseProjectionStartedV1,
@@ -199,6 +207,9 @@ function rejectPendingWorkerRequests(generationId: number, error: Error): void {
     generationId,
     error,
   );
+  rejectPendingMap(pendingLibraryCoreExternalExportStarted, generationId, error);
+  rejectPendingMap(pendingLibraryCoreExternalExportChunk, generationId, error);
+  rejectPendingMap(pendingLibraryCoreExternalExportConfirmed, generationId, error);
 }
 
 function isActiveWorkerGeneration(source: Worker, generationId: number): boolean {
@@ -344,7 +355,10 @@ function hasPendingWorkerRequests(): boolean {
     pendingLibraryCoreProjectionStarted.size > 0 ||
     pendingLibraryCoreProjectionBatch.size > 0 ||
     pendingLibraryCoreFeedBrowseProjectionStarted.size > 0 ||
-    pendingLibraryCoreFeedBrowseProjectionBatch.size > 0
+    pendingLibraryCoreFeedBrowseProjectionBatch.size > 0 ||
+    pendingLibraryCoreExternalExportStarted.size > 0 ||
+    pendingLibraryCoreExternalExportChunk.size > 0 ||
+    pendingLibraryCoreExternalExportConfirmed.size > 0
   );
 }
 
@@ -435,6 +449,18 @@ const pendingLibraryCoreFeedBrowseProjectionStarted = new Map<
 const pendingLibraryCoreFeedBrowseProjectionBatch = new Map<
   number,
   PendingRequest<LibraryCoreFeedBrowseProjectionBatchV1>
+>();
+const pendingLibraryCoreExternalExportStarted = new Map<
+  number,
+  PendingRequest<LibraryCoreExternalExportStartedV1>
+>();
+const pendingLibraryCoreExternalExportChunk = new Map<
+  number,
+  PendingRequest<LibraryCoreExternalExportChunkV1>
+>();
+const pendingLibraryCoreExternalExportConfirmed = new Map<
+  number,
+  PendingRequest<LibraryCoreExternalExportConfirmedV1>
 >();
 
 function assertAutomergeRequestAccepted(type: WorkerRequest["type"]): void {
@@ -904,13 +930,42 @@ function handleWorkerMessage(
     return;
   }
 
-  // Migration export responses remain dormant until the native staging
-  // adapter owns their exact request lifecycle.
-  if (
-    msg.type === "LIBRARY_CORE_EXTERNAL_EXPORT_STARTED" ||
-    msg.type === "LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK" ||
-    msg.type === "LIBRARY_CORE_EXTERNAL_EXPORT_CONFIRMED"
-  ) {
+  if (msg.type === "LIBRARY_CORE_EXTERNAL_EXPORT_STARTED") {
+    const pendingExport = getGenerationPending(
+      pendingLibraryCoreExternalExportStarted,
+      msg.reqId,
+      generationId,
+    );
+    if (!pendingExport) return;
+    clearTimeout(pendingExport.timer);
+    pendingLibraryCoreExternalExportStarted.delete(msg.reqId);
+    pendingExport.resolve(msg);
+    return;
+  }
+
+  if (msg.type === "LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK") {
+    const pendingExport = getGenerationPending(
+      pendingLibraryCoreExternalExportChunk,
+      msg.reqId,
+      generationId,
+    );
+    if (!pendingExport) return;
+    clearTimeout(pendingExport.timer);
+    pendingLibraryCoreExternalExportChunk.delete(msg.reqId);
+    pendingExport.resolve(msg);
+    return;
+  }
+
+  if (msg.type === "LIBRARY_CORE_EXTERNAL_EXPORT_CONFIRMED") {
+    const pendingExport = getGenerationPending(
+      pendingLibraryCoreExternalExportConfirmed,
+      msg.reqId,
+      generationId,
+    );
+    if (!pendingExport) return;
+    clearTimeout(pendingExport.timer);
+    pendingLibraryCoreExternalExportConfirmed.delete(msg.reqId);
+    pendingExport.resolve(msg);
     return;
   }
 
@@ -984,6 +1039,42 @@ function handleWorkerMessage(
     clearTimeout(pendingBrowseProjectionBatch.timer);
     pendingLibraryCoreFeedBrowseProjectionBatch.delete(msg.reqId);
     pendingBrowseProjectionBatch.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingExternalExportStarted = getGenerationPending(
+    pendingLibraryCoreExternalExportStarted,
+    msg.reqId,
+    generationId,
+  );
+  if (pendingExternalExportStarted && msg.error) {
+    clearTimeout(pendingExternalExportStarted.timer);
+    pendingLibraryCoreExternalExportStarted.delete(msg.reqId);
+    pendingExternalExportStarted.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingExternalExportChunk = getGenerationPending(
+    pendingLibraryCoreExternalExportChunk,
+    msg.reqId,
+    generationId,
+  );
+  if (pendingExternalExportChunk && msg.error) {
+    clearTimeout(pendingExternalExportChunk.timer);
+    pendingLibraryCoreExternalExportChunk.delete(msg.reqId);
+    pendingExternalExportChunk.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingExternalExportConfirmed = getGenerationPending(
+    pendingLibraryCoreExternalExportConfirmed,
+    msg.reqId,
+    generationId,
+  );
+  if (pendingExternalExportConfirmed && msg.error) {
+    clearTimeout(pendingExternalExportConfirmed.timer);
+    pendingLibraryCoreExternalExportConfirmed.delete(msg.reqId);
+    pendingExternalExportConfirmed.reject(new Error(msg.error));
     return;
   }
 
@@ -1250,6 +1341,115 @@ async function initializeWorkerDocumentWithDataRecovery(): Promise<DocState> {
   }
 }
 
+async function beginLibraryCoreExternalExport(
+  sessionId: string,
+): Promise<LibraryCoreExternalExportStartedV1> {
+  assertAutomergeRequestAccepted("BEGIN_LIBRARY_CORE_EXTERNAL_EXPORT");
+  await ensureWorkerReady();
+  return requestResultOnWorker(
+    getWorker(),
+    pendingLibraryCoreExternalExportStarted,
+    {
+      reqId: nextReqId++,
+      type: "BEGIN_LIBRARY_CORE_EXTERNAL_EXPORT",
+      sessionId,
+    } satisfies WorkerRequest,
+  );
+}
+
+async function readLibraryCoreExternalExport(
+  sessionId: string,
+  offset: number,
+): Promise<LibraryCoreExternalExportChunkV1> {
+  assertAutomergeRequestAccepted("READ_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK");
+  await ensureWorkerReady();
+  return requestResultOnWorker(
+    getWorker(),
+    pendingLibraryCoreExternalExportChunk,
+    {
+      reqId: nextReqId++,
+      type: "READ_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK",
+      sessionId,
+      offset,
+    } satisfies WorkerRequest,
+  );
+}
+
+async function confirmLibraryCoreExternalExport(
+  sessionId: string,
+): Promise<LibraryCoreExternalExportConfirmedV1> {
+  assertAutomergeRequestAccepted("CONFIRM_LIBRARY_CORE_EXTERNAL_EXPORT");
+  await ensureWorkerReady();
+  return requestResultOnWorker(
+    getWorker(),
+    pendingLibraryCoreExternalExportConfirmed,
+    {
+      reqId: nextReqId++,
+      type: "CONFIRM_LIBRARY_CORE_EXTERNAL_EXPORT",
+      sessionId,
+    } satisfies WorkerRequest,
+  );
+}
+
+function cancelLibraryCoreExternalExport(sessionId: string): Promise<void> {
+  return request({
+    reqId: nextReqId++,
+    type: "CANCEL_LIBRARY_CORE_EXTERNAL_EXPORT",
+    sessionId,
+  });
+}
+
+const libraryCoreExternalExportWorkerClient: LibraryCoreExternalExportWorkerClient = {
+  begin: beginLibraryCoreExternalExport,
+  read: readLibraryCoreExternalExport,
+  confirm: confirmLibraryCoreExternalExport,
+  cancel: cancelLibraryCoreExternalExport,
+};
+
+let libraryCoreExternalProjectionSelected = false;
+const LIBRARY_CORE_EXTERNAL_MIGRATION_DISABLED_KEY =
+  "freed.libraryCore.externalMigrationV1.disabled";
+
+function shouldRunLibraryCoreExternalMigration(): boolean {
+  if (import.meta.env.VITE_TEST_TAURI === "1" || !isTauri()) return false;
+  try {
+    return localStorage.getItem(LIBRARY_CORE_EXTERNAL_MIGRATION_DISABLED_KEY) !== "1";
+  } catch {
+    return true;
+  }
+}
+
+async function migrateLibraryCoreBeforeAutomergeLoad(): Promise<void> {
+  if (!shouldRunLibraryCoreExternalMigration()) return;
+  const startedAt = performance.now();
+  try {
+    const result = await migrateLibraryCoreExternalSnapshot(
+      libraryCoreExternalExportWorkerClient,
+      tauriLibraryCoreExternalMigrationNativeClient,
+      newLibraryCoreProjectionSessionId(),
+    );
+    libraryCoreExternalProjectionSelected = result.migrated;
+    recordRuntimeHealthEvent({
+      event: "library_core_external_migration",
+      outcome: result.migrated ? "selected" : "empty_source",
+      totalRows: result.projection?.totalRows ?? 0,
+      durationMs: Math.round(performance.now() - startedAt),
+    });
+  } catch (error) {
+    libraryCoreExternalProjectionSelected = false;
+    log.warn(
+      `[library-core-external] migration failed; using Automerge read rollback: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    recordRuntimeHealthEvent({
+      event: "library_core_external_migration",
+      outcome: "rollback",
+      durationMs: Math.round(performance.now() - startedAt),
+    });
+  }
+}
+
 export function initDoc(
   registration?: DesktopClientRegistration,
 ): Promise<DocState> {
@@ -1262,18 +1462,24 @@ export function initDoc(
   initPromise = (async () => {
     await ensureWorkerReady();
     try {
+      await migrateLibraryCoreBeforeAutomergeLoad();
       const state = await initializeWorkerDocumentWithDataRecovery();
       appDocumentInitialized = true;
       workerDocumentInitialized = true;
-      scheduleLibraryCoreShadowProjection();
+      if (!libraryCoreExternalProjectionSelected) {
+        scheduleLibraryCoreShadowProjection();
+      }
       return state;
     } catch (error) {
       if (error instanceof WorkerLifecycleError) {
         await ensureWorkerReady();
+        await migrateLibraryCoreBeforeAutomergeLoad();
         const state = await initializeWorkerDocumentWithDataRecovery();
         appDocumentInitialized = true;
         workerDocumentInitialized = true;
-        scheduleLibraryCoreShadowProjection();
+        if (!libraryCoreExternalProjectionSelected) {
+          scheduleLibraryCoreShadowProjection();
+        }
         return state;
       }
       throw error;

@@ -150,6 +150,23 @@ be overwritten. Selecting that file for a reader remains separate. The
 production storage-root handle, generation transition, stale-reader lifetime,
 rollback pointer, and cleanup policy are still blocked.
 
+Freed Desktop now has one production-located startup bridge through that
+external decoder and publisher. Before the worker loads Automerge, it pins the
+exact IndexedDB generation and save revision, transfers fixed 1 MiB chunks into
+a crash-resumable native spool, reconstructs the source through disk-backed
+SQLite stages, and selects or replays one verified immutable derived
+generation. The durable spool identity survives renderer replacement, and
+failure releases live handles while preserving retry evidence and falling back
+to Automerge. After both sides confirm, the bridge deletes that revision's
+spool and scratch graph and retains only the selected and exact rollback
+projection generations. This is not Gate C. IndexedDB still creates one source-sized
+structured clone, no elected migration authority or source fence exists, and
+every product reader still uses Automerge. The next active milestone is the
+authenticated migration claim and fixed-memory source admission, followed by
+the exhaustive Gate D consumer conversion. A local rollback switch disables
+the startup bridge without deleting the Automerge source or prior SQLite
+evidence.
+
 ## What the evidence establishes
 
 On the owner's 15,846-item production document, the current Automerge and

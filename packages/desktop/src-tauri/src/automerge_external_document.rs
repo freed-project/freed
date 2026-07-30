@@ -1,9 +1,9 @@
 //! Bounded layout decoder for verified Automerge document chunks.
 //!
-//! This dormant layer records the exact actor table, head set, raw change and
+//! This layer records the exact actor table, head set, raw change and
 //! operation column ranges, and optional head indexes without loading a
 //! document chunk. Later decoders consume the immutable JSONL output one record
-//! at a time. No command or production caller activates this module.
+//! at a time.
 
 use crate::automerge_external_common::{lower_hex, ExternalHashingWriter};
 use crate::automerge_external_decoder::{

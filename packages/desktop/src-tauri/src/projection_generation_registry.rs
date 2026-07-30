@@ -4,7 +4,8 @@
 //! seals one complete SQLite file without making it readable by production.
 //! This registry then content-addresses that sealed file, records it exactly
 //! once, and changes the current reader generation in one replayable
-//! transaction. No production entry point opens this registry yet.
+//! transaction. The startup migration bridge publishes through this registry,
+//! but Automerge remains the product reader and authority.
 
 use crate::shadow_store::PublishedProjectionGeneration;
 use crate::sqlite_registry_file::{self, SqliteRegistryFileError, SqliteRegistrySpec};
@@ -297,6 +298,76 @@ impl ProjectionGenerationRegistry {
         validate_reader_state(state)
     }
 
+    /// Retains only the selected generation, its exact rollback generation,
+    /// and the latest replayable transition. This derived registry is not an
+    /// audit authority, so old receipts must not grow with every source save.
+    pub(super) fn prune_unselected_generations(&mut self) -> RegistryResult<usize> {
+        let state = self.reader_state()?;
+        let mut statement = self.conn.prepare(
+            "SELECT generationId, fileName
+             FROM projection_generations
+             ORDER BY registeredSequence;",
+        )?;
+        let candidates = statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(statement);
+
+        let mut removed = 0;
+        for (generation_id, file_name) in &candidates {
+            if state.current_generation_id.as_deref() == Some(generation_id.as_str())
+                || state.rollback_generation_id.as_deref() == Some(generation_id.as_str())
+            {
+                continue;
+            }
+            validate_generation_file_name(file_name)?;
+            let path = self.generation_root.join(file_name);
+            match std::fs::symlink_metadata(&path) {
+                Ok(metadata)
+                    if metadata.file_type().is_file() && !metadata.file_type().is_symlink() =>
+                {
+                    std::fs::remove_file(&path)?;
+                    removed += 1;
+                }
+                Ok(_) => {
+                    return Err(ProjectionGenerationRegistryError::InvalidGeneration {
+                        field: "prune_file_type",
+                    });
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        #[cfg(unix)]
+        if removed > 0 {
+            File::open(&self.generation_root)?.sync_all()?;
+        }
+
+        let transaction = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute(
+            "DELETE FROM projection_generation_transitions
+             WHERE committedSequence < ?1;",
+            [state.transition_sequence],
+        )?;
+        for (generation_id, _) in candidates {
+            if state.current_generation_id.as_deref() == Some(generation_id.as_str())
+                || state.rollback_generation_id.as_deref() == Some(generation_id.as_str())
+            {
+                continue;
+            }
+            transaction.execute(
+                "DELETE FROM projection_generations WHERE generationId = ?1;",
+                [generation_id],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(removed)
+    }
+
     pub(super) fn select(
         &mut self,
         transition_id: &str,
@@ -447,16 +518,7 @@ impl ProjectionGenerationRegistry {
             .file_name()
             .and_then(|value| value.to_str())
             .ok_or(ProjectionGenerationRegistryError::InvalidGeneration { field: "file_name" })?;
-        if file_name.is_empty()
-            || file_name.len() > 255
-            || file_name == "."
-            || file_name == ".."
-            || file_name.contains(['/', '\\'])
-        {
-            return Err(ProjectionGenerationRegistryError::InvalidGeneration {
-                field: "file_name",
-            });
-        }
+        validate_generation_file_name(file_name)?;
         let metadata = std::fs::symlink_metadata(&published.path)?;
         if !metadata.file_type().is_file() || metadata.len() == 0 {
             return Err(ProjectionGenerationRegistryError::InvalidGeneration {
@@ -480,6 +542,18 @@ impl ProjectionGenerationRegistry {
         }
         Ok(file_name.to_owned())
     }
+}
+
+fn validate_generation_file_name(file_name: &str) -> RegistryResult<()> {
+    if file_name.is_empty()
+        || file_name.len() > 255
+        || file_name == "."
+        || file_name == ".."
+        || file_name.contains(['/', '\\'])
+    {
+        return Err(ProjectionGenerationRegistryError::InvalidGeneration { field: "file_name" });
+    }
+    Ok(())
 }
 
 fn validate_transition_id(transition_id: &str) -> RegistryResult<()> {
@@ -956,6 +1030,75 @@ mod tests {
                 rollback_generation_id: Some(second.generation_id),
                 transition_sequence: 3,
             }
+        );
+    }
+
+    #[test]
+    fn pruning_retains_only_the_selected_and_exact_rollback_generation_files() {
+        let fixture = Fixture::new("prune");
+        let first_published = fixture.published(21);
+        let second_published = fixture.published(22);
+        let third_published = fixture.published(23);
+        let mut registry =
+            ProjectionGenerationRegistry::open(&fixture.registry_path, &fixture.generation_root)
+                .expect("open registry");
+        let first = registry.register(&first_published).expect("register first");
+        let second = registry
+            .register(&second_published)
+            .expect("register second");
+        let third = registry.register(&third_published).expect("register third");
+        registry
+            .select("select-prune-first", None, &first.generation_id)
+            .expect("select first");
+        registry
+            .select(
+                "select-prune-second",
+                Some(&first.generation_id),
+                &second.generation_id,
+            )
+            .expect("select second");
+        registry
+            .select(
+                "select-prune-third",
+                Some(&second.generation_id),
+                &third.generation_id,
+            )
+            .expect("select third");
+
+        assert_eq!(
+            registry
+                .prune_unselected_generations()
+                .expect("prune stale generation"),
+            1
+        );
+        assert!(!first_published.path.exists());
+        assert!(second_published.path.exists());
+        assert!(third_published.path.exists());
+        assert_eq!(
+            registry
+                .conn
+                .query_row("SELECT COUNT(*) FROM projection_generations;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("count retained generations"),
+            2
+        );
+        assert_eq!(
+            registry
+                .conn
+                .query_row(
+                    "SELECT COUNT(*) FROM projection_generation_transitions;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("count retained transitions"),
+            1
+        );
+        assert_eq!(
+            registry
+                .prune_unselected_generations()
+                .expect("replay prune"),
+            0
         );
     }
 

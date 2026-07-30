@@ -1,9 +1,8 @@
 //! Bounded reconstruction of Automerge document operation rows.
 //!
-//! This dormant layer joins receipt-bound primitive and scalar token runs
+//! This layer joins receipt-bound primitive and scalar token runs
 //! without retaining the operation table, value payloads, or successor graph.
-//! Successor operation IDs are written to a fixed-width spool. No command or
-//! production caller activates this module.
+//! Successor operation IDs are written to a fixed-width spool.
 
 use crate::automerge_external_column::{
     ExternalColumnDecodeSession, ExternalColumnDecodeSummary, ExternalColumnInput,
@@ -28,22 +27,22 @@ use std::fs::File;
 use std::io::Write;
 
 const OPERATION_ROW_SCHEMA_VERSION: u32 = 1;
-const OBJECT_ACTOR_SPECIFICATION: u32 = 1;
-const OBJECT_COUNTER_SPECIFICATION: u32 = 2;
-const KEY_ACTOR_SPECIFICATION: u32 = 17;
-const KEY_COUNTER_SPECIFICATION: u32 = 19;
-const KEY_STRING_SPECIFICATION: u32 = 21;
-const ID_ACTOR_SPECIFICATION: u32 = 33;
-const ID_COUNTER_SPECIFICATION: u32 = 35;
-const INSERT_SPECIFICATION: u32 = 52;
-const ACTION_SPECIFICATION: u32 = 66;
-const VALUE_METADATA_SPECIFICATION: u32 = 86;
-const VALUE_RAW_SPECIFICATION: u32 = 87;
-const SUCCESSOR_COUNT_SPECIFICATION: u32 = 128;
-const SUCCESSOR_ACTOR_SPECIFICATION: u32 = 129;
-const SUCCESSOR_COUNTER_SPECIFICATION: u32 = 131;
-const EXPAND_SPECIFICATION: u32 = 148;
-const MARK_NAME_SPECIFICATION: u32 = 165;
+pub(super) const OBJECT_ACTOR_SPECIFICATION: u32 = 1;
+pub(super) const OBJECT_COUNTER_SPECIFICATION: u32 = 2;
+pub(super) const KEY_ACTOR_SPECIFICATION: u32 = 17;
+pub(super) const KEY_COUNTER_SPECIFICATION: u32 = 19;
+pub(super) const KEY_STRING_SPECIFICATION: u32 = 21;
+pub(super) const ID_ACTOR_SPECIFICATION: u32 = 33;
+pub(super) const ID_COUNTER_SPECIFICATION: u32 = 35;
+pub(super) const INSERT_SPECIFICATION: u32 = 52;
+pub(super) const ACTION_SPECIFICATION: u32 = 66;
+pub(super) const VALUE_METADATA_SPECIFICATION: u32 = 86;
+pub(super) const VALUE_RAW_SPECIFICATION: u32 = 87;
+pub(super) const SUCCESSOR_COUNT_SPECIFICATION: u32 = 128;
+pub(super) const SUCCESSOR_ACTOR_SPECIFICATION: u32 = 129;
+pub(super) const SUCCESSOR_COUNTER_SPECIFICATION: u32 = 131;
+pub(super) const EXPAND_SPECIFICATION: u32 = 148;
+pub(super) const MARK_NAME_SPECIFICATION: u32 = 165;
 const SUCCESSOR_ID_BYTES: u64 = 16;
 const MAX_SUPPORTED_ACTION: u64 = 7;
 

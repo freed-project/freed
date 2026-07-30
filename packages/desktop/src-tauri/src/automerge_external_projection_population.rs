@@ -3,11 +3,11 @@
 //!
 //! The scratch snapshot and destination generation are distinct databases.
 //! Native memory retains only one bounded page. Automerge remains the active
-//! authority and no production command invokes this dormant bridge.
+//! authority while the startup migration uses this bridge to publish a derived
+//! immutable read generation.
 
 use crate::automerge_external_sqlite_stage::{
-    materialize_feed_item_projection_rows, open_feed_item_projection_snapshot,
-    ExternalSqliteStageError,
+    materialize_feed_item_projection, open_feed_item_projection_snapshot, ExternalSqliteStageError,
 };
 use crate::projection_coordinator::{
     apply_projection_batch, begin_or_resume_projection, ProjectionCoordinatorError,
@@ -89,7 +89,7 @@ fn populate_projection_generation(
     maximum_bytes: usize,
     maximum_batches: Option<usize>,
 ) -> PopulationResult<ProjectionRebuildState> {
-    let receipt = materialize_feed_item_projection_rows(source_connection)?;
+    let receipt = materialize_feed_item_projection(source_connection)?;
     let total_rows = usize::try_from(receipt.feed_item_count)
         .map_err(|_| ExternalProjectionPopulationError::IncompleteSource)?;
     let mut state =
