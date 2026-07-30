@@ -24,6 +24,8 @@ mod automerge_external_row_run;
 #[cfg_attr(not(test), allow(dead_code))]
 mod automerge_external_spool;
 #[cfg_attr(not(test), allow(dead_code))]
+mod automerge_external_sqlite_stage;
+#[cfg_attr(not(test), allow(dead_code))]
 mod automerge_external_token_run;
 #[cfg_attr(not(test), allow(dead_code))]
 mod automerge_external_value;

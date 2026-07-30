@@ -661,7 +661,12 @@ mod tests {
         with_verified_change_rows, with_verified_change_rows_and_payload,
         ExternalRowRunConsumeError, ExternalRowRunError, ExternalRowRunLimits,
     };
+    use crate::automerge_external_sqlite_stage::{
+        stage_verified_change_rows, stage_verified_change_rows_with_test_fault,
+        ExternalSqliteStageError,
+    };
     use crate::automerge_external_value::{write_decoded_value_tokens, ExternalValueDecodeLimits};
+    use rusqlite::Connection;
     use std::convert::Infallible;
     use std::io::{Read, Seek, SeekFrom};
     use tempfile::NamedTempFile;
@@ -1092,6 +1097,215 @@ mod tests {
             Err(ExternalRowRunConsumeError::Run(
                 ExternalRowRunError::SpoolMismatch
             ))
+        ));
+    }
+
+    #[test]
+    fn stages_verified_changes_atomically_and_rejects_incomplete_receipts() {
+        let bytes = decode_test_hex(TWO_CHANGE_DOCUMENT_HEX);
+        let source_byte_length = bytes.len() as u64;
+        let source_sha256 = digest(&bytes);
+        let (summary, dependency_spool, extra_payload, rows, layout) = reconstruct(&bytes).unwrap();
+        let mut row_file = fixture(&rows);
+        let mut dependency_file = fixture(&dependency_spool);
+        let mut extra_payload_file = fixture(&extra_payload);
+        let mut connection = Connection::open_in_memory().unwrap();
+
+        let receipt = stage_verified_change_rows(
+            &mut connection,
+            row_file.as_file_mut(),
+            dependency_file.as_file_mut(),
+            extra_payload_file.as_file_mut(),
+            source_byte_length,
+            &source_sha256,
+            &layout,
+            &summary,
+            change_limits(),
+            row_run_limits(),
+        )
+        .unwrap();
+        assert_eq!(receipt.source_byte_length, source_byte_length);
+        assert_eq!(receipt.source_sha256, source_sha256);
+        assert_eq!(receipt.summary, summary);
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM external_changes;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap(),
+            summary.change_count as i64
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM external_change_dependencies;",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            summary.dependency_count as i64
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM external_actors;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap(),
+            layout.actor_count() as i64
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM external_heads;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap(),
+            layout.head_count() as i64
+        );
+        let mut statement = connection
+            .prepare("SELECT extraPayload FROM external_changes ORDER BY changeIndex;")
+            .unwrap();
+        let stored_payloads = statement
+            .query_map([], |row| row.get::<_, Vec<u8>>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+            .concat();
+        assert_eq!(stored_payloads, extra_payload);
+        drop(statement);
+
+        let retried = stage_verified_change_rows(
+            &mut connection,
+            row_file.as_file_mut(),
+            dependency_file.as_file_mut(),
+            extra_payload_file.as_file_mut(),
+            source_byte_length,
+            &source_sha256,
+            &layout,
+            &summary,
+            change_limits(),
+            row_run_limits(),
+        )
+        .unwrap();
+        assert_eq!(retried, receipt);
+
+        let mut interrupted_connection = Connection::open_in_memory().unwrap();
+        assert!(matches!(
+            stage_verified_change_rows_with_test_fault(
+                &mut interrupted_connection,
+                row_file.as_file_mut(),
+                dependency_file.as_file_mut(),
+                extra_payload_file.as_file_mut(),
+                source_byte_length,
+                &source_sha256,
+                &layout,
+                &summary,
+                change_limits(),
+                row_run_limits(),
+                0,
+            ),
+            Err(ExternalSqliteStageError::ReceiptConflict)
+        ));
+        assert_eq!(
+            interrupted_connection
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table';",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+
+        let mut mixed_connection = Connection::open_in_memory().unwrap();
+        stage_verified_change_rows(
+            &mut mixed_connection,
+            row_file.as_file_mut(),
+            dependency_file.as_file_mut(),
+            extra_payload_file.as_file_mut(),
+            source_byte_length,
+            &source_sha256,
+            &layout,
+            &summary,
+            change_limits(),
+            row_run_limits(),
+        )
+        .unwrap();
+        mixed_connection
+            .execute(
+                "INSERT INTO external_operation_stage_receipt (\
+                 singleton, sourceByteLength, sourceSha256, operationCount, successorCount, \
+                 successorSpoolByteLength, successorSpoolSha256, valuePayloadSpoolByteLength, \
+                 valuePayloadSpoolSha256, rowRunPrefixByteLength, rowRunPrefixSha256) \
+                 VALUES (1, ?1, ?2, 0, 0, 0, ?2, 0, ?2, 0, ?2);",
+                rusqlite::params![source_byte_length as i64 + 1, source_sha256],
+            )
+            .unwrap();
+        assert!(matches!(
+            stage_verified_change_rows(
+                &mut mixed_connection,
+                row_file.as_file_mut(),
+                dependency_file.as_file_mut(),
+                extra_payload_file.as_file_mut(),
+                source_byte_length,
+                &source_sha256,
+                &layout,
+                &summary,
+                change_limits(),
+                row_run_limits(),
+            ),
+            Err(ExternalSqliteStageError::ReceiptConflict)
+        ));
+        mixed_connection
+            .execute("DELETE FROM external_operation_stage_receipt;", [])
+            .unwrap();
+        mixed_connection
+            .execute(
+                "UPDATE external_actors \
+                 SET actorId = 'ffffffffffffffffffffffffffffffff' \
+                 WHERE actorIndex = 0;",
+                [],
+            )
+            .unwrap();
+        assert!(matches!(
+            stage_verified_change_rows(
+                &mut mixed_connection,
+                row_file.as_file_mut(),
+                dependency_file.as_file_mut(),
+                extra_payload_file.as_file_mut(),
+                source_byte_length,
+                &source_sha256,
+                &layout,
+                &summary,
+                change_limits(),
+                row_run_limits(),
+            ),
+            Err(ExternalSqliteStageError::IncompleteStage)
+        ));
+
+        connection
+            .execute_batch("PRAGMA foreign_keys = OFF;")
+            .unwrap();
+        connection
+            .execute(
+                "UPDATE external_changes SET actorIndex = 999 \
+                 WHERE changeIndex = (SELECT MIN(changeIndex) FROM external_changes);",
+                [],
+            )
+            .unwrap();
+        assert!(matches!(
+            stage_verified_change_rows(
+                &mut connection,
+                row_file.as_file_mut(),
+                dependency_file.as_file_mut(),
+                extra_payload_file.as_file_mut(),
+                source_byte_length,
+                &source_sha256,
+                &layout,
+                &summary,
+                change_limits(),
+                row_run_limits(),
+            ),
+            Err(ExternalSqliteStageError::IncompleteStage)
         ));
     }
 }

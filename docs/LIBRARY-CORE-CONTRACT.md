@@ -9665,6 +9665,33 @@ transaction. The complete spool receipt is verified again after consumption,
 and the target transaction commits only after that final verification
 succeeds.
 
+Verified change and operation rows enter private scratch SQLite transactions.
+The stage stores the verified bounded actor and head catalog, then every
+change, operation, dependency, successor, scalar descriptor, and payload byte
+with its exact source and run receipt. It preserves unsigned Automerge counters
+as fixed-width big-endian bytes instead of narrowing them into signed SQLite
+integers. Large payloads enter preallocated SQLite blobs through the same fixed
+transfer buffer. The stage verifies its exact schema catalog before use and
+commits nothing unless the complete row and companion-spool verification
+succeeds. Foreign keys bind every change to its actor, every dependency to a
+staged change, and every operation object, element key, and successor to an
+exact staged operation ID. Every staged head must resolve to a staged change
+before the change receipt is accepted. Exact retry returns the stored receipt
+only while the layout, receipted row, relationship, payload, and graph-closure
+checks remain complete. A changed source, changed layout entry, changed
+summary, dangling reference, incomplete stage, mixed change and operation
+source identity, or schema drift fails closed.
+
+The complete scratch graph receives one seal only after actor indexes and head
+indexes are dense, each actor's change sequence is contiguous, maximum
+operation counters never regress, and its operation IDs exactly cover counters
+one through the final change maximum without a gap. One canonical SHA-256
+projection covers the source and row receipts, actor and head catalogs, every
+change and operation descriptor, every dependency and successor, and every
+payload byte streamed from SQLite through a fixed 64 KiB buffer. Exact seal
+retry recomputes the projection. Same-count metadata or payload tampering,
+counter gaps, incomplete actor intervals, and receipt drift fail closed.
+
 The migration worker's attributed resident ceiling is 384 MiB on a 4 GiB host,
 512 MiB on an 8 GiB host, and 768 MiB on a host with 16 GiB or more. Admission
 proves enough private staging capacity for the measured source, target,

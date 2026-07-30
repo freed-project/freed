@@ -554,8 +554,25 @@ Fault injection must prove rollback from the latest write in that transaction.
     large-host exception. A row consumer may stream only the exact
     receipt-bound payload range for its current row through a fixed buffer into
     an uncommitted target transaction. Rehash the complete spool after
-    consumption and commit only after that verification succeeds. Admission
-    proves both the fixed memory ceiling and private staging capacity.
+    consumption and commit only after that verification succeeds. A scratch
+    SQLite stage preserves counters as fixed-width sortable bytes, writes
+    payloads through incremental blobs, verifies its exact schema catalog, and
+    pins the bounded actor and head catalog from the verified layout. It commits
+    change or operation rows, dependencies or successors, payloads, and the
+    corresponding source receipt together. Exact retry returns that receipt
+    only while the layout and receipted row, relationship, and payload counts
+    remain complete. The scratch schema enforces actor, change dependency,
+    operation object, element-key, and successor references with foreign keys.
+    Every staged head must resolve to a staged change before the change receipt
+    is accepted. Change and operation receipts in one stage must bind the same
+    exact source identity. Missing rows, changed layout entries, dangling graph
+    references, unreceipted rows, mixed sources, or changed input fail closed.
+    Seal the complete stage only after actor sequences are contiguous,
+    per-actor operation counters exactly close every change interval, and one
+    bounded canonical digest covers every receipt, metadata row, relationship,
+    and incrementally read payload byte. Exact seal replay recomputes that
+    digest and rejects same-count semantic or payload tampering.
+    Admission proves both the fixed memory ceiling and private staging capacity.
 25. Build PWA reader manifests from both registered Cache namespaces and the
     durable logical lookup plan. Use one plan row and one probe per unique
     physical locator with sorted candidate bindings. Call only exact

@@ -61,7 +61,7 @@ ring = "0.17"
 # engine version. Linking whatever libsqlite3 a user's machine happens to ship
 # would make STRICT table support and FTS5 availability vary per machine, and
 # the projection contract depends on STRICT.
-rusqlite = { version = "0.32", features = ["bundled", "limits"] }
+rusqlite = { version = "0.32", features = ["blob", "bundled", "limits"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
