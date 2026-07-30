@@ -5,7 +5,7 @@
 //! document chunk. Later decoders consume the immutable JSONL output one record
 //! at a time. No command or production caller activates this module.
 
-use crate::automerge_external_common::lower_hex;
+use crate::automerge_external_common::{lower_hex, ExternalHashingWriter};
 use crate::automerge_external_decoder::{
     read_canonical_uleb128_value, verify_chunk, verify_source_identity, AutomergeChunkDescriptor,
     AutomergeChunkKind, AutomergeExternalDecoderError,
@@ -15,7 +15,7 @@ use std::fmt;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 
-const DOCUMENT_LAYOUT_SCHEMA_VERSION: u32 = 1;
+pub(super) const DOCUMENT_LAYOUT_SCHEMA_VERSION: u32 = 1;
 const CHANGE_HASH_BYTES: u64 = 32;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -27,7 +27,7 @@ pub(super) struct ExternalDocumentLayoutLimits {
     pub max_columns_per_section: u64,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(super) enum DocumentColumnSection {
     Changes,
@@ -48,7 +48,7 @@ pub(super) enum DocumentColumnType {
 }
 
 impl DocumentColumnType {
-    fn from_spec(specification: u32) -> Self {
+    pub(super) fn from_spec(specification: u32) -> Self {
         match specification & 0b111 {
             0 => Self::Group,
             1 => Self::Actor,
@@ -63,7 +63,7 @@ impl DocumentColumnType {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct ExternalDocumentLayoutSummary {
     pub actor_count: u64,
@@ -75,6 +75,8 @@ pub(super) struct ExternalDocumentLayoutSummary {
     pub operation_column_bytes: u64,
     pub head_index_count: u64,
     pub document_data_byte_length: u64,
+    pub layout_run_prefix_byte_length: u64,
+    pub layout_run_prefix_sha256: String,
 }
 
 #[derive(Debug)]
@@ -249,8 +251,9 @@ pub(super) fn write_verified_document_layout(
         .checked_add(descriptor.data_byte_length)
         .ok_or(ExternalDocumentLayoutError::RangeOverflow)?;
 
+    let mut hashed_output = ExternalHashingWriter::new(output);
     write_record(
-        output,
+        &mut hashed_output,
         &LayoutRecord::Begin {
             schema_version: DOCUMENT_LAYOUT_SCHEMA_VERSION,
             source_byte_length: expected_source_byte_length,
@@ -278,7 +281,7 @@ pub(super) fn write_verified_document_layout(
         let actor_bytes = read_bounded_bytes(source, data_end, actor_byte_length)?;
         let actor_id = lower_hex(&actor_bytes);
         write_record(
-            output,
+            &mut hashed_output,
             &LayoutRecord::Actor {
                 index,
                 byte_length: actor_byte_length,
@@ -292,7 +295,10 @@ pub(super) fn write_verified_document_layout(
         let mut hash = [0_u8; CHANGE_HASH_BYTES as usize];
         read_exact_or_truncated(source, data_end, &mut hash)?;
         let hash = lower_hex(&hash);
-        write_record(output, &LayoutRecord::Head { index, hash: &hash })?;
+        write_record(
+            &mut hashed_output,
+            &LayoutRecord::Head { index, hash: &hash },
+        )?;
     }
 
     let change_directory =
@@ -316,7 +322,7 @@ pub(super) fn write_verified_document_layout(
         change_directory,
         change_data_offset,
         DocumentColumnSection::Changes,
-        output,
+        &mut hashed_output,
     )?;
     emit_raw_columns(
         source,
@@ -324,7 +330,7 @@ pub(super) fn write_verified_document_layout(
         operation_directory,
         operation_data_offset,
         DocumentColumnSection::Operations,
-        output,
+        &mut hashed_output,
     )?;
 
     source.seek(SeekFrom::Start(suffix_offset))?;
@@ -334,7 +340,7 @@ pub(super) fn write_verified_document_layout(
         for head_index in 0..head_count {
             let change_index = read_document_uleb128(source, data_end)?;
             write_record(
-                output,
+                &mut hashed_output,
                 &LayoutRecord::HeadIndex {
                     head_index,
                     change_index,
@@ -347,6 +353,7 @@ pub(super) fn write_verified_document_layout(
         return Err(ExternalDocumentLayoutError::TrailingDocumentBytes);
     }
 
+    let (layout_run_prefix_byte_length, layout_run_prefix_sha256) = hashed_output.finish();
     let summary = ExternalDocumentLayoutSummary {
         actor_count,
         total_actor_bytes,
@@ -357,6 +364,8 @@ pub(super) fn write_verified_document_layout(
         operation_column_bytes: operation_directory.data_byte_length,
         head_index_count,
         document_data_byte_length: descriptor.data_byte_length,
+        layout_run_prefix_byte_length,
+        layout_run_prefix_sha256,
     };
     verify_source_identity(source, expected_source_byte_length, expected_source_sha256)?;
     write_record(output, &LayoutRecord::Complete { summary: &summary })?;
@@ -606,19 +615,24 @@ mod tests {
         )
         .unwrap();
 
+        assert_eq!(summary.actor_count, 1);
+        assert_eq!(summary.total_actor_bytes, 16);
+        assert_eq!(summary.head_count, 1);
+        assert_eq!(summary.change_column_count, 6);
+        assert_eq!(summary.change_column_bytes, 16);
+        assert_eq!(summary.operation_column_count, 10);
+        assert_eq!(summary.operation_column_bytes, 103);
+        assert_eq!(summary.head_index_count, 1);
+        assert_eq!(summary.document_data_byte_length, 206);
+        let complete_start = output[..output.len() - 1]
+            .iter()
+            .rposition(|byte| *byte == b'\n')
+            .map(|index| index + 1)
+            .unwrap();
+        assert_eq!(summary.layout_run_prefix_byte_length, complete_start as u64);
         assert_eq!(
-            summary,
-            ExternalDocumentLayoutSummary {
-                actor_count: 1,
-                total_actor_bytes: 16,
-                head_count: 1,
-                change_column_count: 6,
-                change_column_bytes: 16,
-                operation_column_count: 10,
-                operation_column_bytes: 103,
-                head_index_count: 1,
-                document_data_byte_length: 206,
-            }
+            summary.layout_run_prefix_sha256,
+            digest(&output[..complete_start])
         );
         let output = String::from_utf8(output).unwrap();
         assert!(output.contains("\"actorId\":\"0123456789abcdef0123456789abcdef\""));
@@ -634,7 +648,8 @@ mod tests {
             "\"section\":\"operations\",\"index\":9,\"specification\":128,\"columnId\":8,\"columnType\":\"group\",\"deflated\":false,\"offset\":214,\"byteLength\":2"
         ));
         assert!(output.contains("{\"type\":\"head_index\",\"headIndex\":0,\"changeIndex\":0}"));
-        assert!(output.ends_with("\"headIndexCount\":1,\"documentDataByteLength\":206}}\n"));
+        assert!(output.contains("\"headIndexCount\":1,\"documentDataByteLength\":206,"));
+        assert!(output.ends_with("}}\n"));
     }
 
     #[test]

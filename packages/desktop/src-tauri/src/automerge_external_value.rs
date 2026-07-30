@@ -8,19 +8,23 @@
 
 use crate::automerge_external_column::{
     ExternalColumnDecodeError, ExternalColumnDecodeSession, ExternalColumnDecodeSummary,
-    ExternalColumnInput, COLUMN_TOKEN_SCHEMA_VERSION,
+    ExternalColumnInput,
 };
-use crate::automerge_external_common::lower_hex;
+use crate::automerge_external_common::{lower_hex, ExternalHashingWriter};
 use crate::automerge_external_decoder::AutomergeExternalDecoderError;
 use crate::automerge_external_document::DocumentColumnType;
+use crate::automerge_external_token_run::{
+    ExternalColumnTokenRunError, ExternalColumnTokenRunLimits, ExternalColumnTokenRunReader,
+    ExternalColumnTokenValue,
+};
 use flate2::read::DeflateDecoder;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Take, Write};
+use std::io::{BufReader, Read, Seek, SeekFrom, Take, Write};
 
-const VALUE_TOKEN_SCHEMA_VERSION: u32 = 1;
+pub(super) const VALUE_TOKEN_SCHEMA_VERSION: u32 = 1;
 const RAW_INPUT_BUFFER_BYTES: usize = 64 * 1024;
 const RAW_COPY_BUFFER_BYTES: usize = 64 * 1024;
 
@@ -33,29 +37,26 @@ pub(super) struct ExternalValueDecodeLimits {
     pub max_metadata_line_bytes: usize,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct ExternalValueDecodeSummary {
     pub value_count: u64,
     pub decoded_raw_byte_length: u64,
     pub payload_spool_byte_length: u64,
     pub payload_spool_sha256: String,
+    pub token_run_prefix_byte_length: u64,
+    pub token_run_prefix_sha256: String,
 }
 
 #[derive(Debug)]
 pub(super) enum ExternalValueDecodeError {
     Io(std::io::Error),
-    Json(serde_json::Error),
     Column(ExternalColumnDecodeError),
     Decoder(AutomergeExternalDecoderError),
+    TokenRun(ExternalColumnTokenRunError),
     InvalidLimits,
     InvalidMetadataInput,
     InvalidRawInput,
-    MetadataRunTooLarge,
-    MetadataLineTooLarge,
-    MetadataRunTruncated,
-    MetadataContractMismatch,
-    MetadataTokenOrder,
     InvalidMetadataToken,
     ValueCountLimit,
     MissingRawColumn,
@@ -77,15 +78,15 @@ impl From<std::io::Error> for ExternalValueDecodeError {
     }
 }
 
-impl From<serde_json::Error> for ExternalValueDecodeError {
-    fn from(error: serde_json::Error) -> Self {
-        Self::Json(error)
-    }
-}
-
 impl From<ExternalColumnDecodeError> for ExternalValueDecodeError {
     fn from(error: ExternalColumnDecodeError) -> Self {
         Self::Column(error)
+    }
+}
+
+impl From<ExternalColumnTokenRunError> for ExternalValueDecodeError {
+    fn from(error: ExternalColumnTokenRunError) -> Self {
+        Self::TokenRun(error)
     }
 }
 
@@ -99,29 +100,14 @@ impl fmt::Display for ExternalValueDecodeError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Io(error) => write!(formatter, "Automerge value I/O failed: {error}"),
-            Self::Json(error) => write!(formatter, "Automerge metadata JSON is invalid: {error}"),
             Self::Column(error) => error.fmt(formatter),
             Self::Decoder(error) => error.fmt(formatter),
+            Self::TokenRun(error) => error.fmt(formatter),
             Self::InvalidLimits => formatter.write_str("Automerge value limits are invalid"),
             Self::InvalidMetadataInput => {
                 formatter.write_str("Automerge value metadata input is invalid")
             }
             Self::InvalidRawInput => formatter.write_str("Automerge raw value input is invalid"),
-            Self::MetadataRunTooLarge => {
-                formatter.write_str("Automerge metadata run exceeds the admitted bytes")
-            }
-            Self::MetadataLineTooLarge => {
-                formatter.write_str("Automerge metadata line exceeds the admitted bytes")
-            }
-            Self::MetadataRunTruncated => {
-                formatter.write_str("Automerge metadata run is truncated")
-            }
-            Self::MetadataContractMismatch => {
-                formatter.write_str("Automerge metadata run does not match its contract")
-            }
-            Self::MetadataTokenOrder => {
-                formatter.write_str("Automerge metadata tokens are not contiguous")
-            }
             Self::InvalidMetadataToken => {
                 formatter.write_str("Automerge value metadata token is invalid")
             }
@@ -160,47 +146,6 @@ impl fmt::Display for ExternalValueDecodeError {
 impl std::error::Error for ExternalValueDecodeError {}
 
 type ValueResult<T> = Result<T, ExternalValueDecodeError>;
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
-enum MetadataRecord {
-    Begin {
-        #[serde(rename = "schemaVersion")]
-        schema_version: u32,
-        #[serde(rename = "sourceByteLength")]
-        source_byte_length: u64,
-        #[serde(rename = "sourceSha256")]
-        source_sha256: String,
-        offset: u64,
-        #[serde(rename = "byteLength")]
-        byte_length: u64,
-        #[serde(rename = "columnType")]
-        column_type: DocumentColumnType,
-        deflated: bool,
-    },
-    Token {
-        index: u64,
-        token: MetadataToken,
-    },
-    Complete {
-        summary: ExternalColumnDecodeSummary,
-    },
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(
-    tag = "kind",
-    content = "value",
-    rename_all = "snake_case",
-    deny_unknown_fields
-)]
-enum MetadataToken {
-    Null,
-    Unsigned(String),
-    Signed,
-    Boolean,
-    String,
-}
 
 #[derive(Serialize)]
 #[serde(rename_all = "snake_case", tag = "kind")]
@@ -460,30 +405,24 @@ fn write_decoded_value_tokens_in_session(
         raw_input,
         limits,
     )?;
-    let metadata_run_byte_length = metadata_run.metadata()?.len();
-    if metadata_run_byte_length > limits.max_metadata_run_bytes {
-        return Err(ExternalValueDecodeError::MetadataRunTooLarge);
-    }
-    metadata_run.seek(SeekFrom::Start(0))?;
-    let mut metadata_reader = BufReader::new(metadata_run.take(metadata_run_byte_length));
-
-    let (begin, begin_line) =
-        next_metadata_record(&mut metadata_reader, limits.max_metadata_line_bytes)?
-            .ok_or(ExternalValueDecodeError::MetadataRunTruncated)?;
-    let mut metadata_prefix_hasher = Sha256::new();
-    let mut metadata_prefix_byte_length = 0_u64;
-    hash_metadata_line(
-        &begin_line,
-        &mut metadata_prefix_hasher,
-        &mut metadata_prefix_byte_length,
+    let mut metadata_reader = ExternalColumnTokenRunReader::open(
+        metadata_run,
+        source_byte_length,
+        source_sha256,
+        metadata_input,
+        metadata_summary,
+        ExternalColumnTokenRunLimits {
+            max_run_bytes: limits.max_metadata_run_bytes,
+            max_line_bytes: limits.max_metadata_line_bytes,
+        },
     )?;
-    validate_metadata_begin(begin, source_byte_length, source_sha256, metadata_input)?;
 
     let mut raw_reader = raw_input
         .map(|input| RawValueReader::new(source, input, limits.max_decoded_raw_bytes))
         .transpose()?;
+    let mut hashed_output = ExternalHashingWriter::new(output);
     write_record(
-        output,
+        &mut hashed_output,
         &ValueRecord::Begin {
             schema_version: VALUE_TOKEN_SCHEMA_VERSION,
             source_byte_length,
@@ -499,62 +438,30 @@ fn write_decoded_value_tokens_in_session(
     let mut value_count = 0_u64;
     let mut payload_spool_byte_length = 0_u64;
     let mut payload_hasher = Sha256::new();
-    loop {
-        let (record, line) =
-            next_metadata_record(&mut metadata_reader, limits.max_metadata_line_bytes)?
-                .ok_or(ExternalValueDecodeError::MetadataRunTruncated)?;
-        match record {
-            MetadataRecord::Token { index, token } => {
-                hash_metadata_line(
-                    &line,
-                    &mut metadata_prefix_hasher,
-                    &mut metadata_prefix_byte_length,
-                )?;
-                if index != value_count {
-                    return Err(ExternalValueDecodeError::MetadataTokenOrder);
-                }
-                if value_count >= limits.max_value_count {
-                    return Err(ExternalValueDecodeError::ValueCountLimit);
-                }
-                let metadata = match token {
-                    MetadataToken::Unsigned(value) => parse_canonical_metadata(&value)?,
-                    MetadataToken::Null
-                    | MetadataToken::Signed
-                    | MetadataToken::Boolean
-                    | MetadataToken::String => {
-                        return Err(ExternalValueDecodeError::InvalidMetadataToken)
-                    }
-                };
-                write_scalar(
-                    value_count,
-                    metadata,
-                    raw_reader.as_mut(),
-                    limits,
-                    payload_spool,
-                    &mut payload_hasher,
-                    &mut payload_spool_byte_length,
-                    output,
-                )?;
-                value_count += 1;
-            }
-            MetadataRecord::Complete { summary } => {
-                let metadata_prefix_sha256 = lower_hex(&metadata_prefix_hasher.clone().finalize());
-                if summary != *metadata_summary
-                    || summary.token_count != value_count
-                    || summary.token_run_prefix_byte_length != metadata_prefix_byte_length
-                    || summary.token_run_prefix_sha256 != metadata_prefix_sha256
-                {
-                    return Err(ExternalValueDecodeError::MetadataContractMismatch);
-                }
-                break;
-            }
-            MetadataRecord::Begin { .. } => {
-                return Err(ExternalValueDecodeError::MetadataContractMismatch)
-            }
+    while let Some(token) = metadata_reader.next_token()? {
+        if value_count >= limits.max_value_count {
+            return Err(ExternalValueDecodeError::ValueCountLimit);
         }
-    }
-    if next_metadata_record(&mut metadata_reader, limits.max_metadata_line_bytes)?.is_some() {
-        return Err(ExternalValueDecodeError::MetadataContractMismatch);
+        let metadata = match token.value {
+            ExternalColumnTokenValue::Unsigned(value) => parse_canonical_metadata(&value)?,
+            ExternalColumnTokenValue::Null
+            | ExternalColumnTokenValue::Signed(_)
+            | ExternalColumnTokenValue::Boolean(_)
+            | ExternalColumnTokenValue::String(_) => {
+                return Err(ExternalValueDecodeError::InvalidMetadataToken)
+            }
+        };
+        write_scalar(
+            value_count,
+            metadata,
+            raw_reader.as_mut(),
+            limits,
+            payload_spool,
+            &mut payload_hasher,
+            &mut payload_spool_byte_length,
+            &mut hashed_output,
+        )?;
+        value_count += 1;
     }
 
     let decoded_raw_byte_length = match (raw_reader, raw_input) {
@@ -562,11 +469,14 @@ fn write_decoded_value_tokens_in_session(
         (None, None) => 0,
         _ => unreachable!("raw reader and input are constructed together"),
     };
+    let (token_run_prefix_byte_length, token_run_prefix_sha256) = hashed_output.finish();
     let summary = ExternalValueDecodeSummary {
         value_count,
         decoded_raw_byte_length,
         payload_spool_byte_length,
         payload_spool_sha256: lower_hex(&payload_hasher.finalize()),
+        token_run_prefix_byte_length,
+        token_run_prefix_sha256,
     };
     write_record(output, &ValueRecord::Complete { summary: &summary })?;
     Ok(summary)
@@ -608,37 +518,6 @@ fn validate_inputs(
                 .is_none_or(|end| end > source_byte_length)
     }) {
         return Err(ExternalValueDecodeError::InvalidRawInput);
-    }
-    Ok(())
-}
-
-fn validate_metadata_begin(
-    record: MetadataRecord,
-    source_byte_length: u64,
-    source_sha256: &str,
-    metadata_input: ExternalColumnInput,
-) -> ValueResult<()> {
-    let MetadataRecord::Begin {
-        schema_version,
-        source_byte_length: recorded_source_byte_length,
-        source_sha256: recorded_source_sha256,
-        offset,
-        byte_length,
-        column_type,
-        deflated,
-    } = record
-    else {
-        return Err(ExternalValueDecodeError::MetadataContractMismatch);
-    };
-    if schema_version != COLUMN_TOKEN_SCHEMA_VERSION
-        || recorded_source_byte_length != source_byte_length
-        || recorded_source_sha256 != source_sha256
-        || offset != metadata_input.offset
-        || byte_length != metadata_input.byte_length
-        || column_type != DocumentColumnType::ValueMetadata
-        || deflated != metadata_input.deflated
-    {
-        return Err(ExternalValueDecodeError::MetadataContractMismatch);
     }
     Ok(())
 }
@@ -933,27 +812,6 @@ fn encode_signed(mut value: i64) -> EncodedLeb128 {
     }
 }
 
-fn next_metadata_record(
-    reader: &mut impl BufRead,
-    maximum_line_bytes: usize,
-) -> ValueResult<Option<(MetadataRecord, Vec<u8>)>> {
-    let Some(line) = read_bounded_line(reader, maximum_line_bytes)? else {
-        return Ok(None);
-    };
-    let record = serde_json::from_slice(&line)?;
-    Ok(Some((record, line)))
-}
-
-fn hash_metadata_line(line: &[u8], hasher: &mut Sha256, byte_length: &mut u64) -> ValueResult<()> {
-    hasher.update(line);
-    hasher.update(b"\n");
-    *byte_length = byte_length
-        .checked_add(line.len() as u64)
-        .and_then(|length| length.checked_add(1))
-        .ok_or(ExternalValueDecodeError::RangeOverflow)?;
-    Ok(())
-}
-
 fn parse_canonical_metadata(value: &str) -> ValueResult<u64> {
     let parsed = value
         .parse::<u64>()
@@ -962,46 +820,6 @@ fn parse_canonical_metadata(value: &str) -> ValueResult<u64> {
         return Err(ExternalValueDecodeError::InvalidMetadataToken);
     }
     Ok(parsed)
-}
-
-fn read_bounded_line(
-    reader: &mut impl BufRead,
-    maximum_line_bytes: usize,
-) -> ValueResult<Option<Vec<u8>>> {
-    let mut line = Vec::new();
-    loop {
-        let available = reader.fill_buf()?;
-        if available.is_empty() {
-            return if line.is_empty() {
-                Ok(None)
-            } else {
-                Err(ExternalValueDecodeError::MetadataRunTruncated)
-            };
-        }
-        if let Some(newline) = available.iter().position(|byte| *byte == b'\n') {
-            let take = newline + 1;
-            if line
-                .len()
-                .checked_add(newline)
-                .is_none_or(|length| length > maximum_line_bytes)
-            {
-                return Err(ExternalValueDecodeError::MetadataLineTooLarge);
-            }
-            line.extend_from_slice(&available[..newline]);
-            reader.consume(take);
-            return Ok(Some(line));
-        }
-        if line
-            .len()
-            .checked_add(available.len())
-            .is_none_or(|length| length > maximum_line_bytes)
-        {
-            return Err(ExternalValueDecodeError::MetadataLineTooLarge);
-        }
-        let consumed = available.len();
-        line.extend_from_slice(available);
-        reader.consume(consumed);
-    }
 }
 
 fn write_value(
@@ -1332,7 +1150,9 @@ mod tests {
         );
         assert!(matches!(
             result,
-            Err(ExternalValueDecodeError::MetadataContractMismatch)
+            Err(ExternalValueDecodeError::TokenRun(
+                ExternalColumnTokenRunError::ContractMismatch
+            ))
         ));
     }
 
