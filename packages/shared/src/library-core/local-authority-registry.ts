@@ -1022,6 +1022,57 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
     ],
   },
   {
+    registryKey: "library-core-derived-runtime",
+    soleOwner: "Freed Desktop Library Core external migration and shadow runtimes",
+    locality: "derived",
+    role: "derived-runtime",
+    authoritative: false,
+    physicalStores: [
+      {
+        kind: "filesystem",
+        platforms: ["desktop"],
+        locator: `${APP_DATA}/library-core-external-migration-v1 and ${APP_DATA}/library-core-shadow-v1`,
+        keys: [
+          "library-core-external-migration-v1/scratch/<sessionSha256>.sqlite",
+          "library-core-external-migration-v1/spool/<sessionSha256>.journal.jsonl",
+          "library-core-external-migration-v1/spool/<sessionSha256>.snapshot",
+          "library-core-shadow-v1/generations/.<sourceKey>.staging.sqlite",
+          "library-core-shadow-v1/generations/<sourceKey>.sqlite",
+          "library-core-shadow-v1/registry.sqlite",
+        ],
+      },
+      {
+        kind: "local-storage",
+        platforms: ["desktop"],
+        locator: "origin:localStorage",
+        keys: ["freed.libraryCore.externalMigrationV1.disabled"],
+      },
+    ],
+    retention: {
+      kind: "bounded-by-rule",
+      rules: [
+        { scope: "crash-replay migration revisions", limit: 1, unit: "revision" },
+        { scope: "complete immutable projection generations", limit: 2, unit: "generation" },
+        { scope: "migration rollback controls", limit: 1, unit: "key" },
+      ],
+    },
+    backup: "exclude-derived",
+    export: "exclude",
+    redaction: "not-applicable",
+    resetSemantics: "Successful two-sided migration confirmation removes that revision's spool and scratch graph. New selection retains only the selected and exact rollback SQLite generations. Factory reset removes both native roots; clearing site data removes the local rollback switch.",
+    snapshot: "rebuildable",
+    migration: "rebuild-after-cutover",
+    cutover: {
+      blocksCutover: false,
+      reason: "This is a bounded, rebuildable compatibility projection. Automerge remains the sole authority until the governed Library Core cutover.",
+    },
+    sourceReferences: [
+      "packages/desktop/src-tauri/src/library_core_external_migration_runtime.rs",
+      "packages/desktop/src-tauri/src/library_core_shadow_runtime.rs",
+      "packages/desktop/src/lib/automerge.ts",
+    ],
+  },
+  {
     registryKey: "library-core-installation-identity",
     soleOwner: "unprovisioned Library Core installation identity adapter",
     locality: "device-local",
@@ -2403,6 +2454,43 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
       'const STORE_NAME = "locations"',
     ],
     registeredKeys: ["query"],
+  },
+  {
+    registryKey: "library-core-derived-runtime",
+    sourcePath: "packages/desktop/src-tauri/src/library_core_external_migration_runtime.rs",
+    sourceTokens: [
+      'const MIGRATION_ROOT_DIRECTORY: &str = "library-core-external-migration-v1"',
+      'const SPOOL_DIRECTORY: &str = "spool"',
+      'const SCRATCH_DIRECTORY: &str = "scratch"',
+    ],
+    registeredKeys: [
+      "library-core-external-migration-v1/scratch/<sessionSha256>.sqlite",
+      "library-core-external-migration-v1/spool/<sessionSha256>.journal.jsonl",
+      "library-core-external-migration-v1/spool/<sessionSha256>.snapshot",
+    ],
+  },
+  {
+    registryKey: "library-core-derived-runtime",
+    sourcePath: "packages/desktop/src-tauri/src/library_core_shadow_runtime.rs",
+    sourceTokens: [
+      'const SHADOW_ROOT_DIRECTORY: &str = "library-core-shadow-v1"',
+      'const GENERATION_DIRECTORY: &str = "generations"',
+      'const REGISTRY_FILE: &str = "registry.sqlite"',
+    ],
+    registeredKeys: [
+      "library-core-shadow-v1/generations/.<sourceKey>.staging.sqlite",
+      "library-core-shadow-v1/generations/<sourceKey>.sqlite",
+      "library-core-shadow-v1/registry.sqlite",
+    ],
+  },
+  {
+    registryKey: "library-core-derived-runtime",
+    sourcePath: "packages/desktop/src/lib/automerge.ts",
+    sourceTokens: [
+      'const LIBRARY_CORE_EXTERNAL_MIGRATION_DISABLED_KEY =',
+      '"freed.libraryCore.externalMigrationV1.disabled"',
+    ],
+    registeredKeys: ["freed.libraryCore.externalMigrationV1.disabled"],
   },
   {
     registryKey: "local-ai-model-files",

@@ -1,10 +1,9 @@
 //! Bounded value-column joining for external-memory Automerge migration.
 //!
 //! Automerge stores scalar metadata separately from raw value bytes. This
-//! dormant layer consumes a verified metadata token run, streams the paired raw
+//! layer consumes a verified metadata token run, streams the paired raw
 //! column, and writes deterministic scalar descriptors plus a bounded payload
-//! spool. It never retains the document or a complete raw column in memory. No
-//! command or production caller activates this module.
+//! spool. It never retains the document or a complete raw column in memory.
 
 use crate::automerge_external_column::{
     ExternalColumnDecodeError, ExternalColumnDecodeSession, ExternalColumnDecodeSummary,

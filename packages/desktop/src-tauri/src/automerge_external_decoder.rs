@@ -3,10 +3,10 @@
 //! Automerge 2.2.9 stores a document as concatenated binary chunks. The
 //! upstream loader parses each complete chunk into memory and reconstructs a
 //! complete change graph. Library Core cannot use that path because the source
-//! may be larger than available memory. This dormant module verifies only the
-//! outer framing and checksums, then emits one deterministic JSONL descriptor
-//! at a time. Later slices consume those descriptors to create bounded change
-//! and object runs. No command or production caller activates this module.
+//! may be larger than available memory. This module verifies only the outer
+//! framing and checksums, then emits one deterministic JSONL descriptor at a
+//! time. Later stages consume those descriptors to create bounded change and
+//! object runs.
 
 use crate::automerge_external_common::{is_lower_sha256, lower_hex};
 use flate2::read::DeflateDecoder;

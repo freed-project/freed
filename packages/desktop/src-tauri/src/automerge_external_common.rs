@@ -1,4 +1,4 @@
-//! Shared fixed-size codecs for the dormant external-memory Automerge path.
+//! Shared fixed-size codecs for the external-memory Automerge migration path.
 
 use sha2::{Digest, Sha256};
 use std::io::Write;

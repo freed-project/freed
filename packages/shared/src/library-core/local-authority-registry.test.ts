@@ -83,6 +83,7 @@ describe("Library Core local authority registry", () => {
       "library-core-bootstrap-operation-journal",
       "library-core-bootstrap-receipt",
       "library-core-bootstrap-record",
+      "library-core-derived-runtime",
       "library-core-installation-identity",
       "library-core-local-control",
       "local-ai-model-files",

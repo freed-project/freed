@@ -1,9 +1,8 @@
 //! Crash-resumable native spool for bounded Automerge snapshot migration.
 //!
-//! This module is deliberately dormant. It accepts the worker's fixed-size
-//! snapshot chunks without decoding Automerge, durably acknowledges each
-//! chunk, and verifies the completed source digest. No Tauri command or
-//! production caller activates it yet.
+//! The startup migration sends fixed-size snapshot chunks here without
+//! decoding Automerge. The spool durably acknowledges each chunk and verifies
+//! the completed source digest before the decoder can consume it.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -22,7 +21,7 @@ const MAX_JOURNAL_LINE_BYTES: usize = 16 * 1024;
 #[serde(rename_all = "camelCase")]
 pub(super) struct ExternalSnapshotSource {
     pub schema_version: u32,
-    pub storage_generation: String,
+    pub storage_generation: u64,
     pub storage_save_revision: u64,
     pub byte_length: u64,
 }
@@ -244,6 +243,14 @@ impl ExternalSnapshotSpool {
         Ok(digest)
     }
 
+    pub(super) fn finalized_source_file(&mut self) -> SpoolResult<&mut File> {
+        if self.finalized_digest.is_none() {
+            return Err(ExternalSnapshotSpoolError::IncompleteSource);
+        }
+        self.data.seek(SeekFrom::Start(0))?;
+        Ok(&mut self.data)
+    }
+
     fn verify_retry(&mut self, offset: u64, bytes: &[u8]) -> SpoolResult<()> {
         if !offset.is_multiple_of(EXTERNAL_SNAPSHOT_CHUNK_BYTES as u64) {
             return Err(ExternalSnapshotSpoolError::UnexpectedOffset);
@@ -414,10 +421,7 @@ fn expected_chunk_length(source: &ExternalSnapshotSource, offset: u64) -> SpoolR
 }
 
 fn validate_source(source: &ExternalSnapshotSource) -> SpoolResult<()> {
-    if source.schema_version != 1
-        || source.storage_generation.trim().is_empty()
-        || source.byte_length == 0
-    {
+    if source.schema_version != 1 || source.byte_length == 0 {
         return Err(ExternalSnapshotSpoolError::InvalidSource);
     }
     Ok(())
@@ -555,7 +559,7 @@ mod tests {
     fn source(byte_length: u64) -> ExternalSnapshotSource {
         ExternalSnapshotSource {
             schema_version: 1,
-            storage_generation: "generation-a".to_string(),
+            storage_generation: 3,
             storage_save_revision: 17,
             byte_length,
         }
