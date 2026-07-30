@@ -336,6 +336,9 @@ mod tests {
     fn binding(total_rows: i64) -> FeedBrowseGenerationBinding {
         FeedBrowseGenerationBinding {
             generation_id: "a".repeat(64),
+            source_document_id: "library-1".to_string(),
+            source_heads_digest: "b".repeat(64),
+            source_head_count: 2,
             transition_sequence: 7,
             projection_revision: 11,
             filter_json: r#"{"schemaVersion":1}"#.to_string(),

@@ -6,6 +6,16 @@ CREATE TABLE feed_browse_generation (
     length(generationId) = 64
     AND generationId NOT GLOB '*[^0-9a-f]*'
   ),
+  sourceDocumentId                  TEXT    NOT NULL CHECK (
+    length(CAST(sourceDocumentId AS BLOB)) BETWEEN 1 AND 4096
+  ),
+  sourceHeadsDigest                 TEXT    NOT NULL CHECK (
+    length(sourceHeadsDigest) = 64
+    AND sourceHeadsDigest NOT GLOB '*[^0-9a-f]*'
+  ),
+  sourceHeadCount                   INTEGER NOT NULL CHECK (
+    sourceHeadCount BETWEEN 0 AND 9007199254740991
+  ),
   transitionSequence                INTEGER NOT NULL CHECK (
     transitionSequence BETWEEN 0 AND 9007199254740991
   ),

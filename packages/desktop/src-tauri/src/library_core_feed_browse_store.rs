@@ -83,6 +83,9 @@ type StoreResult<T> = Result<T, FeedBrowseStoreError>;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct FeedBrowseGenerationBinding {
     pub(super) generation_id: String,
+    pub(super) source_document_id: String,
+    pub(super) source_heads_digest: String,
+    pub(super) source_head_count: i64,
     pub(super) transition_sequence: i64,
     pub(super) projection_revision: i64,
     pub(super) filter_json: String,
@@ -244,11 +247,15 @@ impl FeedBrowseGenerationStore {
         }
         transaction.execute(
             "INSERT INTO feed_browse_generation (
-               singleton, generationId, transitionSequence, projectionRevision,
+               singleton, generationId, sourceDocumentId, sourceHeadsDigest,
+               sourceHeadCount, transitionSequence, projectionRevision,
                filterJson, rankingClockMs, recommendationOrderSchemaVersion, totalRows
-             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7);",
+             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);",
             params![
                 &binding.generation_id,
+                &binding.source_document_id,
+                &binding.source_heads_digest,
+                binding.source_head_count,
                 binding.transition_sequence,
                 binding.projection_revision,
                 &binding.filter_json,
@@ -486,22 +493,26 @@ fn read_binding(
     transaction: &rusqlite::Transaction<'_>,
 ) -> rusqlite::Result<(FeedBrowseGenerationBinding, bool)> {
     transaction.query_row(
-        "SELECT generationId, transitionSequence, projectionRevision, filterJson,
-                rankingClockMs, recommendationOrderSchemaVersion, totalRows, complete
+        "SELECT generationId, sourceDocumentId, sourceHeadsDigest, sourceHeadCount,
+                transitionSequence, projectionRevision, filterJson, rankingClockMs,
+                recommendationOrderSchemaVersion, totalRows, complete
          FROM feed_browse_generation WHERE singleton = 1;",
         [],
         |row| {
             Ok((
                 FeedBrowseGenerationBinding {
                     generation_id: row.get(0)?,
-                    transition_sequence: row.get(1)?,
-                    projection_revision: row.get(2)?,
-                    filter_json: row.get(3)?,
-                    ranking_clock_ms: row.get(4)?,
-                    recommendation_order_schema_version: row.get(5)?,
-                    total_rows: row.get(6)?,
+                    source_document_id: row.get(1)?,
+                    source_heads_digest: row.get(2)?,
+                    source_head_count: row.get(3)?,
+                    transition_sequence: row.get(4)?,
+                    projection_revision: row.get(5)?,
+                    filter_json: row.get(6)?,
+                    ranking_clock_ms: row.get(7)?,
+                    recommendation_order_schema_version: row.get(8)?,
+                    total_rows: row.get(9)?,
                 },
-                row.get(7)?,
+                row.get(10)?,
             ))
         },
     )
@@ -559,6 +570,10 @@ fn cursor_from_row(
 
 fn validate_binding(binding: &FeedBrowseGenerationBinding) -> StoreResult<()> {
     if !is_lower_sha256(&binding.generation_id)
+        || binding.source_document_id.is_empty()
+        || binding.source_document_id.len() > 4_096
+        || !is_lower_sha256(&binding.source_heads_digest)
+        || !is_safe_integer(binding.source_head_count)
         || !is_safe_integer(binding.transition_sequence)
         || !is_safe_integer(binding.projection_revision)
         || !is_safe_integer(binding.ranking_clock_ms)
@@ -688,6 +703,9 @@ mod tests {
     fn binding(total_rows: i64) -> FeedBrowseGenerationBinding {
         FeedBrowseGenerationBinding {
             generation_id: "a".repeat(64),
+            source_document_id: "library-1".to_string(),
+            source_heads_digest: "b".repeat(64),
+            source_head_count: 2,
             transition_sequence: 7,
             projection_revision: 11,
             filter_json: r#"{"schemaVersion":1}"#.to_string(),
@@ -795,6 +813,12 @@ mod tests {
             store.begin(&conflicting),
             Err(FeedBrowseStoreError::IdentityConflict)
         ));
+        let mut conflicting_source = identity.clone();
+        conflicting_source.source_heads_digest = "c".repeat(64);
+        assert!(matches!(
+            store.begin(&conflicting_source),
+            Err(FeedBrowseStoreError::IdentityConflict)
+        ));
     }
 
     #[test]
@@ -821,12 +845,17 @@ mod tests {
     fn persists_the_generation_contract_on_disk() {
         let temporary = tempfile::tempdir().expect("tempdir");
         let path = temporary.path().join("browse.sqlite");
+        let identity = binding(0);
         {
             let mut store = FeedBrowseGenerationStore::open(&path).expect("store");
-            store.begin(&binding(0)).expect("begin");
+            store.begin(&identity).expect("begin");
             store.finalize().expect("finalize");
         }
-        let store = FeedBrowseGenerationStore::open(&path).expect("reopen");
+        let mut store = FeedBrowseGenerationStore::open(&path).expect("reopen");
+        assert_eq!(
+            store.begin(&identity).expect("complete replay"),
+            FeedBrowseGenerationState::Complete
+        );
         assert_eq!(store.read_page(None, 8).expect("read").rows, vec![]);
         assert_eq!(
             store

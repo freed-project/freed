@@ -757,6 +757,9 @@ async function startLibraryCoreFeedBrowseProjection(
   );
   const binding: LibraryCoreFeedBrowseGenerationBindingV1 = {
     generationId,
+    sourceDocumentId: source.documentId,
+    sourceHeadsDigest: source.headsDigest,
+    sourceHeadCount: source.headCount,
     transitionSequence: source.storageRevision.generation,
     projectionRevision: source.storageRevision.saveRevision,
     filterJson,

@@ -14,6 +14,9 @@ import {
 
 const binding: LibraryCoreFeedBrowseGenerationBindingV1 = {
   generationId: "a".repeat(64),
+  sourceDocumentId: "library-1",
+  sourceHeadsDigest: "b".repeat(64),
+  sourceHeadCount: 2,
   transitionSequence: 7,
   projectionRevision: 11,
   filterJson:
