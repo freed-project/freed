@@ -2646,10 +2646,18 @@ The main-thread adapter forwards those pages to SQLite, resumes an exact
 receipted append or finalization after response loss, and cancels both sides
 on failure. It does not retain a corpus-sized ID or row array.
 
-This path still has no selected-generation registry, native browse reader,
-renderer-cache eviction, or product caller. It cannot yet resolve
-`adapter_proof_missing` for `feed_browse_page_v1`, authorize a reader cutover,
-or change Automerge authority.
+The first Desktop product caller retains the same transport and native
+receipts, but no longer performs this second Automerge proxy traversal. The
+legacy renderer already owns one plain `DocState` snapshot. That snapshot now
+retains exact source-map enumeration IDs separately from its ranked visible
+items. Incremental patch responses identify source additions and removals so
+the tie-break sequence remains exact without a corpus rescan. The adapter
+freezes one state object and one durable source revision, computes rows from
+that plain state, and forwards only one replayable page capped at 128 rows.
+State or source movement fails closed before publication. This is an interim
+Gate D memory correction. Initial renderer hydration still scales with the
+legacy corpus, append-style Automerge change chunks still require the native
+external-memory decoder, and Automerge remains authoritative.
 
 The cursor is versioned binary data encoded as canonical unpadded base64url. It
 binds the immutable generation digest, transition sequence, projection

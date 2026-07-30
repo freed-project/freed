@@ -185,10 +185,11 @@ async function recoverFinalizeResponse(
 }
 
 /**
- * Copy one worker-authenticated, normalized browse projection into the native
- * SQLite staging generation. The worker retains only one iterator and one
- * replayable 128-row page. Native receipts absorb exact page and finalization
- * response loss without widening product authority.
+ * Copy one source-authenticated, normalized browse projection into the native
+ * SQLite staging generation. The projection client retains only one position
+ * and one replayable 128-row page beyond the product state it already owns.
+ * Native receipts absorb exact page and finalization response loss without
+ * widening product authority.
  */
 export async function materializeDesktopLibraryCoreFeedBrowseGeneration(
   workerClient: LibraryCoreFeedBrowseProjectionWorkerClient,

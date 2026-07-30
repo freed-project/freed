@@ -1464,6 +1464,7 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
     cloneFeedItemsForDesktopUi(
       doc.feedItems as Record<string, FeedItem> | undefined,
     );
+  const feedSourceOrderIds = plainItems.map((item) => item.globalId);
   const feeds = cloneRecordValues(
     doc.rssFeeds as Record<string, RssFeed> | undefined,
   );
@@ -1525,6 +1526,7 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
 
   return {
     items: rankedItems,
+    feedSourceOrderIds,
     searchCorpusVersion,
     feeds,
     persons,
@@ -1911,6 +1913,7 @@ async function applyAddFeedItemsPatchChange(
       type: "ITEM_PATCH",
       patches,
       changedItemIds: changedIds,
+      addedItemIds: changedIds,
       preservePriorityOrder: true,
       searchCorpusVersion,
       mutation: trace?.opType,
@@ -1926,6 +1929,8 @@ async function applyBatchRefreshFeedsPatchChange(
   if (!currentDoc) throw new Error("Document not initialized");
   const patchedFeeds = new Map<string, RssFeed>();
   let changedIds: string[] = [];
+  const addedItemIds: string[] = [];
+  const addedItemIdSet = new Set<string>();
   const removedEssayDuplicateIds: string[] = [];
   const changedIdSet = new Set<string>();
   const candidateLinkPreviewUrlCounts = new Map(linkPreviewUrlCounts);
@@ -1945,6 +1950,12 @@ async function applyBatchRefreshFeedsPatchChange(
     if (changedIdSet.has(globalId)) return;
     changedIdSet.add(globalId);
     changedIds.push(globalId);
+  };
+  const markAdded = (globalId: string) => {
+    markChanged(globalId);
+    if (addedItemIdSet.has(globalId)) return;
+    addedItemIdSet.add(globalId);
+    addedItemIds.push(globalId);
   };
   const candidate = A.change(
     currentDoc,
@@ -1986,6 +1997,7 @@ async function applyBatchRefreshFeedsPatchChange(
         );
         for (const globalId of essayResult.changedIds) markChanged(globalId);
         for (const globalId of essayResult.addedIds) {
+          markAdded(globalId);
           candidateAddKnownLinkPreviewUrl(
             doc.feedItems[globalId] as FeedItem | undefined,
           );
@@ -2001,7 +2013,7 @@ async function applyBatchRefreshFeedsPatchChange(
         const linkUrl = itemLinkPreviewUrl(item);
         if (candidateHasKnownLinkPreviewUrl(linkUrl)) continue;
         addFeedItem(doc, item);
-        markChanged(item.globalId);
+        markAdded(item.globalId);
         candidateAddKnownLinkPreviewUrl(item);
       }
     },
@@ -2046,6 +2058,7 @@ async function applyBatchRefreshFeedsPatchChange(
       type: "ITEM_PATCH",
       patches,
       changedItemIds: [...changedIds, ...removedEssayDuplicateIds],
+      addedItemIds,
       removedItemIds: removedEssayDuplicateIds,
       preservePriorityOrder: true,
       searchCorpusVersion,
