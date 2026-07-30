@@ -5,6 +5,7 @@ export type DesktopAutomergeWorkerRequestKind = WorkerRequest["type"];
 export type DesktopAutomergeWorkerResponseKind = WorkerResponse["type"];
 
 export type LibraryCoreWorkerSurfaceClassification =
+  | "bounded_migration_transport"
   | "bounded_projection_transport"
   | "diagnostic_transport"
   | "legacy_bulk_or_repair_authority"
@@ -27,6 +28,7 @@ export type LibraryCoreWorkerSurfaceBlocker =
   | "library_core_runtime_inactive"
   | "lifecycle_contract_unresolved"
   | "local_authority_reset_contract_unresolved"
+  | "migration_contract_unresolved"
   | "provider_capture_contract_unresolved"
   | "provider_intent_execution_receipt_unresolved"
   | "provider_intent_separation_unresolved"
@@ -109,6 +111,12 @@ const boundedProjectionTransport = () =>
   blockedSurface(
     "bounded_projection_transport",
     "query_contract_unresolved",
+    "response_transport_not_cut_over",
+  );
+const boundedMigrationTransport = () =>
+  blockedSurface(
+    "bounded_migration_transport",
+    "migration_contract_unresolved",
     "response_transport_not_cut_over",
   );
 
@@ -217,6 +225,10 @@ export const DESKTOP_AUTOMERGE_WORKER_REQUEST_SURFACE_REGISTRY = {
   BEGIN_LIBRARY_CORE_PROJECTION: boundedProjectionTransport(),
   NEXT_LIBRARY_CORE_PROJECTION_BATCH: boundedProjectionTransport(),
   CANCEL_LIBRARY_CORE_PROJECTION: boundedProjectionTransport(),
+  BEGIN_LIBRARY_CORE_EXTERNAL_EXPORT: boundedMigrationTransport(),
+  READ_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK: boundedMigrationTransport(),
+  CONFIRM_LIBRARY_CORE_EXTERNAL_EXPORT: boundedMigrationTransport(),
+  CANCEL_LIBRARY_CORE_EXTERNAL_EXPORT: boundedMigrationTransport(),
   UPDATE_RELAY_CLIENT_COUNT: blockedSurface(
     "relay_control",
     "lifecycle_contract_unresolved",
@@ -455,6 +467,10 @@ export const DESKTOP_AUTOMERGE_REQUEST_EFFECT_REGISTRY = {
   BEGIN_LIBRARY_CORE_PROJECTION: noWriteEffect(),
   NEXT_LIBRARY_CORE_PROJECTION_BATCH: noWriteEffect(),
   CANCEL_LIBRARY_CORE_PROJECTION: noWriteEffect(),
+  BEGIN_LIBRARY_CORE_EXTERNAL_EXPORT: noWriteEffect(),
+  READ_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK: noWriteEffect(),
+  CONFIRM_LIBRARY_CORE_EXTERNAL_EXPORT: noWriteEffect(),
+  CANCEL_LIBRARY_CORE_EXTERNAL_EXPORT: noWriteEffect(),
   UPDATE_RELAY_CLIENT_COUNT: hiddenWrite(
     ["legacy_runtime_state_write"],
     ["lifecycle_contract_unresolved"],
@@ -558,6 +574,9 @@ export const DESKTOP_AUTOMERGE_WORKER_RESPONSE_SURFACE_REGISTRY = {
   ),
   LIBRARY_CORE_PROJECTION_STARTED: boundedProjectionTransport(),
   LIBRARY_CORE_PROJECTION_BATCH: boundedProjectionTransport(),
+  LIBRARY_CORE_EXTERNAL_EXPORT_STARTED: boundedMigrationTransport(),
+  LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK: boundedMigrationTransport(),
+  LIBRARY_CORE_EXTERNAL_EXPORT_CONFIRMED: boundedMigrationTransport(),
   CONTENT_SIGNAL_BACKFILL_RESULT: blockedSurface(
     "legacy_progress_transport",
     "response_transport_not_cut_over",

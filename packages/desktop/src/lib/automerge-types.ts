@@ -72,6 +72,12 @@ export interface DocStats {
   itemCount: number;
 }
 
+export interface LibraryCoreExternalSnapshotV1 {
+  schemaVersion: 1;
+  storageRevision: StorageRevision;
+  byteLength: number;
+}
+
 // ---------------------------------------------------------------------------
 // Main thread → worker
 // ---------------------------------------------------------------------------
@@ -235,6 +241,27 @@ export type WorkerRequest =
   | {
       reqId: number;
       type: "CANCEL_LIBRARY_CORE_PROJECTION";
+      sessionId: string;
+    }
+  | {
+      reqId: number;
+      type: "BEGIN_LIBRARY_CORE_EXTERNAL_EXPORT";
+      sessionId: string;
+    }
+  | {
+      reqId: number;
+      type: "READ_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK";
+      sessionId: string;
+      offset: number;
+    }
+  | {
+      reqId: number;
+      type: "CONFIRM_LIBRARY_CORE_EXTERNAL_EXPORT";
+      sessionId: string;
+    }
+  | {
+      reqId: number;
+      type: "CANCEL_LIBRARY_CORE_EXTERNAL_EXPORT";
       sessionId: string;
     }
   // Relay management (fire-and-forget, reqId ignored)
@@ -407,6 +434,32 @@ export type WorkerResponse =
       reqId: number;
       type: "LIBRARY_CORE_PROJECTION_BATCH";
     } & LibraryCoreProjectionBatchV1)
+  /** One undecoded durable snapshot held for bounded external export. */
+  | {
+      reqId: number;
+      type: "LIBRARY_CORE_EXTERNAL_EXPORT_STARTED";
+      sessionId: string;
+      source: LibraryCoreExternalSnapshotV1;
+      maximumChunkBytes: number;
+    }
+  /** One copied bounded chunk. Its buffer is transferred to the main thread. */
+  | {
+      reqId: number;
+      type: "LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK";
+      sessionId: string;
+      source: LibraryCoreExternalSnapshotV1;
+      offset: number;
+      nextOffset: number;
+      bytes: Uint8Array;
+      done: boolean;
+    }
+  /** The IndexedDB revision still matches the exported source exactly. */
+  | {
+      reqId: number;
+      type: "LIBRARY_CORE_EXTERNAL_EXPORT_CONFIRMED";
+      sessionId: string;
+      source: LibraryCoreExternalSnapshotV1;
+    }
   /** One-batch content signal backfill summary. */
   | {
       reqId: number;

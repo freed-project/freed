@@ -302,6 +302,40 @@ describe("IndexedDBStorage", () => {
     expect(database.records.get("feed:save-revision")).toBe(0);
   });
 
+  it("exposes one no-extra-copy raw migration snapshot and a metadata-only revision read", async () => {
+    const stored = new Uint8Array([4, 5, 6]).buffer;
+    const { storage } = createStorage(
+      new FakeDatabase(2, [
+        ["feed", stored],
+        ["feed:installation-generation", 7],
+        ["feed:save-revision", 9],
+      ]),
+    );
+
+    const snapshot = await storage.loadRawSnapshotForExternalMigration();
+    expect(snapshot.revision).toEqual({ generation: 7, saveRevision: 9 });
+    expect(snapshot.data?.buffer).toBe(stored);
+    await expect(storage.currentRevision()).resolves.toEqual({
+      generation: 7,
+      saveRevision: 9,
+    });
+  });
+
+  it("keeps ordinary loads isolated from the raw IndexedDB result", async () => {
+    const stored = new Uint8Array([4, 5, 6]).buffer;
+    const { storage } = createStorage(
+      new FakeDatabase(2, [
+        ["feed", stored],
+        ["feed:installation-generation", 7],
+        ["feed:save-revision", 9],
+      ]),
+    );
+
+    const loaded = await storage.load();
+    expect(loaded.data?.buffer).not.toBe(stored);
+    expect(Array.from(loaded.data ?? [])).toEqual([4, 5, 6]);
+  });
+
   it("fails closed when another connection blocks the v2 upgrade", async () => {
     const database = new FakeDatabase(1, [
       ["feed", new Uint8Array([1]).buffer],
