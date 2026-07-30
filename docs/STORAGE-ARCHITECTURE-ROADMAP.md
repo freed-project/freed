@@ -62,9 +62,14 @@ normalized filter, one ranking clock, and the order version. It streams at most
 128 projected rows at a time and lets IndexedDB enforce the exact priority,
 published-time, and source-sequence order. A closed dormant request and cursor
 now read that physical order with the same filter, clock, and order-version
-binding. Native execution, renderer-cache eviction, and product caller proof
-remain explicit blockers. This is progress inside Gate B and step
-4, not a claim that either gate is complete.
+binding. Desktop now has the parallel crash-resumable SQLite generation store:
+it binds the same query identity, admits only 128-row and 2 MiB pages with exact
+replay receipts, finalizes only an exact physical row count, and performs the
+full keyset order through its checked index with a private 4 MiB page cache.
+The worker materializer, selected-generation registry, native runtime
+transport, renderer-cache eviction, and product caller proof remain explicit
+blockers. This is progress inside Gate B and step 4, not a claim that either
+gate is complete.
 
 The Desktop derived-shadow path now also has a dormant bounded projection
 probe. It pins one exact durable Automerge frontier and storage revision, emits

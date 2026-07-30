@@ -2610,6 +2610,26 @@ closed instead of applying a cursor to a differently filtered or scored
 generation. The PWA worker transport exposes the request, response, and shared
 exact cancellation path, but no product surface calls them.
 
+The dormant native browse store now closes the physical SQLite half of that
+same query. One immutable generation binds the exact source transition and
+projection revisions, canonical filter JSON, ranking clock, recommendation
+order version, and total row count. Pages admit at most 128 compact rows and
+2 MiB of encoded input, retain exact replay receipts, and become readable only
+after the declared, receipted, and physical row counts agree. SQLite performs
+the complete priority-descending, published-time-descending,
+source-sequence-ascending, binary-identity-ascending keyset order through one
+checked index without a temporary sort. The private connection uses a 4 MiB
+page cache, disables mmap, and spills temporary work to disk. An existing file
+must pass a read-only application and schema identity preflight before writable
+configuration. Compact card JSON is identity-checked and byte-bounded at this
+layer. The later transport adapter must still authenticate the source and
+validate the shared closed feed-card DTO before insertion.
+
+This primitive has no worker materializer, selected-generation registry,
+runtime transport, command, or product caller. It cannot resolve
+`runtime_adapter_unimplemented`, authorize a reader cutover, or change
+Automerge authority.
+
 The cursor is versioned binary data encoded as canonical unpadded base64url. It
 binds the immutable generation digest, transition sequence, projection
 revision, nonnegative chronological sort key, and final entity ID. The maximum

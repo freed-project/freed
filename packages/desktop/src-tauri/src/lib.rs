@@ -39,6 +39,8 @@ mod automerge_external_value_run;
 mod library_core_canonical;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_ed25519;
+#[cfg_attr(not(test), allow(dead_code))]
+mod library_core_feed_browse_store;
 mod library_core_feed_reader_runtime;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_journal;
