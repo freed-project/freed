@@ -190,12 +190,30 @@ export function applyItemPatchesToState(
     preservePriorityOrder?: boolean;
     searchCorpusVersion?: number;
     docItemCount?: number;
+    addedItemIds?: string[];
     removedItemIds?: string[];
   } = {},
 ): { state: DocState; itemIndex: ItemIndex } {
   const removedItemIds = options.removedItemIds ?? [];
   const removedItemIdSet = new Set(removedItemIds);
-  if (patches.length === 0 && removedItemIds.length === 0 && !options.orderedItemIds) {
+  const addedItemIds = options.addedItemIds ?? [];
+  let feedSourceOrderIds = state.feedSourceOrderIds;
+  if (feedSourceOrderIds && (removedItemIds.length > 0 || addedItemIds.length > 0)) {
+    const addedItemIdSet = new Set(addedItemIds);
+    feedSourceOrderIds = [
+      ...feedSourceOrderIds.filter(
+        (globalId) =>
+          !removedItemIdSet.has(globalId) && !addedItemIdSet.has(globalId),
+      ),
+      ...addedItemIds.filter((globalId) => !removedItemIdSet.has(globalId)),
+    ];
+  }
+  if (
+    patches.length === 0 &&
+    addedItemIds.length === 0 &&
+    removedItemIds.length === 0 &&
+    !options.orderedItemIds
+  ) {
     const metadataChanged =
       options.searchCorpusVersion !== undefined || options.docItemCount !== undefined;
     return metadataChanged
@@ -204,6 +222,7 @@ export function applyItemPatchesToState(
             ...state,
             searchCorpusVersion: options.searchCorpusVersion ?? state.searchCorpusVersion,
             docItemCount: options.docItemCount ?? state.docItemCount,
+            feedSourceOrderIds,
           },
           itemIndex,
         }
@@ -317,22 +336,26 @@ export function applyItemPatchesToState(
 
   if (!nextItems) {
     const docItemCount = options.docItemCount ??
+      feedSourceOrderIds?.length ??
       Math.max(0, state.docItemCount + addedDocItemCount - removedItemIds.length);
     return {
       state: {
         ...state,
         searchCorpusVersion: options.searchCorpusVersion ?? state.searchCorpusVersion,
         docItemCount,
+        feedSourceOrderIds,
       },
       itemIndex,
     };
   }
   const nextIndex = indexNeedsRebuild ? createItemIndex(nextItems) : itemIndex;
   const docItemCount = options.docItemCount ??
+    feedSourceOrderIds?.length ??
     Math.max(0, state.docItemCount + addedDocItemCount - removedItemIds.length);
   const metadataState = {
     searchCorpusVersion: options.searchCorpusVersion ?? state.searchCorpusVersion,
     docItemCount,
+    feedSourceOrderIds,
   };
   return {
     state: counts

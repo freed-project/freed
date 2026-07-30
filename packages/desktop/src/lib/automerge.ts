@@ -78,9 +78,11 @@ import {
   materializeDesktopLibraryCoreFeedBrowseGeneration,
   tauriLibraryCoreFeedBrowseNativeClient,
   type LibraryCoreFeedBrowseProjectionStartedV1,
-  type LibraryCoreFeedBrowseProjectionWorkerClient,
   type MaterializeDesktopLibraryCoreFeedBrowseGenerationResult,
 } from "./library-core-feed-browse-materializer-runtime";
+import {
+  createHydratedLibraryCoreFeedBrowseProjectionClient,
+} from "./library-core-feed-browse-hydrated-client";
 import { recordRuntimeHealthEvent, recordWorkerInit } from "./runtime-health-events";
 export type { DocChangeEvent, DocState } from "./automerge-types";
 
@@ -696,6 +698,7 @@ function handleWorkerMessage(
       preservePriorityOrder: msg.preservePriorityOrder,
       searchCorpusVersion: msg.searchCorpusVersion,
       docItemCount: msg.docItemCount,
+      addedItemIds: msg.addedItemIds,
       removedItemIds: msg.removedItemIds,
     });
     lastItemIndexById = patched.itemIndex;
@@ -1706,70 +1709,19 @@ const libraryCoreProjectionWorkerClient: LibraryCoreProjectionWorkerClient = {
   cancel: cancelLibraryCoreProjection,
 };
 
-async function beginLibraryCoreFeedBrowseProjection(
-  sessionId: string,
-  filter: LibraryCoreFeedBrowseFilterInputV1 | undefined,
-  rankingClockMs: number,
-): Promise<LibraryCoreFeedBrowseProjectionStartedV1> {
-  await ensureWorkerDocumentReadyFor(
-    "BEGIN_LIBRARY_CORE_FEED_BROWSE_PROJECTION",
-  );
-  return requestResultOnWorker(
-    getWorker(),
-    pendingLibraryCoreFeedBrowseProjectionStarted,
-    {
-      reqId: nextReqId++,
-      type: "BEGIN_LIBRARY_CORE_FEED_BROWSE_PROJECTION",
-      sessionId,
-      filter,
-      rankingClockMs,
-    } satisfies WorkerRequest,
-  );
-}
-
-async function nextLibraryCoreFeedBrowseProjectionBatch(
-  sessionId: string,
-  batchIndex: number,
-): Promise<LibraryCoreFeedBrowseProjectionBatchV1> {
-  await ensureWorkerDocumentReadyFor(
-    "NEXT_LIBRARY_CORE_FEED_BROWSE_PROJECTION_BATCH",
-  );
-  return requestResultOnWorker(
-    getWorker(),
-    pendingLibraryCoreFeedBrowseProjectionBatch,
-    {
-      reqId: nextReqId++,
-      type: "NEXT_LIBRARY_CORE_FEED_BROWSE_PROJECTION_BATCH",
-      sessionId,
-      batchIndex,
-    } satisfies WorkerRequest,
-  );
-}
-
-function cancelLibraryCoreFeedBrowseProjection(
-  sessionId: string,
-): Promise<void> {
-  return request({
-    reqId: nextReqId++,
-    type: "CANCEL_LIBRARY_CORE_FEED_BROWSE_PROJECTION",
-    sessionId,
+const libraryCoreFeedBrowseProjectionClient =
+  createHydratedLibraryCoreFeedBrowseProjectionClient({
+    getSource: getLibraryCoreProjectionSource,
+    getState: getDocState,
   });
-}
-
-const libraryCoreFeedBrowseProjectionWorkerClient: LibraryCoreFeedBrowseProjectionWorkerClient =
-  {
-    begin: beginLibraryCoreFeedBrowseProjection,
-    nextBatch: nextLibraryCoreFeedBrowseProjectionBatch,
-    cancel: cancelLibraryCoreFeedBrowseProjection,
-  };
 
 let libraryCoreFeedBrowseRun:
   | Promise<MaterializeDesktopLibraryCoreFeedBrowseGenerationResult>
   | null = null;
 
 /**
- * Build one dormant query-specific native browse generation. No product
- * surface calls this before the governed Library Core reader cutover.
+ * Build one source-fenced query-specific native browse generation for the
+ * governed Gate D feed reader.
  */
 export function materializeLibraryCoreFeedBrowseGeneration(
   filter: LibraryCoreFeedBrowseFilterInputV1 | undefined,
@@ -1781,7 +1733,7 @@ export function materializeLibraryCoreFeedBrowseGeneration(
     );
   }
   const run = materializeDesktopLibraryCoreFeedBrowseGeneration(
-    libraryCoreFeedBrowseProjectionWorkerClient,
+    libraryCoreFeedBrowseProjectionClient,
     tauriLibraryCoreFeedBrowseNativeClient,
     newLibraryCoreProjectionSessionId(),
     filter,

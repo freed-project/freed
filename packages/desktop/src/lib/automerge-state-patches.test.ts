@@ -265,6 +265,38 @@ describe("Automerge item patch state updates", () => {
     expect(result.state.totalArchivableCount).toBe(1);
   });
 
+  it("keeps exact document source order across hidden additions and removals", () => {
+    const unread = makeItem("rss:unread");
+    const read = makeItem("rss:read", { readAt: 10 });
+    const state: DocState = {
+      ...makeState([unread, read]),
+      feedSourceOrderIds: ["rss:unread", "rss:read", "rss:hidden-old"],
+      docItemCount: 3,
+    };
+    const index = createItemIndex(state.items);
+    const hiddenAddition = makeItem("rss:hidden-new", { hidden: true });
+
+    const result = applyItemPatchesToState(
+      state,
+      [{ item: hiddenAddition }],
+      index,
+      {
+        addedItemIds: ["rss:hidden-new"],
+        removedItemIds: ["rss:hidden-old"],
+      },
+    );
+
+    expect(result.state.items).toEqual(state.items);
+    expect(result.state.feedSourceOrderIds).toEqual([
+      "rss:unread",
+      "rss:read",
+      "rss:hidden-new",
+    ]);
+    expect(result.state.docItemCount).toBe(3);
+    expect(result.state.totalItemCount).toBe(state.totalItemCount);
+    expect(result.itemIndex).toBe(index);
+  });
+
   it("merges ranked patch additions into priority order without full ordered ids", () => {
     const high = { ...makeItem("rss:high"), priority: 90, publishedAt: 30 };
     const mid = { ...makeItem("rss:mid"), priority: 50, publishedAt: 20 };

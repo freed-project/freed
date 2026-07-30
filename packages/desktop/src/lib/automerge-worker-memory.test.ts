@@ -212,6 +212,7 @@ describe("automerge worker memory routing", () => {
     expect(helperBody).toContain("persistAndBroadcastWithoutHydration");
     expect(helperBody).toContain("type: \"FEEDS_PATCH\"");
     expect(helperBody).toContain("type: \"ITEM_PATCH\"");
+    expect(helperBody).toContain("addedItemIds,");
     expect(helperBody).toContain("removedItemIds: removedEssayDuplicateIds");
     expect(helperBody).toContain("candidateHasKnownLinkPreviewUrl");
     expect(helperBody).not.toContain("Object.values(doc.feedItems");
@@ -234,6 +235,7 @@ describe("automerge worker memory routing", () => {
       "await persistAndBroadcastWithoutHydration(candidate, trace",
     );
     expect(workerSource).toContain("type: \"ITEM_PATCH\"");
+    expect(workerSource).toContain("addedItemIds: changedIds");
     expect(workerSource).toContain("preservePriorityOrder: true");
     expect(workerSource).toContain("cloneRankedFeedItemPatches");
     expect(workerSource).not.toContain("rankedVisibleItemIdsFromDoc");
