@@ -23,6 +23,10 @@ import type {
 } from "@freed/shared";
 import type { DocumentHistoryRelation } from "@freed/shared/schema";
 import type { FeedItemRow } from "@freed/shared/projection";
+import type {
+  LibraryCoreFeedBrowseFilterInputV1,
+  LibraryCoreFeedBrowseFilterV1,
+} from "@freed/shared/library-core";
 import type { StorageRevision } from "@freed/sync/types";
 
 export type { DocumentHistoryRelation } from "@freed/shared/schema";
@@ -76,6 +80,33 @@ export interface LibraryCoreExternalSnapshotV1 {
   schemaVersion: 1;
   storageRevision: StorageRevision;
   byteLength: number;
+}
+
+export interface LibraryCoreFeedBrowseGenerationBindingV1 {
+  readonly generationId: string;
+  readonly transitionSequence: number;
+  readonly projectionRevision: number;
+  readonly filterJson: string;
+  readonly rankingClockMs: number;
+  readonly recommendationOrderSchemaVersion: 1;
+  readonly totalRows: number;
+}
+
+export interface LibraryCoreFeedBrowseProjectedRowV1 {
+  readonly priority: number;
+  readonly publishedAt: number;
+  readonly sourceSequence: number;
+  readonly globalId: string;
+  readonly cardJson: string;
+}
+
+export interface LibraryCoreFeedBrowseProjectionBatchV1 {
+  readonly sessionId: string;
+  readonly binding: LibraryCoreFeedBrowseGenerationBindingV1;
+  readonly batchIndex: number;
+  readonly rows: readonly LibraryCoreFeedBrowseProjectedRowV1[];
+  readonly projectedRows: number;
+  readonly done: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -241,6 +272,24 @@ export type WorkerRequest =
   | {
       reqId: number;
       type: "CANCEL_LIBRARY_CORE_PROJECTION";
+      sessionId: string;
+    }
+  | {
+      reqId: number;
+      type: "BEGIN_LIBRARY_CORE_FEED_BROWSE_PROJECTION";
+      sessionId: string;
+      filter?: LibraryCoreFeedBrowseFilterInputV1;
+      rankingClockMs: number;
+    }
+  | {
+      reqId: number;
+      type: "NEXT_LIBRARY_CORE_FEED_BROWSE_PROJECTION_BATCH";
+      sessionId: string;
+      batchIndex: number;
+    }
+  | {
+      reqId: number;
+      type: "CANCEL_LIBRARY_CORE_FEED_BROWSE_PROJECTION";
       sessionId: string;
     }
   | {
@@ -434,6 +483,22 @@ export type WorkerResponse =
       reqId: number;
       type: "LIBRARY_CORE_PROJECTION_BATCH";
     } & LibraryCoreProjectionBatchV1)
+  /** Exact normalized browse binding for one bounded worker projection. */
+  | {
+      reqId: number;
+      type: "LIBRARY_CORE_FEED_BROWSE_PROJECTION_STARTED";
+      sessionId: string;
+      binding: LibraryCoreFeedBrowseGenerationBindingV1;
+      filter: LibraryCoreFeedBrowseFilterV1;
+      nextBatchIndex: number;
+      projectedRows: number;
+      maximumBatchRows: number;
+    }
+  /** One replayable 128-row browse page from the pinned source. */
+  | ({
+      reqId: number;
+      type: "LIBRARY_CORE_FEED_BROWSE_PROJECTION_BATCH";
+    } & LibraryCoreFeedBrowseProjectionBatchV1)
   /** One undecoded durable snapshot held for bounded external export. */
   | {
       reqId: number;

@@ -575,6 +575,148 @@ describe("real Automerge worker module", () => {
     });
   });
 
+  it("streams one authenticated browse projection without a corpus-sized item index", async () => {
+    const rankingClockMs = 1_780_000_000_000;
+    const sourceItems = Array.from({ length: 259 }, (_, index) => {
+      const globalId = `x:browse-${index.toString().padStart(3, "0")}`;
+      return {
+        globalId,
+        platform: "x",
+        contentType: "post",
+        capturedAt: rankingClockMs,
+        publishedAt: rankingClockMs - index * 1_000,
+        author: {
+          id: `author:${index}`,
+          handle: `author-${index}`,
+          displayName: `Author ${index}`,
+        },
+        content: {
+          text: globalId,
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+        userState: {
+          hidden: index === 258,
+          saved: index % 2 === 0,
+          archived: false,
+          tags: [],
+        },
+        topics: [],
+      } satisfies FeedItem;
+    });
+    const document = A.change(
+      createEmptyDoc(),
+      "Add browse projection items",
+      (draft) => {
+        for (const item of sourceItems) addFeedItem(draft, item);
+      },
+    );
+    storageHarness.binary = A.save(document);
+
+    sendRequest(scope, { reqId: 510, type: "INIT" });
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 510,
+    );
+    sendRequest(scope, {
+      reqId: 511,
+      type: "BEGIN_LIBRARY_CORE_FEED_BROWSE_PROJECTION",
+      sessionId: "browse-session-1",
+      filter: { savedOnly: true },
+      rankingClockMs,
+    });
+    const startedPost = await waitForPost(
+      posts,
+      (message) =>
+        message.type === "LIBRARY_CORE_FEED_BROWSE_PROJECTION_STARTED" &&
+        message.reqId === 511,
+    );
+    if (
+      startedPost.message.type !==
+      "LIBRARY_CORE_FEED_BROWSE_PROJECTION_STARTED"
+    ) {
+      throw new Error("Expected Library Core browse projection source");
+    }
+    expect(startedPost.message).toMatchObject({
+      sessionId: "browse-session-1",
+      filter: {
+        savedOnly: true,
+        schemaVersion: 1,
+        showHidden: false,
+      },
+      maximumBatchRows: 128,
+      projectedRows: 0,
+      nextBatchIndex: 0,
+      binding: {
+        transitionSequence: storageHarness.revision.generation,
+        projectionRevision: storageHarness.revision.saveRevision,
+        rankingClockMs,
+        recommendationOrderSchemaVersion: 1,
+        totalRows: 129,
+      },
+    });
+    expect(startedPost.message.binding.generationId).toMatch(/^[0-9a-f]{64}$/);
+    expect(JSON.parse(startedPost.message.binding.filterJson)).toEqual(
+      startedPost.message.filter,
+    );
+
+    const pages: Array<
+      Extract<
+        WorkerResponse,
+        { type: "LIBRARY_CORE_FEED_BROWSE_PROJECTION_BATCH" }
+      >
+    > = [];
+    for (let batchIndex = 0; batchIndex < 2; batchIndex += 1) {
+      const reqId = 512 + batchIndex;
+      sendRequest(scope, {
+        reqId,
+        type: "NEXT_LIBRARY_CORE_FEED_BROWSE_PROJECTION_BATCH",
+        sessionId: "browse-session-1",
+        batchIndex,
+      });
+      const page = await waitForPost(
+        posts,
+        (message) =>
+          message.type === "LIBRARY_CORE_FEED_BROWSE_PROJECTION_BATCH" &&
+          message.reqId === reqId,
+      );
+      if (
+        page.message.type !==
+        "LIBRARY_CORE_FEED_BROWSE_PROJECTION_BATCH"
+      ) {
+        throw new Error("Expected Library Core browse projection page");
+      }
+      pages.push(page.message);
+    }
+    expect(pages.map(({ rows }) => rows.length)).toStrictEqual([128, 1]);
+    expect(pages.map(({ done }) => done)).toStrictEqual([false, true]);
+    expect(pages[1].projectedRows).toBe(129);
+    expect(
+      pages.flatMap(({ rows }) => rows).every(({ cardJson, globalId }) =>
+        JSON.parse(cardJson).globalId === globalId
+      ),
+    ).toBe(true);
+
+    sendRequest(scope, {
+      reqId: 514,
+      type: "NEXT_LIBRARY_CORE_FEED_BROWSE_PROJECTION_BATCH",
+      sessionId: "browse-session-1",
+      batchIndex: 1,
+    });
+    const replay = await waitForPost(
+      posts,
+      (message) =>
+        message.type === "LIBRARY_CORE_FEED_BROWSE_PROJECTION_BATCH" &&
+        message.reqId === 514,
+    );
+    if (
+      replay.message.type !== "LIBRARY_CORE_FEED_BROWSE_PROJECTION_BATCH"
+    ) {
+      throw new Error("Expected replayed Library Core browse projection page");
+    }
+    expect({ ...replay.message, reqId: pages[1].reqId }).toEqual(pages[1]);
+  });
+
   it("reports corrupt bytes explicitly and waits for an explicit clear request", async () => {
     storageHarness.binary = new Uint8Array([1, 2, 3, 4]);
 

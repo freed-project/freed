@@ -73,6 +73,7 @@ import {
   confirmSeenSynced,
 } from "@freed/shared/schema";
 import {
+  calculatePriority,
   countAuthorsWithRecentLocationUpdates,
   countFriendsWithRecentLocationUpdates,
   collectSavedYouTubeVideoUrls,
@@ -82,6 +83,14 @@ import {
   resolveDocumentId,
   stripDeviceLocalPreferenceUpdates,
 } from "@freed/shared";
+import {
+  LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
+  matchesLibraryCoreFeedBrowseFilterV1,
+  normalizeLibraryCoreFeedBrowseFilterV1,
+  parseLibraryCoreFeedCardV1,
+  projectLibraryCoreFeedCardV1,
+  type LibraryCoreFeedBrowseFilterV1,
+} from "@freed/shared/library-core";
 import type {
   Account,
   DesktopClientRegistration,
@@ -97,6 +106,9 @@ import type {
   DocState,
   FeedItemPatch,
   LibraryCoreExternalSnapshotV1,
+  LibraryCoreFeedBrowseGenerationBindingV1,
+  LibraryCoreFeedBrowseProjectedRowV1,
+  LibraryCoreFeedBrowseProjectionBatchV1,
   LibraryCoreProjectionBatchV1,
   LibraryCoreProjectionSourceV1,
   RssFeedPatch,
@@ -133,6 +145,10 @@ const MAX_LIBRARY_CORE_PROJECTION_INDEX_ENTRIES = 250_000;
 const MAX_LIBRARY_CORE_PROJECTION_INDEX_BYTES = 16 * 1_048_576;
 const MAX_LIBRARY_CORE_PROJECTION_ENTITY_ID_BYTES = 4_096;
 const MAX_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK_BYTES = 1_048_576;
+const MAX_LIBRARY_CORE_FEED_BROWSE_ROWS = 250_000;
+const MAX_LIBRARY_CORE_FEED_BROWSE_BATCH_ROWS = 128;
+const LIBRARY_CORE_FEED_BROWSE_SOURCE_DOMAIN =
+  "freed-desktop-library-core-feed-browse-generation-v1";
 
 interface LibraryCoreProjectionSession {
   readonly sessionId: string;
@@ -146,6 +162,41 @@ interface LibraryCoreProjectionSession {
 }
 
 let libraryCoreProjectionSession: LibraryCoreProjectionSession | null = null;
+
+interface LibraryCoreFeedBrowseProjectionEntry {
+  readonly globalId: string;
+  readonly item: FeedItem;
+}
+
+interface LibraryCoreFeedBrowseProjectionSession {
+  readonly sessionId: string;
+  readonly source: LibraryCoreProjectionSourceV1;
+  readonly binding: LibraryCoreFeedBrowseGenerationBindingV1;
+  readonly filter: LibraryCoreFeedBrowseFilterV1;
+  readonly iterator: Generator<
+    LibraryCoreFeedBrowseProjectionEntry,
+    void,
+    undefined
+  >;
+  readonly preferences: ReturnType<typeof mergeDefaultPreferences>;
+  readonly priorityContext: {
+    readonly accounts: FreedDoc["accounts"];
+    readonly persons: FreedDoc["persons"];
+    readonly personByAuthorKey: Map<
+      string,
+      FreedDoc["persons"][string] | null
+    >;
+  };
+  nextSourceSequence: number;
+  nextBatchIndex: number;
+  projectedRows: number;
+  lastBatch: LibraryCoreFeedBrowseProjectionBatchV1 | null;
+  completed: boolean;
+}
+
+let libraryCoreFeedBrowseProjectionSession:
+  | LibraryCoreFeedBrowseProjectionSession
+  | null = null;
 
 interface LibraryCoreExternalExportSession {
   readonly sessionId: string;
@@ -305,6 +356,14 @@ async function startLibraryCoreExternalExport(
       `Library Core projection session ${libraryCoreProjectionSession.sessionId} is already active`,
     );
   }
+  if (
+    libraryCoreFeedBrowseProjectionSession &&
+    !libraryCoreFeedBrowseProjectionSession.completed
+  ) {
+    throw new Error(
+      `Library Core browse projection session ${libraryCoreFeedBrowseProjectionSession.sessionId} is already active`,
+    );
+  }
   const active = libraryCoreExternalExportSession;
   if (active) {
     if (active.sessionId !== sessionId) {
@@ -429,6 +488,14 @@ async function startLibraryCoreProjection(
   sessionId: string,
 ): Promise<LibraryCoreProjectionSession> {
   validateProjectionSessionId(sessionId);
+  if (
+    libraryCoreFeedBrowseProjectionSession &&
+    !libraryCoreFeedBrowseProjectionSession.completed
+  ) {
+    throw new Error(
+      `Library Core browse projection session ${libraryCoreFeedBrowseProjectionSession.sessionId} is already active`,
+    );
+  }
   const doc = ensureCurrentDocLoaded("BEGIN_LIBRARY_CORE_PROJECTION");
   const source = await currentProjectionSource(doc);
   const active = libraryCoreProjectionSession;
@@ -573,6 +640,252 @@ async function nextLibraryCoreProjectionBatch(
   session.lastBatch = batch;
   session.completed = done;
   if (done) session.itemIds = [];
+  return batch;
+}
+
+function* libraryCoreFeedBrowseEntries(
+  feedItems: FreedDoc["feedItems"],
+): Generator<LibraryCoreFeedBrowseProjectionEntry, void, undefined> {
+  for (const globalId in feedItems) {
+    if (!Object.prototype.hasOwnProperty.call(feedItems, globalId)) continue;
+    const item = feedItems[globalId];
+    if (
+      typeof item !== "object" ||
+      item === null ||
+      Array.isArray(item) ||
+      item.globalId !== globalId
+    ) {
+      throw new TypeError(
+        "committed Automerge feed item identity does not match its map key",
+      );
+    }
+    yield { globalId, item };
+  }
+}
+
+function sameLibraryCoreFeedBrowseBinding(
+  left: LibraryCoreFeedBrowseGenerationBindingV1,
+  right: LibraryCoreFeedBrowseGenerationBindingV1,
+): boolean {
+  return (
+    left.generationId === right.generationId &&
+    left.transitionSequence === right.transitionSequence &&
+    left.projectionRevision === right.projectionRevision &&
+    left.filterJson === right.filterJson &&
+    left.rankingClockMs === right.rankingClockMs &&
+    left.recommendationOrderSchemaVersion ===
+      right.recommendationOrderSchemaVersion &&
+    left.totalRows === right.totalRows
+  );
+}
+
+function buildLibraryCoreFeedBrowsePriorityContext(
+  doc: FreedDoc,
+): LibraryCoreFeedBrowseProjectionSession["priorityContext"] {
+  const personByAuthorKey = new Map<
+    string,
+    FreedDoc["persons"][string] | null
+  >();
+  for (const accountId in doc.accounts) {
+    if (!Object.prototype.hasOwnProperty.call(doc.accounts, accountId)) {
+      continue;
+    }
+    const account = doc.accounts[accountId];
+    if (account.kind !== "social") continue;
+    personByAuthorKey.set(
+      `${account.provider}:${account.externalId}`,
+      account.personId ? doc.persons[account.personId] ?? null : null,
+    );
+  }
+  return {
+    accounts: doc.accounts,
+    persons: doc.persons,
+    personByAuthorKey,
+  };
+}
+
+async function startLibraryCoreFeedBrowseProjection(
+  sessionId: string,
+  filterInput: Parameters<
+    typeof normalizeLibraryCoreFeedBrowseFilterV1
+  >[0],
+  rankingClockMs: number,
+): Promise<LibraryCoreFeedBrowseProjectionSession> {
+  validateProjectionSessionId(sessionId);
+  if (!Number.isSafeInteger(rankingClockMs) || rankingClockMs < 0) {
+    throw new Error("Library Core browse ranking clock is invalid");
+  }
+  if (
+    libraryCoreProjectionSession &&
+    !libraryCoreProjectionSession.completed
+  ) {
+    throw new Error(
+      `Library Core projection session ${libraryCoreProjectionSession.sessionId} is already active`,
+    );
+  }
+  const doc = ensureCurrentDocLoaded(
+    "BEGIN_LIBRARY_CORE_FEED_BROWSE_PROJECTION",
+  );
+  const source = await currentProjectionSource(doc);
+  const filter = normalizeLibraryCoreFeedBrowseFilterV1(filterInput);
+  const filterJson = JSON.stringify(filter);
+  let totalRows = 0;
+  for (const { item } of libraryCoreFeedBrowseEntries(doc.feedItems)) {
+    if (!matchesLibraryCoreFeedBrowseFilterV1(item, filter)) continue;
+    totalRows += 1;
+    if (totalRows > MAX_LIBRARY_CORE_FEED_BROWSE_ROWS) {
+      throw new Error(
+        `Library Core browse projection exceeds ${MAX_LIBRARY_CORE_FEED_BROWSE_ROWS.toLocaleString()} rows`,
+      );
+    }
+  }
+  const generationId = await sha256Hex(
+    projectionTextEncoder.encode(
+      JSON.stringify({
+        domain: LIBRARY_CORE_FEED_BROWSE_SOURCE_DOMAIN,
+        documentId: source.documentId,
+        filter,
+        headCount: source.headCount,
+        headsDigest: source.headsDigest,
+        projectionRevision: source.storageRevision.saveRevision,
+        rankingClockMs,
+        recommendationOrderSchemaVersion:
+          LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
+        transitionSequence: source.storageRevision.generation,
+      }),
+    ),
+  );
+  const binding: LibraryCoreFeedBrowseGenerationBindingV1 = {
+    generationId,
+    transitionSequence: source.storageRevision.generation,
+    projectionRevision: source.storageRevision.saveRevision,
+    filterJson,
+    rankingClockMs,
+    recommendationOrderSchemaVersion:
+      LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
+    totalRows,
+  };
+  const active = libraryCoreFeedBrowseProjectionSession;
+  if (active && active.sessionId === sessionId) {
+    if (
+      !sameProjectionSource(active.source, source) ||
+      !sameLibraryCoreFeedBrowseBinding(active.binding, binding)
+    ) {
+      libraryCoreFeedBrowseProjectionSession = null;
+      throw new Error("Library Core browse projection source changed");
+    }
+    return active;
+  }
+  if (active && !active.completed) {
+    throw new Error(
+      `Library Core browse projection session ${active.sessionId} is already active`,
+    );
+  }
+
+  const session: LibraryCoreFeedBrowseProjectionSession = {
+    sessionId,
+    source,
+    binding,
+    filter,
+    iterator: libraryCoreFeedBrowseEntries(doc.feedItems),
+    preferences: mergeDefaultPreferences(doc.preferences),
+    priorityContext: buildLibraryCoreFeedBrowsePriorityContext(doc),
+    nextSourceSequence: 0,
+    nextBatchIndex: 0,
+    projectedRows: 0,
+    lastBatch: null,
+    completed: false,
+  };
+  libraryCoreFeedBrowseProjectionSession = session;
+  return session;
+}
+
+async function nextLibraryCoreFeedBrowseProjectionBatch(
+  sessionId: string,
+  batchIndex: number,
+): Promise<LibraryCoreFeedBrowseProjectionBatchV1> {
+  validateProjectionSessionId(sessionId);
+  if (!Number.isSafeInteger(batchIndex) || batchIndex < 0) {
+    throw new Error("Library Core browse projection batch index is invalid");
+  }
+  const session = libraryCoreFeedBrowseProjectionSession;
+  if (!session || session.sessionId !== sessionId) {
+    throw new Error("Library Core browse projection session is not active");
+  }
+  if (session.lastBatch?.batchIndex === batchIndex) {
+    return session.lastBatch;
+  }
+  if (session.completed || batchIndex !== session.nextBatchIndex) {
+    throw new Error(
+      `Library Core browse projection expected batch ${session.nextBatchIndex.toLocaleString()}`,
+    );
+  }
+  const doc = ensureCurrentDocLoaded(
+    "NEXT_LIBRARY_CORE_FEED_BROWSE_PROJECTION_BATCH",
+  );
+  const source = await currentProjectionSource(doc);
+  if (!sameProjectionSource(session.source, source)) {
+    libraryCoreFeedBrowseProjectionSession = null;
+    throw new Error("Library Core browse projection source changed");
+  }
+
+  const rows: LibraryCoreFeedBrowseProjectedRowV1[] = [];
+  let done = false;
+  while (rows.length < MAX_LIBRARY_CORE_FEED_BROWSE_BATCH_ROWS) {
+    const next = session.iterator.next();
+    if (next.done) {
+      done = true;
+      break;
+    }
+    const sourceSequence = session.nextSourceSequence;
+    session.nextSourceSequence += 1;
+    if (!Number.isSafeInteger(session.nextSourceSequence)) {
+      libraryCoreFeedBrowseProjectionSession = null;
+      throw new Error("Library Core browse source sequence is invalid");
+    }
+    if (!matchesLibraryCoreFeedBrowseFilterV1(next.value.item, session.filter)) {
+      continue;
+    }
+    const parsedCard = parseLibraryCoreFeedCardV1(
+      projectLibraryCoreFeedCardV1(next.value.item),
+    );
+    if (!parsedCard.ok) {
+      libraryCoreFeedBrowseProjectionSession = null;
+      throw new Error(parsedCard.error);
+    }
+    const card = parsedCard.value;
+    rows.push({
+      priority: calculatePriority(
+        next.value.item,
+        session.preferences.weights,
+        session.binding.rankingClockMs,
+        session.priorityContext,
+      ),
+      publishedAt: card.publishedAt ?? 0,
+      sourceSequence,
+      globalId: next.value.globalId,
+      cardJson: JSON.stringify(card),
+    });
+  }
+  session.projectedRows += rows.length;
+  if (
+    session.projectedRows > session.binding.totalRows ||
+    (done && session.projectedRows !== session.binding.totalRows)
+  ) {
+    libraryCoreFeedBrowseProjectionSession = null;
+    throw new Error("Library Core browse projection row count changed");
+  }
+  const batch: LibraryCoreFeedBrowseProjectionBatchV1 = {
+    sessionId,
+    binding: session.binding,
+    batchIndex,
+    rows,
+    projectedRows: session.projectedRows,
+    done,
+  };
+  session.nextBatchIndex += 1;
+  session.lastBatch = batch;
+  session.completed = done;
   return batch;
 }
 
@@ -1245,6 +1558,7 @@ function installCommittedDocument(
   // A projection session is an exact view of one durable revision. Any commit
   // invalidates it before the new document becomes visible.
   libraryCoreProjectionSession = null;
+  libraryCoreFeedBrowseProjectionSession = null;
   currentDoc = doc;
   currentBinary = Uint8Array.from(binary);
   refreshLastSavedHeads(doc);
@@ -1788,12 +2102,15 @@ async function handleRequest(
   try {
     switch (req.type) {
       case "QUIESCE":
+        libraryCoreProjectionSession = null;
+        libraryCoreFeedBrowseProjectionSession = null;
         libraryCoreExternalExportSession = null;
         ack(req.reqId);
         break;
 
       case "INIT": {
         libraryCoreProjectionSession = null;
+        libraryCoreFeedBrowseProjectionSession = null;
         libraryCoreExternalExportSession = null;
         const requestedDesktopClientRegistration =
           req.desktopClientRegistration ?? null;
@@ -1901,6 +2218,7 @@ async function handleRequest(
           throw new AutomergePersistenceError(error);
         }
         libraryCoreProjectionSession = null;
+        libraryCoreFeedBrowseProjectionSession = null;
         libraryCoreExternalExportSession = null;
         currentDoc = null;
         currentBinary = null;
@@ -2649,6 +2967,52 @@ async function handleRequest(
           );
         }
         libraryCoreProjectionSession = null;
+        ack(req.reqId);
+        break;
+
+      case "BEGIN_LIBRARY_CORE_FEED_BROWSE_PROJECTION": {
+        const session = await startLibraryCoreFeedBrowseProjection(
+          req.sessionId,
+          req.filter,
+          req.rankingClockMs,
+        );
+        send({
+          reqId: req.reqId,
+          type: "LIBRARY_CORE_FEED_BROWSE_PROJECTION_STARTED",
+          sessionId: session.sessionId,
+          binding: session.binding,
+          filter: session.filter,
+          nextBatchIndex: session.nextBatchIndex,
+          projectedRows: session.projectedRows,
+          maximumBatchRows: MAX_LIBRARY_CORE_FEED_BROWSE_BATCH_ROWS,
+        });
+        break;
+      }
+
+      case "NEXT_LIBRARY_CORE_FEED_BROWSE_PROJECTION_BATCH": {
+        const batch = await nextLibraryCoreFeedBrowseProjectionBatch(
+          req.sessionId,
+          req.batchIndex,
+        );
+        send({
+          reqId: req.reqId,
+          type: "LIBRARY_CORE_FEED_BROWSE_PROJECTION_BATCH",
+          ...batch,
+        });
+        break;
+      }
+
+      case "CANCEL_LIBRARY_CORE_FEED_BROWSE_PROJECTION":
+        validateProjectionSessionId(req.sessionId);
+        if (
+          libraryCoreFeedBrowseProjectionSession &&
+          libraryCoreFeedBrowseProjectionSession.sessionId !== req.sessionId
+        ) {
+          throw new Error(
+            `Library Core browse projection session ${libraryCoreFeedBrowseProjectionSession.sessionId} is active`,
+          );
+        }
+        libraryCoreFeedBrowseProjectionSession = null;
         ack(req.reqId);
         break;
 
