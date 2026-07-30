@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
+  <!--
+    Soft B at 70% scale inside an 18 pt @2x macOS template canvas.
+    The black fill supplies the alpha mask. macOS chooses the visible color.
+  -->
+  <g transform="translate(5.4 5.4) scale(0.7875)">
+    <path d="M10 5h13a2 2 0 0 1 0 4H14v6h8a2 2 0 0 1 0 4h-8v7a2 2 0 0 1-4 0z"/>
+  </g>
+</svg>

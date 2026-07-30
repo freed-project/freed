@@ -78,6 +78,14 @@ const MAIN_WINDOW_RECOVERY_KEEPALIVE_LABEL: &str = "main-recovery-keepalive";
 const PRIMARY_MENU_ITEM_SHOW: &str = "show";
 const PRIMARY_MENU_ITEM_QUIT: &str = "quit";
 
+#[cfg(any(target_os = "macos", test))]
+const MACOS_TRAY_ICON_BYTES: &[u8] = include_bytes!("../icons/tray-icon-macos-template.png");
+
+#[cfg(any(target_os = "macos", test))]
+fn macos_tray_icon() -> tauri::Result<tauri::image::Image<'static>> {
+    tauri::image::Image::from_bytes(MACOS_TRAY_ICON_BYTES)
+}
+
 fn sync_relay_port() -> u16 {
     std::env::var("FREED_SYNC_PORT")
         .ok()
@@ -13538,14 +13546,21 @@ pub fn run() {
             let (show_item, quit_item) = build_primary_action_items(app)?;
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
-            let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().cloned().unwrap())
+            let tray_builder = TrayIconBuilder::new();
+            #[cfg(target_os = "macos")]
+            let tray_builder = tray_builder
+                .icon(macos_tray_icon()?)
+                .icon_as_template(true);
+            #[cfg(not(target_os = "macos"))]
+            let tray_builder =
+                tray_builder.icon(app.default_window_icon().cloned().unwrap());
+
+            let _tray = tray_builder
                 .menu(&menu)
                 .tooltip("Freed — Sync running")
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    id => {
-                        let _ = handle_primary_menu_action(&app.app_handle(), id);
-                    }
+                .on_menu_event(|app, event| {
+                    let id = event.id.as_ref();
+                    let _ = handle_primary_menu_action(app.app_handle(), id);
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
@@ -13555,7 +13570,7 @@ pub fn run() {
                     } = event
                     {
                         let app = tray.app_handle();
-                        show_primary_window(&app);
+                        show_primary_window(app);
                     }
                 })
                 .build(app)?;
@@ -14755,6 +14770,33 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn macos_tray_icon_is_a_small_monochrome_template() {
+        let icon = macos_tray_icon().expect("macOS tray icon should decode");
+        assert_eq!((icon.width(), icon.height()), (36, 36));
+
+        let mut visible_bounds = (icon.width(), icon.height(), 0, 0);
+        for (index, pixel) in icon.rgba().chunks_exact(4).enumerate() {
+            let [red, green, blue, alpha] = pixel else {
+                unreachable!("RGBA chunks always contain four channels");
+            };
+            assert_eq!(red, green, "template pixels must be monochrome");
+            assert_eq!(green, blue, "template pixels must be monochrome");
+            if *alpha == 0 {
+                continue;
+            }
+
+            let x = (index as u32) % icon.width();
+            let y = (index as u32) / icon.width();
+            visible_bounds.0 = visible_bounds.0.min(x);
+            visible_bounds.1 = visible_bounds.1.min(y);
+            visible_bounds.2 = visible_bounds.2.max(x);
+            visible_bounds.3 = visible_bounds.3.max(y);
+        }
+
+        assert_eq!(visible_bounds, (13, 9, 25, 27));
+    }
 
     #[test]
     fn desktop_installation_witness_is_scoped_to_machine_and_user() {
