@@ -2567,6 +2567,37 @@ old keyset cursor to a newer materialization. Every response returns its
 revision and next cursor. Equal sort tuples use entity ID as the final strict
 key.
 
+### Default feed-page protocol
+
+`feed_page_v1` currently names one exact dormant query only: the visible,
+nonhidden, nonarchived chronological page already implemented by the native
+projection reader. Its request carries the query and schema versions, one
+reader-session ID, one cancellation ID, a limit from 1 through 128, and an
+optional opaque cursor. It accepts no undeclared filter field. Recommendation
+ordering and the product's platform, author, feed, tag, signal, saved,
+archived, and social-content filters are not silently approximated. They remain
+adapter blockers until a later registered query proves matching behavior.
+
+The cursor is versioned binary data encoded as canonical unpadded base64url. It
+binds the immutable generation digest, transition sequence, projection
+revision, nonnegative chronological sort key, and final entity ID. The maximum
+entity identity produces a cursor of at most 5,540 bytes. A response carries
+the same source identity, at most 128 compact feed-card rows, the exact visible
+row count for its pinned projection, and an optional next cursor bound to that
+source and final row. The response ceiling is 2 MiB after JSON serialization.
+
+The compact projection excludes preserved reader bodies and every unmodelled
+escape object. It bounds media URLs and types at 8 each, tags at 32, and content
+signal tags at 32, with independent scalar and UTF-8 byte ceilings per string.
+Protocol parsers accept only closed plain data records and dense undecorated
+arrays, snapshot every retained value, reject invalid Unicode, accessors,
+unknown fields, negative or unsafe numeric values, and impossible totals, and
+measure the exact serialized ceiling one bounded row at a time without
+constructing a second page-sized JSON string. They never retain caller-owned
+arrays. This contract stays package-internal while
+`adapter_proof_missing` and `runtime_adapter_unimplemented` remain. Closing the
+wire shape does not assign a product reader or activate Gate D.
+
 An interactive cursor does not pin an unbounded SQLite read transaction or WAL.
 If an adapter uses a pinned snapshot, the query registry declares its maximum
 age, memory or disk budget, release behavior, and crash cleanup. Cancellation,

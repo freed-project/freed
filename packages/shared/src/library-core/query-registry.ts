@@ -1,3 +1,14 @@
+import {
+  LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
+  LIBRARY_CORE_FEED_PAGE_MAXIMUM_LIMIT,
+  LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
+  LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS,
+  LIBRARY_CORE_FEED_PAGE_PROJECTION,
+  LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA,
+  LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA,
+  LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY,
+} from "./feed-page-contracts.js";
+
 export const LIBRARY_CORE_QUERY_IDS = [
   "account_detail_v1",
   "change_feed_v1",
@@ -160,13 +171,21 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
   readonly querySchemaVersion: 1;
   readonly source: {
     readonly boundary: "library_core";
-    readonly currentKinds: readonly [];
+    readonly currentKinds: readonly string[];
   };
-  readonly requestSchema: null;
-  readonly responseSchema: null;
-  readonly projection: null;
-  readonly sourceIdentity: null;
-  readonly nestedBounds: null;
+  readonly requestSchema:
+    | typeof LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA
+    | null;
+  readonly responseSchema:
+    | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
+    | null;
+  readonly projection: typeof LIBRARY_CORE_FEED_PAGE_PROJECTION | null;
+  readonly sourceIdentity:
+    | typeof LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY
+    | null;
+  readonly nestedBounds:
+    | typeof LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS
+    | null;
   readonly stableSort: ResolvedQuerySortContract | null;
   readonly tieBreakKey: string | null;
   readonly defaultLimit: number;
@@ -251,6 +270,12 @@ interface PlannedQueryInput {
   readonly invalidationKeyIntent: readonly string[];
   readonly intendedAdapters?: readonly LibraryCoreQueryAdapter[];
   readonly additionalBlockers?: readonly LibraryCoreQueryBlocker[];
+  readonly currentKinds?: readonly string[];
+  readonly requestSchema?: typeof LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA;
+  readonly responseSchema?: typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA;
+  readonly projection?: typeof LIBRARY_CORE_FEED_PAGE_PROJECTION;
+  readonly sourceIdentity?: typeof LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY;
+  readonly nestedBounds?: typeof LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS;
   /**
    * Supplying both clears `sort_contract_unresolved` for this query. They move
    * together on purpose: an ordering without a tie-break is not stable, and a
@@ -275,6 +300,11 @@ function plannedQuery(
 ): PlannedBlockedLibraryCoreQueryDefinition {
   const stableSort = input.stableSort ?? null;
   const tieBreakKey = input.tieBreakKey ?? null;
+  const requestSchema = input.requestSchema ?? null;
+  const responseSchema = input.responseSchema ?? null;
+  const projection = input.projection ?? null;
+  const sourceIdentity = input.sourceIdentity ?? null;
+  const nestedBounds = input.nestedBounds ?? null;
 
   if ((stableSort === null) !== (tieBreakKey === null)) {
     throw new Error(
@@ -299,13 +329,13 @@ function plannedQuery(
     querySchemaVersion: 1,
     source: {
       boundary: "library_core",
-      currentKinds: [],
+      currentKinds: input.currentKinds ?? [],
     },
-    requestSchema: null,
-    responseSchema: null,
-    projection: null,
-    sourceIdentity: null,
-    nestedBounds: null,
+    requestSchema,
+    responseSchema,
+    projection,
+    sourceIdentity,
+    nestedBounds,
     stableSort,
     tieBreakKey,
     defaultLimit: input.defaultLimit,
@@ -323,10 +353,27 @@ function plannedQuery(
     invalidationKeyIntent: input.invalidationKeyIntent,
     intendedAdapters: input.intendedAdapters ?? ALL_INTENDED_ADAPTERS,
     blockers: nonEmptyBlockers([
-      ...BASE_QUERY_BLOCKERS.filter(
-        (blocker) =>
-          stableSort === null || blocker !== "sort_contract_unresolved",
-      ),
+      ...BASE_QUERY_BLOCKERS.filter((blocker) => {
+        if (blocker === "request_schema_unresolved") {
+          return requestSchema === null;
+        }
+        if (blocker === "response_schema_unresolved") {
+          return responseSchema === null;
+        }
+        if (blocker === "projection_unresolved") {
+          return projection === null;
+        }
+        if (blocker === "source_identity_unresolved") {
+          return sourceIdentity === null;
+        }
+        if (blocker === "nested_bounds_unresolved") {
+          return nestedBounds === null;
+        }
+        if (blocker === "sort_contract_unresolved") {
+          return stableSort === null;
+        }
+        return true;
+      }),
       ...(input.additionalBlockers ?? []),
     ]),
   };
@@ -411,12 +458,19 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     invalidationKeyIntent: ["feed-facets"],
   }),
   feed_page_v1: plannedQuery({
-    defaultLimit: 64,
-    maximumLimit: 128,
-    maximumRows: 128,
+    defaultLimit: LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
+    maximumLimit: LIBRARY_CORE_FEED_PAGE_MAXIMUM_LIMIT,
+    maximumRows: LIBRARY_CORE_FEED_PAGE_MAXIMUM_LIMIT,
+    maximumResponseBytes: LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
     totalCountIntent: "snapshot_exact",
     rendererCache: true,
-    invalidationKeyIntent: ["feed:{normalized_filter_digest}", "feed-facets"],
+    invalidationKeyIntent: ["feed:default", "feed-facets"],
+    currentKinds: ["ProjectionReadSession::feed_page"],
+    requestSchema: LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_FEED_PAGE_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS,
     // Newest first, then by id so the order is total. `sortAt` is the shadow
     // store's derived sort key rather than `publishedAt`: the authoritative
     // column stays nullable because absence is data the projection must be able

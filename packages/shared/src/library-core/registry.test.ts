@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS,
+  LIBRARY_CORE_FEED_PAGE_PROJECTION,
+  LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA,
+  LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA,
+  LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY,
+} from "./feed-page-contracts.js";
+import {
   LIBRARY_CORE_FIELD_REGISTRY,
 } from "./field-registry.js";
 import {
@@ -234,22 +241,20 @@ describe("Library Core query registry", () => {
     for (const definition of Object.values(LIBRARY_CORE_QUERY_REGISTRY)) {
       if (definition.status !== "planned_blocked") continue;
 
-      expect(definition.requestSchema).toBeNull();
-      expect(definition.responseSchema).toBeNull();
-      expect(definition.projection).toBeNull();
-      expect(definition.sourceIdentity).toBeNull();
-      expect(definition.nestedBounds).toBeNull();
-      // A contract field and its blocker move together. Asserting the sort is
-      // always null would have forbidden ever resolving one; asserting the
-      // relation catches the failure that actually matters, which is a query
-      // claiming a resolved ordering while still advertising it as unresolved,
-      // or clearing the blocker without stating an ordering at all.
-      const sortBlocked = definition.blockers.includes(
-        "sort_contract_unresolved",
-      );
-      expect(definition.stableSort === null).toBe(sortBlocked);
-      expect(definition.tieBreakKey === null).toBe(sortBlocked);
-      expect(definition.source.currentKinds).toStrictEqual([]);
+      for (const [field, blocker] of [
+        ["requestSchema", "request_schema_unresolved"],
+        ["responseSchema", "response_schema_unresolved"],
+        ["projection", "projection_unresolved"],
+        ["sourceIdentity", "source_identity_unresolved"],
+        ["nestedBounds", "nested_bounds_unresolved"],
+        ["stableSort", "sort_contract_unresolved"],
+        ["tieBreakKey", "sort_contract_unresolved"],
+      ] as const) {
+        expect(
+          definition[field] === null,
+          `${field} must move with ${blocker}`,
+        ).toBe(definition.blockers.includes(blocker));
+      }
       expect(definition.intendedAdapters.length).toBeGreaterThan(0);
       expect(definition.blockers.length).toBeGreaterThan(0);
       expect(definition.blockers).toContain("runtime_adapter_unimplemented");
@@ -266,6 +271,38 @@ describe("Library Core query registry", () => {
       expect(definition.cancellation.required).toBe(true);
       expect(definition.cancellation.identitySchema).toBeNull();
     }
+  });
+
+  it("closes the dormant feed-page protocol without claiming an active adapter", () => {
+    const definition = LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1;
+    expect(definition).toMatchObject({
+      status: "planned_blocked",
+      source: {
+        boundary: "library_core",
+        currentKinds: ["ProjectionReadSession::feed_page"],
+      },
+      requestSchema: LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA,
+      responseSchema: LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA,
+      projection: LIBRARY_CORE_FEED_PAGE_PROJECTION,
+      sourceIdentity: LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY,
+      nestedBounds: LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS,
+      defaultLimit: 64,
+      maximumLimit: 128,
+      maximumRows: 128,
+      maximumResponseBytes: 2 * 1_048_576,
+      blockers: ["adapter_proof_missing", "runtime_adapter_unimplemented"],
+    });
+    expect(definition.blockers).not.toEqual(
+      expect.arrayContaining([
+        "request_schema_unresolved",
+        "response_schema_unresolved",
+        "projection_unresolved",
+        "source_identity_unresolved",
+        "nested_bounds_unresolved",
+        "sort_contract_unresolved",
+      ]),
+    );
+    expect("supportedAdapters" in definition).toBe(false);
   });
 
   it("uses shared renderer and interactive snapshot pools instead of additive query reservations", () => {
