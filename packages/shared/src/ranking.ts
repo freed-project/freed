@@ -5,8 +5,22 @@
  * Runs on Desktop/OpenClaw, results synced to edge devices.
  */
 
-import type { Account, ContentSignal, FeedItem, Person, SavedContentSortMode, WeightPreferences } from "./types.js";
-import type { SocialContentFilter } from "./store-types.js";
+import type { Account, FeedItem, Person, SavedContentSortMode, WeightPreferences } from "./types.js";
+import {
+  matchesLibraryCoreFeedBrowseFilterV1,
+  normalizeLibraryCoreFeedBrowseFilterV1,
+  type LibraryCoreFeedBrowseFilterInputV1,
+} from "./library-core/feed-browse-filter-contract.js";
+
+export {
+  matchesLibraryCoreFeedBrowseFilterV1,
+  normalizeLibraryCoreFeedBrowseFilterV1,
+} from "./library-core/feed-browse-filter-contract.js";
+export type {
+  LibraryCoreFeedBrowseFilterInputV1,
+  LibraryCoreFeedBrowseFilterSourceV1,
+  LibraryCoreFeedBrowseFilterV1,
+} from "./library-core/feed-browse-filter-contract.js";
 
 /**
  * Default weights for ranking factors
@@ -289,77 +303,20 @@ export function rankFeedItems(
  */
 export function filterFeedItems(
   items: FeedItem[],
-  options: {
-    showHidden?: boolean;
-    /** Show only archived items (the Archived view). Mutually exclusive with normal feed. */
-    archivedOnly?: boolean;
-    platform?: string;
-    authorId?: string;
-    feedUrl?: string;
-    socialContentFilter?: SocialContentFilter;
-    tags?: string[];
-    signals?: ContentSignal[];
-    savedOnly?: boolean;
-  } = {},
+  options: LibraryCoreFeedBrowseFilterInputV1 = {},
 ): FeedItem[] {
-  return items.filter((item) => matchesFeedFilter(item, options));
+  const normalized = normalizeLibraryCoreFeedBrowseFilterV1(options);
+  return items.filter((item) =>
+    matchesLibraryCoreFeedBrowseFilterV1(item, normalized)
+  );
 }
 
 export function matchesFeedFilter(
   item: FeedItem,
-  options: {
-    showHidden?: boolean;
-    /** Show only archived items (the Archived view). Mutually exclusive with normal feed. */
-    archivedOnly?: boolean;
-    platform?: string;
-    authorId?: string;
-    feedUrl?: string;
-    socialContentFilter?: SocialContentFilter;
-    tags?: string[];
-    signals?: ContentSignal[];
-    savedOnly?: boolean;
-  } = {},
+  options: LibraryCoreFeedBrowseFilterInputV1 = {},
 ): boolean {
-  // Filter hidden unless explicitly showing
-  if (!options.showHidden && item.userState.hidden) return false;
-
-  // Archived view shows only archived; normal feed excludes archived
-  if (options.archivedOnly) {
-    if (!item.userState.archived) return false;
-  } else {
-    if (item.userState.archived) return false;
-  }
-
-  // Provider-classified RSS items remain visible in Feeds after identity
-  // reconciliation promotes their platform to a first-class source.
-  if (options.platform) {
-    const matchesPlatform = options.platform === "rss"
-      ? item.platform === "rss" || Boolean(item.rssSource)
-      : item.platform === options.platform;
-    if (!matchesPlatform) return false;
-  }
-  if (options.authorId && item.author.id !== options.authorId) return false;
-  if (options.feedUrl && item.rssSource?.feedUrl !== options.feedUrl) return false;
-
-  if (options.socialContentFilter && options.socialContentFilter !== "all") {
-    if (options.socialContentFilter === "stories" && item.contentType !== "story") return false;
-    if (options.socialContentFilter === "posts" && item.contentType === "story") return false;
-  }
-
-  // Filter by saved status
-  if (options.savedOnly && !item.userState.saved) return false;
-
-  // Filter by tags (any match)
-  if (options.tags?.length) {
-    const hasTag = options.tags.some((t) => item.userState.tags.includes(t));
-    if (!hasTag) return false;
-  }
-
-  if (options.signals?.length) {
-    const itemSignals = item.contentSignals?.tags ?? [];
-    const hasSignal = options.signals.some((signal) => itemSignals.includes(signal));
-    if (!hasSignal) return false;
-  }
-
-  return true;
+  return matchesLibraryCoreFeedBrowseFilterV1(
+    item,
+    normalizeLibraryCoreFeedBrowseFilterV1(options),
+  );
 }

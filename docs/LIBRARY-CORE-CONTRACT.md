@@ -2573,10 +2573,20 @@ key.
 nonhidden, nonarchived chronological page already implemented by the native
 projection reader. Its request carries the query and schema versions, one
 reader-session ID, one cancellation ID, a limit from 1 through 128, and an
-optional opaque cursor. It accepts no undeclared filter field. Recommendation
-ordering and the product's platform, author, feed, tag, signal, saved,
-archived, and social-content filters are not silently approximated. They remain
-adapter blockers until a later registered query proves matching behavior.
+optional opaque cursor. It accepts no undeclared filter field.
+
+The current renderer and future bounded adapters share one canonical version 1
+browse-filter predicate. Normalization preserves exact strings, snapshots and
+binary-sorts set-like tag and signal inputs, and pins hidden, archived,
+platform, RSS identity, author, feed URL, post/story, saved, tag, and signal
+semantics. The renderer normalizes once per browse pass and applies the same
+predicate without allocating one adapter object per item. This closes the
+semantic filter definition, not its storage execution. `feed_page_v1` remains
+the narrower default page. A later registered query must push every normalized
+predicate into SQLite and IndexedDB, bind that normalized filter to its cursor,
+store archived rows in a separately safe generation contract, and prove exact
+result parity before a product reader can use it. Recommendation ordering is
+also not silently approximated and remains an adapter blocker.
 
 The cursor is versioned binary data encoded as canonical unpadded base64url. It
 binds the immutable generation digest, transition sequence, projection
@@ -2630,10 +2640,12 @@ selectable.
 
 Both platform runtimes are now implemented, so
 `runtime_adapter_unimplemented` is resolved for `feed_page_v1`.
-Product filter and recommendation-order equivalence, renderer-cache eviction,
-and product caller proof remain absent, so `adapter_proof_missing` still blocks
-the query. Authenticated PWA materialization and runtime registration do not
-assign a product reader or activate Gate D.
+The product filter predicate is now defined once and used by the current
+renderer, but native and IndexedDB predicate execution, recommendation-order
+equivalence, renderer-cache eviction, and product caller proof remain absent.
+`adapter_proof_missing` therefore still blocks the query. Authenticated PWA
+materialization and runtime registration do not assign a product reader or
+activate Gate D.
 
 An interactive cursor does not pin an unbounded SQLite read transaction or WAL.
 If an adapter uses a pinned snapshot, the query registry declares its maximum
