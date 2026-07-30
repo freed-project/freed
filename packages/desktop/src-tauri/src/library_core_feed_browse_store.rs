@@ -243,6 +243,57 @@ impl FeedBrowseGenerationStore {
         Ok(store)
     }
 
+    pub(super) fn open_sealed_read_only_with_cache_kib(
+        path: &Path,
+        expected_binding: &FeedBrowseGenerationBinding,
+        cache_kib: i64,
+    ) -> StoreResult<Self> {
+        validate_binding(expected_binding)?;
+        if !(-32 * 1_024..=-256).contains(&cache_kib) {
+            return Err(FeedBrowseStoreError::Invalid("reader cache size"));
+        }
+        let resolved_path = resolve_existing_path(path)?;
+        let before = std::fs::symlink_metadata(&resolved_path)?;
+        if !before.file_type().is_file() {
+            return Err(FeedBrowseStoreError::Invalid("database path"));
+        }
+        let connection = Connection::open_with_flags(
+            &resolved_path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY
+                | OpenFlags::SQLITE_OPEN_NO_MUTEX
+                | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
+                | OpenFlags::SQLITE_OPEN_NOFOLLOW
+                | OpenFlags::SQLITE_OPEN_EXRESCODE,
+        )?;
+        connection.busy_timeout(BUSY_TIMEOUT)?;
+        connection.pragma_update(None, "foreign_keys", "ON")?;
+        connection.pragma_update(None, "cache_size", cache_kib)?;
+        connection.pragma_update(None, "mmap_size", 0)?;
+        connection.pragma_update(None, "temp_store", "FILE")?;
+        connection.pragma_update(None, "cell_size_check", "ON")?;
+        validate_open_identity(&connection)?;
+        let (binding, complete) = read_binding_from_connection(&connection)?;
+        if binding != *expected_binding {
+            return Err(FeedBrowseStoreError::IdentityConflict);
+        }
+        let progress = read_progress(&connection)?;
+        if !complete || !progress.complete {
+            return Err(FeedBrowseStoreError::Incomplete);
+        }
+        verify_complete_rows(&connection, &progress)?;
+        verify_quick_check(&connection)?;
+        let journal_mode =
+            connection.pragma_query_value(None, "journal_mode", |row| row.get::<_, String>(0))?;
+        if journal_mode != "delete" || sidecars_exist(&resolved_path)? {
+            return Err(FeedBrowseStoreError::Invalid("sealed generation"));
+        }
+        let after = std::fs::symlink_metadata(&resolved_path)?;
+        if !after.file_type().is_file() || !same_fs_entry(&before, &after) {
+            return Err(FeedBrowseStoreError::Invalid("database replacement"));
+        }
+        Ok(Self { connection })
+    }
+
     #[cfg(test)]
     fn open_in_memory() -> StoreResult<Self> {
         let connection = Connection::open_in_memory()?;
