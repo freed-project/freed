@@ -261,7 +261,7 @@ const SORT_AT_ABSENT: i64 = 0;
 
 /// One lossless projected row. Field order matches `SHADOW_COLUMNS`.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct FeedItemRow {
     pub(super) global_id: String,
     pub(super) platform: Option<String>,
