@@ -2625,10 +2625,19 @@ configuration. Compact card JSON is identity-checked and byte-bounded at this
 layer. The later transport adapter must still authenticate the source and
 validate the shared closed feed-card DTO before insertion.
 
-This primitive has no worker materializer, selected-generation registry,
-runtime transport, command, or product caller. It cannot resolve
-`runtime_adapter_unimplemented`, authorize a reader cutover, or change
-Automerge authority.
+Freed Desktop now exposes this primitive through a dormant writer transport.
+It admits one session-bound active generation, and begin, append, finalize,
+and cancel return the exact durable next batch, written row count, declared
+row count, and completion state. An exact begin retry after response loss
+returns the live stored progress. A changed binding or cross-session write
+fails closed. Explicit cancellation drops the connection without selecting
+the partial generation. Factory reset also quiesces any active writer before
+removing the derived browse directory.
+
+This transport has no worker materializer, authenticated source proof,
+selected-generation registry, native browse reader, or product caller. It
+cannot resolve `runtime_adapter_unimplemented` for `feed_browse_page_v1`,
+authorize a reader cutover, or change Automerge authority.
 
 The cursor is versioned binary data encoded as canonical unpadded base64url. It
 binds the immutable generation digest, transition sequence, projection
@@ -2687,8 +2696,9 @@ renderer. The current recommendation order is also defined once and used by
 both active workers. The PWA now also persists exact filtered recommendation
 order in a separate query-specific IndexedDB generation while holding at most
 one 128-row output page, then serves it through the closed dormant browse
-protocol. Native execution, renderer-cache eviction, and product caller proof
-remain absent.
+protocol. The native generation writer transport is present, but the bounded
+worker materializer, generation selection, native browse reader,
+renderer-cache eviction, and product caller proof remain absent.
 `adapter_proof_missing` therefore still blocks the query. Authenticated PWA
 materialization, runtime registration, shared semantic contracts, and dormant
 browse projection do not assign a product reader or activate Gate D.
