@@ -80,6 +80,18 @@ change provider behavior. The later provider adapter must upload dependencies,
 verify digest and size by readback, upload the manifest, then compare and swap
 the control pointer against the provider's exact current revision.
 
+The dormant publication coordinator performs that ordering against an injected
+transport adapter. It streams a bounded dependency sequence, requires exact
+remote digest and size verification for each object, gives the verified
+provider object IDs to the manifest builder, verifies the manifest, and then
+compares and swaps a canonical control pointer. A stale starting tuple returns
+before upload. A final CAS race returns the exact current tuple. Response loss
+recovers only when readback equals the intended pointer. Ordinary publication
+cannot change the writer epoch or active cloud transport. Writer reassignment
+uses a separate explicit control transition. This coordinator has no Google or
+Dropbox implementation, token, request path, polling loop, or production
+caller.
+
 ## Canonical bytes, digests, and signatures
 
 Library Core v1 uses UTF-8 JSON Canonicalization Scheme bytes as defined by

@@ -28,3 +28,12 @@ export {
   dropboxDeleteFile,
 } from "./dropbox.js";
 export { mergeBinaries, delay } from "./merge.js";
+export {
+  publishLibraryCoreImmutableGenerationV1,
+  type LibraryCoreControlReadV1,
+  type LibraryCoreImmutablePublicationAdapterV1,
+  type LibraryCoreImmutablePublicationRequestV1,
+  type LibraryCoreImmutablePublicationResultV1,
+  type LibraryCorePreparedImmutableObjectV1,
+  type LibraryCorePublishedImmutableObjectReceiptV1,
+} from "./library-core-immutable-publication.js";
