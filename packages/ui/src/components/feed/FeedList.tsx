@@ -125,6 +125,10 @@ interface FeedListProps {
   isSearching?: boolean;
   /** The active search query text — used in the empty state message */
   searchQuery?: string;
+  /** Request the next bounded row page when the virtual window nears its tail. */
+  onLoadMore?: () => void;
+  hasMore?: boolean;
+  markItemsAsReadOverride?: (ids: string[]) => Promise<void>;
 }
 
 /**
@@ -259,6 +263,9 @@ export function FeedList({
   onOpenCommentUrl,
   isSearching = false,
   searchQuery = "",
+  onLoadMore,
+  hasMore = false,
+  markItemsAsReadOverride,
 }: FeedListProps) {
   // Desktop in-element scroll container
   const parentRef = useRef<HTMLDivElement>(null);
@@ -294,7 +301,8 @@ export function FeedList({
   const showEngagementCounts = useAppStore(
     (s) => s.preferences.display.showEngagementCounts,
   );
-  const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
+  const storeMarkItemsAsRead = useAppStore((s) => s.markItemsAsRead);
+  const markItemsAsRead = markItemsAsReadOverride ?? storeMarkItemsAsRead;
   const markReadOnScroll = useAppStore(
     (s) => s.preferences.display.reading.markReadOnScroll,
   );
@@ -392,6 +400,16 @@ export function FeedList({
     getScrollMetrics: getReadScrollMetrics,
     markItemsAsRead,
   });
+  const requestMoreNearTail = useCallback(
+    (virtualItems: readonly { index: number }[]) => {
+      if (!hasMore || !onLoadMore || rows.length === 0) return;
+      const finalVisible = virtualItems[virtualItems.length - 1];
+      if (finalVisible && finalVisible.index >= Math.max(0, rows.length - 5)) {
+        onLoadMore();
+      }
+    },
+    [hasMore, onLoadMore, rows.length],
+  );
 
   const elementVirtualizer = useVirtualizer({
     count: isMobile ? 0 : rows.length,
@@ -399,7 +417,10 @@ export function FeedList({
     estimateSize: estimateRowSize,
     overscan: 5,
     onChange: (instance) => {
-      if (!isMobile) processReadOnScroll(instance, "element");
+      if (!isMobile) {
+        processReadOnScroll(instance, "element");
+        requestMoreNearTail(instance.getVirtualItems());
+      }
     },
   });
 
@@ -411,7 +432,10 @@ export function FeedList({
     // header so items are offset correctly as window.scrollY changes.
     scrollMargin: windowListRef.current?.offsetTop ?? 0,
     onChange: (instance) => {
-      if (isMobile) processReadOnScroll(instance, "window");
+      if (isMobile) {
+        processReadOnScroll(instance, "window");
+        requestMoreNearTail(instance.getVirtualItems());
+      }
     },
   });
 

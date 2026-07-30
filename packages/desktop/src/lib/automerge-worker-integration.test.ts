@@ -1048,6 +1048,38 @@ describe("real Automerge worker module", () => {
       ),
     ).toHaveLength(reloadCountBeforeHeads);
 
+    const sourceStart = posts.length;
+    sendRequest(scope, {
+      reqId: 21,
+      type: "GET_LIBRARY_CORE_PROJECTION_SOURCE",
+    });
+    const sourcePost = await waitForPost(
+      posts,
+      (message) =>
+        message.type === "LIBRARY_CORE_PROJECTION_SOURCE" &&
+        message.reqId === 21,
+      sourceStart,
+    );
+    expect(sourcePost.message).toMatchObject({
+      type: "LIBRARY_CORE_PROJECTION_SOURCE",
+      source: {
+        schemaVersion: 1,
+        storageRevision: storageHarness.revision,
+      },
+    });
+    if (sourcePost.message.type !== "LIBRARY_CORE_PROJECTION_SOURCE") {
+      throw new Error("Expected Library Core projection source");
+    }
+    expect(sourcePost.message.source.documentId).toBe(
+      "automerge-memory-fixture",
+    );
+    expect(sourcePost.message.source.headsDigest).toMatch(/^[0-9a-f]{64}$/);
+    expect(
+      debugDetails(posts).filter((detail) =>
+        detail.startsWith("[automerge-worker] reloaded idle document"),
+      ),
+    ).toHaveLength(reloadCountBeforeHeads);
+
     const preservedStart = posts.length;
     sendRequest(scope, {
       reqId: 3,

@@ -3,6 +3,9 @@
 //! Automerge remains authoritative. These commands only stage one worker-
 //! authenticated generation at a time. No product caller selects or reads it.
 
+use crate::library_core_feed_browse_registry::{
+    FeedBrowseGenerationRegistry, FeedBrowseGenerationRegistryError,
+};
 use crate::library_core_feed_browse_store::{
     ExistingFeedBrowseGeneration, FeedBrowseGenerationBinding, FeedBrowseGenerationProgress,
     FeedBrowseGenerationState, FeedBrowseGenerationStore, FeedBrowseProjectedRow,
@@ -17,14 +20,22 @@ use tauri::Manager;
 const ROOT_DIRECTORY: &str = "library-core-feed-browse-v1";
 const GENERATION_DIRECTORY: &str = "generations";
 const MAXIMUM_SESSION_ID_BYTES: usize = 128;
+const REGISTRY_FILE: &str = "registry.sqlite";
+
+#[derive(Debug, Clone)]
+pub(super) struct LibraryCoreFeedBrowsePaths {
+    pub(super) generation_root: PathBuf,
+    pub(super) registry_path: PathBuf,
+}
 
 #[derive(Debug)]
-enum BrowseRuntimeError {
+pub(super) enum BrowseRuntimeError {
     Io(std::io::Error),
     Store(crate::library_core_feed_browse_store::FeedBrowseStoreError),
     Invalid(&'static str),
     ActiveMismatch,
     StatePoisoned,
+    Registry(FeedBrowseGenerationRegistryError),
 }
 
 impl From<std::io::Error> for BrowseRuntimeError {
@@ -36,6 +47,12 @@ impl From<std::io::Error> for BrowseRuntimeError {
 impl From<crate::library_core_feed_browse_store::FeedBrowseStoreError> for BrowseRuntimeError {
     fn from(error: crate::library_core_feed_browse_store::FeedBrowseStoreError) -> Self {
         Self::Store(error)
+    }
+}
+
+impl From<FeedBrowseGenerationRegistryError> for BrowseRuntimeError {
+    fn from(error: FeedBrowseGenerationRegistryError) -> Self {
+        Self::Registry(error)
     }
 }
 
@@ -51,6 +68,7 @@ impl fmt::Display for BrowseRuntimeError {
             Self::StatePoisoned => {
                 formatter.write_str("browse generation runtime state is unavailable")
             }
+            Self::Registry(error) => write!(formatter, "{error}"),
         }
     }
 }
@@ -75,6 +93,23 @@ pub(super) struct BrowseGenerationStatusV1 {
     complete: bool,
     sealed_file_digest: Option<String>,
     sealed_byte_length: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct SelectBrowseGenerationInputV1 {
+    binding: FeedBrowseGenerationBinding,
+    transition_id: String,
+    expected_current_generation_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct SelectedBrowseGenerationV1 {
+    binding: FeedBrowseGenerationBinding,
+    byte_length: u64,
+    file_digest: String,
+    selection_sequence: i64,
 }
 
 struct ActiveGeneration {
@@ -130,8 +165,10 @@ fn create_private_directory(path: &Path) -> RuntimeResult<()> {
     }
 }
 
-fn generation_path(base: &Path, generation_id: &str) -> RuntimeResult<PathBuf> {
-    if !base.is_absolute() || !is_lower_sha256(generation_id) {
+pub(super) fn resolve_library_core_feed_browse_paths(
+    base: &Path,
+) -> RuntimeResult<LibraryCoreFeedBrowsePaths> {
+    if !base.is_absolute() {
         return Err(BrowseRuntimeError::Invalid("path"));
     }
     let canonical_base = std::fs::canonicalize(base)?;
@@ -147,7 +184,63 @@ fn generation_path(base: &Path, generation_id: &str) -> RuntimeResult<PathBuf> {
     if generations.parent() != Some(root.as_path()) {
         return Err(BrowseRuntimeError::Invalid("generation directory"));
     }
-    Ok(generations.join(format!("{generation_id}.sqlite")))
+    Ok(LibraryCoreFeedBrowsePaths {
+        generation_root: generations,
+        registry_path: root.join(REGISTRY_FILE),
+    })
+}
+
+pub(super) fn resolve_existing_library_core_feed_browse_paths(
+    base: &Path,
+) -> RuntimeResult<Option<LibraryCoreFeedBrowsePaths>> {
+    if !base.is_absolute() {
+        return Err(BrowseRuntimeError::Invalid("path"));
+    }
+    let canonical_base = std::fs::canonicalize(base)?;
+    let root = canonical_base.join(ROOT_DIRECTORY);
+    let root_metadata = match std::fs::symlink_metadata(&root) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    if !root_metadata.file_type().is_dir() || root_metadata.file_type().is_symlink() {
+        return Err(BrowseRuntimeError::Invalid("root"));
+    }
+    let root = std::fs::canonicalize(root)?;
+    if root.parent() != Some(canonical_base.as_path()) {
+        return Err(BrowseRuntimeError::Invalid("root"));
+    }
+    let generations = root.join(GENERATION_DIRECTORY);
+    let generations_metadata = match std::fs::symlink_metadata(&generations) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    if !generations_metadata.file_type().is_dir() || generations_metadata.file_type().is_symlink() {
+        return Err(BrowseRuntimeError::Invalid("generation directory"));
+    }
+    let generations = std::fs::canonicalize(generations)?;
+    if generations.parent() != Some(root.as_path()) {
+        return Err(BrowseRuntimeError::Invalid("generation directory"));
+    }
+    let registry_path = root.join(REGISTRY_FILE);
+    if !registry_path.try_exists()? {
+        return Ok(None);
+    }
+    Ok(Some(LibraryCoreFeedBrowsePaths {
+        generation_root: generations,
+        registry_path,
+    }))
+}
+
+fn generation_path(base: &Path, generation_id: &str) -> RuntimeResult<PathBuf> {
+    if !is_lower_sha256(generation_id) {
+        return Err(BrowseRuntimeError::Invalid("path"));
+    }
+    let paths = resolve_library_core_feed_browse_paths(base)?;
+    Ok(paths
+        .generation_root
+        .join(format!("{generation_id}.sqlite")))
 }
 
 fn validate_session_id(value: &str) -> RuntimeResult<()> {
@@ -309,6 +402,58 @@ fn cancel_at_root(
     Ok(status)
 }
 
+fn selected_generation_at_root(base: &Path) -> RuntimeResult<Option<SelectedBrowseGenerationV1>> {
+    let Some(paths) = resolve_existing_library_core_feed_browse_paths(base)? else {
+        return Ok(None);
+    };
+    match FeedBrowseGenerationRegistry::read_selected_generation(&paths.registry_path) {
+        Ok(selected) => Ok(Some(SelectedBrowseGenerationV1 {
+            binding: selected.generation.binding,
+            byte_length: selected.generation.byte_length,
+            file_digest: selected.generation.file_digest,
+            selection_sequence: selected.transition_sequence,
+        })),
+        Err(FeedBrowseGenerationRegistryError::NoSelectedGeneration) => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn select_generation_at_root(
+    base: &Path,
+    input: SelectBrowseGenerationInputV1,
+) -> RuntimeResult<SelectedBrowseGenerationV1> {
+    if !is_lower_sha256(&input.binding.generation_id) {
+        return Err(BrowseRuntimeError::Invalid("generation identity"));
+    }
+    let paths = resolve_library_core_feed_browse_paths(base)?;
+    let path = paths
+        .generation_root
+        .join(format!("{}.sqlite", input.binding.generation_id));
+    let published = match FeedBrowseGenerationStore::inspect_existing(&path, &input.binding)? {
+        ExistingFeedBrowseGeneration::Sealed(published) => published,
+        _ => return Err(BrowseRuntimeError::Invalid("sealed generation")),
+    };
+    let mut registry =
+        FeedBrowseGenerationRegistry::open(&paths.registry_path, &paths.generation_root)?;
+    let registered = registry.register(&published)?;
+    match registry.select(
+        &input.transition_id,
+        input.expected_current_generation_id.as_deref(),
+        &registered.binding.generation_id,
+    ) {
+        Ok(_) => {}
+        Err(FeedBrowseGenerationRegistryError::AlreadySelectedGeneration) => {
+            let selected =
+                FeedBrowseGenerationRegistry::read_selected_generation(&paths.registry_path)?;
+            if selected.generation != registered {
+                return Err(BrowseRuntimeError::Invalid("selected generation"));
+            }
+        }
+        Err(error) => return Err(error.into()),
+    }
+    selected_generation_at_root(base)?.ok_or(BrowseRuntimeError::Invalid("selected generation"))
+}
+
 pub(super) fn clear_library_core_feed_browse_runtime_in(
     runtime: &LibraryCoreFeedBrowseRuntimeState,
     base: &Path,
@@ -370,6 +515,29 @@ pub(super) fn cancel_library_core_feed_browse_generation(
     session_id: String,
 ) -> Result<BrowseGenerationStatusV1, String> {
     cancel_at_root(&state, &session_id).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn get_library_core_feed_browse_selection(
+    app: tauri::AppHandle,
+) -> Result<Option<SelectedBrowseGenerationV1>, String> {
+    let base = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    selected_generation_at_root(&base).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(super) fn select_library_core_feed_browse_generation(
+    app: tauri::AppHandle,
+    input: SelectBrowseGenerationInputV1,
+) -> Result<SelectedBrowseGenerationV1, String> {
+    let base = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    select_generation_at_root(&base, input).map_err(|error| error.to_string())
 }
 
 #[cfg(test)]
@@ -507,14 +675,7 @@ mod tests {
         assert!(recovered.complete);
         assert!(recovered.sealed_file_digest.is_some());
         assert!(recovered.sealed_byte_length.is_some());
-        assert!(
-            runtime
-                .0
-                .lock()
-                .expect("runtime lock")
-                .as_ref()
-                .is_none()
-        );
+        assert!(runtime.0.lock().expect("runtime lock").as_ref().is_none());
     }
 
     #[test]

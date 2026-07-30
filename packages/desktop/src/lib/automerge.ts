@@ -42,6 +42,7 @@ import type {
   DocStats,
   DocumentHistoryRelation,
   LibraryCoreFeedBrowseProjectionBatchV1,
+  LibraryCoreProjectionSourceV1,
   LibraryCoreProjectionBatchV1,
   RssFeedRefreshUpdate,
   WorkerRequest,
@@ -189,6 +190,7 @@ function rejectPendingWorkerRequests(generationId: number, error: Error): void {
   rejectPendingMap(pendingDocBinary, generationId, error);
   rejectPendingMap(pendingCommittedDoc, generationId, error);
   rejectPendingMap(pendingDocHeads, generationId, error);
+  rejectPendingMap(pendingLibraryCoreProjectionSource, generationId, error);
   rejectPendingMap(pendingDocRelationship, generationId, error);
   rejectPendingMap(pendingSavedYouTubeUrls, generationId, error);
   rejectPendingMap(pendingPreservedText, generationId, error);
@@ -346,6 +348,7 @@ function hasPendingWorkerRequests(): boolean {
     pendingDocBinary.size > 0 ||
     pendingCommittedDoc.size > 0 ||
     pendingDocHeads.size > 0 ||
+    pendingLibraryCoreProjectionSource.size > 0 ||
     pendingDocRelationship.size > 0 ||
     pendingSavedYouTubeUrls.size > 0 ||
     pendingPreservedText.size > 0 ||
@@ -425,6 +428,10 @@ const pendingCommittedDoc = new Map<
   PendingRequest<CommittedDocSnapshot>
 >();
 const pendingDocHeads = new Map<number, PendingRequest<string[] | null>>();
+const pendingLibraryCoreProjectionSource = new Map<
+  number,
+  PendingRequest<LibraryCoreProjectionSourceV1>
+>();
 const pendingDocRelationship = new Map<number, PendingRequest<DocumentHistoryRelation>>();
 const pendingSavedYouTubeUrls = new Map<number, PendingRequest<string[]>>();
 const pendingPreservedText = new Map<number, PendingRequest<string | null>>();
@@ -812,6 +819,25 @@ function handleWorkerMessage(
     return;
   }
 
+  if (msg.type === "LIBRARY_CORE_PROJECTION_SOURCE") {
+    const pendingSource = getGenerationPending(
+      pendingLibraryCoreProjectionSource,
+      msg.reqId,
+      generationId,
+    );
+    if (!pendingSource) return;
+    clearTimeout(pendingSource.timer);
+    pendingLibraryCoreProjectionSource.delete(msg.reqId);
+    pendingSource.resolve({
+      schemaVersion: 1,
+      documentId: msg.source.documentId,
+      headsDigest: msg.source.headsDigest,
+      headCount: msg.source.headCount,
+      storageRevision: { ...msg.source.storageRevision },
+    });
+    return;
+  }
+
   if (msg.type === "DOC_RELATIONSHIP") {
     const pendingRelationship = getGenerationPending(
       pendingDocRelationship,
@@ -1103,6 +1129,18 @@ function handleWorkerMessage(
     clearTimeout(pendingHeads.timer);
     pendingDocHeads.delete(msg.reqId);
     pendingHeads.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingProjectionSource = getGenerationPending(
+    pendingLibraryCoreProjectionSource,
+    msg.reqId,
+    generationId,
+  );
+  if (pendingProjectionSource && msg.error) {
+    clearTimeout(pendingProjectionSource.timer);
+    pendingLibraryCoreProjectionSource.delete(msg.reqId);
+    pendingProjectionSource.reject(new Error(msg.error));
     return;
   }
 
@@ -1530,6 +1568,22 @@ export async function getDocHeads(): Promise<string[] | null> {
     activeWorker,
     pendingDocHeads,
     { reqId: nextReqId++, type: "GET_HEADS" } satisfies WorkerRequest,
+  );
+}
+
+/**
+ * Exact durable source identity for one bounded Library Core projection.
+ * This request never returns or hydrates the document corpus.
+ */
+export async function getLibraryCoreProjectionSource(): Promise<LibraryCoreProjectionSourceV1> {
+  await ensureWorkerDocumentReadyFor("GET_LIBRARY_CORE_PROJECTION_SOURCE");
+  return requestResultOnWorker(
+    getWorker(),
+    pendingLibraryCoreProjectionSource,
+    {
+      reqId: nextReqId++,
+      type: "GET_LIBRARY_CORE_PROJECTION_SOURCE",
+    } satisfies WorkerRequest,
   );
 }
 

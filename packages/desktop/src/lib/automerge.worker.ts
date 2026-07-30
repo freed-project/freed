@@ -208,6 +208,7 @@ let libraryCoreExternalExportSession: LibraryCoreExternalExportSession | null =
   null;
 let searchCorpusVersion = 0;
 let linkPreviewUrlCounts = new Map<string, number>();
+let lastSavedDocumentId: string | null = null;
 let lastCommittedItemCount = 0;
 let lastCommittedFriendCount = 0;
 let persistenceFailure: Error | null = null;
@@ -466,6 +467,21 @@ async function currentProjectionSource(
     documentId,
     headsDigest,
     headCount: heads.length,
+    storageRevision: { ...snapshot.revision },
+  };
+}
+
+async function currentDurableProjectionSource(): Promise<LibraryCoreProjectionSourceV1> {
+  if (currentDoc) return currentProjectionSource(currentDoc);
+  const snapshot = persistence.snapshot();
+  if (!snapshot.bytes || !lastSavedDocumentId) {
+    throw new Error("Document not initialized");
+  }
+  return {
+    schemaVersion: 1,
+    documentId: lastSavedDocumentId,
+    headsDigest: await projectionHeadsDigest(snapshot.heads),
+    headCount: snapshot.heads.length,
     storageRevision: { ...snapshot.revision },
   };
 }
@@ -1045,8 +1061,10 @@ let lastSavedHeads: string[] | null = null;
 function refreshLastSavedHeads(doc: FreedDoc | null): void {
   try {
     lastSavedHeads = doc ? A.getHeads(doc) : null;
+    lastSavedDocumentId = doc ? resolveDocumentId(doc.meta) : null;
   } catch {
     lastSavedHeads = null;
+    lastSavedDocumentId = null;
   }
 }
 
@@ -2088,6 +2106,7 @@ async function handleRequest(
     req.type !== "GET_DOC_BINARY" &&
     req.type !== "GET_COMMITTED_DOC" &&
     req.type !== "GET_HEADS" &&
+    req.type !== "GET_LIBRARY_CORE_PROJECTION_SOURCE" &&
     req.type !== "BEGIN_LIBRARY_CORE_PROJECTION" &&
     req.type !== "NEXT_LIBRARY_CORE_PROJECTION_BATCH" &&
     req.type !== "CANCEL_LIBRARY_CORE_PROJECTION" &&
@@ -2302,6 +2321,14 @@ async function handleRequest(
           reqId: req.reqId,
           type: "DOC_HEADS",
           heads: currentDoc ? A.getHeads(currentDoc) : lastSavedHeads,
+        });
+        break;
+
+      case "GET_LIBRARY_CORE_PROJECTION_SOURCE":
+        send({
+          reqId: req.reqId,
+          type: "LIBRARY_CORE_PROJECTION_SOURCE",
+          source: await currentDurableProjectionSource(),
         });
         break;
 

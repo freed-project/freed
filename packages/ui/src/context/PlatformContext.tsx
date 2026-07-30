@@ -19,6 +19,7 @@ import type {
   BugReportDraft,
   BugReportIssueType,
   FeedItem,
+  FilterOptions,
   GeneratedBugReportBundle,
   PrivateVulnerabilityReportPayload,
   PrivateVulnerabilityReportResult,
@@ -63,6 +64,12 @@ export type UpdateDownloadProgress =
 export interface AvailableUpdateInfo {
   version: string;
   channel: ReleaseChannel;
+}
+
+export interface BoundedFeedReader {
+  readonly totalCount: number;
+  readNext(): Promise<readonly FeedItem[]>;
+  close(): Promise<void>;
 }
 
 export interface ChangelogPreviewRelease {
@@ -133,6 +140,7 @@ export interface BugReportingConfig {
     payload: PrivateVulnerabilityReportPayload,
   ) => Promise<PrivateVulnerabilityReportResult>;
   openUrl?: (url: string) => void;
+
 }
 
 export interface GoogleContactsConnectOptions {
@@ -374,6 +382,16 @@ export interface PlatformConfig {
    * If absent, FeedView falls back to window.open().
    */
   openUrl?: (url: string) => void;
+
+  /**
+   * Open one source-pinned, paged feed reader backed by platform-local row
+   * storage. Shared UI falls back to its current in-memory feed when absent or
+   * when the reader rejects stale source identity.
+   */
+  openBoundedFeedReader?: (
+    filter: FilterOptions,
+    rankingClockMs: number,
+  ) => Promise<BoundedFeedReader>;
 
   /** Optional authenticated YouTube actions for the shared reader. */
   youtube?: YouTubeControls;

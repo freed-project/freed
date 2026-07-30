@@ -1,4 +1,15 @@
 {
   "schemaVersion": 1,
-  "transitions": []
+  "transitions": [
+    {
+      "activationId": "desktop-feed-browse-sql-read-v1",
+      "gate": "D",
+      "kind": "sql_read_cutover",
+      "rollbackTrigger": "Set freed.libraryCore.feedBrowseReaderV1.disabled to 1 on the affected device if the bounded Desktop feed diverges, stalls, or increases memory relative to the Automerge fallback.",
+      "receiptExpectations": [
+        "read_cutover_parity",
+        "same_frontier_rollback_receipt"
+      ]
+    }
+  ]
 }

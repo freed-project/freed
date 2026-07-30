@@ -218,6 +218,7 @@ export const DESKTOP_AUTOMERGE_WORKER_REQUEST_SURFACE_REGISTRY = {
   GET_DOC_BINARY: unboundedReadRequest(),
   GET_COMMITTED_DOC: unboundedReadRequest(),
   GET_HEADS: unboundedReadRequest(),
+  GET_LIBRARY_CORE_PROJECTION_SOURCE: boundedProjectionTransport(),
   COMPARE_DOC: unboundedReadRequest(),
   GET_SAVED_YOUTUBE_URLS: unboundedReadRequest(),
   GET_ITEM_PRESERVED_TEXT: unboundedReadRequest(),
@@ -465,6 +466,7 @@ export const DESKTOP_AUTOMERGE_REQUEST_EFFECT_REGISTRY = {
   GET_DOC_BINARY: noWriteEffect(),
   GET_COMMITTED_DOC: noWriteEffect(),
   GET_HEADS: noWriteEffect(),
+  GET_LIBRARY_CORE_PROJECTION_SOURCE: noWriteEffect(),
   COMPARE_DOC: noWriteEffect(),
   GET_SAVED_YOUTUBE_URLS: noWriteEffect(),
   GET_ITEM_PRESERVED_TEXT: noWriteEffect(),
@@ -556,6 +558,7 @@ export const DESKTOP_AUTOMERGE_WORKER_RESPONSE_SURFACE_REGISTRY = {
     "response_transport_not_cut_over",
     "unbounded_payload",
   ),
+  LIBRARY_CORE_PROJECTION_SOURCE: boundedProjectionTransport(),
   DOC_RELATIONSHIP: blockedSurface(
     "legacy_unbounded_transport",
     "response_transport_not_cut_over",
