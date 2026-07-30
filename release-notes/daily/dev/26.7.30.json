@@ -2,13 +2,17 @@
   "channel": "dev",
   "dayKey": "26.7.30",
   "date": "2026-07-30",
-  "preferredDeck": null,
+  "preferredDeck": "Moves the ordinary Freed Desktop feed onto bounded SQLite pages while keeping Automerge authoritative and preserving an immediate local fallback",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [],
-  "editorialNotes": [],
+  "editorialNotes": [
+    "Lead with the first active bounded SQLite read path.",
+    "State plainly that Automerge remains authoritative and is the immediate fallback.",
+    "Keep dormant PWA foundations subordinate to the Desktop activation."
+  ],
   "updatedAt": "2026-07-30T18:35:41.933Z"
 }
