@@ -12,6 +12,8 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
+use crate::automerge_external_common::{is_lower_sha256, lower_hex};
+
 pub(super) const EXTERNAL_SNAPSHOT_CHUNK_BYTES: usize = 1024 * 1024;
 const JOURNAL_SCHEMA_VERSION: u32 = 1;
 const MAX_JOURNAL_LINE_BYTES: usize = 16 * 1024;
@@ -543,23 +545,6 @@ fn digest_file(file: &mut File, expected_length: u64) -> SpoolResult<String> {
 
 fn digest_bytes(bytes: &[u8]) -> String {
     lower_hex(&Sha256::digest(bytes))
-}
-
-fn is_lower_sha256(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-}
-
-fn lower_hex(bytes: &[u8]) -> String {
-    const DIGITS: &[u8; 16] = b"0123456789abcdef";
-    let mut output = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        output.push(DIGITS[(byte >> 4) as usize] as char);
-        output.push(DIGITS[(byte & 0x0f) as usize] as char);
-    }
-    output
 }
 
 #[cfg(test)]

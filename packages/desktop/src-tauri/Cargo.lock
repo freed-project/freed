@@ -1447,6 +1447,7 @@ version = "26.7.2901"
 dependencies = [
  "base64 0.23.0",
  "criterion",
+ "flate2",
  "fslock",
  "futures-util",
  "hostname",
