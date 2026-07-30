@@ -2634,10 +2634,20 @@ fails closed. Explicit cancellation drops the connection without selecting
 the partial generation. Factory reset also quiesces any active writer before
 removing the derived browse directory.
 
-This transport has no worker materializer, authenticated source proof,
-selected-generation registry, native browse reader, or product caller. It
-cannot resolve `runtime_adapter_unimplemented` for `feed_browse_page_v1`,
-authorize a reader cutover, or change Automerge authority.
+The dormant Desktop worker materializer now authenticates the exact Automerge
+document ID, sorted heads, storage generation, save revision, normalized
+filter, ranking clock, and recommendation-order version before it opens the
+native writer. It counts visible rows without retaining their identities, then
+projects the source through one iterator and one replayable page capped at 128
+rows. Every compact card passes the shared closed parser before transport.
+The main-thread adapter forwards those pages to SQLite, resumes an exact
+receipted append or finalization after response loss, and cancels both sides
+on failure. It does not retain a corpus-sized ID or row array.
+
+This path still has no selected-generation registry, native browse reader,
+renderer-cache eviction, or product caller. It cannot yet resolve
+`adapter_proof_missing` for `feed_browse_page_v1`, authorize a reader cutover,
+or change Automerge authority.
 
 The cursor is versioned binary data encoded as canonical unpadded base64url. It
 binds the immutable generation digest, transition sequence, projection
@@ -2696,9 +2706,9 @@ renderer. The current recommendation order is also defined once and used by
 both active workers. The PWA now also persists exact filtered recommendation
 order in a separate query-specific IndexedDB generation while holding at most
 one 128-row output page, then serves it through the closed dormant browse
-protocol. The native generation writer transport is present, but the bounded
-worker materializer, generation selection, native browse reader,
-renderer-cache eviction, and product caller proof remain absent.
+protocol. The native generation writer transport and its bounded authenticated
+worker materializer are present, but generation selection, the native browse
+reader, renderer-cache eviction, and product caller proof remain absent.
 `adapter_proof_missing` therefore still blocks the query. Authenticated PWA
 materialization, runtime registration, shared semantic contracts, and dormant
 browse projection do not assign a product reader or activate Gate D.

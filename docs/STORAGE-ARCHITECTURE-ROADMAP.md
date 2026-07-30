@@ -70,7 +70,12 @@ Freed Desktop now exposes that store through a dormant session-bound writer
 transport. Begin, append, finalize, and cancel return exact durable progress,
 so a lost response can resume from the stored next batch without guessing.
 Only one generation can write at a time, and factory reset first drops that
-connection before deleting the derived files. The worker materializer,
+connection before deleting the derived files. A dormant Desktop worker
+materializer now authenticates the exact Automerge frontier and storage
+revision, binds the normalized filter and ranking clock, validates every
+closed feed-card DTO, and streams replayable pages of at most 128 rows to that
+writer. Its main-thread adapter recovers exact append and finalization response
+loss without retaining a corpus-sized row or ID array. The
 selected-generation registry, native browse reader, renderer-cache eviction,
 and product caller proof remain explicit blockers. This is progress inside
 Gate B and step 4, not a claim that either gate is complete.

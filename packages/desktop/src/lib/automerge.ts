@@ -33,11 +33,15 @@ import type {
   DesktopClientRegistration,
 } from "@freed/shared";
 import type {
+  LibraryCoreFeedBrowseFilterInputV1,
+} from "@freed/shared/library-core";
+import type {
   CommittedDocSnapshot,
   DocChangeEvent,
   DocState,
   DocStats,
   DocumentHistoryRelation,
+  LibraryCoreFeedBrowseProjectionBatchV1,
   LibraryCoreProjectionBatchV1,
   RssFeedRefreshUpdate,
   WorkerRequest,
@@ -61,6 +65,13 @@ import {
   type LibraryCoreProjectionStartedV1,
   type LibraryCoreProjectionWorkerClient,
 } from "./library-core-shadow-runtime";
+import {
+  materializeDesktopLibraryCoreFeedBrowseGeneration,
+  tauriLibraryCoreFeedBrowseNativeClient,
+  type LibraryCoreFeedBrowseProjectionStartedV1,
+  type LibraryCoreFeedBrowseProjectionWorkerClient,
+  type MaterializeDesktopLibraryCoreFeedBrowseGenerationResult,
+} from "./library-core-feed-browse-materializer-runtime";
 import { recordRuntimeHealthEvent, recordWorkerInit } from "./runtime-health-events";
 export type { DocChangeEvent, DocState } from "./automerge-types";
 
@@ -178,6 +189,16 @@ function rejectPendingWorkerRequests(generationId: number, error: Error): void {
   rejectPendingMap(pendingSampleDataClear, generationId, error);
   rejectPendingMap(pendingLibraryCoreProjectionStarted, generationId, error);
   rejectPendingMap(pendingLibraryCoreProjectionBatch, generationId, error);
+  rejectPendingMap(
+    pendingLibraryCoreFeedBrowseProjectionStarted,
+    generationId,
+    error,
+  );
+  rejectPendingMap(
+    pendingLibraryCoreFeedBrowseProjectionBatch,
+    generationId,
+    error,
+  );
 }
 
 function isActiveWorkerGeneration(source: Worker, generationId: number): boolean {
@@ -321,7 +342,9 @@ function hasPendingWorkerRequests(): boolean {
     pendingContentSignalBackfill.size > 0 ||
     pendingSampleDataClear.size > 0 ||
     pendingLibraryCoreProjectionStarted.size > 0 ||
-    pendingLibraryCoreProjectionBatch.size > 0
+    pendingLibraryCoreProjectionBatch.size > 0 ||
+    pendingLibraryCoreFeedBrowseProjectionStarted.size > 0 ||
+    pendingLibraryCoreFeedBrowseProjectionBatch.size > 0
   );
 }
 
@@ -404,6 +427,14 @@ const pendingLibraryCoreProjectionStarted = new Map<
 const pendingLibraryCoreProjectionBatch = new Map<
   number,
   PendingRequest<LibraryCoreProjectionBatchV1>
+>();
+const pendingLibraryCoreFeedBrowseProjectionStarted = new Map<
+  number,
+  PendingRequest<LibraryCoreFeedBrowseProjectionStartedV1>
+>();
+const pendingLibraryCoreFeedBrowseProjectionBatch = new Map<
+  number,
+  PendingRequest<LibraryCoreFeedBrowseProjectionBatchV1>
 >();
 
 function assertAutomergeRequestAccepted(type: WorkerRequest["type"]): void {
@@ -847,6 +878,32 @@ function handleWorkerMessage(
     return;
   }
 
+  if (msg.type === "LIBRARY_CORE_FEED_BROWSE_PROJECTION_STARTED") {
+    const pendingProjection = getGenerationPending(
+      pendingLibraryCoreFeedBrowseProjectionStarted,
+      msg.reqId,
+      generationId,
+    );
+    if (!pendingProjection) return;
+    clearTimeout(pendingProjection.timer);
+    pendingLibraryCoreFeedBrowseProjectionStarted.delete(msg.reqId);
+    pendingProjection.resolve(msg);
+    return;
+  }
+
+  if (msg.type === "LIBRARY_CORE_FEED_BROWSE_PROJECTION_BATCH") {
+    const pendingProjection = getGenerationPending(
+      pendingLibraryCoreFeedBrowseProjectionBatch,
+      msg.reqId,
+      generationId,
+    );
+    if (!pendingProjection) return;
+    clearTimeout(pendingProjection.timer);
+    pendingLibraryCoreFeedBrowseProjectionBatch.delete(msg.reqId);
+    pendingProjection.resolve(msg);
+    return;
+  }
+
   // Migration export responses remain dormant until the native staging
   // adapter owns their exact request lifecycle.
   if (
@@ -903,6 +960,30 @@ function handleWorkerMessage(
     clearTimeout(pendingProjectionBatch.timer);
     pendingLibraryCoreProjectionBatch.delete(msg.reqId);
     pendingProjectionBatch.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingBrowseProjectionStarted = getGenerationPending(
+    pendingLibraryCoreFeedBrowseProjectionStarted,
+    msg.reqId,
+    generationId,
+  );
+  if (pendingBrowseProjectionStarted && msg.error) {
+    clearTimeout(pendingBrowseProjectionStarted.timer);
+    pendingLibraryCoreFeedBrowseProjectionStarted.delete(msg.reqId);
+    pendingBrowseProjectionStarted.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingBrowseProjectionBatch = getGenerationPending(
+    pendingLibraryCoreFeedBrowseProjectionBatch,
+    msg.reqId,
+    generationId,
+  );
+  if (pendingBrowseProjectionBatch && msg.error) {
+    clearTimeout(pendingBrowseProjectionBatch.timer);
+    pendingLibraryCoreFeedBrowseProjectionBatch.delete(msg.reqId);
+    pendingBrowseProjectionBatch.reject(new Error(msg.error));
     return;
   }
 
@@ -1365,6 +1446,95 @@ const libraryCoreProjectionWorkerClient: LibraryCoreProjectionWorkerClient = {
   cancel: cancelLibraryCoreProjection,
 };
 
+async function beginLibraryCoreFeedBrowseProjection(
+  sessionId: string,
+  filter: LibraryCoreFeedBrowseFilterInputV1 | undefined,
+  rankingClockMs: number,
+): Promise<LibraryCoreFeedBrowseProjectionStartedV1> {
+  await ensureWorkerDocumentReadyFor(
+    "BEGIN_LIBRARY_CORE_FEED_BROWSE_PROJECTION",
+  );
+  return requestResultOnWorker(
+    getWorker(),
+    pendingLibraryCoreFeedBrowseProjectionStarted,
+    {
+      reqId: nextReqId++,
+      type: "BEGIN_LIBRARY_CORE_FEED_BROWSE_PROJECTION",
+      sessionId,
+      filter,
+      rankingClockMs,
+    } satisfies WorkerRequest,
+  );
+}
+
+async function nextLibraryCoreFeedBrowseProjectionBatch(
+  sessionId: string,
+  batchIndex: number,
+): Promise<LibraryCoreFeedBrowseProjectionBatchV1> {
+  await ensureWorkerDocumentReadyFor(
+    "NEXT_LIBRARY_CORE_FEED_BROWSE_PROJECTION_BATCH",
+  );
+  return requestResultOnWorker(
+    getWorker(),
+    pendingLibraryCoreFeedBrowseProjectionBatch,
+    {
+      reqId: nextReqId++,
+      type: "NEXT_LIBRARY_CORE_FEED_BROWSE_PROJECTION_BATCH",
+      sessionId,
+      batchIndex,
+    } satisfies WorkerRequest,
+  );
+}
+
+function cancelLibraryCoreFeedBrowseProjection(
+  sessionId: string,
+): Promise<void> {
+  return request({
+    reqId: nextReqId++,
+    type: "CANCEL_LIBRARY_CORE_FEED_BROWSE_PROJECTION",
+    sessionId,
+  });
+}
+
+const libraryCoreFeedBrowseProjectionWorkerClient: LibraryCoreFeedBrowseProjectionWorkerClient =
+  {
+    begin: beginLibraryCoreFeedBrowseProjection,
+    nextBatch: nextLibraryCoreFeedBrowseProjectionBatch,
+    cancel: cancelLibraryCoreFeedBrowseProjection,
+  };
+
+let libraryCoreFeedBrowseRun:
+  | Promise<MaterializeDesktopLibraryCoreFeedBrowseGenerationResult>
+  | null = null;
+
+/**
+ * Build one dormant query-specific native browse generation. No product
+ * surface calls this before the governed Library Core reader cutover.
+ */
+export function materializeLibraryCoreFeedBrowseGeneration(
+  filter: LibraryCoreFeedBrowseFilterInputV1 | undefined,
+  rankingClockMs: number,
+): Promise<MaterializeDesktopLibraryCoreFeedBrowseGenerationResult> {
+  if (libraryCoreFeedBrowseRun) {
+    return Promise.reject(
+      new Error("Library Core browse generation is already running"),
+    );
+  }
+  const run = materializeDesktopLibraryCoreFeedBrowseGeneration(
+    libraryCoreFeedBrowseProjectionWorkerClient,
+    tauriLibraryCoreFeedBrowseNativeClient,
+    newLibraryCoreProjectionSessionId(),
+    filter,
+    rankingClockMs,
+  ).finally(() => {
+    if (libraryCoreFeedBrowseRun === run) {
+      libraryCoreFeedBrowseRun = null;
+    }
+  });
+  libraryCoreFeedBrowseRun = run;
+  return run;
+}
+
 async function runLibraryCoreShadowProjection(): Promise<void> {
   const startedAt = performance.now();
   try {
@@ -1443,6 +1613,7 @@ export function quiesceDesktopAutomergeForFactoryReset(): Promise<void> {
   }
   automergeQuiescePromise = (async () => {
     await libraryCoreShadowRun;
+    await libraryCoreFeedBrowseRun;
     await request({
       reqId: nextReqId++,
       type: "QUIESCE",
