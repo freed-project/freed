@@ -47,10 +47,10 @@
       ],
       "inspectionDigest": "sha256:c9b2ad54c4b1fb9bd4220964f49791efa63d14adaebb1785a96cd994529c84ba",
       "decision": {
-        "state": "review_required",
-        "ownerApprovalReference": null,
-        "approvedInspectionDigest": null,
-        "approvedReleaseArtifactDigest": null
+        "state": "owner_approved",
+        "ownerApprovalReference": "https://github.com/freed-project/freed/pull/1272#issuecomment-5135239996",
+        "approvedInspectionDigest": "sha256:c9b2ad54c4b1fb9bd4220964f49791efa63d14adaebb1785a96cd994529c84ba",
+        "approvedReleaseArtifactDigest": "sha256:84272dddd285f13c5e64d4fcf81b54cc68d3dd9c6838647781f7a86ef6b94272"
       }
     },
     "isLatestOfDay": true,
