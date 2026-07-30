@@ -2059,7 +2059,7 @@ export function Header({
         >
           <div
             data-testid="view-menu-appearance-section"
-            className={`${showFilterMenuContextControls ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 pb-3 pt-1`}
+            className={`${showFilterMenuContextControls && !showFilterMenuFeedCardDensityControl ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 pb-3 pt-1`}
           >
             <div data-testid="feed-filter-theme-section">
               <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
