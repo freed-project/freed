@@ -371,6 +371,7 @@ recovery, telemetry, milestones, and acceptance tests.
 | 4.87 | Dormant authenticated PWA feed materializer with committed-head source identity, one-item projection, 128-row staging bounds, exact replay, visibility parity, and no product caller | ✓ | Medium |
 | 4.88 | Canonical normalized feed-filter contract shared by the current renderer and future bounded adapters, with exact archived, hidden, source, author, feed, post/story, saved, tag, and signal semantics | ✓ | Medium |
 | 4.89 | Canonical recommendation-order contract shared by both current workers, preserving priority, published-time, and source-enumeration tie semantics for future bounded adapters | ✓ | Medium |
+| 4.90 | Dormant query-specific PWA browse projection with normalized filter and ranking-clock source identity, exact recommendation-order index keys, 128-row staging bounds, IndexedDB v1 upgrade preservation, and no product caller | ✓ | Medium |
 
 ---
 

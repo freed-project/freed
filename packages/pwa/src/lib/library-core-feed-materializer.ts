@@ -19,7 +19,7 @@ const SOURCE_DOMAIN = "freed-pwa-library-core-feed-generation-v1";
 const TEXT_ENCODER = new TextEncoder();
 const LOWER_HEX_64 = /^[0-9a-f]{64}$/;
 
-interface CommittedAutomergeFeedSource {
+export interface CommittedAutomergeFeedSource {
   readonly heads: readonly string[];
   readonly revision: Readonly<{
     readonly generation: number;
@@ -123,18 +123,30 @@ function lowerHex(bytes: ArrayBuffer): string {
   return output;
 }
 
-async function sourceIdentity(
+export async function derivePwaLibraryCoreFeedGenerationSource(
   committed: CommittedAutomergeFeedSource,
   subtle: SubtleCrypto,
+  domain = SOURCE_DOMAIN,
+  contract?: Readonly<Record<string, unknown>>,
 ): Promise<LibraryCoreFeedPageSourceV1> {
   const snapshot = snapshotCommittedSource(committed);
   const digestInput = TEXT_ENCODER.encode(
-    JSON.stringify({
-      domain: SOURCE_DOMAIN,
-      generation: snapshot.generation,
-      heads: snapshot.heads,
-      saveRevision: snapshot.saveRevision,
-    }),
+    JSON.stringify(
+      contract
+        ? {
+            contract,
+            domain,
+            generation: snapshot.generation,
+            heads: snapshot.heads,
+            saveRevision: snapshot.saveRevision,
+          }
+        : {
+            domain,
+            generation: snapshot.generation,
+            heads: snapshot.heads,
+            saveRevision: snapshot.saveRevision,
+          },
+    ),
   );
   return Object.freeze({
     generationId: lowerHex(
@@ -153,7 +165,10 @@ async function sourceIdentity(
 export async function materializePwaLibraryCoreFeedGeneration(
   input: MaterializePwaLibraryCoreFeedGenerationInput,
 ): Promise<MaterializePwaLibraryCoreFeedGenerationResult> {
-  const source = await sourceIdentity(input.committed, input.subtle);
+  const source = await derivePwaLibraryCoreFeedGenerationSource(
+    input.committed,
+    input.subtle,
+  );
   const feedItems = feedItemsOf(input.document);
   let totalCount = 0;
   forEachOwnFeedItem(feedItems, (_globalId, item) => {
