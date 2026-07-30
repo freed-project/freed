@@ -9,6 +9,7 @@ export type LibraryCoreWorkerSurfaceClassification =
   | "library_core_bounded_read"
   | "library_core_bounded_transport"
   | "library_core_lifecycle_control"
+  | "library_core_local_projection"
   | "legacy_bulk_or_repair_authority"
   | "legacy_full_state_transport"
   | "legacy_lifecycle_control"
@@ -166,6 +167,10 @@ export const PWA_AUTOMERGE_WORKER_REQUEST_SURFACE_REGISTRY = {
   GET_HEADS: unboundedReadRequest(),
   COMPARE_DOC: unboundedReadRequest(),
   GET_ITEM_LEGACY_HTML: unboundedReadRequest(),
+  MATERIALIZE_LIBRARY_CORE_FEED_GENERATION: blockedSurface(
+    "library_core_local_projection",
+    "response_transport_not_cut_over",
+  ),
   READ_LIBRARY_CORE_FEED_PAGE: blockedSurface(
     "library_core_bounded_read",
     "response_transport_not_cut_over",
@@ -200,6 +205,9 @@ export type PwaLegacyWriteEffect =
 
 interface PwaRequestEffectDefinition {
   readonly legacyWriteEffects: readonly PwaLegacyWriteEffect[];
+  readonly libraryCoreWriteEffects:
+    | readonly []
+    | readonly ["library_core_projection_generation_write"];
   readonly successorOperationIds:
     | readonly []
     | NonEmptyOperationIds;
@@ -208,6 +216,7 @@ interface PwaRequestEffectDefinition {
 
 const noWriteEffect = (): PwaRequestEffectDefinition => ({
   legacyWriteEffects: [],
+  libraryCoreWriteEffects: [],
   successorOperationIds: [],
   blockers: [],
 });
@@ -216,6 +225,7 @@ const operationWrite = (
   ...successorOperationIds: NonEmptyOperationIds
 ): PwaRequestEffectDefinition => ({
   legacyWriteEffects: ["legacy_operation_write"],
+  libraryCoreWriteEffects: [],
   successorOperationIds,
   blockers: [],
 });
@@ -225,8 +235,16 @@ const hiddenWrite = (
   blockers: readonly LibraryCoreWorkerSurfaceBlocker[],
 ): PwaRequestEffectDefinition => ({
   legacyWriteEffects,
+  libraryCoreWriteEffects: [],
   successorOperationIds: [],
   blockers,
+});
+
+const libraryCoreProjectionWrite = (): PwaRequestEffectDefinition => ({
+  legacyWriteEffects: [],
+  libraryCoreWriteEffects: ["library_core_projection_generation_write"],
+  successorOperationIds: [],
+  blockers: ["response_transport_not_cut_over"],
 });
 
 /**
@@ -343,6 +361,7 @@ export const PWA_AUTOMERGE_REQUEST_EFFECT_REGISTRY = {
   GET_HEADS: noWriteEffect(),
   COMPARE_DOC: noWriteEffect(),
   GET_ITEM_LEGACY_HTML: noWriteEffect(),
+  MATERIALIZE_LIBRARY_CORE_FEED_GENERATION: libraryCoreProjectionWrite(),
   READ_LIBRARY_CORE_FEED_PAGE: noWriteEffect(),
   CANCEL_LIBRARY_CORE_FEED_READER: noWriteEffect(),
   CLEAR_LOCAL: hiddenWrite(
@@ -392,6 +411,10 @@ export const PWA_AUTOMERGE_WORKER_RESPONSE_SURFACE_REGISTRY = {
     "legacy_unbounded_transport",
     "response_transport_not_cut_over",
     "unbounded_payload",
+  ),
+  LIBRARY_CORE_FEED_GENERATION_RESULT: blockedSurface(
+    "library_core_bounded_transport",
+    "response_transport_not_cut_over",
   ),
   LIBRARY_CORE_FEED_PAGE_RESULT: blockedSurface(
     "library_core_bounded_transport",

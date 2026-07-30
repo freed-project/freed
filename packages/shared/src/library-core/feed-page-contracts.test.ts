@@ -8,8 +8,10 @@ import {
   LIBRARY_CORE_FEED_PAGE_SCHEMA_VERSION,
   decodeLibraryCoreFeedPageCursorV1,
   encodeLibraryCoreFeedPageCursorV1,
+  isLibraryCoreVisibleFeedItemV1,
   parseLibraryCoreFeedPageRequestV1,
   parseLibraryCoreFeedPageResponseV1,
+  projectLibraryCoreFeedCardV1,
   type LibraryCoreFeedPageCursorV1,
 } from "./feed-page-contracts.js";
 import {
@@ -320,5 +322,75 @@ describe("Library Core feed-page response v1", () => {
       }),
     );
     expect(parseResponse(response(rows)).ok).toBe(false);
+  });
+});
+
+describe("Library Core feed-card projection v1", () => {
+  it("matches the bounded native card projection one item at a time", () => {
+    const item = {
+      globalId: "x:item-projected",
+      platform: "x",
+      contentType: "post",
+      capturedAt: 1_780_000_000_001,
+      publishedAt: 1_780_000_000_000,
+      author: {
+        id: "x:author",
+        displayName: "Reader",
+        handle: "reader",
+        avatarUrl: "😀".repeat(2_049),
+      },
+      content: {
+        text: "x".repeat(1_501),
+        mediaUrls: [...Array(9).fill("https://example.test/image"), 7],
+        mediaTypes: ["image", 7],
+        linkPreview: { title: "Example" },
+      },
+      engagement: { likes: 3, comments: 2 },
+      location: { name: "Here" },
+      preservedContent: { readingTime: 4 },
+      userState: {
+        archived: false,
+        hidden: false,
+        liked: true,
+        likedAt: 1_780_000_000_002,
+        likedSyncedAt: null,
+        readAt: null,
+        saved: true,
+        tags: ["saved"],
+      },
+      contentSignals: { tags: ["article"] },
+      eventCandidate: {
+        startsAt: 1_780_000_100_000,
+        confidence: 0.9,
+      },
+      sourceUrl: "https://example.test/post",
+      topics: [],
+    };
+
+    const projected = projectLibraryCoreFeedCardV1(item as never);
+    expect(projected).toMatchObject({
+      authorAvatarUrl: "😀".repeat(2_048),
+      contentText: "x".repeat(1_500),
+      eventConfidenceBasisPoints: 9_000,
+      globalId: "x:item-projected",
+      liked: true,
+      likedSyncedAt: null,
+      mediaTypes: ["image"],
+      mediaUrls: Array(8).fill("https://example.test/image"),
+      readingTimeMinutes: 4,
+    });
+    expect(isLibraryCoreVisibleFeedItemV1(item as never)).toBe(true);
+    expect(
+      isLibraryCoreVisibleFeedItemV1({
+        ...item,
+        userState: { ...item.userState, archived: true },
+      } as never),
+    ).toBe(false);
+    expect(
+      isLibraryCoreVisibleFeedItemV1({
+        ...item,
+        userState: { ...item.userState, hidden: true },
+      } as never),
+    ).toBe(false);
   });
 });

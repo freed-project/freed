@@ -67,7 +67,12 @@ describe("PWA Library Core worker surface census", () => {
     for (const [kind, effect] of Object.entries(
       PWA_AUTOMERGE_REQUEST_EFFECT_REGISTRY,
     )) {
-      if (effect.legacyWriteEffects.length === 0) continue;
+      if (
+        effect.legacyWriteEffects.length === 0 &&
+        effect.libraryCoreWriteEffects.length === 0
+      ) {
+        continue;
+      }
       expect(
         effect.successorOperationIds.length > 0 ||
           effect.blockers.length > 0,
@@ -121,12 +126,35 @@ describe("PWA Library Core worker surface census", () => {
   it("records quiesce as an explicit runtime-state write", () => {
     expect(PWA_AUTOMERGE_REQUEST_EFFECT_REGISTRY.QUIESCE).toStrictEqual({
       legacyWriteEffects: ["legacy_runtime_state_write"],
+      libraryCoreWriteEffects: [],
       successorOperationIds: [],
       blockers: ["lifecycle_contract_unresolved"],
     });
   });
 
   it("keeps the dormant Library Core feed transport bounded and read-only", () => {
+    expect(
+      PWA_AUTOMERGE_WORKER_REQUEST_SURFACE_REGISTRY
+        .MATERIALIZE_LIBRARY_CORE_FEED_GENERATION,
+    ).toStrictEqual({
+      status: "planned_blocked",
+      classification: "library_core_local_projection",
+      blockers: [
+        "library_core_runtime_inactive",
+        "response_transport_not_cut_over",
+      ],
+    });
+    expect(
+      PWA_AUTOMERGE_REQUEST_EFFECT_REGISTRY
+        .MATERIALIZE_LIBRARY_CORE_FEED_GENERATION,
+    ).toStrictEqual({
+      legacyWriteEffects: [],
+      libraryCoreWriteEffects: [
+        "library_core_projection_generation_write",
+      ],
+      successorOperationIds: [],
+      blockers: ["response_transport_not_cut_over"],
+    });
     expect(
       PWA_AUTOMERGE_WORKER_REQUEST_SURFACE_REGISTRY
         .READ_LIBRARY_CORE_FEED_PAGE,
@@ -147,12 +175,17 @@ describe("PWA Library Core worker surface census", () => {
         .READ_LIBRARY_CORE_FEED_PAGE,
     ).toStrictEqual({
       legacyWriteEffects: [],
+      libraryCoreWriteEffects: [],
       successorOperationIds: [],
       blockers: [],
     });
     expect(
       PWA_AUTOMERGE_WORKER_RESPONSE_SURFACE_REGISTRY
         .LIBRARY_CORE_FEED_PAGE_RESULT.classification,
+    ).toBe("library_core_bounded_transport");
+    expect(
+      PWA_AUTOMERGE_WORKER_RESPONSE_SURFACE_REGISTRY
+        .LIBRARY_CORE_FEED_GENERATION_RESULT.classification,
     ).toBe("library_core_bounded_transport");
   });
 

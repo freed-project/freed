@@ -33,7 +33,6 @@ interface GenerationRecord extends LibraryCoreFeedPageSourceV1 {
   readonly totalCount: number;
   readonly writtenCount: number;
   readonly nextBatchIndex: number;
-  readonly lastOrderKey: string | null;
   readonly selectedSequence: number | null;
 }
 
@@ -50,8 +49,6 @@ interface GenerationBatchRecord {
   readonly batchIndex: number;
   readonly rowCount: number;
   readonly rowsDigest: string;
-  readonly firstOrderKey: string;
-  readonly lastOrderKey: string;
   readonly writtenCountAfter: number;
 }
 
@@ -120,6 +117,8 @@ export interface AppendPwaLibraryCoreFeedGenerationPageInput {
   readonly batchIndex: number;
   readonly rows: readonly LibraryCoreFeedCardV1[];
 }
+
+export type PwaLibraryCoreFeedGenerationState = "complete" | "staging";
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -239,7 +238,7 @@ function snapshotRows(
   }
 
   const rows: LibraryCoreFeedCardV1[] = [];
-  let previousOrderKey: string | null = null;
+  const orderKeys = new Set<string>();
   for (let index = 0; index < value.length; index += 1) {
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
     if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
@@ -248,12 +247,10 @@ function snapshotRows(
     const parsed = parseLibraryCoreFeedCardV1(descriptor.value);
     if (!parsed.ok) throw new TypeError(parsed.error);
     const orderKey = feedRowOrderKey(parsed.value);
-    if (previousOrderKey !== null && orderKey <= previousOrderKey) {
-      throw new TypeError(
-        "generation rows must follow feed_page_v1 keyset order",
-      );
+    if (orderKeys.has(orderKey)) {
+      throw new TypeError("generation page repeats one feed row");
     }
-    previousOrderKey = orderKey;
+    orderKeys.add(orderKey);
     rows.push(parsed.value);
   }
   return Object.freeze(rows);
@@ -262,8 +259,9 @@ function snapshotRows(
 /**
  * Dormant row-oriented browser implementation of `feed_page_v1`.
  *
- * It is intentionally not connected to the PWA store or Automerge worker.
- * Automerge remains authoritative until the governed read cutover.
+ * The Automerge worker can populate it only through an explicit dormant
+ * materialization request. No product reader calls that request or this
+ * runtime yet, so Automerge remains authoritative until governed read cutover.
  */
 class PwaLibraryCoreFeedReaderRuntime {
   readonly #databaseName: string;
@@ -288,7 +286,7 @@ class PwaLibraryCoreFeedReaderRuntime {
 
   async beginGeneration(
     input: BeginPwaLibraryCoreFeedGenerationInput,
-  ): Promise<void> {
+  ): Promise<PwaLibraryCoreFeedGenerationState> {
     this.#requireAvailable();
     const source = snapshotSource(input.source);
     if (!Number.isSafeInteger(input.totalCount) || input.totalCount < 0) {
@@ -307,11 +305,10 @@ class PwaLibraryCoreFeedReaderRuntime {
     if (existing) {
       if (
         sourceMatches(existing, source) &&
-        existing.totalCount === input.totalCount &&
-        existing.status === "staging"
+        existing.totalCount === input.totalCount
       ) {
         await transactionDone(transaction);
-        return;
+        return existing.status;
       }
       transaction.abort();
       throw new Error("generation identity already exists with different state");
@@ -330,10 +327,10 @@ class PwaLibraryCoreFeedReaderRuntime {
       totalCount: input.totalCount,
       writtenCount: 0,
       nextBatchIndex: 0,
-      lastOrderKey: null,
       selectedSequence: null,
     } satisfies GenerationRecord);
     await transactionDone(transaction);
+    return "staging";
   }
 
   async appendGenerationPage(
@@ -349,9 +346,6 @@ class PwaLibraryCoreFeedReaderRuntime {
     const rowsDigest = lowerHex(
       await this.#subtle.digest("SHA-256", encodedRows),
     );
-    const firstOrderKey = feedRowOrderKey(rows[0]!);
-    const lastOrderKey = feedRowOrderKey(rows[rows.length - 1]!);
-
     const database = await this.#database();
     const transaction = database.transaction(
       [GENERATIONS_STORE, ROWS_STORE, BATCHES_STORE],
@@ -379,8 +373,6 @@ class PwaLibraryCoreFeedReaderRuntime {
       if (
         existingBatch.rowsDigest === rowsDigest &&
         existingBatch.rowCount === rows.length &&
-        existingBatch.firstOrderKey === firstOrderKey &&
-        existingBatch.lastOrderKey === lastOrderKey &&
         existingBatch.writtenCountAfter <= generation.writtenCount &&
         generation.nextBatchIndex > input.batchIndex
       ) {
@@ -392,8 +384,6 @@ class PwaLibraryCoreFeedReaderRuntime {
     }
     if (
       generation.nextBatchIndex !== input.batchIndex ||
-      (generation.lastOrderKey !== null &&
-        firstOrderKey <= generation.lastOrderKey) ||
       generation.writtenCount + rows.length > generation.totalCount
     ) {
       transaction.abort();
@@ -415,15 +405,12 @@ class PwaLibraryCoreFeedReaderRuntime {
       batchIndex: input.batchIndex,
       rowCount: rows.length,
       rowsDigest,
-      firstOrderKey,
-      lastOrderKey,
       writtenCountAfter: generation.writtenCount + rows.length,
     } satisfies GenerationBatchRecord);
     generations.put({
       ...generation,
       writtenCount: generation.writtenCount + rows.length,
       nextBatchIndex: generation.nextBatchIndex + 1,
-      lastOrderKey,
     } satisfies GenerationRecord);
     await transactionDone(transaction);
   }
@@ -447,12 +434,34 @@ class PwaLibraryCoreFeedReaderRuntime {
     const selected = (await requestResult(
       control.get(SELECTED_GENERATION_KEY),
     )) as SelectedGenerationRecord | undefined;
-    if (
-      generation?.status === "complete" &&
-      sourceMatches(generation, source) &&
-      selected?.generationId === source.generationId
-    ) {
+    if (generation?.status === "complete" && sourceMatches(generation, source)) {
+      if (
+        selected?.generationId === source.generationId &&
+        generation.selectedSequence !== selected.selectionSequence
+      ) {
+        transaction.abort();
+        throw new Error(
+          "completed generation selection sequence is inconsistent",
+        );
+      }
+      if (selected?.generationId !== source.generationId) {
+        const selectionSequence = (selected?.selectionSequence ?? 0) + 1;
+        if (!Number.isSafeInteger(selectionSequence)) {
+          transaction.abort();
+          throw new Error("generation selection sequence exhausted");
+        }
+        generations.put({
+          ...generation,
+          selectedSequence: selectionSequence,
+        } satisfies GenerationRecord);
+        control.put({
+          key: SELECTED_GENERATION_KEY,
+          generationId: source.generationId,
+          selectionSequence,
+        } satisfies SelectedGenerationRecord);
+      }
       await transactionDone(transaction);
+      this.#sessions.clear();
       await this.#pruneOldGenerations(source.generationId);
       return;
     }

@@ -82,6 +82,7 @@ import type {
   WorkerRequest,
   WorkerResponse,
 } from "./automerge-types";
+import { materializePwaLibraryCoreFeedGeneration } from "./library-core-feed-materializer";
 import { createPwaLibraryCoreFeedReaderRuntime } from "./library-core-feed-reader-runtime";
 
 // ---------------------------------------------------------------------------
@@ -1065,6 +1066,23 @@ async function handleRequest(req: WorkerRequest): Promise<void> {
             currentDoc.feedItems[req.globalId]?.preservedContent?.html ?? null,
         });
         break;
+
+      case "MATERIALIZE_LIBRARY_CORE_FEED_GENERATION": {
+        if (!currentDoc) throw new Error("Document not initialized");
+        const result = await materializePwaLibraryCoreFeedGeneration({
+          committed: persistence.current(),
+          document: currentDoc,
+          subtle: crypto.subtle,
+          writer: getLibraryCoreFeedReader(),
+        });
+        send({
+          reqId: req.reqId,
+          type: "LIBRARY_CORE_FEED_GENERATION_RESULT",
+          source: result.source,
+          totalCount: result.totalCount,
+        });
+        break;
+      }
 
       case "READ_LIBRARY_CORE_FEED_PAGE":
         send({

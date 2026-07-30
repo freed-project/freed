@@ -7,6 +7,7 @@ import {
   type LibraryCoreLowercaseHex64,
   type LibraryCoreOperationInstanceId,
 } from "./protocol-scalars.js";
+import type { FeedItem } from "../types.js";
 
 export const LIBRARY_CORE_FEED_PAGE_QUERY_ID = "feed_page_v1";
 export const LIBRARY_CORE_FEED_PAGE_SCHEMA_VERSION = 1;
@@ -228,6 +229,124 @@ export interface LibraryCoreFeedPageResponseV1 {
   readonly schemaVersion: typeof LIBRARY_CORE_FEED_PAGE_SCHEMA_VERSION;
   readonly source: LibraryCoreFeedPageSourceV1;
   readonly totalCount: number;
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function projectedBoundedString(
+  value: unknown,
+  maximumScalars: number,
+): string | null {
+  if (typeof value !== "string") return null;
+  let scalarCount = 0;
+  let output = "";
+  for (const scalar of value) {
+    if (scalarCount >= maximumScalars) break;
+    output += scalar;
+    scalarCount += 1;
+  }
+  return output;
+}
+
+function projectedBoundedStringArray(
+  value: unknown,
+  maximumItems: number,
+  maximumScalars: number,
+): readonly string[] {
+  if (!Array.isArray(value)) return Object.freeze([]);
+  const output: string[] = [];
+  for (const entry of value) {
+    if (output.length >= maximumItems) break;
+    const bounded = projectedBoundedString(entry, maximumScalars);
+    if (bounded !== null) output.push(bounded);
+  }
+  return Object.freeze(output);
+}
+
+function projectedSafeInteger(value: unknown): number | null {
+  return Number.isSafeInteger(value) && (value as number) >= 0
+    ? (value as number)
+    : null;
+}
+
+function projectedBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+/**
+ * Match the compact SQLite feed-card projection without retaining full content
+ * or preserved reader bodies. The function touches one item at a time so a
+ * browser materializer can keep its working set independent of corpus size.
+ */
+export function projectLibraryCoreFeedCardV1(
+  item: FeedItem,
+): LibraryCoreFeedCardV1 {
+  const raw = recordValue(item);
+  const author = recordValue(raw?.author);
+  const content = recordValue(raw?.content);
+  const userState = recordValue(raw?.userState);
+  const engagement = recordValue(raw?.engagement);
+  const location = recordValue(raw?.location);
+  const preserved = recordValue(raw?.preservedContent);
+  const contentSignals = recordValue(raw?.contentSignals);
+  const eventCandidate = recordValue(raw?.eventCandidate);
+  const linkPreview = recordValue(content?.linkPreview);
+  const confidence = eventCandidate?.confidence;
+  const projected = {
+    archived: projectedBoolean(userState?.archived),
+    authorAvatarUrl: projectedBoundedString(author?.avatarUrl, 2_048),
+    authorDisplayName: projectedBoundedString(author?.displayName, 512),
+    authorHandle: projectedBoundedString(author?.handle, 256),
+    authorId: projectedBoundedString(author?.id, 4_096),
+    capturedAt: projectedSafeInteger(raw?.capturedAt),
+    contentSignalTags: projectedBoundedStringArray(
+      contentSignals?.tags,
+      32,
+      64,
+    ),
+    contentText: projectedBoundedString(content?.text, 1_500),
+    contentType: projectedBoundedString(raw?.contentType, 128),
+    engagementComments: projectedSafeInteger(engagement?.comments),
+    engagementLikes: projectedSafeInteger(engagement?.likes),
+    eventConfidenceBasisPoints:
+      typeof confidence === "number" &&
+      Number.isFinite(confidence) &&
+      confidence >= 0 &&
+      confidence <= 1
+        ? Math.round(confidence * 10_000)
+        : null,
+    eventStartsAt: projectedSafeInteger(eventCandidate?.startsAt),
+    globalId: raw?.globalId,
+    liked: projectedBoolean(userState?.liked),
+    likedAt: projectedSafeInteger(userState?.likedAt),
+    likedSyncedAt: projectedSafeInteger(userState?.likedSyncedAt),
+    linkPreviewTitle: projectedBoundedString(linkPreview?.title, 512),
+    locationName: projectedBoundedString(location?.name, 512),
+    mediaTypes: projectedBoundedStringArray(content?.mediaTypes, 8, 16),
+    mediaUrls: projectedBoundedStringArray(content?.mediaUrls, 8, 2_048),
+    platform: projectedBoundedString(raw?.platform, 64),
+    publishedAt: projectedSafeInteger(raw?.publishedAt),
+    readAt: projectedSafeInteger(userState?.readAt),
+    readingTimeMinutes: projectedSafeInteger(preserved?.readingTime),
+    saved: projectedBoolean(userState?.saved),
+    sourceUrl: projectedBoundedString(raw?.sourceUrl, 2_048),
+    tags: projectedBoundedStringArray(userState?.tags, 32, 256),
+  };
+  const parsed = parseLibraryCoreFeedCardV1(projected);
+  if (!parsed.ok) {
+    throw new TypeError(parsed.error);
+  }
+  return parsed.value;
+}
+
+/** Match `archived IS NOT 1 AND hidden IS NOT 1` in the native reader. */
+export function isLibraryCoreVisibleFeedItemV1(item: FeedItem): boolean {
+  const userState = recordValue(recordValue(item)?.userState);
+  return userState?.archived !== true && userState?.hidden !== true;
 }
 
 export type LibraryCoreFeedPageParseResult<T> =
