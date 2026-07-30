@@ -563,7 +563,16 @@ Fault injection must prove rollback from the latest write in that transaction.
     change or operation rows, dependencies or successors, payloads, and the
     corresponding source receipt together. Exact retry returns that receipt
     only while the layout and receipted row, relationship, and payload counts
-    remain complete. The scratch schema enforces actor, change dependency,
+    remain complete. Every staged head must resolve to a staged change before
+    the change receipt is accepted. Change and operation receipts in one stage
+    must bind the same exact source identity. Missing rows, changed layout
+    entries, dangling graph references, unreceipted rows, mixed sources, or
+    changed input fail closed. Seal the complete stage only after actor
+    sequences are contiguous, per-actor operation counters exactly close every
+    change interval, and one bounded canonical digest covers every receipt,
+    metadata row, relationship, and incrementally read payload byte. Exact
+    seal replay recomputes that digest and rejects same-count semantic or
+    payload tampering. The scratch schema enforces actor, change dependency,
     operation object and element-key references with foreign keys. Automerge
     document chunks intentionally omit delete rows. A successor therefore
     resolves either to one exact staged operation or to one reconstructed
@@ -628,15 +637,6 @@ Fault injection must prove rollback from the latest write in that transaction.
     and exact projected bytes. Resume from the destination's durable row count
     after response loss, and fail closed on source drift, oversized rows, or an
     incomplete page. Population does not publish or select the generation.
-    Every staged head must resolve to a staged change before the change receipt
-    is accepted. Change and operation receipts in one stage must bind the same
-    exact source identity. Missing rows, changed layout entries, dangling graph
-    references, unreceipted rows, mixed sources, or changed input fail closed.
-    Seal the complete stage only after actor sequences are contiguous,
-    per-actor operation counters exactly close every change interval, and one
-    bounded canonical digest covers every receipt, metadata row, relationship,
-    and incrementally read payload byte. Exact seal replay recomputes that
-    digest and rejects same-count semantic or payload tampering.
     Admission proves both the fixed memory ceiling and private staging capacity.
 25. Build PWA reader manifests from both registered Cache namespaces and the
     durable logical lookup plan. Use one plan row and one probe per unique
