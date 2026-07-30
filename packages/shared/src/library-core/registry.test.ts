@@ -273,13 +273,16 @@ describe("Library Core query registry", () => {
     }
   });
 
-  it("closes the dormant feed-page protocol without claiming an active adapter", () => {
+  it("records the dormant Desktop feed runtime without claiming a product adapter", () => {
     const definition = LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1;
     expect(definition).toMatchObject({
       status: "planned_blocked",
       source: {
         boundary: "library_core",
-        currentKinds: ["ProjectionReadSession::feed_page"],
+        currentKinds: [
+          "ProjectionReadSession::feed_page",
+          "read_library_core_feed_page",
+        ],
       },
       requestSchema: LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA,
       responseSchema: LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA,

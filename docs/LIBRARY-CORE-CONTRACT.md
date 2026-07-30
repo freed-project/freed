@@ -2594,9 +2594,19 @@ arrays, snapshot every retained value, reject invalid Unicode, accessors,
 unknown fields, negative or unsafe numeric values, and impossible totals, and
 measure the exact serialized ceiling one bounded row at a time without
 constructing a second page-sized JSON string. They never retain caller-owned
-arrays. This contract stays package-internal while
-`adapter_proof_missing` and `runtime_adapter_unimplemented` remain. Closing the
-wire shape does not assign a product reader or activate Gate D.
+arrays. The dormant Freed Desktop runtime now implements this exact protocol
+without assigning a product reader. It opens only an already-selected
+authenticated immutable generation, admits at most two concurrent reader
+sessions, pins each session for at most 60 seconds, fixes each SQLite page cache
+at 2 MiB, and releases the session on exact cancellation, cursor exhaustion, or
+expiry. Authenticated generation handles may remain cached after a logical
+session closes, but the pool remains capped at two handles, avoids a corpus-file
+rehash on every short feed refresh, and is fully quiesced before factory reset.
+TypeScript and Rust share one exact canonical cursor vector. PWA
+adapters, product filter and recommendation-order equivalence, renderer-cache
+eviction, and product caller proof remain absent, so `adapter_proof_missing` and
+`runtime_adapter_unimplemented` remain at the cross-platform query level.
+Runtime registration alone does not assign a product reader or activate Gate D.
 
 An interactive cursor does not pin an unbounded SQLite read transaction or WAL.
 If an adapter uses a pinned snapshot, the query registry declares its maximum

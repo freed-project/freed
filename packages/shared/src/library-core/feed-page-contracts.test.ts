@@ -131,6 +131,9 @@ describe("Library Core feed-page cursor v1", () => {
   it("round-trips every source and ordering field through a canonical opaque cursor", () => {
     const expected = cursor();
     const encoded = encodeLibraryCoreFeedPageCursorV1(expected);
+    expect(encoded).toBe(
+      "AaqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqAAAAAAAAAAwAAAAAAAAAIgAAAZ5wRIgAAAh4Oml0ZW0tMQ",
+    );
     expect(encoded).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(decodeLibraryCoreFeedPageCursorV1(encoded)).toStrictEqual({
       ok: true,

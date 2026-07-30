@@ -90,6 +90,27 @@ impl ProjectionReadSession {
     }
 }
 
+/// Opens the exact generation selected by the durable projection registry.
+///
+/// The reader authenticates and pins the selected immutable file before this
+/// session is returned. It does not create a registry, select a generation, or
+/// change Automerge authority.
+pub(super) fn open_selected_projection(
+    registry_path: &Path,
+    generation_root: &Path,
+) -> CoordinatorResult<ProjectionReadSession> {
+    Ok(ProjectionReadSession {
+        // Two concurrent interactive sessions at 2 MiB each leave the shared
+        // 16 MiB snapshot pool room for bounded response DTOs and connection
+        // overhead. Rebuild verification keeps the larger default cache.
+        reader: ProjectionGenerationReader::open_with_cache_kib(
+            registry_path,
+            generation_root,
+            -2 * 1024,
+        )?,
+    })
+}
+
 /// Begins a fresh rebuild or resumes its exact durable state.
 pub(super) fn begin_or_resume_projection(
     staging_path: &Path,

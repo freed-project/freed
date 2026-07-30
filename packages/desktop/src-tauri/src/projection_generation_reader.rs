@@ -89,6 +89,14 @@ pub(super) struct ProjectionGenerationReader {
 
 impl ProjectionGenerationReader {
     pub(super) fn open(registry_path: &Path, generation_root: &Path) -> ReaderResult<Self> {
+        Self::open_with_cache_kib(registry_path, generation_root, -32 * 1024)
+    }
+
+    pub(super) fn open_with_cache_kib(
+        registry_path: &Path,
+        generation_root: &Path,
+        cache_kib: i64,
+    ) -> ReaderResult<Self> {
         if !registry_path.is_absolute() || !generation_root.is_absolute() {
             return Err(ProjectionGenerationReaderError::InvalidRoot);
         }
@@ -128,12 +136,14 @@ impl ProjectionGenerationReader {
             storage_generation: selection.generation.source_generation,
             storage_save_revision: selection.generation.source_save_revision,
         };
-        let (store, published) = ShadowStore::open_published_projection_generation_read_only(
-            &generation_path,
-            &selection.generation.rebuild_id,
-            &source,
-            selection.generation.total_rows,
-        )?;
+        let (store, published) =
+            ShadowStore::open_published_projection_generation_read_only_with_cache_kib(
+                &generation_path,
+                &selection.generation.rebuild_id,
+                &source,
+                selection.generation.total_rows,
+                cache_kib,
+            )?;
         if published.path != generation_path
             || published.rebuild_id != selection.generation.rebuild_id
             || published.source != source

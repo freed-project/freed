@@ -170,6 +170,12 @@ struct RuntimePaths {
 }
 
 #[derive(Debug)]
+pub(super) struct LibraryCoreShadowReaderPaths {
+    pub(super) generation_root: PathBuf,
+    pub(super) registry_path: PathBuf,
+}
+
+#[derive(Debug)]
 struct ActiveProjection {
     session_id: String,
     source_key: String,
@@ -270,6 +276,78 @@ fn runtime_paths(base: &Path, key: &str) -> RuntimeResult<RuntimePaths> {
         registry_path: root.join(REGISTRY_FILE),
         generation_root,
     })
+}
+
+/// Resolves the already-created shadow reader paths without creating or
+/// modifying any application data.
+///
+/// A missing root is a normal dormant state. Existing paths must be physical,
+/// private directories beneath the exact app-data root so a reader cannot be
+/// redirected through a replacement link.
+pub(super) fn resolve_library_core_shadow_reader_paths(
+    base: &Path,
+) -> Result<Option<LibraryCoreShadowReaderPaths>, String> {
+    if !base.is_absolute() {
+        return Err(ShadowRuntimeError::InvalidInput("runtime path").to_string());
+    }
+    let root = base.join(SHADOW_ROOT_DIRECTORY);
+    let root_metadata = match std::fs::symlink_metadata(&root) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(ShadowRuntimeError::Io(error).to_string()),
+    };
+    if !root_metadata.file_type().is_dir() || root_metadata.file_type().is_symlink() {
+        return Err(ShadowRuntimeError::InvalidInput("runtime directory").to_string());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        if root_metadata.permissions().mode() & 0o077 != 0 {
+            return Err(
+                ShadowRuntimeError::InvalidInput("runtime directory permissions").to_string(),
+            );
+        }
+    }
+    let canonical_base =
+        std::fs::canonicalize(base).map_err(|error| ShadowRuntimeError::Io(error).to_string())?;
+    let canonical_root =
+        std::fs::canonicalize(&root).map_err(|error| ShadowRuntimeError::Io(error).to_string())?;
+    if canonical_root.parent() != Some(canonical_base.as_path()) {
+        return Err(ShadowRuntimeError::InvalidInput("runtime directory").to_string());
+    }
+
+    let generation_root = canonical_root.join(GENERATION_DIRECTORY);
+    let generation_metadata = match std::fs::symlink_metadata(&generation_root) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(ShadowRuntimeError::Io(error).to_string()),
+    };
+    if !generation_metadata.file_type().is_dir() || generation_metadata.file_type().is_symlink() {
+        return Err(ShadowRuntimeError::InvalidInput("generation directory").to_string());
+    }
+    let canonical_generation = std::fs::canonicalize(&generation_root)
+        .map_err(|error| ShadowRuntimeError::Io(error).to_string())?;
+    if canonical_generation != generation_root
+        || canonical_generation.parent() != Some(canonical_root.as_path())
+    {
+        return Err(ShadowRuntimeError::InvalidInput("generation directory").to_string());
+    }
+
+    let registry_path = canonical_root.join(REGISTRY_FILE);
+    let registry_metadata = match std::fs::symlink_metadata(&registry_path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(ShadowRuntimeError::Io(error).to_string()),
+    };
+    if !registry_metadata.file_type().is_file() || registry_metadata.file_type().is_symlink() {
+        return Err(ShadowRuntimeError::InvalidInput("registry file").to_string());
+    }
+
+    Ok(Some(LibraryCoreShadowReaderPaths {
+        generation_root: canonical_generation,
+        registry_path,
+    }))
 }
 
 fn current_selection(

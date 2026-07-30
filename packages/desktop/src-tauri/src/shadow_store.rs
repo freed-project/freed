@@ -399,6 +399,30 @@ fn decode_bounded_string_array(
     Ok(values)
 }
 
+fn string_within_bounds(value: &str, maximum_scalars: usize, maximum_bytes: usize) -> bool {
+    value.len() <= maximum_bytes && value.chars().count() <= maximum_scalars
+}
+
+fn optional_string_within_bounds(
+    value: Option<&str>,
+    maximum_scalars: usize,
+    maximum_bytes: usize,
+) -> bool {
+    value.is_none_or(|value| string_within_bounds(value, maximum_scalars, maximum_bytes))
+}
+
+fn optional_safe_integer(value: Option<i64>) -> bool {
+    value.is_none_or(|value| (0..=MAX_JAVASCRIPT_SAFE_INTEGER).contains(&value))
+}
+
+fn invalid_feed_card_field(field: &'static str) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(
+        0,
+        rusqlite::types::Type::Text,
+        Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, field)),
+    )
+}
+
 fn optional_boolean(row: &Row<'_>, index: usize) -> SqlResult<Option<bool>> {
     match row.get::<_, Option<i64>>(index)? {
         None => Ok(None),
@@ -417,7 +441,7 @@ fn optional_boolean(row: &Row<'_>, index: usize) -> SqlResult<Option<bool>> {
 
 impl FeedCardRow {
     fn from_row(row: &Row<'_>) -> SqlResult<Self> {
-        Ok(Self {
+        let card = Self {
             global_id: row.get(0)?,
             platform: row.get(1)?,
             content_type: row.get(2)?,
@@ -459,7 +483,54 @@ impl FeedCardRow {
             event_starts_at: row.get(26)?,
             event_confidence_basis_points: row.get(27)?,
             sort_at: row.get(28)?,
-        })
+        };
+        if card.global_id.is_empty()
+            || card.global_id.len() > MAX_ENTITY_ID_UTF8_BYTES
+            || !optional_string_within_bounds(card.platform.as_deref(), 64, 256)
+            || !optional_string_within_bounds(card.content_type.as_deref(), 128, 512)
+            || !optional_safe_integer(card.published_at)
+            || !optional_safe_integer(card.captured_at)
+            || !optional_string_within_bounds(card.author_id.as_deref(), 4_096, 16_384)
+            || !optional_string_within_bounds(card.author_display_name.as_deref(), 512, 2_048)
+            || !optional_string_within_bounds(card.author_handle.as_deref(), 256, 1_024)
+            || !optional_string_within_bounds(card.author_avatar_url.as_deref(), 2_048, 8_192)
+            || !optional_string_within_bounds(card.source_url.as_deref(), 2_048, 8_192)
+            || !optional_safe_integer(card.read_at)
+            || !optional_safe_integer(card.liked_at)
+            || !optional_safe_integer(card.liked_synced_at)
+            || !optional_string_within_bounds(card.content_text.as_deref(), 1_500, 6_000)
+            || !card
+                .media_urls
+                .iter()
+                .all(|value| string_within_bounds(value, 2_048, 8_192))
+            || !card
+                .media_types
+                .iter()
+                .all(|value| string_within_bounds(value, 16, 64))
+            || !optional_string_within_bounds(card.link_preview_title.as_deref(), 512, 2_048)
+            || !card
+                .tags
+                .iter()
+                .all(|value| string_within_bounds(value, 256, 1_024))
+            || !optional_safe_integer(card.engagement_likes)
+            || !optional_safe_integer(card.engagement_comments)
+            || !optional_string_within_bounds(card.location_name.as_deref(), 512, 2_048)
+            || !optional_safe_integer(card.reading_time_minutes)
+            || !card
+                .content_signal_tags
+                .iter()
+                .all(|value| string_within_bounds(value, 64, 256))
+            || !optional_safe_integer(card.event_starts_at)
+            || card
+                .event_confidence_basis_points
+                .is_some_and(|value| !(0..=10_000).contains(&value))
+            || !(0..=MAX_JAVASCRIPT_SAFE_INTEGER).contains(&card.sort_at)
+        {
+            return Err(invalid_feed_card_field(
+                "feed card violates the closed response contract",
+            ));
+        }
+        Ok(card)
     }
 
     fn serialized_size_bytes(&self) -> StoreResult<usize> {
@@ -1107,7 +1178,28 @@ impl ShadowStore {
         source: &ProjectionSourceV1,
         total_rows: usize,
     ) -> StoreResult<(Self, PublishedProjectionGeneration)> {
+        Self::open_published_projection_generation_read_only_with_cache_kib(
+            path,
+            rebuild_id,
+            source,
+            total_rows,
+            BASE_CACHE_KIB,
+        )
+    }
+
+    pub(super) fn open_published_projection_generation_read_only_with_cache_kib(
+        path: &Path,
+        rebuild_id: &str,
+        source: &ProjectionSourceV1,
+        total_rows: usize,
+        cache_kib: i64,
+    ) -> StoreResult<(Self, PublishedProjectionGeneration)> {
         Self::validate_projection_rebuild_identity(rebuild_id, source, total_rows)?;
+        if !(-32 * 1024..=-256).contains(&cache_kib) {
+            return Err(ShadowStoreError::ProjectionPublicationInvalid {
+                field: "reader_cache_size",
+            });
+        }
         let before = std::fs::symlink_metadata(path)?;
         if !before.file_type().is_file() {
             return Err(ShadowStoreError::ProjectionPublicationInvalid {
@@ -1124,7 +1216,7 @@ impl ShadowStore {
         )?;
         conn.busy_timeout(BUSY_TIMEOUT)?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
-        conn.pragma_update(None, "cache_size", BASE_CACHE_KIB)?;
+        conn.pragma_update(None, "cache_size", cache_kib)?;
         conn.pragma_update(None, "mmap_size", 0)?;
         conn.pragma_update(None, "temp_store", "FILE")?;
         let version = conn.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
@@ -2171,6 +2263,21 @@ mod tests {
     }
 
     #[test]
+    fn feed_pages_reject_values_outside_the_closed_cross_runtime_contract() {
+        let mut store = ShadowStore::open_in_memory().expect("open");
+        let projected = row(1, Some(-1));
+        store
+            .apply_projection_batch("invalid-card", &digest(2), 0, &[projected], &[])
+            .expect("project");
+        assert!(matches!(
+            store.feed_page(None, 1),
+            Err(ShadowStoreError::Sql(
+                rusqlite::Error::FromSqlConversionFailure(_, _, _)
+            ))
+        ));
+    }
+
+    #[test]
     fn feed_cards_never_coerce_malformed_optional_fields() {
         let mut store = ShadowStore::open_in_memory().expect("open");
         let mut projected = row(1, Some(1_780_000_000_000));
@@ -2932,6 +3039,23 @@ mod tests {
         )
         .expect("read back response-loss receipt");
         assert_eq!(readback, receipt);
+        let (bounded_reader, _) =
+            ShadowStore::open_published_projection_generation_read_only_with_cache_kib(
+                &published,
+                "rebuild-91",
+                &source,
+                rows.len(),
+                -2 * 1024,
+            )
+            .expect("bounded read-only cache");
+        assert_eq!(
+            bounded_reader
+                .conn
+                .pragma_query_value(None, "cache_size", |row| row.get::<_, i64>(0))
+                .expect("bounded cache size"),
+            -2 * 1024
+        );
+        drop(bounded_reader);
         let reopened = ShadowStore::open(&published).expect("open published generation");
         assert_eq!(
             reopened.total_count().expect("published count"),
