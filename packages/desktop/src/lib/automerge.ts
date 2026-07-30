@@ -18,7 +18,7 @@
  * subscribe callback changing from (doc: FreedDoc) to (state: DocState).
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { hashSavedUrl } from "@freed/capture-save/normalize";
 import { addDebugEvent, setDocSnapshot, registerDocAccessors } from "@freed/ui/lib/debug-store";
 import type {
@@ -38,6 +38,7 @@ import type {
   DocState,
   DocStats,
   DocumentHistoryRelation,
+  LibraryCoreProjectionBatchV1,
   RssFeedRefreshUpdate,
   WorkerRequest,
   WorkerResponse,
@@ -49,7 +50,17 @@ import {
   createItemIndex,
   type ItemIndex,
 } from "./automerge-state-patches";
+import {
+  isBackgroundRuntimeDeferredError,
+  runBackgroundJob,
+} from "./background-runtime-coordinator";
 import { log } from "./logger.js";
+import {
+  projectLibraryCoreShadow,
+  tauriLibraryCoreShadowNativeClient,
+  type LibraryCoreProjectionStartedV1,
+  type LibraryCoreProjectionWorkerClient,
+} from "./library-core-shadow-runtime";
 import { recordRuntimeHealthEvent, recordWorkerInit } from "./runtime-health-events";
 export type { DocChangeEvent, DocState } from "./automerge-types";
 
@@ -165,6 +176,8 @@ function rejectPendingWorkerRequests(generationId: number, error: Error): void {
   rejectPendingMap(pendingLegacyHtml, generationId, error);
   rejectPendingMap(pendingContentSignalBackfill, generationId, error);
   rejectPendingMap(pendingSampleDataClear, generationId, error);
+  rejectPendingMap(pendingLibraryCoreProjectionStarted, generationId, error);
+  rejectPendingMap(pendingLibraryCoreProjectionBatch, generationId, error);
 }
 
 function isActiveWorkerGeneration(source: Worker, generationId: number): boolean {
@@ -306,7 +319,9 @@ function hasPendingWorkerRequests(): boolean {
     pendingPreservedText.size > 0 ||
     pendingLegacyHtml.size > 0 ||
     pendingContentSignalBackfill.size > 0 ||
-    pendingSampleDataClear.size > 0
+    pendingSampleDataClear.size > 0 ||
+    pendingLibraryCoreProjectionStarted.size > 0 ||
+    pendingLibraryCoreProjectionBatch.size > 0
   );
 }
 
@@ -382,6 +397,14 @@ const pendingContentSignalBackfill = new Map<
   PendingRequest<ContentSignalBackfillSummary>
 >();
 const pendingSampleDataClear = new Map<number, PendingRequest<SampleDataClearSummary>>();
+const pendingLibraryCoreProjectionStarted = new Map<
+  number,
+  PendingRequest<LibraryCoreProjectionStartedV1>
+>();
+const pendingLibraryCoreProjectionBatch = new Map<
+  number,
+  PendingRequest<LibraryCoreProjectionBatchV1>
+>();
 
 function assertAutomergeRequestAccepted(type: WorkerRequest["type"]): void {
   if (
@@ -517,6 +540,7 @@ function publishState(state: DocState, event: DocChangeEvent): void {
     lastItemIndexById = createItemIndex(state.items);
   }
   for (const sub of subscribers) sub(state, event);
+  if (appDocumentInitialized) scheduleLibraryCoreShadowProjection();
 }
 
 // ---------------------------------------------------------------------------
@@ -797,12 +821,29 @@ function handleWorkerMessage(
     return;
   }
 
-  // Migration projection responses remain dormant until the native staging
-  // adapter owns their exact request lifecycle.
-  if (
-    msg.type === "LIBRARY_CORE_PROJECTION_STARTED" ||
-    msg.type === "LIBRARY_CORE_PROJECTION_BATCH"
-  ) {
+  if (msg.type === "LIBRARY_CORE_PROJECTION_STARTED") {
+    const pendingProjection = getGenerationPending(
+      pendingLibraryCoreProjectionStarted,
+      msg.reqId,
+      generationId,
+    );
+    if (!pendingProjection) return;
+    clearTimeout(pendingProjection.timer);
+    pendingLibraryCoreProjectionStarted.delete(msg.reqId);
+    pendingProjection.resolve(msg);
+    return;
+  }
+
+  if (msg.type === "LIBRARY_CORE_PROJECTION_BATCH") {
+    const pendingProjection = getGenerationPending(
+      pendingLibraryCoreProjectionBatch,
+      msg.reqId,
+      generationId,
+    );
+    if (!pendingProjection) return;
+    clearTimeout(pendingProjection.timer);
+    pendingLibraryCoreProjectionBatch.delete(msg.reqId);
+    pendingProjection.resolve(msg);
     return;
   }
 
@@ -828,6 +869,30 @@ function handleWorkerMessage(
     clearTimeout(pendingClear.timer);
     pendingSampleDataClear.delete(msg.reqId);
     pendingClear.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingProjectionStarted = getGenerationPending(
+    pendingLibraryCoreProjectionStarted,
+    msg.reqId,
+    generationId,
+  );
+  if (pendingProjectionStarted && msg.error) {
+    clearTimeout(pendingProjectionStarted.timer);
+    pendingLibraryCoreProjectionStarted.delete(msg.reqId);
+    pendingProjectionStarted.reject(new Error(msg.error));
+    return;
+  }
+
+  const pendingProjectionBatch = getGenerationPending(
+    pendingLibraryCoreProjectionBatch,
+    msg.reqId,
+    generationId,
+  );
+  if (pendingProjectionBatch && msg.error) {
+    clearTimeout(pendingProjectionBatch.timer);
+    pendingLibraryCoreProjectionBatch.delete(msg.reqId);
+    pendingProjectionBatch.reject(new Error(msg.error));
     return;
   }
 
@@ -1109,6 +1174,7 @@ export function initDoc(
       const state = await initializeWorkerDocumentWithDataRecovery();
       appDocumentInitialized = true;
       workerDocumentInitialized = true;
+      scheduleLibraryCoreShadowProjection();
       return state;
     } catch (error) {
       if (error instanceof WorkerLifecycleError) {
@@ -1116,6 +1182,7 @@ export function initDoc(
         const state = await initializeWorkerDocumentWithDataRecovery();
         appDocumentInitialized = true;
         workerDocumentInitialized = true;
+        scheduleLibraryCoreShadowProjection();
         return state;
       }
       throw error;
@@ -1227,6 +1294,124 @@ export async function getItemLegacyHtml(globalId: string): Promise<string | null
   );
 }
 
+const LIBRARY_CORE_SHADOW_DEBOUNCE_MS = 30_000;
+let libraryCoreShadowTimer: ReturnType<typeof setTimeout> | null = null;
+let libraryCoreShadowRun: Promise<void> | null = null;
+let libraryCoreShadowRerunRequested = false;
+
+function newLibraryCoreProjectionSessionId(): string {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === "function") {
+    return cryptoApi.randomUUID();
+  }
+  throw new Error("Secure random UUID generation is unavailable");
+}
+
+async function beginLibraryCoreProjection(
+  sessionId: string,
+): Promise<LibraryCoreProjectionStartedV1> {
+  await ensureWorkerDocumentReadyFor("BEGIN_LIBRARY_CORE_PROJECTION");
+  const activeWorker = getWorker();
+  return requestResultOnWorker(
+    activeWorker,
+    pendingLibraryCoreProjectionStarted,
+    {
+      reqId: nextReqId++,
+      type: "BEGIN_LIBRARY_CORE_PROJECTION",
+      sessionId,
+    } satisfies WorkerRequest,
+  );
+}
+
+async function nextLibraryCoreProjectionBatch(
+  sessionId: string,
+  batchIndex: number,
+): Promise<LibraryCoreProjectionBatchV1> {
+  await ensureWorkerDocumentReadyFor("NEXT_LIBRARY_CORE_PROJECTION_BATCH");
+  const activeWorker = getWorker();
+  return requestResultOnWorker(
+    activeWorker,
+    pendingLibraryCoreProjectionBatch,
+    {
+      reqId: nextReqId++,
+      type: "NEXT_LIBRARY_CORE_PROJECTION_BATCH",
+      sessionId,
+      batchIndex,
+    } satisfies WorkerRequest,
+  );
+}
+
+function cancelLibraryCoreProjection(sessionId: string): Promise<void> {
+  return request({
+    reqId: nextReqId++,
+    type: "CANCEL_LIBRARY_CORE_PROJECTION",
+    sessionId,
+  });
+}
+
+const libraryCoreProjectionWorkerClient: LibraryCoreProjectionWorkerClient = {
+  begin: beginLibraryCoreProjection,
+  nextBatch: nextLibraryCoreProjectionBatch,
+  cancel: cancelLibraryCoreProjection,
+};
+
+async function runLibraryCoreShadowProjection(): Promise<void> {
+  const startedAt = performance.now();
+  try {
+    const result = await runBackgroundJob({
+      kind: "library-projection",
+      source: "library-core-shadow",
+      blocking: false,
+      timeoutMs: 30 * 60_000,
+      run: () =>
+        projectLibraryCoreShadow(
+          libraryCoreProjectionWorkerClient,
+          tauriLibraryCoreShadowNativeClient,
+          newLibraryCoreProjectionSessionId(),
+        ),
+    });
+    recordRuntimeHealthEvent({
+      event: "library_core_shadow_projection",
+      outcome: result.selected ? "selected" : "completed",
+      totalRows: result.totalRows,
+      durationMs: Math.round(performance.now() - startedAt),
+    });
+  } catch (error) {
+    if (isBackgroundRuntimeDeferredError(error)) {
+      libraryCoreShadowRerunRequested = true;
+      log.info(`[library-core-shadow] projection deferred reason=${error.reason}`);
+      return;
+    }
+    log.warn(
+      `[library-core-shadow] projection failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    recordRuntimeHealthEvent({
+      event: "library_core_shadow_projection",
+      outcome: "failed",
+      durationMs: Math.round(performance.now() - startedAt),
+    });
+  }
+}
+
+function scheduleLibraryCoreShadowProjection(): void {
+  if (import.meta.env.VITE_TEST_TAURI === "1" || !isTauri() || automergeQuiesced) return;
+  if (libraryCoreShadowRun) {
+    libraryCoreShadowRerunRequested = true;
+    return;
+  }
+  if (libraryCoreShadowTimer) clearTimeout(libraryCoreShadowTimer);
+  libraryCoreShadowTimer = setTimeout(() => {
+    libraryCoreShadowTimer = null;
+    libraryCoreShadowRun = runLibraryCoreShadowProjection().finally(() => {
+      libraryCoreShadowRun = null;
+      if (libraryCoreShadowRerunRequested) {
+        libraryCoreShadowRerunRequested = false;
+        scheduleLibraryCoreShadowProjection();
+      }
+    });
+  }, LIBRARY_CORE_SHADOW_DEBOUNCE_MS);
+}
+
 export async function mergeDoc(incoming: Uint8Array): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "MERGE_DOC", binary: incoming });
@@ -1241,10 +1426,18 @@ export async function clearLocalDoc(): Promise<void> {
 export function quiesceDesktopAutomergeForFactoryReset(): Promise<void> {
   if (automergeQuiescePromise) return automergeQuiescePromise;
   automergeQuiesced = true;
-  automergeQuiescePromise = request({
-    reqId: nextReqId++,
-    type: "QUIESCE",
-  });
+  libraryCoreShadowRerunRequested = false;
+  if (libraryCoreShadowTimer) {
+    clearTimeout(libraryCoreShadowTimer);
+    libraryCoreShadowTimer = null;
+  }
+  automergeQuiescePromise = (async () => {
+    await libraryCoreShadowRun;
+    await request({
+      reqId: nextReqId++,
+      type: "QUIESCE",
+    });
+  })();
   return automergeQuiescePromise;
 }
 
