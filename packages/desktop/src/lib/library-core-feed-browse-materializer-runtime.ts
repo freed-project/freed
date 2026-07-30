@@ -21,6 +21,8 @@ export interface LibraryCoreFeedBrowseGenerationStatusV1 {
   readonly writtenRows: number;
   readonly totalRows: number;
   readonly complete: boolean;
+  readonly sealedFileDigest: string | null;
+  readonly sealedByteLength: number | null;
 }
 
 export interface LibraryCoreFeedBrowseProjectionWorkerClient {
@@ -115,6 +117,11 @@ function assertStatus(
   status: LibraryCoreFeedBrowseGenerationStatusV1,
   binding: LibraryCoreFeedBrowseGenerationBindingV1,
 ): void {
+  const hasValidSeal =
+    typeof status.sealedFileDigest === "string" &&
+    /^[0-9a-f]{64}$/u.test(status.sealedFileDigest) &&
+    Number.isSafeInteger(status.sealedByteLength) &&
+    (status.sealedByteLength ?? 0) > 0;
   if (
     status.generationId !== binding.generationId ||
     status.totalRows !== binding.totalRows ||
@@ -123,7 +130,11 @@ function assertStatus(
     !Number.isSafeInteger(status.writtenRows) ||
     status.writtenRows < 0 ||
     status.writtenRows > binding.totalRows ||
-    (status.complete && status.writtenRows !== binding.totalRows)
+    (status.complete && status.writtenRows !== binding.totalRows) ||
+    (status.complete && !hasValidSeal) ||
+    (!status.complete &&
+      (status.sealedFileDigest !== null ||
+        status.sealedByteLength !== null))
   ) {
     throw new Error("Native browse generation returned invalid progress");
   }

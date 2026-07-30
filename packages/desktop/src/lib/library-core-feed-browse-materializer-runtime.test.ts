@@ -76,6 +76,8 @@ describe("Desktop Library Core browse materializer runtime", () => {
       writtenRows: 0,
       totalRows: binding.totalRows,
       complete: false,
+      sealedFileDigest: null,
+      sealedByteLength: null,
     };
     let appendCalls = 0;
     let finalizeCalls = 0;
@@ -93,7 +95,12 @@ describe("Desktop Library Core browse materializer runtime", () => {
       }),
       finalize: vi.fn(async () => {
         finalizeCalls += 1;
-        progress = { ...progress, complete: true };
+        progress = {
+          ...progress,
+          complete: true,
+          sealedFileDigest: "c".repeat(64),
+          sealedByteLength: 4_096,
+        };
         throw new Error("lost finalize response");
       }),
       cancel: vi.fn(async () => progress),
@@ -134,6 +141,8 @@ describe("Desktop Library Core browse materializer runtime", () => {
       writtenRows: 128,
       totalRows: binding.totalRows,
       complete: false,
+      sealedFileDigest: null,
+      sealedByteLength: null,
     };
     const native: LibraryCoreFeedBrowseNativeClient = {
       begin: vi.fn(async () => progress),
@@ -149,7 +158,12 @@ describe("Desktop Library Core browse materializer runtime", () => {
         return progress;
       }),
       finalize: vi.fn(async () => {
-        progress = { ...progress, complete: true };
+        progress = {
+          ...progress,
+          complete: true,
+          sealedFileDigest: "c".repeat(64),
+          sealedByteLength: 4_096,
+        };
         return progress;
       }),
       cancel: vi.fn(async () => progress),
@@ -170,5 +184,46 @@ describe("Desktop Library Core browse materializer runtime", () => {
       nextBatchIndex: 2,
       writtenRows: 129,
     });
+  });
+
+  it("rejects a completed native response without a physical seal receipt", async () => {
+    const worker: LibraryCoreFeedBrowseProjectionWorkerClient = {
+      begin: vi.fn(async () => started),
+      nextBatch: vi.fn(),
+      cancel: vi.fn(async () => {}),
+    };
+    const native: LibraryCoreFeedBrowseNativeClient = {
+      begin: vi.fn(async () => ({
+        generationId: binding.generationId,
+        nextBatchIndex: 2,
+        writtenRows: binding.totalRows,
+        totalRows: binding.totalRows,
+        complete: true,
+        sealedFileDigest: null,
+        sealedByteLength: null,
+      })),
+      append: vi.fn(),
+      finalize: vi.fn(),
+      cancel: vi.fn(async () => ({
+        generationId: binding.generationId,
+        nextBatchIndex: 2,
+        writtenRows: binding.totalRows,
+        totalRows: binding.totalRows,
+        complete: true,
+        sealedFileDigest: null,
+        sealedByteLength: null,
+      })),
+    };
+
+    await expect(
+      materializeDesktopLibraryCoreFeedBrowseGeneration(
+        worker,
+        native,
+        started.sessionId,
+        undefined,
+        binding.rankingClockMs,
+      ),
+    ).rejects.toThrow("Native browse generation returned invalid progress");
+    expect(worker.nextBatch).not.toHaveBeenCalled();
   });
 });
