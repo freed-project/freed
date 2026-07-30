@@ -207,6 +207,176 @@ describe("real Automerge worker module", () => {
     vi.unstubAllGlobals();
   });
 
+  it("projects one durable revision through replayable bounded batches", async () => {
+    sendRequest(scope, { reqId: 500, type: "INIT" });
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 500,
+    );
+    await waitForPost(
+      posts,
+      (message) =>
+        message.type === "DEBUG_EVENT" &&
+        message.detail?.startsWith(
+          "[automerge-worker] released idle document",
+        ) === true,
+    );
+
+    const reloadsBeforeBegin = debugDetails(posts).filter((detail) =>
+      detail.startsWith("[automerge-worker] reloaded idle document"),
+    ).length;
+    const beginAt = posts.length;
+    sendRequest(scope, {
+      reqId: 501,
+      type: "BEGIN_LIBRARY_CORE_PROJECTION",
+      sessionId: "projection-session-1",
+    });
+    const startedPost = await waitForPost(
+      posts,
+      (message) =>
+        message.type === "LIBRARY_CORE_PROJECTION_STARTED" &&
+        message.reqId === 501,
+      beginAt,
+    );
+    if (startedPost.message.type !== "LIBRARY_CORE_PROJECTION_STARTED") {
+      throw new Error("Expected Library Core projection source");
+    }
+    expect(startedPost.message).toMatchObject({
+      sessionId: "projection-session-1",
+      totalRows: 1,
+      nextBatchIndex: 0,
+      projectedRows: 0,
+      maximumBatchRows: 1_000,
+      maximumBatchBytes: 4 * 1_048_576,
+      source: {
+        schemaVersion: 1,
+        storageRevision: storageHarness.revision,
+      },
+    });
+    expect(startedPost.message.source.documentId).toMatch(
+      /^[0-9a-f-]{36}$/,
+    );
+    expect(startedPost.message.source.headsDigest).toMatch(/^[0-9a-f]{64}$/);
+    expect(startedPost.message.source.headCount).toBeGreaterThan(0);
+    await waitForPost(
+      posts,
+      (message) =>
+        message.type === "DEBUG_EVENT" &&
+        message.detail?.startsWith(
+          "[automerge-worker] released idle document",
+        ) === true,
+      beginAt,
+    );
+    expect(
+      debugDetails(posts).filter((detail) =>
+        detail.startsWith("[automerge-worker] reloaded idle document"),
+      ),
+    ).toHaveLength(reloadsBeforeBegin + 1);
+
+    const reloadsBeforeBatch = debugDetails(posts).filter((detail) =>
+      detail.startsWith("[automerge-worker] reloaded idle document"),
+    ).length;
+    const batchAt = posts.length;
+    sendRequest(scope, {
+      reqId: 502,
+      type: "NEXT_LIBRARY_CORE_PROJECTION_BATCH",
+      sessionId: "projection-session-1",
+      batchIndex: 0,
+    });
+    const batchPost = await waitForPost(
+      posts,
+      (message) =>
+        message.type === "LIBRARY_CORE_PROJECTION_BATCH" &&
+        message.reqId === 502,
+      batchAt,
+    );
+    if (batchPost.message.type !== "LIBRARY_CORE_PROJECTION_BATCH") {
+      throw new Error("Expected Library Core projection batch");
+    }
+    expect(batchPost.message).toMatchObject({
+      sessionId: "projection-session-1",
+      batchIndex: 0,
+      projectedRows: 1,
+      totalRows: 1,
+      done: true,
+    });
+    expect(batchPost.message.rows).toHaveLength(1);
+    expect(batchPost.message.rows[0].globalId).toBe(
+      "saved:worker-compatibility",
+    );
+    expect(batchPost.message.rowBytes).toBeLessThan(
+      startedPost.message.maximumBatchBytes,
+    );
+    await waitForPost(
+      posts,
+      (message) =>
+        message.type === "DEBUG_EVENT" &&
+        message.detail?.startsWith(
+          "[automerge-worker] released idle document",
+        ) === true,
+      batchAt,
+    );
+    expect(
+      debugDetails(posts).filter((detail) =>
+        detail.startsWith("[automerge-worker] reloaded idle document"),
+      ),
+    ).toHaveLength(reloadsBeforeBatch + 1);
+
+    const retryAt = posts.length;
+    sendRequest(scope, {
+      reqId: 503,
+      type: "NEXT_LIBRARY_CORE_PROJECTION_BATCH",
+      sessionId: "projection-session-1",
+      batchIndex: 0,
+    });
+    const retryPost = await waitForPost(
+      posts,
+      (message) =>
+        message.type === "LIBRARY_CORE_PROJECTION_BATCH" &&
+        message.reqId === 503,
+      retryAt,
+    );
+    if (retryPost.message.type !== "LIBRARY_CORE_PROJECTION_BATCH") {
+      throw new Error("Expected replayed Library Core projection batch");
+    }
+    expect({
+      ...retryPost.message,
+      reqId: batchPost.message.reqId,
+    }).toEqual(batchPost.message);
+    expect(
+      debugDetails(posts).filter((detail) =>
+        detail.startsWith("[automerge-worker] reloaded idle document"),
+      ),
+    ).toHaveLength(reloadsBeforeBatch + 1);
+
+    sendRequest(scope, {
+      reqId: 504,
+      type: "MARK_AS_READ",
+      globalId: "saved:worker-compatibility",
+    });
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 504,
+    );
+
+    const staleAt = posts.length;
+    sendRequest(scope, {
+      reqId: 505,
+      type: "NEXT_LIBRARY_CORE_PROJECTION_BATCH",
+      sessionId: "projection-session-1",
+      batchIndex: 1,
+    });
+    const stalePost = await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 505,
+      staleAt,
+    );
+    expect(stalePost.message).toMatchObject({
+      type: "ACK",
+      error: "Library Core projection session is not active",
+    });
+  });
+
   it("reports corrupt bytes explicitly and waits for an explicit clear request", async () => {
     storageHarness.binary = new Uint8Array([1, 2, 3, 4]);
 

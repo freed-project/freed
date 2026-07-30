@@ -40,12 +40,43 @@ kernel. Rust and the shared TypeScript adapter are checked against one
 versioned canonical SQL file. Native projection batches atomically upsert and
 delete rows while advancing one projection revision, and bounded keyset cursors
 fail closed if that revision changes between pages. The registered 128-row
-maximum is enforced at the adapter, and the dark base tier pins its busy
-timeout, 32 MiB page cache, file-backed temporary work, and disabled mmap. The
-module is compiled into Freed Desktop but has no production caller and opens no
-user database. This is progress inside Gate B, not a claim that Gate B is
-complete. Signed operation fixtures, transaction receipts, fork rejection,
-browser adapter parity, and authoritative materialization remain blocked.
+maximum and 2 MiB serialized response ceiling are enforced at the adapter.
+Feed rows select only compact card fields inside SQLite, cap media and tag
+collections independently, and never return full content, preserved reader
+bodies, or the unmodelled-field escape object. Malformed optional values are
+omitted instead of coerced into plausible data. The dark base tier pins its
+busy timeout, 32 MiB page cache, file-backed temporary work, and disabled mmap.
+The module is compiled into Freed Desktop but has no production caller and
+opens no user database. This is progress inside Gate B and step 4, not a claim
+that either gate is complete.
+
+The Desktop derived-shadow path now also has a dormant bounded projection
+probe. It pins one exact durable Automerge frontier and storage revision, emits
+deterministic batches capped at 1,000 rows and 4 MiB, retains only a
+250,000-entry, 16 MiB entity-ID index plus one replayable batch, and releases
+the decoded Automerge document between requests. It still calls
+`Automerge.load`, so it is a temporary compatibility path for building and
+testing the derived SQL reader while Automerge remains authoritative. It cannot
+satisfy the external-memory Gate C migration contract or authorize cutover. No
+production caller consumes the responses yet. Native staging, a complete
+derived receipt, an opaque read cursor, cancellation across the main-to-native
+boundary, PWA adapter parity, and runtime registration remain blocked.
+
+Physical shadow schema version 3 now closes the native staging transaction
+inside one database. A fresh staging file records the exact source identity,
+sequential batch receipts, projected row count, revision, and completion state.
+Rows and receipts roll back together, an interrupted process resumes at the
+exact next batch, and bounded reads reject the database until the declared and
+actual row counts both close.
+
+The dormant native publisher now seals a complete staging database into one
+immutable generation file. It checkpoints and removes WAL mode, verifies
+SQLite and the exact rebuild state, syncs the bytes, performs a same-directory
+durable no-replace publication, and verifies the destination read-only. Unix
+uses an exclusive hard-link publication point, so a racing destination cannot
+be overwritten. Selecting that file for a reader remains separate. The
+production storage-root handle, generation transition, stale-reader lifetime,
+rollback pointer, and cleanup policy are still blocked.
 
 ## What the evidence establishes
 

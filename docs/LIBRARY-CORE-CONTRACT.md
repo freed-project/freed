@@ -2381,10 +2381,16 @@ and counts to that revision. A cursor from an older revision fails closed
 instead of mixing projections. While Automerge remains authoritative this
 derived store may use `synchronous=NORMAL`, emits no authoritative receipt, and
 is fully rebuildable. Its first physical schema is versioned, `feed_page_v1`
-enforces its registered 128-row ceiling, and the dormant base tier pins a
-5-second busy timeout, 32 MiB page cache, file-backed temporary work, and no
-mmap. Shipping this dark module does not open a user database, activate a
-reader, satisfy Gate B, or authorize any Gate C through Gate H transition.
+enforces its registered 128-row ceiling and 2 MiB serialized response ceiling,
+and the dormant base tier pins a 5-second busy timeout, 32 MiB page cache,
+file-backed temporary work, and no mmap. The compact feed projection selects
+only card fields inside SQLite. It caps media summaries at 8, tags at 32, and
+content-signal tags at 32, bounds selected display strings, and never returns
+full content blobs, preserved reader bodies, or the unmodelled-field escape
+object. Invalid optional JSON shapes are omitted instead of coerced into
+plausible card data. Shipping this dark module does not open a user database,
+activate a reader, satisfy Gate B, or authorize any Gate C through Gate H
+transition.
 
 The derived store records one projection batch receipt in the same transaction
 as its rows, deletions, and revision advance. Its identity is the stable batch
@@ -2398,6 +2404,62 @@ transaction. Physical migrations are atomic and cannot bless an already
 present table with an incompatible shape. This is derived-store retry evidence,
 not a signed Library Core operation receipt. It cannot authorize a mutation,
 epoch transition, bootstrap, cutover, or provider action.
+
+Physical schema version 3 adds one crash-resumable derived rebuild record. A
+rebuild binds its exact identifier to the durable source document, sorted-head
+digest and count, storage generation, save revision, and expected row count.
+It starts only in a fresh empty staging database at projection revision zero.
+Each sequential batch commits its rows, ordinary projection receipt, batch
+mapping, next batch index, projected row count, revision, and completion flag
+in one transaction. Exact retry returns the durable batch receipt and current
+rebuild state. A changed source, skipped batch, conflicting retry, or partial
+state update rolls the transaction back.
+
+An incomplete rebuild is not readable through feed pages or counts. The final
+batch may mark the generation complete only when its cumulative projected row
+count and the actual SQLite row count both equal the declared source row count.
+The database remains a staging generation after completion.
+
+The dormant native publisher accepts only distinct absolute staging and
+destination paths in one directory. It requires a complete exact-source
+rebuild, checkpoints every WAL frame, changes the closed generation to
+self-contained delete-journal mode, passes SQLite `quick_check`, closes and
+syncs the staging file, and atomically publishes it to a destination that must
+not already exist. Unix creates the destination through an exclusive hard link,
+syncs the parent, removes the staging name, and syncs the parent again. A crash
+may retain both names for the same complete inode, never a partial destination.
+Windows uses a write-through no-replace move. The destination is then reopened
+read-only with no-follow semantics and the exact complete rebuild is verified
+again. That readback is the response-loss recovery path.
+
+Publication creates one immutable generation file. It does not select that
+generation for a reader, replace an existing generation, clean an abandoned
+staging file, authenticate the production storage root, or grant reader
+authority. The later native adapter must bind the trusted storage-root handle
+and commit the registered generation transition before any surface can read
+the published file.
+
+The dormant Desktop derived-shadow projection probe exposes this input through
+one bounded worker session. Session admission binds the exact durable
+Automerge document ID, the SHA-256 digest and count of its sorted heads, and the
+storage generation and save revision. Every new batch reloads the current
+durable binary, reproduces that complete source identity, and fails closed if
+it changed. A document commit invalidates the session before the new document
+becomes visible.
+
+One session retains only sorted entity IDs capped at 250,000 entries and
+16 MiB, plus its most recent response batch. It returns at most 1,000 rows and
+4 MiB per batch, rejects an individual row that cannot fit, permits exact
+replay of only the most recent batch after response loss, and rejects skipped
+or reordered batch indexes.
+After each request drains, the worker releases the decoded Automerge document.
+The next batch may pay another decode cost, but an abandoned migration cannot
+pin the complete document in memory. No main-thread adapter consumes these
+responses yet. This compatibility probe still uses `Automerge.load` and
+therefore cannot satisfy the external-memory Gate C migration contract,
+produce an authoritative migration candidate, or authorize storage cutover. It
+does not open SQLite, create a projection receipt, change the active Automerge
+writer, or contact a provider.
 
 Blob content is content-addressed and may live outside hot tables. Before an
 authoritative row may reference a new external blob, native code writes and

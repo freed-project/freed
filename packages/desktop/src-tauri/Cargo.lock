@@ -1483,6 +1483,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "window-vibrancy 0.8.0",
+ "windows-sys 0.61.2",
  "wreq",
  "wreq-util",
 ]

@@ -238,6 +238,34 @@ migration objects fail closed, and a receipt write failure rolls back the whole
 batch. Keep this derived receipt explicitly separate from signed authoritative
 operation receipts. It grants no mutation or activation authority.
 
+A short-lived Automerge worker may populate and verify the derived shadow store
+while Automerge remains authoritative. Bind that probe to one exact durable
+frontier and storage revision, bound its retained index and every response, and
+release the decoded document between requests. This is a compatibility bridge,
+not the Gate C migration decoder. Any path that calls `Automerge.load`, retains
+the complete change graph, or allocates source-sized memory cannot produce an
+authoritative migration candidate, satisfy the external-memory migration
+contract, or authorize cutover.
+
+Build a derived shadow generation in a fresh staging database. Bind the durable
+rebuild record to the exact source identity and declared row count. Commit each
+sequential batch's rows, derived receipt, batch mapping, revision, cumulative
+row count, and completion state in one transaction. Exact retry returns the
+stored result. Partial generations are never readable. Close a rebuild only
+when declared, projected, and actual row counts agree. Completion inside the
+database is not file publication. A native adapter must close, verify, and
+atomically publish the complete staging file before assigning it to a reader.
+This remains derived shadow work and does not satisfy Gate C.
+
+Publish a derived generation as a new immutable file. Checkpoint and remove
+WAL mode, verify SQLite and the exact completed rebuild, close and sync the
+staging bytes, perform one same-directory durable no-replace publication, then
+verify the destination read-only. The publication primitive itself must reject
+a racing destination. Exact readback is the response-loss path. Never overwrite
+a prior generation or treat publication as reader assignment.
+Production assignment still requires the trusted storage-root handle, a
+generation transition, rollback state, and bounded cleanup.
+
 A dormant engine has no production caller, opens no user database, emits no
 authority receipt, and does not append an activation-manifest transition. It
 may compile into Freed Desktop behind an explicit dark-module boundary. A

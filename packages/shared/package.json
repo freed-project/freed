@@ -16,6 +16,7 @@
     "./google-contacts-automation": "./src/google-contacts-automation.ts",
     "./redact-sensitive": "./src/redact-sensitive.ts",
     "./contact-matching": "./src/contact-matching.ts",
+    "./projection": "./src/projection.ts",
     "./library-core": "./src/library-core/index.ts"
   },
   "scripts": {

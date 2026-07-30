@@ -25,6 +25,10 @@ import {
 } from "@freed/sync/storage/repeatable-automerge-persistence";
 import type { FreedDoc } from "@freed/shared/schema";
 import {
+  projectFeedItem,
+  type FeedItemRow,
+} from "@freed/shared/projection";
+import {
   assertNonDestructiveMerge,
   compareDocumentHistories,
   createEmptyDoc,
@@ -92,6 +96,8 @@ import type {
 import type {
   DocState,
   FeedItemPatch,
+  LibraryCoreProjectionBatchV1,
+  LibraryCoreProjectionSourceV1,
   RssFeedPatch,
   RssFeedRefreshUpdate,
   WorkerErrorCode,
@@ -118,6 +124,26 @@ let activeDesktopClientRegistration: DesktopClientRegistration | null = null;
 let queuedRequestCount = 0;
 let requestChain: Promise<void> = Promise.resolve();
 let acceptingRequests = true;
+const MAX_LIBRARY_CORE_PROJECTION_SESSION_ID_BYTES = 128;
+const MAX_LIBRARY_CORE_PROJECTION_BATCH_ROWS = 1_000;
+const MAX_LIBRARY_CORE_PROJECTION_BATCH_BYTES = 4 * 1_048_576;
+const LIBRARY_CORE_PROJECTION_ENVELOPE_RESERVE_BYTES = 64 * 1_024;
+const MAX_LIBRARY_CORE_PROJECTION_INDEX_ENTRIES = 250_000;
+const MAX_LIBRARY_CORE_PROJECTION_INDEX_BYTES = 16 * 1_048_576;
+const MAX_LIBRARY_CORE_PROJECTION_ENTITY_ID_BYTES = 4_096;
+
+interface LibraryCoreProjectionSession {
+  readonly sessionId: string;
+  readonly source: LibraryCoreProjectionSourceV1;
+  itemIds: string[];
+  readonly totalRows: number;
+  nextOffset: number;
+  nextBatchIndex: number;
+  lastBatch: LibraryCoreProjectionBatchV1 | null;
+  completed: boolean;
+}
+
+let libraryCoreProjectionSession: LibraryCoreProjectionSession | null = null;
 let searchCorpusVersion = 0;
 let linkPreviewUrlCounts = new Map<string, number>();
 let lastCommittedItemCount = 0;
@@ -193,6 +219,238 @@ function ack(reqId: number, error?: string, errorCode?: WorkerErrorCode): void {
     ...(error ? { error } : {}),
     ...(errorCode ? { errorCode } : {}),
   });
+}
+
+const projectionTextEncoder = new TextEncoder();
+
+function validateProjectionSessionId(sessionId: string): void {
+  const byteLength = projectionTextEncoder.encode(sessionId).byteLength;
+  if (
+    byteLength === 0 ||
+    byteLength > MAX_LIBRARY_CORE_PROJECTION_SESSION_ID_BYTES
+  ) {
+    throw new Error(
+      `Library Core projection session ID must contain 1 through ${MAX_LIBRARY_CORE_PROJECTION_SESSION_ID_BYTES.toLocaleString()} UTF-8 bytes`,
+    );
+  }
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    Uint8Array.from(bytes).buffer,
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+async function projectionHeadsDigest(heads: readonly string[]): Promise<string> {
+  const canonicalHeads = [...heads].sort();
+  return sha256Hex(
+    projectionTextEncoder.encode(
+      ["library-core-projection-heads-v1", ...canonicalHeads].join("\n"),
+    ),
+  );
+}
+
+async function currentProjectionSource(
+  doc: FreedDoc,
+): Promise<LibraryCoreProjectionSourceV1> {
+  const snapshot = persistence.snapshot();
+  if (!snapshot.bytes) throw new Error("Document not initialized");
+
+  const documentId = resolveDocumentId(doc.meta);
+  if (
+    projectionTextEncoder.encode(documentId).byteLength >
+    MAX_LIBRARY_CORE_PROJECTION_SESSION_ID_BYTES * 32
+  ) {
+    throw new Error("Library Core projection document ID exceeds 4,096 bytes");
+  }
+
+  const heads = A.getHeads(doc);
+  const [headsDigest, durableHeadsDigest] = await Promise.all([
+    projectionHeadsDigest(heads),
+    projectionHeadsDigest(snapshot.heads),
+  ]);
+  if (headsDigest !== durableHeadsDigest) {
+    throw new Error(
+      "Library Core projection source is not the exact durable Automerge revision",
+    );
+  }
+
+  return {
+    schemaVersion: 1,
+    documentId,
+    headsDigest,
+    headCount: heads.length,
+    storageRevision: { ...snapshot.revision },
+  };
+}
+
+function sameProjectionSource(
+  left: LibraryCoreProjectionSourceV1,
+  right: LibraryCoreProjectionSourceV1,
+): boolean {
+  return (
+    left.schemaVersion === right.schemaVersion &&
+    left.documentId === right.documentId &&
+    left.headsDigest === right.headsDigest &&
+    left.headCount === right.headCount &&
+    left.storageRevision.generation === right.storageRevision.generation &&
+    left.storageRevision.saveRevision === right.storageRevision.saveRevision
+  );
+}
+
+async function startLibraryCoreProjection(
+  sessionId: string,
+): Promise<LibraryCoreProjectionSession> {
+  validateProjectionSessionId(sessionId);
+  const doc = ensureCurrentDocLoaded("BEGIN_LIBRARY_CORE_PROJECTION");
+  const source = await currentProjectionSource(doc);
+  const active = libraryCoreProjectionSession;
+  if (active && active.sessionId === sessionId) {
+    if (!sameProjectionSource(active.source, source)) {
+      libraryCoreProjectionSession = null;
+      throw new Error("Library Core projection source changed");
+    }
+    return active;
+  }
+  if (active && !active.completed) {
+    throw new Error(
+      `Library Core projection session ${active.sessionId} is already active`,
+    );
+  }
+
+  const itemIds: string[] = [];
+  let indexBytes = 0;
+  for (const globalId in doc.feedItems ?? {}) {
+    if (!Object.prototype.hasOwnProperty.call(doc.feedItems, globalId)) continue;
+    if (itemIds.length >= MAX_LIBRARY_CORE_PROJECTION_INDEX_ENTRIES) {
+      throw new Error(
+        `Library Core projection index exceeds ${MAX_LIBRARY_CORE_PROJECTION_INDEX_ENTRIES.toLocaleString()} entries`,
+      );
+    }
+    const globalIdBytes = projectionTextEncoder.encode(globalId).byteLength;
+    if (
+      globalIdBytes === 0 ||
+      globalIdBytes > MAX_LIBRARY_CORE_PROJECTION_ENTITY_ID_BYTES
+    ) {
+      throw new Error(
+        "Library Core projection encountered an invalid entity ID",
+      );
+    }
+    indexBytes += globalIdBytes;
+    if (indexBytes > MAX_LIBRARY_CORE_PROJECTION_INDEX_BYTES) {
+      throw new Error(
+        `Library Core projection index exceeds ${MAX_LIBRARY_CORE_PROJECTION_INDEX_BYTES.toLocaleString()} bytes`,
+      );
+    }
+    itemIds.push(globalId);
+  }
+  itemIds.sort();
+  const session: LibraryCoreProjectionSession = {
+    sessionId,
+    source,
+    itemIds,
+    totalRows: itemIds.length,
+    nextOffset: 0,
+    nextBatchIndex: 0,
+    lastBatch: null,
+    completed: false,
+  };
+  libraryCoreProjectionSession = session;
+  return session;
+}
+
+async function nextLibraryCoreProjectionBatch(
+  sessionId: string,
+  batchIndex: number,
+): Promise<LibraryCoreProjectionBatchV1> {
+  validateProjectionSessionId(sessionId);
+  if (!Number.isSafeInteger(batchIndex) || batchIndex < 0) {
+    throw new Error("Library Core projection batch index is invalid");
+  }
+
+  const session = libraryCoreProjectionSession;
+  if (!session || session.sessionId !== sessionId) {
+    throw new Error("Library Core projection session is not active");
+  }
+  if (session.lastBatch?.batchIndex === batchIndex) {
+    return session.lastBatch;
+  }
+  if (session.completed || batchIndex !== session.nextBatchIndex) {
+    throw new Error(
+      `Library Core projection expected batch ${session.nextBatchIndex.toLocaleString()}`,
+    );
+  }
+
+  const doc = ensureCurrentDocLoaded("NEXT_LIBRARY_CORE_PROJECTION_BATCH");
+  const source = await currentProjectionSource(doc);
+  if (!sameProjectionSource(session.source, source)) {
+    libraryCoreProjectionSession = null;
+    throw new Error("Library Core projection source changed");
+  }
+
+  const maximumRowBytes =
+    MAX_LIBRARY_CORE_PROJECTION_BATCH_BYTES -
+    LIBRARY_CORE_PROJECTION_ENVELOPE_RESERVE_BYTES;
+  const rows: FeedItemRow[] = [];
+  let rowBytes = 0;
+  let nextOffset = session.nextOffset;
+  while (
+    nextOffset < session.totalRows &&
+    rows.length < MAX_LIBRARY_CORE_PROJECTION_BATCH_ROWS
+  ) {
+    const globalId = session.itemIds[nextOffset];
+    const item = doc.feedItems[globalId] as FeedItem | undefined;
+    if (!item) {
+      libraryCoreProjectionSession = null;
+      throw new Error(
+        `Library Core projection source lost item ${globalId}`,
+      );
+    }
+    const row = projectFeedItem(item);
+    const encoded = JSON.stringify(row);
+    if (encoded === undefined) {
+      throw new Error(
+        `Library Core projection could not encode item ${globalId}`,
+      );
+    }
+    const encodedBytes = projectionTextEncoder.encode(encoded).byteLength;
+    const nextRowBytes =
+      rowBytes + encodedBytes + (rows.length === 0 ? 0 : 1);
+    if (nextRowBytes > maximumRowBytes) {
+      if (rows.length === 0) {
+        libraryCoreProjectionSession = null;
+        throw new Error(
+          `Library Core projection item ${globalId} exceeds the ${maximumRowBytes.toLocaleString()} byte batch row budget`,
+        );
+      }
+      break;
+    }
+    rows.push(row);
+    rowBytes = nextRowBytes;
+    nextOffset += 1;
+  }
+
+  const done = nextOffset === session.totalRows;
+  const batch: LibraryCoreProjectionBatchV1 = {
+    sessionId,
+    source: session.source,
+    batchIndex,
+    rows,
+    rowBytes,
+    projectedRows: nextOffset,
+    totalRows: session.totalRows,
+    done,
+  };
+  session.nextOffset = nextOffset;
+  session.nextBatchIndex += 1;
+  session.lastBatch = batch;
+  session.completed = done;
+  if (done) session.itemIds = [];
+  return batch;
 }
 
 function itemLinkPreviewUrl(item: FeedItem | undefined): string | null {
@@ -863,6 +1121,9 @@ function installCommittedDocument(
   binary: Uint8Array,
   searchCorpusChanged: boolean,
 ): void {
+  // A projection session is an exact view of one durable revision. Any commit
+  // invalidates it before the new document becomes visible.
+  libraryCoreProjectionSession = null;
   currentDoc = doc;
   currentBinary = Uint8Array.from(binary);
   refreshLastSavedHeads(doc);
@@ -1371,7 +1632,10 @@ async function handleRequest(
     req.type !== "REPLACE_DOC" &&
     req.type !== "GET_DOC_BINARY" &&
     req.type !== "GET_COMMITTED_DOC" &&
-    req.type !== "GET_HEADS"
+    req.type !== "GET_HEADS" &&
+    req.type !== "BEGIN_LIBRARY_CORE_PROJECTION" &&
+    req.type !== "NEXT_LIBRARY_CORE_PROJECTION_BATCH" &&
+    req.type !== "CANCEL_LIBRARY_CORE_PROJECTION"
   ) {
     ensureCurrentDocLoaded(req.type);
   }
@@ -1389,6 +1653,7 @@ async function handleRequest(
         break;
 
       case "INIT": {
+        libraryCoreProjectionSession = null;
         const requestedDesktopClientRegistration =
           req.desktopClientRegistration ?? null;
         let loaded;
@@ -1494,6 +1759,7 @@ async function handleRequest(
         } catch (error) {
           throw new AutomergePersistenceError(error);
         }
+        libraryCoreProjectionSession = null;
         currentDoc = null;
         currentBinary = null;
         refreshLastSavedHeads(null);
@@ -2199,6 +2465,49 @@ async function handleRequest(
           html:
             currentDoc.feedItems[req.globalId]?.preservedContent?.html ?? null,
         });
+        break;
+
+      case "BEGIN_LIBRARY_CORE_PROJECTION": {
+        const session = await startLibraryCoreProjection(req.sessionId);
+        send({
+          reqId: req.reqId,
+          type: "LIBRARY_CORE_PROJECTION_STARTED",
+          sessionId: session.sessionId,
+          source: session.source,
+          totalRows: session.totalRows,
+          nextBatchIndex: session.nextBatchIndex,
+          projectedRows: session.nextOffset,
+          maximumBatchRows: MAX_LIBRARY_CORE_PROJECTION_BATCH_ROWS,
+          maximumBatchBytes: MAX_LIBRARY_CORE_PROJECTION_BATCH_BYTES,
+        });
+        break;
+      }
+
+      case "NEXT_LIBRARY_CORE_PROJECTION_BATCH": {
+        const batch = await nextLibraryCoreProjectionBatch(
+          req.sessionId,
+          req.batchIndex,
+        );
+        send({
+          reqId: req.reqId,
+          type: "LIBRARY_CORE_PROJECTION_BATCH",
+          ...batch,
+        });
+        break;
+      }
+
+      case "CANCEL_LIBRARY_CORE_PROJECTION":
+        validateProjectionSessionId(req.sessionId);
+        if (
+          libraryCoreProjectionSession &&
+          libraryCoreProjectionSession.sessionId !== req.sessionId
+        ) {
+          throw new Error(
+            `Library Core projection session ${libraryCoreProjectionSession.sessionId} is active`,
+          );
+        }
+        libraryCoreProjectionSession = null;
+        ack(req.reqId);
         break;
 
       case "UPDATE_RELAY_CLIENT_COUNT":

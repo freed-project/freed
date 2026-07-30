@@ -24,35 +24,109 @@
 //!    this migration exists to remove, so a test asserts the query plan.
 
 use rusqlite::{
-    params, Connection, OptionalExtension, Result as SqlResult, Row, Transaction,
+    params, Connection, OpenFlags, OptionalExtension, Result as SqlResult, Row, Transaction,
     TransactionBehavior,
 };
-use std::path::Path;
+use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::fs::{File, OpenOptions};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-const SHADOW_SCHEMA_VERSION: i64 = 2;
+const SHADOW_SCHEMA_VERSION: i64 = 3;
 const MAX_FEED_PAGE_LIMIT: u32 = 128;
+const MAX_FEED_PAGE_RESPONSE_BYTES: usize = 2 * 1_048_576;
+const FEED_PAGE_ENVELOPE_RESERVE_BYTES: usize = 16 * 1_024;
+const MAX_FEED_CARD_MEDIA: usize = 8;
+const MAX_FEED_CARD_TAGS: usize = 32;
+const MAX_FEED_CARD_SIGNAL_TAGS: usize = 32;
 const MAX_PROJECTION_BATCH_ID_BYTES: usize = 128;
 const MAX_PROJECTION_BATCH_ITEMS: usize = 1_000;
 const MAX_PROJECTION_BATCH_BYTES: usize = 4 * 1024 * 1024;
 const MAX_ENTITY_ID_UTF8_BYTES: usize = 4_096;
+const MAX_PROJECTION_REBUILD_ROWS: usize = 250_000;
+const MAX_PROJECTION_SOURCE_DOCUMENT_ID_BYTES: usize = 4_096;
 const MAX_JAVASCRIPT_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const BASE_CACHE_KIB: i64 = -32 * 1024;
 
 #[derive(Debug)]
-enum ShadowStoreError {
+pub(super) enum ShadowStoreError {
     Sql(rusqlite::Error),
-    StaleRevision { expected: i64, actual: i64 },
-    InvalidPageLimit { requested: u32, maximum: u32 },
-    InvalidProjectionBatchIdentity { field: &'static str },
-    InvalidProjectionBatchSize { requested: usize, maximum: usize },
-    InvalidProjectionBatchBytes { requested: usize, maximum: usize },
-    InvalidReadAssignment { field: &'static str },
-    ProjectionEntityNotFound { entity_id: String },
-    ProjectionBatchReplayConflict { batch_id: String },
-    UnsupportedSchemaVersion { expected: i64, actual: i64 },
+    StaleRevision {
+        expected: i64,
+        actual: i64,
+    },
+    InvalidPageLimit {
+        requested: u32,
+        maximum: u32,
+    },
+    InvalidProjectionBatchIdentity {
+        field: &'static str,
+    },
+    InvalidProjectionBatchSize {
+        requested: usize,
+        maximum: usize,
+    },
+    InvalidProjectionBatchBytes {
+        requested: usize,
+        maximum: usize,
+    },
+    InvalidProjectionEntityId,
+    InvalidReadAssignment {
+        field: &'static str,
+    },
+    InvalidFeedCardProjection {
+        field: &'static str,
+    },
+    FeedCardExceedsResponseBudget {
+        requested: usize,
+        maximum: usize,
+    },
+    ProjectionEntityNotFound {
+        entity_id: String,
+    },
+    ProjectionBatchReplayConflict {
+        batch_id: String,
+    },
+    InvalidProjectionRebuild {
+        field: &'static str,
+    },
+    ProjectionRebuildConflict {
+        rebuild_id: String,
+    },
+    ProjectionRebuildNotEmpty,
+    ProjectionRebuildIncomplete {
+        rebuild_id: String,
+    },
+    ProjectionRebuildBatchOutOfOrder {
+        expected: i64,
+        actual: i64,
+    },
+    ProjectionRebuildRowCountMismatch {
+        expected: usize,
+        actual: usize,
+    },
+    ProjectionPublicationInvalid {
+        field: &'static str,
+    },
+    ProjectionPublicationConflict {
+        path: PathBuf,
+    },
+    ProjectionCheckpointBusy {
+        busy: i64,
+        log_frames: i64,
+        checkpointed_frames: i64,
+    },
+    ProjectionIntegrityCheckFailed {
+        result: String,
+    },
+    UnsupportedSchemaVersion {
+        expected: i64,
+        actual: i64,
+    },
     UnversionedSchemaPresent,
+    Io(std::io::Error),
 }
 
 impl From<rusqlite::Error> for ShadowStoreError {
@@ -61,7 +135,111 @@ impl From<rusqlite::Error> for ShadowStoreError {
     }
 }
 
-type StoreResult<T> = std::result::Result<T, ShadowStoreError>;
+impl From<std::io::Error> for ShadowStoreError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+
+impl fmt::Display for ShadowStoreError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Sql(error) => write!(formatter, "SQLite error: {error}"),
+            Self::StaleRevision { expected, actual } => write!(
+                formatter,
+                "projection revision changed from {expected} to {actual}"
+            ),
+            Self::InvalidPageLimit { requested, maximum } => write!(
+                formatter,
+                "feed page limit {requested} exceeds the supported range 1 through {maximum}"
+            ),
+            Self::InvalidProjectionBatchIdentity { field } => {
+                write!(formatter, "invalid projection batch {field}")
+            }
+            Self::InvalidProjectionBatchSize { requested, maximum } => write!(
+                formatter,
+                "projection batch contains {requested} operations, maximum {maximum}"
+            ),
+            Self::InvalidProjectionBatchBytes { requested, maximum } => write!(
+                formatter,
+                "projection batch contains {requested} bytes, maximum {maximum}"
+            ),
+            Self::InvalidProjectionEntityId => {
+                formatter.write_str("projection entity ID is empty or exceeds its byte bound")
+            }
+            Self::InvalidReadAssignment { field } => {
+                write!(formatter, "invalid read assignment {field}")
+            }
+            Self::InvalidFeedCardProjection { field } => {
+                write!(formatter, "invalid feed-card projection {field}")
+            }
+            Self::FeedCardExceedsResponseBudget { requested, maximum } => write!(
+                formatter,
+                "one feed card requires {requested} serialized bytes, maximum {maximum}"
+            ),
+            Self::ProjectionEntityNotFound { entity_id } => {
+                write!(formatter, "projection entity {entity_id} was not found")
+            }
+            Self::ProjectionBatchReplayConflict { batch_id } => write!(
+                formatter,
+                "projection batch {batch_id} was retried with different input"
+            ),
+            Self::InvalidProjectionRebuild { field } => {
+                write!(formatter, "invalid projection rebuild {field}")
+            }
+            Self::ProjectionRebuildConflict { rebuild_id } => write!(
+                formatter,
+                "projection rebuild {rebuild_id} does not match its durable state"
+            ),
+            Self::ProjectionRebuildNotEmpty => {
+                formatter.write_str("projection rebuild requires an empty staging store")
+            }
+            Self::ProjectionRebuildIncomplete { rebuild_id } => {
+                write!(formatter, "projection rebuild {rebuild_id} is incomplete")
+            }
+            Self::ProjectionRebuildBatchOutOfOrder { expected, actual } => write!(
+                formatter,
+                "projection rebuild expected batch {expected}, received {actual}"
+            ),
+            Self::ProjectionRebuildRowCountMismatch { expected, actual } => write!(
+                formatter,
+                "projection rebuild expected {expected} projected rows, received {actual}"
+            ),
+            Self::ProjectionPublicationInvalid { field } => {
+                write!(formatter, "invalid projection publication {field}")
+            }
+            Self::ProjectionPublicationConflict { path } => write!(
+                formatter,
+                "projection publication destination already exists: {}",
+                path.display()
+            ),
+            Self::ProjectionCheckpointBusy {
+                busy,
+                log_frames,
+                checkpointed_frames,
+            } => write!(
+                formatter,
+                "projection checkpoint remained busy ({busy}, {log_frames} log frames, \
+                 {checkpointed_frames} checkpointed)"
+            ),
+            Self::ProjectionIntegrityCheckFailed { result } => {
+                write!(formatter, "projection integrity check failed: {result}")
+            }
+            Self::UnsupportedSchemaVersion { expected, actual } => write!(
+                formatter,
+                "shadow schema version {actual} is unsupported, expected {expected}"
+            ),
+            Self::UnversionedSchemaPresent => {
+                formatter.write_str("unversioned shadow schema objects are present")
+            }
+            Self::Io(error) => write!(formatter, "projection file error: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for ShadowStoreError {}
+
+pub(super) type StoreResult<T> = std::result::Result<T, ShadowStoreError>;
 
 /// One canonical schema is consumed by the native engine and checked against
 /// the shared TypeScript DDL. This avoids maintaining a second handwritten
@@ -70,6 +248,8 @@ const SHADOW_SCHEMA_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/shadow-schema-v1.sql");
 const SHADOW_SCHEMA_V2_SQL: &str =
     include_str!("../../../shared/src/library-core/shadow-schema-v2.sql");
+const SHADOW_SCHEMA_V3_SQL: &str =
+    include_str!("../../../shared/src/library-core/shadow-schema-v3.sql");
 const READ_ASSIGNMENT_PROJECTION_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/read-assignment-projection-v1.sql");
 
@@ -79,28 +259,29 @@ const READ_ASSIGNMENT_PROJECTION_V1_SQL: &str =
 /// the timeline. It is not a timestamp and is never presented as one.
 const SORT_AT_ABSENT: i64 = 0;
 
-/// One projected row. Field order matches `SHADOW_COLUMNS`.
-#[derive(Debug, Clone, PartialEq)]
-struct FeedItemRow {
-    pub global_id: String,
-    pub platform: Option<String>,
-    pub content_type: Option<String>,
-    pub published_at: Option<i64>,
-    pub captured_at: Option<i64>,
-    pub author_id: Option<String>,
-    pub author_display_name: Option<String>,
-    pub author_handle: Option<String>,
-    pub source_url: Option<String>,
-    pub hidden: Option<i64>,
-    pub saved: Option<i64>,
-    pub archived: Option<i64>,
-    pub read_at: Option<i64>,
-    pub archived_at: Option<i64>,
-    pub liked_at: Option<i64>,
-    pub tags: Option<String>,
-    pub content_blob: Option<String>,
-    pub preserved_blob: Option<String>,
-    pub rest: String,
+/// One lossless projected row. Field order matches `SHADOW_COLUMNS`.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct FeedItemRow {
+    pub(super) global_id: String,
+    pub(super) platform: Option<String>,
+    pub(super) content_type: Option<String>,
+    pub(super) published_at: Option<i64>,
+    pub(super) captured_at: Option<i64>,
+    pub(super) author_id: Option<String>,
+    pub(super) author_display_name: Option<String>,
+    pub(super) author_handle: Option<String>,
+    pub(super) source_url: Option<String>,
+    pub(super) hidden: Option<i64>,
+    pub(super) saved: Option<i64>,
+    pub(super) archived: Option<i64>,
+    pub(super) read_at: Option<i64>,
+    pub(super) archived_at: Option<i64>,
+    pub(super) liked_at: Option<i64>,
+    pub(super) tags: Option<String>,
+    pub(super) content_blob: Option<String>,
+    pub(super) preserved_blob: Option<String>,
+    pub(super) rest: String,
 }
 
 impl FeedItemRow {
@@ -146,7 +327,88 @@ impl FeedItemRow {
         .saturating_mul(std::mem::size_of::<i64>());
         string_bytes.saturating_add(numeric_bytes)
     }
+}
 
+/// One compact feed-card DTO.
+///
+/// This is intentionally not a `FeedItemRow`. The lossless row contains full
+/// content, preserved reader bodies, and the unmodelled-field escape object.
+/// Returning those from a nominally bounded page would cap row count while
+/// leaving response bytes proportional to corpus contents. This DTO selects
+/// only the fields the feed card can render, with independent nested limits.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct FeedCardRow {
+    global_id: String,
+    platform: Option<String>,
+    content_type: Option<String>,
+    published_at: Option<i64>,
+    captured_at: Option<i64>,
+    author_id: Option<String>,
+    author_display_name: Option<String>,
+    author_handle: Option<String>,
+    author_avatar_url: Option<String>,
+    source_url: Option<String>,
+    read_at: Option<i64>,
+    saved: Option<bool>,
+    archived: Option<bool>,
+    liked: Option<bool>,
+    liked_at: Option<i64>,
+    liked_synced_at: Option<i64>,
+    content_text: Option<String>,
+    media_urls: Vec<String>,
+    media_types: Vec<String>,
+    link_preview_title: Option<String>,
+    tags: Vec<String>,
+    engagement_likes: Option<i64>,
+    engagement_comments: Option<i64>,
+    location_name: Option<String>,
+    reading_time_minutes: Option<i64>,
+    content_signal_tags: Vec<String>,
+    event_starts_at: Option<i64>,
+    event_confidence_basis_points: Option<i64>,
+    #[serde(skip)]
+    sort_at: i64,
+}
+
+fn decode_bounded_string_array(
+    encoded: String,
+    maximum: usize,
+    field: &'static str,
+) -> SqlResult<Vec<String>> {
+    let values = serde_json::from_str::<Vec<String>>(&encoded).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(error))
+    })?;
+    if values.len() > maximum {
+        return Err(rusqlite::Error::FromSqlConversionFailure(
+            0,
+            rusqlite::types::Type::Text,
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("{field} exceeded its nested row bound"),
+            )),
+        ));
+    }
+    Ok(values)
+}
+
+fn optional_boolean(row: &Row<'_>, index: usize) -> SqlResult<Option<bool>> {
+    match row.get::<_, Option<i64>>(index)? {
+        None => Ok(None),
+        Some(0) => Ok(Some(false)),
+        Some(1) => Ok(Some(true)),
+        Some(_) => Err(rusqlite::Error::FromSqlConversionFailure(
+            index,
+            rusqlite::types::Type::Integer,
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "feed-card boolean must be zero, one, or null",
+            )),
+        )),
+    }
+}
+
+impl FeedCardRow {
     fn from_row(row: &Row<'_>) -> SqlResult<Self> {
         Ok(Self {
             global_id: row.get(0)?,
@@ -157,40 +419,87 @@ impl FeedItemRow {
             author_id: row.get(5)?,
             author_display_name: row.get(6)?,
             author_handle: row.get(7)?,
-            source_url: row.get(8)?,
-            hidden: row.get(9)?,
-            saved: row.get(10)?,
-            archived: row.get(11)?,
-            read_at: row.get(12)?,
-            archived_at: row.get(13)?,
+            author_avatar_url: row.get(8)?,
+            source_url: row.get(9)?,
+            read_at: row.get(10)?,
+            saved: optional_boolean(row, 11)?,
+            archived: optional_boolean(row, 12)?,
+            liked: optional_boolean(row, 13)?,
             liked_at: row.get(14)?,
-            tags: row.get(15)?,
-            content_blob: row.get(16)?,
-            preserved_blob: row.get(17)?,
-            rest: row.get(18)?,
+            liked_synced_at: row.get(15)?,
+            content_text: row.get(16)?,
+            media_urls: decode_bounded_string_array(
+                row.get(17)?,
+                MAX_FEED_CARD_MEDIA,
+                "media_urls",
+            )?,
+            media_types: decode_bounded_string_array(
+                row.get(18)?,
+                MAX_FEED_CARD_MEDIA,
+                "media_types",
+            )?,
+            link_preview_title: row.get(19)?,
+            tags: decode_bounded_string_array(row.get(20)?, MAX_FEED_CARD_TAGS, "tags")?,
+            engagement_likes: row.get(21)?,
+            engagement_comments: row.get(22)?,
+            location_name: row.get(23)?,
+            reading_time_minutes: row.get(24)?,
+            content_signal_tags: decode_bounded_string_array(
+                row.get(25)?,
+                MAX_FEED_CARD_SIGNAL_TAGS,
+                "content_signal_tags",
+            )?,
+            event_starts_at: row.get(26)?,
+            event_confidence_basis_points: row.get(27)?,
+            sort_at: row.get(28)?,
         })
+    }
+
+    fn serialized_size_bytes(&self) -> StoreResult<usize> {
+        serde_json::to_vec(self)
+            .map(|bytes| bytes.len())
+            .map_err(|_| ShadowStoreError::InvalidFeedCardProjection {
+                field: "serialized_row",
+            })
+    }
+
+    fn sort_key(&self) -> i64 {
+        self.sort_at
     }
 }
 
 /// Opaque resume point for the next page. Both parts are required: `sort_at`
 /// alone is not unique, and a cursor that cannot resume uniquely drops or
 /// repeats rows at the page boundary.
-#[derive(Debug, Clone, PartialEq)]
-struct PageCursor {
-    revision: i64,
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct PageCursor {
+    pub(super) revision: i64,
     pub sort_at: i64,
     pub global_id: String,
 }
 
+impl PageCursor {
+    fn serialized_size_bytes(&self) -> StoreResult<usize> {
+        serde_json::to_vec(self)
+            .map(|bytes| bytes.len())
+            .map_err(|_| ShadowStoreError::InvalidFeedCardProjection {
+                field: "serialized_cursor",
+            })
+    }
+}
+
 #[derive(Debug)]
-struct FeedPage {
-    revision: i64,
-    pub rows: Vec<FeedItemRow>,
+pub(super) struct FeedPage {
+    pub(super) revision: i64,
+    pub(super) total_count: i64,
+    pub(super) serialized_row_bytes: usize,
+    pub(super) rows: Vec<FeedCardRow>,
     /// `None` when the page reached the end of the feed.
     pub next_cursor: Option<PageCursor>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ProjectionCommit {
     batch_id: String,
     input_digest: String,
@@ -198,6 +507,42 @@ struct ProjectionCommit {
     revision: i64,
     upserted: usize,
     deleted: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ProjectionSourceV1 {
+    pub(super) document_id: String,
+    pub(super) heads_digest: String,
+    pub(super) head_count: i64,
+    pub(super) storage_generation: i64,
+    pub(super) storage_save_revision: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ProjectionRebuildState {
+    pub(super) rebuild_id: String,
+    pub(super) source: ProjectionSourceV1,
+    pub(super) total_rows: usize,
+    pub(super) next_batch_index: i64,
+    pub(super) projection_revision: i64,
+    pub(super) projected_rows: usize,
+    pub(super) complete: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ProjectionRebuildCommit {
+    projection: ProjectionCommit,
+    pub(super) state: ProjectionRebuildState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct PublishedProjectionGeneration {
+    pub(super) path: PathBuf,
+    pub(super) rebuild_id: String,
+    pub(super) source: ProjectionSourceV1,
+    pub(super) total_rows: usize,
+    pub(super) projection_revision: i64,
+    pub(super) byte_length: u64,
 }
 
 #[derive(Debug, PartialEq)]
@@ -213,15 +558,105 @@ const VISIBLE_PREDICATE: &str = "archived IS NOT 1 AND hidden IS NOT 1";
 /// Two statements rather than one with a nullable cursor. A single statement
 /// would need `(?1 IS NULL OR sortAt < ?1 ...)`, and a leading expression the
 /// index cannot satisfy is precisely what forces a temp B-tree sort.
-const PAGE_FIRST_SQL: &str = "SELECT globalId, platform, contentType, publishedAt, capturedAt, \
-authorId, authorDisplayName, authorHandle, sourceUrl, hidden, saved, archived, readAt, \
-archivedAt, likedAt, tags, contentBlob, preservedBlob, rest, sortAt \
+const PAGE_FIRST_SQL: &str = "SELECT globalId, substr(platform, 1, 64), \
+substr(contentType, 1, 128), publishedAt, capturedAt, \
+substr(authorId, 1, 4096), substr(authorDisplayName, 1, 512), substr(authorHandle, 1, 256), \
+CASE WHEN json_type(rest, '$.__author.avatarUrl') = 'text' \
+  THEN substr(json_extract(rest, '$.__author.avatarUrl'), 1, 2048) END, \
+substr(sourceUrl, 1, 2048), readAt, saved, archived, \
+CASE json_type(rest, '$.__userState.liked') \
+  WHEN 'true' THEN 1 WHEN 'false' THEN 0 END, likedAt, \
+CASE WHEN json_type(rest, '$.__userState.likedSyncedAt') = 'integer' \
+  THEN json_extract(rest, '$.__userState.likedSyncedAt') END, \
+CASE WHEN json_type(contentBlob, '$.text') = 'text' \
+  THEN substr(json_extract(contentBlob, '$.text'), 1, 1500) END, \
+CASE WHEN json_type(contentBlob, '$.mediaUrls') = 'array' THEN \
+  COALESCE((SELECT json_group_array(value) FROM (\
+  SELECT substr(value, 1, 2048) AS value \
+  FROM json_each(contentBlob, '$.mediaUrls') WHERE type = 'text' LIMIT 8\
+  )), '[]') ELSE '[]' END, \
+CASE WHEN json_type(contentBlob, '$.mediaTypes') = 'array' THEN \
+  COALESCE((SELECT json_group_array(value) FROM (\
+  SELECT substr(value, 1, 16) AS value \
+  FROM json_each(contentBlob, '$.mediaTypes') WHERE type = 'text' LIMIT 8\
+  )), '[]') ELSE '[]' END, \
+CASE WHEN json_type(contentBlob, '$.linkPreview.title') = 'text' \
+  THEN substr(json_extract(contentBlob, '$.linkPreview.title'), 1, 512) END, \
+CASE WHEN json_type(tags) = 'array' THEN \
+  COALESCE((SELECT json_group_array(value) FROM (\
+  SELECT substr(value, 1, 256) AS value \
+  FROM json_each(tags) WHERE type = 'text' LIMIT 32\
+  )), '[]') ELSE '[]' END, \
+CASE WHEN json_type(rest, '$.engagement.likes') = 'integer' \
+  THEN json_extract(rest, '$.engagement.likes') END, \
+CASE WHEN json_type(rest, '$.engagement.comments') = 'integer' \
+  THEN json_extract(rest, '$.engagement.comments') END, \
+CASE WHEN json_type(rest, '$.location.name') = 'text' \
+  THEN substr(json_extract(rest, '$.location.name'), 1, 512) END, \
+CASE WHEN json_type(preservedBlob, '$.readingTime') = 'integer' \
+  THEN json_extract(preservedBlob, '$.readingTime') END, \
+CASE WHEN json_type(rest, '$.contentSignals.tags') = 'array' THEN \
+  COALESCE((SELECT json_group_array(value) FROM (\
+  SELECT substr(value, 1, 64) AS value \
+  FROM json_each(rest, '$.contentSignals.tags') WHERE type = 'text' LIMIT 32\
+  )), '[]') ELSE '[]' END, \
+CASE WHEN json_type(rest, '$.eventCandidate.startsAt') = 'integer' \
+  THEN json_extract(rest, '$.eventCandidate.startsAt') END, \
+CASE WHEN json_type(rest, '$.eventCandidate.confidence') IN ('integer', 'real') \
+  AND json_extract(rest, '$.eventCandidate.confidence') BETWEEN 0 AND 1 \
+  THEN CAST(ROUND(json_extract(rest, '$.eventCandidate.confidence') * 10000) AS INTEGER) END, \
+sortAt \
 FROM feed_items WHERE archived IS NOT 1 AND hidden IS NOT 1 \
 ORDER BY sortAt DESC, globalId ASC LIMIT ?1;";
 
-const PAGE_AFTER_SQL: &str = "SELECT globalId, platform, contentType, publishedAt, capturedAt, \
-authorId, authorDisplayName, authorHandle, sourceUrl, hidden, saved, archived, readAt, \
-archivedAt, likedAt, tags, contentBlob, preservedBlob, rest, sortAt \
+const PAGE_AFTER_SQL: &str = "SELECT globalId, substr(platform, 1, 64), \
+substr(contentType, 1, 128), publishedAt, capturedAt, \
+substr(authorId, 1, 4096), substr(authorDisplayName, 1, 512), substr(authorHandle, 1, 256), \
+CASE WHEN json_type(rest, '$.__author.avatarUrl') = 'text' \
+  THEN substr(json_extract(rest, '$.__author.avatarUrl'), 1, 2048) END, \
+substr(sourceUrl, 1, 2048), readAt, saved, archived, \
+CASE json_type(rest, '$.__userState.liked') \
+  WHEN 'true' THEN 1 WHEN 'false' THEN 0 END, likedAt, \
+CASE WHEN json_type(rest, '$.__userState.likedSyncedAt') = 'integer' \
+  THEN json_extract(rest, '$.__userState.likedSyncedAt') END, \
+CASE WHEN json_type(contentBlob, '$.text') = 'text' \
+  THEN substr(json_extract(contentBlob, '$.text'), 1, 1500) END, \
+CASE WHEN json_type(contentBlob, '$.mediaUrls') = 'array' THEN \
+  COALESCE((SELECT json_group_array(value) FROM (\
+  SELECT substr(value, 1, 2048) AS value \
+  FROM json_each(contentBlob, '$.mediaUrls') WHERE type = 'text' LIMIT 8\
+  )), '[]') ELSE '[]' END, \
+CASE WHEN json_type(contentBlob, '$.mediaTypes') = 'array' THEN \
+  COALESCE((SELECT json_group_array(value) FROM (\
+  SELECT substr(value, 1, 16) AS value \
+  FROM json_each(contentBlob, '$.mediaTypes') WHERE type = 'text' LIMIT 8\
+  )), '[]') ELSE '[]' END, \
+CASE WHEN json_type(contentBlob, '$.linkPreview.title') = 'text' \
+  THEN substr(json_extract(contentBlob, '$.linkPreview.title'), 1, 512) END, \
+CASE WHEN json_type(tags) = 'array' THEN \
+  COALESCE((SELECT json_group_array(value) FROM (\
+  SELECT substr(value, 1, 256) AS value \
+  FROM json_each(tags) WHERE type = 'text' LIMIT 32\
+  )), '[]') ELSE '[]' END, \
+CASE WHEN json_type(rest, '$.engagement.likes') = 'integer' \
+  THEN json_extract(rest, '$.engagement.likes') END, \
+CASE WHEN json_type(rest, '$.engagement.comments') = 'integer' \
+  THEN json_extract(rest, '$.engagement.comments') END, \
+CASE WHEN json_type(rest, '$.location.name') = 'text' \
+  THEN substr(json_extract(rest, '$.location.name'), 1, 512) END, \
+CASE WHEN json_type(preservedBlob, '$.readingTime') = 'integer' \
+  THEN json_extract(preservedBlob, '$.readingTime') END, \
+CASE WHEN json_type(rest, '$.contentSignals.tags') = 'array' THEN \
+  COALESCE((SELECT json_group_array(value) FROM (\
+  SELECT substr(value, 1, 64) AS value \
+  FROM json_each(rest, '$.contentSignals.tags') WHERE type = 'text' LIMIT 32\
+  )), '[]') ELSE '[]' END, \
+CASE WHEN json_type(rest, '$.eventCandidate.startsAt') = 'integer' \
+  THEN json_extract(rest, '$.eventCandidate.startsAt') END, \
+CASE WHEN json_type(rest, '$.eventCandidate.confidence') IN ('integer', 'real') \
+  AND json_extract(rest, '$.eventCandidate.confidence') BETWEEN 0 AND 1 \
+  THEN CAST(ROUND(json_extract(rest, '$.eventCandidate.confidence') * 10000) AS INTEGER) END, \
+sortAt \
 FROM feed_items WHERE archived IS NOT 1 AND hidden IS NOT 1 \
 AND (sortAt < ?1 OR (sortAt = ?1 AND globalId > ?2)) \
 ORDER BY sortAt DESC, globalId ASC LIMIT ?3;";
@@ -247,14 +682,63 @@ const CURRENT_REVISION_SQL: &str =
 const ADVANCE_REVISION_SQL: &str =
     "UPDATE library_meta SET integerValue = integerValue + 1 WHERE key = 'projectionRevision';";
 
-struct ShadowStore {
+#[cfg(unix)]
+pub(super) fn publish_projection_file(staging: &Path, destination: &Path) -> std::io::Result<()> {
+    let parent = destination
+        .parent()
+        .expect("validated publication destination has a parent");
+    // Creating the second hard link is the atomic publication point and fails
+    // when the immutable destination already exists. A plain Unix rename would
+    // replace a destination created after the caller's preflight check.
+    std::fs::hard_link(staging, destination)?;
+    File::open(parent)?.sync_all()?;
+    std::fs::remove_file(staging)?;
+    File::open(parent)?.sync_all()
+}
+
+#[cfg(windows)]
+pub(super) fn publish_projection_file(staging: &Path, destination: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_WRITE_THROUGH};
+
+    let staging_wide = staging
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let destination_wide = destination
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let moved = unsafe {
+        MoveFileExW(
+            staging_wide.as_ptr(),
+            destination_wide.as_ptr(),
+            MOVEFILE_WRITE_THROUGH,
+        )
+    };
+    if moved == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(not(any(unix, windows)))]
+pub(super) fn publish_projection_file(staging: &Path, destination: &Path) -> std::io::Result<()> {
+    std::fs::rename(staging, destination)
+}
+
+pub(super) struct ShadowStore {
     conn: Connection,
+    path: Option<PathBuf>,
 }
 
 impl ShadowStore {
-    fn open(path: &Path) -> StoreResult<Self> {
+    pub(super) fn open(path: &Path) -> StoreResult<Self> {
         let mut store = Self {
             conn: Connection::open(path)?,
+            path: Some(path.to_path_buf()),
         };
         store.configure()?;
         store.migrate()?;
@@ -264,6 +748,7 @@ impl ShadowStore {
     fn open_in_memory() -> StoreResult<Self> {
         let mut store = Self {
             conn: Connection::open_in_memory()?,
+            path: None,
         };
         store.configure()?;
         store.migrate()?;
@@ -321,6 +806,9 @@ impl ShadowStore {
         if prior < 2 {
             tx.execute_batch(SHADOW_SCHEMA_V2_SQL)?;
         }
+        if prior < 3 {
+            tx.execute_batch(SHADOW_SCHEMA_V3_SQL)?;
+        }
         let actual = tx.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
         if actual != SHADOW_SCHEMA_VERSION {
             return Err(ShadowStoreError::UnsupportedSchemaVersion {
@@ -350,6 +838,481 @@ impl ShadowStore {
             });
         }
         Ok(())
+    }
+
+    fn validate_projection_batch_payload(
+        rows: &[FeedItemRow],
+        deleted_ids: &[String],
+    ) -> StoreResult<()> {
+        let requested = rows.len().saturating_add(deleted_ids.len());
+        if !(1..=MAX_PROJECTION_BATCH_ITEMS).contains(&requested) {
+            return Err(ShadowStoreError::InvalidProjectionBatchSize {
+                requested,
+                maximum: MAX_PROJECTION_BATCH_ITEMS,
+            });
+        }
+        if rows
+            .iter()
+            .any(|row| row.global_id.is_empty() || row.global_id.len() > MAX_ENTITY_ID_UTF8_BYTES)
+            || deleted_ids
+                .iter()
+                .any(|id| id.is_empty() || id.len() > MAX_ENTITY_ID_UTF8_BYTES)
+        {
+            return Err(ShadowStoreError::InvalidProjectionEntityId);
+        }
+        let projected_bytes = rows
+            .iter()
+            .fold(0usize, |total, row| {
+                total.saturating_add(row.projected_size_bytes())
+            })
+            .saturating_add(
+                deleted_ids
+                    .iter()
+                    .fold(0usize, |total, id| total.saturating_add(id.len())),
+            );
+        if projected_bytes > MAX_PROJECTION_BATCH_BYTES {
+            return Err(ShadowStoreError::InvalidProjectionBatchBytes {
+                requested: projected_bytes,
+                maximum: MAX_PROJECTION_BATCH_BYTES,
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_projection_rebuild_identity(
+        rebuild_id: &str,
+        source: &ProjectionSourceV1,
+        total_rows: usize,
+    ) -> StoreResult<()> {
+        if rebuild_id.is_empty() || rebuild_id.len() > MAX_PROJECTION_BATCH_ID_BYTES {
+            return Err(ShadowStoreError::InvalidProjectionRebuild {
+                field: "rebuild_id",
+            });
+        }
+        if source.document_id.is_empty()
+            || source.document_id.len() > MAX_PROJECTION_SOURCE_DOCUMENT_ID_BYTES
+        {
+            return Err(ShadowStoreError::InvalidProjectionRebuild {
+                field: "source_document_id",
+            });
+        }
+        if source.heads_digest.len() != 64
+            || !source
+                .heads_digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(ShadowStoreError::InvalidProjectionRebuild {
+                field: "source_heads_digest",
+            });
+        }
+        if !(0..=MAX_JAVASCRIPT_SAFE_INTEGER).contains(&source.head_count) {
+            return Err(ShadowStoreError::InvalidProjectionRebuild {
+                field: "source_head_count",
+            });
+        }
+        if !(0..=MAX_JAVASCRIPT_SAFE_INTEGER).contains(&source.storage_generation) {
+            return Err(ShadowStoreError::InvalidProjectionRebuild {
+                field: "source_generation",
+            });
+        }
+        if !(0..=MAX_JAVASCRIPT_SAFE_INTEGER).contains(&source.storage_save_revision) {
+            return Err(ShadowStoreError::InvalidProjectionRebuild {
+                field: "source_save_revision",
+            });
+        }
+        if total_rows > MAX_PROJECTION_REBUILD_ROWS {
+            return Err(ShadowStoreError::InvalidProjectionRebuild {
+                field: "total_rows",
+            });
+        }
+        Ok(())
+    }
+
+    fn projection_rebuild_state_in(
+        transaction: &Transaction<'_>,
+    ) -> SqlResult<Option<ProjectionRebuildState>> {
+        transaction
+            .query_row(
+                "SELECT rebuildId, sourceDocumentId, sourceHeadsDigest, sourceHeadCount, \
+                 sourceGeneration, sourceSaveRevision, totalRows, nextBatchIndex, \
+                 projectionRevision, projectedRows, complete \
+                 FROM projection_rebuild_state WHERE singleton = 1;",
+                [],
+                |row| {
+                    Ok(ProjectionRebuildState {
+                        rebuild_id: row.get(0)?,
+                        source: ProjectionSourceV1 {
+                            document_id: row.get(1)?,
+                            heads_digest: row.get(2)?,
+                            head_count: row.get(3)?,
+                            storage_generation: row.get(4)?,
+                            storage_save_revision: row.get(5)?,
+                        },
+                        total_rows: row.get::<_, i64>(6)? as usize,
+                        next_batch_index: row.get(7)?,
+                        projection_revision: row.get(8)?,
+                        projected_rows: row.get::<_, i64>(9)? as usize,
+                        complete: row.get::<_, i64>(10)? == 1,
+                    })
+                },
+            )
+            .optional()
+    }
+
+    fn require_matching_projection_rebuild(
+        state: ProjectionRebuildState,
+        rebuild_id: &str,
+        source: &ProjectionSourceV1,
+        total_rows: usize,
+    ) -> StoreResult<ProjectionRebuildState> {
+        if state.rebuild_id != rebuild_id
+            || state.source != *source
+            || state.total_rows != total_rows
+        {
+            return Err(ShadowStoreError::ProjectionRebuildConflict {
+                rebuild_id: rebuild_id.to_string(),
+            });
+        }
+        Ok(state)
+    }
+
+    fn verify_projection_rebuild_state_in(
+        transaction: &Transaction<'_>,
+        state: &ProjectionRebuildState,
+    ) -> StoreResult<()> {
+        let projection_revision = Self::revision_in(transaction)?;
+        let stored_rows = transaction.query_row("SELECT COUNT(*) FROM feed_items;", [], |row| {
+            row.get::<_, i64>(0)
+        })? as usize;
+        let rebuild_batches = transaction.query_row(
+            "SELECT COUNT(*) FROM projection_rebuild_batches \
+             WHERE rebuildId = ?1;",
+            params![state.rebuild_id],
+            |row| row.get::<_, i64>(0),
+        )?;
+        let projection_receipts =
+            transaction.query_row("SELECT COUNT(*) FROM projection_batches;", [], |row| {
+                row.get::<_, i64>(0)
+            })?;
+        if state.projection_revision != projection_revision
+            || state.projected_rows != stored_rows
+            || state.next_batch_index != rebuild_batches
+            || rebuild_batches != projection_receipts
+            || state.complete != (state.projected_rows == state.total_rows)
+        {
+            return Err(ShadowStoreError::ProjectionRebuildConflict {
+                rebuild_id: state.rebuild_id.clone(),
+            });
+        }
+        Ok(())
+    }
+
+    fn require_readable_projection_in(transaction: &Transaction<'_>) -> StoreResult<()> {
+        if let Some(state) = Self::projection_rebuild_state_in(transaction)? {
+            if !state.complete {
+                Self::verify_projection_rebuild_state_in(transaction, &state)?;
+                return Err(ShadowStoreError::ProjectionRebuildIncomplete {
+                    rebuild_id: state.rebuild_id,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn require_complete_projection_rebuild(
+        conn: &Connection,
+        rebuild_id: &str,
+        source: &ProjectionSourceV1,
+        total_rows: usize,
+    ) -> StoreResult<ProjectionRebuildState> {
+        let transaction = conn.unchecked_transaction()?;
+        let state = Self::projection_rebuild_state_in(&transaction)?.ok_or(
+            ShadowStoreError::ProjectionPublicationInvalid {
+                field: "missing_rebuild_state",
+            },
+        )?;
+        let state =
+            Self::require_matching_projection_rebuild(state, rebuild_id, source, total_rows)?;
+        Self::verify_projection_rebuild_state_in(&transaction, &state)?;
+        if !state.complete {
+            return Err(ShadowStoreError::ProjectionRebuildIncomplete {
+                rebuild_id: state.rebuild_id,
+            });
+        }
+        transaction.commit()?;
+        Ok(state)
+    }
+
+    fn verify_quick_check(conn: &Connection) -> StoreResult<()> {
+        let mut statement = conn.prepare("PRAGMA quick_check;")?;
+        let results = statement
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<SqlResult<Vec<_>>>()?;
+        if results.as_slice() != ["ok"] {
+            return Err(ShadowStoreError::ProjectionIntegrityCheckFailed {
+                result: results.join("; "),
+            });
+        }
+        Ok(())
+    }
+
+    fn verify_foreign_keys(conn: &Connection) -> StoreResult<()> {
+        let problem = conn
+            .query_row("PRAGMA foreign_key_check;", [], |_| Ok(()))
+            .optional()?;
+        if problem.is_some() {
+            return Err(ShadowStoreError::ProjectionPublicationInvalid {
+                field: "foreign_keys",
+            });
+        }
+        Ok(())
+    }
+
+    fn schema_catalog(conn: &Connection) -> StoreResult<Vec<(String, String, String, String)>> {
+        let mut statement = conn.prepare(
+            "SELECT type, name, tbl_name, COALESCE(sql, '')
+             FROM sqlite_schema
+             WHERE name NOT LIKE 'sqlite_%'
+             ORDER BY type, name, tbl_name;",
+        )?;
+        let catalog = statement
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })?
+            .collect::<SqlResult<Vec<_>>>()?;
+        Ok(catalog)
+    }
+
+    fn verify_schema_catalog(conn: &Connection) -> StoreResult<()> {
+        let reference = Self::open_in_memory()?;
+        if Self::schema_catalog(conn)? != Self::schema_catalog(&reference.conn)? {
+            return Err(ShadowStoreError::ProjectionPublicationInvalid {
+                field: "schema_catalog",
+            });
+        }
+        Ok(())
+    }
+
+    pub(super) fn open_published_projection_generation_read_only(
+        path: &Path,
+        rebuild_id: &str,
+        source: &ProjectionSourceV1,
+        total_rows: usize,
+    ) -> StoreResult<(Self, PublishedProjectionGeneration)> {
+        Self::validate_projection_rebuild_identity(rebuild_id, source, total_rows)?;
+        let before = std::fs::symlink_metadata(path)?;
+        if !before.file_type().is_file() {
+            return Err(ShadowStoreError::ProjectionPublicationInvalid {
+                field: "published_file_type",
+            });
+        }
+        let conn = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY
+                | OpenFlags::SQLITE_OPEN_NO_MUTEX
+                | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
+                | OpenFlags::SQLITE_OPEN_NOFOLLOW
+                | OpenFlags::SQLITE_OPEN_EXRESCODE,
+        )?;
+        conn.busy_timeout(BUSY_TIMEOUT)?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
+        conn.pragma_update(None, "cache_size", BASE_CACHE_KIB)?;
+        conn.pragma_update(None, "mmap_size", 0)?;
+        conn.pragma_update(None, "temp_store", "FILE")?;
+        let version = conn.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
+        if version != SHADOW_SCHEMA_VERSION {
+            return Err(ShadowStoreError::UnsupportedSchemaVersion {
+                expected: SHADOW_SCHEMA_VERSION,
+                actual: version,
+            });
+        }
+        Self::verify_quick_check(&conn)?;
+        Self::verify_foreign_keys(&conn)?;
+        Self::verify_schema_catalog(&conn)?;
+        let state =
+            Self::require_complete_projection_rebuild(&conn, rebuild_id, source, total_rows)?;
+        let after = std::fs::symlink_metadata(path)?;
+        if !after.file_type().is_file() || !same_published_file_generation(&before, &after) {
+            return Err(ShadowStoreError::ProjectionPublicationInvalid {
+                field: "published_file_generation",
+            });
+        }
+        let generation = PublishedProjectionGeneration {
+            path: path.to_path_buf(),
+            rebuild_id: state.rebuild_id,
+            source: state.source,
+            total_rows: state.total_rows,
+            projection_revision: state.projection_revision,
+            byte_length: after.len(),
+        };
+        Ok((
+            Self {
+                conn,
+                path: Some(path.to_path_buf()),
+            },
+            generation,
+        ))
+    }
+
+    pub(super) fn inspect_published_projection_generation(
+        path: &Path,
+        rebuild_id: &str,
+        source: &ProjectionSourceV1,
+        total_rows: usize,
+    ) -> StoreResult<PublishedProjectionGeneration> {
+        let (_, generation) = Self::open_published_projection_generation_read_only(
+            path, rebuild_id, source, total_rows,
+        )?;
+        Ok(generation)
+    }
+
+    /// Seals one complete derived-shadow rebuild into an immutable generation.
+    ///
+    /// The staging and destination files must be distinct absolute paths in the
+    /// same directory. Publication checkpoints and removes WAL mode, verifies
+    /// the complete rebuild and SQLite quick check, closes and syncs the
+    /// staging file, then performs one durable rename to a destination that
+    /// must not already exist. The destination is verified read-only before the
+    /// receipt returns. This publishes bytes only. Assigning the generation to
+    /// a reader is a later activation boundary.
+    pub(super) fn publish_complete_projection_generation(
+        self,
+        destination: &Path,
+        rebuild_id: &str,
+        source: &ProjectionSourceV1,
+        total_rows: usize,
+    ) -> StoreResult<PublishedProjectionGeneration> {
+        Self::validate_projection_rebuild_identity(rebuild_id, source, total_rows)?;
+        let staging =
+            self.path
+                .as_deref()
+                .ok_or(ShadowStoreError::ProjectionPublicationInvalid {
+                    field: "in_memory_store",
+                })?;
+        if !staging.is_absolute()
+            || !destination.is_absolute()
+            || staging == destination
+            || staging.parent().is_none()
+            || staging.parent() != destination.parent()
+            || staging.file_name().is_none()
+            || destination.file_name().is_none()
+        {
+            return Err(ShadowStoreError::ProjectionPublicationInvalid { field: "paths" });
+        }
+        if !std::fs::symlink_metadata(staging)?.file_type().is_file() {
+            return Err(ShadowStoreError::ProjectionPublicationInvalid {
+                field: "staging_file_type",
+            });
+        }
+        match std::fs::symlink_metadata(destination) {
+            Ok(_) => {
+                return Err(ShadowStoreError::ProjectionPublicationConflict {
+                    path: destination.to_path_buf(),
+                })
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+
+        Self::require_complete_projection_rebuild(&self.conn, rebuild_id, source, total_rows)?;
+        let (busy, log_frames, checkpointed_frames) =
+            self.conn
+                .query_row("PRAGMA wal_checkpoint(TRUNCATE);", [], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                })?;
+        if busy != 0 || log_frames != checkpointed_frames {
+            return Err(ShadowStoreError::ProjectionCheckpointBusy {
+                busy,
+                log_frames,
+                checkpointed_frames,
+            });
+        }
+        let journal_mode = self
+            .conn
+            .query_row("PRAGMA journal_mode = DELETE;", [], |row| {
+                row.get::<_, String>(0)
+            })?;
+        if journal_mode != "delete" {
+            return Err(ShadowStoreError::ProjectionPublicationInvalid {
+                field: "journal_mode",
+            });
+        }
+        Self::verify_quick_check(&self.conn)?;
+
+        let ShadowStore { conn, path } = self;
+        conn.close()
+            .map_err(|(_, error)| ShadowStoreError::Sql(error))?;
+        let staging = path.expect("disk store path was validated");
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&staging)?
+            .sync_all()?;
+        publish_projection_file(&staging, destination)?;
+        File::open(destination)?.sync_all()?;
+
+        Self::inspect_published_projection_generation(destination, rebuild_id, source, total_rows)
+    }
+
+    pub(super) fn begin_projection_rebuild(
+        &mut self,
+        rebuild_id: &str,
+        source: &ProjectionSourceV1,
+        total_rows: usize,
+    ) -> StoreResult<ProjectionRebuildState> {
+        Self::validate_projection_rebuild_identity(rebuild_id, source, total_rows)?;
+        let transaction = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(state) = Self::projection_rebuild_state_in(&transaction)? {
+            let state =
+                Self::require_matching_projection_rebuild(state, rebuild_id, source, total_rows)?;
+            Self::verify_projection_rebuild_state_in(&transaction, &state)?;
+            transaction.commit()?;
+            return Ok(state);
+        }
+
+        let projection_revision = Self::revision_in(&transaction)?;
+        let existing_rows =
+            transaction.query_row("SELECT COUNT(*) FROM feed_items;", [], |row| {
+                row.get::<_, i64>(0)
+            })?;
+        let existing_receipts =
+            transaction.query_row("SELECT COUNT(*) FROM projection_batches;", [], |row| {
+                row.get::<_, i64>(0)
+            })?;
+        if projection_revision != 0 || existing_rows != 0 || existing_receipts != 0 {
+            return Err(ShadowStoreError::ProjectionRebuildNotEmpty);
+        }
+
+        let complete = total_rows == 0;
+        transaction.execute(
+            "INSERT INTO projection_rebuild_state (\
+             singleton, rebuildId, sourceSchemaVersion, sourceDocumentId, \
+             sourceHeadsDigest, sourceHeadCount, sourceGeneration, \
+             sourceSaveRevision, totalRows, nextBatchIndex, projectionRevision, \
+             projectedRows, complete) \
+             VALUES (1, ?1, 1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 0, 0, ?8);",
+            params![
+                rebuild_id,
+                source.document_id,
+                source.heads_digest,
+                source.head_count,
+                source.storage_generation,
+                source.storage_save_revision,
+                total_rows as i64,
+                i64::from(complete),
+            ],
+        )?;
+        let state = Self::projection_rebuild_state_in(&transaction)?
+            .expect("projection rebuild state was inserted in this transaction");
+        transaction.commit()?;
+        Ok(state)
     }
 
     fn projection_receipt_in(
@@ -433,57 +1396,21 @@ impl ShadowStore {
         })
     }
 
-    /// Applies one projection delta, advances its revision, and records its
-    /// durable retry receipt in the same transaction.
-    ///
-    /// Exact retry after response loss returns the original receipt without
-    /// reapplying rows. Reusing a batch ID with different input or a different
-    /// previous revision fails closed. This receipt belongs only to the dark
-    /// derived projection. It is not an authoritative Library Core operation
-    /// receipt and grants no mutation authority.
-    fn apply_projection_batch(
-        &mut self,
+    fn apply_projection_batch_in(
+        transaction: &Transaction<'_>,
         batch_id: &str,
         input_digest: &str,
         expected_revision: i64,
         rows: &[FeedItemRow],
         deleted_ids: &[String],
     ) -> StoreResult<ProjectionCommit> {
-        Self::validate_projection_batch_identity(batch_id, input_digest)?;
-        let requested = rows.len().saturating_add(deleted_ids.len());
-        if !(1..=MAX_PROJECTION_BATCH_ITEMS).contains(&requested) {
-            return Err(ShadowStoreError::InvalidProjectionBatchSize {
-                requested,
-                maximum: MAX_PROJECTION_BATCH_ITEMS,
-            });
-        }
-        let projected_bytes = rows
-            .iter()
-            .fold(0usize, |total, row| {
-                total.saturating_add(row.projected_size_bytes())
-            })
-            .saturating_add(
-                deleted_ids
-                    .iter()
-                    .fold(0usize, |total, id| total.saturating_add(id.len())),
-            );
-        if projected_bytes > MAX_PROJECTION_BATCH_BYTES {
-            return Err(ShadowStoreError::InvalidProjectionBatchBytes {
-                requested: projected_bytes,
-                maximum: MAX_PROJECTION_BATCH_BYTES,
-            });
-        }
-        let tx: Transaction<'_> = self
-            .conn
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
         if let Some(receipt) =
-            Self::begin_projection_batch_in(&tx, batch_id, input_digest, expected_revision)?
+            Self::begin_projection_batch_in(transaction, batch_id, input_digest, expected_revision)?
         {
-            tx.commit()?;
             return Ok(receipt);
         }
         {
-            let mut statement = tx.prepare_cached(UPSERT_SQL)?;
+            let mut statement = transaction.prepare_cached(UPSERT_SQL)?;
             for row in rows {
                 statement.execute(params![
                     row.global_id,
@@ -511,21 +1438,223 @@ impl ShadowStore {
         }
         let mut deleted = 0usize;
         {
-            let mut statement = tx.prepare_cached(DELETE_SQL)?;
+            let mut statement = transaction.prepare_cached(DELETE_SQL)?;
             for global_id in deleted_ids {
                 deleted += statement.execute(params![global_id])?;
             }
         }
-        let commit = Self::finish_projection_batch_in(
-            &tx,
+        Self::finish_projection_batch_in(
+            transaction,
             batch_id,
             input_digest,
             expected_revision,
             rows.len(),
             deleted,
+        )
+    }
+
+    /// Applies one projection delta, advances its revision, and records its
+    /// durable retry receipt in the same transaction.
+    ///
+    /// Exact retry after response loss returns the original receipt without
+    /// reapplying rows. Reusing a batch ID with different input or a different
+    /// previous revision fails closed. This receipt belongs only to the dark
+    /// derived projection. It is not an authoritative Library Core operation
+    /// receipt and grants no mutation authority.
+    fn apply_projection_batch(
+        &mut self,
+        batch_id: &str,
+        input_digest: &str,
+        expected_revision: i64,
+        rows: &[FeedItemRow],
+        deleted_ids: &[String],
+    ) -> StoreResult<ProjectionCommit> {
+        Self::validate_projection_batch_identity(batch_id, input_digest)?;
+        Self::validate_projection_batch_payload(rows, deleted_ids)?;
+        let tx: Transaction<'_> = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let commit = Self::apply_projection_batch_in(
+            &tx,
+            batch_id,
+            input_digest,
+            expected_revision,
+            rows,
+            deleted_ids,
         )?;
         tx.commit()?;
         Ok(commit)
+    }
+
+    /// Applies one sequential batch to a fresh derived-shadow rebuild.
+    ///
+    /// The rebuild state, projected rows, ordinary projection receipt, batch
+    /// mapping, revision, and completion marker share one transaction. An
+    /// interrupted caller can reopen the staging store, read the exact next
+    /// batch and row offsets, and retry the last committed batch without
+    /// duplicating rows. This remains a derived-store receipt. It does not
+    /// authorize Library Core migration or cutover.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn apply_projection_rebuild_batch(
+        &mut self,
+        rebuild_id: &str,
+        source: &ProjectionSourceV1,
+        total_rows: usize,
+        batch_index: i64,
+        batch_id: &str,
+        input_digest: &str,
+        projected_rows: usize,
+        complete: bool,
+        rows: &[FeedItemRow],
+    ) -> StoreResult<ProjectionRebuildCommit> {
+        Self::validate_projection_rebuild_identity(rebuild_id, source, total_rows)?;
+        Self::validate_projection_batch_identity(batch_id, input_digest)?;
+        Self::validate_projection_batch_payload(rows, &[])?;
+        if !(0..=MAX_JAVASCRIPT_SAFE_INTEGER).contains(&batch_index) {
+            return Err(ShadowStoreError::InvalidProjectionRebuild {
+                field: "batch_index",
+            });
+        }
+
+        let transaction = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let state = Self::projection_rebuild_state_in(&transaction)?.ok_or(
+            ShadowStoreError::InvalidProjectionRebuild {
+                field: "missing_state",
+            },
+        )?;
+        let state =
+            Self::require_matching_projection_rebuild(state, rebuild_id, source, total_rows)?;
+        Self::verify_projection_rebuild_state_in(&transaction, &state)?;
+
+        let prior = transaction
+            .query_row(
+                "SELECT b.batchId, p.inputDigest, p.previousRevision, \
+                 p.committedRevision, p.upserted, p.deleted, \
+                 b.projectedRows, b.complete \
+                 FROM projection_rebuild_batches b \
+                 JOIN projection_batches p ON p.batchId = b.batchId \
+                 WHERE b.rebuildId = ?1 AND b.batchIndex = ?2;",
+                params![rebuild_id, batch_index],
+                |row| {
+                    Ok((
+                        ProjectionCommit {
+                            batch_id: row.get(0)?,
+                            input_digest: row.get(1)?,
+                            previous_revision: row.get(2)?,
+                            revision: row.get(3)?,
+                            upserted: row.get::<_, i64>(4)? as usize,
+                            deleted: row.get::<_, i64>(5)? as usize,
+                        },
+                        row.get::<_, i64>(6)? as usize,
+                        row.get::<_, i64>(7)? == 1,
+                    ))
+                },
+            )
+            .optional()?;
+        if let Some((projection, prior_projected_rows, prior_complete)) = prior {
+            if projection.batch_id != batch_id
+                || projection.input_digest != input_digest
+                || projection.upserted != rows.len()
+                || projection.deleted != 0
+                || prior_projected_rows != projected_rows
+                || prior_complete != complete
+            {
+                return Err(ShadowStoreError::ProjectionRebuildConflict {
+                    rebuild_id: rebuild_id.to_string(),
+                });
+            }
+            transaction.commit()?;
+            return Ok(ProjectionRebuildCommit { projection, state });
+        }
+
+        if state.complete {
+            return Err(ShadowStoreError::ProjectionRebuildConflict {
+                rebuild_id: rebuild_id.to_string(),
+            });
+        }
+        if batch_index != state.next_batch_index {
+            return Err(ShadowStoreError::ProjectionRebuildBatchOutOfOrder {
+                expected: state.next_batch_index,
+                actual: batch_index,
+            });
+        }
+        let expected_projected_rows = state.projected_rows.saturating_add(rows.len());
+        if projected_rows != expected_projected_rows || projected_rows > total_rows {
+            return Err(ShadowStoreError::ProjectionRebuildRowCountMismatch {
+                expected: expected_projected_rows,
+                actual: projected_rows,
+            });
+        }
+        if complete != (projected_rows == total_rows) {
+            return Err(ShadowStoreError::InvalidProjectionRebuild { field: "complete" });
+        }
+        if Self::projection_receipt_in(&transaction, batch_id)?.is_some() {
+            return Err(ShadowStoreError::ProjectionRebuildConflict {
+                rebuild_id: rebuild_id.to_string(),
+            });
+        }
+
+        let projection = Self::apply_projection_batch_in(
+            &transaction,
+            batch_id,
+            input_digest,
+            state.projection_revision,
+            rows,
+            &[],
+        )?;
+        if complete {
+            let stored_rows =
+                transaction.query_row("SELECT COUNT(*) FROM feed_items;", [], |row| {
+                    row.get::<_, i64>(0)
+                })? as usize;
+            if stored_rows != total_rows {
+                return Err(ShadowStoreError::ProjectionRebuildRowCountMismatch {
+                    expected: total_rows,
+                    actual: stored_rows,
+                });
+            }
+        }
+        transaction.execute(
+            "INSERT INTO projection_rebuild_batches (\
+             rebuildId, batchIndex, batchId, projectedRows, complete) \
+             VALUES (?1, ?2, ?3, ?4, ?5);",
+            params![
+                rebuild_id,
+                batch_index,
+                batch_id,
+                projected_rows as i64,
+                i64::from(complete),
+            ],
+        )?;
+        let updated = transaction.execute(
+            "UPDATE projection_rebuild_state \
+             SET nextBatchIndex = ?2, projectionRevision = ?3, \
+                 projectedRows = ?4, complete = ?5 \
+             WHERE singleton = 1 AND rebuildId = ?1 \
+               AND nextBatchIndex = ?6 AND projectionRevision = ?7 \
+               AND projectedRows = ?8 AND complete = 0;",
+            params![
+                rebuild_id,
+                batch_index + 1,
+                projection.revision,
+                projected_rows as i64,
+                i64::from(complete),
+                state.next_batch_index,
+                state.projection_revision,
+                state.projected_rows as i64,
+            ],
+        )?;
+        if updated != 1 {
+            return Err(ShadowStoreError::ProjectionRebuildConflict {
+                rebuild_id: rebuild_id.to_string(),
+            });
+        }
+        let state = Self::projection_rebuild_state_in(&transaction)?
+            .expect("projection rebuild state remains present after its batch");
+        transaction.commit()?;
+        Ok(ProjectionRebuildCommit { projection, state })
     }
 
     /// Applies one already validated local read assignment to the dark derived
@@ -601,7 +1730,11 @@ impl ShadowStore {
     ///
     /// `limit` is a hard bound, not a hint. The caller gets at most that many
     /// rows and a cursor, never the whole library.
-    fn feed_page(&self, cursor: Option<&PageCursor>, limit: u32) -> StoreResult<FeedPage> {
+    pub(super) fn feed_page(
+        &self,
+        cursor: Option<&PageCursor>,
+        limit: u32,
+    ) -> StoreResult<FeedPage> {
         if !(1..=MAX_FEED_PAGE_LIMIT).contains(&limit) {
             return Err(ShadowStoreError::InvalidPageLimit {
                 requested: limit,
@@ -609,6 +1742,7 @@ impl ShadowStore {
             });
         }
         let tx = self.conn.unchecked_transaction()?;
+        Self::require_readable_projection_in(&tx)?;
         let revision = Self::revision_in(&tx)?;
         if let Some(cursor) = cursor {
             if cursor.revision != revision {
@@ -619,25 +1753,63 @@ impl ShadowStore {
             }
         }
 
-        let rows = match cursor {
+        let candidates = match cursor {
             None => {
                 let mut statement = tx.prepare_cached(PAGE_FIRST_SQL)?;
-                let mapped = statement.query_map(params![limit], FeedItemRow::from_row)?;
+                let mapped = statement.query_map(params![limit], FeedCardRow::from_row)?;
                 mapped.collect::<SqlResult<Vec<_>>>()?
             }
             Some(cursor) => {
                 let mut statement = tx.prepare_cached(PAGE_AFTER_SQL)?;
                 let mapped = statement
                     .query_map(params![cursor.sort_at, cursor.global_id, limit], |row| {
-                        FeedItemRow::from_row(row)
+                        FeedCardRow::from_row(row)
                     })?;
                 mapped.collect::<SqlResult<Vec<_>>>()?
             }
         };
+        let total_count = tx.query_row(
+            &format!("SELECT COUNT(*) FROM feed_items WHERE {VISIBLE_PREDICATE};"),
+            [],
+            |row| row.get(0),
+        )?;
+        let row_budget =
+            MAX_FEED_PAGE_RESPONSE_BYTES.saturating_sub(FEED_PAGE_ENVELOPE_RESERVE_BYTES);
+        let mut rows = Vec::with_capacity(candidates.len());
+        let mut serialized_row_bytes = 0usize;
+        let mut truncated_by_bytes = false;
+        for candidate in candidates {
+            let candidate_bytes = candidate.serialized_size_bytes()?;
+            let next_row_bytes = serialized_row_bytes
+                .saturating_add(candidate_bytes)
+                .saturating_add(usize::from(!rows.is_empty()));
+            // The next cursor repeats the final row's identity. Measure its
+            // encoded form instead of its raw string bytes because JSON escaping
+            // can expand one input byte into six output bytes.
+            let candidate_cursor = PageCursor {
+                revision,
+                sort_at: candidate.sort_key(),
+                global_id: candidate.global_id.clone(),
+            };
+            let next_bounded_bytes =
+                next_row_bytes.saturating_add(candidate_cursor.serialized_size_bytes()?);
+            if next_bounded_bytes > row_budget {
+                if rows.is_empty() {
+                    return Err(ShadowStoreError::FeedCardExceedsResponseBudget {
+                        requested: next_bounded_bytes,
+                        maximum: row_budget,
+                    });
+                }
+                truncated_by_bytes = true;
+                break;
+            }
+            serialized_row_bytes = next_row_bytes;
+            rows.push(candidate);
+        }
 
         // A short page means the feed ended. Handing back a cursor there would
         // invite one more round trip that can only return nothing.
-        let next_cursor = if rows.len() as u32 == limit {
+        let next_cursor = if truncated_by_bytes || rows.len() as u32 == limit {
             rows.last().map(|row| PageCursor {
                 revision,
                 sort_at: row.sort_key(),
@@ -650,6 +1822,8 @@ impl ShadowStore {
         tx.commit()?;
         Ok(FeedPage {
             revision,
+            total_count,
+            serialized_row_bytes,
             rows,
             next_cursor,
         })
@@ -657,6 +1831,7 @@ impl ShadowStore {
 
     fn visible_count(&self, expected_revision: Option<i64>) -> StoreResult<RevisionedCount> {
         let tx = self.conn.unchecked_transaction()?;
+        Self::require_readable_projection_in(&tx)?;
         let revision = Self::revision_in(&tx)?;
         if let Some(expected) = expected_revision {
             if expected != revision {
@@ -676,9 +1851,12 @@ impl ShadowStore {
     }
 
     fn total_count(&self) -> StoreResult<i64> {
-        Ok(self
-            .conn
-            .query_row("SELECT COUNT(*) FROM feed_items;", [], |row| row.get(0))?)
+        let transaction = self.conn.unchecked_transaction()?;
+        Self::require_readable_projection_in(&transaction)?;
+        let count =
+            transaction.query_row("SELECT COUNT(*) FROM feed_items;", [], |row| row.get(0))?;
+        transaction.commit()?;
+        Ok(count)
     }
 
     /// Query plan for a statement, used by the tests that guard page cost.
@@ -696,6 +1874,30 @@ impl ShadowStore {
         };
         Ok(details.join(" | "))
     }
+}
+
+#[cfg(unix)]
+fn same_published_file_generation(left: &std::fs::Metadata, right: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    left.dev() == right.dev()
+        && left.ino() == right.ino()
+        && left.mode() == right.mode()
+        && left.nlink() == right.nlink()
+        && left.uid() == right.uid()
+        && left.gid() == right.gid()
+        && left.size() == right.size()
+        && left.mtime() == right.mtime()
+        && left.mtime_nsec() == right.mtime_nsec()
+        && left.ctime() == right.ctime()
+        && left.ctime_nsec() == right.ctime_nsec()
+}
+
+#[cfg(not(unix))]
+fn same_published_file_generation(left: &std::fs::Metadata, right: &std::fs::Metadata) -> bool {
+    left.len() == right.len()
+        && left.modified().ok() == right.modified().ok()
+        && left.created().ok() == right.created().ok()
 }
 
 #[cfg(test)]
@@ -721,10 +1923,12 @@ mod tests {
             read_at: None,
             archived_at: None,
             liked_at: None,
-            tags: None,
-            content_blob: Some("body".to_string()),
-            preserved_blob: None,
-            rest: "{}".to_string(),
+            tags: Some("[\"important\"]".to_string()),
+            content_blob: Some(
+                "{\"text\":\"body\",\"mediaUrls\":[],\"mediaTypes\":[]}".to_string(),
+            ),
+            preserved_blob: Some("{\"readingTime\":3}".to_string()),
+            rest: "{\"__author\":{\"avatarUrl\":\"https://example.test/avatar.png\"},\"__userState\":{\"liked\":false},\"engagement\":{\"likes\":3,\"comments\":1}}".to_string(),
         }
     }
 
@@ -746,6 +1950,16 @@ mod tests {
 
     fn digest(index: usize) -> String {
         format!("{index:064x}")
+    }
+
+    fn projection_source(index: usize) -> ProjectionSourceV1 {
+        ProjectionSourceV1 {
+            document_id: format!("document-{index}"),
+            heads_digest: digest(index),
+            head_count: 2,
+            storage_generation: 3,
+            storage_save_revision: 5,
+        }
     }
 
     fn seeded(count: usize) -> ShadowStore {
@@ -864,6 +2078,207 @@ mod tests {
 
         assert_eq!(seen.len(), total, "every row exactly once");
         assert_eq!(undated, total / 8, "undated items survived as undated");
+    }
+
+    #[test]
+    fn feed_pages_expose_only_bounded_card_fields() {
+        let mut store = ShadowStore::open_in_memory().expect("open");
+        let mut projected = row(1, Some(1_780_000_000_000));
+        projected.source_url = Some(format!("https://example.test/{}", "s".repeat(4_096)));
+        projected.tags = Some(
+            serde_json::to_string(
+                &(0..40)
+                    .map(|index| format!("tag-{index}"))
+                    .collect::<Vec<_>>(),
+            )
+            .expect("tags"),
+        );
+        projected.content_blob = Some(
+            serde_json::json!({
+                "text": "t".repeat(2_000),
+                "mediaUrls": (0..12)
+                    .map(|index| format!("https://media.test/{index}/{}", "m".repeat(3_000)))
+                    .collect::<Vec<_>>(),
+                "mediaTypes": (0..12).map(|_| "image").collect::<Vec<_>>(),
+                "linkPreview": {
+                    "title": "l".repeat(700),
+                    "description": "FULL_CONTENT_MUST_NOT_ESCAPE"
+                }
+            })
+            .to_string(),
+        );
+        projected.preserved_blob = Some(
+            serde_json::json!({
+                "readingTime": 17,
+                "text": "FULL_PRESERVED_BODY_MUST_NOT_ESCAPE".repeat(1_000)
+            })
+            .to_string(),
+        );
+        projected.rest = serde_json::json!({
+            "__author": {
+                "avatarUrl": format!("https://avatar.test/{}", "a".repeat(3_000))
+            },
+            "__userState": {
+                "liked": true,
+                "likedSyncedAt": 1_780_000_000_001_i64
+            },
+            "engagement": { "likes": 42, "comments": 7 },
+            "location": { "name": "Somewhere" },
+            "contentSignals": {
+                "tags": (0..40)
+                    .map(|index| format!("signal-{index}"))
+                    .collect::<Vec<_>>()
+            },
+            "eventCandidate": {
+                "startsAt": 1_780_000_000_002_i64,
+                "confidence": 0.875
+            },
+            "unmodelledPrivateField": "FULL_REST_MUST_NOT_ESCAPE"
+        })
+        .to_string();
+        store
+            .apply_projection_batch("bounded-card", &digest(1), 0, &[projected], &[])
+            .expect("project");
+
+        let page = store.feed_page(None, 1).expect("page");
+        assert_eq!(page.total_count, 1);
+        assert_eq!(page.rows.len(), 1);
+        let card = &page.rows[0];
+        assert_eq!(card.content_text.as_ref().map(String::len), Some(1_500));
+        assert_eq!(card.media_urls.len(), MAX_FEED_CARD_MEDIA);
+        assert!(card.media_urls.iter().all(|value| value.len() <= 2_048));
+        assert_eq!(card.media_types.len(), MAX_FEED_CARD_MEDIA);
+        assert_eq!(card.link_preview_title.as_ref().map(String::len), Some(512));
+        assert_eq!(card.tags.len(), MAX_FEED_CARD_TAGS);
+        assert_eq!(card.content_signal_tags.len(), MAX_FEED_CARD_SIGNAL_TAGS);
+        assert_eq!(card.reading_time_minutes, Some(17));
+        assert_eq!(card.event_confidence_basis_points, Some(8_750));
+        let serialized = serde_json::to_string(card).expect("serialize card");
+        for forbidden in [
+            "FULL_CONTENT_MUST_NOT_ESCAPE",
+            "FULL_PRESERVED_BODY_MUST_NOT_ESCAPE",
+            "FULL_REST_MUST_NOT_ESCAPE",
+        ] {
+            assert!(!serialized.contains(forbidden));
+        }
+    }
+
+    #[test]
+    fn feed_cards_never_coerce_malformed_optional_fields() {
+        let mut store = ShadowStore::open_in_memory().expect("open");
+        let mut projected = row(1, Some(1_780_000_000_000));
+        projected.tags = Some(serde_json::json!("not-an-array").to_string());
+        projected.content_blob = Some(
+            serde_json::json!({
+                "text": 42,
+                "mediaUrls": "not-an-array",
+                "mediaTypes": { "image": true },
+                "linkPreview": { "title": false }
+            })
+            .to_string(),
+        );
+        projected.preserved_blob = Some(
+            serde_json::json!({
+                "readingTime": "17"
+            })
+            .to_string(),
+        );
+        projected.rest = serde_json::json!({
+            "__author": { "avatarUrl": 42 },
+            "__userState": {
+                "liked": "true",
+                "likedSyncedAt": 1.5
+            },
+            "engagement": {
+                "likes": 42.5,
+                "comments": "7"
+            },
+            "location": { "name": 42 },
+            "contentSignals": { "tags": "event" },
+            "eventCandidate": {
+                "startsAt": "tomorrow",
+                "confidence": 1.5
+            }
+        })
+        .to_string();
+        store
+            .apply_projection_batch("malformed-card", &digest(1), 0, &[projected], &[])
+            .expect("project");
+
+        let page = store.feed_page(None, 1).expect("page");
+        let card = &page.rows[0];
+        assert_eq!(card.author_avatar_url, None);
+        assert_eq!(card.liked, None);
+        assert_eq!(card.liked_synced_at, None);
+        assert_eq!(card.content_text, None);
+        assert!(card.media_urls.is_empty());
+        assert!(card.media_types.is_empty());
+        assert_eq!(card.link_preview_title, None);
+        assert!(card.tags.is_empty());
+        assert_eq!(card.engagement_likes, None);
+        assert_eq!(card.engagement_comments, None);
+        assert_eq!(card.location_name, None);
+        assert_eq!(card.reading_time_minutes, None);
+        assert!(card.content_signal_tags.is_empty());
+        assert_eq!(card.event_starts_at, None);
+        assert_eq!(card.event_confidence_basis_points, None);
+    }
+
+    #[test]
+    fn feed_page_bytes_are_bounded_even_when_the_requested_row_limit_fits() {
+        let mut store = ShadowStore::open_in_memory().expect("open");
+        let media = (0..MAX_FEED_CARD_MEDIA)
+            .map(|index| format!("https://media.test/{index}/{}", "m".repeat(2_048)))
+            .collect::<Vec<_>>();
+        let mut rows = corpus(MAX_FEED_PAGE_LIMIT as usize);
+        for projected in &mut rows {
+            projected.source_url = Some(format!("https://source.test/{}", "s".repeat(2_048)));
+            projected.content_blob = Some(
+                serde_json::json!({
+                    "text": "t".repeat(1_500),
+                    "mediaUrls": media,
+                    "mediaTypes": vec!["image"; MAX_FEED_CARD_MEDIA],
+                })
+                .to_string(),
+            );
+            projected.rest = serde_json::json!({
+                "__author": {
+                    "avatarUrl": format!("https://avatar.test/{}", "a".repeat(2_048))
+                }
+            })
+            .to_string();
+        }
+        store
+            .apply_projection_batch("large-cards", &digest(1), 0, &rows, &[])
+            .expect("project");
+
+        let page = store
+            .feed_page(None, MAX_FEED_PAGE_LIMIT)
+            .expect("bounded page");
+        assert_eq!(page.total_count, i64::from(MAX_FEED_PAGE_LIMIT));
+        assert!(page.rows.len() < MAX_FEED_PAGE_LIMIT as usize);
+        assert!(page.next_cursor.is_some());
+        assert!(
+            page.serialized_row_bytes
+                + page.next_cursor.as_ref().map_or(0, |cursor| cursor
+                    .serialized_size_bytes()
+                    .expect("cursor bytes"))
+                <= MAX_FEED_PAGE_RESPONSE_BYTES - FEED_PAGE_ENVELOPE_RESERVE_BYTES
+        );
+    }
+
+    #[test]
+    fn feed_page_cursor_budget_counts_json_escape_expansion() {
+        let cursor = PageCursor {
+            revision: 1,
+            sort_at: 2,
+            global_id: "\u{0000}".repeat(MAX_ENTITY_ID_UTF8_BYTES),
+        };
+
+        assert!(
+            cursor.serialized_size_bytes().expect("cursor bytes") > cursor.global_id.len() * 5,
+            "the response budget must count encoded cursor bytes, not raw ID bytes"
+        );
     }
 
     #[test]
@@ -1065,16 +2480,18 @@ mod tests {
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("version");
         assert_eq!(version, SHADOW_SCHEMA_VERSION);
-        let receipt_table_exists: bool = store
-            .conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM sqlite_schema \
-                 WHERE type = 'table' AND name = 'projection_batches');",
-                [],
-                |row| row.get(0),
-            )
-            .expect("receipt table");
-        assert!(receipt_table_exists);
+        for table in ["projection_batches", "projection_rebuild_state"] {
+            let table_exists: bool = store
+                .conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_schema \
+                     WHERE type = 'table' AND name = ?1);",
+                    params![table],
+                    |row| row.get(0),
+                )
+                .expect("migrated table");
+            assert!(table_exists, "{table} should be installed by migration");
+        }
 
         drop(store);
         for suffix in ["", "-wal", "-shm"] {
@@ -1252,6 +2669,407 @@ mod tests {
         for suffix in ["", "-wal", "-shm"] {
             let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
         }
+    }
+
+    #[test]
+    fn derived_rebuild_resumes_exactly_and_exposes_only_a_complete_generation() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "freed-shadow-rebuild-resume-{}-{nonce}.sqlite",
+            std::process::id()
+        ));
+        let source = projection_source(71);
+        let rows = corpus(3);
+        let first_commit = {
+            let mut store = ShadowStore::open(&path).expect("open staging store");
+            let started = store
+                .begin_projection_rebuild("rebuild-71", &source, rows.len())
+                .expect("begin rebuild");
+            assert_eq!(started.next_batch_index, 0);
+            assert_eq!(started.projection_revision, 0);
+            assert_eq!(started.projected_rows, 0);
+            assert!(!started.complete);
+
+            assert!(matches!(
+                store
+                    .apply_projection_rebuild_batch(
+                        "rebuild-71",
+                        &source,
+                        rows.len(),
+                        1,
+                        "rebuild-71-batch-1",
+                        &digest(72),
+                        2,
+                        false,
+                        &rows[..2],
+                    )
+                    .expect_err("out-of-order batch must fail"),
+                ShadowStoreError::ProjectionRebuildBatchOutOfOrder {
+                    expected: 0,
+                    actual: 1
+                }
+            ));
+
+            let committed = store
+                .apply_projection_rebuild_batch(
+                    "rebuild-71",
+                    &source,
+                    rows.len(),
+                    0,
+                    "rebuild-71-batch-0",
+                    &digest(73),
+                    2,
+                    false,
+                    &rows[..2],
+                )
+                .expect("commit first batch");
+            assert_eq!(committed.state.next_batch_index, 1);
+            assert_eq!(committed.state.projection_revision, 1);
+            assert_eq!(committed.state.projected_rows, 2);
+            assert!(!committed.state.complete);
+            assert!(matches!(
+                store
+                    .total_count()
+                    .expect_err("partial rebuild must not be readable"),
+                ShadowStoreError::ProjectionRebuildIncomplete { .. }
+            ));
+            committed
+        };
+
+        let mut reopened = ShadowStore::open(&path).expect("reopen staging store");
+        let resumed = reopened
+            .begin_projection_rebuild("rebuild-71", &source, rows.len())
+            .expect("resume exact rebuild");
+        assert_eq!(resumed, first_commit.state);
+        let retried = reopened
+            .apply_projection_rebuild_batch(
+                "rebuild-71",
+                &source,
+                rows.len(),
+                0,
+                "rebuild-71-batch-0",
+                &digest(73),
+                2,
+                false,
+                &rows[..2],
+            )
+            .expect("retry committed batch");
+        assert_eq!(retried, first_commit);
+
+        let completed = reopened
+            .apply_projection_rebuild_batch(
+                "rebuild-71",
+                &source,
+                rows.len(),
+                1,
+                "rebuild-71-batch-1",
+                &digest(74),
+                3,
+                true,
+                &rows[2..],
+            )
+            .expect("complete rebuild");
+        assert!(completed.state.complete);
+        assert_eq!(completed.state.projected_rows, rows.len());
+        assert_eq!(completed.state.next_batch_index, 2);
+        assert_eq!(completed.state.projection_revision, 2);
+        assert_eq!(reopened.total_count().expect("complete count"), 3);
+
+        let changed_source = projection_source(75);
+        assert!(matches!(
+            reopened
+                .begin_projection_rebuild("rebuild-71", &changed_source, rows.len())
+                .expect_err("changed source must not resume"),
+            ShadowStoreError::ProjectionRebuildConflict { .. }
+        ));
+
+        drop(reopened);
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        }
+    }
+
+    #[test]
+    fn derived_rebuild_state_failure_rolls_back_rows_receipts_and_revision() {
+        let mut store = ShadowStore::open_in_memory().expect("open staging store");
+        let source = projection_source(81);
+        let started = store
+            .begin_projection_rebuild("rebuild-81", &source, 1)
+            .expect("begin rebuild");
+        store
+            .conn
+            .execute_batch(
+                "CREATE TEMP TRIGGER reject_rebuild_state \
+                 BEFORE UPDATE ON projection_rebuild_state \
+                 BEGIN SELECT RAISE(FAIL, 'forced rebuild-state failure'); END;",
+            )
+            .expect("install fault");
+
+        assert!(matches!(
+            store
+                .apply_projection_rebuild_batch(
+                    "rebuild-81",
+                    &source,
+                    1,
+                    0,
+                    "rebuild-81-batch-0",
+                    &digest(82),
+                    1,
+                    true,
+                    &[row(1, Some(1_780_000_000_000))],
+                )
+                .expect_err("state failure must roll back"),
+            ShadowStoreError::Sql(_)
+        ));
+        let transaction = store.conn.unchecked_transaction().expect("inspect");
+        assert_eq!(
+            transaction
+                .query_row("SELECT COUNT(*) FROM feed_items;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("rolled-back rows"),
+            0
+        );
+        assert_eq!(ShadowStore::revision_in(&transaction).expect("revision"), 0);
+        assert_eq!(
+            ShadowStore::projection_rebuild_state_in(&transaction)
+                .expect("state")
+                .expect("rebuild state"),
+            started
+        );
+        assert_eq!(
+            transaction
+                .query_row("SELECT COUNT(*) FROM projection_batches;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("receipt count"),
+            0
+        );
+        assert_eq!(
+            transaction
+                .query_row(
+                    "SELECT COUNT(*) FROM projection_rebuild_batches;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("rebuild batch count"),
+            0
+        );
+        transaction.commit().expect("close inspection");
+    }
+
+    #[test]
+    fn complete_rebuild_publishes_one_self_contained_immutable_generation() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let directory = std::fs::canonicalize(std::env::temp_dir())
+            .expect("resolve publication temp root")
+            .join(format!(
+                "freed-shadow-publish-{}-{nonce}",
+                std::process::id()
+            ));
+        std::fs::create_dir(&directory).expect("create publication directory");
+        let staging = directory.join("rebuild.staging.sqlite");
+        let published = directory.join("generation-91.sqlite");
+        let source = projection_source(91);
+        let rows = corpus(3);
+
+        let mut store = ShadowStore::open(&staging).expect("open staging store");
+        store
+            .begin_projection_rebuild("rebuild-91", &source, rows.len())
+            .expect("begin rebuild");
+        store
+            .apply_projection_rebuild_batch(
+                "rebuild-91",
+                &source,
+                rows.len(),
+                0,
+                "rebuild-91-batch-0",
+                &digest(92),
+                rows.len(),
+                true,
+                &rows,
+            )
+            .expect("complete rebuild");
+        let receipt = store
+            .publish_complete_projection_generation(&published, "rebuild-91", &source, rows.len())
+            .expect("publish complete generation");
+
+        assert_eq!(receipt.path, published);
+        assert_eq!(receipt.rebuild_id, "rebuild-91");
+        assert_eq!(receipt.source, source);
+        assert_eq!(receipt.total_rows, rows.len());
+        assert_eq!(receipt.projection_revision, 1);
+        assert!(receipt.byte_length > 0);
+        assert!(!staging.exists());
+        assert!(published.is_file());
+        for path in [
+            format!("{}-wal", staging.display()),
+            format!("{}-shm", staging.display()),
+            format!("{}-wal", published.display()),
+            format!("{}-shm", published.display()),
+        ] {
+            assert!(!Path::new(&path).exists(), "sealed generation left {path}");
+        }
+
+        let readback = ShadowStore::inspect_published_projection_generation(
+            &published,
+            "rebuild-91",
+            &source,
+            rows.len(),
+        )
+        .expect("read back response-loss receipt");
+        assert_eq!(readback, receipt);
+        let reopened = ShadowStore::open(&published).expect("open published generation");
+        assert_eq!(
+            reopened.total_count().expect("published count"),
+            rows.len() as i64
+        );
+        drop(reopened);
+
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", published.display()));
+        }
+        std::fs::remove_dir(directory).expect("remove publication directory");
+    }
+
+    #[test]
+    fn incomplete_rebuild_cannot_publish_and_remains_resumable() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let directory = std::fs::canonicalize(std::env::temp_dir())
+            .expect("resolve publication temp root")
+            .join(format!(
+                "freed-shadow-incomplete-publish-{}-{nonce}",
+                std::process::id()
+            ));
+        std::fs::create_dir(&directory).expect("create publication directory");
+        let staging = directory.join("rebuild.staging.sqlite");
+        let published = directory.join("generation-101.sqlite");
+        let source = projection_source(101);
+        let rows = corpus(2);
+        let mut store = ShadowStore::open(&staging).expect("open staging store");
+        store
+            .begin_projection_rebuild("rebuild-101", &source, rows.len())
+            .expect("begin rebuild");
+        store
+            .apply_projection_rebuild_batch(
+                "rebuild-101",
+                &source,
+                rows.len(),
+                0,
+                "rebuild-101-batch-0",
+                &digest(102),
+                1,
+                false,
+                &rows[..1],
+            )
+            .expect("commit partial rebuild");
+
+        assert!(matches!(
+            store
+                .publish_complete_projection_generation(
+                    &published,
+                    "rebuild-101",
+                    &source,
+                    rows.len(),
+                )
+                .expect_err("incomplete rebuild must not publish"),
+            ShadowStoreError::ProjectionRebuildIncomplete { .. }
+        ));
+        assert!(staging.is_file());
+        assert!(!published.exists());
+        let mut resumed = ShadowStore::open(&staging).expect("reopen incomplete staging store");
+        let state = resumed
+            .begin_projection_rebuild("rebuild-101", &source, rows.len())
+            .expect("resume incomplete rebuild");
+        assert_eq!(state.next_batch_index, 1);
+        assert_eq!(state.projected_rows, 1);
+        assert!(!state.complete);
+        drop(resumed);
+
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", staging.display()));
+        }
+        std::fs::remove_dir(directory).expect("remove publication directory");
+    }
+
+    #[test]
+    fn publication_never_replaces_an_existing_generation() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let directory = std::fs::canonicalize(std::env::temp_dir())
+            .expect("resolve publication temp root")
+            .join(format!(
+                "freed-shadow-publish-conflict-{}-{nonce}",
+                std::process::id()
+            ));
+        std::fs::create_dir(&directory).expect("create publication directory");
+        let staging = directory.join("rebuild.staging.sqlite");
+        let published = directory.join("generation-111.sqlite");
+        let sentinel = b"existing immutable generation";
+        std::fs::write(&published, sentinel).expect("seed existing destination");
+        let source = projection_source(111);
+        let rows = corpus(1);
+        let mut store = ShadowStore::open(&staging).expect("open staging store");
+        store
+            .begin_projection_rebuild("rebuild-111", &source, rows.len())
+            .expect("begin rebuild");
+        store
+            .apply_projection_rebuild_batch(
+                "rebuild-111",
+                &source,
+                rows.len(),
+                0,
+                "rebuild-111-batch-0",
+                &digest(112),
+                rows.len(),
+                true,
+                &rows,
+            )
+            .expect("complete rebuild");
+
+        assert!(matches!(
+            store
+                .publish_complete_projection_generation(
+                    &published,
+                    "rebuild-111",
+                    &source,
+                    rows.len(),
+                )
+                .expect_err("existing generation must block"),
+            ShadowStoreError::ProjectionPublicationConflict { .. }
+        ));
+        assert_eq!(
+            std::fs::read(&published).expect("read existing generation"),
+            sentinel
+        );
+        assert!(staging.is_file());
+        assert!(
+            publish_projection_file(&staging, &published).is_err(),
+            "the publication primitive itself must refuse replacement"
+        );
+        assert_eq!(
+            std::fs::read(&published).expect("read destination after primitive"),
+            sentinel
+        );
+        assert!(staging.is_file());
+
+        for path in [&staging, &published] {
+            for suffix in ["", "-wal", "-shm"] {
+                let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+            }
+        }
+        std::fs::remove_dir(directory).expect("remove publication directory");
     }
 
     #[test]
@@ -1554,6 +3372,19 @@ mod tests {
                 error => panic!("unexpected batch size error: {error:?}"),
             }
         }
+        let mut invalid_row = row(1, Some(1));
+        invalid_row.global_id = "x".repeat(MAX_ENTITY_ID_UTF8_BYTES + 1);
+        for (rows, deleted_ids) in [
+            (vec![invalid_row], Vec::new()),
+            (Vec::new(), vec![String::new()]),
+        ] {
+            assert!(matches!(
+                store
+                    .apply_projection_batch("invalid-entity", &digest(2), 0, &rows, &deleted_ids,)
+                    .expect_err("invalid projection entity ID must fail"),
+                ShadowStoreError::InvalidProjectionEntityId
+            ));
+        }
         let mut oversized = row(1, None);
         oversized.content_blob = Some("x".repeat(MAX_PROJECTION_BATCH_BYTES + 1));
         match store
@@ -1611,7 +3442,8 @@ mod tests {
         assert_eq!(store.total_count().expect("count"), 32);
 
         let mut changed = rows[0].clone();
-        changed.content_blob = Some("edited".to_string());
+        changed.content_blob =
+            Some("{\"text\":\"edited\",\"mediaUrls\":[],\"mediaTypes\":[]}".to_string());
         store
             .apply_projection_batch("update", &digest(3), 2, &[changed], &[])
             .expect("update");
@@ -1623,7 +3455,19 @@ mod tests {
             .iter()
             .find(|item| item.global_id == rows[0].global_id)
             .expect("row present");
-        assert_eq!(stored.content_blob.as_deref(), Some("edited"));
+        assert_eq!(stored.global_id, rows[0].global_id);
+        let stored_content: Option<String> = store
+            .conn
+            .query_row(
+                "SELECT contentBlob FROM feed_items WHERE globalId = ?1;",
+                params![rows[0].global_id],
+                |row| row.get(0),
+            )
+            .expect("stored content");
+        assert_eq!(
+            stored_content.as_deref(),
+            Some("{\"text\":\"edited\",\"mediaUrls\":[],\"mediaTypes\":[]}")
+        );
     }
 
     #[test]

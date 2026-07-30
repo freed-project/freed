@@ -22,6 +22,7 @@ import type {
   DesktopClientRegistration,
 } from "@freed/shared";
 import type { DocumentHistoryRelation } from "@freed/shared/schema";
+import type { FeedItemRow } from "@freed/shared/projection";
 import type { StorageRevision } from "@freed/sync/types";
 
 export type { DocumentHistoryRelation } from "@freed/shared/schema";
@@ -220,6 +221,22 @@ export type WorkerRequest =
   | { reqId: number; type: "GET_SAVED_YOUTUBE_URLS" }
   | { reqId: number; type: "GET_ITEM_PRESERVED_TEXT"; globalId: string }
   | { reqId: number; type: "GET_ITEM_LEGACY_HTML"; globalId: string }
+  | {
+      reqId: number;
+      type: "BEGIN_LIBRARY_CORE_PROJECTION";
+      sessionId: string;
+    }
+  | {
+      reqId: number;
+      type: "NEXT_LIBRARY_CORE_PROJECTION_BATCH";
+      sessionId: string;
+      batchIndex: number;
+    }
+  | {
+      reqId: number;
+      type: "CANCEL_LIBRARY_CORE_PROJECTION";
+      sessionId: string;
+    }
   // Relay management (fire-and-forget, reqId ignored)
   | { reqId: number; type: "UPDATE_RELAY_CLIENT_COUNT"; count: number };
 
@@ -269,6 +286,25 @@ export interface CommittedDocSnapshot {
   revision: StorageRevision;
   itemCount: number;
   friendCount: number;
+}
+
+export interface LibraryCoreProjectionSourceV1 {
+  readonly schemaVersion: 1;
+  readonly documentId: string;
+  readonly headsDigest: string;
+  readonly headCount: number;
+  readonly storageRevision: StorageRevision;
+}
+
+export interface LibraryCoreProjectionBatchV1 {
+  readonly sessionId: string;
+  readonly source: LibraryCoreProjectionSourceV1;
+  readonly batchIndex: number;
+  readonly rows: FeedItemRow[];
+  readonly rowBytes: number;
+  readonly projectedRows: number;
+  readonly totalRows: number;
+  readonly done: boolean;
 }
 
 export type WorkerResponse =
@@ -354,6 +390,23 @@ export type WorkerResponse =
       globalId: string;
       html: string | null;
     }
+  /** Exact durable source bound to one bounded projection session. */
+  | {
+      reqId: number;
+      type: "LIBRARY_CORE_PROJECTION_STARTED";
+      sessionId: string;
+      source: LibraryCoreProjectionSourceV1;
+      totalRows: number;
+      nextBatchIndex: number;
+      projectedRows: number;
+      maximumBatchRows: number;
+      maximumBatchBytes: number;
+    }
+  /** One replayable bounded projection batch from the pinned source. */
+  | ({
+      reqId: number;
+      type: "LIBRARY_CORE_PROJECTION_BATCH";
+    } & LibraryCoreProjectionBatchV1)
   /** One-batch content signal backfill summary. */
   | {
       reqId: number;
