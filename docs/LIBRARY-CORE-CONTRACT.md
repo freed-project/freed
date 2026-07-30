@@ -35,6 +35,51 @@ can prove which storage epoch owns a write.
     independently. An authenticated provider WebView never needs to coexist
     with a resident full-library renderer document.
 
+## Replacement replication authority
+
+The replacement protocol has one non-expiring designated Freed Desktop writer
+epoch per library. The writer may commit canonical local work while offline.
+Restarting the same enrolled installation resumes that epoch. There is no
+heartbeat, expiring lease, lock file, automatic failover, or last-writer-wins
+takeover. At startup, an installation that is not the current writer keeps
+Library writes and provider actions disabled and offers one explicit **Make
+This Freed Desktop the Writer** action. Confirmation creates a new epoch for
+that installation and compare-and-swaps the exact current cloud control tuple.
+It does not require the old computer, a pairing ceremony, a readiness receipt,
+or a simultaneous two-machine session. A lost-machine restore uses the same
+owner-confirmed transition. The previous installation becomes read-only when
+it next refreshes authority.
+
+An offline installation may resume local work only when its last durably
+verified control tuple names it as writer, and it must show that cloud authority
+has not been refreshed. Before cloud publication or provider execution resumes,
+it reloads the current tuple. Work created under a retired epoch is preserved
+for explicit review or reissue under the current epoch. It is never uploaded,
+discarded, or silently merged into active authority.
+
+SQLite is local client storage. No transport may synchronize a live SQLite
+database, WAL, SHM, rollback journal, or mutable database replacement. Cloud
+transport consists of immutable, content-addressed protocol objects plus the
+small `control/library-control.json` compare-and-swap pointer. One library has
+one active authority transport. Google Drive `appDataFolder` is the current
+transport. A future Dropbox App Folder adapter uses the same protocol, but it
+cannot maintain an independent active pointer.
+
+PWA installations are intent producers in v1, not canonical writers. Their
+local SQLite/OPFS or IndexedDB adapters materialize the same logical rows and
+append immutable intent objects. The designated Desktop verifies and accepts
+an intent into canonical SQLite before publishing an acceptance receipt.
+Provider acceptance is separate from provider completion. A PWA cannot display
+provider success until the Desktop records the actual provider result.
+
+The initial package-internal immutable transport contract closes the object-key
+families, one active transport field, non-expiring epoch and writer identity,
+monotone control generation, causal-frontier digest, and manifest locator. It
+does not perform cloud I/O, activate SQLite authority, retire Automerge, or
+change provider behavior. The later provider adapter must upload dependencies,
+verify digest and size by readback, upload the manifest, then compare and swap
+the control pointer against the provider's exact current revision.
+
 ## Canonical bytes, digests, and signatures
 
 Library Core v1 uses UTF-8 JSON Canonicalization Scheme bytes as defined by
