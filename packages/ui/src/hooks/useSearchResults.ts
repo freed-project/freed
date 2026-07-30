@@ -28,7 +28,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import MiniSearch from "minisearch";
-import { isFriendAuthoredItem, matchesFeedFilter, sortByPriority } from "@freed/shared";
+import {
+  isFriendAuthoredItem,
+  matchesLibraryCoreFeedBrowseFilterV1,
+  normalizeLibraryCoreFeedBrowseFilterV1,
+  sortByPriority,
+} from "@freed/shared";
 import type { Account, FeedItem, FilterOptions, Friend, Person } from "@freed/shared";
 
 const SEARCH_PRESERVED_TEXT_LIMIT = 1_200;
@@ -291,13 +296,17 @@ function filterBrowseItems(args: {
   let filtered: FeedItem[] | null = null;
   let ordered = true;
   let previousPriority = Number.POSITIVE_INFINITY;
+  const normalizedFilter = normalizeLibraryCoreFeedBrowseFilterV1(
+    args.activeFilter,
+  );
 
   for (let index = 0; index < args.items.length; index += 1) {
     const item = args.items[index];
     const passesIdentity =
       args.identityMode !== "friends" ||
       isFriendAuthoredItem(item, args.persons, args.accounts, args.friends);
-    const passesFilter = passesIdentity && matchesFeedFilter(item, args.activeFilter);
+    const passesFilter = passesIdentity &&
+      matchesLibraryCoreFeedBrowseFilterV1(item, normalizedFilter);
 
     if (!passesFilter) {
       if (!filtered) filtered = args.items.slice(0, index);

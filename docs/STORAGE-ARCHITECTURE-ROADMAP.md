@@ -50,10 +50,14 @@ cursor for that existing default nonhidden, nonarchived page. Its parsers
 snapshot retained values and enforce both the row and serialized-byte ceilings.
 The dark base tier pins its busy timeout, 32 MiB page cache, file-backed
 temporary work, and disabled mmap. The module is compiled into Freed Desktop
-but has no production caller and opens no user database. Product filter and
-recommendation-order equivalence, the Desktop runtime adapter, and PWA adapter
-proof remain explicit blockers. This is progress inside Gate B and step 4, not
-a claim that either gate is complete.
+but has no production caller and opens no user database. Dormant Desktop and
+PWA runtimes now implement the narrow default page, and the PWA can
+authenticate and materialize its row generation without activating a reader.
+The current renderer and future bounded adapters also share one canonical
+normalized product-filter predicate. Filter pushdown, archived-generation
+coverage, recommendation-order equivalence, renderer-cache eviction, and
+product caller proof remain explicit blockers. This is progress inside Gate B
+and step 4, not a claim that either gate is complete.
 
 The Desktop derived-shadow path now also has a dormant bounded projection
 probe. It pins one exact durable Automerge frontier and storage revision, emits
@@ -65,9 +69,9 @@ testing the derived SQL reader while Automerge remains authoritative. It cannot
 satisfy the external-memory Gate C migration contract or authorize cutover. No
 production caller consumes the responses yet. Immutable external entity
 materialization and the default opaque feed cursor are now closed. Product
-filter and recommendation-order equivalence, cancellation across the
-main-to-native boundary, PWA adapter parity, and runtime registration remain
-blocked.
+filter execution and recommendation-order equivalence, cancellation across the
+main-to-native boundary, renderer-cache eviction, and product read assignment
+remain blocked.
 
 The bounded migration path now verifies the immutable Automerge source through
 fixed-memory external runs and atomically stages its actor, head, change,
