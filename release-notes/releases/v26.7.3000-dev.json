@@ -1,0 +1,151 @@
+{
+  "tag": "v26.7.3000-dev",
+  "version": "26.7.3000-dev",
+  "channel": "dev",
+  "dayKey": "26.7.30",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-07-30T18:35:41.932Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.7.2901-dev",
+    "previousPublishedDayTag": "v26.7.2901-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "15b4422c764a375b825eb279d08203398be26f76",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.7.2901-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "792cc907cae274069746467a2b5b34390686d222",
+        "toInclusiveProductCommitSha": "15b4422c764a375b825eb279d08203398be26f76"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:96a22914b0b629c540ede98c41fb586b9695f139324fe033faae374dc83b3ccb",
+        "currentDigest": "sha256:74d4cd5c0e06468f79eeb2737c0c07a9ff83f0c238e6504cf31fe18cedb2d594"
+      },
+      "transitions": [
+        {
+          "activationId": "desktop-feed-browse-sql-read-v1",
+          "gate": "D",
+          "kind": "sql_read_cutover",
+          "rollbackTrigger": "Set freed.libraryCore.feedBrowseReaderV1.disabled to 1 on the affected device if the bounded Desktop feed diverges, stalls, or increases memory relative to the Automerge fallback.",
+          "receiptExpectations": [
+            "read_cutover_parity",
+            "same_frontier_rollback_receipt"
+          ]
+        }
+      ],
+      "inspectionDigest": "sha256:c9b2ad54c4b1fb9bd4220964f49791efa63d14adaebb1785a96cd994529c84ba",
+      "decision": {
+        "state": "review_required",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.7.3000-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.7.3000-dev"
+    ],
+    "prNumbers": [
+      1237,
+      1242,
+      1243,
+      1245,
+      1246,
+      1247,
+      1248,
+      1249,
+      1250,
+      1251,
+      1252,
+      1253,
+      1254,
+      1255,
+      1256,
+      1257,
+      1258,
+      1259,
+      1260,
+      1261,
+      1262,
+      1263,
+      1264,
+      1265,
+      1266,
+      1267,
+      1268,
+      1269
+    ],
+    "commitSubjects": [
+      "feat: read the Desktop feed from bounded SQLite pages (#1269)",
+      "feat: add bounded SQLite shadow migration bridge (#1268)",
+      "feat: pin native browse generation reads (#1267)",
+      "feat: register immutable browse generations (#1266)",
+      "feat: seal native browse generations (#1265)",
+      "fix: bind native browse source provenance (#1264)",
+      "feat: add desktop browse materializer (#1263)",
+      "feat: add native browse generation runtime (#1262)",
+      "feat: add native browse generation store (#1261)",
+      "feat: add dormant PWA browse page reader (#1260)",
+      "feat: materialize bounded PWA browse generations (#1259)",
+      "refactor: define Library Core recommendation order (#1258)",
+      "refactor: define Library Core feed filters (#1257)",
+      "feat: add authenticated PWA feed materialization (#1256)",
+      "feat: add dormant PWA Library Core feed reader (#1255)",
+      "feat: add dormant desktop SQLite feed reader (#1254)",
+      "feat: close bounded Library Core feed-page protocol (#1253)",
+      "feat: materialize bounded Automerge rows into SQLite (#1252)",
+      "feat: stage verified Automerge graphs in SQLite (#1251)",
+      "feat: reconstruct bounded Automerge migration rows (#1250)",
+      "feat: add bounded Automerge column and scalar decoders (#1249)",
+      "feat: add bounded Automerge framing decoder (#1248)",
+      "fix: use monochrome macOS menu bar icon (#1247)",
+      "feat: add bounded Automerge migration spool (#1246)",
+      "fix: remove card density menu divider (#1245)",
+      "feat: add runtime SQLite shadow generations (#1243)",
+      "feat: add immutable SQLite projection generations (#1237)",
+      "fix: shard nightly tooling tests independently (#1242)"
+    ]
+  },
+  "release": {
+    "deck": "Read the Desktop feed from bounded SQLite pages, dormant PWA browse page reader, and desktop browse materializer",
+    "features": [
+      "Read the Desktop feed from bounded SQLite pages",
+      "Desktop browse materializer",
+      "Dormant PWA browse page reader"
+    ],
+    "fixes": [
+      "Bind native browse source provenance",
+      "Monochrome macOS menu bar icon now uses the correct path",
+      "Card density menu divider removed",
+      "Shard nightly tooling tests independently"
+    ],
+    "followUps": [
+      "Bounded SQLite shadow migration bridge",
+      "Pin native browse generation reads",
+      "Register immutable browse generations",
+      "Seal native browse generations",
+      "Define Library Core recommendation order",
+      "Authenticated PWA feed materialization",
+      "Close bounded Library Core feed-page protocol",
+      "Materialize bounded Automerge rows into SQLite",
+      "Stage verified Automerge graphs in SQLite",
+      "Bounded Automerge column and scalar decoders",
+      "Bounded Automerge framing decoder",
+      "Bounded Automerge migration spool",
+      "Runtime SQLite shadow generations",
+      "Immutable SQLite projection generations"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.3000-dev\n\nRead the Desktop feed from bounded SQLite pages, dormant PWA browse page reader, and desktop browse materializer\n\n### Features\n\n- Read the Desktop feed from bounded SQLite pages\n- Desktop browse materializer\n- Dormant PWA browse page reader\n\n### Fixes\n\n- Bind native browse source provenance\n- Monochrome macOS menu bar icon now uses the correct path\n- Card density menu divider removed\n- Shard nightly tooling tests independently\n\n### Follow-ups\n\n- Bounded SQLite shadow migration bridge\n- Pin native browse generation reads\n- Register immutable browse generations\n- Seal native browse generations\n- Define Library Core recommendation order\n- Authenticated PWA feed materialization\n- Close bounded Library Core feed-page protocol\n- Materialize bounded Automerge rows into SQLite\n- Stage verified Automerge graphs in SQLite\n- Bounded Automerge column and scalar decoders\n- Bounded Automerge framing decoder\n- Bounded Automerge migration spool\n- Runtime SQLite shadow generations\n- Immutable SQLite projection generations\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
