@@ -6,22 +6,26 @@
 //! once, and changes the current reader generation in one replayable
 //! transaction. No production entry point opens this registry yet.
 
-use crate::shadow_store::{publish_projection_file, PublishedProjectionGeneration};
-use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
+use crate::shadow_store::PublishedProjectionGeneration;
+use crate::sqlite_registry_file::{self, SqliteRegistryFileError, SqliteRegistrySpec};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use sha2::{Digest, Sha256};
 use std::fmt;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 const REGISTRY_APPLICATION_ID: i64 = 1_179_079_217;
 const REGISTRY_SCHEMA_VERSION: i64 = 1;
 const REGISTRY_SCHEMA_SQL: &str =
     include_str!("../../../shared/src/library-core/projection-generation-registry-v1.sql");
+const REGISTRY_SPEC: SqliteRegistrySpec = SqliteRegistrySpec {
+    application_id: REGISTRY_APPLICATION_ID,
+    schema_version: REGISTRY_SCHEMA_VERSION,
+    schema_sql: REGISTRY_SCHEMA_SQL,
+};
 const MAX_TRANSITION_ID_BYTES: usize = 128;
 const HASH_BUFFER_BYTES: usize = 1024 * 1024;
-const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug)]
 pub(super) enum ProjectionGenerationRegistryError {
@@ -46,6 +50,18 @@ impl From<rusqlite::Error> for ProjectionGenerationRegistryError {
 impl From<std::io::Error> for ProjectionGenerationRegistryError {
     fn from(error: std::io::Error) -> Self {
         Self::Io(error)
+    }
+}
+
+impl From<SqliteRegistryFileError> for ProjectionGenerationRegistryError {
+    fn from(error: SqliteRegistryFileError) -> Self {
+        match error {
+            SqliteRegistryFileError::Sql(error) => Self::Sql(error),
+            SqliteRegistryFileError::Io(error) => Self::Io(error),
+            SqliteRegistryFileError::InvalidIdentity(field) => {
+                Self::InvalidRegistryIdentity { field }
+            }
+        }
     }
 }
 
@@ -151,23 +167,7 @@ impl ProjectionGenerationRegistry {
     pub(super) fn read_selected_generation(
         path: &Path,
     ) -> RegistryResult<ProjectionGenerationReaderSelection> {
-        if !path.is_absolute() || path.file_name().is_none() {
-            return Err(ProjectionGenerationRegistryError::InvalidRegistryIdentity {
-                field: "path",
-            });
-        }
-        let conn = Connection::open_with_flags(
-            path,
-            OpenFlags::SQLITE_OPEN_READ_ONLY
-                | OpenFlags::SQLITE_OPEN_NO_MUTEX
-                | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
-                | OpenFlags::SQLITE_OPEN_NOFOLLOW
-                | OpenFlags::SQLITE_OPEN_EXRESCODE,
-        )?;
-        conn.busy_timeout(BUSY_TIMEOUT)?;
-        conn.pragma_update(None, "foreign_keys", "ON")?;
-        verify_registry_integrity(&conn)?;
-        verify_registry_identity(&conn)?;
+        let conn = sqlite_registry_file::open_read_only(path, REGISTRY_SPEC)?;
         let state = validate_reader_state(conn.query_row(
             "SELECT currentGenerationId, rollbackGenerationId, transitionSequence
              FROM projection_reader_state WHERE singleton = 1;",
@@ -183,8 +183,7 @@ impl ProjectionGenerationRegistry {
                 field: "selected_generation",
             },
         )?;
-        verify_registry_integrity(&conn)?;
-        verify_registry_identity(&conn)?;
+        sqlite_registry_file::verify(&conn, REGISTRY_SPEC)?;
         Ok(ProjectionGenerationReaderSelection {
             generation,
             transition_sequence: state.transition_sequence,
@@ -192,50 +191,16 @@ impl ProjectionGenerationRegistry {
     }
 
     pub(super) fn open(path: &Path, generation_root: &Path) -> RegistryResult<Self> {
-        if !path.is_absolute()
-            || !generation_root.is_absolute()
-            || path.file_name().is_none()
-            || generation_root.file_name().is_none()
-        {
+        if !generation_root.is_absolute() || generation_root.file_name().is_none() {
             return Err(ProjectionGenerationRegistryError::InvalidRegistryIdentity {
-                field: "paths",
+                field: "generation_root",
             });
         }
-        let created = create_registry_if_absent(path)?;
-        if !created {
-            let preflight = Connection::open_with_flags(
-                path,
-                OpenFlags::SQLITE_OPEN_READ_ONLY
-                    | OpenFlags::SQLITE_OPEN_NO_MUTEX
-                    | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
-                    | OpenFlags::SQLITE_OPEN_NOFOLLOW,
-            )?;
-            verify_registry_integrity(&preflight)?;
-            verify_registry_identity(&preflight)?;
-        }
-        let conn = Connection::open_with_flags(
-            path,
-            OpenFlags::SQLITE_OPEN_READ_WRITE
-                | OpenFlags::SQLITE_OPEN_NO_MUTEX
-                | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
-                | OpenFlags::SQLITE_OPEN_NOFOLLOW,
-        )?;
-        conn.busy_timeout(BUSY_TIMEOUT)?;
-        conn.pragma_update(None, "foreign_keys", "ON")?;
-        conn.pragma_update(None, "synchronous", "FULL")?;
-        #[cfg(target_os = "macos")]
-        conn.pragma_update(None, "fullfsync", "ON")?;
+        let conn = sqlite_registry_file::open_or_create(path, REGISTRY_SPEC)?;
         let registry = Self {
             conn,
             generation_root: generation_root.to_path_buf(),
         };
-        verify_registry_identity(&registry.conn)?;
-        registry.conn.pragma_update(None, "journal_mode", "WAL")?;
-        verify_registry_integrity(&registry.conn)?;
-        verify_registry_identity(&registry.conn)?;
-        if created {
-            sync_parent_directory(path)?;
-        }
         Ok(registry)
     }
 
@@ -517,162 +482,6 @@ impl ProjectionGenerationRegistry {
     }
 }
 
-fn create_registry_if_absent(path: &Path) -> RegistryResult<bool> {
-    match std::fs::symlink_metadata(path) {
-        Ok(_) => return Ok(false),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error.into()),
-    }
-    let parent =
-        path.parent()
-            .ok_or(ProjectionGenerationRegistryError::InvalidRegistryIdentity {
-                field: "parent_directory",
-            })?;
-    let file_name = path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .ok_or(ProjectionGenerationRegistryError::InvalidRegistryIdentity { field: "file_name" })?;
-    for _ in 0..16 {
-        let staging = parent.join(format!(
-            ".{file_name}.{:032x}.initializing",
-            rand::random::<u128>()
-        ));
-        let mut options = OpenOptions::new();
-        options.read(true).write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let file = match options.open(&staging) {
-            Ok(file) => file,
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error.into()),
-        };
-        drop(file);
-        let result = initialize_and_publish_registry(&staging, path);
-        if staging.exists() {
-            std::fs::remove_file(&staging)?;
-            sync_parent_directory(&staging)?;
-        }
-        return match result {
-            Ok(()) => Ok(true),
-            Err(ProjectionGenerationRegistryError::Io(error))
-                if error.kind() == std::io::ErrorKind::AlreadyExists =>
-            {
-                Ok(false)
-            }
-            Err(error) => Err(error),
-        };
-    }
-    Err(ProjectionGenerationRegistryError::InvalidRegistryIdentity {
-        field: "staging_path",
-    })
-}
-
-fn initialize_and_publish_registry(staging: &Path, destination: &Path) -> RegistryResult<()> {
-    let mut conn = Connection::open_with_flags(
-        staging,
-        OpenFlags::SQLITE_OPEN_READ_WRITE
-            | OpenFlags::SQLITE_OPEN_NO_MUTEX
-            | OpenFlags::SQLITE_OPEN_PRIVATE_CACHE
-            | OpenFlags::SQLITE_OPEN_NOFOLLOW,
-    )?;
-    conn.busy_timeout(BUSY_TIMEOUT)?;
-    conn.pragma_update(None, "foreign_keys", "ON")?;
-    conn.pragma_update(None, "synchronous", "FULL")?;
-    #[cfg(target_os = "macos")]
-    conn.pragma_update(None, "fullfsync", "ON")?;
-    let transaction = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let application_id =
-        transaction.pragma_query_value(None, "application_id", |row| row.get::<_, i64>(0))?;
-    let user_version =
-        transaction.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
-    let object_count = transaction.query_row(
-        "SELECT COUNT(*) FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%';",
-        [],
-        |row| row.get::<_, i64>(0),
-    )?;
-    if application_id != 0 || user_version != 0 || object_count != 0 {
-        return Err(ProjectionGenerationRegistryError::InvalidRegistryIdentity {
-            field: "new_file",
-        });
-    }
-    transaction.execute_batch(REGISTRY_SCHEMA_SQL)?;
-    transaction.commit()?;
-    verify_registry_integrity(&conn)?;
-    verify_registry_identity(&conn)?;
-    conn.close()
-        .map_err(|(_, error)| ProjectionGenerationRegistryError::Sql(error))?;
-    File::open(staging)?.sync_all()?;
-    publish_projection_file(staging, destination)?;
-    File::open(destination)?.sync_all()?;
-    Ok(())
-}
-
-fn verify_registry_integrity(conn: &Connection) -> RegistryResult<()> {
-    let quick_check =
-        conn.query_row("PRAGMA quick_check(1);", [], |row| row.get::<_, String>(0))?;
-    if quick_check != "ok" {
-        return Err(ProjectionGenerationRegistryError::InvalidRegistryIdentity {
-            field: "integrity",
-        });
-    }
-    let foreign_key_problem = conn
-        .query_row("PRAGMA foreign_key_check;", [], |_| Ok(()))
-        .optional()?;
-    if foreign_key_problem.is_some() {
-        return Err(ProjectionGenerationRegistryError::InvalidRegistryIdentity {
-            field: "foreign_keys",
-        });
-    }
-    Ok(())
-}
-
-fn verify_registry_identity(conn: &Connection) -> RegistryResult<()> {
-    let application_id =
-        conn.pragma_query_value(None, "application_id", |row| row.get::<_, i64>(0))?;
-    if application_id != REGISTRY_APPLICATION_ID {
-        return Err(ProjectionGenerationRegistryError::InvalidRegistryIdentity {
-            field: "application_id",
-        });
-    }
-    let user_version = conn.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
-    if user_version != REGISTRY_SCHEMA_VERSION {
-        return Err(ProjectionGenerationRegistryError::InvalidRegistryIdentity {
-            field: "schema_version",
-        });
-    }
-    if registry_catalog(conn)? != expected_registry_catalog()? {
-        return Err(ProjectionGenerationRegistryError::InvalidRegistryIdentity {
-            field: "schema_catalog",
-        });
-    }
-    Ok(())
-}
-
-fn registry_catalog(conn: &Connection) -> RegistryResult<Vec<(String, String, String, String)>> {
-    let mut statement = conn.prepare(
-        "SELECT type, name, tbl_name, COALESCE(sql, '')
-         FROM sqlite_schema
-         WHERE name NOT LIKE 'sqlite_%'
-         ORDER BY type, name, tbl_name;",
-    )?;
-    let catalog = statement
-        .query_map([], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
-        })?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(ProjectionGenerationRegistryError::from)?;
-    Ok(catalog)
-}
-
-fn expected_registry_catalog() -> RegistryResult<Vec<(String, String, String, String)>> {
-    let reference = Connection::open_in_memory()?;
-    reference.execute_batch(REGISTRY_SCHEMA_SQL)?;
-    registry_catalog(&reference)
-}
-
 fn validate_transition_id(transition_id: &str) -> RegistryResult<()> {
     if transition_id.is_empty() || transition_id.len() > MAX_TRANSITION_ID_BYTES {
         return Err(ProjectionGenerationRegistryError::TransitionConflict);
@@ -745,22 +554,6 @@ fn digest_file(path: &Path) -> RegistryResult<String> {
         });
     }
     Ok(lower_hex(&hasher.finalize()))
-}
-
-#[cfg(unix)]
-fn sync_parent_directory(path: &Path) -> RegistryResult<()> {
-    let parent =
-        path.parent()
-            .ok_or(ProjectionGenerationRegistryError::InvalidRegistryIdentity {
-                field: "parent_directory",
-            })?;
-    File::open(parent)?.sync_all()?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn sync_parent_directory(_path: &Path) -> RegistryResult<()> {
-    Ok(())
 }
 
 #[cfg(unix)]

@@ -40,6 +40,8 @@ mod library_core_canonical;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_ed25519;
 #[cfg_attr(not(test), allow(dead_code))]
+mod library_core_feed_browse_registry;
+#[cfg_attr(not(test), allow(dead_code))]
 mod library_core_feed_browse_runtime;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_feed_browse_store;
@@ -53,6 +55,8 @@ mod projection_coordinator;
 mod projection_generation_reader;
 #[cfg_attr(not(test), allow(dead_code))]
 mod projection_generation_registry;
+#[cfg_attr(not(test), allow(dead_code))]
+mod sqlite_registry_file;
 #[cfg_attr(not(test), allow(dead_code))]
 mod shadow_store;
 mod youtube;
