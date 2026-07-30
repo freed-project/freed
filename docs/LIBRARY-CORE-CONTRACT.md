@@ -2398,8 +2398,10 @@ ID, canonical input digest, and expected previous projection revision. Exact
 retry after timeout, process restart, or response loss returns the original
 receipt without replaying the batch. Reusing the batch ID with a different
 digest or previous revision fails closed. A batch contains between one and
-1,000 combined row upserts and deletion intents and at most 4 MiB of projected
-input. Failure to write the receipt rolls back the entire projection
+1,000 combined row upserts and deletion intents. It admits one 4 MiB canonical
+source document plus at most 64 KiB of bounded projection metadata, so every
+valid source document can fit in one batch without weakening the source
+payload ceiling. Failure to write the receipt rolls back the entire projection
 transaction. Physical migrations are atomic and cannot bless an already
 present table with an incompatible shape. This is derived-store retry evidence,
 not a signed Library Core operation receipt. It cannot authorize a mutation,
@@ -9674,23 +9676,162 @@ integers. Large payloads enter preallocated SQLite blobs through the same fixed
 transfer buffer. The stage verifies its exact schema catalog before use and
 commits nothing unless the complete row and companion-spool verification
 succeeds. Foreign keys bind every change to its actor, every dependency to a
-staged change, and every operation object, element key, and successor to an
-exact staged operation ID. Every staged head must resolve to a staged change
-before the change receipt is accepted. Exact retry returns the stored receipt
-only while the layout, receipted row, relationship, payload, and graph-closure
-checks remain complete. A changed source, changed layout entry, changed
-summary, dangling reference, incomplete stage, mixed change and operation
-source identity, or schema drift fails closed.
+staged change, and every operation object and element key to an exact staged
+operation ID. Automerge document chunks intentionally omit delete rows and
+encode those operation IDs only as successors. Each successor therefore
+resolves either to one exact staged operation or one reconstructed omitted
+delete identity. Every predecessor for one omitted delete must name the same
+object and effective property or list-element target. Explicit delete rows,
+non-Lamport successor edges, explicit successors attached to another target,
+and unequal targets for one omitted delete fail closed. Every staged head must
+resolve to a staged change before the change receipt is accepted. Exact retry
+returns the stored receipt only while the layout, receipted row, relationship,
+payload, and graph-closure checks remain complete. A changed source, changed
+layout entry, changed summary, dangling reference, incomplete stage, mixed
+change and operation source identity, or schema drift fails closed.
 
 The complete scratch graph receives one seal only after actor indexes and head
 indexes are dense, each actor's change sequence is contiguous, maximum
-operation counters never regress, and its operation IDs exactly cover counters
-one through the final change maximum without a gap. One canonical SHA-256
-projection covers the source and row receipts, actor and head catalogs, every
-change and operation descriptor, every dependency and successor, and every
-payload byte streamed from SQLite through a fixed 64 KiB buffer. Exact seal
-retry recomputes the projection. Same-count metadata or payload tampering,
+operation counters never regress, and the union of stored operation IDs and
+reconstructed omitted-delete IDs exactly covers counters one through the final
+change maximum without a gap. One canonical SHA-256 projection covers the
+source and row receipts, actor and head catalogs, every change, stored
+operation, and omitted-delete descriptor, every dependency and successor, and
+every payload byte streamed from SQLite through a fixed 64 KiB buffer. Exact
+seal retry recomputes the projection. Same-count metadata or payload tampering,
 counter gaps, incomplete actor intervals, and receipt drift fail closed.
+
+After graph sealing, one separate immutable receipt selects every visible
+non-increment operation whose successors are all explicit increments.
+Increment rows do not become independently visible, and their edges do not
+hide the counter value they adjust. Omitted delete identities never become
+visible value rows. Their edges, and every explicit non-increment successor,
+remove the superseded predecessor from this current set. Concurrent visible
+operations all remain present. This stage does not apply counter arithmetic,
+choose a conflict winner, order sequence elements, reconstruct objects, or
+claim a registered materialized entity. Its digest binds the exact sealed
+graph, every selected operation descriptor, and every selected payload byte.
+Exact retry recomputes both the selection and digest. A missing, extra,
+changed, or pre-seal row fails closed.
+
+One later immutable resolved-value receipt retains every current conflict and
+marks exactly one winner for each effective map property or list element.
+Winner order is Automerge Lamport order: the unsigned operation counter first,
+then the actor bytes in binary lexical order. Insert operations target their
+own operation ID, while later sequence updates target that inserted element
+ID. Winner selection runs as one SQLite window operation with temporary data
+forced to disk. It must not execute one complete conflict scan per current
+operation.
+
+Counter increment operations never become visible values. Each increment must
+be an explicit successor of at least one counter base, must contain one
+canonical signed or unsigned integer, and adjusts every current counter base
+it names. Orphan increments, increments attached to a non-counter,
+malformed integer text, unsigned values above the signed projection range, and
+arithmetic overflow fail closed. Counter bases are processed through fixed
+pages. Exact replay recomputes winner membership and counter values, then binds
+every resolved row, descriptor, and payload byte to the sealed graph and
+current-operation receipts. This stage still does not order list elements,
+reconstruct objects, select registered entities, open a production database,
+or activate SQLite.
+
+One later immutable sequence receipt orders every insertion in each list or
+text object with Automerge's reference traversal. Children of one anchor are
+visited in descending Lamport order, and each child's descendants are visited
+before the next sibling. Deleted insertions remain anchors in this ordering
+graph even though their resolved values are absent. This preserves the
+positions of visible descendants without resurrecting deleted values.
+
+The traversal pages sequence objects and uses a temporary SQLite stack rather
+than a source-sized Rust collection or recursive call stack. Every insertion
+must target a list or text object. A non-head anchor must resolve to an earlier
+insertion in the same object. Cross-object anchors, non-sequence parents,
+missing or duplicate insertion rows, ordinal gaps, and changed replay results
+fail closed. Exact replay recomputes the full order and binds every object,
+ordinal, and insertion operation to the sealed graph and resolved-value
+receipt. This stage still does not reconstruct objects, select registered
+entities, open a production database, or activate SQLite.
+
+One later immutable FeedItem topology receipt selects exactly one winning
+root `feedItems` map and admits only map-valued entity entries with nonempty
+bounded IDs. It reconstructs each entity's complete winning map and sequence
+node graph in temporary SQLite. Every node records its entity, exact parent,
+depth, property name or visible sequence ordinal, and winning value operation.
+Deleted entities omit descendants that remain independently current in the
+Automerge graph. Deleted sequence anchors remain in the earlier ordering graph,
+but do not receive materialized nodes, and visible elements are renumbered
+densely.
+
+The topology walk is iterative and disk-backed. It admits at most 128 nested
+object levels. A shared value node, malformed map or sequence child, scalar
+parent with children, non-map entity, missing parent, cross-entity parent,
+depth overflow, changed payload, or stored topology drift fails closed. Exact
+replay rebuilds the expected temporary topology and binds every entity and
+node to the sealed graph, resolved-value, and sequence receipts. This stage
+still does not serialize complete FeedItems, populate a published generation,
+open a production database, or activate SQLite.
+
+The following immutable FeedItem document receipt reconstructs each admitted
+entity from that topology. Map keys use binary order, lists use their visible
+sequence ordinals, text concatenates only ordered string payloads, and scalar
+values retain their exact JSON-compatible Automerge meaning. One document is
+limited to 4 MiB. Integers outside JavaScript's safe range, bytes, unknown
+scalar extensions, malformed text values, and an embedded `globalId` that
+differs from the owning `feedItems` key fail closed. The existing canonical
+`__nonFinite` escape preserves NaN and infinities without turning them into
+null. Negative zero fails closed because JSON would silently rewrite it as
+positive zero. A user property named `__nonFinite` also fails closed at this
+stage, which makes the escape unambiguous instead of silently reinterpreting
+user data.
+
+Temporary node JSON remains in SQLite. Native code holds at most one bounded
+output plus one bounded child or scalar payload while assembling a document,
+so neither the document set nor the source graph becomes a Rust allocation.
+The durable document set records each entity's exact JSON bytes, byte length,
+and SHA-256 digest. Its receipt binds the complete set to the FeedItem topology
+receipt and exact replay rebuilds and compares every row. This stage still
+does not project FeedItem columns, publish a generation, open a production
+database, or activate SQLite.
+
+The next immutable FeedItem projection receipt converts those exact documents
+into the same lossless row shape used by the native shadow store. It reads and
+projects one document at a time. Native memory therefore holds one bounded
+document tree and one bounded projected row rather than a corpus-sized
+collection. Strings and booleans enter their typed columns only without
+coercion. Numeric columns admit only JavaScript-safe integers because the
+canonical SQLite columns are `INTEGER`. Fractional, unsafe, nonfinite, and
+wrong-type values keep a null typed column and survive under the exact `__raw`
+escape. Missing fields remain distinct from present nulls through `__absent`.
+Unknown root, author, and user-state fields remain in `rest`; full content and
+preserved content remain in their dedicated JSON columns. Every JSON object in
+those columns uses recursive UTF-8 key order in both Rust and TypeScript.
+Reserved nonfinite-tag collisions and invalid Unicode fail closed, so semantic
+equivalence cannot conceal adapter-specific row bytes. Negative zero also
+fails closed because JSON cannot preserve its sign.
+
+The scratch schema stores every projected column, its derived sort key, and
+the source entity operation. One canonical digest covers the exact typed row
+sequence, and the receipt binds that digest and count to the complete FeedItem
+document receipt. Replay reprojects every document and compares the complete
+row set before accepting the stored receipt. An identity mismatch, malformed
+document, reserved escape collision, partial row set, changed column, changed
+sort key, foreign-key error, or changed receipt fails closed. This stage still
+does not populate an immutable published generation, open a production
+database, register a command, contact a provider, change the active writer, or
+activate SQLite.
+
+The dormant population bridge opens one transaction-pinned, receipt-verified
+snapshot of those scratch rows and copies them into one fresh derived
+generation. It retains at most one page of 1,000 rows and one 4 MiB source
+document plus 64 KiB of projection metadata. Every page digest binds the
+complete scratch receipt, source operation indexes, and exact projected row
+bytes. The destination commits each page through the existing rebuild receipt.
+A response-loss retry derives its source cursor from the durable projected-row
+count and continues without reapplying earlier rows. Source tampering,
+receipt drift, an oversized row, a changed rebuild identity, or an incomplete
+page fails closed. The bridge does not publish or select the completed file,
+register a command, contact a provider, change the active writer, or activate
+SQLite.
 
 The migration worker's attributed resident ceiling is 384 MiB on a 4 GiB host,
 512 MiB on an 8 GiB host, and 768 MiB on a host with 16 GiB or more. Admission

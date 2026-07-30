@@ -231,7 +231,9 @@ temporary storage, and mmap behavior explicitly even while the store is dark.
 Bind every derived projection batch to one stable batch ID, canonical input
 digest, and expected previous projection revision. Commit its rows, deletions,
 revision advance, and durable receipt together. Bound each batch to at most
-1,000 combined row upserts and deletion intents and 4 MiB of projected input.
+1,000 combined row upserts and deletion intents. Admit one 4 MiB canonical
+source document plus no more than 64 KiB of bounded projection metadata so an
+accepted source row always fits without weakening the source ceiling.
 Exact retry after response loss returns the original receipt without
 reapplying. Changed replay tuples, oversized batches, and incompatible
 migration objects fail closed, and a receipt write failure rolls back the whole
@@ -561,17 +563,80 @@ Fault injection must prove rollback from the latest write in that transaction.
     change or operation rows, dependencies or successors, payloads, and the
     corresponding source receipt together. Exact retry returns that receipt
     only while the layout and receipted row, relationship, and payload counts
-    remain complete. The scratch schema enforces actor, change dependency,
-    operation object, element-key, and successor references with foreign keys.
-    Every staged head must resolve to a staged change before the change receipt
-    is accepted. Change and operation receipts in one stage must bind the same
-    exact source identity. Missing rows, changed layout entries, dangling graph
-    references, unreceipted rows, mixed sources, or changed input fail closed.
-    Seal the complete stage only after actor sequences are contiguous,
-    per-actor operation counters exactly close every change interval, and one
-    bounded canonical digest covers every receipt, metadata row, relationship,
-    and incrementally read payload byte. Exact seal replay recomputes that
-    digest and rejects same-count semantic or payload tampering.
+    remain complete. Every staged head must resolve to a staged change before
+    the change receipt is accepted. Change and operation receipts in one stage
+    must bind the same exact source identity. Missing rows, changed layout
+    entries, dangling graph references, unreceipted rows, mixed sources, or
+    changed input fail closed. Seal the complete stage only after actor
+    sequences are contiguous, per-actor operation counters exactly close every
+    change interval, and one bounded canonical digest covers every receipt,
+    metadata row, relationship, and incrementally read payload byte. Exact
+    seal replay recomputes that digest and rejects same-count semantic or
+    payload tampering. The scratch schema enforces actor, change dependency,
+    operation object and element-key references with foreign keys. Automerge
+    document chunks intentionally omit delete rows. A successor therefore
+    resolves either to one exact staged operation or to one reconstructed
+    omitted-delete identity whose object and effective property or list-element
+    target matches every predecessor. Reject explicitly encoded delete rows,
+    unequal targets for one omitted delete, non-Lamport successor edges, and
+    explicit successors attached to another target. Actor operation intervals
+    close over the union of stored operations and reconstructed delete IDs.
+    Derive the immutable current-operation set only after graph sealing.
+    Preserve every visible non-increment operation whose successors are all
+    explicit increments. Exclude increment rows themselves and operations
+    superseded by any explicit non-increment or omitted-delete successor.
+    Retain concurrent current operations without choosing a winner. Bind the
+    exact set and payload bytes to the graph digest in a replay-checked receipt
+    before object or entity materialization. The later resolved-value stage
+    preserves every concurrent value, marks exactly one Lamport-maximum winner
+    per effective map or list target, and applies explicit increment successors
+    only to their current counter bases. Compute winners in one disk-spilling
+    SQLite window pass instead of scanning all conflicts once per operation.
+    Page counter bases through a fixed bound, reject orphan, non-counter,
+    malformed, or overflowing increments, and bind the complete winner and
+    counter projection to the sealed graph and current-operation receipts.
+    The later sequence stage orders every list and text insertion through one
+    disk-backed iterative depth-first walk. Visit concurrent siblings in
+    descending Lamport order and descendants before the next sibling. Retain
+    deleted insertions as ordering anchors without restoring their resolved
+    values. Page objects, reject cross-object or non-sequence anchors, and bind
+    exact replay to the graph and resolved-value receipts. This does not
+    reconstruct objects or select registered product entities. The later
+    FeedItem topology stage selects one winning `feedItems` map, admits only
+    map-valued entities with bounded IDs, and reconstructs their winning map
+    and sequence nodes in temporary SQLite. Omit deleted entities and their
+    still-current descendants, densely renumber visible sequence values, cap
+    nesting at 128 levels, and reject shared nodes, malformed container
+    children, scalar parents with children, and replay drift. Bind the complete
+    entity topology to the graph, resolved-value, and sequence receipts. The
+    next document stage reconstructs binary-key-ordered maps, visible-order
+    lists, text, and JSON-compatible scalar values from that topology. Limit
+    each entity to 4 MiB, require its embedded `globalId` to equal the owning
+    map key, preserve nonfinite floats through the canonical `__nonFinite`
+    escape, reject unsafe integers, negative zero, bytes, unknown scalar
+    extensions, malformed text chunks, and any user property that collides
+    with the reserved nonfinite escape, and bind every exact JSON byte to a
+    replayable document receipt. Keep temporary node values in SQLite and hold
+    at most one bounded output plus one bounded child or scalar payload in
+    native memory. Do not populate a published generation until the later
+    schema-projection stage validates the complete FeedItem domain. That next
+    stage must consume one receipt-verified document at a time and produce the
+    exact shared shadow-row shape. Admit only faithful strings, booleans, and
+    JavaScript-safe integers into typed columns. Preserve missing paths in
+    `__absent`, unrepresentable values in `__raw`, unknown author and user-state
+    members in their reserved rest objects, and full content in its dedicated
+    JSON columns. Encode every projected JSON object in one recursive UTF-8
+    key order shared by Rust and TypeScript, and reject reserved nonfinite tags
+    or invalid Unicode instead of producing adapter-specific bytes. Reject
+    negative zero because JSON cannot preserve its sign. Bind the complete row
+    sequence and derived sort keys to the document receipt, then reproject and
+    compare every row on replay. Do not batch complete projected documents in
+    Rust memory or publish a generation before the row receipt closes. Populate
+    the derived generation from one transaction-pinned scratch snapshot. Bind
+    every bounded page to the complete row receipt, source operation indexes,
+    and exact projected bytes. Resume from the destination's durable row count
+    after response loss, and fail closed on source drift, oversized rows, or an
+    incomplete page. Population does not publish or select the generation.
     Admission proves both the fixed memory ceiling and private staging capacity.
 25. Build PWA reader manifests from both registered Cache namespaces and the
     durable logical lookup plan. Use one plan row and one probe per unique

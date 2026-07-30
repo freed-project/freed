@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   blobTierFields,
+  encodeJson,
   deviceLocalFields,
   diffProjection,
   projectFeedItem,
@@ -132,6 +133,73 @@ describe("feed item projection", () => {
     const wrongTypes = { globalId: "x:5", publishedAt: "2026-01-01", hidden: 1 };
     expectLossless(wrongTypes);
     expect(projectFeedItem(wrongTypes as unknown as FeedItem).publishedAt).toBeNull();
+  });
+
+  it("keeps non-integer and unsafe numbers out of SQLite INTEGER columns", () => {
+    const numericEdges = {
+      globalId: "x:numeric-edges",
+      publishedAt: 1.5,
+      capturedAt: Number.MAX_SAFE_INTEGER + 1,
+      userState: { readAt: -1.25 },
+    };
+    const row = projectFeedItem(numericEdges as unknown as FeedItem);
+    expect(row.publishedAt).toBeNull();
+    expect(row.capturedAt).toBeNull();
+    expect(row.readAt).toBeNull();
+    expect(reconstructFeedItem(row)).toStrictEqual(numericEdges);
+    expect(() =>
+      projectFeedItem({
+        globalId: "x:negative-zero",
+        publishedAt: -0,
+      } as FeedItem),
+    ).toThrow(/cannot represent negative zero/);
+  });
+
+  it("uses the same recursive UTF-8 object order as the native projector", () => {
+    const item = {
+      globalId: "rss:item",
+      author: { id: "author", avatarUrl: "a" },
+      userState: { saved: true, liked: true },
+      engagement: { likes: 2 },
+      "\u{10000}": "later in UTF-8",
+      "\u{e000}": "earlier in UTF-8",
+    };
+    const rest = projectFeedItem(item as unknown as FeedItem).rest;
+    expect(rest).toBe(
+      '{"__absent":["platform","contentType","publishedAt","capturedAt",' +
+        '"sourceUrl","content","preservedContent","author.displayName",' +
+        '"author.handle","userState.hidden","userState.archived",' +
+        '"userState.readAt","userState.archivedAt","userState.likedAt",' +
+        '"userState.tags"],"__author":{"avatarUrl":"a"},' +
+        '"__userState":{"liked":true},"engagement":{"likes":2},' +
+        '"\u{e000}":"earlier in UTF-8","\u{10000}":"later in UTF-8"}',
+    );
+    expect(
+      encodeJson({ z: { b: 2, a: 1 }, a: true }),
+    ).toBe('{"a":true,"z":{"a":1,"b":2}}');
+    expect(() => encodeJson({ __nonFinite: "user-data" })).toThrow(
+      /reserved key __nonFinite/,
+    );
+    expect(() => encodeJson({ ["\ud800"]: "invalid" })).toThrow(
+      /unpaired high surrogate/,
+    );
+  });
+
+  it("rejects invalid identities and reserved rest collisions", () => {
+    expect(() => projectFeedItem({ globalId: 7 } as unknown as FeedItem)).toThrow(
+      /globalId must be a nonempty string/,
+    );
+    expect(() => projectFeedItem({ globalId: "" } as FeedItem)).toThrow(
+      /globalId must be a nonempty string/,
+    );
+    for (const key of ["__absent", "__author", "__raw", "__userState"]) {
+      expect(() =>
+        projectFeedItem({
+          globalId: "rss:reserved",
+          [key]: "user-data",
+        } as unknown as FeedItem),
+      ).toThrow(new RegExp(`reserved projection key ${key}`));
+    }
   });
 
   it("preserves author and userState when they are not objects at all", () => {

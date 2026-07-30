@@ -66,12 +66,40 @@ blocked.
 The bounded migration path now verifies the immutable Automerge source through
 fixed-memory external runs and atomically stages its actor, head, change,
 dependency, operation, element-key, successor, and payload graph in private
-SQLite. The schema enforces every graph reference, and its receipts bind one
-exact source identity. A final bounded seal verifies contiguous per-actor
-change sequences and operation counters, then streams one canonical digest
-over all staged metadata, relationships, and payload bytes. This closes
-migration ingestion, but immutable entity materialization, full-corpus parity,
-memory admission, and activation remain blocked.
+SQLite. Automerge document chunks omit delete rows by design, so the stage
+reconstructs each missing successor as one target-bound delete identity instead
+of requiring a fictional operation row. It rejects an explicit delete row,
+one delete ID attached to unequal targets, a non-Lamport successor, or an
+explicit successor attached to another target. The schema enforces every
+remaining graph reference, and its receipts bind one exact source identity. A
+final bounded seal verifies contiguous per-actor change sequences and operation
+counters across stored operations and reconstructed deletes, then streams one
+canonical digest over all staged metadata, relationships, and payload bytes.
+The next immutable receipt selects every visible non-increment operation whose
+successors are all explicit increments. Increment rows do not become separate
+values or hide the counter they adjust. Explicit non-increment updates and
+omitted deletes remove their predecessors. Every concurrent visible operation
+remains instead of inventing one winner. This closes migration ingestion and
+the current-operation frontier. Counter arithmetic, object and sequence
+reconstruction, registered entity materialization, full-corpus parity, memory
+admission, and activation remain blocked.
+
+The dormant migration chain now continues through complete FeedItem topology,
+bounded JSON reconstruction, and lossless native row projection. It keeps
+temporary object values in scratch SQLite and holds only one bounded document
+and row in native memory. The row stage shares the native shadow-store shape,
+admits only faithful strings, booleans, and JavaScript-safe integers into typed
+columns, and preserves every other value through explicit absence, raw,
+nested-rest, and blob-tier escapes. Its receipt binds the complete projected
+row sequence to the exact reconstructed-document receipt. Rust and TypeScript
+use the same recursive UTF-8 object-key order for projected JSON, and replay
+reprojects every document before accepting stored rows. A bounded population
+bridge now pins one verified scratch snapshot and copies those rows into the
+existing crash-resumable generation in deterministic receipt-bound pages. It
+resumes from the destination's durable row count after response loss and never
+retains the projected corpus in Rust memory. Immutable file publication,
+full-corpus parity, production storage admission, and activation remain
+blocked.
 
 Physical shadow schema version 3 now closes the native staging transaction
 inside one database. A fresh staging file records the exact source identity,

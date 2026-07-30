@@ -41,8 +41,15 @@ const MAX_FEED_CARD_MEDIA: usize = 8;
 const MAX_FEED_CARD_TAGS: usize = 32;
 const MAX_FEED_CARD_SIGNAL_TAGS: usize = 32;
 const MAX_PROJECTION_BATCH_ID_BYTES: usize = 128;
-const MAX_PROJECTION_BATCH_ITEMS: usize = 1_000;
-const MAX_PROJECTION_BATCH_BYTES: usize = 4 * 1024 * 1024;
+pub(super) const MAX_PROJECTION_BATCH_ITEMS: usize = 1_000;
+/// One canonical 4 MiB source document plus bounded projection metadata.
+///
+/// The lossless projector removes typed fields from the JSON escape object,
+/// but `__absent`, `__raw`, and their keys can make the projected row slightly
+/// larger than its source document. Keeping a separate 64 KiB allowance means
+/// every admitted source document can fit in one batch without weakening the
+/// source payload ceiling.
+pub(super) const MAX_PROJECTION_BATCH_BYTES: usize = 4 * 1024 * 1024 + 64 * 1024;
 const MAX_ENTITY_ID_UTF8_BYTES: usize = 4_096;
 const MAX_PROJECTION_REBUILD_ROWS: usize = 250_000;
 const MAX_PROJECTION_SOURCE_DOCUMENT_ID_BYTES: usize = 4_096;
@@ -294,7 +301,7 @@ impl FeedItemRow {
         self.published_at.unwrap_or(SORT_AT_ABSENT)
     }
 
-    fn projected_size_bytes(&self) -> usize {
+    pub(super) fn projected_size_bytes(&self) -> usize {
         let string_bytes = [
             Some(self.global_id.as_str()),
             self.platform.as_deref(),
@@ -3385,6 +3392,10 @@ mod tests {
                 ShadowStoreError::InvalidProjectionEntityId
             ));
         }
+        let mut maximum_source_document = row(1, None);
+        maximum_source_document.content_blob = Some("x".repeat(4 * 1024 * 1024));
+        ShadowStore::validate_projection_batch_payload(&[maximum_source_document], &[])
+            .expect("one maximum source document plus bounded projection metadata must fit");
         let mut oversized = row(1, None);
         oversized.content_blob = Some("x".repeat(MAX_PROJECTION_BATCH_BYTES + 1));
         match store
