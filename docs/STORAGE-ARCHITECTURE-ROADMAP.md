@@ -43,12 +43,17 @@ fail closed if that revision changes between pages. The registered 128-row
 maximum and 2 MiB serialized response ceiling are enforced at the adapter.
 Feed rows select only compact card fields inside SQLite, cap media and tag
 collections independently, and never return full content, preserved reader
-bodies, or the unmodelled-field escape object. Malformed optional values are
-omitted instead of coerced into plausible data. The dark base tier pins its
-busy timeout, 32 MiB page cache, file-backed temporary work, and disabled mmap.
-The module is compiled into Freed Desktop but has no production caller and
-opens no user database. This is progress inside Gate B and step 4, not a claim
-that either gate is complete.
+bodies, or the unmodelled-field escape object. The package-internal
+`feed_page_v1` protocol now closes the exact request, response, compact
+projection, source identity, nested bounds, and opaque source-bound keyset
+cursor for that existing default nonhidden, nonarchived page. Its parsers
+snapshot retained values and enforce both the row and serialized-byte ceilings.
+The dark base tier pins its busy timeout, 32 MiB page cache, file-backed
+temporary work, and disabled mmap. The module is compiled into Freed Desktop
+but has no production caller and opens no user database. Product filter and
+recommendation-order equivalence, the Desktop runtime adapter, and PWA adapter
+proof remain explicit blockers. This is progress inside Gate B and step 4, not
+a claim that either gate is complete.
 
 The Desktop derived-shadow path now also has a dormant bounded projection
 probe. It pins one exact durable Automerge frontier and storage revision, emits
@@ -58,8 +63,9 @@ the decoded Automerge document between requests. It still calls
 `Automerge.load`, so it is a temporary compatibility path for building and
 testing the derived SQL reader while Automerge remains authoritative. It cannot
 satisfy the external-memory Gate C migration contract or authorize cutover. No
-production caller consumes the responses yet. Immutable entity materialization,
-a complete derived receipt, an opaque read cursor, cancellation across the
+production caller consumes the responses yet. Immutable external entity
+materialization and the default opaque feed cursor are now closed. Product
+filter and recommendation-order equivalence, cancellation across the
 main-to-native boundary, PWA adapter parity, and runtime registration remain
 blocked.
 
@@ -97,9 +103,10 @@ reprojects every document before accepting stored rows. A bounded population
 bridge now pins one verified scratch snapshot and copies those rows into the
 existing crash-resumable generation in deterministic receipt-bound pages. It
 resumes from the destination's durable row count after response loss and never
-retains the projected corpus in Rust memory. Immutable file publication,
-full-corpus parity, production storage admission, and activation remain
-blocked.
+retains the projected corpus in Rust memory. The package-internal default feed
+protocol can validate a bounded page from an immutable generation, but no
+product reader calls it. Full-corpus parity, production storage admission,
+active query adapters, and activation remain blocked.
 
 Physical shadow schema version 3 now closes the native staging transaction
 inside one database. A fresh staging file records the exact source identity,
