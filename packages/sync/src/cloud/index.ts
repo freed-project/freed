@@ -62,6 +62,17 @@ export {
   type PublishLibraryCoreCheckpointGenerationRequestV1,
 } from "./library-core-checkpoint-publication.js";
 export {
+  importLibraryCorePortableCheckpointV1,
+  prepareLibraryCorePortableCheckpointPagesV1,
+  publishLibraryCorePortableCheckpointV1,
+  type ImportLibraryCorePortableCheckpointRequestV1,
+  type ImportLibraryCorePortableCheckpointResultV1,
+  type LibraryCorePortableCheckpointImportWriterV1,
+  type LibraryCorePortableCheckpointStagingReceiptV1,
+  type PrepareLibraryCorePortableCheckpointPagesRequestV1,
+  type PublishLibraryCorePortableCheckpointRequestV1,
+} from "./library-core-portable-checkpoint.js";
+export {
   LIBRARY_CORE_GOOGLE_DRIVE_SIMPLE_UPLOAD_LIMIT,
   createGoogleDriveLibraryCoreAdapterV1,
   discoverGoogleDriveLibraryCoreControlV1,

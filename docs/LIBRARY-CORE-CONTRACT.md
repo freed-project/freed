@@ -156,6 +156,50 @@ A stale starting control tuple uploads nothing. A later failure can leave
 immutable unreachable objects, but it cannot publish a partial checkpoint or
 infer authority from their presence.
 
+The registered `library_core_logical_checkpoint_v1` dataset is the complete
+portable row-store stream. Record zero is one closed
+`logical_checkpoint_header` carrying the library, epoch, schema and codec
+versions, authority anchor, promoted receipt digests, materializer frontier
+and state digests, and exact count of every logical collection. The remaining
+records are closed `logical_checkpoint_entry` values for accepted and
+quarantined frontiers, materialized rows, field clocks, relationships,
+tombstones, actor states, receipt records, blob roots, and explicit registry
+exclusions. Entries carry a contiguous collection-local ordinal. Their wire
+identity is the fixed collection order plus that ordinal, while the verifier
+also enforces each collection's semantic sort order from the logical
+checkpoint contract.
+
+The portable producer validates that stream while retaining at most 128
+records, encodes each page through the existing canonical frame and gzip
+object, and sends the prepared pages through the exact manifest and control
+publication path. The portable importer verifies the authenticated manifest
+and every page, stages only bounded pages through an injected row-store
+writer, and refuses selection until the writer returns a staging receipt
+matching the exact library, epoch, frontier digest, materialized-state digest,
+and complete record count. A malformed collection, missing record, reordered
+row, header or manifest mismatch, or false staging receipt aborts the staged
+import. The writer remains responsible for recomputing semantic commitments
+from its staged SQLite or IndexedDB rows before issuing that receipt. This is
+the shared interchange path for Desktop SQLite and PWA IndexedDB. It has no
+product caller and does not activate replacement replication.
+
+For the MVP, PWA IndexedDB is the primary Library Core row store. SQLite WASM
+and OPFS are not release dependencies. A future adapter must pass the same
+checkpoint, operation, search, intent, and result conformance suite and rebuild
+from immutable objects into a verified fresh generation.
+
+Active Google Drive synchronization remains confined to `appDataFolder`.
+Complete off-device daily backups are separate. When Drive backup is enabled,
+Freed stores 24 immutable daily generations in a private user-visible
+`Freed Backups` folder using the narrow `drive.file` scope, alongside the local
+backup directory. Backup generations share content-addressed immutable objects
+and include one fresh scrubbed, closed, integrity-checked SQLite checkpoint.
+They never copy a live SQLite database or include WAL, SHM, rollback journals,
+free pages, stale deleted content, provider sessions, OAuth tokens, or private
+actor keys. The plaintext MVP backup contract supersedes the older encrypted
+backup-format design below. Application-layer backup encryption remains a
+versioned future extension, not an activation requirement.
+
 The first PWA consumer feeds the manifest's verified compact feed-card
 projection into the existing resumable IndexedDB generation writer. Exact page
 retry reuses that writer's batch receipts. A completed generation still

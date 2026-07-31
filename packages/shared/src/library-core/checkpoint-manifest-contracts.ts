@@ -14,6 +14,7 @@ import {
 export const LIBRARY_CORE_CHECKPOINT_MANIFEST_SCHEMA_VERSION = 1 as const;
 export const LIBRARY_CORE_CHECKPOINT_DATASET_SCHEMA_IDS = [
   "library_core_feed_card_projection_v1",
+  "library_core_logical_checkpoint_v1",
 ] as const;
 export const LIBRARY_CORE_CHECKPOINT_MANIFEST_PAGE_LIMIT = 8_192;
 export const LIBRARY_CORE_CHECKPOINT_MANIFEST_RECORD_LIMIT = 1_048_576;
