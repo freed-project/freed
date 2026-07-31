@@ -114,18 +114,18 @@ describe("Library Core immutable transport contract", () => {
     ];
 
     expect(keys).toEqual([
-      `freed-v2-epoch-library-1-epoch-1-${DIGEST}.json`,
-      `freed-v2-enrollment-library-1-epoch-1-desktop-1-${DIGEST}.json`,
-      `freed-v2-ops-library-1-eepoch-1-s1-128-${DIGEST}.fseg.gz`,
-      `freed-v2-manifest-library-1-eepoch-1-g7-${DIGEST}.json`,
-      `freed-v2-checkpoint-library-1-eepoch-1-g7-p2-${DIGEST}.fpage.gz`,
-      `freed-v2-search-library-1-eepoch-1-g7-manifest-${DIGEST}.json`,
-      `freed-v2-search-library-1-eepoch-1-g7-s2-${DIGEST}.fidx.gz`,
-      `freed-v2-search-delta-library-1-eepoch-1-s129-256-${DIGEST}.fidx.gz`,
-      `freed-v2-intents-library-1-pwa-1-s1-9-${DIGEST}.fseg.gz`,
-      `freed-v2-results-library-1-pwa-1-s1-9-${DIGEST}.fseg.gz`,
-      `freed-v2-blob-library-1-${DIGEST}`,
-      `freed-v2-backup-library-1-backup-2026-07-30-${DIGEST}.json`,
+      `freed-v2-epoch~library-1~epoch-1~${DIGEST}.json`,
+      `freed-v2-enrollment~library-1~epoch-1~desktop-1~${DIGEST}.json`,
+      `freed-v2-ops~library-1~eepoch-1~s1-128~${DIGEST}.fseg.gz`,
+      `freed-v2-manifest~library-1~eepoch-1~g7~${DIGEST}.json`,
+      `freed-v2-checkpoint~library-1~eepoch-1~g7~p2~${DIGEST}.fpage.gz`,
+      `freed-v2-search~library-1~eepoch-1~g7~manifest~${DIGEST}.json`,
+      `freed-v2-search~library-1~eepoch-1~g7~s2~${DIGEST}.fidx.gz`,
+      `freed-v2-search-delta~library-1~eepoch-1~s129-256~${DIGEST}.fidx.gz`,
+      `freed-v2-intents~library-1~pwa-1~s1-9~${DIGEST}.fseg.gz`,
+      `freed-v2-results~library-1~pwa-1~s1-9~${DIGEST}.fseg.gz`,
+      `freed-v2-blob~library-1~${DIGEST}`,
+      `freed-v2-backup~library-1~backup-2026-07-30~${DIGEST}.json`,
     ]);
     expect(keys.every(isLibraryCoreImmutableObjectKey)).toBe(true);
     expect(keys.every((key) => !key.includes("/"))).toBe(true);
@@ -139,11 +139,43 @@ describe("Library Core immutable transport contract", () => {
     ];
 
     expect(mutableKeys).toEqual([
-      "freed-v2-control-library-1.json",
-      "freed-v2-intent-head-library-1-pwa-1.json",
-      "freed-v2-result-head-library-1-pwa-1.json",
+      "freed-v2-control~library-1.json",
+      "freed-v2-intent-head~library-1~pwa-1.json",
+      "freed-v2-result-head~library-1~pwa-1.json",
     ]);
     expect(mutableKeys.some(isLibraryCoreImmutableObjectKey)).toBe(false);
+  });
+
+  it("keeps hyphenated library, epoch, and actor tuples unambiguous", () => {
+    const firstOperation = createLibraryCoreImmutableObjectKey({
+      kind: "operation_segment",
+      libraryId: "library-a",
+      epochId: "epoch-b",
+      firstSequence: 1,
+      lastSequence: 1,
+      digest: DIGEST,
+    });
+    const secondOperation = createLibraryCoreImmutableObjectKey({
+      kind: "operation_segment",
+      libraryId: "library",
+      epochId: "a-epoch-b",
+      firstSequence: 1,
+      lastSequence: 1,
+      digest: DIGEST,
+    });
+    const firstHead = createLibraryCoreIntentHeadObjectKey(
+      "library-a",
+      "pwa-b",
+    );
+    const secondHead = createLibraryCoreIntentHeadObjectKey(
+      "library",
+      "a-pwa-b",
+    );
+
+    expect(firstOperation).not.toBe(secondOperation);
+    expect(firstHead).not.toBe(secondHead);
+    expect(isLibraryCoreImmutableObjectKey(firstOperation)).toBe(true);
+    expect(isLibraryCoreImmutableObjectKey(secondOperation)).toBe(true);
   });
 
   it("rejects SQLite files, nested paths, malformed ranges, and unsafe indexes", () => {
@@ -153,9 +185,9 @@ describe("Library Core immutable transport contract", () => {
       "library.sqlite-shm",
       "library.sqlite-journal",
       `checkpoints/epoch-1/7/desktop-${DIGEST}.sqlite`,
-      `freed-v2-ops-library-1-eepoch-1-s2-1-${DIGEST}.fseg.gz`,
-      `freed-v2-checkpoint-library-1-eepoch-1-g${Number.MAX_SAFE_INTEGER + 1}-p0-${DIGEST}.fpage.gz`,
-      `freed-v2-blob-library-1-${OTHER_DIGEST}/nested`,
+      `freed-v2-ops~library-1~eepoch-1~s2-1~${DIGEST}.fseg.gz`,
+      `freed-v2-checkpoint~library-1~eepoch-1~g${Number.MAX_SAFE_INTEGER + 1}~p0~${DIGEST}.fpage.gz`,
+      `freed-v2-blob~library-1~${OTHER_DIGEST}/nested`,
     ]) {
       expect(isLibraryCoreImmutableObjectKey(key)).toBe(false);
     }

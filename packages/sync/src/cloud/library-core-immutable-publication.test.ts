@@ -294,8 +294,8 @@ describe("Library Core immutable publication", () => {
       `put:${dependency2.descriptor.objectKey}`,
       `verify:${dependency2.descriptor.objectKey}`,
       "prepare-manifest",
-      expect.stringMatching(/^put:freed-v2-manifest-library-1-eepoch-1-g0-/),
-      expect.stringMatching(/^verify:freed-v2-manifest-library-1-eepoch-1-g0-/),
+      expect.stringMatching(/^put:freed-v2-manifest~library-1~eepoch-1~g0~/),
+      expect.stringMatching(/^verify:freed-v2-manifest~library-1~eepoch-1~g0~/),
       "compare-and-swap-control",
     ]);
     expect(adapter.control.revision).toBe("revision-1");
@@ -337,7 +337,7 @@ describe("Library Core immutable publication", () => {
 
     expect(
       adapter.events.some((event) =>
-        event.startsWith("put:freed-v2-manifest-"),
+        event.startsWith("put:freed-v2-manifest~"),
       ),
     ).toBe(false);
     expect(adapter.events).not.toContain("compare-and-swap-control");
@@ -431,7 +431,7 @@ describe("Library Core immutable publication", () => {
     });
     expect(
       adapter.events.find((event) =>
-        event.startsWith("put:freed-v2-epoch-library-1-epoch-2-"),
+        event.startsWith("put:freed-v2-epoch~library-1~epoch-2~"),
       ),
     ).toBeDefined();
     expect(adapter.events.at(-1)).toBe("compare-and-swap-control");
@@ -719,7 +719,7 @@ describe("Library Core immutable publication", () => {
     ).rejects.toThrow(/repeats object key/);
     expect(
       adapter.events.some((event) =>
-        event.startsWith("put:freed-v2-manifest-"),
+        event.startsWith("put:freed-v2-manifest~"),
       ),
     ).toBe(false);
   });

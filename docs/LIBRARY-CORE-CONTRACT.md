@@ -60,7 +60,9 @@ discarded, or silently merged into active authority.
 SQLite is local client storage. No transport may synchronize a live SQLite
 database, WAL, SHM, rollback journal, or mutable database replacement. Cloud
 transport consists of immutable, content-addressed protocol objects plus the
-small flat `freed-v2-control-{library}.json` compare-and-swap pointer. One
+small flat `freed-v2-control~{library}.json` compare-and-swap pointer. The `~`
+separator cannot occur inside any protocol ID, so distinct library, epoch, and
+actor tuples cannot collapse to the same locator. One
 library has one active authority transport. Google Drive `appDataFolder` is
 the current transport. A future Dropbox App Folder adapter uses the same
 protocol, but it cannot maintain an independent active pointer. Drive file IDs
@@ -101,8 +103,22 @@ before upload. A final CAS race returns the exact current tuple. Response loss
 recovers only when readback equals the intended pointer. Ordinary publication
 cannot change the writer epoch or active cloud transport. Writer reassignment
 uses a separate explicit control transition. This coordinator has no Google or
-Dropbox implementation, token, request path, polling loop, or production
-caller.
+Dropbox dependency, token, polling loop, or production caller.
+
+The dormant Google Drive adapter implements that injected boundary for an
+already-provisioned exact control file ID. It discovers controls only through
+private protocol, library-digest, and object-kind properties, rejects duplicate
+controls, and never treats a filename as authority. Ordinary immutable objects
+use a single multipart upload below 5 MB. Each upload is indexed by private
+properties for its actual protocol kind, library digest, logical-key digest,
+and content digest, then read back through the exact Drive file ID and verified
+for byte length and SHA-256. Exact duplicate retries collapse only after every
+matching object verifies. Control updates send the exact previously read ETag
+as `If-Match`, classify `412` as a race, and read back exact bytes and the new
+ETag before reporting commit. All response bodies are bounded while reading.
+Control bootstrap and large resumable blobs remain separate. The adapter has no
+timer, caller, OAuth acquisition, product registration, or activation path, and
+the existing Automerge Drive implementation remains untouched.
 
 The dormant writer-reassignment coordinator accepts only an exact existing
 control revision and pointer, a new bounded writer identity, a new storage
@@ -114,7 +130,7 @@ zero of the new writer epoch. One exact compare-and-swap is the authority commit
 point. A stale tuple uploads nothing, a final race leaves staged objects
 unreachable, and response loss recovers only from exact control readback. This
 is the transaction beneath **Make This Freed Desktop the Writer**. It has no
-provider adapter or product caller and cannot activate itself.
+product caller and cannot activate itself.
 
 ## Canonical bytes, digests, and signatures
 
