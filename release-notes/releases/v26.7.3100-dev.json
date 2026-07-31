@@ -3,7 +3,7 @@
   "version": "26.7.3100-dev",
   "channel": "dev",
   "dayKey": "26.7.31",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-07-31T22:06:09.716Z",
   "model": "heuristic",
@@ -98,18 +98,18 @@
     ]
   },
   "release": {
-    "deck": "Authenticated portable feed reader, durable PWA intent outbox, and PWA intent wire protocol",
+    "deck": "Stops recurring renderer restarts and adds portable feed reading with durable PWA intent delivery",
     "features": [
       "Authenticated portable feed reader",
       "Durable PWA intent outbox",
-      "PWA intent wire protocol"
+      "PWA intent wire protocol",
+      "Library Core SQLite item-detail reads"
     ],
     "fixes": [
       "Stop blocked preflight renderer crash loop",
       "Bind Library Core control to manifest ID"
     ],
     "followUps": [
-      "Read item details from Library Core SQLite",
       "Authenticate Library Core operation admission",
       "PWA portable checkpoint store",
       "Portable Library Core checkpoints",
@@ -119,5 +119,5 @@
       "Coordinate immutable Library Core publication"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.7.3100-dev\n\nAuthenticated portable feed reader, durable PWA intent outbox, and PWA intent wire protocol\n\n### Features\n\n- Authenticated portable feed reader\n- Durable PWA intent outbox\n- PWA intent wire protocol\n\n### Fixes\n\n- Stop blocked preflight renderer crash loop\n- Bind Library Core control to manifest ID\n\n### Follow-ups\n\n- Read item details from Library Core SQLite\n- Authenticate Library Core operation admission\n- PWA portable checkpoint store\n- Portable Library Core checkpoints\n- Import exact Library Core manifests\n- Library Core Google Drive adapter\n- Define Library Core writer reassignment\n- Coordinate immutable Library Core publication\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.3100-dev\n\nStops recurring renderer restarts and adds portable feed reading with durable PWA intent delivery\n\n### Features\n\n- Authenticated portable feed reader\n- Durable PWA intent outbox\n- PWA intent wire protocol\n- Library Core SQLite item-detail reads\n\n### Fixes\n\n- Stop blocked preflight renderer crash loop\n- Bind Library Core control to manifest ID\n\n### Follow-ups\n\n- Authenticate Library Core operation admission\n- PWA portable checkpoint store\n- Portable Library Core checkpoints\n- Import exact Library Core manifests\n- Library Core Google Drive adapter\n- Define Library Core writer reassignment\n- Coordinate immutable Library Core publication\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
