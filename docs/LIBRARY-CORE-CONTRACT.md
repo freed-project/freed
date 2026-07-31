@@ -9180,6 +9180,23 @@ publication, the durable PWA outbox, Desktop acceptance, result segments, and
 provider execution remain separate later slices. This contract performs no
 network request and grants no canonical or provider authority.
 
+The dormant PWA intent outbox shares the versioned Library Core IndexedDB
+database. It accepts only complete transactions produced by the closed signing
+contract and commits their canonical envelopes, operation identities, actor
+sequence, transaction boundary, previous-operation link, and actor-chain tip
+atomically. Exact transaction replay is idempotent. Changed bytes under an
+existing transaction identity, an actor sequence gap, an epoch change, or a
+broken actor-chain extension aborts without advancing the durable actor.
+
+An unpublished segment candidate begins one sequence after the exact locally
+recorded publication head and includes only complete contiguous transactions.
+The candidate never exceeds 1,000 operations or 4,000,000 canonical envelope
+bytes. Local publication state advances only after the caller supplies the
+exact prior head digest, verified immutable segment reference, next actor head,
+and matching canonical readback digest. This proves local crash recovery and
+publication bookkeeping only. The store does not perform the upload, compare
+and swap, readback, provider action, product activation, or Automerge cutover.
+
 A receipt that commits checkpoint digest X is forbidden from
 X's `receipt_records`. The manifest, transition, or closure binds that receipt
 externally. The receipt becomes eligible for inclusion only in a later
