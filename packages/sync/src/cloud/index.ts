@@ -40,6 +40,13 @@ export {
   type LibraryCoreWriterReassignmentRequestV1,
 } from "./library-core-immutable-publication.js";
 export {
+  LIBRARY_CORE_GOOGLE_DRIVE_SIMPLE_UPLOAD_LIMIT,
+  createGoogleDriveLibraryCoreAdapterV1,
+  discoverGoogleDriveLibraryCoreControlV1,
+  type GoogleDriveLibraryCoreAdapterOptionsV1,
+  type GoogleDriveLibraryCoreControlLocatorV1,
+} from "./library-core-google-drive-adapter.js";
+export {
   LIBRARY_CORE_STORED_WIRE_OBJECT_BYTE_CEILING,
   decodeLibraryCoreWireObjectV1,
   encodeLibraryCoreWireObjectV1,

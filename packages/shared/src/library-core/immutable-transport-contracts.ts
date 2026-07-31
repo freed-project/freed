@@ -151,7 +151,7 @@ function assertSequenceRange(
 
 export function createLibraryCoreControlObjectKey(libraryId: string): string {
   assertIdentifier(libraryId, "libraryId");
-  return `freed-v2-control-${libraryId}.json`;
+  return `freed-v2-control~${libraryId}.json`;
 }
 
 export function createLibraryCoreIntentHeadObjectKey(
@@ -160,7 +160,7 @@ export function createLibraryCoreIntentHeadObjectKey(
 ): string {
   assertIdentifier(libraryId, "libraryId");
   assertIdentifier(actorId, "actorId");
-  return `freed-v2-intent-head-${libraryId}-${actorId}.json`;
+  return `freed-v2-intent-head~${libraryId}~${actorId}.json`;
 }
 
 export function createLibraryCoreResultHeadObjectKey(
@@ -169,7 +169,7 @@ export function createLibraryCoreResultHeadObjectKey(
 ): string {
   assertIdentifier(libraryId, "libraryId");
   assertIdentifier(actorId, "actorId");
-  return `freed-v2-result-head-${libraryId}-${actorId}.json`;
+  return `freed-v2-result-head~${libraryId}~${actorId}.json`;
 }
 
 /**
@@ -186,61 +186,61 @@ export function createLibraryCoreImmutableObjectKey(
     case "epoch_certificate":
       assertIdentifier(request.epochId, "epochId");
       assertDigest(request.digest, "digest");
-      return `freed-v2-epoch-${request.libraryId}-${request.epochId}-${request.digest}.json`;
+      return `freed-v2-epoch~${request.libraryId}~${request.epochId}~${request.digest}.json`;
     case "actor_enrollment":
       assertIdentifier(request.epochId, "epochId");
       assertIdentifier(request.actorId, "actorId");
       assertDigest(request.digest, "digest");
-      return `freed-v2-enrollment-${request.libraryId}-${request.epochId}-${request.actorId}-${request.digest}.json`;
+      return `freed-v2-enrollment~${request.libraryId}~${request.epochId}~${request.actorId}~${request.digest}.json`;
     case "operation_segment":
       assertIdentifier(request.epochId, "epochId");
       assertSequenceRange(request.firstSequence, request.lastSequence);
       assertDigest(request.digest, "digest");
-      return `freed-v2-ops-${request.libraryId}-e${request.epochId}-s${request.firstSequence}-${request.lastSequence}-${request.digest}.fseg.gz`;
+      return `freed-v2-ops~${request.libraryId}~e${request.epochId}~s${request.firstSequence}-${request.lastSequence}~${request.digest}.fseg.gz`;
     case "checkpoint_manifest":
       assertIdentifier(request.epochId, "epochId");
       assertIndex(request.generation, "generation");
       assertDigest(request.digest, "digest");
-      return `freed-v2-manifest-${request.libraryId}-e${request.epochId}-g${request.generation}-${request.digest}.json`;
+      return `freed-v2-manifest~${request.libraryId}~e${request.epochId}~g${request.generation}~${request.digest}.json`;
     case "checkpoint_page":
       assertIdentifier(request.epochId, "epochId");
       assertIndex(request.generation, "generation");
       assertIndex(request.pageIndex, "pageIndex");
       assertDigest(request.digest, "digest");
-      return `freed-v2-checkpoint-${request.libraryId}-e${request.epochId}-g${request.generation}-p${request.pageIndex}-${request.digest}.fpage.gz`;
+      return `freed-v2-checkpoint~${request.libraryId}~e${request.epochId}~g${request.generation}~p${request.pageIndex}~${request.digest}.fpage.gz`;
     case "search_manifest":
       assertIdentifier(request.epochId, "epochId");
       assertIndex(request.generation, "generation");
       assertDigest(request.digest, "digest");
-      return `freed-v2-search-${request.libraryId}-e${request.epochId}-g${request.generation}-manifest-${request.digest}.json`;
+      return `freed-v2-search~${request.libraryId}~e${request.epochId}~g${request.generation}~manifest~${request.digest}.json`;
     case "search_shard":
       assertIdentifier(request.epochId, "epochId");
       assertIndex(request.generation, "generation");
       assertIndex(request.shardIndex, "shardIndex");
       assertDigest(request.digest, "digest");
-      return `freed-v2-search-${request.libraryId}-e${request.epochId}-g${request.generation}-s${request.shardIndex}-${request.digest}.fidx.gz`;
+      return `freed-v2-search~${request.libraryId}~e${request.epochId}~g${request.generation}~s${request.shardIndex}~${request.digest}.fidx.gz`;
     case "search_delta":
       assertIdentifier(request.epochId, "epochId");
       assertSequenceRange(request.firstSequence, request.lastSequence);
       assertDigest(request.digest, "digest");
-      return `freed-v2-search-delta-${request.libraryId}-e${request.epochId}-s${request.firstSequence}-${request.lastSequence}-${request.digest}.fidx.gz`;
+      return `freed-v2-search-delta~${request.libraryId}~e${request.epochId}~s${request.firstSequence}-${request.lastSequence}~${request.digest}.fidx.gz`;
     case "intent_segment":
       assertIdentifier(request.actorId, "actorId");
       assertSequenceRange(request.firstSequence, request.lastSequence);
       assertDigest(request.digest, "digest");
-      return `freed-v2-intents-${request.libraryId}-${request.actorId}-s${request.firstSequence}-${request.lastSequence}-${request.digest}.fseg.gz`;
+      return `freed-v2-intents~${request.libraryId}~${request.actorId}~s${request.firstSequence}-${request.lastSequence}~${request.digest}.fseg.gz`;
     case "result_segment":
       assertIdentifier(request.actorId, "actorId");
       assertSequenceRange(request.firstSequence, request.lastSequence);
       assertDigest(request.digest, "digest");
-      return `freed-v2-results-${request.libraryId}-${request.actorId}-s${request.firstSequence}-${request.lastSequence}-${request.digest}.fseg.gz`;
+      return `freed-v2-results~${request.libraryId}~${request.actorId}~s${request.firstSequence}-${request.lastSequence}~${request.digest}.fseg.gz`;
     case "blob":
       assertDigest(request.digest, "digest");
-      return `freed-v2-blob-${request.libraryId}-${request.digest}`;
+      return `freed-v2-blob~${request.libraryId}~${request.digest}`;
     case "backup_manifest":
       assertIdentifier(request.backupId, "backupId");
       assertDigest(request.digest, "digest");
-      return `freed-v2-backup-${request.libraryId}-${request.backupId}-${request.digest}.json`;
+      return `freed-v2-backup~${request.libraryId}~${request.backupId}~${request.digest}.json`;
   }
 }
 
@@ -383,7 +383,7 @@ const INDEX = "(?:0|[1-9][0-9]*)";
 
 function embeddedObjectKeyDigest(objectKey: string): string | null {
   const match = new RegExp(
-    `-(${DIGEST})(?:\\.json|\\.fseg\\.gz|\\.fpage\\.gz|\\.fidx\\.gz)?$`,
+    `~(${DIGEST})(?:\\.json|\\.fseg\\.gz|\\.fpage\\.gz|\\.fidx\\.gz)?$`,
   ).exec(objectKey);
   return match?.[1] ?? null;
 }
@@ -402,67 +402,67 @@ interface ObjectKeyPattern {
 }
 
 const IMMUTABLE_OBJECT_KEY_PATTERNS: readonly ObjectKeyPattern[] = [
-  { pattern: new RegExp(`^freed-v2-epoch-${ID}-${ID}-${DIGEST}\\.json$`) },
+  { pattern: new RegExp(`^freed-v2-epoch~${ID}~${ID}~${DIGEST}\\.json$`) },
   {
     pattern: new RegExp(
-      `^freed-v2-enrollment-${ID}-${ID}-${ID}-${DIGEST}\\.json$`,
+      `^freed-v2-enrollment~${ID}~${ID}~${ID}~${DIGEST}\\.json$`,
     ),
   },
   {
     pattern: new RegExp(
-      `^freed-v2-ops-${ID}-e${ID}-s(${INDEX})-(${INDEX})-${DIGEST}\\.fseg\\.gz$`,
+      `^freed-v2-ops~${ID}~e${ID}~s(${INDEX})-(${INDEX})~${DIGEST}\\.fseg\\.gz$`,
     ),
     numericCaptures: [1, 2],
     rangeCaptures: [1, 2],
   },
   {
     pattern: new RegExp(
-      `^freed-v2-manifest-${ID}-e${ID}-g(${INDEX})-${DIGEST}\\.json$`,
+      `^freed-v2-manifest~${ID}~e${ID}~g(${INDEX})~${DIGEST}\\.json$`,
     ),
     numericCaptures: [1],
   },
   {
     pattern: new RegExp(
-      `^freed-v2-checkpoint-${ID}-e${ID}-g(${INDEX})-p(${INDEX})-${DIGEST}\\.fpage\\.gz$`,
+      `^freed-v2-checkpoint~${ID}~e${ID}~g(${INDEX})~p(${INDEX})~${DIGEST}\\.fpage\\.gz$`,
     ),
     numericCaptures: [1, 2],
   },
   {
     pattern: new RegExp(
-      `^freed-v2-search-${ID}-e${ID}-g(${INDEX})-manifest-${DIGEST}\\.json$`,
+      `^freed-v2-search~${ID}~e${ID}~g(${INDEX})~manifest~${DIGEST}\\.json$`,
     ),
     numericCaptures: [1],
   },
   {
     pattern: new RegExp(
-      `^freed-v2-search-${ID}-e${ID}-g(${INDEX})-s(${INDEX})-${DIGEST}\\.fidx\\.gz$`,
+      `^freed-v2-search~${ID}~e${ID}~g(${INDEX})~s(${INDEX})~${DIGEST}\\.fidx\\.gz$`,
     ),
     numericCaptures: [1, 2],
   },
   {
     pattern: new RegExp(
-      `^freed-v2-search-delta-${ID}-e${ID}-s(${INDEX})-(${INDEX})-${DIGEST}\\.fidx\\.gz$`,
+      `^freed-v2-search-delta~${ID}~e${ID}~s(${INDEX})-(${INDEX})~${DIGEST}\\.fidx\\.gz$`,
     ),
     numericCaptures: [1, 2],
     rangeCaptures: [1, 2],
   },
   {
     pattern: new RegExp(
-      `^freed-v2-intents-${ID}-${ID}-s(${INDEX})-(${INDEX})-${DIGEST}\\.fseg\\.gz$`,
+      `^freed-v2-intents~${ID}~${ID}~s(${INDEX})-(${INDEX})~${DIGEST}\\.fseg\\.gz$`,
     ),
     numericCaptures: [1, 2],
     rangeCaptures: [1, 2],
   },
   {
     pattern: new RegExp(
-      `^freed-v2-results-${ID}-${ID}-s(${INDEX})-(${INDEX})-${DIGEST}\\.fseg\\.gz$`,
+      `^freed-v2-results~${ID}~${ID}~s(${INDEX})-(${INDEX})~${DIGEST}\\.fseg\\.gz$`,
     ),
     numericCaptures: [1, 2],
     rangeCaptures: [1, 2],
   },
-  { pattern: new RegExp(`^freed-v2-blob-${ID}-${DIGEST}$`) },
+  { pattern: new RegExp(`^freed-v2-blob~${ID}~${DIGEST}$`) },
   {
-    pattern: new RegExp(`^freed-v2-backup-${ID}-${ID}-${DIGEST}\\.json$`),
+    pattern: new RegExp(`^freed-v2-backup~${ID}~${ID}~${DIGEST}\\.json$`),
   },
 ];
 
