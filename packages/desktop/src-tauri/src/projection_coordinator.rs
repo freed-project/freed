@@ -82,12 +82,24 @@ impl ProjectionReadSession {
         self.reader.transition_sequence()
     }
 
+    pub(super) fn projection_revision(&self) -> i64 {
+        self.reader.projection_revision()
+    }
+
+    pub(super) fn source(&self) -> ProjectionSourceV1 {
+        self.reader.source()
+    }
+
     pub(super) fn feed_page(
         &self,
         cursor: Option<&PageCursor>,
         limit: u32,
     ) -> CoordinatorResult<FeedPage> {
         self.reader.feed_page(cursor, limit).map_err(Into::into)
+    }
+
+    pub(super) fn item_detail(&self, global_id: &str) -> CoordinatorResult<Option<FeedItemRow>> {
+        self.reader.item_detail(global_id).map_err(Into::into)
     }
 }
 
