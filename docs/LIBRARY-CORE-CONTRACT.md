@@ -9060,6 +9060,18 @@ the exact branch-qualified tip shape from the operation contract.
 `excluded_registry_keys` is the complete explicit set of registry entries not
 represented in this portable checkpoint.
 
+The dormant PWA portable-checkpoint adapter materializes these records into
+four IndexedDB stores for generations, collection rows, page receipts, and the
+selected-generation control record. One verified checkpoint page commits in
+one IndexedDB transaction. Exact retry reuses the page receipt. A changed
+retry, skipped page, duplicate row identity, or transaction failure cannot
+advance staging. Selection occurs only after every collection count and the
+complete import receipt match the manifest, header, frontier, and materialized
+digest. The adapter retains the selected generation and one rollback
+generation and exposes at most 128 rows from one collection per read. It has no
+production caller. Automerge remains the active product and replication
+authority until the separately governed cutover.
+
 A receipt that commits checkpoint digest X is forbidden from
 X's `receipt_records`. The manifest, transition, or closure binds that receipt
 externally. The receipt becomes eligible for inclusion only in a later

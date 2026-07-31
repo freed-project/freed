@@ -21,6 +21,11 @@ import {
   type LibraryCoreFeedPageResponseV1,
   type LibraryCoreFeedPageSourceV1,
 } from "@freed/shared/library-core";
+import {
+  lowerHex,
+  requestResult,
+  transactionDone,
+} from "./library-core-indexeddb";
 
 const DATABASE_VERSION = 2;
 const GENERATIONS_STORE = "generations";
@@ -237,49 +242,10 @@ export interface AppendPwaLibraryCoreBrowseGenerationPageInput {
 
 export type PwaLibraryCoreFeedGenerationState = "complete" | "staging";
 
-function requestResult<T>(request: IDBRequest<T>): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    request.addEventListener("success", () => resolve(request.result), {
-      once: true,
-    });
-    request.addEventListener(
-      "error",
-      () => reject(request.error ?? new Error("IndexedDB request failed")),
-      { once: true },
-    );
-  });
-}
-
-function transactionDone(transaction: IDBTransaction): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    transaction.addEventListener("complete", () => resolve(), { once: true });
-    transaction.addEventListener(
-      "abort",
-      () =>
-        reject(transaction.error ?? new Error("IndexedDB transaction aborted")),
-      { once: true },
-    );
-    transaction.addEventListener(
-      "error",
-      () =>
-        reject(transaction.error ?? new Error("IndexedDB transaction failed")),
-      { once: true },
-    );
-  });
-}
-
 function openCursor(
   request: IDBRequest<IDBCursorWithValue | null>,
 ): Promise<IDBCursorWithValue | null> {
   return requestResult(request);
-}
-
-function lowerHex(bytes: ArrayBuffer): string {
-  let output = "";
-  for (const byte of new Uint8Array(bytes)) {
-    output += byte.toString(16).padStart(2, "0");
-  }
-  return output;
 }
 
 function reverseSortKey(sortAt: number): string {

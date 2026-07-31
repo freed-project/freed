@@ -1023,7 +1023,7 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
   },
   {
     registryKey: "library-core-derived-runtime",
-    soleOwner: "Freed Desktop Library Core external migration and shadow runtimes",
+    soleOwner: "Freed Desktop and PWA Library Core derived runtimes",
     locality: "derived",
     role: "derived-runtime",
     authoritative: false,
@@ -1047,19 +1047,31 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
         locator: "origin:localStorage",
         keys: ["freed.libraryCore.externalMigrationV1.disabled"],
       },
+      {
+        kind: "unprovisioned",
+        platforms: ["pwa"],
+        locator: "none:the dormant portable-checkpoint IndexedDB adapter has no production caller",
+        keys: [
+          "portable_generations",
+          "portable_records",
+          "portable_pages",
+          "portable_control",
+        ],
+      },
     ],
     retention: {
       kind: "bounded-by-rule",
       rules: [
         { scope: "crash-replay migration revisions", limit: 1, unit: "revision" },
         { scope: "complete immutable projection generations", limit: 2, unit: "generation" },
+        { scope: "complete portable PWA checkpoint generations", limit: 2, unit: "generation" },
         { scope: "migration rollback controls", limit: 1, unit: "key" },
       ],
     },
     backup: "exclude-derived",
     export: "exclude",
     redaction: "not-applicable",
-    resetSemantics: "Successful two-sided migration confirmation removes that revision's spool and scratch graph. New selection retains only the selected and exact rollback SQLite generations. Factory reset removes both native roots; clearing site data removes the local rollback switch.",
+    resetSemantics: "Successful two-sided migration confirmation removes that revision's spool and scratch graph. New selection retains only the selected and exact rollback SQLite or portable IndexedDB generations. Factory reset removes both native roots and, after activation, the portable IndexedDB database; clearing site data removes the local rollback switch.",
     snapshot: "rebuildable",
     migration: "rebuild-after-cutover",
     cutover: {
@@ -1070,6 +1082,7 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
       "packages/desktop/src-tauri/src/library_core_external_migration_runtime.rs",
       "packages/desktop/src-tauri/src/library_core_shadow_runtime.rs",
       "packages/desktop/src/lib/automerge.ts",
+      "packages/pwa/src/lib/library-core-portable-checkpoint-store.ts",
     ],
   },
   {
@@ -2491,6 +2504,23 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
       '"freed.libraryCore.externalMigrationV1.disabled"',
     ],
     registeredKeys: ["freed.libraryCore.externalMigrationV1.disabled"],
+  },
+  {
+    registryKey: "library-core-derived-runtime",
+    sourcePath: "packages/pwa/src/lib/library-core-portable-checkpoint-store.ts",
+    sourceTokens: [
+      'const GENERATIONS_STORE = "portable_generations"',
+      'const RECORDS_STORE = "portable_records"',
+      'const PAGES_STORE = "portable_pages"',
+      'const CONTROL_STORE = "portable_control"',
+      "const MAXIMUM_RETAINED_GENERATIONS = 2",
+    ],
+    registeredKeys: [
+      "portable_generations",
+      "portable_records",
+      "portable_pages",
+      "portable_control",
+    ],
   },
   {
     registryKey: "local-ai-model-files",
