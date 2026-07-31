@@ -1,5 +1,6 @@
 export * from "./census.js";
 export * from "./canonical-codec.js";
+export * from "./checkpoint-manifest-contracts.js";
 export * from "./feed-browse-filter-contract.js";
 export * from "./feed-browse-page-contracts.js";
 export * from "./feed-page-contracts.js";

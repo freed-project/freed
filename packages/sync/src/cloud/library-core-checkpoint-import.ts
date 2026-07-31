@@ -1,8 +1,15 @@
 import {
   createLibraryCoreImmutableObjectKey,
+  decodeLibraryCoreCanonicalValue,
+  parseLibraryCoreCheckpointManifestV1,
   parseLibraryCoreImmutableObjectDescriptorV1,
+  parseLibraryCoreImmutableObjectReferenceV1,
   type LibraryCoreCanonicalValue,
+  type LibraryCoreCheckpointDatasetSchemaId,
+  type LibraryCoreCheckpointManifestV1,
   type LibraryCoreImmutableObjectDescriptorV1,
+  type LibraryCoreImmutableObjectReferenceV1,
+  type LibraryCoreLowercaseHex64,
 } from "@freed/shared/library-core";
 import type {
   LibraryCoreImmutableReadAdapterV1,
@@ -15,6 +22,7 @@ export const LIBRARY_CORE_CHECKPOINT_PAGE_DECODED_BYTE_LIMIT = 2_097_152;
 export const LIBRARY_CORE_CHECKPOINT_RECORD_BYTE_LIMIT = 131_072;
 export const LIBRARY_CORE_CHECKPOINT_PAGE_LIMIT = 8_192;
 export const LIBRARY_CORE_CHECKPOINT_RECORD_LIMIT = 1_048_576;
+export const LIBRARY_CORE_CHECKPOINT_MANIFEST_BYTE_LIMIT = 1_048_576;
 
 const MAX_TRANSPORT_OBJECT_ID_BYTES = 1_024;
 const textEncoder = new TextEncoder();
@@ -47,6 +55,31 @@ export interface ImportLibraryCoreCheckpointPagesResultV1 {
   readonly importedRecordCount: number;
 }
 
+export interface ImportLibraryCoreCheckpointManifestRequestV1<RecordValue> {
+  readonly adapter: LibraryCoreImmutableReadAdapterV1;
+  readonly datasetSchemaId: LibraryCoreCheckpointDatasetSchemaId;
+  readonly generation: number;
+  readonly libraryId: string;
+  readonly manifest: LibraryCoreImmutableObjectReferenceV1;
+  readonly onPage: (
+    pageIndex: number,
+    records: readonly RecordValue[],
+  ) => Promise<void>;
+  readonly parseRecord: (value: LibraryCoreCanonicalValue) => RecordValue;
+  readonly prepareImport?: (
+    manifest: LibraryCoreCheckpointManifestV1,
+    manifestReference: LibraryCoreImmutableObjectReferenceV1,
+  ) => Promise<"already_complete" | "import">;
+  readonly recordIdentity: (record: RecordValue) => string;
+  readonly storageEpoch: string;
+  readonly subtle: SubtleCrypto;
+}
+
+export interface ImportLibraryCoreCheckpointManifestResultV1 extends ImportLibraryCoreCheckpointPagesResultV1 {
+  readonly causalFrontierDigest: LibraryCoreLowercaseHex64;
+  readonly status: "already_complete" | "imported";
+}
+
 function assertBoundedNonemptyText(
   value: unknown,
   label: string,
@@ -55,6 +88,7 @@ function assertBoundedNonemptyText(
   if (
     typeof value !== "string" ||
     value.length === 0 ||
+    value.length > maximumBytes ||
     textEncoder.encode(value).byteLength > maximumBytes
   ) {
     throw new TypeError(`${label} must be bounded nonempty text`);
@@ -152,6 +186,36 @@ function exactCheckpointPageDescriptor(
   return descriptor;
 }
 
+async function readVerifiedImmutable(
+  adapter: LibraryCoreImmutableReadAdapterV1,
+  reference: LibraryCoreImmutableObjectReferenceV1,
+  subtle: SubtleCrypto,
+  label: string,
+): Promise<Uint8Array> {
+  assertBoundedNonemptyText(
+    reference.transportObjectId,
+    `${label} transportObjectId`,
+    MAX_TRANSPORT_OBJECT_ID_BYTES,
+  );
+  const bytes = await adapter.readImmutable({
+    descriptor: reference.descriptor,
+    transportObjectId: reference.transportObjectId,
+  });
+  if (!isUint8Array(bytes)) {
+    throw new TypeError(`${label} immutable reader must return a Uint8Array`);
+  }
+  if (bytes.byteLength !== reference.descriptor.byteLength) {
+    throw new Error(`${label} byte length does not match descriptor`);
+  }
+  const digest = lowercaseHex(
+    await subtle.digest("SHA-256", exactArrayBuffer(bytes)),
+  );
+  if (digest !== reference.descriptor.contentDigest) {
+    throw new Error(`${label} digest does not match descriptor`);
+  }
+  return bytes;
+}
+
 /**
  * Verify and import one complete ordered logical checkpoint without retaining
  * the corpus in JavaScript memory.
@@ -194,35 +258,18 @@ export async function importLibraryCoreCheckpointPagesV1<RecordValue>(
         `checkpoint page index must be contiguous at ${expectedPageIndex.toLocaleString()}`,
       );
     }
-    assertBoundedNonemptyText(
-      page.transportObjectId,
-      "checkpoint transportObjectId",
-      MAX_TRANSPORT_OBJECT_ID_BYTES,
-    );
     const descriptor = exactCheckpointPageDescriptor(page.descriptor, {
       generation: request.generation,
       libraryId: request.libraryId,
       pageIndex: expectedPageIndex,
       storageEpoch: request.storageEpoch,
     });
-    const bytes = await request.adapter.readImmutable({
-      descriptor,
-      transportObjectId: page.transportObjectId,
-    });
-    if (!isUint8Array(bytes)) {
-      throw new TypeError(
-        "checkpoint immutable reader must return a Uint8Array",
-      );
-    }
-    if (bytes.byteLength !== descriptor.byteLength) {
-      throw new Error("checkpoint page byte length does not match descriptor");
-    }
-    const digest = lowercaseHex(
-      await request.subtle.digest("SHA-256", exactArrayBuffer(bytes)),
+    const bytes = await readVerifiedImmutable(
+      request.adapter,
+      { descriptor, transportObjectId: page.transportObjectId },
+      request.subtle,
+      "checkpoint page",
     );
-    if (digest !== descriptor.contentDigest) {
-      throw new Error("checkpoint page digest does not match descriptor");
-    }
 
     const canonicalRecords = await decodeLibraryCoreWireObjectV1(bytes, {
       kind: "checkpoint",
@@ -273,5 +320,129 @@ export async function importLibraryCoreCheckpointPagesV1<RecordValue>(
   return Object.freeze({
     importedPageCount: expectedPageIndex,
     importedRecordCount,
+  });
+}
+
+/**
+ * Read one exact canonical checkpoint manifest, verify every declared page
+ * receipt and identity range, then stream the dataset into the caller.
+ */
+export async function importLibraryCoreCheckpointManifestV1<RecordValue>(
+  request: ImportLibraryCoreCheckpointManifestRequestV1<RecordValue>,
+): Promise<ImportLibraryCoreCheckpointManifestResultV1> {
+  assertSafeIndex(request.generation, "generation", Number.MAX_SAFE_INTEGER);
+  const manifestReference = parseLibraryCoreImmutableObjectReferenceV1(
+    request.manifest,
+  );
+  const expectedManifestKey = createLibraryCoreImmutableObjectKey({
+    kind: "checkpoint_manifest",
+    libraryId: request.libraryId,
+    epochId: request.storageEpoch,
+    generation: request.generation,
+    digest: manifestReference.descriptor.contentDigest,
+  });
+  if (manifestReference.descriptor.objectKey !== expectedManifestKey) {
+    throw new TypeError(
+      "checkpoint manifest object does not match its library, epoch, and generation",
+    );
+  }
+  if (
+    manifestReference.descriptor.byteLength >
+    LIBRARY_CORE_CHECKPOINT_MANIFEST_BYTE_LIMIT
+  ) {
+    throw new RangeError(
+      `checkpoint manifest exceeds ${LIBRARY_CORE_CHECKPOINT_MANIFEST_BYTE_LIMIT.toLocaleString()} bytes`,
+    );
+  }
+  const manifestBytes = await readVerifiedImmutable(
+    request.adapter,
+    manifestReference,
+    request.subtle,
+    "checkpoint manifest",
+  );
+  const localManifestBytes = new Uint8Array(manifestBytes.byteLength);
+  localManifestBytes.set(manifestBytes);
+  const manifest = parseLibraryCoreCheckpointManifestV1(
+    decodeLibraryCoreCanonicalValue(localManifestBytes, {
+      maximumBytes: LIBRARY_CORE_CHECKPOINT_MANIFEST_BYTE_LIMIT,
+    }),
+  );
+  if (
+    manifest.libraryId !== request.libraryId ||
+    manifest.storageEpoch !== request.storageEpoch ||
+    manifest.generation !== request.generation ||
+    manifest.datasetSchemaId !== request.datasetSchemaId
+  ) {
+    throw new TypeError(
+      "checkpoint manifest body does not match the requested dataset, library, epoch, and generation",
+    );
+  }
+  const importDecision = await request.prepareImport?.(
+    manifest,
+    manifestReference,
+  );
+  if (
+    importDecision !== undefined &&
+    importDecision !== "already_complete" &&
+    importDecision !== "import"
+  ) {
+    throw new TypeError(
+      "checkpoint prepareImport returned an invalid decision",
+    );
+  }
+  if (importDecision === "already_complete") {
+    return Object.freeze({
+      causalFrontierDigest: manifest.causalFrontierDigest,
+      importedPageCount: 0,
+      importedRecordCount: 0,
+      status: "already_complete",
+    });
+  }
+
+  const imported = await importLibraryCoreCheckpointPagesV1({
+    adapter: request.adapter,
+    expectedPageCount: manifest.pages.length,
+    generation: manifest.generation,
+    libraryId: manifest.libraryId,
+    async onPage(pageIndex, records) {
+      const declaration = manifest.pages[pageIndex]!;
+      if (records.length !== declaration.recordCount) {
+        throw new TypeError(
+          "checkpoint page record count does not match its manifest declaration",
+        );
+      }
+      const firstIdentity = checkedIdentity(
+        records[0]!,
+        request.recordIdentity,
+      );
+      const lastIdentity = checkedIdentity(
+        records[records.length - 1]!,
+        request.recordIdentity,
+      );
+      if (
+        firstIdentity !== declaration.firstRecordIdentity ||
+        lastIdentity !== declaration.lastRecordIdentity
+      ) {
+        throw new TypeError(
+          "checkpoint page identity range does not match its manifest declaration",
+        );
+      }
+      await request.onPage(pageIndex, records);
+    },
+    pages: manifest.pages.map((page) => ({
+      descriptor: page.object.descriptor,
+      pageIndex: page.pageIndex,
+      transportObjectId: page.object.transportObjectId,
+    })),
+    parseRecord: request.parseRecord,
+    recordIdentity: request.recordIdentity,
+    storageEpoch: manifest.storageEpoch,
+    subtle: request.subtle,
+    totalRecordCount: manifest.totalRecordCount,
+  });
+  return Object.freeze({
+    ...imported,
+    causalFrontierDigest: manifest.causalFrontierDigest,
+    status: "imported",
   });
 }

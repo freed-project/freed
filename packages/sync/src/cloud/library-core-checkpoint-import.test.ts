@@ -2,14 +2,17 @@ import { createHash, webcrypto } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   createLibraryCoreImmutableObjectKey,
+  encodeLibraryCoreCanonicalValue,
   parseLibraryCoreImmutableObjectDescriptorV1,
   type LibraryCoreCanonicalValue,
+  type LibraryCoreImmutableObjectReferenceV1,
 } from "@freed/shared/library-core";
 import type {
   LibraryCoreImmutableReadAdapterV1,
   LibraryCorePublishedImmutableObjectReceiptV1,
 } from "./library-core-immutable-publication.js";
 import {
+  importLibraryCoreCheckpointManifestV1,
   importLibraryCoreCheckpointPagesV1,
   type LibraryCoreCheckpointPageReferenceV1,
 } from "./library-core-checkpoint-import.js";
@@ -91,14 +94,76 @@ async function checkpointPage(
 
 class FakeReader implements LibraryCoreImmutableReadAdapterV1 {
   readonly bytes = new Map<string, Uint8Array>();
+  readonly readIds: string[] = [];
 
   async readImmutable(
     receipt: LibraryCorePublishedImmutableObjectReceiptV1,
   ): Promise<Uint8Array> {
+    this.readIds.push(receipt.transportObjectId);
     const stored = this.bytes.get(receipt.transportObjectId);
     if (stored === undefined) throw new Error("missing fake immutable object");
     return stored.slice();
   }
+}
+
+async function manifestFixture(
+  pageRecords: readonly (readonly TestRecord[])[],
+  rangeOverride?: {
+    readonly firstRecordIdentity?: string;
+    readonly lastRecordIdentity?: string;
+  },
+): Promise<{
+  readonly reader: FakeReader;
+  readonly manifest: LibraryCoreImmutableObjectReferenceV1;
+}> {
+  const input = await fixture(pageRecords);
+  const manifestBytes = encodeLibraryCoreCanonicalValue({
+    causalFrontierDigest: "fe".repeat(32),
+    datasetSchemaId: "library_core_feed_card_projection_v1",
+    generation: 7,
+    kind: "checkpoint_manifest",
+    libraryId: "library-1",
+    pages: input.references.map((reference, pageIndex) => ({
+      firstRecordIdentity:
+        pageIndex === 0 && rangeOverride?.firstRecordIdentity !== undefined
+          ? rangeOverride.firstRecordIdentity
+          : pageRecords[pageIndex]![0]!.id,
+      lastRecordIdentity:
+        pageIndex === 0 && rangeOverride?.lastRecordIdentity !== undefined
+          ? rangeOverride.lastRecordIdentity
+          : pageRecords[pageIndex]!.at(-1)!.id,
+      object: {
+        descriptor: reference.descriptor,
+        transportObjectId: reference.transportObjectId,
+      },
+      pageIndex,
+      recordCount: pageRecords[pageIndex]!.length,
+    })),
+    protocolVersion: 1,
+    schemaVersion: 1,
+    storageEpoch: "epoch-1",
+    totalRecordCount: pageRecords.reduce(
+      (count, records) => count + records.length,
+      0,
+    ),
+  } as unknown as LibraryCoreCanonicalValue);
+  const manifestDigest = digest(manifestBytes);
+  const manifest = {
+    descriptor: parseLibraryCoreImmutableObjectDescriptorV1({
+      objectKey: createLibraryCoreImmutableObjectKey({
+        kind: "checkpoint_manifest",
+        libraryId: "library-1",
+        epochId: "epoch-1",
+        generation: 7,
+        digest: manifestDigest,
+      }),
+      contentDigest: manifestDigest,
+      byteLength: manifestBytes.byteLength,
+    }),
+    transportObjectId: "drive-manifest-7",
+  };
+  input.reader.bytes.set(manifest.transportObjectId, manifestBytes);
+  return { reader: input.reader, manifest };
 }
 
 async function fixture(
@@ -146,6 +211,108 @@ function request(
 }
 
 describe("Library Core checkpoint page import", () => {
+  it("imports only the exact manifest-bound pages and returns their causal frontier", async () => {
+    const input = await manifestFixture([
+      [
+        { id: "item-1", value: "one" },
+        { id: "item-2", value: "two" },
+      ],
+      [
+        { id: "item-3", value: "three" },
+        { id: "item-4", value: "four" },
+      ],
+    ]);
+    const imported: TestRecord[][] = [];
+
+    await expect(
+      importLibraryCoreCheckpointManifestV1({
+        adapter: input.reader,
+        datasetSchemaId: "library_core_feed_card_projection_v1",
+        generation: 7,
+        libraryId: "library-1",
+        manifest: input.manifest,
+        async onPage(_pageIndex, records) {
+          imported.push([...records]);
+        },
+        parseRecord,
+        recordIdentity: identity,
+        storageEpoch: "epoch-1",
+        subtle: webcrypto.subtle as unknown as SubtleCrypto,
+      }),
+    ).resolves.toEqual({
+      causalFrontierDigest: "fe".repeat(32),
+      importedPageCount: 2,
+      importedRecordCount: 4,
+      status: "imported",
+    });
+    expect(imported.flat()).toHaveLength(4);
+    expect(input.reader.readIds).toEqual([
+      "drive-manifest-7",
+      "drive-page-0",
+      "drive-page-1",
+    ]);
+  });
+
+  it("rejects a manifest identity range that differs from its verified page", async () => {
+    const input = await manifestFixture(
+      [
+        [
+          { id: "item-1", value: "one" },
+          { id: "item-2", value: "two" },
+        ],
+      ],
+      { lastRecordIdentity: "item-9" },
+    );
+
+    await expect(
+      importLibraryCoreCheckpointManifestV1({
+        adapter: input.reader,
+        datasetSchemaId: "library_core_feed_card_projection_v1",
+        generation: 7,
+        libraryId: "library-1",
+        manifest: input.manifest,
+        async onPage() {
+          throw new Error("mismatched page must not reach the consumer");
+        },
+        parseRecord,
+        recordIdentity: identity,
+        storageEpoch: "epoch-1",
+        subtle: webcrypto.subtle as unknown as SubtleCrypto,
+      }),
+    ).rejects.toThrow(/identity range does not match/u);
+  });
+
+  it("rejects changed manifest bytes before reading or emitting any page", async () => {
+    const input = await manifestFixture([
+      [
+        { id: "item-1", value: "one" },
+        { id: "item-2", value: "two" },
+      ],
+    ]);
+    const stored = input.reader.bytes.get("drive-manifest-7")!;
+    stored[stored.byteLength - 1] ^= 1;
+    let emittedPage = false;
+
+    await expect(
+      importLibraryCoreCheckpointManifestV1({
+        adapter: input.reader,
+        datasetSchemaId: "library_core_feed_card_projection_v1",
+        generation: 7,
+        libraryId: "library-1",
+        manifest: input.manifest,
+        async onPage() {
+          emittedPage = true;
+        },
+        parseRecord,
+        recordIdentity: identity,
+        storageEpoch: "epoch-1",
+        subtle: webcrypto.subtle as unknown as SubtleCrypto,
+      }),
+    ).rejects.toThrow(/digest does not match descriptor/u);
+    expect(emittedPage).toBe(false);
+    expect(input.reader.readIds).toEqual(["drive-manifest-7"]);
+  });
+
   it("verifies and streams ordered pages without retaining the corpus", async () => {
     const input = await fixture([
       [

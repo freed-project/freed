@@ -3,10 +3,10 @@ import {
   parseLibraryCoreFeedPageSourceV1,
   type LibraryCoreFeedCardV1,
   type LibraryCoreFeedPageSourceV1,
+  type LibraryCoreImmutableObjectReferenceV1,
 } from "@freed/shared/library-core";
 import {
-  importLibraryCoreCheckpointPagesV1,
-  type LibraryCoreCheckpointPageReferenceV1,
+  importLibraryCoreCheckpointManifestV1,
   type LibraryCoreImmutableReadAdapterV1,
 } from "@freed/sync/cloud";
 
@@ -28,16 +28,11 @@ interface PwaLibraryCoreCheckpointWriter {
 
 export interface ImportPwaLibraryCoreFeedCheckpointInput {
   readonly adapter: LibraryCoreImmutableReadAdapterV1;
-  readonly expectedPageCount: number;
   readonly generation: number;
   readonly libraryId: string;
-  readonly pages:
-    | Iterable<LibraryCoreCheckpointPageReferenceV1>
-    | AsyncIterable<LibraryCoreCheckpointPageReferenceV1>;
-  readonly source: LibraryCoreFeedPageSourceV1;
+  readonly manifest: LibraryCoreImmutableObjectReferenceV1;
   readonly storageEpoch: string;
   readonly subtle: SubtleCrypto;
-  readonly totalRecordCount: number;
   readonly writer: PwaLibraryCoreCheckpointWriter;
 }
 
@@ -63,46 +58,57 @@ function parseFeedCard(value: unknown): LibraryCoreFeedCardV1 {
 export async function importPwaLibraryCoreFeedCheckpoint(
   input: ImportPwaLibraryCoreFeedCheckpointInput,
 ): Promise<ImportPwaLibraryCoreFeedCheckpointResult> {
-  const source = parseLibraryCoreFeedPageSourceV1(input.source);
-  if (!source.ok) {
-    throw new TypeError(`checkpoint source is invalid: ${source.error}`);
-  }
-  const generationState = await input.writer.beginGeneration({
-    source: source.value,
-    totalCount: input.totalRecordCount,
-  });
-  if (generationState === "complete") {
-    return Object.freeze({
-      importedPageCount: 0,
-      importedRecordCount: 0,
-      status: "already_complete",
-    });
-  }
-
-  const imported = await importLibraryCoreCheckpointPagesV1({
+  let source: LibraryCoreFeedPageSourceV1 | null = null;
+  const imported = await importLibraryCoreCheckpointManifestV1({
     adapter: input.adapter,
-    expectedPageCount: input.expectedPageCount,
+    datasetSchemaId: "library_core_feed_card_projection_v1",
     generation: input.generation,
     libraryId: input.libraryId,
+    manifest: input.manifest,
     async onPage(pageIndex, records) {
+      if (source === null) {
+        throw new TypeError("checkpoint source was not prepared");
+      }
       await input.writer.appendGenerationPage({
         batchIndex: pageIndex,
         rows: records,
-        source: source.value,
+        source,
       });
     },
-    pages: input.pages,
     parseRecord: parseFeedCard,
+    async prepareImport(manifest, manifestReference) {
+      const parsedSource = parseLibraryCoreFeedPageSourceV1({
+        generationId: manifestReference.descriptor.contentDigest,
+        projectionRevision: manifest.schemaVersion,
+        transitionSequence: manifest.generation,
+      });
+      if (!parsedSource.ok) {
+        throw new TypeError(
+          `checkpoint source is invalid: ${parsedSource.error}`,
+        );
+      }
+      source = parsedSource.value;
+      const generationState = await input.writer.beginGeneration({
+        source,
+        totalCount: manifest.totalRecordCount,
+      });
+      return generationState === "complete" ? "already_complete" : "import";
+    },
     recordIdentity(record) {
       return record.globalId;
     },
     storageEpoch: input.storageEpoch,
     subtle: input.subtle,
-    totalRecordCount: input.totalRecordCount,
   });
-  await input.writer.finalizeGeneration(source.value);
+  if (imported.status === "imported") {
+    if (source === null) {
+      throw new TypeError("checkpoint source was not prepared");
+    }
+    await input.writer.finalizeGeneration(source);
+  }
   return Object.freeze({
-    ...imported,
-    status: "imported",
+    importedPageCount: imported.importedPageCount,
+    importedRecordCount: imported.importedRecordCount,
+    status: imported.status,
   });
 }

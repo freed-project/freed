@@ -258,7 +258,7 @@ function ownEnumerableDataRecord(
     value === null ||
     typeof value !== "object" ||
     Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype ||
+    ![Object.prototype, null].includes(Object.getPrototypeOf(value)) ||
     Object.getOwnPropertySymbols(value).length !== 0
   ) {
     throw new TypeError(`${label} must be a plain closed record`);
