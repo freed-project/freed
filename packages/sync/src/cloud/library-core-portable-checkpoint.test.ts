@@ -134,6 +134,7 @@ function header(
     library_id: "library-1",
     materializer_position: {
       frontier_digest: FRONTIER_DIGEST,
+      ingest_sequence: 0,
       materialized_digest: MATERIALIZED_DIGEST,
     },
     promoted_receipt_digests: [],
@@ -209,6 +210,7 @@ describe("Library Core portable checkpoint", () => {
           finalized = true;
           return {
             frontierDigest: FRONTIER_DIGEST,
+            ingestSequence: 0,
             libraryId: "library-1",
             materializedDigest: MATERIALIZED_DIGEST,
             recordCount: 131,
@@ -293,6 +295,7 @@ describe("Library Core portable checkpoint", () => {
           async finalizeImport() {
             return {
               frontierDigest: FRONTIER_DIGEST,
+              ingestSequence: 0,
               libraryId: "library-1",
               materializedDigest: "ff".repeat(32) as LibraryCoreLowercaseHex64,
               recordCount: 2,
@@ -363,6 +366,7 @@ describe("Library Core portable checkpoint", () => {
             finalized = true;
             return {
               frontierDigest: FRONTIER_DIGEST,
+              ingestSequence: 0,
               libraryId: "library-1",
               materializedDigest: MATERIALIZED_DIGEST,
               recordCount: 2,

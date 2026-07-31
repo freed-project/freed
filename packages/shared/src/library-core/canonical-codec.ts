@@ -25,6 +25,7 @@ export const LIBRARY_CORE_DIGEST_DOMAINS = [
   "actor-chain-genesis",
   "actor-chain",
   "operation-envelope",
+  "operation-segment-body",
   "causal-frontier",
 ] as const;
 

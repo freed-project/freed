@@ -9052,8 +9052,10 @@ needed to recompute and verify the digest and proof, not only a dangling
 reference. Actor enrollment, retirement, repair, compaction, migration,
 rollback, and authority receipts needed to validate the checkpoint are
 present. `materializer_position` is the adapter-neutral closed
-`{ frontier_digest, materialized_digest }` object. It never contains a local
-SQLite row ID or IndexedDB ingest sequence. `blob_roots` contains closed
+`{ frontier_digest, ingest_sequence, materialized_digest }` object.
+`ingest_sequence` is the exact nonnegative global journal sequence represented
+by the checkpoint frontier. It is not a SQLite row ID or IndexedDB cursor.
+`blob_roots` contains closed
 `{ content_digest, byte_length, media_type, registry_key, primary_key,
 field_path }` entries. `accepted_frontier` and `quarantined_frontier` contain
 the exact branch-qualified tip shape from the operation contract.
@@ -9071,6 +9073,38 @@ digest. The adapter retains the selected generation and one rollback
 generation and exposes at most 128 rows from one collection per read. It has no
 production caller. Automerge remains the active product and replication
 authority until the separately governed cutover.
+
+The dormant operation-tail path extends one selected portable checkpoint with
+immutable `freed_operation_segment_v1` objects. A segment contains at most
+1,000 canonical operation envelopes and at most 4,000,000 canonical envelope
+bytes. Its closed body binds the exact library, storage epoch, schema, first
+and last global ingest sequences, base and result frontier digests, previous
+segment digest, operation count, and canonical byte count. A domain-separated
+digest authenticates that body. The wire object stores one closed header
+followed by the exact bounded entries in contiguous ingest order, then gzip. A
+separate SHA-256 digest authenticates the exact stored bytes and determines the
+immutable flat object locator.
+
+The first segment after a checkpoint starts at
+`materializer_position.ingest_sequence + 1`, names the checkpoint frontier as
+its base frontier, and has no previous segment digest. Each later segment
+starts at the next global ingest sequence, names the current imported
+frontier, and binds the prior body digest. The PWA importer verifies stored
+bytes, bounded wire framing, closed records, canonical envelope identity, body
+digest, locator, expected tail tuple, and exact writer receipt before
+committing. One IndexedDB transaction writes every operation occurrence,
+records the segment, and advances the generation frontier and tail. Exact
+segment replay is idempotent. A gap, changed replay, duplicate operation ID,
+one-sided transaction failure, wrong frontier, or wrong predecessor leaves the
+selected tail unchanged. Readers return at most 128 envelopes from the
+selected generation per request.
+
+This implementation authenticates wire structure, storage attribution, and
+durable operation identity. It does not yet prove actor enrollment or
+signatures, run the canonical operation admission rules, or materialize
+operation effects into product rows. It has no production caller. Those checks
+remain mandatory before the operation tail may affect PWA product state or
+participate in an authority cutover.
 
 A receipt that commits checkpoint digest X is forbidden from
 X's `receipt_records`. The manifest, transition, or closure binds that receipt
