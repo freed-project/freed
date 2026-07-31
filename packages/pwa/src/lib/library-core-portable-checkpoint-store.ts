@@ -1,15 +1,22 @@
 import {
+  decodeLibraryCoreFeedPageCursorV1,
+  encodeLibraryCoreFeedPageCursorV1,
   LIBRARY_CORE_PORTABLE_CHECKPOINT_COLLECTIONS,
   createLibraryCoreImmutableObjectKey,
   decodeLibraryCoreCanonicalValue,
   encodeLibraryCoreCanonicalValue,
   encodeLibraryCoreDigestInput,
   FEED_ITEM_READ_AT_FIELD_ALGEBRA,
+  isLibraryCoreVisibleFeedItemV1,
   parseLibraryCoreCheckpointManifestV1,
+  parseLibraryCoreFeedCardV1,
+  parseLibraryCoreFeedPageRequestV1,
+  parseLibraryCoreFeedPageResponseV1,
   parseLibraryCoreImmutableObjectReferenceV1,
   parseLibraryCoreOperationSegmentEntryV1,
   parseLibraryCoreOperationSegmentHeaderV1,
   parseLibraryCorePortableCheckpointRecordV1,
+  projectLibraryCoreFeedCardV1,
   isLibraryCoreLowercaseHex64,
   sha256LowerHex,
   verifyLibraryCoreActorEnrollmentCertificateV1,
@@ -20,6 +27,11 @@ import {
   type LibraryCoreAcceptedAuthorityStateV1,
   type LibraryCoreCheckpointManifestV1,
   type LibraryCoreEd25519PublicKeyHex,
+  type LibraryCoreFeedCardV1,
+  type LibraryCoreFeedPageCursorV1,
+  type LibraryCoreFeedPageRequestV1,
+  type LibraryCoreFeedPageResponseV1,
+  type LibraryCoreFeedPageSourceV1,
   type LibraryCoreImmutableObjectReferenceV1,
   type LibraryCoreLowercaseHex64,
   type LibraryCoreOperationInstanceId,
@@ -30,6 +42,7 @@ import {
   type LibraryCorePortableCheckpointHeaderV1,
   type LibraryCorePortableCheckpointRecordV1,
 } from "@freed/shared/library-core";
+import type { FeedItem } from "@freed/shared";
 import type {
   LibraryCoreOperationSegmentImportReceiptV1,
   LibraryCoreOperationSegmentImportWriterV1,
@@ -43,7 +56,7 @@ import {
   transactionDone,
 } from "./library-core-indexeddb";
 
-const DATABASE_VERSION = 3;
+const DATABASE_VERSION = 4;
 const GENERATIONS_STORE = "portable_generations";
 const RECORDS_STORE = "portable_records";
 const PAGES_STORE = "portable_pages";
@@ -56,9 +69,15 @@ const AUTHENTICATED_OPERATIONS_STORE = "portable_authenticated_operations";
 const AUTHENTICATED_SEGMENTS_STORE = "portable_authenticated_segments";
 const MATERIALIZED_ROWS_STORE = "portable_materialized_rows";
 const READ_STATE_STORE = "portable_read_state";
+const FEED_ROWS_STORE = "portable_feed_rows";
 const SELECTED_GENERATION_KEY = "selected_portable_generation";
 const MAXIMUM_RETAINED_GENERATIONS = 2;
 const MAXIMUM_COLLECTION_PAGE_ROWS = 128;
+const FEED_PROJECTION_REVISION = 1;
+const FEED_SESSION_MAXIMUM_AGE_MS = 60_000;
+const MAXIMUM_FEED_READER_SESSIONS = 2;
+const MAXIMUM_SAFE_SORT_KEY = Number.MAX_SAFE_INTEGER;
+const TEXT_ENCODER = new TextEncoder();
 
 type GenerationStatus = "complete" | "staging";
 
@@ -79,6 +98,7 @@ interface PortableGenerationRecord {
   readonly authenticatedThroughIngestSequence: number;
   readonly authenticatedFrontierDigest: LibraryCoreLowercaseHex64;
   readonly latestAuthenticatedSegmentDigest: LibraryCoreLowercaseHex64 | null;
+  readonly visibleFeedRowCount: number;
   readonly manifestTransportObjectId: string;
   readonly writtenRecordCount: number;
   readonly nextPageIndex: number;
@@ -137,6 +157,34 @@ interface PortableReadStateRecord {
   readonly readAtMs: number;
 }
 
+interface PortableFeedRowRecord {
+  readonly generationId: LibraryCoreLowercaseHex64;
+  readonly globalId: string;
+  readonly orderKey: string;
+  readonly row: LibraryCoreFeedCardV1;
+  readonly sortAt: number;
+}
+
+interface PortableFeedReaderSession {
+  readonly expiresAtMs: number;
+  readonly source: LibraryCoreFeedPageSourceV1;
+  lastRequest: Readonly<{
+    cancellationId: string;
+    cursor: string | null;
+    limit: number;
+  }> | null;
+}
+
+type PortableFeedSessionAdmission =
+  | Readonly<{
+      ok: true;
+      cursor: LibraryCoreFeedPageCursorV1 | null;
+    }>
+  | Readonly<{
+      ok: false;
+      result: PwaLibraryCorePortableFeedReaderResult;
+    }>;
+
 interface SelectedPortableGenerationRecord {
   readonly key: typeof SELECTED_GENERATION_KEY;
   readonly generationId: LibraryCoreLowercaseHex64;
@@ -179,6 +227,7 @@ export interface PwaLibraryCorePortableCheckpointStoreOptions {
   readonly indexedDb: IDBFactory;
   readonly keyRange: typeof IDBKeyRange;
   readonly subtle: SubtleCrypto;
+  readonly now?: () => number;
 }
 
 export interface ReadPwaLibraryCorePortableCollectionPageInput {
@@ -218,6 +267,25 @@ export interface PwaLibraryCoreReadState {
   readonly readAtMs: number;
   readonly sourceOperationId: string;
 }
+
+export type PwaLibraryCorePortableFeedReaderErrorCode =
+  | "RUNTIME_INACTIVE"
+  | "CURSOR_STALE"
+  | "SESSION_LIMIT"
+  | "INVALID_REQUEST"
+  | "RESPONSE_TOO_LARGE"
+  | "READER_UNAVAILABLE";
+
+export type PwaLibraryCorePortableFeedReaderResult =
+  | Readonly<{
+      ok: true;
+      value: LibraryCoreFeedPageResponseV1;
+    }>
+  | Readonly<{
+      ok: false;
+      code: PwaLibraryCorePortableFeedReaderErrorCode;
+      message: string;
+    }>;
 
 function snapshotReference(
   reference: LibraryCoreImmutableObjectReferenceV1,
@@ -315,6 +383,70 @@ function canonicalStringKey(value: LibraryCoreCanonicalValue): string {
   );
 }
 
+function reverseFeedSortKey(sortAt: number): string {
+  return (MAXIMUM_SAFE_SORT_KEY - sortAt).toString(16).padStart(14, "0");
+}
+
+function portableFeedRowOrderKey(row: LibraryCoreFeedCardV1): string {
+  return `${reverseFeedSortKey(row.publishedAt ?? 0)}\u0000${lowerHex(
+    TEXT_ENCODER.encode(row.globalId).buffer,
+  )}`;
+}
+
+function projectPortableFeedRow(
+  generationId: LibraryCoreLowercaseHex64,
+  materialized: PortableMaterializedRowRecord,
+): PortableFeedRowRecord | null {
+  if (materialized.registryKey !== "feedItems") return null;
+  const globalId = materialized.row.globalId;
+  if (
+    typeof globalId !== "string" ||
+    canonicalStringKey(globalId) !== materialized.primaryKey
+  ) {
+    throw new TypeError(
+      "portable feed item identity does not match its materialized primary key",
+    );
+  }
+  const item = materialized.row as unknown as FeedItem;
+  if (!isLibraryCoreVisibleFeedItemV1(item)) return null;
+  const row = projectLibraryCoreFeedCardV1(item);
+  return Object.freeze({
+    generationId,
+    globalId: row.globalId,
+    orderKey: portableFeedRowOrderKey(row),
+    row,
+    sortAt: row.publishedAt ?? 0,
+  });
+}
+
+function portableFeedSource(
+  generation: PortableGenerationRecord,
+): LibraryCoreFeedPageSourceV1 {
+  return Object.freeze({
+    generationId: generation.generationId,
+    projectionRevision: FEED_PROJECTION_REVISION,
+    transitionSequence: generation.authenticatedThroughIngestSequence,
+  });
+}
+
+function portableFeedSourceMatches(
+  left: LibraryCoreFeedPageSourceV1,
+  right: LibraryCoreFeedPageSourceV1,
+): boolean {
+  return (
+    left.generationId === right.generationId &&
+    left.projectionRevision === right.projectionRevision &&
+    left.transitionSequence === right.transitionSequence
+  );
+}
+
+function portableFeedReaderFailure(
+  code: PwaLibraryCorePortableFeedReaderErrorCode,
+  message: string,
+): PwaLibraryCorePortableFeedReaderResult {
+  return Object.freeze({ code, message, ok: false });
+}
+
 function operationEnvelopeBytes(
   entry: LibraryCoreOperationSegmentEntryV1,
 ): Uint8Array {
@@ -410,6 +542,8 @@ class PwaLibraryCorePortableCheckpointStore
   readonly #indexedDb: IDBFactory;
   readonly #keyRange: typeof IDBKeyRange;
   readonly #subtle: SubtleCrypto;
+  readonly #now: () => number;
+  readonly #feedSessions = new Map<string, PortableFeedReaderSession>();
   #databasePromise: Promise<IDBDatabase> | null = null;
   #activeGenerationId: LibraryCoreLowercaseHex64 | null = null;
   #quiesced = false;
@@ -422,6 +556,7 @@ class PwaLibraryCorePortableCheckpointStore
     this.#indexedDb = options.indexedDb;
     this.#keyRange = options.keyRange;
     this.#subtle = options.subtle;
+    this.#now = options.now ?? Date.now;
   }
 
   async beginImport(input: {
@@ -525,6 +660,7 @@ class PwaLibraryCorePortableCheckpointStore
       status: "staging",
       storageEpoch: manifest.storageEpoch,
       totalRecordCount: manifest.totalRecordCount,
+      visibleFeedRowCount: 0,
       writtenRecordCount: 0,
     } satisfies PortableGenerationRecord);
     await transactionDone(transaction);
@@ -574,6 +710,7 @@ class PwaLibraryCorePortableCheckpointStore
         PAGES_STORE,
         ACTOR_TIPS_STORE,
         MATERIALIZED_ROWS_STORE,
+        FEED_ROWS_STORE,
       ],
       "readwrite",
     );
@@ -582,6 +719,7 @@ class PwaLibraryCorePortableCheckpointStore
     const entries = transaction.objectStore(RECORDS_STORE);
     const actorTips = transaction.objectStore(ACTOR_TIPS_STORE);
     const materializedRows = transaction.objectStore(MATERIALIZED_ROWS_STORE);
+    const feedRows = transaction.objectStore(FEED_ROWS_STORE);
     const generation = (await requestResult(generations.get(generationId))) as
       PortableGenerationRecord | undefined;
     if (!generation || generation.status !== "staging") {
@@ -644,6 +782,7 @@ class PwaLibraryCorePortableCheckpointStore
       );
     }
 
+    let visibleFeedRowsAdded = 0;
     for (const record of records) {
       if (record.kind !== "logical_checkpoint_entry") continue;
       entries.add({
@@ -669,7 +808,7 @@ class PwaLibraryCorePortableCheckpointStore
       }
       if (record.collection === "materialized_rows") {
         const value = record.value as Readonly<Record<string, unknown>>;
-        materializedRows.add({
+        const materialized = {
           generationId,
           primaryKey: canonicalStringKey(
             value.primary_key as LibraryCoreCanonicalValue,
@@ -678,7 +817,13 @@ class PwaLibraryCorePortableCheckpointStore
           row: value.row as Readonly<
             Record<string, LibraryCoreCanonicalValue>
           >,
-        } satisfies PortableMaterializedRowRecord);
+        } satisfies PortableMaterializedRowRecord;
+        materializedRows.add(materialized);
+        const feedRow = projectPortableFeedRow(generationId, materialized);
+        if (feedRow) {
+          feedRows.add(feedRow);
+          visibleFeedRowsAdded += 1;
+        }
       }
     }
     const writtenRecordCountAfter =
@@ -695,6 +840,8 @@ class PwaLibraryCorePortableCheckpointStore
       header: header ?? generation.header,
       headerDigest: headerDigest ?? generation.headerDigest,
       nextPageIndex: pageIndex + 1,
+      visibleFeedRowCount:
+        generation.visibleFeedRowCount + visibleFeedRowsAdded,
       writtenRecordCount: writtenRecordCountAfter,
     } satisfies PortableGenerationRecord);
     await transactionDone(transaction);
@@ -739,6 +886,7 @@ class PwaLibraryCorePortableCheckpointStore
         AUTHENTICATED_SEGMENTS_STORE,
         MATERIALIZED_ROWS_STORE,
         READ_STATE_STORE,
+        FEED_ROWS_STORE,
         CONTROL_STORE,
       ],
       "readwrite",
@@ -866,6 +1014,7 @@ class PwaLibraryCorePortableCheckpointStore
         AUTHENTICATED_SEGMENTS_STORE,
         MATERIALIZED_ROWS_STORE,
         READ_STATE_STORE,
+        FEED_ROWS_STORE,
       ]) {
         transaction
           .objectStore(storeName)
@@ -886,6 +1035,7 @@ class PwaLibraryCorePortableCheckpointStore
     }
 
     await transactionDone(transaction);
+    this.#feedSessions.clear();
     this.#activeGenerationId = null;
     return Object.freeze({
       frontierDigest: header.materializer_position.frontier_digest,
@@ -909,6 +1059,7 @@ class PwaLibraryCorePortableCheckpointStore
         PAGES_STORE,
         ACTOR_TIPS_STORE,
         MATERIALIZED_ROWS_STORE,
+        FEED_ROWS_STORE,
       ],
       "readwrite",
     );
@@ -937,6 +1088,14 @@ class PwaLibraryCorePortableCheckpointStore
         );
       transaction
         .objectStore(MATERIALIZED_ROWS_STORE)
+        .delete(
+          this.#keyRange.bound(
+            [generationId],
+            [generationId, []],
+          ),
+        );
+      transaction
+        .objectStore(FEED_ROWS_STORE)
         .delete(
           this.#keyRange.bound(
             [generationId],
@@ -1390,6 +1549,7 @@ class PwaLibraryCorePortableCheckpointStore
         AUTHENTICATED_SEGMENTS_STORE,
         MATERIALIZED_ROWS_STORE,
         READ_STATE_STORE,
+        FEED_ROWS_STORE,
       ],
       "readwrite",
     );
@@ -1439,6 +1599,7 @@ class PwaLibraryCorePortableCheckpointStore
     );
     const materializedRows = transaction.objectStore(MATERIALIZED_ROWS_STORE);
     const readStates = transaction.objectStore(READ_STATE_STORE);
+    const feedRows = transaction.objectStore(FEED_ROWS_STORE);
     let entryOffset = 0;
     for (const verified of verifiedTransactions) {
       for (const member of verified.members) {
@@ -1497,7 +1658,7 @@ class PwaLibraryCorePortableCheckpointStore
               !Array.isArray(storedRow.row.userState)
                 ? storedRow.row.userState
                 : {};
-            materializedRows.put({
+            const updatedRow = {
               ...storedRow,
               row: {
                 ...storedRow.row,
@@ -1506,7 +1667,13 @@ class PwaLibraryCorePortableCheckpointStore
                   readAt: merged.value,
                 },
               },
-            } satisfies PortableMaterializedRowRecord);
+            } satisfies PortableMaterializedRowRecord;
+            materializedRows.put(updatedRow);
+            const projected = projectPortableFeedRow(
+              generation.generationId,
+              updatedRow,
+            );
+            if (projected) feedRows.put(projected);
           }
         }
         entryOffset += 1;
@@ -1576,7 +1743,171 @@ class PwaLibraryCorePortableCheckpointStore
           : header.segment_digest,
     } satisfies PortableGenerationRecord);
     await transactionDone(transaction);
+    this.#feedSessions.clear();
     return this.#segmentReceipt(header);
+  }
+
+  async readSelectedFeedPage(
+    requestValue: unknown,
+  ): Promise<PwaLibraryCorePortableFeedReaderResult> {
+    if (this.#quiesced) {
+      return portableFeedReaderFailure(
+        "READER_UNAVAILABLE",
+        "portable feed reader is quiesced",
+      );
+    }
+    const request = parseLibraryCoreFeedPageRequestV1(requestValue);
+    if (!request.ok) {
+      return portableFeedReaderFailure("INVALID_REQUEST", request.error);
+    }
+    this.#expireFeedSessions();
+
+    try {
+      const database = await this.#database();
+      const transaction = database.transaction(
+        [GENERATIONS_STORE, CONTROL_STORE, FEED_ROWS_STORE],
+        "readonly",
+      );
+      const selected = (await requestResult(
+        transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+      )) as SelectedPortableGenerationRecord | undefined;
+      const generation = selected
+        ? ((await requestResult(
+            transaction
+              .objectStore(GENERATIONS_STORE)
+              .get(selected.generationId),
+          )) as PortableGenerationRecord | undefined)
+        : undefined;
+      if (
+        !selected ||
+        !generation ||
+        generation.status !== "complete" ||
+        generation.selectionSequence !== selected.selectionSequence
+      ) {
+        transaction.abort();
+        return portableFeedReaderFailure(
+          "RUNTIME_INACTIVE",
+          "no complete authenticated portable generation is selected",
+        );
+      }
+
+      const source = portableFeedSource(generation);
+      const admission = this.#admitFeedSession(request.value, source);
+      if (!admission.ok) {
+        transaction.abort();
+        return admission.result;
+      }
+      let lowerOrderKey = "";
+      if (admission.cursor) {
+        lowerOrderKey = `${reverseFeedSortKey(
+          admission.cursor.sortAt,
+        )}\u0000${lowerHex(
+          TEXT_ENCODER.encode(admission.cursor.globalId).buffer,
+        )}`;
+      }
+      const range = this.#keyRange.bound(
+        [generation.generationId, lowerOrderKey],
+        [generation.generationId, "\uffff"],
+        admission.cursor !== null,
+        false,
+      );
+      const rows: LibraryCoreFeedCardV1[] = [];
+      let cursor = await requestResult(
+        transaction.objectStore(FEED_ROWS_STORE).openCursor(range, "next"),
+      );
+      while (cursor && rows.length < request.value.limit) {
+        const stored = cursor.value as PortableFeedRowRecord;
+        const parsed = parseLibraryCoreFeedCardV1(stored.row);
+        if (
+          !parsed.ok ||
+          stored.globalId !== parsed.value.globalId ||
+          stored.sortAt !== (parsed.value.publishedAt ?? 0) ||
+          stored.orderKey !== portableFeedRowOrderKey(parsed.value)
+        ) {
+          transaction.abort();
+          return portableFeedReaderFailure(
+            "READER_UNAVAILABLE",
+            parsed.ok
+              ? "portable feed row ordering is inconsistent"
+              : parsed.error,
+          );
+        }
+        rows.push(parsed.value);
+        cursor.continue();
+        cursor = await requestResult(cursor.request);
+      }
+      await transactionDone(transaction);
+
+      const finalRow = rows.at(-1);
+      const nextCursor =
+        finalRow && rows.length === request.value.limit
+          ? encodeLibraryCoreFeedPageCursorV1({
+              ...source,
+              globalId: finalRow.globalId,
+              sortAt: finalRow.publishedAt ?? 0,
+            })
+          : null;
+      const response = parseLibraryCoreFeedPageResponseV1(
+        {
+          nextCursor,
+          queryId: request.value.queryId,
+          rows,
+          schemaVersion: request.value.schemaVersion,
+          source,
+          totalCount: generation.visibleFeedRowCount,
+        },
+        request.value,
+      );
+      if (!response.ok) {
+        return portableFeedReaderFailure(
+          response.error.includes("exceeds")
+            ? "RESPONSE_TOO_LARGE"
+            : "READER_UNAVAILABLE",
+          response.error,
+        );
+      }
+      const session = this.#feedSessions.get(request.value.readerSessionId);
+      if (!session) {
+        return portableFeedReaderFailure(
+          "CURSOR_STALE",
+          "portable feed reader session expired before its response completed",
+        );
+      }
+      session.lastRequest = {
+        cancellationId: request.value.cancellationId,
+        cursor: request.value.cursor,
+        limit: request.value.limit,
+      };
+      if (nextCursor === null) {
+        this.#feedSessions.delete(request.value.readerSessionId);
+      }
+      return Object.freeze({ ok: true, value: response.value });
+    } catch (error) {
+      return portableFeedReaderFailure(
+        "READER_UNAVAILABLE",
+        error instanceof Error
+          ? error.message
+          : "portable IndexedDB feed reader failed",
+      );
+    }
+  }
+
+  cancelSelectedFeedReader(
+    readerSessionId: string,
+    cancellationId: string,
+  ): boolean {
+    const request = parseLibraryCoreFeedPageRequestV1({
+      cancellationId,
+      cursor: null,
+      limit: 1,
+      queryId: "feed_page_v1",
+      readerSessionId,
+      schemaVersion: 1,
+    });
+    if (!request.ok) return false;
+    const session = this.#feedSessions.get(readerSessionId);
+    if (session?.lastRequest?.cancellationId !== cancellationId) return false;
+    return this.#feedSessions.delete(readerSessionId);
   }
 
   async readSelectedAuthenticatedOperationPage(
@@ -1980,12 +2311,91 @@ class PwaLibraryCorePortableCheckpointStore
 
   async quiesce(): Promise<void> {
     this.#quiesced = true;
+    this.#feedSessions.clear();
     if (this.#databasePromise) {
       const database = await this.#databasePromise;
       database.close();
       this.#databasePromise = null;
     }
     this.#activeGenerationId = null;
+  }
+
+  #admitFeedSession(
+    request: LibraryCoreFeedPageRequestV1,
+    source: LibraryCoreFeedPageSourceV1,
+  ): PortableFeedSessionAdmission {
+    const existing = this.#feedSessions.get(request.readerSessionId);
+    if (existing) {
+      if (!portableFeedSourceMatches(existing.source, source)) {
+        this.#feedSessions.delete(request.readerSessionId);
+        return Object.freeze({
+          ok: false,
+          result: portableFeedReaderFailure(
+            "CURSOR_STALE",
+            "portable feed source advanced during the reader session",
+          ),
+        });
+      }
+      if (
+        existing.lastRequest?.cancellationId === request.cancellationId &&
+        (existing.lastRequest.cursor !== request.cursor ||
+          existing.lastRequest.limit !== request.limit)
+      ) {
+        return Object.freeze({
+          ok: false,
+          result: portableFeedReaderFailure(
+            "INVALID_REQUEST",
+            "cancellation identity was replayed for a different request",
+          ),
+        });
+      }
+    } else if (request.cursor !== null) {
+      return Object.freeze({
+        ok: false,
+        result: portableFeedReaderFailure(
+          "CURSOR_STALE",
+          "cursor cannot resume an absent or expired reader session",
+        ),
+      });
+    } else if (this.#feedSessions.size >= MAXIMUM_FEED_READER_SESSIONS) {
+      return Object.freeze({
+        ok: false,
+        result: portableFeedReaderFailure(
+          "SESSION_LIMIT",
+          "portable feed reader session limit reached",
+        ),
+      });
+    } else {
+      this.#feedSessions.set(request.readerSessionId, {
+        expiresAtMs: this.#now() + FEED_SESSION_MAXIMUM_AGE_MS,
+        lastRequest: null,
+        source,
+      });
+    }
+
+    if (request.cursor === null) {
+      return Object.freeze({ cursor: null, ok: true });
+    }
+    const cursor = decodeLibraryCoreFeedPageCursorV1(request.cursor);
+    if (!cursor.ok || !portableFeedSourceMatches(cursor.value, source)) {
+      return Object.freeze({
+        ok: false,
+        result: portableFeedReaderFailure(
+          "CURSOR_STALE",
+          "cursor source is no longer the authenticated portable frontier",
+        ),
+      });
+    }
+    return Object.freeze({ cursor: cursor.value, ok: true });
+  }
+
+  #expireFeedSessions(): void {
+    const now = this.#now();
+    for (const [readerSessionId, session] of this.#feedSessions) {
+      if (session.expiresAtMs <= now) {
+        this.#feedSessions.delete(readerSessionId);
+      }
+    }
   }
 
   #segmentReceipt(
@@ -2111,6 +2521,55 @@ class PwaLibraryCorePortableCheckpointStore
               keyPath: ["generationId", "entityId"],
             });
           }
+          if (!database.objectStoreNames.contains(FEED_ROWS_STORE)) {
+            database.createObjectStore(FEED_ROWS_STORE, {
+              keyPath: ["generationId", "orderKey"],
+            });
+          }
+          const hydrateFeedRows = (
+            transaction: IDBTransaction,
+          ): void => {
+            const counts = new Map<string, number>();
+            const materializedRows =
+              transaction.objectStore(MATERIALIZED_ROWS_STORE);
+            const feedRows = transaction.objectStore(FEED_ROWS_STORE);
+            const materializedCursorRequest = materializedRows.openCursor();
+            materializedCursorRequest.addEventListener("success", () => {
+              const cursor = materializedCursorRequest.result;
+              if (cursor) {
+                const materialized =
+                  cursor.value as PortableMaterializedRowRecord;
+                const feedRow = projectPortableFeedRow(
+                  materialized.generationId,
+                  materialized,
+                );
+                if (feedRow) {
+                  feedRows.put(feedRow);
+                  counts.set(
+                    materialized.generationId,
+                    (counts.get(materialized.generationId) ?? 0) + 1,
+                  );
+                }
+                cursor.continue();
+                return;
+              }
+              const generations =
+                transaction.objectStore(GENERATIONS_STORE);
+              const generationCursorRequest = generations.openCursor();
+              generationCursorRequest.addEventListener("success", () => {
+                const generationCursor = generationCursorRequest.result;
+                if (!generationCursor) return;
+                const generation =
+                  generationCursor.value as PortableGenerationRecord;
+                generationCursor.update({
+                  ...generation,
+                  visibleFeedRowCount:
+                    counts.get(generation.generationId) ?? 0,
+                } satisfies PortableGenerationRecord);
+                generationCursor.continue();
+              });
+            });
+          };
           if (
             event.oldVersion > 0 &&
             event.oldVersion < 3 &&
@@ -2132,6 +2591,7 @@ class PwaLibraryCorePortableCheckpointStore
                 authenticatedThroughIngestSequence:
                   checkpointIngestSequence,
                 latestAuthenticatedSegmentDigest: null,
+                visibleFeedRowCount: 0,
               } satisfies PortableGenerationRecord);
               cursor.continue();
             });
@@ -2144,7 +2604,12 @@ class PwaLibraryCorePortableCheckpointStore
             const recordCursorRequest = records.openCursor();
             recordCursorRequest.addEventListener("success", () => {
               const cursor = recordCursorRequest.result;
-              if (!cursor) return;
+              if (!cursor) {
+                if (request.transaction && event.oldVersion < 4) {
+                  hydrateFeedRows(request.transaction);
+                }
+                return;
+              }
               const stored = cursor.value as PortableEntryRecord;
               if (stored.collection === "actor_states") {
                 const value = stored.entry.value as Readonly<
@@ -2180,6 +2645,12 @@ class PwaLibraryCorePortableCheckpointStore
               }
               cursor.continue();
             });
+          } else if (
+            event.oldVersion > 0 &&
+            event.oldVersion < 4 &&
+            request.transaction
+          ) {
+            hydrateFeedRows(request.transaction);
           }
         });
         request.addEventListener(

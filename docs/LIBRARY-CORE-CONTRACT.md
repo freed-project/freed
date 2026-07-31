@@ -9065,8 +9065,9 @@ represented in this portable checkpoint.
 The dormant PWA portable-checkpoint adapter materializes these records into
 bounded IndexedDB stores for generation state, collection rows, page receipts,
 selected-generation control, actor tips and enrollments, materialized rows,
-read-state sidecars, raw operation transport, and authenticated operation
-state. One verified checkpoint page commits in one IndexedDB transaction.
+read-state sidecars, a compact ordered feed projection, raw operation
+transport, and authenticated operation state. One verified checkpoint page
+commits in one IndexedDB transaction.
 Exact retry reuses the page receipt. A changed retry, skipped page, duplicate
 row identity, or transaction failure cannot advance staging. Selection occurs
 only after every collection count and the complete import receipt match the
@@ -9136,10 +9137,30 @@ bytes may remain as non-authoritative evidence. Browser construction digests
 use the bounded dependency-free SHA-256 implementation over the canonical
 domain input. Ed25519 verification uses platform Web Crypto.
 
-This path still has no production caller. Feed-reader projection, supported
-operation parity beyond read assignment, PWA intent publication and results,
-cloud scheduling, and governed activation remain required before it may affect
-product state or participate in an authority cutover.
+The selected authenticated generation also owns one disposable
+`feed_page_v1` physical index. Checkpoint import projects each visible
+`feedItems` row with the shared compact card contract while that one verified
+row is already in hand. The physical key is descending published time followed
+by the UTF-8 global identity. Full record bodies are not duplicated in the
+index. Database upgrade from version 3 scans the existing materialized rows
+with an IndexedDB cursor, rebuilds only the compact index, and counts visible
+rows per retained generation without allocating a corpus-sized array.
+
+The bounded reader pins the selected checkpoint digest and exact authenticated
+ingest sequence as its source identity. It admits at most two sessions for 60
+seconds, validates and returns no more than 128 compact cards and 2 MiB per
+response, and releases exact cancellation, expiry, and exhausted sessions.
+An accepted operation or selected checkpoint change advances the source and
+invalidates every older cursor. The read-assignment materializer updates its
+sidecar, the full materialized row, and the compact feed card in the same
+IndexedDB transaction that advances authenticated operation state. A crash
+cannot expose a new cursor source with an old card or a new card under an old
+source.
+
+This path still has no production caller. Supported operation parity beyond
+read assignment, PWA intent publication and results, cloud scheduling, and
+governed activation remain required before it may affect product state or
+participate in an authority cutover.
 
 A receipt that commits checkpoint digest X is forbidden from
 X's `receipt_records`. The manifest, transition, or closure binds that receipt
