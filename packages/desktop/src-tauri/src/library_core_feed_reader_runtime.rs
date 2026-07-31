@@ -13,7 +13,7 @@ use crate::projection_generation_reader::ProjectionGenerationReaderError;
 use crate::projection_generation_registry::{
     ProjectionGenerationRegistry, ProjectionGenerationRegistryError,
 };
-use crate::shadow_store::{FeedCardRow, FeedPage, PageCursor, ShadowStoreError};
+use crate::shadow_store::{FeedCardRow, FeedItemRow, FeedPage, PageCursor, ShadowStoreError};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -35,6 +35,9 @@ const CURSOR_VERSION: u8 = 1;
 const CURSOR_FIXED_BYTES: usize = 59;
 const MAXIMUM_READER_SESSIONS: usize = 2;
 const MAXIMUM_READER_SESSION_AGE: Duration = Duration::from_secs(60);
+const ITEM_DETAIL_QUERY_ID: &str = "item_detail_v1";
+const MAXIMUM_ITEM_DETAIL_RESPONSE_BYTES: usize = 8 * 1_048_576;
+const MAXIMUM_DOCUMENT_ID_BYTES: usize = 4_096;
 
 #[derive(Debug)]
 enum FeedReaderError {
@@ -183,6 +186,36 @@ struct FeedPageSourceV1 {
     generation_id: String,
     projection_revision: i64,
     transition_sequence: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ItemDetailRequestV1 {
+    global_id: String,
+    query_id: String,
+    schema_version: u8,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ItemDetailSourceV1 {
+    document_id: String,
+    generation_id: String,
+    head_count: i64,
+    heads_digest: String,
+    projection_revision: i64,
+    storage_generation: i64,
+    storage_save_revision: i64,
+    transition_sequence: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ItemDetailResponseV1 {
+    item: Option<FeedItemRow>,
+    query_id: &'static str,
+    schema_version: u8,
+    source: ItemDetailSourceV1,
 }
 
 #[derive(Debug, Serialize)]
@@ -639,6 +672,67 @@ pub(super) fn read_library_core_feed_page(
     read_at_root(&state, &base, request, Instant::now()).map_err(Into::into)
 }
 
+fn read_item_detail_at_root(
+    base: &Path,
+    request: ItemDetailRequestV1,
+) -> Result<ItemDetailResponseV1, FeedReaderError> {
+    if request.query_id != ITEM_DETAIL_QUERY_ID
+        || request.schema_version != SCHEMA_VERSION
+        || request.global_id.is_empty()
+        || request.global_id.len() > MAXIMUM_ENTITY_ID_BYTES
+    {
+        return Err(FeedReaderError::InvalidRequest("item detail"));
+    }
+    let paths = resolve_library_core_shadow_reader_paths(base)
+        .map_err(FeedReaderError::RuntimePath)?
+        .ok_or(FeedReaderError::RuntimeInactive)?;
+    let reader = open_selected_projection(&paths.registry_path, &paths.generation_root)?;
+    let source = reader.source();
+    if source.document_id.is_empty()
+        || source.document_id.len() > MAXIMUM_DOCUMENT_ID_BYTES
+        || source.heads_digest.len() != 64
+        || source.head_count < 0
+        || source.storage_generation < 0
+        || source.storage_save_revision < 0
+    {
+        return Err(FeedReaderError::InvalidRequest("selected source"));
+    }
+    let response = ItemDetailResponseV1 {
+        item: reader.item_detail(&request.global_id)?,
+        query_id: ITEM_DETAIL_QUERY_ID,
+        schema_version: SCHEMA_VERSION,
+        source: ItemDetailSourceV1 {
+            document_id: source.document_id,
+            generation_id: reader.generation_id().to_string(),
+            head_count: source.head_count,
+            heads_digest: source.heads_digest,
+            projection_revision: reader.projection_revision(),
+            storage_generation: source.storage_generation,
+            storage_save_revision: source.storage_save_revision,
+            transition_sequence: reader.transition_sequence(),
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| FeedReaderError::ResponseTooLarge)?
+        .len()
+        > MAXIMUM_ITEM_DETAIL_RESPONSE_BYTES
+    {
+        return Err(FeedReaderError::ResponseTooLarge);
+    }
+    Ok(response)
+}
+
+#[tauri::command]
+pub(super) fn read_library_core_item_detail(
+    app: tauri::AppHandle,
+    request: ItemDetailRequestV1,
+) -> Result<ItemDetailResponseV1, FeedReaderErrorResponse> {
+    let base = app.path().app_data_dir().map_err(|error| {
+        FeedReaderErrorResponse::from(FeedReaderError::RuntimePath(error.to_string()))
+    })?;
+    read_item_detail_at_root(&base, request).map_err(Into::into)
+}
+
 #[tauri::command]
 pub(super) fn cancel_library_core_feed_reader(
     state: tauri::State<'_, LibraryCoreFeedReaderRuntimeState>,
@@ -788,6 +882,14 @@ mod tests {
         }
     }
 
+    fn item_request(global_id: &str) -> ItemDetailRequestV1 {
+        ItemDetailRequestV1 {
+            global_id: global_id.to_string(),
+            query_id: ITEM_DETAIL_QUERY_ID.to_string(),
+            schema_version: SCHEMA_VERSION,
+        }
+    }
+
     #[test]
     fn cursor_codec_matches_the_shared_cross_runtime_vector() {
         let cursor = PageCursor {
@@ -855,6 +957,51 @@ mod tests {
             .expect("request object")
             .insert("extra".to_string(), serde_json::Value::Bool(true));
         assert!(serde_json::from_value::<FeedPageRequestV1>(unknown).is_err());
+    }
+
+    #[test]
+    fn reads_one_lossless_item_from_the_authenticated_selected_generation() {
+        let fixture = Fixture::new("item-detail");
+        let mut selected = row(1);
+        selected.preserved_blob =
+            Some("{\"text\":\"complete body\",\"readingTime\":7}".to_string());
+        selected.rest = "{\"engagement\":{\"likes\":9}}".to_string();
+        fixture.publish(&[row(0), selected.clone()]);
+
+        let response = read_item_detail_at_root(&fixture.base, item_request(&selected.global_id))
+            .expect("item detail");
+        assert_eq!(response.query_id, ITEM_DETAIL_QUERY_ID);
+        assert_eq!(response.source.document_id, source().document_id);
+        assert_eq!(response.source.heads_digest, source().heads_digest);
+        assert_eq!(response.item, Some(selected));
+
+        let missing = read_item_detail_at_root(&fixture.base, item_request("x:missing"))
+            .expect("missing item");
+        assert_eq!(missing.item, None);
+    }
+
+    #[test]
+    fn item_detail_rejects_unbounded_or_unknown_requests() {
+        let fixture = Fixture::new("item-invalid");
+        fixture.publish(&[row(0)]);
+        let oversized = "x".repeat(MAXIMUM_ENTITY_ID_BYTES + 1);
+        assert!(matches!(
+            read_item_detail_at_root(&fixture.base, item_request(&oversized)),
+            Err(FeedReaderError::InvalidRequest("item detail"))
+        ));
+
+        let valid = serde_json::json!({
+            "globalId": "x:item-0",
+            "queryId": ITEM_DETAIL_QUERY_ID,
+            "schemaVersion": SCHEMA_VERSION,
+        });
+        assert!(serde_json::from_value::<ItemDetailRequestV1>(valid.clone()).is_ok());
+        let mut unknown = valid;
+        unknown
+            .as_object_mut()
+            .expect("request object")
+            .insert("extra".to_string(), serde_json::Value::Bool(true));
+        assert!(serde_json::from_value::<ItemDetailRequestV1>(unknown).is_err());
     }
 
     #[test]

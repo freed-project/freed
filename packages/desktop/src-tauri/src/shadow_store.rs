@@ -334,6 +334,30 @@ impl FeedItemRow {
         .saturating_mul(std::mem::size_of::<i64>());
         string_bytes.saturating_add(numeric_bytes)
     }
+
+    fn from_row(row: &Row<'_>) -> SqlResult<Self> {
+        Ok(Self {
+            global_id: row.get(0)?,
+            platform: row.get(1)?,
+            content_type: row.get(2)?,
+            published_at: row.get(3)?,
+            captured_at: row.get(4)?,
+            author_id: row.get(5)?,
+            author_display_name: row.get(6)?,
+            author_handle: row.get(7)?,
+            source_url: row.get(8)?,
+            hidden: row.get(9)?,
+            saved: row.get(10)?,
+            archived: row.get(11)?,
+            read_at: row.get(12)?,
+            archived_at: row.get(13)?,
+            liked_at: row.get(14)?,
+            tags: row.get(15)?,
+            content_blob: row.get(16)?,
+            preserved_blob: row.get(17)?,
+            rest: row.get(18)?,
+        })
+    }
 }
 
 /// One compact feed-card DTO.
@@ -900,6 +924,27 @@ impl ShadowStore {
 
     fn revision_in(transaction: &Transaction<'_>) -> SqlResult<i64> {
         transaction.query_row(CURRENT_REVISION_SQL, [], |row| row.get(0))
+    }
+
+    /// Reads one complete lossless projection row by stable identity.
+    ///
+    /// The caller owns generation authentication and response-byte admission.
+    /// This query never scans or hydrates the surrounding corpus.
+    pub(super) fn item_detail(&self, global_id: &str) -> StoreResult<Option<FeedItemRow>> {
+        if global_id.is_empty() || global_id.len() > MAX_ENTITY_ID_UTF8_BYTES {
+            return Err(ShadowStoreError::InvalidProjectionEntityId);
+        }
+        self.conn
+            .query_row(
+                "SELECT globalId, platform, contentType, publishedAt, capturedAt, \
+                 authorId, authorDisplayName, authorHandle, sourceUrl, hidden, saved, \
+                 archived, readAt, archivedAt, likedAt, tags, contentBlob, preservedBlob, rest \
+                 FROM feed_items WHERE globalId = ?1;",
+                [global_id],
+                FeedItemRow::from_row,
+            )
+            .optional()
+            .map_err(Into::into)
     }
 
     fn validate_projection_batch_identity(batch_id: &str, input_digest: &str) -> StoreResult<()> {

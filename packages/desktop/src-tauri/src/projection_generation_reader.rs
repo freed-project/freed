@@ -9,7 +9,7 @@ use crate::projection_generation_registry::{
     ProjectionGenerationRegistryError,
 };
 use crate::shadow_store::{
-    FeedPage, PageCursor, ProjectionSourceV1, ShadowStore, ShadowStoreError,
+    FeedItemRow, FeedPage, PageCursor, ProjectionSourceV1, ShadowStore, ShadowStoreError,
 };
 use sha2::{Digest, Sha256};
 use std::fmt;
@@ -182,12 +182,30 @@ impl ProjectionGenerationReader {
         self.selection.transition_sequence
     }
 
+    pub(super) fn projection_revision(&self) -> i64 {
+        self.selection.generation.projection_revision
+    }
+
+    pub(super) fn source(&self) -> ProjectionSourceV1 {
+        ProjectionSourceV1 {
+            document_id: self.selection.generation.source_document_id.clone(),
+            heads_digest: self.selection.generation.source_heads_digest.clone(),
+            head_count: self.selection.generation.source_head_count,
+            storage_generation: self.selection.generation.source_generation,
+            storage_save_revision: self.selection.generation.source_save_revision,
+        }
+    }
+
     pub(super) fn feed_page(
         &self,
         cursor: Option<&PageCursor>,
         limit: u32,
     ) -> ReaderResult<FeedPage> {
         self.store.feed_page(cursor, limit).map_err(Into::into)
+    }
+
+    pub(super) fn item_detail(&self, global_id: &str) -> ReaderResult<Option<FeedItemRow>> {
+        self.store.item_detail(global_id).map_err(Into::into)
     }
 }
 

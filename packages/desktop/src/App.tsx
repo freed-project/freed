@@ -67,6 +67,7 @@ import {
   getItemPreservedText,
 } from "./lib/automerge";
 import { openBoundedDesktopFeedReader } from "./lib/library-core-feed-browse-reader-runtime";
+import { readLibraryCoreItemDetail } from "./lib/library-core-item-detail-runtime";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -1388,12 +1389,32 @@ function App() {
       getLocalContent: async (globalId) => {
         const cached = await contentCache.get(globalId);
         if (cached) return cached;
+        try {
+          const item = await readLibraryCoreItemDetail(globalId);
+          const sqliteHtml = item?.preservedContent?.html;
+          if (sqliteHtml) {
+            await contentCache.set(globalId, sqliteHtml).catch(() => {});
+            return sqliteHtml;
+          }
+        } catch {
+          // The selected SQLite generation may be stale or unavailable. The
+          // Automerge worker remains the rollback reader until Gate D closes.
+        }
         const legacyHtml = await getItemLegacyHtml(globalId);
         if (!legacyHtml) return null;
         await contentCache.set(globalId, legacyHtml).catch(() => {});
         return legacyHtml;
       },
-      getLocalPreservedText: (globalId) => getItemPreservedText(globalId),
+      getLocalPreservedText: async (globalId) => {
+        try {
+          const item = await readLibraryCoreItemDetail(globalId);
+          const sqliteText = item?.preservedContent?.text;
+          if (sqliteText) return sqliteText;
+        } catch {
+          // Fail back to the active Automerge reader while it remains authority.
+        }
+        return getItemPreservedText(globalId);
+      },
       hydrateReaderItem: hydrateReaderItemForDesktop,
       pinReaderItem,
       youtube: {
