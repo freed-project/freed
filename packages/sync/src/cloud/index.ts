@@ -73,6 +73,16 @@ export {
   type PublishLibraryCorePortableCheckpointRequestV1,
 } from "./library-core-portable-checkpoint.js";
 export {
+  importLibraryCoreIntentSegmentV1,
+  prepareLibraryCoreIntentSegmentV1,
+  type ImportLibraryCoreIntentSegmentRequestV1,
+  type LibraryCoreIntentOutboxEntryV1,
+  type LibraryCoreIntentSegmentImportReceiptV1,
+  type LibraryCoreIntentSegmentImportWriterV1,
+  type PreparedLibraryCoreIntentSegmentV1,
+  type PrepareLibraryCoreIntentSegmentRequestV1,
+} from "./library-core-intent-segments.js";
+export {
   importLibraryCoreOperationSegmentV1,
   prepareLibraryCoreOperationSegmentV1,
   type ImportLibraryCoreOperationSegmentRequestV1,

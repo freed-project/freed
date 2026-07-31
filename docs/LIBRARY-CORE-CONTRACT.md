@@ -9162,6 +9162,24 @@ read assignment, PWA intent publication and results, cloud scheduling, and
 governed activation remain required before it may affect product state or
 participate in an authority cutover.
 
+The dormant PWA intent transport uses one immutable, content-addressed segment
+chain per enrolled PWA actor. Every entry contains one exact canonical signed
+operation envelope and binds the same library, storage epoch, actor, operation
+ID, and actor sequence. A segment contains no more than 1,000 operations or
+4,000,000 canonical envelope bytes and remains below the ordinary 5 MB stored
+object ceiling after the versioned `intents` frame is gzipped. Segments cannot
+cross actors, epochs, or libraries. Sequence gaps, changed bytes, reordered
+entries, duplicate frame identities, a stale previous-segment digest, and an
+import receipt that names another verified range fail closed.
+
+One small mutable intent head per actor names the next actor sequence and the
+latest immutable segment. An empty head starts at sequence 1. A nonempty head
+may reference only the exact content-addressed object for its library and actor
+whose last sequence is one before `next_intent_sequence`. Drive conditional
+publication, the durable PWA outbox, Desktop acceptance, result segments, and
+provider execution remain separate later slices. This contract performs no
+network request and grants no canonical or provider authority.
+
 A receipt that commits checkpoint digest X is forbidden from
 X's `receipt_records`. The manifest, transition, or closure binds that receipt
 externally. The receipt becomes eligible for inclusion only in a later
