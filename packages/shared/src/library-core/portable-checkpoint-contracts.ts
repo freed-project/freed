@@ -61,6 +61,7 @@ export interface LibraryCorePortableCheckpointHeaderV1 {
   readonly promoted_receipt_digests: readonly LibraryCoreLowercaseHex64[];
   readonly materializer_position: Readonly<{
     readonly frontier_digest: LibraryCoreLowercaseHex64;
+    readonly ingest_sequence: number;
     readonly materialized_digest: LibraryCoreLowercaseHex64;
   }>;
   readonly collection_counts: LibraryCorePortableCheckpointCollectionCountsV1;
@@ -157,7 +158,11 @@ const BLOB_ROOT_KEYS = [
   "primary_key",
   "registry_key",
 ] as const;
-const MATERIALIZER_KEYS = ["frontier_digest", "materialized_digest"] as const;
+const MATERIALIZER_KEYS = [
+  "frontier_digest",
+  "ingest_sequence",
+  "materialized_digest",
+] as const;
 const textEncoder = new TextEncoder();
 
 function closedRecord(
@@ -457,6 +462,10 @@ function parseHeader(value: unknown): LibraryCorePortableCheckpointHeaderV1 {
       frontier_digest: digest(
         materializer.frontier_digest,
         "portable checkpoint materializer frontier_digest",
+      ),
+      ingest_sequence: safeInteger(
+        materializer.ingest_sequence,
+        "portable checkpoint materializer ingest_sequence",
       ),
       materialized_digest: digest(
         materializer.materialized_digest,

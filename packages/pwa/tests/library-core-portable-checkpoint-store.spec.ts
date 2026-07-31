@@ -86,6 +86,7 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
       library_id: "library-1",
       materializer_position: {
         frontier_digest: frontierDigest,
+        ingest_sequence: 0,
         materialized_digest: materializedDigest,
       },
       promoted_receipt_digests: [],
@@ -236,7 +237,7 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
     await reopened.quiesce();
 
     const generationCount = await new Promise<number>((resolve, reject) => {
-      const request = indexedDB.open(databaseName, 1);
+      const request = indexedDB.open(databaseName, 2);
       request.onsuccess = () => {
         const database = request.result;
         const transaction = database.transaction(
@@ -289,6 +290,7 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
     incompleteFinalizeRejected: true,
     receipt: {
       frontierDigest: "11".repeat(32),
+      ingestSequence: 0,
       libraryId: "library-1",
       materializedDigest: "22".repeat(32),
       recordCount: 3,

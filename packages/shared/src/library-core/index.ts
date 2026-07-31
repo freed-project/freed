@@ -9,6 +9,7 @@ export * from "./field-registry.js";
 export * from "./immutable-transport-contracts.js";
 export * from "./local-authority-registry.js";
 export * from "./operation-registry.js";
+export * from "./operation-segment-contracts.js";
 export * from "./operation-field-algebra-contracts.js";
 export * from "./operation-payload-contracts.js";
 export * from "./portable-checkpoint-contracts.js";

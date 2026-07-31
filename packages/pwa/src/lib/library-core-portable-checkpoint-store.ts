@@ -4,17 +4,23 @@ import {
   encodeLibraryCoreCanonicalValue,
   parseLibraryCoreCheckpointManifestV1,
   parseLibraryCoreImmutableObjectReferenceV1,
+  parseLibraryCoreOperationSegmentEntryV1,
+  parseLibraryCoreOperationSegmentHeaderV1,
   parseLibraryCorePortableCheckpointRecordV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreCheckpointManifestV1,
   type LibraryCoreImmutableObjectReferenceV1,
   type LibraryCoreLowercaseHex64,
+  type LibraryCoreOperationSegmentEntryV1,
+  type LibraryCoreOperationSegmentHeaderV1,
   type LibraryCorePortableCheckpointCollection,
   type LibraryCorePortableCheckpointEntryV1,
   type LibraryCorePortableCheckpointHeaderV1,
   type LibraryCorePortableCheckpointRecordV1,
 } from "@freed/shared/library-core";
 import type {
+  LibraryCoreOperationSegmentImportReceiptV1,
+  LibraryCoreOperationSegmentImportWriterV1,
   LibraryCorePortableCheckpointImportWriterV1,
   LibraryCorePortableCheckpointStagingReceiptV1,
 } from "@freed/sync/cloud";
@@ -25,11 +31,13 @@ import {
   transactionDone,
 } from "./library-core-indexeddb";
 
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const GENERATIONS_STORE = "portable_generations";
 const RECORDS_STORE = "portable_records";
 const PAGES_STORE = "portable_pages";
 const CONTROL_STORE = "portable_control";
+const OPERATIONS_STORE = "portable_operations";
+const SEGMENTS_STORE = "portable_segments";
 const SELECTED_GENERATION_KEY = "selected_portable_generation";
 const MAXIMUM_RETAINED_GENERATIONS = 2;
 const MAXIMUM_COLLECTION_PAGE_ROWS = 128;
@@ -47,6 +55,9 @@ interface PortableGenerationRecord {
   readonly manifestStoredByteLength: number;
   readonly totalRecordCount: number;
   readonly frontierDigest: LibraryCoreLowercaseHex64;
+  readonly checkpointFrontierDigest: LibraryCoreLowercaseHex64;
+  readonly importedThroughIngestSequence: number;
+  readonly latestOperationSegmentDigest: LibraryCoreLowercaseHex64 | null;
   readonly manifestTransportObjectId: string;
   readonly writtenRecordCount: number;
   readonly nextPageIndex: number;
@@ -76,6 +87,25 @@ interface SelectedPortableGenerationRecord {
   readonly selectionSequence: number;
 }
 
+interface PortableOperationRecord {
+  readonly entry: LibraryCoreOperationSegmentEntryV1;
+  readonly generationId: LibraryCoreLowercaseHex64;
+  readonly ingestSequence: number;
+  readonly operationId: string;
+  readonly segmentDigest: LibraryCoreLowercaseHex64;
+}
+
+interface PortableSegmentRecord {
+  readonly firstIngestSequence: number;
+  readonly generationId: LibraryCoreLowercaseHex64;
+  readonly header: LibraryCoreOperationSegmentHeaderV1;
+  readonly lastIngestSequence: number;
+  readonly objectKey: string;
+  readonly storedByteLength: number;
+  readonly storedContentDigest: LibraryCoreLowercaseHex64;
+  readonly transportObjectId: string;
+}
+
 export interface PwaLibraryCorePortableCheckpointStoreOptions {
   readonly databaseName: string;
   readonly indexedDb: IDBFactory;
@@ -95,6 +125,19 @@ export interface PwaLibraryCorePortableCollectionPage {
   readonly generationId: LibraryCoreLowercaseHex64;
   readonly materializedDigest: LibraryCoreLowercaseHex64;
   readonly nextOrdinal: number | null;
+}
+
+export interface ReadPwaLibraryCoreOperationPageInput {
+  readonly afterIngestSequence: number;
+  readonly limit: number;
+}
+
+export interface PwaLibraryCoreOperationPage {
+  readonly entries: readonly LibraryCoreOperationSegmentEntryV1[];
+  readonly frontierDigest: LibraryCoreLowercaseHex64;
+  readonly importedThroughIngestSequence: number;
+  readonly latestOperationSegmentDigest: LibraryCoreLowercaseHex64 | null;
+  readonly nextAfterIngestSequence: number | null;
 }
 
 function snapshotReference(
@@ -125,7 +168,7 @@ function generationMatches(
     generation.manifestStoredByteLength === reference.descriptor.byteLength &&
     generation.manifestTransportObjectId === reference.transportObjectId &&
     generation.totalRecordCount === manifest.totalRecordCount &&
-    generation.frontierDigest === manifest.causalFrontierDigest
+    generation.checkpointFrontierDigest === manifest.causalFrontierDigest
   );
 }
 
@@ -180,7 +223,11 @@ function exactArrayBuffer(bytes: Uint8Array): ArrayBuffer {
  * checkpoints. Automerge remains authoritative and no product reader selects
  * this database before the governed replacement-protocol cutover.
  */
-class PwaLibraryCorePortableCheckpointStore implements LibraryCorePortableCheckpointImportWriterV1 {
+class PwaLibraryCorePortableCheckpointStore
+  implements
+    LibraryCorePortableCheckpointImportWriterV1,
+    LibraryCoreOperationSegmentImportWriterV1
+{
   readonly #databaseName: string;
   readonly #indexedDb: IDBFactory;
   readonly #keyRange: typeof IDBKeyRange;
@@ -279,11 +326,14 @@ class PwaLibraryCorePortableCheckpointStore implements LibraryCorePortableCheckp
       );
     }
     generations.add({
+      checkpointFrontierDigest: manifest.causalFrontierDigest,
       frontierDigest: manifest.causalFrontierDigest,
       generationId,
       header: null,
       headerDigest: null,
+      importedThroughIngestSequence: 0,
       libraryId: manifest.libraryId,
+      latestOperationSegmentDigest: null,
       manifestGeneration: manifest.generation,
       manifestObjectKey: reference.descriptor.objectKey,
       manifestPageCount: manifest.pages.length,
@@ -460,7 +510,14 @@ class PwaLibraryCorePortableCheckpointStore implements LibraryCorePortableCheckp
 
     const database = await this.#database();
     const transaction = database.transaction(
-      [GENERATIONS_STORE, RECORDS_STORE, PAGES_STORE, CONTROL_STORE],
+      [
+        GENERATIONS_STORE,
+        RECORDS_STORE,
+        PAGES_STORE,
+        OPERATIONS_STORE,
+        SEGMENTS_STORE,
+        CONTROL_STORE,
+      ],
       "readwrite",
     );
     const generations = transaction.objectStore(GENERATIONS_STORE);
@@ -530,6 +587,9 @@ class PwaLibraryCorePortableCheckpointStore implements LibraryCorePortableCheckp
     }
     generations.put({
       ...generation,
+      importedThroughIngestSequence:
+        header.materializer_position.ingest_sequence,
+      latestOperationSegmentDigest: null,
       selectionSequence,
       status: "complete",
     } satisfies PortableGenerationRecord);
@@ -555,6 +615,22 @@ class PwaLibraryCorePortableCheckpointStore implements LibraryCorePortableCheckp
       .slice(MAXIMUM_RETAINED_GENERATIONS - 1);
     for (const candidate of obsolete) {
       entries.delete(entriesRange(this.#keyRange, candidate.generationId));
+      transaction
+        .objectStore(OPERATIONS_STORE)
+        .delete(
+          this.#keyRange.bound(
+            [candidate.generationId, 0],
+            [candidate.generationId, Number.MAX_SAFE_INTEGER],
+          ),
+        );
+      transaction
+        .objectStore(SEGMENTS_STORE)
+        .delete(
+          this.#keyRange.bound(
+            [candidate.generationId, 0],
+            [candidate.generationId, Number.MAX_SAFE_INTEGER],
+          ),
+        );
       pages.delete(
         this.#keyRange.bound(
           [candidate.generationId, 0],
@@ -568,6 +644,7 @@ class PwaLibraryCorePortableCheckpointStore implements LibraryCorePortableCheckp
     this.#activeGenerationId = null;
     return Object.freeze({
       frontierDigest: header.materializer_position.frontier_digest,
+      ingestSequence: header.materializer_position.ingest_sequence,
       libraryId: header.library_id,
       materializedDigest: header.materializer_position.materialized_digest,
       recordCount: generation.totalRecordCount,
@@ -602,6 +679,176 @@ class PwaLibraryCorePortableCheckpointStore implements LibraryCorePortableCheckp
       generations.delete(generationId);
     }
     await transactionDone(transaction);
+  }
+
+  async appendOperationSegment(input: {
+    readonly entries: readonly LibraryCoreOperationSegmentEntryV1[];
+    readonly header: LibraryCoreOperationSegmentHeaderV1;
+    readonly reference: LibraryCoreImmutableObjectReferenceV1;
+  }): Promise<LibraryCoreOperationSegmentImportReceiptV1> {
+    this.#requireAvailable();
+    const header = parseLibraryCoreOperationSegmentHeaderV1(input.header);
+    const entries = Object.freeze(
+      input.entries.map(parseLibraryCoreOperationSegmentEntryV1),
+    );
+    const reference = snapshotReference(
+      parseLibraryCoreImmutableObjectReferenceV1(input.reference),
+    );
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [GENERATIONS_STORE, OPERATIONS_STORE, SEGMENTS_STORE, CONTROL_STORE],
+      "readwrite",
+    );
+    const generations = transaction.objectStore(GENERATIONS_STORE);
+    const operations = transaction.objectStore(OPERATIONS_STORE);
+    const segments = transaction.objectStore(SEGMENTS_STORE);
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const generation = selected
+      ? ((await requestResult(generations.get(selected.generationId))) as
+          PortableGenerationRecord | undefined)
+      : undefined;
+    if (
+      !selected ||
+      !generation ||
+      generation.status !== "complete" ||
+      generation.selectionSequence !== selected.selectionSequence ||
+      generation.header === null ||
+      header.library_id !== generation.libraryId ||
+      header.epoch_id !== generation.storageEpoch
+    ) {
+      transaction.abort();
+      throw new Error(
+        "operation segment has no matching complete selected checkpoint",
+      );
+    }
+    const existing = (await requestResult(
+      segments.get([generation.generationId, header.first_ingest_sequence]),
+    )) as PortableSegmentRecord | undefined;
+    if (existing) {
+      if (
+        existing.header.segment_digest === header.segment_digest &&
+        existing.lastIngestSequence === header.last_ingest_sequence &&
+        existing.objectKey === reference.descriptor.objectKey &&
+        existing.storedByteLength === reference.descriptor.byteLength &&
+        existing.storedContentDigest === reference.descriptor.contentDigest &&
+        existing.transportObjectId === reference.transportObjectId &&
+        generation.importedThroughIngestSequence >= header.last_ingest_sequence
+      ) {
+        await transactionDone(transaction);
+        return this.#segmentReceipt(header);
+      }
+      transaction.abort();
+      throw new Error(
+        "operation segment sequence already exists with different bytes",
+      );
+    }
+    if (
+      header.first_ingest_sequence !==
+        generation.importedThroughIngestSequence + 1 ||
+      header.base_frontier_digest !== generation.frontierDigest ||
+      header.previous_segment_digest !== generation.latestOperationSegmentDigest
+    ) {
+      transaction.abort();
+      throw new Error(
+        "operation segment is skipped, reordered, or does not extend the selected frontier",
+      );
+    }
+    for (const entry of entries) {
+      operations.add({
+        entry,
+        generationId: generation.generationId,
+        ingestSequence: entry.ingest_sequence,
+        operationId: entry.operation_id,
+        segmentDigest: header.segment_digest,
+      } satisfies PortableOperationRecord);
+    }
+    segments.add({
+      firstIngestSequence: header.first_ingest_sequence,
+      generationId: generation.generationId,
+      header,
+      lastIngestSequence: header.last_ingest_sequence,
+      objectKey: reference.descriptor.objectKey,
+      storedByteLength: reference.descriptor.byteLength,
+      storedContentDigest: reference.descriptor.contentDigest,
+      transportObjectId: reference.transportObjectId,
+    } satisfies PortableSegmentRecord);
+    generations.put({
+      ...generation,
+      frontierDigest: header.result_frontier_digest,
+      importedThroughIngestSequence: header.last_ingest_sequence,
+      latestOperationSegmentDigest: header.segment_digest,
+    } satisfies PortableGenerationRecord);
+    await transactionDone(transaction);
+    return this.#segmentReceipt(header);
+  }
+
+  async readSelectedOperationPage(
+    input: ReadPwaLibraryCoreOperationPageInput,
+  ): Promise<PwaLibraryCoreOperationPage> {
+    this.#requireAvailable();
+    if (
+      !Number.isSafeInteger(input.afterIngestSequence) ||
+      input.afterIngestSequence < 0 ||
+      !Number.isSafeInteger(input.limit) ||
+      input.limit < 1 ||
+      input.limit > MAXIMUM_COLLECTION_PAGE_ROWS
+    ) {
+      throw new TypeError("portable operation page request is invalid");
+    }
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [GENERATIONS_STORE, OPERATIONS_STORE, CONTROL_STORE],
+      "readonly",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const generation = selected
+      ? ((await requestResult(
+          transaction.objectStore(GENERATIONS_STORE).get(selected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    if (
+      !selected ||
+      !generation ||
+      generation.status !== "complete" ||
+      generation.selectionSequence !== selected.selectionSequence
+    ) {
+      transaction.abort();
+      throw new Error("no complete portable checkpoint is selected");
+    }
+    const entries: LibraryCoreOperationSegmentEntryV1[] = [];
+    const request = transaction
+      .objectStore(OPERATIONS_STORE)
+      .openCursor(
+        this.#keyRange.bound(
+          [generation.generationId, input.afterIngestSequence + 1],
+          [generation.generationId, Number.MAX_SAFE_INTEGER],
+        ),
+        "next",
+      );
+    let cursor = await requestResult(request);
+    while (cursor && entries.length < input.limit) {
+      const stored = cursor.value as PortableOperationRecord;
+      entries.push(parseLibraryCoreOperationSegmentEntryV1(stored.entry));
+      cursor.continue();
+      cursor = await requestResult(cursor.request);
+    }
+    await transactionDone(transaction);
+    const lastSequence = entries.at(-1)?.ingest_sequence ?? null;
+    return Object.freeze({
+      entries: Object.freeze(entries),
+      frontierDigest: generation.frontierDigest,
+      importedThroughIngestSequence: generation.importedThroughIngestSequence,
+      latestOperationSegmentDigest: generation.latestOperationSegmentDigest,
+      nextAfterIngestSequence:
+        lastSequence !== null &&
+        lastSequence < generation.importedThroughIngestSequence
+          ? lastSequence
+          : null,
+    });
   }
 
   async readSelectedCollectionPage(
@@ -702,6 +949,18 @@ class PwaLibraryCorePortableCheckpointStore implements LibraryCorePortableCheckp
     this.#activeGenerationId = null;
   }
 
+  #segmentReceipt(
+    header: LibraryCoreOperationSegmentHeaderV1,
+  ): LibraryCoreOperationSegmentImportReceiptV1 {
+    return Object.freeze({
+      firstIngestSequence: header.first_ingest_sequence,
+      importedOperationCount: header.operation_count,
+      lastIngestSequence: header.last_ingest_sequence,
+      resultFrontierDigest: header.result_frontier_digest,
+      segmentDigest: header.segment_digest,
+    });
+  }
+
   async #canonicalDigest(
     value: LibraryCoreCanonicalValue,
   ): Promise<LibraryCoreLowercaseHex64> {
@@ -751,6 +1010,21 @@ class PwaLibraryCorePortableCheckpointStore implements LibraryCorePortableCheckp
           }
           if (!database.objectStoreNames.contains(CONTROL_STORE)) {
             database.createObjectStore(CONTROL_STORE, { keyPath: "key" });
+          }
+          if (!database.objectStoreNames.contains(OPERATIONS_STORE)) {
+            const operations = database.createObjectStore(OPERATIONS_STORE, {
+              keyPath: ["generationId", "ingestSequence"],
+            });
+            operations.createIndex(
+              "by_generation_operation_id",
+              ["generationId", "operationId"],
+              { unique: true },
+            );
+          }
+          if (!database.objectStoreNames.contains(SEGMENTS_STORE)) {
+            database.createObjectStore(SEGMENTS_STORE, {
+              keyPath: ["generationId", "firstIngestSequence"],
+            });
           }
         });
         request.addEventListener(

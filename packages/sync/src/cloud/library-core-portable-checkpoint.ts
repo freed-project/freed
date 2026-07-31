@@ -243,6 +243,7 @@ export interface LibraryCorePortableCheckpointImportWriterV1 {
 
 export interface LibraryCorePortableCheckpointStagingReceiptV1 {
   readonly frontierDigest: LibraryCoreLowercaseHex64;
+  readonly ingestSequence: number;
   readonly libraryId: string;
   readonly materializedDigest: LibraryCoreLowercaseHex64;
   readonly recordCount: number;
@@ -340,6 +341,8 @@ export async function importLibraryCorePortableCheckpointV1(
       stagingReceipt.storageEpoch !== verified.header.epoch_id ||
       stagingReceipt.frontierDigest !==
         verified.header.materializer_position.frontier_digest ||
+      stagingReceipt.ingestSequence !==
+        verified.header.materializer_position.ingest_sequence ||
       stagingReceipt.materializedDigest !==
         verified.header.materializer_position.materialized_digest ||
       stagingReceipt.recordCount !== verified.recordCount

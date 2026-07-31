@@ -36,6 +36,7 @@ function header(
     library_id: "library-1",
     materializer_position: {
       frontier_digest: hex("aa"),
+      ingest_sequence: 0,
       materialized_digest: hex("bb"),
     },
     promoted_receipt_digests: [],
