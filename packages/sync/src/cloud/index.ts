@@ -56,6 +56,12 @@ export {
   type LibraryCoreCheckpointPageReferenceV1,
 } from "./library-core-checkpoint-import.js";
 export {
+  LIBRARY_CORE_CHECKPOINT_PUBLICATION_PAGE_LIMIT,
+  publishLibraryCoreCheckpointGenerationV1,
+  type LibraryCorePreparedCheckpointPageV1,
+  type PublishLibraryCoreCheckpointGenerationRequestV1,
+} from "./library-core-checkpoint-publication.js";
+export {
   LIBRARY_CORE_GOOGLE_DRIVE_SIMPLE_UPLOAD_LIMIT,
   createGoogleDriveLibraryCoreAdapterV1,
   discoverGoogleDriveLibraryCoreControlV1,

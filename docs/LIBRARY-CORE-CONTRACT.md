@@ -142,6 +142,20 @@ locator drift, missing pages, extra pages, count drift, and identity-range
 drift fail before finalization. Loose caller-provided page lists or counts
 cannot substitute for the authenticated manifest.
 
+The dormant checkpoint producer closes the reverse path. It accepts a bounded
+sync or async stream of prepared page objects and uploads only one page at a
+time. Before each upload it verifies the contiguous page index, bounded record
+count, strict binary identity range, and the exact library, epoch, generation,
+page, stored-byte digest, bounded wire frame, record count, and first and last
+record identities. It retains only the small manifest declaration for each
+uploaded page. Canonical manifest bytes are constructed only after every page
+has an exact remotely verified provider receipt, and those exact provider
+object IDs are part of the manifest. The coordinator then verifies the
+manifest upload and compare-and-swaps the exact manifest receipt into control.
+A stale starting control tuple uploads nothing. A later failure can leave
+immutable unreachable objects, but it cannot publish a partial checkpoint or
+infer authority from their presence.
+
 The first PWA consumer feeds the manifest's verified compact feed-card
 projection into the existing resumable IndexedDB generation writer. Exact page
 retry reuses that writer's batch receipts. A completed generation still
