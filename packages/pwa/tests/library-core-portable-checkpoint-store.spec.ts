@@ -189,10 +189,12 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
     });
     await store.quiesce();
 
+    let nowMs = 1_783_100_000_000;
     const reopened = createPwaLibraryCorePortableCheckpointStore({
       databaseName,
       indexedDb: indexedDB,
       keyRange: IDBKeyRange,
+      now: () => nowMs,
       subtle: crypto.subtle,
     });
     const reopenedPage = await reopened.readSelectedCollectionPage({
@@ -200,6 +202,52 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
       collection: "materialized_rows",
       limit: 2,
     });
+    const feedRequest = (
+      readerSessionId: string,
+      cancellationId: string,
+      cursor: string | null,
+      limit: number,
+    ) => ({
+      cancellationId,
+      cursor,
+      limit,
+      queryId: "feed_page_v1",
+      readerSessionId,
+      schemaVersion: 1,
+    });
+    const cancelableFeedPage = await reopened.readSelectedFeedPage(
+      feedRequest("cancelable-feed", "cancel-feed-page", null, 1),
+    );
+    const canceledFeedSession = reopened.cancelSelectedFeedReader(
+      "cancelable-feed",
+      "cancel-feed-page",
+    );
+    const canceledFeedResume =
+      cancelableFeedPage.ok && cancelableFeedPage.value.nextCursor
+        ? await reopened.readSelectedFeedPage(
+            feedRequest(
+              "cancelable-feed",
+              "cancel-feed-resume",
+              cancelableFeedPage.value.nextCursor,
+              1,
+            ),
+          )
+        : null;
+    const completeFeedPage = await reopened.readSelectedFeedPage(
+      feedRequest("expiring-feed", "expiring-feed-page", null, 2),
+    );
+    nowMs += 60_000;
+    const expiredFeedResume =
+      completeFeedPage.ok && completeFeedPage.value.nextCursor
+        ? await reopened.readSelectedFeedPage(
+            feedRequest(
+              "expiring-feed",
+              "expiring-feed-resume",
+              completeFeedPage.value.nextCursor,
+              2,
+            ),
+          )
+        : null;
 
     const abortedDigest = hex("bb");
     const abortedReference = {
@@ -237,7 +285,7 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
     await reopened.quiesce();
 
     const generationCount = await new Promise<number>((resolve, reject) => {
-      const request = indexedDB.open(databaseName, 3);
+      const request = indexedDB.open(databaseName, 4);
       request.onsuccess = () => {
         const database = request.result;
         const transaction = database.transaction(
@@ -261,9 +309,13 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
 
     return {
       alreadyComplete,
+      canceledFeedResume,
+      canceledFeedSession,
       changedReplayRejected,
       changedManifestLocatorRejected,
+      completeFeedPage,
       duplicateTransactionRejected,
+      expiredFeedResume,
       firstBegin,
       firstPage,
       generationCount,
@@ -278,9 +330,35 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
 
   expect(result).toMatchObject({
     alreadyComplete: "already_complete",
+    canceledFeedResume: {
+      code: "CURSOR_STALE",
+      ok: false,
+    },
+    canceledFeedSession: true,
     changedReplayRejected: true,
     changedManifestLocatorRejected: true,
     duplicateTransactionRejected: true,
+    completeFeedPage: {
+      ok: true,
+      value: {
+        rows: [
+          {
+            globalId: "item-0",
+          },
+          {
+            globalId: "item-1",
+          },
+        ],
+        source: {
+          transitionSequence: 0,
+        },
+        totalCount: 2,
+      },
+    },
+    expiredFeedResume: {
+      code: "CURSOR_STALE",
+      ok: false,
+    },
     firstBegin: "import",
     firstPage: {
       entries: [{ ordinal: 0, value: { row: { globalId: "item-0" } } }],
@@ -308,6 +386,129 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
     selectedAfterAbort: {
       entries: [{ ordinal: 0 }, { ordinal: 1 }],
       generationId: "aa".repeat(32),
+    },
+  });
+});
+
+test("portable database upgrade builds the bounded feed index from authenticated v3 rows", async ({
+  page,
+}) => {
+  await page.goto("/favicon.svg");
+  const result = await page.evaluate(async () => {
+    const databaseName = `freed-library-core-portable-v3-${crypto.randomUUID()}`;
+    const generationId = "ab".repeat(32);
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open(databaseName, 3);
+      request.onupgradeneeded = () => {
+        const database = request.result;
+        database.createObjectStore("portable_generations", {
+          keyPath: "generationId",
+        });
+        database.createObjectStore("portable_control", { keyPath: "key" });
+        database.createObjectStore("portable_materialized_rows", {
+          keyPath: ["generationId", "registryKey", "primaryKey"],
+        });
+      };
+      request.onsuccess = () => {
+        const database = request.result;
+        const transaction = database.transaction(
+          [
+            "portable_generations",
+            "portable_control",
+            "portable_materialized_rows",
+          ],
+          "readwrite",
+        );
+        transaction.objectStore("portable_generations").add({
+          authenticatedFrontierDigest: "11".repeat(32),
+          authenticatedThroughIngestSequence: 7,
+          checkpointFrontierDigest: "10".repeat(32),
+          frontierDigest: "11".repeat(32),
+          generationId,
+          header: null,
+          headerDigest: null,
+          importedThroughIngestSequence: 7,
+          latestAuthenticatedSegmentDigest: "12".repeat(32),
+          latestOperationSegmentDigest: "12".repeat(32),
+          libraryId: "library-upgrade",
+          manifestGeneration: 1,
+          manifestObjectKey: "manifest-upgrade",
+          manifestPageCount: 1,
+          manifestStoredByteLength: 1,
+          manifestTransportObjectId: "drive-manifest-upgrade",
+          nextPageIndex: 1,
+          selectionSequence: 1,
+          status: "complete",
+          storageEpoch: "epoch-upgrade",
+          totalRecordCount: 2,
+          writtenRecordCount: 2,
+        });
+        transaction.objectStore("portable_control").add({
+          generationId,
+          key: "selected_portable_generation",
+          selectionSequence: 1,
+        });
+        const rows = transaction.objectStore("portable_materialized_rows");
+        rows.add({
+          generationId,
+          primaryKey: JSON.stringify("visible-item"),
+          registryKey: "feedItems",
+          row: {
+            globalId: "visible-item",
+            publishedAt: 500,
+            userState: { hidden: false },
+          },
+        });
+        rows.add({
+          generationId,
+          primaryKey: JSON.stringify("hidden-item"),
+          registryKey: "feedItems",
+          row: {
+            globalId: "hidden-item",
+            publishedAt: 900,
+            userState: { hidden: true },
+          },
+        });
+        transaction.oncomplete = () => {
+          database.close();
+          resolve();
+        };
+        transaction.onerror = () => reject(transaction.error);
+      };
+      request.onerror = () => reject(request.error);
+    });
+
+    const { createPwaLibraryCorePortableCheckpointStore } =
+      await import("/src/lib/library-core-portable-checkpoint-store.ts");
+    const store = createPwaLibraryCorePortableCheckpointStore({
+      databaseName,
+      indexedDb: indexedDB,
+      keyRange: IDBKeyRange,
+      subtle: crypto.subtle,
+    });
+    const feed = await store.readSelectedFeedPage({
+      cancellationId: "upgrade-feed-page",
+      cursor: null,
+      limit: 10,
+      queryId: "feed_page_v1",
+      readerSessionId: "upgrade-feed-reader",
+      schemaVersion: 1,
+    });
+    await store.quiesce();
+    await new Promise<void>((resolve, reject) => {
+      const deletion = indexedDB.deleteDatabase(databaseName);
+      deletion.onsuccess = () => resolve();
+      deletion.onerror = () => reject(deletion.error);
+    });
+    return feed;
+  });
+
+  expect(result).toMatchObject({
+    ok: true,
+    value: {
+      rows: [{ globalId: "visible-item" }],
+      source: { transitionSequence: 7 },
+      totalCount: 1,
     },
   });
 });

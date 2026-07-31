@@ -244,13 +244,13 @@ test("PWA admits only enrolled signed operations and atomically materializes rea
             transportObjectId: "drive-page-auth",
           },
           pageIndex: 0,
-          recordCount: 3,
+          recordCount: 4,
         },
       ],
       protocolVersion: 1,
       schemaVersion: 1,
       storageEpoch: fixture.epochId,
-      totalRecordCount: 3,
+      totalRecordCount: 4,
     } as const;
     const header = {
       anchor_kind: "accepted_authority",
@@ -261,7 +261,7 @@ test("PWA admits only enrolled signed operations and atomically materializes rea
         blob_roots: 0,
         excluded_registry_keys: 0,
         field_clocks: 0,
-        materialized_rows: 1,
+        materialized_rows: 2,
         quarantined_frontier: 0,
         receipt_records: 0,
         relationships: 0,
@@ -293,6 +293,21 @@ test("PWA admits only enrolled signed operations and atomically materializes rea
         registry_key: "feedItems",
         row: {
           globalId: "item-1",
+          publishedAt: 200,
+          userState: { readAt: null, saved: false },
+        },
+      },
+    } as const;
+    const secondMaterializedRow = {
+      collection: "materialized_rows",
+      kind: "logical_checkpoint_entry",
+      ordinal: 1,
+      value: {
+        primary_key: "item-2",
+        registry_key: "feedItems",
+        row: {
+          globalId: "item-2",
+          publishedAt: 100,
           userState: { readAt: null, saved: false },
         },
       },
@@ -318,8 +333,29 @@ test("PWA admits only enrolled signed operations and atomically materializes rea
       subtle: crypto.subtle,
     });
     await store.beginImport({ manifest, manifestReference });
-    await store.appendPage(0, [header, materializedRow, actorState]);
+    await store.appendPage(0, [
+      header,
+      materializedRow,
+      secondMaterializedRow,
+      actorState,
+    ]);
     await store.finalizeImport({ header, manifest, manifestReference });
+    const feedRequest = (
+      readerSessionId: string,
+      cancellationId: string,
+      cursor: string | null,
+      limit: number,
+    ) => ({
+      cancellationId,
+      cursor,
+      limit,
+      queryId: "feed_page_v1",
+      readerSessionId,
+      schemaVersion: 1,
+    });
+    const feedBefore = await store.readSelectedFeedPage(
+      feedRequest("feed-before", "feed-before-page-1", null, 1),
+    );
     const authorityState = {
       authority_key_id: fixture.authorityKeyId,
       authority_public_key: fixture.authorityPublicKey,
@@ -401,6 +437,20 @@ test("PWA admits only enrolled signed operations and atomically materializes rea
     const row = await store.readSelectedMaterializedRow(
       "feedItems",
       "item-1",
+    );
+    const feedStale =
+      feedBefore.ok && feedBefore.value.nextCursor
+        ? await store.readSelectedFeedPage(
+            feedRequest(
+              "feed-before",
+              "feed-before-page-2",
+              feedBefore.value.nextCursor,
+              1,
+            ),
+          )
+        : null;
+    const feedAfter = await store.readSelectedFeedPage(
+      feedRequest("feed-after", "feed-after-page-1", null, 2),
     );
 
     const corruptedEnvelope = JSON.parse(
@@ -507,6 +557,9 @@ test("PWA admits only enrolled signed operations and atomically materializes rea
     });
     return {
       corruptRejected,
+      feedAfter,
+      feedBefore,
+      feedStale,
       imported,
       installed,
       page: {
@@ -530,6 +583,44 @@ test("PWA admits only enrolled signed operations and atomically materializes rea
 
   expect(result).toMatchObject({
     corruptRejected: true,
+    feedAfter: {
+      ok: true,
+      value: {
+        rows: [
+          {
+            globalId: "item-1",
+            readAt: 1_783_000_000_050,
+          },
+          {
+            globalId: "item-2",
+            readAt: null,
+          },
+        ],
+        source: {
+          transitionSequence: 1,
+        },
+        totalCount: 2,
+      },
+    },
+    feedBefore: {
+      ok: true,
+      value: {
+        rows: [
+          {
+            globalId: "item-1",
+            readAt: null,
+          },
+        ],
+        source: {
+          transitionSequence: 0,
+        },
+        totalCount: 2,
+      },
+    },
+    feedStale: {
+      code: "CURSOR_STALE",
+      ok: false,
+    },
     imported: {
       importedOperationCount: 1,
       lastIngestSequence: 1,
