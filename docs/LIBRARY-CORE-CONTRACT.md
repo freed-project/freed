@@ -9063,16 +9063,18 @@ the exact branch-qualified tip shape from the operation contract.
 represented in this portable checkpoint.
 
 The dormant PWA portable-checkpoint adapter materializes these records into
-four IndexedDB stores for generations, collection rows, page receipts, and the
-selected-generation control record. One verified checkpoint page commits in
-one IndexedDB transaction. Exact retry reuses the page receipt. A changed
-retry, skipped page, duplicate row identity, or transaction failure cannot
-advance staging. Selection occurs only after every collection count and the
-complete import receipt match the manifest, header, frontier, and materialized
-digest. The adapter retains the selected generation and one rollback
-generation and exposes at most 128 rows from one collection per read. It has no
-production caller. Automerge remains the active product and replication
-authority until the separately governed cutover.
+bounded IndexedDB stores for generation state, collection rows, page receipts,
+selected-generation control, actor tips and enrollments, materialized rows,
+read-state sidecars, raw operation transport, and authenticated operation
+state. One verified checkpoint page commits in one IndexedDB transaction.
+Exact retry reuses the page receipt. A changed retry, skipped page, duplicate
+row identity, or transaction failure cannot advance staging. Selection occurs
+only after every collection count and the complete import receipt match the
+manifest, header, frontier, and materialized digest. The adapter retains the
+selected generation and one rollback generation and exposes at most 128 rows
+from one collection or operation tail per read. It has no production caller.
+Automerge remains the active product and replication authority until the
+separately governed cutover.
 
 The dormant operation-tail path extends one selected portable checkpoint with
 immutable `freed_operation_segment_v1` objects. A segment contains at most
@@ -9099,12 +9101,45 @@ one-sided transaction failure, wrong frontier, or wrong predecessor leaves the
 selected tail unchanged. Readers return at most 128 envelopes from the
 selected generation per request.
 
-This implementation authenticates wire structure, storage attribution, and
-durable operation identity. It does not yet prove actor enrollment or
-signatures, run the canonical operation admission rules, or materialize
-operation effects into product rows. It has no production caller. Those checks
-remain mandatory before the operation tail may affect PWA product state or
-participate in an authority cutover.
+The native operation outbox pager preserves transaction boundaries. A page
+contains only complete transactions. If the first pending transaction exceeds
+the requested entry or byte budget, the pager fails before returning any
+entry. If a later complete transaction would cross the page budget, the page
+ends before that transaction and the next cursor remains at the preceding
+transaction boundary. Segment construction therefore never needs to infer or
+repair a transaction split caused by pagination.
+
+Raw segment ingestion authenticates wire structure, storage attribution, and
+durable operation identity but does not grant readability. The separate PWA
+admission path first verifies the complete authority-signed actor enrollment
+certificate against the exact selected checkpoint actor state. It then groups
+each segment into complete transactions, verifies every Ed25519 operation
+signature, transaction digest, actor sequence and chain predecessor, and
+requires every causal tip to resolve to the checkpoint frontier, an accepted
+actor tip, or a previously authenticated operation.
+
+Cryptographic verification occurs before the write transaction. The following
+IndexedDB transaction rechecks the selected generation plus every actor tip,
+then atomically stores authenticated occurrences, advances actor and
+authenticated generation tips, records the authenticated segment, and applies
+the registered `feed_item_read_assignment` minimum-present algebra. The
+materializer writes a compact read-state sidecar even when the target feed row
+is not locally cached, and updates the selected `feedItems` row when it is
+present. Equal read times use the binary operation ID as the stable source
+tie-break. Exact enrollment and segment retry are idempotent.
+
+Raw imported and authenticated cursors remain distinct. Invalid signatures,
+unknown causal tips, unenrolled or retired actors, stale actor tips, split
+transactions, concurrent checkpoint selection, and changed retries cannot
+advance authenticated state or modify materialized rows. Unverifiable raw
+bytes may remain as non-authoritative evidence. Browser construction digests
+use the bounded dependency-free SHA-256 implementation over the canonical
+domain input. Ed25519 verification uses platform Web Crypto.
+
+This path still has no production caller. Feed-reader projection, supported
+operation parity beyond read assignment, PWA intent publication and results,
+cloud scheduling, and governed activation remain required before it may affect
+product state or participate in an authority cutover.
 
 A receipt that commits checkpoint digest X is forbidden from
 X's `receipt_records`. The manifest, transition, or closure binds that receipt
