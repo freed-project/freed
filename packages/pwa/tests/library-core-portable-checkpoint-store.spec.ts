@@ -237,7 +237,7 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
     await reopened.quiesce();
 
     const generationCount = await new Promise<number>((resolve, reject) => {
-      const request = indexedDB.open(databaseName, 2);
+      const request = indexedDB.open(databaseName, 3);
       request.onsuccess = () => {
         const database = request.result;
         const transaction = database.transaction(

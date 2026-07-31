@@ -1,16 +1,28 @@
 import {
   LIBRARY_CORE_PORTABLE_CHECKPOINT_COLLECTIONS,
   createLibraryCoreImmutableObjectKey,
+  decodeLibraryCoreCanonicalValue,
   encodeLibraryCoreCanonicalValue,
+  encodeLibraryCoreDigestInput,
+  FEED_ITEM_READ_AT_FIELD_ALGEBRA,
   parseLibraryCoreCheckpointManifestV1,
   parseLibraryCoreImmutableObjectReferenceV1,
   parseLibraryCoreOperationSegmentEntryV1,
   parseLibraryCoreOperationSegmentHeaderV1,
   parseLibraryCorePortableCheckpointRecordV1,
+  isLibraryCoreLowercaseHex64,
+  sha256LowerHex,
+  verifyLibraryCoreActorEnrollmentCertificateV1,
+  verifyLibraryCoreEd25519WithWebCrypto,
+  verifyLibraryCoreOperationTransactionV1,
   type LibraryCoreCanonicalValue,
+  type LibraryCoreAcceptedActorStateV1,
+  type LibraryCoreAcceptedAuthorityStateV1,
   type LibraryCoreCheckpointManifestV1,
+  type LibraryCoreEd25519PublicKeyHex,
   type LibraryCoreImmutableObjectReferenceV1,
   type LibraryCoreLowercaseHex64,
+  type LibraryCoreOperationInstanceId,
   type LibraryCoreOperationSegmentEntryV1,
   type LibraryCoreOperationSegmentHeaderV1,
   type LibraryCorePortableCheckpointCollection,
@@ -31,13 +43,19 @@ import {
   transactionDone,
 } from "./library-core-indexeddb";
 
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 const GENERATIONS_STORE = "portable_generations";
 const RECORDS_STORE = "portable_records";
 const PAGES_STORE = "portable_pages";
 const CONTROL_STORE = "portable_control";
 const OPERATIONS_STORE = "portable_operations";
 const SEGMENTS_STORE = "portable_segments";
+const ACTOR_ENROLLMENTS_STORE = "portable_actor_enrollments";
+const ACTOR_TIPS_STORE = "portable_actor_tips";
+const AUTHENTICATED_OPERATIONS_STORE = "portable_authenticated_operations";
+const AUTHENTICATED_SEGMENTS_STORE = "portable_authenticated_segments";
+const MATERIALIZED_ROWS_STORE = "portable_materialized_rows";
+const READ_STATE_STORE = "portable_read_state";
 const SELECTED_GENERATION_KEY = "selected_portable_generation";
 const MAXIMUM_RETAINED_GENERATIONS = 2;
 const MAXIMUM_COLLECTION_PAGE_ROWS = 128;
@@ -47,8 +65,8 @@ type GenerationStatus = "complete" | "staging";
 interface PortableGenerationRecord {
   readonly generationId: LibraryCoreLowercaseHex64;
   readonly status: GenerationStatus;
-  readonly libraryId: string;
-  readonly storageEpoch: string;
+  readonly libraryId: LibraryCoreOperationInstanceId;
+  readonly storageEpoch: LibraryCoreOperationInstanceId;
   readonly manifestGeneration: number;
   readonly manifestObjectKey: string;
   readonly manifestPageCount: number;
@@ -58,6 +76,9 @@ interface PortableGenerationRecord {
   readonly checkpointFrontierDigest: LibraryCoreLowercaseHex64;
   readonly importedThroughIngestSequence: number;
   readonly latestOperationSegmentDigest: LibraryCoreLowercaseHex64 | null;
+  readonly authenticatedThroughIngestSequence: number;
+  readonly authenticatedFrontierDigest: LibraryCoreLowercaseHex64;
+  readonly latestAuthenticatedSegmentDigest: LibraryCoreLowercaseHex64 | null;
   readonly manifestTransportObjectId: string;
   readonly writtenRecordCount: number;
   readonly nextPageIndex: number;
@@ -79,6 +100,41 @@ interface PortableEntryRecord {
   readonly collection: LibraryCorePortableCheckpointCollection;
   readonly ordinal: number;
   readonly entry: LibraryCorePortableCheckpointEntryV1;
+}
+
+interface PortableMaterializedRowRecord {
+  readonly generationId: LibraryCoreLowercaseHex64;
+  readonly primaryKey: string;
+  readonly registryKey: string;
+  readonly row: Readonly<Record<string, LibraryCoreCanonicalValue>>;
+}
+
+interface PortableActorTipRecord {
+  readonly acceptedChainDigest: LibraryCoreLowercaseHex64;
+  readonly acceptedOperationId: LibraryCoreOperationInstanceId | null;
+  readonly acceptedSequence: number;
+  readonly actorId: LibraryCoreLowercaseHex64;
+  readonly enrollmentCertificateDigest: LibraryCoreLowercaseHex64;
+  readonly generationId: LibraryCoreLowercaseHex64;
+  readonly retired: boolean;
+}
+
+interface PortableActorEnrollmentRecord {
+  readonly actorChainGenesis: LibraryCoreLowercaseHex64;
+  readonly actorId: LibraryCoreLowercaseHex64;
+  readonly actorPublicKey: LibraryCoreEd25519PublicKeyHex;
+  readonly certificateDigest: LibraryCoreLowercaseHex64;
+  readonly generationId: LibraryCoreLowercaseHex64;
+}
+
+interface PortableReadStateRecord {
+  readonly actorId: LibraryCoreLowercaseHex64;
+  readonly actorSequence: number;
+  readonly chainDigest: LibraryCoreLowercaseHex64;
+  readonly entityId: string;
+  readonly generationId: LibraryCoreLowercaseHex64;
+  readonly operationId: string;
+  readonly readAtMs: number;
 }
 
 interface SelectedPortableGenerationRecord {
@@ -104,6 +160,18 @@ interface PortableSegmentRecord {
   readonly storedByteLength: number;
   readonly storedContentDigest: LibraryCoreLowercaseHex64;
   readonly transportObjectId: string;
+}
+
+interface PortableAuthenticatedOperationRecord
+  extends PortableOperationRecord {
+  readonly actorId: LibraryCoreLowercaseHex64;
+  readonly actorSequence: number;
+  readonly actorChainDigest: LibraryCoreLowercaseHex64;
+  readonly transactionDigest: LibraryCoreLowercaseHex64;
+}
+
+interface PortableAuthenticatedSegmentRecord extends PortableSegmentRecord {
+  readonly transactionDigests: readonly LibraryCoreLowercaseHex64[];
 }
 
 export interface PwaLibraryCorePortableCheckpointStoreOptions {
@@ -138,6 +206,17 @@ export interface PwaLibraryCoreOperationPage {
   readonly importedThroughIngestSequence: number;
   readonly latestOperationSegmentDigest: LibraryCoreLowercaseHex64 | null;
   readonly nextAfterIngestSequence: number | null;
+}
+
+export interface PwaLibraryCoreAuthenticatedOperationPage
+  extends PwaLibraryCoreOperationPage {
+  readonly authenticatedThroughIngestSequence: number;
+}
+
+export interface PwaLibraryCoreReadState {
+  readonly entityId: string;
+  readonly readAtMs: number;
+  readonly sourceOperationId: string;
 }
 
 function snapshotReference(
@@ -216,6 +295,105 @@ function exactArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const output = new Uint8Array(bytes.byteLength);
   output.set(bytes);
   return output.buffer;
+}
+
+function libraryCoreDigest(
+  domain: Parameters<typeof encodeLibraryCoreDigestInput>[0],
+  value: unknown,
+): LibraryCoreLowercaseHex64 {
+  return sha256LowerHex(
+    encodeLibraryCoreDigestInput(
+      domain,
+      value as LibraryCoreCanonicalValue,
+    ),
+  );
+}
+
+function canonicalStringKey(value: LibraryCoreCanonicalValue): string {
+  return new TextDecoder("utf-8", { fatal: true }).decode(
+    encodeLibraryCoreCanonicalValue(value),
+  );
+}
+
+function operationEnvelopeBytes(
+  entry: LibraryCoreOperationSegmentEntryV1,
+): Uint8Array {
+  return encodeLibraryCoreCanonicalValue(
+    entry.canonical_envelope as LibraryCoreCanonicalValue,
+  );
+}
+
+function operationEnvelopeRecord(
+  entry: LibraryCoreOperationSegmentEntryV1,
+): Readonly<Record<string, LibraryCoreCanonicalValue>> {
+  const decoded = decodeLibraryCoreCanonicalValue(operationEnvelopeBytes(entry));
+  if (
+    typeof decoded !== "object" ||
+    decoded === null ||
+    Array.isArray(decoded)
+  ) {
+    throw new TypeError("operation envelope must be an object");
+  }
+  return decoded as Readonly<Record<string, LibraryCoreCanonicalValue>>;
+}
+
+function transactionMemberIdentity(
+  entry: LibraryCoreOperationSegmentEntryV1,
+): Readonly<{
+  actorId: LibraryCoreLowercaseHex64;
+  memberCount: number;
+  memberIndex: number;
+  transactionId: string;
+}> {
+  const decoded = operationEnvelopeRecord(entry);
+  const actorId = decoded.actor_id;
+  const memberCount = decoded.transaction_member_count;
+  const memberIndex = decoded.transaction_member_index;
+  const transactionId = decoded.transaction_id;
+  if (
+    typeof actorId !== "string" ||
+    !/^[0-9a-f]{64}$/.test(actorId) ||
+    !Number.isSafeInteger(memberCount) ||
+    (memberCount as number) < 1 ||
+    (memberCount as number) > 1_000 ||
+    !Number.isSafeInteger(memberIndex) ||
+    (memberIndex as number) < 0 ||
+    (memberIndex as number) >= (memberCount as number) ||
+    typeof transactionId !== "string"
+  ) {
+    throw new TypeError("operation envelope transaction identity is invalid");
+  }
+  return Object.freeze({
+    actorId: actorId as LibraryCoreLowercaseHex64,
+    memberCount: memberCount as number,
+    memberIndex: memberIndex as number,
+    transactionId,
+  });
+}
+
+function causalTipIdentity(value: unknown): string {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value)
+  ) {
+    throw new TypeError("operation causal frontier tip is invalid");
+  }
+  const tip = value as Readonly<Record<string, unknown>>;
+  if (
+    typeof tip.actor_id !== "string" ||
+    !Number.isSafeInteger(tip.sequence) ||
+    typeof tip.operation_id !== "string" ||
+    typeof tip.chain_digest !== "string"
+  ) {
+    throw new TypeError("operation causal frontier tip is invalid");
+  }
+  return [
+    tip.actor_id,
+    tip.sequence,
+    tip.operation_id,
+    tip.chain_digest,
+  ].join("\u0000");
 }
 
 /**
@@ -326,6 +504,8 @@ class PwaLibraryCorePortableCheckpointStore
       );
     }
     generations.add({
+      authenticatedFrontierDigest: manifest.causalFrontierDigest,
+      authenticatedThroughIngestSequence: 0,
       checkpointFrontierDigest: manifest.causalFrontierDigest,
       frontierDigest: manifest.causalFrontierDigest,
       generationId,
@@ -334,6 +514,7 @@ class PwaLibraryCorePortableCheckpointStore
       importedThroughIngestSequence: 0,
       libraryId: manifest.libraryId,
       latestOperationSegmentDigest: null,
+      latestAuthenticatedSegmentDigest: null,
       manifestGeneration: manifest.generation,
       manifestObjectKey: reference.descriptor.objectKey,
       manifestPageCount: manifest.pages.length,
@@ -387,12 +568,20 @@ class PwaLibraryCorePortableCheckpointStore
 
     const database = await this.#database();
     const transaction = database.transaction(
-      [GENERATIONS_STORE, RECORDS_STORE, PAGES_STORE],
+      [
+        GENERATIONS_STORE,
+        RECORDS_STORE,
+        PAGES_STORE,
+        ACTOR_TIPS_STORE,
+        MATERIALIZED_ROWS_STORE,
+      ],
       "readwrite",
     );
     const generations = transaction.objectStore(GENERATIONS_STORE);
     const pages = transaction.objectStore(PAGES_STORE);
     const entries = transaction.objectStore(RECORDS_STORE);
+    const actorTips = transaction.objectStore(ACTOR_TIPS_STORE);
+    const materializedRows = transaction.objectStore(MATERIALIZED_ROWS_STORE);
     const generation = (await requestResult(generations.get(generationId))) as
       PortableGenerationRecord | undefined;
     if (!generation || generation.status !== "staging") {
@@ -463,6 +652,34 @@ class PwaLibraryCorePortableCheckpointStore
         generationId,
         ordinal: record.ordinal,
       } satisfies PortableEntryRecord);
+      if (record.collection === "actor_states") {
+        const value = record.value as Readonly<Record<string, unknown>>;
+        actorTips.add({
+          acceptedChainDigest:
+            value.accepted_chain_digest as LibraryCoreLowercaseHex64,
+          acceptedOperationId:
+            value.accepted_operation_id as LibraryCoreOperationInstanceId | null,
+          acceptedSequence: value.accepted_sequence as number,
+          actorId: value.actor_id as LibraryCoreLowercaseHex64,
+          enrollmentCertificateDigest:
+            value.enrollment_certificate_digest as LibraryCoreLowercaseHex64,
+          generationId,
+          retired: value.retired as boolean,
+        } satisfies PortableActorTipRecord);
+      }
+      if (record.collection === "materialized_rows") {
+        const value = record.value as Readonly<Record<string, unknown>>;
+        materializedRows.add({
+          generationId,
+          primaryKey: canonicalStringKey(
+            value.primary_key as LibraryCoreCanonicalValue,
+          ),
+          registryKey: value.registry_key as string,
+          row: value.row as Readonly<
+            Record<string, LibraryCoreCanonicalValue>
+          >,
+        } satisfies PortableMaterializedRowRecord);
+      }
     }
     const writtenRecordCountAfter =
       generation.writtenRecordCount + records.length;
@@ -516,6 +733,12 @@ class PwaLibraryCorePortableCheckpointStore
         PAGES_STORE,
         OPERATIONS_STORE,
         SEGMENTS_STORE,
+        ACTOR_ENROLLMENTS_STORE,
+        ACTOR_TIPS_STORE,
+        AUTHENTICATED_OPERATIONS_STORE,
+        AUTHENTICATED_SEGMENTS_STORE,
+        MATERIALIZED_ROWS_STORE,
+        READ_STATE_STORE,
         CONTROL_STORE,
       ],
       "readwrite",
@@ -587,8 +810,13 @@ class PwaLibraryCorePortableCheckpointStore
     }
     generations.put({
       ...generation,
+      authenticatedFrontierDigest:
+        header.materializer_position.frontier_digest,
+      authenticatedThroughIngestSequence:
+        header.materializer_position.ingest_sequence,
       importedThroughIngestSequence:
         header.materializer_position.ingest_sequence,
+      latestAuthenticatedSegmentDigest: null,
       latestOperationSegmentDigest: null,
       selectionSequence,
       status: "complete",
@@ -631,6 +859,23 @@ class PwaLibraryCorePortableCheckpointStore
             [candidate.generationId, Number.MAX_SAFE_INTEGER],
           ),
         );
+      for (const storeName of [
+        ACTOR_ENROLLMENTS_STORE,
+        ACTOR_TIPS_STORE,
+        AUTHENTICATED_OPERATIONS_STORE,
+        AUTHENTICATED_SEGMENTS_STORE,
+        MATERIALIZED_ROWS_STORE,
+        READ_STATE_STORE,
+      ]) {
+        transaction
+          .objectStore(storeName)
+          .delete(
+            this.#keyRange.bound(
+              [candidate.generationId],
+              [candidate.generationId, []],
+            ),
+          );
+      }
       pages.delete(
         this.#keyRange.bound(
           [candidate.generationId, 0],
@@ -652,13 +897,19 @@ class PwaLibraryCorePortableCheckpointStore
     });
   }
 
-  async abortImport(_error: unknown): Promise<void> {
+  async abortImport(): Promise<void> {
     const generationId = this.#activeGenerationId;
     this.#activeGenerationId = null;
     if (generationId === null || this.#quiesced) return;
     const database = await this.#database();
     const transaction = database.transaction(
-      [GENERATIONS_STORE, RECORDS_STORE, PAGES_STORE],
+      [
+        GENERATIONS_STORE,
+        RECORDS_STORE,
+        PAGES_STORE,
+        ACTOR_TIPS_STORE,
+        MATERIALIZED_ROWS_STORE,
+      ],
       "readwrite",
     );
     const generations = transaction.objectStore(GENERATIONS_STORE);
@@ -676,9 +927,797 @@ class PwaLibraryCorePortableCheckpointStore
             [generationId, Number.MAX_SAFE_INTEGER],
           ),
         );
+      transaction
+        .objectStore(ACTOR_TIPS_STORE)
+        .delete(
+          this.#keyRange.bound(
+            [generationId],
+            [generationId, []],
+          ),
+        );
+      transaction
+        .objectStore(MATERIALIZED_ROWS_STORE)
+        .delete(
+          this.#keyRange.bound(
+            [generationId],
+            [generationId, []],
+          ),
+        );
       generations.delete(generationId);
     }
     await transactionDone(transaction);
+  }
+
+  async installActorEnrollment(input: {
+    readonly acceptedAuthorityState: LibraryCoreAcceptedAuthorityStateV1;
+    readonly certificateBytes: Uint8Array;
+  }): Promise<"installed" | "already_installed"> {
+    this.#requireAvailable();
+    const verified = await verifyLibraryCoreActorEnrollmentCertificateV1(
+      input.certificateBytes,
+      input.acceptedAuthorityState,
+      {
+        digest: libraryCoreDigest,
+        verifySignature: (verification) =>
+          verifyLibraryCoreEd25519WithWebCrypto(
+            verification,
+            this.#subtle,
+          ),
+      },
+    );
+    const body = verified.certificate.certificate_body.actor_enrollment_body;
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [
+        GENERATIONS_STORE,
+        CONTROL_STORE,
+        ACTOR_TIPS_STORE,
+        ACTOR_ENROLLMENTS_STORE,
+      ],
+      "readwrite",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const generation = selected
+      ? ((await requestResult(
+          transaction.objectStore(GENERATIONS_STORE).get(selected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    const actorTip = selected
+      ? ((await requestResult(
+          transaction
+            .objectStore(ACTOR_TIPS_STORE)
+            .get([selected.generationId, body.actor_id]),
+        )) as PortableActorTipRecord | undefined)
+      : undefined;
+    if (
+      !selected ||
+      !generation ||
+      generation.status !== "complete" ||
+      generation.selectionSequence !== selected.selectionSequence ||
+      String(generation.libraryId) !== body.library_id ||
+      String(generation.storageEpoch) !== body.epoch_id ||
+      generation.header?.epoch !== body.epoch ||
+      !actorTip ||
+      actorTip.retired ||
+      actorTip.enrollmentCertificateDigest !==
+        verified.certificate.certificate_digest
+    ) {
+      transaction.abort();
+      throw new Error(
+        "actor enrollment does not match an active checkpoint actor",
+      );
+    }
+    const enrollments = transaction.objectStore(ACTOR_ENROLLMENTS_STORE);
+    const existing = (await requestResult(
+      enrollments.get([selected.generationId, body.actor_id]),
+    )) as PortableActorEnrollmentRecord | undefined;
+    if (existing) {
+      if (
+        existing.certificateDigest ===
+          verified.certificate.certificate_digest &&
+        existing.actorPublicKey === body.actor_public_key &&
+        existing.actorChainGenesis === verified.actor_chain_genesis
+      ) {
+        await transactionDone(transaction);
+        return "already_installed";
+      }
+      transaction.abort();
+      throw new Error(
+        "actor enrollment identity already exists with different bytes",
+      );
+    }
+    enrollments.add({
+      actorChainGenesis: verified.actor_chain_genesis,
+      actorId: body.actor_id,
+      actorPublicKey: body.actor_public_key,
+      certificateDigest: verified.certificate.certificate_digest,
+      generationId: selected.generationId,
+    } satisfies PortableActorEnrollmentRecord);
+    await transactionDone(transaction);
+    return "installed";
+  }
+
+  async appendAuthenticatedOperationSegment(input: {
+    readonly entries: readonly LibraryCoreOperationSegmentEntryV1[];
+    readonly header: LibraryCoreOperationSegmentHeaderV1;
+    readonly reference: LibraryCoreImmutableObjectReferenceV1;
+  }): Promise<LibraryCoreOperationSegmentImportReceiptV1> {
+    this.#requireAvailable();
+    const header = parseLibraryCoreOperationSegmentHeaderV1(input.header);
+    const entries = Object.freeze(
+      input.entries.map(parseLibraryCoreOperationSegmentEntryV1),
+    );
+    const reference = snapshotReference(
+      parseLibraryCoreImmutableObjectReferenceV1(input.reference),
+    );
+    const groups: Array<{
+      readonly actorId: LibraryCoreLowercaseHex64;
+      readonly entries: readonly LibraryCoreOperationSegmentEntryV1[];
+    }> = [];
+    for (let index = 0; index < entries.length; ) {
+      const identity = transactionMemberIdentity(entries[index]!);
+      if (
+        identity.memberIndex !== 0 ||
+        index + identity.memberCount > entries.length
+      ) {
+        throw new Error(
+          "authenticated operation segments must contain complete transactions",
+        );
+      }
+      const members = entries.slice(index, index + identity.memberCount);
+      for (let memberIndex = 0; memberIndex < members.length; memberIndex += 1) {
+        const member = transactionMemberIdentity(members[memberIndex]!);
+        if (
+          member.actorId !== identity.actorId ||
+          member.transactionId !== identity.transactionId ||
+          member.memberCount !== identity.memberCount ||
+          member.memberIndex !== memberIndex
+        ) {
+          throw new Error(
+            "authenticated operation segment transaction members are split or reordered",
+          );
+        }
+      }
+      groups.push(
+        Object.freeze({
+          actorId: identity.actorId,
+          entries: Object.freeze(members),
+        }),
+      );
+      index += identity.memberCount;
+    }
+
+    const database = await this.#database();
+    const snapshotTransaction = database.transaction(
+      [
+        GENERATIONS_STORE,
+        CONTROL_STORE,
+        ACTOR_TIPS_STORE,
+        ACTOR_ENROLLMENTS_STORE,
+        AUTHENTICATED_OPERATIONS_STORE,
+        AUTHENTICATED_SEGMENTS_STORE,
+        RECORDS_STORE,
+        SEGMENTS_STORE,
+      ],
+      "readonly",
+    );
+    const selected = (await requestResult(
+      snapshotTransaction
+        .objectStore(CONTROL_STORE)
+        .get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const generation = selected
+      ? ((await requestResult(
+          snapshotTransaction
+            .objectStore(GENERATIONS_STORE)
+            .get(selected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    if (
+      !selected ||
+      !generation ||
+      generation.status !== "complete" ||
+      generation.selectionSequence !== selected.selectionSequence ||
+      generation.header === null ||
+      header.library_id !== generation.libraryId ||
+      header.epoch_id !== generation.storageEpoch
+    ) {
+      snapshotTransaction.abort();
+      throw new Error(
+        "authenticated operation segment has no matching selected checkpoint",
+      );
+    }
+    const existingAuthenticated = (await requestResult(
+      snapshotTransaction
+        .objectStore(AUTHENTICATED_SEGMENTS_STORE)
+        .get([generation.generationId, header.first_ingest_sequence]),
+    )) as PortableAuthenticatedSegmentRecord | undefined;
+    if (existingAuthenticated) {
+      if (
+        existingAuthenticated.header.segment_digest ===
+          header.segment_digest &&
+        existingAuthenticated.lastIngestSequence ===
+          header.last_ingest_sequence &&
+        existingAuthenticated.objectKey ===
+          reference.descriptor.objectKey &&
+        existingAuthenticated.storedByteLength ===
+          reference.descriptor.byteLength &&
+        existingAuthenticated.storedContentDigest ===
+          reference.descriptor.contentDigest &&
+        existingAuthenticated.transportObjectId ===
+          reference.transportObjectId
+      ) {
+        await transactionDone(snapshotTransaction);
+        return this.#segmentReceipt(header);
+      }
+      snapshotTransaction.abort();
+      throw new Error(
+        "authenticated operation segment identity already exists with different bytes",
+      );
+    }
+    if (
+      header.first_ingest_sequence !==
+        generation.authenticatedThroughIngestSequence + 1 ||
+      header.base_frontier_digest !== generation.authenticatedFrontierDigest ||
+      header.previous_segment_digest !==
+        generation.latestAuthenticatedSegmentDigest
+    ) {
+      snapshotTransaction.abort();
+      throw new Error(
+        "authenticated operation segment does not extend the admitted frontier",
+      );
+    }
+
+    const tipSnapshots = new Map<
+      LibraryCoreLowercaseHex64,
+      PortableActorTipRecord
+    >();
+    const enrollments = new Map<
+      LibraryCoreLowercaseHex64,
+      PortableActorEnrollmentRecord
+    >();
+    for (const actorId of new Set(groups.map((group) => group.actorId))) {
+      const tip = (await requestResult(
+        snapshotTransaction
+          .objectStore(ACTOR_TIPS_STORE)
+          .get([generation.generationId, actorId]),
+      )) as PortableActorTipRecord | undefined;
+      const enrollment = (await requestResult(
+        snapshotTransaction
+          .objectStore(ACTOR_ENROLLMENTS_STORE)
+          .get([generation.generationId, actorId]),
+      )) as PortableActorEnrollmentRecord | undefined;
+      if (
+        !tip ||
+        tip.retired ||
+        !enrollment ||
+        enrollment.certificateDigest !== tip.enrollmentCertificateDigest
+      ) {
+        snapshotTransaction.abort();
+        throw new Error(
+          "authenticated operation actor is absent, retired, or unenrolled",
+        );
+      }
+      tipSnapshots.set(actorId, tip);
+      enrollments.set(actorId, enrollment);
+    }
+    const rawExisting = (await requestResult(
+      snapshotTransaction
+        .objectStore(SEGMENTS_STORE)
+        .get([generation.generationId, header.first_ingest_sequence]),
+    )) as PortableSegmentRecord | undefined;
+    if (
+      rawExisting &&
+      (rawExisting.header.segment_digest !== header.segment_digest ||
+        rawExisting.lastIngestSequence !== header.last_ingest_sequence ||
+        rawExisting.objectKey !== reference.descriptor.objectKey ||
+        rawExisting.storedByteLength !== reference.descriptor.byteLength ||
+        rawExisting.storedContentDigest !==
+          reference.descriptor.contentDigest ||
+        rawExisting.transportObjectId !== reference.transportObjectId)
+    ) {
+      snapshotTransaction.abort();
+      throw new Error(
+        "stored operation segment bytes do not match authenticated input",
+      );
+    }
+    const knownCausalTips = new Set<string>();
+    const allActorTips = (await requestResult(
+      snapshotTransaction
+        .objectStore(ACTOR_TIPS_STORE)
+        .getAll(
+          this.#keyRange.bound(
+            [generation.generationId],
+            [generation.generationId, []],
+          ),
+        ),
+    )) as PortableActorTipRecord[];
+    for (const tip of allActorTips) {
+      if (tip.acceptedSequence === 0 || tip.acceptedOperationId === null) {
+        continue;
+      }
+      knownCausalTips.add(
+        [
+          tip.actorId,
+          tip.acceptedSequence,
+          tip.acceptedOperationId,
+          tip.acceptedChainDigest,
+        ].join("\u0000"),
+      );
+    }
+    const frontierCursorRequest = snapshotTransaction
+      .objectStore(RECORDS_STORE)
+      .openCursor(
+        collectionRange(
+          this.#keyRange,
+          generation.generationId,
+          "accepted_frontier",
+        ),
+      );
+    let frontierCursor = await requestResult(frontierCursorRequest);
+    while (frontierCursor) {
+      const stored = frontierCursor.value as PortableEntryRecord;
+      knownCausalTips.add(causalTipIdentity(stored.entry.value));
+      frontierCursor.continue();
+      frontierCursor = await requestResult(frontierCursor.request);
+    }
+    const requestedTips = new Map<string, Readonly<{
+      actorId: string;
+      chainDigest: string;
+      operationId: string;
+      sequence: number;
+    }>>();
+    for (const entry of entries) {
+      const envelope = operationEnvelopeRecord(entry);
+      if (!Array.isArray(envelope.causal_frontier)) {
+        snapshotTransaction.abort();
+        throw new TypeError("operation causal frontier must be an array");
+      }
+      for (const tip of envelope.causal_frontier) {
+        const identity = causalTipIdentity(tip);
+        if (
+          typeof tip !== "object" ||
+          tip === null ||
+          Array.isArray(tip)
+        ) {
+          snapshotTransaction.abort();
+          throw new TypeError("operation causal frontier tip is invalid");
+        }
+        requestedTips.set(
+          identity,
+          Object.freeze({
+            actorId: tip.actor_id as string,
+            chainDigest: tip.chain_digest as string,
+            operationId: tip.operation_id as string,
+            sequence: tip.sequence as number,
+          }),
+        );
+      }
+    }
+    const authenticatedOperationIndex = snapshotTransaction
+      .objectStore(AUTHENTICATED_OPERATIONS_STORE)
+      .index("by_generation_operation_id");
+    for (const [identity, tip] of requestedTips) {
+      if (knownCausalTips.has(identity)) continue;
+      const operation = (await requestResult(
+        authenticatedOperationIndex.get([
+          generation.generationId,
+          tip.operationId,
+        ]),
+      )) as PortableAuthenticatedOperationRecord | undefined;
+      if (
+        operation?.actorId === tip.actorId &&
+        operation.actorSequence === tip.sequence &&
+        operation.actorChainDigest === tip.chainDigest
+      ) {
+        knownCausalTips.add(identity);
+      }
+    }
+    await transactionDone(snapshotTransaction);
+
+    const currentTips = new Map(tipSnapshots);
+    const verifiedTransactions = [];
+    for (const group of groups) {
+      const tip = currentTips.get(group.actorId)!;
+      const enrollment = enrollments.get(group.actorId)!;
+      if (
+        !isLibraryCoreLowercaseHex64(generation.libraryId) ||
+        !isLibraryCoreLowercaseHex64(generation.storageEpoch)
+      ) {
+        throw new Error(
+          "authenticated operation checkpoint authority IDs must be lowercase SHA-256 values",
+        );
+      }
+      const acceptedActorState = Object.freeze({
+        actor_id: group.actorId,
+        actor_public_key: enrollment.actorPublicKey,
+        epoch: generation.header.epoch,
+        epoch_id: generation.storageEpoch,
+        library_id: generation.libraryId,
+        next_actor_sequence: tip.acceptedSequence + 1,
+        previous_actor_chain_digest: tip.acceptedChainDigest,
+        previous_actor_operation_id: tip.acceptedOperationId,
+      }) satisfies LibraryCoreAcceptedActorStateV1;
+      const verified = await verifyLibraryCoreOperationTransactionV1(
+        group.entries.map(operationEnvelopeBytes),
+        acceptedActorState,
+        {
+          digest: libraryCoreDigest,
+          verifySignature: (verification) =>
+            verifyLibraryCoreEd25519WithWebCrypto(
+              verification,
+              this.#subtle,
+            ),
+        },
+      );
+      for (const member of verified.members) {
+        for (const tip of member.envelope.causal_frontier) {
+          if (!knownCausalTips.has(causalTipIdentity(tip))) {
+            throw new Error(
+              `operation ${member.envelope.operation_id} names an unknown causal frontier tip`,
+            );
+          }
+        }
+        knownCausalTips.add(
+          [
+            member.envelope.actor_id,
+            member.envelope.actor_sequence,
+            member.envelope.operation_id,
+            member.envelope.actor_chain_digest,
+          ].join("\u0000"),
+        );
+      }
+      verifiedTransactions.push(verified);
+      const last = verified.members.at(-1)!.envelope;
+      currentTips.set(group.actorId, {
+        ...tip,
+        acceptedChainDigest: last.actor_chain_digest,
+        acceptedOperationId: last.operation_id,
+        acceptedSequence: last.actor_sequence,
+      });
+    }
+
+    const transaction = database.transaction(
+      [
+        GENERATIONS_STORE,
+        CONTROL_STORE,
+        OPERATIONS_STORE,
+        SEGMENTS_STORE,
+        ACTOR_TIPS_STORE,
+        AUTHENTICATED_OPERATIONS_STORE,
+        AUTHENTICATED_SEGMENTS_STORE,
+        MATERIALIZED_ROWS_STORE,
+        READ_STATE_STORE,
+      ],
+      "readwrite",
+    );
+    const currentSelected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const currentGeneration = (await requestResult(
+      transaction.objectStore(GENERATIONS_STORE).get(generation.generationId),
+    )) as PortableGenerationRecord | undefined;
+    if (
+      currentSelected?.generationId !== generation.generationId ||
+      currentSelected.selectionSequence !== generation.selectionSequence ||
+      !currentGeneration ||
+      currentGeneration.authenticatedThroughIngestSequence !==
+        generation.authenticatedThroughIngestSequence ||
+      currentGeneration.authenticatedFrontierDigest !==
+        generation.authenticatedFrontierDigest ||
+      currentGeneration.latestAuthenticatedSegmentDigest !==
+        generation.latestAuthenticatedSegmentDigest
+    ) {
+      transaction.abort();
+      throw new Error(
+        "selected checkpoint or authenticated frontier changed during verification",
+      );
+    }
+    for (const [actorId, snapshot] of tipSnapshots) {
+      const current = (await requestResult(
+        transaction
+          .objectStore(ACTOR_TIPS_STORE)
+          .get([generation.generationId, actorId]),
+      )) as PortableActorTipRecord | undefined;
+      if (
+        !current ||
+        current.acceptedSequence !== snapshot.acceptedSequence ||
+        current.acceptedOperationId !== snapshot.acceptedOperationId ||
+        current.acceptedChainDigest !== snapshot.acceptedChainDigest ||
+        current.retired !== snapshot.retired
+      ) {
+        transaction.abort();
+        throw new Error("actor tip changed during operation verification");
+      }
+    }
+
+    const operations = transaction.objectStore(OPERATIONS_STORE);
+    const authenticatedOperations = transaction.objectStore(
+      AUTHENTICATED_OPERATIONS_STORE,
+    );
+    const materializedRows = transaction.objectStore(MATERIALIZED_ROWS_STORE);
+    const readStates = transaction.objectStore(READ_STATE_STORE);
+    let entryOffset = 0;
+    for (const verified of verifiedTransactions) {
+      for (const member of verified.members) {
+        const entry = entries[entryOffset]!;
+        authenticatedOperations.add({
+          actorChainDigest: member.envelope.actor_chain_digest,
+          actorId: member.envelope.actor_id,
+          actorSequence: member.envelope.actor_sequence,
+          entry,
+          generationId: generation.generationId,
+          ingestSequence: entry.ingest_sequence,
+          operationId: entry.operation_id,
+          segmentDigest: header.segment_digest,
+          transactionDigest: verified.transaction_digest,
+        } satisfies PortableAuthenticatedOperationRecord);
+        const entityId = member.envelope.entity_id;
+        const existingReadState = (await requestResult(
+          readStates.get([generation.generationId, entityId]),
+        )) as PortableReadStateRecord | undefined;
+        const merged = FEED_ITEM_READ_AT_FIELD_ALGEBRA.merge(
+          existingReadState?.readAtMs,
+          member.envelope.payload.read_at_ms,
+        );
+        if (!merged.ok) {
+          transaction.abort();
+          throw new Error(merged.reason);
+        }
+        const incomingWins =
+          !existingReadState ||
+          merged.value < existingReadState.readAtMs ||
+          (merged.value === existingReadState.readAtMs &&
+            member.envelope.operation_id <
+              existingReadState.operationId);
+        if (incomingWins) {
+          readStates.put({
+            actorId: member.envelope.actor_id,
+            actorSequence: member.envelope.actor_sequence,
+            chainDigest: member.envelope.actor_chain_digest,
+            entityId,
+            generationId: generation.generationId,
+            operationId: member.envelope.operation_id,
+            readAtMs: merged.value,
+          } satisfies PortableReadStateRecord);
+          const rowKey = [
+            generation.generationId,
+            "feedItems",
+            canonicalStringKey(entityId),
+          ];
+          const storedRow = (await requestResult(
+            materializedRows.get(rowKey),
+          )) as PortableMaterializedRowRecord | undefined;
+          if (storedRow) {
+            const currentUserState =
+              typeof storedRow.row.userState === "object" &&
+              storedRow.row.userState !== null &&
+              !Array.isArray(storedRow.row.userState)
+                ? storedRow.row.userState
+                : {};
+            materializedRows.put({
+              ...storedRow,
+              row: {
+                ...storedRow.row,
+                userState: {
+                  ...currentUserState,
+                  readAt: merged.value,
+                },
+              },
+            } satisfies PortableMaterializedRowRecord);
+          }
+        }
+        entryOffset += 1;
+      }
+    }
+    for (const [actorId, tip] of currentTips) {
+      transaction.objectStore(ACTOR_TIPS_STORE).put({
+        ...tip,
+        actorId,
+      } satisfies PortableActorTipRecord);
+    }
+    const transactionDigests = Object.freeze(
+      verifiedTransactions.map(
+        (verified) => verified.transaction_digest,
+      ),
+    );
+    transaction.objectStore(AUTHENTICATED_SEGMENTS_STORE).add({
+      firstIngestSequence: header.first_ingest_sequence,
+      generationId: generation.generationId,
+      header,
+      lastIngestSequence: header.last_ingest_sequence,
+      objectKey: reference.descriptor.objectKey,
+      storedByteLength: reference.descriptor.byteLength,
+      storedContentDigest: reference.descriptor.contentDigest,
+      transactionDigests,
+      transportObjectId: reference.transportObjectId,
+    } satisfies PortableAuthenticatedSegmentRecord);
+    if (!rawExisting) {
+      for (const entry of entries) {
+        operations.add({
+          entry,
+          generationId: generation.generationId,
+          ingestSequence: entry.ingest_sequence,
+          operationId: entry.operation_id,
+          segmentDigest: header.segment_digest,
+        } satisfies PortableOperationRecord);
+      }
+      transaction.objectStore(SEGMENTS_STORE).add({
+        firstIngestSequence: header.first_ingest_sequence,
+        generationId: generation.generationId,
+        header,
+        lastIngestSequence: header.last_ingest_sequence,
+        objectKey: reference.descriptor.objectKey,
+        storedByteLength: reference.descriptor.byteLength,
+        storedContentDigest: reference.descriptor.contentDigest,
+        transportObjectId: reference.transportObjectId,
+      } satisfies PortableSegmentRecord);
+    }
+    transaction.objectStore(GENERATIONS_STORE).put({
+      ...currentGeneration,
+      authenticatedFrontierDigest: header.result_frontier_digest,
+      authenticatedThroughIngestSequence: header.last_ingest_sequence,
+      frontierDigest:
+        currentGeneration.importedThroughIngestSequence >
+        header.last_ingest_sequence
+          ? currentGeneration.frontierDigest
+          : header.result_frontier_digest,
+      importedThroughIngestSequence: Math.max(
+        currentGeneration.importedThroughIngestSequence,
+        header.last_ingest_sequence,
+      ),
+      latestAuthenticatedSegmentDigest: header.segment_digest,
+      latestOperationSegmentDigest:
+        currentGeneration.importedThroughIngestSequence >
+        header.last_ingest_sequence
+          ? currentGeneration.latestOperationSegmentDigest
+          : header.segment_digest,
+    } satisfies PortableGenerationRecord);
+    await transactionDone(transaction);
+    return this.#segmentReceipt(header);
+  }
+
+  async readSelectedAuthenticatedOperationPage(
+    input: ReadPwaLibraryCoreOperationPageInput,
+  ): Promise<PwaLibraryCoreAuthenticatedOperationPage> {
+    this.#requireAvailable();
+    if (
+      !Number.isSafeInteger(input.afterIngestSequence) ||
+      input.afterIngestSequence < 0 ||
+      !Number.isSafeInteger(input.limit) ||
+      input.limit < 1 ||
+      input.limit > MAXIMUM_COLLECTION_PAGE_ROWS
+    ) {
+      throw new TypeError("authenticated operation page request is invalid");
+    }
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [
+        GENERATIONS_STORE,
+        AUTHENTICATED_OPERATIONS_STORE,
+        CONTROL_STORE,
+      ],
+      "readonly",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const generation = selected
+      ? ((await requestResult(
+          transaction.objectStore(GENERATIONS_STORE).get(selected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    if (
+      !selected ||
+      !generation ||
+      generation.status !== "complete" ||
+      generation.selectionSequence !== selected.selectionSequence
+    ) {
+      transaction.abort();
+      throw new Error("no complete portable checkpoint is selected");
+    }
+    const entries: LibraryCoreOperationSegmentEntryV1[] = [];
+    const request = transaction
+      .objectStore(AUTHENTICATED_OPERATIONS_STORE)
+      .openCursor(
+        this.#keyRange.bound(
+          [generation.generationId, input.afterIngestSequence + 1],
+          [
+            generation.generationId,
+            generation.authenticatedThroughIngestSequence,
+          ],
+        ),
+        "next",
+      );
+    let cursor = await requestResult(request);
+    while (cursor && entries.length < input.limit) {
+      const stored = cursor.value as PortableAuthenticatedOperationRecord;
+      entries.push(parseLibraryCoreOperationSegmentEntryV1(stored.entry));
+      cursor.continue();
+      cursor = await requestResult(cursor.request);
+    }
+    await transactionDone(transaction);
+    const lastSequence = entries.at(-1)?.ingest_sequence ?? null;
+    return Object.freeze({
+      authenticatedThroughIngestSequence:
+        generation.authenticatedThroughIngestSequence,
+      entries: Object.freeze(entries),
+      frontierDigest: generation.authenticatedFrontierDigest,
+      importedThroughIngestSequence:
+        generation.authenticatedThroughIngestSequence,
+      latestOperationSegmentDigest:
+        generation.latestAuthenticatedSegmentDigest,
+      nextAfterIngestSequence:
+        lastSequence !== null &&
+        lastSequence < generation.authenticatedThroughIngestSequence
+          ? lastSequence
+          : null,
+    });
+  }
+
+  async readSelectedReadState(
+    entityId: string,
+  ): Promise<PwaLibraryCoreReadState | null> {
+    this.#requireAvailable();
+    if (!entityId) {
+      throw new TypeError("read-state entity ID is required");
+    }
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [CONTROL_STORE, READ_STATE_STORE],
+      "readonly",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const state = selected
+      ? ((await requestResult(
+          transaction
+            .objectStore(READ_STATE_STORE)
+            .get([selected.generationId, entityId]),
+        )) as PortableReadStateRecord | undefined)
+      : undefined;
+    await transactionDone(transaction);
+    return state
+      ? Object.freeze({
+          entityId: state.entityId,
+          readAtMs: state.readAtMs,
+          sourceOperationId: state.operationId,
+        })
+      : null;
+  }
+
+  async readSelectedMaterializedRow(
+    registryKey: string,
+    primaryKey: LibraryCoreCanonicalValue,
+  ): Promise<Readonly<Record<string, LibraryCoreCanonicalValue>> | null> {
+    this.#requireAvailable();
+    if (!registryKey) {
+      throw new TypeError("materialized-row registry key is required");
+    }
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [CONTROL_STORE, MATERIALIZED_ROWS_STORE],
+      "readonly",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const stored = selected
+      ? ((await requestResult(
+          transaction
+            .objectStore(MATERIALIZED_ROWS_STORE)
+            .get([
+              selected.generationId,
+              registryKey,
+              canonicalStringKey(primaryKey),
+            ]),
+        )) as PortableMaterializedRowRecord | undefined)
+      : undefined;
+    await transactionDone(transaction);
+    return stored ? Object.freeze({ ...stored.row }) : null;
   }
 
   async appendOperationSegment(input: {
@@ -991,7 +2030,7 @@ class PwaLibraryCorePortableCheckpointStore
           this.#databaseName,
           DATABASE_VERSION,
         );
-        request.addEventListener("upgradeneeded", () => {
+        request.addEventListener("upgradeneeded", (event) => {
           const database = request.result;
           if (!database.objectStoreNames.contains(GENERATIONS_STORE)) {
             database.createObjectStore(GENERATIONS_STORE, {
@@ -1024,6 +2063,122 @@ class PwaLibraryCorePortableCheckpointStore
           if (!database.objectStoreNames.contains(SEGMENTS_STORE)) {
             database.createObjectStore(SEGMENTS_STORE, {
               keyPath: ["generationId", "firstIngestSequence"],
+            });
+          }
+          if (!database.objectStoreNames.contains(ACTOR_ENROLLMENTS_STORE)) {
+            database.createObjectStore(ACTOR_ENROLLMENTS_STORE, {
+              keyPath: ["generationId", "actorId"],
+            });
+          }
+          if (!database.objectStoreNames.contains(ACTOR_TIPS_STORE)) {
+            database.createObjectStore(ACTOR_TIPS_STORE, {
+              keyPath: ["generationId", "actorId"],
+            });
+          }
+          if (
+            !database.objectStoreNames.contains(
+              AUTHENTICATED_OPERATIONS_STORE,
+            )
+          ) {
+            const authenticatedOperations = database.createObjectStore(
+              AUTHENTICATED_OPERATIONS_STORE,
+              {
+                keyPath: ["generationId", "ingestSequence"],
+              },
+            );
+            authenticatedOperations.createIndex(
+              "by_generation_operation_id",
+              ["generationId", "operationId"],
+              { unique: true },
+            );
+          }
+          if (
+            !database.objectStoreNames.contains(
+              AUTHENTICATED_SEGMENTS_STORE,
+            )
+          ) {
+            database.createObjectStore(AUTHENTICATED_SEGMENTS_STORE, {
+              keyPath: ["generationId", "firstIngestSequence"],
+            });
+          }
+          if (!database.objectStoreNames.contains(MATERIALIZED_ROWS_STORE)) {
+            database.createObjectStore(MATERIALIZED_ROWS_STORE, {
+              keyPath: ["generationId", "registryKey", "primaryKey"],
+            });
+          }
+          if (!database.objectStoreNames.contains(READ_STATE_STORE)) {
+            database.createObjectStore(READ_STATE_STORE, {
+              keyPath: ["generationId", "entityId"],
+            });
+          }
+          if (
+            event.oldVersion > 0 &&
+            event.oldVersion < 3 &&
+            request.transaction
+          ) {
+            const generations =
+              request.transaction.objectStore(GENERATIONS_STORE);
+            const cursorRequest = generations.openCursor();
+            cursorRequest.addEventListener("success", () => {
+              const cursor = cursorRequest.result;
+              if (!cursor) return;
+              const generation = cursor.value as PortableGenerationRecord;
+              const checkpointIngestSequence =
+                generation.header?.materializer_position.ingest_sequence ?? 0;
+              cursor.update({
+                ...generation,
+                authenticatedFrontierDigest:
+                  generation.checkpointFrontierDigest,
+                authenticatedThroughIngestSequence:
+                  checkpointIngestSequence,
+                latestAuthenticatedSegmentDigest: null,
+              } satisfies PortableGenerationRecord);
+              cursor.continue();
+            });
+            const records =
+              request.transaction.objectStore(RECORDS_STORE);
+            const actorTips =
+              request.transaction.objectStore(ACTOR_TIPS_STORE);
+            const materializedRows =
+              request.transaction.objectStore(MATERIALIZED_ROWS_STORE);
+            const recordCursorRequest = records.openCursor();
+            recordCursorRequest.addEventListener("success", () => {
+              const cursor = recordCursorRequest.result;
+              if (!cursor) return;
+              const stored = cursor.value as PortableEntryRecord;
+              if (stored.collection === "actor_states") {
+                const value = stored.entry.value as Readonly<
+                  Record<string, unknown>
+                >;
+                actorTips.put({
+                  acceptedChainDigest:
+                    value.accepted_chain_digest as LibraryCoreLowercaseHex64,
+                  acceptedOperationId:
+                    value.accepted_operation_id as LibraryCoreOperationInstanceId | null,
+                  acceptedSequence: value.accepted_sequence as number,
+                  actorId: value.actor_id as LibraryCoreLowercaseHex64,
+                  enrollmentCertificateDigest:
+                    value.enrollment_certificate_digest as LibraryCoreLowercaseHex64,
+                  generationId: stored.generationId,
+                  retired: value.retired as boolean,
+                } satisfies PortableActorTipRecord);
+              }
+              if (stored.collection === "materialized_rows") {
+                const value = stored.entry.value as Readonly<
+                  Record<string, unknown>
+                >;
+                materializedRows.put({
+                  generationId: stored.generationId,
+                  primaryKey: canonicalStringKey(
+                    value.primary_key as LibraryCoreCanonicalValue,
+                  ),
+                  registryKey: value.registry_key as string,
+                  row: value.row as Readonly<
+                    Record<string, LibraryCoreCanonicalValue>
+                  >,
+                } satisfies PortableMaterializedRowRecord);
+              }
+              cursor.continue();
             });
           }
         });

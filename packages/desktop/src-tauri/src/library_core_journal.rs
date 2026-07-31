@@ -56,7 +56,10 @@ const OPERATION_OUTBOX_PAGE_SQL: &str = "
     SELECT operation.operationId, outbox.ingestSequence,
            outbox.enqueuedAtMs,
            length(CAST(operation.canonicalEnvelopeJson AS BLOB)),
-           operation.canonicalEnvelopeJson
+           operation.canonicalEnvelopeJson,
+           operation.transactionId,
+           operation.transactionMemberIndex,
+           operation.transactionMemberCount
     FROM library_core_replication_outbox AS outbox
     JOIN library_core_operations AS operation
       ON operation.operationId = outbox.operationId
@@ -304,6 +307,9 @@ struct OperationOutboxEntry {
     ingest_sequence: i64,
     enqueued_at_ms: i64,
     canonical_envelope_json: String,
+    transaction_id: String,
+    transaction_member_index: i64,
+    transaction_member_count: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1534,10 +1540,46 @@ impl LibraryCoreJournal {
         let mut statement = self.connection.prepare(OPERATION_OUTBOX_PAGE_SQL)?;
         let mut rows = statement.query(params![after_ingest_sequence, row_limit as i64])?;
         let mut entries = Vec::with_capacity(maximum_entries);
+        let mut pending_transaction = Vec::new();
+        let mut pending_transaction_bytes = 0usize;
         let mut retained_bytes = 0usize;
         let mut has_more = false;
 
         while let Some(row) = rows.next()? {
+            let transaction_id: String = row.get(5)?;
+            let transaction_member_index: i64 = row.get(6)?;
+            let transaction_member_count: i64 = row.get(7)?;
+            if !(1..=MAX_OUTBOX_PAGE_ENTRIES as i64).contains(&transaction_member_count)
+                || !(0..transaction_member_count).contains(&transaction_member_index)
+            {
+                return Err(JournalError::InvalidVerifiedInput {
+                    field: "outbox_transaction_members",
+                });
+            }
+            if transaction_member_index == 0 {
+                if !pending_transaction.is_empty() {
+                    return Err(JournalError::InvalidVerifiedInput {
+                        field: "outbox_transaction_members",
+                    });
+                }
+                if transaction_member_count as usize > maximum_entries {
+                    if entries.is_empty() {
+                        return Err(JournalError::InvalidVerifiedInput {
+                            field: "outbox_maximum_entries",
+                        });
+                    }
+                    has_more = true;
+                    break;
+                }
+                if entries.len() + transaction_member_count as usize > maximum_entries {
+                    has_more = true;
+                    break;
+                }
+            } else if pending_transaction.is_empty() {
+                return Err(JournalError::InvalidVerifiedInput {
+                    field: "outbox_transaction_members",
+                });
+            }
             if entries.len() == maximum_entries {
                 has_more = true;
                 break;
@@ -1549,30 +1591,64 @@ impl LibraryCoreJournal {
                 });
             }
             let entry_bytes = entry_bytes as usize;
-            if entries.is_empty() && entry_bytes > maximum_bytes {
-                return Err(JournalError::InvalidVerifiedInput {
-                    field: "outbox_entry_bytes",
-                });
-            }
-            if retained_bytes
-                .checked_add(entry_bytes)
-                .is_none_or(|next| next > maximum_bytes)
-            {
-                has_more = true;
-                break;
-            }
             let canonical_envelope_json: String = row.get(4)?;
             if canonical_envelope_json.len() != entry_bytes {
                 return Err(JournalError::InvalidVerifiedInput {
                     field: "outbox_entry_bytes",
                 });
             }
-            retained_bytes += entry_bytes;
-            entries.push(OperationOutboxEntry {
+            pending_transaction_bytes = pending_transaction_bytes.checked_add(entry_bytes).ok_or(
+                JournalError::InvalidVerifiedInput {
+                    field: "outbox_transaction_bytes",
+                },
+            )?;
+            pending_transaction.push(OperationOutboxEntry {
                 operation_id: row.get(0)?,
                 ingest_sequence: row.get(1)?,
                 enqueued_at_ms: row.get(2)?,
                 canonical_envelope_json,
+                transaction_id: transaction_id.clone(),
+                transaction_member_index,
+                transaction_member_count,
+            });
+            if transaction_member_index + 1 == transaction_member_count {
+                if pending_transaction.len() != transaction_member_count as usize
+                    || pending_transaction
+                        .iter()
+                        .enumerate()
+                        .any(|(index, entry)| {
+                            entry.transaction_id != transaction_id
+                                || entry.transaction_member_index != index as i64
+                                || entry.transaction_member_count != transaction_member_count
+                        })
+                {
+                    return Err(JournalError::InvalidVerifiedInput {
+                        field: "outbox_transaction_members",
+                    });
+                }
+                let next_bytes = retained_bytes
+                    .checked_add(pending_transaction_bytes)
+                    .ok_or(JournalError::InvalidVerifiedInput {
+                        field: "outbox_transaction_bytes",
+                    })?;
+                if next_bytes > maximum_bytes {
+                    if entries.is_empty() {
+                        return Err(JournalError::InvalidVerifiedInput {
+                            field: "outbox_transaction_bytes",
+                        });
+                    }
+                    pending_transaction.clear();
+                    has_more = true;
+                    break;
+                }
+                retained_bytes = next_bytes;
+                entries.append(&mut pending_transaction);
+                pending_transaction_bytes = 0;
+            }
+        }
+        if !pending_transaction.is_empty() {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "outbox_transaction_members",
             });
         }
 
@@ -2194,17 +2270,23 @@ mod tests {
             .commit_read_transaction(&verified, 1_100)
             .expect("commit transaction");
 
+        assert!(matches!(
+            journal.operation_outbox_page(0, 2),
+            Err(JournalError::InvalidVerifiedInput {
+                field: "outbox_maximum_entries"
+            })
+        ));
         let first = journal
-            .operation_outbox_page(0, 2)
-            .expect("first operation page");
-        assert_eq!(first.entries.len(), 2);
+            .operation_outbox_page(0, 3)
+            .expect("complete transaction page");
+        assert_eq!(first.entries.len(), 3);
         assert_eq!(
             first
                 .entries
                 .iter()
                 .map(|entry| entry.ingest_sequence)
                 .collect::<Vec<_>>(),
-            vec![1, 2]
+            vec![1, 2, 3]
         );
         assert_eq!(
             first
@@ -2212,32 +2294,21 @@ mod tests {
                 .iter()
                 .map(|entry| entry.canonical_envelope_json.as_str())
                 .collect::<Vec<_>>(),
-            verified.members[..2]
+            verified.members[..]
                 .iter()
                 .map(|member| member.canonical_envelope_json.as_str())
                 .collect::<Vec<_>>()
         );
-        assert_eq!(first.next_after_ingest_sequence, Some(2));
-        assert!(first.has_more);
-
-        let second = journal
-            .operation_outbox_page(
-                first.next_after_ingest_sequence.expect("first page cursor"),
-                2,
-            )
-            .expect("second operation page");
-        assert_eq!(second.entries.len(), 1);
-        assert_eq!(second.entries[0].ingest_sequence, 3);
-        assert_eq!(second.next_after_ingest_sequence, Some(3));
-        assert!(!second.has_more);
+        assert_eq!(first.next_after_ingest_sequence, Some(3));
+        assert!(!first.has_more);
 
         let first_entry_bytes = verified.members[0].canonical_envelope_json.len();
-        let byte_bounded = journal
-            .operation_outbox_page_with_budget(0, 3, first_entry_bytes)
-            .expect("byte-bounded operation page");
-        assert_eq!(byte_bounded.entries.len(), 1);
-        assert_eq!(byte_bounded.next_after_ingest_sequence, Some(1));
-        assert!(byte_bounded.has_more);
+        assert!(matches!(
+            journal.operation_outbox_page_with_budget(0, 3, first_entry_bytes),
+            Err(JournalError::InvalidVerifiedInput {
+                field: "outbox_transaction_bytes"
+            })
+        ));
     }
 
     #[test]
