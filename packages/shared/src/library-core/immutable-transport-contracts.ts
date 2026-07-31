@@ -102,6 +102,11 @@ export interface LibraryCoreImmutableObjectDescriptorV1 {
   readonly byteLength: number;
 }
 
+export interface LibraryCoreImmutableObjectReferenceV1 {
+  readonly descriptor: LibraryCoreImmutableObjectDescriptorV1;
+  readonly transportObjectId: string;
+}
+
 export interface LibraryCoreControlPointerV1 {
   readonly schemaVersion: 1;
   readonly protocolVersion: 1;
@@ -111,7 +116,7 @@ export interface LibraryCoreControlPointerV1 {
   readonly activeTransport: LibraryCoreCloudTransportId;
   readonly generation: number;
   readonly causalFrontierDigest: LibraryCoreLowercaseHex64;
-  readonly manifest: LibraryCoreImmutableObjectDescriptorV1;
+  readonly manifest: LibraryCoreImmutableObjectReferenceV1;
 }
 
 function assertIdentifier(
@@ -315,6 +320,30 @@ export function parseLibraryCoreImmutableObjectDescriptorV1(
   });
 }
 
+export function parseLibraryCoreImmutableObjectReferenceV1(
+  value: unknown,
+): LibraryCoreImmutableObjectReferenceV1 {
+  const record = ownEnumerableDataRecord(
+    value,
+    ["descriptor", "transportObjectId"],
+    "immutable object reference",
+  );
+  if (
+    typeof record.transportObjectId !== "string" ||
+    record.transportObjectId.length === 0 ||
+    record.transportObjectId.length > 1_024 ||
+    new TextEncoder().encode(record.transportObjectId).byteLength > 1_024
+  ) {
+    throw new TypeError(
+      "immutable object reference transportObjectId must be bounded nonempty text",
+    );
+  }
+  return Object.freeze({
+    descriptor: parseLibraryCoreImmutableObjectDescriptorV1(record.descriptor),
+    transportObjectId: record.transportObjectId,
+  });
+}
+
 export function parseLibraryCoreControlPointerV1(
   value: unknown,
 ): LibraryCoreControlPointerV1 {
@@ -351,15 +380,15 @@ export function parseLibraryCoreControlPointerV1(
   }
   assertIndex(record.generation, "generation");
   assertDigest(record.causalFrontierDigest, "causalFrontierDigest");
-  const manifest = parseLibraryCoreImmutableObjectDescriptorV1(record.manifest);
+  const manifest = parseLibraryCoreImmutableObjectReferenceV1(record.manifest);
   const expectedManifestKey = createLibraryCoreImmutableObjectKey({
     kind: "checkpoint_manifest",
     libraryId: record.libraryId,
     epochId: record.storageEpoch,
     generation: record.generation,
-    digest: manifest.contentDigest,
+    digest: manifest.descriptor.contentDigest,
   });
-  if (manifest.objectKey !== expectedManifestKey) {
+  if (manifest.descriptor.objectKey !== expectedManifestKey) {
     throw new TypeError(
       "library control pointer manifest does not match its library, storage epoch, and generation",
     );

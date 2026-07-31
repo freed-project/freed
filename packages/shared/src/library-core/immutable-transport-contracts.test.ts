@@ -249,19 +249,24 @@ describe("Library Core immutable transport contract", () => {
       generation: 7,
       causalFrontierDigest: OTHER_DIGEST,
       manifest: {
-        objectKey: manifestKey(),
-        contentDigest: DIGEST,
-        byteLength: 4_096,
+        descriptor: {
+          objectKey: manifestKey(),
+          contentDigest: DIGEST,
+          byteLength: 4_096,
+        },
+        transportObjectId: "drive-file-1",
       },
     };
     const parsed = parseLibraryCoreControlPointerV1(source);
     source.writerId = "desktop-2";
-    source.manifest.byteLength = 1;
+    source.manifest.descriptor.byteLength = 1;
 
     expect(parsed.writerId).toBe("desktop-1");
-    expect(parsed.manifest.byteLength).toBe(4_096);
+    expect(parsed.manifest.descriptor.byteLength).toBe(4_096);
+    expect(parsed.manifest.transportObjectId).toBe("drive-file-1");
     expect(Object.isFrozen(parsed)).toBe(true);
     expect(Object.isFrozen(parsed.manifest)).toBe(true);
+    expect(Object.isFrozen(parsed.manifest.descriptor)).toBe(true);
 
     for (const invalid of [
       { ...source, expiresAt: 123 },
@@ -275,14 +280,27 @@ describe("Library Core immutable transport contract", () => {
         ...source,
         manifest: {
           ...source.manifest,
-          objectKey: manifestKey("epoch-2"),
+          descriptor: {
+            ...source.manifest.descriptor,
+            objectKey: manifestKey("epoch-2"),
+          },
         },
       },
       {
         ...source,
         manifest: {
           ...source.manifest,
-          objectKey: manifestKey("epoch-1", 7, DIGEST, "library-2"),
+          descriptor: {
+            ...source.manifest.descriptor,
+            objectKey: manifestKey("epoch-1", 7, DIGEST, "library-2"),
+          },
+        },
+      },
+      {
+        ...source,
+        manifest: {
+          ...source.manifest,
+          transportObjectId: "",
         },
       },
     ]) {

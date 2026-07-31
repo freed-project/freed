@@ -98,12 +98,16 @@ The dormant publication coordinator performs that ordering against an injected
 transport adapter. It streams a bounded dependency sequence, requires exact
 remote digest and size verification for each object, gives the verified
 provider object IDs to the manifest builder, verifies the manifest, and then
-compares and swaps a canonical control pointer. A stale starting tuple returns
-before upload. A final CAS race returns the exact current tuple. Response loss
-recovers only when readback equals the intended pointer. Ordinary publication
-cannot change the writer epoch or active cloud transport. Writer reassignment
-uses a separate explicit control transition. This coordinator has no Google or
-Dropbox dependency, token, polling loop, or production caller.
+builds the control pointer from that verified manifest upload receipt. The
+pointer binds the exact manifest descriptor and provider object ID before the
+compare-and-swap. It cannot be constructed before the manifest receives its
+transport locator, and a substituted locator fails closed. A stale starting
+tuple returns before upload. A final CAS race returns the exact current tuple.
+Response loss recovers only when readback equals the intended pointer,
+including that exact manifest locator. Ordinary publication cannot change the
+writer epoch or active cloud transport. Writer reassignment uses a separate
+explicit control transition. This coordinator has no Google or Dropbox
+dependency, token, polling loop, or production caller.
 
 The dormant Google Drive adapter implements that injected boundary for an
 already-provisioned exact control file ID. It discovers controls only through
