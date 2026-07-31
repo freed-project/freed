@@ -71,11 +71,15 @@ export interface LibraryCoreImmutablePublicationRequestV1<Source> {
   ) =>
     | {
         readonly manifest: LibraryCorePreparedImmutableObjectV1<Source>;
-        readonly nextControlPointer: LibraryCoreControlPointerV1;
+        readonly prepareControlPointer: (
+          manifest: LibraryCorePublishedImmutableObjectReceiptV1,
+        ) => LibraryCoreControlPointerV1;
       }
     | Promise<{
         readonly manifest: LibraryCorePreparedImmutableObjectV1<Source>;
-        readonly nextControlPointer: LibraryCoreControlPointerV1;
+        readonly prepareControlPointer: (
+          manifest: LibraryCorePublishedImmutableObjectReceiptV1,
+        ) => LibraryCoreControlPointerV1;
       }>;
 }
 
@@ -151,9 +155,12 @@ function encodeControlPointer(
       generation: parsed.generation,
       libraryId: parsed.libraryId,
       manifest: {
-        byteLength: parsed.manifest.byteLength,
-        contentDigest: parsed.manifest.contentDigest,
-        objectKey: parsed.manifest.objectKey,
+        descriptor: {
+          byteLength: parsed.manifest.descriptor.byteLength,
+          contentDigest: parsed.manifest.descriptor.contentDigest,
+          objectKey: parsed.manifest.descriptor.objectKey,
+        },
+        transportObjectId: parsed.manifest.transportObjectId,
       },
       protocolVersion: parsed.protocolVersion,
       schemaVersion: parsed.schemaVersion,
@@ -396,16 +403,19 @@ async function publishLibraryCoreGenerationV1<Source>(
   });
 
   const nextControlPointer = parseLibraryCoreControlPointerV1(
-    preparedPublication.nextControlPointer,
+    preparedPublication.prepareControlPointer(manifest),
   );
   if (
-    nextControlPointer.manifest.objectKey !== manifest.descriptor.objectKey ||
-    nextControlPointer.manifest.contentDigest !==
+    nextControlPointer.manifest.descriptor.objectKey !==
+      manifest.descriptor.objectKey ||
+    nextControlPointer.manifest.descriptor.contentDigest !==
       manifest.descriptor.contentDigest ||
-    nextControlPointer.manifest.byteLength !== manifest.descriptor.byteLength
+    nextControlPointer.manifest.descriptor.byteLength !==
+      manifest.descriptor.byteLength ||
+    nextControlPointer.manifest.transportObjectId !== manifest.transportObjectId
   ) {
     throw new TypeError(
-      "next control pointer does not name the verified manifest",
+      "next control pointer does not name the exact verified manifest receipt",
     );
   }
   if (mode === "ordinary_publication") {

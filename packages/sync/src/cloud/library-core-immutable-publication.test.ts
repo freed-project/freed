@@ -81,7 +81,9 @@ function preparedManifest(
     descriptor: LibraryCoreImmutableObjectDescriptorV1;
     source: Uint8Array;
   };
-  nextControlPointer: LibraryCoreControlPointerV1;
+  prepareControlPointer: (
+    manifest: LibraryCorePublishedImmutableObjectReceiptV1,
+  ) => LibraryCoreControlPointerV1;
 } {
   const source = bytes(
     JSON.stringify(
@@ -106,17 +108,22 @@ function preparedManifest(
   });
   return {
     manifest: { descriptor, source },
-    nextControlPointer: parseLibraryCoreControlPointerV1({
-      schemaVersion: 1,
-      protocolVersion: 1,
-      libraryId: "library-1",
-      storageEpoch: epochId,
-      writerId,
-      activeTransport: "google_drive_app_data_v1",
-      generation,
-      causalFrontierDigest: "fe".repeat(32),
-      manifest: descriptor,
-    }),
+    prepareControlPointer(manifest) {
+      return parseLibraryCoreControlPointerV1({
+        schemaVersion: 1,
+        protocolVersion: 1,
+        libraryId: "library-1",
+        storageEpoch: epochId,
+        writerId,
+        activeTransport: "google_drive_app_data_v1",
+        generation,
+        causalFrontierDigest: "fe".repeat(32),
+        manifest: {
+          descriptor: manifest.descriptor,
+          transportObjectId: manifest.transportObjectId,
+        },
+      });
+    },
   };
 }
 
@@ -299,6 +306,18 @@ describe("Library Core immutable publication", () => {
       "compare-and-swap-control",
     ]);
     expect(adapter.control.revision).toBe("revision-1");
+    if (result.status !== "committed") throw new Error("setup failed");
+    expect(result.manifest.transportObjectId).toBe("object-3");
+    expect(result.controlPointer.manifest).toEqual({
+      descriptor: result.manifest.descriptor,
+      transportObjectId: "object-3",
+    });
+    if (adapter.control.bytes === null) throw new Error("missing control bytes");
+    expect(
+      parseLibraryCoreControlPointerV1(
+        JSON.parse(new TextDecoder().decode(adapter.control.bytes)),
+      ).manifest.transportObjectId,
+    ).toBe("object-3");
   });
 
   it("stops before manifest preparation on an interrupted dependency upload", async () => {
@@ -406,6 +425,38 @@ describe("Library Core immutable publication", () => {
       "compare-and-swap-control",
       "read-control",
     ]);
+    if (result.status !== "recovered_after_response_loss") {
+      throw new Error("setup failed");
+    }
+    expect(result.controlPointer.manifest.transportObjectId).toBe("object-2");
+  });
+
+  it("rejects a control pointer that substitutes another manifest transport object ID", async () => {
+    const adapter = new FakeImmutableAdapter();
+
+    await expect(
+      publishLibraryCoreImmutableGenerationV1({
+        adapter,
+        expectedControl: { revision: null, pointer: null },
+        dependencies: [operationObject(1)],
+        prepareManifest(dependencies) {
+          const prepared = preparedManifest(0, dependencies);
+          return {
+            ...prepared,
+            prepareControlPointer(manifest) {
+              return parseLibraryCoreControlPointerV1({
+                ...prepared.prepareControlPointer(manifest),
+                manifest: {
+                  descriptor: manifest.descriptor,
+                  transportObjectId: "wrong-drive-file",
+                },
+              });
+            },
+          };
+        },
+      }),
+    ).rejects.toThrow(/exact verified manifest receipt/);
+    expect(adapter.control).toEqual({ revision: null, bytes: null });
   });
 
   it("reassigns authority only by committing generation zero of a new writer epoch", async () => {
@@ -601,10 +652,12 @@ describe("Library Core immutable publication", () => {
           );
           return {
             ...prepared,
-            nextControlPointer: parseLibraryCoreControlPointerV1({
-              ...prepared.nextControlPointer,
-              causalFrontierDigest: "aa".repeat(32),
-            }),
+            prepareControlPointer(manifest) {
+              return parseLibraryCoreControlPointerV1({
+                ...prepared.prepareControlPointer(manifest),
+                causalFrontierDigest: "aa".repeat(32),
+              });
+            },
           };
         },
       }),
@@ -651,10 +704,12 @@ describe("Library Core immutable publication", () => {
           const prepared = preparedManifest(1, dependencies);
           return {
             ...prepared,
-            nextControlPointer: parseLibraryCoreControlPointerV1({
-              ...prepared.nextControlPointer,
-              activeTransport: "dropbox_app_folder_v1",
-            }),
+            prepareControlPointer(manifest) {
+              return parseLibraryCoreControlPointerV1({
+                ...prepared.prepareControlPointer(manifest),
+                activeTransport: "dropbox_app_folder_v1",
+              });
+            },
           };
         },
       }),
@@ -694,10 +749,12 @@ describe("Library Core immutable publication", () => {
             );
             return {
               ...prepared,
-              nextControlPointer: parseLibraryCoreControlPointerV1({
-                ...prepared.nextControlPointer,
-                ...replacement.pointerPatch,
-              }),
+              prepareControlPointer(manifest) {
+                return parseLibraryCoreControlPointerV1({
+                  ...prepared.prepareControlPointer(manifest),
+                  ...replacement.pointerPatch,
+                });
+              },
             };
           },
         }),
