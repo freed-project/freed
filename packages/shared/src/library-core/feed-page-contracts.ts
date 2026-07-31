@@ -368,7 +368,7 @@ function snapshotClosedRecord(
   if (
     value === null ||
     typeof value !== "object" ||
-    Object.getPrototypeOf(value) !== Object.prototype
+    ![Object.prototype, null].includes(Object.getPrototypeOf(value))
   ) {
     return failure(`${label} must be one plain record`);
   }

@@ -7,6 +7,14 @@ import {
 
 export const LIBRARY_CORE_STORED_WIRE_OBJECT_BYTE_CEILING = 5_000_000;
 
+function isUint8Array(value: unknown): value is Uint8Array {
+  return (
+    ArrayBuffer.isView(value) &&
+    Object.prototype.toString.call(value) === "[object Uint8Array]" &&
+    (value as Uint8Array).BYTES_PER_ELEMENT === 1
+  );
+}
+
 function byteStream(bytes: Uint8Array): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
     start(controller) {
@@ -70,7 +78,7 @@ export async function decodeLibraryCoreWireObjectV1(
   storedBytes: Uint8Array,
   options: LibraryCoreWireFrameOptions,
 ): Promise<readonly LibraryCoreCanonicalValue[]> {
-  if (!(storedBytes instanceof Uint8Array)) {
+  if (!isUint8Array(storedBytes)) {
     throw new TypeError("Library Core stored wire object must be a Uint8Array");
   }
   if (

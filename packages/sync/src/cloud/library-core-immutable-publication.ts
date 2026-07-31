@@ -51,6 +51,12 @@ export interface LibraryCoreImmutablePublicationAdapterV1<Source> {
   }): Promise<LibraryCoreControlCompareAndSwapResultV1>;
 }
 
+export interface LibraryCoreImmutableReadAdapterV1 {
+  readImmutable(
+    receipt: LibraryCorePublishedImmutableObjectReceiptV1,
+  ): Promise<Uint8Array>;
+}
+
 export interface LibraryCoreImmutablePublicationRequestV1<Source> {
   readonly adapter: LibraryCoreImmutablePublicationAdapterV1<Source>;
   readonly expectedControl: {

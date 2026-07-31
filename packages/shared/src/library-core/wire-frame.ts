@@ -22,12 +22,23 @@ export type LibraryCoreWireFrameKind =
 
 export interface LibraryCoreWireFrameOptions {
   readonly kind: LibraryCoreWireFrameKind;
+  readonly maximumDecodedBytes?: number;
+  readonly maximumRecordBytes?: number;
+  readonly maximumRecords?: number;
   readonly recordIdentity: (record: LibraryCoreCanonicalValue) => string;
 }
 
 const MAGIC = new TextEncoder().encode("FRDV2FRM");
 const HEADER_BYTES = 16;
 const LENGTH_BYTES = 4;
+
+function isUint8Array(value: unknown): value is Uint8Array {
+  return (
+    ArrayBuffer.isView(value) &&
+    Object.prototype.toString.call(value) === "[object Uint8Array]" &&
+    (value as Uint8Array).BYTES_PER_ELEMENT === 1
+  );
+}
 
 function kindCode(kind: LibraryCoreWireFrameKind): number {
   const index = LIBRARY_CORE_WIRE_FRAME_KINDS.indexOf(kind);
@@ -43,14 +54,52 @@ function kindFromCode(code: number): LibraryCoreWireFrameKind {
   return kind;
 }
 
-function assertRecordCount(count: number): void {
-  if (
-    !Number.isSafeInteger(count) ||
-    count < 0 ||
-    count > LIBRARY_CORE_MAX_WIRE_RECORDS
-  ) {
+interface LibraryCoreWireFrameLimits {
+  readonly maximumDecodedBytes: number;
+  readonly maximumRecordBytes: number;
+  readonly maximumRecords: number;
+}
+
+function boundedLimit(
+  value: number | undefined,
+  ceiling: number,
+  label: string,
+): number {
+  const resolved = value ?? ceiling;
+  if (!Number.isSafeInteger(resolved) || resolved < 1 || resolved > ceiling) {
     throw new RangeError(
-      `Library Core frame record count exceeds ${LIBRARY_CORE_MAX_WIRE_RECORDS.toLocaleString()}`,
+      `${label} must be a positive safe integer no greater than ${ceiling.toLocaleString()}`,
+    );
+  }
+  return resolved;
+}
+
+function frameLimits(
+  options: LibraryCoreWireFrameOptions,
+): LibraryCoreWireFrameLimits {
+  return Object.freeze({
+    maximumDecodedBytes: boundedLimit(
+      options.maximumDecodedBytes,
+      LIBRARY_CORE_MAX_DECODED_WIRE_BYTES,
+      "maximumDecodedBytes",
+    ),
+    maximumRecordBytes: boundedLimit(
+      options.maximumRecordBytes,
+      LIBRARY_CORE_MAX_WIRE_RECORD_BYTES,
+      "maximumRecordBytes",
+    ),
+    maximumRecords: boundedLimit(
+      options.maximumRecords,
+      LIBRARY_CORE_MAX_WIRE_RECORDS,
+      "maximumRecords",
+    ),
+  });
+}
+
+function assertRecordCount(count: number, maximumRecords: number): void {
+  if (!Number.isSafeInteger(count) || count < 0 || count > maximumRecords) {
+    throw new RangeError(
+      `Library Core frame record count exceeds ${maximumRecords.toLocaleString()}`,
     );
   }
 }
@@ -91,7 +140,8 @@ export function encodeLibraryCoreWireFrameV1(
   if (!Array.isArray(records)) {
     throw new TypeError("Library Core frame records must be an array");
   }
-  assertRecordCount(records.length);
+  const limits = frameLimits(options);
+  assertRecordCount(records.length, limits.maximumRecords);
   const encodedRecords: Uint8Array[] = [];
   const identities = new Set<string>();
   let totalBytes = HEADER_BYTES;
@@ -105,12 +155,12 @@ export function encodeLibraryCoreWireFrameV1(
     }
     identities.add(identity);
     const encoded = encodeLibraryCoreCanonicalValue(record, {
-      maximumBytes: LIBRARY_CORE_MAX_WIRE_RECORD_BYTES,
+      maximumBytes: limits.maximumRecordBytes,
     });
     totalBytes += LENGTH_BYTES + encoded.byteLength;
-    if (totalBytes > LIBRARY_CORE_MAX_DECODED_WIRE_BYTES) {
+    if (totalBytes > limits.maximumDecodedBytes) {
       throw new RangeError(
-        `Library Core frame exceeds ${LIBRARY_CORE_MAX_DECODED_WIRE_BYTES.toLocaleString()} decoded bytes`,
+        `Library Core frame exceeds ${limits.maximumDecodedBytes.toLocaleString()} decoded bytes`,
       );
     }
     encodedRecords.push(encoded);
@@ -143,6 +193,7 @@ export class LibraryCoreWireFrameDecoderV1 {
   private readonly recordIdentity: (
     record: LibraryCoreCanonicalValue,
   ) => string;
+  private readonly limits: LibraryCoreWireFrameLimits;
   private readonly identities = new Set<string>();
   private pending = new Uint8Array(0);
   private headerRead = false;
@@ -156,19 +207,20 @@ export class LibraryCoreWireFrameDecoderV1 {
     kindCode(options.kind);
     this.expectedKind = options.kind;
     this.recordIdentity = options.recordIdentity;
+    this.limits = frameLimits(options);
   }
 
   push(chunk: Uint8Array): readonly LibraryCoreCanonicalValue[] {
     if (this.finished) {
       throw new Error("Library Core frame decoder is already finished");
     }
-    if (!(chunk instanceof Uint8Array)) {
+    if (!isUint8Array(chunk)) {
       throw new TypeError("Library Core frame chunk must be a Uint8Array");
     }
     this.totalBytes += chunk.byteLength;
-    if (this.totalBytes > LIBRARY_CORE_MAX_DECODED_WIRE_BYTES) {
+    if (this.totalBytes > this.limits.maximumDecodedBytes) {
       throw new RangeError(
-        `Library Core frame exceeds ${LIBRARY_CORE_MAX_DECODED_WIRE_BYTES.toLocaleString()} decoded bytes`,
+        `Library Core frame exceeds ${this.limits.maximumDecodedBytes.toLocaleString()} decoded bytes`,
       );
     }
     this.append(chunk);
@@ -184,7 +236,7 @@ export class LibraryCoreWireFrameDecoderV1 {
         this.consume(LENGTH_BYTES);
         if (
           this.nextRecordLength === 0 ||
-          this.nextRecordLength > LIBRARY_CORE_MAX_WIRE_RECORD_BYTES
+          this.nextRecordLength > this.limits.maximumRecordBytes
         ) {
           throw new RangeError(
             "Library Core frame record has an invalid byte length",
@@ -266,7 +318,7 @@ export class LibraryCoreWireFrameDecoderV1 {
       throw new TypeError("Library Core frame reserved header bytes are set");
     }
     this.recordCount = readUint32(this.pending, 12);
-    assertRecordCount(this.recordCount);
+    assertRecordCount(this.recordCount, this.limits.maximumRecords);
     this.consume(HEADER_BYTES);
     this.headerRead = true;
   }

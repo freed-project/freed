@@ -7,6 +7,7 @@ import type {
   LibraryCoreControlCompareAndSwapResultV1,
   LibraryCoreControlReadV1,
   LibraryCoreImmutablePublicationAdapterV1,
+  LibraryCoreImmutableReadAdapterV1,
   LibraryCorePreparedImmutableObjectV1,
   LibraryCorePublishedImmutableObjectReceiptV1,
 } from "./library-core-immutable-publication.js";
@@ -505,7 +506,8 @@ export async function discoverGoogleDriveLibraryCoreControlV1(input: {
  */
 export function createGoogleDriveLibraryCoreAdapterV1(
   options: GoogleDriveLibraryCoreAdapterOptionsV1,
-): LibraryCoreImmutablePublicationAdapterV1<Uint8Array> {
+): LibraryCoreImmutablePublicationAdapterV1<Uint8Array> &
+  LibraryCoreImmutableReadAdapterV1 {
   assertBoundedText(
     options.accessToken,
     "Google Drive access token",
@@ -520,10 +522,13 @@ export function createGoogleDriveLibraryCoreAdapterV1(
   const googleFetch = options.googleFetch ?? fetch;
   const libraryDigestPromise = libraryIdentityDigest(options.libraryId);
 
-  async function verifyDescriptorAtFile(
+  async function readDescriptorAtFile(
     descriptorInput: LibraryCoreImmutableObjectDescriptorV1,
     fileId: string,
-  ): Promise<LibraryCoreImmutableObjectDescriptorV1> {
+  ): Promise<{
+    readonly bytes: Uint8Array;
+    readonly descriptor: LibraryCoreImmutableObjectDescriptorV1;
+  }> {
     const descriptor =
       parseLibraryCoreImmutableObjectDescriptorV1(descriptorInput);
     if (!objectKeyBelongsToLibrary(descriptor.objectKey, options.libraryId)) {
@@ -577,7 +582,17 @@ export function createGoogleDriveLibraryCoreAdapterV1(
         `immutable Drive digest mismatch for ${descriptor.objectKey}`,
       );
     }
-    return descriptor;
+    return Object.freeze({
+      bytes: stored.bytes,
+      descriptor,
+    });
+  }
+
+  async function verifyDescriptorAtFile(
+    descriptorInput: LibraryCoreImmutableObjectDescriptorV1,
+    fileId: string,
+  ): Promise<LibraryCoreImmutableObjectDescriptorV1> {
+    return (await readDescriptorAtFile(descriptorInput, fileId)).descriptor;
   }
 
   const readControl = async (): Promise<LibraryCoreControlReadV1> => {
@@ -604,7 +619,12 @@ export function createGoogleDriveLibraryCoreAdapterV1(
       const descriptor = parseLibraryCoreImmutableObjectDescriptorV1(
         object.descriptor,
       );
-      if (!(object.source instanceof Uint8Array)) {
+      if (
+        !ArrayBuffer.isView(object.source) ||
+        Object.prototype.toString.call(object.source) !==
+          "[object Uint8Array]" ||
+        object.source.BYTES_PER_ELEMENT !== 1
+      ) {
         throw new TypeError("immutable object source must be a Uint8Array");
       }
       if (!objectKeyBelongsToLibrary(descriptor.objectKey, options.libraryId)) {
@@ -709,6 +729,22 @@ export function createGoogleDriveLibraryCoreAdapterV1(
       );
     },
 
+    async readImmutable(
+      receipt: LibraryCorePublishedImmutableObjectReceiptV1,
+    ): Promise<Uint8Array> {
+      assertBoundedText(
+        receipt.transportObjectId,
+        "immutable Drive file id",
+        MAX_DRIVE_FILE_ID_BYTES,
+      );
+      return (
+        await readDescriptorAtFile(
+          receipt.descriptor,
+          receipt.transportObjectId,
+        )
+      ).bytes;
+    },
+
     async compareAndSwapControl(input: {
       readonly expectedRevision: string | null;
       readonly bytes: Uint8Array;
@@ -718,7 +754,11 @@ export function createGoogleDriveLibraryCoreAdapterV1(
         "expected Drive control revision",
         MAX_DRIVE_FILE_ID_BYTES,
       );
-      if (!(input.bytes instanceof Uint8Array)) {
+      if (
+        !ArrayBuffer.isView(input.bytes) ||
+        Object.prototype.toString.call(input.bytes) !== "[object Uint8Array]" ||
+        input.bytes.BYTES_PER_ELEMENT !== 1
+      ) {
         throw new TypeError("control bytes must be a Uint8Array");
       }
       if (

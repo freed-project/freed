@@ -292,6 +292,12 @@ describe("Google Drive Library Core immutable adapter", () => {
         transportObjectId: stored.transportObjectId,
       }),
     ).resolves.toEqual(fixture.descriptor);
+    await expect(
+      adapter(fake).readImmutable({
+        descriptor: fixture.descriptor,
+        transportObjectId: stored.transportObjectId,
+      }),
+    ).resolves.toEqual(fixture.source);
     const upload = fake.requests.find((request) => request.method === "POST");
     expect(upload?.headers.get("Content-Type")).toContain("multipart/related");
   });
