@@ -6998,9 +6998,11 @@ fn scrape_memory_pressure_level(stats: &RuntimeMemoryStats) -> &'static str {
     }
 }
 
-fn blocked_social_scrape_should_recover_main_renderer(stats: &RuntimeMemoryStats) -> bool {
-    !scrape_webkit_resident_may_start(stats)
-        && stats.webkit_total_resident_bytes >= MAIN_RENDERER_HOT_WEBKIT_RESIDENT_RECOVERY_BYTES
+fn blocked_social_scrape_should_recover_main_renderer(_stats: &RuntimeMemoryStats) -> bool {
+    // A blocked preflight runs in the main renderer's command chain. Destroying
+    // that renderer replays startup work and can recursively rearm the same
+    // preflight before its native memory cooldown reaches the caller.
+    false
 }
 
 fn optional_story_memory_budget_bytes(stats: &RuntimeMemoryStats) -> u64 {
@@ -17168,7 +17170,7 @@ mod tests {
         assert!(!scrape_webkit_resident_may_start(&stats));
         assert!(!scrape_memory_may_proceed(&stats));
         assert_eq!(scrape_memory_pressure_level(&stats), "high");
-        assert!(blocked_social_scrape_should_recover_main_renderer(&stats));
+        assert!(!blocked_social_scrape_should_recover_main_renderer(&stats));
     }
 
     #[test]
