@@ -3,15 +3,16 @@ import { describe, expect, it } from "vitest";
 import { type FeedItem } from "@freed/shared";
 import {
   createLibraryCoreImmutableObjectKey,
+  encodeLibraryCoreCanonicalValue,
   parseLibraryCoreImmutableObjectDescriptorV1,
   projectLibraryCoreFeedCardV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreFeedCardV1,
   type LibraryCoreFeedPageSourceV1,
+  type LibraryCoreImmutableObjectReferenceV1,
 } from "@freed/shared/library-core";
 import {
   encodeLibraryCoreWireObjectV1,
-  type LibraryCoreCheckpointPageReferenceV1,
   type LibraryCoreImmutableReadAdapterV1,
   type LibraryCorePublishedImmutableObjectReceiptV1,
 } from "@freed/sync/cloud";
@@ -21,12 +22,6 @@ import type {
   AppendPwaLibraryCoreFeedGenerationPageInput,
   BeginPwaLibraryCoreFeedGenerationInput,
 } from "./library-core-feed-reader-runtime";
-
-const SOURCE = Object.freeze({
-  generationId: "ab".repeat(32),
-  projectionRevision: 7,
-  transitionSequence: 3,
-}) as LibraryCoreFeedPageSourceV1;
 
 function item(globalId: string): FeedItem {
   return {
@@ -56,27 +51,28 @@ function digest(bytes: Uint8Array): string {
 }
 
 class FakeReader implements LibraryCoreImmutableReadAdapterV1 {
-  private readonly bytes: Uint8Array;
-
-  constructor(bytes: Uint8Array) {
-    this.bytes = bytes;
-  }
+  readonly objects = new Map<string, Uint8Array>();
+  readonly readIds: string[] = [];
 
   async readImmutable(
-    _receipt: LibraryCorePublishedImmutableObjectReceiptV1,
+    receipt: LibraryCorePublishedImmutableObjectReceiptV1,
   ): Promise<Uint8Array> {
-    return this.bytes.slice();
+    this.readIds.push(receipt.transportObjectId);
+    const bytes = this.objects.get(receipt.transportObjectId);
+    if (bytes === undefined) throw new Error("missing fake immutable object");
+    return bytes.slice();
   }
 }
 
-async function page(rows: readonly LibraryCoreFeedCardV1[]): Promise<{
+async function checkpoint(rows: readonly LibraryCoreFeedCardV1[]): Promise<{
   readonly adapter: FakeReader;
-  readonly reference: LibraryCoreCheckpointPageReferenceV1;
+  readonly manifest: LibraryCoreImmutableObjectReferenceV1;
+  readonly source: LibraryCoreFeedPageSourceV1;
 }> {
   const canonicalRows = rows.map(
     (row) => ({ ...row }) satisfies Record<string, LibraryCoreCanonicalValue>,
   );
-  const stored = await encodeLibraryCoreWireObjectV1(canonicalRows, {
+  const pageBytes = await encodeLibraryCoreWireObjectV1(canonicalRows, {
     kind: "checkpoint",
     maximumDecodedBytes: 2_097_152,
     maximumRecordBytes: 131_072,
@@ -85,61 +81,101 @@ async function page(rows: readonly LibraryCoreFeedCardV1[]): Promise<{
       return (record as { readonly globalId: string }).globalId;
     },
   });
-  const contentDigest = digest(stored);
-  return {
-    adapter: new FakeReader(stored),
-    reference: {
-      pageIndex: 0,
-      descriptor: parseLibraryCoreImmutableObjectDescriptorV1({
-        objectKey: createLibraryCoreImmutableObjectKey({
-          kind: "checkpoint_page",
-          libraryId: "library-1",
-          epochId: "epoch-1",
-          generation: 7,
-          pageIndex: 0,
-          digest: contentDigest,
-        }),
-        contentDigest,
-        byteLength: stored.byteLength,
+  const pageDigest = digest(pageBytes);
+  const pageReference = {
+    descriptor: parseLibraryCoreImmutableObjectDescriptorV1({
+      objectKey: createLibraryCoreImmutableObjectKey({
+        kind: "checkpoint_page",
+        libraryId: "library-1",
+        epochId: "epoch-1",
+        generation: 7,
+        pageIndex: 0,
+        digest: pageDigest,
       }),
-      transportObjectId: "drive-page-0",
-    },
+      contentDigest: pageDigest,
+      byteLength: pageBytes.byteLength,
+    }),
+    transportObjectId: "drive-page-0",
+  };
+  const manifestBytes = encodeLibraryCoreCanonicalValue({
+    causalFrontierDigest: "fe".repeat(32),
+    datasetSchemaId: "library_core_feed_card_projection_v1",
+    generation: 7,
+    kind: "checkpoint_manifest",
+    libraryId: "library-1",
+    pages: [
+      {
+        firstRecordIdentity: rows[0]!.globalId,
+        lastRecordIdentity: rows[rows.length - 1]!.globalId,
+        object: pageReference,
+        pageIndex: 0,
+        recordCount: rows.length,
+      },
+    ],
+    protocolVersion: 1,
+    schemaVersion: 1,
+    storageEpoch: "epoch-1",
+    totalRecordCount: rows.length,
+  } as unknown as LibraryCoreCanonicalValue);
+  const manifestDigest = digest(manifestBytes);
+  const manifest = {
+    descriptor: parseLibraryCoreImmutableObjectDescriptorV1({
+      objectKey: createLibraryCoreImmutableObjectKey({
+        kind: "checkpoint_manifest",
+        libraryId: "library-1",
+        epochId: "epoch-1",
+        generation: 7,
+        digest: manifestDigest,
+      }),
+      contentDigest: manifestDigest,
+      byteLength: manifestBytes.byteLength,
+    }),
+    transportObjectId: "drive-manifest-7",
+  };
+  const adapter = new FakeReader();
+  adapter.objects.set(pageReference.transportObjectId, pageBytes);
+  adapter.objects.set(manifest.transportObjectId, manifestBytes);
+  return {
+    adapter,
+    manifest,
+    source: Object.freeze({
+      generationId: manifestDigest,
+      projectionRevision: 1,
+      transitionSequence: 7,
+    }) as LibraryCoreFeedPageSourceV1,
   };
 }
 
 describe("PWA Library Core feed checkpoint import", () => {
-  it("feeds verified portable pages into the bounded IndexedDB writer", async () => {
+  it("feeds one exact manifest and its verified pages into the bounded IndexedDB writer", async () => {
     const rows = [
       projectLibraryCoreFeedCardV1(item("x:item-1")),
       projectLibraryCoreFeedCardV1(item("x:item-2")),
     ];
-    const stored = await page(rows);
+    const stored = await checkpoint(rows);
     const appended: AppendPwaLibraryCoreFeedGenerationPageInput[] = [];
     const events: string[] = [];
 
     await expect(
       importPwaLibraryCoreFeedCheckpoint({
         adapter: stored.adapter,
-        expectedPageCount: 1,
         generation: 7,
         libraryId: "library-1",
-        pages: [stored.reference],
-        source: SOURCE,
+        manifest: stored.manifest,
         storageEpoch: "epoch-1",
         subtle: webcrypto.subtle as unknown as SubtleCrypto,
-        totalRecordCount: 2,
         writer: {
           async appendGenerationPage(input) {
             events.push("append");
             appended.push(input);
           },
           async beginGeneration(input: BeginPwaLibraryCoreFeedGenerationInput) {
-            expect(input).toEqual({ source: SOURCE, totalCount: 2 });
+            expect(input).toEqual({ source: stored.source, totalCount: 2 });
             events.push("begin");
             return "staging";
           },
           async finalizeGeneration(source) {
-            expect(source).toEqual(SOURCE);
+            expect(source).toEqual(stored.source);
             events.push("finalize");
           },
         },
@@ -150,30 +186,26 @@ describe("PWA Library Core feed checkpoint import", () => {
       status: "imported",
     });
     expect(events).toEqual(["begin", "append", "finalize"]);
-    expect(appended).toEqual([{ batchIndex: 0, rows, source: SOURCE }]);
+    expect(appended).toEqual([{ batchIndex: 0, rows, source: stored.source }]);
+    expect(stored.adapter.readIds).toEqual([
+      "drive-manifest-7",
+      "drive-page-0",
+    ]);
   });
 
-  it("does not download a generation the IndexedDB writer already completed", async () => {
-    const stored = await page([projectLibraryCoreFeedCardV1(item("x:item-1"))]);
-    let readCount = 0;
-    const adapter: LibraryCoreImmutableReadAdapterV1 = {
-      async readImmutable(receipt) {
-        readCount += 1;
-        return stored.adapter.readImmutable(receipt);
-      },
-    };
+  it("verifies the manifest but does not download pages for an already completed generation", async () => {
+    const stored = await checkpoint([
+      projectLibraryCoreFeedCardV1(item("x:item-1")),
+    ]);
 
     await expect(
       importPwaLibraryCoreFeedCheckpoint({
-        adapter,
-        expectedPageCount: 1,
+        adapter: stored.adapter,
         generation: 7,
         libraryId: "library-1",
-        pages: [stored.reference],
-        source: SOURCE,
+        manifest: stored.manifest,
         storageEpoch: "epoch-1",
         subtle: webcrypto.subtle as unknown as SubtleCrypto,
-        totalRecordCount: 1,
         writer: {
           async appendGenerationPage() {
             throw new Error("completed generation must not append");
@@ -191,6 +223,6 @@ describe("PWA Library Core feed checkpoint import", () => {
       importedRecordCount: 0,
       status: "already_complete",
     });
-    expect(readCount).toBe(0);
+    expect(stored.adapter.readIds).toEqual(["drive-manifest-7"]);
   });
 });

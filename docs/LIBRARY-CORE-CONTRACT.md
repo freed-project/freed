@@ -126,24 +126,34 @@ separate. The adapter has no timer, caller, OAuth acquisition, product
 registration, or activation path, and the existing Automerge Drive
 implementation remains untouched.
 
-The adapter-neutral logical-checkpoint page importer accepts only a declared
-library, epoch, generation, contiguous page count, and complete record count.
-It reads one exact provider object ID at a time, reconstructs the only valid
-checkpoint-page locator from that tuple, rechecks stored byte length and
-SHA-256, then decodes at most 128 canonical records, 128 KiB per record, and
-2 MiB total decoded bytes. Page indexes and binary record identities must be
-strictly increasing across the complete import. The importer retains only the
-current bounded page and the prior identity. Corruption, truncation, duplicate
-or reordered identities, locator drift, missing pages, extra pages, and count
-drift fail before finalization.
+The adapter-neutral logical-checkpoint importer starts from one exact immutable
+manifest receipt. It verifies the manifest provider object ID, locator, stored
+byte length, SHA-256, canonical bytes, closed schema, library, epoch,
+generation, dataset schema, causal frontier, total record count, contiguous
+page indexes, per-page record counts, binary identity ranges, and exact page
+provider object IDs. The canonical manifest is capped at 1 MiB. It then reads
+only those page receipts, reconstructs the only valid checkpoint-page locator
+for each entry, and decodes at most 128 canonical records, 128 KiB per record,
+and 2 MiB total decoded bytes. Page identities must remain strictly increasing
+across the complete import and must equal the manifest's first and last
+identity for each page. The importer retains only the current bounded page and
+the prior identity. Corruption, truncation, duplicate or reordered identities,
+locator drift, missing pages, extra pages, count drift, and identity-range
+drift fail before finalization. Loose caller-provided page lists or counts
+cannot substitute for the authenticated manifest.
 
-The first PWA consumer feeds verified compact feed-card projections into the
-existing resumable IndexedDB generation writer. Exact page retry reuses that
-writer's batch receipts, a completed generation performs no cloud read, and
-selection occurs only after every declared page commits. This projection is
-disposable reader state. It does not claim that compact feed cards are the
-complete portable logical checkpoint, and it adds no product caller, cloud
-polling, provider behavior, writer authority, or Automerge retirement.
+The first PWA consumer feeds the manifest's verified compact feed-card
+projection into the existing resumable IndexedDB generation writer. Exact page
+retry reuses that writer's batch receipts. A completed generation still
+authenticates the exact manifest, but downloads no checkpoint pages. Selection
+occurs only after every manifest page commits. The registered
+`library_core_feed_card_projection_v1` dataset is disposable reader state. It
+derives its IndexedDB source identity from the exact manifest stored-byte
+digest, manifest generation, and manifest schema version. Callers cannot
+reattribute verified rows to a different generation. It does not claim to be
+the complete portable authoritative Library checkpoint, and it adds no product
+caller, cloud polling, provider behavior, writer authority, or Automerge
+retirement.
 
 The dormant writer-reassignment coordinator accepts only an exact existing
 control revision and pointer, a new bounded writer identity, a new storage
