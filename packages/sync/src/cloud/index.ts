@@ -30,12 +30,14 @@ export {
 export { mergeBinaries, delay } from "./merge.js";
 export {
   publishLibraryCoreImmutableGenerationV1,
+  reassignLibraryCoreWriterV1,
   type LibraryCoreControlReadV1,
   type LibraryCoreImmutablePublicationAdapterV1,
   type LibraryCoreImmutablePublicationRequestV1,
   type LibraryCoreImmutablePublicationResultV1,
   type LibraryCorePreparedImmutableObjectV1,
   type LibraryCorePublishedImmutableObjectReceiptV1,
+  type LibraryCoreWriterReassignmentRequestV1,
 } from "./library-core-immutable-publication.js";
 export {
   LIBRARY_CORE_STORED_WIRE_OBJECT_BYTE_CEILING,

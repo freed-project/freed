@@ -104,6 +104,18 @@ uses a separate explicit control transition. This coordinator has no Google or
 Dropbox implementation, token, request path, polling loop, or production
 caller.
 
+The dormant writer-reassignment coordinator accepts only an exact existing
+control revision and pointer, a new bounded writer identity, a new storage
+epoch, and an immutable epoch certificate whose locator binds the exact library
+and target epoch. It verifies the certificate and every staged dependency
+before constructing the target manifest. The target pointer must preserve the
+library, active transport, and exact causal frontier while naming generation
+zero of the new writer epoch. One exact compare-and-swap is the authority commit
+point. A stale tuple uploads nothing, a final race leaves staged objects
+unreachable, and response loss recovers only from exact control readback. This
+is the transaction beneath **Make This Freed Desktop the Writer**. It has no
+provider adapter or product caller and cannot activate itself.
+
 ## Canonical bytes, digests, and signatures
 
 Library Core v1 uses UTF-8 JSON Canonicalization Scheme bytes as defined by
