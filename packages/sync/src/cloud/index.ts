@@ -33,12 +33,24 @@ export {
   reassignLibraryCoreWriterV1,
   type LibraryCoreControlReadV1,
   type LibraryCoreImmutablePublicationAdapterV1,
+  type LibraryCoreImmutableReadAdapterV1,
   type LibraryCoreImmutablePublicationRequestV1,
   type LibraryCoreImmutablePublicationResultV1,
   type LibraryCorePreparedImmutableObjectV1,
   type LibraryCorePublishedImmutableObjectReceiptV1,
   type LibraryCoreWriterReassignmentRequestV1,
 } from "./library-core-immutable-publication.js";
+export {
+  LIBRARY_CORE_CHECKPOINT_PAGE_DECODED_BYTE_LIMIT,
+  LIBRARY_CORE_CHECKPOINT_PAGE_LIMIT,
+  LIBRARY_CORE_CHECKPOINT_PAGE_RECORD_LIMIT,
+  LIBRARY_CORE_CHECKPOINT_RECORD_BYTE_LIMIT,
+  LIBRARY_CORE_CHECKPOINT_RECORD_LIMIT,
+  importLibraryCoreCheckpointPagesV1,
+  type ImportLibraryCoreCheckpointPagesRequestV1,
+  type ImportLibraryCoreCheckpointPagesResultV1,
+  type LibraryCoreCheckpointPageReferenceV1,
+} from "./library-core-checkpoint-import.js";
 export {
   LIBRARY_CORE_GOOGLE_DRIVE_SIMPLE_UPLOAD_LIMIT,
   createGoogleDriveLibraryCoreAdapterV1,

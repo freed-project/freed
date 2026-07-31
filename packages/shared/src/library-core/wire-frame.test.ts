@@ -185,4 +185,41 @@ describe("Library Core wire frame v1", () => {
       ),
     ).toThrow(/exceeds/);
   });
+
+  it("enforces stricter adapter-local record and byte ceilings", () => {
+    expect(() =>
+      encodeLibraryCoreWireFrameV1(RECORDS, {
+        kind: "operations",
+        maximumRecords: 1,
+        recordIdentity,
+      }),
+    ).toThrow(/record count exceeds 1/);
+
+    const encoded = encodeLibraryCoreWireFrameV1(RECORDS, {
+      kind: "operations",
+      recordIdentity,
+    });
+    expect(() =>
+      decodeLibraryCoreWireFrameV1(encoded, {
+        kind: "operations",
+        maximumRecords: 1,
+        recordIdentity,
+      }),
+    ).toThrow(/record count exceeds 1/);
+    expect(() =>
+      decodeLibraryCoreWireFrameV1(encoded, {
+        kind: "operations",
+        maximumDecodedBytes: encoded.byteLength - 1,
+        recordIdentity,
+      }),
+    ).toThrow(/frame exceeds/);
+    expect(
+      () =>
+        new LibraryCoreWireFrameDecoderV1({
+          kind: "operations",
+          maximumRecordBytes: 0,
+          recordIdentity,
+        }),
+    ).toThrow(/maximumRecordBytes must be a positive safe integer/);
+  });
 });

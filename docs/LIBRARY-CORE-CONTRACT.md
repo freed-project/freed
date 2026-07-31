@@ -116,9 +116,30 @@ for byte length and SHA-256. Exact duplicate retries collapse only after every
 matching object verifies. Control updates send the exact previously read ETag
 as `If-Match`, classify `412` as a race, and read back exact bytes and the new
 ETag before reporting commit. All response bodies are bounded while reading.
-Control bootstrap and large resumable blobs remain separate. The adapter has no
-timer, caller, OAuth acquisition, product registration, or activation path, and
-the existing Automerge Drive implementation remains untouched.
+The same exact-file path can return verified immutable bytes to a dormant
+checkpoint consumer. Control bootstrap and large resumable blobs remain
+separate. The adapter has no timer, caller, OAuth acquisition, product
+registration, or activation path, and the existing Automerge Drive
+implementation remains untouched.
+
+The adapter-neutral logical-checkpoint page importer accepts only a declared
+library, epoch, generation, contiguous page count, and complete record count.
+It reads one exact provider object ID at a time, reconstructs the only valid
+checkpoint-page locator from that tuple, rechecks stored byte length and
+SHA-256, then decodes at most 128 canonical records, 128 KiB per record, and
+2 MiB total decoded bytes. Page indexes and binary record identities must be
+strictly increasing across the complete import. The importer retains only the
+current bounded page and the prior identity. Corruption, truncation, duplicate
+or reordered identities, locator drift, missing pages, extra pages, and count
+drift fail before finalization.
+
+The first PWA consumer feeds verified compact feed-card projections into the
+existing resumable IndexedDB generation writer. Exact page retry reuses that
+writer's batch receipts, a completed generation performs no cloud read, and
+selection occurs only after every declared page commits. This projection is
+disposable reader state. It does not claim that compact feed cards are the
+complete portable logical checkpoint, and it adds no product caller, cloud
+polling, provider behavior, writer authority, or Automerge retirement.
 
 The dormant writer-reassignment coordinator accepts only an exact existing
 control revision and pointer, a new bounded writer identity, a new storage
