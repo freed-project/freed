@@ -452,7 +452,10 @@ export async function captureDomFeed(
 > rebuilds it only when the worker reports a real corpus change, and indexes
 > a smaller preserved-text window so a one-off search cannot keep a second
 > library-sized text copy resident in renderer memory for the rest of the
-> session. The desktop perf harness also switched from Chromium's broken
+> session. Desktop search now also builds that disposable index from bounded
+> pages of the authenticated selected SQLite generation and retains at most
+> the first 100 matching result rows, so typing no longer requires or clones
+> the renderer's full `FeedItem[]`. The desktop perf harness also switched from Chromium's broken
 > zero-value heap metric path to `Runtime.getHeapUsage()` and added a heavy
 > preserved-text search scenario, so memory regressions stop passing CI by
 > emitting a very confident `0.0 MB`.

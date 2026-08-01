@@ -2908,11 +2908,17 @@ both active workers. The PWA now also persists exact filtered recommendation
 order in a separate query-specific IndexedDB generation while holding at most
 one 128-row output page, then serves it through the closed dormant browse
 protocol. Desktop generation selection and the native browse reader now serve
-the default product feed through bounded pages. Renderer-cache eviction and the
-remaining product readers are still absent, so `adapter_proof_missing` still
-blocks the query and Gate D remains inactive. Authenticated PWA materialization,
-runtime registration, and shared semantic contracts likewise do not activate
-Gate D on their own.
+the default product feed through bounded pages. Desktop full-text search also
+streams the authenticated selected SQLite generation twice: once to build its
+disposable MiniSearch term index and once to retain the first 100 matching rows
+in the existing priority-plus-relevance order while counting every match. The
+scanner shares one in-flight build across feed, header, and command surfaces,
+keeps only one 64-row lossless page during traversal, and discards the index
+when the query clears. The input renderer corpus is never indexed or copied on
+that path. Renderer-cache eviction and the remaining product readers are still
+absent, so `adapter_proof_missing` still blocks the query and Gate D remains
+inactive. Authenticated PWA materialization, runtime registration, and shared
+semantic contracts likewise do not activate Gate D on their own.
 
 An interactive cursor does not pin an unbounded SQLite read transaction or WAL.
 If an adapter uses a pinned snapshot, the query registry declares its maximum

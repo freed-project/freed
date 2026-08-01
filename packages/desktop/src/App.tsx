@@ -18,6 +18,7 @@ import {
   PlatformProvider,
   type AvailableUpdateInfo,
   type PlatformConfig,
+  type ScanLibraryItems,
   type UpdateDownloadProgress,
 } from "@freed/ui/context";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
@@ -67,7 +68,10 @@ import {
   getItemPreservedText,
 } from "./lib/automerge";
 import { openBoundedDesktopFeedReader } from "./lib/library-core-feed-browse-reader-runtime";
-import { readLibraryCoreItemDetail } from "./lib/library-core-item-detail-runtime";
+import {
+  openLibraryCoreItemScanSession,
+  readLibraryCoreItemDetail,
+} from "./lib/library-core-item-detail-runtime";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -208,6 +212,22 @@ import { DESKTOP_CHANGELOG_PREVIEW } from "./lib/changelog-preview";
 import { useClipboardSaveShortcut } from "./hooks/useClipboardSaveShortcut";
 import { clearClipboardSaveShortcutConfig } from "./lib/clipboard-save-shortcut";
 
+const scanLibraryCoreItemsForDesktop: ScanLibraryItems = async (visit) => {
+  const session = await openLibraryCoreItemScanSession();
+  try {
+    for (;;) {
+      const page = await session.nextPage();
+      if (page.items.length > 0) {
+        const decision = await visit(page.items);
+        if (decision === "stop") return;
+      }
+      if (page.done) return;
+    }
+  } finally {
+    await session.close();
+  }
+};
+
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const IS_FEATURE_PREVIEW = import.meta.env.VITE_FREED_FEATURE_PREVIEW === "1";
 const IS_LOCAL_PREVIEW = IS_FEATURE_PREVIEW || (import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1");
@@ -229,7 +249,6 @@ interface DesktopSessionState {
   screenLocked: boolean;
   error?: string | null;
 }
-
 type LockedStartupState = "checking" | "ready" | "locked";
 
 type FriendGraphSurfacePerf = {
@@ -1443,6 +1462,9 @@ function App() {
       openUrl: (url: string) => { void shellOpen(url); },
       openBoundedFeedReader: tauriRuntimeAvailable
         ? openBoundedDesktopFeedReader
+        : undefined,
+      scanLibraryItems: tauriRuntimeAvailable
+        ? scanLibraryCoreItemsForDesktop
         : undefined,
       pickContact: pickContactViaTauri,
       googleContacts: tauriRuntimeAvailable
