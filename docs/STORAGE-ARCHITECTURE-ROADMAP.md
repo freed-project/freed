@@ -161,13 +161,15 @@ to Automerge. After both sides confirm, the bridge deletes that revision's
 spool and scratch graph and retains only the selected and exact rollback
 projection generations.
 
-The first Gate D product read is now ready for owner-reviewed activation.
-Freed Desktop's all-content feed can bind the exact durable Automerge source to
-one query-specific sealed generation and page compact cards from SQLite. Search,
-Friends-only filtering, saved-content sorting, PWA, and every other full-corpus
-consumer still use the legacy path. Source mismatch or reader failure returns
-to Automerge. The temporary React window also returns to Automerge before it
-could exceed 512 compact cards because reverse paging is not active yet. The device-local
+Gate D now serves the all-content feed, item detail, exact Library facets, and
+bounded Map candidates from authenticated selected SQLite generations. Header,
+sidebar, and export counts share one source-versioned native aggregate instead
+of scanning or retaining item identities. Map filtering stays native when the
+complete candidate set fits 1,000 rows and fails back without truncation. Search, Friends-only filtering, saved-content
+sorting, Story Wall, PWA, and the remaining full-corpus consumers still use the
+legacy path. Source mismatch or reader failure returns to Automerge. The
+temporary React feed window also returns to Automerge before it could exceed
+512 compact cards because reverse paging is not active yet. The device-local
 `freed.libraryCore.feedBrowseReaderV1.disabled=1` switch disables this reader
 before projection work. This slice does not satisfy Gate C or complete Gate D.
 IndexedDB still creates one source-sized structured clone, Automerge remains

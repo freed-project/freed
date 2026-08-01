@@ -2,9 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 import type { FeedItemRow } from "@freed/shared/projection";
 import type { LibraryCoreProjectionSourceV1 } from "./automerge-types";
 import {
+  readLibraryCoreFacetSummary,
   readLibraryCoreItemDetail,
+  readLibraryCoreSurfaceItems,
   scanLibraryCoreItems,
 } from "./library-core-item-detail-runtime";
+
+vi.mock("./automerge", () => ({
+  getLibraryCoreProjectionSource: vi.fn(),
+}));
 
 const source: LibraryCoreProjectionSourceV1 = {
   schemaVersion: 1,
@@ -145,6 +151,66 @@ describe("Desktop Library Core item detail runtime", () => {
         vi.fn().mockResolvedValue(response({ ...row, globalId: "rss:other" })),
       ),
     ).rejects.toThrow("row is invalid");
+  });
+
+  it("reads exact native facets without retaining item identities", async () => {
+    const detail = response();
+    const readNative = vi.fn().mockResolvedValue({
+      queryId: "library_facet_summary_v1",
+      schemaVersion: 1,
+      source: detail.source,
+      summary: {
+        archivedCount: 2,
+        savedArchivedCount: 1,
+        savedCount: 3,
+        savedPlatformCount: 4,
+        tags: ["alpha", "beta"],
+        totalCount: 10,
+      },
+    });
+
+    await expect(
+      readLibraryCoreFacetSummary(
+        vi.fn().mockResolvedValue(source),
+        readNative,
+      ),
+    ).resolves.toEqual({
+      archivedCount: 2,
+      savedArchivedCount: 1,
+      savedCount: 3,
+      savedPlatformCount: 4,
+      tags: ["alpha", "beta"],
+      totalCount: 10,
+    });
+    expect(readNative).toHaveBeenCalledWith({
+      queryId: "library_facet_summary_v1",
+      schemaVersion: 1,
+    });
+  });
+
+  it("reads only the bounded native candidates for a secondary surface", async () => {
+    const detail = response();
+    const readNative = vi.fn().mockResolvedValue({
+      queryId: "library_surface_items_v1",
+      rows: [row],
+      schemaVersion: 1,
+      source: detail.source,
+      surface: "map",
+    });
+
+    const items = await readLibraryCoreSurfaceItems(
+      "map",
+      vi.fn().mockResolvedValue(source),
+      readNative,
+    );
+
+    expect(items.map((item) => item.globalId)).toEqual([row.globalId]);
+    expect(readNative).toHaveBeenCalledWith({
+      limit: 1_000,
+      queryId: "library_surface_items_v1",
+      schemaVersion: 1,
+      surface: "map",
+    });
   });
 
   it("streams bounded SQLite pages without accumulating the corpus", async () => {

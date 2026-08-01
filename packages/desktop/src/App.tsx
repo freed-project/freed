@@ -70,7 +70,9 @@ import {
 import { openBoundedDesktopFeedReader } from "./lib/library-core-feed-browse-reader-runtime";
 import {
   openLibraryCoreItemScanSession,
+  readLibraryCoreFacetSummary,
   readLibraryCoreItemDetail,
+  readLibraryCoreSurfaceItems,
 } from "./lib/library-core-item-detail-runtime";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
@@ -1466,6 +1468,12 @@ function App() {
       scanLibraryItems: tauriRuntimeAvailable
         ? scanLibraryCoreItemsForDesktop
         : undefined,
+      readLibraryFacetSummary: tauriRuntimeAvailable && isInitialized
+        ? readLibraryCoreFacetSummary
+        : undefined,
+      readLibrarySurfaceItems: tauriRuntimeAvailable && isInitialized
+        ? readLibraryCoreSurfaceItems
+        : undefined,
       pickContact: pickContactViaTauri,
       googleContacts: tauriRuntimeAvailable
         ? {
@@ -1494,7 +1502,7 @@ function App() {
       })(),
       bugReporting: desktopBugReporting,
     }),
-     [checkForUpdates, applyUpdate, connectGoogleContacts, fetchGoogleContactsForDesktop, handleFactoryReset, hasKeyboardShortcutSettingsSurface, installedReleaseChannel, reconnectCloudProvider, releaseChannel, releaseChannelResolved, retryCloudProvider, seedSocialConnections, setReleaseChannel, ShortcutsSettingsContent, tauriRuntimeAvailable, updateState],
+     [checkForUpdates, applyUpdate, connectGoogleContacts, fetchGoogleContactsForDesktop, handleFactoryReset, hasKeyboardShortcutSettingsSurface, installedReleaseChannel, isInitialized, reconnectCloudProvider, releaseChannel, releaseChannelResolved, retryCloudProvider, seedSocialConnections, setReleaseChannel, ShortcutsSettingsContent, tauriRuntimeAvailable, updateState],
   );
 
   if (lockedStartupState !== "ready") {

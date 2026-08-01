@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  extractLocationFromItem,
   getLocationTimelineBounds,
   getLatestAuthorLocationMarkers,
   getLatestFriendLocationMarkers,
@@ -8,6 +9,7 @@ import {
 } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
 import { useResolvedLocations } from "../../hooks/useResolvedLocations.js";
+import { useLibrarySurfaceItems } from "../../hooks/useLibrarySurfaceItems.js";
 import { openAccountFromMap, openFriendFromMap, openPostFromMap } from "../../lib/map-navigation.js";
 import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
 import { useThemePreference } from "../../lib/theme.js";
@@ -29,6 +31,10 @@ type MapViewportInsets = {
 
 interface MapViewProps {
   viewportInsets?: MapViewportInsets;
+}
+
+function hasLocationSignal(item: Parameters<typeof extractLocationFromItem>[0]): boolean {
+  return Boolean(extractLocationFromItem(item));
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -141,6 +147,7 @@ function labelPositionStyle(
 
 export function MapView({ viewportInsets }: MapViewProps) {
   const items = useAppStore((state) => state.items);
+  const searchCorpusVersion = useAppStore((state) => state.searchCorpusVersion);
   const persons = useAppStore((state) => state.persons);
   const accounts = useAppStore((state) => state.accounts);
   const selectedPersonId = useAppStore((state) => state.selectedPersonId);
@@ -154,7 +161,16 @@ export function MapView({ viewportInsets }: MapViewProps) {
   const [themeId] = useThemePreference();
   const [rangeSelection, setRangeSelection] = useState<LocationTimeRange | null>(null);
 
-  const { resolvedItems } = useResolvedLocations(items, persons, accounts);
+  const readFallbackLocationItems = useCallback(
+    () => items.filter(hasLocationSignal),
+    [items],
+  );
+  const locationItems = useLibrarySurfaceItems(
+    "map",
+    readFallbackLocationItems,
+    searchCorpusVersion,
+  );
+  const { resolvedItems } = useResolvedLocations(locationItems, persons, accounts);
   const rawTimeBounds = useMemo(() => getLocationTimelineBounds(resolvedItems), [resolvedItems]);
   const timeBounds = useMemo(
     () => (rawTimeBounds ? snapTimeBoundsToDays(rawTimeBounds) : null),

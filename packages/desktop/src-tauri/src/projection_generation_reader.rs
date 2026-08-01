@@ -9,8 +9,8 @@ use crate::projection_generation_registry::{
     ProjectionGenerationRegistryError,
 };
 use crate::shadow_store::{
-    FeedItemRow, FeedPage, ItemScanPage, PageCursor, ProjectionSourceV1, ShadowStore,
-    ShadowStoreError,
+    FeedItemRow, FeedPage, ItemScanPage, LibraryFacetSummary, LibrarySurface, PageCursor,
+    ProjectionSourceV1, ShadowStore, ShadowStoreError,
 };
 use sha2::{Digest, Sha256};
 use std::fmt;
@@ -207,6 +207,18 @@ impl ProjectionGenerationReader {
 
     pub(super) fn item_detail(&self, global_id: &str) -> ReaderResult<Option<FeedItemRow>> {
         self.store.item_detail(global_id).map_err(Into::into)
+    }
+
+    pub(super) fn facet_summary(&self) -> ReaderResult<LibraryFacetSummary> {
+        self.store.facet_summary().map_err(Into::into)
+    }
+
+    pub(super) fn surface_items(
+        &self,
+        surface: LibrarySurface,
+        limit: u32,
+    ) -> ReaderResult<Vec<FeedItemRow>> {
+        self.store.surface_items(surface, limit).map_err(Into::into)
     }
 
     pub(super) fn item_scan_page(
