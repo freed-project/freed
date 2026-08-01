@@ -66,6 +66,11 @@ describe("useContactSync", () => {
       resolveFetch = resolve;
     }));
     const setPendingMatchCount = vi.fn();
+    const scanLibraryItems = vi.fn<NonNullable<PlatformConfig["scanLibraryItems"]>>(
+      async (visit) => {
+        await visit([]);
+      },
+    );
     const store = <T,>(selector: (state: unknown) => T): T => selector({
       persons: {},
       accounts: {},
@@ -74,6 +79,7 @@ describe("useContactSync", () => {
     });
     const platformValue = {
       store,
+      scanLibraryItems,
       googleContacts: {
         getToken,
         connect: vi.fn(async () => {}),
@@ -116,6 +122,7 @@ describe("useContactSync", () => {
       await firstSync;
     });
 
+    expect(scanLibraryItems).toHaveBeenCalledOnce();
     expect(actions?.getSyncState()).toMatchObject({
       authStatus: "connected",
       syncStatus: "idle",

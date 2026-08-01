@@ -12,8 +12,10 @@ import {
 } from "../lib/sample-library-seed.js";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
 import { toast } from "./Toast.js";
+import { useLegacyLibraryItems } from "../hooks/useLegacyLibraryItems.js";
 
 export function SampleDataTestingSection() {
+  useLegacyLibraryItems();
   const initialize = useAppStore((s) => s.initialize);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const addSampleLibraryData = useAppStore((s) => s.addSampleLibraryData);

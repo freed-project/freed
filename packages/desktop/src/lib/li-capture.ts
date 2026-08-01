@@ -469,12 +469,13 @@ async function captureLiFeedInternal(resetEpoch: number): Promise<LiSyncResult> 
         "change",
         `[LI] writing ${result.items.length.toLocaleString()} candidate item${result.items.length === 1 ? "" : "s"} to the library`,
       );
-      const before = store.items.filter((i) => i.platform === "linkedin").length;
+      const before = store.itemCountByPlatform?.linkedin
+        ?? store.items.filter((item) => item.platform === "linkedin").length;
       await store.addItems(result.items);
       assertFactoryResetEpoch(resetEpoch);
-      const after = useAppStore
-        .getState()
-        .items.filter((i) => i.platform === "linkedin").length;
+      const afterState = useAppStore.getState();
+      const after = afterState.itemCountByPlatform?.linkedin
+        ?? afterState.items.filter((item) => item.platform === "linkedin").length;
       result.diag.itemsAdded = Math.max(0, after - before);
       addDebugEvent(
         "change",

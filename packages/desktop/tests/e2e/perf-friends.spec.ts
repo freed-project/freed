@@ -354,6 +354,12 @@ async function collectLongTasksDuring<T>(
 test("Friends WebGL2 compatibility view handles 1,600 visible people while zooming and panning", async ({ app, page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "freed.libraryCore.rendererItemEvictionV1.disabled",
+      "1",
+    );
+  });
   await app.goto();
   await app.waitForReady();
   await seedLargeFriendsWorkspace(page);
@@ -404,6 +410,7 @@ test("Friends WebGL2 compatibility view handles 1,600 visible people while zoomi
 
   const viewport = page.getByTestId("friend-graph-viewport");
   await expect(viewport).toBeVisible({ timeout: 30_000 });
+
   await expect
     .poll(async () => {
       const perf = await readGraphPerf(page);

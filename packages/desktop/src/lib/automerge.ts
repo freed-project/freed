@@ -587,6 +587,8 @@ function requestResultOnWorker<T>(
 let lastDocState: DocState | null = null;
 let lastDocStats: DocStats | null = null;
 let lastItemIndexById: ItemIndex = new Map();
+let rendererItemHydrationLeaseCount = 0;
+let rendererItemHydrationTransition: Promise<void> = Promise.resolve();
 
 // ---------------------------------------------------------------------------
 // Subscriber model
@@ -693,14 +695,20 @@ function handleWorkerMessage(
   if (msg.type === "ITEM_PATCH") {
     if (!lastDocState) return;
     const changedItems = msg.patches.map((patch) => patch.item);
-    const patched = applyItemPatchesToState(lastDocState, msg.patches, lastItemIndexById, {
-      orderedItemIds: msg.orderedItemIds,
-      preservePriorityOrder: msg.preservePriorityOrder,
-      searchCorpusVersion: msg.searchCorpusVersion,
-      docItemCount: msg.docItemCount,
-      addedItemIds: msg.addedItemIds,
-      removedItemIds: msg.removedItemIds,
-    });
+    const patched = applyItemPatchesToState(
+      lastDocState,
+      msg.patches,
+      lastItemIndexById,
+      {
+        orderedItemIds: msg.orderedItemIds,
+        preservePriorityOrder: msg.preservePriorityOrder,
+        searchCorpusVersion: msg.searchCorpusVersion,
+        docItemCount: msg.docItemCount,
+        addedItemIds: msg.addedItemIds,
+        removedItemIds: msg.removedItemIds,
+        retainItems: rendererItemHydrationLeaseCount > 0,
+      },
+    );
     lastItemIndexById = patched.itemIndex;
     publishState(patched.state, {
       source: "item_patch",
@@ -1337,6 +1345,7 @@ function sendInit(): Promise<DocState> {
         reqId,
         type: "INIT",
         desktopClientRegistration: desktopClientRegistration ?? undefined,
+        rendererItemHydrationEnabled: rendererItemHydrationLeaseCount > 0,
       } satisfies WorkerRequest);
     } catch (error) {
       if (
@@ -1450,11 +1459,24 @@ const libraryCoreExternalExportWorkerClient: LibraryCoreExternalExportWorkerClie
 let libraryCoreExternalProjectionSelected = false;
 const LIBRARY_CORE_EXTERNAL_MIGRATION_DISABLED_KEY =
   "freed.libraryCore.externalMigrationV1.disabled";
+export const LIBRARY_CORE_RENDERER_ITEM_EVICTION_DISABLED_KEY =
+  "freed.libraryCore.rendererItemEvictionV1.disabled";
 
 function shouldRunLibraryCoreExternalMigration(): boolean {
   if (import.meta.env.VITE_TEST_TAURI === "1" || !isTauri()) return false;
   try {
     return localStorage.getItem(LIBRARY_CORE_EXTERNAL_MIGRATION_DISABLED_KEY) !== "1";
+  } catch {
+    return true;
+  }
+}
+
+function shouldEvictRendererItems(): boolean {
+  try {
+    return (
+      localStorage.getItem(LIBRARY_CORE_RENDERER_ITEM_EVICTION_DISABLED_KEY) !==
+      "1"
+    );
   } catch {
     return true;
   }
@@ -1501,6 +1523,9 @@ export function initDoc(
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
+    if (!shouldEvictRendererItems() && rendererItemHydrationLeaseCount === 0) {
+      rendererItemHydrationLeaseCount = 1;
+    }
     await ensureWorkerReady();
     try {
       await migrateLibraryCoreBeforeAutomergeLoad();
@@ -1535,6 +1560,58 @@ export function initDoc(
 /** Latest hydrated state from the worker. Returns null before first INIT. */
 export function getDocState(): DocState | null {
   return lastDocState;
+}
+
+function setRendererItemHydration(enabled: boolean): Promise<void> {
+  const transition = rendererItemHydrationTransition.then(() =>
+    request({
+      reqId: nextReqId++,
+      type: "SET_RENDERER_ITEM_HYDRATION",
+      enabled,
+    }),
+  );
+  rendererItemHydrationTransition = transition.catch(() => undefined);
+  return transition;
+}
+
+/**
+ * Temporarily expose the legacy full item array for a surface that has not yet
+ * moved to bounded Library Core reads. The default Desktop shell owns no item
+ * corpus, and the final release clears it after the last compatibility reader
+ * unmounts.
+ */
+export async function acquireLegacyRendererItems(): Promise<() => void> {
+  const wasEmpty = rendererItemHydrationLeaseCount === 0;
+  rendererItemHydrationLeaseCount += 1;
+  try {
+    if (wasEmpty) await setRendererItemHydration(true);
+    else await rendererItemHydrationTransition;
+  } catch (error) {
+    rendererItemHydrationLeaseCount = Math.max(
+      0,
+      rendererItemHydrationLeaseCount - 1,
+    );
+    throw error;
+  }
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    rendererItemHydrationLeaseCount = Math.max(
+      0,
+      rendererItemHydrationLeaseCount - 1,
+    );
+    if (rendererItemHydrationLeaseCount === 0) {
+      void setRendererItemHydration(false).catch((error) => {
+        log.warn(
+          `[automerge-worker] failed to release renderer item hydration: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
+    }
+  };
 }
 
 export async function getDocBinary(): Promise<Uint8Array> {

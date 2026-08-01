@@ -8,7 +8,11 @@
 
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { FeedItem, RssFeed, OPMLFeedEntry } from "@freed/shared";
-import { generateOPML, downloadFile } from "@freed/shared";
+import {
+  canonicalEssayProviderUrl,
+  generateOPML,
+  downloadFile,
+} from "@freed/shared";
 import {
   parseFeedXml,
   feedToFeedItems,
@@ -48,6 +52,7 @@ import {
 } from "./factory-reset-guard";
 import { cacheRssEssayBodies } from "./rss-essay-cache";
 import type { RssFeedRefreshUpdate } from "./automerge-types";
+import { scanLibraryCoreItems } from "./library-core-item-detail-runtime";
 
 export type SocialProviderRefreshStatus =
   | "success"
@@ -111,9 +116,34 @@ async function fetchRssFeed(
 
 async function preserveRssEssayBodies(
   items: readonly FeedItem[],
-  existingItems: readonly FeedItem[],
 ): Promise<void> {
   if (!isTauri() || items.length === 0) return;
+  const targetUrls = new Set(
+    items.flatMap((item) => {
+      const url = canonicalEssayProviderUrl(
+        item.content.linkPreview?.url ?? item.sourceUrl,
+      );
+      return url ? [url] : [];
+    }),
+  );
+  const existingItems: FeedItem[] = [];
+  if (targetUrls.size > 0) {
+    await scanLibraryCoreItems((page) => {
+      for (const item of page) {
+        const url = canonicalEssayProviderUrl(
+          item.content.linkPreview?.url ?? item.sourceUrl,
+        );
+        if (url && targetUrls.has(url)) existingItems.push(item);
+      }
+    }).catch((error) => {
+      addDebugEvent(
+        "error",
+        `[RSS] bounded duplicate lookup failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    });
+  }
   const result = await cacheRssEssayBodies(items, existingItems);
   if (result.failed > 0) {
     addDebugEvent(
@@ -149,7 +179,7 @@ export function addRssFeed(feedUrl: string): Promise<void> {
       const feed = feedToRssFeed(parsed);
       const items = feedToFeedItems(parsed);
 
-      await preserveRssEssayBodies(items, store.items);
+      await preserveRssEssayBodies(items);
       assertFactoryResetEpoch(resetEpoch);
       await store.addFeed(feed);
       assertFactoryResetEpoch(resetEpoch);
@@ -465,9 +495,7 @@ async function refreshEnabledRssFeeds(
       const feedUpdates: RssFeedRefreshUpdate[] = [];
       const feedErrors: string[] = [];
       const rssStartedAt = Date.now();
-      const rssBefore = store.items.filter(
-        (item) => item.platform === "rss" || Boolean(item.rssSource),
-      ).length;
+      const rssBefore = store.docItemCount ?? store.items.length;
       let rssSeen = 0;
 
       for (let i = 0; i < feeds.length; i += FETCH_CONCURRENCY) {
@@ -564,12 +592,11 @@ async function refreshEnabledRssFeeds(
       }
 
       if (feedUpdates.length > 0 || allNewItems.length > 0) {
-        await preserveRssEssayBodies(allNewItems, store.items);
+        await preserveRssEssayBodies(allNewItems);
         await docBatchRefreshFeeds(feedUpdates, allNewItems);
       }
-      const rssAfter = useAppStore
-        .getState()
-        .items.filter((item) => item.platform === "rss" || Boolean(item.rssSource)).length;
+      const rssAfterState = useAppStore.getState();
+      const rssAfter = rssAfterState.docItemCount ?? rssAfterState.items.length;
       const rssItemsAdded = Math.max(0, rssAfter - rssBefore);
       await recordProviderHealthEvent({
         provider: "rss",

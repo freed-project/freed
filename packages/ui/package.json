@@ -55,6 +55,7 @@
     "./lib/settings-store": "./src/lib/settings-store.ts",
     "./lib/theme": "./src/lib/theme.ts",
     "./context": "./src/context/index.ts",
+    "./hooks/useLegacyLibraryItems": "./src/hooks/useLegacyLibraryItems.ts",
     "./components/friends": "./src/components/friends/index.ts"
   },
   "peerDependencies": {

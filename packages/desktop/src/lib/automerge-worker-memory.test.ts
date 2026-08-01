@@ -79,16 +79,20 @@ describe("automerge worker memory routing", () => {
     expect(workerSource).toMatch(
       /contentSignals:\s*tags\.length > 0\s*\?\s*\(\{\s*tags:\s*\[\.\.\.tags\]\s*\}\s*as FeedItem\["contentSignals"\]\)\s*:\s*undefined/,
     );
-    expect(workerSource).toContain("cloneFeedItemsForDesktopUi");
+    expect(workerSource).toContain(
+      "sourceItems.map((item) => cloneFeedItemForPatch(item))",
+    );
     expect(patchBody).toContain("trimFeedItemForDesktopUi(item)");
     expect(patchBody).not.toContain("JSON.parse(JSON.stringify(item))");
   });
 
-  it("hydrates desktop UI state without deep cloning the whole document first", () => {
+  it("hydrates compact desktop state without cloning the item corpus by default", () => {
     const body = functionBody("hydrateFromDoc");
 
     expect(body).not.toContain("A.toJS(doc)");
-    expect(body).toContain("cloneFeedItemsForDesktopUi");
+    expect(body).toContain("rendererItemHydrationEnabled");
+    expect(body).toContain("? sourceItems.map((item) => cloneFeedItemForPatch(item))");
+    expect(body).toContain(": []");
     expect(body).toMatch(/cloneRecordValues\(\s*doc\.rssFeeds/);
     expect(body).toContain("docItemCount");
   });
@@ -216,7 +220,8 @@ describe("automerge worker memory routing", () => {
     expect(helperBody).toContain("removedItemIds: removedEssayDuplicateIds");
     expect(helperBody).toContain("candidateHasKnownLinkPreviewUrl");
     expect(helperBody).not.toContain("Object.values(doc.feedItems");
-    expect(helperBody).not.toContain("saveAndBroadcast");
+    expect(helperBody).toContain("if (removedEssayDuplicateIds.length > 0)");
+    expect(helperBody).toContain("await saveAndBroadcast(candidate, trace");
   });
 
   it("batch item writes use item patches unless social dedup rewrites existing records", () => {

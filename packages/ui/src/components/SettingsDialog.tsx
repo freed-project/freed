@@ -30,6 +30,7 @@ import {
 } from "../context/PlatformContext.js";
 import { describeInstalledBuild, readBuildMetadata } from "../lib/build-info.js";
 import { useDebugStore } from "../lib/debug-store.js";
+import { useLegacyLibraryItems } from "../hooks/useLegacyLibraryItems.js";
 import { useSettingsStore } from "../lib/settings-store.js";
 import {
   formatSampleDataSummary,
@@ -464,6 +465,7 @@ type UpdateCheckState =
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
+  useLegacyLibraryItems(open);
   const isMobile = useIsMobile();
   const {
     SettingsExtraSections,

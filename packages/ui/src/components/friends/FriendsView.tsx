@@ -17,6 +17,7 @@ import { buildFriendCandidateSuggestions, isInReconnectZone } from "@freed/share
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useContactSyncContext } from "../../context/ContactSyncContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
+import { useLegacyLibraryItems } from "../../hooks/useLegacyLibraryItems.js";
 import type { FriendGraphHandle } from "./FriendGraph.js";
 import { FriendAvatar } from "./FriendAvatar.js";
 import { FriendGraph } from "./FriendGraph.js";
@@ -545,6 +546,7 @@ export function FriendsView({
   onFriendsSidebarOpenChange,
   mobileSurface,
 }: FriendsViewProps) {
+  useLegacyLibraryItems();
   const persons = useAppStore((s) => s.persons);
   const accounts = useAppStore((s) => s.accounts);
   const feeds = useAppStore((s) => s.feeds);
