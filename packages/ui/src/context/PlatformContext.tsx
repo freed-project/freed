@@ -72,6 +72,21 @@ export interface BoundedFeedReader {
   close(): Promise<void>;
 }
 
+export type LibraryItemScanDecision = "continue" | "stop";
+
+/**
+ * Visit one bounded page of lossless Library items at a time.
+ *
+ * Desktop serves this from its authenticated selected SQLite generation. The
+ * callback must not retain pages after it resolves. Returning stop closes
+ * the native reader without traversing the rest of the Library.
+ */
+export type ScanLibraryItems = (
+  visit: (
+    items: readonly FeedItem[],
+  ) => LibraryItemScanDecision | Promise<LibraryItemScanDecision>,
+) => Promise<void>;
+
 export interface ChangelogPreviewRelease {
   version: string;
   channel: ReleaseChannel;
@@ -392,6 +407,9 @@ export interface PlatformConfig {
     filter: FilterOptions,
     rankingClockMs: number,
   ) => Promise<BoundedFeedReader>;
+
+  /** Stream the selected local Library generation without hydrating a corpus array. */
+  scanLibraryItems?: ScanLibraryItems;
 
   /** Optional authenticated YouTube actions for the shared reader. */
   youtube?: YouTubeControls;
