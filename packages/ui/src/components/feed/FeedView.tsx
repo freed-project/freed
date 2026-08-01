@@ -12,6 +12,7 @@ import {
   usePlatform,
 } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
+import { useLegacyLibraryItems } from "../../hooks/useLegacyLibraryItems.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import {
@@ -338,6 +339,13 @@ export function FeedView() {
     openReader: openBoundedFeedReader,
     sourceVersion: searchCorpusVersion,
   });
+  useLegacyLibraryItems(
+    isInitialized &&
+      (!openBoundedFeedReader ||
+        boundedFeed.status === "failed" ||
+        friendsMode !== "all_content" ||
+        activeFilter.savedOnly),
+  );
   const handleItemSave = useCallback(
     (item: FeedItem) => {
       patchBoundedItems((candidate) =>

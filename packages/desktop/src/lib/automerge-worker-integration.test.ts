@@ -1203,6 +1203,79 @@ describe("real Automerge worker module", () => {
     ).toBeTypeOf("number");
   }, 90_000);
 
+  it("evicts renderer items by default and hydrates them only for a compatibility lease", async () => {
+    storageHarness.binary = A.save(createSmallCompatibilityDoc());
+
+    sendRequest(scope, { reqId: 150, type: "INIT" });
+    const compactState = await waitForPost(
+      posts,
+      (message) => message.type === "STATE_UPDATE",
+    );
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 150,
+    );
+    if (compactState.message.type !== "STATE_UPDATE") {
+      throw new Error("Expected compact initial state");
+    }
+    expect(compactState.message.state.items).toEqual([]);
+    expect(compactState.message.state.docItemCount).toBe(1);
+    expect(compactState.message.state.totalItemCount).toBe(1);
+    expect(compactState.message.state.itemCountByPlatform).toEqual({
+      saved: 1,
+    });
+
+    const hydrateStart = posts.length;
+    sendRequest(scope, {
+      reqId: 151,
+      type: "SET_RENDERER_ITEM_HYDRATION",
+      enabled: true,
+    });
+    const hydratedState = await waitForPost(
+      posts,
+      (message) =>
+        message.type === "STATE_UPDATE" &&
+        message.mutation === "SET_RENDERER_ITEM_HYDRATION",
+      hydrateStart,
+    );
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 151,
+      hydrateStart,
+    );
+    if (hydratedState.message.type !== "STATE_UPDATE") {
+      throw new Error("Expected hydrated compatibility state");
+    }
+    expect(hydratedState.message.state.items).toHaveLength(1);
+    expect(hydratedState.message.state.items[0]?.globalId).toBe(
+      "saved:worker-compatibility",
+    );
+
+    const releaseStart = posts.length;
+    sendRequest(scope, {
+      reqId: 152,
+      type: "SET_RENDERER_ITEM_HYDRATION",
+      enabled: false,
+    });
+    const releasedState = await waitForPost(
+      posts,
+      (message) =>
+        message.type === "STATE_UPDATE" &&
+        message.mutation === "SET_RENDERER_ITEM_HYDRATION",
+      releaseStart,
+    );
+    await waitForPost(
+      posts,
+      (message) => message.type === "ACK" && message.reqId === 152,
+      releaseStart,
+    );
+    if (releasedState.message.type !== "STATE_UPDATE") {
+      throw new Error("Expected released compact state");
+    }
+    expect(releasedState.message.state.items).toEqual([]);
+    expect(releasedState.message.state.docItemCount).toBe(1);
+  }, 30_000);
+
   it("generates deterministic fixture bytes for the same bounded profile", () => {
     const options = {
       targetBytes: 128 * 1024,
@@ -1236,6 +1309,7 @@ describe("real Automerge worker module", () => {
       reqId: 101,
       type: "INIT",
       desktopClientRegistration: currentRegistration,
+      rendererItemHydrationEnabled: true,
     });
     await waitForPost(
       posts,

@@ -12,6 +12,7 @@ import {
 } from "@freed/shared";
 import { useAppStore, usePlatform, type StoryWallArchiveSummary } from "../../context/PlatformContext.js";
 import { toast } from "../Toast.js";
+import { useLegacyLibraryItems } from "../../hooks/useLegacyLibraryItems.js";
 
 type StoryWallPreferenceUpdate = Partial<Omit<StoryWallPreferences, "style" | "publishTarget">> & {
   style?: Partial<StoryWallPreferences["style"]>;
@@ -314,7 +315,10 @@ interface StoryWallViewProps {
   variant?: StoryWallViewVariant;
 }
 
-export function StoryWallView({ variant = "workspace" }: StoryWallViewProps = {}) {
+export function StoryWallView({
+  variant = "workspace",
+}: StoryWallViewProps = {}) {
+  useLegacyLibraryItems();
   const items = useAppStore((s) => s.items);
   const accounts = useAppStore((s) => s.accounts);
   const preferences = useAppStore((s) => s.preferences);

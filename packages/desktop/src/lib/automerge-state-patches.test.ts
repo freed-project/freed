@@ -235,6 +235,70 @@ describe("Automerge item patch state updates", () => {
     expect(result.state.totalArchivableCount).toBe(state.totalArchivableCount);
   });
 
+  it("updates exact aggregate counts without retaining the patched item corpus", () => {
+    const unread = makeItem("rss:unread");
+    const state: DocState = {
+      ...makeState([]),
+      feedSourceOrderIds: ["rss:unread", "rss:read"],
+      docItemCount: 2,
+    };
+    const patchedUnread = makeItem("rss:unread", { readAt: 20 });
+
+    const result = applyItemPatchesToState(
+      state,
+      [{ item: patchedUnread, previousItem: unread }],
+      new Map(),
+      { retainItems: false },
+    );
+
+    expect(result.state.items).toEqual([]);
+    expect(result.itemIndex.size).toBe(0);
+    expect(result.state.docItemCount).toBe(2);
+    expect(result.state.totalUnreadCount).toBe(0);
+    expect(result.state.unreadCountByPlatform).toEqual({});
+    expect(result.state.feedUnreadCounts).toEqual({});
+    expect(result.state.totalArchivableCount).toBe(2);
+    expect(result.state.archivableCountByPlatform).toEqual({ rss: 2 });
+    expect(result.state.archivableFeedCounts).toEqual({ [FEED_URL]: 2 });
+  });
+
+  it("counts an added item while keeping compact renderer state empty", () => {
+    const state: DocState = {
+      ...makeState([]),
+      feedUnreadCounts: {},
+      feedTotalCounts: {},
+      totalUnreadCount: 0,
+      unreadCountByPlatform: {},
+      totalItemCount: 0,
+      itemCountByPlatform: {},
+      totalArchivableCount: 0,
+      archivableCountByPlatform: {},
+      archivableFeedCounts: {},
+      feedSourceOrderIds: [],
+      docItemCount: 0,
+    };
+    const added = makeItem("rss:new");
+
+    const result = applyItemPatchesToState(
+      state,
+      [{ item: added, previousItem: null }],
+      new Map(),
+      {
+        addedItemIds: [added.globalId],
+        docItemCount: 1,
+        retainItems: false,
+      },
+    );
+
+    expect(result.state.items).toEqual([]);
+    expect(result.state.feedSourceOrderIds).toEqual([added.globalId]);
+    expect(result.state.docItemCount).toBe(1);
+    expect(result.state.totalItemCount).toBe(1);
+    expect(result.state.totalUnreadCount).toBe(1);
+    expect(result.state.itemCountByPlatform).toEqual({ rss: 1 });
+    expect(result.state.feedTotalCounts).toEqual({ [FEED_URL]: 1 });
+  });
+
   it("adds new items with ranked order metadata without a full state update", () => {
     const unread = makeItem("rss:unread");
     const read = makeItem("rss:read", { readAt: 10 });

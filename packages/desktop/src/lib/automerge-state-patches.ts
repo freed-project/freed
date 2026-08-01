@@ -192,6 +192,7 @@ export function applyItemPatchesToState(
     docItemCount?: number;
     addedItemIds?: string[];
     removedItemIds?: string[];
+    retainItems?: boolean;
   } = {},
 ): { state: DocState; itemIndex: ItemIndex } {
   const removedItemIds = options.removedItemIds ?? [];
@@ -227,6 +228,48 @@ export function applyItemPatchesToState(
           itemIndex,
         }
       : { state, itemIndex };
+  }
+
+  if (options.retainItems === false) {
+    const counts = cloneCountState(state);
+    const patchById = new Map(
+      patches.map((patch) => [patch.item.globalId, patch] as const),
+    );
+    for (const globalId of removedItemIds) {
+      const previous = patchById.get(globalId)?.previousItem;
+      if (previous) applyItemContribution(counts, previous, -1);
+    }
+    for (const patch of patches) {
+      if (removedItemIdSet.has(patch.item.globalId)) continue;
+      const previous = patch.previousItem;
+      if (previous && countContributionChanged(previous, patch.item)) {
+        applyItemContribution(counts, previous, -1);
+        applyItemContribution(counts, patch.item, 1);
+      } else if (previous === null) {
+        applyItemContribution(counts, patch.item, 1);
+      }
+    }
+    const docItemCount =
+      options.docItemCount ??
+      feedSourceOrderIds?.length ??
+      Math.max(
+        0,
+        state.docItemCount + addedItemIds.length - removedItemIds.length,
+      );
+    return {
+      state: applyCountState(
+        {
+          ...state,
+          items: [],
+          searchCorpusVersion:
+            options.searchCorpusVersion ?? state.searchCorpusVersion,
+          docItemCount,
+          feedSourceOrderIds,
+        },
+        counts,
+      ),
+      itemIndex: new Map(),
+    };
   }
 
   let nextItems: FeedItem[] | null = null;

@@ -16,6 +16,7 @@ import {
 
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
+import { useLegacyLibraryItems } from "../../hooks/useLegacyLibraryItems.js";
 import { buildCommandPaletteActions } from "../../lib/command-palette-registry.js";
 import {
   filterCommandPaletteActions,
@@ -382,7 +383,9 @@ export function SearchJumpField({
   const usesFloatingTrigger = variant === "trigger";
   const showFloatingField = usesFloatingTrigger && isTriggerOpen;
   const showInlineSurface = !usesFloatingTrigger && isFocused;
-  const showCommandSurface = showFloatingField || showInlineSurface || !!confirmAction;
+  const showCommandSurface =
+    showFloatingField || showInlineSurface || !!confirmAction;
+  useLegacyLibraryItems(showCommandSurface);
   const inlineBlurTimerRef = useRef<number | null>(null);
 
   const selectedItem = useMemo(

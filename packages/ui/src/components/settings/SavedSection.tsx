@@ -15,6 +15,7 @@ import {
 import { getWebsiteHostForChannel, type FeedItem } from "@freed/shared";
 import { SettingsListPanel } from "./SettingsListPanel.js";
 import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
+import { useLegacyLibraryItems } from "../../hooks/useLegacyLibraryItems.js";
 
 type SavedTab = "overview" | "import" | "export";
 
@@ -58,6 +59,7 @@ function TabBar({
 // ── Root section component ─────────────────────────────────────────────────────
 
 export function SavedSection() {
+  useLegacyLibraryItems();
   const { importMarkdown } = usePlatform();
 
   const availableTabs: { id: SavedTab; label: string }[] = [

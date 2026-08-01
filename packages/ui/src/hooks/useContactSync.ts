@@ -186,7 +186,7 @@ function isAuthSyncError(error: unknown): boolean {
 }
 
 export function useContactSync() {
-  const { store, googleContacts } = usePlatform();
+  const { store, googleContacts, scanLibraryItems } = usePlatform();
 
   const persons = store((state) => state.persons);
   const accounts = store((state) => state.accounts);
@@ -362,18 +362,31 @@ export function useContactSync() {
         );
         if (!isFactoryResetWriteAllowed(resetEpoch)) return current;
         const merged = mergeContactChanges(current.cachedContacts, result.contacts, result.deleted);
+        let matchingItems = itemsRef.current;
+        if (scanLibraryItems) {
+          const representativeByAuthor = new Map<string, FeedItem>();
+          await scanLibraryItems((page) => {
+            for (const item of page) {
+              if (!representativeByAuthor.has(item.author.id)) {
+                representativeByAuthor.set(item.author.id, item);
+              }
+            }
+            return "continue";
+          });
+          matchingItems = [...representativeByAuthor.values()];
+        }
         const allMatches = matchContacts(
           merged,
           personsRef.current,
           accountsRef.current,
-          itemsRef.current,
+          matchingItems,
         );
         matchesRef.current = new Map(
           allMatches.map((match) => [suggestionIdForMatch(match), match])
         );
 
         const pendingSuggestions = allMatches
-          .map((match) => buildSuggestion(match, itemsRef.current))
+          .map((match) => buildSuggestion(match, matchingItems))
           .filter((suggestion): suggestion is IdentitySuggestion => suggestion !== null)
           .filter((suggestion) => !current.dismissedSuggestionIds.includes(suggestion.id));
 
@@ -422,9 +435,11 @@ export function useContactSync() {
       }
     });
 
-    syncPromiseRef.current = syncPromise;
-    return syncPromise;
-  }, [commitSyncState, googleContacts]);
+      syncPromiseRef.current = syncPromise;
+      return syncPromise;
+    },
+    [commitSyncState, googleContacts, scanLibraryItems],
+  );
 
   useEffect(() => {
     if (!googleContacts) return undefined;
@@ -455,16 +470,12 @@ export function useContactSync() {
     });
   }, [commitSyncState]);
 
-  const ensureAccountsForSuggestion = useCallback((match: ContactMatch) => {
-    return buildSocialAccountsFromAuthorIds(itemsRef.current, match.authorIds);
-  }, []);
-
   return {
     syncNow: runSync,
     syncState,
     getSyncState: () => syncStateRef.current,
     dismissSuggestion,
-    ensureAccountsForSuggestion,
-    getMatchForSuggestion: (suggestionId: string) => matchesRef.current.get(suggestionId) ?? null,
+    getMatchForSuggestion: (suggestionId: string) =>
+      matchesRef.current.get(suggestionId) ?? null,
   };
 }

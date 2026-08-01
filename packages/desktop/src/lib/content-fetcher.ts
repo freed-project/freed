@@ -253,7 +253,7 @@ export function pinReaderItem(item: FeedItem): Promise<void> {
   return trackResetSensitiveOperation(pinReaderItemInternal(item));
 }
 
-function maybeScanVisibleItems(items: FeedItem[], docItemCount: number): void {
+function maybeScanLibraryItems(items: FeedItem[], docItemCount: number): void {
   if (lastScannedDocItemCount === docItemCount) return;
   lastScannedDocItemCount = docItemCount;
   void scanLibraryCoreItems((page) => enqueue([...page])).catch((error) => {
@@ -652,10 +652,9 @@ export function start(options: ContentFetcherOptions = {}): void {
   // churn across the whole library. Only rescan when the document item count
   // changes, which is the common case for newly imported or relayed items.
   unsubscribeDoc = subscribe((state) => {
-    // state.items contains non-hidden, ranked items from DocState.
-    // Stub items we care about are not hidden or archived, so the visible list
-    // is sufficient when the library grows or shrinks.
-    maybeScanVisibleItems(state.items, state.docItemCount);
+    // SQLite is the bounded primary scan. The renderer array is only a rollback
+    // fallback and is usually empty in the compact Desktop shell.
+    maybeScanLibraryItems(state.items, state.docItemCount);
   });
 
   log.info("[content-fetcher] started");

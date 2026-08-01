@@ -17,7 +17,7 @@ import { AddFeedDialog } from "../AddFeedDialog.js";
 import { SavedContentDialog } from "../SavedContentDialog.js";
 import { LibraryDialog } from "../LibraryDialog.js";
 import { addDebugEvent, useDebugStore } from "../../lib/debug-store.js";
-import { useAppStore } from "../../context/PlatformContext.js";
+import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { ContactSyncModal } from "../friends/ContactSyncModal.js";
 import { useContactSync } from "../../hooks/useContactSync.js";
@@ -106,6 +106,8 @@ export function AppShell({ children }: AppShellProps) {
   const activeView = useAppStore((s) => s.activeView);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const items = useAppStore((s) => s.items);
+  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
+  const { scanLibraryItems } = usePlatform();
   const accounts = useAppStore((s) => s.accounts);
   const persons = useAppStore((s) => s.persons);
   const addPerson = useAppStore((s) => s.addPerson);
@@ -408,17 +410,56 @@ export function AppShell({ children }: AppShellProps) {
   }, [accounts, isInitialized, removeAccount]);
 
   useEffect(() => {
-    const itemCount = items.length;
+    if (!isInitialized) return;
+    const itemCount = scanLibraryItems ? searchCorpusVersion : items.length;
     const accountCount = Object.keys(accounts).length;
     const previous = discoveredAccountScanRef.current;
     if (itemCount === previous.itemCount && accountCount === previous.accountCount) {
       return;
     }
     discoveredAccountScanRef.current = { itemCount, accountCount };
-    const missingAccounts = buildDiscoveredAccountsFromItems(items, accounts);
-    if (missingAccounts.length === 0) return;
-    void addAccounts(missingAccounts);
-  }, [accounts, addAccounts, items]);
+    if (!scanLibraryItems) {
+      const missingAccounts = buildDiscoveredAccountsFromItems(items, accounts);
+      if (missingAccounts.length > 0) void addAccounts(missingAccounts);
+      return;
+    }
+    const discovered = { ...accounts };
+    void scanLibraryItems((page) => {
+      for (const account of buildDiscoveredAccountsFromItems(
+        [...page],
+        discovered,
+      )) {
+        discovered[account.id] = account;
+      }
+      return "continue";
+    })
+      .then(() => {
+        const missingAccounts = Object.values(discovered).filter(
+          (account) => !accounts[account.id],
+        );
+        if (missingAccounts.length > 0) return addAccounts(missingAccounts);
+      })
+      .catch((error) => {
+        addDebugEvent(
+          "error",
+          `[Identity] bounded account discovery failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        const fallbackAccounts = buildDiscoveredAccountsFromItems(
+          items,
+          accounts,
+        );
+        if (fallbackAccounts.length > 0) return addAccounts(fallbackAccounts);
+      });
+  }, [
+    accounts,
+    addAccounts,
+    isInitialized,
+    items,
+    scanLibraryItems,
+    searchCorpusVersion,
+  ]);
 
   useEffect(() => {
     if (!isInitialized) return;
@@ -453,7 +494,20 @@ export function AppShell({ children }: AppShellProps) {
     }
 
     const contactAccount = createContactAccountFromGoogleContact(match.contact, now, personId);
-    const socialAccounts = buildSocialAccountsFromAuthorIds(items, match.authorIds, now, personId);
+    let sourceItems = items;
+    if (scanLibraryItems) {
+      const authorIds = new Set(match.authorIds);
+      const matches = new Map<string, typeof items[number]>();
+      await scanLibraryItems((page) => {
+        for (const item of page) {
+          if (!authorIds.has(item.author.id) || matches.has(item.author.id)) continue;
+          matches.set(item.author.id, item);
+        }
+        return matches.size >= authorIds.size ? "stop" : "continue";
+      });
+      sourceItems = [...matches.values()];
+    }
+    const socialAccounts = buildSocialAccountsFromAuthorIds(sourceItems, match.authorIds, now, personId);
     const mergedAccounts = [
       contactAccount,
       ...socialAccounts.filter((account) => !accounts[account.id]),
@@ -463,7 +517,7 @@ export function AppShell({ children }: AppShellProps) {
     }
 
     contactSync.dismissSuggestion(suggestion.id);
-  }, [accounts, addAccounts, addPerson, contactSync, items]);
+  }, [accounts, addAccounts, addPerson, contactSync, items, scanLibraryItems]);
 
   const handleCreateFriend = useCallback(async (contact: GoogleContact) => {
     const now = Date.now();

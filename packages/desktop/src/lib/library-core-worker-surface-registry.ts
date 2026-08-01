@@ -8,6 +8,7 @@ export type LibraryCoreWorkerSurfaceClassification =
   | "bounded_migration_transport"
   | "bounded_projection_transport"
   | "diagnostic_transport"
+  | "legacy_compatibility_reader"
   | "legacy_bulk_or_repair_authority"
   | "legacy_full_state_transport"
   | "legacy_lifecycle_control"
@@ -33,6 +34,7 @@ export type LibraryCoreWorkerSurfaceBlocker =
   | "provider_intent_execution_receipt_unresolved"
   | "provider_intent_separation_unresolved"
   | "query_contract_unresolved"
+  | "renderer_corpus_eviction_incomplete"
   | "replication_contract_unresolved"
   | "response_transport_not_cut_over"
   | "successor_contract_unresolved"
@@ -235,6 +237,11 @@ export const DESKTOP_AUTOMERGE_WORKER_REQUEST_SURFACE_REGISTRY = {
   READ_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK: boundedMigrationTransport(),
   CONFIRM_LIBRARY_CORE_EXTERNAL_EXPORT: boundedMigrationTransport(),
   CANCEL_LIBRARY_CORE_EXTERNAL_EXPORT: boundedMigrationTransport(),
+  SET_RENDERER_ITEM_HYDRATION: blockedSurface(
+    "legacy_compatibility_reader",
+    "renderer_corpus_eviction_incomplete",
+    "unbounded_payload",
+  ),
   UPDATE_RELAY_CLIENT_COUNT: blockedSurface(
     "relay_control",
     "lifecycle_contract_unresolved",
@@ -481,6 +488,7 @@ export const DESKTOP_AUTOMERGE_REQUEST_EFFECT_REGISTRY = {
   READ_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK: noWriteEffect(),
   CONFIRM_LIBRARY_CORE_EXTERNAL_EXPORT: noWriteEffect(),
   CANCEL_LIBRARY_CORE_EXTERNAL_EXPORT: noWriteEffect(),
+  SET_RENDERER_ITEM_HYDRATION: noWriteEffect(),
   UPDATE_RELAY_CLIENT_COUNT: hiddenWrite(
     ["legacy_runtime_state_write"],
     ["lifecycle_contract_unresolved"],

@@ -63,6 +63,7 @@ import {
 } from "./lib/sync";
 import {
   clearLocalDoc,
+  acquireLegacyRendererItems,
   getCachedDocStats,
   getItemLegacyHtml,
   getItemPreservedText,
@@ -1241,26 +1242,34 @@ function App() {
       IS_FEATURE_PREVIEW || (import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1");
     if (!isInitialized || !shouldAutoSeedPreview) return;
 
-    const state = useAppStore.getState();
-    const sampleSummary = summarizeSampleData(state);
-    const hasTimeWindowMapSamples = state.items.some((item) =>
-      item.globalId.includes("sample-location-window:") && item.location?.coordinates && item.timeRange
-    );
-    if (sampleSummary.total > 0 && hasTimeWindowMapSamples) return;
-
     const guardKey = "freed_dev_seeded";
     if (!IS_FEATURE_PREVIEW && sessionStorage.getItem(guardKey)) return;
 
     void (async () => {
-      if (IS_FEATURE_PREVIEW && sampleSummary.total > 0 && !hasTimeWindowMapSamples) {
-        await state.clearSampleData();
-      }
+      const releaseItems = await acquireLegacyRendererItems();
+      try {
+        const state = useAppStore.getState();
+        const sampleSummary = summarizeSampleData(state);
+        const hasTimeWindowMapSamples = state.items.some(
+          (item) =>
+            item.globalId.includes("sample-location-window:") &&
+            item.location?.coordinates &&
+            item.timeRange,
+        );
+        if (sampleSummary.total > 0 && hasTimeWindowMapSamples) return;
 
-      await refreshSampleLibraryData({
-        ...useAppStore.getState(),
-        seedSocialConnections,
-      });
-      sessionStorage.setItem(guardKey, "1");
+        if (IS_FEATURE_PREVIEW && sampleSummary.total > 0) {
+          await state.clearSampleData();
+        }
+
+        await refreshSampleLibraryData({
+          ...useAppStore.getState(),
+          seedSocialConnections,
+        });
+        sessionStorage.setItem(guardKey, "1");
+      } finally {
+        releaseItems();
+      }
     })().catch((error) => {
       log.error(
         `[sample-data] failed to seed local preview data: ${
@@ -1320,8 +1329,12 @@ function App() {
         return saveUrlInDesktop(url, options);
       },
       importMarkdown: importMarkdownFiles,
-      exportMarkdown: () => {
-        const items = useDesktopStore.getState().items ?? [];
+      exportMarkdown: async () => {
+        const items: Parameters<typeof exportLibrary>[0] = [];
+        await scanLibraryCoreItemsForDesktop((page) => {
+          items.push(...page);
+          return "continue";
+        });
         return exportLibrary(items);
       },
       retryCloudProvider,
@@ -1468,12 +1481,18 @@ function App() {
       scanLibraryItems: tauriRuntimeAvailable
         ? scanLibraryCoreItemsForDesktop
         : undefined,
-      readLibraryFacetSummary: tauriRuntimeAvailable && isInitialized
-        ? readLibraryCoreFacetSummary
-        : undefined,
-      readLibrarySurfaceItems: tauriRuntimeAvailable && isInitialized
-        ? readLibraryCoreSurfaceItems
-        : undefined,
+      acquireLegacyLibraryItems:
+        tauriRuntimeAvailable && isInitialized
+          ? acquireLegacyRendererItems
+          : undefined,
+      readLibraryFacetSummary:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCoreFacetSummary
+          : undefined,
+      readLibrarySurfaceItems:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCoreSurfaceItems
+          : undefined,
       pickContact: pickContactViaTauri,
       googleContacts: tauriRuntimeAvailable
         ? {

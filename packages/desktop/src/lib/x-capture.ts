@@ -599,11 +599,14 @@ async function captureXTimelineInternal(
         "change",
         `[X] writing ${result.items.length.toLocaleString()} candidate item${result.items.length === 1 ? "" : "s"} to the library`,
       );
-      const before = store.items.filter((i) => i.platform === "x").length;
+      const before = store.itemCountByPlatform?.x
+        ?? store.items.filter((item) => item.platform === "x").length;
       assertFactoryResetEpoch(resetEpoch);
       await store.addItems(result.items);
       assertFactoryResetEpoch(resetEpoch);
-      const after = useAppStore.getState().items.filter((i) => i.platform === "x").length;
+      const afterState = useAppStore.getState();
+      const after = afterState.itemCountByPlatform?.x
+        ?? afterState.items.filter((item) => item.platform === "x").length;
       result.diag.itemsAdded = Math.max(0, after - before);
       addDebugEvent(
         "change",

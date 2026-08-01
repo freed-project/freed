@@ -22,6 +22,7 @@ import {
 } from "@freed/ui/lib/bug-report";
 import type { BugReportingConfig } from "@freed/ui/context";
 import { useAppStore } from "./store";
+import { acquireLegacyRendererItems, getDocState } from "./automerge";
 
 const GITHUB_REPO = "freed-project/freed";
 const SUPPORT_EMAIL = "support@freed.wtf";
@@ -164,15 +165,30 @@ async function buildDesktopBundle(input: {
       ? (await getSnapshotNames()).map((name) => redactSensitiveText(name))
       : [];
   const debugState = useDebugStore.getState();
-  const reportEvents = collectPublicEvents(getRecentBugReportEvents(), input.privacyTier);
-  const debugEvents = debugState.events.slice(0, input.privacyTier === "private" ? 80 : 40).map((event) => ({
-    id: event.id,
-    kind: event.kind,
-    detail: event.detail ? redactSensitiveText(event.detail) : undefined,
-    bytes: event.bytes,
-    ts: event.ts,
-  }));
+  const reportEvents = collectPublicEvents(
+    getRecentBugReportEvents(),
+    input.privacyTier,
+  );
+  const debugEvents = debugState.events
+    .slice(0, input.privacyTier === "private" ? 80 : 40)
+    .map((event) => ({
+      id: event.id,
+      kind: event.kind,
+      detail: event.detail ? redactSensitiveText(event.detail) : undefined,
+      bytes: event.bytes,
+      ts: event.ts,
+    }));
+  let releaseStateItems: (() => void) | null = null;
+  const currentState = useAppStore.getState();
+  if (
+    includedArtifacts.includes("state-summary")
+    && currentState.items.length < currentState.docItemCount
+    && getDocState()
+  ) {
+    releaseStateItems = await acquireLegacyRendererItems().catch(() => null);
+  }
   const stateSummary = createStateSummary();
+  releaseStateItems?.();
   const manifest = buildBugReportManifest({
     appName: APP_NAME,
     appSlug: "freed-desktop",

@@ -66,6 +66,8 @@ export interface DocState {
 
 export interface FeedItemPatch {
   item: FeedItem;
+  /** Exact pre-mutation value used to update shell counts without retaining the corpus. */
+  previousItem?: FeedItem | null;
 }
 
 export interface RssFeedPatch {
@@ -127,6 +129,7 @@ export type WorkerRequest =
       reqId: number;
       type: "INIT";
       desktopClientRegistration?: DesktopClientRegistration;
+      rendererItemHydrationEnabled?: boolean;
     }
   | { reqId: number; type: "QUIESCE" }
   | { reqId: number; type: "CLEAR_LOCAL" }
@@ -321,6 +324,15 @@ export type WorkerRequest =
       reqId: number;
       type: "CANCEL_LIBRARY_CORE_EXTERNAL_EXPORT";
       sessionId: string;
+    }
+  /**
+   * Acquire or release the temporary full-corpus compatibility projection.
+   * The default Desktop shell receives no item array.
+   */
+  | {
+      reqId: number;
+      type: "SET_RENDERER_ITEM_HYDRATION";
+      enabled: boolean;
     }
   // Relay management (fire-and-forget, reqId ignored)
   | { reqId: number; type: "UPDATE_RELAY_CLIENT_COUNT"; count: number };

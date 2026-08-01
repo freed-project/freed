@@ -161,22 +161,26 @@ to Automerge. After both sides confirm, the bridge deletes that revision's
 spool and scratch graph and retains only the selected and exact rollback
 projection generations.
 
-Gate D now serves the all-content feed, item detail, exact Library facets, and
-bounded Map candidates from authenticated selected SQLite generations. Header,
-sidebar, and export counts share one source-versioned native aggregate instead
-of scanning or retaining item identities. Map filtering stays native when the
-complete candidate set fits 1,000 rows and fails back without truncation. Search, Friends-only filtering, saved-content
-sorting, Story Wall, PWA, and the remaining full-corpus consumers still use the
-legacy path. Source mismatch or reader failure returns to Automerge. The
-temporary React feed window also returns to Automerge before it could exceed
-512 compact cards because reverse paging is not active yet. The device-local
-`freed.libraryCore.feedBrowseReaderV1.disabled=1` switch disables this reader
-before projection work. This slice does not satisfy Gate C or complete Gate D.
-IndexedDB still creates one source-sized structured clone, Automerge remains
-authoritative, and the renderer still carries the full corpus. The next active
-milestone is the authenticated migration claim and fixed-memory source
-admission, followed by the remaining exhaustive Gate D consumer conversion and
-renderer-corpus eviction.
+Gate D now serves the all-content feed, item detail, exact Library facets,
+bounded Map candidates, export, background content discovery, provider
+completion accounting, RSS duplicate lookup, Google Contacts discovery, and
+account discovery from authenticated selected SQLite generations. Header and
+sidebar counts share one source-versioned native aggregate. The default Desktop
+shell retains no item objects. Incremental Automerge patches carry one prior
+item occurrence so exact counts stay current without rebuilding the corpus.
+Friends-only filtering, saved-content sorting, Story Wall, Saved analytics,
+provider settings, sample-data tools, and other unfinished consumers share one
+reference-counted compatibility projection only while mounted, then evict it.
+Source mismatch or reader failure returns to Automerge. The temporary React
+feed window also returns to Automerge before it could exceed 512 compact cards
+because reverse paging is not active yet. The device-local
+`freed.libraryCore.feedBrowseReaderV1.disabled=1` switch disables the feed
+reader, and `freed.libraryCore.rendererItemEvictionV1.disabled=1` restores the
+full renderer projection at startup. This does not satisfy Gate C or complete
+Gate D. IndexedDB still stores one source-sized Automerge binary and the worker
+still owns the decoded Automerge document. The next active milestone is the
+authenticated migration claim and fixed-memory source admission, followed by
+conversion of the remaining compatibility surfaces and worker-corpus eviction.
 
 ## What the evidence establishes
 

@@ -100,11 +100,11 @@ import {
   type DocState,
 } from "./automerge";
 import { buildPlatformActionsRegistry } from "./platform-actions";
+import { startOutboxProcessor, stopAndDrainOutboxProcessor } from "./outbox";
 import {
-  startOutboxProcessor,
-  stopAndDrainOutboxProcessor,
-} from "./outbox";
-import { scanLibraryCoreItems } from "./library-core-item-detail-runtime";
+  readLibraryCoreItemDetail,
+  scanLibraryCoreItems,
+} from "./library-core-item-detail-runtime";
 import { loadStoredCookies, type XAuthState } from "./x-auth";
 import { recordBugReportEvent, recordRuntimeError } from "@freed/ui/lib/bug-report";
 import { getDeviceDisplayPreferences } from "@freed/ui/lib/device-display-preferences";
@@ -848,9 +848,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Item actions
   addItems: async (items) => {
-    const before = get().items.length;
+    const before = get().docItemCount;
     await docAddFeedItems(items);
-    const after = get().items.length;
+    const after = get().docItemCount;
     log.info(
       `[store] addItems requested=${items.length.toLocaleString()} before=${before.toLocaleString()} after=${after.toLocaleString()} added=${Math.max(0, after - before).toLocaleString()}`,
     );
@@ -921,8 +921,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   toggleSaved: async (id) => {
-    const item = get().items.find((candidate) => candidate.globalId === id);
-    const shouldPin = !!item && !item.userState.saved;
+    let item = get().items.find((candidate) => candidate.globalId === id);
+    if (!item) {
+      item =
+        (await readLibraryCoreItemDetail(id).catch(() => null)) ?? undefined;
+    }
+    const itemToPin = item && !item.userState.saved ? item : null;
     await runOptimisticMutation(
       get,
       set,
@@ -930,8 +934,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       (state) => projectToggleSaved(state, id),
       () => docToggleSaved(id),
     );
-    if (shouldPin) {
-      void pinReaderItem(item).catch((error) => {
+    if (itemToPin) {
+      void pinReaderItem(itemToPin).catch((error) => {
         recordRuntimeError({
           source: "desktop:pinReaderItem",
           error: error instanceof Error ? error : new Error(String(error)),

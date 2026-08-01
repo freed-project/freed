@@ -74,10 +74,10 @@ import {
 } from "@freed/shared/schema";
 import {
   calculatePriority,
-  countAuthorsWithRecentLocationUpdates,
-  countFriendsWithRecentLocationUpdates,
   collectSavedYouTubeVideoUrls,
+  extractLocationFromItem,
   mergeDefaultPreferences,
+  personForAuthor,
   rankFeedItems,
   rankFeedItemsInRecommendedOrder,
   resolveDocumentId,
@@ -132,6 +132,7 @@ const storage = new IndexedDBStorage();
 let persistence = new RepeatableAutomergePersistence(storage);
 let currentDoc: FreedDoc | null = null;
 let currentBinary: Uint8Array | null = null;
+let rendererItemHydrationEnabled = false;
 let relayClientCount = 0;
 let activeDesktopClientRegistration: DesktopClientRegistration | null = null;
 let queuedRequestCount = 0;
@@ -1258,23 +1259,6 @@ function cloneRecordValues<T>(
   return cloned;
 }
 
-function cloneFeedItemsForDesktopUi(
-  record: Record<string, FeedItem> | undefined,
-): {
-  items: FeedItem[];
-  totalCount: number;
-} {
-  const items: FeedItem[] = [];
-  let totalCount = 0;
-
-  for (const item of Object.values(record ?? {})) {
-    totalCount++;
-    items.push(cloneFeedItemForPatch(item));
-  }
-
-  return { items, totalCount };
-}
-
 function trimFeedItemForDesktopUi(item: FeedItem): FeedItem {
   const contentText = item.content.text;
   const linkPreview = item.content.linkPreview;
@@ -1460,11 +1444,14 @@ function cloneRankedFeedItemPatches(
  * trimmed before we hold a full deep clone of the document in worker memory.
  */
 function hydrateFromDoc(doc: FreedDoc): DocState {
-  const { items: plainItems, totalCount: docItemCount } =
-    cloneFeedItemsForDesktopUi(
-      doc.feedItems as Record<string, FeedItem> | undefined,
-    );
-  const feedSourceOrderIds = plainItems.map((item) => item.globalId);
+  const sourceItems = Object.values(
+    (doc.feedItems as Record<string, FeedItem> | undefined) ?? {},
+  );
+  const docItemCount = sourceItems.length;
+  const feedSourceOrderIds = sourceItems.map((item) => item.globalId);
+  const plainItems = rendererItemHydrationEnabled
+    ? sourceItems.map((item) => cloneFeedItemForPatch(item))
+    : [];
   const feeds = cloneRecordValues(
     doc.rssFeeds as Record<string, RssFeed> | undefined,
   );
@@ -1479,12 +1466,13 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
     doc.preferences as Partial<UserPreferences> | undefined,
   );
 
-  const visibleItems = plainItems.filter((item) => !item.userState.hidden);
-  const rankedItems = rankFeedItemsInRecommendedOrder(
-    visibleItems,
-    preferences.weights,
-    { persons, accounts },
-  );
+  const rankedItems = rendererItemHydrationEnabled
+    ? rankFeedItemsInRecommendedOrder(
+        plainItems.filter((item) => !item.userState.hidden),
+        preferences.weights,
+        { persons, accounts },
+      )
+    : [];
 
   const feedUnreadCounts: Record<string, number> = {};
   const feedTotalCounts: Record<string, number> = {};
@@ -1496,7 +1484,27 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
   let totalItemCount = 0;
   let totalArchivableCount = 0;
 
-  for (const item of plainItems) {
+  const recentLocationCutoff = Date.now() - 7 * 24 * 60 * 60 * 1_000;
+  const recentLocationAuthorIds = new Set<string>();
+  const recentLocationFriendIds = new Set<string>();
+
+  for (const item of sourceItems) {
+    if (
+      !item.userState.hidden &&
+      item.publishedAt >= recentLocationCutoff &&
+      extractLocationFromItem(item)
+    ) {
+      recentLocationAuthorIds.add(`${item.platform}:${item.author.id}`);
+      const person = personForAuthor(
+        persons,
+        accounts,
+        item.platform,
+        item.author.id,
+      );
+      if (person?.relationshipStatus === "friend") {
+        recentLocationFriendIds.add(person.id);
+      }
+    }
     if (item.userState.hidden || item.userState.archived) continue;
     totalItemCount++;
     itemCountByPlatform[item.platform] =
@@ -1543,13 +1551,8 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
     totalArchivableCount,
     archivableCountByPlatform,
     archivableFeedCounts,
-    mapFriendLocationCount: countFriendsWithRecentLocationUpdates(
-      rankedItems,
-      persons,
-      accounts,
-    ),
-    mapAllContentLocationCount:
-      countAuthorsWithRecentLocationUpdates(rankedItems),
+    mapFriendLocationCount: recentLocationFriendIds.size,
+    mapAllContentLocationCount: recentLocationAuthorIds.size,
     docItemCount,
   };
 }
@@ -1829,6 +1832,7 @@ async function applyItemPatchChange(
 ): Promise<void> {
   if (!currentDoc) throw new Error("Document not initialized");
   let changedIds: string[] = [];
+  const previousDoc = currentDoc;
   const candidate = A.change(currentDoc, message, (doc) => {
     changedIds = changeFn(doc);
   });
@@ -1839,7 +1843,14 @@ async function applyItemPatchChange(
   const patches = changedIds
     .map((globalId) => candidate.feedItems[globalId] as FeedItem | undefined)
     .filter((item): item is FeedItem => Boolean(item))
-    .map((item) => ({ item: cloneFeedItemForPatch(item) }));
+    .map((item) => ({
+      item: cloneFeedItemForPatch(item),
+      previousItem: previousDoc.feedItems[item.globalId]
+        ? cloneFeedItemForPatch(
+            previousDoc.feedItems[item.globalId] as FeedItem,
+          )
+        : null,
+    }));
   if (patches.length > 0) {
     send({
       type: "ITEM_PATCH",
@@ -1906,7 +1917,12 @@ async function applyAddFeedItemsPatchChange(
     searchCorpusChanged: true,
     diagnostics,
   });
-  const patches = cloneRankedFeedItemPatches(candidate, changedIds);
+  const patches = cloneRankedFeedItemPatches(candidate, changedIds).map(
+    (patch) => ({
+      ...patch,
+      previousItem: null,
+    }),
+  );
 
   if (patches.length > 0) {
     send({
@@ -1927,6 +1943,7 @@ async function applyBatchRefreshFeedsPatchChange(
   trace?: RequestTrace,
 ): Promise<void> {
   if (!currentDoc) throw new Error("Document not initialized");
+  const previousDoc = currentDoc;
   const patchedFeeds = new Map<string, RssFeed>();
   let changedIds: string[] = [];
   const addedItemIds: string[] = [];
@@ -2042,6 +2059,14 @@ async function applyBatchRefreshFeedsPatchChange(
       `${removedEssayDuplicateIds.length.toLocaleString()} removed`,
   ];
 
+  if (removedEssayDuplicateIds.length > 0) {
+    await saveAndBroadcast(candidate, trace, {
+      searchCorpusChanged: true,
+      diagnostics,
+    });
+    return;
+  }
+
   await persistAndBroadcastWithoutHydration(candidate, trace, {
     searchCorpusChanged:
       changedIds.length > 0 || removedEssayDuplicateIds.length > 0,
@@ -2052,7 +2077,16 @@ async function applyBatchRefreshFeedsPatchChange(
     send({ type: "FEEDS_PATCH", patch: feedPatch, mutation: trace?.opType });
   }
 
-  const patches = cloneRankedFeedItemPatches(candidate, changedIds);
+  const patches = cloneRankedFeedItemPatches(candidate, changedIds).map(
+    (patch) => ({
+      ...patch,
+      previousItem: previousDoc.feedItems[patch.item.globalId]
+        ? cloneFeedItemForPatch(
+            previousDoc.feedItems[patch.item.globalId] as FeedItem,
+          )
+        : null,
+    }),
+  );
   if (patches.length > 0 || removedEssayDuplicateIds.length > 0) {
     send({
       type: "ITEM_PATCH",
@@ -2147,6 +2181,8 @@ async function handleRequest(
         libraryCoreProjectionSession = null;
         libraryCoreFeedBrowseProjectionSession = null;
         libraryCoreExternalExportSession = null;
+        rendererItemHydrationEnabled =
+          req.rendererItemHydrationEnabled === true;
         const requestedDesktopClientRegistration =
           req.desktopClientRegistration ?? null;
         let loaded;
@@ -3112,6 +3148,13 @@ async function handleRequest(
           );
         }
         libraryCoreExternalExportSession = null;
+        ack(req.reqId);
+        break;
+
+      case "SET_RENDERER_ITEM_HYDRATION":
+        if (!currentDoc) throw new Error("Document not initialized");
+        rendererItemHydrationEnabled = req.enabled;
+        await hydrateAndBroadcastWithoutPersist(currentDoc, trace);
         ack(req.reqId);
         break;
 
