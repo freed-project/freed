@@ -1,0 +1,126 @@
+{
+  "tag": "v26.7.3100-dev",
+  "version": "26.7.3100-dev",
+  "channel": "dev",
+  "dayKey": "26.7.31",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-08-01T00:23:45.299Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.7.3001-dev",
+    "previousPublishedDayTag": "v26.7.3001-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "49c867a733c8e05e5f1eb3ac00894149aa5ace5f",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.7.3001-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "bba5eaa18c1c00efd03c73a3bb912cdbc43e3144",
+        "toInclusiveProductCommitSha": "49c867a733c8e05e5f1eb3ac00894149aa5ace5f"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:74d4cd5c0e06468f79eeb2737c0c07a9ff83f0c238e6504cf31fe18cedb2d594",
+        "currentDigest": "sha256:f38e2c15dbdcbe7ef0b1e27a9967cf1a179c167b1acd6874a3ca857c6f3a5aa5"
+      },
+      "transitions": [
+        {
+          "activationId": "desktop-item-detail-sql-read-v1",
+          "gate": "D",
+          "kind": "sql_read_cutover",
+          "rollbackTrigger": "Set freed.libraryCore.itemDetailReaderV1.disabled to 1 on the affected device if a selected Desktop reader body diverges, fails to load, or increases memory relative to the Automerge fallback.",
+          "receiptExpectations": [
+            "read_cutover_parity",
+            "same_frontier_rollback_receipt"
+          ]
+        }
+      ],
+      "inspectionDigest": "sha256:ae2d70dcd089084086c0f8507213e16240a7fe1726491ff00c0eb6ac351f39c3",
+      "decision": {
+        "state": "review_required",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.7.3100-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.7.3100-dev"
+    ],
+    "prNumbers": [
+      1275,
+      1276,
+      1277,
+      1278,
+      1279,
+      1280,
+      1281,
+      1282,
+      1283,
+      1284,
+      1285,
+      1286,
+      1287,
+      1288,
+      1289,
+      1290,
+      1291,
+      1293,
+      1295
+    ],
+    "commitSubjects": [
+      "fix: accept in-band release approval (#1295)",
+      "fix: stop blocked preflight renderer crash loop (#1293)",
+      "perf: read item details from Library Core SQLite (#1291)",
+      "feat: add durable PWA intent outbox (#1290)",
+      "feat: add PWA intent wire protocol (#1289)",
+      "feat: add authenticated portable feed reader (#1288)",
+      "feat: authenticate Library Core operation admission (#1287)",
+      "feat: add Library Core operation segments (#1286)",
+      "feat: add PWA portable checkpoint store (#1285)",
+      "feat: add portable Library Core checkpoints (#1284)",
+      "feat: publish exact Library Core checkpoints (#1283)",
+      "feat: import exact Library Core manifests (#1282)",
+      "fix: bind Library Core control to manifest ID (#1281)",
+      "feat: import Library Core checkpoint pages (#1280)",
+      "feat: add Library Core Google Drive adapter (#1279)",
+      "feat: define Library Core writer reassignment (#1278)",
+      "feat: define Library Core wire objects (#1277)",
+      "feat: coordinate immutable Library Core publication (#1276)",
+      "feat: define immutable Library Core transport (#1275)"
+    ]
+  },
+  "release": {
+    "deck": "Authenticated portable feed reader, durable PWA intent outbox, and PWA intent wire protocol",
+    "features": [
+      "Authenticated portable feed reader",
+      "Durable PWA intent outbox",
+      "PWA intent wire protocol"
+    ],
+    "fixes": [
+      "Accept in-band release approval",
+      "Stop blocked preflight renderer crash loop",
+      "Bind Library Core control to manifest ID"
+    ],
+    "followUps": [
+      "Read item details from Library Core SQLite",
+      "Authenticate Library Core operation admission",
+      "PWA portable checkpoint store",
+      "Portable Library Core checkpoints",
+      "Import exact Library Core manifests",
+      "Library Core Google Drive adapter",
+      "Define Library Core writer reassignment",
+      "Coordinate immutable Library Core publication"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.7.3100-dev\n\nAuthenticated portable feed reader, durable PWA intent outbox, and PWA intent wire protocol\n\n### Features\n\n- Authenticated portable feed reader\n- Durable PWA intent outbox\n- PWA intent wire protocol\n\n### Fixes\n\n- Accept in-band release approval\n- Stop blocked preflight renderer crash loop\n- Bind Library Core control to manifest ID\n\n### Follow-ups\n\n- Read item details from Library Core SQLite\n- Authenticate Library Core operation admission\n- PWA portable checkpoint store\n- Portable Library Core checkpoints\n- Import exact Library Core manifests\n- Library Core Google Drive adapter\n- Define Library Core writer reassignment\n- Coordinate immutable Library Core publication\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
