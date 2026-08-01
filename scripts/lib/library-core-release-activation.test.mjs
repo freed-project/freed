@@ -6,10 +6,12 @@ import {
   LIBRARY_CORE_ACTIVATION_DECISION_STATES,
   assertStableOwnerApprovalPull,
   createLibraryCoreReleaseActivation,
+  currentTaskLibraryCoreApprovalReference,
   fetchGithubJson,
   inspectLibraryCoreActivationManifest,
   inspectPreviousLibraryCoreActivationWitness,
   libraryCoreOwnerApprovalCommentBody,
+  libraryCoreOwnerApprovalIntent,
   libraryCoreReleaseArtifactProposalDigest,
   prepareLibraryCoreReleaseActivation,
   validateLibraryCoreReleaseActivation,
@@ -352,7 +354,43 @@ test("a reviewed release may declare no activation or one digest-bound activatio
   );
 });
 
-test("owner approval requires an authenticated GitHub owner comment", () => {
+test("owner approval accepts current-task confirmation evidence", () => {
+  const transitions = [migrationTransition()];
+  const manifestInspection = activationManifestInspection(transitions);
+  const inspected = createLibraryCoreReleaseActivation({
+    range: RANGE,
+    manifestInspection,
+  });
+  const proposalArtifact = releaseArtifactFor(inspected);
+  const approval = libraryCoreOwnerApprovalIntent({
+    artifact: proposalArtifact,
+  });
+  const reference = currentTaskLibraryCoreApprovalReference({
+    taskId: approval.taskId,
+    confirmationDigest: "c".repeat(64),
+  });
+  const approved = createLibraryCoreReleaseActivation({
+    range: RANGE,
+    manifestInspection,
+    decisionState: LIBRARY_CORE_ACTIVATION_DECISION_STATES.OWNER_APPROVED,
+    ownerApprovalReference: reference,
+    approvedInspectionDigest: inspected.inspectionDigest,
+    approvedReleaseArtifactDigest: libraryCoreReleaseArtifactProposalDigest({
+      artifact: proposalArtifact,
+    }),
+    releaseArtifact: proposalArtifact,
+  });
+
+  assert.equal(approval.taskId, "release-26-7-2800-dev");
+  assert.equal(
+    approval.intent.action,
+    "library-core.release-activation.approve",
+  );
+  assert.equal(approval.intent.parameters.productCommitSha, PRODUCT_SHA);
+  assert.equal(approved.decision.ownerApprovalReference, reference);
+});
+
+test("GitHub approval references still require an authenticated owner comment", () => {
   const transitions = [migrationTransition()];
   const manifestInspection = activationManifestInspection(transitions);
   const inspected = createLibraryCoreReleaseActivation({
@@ -383,7 +421,7 @@ test("owner approval requires an authenticated GitHub owner comment", () => {
         ownerApprovalReference: "owner-decision:library-core-gate-c-2026-07-28",
         loadOwnerApprovalEvidence: valid.loadOwnerApprovalEvidence,
       }),
-    /must identify one canonical Freed GitHub pull request comment/,
+    /must identify one current-task confirmation or canonical Freed GitHub pull request comment/,
   );
   assert.throws(
     () =>

@@ -1,20 +1,18 @@
 #!/usr/bin/env node
 
 import { randomUUID } from "node:crypto";
-import {
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   buildOwnerApprovedLibraryCoreReleaseArtifact,
+  currentTaskLibraryCoreApprovalReference,
   libraryCoreOwnerApprovalCommentBody,
+  libraryCoreOwnerApprovalIntent,
   withReleaseArtifactWriteLock,
 } from "./lib/library-core-release-activation.mjs";
+import { validateCurrentTaskOwnerConfirmation } from "./lib/automation-control.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,6 +22,8 @@ const RELEASE_ARTIFACT_PATTERN =
 
 function usage() {
   return `Usage:
+  node scripts/library-core-release-activation.mjs approval-intent --artifact=<release-json> [--cwd=<path>]
+  node scripts/library-core-release-activation.mjs record-owner-approval --artifact=<release-json> --owner-confirmation-file=<absolute-path> [--cwd=<path>]
   node scripts/library-core-release-activation.mjs approval-comment --artifact=<release-json> --pull=<number> [--cwd=<path>]
   node scripts/library-core-release-activation.mjs record-owner-approval --artifact=<release-json> --comment-url=<url> [--cwd=<path>]`;
 }
@@ -35,6 +35,7 @@ export function parseArgs(argv) {
     commentUrl: "",
     cwd: REPO_ROOT,
     help: false,
+    ownerConfirmationFile: "",
     pullNumber: null,
   };
   for (const argument of argv.slice(1)) {
@@ -45,12 +46,17 @@ export function parseArgs(argv) {
       options.commentUrl = argument.slice("--comment-url=".length);
     else if (argument.startsWith("--cwd="))
       options.cwd = path.resolve(argument.slice("--cwd=".length));
+    else if (argument.startsWith("--owner-confirmation-file="))
+      options.ownerConfirmationFile = argument.slice(
+        "--owner-confirmation-file=".length,
+      );
     else if (argument.startsWith("--pull="))
       options.pullNumber = Number(argument.slice("--pull=".length));
     else throw new Error(`Unsupported argument: ${argument}`);
   }
   if (options.help) return options;
   if (
+    options.action !== "approval-intent" &&
     options.action !== "approval-comment" &&
     options.action !== "record-owner-approval"
   ) {
@@ -67,9 +73,12 @@ export function parseArgs(argv) {
   }
   if (
     options.action === "record-owner-approval" &&
-    options.commentUrl.length === 0
+    (options.commentUrl.length === 0) ===
+      (options.ownerConfirmationFile.length === 0)
   ) {
-    throw new Error(`--comment-url is required.\n\n${usage()}`);
+    throw new Error(
+      `record-owner-approval requires exactly one --owner-confirmation-file or --comment-url.\n\n${usage()}`,
+    );
   }
   return options;
 }
@@ -110,10 +119,7 @@ function readReleaseArtifact(options) {
   return { absolutePath, artifact, originalContents };
 }
 
-export function approvalCommentForArtifact({
-  artifact,
-  pullNumber,
-}) {
+export function approvalCommentForArtifact({ artifact, pullNumber }) {
   const activation = artifact?.source?.libraryCoreActivation;
   return libraryCoreOwnerApprovalCommentBody({
     value: activation,
@@ -187,6 +193,34 @@ export function recordOwnerApproval({
   return approvedArtifact;
 }
 
+export function recordCurrentTaskOwnerApproval({
+  artifact,
+  artifactPath,
+  expectedArtifactContents,
+  ownerConfirmationFile,
+  nowMs = Date.now(),
+  validateOwnerConfirmation = validateCurrentTaskOwnerConfirmation,
+  writeArtifact = writeJsonAtomically,
+}) {
+  const approval = libraryCoreOwnerApprovalIntent({ artifact });
+  const confirmation = validateOwnerConfirmation({
+    confirmationFile: ownerConfirmationFile,
+    taskId: approval.taskId,
+    intentDigest: approval.intentDigest,
+    nowMs,
+  });
+  return recordOwnerApproval({
+    artifact,
+    artifactPath,
+    expectedArtifactContents,
+    ownerApprovalReference: currentTaskLibraryCoreApprovalReference({
+      taskId: approval.taskId,
+      confirmationDigest: confirmation.digest,
+    }),
+    writeArtifact,
+  });
+}
+
 export function main(argv = process.argv.slice(2)) {
   const options = parseArgs(argv);
   if (options.help) {
@@ -195,6 +229,12 @@ export function main(argv = process.argv.slice(2)) {
   }
   const { absolutePath, artifact, originalContents } =
     readReleaseArtifact(options);
+  if (options.action === "approval-intent") {
+    process.stdout.write(
+      `${JSON.stringify(libraryCoreOwnerApprovalIntent({ artifact }), null, 2)}\n`,
+    );
+    return;
+  }
   if (options.action === "approval-comment") {
     process.stdout.write(
       `${approvalCommentForArtifact({
@@ -204,14 +244,23 @@ export function main(argv = process.argv.slice(2)) {
     );
     return;
   }
-  recordOwnerApproval({
-    artifact,
-    artifactPath: absolutePath,
-    expectedArtifactContents: originalContents,
-    ownerApprovalReference: options.commentUrl,
-  });
+  if (options.ownerConfirmationFile) {
+    recordCurrentTaskOwnerApproval({
+      artifact,
+      artifactPath: absolutePath,
+      expectedArtifactContents: originalContents,
+      ownerConfirmationFile: path.resolve(options.ownerConfirmationFile),
+    });
+  } else {
+    recordOwnerApproval({
+      artifact,
+      artifactPath: absolutePath,
+      expectedArtifactContents: originalContents,
+      ownerApprovalReference: options.commentUrl,
+    });
+  }
   process.stdout.write(
-    `Recorded authenticated Library Core owner approval in ${path.relative(
+    `Recorded Library Core owner approval in ${path.relative(
       options.cwd,
       absolutePath,
     )}.\n`,
