@@ -23,10 +23,11 @@ import { MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../ic
 import { getTopSourceItems, type SourceNavigationItem } from "../../lib/source-navigation.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
+import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
 import { SearchJumpField } from "./SearchJumpField.js";
 import { resolveAnimationIntensity } from "../../lib/animation-preferences.js";
 import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
-import { buildTopLevelTagFilters, childTagsOf, collectAllTags } from "../../lib/tag-navigation.js";
+import { buildTopLevelTagFilters, childTagsOf } from "../../lib/tag-navigation.js";
 import { navigateToFeedView } from "../../lib/workspace-navigation.js";
 import {
   CLOSED_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX,
@@ -649,14 +650,16 @@ export function Sidebar({
   const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
   const persistedSidebarBaseWidth = Math.min(MAX_WIDTH, deviceDisplay.sidebarWidth);
   const items = useAppStore((s) => s.items);
+  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const activeView = useAppStore((s) => s.activeView);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const display = useAppStore((s) => s.preferences.display);
   const animationIntensity = resolveAnimationIntensity(display.animationIntensity);
   const health = useDebugStore((s) => s.health);
-  const savedCount = useMemo(() => items.filter((i) => i.userState.saved).length, [items]);
-  const archivedCount = useMemo(() => items.filter((i) => i.userState.archived).length, [items]);
+  const libraryFacets = useLibraryFacetSummary(items, searchCorpusVersion);
+  const savedCount = libraryFacets.savedCount;
+  const archivedCount = libraryFacets.archivedCount;
   const friendCount = useMemo(() => Object.keys(friends).length, [friends]);
   const mapFriendCount = useAppStore((s) => s.mapFriendLocationCount);
   const mapAllContentCount = useAppStore((s) => s.mapAllContentLocationCount);
@@ -702,7 +705,7 @@ export function Sidebar({
   // ─── Tag tree ────────────────────────────────────────────────────────────────
 
   /** All unique tags collected from the library, sorted alphabetically */
-  const allTags = useMemo(() => collectAllTags(items), [items]);
+  const allTags = libraryFacets.tags;
   const topLevelTagFilters = useMemo(() => buildTopLevelTagFilters(allTags), [allTags]);
   const topLevelTags = useMemo(
     () => topLevelTagFilters.map((tagFilter) => tagFilter.label),

@@ -14803,6 +14803,8 @@ pub fn run() {
             library_core_external_migration_runtime::cancel_library_core_external_migration,
             library_core_feed_reader_runtime::read_library_core_feed_page,
             library_core_feed_reader_runtime::read_library_core_item_detail,
+            library_core_feed_reader_runtime::read_library_core_facet_summary,
+            library_core_feed_reader_runtime::read_library_core_surface_items,
             library_core_feed_reader_runtime::read_library_core_item_scan_page,
             library_core_feed_reader_runtime::cancel_library_core_feed_reader,
             library_core_shadow_runtime::begin_library_core_shadow_projection,

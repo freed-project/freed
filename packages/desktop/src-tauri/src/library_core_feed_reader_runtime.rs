@@ -14,7 +14,8 @@ use crate::projection_generation_registry::{
     ProjectionGenerationRegistry, ProjectionGenerationRegistryError,
 };
 use crate::shadow_store::{
-    FeedCardRow, FeedItemRow, FeedPage, ItemScanPage, PageCursor, ShadowStoreError,
+    FeedCardRow, FeedItemRow, FeedPage, ItemScanPage, LibraryFacetSummary, LibrarySurface,
+    PageCursor, ShadowStoreError,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::{Deserialize, Serialize};
@@ -44,6 +45,9 @@ const ITEM_SCAN_QUERY_ID: &str = "background_item_page_v1";
 const MAXIMUM_ITEM_SCAN_PAGE_LIMIT: u32 = 64;
 const ITEM_SCAN_CURSOR_VERSION: u8 = 1;
 const ITEM_SCAN_CURSOR_FIXED_BYTES: usize = 51;
+const FACET_SUMMARY_QUERY_ID: &str = "library_facet_summary_v1";
+const SURFACE_ITEMS_QUERY_ID: &str = "library_surface_items_v1";
+const MAXIMUM_MAP_ITEMS: u32 = 1_000;
 
 #[derive(Debug)]
 enum FeedReaderError {
@@ -242,6 +246,61 @@ pub(super) struct ItemDetailResponseV1 {
     query_id: &'static str,
     schema_version: u8,
     source: ItemDetailSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct FacetSummaryRequestV1 {
+    query_id: String,
+    schema_version: u8,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct FacetSummaryResponseV1 {
+    query_id: &'static str,
+    schema_version: u8,
+    source: ItemDetailSourceV1,
+    summary: LibraryFacetSummary,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum SurfaceKindV1 {
+    Map,
+}
+
+impl SurfaceKindV1 {
+    fn store_surface(self) -> LibrarySurface {
+        match self {
+            Self::Map => LibrarySurface::Map,
+        }
+    }
+
+    fn maximum(self) -> u32 {
+        match self {
+            Self::Map => MAXIMUM_MAP_ITEMS,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct SurfaceItemsRequestV1 {
+    limit: u32,
+    query_id: String,
+    schema_version: u8,
+    surface: SurfaceKindV1,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct SurfaceItemsResponseV1 {
+    query_id: &'static str,
+    rows: Vec<FeedItemRow>,
+    schema_version: u8,
+    source: ItemDetailSourceV1,
+    surface: SurfaceKindV1,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -863,6 +922,114 @@ pub(super) fn read_library_core_item_detail(
     read_item_detail_at_root(&base, request).map_err(Into::into)
 }
 
+fn selected_item_source(
+    reader: &ProjectionReadSession,
+) -> Result<ItemDetailSourceV1, FeedReaderError> {
+    let source = reader.source();
+    if source.document_id.is_empty()
+        || source.document_id.len() > MAXIMUM_DOCUMENT_ID_BYTES
+        || source.heads_digest.len() != 64
+        || source.head_count < 0
+        || source.storage_generation < 0
+        || source.storage_save_revision < 0
+        || reader.projection_revision() < 0
+        || reader.transition_sequence() < 0
+    {
+        return Err(FeedReaderError::InvalidRequest("selected source"));
+    }
+    Ok(ItemDetailSourceV1 {
+        document_id: source.document_id,
+        generation_id: reader.generation_id().to_string(),
+        head_count: source.head_count,
+        heads_digest: source.heads_digest,
+        projection_revision: reader.projection_revision(),
+        storage_generation: source.storage_generation,
+        storage_save_revision: source.storage_save_revision,
+        transition_sequence: reader.transition_sequence(),
+    })
+}
+
+fn read_facet_summary_at_root(
+    base: &Path,
+    request: FacetSummaryRequestV1,
+) -> Result<FacetSummaryResponseV1, FeedReaderError> {
+    if request.query_id != FACET_SUMMARY_QUERY_ID || request.schema_version != SCHEMA_VERSION {
+        return Err(FeedReaderError::InvalidRequest("facet summary"));
+    }
+    let paths = resolve_library_core_shadow_reader_paths(base)
+        .map_err(FeedReaderError::RuntimePath)?
+        .ok_or(FeedReaderError::RuntimeInactive)?;
+    let reader = open_selected_projection(&paths.registry_path, &paths.generation_root)?;
+    let response = FacetSummaryResponseV1 {
+        query_id: FACET_SUMMARY_QUERY_ID,
+        schema_version: SCHEMA_VERSION,
+        source: selected_item_source(&reader)?,
+        summary: reader.facet_summary()?,
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| FeedReaderError::ResponseTooLarge)?
+        .len()
+        > MAXIMUM_ITEM_DETAIL_RESPONSE_BYTES
+    {
+        return Err(FeedReaderError::ResponseTooLarge);
+    }
+    Ok(response)
+}
+
+#[tauri::command]
+pub(super) fn read_library_core_facet_summary(
+    app: tauri::AppHandle,
+    request: FacetSummaryRequestV1,
+) -> Result<FacetSummaryResponseV1, FeedReaderErrorResponse> {
+    let base = app.path().app_data_dir().map_err(|error| {
+        FeedReaderErrorResponse::from(FeedReaderError::RuntimePath(error.to_string()))
+    })?;
+    read_facet_summary_at_root(&base, request).map_err(Into::into)
+}
+
+fn read_surface_items_at_root(
+    base: &Path,
+    request: SurfaceItemsRequestV1,
+) -> Result<SurfaceItemsResponseV1, FeedReaderError> {
+    if request.query_id != SURFACE_ITEMS_QUERY_ID
+        || request.schema_version != SCHEMA_VERSION
+        || request.limit == 0
+        || request.limit > request.surface.maximum()
+    {
+        return Err(FeedReaderError::InvalidRequest("surface items"));
+    }
+    let paths = resolve_library_core_shadow_reader_paths(base)
+        .map_err(FeedReaderError::RuntimePath)?
+        .ok_or(FeedReaderError::RuntimeInactive)?;
+    let reader = open_selected_projection(&paths.registry_path, &paths.generation_root)?;
+    let response = SurfaceItemsResponseV1 {
+        query_id: SURFACE_ITEMS_QUERY_ID,
+        rows: reader.surface_items(request.surface.store_surface(), request.limit)?,
+        schema_version: SCHEMA_VERSION,
+        source: selected_item_source(&reader)?,
+        surface: request.surface,
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| FeedReaderError::ResponseTooLarge)?
+        .len()
+        > MAXIMUM_ITEM_DETAIL_RESPONSE_BYTES
+    {
+        return Err(FeedReaderError::ResponseTooLarge);
+    }
+    Ok(response)
+}
+
+#[tauri::command]
+pub(super) fn read_library_core_surface_items(
+    app: tauri::AppHandle,
+    request: SurfaceItemsRequestV1,
+) -> Result<SurfaceItemsResponseV1, FeedReaderErrorResponse> {
+    let base = app.path().app_data_dir().map_err(|error| {
+        FeedReaderErrorResponse::from(FeedReaderError::RuntimePath(error.to_string()))
+    })?;
+    read_surface_items_at_root(&base, request).map_err(Into::into)
+}
+
 fn read_item_scan_at_root(
     runtime: &LibraryCoreFeedReaderRuntimeState,
     base: &Path,
@@ -1118,19 +1285,21 @@ mod tests {
             let source = source();
             begin_or_resume_projection(&self.staging_path, "reader-rebuild-1", &source, rows.len())
                 .expect("begin");
-            apply_projection_batch(
-                &self.staging_path,
-                "reader-rebuild-1",
-                &source,
-                rows.len(),
-                0,
-                "reader-batch-0",
-                &"2".repeat(64),
-                rows.len(),
-                true,
-                rows,
-            )
-            .expect("apply");
+            for (batch_index, batch) in rows.chunks(1_000).enumerate() {
+                apply_projection_batch(
+                    &self.staging_path,
+                    "reader-rebuild-1",
+                    &source,
+                    rows.len(),
+                    batch_index as i64,
+                    &format!("reader-batch-{batch_index}"),
+                    &format!("{:064x}", batch_index + 2),
+                    batch_index * 1_000 + batch.len(),
+                    (batch_index + 1) * 1_000 >= rows.len(),
+                    batch,
+                )
+                .expect("apply");
+            }
             finalize_and_open_projection(
                 &self.staging_path,
                 &self.destination_path,
@@ -1219,6 +1388,22 @@ mod tests {
             query_id: ITEM_SCAN_QUERY_ID.to_string(),
             reader_session_id: "item-scan-reader-1".to_string(),
             schema_version: SCHEMA_VERSION,
+        }
+    }
+
+    fn facet_request() -> FacetSummaryRequestV1 {
+        FacetSummaryRequestV1 {
+            query_id: FACET_SUMMARY_QUERY_ID.to_string(),
+            schema_version: SCHEMA_VERSION,
+        }
+    }
+
+    fn surface_request(surface: SurfaceKindV1, limit: u32) -> SurfaceItemsRequestV1 {
+        SurfaceItemsRequestV1 {
+            limit,
+            query_id: SURFACE_ITEMS_QUERY_ID.to_string(),
+            schema_version: SCHEMA_VERSION,
+            surface,
         }
     }
 
@@ -1348,6 +1533,78 @@ mod tests {
             .expect("request object")
             .insert("extra".to_string(), serde_json::Value::Bool(true));
         assert!(serde_json::from_value::<ItemDetailRequestV1>(unknown).is_err());
+    }
+
+    #[test]
+    fn reads_exact_facets_and_only_bounded_surface_candidates() {
+        let fixture = Fixture::new("surface-queries");
+        let mut map = row(0);
+        map.saved = Some(1);
+        map.tags = Some("[\"places\",\"travel\"]".to_string());
+        map.rest = "{\"location\":{\"name\":\"London\"}}".to_string();
+        let mut archived = row(1);
+        archived.archived = Some(1);
+        archived.tags = Some("[\"travel\"]".to_string());
+        archived.rest = "{\"location\":{\"name\":\"Paris\"}}".to_string();
+        fixture.publish(&[map.clone(), archived.clone(), row(2)]);
+
+        let facets =
+            read_facet_summary_at_root(&fixture.base, facet_request()).expect("facet summary");
+        assert_eq!(facets.summary.total_count, 3);
+        assert_eq!(facets.summary.saved_count, 1);
+        assert_eq!(facets.summary.archived_count, 1);
+        assert_eq!(facets.summary.tags, vec!["places", "travel"]);
+
+        let map_response = read_surface_items_at_root(
+            &fixture.base,
+            surface_request(SurfaceKindV1::Map, MAXIMUM_MAP_ITEMS),
+        )
+        .expect("map candidates");
+        assert_eq!(map_response.rows, vec![map, archived]);
+
+        assert!(matches!(
+            read_surface_items_at_root(&fixture.base, surface_request(SurfaceKindV1::Map, 1),),
+            Err(FeedReaderError::Coordinator(
+                ProjectionCoordinatorError::Reader(ProjectionGenerationReaderError::Store(
+                    ShadowStoreError::SurfaceItemsExceedLimit {
+                        requested: 2,
+                        maximum: 1,
+                    },
+                ),),
+            ))
+        ));
+
+        assert!(matches!(
+            read_surface_items_at_root(
+                &fixture.base,
+                surface_request(SurfaceKindV1::Map, MAXIMUM_MAP_ITEMS + 1),
+            ),
+            Err(FeedReaderError::InvalidRequest("surface items"))
+        ));
+
+        let overflow_fixture = Fixture::new("surface-overflow");
+        let overflow_rows = (0..=MAXIMUM_MAP_ITEMS as usize)
+            .map(|index| {
+                let mut candidate = row(index);
+                candidate.rest = "{\"location\":{\"name\":\"London\"}}".to_string();
+                candidate
+            })
+            .collect::<Vec<_>>();
+        overflow_fixture.publish(&overflow_rows);
+        assert!(matches!(
+            read_surface_items_at_root(
+                &overflow_fixture.base,
+                surface_request(SurfaceKindV1::Map, MAXIMUM_MAP_ITEMS),
+            ),
+            Err(FeedReaderError::Coordinator(
+                ProjectionCoordinatorError::Reader(ProjectionGenerationReaderError::Store(
+                    ShadowStoreError::SurfaceItemsExceedLimit {
+                        requested: 1_001,
+                        maximum: 1_000,
+                    },
+                ),),
+            ))
+        ));
     }
 
     #[test]

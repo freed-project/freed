@@ -14,6 +14,7 @@ import {
 } from "../ProviderHealthSummary.js";
 import { getWebsiteHostForChannel, type FeedItem } from "@freed/shared";
 import { SettingsListPanel } from "./SettingsListPanel.js";
+import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
 
 type SavedTab = "overview" | "import" | "export";
 
@@ -467,6 +468,8 @@ function ImportPane() {
 function ExportPane() {
   const { exportMarkdown, releaseChannel } = usePlatform();
   const items = useAppStore((s) => s.items);
+  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
+  const libraryFacets = useLibraryFacetSummary(items, searchCorpusVersion);
   const [exporting, setExporting] = useState(false);
   const websiteGetUrl = `https://${getWebsiteHostForChannel(releaseChannel ?? "production")}/get`;
 
@@ -495,8 +498,8 @@ function ExportPane() {
     );
   }
 
-  const savedCount = items.filter((item) => item.platform === "saved").length;
-  const totalCount = items.length;
+  const savedCount = libraryFacets.savedPlatformCount;
+  const totalCount = libraryFacets.totalCount;
 
   const handleExport = async () => {
     if (!exportMarkdown || exporting) return;

@@ -10,6 +10,8 @@ import type { LibraryCoreProjectionSourceV1 } from "./automerge-types";
 
 const ITEM_DETAIL_QUERY_ID = "item_detail_v1";
 const ITEM_SCAN_QUERY_ID = "background_item_page_v1";
+const FACET_SUMMARY_QUERY_ID = "library_facet_summary_v1";
+const SURFACE_ITEMS_QUERY_ID = "library_surface_items_v1";
 const ITEM_DETAIL_SCHEMA_VERSION = 1;
 const ITEM_SCAN_PAGE_LIMIT = 64;
 const MAXIMUM_ITEM_SCAN_PAGES = 4_096;
@@ -44,6 +46,27 @@ const ITEM_SCAN_RESPONSE_KEYS = [
   "rows",
   "schemaVersion",
   "source",
+] as const;
+const FACET_SUMMARY_RESPONSE_KEYS = [
+  "queryId",
+  "schemaVersion",
+  "source",
+  "summary",
+] as const;
+const FACET_SUMMARY_KEYS = [
+  "archivedCount",
+  "savedArchivedCount",
+  "savedCount",
+  "savedPlatformCount",
+  "tags",
+  "totalCount",
+] as const;
+const SURFACE_ITEMS_RESPONSE_KEYS = [
+  "queryId",
+  "rows",
+  "schemaVersion",
+  "source",
+  "surface",
 ] as const;
 const SOURCE_KEYS = [
   "documentId",
@@ -80,6 +103,32 @@ interface NativeItemScanResponseV1 {
   readonly rows: FeedItemRow[];
   readonly schemaVersion: typeof ITEM_DETAIL_SCHEMA_VERSION;
   readonly source: NativeItemDetailSourceV1;
+}
+
+export interface LibraryCoreFacetSummary {
+  readonly archivedCount: number;
+  readonly savedArchivedCount: number;
+  readonly savedCount: number;
+  readonly savedPlatformCount: number;
+  readonly tags: readonly string[];
+  readonly totalCount: number;
+}
+
+export type LibraryCoreSurface = "map";
+
+interface NativeFacetSummaryResponseV1 {
+  readonly queryId: typeof FACET_SUMMARY_QUERY_ID;
+  readonly schemaVersion: typeof ITEM_DETAIL_SCHEMA_VERSION;
+  readonly source: NativeItemDetailSourceV1;
+  readonly summary: LibraryCoreFacetSummary;
+}
+
+interface NativeSurfaceItemsResponseV1 {
+  readonly queryId: typeof SURFACE_ITEMS_QUERY_ID;
+  readonly rows: FeedItemRow[];
+  readonly schemaVersion: typeof ITEM_DETAIL_SCHEMA_VERSION;
+  readonly source: NativeItemDetailSourceV1;
+  readonly surface: LibraryCoreSurface;
 }
 
 export interface LibraryCoreItemScanPage {
@@ -199,6 +248,105 @@ function parseItemScanResponse(value: unknown): NativeItemScanResponseV1 {
   };
 }
 
+function parseFacetSummaryResponse(value: unknown): NativeFacetSummaryResponseV1 {
+  const response = closedRecord(value, FACET_SUMMARY_RESPONSE_KEYS);
+  const source = closedRecord(response?.source, SOURCE_KEYS);
+  const summary = closedRecord(response?.summary, FACET_SUMMARY_KEYS);
+  if (
+    !response ||
+    !source ||
+    !summary ||
+    response.queryId !== FACET_SUMMARY_QUERY_ID ||
+    response.schemaVersion !== ITEM_DETAIL_SCHEMA_VERSION ||
+    typeof source.documentId !== "string" ||
+    source.documentId.length === 0 ||
+    typeof source.generationId !== "string" ||
+    !/^[0-9a-f]{64}$/u.test(source.generationId) ||
+    !safeInteger(source.headCount) ||
+    typeof source.headsDigest !== "string" ||
+    !/^[0-9a-f]{64}$/u.test(source.headsDigest) ||
+    !safeInteger(source.projectionRevision) ||
+    !safeInteger(source.storageGeneration) ||
+    !safeInteger(source.storageSaveRevision) ||
+    !safeInteger(source.transitionSequence) ||
+    !safeInteger(summary.archivedCount) ||
+    !safeInteger(summary.savedArchivedCount) ||
+    !safeInteger(summary.savedCount) ||
+    !safeInteger(summary.savedPlatformCount) ||
+    !safeInteger(summary.totalCount) ||
+    !Array.isArray(summary.tags) ||
+    summary.tags.length > 4_096 ||
+    summary.tags.some(
+      (tag) =>
+        typeof tag !== "string" ||
+        new TextEncoder().encode(tag).length > 1_024,
+    )
+  ) {
+    throw new Error("Library Core facet summary response is invalid");
+  }
+  const tags = summary.tags as string[];
+  if (
+    tags.some((tag, index) => index > 0 && tags[index - 1]! >= tag) ||
+    summary.savedArchivedCount > summary.savedCount ||
+    summary.savedCount > summary.totalCount ||
+    summary.archivedCount > summary.totalCount ||
+    summary.savedPlatformCount > summary.totalCount
+  ) {
+    throw new Error("Library Core facet summary response is inconsistent");
+  }
+  return {
+    queryId: FACET_SUMMARY_QUERY_ID,
+    schemaVersion: ITEM_DETAIL_SCHEMA_VERSION,
+    source: source as unknown as NativeItemDetailSourceV1,
+    summary: {
+      archivedCount: summary.archivedCount,
+      savedArchivedCount: summary.savedArchivedCount,
+      savedCount: summary.savedCount,
+      savedPlatformCount: summary.savedPlatformCount,
+      tags,
+      totalCount: summary.totalCount,
+    },
+  };
+}
+
+function parseSurfaceItemsResponse(
+  value: unknown,
+  requestedSurface: LibraryCoreSurface,
+  limit: number,
+): NativeSurfaceItemsResponseV1 {
+  const response = closedRecord(value, SURFACE_ITEMS_RESPONSE_KEYS);
+  const source = closedRecord(response?.source, SOURCE_KEYS);
+  if (
+    !response ||
+    !source ||
+    response.queryId !== SURFACE_ITEMS_QUERY_ID ||
+    response.schemaVersion !== ITEM_DETAIL_SCHEMA_VERSION ||
+    response.surface !== requestedSurface ||
+    !Array.isArray(response.rows) ||
+    response.rows.length > limit ||
+    typeof source.documentId !== "string" ||
+    source.documentId.length === 0 ||
+    typeof source.generationId !== "string" ||
+    !/^[0-9a-f]{64}$/u.test(source.generationId) ||
+    !safeInteger(source.headCount) ||
+    typeof source.headsDigest !== "string" ||
+    !/^[0-9a-f]{64}$/u.test(source.headsDigest) ||
+    !safeInteger(source.projectionRevision) ||
+    !safeInteger(source.storageGeneration) ||
+    !safeInteger(source.storageSaveRevision) ||
+    !safeInteger(source.transitionSequence)
+  ) {
+    throw new Error("Library Core surface items response is invalid");
+  }
+  return {
+    queryId: SURFACE_ITEMS_QUERY_ID,
+    rows: response.rows.map((row) => parseRow(row)),
+    schemaVersion: ITEM_DETAIL_SCHEMA_VERSION,
+    source: source as unknown as NativeItemDetailSourceV1,
+    surface: requestedSurface,
+  };
+}
+
 function sameSelectedSource(
   left: NativeItemDetailSourceV1,
   right: NativeItemDetailSourceV1,
@@ -298,6 +446,68 @@ export async function readLibraryCoreItemDetail(
   }
   if (response.item === null) return null;
   return reconstructFeedItem(response.item) as unknown as FeedItem;
+}
+
+/** Read exact corpus-wide counts and tags from the selected SQLite generation. */
+export async function readLibraryCoreFacetSummary(
+  getSource: () => Promise<LibraryCoreProjectionSourceV1> = getLibraryCoreProjectionSource,
+  readNative: (request: {
+    queryId: typeof FACET_SUMMARY_QUERY_ID;
+    schemaVersion: typeof ITEM_DETAIL_SCHEMA_VERSION;
+  }) => Promise<unknown> = (request) =>
+    invoke("read_library_core_facet_summary", { request }),
+): Promise<LibraryCoreFacetSummary> {
+  const before = await getSource();
+  const response = parseFacetSummaryResponse(
+    await readNative({
+      queryId: FACET_SUMMARY_QUERY_ID,
+      schemaVersion: ITEM_DETAIL_SCHEMA_VERSION,
+    }),
+  );
+  if (!sourceMatches(before, response.source)) {
+    throw new Error("Library Core facet summary source is stale");
+  }
+  const after = await getSource();
+  if (!sourceMatches(after, response.source)) {
+    throw new Error("Library Core facet summary source changed during read");
+  }
+  return response.summary;
+}
+
+/** Read one bounded, SQLite-filtered result set for a secondary surface. */
+export async function readLibraryCoreSurfaceItems(
+  surface: LibraryCoreSurface,
+  getSource: () => Promise<LibraryCoreProjectionSourceV1> = getLibraryCoreProjectionSource,
+  readNative: (request: {
+    limit: number;
+    queryId: typeof SURFACE_ITEMS_QUERY_ID;
+    schemaVersion: typeof ITEM_DETAIL_SCHEMA_VERSION;
+    surface: LibraryCoreSurface;
+  }) => Promise<unknown> = (request) =>
+    invoke("read_library_core_surface_items", { request }),
+): Promise<readonly FeedItem[]> {
+  const limit = 1_000;
+  const before = await getSource();
+  const response = parseSurfaceItemsResponse(
+    await readNative({
+      limit,
+      queryId: SURFACE_ITEMS_QUERY_ID,
+      schemaVersion: ITEM_DETAIL_SCHEMA_VERSION,
+      surface,
+    }),
+    surface,
+    limit,
+  );
+  if (!sourceMatches(before, response.source)) {
+    throw new Error("Library Core surface items source is stale");
+  }
+  const after = await getSource();
+  if (!sourceMatches(after, response.source)) {
+    throw new Error("Library Core surface items source changed during read");
+  }
+  return response.rows.map(
+    (row) => reconstructFeedItem(row) as unknown as FeedItem,
+  );
 }
 
 /**

@@ -87,6 +87,17 @@ export type ScanLibraryItems = (
   ) => LibraryItemScanDecision | Promise<LibraryItemScanDecision>,
 ) => Promise<void>;
 
+export interface LibraryFacetSummary {
+  readonly archivedCount: number;
+  readonly savedArchivedCount: number;
+  readonly savedCount: number;
+  readonly savedPlatformCount: number;
+  readonly tags: readonly string[];
+  readonly totalCount: number;
+}
+
+export type LibrarySurface = "map";
+
 export interface ChangelogPreviewRelease {
   version: string;
   channel: ReleaseChannel;
@@ -410,6 +421,14 @@ export interface PlatformConfig {
 
   /** Stream the selected local Library generation without hydrating a corpus array. */
   scanLibraryItems?: ScanLibraryItems;
+
+  /** Exact corpus-wide counts and tags computed inside the local row store. */
+  readLibraryFacetSummary?: () => Promise<LibraryFacetSummary>;
+
+  /** One bounded, row-store-filtered candidate set for a secondary surface. */
+  readLibrarySurfaceItems?: (
+    surface: LibrarySurface,
+  ) => Promise<readonly FeedItem[]>;
 
   /** Optional authenticated YouTube actions for the shared reader. */
   youtube?: YouTubeControls;

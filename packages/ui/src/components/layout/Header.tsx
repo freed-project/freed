@@ -38,6 +38,7 @@ import {
   SortIcon,
 } from "../icons.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
+import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { useBackgroundActivityStore } from "../../lib/background-activity-store.js";
@@ -362,6 +363,7 @@ export function Header({
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
+  const libraryFacets = useLibraryFacetSummary(items, searchCorpusVersion);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
@@ -414,10 +416,7 @@ export function Header({
     () => Object.values(accounts).filter((account) => account.kind === "social").length,
     [accounts],
   );
-  const savedArchivedCount = useMemo(
-    () => items.filter((item) => item.userState.saved && item.userState.archived).length,
-    [items],
-  );
+  const savedArchivedCount = libraryFacets.savedArchivedCount;
   const effectiveMapMode = resolveMapMode(
     deviceDisplay.mapMode,
     mappedFriendCount,

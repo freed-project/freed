@@ -100,6 +100,18 @@ pub(super) enum ShadowStoreError {
         requested: usize,
         maximum: usize,
     },
+    FacetSummaryExceedsResponseBudget {
+        requested: usize,
+        maximum: usize,
+    },
+    FacetTagExceedsResponseBudget {
+        requested_bytes: usize,
+        maximum_bytes: usize,
+    },
+    SurfaceItemsExceedLimit {
+        requested: usize,
+        maximum: usize,
+    },
     ProjectionEntityNotFound {
         entity_id: String,
     },
@@ -201,6 +213,21 @@ impl fmt::Display for ShadowStoreError {
             Self::ItemScanRowExceedsResponseBudget { requested, maximum } => write!(
                 formatter,
                 "one item scan row requires {requested} serialized bytes, maximum {maximum}"
+            ),
+            Self::FacetSummaryExceedsResponseBudget { requested, maximum } => write!(
+                formatter,
+                "facet summary contains {requested} tags, maximum {maximum}"
+            ),
+            Self::FacetTagExceedsResponseBudget {
+                requested_bytes,
+                maximum_bytes,
+            } => write!(
+                formatter,
+                "one facet tag requires at least {requested_bytes} UTF-8 bytes, maximum {maximum_bytes}"
+            ),
+            Self::SurfaceItemsExceedLimit { requested, maximum } => write!(
+                formatter,
+                "surface contains at least {requested} candidate rows, maximum {maximum}"
             ),
             Self::ProjectionEntityNotFound { entity_id } => {
                 write!(formatter, "projection entity {entity_id} was not found")
@@ -307,6 +334,22 @@ pub(super) struct FeedItemRow {
     pub(super) content_blob: Option<String>,
     pub(super) preserved_blob: Option<String>,
     pub(super) rest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct LibraryFacetSummary {
+    pub(super) archived_count: i64,
+    pub(super) saved_archived_count: i64,
+    pub(super) saved_count: i64,
+    pub(super) saved_platform_count: i64,
+    pub(super) tags: Vec<String>,
+    pub(super) total_count: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum LibrarySurface {
+    Map,
 }
 
 impl FeedItemRow {
@@ -977,6 +1020,133 @@ impl ShadowStore {
             )
             .optional()
             .map_err(Into::into)
+    }
+
+    /// Returns exact corpus-wide counts and tags without hydrating item rows.
+    pub(super) fn facet_summary(&self) -> StoreResult<LibraryFacetSummary> {
+        const MAXIMUM_TAGS: usize = 4_096;
+        const MAXIMUM_TAG_BYTES: usize = 1_024;
+
+        let tx = self.conn.unchecked_transaction()?;
+        Self::require_readable_projection_in(&tx)?;
+        let (total_count, saved_count, archived_count, saved_archived_count, saved_platform_count) =
+            tx.query_row(
+                "SELECT COUNT(*),
+                        COALESCE(SUM(saved = 1), 0),
+                        COALESCE(SUM(archived = 1), 0),
+                        COALESCE(SUM(saved = 1 AND archived = 1), 0),
+                        COALESCE(SUM(platform = 'saved'), 0)
+                 FROM feed_items;",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )?;
+        let oversized_tag_exists = tx.query_row(
+            "SELECT EXISTS(
+               SELECT 1 FROM feed_items, json_each(feed_items.tags)
+               WHERE json_type(feed_items.tags) = 'array'
+                 AND json_each.type = 'text'
+                 AND length(CAST(value AS BLOB)) > ?1
+               LIMIT 1
+             );",
+            [MAXIMUM_TAG_BYTES as i64],
+            |row| row.get::<_, bool>(0),
+        )?;
+        if oversized_tag_exists {
+            return Err(ShadowStoreError::FacetTagExceedsResponseBudget {
+                requested_bytes: MAXIMUM_TAG_BYTES + 1,
+                maximum_bytes: MAXIMUM_TAG_BYTES,
+            });
+        }
+        let mut statement = tx.prepare(
+            "SELECT DISTINCT value
+             FROM feed_items, json_each(feed_items.tags)
+             WHERE json_type(feed_items.tags) = 'array' AND json_each.type = 'text'
+             LIMIT ?1;",
+        )?;
+        let mut tags = statement
+            .query_map([(MAXIMUM_TAGS + 1) as i64], |row| row.get::<_, String>(0))?
+            .collect::<SqlResult<Vec<_>>>()?;
+        if tags.len() > MAXIMUM_TAGS {
+            return Err(ShadowStoreError::FacetSummaryExceedsResponseBudget {
+                requested: tags.len(),
+                maximum: MAXIMUM_TAGS,
+            });
+        }
+        // JavaScript's existing Array.sort() order compares UTF-16 code units,
+        // not UTF-8 bytes. Match it here so Unicode tags keep product parity.
+        tags.sort_by(|left, right| left.encode_utf16().cmp(right.encode_utf16()));
+        drop(statement);
+        tx.commit()?;
+        Ok(LibraryFacetSummary {
+            archived_count,
+            saved_archived_count,
+            saved_count,
+            saved_platform_count,
+            tags,
+            total_count,
+        })
+    }
+
+    /// Returns one bounded surface-specific row set. SQLite performs the
+    /// corpus scan and filtering; the renderer never receives non-candidates.
+    pub(super) fn surface_items(
+        &self,
+        surface: LibrarySurface,
+        limit: u32,
+    ) -> StoreResult<Vec<FeedItemRow>> {
+        let maximum = 1_000;
+        if limit == 0 || limit > maximum {
+            return Err(ShadowStoreError::InvalidItemScanPageLimit {
+                requested: limit,
+                maximum,
+            });
+        }
+        let predicate = match surface {
+            LibrarySurface::Map => {
+                "json_type(rest, '$.location') = 'object'
+                   OR json_extract(contentBlob, '$.text') GLOB '*📍*'
+                   OR json_extract(contentBlob, '$.text') GLOB '*🌍*'
+                   OR json_extract(contentBlob, '$.text') GLOB '*🌎*'
+                   OR json_extract(contentBlob, '$.text') GLOB '*🌏*'
+                   OR json_extract(contentBlob, '$.text') GLOB 'in [A-Z]*'
+                   OR json_extract(contentBlob, '$.text') GLOB 'at [A-Z]*'
+                   OR json_extract(contentBlob, '$.text') GLOB 'from [A-Z]*'
+                   OR json_extract(contentBlob, '$.text') GLOB '* in [A-Z]*'
+                   OR json_extract(contentBlob, '$.text') GLOB '* at [A-Z]*'
+                   OR json_extract(contentBlob, '$.text') GLOB '* from [A-Z]*'
+                "
+            }
+        };
+        let query = format!(
+            "SELECT {ITEM_SCAN_COLUMNS} FROM feed_items
+             WHERE {predicate}
+             ORDER BY sortAt DESC, globalId ASC LIMIT ?1;"
+        );
+        let tx = self.conn.unchecked_transaction()?;
+        Self::require_readable_projection_in(&tx)?;
+        let rows = {
+            let mut statement = tx.prepare(&query)?;
+            let rows = statement
+                .query_map([limit + 1], FeedItemRow::from_row)?
+                .collect::<SqlResult<Vec<_>>>()?;
+            rows
+        };
+        if rows.len() > limit as usize {
+            return Err(ShadowStoreError::SurfaceItemsExceedLimit {
+                requested: rows.len(),
+                maximum: limit as usize,
+            });
+        }
+        tx.commit()?;
+        Ok(rows)
     }
 
     /// Enumerates complete projection rows without ever materializing the
