@@ -373,6 +373,7 @@ export async function captureDomFeed(
 - [x] Desktop native JSON persistence, encrypted secret store calls, cloud uploads, and outbox drains now run through typed side-effect queues with slow-task diagnostics, so common UI actions do not directly wait on native storage or broad outbox scans
 - [x] Desktop Automerge subscriptions now carry change metadata, so item-patch mutations let the outbox drain only changed items while startup and full document updates keep the full scan path
 - [x] Desktop outbox and article-fetch discovery now stream lossless, generation-pinned SQLite pages with stable keyset cursors instead of traversing the full renderer item corpus
+- [x] Desktop feed browse materialization now scans the selected SQLite generation in bounded pages instead of walking the renderer item corpus a second time
 - [x] Desktop item-patch updates now maintain a main-thread item index and adjust unread, total, and archivable aggregates incrementally instead of walking the visible item list after each patch
 - [x] Desktop RSS feed metadata writes now persist through Automerge and send feed patches to the UI without hydrating the full feed item projection
 - [x] Desktop reader hydration now uses native fetch and authenticated provider paths on open, caches successful reader content locally, pins saved items by default, hydrates X reply threads with media, hydrates visible Facebook and Instagram post comments, and explains private story replies when the user is online
