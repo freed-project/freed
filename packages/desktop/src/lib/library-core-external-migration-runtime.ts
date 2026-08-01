@@ -52,9 +52,18 @@ export interface LibraryCoreExternalMigrationResult {
 export const tauriLibraryCoreExternalMigrationNativeClient:
   LibraryCoreExternalMigrationNativeClient = {
     begin(input) {
+      const { generation, saveRevision } = input.source.storageRevision;
       return invoke<LibraryCoreExternalMigrationSpoolStatus>(
         "begin_library_core_external_migration",
-        input,
+        {
+          sessionId: input.sessionId,
+          source: {
+            schemaVersion: input.source.schemaVersion,
+            storageGeneration: generation,
+            storageSaveRevision: saveRevision,
+            byteLength: input.source.byteLength,
+          },
+        },
       );
     },
     append(input) {

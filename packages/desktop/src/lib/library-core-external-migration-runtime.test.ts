@@ -1,7 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
+const { invokeMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: invokeMock,
+}));
+
 import {
   migrateLibraryCoreExternalSnapshot,
+  tauriLibraryCoreExternalMigrationNativeClient,
   type LibraryCoreExternalExportWorkerClient,
   type LibraryCoreExternalMigrationNativeClient,
 } from "./library-core-external-migration-runtime";
@@ -56,6 +65,33 @@ function workerClient(): LibraryCoreExternalExportWorkerClient {
 }
 
 describe("Desktop Library Core external migration runtime", () => {
+  it("maps the worker revision to the native Tauri wire contract", async () => {
+    invokeMock.mockResolvedValueOnce({
+      sessionId: "legacy-v1:7:11:6",
+      committedOffset: 0,
+      byteLength: source.byteLength,
+      complete: false,
+    });
+
+    await tauriLibraryCoreExternalMigrationNativeClient.begin({
+      sessionId: "legacy-v1:7:11:6",
+      source,
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      "begin_library_core_external_migration",
+      {
+        sessionId: "legacy-v1:7:11:6",
+        source: {
+          schemaVersion: 1,
+          storageGeneration: 7,
+          storageSaveRevision: 11,
+          byteLength: 6,
+        },
+      },
+    );
+  });
+
   it("resumes the durable native spool by the exact legacy storage revision", async () => {
     const worker = workerClient();
     const native: LibraryCoreExternalMigrationNativeClient = {
