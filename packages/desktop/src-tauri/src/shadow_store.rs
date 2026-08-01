@@ -35,6 +35,8 @@ use std::time::Duration;
 
 const SHADOW_SCHEMA_VERSION: i64 = 3;
 const MAX_FEED_PAGE_LIMIT: u32 = 128;
+const MAX_ITEM_SCAN_PAGE_LIMIT: u32 = 64;
+const MAX_ITEM_SCAN_ROW_BYTES: usize = 8 * 1_048_576 - 64 * 1_024;
 const MAX_FEED_PAGE_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const FEED_PAGE_ENVELOPE_RESERVE_BYTES: usize = 16 * 1_024;
 const MAX_FEED_CARD_MEDIA: usize = 8;
@@ -68,6 +70,10 @@ pub(super) enum ShadowStoreError {
         requested: u32,
         maximum: u32,
     },
+    InvalidItemScanPageLimit {
+        requested: u32,
+        maximum: u32,
+    },
     InvalidProjectionBatchIdentity {
         field: &'static str,
     },
@@ -87,6 +93,10 @@ pub(super) enum ShadowStoreError {
         field: &'static str,
     },
     FeedCardExceedsResponseBudget {
+        requested: usize,
+        maximum: usize,
+    },
+    ItemScanRowExceedsResponseBudget {
         requested: usize,
         maximum: usize,
     },
@@ -160,6 +170,10 @@ impl fmt::Display for ShadowStoreError {
                 formatter,
                 "feed page limit {requested} exceeds the supported range 1 through {maximum}"
             ),
+            Self::InvalidItemScanPageLimit { requested, maximum } => write!(
+                formatter,
+                "item scan page limit {requested} exceeds the supported range 1 through {maximum}"
+            ),
             Self::InvalidProjectionBatchIdentity { field } => {
                 write!(formatter, "invalid projection batch {field}")
             }
@@ -183,6 +197,10 @@ impl fmt::Display for ShadowStoreError {
             Self::FeedCardExceedsResponseBudget { requested, maximum } => write!(
                 formatter,
                 "one feed card requires {requested} serialized bytes, maximum {maximum}"
+            ),
+            Self::ItemScanRowExceedsResponseBudget { requested, maximum } => write!(
+                formatter,
+                "one item scan row requires {requested} serialized bytes, maximum {maximum}"
             ),
             Self::ProjectionEntityNotFound { entity_id } => {
                 write!(formatter, "projection entity {entity_id} was not found")
@@ -601,6 +619,16 @@ pub(super) struct FeedPage {
     pub next_cursor: Option<PageCursor>,
 }
 
+/// One lossless, bounded slice of the selected projection ordered by stable
+/// item identity. Consumers must process and release each page before asking
+/// for the next one. This is the bridge away from retaining the full Library
+/// corpus in renderer memory.
+#[derive(Debug)]
+pub(super) struct ItemScanPage {
+    pub(super) rows: Vec<FeedItemRow>,
+    pub(super) next_after_global_id: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ProjectionCommit {
     batch_id: String,
@@ -656,6 +684,10 @@ struct RevisionedCount {
 /// Visibility filter, written to match the partial index exactly so the planner
 /// can use it.
 const VISIBLE_PREDICATE: &str = "archived IS NOT 1 AND hidden IS NOT 1";
+
+const ITEM_SCAN_COLUMNS: &str = "globalId, platform, contentType, publishedAt, capturedAt, \
+authorId, authorDisplayName, authorHandle, sourceUrl, hidden, saved, archived, readAt, \
+archivedAt, likedAt, tags, contentBlob, preservedBlob, rest";
 
 /// Two statements rather than one with a nullable cursor. A single statement
 /// would need `(?1 IS NULL OR sortAt < ?1 ...)`, and a leading expression the
@@ -945,6 +977,89 @@ impl ShadowStore {
             )
             .optional()
             .map_err(Into::into)
+    }
+
+    /// Enumerates complete projection rows without ever materializing the
+    /// whole Library. The primary-key order gives a deterministic keyset scan
+    /// and the serialized-byte ceiling prevents a bounded row count from
+    /// becoming an unbounded IPC response.
+    pub(super) fn item_scan_page(
+        &self,
+        after_global_id: Option<&str>,
+        limit: u32,
+    ) -> StoreResult<ItemScanPage> {
+        if !(1..=MAX_ITEM_SCAN_PAGE_LIMIT).contains(&limit) {
+            return Err(ShadowStoreError::InvalidItemScanPageLimit {
+                requested: limit,
+                maximum: MAX_ITEM_SCAN_PAGE_LIMIT,
+            });
+        }
+        if after_global_id
+            .is_some_and(|value| value.is_empty() || value.len() > MAX_ENTITY_ID_UTF8_BYTES)
+        {
+            return Err(ShadowStoreError::InvalidProjectionEntityId);
+        }
+
+        let tx = self.conn.unchecked_transaction()?;
+        Self::require_readable_projection_in(&tx)?;
+        let candidate_limit = limit.saturating_add(1);
+        let query = match after_global_id {
+            None => format!(
+                "SELECT {ITEM_SCAN_COLUMNS} FROM feed_items ORDER BY globalId ASC LIMIT ?1;"
+            ),
+            Some(_) => format!(
+                "SELECT {ITEM_SCAN_COLUMNS} FROM feed_items \
+                 WHERE globalId > ?1 ORDER BY globalId ASC LIMIT ?2;"
+            ),
+        };
+        let candidates = match after_global_id {
+            None => {
+                let mut statement = tx.prepare(&query)?;
+                let mapped = statement.query_map([candidate_limit], FeedItemRow::from_row)?;
+                mapped.collect::<SqlResult<Vec<_>>>()?
+            }
+            Some(cursor) => {
+                let mut statement = tx.prepare(&query)?;
+                let mapped = statement.query_map(
+                    rusqlite::params![cursor, candidate_limit],
+                    FeedItemRow::from_row,
+                )?;
+                mapped.collect::<SqlResult<Vec<_>>>()?
+            }
+        };
+
+        let mut rows = Vec::with_capacity(candidates.len().min(limit as usize));
+        let mut serialized_row_bytes = 0usize;
+        let mut has_more = candidates.len() > limit as usize;
+        for candidate in candidates.into_iter().take(limit as usize) {
+            let candidate_bytes = serde_json::to_vec(&candidate)
+                .map_err(|_| ShadowStoreError::InvalidFeedCardProjection {
+                    field: "serialized_item_scan_row",
+                })?
+                .len();
+            let next_bytes = serialized_row_bytes
+                .saturating_add(candidate_bytes)
+                .saturating_add(usize::from(!rows.is_empty()));
+            if next_bytes > MAX_ITEM_SCAN_ROW_BYTES {
+                if rows.is_empty() {
+                    return Err(ShadowStoreError::ItemScanRowExceedsResponseBudget {
+                        requested: next_bytes,
+                        maximum: MAX_ITEM_SCAN_ROW_BYTES,
+                    });
+                }
+                has_more = true;
+                break;
+            }
+            serialized_row_bytes = next_bytes;
+            rows.push(candidate);
+        }
+        let next_after_global_id = has_more
+            .then(|| rows.last().map(|row| row.global_id.clone()))
+            .flatten();
+        Ok(ItemScanPage {
+            rows,
+            next_after_global_id,
+        })
     }
 
     fn validate_projection_batch_identity(batch_id: &str, input_digest: &str) -> StoreResult<()> {
@@ -2170,6 +2285,31 @@ mod tests {
                 "page must not sort, got: {plan}"
             );
         }
+    }
+
+    #[test]
+    fn lossless_item_scan_pages_every_row_once_in_primary_key_order() {
+        let store = seeded(130);
+        let mut after = None;
+        let mut ids = Vec::new();
+        loop {
+            let page = store
+                .item_scan_page(after.as_deref(), 17)
+                .expect("item scan page");
+            ids.extend(page.rows.iter().map(|row| row.global_id.clone()));
+            match page.next_after_global_id {
+                Some(cursor) => after = Some(cursor),
+                None => break,
+            }
+        }
+        assert_eq!(ids.len(), 130);
+        assert!(ids.windows(2).all(|pair| pair[0] < pair[1]));
+        assert_eq!(ids.first().map(String::as_str), Some("x:000000"));
+        assert_eq!(ids.last().map(String::as_str), Some("x:000129"));
+        assert!(matches!(
+            store.item_scan_page(None, 0),
+            Err(ShadowStoreError::InvalidItemScanPageLimit { .. })
+        ));
     }
 
     #[test]

@@ -592,7 +592,7 @@ async function waitForGraphPresentationSyncAfter(
 }
 
 async function seedStressIdentityGraph(page: Page) {
-  await page.evaluate(async () => {
+  return page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const automerge = w.__FREED_AUTOMERGE__ as {
       docAddPersons: (persons: unknown[]) => Promise<void>;
@@ -649,6 +649,7 @@ async function seedStressIdentityGraph(page: Page) {
       },
     });
     store.getState().setActiveView("friends");
+    return personCount + accountCount + feedCount;
   });
 }
 
@@ -5666,7 +5667,7 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
-  await seedStressIdentityGraph(page);
+  const expectedSourceNodeCount = await seedStressIdentityGraph(page);
 
   const viewport = page.getByTestId("friend-graph-viewport");
   await expect(viewport).toBeVisible({ timeout: 15_000 });
@@ -5683,7 +5684,15 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
       }
       return debug.metrics.sourceNodeCount ?? debug.nodeCount;
     }, { timeout: 45_000 })
-    .toBeGreaterThan(1_000);
+    .toBeGreaterThanOrEqual(expectedSourceNodeCount);
+  // The dense fixture can produce two legitimate initialization projections:
+  // the seeded identity graph, then the saved all-content preference. Do not
+  // capture an interaction baseline while the second projection is in flight.
+  await expect
+    .poll(async () => (await readGraphSummary(page))?.metrics.contentSyncCount ?? 0, {
+      timeout: 45_000,
+    })
+    .toBeGreaterThanOrEqual(2);
 
   const seededGraph = await readGraphSummary(page);
   expect(seededGraph).not.toBeNull();

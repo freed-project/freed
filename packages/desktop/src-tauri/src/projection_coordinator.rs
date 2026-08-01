@@ -12,8 +12,8 @@ use crate::projection_generation_registry::{
     ProjectionGenerationRegistry, ProjectionGenerationRegistryError,
 };
 use crate::shadow_store::{
-    FeedItemRow, FeedPage, PageCursor, ProjectionRebuildState, ProjectionSourceV1, ShadowStore,
-    ShadowStoreError,
+    FeedItemRow, FeedPage, ItemScanPage, PageCursor, ProjectionRebuildState, ProjectionSourceV1,
+    ShadowStore, ShadowStoreError,
 };
 use std::fmt;
 use std::path::Path;
@@ -100,6 +100,16 @@ impl ProjectionReadSession {
 
     pub(super) fn item_detail(&self, global_id: &str) -> CoordinatorResult<Option<FeedItemRow>> {
         self.reader.item_detail(global_id).map_err(Into::into)
+    }
+
+    pub(super) fn item_scan_page(
+        &self,
+        after_global_id: Option<&str>,
+        limit: u32,
+    ) -> CoordinatorResult<ItemScanPage> {
+        self.reader
+            .item_scan_page(after_global_id, limit)
+            .map_err(Into::into)
     }
 }
 

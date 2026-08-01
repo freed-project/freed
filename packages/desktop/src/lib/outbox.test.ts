@@ -144,6 +144,46 @@ describe("outbox processor", () => {
     teardown();
   });
 
+  it("streams startup candidates from bounded SQLite pages", async () => {
+    vi.useFakeTimers();
+    const { startOutboxProcessor } = await loadOutbox();
+    const first = makeItem("x:first", { liked: true, likedAt: 10 });
+    const second = makeItem("x:second", { liked: true, likedAt: 20 });
+    const getItems = vi.fn(() => {
+      throw new Error("full Automerge corpus must not be read");
+    });
+    const like = vi.fn(async () => true);
+    const actions: PlatformActions = {
+      like,
+      unlike: vi.fn(async () => true),
+      markSeen: vi.fn(async () => true),
+      commentUrl: vi.fn(() => null),
+    };
+    const scanItems = vi.fn(async (
+      visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
+    ) => {
+      await visitPage([first]);
+      await visitPage([second]);
+    });
+
+    const teardown = startOutboxProcessor(
+      getItems,
+      () => () => {},
+      new Map([["x", actions]]),
+      vi.fn(async () => undefined),
+      vi.fn(async () => undefined),
+      scanItems,
+    );
+    await vi.runAllTimersAsync();
+
+    expect(scanItems).toHaveBeenCalledTimes(1);
+    expect(getItems).not.toHaveBeenCalled();
+    expect(like).toHaveBeenCalledTimes(2);
+    expect(like).toHaveBeenNthCalledWith(1, first);
+    expect(like).toHaveBeenNthCalledWith(2, second);
+    teardown();
+  });
+
   it("retries patched items without falling back to a full scan", async () => {
     vi.useFakeTimers();
     const { startOutboxProcessor } = await loadOutbox();

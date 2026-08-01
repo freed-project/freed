@@ -13,7 +13,9 @@ use crate::projection_generation_reader::ProjectionGenerationReaderError;
 use crate::projection_generation_registry::{
     ProjectionGenerationRegistry, ProjectionGenerationRegistryError,
 };
-use crate::shadow_store::{FeedCardRow, FeedItemRow, FeedPage, PageCursor, ShadowStoreError};
+use crate::shadow_store::{
+    FeedCardRow, FeedItemRow, FeedPage, ItemScanPage, PageCursor, ShadowStoreError,
+};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -38,6 +40,10 @@ const MAXIMUM_READER_SESSION_AGE: Duration = Duration::from_secs(60);
 const ITEM_DETAIL_QUERY_ID: &str = "item_detail_v1";
 const MAXIMUM_ITEM_DETAIL_RESPONSE_BYTES: usize = 8 * 1_048_576;
 const MAXIMUM_DOCUMENT_ID_BYTES: usize = 4_096;
+const ITEM_SCAN_QUERY_ID: &str = "background_item_page_v1";
+const MAXIMUM_ITEM_SCAN_PAGE_LIMIT: u32 = 64;
+const ITEM_SCAN_CURSOR_VERSION: u8 = 1;
+const ITEM_SCAN_CURSOR_FIXED_BYTES: usize = 51;
 
 #[derive(Debug)]
 enum FeedReaderError {
@@ -164,15 +170,35 @@ impl<'de> Deserialize<'de> for RequiredNullableCursor {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct RequestIdentity {
-    cancellation_id: String,
-    cursor: Option<String>,
-    limit: u32,
+enum RequestIdentity {
+    Feed {
+        cancellation_id: String,
+        cursor: Option<String>,
+        limit: u32,
+    },
+    ItemScan {
+        cancellation_id: String,
+        cursor: Option<String>,
+        limit: u32,
+    },
+}
+
+impl RequestIdentity {
+    fn cancellation_id(&self) -> &str {
+        match self {
+            Self::Feed {
+                cancellation_id, ..
+            }
+            | Self::ItemScan {
+                cancellation_id, ..
+            } => cancellation_id,
+        }
+    }
 }
 
 impl From<&FeedPageRequestV1> for RequestIdentity {
     fn from(request: &FeedPageRequestV1) -> Self {
-        Self {
+        Self::Feed {
             cancellation_id: request.cancellation_id.clone(),
             cursor: request.cursor.0.clone(),
             limit: request.limit,
@@ -216,6 +242,44 @@ pub(super) struct ItemDetailResponseV1 {
     query_id: &'static str,
     schema_version: u8,
     source: ItemDetailSourceV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ItemScanRequestV1 {
+    cancellation_id: String,
+    cursor: RequiredNullableCursor,
+    limit: u32,
+    query_id: String,
+    reader_session_id: String,
+    schema_version: u8,
+}
+
+impl From<&ItemScanRequestV1> for RequestIdentity {
+    fn from(request: &ItemScanRequestV1) -> Self {
+        Self::ItemScan {
+            cancellation_id: request.cancellation_id.clone(),
+            cursor: request.cursor.0.clone(),
+            limit: request.limit,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ItemScanResponseV1 {
+    next_cursor: Option<String>,
+    query_id: &'static str,
+    rows: Vec<FeedItemRow>,
+    schema_version: u8,
+    source: ItemDetailSourceV1,
+}
+
+struct DecodedItemScanCursor {
+    generation_id: String,
+    transition_sequence: i64,
+    projection_revision: i64,
+    after_global_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -404,6 +468,72 @@ fn lower_hex(bytes: &[u8]) -> String {
     output
 }
 
+fn decode_item_scan_cursor(value: &str) -> Result<DecodedItemScanCursor, FeedReaderError> {
+    if value.is_empty() || value.len() > MAXIMUM_CURSOR_BYTES || value.len() % 4 == 1 {
+        return Err(FeedReaderError::InvalidRequest("item scan cursor"));
+    }
+    let bytes = URL_SAFE_NO_PAD
+        .decode(value)
+        .map_err(|_| FeedReaderError::InvalidRequest("item scan cursor"))?;
+    if URL_SAFE_NO_PAD.encode(&bytes) != value
+        || bytes.len() < ITEM_SCAN_CURSOR_FIXED_BYTES
+        || bytes[0] != ITEM_SCAN_CURSOR_VERSION
+    {
+        return Err(FeedReaderError::InvalidRequest("item scan cursor"));
+    }
+    let global_id_length = u16::from_be_bytes([bytes[49], bytes[50]]) as usize;
+    if global_id_length == 0
+        || global_id_length > MAXIMUM_ENTITY_ID_BYTES
+        || bytes.len() != ITEM_SCAN_CURSOR_FIXED_BYTES + global_id_length
+    {
+        return Err(FeedReaderError::InvalidRequest(
+            "item scan cursor entity identity",
+        ));
+    }
+    Ok(DecodedItemScanCursor {
+        generation_id: lower_hex(&bytes[1..33]),
+        transition_sequence: read_safe_integer(&bytes[33..41])?,
+        projection_revision: read_safe_integer(&bytes[41..49])?,
+        after_global_id: std::str::from_utf8(&bytes[ITEM_SCAN_CURSOR_FIXED_BYTES..])
+            .map_err(|_| FeedReaderError::InvalidRequest("item scan cursor entity identity"))?
+            .to_string(),
+    })
+}
+
+fn encode_item_scan_cursor(
+    generation_id: &str,
+    transition_sequence: i64,
+    projection_revision: i64,
+    after_global_id: &str,
+) -> Result<String, FeedReaderError> {
+    if transition_sequence < 0
+        || projection_revision < 0
+        || transition_sequence as u64 > MAXIMUM_SAFE_INTEGER
+        || projection_revision as u64 > MAXIMUM_SAFE_INTEGER
+    {
+        return Err(FeedReaderError::InvalidRequest("item scan cursor integer"));
+    }
+    let generation_bytes = decode_lower_hex_64(generation_id)?;
+    let global_id = after_global_id.as_bytes();
+    if global_id.is_empty() || global_id.len() > MAXIMUM_ENTITY_ID_BYTES {
+        return Err(FeedReaderError::InvalidRequest(
+            "item scan cursor entity identity",
+        ));
+    }
+    let mut bytes = Vec::with_capacity(ITEM_SCAN_CURSOR_FIXED_BYTES + global_id.len());
+    bytes.push(ITEM_SCAN_CURSOR_VERSION);
+    bytes.extend_from_slice(&generation_bytes);
+    bytes.extend_from_slice(&(transition_sequence as u64).to_be_bytes());
+    bytes.extend_from_slice(&(projection_revision as u64).to_be_bytes());
+    bytes.extend_from_slice(&(global_id.len() as u16).to_be_bytes());
+    bytes.extend_from_slice(global_id);
+    let encoded = URL_SAFE_NO_PAD.encode(bytes);
+    if encoded.len() > MAXIMUM_CURSOR_BYTES {
+        return Err(FeedReaderError::InvalidRequest("item scan cursor"));
+    }
+    Ok(encoded)
+}
+
 fn prune_expired(runtime: &mut FeedReaderRuntimeInner, now: Instant) {
     runtime.sessions.retain(|_, session| {
         now.checked_duration_since(session.created_at)
@@ -521,7 +651,7 @@ fn read_at_root(
         .get(&request.reader_session_id)
         .and_then(|session| session.last_request.as_ref())
         .is_some_and(|prior| {
-            prior.cancellation_id == request.cancellation_id && prior != &request_identity
+            prior.cancellation_id() == request.cancellation_id && prior != &request_identity
         })
     {
         return Err(FeedReaderError::InvalidRequest("cancellation replay"));
@@ -639,7 +769,7 @@ fn cancel_session(
             session
                 .last_request
                 .as_ref()
-                .is_some_and(|request| request.cancellation_id == cancellation_id)
+                .is_some_and(|request| request.cancellation_id() == cancellation_id)
         });
     if released {
         runtime.sessions.remove(reader_session_id);
@@ -731,6 +861,196 @@ pub(super) fn read_library_core_item_detail(
         FeedReaderErrorResponse::from(FeedReaderError::RuntimePath(error.to_string()))
     })?;
     read_item_detail_at_root(&base, request).map_err(Into::into)
+}
+
+fn read_item_scan_at_root(
+    runtime: &LibraryCoreFeedReaderRuntimeState,
+    base: &Path,
+    request: ItemScanRequestV1,
+    now: Instant,
+) -> Result<ItemScanResponseV1, FeedReaderError> {
+    if request.query_id != ITEM_SCAN_QUERY_ID
+        || request.schema_version != SCHEMA_VERSION
+        || !(1..=MAXIMUM_ITEM_SCAN_PAGE_LIMIT).contains(&request.limit)
+        || !is_operation_instance_id(&request.reader_session_id)
+        || !is_operation_instance_id(&request.cancellation_id)
+        || request
+            .cursor
+            .0
+            .as_ref()
+            .is_some_and(|cursor| cursor.len() > MAXIMUM_CURSOR_BYTES)
+    {
+        return Err(FeedReaderError::InvalidRequest("item scan"));
+    }
+    let decoded_cursor = request
+        .cursor
+        .0
+        .as_deref()
+        .map(decode_item_scan_cursor)
+        .transpose()?;
+    let mut runtime = runtime
+        .0
+        .lock()
+        .map_err(|_| FeedReaderError::StatePoisoned)?;
+    if runtime.quiesced {
+        return Err(FeedReaderError::RuntimeInactive);
+    }
+    prune_expired(&mut runtime, now);
+    if !runtime.sessions.contains_key(&request.reader_session_id) {
+        if decoded_cursor.is_some() {
+            return Err(FeedReaderError::CursorStale);
+        }
+        if runtime.sessions.len() >= MAXIMUM_READER_SESSIONS {
+            return Err(FeedReaderError::SessionLimit);
+        }
+        let paths = resolve_library_core_shadow_reader_paths(base)
+            .map_err(FeedReaderError::RuntimePath)?
+            .ok_or(FeedReaderError::RuntimeInactive)?;
+        let selected = ProjectionGenerationRegistry::read_selected_generation(&paths.registry_path)
+            .map_err(|error| match error {
+                ProjectionGenerationRegistryError::NoSelectedGeneration => {
+                    FeedReaderError::RuntimeInactive
+                }
+                other => FeedReaderError::Coordinator(ProjectionCoordinatorError::Registry(other)),
+            })?;
+        if selected.transition_sequence < 0
+            || selected.transition_sequence as u64 > MAXIMUM_SAFE_INTEGER
+        {
+            return Err(FeedReaderError::InvalidRequest("transition sequence"));
+        }
+        let key = reader_key(
+            &selected.generation.generation_id,
+            selected.transition_sequence,
+        );
+        if !runtime.readers.contains_key(&key) {
+            evict_unreferenced_readers(&mut runtime);
+            if runtime.readers.len() >= MAXIMUM_READER_SESSIONS {
+                return Err(FeedReaderError::SessionLimit);
+            }
+            let reader = open_selected_projection(&paths.registry_path, &paths.generation_root)
+                .map_err(map_reader_open_error)?;
+            if reader.generation_id() != selected.generation.generation_id
+                || reader.transition_sequence() != selected.transition_sequence
+            {
+                return Err(FeedReaderError::CursorStale);
+            }
+            runtime.readers.insert(key.clone(), CachedReader { reader });
+        }
+        runtime.sessions.insert(
+            request.reader_session_id.clone(),
+            ReaderSession {
+                reader_key: key,
+                created_at: now,
+                last_request: None,
+            },
+        );
+    }
+    let reader_key = runtime
+        .sessions
+        .get(&request.reader_session_id)
+        .ok_or(FeedReaderError::CursorStale)?
+        .reader_key
+        .clone();
+    let reader = &runtime
+        .readers
+        .get(&reader_key)
+        .ok_or(FeedReaderError::CursorStale)?
+        .reader;
+    let request_identity = RequestIdentity::from(&request);
+    if runtime
+        .sessions
+        .get(&request.reader_session_id)
+        .and_then(|session| session.last_request.as_ref())
+        .is_some_and(|prior| {
+            prior.cancellation_id() == request.cancellation_id && prior != &request_identity
+        })
+    {
+        return Err(FeedReaderError::InvalidRequest("cancellation replay"));
+    }
+    if decoded_cursor.as_ref().is_some_and(|cursor| {
+        cursor.generation_id != reader.generation_id()
+            || cursor.transition_sequence != reader.transition_sequence()
+            || cursor.projection_revision != reader.projection_revision()
+    }) {
+        return Err(FeedReaderError::CursorStale);
+    }
+    let source = reader.source();
+    if source.document_id.is_empty()
+        || source.document_id.len() > MAXIMUM_DOCUMENT_ID_BYTES
+        || source.heads_digest.len() != 64
+        || source.head_count < 0
+        || source.storage_generation < 0
+        || source.storage_save_revision < 0
+        || reader.projection_revision() < 0
+        || reader.transition_sequence() < 0
+    {
+        return Err(FeedReaderError::InvalidRequest("selected source"));
+    }
+    let ItemScanPage {
+        rows,
+        next_after_global_id,
+    } = reader.item_scan_page(
+        decoded_cursor
+            .as_ref()
+            .map(|cursor| cursor.after_global_id.as_str()),
+        request.limit,
+    )?;
+    let next_cursor = next_after_global_id
+        .as_deref()
+        .map(|global_id| {
+            encode_item_scan_cursor(
+                reader.generation_id(),
+                reader.transition_sequence(),
+                reader.projection_revision(),
+                global_id,
+            )
+        })
+        .transpose()?;
+    let response = ItemScanResponseV1 {
+        next_cursor,
+        query_id: ITEM_SCAN_QUERY_ID,
+        rows,
+        schema_version: SCHEMA_VERSION,
+        source: ItemDetailSourceV1 {
+            document_id: source.document_id,
+            generation_id: reader.generation_id().to_string(),
+            head_count: source.head_count,
+            heads_digest: source.heads_digest,
+            projection_revision: reader.projection_revision(),
+            storage_generation: source.storage_generation,
+            storage_save_revision: source.storage_save_revision,
+            transition_sequence: reader.transition_sequence(),
+        },
+    };
+    if serde_json::to_vec(&response)
+        .map_err(|_| FeedReaderError::ResponseTooLarge)?
+        .len()
+        > MAXIMUM_ITEM_DETAIL_RESPONSE_BYTES
+    {
+        return Err(FeedReaderError::ResponseTooLarge);
+    }
+    let exhausted = response.next_cursor.is_none();
+    runtime
+        .sessions
+        .get_mut(&request.reader_session_id)
+        .ok_or(FeedReaderError::CursorStale)?
+        .last_request = Some(request_identity);
+    if exhausted {
+        runtime.sessions.remove(&request.reader_session_id);
+    }
+    Ok(response)
+}
+
+#[tauri::command]
+pub(super) fn read_library_core_item_scan_page(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, LibraryCoreFeedReaderRuntimeState>,
+    request: ItemScanRequestV1,
+) -> Result<ItemScanResponseV1, FeedReaderErrorResponse> {
+    let base = app.path().app_data_dir().map_err(|error| {
+        FeedReaderErrorResponse::from(FeedReaderError::RuntimePath(error.to_string()))
+    })?;
+    read_item_scan_at_root(&state, &base, request, Instant::now()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -890,6 +1210,18 @@ mod tests {
         }
     }
 
+    fn item_scan_request(cursor: Option<String>, limit: u32) -> ItemScanRequestV1 {
+        let page = usize::from(cursor.is_some());
+        ItemScanRequestV1 {
+            cancellation_id: format!("item-scan-page-{page}"),
+            cursor: RequiredNullableCursor(cursor),
+            limit,
+            query_id: ITEM_SCAN_QUERY_ID.to_string(),
+            reader_session_id: "item-scan-reader-1".to_string(),
+            schema_version: SCHEMA_VERSION,
+        }
+    }
+
     #[test]
     fn cursor_codec_matches_the_shared_cross_runtime_vector() {
         let cursor = PageCursor {
@@ -923,6 +1255,20 @@ mod tests {
         let mut bytes = URL_SAFE_NO_PAD.decode(encoded).expect("decode bytes");
         bytes[49..57].copy_from_slice(&(MAXIMUM_SAFE_INTEGER + 1).to_be_bytes());
         assert!(decode_cursor(&URL_SAFE_NO_PAD.encode(bytes)).is_err());
+    }
+
+    #[test]
+    fn item_scan_cursor_is_generation_bound_and_canonical() {
+        let generation_id = "a".repeat(64);
+        let encoded = encode_item_scan_cursor(&generation_id, 12, 34, "x:item-1")
+            .expect("encode item scan cursor");
+        let decoded = decode_item_scan_cursor(&encoded).expect("decode item scan cursor");
+        assert_eq!(decoded.generation_id, generation_id);
+        assert_eq!(decoded.transition_sequence, 12);
+        assert_eq!(decoded.projection_revision, 34);
+        assert_eq!(decoded.after_global_id, "x:item-1");
+        assert!(!encoded.contains('='));
+        assert!(decode_item_scan_cursor(&format!("{encoded}=")).is_err());
     }
 
     #[test]
@@ -1002,6 +1348,42 @@ mod tests {
             .expect("request object")
             .insert("extra".to_string(), serde_json::Value::Bool(true));
         assert!(serde_json::from_value::<ItemDetailRequestV1>(unknown).is_err());
+    }
+
+    #[test]
+    fn scans_lossless_rows_in_bounded_generation_pinned_pages() {
+        let fixture = Fixture::new("item-scan");
+        fixture.publish(&[row(2), row(0), row(1)]);
+        let runtime = LibraryCoreFeedReaderRuntimeState::default();
+        let now = Instant::now();
+
+        let first =
+            read_item_scan_at_root(&runtime, &fixture.base, item_scan_request(None, 2), now)
+                .expect("first item scan page");
+        assert_eq!(first.rows.len(), 2);
+        assert_eq!(first.rows[0].global_id, "x:item-0");
+        assert_eq!(first.rows[1].global_id, "x:item-1");
+        assert_eq!(first.source.document_id, source().document_id);
+        let second = read_item_scan_at_root(
+            &runtime,
+            &fixture.base,
+            item_scan_request(first.next_cursor, 2),
+            now + Duration::from_millis(1),
+        )
+        .expect("second item scan page");
+        assert_eq!(second.rows.len(), 1);
+        assert_eq!(second.rows[0].global_id, "x:item-2");
+        assert!(second.next_cursor.is_none());
+
+        assert!(matches!(
+            read_item_scan_at_root(
+                &LibraryCoreFeedReaderRuntimeState::default(),
+                &fixture.base,
+                item_scan_request(None, 0),
+                now,
+            ),
+            Err(FeedReaderError::InvalidRequest("item scan"))
+        ));
     }
 
     #[test]

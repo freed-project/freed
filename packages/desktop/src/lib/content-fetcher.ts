@@ -43,6 +43,7 @@ import {
   isFactoryResetInProgress,
   waitForFactoryResetDrain,
 } from "@freed/ui/lib/factory-reset";
+import { scanLibraryCoreItems } from "./library-core-item-detail-runtime.js";
 
 const FETCH_TIMEOUT_MS = 30_000;
 const AI_SUMMARY_TIMEOUT_MS = 60_000;
@@ -255,7 +256,14 @@ export function pinReaderItem(item: FeedItem): Promise<void> {
 function maybeScanVisibleItems(items: FeedItem[], docItemCount: number): void {
   if (lastScannedDocItemCount === docItemCount) return;
   lastScannedDocItemCount = docItemCount;
-  enqueue(items);
+  void scanLibraryCoreItems((page) => enqueue([...page])).catch((error) => {
+    log.warn(
+      `[content-fetcher] bounded SQLite scan unavailable; using Automerge fallback: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    enqueue(items);
+  });
 }
 
 type ProcessOutcome = "success" | "skipped" | "backoff" | "deferred" | "idle";

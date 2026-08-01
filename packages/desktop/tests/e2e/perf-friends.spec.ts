@@ -85,6 +85,7 @@ async function readGraphPerf(page: Page) {
         denseInteractionNodeCount?: number;
         denseInteractionRebuildCount?: number;
         sceneSyncCount?: number;
+        contentSyncCount?: number;
         presentationSyncCount?: number;
         edgeRebuildCount?: number;
         rendererEdgeCount?: number;
@@ -356,9 +357,33 @@ test("Friends WebGL2 compatibility view handles 1,600 visible people while zoomi
   await app.goto();
   await app.waitForReady();
   await seedLargeFriendsWorkspace(page);
+  await expect
+    .poll(async () => page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+        getState: () => {
+          persons: Record<string, unknown>;
+          accounts: Record<string, unknown>;
+          items: Array<{ globalId: string }>;
+        };
+      };
+      const state = store.getState();
+      return {
+        persons: Object.keys(state.persons)
+          .filter((id) => id.startsWith("scale-person-")).length,
+        accounts: Object.keys(state.accounts)
+          .filter((id) => id.startsWith("scale-account-")).length,
+        items: state.items
+          .filter((item) => item.globalId.startsWith("scale-item-")).length,
+      };
+    }), { timeout: 60_000 })
+    .toEqual({
+      persons: PERSON_COUNT,
+      accounts: ACCOUNT_COUNT,
+      items: ITEM_COUNT,
+    });
 
   const mountStartedAt = COLLECT_PERF_TELEMETRY ? Date.now() : null;
-  const preferenceSavePromise = page.evaluate(async () => {
+  const preferenceSaveMs = await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
       getState: () => {
@@ -367,14 +392,13 @@ test("Friends WebGL2 compatibility view handles 1,600 visible people while zoomi
       };
     };
     const preferenceSaveStartedAt = performance.now();
-    const savePromise = store.getState().updatePreferences({
+    await store.getState().updatePreferences({
       display: {
         friendsMode: "all_content",
         themeId: "scriptorium",
       },
     });
     store.getState().setActiveView("friends");
-    await savePromise;
     return performance.now() - preferenceSaveStartedAt;
   });
 
@@ -384,13 +408,20 @@ test("Friends WebGL2 compatibility view handles 1,600 visible people while zoomi
     .poll(async () => {
       const perf = await readGraphPerf(page);
       return perf?.nodeCount ?? 0;
-  }, { timeout: 60_000 })
-    .toBeGreaterThanOrEqual(PERSON_COUNT);
+    }, { timeout: 60_000 })
+    .toBeGreaterThanOrEqual(PERSON_COUNT + ACCOUNT_COUNT);
+  // Capture the interaction baseline only after every initialization source
+  // projection is admitted. Otherwise the second legitimate admission can
+  // arrive during the gesture and masquerade as an interaction rebuild.
+  await expect
+    .poll(async () => (await readGraphPerf(page))?.contentSyncCount ?? 0, {
+      timeout: 60_000,
+    })
+    .toBeGreaterThanOrEqual(2);
 
   const mountedRows = await page.getByTestId("friend-overview-virtual-row").count();
   const mountElapsed =
     mountStartedAt === null ? null : Date.now() - mountStartedAt;
-  const preferenceSaveMs = await preferenceSavePromise;
   await waitForGraphContractSettle(page);
   const initialDebug = await readGraphDebug(page);
   expect(initialDebug).not.toBeNull();

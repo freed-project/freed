@@ -33,6 +33,7 @@ import {
   runBackgroundJob,
 } from "./background-runtime-coordinator";
 import { recordSocialOutboxAttempt } from "./runtime-health-events";
+import { log } from "./logger";
 import {
   beginSocialOutboxAttempt,
   completeSocialOutboxIntent,
@@ -112,6 +113,9 @@ export function startOutboxProcessor(
   platformActions: Map<Platform, PlatformActions>,
   confirmLiked: ConfirmFn,
   confirmSeen: ConfirmFn,
+  scanItems?: (
+    visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
+  ) => Promise<void>,
 ): () => void {
   if (factoryResetDrainInProgress) return () => {};
   activeOutboxRuntime?.stop();
@@ -173,7 +177,7 @@ export function startOutboxProcessor(
     intent: SocialOutboxIntent;
   }
 
-  async function collectPendingQueues(items: FeedItem[]) {
+  async function collectPendingQueues(items: readonly FeedItem[]) {
     const likeQueue: PendingAction[] = [];
     const seenQueue: PendingAction[] = [];
 
@@ -298,27 +302,46 @@ export function startOutboxProcessor(
     isDraining = true;
     drainRequested = false;
 
-    let items: FeedItem[];
+    let likeQueue: PendingAction[] = [];
+    let seenQueue: PendingAction[] = [];
     if (fullScanRequested) {
-      const currentItems = getItems();
-      if (!currentItems) {
-        isDraining = false;
-        return;
+      if (scanItems) {
+        try {
+          await scanItems(async (page) => {
+            const pending = await collectPendingQueues(page);
+            likeQueue.push(...pending.likeQueue);
+            seenQueue.push(...pending.seenQueue);
+          });
+        } catch (error) {
+          likeQueue = [];
+          seenQueue = [];
+          log.warn(
+            `[Outbox] bounded SQLite scan unavailable; using Automerge fallback: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          const currentItems = getItems();
+          if (!currentItems) {
+            isDraining = false;
+            return;
+          }
+          ({ likeQueue, seenQueue } = await collectPendingQueues(currentItems));
+        }
+      } else {
+        const currentItems = getItems();
+        if (!currentItems) {
+          isDraining = false;
+          return;
+        }
+        ({ likeQueue, seenQueue } = await collectPendingQueues(currentItems));
       }
       fullScanRequested = false;
       pendingChangedItems.clear();
-      items = currentItems;
     } else {
-      items = Array.from(pendingChangedItems.values());
+      const items = Array.from(pendingChangedItems.values());
       pendingChangedItems.clear();
+      ({ likeQueue, seenQueue } = await collectPendingQueues(items));
     }
-
-    if (items.length === 0) {
-      isDraining = false;
-      return;
-    }
-
-    const { likeQueue, seenQueue } = await collectPendingQueues(items);
 
     if (likeQueue.length > 0) {
       addDebugEvent("change", `[Outbox] draining ${likeQueue.length.toLocaleString()} pending like(s)`);
