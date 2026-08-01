@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { FeedItemRow } from "@freed/shared/projection";
 import type { LibraryCoreProjectionSourceV1 } from "./automerge-types";
-import { readLibraryCoreItemDetail } from "./library-core-item-detail-runtime";
+import {
+  readLibraryCoreItemDetail,
+  scanLibraryCoreItems,
+} from "./library-core-item-detail-runtime";
 
 const source: LibraryCoreProjectionSourceV1 = {
   schemaVersion: 1,
@@ -48,6 +51,21 @@ function response(item: FeedItemRow | null = row) {
       storageSaveRevision: source.storageRevision.saveRevision,
       transitionSequence: 6,
     },
+  };
+}
+
+function scanResponse(
+  rows: FeedItemRow[],
+  nextCursor: string | null,
+  sourceOverrides: Record<string, unknown> = {},
+) {
+  const detail = response();
+  return {
+    nextCursor,
+    queryId: "background_item_page_v1",
+    rows,
+    schemaVersion: 1,
+    source: { ...detail.source, ...sourceOverrides },
   };
 }
 
@@ -127,5 +145,67 @@ describe("Desktop Library Core item detail runtime", () => {
         vi.fn().mockResolvedValue(response({ ...row, globalId: "rss:other" })),
       ),
     ).rejects.toThrow("row is invalid");
+  });
+
+  it("streams bounded SQLite pages without accumulating the corpus", async () => {
+    const secondRow = { ...row, globalId: "rss:item-2" };
+    const getSource = vi.fn().mockResolvedValue(source);
+    const readNative = vi
+      .fn()
+      .mockResolvedValueOnce(scanResponse([row], "cursor-1"))
+      .mockResolvedValueOnce(scanResponse([secondRow], null));
+    const pages: string[][] = [];
+
+    await scanLibraryCoreItems(
+      (items) => {
+        pages.push(items.map((item) => item.globalId));
+      },
+      getSource,
+      readNative,
+    );
+
+    expect(pages).toEqual([["rss:item-1"], ["rss:item-2"]]);
+    expect(readNative).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      cursor: null,
+      limit: 64,
+      queryId: "background_item_page_v1",
+      schemaVersion: 1,
+    }));
+    expect(readNative).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      cursor: "cursor-1",
+      limit: 64,
+      queryId: "background_item_page_v1",
+      schemaVersion: 1,
+    }));
+    const firstRequest = readNative.mock.calls[0]?.[0];
+    const secondRequest = readNative.mock.calls[1]?.[0];
+    expect(firstRequest?.readerSessionId).toBe(secondRequest?.readerSessionId);
+    expect(firstRequest?.cancellationId).not.toBe(secondRequest?.cancellationId);
+    expect(getSource).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails closed when a scan changes generation or stops making progress", async () => {
+    await expect(
+      scanLibraryCoreItems(
+        vi.fn(),
+        vi.fn().mockResolvedValue(source),
+        vi
+          .fn()
+          .mockResolvedValueOnce(scanResponse([row], "cursor-1"))
+          .mockResolvedValueOnce(
+            scanResponse([{ ...row, globalId: "rss:item-2" }], null, {
+              generationId: "9".repeat(64),
+            }),
+          ),
+      ),
+    ).rejects.toThrow("generation changed");
+
+    await expect(
+      scanLibraryCoreItems(
+        vi.fn(),
+        vi.fn().mockResolvedValue(source),
+        vi.fn().mockResolvedValue(scanResponse([], "cursor-1")),
+      ),
+    ).rejects.toThrow("made no progress");
   });
 });

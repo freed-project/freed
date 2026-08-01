@@ -104,6 +104,7 @@ import {
   startOutboxProcessor,
   stopAndDrainOutboxProcessor,
 } from "./outbox";
+import { scanLibraryCoreItems } from "./library-core-item-detail-runtime";
 import { loadStoredCookies, type XAuthState } from "./x-auth";
 import { recordBugReportEvent, recordRuntimeError } from "@freed/ui/lib/bug-report";
 import { getDeviceDisplayPreferences } from "@freed/ui/lib/device-display-preferences";
@@ -805,6 +806,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           platformActionsRegistry,
           async (id, syncedAt) => { await docConfirmLikedSynced(id, syncedAt); },
           async (id, syncedAt) => { await docConfirmSeenSynced(id, syncedAt); },
+          scanLibraryCoreItems,
         );
 
         // Do not mutate the local doc before cloud sync has reconciled it.
