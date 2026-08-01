@@ -1,7 +1,4 @@
-import {
-  createDefaultPreferences,
-  type FeedItem,
-} from "@freed/shared";
+import { createDefaultPreferences, type FeedItem } from "@freed/shared";
 import { describe, expect, it } from "vitest";
 
 import type {
@@ -10,7 +7,9 @@ import type {
 } from "./automerge-types";
 import {
   createHydratedLibraryCoreFeedBrowseProjectionClient,
+  createScannedLibraryCoreFeedBrowseProjectionClient,
 } from "./library-core-feed-browse-hydrated-client";
+import type { LibraryCoreItemScanSession } from "./library-core-item-detail-runtime";
 
 function item(globalId: string, text = globalId): FeedItem {
   return {
@@ -79,18 +78,22 @@ describe("hydrated Library Core browse projection client", () => {
 
     expect(started.binding.totalRows).toBe(2);
     expect(batch.done).toBe(true);
-    expect(batch.rows.map((row) => [row.globalId, row.sourceSequence])).toEqual([
-      ["saved:second", 1],
-      ["saved:first", 0],
-    ]);
+    expect(batch.rows.map((row) => [row.globalId, row.sourceSequence])).toEqual(
+      [
+        ["saved:second", 1],
+        ["saved:first", 0],
+      ],
+    );
   });
 
   it("caps every transfer at 128 rows", async () => {
     const items = Array.from({ length: 129 }, (_, index) =>
-      item(`saved:${index.toLocaleString("en-US", {
-        minimumIntegerDigits: 3,
-        useGrouping: false,
-      })}`),
+      item(
+        `saved:${index.toLocaleString("en-US", {
+          minimumIntegerDigits: 3,
+          useGrouping: false,
+        })}`,
+      ),
     );
     const captured = state(items);
     const client = createHydratedLibraryCoreFeedBrowseProjectionClient({
@@ -135,6 +138,85 @@ describe("hydrated Library Core browse projection client", () => {
 
     await expect(client.begin("session", {}, 1_000)).rejects.toThrow(
       "source changed",
+    );
+  });
+});
+
+describe("scanned Library Core browse projection client", () => {
+  it("counts and emits bounded SQLite pages without reading renderer items", async () => {
+    const scannedItems = Array.from({ length: 129 }, (_, index) =>
+      item(
+        `saved:${index.toLocaleString("en-US", {
+          minimumIntegerDigits: 3,
+          useGrouping: false,
+        })}`,
+      ),
+    );
+    const captured = state(
+      [],
+      scannedItems.map((entry) => entry.globalId),
+    );
+    const pages = [
+      scannedItems.slice(0, 64),
+      scannedItems.slice(64, 128),
+      scannedItems.slice(128),
+    ];
+    let openedScans = 0;
+    const openScan = async (): Promise<LibraryCoreItemScanSession> => {
+      openedScans += 1;
+      let pageIndex = 0;
+      return {
+        async nextPage() {
+          const items = pages[pageIndex] ?? [];
+          pageIndex += 1;
+          return { items, done: pageIndex >= pages.length };
+        },
+        async close() {},
+      };
+    };
+    const client = createScannedLibraryCoreFeedBrowseProjectionClient({
+      getSource: async () => source,
+      getState: () => captured,
+      openScan,
+    });
+
+    const started = await client.begin("session", {}, 1_000);
+    const first = await client.nextBatch("session", 0);
+    const second = await client.nextBatch("session", 1);
+
+    expect(started.binding.totalRows).toBe(129);
+    expect(openedScans).toBe(2);
+    expect(first.rows).toHaveLength(128);
+    expect(first.done).toBe(false);
+    expect(second.rows).toHaveLength(1);
+    expect(second.done).toBe(true);
+    expect(
+      [...first.rows, ...second.rows].map((entry) => entry.globalId),
+    ).toEqual(scannedItems.map((entry) => entry.globalId));
+  });
+
+  it("fails closed when scanned items are absent from the source order", async () => {
+    const captured = state([], ["saved:first"]);
+    const openScan = async (): Promise<LibraryCoreItemScanSession> => {
+      let done = false;
+      return {
+        async nextPage() {
+          if (done) return { items: [], done: true };
+          done = true;
+          return { items: [item("saved:unknown")], done: true };
+        },
+        async close() {},
+      };
+    };
+    const client = createScannedLibraryCoreFeedBrowseProjectionClient({
+      getSource: async () => source,
+      getState: () => captured,
+      openScan,
+    });
+    await client.begin("session", {}, 1_000);
+
+    await expect(client.nextBatch("session", 0)).rejects.toThrow(
+      "no source sequence",
     );
   });
 });

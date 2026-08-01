@@ -2837,17 +2837,18 @@ receipted append or finalization after response loss, and cancels both sides
 on failure. It does not retain a corpus-sized ID or row array.
 
 The first Desktop product caller retains the same transport and native
-receipts, but no longer performs this second Automerge proxy traversal. The
-legacy renderer already owns one plain `DocState` snapshot. That snapshot now
-retains exact source-map enumeration IDs separately from its ranked visible
-items. Incremental patch responses identify source additions and removals so
-the tie-break sequence remains exact without a corpus rescan. The adapter
-freezes one state object and one durable source revision, computes rows from
-that plain state, and forwards only one replayable page capped at 128 rows.
-State or source movement fails closed before publication. This is an interim
-Gate D memory correction. Initial renderer hydration still scales with the
-legacy corpus, append-style Automerge change chunks still require the native
-external-memory decoder, and Automerge remains authoritative.
+receipts, but now sources the query-specific generation from the authenticated
+selected SQLite shadow rather than the renderer item array. It scans one
+generation once for the exact filtered row count and once for bounded
+projection output, retaining at most one native item page and one replayable
+128-row browse page. The renderer retains the source-map enumeration IDs needed
+for the exact Automerge tie-break plus compact ranking metadata. Incremental
+patch responses identify source additions and removals so that tie-break
+remains exact without a corpus rescan. State or source movement fails closed
+before publication. This is an interim Gate D memory correction. Initial
+renderer hydration still scales with the legacy corpus, append-style Automerge
+change chunks still require the native external-memory decoder, and Automerge
+remains authoritative.
 
 The cursor is versioned binary data encoded as canonical unpadded base64url. It
 binds the immutable generation digest, transition sequence, projection
@@ -2906,12 +2907,12 @@ renderer. The current recommendation order is also defined once and used by
 both active workers. The PWA now also persists exact filtered recommendation
 order in a separate query-specific IndexedDB generation while holding at most
 one 128-row output page, then serves it through the closed dormant browse
-protocol. The native generation writer transport and its bounded authenticated
-worker materializer are present, but generation selection, the native browse
-reader, renderer-cache eviction, and product caller proof remain absent.
-`adapter_proof_missing` therefore still blocks the query. Authenticated PWA
-materialization, runtime registration, shared semantic contracts, and dormant
-browse projection do not assign a product reader or activate Gate D.
+protocol. Desktop generation selection and the native browse reader now serve
+the default product feed through bounded pages. Renderer-cache eviction and the
+remaining product readers are still absent, so `adapter_proof_missing` still
+blocks the query and Gate D remains inactive. Authenticated PWA materialization,
+runtime registration, and shared semantic contracts likewise do not activate
+Gate D on their own.
 
 An interactive cursor does not pin an unbounded SQLite read transaction or WAL.
 If an adapter uses a pinned snapshot, the query registry declares its maximum

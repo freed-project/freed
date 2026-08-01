@@ -5,9 +5,7 @@ import {
   type FeedItemRow,
 } from "@freed/shared/projection";
 
-import {
-  getLibraryCoreProjectionSource,
-} from "./automerge";
+import { getLibraryCoreProjectionSource } from "./automerge";
 import type { LibraryCoreProjectionSourceV1 } from "./automerge-types";
 
 const ITEM_DETAIL_QUERY_ID = "item_detail_v1";
@@ -82,6 +80,16 @@ interface NativeItemScanResponseV1 {
   readonly rows: FeedItemRow[];
   readonly schemaVersion: typeof ITEM_DETAIL_SCHEMA_VERSION;
   readonly source: NativeItemDetailSourceV1;
+}
+
+export interface LibraryCoreItemScanPage {
+  readonly items: readonly FeedItem[];
+  readonly done: boolean;
+}
+
+export interface LibraryCoreItemScanSession {
+  nextPage(): Promise<LibraryCoreItemScanPage>;
+  close(): Promise<void>;
 }
 
 function closedRecord(
@@ -163,7 +171,8 @@ function parseItemScanResponse(value: unknown): NativeItemScanResponseV1 {
     response.queryId !== ITEM_SCAN_QUERY_ID ||
     response.schemaVersion !== ITEM_DETAIL_SCHEMA_VERSION ||
     !nullableString(response.nextCursor) ||
-    (typeof response.nextCursor === "string" && response.nextCursor.length === 0) ||
+    (typeof response.nextCursor === "string" &&
+      response.nextCursor.length === 0) ||
     !Array.isArray(response.rows) ||
     response.rows.length > ITEM_SCAN_PAGE_LIMIT ||
     typeof source.documentId !== "string" ||
@@ -201,7 +210,10 @@ function newReaderOperationId(prefix: string): string {
   return `${prefix}:${crypto.randomUUID()}`;
 }
 
-function parseResponse(value: unknown, requestedId: string): NativeItemDetailResponseV1 {
+function parseResponse(
+  value: unknown,
+  requestedId: string,
+): NativeItemDetailResponseV1 {
   const response = closedRecord(value, RESPONSE_KEYS);
   const source = closedRecord(response?.source, SOURCE_KEYS);
   if (
@@ -251,8 +263,7 @@ function sourceMatches(
  */
 export async function readLibraryCoreItemDetail(
   globalId: string,
-  getSource: () => Promise<LibraryCoreProjectionSourceV1> =
-    getLibraryCoreProjectionSource,
+  getSource: () => Promise<LibraryCoreProjectionSourceV1> = getLibraryCoreProjectionSource,
   readNative: (request: {
     globalId: string;
     queryId: typeof ITEM_DETAIL_QUERY_ID;
@@ -294,10 +305,8 @@ export async function readLibraryCoreItemDetail(
  * generation. At most one native page and one reconstructed page are retained
  * at a time, so background maintenance cost is independent of Library size.
  */
-async function scanLibraryCoreItemsExclusive(
-  visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
-  getSource: () => Promise<LibraryCoreProjectionSourceV1> =
-    getLibraryCoreProjectionSource,
+export async function openLibraryCoreItemScanSession(
+  getSource: () => Promise<LibraryCoreProjectionSourceV1> = getLibraryCoreProjectionSource,
   readNative: (request: {
     cancellationId: string;
     cursor: string | null;
@@ -315,7 +324,7 @@ async function scanLibraryCoreItemsExclusive(
       readerSessionId,
       cancellationId,
     }),
-): Promise<void> {
+): Promise<LibraryCoreItemScanSession> {
   if (
     typeof localStorage !== "undefined" &&
     localStorage.getItem(LIBRARY_CORE_ITEM_DETAIL_READER_DISABLED_KEY) === "1"
@@ -329,65 +338,153 @@ async function scanLibraryCoreItemsExclusive(
   let previousGlobalId: string | null = null;
   let lastCompletedCancellationId: string | null = null;
   let exhausted = false;
-  try {
-    for (let pageNumber = 0; pageNumber < MAXIMUM_ITEM_SCAN_PAGES; pageNumber += 1) {
+  let closed = false;
+  let pageInFlight = false;
+  let pageNumber = 0;
+
+  const close = async (): Promise<void> => {
+    if (closed) return;
+    closed = true;
+    if (!exhausted && lastCompletedCancellationId !== null) {
+      await cancelNative(readerSessionId, lastCompletedCancellationId).catch(
+        () => undefined,
+      );
+    }
+  };
+
+  return {
+    async nextPage(): Promise<LibraryCoreItemScanPage> {
+      if (closed) {
+        throw new Error("Library Core item scan session is closed");
+      }
+      if (pageInFlight) {
+        throw new Error("Library Core item scan page is already running");
+      }
+      if (exhausted) return { items: [], done: true };
+      if (pageNumber >= MAXIMUM_ITEM_SCAN_PAGES) {
+        await close();
+        throw new Error("Library Core item scan exceeded its page bound");
+      }
+      pageNumber += 1;
+      pageInFlight = true;
       const cancellationId = newReaderOperationId("item-scan-page");
-      const rawResponse = await readNative({
-        cancellationId,
-        cursor,
-        limit: ITEM_SCAN_PAGE_LIMIT,
-        queryId: ITEM_SCAN_QUERY_ID,
-        readerSessionId,
-        schemaVersion: ITEM_DETAIL_SCHEMA_VERSION,
-      });
+      let rawResponse: unknown;
+      try {
+        rawResponse = await readNative({
+          cancellationId,
+          cursor,
+          limit: ITEM_SCAN_PAGE_LIMIT,
+          queryId: ITEM_SCAN_QUERY_ID,
+          readerSessionId,
+          schemaVersion: ITEM_DETAIL_SCHEMA_VERSION,
+        });
+      } catch (error) {
+        pageInFlight = false;
+        await close();
+        throw error;
+      }
       lastCompletedCancellationId = cancellationId;
-      const response = parseItemScanResponse(rawResponse);
+      let response: NativeItemScanResponseV1;
+      try {
+        response = parseItemScanResponse(rawResponse);
+      } catch (error) {
+        pageInFlight = false;
+        await close();
+        throw error;
+      }
       if (!sourceMatches(before, response.source)) {
+        pageInFlight = false;
+        await close();
         throw new Error("Library Core item scan source is stale");
       }
-      if (selectedSource && !sameSelectedSource(selectedSource, response.source)) {
+      if (
+        selectedSource &&
+        !sameSelectedSource(selectedSource, response.source)
+      ) {
+        pageInFlight = false;
+        await close();
         throw new Error("Library Core item scan generation changed");
       }
       selectedSource ??= response.source;
       for (const row of response.rows) {
         if (previousGlobalId !== null && row.globalId <= previousGlobalId) {
+          pageInFlight = false;
+          await close();
           throw new Error("Library Core item scan order is invalid");
         }
         previousGlobalId = row.globalId;
       }
       if (response.rows.length === 0 && response.nextCursor !== null) {
+        pageInFlight = false;
+        await close();
         throw new Error("Library Core item scan cursor made no progress");
       }
-      await visitPage(
-        response.rows.map(
+      let items: FeedItem[];
+      try {
+        items = response.rows.map(
           (row) => reconstructFeedItem(row) as unknown as FeedItem,
-        ),
-      );
+        );
+      } catch (error) {
+        pageInFlight = false;
+        await close();
+        throw error;
+      }
       if (response.nextCursor === null) {
-        const after = await getSource();
+        let after: LibraryCoreProjectionSourceV1;
+        try {
+          after = await getSource();
+        } catch (error) {
+          pageInFlight = false;
+          await close();
+          throw error;
+        }
         if (!sourceMatches(after, response.source)) {
+          pageInFlight = false;
+          await close();
           throw new Error("Library Core item scan source changed during read");
         }
         exhausted = true;
-        return;
+        pageInFlight = false;
+        return { items, done: true };
       }
       if (response.nextCursor === cursor) {
+        pageInFlight = false;
+        await close();
         throw new Error("Library Core item scan cursor repeated");
       }
       cursor = response.nextCursor;
+      pageInFlight = false;
+      return { items, done: false };
+    },
+    close,
+  };
+}
+
+async function scanLibraryCoreItemsExclusive(
+  visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
+  getSource: () => Promise<LibraryCoreProjectionSourceV1> = getLibraryCoreProjectionSource,
+  readNative?: Parameters<typeof openLibraryCoreItemScanSession>[1],
+  cancelNative?: Parameters<typeof openLibraryCoreItemScanSession>[2],
+): Promise<void> {
+  const session = await openLibraryCoreItemScanSession(
+    getSource,
+    readNative,
+    cancelNative,
+  );
+  try {
+    while (true) {
+      const page = await session.nextPage();
+      await visitPage(page.items);
+      if (page.done) return;
     }
-    throw new Error("Library Core item scan exceeded its page bound");
   } finally {
-    if (!exhausted && lastCompletedCancellationId !== null) {
-      await cancelNative(readerSessionId, lastCompletedCancellationId).catch(() => undefined);
-    }
+    await session.close();
   }
 }
 
 export async function scanLibraryCoreItems(
   visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
-  getSource: () => Promise<LibraryCoreProjectionSourceV1> =
-    getLibraryCoreProjectionSource,
+  getSource: () => Promise<LibraryCoreProjectionSourceV1> = getLibraryCoreProjectionSource,
   readNative?: Parameters<typeof scanLibraryCoreItemsExclusive>[2],
   cancelNative?: Parameters<typeof scanLibraryCoreItemsExclusive>[3],
 ): Promise<void> {

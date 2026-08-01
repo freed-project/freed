@@ -81,7 +81,7 @@ import {
   type MaterializeDesktopLibraryCoreFeedBrowseGenerationResult,
 } from "./library-core-feed-browse-materializer-runtime";
 import {
-  createHydratedLibraryCoreFeedBrowseProjectionClient,
+  createScannedLibraryCoreFeedBrowseProjectionClient,
 } from "./library-core-feed-browse-hydrated-client";
 import { recordRuntimeHealthEvent, recordWorkerInit } from "./runtime-health-events";
 export type { DocChangeEvent, DocState } from "./automerge-types";
@@ -1710,9 +1710,15 @@ const libraryCoreProjectionWorkerClient: LibraryCoreProjectionWorkerClient = {
 };
 
 const libraryCoreFeedBrowseProjectionClient =
-  createHydratedLibraryCoreFeedBrowseProjectionClient({
+  createScannedLibraryCoreFeedBrowseProjectionClient({
     getSource: getLibraryCoreProjectionSource,
     getState: getDocState,
+    openScan: async () => {
+      const { openLibraryCoreItemScanSession } = await import(
+        "./library-core-item-detail-runtime"
+      );
+      return openLibraryCoreItemScanSession(getLibraryCoreProjectionSource);
+    },
   });
 
 let libraryCoreFeedBrowseRun:
