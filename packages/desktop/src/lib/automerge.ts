@@ -1478,14 +1478,14 @@ async function migrateLibraryCoreBeforeAutomergeLoad(): Promise<void> {
     });
   } catch (error) {
     libraryCoreExternalProjectionSelected = false;
+    const message = error instanceof Error ? error.message : String(error);
     log.warn(
-      `[library-core-external] migration failed; using Automerge read rollback: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `[library-core-external] migration failed; using Automerge read rollback: ${message}`,
     );
     recordRuntimeHealthEvent({
       event: "library_core_external_migration",
       outcome: "rollback",
+      message: message.slice(0, 512),
       durationMs: Math.round(performance.now() - startedAt),
     });
   }
