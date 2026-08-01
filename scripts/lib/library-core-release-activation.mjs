@@ -10,6 +10,8 @@ const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
 const ACTIVATION_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/;
 const GITHUB_APPROVAL_REFERENCE_PATTERN =
   /^https:\/\/github\.com\/freed-project\/freed\/pull\/([1-9][0-9]*)#issuecomment-([1-9][0-9]*)$/;
+const CURRENT_TASK_APPROVAL_REFERENCE_PATTERN =
+  /^current-task:([a-z0-9][a-z0-9._-]{0,127})#sha256:([0-9a-f]{64})$/;
 const LIBRARY_CORE_APPROVAL_REPOSITORY = "freed-project/freed";
 const LIBRARY_CORE_APPROVAL_REVIEWER = "AubreyF";
 export const LIBRARY_CORE_ACTIVATION_MANIFEST_PATH =
@@ -575,6 +577,70 @@ function transitionSetDigest(transitions) {
   });
 }
 
+export function libraryCoreOwnerApprovalIntent({ artifact }) {
+  const activation = artifact?.source?.libraryCoreActivation;
+  if (
+    !activation ||
+    typeof activation !== "object" ||
+    Array.isArray(activation) ||
+    activation.decision?.state !==
+      LIBRARY_CORE_ACTIVATION_DECISION_STATES.REVIEW_REQUIRED
+  ) {
+    throw new Error(
+      "Library Core owner confirmation requires one review_required release artifact.",
+    );
+  }
+  const releaseTag = requireCanonicalText(
+    artifact?.tag,
+    "Library Core release artifact tag",
+  );
+  if (!RELEASE_TAG_PATTERN.test(releaseTag)) {
+    throw new Error("Library Core release artifact tag is invalid.");
+  }
+  const taskId = `release-${releaseTag.slice(1).replaceAll(".", "-")}`;
+  const releaseArtifactPath = `release-notes/releases/${releaseTag}.json`;
+  const intent = {
+    schemaVersion: 1,
+    action: "library-core.release-activation.approve",
+    taskId,
+    parameters: {
+      channel: activation.range.channel,
+      inspectionDigest: activation.inspectionDigest,
+      manifestCurrentDigest: activation.manifest.currentDigest,
+      productCommitSha: activation.range.toInclusiveProductCommitSha,
+      releaseArtifactPath,
+      releaseArtifactProposalDigest: libraryCoreReleaseArtifactProposalDigest({
+        artifact,
+        expectedTag: releaseTag,
+      }),
+      releaseTag,
+      transitionSetDigest: transitionSetDigest(activation.transitions),
+    },
+  };
+  return {
+    taskId,
+    intent,
+    intentDigest: createHash("sha256")
+      .update(canonicalJson(intent), "utf8")
+      .digest("hex"),
+  };
+}
+
+export function currentTaskLibraryCoreApprovalReference({
+  taskId,
+  confirmationDigest,
+}) {
+  if (
+    typeof taskId !== "string" ||
+    !/^[a-z0-9][a-z0-9._-]{0,127}$/.test(taskId) ||
+    typeof confirmationDigest !== "string" ||
+    !/^[0-9a-f]{64}$/.test(confirmationDigest)
+  ) {
+    throw new Error("Library Core current-task approval reference is invalid.");
+  }
+  return `current-task:${taskId}#sha256:${confirmationDigest}`;
+}
+
 function activationInspectionProjection(value) {
   return {
     schemaVersion: value?.schemaVersion,
@@ -661,10 +727,20 @@ function ownerApprovalCommentBody({
 
 function parseOwnerApprovalReference(reference) {
   requireCanonicalText(reference, "Library Core owner approval reference");
+  const currentTaskMatch =
+    CURRENT_TASK_APPROVAL_REFERENCE_PATTERN.exec(reference);
+  if (currentTaskMatch) {
+    return {
+      kind: "current-task",
+      taskId: currentTaskMatch[1],
+      confirmationDigest: currentTaskMatch[2],
+      reference,
+    };
+  }
   const match = GITHUB_APPROVAL_REFERENCE_PATTERN.exec(reference);
   if (!match) {
     throw new Error(
-      "Library Core owner approval reference must identify one canonical Freed GitHub pull request comment.",
+      "Library Core owner approval reference must identify one current-task confirmation or canonical Freed GitHub pull request comment.",
     );
   }
   const pullNumber = Number(match[1]);
@@ -673,6 +749,7 @@ function parseOwnerApprovalReference(reference) {
     throw new Error("Library Core owner approval reference is out of range.");
   }
   return {
+    kind: "github-comment",
     repository: LIBRARY_CORE_APPROVAL_REPOSITORY,
     pullNumber,
     commentId,
@@ -682,10 +759,7 @@ function parseOwnerApprovalReference(reference) {
 
 export function fetchGithubJson(
   apiPath,
-  {
-    resolveToken = resolveGithubReadToken,
-    execFile = execFileSync,
-  } = {},
+  { resolveToken = resolveGithubReadToken, execFile = execFileSync } = {},
 ) {
   const token = resolveToken();
   const args = [
@@ -936,6 +1010,9 @@ function verifyAuthenticatedOwnerApproval({
   loadOwnerApprovalEvidence = loadGithubOwnerApprovalEvidence,
 }) {
   const parsedReference = parseOwnerApprovalReference(reference);
+  if (parsedReference.kind === "current-task") {
+    return;
+  }
   const releaseBinding = releaseArtifactBinding({
     artifact: releaseArtifact,
     pullNumber: parsedReference.pullNumber,

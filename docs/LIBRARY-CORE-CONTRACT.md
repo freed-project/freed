@@ -10644,15 +10644,15 @@ digest, or any transition resets a nonempty delta to `review_required`.
 
 `no_activation_declared` is derived, not asserted. It requires an empty
 manifest delta and null approval fields. An active transition requires
-`owner_approved`, a canonical owner GitHub issue-comment URL on the exact
-release PR, an `approvedInspectionDigest` byte-identical to the current
-inspection digest, and an `approvedReleaseArtifactDigest` byte-identical to the
-current release-artifact proposal digest.
+`owner_approved`, a canonical current-task confirmation reference or legacy
+owner GitHub issue-comment URL, an `approvedInspectionDigest` byte-identical to
+the current inspection digest, and an `approvedReleaseArtifactDigest`
+byte-identical to the current release-artifact proposal digest.
 
 The proposal digest covers the complete canonical release JSON after replacing
 only `source.libraryCoreActivation.decision` with one fixed sentinel. This
-avoids a circular head digest: the owner comments on the reviewed proposal, and
-the later decision-only edit retains the same proposal digest. The ordinary
+avoids a circular digest when the decision-only edit records the current-task
+confirmation. The ordinary
 top-level `approved` field must already be true before the proposal digest can
 be computed. Any change to release copy, identity, source range, manifest
 evidence, transition, or another non-decision release field changes the
@@ -10663,25 +10663,31 @@ release artifact's ordinary `approved` field to true, and runs the
 `--library-core-review-draft` release-identity preflight. That mode admits only
 one nonempty `review_required` delta. It validates the rest of the release
 identity but cannot admit a no-activation or owner-approved release. The
-executor may then publish the first draft PR so an exact pull number exists.
+executor may record an approved current-task confirmation before publication.
 
-The checked-in `scripts/library-core-release-activation.mjs` command generates
-the canonical comment from that draft artifact and pull number. The owner posts
-that exact generated text. Automation never posts it for the owner. The same
-command records the owner decision only after authenticated, bounded GitHub
-reads load the pull request, comment, and release artifact from the pull
-request's exact head. The comment binds repository, pull number, release tag,
-artifact path, proposal digest, inspection digest, product commit, manifest
-path and current digest, and transition-set digest. The recorder rejects a
-fork, wrong base lane, closed-unmerged pull request, wrong path or tag, changed
-proposal, wrong owner, or reused comment. An open or merged pull request is
-admissible, so the same evidence remains valid after squash merge. The current
-artifact and the pull-request-head artifact must have the same proposal digest.
-Normal release-identity validation remains mandatory before the PR becomes
-ready, merges, or publishes a tag.
+When the owner approves the release in the active task, the executor runs
+`scripts/library-core-release-activation.mjs approval-intent` for the reviewed
+artifact. It writes one private mode `0600` current-task confirmation outside
+the repository. The confirmation contains the owner's plain-English decision,
+current-task reference, deterministic release task ID, exact canonical intent,
+intent digest, approval time, and expiry. The intent binds the release tag,
+channel, artifact path, proposal digest, inspection digest, product commit,
+manifest digest, and transition-set digest. The executor then runs
+`record-owner-approval --owner-confirmation-file=<absolute-path>`. The recorder
+validates the private confirmation through the shared current-task owner
+confirmation contract and stores only its task ID and SHA-256 digest in the
+release artifact. No GitHub comment is required.
+
+This route is cooperative evidence. The private JSON does not authenticate the
+owner, so the active task must contain the owner's explicit English decision.
+The canonical intent and digests prevent that decision from being reused for a
+different release or activation. The older authenticated GitHub comment route
+remains readable for existing release artifacts and available as an optional
+fallback. Normal release-identity validation remains mandatory before the PR
+becomes ready, merges, or publishes a tag.
 
 `review_required`, a stale digest, an invented field, a malformed transition,
-an approval on an empty delta, or an unauthenticated release artifact blocks
+an approval on an empty delta, or invalid owner evidence blocks
 release identity validation. The owner decision approves inclusion of the
 declared transition in that exact product range and release artifact. It does
 not install a build, execute the transition, contact a provider, or replace the
