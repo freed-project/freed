@@ -61,6 +61,7 @@ import {
 
 export const LIBRARY_CORE_QUERY_IDS = [
   "account_detail_v1",
+  "background_item_page_v1",
   "change_feed_v1",
   "content_fetch_claim_v1",
   "export_enumeration_v1",
@@ -87,6 +88,8 @@ export const LIBRARY_CORE_QUERY_IDS = [
   "legacy_worker_preferences_patch",
   "legacy_worker_saved_youtube_urls",
   "legacy_worker_state_update",
+  "library_facet_summary_v1",
+  "library_surface_items_v1",
   "map_markers_v1",
   "person_detail_v1",
   "person_timeline_v1",
@@ -544,6 +547,25 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     rendererCache: true,
     invalidationKeyIntent: ["account:{account_id}", "person:{person_id}"],
   }),
+  background_item_page_v1: plannedQuery({
+    // The bounded item scan behind scanLibraryItems. Traced from the native
+    // reader: 64 rows per page, keyset cursor, and a per-page row budget of
+    // 8 MiB less 64 KiB of framing.
+    defaultLimit: 64,
+    maximumLimit: 64,
+    maximumRows: 64,
+    maximumResponseBytes: 8 * MIB - 64 * 1_024,
+    cursor: interactiveCursor("keyset"),
+    totalCountIntent: "none",
+    rendererCache: false,
+    invalidationKeyIntent: ["library:item-scan"],
+    currentKinds: [
+      "ProjectionReadSession::item_scan",
+      "read_library_core_item_scan_page",
+      "scanLibraryCoreItems",
+    ],
+    resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
+  }),
   change_feed_v1: plannedQuery({
     defaultLimit: 128,
     maximumLimit: 512,
@@ -875,6 +897,38 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     "materializes_full_collection",
     true,
   ),
+  library_facet_summary_v1: plannedQuery({
+    // Whole-corpus aggregate, no paging. Traced from the native reader and the
+    // shadow store: exact counts plus at most 4,096 tags of 1,024 bytes.
+    defaultLimit: 1,
+    maximumLimit: 1,
+    maximumRows: 1,
+    totalCountIntent: "exact",
+    rendererCache: true,
+    invalidationKeyIntent: ["feed-facets"],
+    currentKinds: [
+      "ProjectionReadSession::facet_summary",
+      "read_library_core_facet_summary",
+      "readLibraryFacetSummary",
+    ],
+    resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
+  }),
+  library_surface_items_v1: plannedQuery({
+    // Map and Story Wall candidate rows. Traced ceilings: 1,000 map items and
+    // 250 Story Wall items, selected by surface kind.
+    defaultLimit: 250,
+    maximumLimit: 1_000,
+    maximumRows: 1_000,
+    totalCountIntent: "none",
+    rendererCache: true,
+    invalidationKeyIntent: ["library-surface:{surface}"],
+    currentKinds: [
+      "ProjectionReadSession::surface_items",
+      "read_library_core_surface_items",
+      "readLibrarySurfaceItems",
+    ],
+    resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
+  }),
   map_markers_v1: plannedQuery({
     defaultLimit: 500,
     maximumLimit: 1_000,
