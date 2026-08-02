@@ -196,6 +196,7 @@ interface AppState {
   // Data (received pre-hydrated from Automerge worker as DocState)
   items: FeedItem[];
   searchCorpusVersion: number;
+  libraryItemVersion: number;
   feeds: Record<string, RssFeed>;
   persons: Record<string, Person>;
   accounts: Record<string, Account>;
@@ -652,6 +653,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
   items: [],
   searchCorpusVersion: 0,
+  libraryItemVersion: 0,
   feeds: {},
   persons: {},
   accounts: {},
@@ -736,7 +738,13 @@ export const useAppStore = create<AppState>((set, get) => ({
             pruneDeviceGraphLayout(state.persons, state.accounts);
           }
           const prev = get();
-          let next: Partial<AppState> = { ...state };
+          const libraryItemVersion =
+            event.source === "item_patch" ||
+            (event.source === "state_update" &&
+              event.mutation !== "SET_RENDERER_ITEM_HYDRATION")
+              ? prev.libraryItemVersion + 1
+              : prev.libraryItemVersion;
+          let next: Partial<AppState> = { ...state, libraryItemVersion };
 
           if (shallowEqualRecord(state.feedUnreadCounts, prev.feedUnreadCounts))
             next = { ...next, feedUnreadCounts: prev.feedUnreadCounts };

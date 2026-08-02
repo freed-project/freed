@@ -60,6 +60,16 @@
         "read_cutover_parity",
         "same_frontier_rollback_receipt"
       ]
+    },
+    {
+      "activationId": "desktop-search-jump-sql-read-v1",
+      "gate": "D",
+      "kind": "sql_read_cutover",
+      "rollbackTrigger": "Set freed.libraryCore.searchJumpReaderV1.disabled to 1 on the affected device if SearchJump tags, counts, selected-item actions, cancellation, or memory diverge from the Automerge fallback.",
+      "receiptExpectations": [
+        "read_cutover_parity",
+        "same_frontier_rollback_receipt"
+      ]
     }
   ]
 }

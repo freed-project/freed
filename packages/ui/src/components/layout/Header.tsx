@@ -363,6 +363,9 @@ export function Header({
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
+  const libraryItemVersion = useAppStore(
+    (state) => state.libraryItemVersion ?? state.searchCorpusVersion,
+  );
   const libraryFacets = useLibraryFacetSummary(items, searchCorpusVersion);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
@@ -394,6 +397,7 @@ export function Header({
     persons,
     accounts,
     friends,
+    libraryItemVersion,
   );
   const selectedItem = useMemo(
     () => (selectedItemId ? items.find((item) => item.globalId === selectedItemId) ?? null : null),

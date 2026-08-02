@@ -1493,6 +1493,10 @@ function App() {
         tauriRuntimeAvailable && isInitialized
           ? readLibraryCoreFacetSummary
           : undefined,
+      readLibraryItemDetail:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCoreItemDetail
+          : undefined,
       readLibrarySavedAnalytics:
         tauriRuntimeAvailable && isInitialized
           ? readLibraryCoreSavedAnalytics

@@ -340,6 +340,49 @@ describe("store startup migrations", () => {
     expect(mockStartOutboxProcessor).toHaveBeenCalledTimes(1);
   });
 
+  it("increments the Library item source only for real document changes", async () => {
+    const { useAppStore } = await import("./store");
+
+    await useAppStore.getState().initialize();
+    const subscriber = mockSubscribe.mock.calls.at(-1)?.[0] as
+      | ((
+        state: ReturnType<typeof createDocState>,
+        event: {
+          mutation?: string;
+          source?: "state_update" | "preferences_patch" | "item_patch" | "feeds_patch";
+        },
+      ) => void)
+      | undefined;
+    expect(subscriber).toBeTypeOf("function");
+    expect(useAppStore.getState().libraryItemVersion).toBe(0);
+
+    subscriber?.(createDocState(), {
+      mutation: "TOGGLE_SAVED",
+      source: "item_patch",
+    });
+    expect(useAppStore.getState().libraryItemVersion).toBe(1);
+
+    subscriber?.(createDocState(), {
+      mutation: "UPDATE_PREFERENCES",
+      source: "preferences_patch",
+    });
+    subscriber?.(createDocState(), {
+      mutation: "UPDATE_RSS_FEED",
+      source: "feeds_patch",
+    });
+    subscriber?.(createDocState(), {
+      mutation: "SET_RENDERER_ITEM_HYDRATION",
+      source: "state_update",
+    });
+    expect(useAppStore.getState().libraryItemVersion).toBe(1);
+
+    subscriber?.(createDocState(), {
+      mutation: "MERGE_DOC",
+      source: "state_update",
+    });
+    expect(useAppStore.getState().libraryItemVersion).toBe(2);
+  });
+
   it("replaces the document subscription when initialization runs again", async () => {
     const { useAppStore } = await import("./store");
 

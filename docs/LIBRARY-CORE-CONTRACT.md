@@ -2950,6 +2950,20 @@ make Automerge anything other than the active authority. Specialized feed
 modes remain compatibility consumers pending their own registered bounded
 queries.
 
+SearchJump now uses one bounded, source-fenced 64-row scan for exact Library tags,
+archive totals, and complex scope counts, plus compact native aggregates for
+simple feed scopes. It fetches only the selected item detail.
+On the healthy default native path, opening or typing in the palette does not
+acquire the renderer compatibility projection. A canceled scan stops at the
+next bounded page, and a changed source
+version cannot publish an older item detail. The device-local
+`freed.libraryCore.searchJumpReaderV1.disabled=1` switch restores compatibility
+hydration. Until the native frozen-predicate bulk mutation contract lands, an
+actual no-query mark-read or archive command acquires the shared compatibility
+projection only for the existing Automerge mutation and releases it afterward.
+That execution bridge remains Gate D debt because the renderer still enumerates
+the exact bulk IDs. Automerge remains authority.
+
 The cursor is versioned binary data encoded as canonical unpadded base64url. It
 binds the immutable generation digest, transition sequence, projection
 revision, nonnegative chronological sort key, and final entity ID. The maximum

@@ -110,6 +110,12 @@ export async function exportToCsv(items: FeedItem[]): Promise<string> {
 
 Freed now has a real global command palette, opened with `Cmd/Ctrl+K`, mounted from `AppShell`, and rendered as a centered desktop modal or a mobile `BottomSheet`. The old sidebar search field is feed search only again.
 
+Freed Desktop now supplies SearchJump tags, archive facets, scope counts, and
+selected-item context from bounded Library Core readers. On the healthy default
+native path, focusing the palette does not mount the complete item corpus. A
+native reader failure or device-local rollback key restores the Desktop
+compatibility path. PWA keeps its existing resident-row path.
+
 The command palette now covers:
 
 - **Navigation**: Unified Feed, Saved, Archived, Friends, Map, every top source, typed RSS feed matches, followed social channel matches, top-level tag scopes, and every visible settings section
