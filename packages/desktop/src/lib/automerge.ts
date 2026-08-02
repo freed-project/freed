@@ -32,6 +32,7 @@ import type {
   UserPreferences,
   DesktopClientRegistration,
 } from "@freed/shared";
+import { rankFeedItemsInRecommendedOrder } from "@freed/shared";
 import type {
   LibraryCoreFeedBrowseFilterInputV1,
 } from "@freed/shared/library-core";
@@ -668,7 +669,13 @@ function handleWorkerMessage(
   }
 
   if (msg.type === "STATE_UPDATE") {
-    publishState(msg.state, {
+    const state =
+      shouldEvictRendererItems() &&
+      rendererItemHydrationLeaseCount > 0 &&
+      lastDocState?.items.length
+        ? { ...msg.state, items: lastDocState.items }
+        : msg.state;
+    publishState(state, {
       source: "state_update",
       mutation: msg.mutation,
       changedItemIds: null,
@@ -1472,6 +1479,10 @@ function shouldRunLibraryCoreExternalMigration(): boolean {
 }
 
 function shouldEvictRendererItems(): boolean {
+  // The browser-only Desktop harness has no native SQLite commands. It keeps
+  // the legacy worker projection so UI tests exercise product behavior rather
+  // than failing at a deliberately absent Tauri boundary.
+  if (import.meta.env.VITE_TEST_TAURI === "1") return false;
   try {
     return (
       localStorage.getItem(LIBRARY_CORE_RENDERER_ITEM_EVICTION_DISABLED_KEY) !==
@@ -1568,15 +1579,100 @@ export function getDocState(): DocState | null {
 }
 
 function setRendererItemHydration(enabled: boolean): Promise<void> {
-  const transition = rendererItemHydrationTransition.then(() =>
-    request({
-      reqId: nextReqId++,
-      type: "SET_RENDERER_ITEM_HYDRATION",
-      enabled,
-    }),
-  );
+  const transition = rendererItemHydrationTransition.then(async () => {
+    if (!shouldEvictRendererItems()) {
+      await request({
+        reqId: nextReqId++,
+        type: "SET_RENDERER_ITEM_HYDRATION",
+        enabled,
+      });
+      return;
+    }
+
+    const state = lastDocState;
+    if (!state) throw new Error("Library state is not initialized");
+    if (!enabled) {
+      publishRendererItemHydrationState({ ...state, items: [] });
+      recordRuntimeHealthEvent({
+        event: "library_core_compatibility_items",
+        outcome: "evicted",
+        totalRows: 0,
+      });
+      return;
+    }
+
+    const startedAt = performance.now();
+    const itemsById = new Map<string, FeedItem>();
+    try {
+      const { scanLibraryCoreItems } = await import(
+        "./library-core-item-detail-runtime"
+      );
+      await scanLibraryCoreItems((page) => {
+        for (const item of page) itemsById.set(item.globalId, item);
+      });
+    } catch (error) {
+      // Keep specialized views functional if the derived generation is not
+      // selected yet or becomes stale during the scan. The next successful
+      // shadow selection refreshes this lease from SQLite.
+      await request({
+        reqId: nextReqId++,
+        type: "SET_RENDERER_ITEM_HYDRATION",
+        enabled: true,
+      });
+      recordRuntimeHealthEvent({
+        event: "library_core_compatibility_items",
+        outcome: "automerge_fallback",
+        durationMs: Math.round(performance.now() - startedAt),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    const current = lastDocState;
+    if (!current) throw new Error("Library state was released during hydration");
+    const items: FeedItem[] = [];
+    for (const globalId of current.feedSourceOrderIds ?? []) {
+      const item = itemsById.get(globalId);
+      if (!item) continue;
+      items.push(item);
+      itemsById.delete(globalId);
+    }
+    if (itemsById.size > 0) {
+      const remaining = [...itemsById.values()].sort((left, right) =>
+        left.globalId.localeCompare(right.globalId),
+      );
+      items.push(...remaining);
+    }
+    const rankedItems = rankFeedItemsInRecommendedOrder(
+      items.filter((item) => !item.userState.hidden),
+      current.preferences.weights,
+      { persons: current.persons, accounts: current.accounts },
+    );
+    publishRendererItemHydrationState({ ...current, items: rankedItems });
+    recordRuntimeHealthEvent({
+      event: "library_core_compatibility_items",
+      outcome: "hydrated_from_sqlite",
+      totalRows: rankedItems.length,
+      durationMs: Math.round(performance.now() - startedAt),
+    });
+  });
   rendererItemHydrationTransition = transition.catch(() => undefined);
   return transition;
+}
+
+/**
+ * Publish one temporary compatibility view without waking the Automerge
+ * worker's full-corpus projection or scheduling a redundant shadow rebuild.
+ */
+function publishRendererItemHydrationState(state: DocState): void {
+  lastDocState = state;
+  lastItemIndexById = createItemIndex(state.items);
+  const event: DocChangeEvent = {
+    source: "state_update",
+    mutation: "SET_RENDERER_ITEM_HYDRATION",
+    changedItemIds: null,
+    requiresFullScan: true,
+  };
+  for (const subscriber of subscribers) subscriber(state, event);
 }
 
 /**
@@ -1856,6 +1952,21 @@ async function runLibraryCoreShadowProjection(): Promise<void> {
       totalRows: result.totalRows,
       durationMs: Math.round(performance.now() - startedAt),
     });
+    if (
+      result.selected &&
+      shouldEvictRendererItems() &&
+      rendererItemHydrationLeaseCount > 0
+    ) {
+      try {
+        await setRendererItemHydration(true);
+      } catch (error) {
+        log.warn(
+          `[library-core-shadow] compatibility refresh failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
   } catch (error) {
     if (isBackgroundRuntimeDeferredError(error)) {
       libraryCoreShadowRerunRequested = true;

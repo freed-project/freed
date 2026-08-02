@@ -194,9 +194,12 @@ describe("SQLite-streamed Library search", () => {
     >(async () => {
       throw new Error("projection unavailable");
     });
+    const releaseLegacyItems = vi.fn();
+    const acquireLegacyLibraryItems = vi.fn(async () => releaseLegacyItems);
     const platform = {
       store: () => undefined,
       scanLibraryItems,
+      acquireLegacyLibraryItems,
     } as unknown as PlatformConfig;
     let latest: SearchResults | null = null;
 
@@ -227,6 +230,11 @@ describe("SQLite-streamed Library search", () => {
     }
 
     expect(scanLibraryItems).toHaveBeenCalledTimes(1);
+    expect(acquireLegacyLibraryItems).toHaveBeenCalledTimes(1);
     expect(latest?.filteredItems[0]?.globalId).toBe("rss:item-001");
+
+    await act(async () => root?.unmount());
+    root = null;
+    expect(releaseLegacyItems).toHaveBeenCalledTimes(1);
   });
 });

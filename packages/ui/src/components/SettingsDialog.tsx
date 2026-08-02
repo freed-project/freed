@@ -465,7 +465,6 @@ type UpdateCheckState =
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
-  useLegacyLibraryItems(open);
   const isMobile = useIsMobile();
   const {
     SettingsExtraSections,
@@ -954,6 +953,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   // ── Scrollspy ────────────────────────────────────────────────────────────
   const [activeSection, setActiveSection] = useState<SectionId>("appearance");
+  useLegacyLibraryItems(open && activeSection === "danger");
   const [mobileView, setMobileView] = useState<"nav" | "section">("nav");
   const [scrollportHeight, setScrollportHeight] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);

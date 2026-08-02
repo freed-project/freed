@@ -2848,10 +2848,18 @@ projection output, retaining at most one native item page and one replayable
 for the exact Automerge tie-break plus compact ranking metadata. Incremental
 patch responses identify source additions and removals so that tie-break
 remains exact without a corpus rescan. State or source movement fails closed
-before publication. This is an interim Gate D memory correction. Initial
-renderer hydration still scales with the legacy corpus, append-style Automerge
-change chunks still require the native external-memory decoder, and Automerge
-remains authoritative.
+before publication. This is an interim Gate D memory correction. The default
+renderer no longer hydrates the legacy item corpus. A remaining compatibility
+lease streams exact lossless rows from the authenticated selected SQLite
+generation, restores canonical source enumeration and product ranking, and
+clears the temporary renderer array after the final consumer releases it. It
+does not ask the Automerge worker to clone or broadcast its item projection.
+An unavailable or stale derived generation temporarily falls back to the
+authoritative Automerge projection and returns to SQLite after the next
+successful selection. Those compatibility consumers remain unbounded Gate D
+debt until each becomes a registered
+aggregate or paged query. Append-style Automerge change chunks still require
+the native external-memory decoder, and Automerge remains authoritative.
 
 The cursor is versioned binary data encoded as canonical unpadded base64url. It
 binds the immutable generation digest, transition sequence, projection

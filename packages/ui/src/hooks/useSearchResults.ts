@@ -45,6 +45,7 @@ import {
   usePlatform,
   type ScanLibraryItems,
 } from "../context/PlatformContext.js";
+import { useLegacyLibraryItems } from "./useLegacyLibraryItems.js";
 
 const SEARCH_PRESERVED_TEXT_LIMIT = 1_200;
 const SEARCH_INDEX_CHUNK_SIZE = 100;
@@ -695,6 +696,7 @@ export function useSearchResults(
     null,
   );
   const [scannedFailed, setScannedFailed] = useState(false);
+  useLegacyLibraryItems(Boolean(trimmedQuery && scanLibraryItems && scannedFailed));
   const itemById = useMemo(
     () =>
       scanLibraryItems && !scannedFailed

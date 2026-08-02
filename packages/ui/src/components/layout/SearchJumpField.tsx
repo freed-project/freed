@@ -326,6 +326,7 @@ export function SearchJumpField({
     googleContacts,
     secureStorage,
     localAIModels,
+    scanLibraryItems,
   } = platform;
   const searchPaletteRequestId = useCommandSurfaceStore((s) => s.searchPaletteRequestId);
   const openAddFeedDialog = useCommandSurfaceStore((s) => s.openAddFeedDialog);
@@ -385,7 +386,9 @@ export function SearchJumpField({
   const showInlineSurface = !usesFloatingTrigger && isFocused;
   const showCommandSurface =
     showFloatingField || showInlineSurface || !!confirmAction;
-  useLegacyLibraryItems(showCommandSurface);
+  useLegacyLibraryItems(
+    showCommandSurface && (!scanLibraryItems || !hasActiveSearch),
+  );
   const inlineBlurTimerRef = useRef<number | null>(null);
 
   const selectedItem = useMemo(
