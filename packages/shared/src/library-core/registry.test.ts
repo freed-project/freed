@@ -59,6 +59,14 @@ import {
   LIBRARY_CORE_SURFACE_ITEMS_SOURCE_IDENTITY,
 } from "./surface-items-contracts.js";
 import {
+  LIBRARY_CORE_FACET_SUMMARY_NESTED_BOUNDS,
+  LIBRARY_CORE_FACET_SUMMARY_PROJECTION,
+  LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA,
+  LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA,
+  LIBRARY_CORE_FACET_SUMMARY_SOURCE_IDENTITY,
+  LIBRARY_CORE_FACET_SUMMARY_TAG_ORDER,
+} from "./facet-summary-contracts.js";
+import {
   LIBRARY_CORE_FIELD_REGISTRY,
 } from "./field-registry.js";
 import {
@@ -474,6 +482,40 @@ describe("Library Core query registry", () => {
     expect(
       BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds,
     ).toContain("feed_browse_page_v2");
+  });
+
+  it("closes five facet-summary fields and blocks the sort on UTF-16 collation", () => {
+    expect(LIBRARY_CORE_QUERY_REGISTRY.library_facet_summary_v1).toMatchObject({
+      status: "planned_blocked",
+      requestSchema: LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA,
+      responseSchema: LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA,
+      projection: LIBRARY_CORE_FACET_SUMMARY_PROJECTION,
+      sourceIdentity: LIBRARY_CORE_FACET_SUMMARY_SOURCE_IDENTITY,
+      nestedBounds: LIBRARY_CORE_FACET_SUMMARY_NESTED_BOUNDS,
+    });
+    for (const blocker of [
+      "request_schema_unresolved",
+      "response_schema_unresolved",
+      "projection_unresolved",
+      "source_identity_unresolved",
+      "nested_bounds_unresolved",
+    ]) {
+      expect(
+        LIBRARY_CORE_QUERY_REGISTRY.library_facet_summary_v1.blockers,
+      ).not.toContain(blocker);
+    }
+    // Tags sort by UTF-16 code units for JavaScript parity. The contract type
+    // admits only binary UTF-8 collation, and the two disagree outside the BMP,
+    // so declaring one would misdescribe the order rather than record it.
+    expect(
+      LIBRARY_CORE_QUERY_REGISTRY.library_facet_summary_v1.stableSort,
+    ).toBeNull();
+    expect(
+      LIBRARY_CORE_QUERY_REGISTRY.library_facet_summary_v1.blockers,
+    ).toContain("sort_contract_unresolved");
+    expect(LIBRARY_CORE_FACET_SUMMARY_TAG_ORDER.textCollation).toBe(
+      "utf16_code_unit",
+    );
   });
 
   it("closes five surface-items fields and blocks the sort on the Map defect", () => {
