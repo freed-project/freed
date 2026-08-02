@@ -17,7 +17,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::Manager;
 
-const ROOT_DIRECTORY: &str = "library-core-feed-browse-v1";
+pub(super) const ROOT_DIRECTORY_FOR_ADAPTERS: &str = "library-core-feed-browse-v1";
+const ROOT_DIRECTORY: &str = ROOT_DIRECTORY_FOR_ADAPTERS;
 const GENERATION_DIRECTORY: &str = "generations";
 const MAXIMUM_SESSION_ID_BYTES: usize = 128;
 const REGISTRY_FILE: &str = "registry.sqlite";
@@ -165,14 +166,23 @@ fn create_private_directory(path: &Path) -> RuntimeResult<()> {
     }
 }
 
-pub(super) fn resolve_library_core_feed_browse_paths(
+pub(super) fn resolve_library_core_feed_browse_paths_in_root(
     base: &Path,
+    root_directory: &str,
 ) -> RuntimeResult<LibraryCoreFeedBrowsePaths> {
     if !base.is_absolute() {
         return Err(BrowseRuntimeError::Invalid("path"));
     }
+    if root_directory.is_empty()
+        || root_directory == "."
+        || root_directory == ".."
+        || root_directory.contains('/')
+        || root_directory.contains('\\')
+    {
+        return Err(BrowseRuntimeError::Invalid("root name"));
+    }
     let canonical_base = std::fs::canonicalize(base)?;
-    let root = canonical_base.join(ROOT_DIRECTORY);
+    let root = canonical_base.join(root_directory);
     create_private_directory(&root)?;
     let root = std::fs::canonicalize(root)?;
     if root.parent() != Some(canonical_base.as_path()) {
@@ -190,14 +200,23 @@ pub(super) fn resolve_library_core_feed_browse_paths(
     })
 }
 
-pub(super) fn resolve_existing_library_core_feed_browse_paths(
+pub(super) fn resolve_existing_library_core_feed_browse_paths_in_root(
     base: &Path,
+    root_directory: &str,
 ) -> RuntimeResult<Option<LibraryCoreFeedBrowsePaths>> {
     if !base.is_absolute() {
         return Err(BrowseRuntimeError::Invalid("path"));
     }
+    if root_directory.is_empty()
+        || root_directory == "."
+        || root_directory == ".."
+        || root_directory.contains('/')
+        || root_directory.contains('\\')
+    {
+        return Err(BrowseRuntimeError::Invalid("root name"));
+    }
     let canonical_base = std::fs::canonicalize(base)?;
-    let root = canonical_base.join(ROOT_DIRECTORY);
+    let root = canonical_base.join(root_directory);
     let root_metadata = match std::fs::symlink_metadata(&root) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -234,10 +253,18 @@ pub(super) fn resolve_existing_library_core_feed_browse_paths(
 }
 
 fn generation_path(base: &Path, generation_id: &str) -> RuntimeResult<PathBuf> {
+    generation_path_in_root(base, ROOT_DIRECTORY, generation_id)
+}
+
+pub(super) fn generation_path_in_root(
+    base: &Path,
+    root_directory: &str,
+    generation_id: &str,
+) -> RuntimeResult<PathBuf> {
     if !is_lower_sha256(generation_id) {
         return Err(BrowseRuntimeError::Invalid("path"));
     }
-    let paths = resolve_library_core_feed_browse_paths(base)?;
+    let paths = resolve_library_core_feed_browse_paths_in_root(base, root_directory)?;
     Ok(paths
         .generation_root
         .join(format!("{generation_id}.sqlite")))
@@ -272,6 +299,16 @@ fn begin_at_root(
     session_id: String,
     binding: FeedBrowseGenerationBinding,
 ) -> RuntimeResult<BrowseGenerationStatusV1> {
+    begin_at_named_root(runtime, base, ROOT_DIRECTORY, session_id, binding)
+}
+
+pub(super) fn begin_at_named_root(
+    runtime: &LibraryCoreFeedBrowseRuntimeState,
+    base: &Path,
+    root_directory: &str,
+    session_id: String,
+    binding: FeedBrowseGenerationBinding,
+) -> RuntimeResult<BrowseGenerationStatusV1> {
     validate_session_id(&session_id)?;
     let mut guard = runtime
         .0
@@ -287,7 +324,7 @@ fn begin_at_root(
             None,
         ));
     }
-    let path = generation_path(base, &binding.generation_id)?;
+    let path = generation_path_in_root(base, root_directory, &binding.generation_id)?;
     if path.try_exists()? {
         match FeedBrowseGenerationStore::inspect_existing(&path, &binding)? {
             ExistingFeedBrowseGeneration::Sealed(published) => {
@@ -334,7 +371,7 @@ fn begin_at_root(
     }
 }
 
-fn append_at_root(
+pub(super) fn append_at_root(
     runtime: &LibraryCoreFeedBrowseRuntimeState,
     batch: BrowseGenerationBatchInputV1,
 ) -> RuntimeResult<BrowseGenerationStatusV1> {
@@ -355,7 +392,7 @@ fn append_at_root(
     ))
 }
 
-fn finalize_at_root(
+pub(super) fn finalize_at_root(
     runtime: &LibraryCoreFeedBrowseRuntimeState,
     session_id: &str,
 ) -> RuntimeResult<BrowseGenerationStatusV1> {
@@ -380,7 +417,7 @@ fn finalize_at_root(
     ))
 }
 
-fn cancel_at_root(
+pub(super) fn cancel_at_root(
     runtime: &LibraryCoreFeedBrowseRuntimeState,
     session_id: &str,
 ) -> RuntimeResult<BrowseGenerationStatusV1> {
@@ -403,7 +440,16 @@ fn cancel_at_root(
 }
 
 fn selected_generation_at_root(base: &Path) -> RuntimeResult<Option<SelectedBrowseGenerationV1>> {
-    let Some(paths) = resolve_existing_library_core_feed_browse_paths(base)? else {
+    selected_generation_at_named_root(base, ROOT_DIRECTORY)
+}
+
+pub(super) fn selected_generation_at_named_root(
+    base: &Path,
+    root_directory: &str,
+) -> RuntimeResult<Option<SelectedBrowseGenerationV1>> {
+    let Some(paths) =
+        resolve_existing_library_core_feed_browse_paths_in_root(base, root_directory)?
+    else {
         return Ok(None);
     };
     match FeedBrowseGenerationRegistry::read_selected_generation(&paths.registry_path) {
@@ -419,13 +465,44 @@ fn selected_generation_at_root(base: &Path) -> RuntimeResult<Option<SelectedBrow
 }
 
 fn select_generation_at_root(
+    runtime: &LibraryCoreFeedBrowseRuntimeState,
     base: &Path,
     input: SelectBrowseGenerationInputV1,
 ) -> RuntimeResult<SelectedBrowseGenerationV1> {
+    select_generation_at_named_root(runtime, base, ROOT_DIRECTORY, input)
+}
+
+pub(super) fn select_generation_at_named_root(
+    runtime: &LibraryCoreFeedBrowseRuntimeState,
+    base: &Path,
+    root_directory: &str,
+    input: SelectBrowseGenerationInputV1,
+) -> RuntimeResult<SelectedBrowseGenerationV1> {
+    select_generation_at_named_root_with_hook(runtime, base, root_directory, input, || Ok(()))
+}
+
+fn select_generation_at_named_root_with_hook<F>(
+    runtime: &LibraryCoreFeedBrowseRuntimeState,
+    base: &Path,
+    root_directory: &str,
+    input: SelectBrowseGenerationInputV1,
+    after_prune: F,
+) -> RuntimeResult<SelectedBrowseGenerationV1>
+where
+    F: FnOnce() -> RuntimeResult<()>,
+{
     if !is_lower_sha256(&input.binding.generation_id) {
         return Err(BrowseRuntimeError::Invalid("generation identity"));
     }
-    let paths = resolve_library_core_feed_browse_paths(base)?;
+    // The same per-adapter lifecycle lock covers writer finalization, selection,
+    // pruning, and clear/recreate. SQLite serializes registry writers, while
+    // this lock prevents a committed selection from being superseded or its
+    // generation root from being replaced before its exact receipt returns.
+    let _lifecycle_guard = runtime
+        .0
+        .lock()
+        .map_err(|_| BrowseRuntimeError::StatePoisoned)?;
+    let paths = resolve_library_core_feed_browse_paths_in_root(base, root_directory)?;
     let path = paths
         .generation_root
         .join(format!("{}.sqlite", input.binding.generation_id));
@@ -436,27 +513,48 @@ fn select_generation_at_root(
     let mut registry =
         FeedBrowseGenerationRegistry::open(&paths.registry_path, &paths.generation_root)?;
     let registered = registry.register(&published)?;
-    match registry.select(
+    let selection_sequence = match registry.select(
         &input.transition_id,
         input.expected_current_generation_id.as_deref(),
         &registered.binding.generation_id,
     ) {
-        Ok(_) => {}
+        Ok(transition) => transition.committed_sequence(),
         Err(FeedBrowseGenerationRegistryError::AlreadySelectedGeneration) => {
             let selected =
                 FeedBrowseGenerationRegistry::read_selected_generation(&paths.registry_path)?;
             if selected.generation != registered {
                 return Err(BrowseRuntimeError::Invalid("selected generation"));
             }
+            selected.transition_sequence
         }
         Err(error) => return Err(error.into()),
-    }
-    selected_generation_at_root(base)?.ok_or(BrowseRuntimeError::Invalid("selected generation"))
+    };
+    let selected = SelectedBrowseGenerationV1 {
+        binding: registered.binding.clone(),
+        byte_length: registered.byte_length,
+        file_digest: registered.file_digest.clone(),
+        selection_sequence,
+    };
+    // Selection commits before derived-file cleanup. If cleanup fails, recover
+    // the exact committed or replayed transition receipt instead of reopening
+    // mutable current state. A later selection can safely retry pruning because
+    // current and exact rollback are never prune candidates.
+    let _prune_result = registry.prune_unselected_generations();
+    after_prune()?;
+    Ok(selected)
 }
 
 pub(super) fn clear_library_core_feed_browse_runtime_in(
     runtime: &LibraryCoreFeedBrowseRuntimeState,
     base: &Path,
+) -> Result<(), String> {
+    clear_library_core_feed_browse_runtime_in_root(runtime, base, ROOT_DIRECTORY)
+}
+
+pub(super) fn clear_library_core_feed_browse_runtime_in_root(
+    runtime: &LibraryCoreFeedBrowseRuntimeState,
+    base: &Path,
+    root_directory: &str,
 ) -> Result<(), String> {
     if !base.is_absolute() {
         return Err(BrowseRuntimeError::Invalid("path").to_string());
@@ -466,7 +564,15 @@ pub(super) fn clear_library_core_feed_browse_runtime_in(
         .lock()
         .map_err(|_| BrowseRuntimeError::StatePoisoned.to_string())?;
     *guard = None;
-    let root = base.join(ROOT_DIRECTORY);
+    if root_directory.is_empty()
+        || root_directory == "."
+        || root_directory == ".."
+        || root_directory.contains('/')
+        || root_directory.contains('\\')
+    {
+        return Err(BrowseRuntimeError::Invalid("root name").to_string());
+    }
+    let root = base.join(root_directory);
     match std::fs::symlink_metadata(&root) {
         Ok(metadata) if metadata.file_type().is_dir() && !metadata.file_type().is_symlink() => {
             std::fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
@@ -531,18 +637,22 @@ pub(super) fn get_library_core_feed_browse_selection(
 #[tauri::command]
 pub(super) fn select_library_core_feed_browse_generation(
     app: tauri::AppHandle,
+    state: tauri::State<'_, LibraryCoreFeedBrowseRuntimeState>,
     input: SelectBrowseGenerationInputV1,
 ) -> Result<SelectedBrowseGenerationV1, String> {
     let base = app
         .path()
         .app_data_dir()
         .map_err(|error| error.to_string())?;
-    select_generation_at_root(&base, input).map_err(|error| error.to_string())
+    select_generation_at_root(&state, &base, input).map_err(|error| error.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{mpsc, Arc};
+    use std::thread;
+    use std::time::Duration;
 
     fn binding(total_rows: i64) -> FeedBrowseGenerationBinding {
         FeedBrowseGenerationBinding {
@@ -557,6 +667,35 @@ mod tests {
             recommendation_order_schema_version: 1,
             total_rows,
         }
+    }
+
+    fn distinct_binding(suffix: i64) -> FeedBrowseGenerationBinding {
+        FeedBrowseGenerationBinding {
+            generation_id: format!("{suffix:064x}"),
+            source_document_id: "library-1".to_string(),
+            source_heads_digest: format!("{:064x}", suffix + 100),
+            source_head_count: suffix,
+            transition_sequence: suffix,
+            projection_revision: suffix,
+            filter_json: format!(r#"{{"suffix":{suffix}}}"#),
+            ranking_clock_ms: suffix,
+            recommendation_order_schema_version: 1,
+            total_rows: 0,
+        }
+    }
+
+    fn seal_empty_generation(
+        base: &Path,
+        root_directory: &str,
+        binding: &FeedBrowseGenerationBinding,
+    ) -> PathBuf {
+        let path = generation_path_in_root(base, root_directory, &binding.generation_id)
+            .expect("generation path");
+        let mut store = FeedBrowseGenerationStore::open(&path).expect("open generation");
+        store.begin(binding).expect("begin generation");
+        store.finalize().expect("finalize generation");
+        store.seal(&path, binding).expect("seal generation");
+        path
     }
 
     fn row(id: &str) -> FeedBrowseProjectedRow {
@@ -676,6 +815,234 @@ mod tests {
         assert!(recovered.sealed_file_digest.is_some());
         assert!(recovered.sealed_byte_length.is_some());
         assert!(runtime.0.lock().expect("runtime lock").as_ref().is_none());
+    }
+
+    #[test]
+    fn repeated_runtime_selection_prunes_files_and_keeps_rollback_readable() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let base = std::fs::canonicalize(temporary.path()).expect("base");
+        let root_directory = "library-core-saved-feed-prune-test-v1";
+        let bindings = [
+            distinct_binding(1),
+            distinct_binding(2),
+            distinct_binding(3),
+        ];
+        let paths = bindings
+            .iter()
+            .map(|binding| seal_empty_generation(&base, root_directory, binding))
+            .collect::<Vec<_>>();
+        let runtime = LibraryCoreFeedBrowseRuntimeState::default();
+
+        let mut expected_current_generation_id = None;
+        for (index, binding) in bindings.iter().enumerate() {
+            let selected = select_generation_at_named_root(
+                &runtime,
+                &base,
+                root_directory,
+                SelectBrowseGenerationInputV1 {
+                    binding: binding.clone(),
+                    transition_id: format!("select-runtime-prune-{}", index + 1),
+                    expected_current_generation_id: expected_current_generation_id.clone(),
+                },
+            )
+            .expect("select generation");
+            assert_eq!(selected.binding, *binding);
+            expected_current_generation_id = Some(binding.generation_id.clone());
+        }
+
+        assert!(!paths[0].exists());
+        assert!(paths[1].exists());
+        assert!(paths[2].exists());
+        let runtime_paths = resolve_library_core_feed_browse_paths_in_root(&base, root_directory)
+            .expect("runtime paths");
+        let mut registry = FeedBrowseGenerationRegistry::open(
+            &runtime_paths.registry_path,
+            &runtime_paths.generation_root,
+        )
+        .expect("open registry");
+        registry
+            .rollback(
+                "rollback-runtime-prune-second",
+                Some(&bindings[2].generation_id),
+                &bindings[1].generation_id,
+            )
+            .expect("rollback to retained generation");
+        registry
+            .prune_unselected_generations()
+            .expect("prune after rollback");
+        assert_eq!(
+            selected_generation_at_named_root(&base, root_directory)
+                .expect("read rollback selection")
+                .expect("selected generation")
+                .binding,
+            bindings[1]
+        );
+        assert!(paths[1].exists());
+        assert!(paths[2].exists());
+    }
+
+    #[test]
+    fn committed_selection_survives_a_post_commit_prune_failure() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let base = std::fs::canonicalize(temporary.path()).expect("base");
+        let root_directory = "library-core-saved-feed-prune-recovery-test-v1";
+        let bindings = [
+            distinct_binding(41),
+            distinct_binding(42),
+            distinct_binding(43),
+        ];
+        let paths = bindings
+            .iter()
+            .map(|binding| seal_empty_generation(&base, root_directory, binding))
+            .collect::<Vec<_>>();
+        let runtime = LibraryCoreFeedBrowseRuntimeState::default();
+
+        select_generation_at_named_root(
+            &runtime,
+            &base,
+            root_directory,
+            SelectBrowseGenerationInputV1 {
+                binding: bindings[0].clone(),
+                transition_id: "select-prune-recovery-first".to_string(),
+                expected_current_generation_id: None,
+            },
+        )
+        .expect("select first");
+        select_generation_at_named_root(
+            &runtime,
+            &base,
+            root_directory,
+            SelectBrowseGenerationInputV1 {
+                binding: bindings[1].clone(),
+                transition_id: "select-prune-recovery-second".to_string(),
+                expected_current_generation_id: Some(bindings[0].generation_id.clone()),
+            },
+        )
+        .expect("select second");
+
+        std::fs::remove_file(&paths[0]).expect("remove stale file");
+        std::fs::create_dir(&paths[0]).expect("replace stale file with directory");
+        let selected = select_generation_at_named_root(
+            &runtime,
+            &base,
+            root_directory,
+            SelectBrowseGenerationInputV1 {
+                binding: bindings[2].clone(),
+                transition_id: "select-prune-recovery-third".to_string(),
+                expected_current_generation_id: Some(bindings[1].generation_id.clone()),
+            },
+        )
+        .expect("recover committed selection despite cleanup failure");
+        assert_eq!(selected.binding, bindings[2]);
+        assert_eq!(
+            selected_generation_at_named_root(&base, root_directory)
+                .expect("read committed selection")
+                .expect("selected generation")
+                .binding,
+            bindings[2]
+        );
+        assert!(paths[1].exists());
+        assert!(paths[2].exists());
+    }
+
+    #[test]
+    fn concurrent_selection_waits_until_the_exact_prior_receipt_returns() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let base = std::fs::canonicalize(temporary.path()).expect("base");
+        let root_directory = "library-core-saved-feed-selection-lock-test-v1";
+        let bindings = [
+            distinct_binding(51),
+            distinct_binding(52),
+            distinct_binding(53),
+        ];
+        for binding in &bindings {
+            seal_empty_generation(&base, root_directory, binding);
+        }
+        let runtime = Arc::new(LibraryCoreFeedBrowseRuntimeState::default());
+        let first = select_generation_at_named_root(
+            &runtime,
+            &base,
+            root_directory,
+            SelectBrowseGenerationInputV1 {
+                binding: bindings[0].clone(),
+                transition_id: "select-serialized-first".to_string(),
+                expected_current_generation_id: None,
+            },
+        )
+        .expect("select first");
+        assert_eq!(first.selection_sequence, 1);
+
+        let (at_receipt_tx, at_receipt_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let first_runtime = Arc::clone(&runtime);
+        let first_base = base.clone();
+        let first_binding = bindings[1].clone();
+        let first_expected = bindings[0].generation_id.clone();
+        let first_handle = thread::spawn(move || {
+            select_generation_at_named_root_with_hook(
+                &first_runtime,
+                &first_base,
+                root_directory,
+                SelectBrowseGenerationInputV1 {
+                    binding: first_binding,
+                    transition_id: "select-serialized-second".to_string(),
+                    expected_current_generation_id: Some(first_expected),
+                },
+                || {
+                    at_receipt_tx.send(()).expect("signal exact receipt");
+                    release_rx.recv().expect("release exact receipt");
+                    Ok(())
+                },
+            )
+            .map_err(|error| error.to_string())
+        });
+        at_receipt_rx
+            .recv()
+            .expect("first selector reached receipt");
+
+        let (second_started_tx, second_started_rx) = mpsc::channel();
+        let (second_result_tx, second_result_rx) = mpsc::channel();
+        let second_runtime = Arc::clone(&runtime);
+        let second_base = base.clone();
+        let second_binding = bindings[2].clone();
+        let second_expected = bindings[1].generation_id.clone();
+        let second_handle = thread::spawn(move || {
+            second_started_tx.send(()).expect("signal second selector");
+            let result = select_generation_at_named_root(
+                &second_runtime,
+                &second_base,
+                root_directory,
+                SelectBrowseGenerationInputV1 {
+                    binding: second_binding,
+                    transition_id: "select-serialized-third".to_string(),
+                    expected_current_generation_id: Some(second_expected),
+                },
+            )
+            .map_err(|error| error.to_string());
+            second_result_tx.send(result).expect("send second result");
+        });
+        second_started_rx.recv().expect("second selector started");
+        assert!(
+            second_result_rx
+                .recv_timeout(Duration::from_millis(100))
+                .is_err(),
+            "a later selector must remain blocked until the prior exact receipt returns"
+        );
+
+        release_tx.send(()).expect("return first receipt");
+        let second = first_handle
+            .join()
+            .expect("join first selector")
+            .expect("select second");
+        assert_eq!(second.binding, bindings[1]);
+        assert_eq!(second.selection_sequence, 2);
+        let third = second_result_rx
+            .recv()
+            .expect("receive third result")
+            .expect("select third");
+        second_handle.join().expect("join second selector");
+        assert_eq!(third.binding, bindings[2]);
+        assert_eq!(third.selection_sequence, 3);
     }
 
     #[test]

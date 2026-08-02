@@ -273,6 +273,10 @@ function projectedSafeInteger(value: unknown): number | null {
     : null;
 }
 
+function projectedLikeSyncTimestamp(value: unknown): number | null {
+  return value === -1 ? -1 : projectedSafeInteger(value);
+}
+
 function projectedBoolean(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
@@ -323,7 +327,7 @@ export function projectLibraryCoreFeedCardV1(
     globalId: raw?.globalId,
     liked: projectedBoolean(userState?.liked),
     likedAt: projectedSafeInteger(userState?.likedAt),
-    likedSyncedAt: projectedSafeInteger(userState?.likedSyncedAt),
+    likedSyncedAt: projectedLikeSyncTimestamp(userState?.likedSyncedAt),
     linkPreviewTitle: projectedBoundedString(linkPreview?.title, 512),
     locationName: projectedBoundedString(location?.name, 512),
     mediaTypes: projectedBoundedStringArray(content?.mediaTypes, 8, 16),
@@ -449,6 +453,10 @@ function optionalNonnegativeSafeInteger(
   value: unknown,
 ): value is number | null {
   return value === null || isLibraryCoreNonnegativeSafeInteger(value);
+}
+
+function optionalLikeSyncTimestamp(value: unknown): value is number | null {
+  return value === -1 || optionalNonnegativeSafeInteger(value);
 }
 
 function optionalBoolean(value: unknown): value is boolean | null {
@@ -730,7 +738,7 @@ export function parseLibraryCoreFeedCardV1(
     !optionalBoolean(row.archived) ||
     !optionalBoolean(row.liked) ||
     !optionalNonnegativeSafeInteger(row.likedAt) ||
-    !optionalNonnegativeSafeInteger(row.likedSyncedAt) ||
+    !optionalLikeSyncTimestamp(row.likedSyncedAt) ||
     !optionalBoundedString(row.contentText, 1_500, 6_000) ||
     !mediaUrls ||
     !mediaTypes ||

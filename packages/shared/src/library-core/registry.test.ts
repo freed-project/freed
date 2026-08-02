@@ -261,7 +261,8 @@ describe("Library Core query registry", () => {
         definition === LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.persons_graph_v1 ||
-        definition === LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v1
+        definition === LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v1 ||
+        definition === LIBRARY_CORE_QUERY_REGISTRY.saved_feed_page_v1
       ) {
         expect(definition.blockers).not.toContain(
           "runtime_adapter_unimplemented",

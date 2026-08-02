@@ -13,6 +13,16 @@ import {
   LIBRARY_CORE_FEED_BROWSE_PAGE_REQUEST_SCHEMA,
   LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA,
 } from "./feed-browse-page-contracts.js";
+import {
+  LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_LIMIT,
+  LIBRARY_CORE_SAVED_FEED_PAGE_DEFAULT_LIMIT,
+  LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
+  LIBRARY_CORE_SAVED_FEED_PAGE_NESTED_BOUNDS,
+  LIBRARY_CORE_SAVED_FEED_PAGE_PROJECTION,
+  LIBRARY_CORE_SAVED_FEED_PAGE_REQUEST_SCHEMA,
+  LIBRARY_CORE_SAVED_FEED_PAGE_RESPONSE_SCHEMA,
+  LIBRARY_CORE_SAVED_FEED_PAGE_SOURCE_IDENTITY,
+} from "./saved-feed-page-contracts.js";
 
 export const LIBRARY_CORE_QUERY_IDS = [
   "account_detail_v1",
@@ -49,6 +59,7 @@ export const LIBRARY_CORE_QUERY_IDS = [
   "provider_media_page_v1",
   "repair_work_claim_v1",
   "saved_analytics_v1",
+  "saved_feed_page_v1",
   "search_page_v1",
   "semantic_classification_claim_v1",
   "story_wall_candidates_v1",
@@ -183,14 +194,17 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
   readonly requestSchema:
     | typeof LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_SAVED_FEED_PAGE_REQUEST_SCHEMA
     | null;
   readonly responseSchema:
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_SAVED_FEED_PAGE_RESPONSE_SCHEMA
     | null;
   readonly projection:
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION
+    | typeof LIBRARY_CORE_SAVED_FEED_PAGE_PROJECTION
     | null;
   readonly sourceIdentity:
     | typeof LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY
@@ -289,13 +303,16 @@ interface PlannedQueryInput {
   readonly currentKinds?: readonly string[];
   readonly requestSchema?:
     | typeof LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA
-    | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_REQUEST_SCHEMA;
+    | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_SAVED_FEED_PAGE_REQUEST_SCHEMA;
   readonly responseSchema?:
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
-    | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA;
+    | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_SAVED_FEED_PAGE_RESPONSE_SCHEMA;
   readonly projection?:
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
-    | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION;
+    | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION
+    | typeof LIBRARY_CORE_SAVED_FEED_PAGE_PROJECTION;
   readonly sourceIdentity?: typeof LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY;
   readonly nestedBounds?: typeof LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS;
   /**
@@ -780,6 +797,36 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
       "ProjectionReadSession::saved_analytics",
       "read_library_core_saved_analytics",
     ],
+    resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
+  }),
+  saved_feed_page_v1: plannedQuery({
+    defaultLimit: LIBRARY_CORE_SAVED_FEED_PAGE_DEFAULT_LIMIT,
+    maximumLimit: LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_LIMIT,
+    maximumRows: LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_LIMIT,
+    maximumResponseBytes: LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
+    totalCountIntent: "snapshot_exact",
+    rendererCache: true,
+    invalidationKeyIntent: ["feed:saved", "feed-facets"],
+    currentKinds: [
+      "read_library_core_saved_feed_page",
+      "openBoundedDesktopSavedFeedReader",
+    ],
+    requestSchema: LIBRARY_CORE_SAVED_FEED_PAGE_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_SAVED_FEED_PAGE_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_SAVED_FEED_PAGE_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_SAVED_FEED_PAGE_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_SAVED_FEED_PAGE_NESTED_BOUNDS,
+    stableSort: {
+      columns: [
+        { column: "sortGroup", direction: "desc" },
+        { column: "sortPrimary", direction: "desc" },
+        { column: "sortSecondary", direction: "asc" },
+        { column: "globalId", direction: "asc" },
+      ],
+      textCollation: "binary",
+      nullOrdering: "all_sort_columns_not_null",
+    },
+    tieBreakKey: "globalId",
     resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   search_page_v1: plannedQuery({

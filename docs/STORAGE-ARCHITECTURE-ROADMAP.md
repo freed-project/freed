@@ -164,7 +164,8 @@ spool and scratch graph and retains only the selected and exact rollback
 projection generations.
 
 Gate D now serves the all-content feed, item detail, exact Library facets,
-bounded Map and Story Wall candidates, Saved overview analytics, Friends
+bounded Map and Story Wall candidates, Saved overview analytics, the four-mode
+Saved feed, Friends
 activity, selected-person timelines, and Friend editor author candidates, export,
 background content discovery, provider
 completion accounting, RSS duplicate lookup, Google Contacts discovery, and
@@ -183,19 +184,33 @@ frozen-predicate bulk execution remains the cleanup for that action path. Header
 sidebar counts share one source-versioned native aggregate. The default Desktop
 shell retains no item objects. Incremental Automerge patches carry one prior
 item occurrence so exact counts stay current without rebuilding the corpus.
-Friends-only feed filtering, saved-content sorting, and other unfinished
-consumers share one
+The Saved feed reads all four user-facing sort modes through source-fenced
+128-row SQLite pages, retains at most the current and adjacent page, and
+traverses the complete result without returning to compatibility at the old
+512-row limit. Its versioned native order uses one pinned recommendation clock
+and binary global-ID ties without retaining a corpus-sized source-order index.
+The Freed Desktop compatibility fallback uses that same clock and order. The
+PWA keeps its existing Saved ordering. Registry cleanup holds its write
+transaction while choosing retired generations and steadily retains current
+plus exact rollback. If cleanup fails after selection commits, the selection
+remains authoritative, the extra retired files remain non-authoritative, and a
+later selection retries cleanup.
+ReaderView may pin exactly one selected compact card after its feed page is
+evicted, and keeps the existing local-content and hydration path.
+Friends-only feed filtering and other unfinished consumers share one
 reference-counted compatibility projection only while mounted, then evict it.
 Source mismatch or reader failure returns to Automerge. The temporary React
-feed window also returns to Automerge before it could exceed 512 compact cards
-because reverse paging is not active yet. The device-local
+all-content feed window also returns to Automerge before it could exceed 512
+compact cards because reverse paging is not active yet. The device-local
 `freed.libraryCore.feedBrowseReaderV1.disabled=1` switch disables the feed
 reader, `freed.libraryCore.savedAnalyticsReaderV1.disabled=1` disables the
-Saved aggregate, `freed.libraryCore.friendsReaderV1.disabled=1` disables the
+Saved aggregate, `freed.libraryCore.savedFeedReaderV1.disabled=1` disables the
+Saved feed reader, `freed.libraryCore.friendsReaderV1.disabled=1` disables the
 Friends readers, `freed.libraryCore.providerSettingsReaderV1.disabled=1`
 restores provider settings to the compatibility projection,
 `freed.libraryCore.friendEditorReaderV1.disabled=1` restores the Friend editor
-compatibility lease, and
+compatibility lease, `freed.libraryCore.searchJumpReaderV1.disabled=1`
+restores SearchJump compatibility, and
 `freed.libraryCore.rendererItemEvictionV1.disabled=1`
 restores the full renderer projection at startup. This does not satisfy Gate C or complete
 Gate D. IndexedDB v3 now stores the legacy Automerge source as exact 1 MiB

@@ -10,7 +10,7 @@ use crate::library_core_feed_browse_reader::{
 use crate::library_core_feed_browse_registry::{
     FeedBrowseGenerationRegistry, FeedBrowseGenerationRegistryError,
 };
-use crate::library_core_feed_browse_runtime::resolve_existing_library_core_feed_browse_paths;
+use crate::library_core_feed_browse_runtime::resolve_existing_library_core_feed_browse_paths_in_root;
 use crate::library_core_feed_browse_store::{
     FeedBrowseCursor, FeedBrowsePage, FeedBrowseStoreError,
 };
@@ -206,6 +206,7 @@ pub(super) struct BrowseReaderCancellationV1 {
 }
 
 struct ReaderSession {
+    root_directory: String,
     reader_key: String,
     created_at: Instant,
     active_cancellation_id: String,
@@ -410,8 +411,8 @@ fn prune_expired(runtime: &mut BrowseReaderRuntimeInner, now: Instant) {
     });
 }
 
-fn reader_key(generation_id: &str, selection_sequence: i64) -> String {
-    format!("{generation_id}:{selection_sequence}")
+fn reader_key(root_directory: &str, generation_id: &str, selection_sequence: i64) -> String {
+    format!("{root_directory}:{generation_id}:{selection_sequence}")
 }
 
 fn evict_unreferenced_readers(runtime: &mut BrowseReaderRuntimeInner) {
@@ -445,6 +446,54 @@ fn read_at_root(
 ) -> Result<BrowsePageResponseV1, BrowseReaderError> {
     validate_request(&request)?;
     let decoded_cursor = request.cursor.0.as_deref().map(decode_cursor).transpose()?;
+    let page = read_physical_page_in_root(
+        state,
+        base,
+        crate::library_core_feed_browse_runtime::ROOT_DIRECTORY_FOR_ADAPTERS,
+        FeedBrowsePhysicalReadRequest {
+            reader_session_id: &request.reader_session_id,
+            cancellation_id: &request.cancellation_id,
+            cursor_identity: request.cursor.0.as_deref(),
+            cursor: decoded_cursor.as_ref().map(|cursor| &cursor.page_cursor),
+            limit: request.limit as usize,
+            expected_filter: &request.filter,
+            ranking_clock_ms: request.ranking_clock_ms,
+            recommendation_order_schema_version: request.recommendation_order_schema_version,
+        },
+        now,
+    )?;
+    let response = response_from_page(page)?;
+    ensure_response_size(&response)?;
+    Ok(response)
+}
+
+pub(super) struct FeedBrowsePhysicalReadRequest<'a> {
+    pub(super) reader_session_id: &'a str,
+    pub(super) cancellation_id: &'a str,
+    pub(super) cursor_identity: Option<&'a str>,
+    pub(super) cursor: Option<&'a FeedBrowseCursor>,
+    pub(super) limit: usize,
+    pub(super) expected_filter: &'a Value,
+    pub(super) ranking_clock_ms: i64,
+    pub(super) recommendation_order_schema_version: i64,
+}
+
+fn read_physical_page_in_root(
+    state: &LibraryCoreFeedBrowseReaderRuntimeState,
+    base: &Path,
+    root_directory: &str,
+    request: FeedBrowsePhysicalReadRequest<'_>,
+    now: Instant,
+) -> Result<FeedBrowsePage, BrowseReaderError> {
+    if !is_operation_instance_id(request.reader_session_id)
+        || !is_operation_instance_id(request.cancellation_id)
+        || !(1..=MAXIMUM_PAGE_LIMIT as usize).contains(&request.limit)
+        || request.ranking_clock_ms < 0
+        || request.ranking_clock_ms as u64 > MAXIMUM_SAFE_INTEGER
+        || request.recommendation_order_schema_version < 1
+    {
+        return Err(BrowseReaderError::InvalidRequest("physical page bounds"));
+    }
     let mut runtime = state
         .0
         .lock()
@@ -454,14 +503,22 @@ fn read_at_root(
     }
     prune_expired(&mut runtime, now);
 
-    if !runtime.sessions.contains_key(&request.reader_session_id) {
-        if decoded_cursor.is_some() {
+    if runtime
+        .sessions
+        .get(request.reader_session_id)
+        .is_some_and(|session| session.root_directory != root_directory)
+    {
+        return Err(BrowseReaderError::CursorStale);
+    }
+
+    if !runtime.sessions.contains_key(request.reader_session_id) {
+        if request.cursor.is_some() {
             return Err(BrowseReaderError::CursorStale);
         }
         if runtime.sessions.len() >= MAXIMUM_READER_SESSIONS {
             return Err(BrowseReaderError::SessionLimit);
         }
-        let paths = resolve_existing_library_core_feed_browse_paths(base)
+        let paths = resolve_existing_library_core_feed_browse_paths_in_root(base, root_directory)
             .map_err(|error| BrowseReaderError::RuntimePath(error.to_string()))?
             .ok_or(BrowseReaderError::RuntimeInactive)?;
         let selected = FeedBrowseGenerationRegistry::read_selected_generation(&paths.registry_path)
@@ -474,6 +531,7 @@ fn read_at_root(
                 }
             })?;
         let key = reader_key(
+            root_directory,
             &selected.generation.binding.generation_id,
             selected.transition_sequence,
         );
@@ -493,11 +551,12 @@ fn read_at_root(
             runtime.readers.insert(key.clone(), CachedReader { reader });
         }
         runtime.sessions.insert(
-            request.reader_session_id.clone(),
+            request.reader_session_id.to_owned(),
             ReaderSession {
+                root_directory: root_directory.to_owned(),
                 reader_key: key,
                 created_at: now,
-                active_cancellation_id: request.cancellation_id.clone(),
+                active_cancellation_id: request.cancellation_id.to_owned(),
                 last_request: None,
             },
         );
@@ -505,14 +564,18 @@ fn read_at_root(
 
     let key = runtime
         .sessions
-        .get(&request.reader_session_id)
+        .get(request.reader_session_id)
         .ok_or(BrowseReaderError::CursorStale)?
         .reader_key
         .clone();
-    let request_identity = RequestIdentity::from(&request);
+    let request_identity = RequestIdentity {
+        cancellation_id: request.cancellation_id.to_owned(),
+        cursor: request.cursor_identity.map(str::to_owned),
+        limit: request.limit as u32,
+    };
     if runtime
         .sessions
-        .get(&request.reader_session_id)
+        .get(request.reader_session_id)
         .and_then(|session| session.last_request.as_ref())
         .is_some_and(|prior| {
             prior.cancellation_id == request.cancellation_id && prior != &request_identity
@@ -522,10 +585,9 @@ fn read_at_root(
     }
     runtime
         .sessions
-        .get_mut(&request.reader_session_id)
+        .get_mut(request.reader_session_id)
         .ok_or(BrowseReaderError::CursorStale)?
-        .active_cancellation_id
-        .clone_from(&request.cancellation_id);
+        .active_cancellation_id = request.cancellation_id.to_owned();
     let reader = &runtime
         .readers
         .get(&key)
@@ -534,14 +596,14 @@ fn read_at_root(
     let binding = reader.binding();
     let stored_filter = serde_json::from_str::<Value>(&binding.filter_json)
         .map_err(|_| BrowseReaderError::InvalidRequest("stored filter"))?;
-    if stored_filter != request.filter
+    if stored_filter != *request.expected_filter
         || binding.ranking_clock_ms != request.ranking_clock_ms
         || binding.recommendation_order_schema_version
             != request.recommendation_order_schema_version
     {
         return Err(BrowseReaderError::CursorStale);
     }
-    if let Some(cursor) = decoded_cursor.as_ref() {
+    if let Some(cursor) = request.cursor {
         if cursor.generation_id != binding.generation_id
             || cursor.transition_sequence != binding.transition_sequence
             || cursor.projection_revision != binding.projection_revision
@@ -550,28 +612,33 @@ fn read_at_root(
         }
     }
     let page = reader
-        .read_page(
-            decoded_cursor.as_ref().map(|cursor| &cursor.page_cursor),
-            request.limit as usize,
-        )
+        .read_page(request.cursor, request.limit)
         .map_err(|error| match error {
             FeedBrowseGenerationReaderError::Store(FeedBrowseStoreError::CursorStale) => {
                 BrowseReaderError::CursorStale
             }
             other => BrowseReaderError::Reader(other),
         })?;
-    let response = response_from_page(page)?;
-    ensure_response_size(&response)?;
-    let exhausted = response.next_cursor.is_none();
+    let exhausted = page.next_cursor.is_none();
     runtime
         .sessions
-        .get_mut(&request.reader_session_id)
+        .get_mut(request.reader_session_id)
         .ok_or(BrowseReaderError::CursorStale)?
         .last_request = Some(request_identity);
     if exhausted {
-        runtime.sessions.remove(&request.reader_session_id);
+        runtime.sessions.remove(request.reader_session_id);
     }
-    Ok(response)
+    Ok(page)
+}
+
+pub(super) fn read_library_core_feed_browse_physical_page_in_root(
+    state: &LibraryCoreFeedBrowseReaderRuntimeState,
+    base: &Path,
+    root_directory: &str,
+    request: FeedBrowsePhysicalReadRequest<'_>,
+) -> Result<FeedBrowsePage, String> {
+    read_physical_page_in_root(state, base, root_directory, request, Instant::now())
+        .map_err(|error| error.to_string())
 }
 
 fn response_from_page(page: FeedBrowsePage) -> Result<BrowsePageResponseV1, BrowseReaderError> {
@@ -674,6 +741,16 @@ fn cancel_session(
     Ok(BrowseReaderCancellationV1 { released })
 }
 
+pub(super) fn cancel_library_core_feed_browse_reader_in_state(
+    state: &LibraryCoreFeedBrowseReaderRuntimeState,
+    reader_session_id: &str,
+    cancellation_id: &str,
+) -> Result<(), String> {
+    cancel_session(state, reader_session_id, cancellation_id)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
 pub(super) fn quiesce_library_core_feed_browse_reader_runtime(
     state: &LibraryCoreFeedBrowseReaderRuntimeState,
 ) -> Result<(), String> {
@@ -711,7 +788,9 @@ pub(super) fn cancel_library_core_feed_browse_reader(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::library_core_feed_browse_runtime::resolve_library_core_feed_browse_paths;
+    use crate::library_core_feed_browse_runtime::{
+        resolve_library_core_feed_browse_paths_in_root, ROOT_DIRECTORY_FOR_ADAPTERS,
+    };
     use crate::library_core_feed_browse_store::{
         FeedBrowseGenerationBinding, FeedBrowseGenerationStore, FeedBrowseProjectedRow,
     };
@@ -797,23 +876,31 @@ mod tests {
     }
 
     fn publish_and_select(base: &Path) {
-        let paths = resolve_library_core_feed_browse_paths(base).expect("paths");
-        let identity = binding(2);
+        publish_and_select_in_root(
+            base,
+            ROOT_DIRECTORY_FOR_ADAPTERS,
+            vec![
+                row("x:item-1", 91, 1_780_000_000_000, 56),
+                row("x:item-2", 80, 1_779_000_000_000, 57),
+            ],
+        );
+    }
+
+    fn publish_and_select_in_root(
+        base: &Path,
+        root_directory: &str,
+        rows: Vec<FeedBrowseProjectedRow>,
+    ) {
+        let paths =
+            resolve_library_core_feed_browse_paths_in_root(base, root_directory).expect("paths");
+        let identity = binding(rows.len() as i64);
         let path = paths
             .generation_root
             .join(format!("{}.sqlite", identity.generation_id));
         let published = {
             let mut store = FeedBrowseGenerationStore::open(&path).expect("store");
             store.begin(&identity).expect("begin");
-            store
-                .append_page(
-                    0,
-                    &[
-                        row("x:item-1", 91, 1_780_000_000_000, 56),
-                        row("x:item-2", 80, 1_779_000_000_000, 57),
-                    ],
-                )
-                .expect("append");
+            store.append_page(0, &rows).expect("append");
             store.finalize().expect("finalize");
             store.seal(&path, &identity).expect("seal")
         };
@@ -882,6 +969,91 @@ mod tests {
         .expect("terminal page");
         assert!(terminal.rows.is_empty());
         assert!(terminal.next_cursor.is_none());
+    }
+
+    #[test]
+    fn reader_cache_is_fenced_by_the_physical_root() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let base = std::fs::canonicalize(temporary.path()).expect("base");
+        let saved_root = "library-core-saved-feed-v1";
+        publish_and_select_in_root(
+            &base,
+            ROOT_DIRECTORY_FOR_ADAPTERS,
+            vec![row("x:ordinary", 91, 1_780_000_000_000, 56)],
+        );
+        publish_and_select_in_root(
+            &base,
+            saved_root,
+            vec![row("x:saved", 91, 1_780_000_000_000, 56)],
+        );
+        let state = LibraryCoreFeedBrowseReaderRuntimeState::default();
+        let filter = serde_json::from_str::<Value>(FILTER_JSON).expect("filter");
+        let ordinary = read_physical_page_in_root(
+            &state,
+            &base,
+            ROOT_DIRECTORY_FOR_ADAPTERS,
+            FeedBrowsePhysicalReadRequest {
+                reader_session_id: "ordinary-reader",
+                cancellation_id: "ordinary-cancel",
+                cursor_identity: None,
+                cursor: None,
+                limit: 1,
+                expected_filter: &filter,
+                ranking_clock_ms: 1_780_000_100_000,
+                recommendation_order_schema_version: 1,
+            },
+            Instant::now(),
+        )
+        .expect("ordinary page");
+        let saved = read_physical_page_in_root(
+            &state,
+            &base,
+            saved_root,
+            FeedBrowsePhysicalReadRequest {
+                reader_session_id: "saved-reader",
+                cancellation_id: "saved-cancel",
+                cursor_identity: None,
+                cursor: None,
+                limit: 1,
+                expected_filter: &filter,
+                ranking_clock_ms: 1_780_000_100_000,
+                recommendation_order_schema_version: 1,
+            },
+            Instant::now(),
+        )
+        .expect("saved page");
+
+        assert_eq!(ordinary.rows[0].global_id, "x:ordinary");
+        assert!(matches!(
+            read_physical_page_in_root(
+                &state,
+                &base,
+                saved_root,
+                FeedBrowsePhysicalReadRequest {
+                    reader_session_id: "ordinary-reader",
+                    cancellation_id: "saved-cross-root-cancel",
+                    cursor_identity: None,
+                    cursor: None,
+                    limit: 1,
+                    expected_filter: &filter,
+                    ranking_clock_ms: 1_780_000_100_000,
+                    recommendation_order_schema_version: 1,
+                },
+                Instant::now(),
+            ),
+            Err(BrowseReaderError::CursorStale)
+        ));
+        assert_eq!(saved.rows[0].global_id, "x:saved");
+        let runtime = state.0.lock().expect("reader state");
+        assert_eq!(runtime.readers.len(), 2);
+        assert!(runtime.readers.contains_key(&reader_key(
+            ROOT_DIRECTORY_FOR_ADAPTERS,
+            &"a".repeat(64),
+            1,
+        )));
+        assert!(runtime
+            .readers
+            .contains_key(&reader_key(saved_root, &"a".repeat(64), 1,)));
     }
 
     #[test]

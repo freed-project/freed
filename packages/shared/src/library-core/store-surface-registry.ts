@@ -77,6 +77,7 @@ export const BASE_APP_STORE_SURFACE_REGISTRY = {
     successorQueryIds: ["account_detail_v1", "persons_graph_v1"],
     activationBlocker: "complete account record is retained in renderer state",
   }),
+  acknowledgeSavedFeedPresentationPatch: functionSurface("ui_local"),
   activeFilter: stateSurface("ui_local"),
   activeView: stateSurface("ui_local"),
   addAccount: functionSurface("legacy_compatibility", {
@@ -272,6 +273,8 @@ export const BASE_APP_STORE_SURFACE_REGISTRY = {
   }),
   searchCorpusVersion: stateSurface("derived"),
   libraryItemVersion: stateSurface("derived"),
+  savedFeedPresentationPatch: stateSurface("ui_local"),
+  savedFeedVersion: stateSurface("derived"),
   searchQuery: stateSurface("ui_local"),
   selectedAccountId: stateSurface("ui_local"),
   selectedFriendId: stateSurface("legacy_compatibility", {

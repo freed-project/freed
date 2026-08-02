@@ -10,7 +10,21 @@
 
 import { create } from "zustand";
 import { isTauri } from "@tauri-apps/api/core";
-import type { Account, FeedItem, FilterOptions, Friend, Person, ReachOutLog, SampleDataClearSummary, SampleLibraryData, UserPreferences, RssFeed, RemoveFeedOptions } from "@freed/shared";
+import type {
+  Account,
+  FeedItem,
+  FilterOptions,
+  Friend,
+  Person,
+  ReachOutLog,
+  RemoveFeedOptions,
+  RssFeed,
+  SampleDataClearSummary,
+  SampleLibraryData,
+  SavedFeedPresentationPatch,
+  SavedFeedPresentationUserStatePatch,
+  UserPreferences,
+} from "@freed/shared";
 import {
   applyFeedSignalModesToFilter,
   accountsFromLegacyFriend,
@@ -97,6 +111,7 @@ import {
   docConfirmLikedSynced,
   docConfirmSeenSynced,
   quiesceDesktopAutomergeForFactoryReset,
+  type DocChangeEvent,
   type DocState,
 } from "./automerge";
 import { buildPlatformActionsRegistry } from "./platform-actions";
@@ -150,6 +165,120 @@ let documentSubscriptionTeardown: (() => void) | null = null;
 let storeAcceptingResetSensitiveWork = true;
 const activeResetSensitiveStoreOperations = new Set<Promise<unknown>>();
 const FACTORY_RESET_DRAIN_TIMEOUT_MS = 180_000;
+const SAVED_FEED_HARMLESS_ITEM_PATCH_MUTATIONS = new Set<string>([
+  "MARK_AS_READ",
+  "MARK_ITEMS_AS_READ",
+  "MARK_ALL_AS_READ",
+  "TOGGLE_LIKED",
+  "CONFIRM_LIKED_SYNCED",
+  "CONFIRM_SEEN_SYNCED",
+]);
+const SAVED_FEED_READ_ITEM_PATCH_MUTATIONS = new Set<string>([
+  "MARK_AS_READ",
+  "MARK_ITEMS_AS_READ",
+]);
+const SAVED_FEED_USER_STATE_ITEM_PATCH_MUTATIONS = new Set<string>([
+  "TOGGLE_LIKED",
+  "CONFIRM_LIKED_SYNCED",
+  "CONFIRM_SEEN_SYNCED",
+]);
+const MAX_SAVED_FEED_PRESENTATION_IDENTITIES = 512;
+
+function optionalTimestamp(value: number | undefined): number | null {
+  return value ?? null;
+}
+
+function compactSavedFeedUserState(
+  item: FeedItem,
+): SavedFeedPresentationUserStatePatch {
+  return {
+    globalId: item.globalId,
+    liked: item.userState.liked === true,
+    likedAt: optionalTimestamp(item.userState.likedAt),
+    likedSyncedAt: optionalTimestamp(item.userState.likedSyncedAt),
+    seenSyncedAt: optionalTimestamp(item.userState.seenSyncedAt),
+  };
+}
+
+function mergeSavedFeedPresentationPatch(
+  previous: SavedFeedPresentationPatch | null,
+  sourceVersion: number,
+  event: Extract<DocChangeEvent, { source: "item_patch" }>,
+): SavedFeedPresentationPatch {
+  const current =
+    previous?.sourceVersion === sourceVersion ? previous : null;
+  const readItemIds = new Set(current?.readItemIds ?? []);
+  const readPlatforms = new Set(current?.readPlatforms ?? []);
+  const userStates = new Map(
+    (current?.userStates ?? []).map((state) => [state.globalId, state]),
+  );
+  let readAt = current?.readAt ?? 0;
+
+  if (SAVED_FEED_READ_ITEM_PATCH_MUTATIONS.has(event.mutation ?? "")) {
+    for (const globalId of event.changedItemIds) readItemIds.add(globalId);
+  } else if (event.mutation === "MARK_ALL_AS_READ") {
+    for (const item of event.changedItems) readPlatforms.add(item.platform);
+  }
+
+  if (
+    SAVED_FEED_READ_ITEM_PATCH_MUTATIONS.has(event.mutation ?? "") ||
+    event.mutation === "MARK_ALL_AS_READ"
+  ) {
+    for (const item of event.changedItems) {
+      const candidate = item.userState.readAt;
+      if (candidate && Number.isFinite(candidate) && candidate > readAt) {
+        readAt = candidate;
+      }
+    }
+  }
+
+  if (
+    SAVED_FEED_USER_STATE_ITEM_PATCH_MUTATIONS.has(event.mutation ?? "")
+  ) {
+    for (const item of event.changedItems) {
+      userStates.set(item.globalId, compactSavedFeedUserState(item));
+    }
+  }
+
+  return {
+    revision: (current?.revision ?? 0) + 1,
+    sourceVersion,
+    readAt,
+    readItemIds: [...readItemIds],
+    readPlatforms: [...readPlatforms].sort(),
+    userStates: [...userStates.values()],
+  };
+}
+
+function savedFeedPresentationPatchExceedsLimit(
+  previous: SavedFeedPresentationPatch | null,
+  sourceVersion: number,
+  event: Extract<DocChangeEvent, { source: "item_patch" }>,
+): boolean {
+  const current = previous?.sourceVersion === sourceVersion ? previous : null;
+  if (SAVED_FEED_READ_ITEM_PATCH_MUTATIONS.has(event.mutation ?? "")) {
+    const readItemIds = new Set(current?.readItemIds ?? []);
+    for (const globalId of event.changedItemIds) {
+      readItemIds.add(globalId);
+      if (readItemIds.size > MAX_SAVED_FEED_PRESENTATION_IDENTITIES) {
+        return true;
+      }
+    }
+  }
+
+  if (SAVED_FEED_USER_STATE_ITEM_PATCH_MUTATIONS.has(event.mutation ?? "")) {
+    const userStateIds = new Set(
+      (current?.userStates ?? []).map((state) => state.globalId),
+    );
+    for (const item of event.changedItems) {
+      userStateIds.add(item.globalId);
+      if (userStateIds.size > MAX_SAVED_FEED_PRESENTATION_IDENTITIES) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 function trackResetSensitiveStoreOperation<T>(operation: Promise<T>): Promise<T> {
   let tracked: Promise<T>;
@@ -197,6 +326,8 @@ interface AppState {
   items: FeedItem[];
   searchCorpusVersion: number;
   libraryItemVersion: number;
+  savedFeedVersion: number;
+  savedFeedPresentationPatch: SavedFeedPresentationPatch | null;
   feeds: Record<string, RssFeed>;
   persons: Record<string, Person>;
   accounts: Record<string, Account>;
@@ -246,6 +377,10 @@ interface AppState {
 
   // Initialization
   initialize: () => Promise<void>;
+  acknowledgeSavedFeedPresentationPatch: (
+    sourceVersion: number,
+    revision: number,
+  ) => void;
 
   // Item actions (persisted to Automerge)
   addItems: (items: FeedItem[]) => Promise<void>;
@@ -654,6 +789,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   items: [],
   searchCorpusVersion: 0,
   libraryItemVersion: 0,
+  savedFeedVersion: 0,
+  savedFeedPresentationPatch: null,
   feeds: {},
   persons: {},
   accounts: {},
@@ -692,6 +829,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   searchQuery: "",
   activeView: "feed",
   pendingMatchCount: 0,
+  acknowledgeSavedFeedPresentationPatch: (sourceVersion, revision) => {
+    set((state) =>
+      state.savedFeedPresentationPatch?.sourceVersion === sourceVersion &&
+      state.savedFeedPresentationPatch.revision === revision
+        ? { savedFeedPresentationPatch: null }
+        : state,
+    );
+  },
 
   // Initialize from Automerge worker
   initialize: () => {
@@ -744,7 +889,51 @@ export const useAppStore = create<AppState>((set, get) => ({
               event.mutation !== "SET_RENDERER_ITEM_HYDRATION")
               ? prev.libraryItemVersion + 1
               : prev.libraryItemVersion;
-          let next: Partial<AppState> = { ...state, libraryItemVersion };
+          const savedFeedPresentationPatchOverflow =
+            event.source === "item_patch" &&
+            savedFeedPresentationPatchExceedsLimit(
+              prev.savedFeedPresentationPatch,
+              prev.savedFeedVersion,
+              event,
+            );
+          // Preference patches preserve every untouched nested object. A new
+          // weights identity therefore means the native recommended order is
+          // stale, while display, capture, and other preference noise can stay
+          // on the current bounded Saved generation.
+          const savedFeedRankingWeightsChanged =
+            event.source === "preferences_patch" &&
+            state.preferences.weights !== prev.preferences.weights;
+          const savedFeedVersion =
+            (event.source === "state_update" &&
+              event.mutation !== "SET_RENDERER_ITEM_HYDRATION") ||
+            savedFeedRankingWeightsChanged ||
+            (event.source === "item_patch" &&
+              (!SAVED_FEED_HARMLESS_ITEM_PATCH_MUTATIONS.has(
+                event.mutation ?? "",
+              ) ||
+                savedFeedPresentationPatchOverflow))
+              ? prev.savedFeedVersion + 1
+              : prev.savedFeedVersion;
+          const savedFeedPresentationPatch =
+            event.source === "item_patch" &&
+            !savedFeedPresentationPatchOverflow &&
+            SAVED_FEED_HARMLESS_ITEM_PATCH_MUTATIONS.has(
+              event.mutation ?? "",
+            )
+              ? mergeSavedFeedPresentationPatch(
+                  prev.savedFeedPresentationPatch,
+                  savedFeedVersion,
+                  event,
+                )
+              : savedFeedVersion !== prev.savedFeedVersion
+                ? null
+                : prev.savedFeedPresentationPatch;
+          let next: Partial<AppState> = {
+            ...state,
+            libraryItemVersion,
+            savedFeedPresentationPatch,
+            savedFeedVersion,
+          };
 
           if (shallowEqualRecord(state.feedUnreadCounts, prev.feedUnreadCounts))
             next = { ...next, feedUnreadCounts: prev.feedUnreadCounts };
@@ -795,6 +984,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           substackAuth,
           mediumAuth,
           ytAuth,
+          savedFeedPresentationPatch: null,
           isInitialized: true,
           isLoading: false,
         });

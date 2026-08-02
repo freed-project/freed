@@ -1,4 +1,12 @@
-import { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef, memo } from "react";
+import {
+  useState,
+  useMemo,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useRef,
+  memo,
+} from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { FeedList } from "./FeedList.js";
 import { ReaderView } from "./ReaderView.js";
@@ -6,11 +14,21 @@ import { FeedItem as FeedItemCard } from "./FeedItem.js";
 import { useReadOnScrollTracker } from "./useReadOnScrollTracker.js";
 import { buildReadTrackListKey } from "./read-on-scroll.js";
 import { useBoundedFeedItems } from "./useBoundedFeedItems.js";
-import { AddFeedDialog } from "../AddFeedDialog.js";
 import {
-  useAppStore,
-  usePlatform,
-} from "../../context/PlatformContext.js";
+  orderDesktopSavedFallbackItems,
+  resolveBoundedReaderRankingClock,
+  savedFeedRankingClockMs,
+  type BoundedReaderRankingClock,
+} from "./saved-feed-fallback-order.js";
+import {
+  applySavedFeedPresentationPatch,
+  prepareSavedFeedPresentationPatch,
+  projectSavedFeedLikePresentation,
+  resolveSavedFeedSelectionPin,
+  type SavedFeedSelectionPin,
+} from "./saved-feed-presentation-patch.js";
+import { AddFeedDialog } from "../AddFeedDialog.js";
+import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useLegacyLibraryItems } from "../../hooks/useLegacyLibraryItems.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
@@ -23,7 +41,10 @@ import {
   type FeedItem,
 } from "@freed/shared";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
-import { animationAwareScrollBehavior, resolveAnimationIntensity } from "../../lib/animation-preferences.js";
+import {
+  animationAwareScrollBehavior,
+  resolveAnimationIntensity,
+} from "../../lib/animation-preferences.js";
 import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
 
 // ─── Compact sidebar panel for dual-column mode ────────────────────────────
@@ -42,6 +63,8 @@ const EMPTY_FEED_ITEMS: FeedItem[] = [];
 // Wrapper padding and row spacing match the nav-button radius token at 10px.
 const CARD_H_PAD = COMPACT_CARD_LEFT_PAD + COMPACT_CARD_RIGHT_PAD;
 const CARD_V_GAP = COMPACT_CARD_GAP;
+const SAVED_FEED_PAGE_SIZE = 128;
+const SAVED_FEED_RESIDENT_PAGE_LIMIT = 2;
 
 interface CompactFeedPanelProps {
   items: FeedItem[];
@@ -55,6 +78,13 @@ interface CompactFeedPanelProps {
   leadingOffset?: string;
   onLoadMore?: () => void;
   hasMore?: boolean;
+  boundedWindowStartIndex?: number;
+}
+
+interface CompactBoundedWindowAnchor {
+  readonly itemId: string;
+  readonly offset: number;
+  readonly windowStartIndex: number;
 }
 
 const CompactFeedPanel = memo(function CompactFeedPanel({
@@ -69,9 +99,18 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
   leadingOffset,
   onLoadMore,
   hasMore = false,
+  boundedWindowStartIndex = 0,
 }: CompactFeedPanelProps) {
   const parentRef = useRef<HTMLDivElement>(null);
-  const scrollAnchorRef = useRef<{ index: number; offset: number } | null>(null);
+  const scrollAnchorRef = useRef<{ index: number; offset: number } | null>(
+    null,
+  );
+  const pendingBoundedAnchorRef = useRef<CompactBoundedWindowAnchor | null>(
+    null,
+  );
+  const previousBoundedWindowStartRef = useRef(boundedWindowStartIndex);
+  const boundedWindowDidAdvance =
+    boundedWindowStartIndex > previousBoundedWindowStartRef.current;
   const prevWidthRef = useRef(width);
 
   const cardHeight = width - CARD_H_PAD;
@@ -99,7 +138,10 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
       idx = 1 + Math.floor(past / oldItem);
       offset = scrollTop - (oldFirst + (idx - 1) * oldItem);
     }
-    scrollAnchorRef.current = { index: Math.min(idx, items.length - 1), offset };
+    scrollAnchorRef.current = {
+      index: Math.min(idx, items.length - 1),
+      offset,
+    };
     prevWidthRef.current = width;
   }
 
@@ -111,15 +153,15 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     },
     [items, itemHeight, storyItemHeight],
   );
-  const readListKey = useMemo(
-    () => buildReadTrackListKey(items),
-    [items],
+  const readListKey = useMemo(() => buildReadTrackListKey(items), [items]);
+  const getReadScrollMetrics = useCallback(
+    () => ({
+      rawScrollTop: parentRef.current?.scrollTop ?? 0,
+      viewportHeight: parentRef.current?.clientHeight ?? 0,
+      scrollMargin: 0,
+    }),
+    [],
   );
-  const getReadScrollMetrics = useCallback(() => ({
-    rawScrollTop: parentRef.current?.scrollTop ?? 0,
-    viewportHeight: parentRef.current?.clientHeight ?? 0,
-    scrollMargin: 0,
-  }), []);
   const processReadOnScroll = useReadOnScrollTracker({
     surface: "compact-feed",
     listKey: readListKey,
@@ -130,14 +172,28 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     markItemsAsRead,
   });
   const requestMoreNearTail = useCallback(
-    (virtualItems: readonly { index: number }[]) => {
+    (
+      virtualItems: readonly { index: number; start: number; end: number }[],
+    ) => {
       if (!hasMore || !onLoadMore || items.length === 0) return;
       const finalVisible = virtualItems[virtualItems.length - 1];
       if (finalVisible && finalVisible.index >= Math.max(0, items.length - 5)) {
+        const scrollTop = parentRef.current?.scrollTop ?? 0;
+        const firstVisible =
+          virtualItems.find((virtualItem) => virtualItem.end > scrollTop) ??
+          virtualItems[0];
+        const anchorItem = items[firstVisible.index];
+        if (anchorItem) {
+          pendingBoundedAnchorRef.current = {
+            itemId: anchorItem.globalId,
+            offset: Math.max(0, scrollTop - firstVisible.start),
+            windowStartIndex: boundedWindowStartIndex,
+          };
+        }
         onLoadMore();
       }
     },
-    [hasMore, items.length, onLoadMore],
+    [boundedWindowStartIndex, hasMore, items, onLoadMore],
   );
 
   const virtualizer = useVirtualizer({
@@ -164,13 +220,34 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     if (anchor.index > 0) {
       newStart = firstItemHeight; // first item
       for (let i = 1; i < anchor.index; i++) {
-        newStart += items[i]?.contentType === "story" ? storyItemHeight : itemHeight;
+        newStart +=
+          items[i]?.contentType === "story" ? storyItemHeight : itemHeight;
       }
     }
 
     const el = parentRef.current;
     if (el) el.scrollTop = newStart + anchor.offset;
   }); // intentionally no deps: only fires work when anchor ref is set
+
+  useLayoutEffect(() => {
+    const previousWindowStart = previousBoundedWindowStartRef.current;
+    previousBoundedWindowStartRef.current = boundedWindowStartIndex;
+    if (boundedWindowStartIndex <= previousWindowStart) return;
+
+    const anchor = pendingBoundedAnchorRef.current;
+    pendingBoundedAnchorRef.current = null;
+    if (!anchor || anchor.windowStartIndex !== previousWindowStart) return;
+    const anchorIndex = items.findIndex(
+      (item) => item.globalId === anchor.itemId,
+    );
+    if (anchorIndex < 0) return;
+
+    virtualizer.measure();
+    virtualizer.scrollToIndex(anchorIndex, { align: "start" });
+    if (anchor.offset > 0) {
+      parentRef.current?.scrollBy({ top: anchor.offset });
+    }
+  }, [boundedWindowStartIndex, items, virtualizer]);
 
   // Auto-scroll to the selected item on selection change.
   const selectedIndex = useMemo(
@@ -179,8 +256,11 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
   );
   const didInitialScroll = useRef(false);
   useLayoutEffect(() => {
+    if (boundedWindowDidAdvance) return;
     if (selectedIndex < 0) return;
-    const behavior = animationAwareScrollBehavior(didInitialScroll.current ? "smooth" : "auto");
+    const behavior = animationAwareScrollBehavior(
+      didInitialScroll.current ? "smooth" : "auto",
+    );
 
     if (selectionMoveDirection === 0) {
       virtualizer.scrollToIndex(selectedIndex, {
@@ -206,6 +286,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     didInitialScroll.current = true;
   }, [
     firstItemHeight,
+    boundedWindowDidAdvance,
     itemHeight,
     items.length,
     selectedIndex,
@@ -244,7 +325,8 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
                   paddingLeft: `${COMPACT_CARD_LEFT_PAD}px`,
                   paddingRight: `${COMPACT_CARD_RIGHT_PAD}px`,
                   paddingBottom: `${COMPACT_CARD_GAP}px`,
-                  paddingTop: vi.index === 0 ? `${COMPACT_CARD_GAP}px` : undefined,
+                  paddingTop:
+                    vi.index === 0 ? `${COMPACT_CARD_GAP}px` : undefined,
                 }}
               >
                 <FeedItemCard
@@ -254,7 +336,9 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
                   selected={item.globalId === selectedId}
                   showReadInGrayscale={showReadInGrayscale}
                   onClick={() => onItemClick(item)}
-                  storyHeight={item.contentType === "story" ? storyTileH : undefined}
+                  storyHeight={
+                    item.contentType === "story" ? storyTileH : undefined
+                  }
                 />
               </div>
             </div>
@@ -269,7 +353,13 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
 
 export function FeedView() {
   const platform = usePlatform();
-  const { addRssFeed, openBoundedFeedReader, openUrl, scanLibraryItems } = platform;
+  const {
+    addRssFeed,
+    openBoundedFeedReader,
+    openBoundedSavedFeedReader,
+    openUrl,
+    scanLibraryItems,
+  } = platform;
   const canAddFeeds = !!addRssFeed;
   const items = useAppStore((s) => s.items);
   const feeds = useAppStore((s) => s.feeds);
@@ -281,6 +371,15 @@ export function FeedView() {
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const libraryItemVersion = useAppStore(
     (state) => state.libraryItemVersion ?? state.searchCorpusVersion,
+  );
+  const savedFeedVersion = useAppStore(
+    (state) => state.savedFeedVersion ?? state.searchCorpusVersion,
+  );
+  const savedFeedPresentationPatch = useAppStore(
+    (state) => state.savedFeedPresentationPatch ?? null,
+  );
+  const acknowledgeSavedFeedPresentationPatch = useAppStore(
+    (state) => state.acknowledgeSavedFeedPresentationPatch,
   );
   const isInitialized = useAppStore((s) => s.isInitialized);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
@@ -296,42 +395,93 @@ export function FeedView() {
   const [deviceDisplay] = useDeviceDisplayPreferences();
   const friendsMode = deviceDisplay.friendsMode;
   const savedContentSortMode = deviceDisplay.savedContentSortMode;
+  const rankingWeights = useAppStore((s) => s.preferences.weights);
 
-  const handleOpenCommentUrl = useCallback((url: string) => {
-    if (openUrl) {
-      openUrl(url);
-    } else {
-      window.open(url, "_blank", "noopener,noreferrer");
-    }
-  }, [openUrl]);
-  const openAuthorInFriends = useCallback(async (item: FeedItem) => {
-    let account: Account | null = socialAccountForAuthor(accounts, item.platform, item.author.id);
-    if (!account) {
-      const draft = buildDiscoveredAccountsFromItems([item], accounts)[0];
-      if (!draft) return;
-      await addAccount(draft);
-      account = draft;
-    }
+  const handleOpenCommentUrl = useCallback(
+    (url: string) => {
+      if (openUrl) {
+        openUrl(url);
+      } else {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+    },
+    [openUrl],
+  );
+  const openAuthorInFriends = useCallback(
+    async (item: FeedItem) => {
+      let account: Account | null = socialAccountForAuthor(
+        accounts,
+        item.platform,
+        item.author.id,
+      );
+      if (!account) {
+        const draft = buildDiscoveredAccountsFromItems([item], accounts)[0];
+        if (!draft) return;
+        await addAccount(draft);
+        account = draft;
+      }
 
-    setSelectedItem(null);
-    setSelectedAccount(account.id);
-    setActiveView("friends");
-  }, [
-    accounts,
-    addAccount,
-    setActiveView,
-    setSelectedAccount,
-    setSelectedItem,
-  ]);
+      setSelectedItem(null);
+      setSelectedAccount(account.id);
+      setActiveView("friends");
+    },
+    [accounts, addAccount, setActiveView, setSelectedAccount, setSelectedItem],
+  );
 
   const [addFeedOpen, setAddFeedOpen] = useState(false);
   const [readerOrderIds, setReaderOrderIds] = useState<string[] | null>(null);
-  const boundedFeedEligible =
+  const savedBoundedFeedEligible =
+    Boolean(openBoundedSavedFeedReader) &&
+    isInitialized &&
+    searchQuery.trim() === "" &&
+    friendsMode === "all_content" &&
+    activeFilter.savedOnly;
+  const ordinaryBoundedFeedEligible =
     Boolean(openBoundedFeedReader) &&
     isInitialized &&
     searchQuery.trim() === "" &&
     friendsMode === "all_content" &&
     !activeFilter.savedOnly;
+  const boundedFeedEligible =
+    savedBoundedFeedEligible || ordinaryBoundedFeedEligible;
+  const boundedReaderIdentity = JSON.stringify({
+    filter: activeFilter,
+    kind: savedBoundedFeedEligible ? "saved" : "ordinary",
+    sortMode: savedBoundedFeedEligible ? savedContentSortMode : null,
+    sourceVersion: savedBoundedFeedEligible
+      ? savedFeedVersion
+      : searchCorpusVersion,
+  });
+  const boundedReaderRankingClockRef = useRef<BoundedReaderRankingClock | null>(
+    null,
+  );
+  boundedReaderRankingClockRef.current = resolveBoundedReaderRankingClock(
+    boundedReaderRankingClockRef.current,
+    boundedReaderIdentity,
+    Date.now(),
+  );
+  const identityRankingClockMs =
+    boundedReaderRankingClockRef.current.rankingClockMs;
+  const boundedReaderRankingClockMs = savedBoundedFeedEligible
+    ? savedFeedRankingClockMs(savedContentSortMode, identityRankingClockMs)
+    : identityRankingClockMs;
+  const renderedReaderIdentityRef = useRef(boundedReaderIdentity);
+  const boundedFeedStatusIsCurrent =
+    renderedReaderIdentityRef.current === boundedReaderIdentity;
+  useLayoutEffect(() => {
+    renderedReaderIdentityRef.current = boundedReaderIdentity;
+  }, [boundedReaderIdentity]);
+  const activeBoundedFeedReader = useMemo(() => {
+    if (!savedBoundedFeedEligible) return openBoundedFeedReader;
+    if (!openBoundedSavedFeedReader) return undefined;
+    return (filter: typeof activeFilter, rankingClockMs: number) =>
+      openBoundedSavedFeedReader(filter, savedContentSortMode, rankingClockMs);
+  }, [
+    openBoundedFeedReader,
+    openBoundedSavedFeedReader,
+    savedBoundedFeedEligible,
+    savedContentSortMode,
+  ]);
   const {
     feed: boundedFeed,
     loadMore: loadMoreBoundedItems,
@@ -339,33 +489,38 @@ export function FeedView() {
   } = useBoundedFeedItems({
     activeFilter,
     eligible: boundedFeedEligible,
-    openReader: openBoundedFeedReader,
-    sourceVersion: searchCorpusVersion,
+    maxPageItems: savedBoundedFeedEligible ? SAVED_FEED_PAGE_SIZE : undefined,
+    maxResidentPages: savedBoundedFeedEligible
+      ? SAVED_FEED_RESIDENT_PAGE_LIMIT
+      : undefined,
+    openReader: activeBoundedFeedReader,
+    rankingClockMs: boundedReaderRankingClockMs,
+    sourceVersion: savedBoundedFeedEligible
+      ? savedFeedVersion
+      : searchCorpusVersion,
   });
+  const boundedFeedReadyIsCurrent =
+    boundedFeedStatusIsCurrent && boundedFeed.status === "ready";
   useLegacyLibraryItems(
     isInitialized &&
       !(searchQuery.trim() !== "" && scanLibraryItems) &&
-      (!openBoundedFeedReader ||
-        boundedFeed.status === "failed" ||
-        friendsMode !== "all_content" ||
-        activeFilter.savedOnly),
+      (!boundedFeedEligible ||
+        (boundedFeedStatusIsCurrent && boundedFeed.status === "failed")),
   );
   const handleItemSave = useCallback(
     (item: FeedItem) => {
-      patchBoundedItems((candidate) =>
-        candidate.globalId === item.globalId
-          ? {
-              ...candidate,
-              userState: {
-                ...candidate.userState,
-                saved: !candidate.userState.saved,
-              },
-            }
-          : candidate,
-      );
+      patchBoundedItems((candidate) => {
+        if (candidate.globalId !== item.globalId) return candidate;
+        const saved = !candidate.userState.saved;
+        if (activeFilter.savedOnly && !saved) return null;
+        return {
+          ...candidate,
+          userState: { ...candidate.userState, saved },
+        };
+      });
       return toggleSaved(item.globalId);
     },
-    [patchBoundedItems, toggleSaved],
+    [activeFilter.savedOnly, patchBoundedItems, toggleSaved],
   );
   // Only offer archive action on non-archived views; archived view shows the item already.
   const handleItemArchive = useCallback(
@@ -381,13 +536,7 @@ export function FeedView() {
     (item: FeedItem) => {
       patchBoundedItems((candidate) =>
         candidate.globalId === item.globalId
-          ? {
-              ...candidate,
-              userState: {
-                ...candidate.userState,
-                liked: !candidate.userState.liked,
-              },
-            }
+          ? projectSavedFeedLikePresentation(candidate, Date.now())
           : candidate,
       );
       return toggleLiked?.(item.globalId);
@@ -416,7 +565,7 @@ export function FeedView() {
   // useSearchResults handles both the search and the normal ranked+filtered path.
   // When searchQuery is empty it behaves identically to the previous useMemo.
   const { filteredItems, isSearching } = useSearchResults(
-    boundedFeed.status === "ready" ? EMPTY_FEED_ITEMS : items,
+    boundedFeedReadyIsCurrent ? EMPTY_FEED_ITEMS : items,
     searchQuery,
     activeFilter,
     searchCorpusVersion,
@@ -426,25 +575,42 @@ export function FeedView() {
     friends,
     libraryItemVersion,
   );
-  const visibleItems = useMemo(
-    () => {
-      if (boundedFeed.status === "ready") return boundedFeed.items;
-      return activeFilter.savedOnly
-        ? sortSavedFeedItems(filteredItems, savedContentSortMode)
-        : filteredItems;
-    },
-    [
-      activeFilter.savedOnly,
-      boundedFeed.items,
-      boundedFeed.status,
-      filteredItems,
-      savedContentSortMode,
-    ],
-  );
+  const visibleItems = useMemo(() => {
+    if (boundedFeedReadyIsCurrent) return boundedFeed.items;
+    if (savedBoundedFeedEligible && boundedFeed.status === "failed") {
+      return orderDesktopSavedFallbackItems({
+        items: filteredItems,
+        sortMode: savedContentSortMode,
+        weights: rankingWeights,
+        persons,
+        accounts,
+        rankingClockMs: boundedReaderRankingClockMs,
+      });
+    }
+    return activeFilter.savedOnly
+      ? sortSavedFeedItems(filteredItems, savedContentSortMode)
+      : filteredItems;
+  }, [
+    activeFilter.savedOnly,
+    boundedFeed.items,
+    boundedFeedReadyIsCurrent,
+    boundedFeed.status,
+    filteredItems,
+    accounts,
+    boundedReaderRankingClockMs,
+    persons,
+    rankingWeights,
+    savedBoundedFeedEligible,
+    savedContentSortMode,
+  ]);
 
   const dualColumnMode = deviceDisplay.dualColumnMode;
-  const markReadOnScroll = useAppStore((s) => s.preferences.display.reading.markReadOnScroll);
-  const showReadInGrayscale = useAppStore((s) => s.preferences.display.reading.showReadInGrayscale);
+  const markReadOnScroll = useAppStore(
+    (s) => s.preferences.display.reading.markReadOnScroll,
+  );
+  const showReadInGrayscale = useAppStore(
+    (s) => s.preferences.display.reading.showReadInGrayscale,
+  );
   const animationIntensity = useAppStore((s) =>
     resolveAnimationIntensity(s.preferences.display.animationIntensity),
   );
@@ -453,7 +619,8 @@ export function FeedView() {
   const autoCollapseReaderRail = !isMobileDevice && isMobileViewport;
   const canShowInlineReader = !isMobileDevice;
   const showInlineReader = !!selectedItemId && canShowInlineReader;
-  const showDualColumn = dualColumnMode && canShowInlineReader && !autoCollapseReaderRail;
+  const showDualColumn =
+    dualColumnMode && canShowInlineReader && !autoCollapseReaderRail;
   const desktopSidebarMode = deviceDisplay.sidebarMode;
   const compactRailLeadingOffset =
     !isMobileDevice && desktopSidebarMode !== "closed"
@@ -461,34 +628,135 @@ export function FeedView() {
       : undefined;
 
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
-  const [keyboardFocusDirection, setKeyboardFocusDirection] = useState<-1 | 0 | 1>(0);
-  const [compactSelectionDirection, setCompactSelectionDirection] = useState<-1 | 0 | 1>(0);
-  const readerItems = useMemo(() => {
-    if (!readerOrderIds) return visibleItems;
-
-    const itemById = new Map(visibleItems.map((item) => [item.globalId, item]));
-    const stableItems = readerOrderIds
-      .map((id) => itemById.get(id))
-      .filter((item): item is FeedItem => Boolean(item));
-    if (stableItems.length === 0) return visibleItems;
-    const stableIds = new Set(stableItems.map((item) => item.globalId));
-    return [
-      ...stableItems,
-      ...visibleItems.filter((item) => !stableIds.has(item.globalId)),
-    ];
-  }, [readerOrderIds, visibleItems]);
-  // Store only the ID so the rendered item stays in sync with the store.
-  // Holding the full FeedItem in state would freeze userState (saved, archived,
-  // tags) at the moment the user clicked, making toolbar toggles appear broken.
-  const selectedItem = useMemo(
+  const [keyboardFocusDirection, setKeyboardFocusDirection] = useState<
+    -1 | 0 | 1
+  >(0);
+  const [compactSelectionDirection, setCompactSelectionDirection] = useState<
+    -1 | 0 | 1
+  >(0);
+  const previousWindowStartRef = useRef(boundedFeed.windowStartIndex);
+  useLayoutEffect(() => {
+    const previousWindowStart = previousWindowStartRef.current;
+    previousWindowStartRef.current = boundedFeed.windowStartIndex;
+    const evictedItemCount = boundedFeed.windowStartIndex - previousWindowStart;
+    if (evictedItemCount <= 0) return;
+    setFocusedIndex((current) =>
+      current < evictedItemCount ? -1 : current - evictedItemCount,
+    );
+  }, [boundedFeed.windowStartIndex]);
+  // The store keeps only the selection ID. Saved may additionally pin the one
+  // resident compact card so page eviction cannot dismiss the reader.
+  const [selectedItemPin, setSelectedItemPin] =
+    useState<SavedFeedSelectionPin | null>(null);
+  const residentSelectedItem = useMemo(
     () =>
       selectedItemId
-        ? readerItems.find((item) => item.globalId === selectedItemId) ??
-          visibleItems.find((item) => item.globalId === selectedItemId) ??
-          null
+        ? (visibleItems.find((item) => item.globalId === selectedItemId) ??
+          null)
         : null,
-    [readerItems, selectedItemId, visibleItems],
+    [selectedItemId, visibleItems],
   );
+  useLayoutEffect(() => {
+    setSelectedItemPin((current) =>
+      resolveSavedFeedSelectionPin({
+        current,
+        eligible: Boolean(
+          savedBoundedFeedEligible && boundedFeedReadyIsCurrent,
+        ),
+        readerIdentity: boundedReaderIdentity,
+        residentSelectedItem,
+        selectedItemId,
+      }),
+    );
+  }, [
+    boundedReaderIdentity,
+    boundedFeedReadyIsCurrent,
+    residentSelectedItem,
+    savedBoundedFeedEligible,
+    selectedItemId,
+  ]);
+  const currentSelectedItemPin =
+    selectedItemPin?.readerIdentity === boundedReaderIdentity &&
+    selectedItemPin.selectedItemId === selectedItemId
+      ? selectedItemPin.item
+      : null;
+  const selectedItem =
+    residentSelectedItem ??
+    (savedBoundedFeedEligible ? currentSelectedItemPin : null);
+  useEffect(() => {
+    const patch = savedFeedPresentationPatch;
+    if (
+      !savedBoundedFeedEligible ||
+      !boundedFeedStatusIsCurrent ||
+      !patch ||
+      patch.sourceVersion !== savedFeedVersion ||
+      boundedFeed.status === "loading" ||
+      boundedFeed.status === "idle"
+    ) {
+      return;
+    }
+
+    const prepared = prepareSavedFeedPresentationPatch(patch);
+    if (boundedFeed.status === "ready") {
+      patchBoundedItems((item) =>
+        applySavedFeedPresentationPatch(item, prepared),
+      );
+    }
+    setSelectedItemPin((current) =>
+      current?.readerIdentity === boundedReaderIdentity &&
+      current.selectedItemId === selectedItemId
+        ? {
+            ...current,
+            item: applySavedFeedPresentationPatch(current.item, prepared),
+          }
+        : current,
+    );
+    acknowledgeSavedFeedPresentationPatch?.(
+      patch.sourceVersion,
+      patch.revision,
+    );
+  }, [
+    acknowledgeSavedFeedPresentationPatch,
+    boundedFeed.status,
+    boundedFeedStatusIsCurrent,
+    boundedReaderIdentity,
+    patchBoundedItems,
+    savedBoundedFeedEligible,
+    savedFeedPresentationPatch,
+    savedFeedVersion,
+    selectedItemId,
+  ]);
+  const readerItems = useMemo(() => {
+    const itemById = new Map(visibleItems.map((item) => [item.globalId, item]));
+    const stableItems = readerOrderIds
+      ? readerOrderIds
+          .map((id) => itemById.get(id))
+          .filter((item): item is FeedItem => Boolean(item))
+      : [];
+    const stableIds = new Set(stableItems.map((item) => item.globalId));
+    const residentItems =
+      stableItems.length === 0
+        ? visibleItems
+        : [
+            ...stableItems,
+            ...visibleItems.filter((item) => !stableIds.has(item.globalId)),
+          ];
+    const pinnedSelection =
+      savedBoundedFeedEligible &&
+      currentSelectedItemPin?.globalId === selectedItemId &&
+      !residentItems.some((item) => item.globalId === selectedItemId)
+        ? currentSelectedItemPin
+        : null;
+    return pinnedSelection
+      ? [pinnedSelection, ...residentItems]
+      : residentItems;
+  }, [
+    readerOrderIds,
+    currentSelectedItemPin,
+    savedBoundedFeedEligible,
+    selectedItemId,
+    visibleItems,
+  ]);
 
   const openItem = useCallback(
     (item: FeedItem) => {
@@ -514,13 +782,24 @@ export function FeedView() {
 
       selectItem();
     },
-    [markAsRead, patchBoundedItems, runFeedLayoutTransition, selectedItemId, setSelectedItem, showDualColumn, visibleItems],
+    [
+      markAsRead,
+      patchBoundedItems,
+      runFeedLayoutTransition,
+      selectedItemId,
+      setSelectedItem,
+      showDualColumn,
+      visibleItems,
+    ],
   );
 
-  const openItemDirect = useCallback((item: FeedItem) => {
-    setCompactSelectionDirection(0);
-    openItem(item);
-  }, [openItem]);
+  const openItemDirect = useCallback(
+    (item: FeedItem) => {
+      setCompactSelectionDirection(0);
+      openItem(item);
+    },
+    [openItem],
+  );
 
   const closeItem = useCallback(() => {
     setCompactSelectionDirection(0);
@@ -532,14 +811,21 @@ export function FeedView() {
       return;
     }
     setSelectedItem(null);
-  }, [runFeedLayoutTransition, selectedItemId, setSelectedItem, showDualColumn]);
+  }, [
+    runFeedLayoutTransition,
+    selectedItemId,
+    setSelectedItem,
+    showDualColumn,
+  ]);
 
   // Keyboard navigation: j/k to move, Enter/o to open, Escape to close.
   // The HTMLInputElement guard means j/k won't fire while the search bar is focused.
   useLayoutEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       const isReaderArrowKey =
-        !!selectedItemId && showDualColumn && (e.key === "ArrowDown" || e.key === "ArrowUp");
+        !!selectedItemId &&
+        showDualColumn &&
+        (e.key === "ArrowDown" || e.key === "ArrowUp");
       if (
         !isReaderArrowKey &&
         (e.target instanceof HTMLInputElement ||
@@ -550,11 +836,16 @@ export function FeedView() {
       if (selectedItemId) {
         if (showDualColumn && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
           e.preventDefault();
-          const currentIndex = readerItems.findIndex((item) => item.globalId === selectedItemId);
+          const currentIndex = readerItems.findIndex(
+            (item) => item.globalId === selectedItemId,
+          );
           if (currentIndex < 0) return;
 
           const direction = e.key === "ArrowDown" ? 1 : -1;
-          const nextIndex = Math.max(0, Math.min(currentIndex + direction, readerItems.length - 1));
+          const nextIndex = Math.max(
+            0,
+            Math.min(currentIndex + direction, readerItems.length - 1),
+          );
           if (nextIndex === currentIndex) return;
 
           const nextItem = readerItems[nextIndex];
@@ -585,8 +876,18 @@ export function FeedView() {
     };
 
     document.addEventListener("keydown", handleKey, { capture: true });
-    return () => document.removeEventListener("keydown", handleKey, { capture: true });
-  }, [selectedItemId, showDualColumn, visibleItems, readerItems, focusedIndex, openItem, openItemDirect, closeItem]);
+    return () =>
+      document.removeEventListener("keydown", handleKey, { capture: true });
+  }, [
+    selectedItemId,
+    showDualColumn,
+    visibleItems,
+    readerItems,
+    focusedIndex,
+    openItem,
+    openItemDirect,
+    closeItem,
+  ]);
 
   // Reset keyboard focus when the active filter or search query changes.
   useEffect(() => {
@@ -619,7 +920,11 @@ export function FeedView() {
     if (showDualColumn) {
       setRailMounted(true);
 
-      if (railMotionDisabled || wasShowingDualColumn || typeof window === "undefined") {
+      if (
+        railMotionDisabled ||
+        wasShowingDualColumn ||
+        typeof window === "undefined"
+      ) {
         setRailExpanded(true);
         return;
       }
@@ -647,12 +952,15 @@ export function FeedView() {
     );
   }, [panelWidth, showDualColumn]);
 
-  const railTransition = railMotionDisabled || isDraggingRef.current
-    ? "none"
-    : animationIntensity === "light"
-      ? "width 140ms ease-out, margin-inline-start 140ms ease-out, opacity 120ms ease-out"
-      : "width 220ms ease, margin-inline-start 220ms ease, opacity 180ms ease";
-  const railWidth = railExpanded ? panelWidth + COMPACT_PANEL_RESIZE_HANDLE_WIDTH : 0;
+  const railTransition =
+    railMotionDisabled || isDraggingRef.current
+      ? "none"
+      : animationIntensity === "light"
+        ? "width 140ms ease-out, margin-inline-start 140ms ease-out, opacity 120ms ease-out"
+        : "width 220ms ease, margin-inline-start 220ms ease, opacity 180ms ease";
+  const railWidth = railExpanded
+    ? panelWidth + COMPACT_PANEL_RESIZE_HANDLE_WIDTH
+    : 0;
   const railSlotStyle = {
     width: `${railWidth}px`,
     marginInlineStart: railExpanded ? compactRailLeadingOffset : undefined,
@@ -664,7 +972,8 @@ export function FeedView() {
     width: `${panelWidth + COMPACT_PANEL_RESIZE_HANDLE_WIDTH}px`,
     // Keep the rail inside both sidebar frame gaps while primary content spans
     // the full height below the toolbar.
-    height: "calc(100% - var(--feed-card-gap, 8px) - var(--feed-card-gap, 8px))",
+    height:
+      "calc(100% - var(--feed-card-gap, 8px) - var(--feed-card-gap, 8px))",
     marginTop: "var(--feed-card-gap, 8px)",
   } satisfies React.CSSProperties;
 
@@ -694,7 +1003,10 @@ export function FeedView() {
   const handleDragMove = useCallback((e: React.PointerEvent) => {
     if (!isDraggingRef.current) return;
     const dx = e.clientX - dragStartXRef.current;
-    const clamped = Math.max(MIN_PANEL_WIDTH, Math.min(MAX_PANEL_WIDTH, dragStartWidthRef.current + dx));
+    const clamped = Math.max(
+      MIN_PANEL_WIDTH,
+      Math.min(MAX_PANEL_WIDTH, dragStartWidthRef.current + dx),
+    );
     setPanelWidth(clamped);
   }, []);
 
@@ -729,7 +1041,10 @@ export function FeedView() {
                   markItemsAsRead={markBoundedItemsAsRead}
                   width={panelWidth}
                   onLoadMore={loadMoreBoundedItems}
-                  hasMore={boundedFeed.status === "ready" && boundedFeed.hasMore}
+                  hasMore={
+                    boundedFeedReadyIsCurrent && boundedFeed.hasMore
+                  }
+                  boundedWindowStartIndex={boundedFeed.windowStartIndex}
                 />
                 <div
                   className="theme-resize-gap-handle w-4 shrink-0 self-stretch"
@@ -753,7 +1068,10 @@ export function FeedView() {
             onOpenAuthorInFriends={openAuthorInFriends}
           />
         </div>
-        <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
+        <AddFeedDialog
+          open={addFeedOpen}
+          onClose={() => setAddFeedOpen(false)}
+        />
       </div>
     );
   }
@@ -769,13 +1087,16 @@ export function FeedView() {
         onAddFeed={canAddFeeds ? () => setAddFeedOpen(true) : undefined}
         hasFeedsSubscribed={Object.keys(feeds).length > 0}
         onItemSave={handleItemSave}
-        onItemArchive={activeFilter.archivedOnly ? undefined : handleItemArchive}
+        onItemArchive={
+          activeFilter.archivedOnly ? undefined : handleItemArchive
+        }
         onItemLike={toggleLiked ? handleItemLike : undefined}
         onOpenCommentUrl={handleOpenCommentUrl}
         isSearching={isSearching}
         searchQuery={searchQuery}
         onLoadMore={loadMoreBoundedItems}
-        hasMore={boundedFeed.status === "ready" && boundedFeed.hasMore}
+        hasMore={boundedFeedReadyIsCurrent && boundedFeed.hasMore}
+        boundedWindowStartIndex={boundedFeed.windowStartIndex}
         markItemsAsReadOverride={markBoundedItemsAsRead}
       />
 

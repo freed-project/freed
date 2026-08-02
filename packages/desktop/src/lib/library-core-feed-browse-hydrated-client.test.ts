@@ -143,7 +143,7 @@ describe("hydrated Library Core browse projection client", () => {
 });
 
 describe("scanned Library Core browse projection client", () => {
-  it("counts and emits bounded SQLite pages without reading renderer items", async () => {
+  it("counts and emits one bounded source page per transfer without reading renderer items", async () => {
     const scannedItems = Array.from({ length: 129 }, (_, index) =>
       item(
         `saved:${index.toLocaleString("en-US", {
@@ -183,16 +183,82 @@ describe("scanned Library Core browse projection client", () => {
     const started = await client.begin("session", {}, 1_000);
     const first = await client.nextBatch("session", 0);
     const second = await client.nextBatch("session", 1);
+    const third = await client.nextBatch("session", 2);
 
     expect(started.binding.totalRows).toBe(129);
     expect(openedScans).toBe(2);
-    expect(first.rows).toHaveLength(128);
+    expect(first.rows).toHaveLength(64);
     expect(first.done).toBe(false);
-    expect(second.rows).toHaveLength(1);
-    expect(second.done).toBe(true);
+    expect(second.rows).toHaveLength(64);
+    expect(second.done).toBe(false);
+    expect(third.rows).toHaveLength(1);
+    expect(third.done).toBe(true);
     expect(
-      [...first.rows, ...second.rows].map((entry) => entry.globalId),
+      [...first.rows, ...second.rows, ...third.rows].map(
+        (entry) => entry.globalId,
+      ),
     ).toEqual(scannedItems.map((entry) => entry.globalId));
+  });
+
+  it("never combines partially matching scan pages past the writer ceiling", async () => {
+    const pages = Array.from({ length: 3 }, (_, pageIndex) =>
+      Array.from({ length: 64 }, (_, rowIndex) => {
+        const entry = item(`saved:${pageIndex}:${rowIndex}`);
+        return {
+          ...entry,
+          userState: {
+            ...entry.userState,
+            saved: rowIndex < 50,
+          },
+        };
+      }),
+    );
+    const captured = state([], []);
+    const openScan = async (): Promise<LibraryCoreItemScanSession> => {
+      let pageIndex = 0;
+      return {
+        async nextPage() {
+          const items = pages[pageIndex] ?? [];
+          pageIndex += 1;
+          return { items, done: pageIndex >= pages.length };
+        },
+        async close() {},
+      };
+    };
+    const client = createScannedLibraryCoreFeedBrowseProjectionClient({
+      getSource: async () => source,
+      getState: () => captured,
+      openScan,
+      strategy: {
+        generationDomain: "saved-test-generation-v1",
+        bindingFilterJson: (filter) => JSON.stringify(filter),
+        projectRow: ({ item: entry }) => ({
+          priority: 0,
+          publishedAt: 0,
+          sourceSequence: 0,
+          globalId: entry.globalId,
+          cardJson: JSON.stringify({ globalId: entry.globalId }),
+        }),
+      },
+    });
+
+    const started = await client.begin(
+      "partial-session",
+      { savedOnly: true },
+      1_000,
+    );
+    const batches = [
+      await client.nextBatch("partial-session", 0),
+      await client.nextBatch("partial-session", 1),
+      await client.nextBatch("partial-session", 2),
+    ];
+
+    expect(started.binding.totalRows).toBe(150);
+    expect(batches.map((batch) => batch.rows.length)).toEqual([50, 50, 50]);
+    expect(batches.map((batch) => batch.done)).toEqual([false, false, true]);
+    expect(
+      Math.max(...batches.map((batch) => batch.rows.length)),
+    ).toBeLessThanOrEqual(128);
   });
 
   it("fails closed when scanned items are absent from the source order", async () => {

@@ -55,6 +55,7 @@ mod library_core_feed_reader_runtime;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_journal;
 mod library_core_migration_claim;
+mod library_core_saved_feed_runtime;
 mod library_core_shadow_runtime;
 #[cfg_attr(not(test), allow(dead_code))]
 mod projection_coordinator;
@@ -5755,6 +5756,7 @@ fn clear_factory_reset_runtime_artifacts_in(
     data_dir: &Path,
     browse_runtime: &library_core_feed_browse_runtime::LibraryCoreFeedBrowseRuntimeState,
     browse_reader_runtime: &library_core_feed_browse_reader_runtime::LibraryCoreFeedBrowseReaderRuntimeState,
+    saved_feed_runtime: &library_core_saved_feed_runtime::LibraryCoreSavedFeedRuntimeState,
     external_migration_runtime: &library_core_external_migration_runtime::LibraryCoreExternalMigrationRuntimeState,
     feed_reader_runtime: &library_core_feed_reader_runtime::LibraryCoreFeedReaderRuntimeState,
     shadow_runtime: &library_core_shadow_runtime::LibraryCoreShadowRuntimeState,
@@ -5764,6 +5766,10 @@ fn clear_factory_reset_runtime_artifacts_in(
     )?;
     library_core_feed_browse_runtime::clear_library_core_feed_browse_runtime_in(
         browse_runtime,
+        data_dir,
+    )?;
+    library_core_saved_feed_runtime::clear_library_core_saved_feed_runtime_in(
+        saved_feed_runtime,
         data_dir,
     )?;
     library_core_external_migration_runtime::clear_library_core_external_migration_runtime_in(
@@ -5819,6 +5825,10 @@ fn clear_factory_reset_runtime_artifacts(
         '_,
         library_core_feed_browse_reader_runtime::LibraryCoreFeedBrowseReaderRuntimeState,
     >,
+    saved_feed_runtime: tauri::State<
+        '_,
+        library_core_saved_feed_runtime::LibraryCoreSavedFeedRuntimeState,
+    >,
     external_migration_runtime: tauri::State<
         '_,
         library_core_external_migration_runtime::LibraryCoreExternalMigrationRuntimeState,
@@ -5837,6 +5847,7 @@ fn clear_factory_reset_runtime_artifacts(
         &data_dir,
         &browse_runtime,
         &browse_reader_runtime,
+        &saved_feed_runtime,
         &external_migration_runtime,
         &feed_reader_runtime,
         &shadow_runtime,
@@ -13587,6 +13598,7 @@ pub fn run() {
         .manage(
             library_core_feed_browse_reader_runtime::LibraryCoreFeedBrowseReaderRuntimeState::default(),
         )
+        .manage(library_core_saved_feed_runtime::LibraryCoreSavedFeedRuntimeState::default())
         .manage(
             library_core_external_migration_runtime::LibraryCoreExternalMigrationRuntimeState::default(),
         )
@@ -14797,6 +14809,14 @@ pub fn run() {
             library_core_feed_browse_runtime::select_library_core_feed_browse_generation,
             library_core_feed_browse_reader_runtime::read_library_core_feed_browse_page,
             library_core_feed_browse_reader_runtime::cancel_library_core_feed_browse_reader,
+            library_core_saved_feed_runtime::begin_library_core_saved_feed_generation,
+            library_core_saved_feed_runtime::append_library_core_saved_feed_generation_page,
+            library_core_saved_feed_runtime::finalize_library_core_saved_feed_generation,
+            library_core_saved_feed_runtime::cancel_library_core_saved_feed_generation,
+            library_core_saved_feed_runtime::get_library_core_saved_feed_selection,
+            library_core_saved_feed_runtime::select_library_core_saved_feed_generation,
+            library_core_saved_feed_runtime::read_library_core_saved_feed_page,
+            library_core_saved_feed_runtime::cancel_library_core_saved_feed_reader,
             library_core_external_migration_runtime::begin_library_core_external_migration,
             library_core_external_migration_runtime::append_library_core_external_migration_chunk,
             library_core_external_migration_runtime::finalize_library_core_external_migration,
@@ -14979,6 +14999,7 @@ mod tests {
             data_dir.path(),
             &library_core_feed_browse_runtime::LibraryCoreFeedBrowseRuntimeState::default(),
             &library_core_feed_browse_reader_runtime::LibraryCoreFeedBrowseReaderRuntimeState::default(),
+            &library_core_saved_feed_runtime::LibraryCoreSavedFeedRuntimeState::default(),
             &library_core_external_migration_runtime::LibraryCoreExternalMigrationRuntimeState::default(),
             &library_core_feed_reader_runtime::LibraryCoreFeedReaderRuntimeState::default(),
             &library_core_shadow_runtime::LibraryCoreShadowRuntimeState::default(),
@@ -15001,6 +15022,7 @@ mod tests {
             data_dir.path(),
             &library_core_feed_browse_runtime::LibraryCoreFeedBrowseRuntimeState::default(),
             &library_core_feed_browse_reader_runtime::LibraryCoreFeedBrowseReaderRuntimeState::default(),
+            &library_core_saved_feed_runtime::LibraryCoreSavedFeedRuntimeState::default(),
             &library_core_external_migration_runtime::LibraryCoreExternalMigrationRuntimeState::default(),
             &library_core_feed_reader_runtime::LibraryCoreFeedReaderRuntimeState::default(),
             &library_core_shadow_runtime::LibraryCoreShadowRuntimeState::default(),
