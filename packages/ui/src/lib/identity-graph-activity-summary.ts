@@ -1,4 +1,9 @@
-import { extractLocationFromItem, type FeedItem } from "@freed/shared";
+import {
+  compareUtf8Binary,
+  extractLocationFromItem,
+  friendCandidateActivitySourceKey,
+  type FeedItem,
+} from "@freed/shared";
 
 export interface IdentityGraphActivitySummary {
   itemCount: number;
@@ -6,6 +11,8 @@ export interface IdentityGraphActivitySummary {
   sampleItemIds: string[];
   hasLocation: boolean;
   avatarUrl: string | null;
+  avatarPublishedAt: number | null;
+  avatarGlobalId: string | null;
 }
 
 export interface IdentityGraphActivitySummaries {
@@ -15,7 +22,45 @@ export interface IdentityGraphActivitySummaries {
   itemCount: number;
 }
 
+export interface CompactIdentityGraphActivitySample {
+  globalId: string;
+  publishedAt: number;
+}
+
+export interface CompactIdentityGraphSocialActivity {
+  platform: string;
+  authorId: string;
+  itemCount: number;
+  latestActivityAt: number;
+  sampleItems: readonly CompactIdentityGraphActivitySample[];
+  hasLocation: boolean;
+  avatarUrl: string | null;
+  avatarPublishedAt: number | null;
+  avatarGlobalId: string | null;
+}
+
+export interface CompactIdentityGraphRssActivity {
+  feedUrl: string;
+  itemCount: number;
+  latestActivityAt: number;
+  sampleItems: readonly CompactIdentityGraphActivitySample[];
+  hasLocation: boolean;
+  avatarUrl: string | null;
+  avatarPublishedAt: number | null;
+  avatarGlobalId: string | null;
+}
+
+export interface CompactIdentityGraphActivity {
+  totalItemCount: number;
+  social: readonly CompactIdentityGraphSocialActivity[];
+  rss: readonly CompactIdentityGraphRssActivity[];
+}
+
 const MAX_SAMPLE_ITEM_IDS = 3;
+const sampleItemsBySummary = new WeakMap<
+  IdentityGraphActivitySummary,
+  CompactIdentityGraphActivitySample[]
+>();
 
 function nowMs(): number {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -25,35 +70,51 @@ function nowMs(): number {
 }
 
 export function socialActivitySummaryKey(provider: string, externalId: string): string {
-  return `${provider}:${externalId}`;
+  return friendCandidateActivitySourceKey(provider, externalId);
 }
 
 function emptySummary(): IdentityGraphActivitySummary {
-  return {
+  const summary: IdentityGraphActivitySummary = {
     itemCount: 0,
     latestActivityAt: 0,
     sampleItemIds: [],
     hasLocation: false,
     avatarUrl: null,
+    avatarPublishedAt: null,
+    avatarGlobalId: null,
   };
+  sampleItemsBySummary.set(summary, []);
+  return summary;
 }
 
 function addItemToSummary(summary: IdentityGraphActivitySummary, item: FeedItem): void {
   summary.itemCount += 1;
-  if (item.publishedAt >= summary.latestActivityAt) {
-    summary.latestActivityAt = item.publishedAt;
-    if (!summary.sampleItemIds.includes(item.globalId)) {
-      summary.sampleItemIds.unshift(item.globalId);
-      summary.sampleItemIds = summary.sampleItemIds.slice(0, MAX_SAMPLE_ITEM_IDS);
-    }
-  } else if (summary.sampleItemIds.length < MAX_SAMPLE_ITEM_IDS && !summary.sampleItemIds.includes(item.globalId)) {
-    summary.sampleItemIds.push(item.globalId);
+  summary.latestActivityAt = Math.max(summary.latestActivityAt, item.publishedAt);
+  const samples = sampleItemsBySummary.get(summary);
+  if (samples && !samples.some((sample) => sample.globalId === item.globalId)) {
+    samples.push({ globalId: item.globalId, publishedAt: item.publishedAt });
+    samples.sort(
+      (left, right) =>
+        right.publishedAt - left.publishedAt ||
+        compareUtf8Binary(left.globalId, right.globalId),
+    );
+    samples.splice(MAX_SAMPLE_ITEM_IDS);
+    summary.sampleItemIds = samples.map((sample) => sample.globalId);
   }
   if (!summary.hasLocation && extractLocationFromItem(item)) {
     summary.hasLocation = true;
   }
-  if (!summary.avatarUrl && item.author.avatarUrl) {
+  if (
+    item.author.avatarUrl &&
+    (summary.avatarPublishedAt === null ||
+      item.publishedAt > summary.avatarPublishedAt ||
+      (item.publishedAt === summary.avatarPublishedAt &&
+        summary.avatarGlobalId !== null &&
+        compareUtf8Binary(item.globalId, summary.avatarGlobalId) < 0))
+  ) {
     summary.avatarUrl = item.author.avatarUrl;
+    summary.avatarPublishedAt = item.publishedAt;
+    summary.avatarGlobalId = item.globalId;
   }
 }
 
@@ -87,5 +148,46 @@ export function buildIdentityGraphActivitySummaries(
     rss,
     buildMs: nowMs() - startedAt,
     itemCount,
+  };
+}
+
+/** Adapt compact row-store activity without constructing FeedItem stand-ins. */
+export function buildIdentityGraphActivitySummariesFromCompact(
+  activity: CompactIdentityGraphActivity,
+): IdentityGraphActivitySummaries {
+  const startedAt = nowMs();
+  const social: Record<string, IdentityGraphActivitySummary> = {};
+  const rss: Record<string, IdentityGraphActivitySummary> = {};
+  for (const entry of activity.social) {
+    social[socialActivitySummaryKey(entry.platform, entry.authorId)] = {
+      itemCount: entry.itemCount,
+      latestActivityAt: entry.latestActivityAt,
+      sampleItemIds: entry.sampleItems
+        .slice(0, MAX_SAMPLE_ITEM_IDS)
+        .map((sample) => sample.globalId),
+      hasLocation: entry.hasLocation,
+      avatarUrl: entry.avatarUrl,
+      avatarPublishedAt: entry.avatarPublishedAt,
+      avatarGlobalId: entry.avatarGlobalId,
+    };
+  }
+  for (const entry of activity.rss) {
+    rss[entry.feedUrl] = {
+      itemCount: entry.itemCount,
+      latestActivityAt: entry.latestActivityAt,
+      sampleItemIds: entry.sampleItems
+        .slice(0, MAX_SAMPLE_ITEM_IDS)
+        .map((sample) => sample.globalId),
+      hasLocation: entry.hasLocation,
+      avatarUrl: entry.avatarUrl,
+      avatarPublishedAt: entry.avatarPublishedAt,
+      avatarGlobalId: entry.avatarGlobalId,
+    };
+  }
+  return {
+    social,
+    rss,
+    buildMs: nowMs() - startedAt,
+    itemCount: activity.totalItemCount,
   };
 }

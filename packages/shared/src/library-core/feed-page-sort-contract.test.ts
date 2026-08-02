@@ -123,7 +123,8 @@ describe("feed_page_v1 sort contract", () => {
     );
 
     const sql = `
-      SELECT globalId, publishedAt, sortAt FROM feed_items
+      SELECT globalId, publishedAt, sortAt
+      FROM feed_items INDEXED BY feed_items_timeline
       WHERE archived IS NOT 1 AND hidden IS NOT 1
         AND (sortAt < ? OR (sortAt = ? AND globalId > ?))
       ORDER BY sortAt DESC, globalId ASC

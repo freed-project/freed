@@ -1,5 +1,7 @@
 import {
   extractLocationFromItem,
+  compareUtf8Binary,
+  friendCandidateActivitySourceKey,
   isDue,
   lastReachOutAt,
   type Account,
@@ -24,7 +26,7 @@ export type FriendOverviewSort =
 
 export interface FriendOverviewEntry {
   friend: Friend;
-  items: FeedItem[];
+  avatarUrlCandidates: string[];
   lastPostAt: number | null;
   lastContactAt: number | null;
   needsOutreach: boolean;
@@ -45,8 +47,16 @@ export interface FriendOverviewBuildOptions {
   indexes?: FriendsWorkspaceIndexes;
 }
 
-function sourceKey(platform: string, authorId: string): string {
-  return `${platform}:${authorId}`;
+export interface FriendSourceActivitySummary {
+  avatarUrl: string | null;
+  avatarPublishedAt: number | null;
+  avatarGlobalId: string | null;
+  hasLocation: boolean;
+  latestActivityAt: number;
+}
+
+export function friendActivitySourceKey(platform: string, authorId: string): string {
+  return friendCandidateActivitySourceKey(platform, authorId);
 }
 
 function safeText(value: unknown, fallback = ""): string {
@@ -82,7 +92,7 @@ export function buildFriendsWorkspaceIndexes(
   }
 
   for (const item of Object.values(feedItems)) {
-    const key = sourceKey(item.platform, item.author.id);
+    const key = friendActivitySourceKey(item.platform, item.author.id);
     const bucket = feedItemsBySourceKey.get(key);
     if (bucket) {
       bucket.push(item);
@@ -92,7 +102,11 @@ export function buildFriendsWorkspaceIndexes(
   }
 
   for (const bucket of feedItemsBySourceKey.values()) {
-    bucket.sort((left, right) => right.publishedAt - left.publishedAt);
+    bucket.sort(
+      (left, right) =>
+        right.publishedAt - left.publishedAt ||
+        compareUtf8Binary(left.globalId, right.globalId),
+    );
   }
 
   return {
@@ -159,11 +173,17 @@ function feedItemsForFriendFromIndexes(
 ): FeedItem[] {
   const items: FeedItem[] = [];
   for (const source of friend.sources) {
-    const bucket = indexes.feedItemsBySourceKey.get(sourceKey(source.platform, source.authorId));
+    const bucket = indexes.feedItemsBySourceKey.get(
+      friendActivitySourceKey(source.platform, source.authorId),
+    );
     if (bucket) items.push(...bucket);
   }
   if (items.length <= 1) return items;
-  return items.sort((left, right) => right.publishedAt - left.publishedAt);
+  return items.sort(
+    (left, right) =>
+      right.publishedAt - left.publishedAt ||
+      compareUtf8Binary(left.globalId, right.globalId),
+  );
 }
 
 function matchesQuery(friend: Friend, query: string): boolean {
@@ -253,12 +273,68 @@ export function buildFriendOverviewEntries(
 
     return {
       friend,
-      items,
+      avatarUrlCandidates: items.flatMap((item) =>
+        item.author.avatarUrl ? [item.author.avatarUrl] : [],
+      ),
       lastPostAt: latestPost,
       lastContactAt: latestContact,
       needsOutreach: isDue(friend, now),
       hasLocation,
       isRecentlyActive,
+    };
+  });
+}
+
+/** Build the exact Friends overview from compact SQLite activity aggregates. */
+export function buildFriendOverviewEntriesFromActivity(
+  friends: Record<string, Friend>,
+  activityBySourceKey: Readonly<Record<string, FriendSourceActivitySummary>>,
+  now = Date.now(),
+): FriendOverviewEntry[] {
+  return Object.values(friends).map((friend) => {
+    let latestPost: number | null = null;
+    let hasLocation = false;
+    const avatarCandidates: Array<{
+      globalId: string;
+      publishedAt: number;
+      url: string;
+    }> = [];
+    for (const source of friend.sources) {
+      const activity = activityBySourceKey[
+        friendActivitySourceKey(source.platform, source.authorId)
+      ];
+      if (!activity) continue;
+      if (activity.latestActivityAt > (latestPost ?? 0)) {
+        latestPost = activity.latestActivityAt;
+      }
+      if (activity.hasLocation) hasLocation = true;
+      if (
+        activity.avatarUrl !== null &&
+        activity.avatarPublishedAt !== null &&
+        activity.avatarGlobalId !== null
+      ) {
+        avatarCandidates.push({
+          globalId: activity.avatarGlobalId,
+          publishedAt: activity.avatarPublishedAt,
+          url: activity.avatarUrl,
+        });
+      }
+    }
+    avatarCandidates.sort(
+      (left, right) =>
+        right.publishedAt - left.publishedAt ||
+        compareUtf8Binary(left.globalId, right.globalId),
+    );
+    const latestContact = lastReachOutAt(friend);
+    return {
+      friend,
+      avatarUrlCandidates: avatarCandidates.map((candidate) => candidate.url),
+      lastPostAt: latestPost,
+      lastContactAt: latestContact,
+      needsOutreach: isDue(friend, now),
+      hasLocation,
+      isRecentlyActive:
+        latestPost !== null && now - latestPost <= RECENT_ACTIVITY_WINDOW_MS,
     };
   });
 }

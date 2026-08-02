@@ -1052,6 +1052,7 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
         keys: [
           "freed.libraryCore.externalMigrationV1.disabled",
           "freed.libraryCore.feedBrowseReaderV1.disabled",
+          "freed.libraryCore.friendsReaderV1.disabled",
           "freed.libraryCore.itemDetailReaderV1.disabled",
           "freed.libraryCore.rendererItemEvictionV1.disabled",
           "freed.libraryCore.savedAnalyticsReaderV1.disabled",
@@ -2589,11 +2590,14 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
     sourceTokens: [
       "LIBRARY_CORE_ITEM_DETAIL_READER_DISABLED_KEY =",
       '"freed.libraryCore.itemDetailReaderV1.disabled"',
+      "LIBRARY_CORE_FRIENDS_READER_DISABLED_KEY =",
+      '"freed.libraryCore.friendsReaderV1.disabled"',
       "LIBRARY_CORE_SAVED_ANALYTICS_READER_DISABLED_KEY =",
       '"freed.libraryCore.savedAnalyticsReaderV1.disabled"',
     ],
     registeredKeys: [
       "freed.libraryCore.itemDetailReaderV1.disabled",
+      "freed.libraryCore.friendsReaderV1.disabled",
       "freed.libraryCore.savedAnalyticsReaderV1.disabled",
     ],
   },

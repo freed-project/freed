@@ -12,9 +12,10 @@ use crate::projection_generation_registry::{
     ProjectionGenerationRegistry, ProjectionGenerationRegistryError,
 };
 use crate::shadow_store::{
-    FeedItemRow, FeedPage, ItemScanPage, LibraryFacetSummary, LibrarySavedAnalytics,
-    LibrarySurface, PageCursor, ProjectionRebuildState, ProjectionSourceV1, SavedAnalyticsWindow,
-    ShadowStore, ShadowStoreError,
+    FeedItemRow, FeedPage, FriendSourceKey, FriendsActivityWindow, FriendsGraphActivity,
+    ItemScanPage, LibraryFacetSummary, LibrarySavedAnalytics, LibrarySurface, PageCursor,
+    ProjectionRebuildState, ProjectionSourceV1, SavedAnalyticsWindow, ShadowStore,
+    ShadowStoreError,
 };
 use std::fmt;
 use std::path::Path;
@@ -114,6 +115,28 @@ impl ProjectionReadSession {
     ) -> CoordinatorResult<LibrarySavedAnalytics> {
         self.reader
             .saved_analytics(daily_windows, hourly_windows)
+            .map_err(Into::into)
+    }
+
+    pub(super) fn friends_graph_activity(
+        &self,
+        sources: &[FriendSourceKey],
+        rss_feed_urls: &[String],
+        recent_window: FriendsActivityWindow,
+    ) -> CoordinatorResult<FriendsGraphActivity> {
+        self.reader
+            .friends_graph_activity(sources, rss_feed_urls, recent_window)
+            .map_err(Into::into)
+    }
+
+    pub(super) fn person_timeline(
+        &self,
+        sources: &[FriendSourceKey],
+        cursor: Option<&PageCursor>,
+        limit: u32,
+    ) -> CoordinatorResult<FeedPage> {
+        self.reader
+            .person_timeline(sources, cursor, limit)
             .map_err(Into::into)
     }
 

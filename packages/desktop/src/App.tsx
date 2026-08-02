@@ -72,7 +72,10 @@ import { openBoundedDesktopFeedReader } from "./lib/library-core-feed-browse-rea
 import {
   openLibraryCoreItemScanSession,
   readLibraryCoreFacetSummary,
+  readLibraryCoreFriendsGraph,
+  readLibraryCoreFriendsLocationItem,
   readLibraryCoreItemDetail,
+  readLibraryCorePersonTimeline,
   readLibraryCoreSavedAnalytics,
   readLibraryCoreSurfaceItems,
 } from "./lib/library-core-item-detail-runtime";
@@ -1493,6 +1496,18 @@ function App() {
       readLibrarySavedAnalytics:
         tauriRuntimeAvailable && isInitialized
           ? readLibraryCoreSavedAnalytics
+          : undefined,
+      readLibraryFriendsGraph:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCoreFriendsGraph
+          : undefined,
+      readLibraryPersonTimeline:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCorePersonTimeline
+          : undefined,
+      readLibraryFriendsLocationItem:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCoreFriendsLocationItem
           : undefined,
       readLibrarySurfaceItems:
         tauriRuntimeAvailable && isInitialized

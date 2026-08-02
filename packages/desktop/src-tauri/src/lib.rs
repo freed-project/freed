@@ -14806,6 +14806,8 @@ pub fn run() {
             library_core_feed_reader_runtime::read_library_core_item_detail,
             library_core_feed_reader_runtime::read_library_core_facet_summary,
             library_core_feed_reader_runtime::read_library_core_saved_analytics,
+            library_core_feed_reader_runtime::read_library_core_persons_graph,
+            library_core_feed_reader_runtime::read_library_core_person_timeline,
             library_core_feed_reader_runtime::read_library_core_surface_items,
             library_core_feed_reader_runtime::read_library_core_item_scan_page,
             library_core_feed_reader_runtime::cancel_library_core_feed_reader,

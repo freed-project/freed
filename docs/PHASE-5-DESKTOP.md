@@ -375,6 +375,7 @@ export async function captureDomFeed(
 - [x] Desktop outbox and article-fetch discovery now stream lossless, generation-pinned SQLite pages with stable keyset cursors instead of traversing the full renderer item corpus
 - [x] Desktop feed browse materialization now scans the selected SQLite generation in bounded pages instead of walking the renderer item corpus a second time
 - [x] Settings > Saved now reads exact time, source, and content aggregates from the authenticated SQLite generation without leasing the full renderer item corpus, while unavailable or stale derived state fails closed to the compatibility reducer
+- [x] Friends now reads source activity summaries and 50-row person timeline pages from the authenticated SQLite generation, preserving suggestion and ordering parity without retaining the full renderer item corpus
 - [x] Desktop item-patch updates now maintain a main-thread item index and adjust unread, total, and archivable aggregates incrementally instead of walking the visible item list after each patch
 - [x] Desktop RSS feed metadata writes now persist through Automerge and send feed patches to the UI without hydrating the full feed item projection
 - [x] Desktop reader hydration now uses native fetch and authenticated provider paths on open, caches successful reader content locally, pins saved items by default, hydrates X reply threads with media, hydrates visible Facebook and Instagram post comments, and explains private story replies when the user is online

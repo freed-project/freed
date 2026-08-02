@@ -87,6 +87,7 @@ async function readGraphPerf(page: Page) {
         sceneSyncCount?: number;
         contentSyncCount?: number;
         presentationSyncCount?: number;
+        activitySyncCount?: number;
         edgeRebuildCount?: number;
         rendererEdgeCount?: number;
         labelLayoutCount?: number;
@@ -96,6 +97,8 @@ async function readGraphPerf(page: Page) {
         bufferUploadCount?: number;
         presentationInFlight?: boolean;
         presentationQueued?: boolean;
+        activityInFlight?: boolean;
+        activityQueued?: boolean;
         transformScale?: number;
         residentNodeCount?: number;
         visibleNodeCount?: number;
@@ -132,7 +135,12 @@ async function waitForGraphContractSettle(
         stableReads = 0;
         return stableReads;
       }
-      if (latest.presentationInFlight || latest.presentationQueued) {
+      if (
+        latest.presentationInFlight ||
+        latest.presentationQueued ||
+        latest.activityInFlight ||
+        latest.activityQueued
+      ) {
         previousSignature = null;
         stableReads = 0;
         return stableReads;
@@ -140,9 +148,12 @@ async function waitForGraphContractSettle(
       const signature = JSON.stringify({
         sceneSyncCount: latest.sceneSyncCount,
         presentationSyncCount: latest.presentationSyncCount,
+        activitySyncCount: latest.activitySyncCount,
         bufferUploadCount: latest.bufferUploadCount,
         presentationInFlight: latest.presentationInFlight,
         presentationQueued: latest.presentationQueued,
+        activityInFlight: latest.activityInFlight,
+        activityQueued: latest.activityQueued,
         labelLayoutCount: latest.labelLayoutCount,
         transformScale: latest.transformScale,
         visibleNodeCount: latest.visibleNodeCount,
@@ -410,6 +421,9 @@ test("Friends WebGL2 compatibility view handles 1,600 visible people while zoomi
 
   const viewport = page.getByTestId("friend-graph-viewport");
   await expect(viewport).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("friends-graph-loading")).toHaveCount(0, {
+    timeout: 60_000,
+  });
 
   await expect
     .poll(async () => {
@@ -417,15 +431,6 @@ test("Friends WebGL2 compatibility view handles 1,600 visible people while zoomi
       return perf?.nodeCount ?? 0;
     }, { timeout: 60_000 })
     .toBeGreaterThanOrEqual(PERSON_COUNT + ACCOUNT_COUNT);
-  // Capture the interaction baseline only after every initialization source
-  // projection is admitted. Otherwise the second legitimate admission can
-  // arrive during the gesture and masquerade as an interaction rebuild.
-  await expect
-    .poll(async () => (await readGraphPerf(page))?.contentSyncCount ?? 0, {
-      timeout: 60_000,
-    })
-    .toBeGreaterThanOrEqual(2);
-
   const mountedRows = await page.getByTestId("friend-overview-virtual-row").count();
   const mountElapsed =
     mountStartedAt === null ? null : Date.now() - mountStartedAt;

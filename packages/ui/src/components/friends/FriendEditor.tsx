@@ -10,7 +10,12 @@
  */
 
 import { useState, useMemo } from "react";
-import type { Friend, FriendSource, DeviceContact, Platform } from "@freed/shared";
+import type {
+  Friend,
+  FriendSource,
+  DeviceContact,
+  Platform,
+} from "@freed/shared";
 import { usePlatform, useAppStore } from "../../context/PlatformContext.js";
 import {
   FacebookIcon,
@@ -28,6 +33,7 @@ import {
 import type { ReactNode } from "react";
 import { ChannelAvatar } from "../ChannelAvatar.js";
 import { SearchField } from "../SearchField.js";
+import { useLegacyLibraryItems } from "../../hooks/useLegacyLibraryItems.js";
 
 // ---------------------------------------------------------------------------
 // Platform icon map
@@ -94,7 +100,7 @@ function safeText(value: unknown, fallback = ""): string {
 
 function useAuthorCandidates(
   existingSources: FriendSource[],
-  allFriends: Record<string, Friend>
+  allFriends: Record<string, Friend>,
 ): AuthorCandidate[] {
   const items = useAppStore((s) => s.items);
 
@@ -127,7 +133,7 @@ function useAuthorCandidates(
     }
 
     return Array.from(seen.values()).sort((a, b) =>
-      safeText(a.displayName).localeCompare(safeText(b.displayName))
+      safeText(a.displayName).localeCompare(safeText(b.displayName)),
     );
   }, [items, existingSources, allFriends]);
 }
@@ -144,6 +150,7 @@ export function FriendEditor({
   onCancel,
 }: FriendEditorProps) {
   const platform = usePlatform();
+  const legacyItemsReady = useLegacyLibraryItems();
   const allFriends = useAppStore((s) => s.friends);
   const seed = existing ?? draft ?? null;
 
@@ -152,16 +159,14 @@ export function FriendEditor({
   const [avatarUrl, setAvatarUrl] = useState(seed?.avatarUrl ?? "");
   const [bio, setBio] = useState(seed?.bio ?? "");
   const [careLevel, setCareLevel] = useState<1 | 2 | 3 | 4 | 5>(
-    seed?.careLevel ?? 3
+    seed?.careLevel ?? 3,
   );
   const [reachOutDays, setReachOutDays] = useState(
-    seed?.reachOutIntervalDays?.toString() ?? ""
+    seed?.reachOutIntervalDays?.toString() ?? "",
   );
-  const [sources, setSources] = useState<FriendSource[]>(
-    seed?.sources ?? []
-  );
+  const [sources, setSources] = useState<FriendSource[]>(seed?.sources ?? []);
   const [contact, setContact] = useState<DeviceContact | undefined>(
-    seed?.contact
+    seed?.contact,
   );
   const [showContactForm, setShowContactForm] = useState(false);
   const [contactPhone, setContactPhone] = useState(contact?.phone ?? "");
@@ -191,8 +196,8 @@ export function FriendEditor({
     if (isSourceLinked(c)) {
       setSources((prev) =>
         prev.filter(
-          (s) => !(s.platform === c.platform && s.authorId === c.authorId)
-        )
+          (s) => !(s.platform === c.platform && s.authorId === c.authorId),
+        ),
       );
     } else {
       setSources((prev) => [
@@ -293,7 +298,15 @@ export function FriendEditor({
             className="text-text-secondary hover:text-text-primary transition-colors"
             aria-label="Close"
           >
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="w-5 h-5" aria-hidden>
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              className="w-5 h-5"
+              aria-hidden
+            >
               <path d="M15 5L5 15M5 5l10 10" />
             </svg>
           </button>
@@ -332,7 +345,9 @@ export function FriendEditor({
                 />
               </div>
               <div>
-                <label className="text-xs text-text-secondary mb-1 block">Bio</label>
+                <label className="text-xs text-text-secondary mb-1 block">
+                  Bio
+                </label>
                 <input
                   type="text"
                   value={bio}
@@ -355,9 +370,7 @@ export function FriendEditor({
                   key={level}
                   onClick={() => setCareLevel(level)}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border text-left transition-colors ${
-                    careLevel === level
-                      ? "theme-chip-active"
-                      : "theme-chip"
+                    careLevel === level ? "theme-chip-active" : "theme-chip"
                   }`}
                 >
                   <div className="flex gap-0.5">
@@ -463,8 +476,19 @@ export function FriendEditor({
                 {contactImporting ? (
                   <span className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" />
                 ) : (
-                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5" aria-hidden>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-6-3a3 3 0 11-6 0 3 3 0 016 0zM2 17a6 6 0 0112 0" />
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    className="w-3.5 h-3.5"
+                    aria-hidden
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-6-3a3 3 0 11-6 0 3 3 0 016 0zM2 17a6 6 0 0112 0"
+                    />
                   </svg>
                 )}
                 {platform.pickContact
@@ -494,7 +518,9 @@ export function FriendEditor({
                     </span>
                     <button
                       className="flex h-4 w-4 items-center justify-center rounded-full text-[color:var(--theme-text-secondary)] transition-colors hover:bg-[color:var(--theme-bg-card)] hover:text-[color:var(--theme-text-primary)]"
-                      onClick={() => toggleSource({ ...src } as AuthorCandidate)}
+                      onClick={() =>
+                        toggleSource({ ...src } as AuthorCandidate)
+                      }
                       aria-label={`Unlink ${src.handle}`}
                     >
                       ×
@@ -517,7 +543,9 @@ export function FriendEditor({
             {filteredCandidates.length === 0 && (
               <p className="text-xs text-text-tertiary py-2">
                 {candidates.length === 0
-                  ? "No unlinked profiles in your feed yet."
+                  ? legacyItemsReady
+                    ? "No unlinked profiles in your feed yet."
+                    : "Loading captured profiles..."
                   : "No matches."}
               </p>
             )}
@@ -540,8 +568,7 @@ export function FriendEditor({
                       {c.displayName}
                     </span>
                     <span className="text-xs text-text-tertiary truncate block">
-                      {platformIcons[c.platform]}{" "}
-                      {c.handle}
+                      {platformIcons[c.platform]} {c.handle}
                     </span>
                   </span>
                   <span
@@ -553,7 +580,15 @@ export function FriendEditor({
                     aria-hidden
                   >
                     {isSourceLinked(c) && (
-                      <svg viewBox="0 0 10 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="w-2.5 h-2.5" aria-hidden>
+                      <svg
+                        viewBox="0 0 10 8"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        className="w-2.5 h-2.5"
+                        aria-hidden
+                      >
                         <path d="M1 4l3 3 5-6" />
                       </svg>
                     )}
@@ -582,7 +617,9 @@ export function FriendEditor({
                 />
               </div>
               <div>
-                <label className="text-xs text-text-secondary mb-1 block">Notes</label>
+                <label className="text-xs text-text-secondary mb-1 block">
+                  Notes
+                </label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}

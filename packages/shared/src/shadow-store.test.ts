@@ -8,6 +8,7 @@ import {
   SHADOW_COLUMNS,
   SHADOW_DERIVED_COLUMNS,
   SHADOW_BATCH_RECEIPT_DDL,
+  SHADOW_FRIENDS_TIMELINE_INDEX_DDL,
   SHADOW_INDEX_DDL,
   SHADOW_META_DDL,
   SHADOW_READ_AT_ASSIGNMENT_SQL,
@@ -16,6 +17,7 @@ import {
   SHADOW_TABLE_DDL,
   SHADOW_V1_SCHEMA_VERSION_DDL,
   SHADOW_V2_SCHEMA_VERSION_DDL,
+  SHADOW_V3_SCHEMA_VERSION_DDL,
   createShadowSchema,
   sortKeyOf,
   diffThroughStore,
@@ -85,7 +87,20 @@ describe("shadow store", () => {
       "utf8",
     );
     expect(normalizeSql(canonicalV3)).toBe(
-      normalizeSql([SHADOW_REBUILD_DDL, SHADOW_SCHEMA_VERSION_DDL].join("\n")),
+      normalizeSql(
+        [SHADOW_REBUILD_DDL, SHADOW_V3_SCHEMA_VERSION_DDL].join("\n"),
+      ),
+    );
+    const canonicalV4 = readFileSync(
+      new URL("./library-core/shadow-schema-v4.sql", import.meta.url),
+      "utf8",
+    );
+    expect(normalizeSql(canonicalV4)).toBe(
+      normalizeSql(
+        [SHADOW_FRIENDS_TIMELINE_INDEX_DDL, SHADOW_SCHEMA_VERSION_DDL].join(
+          "\n",
+        ),
+      ),
     );
     const readAssignmentSql = readFileSync(
       new URL(
@@ -110,7 +125,7 @@ describe("shadow store", () => {
     const [version] = db.prepare("PRAGMA user_version").all() as Array<{
       user_version: number;
     }>;
-    expect(version?.user_version).toBe(3);
+    expect(version?.user_version).toBe(4);
   });
 
   it("rolls back a conflicting physical migration without advancing its version", () => {

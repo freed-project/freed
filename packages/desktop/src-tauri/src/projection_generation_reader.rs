@@ -9,9 +9,9 @@ use crate::projection_generation_registry::{
     ProjectionGenerationRegistryError,
 };
 use crate::shadow_store::{
-    FeedItemRow, FeedPage, ItemScanPage, LibraryFacetSummary, LibrarySavedAnalytics,
-    LibrarySurface, PageCursor, ProjectionSourceV1, SavedAnalyticsWindow, ShadowStore,
-    ShadowStoreError,
+    FeedItemRow, FeedPage, FriendSourceKey, FriendsActivityWindow, FriendsGraphActivity,
+    ItemScanPage, LibraryFacetSummary, LibrarySavedAnalytics, LibrarySurface, PageCursor,
+    ProjectionSourceV1, SavedAnalyticsWindow, ShadowStore, ShadowStoreError,
 };
 use sha2::{Digest, Sha256};
 use std::fmt;
@@ -224,6 +224,28 @@ impl ProjectionGenerationReader {
             .map_err(Into::into)
     }
 
+    pub(super) fn friends_graph_activity(
+        &self,
+        sources: &[FriendSourceKey],
+        rss_feed_urls: &[String],
+        recent_window: FriendsActivityWindow,
+    ) -> ReaderResult<FriendsGraphActivity> {
+        self.store
+            .friends_graph_activity(sources, rss_feed_urls, recent_window)
+            .map_err(Into::into)
+    }
+
+    pub(super) fn person_timeline(
+        &self,
+        sources: &[FriendSourceKey],
+        cursor: Option<&PageCursor>,
+        limit: u32,
+    ) -> ReaderResult<FeedPage> {
+        self.store
+            .person_timeline(sources, cursor, limit)
+            .map_err(Into::into)
+    }
+
     pub(super) fn surface_items(
         &self,
         surface: LibrarySurface,
@@ -305,7 +327,10 @@ fn same_fs_entry(left: &std::fs::Metadata, right: &std::fs::Metadata) -> bool {
 mod tests {
     use super::*;
     use crate::projection_generation_registry::ProjectionGenerationRegistry;
-    use crate::shadow_store::{ProjectionSourceV1, PublishedProjectionGeneration, ShadowStore};
+    use crate::shadow_store::{
+        FriendSourceKey, ProjectionSourceV1, PublishedProjectionGeneration, ShadowStore,
+    };
+    use rusqlite::Connection;
     use std::io::Write;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -457,7 +482,15 @@ mod tests {
     #[test]
     fn a_new_reader_observes_an_exact_rollback_selection() {
         let fixture = Fixture::new();
-        let first = fixture.publish_empty(4);
+        let mut first = fixture.publish_empty(4);
+        {
+            let conn = Connection::open(&first.path).expect("open prior-schema generation");
+            conn.execute_batch("DROP INDEX feed_items_friends_timeline; PRAGMA user_version = 3;")
+                .expect("restore exact v3 catalog");
+        }
+        first.byte_length = std::fs::metadata(&first.path)
+            .expect("prior-schema generation metadata")
+            .len();
         let second = fixture.publish_empty(5);
         let mut registry = fixture.registry();
         let first = registry.register(&first).expect("register first");
@@ -486,5 +519,17 @@ mod tests {
                 .expect("reader");
         assert_eq!(reader.generation_id(), first.generation_id);
         assert_eq!(reader.transition_sequence(), 3);
+        let page = reader
+            .person_timeline(
+                &[FriendSourceKey {
+                    platform: "x".to_string(),
+                    author_id: "author-1".to_string(),
+                }],
+                None,
+                1,
+            )
+            .expect("v3 rollback timeline remains readable");
+        assert_eq!(page.total_count, 0);
+        assert!(page.rows.is_empty());
     }
 }

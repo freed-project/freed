@@ -484,6 +484,7 @@ async function readGraphDebug(page: Page) {
           labelPassMs: number;
           sceneSyncCount: number;
           presentationSyncCount: number;
+          activitySyncCount: number;
           contentSyncCount: number;
           transformOnlySyncCount: number;
           edgeRebuildCount: number;
@@ -495,6 +496,10 @@ async function readGraphDebug(page: Page) {
           rendererLabelCount: number;
           readyRendererLabelCount: number;
           rendererEdgeCount: number;
+          presentationInFlight: boolean;
+          presentationQueued: boolean;
+          activityInFlight: boolean;
+          activityQueued: boolean;
           sourceNodeCount?: number;
           visibleNodeCount?: number;
           renderedPrimitiveCount?: number;
@@ -520,6 +525,7 @@ async function readGraphSummary(page: Page) {
           labelPassMs: number;
           sceneSyncCount: number;
           presentationSyncCount: number;
+          activitySyncCount: number;
           contentSyncCount: number;
           transformOnlySyncCount: number;
           edgeRebuildCount: number;
@@ -531,6 +537,10 @@ async function readGraphSummary(page: Page) {
           rendererLabelCount: number;
           readyRendererLabelCount: number;
           rendererEdgeCount: number;
+          presentationInFlight: boolean;
+          presentationQueued: boolean;
+          activityInFlight: boolean;
+          activityQueued: boolean;
           qualityMode: "interactive" | "settled";
         };
       };
@@ -550,25 +560,39 @@ async function readGraphSummary(page: Page) {
 }
 
 async function waitForGraphPerfToSettle(page: Page, timeout = 15_000) {
-  const deadline = Date.now() + timeout;
-  let previous = await readGraphSummary(page);
-  while (Date.now() < deadline) {
-    await page.waitForTimeout(250);
-    const next = await readGraphSummary(page);
-    if (
-      previous &&
-      next &&
-      next.qualityMode === "settled" &&
-      next.metrics.edgeRebuildCount === previous.metrics.edgeRebuildCount &&
-      next.metrics.sceneSyncCount === previous.metrics.sceneSyncCount &&
-      next.metrics.presentationSyncCount === previous.metrics.presentationSyncCount
-    ) {
-      return next;
-    }
-    previous = next;
-  }
-
-  throw new Error("Friends graph perf metrics did not settle in time");
+  let previousSignature: string | null = null;
+  let stableReads = 0;
+  let latest: Awaited<ReturnType<typeof readGraphSummary>> = null;
+  await expect
+    .poll(async () => {
+      latest = await readGraphSummary(page);
+      if (
+        !latest ||
+        latest.qualityMode !== "settled" ||
+        latest.metrics.presentationInFlight ||
+        latest.metrics.presentationQueued ||
+        latest.metrics.activityInFlight ||
+        latest.metrics.activityQueued
+      ) {
+        previousSignature = null;
+        stableReads = 0;
+        return stableReads;
+      }
+      const signature = JSON.stringify({
+        sceneSyncCount: latest.metrics.sceneSyncCount,
+        presentationSyncCount: latest.metrics.presentationSyncCount,
+        activitySyncCount: latest.metrics.activitySyncCount,
+        contentSyncCount: latest.metrics.contentSyncCount,
+        edgeRebuildCount: latest.metrics.edgeRebuildCount,
+        labelLayoutCount: latest.metrics.labelLayoutCount,
+      });
+      stableReads = signature === previousSignature ? stableReads + 1 : 0;
+      previousSignature = signature;
+      return stableReads;
+    }, { timeout })
+    .toBeGreaterThanOrEqual(2);
+  if (!latest) throw new Error("Friends graph did not publish settled perf metrics");
+  return latest;
 }
 
 async function waitForGraphPresentationSyncAfter(
@@ -606,6 +630,10 @@ async function seedStressIdentityGraph(page: Page) {
       };
     };
 
+    // Seed the complete source while the expensive graph is unmounted. The
+    // test measures one settled dense projection, not intermediate document
+    // notifications racing the final all-content preference.
+    store.getState().setActiveView("feed");
     const now = Date.now();
     const personCount = 1_200;
     const accountCount = 1_440;
@@ -5671,6 +5699,9 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
 
   const viewport = page.getByTestId("friend-graph-viewport");
   await expect(viewport).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("friends-graph-loading")).toHaveCount(0, {
+    timeout: 45_000,
+  });
   await expect
     .poll(async () => {
       const debug = await readGraphSummary(page);
@@ -5685,15 +5716,6 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
       return debug.metrics.sourceNodeCount ?? debug.nodeCount;
     }, { timeout: 45_000 })
     .toBeGreaterThanOrEqual(expectedSourceNodeCount);
-  // The dense fixture can produce two legitimate initialization projections:
-  // the seeded identity graph, then the saved all-content preference. Do not
-  // capture an interaction baseline while the second projection is in flight.
-  await expect
-    .poll(async () => (await readGraphSummary(page))?.metrics.contentSyncCount ?? 0, {
-      timeout: 45_000,
-    })
-    .toBeGreaterThanOrEqual(2);
-
   const seededGraph = await readGraphSummary(page);
   expect(seededGraph).not.toBeNull();
   expect(seededGraph!.metrics.visibleLabelCount).toBeGreaterThan(0);
@@ -5829,16 +5851,41 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
   }
   const startX = box.x + box.width * 0.55;
   const startY = box.y + box.height * 0.45;
+  const dispatchPanPointer = async (
+    type: "pointerdown" | "pointermove" | "pointerup",
+    clientX: number,
+    clientY: number,
+  ) => {
+    await viewport.evaluate((element, pointer) => {
+      element.dispatchEvent(new PointerEvent(pointer.type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 1,
+        pointerType: "mouse",
+        isPrimary: true,
+        button: 0,
+        buttons: pointer.type === "pointerup" ? 0 : 1,
+        clientX: pointer.clientX,
+        clientY: pointer.clientY,
+      }));
+    }, { type, clientX, clientY });
+  };
 
   let duringPan: Awaited<ReturnType<typeof readGraphDebug>> = null;
   try {
-    await page.mouse.move(startX, startY);
-    await page.mouse.down();
-    await page.mouse.move(startX + 260, startY + 70, { steps: 18 });
+    // Dispatch directly to the gesture owner. A real mouse target can change
+    // while the dense canvas and details panel settle, which made this render
+    // benchmark occasionally miss pointerdown without testing any render work.
+    await dispatchPanPointer("pointerdown", startX, startY);
+    await dispatchPanPointer("pointermove", startX + 260, startY + 70);
 
     await expect
-      .poll(async () => (await readGraphDebug(page))?.qualityMode, { timeout: 10_000 })
-      .toBe("interactive");
+      .poll(async () => {
+        const debug = await readGraphDebug(page);
+        const dragging = await viewport.getAttribute("data-dragging");
+        return `${dragging}:${debug?.qualityMode ?? "missing"}`;
+      }, { timeout: 10_000 })
+      .toBe("true:interactive");
 
     duringPan = await readGraphDebug(page);
     expect(duringPan).not.toBeNull();
@@ -5849,7 +5896,7 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
       initial!.metrics.labelLayoutCount,
     );
     expect(duringPan!.metrics.readyRendererLabelCount).toBeGreaterThan(0);
-    await page.mouse.move(startX + 300, startY + 90, { steps: 4 });
+    await dispatchPanPointer("pointermove", startX + 300, startY + 90);
     await page.waitForTimeout(250);
     const steadyPan = await readGraphDebug(page);
     expect(steadyPan).not.toBeNull();
@@ -5866,7 +5913,7 @@ test("stress Friends graph keeps labels resident and avoids scene rebuilds durin
     );
     expect(steadyPan!.metrics.sceneSyncMs).toBeLessThan(60);
   } finally {
-    await page.mouse.up();
+    await dispatchPanPointer("pointerup", startX + 300, startY + 90);
   }
 
   const beforeZoom = await readGraphDebug(page);
