@@ -72,6 +72,13 @@ import {
   LIBRARY_CORE_SURFACE_ITEMS_RESPONSE_SCHEMA,
   LIBRARY_CORE_SURFACE_ITEMS_SOURCE_IDENTITY,
 } from "./surface-items-contracts.js";
+import {
+  LIBRARY_CORE_FACET_SUMMARY_NESTED_BOUNDS,
+  LIBRARY_CORE_FACET_SUMMARY_PROJECTION,
+  LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA,
+  LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA,
+  LIBRARY_CORE_FACET_SUMMARY_SOURCE_IDENTITY,
+} from "./facet-summary-contracts.js";
 
 export const LIBRARY_CORE_QUERY_IDS = [
   "account_detail_v1",
@@ -257,6 +264,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_ITEM_DETAIL_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_SURFACE_ITEMS_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA
     | null;
   readonly responseSchema:
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
@@ -270,6 +278,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ITEM_SCAN_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_SURFACE_ITEMS_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA
     | null;
   readonly projection:
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
@@ -277,18 +286,21 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_PROJECTION
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_PROJECTION
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_PROJECTION
+    | typeof LIBRARY_CORE_FACET_SUMMARY_PROJECTION
     | typeof LIBRARY_CORE_PERSONS_GRAPH_PROJECTION
     | typeof LIBRARY_CORE_ITEM_DETAIL_PROJECTION
     | null;
   readonly sourceIdentity:
     | typeof LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_SOURCE_IDENTITY
+    | typeof LIBRARY_CORE_FACET_SUMMARY_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_PERSONS_GRAPH_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_ITEM_DETAIL_SOURCE_IDENTITY
     | null;
   readonly nestedBounds:
     | typeof LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_FACET_SUMMARY_NESTED_BOUNDS
     | typeof LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS
     | typeof LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS
     | null;
@@ -392,7 +404,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_PERSONS_GRAPH_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ITEM_DETAIL_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA
-    | typeof LIBRARY_CORE_SURFACE_ITEMS_REQUEST_SCHEMA;
+    | typeof LIBRARY_CORE_SURFACE_ITEMS_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA;
   readonly responseSchema?:
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA
@@ -404,7 +417,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_PERSONS_GRAPH_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ITEM_SCAN_RESPONSE_SCHEMA
-    | typeof LIBRARY_CORE_SURFACE_ITEMS_RESPONSE_SCHEMA;
+    | typeof LIBRARY_CORE_SURFACE_ITEMS_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA;
   readonly projection?:
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION
@@ -412,17 +426,20 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_PROJECTION
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_PROJECTION
     | typeof LIBRARY_CORE_PERSONS_GRAPH_PROJECTION
-    | typeof LIBRARY_CORE_ITEM_DETAIL_PROJECTION;
+    | typeof LIBRARY_CORE_ITEM_DETAIL_PROJECTION
+    | typeof LIBRARY_CORE_FACET_SUMMARY_PROJECTION;
   readonly sourceIdentity?:
     | typeof LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_PERSONS_GRAPH_SOURCE_IDENTITY
-    | typeof LIBRARY_CORE_ITEM_DETAIL_SOURCE_IDENTITY;
+    | typeof LIBRARY_CORE_ITEM_DETAIL_SOURCE_IDENTITY
+    | typeof LIBRARY_CORE_FACET_SUMMARY_SOURCE_IDENTITY;
   readonly nestedBounds?:
     | typeof LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_NESTED_BOUNDS
     | typeof LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS
-    | typeof LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS;
+    | typeof LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_FACET_SUMMARY_NESTED_BOUNDS;
   /**
    * Supplying both clears `sort_contract_unresolved` for this query. They move
    * together on purpose: an ordering without a tie-break is not stable, and a
@@ -948,6 +965,17 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
       "read_library_core_facet_summary",
       "readLibraryFacetSummary",
     ],
+    requestSchema: LIBRARY_CORE_FACET_SUMMARY_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_FACET_SUMMARY_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_FACET_SUMMARY_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_FACET_SUMMARY_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_FACET_SUMMARY_NESTED_BOUNDS,
+    // stableSort and tieBreakKey stay null on purpose. Tags are sorted by
+    // UTF-16 code units for parity with JavaScript Array.sort(), and
+    // ResolvedQuerySortContract admits only binary UTF-8 collation. The two
+    // disagree outside the Basic Multilingual Plane, so declaring "binary"
+    // would misdescribe any library holding an emoji or CJK-extension tag.
+    // The real ordering is in LIBRARY_CORE_FACET_SUMMARY_TAG_ORDER.
     resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   library_surface_items_v1: plannedQuery({

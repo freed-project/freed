@@ -30,6 +30,7 @@ export * from "./persons-graph-contracts.js";
 export * from "./item-detail-contracts.js";
 export * from "./item-scan-contracts.js";
 export * from "./surface-items-contracts.js";
+export * from "./facet-summary-contracts.js";
 export * from "./sha256.js";
 export * from "./store-surface-registry.js";
 export * from "./wire-frame.js";
