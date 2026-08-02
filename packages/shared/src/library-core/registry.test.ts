@@ -51,6 +51,14 @@ import {
   LIBRARY_CORE_ITEM_SCAN_SOURCE_IDENTITY,
 } from "./item-scan-contracts.js";
 import {
+  LIBRARY_CORE_SURFACE_ITEMS_INTENDED_ORDER,
+  LIBRARY_CORE_SURFACE_ITEMS_NESTED_BOUNDS,
+  LIBRARY_CORE_SURFACE_ITEMS_PROJECTION,
+  LIBRARY_CORE_SURFACE_ITEMS_REQUEST_SCHEMA,
+  LIBRARY_CORE_SURFACE_ITEMS_RESPONSE_SCHEMA,
+  LIBRARY_CORE_SURFACE_ITEMS_SOURCE_IDENTITY,
+} from "./surface-items-contracts.js";
+import {
   LIBRARY_CORE_FIELD_REGISTRY,
 } from "./field-registry.js";
 import {
@@ -466,6 +474,44 @@ describe("Library Core query registry", () => {
     expect(
       BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds,
     ).toContain("feed_browse_page_v2");
+  });
+
+  it("closes five surface-items fields and blocks the sort on the Map defect", () => {
+    expect(LIBRARY_CORE_QUERY_REGISTRY.library_surface_items_v1).toMatchObject({
+      status: "planned_blocked",
+      requestSchema: LIBRARY_CORE_SURFACE_ITEMS_REQUEST_SCHEMA,
+      responseSchema: LIBRARY_CORE_SURFACE_ITEMS_RESPONSE_SCHEMA,
+      projection: LIBRARY_CORE_SURFACE_ITEMS_PROJECTION,
+      sourceIdentity: LIBRARY_CORE_SURFACE_ITEMS_SOURCE_IDENTITY,
+      nestedBounds: LIBRARY_CORE_SURFACE_ITEMS_NESTED_BOUNDS,
+      fullContentAllowed: true,
+    });
+    for (const blocker of [
+      "request_schema_unresolved",
+      "response_schema_unresolved",
+      "projection_unresolved",
+      "source_identity_unresolved",
+      "nested_bounds_unresolved",
+    ]) {
+      expect(
+        LIBRARY_CORE_QUERY_REGISTRY.library_surface_items_v1.blockers,
+      ).not.toContain(blocker);
+    }
+    // Same row as the item lookup and the bounded scan, shared by reference.
+    expect(
+      LIBRARY_CORE_QUERY_REGISTRY.library_surface_items_v1.projection,
+    ).toBe(LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1.projection);
+    // A declared sort asserts index-satisfiability. The Map surface needs a
+    // temp B-tree, so the blocker stays open until issue #1323 lands.
+    expect(
+      LIBRARY_CORE_QUERY_REGISTRY.library_surface_items_v1.stableSort,
+    ).toBeNull();
+    expect(
+      LIBRARY_CORE_QUERY_REGISTRY.library_surface_items_v1.blockers,
+    ).toContain("sort_contract_unresolved");
+    expect(
+      LIBRARY_CORE_SURFACE_ITEMS_INTENDED_ORDER.indexSatisfiedBySurface,
+    ).toEqual({ map: false, story_wall: true });
   });
 
   it("closes the bounded item-scan contract and shares the item-detail row", () => {

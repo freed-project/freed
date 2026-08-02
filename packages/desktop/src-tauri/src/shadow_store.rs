@@ -1924,6 +1924,47 @@ const FRIENDS_GRAPH_RSS_SQL: &str = "WITH requested AS (
        ON json_extract(f.rest, '$.rssSource.feedUrl') = r.feedUrl
      WHERE f.platform = 'rss' AND f.hidden IS NOT 1;";
 
+/// The surface predicate and page order, factored out so the query-plan test
+/// can explain exactly the SQL the reader runs.
+///
+/// The predicate uses json_type, json_extract, and GLOB, none of which an index
+/// can satisfy. The ORDER BY must still be answered by the timeline index or
+/// each open sorts the whole filtered corpus.
+fn surface_items_sql(surface: LibrarySurface) -> String {
+    let predicate = match surface {
+        LibrarySurface::Map => {
+            "json_type(rest, '$.location') = 'object'
+                   OR json_extract(contentBlob, '$.text') GLOB '*📍*'
+                   OR json_extract(contentBlob, '$.text') GLOB '*🌍*'
+                   OR json_extract(contentBlob, '$.text') GLOB '*🌎*'
+                   OR json_extract(contentBlob, '$.text') GLOB '*🌏*'
+                   OR json_extract(contentBlob, '$.text') GLOB 'in [A-Z]*'
+                   OR json_extract(contentBlob, '$.text') GLOB 'at [A-Z]*'
+                   OR json_extract(contentBlob, '$.text') GLOB 'from [A-Z]*'
+                   OR json_extract(contentBlob, '$.text') GLOB '* in [A-Z]*'
+                   OR json_extract(contentBlob, '$.text') GLOB '* at [A-Z]*'
+                   OR json_extract(contentBlob, '$.text') GLOB '* from [A-Z]*'
+            "
+        }
+        LibrarySurface::StoryWall => {
+            "hidden IS NOT 1
+                   AND archived IS NOT 1
+                   AND CASE
+                     WHEN json_valid(contentBlob)
+                     THEN json_type(contentBlob, '$.mediaUrls') = 'array'
+                      AND json_array_length(contentBlob, '$.mediaUrls') > 0
+                     ELSE 0
+                   END
+            "
+        }
+    };
+    format!(
+        "SELECT {ITEM_SCAN_COLUMNS} FROM feed_items
+         WHERE {predicate}
+         ORDER BY sortAt DESC, globalId ASC LIMIT ?1;"
+    )
+}
+
 fn person_timeline_page_sql(after: bool, use_friends_timeline_index: bool) -> StoreResult<String> {
     let base = if after {
         PAGE_AFTER_SQL
@@ -2976,38 +3017,7 @@ impl ShadowStore {
                 maximum,
             });
         }
-        let predicate = match surface {
-            LibrarySurface::Map => {
-                "json_type(rest, '$.location') = 'object'
-                   OR json_extract(contentBlob, '$.text') GLOB '*📍*'
-                   OR json_extract(contentBlob, '$.text') GLOB '*🌍*'
-                   OR json_extract(contentBlob, '$.text') GLOB '*🌎*'
-                   OR json_extract(contentBlob, '$.text') GLOB '*🌏*'
-                   OR json_extract(contentBlob, '$.text') GLOB 'in [A-Z]*'
-                   OR json_extract(contentBlob, '$.text') GLOB 'at [A-Z]*'
-                   OR json_extract(contentBlob, '$.text') GLOB 'from [A-Z]*'
-                   OR json_extract(contentBlob, '$.text') GLOB '* in [A-Z]*'
-                   OR json_extract(contentBlob, '$.text') GLOB '* at [A-Z]*'
-                   OR json_extract(contentBlob, '$.text') GLOB '* from [A-Z]*'
-                "
-            }
-            LibrarySurface::StoryWall => {
-                "hidden IS NOT 1
-                   AND archived IS NOT 1
-                   AND CASE
-                     WHEN json_valid(contentBlob)
-                     THEN json_type(contentBlob, '$.mediaUrls') = 'array'
-                      AND json_array_length(contentBlob, '$.mediaUrls') > 0
-                     ELSE 0
-                   END
-                "
-            }
-        };
-        let query = format!(
-            "SELECT {ITEM_SCAN_COLUMNS} FROM feed_items
-             WHERE {predicate}
-             ORDER BY sortAt DESC, globalId ASC LIMIT ?1;"
-        );
+        let query = surface_items_sql(surface);
         let tx = self.conn.unchecked_transaction()?;
         Self::require_readable_projection_in(&tx)?;
         let rows = {
@@ -5227,6 +5237,55 @@ mod tests {
                 "page must not sort, got: {plan}"
             );
         }
+    }
+
+    #[test]
+    fn surface_queries_order_through_the_index_except_the_known_map_defect() {
+        // Both surfaces filter with json_type, json_extract, and GLOB, none of
+        // which an index can satisfy. What matters is whether the ORDER BY is
+        // still answered by an index: if SQLite sorts instead, every open of
+        // that surface sorts the whole filtered corpus, and the page is bounded
+        // while the work behind it is not.
+        let store = seeded(500);
+
+        // Story Wall leads with `hidden IS NOT 1 AND archived IS NOT 1`, which
+        // matches the friends-timeline index prefix, so it walks that index in
+        // order and never sorts. This is the invariant.
+        let story_wall = explain_surface(&store, LibrarySurface::StoryWall);
+        assert!(
+            story_wall.contains("feed_items_friends_timeline"),
+            "Story Wall should read through the friends timeline index, got: {story_wall}"
+        );
+        assert!(
+            !story_wall.to_uppercase().contains("TEMP B-TREE"),
+            "Story Wall must not sort, got: {story_wall}"
+        );
+
+        // Map has no indexable leading term, so it scans and sorts. This
+        // characterizes a KNOWN DEFECT tracked in issue #1323, it does not
+        // bless it. Fixing that issue makes this assertion fail, which is the
+        // signal to replace it with the same no-sort assertion above.
+        let map = explain_surface(&store, LibrarySurface::Map);
+        assert!(
+            map.to_uppercase().contains("TEMP B-TREE"),
+            "Map is expected to still sort until issue #1323 lands. If this \
+             failed, the defect is fixed: assert the absence of TEMP B-TREE \
+             here instead. Got: {map}"
+        );
+    }
+
+    fn explain_surface(store: &ShadowStore, surface: LibrarySurface) -> String {
+        let explained = format!("EXPLAIN QUERY PLAN {}", surface_items_sql(surface));
+        let mut statement = store
+            .conn
+            .prepare(&explained)
+            .expect("prepare surface plan");
+        statement
+            .query_map(params![64u32], |row| row.get::<_, String>(3))
+            .expect("surface plan")
+            .collect::<SqlResult<Vec<_>>>()
+            .expect("surface plan rows")
+            .join(" | ")
     }
 
     #[test]
