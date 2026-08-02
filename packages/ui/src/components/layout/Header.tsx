@@ -13,7 +13,6 @@ import { flushSync } from "react-dom";
 import {
   applyFeedSignalModesToFilter,
   FEED_SIGNAL_FILTER_PRESETS,
-  filterFeedItems,
   type FeedSignalMode,
   type MapMode,
   type SavedContentSortMode,
@@ -38,6 +37,7 @@ import {
   SortIcon,
 } from "../icons.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
+import { useFeedSignalCounts } from "../../hooks/useFeedSignalCounts.js";
 import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
@@ -363,6 +363,7 @@ export function Header({
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
+  const isLibraryInitialized = useAppStore((s) => s.isInitialized);
   const libraryItemVersion = useAppStore(
     (state) => state.libraryItemVersion ?? state.searchCorpusVersion,
   );
@@ -705,23 +706,15 @@ export function Header({
     delete nextFilter.signals;
     return nextFilter;
   }, [activeFilter]);
-  const feedSignalCounts = useMemo(() => {
-    const counts: Record<FeedSignalMode, number> = {
-      all: filterFeedItems(items, feedSignalCountBaseFilter).length,
-      inspiring: 0,
-      events: 0,
-      personal: 0,
-      conversation: 0,
-      news: 0,
-    };
-    for (const preset of selectableFeedSignalPresets) {
-      counts[preset.mode] = filterFeedItems(items, {
-        ...feedSignalCountBaseFilter,
-        signals: [...preset.signals],
-      }).length;
-    }
-    return counts;
-  }, [feedSignalCountBaseFilter, items, selectableFeedSignalPresets]);
+  // Counted through bounded pages. The renderer evicts the full item
+  // projection on the healthy Desktop path, so counting the store array here
+  // reported zero for every chip.
+  const feedSignalCounts = useFeedSignalCounts(
+    items,
+    feedSignalCountBaseFilter,
+    searchCorpusVersion,
+    isLibraryInitialized,
+  );
 
   const handleFeedSignalModeChange = useCallback((mode: FeedSignalMode) => {
     const nextModes = (() => {
