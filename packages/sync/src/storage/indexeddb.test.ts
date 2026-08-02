@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  INDEXEDDB_AUTOMERGE_CHUNK_BYTES,
   IndexedDBStorage,
   StaleStorageRevisionError,
 } from "./indexeddb.js";
@@ -101,6 +102,13 @@ class FakeTransaction {
             throw new Error("Readonly transaction cannot delete");
           }
           this.workingRecords.delete(key as IDBValidKey);
+        }),
+      clear: () =>
+        enqueue(() => {
+          if (this.mode === "readonly") {
+            throw new Error("Readonly transaction cannot clear");
+          }
+          this.workingRecords.clear();
         }),
     } as unknown as IDBObjectStore;
   }
@@ -249,9 +257,11 @@ class FakeIndexedDBFactory {
 }
 
 function createStorage(
-  database = new FakeDatabase(2, [
+  database = new FakeDatabase(3, [
     ["feed:installation-generation", 0],
     ["feed:save-revision", 0],
+    ["feed:chunk-count", 0],
+    ["feed:byte-length", 0],
   ]),
 ): {
   database: FakeDatabase;
@@ -266,12 +276,24 @@ function createStorage(
   };
 }
 
+function documentChunkKey(index: number): string {
+  return `feed:chunk:${index.toString().padStart(8, "0")}`;
+}
+
+function storedChunk(database: FakeDatabase, index: number): Uint8Array {
+  const value = database.records.get(documentChunkKey(index));
+  if (!(value instanceof ArrayBuffer)) {
+    throw new Error(`Missing stored chunk ${index.toLocaleString()}`);
+  }
+  return new Uint8Array(value);
+}
+
 async function flushMicrotasks(): Promise<void> {
   for (let index = 0; index < 8; index += 1) await Promise.resolve();
 }
 
 describe("IndexedDBStorage", () => {
-  it("creates v2 metadata and returns an exact empty revision", async () => {
+  it("creates v3 chunk metadata and returns an exact empty revision", async () => {
     const { database, factory, storage } = createStorage(
       new FakeDatabase(0),
     );
@@ -280,12 +302,14 @@ describe("IndexedDBStorage", () => {
       data: null,
       revision: { generation: 0, saveRevision: 0 },
     });
-    expect(factory.openVersions).toEqual([2]);
+    expect(factory.openVersions).toEqual([3]);
     expect(database.records.get("feed:installation-generation")).toBe(0);
     expect(database.records.get("feed:save-revision")).toBe(0);
+    expect(database.records.get("feed:chunk-count")).toBe(0);
+    expect(database.records.get("feed:byte-length")).toBe(0);
   });
 
-  it("upgrades v1 bytes exactly and starts save revision zero", async () => {
+  it("upgrades v1 bytes into exact chunks and starts save revision zero", async () => {
     const legacy = new Uint8Array([4, 5, 6]).buffer;
     const { database, storage } = createStorage(
       new FakeDatabase(1, [
@@ -298,45 +322,87 @@ describe("IndexedDBStorage", () => {
       data: new Uint8Array([4, 5, 6]),
       revision: { generation: 7, saveRevision: 0 },
     });
-    expect(database.records.get("feed")).toBe(legacy);
+    expect(database.records.has("feed")).toBe(false);
+    expect(Array.from(storedChunk(database, 0))).toEqual([4, 5, 6]);
+    expect(database.records.get("feed:chunk-count")).toBe(1);
+    expect(database.records.get("feed:byte-length")).toBe(3);
     expect(database.records.get("feed:save-revision")).toBe(0);
   });
 
-  it("exposes one no-extra-copy raw migration snapshot and a metadata-only revision read", async () => {
-    const stored = new Uint8Array([4, 5, 6]).buffer;
-    const { storage } = createStorage(
+  it("upgrades a v2 source across the fixed chunk boundary", async () => {
+    const bytes = new Uint8Array(INDEXEDDB_AUTOMERGE_CHUNK_BYTES + 3);
+    bytes[0] = 4;
+    bytes[INDEXEDDB_AUTOMERGE_CHUNK_BYTES - 1] = 5;
+    bytes[INDEXEDDB_AUTOMERGE_CHUNK_BYTES] = 6;
+    bytes[bytes.length - 1] = 7;
+    const { database, storage } = createStorage(
       new FakeDatabase(2, [
-        ["feed", stored],
+        ["feed", bytes.buffer],
         ["feed:installation-generation", 7],
         ["feed:save-revision", 9],
       ]),
     );
 
-    const snapshot = await storage.loadRawSnapshotForExternalMigration();
-    expect(snapshot.revision).toEqual({ generation: 7, saveRevision: 9 });
-    expect(snapshot.data?.buffer).toBe(stored);
-    await expect(storage.currentRevision()).resolves.toEqual({
-      generation: 7,
-      saveRevision: 9,
+    await expect(storage.load()).resolves.toEqual({
+      data: bytes,
+      revision: { generation: 7, saveRevision: 9 },
     });
+    expect(database.records.has("feed")).toBe(false);
+    expect(database.records.get("feed:chunk-count")).toBe(2);
+    expect(storedChunk(database, 0).byteLength).toBe(
+      INDEXEDDB_AUTOMERGE_CHUNK_BYTES,
+    );
+    expect(Array.from(storedChunk(database, 1))).toEqual([6, 0, 7]);
   });
 
-  it("keeps ordinary loads isolated from the raw IndexedDB result", async () => {
+  it("admits metadata without reading chunks, then reads one fenced chunk", async () => {
     const stored = new Uint8Array([4, 5, 6]).buffer;
-    const { storage } = createStorage(
-      new FakeDatabase(2, [
-        ["feed", stored],
+    const { database, storage } = createStorage(
+      new FakeDatabase(3, [
+        [documentChunkKey(0), stored],
         ["feed:installation-generation", 7],
         ["feed:save-revision", 9],
+        ["feed:chunk-count", 1],
+        ["feed:byte-length", 3],
       ]),
     );
 
-    const loaded = await storage.load();
-    expect(loaded.data?.buffer).not.toBe(stored);
-    expect(Array.from(loaded.data ?? [])).toEqual([4, 5, 6]);
+    const snapshot = await storage.beginExternalMigrationSnapshot();
+    expect(snapshot).toEqual({
+      revision: { generation: 7, saveRevision: 9 },
+      byteLength: 3,
+      maximumChunkBytes: INDEXEDDB_AUTOMERGE_CHUNK_BYTES,
+    });
+    expect(database.transactions.at(-1)?.requestSuccessCount).toBe(4);
+    const chunk = await storage.readExternalMigrationChunk(
+      snapshot.revision,
+      0,
+    );
+    expect(chunk.buffer).toBe(stored);
+    expect(Array.from(chunk)).toEqual([4, 5, 6]);
+    await expect(storage.currentRevision()).resolves.toEqual(
+      snapshot.revision,
+    );
   });
 
-  it("fails closed when another connection blocks the v2 upgrade", async () => {
+  it("rejects a chunk read after the source revision changes", async () => {
+    const database = new FakeDatabase(3, [
+      [documentChunkKey(0), new Uint8Array([4, 5, 6]).buffer],
+      ["feed:installation-generation", 7],
+      ["feed:save-revision", 9],
+      ["feed:chunk-count", 1],
+      ["feed:byte-length", 3],
+    ]);
+    const storage = createStorage(database).storage;
+    const snapshot = await storage.beginExternalMigrationSnapshot();
+    database.records.set("feed:save-revision", 10);
+
+    await expect(
+      storage.readExternalMigrationChunk(snapshot.revision, 0),
+    ).rejects.toBeInstanceOf(StaleStorageRevisionError);
+  });
+
+  it("fails closed when another connection blocks the v3 upgrade", async () => {
     const database = new FakeDatabase(1, [
       ["feed", new Uint8Array([1]).buffer],
     ]);
@@ -344,7 +410,7 @@ describe("IndexedDBStorage", () => {
     factory.blocked = true;
 
     await expect(storage.load()).rejects.toThrow(
-      "IndexedDB v2 upgrade is blocked by another open Freed connection",
+      "IndexedDB v3 upgrade is blocked by another open Freed connection",
     );
   });
 
@@ -360,24 +426,29 @@ describe("IndexedDBStorage", () => {
     expect(database.closeCount).toBe(1);
   });
 
-  it.each([
-    ["null", null],
-    ["undefined", undefined],
-    ["String", "not binary"],
-  ])("rejects a stored %s value as corruption", async (storedType, value) => {
-    const { database, storage } = createStorage();
-    database.records.set("feed", value);
-
+  it.each([["null", null], ["String", "not binary"]])(
+    "rejects a v2 %s source as corruption",
+    async (_storedType, value) => {
+      const { storage } = createStorage(
+        new FakeDatabase(2, [
+          ["feed", value],
+          ["feed:installation-generation", 0],
+          ["feed:save-revision", 0],
+        ]),
+      );
     await expect(storage.load()).rejects.toThrow(
-      `Stored Automerge data is corrupt: expected binary data, found ${storedType}`,
+        "Stored Automerge data is corrupt during IndexedDB v3 upgrade",
     );
-  });
+    },
+  );
 
   it("rejects a partial record with a save revision but no document bytes", async () => {
     const { storage } = createStorage(
-      new FakeDatabase(2, [
+      new FakeDatabase(3, [
         ["feed:installation-generation", 0],
         ["feed:save-revision", 1],
+        ["feed:chunk-count", 0],
+        ["feed:byte-length", 0],
       ]),
     );
 
@@ -397,19 +468,19 @@ describe("IndexedDBStorage", () => {
       }),
     ).resolves.toEqual({ generation: 0, saveRevision: 1 });
 
-    const stored = database.records.get("feed");
-    expect(stored).toBeInstanceOf(ArrayBuffer);
-    expect(Array.from(new Uint8Array(stored as ArrayBuffer))).toEqual([
-      1, 2, 3,
-    ]);
-    expect((stored as ArrayBuffer).byteLength).toBe(3);
+    expect(database.records.has("feed")).toBe(false);
+    expect(Array.from(storedChunk(database, 0))).toEqual([1, 2, 3]);
+    expect(database.records.get("feed:chunk-count")).toBe(1);
+    expect(database.records.get("feed:byte-length")).toBe(3);
     expect(database.records.get("feed:save-revision")).toBe(1);
   });
 
   it("rejects a stale save revision without replacing newer bytes", async () => {
-    const database = new FakeDatabase(2, [
+    const database = new FakeDatabase(3, [
       ["feed:installation-generation", 0],
       ["feed:save-revision", 0],
+      ["feed:chunk-count", 0],
+      ["feed:byte-length", 0],
     ]);
     const first = createStorage(database).storage;
     const stale = createStorage(database).storage;
@@ -425,18 +496,39 @@ describe("IndexedDBStorage", () => {
     await expect(saving).rejects.toThrow(
       "IndexedDB document revision is stale: expected 0:0, current 0:1",
     );
-    expect(
-      Array.from(
-        new Uint8Array(database.records.get("feed") as ArrayBuffer),
-      ),
-    ).toEqual([1]);
+    expect(Array.from(storedChunk(database, 0))).toEqual([1]);
+  });
+
+  it("rejects inconsistent chunk metadata before replacing source bytes", async () => {
+    const database = new FakeDatabase(3, [
+      [documentChunkKey(0), new Uint8Array([1]).buffer],
+      ["feed:installation-generation", 0],
+      ["feed:save-revision", 1],
+      ["feed:chunk-count", 1],
+      ["feed:byte-length", INDEXEDDB_AUTOMERGE_CHUNK_BYTES + 1],
+    ]);
+    const storage = createStorage(database).storage;
+
+    await expect(
+      storage.save(new Uint8Array([9]), {
+        generation: 0,
+        saveRevision: 1,
+      }),
+    ).rejects.toThrow(
+      "Stored Automerge data is corrupt: chunk metadata changed before save",
+    );
+    expect(Array.from(storedChunk(database, 0))).toEqual([1]);
+    expect(database.records.get("feed:save-revision")).toBe(1);
   });
 
   it("clears bytes, advances generation, resets revision, and fences old writers", async () => {
-    const database = new FakeDatabase(2, [
-      ["feed", new Uint8Array([1]).buffer],
+    const database = new FakeDatabase(3, [
+      [documentChunkKey(0), new Uint8Array([1]).buffer],
       ["feed:installation-generation", 3],
       ["feed:save-revision", 8],
+      ["feed:chunk-count", 1],
+      ["feed:byte-length", 1],
+      [documentChunkKey(999), new Uint8Array([9]).buffer],
     ]);
     const resetter = createStorage(database).storage;
     const oldWriter = createStorage(database).storage;
@@ -451,15 +543,20 @@ describe("IndexedDBStorage", () => {
       oldWriter.save(new Uint8Array([9]), oldRevision),
     ).rejects.toBeInstanceOf(StaleStorageRevisionError);
 
-    expect(database.records.has("feed")).toBe(false);
+    expect(database.records.has(documentChunkKey(0))).toBe(false);
+    expect(database.records.has(documentChunkKey(999))).toBe(false);
     expect(database.records.get("feed:installation-generation")).toBe(4);
     expect(database.records.get("feed:save-revision")).toBe(0);
+    expect(database.records.get("feed:chunk-count")).toBe(0);
+    expect(database.records.get("feed:byte-length")).toBe(0);
   });
 
   it("resolves writes only after the atomic transaction commits", async () => {
-    const database = new FakeDatabase(2, [
+    const database = new FakeDatabase(3, [
       ["feed:installation-generation", 0],
       ["feed:save-revision", 0],
+      ["feed:chunk-count", 0],
+      ["feed:byte-length", 0],
     ]);
     database.autoCompleteTransactions = false;
     const { storage } = createStorage(database);
@@ -476,13 +573,13 @@ describe("IndexedDBStorage", () => {
     await flushMicrotasks();
 
     const transaction = database.transactions.at(-1);
-    expect(transaction?.requestSuccessCount).toBe(4);
+    expect(transaction?.requestSuccessCount).toBe(9);
     expect(resolved).toBe(false);
-    expect(database.records.has("feed")).toBe(false);
+    expect(database.records.has(documentChunkKey(0))).toBe(false);
 
     transaction?.complete();
     await saving;
     expect(resolved).toBe(true);
-    expect(database.records.has("feed")).toBe(true);
+    expect(Array.from(storedChunk(database, 0))).toEqual([1, 2, 3]);
   });
 });

@@ -113,8 +113,8 @@ values or hide the counter they adjust. Explicit non-increment updates and
 omitted deletes remove their predecessors. Every concurrent visible operation
 remains instead of inventing one winner. This closes migration ingestion and
 the current-operation frontier. Counter arithmetic, object and sequence
-reconstruction, registered entity materialization, full-corpus parity, memory
-admission, and activation remain blocked.
+reconstruction, registered entity materialization, full-corpus parity,
+authenticated authority admission, and activation remain blocked.
 
 The dormant migration chain now continues through complete FeedItem topology,
 bounded JSON reconstruction, and lossless native row projection. It keeps
@@ -177,10 +177,14 @@ because reverse paging is not active yet. The device-local
 `freed.libraryCore.feedBrowseReaderV1.disabled=1` switch disables the feed
 reader, and `freed.libraryCore.rendererItemEvictionV1.disabled=1` restores the
 full renderer projection at startup. This does not satisfy Gate C or complete
-Gate D. IndexedDB still stores one source-sized Automerge binary and the worker
-still owns the decoded Automerge document. The next active milestone is the
-authenticated migration claim and fixed-memory source admission, followed by
-conversion of the remaining compatibility surfaces and worker-corpus eviction.
+Gate D. IndexedDB v3 now stores the legacy Automerge source as exact 1 MiB
+chunks. External migration admits only the exact revision and byte length, then
+reads one revision-fenced chunk per transaction. Existing v1 and v2 stores
+perform one atomic versionchange split, after which migration no longer creates
+a source-sized structured clone. The worker still owns the decoded Automerge
+document. The next active milestone is the authenticated migration claim,
+followed by conversion of the remaining compatibility surfaces and
+worker-corpus eviction.
 
 ## What the evidence establishes
 
@@ -231,11 +235,13 @@ The implementation order below is built around those corrections.
 
 Desktop uses stock SQLite through Rust.
 
-The PWA uses the same logical Library Core contract through a capability-tested
-browser adapter. SQLite WASM with OPFS is preferred only where it proves
-durability, compatibility, and bounded memory. A row-oriented IndexedDB
-adapter remains the fallback. One full Automerge binary in IndexedDB is not the
-fallback.
+The PWA MVP uses IndexedDB through the same strict logical Library Core adapter
+and conformance suite as every future browser engine. It stores bounded record
+pages, tombstones, search postings, cursors, intents, and result receipts. It
+does not retain the full corpus in JavaScript memory. SQLite WASM with OPFS is a
+future measured adapter, not an MVP dependency. A later engine can rebuild from
+immutable cloud objects and activate only after verification. Product logic
+does not fork by storage engine.
 
 Private-corpus Automerge decoding runs only on an elected installation that
 holds the current authenticated migration claim. It is resumable, uses the

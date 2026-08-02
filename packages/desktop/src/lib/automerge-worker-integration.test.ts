@@ -22,13 +22,15 @@ const storageHarness = vi.hoisted(() => ({
   saveBytes: [] as number[],
   clearCount: 0,
   loadCount: 0,
-  rawLoadCount: 0,
+  externalSnapshotCount: 0,
+  externalChunkReadOffsets: [] as number[],
   revisionReadCount: 0,
   failSave: false,
   replacementAfterLoad: null as Uint8Array | null,
 }));
 
 vi.mock("@freed/sync/storage/indexeddb", () => ({
+  INDEXEDDB_AUTOMERGE_CHUNK_BYTES: 1_048_576,
   IndexedDBStorage: class {
     async load(): Promise<{
       data: Uint8Array | null;
@@ -50,15 +52,27 @@ vi.mock("@freed/sync/storage/indexeddb", () => ({
       return loaded;
     }
 
-    async loadRawSnapshotForExternalMigration(): Promise<{
-      data: Uint8Array | null;
+    async beginExternalMigrationSnapshot(): Promise<{
       revision: StorageRevision;
+      byteLength: number;
+      maximumChunkBytes: 1_048_576;
     }> {
-      storageHarness.rawLoadCount += 1;
+      storageHarness.externalSnapshotCount += 1;
       return {
-        data: storageHarness.binary,
         revision: { ...storageHarness.revision },
+        byteLength: storageHarness.binary?.byteLength ?? 0,
+        maximumChunkBytes: 1_048_576,
       };
+    }
+
+    async readExternalMigrationChunk(
+      expectedRevision: StorageRevision,
+      offset: number,
+    ): Promise<Uint8Array> {
+      expect(expectedRevision).toEqual(storageHarness.revision);
+      storageHarness.externalChunkReadOffsets.push(offset);
+      const bytes = storageHarness.binary ?? new Uint8Array(0);
+      return bytes.slice(offset, Math.min(offset + 1_048_576, bytes.byteLength));
     }
 
     async currentRevision(): Promise<StorageRevision> {
@@ -215,7 +229,8 @@ describe("real Automerge worker module", () => {
     storageHarness.saveBytes = [];
     storageHarness.clearCount = 0;
     storageHarness.loadCount = 0;
-    storageHarness.rawLoadCount = 0;
+    storageHarness.externalSnapshotCount = 0;
+    storageHarness.externalChunkReadOffsets = [];
     storageHarness.revisionReadCount = 0;
     storageHarness.failSave = false;
     storageHarness.replacementAfterLoad = null;
@@ -255,7 +270,7 @@ describe("real Automerge worker module", () => {
       },
       maximumChunkBytes: chunkBytes,
     });
-    expect(storageHarness.rawLoadCount).toBe(1);
+    expect(storageHarness.externalSnapshotCount).toBe(1);
     expect(storageHarness.loadCount).toBe(0);
 
     sendRequest(scope, { reqId: 481, type: "INIT" });
@@ -346,6 +361,11 @@ describe("real Automerge worker module", () => {
       ),
     ).toBe(true);
     expect(finalChunk.transferBytes).toBe(13);
+    expect(storageHarness.externalChunkReadOffsets).toEqual([
+      0,
+      0,
+      chunkBytes,
+    ]);
 
     sendRequest(scope, {
       reqId: 485,
