@@ -58,6 +58,13 @@ import {
   LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA,
   LIBRARY_CORE_ITEM_DETAIL_SOURCE_IDENTITY,
 } from "./item-detail-contracts.js";
+import {
+  LIBRARY_CORE_ITEM_SCAN_NESTED_BOUNDS,
+  LIBRARY_CORE_ITEM_SCAN_PROJECTION,
+  LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA,
+  LIBRARY_CORE_ITEM_SCAN_RESPONSE_SCHEMA,
+  LIBRARY_CORE_ITEM_SCAN_SOURCE_IDENTITY,
+} from "./item-scan-contracts.js";
 
 export const LIBRARY_CORE_QUERY_IDS = [
   "account_detail_v1",
@@ -241,6 +248,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_PERSON_TIMELINE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PERSONS_GRAPH_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ITEM_DETAIL_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA
     | null;
   readonly responseSchema:
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
@@ -252,6 +260,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_PERSON_TIMELINE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PERSONS_GRAPH_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_ITEM_SCAN_RESPONSE_SCHEMA
     | null;
   readonly projection:
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
@@ -372,7 +381,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PERSON_TIMELINE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PERSONS_GRAPH_REQUEST_SCHEMA
-    | typeof LIBRARY_CORE_ITEM_DETAIL_REQUEST_SCHEMA;
+    | typeof LIBRARY_CORE_ITEM_DETAIL_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA;
   readonly responseSchema?:
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA
@@ -382,7 +392,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PERSON_TIMELINE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PERSONS_GRAPH_RESPONSE_SCHEMA
-    | typeof LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA;
+    | typeof LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_ITEM_SCAN_RESPONSE_SCHEMA;
   readonly projection?:
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION
@@ -564,6 +575,21 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
       "read_library_core_item_scan_page",
       "scanLibraryCoreItems",
     ],
+    requestSchema: LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_ITEM_SCAN_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_ITEM_SCAN_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_ITEM_SCAN_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_ITEM_SCAN_NESTED_BOUNDS,
+    fullContentAllowed: true,
+    // Keyset on the unique globalId primary key, ascending. Two statements
+    // rather than a nullable-cursor expression precisely so the index can
+    // satisfy the order without a temp B-tree.
+    stableSort: {
+      columns: [{ column: "globalId", direction: "asc" }],
+      textCollation: "binary",
+      nullOrdering: "all_sort_columns_not_null",
+    },
+    tieBreakKey: "globalId",
     resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   change_feed_v1: plannedQuery({
