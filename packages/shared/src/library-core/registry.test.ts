@@ -29,6 +29,14 @@ import {
   LIBRARY_CORE_PERSON_TIMELINE_SOURCE_IDENTITY,
 } from "./person-timeline-contracts.js";
 import {
+  LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS,
+  LIBRARY_CORE_PERSONS_GRAPH_PROJECTION,
+  LIBRARY_CORE_PERSONS_GRAPH_REQUEST_SCHEMA,
+  LIBRARY_CORE_PERSONS_GRAPH_RESPONSE_SCHEMA,
+  LIBRARY_CORE_PERSONS_GRAPH_SERIES_ORDER,
+  LIBRARY_CORE_PERSONS_GRAPH_SOURCE_IDENTITY,
+} from "./persons-graph-contracts.js";
+import {
   LIBRARY_CORE_FIELD_REGISTRY,
 } from "./field-registry.js";
 import {
@@ -440,6 +448,44 @@ describe("Library Core query registry", () => {
     expect(
       BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds,
     ).toContain("feed_browse_page_v2");
+  });
+
+  it("closes five persons-graph contract fields and keeps the sort blocked", () => {
+    expect(LIBRARY_CORE_QUERY_REGISTRY.persons_graph_v1).toMatchObject({
+      status: "planned_blocked",
+      requestSchema: LIBRARY_CORE_PERSONS_GRAPH_REQUEST_SCHEMA,
+      responseSchema: LIBRARY_CORE_PERSONS_GRAPH_RESPONSE_SCHEMA,
+      projection: LIBRARY_CORE_PERSONS_GRAPH_PROJECTION,
+      sourceIdentity: LIBRARY_CORE_PERSONS_GRAPH_SOURCE_IDENTITY,
+      nestedBounds: LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS,
+    });
+    for (const blocker of [
+      "request_schema_unresolved",
+      "response_schema_unresolved",
+      "projection_unresolved",
+      "source_identity_unresolved",
+      "nested_bounds_unresolved",
+    ]) {
+      expect(
+        LIBRARY_CORE_QUERY_REGISTRY.persons_graph_v1.blockers,
+      ).not.toContain(blocker);
+    }
+    // The response carries two independently keyed series, which the single
+    // column list of ResolvedQuerySortContract cannot express. Leaving a
+    // half-true sort here would be worse than leaving the blocker open.
+    expect(LIBRARY_CORE_QUERY_REGISTRY.persons_graph_v1.stableSort).toBeNull();
+    expect(LIBRARY_CORE_QUERY_REGISTRY.persons_graph_v1.tieBreakKey).toBeNull();
+    expect(LIBRARY_CORE_QUERY_REGISTRY.persons_graph_v1.blockers).toContain(
+      "sort_contract_unresolved",
+    );
+    // The real orderings are still recorded so later work need not re-derive.
+    expect(LIBRARY_CORE_PERSONS_GRAPH_SERIES_ORDER.social.columns).toEqual([
+      "platform",
+      "authorId",
+    ]);
+    expect(LIBRARY_CORE_PERSONS_GRAPH_SERIES_ORDER.rss.columns).toEqual([
+      "feedUrl",
+    ]);
   });
 
   it("closes the person-timeline page contract", () => {

@@ -26,6 +26,7 @@ export * from "./query-registry.js";
 export * from "./saved-feed-page-contracts.js";
 export * from "./saved-analytics-contracts.js";
 export * from "./person-timeline-contracts.js";
+export * from "./persons-graph-contracts.js";
 export * from "./sha256.js";
 export * from "./store-surface-registry.js";
 export * from "./wire-frame.js";

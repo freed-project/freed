@@ -43,6 +43,13 @@ import {
   LIBRARY_CORE_PERSON_TIMELINE_RESPONSE_SCHEMA,
   LIBRARY_CORE_PERSON_TIMELINE_SOURCE_IDENTITY,
 } from "./person-timeline-contracts.js";
+import {
+  LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS,
+  LIBRARY_CORE_PERSONS_GRAPH_PROJECTION,
+  LIBRARY_CORE_PERSONS_GRAPH_REQUEST_SCHEMA,
+  LIBRARY_CORE_PERSONS_GRAPH_RESPONSE_SCHEMA,
+  LIBRARY_CORE_PERSONS_GRAPH_SOURCE_IDENTITY,
+} from "./persons-graph-contracts.js";
 
 export const LIBRARY_CORE_QUERY_IDS = [
   "account_detail_v1",
@@ -221,6 +228,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PERSON_TIMELINE_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_PERSONS_GRAPH_REQUEST_SCHEMA
     | null;
   readonly responseSchema:
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
@@ -230,6 +238,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PERSON_TIMELINE_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_PERSONS_GRAPH_RESPONSE_SCHEMA
     | null;
   readonly projection:
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
@@ -237,14 +246,17 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_PROJECTION
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_PROJECTION
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_PROJECTION
+    | typeof LIBRARY_CORE_PERSONS_GRAPH_PROJECTION
     | null;
   readonly sourceIdentity:
     | typeof LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_SOURCE_IDENTITY
+    | typeof LIBRARY_CORE_PERSONS_GRAPH_SOURCE_IDENTITY
     | null;
   readonly nestedBounds:
     | typeof LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS
     | null;
   readonly stableSort: ResolvedQuerySortContract | null;
   readonly tieBreakKey: string | null;
@@ -342,7 +354,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V3_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_REQUEST_SCHEMA
-    | typeof LIBRARY_CORE_PERSON_TIMELINE_REQUEST_SCHEMA;
+    | typeof LIBRARY_CORE_PERSON_TIMELINE_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_PERSONS_GRAPH_REQUEST_SCHEMA;
   readonly responseSchema?:
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA
@@ -350,19 +363,23 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V3_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_RESPONSE_SCHEMA
-    | typeof LIBRARY_CORE_PERSON_TIMELINE_RESPONSE_SCHEMA;
+    | typeof LIBRARY_CORE_PERSON_TIMELINE_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_PERSONS_GRAPH_RESPONSE_SCHEMA;
   readonly projection?:
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_PROJECTION
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_PROJECTION
-    | typeof LIBRARY_CORE_SAVED_ANALYTICS_PROJECTION;
+    | typeof LIBRARY_CORE_SAVED_ANALYTICS_PROJECTION
+    | typeof LIBRARY_CORE_PERSONS_GRAPH_PROJECTION;
   readonly sourceIdentity?:
     | typeof LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY
-    | typeof LIBRARY_CORE_SAVED_ANALYTICS_SOURCE_IDENTITY;
+    | typeof LIBRARY_CORE_SAVED_ANALYTICS_SOURCE_IDENTITY
+    | typeof LIBRARY_CORE_PERSONS_GRAPH_SOURCE_IDENTITY;
   readonly nestedBounds?:
     | typeof LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS
-    | typeof LIBRARY_CORE_SAVED_ANALYTICS_NESTED_BOUNDS;
+    | typeof LIBRARY_CORE_SAVED_ANALYTICS_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS;
   /**
    * Supplying both clears `sort_contract_unresolved` for this query. They move
    * together on purpose: an ordering without a tie-break is not stable, and a
@@ -877,6 +894,17 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
       "ProjectionReadSession::friends_graph_activity",
       "read_library_core_persons_graph",
     ],
+    requestSchema: LIBRARY_CORE_PERSONS_GRAPH_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_PERSONS_GRAPH_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_PERSONS_GRAPH_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_PERSONS_GRAPH_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS,
+    // stableSort and tieBreakKey stay null on purpose. The response carries two
+    // independently keyed series (social by platform+authorId, rss by feedUrl)
+    // and ResolvedQuerySortContract expresses one column list with one final
+    // tie-break. Declaring only one series would say nothing about the other,
+    // so sort_contract_unresolved stays open. The real orderings are recorded
+    // in LIBRARY_CORE_PERSONS_GRAPH_SERIES_ORDER.
     resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   preferences_snapshot_v1: plannedQuery({
