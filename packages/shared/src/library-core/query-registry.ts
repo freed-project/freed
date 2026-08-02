@@ -65,6 +65,13 @@ import {
   LIBRARY_CORE_ITEM_SCAN_RESPONSE_SCHEMA,
   LIBRARY_CORE_ITEM_SCAN_SOURCE_IDENTITY,
 } from "./item-scan-contracts.js";
+import {
+  LIBRARY_CORE_SURFACE_ITEMS_NESTED_BOUNDS,
+  LIBRARY_CORE_SURFACE_ITEMS_PROJECTION,
+  LIBRARY_CORE_SURFACE_ITEMS_REQUEST_SCHEMA,
+  LIBRARY_CORE_SURFACE_ITEMS_RESPONSE_SCHEMA,
+  LIBRARY_CORE_SURFACE_ITEMS_SOURCE_IDENTITY,
+} from "./surface-items-contracts.js";
 
 export const LIBRARY_CORE_QUERY_IDS = [
   "account_detail_v1",
@@ -249,6 +256,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_PERSONS_GRAPH_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ITEM_DETAIL_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_SURFACE_ITEMS_REQUEST_SCHEMA
     | null;
   readonly responseSchema:
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
@@ -261,6 +269,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_PERSONS_GRAPH_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ITEM_SCAN_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_SURFACE_ITEMS_RESPONSE_SCHEMA
     | null;
   readonly projection:
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
@@ -382,7 +391,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_PERSON_TIMELINE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PERSONS_GRAPH_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_ITEM_DETAIL_REQUEST_SCHEMA
-    | typeof LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA;
+    | typeof LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_SURFACE_ITEMS_REQUEST_SCHEMA;
   readonly responseSchema?:
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA
@@ -393,7 +403,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_PERSON_TIMELINE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PERSONS_GRAPH_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA
-    | typeof LIBRARY_CORE_ITEM_SCAN_RESPONSE_SCHEMA;
+    | typeof LIBRARY_CORE_ITEM_SCAN_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_SURFACE_ITEMS_RESPONSE_SCHEMA;
   readonly projection?:
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION
@@ -953,6 +964,18 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
       "read_library_core_surface_items",
       "readLibrarySurfaceItems",
     ],
+    requestSchema: LIBRARY_CORE_SURFACE_ITEMS_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_SURFACE_ITEMS_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_SURFACE_ITEMS_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_SURFACE_ITEMS_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_SURFACE_ITEMS_NESTED_BOUNDS,
+    fullContentAllowed: true,
+    // stableSort and tieBreakKey stay null on purpose. Both surfaces read
+    // ORDER BY sortAt DESC, globalId ASC, but declaring a sort contract asserts
+    // the order is index-satisfiable and for the Map surface it is not:
+    // EXPLAIN QUERY PLAN answers it with USE TEMP B-TREE FOR ORDER BY. Tracked
+    // in issue #1323; the intended order is recorded in
+    // LIBRARY_CORE_SURFACE_ITEMS_INTENDED_ORDER.
     resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   map_markers_v1: plannedQuery({
