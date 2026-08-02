@@ -27,6 +27,7 @@ import type { LibraryCoreItemScanSession } from "./library-core-item-detail-runt
 
 const MAXIMUM_ROWS = 250_000;
 const MAXIMUM_BATCH_ROWS = 128;
+const MAXIMUM_SCAN_PAGE_ROWS = 64;
 const GENERATION_DOMAIN =
   "freed-desktop-library-core-feed-browse-generation-v1";
 
@@ -49,9 +50,9 @@ interface ScannedProjectionSession {
   readonly sessionId: string;
   readonly state: DocState;
   readonly source: LibraryCoreProjectionSourceV1;
-  readonly sourceSequenceById: ReadonlyMap<string, number> | null;
   readonly weights: ReturnType<typeof mergeDefaultPreferences>["weights"];
   readonly priorityContext: ReturnType<typeof buildPriorityContext>;
+  readonly includeItem: ((item: FeedItem) => boolean) | null;
   readonly started: LibraryCoreFeedBrowseProjectionStartedV1;
   scan: LibraryCoreItemScanSession | null;
   nextBatchIndex: number;
@@ -65,7 +66,8 @@ export interface LibraryCoreScannedFeedBrowseProjectionStrategy {
   bindingFilterJson(
     filter: ReturnType<typeof normalizeLibraryCoreFeedBrowseFilterV1>,
   ): string;
-  projectRow(input: {
+  createItemPredicate?(state: DocState): (item: FeedItem) => boolean;
+  projectRow?(input: {
     readonly item: FeedItem;
     readonly recommendationPriority: number;
   }): LibraryCoreFeedBrowseProjectedRowV1;
@@ -128,6 +130,50 @@ function buildSourceSequence(state: DocState): ReadonlyMap<string, number> {
     }
     sequenceById.set(globalId, index);
   });
+  return sequenceById;
+}
+
+function assertBoundedScanPage(items: readonly FeedItem[]): void {
+  if (items.length > MAXIMUM_SCAN_PAGE_ROWS) {
+    throw new Error("Library Core item scan page is oversized");
+  }
+}
+
+function buildPageSourceSequence(
+  state: DocState,
+  items: readonly FeedItem[],
+): ReadonlyMap<string, number> {
+  const ids = state.feedSourceOrderIds;
+  if (!ids || ids.length !== state.docItemCount) {
+    throw new Error("Hydrated feed source order is unavailable");
+  }
+
+  // Keep only the current native page's identities. Values start at -1 and
+  // are replaced with their exact corpus positions during the source scan.
+  const sequenceById = new Map<string, number>();
+  for (const item of items) {
+    if (!item.globalId) {
+      throw new Error("Library Core item scan page identity is invalid");
+    }
+    sequenceById.set(item.globalId, -1);
+  }
+  for (let index = 0; index < ids.length; index += 1) {
+    const globalId = ids[index];
+    if (!globalId || !Number.isSafeInteger(index)) {
+      throw new Error("Hydrated feed source order is invalid");
+    }
+    const sourceSequence = sequenceById.get(globalId);
+    if (sourceSequence === undefined) continue;
+    if (sourceSequence >= 0) {
+      throw new Error("Hydrated feed source order is invalid");
+    }
+    sequenceById.set(globalId, index);
+  }
+  for (const sourceSequence of sequenceById.values()) {
+    if (sourceSequence < 0) {
+      throw new Error("Library Core feed item has no source sequence");
+    }
+  }
   return sequenceById;
 }
 
@@ -424,16 +470,16 @@ export function createScannedLibraryCoreFeedBrowseProjectionClient({
         }
         return session.started;
       }
-      // Custom query strategies define their own total order. Avoid retaining
-      // the ordinary browse reader's O(corpus) ID-to-sequence map for them.
-      const sourceSequenceById = strategy ? null : buildSourceSequence(state);
+      const includeItem = strategy?.createItemPredicate?.(state) ?? null;
       let totalRows = 0;
       const countScan = await openScan();
       try {
         while (true) {
           const page = await countScan.nextPage();
+          assertBoundedScanPage(page.items);
           for (const item of page.items) {
             if (!matchesLibraryCoreFeedBrowseFilterV1(item, filter)) continue;
+            if (includeItem && !includeItem(item)) continue;
             totalRows += 1;
             if (totalRows > MAXIMUM_ROWS) {
               throw new Error(
@@ -461,9 +507,9 @@ export function createScannedLibraryCoreFeedBrowseProjectionClient({
         sessionId,
         state,
         source,
-        sourceSequenceById,
         weights: mergeDefaultPreferences(state.preferences).weights,
         priorityContext: buildPriorityContext(state),
+        includeItem,
         started,
         scan: null,
         nextBatchIndex: 0,
@@ -501,14 +547,19 @@ export function createScannedLibraryCoreFeedBrowseProjectionClient({
         // filtered pages are skipped until a row or the terminal page appears.
         while (rows.length === 0 && !done) {
           const page = await active.scan.nextPage();
+          assertBoundedScanPage(page.items);
           done = page.done;
+          const pageSourceSequenceById = strategy?.projectRow
+            ? null
+            : buildPageSourceSequence(active.state, page.items);
           for (const item of page.items) {
             if (
               !matchesLibraryCoreFeedBrowseFilterV1(item, active.started.filter)
             ) {
               continue;
             }
-            if (strategy) {
+            if (active.includeItem && !active.includeItem(item)) continue;
+            if (strategy?.projectRow) {
               rows.push(
                 strategy.projectRow({
                   item,
@@ -522,14 +573,13 @@ export function createScannedLibraryCoreFeedBrowseProjectionClient({
               );
               continue;
             }
-            const sourceSequenceById = active.sourceSequenceById;
-            if (!sourceSequenceById) {
+            if (!pageSourceSequenceById) {
               throw new Error("Library Core feed source order is unavailable");
             }
             rows.push(
               projectRow(
                 item,
-                sourceSequenceById,
+                pageSourceSequenceById,
                 active.weights,
                 active.priorityContext,
                 active.started.binding.rankingClockMs,

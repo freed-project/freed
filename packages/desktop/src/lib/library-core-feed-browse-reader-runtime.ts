@@ -2,14 +2,21 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
   LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
+  LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID,
+  LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION,
+  LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
   LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
   LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
   isLibraryCoreOperationInstanceId,
   parseLibraryCoreFeedBrowsePageResponseV1,
+  parseLibraryCoreFeedBrowsePageResponseV2,
   type LibraryCoreFeedBrowseFilterInputV1,
   type LibraryCoreFeedBrowseFilterV1,
+  type LibraryCoreFeedBrowseIdentityModeV2,
   type LibraryCoreFeedBrowsePageRequestV1,
+  type LibraryCoreFeedBrowsePageRequestV2,
   type LibraryCoreFeedBrowsePageResponseV1,
+  type LibraryCoreFeedBrowsePageResponseV2,
   type LibraryCoreFeedCardV1,
   type LibraryCoreOperationInstanceId,
 } from "@freed/shared/library-core";
@@ -45,7 +52,9 @@ export interface LibraryCoreFeedBrowseReaderNativeClient {
     expectedCurrentGenerationId: string | null;
   }): Promise<SelectedLibraryCoreFeedBrowseGenerationV1>;
   read(
-    request: LibraryCoreFeedBrowsePageRequestV1,
+    request:
+      | LibraryCoreFeedBrowsePageRequestV1
+      | LibraryCoreFeedBrowsePageRequestV2,
   ): Promise<unknown>;
   cancel(readerSessionId: string, cancellationId: string): Promise<void>;
 }
@@ -126,9 +135,14 @@ function assertSelectedGeneration(
 
 export interface LibraryCoreFeedBrowseReaderSession {
   readonly filter: LibraryCoreFeedBrowseFilterV1;
+  readonly identityMode: LibraryCoreFeedBrowseIdentityModeV2;
   readonly rankingClockMs: number;
   readonly totalCount: number;
-  readNext(limit?: number): Promise<LibraryCoreFeedBrowsePageResponseV1>;
+  readNext(
+    limit?: number,
+  ): Promise<
+    LibraryCoreFeedBrowsePageResponseV1 | LibraryCoreFeedBrowsePageResponseV2
+  >;
   close(): Promise<void>;
 }
 
@@ -136,6 +150,7 @@ class DesktopLibraryCoreFeedBrowseReaderSession
   implements LibraryCoreFeedBrowseReaderSession
 {
   readonly filter: LibraryCoreFeedBrowseFilterV1;
+  readonly identityMode: LibraryCoreFeedBrowseIdentityModeV2;
   readonly rankingClockMs: number;
   readonly totalCount: number;
   private cursor: string | null = null;
@@ -147,30 +162,53 @@ class DesktopLibraryCoreFeedBrowseReaderSession
     private readonly native: LibraryCoreFeedBrowseReaderNativeClient,
     private readonly readerSessionId: LibraryCoreOperationInstanceId,
     filter: LibraryCoreFeedBrowseFilterV1,
+    identityMode: LibraryCoreFeedBrowseIdentityModeV2,
     rankingClockMs: number,
     totalCount: number,
   ) {
     this.filter = filter;
+    this.identityMode = identityMode;
     this.rankingClockMs = rankingClockMs;
     this.totalCount = totalCount;
   }
 
   async readNext(
     limit = LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
-  ): Promise<LibraryCoreFeedBrowsePageResponseV1> {
+  ): Promise<
+    LibraryCoreFeedBrowsePageResponseV1 | LibraryCoreFeedBrowsePageResponseV2
+  > {
     if (this.closed) throw new Error("Library Core browse reader is closed");
     if (this.exhausted) throw new Error("Library Core browse reader is exhausted");
     this.cancellationId = newOperationId("browse-cancel");
-    const request: LibraryCoreFeedBrowsePageRequestV1 = {
+    const requestBase = {
       cancellationId: this.cancellationId,
       cursor: this.cursor,
       filter: this.filter,
       limit,
-      queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
       rankingClockMs: this.rankingClockMs,
       readerSessionId: this.readerSessionId,
       recommendationOrderSchemaVersion:
         LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
+    };
+    if (this.identityMode === "friends") {
+      const request: LibraryCoreFeedBrowsePageRequestV2 = {
+        ...requestBase,
+        friendsPredicateSchemaVersion:
+          LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+        identityMode: "friends",
+        queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID,
+        schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION,
+      };
+      const raw = await this.native.read(request);
+      const parsed = parseLibraryCoreFeedBrowsePageResponseV2(raw, request);
+      if (!parsed.ok) throw new Error(parsed.error);
+      this.cursor = parsed.value.nextCursor;
+      this.exhausted = this.cursor === null;
+      return parsed.value;
+    }
+    const request: LibraryCoreFeedBrowsePageRequestV1 = {
+      ...requestBase,
+      queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
       schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
     };
     const raw = await this.native.read(request);
@@ -195,10 +233,12 @@ export async function openLibraryCoreFeedBrowseReader(
   rankingClockMs: number,
   native: LibraryCoreFeedBrowseReaderNativeClient =
     tauriLibraryCoreFeedBrowseReaderNativeClient,
+  identityMode: LibraryCoreFeedBrowseIdentityModeV2 = "all_content",
 ): Promise<LibraryCoreFeedBrowseReaderSession> {
   const materialized = await materializeLibraryCoreFeedBrowseGeneration(
     filterInput,
     rankingClockMs,
+    identityMode,
   );
   const source = await getLibraryCoreProjectionSource();
   if (!sameProjectionSource(source, materialized.binding)) {
@@ -219,6 +259,7 @@ export async function openLibraryCoreFeedBrowseReader(
     native,
     newOperationId("browse-reader"),
     materialized.filter,
+    identityMode,
     rankingClockMs,
     materialized.binding.totalRows,
   );
@@ -248,6 +289,8 @@ const CONTENT_TYPES = new Set<ContentType>([
 const MEDIA_TYPES = new Set<MediaType>(["image", "video", "link"]);
 export const LIBRARY_CORE_FEED_BROWSE_READER_DISABLED_KEY =
   "freed.libraryCore.feedBrowseReaderV1.disabled";
+export const LIBRARY_CORE_FRIENDS_FEED_READER_DISABLED_KEY =
+  "freed.libraryCore.friendsFeedReaderV1.disabled";
 
 export function feedCardToItem(card: LibraryCoreFeedCardV1): FeedItem {
   const platform = PLATFORMS.has(card.platform as Platform)
@@ -360,6 +403,38 @@ export async function openBoundedDesktopFeedReader(
     throw new Error("Library Core bounded feed reader is disabled");
   }
   const session = await openLibraryCoreFeedBrowseReader(filter, rankingClockMs);
+  return {
+    totalCount: session.totalCount,
+    async readNext() {
+      const page = await session.readNext();
+      return page.rows.map(feedCardToItem);
+    },
+    close() {
+      return session.close();
+    },
+  };
+}
+
+export async function openBoundedDesktopFriendsFeedReader(
+  filter: LibraryCoreFeedBrowseFilterInputV1,
+  rankingClockMs: number,
+): Promise<{
+  readonly totalCount: number;
+  readNext(): Promise<readonly FeedItem[]>;
+  close(): Promise<void>;
+}> {
+  if (
+    typeof localStorage !== "undefined" &&
+    localStorage.getItem(LIBRARY_CORE_FRIENDS_FEED_READER_DISABLED_KEY) === "1"
+  ) {
+    throw new Error("Library Core bounded Friends feed reader is disabled");
+  }
+  const session = await openLibraryCoreFeedBrowseReader(
+    filter,
+    rankingClockMs,
+    tauriLibraryCoreFeedBrowseReaderNativeClient,
+    "friends",
+  );
   return {
     totalCount: session.totalCount,
     async readNext() {

@@ -81,6 +81,64 @@ export const LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION = Object.freeze({
   ]),
 });
 
+export const LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID =
+  "feed_browse_page_v2" as const;
+export const LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION = 2 as const;
+export const LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION =
+  1 as const;
+const LIBRARY_CORE_FEED_BROWSE_IDENTITY_MODES = Object.freeze([
+  "all_content",
+  "friends",
+] as const);
+
+export const LIBRARY_CORE_FEED_BROWSE_PAGE_V2_REQUEST_SCHEMA = Object.freeze({
+  schemaId: "library_core_feed_browse_page_request_v2",
+  schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION,
+  queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID,
+  canonicalKeys: Object.freeze([
+    "cancellationId",
+    "cursor",
+    "filter",
+    "friendsPredicateSchemaVersion",
+    "identityMode",
+    "limit",
+    "queryId",
+    "rankingClockMs",
+    "readerSessionId",
+    "recommendationOrderSchemaVersion",
+    "schemaVersion",
+  ]),
+  cursorCodec: "library_core_feed_browse_page_cursor_v1",
+  maximumLimit: LIBRARY_CORE_FEED_PAGE_MAXIMUM_LIMIT,
+  maximumCursorBytes: LIBRARY_CORE_FEED_BROWSE_PAGE_MAXIMUM_CURSOR_BYTES,
+});
+
+export const LIBRARY_CORE_FEED_BROWSE_PAGE_V2_RESPONSE_SCHEMA = Object.freeze({
+  schemaId: "library_core_feed_browse_page_response_v2",
+  schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION,
+  queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID,
+  canonicalKeys: Object.freeze([
+    "filter",
+    "friendsPredicateSchemaVersion",
+    "identityMode",
+    "nextCursor",
+    "nextOrder",
+    "queryId",
+    "rankingClockMs",
+    "recommendationOrderSchemaVersion",
+    "rows",
+    "schemaVersion",
+    "source",
+    "totalCount",
+  ]),
+  maximumRows: LIBRARY_CORE_FEED_PAGE_MAXIMUM_LIMIT,
+  maximumResponseBytes: LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
+});
+
+/** V2 changes query identity, not the compact row projection. */
+export const LIBRARY_CORE_FEED_BROWSE_PAGE_V2_PROJECTION =
+  LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION;
+
 export interface LibraryCoreFeedBrowsePageCursorV1 {
   readonly generationId: LibraryCoreLowercaseHex64;
   readonly transitionSequence: number;
@@ -123,6 +181,54 @@ export interface LibraryCoreFeedBrowsePageResponseV1 {
   readonly totalCount: number;
 }
 
+export type LibraryCoreFeedBrowseIdentityModeV2 =
+  (typeof LIBRARY_CORE_FEED_BROWSE_IDENTITY_MODES)[number];
+
+export interface LibraryCoreFeedBrowseBindingFilterV2 {
+  readonly filter: LibraryCoreFeedBrowseFilterV1;
+  readonly friendsPredicateSchemaVersion:
+    typeof LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION;
+  readonly identityMode: LibraryCoreFeedBrowseIdentityModeV2;
+}
+
+export interface LibraryCoreFeedBrowsePageRequestV2 {
+  readonly cancellationId: LibraryCoreOperationInstanceId;
+  readonly cursor: string | null;
+  readonly filter: LibraryCoreFeedBrowseFilterV1;
+  readonly friendsPredicateSchemaVersion:
+    typeof LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION;
+  readonly identityMode: LibraryCoreFeedBrowseIdentityModeV2;
+  readonly limit: number;
+  readonly queryId: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID;
+  readonly rankingClockMs: number;
+  readonly readerSessionId: LibraryCoreOperationInstanceId;
+  readonly recommendationOrderSchemaVersion:
+    typeof LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION;
+  readonly schemaVersion: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION;
+}
+
+export interface LibraryCoreFeedBrowsePageResponseV2 {
+  readonly filter: LibraryCoreFeedBrowseFilterV1;
+  readonly friendsPredicateSchemaVersion:
+    typeof LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION;
+  readonly identityMode: LibraryCoreFeedBrowseIdentityModeV2;
+  readonly nextCursor: string | null;
+  readonly nextOrder: Readonly<{
+    readonly globalId: LibraryCoreEntityId;
+    readonly priority: number;
+    readonly publishedAt: number;
+    readonly sourceSequence: number;
+  }> | null;
+  readonly queryId: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID;
+  readonly rankingClockMs: number;
+  readonly recommendationOrderSchemaVersion:
+    typeof LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION;
+  readonly rows: readonly LibraryCoreFeedCardV1[];
+  readonly schemaVersion: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION;
+  readonly source: LibraryCoreFeedPageSourceV1;
+  readonly totalCount: number;
+}
+
 const BASE64URL_ALPHABET =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 const BASE64URL_VALUE = new Map(
@@ -135,6 +241,10 @@ const FATAL_TEXT_DECODER = new TextDecoder("utf-8", { fatal: true });
 const REQUEST_KEYS = LIBRARY_CORE_FEED_BROWSE_PAGE_REQUEST_SCHEMA.canonicalKeys;
 const RESPONSE_KEYS =
   LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA.canonicalKeys;
+const V2_REQUEST_KEYS =
+  LIBRARY_CORE_FEED_BROWSE_PAGE_V2_REQUEST_SCHEMA.canonicalKeys;
+const V2_RESPONSE_KEYS =
+  LIBRARY_CORE_FEED_BROWSE_PAGE_V2_RESPONSE_SCHEMA.canonicalKeys;
 const NEXT_ORDER_KEYS = [
   "globalId",
   "priority",
@@ -154,6 +264,7 @@ function closedRecord(
   value: unknown,
   keys: readonly string[],
   label: string,
+  schemaVersion = 1,
 ): LibraryCoreFeedPageParseResult<Record<string, unknown>> {
   if (
     value === null ||
@@ -171,11 +282,38 @@ function closedRecord(
       !descriptors[key]?.enumerable || !("value" in descriptors[key])
     )
   ) {
-    return failure(`${label} fields do not match schema version 1`);
+    return failure(
+      `${label} fields do not match schema version ${schemaVersion.toLocaleString()}`,
+    );
   }
   return success(
     Object.fromEntries(keys.map((key) => [key, descriptors[key]!.value])),
   );
+}
+
+function isLibraryCoreFeedBrowseIdentityModeV2(
+  value: unknown,
+): value is LibraryCoreFeedBrowseIdentityModeV2 {
+  return LIBRARY_CORE_FEED_BROWSE_IDENTITY_MODES.some(
+    (identityMode) => identityMode === value,
+  );
+}
+
+export function libraryCoreFeedBrowseBindingFilterV2(
+  filterValue: LibraryCoreFeedBrowseFilterV1,
+  identityMode: LibraryCoreFeedBrowseIdentityModeV2,
+): LibraryCoreFeedBrowseBindingFilterV2 {
+  const filter = parseLibraryCoreFeedBrowseFilterV1(filterValue);
+  if (!filter.ok) throw new TypeError(filter.error);
+  if (!isLibraryCoreFeedBrowseIdentityModeV2(identityMode)) {
+    throw new TypeError("invalid Library Core feed-browse identity mode");
+  }
+  return Object.freeze({
+    filter: filter.value,
+    friendsPredicateSchemaVersion:
+      LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+    identityMode,
+  });
 }
 
 function lowerHexToBytes(value: string): Uint8Array {
@@ -480,6 +618,123 @@ export function parseLibraryCoreFeedBrowsePageResponseV1(
     serializedRowsBytes +
       TEXT_ENCODER.encode(JSON.stringify({ ...response, rows: [] })).length >
         LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES
+  ) {
+    return failure("browse response exceeds the feed-page byte ceiling");
+  }
+  return success(response);
+}
+
+function feedBrowsePageRequestV1FromV2(
+  request: LibraryCoreFeedBrowsePageRequestV2,
+): LibraryCoreFeedBrowsePageRequestV1 {
+  return {
+    cancellationId: request.cancellationId,
+    cursor: request.cursor,
+    filter: request.filter,
+    limit: request.limit,
+    queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
+    rankingClockMs: request.rankingClockMs,
+    readerSessionId: request.readerSessionId,
+    recommendationOrderSchemaVersion:
+      request.recommendationOrderSchemaVersion,
+    schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
+  };
+}
+
+function parseLibraryCoreFeedBrowsePageRequestV2(
+  value: unknown,
+): LibraryCoreFeedPageParseResult<LibraryCoreFeedBrowsePageRequestV2> {
+  const record = closedRecord(value, V2_REQUEST_KEYS, "browse request", 2);
+  if (!record.ok) return record;
+  const input = record.value;
+  if (
+    input.queryId !== LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID ||
+    input.schemaVersion !== LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION ||
+    input.friendsPredicateSchemaVersion !==
+      LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION ||
+    !isLibraryCoreFeedBrowseIdentityModeV2(input.identityMode)
+  ) {
+    return failure("browse request identity or bounds are invalid");
+  }
+  const parsedV1 = parseLibraryCoreFeedBrowsePageRequestV1({
+    cancellationId: input.cancellationId,
+    cursor: input.cursor,
+    filter: input.filter,
+    limit: input.limit,
+    queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
+    rankingClockMs: input.rankingClockMs,
+    readerSessionId: input.readerSessionId,
+    recommendationOrderSchemaVersion: input.recommendationOrderSchemaVersion,
+    schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
+  });
+  if (!parsedV1.ok) return failure(parsedV1.error);
+  return success(Object.freeze({
+    cancellationId: parsedV1.value.cancellationId,
+    cursor: parsedV1.value.cursor,
+    filter: parsedV1.value.filter,
+    friendsPredicateSchemaVersion:
+      LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+    identityMode: input.identityMode,
+    limit: parsedV1.value.limit,
+    queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID,
+    rankingClockMs: parsedV1.value.rankingClockMs,
+    readerSessionId: parsedV1.value.readerSessionId,
+    recommendationOrderSchemaVersion:
+      LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
+    schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION,
+  }));
+}
+
+export function parseLibraryCoreFeedBrowsePageResponseV2(
+  value: unknown,
+  requestValue: unknown,
+): LibraryCoreFeedPageParseResult<LibraryCoreFeedBrowsePageResponseV2> {
+  const request = parseLibraryCoreFeedBrowsePageRequestV2(requestValue);
+  if (!request.ok) return failure(request.error);
+  const record = closedRecord(value, V2_RESPONSE_KEYS, "browse response", 2);
+  if (!record.ok) return record;
+  const input = record.value;
+  if (
+    input.queryId !== LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID ||
+    input.schemaVersion !== LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION ||
+    input.friendsPredicateSchemaVersion !==
+      request.value.friendsPredicateSchemaVersion ||
+    input.identityMode !== request.value.identityMode
+  ) {
+    return failure("browse response identity or bounds are invalid");
+  }
+  const parsedV1 = parseLibraryCoreFeedBrowsePageResponseV1({
+    filter: input.filter,
+    nextCursor: input.nextCursor,
+    nextOrder: input.nextOrder,
+    queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
+    rankingClockMs: input.rankingClockMs,
+    recommendationOrderSchemaVersion: input.recommendationOrderSchemaVersion,
+    rows: input.rows,
+    schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
+    source: input.source,
+    totalCount: input.totalCount,
+  }, feedBrowsePageRequestV1FromV2(request.value));
+  if (!parsedV1.ok) return failure(parsedV1.error);
+  const response: LibraryCoreFeedBrowsePageResponseV2 = Object.freeze({
+    filter: parsedV1.value.filter,
+    friendsPredicateSchemaVersion:
+      LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+    identityMode: request.value.identityMode,
+    nextCursor: parsedV1.value.nextCursor,
+    nextOrder: parsedV1.value.nextOrder,
+    queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID,
+    rankingClockMs: parsedV1.value.rankingClockMs,
+    recommendationOrderSchemaVersion:
+      LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
+    rows: parsedV1.value.rows,
+    schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION,
+    source: parsedV1.value.source,
+    totalCount: parsedV1.value.totalCount,
+  });
+  if (
+    TEXT_ENCODER.encode(JSON.stringify(response)).length >
+    LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES
   ) {
     return failure("browse response exceeds the feed-page byte ceiling");
   }

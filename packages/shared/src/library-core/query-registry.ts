@@ -12,6 +12,9 @@ import {
   LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION,
   LIBRARY_CORE_FEED_BROWSE_PAGE_REQUEST_SCHEMA,
   LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA,
+  LIBRARY_CORE_FEED_BROWSE_PAGE_V2_PROJECTION,
+  LIBRARY_CORE_FEED_BROWSE_PAGE_V2_REQUEST_SCHEMA,
+  LIBRARY_CORE_FEED_BROWSE_PAGE_V2_RESPONSE_SCHEMA,
 } from "./feed-browse-page-contracts.js";
 import {
   LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_LIMIT,
@@ -30,6 +33,7 @@ export const LIBRARY_CORE_QUERY_IDS = [
   "content_fetch_claim_v1",
   "export_enumeration_v1",
   "feed_browse_page_v1",
+  "feed_browse_page_v2",
   "feed_facets_v1",
   "feed_page_v1",
   "feed_subscription_page_v1",
@@ -194,16 +198,19 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
   readonly requestSchema:
     | typeof LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_REQUEST_SCHEMA
     | null;
   readonly responseSchema:
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_RESPONSE_SCHEMA
     | null;
   readonly projection:
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION
+    | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_PROJECTION
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_PROJECTION
     | null;
   readonly sourceIdentity:
@@ -304,14 +311,17 @@ interface PlannedQueryInput {
   readonly requestSchema?:
     | typeof LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_REQUEST_SCHEMA;
   readonly responseSchema?:
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_RESPONSE_SCHEMA;
   readonly projection?:
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION
+    | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_PROJECTION
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_PROJECTION;
   readonly sourceIdentity?: typeof LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY;
   readonly nestedBounds?: typeof LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS;
@@ -521,6 +531,36 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
       nullOrdering: "all_sort_columns_not_null",
     },
     tieBreakKey: "globalId",
+  }),
+  feed_browse_page_v2: plannedQuery({
+    defaultLimit: LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
+    maximumLimit: LIBRARY_CORE_FEED_PAGE_MAXIMUM_LIMIT,
+    maximumRows: LIBRARY_CORE_FEED_PAGE_MAXIMUM_LIMIT,
+    maximumResponseBytes: LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
+    totalCountIntent: "snapshot_exact",
+    rendererCache: true,
+    invalidationKeyIntent: ["feed:friends", "feed-facets"],
+    currentKinds: [
+      "read_library_core_feed_browse_page",
+      "openBoundedDesktopFriendsFeedReader",
+    ],
+    requestSchema: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS,
+    stableSort: {
+      columns: [
+        { column: "priority", direction: "desc" },
+        { column: "publishedAt", direction: "desc" },
+        { column: "sourceSequence", direction: "asc" },
+        { column: "globalId", direction: "asc" },
+      ],
+      textCollation: "binary",
+      nullOrdering: "all_sort_columns_not_null",
+    },
+    tieBreakKey: "globalId",
+    resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   feed_facets_v1: plannedQuery({
     defaultLimit: 128,

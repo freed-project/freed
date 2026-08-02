@@ -80,6 +80,16 @@
         "read_cutover_parity",
         "same_frontier_rollback_receipt"
       ]
+    },
+    {
+      "activationId": "desktop-friends-feed-sql-read-v1",
+      "gate": "D",
+      "kind": "sql_read_cutover",
+      "rollbackTrigger": "Set freed.libraryCore.friendsFeedReaderV1.disabled to 1 on the affected device if Friends-only membership, ordering, paging, selection handoff, or memory diverges from the Freed Desktop Automerge compatibility fallback.",
+      "receiptExpectations": [
+        "read_cutover_parity",
+        "same_frontier_rollback_receipt"
+      ]
     }
   ]
 }

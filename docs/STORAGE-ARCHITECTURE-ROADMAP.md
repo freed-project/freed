@@ -165,7 +165,7 @@ projection generations.
 
 Gate D now serves the all-content feed, item detail, exact Library facets,
 bounded Map and Story Wall candidates, Saved overview analytics, the four-mode
-Saved feed, Friends
+Saved feed, the Friends-only feed, Friends
 activity, selected-person timelines, and Friend editor author candidates, export,
 background content discovery, provider
 completion accounting, RSS duplicate lookup, Google Contacts discovery, and
@@ -197,7 +197,19 @@ remains authoritative, the extra retired files remain non-authoritative, and a
 later selection retries cleanup.
 ReaderView may pin exactly one selected compact card after its feed page is
 evicted, and keeps the existing local-content and hydration path.
-Friends-only feed filtering and other unfinished consumers share one
+The non-Saved Friends-only feed, when no search is active, uses the versioned
+`feed_browse_page_v2` request with `identityMode: "friends"` and Friends
+predicate schema version 1. It preserves
+the current Person-first Account resolution and legacy Friend-source fallback,
+then pages the filtered immutable generation through the ordinary browse order
+and bounds. Its materializer retains source positions for no more than the
+current 64-row native scan page. Ranking-weight or identity movement replaces
+the exact source-bound generation. React retains two pages plus one selected
+compact card so eviction cannot dismiss ReaderView. Version 1 and its
+all-content callers remain unchanged. A stale source, predicate mismatch,
+unavailable reader, or explicit rollback returns to the exact Automerge
+compatibility feed. The PWA remains unchanged.
+Friends search, Friends plus Saved, and other unfinished consumers share one
 reference-counted compatibility projection only while mounted, then evict it.
 Source mismatch or reader failure returns to Automerge. The temporary React
 all-content feed window also returns to Automerge before it could exceed 512
@@ -206,7 +218,9 @@ compact cards because reverse paging is not active yet. The device-local
 reader, `freed.libraryCore.savedAnalyticsReaderV1.disabled=1` disables the
 Saved aggregate, `freed.libraryCore.savedFeedReaderV1.disabled=1` disables the
 Saved feed reader, `freed.libraryCore.friendsReaderV1.disabled=1` disables the
-Friends readers, `freed.libraryCore.providerSettingsReaderV1.disabled=1`
+Friends workspace readers,
+`freed.libraryCore.friendsFeedReaderV1.disabled=1` disables the Friends-only
+feed reader, `freed.libraryCore.providerSettingsReaderV1.disabled=1`
 restores provider settings to the compatibility projection,
 `freed.libraryCore.friendEditorReaderV1.disabled=1` restores the Friend editor
 compatibility lease, `freed.libraryCore.searchJumpReaderV1.disabled=1`

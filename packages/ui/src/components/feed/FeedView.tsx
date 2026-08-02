@@ -63,8 +63,8 @@ const EMPTY_FEED_ITEMS: FeedItem[] = [];
 // Wrapper padding and row spacing match the nav-button radius token at 10px.
 const CARD_H_PAD = COMPACT_CARD_LEFT_PAD + COMPACT_CARD_RIGHT_PAD;
 const CARD_V_GAP = COMPACT_CARD_GAP;
-const SAVED_FEED_PAGE_SIZE = 128;
-const SAVED_FEED_RESIDENT_PAGE_LIMIT = 2;
+const PAGED_FEED_PAGE_SIZE = 128;
+const PAGED_FEED_RESIDENT_PAGE_LIMIT = 2;
 
 interface CompactFeedPanelProps {
   items: FeedItem[];
@@ -356,6 +356,7 @@ export function FeedView() {
   const {
     addRssFeed,
     openBoundedFeedReader,
+    openBoundedFriendsFeedReader,
     openBoundedSavedFeedReader,
     openUrl,
     scanLibraryItems,
@@ -442,13 +443,25 @@ export function FeedView() {
     searchQuery.trim() === "" &&
     friendsMode === "all_content" &&
     !activeFilter.savedOnly;
+  const friendsBoundedFeedEligible =
+    Boolean(openBoundedFriendsFeedReader) &&
+    isInitialized &&
+    searchQuery.trim() === "" &&
+    friendsMode === "friends" &&
+    !activeFilter.savedOnly;
+  const pagedBoundedFeedEligible =
+    savedBoundedFeedEligible || friendsBoundedFeedEligible;
   const boundedFeedEligible =
-    savedBoundedFeedEligible || ordinaryBoundedFeedEligible;
+    pagedBoundedFeedEligible || ordinaryBoundedFeedEligible;
   const boundedReaderIdentity = JSON.stringify({
     filter: activeFilter,
-    kind: savedBoundedFeedEligible ? "saved" : "ordinary",
+    kind: savedBoundedFeedEligible
+      ? "saved"
+      : friendsBoundedFeedEligible
+        ? "friends"
+        : "ordinary",
     sortMode: savedBoundedFeedEligible ? savedContentSortMode : null,
-    sourceVersion: savedBoundedFeedEligible
+    sourceVersion: pagedBoundedFeedEligible
       ? savedFeedVersion
       : searchCorpusVersion,
   });
@@ -472,13 +485,18 @@ export function FeedView() {
     renderedReaderIdentityRef.current = boundedReaderIdentity;
   }, [boundedReaderIdentity]);
   const activeBoundedFeedReader = useMemo(() => {
-    if (!savedBoundedFeedEligible) return openBoundedFeedReader;
-    if (!openBoundedSavedFeedReader) return undefined;
-    return (filter: typeof activeFilter, rankingClockMs: number) =>
-      openBoundedSavedFeedReader(filter, savedContentSortMode, rankingClockMs);
+    if (savedBoundedFeedEligible) {
+      if (!openBoundedSavedFeedReader) return undefined;
+      return (filter: typeof activeFilter, rankingClockMs: number) =>
+        openBoundedSavedFeedReader(filter, savedContentSortMode, rankingClockMs);
+    }
+    if (friendsBoundedFeedEligible) return openBoundedFriendsFeedReader;
+    return openBoundedFeedReader;
   }, [
     openBoundedFeedReader,
+    openBoundedFriendsFeedReader,
     openBoundedSavedFeedReader,
+    friendsBoundedFeedEligible,
     savedBoundedFeedEligible,
     savedContentSortMode,
   ]);
@@ -489,13 +507,15 @@ export function FeedView() {
   } = useBoundedFeedItems({
     activeFilter,
     eligible: boundedFeedEligible,
-    maxPageItems: savedBoundedFeedEligible ? SAVED_FEED_PAGE_SIZE : undefined,
-    maxResidentPages: savedBoundedFeedEligible
-      ? SAVED_FEED_RESIDENT_PAGE_LIMIT
+    maxPageItems: pagedBoundedFeedEligible
+      ? PAGED_FEED_PAGE_SIZE
+      : undefined,
+    maxResidentPages: pagedBoundedFeedEligible
+      ? PAGED_FEED_RESIDENT_PAGE_LIMIT
       : undefined,
     openReader: activeBoundedFeedReader,
     rankingClockMs: boundedReaderRankingClockMs,
-    sourceVersion: savedBoundedFeedEligible
+    sourceVersion: pagedBoundedFeedEligible
       ? savedFeedVersion
       : searchCorpusVersion,
   });
@@ -644,8 +664,8 @@ export function FeedView() {
       current < evictedItemCount ? -1 : current - evictedItemCount,
     );
   }, [boundedFeed.windowStartIndex]);
-  // The store keeps only the selection ID. Saved may additionally pin the one
-  // resident compact card so page eviction cannot dismiss the reader.
+  // The store keeps only the selection ID. Paged bounded feeds additionally
+  // pin one compact card so page eviction cannot dismiss the reader.
   const [selectedItemPin, setSelectedItemPin] =
     useState<SavedFeedSelectionPin | null>(null);
   const residentSelectedItem = useMemo(
@@ -661,7 +681,7 @@ export function FeedView() {
       resolveSavedFeedSelectionPin({
         current,
         eligible: Boolean(
-          savedBoundedFeedEligible && boundedFeedReadyIsCurrent,
+          pagedBoundedFeedEligible && boundedFeedReadyIsCurrent,
         ),
         readerIdentity: boundedReaderIdentity,
         residentSelectedItem,
@@ -672,7 +692,7 @@ export function FeedView() {
     boundedReaderIdentity,
     boundedFeedReadyIsCurrent,
     residentSelectedItem,
-    savedBoundedFeedEligible,
+    pagedBoundedFeedEligible,
     selectedItemId,
   ]);
   const currentSelectedItemPin =
@@ -682,11 +702,11 @@ export function FeedView() {
       : null;
   const selectedItem =
     residentSelectedItem ??
-    (savedBoundedFeedEligible ? currentSelectedItemPin : null);
+    (pagedBoundedFeedEligible ? currentSelectedItemPin : null);
   useEffect(() => {
     const patch = savedFeedPresentationPatch;
     if (
-      !savedBoundedFeedEligible ||
+      !pagedBoundedFeedEligible ||
       !boundedFeedStatusIsCurrent ||
       !patch ||
       patch.sourceVersion !== savedFeedVersion ||
@@ -721,7 +741,7 @@ export function FeedView() {
     boundedFeedStatusIsCurrent,
     boundedReaderIdentity,
     patchBoundedItems,
-    savedBoundedFeedEligible,
+    pagedBoundedFeedEligible,
     savedFeedPresentationPatch,
     savedFeedVersion,
     selectedItemId,
@@ -742,7 +762,7 @@ export function FeedView() {
             ...visibleItems.filter((item) => !stableIds.has(item.globalId)),
           ];
     const pinnedSelection =
-      savedBoundedFeedEligible &&
+      pagedBoundedFeedEligible &&
       currentSelectedItemPin?.globalId === selectedItemId &&
       !residentItems.some((item) => item.globalId === selectedItemId)
         ? currentSelectedItemPin
@@ -753,7 +773,7 @@ export function FeedView() {
   }, [
     readerOrderIds,
     currentSelectedItemPin,
-    savedBoundedFeedEligible,
+    pagedBoundedFeedEligible,
     selectedItemId,
     visibleItems,
   ]);

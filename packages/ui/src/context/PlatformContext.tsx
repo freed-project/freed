@@ -553,6 +553,16 @@ export interface PlatformConfig {
   ) => Promise<BoundedFeedReader>;
 
   /**
+   * Open one source-pinned Friends-only feed reader. The platform computes
+   * membership from the exact Person, Account, and legacy Friend source bound
+   * to the selected local generation.
+   */
+  openBoundedFriendsFeedReader?: (
+    filter: FilterOptions,
+    rankingClockMs: number,
+  ) => Promise<BoundedFeedReader>;
+
+  /**
    * Open one source-pinned Saved reader in the selected device-local order.
    * Shared UI keeps at most two reader pages resident while it traverses the
    * complete Saved result set.

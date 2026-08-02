@@ -1,6 +1,6 @@
 # Phase 8: Friends + Social Graph
 
-> **Status:** In Progress, the canonical identity model uses `Person` plus attached `Account` records, the Friends workspace defaults to `All content`, and the shipping Friends route has been cut over to the next-generation GPU-resident Friends Galaxy. Raw WebGPU is preferred, WebGL2 is the retained compatibility backend, every semantic identity remains resident during movement, and the locked camera supports native iPhone touch and Mac trackpad navigation with inertia. Freed Desktop Friends activity, suggestions, overview, selected-person timelines, and FriendEditor profile candidates now read bounded source-fenced SQLite aggregates or pages instead of retaining the full item corpus. The PWA retains its Automerge compatibility reader until its IndexedDB row-store cutover. The broader Friends phase still includes unfinished native contacts, overlap, and Mozi work.
+> **Status:** In Progress, the canonical identity model uses `Person` plus attached `Account` records, the Friends workspace defaults to `All content`, and the shipping Friends route has been cut over to the next-generation GPU-resident Friends Galaxy. Raw WebGPU is preferred, WebGL2 is the retained compatibility backend, every semantic identity remains resident during movement, and the locked camera supports native iPhone touch and Mac trackpad navigation with inertia. Freed Desktop Friends activity, suggestions, overview, selected-person timelines, FriendEditor profile candidates, and the non-Saved Friends-only feed now read bounded source-fenced SQLite aggregates or pages instead of retaining the full item corpus. The PWA retains its Automerge compatibility reader until its IndexedDB row-store cutover. The broader Friends phase still includes unfinished native contacts, overlap, and Mozi work.
 > **Dependencies:** Phase 7 (Facebook + Instagram capture provide most social content)
 
 ---
@@ -601,6 +601,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.163 | Reproject and collision-admit the bounded label roster on every changed camera frame while coalescing worker candidate refreshes and avoiding per-frame text rerasterization                                                                                     | High       | Done        |
 | 8.164 | Restore the standard workspace sidebar inset on Friends while retaining the full-frame pointer-free Galaxy background beneath it                                                                                                                                 | Medium     | Done        |
 | 8.165 | Extend the shared map and Friends Galaxy palette registry with AubOS Starship and Dark Star                                                                                                                                                                      | Medium     | Done        |
+| 8.166 | Move the Freed Desktop non-Saved Friends-only feed onto versioned `feed_browse_page_v2` SQLite pages when no search is active, while preserving Person-first membership, ordinary browse ordering, ranking invalidation, bounded projection and renderer residency, selected-card continuity, exact Automerge fallback, and the PWA reader | High       | Done        |
 
 ---
 
@@ -673,6 +674,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Mobile Details suspends the product presentation and later resumes the same canvas, backend, camera, selection, and resident semantic scene
 - [x] Product-route acceptance proves every preserved workflow, accessibility path, compatibility fallback, PWA gesture, active theme, diagnostic contract, and production Desktop build on the integrated engine
 - [x] Friends entry consumes bounded SQLite graph, timeline, selected-Friend map, and debounced FriendEditor author-candidate queries without scanning the full item library in React
+- [x] The Freed Desktop non-Saved Friends-only feed applies Person-first predicate schema v1 before publishing its SQLite generation when no search is active, keeps source-order working state to one 64-row scan page, invalidates on ranking-weight or identity movement, pages at most 128 compact cards at a time through `feed_browse_page_v2`, pins one selected card across page eviction, and restores the exact Automerge feed on source drift, native failure, or explicit rollback
 - [x] Scriptorium graph colors stay legible instead of washing node fills and labels into the stage
 - [x] Graph model construction uses single-pass activity indexing instead of rescanning every captured item per node
 - [x] Worker layout uses local bucketed overlap resolution instead of naïve all-pairs nudging
