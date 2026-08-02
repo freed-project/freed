@@ -200,6 +200,117 @@ describe("scanned Library Core browse projection client", () => {
     ).toEqual(scannedItems.map((entry) => entry.globalId));
   });
 
+  it("applies one compiled inclusion predicate in both scan passes without renumbering source order", async () => {
+    const scannedItems = [
+      item("saved:friend"),
+      item("saved:other"),
+      item("saved:friend-two"),
+    ];
+    const captured = state([], [
+      "saved:other",
+      "saved:friend-two",
+      "saved:friend",
+    ]);
+    let predicateBuilds = 0;
+    let openedScans = 0;
+    const openScan = async (): Promise<LibraryCoreItemScanSession> => {
+      openedScans += 1;
+      let done = false;
+      return {
+        async nextPage() {
+          if (done) return { items: [], done: true };
+          done = true;
+          return { items: scannedItems, done: true };
+        },
+        async close() {},
+      };
+    };
+    const client = createScannedLibraryCoreFeedBrowseProjectionClient({
+      getSource: async () => source,
+      getState: () => captured,
+      openScan,
+      strategy: {
+        generationDomain: "friends-test-generation-v1",
+        bindingFilterJson: (filter) =>
+          JSON.stringify({ filter, identityMode: "friends" }),
+        createItemPredicate: () => {
+          predicateBuilds += 1;
+          return (entry) => entry.globalId.startsWith("saved:friend");
+        },
+      },
+    });
+
+    const started = await client.begin("friends-session", {}, 1_000);
+    const batch = await client.nextBatch("friends-session", 0);
+
+    expect(predicateBuilds).toBe(1);
+    expect(openedScans).toBe(2);
+    expect(started.binding.totalRows).toBe(2);
+    expect(JSON.parse(started.binding.filterJson)).toEqual({
+      filter: started.filter,
+      identityMode: "friends",
+    });
+    expect(batch.done).toBe(true);
+    expect(batch.rows.map((row) => [row.globalId, row.sourceSequence])).toEqual([
+      ["saved:friend", 2],
+      ["saved:friend-two", 1],
+    ]);
+  });
+
+  it("rescans source order per emitted page without retaining a corpus-sized sequence map", async () => {
+    const corpusSize = 1_024;
+    const sourceIds = Array.from(
+      { length: corpusSize },
+      (_, index) => `saved:source:${index}`,
+    );
+    let sourceIdReads = 0;
+    const observedSourceIds = new Proxy(sourceIds, {
+      get(target, property, receiver) {
+        if (typeof property === "string" && /^\d+$/.test(property)) {
+          sourceIdReads += 1;
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const pages = [
+      [item(sourceIds[corpusSize - 1])],
+      [item(sourceIds[7])],
+    ];
+    const captured = state([], observedSourceIds);
+    const openScan = async (): Promise<LibraryCoreItemScanSession> => {
+      let pageIndex = 0;
+      return {
+        async nextPage() {
+          const items = pages[pageIndex] ?? [];
+          pageIndex += 1;
+          return { items, done: pageIndex >= pages.length };
+        },
+        async close() {},
+      };
+    };
+    const client = createScannedLibraryCoreFeedBrowseProjectionClient({
+      getSource: async () => source,
+      getState: () => captured,
+      openScan,
+    });
+
+    await client.begin("bounded-sequence-session", {}, 1_000);
+    expect(sourceIdReads).toBe(0);
+
+    const first = await client.nextBatch("bounded-sequence-session", 0);
+    expect(sourceIdReads).toBe(corpusSize);
+    expect(first.rows.map((row) => [row.globalId, row.sourceSequence])).toEqual([
+      [sourceIds[corpusSize - 1], corpusSize - 1],
+    ]);
+
+    const second = await client.nextBatch("bounded-sequence-session", 1);
+    expect(sourceIdReads).toBe(corpusSize * 2);
+    expect(
+      second.rows.map((row) => [row.globalId, row.sourceSequence]),
+    ).toEqual([[sourceIds[7], 7]]);
+    expect(second.done).toBe(true);
+  });
+
   it("never combines partially matching scan pages past the writer ceiling", async () => {
     const pages = Array.from({ length: 3 }, (_, pageIndex) =>
       Array.from({ length: 64 }, (_, rowIndex) => {

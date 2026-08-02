@@ -1058,11 +1058,15 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
         keys: [
           "freed.libraryCore.externalMigrationV1.disabled",
           "freed.libraryCore.feedBrowseReaderV1.disabled",
+          "freed.libraryCore.friendEditorReaderV1.disabled",
+          "freed.libraryCore.friendsFeedReaderV1.disabled",
           "freed.libraryCore.friendsReaderV1.disabled",
           "freed.libraryCore.itemDetailReaderV1.disabled",
+          "freed.libraryCore.providerSettingsReaderV1.disabled",
           "freed.libraryCore.rendererItemEvictionV1.disabled",
           "freed.libraryCore.savedAnalyticsReaderV1.disabled",
           "freed.libraryCore.savedFeedReaderV1.disabled",
+          "freed.libraryCore.searchJumpReaderV1.disabled",
         ],
       },
       {
@@ -1091,7 +1095,7 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
         { scope: "crash-replay migration revisions", limit: 1, unit: "revision" },
         { scope: "complete immutable projection generations per native query root", limit: 2, unit: "generation" },
         { scope: "complete portable PWA checkpoint generations and their operation tails", limit: 2, unit: "generation" },
-        { scope: "migration and Gate D rollback controls", limit: 7, unit: "keys" },
+        { scope: "migration and Gate D rollback controls", limit: 11, unit: "keys" },
       ],
     },
     backup: "exclude-derived",
@@ -1112,10 +1116,13 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
       "packages/desktop/src/lib/automerge.ts",
       "packages/desktop/src/lib/library-core-feed-browse-reader-runtime.ts",
       "packages/desktop/src/lib/library-core-item-detail-runtime.ts",
+      "packages/desktop/src/lib/library-core-provider-settings-runtime.ts",
       "packages/desktop/src/lib/library-core-saved-feed-reader-runtime.ts",
       "packages/pwa/src/lib/library-core-portable-checkpoint-store.ts",
       "packages/pwa/src/lib/library-core-operation-segment-runtime.ts",
       "packages/sync/src/cloud/library-core-operation-segments.ts",
+      "packages/ui/src/components/friends/FriendEditor.tsx",
+      "packages/ui/src/hooks/useLibraryCommandPaletteReader.ts",
     ],
   },
   {
@@ -2617,8 +2624,13 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
     sourceTokens: [
       "LIBRARY_CORE_FEED_BROWSE_READER_DISABLED_KEY =",
       '"freed.libraryCore.feedBrowseReaderV1.disabled"',
+      "LIBRARY_CORE_FRIENDS_FEED_READER_DISABLED_KEY =",
+      '"freed.libraryCore.friendsFeedReaderV1.disabled"',
     ],
-    registeredKeys: ["freed.libraryCore.feedBrowseReaderV1.disabled"],
+    registeredKeys: [
+      "freed.libraryCore.feedBrowseReaderV1.disabled",
+      "freed.libraryCore.friendsFeedReaderV1.disabled",
+    ],
   },
   {
     registryKey: "library-core-derived-runtime",
@@ -2639,12 +2651,39 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
   },
   {
     registryKey: "library-core-derived-runtime",
+    sourcePath: "packages/desktop/src/lib/library-core-provider-settings-runtime.ts",
+    sourceTokens: [
+      "LIBRARY_CORE_PROVIDER_SETTINGS_READER_DISABLED_KEY =",
+      '"freed.libraryCore.providerSettingsReaderV1.disabled"',
+    ],
+    registeredKeys: ["freed.libraryCore.providerSettingsReaderV1.disabled"],
+  },
+  {
+    registryKey: "library-core-derived-runtime",
     sourcePath: "packages/desktop/src/lib/library-core-saved-feed-reader-runtime.ts",
     sourceTokens: [
       "LIBRARY_CORE_SAVED_FEED_READER_DISABLED_KEY =",
       '"freed.libraryCore.savedFeedReaderV1.disabled"',
     ],
     registeredKeys: ["freed.libraryCore.savedFeedReaderV1.disabled"],
+  },
+  {
+    registryKey: "library-core-derived-runtime",
+    sourcePath: "packages/ui/src/components/friends/FriendEditor.tsx",
+    sourceTokens: [
+      "FRIEND_EDITOR_READER_DISABLED_KEY =",
+      '"freed.libraryCore.friendEditorReaderV1.disabled"',
+    ],
+    registeredKeys: ["freed.libraryCore.friendEditorReaderV1.disabled"],
+  },
+  {
+    registryKey: "library-core-derived-runtime",
+    sourcePath: "packages/ui/src/hooks/useLibraryCommandPaletteReader.ts",
+    sourceTokens: [
+      "LIBRARY_CORE_SEARCH_JUMP_READER_DISABLED_KEY =",
+      '"freed.libraryCore.searchJumpReaderV1.disabled"',
+    ],
+    registeredKeys: ["freed.libraryCore.searchJumpReaderV1.disabled"],
   },
   {
     registryKey: "library-core-derived-runtime",

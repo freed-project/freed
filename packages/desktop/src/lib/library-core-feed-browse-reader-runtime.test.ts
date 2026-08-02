@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   normalizeLibraryCoreFeedBrowseFilterV1,
   type LibraryCoreFeedBrowsePageRequestV1,
+  type LibraryCoreFeedBrowsePageRequestV2,
 } from "@freed/shared/library-core";
 
 import {
@@ -10,7 +11,9 @@ import {
 } from "./automerge";
 import {
   LIBRARY_CORE_FEED_BROWSE_READER_DISABLED_KEY,
+  LIBRARY_CORE_FRIENDS_FEED_READER_DISABLED_KEY,
   openBoundedDesktopFeedReader,
+  openBoundedDesktopFriendsFeedReader,
   openLibraryCoreFeedBrowseReader,
   type LibraryCoreFeedBrowseReaderNativeClient,
 } from "./library-core-feed-browse-reader-runtime";
@@ -90,23 +93,36 @@ function nativeClient(): LibraryCoreFeedBrowseReaderNativeClient {
       fileDigest: "c".repeat(64),
       selectionSequence: 1,
     })),
-    read: vi.fn(async (request: LibraryCoreFeedBrowsePageRequestV1) => ({
-      filter,
-      nextCursor: null,
-      nextOrder: null,
-      queryId: request.queryId,
-      rankingClockMs: request.rankingClockMs,
-      recommendationOrderSchemaVersion:
-        request.recommendationOrderSchemaVersion,
-      rows: [feedCard()],
-      schemaVersion: request.schemaVersion,
-      source: {
-        generationId: binding.generationId,
-        transitionSequence: binding.transitionSequence,
-        projectionRevision: binding.projectionRevision,
-      },
-      totalCount: 1,
-    })),
+    read: vi.fn(
+      async (
+        request:
+          | LibraryCoreFeedBrowsePageRequestV1
+          | LibraryCoreFeedBrowsePageRequestV2,
+      ) => ({
+        filter,
+        ...(request.queryId === "feed_browse_page_v2"
+          ? {
+              friendsPredicateSchemaVersion:
+                request.friendsPredicateSchemaVersion,
+              identityMode: request.identityMode,
+            }
+          : {}),
+        nextCursor: null,
+        nextOrder: null,
+        queryId: request.queryId,
+        rankingClockMs: request.rankingClockMs,
+        recommendationOrderSchemaVersion:
+          request.recommendationOrderSchemaVersion,
+        rows: [feedCard()],
+        schemaVersion: request.schemaVersion,
+        source: {
+          generationId: binding.generationId,
+          transitionSequence: binding.transitionSequence,
+          projectionRevision: binding.projectionRevision,
+        },
+        totalCount: 1,
+      }),
+    ),
     cancel: vi.fn(async () => undefined),
   };
 }
@@ -144,6 +160,35 @@ describe("Library Core feed browse reader runtime", () => {
     await session.close();
   });
 
+  it("binds the Friends identity contract into the v2 materializer and page request", async () => {
+    const native = nativeClient();
+    const session = await openLibraryCoreFeedBrowseReader(
+      { platform: "x" },
+      binding.rankingClockMs,
+      native,
+      "friends",
+    );
+    const page = await session.readNext(128);
+
+    expect(materializeLibraryCoreFeedBrowseGeneration).toHaveBeenCalledWith(
+      { platform: "x" },
+      binding.rankingClockMs,
+      "friends",
+    );
+    expect(native.read).toHaveBeenCalledWith(
+      expect.objectContaining({
+        friendsPredicateSchemaVersion: 1,
+        identityMode: "friends",
+        limit: 128,
+        queryId: "feed_browse_page_v2",
+        schemaVersion: 2,
+      }),
+    );
+    expect(page.rows.map((row) => row.globalId)).toEqual(["x:item-1"]);
+    expect(session.identityMode).toBe("friends");
+    await session.close();
+  });
+
   it("fails closed when the durable source changes before selection", async () => {
     vi.mocked(getLibraryCoreProjectionSource).mockResolvedValueOnce({
       ...source,
@@ -173,5 +218,14 @@ describe("Library Core feed browse reader runtime", () => {
     );
     expect(materializeLibraryCoreFeedBrowseGeneration).not.toHaveBeenCalled();
     localStorage.removeItem(LIBRARY_CORE_FEED_BROWSE_READER_DISABLED_KEY);
+  });
+
+  it("keeps the Friends rollback switch ahead of all projection work", async () => {
+    localStorage.setItem(LIBRARY_CORE_FRIENDS_FEED_READER_DISABLED_KEY, "1");
+    await expect(
+      openBoundedDesktopFriendsFeedReader({}, binding.rankingClockMs),
+    ).rejects.toThrow("bounded Friends feed reader is disabled");
+    expect(materializeLibraryCoreFeedBrowseGeneration).not.toHaveBeenCalled();
+    localStorage.removeItem(LIBRARY_CORE_FRIENDS_FEED_READER_DISABLED_KEY);
   });
 });

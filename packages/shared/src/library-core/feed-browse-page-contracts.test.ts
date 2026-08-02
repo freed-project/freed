@@ -3,14 +3,20 @@ import { describe, expect, it } from "vitest";
 import {
   LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
   LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
+  LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID,
+  LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION,
+  LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
   decodeLibraryCoreFeedBrowsePageCursorV1,
   encodeLibraryCoreFeedBrowsePageCursorV1,
+  libraryCoreFeedBrowseBindingFilterV2,
   parseLibraryCoreFeedBrowsePageRequestV1,
   parseLibraryCoreFeedBrowsePageResponseV1,
+  parseLibraryCoreFeedBrowsePageResponseV2,
   type LibraryCoreFeedBrowsePageCursorV1,
 } from "./feed-browse-page-contracts.js";
+import type { LibraryCoreFeedBrowseFilterV1 } from "./feed-browse-filter-contract.js";
 
-const FILTER = Object.freeze({
+const FILTER: LibraryCoreFeedBrowseFilterV1 = Object.freeze({
   archivedOnly: false,
   authorId: null,
   feedUrl: null,
@@ -18,7 +24,7 @@ const FILTER = Object.freeze({
   savedOnly: true,
   schemaVersion: 1,
   showHidden: false,
-  signals: Object.freeze(["essay"]),
+  signals: Object.freeze(["essay"] as const),
   socialContentFilter: "posts",
   tags: Object.freeze(["important"]),
 });
@@ -50,6 +56,24 @@ function request(overrides: Record<string, unknown> = {}) {
     readerSessionId: "reader-session-1",
     recommendationOrderSchemaVersion: 1,
     schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
+    ...overrides,
+  };
+}
+
+function requestV2(overrides: Record<string, unknown> = {}) {
+  return {
+    cancellationId: "cancel-1",
+    cursor: null,
+    filter: FILTER,
+    friendsPredicateSchemaVersion:
+      LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+    identityMode: "friends",
+    limit: 64,
+    queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID,
+    rankingClockMs: 1_780_000_100_000,
+    readerSessionId: "reader-session-1",
+    recommendationOrderSchemaVersion: 1,
+    schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION,
     ...overrides,
   };
 }
@@ -121,6 +145,25 @@ describe("Library Core feed-browse page protocol", () => {
         filter: { ...FILTER, platform: "x".repeat(8_193) },
       })),
     ).toMatchObject({ ok: false });
+    expect(
+      parseLibraryCoreFeedBrowsePageRequestV1(request({
+        identityMode: "friends",
+      })),
+    ).toMatchObject({ ok: false });
+  });
+
+  it("binds closed V2 identity fields without changing V1", () => {
+    const binding = libraryCoreFeedBrowseBindingFilterV2(FILTER, "friends");
+    expect(Object.keys(binding)).toStrictEqual([
+      "filter",
+      "friendsPredicateSchemaVersion",
+      "identityMode",
+    ]);
+    expect(binding).toStrictEqual({
+      filter: FILTER,
+      friendsPredicateSchemaVersion: 1,
+      identityMode: "friends",
+    });
   });
 
   it("rejects a cursor whose hidden order tuple differs from its response", () => {
@@ -154,6 +197,73 @@ describe("Library Core feed-browse page protocol", () => {
         ...response,
         nextOrder: { ...response.nextOrder, priority: 90 },
       }, request()),
+    ).toMatchObject({ ok: false });
+  });
+
+  it("binds V2 responses to the requested identity predicate", () => {
+    const encoded = encodeLibraryCoreFeedBrowsePageCursorV1(cursor());
+    const response = {
+      filter: FILTER,
+      friendsPredicateSchemaVersion:
+        LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+      identityMode: "friends",
+      nextCursor: encoded,
+      nextOrder: {
+        globalId: "x:item-1",
+        priority: 91,
+        publishedAt: 1_780_000_000_000,
+        sourceSequence: 56,
+      },
+      queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID,
+      rankingClockMs: 1_780_000_100_000,
+      recommendationOrderSchemaVersion: 1,
+      rows: [feedCard()],
+      schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION,
+      source: {
+        generationId: "a".repeat(64),
+        projectionRevision: 34,
+        transitionSequence: 12,
+      },
+      totalCount: 2,
+    };
+    expect(
+      parseLibraryCoreFeedBrowsePageResponseV2(response, requestV2()),
+    ).toMatchObject({ ok: true });
+    expect(
+      parseLibraryCoreFeedBrowsePageResponseV2({
+        ...response,
+        identityMode: "all_content",
+      }, requestV2()),
+    ).toMatchObject({ ok: false });
+    expect(
+      parseLibraryCoreFeedBrowsePageResponseV2({
+        ...response,
+        friendsPredicateSchemaVersion: 2,
+      }, requestV2()),
+    ).toMatchObject({ ok: false });
+    expect(
+      parseLibraryCoreFeedBrowsePageResponseV2({
+        ...response,
+        identityMode: "all_content",
+      }, requestV2({ identityMode: "all_content" })),
+    ).toMatchObject({ ok: true });
+    expect(
+      parseLibraryCoreFeedBrowsePageResponseV2(
+        response,
+        requestV2({ identityMode: "connections" }),
+      ),
+    ).toMatchObject({ ok: false });
+    expect(
+      parseLibraryCoreFeedBrowsePageResponseV2(
+        response,
+        requestV2({ friendsPredicateSchemaVersion: 2 }),
+      ),
+    ).toMatchObject({ ok: false });
+    expect(
+      parseLibraryCoreFeedBrowsePageResponseV2(
+        response,
+        requestV2({ extra: true }),
+      ),
     ).toMatchObject({ ok: false });
   });
 });

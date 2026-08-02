@@ -1,6 +1,6 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   LIBRARY_CORE_LOCAL_AUTHORITY_NON_PRODUCT_EXCLUSIONS,
@@ -10,6 +10,42 @@ import {
 } from "./local-authority-registry.js";
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
+const PRODUCT_SOURCE_ROOTS = [
+  "packages/desktop/src",
+  "packages/pwa/src",
+  "packages/ui/src",
+] as const;
+
+function productSourcePaths(): string[] {
+  const pending = PRODUCT_SOURCE_ROOTS.map((sourceRoot) =>
+    resolve(REPOSITORY_ROOT, sourceRoot),
+  );
+  const sourcePaths: string[] = [];
+
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    if (!directory) break;
+
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = resolve(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== "__mocks__" && entry.name !== "__tests__") {
+          pending.push(path);
+        }
+        continue;
+      }
+      if (
+        entry.isFile() &&
+        /\.(?:[cm]?[jt]sx?|rs)$/.test(entry.name) &&
+        !/\.(?:test|spec)\.[cm]?[jt]sx?$/.test(entry.name)
+      ) {
+        sourcePaths.push(relative(REPOSITORY_ROOT, path));
+      }
+    }
+  }
+
+  return sourcePaths.sort();
+}
 
 function readRepositorySource(sourcePath: string): string {
   return readFileSync(resolve(REPOSITORY_ROOT, sourcePath), "utf8");
@@ -119,6 +155,33 @@ describe("Library Core local authority registry", () => {
     );
 
     for (const key of required) expect(keys.has(key)).toBe(true);
+  });
+
+  it("registers every Library Core rollback key used by product source", () => {
+    const discoveredSources = new Map<string, string[]>();
+    for (const sourcePath of productSourcePaths()) {
+      const source = readRepositorySource(sourcePath);
+      const keys = source.match(
+        /freed\.libraryCore\.[A-Za-z0-9]+\.disabled/g,
+      ) ?? [];
+      for (const key of keys) {
+        const paths = discoveredSources.get(key) ?? [];
+        paths.push(sourcePath);
+        discoveredSources.set(key, paths);
+      }
+    }
+
+    const derivedRuntime = registryByKey().get("library-core-derived-runtime");
+    const registeredKeys = new Set(
+      derivedRuntime?.physicalStores
+        .filter((store) => store.kind === "local-storage")
+        .flatMap((store) => store.keys) ?? [],
+    );
+    const missing = [...discoveredSources.entries()]
+      .filter(([key]) => !registeredKeys.has(key))
+      .map(([key, sourcePaths]) => `${key}: ${sourcePaths.join(", ")}`);
+
+    expect(missing).toEqual([]);
   });
 
   it("binds audited persisted-key families to checked-in source owners", () => {

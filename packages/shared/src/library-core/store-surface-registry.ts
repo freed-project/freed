@@ -188,6 +188,7 @@ export const BASE_APP_STORE_SURFACE_REGISTRY = {
   items: stateSurface("legacy_unbounded", {
     successorOperationIds: [],
     successorQueryIds: [
+      "feed_browse_page_v2",
       "feed_page_v1",
       "item_detail_v1",
       "person_timeline_v1",

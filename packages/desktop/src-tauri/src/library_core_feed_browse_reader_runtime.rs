@@ -25,8 +25,11 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::Manager;
 
-const QUERY_ID: &str = "feed_browse_page_v1";
-const SCHEMA_VERSION: u8 = 1;
+const QUERY_ID_V1: &str = "feed_browse_page_v1";
+const QUERY_ID_V2: &str = "feed_browse_page_v2";
+const SCHEMA_VERSION_V1: u8 = 1;
+const SCHEMA_VERSION_V2: u8 = 2;
+const FRIENDS_PREDICATE_SCHEMA_VERSION: u8 = 1;
 const RECOMMENDATION_ORDER_SCHEMA_VERSION: i64 = 1;
 const MAXIMUM_PAGE_LIMIT: u32 = 128;
 const MAXIMUM_RESPONSE_BYTES: usize = 2 * 1_048_576;
@@ -108,6 +111,44 @@ pub(super) struct BrowsePageRequestV1 {
     reader_session_id: String,
     recommendation_order_schema_version: i64,
     schema_version: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum BrowseIdentityModeV2 {
+    AllContent,
+    Friends,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct BrowsePageRequestV2 {
+    cancellation_id: String,
+    cursor: RequiredNullableCursor,
+    filter: Value,
+    friends_predicate_schema_version: u8,
+    identity_mode: BrowseIdentityModeV2,
+    limit: u32,
+    query_id: String,
+    ranking_clock_ms: i64,
+    reader_session_id: String,
+    recommendation_order_schema_version: i64,
+    schema_version: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(untagged)]
+pub(super) enum BrowsePageRequest {
+    V1(BrowsePageRequestV1),
+    V2(BrowsePageRequestV2),
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BrowseGenerationScopeV2 {
+    filter: Value,
+    friends_predicate_schema_version: u8,
+    identity_mode: BrowseIdentityModeV2,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -201,6 +242,30 @@ pub(super) struct BrowsePageResponseV1 {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(super) struct BrowsePageResponseV2 {
+    filter: Value,
+    friends_predicate_schema_version: u8,
+    identity_mode: BrowseIdentityModeV2,
+    next_cursor: Option<String>,
+    next_order: Option<BrowseNextOrderV1>,
+    query_id: &'static str,
+    ranking_clock_ms: i64,
+    recommendation_order_schema_version: i64,
+    rows: Vec<Value>,
+    schema_version: u8,
+    source: FeedPageSourceV1,
+    total_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub(super) enum BrowsePageResponse {
+    V1(BrowsePageResponseV1),
+    V2(BrowsePageResponseV2),
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct BrowseReaderCancellationV1 {
     released: bool,
 }
@@ -244,38 +309,97 @@ fn is_operation_instance_id(value: &str) -> bool {
         })
 }
 
-fn validate_request(request: &BrowsePageRequestV1) -> Result<(), BrowseReaderError> {
-    if request.query_id != QUERY_ID
-        || request.schema_version != SCHEMA_VERSION
-        || request.recommendation_order_schema_version != RECOMMENDATION_ORDER_SCHEMA_VERSION
-    {
-        return Err(BrowseReaderError::InvalidRequest("protocol identity"));
-    }
-    if !is_operation_instance_id(&request.reader_session_id)
-        || !is_operation_instance_id(&request.cancellation_id)
-    {
+fn validate_request_bounds(
+    reader_session_id: &str,
+    cancellation_id: &str,
+    cursor: &RequiredNullableCursor,
+    filter: &Value,
+    limit: u32,
+    ranking_clock_ms: i64,
+) -> Result<(), BrowseReaderError> {
+    if !is_operation_instance_id(reader_session_id) || !is_operation_instance_id(cancellation_id) {
         return Err(BrowseReaderError::InvalidRequest("operation identity"));
     }
-    if !(1..=MAXIMUM_PAGE_LIMIT).contains(&request.limit)
-        || request.ranking_clock_ms < 0
-        || request.ranking_clock_ms as u64 > MAXIMUM_SAFE_INTEGER
+    if !(1..=MAXIMUM_PAGE_LIMIT).contains(&limit)
+        || ranking_clock_ms < 0
+        || ranking_clock_ms as u64 > MAXIMUM_SAFE_INTEGER
     {
         return Err(BrowseReaderError::InvalidRequest("query bounds"));
     }
-    if request
-        .cursor
+    if cursor
         .0
         .as_ref()
         .is_some_and(|cursor| cursor.len() > MAXIMUM_CURSOR_BYTES)
     {
         return Err(BrowseReaderError::InvalidRequest("cursor"));
     }
-    let filter_json = serde_json::to_string(&request.filter)
-        .map_err(|_| BrowseReaderError::InvalidRequest("filter"))?;
+    let filter_json =
+        serde_json::to_string(filter).map_err(|_| BrowseReaderError::InvalidRequest("filter"))?;
     if filter_json.len() > 64 * 1_024 {
         return Err(BrowseReaderError::InvalidRequest("filter"));
     }
     Ok(())
+}
+
+fn validate_request_v1(request: &BrowsePageRequestV1) -> Result<(), BrowseReaderError> {
+    if request.query_id != QUERY_ID_V1
+        || request.schema_version != SCHEMA_VERSION_V1
+        || request.recommendation_order_schema_version != RECOMMENDATION_ORDER_SCHEMA_VERSION
+        || is_generation_scope_v2(&request.filter)
+    {
+        return Err(BrowseReaderError::InvalidRequest("protocol identity"));
+    }
+    validate_request_bounds(
+        &request.reader_session_id,
+        &request.cancellation_id,
+        &request.cursor,
+        &request.filter,
+        request.limit,
+        request.ranking_clock_ms,
+    )
+}
+
+fn is_generation_scope_v2(value: &Value) -> bool {
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+    object.len() == 3
+        && object.contains_key("filter")
+        && object
+            .get("friendsPredicateSchemaVersion")
+            .and_then(Value::as_u64)
+            == Some(FRIENDS_PREDICATE_SCHEMA_VERSION as u64)
+        && matches!(
+            object.get("identityMode").and_then(Value::as_str),
+            Some("all_content" | "friends")
+        )
+}
+
+fn validate_request_v2(request: &BrowsePageRequestV2) -> Result<(), BrowseReaderError> {
+    if request.query_id != QUERY_ID_V2
+        || request.schema_version != SCHEMA_VERSION_V2
+        || request.recommendation_order_schema_version != RECOMMENDATION_ORDER_SCHEMA_VERSION
+        || request.friends_predicate_schema_version != FRIENDS_PREDICATE_SCHEMA_VERSION
+    {
+        return Err(BrowseReaderError::InvalidRequest("protocol identity"));
+    }
+    validate_request_bounds(
+        &request.reader_session_id,
+        &request.cancellation_id,
+        &request.cursor,
+        &request.filter,
+        request.limit,
+        request.ranking_clock_ms,
+    )
+}
+
+fn generation_scope_v2(request: &BrowsePageRequestV2) -> Result<Value, BrowseReaderError> {
+    serde_json::to_value(BrowseGenerationScopeV2 {
+        filter: request.filter.clone(),
+        friends_predicate_schema_version: request.friends_predicate_schema_version,
+        identity_mode: request.identity_mode,
+    })
+    .map_err(|_| BrowseReaderError::InvalidRequest("query scope"))
 }
 
 fn decode_cursor(value: &str) -> Result<DecodedCursor, BrowseReaderError> {
@@ -444,7 +568,7 @@ fn read_at_root(
     request: BrowsePageRequestV1,
     now: Instant,
 ) -> Result<BrowsePageResponseV1, BrowseReaderError> {
-    validate_request(&request)?;
+    validate_request_v1(&request)?;
     let decoded_cursor = request.cursor.0.as_deref().map(decode_cursor).transpose()?;
     let page = read_physical_page_in_root(
         state,
@@ -465,6 +589,52 @@ fn read_at_root(
     let response = response_from_page(page)?;
     ensure_response_size(&response)?;
     Ok(response)
+}
+
+fn read_v2_at_root(
+    state: &LibraryCoreFeedBrowseReaderRuntimeState,
+    base: &Path,
+    request: BrowsePageRequestV2,
+    now: Instant,
+) -> Result<BrowsePageResponseV2, BrowseReaderError> {
+    validate_request_v2(&request)?;
+    let decoded_cursor = request.cursor.0.as_deref().map(decode_cursor).transpose()?;
+    let expected_scope = generation_scope_v2(&request)?;
+    let page = read_physical_page_in_root(
+        state,
+        base,
+        crate::library_core_feed_browse_runtime::ROOT_DIRECTORY_FOR_ADAPTERS,
+        FeedBrowsePhysicalReadRequest {
+            reader_session_id: &request.reader_session_id,
+            cancellation_id: &request.cancellation_id,
+            cursor_identity: request.cursor.0.as_deref(),
+            cursor: decoded_cursor.as_ref().map(|cursor| &cursor.page_cursor),
+            limit: request.limit as usize,
+            expected_filter: &expected_scope,
+            ranking_clock_ms: request.ranking_clock_ms,
+            recommendation_order_schema_version: request.recommendation_order_schema_version,
+        },
+        now,
+    )?;
+    let response = response_v2_from_page(page)?;
+    ensure_response_size(&response)?;
+    Ok(response)
+}
+
+fn read_request_at_root(
+    state: &LibraryCoreFeedBrowseReaderRuntimeState,
+    base: &Path,
+    request: BrowsePageRequest,
+    now: Instant,
+) -> Result<BrowsePageResponse, BrowseReaderError> {
+    match request {
+        BrowsePageRequest::V1(request) => {
+            read_at_root(state, base, request, now).map(BrowsePageResponse::V1)
+        }
+        BrowsePageRequest::V2(request) => {
+            read_v2_at_root(state, base, request, now).map(BrowsePageResponse::V2)
+        }
+    }
 }
 
 pub(super) struct FeedBrowsePhysicalReadRequest<'a> {
@@ -641,12 +811,25 @@ pub(super) fn read_library_core_feed_browse_physical_page_in_root(
         .map_err(|error| error.to_string())
 }
 
-fn response_from_page(page: FeedBrowsePage) -> Result<BrowsePageResponseV1, BrowseReaderError> {
+struct BrowsePageResponseParts {
+    binding_filter: Value,
+    next_cursor: Option<String>,
+    next_order: Option<BrowseNextOrderV1>,
+    ranking_clock_ms: i64,
+    recommendation_order_schema_version: i64,
+    rows: Vec<Value>,
+    source: FeedPageSourceV1,
+    total_count: i64,
+}
+
+fn response_parts_from_page(
+    page: FeedBrowsePage,
+) -> Result<BrowsePageResponseParts, BrowseReaderError> {
     let binding = page.binding;
     if binding.total_rows < page.rows.len() as i64 {
         return Err(BrowseReaderError::InvalidRequest("response count"));
     }
-    let filter = serde_json::from_str(&binding.filter_json)
+    let binding_filter = serde_json::from_str(&binding.filter_json)
         .map_err(|_| BrowseReaderError::InvalidRequest("stored filter"))?;
     let mut rows = Vec::with_capacity(page.rows.len());
     for row in &page.rows {
@@ -673,21 +856,58 @@ fn response_from_page(page: FeedBrowsePage) -> Result<BrowsePageResponseV1, Brow
         published_at: cursor.published_at,
         source_sequence: cursor.source_sequence,
     });
-    Ok(BrowsePageResponseV1 {
-        filter,
+    Ok(BrowsePageResponseParts {
+        binding_filter,
         next_cursor,
         next_order,
-        query_id: QUERY_ID,
         ranking_clock_ms: binding.ranking_clock_ms,
         recommendation_order_schema_version: binding.recommendation_order_schema_version,
         rows,
-        schema_version: SCHEMA_VERSION,
         source: FeedPageSourceV1 {
             generation_id: binding.generation_id,
             projection_revision: binding.projection_revision,
             transition_sequence: binding.transition_sequence,
         },
         total_count: binding.total_rows,
+    })
+}
+
+fn response_from_page(page: FeedBrowsePage) -> Result<BrowsePageResponseV1, BrowseReaderError> {
+    let parts = response_parts_from_page(page)?;
+    Ok(BrowsePageResponseV1 {
+        filter: parts.binding_filter,
+        next_cursor: parts.next_cursor,
+        next_order: parts.next_order,
+        query_id: QUERY_ID_V1,
+        ranking_clock_ms: parts.ranking_clock_ms,
+        recommendation_order_schema_version: parts.recommendation_order_schema_version,
+        rows: parts.rows,
+        schema_version: SCHEMA_VERSION_V1,
+        source: parts.source,
+        total_count: parts.total_count,
+    })
+}
+
+fn response_v2_from_page(page: FeedBrowsePage) -> Result<BrowsePageResponseV2, BrowseReaderError> {
+    let parts = response_parts_from_page(page)?;
+    let scope = serde_json::from_value::<BrowseGenerationScopeV2>(parts.binding_filter)
+        .map_err(|_| BrowseReaderError::InvalidRequest("stored query scope"))?;
+    if scope.friends_predicate_schema_version != FRIENDS_PREDICATE_SCHEMA_VERSION {
+        return Err(BrowseReaderError::InvalidRequest("stored query scope"));
+    }
+    Ok(BrowsePageResponseV2 {
+        filter: scope.filter,
+        friends_predicate_schema_version: scope.friends_predicate_schema_version,
+        identity_mode: scope.identity_mode,
+        next_cursor: parts.next_cursor,
+        next_order: parts.next_order,
+        query_id: QUERY_ID_V2,
+        ranking_clock_ms: parts.ranking_clock_ms,
+        recommendation_order_schema_version: parts.recommendation_order_schema_version,
+        rows: parts.rows,
+        schema_version: SCHEMA_VERSION_V2,
+        source: parts.source,
+        total_count: parts.total_count,
     })
 }
 
@@ -714,7 +934,7 @@ impl Write for BoundedResponseWriter {
     }
 }
 
-fn ensure_response_size(response: &BrowsePageResponseV1) -> Result<(), BrowseReaderError> {
+fn ensure_response_size(response: &impl Serialize) -> Result<(), BrowseReaderError> {
     serde_json::to_writer(&mut BoundedResponseWriter { written: 0 }, response)
         .map_err(|_| BrowseReaderError::ResponseTooLarge)
 }
@@ -768,12 +988,12 @@ pub(super) fn quiesce_library_core_feed_browse_reader_runtime(
 pub(super) fn read_library_core_feed_browse_page(
     app: tauri::AppHandle,
     state: tauri::State<'_, LibraryCoreFeedBrowseReaderRuntimeState>,
-    request: BrowsePageRequestV1,
-) -> Result<BrowsePageResponseV1, BrowseReaderErrorResponse> {
+    request: BrowsePageRequest,
+) -> Result<BrowsePageResponse, BrowseReaderErrorResponse> {
     let base = app.path().app_data_dir().map_err(|error| {
         BrowseReaderErrorResponse::from(BrowseReaderError::RuntimePath(error.to_string()))
     })?;
-    read_at_root(&state, &base, request, Instant::now()).map_err(Into::into)
+    read_request_at_root(&state, &base, request, Instant::now()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -797,7 +1017,7 @@ mod tests {
 
     const FILTER_JSON: &str = r#"{"archivedOnly":false,"authorId":null,"feedUrl":null,"platform":"x","savedOnly":true,"schemaVersion":1,"showHidden":false,"signals":[],"socialContentFilter":"all","tags":[]}"#;
 
-    fn binding(total_rows: i64) -> FeedBrowseGenerationBinding {
+    fn binding_with_filter(total_rows: i64, filter_json: String) -> FeedBrowseGenerationBinding {
         FeedBrowseGenerationBinding {
             generation_id: "a".repeat(64),
             source_document_id: "library-1".to_owned(),
@@ -805,7 +1025,7 @@ mod tests {
             source_head_count: 2,
             transition_sequence: 12,
             projection_revision: 34,
-            filter_json: FILTER_JSON.to_owned(),
+            filter_json,
             ranking_clock_ms: 1_780_000_100_000,
             recommendation_order_schema_version: 1,
             total_rows,
@@ -867,12 +1087,41 @@ mod tests {
             cursor: RequiredNullableCursor(cursor),
             filter: serde_json::from_str(FILTER_JSON).expect("filter"),
             limit: 1,
-            query_id: QUERY_ID.to_owned(),
+            query_id: QUERY_ID_V1.to_owned(),
             ranking_clock_ms: 1_780_000_100_000,
             reader_session_id: "reader-session-1".to_owned(),
             recommendation_order_schema_version: 1,
             schema_version: 1,
         }
+    }
+
+    fn v2_request(
+        cursor: Option<String>,
+        cancellation_id: &str,
+        identity_mode: BrowseIdentityModeV2,
+    ) -> BrowsePageRequestV2 {
+        BrowsePageRequestV2 {
+            cancellation_id: cancellation_id.to_owned(),
+            cursor: RequiredNullableCursor(cursor),
+            filter: serde_json::from_str(FILTER_JSON).expect("filter"),
+            friends_predicate_schema_version: FRIENDS_PREDICATE_SCHEMA_VERSION,
+            identity_mode,
+            limit: 1,
+            query_id: QUERY_ID_V2.to_owned(),
+            ranking_clock_ms: 1_780_000_100_000,
+            reader_session_id: "reader-session-2".to_owned(),
+            recommendation_order_schema_version: 1,
+            schema_version: SCHEMA_VERSION_V2,
+        }
+    }
+
+    fn v2_scope_json(identity_mode: BrowseIdentityModeV2) -> String {
+        serde_json::to_string(&BrowseGenerationScopeV2 {
+            filter: serde_json::from_str(FILTER_JSON).expect("filter"),
+            friends_predicate_schema_version: FRIENDS_PREDICATE_SCHEMA_VERSION,
+            identity_mode,
+        })
+        .expect("scope")
     }
 
     fn publish_and_select(base: &Path) {
@@ -891,9 +1140,18 @@ mod tests {
         root_directory: &str,
         rows: Vec<FeedBrowseProjectedRow>,
     ) {
+        publish_and_select_in_root_with_filter(base, root_directory, FILTER_JSON.to_owned(), rows);
+    }
+
+    fn publish_and_select_in_root_with_filter(
+        base: &Path,
+        root_directory: &str,
+        filter_json: String,
+        rows: Vec<FeedBrowseProjectedRow>,
+    ) {
         let paths =
             resolve_library_core_feed_browse_paths_in_root(base, root_directory).expect("paths");
-        let identity = binding(rows.len() as i64);
+        let identity = binding_with_filter(rows.len() as i64, filter_json);
         let path = paths
             .generation_root
             .join(format!("{}.sqlite", identity.generation_id));
@@ -941,6 +1199,21 @@ mod tests {
 
     #[test]
     fn reads_one_selected_generation_with_a_pinned_cursor() {
+        let v1_wire_request = serde_json::json!({
+            "cancellationId": "cancel-v1-wire",
+            "cursor": null,
+            "filter": serde_json::from_str::<Value>(FILTER_JSON).expect("filter"),
+            "limit": 1,
+            "queryId": QUERY_ID_V1,
+            "rankingClockMs": 1_780_000_100_000_i64,
+            "readerSessionId": "reader-session-v1-wire",
+            "recommendationOrderSchemaVersion": 1,
+            "schemaVersion": SCHEMA_VERSION_V1,
+        });
+        assert!(matches!(
+            serde_json::from_value::<BrowsePageRequest>(v1_wire_request).expect("V1 request"),
+            BrowsePageRequest::V1(_)
+        ));
         let temporary = tempfile::tempdir().expect("tempdir");
         let base = std::fs::canonicalize(temporary.path()).expect("base");
         publish_and_select(&base);
@@ -950,6 +1223,11 @@ mod tests {
         assert_eq!(first.rows.len(), 1);
         assert_eq!(first.total_count, 2);
         assert_eq!(first.source.generation_id, "a".repeat(64));
+        let first_wire = serde_json::to_value(&first).expect("serialize V1 response");
+        assert_eq!(first_wire["queryId"], QUERY_ID_V1);
+        assert_eq!(first_wire["schemaVersion"], SCHEMA_VERSION_V1);
+        assert!(first_wire.get("identityMode").is_none());
+        assert!(first_wire.get("friendsPredicateSchemaVersion").is_none());
         let cursor = first.next_cursor.expect("cursor");
         let second = read_at_root(
             &state,
@@ -969,6 +1247,105 @@ mod tests {
         .expect("terminal page");
         assert!(terminal.rows.is_empty());
         assert!(terminal.next_cursor.is_none());
+    }
+
+    #[test]
+    fn reads_a_v2_friends_generation_and_echoes_its_complete_scope() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let base = std::fs::canonicalize(temporary.path()).expect("base");
+        publish_and_select_in_root_with_filter(
+            &base,
+            ROOT_DIRECTORY_FOR_ADAPTERS,
+            v2_scope_json(BrowseIdentityModeV2::Friends),
+            vec![row("x:friend", 91, 1_780_000_000_000, 56)],
+        );
+        let state = LibraryCoreFeedBrowseReaderRuntimeState::default();
+        let response = read_v2_at_root(
+            &state,
+            &base,
+            v2_request(None, "friends-cancel-1", BrowseIdentityModeV2::Friends),
+            Instant::now(),
+        )
+        .expect("V2 Friends page");
+
+        assert_eq!(response.query_id, QUERY_ID_V2);
+        assert_eq!(response.schema_version, SCHEMA_VERSION_V2);
+        assert_eq!(
+            response.friends_predicate_schema_version,
+            FRIENDS_PREDICATE_SCHEMA_VERSION
+        );
+        assert_eq!(response.identity_mode, BrowseIdentityModeV2::Friends);
+        assert_eq!(
+            response.filter,
+            serde_json::from_str::<Value>(FILTER_JSON).expect("filter")
+        );
+        assert_eq!(response.rows.len(), 1);
+        assert_eq!(response.rows[0]["globalId"], "x:friend");
+    }
+
+    #[test]
+    fn rejects_invalid_or_unknown_v2_scope() {
+        let mut invalid_version =
+            v2_request(None, "friends-cancel-1", BrowseIdentityModeV2::Friends);
+        invalid_version.friends_predicate_schema_version = 2;
+        assert!(matches!(
+            validate_request_v2(&invalid_version),
+            Err(BrowseReaderError::InvalidRequest("protocol identity"))
+        ));
+
+        let unknown_identity = serde_json::json!({
+            "cancellationId": "friends-cancel-1",
+            "cursor": null,
+            "filter": serde_json::from_str::<Value>(FILTER_JSON).expect("filter"),
+            "friendsPredicateSchemaVersion": FRIENDS_PREDICATE_SCHEMA_VERSION,
+            "identityMode": "unknown",
+            "limit": 1,
+            "queryId": QUERY_ID_V2,
+            "rankingClockMs": 1_780_000_100_000_i64,
+            "readerSessionId": "reader-session-2",
+            "recommendationOrderSchemaVersion": 1,
+            "schemaVersion": SCHEMA_VERSION_V2,
+        });
+        assert!(serde_json::from_value::<BrowsePageRequest>(unknown_identity).is_err());
+
+        let mut v1_cross_protocol = request(None, "cancel-v1-cross-protocol");
+        v1_cross_protocol.filter =
+            serde_json::from_str(&v2_scope_json(BrowseIdentityModeV2::Friends)).expect("V2 scope");
+        assert!(matches!(
+            validate_request_v1(&v1_cross_protocol),
+            Err(BrowseReaderError::InvalidRequest("protocol identity"))
+        ));
+    }
+
+    #[test]
+    fn rejects_a_v2_generation_scope_mismatch_without_searching_another_generation() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let base = std::fs::canonicalize(temporary.path()).expect("base");
+        publish_and_select_in_root_with_filter(
+            &base,
+            ROOT_DIRECTORY_FOR_ADAPTERS,
+            v2_scope_json(BrowseIdentityModeV2::Friends),
+            vec![row("x:friend", 91, 1_780_000_000_000, 56)],
+        );
+        let state = LibraryCoreFeedBrowseReaderRuntimeState::default();
+        assert!(matches!(
+            read_v2_at_root(
+                &state,
+                &base,
+                v2_request(
+                    None,
+                    "friends-cancel-mismatch",
+                    BrowseIdentityModeV2::AllContent,
+                ),
+                Instant::now(),
+            ),
+            Err(BrowseReaderError::CursorStale)
+        ));
+        assert!(
+            cancel_session(&state, "reader-session-2", "friends-cancel-mismatch")
+                .expect("cancel failed read")
+                .released
+        );
     }
 
     #[test]

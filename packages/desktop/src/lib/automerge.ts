@@ -32,10 +32,15 @@ import type {
   UserPreferences,
   DesktopClientRegistration,
 } from "@freed/shared";
-import { rankFeedItemsInRecommendedOrder } from "@freed/shared";
+import {
+  compileFriendAuthorIndex,
+  rankFeedItemsInRecommendedOrder,
+} from "@freed/shared";
 import type {
   LibraryCoreFeedBrowseFilterInputV1,
+  LibraryCoreFeedBrowseIdentityModeV2,
 } from "@freed/shared/library-core";
+import { libraryCoreFeedBrowseBindingFilterV2 } from "@freed/shared/library-core";
 import type {
   CommittedDocSnapshot,
   DocChangeEvent,
@@ -83,6 +88,7 @@ import {
 } from "./library-core-feed-browse-materializer-runtime";
 import {
   createScannedLibraryCoreFeedBrowseProjectionClient,
+  type LibraryCoreScannedFeedBrowseProjectionStrategy,
 } from "./library-core-feed-browse-hydrated-client";
 import { recordRuntimeHealthEvent, recordWorkerInit } from "./runtime-health-events";
 export type { DocChangeEvent, DocState } from "./automerge-types";
@@ -1899,6 +1905,40 @@ const libraryCoreFeedBrowseProjectionClient =
     },
   });
 
+const LIBRARY_CORE_FRIENDS_FEED_GENERATION_DOMAIN =
+  "freed-desktop-library-core-friends-feed-generation-v1";
+
+const libraryCoreFriendsFeedProjectionStrategy: LibraryCoreScannedFeedBrowseProjectionStrategy =
+  {
+    generationDomain: LIBRARY_CORE_FRIENDS_FEED_GENERATION_DOMAIN,
+    bindingFilterJson(filter) {
+      return JSON.stringify(
+        libraryCoreFeedBrowseBindingFilterV2(filter, "friends"),
+      );
+    },
+    createItemPredicate(state) {
+      const index = compileFriendAuthorIndex(
+        state.persons,
+        state.accounts,
+        state.friends,
+      );
+      return (item) => index.has(item.platform, item.author.id);
+    },
+  };
+
+const libraryCoreFriendsFeedProjectionClient =
+  createScannedLibraryCoreFeedBrowseProjectionClient({
+    getSource: getLibraryCoreProjectionSource,
+    getState: getDocState,
+    openScan: async () => {
+      const { openLibraryCoreItemScanSession } = await import(
+        "./library-core-item-detail-runtime"
+      );
+      return openLibraryCoreItemScanSession(getLibraryCoreProjectionSource);
+    },
+    strategy: libraryCoreFriendsFeedProjectionStrategy,
+  });
+
 let libraryCoreFeedBrowseRun:
   | Promise<MaterializeDesktopLibraryCoreFeedBrowseGenerationResult>
   | null = null;
@@ -1910,6 +1950,7 @@ let libraryCoreFeedBrowseRun:
 export function materializeLibraryCoreFeedBrowseGeneration(
   filter: LibraryCoreFeedBrowseFilterInputV1 | undefined,
   rankingClockMs: number,
+  identityMode: LibraryCoreFeedBrowseIdentityModeV2 = "all_content",
 ): Promise<MaterializeDesktopLibraryCoreFeedBrowseGenerationResult> {
   if (libraryCoreFeedBrowseRun) {
     return Promise.reject(
@@ -1917,7 +1958,9 @@ export function materializeLibraryCoreFeedBrowseGeneration(
     );
   }
   const run = materializeDesktopLibraryCoreFeedBrowseGeneration(
-    libraryCoreFeedBrowseProjectionClient,
+    identityMode === "friends"
+      ? libraryCoreFriendsFeedProjectionClient
+      : libraryCoreFeedBrowseProjectionClient,
     tauriLibraryCoreFeedBrowseNativeClient,
     newLibraryCoreProjectionSessionId(),
     filter,

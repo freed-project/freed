@@ -2964,6 +2964,47 @@ projection only for the existing Automerge mutation and releases it afterward.
 That execution bridge remains Gate D debt because the renderer still enumerates
 the exact bulk IDs. Automerge remains authority.
 
+The Freed Desktop Friends-only feed, when no search is active and Saved-only is
+not selected, now reads the authenticated selected SQLite generation through
+`feed_browse_page_v2`. Version 2 leaves the closed
+`feed_browse_page_v1` request and its all-content callers unchanged. Its
+generation binding adds `identityMode` and `friendsPredicateSchemaVersion` to
+the normalized filter, ranking clock, recommendation-order version, exact
+document identity, heads, storage generation, and save revision. The live
+Friends route sends `identityMode: "friends"` with predicate schema version 1.
+It does not send a renderer-derived author list or a separate identity-set
+digest. The cursor remains bound to the immutable generation and source
+revision.
+
+Friends predicate version 1 preserves the current Person-first compatibility
+semantics exactly. The first matching social Account in current source order
+resolves a Person. When that Person exists, only its `relationshipStatus`
+decides membership, so a non-friend Person shadows a matching legacy Friend
+source. A missing or unlinked Person falls back to any matching legacy Friend
+source. Later duplicate Account matches are ignored. The exact authenticated
+Automerge snapshot and its source order therefore remain part of the predicate
+input. The source-fenced Desktop materializer applies that predicate before it
+publishes the query-specific generation. It derives exact source positions with
+one map capped to the current 64-row native scan page instead of retaining a
+corpus-sized index. SQLite then uses the existing priority-descending,
+published-time-descending, source-sequence-ascending, binary-identity-ascending
+order and returns at most 128 compact rows under the 2 MiB response ceiling.
+Relationship, ordering-relevant item, and ranking-weight changes invalidate the
+reader identity and rebuild one exact source-bound generation. Harmless read,
+like, and provider-receipt patches update the resident Friends pages and pinned
+card without reopening the generation. React retains only two feed pages plus
+at most one selected compact card, so page eviction cannot dismiss the existing
+ReaderView selection and hydration path. Source drift,
+predicate-version mismatch,
+malformed pages, native failure, or the device-local
+`freed.libraryCore.friendsFeedReaderV1.disabled=1` switch restores the exact
+Automerge compatibility feed. The PWA remains on its current Automerge reader.
+Friends search and the combined Friends plus Saved mode remain compatibility
+consumers pending their own bounded query contracts.
+This is an active Gate D SQL read transition. Automerge remains authority, and
+the transition adds no provider request, cadence, navigation, cookie, header,
+writer, cloud, backup, or replacement-replication behavior.
+
 The Freed Desktop Saved feed now reads the authenticated selected SQLite
 generation through the registered `saved_feed_page_v1` source-fenced reader.
 It preserves the four user-facing modes: `date_saved`, `date_published`,
@@ -2996,8 +3037,8 @@ cleanup failure after selection commits cannot undo or ambiguously fail that
 selection. Any extra retired rows or files remain non-authoritative and cleanup
 retries on the next selection.
 Automerge remains authority. This reader adds no provider request, cloud
-publication, writer, replication, release, installation, or activation
-behavior.
+publication, writer, replication, release, or installation behavior. It is an
+active Gate D SQL read transition recorded in the activation manifest.
 
 The cursor is versioned binary data encoded as canonical unpadded base64url. It
 binds the immutable generation digest, transition sequence, projection
