@@ -15,6 +15,13 @@ import {
   LIBRARY_CORE_FEED_BROWSE_PAGE_V3_RESPONSE_SCHEMA,
 } from "./feed-browse-page-contracts.js";
 import {
+  LIBRARY_CORE_SAVED_ANALYTICS_NESTED_BOUNDS,
+  LIBRARY_CORE_SAVED_ANALYTICS_PROJECTION,
+  LIBRARY_CORE_SAVED_ANALYTICS_REQUEST_SCHEMA,
+  LIBRARY_CORE_SAVED_ANALYTICS_RESPONSE_SCHEMA,
+  LIBRARY_CORE_SAVED_ANALYTICS_SOURCE_IDENTITY,
+} from "./saved-analytics-contracts.js";
+import {
   LIBRARY_CORE_FIELD_REGISTRY,
 } from "./field-registry.js";
 import {
@@ -426,6 +433,40 @@ describe("Library Core query registry", () => {
     expect(
       BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds,
     ).toContain("feed_browse_page_v2");
+  });
+
+  it("closes the Saved-analytics aggregate contract", () => {
+    expect(LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v1).toMatchObject({
+      status: "planned_blocked",
+      requestSchema: LIBRARY_CORE_SAVED_ANALYTICS_REQUEST_SCHEMA,
+      responseSchema: LIBRARY_CORE_SAVED_ANALYTICS_RESPONSE_SCHEMA,
+      projection: LIBRARY_CORE_SAVED_ANALYTICS_PROJECTION,
+      sourceIdentity: LIBRARY_CORE_SAVED_ANALYTICS_SOURCE_IDENTITY,
+      nestedBounds: LIBRARY_CORE_SAVED_ANALYTICS_NESTED_BOUNDS,
+      tieBreakKey: "label",
+    });
+    // Both count series are built from a label-keyed BTreeMap, so the only
+    // ordering term is the label itself and it is also the tie-break.
+    expect(
+      LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v1.stableSort,
+    ).toEqual({
+      columns: [{ column: "label", direction: "asc" }],
+      textCollation: "binary",
+      nullOrdering: "all_sort_columns_not_null",
+    });
+    // Closing the six contract fields must clear their paired blockers.
+    for (const blocker of [
+      "request_schema_unresolved",
+      "response_schema_unresolved",
+      "projection_unresolved",
+      "source_identity_unresolved",
+      "nested_bounds_unresolved",
+      "sort_contract_unresolved",
+    ]) {
+      expect(
+        LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v1.blockers,
+      ).not.toContain(blocker);
+    }
   });
 
   it("registers the bidirectional bounded Desktop all-content feed", () => {

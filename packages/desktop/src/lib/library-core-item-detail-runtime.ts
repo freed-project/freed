@@ -10,6 +10,9 @@ import {
   isLibraryCoreEntityId,
   parseLibraryCoreFeedCardV1,
   type LibraryCoreFeedCardV1,
+  LIBRARY_CORE_SAVED_ANALYTICS_DAILY_WINDOW_COUNT,
+  LIBRARY_CORE_SAVED_ANALYTICS_HOURLY_WINDOW_COUNT,
+  LIBRARY_CORE_SAVED_ANALYTICS_REQUEST_SCHEMA,
 } from "@freed/shared/library-core";
 import {
   reconstructFeedItem,
@@ -1782,8 +1785,15 @@ export async function readLibraryCoreSavedAnalytics(
   ) {
     throw new Error("Library Core Saved analytics reader is disabled");
   }
-  const dailyWindows = parseAnalyticsWindows(request.dailyWindows, 7);
-  const hourlyWindows = parseAnalyticsWindows(request.hourlyWindows, 24, true);
+  const dailyWindows = parseAnalyticsWindows(
+    request.dailyWindows,
+    LIBRARY_CORE_SAVED_ANALYTICS_DAILY_WINDOW_COUNT,
+  );
+  const hourlyWindows = parseAnalyticsWindows(
+    request.hourlyWindows,
+    LIBRARY_CORE_SAVED_ANALYTICS_HOURLY_WINDOW_COUNT,
+    LIBRARY_CORE_SAVED_ANALYTICS_REQUEST_SCHEMA.repeatedWindowAllowance.hourly > 0,
+  );
   if (!dailyWindows || !hourlyWindows) {
     throw new Error("Library Core saved analytics windows are invalid");
   }
