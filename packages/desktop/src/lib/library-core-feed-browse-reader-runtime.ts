@@ -1,22 +1,24 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
-  LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
-  LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
   LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID,
   LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION,
+  LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
+  LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION,
   LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
   LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
   LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
   isLibraryCoreOperationInstanceId,
-  parseLibraryCoreFeedBrowsePageResponseV1,
   parseLibraryCoreFeedBrowsePageResponseV2,
+  parseLibraryCoreFeedBrowsePageResponseV3,
+  type LibraryCoreFeedBrowseDirectionV3,
   type LibraryCoreFeedBrowseFilterInputV1,
   type LibraryCoreFeedBrowseFilterV1,
   type LibraryCoreFeedBrowseIdentityModeV2,
   type LibraryCoreFeedBrowsePageRequestV1,
   type LibraryCoreFeedBrowsePageRequestV2,
-  type LibraryCoreFeedBrowsePageResponseV1,
+  type LibraryCoreFeedBrowsePageRequestV3,
   type LibraryCoreFeedBrowsePageResponseV2,
+  type LibraryCoreFeedBrowsePageResponseV3,
   type LibraryCoreFeedCardV1,
   type LibraryCoreOperationInstanceId,
 } from "@freed/shared/library-core";
@@ -54,7 +56,8 @@ export interface LibraryCoreFeedBrowseReaderNativeClient {
   read(
     request:
       | LibraryCoreFeedBrowsePageRequestV1
-      | LibraryCoreFeedBrowsePageRequestV2,
+      | LibraryCoreFeedBrowsePageRequestV2
+      | LibraryCoreFeedBrowsePageRequestV3,
   ): Promise<unknown>;
   cancel(readerSessionId: string, cancellationId: string): Promise<void>;
 }
@@ -141,8 +144,19 @@ export interface LibraryCoreFeedBrowseReaderSession {
   readNext(
     limit?: number,
   ): Promise<
-    LibraryCoreFeedBrowsePageResponseV1 | LibraryCoreFeedBrowsePageResponseV2
+    LibraryCoreFeedBrowsePageResponseV2 | LibraryCoreFeedBrowsePageResponseV3
   >;
+  /**
+   * Read one page in either direction from an opaque edge cursor.
+   *
+   * Only the all-content generation speaks the bidirectional V3 contract. The
+   * Friends generation keeps its closed forward-only V2 wire shape.
+   */
+  readPage?(
+    cursor: string | null,
+    direction: LibraryCoreFeedBrowseDirectionV3,
+    limit?: number,
+  ): Promise<LibraryCoreFeedBrowsePageResponseV3>;
   close(): Promise<void>;
 }
 
@@ -172,17 +186,10 @@ class DesktopLibraryCoreFeedBrowseReaderSession
     this.totalCount = totalCount;
   }
 
-  async readNext(
-    limit = LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
-  ): Promise<
-    LibraryCoreFeedBrowsePageResponseV1 | LibraryCoreFeedBrowsePageResponseV2
-  > {
-    if (this.closed) throw new Error("Library Core browse reader is closed");
-    if (this.exhausted) throw new Error("Library Core browse reader is exhausted");
+  private requestBase(limit: number) {
     this.cancellationId = newOperationId("browse-cancel");
-    const requestBase = {
+    return {
       cancellationId: this.cancellationId,
-      cursor: this.cursor,
       filter: this.filter,
       limit,
       rankingClockMs: this.rankingClockMs,
@@ -190,32 +197,55 @@ class DesktopLibraryCoreFeedBrowseReaderSession
       recommendationOrderSchemaVersion:
         LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
     };
-    if (this.identityMode === "friends") {
-      const request: LibraryCoreFeedBrowsePageRequestV2 = {
-        ...requestBase,
-        friendsPredicateSchemaVersion:
-          LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
-        identityMode: "friends",
-        queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID,
-        schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION,
-      };
-      const raw = await this.native.read(request);
-      const parsed = parseLibraryCoreFeedBrowsePageResponseV2(raw, request);
-      if (!parsed.ok) throw new Error(parsed.error);
-      this.cursor = parsed.value.nextCursor;
-      this.exhausted = this.cursor === null;
-      return parsed.value;
+  }
+
+  readPage = async (
+    cursor: string | null,
+    direction: LibraryCoreFeedBrowseDirectionV3,
+    limit = LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
+  ): Promise<LibraryCoreFeedBrowsePageResponseV3> => {
+    if (this.closed) throw new Error("Library Core browse reader is closed");
+    if (this.identityMode !== "all_content") {
+      throw new Error("Library Core browse reader is not bidirectional");
     }
-    const request: LibraryCoreFeedBrowsePageRequestV1 = {
-      ...requestBase,
-      queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
-      schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
+    const request: LibraryCoreFeedBrowsePageRequestV3 = {
+      ...this.requestBase(limit),
+      cursor,
+      direction,
+      queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
+      schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION,
     };
     const raw = await this.native.read(request);
-    const parsed = parseLibraryCoreFeedBrowsePageResponseV1(raw, request);
-    if (!parsed.ok) {
-      throw new Error(parsed.error);
+    const parsed = parseLibraryCoreFeedBrowsePageResponseV3(raw, request);
+    if (!parsed.ok) throw new Error(parsed.error);
+    return parsed.value;
+  };
+
+  async readNext(
+    limit = LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
+  ): Promise<
+    LibraryCoreFeedBrowsePageResponseV2 | LibraryCoreFeedBrowsePageResponseV3
+  > {
+    if (this.closed) throw new Error("Library Core browse reader is closed");
+    if (this.exhausted) throw new Error("Library Core browse reader is exhausted");
+    if (this.identityMode === "all_content") {
+      const page = await this.readPage(this.cursor, "next", limit);
+      this.cursor = page.nextCursor;
+      this.exhausted = this.cursor === null;
+      return page;
     }
+    const request: LibraryCoreFeedBrowsePageRequestV2 = {
+      ...this.requestBase(limit),
+      cursor: this.cursor,
+      friendsPredicateSchemaVersion:
+        LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
+      identityMode: "friends",
+      queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID,
+      schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION,
+    };
+    const raw = await this.native.read(request);
+    const parsed = parseLibraryCoreFeedBrowsePageResponseV2(raw, request);
+    if (!parsed.ok) throw new Error(parsed.error);
     this.cursor = parsed.value.nextCursor;
     this.exhausted = this.cursor === null;
     return parsed.value;
@@ -291,6 +321,15 @@ export const LIBRARY_CORE_FEED_BROWSE_READER_DISABLED_KEY =
   "freed.libraryCore.feedBrowseReaderV1.disabled";
 export const LIBRARY_CORE_FRIENDS_FEED_READER_DISABLED_KEY =
   "freed.libraryCore.friendsFeedReaderV1.disabled";
+/**
+ * Roll back the bidirectional all-content reader on one device.
+ *
+ * Setting this returns the ordinary feed to the Automerge compatibility
+ * projection rather than to a forward-only bounded reader: without reverse
+ * paging, evicting a leading page would lose rows the user can scroll back to.
+ */
+export const LIBRARY_CORE_FEED_BROWSE_BIDIRECTIONAL_READER_DISABLED_KEY =
+  "freed.libraryCore.feedBrowseBidirectionalReaderV1.disabled";
 
 export function feedCardToItem(card: LibraryCoreFeedCardV1): FeedItem {
   const platform = PLATFORMS.has(card.platform as Platform)
@@ -388,26 +427,52 @@ export function feedCardToItem(card: LibraryCoreFeedCardV1): FeedItem {
   };
 }
 
+export interface BoundedDesktopFeedPage {
+  readonly items: readonly FeedItem[];
+  readonly nextCursor: string | null;
+  readonly previousCursor: string | null;
+}
+
 export async function openBoundedDesktopFeedReader(
   filter: LibraryCoreFeedBrowseFilterInputV1,
   rankingClockMs: number,
 ): Promise<{
   readonly totalCount: number;
   readNext(): Promise<readonly FeedItem[]>;
+  readPage(
+    cursor: string | null,
+    direction: LibraryCoreFeedBrowseDirectionV3,
+  ): Promise<BoundedDesktopFeedPage>;
   close(): Promise<void>;
 }> {
   if (
     typeof localStorage !== "undefined" &&
-    localStorage.getItem(LIBRARY_CORE_FEED_BROWSE_READER_DISABLED_KEY) === "1"
+    (localStorage.getItem(LIBRARY_CORE_FEED_BROWSE_READER_DISABLED_KEY) ===
+      "1" ||
+      localStorage.getItem(
+        LIBRARY_CORE_FEED_BROWSE_BIDIRECTIONAL_READER_DISABLED_KEY,
+      ) === "1")
   ) {
     throw new Error("Library Core bounded feed reader is disabled");
   }
   const session = await openLibraryCoreFeedBrowseReader(filter, rankingClockMs);
+  const readPage = session.readPage;
+  if (!readPage) {
+    throw new Error("Library Core bounded feed reader is not bidirectional");
+  }
   return {
     totalCount: session.totalCount,
     async readNext() {
       const page = await session.readNext();
       return page.rows.map(feedCardToItem);
+    },
+    async readPage(cursor, direction) {
+      const page = await readPage(cursor, direction);
+      return {
+        items: page.rows.map(feedCardToItem),
+        nextCursor: page.nextCursor,
+        previousCursor: page.previousCursor,
+      };
     },
     close() {
       return session.close();

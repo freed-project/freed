@@ -2964,6 +2964,62 @@ projection only for the existing Automerge mutation and releases it afterward.
 That execution bridge remains Gate D debt because the renderer still enumerates
 the exact bulk IDs. Automerge remains authority.
 
+The Freed Desktop ordinary all-content feed, when no search is active and
+neither Saved-only nor Friends mode is selected, now reads the authenticated
+selected SQLite generation through the bidirectional `feed_browse_page_v3`
+request. Version 3 leaves the closed `feed_browse_page_v1` and
+`feed_browse_page_v2` request and response shapes unchanged. Version 1 remains
+the PWA-facing all-content contract and the cross-runtime cursor vector.
+
+Version 3 adds one explicit `direction` of `next` or `previous`, and returns
+both traversal edges as `previousCursor` with `previousOrder` alongside the
+existing `nextCursor` and `nextOrder`. Both edges bind the same immutable
+generation digest, transition sequence, and projection revision as the response
+source, and each binds the exact row it names: the leading edge binds the first
+returned row and the trailing edge the last. A page with no rows carries no edge
+on either side. A backward request without a cursor fails closed, because a
+backward page is defined only relative to a known leading row and there is no
+last-page entry point. A malformed direction, a cursor that decodes to another
+generation or revision, an oversized page, or a V2 generation scope presented as
+a V3 filter all fail closed before any row is read.
+
+Both directions walk the same canonical priority-descending,
+published-time-descending, source-sequence-ascending, binary-identity-ascending
+order through the same unique physical index. The backward predicate is the
+exact mirror of the forward one, so the two directions cannot disagree at a page
+boundary, and the query plan uses that index without a temporary sort. A
+backward scan collects rows nearest the cursor first and restores canonical
+order before returning, so the response byte ceiling truncates the rows furthest
+from the cursor rather than the ones adjacent to it. A non-null edge proves only
+that the page filled its limit, exactly as a full forward page may be followed
+by an empty one; one further read in that direction terminates with an empty
+page. A bidirectional session is not retired when it reaches the forward end,
+because the reader still owns resident pages the user can scroll back through.
+
+React retains at most two whole reader pages, and ReaderView may pin exactly one
+selected compact card outside that window. Traversing past the retired 512-row
+threshold is ordinary traversal, not a fallback condition: the all-content feed
+no longer reacquires the full renderer compatibility projection when the user
+scrolls deeply. Scrolling back toward the head restores an evicted leading page
+through a bounded SQLite read and evicts the trailing one, and the visible list
+stays anchored to the same card in both directions. Resident source offsets are
+tracked independently of optimistic removals, so a local archive or unsave
+cannot shift the offsets the reader resumes from. Read, like, save, archive, and
+provider-receipt updates continue to patch resident and pinned cards without
+reopening the generation.
+
+Source drift, a contract or integrity failure, native failure, or the
+device-local `freed.libraryCore.feedBrowseBidirectionalReaderV1.disabled=1`
+switch restores the exact Automerge compatibility feed. That rollback returns
+the ordinary feed to the compatibility projection rather than to a forward-only
+bounded reader, because without reverse paging an evicted leading page would
+lose rows the user can scroll back to. The existing
+`freed.libraryCore.feedBrowseReaderV1.disabled=1` switch also still applies.
+Feed search, the PWA, Friends, and Saved remain on their current contracts.
+This is an active Gate D SQL read transition. Automerge remains authority, and
+the transition adds no provider request, cadence, navigation, cookie, header,
+writer, cloud, backup, or replacement-replication behavior.
+
 The Freed Desktop Friends-only feed, when no search is active and Saved-only is
 not selected, now reads the authenticated selected SQLite generation through
 `feed_browse_page_v2`. Version 2 leaves the closed

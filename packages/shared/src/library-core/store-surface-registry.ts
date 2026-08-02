@@ -189,6 +189,7 @@ export const BASE_APP_STORE_SURFACE_REGISTRY = {
     successorOperationIds: [],
     successorQueryIds: [
       "feed_browse_page_v2",
+      "feed_browse_page_v3",
       "feed_page_v1",
       "item_detail_v1",
       "person_timeline_v1",

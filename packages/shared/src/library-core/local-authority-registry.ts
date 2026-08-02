@@ -1057,6 +1057,7 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
         locator: "origin:localStorage",
         keys: [
           "freed.libraryCore.externalMigrationV1.disabled",
+          "freed.libraryCore.feedBrowseBidirectionalReaderV1.disabled",
           "freed.libraryCore.feedBrowseReaderV1.disabled",
           "freed.libraryCore.friendEditorReaderV1.disabled",
           "freed.libraryCore.friendsFeedReaderV1.disabled",
@@ -2626,8 +2627,11 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
       '"freed.libraryCore.feedBrowseReaderV1.disabled"',
       "LIBRARY_CORE_FRIENDS_FEED_READER_DISABLED_KEY =",
       '"freed.libraryCore.friendsFeedReaderV1.disabled"',
+      "LIBRARY_CORE_FEED_BROWSE_BIDIRECTIONAL_READER_DISABLED_KEY =",
+      '"freed.libraryCore.feedBrowseBidirectionalReaderV1.disabled"',
     ],
     registeredKeys: [
+      "freed.libraryCore.feedBrowseBidirectionalReaderV1.disabled",
       "freed.libraryCore.feedBrowseReaderV1.disabled",
       "freed.libraryCore.friendsFeedReaderV1.disabled",
     ],

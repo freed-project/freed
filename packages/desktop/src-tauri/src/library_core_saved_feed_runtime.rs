@@ -17,7 +17,9 @@ use crate::library_core_feed_browse_runtime::{
     BrowseGenerationBatchInputV1, BrowseGenerationStatusV1, LibraryCoreFeedBrowseRuntimeState,
     SelectBrowseGenerationInputV1, SelectedBrowseGenerationV1,
 };
-use crate::library_core_feed_browse_store::{FeedBrowseCursor, FeedBrowsePage};
+use crate::library_core_feed_browse_store::{
+    FeedBrowseCursor, FeedBrowsePage, FeedBrowseReadDirection,
+};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -439,6 +441,8 @@ fn read_saved_page_at_root(
             cancellation_id: &request.cancellation_id,
             cursor_identity: request.cursor.0.as_deref(),
             cursor: decoded.as_ref().map(|cursor| &cursor.physical),
+            direction: FeedBrowseReadDirection::Next,
+            keep_session_on_exhaustion: false,
             limit: request.limit as usize,
             expected_filter: &expected_filter,
             ranking_clock_ms: request.ranking_clock_ms,

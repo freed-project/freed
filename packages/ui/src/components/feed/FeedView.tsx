@@ -78,6 +78,8 @@ interface CompactFeedPanelProps {
   leadingOffset?: string;
   onLoadMore?: () => void;
   hasMore?: boolean;
+  onLoadPrevious?: () => void;
+  hasPrevious?: boolean;
   boundedWindowStartIndex?: number;
 }
 
@@ -99,6 +101,8 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
   leadingOffset,
   onLoadMore,
   hasMore = false,
+  onLoadPrevious,
+  hasPrevious = false,
   boundedWindowStartIndex = 0,
 }: CompactFeedPanelProps) {
   const parentRef = useRef<HTMLDivElement>(null);
@@ -109,8 +113,8 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     null,
   );
   const previousBoundedWindowStartRef = useRef(boundedWindowStartIndex);
-  const boundedWindowDidAdvance =
-    boundedWindowStartIndex > previousBoundedWindowStartRef.current;
+  const boundedWindowDidShift =
+    boundedWindowStartIndex !== previousBoundedWindowStartRef.current;
   const prevWidthRef = useRef(width);
 
   const cardHeight = width - CARD_H_PAD;
@@ -171,29 +175,56 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     getScrollMetrics: getReadScrollMetrics,
     markItemsAsRead,
   });
-  const requestMoreNearTail = useCallback(
+  // Pin the top-visible card before the resident window shifts so the restore
+  // below can put it back under the same pixel.
+  const captureBoundedAnchor = useCallback(
     (
       virtualItems: readonly { index: number; start: number; end: number }[],
     ) => {
-      if (!hasMore || !onLoadMore || items.length === 0) return;
+      const scrollTop = parentRef.current?.scrollTop ?? 0;
+      const firstVisible =
+        virtualItems.find((virtualItem) => virtualItem.end > scrollTop) ??
+        virtualItems[0];
+      const anchorItem = firstVisible ? items[firstVisible.index] : undefined;
+      if (!firstVisible || !anchorItem) return;
+      pendingBoundedAnchorRef.current = {
+        itemId: anchorItem.globalId,
+        offset: Math.max(0, scrollTop - firstVisible.start),
+        windowStartIndex: boundedWindowStartIndex,
+      };
+    },
+    [boundedWindowStartIndex, items],
+  );
+  const requestBoundedWindowShift = useCallback(
+    (
+      virtualItems: readonly { index: number; start: number; end: number }[],
+    ) => {
+      if (items.length === 0 || virtualItems.length === 0) return;
       const finalVisible = virtualItems[virtualItems.length - 1];
-      if (finalVisible && finalVisible.index >= Math.max(0, items.length - 5)) {
-        const scrollTop = parentRef.current?.scrollTop ?? 0;
-        const firstVisible =
-          virtualItems.find((virtualItem) => virtualItem.end > scrollTop) ??
-          virtualItems[0];
-        const anchorItem = items[firstVisible.index];
-        if (anchorItem) {
-          pendingBoundedAnchorRef.current = {
-            itemId: anchorItem.globalId,
-            offset: Math.max(0, scrollTop - firstVisible.start),
-            windowStartIndex: boundedWindowStartIndex,
-          };
-        }
+      if (
+        hasMore &&
+        onLoadMore &&
+        finalVisible &&
+        finalVisible.index >= Math.max(0, items.length - 5)
+      ) {
+        captureBoundedAnchor(virtualItems);
         onLoadMore();
+        return;
+      }
+      const firstRendered = virtualItems[0];
+      if (hasPrevious && onLoadPrevious && firstRendered.index <= 4) {
+        captureBoundedAnchor(virtualItems);
+        onLoadPrevious();
       }
     },
-    [boundedWindowStartIndex, hasMore, items, onLoadMore],
+    [
+      captureBoundedAnchor,
+      hasMore,
+      hasPrevious,
+      items.length,
+      onLoadMore,
+      onLoadPrevious,
+    ],
   );
 
   const virtualizer = useVirtualizer({
@@ -203,7 +234,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     overscan: 3,
     onChange: (instance) => {
       processReadOnScroll(instance, "element");
-      requestMoreNearTail(instance.getVirtualItems());
+      requestBoundedWindowShift(instance.getVirtualItems());
     },
   });
 
@@ -232,7 +263,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
   useLayoutEffect(() => {
     const previousWindowStart = previousBoundedWindowStartRef.current;
     previousBoundedWindowStartRef.current = boundedWindowStartIndex;
-    if (boundedWindowStartIndex <= previousWindowStart) return;
+    if (boundedWindowStartIndex === previousWindowStart) return;
 
     const anchor = pendingBoundedAnchorRef.current;
     pendingBoundedAnchorRef.current = null;
@@ -256,7 +287,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
   );
   const didInitialScroll = useRef(false);
   useLayoutEffect(() => {
-    if (boundedWindowDidAdvance) return;
+    if (boundedWindowDidShift) return;
     if (selectedIndex < 0) return;
     const behavior = animationAwareScrollBehavior(
       didInitialScroll.current ? "smooth" : "auto",
@@ -286,7 +317,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     didInitialScroll.current = true;
   }, [
     firstItemHeight,
-    boundedWindowDidAdvance,
+    boundedWindowDidShift,
     itemHeight,
     items.length,
     selectedIndex,
@@ -503,16 +534,13 @@ export function FeedView() {
   const {
     feed: boundedFeed,
     loadMore: loadMoreBoundedItems,
+    loadPrevious: loadPreviousBoundedItems,
     patchItems: patchBoundedItems,
   } = useBoundedFeedItems({
     activeFilter,
     eligible: boundedFeedEligible,
-    maxPageItems: pagedBoundedFeedEligible
-      ? PAGED_FEED_PAGE_SIZE
-      : undefined,
-    maxResidentPages: pagedBoundedFeedEligible
-      ? PAGED_FEED_RESIDENT_PAGE_LIMIT
-      : undefined,
+    maxPageItems: PAGED_FEED_PAGE_SIZE,
+    maxResidentPages: PAGED_FEED_RESIDENT_PAGE_LIMIT,
     openReader: activeBoundedFeedReader,
     rankingClockMs: boundedReaderRankingClockMs,
     sourceVersion: pagedBoundedFeedEligible
@@ -658,11 +686,14 @@ export function FeedView() {
   useLayoutEffect(() => {
     const previousWindowStart = previousWindowStartRef.current;
     previousWindowStartRef.current = boundedFeed.windowStartIndex;
-    const evictedItemCount = boundedFeed.windowStartIndex - previousWindowStart;
-    if (evictedItemCount <= 0) return;
-    setFocusedIndex((current) =>
-      current < evictedItemCount ? -1 : current - evictedItemCount,
-    );
+    const shift = boundedFeed.windowStartIndex - previousWindowStart;
+    if (shift === 0) return;
+    setFocusedIndex((current) => {
+      if (current < 0) return current;
+      // A restored leading page shifts every resident row down by its length.
+      if (shift < 0) return current - shift;
+      return current < shift ? -1 : current - shift;
+    });
   }, [boundedFeed.windowStartIndex]);
   // The store keeps only the selection ID. Paged bounded feeds additionally
   // pin one compact card so page eviction cannot dismiss the reader.
@@ -680,9 +711,7 @@ export function FeedView() {
     setSelectedItemPin((current) =>
       resolveSavedFeedSelectionPin({
         current,
-        eligible: Boolean(
-          pagedBoundedFeedEligible && boundedFeedReadyIsCurrent,
-        ),
+        eligible: Boolean(boundedFeedEligible && boundedFeedReadyIsCurrent),
         readerIdentity: boundedReaderIdentity,
         residentSelectedItem,
         selectedItemId,
@@ -690,9 +719,9 @@ export function FeedView() {
     );
   }, [
     boundedReaderIdentity,
+    boundedFeedEligible,
     boundedFeedReadyIsCurrent,
     residentSelectedItem,
-    pagedBoundedFeedEligible,
     selectedItemId,
   ]);
   const currentSelectedItemPin =
@@ -702,7 +731,7 @@ export function FeedView() {
       : null;
   const selectedItem =
     residentSelectedItem ??
-    (pagedBoundedFeedEligible ? currentSelectedItemPin : null);
+    (boundedFeedEligible ? currentSelectedItemPin : null);
   useEffect(() => {
     const patch = savedFeedPresentationPatch;
     if (
@@ -762,7 +791,7 @@ export function FeedView() {
             ...visibleItems.filter((item) => !stableIds.has(item.globalId)),
           ];
     const pinnedSelection =
-      pagedBoundedFeedEligible &&
+      boundedFeedEligible &&
       currentSelectedItemPin?.globalId === selectedItemId &&
       !residentItems.some((item) => item.globalId === selectedItemId)
         ? currentSelectedItemPin
@@ -772,8 +801,8 @@ export function FeedView() {
       : residentItems;
   }, [
     readerOrderIds,
+    boundedFeedEligible,
     currentSelectedItemPin,
-    pagedBoundedFeedEligible,
     selectedItemId,
     visibleItems,
   ]);
@@ -1064,6 +1093,10 @@ export function FeedView() {
                   hasMore={
                     boundedFeedReadyIsCurrent && boundedFeed.hasMore
                   }
+                  onLoadPrevious={loadPreviousBoundedItems}
+                  hasPrevious={
+                    boundedFeedReadyIsCurrent && boundedFeed.hasPrevious
+                  }
                   boundedWindowStartIndex={boundedFeed.windowStartIndex}
                 />
                 <div
@@ -1116,6 +1149,8 @@ export function FeedView() {
         searchQuery={searchQuery}
         onLoadMore={loadMoreBoundedItems}
         hasMore={boundedFeedReadyIsCurrent && boundedFeed.hasMore}
+        onLoadPrevious={loadPreviousBoundedItems}
+        hasPrevious={boundedFeedReadyIsCurrent && boundedFeed.hasPrevious}
         boundedWindowStartIndex={boundedFeed.windowStartIndex}
         markItemsAsReadOverride={markBoundedItemsAsRead}
       />

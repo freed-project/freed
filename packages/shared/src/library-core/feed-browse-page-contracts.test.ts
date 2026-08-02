@@ -5,6 +5,8 @@ import {
   LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
   LIBRARY_CORE_FEED_BROWSE_PAGE_V2_QUERY_ID,
   LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION,
+  LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
+  LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION,
   LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
   decodeLibraryCoreFeedBrowsePageCursorV1,
   encodeLibraryCoreFeedBrowsePageCursorV1,
@@ -12,6 +14,7 @@ import {
   parseLibraryCoreFeedBrowsePageRequestV1,
   parseLibraryCoreFeedBrowsePageResponseV1,
   parseLibraryCoreFeedBrowsePageResponseV2,
+  parseLibraryCoreFeedBrowsePageResponseV3,
   type LibraryCoreFeedBrowsePageCursorV1,
 } from "./feed-browse-page-contracts.js";
 import type { LibraryCoreFeedBrowseFilterV1 } from "./feed-browse-filter-contract.js";
@@ -74,6 +77,22 @@ function requestV2(overrides: Record<string, unknown> = {}) {
     readerSessionId: "reader-session-1",
     recommendationOrderSchemaVersion: 1,
     schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION,
+    ...overrides,
+  };
+}
+
+function requestV3(overrides: Record<string, unknown> = {}) {
+  return {
+    cancellationId: "cancel-1",
+    cursor: null,
+    direction: "next",
+    filter: FILTER,
+    limit: 64,
+    queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
+    rankingClockMs: 1_780_000_100_000,
+    readerSessionId: "reader-session-1",
+    recommendationOrderSchemaVersion: 1,
+    schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION,
     ...overrides,
   };
 }
@@ -263,6 +282,178 @@ describe("Library Core feed-browse page protocol", () => {
       parseLibraryCoreFeedBrowsePageResponseV2(
         response,
         requestV2({ extra: true }),
+      ),
+    ).toMatchObject({ ok: false });
+  });
+
+  it("requires one explicit V3 direction and a cursor to walk backward", () => {
+    const encoded = encodeLibraryCoreFeedBrowsePageCursorV1(cursor());
+    // The request contract is enforced through the response parser, which
+    // validates its bound request before reading a single row.
+    const emptyPage = {
+      filter: FILTER,
+      nextCursor: null,
+      nextOrder: null,
+      previousCursor: null,
+      previousOrder: null,
+      queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
+      rankingClockMs: 1_780_000_100_000,
+      recommendationOrderSchemaVersion: 1,
+      rows: [],
+      schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION,
+      source: {
+        generationId: "a".repeat(64),
+        projectionRevision: 34,
+        transitionSequence: 12,
+      },
+      totalCount: 2,
+    };
+    const parseWith = (request: Record<string, unknown>) =>
+      parseLibraryCoreFeedBrowsePageResponseV3(emptyPage, request);
+
+    expect(parseWith(requestV3())).toMatchObject({ ok: true });
+    expect(
+      parseWith(requestV3({ direction: "previous", cursor: encoded })),
+    ).toMatchObject({ ok: true });
+    // A backward page has no meaning without a leading row to resume from.
+    expect(parseWith(requestV3({ direction: "previous" }))).toMatchObject({
+      ok: false,
+    });
+    for (const direction of ["sideways", "", null, 1, undefined]) {
+      expect(parseWith(requestV3({ direction }))).toMatchObject({ ok: false });
+    }
+    // The closed V1 and V2 request shapes must not pass as V3.
+    expect(parseWith(request())).toMatchObject({ ok: false });
+    expect(parseWith(requestV2())).toMatchObject({ ok: false });
+    expect(
+      parseWith(
+        requestV3({
+          schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION,
+        }),
+      ),
+    ).toMatchObject({ ok: false });
+    expect(parseWith(requestV3({ extra: true }))).toMatchObject({ ok: false });
+    // A V3 request must not satisfy the closed V1 parser either.
+    expect(
+      parseLibraryCoreFeedBrowsePageRequestV1(requestV3()),
+    ).toMatchObject({ ok: false });
+  });
+
+  it("binds both V3 traversal edges to the rows and source they claim", () => {
+    const leading = encodeLibraryCoreFeedBrowsePageCursorV1(cursor());
+    const response = {
+      filter: FILTER,
+      nextCursor: leading,
+      nextOrder: {
+        globalId: "x:item-1",
+        priority: 91,
+        publishedAt: 1_780_000_000_000,
+        sourceSequence: 56,
+      },
+      previousCursor: leading,
+      previousOrder: {
+        globalId: "x:item-1",
+        priority: 91,
+        publishedAt: 1_780_000_000_000,
+        sourceSequence: 56,
+      },
+      queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
+      rankingClockMs: 1_780_000_100_000,
+      recommendationOrderSchemaVersion: 1,
+      rows: [feedCard()],
+      schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION,
+      source: {
+        generationId: "a".repeat(64),
+        projectionRevision: 34,
+        transitionSequence: 12,
+      },
+      totalCount: 2,
+    };
+    expect(
+      parseLibraryCoreFeedBrowsePageResponseV3(response, requestV3()),
+    ).toMatchObject({ ok: true });
+    // A terminal head reports no backward edge at all.
+    expect(
+      parseLibraryCoreFeedBrowsePageResponseV3(
+        { ...response, previousCursor: null, previousOrder: null },
+        requestV3(),
+      ),
+    ).toMatchObject({ ok: true });
+    // Cursor and order must agree, and both must bind the first row.
+    expect(
+      parseLibraryCoreFeedBrowsePageResponseV3(
+        { ...response, previousOrder: null },
+        requestV3(),
+      ),
+    ).toMatchObject({ ok: false });
+    expect(
+      parseLibraryCoreFeedBrowsePageResponseV3(
+        {
+          ...response,
+          previousOrder: { ...response.previousOrder, sourceSequence: 57 },
+        },
+        requestV3(),
+      ),
+    ).toMatchObject({ ok: false });
+    expect(
+      parseLibraryCoreFeedBrowsePageResponseV3(
+        {
+          ...response,
+          previousCursor: encodeLibraryCoreFeedBrowsePageCursorV1(
+            cursor({
+              globalId:
+                "x:other" as LibraryCoreFeedBrowsePageCursorV1["globalId"],
+            }),
+          ),
+        },
+        requestV3(),
+      ),
+    ).toMatchObject({ ok: false });
+    // A generation that does not match the response source cannot be resumed.
+    expect(
+      parseLibraryCoreFeedBrowsePageResponseV3(
+        {
+          ...response,
+          previousCursor: encodeLibraryCoreFeedBrowsePageCursorV1(
+            cursor({ projectionRevision: 35 }),
+          ),
+        },
+        requestV3(),
+      ),
+    ).toMatchObject({ ok: false });
+    // An empty page has no edge to resume from on either side.
+    expect(
+      parseLibraryCoreFeedBrowsePageResponseV3(
+        {
+          ...response,
+          rows: [],
+          nextCursor: null,
+          nextOrder: null,
+        },
+        requestV3(),
+      ),
+    ).toMatchObject({ ok: false });
+    expect(
+      parseLibraryCoreFeedBrowsePageResponseV3(
+        {
+          ...response,
+          rows: [],
+          nextCursor: null,
+          nextOrder: null,
+          previousCursor: null,
+          previousOrder: null,
+        },
+        requestV3(),
+      ),
+    ).toMatchObject({ ok: true });
+    // The closed V1 and V2 response shapes stay separable from V3.
+    expect(
+      parseLibraryCoreFeedBrowsePageResponseV1(response, request()),
+    ).toMatchObject({ ok: false });
+    expect(
+      parseLibraryCoreFeedBrowsePageResponseV3(
+        { ...response, queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID },
+        requestV3(),
       ),
     ).toMatchObject({ ok: false });
   });

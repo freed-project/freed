@@ -11,7 +11,7 @@ use crate::library_core_feed_browse_registry::{
 };
 use crate::library_core_feed_browse_store::{
     FeedBrowseCursor, FeedBrowseGenerationBinding, FeedBrowseGenerationStore, FeedBrowsePage,
-    FeedBrowseStoreError,
+    FeedBrowseReadDirection, FeedBrowseStoreError,
 };
 use sha2::{Digest, Sha256};
 use std::fmt;
@@ -170,6 +170,17 @@ impl FeedBrowseGenerationReader {
         limit: usize,
     ) -> ReaderResult<FeedBrowsePage> {
         self.store.read_page(cursor, limit).map_err(Into::into)
+    }
+
+    pub(super) fn read_page_in_direction(
+        &self,
+        cursor: Option<&FeedBrowseCursor>,
+        limit: usize,
+        direction: FeedBrowseReadDirection,
+    ) -> ReaderResult<FeedBrowsePage> {
+        self.store
+            .read_page_in_direction(cursor, limit, direction)
+            .map_err(Into::into)
     }
 }
 

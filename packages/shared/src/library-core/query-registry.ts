@@ -15,6 +15,9 @@ import {
   LIBRARY_CORE_FEED_BROWSE_PAGE_V2_PROJECTION,
   LIBRARY_CORE_FEED_BROWSE_PAGE_V2_REQUEST_SCHEMA,
   LIBRARY_CORE_FEED_BROWSE_PAGE_V2_RESPONSE_SCHEMA,
+  LIBRARY_CORE_FEED_BROWSE_PAGE_V3_PROJECTION,
+  LIBRARY_CORE_FEED_BROWSE_PAGE_V3_REQUEST_SCHEMA,
+  LIBRARY_CORE_FEED_BROWSE_PAGE_V3_RESPONSE_SCHEMA,
 } from "./feed-browse-page-contracts.js";
 import {
   LIBRARY_CORE_SAVED_FEED_PAGE_MAXIMUM_LIMIT,
@@ -34,6 +37,7 @@ export const LIBRARY_CORE_QUERY_IDS = [
   "export_enumeration_v1",
   "feed_browse_page_v1",
   "feed_browse_page_v2",
+  "feed_browse_page_v3",
   "feed_facets_v1",
   "feed_page_v1",
   "feed_subscription_page_v1",
@@ -199,12 +203,14 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V3_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_REQUEST_SCHEMA
     | null;
   readonly responseSchema:
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V3_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_RESPONSE_SCHEMA
     | null;
   readonly projection:
@@ -312,11 +318,13 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_FEED_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V3_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_REQUEST_SCHEMA;
   readonly responseSchema?:
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V3_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_RESPONSE_SCHEMA;
   readonly projection?:
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
@@ -549,6 +557,39 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     projection: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_PROJECTION,
     sourceIdentity: LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY,
     nestedBounds: LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS,
+    stableSort: {
+      columns: [
+        { column: "priority", direction: "desc" },
+        { column: "publishedAt", direction: "desc" },
+        { column: "sourceSequence", direction: "asc" },
+        { column: "globalId", direction: "asc" },
+      ],
+      textCollation: "binary",
+      nullOrdering: "all_sort_columns_not_null",
+    },
+    tieBreakKey: "globalId",
+    resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
+  }),
+  feed_browse_page_v3: plannedQuery({
+    defaultLimit: LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
+    maximumLimit: LIBRARY_CORE_FEED_PAGE_MAXIMUM_LIMIT,
+    maximumRows: LIBRARY_CORE_FEED_PAGE_MAXIMUM_LIMIT,
+    maximumResponseBytes: LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
+    totalCountIntent: "snapshot_exact",
+    rendererCache: true,
+    invalidationKeyIntent: ["feed:browse", "feed-facets"],
+    currentKinds: [
+      "read_library_core_feed_browse_page",
+      "openBoundedDesktopFeedReader",
+    ],
+    requestSchema: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS,
+    // Both traversal directions read the same canonical order. A backward page
+    // is the exact mirror of the forward keyset predicate, walked through the
+    // same unique index, so the two directions cannot disagree about ordering.
     stableSort: {
       columns: [
         { column: "priority", direction: "desc" },

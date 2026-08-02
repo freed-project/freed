@@ -11,6 +11,8 @@ import {
   LIBRARY_CORE_FEED_BROWSE_PAGE_V2_PROJECTION,
   LIBRARY_CORE_FEED_BROWSE_PAGE_V2_REQUEST_SCHEMA,
   LIBRARY_CORE_FEED_BROWSE_PAGE_V2_RESPONSE_SCHEMA,
+  LIBRARY_CORE_FEED_BROWSE_PAGE_V3_REQUEST_SCHEMA,
+  LIBRARY_CORE_FEED_BROWSE_PAGE_V3_RESPONSE_SCHEMA,
 } from "./feed-browse-page-contracts.js";
 import {
   LIBRARY_CORE_FIELD_REGISTRY,
@@ -265,6 +267,7 @@ describe("Library Core query registry", () => {
       if (
         definition === LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v2 ||
+        definition === LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v3 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.persons_graph_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v1 ||
@@ -423,6 +426,38 @@ describe("Library Core query registry", () => {
     expect(
       BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds,
     ).toContain("feed_browse_page_v2");
+  });
+
+  it("registers the bidirectional bounded Desktop all-content feed", () => {
+    expect(LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v3).toMatchObject({
+      status: "planned_blocked",
+      source: {
+        boundary: "library_core",
+        currentKinds: [
+          "read_library_core_feed_browse_page",
+          "openBoundedDesktopFeedReader",
+        ],
+      },
+      requestSchema: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_REQUEST_SCHEMA,
+      responseSchema: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_RESPONSE_SCHEMA,
+      sourceIdentity: LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY,
+      nestedBounds: LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS,
+      defaultLimit: 64,
+      maximumLimit: 128,
+      maximumRows: 128,
+      maximumResponseBytes: 2 * 1_048_576,
+      totalCountIntent: "snapshot_exact",
+    });
+    // Backward paging must not introduce a second ordering.
+    expect(LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v3.stableSort).toEqual(
+      LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v1.stableSort,
+    );
+    expect(
+      LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v3.blockers,
+    ).not.toContain("runtime_adapter_unimplemented");
+    expect(
+      BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds,
+    ).toContain("feed_browse_page_v3");
   });
 
   it("uses shared renderer and interactive snapshot pools instead of additive query reservations", () => {
