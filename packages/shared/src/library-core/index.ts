@@ -18,6 +18,7 @@ export * from "./operation-envelope-contracts.js";
 export * from "./operation-envelope-finalization.js";
 export * from "./operation-envelope-verification.js";
 export * from "./operation-payload-contracts.js";
+export * from "./operation-touched-fields.js";
 export * from "./operation-transaction-contracts.js";
 export * from "./portable-checkpoint-contracts.js";
 export * from "./protocol-registry.js";
