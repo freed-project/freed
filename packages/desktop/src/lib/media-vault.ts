@@ -3,14 +3,18 @@ import { appDataDir } from "@tauri-apps/api/path";
 import {
   exists,
   mkdir,
+  open,
   readTextFile,
+  readTextFileLines,
+  remove,
   writeFile,
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
 import type { FeedItem } from "@freed/shared";
 
 export type MediaVaultProvider = "facebook" | "instagram";
-export type MediaVaultImportSource = "meta_export" | "profile_backfill" | "continuous";
+export type MediaVaultImportSource =
+  "meta_export" | "profile_backfill" | "continuous";
 
 export interface MediaVaultEntry {
   id: string;
@@ -58,7 +62,8 @@ export interface MediaVaultRosterEntry {
   groupUrl?: string;
   firstSeenAt: number;
   lastSeenAt: number;
-  source: "captured_item" | "facebook_group" | "meta_export" | "profile_backfill";
+  source:
+    "captured_item" | "facebook_group" | "meta_export" | "profile_backfill";
 }
 
 export interface MediaVaultManifest {
@@ -96,6 +101,35 @@ const MANIFEST_FILE = "manifest.json";
 const MANIFEST_VERSION = 1;
 const MAX_RETRY_DELAY_MS = 24 * 60 * 60 * 1000;
 const PROVIDERS: MediaVaultProvider[] = ["facebook", "instagram"];
+const PROVIDER_SCAN_STAGING_VERSION = 1;
+const MAX_PROVIDER_SCAN_PAGE_ROWS = 64;
+const MAX_PROVIDER_SCAN_PAGE_BYTES = 4 * 1024 * 1024;
+const MAX_PROVIDER_SCAN_STRING_BYTES = 8 * 1024;
+const MAX_PROVIDER_SCAN_MEDIA_ITEMS = 64;
+const PROVIDER_SCAN_STAGING_DIR = "provider-scan-staging";
+const textEncoder = new TextEncoder();
+
+export interface MediaVaultArchiveItem {
+  readonly globalId: string;
+  readonly platform: FeedItem["platform"];
+  readonly capturedAt: number;
+  readonly author: Pick<FeedItem["author"], "id" | "handle" | "displayName">;
+  readonly content: Pick<FeedItem["content"], "mediaUrls" | "mediaTypes">;
+  readonly sourceUrl?: string;
+  readonly fbGroup?: NonNullable<FeedItem["fbGroup"]>;
+}
+
+interface MediaVaultProviderScanPageV1 {
+  readonly version: typeof PROVIDER_SCAN_STAGING_VERSION;
+  readonly provider: MediaVaultProvider;
+  readonly pageIndex: number;
+  readonly items: readonly MediaVaultArchiveItem[];
+}
+
+export type ScanMediaVaultProviderPages = (
+  provider: MediaVaultProvider,
+  visitPage: (items: readonly FeedItem[]) => void | Promise<void>,
+) => Promise<void>;
 
 let rootDirCache: string | null = null;
 const listeners = new Set<() => void>();
@@ -120,7 +154,9 @@ function createEmptyManifest(): MediaVaultManifest {
   };
 }
 
-function normalizeManifest(input: Partial<MediaVaultManifest> | null | undefined): MediaVaultManifest {
+function normalizeManifest(
+  input: Partial<MediaVaultManifest> | null | undefined,
+): MediaVaultManifest {
   const manifest = createEmptyManifest();
   if (!input) return manifest;
 
@@ -146,9 +182,197 @@ function notify(): void {
 function joinPath(base: string, ...parts: string[]): string {
   const cleaned = [base, ...parts].map((part, index) => {
     const trimmed = part.trim();
-    return index === 0 ? trimmed.replace(/\/+$/, "") : trimmed.replace(/^\/+|\/+$/g, "");
+    return index === 0
+      ? trimmed.replace(/\/+$/, "")
+      : trimmed.replace(/^\/+|\/+$/g, "");
   });
   return cleaned.filter(Boolean).join("/");
+}
+
+function closedRecord(
+  value: unknown,
+  requiredKeys: readonly string[],
+  optionalKeys: readonly string[] = [],
+): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const allowed = new Set([...requiredKeys, ...optionalKeys]);
+  const keys = Object.keys(record);
+  if (
+    requiredKeys.some((key) => !Object.hasOwn(record, key)) ||
+    keys.some((key) => !allowed.has(key))
+  ) {
+    return null;
+  }
+  return record;
+}
+
+function boundedString(
+  value: unknown,
+  options: { nonEmpty?: boolean } = {},
+): value is string {
+  return (
+    typeof value === "string" &&
+    (!options.nonEmpty || value.length > 0) &&
+    textEncoder.encode(value).byteLength <= MAX_PROVIDER_SCAN_STRING_BYTES
+  );
+}
+
+function boundedStringArray(
+  value: unknown,
+  allowedValues?: ReadonlySet<string>,
+): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= MAX_PROVIDER_SCAN_MEDIA_ITEMS &&
+    value.every(
+      (entry) =>
+        boundedString(entry) && (!allowedValues || allowedValues.has(entry)),
+    )
+  );
+}
+
+function parseProviderScanItem(
+  value: unknown,
+  provider: MediaVaultProvider,
+): MediaVaultArchiveItem {
+  const item = closedRecord(
+    value,
+    ["globalId", "platform", "capturedAt", "author", "content"],
+    ["sourceUrl", "fbGroup"],
+  );
+  const author = closedRecord(item?.author, ["id", "handle", "displayName"]);
+  const content = closedRecord(item?.content, ["mediaUrls", "mediaTypes"]);
+  const fbGroup =
+    item?.fbGroup === undefined
+      ? undefined
+      : closedRecord(item.fbGroup, ["id", "name", "url"]);
+  const mediaTypes = new Set<FeedItem["content"]["mediaTypes"][number]>([
+    "image",
+    "video",
+    "link",
+  ]);
+
+  if (
+    !item ||
+    item.platform !== provider ||
+    !boundedString(item.globalId, { nonEmpty: true }) ||
+    !Number.isSafeInteger(item.capturedAt) ||
+    (item.capturedAt as number) < 0 ||
+    !author ||
+    !boundedString(author.id, { nonEmpty: true }) ||
+    !boundedString(author.handle) ||
+    !boundedString(author.displayName) ||
+    !content ||
+    !boundedStringArray(content.mediaUrls) ||
+    !boundedStringArray(content.mediaTypes, mediaTypes) ||
+    (item.sourceUrl !== undefined && !boundedString(item.sourceUrl)) ||
+    (item.fbGroup !== undefined &&
+      (!fbGroup ||
+        !boundedString(fbGroup.id, { nonEmpty: true }) ||
+        !boundedString(fbGroup.name) ||
+        !boundedString(fbGroup.url)))
+  ) {
+    throw new Error("Media vault provider scan staging item is invalid");
+  }
+
+  return {
+    globalId: item.globalId,
+    platform: provider,
+    capturedAt: item.capturedAt as number,
+    author: {
+      id: author.id,
+      handle: author.handle,
+      displayName: author.displayName,
+    },
+    content: {
+      mediaUrls: [...content.mediaUrls],
+      mediaTypes: [...content.mediaTypes] as FeedItem["content"]["mediaTypes"],
+    },
+    ...(item.sourceUrl === undefined ? {} : { sourceUrl: item.sourceUrl }),
+    ...(fbGroup
+      ? {
+          fbGroup: {
+            id: fbGroup.id as string,
+            name: fbGroup.name as string,
+            url: fbGroup.url as string,
+          },
+        }
+      : {}),
+  };
+}
+
+function parseProviderScanPage(
+  line: string,
+  provider: MediaVaultProvider,
+  expectedPageIndex: number,
+): MediaVaultProviderScanPageV1 {
+  if (
+    line.length === 0 ||
+    textEncoder.encode(line).byteLength > MAX_PROVIDER_SCAN_PAGE_BYTES
+  ) {
+    throw new Error("Media vault provider scan staging page is invalid");
+  }
+
+  let value: unknown;
+  try {
+    value = JSON.parse(line);
+  } catch {
+    throw new Error("Media vault provider scan staging page is invalid");
+  }
+  const page = closedRecord(value, [
+    "version",
+    "provider",
+    "pageIndex",
+    "items",
+  ]);
+  if (
+    !page ||
+    page.version !== PROVIDER_SCAN_STAGING_VERSION ||
+    page.provider !== provider ||
+    page.pageIndex !== expectedPageIndex ||
+    !Array.isArray(page.items) ||
+    page.items.length > MAX_PROVIDER_SCAN_PAGE_ROWS
+  ) {
+    throw new Error("Media vault provider scan staging page is invalid");
+  }
+
+  return {
+    version: PROVIDER_SCAN_STAGING_VERSION,
+    provider,
+    pageIndex: expectedPageIndex,
+    items: page.items.map((item) => parseProviderScanItem(item, provider)),
+  };
+}
+
+function serializeProviderScanPage(
+  provider: MediaVaultProvider,
+  pageIndex: number,
+  items: readonly FeedItem[],
+): Uint8Array {
+  const line = JSON.stringify({
+    version: PROVIDER_SCAN_STAGING_VERSION,
+    provider,
+    pageIndex,
+    items: items.map((item) => ({
+      globalId: item.globalId,
+      platform: item.platform,
+      capturedAt: item.capturedAt,
+      author: {
+        id: item.author.id,
+        handle: item.author.handle,
+        displayName: item.author.displayName,
+      },
+      content: {
+        mediaUrls: item.content.mediaUrls,
+        mediaTypes: item.content.mediaTypes,
+      },
+      ...(item.sourceUrl === undefined ? {} : { sourceUrl: item.sourceUrl }),
+      ...(item.fbGroup === undefined ? {} : { fbGroup: item.fbGroup }),
+    })),
+  });
+  parseProviderScanPage(line, provider, pageIndex);
+  return textEncoder.encode(`${line}\n`);
 }
 
 async function getMediaVaultRootDir(): Promise<string> {
@@ -163,13 +387,17 @@ async function getManifestPath(): Promise<string> {
   return joinPath(await getMediaVaultRootDir(), MANIFEST_FILE);
 }
 
-async function ensureProviderDir(provider: MediaVaultProvider): Promise<string> {
+async function ensureProviderDir(
+  provider: MediaVaultProvider,
+): Promise<string> {
   const dir = joinPath(await getMediaVaultRootDir(), provider);
   await mkdir(dir, { recursive: true });
   return dir;
 }
 
-export async function getMediaVaultProviderDir(provider: MediaVaultProvider): Promise<string> {
+export async function getMediaVaultProviderDir(
+  provider: MediaVaultProvider,
+): Promise<string> {
   return ensureProviderDir(provider);
 }
 
@@ -184,9 +412,12 @@ export function safeMediaVaultFilename(input: string): string {
 }
 
 function extensionFromCandidate(candidate: MediaVaultCandidate): string {
-  const source = candidate.originalPath ?? candidate.mediaUrl ?? candidate.sourceUrl ?? "";
+  const source =
+    candidate.originalPath ?? candidate.mediaUrl ?? candidate.sourceUrl ?? "";
   try {
-    const parsed = source.startsWith("http") ? new URL(source).pathname : source;
+    const parsed = source.startsWith("http")
+      ? new URL(source).pathname
+      : source;
     const match = parsed.match(/\.([a-z0-9]{2,5})(?:$|[?#])/i);
     if (match?.[1]) return match[1].toLowerCase();
   } catch {
@@ -211,8 +442,13 @@ export async function hashMediaBytes(bytes: Uint8Array): Promise<string> {
   if (!subtle) return fallbackHash(bytes);
   const digestBytes = new Uint8Array(bytes.byteLength);
   digestBytes.set(bytes);
-  const digest = await subtle.digest("SHA-256", digestBytes.buffer as ArrayBuffer);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const digest = await subtle.digest(
+    "SHA-256",
+    digestBytes.buffer as ArrayBuffer,
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
 }
 
 export async function readMediaVaultManifest(): Promise<MediaVaultManifest> {
@@ -228,11 +464,17 @@ export async function readMediaVaultManifest(): Promise<MediaVaultManifest> {
 
 async function writeManifest(manifest: MediaVaultManifest): Promise<void> {
   const path = await getManifestPath();
-  await writeTextFile(path, JSON.stringify(normalizeManifest(manifest), null, 2));
+  await writeTextFile(
+    path,
+    JSON.stringify(normalizeManifest(manifest), null, 2),
+  );
   notify();
 }
 
-function entryKeyForCandidate(candidate: MediaVaultCandidate, contentHash: string): string {
+function entryKeyForCandidate(
+  candidate: MediaVaultCandidate,
+  contentHash: string,
+): string {
   const key = [
     candidate.provider,
     candidate.postId ?? "",
@@ -269,16 +511,30 @@ function duplicateEntry(
   for (const entry of Object.values(manifest.entries)) {
     if (entry.provider !== candidate.provider) continue;
     if (entry.contentHash === contentHash) return entry;
-    if (candidate.mediaUrl && entry.mediaUrl === candidate.mediaUrl) return entry;
-    if (normalizedCandidateUrl && normalizeMediaUrl(entry.mediaUrl) === normalizedCandidateUrl) return entry;
-    if (candidate.postId && entry.postId === candidate.postId && candidate.sourceUrl === entry.sourceUrl) {
+    if (candidate.mediaUrl && entry.mediaUrl === candidate.mediaUrl)
+      return entry;
+    if (
+      normalizedCandidateUrl &&
+      normalizeMediaUrl(entry.mediaUrl) === normalizedCandidateUrl
+    )
+      return entry;
+    if (
+      candidate.postId &&
+      entry.postId === candidate.postId &&
+      candidate.sourceUrl === entry.sourceUrl
+    ) {
       return entry;
     }
   }
   return null;
 }
 
-function failureKey(candidate: Pick<MediaVaultCandidate, "provider" | "mediaUrl" | "sourceUrl" | "postId">): string {
+function failureKey(
+  candidate: Pick<
+    MediaVaultCandidate,
+    "provider" | "mediaUrl" | "sourceUrl" | "postId"
+  >,
+): string {
   return `${candidate.provider}:${candidate.postId ?? ""}:${candidate.mediaUrl ?? candidate.sourceUrl ?? ""}`;
 }
 
@@ -313,20 +569,27 @@ export async function addMediaVaultOwnerHandle(
   const manifest = await readMediaVaultManifest();
   const handles = new Set(manifest.providers[provider].ownerHandles);
   handles.add(cleanHandle);
-  manifest.providers[provider].ownerHandles = Array.from(handles).sort((a, b) => a.localeCompare(b));
+  manifest.providers[provider].ownerHandles = Array.from(handles).sort((a, b) =>
+    a.localeCompare(b),
+  );
   await writeManifest(manifest);
 }
 
-export async function archiveMediaVaultCandidate(candidate: MediaVaultCandidate): Promise<MediaVaultEntry | null> {
+export async function archiveMediaVaultCandidate(
+  candidate: MediaVaultCandidate,
+): Promise<MediaVaultEntry | null> {
   const manifest = await readMediaVaultManifest();
-  if (!manifest.providers[candidate.provider].enabled && candidate.importSource !== "meta_export") {
+  if (
+    !manifest.providers[candidate.provider].enabled &&
+    candidate.importSource !== "meta_export"
+  ) {
     return null;
   }
 
   try {
-    const bytes = candidate.bytes ?? (
-      candidate.mediaUrl ? await fetchMediaBytes(candidate.mediaUrl) : null
-    );
+    const bytes =
+      candidate.bytes ??
+      (candidate.mediaUrl ? await fetchMediaBytes(candidate.mediaUrl) : null);
     if (!bytes) return null;
 
     const contentHash = await hashMediaBytes(bytes);
@@ -336,9 +599,13 @@ export async function archiveMediaVaultCandidate(candidate: MediaVaultCandidate)
       manifest.providers[candidate.provider].lastError = undefined;
       delete manifest.failures[failureKey(candidate)];
       if (candidate.ownerHandle) {
-        const handles = new Set(manifest.providers[candidate.provider].ownerHandles);
+        const handles = new Set(
+          manifest.providers[candidate.provider].ownerHandles,
+        );
         handles.add(candidate.ownerHandle);
-        manifest.providers[candidate.provider].ownerHandles = Array.from(handles).sort((a, b) => a.localeCompare(b));
+        manifest.providers[candidate.provider].ownerHandles = Array.from(
+          handles,
+        ).sort((a, b) => a.localeCompare(b));
       }
       await writeManifest(manifest);
       return duplicate;
@@ -370,9 +637,13 @@ export async function archiveMediaVaultCandidate(candidate: MediaVaultCandidate)
     manifest.providers[candidate.provider].lastError = undefined;
     delete manifest.failures[failureKey(candidate)];
     if (candidate.ownerHandle) {
-      const handles = new Set(manifest.providers[candidate.provider].ownerHandles);
+      const handles = new Set(
+        manifest.providers[candidate.provider].ownerHandles,
+      );
       handles.add(candidate.ownerHandle);
-      manifest.providers[candidate.provider].ownerHandles = Array.from(handles).sort((a, b) => a.localeCompare(b));
+      manifest.providers[candidate.provider].ownerHandles = Array.from(
+        handles,
+      ).sort((a, b) => a.localeCompare(b));
     }
     await writeManifest(manifest);
     return entry;
@@ -381,7 +652,10 @@ export async function archiveMediaVaultCandidate(candidate: MediaVaultCandidate)
     const key = failureKey(candidate);
     const previous = manifest.failures[key];
     const retryCount = (previous?.retryCount ?? 0) + 1;
-    const delay = Math.min(MAX_RETRY_DELAY_MS, 2 ** Math.min(retryCount, 8) * 60 * 1000);
+    const delay = Math.min(
+      MAX_RETRY_DELAY_MS,
+      2 ** Math.min(retryCount, 8) * 60 * 1000,
+    );
     const message = error instanceof Error ? error.message : String(error);
     manifest.failures[key] = {
       id: key,
@@ -400,25 +674,37 @@ export async function archiveMediaVaultCandidate(candidate: MediaVaultCandidate)
   }
 }
 
-function mediaTypeAt(types: FeedItem["content"]["mediaTypes"], index: number): "image" | "video" | "unknown" {
+function mediaTypeAt(
+  types: FeedItem["content"]["mediaTypes"],
+  index: number,
+): "image" | "video" | "unknown" {
   const type = types[index];
   return type === "image" || type === "video" ? type : "unknown";
 }
 
-function profileUrlFromItem(item: FeedItem): string | undefined {
-  if (item.platform === "instagram" && item.author.handle && item.author.handle !== "unknown") {
+function profileUrlFromItem(item: MediaVaultArchiveItem): string | undefined {
+  if (
+    item.platform === "instagram" &&
+    item.author.handle &&
+    item.author.handle !== "unknown"
+  ) {
     return `https://www.instagram.com/${item.author.handle.replace(/^@/, "")}/`;
   }
-  if (item.platform === "facebook" && item.author.handle && item.author.handle !== "unknown") {
+  if (
+    item.platform === "facebook" &&
+    item.author.handle &&
+    item.author.handle !== "unknown"
+  ) {
     const handle = item.author.handle.replace(/^fb:/, "");
-    if (handle && handle !== "unknown") return `https://www.facebook.com/${handle}`;
+    if (handle && handle !== "unknown")
+      return `https://www.facebook.com/${handle}`;
   }
   return undefined;
 }
 
 export async function upsertMediaVaultRosterFromItems(
   provider: MediaVaultProvider,
-  items: FeedItem[],
+  items: readonly MediaVaultArchiveItem[],
 ): Promise<void> {
   const manifest = await readMediaVaultManifest();
   let changed = false;
@@ -450,7 +736,10 @@ export async function upsertMediaVaultRosterFromItems(
         groupName: item.fbGroup.name,
         groupUrl: item.fbGroup.url,
         firstSeenAt: groupExisting?.firstSeenAt ?? item.capturedAt ?? now,
-        lastSeenAt: Math.max(groupExisting?.lastSeenAt ?? 0, item.capturedAt ?? now),
+        lastSeenAt: Math.max(
+          groupExisting?.lastSeenAt ?? 0,
+          item.capturedAt ?? now,
+        ),
         source: "facebook_group",
       };
       changed = true;
@@ -459,15 +748,122 @@ export async function upsertMediaVaultRosterFromItems(
   if (changed) await writeManifest(manifest);
 }
 
+async function validateProviderScanStagingFile(
+  path: string,
+  provider: MediaVaultProvider,
+): Promise<number> {
+  const lines = await readTextFileLines(path);
+  let pageCount = 0;
+  for await (const line of lines) {
+    parseProviderScanPage(line, provider, pageCount);
+    pageCount += 1;
+  }
+  return pageCount;
+}
+
+/**
+ * Finish one source-fenced Library scan before any provider media download.
+ *
+ * The scan writes only the compact fields needed by the media vault to a
+ * unique local JSONL file. Once the scanner has verified its final source
+ * identity, a second bounded pass archives one staged page at a time. The
+ * staging file never becomes authority and is removed on every exit path.
+ */
+export async function archiveLibraryCoreProviderMedia(
+  provider: MediaVaultProvider,
+  importSource: Exclude<MediaVaultImportSource, "meta_export">,
+  scanProviderItems: ScanMediaVaultProviderPages,
+): Promise<number> {
+  if (!globalThis.crypto?.randomUUID) {
+    throw new Error(
+      "Media vault provider scan staging identity is unavailable",
+    );
+  }
+  const stagingDir = joinPath(
+    await getMediaVaultRootDir(),
+    PROVIDER_SCAN_STAGING_DIR,
+  );
+  await mkdir(stagingDir, { recursive: true });
+  const stagingPath = joinPath(
+    stagingDir,
+    `${provider}-${globalThis.crypto.randomUUID()}.jsonl`,
+  );
+  let stagingFile: Awaited<ReturnType<typeof open>> | null = null;
+  let operationFailed = false;
+
+  try {
+    stagingFile = await open(stagingPath, {
+      append: true,
+      createNew: true,
+      write: true,
+    });
+    let pageIndex = 0;
+    await scanProviderItems(provider, async (page) => {
+      if (page.length === 0) return;
+      const bytes = serializeProviderScanPage(provider, pageIndex, page);
+      const written = await stagingFile!.write(bytes);
+      if (written !== bytes.byteLength) {
+        throw new Error(
+          "Media vault provider scan staging write was incomplete",
+        );
+      }
+      pageIndex += 1;
+    });
+    await stagingFile.close();
+    stagingFile = null;
+
+    const validatedPageCount = await validateProviderScanStagingFile(
+      stagingPath,
+      provider,
+    );
+    const lines = await readTextFileLines(stagingPath);
+    let processedPageCount = 0;
+    let archivedCount = 0;
+    for await (const line of lines) {
+      const page = parseProviderScanPage(line, provider, processedPageCount);
+      archivedCount += await archiveRecentProviderMedia(
+        provider,
+        page.items,
+        importSource,
+      );
+      processedPageCount += 1;
+    }
+    if (processedPageCount !== validatedPageCount) {
+      throw new Error("Media vault provider scan staging page count changed");
+    }
+    return archivedCount;
+  } catch (error) {
+    operationFailed = true;
+    throw error;
+  } finally {
+    let cleanupError: unknown = null;
+    if (stagingFile) {
+      try {
+        await stagingFile.close();
+      } catch (error) {
+        cleanupError = error;
+      }
+    }
+    try {
+      await remove(stagingPath);
+    } catch (error) {
+      cleanupError ??= error;
+    }
+    if (!operationFailed && cleanupError) throw cleanupError;
+  }
+}
+
 export async function archiveRecentProviderMedia(
   provider: MediaVaultProvider,
-  items: FeedItem[],
+  items: readonly MediaVaultArchiveItem[],
   importSource: MediaVaultImportSource = "continuous",
 ): Promise<number> {
   const manifest = await readMediaVaultManifest();
   const state = manifest.providers[provider];
   if (!state.enabled) return 0;
-  const ownerHandles = new Set(state.ownerHandles.map((handle) => handle.replace(/^@/, "")));
+  const ownerHandles = new Set(
+    state.ownerHandles.map((handle) => handle.replace(/^@/, "")),
+  );
   if (ownerHandles.size === 0) return 0;
 
   let archived = 0;
@@ -498,10 +894,16 @@ export async function archiveRecentProviderMedia(
   return archived;
 }
 
-export async function summarizeMediaVault(provider: MediaVaultProvider): Promise<MediaVaultSummary> {
+export async function summarizeMediaVault(
+  provider: MediaVaultProvider,
+): Promise<MediaVaultSummary> {
   const manifest = await readMediaVaultManifest();
-  const entries = Object.values(manifest.entries).filter((entry) => entry.provider === provider);
-  const failureCount = Object.values(manifest.failures).filter((failure) => failure.provider === provider).length;
+  const entries = Object.values(manifest.entries).filter(
+    (entry) => entry.provider === provider,
+  );
+  const failureCount = Object.values(manifest.failures).filter(
+    (failure) => failure.provider === provider,
+  ).length;
   return {
     enabled: manifest.providers[provider].enabled,
     fileCount: entries.length,

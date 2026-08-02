@@ -168,12 +168,17 @@ bounded Map and Story Wall candidates, Saved overview analytics, Friends
 activity and selected-person timelines, export,
 background content discovery, provider
 completion accounting, RSS duplicate lookup, Google Contacts discovery, and
-account discovery from authenticated selected SQLite generations. Header and
+account discovery from authenticated selected SQLite generations. Provider
+settings scan exact source-fenced 64-row SQLite pages for Facebook group
+repair, Facebook and Instagram media backup, and YouTube saved-video
+synchronization without retaining the `FeedItem` corpus. Media candidates are
+compact-staged locally and provider work begins only after the final source
+fence closes. Header and
 sidebar counts share one source-versioned native aggregate. The default Desktop
 shell retains no item objects. Incremental Automerge patches carry one prior
 item occurrence so exact counts stay current without rebuilding the corpus.
-Friends-only feed filtering, saved-content sorting, provider settings, and
-other unfinished consumers share one
+Friends-only feed filtering, saved-content sorting, and other unfinished
+consumers share one
 reference-counted compatibility projection only while mounted, then evict it.
 Source mismatch or reader failure returns to Automerge. The temporary React
 feed window also returns to Automerge before it could exceed 512 compact cards
@@ -181,7 +186,9 @@ because reverse paging is not active yet. The device-local
 `freed.libraryCore.feedBrowseReaderV1.disabled=1` switch disables the feed
 reader, `freed.libraryCore.savedAnalyticsReaderV1.disabled=1` disables the
 Saved aggregate, `freed.libraryCore.friendsReaderV1.disabled=1` disables the
-Friends readers, and `freed.libraryCore.rendererItemEvictionV1.disabled=1`
+Friends readers, `freed.libraryCore.providerSettingsReaderV1.disabled=1`
+restores provider settings to the compatibility projection, and
+`freed.libraryCore.rendererItemEvictionV1.disabled=1`
 restores the full renderer projection at startup. This does not satisfy Gate C or complete
 Gate D. IndexedDB v3 now stores the legacy Automerge source as exact 1 MiB
 chunks. External migration admits only the exact revision and byte length, then

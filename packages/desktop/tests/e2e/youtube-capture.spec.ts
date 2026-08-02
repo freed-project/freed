@@ -4,11 +4,18 @@ function settingsDialog(page: import("@playwright/test").Page) {
   return page.locator(".fixed.inset-0.z-50").last();
 }
 
-async function openYouTubeSettings(page: import("@playwright/test").Page): Promise<void> {
-  const settingsButton = page.locator("button").filter({ hasText: /settings/i }).first();
+async function openYouTubeSettings(
+  page: import("@playwright/test").Page,
+): Promise<void> {
+  const settingsButton = page
+    .locator("button")
+    .filter({ hasText: /settings/i })
+    .first();
   await expect(settingsButton).toBeVisible({ timeout: 5_000 });
   await settingsButton.click();
-  await expect(page.getByText("Settings").first()).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("Settings").first()).toBeVisible({
+    timeout: 5_000,
+  });
   const section = settingsDialog(page).getByRole("button", { name: "YouTube" });
   await expect(section).toBeVisible({ timeout: 5_000 });
   await section.click();
@@ -21,13 +28,15 @@ async function emitTauriEvent(
 ): Promise<void> {
   await page.evaluate(
     ({ eventName, eventPayload }) => {
-      const listeners = (
-        window as unknown as Record<
-          string,
-          Record<string, Array<(event: { payload: unknown }) => void>>
-        >
-      ).__TAURI_EVENT_LISTENERS__ ?? {};
-      for (const listener of listeners[eventName] ?? []) listener({ payload: eventPayload });
+      const listeners =
+        (
+          window as unknown as Record<
+            string,
+            Record<string, Array<(event: { payload: unknown }) => void>>
+          >
+        ).__TAURI_EVENT_LISTENERS__ ?? {};
+      for (const listener of listeners[eventName] ?? [])
+        listener({ payload: eventPayload });
     },
     { eventName: event, eventPayload: payload },
   );
@@ -40,7 +49,11 @@ test("beta source badges stay beside their source names", async ({ app }) => {
   for (const source of ["substack", "medium", "youtube"] as const) {
     const row = app.page.getByTestId(`source-row-${source}`);
     const label = row.getByText(
-      source === "substack" ? "Substack" : source === "medium" ? "Medium" : "YouTube",
+      source === "substack"
+        ? "Substack"
+        : source === "medium"
+          ? "Medium"
+          : "YouTube",
       { exact: true },
     );
     const badge = row.getByText("Beta", { exact: true });
@@ -55,7 +68,9 @@ test("beta source badges stay beside their source names", async ({ app }) => {
     ]);
     expect(labelBox).not.toBeNull();
     expect(badgeBox).not.toBeNull();
-    expect(badgeBox!.x - (labelBox!.x + labelBox!.width)).toBeLessThanOrEqual(8);
+    expect(badgeBox!.x - (labelBox!.x + labelBox!.width)).toBeLessThanOrEqual(
+      8,
+    );
   }
 });
 
@@ -67,42 +82,71 @@ test("authenticated YouTube login captures followed channels and recent videos",
   const channelId = "UC1111111111111111111111";
   await app.goto();
   await app.waitForReady();
-  await ipc.setHandler("yt_capture", () => new Promise((resolve) => {
-    (window as unknown as Record<string, unknown>).__YOUTUBE_CAPTURE_RESOLVE__ = resolve;
-  }));
+  await ipc.setHandler(
+    "yt_capture",
+    () =>
+      new Promise((resolve) => {
+        (
+          window as unknown as Record<string, unknown>
+        ).__YOUTUBE_CAPTURE_RESOLVE__ = resolve;
+      }),
+  );
 
   await openYouTubeSettings(page);
   await page.getByText("Log in with YouTube").click();
   await app.acceptProviderRiskIfPresent("youtube");
-  await expect.poll(async () =>
-    (await ipc.invocations()).some((call) => call.cmd === "yt_show_login")
-  ).toBe(true);
-  await expect.poll(() => page.evaluate(() =>
-    (window as unknown as Record<string, unknown>).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__
-  )).toBe(true);
+  await expect
+    .poll(async () =>
+      (await ipc.invocations()).some((call) => call.cmd === "yt_show_login"),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as Record<string, unknown>)
+            .__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__,
+      ),
+    )
+    .toBe(true);
 
   await emitTauriEvent(page, "yt-auth-result", { loggedIn: true });
 
-  await expect(page.getByText("Connected. Syncing your subscriptions in the background.")).toBeVisible({
+  await expect(
+    page.getByText("Connected. Syncing your subscriptions in the background."),
+  ).toBeVisible({
     timeout: 10_000,
   });
-  await expect.poll(() => page.evaluate(() =>
-    (window as unknown as Record<string, unknown>).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__
-  )).toBe(false);
-  await expect.poll(async () => {
-    const calls = await ipc.invocations();
-    const hideIndex = calls.findIndex((call) => call.cmd === "yt_hide_login");
-    const captureIndex = calls.findIndex((call) => call.cmd === "yt_capture");
-    return hideIndex >= 0 && captureIndex > hideIndex;
-  }).toBe(true);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as Record<string, unknown>)
+            .__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__,
+      ),
+    )
+    .toBe(false);
+  await expect
+    .poll(async () => {
+      const calls = await ipc.invocations();
+      const hideIndex = calls.findIndex((call) => call.cmd === "yt_hide_login");
+      const captureIndex = calls.findIndex((call) => call.cmd === "yt_capture");
+      return hideIndex >= 0 && captureIndex > hideIndex;
+    })
+    .toBe(true);
 
   let captureId = "";
-  await expect.poll(async () => {
-    const captureCall = (await ipc.invocations())
-      .findLast((call) => call.cmd === "yt_capture");
-    captureId = (captureCall?.args as { captureId?: string } | undefined)?.captureId ?? "";
-    return captureId.length;
-  }).toBeGreaterThan(0);
+  await expect
+    .poll(async () => {
+      const captureCall = (await ipc.invocations()).findLast(
+        (call) => call.cmd === "yt_capture",
+      );
+      captureId =
+        (captureCall?.args as { captureId?: string } | undefined)?.captureId ??
+        "";
+      return captureId.length;
+    })
+    .toBeGreaterThan(0);
 
   await emitTauriEvent(page, "yt-capture-data", {
     captureId,
@@ -134,12 +178,14 @@ test("authenticated YouTube login captures followed channels and recent videos",
     captureId,
     stage: "subscriptions",
     channels: [],
-    videos: [{
-      videoId: "dQw4w9WgXcQ",
-      title: "Focused Study",
-      channelId,
-      channelTitle: "Learning Channel",
-    }],
+    videos: [
+      {
+        videoId: "dQw4w9WgXcQ",
+        title: "Focused Study",
+        channelId,
+        channelTitle: "Learning Channel",
+      },
+    ],
     rosterComplete: false,
     complete: false,
     channelTotal: 1,
@@ -163,80 +209,102 @@ test("authenticated YouTube login captures followed channels and recent videos",
     stopReason: "end-stable",
     done: true,
   });
-  await page.evaluate(({ expectedCaptureId, expectedChannelId }) => {
-    const globals = window as unknown as Record<string, unknown>;
-    const resolve = globals.__YOUTUBE_CAPTURE_RESOLVE__ as ((value: unknown) => void) | undefined;
-    const channel = { channelId: expectedChannelId, title: "Learning Channel" };
-    const video = {
-      videoId: "dQw4w9WgXcQ",
-      title: "Focused Study",
-      channelId: expectedChannelId,
-      channelTitle: "Learning Channel",
-    };
-    resolve?.({
-      stages: [{
-        captureId: expectedCaptureId,
-        stage: "channels",
-        channels: [channel],
-        videos: [],
-        rosterComplete: true,
-        complete: false,
-        channelTotal: 1,
-        videoTotal: 0,
-        candidateCount: 1,
-        unresolvedCount: 0,
-        scrollPasses: 2,
-        stopReason: "end-stable",
-        pageEvidence: true,
-        explicitEmpty: false,
-        unsupportedCandidateCount: 0,
-        workBudgetExceeded: false,
-        deadlineExceeded: false,
-        pendingContinuation: false,
-        done: true,
-      }, {
-        captureId: expectedCaptureId,
-        stage: "subscriptions",
-        channels: [channel],
-        videos: [video],
-        rosterComplete: false,
-        complete: true,
-        channelTotal: 1,
-        videoTotal: 1,
-        candidateCount: 1,
-        unresolvedCount: 0,
-        scrollPasses: 2,
-        stopReason: "end-stable",
-        pageEvidence: true,
-        explicitEmpty: false,
-        unsupportedCandidateCount: 0,
-        workBudgetExceeded: false,
-        deadlineExceeded: false,
-        pendingContinuation: false,
-        done: true,
-      }],
-    });
-    delete globals.__YOUTUBE_CAPTURE_RESOLVE__;
-  }, { expectedCaptureId: captureId, expectedChannelId: channelId });
+  await page.evaluate(
+    ({ expectedCaptureId, expectedChannelId }) => {
+      const globals = window as unknown as Record<string, unknown>;
+      const resolve = globals.__YOUTUBE_CAPTURE_RESOLVE__ as
+        ((value: unknown) => void) | undefined;
+      const channel = {
+        channelId: expectedChannelId,
+        title: "Learning Channel",
+      };
+      const video = {
+        videoId: "dQw4w9WgXcQ",
+        title: "Focused Study",
+        channelId: expectedChannelId,
+        channelTitle: "Learning Channel",
+      };
+      resolve?.({
+        stages: [
+          {
+            captureId: expectedCaptureId,
+            stage: "channels",
+            channels: [channel],
+            videos: [],
+            rosterComplete: true,
+            complete: false,
+            channelTotal: 1,
+            videoTotal: 0,
+            candidateCount: 1,
+            unresolvedCount: 0,
+            scrollPasses: 2,
+            stopReason: "end-stable",
+            pageEvidence: true,
+            explicitEmpty: false,
+            unsupportedCandidateCount: 0,
+            workBudgetExceeded: false,
+            deadlineExceeded: false,
+            pendingContinuation: false,
+            done: true,
+          },
+          {
+            captureId: expectedCaptureId,
+            stage: "subscriptions",
+            channels: [channel],
+            videos: [video],
+            rosterComplete: false,
+            complete: true,
+            channelTotal: 1,
+            videoTotal: 1,
+            candidateCount: 1,
+            unresolvedCount: 0,
+            scrollPasses: 2,
+            stopReason: "end-stable",
+            pageEvidence: true,
+            explicitEmpty: false,
+            unsupportedCandidateCount: 0,
+            workBudgetExceeded: false,
+            deadlineExceeded: false,
+            pendingContinuation: false,
+            done: true,
+          },
+        ],
+      });
+      delete globals.__YOUTUBE_CAPTURE_RESOLVE__;
+    },
+    { expectedCaptureId: captureId, expectedChannelId: channelId },
+  );
 
-  await expect(page.getByText("Connected. Subscription sync finished.")).toBeVisible({
+  await expect(
+    page.getByText("Connected. Subscription sync finished."),
+  ).toBeVisible({
     timeout: 10_000,
   });
-  await expect(page.getByText("Found 1 followed channel and 1 video.")).toBeVisible();
+  await expect(
+    page.getByText("Found 1 followed channel and 1 video."),
+  ).toBeVisible();
 
-  const stored = await page.evaluate(({ expectedChannelId }) => {
-    const store = (window as unknown as Record<string, unknown>).__FREED_STORE__ as {
-      getState: () => {
-        accounts: Record<string, unknown>;
-        items: Array<{ globalId: string }>;
+  const stored = await page.evaluate(
+    ({ expectedChannelId }) => {
+      const store = (window as unknown as Record<string, unknown>)
+        .__FREED_STORE__ as {
+        getState: () => {
+          accounts: Record<string, unknown>;
+          items: Array<{ globalId: string }>;
+        };
       };
-    };
-    const state = store.getState();
-    return {
-      hasChannel: Boolean(state.accounts[`social:youtube:${expectedChannelId}`]),
-      hasVideo: state.items.some((item) => item.globalId === "youtube:yt:video:dQw4w9WgXcQ"),
-    };
-  }, { expectedChannelId: channelId });
+      const state = store.getState();
+      return {
+        hasChannel: Boolean(
+          state.accounts[`social:youtube:${expectedChannelId}`],
+        ),
+        hasVideo: state.items.some(
+          (item) => item.globalId === "youtube:yt:video:dQw4w9WgXcQ",
+        ),
+      };
+    },
+    { expectedChannelId: channelId },
+  );
   expect(stored).toEqual({ hasChannel: true, hasVideo: true });
 });
 
@@ -251,13 +319,16 @@ test("YouTube login still syncs when the first hide request fails", async ({
     throw new Error("Transient hide failure");
   });
   await ipc.setHandler("yt_capture", (args) => {
-    (window as unknown as Record<string, unknown>).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
-    const listeners = (
-      window as unknown as Record<
-        string,
-        Record<string, Array<(event: { payload: unknown }) => void>>
-      >
-    ).__TAURI_EVENT_LISTENERS__ ?? {};
+    (
+      window as unknown as Record<string, unknown>
+    ).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
+    const listeners =
+      (
+        window as unknown as Record<
+          string,
+          Record<string, Array<(event: { payload: unknown }) => void>>
+        >
+      ).__TAURI_EVENT_LISTENERS__ ?? {};
     const captureId = (args as { captureId?: string } | undefined)?.captureId;
     if (!captureId) throw new Error("Missing YouTube capture ID");
     const channelsPayload = {
@@ -314,18 +385,28 @@ test("YouTube login still syncs when the first hide request fails", async ({
   await app.acceptProviderRiskIfPresent("youtube");
   await emitTauriEvent(page, "yt-auth-result", { loggedIn: true });
 
-  await expect(page.getByText("Connected. Subscription sync finished.")).toBeVisible({
+  await expect(
+    page.getByText("Connected. Subscription sync finished."),
+  ).toBeVisible({
     timeout: 10_000,
   });
-  await expect.poll(async () => {
-    const calls = await ipc.invocations();
-    const hideIndex = calls.findIndex((call) => call.cmd === "yt_hide_login");
-    const captureIndex = calls.findIndex((call) => call.cmd === "yt_capture");
-    return hideIndex >= 0 && captureIndex > hideIndex;
-  }).toBe(true);
-  await expect.poll(() => page.evaluate(() =>
-    (window as unknown as Record<string, unknown>).__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__
-  )).toBe(false);
+  await expect
+    .poll(async () => {
+      const calls = await ipc.invocations();
+      const hideIndex = calls.findIndex((call) => call.cmd === "yt_hide_login");
+      const captureIndex = calls.findIndex((call) => call.cmd === "yt_capture");
+      return hideIndex >= 0 && captureIndex > hideIndex;
+    })
+    .toBe(true);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as Record<string, unknown>)
+            .__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__,
+      ),
+    )
+    .toBe(false);
 });
 
 test("manually saved YouTube URLs sync through the rendered Freed Offline action", async ({
@@ -340,7 +421,9 @@ test("manually saved YouTube URLs sync through the rendered Freed Offline action
     const store = globals.__FREED_STORE__ as {
       setState: (next: Record<string, unknown>) => void;
     };
-    store.setState({ ytAuth: { isAuthenticated: true, lastCheckedAt: Date.now() } });
+    store.setState({
+      ytAuth: { isAuthenticated: true, lastCheckedAt: Date.now() },
+    });
     const automerge = globals.__FREED_AUTOMERGE__ as {
       docAddFeedItem: (item: unknown) => Promise<void>;
     };
@@ -348,9 +431,13 @@ test("manually saved YouTube URLs sync through the rendered Freed Offline action
       globalId: "saved:youtube:dQw4w9WgXcQ",
       platform: "saved",
       contentType: "article",
-      capturedAt: Date.now(),
-      publishedAt: Date.now(),
-      author: { id: "channel", handle: "channel", displayName: "Learning Channel" },
+      capturedAt: 1_000,
+      publishedAt: 1_000,
+      author: {
+        id: "channel",
+        handle: "channel",
+        displayName: "Learning Channel",
+      },
       content: {
         mediaUrls: [],
         mediaTypes: [],
@@ -364,8 +451,71 @@ test("manually saved YouTube URLs sync through the rendered Freed Offline action
       userState: { hidden: false, saved: true, archived: false, tags: [] },
     });
   });
+  await ipc.setHandler("read_library_core_item_scan_page", async () => {
+    const globals = window as unknown as Record<string, unknown>;
+    const automerge = globals.__FREED_AUTOMERGE__ as {
+      getLibraryCoreProjectionSource: () => Promise<{
+        documentId: string;
+        headCount: number;
+        headsDigest: string;
+        storageRevision: { generation: number; saveRevision: number };
+      }>;
+    };
+    const source = await automerge.getLibraryCoreProjectionSource();
+    return {
+      nextCursor: null,
+      queryId: "background_item_page_v1",
+      rows: [
+        {
+          globalId: "saved:youtube:dQw4w9WgXcQ",
+          platform: "saved",
+          contentType: "article",
+          publishedAt: 1_000,
+          capturedAt: 1_000,
+          authorId: "channel",
+          authorDisplayName: "Learning Channel",
+          authorHandle: "channel",
+          sourceUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+          hidden: 0,
+          saved: 1,
+          archived: 0,
+          readAt: null,
+          archivedAt: null,
+          likedAt: null,
+          tags: "[]",
+          contentBlob: JSON.stringify({
+            mediaUrls: [],
+            mediaTypes: [],
+            linkPreview: {
+              url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+              title: "Focused Study",
+            },
+          }),
+          preservedBlob: null,
+          rest: JSON.stringify({ topics: [] }),
+        },
+      ],
+      schemaVersion: 1,
+      source: {
+        documentId: source.documentId,
+        generationId: "2".repeat(64),
+        headCount: source.headCount,
+        headsDigest: source.headsDigest,
+        projectionRevision: 1,
+        storageGeneration: source.storageRevision.generation,
+        storageSaveRevision: source.storageRevision.saveRevision,
+        transitionSequence: 1,
+      },
+    };
+  });
   await ipc.setHandler("yt_add_to_offline_playlist", (args) => {
-    const listeners = (window as unknown as Record<string, Record<string, Array<(event: { payload: unknown }) => void>>>).__TAURI_EVENT_LISTENERS__ ?? {};
+    const listeners =
+      (
+        window as unknown as Record<
+          string,
+          Record<string, Array<(event: { payload: unknown }) => void>>
+        >
+      ).__TAURI_EVENT_LISTENERS__ ?? {};
     const videoUrl = (args as { videoUrl?: string }).videoUrl ?? "";
     const videoId = new URL(videoUrl).searchParams.get("v");
     const payload = {
@@ -376,18 +526,45 @@ test("manually saved YouTube URLs sync through the rendered Freed Offline action
       playlistId: "PL-freed-offline",
       playlistUrl: "https://www.youtube.com/playlist?list=PL-freed-offline",
     };
-    for (const listener of listeners["yt-playlist-result"] ?? []) listener({ payload });
+    for (const listener of listeners["yt-playlist-result"] ?? [])
+      listener({ payload });
     return null;
   });
 
   await openYouTubeSettings(page);
-  await expect(page.getByText("1 saved YouTube video.")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("1 saved YouTube video.")).toBeVisible({
+    timeout: 10_000,
+  });
   await page.getByTestId("youtube-sync-saved-playlist").click();
   await app.acceptProviderRiskIfPresent("youtube");
 
-  await expect(page.getByText("1 added, 0 already confirmed. Freed Offline is up to date.")).toBeVisible({
+  await expect(
+    page.getByText(
+      "1 added, 0 already confirmed. Freed Offline is up to date.",
+    ),
+  ).toBeVisible({
     timeout: 10_000,
   });
   const calls = await ipc.invocations();
-  expect(calls.filter((call) => call.cmd === "yt_add_to_offline_playlist")).toHaveLength(1);
+  const itemScanCalls = calls.filter(
+    (call) => call.cmd === "read_library_core_item_scan_page",
+  );
+  expect(itemScanCalls.length).toBeGreaterThan(0);
+  expect(itemScanCalls).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        args: {
+          request: expect.objectContaining({
+            cursor: null,
+            limit: 64,
+            queryId: "background_item_page_v1",
+            schemaVersion: 1,
+          }),
+        },
+      }),
+    ]),
+  );
+  expect(
+    calls.filter((call) => call.cmd === "yt_add_to_offline_playlist"),
+  ).toHaveLength(1);
 });

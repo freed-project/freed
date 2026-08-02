@@ -1586,9 +1586,6 @@ fn read_item_scan_at_root(
     }
     prune_expired(&mut runtime, now);
     if !runtime.sessions.contains_key(&request.reader_session_id) {
-        if decoded_cursor.is_some() {
-            return Err(FeedReaderError::CursorStale);
-        }
         if runtime.sessions.len() >= MAXIMUM_READER_SESSIONS {
             return Err(FeedReaderError::SessionLimit);
         }
@@ -1624,6 +1621,20 @@ fn read_item_scan_at_root(
                 return Err(FeedReaderError::CursorStale);
             }
             runtime.readers.insert(key.clone(), CachedReader { reader });
+        }
+        // Background item scans may spend longer than one reader-session age
+        // processing a bounded page. Their cursor already binds the immutable
+        // generation, transition, projection revision, and final item ID, so a
+        // pruned session can safely resume only after the selected generation
+        // is reopened and the cursor identity is rechecked below.
+        if decoded_cursor.as_ref().is_some_and(|cursor| {
+            runtime.readers.get(&key).is_none_or(|cached| {
+                cursor.generation_id != cached.reader.generation_id()
+                    || cursor.transition_sequence != cached.reader.transition_sequence()
+                    || cursor.projection_revision != cached.reader.projection_revision()
+            })
+        }) {
+            return Err(FeedReaderError::CursorStale);
         }
         runtime.sessions.insert(
             request.reader_session_id.clone(),
@@ -2874,6 +2885,62 @@ mod tests {
             ),
             Err(FeedReaderError::InvalidRequest("item scan"))
         ));
+    }
+
+    #[test]
+    fn item_scan_cursor_resumes_after_reader_session_expiry() {
+        let fixture = Fixture::new("item-scan-expiry");
+        fixture.publish(&[row(0), row(1), row(2)]);
+        let runtime = LibraryCoreFeedReaderRuntimeState::default();
+        let now = Instant::now();
+
+        let first =
+            read_item_scan_at_root(&runtime, &fixture.base, item_scan_request(None, 1), now)
+                .expect("first item scan page");
+        assert_eq!(first.rows.len(), 1);
+        assert_eq!(first.rows[0].global_id, "x:item-0");
+
+        let resumed = read_item_scan_at_root(
+            &runtime,
+            &fixture.base,
+            item_scan_request(first.next_cursor, 1),
+            now + MAXIMUM_READER_SESSION_AGE + Duration::from_millis(1),
+        )
+        .expect("resumed item scan page");
+        assert_eq!(resumed.rows.len(), 1);
+        assert_eq!(resumed.rows[0].global_id, "x:item-1");
+        assert!(resumed.next_cursor.is_some());
+    }
+
+    #[test]
+    fn stale_item_scan_cursor_does_not_reserve_a_session() {
+        let fixture = Fixture::new("item-scan-stale-resume");
+        fixture.publish(&[row(0), row(1)]);
+        let runtime = LibraryCoreFeedReaderRuntimeState::default();
+        let now = Instant::now();
+
+        read_item_scan_at_root(&runtime, &fixture.base, item_scan_request(None, 1), now)
+            .expect("initial item scan page");
+        let stale_cursor =
+            encode_item_scan_cursor(&"f".repeat(64), 0, 0, "x:item-0").expect("stale cursor");
+        let stale = read_item_scan_at_root(
+            &runtime,
+            &fixture.base,
+            item_scan_request(Some(stale_cursor), 1),
+            now + MAXIMUM_READER_SESSION_AGE + Duration::from_millis(1),
+        )
+        .expect_err("stale cursor");
+        assert_eq!(stale.code(), "CURSOR_STALE");
+        assert!(runtime.0.lock().expect("runtime").sessions.is_empty());
+
+        let fresh = read_item_scan_at_root(
+            &runtime,
+            &fixture.base,
+            item_scan_request(None, 1),
+            now + MAXIMUM_READER_SESSION_AGE + Duration::from_millis(2),
+        )
+        .expect("fresh item scan page");
+        assert_eq!(fresh.rows[0].global_id, "x:item-0");
     }
 
     #[test]
