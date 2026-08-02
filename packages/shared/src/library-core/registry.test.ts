@@ -44,6 +44,13 @@ import {
   LIBRARY_CORE_ITEM_DETAIL_SOURCE_IDENTITY,
 } from "./item-detail-contracts.js";
 import {
+  LIBRARY_CORE_ITEM_SCAN_NESTED_BOUNDS,
+  LIBRARY_CORE_ITEM_SCAN_PROJECTION,
+  LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA,
+  LIBRARY_CORE_ITEM_SCAN_RESPONSE_SCHEMA,
+  LIBRARY_CORE_ITEM_SCAN_SOURCE_IDENTITY,
+} from "./item-scan-contracts.js";
+import {
   LIBRARY_CORE_FIELD_REGISTRY,
 } from "./field-registry.js";
 import {
@@ -459,6 +466,39 @@ describe("Library Core query registry", () => {
     expect(
       BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds,
     ).toContain("feed_browse_page_v2");
+  });
+
+  it("closes the bounded item-scan contract and shares the item-detail row", () => {
+    expect(LIBRARY_CORE_QUERY_REGISTRY.background_item_page_v1).toMatchObject({
+      status: "planned_blocked",
+      requestSchema: LIBRARY_CORE_ITEM_SCAN_REQUEST_SCHEMA,
+      responseSchema: LIBRARY_CORE_ITEM_SCAN_RESPONSE_SCHEMA,
+      projection: LIBRARY_CORE_ITEM_SCAN_PROJECTION,
+      sourceIdentity: LIBRARY_CORE_ITEM_SCAN_SOURCE_IDENTITY,
+      nestedBounds: LIBRARY_CORE_ITEM_SCAN_NESTED_BOUNDS,
+      tieBreakKey: "globalId",
+      fullContentAllowed: true,
+    });
+    for (const blocker of [
+      "request_schema_unresolved",
+      "response_schema_unresolved",
+      "projection_unresolved",
+      "source_identity_unresolved",
+      "nested_bounds_unresolved",
+      "sort_contract_unresolved",
+    ]) {
+      expect(
+        LIBRARY_CORE_QUERY_REGISTRY.background_item_page_v1.blockers,
+      ).not.toContain(blocker);
+    }
+    // ITEM_SCAN_COLUMNS is byte-identical to the item_detail SELECT, so the two
+    // must share one projection. If either grows a column, both move together.
+    expect(LIBRARY_CORE_QUERY_REGISTRY.background_item_page_v1.projection).toBe(
+      LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1.projection,
+    );
+    expect(
+      LIBRARY_CORE_QUERY_REGISTRY.background_item_page_v1.stableSort,
+    ).toEqual(LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1.stableSort);
   });
 
   it("closes the item-detail contract and records that it carries full content", () => {
