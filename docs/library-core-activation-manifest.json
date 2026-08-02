@@ -50,6 +50,16 @@
         "read_cutover_parity",
         "same_frontier_rollback_receipt"
       ]
+    },
+    {
+      "activationId": "desktop-friend-editor-author-sql-read-v1",
+      "gate": "D",
+      "kind": "sql_read_cutover",
+      "rollbackTrigger": "Set freed.libraryCore.friendEditorReaderV1.disabled to 1 on the affected device if Friend editor author candidates, ordering, search, provenance, or memory diverge from the Automerge fallback.",
+      "receiptExpectations": [
+        "read_cutover_parity",
+        "same_frontier_rollback_receipt"
+      ]
     }
   ]
 }

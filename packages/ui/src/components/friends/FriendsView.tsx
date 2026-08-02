@@ -771,10 +771,6 @@ export function FriendsView({
     }
     return buildVisibleFriendsFallbackItems(items);
   }, [friendsRows.graphUsingFallback, friendsRows.legacyItemsReady, items]);
-  const editorCompatibilityFeedItems = useMemo(
-    () => (editorState ? buildVisibleFriendsFallbackItems(items) : {}),
-    [editorState, items],
-  );
   const fallbackWorkspaceIndexes = useMemo(
     () => buildFriendsWorkspaceIndexes(accounts, fallbackFeedItems),
     [accounts, fallbackFeedItems],
@@ -910,11 +906,9 @@ export function FriendsView({
         accounts,
         nativeActivityBySourceKey:
           nativeActivity?.socialActivityBySourceKey ?? null,
-        compatibilityItems: nativeActivity
-          ? editorCompatibilityFeedItems
-          : fallbackFeedItems,
+        compatibilityItems: nativeActivity ? {} : fallbackFeedItems,
       }),
-    [accounts, editorCompatibilityFeedItems, fallbackFeedItems, nativeActivity],
+    [accounts, fallbackFeedItems, nativeActivity],
   );
   const selectedAccountSuggestions = useMemo<AccountLinkSuggestion[]>(
     () =>
@@ -1038,6 +1032,7 @@ export function FriendsView({
     async (
       data: Omit<Friend, "id" | "createdAt" | "updatedAt">,
       personId?: string,
+      editorSourceActivity?: ReadonlyMap<string, FriendSourceActivityEvidence>,
     ) => {
       const now = Date.now();
       const existingPerson = personId ? (persons[personId] ?? null) : null;
@@ -1092,9 +1087,13 @@ export function FriendsView({
           const accountId = socialAccountId(source);
           const existingAccount = accounts[accountId];
           const activity =
+            editorSourceActivity?.get(
+              friendActivitySourceKey(source.platform, source.authorId),
+            ) ??
             sourceActivityEvidence.get(
               friendActivitySourceKey(source.platform, source.authorId),
-            ) ?? null;
+            ) ??
+            null;
           if (existingAccount) {
             await updateAccount(accountId, {
               personId: nextPersonId,
@@ -1174,10 +1173,14 @@ export function FriendsView({
   );
 
   const handleSave = useCallback(
-    async (data: Omit<Friend, "id" | "createdAt" | "updatedAt">) => {
+    async (
+      data: Omit<Friend, "id" | "createdAt" | "updatedAt">,
+      _id?: string,
+      editorSourceActivity?: ReadonlyMap<string, FriendSourceActivityEvidence>,
+    ) => {
       const personId =
         editorState?.kind === "edit" ? editorState.personId : undefined;
-      await persistFriend(data, personId);
+      await persistFriend(data, personId, editorSourceActivity);
     },
     [editorState, persistFriend],
   );
@@ -2164,9 +2167,11 @@ export function FriendsView({
           }`}
         >
           {graphIsEmpty ? (
-            friendsRows.graphLoading
-              ? renderGraphLoadingState()
-              : renderGraphEmptyState()
+            friendsRows.graphLoading ? (
+              renderGraphLoadingState()
+            ) : (
+              renderGraphEmptyState()
+            )
           ) : (
             <>
               <FriendGraph
@@ -2179,7 +2184,9 @@ export function FriendsView({
                 selectedPersonId={selectedPerson?.id ?? null}
                 selectedAccountId={selectedAccount?.id ?? null}
                 onSelectPerson={(person) => handleSelectPerson(person, false)}
-                onSelectAccount={(account) => handleSelectAccount(account, false)}
+                onSelectAccount={(account) =>
+                  handleSelectAccount(account, false)
+                }
                 onClearSelection={
                   showCollapsedSelectionCard ? handleClearSelection : undefined
                 }

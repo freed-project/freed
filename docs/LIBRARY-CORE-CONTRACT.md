@@ -2917,9 +2917,17 @@ malformed aggregates, count drift, cursor mismatch, or response overflow fail
 closed to one shared reference-counted compatibility lease. A successful retry
 releases that lease. The device-local
 `freed.libraryCore.friendsReaderV1.disabled=1` switch selects compatibility
-before native work. The Friend editor remains an explicit temporary compatibility
-consumer while mounted so it can discover unregistered captured profiles and
-retain their historical provenance; it releases that shared lease on unmount.
+before native work. The Friend editor scans the same authenticated generation
+through source-fenced 64-row item pages. It retains only the alphabetically
+best 50 compact visible unlinked authors matching the current search after a 150 ms
+debounce. It publishes no candidate until the scanner closes its final source
+fence. Saving a newly linked profile runs one final source-fenced pass that
+retains only the selected identities and their exact first and last capture
+provenance. A stale, canceled, or unavailable scan fails closed without
+acquiring the compatibility projection. The device-local
+`freed.libraryCore.friendEditorReaderV1.disabled=1` switch explicitly restores
+the prior compatibility lease. The PWA keeps its current in-memory reader until
+its IndexedDB product cutover.
 Provider settings scan the same authenticated selected generation through the
 source-fenced 64-row item scanner. Facebook group repair carries one compact
 group-ID winner set across pages. Facebook and Instagram media backup stage

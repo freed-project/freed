@@ -165,7 +165,7 @@ projection generations.
 
 Gate D now serves the all-content feed, item detail, exact Library facets,
 bounded Map and Story Wall candidates, Saved overview analytics, Friends
-activity and selected-person timelines, export,
+activity, selected-person timelines, and Friend editor author candidates, export,
 background content discovery, provider
 completion accounting, RSS duplicate lookup, Google Contacts discovery, and
 account discovery from authenticated selected SQLite generations. Provider
@@ -187,7 +187,9 @@ because reverse paging is not active yet. The device-local
 reader, `freed.libraryCore.savedAnalyticsReaderV1.disabled=1` disables the
 Saved aggregate, `freed.libraryCore.friendsReaderV1.disabled=1` disables the
 Friends readers, `freed.libraryCore.providerSettingsReaderV1.disabled=1`
-restores provider settings to the compatibility projection, and
+restores provider settings to the compatibility projection,
+`freed.libraryCore.friendEditorReaderV1.disabled=1` restores the Friend editor
+compatibility lease, and
 `freed.libraryCore.rendererItemEvictionV1.disabled=1`
 restores the full renderer projection at startup. This does not satisfy Gate C or complete
 Gate D. IndexedDB v3 now stores the legacy Automerge source as exact 1 MiB
