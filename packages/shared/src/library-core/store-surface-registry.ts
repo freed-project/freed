@@ -186,7 +186,11 @@ export const BASE_APP_STORE_SURFACE_REGISTRY = {
   itemCountByPlatform: stateSurface("derived"),
   items: stateSurface("legacy_unbounded", {
     successorOperationIds: [],
-    successorQueryIds: ["feed_page_v1", "item_detail_v1"],
+    successorQueryIds: [
+      "feed_page_v1",
+      "item_detail_v1",
+      "saved_analytics_v1",
+    ],
     activationBlocker: "ranked feed array retains a corpus-sized renderer projection",
   }),
   linkAccountToPerson: functionSurface("legacy_compatibility", {

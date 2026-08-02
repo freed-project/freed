@@ -257,7 +257,10 @@ describe("Library Core query registry", () => {
       }
       expect(definition.intendedAdapters.length).toBeGreaterThan(0);
       expect(definition.blockers.length).toBeGreaterThan(0);
-      if (definition === LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1) {
+      if (
+        definition === LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1 ||
+        definition === LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v1
+      ) {
         expect(definition.blockers).not.toContain(
           "runtime_adapter_unimplemented",
         );
@@ -316,6 +319,30 @@ describe("Library Core query registry", () => {
       ]),
     );
     expect("supportedAdapters" in definition).toBe(false);
+  });
+
+  it("registers the active bounded Desktop Saved aggregate", () => {
+    expect(LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v1).toMatchObject({
+      status: "planned_blocked",
+      source: {
+        boundary: "library_core",
+        currentKinds: [
+          "ProjectionReadSession::saved_analytics",
+          "read_library_core_saved_analytics",
+        ],
+      },
+      defaultLimit: 1,
+      maximumLimit: 1,
+      maximumRows: 1,
+      maximumResponseBytes: 8 * 1_048_576,
+      totalCountIntent: "exact",
+    });
+    expect(
+      LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v1.blockers,
+    ).not.toContain("runtime_adapter_unimplemented");
+    expect(
+      BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds,
+    ).toContain("saved_analytics_v1");
   });
 
   it("uses shared renderer and interactive snapshot pools instead of additive query reservations", () => {

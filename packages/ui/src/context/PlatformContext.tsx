@@ -97,6 +97,30 @@ export interface LibraryFacetSummary {
   readonly totalCount: number;
 }
 
+export interface LibrarySavedAnalyticsWindow {
+  readonly startMs: number;
+  readonly endMs: number;
+}
+
+export interface LibrarySavedAnalyticsRequest {
+  readonly dailyWindows: readonly LibrarySavedAnalyticsWindow[];
+  readonly hourlyWindows: readonly LibrarySavedAnalyticsWindow[];
+}
+
+export interface LibrarySavedAnalyticsCount {
+  readonly label: string;
+  readonly count: number;
+}
+
+export interface LibrarySavedAnalytics {
+  readonly totalCount: number;
+  readonly latestSavedAt: number | null;
+  readonly dailyCounts: readonly number[];
+  readonly hourlyCounts: readonly number[];
+  readonly sourceCounts: readonly LibrarySavedAnalyticsCount[];
+  readonly contentMix: readonly LibrarySavedAnalyticsCount[];
+}
+
 export type LibrarySurface = "map" | "story_wall";
 
 export interface ChangelogPreviewRelease {
@@ -437,6 +461,11 @@ export interface PlatformConfig {
   readLibrarySurfaceItems?: (
     surface: LibrarySurface,
   ) => Promise<readonly FeedItem[]>;
+
+  /** Exact Saved overview aggregates computed inside the local row store. */
+  readLibrarySavedAnalytics?: (
+    request: LibrarySavedAnalyticsRequest,
+  ) => Promise<LibrarySavedAnalytics>;
 
   /** Optional authenticated YouTube actions for the shared reader. */
   youtube?: YouTubeControls;

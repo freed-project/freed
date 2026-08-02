@@ -162,21 +162,23 @@ spool and scratch graph and retains only the selected and exact rollback
 projection generations.
 
 Gate D now serves the all-content feed, item detail, exact Library facets,
-bounded Map candidates, export, background content discovery, provider
+bounded Map and Story Wall candidates, Saved overview analytics, export,
+background content discovery, provider
 completion accounting, RSS duplicate lookup, Google Contacts discovery, and
 account discovery from authenticated selected SQLite generations. Header and
 sidebar counts share one source-versioned native aggregate. The default Desktop
 shell retains no item objects. Incremental Automerge patches carry one prior
 item occurrence so exact counts stay current without rebuilding the corpus.
-Friends-only filtering, saved-content sorting, Story Wall, Saved analytics,
-provider settings, sample-data tools, and other unfinished consumers share one
+Friends-only filtering, saved-content sorting, provider settings, and other
+unfinished consumers share one
 reference-counted compatibility projection only while mounted, then evict it.
 Source mismatch or reader failure returns to Automerge. The temporary React
 feed window also returns to Automerge before it could exceed 512 compact cards
 because reverse paging is not active yet. The device-local
 `freed.libraryCore.feedBrowseReaderV1.disabled=1` switch disables the feed
-reader, and `freed.libraryCore.rendererItemEvictionV1.disabled=1` restores the
-full renderer projection at startup. This does not satisfy Gate C or complete
+reader, `freed.libraryCore.savedAnalyticsReaderV1.disabled=1` disables the
+Saved aggregate, and `freed.libraryCore.rendererItemEvictionV1.disabled=1`
+restores the full renderer projection at startup. This does not satisfy Gate C or complete
 Gate D. IndexedDB v3 now stores the legacy Automerge source as exact 1 MiB
 chunks. External migration admits only the exact revision and byte length, then
 reads one revision-fenced chunk per transaction. Existing v1 and v2 stores

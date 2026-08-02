@@ -28,16 +28,21 @@ use rusqlite::{
     TransactionBehavior,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+use url::Url;
 
 const SHADOW_SCHEMA_VERSION: i64 = 3;
 const MAX_FEED_PAGE_LIMIT: u32 = 128;
 const MAX_ITEM_SCAN_PAGE_LIMIT: u32 = 64;
 const MAX_MAP_SURFACE_ITEMS: u32 = 1_000;
 const MAX_STORY_WALL_SURFACE_ITEMS: u32 = 250;
+const MAX_SAVED_ANALYTICS_SOURCE_LABELS: usize = 4_096;
+const MAX_SAVED_ANALYTICS_CONTENT_TYPES: usize = 64;
+const MAX_SAVED_ANALYTICS_LABEL_BYTES: usize = 2_048;
 const MAX_ITEM_SCAN_ROW_BYTES: usize = 8 * 1_048_576 - 64 * 1_024;
 const MAX_FEED_PAGE_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const FEED_PAGE_ENVELOPE_RESERVE_BYTES: usize = 16 * 1_024;
@@ -111,6 +116,14 @@ pub(super) enum ShadowStoreError {
         maximum_bytes: usize,
     },
     SurfaceItemsExceedLimit {
+        requested: usize,
+        maximum: usize,
+    },
+    InvalidSavedAnalyticsProjection {
+        field: &'static str,
+    },
+    SavedAnalyticsExceedsResponseBudget {
+        field: &'static str,
         requested: usize,
         maximum: usize,
     },
@@ -230,6 +243,17 @@ impl fmt::Display for ShadowStoreError {
             Self::SurfaceItemsExceedLimit { requested, maximum } => write!(
                 formatter,
                 "surface contains at least {requested} candidate rows, maximum {maximum}"
+            ),
+            Self::InvalidSavedAnalyticsProjection { field } => {
+                write!(formatter, "saved analytics cannot exactly project {field}")
+            }
+            Self::SavedAnalyticsExceedsResponseBudget {
+                field,
+                requested,
+                maximum,
+            } => write!(
+                formatter,
+                "saved analytics {field} contains {requested} entries or bytes, maximum {maximum}"
             ),
             Self::ProjectionEntityNotFound { entity_id } => {
                 write!(formatter, "projection entity {entity_id} was not found")
@@ -354,6 +378,30 @@ pub(super) struct LibraryFacetSummary {
 pub(super) enum LibrarySurface {
     Map,
     StoryWall,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct SavedAnalyticsWindow {
+    pub(super) start_ms: i64,
+    pub(super) end_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct SavedAnalyticsCount {
+    pub(super) label: String,
+    pub(super) count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct LibrarySavedAnalytics {
+    pub(super) total_count: i64,
+    pub(super) latest_saved_at: Option<i64>,
+    pub(super) daily_counts: [i64; 7],
+    pub(super) hourly_counts: [i64; 24],
+    pub(super) source_counts: Vec<SavedAnalyticsCount>,
+    pub(super) content_mix: Vec<SavedAnalyticsCount>,
 }
 
 impl LibrarySurface {
@@ -511,6 +559,189 @@ fn optional_string_within_bounds(
 
 fn optional_safe_integer(value: Option<i64>) -> bool {
     value.is_none_or(|value| (0..=MAX_JAVASCRIPT_SAFE_INTEGER).contains(&value))
+}
+
+fn saved_analytics_safe_integer(value: i64) -> bool {
+    (-MAX_JAVASCRIPT_SAFE_INTEGER..=MAX_JAVASCRIPT_SAFE_INTEGER).contains(&value)
+}
+
+fn increment_saved_analytics_count(
+    counts: &mut BTreeMap<String, i64>,
+    label: String,
+    maximum_entries: usize,
+    field: &'static str,
+) -> StoreResult<()> {
+    if label.len() > MAX_SAVED_ANALYTICS_LABEL_BYTES {
+        return Err(ShadowStoreError::SavedAnalyticsExceedsResponseBudget {
+            field,
+            requested: label.len(),
+            maximum: MAX_SAVED_ANALYTICS_LABEL_BYTES,
+        });
+    }
+    if !counts.contains_key(&label) && counts.len() == maximum_entries {
+        return Err(ShadowStoreError::SavedAnalyticsExceedsResponseBudget {
+            field,
+            requested: maximum_entries + 1,
+            maximum: maximum_entries,
+        });
+    }
+    let count = counts.entry(label).or_default();
+    *count = count
+        .checked_add(1)
+        .ok_or(ShadowStoreError::InvalidSavedAnalyticsProjection { field })?;
+    Ok(())
+}
+
+fn saved_source_label(source: &str) -> StoreResult<String> {
+    if source.is_empty() {
+        return Ok("Unknown".to_string());
+    }
+    if source.len() > MAX_SAVED_ANALYTICS_LABEL_BYTES {
+        return Err(ShadowStoreError::SavedAnalyticsExceedsResponseBudget {
+            field: "source label bytes",
+            requested: source.len(),
+            maximum: MAX_SAVED_ANALYTICS_LABEL_BYTES,
+        });
+    }
+    let label = match Url::parse(source) {
+        Ok(url) => url
+            .host_str()
+            .unwrap_or_default()
+            .strip_prefix("www.")
+            .unwrap_or_else(|| url.host_str().unwrap_or_default())
+            .to_string(),
+        Err(_) => source.to_string(),
+    };
+    Ok(label)
+}
+
+fn exact_saved_analytics_row(
+    content_type: Option<&str>,
+    captured_at: Option<i64>,
+    author_handle: Option<&str>,
+    source_url: Option<&str>,
+    content_blob: Option<&str>,
+    rest_text: &str,
+) -> StoreResult<(i64, String, String)> {
+    let rest = serde_json::from_str::<serde_json::Value>(rest_text)
+        .map_err(|_| ShadowStoreError::InvalidSavedAnalyticsProjection { field: "rest" })?;
+    let rest = rest
+        .as_object()
+        .ok_or(ShadowStoreError::InvalidSavedAnalyticsProjection { field: "rest" })?;
+    let absent = match rest.get("__absent") {
+        None => None,
+        Some(serde_json::Value::Array(values))
+            if values
+                .iter()
+                .all(|value| matches!(value, serde_json::Value::String(_))) =>
+        {
+            Some(values)
+        }
+        Some(_) => {
+            return Err(ShadowStoreError::InvalidSavedAnalyticsProjection {
+                field: "absent paths",
+            })
+        }
+    };
+    let is_absent = |path: &str| {
+        absent.is_some_and(|values| {
+            values
+                .iter()
+                .any(|value| value.as_str().is_some_and(|value| value == path))
+        })
+    };
+    if is_absent("userState") {
+        return Err(ShadowStoreError::InvalidSavedAnalyticsProjection { field: "userState" });
+    }
+    if let Some(raw) = rest.get("__raw") {
+        let raw = raw
+            .as_object()
+            .ok_or(ShadowStoreError::InvalidSavedAnalyticsProjection {
+                field: "raw escapes",
+            })?;
+        for field in [
+            "author",
+            "author.handle",
+            "capturedAt",
+            "contentType",
+            "sourceUrl",
+            "userState",
+            "userState.hidden",
+        ] {
+            if raw.contains_key(field) {
+                return Err(ShadowStoreError::InvalidSavedAnalyticsProjection { field });
+            }
+        }
+    }
+
+    let saved_at = match rest.get("__userState") {
+        None => None,
+        Some(serde_json::Value::Object(user_state)) => match user_state.get("savedAt") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(serde_json::Value::Number(value)) => {
+                let value = value
+                    .as_i64()
+                    .filter(|value| saved_analytics_safe_integer(*value));
+                Some(
+                    value.ok_or(ShadowStoreError::InvalidSavedAnalyticsProjection {
+                        field: "userState.savedAt",
+                    })?,
+                )
+            }
+            Some(_) => {
+                return Err(ShadowStoreError::InvalidSavedAnalyticsProjection {
+                    field: "userState.savedAt",
+                })
+            }
+        },
+        Some(_) => {
+            return Err(ShadowStoreError::InvalidSavedAnalyticsProjection { field: "userState" })
+        }
+    };
+    let captured_at = captured_at
+        .filter(|value| saved_analytics_safe_integer(*value))
+        .ok_or(ShadowStoreError::InvalidSavedAnalyticsProjection {
+            field: "capturedAt",
+        })?;
+    let timestamp = saved_at.unwrap_or(captured_at);
+
+    let content_type = content_type
+        .ok_or(ShadowStoreError::InvalidSavedAnalyticsProjection {
+            field: "contentType",
+        })?
+        .to_string();
+    let content = serde_json::from_str::<serde_json::Value>(
+        content_blob
+            .ok_or(ShadowStoreError::InvalidSavedAnalyticsProjection { field: "content" })?,
+    )
+    .map_err(|_| ShadowStoreError::InvalidSavedAnalyticsProjection { field: "content" })?;
+    let content = content
+        .as_object()
+        .ok_or(ShadowStoreError::InvalidSavedAnalyticsProjection { field: "content" })?;
+    let link_preview_url = match content.get("linkPreview") {
+        Some(serde_json::Value::Object(link_preview)) => match link_preview.get("url") {
+            None | Some(serde_json::Value::Null) => None,
+            Some(serde_json::Value::String(value)) => Some(value.as_str()),
+            Some(_) => {
+                return Err(ShadowStoreError::InvalidSavedAnalyticsProjection {
+                    field: "content.linkPreview.url",
+                })
+            }
+        },
+        None | Some(serde_json::Value::Null) => None,
+        // JavaScript property access on a non-null primitive or array yields no
+        // `url`, matching the existing optional-chain fallback.
+        Some(_) => None,
+    };
+    if link_preview_url.is_none() && source_url.is_none() && is_absent("author") {
+        return Err(ShadowStoreError::InvalidSavedAnalyticsProjection { field: "author" });
+    }
+    let source = link_preview_url.or(source_url).or(author_handle);
+    let source_label = match source {
+        Some(source) => saved_source_label(source)?,
+        None => "Unknown".to_string(),
+    };
+    Ok((timestamp, source_label, content_type))
 }
 
 fn invalid_feed_card_field(field: &'static str) -> rusqlite::Error {
@@ -1120,6 +1351,104 @@ impl ShadowStore {
             saved_platform_count,
             tags,
             total_count,
+        })
+    }
+
+    /// Aggregates the Saved overview from one readable projection without
+    /// returning or retaining the complete Saved item corpus.
+    pub(super) fn saved_analytics(
+        &self,
+        daily_windows: &[SavedAnalyticsWindow; 7],
+        hourly_windows: &[SavedAnalyticsWindow; 24],
+    ) -> StoreResult<LibrarySavedAnalytics> {
+        let tx = self.conn.unchecked_transaction()?;
+        Self::require_readable_projection_in(&tx)?;
+        let mut total_count = 0_i64;
+        let mut latest_saved_at = None;
+        let mut daily_counts = [0_i64; 7];
+        let mut hourly_counts = [0_i64; 24];
+        let mut source_counts = BTreeMap::new();
+        let mut content_mix = BTreeMap::new();
+
+        {
+            let mut statement = tx.prepare(
+                "SELECT contentType, capturedAt, authorHandle, sourceUrl, contentBlob, rest
+                 FROM feed_items WHERE platform = 'saved' AND hidden IS NOT 1
+                 ORDER BY globalId ASC;",
+            )?;
+            let mut rows = statement.query([])?;
+            while let Some(row) = rows.next()? {
+                let content_type = row.get::<_, Option<String>>(0)?;
+                let captured_at = row.get::<_, Option<i64>>(1)?;
+                let author_handle = row.get::<_, Option<String>>(2)?;
+                let source_url = row.get::<_, Option<String>>(3)?;
+                let content_blob = row.get::<_, Option<String>>(4)?;
+                let rest = row.get::<_, String>(5)?;
+                let (timestamp, source_label, content_type) = exact_saved_analytics_row(
+                    content_type.as_deref(),
+                    captured_at,
+                    author_handle.as_deref(),
+                    source_url.as_deref(),
+                    content_blob.as_deref(),
+                    &rest,
+                )?;
+
+                total_count = total_count.checked_add(1).ok_or(
+                    ShadowStoreError::InvalidSavedAnalyticsProjection {
+                        field: "total count",
+                    },
+                )?;
+                latest_saved_at =
+                    Some(latest_saved_at.map_or(timestamp, |current: i64| current.max(timestamp)));
+                for (count, window) in daily_counts.iter_mut().zip(daily_windows) {
+                    if timestamp >= window.start_ms && timestamp < window.end_ms {
+                        *count = count.checked_add(1).ok_or(
+                            ShadowStoreError::InvalidSavedAnalyticsProjection {
+                                field: "daily count",
+                            },
+                        )?;
+                    }
+                }
+                for (count, window) in hourly_counts.iter_mut().zip(hourly_windows) {
+                    if timestamp >= window.start_ms && timestamp < window.end_ms {
+                        *count = count.checked_add(1).ok_or(
+                            ShadowStoreError::InvalidSavedAnalyticsProjection {
+                                field: "hourly count",
+                            },
+                        )?;
+                    }
+                }
+                increment_saved_analytics_count(
+                    &mut source_counts,
+                    source_label,
+                    MAX_SAVED_ANALYTICS_SOURCE_LABELS,
+                    "source labels",
+                )?;
+                increment_saved_analytics_count(
+                    &mut content_mix,
+                    content_type,
+                    MAX_SAVED_ANALYTICS_CONTENT_TYPES,
+                    "content types",
+                )?;
+            }
+        }
+        tx.commit()?;
+
+        let source_counts = source_counts
+            .into_iter()
+            .map(|(label, count)| SavedAnalyticsCount { label, count })
+            .collect();
+        let content_mix = content_mix
+            .into_iter()
+            .map(|(label, count)| SavedAnalyticsCount { label, count })
+            .collect();
+        Ok(LibrarySavedAnalytics {
+            total_count,
+            latest_saved_at,
+            daily_counts,
+            hourly_counts,
+            source_counts,
+            content_mix,
         })
     }
 

@@ -11,6 +11,7 @@ import type { LibraryCoreProjectionSourceV1 } from "./automerge-types";
 const ITEM_DETAIL_QUERY_ID = "item_detail_v1";
 const ITEM_SCAN_QUERY_ID = "background_item_page_v1";
 const FACET_SUMMARY_QUERY_ID = "library_facet_summary_v1";
+const SAVED_ANALYTICS_QUERY_ID = "saved_analytics_v1";
 const SURFACE_ITEMS_QUERY_ID = "library_surface_items_v1";
 const ITEM_DETAIL_SCHEMA_VERSION = 1;
 const ITEM_SCAN_PAGE_LIMIT = 64;
@@ -18,6 +19,8 @@ const MAXIMUM_ITEM_SCAN_PAGES = 4_096;
 let activeItemScan: Promise<void> | null = null;
 export const LIBRARY_CORE_ITEM_DETAIL_READER_DISABLED_KEY =
   "freed.libraryCore.itemDetailReaderV1.disabled";
+export const LIBRARY_CORE_SAVED_ANALYTICS_READER_DISABLED_KEY =
+  "freed.libraryCore.savedAnalyticsReaderV1.disabled";
 const ROW_KEYS = [
   "archived",
   "archivedAt",
@@ -62,6 +65,19 @@ const FACET_SUMMARY_KEYS = [
   "tags",
   "totalCount",
 ] as const;
+const SAVED_ANALYTICS_RESPONSE_KEYS = [
+  "contentMix",
+  "dailyCounts",
+  "hourlyCounts",
+  "latestSavedAt",
+  "queryId",
+  "schemaVersion",
+  "source",
+  "sourceCounts",
+  "totalCount",
+] as const;
+const LABELED_COUNT_KEYS = ["count", "label"] as const;
+const ANALYTICS_WINDOW_KEYS = ["endMs", "startMs"] as const;
 const SURFACE_ITEMS_RESPONSE_KEYS = [
   "queryId",
   "rows",
@@ -116,6 +132,30 @@ export interface LibraryCoreFacetSummary {
   readonly totalCount: number;
 }
 
+export interface LibraryCoreSavedAnalyticsWindow {
+  readonly endMs: number;
+  readonly startMs: number;
+}
+
+export interface LibraryCoreSavedAnalyticsRequest {
+  readonly dailyWindows: readonly LibraryCoreSavedAnalyticsWindow[];
+  readonly hourlyWindows: readonly LibraryCoreSavedAnalyticsWindow[];
+}
+
+export interface LibraryCoreSavedAnalyticsLabeledCount {
+  readonly count: number;
+  readonly label: string;
+}
+
+export interface LibraryCoreSavedAnalytics {
+  readonly contentMix: readonly LibraryCoreSavedAnalyticsLabeledCount[];
+  readonly dailyCounts: readonly number[];
+  readonly hourlyCounts: readonly number[];
+  readonly latestSavedAt: number | null;
+  readonly sourceCounts: readonly LibraryCoreSavedAnalyticsLabeledCount[];
+  readonly totalCount: number;
+}
+
 export type LibraryCoreSurface = "map" | "story_wall";
 
 const LIBRARY_CORE_SURFACE_LIMITS: Readonly<Record<LibraryCoreSurface, number>> =
@@ -129,6 +169,18 @@ interface NativeFacetSummaryResponseV1 {
   readonly schemaVersion: typeof ITEM_DETAIL_SCHEMA_VERSION;
   readonly source: NativeItemDetailSourceV1;
   readonly summary: LibraryCoreFacetSummary;
+}
+
+interface NativeSavedAnalyticsResponseV1 {
+  readonly contentMix: readonly LibraryCoreSavedAnalyticsLabeledCount[];
+  readonly dailyCounts: readonly number[];
+  readonly hourlyCounts: readonly number[];
+  readonly latestSavedAt: number | null;
+  readonly queryId: typeof SAVED_ANALYTICS_QUERY_ID;
+  readonly schemaVersion: typeof ITEM_DETAIL_SCHEMA_VERSION;
+  readonly source: NativeItemDetailSourceV1;
+  readonly sourceCounts: readonly LibraryCoreSavedAnalyticsLabeledCount[];
+  readonly totalCount: number;
 }
 
 interface NativeSurfaceItemsResponseV1 {
@@ -320,6 +372,143 @@ function parseFacetSummaryResponse(value: unknown): NativeFacetSummaryResponseV1
   };
 }
 
+function parseLabeledCounts(
+  value: unknown,
+  maximumEntries: number,
+  maximumLabelBytes: number,
+): LibraryCoreSavedAnalyticsLabeledCount[] | null {
+  if (!Array.isArray(value) || value.length > maximumEntries) return null;
+  const labels = new Set<string>();
+  const result: LibraryCoreSavedAnalyticsLabeledCount[] = [];
+  for (const candidate of value) {
+    const entry = closedRecord(candidate, LABELED_COUNT_KEYS);
+    if (
+      !entry ||
+      typeof entry.label !== "string" ||
+      new TextEncoder().encode(entry.label).length > maximumLabelBytes ||
+      !safeInteger(entry.count) ||
+      entry.count === 0 ||
+      labels.has(entry.label)
+    ) {
+      return null;
+    }
+    labels.add(entry.label);
+    result.push({ count: entry.count, label: entry.label });
+  }
+  return result;
+}
+
+function parseSavedAnalyticsResponse(
+  value: unknown,
+): NativeSavedAnalyticsResponseV1 {
+  const response = closedRecord(value, SAVED_ANALYTICS_RESPONSE_KEYS);
+  const source = closedRecord(response?.source, SOURCE_KEYS);
+  const sourceCounts = parseLabeledCounts(response?.sourceCounts, 4_096, 2_048);
+  const contentMix = parseLabeledCounts(response?.contentMix, 64, 128);
+  const totalCount = safeInteger(response?.totalCount)
+    ? response.totalCount
+    : null;
+  if (
+    !response ||
+    !source ||
+    !sourceCounts ||
+    !contentMix ||
+    response.queryId !== SAVED_ANALYTICS_QUERY_ID ||
+    response.schemaVersion !== ITEM_DETAIL_SCHEMA_VERSION ||
+    typeof source.documentId !== "string" ||
+    source.documentId.length === 0 ||
+    typeof source.generationId !== "string" ||
+    !/^[0-9a-f]{64}$/u.test(source.generationId) ||
+    !safeInteger(source.headCount) ||
+    typeof source.headsDigest !== "string" ||
+    !/^[0-9a-f]{64}$/u.test(source.headsDigest) ||
+    !safeInteger(source.projectionRevision) ||
+    !safeInteger(source.storageGeneration) ||
+    !safeInteger(source.storageSaveRevision) ||
+    !safeInteger(source.transitionSequence) ||
+    totalCount === null ||
+    !(response.latestSavedAt === null || safeInteger(response.latestSavedAt)) ||
+    !Array.isArray(response.dailyCounts) ||
+    response.dailyCounts.length !== 7 ||
+    response.dailyCounts.some(
+      (count) => !safeInteger(count) || count > totalCount,
+    ) ||
+    !Array.isArray(response.hourlyCounts) ||
+    response.hourlyCounts.length !== 24 ||
+    response.hourlyCounts.some(
+      (count) => !safeInteger(count) || count > totalCount,
+    )
+  ) {
+    throw new Error("Library Core saved analytics response is invalid");
+  }
+  const dailyCounts = response.dailyCounts.map((count) => count as number);
+  const hourlyCounts = response.hourlyCounts.map((count) => count as number);
+  const sourceTotal = sourceCounts.reduce((sum, entry) => sum + entry.count, 0);
+  const contentTotal = contentMix.reduce((sum, entry) => sum + entry.count, 0);
+  if (
+    !Number.isSafeInteger(sourceTotal) ||
+    !Number.isSafeInteger(contentTotal) ||
+    sourceTotal !== totalCount ||
+    contentTotal !== totalCount ||
+    (totalCount === 0) !== (response.latestSavedAt === null)
+  ) {
+    throw new Error("Library Core saved analytics response is inconsistent");
+  }
+  return {
+    contentMix,
+    dailyCounts,
+    hourlyCounts,
+    latestSavedAt: response.latestSavedAt,
+    queryId: SAVED_ANALYTICS_QUERY_ID,
+    schemaVersion: ITEM_DETAIL_SCHEMA_VERSION,
+    source: {
+      documentId: source.documentId,
+      generationId: source.generationId,
+      headCount: source.headCount,
+      headsDigest: source.headsDigest,
+      projectionRevision: source.projectionRevision,
+      storageGeneration: source.storageGeneration,
+      storageSaveRevision: source.storageSaveRevision,
+      transitionSequence: source.transitionSequence,
+    } as NativeItemDetailSourceV1,
+    sourceCounts,
+    totalCount,
+  };
+}
+
+function parseAnalyticsWindows(
+  value: unknown,
+  expectedLength: number,
+  allowOneRepeatedWindow = false,
+): LibraryCoreSavedAnalyticsWindow[] | null {
+  if (!Array.isArray(value) || value.length !== expectedLength) return null;
+  const windows: LibraryCoreSavedAnalyticsWindow[] = [];
+  let repeatedWindowSeen = false;
+  for (const candidate of value) {
+    const window = closedRecord(candidate, ANALYTICS_WINDOW_KEYS);
+    if (
+      !window ||
+      !safeInteger(window.startMs) ||
+      !safeInteger(window.endMs) ||
+      window.startMs >= window.endMs
+    ) {
+      return null;
+    }
+    const previous = windows.at(-1);
+    if (previous && previous.endMs !== window.startMs) {
+      const isAllowedRepeat =
+        allowOneRepeatedWindow &&
+        !repeatedWindowSeen &&
+        previous.startMs === window.startMs &&
+        previous.endMs === window.endMs;
+      if (!isAllowedRepeat) return null;
+      repeatedWindowSeen = true;
+    }
+    windows.push({ startMs: window.startMs, endMs: window.endMs });
+  }
+  return windows;
+}
+
 function parseSurfaceItemsResponse(
   value: unknown,
   requestedSurface: LibraryCoreSurface,
@@ -483,6 +672,56 @@ export async function readLibraryCoreFacetSummary(
     throw new Error("Library Core facet summary source changed during read");
   }
   return response.summary;
+}
+
+/** Read exact Saved overview aggregates from the selected SQLite generation. */
+export async function readLibraryCoreSavedAnalytics(
+  request: LibraryCoreSavedAnalyticsRequest,
+  getSource: () => Promise<LibraryCoreProjectionSourceV1> = getLibraryCoreProjectionSource,
+  readNative: (request: {
+    dailyWindows: readonly LibraryCoreSavedAnalyticsWindow[];
+    hourlyWindows: readonly LibraryCoreSavedAnalyticsWindow[];
+    queryId: typeof SAVED_ANALYTICS_QUERY_ID;
+    schemaVersion: typeof ITEM_DETAIL_SCHEMA_VERSION;
+  }) => Promise<unknown> = (nativeRequest) =>
+    invoke("read_library_core_saved_analytics", { request: nativeRequest }),
+): Promise<LibraryCoreSavedAnalytics> {
+  if (
+    typeof localStorage !== "undefined" &&
+    localStorage.getItem(LIBRARY_CORE_SAVED_ANALYTICS_READER_DISABLED_KEY) ===
+      "1"
+  ) {
+    throw new Error("Library Core Saved analytics reader is disabled");
+  }
+  const dailyWindows = parseAnalyticsWindows(request.dailyWindows, 7);
+  const hourlyWindows = parseAnalyticsWindows(request.hourlyWindows, 24, true);
+  if (!dailyWindows || !hourlyWindows) {
+    throw new Error("Library Core saved analytics windows are invalid");
+  }
+  const before = await getSource();
+  const response = parseSavedAnalyticsResponse(
+    await readNative({
+      dailyWindows,
+      hourlyWindows,
+      queryId: SAVED_ANALYTICS_QUERY_ID,
+      schemaVersion: ITEM_DETAIL_SCHEMA_VERSION,
+    }),
+  );
+  if (!sourceMatches(before, response.source)) {
+    throw new Error("Library Core saved analytics source is stale");
+  }
+  const after = await getSource();
+  if (!sourceMatches(after, response.source)) {
+    throw new Error("Library Core saved analytics source changed during read");
+  }
+  return {
+    contentMix: response.contentMix,
+    dailyCounts: response.dailyCounts,
+    hourlyCounts: response.hourlyCounts,
+    latestSavedAt: response.latestSavedAt,
+    sourceCounts: response.sourceCounts,
+    totalCount: response.totalCount,
+  };
 }
 
 /** Read one bounded, SQLite-filtered result set for a secondary surface. */
