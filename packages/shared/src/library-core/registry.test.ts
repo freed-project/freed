@@ -22,6 +22,13 @@ import {
   LIBRARY_CORE_SAVED_ANALYTICS_SOURCE_IDENTITY,
 } from "./saved-analytics-contracts.js";
 import {
+  LIBRARY_CORE_PERSON_TIMELINE_NESTED_BOUNDS,
+  LIBRARY_CORE_PERSON_TIMELINE_PROJECTION,
+  LIBRARY_CORE_PERSON_TIMELINE_REQUEST_SCHEMA,
+  LIBRARY_CORE_PERSON_TIMELINE_RESPONSE_SCHEMA,
+  LIBRARY_CORE_PERSON_TIMELINE_SOURCE_IDENTITY,
+} from "./person-timeline-contracts.js";
+import {
   LIBRARY_CORE_FIELD_REGISTRY,
 } from "./field-registry.js";
 import {
@@ -433,6 +440,38 @@ describe("Library Core query registry", () => {
     expect(
       BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds,
     ).toContain("feed_browse_page_v2");
+  });
+
+  it("closes the person-timeline page contract", () => {
+    expect(LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1).toMatchObject({
+      status: "planned_blocked",
+      requestSchema: LIBRARY_CORE_PERSON_TIMELINE_REQUEST_SCHEMA,
+      responseSchema: LIBRARY_CORE_PERSON_TIMELINE_RESPONSE_SCHEMA,
+      projection: LIBRARY_CORE_PERSON_TIMELINE_PROJECTION,
+      sourceIdentity: LIBRARY_CORE_PERSON_TIMELINE_SOURCE_IDENTITY,
+      nestedBounds: LIBRARY_CORE_PERSON_TIMELINE_NESTED_BOUNDS,
+      tieBreakKey: "globalId",
+    });
+    // The timeline pages the same shadow rows as the ordinary feed page, so its
+    // order must be identical rather than a parallel copy that could drift.
+    expect(
+      LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1.stableSort,
+    ).toEqual(LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1.stableSort);
+    expect(LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1.projection).toBe(
+      LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1.projection,
+    );
+    for (const blocker of [
+      "request_schema_unresolved",
+      "response_schema_unresolved",
+      "projection_unresolved",
+      "source_identity_unresolved",
+      "nested_bounds_unresolved",
+      "sort_contract_unresolved",
+    ]) {
+      expect(
+        LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1.blockers,
+      ).not.toContain(blocker);
+    }
   });
 
   it("closes the Saved-analytics aggregate contract", () => {
