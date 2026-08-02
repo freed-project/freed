@@ -1049,7 +1049,13 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
         kind: "local-storage",
         platforms: ["desktop"],
         locator: "origin:localStorage",
-        keys: ["freed.libraryCore.externalMigrationV1.disabled"],
+        keys: [
+          "freed.libraryCore.externalMigrationV1.disabled",
+          "freed.libraryCore.feedBrowseReaderV1.disabled",
+          "freed.libraryCore.itemDetailReaderV1.disabled",
+          "freed.libraryCore.rendererItemEvictionV1.disabled",
+          "freed.libraryCore.savedAnalyticsReaderV1.disabled",
+        ],
       },
       {
         kind: "unprovisioned",
@@ -1077,13 +1083,13 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
         { scope: "crash-replay migration revisions", limit: 1, unit: "revision" },
         { scope: "complete immutable projection generations", limit: 2, unit: "generation" },
         { scope: "complete portable PWA checkpoint generations and their operation tails", limit: 2, unit: "generation" },
-        { scope: "migration rollback controls", limit: 1, unit: "key" },
+        { scope: "migration and Gate D rollback controls", limit: 5, unit: "keys" },
       ],
     },
     backup: "exclude-derived",
     export: "exclude",
     redaction: "not-applicable",
-    resetSemantics: "Successful two-sided migration confirmation removes that revision's spool and scratch graph. New selection retains only the selected and exact rollback SQLite or portable IndexedDB generations, including each retained portable generation's imported operation tail. Factory reset removes both native roots and, after activation, the portable IndexedDB database; clearing site data removes the local rollback switch.",
+    resetSemantics: "Successful two-sided migration confirmation removes that revision's spool and scratch graph. New selection retains only the selected and exact rollback SQLite or portable IndexedDB generations, including each retained portable generation's imported operation tail. Factory reset removes both native roots and, after activation, the portable IndexedDB database; clearing site data removes the local rollback switches.",
     snapshot: "rebuildable",
     migration: "rebuild-after-cutover",
     cutover: {
@@ -1094,6 +1100,8 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
       "packages/desktop/src-tauri/src/library_core_external_migration_runtime.rs",
       "packages/desktop/src-tauri/src/library_core_shadow_runtime.rs",
       "packages/desktop/src/lib/automerge.ts",
+      "packages/desktop/src/lib/library-core-feed-browse-reader-runtime.ts",
+      "packages/desktop/src/lib/library-core-item-detail-runtime.ts",
       "packages/pwa/src/lib/library-core-portable-checkpoint-store.ts",
       "packages/pwa/src/lib/library-core-operation-segment-runtime.ts",
       "packages/sync/src/cloud/library-core-operation-segments.ts",
@@ -2558,8 +2566,36 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
     sourceTokens: [
       'const LIBRARY_CORE_EXTERNAL_MIGRATION_DISABLED_KEY =',
       '"freed.libraryCore.externalMigrationV1.disabled"',
+      'const LIBRARY_CORE_RENDERER_ITEM_EVICTION_DISABLED_KEY =',
+      '"freed.libraryCore.rendererItemEvictionV1.disabled"',
     ],
-    registeredKeys: ["freed.libraryCore.externalMigrationV1.disabled"],
+    registeredKeys: [
+      "freed.libraryCore.externalMigrationV1.disabled",
+      "freed.libraryCore.rendererItemEvictionV1.disabled",
+    ],
+  },
+  {
+    registryKey: "library-core-derived-runtime",
+    sourcePath: "packages/desktop/src/lib/library-core-feed-browse-reader-runtime.ts",
+    sourceTokens: [
+      "LIBRARY_CORE_FEED_BROWSE_READER_DISABLED_KEY =",
+      '"freed.libraryCore.feedBrowseReaderV1.disabled"',
+    ],
+    registeredKeys: ["freed.libraryCore.feedBrowseReaderV1.disabled"],
+  },
+  {
+    registryKey: "library-core-derived-runtime",
+    sourcePath: "packages/desktop/src/lib/library-core-item-detail-runtime.ts",
+    sourceTokens: [
+      "LIBRARY_CORE_ITEM_DETAIL_READER_DISABLED_KEY =",
+      '"freed.libraryCore.itemDetailReaderV1.disabled"',
+      "LIBRARY_CORE_SAVED_ANALYTICS_READER_DISABLED_KEY =",
+      '"freed.libraryCore.savedAnalyticsReaderV1.disabled"',
+    ],
+    registeredKeys: [
+      "freed.libraryCore.itemDetailReaderV1.disabled",
+      "freed.libraryCore.savedAnalyticsReaderV1.disabled",
+    ],
   },
   {
     registryKey: "library-core-derived-runtime",

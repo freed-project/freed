@@ -73,6 +73,7 @@ import {
   openLibraryCoreItemScanSession,
   readLibraryCoreFacetSummary,
   readLibraryCoreItemDetail,
+  readLibraryCoreSavedAnalytics,
   readLibraryCoreSurfaceItems,
 } from "./lib/library-core-item-detail-runtime";
 import { invoke, isTauri } from "@tauri-apps/api/core";
@@ -1488,6 +1489,10 @@ function App() {
       readLibraryFacetSummary:
         tauriRuntimeAvailable && isInitialized
           ? readLibraryCoreFacetSummary
+          : undefined,
+      readLibrarySavedAnalytics:
+        tauriRuntimeAvailable && isInitialized
+          ? readLibraryCoreSavedAnalytics
           : undefined,
       readLibrarySurfaceItems:
         tauriRuntimeAvailable && isInitialized

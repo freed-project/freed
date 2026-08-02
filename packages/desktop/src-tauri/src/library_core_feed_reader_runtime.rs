@@ -14,8 +14,8 @@ use crate::projection_generation_registry::{
     ProjectionGenerationRegistry, ProjectionGenerationRegistryError,
 };
 use crate::shadow_store::{
-    FeedCardRow, FeedItemRow, FeedPage, ItemScanPage, LibraryFacetSummary, LibrarySurface,
-    PageCursor, ShadowStoreError,
+    FeedCardRow, FeedItemRow, FeedPage, ItemScanPage, LibraryFacetSummary, LibrarySavedAnalytics,
+    LibrarySurface, PageCursor, SavedAnalyticsCount, SavedAnalyticsWindow, ShadowStoreError,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::{Deserialize, Serialize};
@@ -47,6 +47,8 @@ const ITEM_SCAN_CURSOR_VERSION: u8 = 1;
 const ITEM_SCAN_CURSOR_FIXED_BYTES: usize = 51;
 const FACET_SUMMARY_QUERY_ID: &str = "library_facet_summary_v1";
 const SURFACE_ITEMS_QUERY_ID: &str = "library_surface_items_v1";
+const SAVED_ANALYTICS_QUERY_ID: &str = "saved_analytics_v1";
+const MAXIMUM_SAVED_ANALYTICS_RESPONSE_BYTES: usize = 8 * 1_048_576;
 
 #[derive(Debug)]
 enum FeedReaderError {
@@ -261,6 +263,45 @@ pub(super) struct FacetSummaryResponseV1 {
     schema_version: u8,
     source: ItemDetailSourceV1,
     summary: LibraryFacetSummary,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct SavedAnalyticsWindowV1 {
+    start_ms: i64,
+    end_ms: i64,
+}
+
+impl From<SavedAnalyticsWindowV1> for SavedAnalyticsWindow {
+    fn from(window: SavedAnalyticsWindowV1) -> Self {
+        Self {
+            start_ms: window.start_ms,
+            end_ms: window.end_ms,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct SavedAnalyticsRequestV1 {
+    daily_windows: [SavedAnalyticsWindowV1; 7],
+    hourly_windows: [SavedAnalyticsWindowV1; 24],
+    query_id: String,
+    schema_version: u8,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct SavedAnalyticsResponseV1 {
+    content_mix: Vec<SavedAnalyticsCount>,
+    daily_counts: [i64; 7],
+    hourly_counts: [i64; 24],
+    latest_saved_at: Option<i64>,
+    query_id: &'static str,
+    schema_version: u8,
+    source: ItemDetailSourceV1,
+    source_counts: Vec<SavedAnalyticsCount>,
+    total_count: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -986,6 +1027,103 @@ pub(super) fn read_library_core_facet_summary(
     read_facet_summary_at_root(&base, request).map_err(Into::into)
 }
 
+fn valid_saved_analytics_windows<const N: usize>(
+    windows: &[SavedAnalyticsWindowV1; N],
+    allow_one_repeated_window: bool,
+) -> bool {
+    let maximum = MAXIMUM_SAFE_INTEGER as i64;
+    let mut repeated_window_seen = false;
+    windows.iter().enumerate().all(|(index, window)| {
+        if !(0..=maximum).contains(&window.start_ms)
+            || !(0..=maximum).contains(&window.end_ms)
+            || window.start_ms >= window.end_ms
+        {
+            return false;
+        }
+        if index == 0 || windows[index - 1].end_ms == window.start_ms {
+            return true;
+        }
+        let previous = &windows[index - 1];
+        let is_allowed_repeat = allow_one_repeated_window
+            && !repeated_window_seen
+            && previous.start_ms == window.start_ms
+            && previous.end_ms == window.end_ms;
+        if is_allowed_repeat {
+            repeated_window_seen = true;
+        }
+        is_allowed_repeat
+    })
+}
+
+fn require_saved_analytics_response_byte_length(
+    response_bytes: usize,
+) -> Result<(), FeedReaderError> {
+    if response_bytes > MAXIMUM_SAVED_ANALYTICS_RESPONSE_BYTES {
+        return Err(FeedReaderError::ResponseTooLarge);
+    }
+    Ok(())
+}
+
+fn require_saved_analytics_response_within_budget(
+    response: &SavedAnalyticsResponseV1,
+) -> Result<(), FeedReaderError> {
+    let response_bytes = serde_json::to_vec(response)
+        .map_err(|_| FeedReaderError::ResponseTooLarge)?
+        .len();
+    require_saved_analytics_response_byte_length(response_bytes)
+}
+
+fn read_saved_analytics_at_root(
+    base: &Path,
+    request: SavedAnalyticsRequestV1,
+) -> Result<SavedAnalyticsResponseV1, FeedReaderError> {
+    if request.query_id != SAVED_ANALYTICS_QUERY_ID
+        || request.schema_version != SCHEMA_VERSION
+        || !valid_saved_analytics_windows(&request.daily_windows, false)
+        || !valid_saved_analytics_windows(&request.hourly_windows, true)
+    {
+        return Err(FeedReaderError::InvalidRequest("saved analytics"));
+    }
+    let daily_windows = request.daily_windows.map(Into::into);
+    let hourly_windows = request.hourly_windows.map(Into::into);
+    let paths = resolve_library_core_shadow_reader_paths(base)
+        .map_err(FeedReaderError::RuntimePath)?
+        .ok_or(FeedReaderError::RuntimeInactive)?;
+    let reader = open_selected_projection(&paths.registry_path, &paths.generation_root)?;
+    let LibrarySavedAnalytics {
+        total_count,
+        latest_saved_at,
+        daily_counts,
+        hourly_counts,
+        source_counts,
+        content_mix,
+    } = reader.saved_analytics(&daily_windows, &hourly_windows)?;
+    let response = SavedAnalyticsResponseV1 {
+        content_mix,
+        daily_counts,
+        hourly_counts,
+        latest_saved_at,
+        query_id: SAVED_ANALYTICS_QUERY_ID,
+        schema_version: SCHEMA_VERSION,
+        source: selected_item_source(&reader)?,
+        source_counts,
+        total_count,
+    };
+    require_saved_analytics_response_within_budget(&response)?;
+    Ok(response)
+}
+
+#[tauri::command]
+pub(super) fn read_library_core_saved_analytics(
+    app: tauri::AppHandle,
+    request: SavedAnalyticsRequestV1,
+) -> Result<SavedAnalyticsResponseV1, FeedReaderErrorResponse> {
+    let base = app.path().app_data_dir().map_err(|error| {
+        FeedReaderErrorResponse::from(FeedReaderError::RuntimePath(error.to_string()))
+    })?;
+    read_saved_analytics_at_root(&base, request).map_err(Into::into)
+}
+
 fn read_surface_items_at_root(
     base: &Path,
     request: SurfaceItemsRequestV1,
@@ -1397,6 +1535,34 @@ mod tests {
         }
     }
 
+    fn saved_analytics_request() -> SavedAnalyticsRequestV1 {
+        SavedAnalyticsRequestV1 {
+            daily_windows: std::array::from_fn(|index| SavedAnalyticsWindowV1 {
+                start_ms: index as i64 * 100,
+                end_ms: (index as i64 + 1) * 100,
+            }),
+            hourly_windows: std::array::from_fn(|index| SavedAnalyticsWindowV1 {
+                start_ms: index as i64 * 10,
+                end_ms: (index as i64 + 1) * 10,
+            }),
+            query_id: SAVED_ANALYTICS_QUERY_ID.to_string(),
+            schema_version: SCHEMA_VERSION,
+        }
+    }
+
+    fn saved_analytics_row(
+        index: usize,
+        source_label: String,
+        content_type: String,
+    ) -> FeedItemRow {
+        let mut saved = row(index);
+        saved.platform = Some("saved".to_string());
+        saved.captured_at = Some(25);
+        saved.source_url = Some(source_label);
+        saved.content_type = Some(content_type);
+        saved
+    }
+
     fn surface_request(surface: SurfaceKindV1, limit: u32) -> SurfaceItemsRequestV1 {
         SurfaceItemsRequestV1 {
             limit,
@@ -1688,6 +1854,422 @@ mod tests {
                         maximum: 250,
                     },
                 ),),
+            ))
+        ));
+    }
+
+    #[test]
+    fn reads_exact_saved_analytics_from_the_authenticated_generation() {
+        let fixture = Fixture::new("saved-analytics");
+        let mut link_preview = row(0);
+        link_preview.platform = Some("saved".to_string());
+        link_preview.content_type = Some("article".to_string());
+        link_preview.captured_at = Some(5);
+        link_preview.content_blob =
+            Some("{\"linkPreview\":{\"url\":\"https://www.Example.com/path\"}}".to_string());
+        link_preview.rest = "{\"__userState\":{\"savedAt\":25}}".to_string();
+
+        let mut invalid_url = row(1);
+        invalid_url.platform = Some("saved".to_string());
+        invalid_url.content_type = Some("post".to_string());
+        invalid_url.captured_at = Some(115);
+        invalid_url.source_url = Some("notes.local/item".to_string());
+
+        let mut author_fallback = row(2);
+        author_fallback.platform = Some("saved".to_string());
+        author_fallback.content_type = Some("post".to_string());
+        author_fallback.captured_at = Some(225);
+        author_fallback.author_handle = Some("alice".to_string());
+        author_fallback.rest = "{\"__userState\":{\"savedAt\":null}}".to_string();
+
+        let mut ignored = row(3);
+        ignored.captured_at = Some(900);
+
+        let mut empty_link = row(4);
+        empty_link.platform = Some("saved".to_string());
+        empty_link.content_type = Some("article".to_string());
+        empty_link.captured_at = Some(500);
+        empty_link.source_url = Some("https://fallback.test/ignored".to_string());
+        empty_link.content_blob =
+            Some("{\"linkPreview\":{\"url\":\"\"},\"text\":\"body\"}".to_string());
+
+        let mut same_host = row(5);
+        same_host.platform = Some("saved".to_string());
+        same_host.content_type = Some("article".to_string());
+        same_host.captured_at = Some(26);
+        same_host.content_blob =
+            Some("{\"linkPreview\":{\"url\":\"https://example.com/other\"}}".to_string());
+
+        let mut hidden_saved = row(6);
+        hidden_saved.platform = Some("saved".to_string());
+        hidden_saved.hidden = Some(1);
+        hidden_saved.content_type = Some("video".to_string());
+        hidden_saved.captured_at = Some(350);
+
+        fixture.publish(&[
+            link_preview,
+            invalid_url,
+            author_fallback,
+            ignored,
+            empty_link,
+            same_host,
+            hidden_saved,
+        ]);
+        let response = read_saved_analytics_at_root(&fixture.base, saved_analytics_request())
+            .expect("saved analytics");
+
+        assert_eq!(response.query_id, SAVED_ANALYTICS_QUERY_ID);
+        assert_eq!(response.source.document_id, source().document_id);
+        assert_eq!(response.source.heads_digest, source().heads_digest);
+        assert_eq!(response.total_count, 5);
+        assert_eq!(response.latest_saved_at, Some(500));
+        assert_eq!(response.daily_counts, [2, 1, 1, 0, 0, 1, 0]);
+        let mut expected_hourly = [0_i64; 24];
+        expected_hourly[2] = 2;
+        expected_hourly[11] = 1;
+        expected_hourly[22] = 1;
+        assert_eq!(response.hourly_counts, expected_hourly);
+        assert_eq!(
+            response.source_counts,
+            vec![
+                SavedAnalyticsCount {
+                    label: "Unknown".to_string(),
+                    count: 1,
+                },
+                SavedAnalyticsCount {
+                    label: "alice".to_string(),
+                    count: 1,
+                },
+                SavedAnalyticsCount {
+                    label: "example.com".to_string(),
+                    count: 2,
+                },
+                SavedAnalyticsCount {
+                    label: "notes.local/item".to_string(),
+                    count: 1,
+                },
+            ]
+        );
+        assert_eq!(
+            response.content_mix,
+            vec![
+                SavedAnalyticsCount {
+                    label: "article".to_string(),
+                    count: 3,
+                },
+                SavedAnalyticsCount {
+                    label: "post".to_string(),
+                    count: 2,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn saved_analytics_aggregates_the_complete_corpus_beyond_the_legacy_cap() {
+        let fixture = Fixture::new("saved-analytics-complete-corpus");
+        let rows = (0..2_501)
+            .map(|index| {
+                let mut saved = row(index);
+                saved.platform = Some("saved".to_string());
+                saved.captured_at = Some(25);
+                saved.source_url = Some("https://www.example.test/saved".to_string());
+                saved
+            })
+            .collect::<Vec<_>>();
+        fixture.publish(&rows);
+
+        let response = read_saved_analytics_at_root(&fixture.base, saved_analytics_request())
+            .expect("complete saved analytics");
+
+        assert_eq!(response.total_count, 2_501);
+        assert_eq!(response.latest_saved_at, Some(25));
+        assert_eq!(response.daily_counts, [2_501, 0, 0, 0, 0, 0, 0]);
+        let mut expected_hourly = [0_i64; 24];
+        expected_hourly[2] = 2_501;
+        assert_eq!(response.hourly_counts, expected_hourly);
+        assert_eq!(
+            response.source_counts,
+            vec![SavedAnalyticsCount {
+                label: "example.test".to_string(),
+                count: 2_501,
+            }]
+        );
+        assert_eq!(
+            response.content_mix,
+            vec![SavedAnalyticsCount {
+                label: "post".to_string(),
+                count: 2_501,
+            }]
+        );
+    }
+
+    #[test]
+    fn saved_analytics_response_budget_accepts_exactly_eight_mibibytes() {
+        assert!(require_saved_analytics_response_byte_length(
+            MAXIMUM_SAVED_ANALYTICS_RESPONSE_BYTES,
+        )
+        .is_ok());
+        assert!(matches!(
+            require_saved_analytics_response_byte_length(
+                MAXIMUM_SAVED_ANALYTICS_RESPONSE_BYTES + 1,
+            ),
+            Err(FeedReaderError::ResponseTooLarge)
+        ));
+    }
+
+    #[test]
+    fn saved_analytics_endpoint_enforces_exact_output_bounds() {
+        {
+            let fixture = Fixture::new("saved-analytics-output-bounds-success");
+            let rows = (0..4_096)
+                .map(|index| {
+                    let source_label = if index == 0 {
+                        "l".repeat(2_048)
+                    } else {
+                        format!("source-{index}")
+                    };
+                    saved_analytics_row(index, source_label, format!("content-{}", index % 64))
+                })
+                .collect::<Vec<_>>();
+            fixture.publish(&rows);
+
+            let response = read_saved_analytics_at_root(&fixture.base, saved_analytics_request())
+                .expect("exact output bounds");
+            assert_eq!(response.total_count, 4_096);
+            assert_eq!(response.source_counts.len(), 4_096);
+            assert!(response
+                .source_counts
+                .iter()
+                .all(|source| source.count == 1));
+            assert!(response
+                .source_counts
+                .iter()
+                .any(|source| source.label.len() == 2_048));
+            assert_eq!(response.content_mix.len(), 64);
+            assert!(response
+                .content_mix
+                .iter()
+                .all(|content_type| content_type.count == 64));
+        }
+
+        {
+            let fixture = Fixture::new("saved-analytics-source-overflow");
+            let rows = (0..4_097)
+                .map(|index| {
+                    saved_analytics_row(index, format!("source-{index}"), "post".to_string())
+                })
+                .collect::<Vec<_>>();
+            fixture.publish(&rows);
+            assert!(matches!(
+                read_saved_analytics_at_root(&fixture.base, saved_analytics_request()),
+                Err(FeedReaderError::Coordinator(
+                    ProjectionCoordinatorError::Reader(ProjectionGenerationReaderError::Store(
+                        ShadowStoreError::SavedAnalyticsExceedsResponseBudget {
+                            field: "source labels",
+                            requested: 4_097,
+                            maximum: 4_096,
+                        },
+                    ),),
+                ))
+            ));
+        }
+
+        {
+            let fixture = Fixture::new("saved-analytics-content-overflow");
+            let rows = (0..65)
+                .map(|index| {
+                    saved_analytics_row(index, "one-source".to_string(), format!("content-{index}"))
+                })
+                .collect::<Vec<_>>();
+            fixture.publish(&rows);
+            assert!(matches!(
+                read_saved_analytics_at_root(&fixture.base, saved_analytics_request()),
+                Err(FeedReaderError::Coordinator(
+                    ProjectionCoordinatorError::Reader(ProjectionGenerationReaderError::Store(
+                        ShadowStoreError::SavedAnalyticsExceedsResponseBudget {
+                            field: "content types",
+                            requested: 65,
+                            maximum: 64,
+                        },
+                    ),),
+                ))
+            ));
+        }
+
+        {
+            let fixture = Fixture::new("saved-analytics-label-overflow");
+            fixture.publish(&[saved_analytics_row(
+                0,
+                "l".repeat(2_049),
+                "post".to_string(),
+            )]);
+            assert!(matches!(
+                read_saved_analytics_at_root(&fixture.base, saved_analytics_request()),
+                Err(FeedReaderError::Coordinator(
+                    ProjectionCoordinatorError::Reader(ProjectionGenerationReaderError::Store(
+                        ShadowStoreError::SavedAnalyticsExceedsResponseBudget {
+                            field: "source label bytes",
+                            requested: 2_049,
+                            maximum: 2_048,
+                        },
+                    ),),
+                ))
+            ));
+        }
+
+        {
+            let fixture = Fixture::new("saved-analytics-serialized-response-overflow");
+            let rows = (0..4_096)
+                .map(|index| {
+                    saved_analytics_row(
+                        index,
+                        format!("{index:04}{}", "x".repeat(2_044)),
+                        "post".to_string(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            assert!(rows.iter().all(|row| {
+                row.source_url
+                    .as_deref()
+                    .is_some_and(|label| label.len() == 2_048)
+            }));
+            fixture.publish(&rows);
+            assert!(matches!(
+                read_saved_analytics_at_root(&fixture.base, saved_analytics_request()),
+                Err(FeedReaderError::ResponseTooLarge)
+            ));
+        }
+    }
+
+    #[test]
+    fn saved_analytics_rejects_invalid_windows_and_inexact_projection_rows() {
+        let fixture = Fixture::new("saved-analytics-invalid");
+        let mut malformed = row(0);
+        malformed.platform = Some("saved".to_string());
+        malformed.rest = "{\"__userState\":{\"savedAt\":\"yesterday\"}}".to_string();
+        fixture.publish(&[malformed]);
+
+        assert!(matches!(
+            read_saved_analytics_at_root(&fixture.base, saved_analytics_request()),
+            Err(FeedReaderError::Coordinator(
+                ProjectionCoordinatorError::Reader(ProjectionGenerationReaderError::Store(
+                    ShadowStoreError::InvalidSavedAnalyticsProjection {
+                        field: "userState.savedAt",
+                    },
+                )),
+            ))
+        ));
+
+        let mut invalid_window = saved_analytics_request();
+        invalid_window.daily_windows[0].end_ms = invalid_window.daily_windows[0].start_ms;
+        assert!(matches!(
+            read_saved_analytics_at_root(&fixture.base, invalid_window),
+            Err(FeedReaderError::InvalidRequest("saved analytics"))
+        ));
+
+        let mut discontinuous_windows = saved_analytics_request();
+        discontinuous_windows.daily_windows[1].start_ms += 1;
+        assert!(matches!(
+            read_saved_analytics_at_root(&fixture.base, discontinuous_windows),
+            Err(FeedReaderError::InvalidRequest("saved analytics"))
+        ));
+
+        let dst_fixture = Fixture::new("saved-analytics-dst-windows");
+        let mut dst_row = row(0);
+        dst_row.platform = Some("saved".to_string());
+        dst_row.captured_at = Some(25);
+        dst_fixture.publish(&[dst_row]);
+        let mut dst_windows = saved_analytics_request();
+        dst_windows.hourly_windows[14] = dst_windows.hourly_windows[13];
+        for index in 15..dst_windows.hourly_windows.len() {
+            dst_windows.hourly_windows[index] = SavedAnalyticsWindowV1 {
+                start_ms: (index as i64 - 1) * 10,
+                end_ms: index as i64 * 10,
+            };
+        }
+        assert!(read_saved_analytics_at_root(&dst_fixture.base, dst_windows).is_ok());
+
+        let mut repeated_twice = saved_analytics_request();
+        repeated_twice.hourly_windows[14] = repeated_twice.hourly_windows[13];
+        for index in 15..repeated_twice.hourly_windows.len() {
+            repeated_twice.hourly_windows[index] = SavedAnalyticsWindowV1 {
+                start_ms: (index as i64 - 1) * 10,
+                end_ms: index as i64 * 10,
+            };
+        }
+        repeated_twice.hourly_windows[16] = repeated_twice.hourly_windows[15];
+        assert!(matches!(
+            read_saved_analytics_at_root(&dst_fixture.base, repeated_twice),
+            Err(FeedReaderError::InvalidRequest("saved analytics"))
+        ));
+
+        let mut shape = serde_json::json!({
+            "dailyWindows": (0..7).map(|index| serde_json::json!({
+                "startMs": index * 100,
+                "endMs": (index + 1) * 100,
+            })).collect::<Vec<_>>(),
+            "hourlyWindows": (0..24).map(|index| serde_json::json!({
+                "startMs": index * 10,
+                "endMs": (index + 1) * 10,
+            })).collect::<Vec<_>>(),
+            "queryId": SAVED_ANALYTICS_QUERY_ID,
+            "schemaVersion": SCHEMA_VERSION,
+        });
+        assert!(serde_json::from_value::<SavedAnalyticsRequestV1>(shape.clone()).is_ok());
+        shape
+            .as_object_mut()
+            .expect("request object")
+            .insert("extra".to_string(), serde_json::Value::Bool(true));
+        assert!(serde_json::from_value::<SavedAnalyticsRequestV1>(shape).is_err());
+
+        let absent_user_state_fixture = Fixture::new("saved-analytics-absent-user-state");
+        let mut absent_user_state = row(0);
+        absent_user_state.platform = Some("saved".to_string());
+        absent_user_state.rest = "{\"__absent\":[\"userState\"]}".to_string();
+        absent_user_state_fixture.publish(&[absent_user_state]);
+        assert!(matches!(
+            read_saved_analytics_at_root(
+                &absent_user_state_fixture.base,
+                saved_analytics_request(),
+            ),
+            Err(FeedReaderError::Coordinator(
+                ProjectionCoordinatorError::Reader(ProjectionGenerationReaderError::Store(
+                    ShadowStoreError::InvalidSavedAnalyticsProjection { field: "userState" },
+                )),
+            ))
+        ));
+
+        let absent_author_fixture = Fixture::new("saved-analytics-absent-author");
+        let mut absent_author = row(0);
+        absent_author.platform = Some("saved".to_string());
+        absent_author.author_handle = None;
+        absent_author.source_url = None;
+        absent_author.rest = "{\"__absent\":[\"author\"]}".to_string();
+        absent_author_fixture.publish(&[absent_author]);
+        assert!(matches!(
+            read_saved_analytics_at_root(&absent_author_fixture.base, saved_analytics_request()),
+            Err(FeedReaderError::Coordinator(
+                ProjectionCoordinatorError::Reader(ProjectionGenerationReaderError::Store(
+                    ShadowStoreError::InvalidSavedAnalyticsProjection { field: "author" },
+                )),
+            ))
+        ));
+
+        let raw_hidden_fixture = Fixture::new("saved-analytics-raw-hidden");
+        let mut raw_hidden = row(0);
+        raw_hidden.platform = Some("saved".to_string());
+        raw_hidden.hidden = None;
+        raw_hidden.rest = "{\"__raw\":{\"userState.hidden\":\"truthy\"}}".to_string();
+        raw_hidden_fixture.publish(&[raw_hidden]);
+        assert!(matches!(
+            read_saved_analytics_at_root(&raw_hidden_fixture.base, saved_analytics_request()),
+            Err(FeedReaderError::Coordinator(
+                ProjectionCoordinatorError::Reader(ProjectionGenerationReaderError::Store(
+                    ShadowStoreError::InvalidSavedAnalyticsProjection {
+                        field: "userState.hidden",
+                    },
+                )),
             ))
         ));
     }

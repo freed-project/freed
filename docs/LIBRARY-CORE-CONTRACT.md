@@ -2869,8 +2869,19 @@ source-fenced SQLite candidate query that admits only visible, nonarchived rows
 with media, returns at most 250 complete candidates, and fails closed to the
 compatibility reader when the exact result would exceed that bound. Its existing
 product filters and manifest builder still run over the complete candidate set.
-Friends, Saved analytics, provider settings, and specialized feed modes remain
-compatibility consumers pending their own registered bounded queries.
+Saved overview analytics use a source-fenced SQLite aggregate over the selected
+generation. JavaScript supplies the same seven local-day and 24 local-hour
+windows as the legacy view. Native code streams Saved rows once and returns only
+the exact visible total, latest timestamp, bucket counts, source counts, and content
+mix. One exact adjacent repeated local-hour window at a spring-forward
+daylight-saving transition remains valid because the compatibility view
+constructs each bucket independently.
+The renderer applies its locale-aware ordering after receipt and never
+leases the compatibility corpus on a successful native read. Malformed legacy
+fields, stale source identity, response overflow, or an unavailable native
+reader fail closed to the exact compatibility reducer. Friends, provider
+settings, and specialized feed modes remain compatibility consumers pending
+their own registered bounded queries.
 
 The cursor is versioned binary data encoded as canonical unpadded base64url. It
 binds the immutable generation digest, transition sequence, projection

@@ -2,7 +2,7 @@
  * SavedSection - settings pane for saved content overview + Markdown import/export.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { toast } from "../Toast.js";
 import type { ImportPhase, ImportProgress, ImportSummary } from "../LibraryDialog.types.js";
@@ -12,10 +12,10 @@ import {
   formatHealthRelative,
   type HealthChartRange,
 } from "../ProviderHealthSummary.js";
-import { getWebsiteHostForChannel, type FeedItem } from "@freed/shared";
+import { getWebsiteHostForChannel } from "@freed/shared";
 import { SettingsListPanel } from "./SettingsListPanel.js";
 import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
-import { useLegacyLibraryItems } from "../../hooks/useLegacyLibraryItems.js";
+import { useLibrarySavedAnalytics } from "../../hooks/useLibrarySavedAnalytics.js";
 
 type SavedTab = "overview" | "import" | "export";
 
@@ -59,7 +59,6 @@ function TabBar({
 // ── Root section component ─────────────────────────────────────────────────────
 
 export function SavedSection() {
-  useLegacyLibraryItems();
   const { importMarkdown } = usePlatform();
 
   const availableTabs: { id: SavedTab; label: string }[] = [
@@ -83,111 +82,26 @@ export function SavedSection() {
   );
 }
 
-function getSavedTimestamp(item: FeedItem): number {
-  return item.userState.savedAt ?? item.capturedAt;
-}
-
-function getSavedSourceLabel(item: FeedItem): string {
-  const source = item.content.linkPreview?.url ?? item.sourceUrl ?? item.author.handle;
-  if (!source) return "Unknown";
-  try {
-    return new URL(source).hostname.replace(/^www\./, "");
-  } catch {
-    return source;
-  }
-}
-
-function buildDailyBuckets(savedItems: FeedItem[]) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  return Array.from({ length: 7 }, (_, index) => {
-    const bucketStart = new Date(today);
-    bucketStart.setDate(today.getDate() - (6 - index));
-    const bucketEnd = new Date(bucketStart);
-    bucketEnd.setDate(bucketStart.getDate() + 1);
-
-    const count = savedItems.reduce((sum, item) => {
-      const savedAt = getSavedTimestamp(item);
-      return savedAt >= bucketStart.getTime() && savedAt < bucketEnd.getTime() ? sum + 1 : sum;
-    }, 0);
-
-    return {
-      dateKey: bucketStart.toISOString().slice(0, 10),
-      attempts: count,
-      successes: count,
-      failures: 0,
-      itemsSeen: count,
-      itemsAdded: count,
-      bytesMoved: 0,
-    };
-  });
-}
-
-function buildHourlyBuckets(savedItems: FeedItem[]) {
-  const now = new Date();
-  now.setMinutes(0, 0, 0);
-
-  return Array.from({ length: 24 }, (_, index) => {
-    const bucketStart = new Date(now);
-    bucketStart.setHours(now.getHours() - (23 - index));
-    const bucketEnd = new Date(bucketStart);
-    bucketEnd.setHours(bucketStart.getHours() + 1);
-
-    const count = savedItems.reduce((sum, item) => {
-      const savedAt = getSavedTimestamp(item);
-      return savedAt >= bucketStart.getTime() && savedAt < bucketEnd.getTime() ? sum + 1 : sum;
-    }, 0);
-
-    return {
-      hourKey: bucketStart.toISOString().slice(0, 13),
-      attempts: count,
-      successes: count,
-      failures: 0,
-      itemsSeen: count,
-      itemsAdded: count,
-      bytesMoved: 0,
-    };
-  });
-}
-
 // ── Overview pane ─────────────────────────────────────────────────────────────
 
 function OverviewPane() {
   const items = useAppStore((s) => s.items);
+  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const [selectedRange, setSelectedRange] = useState<HealthChartRange>("daily");
-
-  const savedItems = useMemo(
-    () =>
-      items
-        .filter((item) => item.platform === "saved")
-        .sort((a, b) => getSavedTimestamp(b) - getSavedTimestamp(a)),
-    [items],
+  const { analytics, loading, request } = useLibrarySavedAnalytics(
+    items,
+    searchCorpusVersion,
   );
 
-  const dailyBuckets = useMemo(() => buildDailyBuckets(savedItems), [savedItems]);
-  const hourlyBuckets = useMemo(() => buildHourlyBuckets(savedItems), [savedItems]);
-  const topSources = useMemo(() => {
-    const sourceCounts = new Map<string, number>();
-    for (const item of savedItems) {
-      const source = getSavedSourceLabel(item);
-      sourceCounts.set(source, (sourceCounts.get(source) ?? 0) + 1);
-    }
-    return [...sourceCounts.entries()]
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .slice(0, 5);
-  }, [savedItems]);
+  if (loading || !analytics) {
+    return (
+      <div className="py-8 text-center text-sm text-[var(--theme-text-muted)]">
+        Loading saved overview...
+      </div>
+    );
+  }
 
-  const contentMix = useMemo(() => {
-    const typeCounts = new Map<string, number>();
-    for (const item of savedItems) {
-      typeCounts.set(item.contentType, (typeCounts.get(item.contentType) ?? 0) + 1);
-    }
-    return [...typeCounts.entries()]
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  }, [savedItems]);
-
-  if (savedItems.length === 0) {
+  if (analytics.totalCount === 0) {
     return (
       <div className="text-center py-8">
         <p className="text-sm text-[var(--theme-text-muted)]">No saved items yet.</p>
@@ -196,12 +110,36 @@ function OverviewPane() {
     );
   }
 
+  const dailyBuckets = analytics.dailyCounts.map((count, index) => ({
+    dateKey: new Date(request.dailyWindows[index].startMs)
+      .toISOString()
+      .slice(0, 10),
+    attempts: count,
+    successes: count,
+    failures: 0,
+    itemsSeen: count,
+    itemsAdded: count,
+    bytesMoved: 0,
+  }));
+  const hourlyBuckets = analytics.hourlyCounts.map((count, index) => ({
+    hourKey: new Date(request.hourlyWindows[index].startMs)
+      .toISOString()
+      .slice(0, 13),
+    attempts: count,
+    successes: count,
+    failures: 0,
+    itemsSeen: count,
+    itemsAdded: count,
+    bytesMoved: 0,
+  }));
+  const topSources = analytics.sourceCounts;
+  const contentMix = analytics.contentMix;
   const activeBuckets = selectedRange === "hourly" ? hourlyBuckets : dailyBuckets;
   const rangeLabel = selectedRange === "hourly" ? "24h" : "7d";
   const savedInRange = activeBuckets.reduce((sum, bucket) => sum + bucket.itemsSeen, 0);
-  const latestSavedAt = getSavedTimestamp(savedItems[0]);
+  const latestSavedAt = analytics.latestSavedAt ?? undefined;
   const sourceCount = topSources.length;
-  const maxSourceCount = Math.max(...topSources.map(([, count]) => count), 1);
+  const maxSourceCount = Math.max(...topSources.map(({ count }) => count), 1);
 
   return (
     <div className="space-y-4">
@@ -229,7 +167,7 @@ function OverviewPane() {
         <div className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4">
           <p className="text-xs uppercase tracking-widest text-[var(--theme-text-soft)]">Total Saved</p>
           <p className="mt-2 text-2xl font-semibold text-[var(--theme-text-primary)]">
-            {savedItems.length.toLocaleString()}
+            {analytics.totalCount.toLocaleString()}
           </p>
         </div>
         <div className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4">
@@ -256,7 +194,7 @@ function OverviewPane() {
         <div className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4">
           <p className="text-xs uppercase tracking-widest text-[var(--theme-text-soft)]">Top Sources</p>
           <div className="mt-4 space-y-3">
-            {topSources.map(([source, count]) => (
+            {topSources.map(({ label: source, count }) => (
               <div key={source} className="space-y-1.5">
                 <div className="flex items-center justify-between gap-3 text-sm">
                   <span className="truncate text-[var(--theme-text-primary)]">{source}</span>
@@ -276,7 +214,7 @@ function OverviewPane() {
         <div className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4">
           <p className="text-xs uppercase tracking-widest text-[var(--theme-text-soft)]">Content Mix</p>
           <div className="mt-4 space-y-3">
-            {contentMix.map(([contentType, count]) => (
+            {contentMix.map(({ label: contentType, count }) => (
               <div key={contentType} className="flex items-center justify-between gap-3 text-sm">
                 <span className="capitalize text-[var(--theme-text-primary)]">{contentType}</span>
                 <span className="text-[var(--theme-text-secondary)]">{count.toLocaleString()}</span>
