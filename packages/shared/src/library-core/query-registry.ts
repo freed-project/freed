@@ -36,6 +36,13 @@ import {
   LIBRARY_CORE_SAVED_ANALYTICS_RESPONSE_SCHEMA,
   LIBRARY_CORE_SAVED_ANALYTICS_SOURCE_IDENTITY,
 } from "./saved-analytics-contracts.js";
+import {
+  LIBRARY_CORE_PERSON_TIMELINE_NESTED_BOUNDS,
+  LIBRARY_CORE_PERSON_TIMELINE_PROJECTION,
+  LIBRARY_CORE_PERSON_TIMELINE_REQUEST_SCHEMA,
+  LIBRARY_CORE_PERSON_TIMELINE_RESPONSE_SCHEMA,
+  LIBRARY_CORE_PERSON_TIMELINE_SOURCE_IDENTITY,
+} from "./person-timeline-contracts.js";
 
 export const LIBRARY_CORE_QUERY_IDS = [
   "account_detail_v1",
@@ -213,6 +220,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V3_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_PERSON_TIMELINE_REQUEST_SCHEMA
     | null;
   readonly responseSchema:
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
@@ -221,6 +229,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V3_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_PERSON_TIMELINE_RESPONSE_SCHEMA
     | null;
   readonly projection:
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
@@ -332,14 +341,16 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V3_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_REQUEST_SCHEMA
-    | typeof LIBRARY_CORE_SAVED_ANALYTICS_REQUEST_SCHEMA;
+    | typeof LIBRARY_CORE_SAVED_ANALYTICS_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_PERSON_TIMELINE_REQUEST_SCHEMA;
   readonly responseSchema?:
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V3_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_RESPONSE_SCHEMA
-    | typeof LIBRARY_CORE_SAVED_ANALYTICS_RESPONSE_SCHEMA;
+    | typeof LIBRARY_CORE_SAVED_ANALYTICS_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_PERSON_TIMELINE_RESPONSE_SCHEMA;
   readonly projection?:
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION
@@ -834,6 +845,23 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
       "ProjectionReadSession::person_timeline",
       "read_library_core_person_timeline",
     ],
+    requestSchema: LIBRARY_CORE_PERSON_TIMELINE_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_PERSON_TIMELINE_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_PERSON_TIMELINE_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_PERSON_TIMELINE_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_PERSON_TIMELINE_NESTED_BOUNDS,
+    // Identical to feed_page_v1: the timeline pages the same shadow rows with
+    // `ORDER BY sortAt DESC, globalId ASC`. `sortAt` rather than `publishedAt`
+    // for the same reason given there.
+    stableSort: {
+      columns: [
+        { column: "sortAt", direction: "desc" },
+        { column: "globalId", direction: "asc" },
+      ],
+      textCollation: "binary",
+      nullOrdering: "all_sort_columns_not_null",
+    },
+    tieBreakKey: "globalId",
     resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   persons_graph_v1: plannedQuery({
