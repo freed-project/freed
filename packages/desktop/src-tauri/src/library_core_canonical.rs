@@ -4,7 +4,7 @@ use std::collections::HashSet;
 const MAX_DIRECT_CANONICAL_BYTES: usize = 4_194_304;
 const MAX_CANONICAL_NESTING_DEPTH: usize = 128;
 const MAX_CANONICAL_NODES: usize = 65_536;
-const DIGEST_DOMAINS: [&str; 14] = [
+const DIGEST_DOMAINS: [&str; 16] = [
     "authority-key",
     "actor-public-key",
     "actor-id",
@@ -19,13 +19,16 @@ const DIGEST_DOMAINS: [&str; 14] = [
     "actor-chain",
     "operation-envelope",
     "causal-frontier",
+    "legacy-source-admission-key",
+    "legacy-source-admission-claim",
 ];
-const SIGNATURE_DOMAINS: [&str; 5] = [
+const SIGNATURE_DOMAINS: [&str; 6] = [
     "operation-envelope",
     "actor-enrollment-proof",
     "actor-enrollment-authority",
     "epoch-transition-certificate",
     "authority-key-possession",
+    "legacy-source-admission-claim-key",
 ];
 const SAFE_INTEGER_MAX: u64 = 9_007_199_254_740_991;
 
@@ -589,6 +592,20 @@ mod tests {
             authority_key_input,
             b"freed.library-core.v1/digest/authority-key\0{\"authority_public_key\":\"d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a\",\"signature_algorithm\":\"ed25519\"}"
         );
+        let legacy_source_key_input = encode_operation_digest_input(
+            "legacy-source-admission-key",
+            &serde_json::json!({
+                "signature_algorithm": "ed25519",
+                "source_public_key":
+                    "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
+            }),
+            MAX_DIRECT_CANONICAL_BYTES,
+        )
+        .expect("legacy source admission key digest input");
+        assert_eq!(
+            legacy_source_key_input,
+            b"freed.library-core.v1/digest/legacy-source-admission-key\0{\"signature_algorithm\":\"ed25519\",\"source_public_key\":\"d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a\"}"
+        );
 
         let signature_input = encode_operation_signature_input(
             &serde_json::json!({
@@ -677,6 +694,19 @@ mod tests {
         assert_eq!(
             authority_possession_input,
             b"freed.library-core.v1/signature/authority-key-possession\0{\"certificate_digest\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"target_authority_key_id\":\"fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210\"}"
+        );
+        let legacy_source_claim_signature_input = encode_signature_input(
+            "legacy-source-admission-claim-key",
+            &serde_json::json!({
+                "legacy_source_admission_claim_digest":
+                    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            }),
+            MAX_DIRECT_CANONICAL_BYTES,
+        )
+        .expect("legacy source admission claim signature input");
+        assert_eq!(
+            legacy_source_claim_signature_input,
+            b"freed.library-core.v1/signature/legacy-source-admission-claim-key\0{\"legacy_source_admission_claim_digest\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}"
         );
     }
 

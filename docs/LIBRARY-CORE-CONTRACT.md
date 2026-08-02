@@ -392,6 +392,9 @@ automerge-heads
 migration-source-set
 migration-candidate-claim
 migration-candidate-claim-authority
+legacy-source-admission-claim
+legacy-source-admission-claim-key
+legacy-source-admission-key
 migration-claim-history-entry
 migration-claim-operation-grant
 migration-claim-operation-grant-consumption
@@ -4307,6 +4310,21 @@ decided authority transaction. The migration receipt and transition certificate
 bind the complete authenticated set of reservation and activation records,
 token digests, and captured generations. Bearer tokens never enter a receipt,
 proof, log, backup, transition, or cross-installation message.
+
+The active Gate D compatibility bridge uses one narrower device-local receipt
+before decode. `freed_local_automerge_migration_claim_v1` binds the exact
+IndexedDB generation, save revision, byte length, source digest, and current
+Desktop installation ID to a device-held Ed25519 public key. Its digest domain
+is `legacy-source-admission-claim` and its signature domain is
+`legacy-source-admission-claim-key`. On macOS and Windows the private key
+remains in the operating-system credential vault. Linux does not attempt this
+claim until a noninteractive platform vault exists and stays on the Automerge
+rollback path. The immutable signed receipt is stored only under the
+private migration root and verified after readback. This receipt detects
+changed or substituted local migration evidence after its first admission. It
+is not `freed_migration_candidate_claim_v1`, is never source authority, grants
+no writer or cloud authority, and cannot satisfy any elected migration,
+candidate registration, or cutover requirement below.
 
 Before the elected installation decodes the complete Automerge corpus, acquires
 a source admission fence, or writes target state, it must hold the one current

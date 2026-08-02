@@ -20,6 +20,7 @@ const source = {
   storageRevision: { generation: 7, saveRevision: 11 },
   byteLength: 6,
 };
+const sourceInstallationId = "desktop-installation-1";
 
 const selectedProjection = {
   sourceKey: "a".repeat(64),
@@ -65,6 +66,19 @@ function workerClient(): LibraryCoreExternalExportWorkerClient {
 }
 
 describe("Desktop Library Core external migration runtime", () => {
+  it("rejects an invalid installation identity before opening either source", async () => {
+    const worker = workerClient();
+    const native = {
+      begin: vi.fn(),
+    } as unknown as LibraryCoreExternalMigrationNativeClient;
+
+    await expect(
+      migrateLibraryCoreExternalSnapshot(worker, native, "worker-generation-0", "invalid/id"),
+    ).rejects.toThrow("source installation identity is invalid");
+    expect(worker.begin).not.toHaveBeenCalled();
+    expect(native.begin).not.toHaveBeenCalled();
+  });
+
   it("maps the worker revision to the native Tauri wire contract", async () => {
     invokeMock.mockResolvedValueOnce({
       sessionId: "legacy-v1:7:11:6",
@@ -75,6 +89,7 @@ describe("Desktop Library Core external migration runtime", () => {
 
     await tauriLibraryCoreExternalMigrationNativeClient.begin({
       sessionId: "legacy-v1:7:11:6",
+      sourceInstallationId,
       source,
     });
 
@@ -87,6 +102,7 @@ describe("Desktop Library Core external migration runtime", () => {
           storageGeneration: 7,
           storageSaveRevision: 11,
           byteLength: 6,
+          sourceInstallationId,
         },
       },
     );
@@ -113,7 +129,12 @@ describe("Desktop Library Core external migration runtime", () => {
     };
 
     await expect(
-      migrateLibraryCoreExternalSnapshot(worker, native, "worker-generation-1"),
+      migrateLibraryCoreExternalSnapshot(
+        worker,
+        native,
+        "worker-generation-1",
+        sourceInstallationId,
+      ),
     ).resolves.toEqual({
       migrated: true,
       projection: selectedProjection,
@@ -121,6 +142,7 @@ describe("Desktop Library Core external migration runtime", () => {
 
     expect(native.begin).toHaveBeenCalledWith({
       sessionId: "legacy-v1:7:11:6",
+      sourceInstallationId,
       source,
     });
     expect(worker.read).toHaveBeenCalledWith("worker-generation-1", 3);
@@ -152,7 +174,12 @@ describe("Desktop Library Core external migration runtime", () => {
     };
 
     await expect(
-      migrateLibraryCoreExternalSnapshot(worker, native, "worker-generation-2"),
+      migrateLibraryCoreExternalSnapshot(
+        worker,
+        native,
+        "worker-generation-2",
+        sourceInstallationId,
+      ),
     ).resolves.toEqual({
       migrated: true,
       projection: selectedProjection,
@@ -189,7 +216,12 @@ describe("Desktop Library Core external migration runtime", () => {
     };
 
     await expect(
-      migrateLibraryCoreExternalSnapshot(worker, native, "worker-generation-3"),
+      migrateLibraryCoreExternalSnapshot(
+        worker,
+        native,
+        "worker-generation-3",
+        sourceInstallationId,
+      ),
     ).rejects.toThrow("external export chunk is inconsistent");
 
     expect(native.cancel).toHaveBeenCalledWith("legacy-v1:7:11:6");

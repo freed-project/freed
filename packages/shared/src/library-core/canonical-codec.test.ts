@@ -66,6 +66,17 @@ describe("Library Core canonical codec", () => {
     ).toBe(
       'freed.library-core.v1/digest/authority-key\u0000{"authority_public_key":"d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a","signature_algorithm":"ed25519"}',
     );
+    expect(
+      decoder.decode(
+        encodeLibraryCoreDigestInput("legacy-source-admission-key", {
+          signature_algorithm: "ed25519",
+          source_public_key:
+            "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+        }),
+      ),
+    ).toBe(
+      'freed.library-core.v1/digest/legacy-source-admission-key\u0000{"signature_algorithm":"ed25519","source_public_key":"d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"}',
+    );
     expect(decoder.decode(signatureInput)).toBe(
       'freed.library-core.v1/signature/operation-envelope\u0000{"operation_signing_body_digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}',
     );
@@ -129,6 +140,19 @@ describe("Library Core canonical codec", () => {
       ),
     ).toBe(
       'freed.library-core.v1/signature/authority-key-possession\u0000{"certificate_digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","target_authority_key_id":"fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"}',
+    );
+    expect(
+      decoder.decode(
+        encodeLibraryCoreSignatureInput(
+          "legacy-source-admission-claim-key",
+          {
+            legacy_source_admission_claim_digest:
+              "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          },
+        ),
+      ),
+    ).toBe(
+      'freed.library-core.v1/signature/legacy-source-admission-claim-key\u0000{"legacy_source_admission_claim_digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}',
     );
     expect(() =>
       encodeLibraryCoreOperationSignatureInput(null, { maximumBytes: 20 }),

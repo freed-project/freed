@@ -24,6 +24,7 @@ pub(super) struct ExternalSnapshotSource {
     pub storage_generation: u64,
     pub storage_save_revision: u64,
     pub byte_length: u64,
+    pub source_installation_id: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -421,7 +422,11 @@ fn expected_chunk_length(source: &ExternalSnapshotSource, offset: u64) -> SpoolR
 }
 
 fn validate_source(source: &ExternalSnapshotSource) -> SpoolResult<()> {
-    if source.schema_version != 1 || source.byte_length == 0 {
+    if source.schema_version != 1
+        || source.byte_length == 0
+        || source.source_installation_id.is_empty()
+        || source.source_installation_id.len() > 128
+    {
         return Err(ExternalSnapshotSpoolError::InvalidSource);
     }
     Ok(())
@@ -562,6 +567,7 @@ mod tests {
             storage_generation: 3,
             storage_save_revision: 17,
             byte_length,
+            source_installation_id: "desktop-installation-1".to_string(),
         }
     }
 

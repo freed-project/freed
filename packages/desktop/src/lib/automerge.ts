@@ -1484,12 +1484,17 @@ function shouldEvictRendererItems(): boolean {
 
 async function migrateLibraryCoreBeforeAutomergeLoad(): Promise<void> {
   if (!shouldRunLibraryCoreExternalMigration()) return;
+  const registration = desktopClientRegistration;
+  if (!registration) {
+    throw new Error("Library Core migration requires a Desktop installation identity");
+  }
   const startedAt = performance.now();
   try {
     const result = await migrateLibraryCoreExternalSnapshot(
       libraryCoreExternalExportWorkerClient,
       tauriLibraryCoreExternalMigrationNativeClient,
       newLibraryCoreProjectionSessionId(),
+      registration.id,
     );
     libraryCoreExternalProjectionSelected = result.migrated;
     recordRuntimeHealthEvent({
