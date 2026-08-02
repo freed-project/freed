@@ -9,6 +9,10 @@ import {
   type LibraryCoreOperationPayloadSchema,
 } from "./operation-payload-contracts.js";
 import {
+  FEED_ITEM_ARCHIVE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  FEED_ITEM_SAVED_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+} from "./operation-touched-fields.js";
+import {
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   type LibraryCoreTransactionMemberSchemaDescriptor,
 } from "./operation-envelope-contracts.js";
@@ -123,6 +127,11 @@ export interface LibraryCoreOperationDefinition {
   > | null;
   /** Exact entity-key syntax only. This does not prove the entity exists. */
   readonly entityIdCodec: LibraryCoreEntityIdCodec | null;
+  /**
+   * Every synchronized leaf this operation may write on any code path, sorted
+   * and unique. Leaves it only reads as a precondition are excluded. A closed
+   * inventory says what changes, not how concurrent changes converge.
+   */
   readonly touchedFieldRegistryKeys: readonly string[] | null;
   readonly fieldAlgebra:
     | LibraryCoreOperationFieldAlgebraContract<unknown>
@@ -276,6 +285,9 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   feed_item_archive_assignment: localUserOperation({
     entityType: "FeedItem",
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEM_ARCHIVE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
     candidateStoreSurfaces: ["toggleArchived"],
     legacyWorkerRequests: ["TOGGLE_ARCHIVED"],
   }),
@@ -332,6 +344,9 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   feed_item_saved_assignment: localUserOperation({
     entityType: "FeedItem",
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEM_SAVED_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
     candidateStoreSurfaces: ["toggleSaved"],
     legacyWorkerRequests: ["TOGGLE_SAVED"],
   }),

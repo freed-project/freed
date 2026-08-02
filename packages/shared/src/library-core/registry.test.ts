@@ -72,6 +72,7 @@ import {
 import {
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
 } from "./operation-envelope-contracts.js";
+import { FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA } from "./operation-payload-contracts.js";
 import {
   FEED_ITEM_READ_AT_FIELD_ALGEBRA,
   LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
@@ -81,7 +82,19 @@ import {
   LIBRARY_CORE_MAX_TRANSACTION_MEMBERS,
   LIBRARY_CORE_OPERATION_IDS,
   LIBRARY_CORE_OPERATION_REGISTRY,
+  type LibraryCoreOperationBlocker,
+  type LibraryCoreOperationDefinition,
+  type LibraryCoreOperationId,
 } from "./operation-registry.js";
+import {
+  FEED_ITEM_ARCHIVE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  FEED_ITEM_SAVED_ARCHIVED_EXCLUSION_INVARIANT,
+  FEED_ITEM_SAVED_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  LIBRARY_CORE_FEED_ITEM_ARCHIVED_AT_FIELD_REGISTRY_KEY,
+  LIBRARY_CORE_FEED_ITEM_ARCHIVED_FIELD_REGISTRY_KEY,
+  LIBRARY_CORE_FEED_ITEM_SAVED_AT_FIELD_REGISTRY_KEY,
+  LIBRARY_CORE_FEED_ITEM_SAVED_FIELD_REGISTRY_KEY,
+} from "./operation-touched-fields.js";
 import { LIBRARY_CORE_ENTITY_ID_CODEC_V1 } from "./protocol-scalars.js";
 import {
   LIBRARY_CORE_INTERACTIVE_SNAPSHOT_POOL,
@@ -90,6 +103,66 @@ import {
   LIBRARY_CORE_RENDERER_CACHE_POOL,
 } from "./query-registry.js";
 import { BASE_APP_STORE_SURFACE_REGISTRY } from "./store-surface-registry.js";
+
+const compareCodeUnits = (left: string, right: string): number =>
+  left < right ? -1 : left > right ? 1 : 0;
+
+type ClosedOperationContract = Partial<
+  Pick<
+    LibraryCoreOperationDefinition,
+    | "entityIdCodec"
+    | "fieldAlgebra"
+    | "payloadSchema"
+    | "touchedFieldRegistryKeys"
+    | "transactionMemberSchema"
+  >
+>;
+
+const OPERATION_CONTRACT_BLOCKERS = [
+  ["entityIdCodec", "entity_id_schema_unresolved"],
+  ["fieldAlgebra", "field_algebra_unresolved"],
+  ["payloadSchema", "payload_schema_unresolved"],
+  ["touchedFieldRegistryKeys", "touched_fields_unresolved"],
+  ["transactionMemberSchema", "transaction_member_schema_unresolved"],
+] as const satisfies readonly (readonly [
+  keyof ClosedOperationContract,
+  LibraryCoreOperationBlocker,
+])[];
+
+/**
+ * The only contract fields any operation is allowed to have closed.
+ *
+ * Anything absent here must be null in the registry and must still carry its
+ * blocker. Adding an entry is a claim that the value was traced from a real
+ * implementation, so each one names where it came from.
+ */
+const CLOSED_OPERATION_CONTRACTS: Partial<
+  Record<LibraryCoreOperationId, ClosedOperationContract>
+> = {
+  // Traced from `markAsRead`, which writes exactly one leaf and reads none.
+  feed_item_read_assignment: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    fieldAlgebra: FEED_ITEM_READ_AT_FIELD_ALGEBRA,
+    payloadSchema: FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
+    touchedFieldRegistryKeys: [LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY],
+    transactionMemberSchema: FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  },
+  // Traced from `toggleArchived`. Algebra stays open: archive and save are
+  // coupled by an exclusion invariant no single-leaf contract can express.
+  // https://github.com/freed-project/freed/issues/1327
+  feed_item_archive_assignment: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEM_ARCHIVE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  },
+  // Traced from `toggleSaved`, which also writes both archive leaves.
+  // https://github.com/freed-project/freed/issues/1327
+  feed_item_saved_assignment: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEM_SAVED_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  },
+};
 
 describe("Library Core operation registry", () => {
   it("has one stable, sorted definition for every dormant operation ID", () => {
@@ -105,54 +178,31 @@ describe("Library Core operation registry", () => {
   });
 
   it("does not claim unresolved algebra, materializers, or authority", () => {
-    for (const [operationId, definition] of Object.entries(
-      LIBRARY_CORE_OPERATION_REGISTRY,
-    )) {
+    for (const operationId of LIBRARY_CORE_OPERATION_IDS) {
+      const definition = LIBRARY_CORE_OPERATION_REGISTRY[operationId];
       expect(definition.status).toBe("planned_blocked");
-      if (operationId === "feed_item_read_assignment") {
-        expect(definition.payloadSchema).toMatchObject({
-          schemaId: "feed_item_read_assignment_payload_v1",
-          schemaVersion: 1,
-          operationType: "feed_item_read_assignment",
-          canonicalKeys: ["read_at_ms"],
-        });
-        expect(definition.blockers).not.toContain("payload_schema_unresolved");
-        expect(definition.entityIdCodec).toBe(
-          LIBRARY_CORE_ENTITY_ID_CODEC_V1,
-        );
-        expect(definition.blockers).not.toContain(
-          "entity_id_schema_unresolved",
-        );
-        expect(definition.touchedFieldRegistryKeys).toStrictEqual([
-          LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
-        ]);
-        expect(definition.blockers).not.toContain("touched_fields_unresolved");
-        expect(definition.fieldAlgebra).toBe(
-          FEED_ITEM_READ_AT_FIELD_ALGEBRA,
-        );
-        expect(definition.blockers).not.toContain("field_algebra_unresolved");
-        expect(definition.transactionMemberSchema).toBe(
-          FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
-        );
-        expect(definition.blockers).not.toContain(
-          "transaction_member_schema_unresolved",
-        );
-      } else {
-        expect(definition.payloadSchema).toBeNull();
-        expect(definition.blockers).toContain("payload_schema_unresolved");
-        expect(definition.entityIdCodec).toBeNull();
-        expect(definition.blockers).toContain(
-          "entity_id_schema_unresolved",
-        );
-        expect(definition.touchedFieldRegistryKeys).toBeNull();
-        expect(definition.blockers).toContain("touched_fields_unresolved");
-        expect(definition.fieldAlgebra).toBeNull();
-        expect(definition.blockers).toContain("field_algebra_unresolved");
-        expect(definition.transactionMemberSchema).toBeNull();
-        expect(definition.blockers).toContain(
-          "transaction_member_schema_unresolved",
-        );
+
+      // Every contract field carries its own blocker, and the blocker is
+      // present exactly when the field is null. Deriving both sides from the
+      // same table means a declaration cannot be added without dropping its
+      // blocker, and a blocker cannot be dropped without a declaration.
+      const closed = CLOSED_OPERATION_CONTRACTS[operationId] ?? {};
+      for (const [field, blocker] of OPERATION_CONTRACT_BLOCKERS) {
+        const declared = closed[field];
+        if (declared === undefined) {
+          expect(definition[field]).toBeNull();
+          expect(definition.blockers).toContain(blocker);
+        } else if (Array.isArray(declared)) {
+          expect(definition[field]).toStrictEqual(declared);
+          expect(definition.blockers).not.toContain(blocker);
+        } else {
+          // Shared contract objects are asserted by reference so a copy
+          // cannot silently drift away from the one the protocol uses.
+          expect(definition[field]).toBe(declared);
+          expect(definition.blockers).not.toContain(blocker);
+        }
       }
+
       expect(definition.materializer).toBeNull();
       expect(definition.frozenBulkContract).toBeNull();
       expect(definition.blockers.length).toBeGreaterThan(0);
@@ -179,6 +229,79 @@ describe("Library Core operation registry", () => {
         blockers: expect.not.arrayContaining(["merge_algebra_undecided"]),
       },
     });
+  });
+
+  it("binds every declared touched field to a real synchronized leaf", () => {
+    const knownLeaves = new Set(
+      LIBRARY_CORE_FIELD_REGISTRY.map((entry) => entry.registryKey),
+    );
+    // Guard the guard: an empty or tiny registry would make this vacuous.
+    expect(knownLeaves.size).toBeGreaterThan(100);
+
+    let declaredOperations = 0;
+    for (const operationId of LIBRARY_CORE_OPERATION_IDS) {
+      const keys =
+        LIBRARY_CORE_OPERATION_REGISTRY[operationId].touchedFieldRegistryKeys;
+      if (keys === null) continue;
+      declaredOperations += 1;
+
+      // A touched-field list is an inventory of real leaves. Without this a
+      // typo, a renamed field, or an invented path would pass silently and
+      // read as closed coverage it does not have.
+      expect(keys.length).toBeGreaterThan(0);
+      for (const key of keys) {
+        expect({ operationId, key, isKnownLeaf: knownLeaves.has(key) })
+          .toStrictEqual({ operationId, key, isKnownLeaf: true });
+      }
+      expect([...keys]).toStrictEqual([...keys].sort(compareCodeUnits));
+      expect(new Set(keys).size).toBe(keys.length);
+    }
+
+    expect(declaredOperations).toBe(
+      Object.values(CLOSED_OPERATION_CONTRACTS).filter(
+        (contract) => contract.touchedFieldRegistryKeys !== undefined,
+      ).length,
+    );
+  });
+
+  it("keeps saved and archived written-leaf sets faithful to the legacy mutators", () => {
+    // `toggleArchived` writes only archive state; it reads `saved` as a
+    // precondition and must not claim to write it.
+    expect([...FEED_ITEM_ARCHIVE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS])
+      .toStrictEqual([
+        LIBRARY_CORE_FEED_ITEM_ARCHIVED_FIELD_REGISTRY_KEY,
+        LIBRARY_CORE_FEED_ITEM_ARCHIVED_AT_FIELD_REGISTRY_KEY,
+      ]);
+    expect(FEED_ITEM_ARCHIVE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS).not.toContain(
+      LIBRARY_CORE_FEED_ITEM_SAVED_FIELD_REGISTRY_KEY,
+    );
+
+    // `toggleSaved` clears archive state on the save path, so it genuinely
+    // writes all four leaves. Omitting the archive pair would hide the
+    // coupling that keeps the algebra unresolved.
+    expect([...FEED_ITEM_SAVED_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS])
+      .toStrictEqual([
+        LIBRARY_CORE_FEED_ITEM_ARCHIVED_FIELD_REGISTRY_KEY,
+        LIBRARY_CORE_FEED_ITEM_ARCHIVED_AT_FIELD_REGISTRY_KEY,
+        LIBRARY_CORE_FEED_ITEM_SAVED_FIELD_REGISTRY_KEY,
+        LIBRARY_CORE_FEED_ITEM_SAVED_AT_FIELD_REGISTRY_KEY,
+      ]);
+
+    // The coupling is the whole reason both stay blocked. If either ever
+    // declares an algebra, that claim must be reviewed, not inherited.
+    for (const operationId of [
+      "feed_item_archive_assignment",
+      "feed_item_saved_assignment",
+    ] as const) {
+      const definition = LIBRARY_CORE_OPERATION_REGISTRY[operationId];
+      expect(definition.fieldAlgebra).toBeNull();
+      expect(definition.blockers).toContain("field_algebra_unresolved");
+      expect(definition.payloadSchema).toBeNull();
+      expect(definition.transactionMemberSchema).toBeNull();
+    }
+    expect(FEED_ITEM_SAVED_ARCHIVED_EXCLUSION_INVARIANT).toBe(
+      "an item is never simultaneously saved and archived",
+    );
   });
 
   it("keeps frozen membership, provider intent, and execution receipts unresolved", () => {
