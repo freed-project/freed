@@ -50,8 +50,13 @@ export const MACOS_TRAFFIC_LIGHT_ROW_CENTER_Y = 18;
  * Both `create<PwaState>()` and `create<DesktopState>()` satisfy this
  * as long as their state types extend BaseAppState.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AppStoreHook = <U>(selector: (state: any) => U) => U;
+interface AppStoreHook {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  <U>(selector: (state: any) => U): U;
+  // Platform stores extend the shared contract with platform-specific actions.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getState(): any;
+}
 
 /**
  * Live state of an in-progress update download, surfaced in the Settings card.
@@ -555,6 +560,9 @@ export interface PlatformConfig {
 
   /** Exact corpus-wide counts and tags computed inside the local row store. */
   readLibraryFacetSummary?: () => Promise<LibraryFacetSummary>;
+
+  /** One exact source-fenced item row from platform-local Library storage. */
+  readLibraryItemDetail?: (globalId: string) => Promise<FeedItem | null>;
 
   /** One bounded, row-store-filtered candidate set for a secondary surface. */
   readLibrarySurfaceItems?: (

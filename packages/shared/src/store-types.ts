@@ -53,6 +53,13 @@ export interface BaseAppState {
   items: FeedItem[];
   /** Bumps only when search-relevant corpus content changes. */
   searchCorpusVersion: number;
+  /**
+   * Desktop bumps this after item patches and real full-state changes so
+   * bounded native readers can refresh item and identity fields that do not
+   * affect search. Preference, feed, and synthetic renderer hydration patches
+   * do not advance it.
+   */
+  libraryItemVersion?: number;
   feeds: Record<string, RssFeed>;
   /** Canonical same-human identities — keyed by Person.id */
   persons: Record<string, Person>;

@@ -279,6 +279,9 @@ export function FeedView() {
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
+  const libraryItemVersion = useAppStore(
+    (state) => state.libraryItemVersion ?? state.searchCorpusVersion,
+  );
   const isInitialized = useAppStore((s) => s.isInitialized);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
@@ -421,6 +424,7 @@ export function FeedView() {
     persons,
     accounts,
     friends,
+    libraryItemVersion,
   );
   const visibleItems = useMemo(
     () => {

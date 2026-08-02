@@ -271,6 +271,7 @@ export const BASE_APP_STORE_SURFACE_REGISTRY = {
     activationBlocker: "current method writes legacy Automerge and its successor payload is unresolved",
   }),
   searchCorpusVersion: stateSurface("derived"),
+  libraryItemVersion: stateSurface("derived"),
   searchQuery: stateSurface("ui_local"),
   selectedAccountId: stateSurface("ui_local"),
   selectedFriendId: stateSurface("legacy_compatibility", {

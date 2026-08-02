@@ -173,7 +173,13 @@ settings scan exact source-fenced 64-row SQLite pages for Facebook group
 repair, Facebook and Instagram media backup, and YouTube saved-video
 synchronization without retaining the `FeedItem` corpus. Media candidates are
 compact-staged locally and provider work begins only after the final source
-fence closes. Header and
+fence closes. SearchJump reads exact Library tags, archive totals, and complex scope
+counts from one bounded source-fenced scan, simple scope counts from compact
+aggregates, and one selected item detail. On the healthy default native path,
+palette focus and search do not lease the renderer corpus. Native failure or
+rollback uses the compatibility fallback. Its existing Automerge bulk mutation
+takes a short-lived compatibility lease only after the user runs it; native
+frozen-predicate bulk execution remains the cleanup for that action path. Header and
 sidebar counts share one source-versioned native aggregate. The default Desktop
 shell retains no item objects. Incremental Automerge patches carry one prior
 item occurrence so exact counts stay current without rebuilding the corpus.

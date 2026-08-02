@@ -15,8 +15,8 @@ import {
 } from "@freed/shared";
 
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
+import { useLibraryCommandPaletteReader } from "../../hooks/useLibraryCommandPaletteReader.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
-import { useLegacyLibraryItems } from "../../hooks/useLegacyLibraryItems.js";
 import { buildCommandPaletteActions } from "../../lib/command-palette-registry.js";
 import {
   filterCommandPaletteActions,
@@ -26,14 +26,11 @@ import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { useDeviceDisplayPreferences } from "../../lib/device-display-preferences.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import { buildSettingsSectionMetas } from "../../lib/settings-sections.js";
+import { buildTopLevelTagFilters } from "../../lib/tag-navigation.js";
 import {
-  collectArchivableFeedActionIds,
-  collectUnreadFeedActionIds,
-  getFeedActionCounts,
-  getFeedArchiveCounts,
-} from "../../lib/feed-action-scope.js";
-import { buildTopLevelTagFilters, collectAllTags } from "../../lib/tag-navigation.js";
-import { applyFeedSearch, navigateToFeedView } from "../../lib/workspace-navigation.js";
+  applyFeedSearch,
+  navigateToFeedView,
+} from "../../lib/workspace-navigation.js";
 import { SearchField } from "../SearchField.js";
 import { Tooltip } from "../Tooltip.js";
 import { TOP_SOURCE_ITEMS } from "../../lib/source-navigation.js";
@@ -326,7 +323,6 @@ export function SearchJumpField({
     googleContacts,
     secureStorage,
     localAIModels,
-    scanLibraryItems,
   } = platform;
   const searchPaletteRequestId = useCommandSurfaceStore((s) => s.searchPaletteRequestId);
   const openAddFeedDialog = useCommandSurfaceStore((s) => s.openAddFeedDialog);
@@ -352,9 +348,7 @@ export function SearchJumpField({
   const createConnectionPersonFromAccounts = useAppStore((s) => s.createConnectionPersonFromAccounts);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
-  const archiveItems = useAppStore((s) => s.archiveItems);
   const toggleLiked = useAppStore((s) => s.toggleLiked);
-  const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
   const unarchiveSavedItems = useAppStore((s) => s.unarchiveSavedItems);
   const deleteAllArchived = useAppStore((s) => s.deleteAllArchived);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
@@ -379,6 +373,9 @@ export function SearchJumpField({
   const floatingInputRef = useRef<HTMLInputElement | null>(null);
   const confirmInputRef = useRef<HTMLInputElement | null>(null);
   const lastSearchPaletteRequestIdRef = useRef(searchPaletteRequestId);
+  const libraryItemVersion = useAppStore(
+    (state) => state.libraryItemVersion ?? state.searchCorpusVersion,
+  );
   const hasActiveSearch = searchQuery.trim().length > 0;
   const inlinePlaceholder = narrowSidebar ? "Search" : "Search or run";
   const usesFloatingTrigger = variant === "trigger";
@@ -386,15 +383,7 @@ export function SearchJumpField({
   const showInlineSurface = !usesFloatingTrigger && isFocused;
   const showCommandSurface =
     showFloatingField || showInlineSurface || !!confirmAction;
-  useLegacyLibraryItems(
-    showCommandSurface && (!scanLibraryItems || !hasActiveSearch),
-  );
   const inlineBlurTimerRef = useRef<number | null>(null);
-
-  const selectedItem = useMemo(
-    () => (selectedItemId ? items.find((item) => item.globalId === selectedItemId) ?? null : null),
-    [items, selectedItemId],
-  );
 
   const { filteredItems: commandScopeItems } = useSearchResults(
     items,
@@ -405,17 +394,36 @@ export function SearchJumpField({
     persons,
     accounts,
     friends,
+    libraryItemVersion,
   );
-
   const {
-    unreadCount: unreadScopeCount,
-    archivableCount: archivableScopeCount,
-  } = useMemo(() => getFeedActionCounts(commandScopeItems), [commandScopeItems]);
-  const { archivedCount, savedArchivedCount } = useMemo(() => getFeedArchiveCounts(items), [items]);
+    archivableScopeCount,
+    archivedUnsavedCount: archivedCount,
+    archiveScopeRead,
+    markScopeRead,
+    savedArchivedCount,
+    selectedItem,
+    tags: allTags,
+    unreadScopeCount,
+  } = useLibraryCommandPaletteReader({
+    activeFilter,
+    activeView,
+    commandScopeItems,
+    enabled: showCommandSurface,
+    fallbackItems: items,
+    identityMode: deviceDisplay.friendsMode,
+    inputValue,
+    searchQuery,
+    selectedItemId,
+    sourceVersion: libraryItemVersion,
+  });
   const enabledFeeds = useMemo(
     () =>
       Object.values(feeds)
-        .filter((feed) => feed.enabled && typeof feed.url === "string" && feed.url.trim())
+        .filter(
+          (feed) =>
+            feed.enabled && typeof feed.url === "string" && feed.url.trim(),
+        )
         .sort((left, right) => {
           const leftTitle = sortLabel(left.title, left.url);
           const rightTitle = sortLabel(right.title, right.url);
@@ -457,7 +465,6 @@ export function SearchJumpField({
         }),
     [accounts, persons],
   );
-  const allTags = useMemo(() => collectAllTags(items), [items]);
   const tagFilters = useMemo(() => buildTopLevelTagFilters(allTags), [allTags]);
   const settingsSections = useMemo(
     () =>
@@ -599,39 +606,47 @@ export function SearchJumpField({
           ),
         openAddFeedDialog: addRssFeed ? () => openAddFeedDialog() : null,
         openSavedContentDialog: saveUrl ? () => openSavedContentDialog() : null,
-        openImportLibraryDialog: importMarkdown ? () => openLibraryDialog("import") : null,
-        openExportLibraryDialog: exportMarkdown ? () => openLibraryDialog("export") : null,
-        openCurrentItemUrl:
-          selectedItem?.sourceUrl
-            ? () => {
-                if (openUrl) {
-                  openUrl(selectedItem.sourceUrl!);
-                  return;
-                }
-                window.open(selectedItem.sourceUrl!, "_blank", "noopener,noreferrer");
+        openImportLibraryDialog: importMarkdown
+          ? () => openLibraryDialog("import")
+          : null,
+        openExportLibraryDialog: exportMarkdown
+          ? () => openLibraryDialog("export")
+          : null,
+        openCurrentItemUrl: selectedItem?.sourceUrl
+          ? () => {
+              if (openUrl) {
+                openUrl(selectedItem.sourceUrl!);
+                return;
               }
-            : null,
+              window.open(
+                selectedItem.sourceUrl!,
+                "_blank",
+                "noopener,noreferrer",
+              );
+            }
+          : null,
         closeReader: selectedItem ? () => setSelectedItem(null) : null,
-        toggleCurrentItemSaved: selectedItem ? () => toggleSaved(selectedItem.globalId) : null,
-        toggleCurrentItemArchived:
-          selectedItem
-            ? async () => {
-                const wasArchived = selectedItem.userState.archived;
-                await toggleArchived(selectedItem.globalId);
-                if (!wasArchived) {
-                  setSelectedItem(null);
-                }
+        toggleCurrentItemSaved: selectedItem
+          ? () => toggleSaved(selectedItem.globalId)
+          : null,
+        toggleCurrentItemArchived: selectedItem
+          ? async () => {
+              const wasArchived = selectedItem.userState.archived;
+              await toggleArchived(selectedItem.globalId);
+              if (!wasArchived) {
+                setSelectedItem(null);
               }
-            : null,
+            }
+          : null,
         toggleCurrentItemLiked:
-          selectedItem && toggleLiked ? () => toggleLiked(selectedItem.globalId) : null,
-        markScopeRead:
-          activeView === "feed" && unreadScopeCount > 0
-            ? () => markItemsAsRead(collectUnreadFeedActionIds(commandScopeItems))
+          selectedItem && toggleLiked
+            ? () => toggleLiked(selectedItem.globalId)
             : null,
+        markScopeRead:
+          activeView === "feed" && unreadScopeCount > 0 ? markScopeRead : null,
         archiveScopeRead:
           activeView === "feed" && archivableScopeCount > 0
-            ? () => archiveItems(collectArchivableFeedActionIds(commandScopeItems))
+            ? archiveScopeRead
             : null,
         unarchiveSavedItems,
         syncRssNow,
@@ -653,13 +668,12 @@ export function SearchJumpField({
       deleteAllArchived,
       commandFeeds,
       factoryReset,
-      archiveItems,
+      archiveScopeRead,
       clearQueryForNavigation,
-      commandScopeItems,
       createConnectionPersonFromAccounts,
       inputValue,
       ensurePersonForAccount,
-      markItemsAsRead,
+      markScopeRead,
       openAddFeedDialog,
       openSavedContentDialog,
       openSettingsTo,

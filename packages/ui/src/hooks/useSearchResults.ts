@@ -26,7 +26,7 @@
  * section is small while the memory cost of duplicating that text is not.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import MiniSearch from "minisearch";
 import {
   isFriendAuthoredItem,
@@ -235,6 +235,9 @@ let sharedScannedSearchIndexCache: SharedScannedSearchIndexCache | null = null;
 interface SharedScannedSearchResultCache {
   readonly scanner: ScanLibraryItems;
   readonly index: MiniSearch<SearchDoc>;
+  readonly resultSourceVersion: number;
+  readonly activeFilterSignature: string;
+  readonly accountIndexSignature: string;
   readonly trimmedQuery: string;
   readonly activeFilter: FilterOptions;
   readonly identityMode: "friends" | "all_content";
@@ -538,12 +541,11 @@ function prepareScannedSearchResults(
   if (
     cached?.scanner === args.scanner &&
     cached.index === args.index &&
+    cached.resultSourceVersion === args.resultSourceVersion &&
+    cached.activeFilterSignature === args.activeFilterSignature &&
+    cached.accountIndexSignature === args.accountIndexSignature &&
     cached.trimmedQuery === args.trimmedQuery &&
-    cached.activeFilter === args.activeFilter &&
-    cached.identityMode === args.identityMode &&
-    cached.persons === args.persons &&
-    cached.accounts === args.accounts &&
-    cached.friends === args.friends
+    cached.identityMode === args.identityMode
   ) {
     return cached.promise;
   }
@@ -573,6 +575,11 @@ export interface SearchResults {
   isSearching: boolean;
   /** Number of items matching the query after applying the active filter. */
   resultCount: number;
+}
+
+interface ScannedSearchResult {
+  readonly requestKey: string;
+  readonly result: SearchResults;
 }
 
 interface SearchResultCache {
@@ -686,17 +693,33 @@ export function useSearchResults(
   persons: Record<string, Person>,
   accounts: Record<string, Account>,
   friends: Record<string, Friend>,
+  resultSourceVersion = searchCorpusVersion,
 ): SearchResults {
-  const { scanLibraryItems } = usePlatform();
+  const { scanLibraryItems, store } = usePlatform();
   const trimmedQuery = searchQuery.trim();
+  const activeFilterSignature = JSON.stringify(
+    normalizeLibraryCoreFeedBrowseFilterV1(activeFilter),
+  );
+  const accountIndexSignature = accountSignature(accounts);
+  const scannedRequestKey = JSON.stringify([
+    searchCorpusVersion,
+    resultSourceVersion,
+    trimmedQuery,
+    activeFilterSignature,
+    accountIndexSignature,
+    identityMode,
+  ]);
+  const activeFilterRef = useRef(activeFilter);
+  activeFilterRef.current = activeFilter;
   const [index, setIndex] = useState<MiniSearch<SearchDoc> | null>(() =>
     getPreparedSearchIndex(items, searchCorpusVersion, accounts),
   );
-  const [scannedResult, setScannedResult] = useState<SearchResults | null>(
-    null,
-  );
+  const [scannedResult, setScannedResult] =
+    useState<ScannedSearchResult | null>(null);
   const [scannedFailed, setScannedFailed] = useState(false);
-  useLegacyLibraryItems(Boolean(trimmedQuery && scanLibraryItems && scannedFailed));
+  useLegacyLibraryItems(
+    Boolean(trimmedQuery && scanLibraryItems && scannedFailed),
+  );
   const itemById = useMemo(
     () =>
       scanLibraryItems && !scannedFailed
@@ -715,23 +738,38 @@ export function useSearchResults(
       };
     }
 
+    const graphSnapshot = store.getState();
+    const snapshotAccounts = graphSnapshot.accounts as Record<string, Account>;
+    const snapshotPersons = graphSnapshot.persons as Record<string, Person>;
+    const snapshotFriends = graphSnapshot.friends as Record<string, Friend>;
+    const snapshotActiveFilter = activeFilterRef.current;
+    const snapshotAccountIndexSignature = accountSignature(snapshotAccounts);
     setScannedResult(null);
-    setScannedFailed(false);
-    prepareScannedSearchIndex(scanLibraryItems, searchCorpusVersion, accounts)
+    prepareScannedSearchIndex(
+      scanLibraryItems,
+      searchCorpusVersion,
+      snapshotAccounts,
+    )
       .then((nextIndex) =>
         prepareScannedSearchResults({
           scanner: scanLibraryItems,
           index: nextIndex,
+          resultSourceVersion,
+          activeFilterSignature,
+          accountIndexSignature: snapshotAccountIndexSignature,
           trimmedQuery,
-          activeFilter,
+          activeFilter: snapshotActiveFilter,
           identityMode,
-          persons,
-          accounts,
-          friends,
+          persons: snapshotPersons,
+          accounts: snapshotAccounts,
+          friends: snapshotFriends,
         }),
       )
       .then((result) => {
-        if (!cancelled) setScannedResult(result);
+        if (!cancelled) {
+          setScannedResult({ requestKey: scannedRequestKey, result });
+          setScannedFailed(false);
+        }
       })
       .catch(() => {
         if (!cancelled) setScannedFailed(true);
@@ -741,13 +779,14 @@ export function useSearchResults(
       cancelled = true;
     };
   }, [
-    accounts,
-    activeFilter,
-    friends,
+    accountIndexSignature,
+    activeFilterSignature,
     identityMode,
-    persons,
+    resultSourceVersion,
     scanLibraryItems,
+    scannedRequestKey,
     searchCorpusVersion,
+    store,
     trimmedQuery,
   ]);
 
@@ -823,7 +862,9 @@ export function useSearchResults(
 
   if (trimmedQuery && scanLibraryItems && !scannedFailed) {
     return (
-      scannedResult ?? {
+      (scannedResult?.requestKey === scannedRequestKey
+        ? scannedResult.result
+        : null) ?? {
         filteredItems: [],
         isSearching: true,
         resultCount: 0,
