@@ -269,7 +269,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
 
 export function FeedView() {
   const platform = usePlatform();
-  const { addRssFeed, openBoundedFeedReader, openUrl } = platform;
+  const { addRssFeed, openBoundedFeedReader, openUrl, scanLibraryItems } = platform;
   const canAddFeeds = !!addRssFeed;
   const items = useAppStore((s) => s.items);
   const feeds = useAppStore((s) => s.feeds);
@@ -341,6 +341,7 @@ export function FeedView() {
   });
   useLegacyLibraryItems(
     isInitialized &&
+      !(searchQuery.trim() !== "" && scanLibraryItems) &&
       (!openBoundedFeedReader ||
         boundedFeed.status === "failed" ||
         friendsMode !== "all_content" ||

@@ -97,6 +97,29 @@ describe("automerge worker memory routing", () => {
     expect(body).toContain("docItemCount");
   });
 
+  it("hydrates compatibility leases from SQLite while renderer eviction is active", () => {
+    const start = clientSource.indexOf("function setRendererItemHydration");
+    const end = clientSource.indexOf(
+      "/**\n * Temporarily expose the legacy full item array",
+      start,
+    );
+    const body = start >= 0 && end > start
+      ? clientSource.slice(start, end)
+      : "";
+
+    expect(body).toContain("if (!shouldEvictRendererItems())");
+    expect(body).toContain("scanLibraryCoreItems");
+    expect(body).toContain("publishRendererItemHydrationState");
+    expect(body).toContain('outcome: "automerge_fallback"');
+    expect(body.indexOf("scanLibraryCoreItems")).toBeGreaterThan(
+      body.indexOf("if (!shouldEvictRendererItems())"),
+    );
+    expect(clientSource).toContain(
+      "result.selected &&\n      shouldEvictRendererItems() &&\n      rendererItemHydrationLeaseCount > 0",
+    );
+    expect(clientSource).toContain("await setRendererItemHydration(true)");
+  });
+
   it("reader text requests fall back to full synced feed text", () => {
     const body = caseBody("GET_ITEM_PRESERVED_TEXT");
 
