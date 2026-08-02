@@ -1,6 +1,6 @@
 # Phase 8: Friends + Social Graph
 
-> **Status:** In Progress, the canonical identity model uses `Person` plus attached `Account` records, the Friends workspace defaults to `All content`, and the shipping Friends route has been cut over to the next-generation GPU-resident Friends Galaxy. Raw WebGPU is preferred, WebGL2 is the retained compatibility backend, every semantic identity remains resident during movement, and the locked camera supports native iPhone touch and Mac trackpad navigation with inertia. Freed Desktop Friends activity, suggestions, overview, and selected-person timelines now read bounded source-fenced SQLite aggregates or pages instead of retaining the full item corpus. The PWA retains its Automerge compatibility reader until its IndexedDB row-store cutover. The broader Friends phase still includes unfinished native contacts, overlap, and Mozi work.
+> **Status:** In Progress, the canonical identity model uses `Person` plus attached `Account` records, the Friends workspace defaults to `All content`, and the shipping Friends route has been cut over to the next-generation GPU-resident Friends Galaxy. Raw WebGPU is preferred, WebGL2 is the retained compatibility backend, every semantic identity remains resident during movement, and the locked camera supports native iPhone touch and Mac trackpad navigation with inertia. Freed Desktop Friends activity, suggestions, overview, selected-person timelines, and FriendEditor profile candidates now read bounded source-fenced SQLite aggregates or pages instead of retaining the full item corpus. The PWA retains its Automerge compatibility reader until its IndexedDB row-store cutover. The broader Friends phase still includes unfinished native contacts, overlap, and Mozi work.
 > **Dependencies:** Phase 7 (Facebook + Instagram capture provide most social content)
 
 ---
@@ -337,7 +337,7 @@ The approved product cutover now has an exact ownership boundary. `FriendsView` 
 ## 8C: Friend Detail Panel + Reach-Out Logging
 
 - `FriendDetailPanel.tsx` — slide-in side panel; identity card, cross-platform timeline, reach-out button
-- `FriendEditor.tsx` — modal for create/edit; imports device contact, links social sources, sets care level
+- `FriendEditor.tsx` - modal for create/edit; imports device contact, links social sources from a source-fenced 50-candidate Freed Desktop window, sets care level, and preserves bounded capture provenance
 
 ---
 
@@ -443,7 +443,7 @@ Reader author names now route directly into the matching Friends channel detail 
 | 8.5   | `FriendGraph.tsx` — d3-force canvas renderer                                                                                                                                                                                                                     | High       | Done        |
 | 8.6   | `ReconnectRing.tsx` — Reconnect zone overlay                                                                                                                                                                                                                     | Low        | Done        |
 | 8.7   | `FriendDetailPanel.tsx` — timeline + reach-out                                                                                                                                                                                                                   | Medium     | Done        |
-| 8.8   | `FriendEditor.tsx` — create/edit modal                                                                                                                                                                                                                           | Medium     | Done        |
+| 8.8   | `FriendEditor.tsx` - create/edit modal with bounded Freed Desktop author candidates                                                                                                                                                                             | Medium     | Done        |
 | 8.9   | `FriendsView.tsx` — top-level view shell                                                                                                                                                                                                                         | Low        | Done        |
 | 8.10  | Friends + Map added to `comingSoonSources` in Sidebar                                                                                                                                                                                                            | Low        | Done        |
 | 8.11  | Location extraction (`shared/src/location.ts`)                                                                                                                                                                                                                   | Low        | Done        |
@@ -672,7 +672,7 @@ Reader author names now route directly into the matching Friends channel detail 
 - [x] Friends renders beneath the primary sidebar through a pointer-free full-frame canvas host while controls, context actions, detail rails, and every gesture remain bounded to the visible workspace
 - [x] Mobile Details suspends the product presentation and later resumes the same canvas, backend, camera, selection, and resident semantic scene
 - [x] Product-route acceptance proves every preserved workflow, accessibility path, compatibility fallback, PWA gesture, active theme, diagnostic contract, and production Desktop build on the integrated engine
-- [ ] Friends entry consumes bounded SQLite graph, timeline, and selected-Friend map queries without scanning the full item library in React; the mounted Friend editor still leases compatibility rows for unregistered profile discovery
+- [x] Friends entry consumes bounded SQLite graph, timeline, selected-Friend map, and debounced FriendEditor author-candidate queries without scanning the full item library in React
 - [x] Scriptorium graph colors stay legible instead of washing node fills and labels into the stage
 - [x] Graph model construction uses single-pass activity indexing instead of rescanning every captured item per node
 - [x] Worker layout uses local bucketed overlap resolution instead of naïve all-pairs nudging
