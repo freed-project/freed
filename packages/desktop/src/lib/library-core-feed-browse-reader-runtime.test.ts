@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  encodeLibraryCoreFeedBrowsePageCursorV1,
   normalizeLibraryCoreFeedBrowseFilterV1,
   type LibraryCoreFeedBrowsePageRequestV1,
   type LibraryCoreFeedBrowsePageRequestV2,
+  type LibraryCoreFeedBrowsePageRequestV3,
 } from "@freed/shared/library-core";
 
 import {
@@ -10,6 +12,7 @@ import {
   materializeLibraryCoreFeedBrowseGeneration,
 } from "./automerge";
 import {
+  LIBRARY_CORE_FEED_BROWSE_BIDIRECTIONAL_READER_DISABLED_KEY,
   LIBRARY_CORE_FEED_BROWSE_READER_DISABLED_KEY,
   LIBRARY_CORE_FRIENDS_FEED_READER_DISABLED_KEY,
   openBoundedDesktopFeedReader,
@@ -97,7 +100,8 @@ function nativeClient(): LibraryCoreFeedBrowseReaderNativeClient {
       async (
         request:
           | LibraryCoreFeedBrowsePageRequestV1
-          | LibraryCoreFeedBrowsePageRequestV2,
+          | LibraryCoreFeedBrowsePageRequestV2
+          | LibraryCoreFeedBrowsePageRequestV3,
       ) => ({
         filter,
         ...(request.queryId === "feed_browse_page_v2"
@@ -106,6 +110,9 @@ function nativeClient(): LibraryCoreFeedBrowseReaderNativeClient {
                 request.friendsPredicateSchemaVersion,
               identityMode: request.identityMode,
             }
+          : {}),
+        ...(request.queryId === "feed_browse_page_v3"
+          ? { previousCursor: null, previousOrder: null }
           : {}),
         nextCursor: null,
         nextOrder: null,
@@ -157,6 +164,61 @@ describe("Library Core feed browse reader runtime", () => {
     expect(page.rows.map((row) => row.globalId)).toEqual(["x:item-1"]);
     expect(native.select).toHaveBeenCalledOnce();
     expect(native.read).toHaveBeenCalledOnce();
+    await session.close();
+  });
+
+  it("sends the bidirectional v3 contract for the all-content generation", async () => {
+    const native = nativeClient();
+    const session = await openLibraryCoreFeedBrowseReader(
+      { platform: "x", savedOnly: true },
+      binding.rankingClockMs,
+      native,
+    );
+    expect(session.identityMode).toBe("all_content");
+    const forward = await session.readPage?.(null, "next", 128);
+    expect(native.read).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        cursor: null,
+        direction: "next",
+        limit: 128,
+        queryId: "feed_browse_page_v3",
+        schemaVersion: 3,
+      }),
+    );
+    expect(forward?.rows.map((row) => row.globalId)).toEqual(["x:item-1"]);
+    expect(forward?.previousCursor).toBeNull();
+
+    const edge = encodeLibraryCoreFeedBrowsePageCursorV1({
+      generationId: binding.generationId,
+      transitionSequence: binding.transitionSequence,
+      projectionRevision: binding.projectionRevision,
+      priority: 91,
+      publishedAt: 1_780_000_000_000,
+      sourceSequence: 56,
+      globalId: "x:item-1",
+    } as Parameters<typeof encodeLibraryCoreFeedBrowsePageCursorV1>[0]);
+    await session.readPage?.(edge, "previous", 64);
+    expect(native.read).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        cursor: edge,
+        direction: "previous",
+        queryId: "feed_browse_page_v3",
+      }),
+    );
+    await session.close();
+  });
+
+  it("refuses a backward read on the forward-only Friends generation", async () => {
+    const native = nativeClient();
+    const session = await openLibraryCoreFeedBrowseReader(
+      { platform: "x" },
+      binding.rankingClockMs,
+      native,
+      "friends",
+    );
+    await expect(
+      session.readPage?.(null, "next"),
+    ).rejects.toThrow("not bidirectional");
     await session.close();
   });
 
@@ -218,6 +280,20 @@ describe("Library Core feed browse reader runtime", () => {
     );
     expect(materializeLibraryCoreFeedBrowseGeneration).not.toHaveBeenCalled();
     localStorage.removeItem(LIBRARY_CORE_FEED_BROWSE_READER_DISABLED_KEY);
+  });
+
+  it("keeps the bidirectional rollback switch ahead of all projection work", async () => {
+    localStorage.setItem(
+      LIBRARY_CORE_FEED_BROWSE_BIDIRECTIONAL_READER_DISABLED_KEY,
+      "1",
+    );
+    await expect(
+      openBoundedDesktopFeedReader({}, binding.rankingClockMs),
+    ).rejects.toThrow("bounded feed reader is disabled");
+    expect(materializeLibraryCoreFeedBrowseGeneration).not.toHaveBeenCalled();
+    localStorage.removeItem(
+      LIBRARY_CORE_FEED_BROWSE_BIDIRECTIONAL_READER_DISABLED_KEY,
+    );
   });
 
   it("keeps the Friends rollback switch ahead of all projection work", async () => {

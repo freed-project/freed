@@ -139,6 +139,61 @@ export const LIBRARY_CORE_FEED_BROWSE_PAGE_V2_RESPONSE_SCHEMA = Object.freeze({
 export const LIBRARY_CORE_FEED_BROWSE_PAGE_V2_PROJECTION =
   LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION;
 
+export const LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID =
+  "feed_browse_page_v3" as const;
+export const LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION = 3 as const;
+const LIBRARY_CORE_FEED_BROWSE_DIRECTIONS = Object.freeze([
+  "next",
+  "previous",
+] as const);
+
+export const LIBRARY_CORE_FEED_BROWSE_PAGE_V3_REQUEST_SCHEMA = Object.freeze({
+  schemaId: "library_core_feed_browse_page_request_v3",
+  schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION,
+  queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
+  canonicalKeys: Object.freeze([
+    "cancellationId",
+    "cursor",
+    "direction",
+    "filter",
+    "limit",
+    "queryId",
+    "rankingClockMs",
+    "readerSessionId",
+    "recommendationOrderSchemaVersion",
+    "schemaVersion",
+  ]),
+  cursorCodec: "library_core_feed_browse_page_cursor_v1",
+  maximumLimit: LIBRARY_CORE_FEED_PAGE_MAXIMUM_LIMIT,
+  maximumCursorBytes: LIBRARY_CORE_FEED_BROWSE_PAGE_MAXIMUM_CURSOR_BYTES,
+});
+
+export const LIBRARY_CORE_FEED_BROWSE_PAGE_V3_RESPONSE_SCHEMA = Object.freeze({
+  schemaId: "library_core_feed_browse_page_response_v3",
+  schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION,
+  queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
+  canonicalKeys: Object.freeze([
+    "filter",
+    "nextCursor",
+    "nextOrder",
+    "previousCursor",
+    "previousOrder",
+    "queryId",
+    "rankingClockMs",
+    "recommendationOrderSchemaVersion",
+    "rows",
+    "schemaVersion",
+    "source",
+    "totalCount",
+  ]),
+  maximumRows: LIBRARY_CORE_FEED_PAGE_MAXIMUM_LIMIT,
+  maximumResponseBytes: LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES,
+});
+
+/** V3 adds a traversal direction, not a different compact row projection. */
+export const LIBRARY_CORE_FEED_BROWSE_PAGE_V3_PROJECTION =
+  LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION;
+
 export interface LibraryCoreFeedBrowsePageCursorV1 {
   readonly generationId: LibraryCoreLowercaseHex64;
   readonly transitionSequence: number;
@@ -229,6 +284,46 @@ export interface LibraryCoreFeedBrowsePageResponseV2 {
   readonly totalCount: number;
 }
 
+export type LibraryCoreFeedBrowseDirectionV3 =
+  (typeof LIBRARY_CORE_FEED_BROWSE_DIRECTIONS)[number];
+
+export interface LibraryCoreFeedBrowsePageRequestV3 {
+  readonly cancellationId: LibraryCoreOperationInstanceId;
+  readonly cursor: string | null;
+  readonly direction: LibraryCoreFeedBrowseDirectionV3;
+  readonly filter: LibraryCoreFeedBrowseFilterV1;
+  readonly limit: number;
+  readonly queryId: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID;
+  readonly rankingClockMs: number;
+  readonly readerSessionId: LibraryCoreOperationInstanceId;
+  readonly recommendationOrderSchemaVersion:
+    typeof LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION;
+  readonly schemaVersion: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION;
+}
+
+interface LibraryCoreFeedBrowsePageEdgeOrderV3 {
+  readonly globalId: LibraryCoreEntityId;
+  readonly priority: number;
+  readonly publishedAt: number;
+  readonly sourceSequence: number;
+}
+
+export interface LibraryCoreFeedBrowsePageResponseV3 {
+  readonly filter: LibraryCoreFeedBrowseFilterV1;
+  readonly nextCursor: string | null;
+  readonly nextOrder: Readonly<LibraryCoreFeedBrowsePageEdgeOrderV3> | null;
+  readonly previousCursor: string | null;
+  readonly previousOrder: Readonly<LibraryCoreFeedBrowsePageEdgeOrderV3> | null;
+  readonly queryId: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID;
+  readonly rankingClockMs: number;
+  readonly recommendationOrderSchemaVersion:
+    typeof LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION;
+  readonly rows: readonly LibraryCoreFeedCardV1[];
+  readonly schemaVersion: typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION;
+  readonly source: LibraryCoreFeedPageSourceV1;
+  readonly totalCount: number;
+}
+
 const BASE64URL_ALPHABET =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 const BASE64URL_VALUE = new Map(
@@ -245,6 +340,10 @@ const V2_REQUEST_KEYS =
   LIBRARY_CORE_FEED_BROWSE_PAGE_V2_REQUEST_SCHEMA.canonicalKeys;
 const V2_RESPONSE_KEYS =
   LIBRARY_CORE_FEED_BROWSE_PAGE_V2_RESPONSE_SCHEMA.canonicalKeys;
+const V3_REQUEST_KEYS =
+  LIBRARY_CORE_FEED_BROWSE_PAGE_V3_REQUEST_SCHEMA.canonicalKeys;
+const V3_RESPONSE_KEYS =
+  LIBRARY_CORE_FEED_BROWSE_PAGE_V3_RESPONSE_SCHEMA.canonicalKeys;
 const NEXT_ORDER_KEYS = [
   "globalId",
   "priority",
@@ -729,6 +828,199 @@ export function parseLibraryCoreFeedBrowsePageResponseV2(
       LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
     rows: parsedV1.value.rows,
     schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V2_SCHEMA_VERSION,
+    source: parsedV1.value.source,
+    totalCount: parsedV1.value.totalCount,
+  });
+  if (
+    TEXT_ENCODER.encode(JSON.stringify(response)).length >
+    LIBRARY_CORE_FEED_PAGE_MAXIMUM_RESPONSE_BYTES
+  ) {
+    return failure("browse response exceeds the feed-page byte ceiling");
+  }
+  return success(response);
+}
+
+function isLibraryCoreFeedBrowseDirectionV3(
+  value: unknown,
+): value is LibraryCoreFeedBrowseDirectionV3 {
+  return LIBRARY_CORE_FEED_BROWSE_DIRECTIONS.some(
+    (direction) => direction === value,
+  );
+}
+
+function feedBrowsePageRequestV1FromV3(
+  request: LibraryCoreFeedBrowsePageRequestV3,
+): LibraryCoreFeedBrowsePageRequestV1 {
+  return {
+    cancellationId: request.cancellationId,
+    cursor: request.cursor,
+    filter: request.filter,
+    limit: request.limit,
+    queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
+    rankingClockMs: request.rankingClockMs,
+    readerSessionId: request.readerSessionId,
+    recommendationOrderSchemaVersion:
+      request.recommendationOrderSchemaVersion,
+    schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
+  };
+}
+
+function parseLibraryCoreFeedBrowsePageRequestV3(
+  value: unknown,
+): LibraryCoreFeedPageParseResult<LibraryCoreFeedBrowsePageRequestV3> {
+  const record = closedRecord(value, V3_REQUEST_KEYS, "browse request", 3);
+  if (!record.ok) return record;
+  const input = record.value;
+  if (
+    input.queryId !== LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID ||
+    input.schemaVersion !== LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION ||
+    !isLibraryCoreFeedBrowseDirectionV3(input.direction)
+  ) {
+    return failure("browse request identity or bounds are invalid");
+  }
+  // A backward page is defined only relative to a known leading row. There is
+  // no "last page" entry point, so an absent cursor fails closed rather than
+  // silently walking the tail of the generation.
+  if (input.direction === "previous" && input.cursor === null) {
+    return failure("browse request previous direction requires one cursor");
+  }
+  const parsedV1 = parseLibraryCoreFeedBrowsePageRequestV1({
+    cancellationId: input.cancellationId,
+    cursor: input.cursor,
+    filter: input.filter,
+    limit: input.limit,
+    queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
+    rankingClockMs: input.rankingClockMs,
+    readerSessionId: input.readerSessionId,
+    recommendationOrderSchemaVersion: input.recommendationOrderSchemaVersion,
+    schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
+  });
+  if (!parsedV1.ok) return failure(parsedV1.error);
+  return success(Object.freeze({
+    cancellationId: parsedV1.value.cancellationId,
+    cursor: parsedV1.value.cursor,
+    direction: input.direction,
+    filter: parsedV1.value.filter,
+    limit: parsedV1.value.limit,
+    queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
+    rankingClockMs: parsedV1.value.rankingClockMs,
+    readerSessionId: parsedV1.value.readerSessionId,
+    recommendationOrderSchemaVersion:
+      LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
+    schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION,
+  }));
+}
+
+/**
+ * Prove one edge cursor binds the exact source and the exact row it claims.
+ *
+ * Both traversal edges use the same closed order record, so a native response
+ * cannot hand back a cursor that resumes from a row this page never returned.
+ */
+function parseFeedBrowseEdge(
+  cursorValue: unknown,
+  orderValue: unknown,
+  boundRow: LibraryCoreFeedCardV1 | undefined,
+  source: LibraryCoreFeedPageSourceV1,
+  label: string,
+): LibraryCoreFeedPageParseResult<
+  Readonly<LibraryCoreFeedBrowsePageEdgeOrderV3> | null
+> {
+  if (cursorValue === null && orderValue === null) return success(null);
+  if (
+    (cursorValue === null) !== (orderValue === null) ||
+    typeof cursorValue !== "string"
+  ) {
+    return failure(`browse ${label} cursor and order must agree`);
+  }
+  const cursor = decodeLibraryCoreFeedBrowsePageCursorV1(cursorValue);
+  const order = closedRecord(
+    orderValue,
+    NEXT_ORDER_KEYS,
+    `browse ${label} order`,
+  );
+  if (
+    !cursor.ok ||
+    !order.ok ||
+    !boundRow ||
+    !isLibraryCoreEntityId(order.value.globalId) ||
+    !isLibraryCoreNonnegativeSafeInteger(order.value.priority) ||
+    order.value.priority > 100 ||
+    !isLibraryCoreNonnegativeSafeInteger(order.value.publishedAt) ||
+    !isLibraryCoreNonnegativeSafeInteger(order.value.sourceSequence) ||
+    cursor.value.generationId !== source.generationId ||
+    cursor.value.transitionSequence !== source.transitionSequence ||
+    cursor.value.projectionRevision !== source.projectionRevision ||
+    cursor.value.globalId !== boundRow.globalId ||
+    cursor.value.globalId !== order.value.globalId ||
+    cursor.value.priority !== order.value.priority ||
+    cursor.value.publishedAt !== order.value.publishedAt ||
+    cursor.value.sourceSequence !== order.value.sourceSequence
+  ) {
+    return failure(`browse ${label} cursor does not bind its source and row`);
+  }
+  return success(Object.freeze({
+    globalId: order.value.globalId,
+    priority: order.value.priority,
+    publishedAt: order.value.publishedAt,
+    sourceSequence: order.value.sourceSequence,
+  }));
+}
+
+export function parseLibraryCoreFeedBrowsePageResponseV3(
+  value: unknown,
+  requestValue: unknown,
+): LibraryCoreFeedPageParseResult<LibraryCoreFeedBrowsePageResponseV3> {
+  const request = parseLibraryCoreFeedBrowsePageRequestV3(requestValue);
+  if (!request.ok) return failure(request.error);
+  const record = closedRecord(value, V3_RESPONSE_KEYS, "browse response", 3);
+  if (!record.ok) return record;
+  const input = record.value;
+  if (
+    input.queryId !== LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID ||
+    input.schemaVersion !== LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION
+  ) {
+    return failure("browse response identity or bounds are invalid");
+  }
+  const parsedV1 = parseLibraryCoreFeedBrowsePageResponseV1({
+    filter: input.filter,
+    nextCursor: input.nextCursor,
+    nextOrder: input.nextOrder,
+    queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_QUERY_ID,
+    rankingClockMs: input.rankingClockMs,
+    recommendationOrderSchemaVersion: input.recommendationOrderSchemaVersion,
+    rows: input.rows,
+    schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_SCHEMA_VERSION,
+    source: input.source,
+    totalCount: input.totalCount,
+  }, feedBrowsePageRequestV1FromV3(request.value));
+  if (!parsedV1.ok) return failure(parsedV1.error);
+  const rows = parsedV1.value.rows;
+  const previous = parseFeedBrowseEdge(
+    input.previousCursor,
+    input.previousOrder,
+    rows[0],
+    parsedV1.value.source,
+    "previous",
+  );
+  if (!previous.ok) return failure(previous.error);
+  // An empty page has no edge to resume from in either direction. Leaving a
+  // leading cursor here would let a session resume from a row it never saw.
+  if (rows.length === 0 && previous.value !== null) {
+    return failure("browse response cannot bind an edge without rows");
+  }
+  const response: LibraryCoreFeedBrowsePageResponseV3 = Object.freeze({
+    filter: parsedV1.value.filter,
+    nextCursor: parsedV1.value.nextCursor,
+    nextOrder: parsedV1.value.nextOrder,
+    previousCursor: input.previousCursor as string | null,
+    previousOrder: previous.value,
+    queryId: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_QUERY_ID,
+    rankingClockMs: parsedV1.value.rankingClockMs,
+    recommendationOrderSchemaVersion:
+      LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
+    rows,
+    schemaVersion: LIBRARY_CORE_FEED_BROWSE_PAGE_V3_SCHEMA_VERSION,
     source: parsedV1.value.source,
     totalCount: parsedV1.value.totalCount,
   });

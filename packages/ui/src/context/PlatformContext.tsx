@@ -76,9 +76,34 @@ export interface AvailableUpdateInfo {
   channel: ReleaseChannel;
 }
 
+export type BoundedFeedPageDirection = "next" | "previous";
+
+export interface BoundedFeedPage {
+  readonly items: readonly FeedItem[];
+  /**
+   * Opaque edges for resuming traversal on either side of this page.
+   *
+   * `null` proves that side is terminal. A non-null edge only proves the page
+   * filled its limit, so a read from it may still return no rows.
+   */
+  readonly nextCursor: string | null;
+  readonly previousCursor: string | null;
+}
+
 export interface BoundedFeedReader {
   readonly totalCount: number;
   readNext(): Promise<readonly FeedItem[]>;
+  /**
+   * Read one bounded page in either direction from an opaque edge cursor.
+   *
+   * Present only on readers whose platform contract supports reverse paging.
+   * A reader that offers it lets shared UI evict pages on both sides of the
+   * scroll window instead of growing one resident list until it must fall back.
+   */
+  readPage?(
+    cursor: string | null,
+    direction: BoundedFeedPageDirection,
+  ): Promise<BoundedFeedPage>;
   close(): Promise<void>;
 }
 

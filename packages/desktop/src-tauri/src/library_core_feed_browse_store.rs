@@ -122,6 +122,23 @@ pub(super) struct FeedBrowsePage {
     pub(super) binding: FeedBrowseGenerationBinding,
     pub(super) rows: Vec<FeedBrowseProjectedRow>,
     pub(super) next_cursor: Option<FeedBrowseCursor>,
+    /// Exclusive edge for resuming toward the head of the canonical order.
+    ///
+    /// `None` proves nothing precedes this page. `Some` means a backward read
+    /// may still come back empty, exactly as a full forward page may be followed
+    /// by an empty one: both edges report "the page filled", not "more exists".
+    pub(super) previous_cursor: Option<FeedBrowseCursor>,
+}
+
+/// Which way one bounded keyset page walks the canonical feed order.
+///
+/// Both directions traverse the same unique `feed_browse_rows_order` index, so
+/// a backward page is the exact mirror of the forward predicate rather than a
+/// second ordering that could disagree at a page boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum FeedBrowseReadDirection {
+    Next,
+    Previous,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -564,8 +581,26 @@ impl FeedBrowseGenerationStore {
         cursor: Option<&FeedBrowseCursor>,
         limit: usize,
     ) -> StoreResult<FeedBrowsePage> {
+        self.read_page_in_direction(cursor, limit, FeedBrowseReadDirection::Next)
+    }
+
+    /// Read one bounded keyset page in either direction of the canonical order.
+    ///
+    /// A backward page is defined only relative to a known row, so it requires a
+    /// cursor. Rows are collected nearest-first while scanning backward and then
+    /// restored to canonical order, which keeps the byte ceiling truncating the
+    /// rows furthest from the cursor rather than the ones the reader needs.
+    pub(super) fn read_page_in_direction(
+        &self,
+        cursor: Option<&FeedBrowseCursor>,
+        limit: usize,
+        direction: FeedBrowseReadDirection,
+    ) -> StoreResult<FeedBrowsePage> {
         if !(1..=MAXIMUM_PAGE_ROWS).contains(&limit) {
             return Err(FeedBrowseStoreError::Invalid("page limit"));
+        }
+        if direction == FeedBrowseReadDirection::Previous && cursor.is_none() {
+            return Err(FeedBrowseStoreError::Invalid("page direction"));
         }
         let transaction = self.connection.unchecked_transaction()?;
         let (binding, complete) = read_binding(&transaction)
@@ -574,7 +609,7 @@ impl FeedBrowseGenerationStore {
         if !complete {
             return Err(FeedBrowseStoreError::Incomplete);
         }
-        let (rows, truncated_by_bytes) = if let Some(cursor) = cursor {
+        let (mut rows, truncated_by_bytes) = if let Some(cursor) = cursor {
             validate_cursor(cursor)?;
             if cursor.generation_id != binding.generation_id
                 || cursor.transition_sequence != binding.transition_sequence
@@ -582,17 +617,31 @@ impl FeedBrowseGenerationStore {
             {
                 return Err(FeedBrowseStoreError::CursorStale);
             }
-            let mut statement = transaction.prepare_cached(
-                "SELECT priority, publishedAt, sourceSequence, globalId, cardJson
-                 FROM feed_browse_rows
-                 WHERE priority < ?1
-                    OR (priority = ?1 AND publishedAt < ?2)
-                    OR (priority = ?1 AND publishedAt = ?2 AND sourceSequence > ?3)
-                    OR (priority = ?1 AND publishedAt = ?2
-                        AND sourceSequence = ?3 AND globalId > ?4)
-                 ORDER BY priority DESC, publishedAt DESC, sourceSequence ASC, globalId ASC
-                 LIMIT ?5;",
-            )?;
+            let sql = match direction {
+                FeedBrowseReadDirection::Next => {
+                    "SELECT priority, publishedAt, sourceSequence, globalId, cardJson
+                     FROM feed_browse_rows
+                     WHERE priority < ?1
+                        OR (priority = ?1 AND publishedAt < ?2)
+                        OR (priority = ?1 AND publishedAt = ?2 AND sourceSequence > ?3)
+                        OR (priority = ?1 AND publishedAt = ?2
+                            AND sourceSequence = ?3 AND globalId > ?4)
+                     ORDER BY priority DESC, publishedAt DESC, sourceSequence ASC, globalId ASC
+                     LIMIT ?5;"
+                }
+                FeedBrowseReadDirection::Previous => {
+                    "SELECT priority, publishedAt, sourceSequence, globalId, cardJson
+                     FROM feed_browse_rows
+                     WHERE priority > ?1
+                        OR (priority = ?1 AND publishedAt > ?2)
+                        OR (priority = ?1 AND publishedAt = ?2 AND sourceSequence < ?3)
+                        OR (priority = ?1 AND publishedAt = ?2
+                            AND sourceSequence = ?3 AND globalId < ?4)
+                     ORDER BY priority ASC, publishedAt ASC, sourceSequence DESC, globalId DESC
+                     LIMIT ?5;"
+                }
+            };
+            let mut statement = transaction.prepare_cached(sql)?;
             let mut query = statement.query(params![
                 cursor.priority,
                 cursor.published_at,
@@ -611,16 +660,36 @@ impl FeedBrowseGenerationStore {
             let mut query = statement.query(params![limit as i64])?;
             collect_bounded_rows(&mut query, &binding)?
         };
-        let next_cursor = if truncated_by_bytes || rows.len() == limit {
-            rows.last().map(|row| cursor_from_row(row, &binding))
-        } else {
-            None
+        let filled = truncated_by_bytes || rows.len() == limit;
+        let (next_cursor, previous_cursor) = match direction {
+            FeedBrowseReadDirection::Next => (
+                filled
+                    .then(|| rows.last().map(|row| cursor_from_row(row, &binding)))
+                    .flatten(),
+                // Something precedes this page exactly when it resumed from a
+                // cursor. A page read from the head has no backward edge.
+                cursor
+                    .and(rows.first())
+                    .map(|row| cursor_from_row(row, &binding)),
+            ),
+            FeedBrowseReadDirection::Previous => {
+                rows.reverse();
+                (
+                    // The requesting cursor's own row still lies ahead, so a
+                    // backward page always has a forward edge when it has rows.
+                    rows.last().map(|row| cursor_from_row(row, &binding)),
+                    filled
+                        .then(|| rows.first().map(|row| cursor_from_row(row, &binding)))
+                        .flatten(),
+                )
+            }
         };
         transaction.commit()?;
         Ok(FeedBrowsePage {
             binding,
             rows,
             next_cursor,
+            previous_cursor,
         })
     }
 }
@@ -1151,6 +1220,96 @@ mod tests {
     }
 
     #[test]
+    fn walks_the_same_canonical_order_backward_and_forward() {
+        let mut store = FeedBrowseGenerationStore::open_in_memory().expect("store");
+        let identity = binding(6);
+        store.begin(&identity).expect("begin");
+        // Rows 3 through 5 share a priority and publishedAt so the reverse
+        // predicate has to fall through to sourceSequence and then to the
+        // binary globalId tie-break exactly like the forward one.
+        store
+            .append_page(
+                0,
+                &vec![
+                    projected("x:a", 90, 40, 1),
+                    projected("x:b", 90, 30, 2),
+                    projected("x:c", 50, 20, 3),
+                    projected("x:d", 50, 20, 4),
+                    projected("x:E", 50, 20, 4),
+                    projected("x:f", 10, 5, 9),
+                ],
+            )
+            .expect("append");
+        store.finalize().expect("finalize");
+
+        let forward = |cursor: Option<&FeedBrowseCursor>| {
+            store
+                .read_page_in_direction(cursor, 2, FeedBrowseReadDirection::Next)
+                .expect("forward page")
+        };
+        let backward = |cursor: &FeedBrowseCursor| {
+            store
+                .read_page_in_direction(Some(cursor), 2, FeedBrowseReadDirection::Previous)
+                .expect("backward page")
+        };
+        let ids = |page: &FeedBrowsePage| {
+            page.rows
+                .iter()
+                .map(|row| row.global_id.clone())
+                .collect::<Vec<_>>()
+        };
+
+        let one = forward(None);
+        let two = forward(one.next_cursor.as_ref());
+        let three = forward(two.next_cursor.as_ref());
+        assert_eq!(ids(&one), vec!["x:a", "x:b"]);
+        // sourceSequence ascends within the shared priority and publishedAt, and
+        // "x:E" sorts before "x:d" only under binary collation.
+        assert_eq!(ids(&two), vec!["x:c", "x:E"]);
+        assert_eq!(ids(&three), vec!["x:d", "x:f"]);
+
+        // A page read from the head has no backward edge; later pages do.
+        assert!(one.previous_cursor.is_none());
+        assert_eq!(
+            two.previous_cursor
+                .as_ref()
+                .map(|cursor| cursor.global_id.as_str()),
+            Some("x:c")
+        );
+
+        // Walking back from each leading edge restores the exact prior page.
+        let back_to_two = backward(three.previous_cursor.as_ref().expect("third edge"));
+        assert_eq!(ids(&back_to_two), ids(&two));
+        let back_to_one = backward(back_to_two.previous_cursor.as_ref().expect("second edge"));
+        assert_eq!(ids(&back_to_one), ids(&one));
+        // Its forward edge still resumes the page the reader came from.
+        assert_eq!(ids(&forward(back_to_one.next_cursor.as_ref())), ids(&two));
+        // This page exactly filled its limit at the head of the generation, so
+        // its backward edge reports "filled", not "more exists". One further
+        // backward read terminates with an empty page and no edges, mirroring
+        // how a full forward page is followed by an empty terminal page.
+        let head_probe = backward(back_to_one.previous_cursor.as_ref().expect("head probe"));
+        assert!(head_probe.rows.is_empty());
+        assert!(head_probe.previous_cursor.is_none());
+        assert!(head_probe.next_cursor.is_none());
+    }
+
+    #[test]
+    fn rejects_a_backward_page_without_a_cursor() {
+        let mut store = FeedBrowseGenerationStore::open_in_memory().expect("store");
+        let identity = binding(1);
+        store.begin(&identity).expect("begin");
+        store
+            .append_page(0, &vec![projected("x:item", 40, 20, 0)])
+            .expect("append");
+        store.finalize().expect("finalize");
+        assert!(matches!(
+            store.read_page_in_direction(None, 1, FeedBrowseReadDirection::Previous),
+            Err(FeedBrowseStoreError::Invalid("page direction"))
+        ));
+    }
+
+    #[test]
     fn rejects_changed_replay_identity_and_incomplete_reads() {
         let mut store = FeedBrowseGenerationStore::open_in_memory().expect("store");
         let identity = binding(1);
@@ -1297,6 +1456,23 @@ mod tests {
                     OR (priority = ?1 AND publishedAt = ?2
                         AND sourceSequence = ?3 AND globalId > ?4)
                  ORDER BY priority DESC, publishedAt DESC, sourceSequence ASC, globalId ASC
+                 LIMIT ?5;",
+                params![90_i64, 20_i64, 1_i64, "x:item", 8_i64],
+            ),
+            // The backward page walks the same unique index in reverse. If this
+            // ever needed a temporary sort, every scroll-up would cost a full
+            // scan of everything above the cursor.
+            plan_details(
+                &store.connection,
+                "EXPLAIN QUERY PLAN
+                 SELECT priority, publishedAt, sourceSequence, globalId, cardJson
+                 FROM feed_browse_rows
+                 WHERE priority > ?1
+                    OR (priority = ?1 AND publishedAt > ?2)
+                    OR (priority = ?1 AND publishedAt = ?2 AND sourceSequence < ?3)
+                    OR (priority = ?1 AND publishedAt = ?2
+                        AND sourceSequence = ?3 AND globalId < ?4)
+                 ORDER BY priority ASC, publishedAt ASC, sourceSequence DESC, globalId DESC
                  LIMIT ?5;",
                 params![90_i64, 20_i64, 1_i64, "x:item", 8_i64],
             ),

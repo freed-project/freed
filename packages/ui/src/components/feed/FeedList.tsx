@@ -141,6 +141,8 @@ interface FeedListProps {
   /** Request the next bounded row page when the virtual window nears its tail. */
   onLoadMore?: () => void;
   hasMore?: boolean;
+  onLoadPrevious?: () => void;
+  hasPrevious?: boolean;
   /** Absolute source-row offset for a rolling bounded reader window. */
   boundedWindowStartIndex?: number;
   markItemsAsReadOverride?: (ids: string[]) => Promise<void>;
@@ -325,6 +327,8 @@ export function FeedList({
   searchQuery = "",
   onLoadMore,
   hasMore = false,
+  onLoadPrevious,
+  hasPrevious = false,
   boundedWindowStartIndex = 0,
   markItemsAsReadOverride,
 }: FeedListProps) {
@@ -533,20 +537,39 @@ export function FeedList({
     },
     [boundedWindowStartIndex, getReadScrollMetrics, rows],
   );
-  const requestMoreNearTail = useCallback(
+  const requestBoundedWindowShift = useCallback(
     (
       virtualItems: readonly AnchorVirtualRow[],
       source: "element" | "window",
       virtualizer: { options?: { scrollMargin?: number } },
     ) => {
-      if (!hasMore || !onLoadMore || rows.length === 0) return;
+      if (rows.length === 0 || virtualItems.length === 0) return;
       const finalVisible = virtualItems[virtualItems.length - 1];
-      if (finalVisible && finalVisible.index >= Math.max(0, rows.length - 5)) {
+      if (
+        hasMore &&
+        onLoadMore &&
+        finalVisible &&
+        finalVisible.index >= Math.max(0, rows.length - 5)
+      ) {
         captureBoundedWindowAnchor(virtualItems, source, virtualizer);
         onLoadMore();
+        return;
+      }
+      // Near the leading edge, restore the page the window evicted behind us.
+      const firstRendered = virtualItems[0];
+      if (hasPrevious && onLoadPrevious && firstRendered.index <= 4) {
+        captureBoundedWindowAnchor(virtualItems, source, virtualizer);
+        onLoadPrevious();
       }
     },
-    [captureBoundedWindowAnchor, hasMore, onLoadMore, rows.length],
+    [
+      captureBoundedWindowAnchor,
+      hasMore,
+      hasPrevious,
+      onLoadMore,
+      onLoadPrevious,
+      rows.length,
+    ],
   );
 
   const elementVirtualizer = useVirtualizer({
@@ -557,7 +580,11 @@ export function FeedList({
     onChange: (instance) => {
       if (!isMobile) {
         processReadOnScroll(instance, "element");
-        requestMoreNearTail(instance.getVirtualItems(), "element", instance);
+        requestBoundedWindowShift(
+          instance.getVirtualItems(),
+          "element",
+          instance,
+        );
       }
     },
   });
@@ -572,7 +599,11 @@ export function FeedList({
     onChange: (instance) => {
       if (isMobile) {
         processReadOnScroll(instance, "window");
-        requestMoreNearTail(instance.getVirtualItems(), "window", instance);
+        requestBoundedWindowShift(
+          instance.getVirtualItems(),
+          "window",
+          instance,
+        );
       }
     },
   });
@@ -585,7 +616,7 @@ export function FeedList({
   useLayoutEffect(() => {
     const previousWindowStart = previousBoundedWindowStartRef.current;
     previousBoundedWindowStartRef.current = boundedWindowStartIndex;
-    if (boundedWindowStartIndex <= previousWindowStart) return;
+    if (boundedWindowStartIndex === previousWindowStart) return;
 
     const anchor = pendingBoundedAnchorRef.current;
     pendingBoundedAnchorRef.current = null;

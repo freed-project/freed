@@ -12,7 +12,7 @@ use crate::library_core_feed_browse_registry::{
 };
 use crate::library_core_feed_browse_runtime::resolve_existing_library_core_feed_browse_paths_in_root;
 use crate::library_core_feed_browse_store::{
-    FeedBrowseCursor, FeedBrowsePage, FeedBrowseStoreError,
+    FeedBrowseCursor, FeedBrowsePage, FeedBrowseReadDirection, FeedBrowseStoreError,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::{Deserialize, Serialize};
@@ -27,8 +27,10 @@ use tauri::Manager;
 
 const QUERY_ID_V1: &str = "feed_browse_page_v1";
 const QUERY_ID_V2: &str = "feed_browse_page_v2";
+const QUERY_ID_V3: &str = "feed_browse_page_v3";
 const SCHEMA_VERSION_V1: u8 = 1;
 const SCHEMA_VERSION_V2: u8 = 2;
+const SCHEMA_VERSION_V3: u8 = 3;
 const FRIENDS_PREDICATE_SCHEMA_VERSION: u8 = 1;
 const RECOMMENDATION_ORDER_SCHEMA_VERSION: i64 = 1;
 const MAXIMUM_PAGE_LIMIT: u32 = 128;
@@ -136,11 +138,44 @@ pub(super) struct BrowsePageRequestV2 {
     schema_version: u8,
 }
 
+/// Which way one V3 page walks the canonical feed order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum BrowseDirectionV3 {
+    Next,
+    Previous,
+}
+
+impl From<BrowseDirectionV3> for FeedBrowseReadDirection {
+    fn from(direction: BrowseDirectionV3) -> Self {
+        match direction {
+            BrowseDirectionV3::Next => Self::Next,
+            BrowseDirectionV3::Previous => Self::Previous,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct BrowsePageRequestV3 {
+    cancellation_id: String,
+    cursor: RequiredNullableCursor,
+    direction: BrowseDirectionV3,
+    filter: Value,
+    limit: u32,
+    query_id: String,
+    ranking_clock_ms: i64,
+    reader_session_id: String,
+    recommendation_order_schema_version: i64,
+    schema_version: u8,
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(untagged)]
 pub(super) enum BrowsePageRequest {
     V1(BrowsePageRequestV1),
     V2(BrowsePageRequestV2),
+    V3(BrowsePageRequestV3),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -195,17 +230,8 @@ impl<'de> Deserialize<'de> for RequiredNullableCursor {
 struct RequestIdentity {
     cancellation_id: String,
     cursor: Option<String>,
+    direction: FeedBrowseReadDirection,
     limit: u32,
-}
-
-impl From<&BrowsePageRequestV1> for RequestIdentity {
-    fn from(request: &BrowsePageRequestV1) -> Self {
-        Self {
-            cancellation_id: request.cancellation_id.clone(),
-            cursor: request.cursor.0.clone(),
-            limit: request.limit,
-        }
-    }
 }
 
 #[derive(Debug, Serialize)]
@@ -258,10 +284,28 @@ pub(super) struct BrowsePageResponseV2 {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct BrowsePageResponseV3 {
+    filter: Value,
+    next_cursor: Option<String>,
+    next_order: Option<BrowseNextOrderV1>,
+    previous_cursor: Option<String>,
+    previous_order: Option<BrowseNextOrderV1>,
+    query_id: &'static str,
+    ranking_clock_ms: i64,
+    recommendation_order_schema_version: i64,
+    rows: Vec<Value>,
+    schema_version: u8,
+    source: FeedPageSourceV1,
+    total_count: i64,
+}
+
+#[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub(super) enum BrowsePageResponse {
     V1(BrowsePageResponseV1),
     V2(BrowsePageResponseV2),
+    V3(BrowsePageResponseV3),
 }
 
 #[derive(Debug, Serialize)]
@@ -382,6 +426,30 @@ fn validate_request_v2(request: &BrowsePageRequestV2) -> Result<(), BrowseReader
         || request.friends_predicate_schema_version != FRIENDS_PREDICATE_SCHEMA_VERSION
     {
         return Err(BrowseReaderError::InvalidRequest("protocol identity"));
+    }
+    validate_request_bounds(
+        &request.reader_session_id,
+        &request.cancellation_id,
+        &request.cursor,
+        &request.filter,
+        request.limit,
+        request.ranking_clock_ms,
+    )
+}
+
+fn validate_request_v3(request: &BrowsePageRequestV3) -> Result<(), BrowseReaderError> {
+    if request.query_id != QUERY_ID_V3
+        || request.schema_version != SCHEMA_VERSION_V3
+        || request.recommendation_order_schema_version != RECOMMENDATION_ORDER_SCHEMA_VERSION
+        || is_generation_scope_v2(&request.filter)
+    {
+        return Err(BrowseReaderError::InvalidRequest("protocol identity"));
+    }
+    // A backward page is defined only relative to a known leading row. There is
+    // no "last page" entry point, so an absent cursor fails closed instead of
+    // walking the tail of the generation.
+    if request.direction == BrowseDirectionV3::Previous && request.cursor.0.is_none() {
+        return Err(BrowseReaderError::InvalidRequest("cursor direction"));
     }
     validate_request_bounds(
         &request.reader_session_id,
@@ -579,6 +647,8 @@ fn read_at_root(
             cancellation_id: &request.cancellation_id,
             cursor_identity: request.cursor.0.as_deref(),
             cursor: decoded_cursor.as_ref().map(|cursor| &cursor.page_cursor),
+            direction: FeedBrowseReadDirection::Next,
+            keep_session_on_exhaustion: false,
             limit: request.limit as usize,
             expected_filter: &request.filter,
             ranking_clock_ms: request.ranking_clock_ms,
@@ -609,6 +679,8 @@ fn read_v2_at_root(
             cancellation_id: &request.cancellation_id,
             cursor_identity: request.cursor.0.as_deref(),
             cursor: decoded_cursor.as_ref().map(|cursor| &cursor.page_cursor),
+            direction: FeedBrowseReadDirection::Next,
+            keep_session_on_exhaustion: false,
             limit: request.limit as usize,
             expected_filter: &expected_scope,
             ranking_clock_ms: request.ranking_clock_ms,
@@ -617,6 +689,39 @@ fn read_v2_at_root(
         now,
     )?;
     let response = response_v2_from_page(page)?;
+    ensure_response_size(&response)?;
+    Ok(response)
+}
+
+fn read_v3_at_root(
+    state: &LibraryCoreFeedBrowseReaderRuntimeState,
+    base: &Path,
+    request: BrowsePageRequestV3,
+    now: Instant,
+) -> Result<BrowsePageResponseV3, BrowseReaderError> {
+    validate_request_v3(&request)?;
+    let decoded_cursor = request.cursor.0.as_deref().map(decode_cursor).transpose()?;
+    let page = read_physical_page_in_root(
+        state,
+        base,
+        crate::library_core_feed_browse_runtime::ROOT_DIRECTORY_FOR_ADAPTERS,
+        FeedBrowsePhysicalReadRequest {
+            reader_session_id: &request.reader_session_id,
+            cancellation_id: &request.cancellation_id,
+            cursor_identity: request.cursor.0.as_deref(),
+            cursor: decoded_cursor.as_ref().map(|cursor| &cursor.page_cursor),
+            direction: request.direction.into(),
+            // Reaching the forward end must not retire the session. The reader
+            // still owns two resident pages the user can scroll back through.
+            keep_session_on_exhaustion: true,
+            limit: request.limit as usize,
+            expected_filter: &request.filter,
+            ranking_clock_ms: request.ranking_clock_ms,
+            recommendation_order_schema_version: request.recommendation_order_schema_version,
+        },
+        now,
+    )?;
+    let response = response_v3_from_page(page)?;
     ensure_response_size(&response)?;
     Ok(response)
 }
@@ -634,6 +739,9 @@ fn read_request_at_root(
         BrowsePageRequest::V2(request) => {
             read_v2_at_root(state, base, request, now).map(BrowsePageResponse::V2)
         }
+        BrowsePageRequest::V3(request) => {
+            read_v3_at_root(state, base, request, now).map(BrowsePageResponse::V3)
+        }
     }
 }
 
@@ -642,6 +750,13 @@ pub(super) struct FeedBrowsePhysicalReadRequest<'a> {
     pub(super) cancellation_id: &'a str,
     pub(super) cursor_identity: Option<&'a str>,
     pub(super) cursor: Option<&'a FeedBrowseCursor>,
+    pub(super) direction: FeedBrowseReadDirection,
+    /// Keep a bidirectional session alive after it reaches the forward end.
+    ///
+    /// Forward-only protocols retire the session at exhaustion because nothing
+    /// can follow. A bidirectional reader still owns resident pages the user can
+    /// scroll back through, so retiring it would strand the backward direction.
+    pub(super) keep_session_on_exhaustion: bool,
     pub(super) limit: usize,
     pub(super) expected_filter: &'a Value,
     pub(super) ranking_clock_ms: i64,
@@ -741,6 +856,7 @@ fn read_physical_page_in_root(
     let request_identity = RequestIdentity {
         cancellation_id: request.cancellation_id.to_owned(),
         cursor: request.cursor_identity.map(str::to_owned),
+        direction: request.direction,
         limit: request.limit as u32,
     };
     if runtime
@@ -782,14 +898,14 @@ fn read_physical_page_in_root(
         }
     }
     let page = reader
-        .read_page(request.cursor, request.limit)
+        .read_page_in_direction(request.cursor, request.limit, request.direction)
         .map_err(|error| match error {
             FeedBrowseGenerationReaderError::Store(FeedBrowseStoreError::CursorStale) => {
                 BrowseReaderError::CursorStale
             }
             other => BrowseReaderError::Reader(other),
         })?;
-    let exhausted = page.next_cursor.is_none();
+    let exhausted = page.next_cursor.is_none() && !request.keep_session_on_exhaustion;
     runtime
         .sessions
         .get_mut(request.reader_session_id)
@@ -815,6 +931,8 @@ struct BrowsePageResponseParts {
     binding_filter: Value,
     next_cursor: Option<String>,
     next_order: Option<BrowseNextOrderV1>,
+    previous_cursor: Option<String>,
+    previous_order: Option<BrowseNextOrderV1>,
     ranking_clock_ms: i64,
     recommendation_order_schema_version: i64,
     rows: Vec<Value>,
@@ -856,10 +974,23 @@ fn response_parts_from_page(
         published_at: cursor.published_at,
         source_sequence: cursor.source_sequence,
     });
+    let previous_cursor = page
+        .previous_cursor
+        .as_ref()
+        .map(encode_cursor)
+        .transpose()?;
+    let previous_order = page.previous_cursor.map(|cursor| BrowseNextOrderV1 {
+        global_id: cursor.global_id,
+        priority: cursor.priority,
+        published_at: cursor.published_at,
+        source_sequence: cursor.source_sequence,
+    });
     Ok(BrowsePageResponseParts {
         binding_filter,
         next_cursor,
         next_order,
+        previous_cursor,
+        previous_order,
         ranking_clock_ms: binding.ranking_clock_ms,
         recommendation_order_schema_version: binding.recommendation_order_schema_version,
         rows,
@@ -906,6 +1037,24 @@ fn response_v2_from_page(page: FeedBrowsePage) -> Result<BrowsePageResponseV2, B
         recommendation_order_schema_version: parts.recommendation_order_schema_version,
         rows: parts.rows,
         schema_version: SCHEMA_VERSION_V2,
+        source: parts.source,
+        total_count: parts.total_count,
+    })
+}
+
+fn response_v3_from_page(page: FeedBrowsePage) -> Result<BrowsePageResponseV3, BrowseReaderError> {
+    let parts = response_parts_from_page(page)?;
+    Ok(BrowsePageResponseV3 {
+        filter: parts.binding_filter,
+        next_cursor: parts.next_cursor,
+        next_order: parts.next_order,
+        previous_cursor: parts.previous_cursor,
+        previous_order: parts.previous_order,
+        query_id: QUERY_ID_V3,
+        ranking_clock_ms: parts.ranking_clock_ms,
+        recommendation_order_schema_version: parts.recommendation_order_schema_version,
+        rows: parts.rows,
+        schema_version: SCHEMA_VERSION_V3,
         source: parts.source,
         total_count: parts.total_count,
     })
@@ -1348,6 +1497,183 @@ mod tests {
         );
     }
 
+    fn v3_request(
+        cursor: Option<String>,
+        cancellation_id: &str,
+        direction: BrowseDirectionV3,
+    ) -> BrowsePageRequestV3 {
+        BrowsePageRequestV3 {
+            cancellation_id: cancellation_id.to_owned(),
+            cursor: RequiredNullableCursor(cursor),
+            direction,
+            filter: serde_json::from_str(FILTER_JSON).expect("filter"),
+            limit: 1,
+            query_id: QUERY_ID_V3.to_owned(),
+            ranking_clock_ms: 1_780_000_100_000,
+            reader_session_id: "reader-session-3".to_owned(),
+            recommendation_order_schema_version: 1,
+            schema_version: SCHEMA_VERSION_V3,
+        }
+    }
+
+    #[test]
+    fn traverses_a_v3_generation_in_both_directions_without_retiring_the_session() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let base = std::fs::canonicalize(temporary.path()).expect("base");
+        publish_and_select(&base);
+        let state = LibraryCoreFeedBrowseReaderRuntimeState::default();
+
+        let first = read_v3_at_root(
+            &state,
+            &base,
+            v3_request(None, "v3-cancel-1", BrowseDirectionV3::Next),
+            Instant::now(),
+        )
+        .expect("first page");
+        assert_eq!(first.query_id, QUERY_ID_V3);
+        assert_eq!(first.schema_version, SCHEMA_VERSION_V3);
+        assert_eq!(first.rows[0]["globalId"], "x:item-1");
+        // The head of the generation exposes no backward edge.
+        assert!(first.previous_cursor.is_none());
+        assert!(first.previous_order.is_none());
+
+        let second = read_v3_at_root(
+            &state,
+            &base,
+            v3_request(
+                Some(first.next_cursor.clone().expect("forward edge")),
+                "v3-cancel-2",
+                BrowseDirectionV3::Next,
+            ),
+            Instant::now(),
+        )
+        .expect("second page");
+        assert_eq!(second.rows[0]["globalId"], "x:item-2");
+        let backward_edge = second.previous_cursor.clone().expect("backward edge");
+        assert_eq!(
+            second
+                .previous_order
+                .as_ref()
+                .map(|order| order.global_id.as_str()),
+            Some("x:item-2")
+        );
+
+        // Read past the end. A forward-only protocol retires the session here;
+        // a bidirectional one must keep it so the user can still scroll back.
+        let terminal = read_v3_at_root(
+            &state,
+            &base,
+            v3_request(
+                Some(second.next_cursor.clone().expect("terminal probe")),
+                "v3-cancel-3",
+                BrowseDirectionV3::Next,
+            ),
+            Instant::now(),
+        )
+        .expect("terminal page");
+        assert!(terminal.rows.is_empty());
+        assert!(terminal.next_cursor.is_none());
+
+        let back = read_v3_at_root(
+            &state,
+            &base,
+            v3_request(
+                Some(backward_edge),
+                "v3-cancel-4",
+                BrowseDirectionV3::Previous,
+            ),
+            Instant::now(),
+        )
+        .expect("backward page after forward exhaustion");
+        assert_eq!(back.rows.len(), 1);
+        assert_eq!(back.rows[0]["globalId"], "x:item-1");
+        // The forward edge still resumes the page the reader scrolled back from.
+        assert!(back.next_cursor.is_some());
+        assert_eq!(
+            back.next_order
+                .as_ref()
+                .map(|order| order.global_id.as_str()),
+            Some("x:item-1")
+        );
+        // This one-row page filled its limit at the head, so its backward edge
+        // reports "filled" and one further backward read terminates empty.
+        let head_probe = read_v3_at_root(
+            &state,
+            &base,
+            v3_request(
+                Some(back.previous_cursor.clone().expect("head probe")),
+                "v3-cancel-5",
+                BrowseDirectionV3::Previous,
+            ),
+            Instant::now(),
+        )
+        .expect("head probe page");
+        assert!(head_probe.rows.is_empty());
+        assert!(head_probe.previous_cursor.is_none());
+        assert!(head_probe.next_cursor.is_none());
+    }
+
+    #[test]
+    fn rejects_malformed_v3_direction_cursor_and_cross_protocol_scope() {
+        // A backward page has no meaning without a leading row to walk back from.
+        assert!(matches!(
+            validate_request_v3(&v3_request(
+                None,
+                "v3-cancel-1",
+                BrowseDirectionV3::Previous
+            )),
+            Err(BrowseReaderError::InvalidRequest("cursor direction"))
+        ));
+
+        let mut wrong_schema = v3_request(None, "v3-cancel-1", BrowseDirectionV3::Next);
+        wrong_schema.schema_version = SCHEMA_VERSION_V2;
+        assert!(matches!(
+            validate_request_v3(&wrong_schema),
+            Err(BrowseReaderError::InvalidRequest("protocol identity"))
+        ));
+
+        let mut v2_scope = v3_request(None, "v3-cancel-1", BrowseDirectionV3::Next);
+        v2_scope.filter =
+            serde_json::from_str(&v2_scope_json(BrowseIdentityModeV2::Friends)).expect("V2 scope");
+        assert!(matches!(
+            validate_request_v3(&v2_scope),
+            Err(BrowseReaderError::InvalidRequest("protocol identity"))
+        ));
+
+        let unknown_direction = serde_json::json!({
+            "cancellationId": "v3-cancel-1",
+            "cursor": null,
+            "direction": "sideways",
+            "filter": serde_json::from_str::<Value>(FILTER_JSON).expect("filter"),
+            "limit": 1,
+            "queryId": QUERY_ID_V3,
+            "rankingClockMs": 1_780_000_100_000_i64,
+            "readerSessionId": "reader-session-3",
+            "recommendationOrderSchemaVersion": 1,
+            "schemaVersion": SCHEMA_VERSION_V3,
+        });
+        assert!(serde_json::from_value::<BrowsePageRequest>(unknown_direction).is_err());
+
+        // The closed V1 and V2 wire shapes must not absorb a V3 payload, and a
+        // V3 reader must not absorb theirs.
+        let v3_wire = serde_json::json!({
+            "cancellationId": "v3-cancel-1",
+            "cursor": null,
+            "direction": "next",
+            "filter": serde_json::from_str::<Value>(FILTER_JSON).expect("filter"),
+            "limit": 1,
+            "queryId": QUERY_ID_V3,
+            "rankingClockMs": 1_780_000_100_000_i64,
+            "readerSessionId": "reader-session-3",
+            "recommendationOrderSchemaVersion": 1,
+            "schemaVersion": SCHEMA_VERSION_V3,
+        });
+        assert!(matches!(
+            serde_json::from_value::<BrowsePageRequest>(v3_wire).expect("V3 request"),
+            BrowsePageRequest::V3(_)
+        ));
+    }
+
     #[test]
     fn reader_cache_is_fenced_by_the_physical_root() {
         let temporary = tempfile::tempdir().expect("tempdir");
@@ -1374,6 +1700,8 @@ mod tests {
                 cancellation_id: "ordinary-cancel",
                 cursor_identity: None,
                 cursor: None,
+                direction: FeedBrowseReadDirection::Next,
+                keep_session_on_exhaustion: false,
                 limit: 1,
                 expected_filter: &filter,
                 ranking_clock_ms: 1_780_000_100_000,
@@ -1391,6 +1719,8 @@ mod tests {
                 cancellation_id: "saved-cancel",
                 cursor_identity: None,
                 cursor: None,
+                direction: FeedBrowseReadDirection::Next,
+                keep_session_on_exhaustion: false,
                 limit: 1,
                 expected_filter: &filter,
                 ranking_clock_ms: 1_780_000_100_000,
@@ -1411,6 +1741,8 @@ mod tests {
                     cancellation_id: "saved-cross-root-cancel",
                     cursor_identity: None,
                     cursor: None,
+                    direction: FeedBrowseReadDirection::Next,
+                    keep_session_on_exhaustion: false,
                     limit: 1,
                     expected_filter: &filter,
                     ranking_clock_ms: 1_780_000_100_000,

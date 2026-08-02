@@ -163,7 +163,8 @@ to Automerge. After both sides confirm, the bridge deletes that revision's
 spool and scratch graph and retains only the selected and exact rollback
 projection generations.
 
-Gate D now serves the all-content feed, item detail, exact Library facets,
+Gate D now serves the bidirectional all-content feed, item detail, exact
+Library facets,
 bounded Map and Story Wall candidates, Saved overview analytics, the four-mode
 Saved feed, the Friends-only feed, Friends
 activity, selected-person timelines, and Friend editor author candidates, export,
@@ -211,16 +212,28 @@ unavailable reader, or explicit rollback returns to the exact Automerge
 compatibility feed. The PWA remains unchanged.
 Friends search, Friends plus Saved, and other unfinished consumers share one
 reference-counted compatibility projection only while mounted, then evict it.
-Source mismatch or reader failure returns to Automerge. The temporary React
-all-content feed window also returns to Automerge before it could exceed 512
-compact cards because reverse paging is not active yet. The device-local
+Source mismatch or reader failure returns to Automerge.
+The ordinary all-content feed now traverses the complete result in both
+directions through the bidirectional `feed_browse_page_v3` request. It carries
+an explicit `next` or `previous` direction and returns both exclusive edge
+cursors bound to the exact generation and the exact first and last rows of the
+page. Backward reads mirror the forward keyset predicate through the same
+unique index, so both directions share one canonical order. React keeps two
+whole pages plus at most one pinned selected card, restores an evicted leading
+page when the user scrolls back, and holds the visible list anchored across the
+shift. The old 512-card compatibility escape hatch is retired: deep scrolling no
+longer reacquires the full renderer projection. Version 1 and version 2 wire
+shapes and their PWA, Friends, and Saved callers are unchanged. The device-local
 `freed.libraryCore.feedBrowseReaderV1.disabled=1` switch disables the feed
 reader, `freed.libraryCore.savedAnalyticsReaderV1.disabled=1` disables the
 Saved aggregate, `freed.libraryCore.savedFeedReaderV1.disabled=1` disables the
 Saved feed reader, `freed.libraryCore.friendsReaderV1.disabled=1` disables the
 Friends workspace readers,
 `freed.libraryCore.friendsFeedReaderV1.disabled=1` disables the Friends-only
-feed reader, `freed.libraryCore.providerSettingsReaderV1.disabled=1`
+feed reader,
+`freed.libraryCore.feedBrowseBidirectionalReaderV1.disabled=1` returns the
+ordinary all-content feed to the Automerge compatibility projection,
+`freed.libraryCore.providerSettingsReaderV1.disabled=1`
 restores provider settings to the compatibility projection,
 `freed.libraryCore.friendEditorReaderV1.disabled=1` restores the Friend editor
 compatibility lease, `freed.libraryCore.searchJumpReaderV1.disabled=1`
