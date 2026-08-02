@@ -49,7 +49,7 @@ interface ScannedProjectionSession {
   readonly sessionId: string;
   readonly state: DocState;
   readonly source: LibraryCoreProjectionSourceV1;
-  readonly sourceSequenceById: ReadonlyMap<string, number>;
+  readonly sourceSequenceById: ReadonlyMap<string, number> | null;
   readonly weights: ReturnType<typeof mergeDefaultPreferences>["weights"];
   readonly priorityContext: ReturnType<typeof buildPriorityContext>;
   readonly started: LibraryCoreFeedBrowseProjectionStartedV1;
@@ -58,6 +58,17 @@ interface ScannedProjectionSession {
   projectedRows: number;
   lastBatch: LibraryCoreFeedBrowseProjectionBatchV1 | null;
   complete: boolean;
+}
+
+export interface LibraryCoreScannedFeedBrowseProjectionStrategy {
+  readonly generationDomain: string;
+  bindingFilterJson(
+    filter: ReturnType<typeof normalizeLibraryCoreFeedBrowseFilterV1>,
+  ): string;
+  projectRow(input: {
+    readonly item: FeedItem;
+    readonly recommendationPriority: number;
+  }): LibraryCoreFeedBrowseProjectedRowV1;
 }
 
 function buildPriorityContext(state: DocState) {
@@ -150,13 +161,16 @@ async function buildStartedProjection(
   filter: ReturnType<typeof normalizeLibraryCoreFeedBrowseFilterV1>,
   rankingClockMs: number,
   totalRows: number,
+  strategy?: LibraryCoreScannedFeedBrowseProjectionStrategy,
 ): Promise<LibraryCoreFeedBrowseProjectionStartedV1> {
+  const bindingFilterJson =
+    strategy?.bindingFilterJson(filter) ?? JSON.stringify(filter);
   const binding: LibraryCoreFeedBrowseGenerationBindingV1 = {
     generationId: await sha256Hex(
       JSON.stringify({
-        domain: GENERATION_DOMAIN,
+        domain: strategy?.generationDomain ?? GENERATION_DOMAIN,
         documentId: source.documentId,
-        filter,
+        ...(strategy ? { bindingFilterJson } : { filter }),
         headCount: source.headCount,
         headsDigest: source.headsDigest,
         projectionRevision: source.storageRevision.saveRevision,
@@ -171,7 +185,7 @@ async function buildStartedProjection(
     sourceHeadCount: source.headCount,
     transitionSequence: source.storageRevision.generation,
     projectionRevision: source.storageRevision.saveRevision,
-    filterJson: JSON.stringify(filter),
+    filterJson: bindingFilterJson,
     rankingClockMs,
     recommendationOrderSchemaVersion:
       LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
@@ -361,10 +375,12 @@ export function createScannedLibraryCoreFeedBrowseProjectionClient({
   getSource,
   getState,
   openScan,
+  strategy,
 }: {
   getSource(): Promise<LibraryCoreProjectionSourceV1>;
   getState(): DocState | null;
   openScan(): Promise<LibraryCoreItemScanSession>;
+  strategy?: LibraryCoreScannedFeedBrowseProjectionStrategy;
 }): LibraryCoreFeedBrowseProjectionWorkerClient {
   let session: ScannedProjectionSession | null = null;
 
@@ -389,6 +405,8 @@ export function createScannedLibraryCoreFeedBrowseProjectionClient({
       if (filter.showHidden) {
         throw new Error("SQLite feed projection cannot include hidden items");
       }
+      const bindingFilterJson =
+        strategy?.bindingFilterJson(filter) ?? JSON.stringify(filter);
       if (session && !session.complete) {
         if (session.sessionId !== sessionId) {
           throw new Error(
@@ -398,7 +416,7 @@ export function createScannedLibraryCoreFeedBrowseProjectionClient({
         if (
           session.state !== state ||
           !sameSource(session.source, source) ||
-          session.started.binding.filterJson !== JSON.stringify(filter) ||
+          session.started.binding.filterJson !== bindingFilterJson ||
           session.started.binding.rankingClockMs !== rankingClockMs
         ) {
           await discard();
@@ -406,7 +424,9 @@ export function createScannedLibraryCoreFeedBrowseProjectionClient({
         }
         return session.started;
       }
-      const sourceSequenceById = buildSourceSequence(state);
+      // Custom query strategies define their own total order. Avoid retaining
+      // the ordinary browse reader's O(corpus) ID-to-sequence map for them.
+      const sourceSequenceById = strategy ? null : buildSourceSequence(state);
       let totalRows = 0;
       const countScan = await openScan();
       try {
@@ -435,6 +455,7 @@ export function createScannedLibraryCoreFeedBrowseProjectionClient({
         filter,
         rankingClockMs,
         totalRows,
+        strategy,
       );
       session = {
         sessionId,
@@ -474,7 +495,11 @@ export function createScannedLibraryCoreFeedBrowseProjectionClient({
       const rows: LibraryCoreFeedBrowseProjectedRowV1[] = [];
       let done = false;
       try {
-        while (rows.length < MAXIMUM_BATCH_ROWS && !done) {
+        // Emit at most one nonempty source page per writer batch. The native
+        // item scanner already caps each page at 64 rows, so this preserves a
+        // hard transfer ceiling without retaining a cross-page buffer. Empty
+        // filtered pages are skipped until a row or the terminal page appears.
+        while (rows.length === 0 && !done) {
           const page = await active.scan.nextPage();
           done = page.done;
           for (const item of page.items) {
@@ -483,14 +508,37 @@ export function createScannedLibraryCoreFeedBrowseProjectionClient({
             ) {
               continue;
             }
+            if (strategy) {
+              rows.push(
+                strategy.projectRow({
+                  item,
+                  recommendationPriority: calculatePriority(
+                    item,
+                    active.weights,
+                    active.started.binding.rankingClockMs,
+                    active.priorityContext,
+                  ),
+                }),
+              );
+              continue;
+            }
+            const sourceSequenceById = active.sourceSequenceById;
+            if (!sourceSequenceById) {
+              throw new Error("Library Core feed source order is unavailable");
+            }
             rows.push(
               projectRow(
                 item,
-                active.sourceSequenceById,
+                sourceSequenceById,
                 active.weights,
                 active.priorityContext,
                 active.started.binding.rankingClockMs,
               ),
+            );
+          }
+          if (rows.length > MAXIMUM_BATCH_ROWS) {
+            throw new Error(
+              "Library Core browse projection batch is oversized",
             );
           }
         }

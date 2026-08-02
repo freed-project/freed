@@ -12,8 +12,18 @@ use crate::library_core_feed_browse_store::{
 use crate::sqlite_registry_file::{self, SqliteRegistryFileError, SqliteRegistrySpec};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use sha2::{Digest, Sha256};
+#[cfg(unix)]
+use std::ffi::CString;
 use std::fmt;
+#[cfg(unix)]
+use std::fs::{File, OpenOptions};
+#[cfg(unix)]
+use std::os::fd::{AsRawFd, FromRawFd};
+#[cfg(unix)]
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
+#[cfg(not(unix))]
+use std::time::SystemTime;
 
 const REGISTRY_APPLICATION_ID: i64 = 1_178_751_537;
 const REGISTRY_SCHEMA_VERSION: i64 = 1;
@@ -160,9 +170,35 @@ pub(super) struct FeedBrowseGenerationTransition {
     committed_sequence: i64,
 }
 
+impl FeedBrowseGenerationTransition {
+    pub(super) fn committed_sequence(&self) -> i64 {
+        self.committed_sequence
+    }
+}
+
+#[cfg(unix)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct UnixFileIdentity {
+    device_id: u64,
+    inode_id: u64,
+}
+
+#[cfg(unix)]
+struct UnixPruneCandidate {
+    file_name: CString,
+    file: File,
+    identity: UnixFileIdentity,
+}
+
 pub(super) struct FeedBrowseGenerationRegistry {
     connection: Connection,
     generation_root: PathBuf,
+    #[cfg(unix)]
+    generation_root_handle: File,
+    #[cfg(unix)]
+    generation_root_identity: UnixFileIdentity,
+    #[cfg(not(unix))]
+    generation_root_created_at: SystemTime,
 }
 
 impl FeedBrowseGenerationRegistry {
@@ -198,10 +234,31 @@ impl FeedBrowseGenerationRegistry {
                 field: "generation_root",
             });
         }
+        let metadata = std::fs::symlink_metadata(generation_root)?;
+        let canonical_generation_root = std::fs::canonicalize(generation_root)?;
+        if !metadata.file_type().is_dir()
+            || metadata.file_type().is_symlink()
+            || canonical_generation_root != generation_root
+        {
+            return Err(FeedBrowseGenerationRegistryError::InvalidRegistryIdentity {
+                field: "generation_root",
+            });
+        }
+        #[cfg(unix)]
+        let (generation_root_handle, generation_root_identity) =
+            open_pinned_generation_root(&canonical_generation_root)?;
+        #[cfg(not(unix))]
+        let generation_root_created_at = metadata.created()?;
         let connection = sqlite_registry_file::open_or_create(path, REGISTRY_SPEC)?;
         Ok(Self {
             connection,
-            generation_root: generation_root.to_path_buf(),
+            generation_root: canonical_generation_root,
+            #[cfg(unix)]
+            generation_root_handle,
+            #[cfg(unix)]
+            generation_root_identity,
+            #[cfg(not(unix))]
+            generation_root_created_at,
         })
     }
 
@@ -295,6 +352,146 @@ impl FeedBrowseGenerationRegistry {
             expected_current_generation_id,
             selected_generation_id,
         )
+    }
+
+    /// Retain only the selected generation, its exact rollback generation, and
+    /// the latest replayable transition. Browse generations are derived state,
+    /// so revisiting a feed must not retain one full SQLite file per ranking
+    /// clock or source revision.
+    pub(super) fn prune_unselected_generations(&mut self) -> RegistryResult<usize> {
+        self.prune_unselected_generations_with_hook(|| Ok(()))
+    }
+
+    fn prune_unselected_generations_with_hook<F>(
+        &mut self,
+        after_snapshot: F,
+    ) -> RegistryResult<usize>
+    where
+        F: FnOnce() -> RegistryResult<()>,
+    {
+        // Selection uses an IMMEDIATE transaction too. Taking the write lock
+        // before reading reader state prevents a concurrent selection from
+        // turning one of this prune's stale candidates into current authority.
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let state = validate_reader_state(transaction.query_row(
+            "SELECT currentGenerationId, rollbackGenerationId, transitionSequence
+             FROM feed_browse_reader_state WHERE singleton = 1;",
+            [],
+            read_reader_state,
+        )?)?;
+        let mut statement = transaction.prepare(
+            "SELECT generationId, fileName
+             FROM feed_browse_generations
+             ORDER BY registeredSequence;",
+        )?;
+        let candidates = statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(statement);
+        after_snapshot()?;
+
+        #[cfg(unix)]
+        validate_unix_generation_root_identity(
+            &self.generation_root,
+            &self.generation_root_handle,
+            self.generation_root_identity,
+        )?;
+        #[cfg(not(unix))]
+        validate_non_unix_generation_root_identity(
+            &self.generation_root,
+            self.generation_root_created_at,
+        )?;
+
+        #[cfg(unix)]
+        let mut removable_files = Vec::new();
+        #[cfg(not(unix))]
+        let mut removable_paths = Vec::new();
+        for (generation_id, file_name) in &candidates {
+            if state.current_generation_id.as_deref() == Some(generation_id.as_str())
+                || state.rollback_generation_id.as_deref() == Some(generation_id.as_str())
+            {
+                continue;
+            }
+            validate_stored_file_name(file_name)?;
+            #[cfg(unix)]
+            if let Some(candidate) =
+                open_unix_prune_candidate(&self.generation_root_handle, file_name)?
+            {
+                removable_files.push(candidate);
+            }
+            #[cfg(not(unix))]
+            {
+                validate_non_unix_generation_root_identity(
+                    &self.generation_root,
+                    self.generation_root_created_at,
+                )?;
+                let path = self.generation_root.join(file_name);
+                match std::fs::symlink_metadata(&path) {
+                    Ok(metadata)
+                        if metadata.file_type().is_file() && !metadata.file_type().is_symlink() =>
+                    {
+                        if std::fs::canonicalize(&path)? != path {
+                            return Err(FeedBrowseGenerationRegistryError::InvalidGeneration {
+                                field: "prune_path",
+                            });
+                        }
+                        removable_paths.push(path);
+                    }
+                    Ok(_) => {
+                        return Err(FeedBrowseGenerationRegistryError::InvalidGeneration {
+                            field: "prune_file_type",
+                        });
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error.into()),
+                }
+            }
+        }
+        #[cfg(unix)]
+        let removed = unlink_unix_prune_candidates(
+            &self.generation_root,
+            &self.generation_root_handle,
+            self.generation_root_identity,
+            removable_files,
+        )?;
+        #[cfg(not(unix))]
+        let mut removed = 0;
+        #[cfg(not(unix))]
+        for path in removable_paths {
+            validate_non_unix_generation_root_identity(
+                &self.generation_root,
+                self.generation_root_created_at,
+            )?;
+            std::fs::remove_file(path)?;
+            removed += 1;
+        }
+        #[cfg(unix)]
+        if removed > 0 {
+            self.generation_root_handle.sync_all()?;
+        }
+
+        transaction.execute(
+            "DELETE FROM feed_browse_generation_transitions
+             WHERE committedSequence < ?1;",
+            [state.transition_sequence],
+        )?;
+        for (generation_id, _) in candidates {
+            if state.current_generation_id.as_deref() == Some(generation_id.as_str())
+                || state.rollback_generation_id.as_deref() == Some(generation_id.as_str())
+            {
+                continue;
+            }
+            transaction.execute(
+                "DELETE FROM feed_browse_generations WHERE generationId = ?1;",
+                [generation_id],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(removed)
     }
 
     fn transition(
@@ -460,6 +657,157 @@ fn validate_file_name(path: &Path) -> RegistryResult<String> {
         return Err(FeedBrowseGenerationRegistryError::InvalidGeneration { field: "file_name" });
     }
     Ok(file_name.to_owned())
+}
+
+fn validate_stored_file_name(file_name: &str) -> RegistryResult<()> {
+    let path = Path::new(file_name);
+    if path.components().count() != 1
+        || path.file_name().and_then(|value| value.to_str()) != Some(file_name)
+    {
+        return Err(FeedBrowseGenerationRegistryError::InvalidGeneration { field: "file_name" });
+    }
+    validate_file_name(path).map(|_| ())
+}
+
+#[cfg(unix)]
+fn unix_file_identity(metadata: &std::fs::Metadata) -> UnixFileIdentity {
+    UnixFileIdentity {
+        device_id: metadata.dev(),
+        inode_id: metadata.ino(),
+    }
+}
+
+#[cfg(unix)]
+fn open_pinned_generation_root(path: &Path) -> RegistryResult<(File, UnixFileIdentity)> {
+    let mut options = OpenOptions::new();
+    options
+        .read(true)
+        .custom_flags(libc::O_CLOEXEC | libc::O_DIRECTORY | libc::O_NOFOLLOW);
+    let handle = options.open(path)?;
+    let metadata = handle.metadata()?;
+    if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() {
+        return Err(FeedBrowseGenerationRegistryError::InvalidRegistryIdentity {
+            field: "generation_root",
+        });
+    }
+    let identity = unix_file_identity(&metadata);
+    Ok((handle, identity))
+}
+
+#[cfg(unix)]
+fn open_unix_file_at(root: &File, file_name: &CString) -> RegistryResult<Option<File>> {
+    let descriptor = unsafe {
+        libc::openat(
+            root.as_raw_fd(),
+            file_name.as_ptr(),
+            libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK,
+        )
+    };
+    if descriptor >= 0 {
+        return Ok(Some(unsafe { File::from_raw_fd(descriptor) }));
+    }
+    let error = std::io::Error::last_os_error();
+    if error.kind() == std::io::ErrorKind::NotFound {
+        return Ok(None);
+    }
+    Err(error.into())
+}
+
+#[cfg(unix)]
+fn open_unix_prune_candidate(
+    root: &File,
+    file_name: &str,
+) -> RegistryResult<Option<UnixPruneCandidate>> {
+    let file_name = CString::new(file_name)
+        .map_err(|_| FeedBrowseGenerationRegistryError::InvalidGeneration { field: "file_name" })?;
+    let Some(file) = open_unix_file_at(root, &file_name)? else {
+        return Ok(None);
+    };
+    let metadata = file.metadata()?;
+    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+        return Err(FeedBrowseGenerationRegistryError::InvalidGeneration {
+            field: "prune_file_type",
+        });
+    }
+    let identity = unix_file_identity(&metadata);
+    Ok(Some(UnixPruneCandidate {
+        file_name,
+        file,
+        identity,
+    }))
+}
+
+#[cfg(unix)]
+fn validate_unix_generation_root_identity(
+    path: &Path,
+    handle: &File,
+    expected: UnixFileIdentity,
+) -> RegistryResult<()> {
+    let metadata = std::fs::symlink_metadata(path)?;
+    let canonical_root = std::fs::canonicalize(path)?;
+    if !metadata.file_type().is_dir()
+        || metadata.file_type().is_symlink()
+        || canonical_root != path
+        || unix_file_identity(&metadata) != expected
+        || unix_file_identity(&handle.metadata()?) != expected
+    {
+        return Err(FeedBrowseGenerationRegistryError::InvalidGeneration {
+            field: "prune_generation_root",
+        });
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn unlink_unix_prune_candidates(
+    generation_root: &Path,
+    root: &File,
+    root_identity: UnixFileIdentity,
+    candidates: Vec<UnixPruneCandidate>,
+) -> RegistryResult<usize> {
+    let mut removed = 0;
+    for candidate in candidates {
+        validate_unix_generation_root_identity(generation_root, root, root_identity)?;
+        let Some(current) = open_unix_file_at(root, &candidate.file_name)? else {
+            continue;
+        };
+        if unix_file_identity(&candidate.file.metadata()?) != candidate.identity
+            || unix_file_identity(&current.metadata()?) != candidate.identity
+        {
+            return Err(FeedBrowseGenerationRegistryError::InvalidGeneration {
+                field: "prune_file_identity",
+            });
+        }
+        let result = unsafe { libc::unlinkat(root.as_raw_fd(), candidate.file_name.as_ptr(), 0) };
+        if result == 0 {
+            removed += 1;
+            continue;
+        }
+        let error = std::io::Error::last_os_error();
+        if error.kind() != std::io::ErrorKind::NotFound {
+            return Err(error.into());
+        }
+    }
+    Ok(removed)
+}
+
+#[cfg(not(unix))]
+fn validate_non_unix_generation_root_identity(
+    path: &Path,
+    expected_created_at: SystemTime,
+) -> RegistryResult<()> {
+    let metadata = std::fs::symlink_metadata(path)?;
+    let canonical_root = std::fs::canonicalize(path)?;
+    if !metadata.file_type().is_dir()
+        || metadata.file_type().is_symlink()
+        || canonical_root != path
+        || metadata.created()? != expected_created_at
+    {
+        return Err(FeedBrowseGenerationRegistryError::InvalidGeneration {
+            field: "prune_generation_root",
+        });
+    }
+    Ok(())
 }
 
 fn validate_binding(binding: &FeedBrowseGenerationBinding) -> RegistryResult<()> {
@@ -720,7 +1068,7 @@ fn lower_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     struct Fixture {
         root: PathBuf,
@@ -866,6 +1214,330 @@ mod tests {
                 transition_sequence: 3,
             }
         );
+    }
+
+    #[test]
+    fn pruning_repeated_selections_retains_only_current_and_exact_rollback() {
+        let fixture = Fixture::new("prune");
+        let published = [1, 2, 3, 4].map(|suffix| {
+            let binding = fixture.binding(suffix);
+            fixture.published(suffix, &binding)
+        });
+        let mut registry =
+            FeedBrowseGenerationRegistry::open(&fixture.registry_path, &fixture.generation_root)
+                .expect("open registry");
+
+        let first = registry.register(&published[0]).expect("register first");
+        registry
+            .select("select-prune-first", None, &first.binding.generation_id)
+            .expect("select first");
+        assert_eq!(
+            registry
+                .prune_unselected_generations()
+                .expect("prune first"),
+            0
+        );
+
+        let second = registry.register(&published[1]).expect("register second");
+        registry
+            .select(
+                "select-prune-second",
+                Some(&first.binding.generation_id),
+                &second.binding.generation_id,
+            )
+            .expect("select second");
+        assert_eq!(
+            registry
+                .prune_unselected_generations()
+                .expect("prune second"),
+            0
+        );
+
+        let third = registry.register(&published[2]).expect("register third");
+        registry
+            .select(
+                "select-prune-third",
+                Some(&second.binding.generation_id),
+                &third.binding.generation_id,
+            )
+            .expect("select third");
+        assert_eq!(
+            registry
+                .prune_unselected_generations()
+                .expect("prune third"),
+            1
+        );
+        assert!(!published[0].path.exists());
+        assert!(published[1].path.exists());
+        assert!(published[2].path.exists());
+
+        let fourth = registry.register(&published[3]).expect("register fourth");
+        registry
+            .select(
+                "select-prune-fourth",
+                Some(&third.binding.generation_id),
+                &fourth.binding.generation_id,
+            )
+            .expect("select fourth");
+        assert_eq!(
+            registry
+                .prune_unselected_generations()
+                .expect("prune fourth"),
+            1
+        );
+        assert!(!published[1].path.exists());
+        assert!(published[2].path.exists());
+        assert!(published[3].path.exists());
+
+        registry
+            .rollback(
+                "rollback-pruned-third",
+                Some(&fourth.binding.generation_id),
+                &third.binding.generation_id,
+            )
+            .expect("rollback to exact retained generation");
+        assert_eq!(
+            registry
+                .prune_unselected_generations()
+                .expect("prune rollback"),
+            0
+        );
+        assert_eq!(
+            FeedBrowseGenerationRegistry::read_selected_generation(&fixture.registry_path)
+                .expect("read rollback selection")
+                .generation
+                .binding
+                .generation_id,
+            third.binding.generation_id
+        );
+        assert_eq!(
+            registry
+                .connection
+                .query_row("SELECT COUNT(*) FROM feed_browse_generations;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("count retained generations"),
+            2
+        );
+        assert_eq!(
+            registry
+                .connection
+                .query_row(
+                    "SELECT COUNT(*) FROM feed_browse_generation_transitions;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("count retained transitions"),
+            1
+        );
+    }
+
+    #[test]
+    fn pruning_rejects_an_unexpected_file_type_before_removing_other_candidates() {
+        let fixture = Fixture::new("prune-fail-closed");
+        let published = [11, 12, 13, 14].map(|suffix| {
+            let binding = fixture.binding(suffix);
+            fixture.published(suffix, &binding)
+        });
+        let mut registry =
+            FeedBrowseGenerationRegistry::open(&fixture.registry_path, &fixture.generation_root)
+                .expect("open registry");
+        let registered = published
+            .iter()
+            .map(|generation| registry.register(generation).expect("register generation"))
+            .collect::<Vec<_>>();
+        registry
+            .select(
+                "select-fail-closed-first",
+                None,
+                &registered[0].binding.generation_id,
+            )
+            .expect("select first");
+        for index in 1..registered.len() {
+            registry
+                .select(
+                    &format!("select-fail-closed-{}", index + 1),
+                    Some(&registered[index - 1].binding.generation_id),
+                    &registered[index].binding.generation_id,
+                )
+                .expect("select next");
+        }
+
+        std::fs::remove_file(&published[1].path).expect("remove stale file");
+        std::fs::create_dir(&published[1].path).expect("replace stale file with directory");
+        assert!(matches!(
+            registry
+                .prune_unselected_generations()
+                .expect_err("unexpected file type must fail closed"),
+            FeedBrowseGenerationRegistryError::InvalidGeneration {
+                field: "prune_file_type"
+            }
+        ));
+        assert!(
+            published[0].path.exists(),
+            "preflight must not remove an earlier candidate before rejecting a later one"
+        );
+        assert_eq!(
+            registry
+                .connection
+                .query_row("SELECT COUNT(*) FROM feed_browse_generations;", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("count unchanged generations"),
+            4
+        );
+        assert_eq!(
+            registry
+                .connection
+                .query_row(
+                    "SELECT COUNT(*) FROM feed_browse_generation_transitions;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("count unchanged transitions"),
+            4
+        );
+    }
+
+    #[test]
+    fn pruning_holds_the_registry_write_lock_before_choosing_stale_candidates() {
+        let fixture = Fixture::new("prune-selection-race");
+        let published = [21, 22, 23].map(|suffix| {
+            let binding = fixture.binding(suffix);
+            fixture.published(suffix, &binding)
+        });
+        let mut registry =
+            FeedBrowseGenerationRegistry::open(&fixture.registry_path, &fixture.generation_root)
+                .expect("open registry");
+        let registered = published
+            .iter()
+            .map(|generation| registry.register(generation).expect("register generation"))
+            .collect::<Vec<_>>();
+        registry
+            .select(
+                "select-race-first",
+                None,
+                &registered[0].binding.generation_id,
+            )
+            .expect("select first");
+        registry
+            .select(
+                "select-race-second",
+                Some(&registered[0].binding.generation_id),
+                &registered[1].binding.generation_id,
+            )
+            .expect("select second");
+
+        let mut concurrent =
+            FeedBrowseGenerationRegistry::open(&fixture.registry_path, &fixture.generation_root)
+                .expect("open concurrent registry");
+        concurrent
+            .connection
+            .busy_timeout(Duration::ZERO)
+            .expect("disable busy retry");
+        registry
+            .prune_unselected_generations_with_hook(|| {
+                assert!(
+                    concurrent
+                        .select(
+                            "select-race-third",
+                            Some(&registered[1].binding.generation_id),
+                            &registered[2].binding.generation_id,
+                        )
+                        .is_err(),
+                    "selection must not commit after prune chooses its candidates"
+                );
+                Ok(())
+            })
+            .expect("prune while selection is blocked");
+
+        assert_eq!(
+            FeedBrowseGenerationRegistry::read_selected_generation(&fixture.registry_path)
+                .expect("read selected generation")
+                .generation
+                .binding
+                .generation_id,
+            registered[1].binding.generation_id
+        );
+        assert!(!published[2].path.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pruning_rejects_a_replaced_generation_root_without_touching_the_replacement() {
+        let fixture = Fixture::new("prune-root-replacement");
+        let published = [31, 32, 33].map(|suffix| {
+            let binding = fixture.binding(suffix);
+            fixture.published(suffix, &binding)
+        });
+        let mut registry =
+            FeedBrowseGenerationRegistry::open(&fixture.registry_path, &fixture.generation_root)
+                .expect("open registry");
+        let registered = published
+            .iter()
+            .map(|generation| registry.register(generation).expect("register generation"))
+            .collect::<Vec<_>>();
+        registry
+            .select(
+                "select-root-replacement-first",
+                None,
+                &registered[0].binding.generation_id,
+            )
+            .expect("select first");
+        registry
+            .select(
+                "select-root-replacement-second",
+                Some(&registered[0].binding.generation_id),
+                &registered[1].binding.generation_id,
+            )
+            .expect("select second");
+
+        let retired_root = fixture.root.join("retired-generations");
+        let replacement_path = fixture
+            .generation_root
+            .join(published[2].path.file_name().expect("file name"));
+        assert!(matches!(
+            registry
+                .prune_unselected_generations_with_hook(|| {
+                    std::fs::rename(&fixture.generation_root, &retired_root)?;
+                    std::fs::create_dir(&fixture.generation_root)?;
+                    std::fs::write(&replacement_path, b"replacement generation")?;
+                    Ok(())
+                })
+                .expect_err("root replacement must fail closed"),
+            FeedBrowseGenerationRegistryError::InvalidGeneration {
+                field: "prune_generation_root"
+            }
+        ));
+        assert_eq!(
+            std::fs::read(&replacement_path).expect("read replacement generation"),
+            b"replacement generation"
+        );
+        assert!(
+            retired_root
+                .join(published[2].path.file_name().expect("file name"))
+                .exists(),
+            "the pinned old root must also remain untouched after identity rejection"
+        );
+    }
+
+    #[test]
+    fn pruning_rejects_registry_file_names_outside_the_generation_root() {
+        for file_name in [
+            "../outside.sqlite",
+            "/tmp/outside.sqlite",
+            "nested/outside.sqlite",
+            r"nested\outside.sqlite",
+            ".",
+            "..",
+        ] {
+            assert!(matches!(
+                validate_stored_file_name(file_name)
+                    .expect_err("escaping file name must fail closed"),
+                FeedBrowseGenerationRegistryError::InvalidGeneration { field: "file_name" }
+            ));
+        }
+        validate_stored_file_name("generation-31.sqlite").expect("single component file name");
     }
 
     #[test]

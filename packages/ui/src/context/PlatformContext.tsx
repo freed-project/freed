@@ -30,11 +30,15 @@ import type {
   LocalAIModelInstallState,
   LocalAIModelManifestEntry,
   ReportPrivacyTier,
+  SavedContentSortMode,
   StoryWallManifest,
 } from "@freed/shared";
 import type { OPMLFeedEntry, ReleaseChannel } from "@freed/shared";
 import type { GoogleContactsResult } from "@freed/shared/google-contacts";
-import type { ImportSummary, ProgressFn } from "../components/LibraryDialog.types.js";
+import type {
+  ImportSummary,
+  ProgressFn,
+} from "../components/LibraryDialog.types.js";
 import type { ProviderStatusTone } from "../lib/provider-status.js";
 import type { ReaderOfflineCacheMode } from "../lib/reader-cache-settings.js";
 
@@ -182,8 +186,7 @@ export type LibraryFriendsLocationOwner =
       readonly feedUrl: string;
     };
 
-export interface LibraryFriendsLocationItemRequest
-  extends LibraryFriendsGraphLocationCandidate {
+export interface LibraryFriendsLocationItemRequest extends LibraryFriendsGraphLocationCandidate {
   readonly owner: LibraryFriendsLocationOwner;
   readonly referenceTimeMs: number;
   readonly sourceToken: string;
@@ -295,7 +298,6 @@ export interface BugReportingConfig {
     payload: PrivateVulnerabilityReportPayload,
   ) => Promise<PrivateVulnerabilityReportResult>;
   openUrl?: (url: string) => void;
-
 }
 
 export interface GoogleContactsConnectOptions {
@@ -342,7 +344,9 @@ export interface YouTubeOfflinePlaylistResult {
 
 export interface YouTubeControls {
   /** Add one deliberate video selection to the user's private Freed Offline playlist. */
-  addToOfflinePlaylist: (videoUrl: string) => Promise<YouTubeOfflinePlaylistResult>;
+  addToOfflinePlaylist: (
+    videoUrl: string,
+  ) => Promise<YouTubeOfflinePlaylistResult>;
 }
 
 export interface LocalAIModelDownloadProgress {
@@ -548,6 +552,17 @@ export interface PlatformConfig {
     rankingClockMs: number,
   ) => Promise<BoundedFeedReader>;
 
+  /**
+   * Open one source-pinned Saved reader in the selected device-local order.
+   * Shared UI keeps at most two reader pages resident while it traverses the
+   * complete Saved result set.
+   */
+  openBoundedSavedFeedReader?: (
+    filter: FilterOptions,
+    sortMode: SavedContentSortMode,
+    rankingClockMs: number,
+  ) => Promise<BoundedFeedReader>;
+
   /** Stream the selected local Library generation without hydrating a corpus array. */
   scanLibraryItems?: ScanLibraryItems;
 
@@ -621,13 +636,19 @@ export interface PlatformConfig {
    * Desktop: fetches HTML via Tauri IPC, extracts content, writes to cache.
    * PWA: writes a stub item; desktop picks it up via relay and fetches content.
    */
-  saveUrl?: (url: string, options?: { tags?: string[] }) => Promise<SaveUrlResult>;
+  saveUrl?: (
+    url: string,
+    options?: { tags?: string[] },
+  ) => Promise<SaveUrlResult>;
 
   /**
    * Import Freed Markdown archive files into the library.
    * Desktop only -- the PWA has no filesystem access.
    */
-  importMarkdown?: (files: FileList, onProgress: ProgressFn) => Promise<ImportSummary>;
+  importMarkdown?: (
+    files: FileList,
+    onProgress: ProgressFn,
+  ) => Promise<ImportSummary>;
 
   /**
    * Export the entire library as a zipped Freed Markdown archive.
@@ -651,7 +672,9 @@ export interface PlatformConfig {
   syncSourceNow?: (sourceId: string) => Promise<void>;
 
   /** Return the current status summary for a source row in the sidebar. */
-  getSourceStatus?: (sourceId: string | undefined) => SidebarSourceStatusSummary | null;
+  getSourceStatus?: (
+    sourceId: string | undefined,
+  ) => SidebarSourceStatusSummary | null;
 
   /**
    * Retrieve cached article HTML for a globalId from the device-local store.
@@ -678,13 +701,17 @@ export interface PlatformConfig {
   checkOllamaReachable?: (ollamaUrl: string) => Promise<boolean>;
 
   /** Import an Instagram Accounts Center export into the device-local media vault. */
-  importInstagramStoryWallArchive?: (files: FileList) => Promise<StoryWallImportSummary>;
+  importInstagramStoryWallArchive?: (
+    files: FileList,
+  ) => Promise<StoryWallImportSummary>;
 
   /** Return media vault summaries used by StoryWall (beta). */
   getStoryWallArchiveSummaries?: () => Promise<StoryWallArchiveSummary[]>;
 
   /** Publish the generated StoryWall (beta) site to a static host. */
-  publishStoryWall?: (request: StoryWallPublishRequest) => Promise<StoryWallPublishResult>;
+  publishStoryWall?: (
+    request: StoryWallPublishRequest,
+  ) => Promise<StoryWallPublishResult>;
 
   /**
    * Google Contacts API integration.
@@ -697,7 +724,10 @@ export interface PlatformConfig {
     /** Start or refresh the Google OAuth flow so contacts scope is granted. */
     connect: (options?: GoogleContactsConnectOptions) => Promise<void>;
     /** Fetch Google Contacts through the platform's network layer when needed. */
-    fetchContacts?: (accessToken: string, syncToken?: string | null) => Promise<GoogleContactsResult>;
+    fetchContacts?: (
+      accessToken: string,
+      syncToken?: string | null,
+    ) => Promise<GoogleContactsResult>;
   };
 
   /**
@@ -737,9 +767,7 @@ export function PlatformProvider({
   value: PlatformConfig;
   children: ReactNode;
 }) {
-  return (
-    <PlatformCtx.Provider value={value}>{children}</PlatformCtx.Provider>
-  );
+  return <PlatformCtx.Provider value={value}>{children}</PlatformCtx.Provider>;
 }
 
 /** Access the full platform config (capture functions + layout slots). */

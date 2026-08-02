@@ -23,6 +23,7 @@ export * from "./portable-checkpoint-contracts.js";
 export * from "./protocol-registry.js";
 export * from "./protocol-scalars.js";
 export * from "./query-registry.js";
+export * from "./saved-feed-page-contracts.js";
 export * from "./sha256.js";
 export * from "./store-surface-registry.js";
 export * from "./wire-frame.js";

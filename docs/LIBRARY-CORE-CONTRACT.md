@@ -2964,6 +2964,41 @@ projection only for the existing Automerge mutation and releases it afterward.
 That execution bridge remains Gate D debt because the renderer still enumerates
 the exact bulk IDs. Automerge remains authority.
 
+The Freed Desktop Saved feed now reads the authenticated selected SQLite
+generation through the registered `saved_feed_page_v1` source-fenced reader.
+It preserves the four user-facing modes: `date_saved`, `date_published`,
+`recommended`, and `shortest_read`. The first SQLite Saved ordering contract is
+explicitly versioned. Equal keys use binary global-ID order instead of retaining
+the legacy renderer input sequence or locale comparator. Recommended order
+recalculates priority at one pinned ranking clock, then orders equal priorities
+by raw publication time and binary global ID. The Freed Desktop compatibility
+fallback recalculates and orders at that same clock. The PWA retains its existing
+Saved ordering. This is an intentional Gate D ordering standardization, not a
+claim of byte-for-byte legacy tie parity. The query-specific materializer
+performs source-fenced scans with at most 64 rows resident per scan, retains only
+matching Saved compact rows, and does not build a corpus-sized source-position
+index. It preserves `savedAt` plus `readingTime` in the compact DTO.
+Each reader page returns at most 128 compact rows. React retains
+at most the current and adjacent feed page, for at most 256 compact feed rows,
+and replaces that window as the user traverses the complete Saved result
+forward. Crossing a prior 512-row compatibility threshold is no longer a
+fallback condition. ReaderView may pin exactly one selected compact card after
+its feed page is evicted. Selection continues through the existing ReaderView
+local-content and hydration path. This slice adds no item-detail query. Source drift,
+malformed pages, native failure, or the
+device-local `freed.libraryCore.savedFeedReaderV1.disabled=1` switch restores
+the Automerge compatibility path. Ordinary forward traversal does not.
+Selection and cleanup are distinct recovery boundaries. Cleanup holds the
+registry write transaction while choosing and deleting retired generations,
+accepts only single-component paths under the canonical generation root, and
+in steady state retains the current generation plus its exact rollback. A
+cleanup failure after selection commits cannot undo or ambiguously fail that
+selection. Any extra retired rows or files remain non-authoritative and cleanup
+retries on the next selection.
+Automerge remains authority. This reader adds no provider request, cloud
+publication, writer, replication, release, installation, or activation
+behavior.
+
 The cursor is versioned binary data encoded as canonical unpadded base64url. It
 binds the immutable generation digest, transition sequence, projection
 revision, nonnegative chronological sort key, and final entity ID. The maximum

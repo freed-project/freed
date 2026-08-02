@@ -70,6 +70,16 @@
         "read_cutover_parity",
         "same_frontier_rollback_receipt"
       ]
+    },
+    {
+      "activationId": "desktop-saved-feed-sql-read-v1",
+      "gate": "D",
+      "kind": "sql_read_cutover",
+      "rollbackTrigger": "Set freed.libraryCore.savedFeedReaderV1.disabled to 1 on the affected device if the versioned Saved order, forward traversal, selection handoff, or memory diverges from the Freed Desktop compatibility fallback.",
+      "receiptExpectations": [
+        "read_cutover_parity",
+        "same_frontier_rollback_receipt"
+      ]
     }
   ]
 }

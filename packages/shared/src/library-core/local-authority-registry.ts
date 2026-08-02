@@ -1035,11 +1035,17 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
       {
         kind: "filesystem",
         platforms: ["desktop"],
-        locator: `${APP_DATA}/library-core-external-migration-v1 and ${APP_DATA}/library-core-shadow-v1`,
+        locator: `${APP_DATA}/library-core-external-migration-v1, ${APP_DATA}/library-core-shadow-v1, ${APP_DATA}/library-core-feed-browse-v1, and ${APP_DATA}/library-core-saved-feed-v1`,
         keys: [
           "library-core-external-migration-v1/scratch/<sessionSha256>.sqlite",
           "library-core-external-migration-v1/spool/<sessionSha256>.journal.jsonl",
           "library-core-external-migration-v1/spool/<sessionSha256>.snapshot",
+          "library-core-feed-browse-v1/generations/.<sourceKey>.staging.sqlite",
+          "library-core-feed-browse-v1/generations/<sourceKey>.sqlite",
+          "library-core-feed-browse-v1/registry.sqlite",
+          "library-core-saved-feed-v1/generations/.<sourceKey>.staging.sqlite",
+          "library-core-saved-feed-v1/generations/<sourceKey>.sqlite",
+          "library-core-saved-feed-v1/registry.sqlite",
           "library-core-shadow-v1/generations/.<sourceKey>.staging.sqlite",
           "library-core-shadow-v1/generations/<sourceKey>.sqlite",
           "library-core-shadow-v1/registry.sqlite",
@@ -1056,6 +1062,7 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
           "freed.libraryCore.itemDetailReaderV1.disabled",
           "freed.libraryCore.rendererItemEvictionV1.disabled",
           "freed.libraryCore.savedAnalyticsReaderV1.disabled",
+          "freed.libraryCore.savedFeedReaderV1.disabled",
         ],
       },
       {
@@ -1082,15 +1089,15 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
       kind: "bounded-by-rule",
       rules: [
         { scope: "crash-replay migration revisions", limit: 1, unit: "revision" },
-        { scope: "complete immutable projection generations", limit: 2, unit: "generation" },
+        { scope: "complete immutable projection generations per native query root", limit: 2, unit: "generation" },
         { scope: "complete portable PWA checkpoint generations and their operation tails", limit: 2, unit: "generation" },
-        { scope: "migration and Gate D rollback controls", limit: 5, unit: "keys" },
+        { scope: "migration and Gate D rollback controls", limit: 7, unit: "keys" },
       ],
     },
     backup: "exclude-derived",
     export: "exclude",
     redaction: "not-applicable",
-    resetSemantics: "Successful two-sided migration confirmation removes that revision's spool and scratch graph. New selection retains only the selected and exact rollback SQLite or portable IndexedDB generations, including each retained portable generation's imported operation tail. Factory reset removes both native roots and, after activation, the portable IndexedDB database; clearing site data removes the local rollback switches.",
+    resetSemantics: "Successful two-sided migration confirmation removes that revision's spool and scratch graph. New selection retains only the selected and exact rollback SQLite or portable IndexedDB generations, including each retained portable generation's imported operation tail. Factory reset removes every registered native derived-runtime root and, after activation, the portable IndexedDB database; clearing site data removes the local rollback switches.",
     snapshot: "rebuildable",
     migration: "rebuild-after-cutover",
     cutover: {
@@ -1099,10 +1106,13 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
     },
     sourceReferences: [
       "packages/desktop/src-tauri/src/library_core_external_migration_runtime.rs",
+      "packages/desktop/src-tauri/src/library_core_feed_browse_runtime.rs",
+      "packages/desktop/src-tauri/src/library_core_saved_feed_runtime.rs",
       "packages/desktop/src-tauri/src/library_core_shadow_runtime.rs",
       "packages/desktop/src/lib/automerge.ts",
       "packages/desktop/src/lib/library-core-feed-browse-reader-runtime.ts",
       "packages/desktop/src/lib/library-core-item-detail-runtime.ts",
+      "packages/desktop/src/lib/library-core-saved-feed-reader-runtime.ts",
       "packages/pwa/src/lib/library-core-portable-checkpoint-store.ts",
       "packages/pwa/src/lib/library-core-operation-segment-runtime.ts",
       "packages/sync/src/cloud/library-core-operation-segments.ts",
@@ -2563,6 +2573,32 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
   },
   {
     registryKey: "library-core-derived-runtime",
+    sourcePath: "packages/desktop/src-tauri/src/library_core_feed_browse_runtime.rs",
+    sourceTokens: [
+      'pub(super) const ROOT_DIRECTORY_FOR_ADAPTERS: &str = "library-core-feed-browse-v1"',
+      'const GENERATION_DIRECTORY: &str = "generations"',
+      'const REGISTRY_FILE: &str = "registry.sqlite"',
+    ],
+    registeredKeys: [
+      "library-core-feed-browse-v1/generations/.<sourceKey>.staging.sqlite",
+      "library-core-feed-browse-v1/generations/<sourceKey>.sqlite",
+      "library-core-feed-browse-v1/registry.sqlite",
+    ],
+  },
+  {
+    registryKey: "library-core-derived-runtime",
+    sourcePath: "packages/desktop/src-tauri/src/library_core_saved_feed_runtime.rs",
+    sourceTokens: [
+      'const ROOT_DIRECTORY: &str = "library-core-saved-feed-v1"',
+    ],
+    registeredKeys: [
+      "library-core-saved-feed-v1/generations/.<sourceKey>.staging.sqlite",
+      "library-core-saved-feed-v1/generations/<sourceKey>.sqlite",
+      "library-core-saved-feed-v1/registry.sqlite",
+    ],
+  },
+  {
+    registryKey: "library-core-derived-runtime",
     sourcePath: "packages/desktop/src/lib/automerge.ts",
     sourceTokens: [
       'const LIBRARY_CORE_EXTERNAL_MIGRATION_DISABLED_KEY =',
@@ -2600,6 +2636,15 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
       "freed.libraryCore.friendsReaderV1.disabled",
       "freed.libraryCore.savedAnalyticsReaderV1.disabled",
     ],
+  },
+  {
+    registryKey: "library-core-derived-runtime",
+    sourcePath: "packages/desktop/src/lib/library-core-saved-feed-reader-runtime.ts",
+    sourceTokens: [
+      "LIBRARY_CORE_SAVED_FEED_READER_DISABLED_KEY =",
+      '"freed.libraryCore.savedFeedReaderV1.disabled"',
+    ],
+    registeredKeys: ["freed.libraryCore.savedFeedReaderV1.disabled"],
   },
   {
     registryKey: "library-core-derived-runtime",

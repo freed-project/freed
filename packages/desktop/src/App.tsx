@@ -69,6 +69,7 @@ import {
   getItemPreservedText,
 } from "./lib/automerge";
 import { openBoundedDesktopFeedReader } from "./lib/library-core-feed-browse-reader-runtime";
+import { openBoundedDesktopSavedFeedReader } from "./lib/library-core-saved-feed-reader-runtime";
 import {
   openLibraryCoreItemScanSession,
   readLibraryCoreFacetSummary,
@@ -1481,6 +1482,9 @@ function App() {
       openUrl: (url: string) => { void shellOpen(url); },
       openBoundedFeedReader: tauriRuntimeAvailable
         ? openBoundedDesktopFeedReader
+        : undefined,
+      openBoundedSavedFeedReader: tauriRuntimeAvailable
+        ? openBoundedDesktopSavedFeedReader
         : undefined,
       scanLibraryItems: tauriRuntimeAvailable
         ? scanLibraryCoreItemsForDesktop
