@@ -231,7 +231,20 @@ CREATE TABLE projection_rebuild_batches (
     REFERENCES projection_batches (batchId)
 ) STRICT;
 `.trim();
-export const SHADOW_SCHEMA_VERSION_DDL = "PRAGMA user_version = 3;";
+export const SHADOW_V3_SCHEMA_VERSION_DDL = "PRAGMA user_version = 3;";
+
+/**
+ * Friends timelines include archived history, unlike the inbox feed. Keep a
+ * distinct partial index so those bounded pages never sort the whole selected
+ * history through the inbox-only timeline index.
+ */
+export const SHADOW_FRIENDS_TIMELINE_INDEX_DDL = `
+CREATE INDEX IF NOT EXISTS feed_items_friends_timeline
+  ON feed_items (sortAt DESC, globalId ASC)
+  WHERE hidden IS NOT 1;
+`.trim();
+
+export const SHADOW_SCHEMA_VERSION_DDL = "PRAGMA user_version = 4;";
 
 /**
  * Indexes the Stage 5 and 6 surfaces will read through. Declared here with the
@@ -314,6 +327,8 @@ export function createShadowSchema(db: ShadowDatabase): void {
     db.exec(SHADOW_BATCH_RECEIPT_DDL);
     db.exec(SHADOW_V2_SCHEMA_VERSION_DDL);
     db.exec(SHADOW_REBUILD_DDL);
+    db.exec(SHADOW_V3_SCHEMA_VERSION_DDL);
+    db.exec(SHADOW_FRIENDS_TIMELINE_INDEX_DDL);
     db.exec(SHADOW_SCHEMA_VERSION_DDL);
     db.exec("COMMIT;");
   } catch (error) {

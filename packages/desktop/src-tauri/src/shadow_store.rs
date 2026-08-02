@@ -28,14 +28,15 @@ use rusqlite::{
     TransactionBehavior,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use url::Url;
 
-const SHADOW_SCHEMA_VERSION: i64 = 3;
+pub(super) const SHADOW_SCHEMA_VERSION: i64 = 4;
+const MIN_READABLE_SHADOW_SCHEMA_VERSION: i64 = 3;
 const MAX_FEED_PAGE_LIMIT: u32 = 128;
 const MAX_ITEM_SCAN_PAGE_LIMIT: u32 = 64;
 const MAX_MAP_SURFACE_ITEMS: u32 = 1_000;
@@ -43,6 +44,11 @@ const MAX_STORY_WALL_SURFACE_ITEMS: u32 = 250;
 const MAX_SAVED_ANALYTICS_SOURCE_LABELS: usize = 4_096;
 const MAX_SAVED_ANALYTICS_CONTENT_TYPES: usize = 64;
 const MAX_SAVED_ANALYTICS_LABEL_BYTES: usize = 2_048;
+const MAX_FRIEND_SOURCE_KEYS: usize = 5_000;
+const MAX_FRIEND_SAMPLE_ITEMS: usize = 5;
+const MAX_FRIEND_LOCATION_CANDIDATES: usize = 8;
+const MAX_PERSON_TIMELINE_LIMIT: u32 = 100;
+const MAX_FRIENDS_GRAPH_RETAINED_BYTES: usize = 8 * 1_048_576 - 64 * 1_024;
 const MAX_ITEM_SCAN_ROW_BYTES: usize = 8 * 1_048_576 - 64 * 1_024;
 const MAX_FEED_PAGE_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const FEED_PAGE_ENVELOPE_RESERVE_BYTES: usize = 16 * 1_024;
@@ -63,6 +69,7 @@ const MAX_ENTITY_ID_UTF8_BYTES: usize = 4_096;
 const MAX_PROJECTION_REBUILD_ROWS: usize = 250_000;
 const MAX_PROJECTION_SOURCE_DOCUMENT_ID_BYTES: usize = 4_096;
 const MAX_JAVASCRIPT_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
+const MAX_SAFE_INTEGER_DECIMAL_GROWTH: usize = 15;
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const BASE_CACHE_KIB: i64 = -32 * 1024;
 
@@ -124,6 +131,17 @@ pub(super) enum ShadowStoreError {
     },
     SavedAnalyticsExceedsResponseBudget {
         field: &'static str,
+        requested: usize,
+        maximum: usize,
+    },
+    InvalidFriendsQuery {
+        field: &'static str,
+    },
+    FriendsSourceLimit {
+        requested: usize,
+        maximum: usize,
+    },
+    FriendsGraphExceedsResponseBudget {
         requested: usize,
         maximum: usize,
     },
@@ -255,6 +273,17 @@ impl fmt::Display for ShadowStoreError {
                 formatter,
                 "saved analytics {field} contains {requested} entries or bytes, maximum {maximum}"
             ),
+            Self::InvalidFriendsQuery { field } => {
+                write!(formatter, "Friends query cannot exactly project {field}")
+            }
+            Self::FriendsSourceLimit { requested, maximum } => write!(
+                formatter,
+                "Friends query contains {requested} source keys, maximum {maximum}"
+            ),
+            Self::FriendsGraphExceedsResponseBudget { requested, maximum } => write!(
+                formatter,
+                "Friends graph requires {requested} retained bytes, maximum {maximum}"
+            ),
             Self::ProjectionEntityNotFound { entity_id } => {
                 write!(formatter, "projection entity {entity_id} was not found")
             }
@@ -328,6 +357,8 @@ const SHADOW_SCHEMA_V2_SQL: &str =
     include_str!("../../../shared/src/library-core/shadow-schema-v2.sql");
 const SHADOW_SCHEMA_V3_SQL: &str =
     include_str!("../../../shared/src/library-core/shadow-schema-v3.sql");
+const SHADOW_SCHEMA_V4_SQL: &str =
+    include_str!("../../../shared/src/library-core/shadow-schema-v4.sql");
 const READ_ASSIGNMENT_PROJECTION_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/read-assignment-projection-v1.sql");
 
@@ -402,6 +433,83 @@ pub(super) struct LibrarySavedAnalytics {
     pub(super) hourly_counts: [i64; 24],
     pub(super) source_counts: Vec<SavedAnalyticsCount>,
     pub(super) content_mix: Vec<SavedAnalyticsCount>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct FriendSourceKey {
+    pub(super) platform: String,
+    pub(super) author_id: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct FriendsActivityWindow {
+    pub(super) start_ms: i64,
+    pub(super) end_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct FriendSampleItem {
+    pub(super) global_id: String,
+    pub(super) published_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct FriendSignalCount {
+    pub(super) label: &'static str,
+    pub(super) count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct FriendLocationCandidate {
+    pub(super) global_id: String,
+    pub(super) published_at: i64,
+    pub(super) effective_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct FriendActivitySummary {
+    pub(super) platform: String,
+    pub(super) author_id: String,
+    pub(super) item_count: i64,
+    pub(super) latest_activity_at: i64,
+    pub(super) has_location: bool,
+    pub(super) avatar_url: Option<String>,
+    pub(super) avatar_published_at: Option<i64>,
+    pub(super) avatar_global_id: Option<String>,
+    pub(super) location_candidate_count: i64,
+    pub(super) location_candidates: Vec<FriendLocationCandidate>,
+    pub(super) sample_items: Vec<FriendSampleItem>,
+    pub(super) recent_count: i64,
+    pub(super) signal_counts: Vec<FriendSignalCount>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct RssActivitySummary {
+    pub(super) feed_url: String,
+    pub(super) item_count: i64,
+    pub(super) latest_activity_at: i64,
+    pub(super) has_location: bool,
+    pub(super) avatar_url: Option<String>,
+    pub(super) avatar_published_at: Option<i64>,
+    pub(super) avatar_global_id: Option<String>,
+    pub(super) location_candidate_count: i64,
+    pub(super) location_candidates: Vec<FriendLocationCandidate>,
+    pub(super) sample_items: Vec<FriendSampleItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct FriendsGraphActivity {
+    pub(super) total_item_count: i64,
+    pub(super) social: Vec<FriendActivitySummary>,
+    pub(super) rss: Vec<RssActivitySummary>,
 }
 
 impl LibrarySurface {
@@ -744,6 +852,1139 @@ fn exact_saved_analytics_row(
     Ok((timestamp, source_label, content_type))
 }
 
+const FRIEND_SIGNAL_LABELS: [&str; 20] = [
+    "event",
+    "deadline",
+    "opportunity",
+    "how_to",
+    "reference",
+    "transaction",
+    "product_update",
+    "alert",
+    "deal",
+    "place",
+    "media",
+    "essay",
+    "moment",
+    "life_update",
+    "announcement",
+    "recommendation",
+    "request",
+    "discussion",
+    "promotion",
+    "news",
+];
+
+#[derive(Debug)]
+struct ExactFriendActivityRow {
+    global_id: String,
+    platform: String,
+    author_id: String,
+    published_at: i64,
+    avatar_url: Option<String>,
+    rss_feed_url: Option<String>,
+    has_location: bool,
+    location_time_range: Option<FriendLocationTimeRange>,
+    signal_indexes: Vec<usize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FriendLocationTimeRange {
+    starts_at: i64,
+    ends_at: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EmptyFriendActivitySummary<'a> {
+    platform: &'a str,
+    author_id: &'a str,
+    item_count: i64,
+    latest_activity_at: i64,
+    has_location: bool,
+    avatar_url: Option<&'a str>,
+    avatar_published_at: Option<i64>,
+    avatar_global_id: Option<&'a str>,
+    location_candidate_count: i64,
+    location_candidates: &'a [FriendLocationCandidate],
+    sample_items: &'a [FriendSampleItem],
+    recent_count: i64,
+    signal_counts: &'a [FriendSignalCount],
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EmptyRssActivitySummary<'a> {
+    feed_url: &'a str,
+    item_count: i64,
+    latest_activity_at: i64,
+    has_location: bool,
+    avatar_url: Option<&'a str>,
+    avatar_published_at: Option<i64>,
+    avatar_global_id: Option<&'a str>,
+    location_candidate_count: i64,
+    location_candidates: &'a [FriendLocationCandidate],
+    sample_items: &'a [FriendSampleItem],
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BorrowedFriendSample<'a> {
+    global_id: &'a str,
+    published_at: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BorrowedFriendSignal<'a> {
+    label: &'a str,
+    count: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BorrowedFriendLocationCandidate<'a> {
+    global_id: &'a str,
+    published_at: i64,
+    effective_at: i64,
+}
+
+#[derive(Debug)]
+struct FriendsGraphRetainedBudget {
+    retained_bytes: usize,
+}
+
+impl FriendsGraphRetainedBudget {
+    fn new() -> StoreResult<Self> {
+        let empty = FriendsGraphActivity {
+            total_item_count: 0,
+            social: Vec::new(),
+            rss: Vec::new(),
+        };
+        let retained_bytes = serde_json::to_vec(&empty)
+            .map_err(|_| ShadowStoreError::InvalidFriendsQuery {
+                field: "retained output serialization",
+            })?
+            .len()
+            // Reserve the maximum growth from zero to a safe-integer total.
+            .saturating_add(15);
+        Ok(Self { retained_bytes })
+    }
+
+    fn charge(&mut self, additional: usize) -> StoreResult<()> {
+        let requested = self.retained_bytes.saturating_add(additional);
+        if requested > MAX_FRIENDS_GRAPH_RETAINED_BYTES {
+            return Err(ShadowStoreError::FriendsGraphExceedsResponseBudget {
+                requested,
+                maximum: MAX_FRIENDS_GRAPH_RETAINED_BYTES,
+            });
+        }
+        self.retained_bytes = requested;
+        Ok(())
+    }
+
+    fn replace(&mut self, previous: usize, replacement: usize) -> StoreResult<()> {
+        let retained_without_previous = self.retained_bytes.checked_sub(previous).ok_or(
+            ShadowStoreError::InvalidFriendsQuery {
+                field: "retained output accounting",
+            },
+        )?;
+        let requested = retained_without_previous.saturating_add(replacement);
+        if requested > MAX_FRIENDS_GRAPH_RETAINED_BYTES {
+            return Err(ShadowStoreError::FriendsGraphExceedsResponseBudget {
+                requested,
+                maximum: MAX_FRIENDS_GRAPH_RETAINED_BYTES,
+            });
+        }
+        self.retained_bytes = requested;
+        Ok(())
+    }
+
+    fn replace_delta(&mut self, previous: isize, replacement: isize) -> StoreResult<()> {
+        let requested = self.retained_bytes as i128 - previous as i128 + replacement as i128;
+        if requested < 0 {
+            return Err(ShadowStoreError::InvalidFriendsQuery {
+                field: "retained output accounting",
+            });
+        }
+        let requested = usize::try_from(requested).unwrap_or(usize::MAX);
+        if requested > MAX_FRIENDS_GRAPH_RETAINED_BYTES {
+            return Err(ShadowStoreError::FriendsGraphExceedsResponseBudget {
+                requested,
+                maximum: MAX_FRIENDS_GRAPH_RETAINED_BYTES,
+            });
+        }
+        self.retained_bytes = requested;
+        Ok(())
+    }
+}
+
+fn serialized_friends_value_bytes<T: Serialize>(value: &T) -> StoreResult<usize> {
+    serde_json::to_vec(value)
+        .map(|bytes| bytes.len())
+        .map_err(|_| ShadowStoreError::InvalidFriendsQuery {
+            field: "retained output serialization",
+        })
+}
+
+fn empty_social_retained_bytes(source: &FriendSourceKey) -> StoreResult<usize> {
+    serialized_friends_value_bytes(&EmptyFriendActivitySummary {
+        platform: &source.platform,
+        author_id: &source.author_id,
+        item_count: 0,
+        latest_activity_at: 0,
+        has_location: false,
+        avatar_url: None,
+        avatar_published_at: None,
+        avatar_global_id: None,
+        location_candidate_count: 0,
+        location_candidates: &[],
+        sample_items: &[],
+        recent_count: 0,
+        signal_counts: &[],
+    })
+    // Maximum decimal growth for itemCount, latestActivityAt,
+    // locationCandidateCount, and recentCount.
+    .map(|bytes| bytes.saturating_add(4 * MAX_SAFE_INTEGER_DECIMAL_GROWTH))
+}
+
+fn empty_rss_retained_bytes(feed_url: &str) -> StoreResult<usize> {
+    serialized_friends_value_bytes(&EmptyRssActivitySummary {
+        feed_url,
+        item_count: 0,
+        latest_activity_at: 0,
+        has_location: false,
+        avatar_url: None,
+        avatar_published_at: None,
+        avatar_global_id: None,
+        location_candidate_count: 0,
+        location_candidates: &[],
+        sample_items: &[],
+    })
+    // Maximum decimal growth for itemCount, latestActivityAt, and
+    // locationCandidateCount.
+    .map(|bytes| bytes.saturating_add(3 * MAX_SAFE_INTEGER_DECIMAL_GROWTH))
+}
+
+fn avatar_retained_bytes(row: &ExactFriendActivityRow) -> StoreResult<usize> {
+    let Some(avatar_url) = row.avatar_url.as_deref() else {
+        return Ok(0);
+    };
+    let avatar_url = serialized_friends_value_bytes(&avatar_url)?;
+    let global_id = serialized_friends_value_bytes(&row.global_id)?;
+    let published_at = serialized_friends_value_bytes(&row.published_at)?;
+    // The empty summary already includes three `null` values.
+    Ok(avatar_url.saturating_sub(4) + global_id.saturating_sub(4) + published_at.saturating_sub(4))
+}
+
+fn location_candidate_retained_bytes(
+    global_id: &str,
+    published_at: i64,
+    effective_at: i64,
+    has_previous: bool,
+) -> StoreResult<usize> {
+    serialized_friends_value_bytes(&BorrowedFriendLocationCandidate {
+        global_id,
+        published_at,
+        effective_at,
+    })
+    .map(|bytes| bytes.saturating_add(usize::from(has_previous)))
+}
+
+fn sample_retained_bytes(row: &ExactFriendActivityRow, has_previous: bool) -> StoreResult<usize> {
+    sample_value_retained_bytes(&row.global_id, row.published_at)
+        .map(|bytes| bytes.saturating_add(usize::from(has_previous)))
+}
+
+fn sample_value_retained_bytes(global_id: &str, published_at: i64) -> StoreResult<usize> {
+    serialized_friends_value_bytes(&BorrowedFriendSample {
+        global_id,
+        published_at,
+    })
+}
+
+fn signal_retained_bytes(label: &str, has_previous: bool) -> StoreResult<usize> {
+    serialized_friends_value_bytes(&BorrowedFriendSignal {
+        label,
+        count: MAX_JAVASCRIPT_SAFE_INTEGER,
+    })
+    .map(|bytes| bytes.saturating_add(usize::from(has_previous)))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FriendsActivityAccumulator {
+    item_count: i64,
+    latest_activity_at: i64,
+    has_location: bool,
+    avatar_url: Option<String>,
+    avatar_published_at: Option<i64>,
+    avatar_global_id: Option<String>,
+    avatar_retained_bytes: usize,
+    location_candidate_count: i64,
+    location_candidates: Vec<FriendLocationCandidate>,
+    sample_items: Vec<FriendSampleItem>,
+    recent_count: i64,
+    signal_counts: [i64; FRIEND_SIGNAL_LABELS.len()],
+}
+
+impl FriendsActivityAccumulator {
+    fn empty() -> Self {
+        Self {
+            item_count: 0,
+            latest_activity_at: 0,
+            has_location: false,
+            avatar_url: None,
+            avatar_published_at: None,
+            avatar_global_id: None,
+            avatar_retained_bytes: 0,
+            location_candidate_count: 0,
+            location_candidates: Vec::new(),
+            sample_items: Vec::new(),
+            recent_count: 0,
+            signal_counts: [0; FRIEND_SIGNAL_LABELS.len()],
+        }
+    }
+
+    fn add(
+        &mut self,
+        row: &ExactFriendActivityRow,
+        recent_window: FriendsActivityWindow,
+        include_social_fields: bool,
+        retained_budget: &mut FriendsGraphRetainedBudget,
+    ) -> StoreResult<()> {
+        self.item_count =
+            self.item_count
+                .checked_add(1)
+                .ok_or(ShadowStoreError::InvalidFriendsQuery {
+                    field: "item count",
+                })?;
+        self.latest_activity_at = self.latest_activity_at.max(row.published_at);
+        if let Some(avatar_url) = row.avatar_url.as_ref() {
+            let replaces_current =
+                match (self.avatar_published_at, self.avatar_global_id.as_deref()) {
+                    (Some(published_at), Some(global_id)) => {
+                        row.published_at > published_at
+                            || (row.published_at == published_at
+                                && row.global_id.as_bytes() < global_id.as_bytes())
+                    }
+                    _ => true,
+                };
+            if replaces_current {
+                let replacement_bytes = avatar_retained_bytes(row)?;
+                retained_budget.replace(self.avatar_retained_bytes, replacement_bytes)?;
+                self.avatar_url = Some(avatar_url.clone());
+                self.avatar_published_at = Some(row.published_at);
+                self.avatar_global_id = Some(row.global_id.clone());
+                self.avatar_retained_bytes = replacement_bytes;
+            }
+        }
+        let first_location = row.has_location && !self.has_location;
+        let has_location_delta = if first_location { -1 } else { 0 };
+        if let Some(effective_at) = current_location_effective_at(row, recent_window.end_ms) {
+            let next_candidate_count = self.location_candidate_count.checked_add(1).ok_or(
+                ShadowStoreError::InvalidFriendsQuery {
+                    field: "location candidate count",
+                },
+            )?;
+            let candidate_position = self.location_candidates.partition_point(|candidate| {
+                candidate.published_at > row.published_at
+                    || (candidate.published_at == row.published_at
+                        && candidate.global_id.as_bytes() < row.global_id.as_bytes())
+            });
+            if self.location_candidates.len() < MAX_FRIEND_LOCATION_CANDIDATES {
+                let candidate_bytes = location_candidate_retained_bytes(
+                    &row.global_id,
+                    row.published_at,
+                    effective_at,
+                    !self.location_candidates.is_empty(),
+                )?;
+                retained_budget.replace_delta(0, has_location_delta + candidate_bytes as isize)?;
+                self.has_location |= row.has_location;
+                self.location_candidate_count = next_candidate_count;
+                self.location_candidates.insert(
+                    candidate_position,
+                    FriendLocationCandidate {
+                        global_id: row.global_id.clone(),
+                        published_at: row.published_at,
+                        effective_at,
+                    },
+                );
+            } else if candidate_position < MAX_FRIEND_LOCATION_CANDIDATES {
+                let removed = self.location_candidates.last().ok_or(
+                    ShadowStoreError::InvalidFriendsQuery {
+                        field: "location candidate retention",
+                    },
+                )?;
+                let removed_bytes = location_candidate_retained_bytes(
+                    &removed.global_id,
+                    removed.published_at,
+                    removed.effective_at,
+                    false,
+                )?;
+                let replacement_bytes = location_candidate_retained_bytes(
+                    &row.global_id,
+                    row.published_at,
+                    effective_at,
+                    false,
+                )?;
+                retained_budget.replace_delta(
+                    removed_bytes as isize,
+                    has_location_delta + replacement_bytes as isize,
+                )?;
+                self.has_location |= row.has_location;
+                self.location_candidate_count = next_candidate_count;
+                self.location_candidates.insert(
+                    candidate_position,
+                    FriendLocationCandidate {
+                        global_id: row.global_id.clone(),
+                        published_at: row.published_at,
+                        effective_at,
+                    },
+                );
+                self.location_candidates.pop();
+            } else {
+                if first_location {
+                    retained_budget.replace_delta(0, has_location_delta)?;
+                }
+                self.has_location |= row.has_location;
+                self.location_candidate_count = next_candidate_count;
+            }
+        } else if first_location {
+            // `true` is one JSON byte shorter than `false`. Keep retained
+            // accounting exact even when every candidate is outside the
+            // active time window.
+            retained_budget.replace_delta(0, has_location_delta)?;
+            self.has_location = true;
+        }
+        let sample_position = self.sample_items.partition_point(|sample| {
+            sample.published_at > row.published_at
+                || (sample.published_at == row.published_at
+                    && sample.global_id.as_bytes() < row.global_id.as_bytes())
+        });
+        if self.sample_items.len() < MAX_FRIEND_SAMPLE_ITEMS {
+            retained_budget.charge(sample_retained_bytes(row, !self.sample_items.is_empty())?)?;
+            self.sample_items.insert(
+                sample_position,
+                FriendSampleItem {
+                    global_id: row.global_id.clone(),
+                    published_at: row.published_at,
+                },
+            );
+        } else if sample_position < MAX_FRIEND_SAMPLE_ITEMS {
+            let removed =
+                self.sample_items
+                    .last()
+                    .ok_or(ShadowStoreError::InvalidFriendsQuery {
+                        field: "sample retention",
+                    })?;
+            let removed_bytes =
+                sample_value_retained_bytes(&removed.global_id, removed.published_at)?;
+            let replacement_bytes = sample_value_retained_bytes(&row.global_id, row.published_at)?;
+            retained_budget.replace(removed_bytes, replacement_bytes)?;
+            self.sample_items.insert(
+                sample_position,
+                FriendSampleItem {
+                    global_id: row.global_id.clone(),
+                    published_at: row.published_at,
+                },
+            );
+            self.sample_items.pop();
+        }
+        if include_social_fields
+            && row.published_at >= recent_window.start_ms
+            && row.published_at <= recent_window.end_ms
+        {
+            self.recent_count =
+                self.recent_count
+                    .checked_add(1)
+                    .ok_or(ShadowStoreError::InvalidFriendsQuery {
+                        field: "recent count",
+                    })?;
+        }
+        for index in row.signal_indexes.iter().filter(|_| include_social_fields) {
+            if self.signal_counts[*index] == 0 {
+                let prior_signals = self
+                    .signal_counts
+                    .iter()
+                    .filter(|count| **count > 0)
+                    .count();
+                retained_budget.charge(signal_retained_bytes(
+                    FRIEND_SIGNAL_LABELS[*index],
+                    prior_signals > 0,
+                )?)?;
+            }
+            self.signal_counts[*index] = self.signal_counts[*index].checked_add(1).ok_or(
+                ShadowStoreError::InvalidFriendsQuery {
+                    field: "signal count",
+                },
+            )?;
+        }
+        Ok(())
+    }
+
+    fn social(self, key: FriendSourceKey) -> FriendActivitySummary {
+        let signal_counts = FRIEND_SIGNAL_LABELS
+            .iter()
+            .copied()
+            .zip(self.signal_counts)
+            .filter_map(|(label, count)| (count > 0).then_some(FriendSignalCount { label, count }))
+            .collect();
+        FriendActivitySummary {
+            platform: key.platform,
+            author_id: key.author_id,
+            item_count: self.item_count,
+            latest_activity_at: self.latest_activity_at,
+            has_location: self.has_location,
+            avatar_url: self.avatar_url,
+            avatar_published_at: self.avatar_published_at,
+            avatar_global_id: self.avatar_global_id,
+            location_candidate_count: self.location_candidate_count,
+            location_candidates: self.location_candidates,
+            sample_items: self.sample_items,
+            recent_count: self.recent_count,
+            signal_counts,
+        }
+    }
+
+    fn rss(self, feed_url: String) -> RssActivitySummary {
+        RssActivitySummary {
+            feed_url,
+            item_count: self.item_count,
+            latest_activity_at: self.latest_activity_at,
+            has_location: self.has_location,
+            avatar_url: self.avatar_url,
+            avatar_published_at: self.avatar_published_at,
+            avatar_global_id: self.avatar_global_id,
+            location_candidate_count: self.location_candidate_count,
+            location_candidates: self.location_candidates,
+            sample_items: self.sample_items,
+        }
+    }
+}
+
+fn json_optional_string<'a>(
+    object: &'a serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    field: &'static str,
+) -> StoreResult<Option<&'a str>> {
+    match object.get(key) {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(serde_json::Value::String(value)) => Ok(Some(value)),
+        Some(_) => Err(ShadowStoreError::InvalidFriendsQuery { field }),
+    }
+}
+
+fn decode_location_slug(value: &str) -> Option<String> {
+    fn hex(byte: u8) -> Option<u8> {
+        match byte {
+            b'0'..=b'9' => Some(byte - b'0'),
+            b'a'..=b'f' => Some(byte - b'a' + 10),
+            b'A'..=b'F' => Some(byte - b'A' + 10),
+            _ => None,
+        }
+    }
+
+    let input = value.as_bytes();
+    let mut output = Vec::with_capacity(input.len());
+    let mut index = 0;
+    while index < input.len() {
+        if input[index] != b'%' {
+            output.push(input[index]);
+            index += 1;
+            continue;
+        }
+        let high = hex(*input.get(index + 1)?)?;
+        let low = hex(*input.get(index + 2)?)?;
+        output.push((high << 4) | low);
+        index += 3;
+    }
+    String::from_utf8(output).ok()
+}
+
+/// Exact ECMAScript `\s` / `String.prototype.trim` whitespace set.
+///
+/// Rust's Unicode whitespace predicate is deliberately different: it admits
+/// U+0085, which JavaScript rejects, and omits U+FEFF, which JavaScript trims.
+/// This reader mirrors the shared TypeScript location contract, so using the
+/// host-language predicate would change persisted Friends graph results.
+fn is_ecmascript_whitespace(value: char) -> bool {
+    matches!(
+        value,
+        '\u{0009}'
+            ..='\u{000D}'
+                | '\u{0020}'
+                | '\u{00A0}'
+                | '\u{1680}'
+                | '\u{2000}'..='\u{200A}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202F}'
+                | '\u{205F}'
+                | '\u{3000}'
+                | '\u{FEFF}'
+    )
+}
+
+fn trim_ecmascript_whitespace(value: &str) -> &str {
+    value.trim_matches(is_ecmascript_whitespace)
+}
+
+fn normalize_location_slug(value: &str) -> String {
+    let mut normalized = String::with_capacity(value.len());
+    let mut pending_space = false;
+    for value in value.chars() {
+        if value == '_' || value == '-' || is_ecmascript_whitespace(value) {
+            pending_space = !normalized.is_empty();
+        } else {
+            if pending_space {
+                normalized.push(' ');
+                pending_space = false;
+            }
+            normalized.push(value);
+        }
+    }
+    normalized
+}
+
+/// Mirrors the successful-match shape of `MARKER\s*([^\n,]{2,60})`.
+///
+/// The JavaScript regex greedily consumes whitespace, then backtracks just
+/// enough to satisfy the two-character capture. That oddity is observable: two
+/// spaces before a comma produce a successful match whose trimmed value is
+/// empty, while one space does not match and lets the regex seek a later marker.
+fn marker_location_match(tail: &str) -> Option<bool> {
+    let mut whitespace_end = 0usize;
+    for (index, value) in tail.char_indices() {
+        if !is_ecmascript_whitespace(value) {
+            break;
+        }
+        whitespace_end = index + value.len_utf8();
+    }
+
+    let remainder = &tail[whitespace_end..];
+    let remainder_count = remainder
+        .chars()
+        .take_while(|value| !matches!(value, '\n' | ','))
+        .take(2)
+        .count();
+    if remainder_count >= 2 {
+        // The whitespace prefix was consumed completely, so the capture starts
+        // with a non-whitespace character and remains non-empty after trim.
+        return Some(true);
+    }
+
+    let whitespace = &tail[..whitespace_end];
+    let trailing_run = whitespace
+        .rsplit_once('\n')
+        .map_or(whitespace, |(_, trailing)| trailing);
+    if trailing_run.chars().count().saturating_add(remainder_count) >= 2 {
+        return Some(remainder_count > 0);
+    }
+
+    // Backtracking cannot capture across U+000A. An earlier whitespace run of
+    // two characters can still satisfy the regex, but trim makes it empty and
+    // the shared extractor stops without considering a later marker.
+    if whitespace
+        .split('\n')
+        .rev()
+        .skip(1)
+        .any(|run| run.chars().count() >= 2)
+    {
+        return Some(false);
+    }
+    None
+}
+
+fn recovered_location_name(url: Option<&str>) -> bool {
+    let Some(url) = url else { return false };
+    let parsed = Url::parse(url)
+        .or_else(|_| Url::parse("https://www.instagram.com").and_then(|base| base.join(url)));
+    let Ok(parsed) = parsed else { return false };
+    let segments = parsed
+        .path_segments()
+        .map(|segments| {
+            segments
+                .filter(|value| !value.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let location_index = segments.iter().position(|segment| *segment == "locations");
+    let slug = match location_index {
+        Some(index) => segments.get(index + 2).copied(),
+        None => segments.last().copied(),
+    };
+    let Some(slug) = slug else { return false };
+    let Some(decoded) = decode_location_slug(slug) else {
+        return false;
+    };
+    let decoded = normalize_location_slug(&decoded);
+    !decoded.is_empty()
+        && !decoded.chars().all(|value| value.is_ascii_digit())
+        && !matches!(
+            decoded.to_ascii_lowercase().as_str(),
+            "locations" | "check registration"
+        )
+}
+
+fn text_has_location(text: &str) -> bool {
+    for marker in ['📍', '🌍', '🌎', '🌏'] {
+        for (offset, _) in text.char_indices().filter(|(_, value)| *value == marker) {
+            if let Some(has_location) = marker_location_match(&text[offset + marker.len_utf8()..]) {
+                return has_location;
+            }
+        }
+    }
+
+    for (index, _) in text.char_indices() {
+        if index > 0
+            && !text[..index]
+                .chars()
+                .next_back()
+                .is_some_and(is_ecmascript_whitespace)
+        {
+            continue;
+        }
+        let tail = &text[index..];
+        let word_length = if tail.starts_with("in") || tail.starts_with("at") {
+            2
+        } else if tail.starts_with("from") {
+            4
+        } else {
+            continue;
+        };
+        let after_word = &tail[word_length..];
+        if !after_word
+            .chars()
+            .next()
+            .is_some_and(is_ecmascript_whitespace)
+        {
+            continue;
+        }
+        let candidate = after_word.trim_start_matches(is_ecmascript_whitespace);
+        let mut chars = candidate.chars();
+        if !chars.next().is_some_and(|value| value.is_ascii_uppercase()) {
+            continue;
+        }
+        if chars.next().is_some_and(|value| value.is_ascii_lowercase()) {
+            return true;
+        }
+    }
+    false
+}
+
+fn exact_location_presence(
+    rest: &serde_json::Map<String, serde_json::Value>,
+    content: &serde_json::Map<String, serde_json::Value>,
+) -> StoreResult<bool> {
+    if let Some(value) = rest.get("location") {
+        match value {
+            serde_json::Value::Null => {}
+            serde_json::Value::Object(location) => {
+                if let Some(coordinates) = location.get("coordinates") {
+                    match coordinates {
+                        serde_json::Value::Null => {}
+                        serde_json::Value::Object(coordinates)
+                            if coordinates
+                                .get("lat")
+                                .and_then(serde_json::Value::as_f64)
+                                .is_some()
+                                && coordinates
+                                    .get("lng")
+                                    .and_then(serde_json::Value::as_f64)
+                                    .is_some() =>
+                        {
+                            return Ok(true)
+                        }
+                        _ => {
+                            return Err(ShadowStoreError::InvalidFriendsQuery {
+                                field: "location.coordinates",
+                            })
+                        }
+                    }
+                }
+                let name = json_optional_string(location, "name", "location.name")?;
+                let url = json_optional_string(location, "url", "location.url")?;
+                let normalized =
+                    trim_ecmascript_whitespace(name.unwrap_or_default()).to_ascii_lowercase();
+                if !normalized.is_empty()
+                    && !matches!(normalized.as_str(), "locations" | "check registration")
+                {
+                    return Ok(true);
+                }
+                if recovered_location_name(url) {
+                    return Ok(true);
+                }
+            }
+            _ => return Err(ShadowStoreError::InvalidFriendsQuery { field: "location" }),
+        }
+    }
+    match content.get("text") {
+        None | Some(serde_json::Value::Null) => Ok(false),
+        Some(serde_json::Value::String(text)) => Ok(text_has_location(text)),
+        Some(_) => Err(ShadowStoreError::InvalidFriendsQuery {
+            field: "content.text",
+        }),
+    }
+}
+
+fn exact_location_time_range(
+    rest: &serde_json::Map<String, serde_json::Value>,
+) -> StoreResult<Option<FriendLocationTimeRange>> {
+    if rest
+        .get("__raw")
+        .and_then(serde_json::Value::as_object)
+        .is_some_and(|raw| raw.contains_key("timeRange"))
+    {
+        return Err(ShadowStoreError::InvalidFriendsQuery { field: "timeRange" });
+    }
+    let Some(time_range) = rest.get("timeRange") else {
+        return Ok(None);
+    };
+    if time_range.is_null() {
+        return Ok(None);
+    }
+    let time_range = time_range
+        .as_object()
+        .ok_or(ShadowStoreError::InvalidFriendsQuery { field: "timeRange" })?;
+    let starts_at = time_range
+        .get("startsAt")
+        .and_then(serde_json::Value::as_i64)
+        .filter(|value| saved_analytics_safe_integer(*value))
+        .ok_or(ShadowStoreError::InvalidFriendsQuery {
+            field: "timeRange.startsAt",
+        })?;
+    let ends_at = match time_range.get("endsAt") {
+        None | Some(serde_json::Value::Null) => starts_at,
+        Some(value) => value
+            .as_i64()
+            .filter(|value| saved_analytics_safe_integer(*value))
+            .ok_or(ShadowStoreError::InvalidFriendsQuery {
+                field: "timeRange.endsAt",
+            })?,
+    };
+    Ok(Some(FriendLocationTimeRange { starts_at, ends_at }))
+}
+
+/// Returns the exact current-mode ordering timestamp used by the shared
+/// location resolver, or `None` when the location row is not visible at the
+/// requested graph instant.
+///
+/// The full item remains the authority for resolving coordinates and named
+/// locations. This compact value only proves which lossless rows must be
+/// fetched before the existing resolver runs.
+fn current_location_effective_at(row: &ExactFriendActivityRow, current_at: i64) -> Option<i64> {
+    if !row.has_location {
+        return None;
+    }
+    match row.location_time_range {
+        None => (row.published_at <= current_at).then_some(row.published_at),
+        Some(time_range) => (time_range.starts_at <= current_at
+            && time_range.ends_at >= current_at)
+            .then_some(time_range.starts_at),
+    }
+}
+
+fn exact_friend_activity_row(
+    global_id: String,
+    platform: Option<String>,
+    author_id: Option<String>,
+    published_at: Option<i64>,
+    hidden: Option<i64>,
+    content_blob: Option<String>,
+    rest_text: String,
+) -> StoreResult<ExactFriendActivityRow> {
+    if global_id.is_empty() || global_id.len() > MAX_ENTITY_ID_UTF8_BYTES {
+        return Err(ShadowStoreError::InvalidFriendsQuery { field: "globalId" });
+    }
+    let platform = platform
+        .filter(|value| string_within_bounds(value, 64, 256))
+        .ok_or(ShadowStoreError::InvalidFriendsQuery { field: "platform" })?;
+    let author_id = author_id
+        .filter(|value| string_within_bounds(value, 4_096, 16_384))
+        .ok_or(ShadowStoreError::InvalidFriendsQuery { field: "author.id" })?;
+    let published_at = published_at
+        .filter(|value| (0..=MAX_JAVASCRIPT_SAFE_INTEGER).contains(value))
+        .ok_or(ShadowStoreError::InvalidFriendsQuery {
+            field: "publishedAt",
+        })?;
+    if !matches!(hidden, None | Some(0)) {
+        return Err(ShadowStoreError::InvalidFriendsQuery {
+            field: "userState.hidden",
+        });
+    }
+    let rest = serde_json::from_str::<serde_json::Value>(&rest_text)
+        .map_err(|_| ShadowStoreError::InvalidFriendsQuery { field: "rest" })?;
+    let rest = rest
+        .as_object()
+        .ok_or(ShadowStoreError::InvalidFriendsQuery { field: "rest" })?;
+    if let Some(raw) = rest.get("__raw") {
+        let raw = raw
+            .as_object()
+            .ok_or(ShadowStoreError::InvalidFriendsQuery {
+                field: "raw escapes",
+            })?;
+        for field in [
+            "platform",
+            "author",
+            "author.id",
+            "publishedAt",
+            "userState",
+            "userState.hidden",
+            "content",
+            "contentSignals",
+            "location",
+            "rssSource",
+        ] {
+            if raw.contains_key(field) {
+                return Err(ShadowStoreError::InvalidFriendsQuery {
+                    field: "raw escapes",
+                });
+            }
+        }
+    }
+    if let Some(absent) = rest.get("__absent") {
+        let absent = absent
+            .as_array()
+            .filter(|values| values.iter().all(serde_json::Value::is_string))
+            .ok_or(ShadowStoreError::InvalidFriendsQuery {
+                field: "absent paths",
+            })?;
+        for field in [
+            "platform",
+            "author",
+            "author.id",
+            "publishedAt",
+            "userState",
+            "userState.hidden",
+            "content",
+        ] {
+            if absent.iter().any(|value| value.as_str() == Some(field)) {
+                return Err(ShadowStoreError::InvalidFriendsQuery {
+                    field: "absent paths",
+                });
+            }
+        }
+    }
+
+    let content = match content_blob.as_deref() {
+        None => serde_json::json!({}),
+        Some(value) => serde_json::from_str::<serde_json::Value>(value)
+            .map_err(|_| ShadowStoreError::InvalidFriendsQuery { field: "content" })?,
+    };
+    let content = content
+        .as_object()
+        .ok_or(ShadowStoreError::InvalidFriendsQuery { field: "content" })?;
+    let avatar_url = match rest.get("__author") {
+        None => None,
+        Some(serde_json::Value::Object(author)) => {
+            let value = json_optional_string(author, "avatarUrl", "author.avatarUrl")?;
+            if !optional_string_within_bounds(value, 2_048, 8_192) {
+                return Err(ShadowStoreError::InvalidFriendsQuery {
+                    field: "author.avatarUrl",
+                });
+            }
+            value.map(ToOwned::to_owned)
+        }
+        Some(_) => return Err(ShadowStoreError::InvalidFriendsQuery { field: "author" }),
+    };
+    let rss_feed_url = match rest.get("rssSource") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(serde_json::Value::Object(rss)) => {
+            let value = json_optional_string(rss, "feedUrl", "rssSource.feedUrl")?.ok_or(
+                ShadowStoreError::InvalidFriendsQuery {
+                    field: "rssSource.feedUrl",
+                },
+            )?;
+            if !string_within_bounds(value, 2_048, 8_192) {
+                return Err(ShadowStoreError::InvalidFriendsQuery {
+                    field: "rssSource.feedUrl",
+                });
+            }
+            Some(value.to_owned())
+        }
+        Some(_) => return Err(ShadowStoreError::InvalidFriendsQuery { field: "rssSource" }),
+    };
+    let mut signal_indexes = Vec::new();
+    let mut seen_signal_indexes = BTreeSet::new();
+    match rest.get("contentSignals") {
+        None | Some(serde_json::Value::Null) => {}
+        Some(serde_json::Value::Object(signals)) => match signals.get("tags") {
+            None | Some(serde_json::Value::Null) => {}
+            Some(serde_json::Value::Array(tags)) if tags.len() <= MAX_FEED_CARD_SIGNAL_TAGS => {
+                for tag in tags {
+                    let tag = tag.as_str().ok_or(ShadowStoreError::InvalidFriendsQuery {
+                        field: "contentSignals.tags",
+                    })?;
+                    let index = FRIEND_SIGNAL_LABELS
+                        .iter()
+                        .position(|known| *known == tag)
+                        .ok_or(ShadowStoreError::InvalidFriendsQuery {
+                            field: "contentSignals.tags",
+                        })?;
+                    if !seen_signal_indexes.insert(index) {
+                        return Err(ShadowStoreError::InvalidFriendsQuery {
+                            field: "contentSignals.tags",
+                        });
+                    }
+                    signal_indexes.push(index);
+                }
+            }
+            Some(_) => {
+                return Err(ShadowStoreError::InvalidFriendsQuery {
+                    field: "contentSignals.tags",
+                })
+            }
+        },
+        Some(_) => {
+            return Err(ShadowStoreError::InvalidFriendsQuery {
+                field: "contentSignals",
+            })
+        }
+    }
+    let has_location = exact_location_presence(rest, content)?;
+    let location_time_range = has_location
+        .then(|| exact_location_time_range(rest))
+        .transpose()?
+        .flatten();
+    Ok(ExactFriendActivityRow {
+        global_id,
+        platform,
+        author_id,
+        published_at,
+        avatar_url,
+        rss_feed_url,
+        has_location,
+        location_time_range,
+        signal_indexes,
+    })
+}
+
+fn canonical_friend_sources(
+    sources: &[FriendSourceKey],
+    require_non_empty: bool,
+) -> StoreResult<Vec<&FriendSourceKey>> {
+    if (require_non_empty && sources.is_empty()) || sources.len() > MAX_FRIEND_SOURCE_KEYS {
+        return Err(ShadowStoreError::FriendsSourceLimit {
+            requested: sources.len(),
+            maximum: MAX_FRIEND_SOURCE_KEYS,
+        });
+    }
+    let mut canonical = BTreeSet::new();
+    for source in sources {
+        if !string_within_bounds(&source.platform, 64, 256)
+            || !string_within_bounds(&source.author_id, 4_096, 16_384)
+        {
+            return Err(ShadowStoreError::InvalidFriendsQuery { field: "sources" });
+        }
+        if !canonical.insert(source) {
+            return Err(ShadowStoreError::InvalidFriendsQuery {
+                field: "duplicate sources",
+            });
+        }
+    }
+    Ok(canonical.into_iter().collect())
+}
+
+fn canonical_rss_feed_urls(feed_urls: &[String]) -> StoreResult<Vec<&String>> {
+    let mut canonical = BTreeSet::new();
+    for feed_url in feed_urls {
+        if !string_within_bounds(feed_url, 2_048, 8_192) {
+            return Err(ShadowStoreError::InvalidFriendsQuery {
+                field: "rssFeedUrls",
+            });
+        }
+        if !canonical.insert(feed_url) {
+            return Err(ShadowStoreError::InvalidFriendsQuery {
+                field: "duplicate rssFeedUrls",
+            });
+        }
+    }
+    Ok(canonical.into_iter().collect())
+}
+
+const FRIENDS_GRAPH_SOCIAL_SQL: &str = "WITH requested AS (
+       SELECT json_extract(value, '$.platform') AS platform,
+              json_extract(value, '$.authorId') AS authorId
+       FROM json_each(?1)
+     )
+     SELECT f.globalId, f.platform, f.authorId, f.publishedAt,
+            f.hidden, f.contentBlob, f.rest
+     FROM requested AS r
+     JOIN feed_items AS f
+       ON f.platform = r.platform AND f.authorId = r.authorId
+     WHERE f.hidden IS NOT 1;";
+
+const FRIENDS_GRAPH_RSS_SQL: &str = "WITH requested AS (
+       SELECT value AS feedUrl FROM json_each(?1)
+     )
+     SELECT f.globalId, f.platform, f.authorId, f.publishedAt,
+            f.hidden, f.contentBlob, f.rest
+     FROM requested AS r
+     JOIN feed_items AS f
+       ON json_extract(f.rest, '$.rssSource.feedUrl') = r.feedUrl
+     WHERE f.platform = 'rss' AND f.hidden IS NOT 1;";
+
+fn person_timeline_page_sql(after: bool, use_friends_timeline_index: bool) -> StoreResult<String> {
+    let base = if after {
+        PAGE_AFTER_SQL
+    } else {
+        PAGE_FIRST_SQL
+    };
+    let index = if use_friends_timeline_index {
+        " INDEXED BY feed_items_friends_timeline"
+    } else {
+        ""
+    };
+    let replacement = if after {
+        format!(
+            "FROM feed_items{index} \
+         JOIN json_each(?4) AS requested \
+         ON feed_items.platform = json_extract(requested.value, '$.platform') \
+         AND feed_items.authorId = json_extract(requested.value, '$.authorId') \
+         WHERE feed_items.hidden IS NOT 1"
+        )
+    } else {
+        format!(
+            "FROM feed_items{index} \
+         JOIN json_each(?2) AS requested \
+         ON feed_items.platform = json_extract(requested.value, '$.platform') \
+         AND feed_items.authorId = json_extract(requested.value, '$.authorId') \
+         WHERE feed_items.hidden IS NOT 1"
+        )
+    };
+    let marker = "FROM feed_items INDEXED BY feed_items_timeline \
+                  WHERE archived IS NOT 1 AND hidden IS NOT 1";
+    if !base.contains(marker) {
+        return Err(ShadowStoreError::InvalidFriendsQuery {
+            field: "timeline SQL contract",
+        });
+    }
+    Ok(base.replacen(marker, &replacement, 1))
+}
+
+fn person_timeline_has_more_sql(use_friends_timeline_index: bool) -> String {
+    let index = if use_friends_timeline_index {
+        " INDEXED BY feed_items_friends_timeline"
+    } else {
+        ""
+    };
+    format!(
+        "SELECT EXISTS (
+           SELECT 1
+           FROM feed_items{index}
+           JOIN json_each(?3) AS requested
+             ON feed_items.platform = json_extract(requested.value, '$.platform')
+            AND feed_items.authorId = json_extract(requested.value, '$.authorId')
+           WHERE feed_items.hidden IS NOT 1
+             AND (
+               feed_items.sortAt < ?1
+               OR (feed_items.sortAt = ?1 AND feed_items.globalId > ?2)
+             )
+           LIMIT 1
+         );"
+    )
+}
+
 fn invalid_feed_card_field(field: &'static str) -> rusqlite::Error {
     rusqlite::Error::FromSqlConversionFailure(
         0,
@@ -1027,7 +2268,8 @@ CASE WHEN json_type(rest, '$.eventCandidate.confidence') IN ('integer', 'real') 
   AND json_extract(rest, '$.eventCandidate.confidence') BETWEEN 0 AND 1 \
   THEN CAST(ROUND(json_extract(rest, '$.eventCandidate.confidence') * 10000) AS INTEGER) END, \
 sortAt \
-FROM feed_items WHERE archived IS NOT 1 AND hidden IS NOT 1 \
+FROM feed_items INDEXED BY feed_items_timeline \
+WHERE archived IS NOT 1 AND hidden IS NOT 1 \
 ORDER BY sortAt DESC, globalId ASC LIMIT ?1;";
 
 const PAGE_AFTER_SQL: &str = "SELECT globalId, substr(platform, 1, 64), \
@@ -1078,7 +2320,8 @@ CASE WHEN json_type(rest, '$.eventCandidate.confidence') IN ('integer', 'real') 
   AND json_extract(rest, '$.eventCandidate.confidence') BETWEEN 0 AND 1 \
   THEN CAST(ROUND(json_extract(rest, '$.eventCandidate.confidence') * 10000) AS INTEGER) END, \
 sortAt \
-FROM feed_items WHERE archived IS NOT 1 AND hidden IS NOT 1 \
+FROM feed_items INDEXED BY feed_items_timeline \
+WHERE archived IS NOT 1 AND hidden IS NOT 1 \
 AND (sortAt < ?1 OR (sortAt = ?1 AND globalId > ?2)) \
 ORDER BY sortAt DESC, globalId ASC LIMIT ?3;";
 
@@ -1153,6 +2396,7 @@ pub(super) fn publish_projection_file(staging: &Path, destination: &Path) -> std
 pub(super) struct ShadowStore {
     conn: Connection,
     path: Option<PathBuf>,
+    schema_version: i64,
 }
 
 impl ShadowStore {
@@ -1160,6 +2404,7 @@ impl ShadowStore {
         let mut store = Self {
             conn: Connection::open(path)?,
             path: Some(path.to_path_buf()),
+            schema_version: SHADOW_SCHEMA_VERSION,
         };
         store.configure()?;
         store.migrate()?;
@@ -1170,6 +2415,7 @@ impl ShadowStore {
         let mut store = Self {
             conn: Connection::open_in_memory()?,
             path: None,
+            schema_version: SHADOW_SCHEMA_VERSION,
         };
         store.configure()?;
         store.migrate()?;
@@ -1229,6 +2475,9 @@ impl ShadowStore {
         }
         if prior < 3 {
             tx.execute_batch(SHADOW_SCHEMA_V3_SQL)?;
+        }
+        if prior < 4 {
+            tx.execute_batch(SHADOW_SCHEMA_V4_SQL)?;
         }
         let actual = tx.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
         if actual != SHADOW_SCHEMA_VERSION {
@@ -1449,6 +2698,267 @@ impl ShadowStore {
             hourly_counts,
             source_counts,
             content_mix,
+        })
+    }
+
+    /// Builds the compact Friends activity graph from one immutable projection.
+    /// Every requested key is returned exactly once, including keys with no rows.
+    pub(super) fn friends_graph_activity(
+        &self,
+        sources: &[FriendSourceKey],
+        rss_feed_urls: &[String],
+        recent_window: FriendsActivityWindow,
+    ) -> StoreResult<FriendsGraphActivity> {
+        let requested = sources.len().checked_add(rss_feed_urls.len()).ok_or(
+            ShadowStoreError::FriendsSourceLimit {
+                requested: usize::MAX,
+                maximum: MAX_FRIEND_SOURCE_KEYS,
+            },
+        )?;
+        if requested > MAX_FRIEND_SOURCE_KEYS {
+            return Err(ShadowStoreError::FriendsSourceLimit {
+                requested,
+                maximum: MAX_FRIEND_SOURCE_KEYS,
+            });
+        }
+        if !(0..=MAX_JAVASCRIPT_SAFE_INTEGER).contains(&recent_window.start_ms)
+            || !(0..=MAX_JAVASCRIPT_SAFE_INTEGER).contains(&recent_window.end_ms)
+            || recent_window.start_ms >= recent_window.end_ms
+        {
+            return Err(ShadowStoreError::InvalidFriendsQuery {
+                field: "recentWindow",
+            });
+        }
+        let sources = canonical_friend_sources(sources, false)?;
+        let rss_feed_urls = canonical_rss_feed_urls(rss_feed_urls)?;
+
+        let mut retained_budget = FriendsGraphRetainedBudget::new()?;
+        let mut social = BTreeMap::new();
+        for (index, source) in sources.iter().enumerate() {
+            retained_budget.charge(
+                empty_social_retained_bytes(source)?.saturating_add(usize::from(index > 0)),
+            )?;
+            social.insert((**source).clone(), FriendsActivityAccumulator::empty());
+        }
+        let mut rss = BTreeMap::new();
+        for (index, feed_url) in rss_feed_urls.iter().enumerate() {
+            retained_budget.charge(
+                empty_rss_retained_bytes(feed_url)?.saturating_add(usize::from(index > 0)),
+            )?;
+            rss.insert((**feed_url).clone(), FriendsActivityAccumulator::empty());
+        }
+        // Serialize the SQL selectors only after the complete zero-filled
+        // response shape has passed its retained-output budget. Otherwise a
+        // maximum-width 5,000-source request could allocate the full selector
+        // document before proving that the requested response is admissible.
+        let sources_json =
+            serde_json::to_string(&sources).map_err(|_| ShadowStoreError::InvalidFriendsQuery {
+                field: "sources serialization",
+            })?;
+        let rss_feed_urls_json = serde_json::to_string(&rss_feed_urls).map_err(|_| {
+            ShadowStoreError::InvalidFriendsQuery {
+                field: "rssFeedUrls serialization",
+            }
+        })?;
+
+        let tx = self.conn.unchecked_transaction()?;
+        Self::require_readable_projection_in(&tx)?;
+        let total_item_count = tx.query_row(
+            "SELECT COUNT(*) FROM feed_items WHERE hidden IS NOT 1;",
+            [],
+            |row| row.get(0),
+        )?;
+
+        if !sources.is_empty() {
+            let mut statement = tx.prepare(FRIENDS_GRAPH_SOCIAL_SQL)?;
+            let mut rows = statement.query([&sources_json])?;
+            while let Some(row) = rows.next()? {
+                let exact = exact_friend_activity_row(
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                )?;
+                let key = FriendSourceKey {
+                    platform: exact.platform.clone(),
+                    author_id: exact.author_id.clone(),
+                };
+                social
+                    .get_mut(&key)
+                    .ok_or(ShadowStoreError::InvalidFriendsQuery {
+                        field: "selected social source identity",
+                    })?
+                    .add(&exact, recent_window, true, &mut retained_budget)?;
+            }
+        }
+
+        if !rss_feed_urls.is_empty() {
+            let mut statement = tx.prepare(FRIENDS_GRAPH_RSS_SQL)?;
+            let mut rows = statement.query([&rss_feed_urls_json])?;
+            while let Some(row) = rows.next()? {
+                let exact = exact_friend_activity_row(
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                )?;
+                let feed_url =
+                    exact
+                        .rss_feed_url
+                        .as_ref()
+                        .ok_or(ShadowStoreError::InvalidFriendsQuery {
+                            field: "selected RSS source identity",
+                        })?;
+                rss.get_mut(feed_url)
+                    .ok_or(ShadowStoreError::InvalidFriendsQuery {
+                        field: "selected RSS source identity",
+                    })?
+                    .add(&exact, recent_window, false, &mut retained_budget)?;
+            }
+        }
+        tx.commit()?;
+
+        Ok(FriendsGraphActivity {
+            total_item_count,
+            social: social
+                .into_iter()
+                .map(|(key, activity)| activity.social(key))
+                .collect(),
+            rss: rss
+                .into_iter()
+                .map(|(feed_url, activity)| activity.rss(feed_url))
+                .collect(),
+        })
+    }
+
+    /// Reads one stateless, bounded Friends timeline page for exact source keys.
+    /// Hidden rows are excluded. Archived rows remain because Friends activity
+    /// is an identity history, not the current inbox surface.
+    pub(super) fn person_timeline(
+        &self,
+        sources: &[FriendSourceKey],
+        cursor: Option<&PageCursor>,
+        limit: u32,
+    ) -> StoreResult<FeedPage> {
+        if !(1..=MAX_PERSON_TIMELINE_LIMIT).contains(&limit) {
+            return Err(ShadowStoreError::InvalidPageLimit {
+                requested: limit,
+                maximum: MAX_PERSON_TIMELINE_LIMIT,
+            });
+        }
+        let sources = canonical_friend_sources(sources, true)?;
+        let sources_json =
+            serde_json::to_string(&sources).map_err(|_| ShadowStoreError::InvalidFriendsQuery {
+                field: "sources serialization",
+            })?;
+        let tx = self.conn.unchecked_transaction()?;
+        Self::require_readable_projection_in(&tx)?;
+        let revision = Self::revision_in(&tx)?;
+        if let Some(cursor) = cursor {
+            if cursor.revision != revision {
+                return Err(ShadowStoreError::StaleRevision {
+                    expected: cursor.revision,
+                    actual: revision,
+                });
+            }
+        }
+
+        let candidates = match cursor {
+            None => {
+                let sql =
+                    person_timeline_page_sql(false, self.schema_version >= SHADOW_SCHEMA_VERSION)?;
+                let mut statement = tx.prepare(&sql)?;
+                let rows = statement
+                    .query_map(params![limit, sources_json], FeedCardRow::from_row)?
+                    .collect::<SqlResult<Vec<_>>>()?;
+                rows
+            }
+            Some(cursor) => {
+                let sql =
+                    person_timeline_page_sql(true, self.schema_version >= SHADOW_SCHEMA_VERSION)?;
+                let mut statement = tx.prepare(&sql)?;
+                let rows = statement
+                    .query_map(
+                        params![cursor.sort_at, cursor.global_id, limit, sources_json],
+                        FeedCardRow::from_row,
+                    )?
+                    .collect::<SqlResult<Vec<_>>>()?;
+                rows
+            }
+        };
+        let total_count = tx.query_row(
+            "SELECT COUNT(*)
+             FROM feed_items
+             JOIN json_each(?1) AS requested
+               ON feed_items.platform = json_extract(requested.value, '$.platform')
+              AND feed_items.authorId = json_extract(requested.value, '$.authorId')
+             WHERE feed_items.hidden IS NOT 1;",
+            [&sources_json],
+            |row| row.get(0),
+        )?;
+        let row_budget =
+            MAX_FEED_PAGE_RESPONSE_BYTES.saturating_sub(FEED_PAGE_ENVELOPE_RESERVE_BYTES);
+        let mut rows = Vec::with_capacity(candidates.len());
+        let mut serialized_row_bytes = 0usize;
+        let mut truncated_by_bytes = false;
+        for candidate in candidates {
+            let candidate_bytes = candidate.serialized_size_bytes()?;
+            let next_row_bytes = serialized_row_bytes
+                .saturating_add(candidate_bytes)
+                .saturating_add(usize::from(!rows.is_empty()));
+            let candidate_cursor = PageCursor {
+                revision,
+                sort_at: candidate.sort_key(),
+                global_id: candidate.global_id.clone(),
+            };
+            let next_bounded_bytes =
+                next_row_bytes.saturating_add(candidate_cursor.serialized_size_bytes()?);
+            if next_bounded_bytes > row_budget {
+                if rows.is_empty() {
+                    return Err(ShadowStoreError::FeedCardExceedsResponseBudget {
+                        requested: next_bounded_bytes,
+                        maximum: row_budget,
+                    });
+                }
+                truncated_by_bytes = true;
+                break;
+            }
+            serialized_row_bytes = next_row_bytes;
+            rows.push(candidate);
+        }
+        let last_cursor = rows.last().map(|row| PageCursor {
+            revision,
+            sort_at: row.sort_key(),
+            global_id: row.global_id.clone(),
+        });
+        let has_more = if truncated_by_bytes {
+            true
+        } else if rows.len() as u32 != limit {
+            false
+        } else if let Some(last_cursor) = last_cursor.as_ref() {
+            let sql = person_timeline_has_more_sql(self.schema_version >= SHADOW_SCHEMA_VERSION);
+            tx.query_row(
+                &sql,
+                params![last_cursor.sort_at, &last_cursor.global_id, &sources_json],
+                |row| row.get::<_, i64>(0),
+            )? != 0
+        } else {
+            false
+        };
+        let next_cursor = has_more.then_some(last_cursor).flatten();
+        tx.commit()?;
+        Ok(FeedPage {
+            revision,
+            total_count,
+            serialized_row_bytes,
+            rows,
+            next_cursor,
         })
     }
 
@@ -1860,9 +3370,15 @@ impl ShadowStore {
         Ok(catalog)
     }
 
-    fn verify_schema_catalog(conn: &Connection) -> StoreResult<()> {
-        let reference = Self::open_in_memory()?;
-        if Self::schema_catalog(conn)? != Self::schema_catalog(&reference.conn)? {
+    fn verify_schema_catalog(conn: &Connection, schema_version: i64) -> StoreResult<()> {
+        let reference = Connection::open_in_memory()?;
+        reference.execute_batch(SHADOW_SCHEMA_V1_SQL)?;
+        reference.execute_batch(SHADOW_SCHEMA_V2_SQL)?;
+        reference.execute_batch(SHADOW_SCHEMA_V3_SQL)?;
+        if schema_version >= SHADOW_SCHEMA_VERSION {
+            reference.execute_batch(SHADOW_SCHEMA_V4_SQL)?;
+        }
+        if Self::schema_catalog(conn)? != Self::schema_catalog(&reference)? {
             return Err(ShadowStoreError::ProjectionPublicationInvalid {
                 field: "schema_catalog",
             });
@@ -1918,7 +3434,7 @@ impl ShadowStore {
         conn.pragma_update(None, "mmap_size", 0)?;
         conn.pragma_update(None, "temp_store", "FILE")?;
         let version = conn.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
-        if version != SHADOW_SCHEMA_VERSION {
+        if !(MIN_READABLE_SHADOW_SCHEMA_VERSION..=SHADOW_SCHEMA_VERSION).contains(&version) {
             return Err(ShadowStoreError::UnsupportedSchemaVersion {
                 expected: SHADOW_SCHEMA_VERSION,
                 actual: version,
@@ -1926,7 +3442,7 @@ impl ShadowStore {
         }
         Self::verify_quick_check(&conn)?;
         Self::verify_foreign_keys(&conn)?;
-        Self::verify_schema_catalog(&conn)?;
+        Self::verify_schema_catalog(&conn, version)?;
         let state =
             Self::require_complete_projection_rebuild(&conn, rebuild_id, source, total_rows)?;
         let after = std::fs::symlink_metadata(path)?;
@@ -1947,6 +3463,7 @@ impl ShadowStore {
             Self {
                 conn,
                 path: Some(path.to_path_buf()),
+                schema_version: version,
             },
             generation,
         ))
@@ -2041,7 +3558,11 @@ impl ShadowStore {
         }
         Self::verify_quick_check(&self.conn)?;
 
-        let ShadowStore { conn, path } = self;
+        let ShadowStore {
+            conn,
+            path,
+            schema_version: _,
+        } = self;
         conn.close()
             .map_err(|(_, error)| ShadowStoreError::Sql(error))?;
         let staging = path.expect("disk store path was validated");
@@ -2671,6 +4192,48 @@ impl ShadowStore {
         };
         Ok(details.join(" | "))
     }
+
+    fn explain_person_timeline(&self, after: bool) -> StoreResult<String> {
+        let sql = person_timeline_page_sql(after, true)?;
+        let explained = format!("EXPLAIN QUERY PLAN {sql}");
+        let sources = serde_json::to_string(&[FriendSourceKey {
+            platform: "x".to_string(),
+            author_id: "author-1".to_string(),
+        }])
+        .map_err(|_| ShadowStoreError::InvalidFriendsQuery {
+            field: "sources serialization",
+        })?;
+        let mut statement = self.conn.prepare(&explained)?;
+        let details = if after {
+            statement
+                .query_map(params![0i64, "", 64u32, sources], |row| {
+                    row.get::<_, String>(3)
+                })?
+                .collect::<SqlResult<Vec<_>>>()?
+        } else {
+            statement
+                .query_map(params![64u32, sources], |row| row.get::<_, String>(3))?
+                .collect::<SqlResult<Vec<_>>>()?
+        };
+        Ok(details.join(" | "))
+    }
+
+    fn explain_person_timeline_has_more(&self) -> StoreResult<String> {
+        let sql = person_timeline_has_more_sql(true);
+        let explained = format!("EXPLAIN QUERY PLAN {sql}");
+        let sources = serde_json::to_string(&[FriendSourceKey {
+            platform: "x".to_string(),
+            author_id: "author-1".to_string(),
+        }])
+        .map_err(|_| ShadowStoreError::InvalidFriendsQuery {
+            field: "sources serialization",
+        })?;
+        let mut statement = self.conn.prepare(&explained)?;
+        let details = statement
+            .query_map(params![0i64, "", sources], |row| row.get::<_, String>(3))?
+            .collect::<SqlResult<Vec<_>>>()?;
+        Ok(details.join(" | "))
+    }
 }
 
 #[cfg(unix)]
@@ -2776,6 +4339,847 @@ mod tests {
         store
     }
 
+    fn friend_source(platform: &str, author_id: &str) -> FriendSourceKey {
+        FriendSourceKey {
+            platform: platform.to_string(),
+            author_id: author_id.to_string(),
+        }
+    }
+
+    fn exact_friend_row(global_id: &str, published_at: i64) -> ExactFriendActivityRow {
+        ExactFriendActivityRow {
+            global_id: global_id.to_string(),
+            platform: "x".to_string(),
+            author_id: "a:1".to_string(),
+            published_at,
+            avatar_url: None,
+            rss_feed_url: None,
+            has_location: false,
+            location_time_range: None,
+            signal_indexes: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn friends_graph_is_exact_bounded_and_keeps_archived_activity() {
+        let mut store = ShadowStore::open_in_memory().expect("open");
+        let mut rows = (0..6)
+            .map(|index| {
+                let published_at = match index {
+                    0 => 400,
+                    1 | 2 => 300,
+                    _ => 300 - index as i64,
+                };
+                let mut item = row(index, Some(published_at));
+                item.archived = Some(i64::from(index == 0));
+                item.content_blob = Some(
+                    serde_json::json!({
+                        "text": if index == 1 { "📍 London" } else { "body" },
+                        "mediaUrls": [],
+                        "mediaTypes": []
+                    })
+                    .to_string(),
+                );
+                item.rest = serde_json::json!({
+                    "__author": if index == 0 {
+                        serde_json::json!({})
+                    } else if index == 2 {
+                        serde_json::json!({ "avatarUrl": "https://example.test/avatar-tie.png" })
+                    } else {
+                        serde_json::json!({ "avatarUrl": "https://example.test/avatar.png" })
+                    },
+                    "__userState": { "liked": false },
+                    "contentSignals": { "tags": ["event", "news"] }
+                })
+                .to_string();
+                item
+            })
+            .collect::<Vec<_>>();
+        let mut hidden = row(20, Some(400));
+        hidden.hidden = Some(1);
+        let mut rss = row(21, Some(350));
+        rss.platform = Some("rss".to_string());
+        rss.author_id = Some("rss-author".to_string());
+        rss.content_blob = Some(
+            serde_json::json!({
+                "text": "from Paris",
+                "mediaUrls": [],
+                "mediaTypes": []
+            })
+            .to_string(),
+        );
+        rss.rest = serde_json::json!({
+            "__author": { "avatarUrl": "https://example.test/rss.png" },
+            "rssSource": { "feedUrl": "https://feed.test/rss" }
+        })
+        .to_string();
+        let mut unrelated = row(22, Some(500));
+        unrelated.author_id = Some("unrelated".to_string());
+        rows.extend([hidden, rss, unrelated]);
+        store
+            .apply_projection_batch("friends-graph", &digest(201), 0, &rows, &[])
+            .expect("project graph rows");
+
+        let graph = store
+            .friends_graph_activity(
+                &[friend_source("x", "zero"), friend_source("x", "a:1")],
+                &[
+                    "https://feed.test/zero".to_string(),
+                    "https://feed.test/rss".to_string(),
+                ],
+                FriendsActivityWindow {
+                    start_ms: 298,
+                    end_ms: 301,
+                },
+            )
+            .expect("graph");
+
+        assert_eq!(graph.total_item_count, 8, "hidden rows are not counted");
+        assert_eq!(
+            graph
+                .social
+                .iter()
+                .map(|entry| (entry.author_id.as_str(), entry.item_count))
+                .collect::<Vec<_>>(),
+            vec![("a:1", 6), ("zero", 0)],
+            "requested social keys are canonical and zero-filled",
+        );
+        let active = &graph.social[0];
+        assert_eq!(active.latest_activity_at, 400);
+        assert_eq!(active.recent_count, 2);
+        assert!(active.has_location);
+        assert_eq!(
+            active.avatar_url.as_deref(),
+            Some("https://example.test/avatar.png")
+        );
+        assert_eq!(active.avatar_published_at, Some(300));
+        assert_eq!(active.avatar_global_id.as_deref(), Some("x:000001"));
+        assert_eq!(active.location_candidate_count, 1);
+        assert_eq!(
+            active.location_candidates,
+            vec![FriendLocationCandidate {
+                global_id: "x:000001".to_string(),
+                published_at: 300,
+                effective_at: 300,
+            }]
+        );
+        assert_eq!(active.sample_items.len(), MAX_FRIEND_SAMPLE_ITEMS);
+        assert_eq!(
+            active
+                .sample_items
+                .iter()
+                .map(|sample| sample.global_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["x:000000", "x:000001", "x:000002", "x:000003", "x:000004"]
+        );
+        assert_eq!(
+            active
+                .signal_counts
+                .iter()
+                .map(|signal| (signal.label, signal.count))
+                .collect::<Vec<_>>(),
+            vec![("event", 6), ("news", 6)],
+            "known signals retain the fixed enum order",
+        );
+        assert_eq!(
+            graph
+                .rss
+                .iter()
+                .map(|entry| (entry.feed_url.as_str(), entry.item_count))
+                .collect::<Vec<_>>(),
+            vec![("https://feed.test/rss", 1), ("https://feed.test/zero", 0)],
+        );
+        assert_eq!(graph.rss[0].avatar_published_at, Some(350));
+        assert_eq!(graph.rss[0].avatar_global_id.as_deref(), Some("x:000021"));
+        assert_eq!(graph.rss[0].location_candidate_count, 0);
+        assert!(graph.rss[0].location_candidates.is_empty());
+        assert_eq!(graph.rss[1].avatar_url, None);
+        assert_eq!(graph.rss[1].avatar_published_at, None);
+        assert_eq!(graph.rss[1].avatar_global_id, None);
+        assert_eq!(graph.social[1].location_candidate_count, 0);
+        assert!(graph.social[1].location_candidates.is_empty());
+        assert_eq!(graph.rss[1].location_candidate_count, 0);
+        assert!(graph.rss[1].location_candidates.is_empty());
+    }
+
+    #[test]
+    fn friends_graph_keeps_explicit_rss_friend_and_feed_aggregates() {
+        let mut store = ShadowStore::open_in_memory().expect("open");
+        let mut rss = row(21, Some(350));
+        rss.platform = Some("rss".to_string());
+        rss.author_id = Some("rss-author".to_string());
+        rss.content_blob = Some(
+            serde_json::json!({
+                "text": "from Paris",
+                "mediaUrls": [],
+                "mediaTypes": []
+            })
+            .to_string(),
+        );
+        rss.rest = serde_json::json!({
+            "rssSource": { "feedUrl": "https://feed.test/rss" }
+        })
+        .to_string();
+        store
+            .apply_projection_batch("friends-rss-author", &digest(208), 0, &[rss], &[])
+            .expect("project RSS Friend row");
+
+        let graph = store
+            .friends_graph_activity(
+                &[friend_source("rss", "rss-author")],
+                &["https://feed.test/rss".to_string()],
+                FriendsActivityWindow {
+                    start_ms: 0,
+                    end_ms: 400,
+                },
+            )
+            .expect("graph");
+
+        assert_eq!(graph.total_item_count, 1);
+        assert_eq!(graph.social[0].item_count, 1);
+        assert_eq!(graph.rss[0].item_count, 1);
+        assert_eq!(graph.social[0].location_candidate_count, 1);
+        assert_eq!(graph.rss[0].location_candidate_count, 1);
+        assert_eq!(
+            graph.social[0].location_candidates, graph.rss[0].location_candidates,
+            "one RSS row may intentionally appear in both explicitly requested aggregate keys"
+        );
+    }
+
+    #[test]
+    fn friends_graph_top_five_and_avatar_are_independent_of_sql_arrival_order() {
+        let mut activity = FriendsActivityAccumulator::empty();
+        let mut retained_budget = FriendsGraphRetainedBudget::new().expect("budget");
+        let mut rows = [
+            exact_friend_row("x:c", 300),
+            exact_friend_row("x:f", 100),
+            exact_friend_row("x:a", 300),
+            exact_friend_row("x:g", 500),
+            exact_friend_row("x:e", 200),
+            exact_friend_row("x:d", 250),
+            exact_friend_row("x:b", 300),
+        ];
+        rows[0].avatar_url = Some("https://example.test/c.png".to_string());
+        rows[2].avatar_url = Some("https://example.test/a.png".to_string());
+        rows[1].has_location = true;
+        rows[4].has_location = true;
+        for row in &rows {
+            activity
+                .add(
+                    row,
+                    FriendsActivityWindow {
+                        start_ms: 0,
+                        end_ms: 1_000,
+                    },
+                    true,
+                    &mut retained_budget,
+                )
+                .expect("accumulate");
+        }
+
+        assert_eq!(
+            activity
+                .sample_items
+                .iter()
+                .map(|sample| sample.global_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["x:g", "x:a", "x:b", "x:c", "x:d"],
+        );
+        assert_eq!(
+            activity.avatar_url.as_deref(),
+            Some("https://example.test/a.png")
+        );
+        assert_eq!(activity.avatar_published_at, Some(300));
+        assert_eq!(activity.avatar_global_id.as_deref(), Some("x:a"));
+        assert_eq!(activity.location_candidate_count, 2);
+        assert_eq!(
+            activity.location_candidates,
+            vec![
+                FriendLocationCandidate {
+                    global_id: "x:e".to_string(),
+                    published_at: 200,
+                    effective_at: 200,
+                },
+                FriendLocationCandidate {
+                    global_id: "x:f".to_string(),
+                    published_at: 100,
+                    effective_at: 100,
+                },
+            ]
+        );
+        assert!(
+            !activity
+                .sample_items
+                .iter()
+                .any(|sample| sample.global_id == "x:e"),
+            "location provenance is selected independently of the top-five sample"
+        );
+        assert_eq!(activity.recent_count, rows.len() as i64);
+    }
+
+    #[test]
+    fn friends_graph_location_candidates_preserve_current_time_and_timeline_order() {
+        let mut store = ShadowStore::open_in_memory().expect("open");
+        let location_row =
+            |index: usize, published_at: i64, time_range: Option<serde_json::Value>| {
+                let mut item = row(index, Some(published_at));
+                item.content_blob = Some(
+                    serde_json::json!({
+                        "text": "📍 Paris",
+                        "mediaUrls": [],
+                        "mediaTypes": []
+                    })
+                    .to_string(),
+                );
+                item.rest = time_range
+                    .map(|time_range| serde_json::json!({ "timeRange": time_range }))
+                    .unwrap_or_else(|| serde_json::json!({}))
+                    .to_string();
+                item
+            };
+        let rows = [
+            location_row(20, 700, None),
+            location_row(10, 500, None),
+            location_row(9, 500, None),
+            location_row(
+                30,
+                100,
+                Some(serde_json::json!({
+                    "startsAt": 800,
+                    "endsAt": 1_200,
+                    "kind": "travel"
+                })),
+            ),
+            location_row(
+                40,
+                1_000,
+                Some(serde_json::json!({
+                    "startsAt": 1_100,
+                    "endsAt": 1_200,
+                    "kind": "event"
+                })),
+            ),
+            location_row(
+                50,
+                900,
+                Some(serde_json::json!({
+                    "startsAt": 100,
+                    "endsAt": 999,
+                    "kind": "overlap"
+                })),
+            ),
+        ];
+        store
+            .apply_projection_batch("friends-location-window", &digest(207), 0, &rows, &[])
+            .expect("project location rows");
+
+        let graph = store
+            .friends_graph_activity(
+                &[friend_source("x", "a:1")],
+                &[],
+                FriendsActivityWindow {
+                    start_ms: 0,
+                    end_ms: 1_000,
+                },
+            )
+            .expect("graph");
+
+        assert_eq!(graph.social[0].location_candidate_count, 4);
+        assert_eq!(
+            graph.social[0].location_candidates,
+            vec![
+                FriendLocationCandidate {
+                    global_id: "x:000020".to_string(),
+                    published_at: 700,
+                    effective_at: 700,
+                },
+                FriendLocationCandidate {
+                    global_id: "x:000009".to_string(),
+                    published_at: 500,
+                    effective_at: 500,
+                },
+                FriendLocationCandidate {
+                    global_id: "x:000010".to_string(),
+                    published_at: 500,
+                    effective_at: 500,
+                },
+                FriendLocationCandidate {
+                    global_id: "x:000030".to_string(),
+                    published_at: 100,
+                    effective_at: 800,
+                },
+            ],
+            "future and ended ranges are excluded, while the complete current set stays in timeline order"
+        );
+    }
+
+    #[test]
+    fn friends_graph_location_candidates_are_capped_with_an_exact_total() {
+        let mut activity = FriendsActivityAccumulator::empty();
+        let mut retained_budget = FriendsGraphRetainedBudget::new().expect("budget");
+        for index in 0..10 {
+            let mut row = exact_friend_row(&format!("x:{index}"), index);
+            row.has_location = true;
+            activity
+                .add(
+                    &row,
+                    FriendsActivityWindow {
+                        start_ms: 0,
+                        end_ms: 20,
+                    },
+                    true,
+                    &mut retained_budget,
+                )
+                .expect("accumulate location candidate");
+        }
+
+        assert_eq!(activity.location_candidate_count, 10);
+        assert_eq!(activity.location_candidates.len(), 8);
+        assert_eq!(
+            activity
+                .location_candidates
+                .iter()
+                .map(|candidate| candidate.global_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["x:9", "x:8", "x:7", "x:6", "x:5", "x:4", "x:3", "x:2"]
+        );
+    }
+
+    #[test]
+    fn friends_graph_keeps_location_candidates_beyond_the_first_fifty_timeline_rows() {
+        let mut store = ShadowStore::open_in_memory().expect("open");
+        let mut rows = (0..51)
+            .map(|index| row(index, Some(1_000 - index as i64)))
+            .collect::<Vec<_>>();
+        let mut old_location = row(999, Some(1));
+        old_location.content_blob = Some(
+            serde_json::json!({
+                "text": "📍 Paris",
+                "mediaUrls": [],
+                "mediaTypes": []
+            })
+            .to_string(),
+        );
+        rows.push(old_location);
+        store
+            .apply_projection_batch("friends-old-location", &digest(206), 0, &rows, &[])
+            .expect("project rows");
+
+        let sources = [friend_source("x", "a:1")];
+        let graph = store
+            .friends_graph_activity(
+                &sources,
+                &[],
+                FriendsActivityWindow {
+                    start_ms: 0,
+                    end_ms: 2_000,
+                },
+            )
+            .expect("graph");
+        assert_eq!(
+            graph.social[0].location_candidates,
+            vec![FriendLocationCandidate {
+                global_id: "x:000999".to_string(),
+                published_at: 1,
+                effective_at: 1,
+            }]
+        );
+        assert_eq!(graph.social[0].location_candidate_count, 1);
+
+        let first_fifty = store
+            .person_timeline(&sources, None, 50)
+            .expect("first timeline page");
+        assert_eq!(first_fifty.rows.len(), 50);
+        assert!(first_fifty.next_cursor.is_some());
+        assert!(
+            first_fifty
+                .rows
+                .iter()
+                .all(|item| item.global_id != "x:000999"),
+            "graph location evidence must not be derived from the first timeline page"
+        );
+    }
+
+    #[test]
+    fn friends_graph_budget_fails_before_cloning_an_over_budget_row() {
+        let mut activity = FriendsActivityAccumulator::empty();
+        let mut retained_budget = FriendsGraphRetainedBudget {
+            retained_bytes: MAX_FRIENDS_GRAPH_RETAINED_BYTES - 1,
+        };
+        let mut row = exact_friend_row(&"\0".repeat(MAX_ENTITY_ID_UTF8_BYTES), 100);
+        row.avatar_url = Some("\0".repeat(2_048));
+        row.signal_indexes = (0..FRIEND_SIGNAL_LABELS.len()).collect();
+
+        let error = activity
+            .add(
+                &row,
+                FriendsActivityWindow {
+                    start_ms: 0,
+                    end_ms: 200,
+                },
+                true,
+                &mut retained_budget,
+            )
+            .expect_err("the exact escaped avatar evidence must exceed the remaining byte");
+        assert!(matches!(
+            error,
+            ShadowStoreError::FriendsGraphExceedsResponseBudget { requested, maximum }
+                if requested > maximum && maximum == MAX_FRIENDS_GRAPH_RETAINED_BYTES
+        ));
+        assert_eq!(
+            retained_budget.retained_bytes,
+            MAX_FRIENDS_GRAPH_RETAINED_BYTES - 1
+        );
+        assert_eq!(activity.avatar_url, None, "budgeting precedes the clone");
+        assert_eq!(
+            activity.avatar_global_id, None,
+            "budgeting precedes the clone"
+        );
+        assert!(activity.sample_items.is_empty());
+        assert!(activity.signal_counts.iter().all(|count| *count == 0));
+
+        let mut location_activity = FriendsActivityAccumulator::empty();
+        let mut location_budget = FriendsGraphRetainedBudget {
+            retained_bytes: MAX_FRIENDS_GRAPH_RETAINED_BYTES - 1,
+        };
+        let mut location_row = exact_friend_row(&"\0".repeat(MAX_ENTITY_ID_UTF8_BYTES), 100);
+        location_row.has_location = true;
+        let error = location_activity
+            .add(
+                &location_row,
+                FriendsActivityWindow {
+                    start_ms: 0,
+                    end_ms: 200,
+                },
+                true,
+                &mut location_budget,
+            )
+            .expect_err("the exact escaped location candidate must exceed the remaining byte");
+        assert!(matches!(
+            error,
+            ShadowStoreError::FriendsGraphExceedsResponseBudget { requested, maximum }
+                if requested > maximum && maximum == MAX_FRIENDS_GRAPH_RETAINED_BYTES
+        ));
+        assert_eq!(
+            location_budget.retained_bytes,
+            MAX_FRIENDS_GRAPH_RETAINED_BYTES - 1
+        );
+        assert_eq!(
+            location_activity.location_candidates,
+            Vec::<FriendLocationCandidate>::new(),
+            "location budgeting precedes the candidate clone"
+        );
+        assert_eq!(location_activity.location_candidate_count, 0);
+        assert!(!location_activity.has_location);
+        assert!(location_activity.sample_items.is_empty());
+    }
+
+    #[test]
+    fn friends_graph_numeric_reserves_equal_the_exact_max_safe_integer_json() {
+        let source = friend_source("x", "a:1");
+        let social_reserve = empty_social_retained_bytes(&source).expect("social reserve");
+        let exact_social = serialized_friends_value_bytes(&EmptyFriendActivitySummary {
+            platform: &source.platform,
+            author_id: &source.author_id,
+            item_count: MAX_JAVASCRIPT_SAFE_INTEGER,
+            latest_activity_at: MAX_JAVASCRIPT_SAFE_INTEGER,
+            has_location: false,
+            avatar_url: None,
+            avatar_published_at: None,
+            avatar_global_id: None,
+            location_candidate_count: MAX_JAVASCRIPT_SAFE_INTEGER,
+            location_candidates: &[],
+            sample_items: &[],
+            recent_count: MAX_JAVASCRIPT_SAFE_INTEGER,
+            signal_counts: &[],
+        })
+        .expect("exact social JSON");
+        assert_eq!(4 * MAX_SAFE_INTEGER_DECIMAL_GROWTH, 60);
+        assert_eq!(social_reserve, exact_social);
+
+        let feed_url = "https://feed.test/rss";
+        let rss_reserve = empty_rss_retained_bytes(feed_url).expect("RSS reserve");
+        let exact_rss = serialized_friends_value_bytes(&EmptyRssActivitySummary {
+            feed_url,
+            item_count: MAX_JAVASCRIPT_SAFE_INTEGER,
+            latest_activity_at: MAX_JAVASCRIPT_SAFE_INTEGER,
+            has_location: false,
+            avatar_url: None,
+            avatar_published_at: None,
+            avatar_global_id: None,
+            location_candidate_count: MAX_JAVASCRIPT_SAFE_INTEGER,
+            location_candidates: &[],
+            sample_items: &[],
+        })
+        .expect("exact RSS JSON");
+        assert_eq!(3 * MAX_SAFE_INTEGER_DECIMAL_GROWTH, 45);
+        assert_eq!(rss_reserve, exact_rss);
+
+        let mut location_row = exact_friend_row("x:a", 0);
+        location_row.has_location = true;
+        let candidate = FriendLocationCandidate {
+            global_id: location_row.global_id.clone(),
+            published_at: location_row.published_at,
+            effective_at: 0,
+        };
+        let empty_location = serialized_friends_value_bytes(&EmptyFriendActivitySummary {
+            platform: &source.platform,
+            author_id: &source.author_id,
+            item_count: 0,
+            latest_activity_at: 0,
+            has_location: false,
+            avatar_url: None,
+            avatar_published_at: None,
+            avatar_global_id: None,
+            location_candidate_count: 0,
+            location_candidates: &[],
+            sample_items: &[],
+            recent_count: 0,
+            signal_counts: &[],
+        })
+        .expect("empty location JSON");
+        let valid_location = serialized_friends_value_bytes(&EmptyFriendActivitySummary {
+            platform: &source.platform,
+            author_id: &source.author_id,
+            item_count: 0,
+            latest_activity_at: 0,
+            has_location: true,
+            avatar_url: None,
+            avatar_published_at: None,
+            avatar_global_id: None,
+            location_candidate_count: 0,
+            location_candidates: std::slice::from_ref(&candidate),
+            sample_items: &[],
+            recent_count: 0,
+            signal_counts: &[],
+        })
+        .expect("valid location JSON");
+        assert_eq!(
+            location_candidate_retained_bytes(
+                &location_row.global_id,
+                location_row.published_at,
+                0,
+                false,
+            )
+            .expect("location candidate bytes") as isize
+                - 1,
+            valid_location as isize - empty_location as isize,
+            "the candidate charge plus the exact false-to-true delta matches retained JSON"
+        );
+    }
+
+    #[test]
+    fn friends_location_detection_matches_the_shared_javascript_contract() {
+        assert!(!recovered_location_name(Some(
+            "https://www.instagram.com/locations/Paris"
+        )));
+        assert!(recovered_location_name(Some(
+            "https://www.instagram.com/locations/123/Paris"
+        )));
+        assert!(text_has_location("📍,\nthen 📍 Paris"));
+        assert!(text_has_location("📍 ,\nthen 📍 Paris"));
+        assert!(!text_has_location("📍  ,\nthen 📍 Paris"));
+        assert!(text_has_location("📍 A"));
+        assert!(!text_has_location("📍   , then 📍 Paris"));
+        assert!(text_has_location("at\u{00A0}Paris"));
+        assert!(!text_has_location("in\u{0085}Paris"));
+        assert!(text_has_location("in\u{FEFF}Paris"));
+        assert!(!exact_location_presence(
+            &serde_json::json!({ "location": { "name": "\u{FEFF}" } })
+                .as_object()
+                .expect("rest object")
+                .clone(),
+            serde_json::json!({}).as_object().expect("content object"),
+        )
+        .expect("blank explicit location"));
+        assert_eq!(
+            exact_location_time_range(
+                serde_json::json!({ "timeRange": null })
+                    .as_object()
+                    .expect("rest object"),
+            )
+            .expect("null timeRange matches the shared nullish fallback"),
+            None,
+        );
+        assert!(matches!(
+            exact_location_time_range(
+                serde_json::json!({
+                    "timeRange": { "startsAt": "tomorrow", "kind": "event" }
+                })
+                .as_object()
+                .expect("rest object"),
+            ),
+            Err(ShadowStoreError::InvalidFriendsQuery {
+                field: "timeRange.startsAt"
+            })
+        ));
+        assert!(exact_location_presence(
+            serde_json::json!({ "location": { "name": "\u{0085}" } })
+                .as_object()
+                .expect("rest object"),
+            serde_json::json!({}).as_object().expect("content object"),
+        )
+        .expect("non-JavaScript-whitespace explicit location"));
+        assert!(!recovered_location_name(Some(
+            "https://example.test/location/%EF%BB%BF"
+        )));
+        assert!(recovered_location_name(Some(
+            "https://example.test/location/%C2%85"
+        )));
+    }
+
+    #[test]
+    fn friends_graph_rejects_duplicate_malformed_and_over_limit_inputs() {
+        let store = seeded(1);
+        let source = friend_source("x", "a:1");
+        assert!(matches!(
+            store.friends_graph_activity(
+                &[source.clone(), source],
+                &[],
+                FriendsActivityWindow {
+                    start_ms: 0,
+                    end_ms: 1
+                }
+            ),
+            Err(ShadowStoreError::InvalidFriendsQuery {
+                field: "duplicate sources"
+            })
+        ));
+        assert!(matches!(
+            store.friends_graph_activity(
+                &[],
+                &[],
+                FriendsActivityWindow {
+                    start_ms: 1,
+                    end_ms: 1
+                }
+            ),
+            Err(ShadowStoreError::InvalidFriendsQuery {
+                field: "recentWindow"
+            })
+        ));
+        let maximum_sources = (0..MAX_FRIEND_SOURCE_KEYS)
+            .map(|index| friend_source("x", &format!("author-{index}")))
+            .collect::<Vec<_>>();
+        assert!(matches!(
+            store.friends_graph_activity(
+                &maximum_sources,
+                &["https://feed.test/overflow".to_string()],
+                FriendsActivityWindow { start_ms: 0, end_ms: 1 }
+            ),
+            Err(ShadowStoreError::FriendsSourceLimit {
+                requested,
+                maximum: MAX_FRIEND_SOURCE_KEYS
+            }) if requested == MAX_FRIEND_SOURCE_KEYS + 1
+        ));
+
+        let mut malformed_store = ShadowStore::open_in_memory().expect("open malformed");
+        let mut malformed = row(1, Some(100));
+        malformed.rest = serde_json::json!({
+            "contentSignals": { "tags": ["unknown-signal"] }
+        })
+        .to_string();
+        malformed_store
+            .apply_projection_batch("malformed-friends", &digest(202), 0, &[malformed], &[])
+            .expect("project malformed row");
+        assert!(matches!(
+            malformed_store.friends_graph_activity(
+                &[friend_source("x", "a:1")],
+                &[],
+                FriendsActivityWindow {
+                    start_ms: 0,
+                    end_ms: 200
+                }
+            ),
+            Err(ShadowStoreError::InvalidFriendsQuery {
+                field: "contentSignals.tags"
+            })
+        ));
+    }
+
+    #[test]
+    fn person_timeline_is_stateless_exact_and_retains_archived_rows() {
+        let mut store = ShadowStore::open_in_memory().expect("open");
+        let mut newest_archived = row(1, Some(300));
+        newest_archived.archived = Some(1);
+        let middle = row(2, Some(200));
+        let oldest = row(3, Some(100));
+        let mut hidden = row(4, Some(400));
+        hidden.hidden = Some(1);
+        let mut unrelated = row(5, Some(500));
+        unrelated.author_id = Some("other".to_string());
+        store
+            .apply_projection_batch(
+                "friends-timeline",
+                &digest(203),
+                0,
+                &[newest_archived, middle, oldest, hidden, unrelated],
+                &[],
+            )
+            .expect("project timeline rows");
+
+        let sources = [friend_source("x", "a:1")];
+        let first = store
+            .person_timeline(&sources, None, 2)
+            .expect("first timeline page");
+        assert_eq!(first.total_count, 3);
+        assert_eq!(
+            first
+                .rows
+                .iter()
+                .map(|row| (row.global_id.as_str(), row.archived))
+                .collect::<Vec<_>>(),
+            vec![("x:000001", Some(true)), ("x:000002", Some(false))],
+        );
+        let second = store
+            .person_timeline(&sources, first.next_cursor.as_ref(), 2)
+            .expect("second timeline page");
+        assert_eq!(
+            second
+                .rows
+                .iter()
+                .map(|row| row.global_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["x:000003"],
+        );
+        assert!(second.next_cursor.is_none());
+        assert!(matches!(
+            store.person_timeline(&[sources[0].clone(), sources[0].clone()], None, 2),
+            Err(ShadowStoreError::InvalidFriendsQuery {
+                field: "duplicate sources"
+            })
+        ));
+        let stale = PageCursor {
+            revision: first.revision + 1,
+            sort_at: 200,
+            global_id: "x:000002".to_string(),
+        };
+        assert!(matches!(
+            store.person_timeline(&sources, Some(&stale), 2),
+            Err(ShadowStoreError::StaleRevision { .. })
+        ));
+    }
+
+    #[test]
+    fn person_timeline_exact_multiple_ends_without_a_false_cursor() {
+        let store = seeded(100);
+        let sources = [friend_source("x", "a:1")];
+        let first = store
+            .person_timeline(&sources, None, 50)
+            .expect("first exact-multiple page");
+        assert_eq!(first.rows.len(), 50);
+        assert!(first.next_cursor.is_some());
+
+        let second = store
+            .person_timeline(&sources, first.next_cursor.as_ref(), 50)
+            .expect("terminal exact-multiple page");
+        assert_eq!(second.rows.len(), 50);
+        assert!(
+            second.next_cursor.is_none(),
+            "an exact final page must not advertise an empty third page"
+        );
+    }
+
     #[test]
     fn a_disk_store_reopens_committed_rows() {
         let nonce = SystemTime::now()
@@ -2821,6 +5225,61 @@ mod tests {
             assert!(
                 !plan.to_uppercase().contains("TEMP B-TREE"),
                 "page must not sort, got: {plan}"
+            );
+        }
+    }
+
+    #[test]
+    fn person_timeline_pages_use_the_archived_eligible_index_without_sorting() {
+        let store = seeded(500);
+        for after in [false, true] {
+            let plan = store
+                .explain_person_timeline(after)
+                .expect("friends timeline plan");
+            assert!(
+                plan.contains("feed_items_friends_timeline"),
+                "Friends timeline should use its archived-eligible index, got: {plan}"
+            );
+            assert!(
+                !plan.to_uppercase().contains("TEMP B-TREE"),
+                "Friends timeline must not sort, got: {plan}"
+            );
+        }
+        let has_more_plan = store
+            .explain_person_timeline_has_more()
+            .expect("Friends timeline continuation plan");
+        assert!(
+            has_more_plan.contains("feed_items_friends_timeline"),
+            "Friends continuation should use its archived-eligible index, got: {has_more_plan}"
+        );
+        assert!(
+            !has_more_plan.to_uppercase().contains("TEMP B-TREE"),
+            "Friends continuation must not sort, got: {has_more_plan}"
+        );
+    }
+
+    #[test]
+    fn friends_graph_aggregates_never_sort_the_full_matching_corpus() {
+        let store = seeded(500);
+        let sources = serde_json::to_string(&[friend_source("x", "a:1")]).expect("social selector");
+        let feeds = serde_json::to_string(&["https://feed.test/rss"]).expect("RSS selector");
+        for (sql, selector) in [
+            (FRIENDS_GRAPH_SOCIAL_SQL, sources.as_str()),
+            (FRIENDS_GRAPH_RSS_SQL, feeds.as_str()),
+        ] {
+            let mut statement = store
+                .conn
+                .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+                .expect("prepare graph plan");
+            let plan = statement
+                .query_map([selector], |row| row.get::<_, String>(3))
+                .expect("query graph plan")
+                .collect::<SqlResult<Vec<_>>>()
+                .expect("collect graph plan")
+                .join(" | ");
+            assert!(
+                !plan.to_uppercase().contains("TEMP B-TREE"),
+                "Friends graph aggregation must not sort its full source corpus, got: {plan}"
             );
         }
     }
@@ -3329,6 +5788,55 @@ mod tests {
                 .expect("migrated table");
             assert!(table_exists, "{table} should be installed by migration");
         }
+
+        drop(store);
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        }
+    }
+
+    #[test]
+    fn a_v3_staging_store_adds_the_friends_index_without_losing_rows() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "freed-shadow-store-v3-migration-{}-{nonce}.sqlite",
+            std::process::id()
+        ));
+        {
+            let conn = Connection::open(&path).expect("create v3 store");
+            conn.execute_batch(SHADOW_SCHEMA_V1_SQL)
+                .expect("install v1 schema");
+            conn.execute_batch(SHADOW_SCHEMA_V2_SQL)
+                .expect("install v2 schema");
+            conn.execute_batch(SHADOW_SCHEMA_V3_SQL)
+                .expect("install v3 schema");
+            conn.execute(
+                "INSERT INTO feed_items (globalId, rest, sortAt) VALUES ('x:legacy-v3', '{}', 0);",
+                [],
+            )
+            .expect("seed v3 row");
+        }
+
+        let store = ShadowStore::open(&path).expect("migrate v3 staging store");
+        assert_eq!(store.total_count().expect("count"), 1);
+        let version: i64 = store
+            .conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("version");
+        assert_eq!(version, SHADOW_SCHEMA_VERSION);
+        let index_exists: bool = store
+            .conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_schema \
+                 WHERE type = 'index' AND name = 'feed_items_friends_timeline');",
+                [],
+                |row| row.get(0),
+            )
+            .expect("friends timeline index");
+        assert!(index_exists);
 
         drop(store);
         for suffix in ["", "-wal", "-shm"] {

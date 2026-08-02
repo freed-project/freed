@@ -259,6 +259,8 @@ describe("Library Core query registry", () => {
       expect(definition.blockers.length).toBeGreaterThan(0);
       if (
         definition === LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1 ||
+        definition === LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1 ||
+        definition === LIBRARY_CORE_QUERY_REGISTRY.persons_graph_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.saved_analytics_v1
       ) {
         expect(definition.blockers).not.toContain(
@@ -343,6 +345,48 @@ describe("Library Core query registry", () => {
     expect(
       BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds,
     ).toContain("saved_analytics_v1");
+  });
+
+  it("registers the active bounded Desktop Friends readers", () => {
+    expect(LIBRARY_CORE_QUERY_REGISTRY.persons_graph_v1).toMatchObject({
+      status: "planned_blocked",
+      source: {
+        boundary: "library_core",
+        currentKinds: [
+          "ProjectionReadSession::friends_graph_activity",
+          "read_library_core_persons_graph",
+        ],
+      },
+      defaultLimit: 1_000,
+      maximumLimit: 5_000,
+      maximumRows: 5_000,
+      maximumResponseBytes: 8 * 1_048_576,
+      totalCountIntent: "snapshot_exact",
+    });
+    expect(LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1).toMatchObject({
+      status: "planned_blocked",
+      source: {
+        boundary: "library_core",
+        currentKinds: [
+          "ProjectionReadSession::person_timeline",
+          "read_library_core_person_timeline",
+        ],
+      },
+      defaultLimit: 50,
+      maximumLimit: 100,
+      maximumRows: 100,
+      maximumResponseBytes: 2 * 1_048_576,
+      totalCountIntent: "snapshot_exact",
+    });
+    expect(
+      LIBRARY_CORE_QUERY_REGISTRY.persons_graph_v1.blockers,
+    ).not.toContain("runtime_adapter_unimplemented");
+    expect(
+      LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1.blockers,
+    ).not.toContain("runtime_adapter_unimplemented");
+    expect(
+      BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds,
+    ).toEqual(expect.arrayContaining(["persons_graph_v1", "person_timeline_v1"]));
   });
 
   it("uses shared renderer and interactive snapshot pools instead of additive query reservations", () => {

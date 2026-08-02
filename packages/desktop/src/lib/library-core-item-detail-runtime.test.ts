@@ -1,10 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
+import type { LibraryCoreFeedCardV1 } from "@freed/shared/library-core";
 import type { FeedItemRow } from "@freed/shared/projection";
 import type { LibraryCoreProjectionSourceV1 } from "./automerge-types";
 import {
+  LIBRARY_CORE_FRIENDS_READER_DISABLED_KEY,
   LIBRARY_CORE_SAVED_ANALYTICS_READER_DISABLED_KEY,
   readLibraryCoreFacetSummary,
+  readLibraryCoreFriendsGraph,
+  readLibraryCoreFriendsLocationItem,
   readLibraryCoreItemDetail,
+  readLibraryCorePersonTimeline,
   readLibraryCoreSavedAnalytics,
   readLibraryCoreSurfaceItems,
   scanLibraryCoreItems,
@@ -105,6 +110,121 @@ function savedAnalyticsResponse() {
       { count: 1, label: "Unknown" },
     ],
     totalCount: 6,
+  };
+}
+
+const feedCard: LibraryCoreFeedCardV1 = {
+  archived: false,
+  authorAvatarUrl: "https://example.test/avatar.jpg",
+  authorDisplayName: "Writer",
+  authorHandle: "writer",
+  authorId: "author-1",
+  capturedAt: 43,
+  contentSignalTags: ["place"],
+  contentText: "At the library",
+  contentType: "post",
+  engagementComments: 2,
+  engagementLikes: 3,
+  eventConfidenceBasisPoints: null,
+  eventStartsAt: null,
+  globalId: "rss:item-1" as LibraryCoreFeedCardV1["globalId"],
+  liked: true,
+  likedAt: 44,
+  likedSyncedAt: 45,
+  linkPreviewTitle: null,
+  locationName: "Portland",
+  mediaTypes: [],
+  mediaUrls: [],
+  platform: "rss",
+  publishedAt: 42,
+  readAt: null,
+  readingTimeMinutes: null,
+  saved: true,
+  sourceUrl: "https://example.test/item-1",
+  tags: ["friends"],
+};
+
+function friendsGraphResponse() {
+  return {
+    queryId: "persons_graph_v1",
+    schemaVersion: 1,
+    source: response().source,
+    totalItemCount: 8,
+    social: [
+      {
+        platform: "instagram",
+        authorId: "alpha",
+        itemCount: 3,
+        latestActivityAt: 300,
+        hasLocation: true,
+        locationCandidateCount: 1,
+        locationCandidates: [
+          {
+            effectiveAt: 200,
+            globalId: "instagram:alpha-2",
+            publishedAt: 200,
+          },
+        ],
+        avatarUrl: "https://example.test/alpha.jpg",
+        avatarPublishedAt: 300,
+        avatarGlobalId: "instagram:alpha-3",
+        sampleItems: [
+          { globalId: "instagram:alpha-3", publishedAt: 300 },
+          { globalId: "instagram:alpha-2", publishedAt: 200 },
+        ],
+        recentCount: 2,
+        signalCounts: [
+          { label: "place", count: 1 },
+          { label: "life_update", count: 2 },
+        ],
+      },
+      {
+        platform: "x",
+        authorId: "zed",
+        itemCount: 0,
+        latestActivityAt: 0,
+        hasLocation: false,
+        locationCandidateCount: 0,
+        locationCandidates: [],
+        avatarUrl: null,
+        avatarPublishedAt: null,
+        avatarGlobalId: null,
+        sampleItems: [],
+        recentCount: 0,
+        signalCounts: [],
+      },
+    ],
+    rss: [
+      {
+        feedUrl: "https://example.test/feed.xml",
+        itemCount: 5,
+        latestActivityAt: 500,
+        hasLocation: false,
+        locationCandidateCount: 0,
+        locationCandidates: [],
+        avatarUrl: null,
+        avatarPublishedAt: null,
+        avatarGlobalId: null,
+        sampleItems: [
+          { globalId: "rss:item-5", publishedAt: 500 },
+        ],
+      },
+    ],
+  };
+}
+
+function personTimelineResponse(
+  rows: readonly LibraryCoreFeedCardV1[] = [feedCard],
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    nextCursor: null,
+    queryId: "person_timeline_v1",
+    rows,
+    schemaVersion: 1,
+    source: response().source,
+    totalCount: rows.length,
+    ...overrides,
   };
 }
 
@@ -235,6 +355,599 @@ describe("Desktop Library Core item detail runtime", () => {
         }),
       ),
     ).rejects.toThrow("response is inconsistent");
+  });
+
+  it("reads exact compact Friends graph aggregates in canonical source order", async () => {
+    const readNative = vi.fn().mockResolvedValue(friendsGraphResponse());
+    const graph = await readLibraryCoreFriendsGraph(
+      {
+        sources: [
+          { platform: "x", authorId: "zed" },
+          { platform: "instagram", authorId: "alpha" },
+        ],
+        rssFeedUrls: ["https://example.test/feed.xml"],
+        recentWindow: { startMs: 100, endMs: 1_000 },
+      },
+      vi.fn().mockResolvedValue(source),
+      readNative,
+    );
+
+    expect(graph).toMatchObject({
+      sourceToken: expect.any(String),
+      totalItemCount: 8,
+      social: [
+        {
+          platform: "instagram",
+          authorId: "alpha",
+          itemCount: 3,
+          recentCount: 2,
+          locationCandidateCount: 1,
+          locationCandidates: [
+            {
+              effectiveAt: 200,
+              globalId: "instagram:alpha-2",
+              publishedAt: 200,
+            },
+          ],
+          avatarUrl: "https://example.test/alpha.jpg",
+          avatarPublishedAt: 300,
+          avatarGlobalId: "instagram:alpha-3",
+          signalCounts: [
+            { label: "place", count: 1 },
+            { label: "life_update", count: 2 },
+          ],
+        },
+        { platform: "x", authorId: "zed", itemCount: 0 },
+      ],
+      rss: [
+        { feedUrl: "https://example.test/feed.xml", itemCount: 5 },
+      ],
+    });
+    expect(readNative).toHaveBeenCalledWith({
+      queryId: "persons_graph_v1",
+      schemaVersion: 1,
+      sources: [
+        { platform: "instagram", authorId: "alpha" },
+        { platform: "x", authorId: "zed" },
+      ],
+      rssFeedUrls: ["https://example.test/feed.xml"],
+      recentWindow: { startMs: 100, endMs: 1_000 },
+    });
+  });
+
+  it("reads a graph-selected location item only from the exact graph generation", async () => {
+    const graph = await readLibraryCoreFriendsGraph(
+      {
+        sources: [{ platform: "instagram", authorId: "alpha" }],
+        rssFeedUrls: [],
+        recentWindow: { startMs: 100, endMs: 1_000 },
+      },
+      vi.fn().mockResolvedValue(source),
+      vi.fn().mockResolvedValue({
+        ...friendsGraphResponse(),
+        totalItemCount: 3,
+        social: [friendsGraphResponse().social[0]],
+        rss: [],
+      }),
+    );
+    const locationRow: FeedItemRow = {
+      ...row,
+      globalId: "instagram:alpha-2",
+      platform: "instagram",
+      authorId: "alpha",
+      publishedAt: 200,
+      contentBlob: JSON.stringify({ text: "📍 Portland" }),
+    };
+    const readNative = vi.fn().mockResolvedValue(response(locationRow));
+    const request = {
+      effectiveAt: 200,
+      globalId: locationRow.globalId,
+      owner: {
+        kind: "social" as const,
+        platform: "instagram",
+        authorId: "alpha",
+      },
+      publishedAt: 200,
+      referenceTimeMs: 1_000,
+      sourceToken: graph.sourceToken,
+    };
+
+    await expect(
+      readLibraryCoreFriendsLocationItem(
+        request,
+        vi.fn().mockResolvedValue(source),
+        readNative,
+      ),
+    ).resolves.toMatchObject({
+      globalId: locationRow.globalId,
+      publishedAt: 200,
+    });
+    expect(readNative).toHaveBeenCalledWith({
+      globalId: locationRow.globalId,
+      queryId: "item_detail_v1",
+      schemaVersion: 1,
+    });
+
+    await expect(
+      readLibraryCoreFriendsLocationItem(
+        request,
+        vi.fn().mockResolvedValue(source),
+        vi.fn().mockResolvedValue({
+          ...response(locationRow),
+          source: {
+            ...response().source,
+            generationId: "9".repeat(64),
+          },
+        }),
+      ),
+    ).rejects.toThrow("generation changed");
+    await expect(
+      readLibraryCoreFriendsLocationItem(
+        { ...request, sourceToken: "not-json" },
+        vi.fn(),
+        vi.fn(),
+      ),
+    ).rejects.toThrow("request is invalid");
+
+    await expect(
+      readLibraryCoreFriendsLocationItem(
+        {
+          ...request,
+          owner: { kind: "social", platform: "x", authorId: "bob" },
+        },
+        vi.fn().mockResolvedValue(source),
+        vi.fn().mockResolvedValue(response(locationRow)),
+      ),
+    ).rejects.toThrow("item is inconsistent");
+    await expect(
+      readLibraryCoreFriendsLocationItem(
+        { ...request, publishedAt: 199 },
+        vi.fn().mockResolvedValue(source),
+        vi.fn().mockResolvedValue(response(locationRow)),
+      ),
+    ).rejects.toThrow("item is inconsistent");
+    await expect(
+      readLibraryCoreFriendsLocationItem(
+        request,
+        vi.fn().mockResolvedValue(source),
+        vi.fn().mockResolvedValue(
+          response({
+            ...locationRow,
+            contentBlob: JSON.stringify({ text: "No place here" }),
+          }),
+        ),
+      ),
+    ).rejects.toThrow("item is inconsistent");
+  });
+
+  it("reads a bounded Friends timeline page as product items", async () => {
+    const readNative = vi.fn().mockResolvedValue(personTimelineResponse());
+    const page = await readLibraryCorePersonTimeline(
+      {
+        sources: [
+          { platform: "x", authorId: "zed" },
+          { platform: "rss", authorId: "author-1" },
+        ],
+      },
+      vi.fn().mockResolvedValue(source),
+      readNative,
+    );
+
+    expect(page).toMatchObject({
+      totalCount: 1,
+      nextCursor: null,
+      items: [
+        {
+          globalId: "rss:item-1",
+          location: { name: "Portland", source: "text_extraction" },
+          userState: { saved: true, archived: false, liked: true },
+        },
+      ],
+    });
+    expect(readNative).toHaveBeenCalledWith({
+      cursor: null,
+      limit: 50,
+      queryId: "person_timeline_v1",
+      schemaVersion: 1,
+      sources: [
+        { platform: "rss", authorId: "author-1" },
+        { platform: "x", authorId: "zed" },
+      ],
+    });
+  });
+
+  it("preserves overlapping explicit RSS author and feed aggregates", async () => {
+    const emptyActivity = {
+      itemCount: 1,
+      latestActivityAt: 500,
+      hasLocation: false,
+      locationCandidateCount: 0,
+      locationCandidates: [],
+      avatarUrl: null,
+      avatarPublishedAt: null,
+      avatarGlobalId: null,
+      sampleItems: [{ globalId: "rss:item-5", publishedAt: 500 }],
+    };
+    await expect(
+      readLibraryCoreFriendsGraph(
+        {
+          sources: [{ platform: "rss", authorId: "author-1" }],
+          rssFeedUrls: ["https://example.test/feed.xml"],
+          recentWindow: { startMs: 100, endMs: 1_000 },
+        },
+        vi.fn().mockResolvedValue(source),
+        vi.fn().mockResolvedValue({
+          queryId: "persons_graph_v1",
+          schemaVersion: 1,
+          source: response().source,
+          totalItemCount: 1,
+          social: [
+            {
+              ...emptyActivity,
+              platform: "rss",
+              authorId: "author-1",
+              recentCount: 1,
+              signalCounts: [],
+            },
+          ],
+          rss: [
+            {
+              ...emptyActivity,
+              feedUrl: "https://example.test/feed.xml",
+            },
+          ],
+        }),
+      ),
+    ).resolves.toMatchObject({
+      totalItemCount: 1,
+      social: [{ platform: "rss", authorId: "author-1", itemCount: 1 }],
+      rss: [{ feedUrl: "https://example.test/feed.xml", itemCount: 1 }],
+    });
+  });
+
+  it("matches the native timeline source and cursor boundaries", async () => {
+    const getSource = vi.fn().mockResolvedValue(source);
+    const readNative = vi.fn().mockResolvedValue(personTimelineResponse());
+    await expect(
+      readLibraryCorePersonTimeline(
+        { sources: [] },
+        getSource,
+        readNative,
+      ),
+    ).rejects.toThrow("request is invalid");
+    expect(getSource).not.toHaveBeenCalled();
+    expect(readNative).not.toHaveBeenCalled();
+
+    const maximumCursor = "A".repeat(5_600);
+    await readLibraryCorePersonTimeline(
+      {
+        sources: [{ platform: "rss", authorId: "author-1" }],
+        cursor: maximumCursor,
+      },
+      getSource,
+      readNative,
+    );
+    expect(readNative).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cursor: maximumCursor }),
+    );
+
+    await expect(
+      readLibraryCorePersonTimeline(
+        {
+          sources: [{ platform: "rss", authorId: "author-1" }],
+          cursor: `${maximumCursor}A`,
+        },
+        vi.fn(),
+        vi.fn(),
+      ),
+    ).rejects.toThrow("request is invalid");
+  });
+
+  it("rejects malformed, inconsistent, and stale Friends reads", async () => {
+    const graphRequest = {
+      sources: [
+        { platform: "instagram", authorId: "alpha" },
+        { platform: "x", authorId: "zed" },
+      ],
+      rssFeedUrls: ["https://example.test/feed.xml"],
+      recentWindow: { startMs: 100, endMs: 1_000 },
+    };
+    await expect(
+      readLibraryCoreFriendsGraph(
+        graphRequest,
+        vi.fn().mockResolvedValue(source),
+        vi.fn().mockResolvedValue({
+          ...friendsGraphResponse(),
+          social: friendsGraphResponse().social.map((entry, index) =>
+            index === 0
+              ? { ...entry, signalCounts: [...entry.signalCounts].reverse() }
+              : entry,
+          ),
+        }),
+      ),
+    ).rejects.toThrow("social activity is inconsistent");
+
+    await expect(
+      readLibraryCoreFriendsGraph(
+        { ...graphRequest, sources: [graphRequest.sources[0]!, graphRequest.sources[0]!] },
+        vi.fn(),
+        vi.fn(),
+      ),
+    ).rejects.toThrow("request is invalid");
+
+    const moved = { ...source, headsDigest: "9".repeat(64) };
+    await expect(
+      readLibraryCoreFriendsGraph(
+        graphRequest,
+        vi.fn().mockResolvedValue(moved),
+        vi.fn().mockResolvedValue(friendsGraphResponse()),
+      ),
+    ).rejects.toThrow("source is stale");
+
+    const getTimelineSource = vi
+      .fn()
+      .mockResolvedValueOnce(source)
+      .mockResolvedValueOnce(moved);
+    await expect(
+      readLibraryCorePersonTimeline(
+        { sources: [{ platform: "rss", authorId: "author-1" }] },
+        getTimelineSource,
+        vi.fn().mockResolvedValue(personTimelineResponse()),
+      ),
+    ).rejects.toThrow("source changed during read");
+
+    await expect(
+      readLibraryCorePersonTimeline(
+        { sources: [], limit: 101 },
+        vi.fn(),
+        vi.fn(),
+      ),
+    ).rejects.toThrow("request is invalid");
+
+    await expect(
+      readLibraryCorePersonTimeline(
+        {
+          sources: [{ platform: "rss", authorId: "author-1" }],
+          cursor: "QQ",
+        },
+        vi.fn().mockResolvedValue(source),
+        vi.fn().mockResolvedValue(
+          personTimelineResponse([], { totalCount: 1 }),
+        ),
+      ),
+    ).rejects.toThrow("response is inconsistent");
+
+    await expect(
+      readLibraryCorePersonTimeline(
+        { sources: [{ platform: "rss", authorId: "author-1" }] },
+        vi.fn().mockResolvedValue(source),
+        vi.fn().mockResolvedValue(
+          personTimelineResponse([feedCard, feedCard], { totalCount: 2 }),
+        ),
+      ),
+    ).rejects.toThrow("row is invalid");
+
+    await expect(
+      readLibraryCorePersonTimeline(
+        { sources: [{ platform: "rss", authorId: "author-1" }] },
+        vi.fn().mockResolvedValue(source),
+        vi.fn().mockResolvedValue(
+          personTimelineResponse([{ ...feedCard, authorId: "outsider" }]),
+        ),
+      ),
+    ).rejects.toThrow("row is invalid");
+
+    await expect(
+      readLibraryCorePersonTimeline(
+        { sources: [{ platform: "rss", authorId: "author-1" }] },
+        vi.fn().mockResolvedValue(source),
+        vi.fn().mockResolvedValue(
+          personTimelineResponse([{ ...feedCard, publishedAt: null }]),
+        ),
+      ),
+    ).rejects.toThrow("row is invalid");
+
+    await expect(
+      readLibraryCorePersonTimeline(
+        { sources: [{ platform: "rss", authorId: "author-1" }] },
+        vi.fn().mockResolvedValue(source),
+        vi.fn().mockResolvedValue(
+          personTimelineResponse([feedCard], {
+            totalCount: 2,
+            nextCursor: "A",
+          }),
+        ),
+      ),
+    ).rejects.toThrow("response is invalid");
+
+    const older = {
+      ...feedCard,
+      globalId: "rss:older" as LibraryCoreFeedCardV1["globalId"],
+      publishedAt: 100,
+    };
+    const newer = {
+      ...feedCard,
+      globalId: "rss:newer" as LibraryCoreFeedCardV1["globalId"],
+      publishedAt: 200,
+    };
+    await expect(
+      readLibraryCorePersonTimeline(
+        { sources: [{ platform: "rss", authorId: "author-1" }] },
+        vi.fn().mockResolvedValue(source),
+        vi.fn().mockResolvedValue(personTimelineResponse([older, newer])),
+      ),
+    ).rejects.toThrow("row order is invalid");
+
+    const binaryFirst = {
+      ...feedCard,
+      globalId: "rss:z" as LibraryCoreFeedCardV1["globalId"],
+      publishedAt: 100,
+    };
+    const binarySecond = {
+      ...feedCard,
+      globalId: "rss:é" as LibraryCoreFeedCardV1["globalId"],
+      publishedAt: 100,
+    };
+    await expect(
+      readLibraryCorePersonTimeline(
+        { sources: [{ platform: "rss", authorId: "author-1" }] },
+        vi.fn().mockResolvedValue(source),
+        vi.fn().mockResolvedValue(
+          personTimelineResponse([binarySecond, binaryFirst]),
+        ),
+      ),
+    ).rejects.toThrow("row order is invalid");
+  });
+
+  it("requires Friends avatar provenance to be all-null or one bounded exact tuple", async () => {
+    const graphRequest = {
+      sources: [
+        { platform: "instagram", authorId: "alpha" },
+        { platform: "x", authorId: "zed" },
+      ],
+      rssFeedUrls: ["https://example.test/feed.xml"],
+      recentWindow: { startMs: 100, endMs: 1_000 },
+    };
+    const invalidAvatars = [
+      {
+        avatarUrl: "https://example.test/alpha.jpg",
+        avatarPublishedAt: null,
+        avatarGlobalId: "instagram:alpha-3",
+      },
+      {
+        avatarUrl: null,
+        avatarPublishedAt: 300,
+        avatarGlobalId: "instagram:alpha-3",
+      },
+      {
+        avatarUrl: "https://example.test/alpha.jpg",
+        avatarPublishedAt: 301,
+        avatarGlobalId: "instagram:alpha-3",
+      },
+      {
+        avatarUrl: "https://example.test/alpha.jpg",
+        avatarPublishedAt: 300,
+        avatarGlobalId: "",
+      },
+    ] as const;
+
+    for (const avatar of invalidAvatars) {
+      const response = friendsGraphResponse();
+      await expect(
+        readLibraryCoreFriendsGraph(
+          graphRequest,
+          vi.fn().mockResolvedValue(source),
+          vi.fn().mockResolvedValue({
+            ...response,
+            social: response.social.map((entry, index) =>
+              index === 0 ? { ...entry, ...avatar } : entry,
+            ),
+          }),
+        ),
+      ).rejects.toThrow("social activity is inconsistent");
+    }
+  });
+
+  it("keeps the Friends rollback switch ahead of every source and native read", async () => {
+    const getItem = vi.fn((key: string) =>
+      key === LIBRARY_CORE_FRIENDS_READER_DISABLED_KEY ? "1" : null,
+    );
+    vi.stubGlobal("localStorage", { getItem });
+    const getSource = vi.fn().mockResolvedValue(source);
+    const readNative = vi.fn();
+    try {
+      await expect(
+        readLibraryCoreFriendsGraph(
+          {
+            sources: [],
+            rssFeedUrls: [],
+            recentWindow: { startMs: 100, endMs: 1_000 },
+          },
+          getSource,
+          readNative,
+        ),
+      ).rejects.toThrow("Friends reader is disabled");
+      await expect(
+        readLibraryCorePersonTimeline(
+          { sources: [] },
+          getSource,
+          readNative,
+        ),
+      ).rejects.toThrow("Friends reader is disabled");
+      await expect(
+        readLibraryCoreFriendsLocationItem(
+          {
+            effectiveAt: 1,
+            globalId: "rss:item-1",
+            owner: { kind: "rss", feedUrl: "https://example.test/feed.xml" },
+            publishedAt: 1,
+            referenceTimeMs: 1,
+            sourceToken: "invalid",
+          },
+          getSource,
+          readNative,
+        ),
+      ).rejects.toThrow("Friends reader is disabled");
+      expect(getSource).not.toHaveBeenCalled();
+      expect(readNative).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("enforces exact Friends request and graph response byte ceilings", async () => {
+    const oversizedAuthorIds = Array.from({ length: 129 }, (_, index) => ({
+      platform: "x",
+      authorId: `${"😀".repeat(4_092)}${index.toString().padStart(4, "0")}`,
+    }));
+    await expect(
+      readLibraryCoreFriendsGraph(
+        {
+          sources: oversizedAuthorIds,
+          rssFeedUrls: [],
+          recentWindow: { startMs: 100, endMs: 1_000 },
+        },
+        vi.fn(),
+        vi.fn(),
+      ),
+    ).rejects.toThrow("request exceeds its byte bound");
+
+    const sources = Array.from({ length: 1_025 }, (_, index) => ({
+      platform: "x",
+      authorId: index.toString().padStart(4, "0"),
+    }));
+    const largeResponse = {
+      queryId: "persons_graph_v1",
+      schemaVersion: 1,
+      source: response().source,
+      totalItemCount: sources.length,
+      social: sources.map((sourceKey) => ({
+        ...sourceKey,
+        itemCount: 1,
+        latestActivityAt: 1,
+        hasLocation: false,
+        locationCandidateCount: 0,
+        locationCandidates: [],
+        avatarUrl: "a".repeat(8_192),
+        avatarPublishedAt: 1,
+        avatarGlobalId: `x:${sourceKey.authorId}`,
+        sampleItems: [],
+        recentCount: 0,
+        signalCounts: [],
+      })),
+      rss: [],
+    };
+    await expect(
+      readLibraryCoreFriendsGraph(
+        {
+          sources,
+          rssFeedUrls: [],
+          recentWindow: { startMs: 100, endMs: 1_000 },
+        },
+        vi.fn().mockResolvedValue(source),
+        vi.fn().mockResolvedValue(largeResponse),
+      ),
+    ).rejects.toThrow("response exceeds its byte bound");
   });
 
   it.each([

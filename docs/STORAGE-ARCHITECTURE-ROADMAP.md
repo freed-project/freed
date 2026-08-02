@@ -134,12 +134,14 @@ protocol can validate a bounded page from an immutable generation, but no
 product reader calls it. Full-corpus parity, production storage admission,
 active query adapters, and activation remain blocked.
 
-Physical shadow schema version 3 now closes the native staging transaction
-inside one database. A fresh staging file records the exact source identity,
-sequential batch receipts, projected row count, revision, and completion state.
-Rows and receipts roll back together, an interrupted process resumes at the
-exact next batch, and bounded reads reject the database until the declared and
-actual row counts both close.
+Physical shadow schema version 4 now closes the native staging transaction
+inside one database and adds the archived-eligible Friends timeline index.
+A fresh staging file records the exact source identity, sequential batch
+receipts, projected row count, revision, and completion state. Rows and
+receipts roll back together, an interrupted process resumes at the exact next
+batch, and bounded reads reject the database until the declared and actual row
+counts both close. Version 3 generations remain immutable and cause a fresh
+schema-keyed generation instead of an in-place rewrite.
 
 The dormant native publisher now seals a complete staging database into one
 immutable generation file. It checkpoints and removes WAL mode, verifies
@@ -162,22 +164,24 @@ spool and scratch graph and retains only the selected and exact rollback
 projection generations.
 
 Gate D now serves the all-content feed, item detail, exact Library facets,
-bounded Map and Story Wall candidates, Saved overview analytics, export,
+bounded Map and Story Wall candidates, Saved overview analytics, Friends
+activity and selected-person timelines, export,
 background content discovery, provider
 completion accounting, RSS duplicate lookup, Google Contacts discovery, and
 account discovery from authenticated selected SQLite generations. Header and
 sidebar counts share one source-versioned native aggregate. The default Desktop
 shell retains no item objects. Incremental Automerge patches carry one prior
 item occurrence so exact counts stay current without rebuilding the corpus.
-Friends-only filtering, saved-content sorting, provider settings, and other
-unfinished consumers share one
+Friends-only feed filtering, saved-content sorting, provider settings, and
+other unfinished consumers share one
 reference-counted compatibility projection only while mounted, then evict it.
 Source mismatch or reader failure returns to Automerge. The temporary React
 feed window also returns to Automerge before it could exceed 512 compact cards
 because reverse paging is not active yet. The device-local
 `freed.libraryCore.feedBrowseReaderV1.disabled=1` switch disables the feed
 reader, `freed.libraryCore.savedAnalyticsReaderV1.disabled=1` disables the
-Saved aggregate, and `freed.libraryCore.rendererItemEvictionV1.disabled=1`
+Saved aggregate, `freed.libraryCore.friendsReaderV1.disabled=1` disables the
+Friends readers, and `freed.libraryCore.rendererItemEvictionV1.disabled=1`
 restores the full renderer projection at startup. This does not satisfy Gate C or complete
 Gate D. IndexedDB v3 now stores the legacy Automerge source as exact 1 MiB
 chunks. External migration admits only the exact revision and byte length, then

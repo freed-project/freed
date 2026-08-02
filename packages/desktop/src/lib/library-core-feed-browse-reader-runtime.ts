@@ -249,7 +249,7 @@ const MEDIA_TYPES = new Set<MediaType>(["image", "video", "link"]);
 export const LIBRARY_CORE_FEED_BROWSE_READER_DISABLED_KEY =
   "freed.libraryCore.feedBrowseReaderV1.disabled";
 
-function feedCardToItem(card: LibraryCoreFeedCardV1): FeedItem {
+export function feedCardToItem(card: LibraryCoreFeedCardV1): FeedItem {
   const platform = PLATFORMS.has(card.platform as Platform)
     ? (card.platform as Platform)
     : "saved";

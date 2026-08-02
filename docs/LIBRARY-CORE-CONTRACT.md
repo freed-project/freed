@@ -1028,13 +1028,13 @@ The pure classifier states are:
 
 | state                      | required interpretation                                                                                                                                                            |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `absent`                   | Complete current and historical scans found no record root, and no local journal, receipt, or control exists. Do nothing.                                                         |
+| `absent`                   | Complete current and historical scans found no record root, and no local journal, receipt, or control exists. Do nothing.                                                          |
 | `creator_prepared`         | One exact local prepared operation matches the current generation, revision, binary, heads, and schema. The later transaction may attempt its one compare-and-swap.                |
 | `creator_committed`        | The prepared operation, synchronized record, creator control, and receipt describe one complete transaction. Later saves preserve the committed candidate frontier as an ancestor. |
 | `adopter_record_unpinned`  | One valid synchronized record exists without local control. It grants no write authority.                                                                                          |
 | `adopter_tofu_read_only`   | One valid record and matching local TOFU control exist. Reads may continue. Writes remain blocked pending authenticated pairing.                                                   |
 | `prepared_source_changed`  | The source generation, revision, binary, heads, or schema changed after preparation. Do not rebase the old action.                                                                 |
-| `record_history_violation` | A historical reserved root is no longer current, or a current root is missing from complete history. Preserve evidence and block rebootstrap.                                     |
+| `record_history_violation` | A historical reserved root is no longer current, or a current root is missing from complete history. Preserve evidence and block rebootstrap.                                      |
 | `mismatched_or_corrupt`    | A shape, digest, identity, frontier, transaction member, generation, or partial local tuple is inconsistent. Block without repair.                                                 |
 | `multiple_record_conflict` | More than one unequal record exists. Preserve every occurrence and block without selecting a winner.                                                                               |
 | `incomplete_scan`          | Reserved-namespace enumeration did not complete. Do not interpret omitted values as absence.                                                                                       |
@@ -2879,9 +2879,49 @@ constructs each bucket independently.
 The renderer applies its locale-aware ordering after receipt and never
 leases the compatibility corpus on a successful native read. Malformed legacy
 fields, stale source identity, response overflow, or an unavailable native
-reader fail closed to the exact compatibility reducer. Friends, provider
-settings, and specialized feed modes remain compatibility consumers pending
-their own registered bounded queries.
+reader fail closed to the exact compatibility reducer.
+
+Friends activity, graph summaries, suggestions, selected-person timelines, and
+Friend detail map inputs now use three registered source-fenced SQLite readers.
+`persons_graph_v1` accepts
+at most 5,000 unique social or RSS source keys, returns no item bodies, and
+retains only exact item and recent-window counts, the fixed signal vocabulary,
+latest activity, location presence, bounded avatar data, and five sample item
+identities per source under an 8 MiB response ceiling. Sample order is
+published time descending and binary item identity ascending. The shared
+suggestion scorer consumes those aggregates through the same calculation used
+by compatibility item evidence. Each source summary also publishes the complete
+current-visible location candidate count and at most eight candidate identities,
+published timestamps, and effective timestamps at the graph reference time.
+
+`person_timeline_v1` pages compact cards 50 rows at a time, admits at most 100
+rows per request and 2 MiB per response, returns the exact matching total, and
+binds its canonical cursor to the selected generation and exact source-set
+digest. The Friend detail renderer retains only the current 50-row window, can
+walk every older page, and can return explicitly to the newest page. Hidden rows
+stay excluded and archived rows remain eligible, matching the existing Friends view.
+The exact location-item reader resolves every advertised candidate for the
+selected Friend under the same graph source token. It validates source ownership,
+identity, published and effective timestamps, visibility, and location presence,
+then supplies that lossless bounded set to the existing map resolver separately
+from the current 50-row timeline page. Missing summaries, count mismatch,
+malformed or duplicate candidates, more than eight combined candidates, or equal
+published and effective timestamps fail closed to compatibility. Equal timestamps
+remain ambiguous because the compatibility resolver preserves source order rather
+than applying the timeline's binary identity tie-break. Standalone account detail
+does not perform location reads or acquire a location compatibility lease.
+
+All three readers recheck the complete Automerge source
+identity before and after native work. Duplicate sources, stale generations,
+malformed aggregates, count drift, cursor mismatch, or response overflow fail
+closed to one shared reference-counted compatibility lease. A successful retry
+releases that lease. The device-local
+`freed.libraryCore.friendsReaderV1.disabled=1` switch selects compatibility
+before native work. The Friend editor remains an explicit temporary compatibility
+consumer while mounted so it can discover unregistered captured profiles and
+retain their historical provenance; it releases that shared lease on unmount.
+Provider settings and specialized feed modes remain compatibility consumers
+pending their own registered bounded queries.
 
 The cursor is versioned binary data encoded as canonical unpadded base64url. It
 binds the immutable generation digest, transition sequence, projection
@@ -2975,7 +3015,8 @@ Initial hard bounds:
 - retained feed pages: 2;
 - retained compact summaries: 512;
 - retained reader bodies: 16 entries and 16 MiB total.
-- Friends overview or timeline page: 100 rows;
+- Friends overview or native timeline request: 100 rows;
+- active Friend detail renderer window: 50 rows;
 - Friends graph result: 5,000 total nodes and edges with level of detail;
 - map result: 1,000 markers or clusters;
 - Story Wall candidate page: 250 rows;
@@ -3494,7 +3535,7 @@ During protocol activation:
    client surfaces and explicitly imports or rejects that input. It never
    silently merges those bytes into the active epoch.
 10. The local authority transaction switches the active engine and replication
-   protocol together.
+    protocol together.
 
 An Automerge compatibility export may remain for rollback and older read-only
 tools. It is derived from one exact operation frontier and carries a receipt.
@@ -8024,7 +8065,7 @@ bytes:
 - recovery-capability change chain: `uint64_be(position)`, where position zero
   is the captured pointer and positions increase toward genesis;
 - source-authority proof object: `UTF8(object_kind) || 0x00 ||
-  hex_decode(protocol_object_digest)`;
+hex_decode(protocol_object_digest)`;
 - physical checkpoint: `UTF8(adapter_kind) || 0x00 || UTF8(logical_path)`;
 - encrypted file: `UTF8(logical_path)`;
 - operation segment: `hex_decode(segment_digest)`;
@@ -10176,11 +10217,11 @@ generations.
 
 ### Resident memory
 
-| host RAM | startup peak | settled total | main renderer | native | library worker after settle | provider extraction peak |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 4 GiB | 1,024 MiB | 768 MiB | 384 MiB | 192 MiB | 32 MiB or terminated | 1,280 MiB |
-| 8 GiB | 1,280 MiB | 1,024 MiB | 512 MiB | 256 MiB | 32 MiB or terminated | 1,792 MiB |
-| 16 GiB or more | 1,536 MiB | 1,280 MiB | 640 MiB | 320 MiB | 32 MiB or terminated | 2,304 MiB |
+| host RAM       | startup peak | settled total | main renderer |  native | library worker after settle | provider extraction peak |
+| -------------- | -----------: | ------------: | ------------: | ------: | --------------------------: | -----------------------: |
+| 4 GiB          |    1,024 MiB |       768 MiB |       384 MiB | 192 MiB |        32 MiB or terminated |                1,280 MiB |
+| 8 GiB          |    1,280 MiB |     1,024 MiB |       512 MiB | 256 MiB |        32 MiB or terminated |                1,792 MiB |
+| 16 GiB or more |    1,536 MiB |     1,280 MiB |       640 MiB | 320 MiB |        32 MiB or terminated |                2,304 MiB |
 
 Before settlement, a temporary library worker may use up to 192 MiB, 256 MiB,
 or 384 MiB for the three tiers. It must return to 32 MiB or terminate within
@@ -10385,12 +10426,12 @@ within 60 seconds.
 
 With 25,000 representative items:
 
-| operation | budget |
-| --- | ---: |
-| Warm page query p95 | 50 ms |
-| Cold page query p95 | 150 ms |
-| Navigation counts p95 | 100 ms |
-| Search p95 | 150 ms |
+| operation                                   | budget |
+| ------------------------------------------- | -----: |
+| Warm page query p95                         |  50 ms |
+| Cold page query p95                         | 150 ms |
+| Navigation counts p95                       | 100 ms |
+| Search p95                                  | 150 ms |
 | Commit and materialize 1,000 captured items | 500 ms |
 
 No budget permits an unbounded renderer result. Larger corpus checks run at
@@ -10534,14 +10575,14 @@ unusable:
     receipt replay, and claim expiry prove that no second provider side effect
     is authorized while an earlier outcome is unknown.
 12. Two-device offline conflict convergence through authenticated manifest CAS
-   conflicts, branch-qualified acknowledgment, and safe compaction.
+    conflicts, branch-qualified acknowledgment, and safe compaction.
 13. Schema migration and database-plus-blob snapshot atomicity, including every
     local and replicated blob crash, missing, corruption, and garbage-collection
     boundary.
 14. Import interruption and idempotent resume.
 15. Bounded query enforcement and 4 GiB startup memory admission independently
-   on Desktop and every supported writable PWA adapter and browser for an
-   activated Library Core release.
+    on Desktop and every supported writable PWA adapter and browser for an
+    activated Library Core release.
 16. On a corpus larger than the legacy 2,500-item hydration cap, records placed
     beyond that cap remain discoverable and actionable through saved, archive,
     search, tags, Friends, Map, Story Wall, provider settings, navigation
@@ -10658,38 +10699,38 @@ after derivation. An empty delta deterministically produces
 
 `kind` is closed by gate:
 
-| gate | allowed transition kinds |
-| --- | --- |
-| C | `migration_candidate_claim`, `migration_candidate_execution`, `source_admission_fencing` |
-| D | `sql_read_cutover`, `legacy_worker_eviction`, `renderer_corpus_eviction` |
-| E | `replication_protocol_activation` |
-| F | `library_core_writer_activation`, `migration_cutover`, `storage_epoch_cutover`, `rollback_execution`, `restore_execution`, `authority_key_rotation`, `recovery_activation` |
-| G | `installed_soak_activation` |
-| H | `legacy_engine_retirement` |
+| gate | allowed transition kinds                                                                                                                                                   |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C    | `migration_candidate_claim`, `migration_candidate_execution`, `source_admission_fencing`                                                                                   |
+| D    | `sql_read_cutover`, `legacy_worker_eviction`, `renderer_corpus_eviction`                                                                                                   |
+| E    | `replication_protocol_activation`                                                                                                                                          |
+| F    | `library_core_writer_activation`, `migration_cutover`, `storage_epoch_cutover`, `rollback_execution`, `restore_execution`, `authority_key_rotation`, `recovery_activation` |
+| G    | `installed_soak_activation`                                                                                                                                                |
+| H    | `legacy_engine_retirement`                                                                                                                                                 |
 
 Each transition has a stable ASCII activation ID, a concrete bounded rollback
 trigger, its required primary receipt expectation, and either
 `same_frontier_rollback_receipt` or `roll_forward_recovery_receipt`.
 Primary expectations are:
 
-| transition kind | primary receipt expectation |
-| --- | --- |
-| `migration_candidate_claim` | `migration_claim_lifecycle` |
-| `migration_candidate_execution` | `migration_receipt` |
-| `source_admission_fencing` | `migration_receipt` |
-| `sql_read_cutover` | `read_cutover_parity` |
-| `legacy_worker_eviction` | `read_cutover_parity` |
-| `renderer_corpus_eviction` | `read_cutover_parity` |
-| `replication_protocol_activation` | `replication_convergence` |
-| `library_core_writer_activation` | `authority_transition_certificate` |
-| `migration_cutover` | `migration_receipt` |
-| `storage_epoch_cutover` | `authority_transition_certificate` |
-| `rollback_execution` | `rollback_receipt` |
-| `restore_execution` | `restore_receipt` |
-| `authority_key_rotation` | `authority_rotation_receipt` |
-| `recovery_activation` | `recovery_receipt` |
-| `installed_soak_activation` | `installed_soak_verdict` |
-| `legacy_engine_retirement` | `retirement_receipt` |
+| transition kind                   | primary receipt expectation        |
+| --------------------------------- | ---------------------------------- |
+| `migration_candidate_claim`       | `migration_claim_lifecycle`        |
+| `migration_candidate_execution`   | `migration_receipt`                |
+| `source_admission_fencing`        | `migration_receipt`                |
+| `sql_read_cutover`                | `read_cutover_parity`              |
+| `legacy_worker_eviction`          | `read_cutover_parity`              |
+| `renderer_corpus_eviction`        | `read_cutover_parity`              |
+| `replication_protocol_activation` | `replication_convergence`          |
+| `library_core_writer_activation`  | `authority_transition_certificate` |
+| `migration_cutover`               | `migration_receipt`                |
+| `storage_epoch_cutover`           | `authority_transition_certificate` |
+| `rollback_execution`              | `rollback_receipt`                 |
+| `restore_execution`               | `restore_receipt`                  |
+| `authority_key_rotation`          | `authority_rotation_receipt`       |
+| `recovery_activation`             | `recovery_receipt`                 |
+| `installed_soak_activation`       | `installed_soak_verdict`           |
+| `legacy_engine_retirement`        | `retirement_receipt`               |
 
 Transitions are unique and sorted by activation ID. `inspectionDigest` is
 `"sha256:"` plus lowercase SHA-256 of the deterministic ASCII-key-sorted JSON
@@ -10758,16 +10799,16 @@ release test lane.
 
 ## Activation gates
 
-| gate | required result |
-| --- | --- |
-| A. Contract | Legacy bootstrap epoch, field algebra, locality, deletion, operation, signed actor, repair, transaction completeness, query, epoch transition, restore authority, blob, and backup registries are exhaustive |
-| B. Dormant core | Desktop and every supported PWA adapter produce identical canonical bytes, actor identifiers, signed actor-enrollment certificates, payload, transaction and chain digests, signed-envelope verification, operation fixtures, logical checkpoint bytes and digests, materialized digests, and bidirectional encrypted backup vectors |
-| C. Migration | One elected capable authority completes a resumable, lossless, source-fenced private-corpus migration; every supported adapter proves the same public migration vectors, bounded checkpoint bootstrap, operation continuation, and its own fenced device-local source contribution without requiring a private-corpus Automerge decode |
-| D. Read cutover | Every product reader uses bounded queries on Desktop and every supported PWA adapter and browser; current query kinds retain complete semantics beyond 2,500 records; only the isolated migration and replication bridges retain short-lived full-document access until Gate E; legacy corpus can leave the renderer |
-| E. Replication | `op_segments_v1` is the sole replication protocol on every writable supported adapter; offline, duplicate, response-loss, incomplete transaction, missing blob, actor fork, schema, authenticated manifest, bounded segment and blob transfer, and CAS conflict scenarios converge; the legacy full-document replication bridge is disabled or quarantined |
-| F. Write cutover | Competing signed transitions select one global winner; crash recovery converges; downgrade, sibling, stale Library Core, and legacy clients cannot produce an accepted active-epoch operation or authenticated manifest |
-| G. Soak | Tier budgets, provider extraction separation, sync, and recovery pass on the installed build |
-| H. Retirement | Roll-forward recovery is proven and no supported writer requires Automerge |
+| gate             | required result                                                                                                                                                                                                                                                                                                                                            |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A. Contract      | Legacy bootstrap epoch, field algebra, locality, deletion, operation, signed actor, repair, transaction completeness, query, epoch transition, restore authority, blob, and backup registries are exhaustive                                                                                                                                               |
+| B. Dormant core  | Desktop and every supported PWA adapter produce identical canonical bytes, actor identifiers, signed actor-enrollment certificates, payload, transaction and chain digests, signed-envelope verification, operation fixtures, logical checkpoint bytes and digests, materialized digests, and bidirectional encrypted backup vectors                       |
+| C. Migration     | One elected capable authority completes a resumable, lossless, source-fenced private-corpus migration; every supported adapter proves the same public migration vectors, bounded checkpoint bootstrap, operation continuation, and its own fenced device-local source contribution without requiring a private-corpus Automerge decode                     |
+| D. Read cutover  | Every product reader uses bounded queries on Desktop and every supported PWA adapter and browser; current query kinds retain complete semantics beyond 2,500 records; only the isolated migration and replication bridges retain short-lived full-document access until Gate E; legacy corpus can leave the renderer                                       |
+| E. Replication   | `op_segments_v1` is the sole replication protocol on every writable supported adapter; offline, duplicate, response-loss, incomplete transaction, missing blob, actor fork, schema, authenticated manifest, bounded segment and blob transfer, and CAS conflict scenarios converge; the legacy full-document replication bridge is disabled or quarantined |
+| F. Write cutover | Competing signed transitions select one global winner; crash recovery converges; downgrade, sibling, stale Library Core, and legacy clients cannot produce an accepted active-epoch operation or authenticated manifest                                                                                                                                    |
+| G. Soak          | Tier budgets, provider extraction separation, sync, and recovery pass on the installed build                                                                                                                                                                                                                                                               |
+| H. Retirement    | Roll-forward recovery is proven and no supported writer requires Automerge                                                                                                                                                                                                                                                                                 |
 
 No gate is satisfied by code presence, an ID-only diff, or a test that skips on
 the platform where the behavior actually runs.

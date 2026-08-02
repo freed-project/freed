@@ -13,7 +13,9 @@ use crate::projection_generation_registry::{
     ProjectionGenerationReaderSelection, ProjectionGenerationRegistry,
     ProjectionGenerationRegistryError,
 };
-use crate::shadow_store::{FeedItemRow, ProjectionRebuildState, ProjectionSourceV1};
+use crate::shadow_store::{
+    FeedItemRow, ProjectionRebuildState, ProjectionSourceV1, SHADOW_SCHEMA_VERSION,
+};
 use crate::{
     automerge_external_pipeline::{populate_staged_projection, ExternalStagedProjection},
     automerge_external_sqlite_stage::materialize_feed_item_projection,
@@ -226,6 +228,7 @@ fn source_key(source: &ProjectionSourceV1, total_rows: usize) -> String {
     hasher.update(source.storage_generation.to_be_bytes());
     hasher.update(source.storage_save_revision.to_be_bytes());
     hasher.update((total_rows as u64).to_be_bytes());
+    hasher.update(SHADOW_SCHEMA_VERSION.to_be_bytes());
     lower_hex(&hasher.finalize())
 }
 
@@ -378,6 +381,7 @@ fn selection_matches(
     selection: &ProjectionGenerationReaderSelection,
     source: &ProjectionSourceV1,
     total_rows: usize,
+    source_key: &str,
 ) -> bool {
     let generation = &selection.generation;
     generation.source_document_id == source.document_id
@@ -386,6 +390,7 @@ fn selection_matches(
         && generation.source_generation == source.storage_generation
         && generation.source_save_revision == source.storage_save_revision
         && generation.total_rows == total_rows
+        && generation.file_name == format!("{source_key}.sqlite")
 }
 
 fn status_from_state(key: String, state: &ProjectionRebuildState) -> ShadowProjectionStatus {
@@ -438,7 +443,7 @@ fn begin_at_root(
     let paths = runtime_paths(base, &key)?;
     let selected = current_selection(&paths.registry_path)?;
     if let Some(selection) = selected.as_ref() {
-        if selection_matches(selection, &source, total_rows) {
+        if selection_matches(selection, &source, total_rows, &key) {
             *guard = None;
             return Ok(status_from_selection(key, selection));
         }
@@ -616,7 +621,12 @@ fn finalize_at_root(
     let selection =
         ProjectionGenerationRegistry::read_selected_generation(&active.paths.registry_path)?;
     if read_session.generation_id() != selection.generation.generation_id
-        || !selection_matches(&selection, &active.source, active.total_rows)
+        || !selection_matches(
+            &selection,
+            &active.source,
+            active.total_rows,
+            &active.source_key,
+        )
     {
         return Err(ShadowRuntimeError::InvalidInput("selected generation"));
     }
@@ -652,7 +662,7 @@ pub(super) fn publish_external_projection_at_root(
     let paths = runtime_paths(base, &key)?;
     let selected = current_selection(&paths.registry_path)?;
     if let Some(selection) = selected.as_ref() {
-        if selection_matches(selection, &staged.source, total_rows) {
+        if selection_matches(selection, &staged.source, total_rows, &key) {
             ProjectionGenerationRegistry::open(&paths.registry_path, &paths.generation_root)?
                 .prune_unselected_generations()?;
             return Ok(status_from_selection(key, selection));
@@ -693,7 +703,7 @@ pub(super) fn publish_external_projection_at_root(
     )?;
     let selection = ProjectionGenerationRegistry::read_selected_generation(&paths.registry_path)?;
     if read_session.generation_id() != selection.generation.generation_id
-        || !selection_matches(&selection, &staged.source, total_rows)
+        || !selection_matches(&selection, &staged.source, total_rows, &key)
     {
         return Err(ShadowRuntimeError::InvalidInput("selected generation"));
     }
@@ -903,6 +913,25 @@ mod tests {
         assert_eq!(selected.total_rows, 2);
         assert!(selected.generation_id.is_some());
         assert_eq!(selected.transition_sequence, Some(1));
+
+        let validated_source = source.clone().validate().expect("source");
+        let key = source_key(&validated_source, 2);
+        let paths = runtime_paths(&fixture.base, &key).expect("paths");
+        let exact_selection =
+            ProjectionGenerationRegistry::read_selected_generation(&paths.registry_path)
+                .expect("selected generation");
+        assert!(selection_matches(
+            &exact_selection,
+            &validated_source,
+            2,
+            &key,
+        ));
+        let mut prior_schema_selection = exact_selection;
+        prior_schema_selection.generation.file_name = "prior-schema.sqlite".to_string();
+        assert!(
+            !selection_matches(&prior_schema_selection, &validated_source, 2, &key,),
+            "a source-equivalent generation from the prior schema identity must rebuild"
+        );
 
         let reopened = begin_at_root(
             &LibraryCoreShadowRuntimeState::default(),

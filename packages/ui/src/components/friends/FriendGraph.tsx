@@ -123,6 +123,7 @@ interface GraphSurfacePerfSnapshot {
   labelPassMs: number;
   sceneSyncCount: number;
   presentationSyncCount: number;
+  activitySyncCount: number;
   contentSyncCount: number;
   transformOnlySyncCount: number;
   edgeRebuildCount: number;
@@ -138,6 +139,8 @@ interface GraphSurfacePerfSnapshot {
   bufferUploadCount: number;
   presentationInFlight: boolean;
   presentationQueued: boolean;
+  activityInFlight: boolean;
+  activityQueued: boolean;
   denseRenderMode: "dense" | "containers";
   denseInteractionEligible: boolean;
   denseInteractionNodeCount: number;
@@ -171,6 +174,7 @@ interface GraphDiagnosticState {
   sceneSyncMs: number;
   sceneSyncCount: number;
   presentationSyncCount: number;
+  activitySyncCount: number;
   sourceAdmissionCount: number;
   transformOnlySyncCount: number;
   lastTransform: FriendsGalaxyTransform | null;
@@ -202,6 +206,55 @@ function buildSuggestionRecord(
   map: Map<string, FriendCandidateConfidence> | undefined,
 ): Record<string, FriendCandidateConfidence> {
   return map ? Object.fromEntries(map.entries()) : {};
+}
+
+function useStableSuggestionRecord(
+  map: Map<string, FriendCandidateConfidence> | undefined,
+): Record<string, FriendCandidateConfidence> {
+  const next = buildSuggestionRecord(map);
+  const stable = useRef(next);
+  const nextKeys = Object.keys(next);
+  const current = stable.current;
+  if (
+    nextKeys.length !== Object.keys(current).length ||
+    nextKeys.some((key) => current[key] !== next[key])
+  ) {
+    stable.current = next;
+  }
+  return stable.current;
+}
+
+function sameGraphSourceValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (
+    !left ||
+    !right ||
+    typeof left !== "object" ||
+    typeof right !== "object"
+  ) {
+    return false;
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((entry, index) => sameGraphSourceValue(entry, right[index]));
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord);
+  return leftKeys.length === Object.keys(rightRecord).length &&
+    leftKeys.every(
+      (key) =>
+        Object.hasOwn(rightRecord, key) &&
+        sameGraphSourceValue(leftRecord[key], rightRecord[key]),
+    );
+}
+
+function useStableGraphSourceValue<T>(value: T): T {
+  const stable = useRef(value);
+  if (!sameGraphSourceValue(stable.current, value)) stable.current = value;
+  return stable.current;
 }
 
 function accountLabel(account: Account): string {
@@ -419,6 +472,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     sceneSyncMs: 0,
     sceneSyncCount: 0,
     presentationSyncCount: 0,
+    activitySyncCount: 0,
     sourceAdmissionCount: 0,
     transformOnlySyncCount: 0,
     lastTransform: null,
@@ -427,27 +481,28 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     activityPatchNodeCount: 0,
     unknownActivitySourceCount: 0,
   });
+  const sourcePersons = useStableGraphSourceValue(persons);
+  const sourceAccounts = useStableGraphSourceValue(accounts);
+  const sourceFeeds = useStableGraphSourceValue(feeds);
   const personsById = useMemo(
-    () => new Map(persons.map((person) => [person.id, person])),
-    [persons],
+    () => new Map(sourcePersons.map((person) => [person.id, person])),
+    [sourcePersons],
   );
   const activitySummaries = useMemo(
     () => activitySummariesProp ?? buildIdentityGraphActivitySummaries(feedItems ?? {}),
     [activitySummariesProp, feedItems],
   );
-  const personSuggestionRecord = useMemo(
-    () => buildSuggestionRecord(friendSuggestionStrengthByPerson),
-    [friendSuggestionStrengthByPerson],
+  const personSuggestionRecord = useStableSuggestionRecord(
+    friendSuggestionStrengthByPerson,
   );
-  const accountSuggestionRecord = useMemo(
-    () => buildSuggestionRecord(friendSuggestionStrengthByAccount),
-    [friendSuggestionStrengthByAccount],
+  const accountSuggestionRecord = useStableSuggestionRecord(
+    friendSuggestionStrengthByAccount,
   );
-  const personCount = persons.length;
+  const personCount = sourcePersons.length;
   const channelCount = useMemo(
-    () => Object.values(accounts).filter((account) => account.kind === "social").length +
-      Object.values(feeds).filter((feed) => feed.enabled !== false).length,
-    [accounts, feeds],
+    () => Object.values(sourceAccounts).filter((account) => account.kind === "social").length +
+      Object.values(sourceFeeds).filter((feed) => feed.enabled !== false).length,
+    [sourceAccounts, sourceFeeds],
   );
   const linkCount = useMemo(() => {
     const visiblePersonIds = new Set(
@@ -520,6 +575,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const selectNodeRef = useRef(selectNode);
   selectNodeRef.current = selectNode;
   const contextResolverRef = useRef<(target: FriendsGalaxyContextTarget | null) => void>(() => undefined);
+  const publishDiagnosticsRef = useRef<() => void>(() => undefined);
 
   const requestActivityDiff = useCallback((
     previous: IdentityGraphActivitySummaries,
@@ -546,10 +602,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     if (requestId !== null) {
       diagnosticsRef.current.activityPatchKeyCount = patches.length;
       lastAppliedActivityRef.current = next;
+      publishDiagnosticsRef.current();
     }
   }, []);
 
-  const publishDiagnosticsRef = useRef<() => void>(() => undefined);
   const publishDiagnostics = useCallback(() => {
     const viewport = viewportRef.current;
     const engine = engineRef.current;
@@ -588,6 +644,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       labelPassMs: 0,
       sceneSyncCount: diagnostic.sceneSyncCount,
       presentationSyncCount: diagnostic.presentationSyncCount,
+      activitySyncCount: diagnostic.activitySyncCount,
       contentSyncCount: diagnostic.sourceAdmissionCount,
       transformOnlySyncCount: diagnostic.transformOnlySyncCount,
       edgeRebuildCount: renderer?.contextualEdgeCount ?? 0,
@@ -603,6 +660,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       bufferUploadCount: renderer?.bufferUploadCount ?? 0,
       presentationInFlight: engine.presentationInFlight,
       presentationQueued: engine.presentationQueued,
+      activityInFlight: engine.activityInFlight,
+      activityQueued: engine.activityQueued,
       denseRenderMode: residentNodeCount >= 1_200 ? "dense" : "containers",
       denseInteractionEligible: residentNodeCount >= 1_200,
       denseInteractionNodeCount: qualityMode === "interactive" ? visibleNodeCount : 0,
@@ -719,6 +778,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   ) => void>(() => undefined);
   activityReadyRef.current = (response) => {
     const diagnostic = diagnosticsRef.current;
+    diagnostic.activitySyncCount += 1;
     diagnostic.activityPatchNodeCount = response.scenePatches.nodeIndices.length;
     diagnostic.unknownActivitySourceCount = response.scenePatches.unknownSources.length;
     publishDiagnosticsRef.current();
@@ -924,9 +984,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     setGraphError(null);
     const geometry = controller.geometry;
     const source: BuildIdentityGraphAtlasModelInput = {
-      persons,
-      accounts,
-      feeds,
+      persons: sourcePersons,
+      accounts: sourceAccounts,
+      feeds: sourceFeeds,
       activitySummaries: baseline,
       mode,
       width: 1_400,
@@ -945,16 +1005,16 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         selectedAccountId,
       },
       backgroundStarCount: BACKGROUND_STAR_COUNT,
-      backgroundSeed: `freed-friends-${mode}-${persons.length.toLocaleString()}-${channelCount.toLocaleString()}`,
+      backgroundSeed: `freed-friends-${mode}-${sourcePersons.length.toLocaleString()}-${channelCount.toLocaleString()}`,
     });
   }, [
     accountSuggestionRecord,
-    accounts,
+    sourceAccounts,
     channelCount,
-    feeds,
+    sourceFeeds,
     mode,
     personSuggestionRecord,
-    persons,
+    sourcePersons,
     sourceRetry,
   ]);
 

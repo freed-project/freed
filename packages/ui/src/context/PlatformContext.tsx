@@ -16,6 +16,7 @@ import {
 import type {
   BaseAppState,
   ContactSyncState,
+  ContentSignal,
   BugReportDraft,
   BugReportIssueType,
   FeedItem,
@@ -95,6 +96,104 @@ export interface LibraryFacetSummary {
   readonly savedPlatformCount: number;
   readonly tags: readonly string[];
   readonly totalCount: number;
+}
+
+export interface LibraryFriendsSource {
+  readonly platform: string;
+  readonly authorId: string;
+}
+
+export interface LibraryFriendsRecentWindow {
+  readonly startMs: number;
+  readonly endMs: number;
+}
+
+export interface LibraryFriendsGraphRequest {
+  readonly sources: readonly LibraryFriendsSource[];
+  readonly rssFeedUrls: readonly string[];
+  readonly recentWindow: LibraryFriendsRecentWindow;
+}
+
+export interface LibraryFriendsGraphSampleItem {
+  readonly globalId: string;
+  readonly publishedAt: number;
+}
+
+export interface LibraryFriendsGraphSignalCount {
+  readonly label: ContentSignal;
+  readonly count: number;
+}
+
+export interface LibraryFriendsGraphLocationCandidate {
+  readonly effectiveAt: number;
+  readonly globalId: string;
+  readonly publishedAt: number;
+}
+
+export interface LibraryFriendsGraphSocialActivity {
+  readonly platform: string;
+  readonly authorId: string;
+  readonly itemCount: number;
+  readonly latestActivityAt: number;
+  readonly hasLocation: boolean;
+  readonly locationCandidateCount: number;
+  readonly locationCandidates: readonly LibraryFriendsGraphLocationCandidate[];
+  readonly avatarGlobalId: string | null;
+  readonly avatarPublishedAt: number | null;
+  readonly avatarUrl: string | null;
+  readonly sampleItems: readonly LibraryFriendsGraphSampleItem[];
+  readonly recentCount: number;
+  readonly signalCounts: readonly LibraryFriendsGraphSignalCount[];
+}
+
+export interface LibraryFriendsGraphRssActivity {
+  readonly feedUrl: string;
+  readonly itemCount: number;
+  readonly latestActivityAt: number;
+  readonly hasLocation: boolean;
+  readonly locationCandidateCount: number;
+  readonly locationCandidates: readonly LibraryFriendsGraphLocationCandidate[];
+  readonly avatarGlobalId: string | null;
+  readonly avatarPublishedAt: number | null;
+  readonly avatarUrl: string | null;
+  readonly sampleItems: readonly LibraryFriendsGraphSampleItem[];
+}
+
+export interface LibraryFriendsGraph {
+  readonly sourceToken: string;
+  readonly totalItemCount: number;
+  readonly social: readonly LibraryFriendsGraphSocialActivity[];
+  readonly rss: readonly LibraryFriendsGraphRssActivity[];
+}
+
+export type LibraryFriendsLocationOwner =
+  | {
+      readonly kind: "social";
+      readonly platform: string;
+      readonly authorId: string;
+    }
+  | {
+      readonly kind: "rss";
+      readonly feedUrl: string;
+    };
+
+export interface LibraryFriendsLocationItemRequest
+  extends LibraryFriendsGraphLocationCandidate {
+  readonly owner: LibraryFriendsLocationOwner;
+  readonly referenceTimeMs: number;
+  readonly sourceToken: string;
+}
+
+export interface LibraryPersonTimelineRequest {
+  readonly sources: readonly LibraryFriendsSource[];
+  readonly limit?: number;
+  readonly cursor?: string | null;
+}
+
+export interface LibraryPersonTimelinePage {
+  readonly items: readonly FeedItem[];
+  readonly totalCount: number;
+  readonly nextCursor: string | null;
 }
 
 export interface LibrarySavedAnalyticsWindow {
@@ -466,6 +565,21 @@ export interface PlatformConfig {
   readLibrarySavedAnalytics?: (
     request: LibrarySavedAnalyticsRequest,
   ) => Promise<LibrarySavedAnalytics>;
+
+  /** Compact Friends activity aggregates computed inside the local row store. */
+  readLibraryFriendsGraph?: (
+    request: LibraryFriendsGraphRequest,
+  ) => Promise<LibraryFriendsGraph>;
+
+  /** One bounded source-keyed Friends timeline page from the local row store. */
+  readLibraryPersonTimeline?: (
+    request: LibraryPersonTimelineRequest,
+  ) => Promise<LibraryPersonTimelinePage>;
+
+  /** One lossless Friends location item bound to a graph reader source. */
+  readLibraryFriendsLocationItem?: (
+    request: LibraryFriendsLocationItemRequest,
+  ) => Promise<FeedItem | null>;
 
   /** Optional authenticated YouTube actions for the shared reader. */
   youtube?: YouTubeControls;

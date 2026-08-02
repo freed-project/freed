@@ -1,8 +1,9 @@
 //! Dormant bounded feed reader for selected Library Core SQLite generations.
 //!
-//! Automerge remains authoritative and no product caller invokes these
-//! commands. The runtime pins one authenticated immutable generation for a
-//! short, bounded reader session so keyset cursors cannot drift across a
+//! Automerge remains authoritative. The runtime serves only authenticated,
+//! immutable projection generations through bounded DTOs. Stateful feed walks
+//! pin a short reader session; stateless Friends cursors bind the exact
+//! generation and requested source set so neither can drift across a
 //! projection transition.
 
 use crate::library_core_shadow_runtime::resolve_library_core_shadow_reader_paths;
@@ -14,12 +15,15 @@ use crate::projection_generation_registry::{
     ProjectionGenerationRegistry, ProjectionGenerationRegistryError,
 };
 use crate::shadow_store::{
-    FeedCardRow, FeedItemRow, FeedPage, ItemScanPage, LibraryFacetSummary, LibrarySavedAnalytics,
-    LibrarySurface, PageCursor, SavedAnalyticsCount, SavedAnalyticsWindow, ShadowStoreError,
+    FeedCardRow, FeedItemRow, FeedPage, FriendActivitySummary, FriendSourceKey,
+    FriendsActivityWindow, FriendsGraphActivity, ItemScanPage, LibraryFacetSummary,
+    LibrarySavedAnalytics, LibrarySurface, PageCursor, RssActivitySummary, SavedAnalyticsCount,
+    SavedAnalyticsWindow, ShadowStoreError,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::io::Write;
 use std::path::Path;
@@ -49,6 +53,17 @@ const FACET_SUMMARY_QUERY_ID: &str = "library_facet_summary_v1";
 const SURFACE_ITEMS_QUERY_ID: &str = "library_surface_items_v1";
 const SAVED_ANALYTICS_QUERY_ID: &str = "saved_analytics_v1";
 const MAXIMUM_SAVED_ANALYTICS_RESPONSE_BYTES: usize = 8 * 1_048_576;
+const FRIENDS_GRAPH_QUERY_ID: &str = "persons_graph_v1";
+const PERSON_TIMELINE_QUERY_ID: &str = "person_timeline_v1";
+const MAXIMUM_FRIENDS_REQUEST_BYTES: usize = 2 * 1_048_576;
+const MAXIMUM_FRIENDS_GRAPH_RESPONSE_BYTES: usize = 8 * 1_048_576;
+const MAXIMUM_PERSON_TIMELINE_RESPONSE_BYTES: usize = 2 * 1_048_576;
+const MAXIMUM_FRIEND_SOURCE_KEYS: usize = 5_000;
+const DEFAULT_PERSON_TIMELINE_LIMIT: u32 = 50;
+const MAXIMUM_PERSON_TIMELINE_LIMIT: u32 = 100;
+const PERSON_TIMELINE_CURSOR_VERSION: u8 = 1;
+const PERSON_TIMELINE_CURSOR_FIXED_BYTES: usize = 91;
+const MAXIMUM_PERSON_TIMELINE_CURSOR_BYTES: usize = 5_600;
 
 #[derive(Debug)]
 enum FeedReaderError {
@@ -133,6 +148,15 @@ pub(super) struct FeedPageRequestV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RequiredNullableCursor(Option<String>);
+
+impl Serialize for RequiredNullableCursor {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
 
 impl<'de> Deserialize<'de> for RequiredNullableCursor {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -302,6 +326,61 @@ pub(super) struct SavedAnalyticsResponseV1 {
     source: ItemDetailSourceV1,
     source_counts: Vec<SavedAnalyticsCount>,
     total_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct FriendsGraphRequestV1 {
+    query_id: String,
+    recent_window: FriendsActivityWindow,
+    rss_feed_urls: Vec<String>,
+    schema_version: u8,
+    sources: Vec<FriendSourceKey>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct FriendsGraphResponseV1 {
+    query_id: &'static str,
+    rss: Vec<RssActivitySummary>,
+    schema_version: u8,
+    social: Vec<FriendActivitySummary>,
+    source: ItemDetailSourceV1,
+    total_item_count: i64,
+}
+
+const fn default_person_timeline_limit() -> u32 {
+    DEFAULT_PERSON_TIMELINE_LIMIT
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PersonTimelineRequestV1 {
+    cursor: RequiredNullableCursor,
+    #[serde(default = "default_person_timeline_limit")]
+    limit: u32,
+    query_id: String,
+    schema_version: u8,
+    sources: Vec<FriendSourceKey>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct PersonTimelineResponseV1 {
+    next_cursor: Option<String>,
+    query_id: &'static str,
+    rows: Vec<FeedCardRow>,
+    schema_version: u8,
+    source: ItemDetailSourceV1,
+    total_count: i64,
+}
+
+struct DecodedPersonTimelineCursor {
+    generation_id: String,
+    transition_sequence: i64,
+    projection_revision: i64,
+    source_digest: [u8; 32],
+    page_cursor: PageCursor,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -565,6 +644,132 @@ fn lower_hex(bytes: &[u8]) -> String {
         output.push(DIGITS[(byte & 0x0f) as usize] as char);
     }
     output
+}
+
+fn bounded_friend_text(value: &str, maximum_scalars: usize, maximum_bytes: usize) -> bool {
+    !value.is_empty() && value.len() <= maximum_bytes && value.chars().count() <= maximum_scalars
+}
+
+fn canonical_friend_sources(
+    sources: &[FriendSourceKey],
+    require_non_empty: bool,
+) -> Result<Vec<FriendSourceKey>, FeedReaderError> {
+    if (require_non_empty && sources.is_empty()) || sources.len() > MAXIMUM_FRIEND_SOURCE_KEYS {
+        return Err(FeedReaderError::InvalidRequest("Friends source count"));
+    }
+    let mut canonical = BTreeSet::new();
+    for source in sources {
+        if !bounded_friend_text(&source.platform, 64, 256)
+            || !bounded_friend_text(&source.author_id, 4_096, 16_384)
+            || !canonical.insert(source.clone())
+        {
+            return Err(FeedReaderError::InvalidRequest("Friends sources"));
+        }
+    }
+    Ok(canonical.into_iter().collect())
+}
+
+fn canonical_rss_feed_urls(feed_urls: &[String]) -> Result<Vec<String>, FeedReaderError> {
+    let mut canonical = BTreeSet::new();
+    for feed_url in feed_urls {
+        if !bounded_friend_text(feed_url, 2_048, 8_192) || !canonical.insert(feed_url.clone()) {
+            return Err(FeedReaderError::InvalidRequest("Friends RSS sources"));
+        }
+    }
+    Ok(canonical.into_iter().collect())
+}
+
+fn friend_sources_digest(sources: &[FriendSourceKey]) -> Result<[u8; 32], FeedReaderError> {
+    let bytes = serde_json::to_vec(sources)
+        .map_err(|_| FeedReaderError::InvalidRequest("Friends sources"))?;
+    Ok(Sha256::digest(bytes).into())
+}
+
+fn decode_person_timeline_cursor(
+    value: &str,
+) -> Result<DecodedPersonTimelineCursor, FeedReaderError> {
+    if value.is_empty()
+        || value.len() > MAXIMUM_PERSON_TIMELINE_CURSOR_BYTES
+        || value.len() % 4 == 1
+    {
+        return Err(FeedReaderError::InvalidRequest("person timeline cursor"));
+    }
+    let bytes = URL_SAFE_NO_PAD
+        .decode(value)
+        .map_err(|_| FeedReaderError::InvalidRequest("person timeline cursor"))?;
+    if URL_SAFE_NO_PAD.encode(&bytes) != value
+        || bytes.len() < PERSON_TIMELINE_CURSOR_FIXED_BYTES
+        || bytes[0] != PERSON_TIMELINE_CURSOR_VERSION
+    {
+        return Err(FeedReaderError::InvalidRequest("person timeline cursor"));
+    }
+    let global_id_length = u16::from_be_bytes([bytes[89], bytes[90]]) as usize;
+    if global_id_length == 0
+        || global_id_length > MAXIMUM_ENTITY_ID_BYTES
+        || bytes.len() != PERSON_TIMELINE_CURSOR_FIXED_BYTES + global_id_length
+    {
+        return Err(FeedReaderError::InvalidRequest(
+            "person timeline cursor entity identity",
+        ));
+    }
+    let mut source_digest = [0_u8; 32];
+    source_digest.copy_from_slice(&bytes[49..81]);
+    let projection_revision = read_safe_integer(&bytes[41..49])?;
+    Ok(DecodedPersonTimelineCursor {
+        generation_id: lower_hex(&bytes[1..33]),
+        transition_sequence: read_safe_integer(&bytes[33..41])?,
+        projection_revision,
+        source_digest,
+        page_cursor: PageCursor {
+            revision: projection_revision,
+            sort_at: read_safe_integer(&bytes[81..89])?,
+            global_id: std::str::from_utf8(&bytes[PERSON_TIMELINE_CURSOR_FIXED_BYTES..])
+                .map_err(|_| {
+                    FeedReaderError::InvalidRequest("person timeline cursor entity identity")
+                })?
+                .to_string(),
+        },
+    })
+}
+
+fn encode_person_timeline_cursor(
+    generation_id: &str,
+    transition_sequence: i64,
+    source_digest: &[u8; 32],
+    cursor: &PageCursor,
+) -> Result<String, FeedReaderError> {
+    if transition_sequence < 0
+        || cursor.revision < 0
+        || cursor.sort_at < 0
+        || transition_sequence as u64 > MAXIMUM_SAFE_INTEGER
+        || cursor.revision as u64 > MAXIMUM_SAFE_INTEGER
+        || cursor.sort_at as u64 > MAXIMUM_SAFE_INTEGER
+    {
+        return Err(FeedReaderError::InvalidRequest(
+            "person timeline cursor integer",
+        ));
+    }
+    let generation_bytes = decode_lower_hex_64(generation_id)?;
+    let global_id = cursor.global_id.as_bytes();
+    if global_id.is_empty() || global_id.len() > MAXIMUM_ENTITY_ID_BYTES {
+        return Err(FeedReaderError::InvalidRequest(
+            "person timeline cursor entity identity",
+        ));
+    }
+    let mut bytes = Vec::with_capacity(PERSON_TIMELINE_CURSOR_FIXED_BYTES + global_id.len());
+    bytes.push(PERSON_TIMELINE_CURSOR_VERSION);
+    bytes.extend_from_slice(&generation_bytes);
+    bytes.extend_from_slice(&(transition_sequence as u64).to_be_bytes());
+    bytes.extend_from_slice(&(cursor.revision as u64).to_be_bytes());
+    bytes.extend_from_slice(source_digest);
+    bytes.extend_from_slice(&(cursor.sort_at as u64).to_be_bytes());
+    bytes.extend_from_slice(&(global_id.len() as u16).to_be_bytes());
+    bytes.extend_from_slice(global_id);
+    let encoded = URL_SAFE_NO_PAD.encode(bytes);
+    if encoded.len() > MAXIMUM_PERSON_TIMELINE_CURSOR_BYTES {
+        return Err(FeedReaderError::InvalidRequest("person timeline cursor"));
+    }
+    Ok(encoded)
 }
 
 fn decode_item_scan_cursor(value: &str) -> Result<DecodedItemScanCursor, FeedReaderError> {
@@ -1124,6 +1329,186 @@ pub(super) fn read_library_core_saved_analytics(
     read_saved_analytics_at_root(&base, request).map_err(Into::into)
 }
 
+fn require_friends_request_byte_length(response_bytes: usize) -> Result<(), FeedReaderError> {
+    if response_bytes > MAXIMUM_FRIENDS_REQUEST_BYTES {
+        return Err(FeedReaderError::InvalidRequest("Friends request size"));
+    }
+    Ok(())
+}
+
+fn require_friends_graph_response_byte_length(
+    response_bytes: usize,
+) -> Result<(), FeedReaderError> {
+    if response_bytes > MAXIMUM_FRIENDS_GRAPH_RESPONSE_BYTES {
+        return Err(FeedReaderError::ResponseTooLarge);
+    }
+    Ok(())
+}
+
+fn require_person_timeline_response_byte_length(
+    response_bytes: usize,
+) -> Result<(), FeedReaderError> {
+    if response_bytes > MAXIMUM_PERSON_TIMELINE_RESPONSE_BYTES {
+        return Err(FeedReaderError::ResponseTooLarge);
+    }
+    Ok(())
+}
+
+fn read_friends_graph_at_root(
+    base: &Path,
+    request: FriendsGraphRequestV1,
+) -> Result<FriendsGraphResponseV1, FeedReaderError> {
+    let request_bytes = serde_json::to_vec(&request)
+        .map_err(|_| FeedReaderError::InvalidRequest("Friends graph"))?
+        .len();
+    require_friends_request_byte_length(request_bytes)?;
+    if request.query_id != FRIENDS_GRAPH_QUERY_ID
+        || request.schema_version != SCHEMA_VERSION
+        || !(0..=MAXIMUM_SAFE_INTEGER as i64).contains(&request.recent_window.start_ms)
+        || !(0..=MAXIMUM_SAFE_INTEGER as i64).contains(&request.recent_window.end_ms)
+        || request.recent_window.start_ms >= request.recent_window.end_ms
+    {
+        return Err(FeedReaderError::InvalidRequest("Friends graph"));
+    }
+    let requested = request
+        .sources
+        .len()
+        .checked_add(request.rss_feed_urls.len())
+        .ok_or(FeedReaderError::InvalidRequest("Friends source count"))?;
+    if requested > MAXIMUM_FRIEND_SOURCE_KEYS {
+        return Err(FeedReaderError::InvalidRequest("Friends source count"));
+    }
+    let sources = canonical_friend_sources(&request.sources, false)?;
+    let rss_feed_urls = canonical_rss_feed_urls(&request.rss_feed_urls)?;
+    let paths = resolve_library_core_shadow_reader_paths(base)
+        .map_err(FeedReaderError::RuntimePath)?
+        .ok_or(FeedReaderError::RuntimeInactive)?;
+    let reader = open_selected_projection(&paths.registry_path, &paths.generation_root)?;
+    let FriendsGraphActivity {
+        total_item_count,
+        social,
+        rss,
+    } = reader.friends_graph_activity(&sources, &rss_feed_urls, request.recent_window)?;
+    let response = FriendsGraphResponseV1 {
+        query_id: FRIENDS_GRAPH_QUERY_ID,
+        rss,
+        schema_version: SCHEMA_VERSION,
+        social,
+        source: selected_item_source(&reader)?,
+        total_item_count,
+    };
+    let response_bytes = serde_json::to_vec(&response)
+        .map_err(|_| FeedReaderError::ResponseTooLarge)?
+        .len();
+    require_friends_graph_response_byte_length(response_bytes)?;
+    Ok(response)
+}
+
+#[tauri::command]
+pub(super) fn read_library_core_persons_graph(
+    app: tauri::AppHandle,
+    request: FriendsGraphRequestV1,
+) -> Result<FriendsGraphResponseV1, FeedReaderErrorResponse> {
+    let base = app.path().app_data_dir().map_err(|error| {
+        FeedReaderErrorResponse::from(FeedReaderError::RuntimePath(error.to_string()))
+    })?;
+    read_friends_graph_at_root(&base, request).map_err(Into::into)
+}
+
+fn read_person_timeline_at_root(
+    base: &Path,
+    request: PersonTimelineRequestV1,
+) -> Result<PersonTimelineResponseV1, FeedReaderError> {
+    let request_bytes = serde_json::to_vec(&request)
+        .map_err(|_| FeedReaderError::InvalidRequest("person timeline"))?
+        .len();
+    require_friends_request_byte_length(request_bytes)?;
+    if request.query_id != PERSON_TIMELINE_QUERY_ID
+        || request.schema_version != SCHEMA_VERSION
+        || !(1..=MAXIMUM_PERSON_TIMELINE_LIMIT).contains(&request.limit)
+        || request
+            .cursor
+            .0
+            .as_ref()
+            .is_some_and(|cursor| cursor.len() > MAXIMUM_PERSON_TIMELINE_CURSOR_BYTES)
+    {
+        return Err(FeedReaderError::InvalidRequest("person timeline"));
+    }
+    let sources = canonical_friend_sources(&request.sources, true)?;
+    let source_digest = friend_sources_digest(&sources)?;
+    let decoded_cursor = request
+        .cursor
+        .0
+        .as_deref()
+        .map(decode_person_timeline_cursor)
+        .transpose()?;
+    let paths = resolve_library_core_shadow_reader_paths(base)
+        .map_err(FeedReaderError::RuntimePath)?
+        .ok_or(FeedReaderError::RuntimeInactive)?;
+    let reader = open_selected_projection(&paths.registry_path, &paths.generation_root)?;
+    if decoded_cursor.as_ref().is_some_and(|cursor| {
+        cursor.generation_id != reader.generation_id()
+            || cursor.transition_sequence != reader.transition_sequence()
+            || cursor.projection_revision != reader.projection_revision()
+            || cursor.source_digest != source_digest
+    }) {
+        return Err(FeedReaderError::CursorStale);
+    }
+    let FeedPage {
+        revision: _,
+        total_count,
+        serialized_row_bytes: _,
+        rows,
+        next_cursor,
+    } = reader
+        .person_timeline(
+            &sources,
+            decoded_cursor.as_ref().map(|cursor| &cursor.page_cursor),
+            request.limit,
+        )
+        .map_err(|error| match error {
+            ProjectionCoordinatorError::Reader(ProjectionGenerationReaderError::Store(
+                ShadowStoreError::StaleRevision { .. },
+            )) => FeedReaderError::CursorStale,
+            other => FeedReaderError::Coordinator(other),
+        })?;
+    let next_cursor = next_cursor
+        .as_ref()
+        .map(|cursor| {
+            encode_person_timeline_cursor(
+                reader.generation_id(),
+                reader.transition_sequence(),
+                &source_digest,
+                cursor,
+            )
+        })
+        .transpose()?;
+    let response = PersonTimelineResponseV1 {
+        next_cursor,
+        query_id: PERSON_TIMELINE_QUERY_ID,
+        rows,
+        schema_version: SCHEMA_VERSION,
+        source: selected_item_source(&reader)?,
+        total_count,
+    };
+    let response_bytes = serde_json::to_vec(&response)
+        .map_err(|_| FeedReaderError::ResponseTooLarge)?
+        .len();
+    require_person_timeline_response_byte_length(response_bytes)?;
+    Ok(response)
+}
+
+#[tauri::command]
+pub(super) fn read_library_core_person_timeline(
+    app: tauri::AppHandle,
+    request: PersonTimelineRequestV1,
+) -> Result<PersonTimelineResponseV1, FeedReaderErrorResponse> {
+    let base = app.path().app_data_dir().map_err(|error| {
+        FeedReaderErrorResponse::from(FeedReaderError::RuntimePath(error.to_string()))
+    })?;
+    read_person_timeline_at_root(&base, request).map_err(Into::into)
+}
+
 fn read_surface_items_at_root(
     base: &Path,
     request: SurfaceItemsRequestV1,
@@ -1570,6 +1955,187 @@ mod tests {
             schema_version: SCHEMA_VERSION,
             surface,
         }
+    }
+
+    fn friends_source(platform: &str, author_id: &str) -> FriendSourceKey {
+        FriendSourceKey {
+            platform: platform.to_string(),
+            author_id: author_id.to_string(),
+        }
+    }
+
+    fn friends_graph_request() -> FriendsGraphRequestV1 {
+        FriendsGraphRequestV1 {
+            query_id: FRIENDS_GRAPH_QUERY_ID.to_string(),
+            recent_window: FriendsActivityWindow {
+                start_ms: 250,
+                end_ms: 401,
+            },
+            rss_feed_urls: vec!["https://feed.test/rss".to_string()],
+            schema_version: SCHEMA_VERSION,
+            sources: vec![friends_source("x", "a:1"), friends_source("x", "zero")],
+        }
+    }
+
+    fn person_timeline_request(cursor: Option<String>, limit: u32) -> PersonTimelineRequestV1 {
+        PersonTimelineRequestV1 {
+            cursor: RequiredNullableCursor(cursor),
+            limit,
+            query_id: PERSON_TIMELINE_QUERY_ID.to_string(),
+            schema_version: SCHEMA_VERSION,
+            sources: vec![friends_source("x", "a:1")],
+        }
+    }
+
+    #[test]
+    fn compact_friends_graph_and_stateless_timeline_share_the_exact_generation() {
+        let fixture = Fixture::new("friends-readers");
+        let mut archived = row(1);
+        archived.author_id = Some("a:1".to_string());
+        archived.published_at = Some(300);
+        archived.archived = Some(1);
+        archived.content_blob = Some("{\"text\":\"📍 Paris\"}".to_string());
+        archived.rest = serde_json::json!({
+            "__author": { "avatarUrl": "https://avatar.test/a.png" },
+            "contentSignals": { "tags": ["event"] }
+        })
+        .to_string();
+        let mut older = row(2);
+        older.author_id = Some("a:1".to_string());
+        older.published_at = Some(200);
+        let mut hidden = row(3);
+        hidden.author_id = Some("a:1".to_string());
+        hidden.published_at = Some(400);
+        hidden.hidden = Some(1);
+        let mut rss = row(4);
+        rss.platform = Some("rss".to_string());
+        rss.author_id = Some("rss-author".to_string());
+        rss.published_at = Some(350);
+        rss.rest = serde_json::json!({
+            "rssSource": { "feedUrl": "https://feed.test/rss" }
+        })
+        .to_string();
+        let mut unrelated = row(5);
+        unrelated.author_id = Some("other".to_string());
+        unrelated.published_at = Some(500);
+        fixture.publish(&[archived, older, hidden, rss, unrelated]);
+
+        let graph = read_friends_graph_at_root(&fixture.base, friends_graph_request())
+            .expect("Friends graph");
+        assert_eq!(graph.total_item_count, 4);
+        assert_eq!(
+            graph
+                .social
+                .iter()
+                .map(|entry| (entry.author_id.as_str(), entry.item_count))
+                .collect::<Vec<_>>(),
+            vec![("a:1", 2), ("zero", 0)],
+        );
+        assert_eq!(graph.rss[0].item_count, 1);
+        let graph_json = serde_json::to_value(&graph).expect("serialize graph response");
+        assert_eq!(
+            graph_json["social"][0]["avatarUrl"],
+            "https://avatar.test/a.png"
+        );
+        assert_eq!(graph_json["social"][0]["avatarPublishedAt"], 300);
+        assert_eq!(graph_json["social"][0]["avatarGlobalId"], "x:item-1");
+        assert_eq!(graph_json["social"][0]["locationCandidateCount"], 1);
+        assert_eq!(
+            graph_json["social"][0]["locationCandidates"],
+            serde_json::json!([{
+                "globalId": "x:item-1",
+                "publishedAt": 300,
+                "effectiveAt": 300
+            }])
+        );
+        assert_eq!(graph_json["social"][1]["locationCandidateCount"], 0);
+        assert_eq!(
+            graph_json["social"][1]["locationCandidates"],
+            serde_json::json!([])
+        );
+        assert_eq!(graph_json["rss"][0]["locationCandidateCount"], 0);
+        assert_eq!(
+            graph_json["rss"][0]["locationCandidates"],
+            serde_json::json!([])
+        );
+        assert_eq!(graph.source.document_id, source().document_id);
+        assert_eq!(graph.source.projection_revision, 1);
+        assert_eq!(graph.source.transition_sequence, 1);
+
+        let first = read_person_timeline_at_root(&fixture.base, person_timeline_request(None, 1))
+            .expect("first person page");
+        assert_eq!(first.total_count, 2);
+        let first_row = serde_json::to_value(&first.rows[0]).expect("serialize first row");
+        assert_eq!(first_row["globalId"], "x:item-1");
+        assert_eq!(first_row["archived"], true);
+        assert_eq!(first.source.generation_id, graph.source.generation_id);
+        assert_eq!(
+            first.source.projection_revision,
+            graph.source.projection_revision
+        );
+        let cursor = first.next_cursor.expect("continuation cursor");
+        let second = read_person_timeline_at_root(
+            &fixture.base,
+            person_timeline_request(Some(cursor.clone()), 1),
+        )
+        .expect("second person page");
+        let second_row = serde_json::to_value(&second.rows[0]).expect("serialize second row");
+        assert_eq!(second_row["globalId"], "x:item-2");
+        assert!(
+            second.next_cursor.is_none(),
+            "an exact final page must not advertise an empty third page"
+        );
+
+        let mut changed_sources = person_timeline_request(Some(cursor), 1);
+        changed_sources.sources = vec![friends_source("x", "other")];
+        assert!(matches!(
+            read_person_timeline_at_root(&fixture.base, changed_sources),
+            Err(FeedReaderError::CursorStale)
+        ));
+    }
+
+    #[test]
+    fn friends_requests_enforce_intervals_defaults_and_byte_ceilings() {
+        let fixture = Fixture::new("friends-request-bounds");
+        let mut graph = friends_graph_request();
+        graph.recent_window.end_ms = graph.recent_window.start_ms;
+        assert!(matches!(
+            read_friends_graph_at_root(&fixture.base, graph),
+            Err(FeedReaderError::InvalidRequest("Friends graph"))
+        ));
+
+        let decoded: PersonTimelineRequestV1 = serde_json::from_value(serde_json::json!({
+            "cursor": null,
+            "queryId": PERSON_TIMELINE_QUERY_ID,
+            "schemaVersion": SCHEMA_VERSION,
+            "sources": [{ "platform": "x", "authorId": "a:1" }]
+        }))
+        .expect("default timeline request");
+        assert_eq!(decoded.limit, DEFAULT_PERSON_TIMELINE_LIMIT);
+
+        assert!(require_friends_request_byte_length(MAXIMUM_FRIENDS_REQUEST_BYTES).is_ok());
+        assert!(matches!(
+            require_friends_request_byte_length(MAXIMUM_FRIENDS_REQUEST_BYTES + 1),
+            Err(FeedReaderError::InvalidRequest("Friends request size"))
+        ));
+        assert!(
+            require_friends_graph_response_byte_length(MAXIMUM_FRIENDS_GRAPH_RESPONSE_BYTES)
+                .is_ok()
+        );
+        assert!(matches!(
+            require_friends_graph_response_byte_length(MAXIMUM_FRIENDS_GRAPH_RESPONSE_BYTES + 1),
+            Err(FeedReaderError::ResponseTooLarge)
+        ));
+        assert!(require_person_timeline_response_byte_length(
+            MAXIMUM_PERSON_TIMELINE_RESPONSE_BYTES
+        )
+        .is_ok());
+        assert!(matches!(
+            require_person_timeline_response_byte_length(
+                MAXIMUM_PERSON_TIMELINE_RESPONSE_BYTES + 1
+            ),
+            Err(FeedReaderError::ResponseTooLarge)
+        ));
     }
 
     #[test]
