@@ -294,6 +294,9 @@ describe("Library Core query registry", () => {
       expect(definition.intendedAdapters.length).toBeGreaterThan(0);
       expect(definition.blockers.length).toBeGreaterThan(0);
       if (
+        definition === LIBRARY_CORE_QUERY_REGISTRY.background_item_page_v1 ||
+        definition === LIBRARY_CORE_QUERY_REGISTRY.library_facet_summary_v1 ||
+        definition === LIBRARY_CORE_QUERY_REGISTRY.library_surface_items_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v2 ||
