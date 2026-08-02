@@ -30,7 +30,7 @@ import {
 } from "../context/PlatformContext.js";
 import { describeInstalledBuild, readBuildMetadata } from "../lib/build-info.js";
 import { useDebugStore } from "../lib/debug-store.js";
-import { useLegacyLibraryItems } from "../hooks/useLegacyLibraryItems.js";
+import { useLibraryFacetSummary } from "../hooks/useLibraryFacetSummary.js";
 import { useSettingsStore } from "../lib/settings-store.js";
 import {
   formatSampleDataSummary,
@@ -870,6 +870,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const initialize = useAppStore((s) => s.initialize);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const items = useAppStore((s) => s.items);
+  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const feeds = useAppStore((s) => s.feeds);
   const friends = useAppStore((s) => s.friends);
   const persons = useAppStore((s) => s.persons);
@@ -879,10 +880,15 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [clearingSampleData, setClearingSampleData] = useState(false);
   const existingFeedCount = Object.keys(feeds).length;
   const existingFriendCount = Object.keys(friends).length;
-  const existingItemCount = items.length;
+  const libraryFacets = useLibraryFacetSummary(items, searchCorpusVersion);
+  const existingItemCount = libraryFacets.totalCount;
   const sampleDataSummary = useMemo(
-    () => summarizeSampleData({ items, feeds, persons, accounts }),
-    [accounts, feeds, items, persons],
+    () =>
+      summarizeSampleData(
+        { items, feeds, persons, accounts },
+        libraryFacets.sampleItemCount,
+      ),
+    [accounts, feeds, items, libraryFacets.sampleItemCount, persons],
   );
   const hasSampleData = sampleDataSummary.total > 0;
   const hasExistingLibraryData =
@@ -953,7 +959,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   // ── Scrollspy ────────────────────────────────────────────────────────────
   const [activeSection, setActiveSection] = useState<SectionId>("appearance");
-  useLegacyLibraryItems(open && activeSection === "danger");
   const [mobileView, setMobileView] = useState<"nav" | "section">("nav");
   const [scrollportHeight, setScrollportHeight] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);

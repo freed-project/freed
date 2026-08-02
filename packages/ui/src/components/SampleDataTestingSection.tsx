@@ -12,15 +12,15 @@ import {
 } from "../lib/sample-library-seed.js";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
 import { toast } from "./Toast.js";
-import { useLegacyLibraryItems } from "../hooks/useLegacyLibraryItems.js";
+import { useLibraryFacetSummary } from "../hooks/useLibraryFacetSummary.js";
 
 export function SampleDataTestingSection() {
-  useLegacyLibraryItems();
   const initialize = useAppStore((s) => s.initialize);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const addSampleLibraryData = useAppStore((s) => s.addSampleLibraryData);
   const clearSampleData = useAppStore((s) => s.clearSampleData);
   const items = useAppStore((s) => s.items);
+  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const feeds = useAppStore((s) => s.feeds);
   const persons = useAppStore((s) => s.persons);
   const accounts = useAppStore((s) => s.accounts);
@@ -30,9 +30,14 @@ export function SampleDataTestingSection() {
   const [seedDone, setSeedDone] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const libraryFacets = useLibraryFacetSummary(items, searchCorpusVersion);
   const sampleDataSummary = useMemo(
-    () => summarizeSampleData({ items, feeds, persons, accounts }),
-    [accounts, feeds, items, persons],
+    () =>
+      summarizeSampleData(
+        { items, feeds, persons, accounts },
+        libraryFacets.sampleItemCount,
+      ),
+    [accounts, feeds, items, libraryFacets.sampleItemCount, persons],
   );
   const hasSampleData = sampleDataSummary.total > 0;
 

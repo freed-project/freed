@@ -2861,6 +2861,17 @@ debt until each becomes a registered
 aggregate or paged query. Append-style Automerge change chunks still require
 the native external-memory decoder, and Automerge remains authoritative.
 
+The authenticated SQLite facet summary also returns the exact count of items
+carrying Freed's internal sample-data fingerprint. Settings and blank-state
+sample controls use that count, so neither surface leases the full compatibility
+corpus merely to decide whether cleanup is available. Story Wall uses a
+source-fenced SQLite candidate query that admits only visible, nonarchived rows
+with media, returns at most 250 complete candidates, and fails closed to the
+compatibility reader when the exact result would exceed that bound. Its existing
+product filters and manifest builder still run over the complete candidate set.
+Friends, Saved analytics, provider settings, and specialized feed modes remain
+compatibility consumers pending their own registered bounded queries.
+
 The cursor is versioned binary data encoded as canonical unpadded base64url. It
 binds the immutable generation digest, transition sequence, projection
 revision, nonnegative chronological sort key, and final entity ID. The maximum

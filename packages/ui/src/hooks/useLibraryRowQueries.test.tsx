@@ -8,6 +8,7 @@ import type { FeedItem } from "@freed/shared";
 import {
   PlatformProvider,
   type LibraryFacetSummary,
+  type LibrarySurface,
   type PlatformConfig,
 } from "../context/PlatformContext.js";
 import { useLibraryFacetSummary } from "./useLibraryFacetSummary.js";
@@ -28,10 +29,12 @@ function item(globalId: string): FeedItem {
 }
 
 function platformConfig(
-  overrides: Pick<
+  overrides: Partial<Pick<
     PlatformConfig,
-    "readLibraryFacetSummary" | "readLibrarySurfaceItems"
-  >,
+    | "acquireLegacyLibraryItems"
+    | "readLibraryFacetSummary"
+    | "readLibrarySurfaceItems"
+  >>,
 ): PlatformConfig {
   return {
     store: (() => undefined) as unknown as PlatformConfig["store"],
@@ -54,11 +57,13 @@ function platformConfig(
 function SurfaceHarness({
   onItems,
   readFallbackItems,
+  surface = "map",
 }: {
   onItems: (items: readonly FeedItem[]) => void;
   readFallbackItems: () => FeedItem[];
+  surface?: LibrarySurface;
 }) {
-  onItems(useLibrarySurfaceItems("map", readFallbackItems, 7));
+  onItems(useLibrarySurfaceItems(surface, readFallbackItems, 7));
   return null;
 }
 
@@ -131,9 +136,37 @@ describe("Library row query hooks", () => {
     expect(readLibrarySurfaceItems).toHaveBeenCalledWith("map");
   });
 
+  it("leases the compatibility corpus only when a native surface reader is unavailable", async () => {
+    const release = vi.fn();
+    const acquireLegacyLibraryItems = vi.fn(async () => release);
+    const readFallbackItems = vi.fn(() => [item("fallback")]);
+    let current: readonly FeedItem[] = [];
+    renderHarness(
+      <PlatformProvider value={platformConfig({ acquireLegacyLibraryItems })}>
+        <SurfaceHarness
+          onItems={(items) => { current = items; }}
+          readFallbackItems={readFallbackItems}
+          surface="story_wall"
+        />
+      </PlatformProvider>,
+    );
+
+    expect(current.map((candidate) => candidate.globalId)).toEqual(["fallback"]);
+    await flush();
+    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
+    expect(readFallbackItems).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      root?.unmount();
+    });
+    root = null;
+    expect(release).toHaveBeenCalledOnce();
+  });
+
   it("shares one exact facet query across multiple consumers", async () => {
     const summary: LibraryFacetSummary = {
       archivedCount: 2,
+      sampleItemCount: 5,
       savedArchivedCount: 1,
       savedCount: 3,
       savedPlatformCount: 4,

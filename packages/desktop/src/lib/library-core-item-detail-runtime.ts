@@ -55,6 +55,7 @@ const FACET_SUMMARY_RESPONSE_KEYS = [
 ] as const;
 const FACET_SUMMARY_KEYS = [
   "archivedCount",
+  "sampleItemCount",
   "savedArchivedCount",
   "savedCount",
   "savedPlatformCount",
@@ -107,6 +108,7 @@ interface NativeItemScanResponseV1 {
 
 export interface LibraryCoreFacetSummary {
   readonly archivedCount: number;
+  readonly sampleItemCount: number;
   readonly savedArchivedCount: number;
   readonly savedCount: number;
   readonly savedPlatformCount: number;
@@ -114,7 +116,13 @@ export interface LibraryCoreFacetSummary {
   readonly totalCount: number;
 }
 
-export type LibraryCoreSurface = "map";
+export type LibraryCoreSurface = "map" | "story_wall";
+
+const LIBRARY_CORE_SURFACE_LIMITS: Readonly<Record<LibraryCoreSurface, number>> =
+  Object.freeze({
+    map: 1_000,
+    story_wall: 250,
+  });
 
 interface NativeFacetSummaryResponseV1 {
   readonly queryId: typeof FACET_SUMMARY_QUERY_ID;
@@ -270,6 +278,7 @@ function parseFacetSummaryResponse(value: unknown): NativeFacetSummaryResponseV1
     !safeInteger(source.storageSaveRevision) ||
     !safeInteger(source.transitionSequence) ||
     !safeInteger(summary.archivedCount) ||
+    !safeInteger(summary.sampleItemCount) ||
     !safeInteger(summary.savedArchivedCount) ||
     !safeInteger(summary.savedCount) ||
     !safeInteger(summary.savedPlatformCount) ||
@@ -290,6 +299,7 @@ function parseFacetSummaryResponse(value: unknown): NativeFacetSummaryResponseV1
     summary.savedArchivedCount > summary.savedCount ||
     summary.savedCount > summary.totalCount ||
     summary.archivedCount > summary.totalCount ||
+    summary.sampleItemCount > summary.totalCount ||
     summary.savedPlatformCount > summary.totalCount
   ) {
     throw new Error("Library Core facet summary response is inconsistent");
@@ -300,6 +310,7 @@ function parseFacetSummaryResponse(value: unknown): NativeFacetSummaryResponseV1
     source: source as unknown as NativeItemDetailSourceV1,
     summary: {
       archivedCount: summary.archivedCount,
+      sampleItemCount: summary.sampleItemCount,
       savedArchivedCount: summary.savedArchivedCount,
       savedCount: summary.savedCount,
       savedPlatformCount: summary.savedPlatformCount,
@@ -486,7 +497,7 @@ export async function readLibraryCoreSurfaceItems(
   }) => Promise<unknown> = (request) =>
     invoke("read_library_core_surface_items", { request }),
 ): Promise<readonly FeedItem[]> {
-  const limit = 1_000;
+  const limit = LIBRARY_CORE_SURFACE_LIMITS[surface];
   const before = await getSource();
   const response = parseSurfaceItemsResponse(
     await readNative({

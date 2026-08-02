@@ -36,6 +36,8 @@ use std::time::Duration;
 const SHADOW_SCHEMA_VERSION: i64 = 3;
 const MAX_FEED_PAGE_LIMIT: u32 = 128;
 const MAX_ITEM_SCAN_PAGE_LIMIT: u32 = 64;
+const MAX_MAP_SURFACE_ITEMS: u32 = 1_000;
+const MAX_STORY_WALL_SURFACE_ITEMS: u32 = 250;
 const MAX_ITEM_SCAN_ROW_BYTES: usize = 8 * 1_048_576 - 64 * 1_024;
 const MAX_FEED_PAGE_RESPONSE_BYTES: usize = 2 * 1_048_576;
 const FEED_PAGE_ENVELOPE_RESERVE_BYTES: usize = 16 * 1_024;
@@ -340,6 +342,7 @@ pub(super) struct FeedItemRow {
 #[serde(rename_all = "camelCase")]
 pub(super) struct LibraryFacetSummary {
     pub(super) archived_count: i64,
+    pub(super) sample_item_count: i64,
     pub(super) saved_archived_count: i64,
     pub(super) saved_count: i64,
     pub(super) saved_platform_count: i64,
@@ -350,6 +353,16 @@ pub(super) struct LibraryFacetSummary {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum LibrarySurface {
     Map,
+    StoryWall,
+}
+
+impl LibrarySurface {
+    pub(super) const fn maximum(self) -> u32 {
+        match self {
+            Self::Map => MAX_MAP_SURFACE_ITEMS,
+            Self::StoryWall => MAX_STORY_WALL_SURFACE_ITEMS,
+        }
+    }
 }
 
 impl FeedItemRow {
@@ -1029,13 +1042,26 @@ impl ShadowStore {
 
         let tx = self.conn.unchecked_transaction()?;
         Self::require_readable_projection_in(&tx)?;
-        let (total_count, saved_count, archived_count, saved_archived_count, saved_platform_count) =
-            tx.query_row(
+        let (
+            total_count,
+            saved_count,
+            archived_count,
+            saved_archived_count,
+            saved_platform_count,
+            sample_item_count,
+        ) = tx.query_row(
                 "SELECT COUNT(*),
                         COALESCE(SUM(saved = 1), 0),
                         COALESCE(SUM(archived = 1), 0),
                         COALESCE(SUM(saved = 1 AND archived = 1), 0),
-                        COALESCE(SUM(platform = 'saved'), 0)
+                        COALESCE(SUM(platform = 'saved'), 0),
+                        COALESCE(SUM(
+                          CASE
+                            WHEN json_type(rest, '$.sampleDataFingerprint.marker') = 'text'
+                             AND json_extract(rest, '$.sampleDataFingerprint.marker') = 'freed.sample-data.v1'
+                            THEN 1 ELSE 0
+                          END
+                        ), 0)
                  FROM feed_items;",
                 [],
                 |row| {
@@ -1045,6 +1071,7 @@ impl ShadowStore {
                         row.get(2)?,
                         row.get(3)?,
                         row.get(4)?,
+                        row.get(5)?,
                     ))
                 },
             )?;
@@ -1087,6 +1114,7 @@ impl ShadowStore {
         tx.commit()?;
         Ok(LibraryFacetSummary {
             archived_count,
+            sample_item_count,
             saved_archived_count,
             saved_count,
             saved_platform_count,
@@ -1102,7 +1130,7 @@ impl ShadowStore {
         surface: LibrarySurface,
         limit: u32,
     ) -> StoreResult<Vec<FeedItemRow>> {
-        let maximum = 1_000;
+        let maximum = surface.maximum();
         if limit == 0 || limit > maximum {
             return Err(ShadowStoreError::InvalidItemScanPageLimit {
                 requested: limit,
@@ -1122,6 +1150,17 @@ impl ShadowStore {
                    OR json_extract(contentBlob, '$.text') GLOB '* in [A-Z]*'
                    OR json_extract(contentBlob, '$.text') GLOB '* at [A-Z]*'
                    OR json_extract(contentBlob, '$.text') GLOB '* from [A-Z]*'
+                "
+            }
+            LibrarySurface::StoryWall => {
+                "hidden IS NOT 1
+                   AND archived IS NOT 1
+                   AND CASE
+                     WHEN json_valid(contentBlob)
+                     THEN json_type(contentBlob, '$.mediaUrls') = 'array'
+                      AND json_array_length(contentBlob, '$.mediaUrls') > 0
+                     ELSE 0
+                   END
                 "
             }
         };

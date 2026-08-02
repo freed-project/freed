@@ -89,6 +89,7 @@ export type ScanLibraryItems = (
 
 export interface LibraryFacetSummary {
   readonly archivedCount: number;
+  readonly sampleItemCount: number;
   readonly savedArchivedCount: number;
   readonly savedCount: number;
   readonly savedPlatformCount: number;
@@ -96,7 +97,7 @@ export interface LibraryFacetSummary {
   readonly totalCount: number;
 }
 
-export type LibrarySurface = "map";
+export type LibrarySurface = "map" | "story_wall";
 
 export interface ChangelogPreviewRelease {
   version: string;
