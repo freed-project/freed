@@ -181,10 +181,17 @@ Gate D. IndexedDB v3 now stores the legacy Automerge source as exact 1 MiB
 chunks. External migration admits only the exact revision and byte length, then
 reads one revision-fenced chunk per transaction. Existing v1 and v2 stores
 perform one atomic versionchange split, after which migration no longer creates
-a source-sized structured clone. The worker still owns the decoded Automerge
-document. The next active milestone is the authenticated migration claim,
-followed by conversion of the remaining compatibility surfaces and
-worker-corpus eviction.
+a source-sized structured clone. Before native decode, the finalized source is
+bound to the Desktop installation and signed with a device-held Ed25519 key.
+The exact immutable local receipt is read back and verified, while macOS vault
+access disables user interaction and fails closed instead of prompting. This
+legacy source-admission receipt is domain-separated from the future elected
+migration-candidate claim and grants no writer or cloud authority. The worker
+still owns the decoded Automerge document. Windows uses its native credential
+vault. Linux remains on the Automerge rollback path until it has a proven
+noninteractive platform vault. The next active milestone is
+conversion of the remaining compatibility surfaces and worker-corpus eviction,
+followed by complete elected migration authority admission.
 
 ## What the evidence establishes
 

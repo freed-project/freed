@@ -23,6 +23,7 @@ export type LibraryCoreLocalStoreKind =
   | "local-storage"
   | "memory"
   | "native-json"
+  | "platform-credential"
   | "session-storage"
   | "unprovisioned"
   | "webkit-data-store"
@@ -237,18 +238,21 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
     physicalStores: [{
       kind: "indexeddb",
       platforms: ["desktop", "pwa"],
-      locator: "origin:indexedDB/freed@2/automerge",
+      locator: "origin:indexedDB/freed@3/automerge",
       keys: [
         "feed",
         "feed:installation-generation",
         "feed:save-revision",
+        "feed:chunk-count",
+        "feed:byte-length",
+        "feed:chunk:<index>",
       ],
     }],
     retention: { kind: "until-reset" },
     backup: "include-private",
     export: "legacy-compatibility",
     redaction: "retain-private-bytes",
-    resetSemantics: "Factory reset atomically clears feed, advances feed:installation-generation, and resets feed:save-revision to zero.",
+    resetSemantics: "Factory reset atomically clears feed and its chunk metadata and bytes, advances feed:installation-generation, and resets feed:save-revision to zero.",
     snapshot: "portable-snapshot-required",
     migration: "migrate-to-library-core",
     cutover: {
@@ -1121,6 +1125,33 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
     sourceReferences: [
       "docs/LIBRARY-CORE-CONTRACT.md",
       "packages/shared/src/library-core/legacy-epoch-bootstrap-contract.ts",
+    ],
+  },
+  {
+    registryKey: "library-core-legacy-source-admission-key",
+    soleOwner: "packages/desktop/src-tauri/src/library_core_migration_claim.rs",
+    locality: "secret",
+    role: "secret",
+    authoritative: false,
+    physicalStores: [{
+      kind: "platform-credential",
+      platforms: ["desktop-macos", "desktop-windows"],
+      locator: "platform-credential:wtf.freed.library-core/migration-source-current",
+      keys: ["migration-source-current"],
+    }],
+    retention: { kind: "until-reset" },
+    backup: "exclude-secret",
+    export: "exclude",
+    redaction: "drop-entire-value",
+    resetSemantics: "Factory reset removes the platform credential before deleting local migration claims and staging state.",
+    snapshot: "excluded",
+    migration: "retire-with-legacy-epoch",
+    cutover: {
+      blocksCutover: false,
+      reason: "This macOS and Windows key authenticates one device-local legacy source-admission receipt. It grants no Library Core writer or cloud authority and cannot satisfy elected migration admission. Linux remains on the Automerge rollback path until it has a proven noninteractive platform vault.",
+    },
+    sourceReferences: [
+      "packages/desktop/src-tauri/src/library_core_migration_claim.rs",
     ],
   },
   {
@@ -2187,16 +2218,22 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
     sourcePath: "packages/sync/src/storage/indexeddb.ts",
     sourceTokens: [
       'const DB_NAME = "freed"',
-      "const DB_VERSION = 2",
+      "const DB_VERSION = 3",
       'const STORE_NAME = "automerge"',
       'const DOC_KEY = "feed"',
       'const DOCUMENT_GENERATION_KEY = "feed:installation-generation"',
       'const SAVE_REVISION_KEY = "feed:save-revision"',
+      'const DOCUMENT_CHUNK_COUNT_KEY = "feed:chunk-count"',
+      'const DOCUMENT_BYTE_LENGTH_KEY = "feed:byte-length"',
+      'const DOCUMENT_CHUNK_KEY_PREFIX = "feed:chunk:"',
     ],
     registeredKeys: [
       "feed",
       "feed:installation-generation",
       "feed:save-revision",
+      "feed:chunk-count",
+      "feed:byte-length",
+      "feed:chunk:<index>",
     ],
   },
   {
@@ -2477,6 +2514,15 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
       'const STORE_NAME = "locations"',
     ],
     registeredKeys: ["query"],
+  },
+  {
+    registryKey: "library-core-legacy-source-admission-key",
+    sourcePath: "packages/desktop/src-tauri/src/library_core_migration_claim.rs",
+    sourceTokens: [
+      'const KEYRING_SERVICE: &str = "wtf.freed.library-core"',
+      'const KEYRING_ACCOUNT: &str = "migration-source-current"',
+    ],
+    registeredKeys: ["migration-source-current"],
   },
   {
     registryKey: "library-core-derived-runtime",

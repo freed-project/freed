@@ -25,6 +25,7 @@ export interface LibraryCoreExternalExportWorkerClient {
 export interface LibraryCoreExternalMigrationNativeClient {
   begin(input: {
     sessionId: string;
+    sourceInstallationId: string;
     source: LibraryCoreExternalExportStartedV1["source"];
   }): Promise<LibraryCoreExternalMigrationSpoolStatus>;
   append(input: {
@@ -62,6 +63,7 @@ export const tauriLibraryCoreExternalMigrationNativeClient:
             storageGeneration: generation,
             storageSaveRevision: saveRevision,
             byteLength: input.source.byteLength,
+            sourceInstallationId: input.sourceInstallationId,
           },
         },
       );
@@ -139,7 +141,15 @@ export async function migrateLibraryCoreExternalSnapshot(
   workerClient: LibraryCoreExternalExportWorkerClient,
   nativeClient: LibraryCoreExternalMigrationNativeClient,
   sessionId: string,
+  sourceInstallationId: string,
 ): Promise<LibraryCoreExternalMigrationResult> {
+  if (
+    sourceInstallationId.length === 0
+    || sourceInstallationId.length > 128
+    || !/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(sourceInstallationId)
+  ) {
+    throw new Error("Library Core source installation identity is invalid");
+  }
   const started = await workerClient.begin(sessionId);
   if (started.source.byteLength === 0) {
     await workerClient.cancel(sessionId);
@@ -161,6 +171,7 @@ export async function migrateLibraryCoreExternalSnapshot(
   try {
     let native = await nativeClient.begin({
       sessionId: nativeSessionId,
+      sourceInstallationId,
       source: started.source,
     });
     nativeActive = true;

@@ -8,6 +8,12 @@
 use crate::automerge_external_common::lower_hex;
 use crate::automerge_external_pipeline::stage_external_snapshot;
 use crate::automerge_external_spool::{ExternalSnapshotSource, ExternalSnapshotSpool};
+#[cfg(not(test))]
+use crate::library_core_migration_claim::clear_platform_migration_claim_key;
+use crate::library_core_migration_claim::{
+    authenticate_migration_source_with_store, MigrationClaimKeyStore,
+    PlatformMigrationClaimKeyStore,
+};
 use crate::library_core_shadow_runtime::{
     publish_external_projection_at_root, LibraryCoreShadowRuntimeState, ShadowProjectionStatus,
 };
@@ -62,6 +68,12 @@ fn validate_source(source: &ExternalSnapshotSource) -> Result<(), String> {
         || source.byte_length > MAXIMUM_SOURCE_BYTES
         || source.storage_generation > MAXIMUM_SAFE_INTEGER
         || source.storage_save_revision > MAXIMUM_SAFE_INTEGER
+        || source.source_installation_id.is_empty()
+        || source.source_installation_id.len() > 128
+        || !source
+            .source_installation_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-'))
     {
         return Err("invalid external migration source".to_string());
     }
@@ -319,9 +331,16 @@ fn finalize_at_root(
     shadow_runtime: &LibraryCoreShadowRuntimeState,
     base: &Path,
     scratch_path: &Path,
+    key_store: &dyn MigrationClaimKeyStore,
 ) -> Result<ShadowProjectionStatus, String> {
     let source = active.source.clone();
     let source_sha256 = active.spool.finalize().map_err(|error| error.to_string())?;
+    authenticate_migration_source_with_store(
+        &base.join(MIGRATION_ROOT_DIRECTORY),
+        &source,
+        &source_sha256,
+        key_store,
+    )?;
     let source_file = active
         .spool
         .finalized_source_file()
@@ -343,9 +362,10 @@ fn finalize_at_root(
         .map_err(|error| error.to_string())
 }
 
-pub(super) fn clear_library_core_external_migration_runtime_in(
+fn clear_library_core_external_migration_runtime_at_root(
     runtime: &LibraryCoreExternalMigrationRuntimeState,
     base: &Path,
+    clear_key: impl FnOnce() -> Result<(), String>,
 ) -> Result<(), String> {
     let guard = runtime
         .0
@@ -354,6 +374,7 @@ pub(super) fn clear_library_core_external_migration_runtime_in(
     if guard.is_some() {
         return Err("external migration is active during factory reset".to_string());
     }
+    clear_key()?;
     let root = base.join(MIGRATION_ROOT_DIRECTORY);
     match std::fs::symlink_metadata(&root) {
         Ok(metadata) if metadata.file_type().is_dir() && !metadata.file_type().is_symlink() => {
@@ -369,6 +390,17 @@ pub(super) fn clear_library_core_external_migration_runtime_in(
         }
     }
     Ok(())
+}
+
+pub(super) fn clear_library_core_external_migration_runtime_in(
+    runtime: &LibraryCoreExternalMigrationRuntimeState,
+    base: &Path,
+) -> Result<(), String> {
+    #[cfg(not(test))]
+    let clear_key = clear_platform_migration_claim_key;
+    #[cfg(test)]
+    let clear_key = || Ok(());
+    clear_library_core_external_migration_runtime_at_root(runtime, base, clear_key)
 }
 
 #[tauri::command]
@@ -410,7 +442,13 @@ pub(super) async fn finalize_library_core_external_migration(
     let active = take_active(&state, &session_id)?;
     let shadow_runtime = (*shadow_state).clone();
     tauri::async_runtime::spawn_blocking(move || {
-        finalize_at_root(active, &shadow_runtime, &base, &scratch_path)
+        finalize_at_root(
+            active,
+            &shadow_runtime,
+            &base,
+            &scratch_path,
+            &PlatformMigrationClaimKeyStore,
+        )
     })
     .await
     .map_err(|error| format!("external migration worker failed: {error}"))?
@@ -444,7 +482,22 @@ mod tests {
     use crate::automerge_external_common::decode_test_hex;
     use crate::automerge_external_pipeline::FEED_ITEM_DOCUMENT_HEX;
     use crate::automerge_external_spool::EXTERNAL_SNAPSHOT_CHUNK_BYTES;
+    use std::cell::RefCell;
     use tempfile::tempdir;
+
+    #[derive(Default)]
+    struct MemoryKeyStore(RefCell<Option<Vec<u8>>>);
+
+    impl MigrationClaimKeyStore for MemoryKeyStore {
+        fn load(&self, _installation_id: &str) -> Result<Option<Vec<u8>>, String> {
+            Ok(self.0.borrow().clone())
+        }
+
+        fn store(&self, _installation_id: &str, bytes: &[u8]) -> Result<(), String> {
+            *self.0.borrow_mut() = Some(bytes.to_vec());
+            Ok(())
+        }
+    }
 
     fn source() -> ExternalSnapshotSource {
         ExternalSnapshotSource {
@@ -452,6 +505,7 @@ mod tests {
             storage_generation: 7,
             storage_save_revision: 11,
             byte_length: EXTERNAL_SNAPSHOT_CHUNK_BYTES as u64 + 3,
+            source_installation_id: "desktop-installation-1".to_string(),
         }
     }
 
@@ -501,12 +555,34 @@ mod tests {
 
         begin_at_root(&runtime, &base, session_id.to_string(), source()).unwrap();
         assert_eq!(
-            clear_library_core_external_migration_runtime_in(&runtime, &base).unwrap_err(),
+            clear_library_core_external_migration_runtime_at_root(&runtime, &base, || Ok(()))
+                .unwrap_err(),
             "external migration is active during factory reset"
         );
         drop(take_active(&runtime, session_id).unwrap());
-        clear_library_core_external_migration_runtime_in(&runtime, &base).unwrap();
+        clear_library_core_external_migration_runtime_at_root(&runtime, &base, || Ok(())).unwrap();
         assert!(!base.join(MIGRATION_ROOT_DIRECTORY).exists());
+    }
+
+    #[test]
+    fn factory_reset_preserves_local_state_when_credential_removal_fails() {
+        let directory = tempdir().unwrap();
+        let base = std::fs::canonicalize(directory.path()).unwrap();
+        let runtime = LibraryCoreExternalMigrationRuntimeState::default();
+        let root = base.join(MIGRATION_ROOT_DIRECTORY);
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("preserve-me"), b"migration evidence").unwrap();
+
+        let error = clear_library_core_external_migration_runtime_at_root(&runtime, &base, || {
+            Err("credential removal failed".to_string())
+        })
+        .unwrap_err();
+
+        assert_eq!(error, "credential removal failed");
+        assert_eq!(
+            std::fs::read(root.join("preserve-me")).unwrap(),
+            b"migration evidence"
+        );
     }
 
     #[test]
@@ -541,6 +617,7 @@ mod tests {
             storage_generation: 7,
             storage_save_revision: 11,
             byte_length: bytes.len() as u64,
+            source_installation_id: "desktop-installation-1".to_string(),
         };
 
         begin_at_root(
@@ -553,11 +630,13 @@ mod tests {
         let appended = append_at_root(&runtime, session_id, 0, &bytes).unwrap();
         assert!(appended.complete);
         let (_, scratch_path) = runtime_paths(&base, session_id).unwrap();
+        let key_store = MemoryKeyStore::default();
         let first = finalize_at_root(
             take_active(&runtime, session_id).unwrap(),
             &shadow_runtime,
             &base,
             &scratch_path,
+            &key_store,
         )
         .unwrap();
         let first_value = serde_json::to_value(&first).unwrap();
@@ -571,6 +650,7 @@ mod tests {
             &shadow_runtime,
             &base,
             &scratch_path,
+            &key_store,
         )
         .unwrap();
         let replay_value = serde_json::to_value(&replay).unwrap();

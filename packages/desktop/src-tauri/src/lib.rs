@@ -54,6 +54,7 @@ mod library_core_feed_browse_store;
 mod library_core_feed_reader_runtime;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_journal;
+mod library_core_migration_claim;
 mod library_core_shadow_runtime;
 #[cfg_attr(not(test), allow(dead_code))]
 mod projection_coordinator;

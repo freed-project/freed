@@ -28,6 +28,8 @@ export const LIBRARY_CORE_DIGEST_DOMAINS = [
   "operation-segment-body",
   "intent-segment-body",
   "causal-frontier",
+  "legacy-source-admission-key",
+  "legacy-source-admission-claim",
 ] as const;
 
 export type LibraryCoreDigestDomain =
@@ -39,6 +41,7 @@ export const LIBRARY_CORE_SIGNATURE_DOMAINS = [
   "actor-enrollment-authority",
   "epoch-transition-certificate",
   "authority-key-possession",
+  "legacy-source-admission-claim-key",
 ] as const;
 
 export type LibraryCoreSignatureDomain =

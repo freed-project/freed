@@ -69,8 +69,14 @@ libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
+keyring = { version = "3.6.3", default-features = false, features = ["windows-native"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+# The migration signer uses the ordinary macOS credential vault, but every
+# access disables Keychain user interaction first. If the item cannot be used
+# without a prompt, migration fails closed instead of interrupting the user.
+security-framework = "3.7"
+keyring = { version = "3.6.3", default-features = false, features = ["apple-native"] }
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["NSApplication", "NSRunningApplication"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSKeyValueCoding", "NSObject", "NSThread"] }
