@@ -142,6 +142,8 @@ Freed Desktop now has a Story Wall settings section for owner-controlled memory 
 
 On Freed Desktop, Story Wall now obtains its complete visible media candidate set through the authenticated local SQLite generation instead of retaining the full Library item corpus in the renderer. The native query caps the exact candidate set at 250 rows and falls back without truncation when the set is larger or the source changes. Existing year, provider, account, hidden-item, featured-item, preview, and manifest logic remains unchanged, and no publishing or provider behavior changes.
 
+Facebook and Instagram media backup now source visible candidates from source-fenced 64-row SQLite pages. Freed stages only compact local candidate pages, performs no provider request until the final source check succeeds, then streams those pages through the existing user-triggered archive path. YouTube saved-video sync uses compact visible identities in deterministic SQLite order and retains the existing 25-action cap. No automatic provider work or cadence change is introduced.
+
 The first publisher target is GitHub Pages. The desktop publisher creates or reuses a user-owned repo, writes a static site under `/docs`, includes `index.html`, `embed.js`, `data/story-wall.json`, `.nojekyll`, and vault assets, then commits through Git blobs, trees, commits, and refs. Successful destination details sync so another device can find the published wall. In-progress status and error messages remain device-local because they describe one machine's current publish attempt. The UI exposes manual publish now with privacy review copy. GitHub OAuth and automatic settle-window publishing remain follow-up work.
 
 ---

@@ -2920,8 +2920,27 @@ releases that lease. The device-local
 before native work. The Friend editor remains an explicit temporary compatibility
 consumer while mounted so it can discover unregistered captured profiles and
 retain their historical provenance; it releases that shared lease on unmount.
-Provider settings and specialized feed modes remain compatibility consumers
-pending their own registered bounded queries.
+Provider settings scan the same authenticated selected generation through the
+source-fenced 64-row item scanner. Facebook group repair carries one compact
+group-ID winner set across pages. Facebook and Instagram media backup stage
+only bounded compact candidate pages in one temporary local JSONL file. It
+performs no provider work until the scanner closes its final source fence, then
+streams and archives one staged page at a time. YouTube synchronization retains
+deduplicated visible saved-video identities, not `FeedItem` rows. The normal
+path never acquires the compatibility projection.
+A background item-scan session remains capped at 60 seconds, but its exact
+generation, transition, projection, and item-bound cursor may reopen the same
+currently selected immutable generation after expiry. A changed selection or
+cursor mismatch remains stale and reserves no reader session.
+A stale source, malformed row, unavailable native reader, or canceled scan
+fails closed without reporting success or starting provider work. The
+device-local `freed.libraryCore.providerSettingsReaderV1.disabled=1` switch
+explicitly restores the existing compatibility view before native work. The
+SQLite path uses stable global-ID order for deterministic user-triggered
+batches. These reads do not add automatic provider work, change cadence, or
+make Automerge anything other than the active authority. Specialized feed
+modes remain compatibility consumers pending their own registered bounded
+queries.
 
 The cursor is versioned binary data encoded as canonical unpadded base64url. It
 binds the immutable generation digest, transition sequence, projection
