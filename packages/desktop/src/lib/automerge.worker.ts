@@ -16,7 +16,10 @@
 
 import * as A from "@automerge/automerge";
 import type { StorageRevision } from "@freed/sync/types";
-import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
+import {
+  INDEXEDDB_AUTOMERGE_CHUNK_BYTES,
+  IndexedDBStorage,
+} from "@freed/sync/storage/indexeddb";
 import {
   classifyDocumentLoadFailure,
   RepeatableAutomergePersistence,
@@ -145,7 +148,8 @@ const LIBRARY_CORE_PROJECTION_ENVELOPE_RESERVE_BYTES = 64 * 1_024;
 const MAX_LIBRARY_CORE_PROJECTION_INDEX_ENTRIES = 250_000;
 const MAX_LIBRARY_CORE_PROJECTION_INDEX_BYTES = 16 * 1_048_576;
 const MAX_LIBRARY_CORE_PROJECTION_ENTITY_ID_BYTES = 4_096;
-const MAX_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK_BYTES = 1_048_576;
+const MAX_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK_BYTES =
+  INDEXEDDB_AUTOMERGE_CHUNK_BYTES;
 const MAX_LIBRARY_CORE_FEED_BROWSE_ROWS = 250_000;
 const MAX_LIBRARY_CORE_FEED_BROWSE_BATCH_ROWS = 128;
 const LIBRARY_CORE_FEED_BROWSE_SOURCE_DOMAIN =
@@ -202,7 +206,6 @@ let libraryCoreFeedBrowseProjectionSession:
 interface LibraryCoreExternalExportSession {
   readonly sessionId: string;
   readonly source: LibraryCoreExternalSnapshotV1;
-  readonly bytes: Uint8Array;
 }
 
 let libraryCoreExternalExportSession: LibraryCoreExternalExportSession | null =
@@ -376,16 +379,14 @@ async function startLibraryCoreExternalExport(
     return requireCurrentExternalExport(sessionId);
   }
 
-  const snapshot = await storage.loadRawSnapshotForExternalMigration();
-  const bytes = snapshot.data ?? new Uint8Array(0);
+  const snapshot = await storage.beginExternalMigrationSnapshot();
   const session: LibraryCoreExternalExportSession = {
     sessionId,
     source: {
       schemaVersion: 1,
       storageRevision: { ...snapshot.revision },
-      byteLength: bytes.byteLength,
+      byteLength: snapshot.byteLength,
     },
-    bytes,
   };
   libraryCoreExternalExportSession = session;
   return session;
@@ -407,13 +408,22 @@ async function readLibraryCoreExternalExportChunk(
   if (offset > session.source.byteLength) {
     throw new Error("Library Core external export offset exceeds its source");
   }
-  const nextOffset = Math.min(
-    offset + MAX_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK_BYTES,
-    session.source.byteLength,
+  if (offset === session.source.byteLength) {
+    return {
+      session,
+      bytes: new Uint8Array(0),
+      nextOffset: offset,
+      done: true,
+    };
+  }
+  const bytes = await storage.readExternalMigrationChunk(
+    session.source.storageRevision,
+    offset,
   );
+  const nextOffset = offset + bytes.byteLength;
   return {
     session,
-    bytes: session.bytes.slice(offset, nextOffset),
+    bytes,
     nextOffset,
     done: nextOffset === session.source.byteLength,
   };

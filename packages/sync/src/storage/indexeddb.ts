@@ -5,11 +5,15 @@ import type {
 } from "../types.js";
 
 const DB_NAME = "freed";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_NAME = "automerge";
 const DOC_KEY = "feed";
 const DOCUMENT_GENERATION_KEY = "feed:installation-generation";
 const SAVE_REVISION_KEY = "feed:save-revision";
+const DOCUMENT_CHUNK_COUNT_KEY = "feed:chunk-count";
+const DOCUMENT_BYTE_LENGTH_KEY = "feed:byte-length";
+const DOCUMENT_CHUNK_KEY_PREFIX = "feed:chunk:";
+export const INDEXEDDB_AUTOMERGE_CHUNK_BYTES = 1_048_576;
 
 function revisionLabel(revision: StorageRevision): string {
   return `${revision.generation.toLocaleString()}:${revision.saveRevision.toLocaleString()}`;
@@ -51,6 +55,59 @@ function exactBuffer(data: Uint8Array): ArrayBuffer {
   const buffer = new ArrayBuffer(data.byteLength);
   new Uint8Array(buffer).set(data);
   return buffer;
+}
+
+function chunkKey(index: number): string {
+  return `${DOCUMENT_CHUNK_KEY_PREFIX}${index.toString().padStart(8, "0")}`;
+}
+
+function assertChunkCount(value: unknown): number {
+  const count = assertRevisionPart(value, "chunk count");
+  if (count > Number.MAX_SAFE_INTEGER / INDEXEDDB_AUTOMERGE_CHUNK_BYTES) {
+    throw new Error("Stored Automerge chunk count is corrupt");
+  }
+  return count;
+}
+
+function assertByteLength(value: unknown): number {
+  return assertRevisionPart(value, "byte length");
+}
+
+function expectedChunkCount(byteLength: number): number {
+  return Math.ceil(byteLength / INDEXEDDB_AUTOMERGE_CHUNK_BYTES);
+}
+
+function writeDocumentChunks(
+  store: IDBObjectStore,
+  data: Uint8Array,
+): number {
+  const count = expectedChunkCount(data.byteLength);
+  for (let index = 0; index < count; index += 1) {
+    const offset = index * INDEXEDDB_AUTOMERGE_CHUNK_BYTES;
+    const nextOffset = Math.min(
+      offset + INDEXEDDB_AUTOMERGE_CHUNK_BYTES,
+      data.byteLength,
+    );
+    store.put(exactBuffer(data.subarray(offset, nextOffset)), chunkKey(index));
+  }
+  store.put(count, DOCUMENT_CHUNK_COUNT_KEY);
+  store.put(data.byteLength, DOCUMENT_BYTE_LENGTH_KEY);
+  return count;
+}
+
+function deleteDocumentChunks(
+  store: IDBObjectStore,
+  count: number,
+): void {
+  for (let index = 0; index < count; index += 1) {
+    store.delete(chunkKey(index));
+  }
+}
+
+export interface IndexedDBExternalMigrationSnapshot {
+  readonly revision: StorageRevision;
+  readonly byteLength: number;
+  readonly maximumChunkBytes: typeof INDEXEDDB_AUTOMERGE_CHUNK_BYTES;
 }
 
 export class StaleStorageRevisionError extends Error {
@@ -109,7 +166,7 @@ export class IndexedDBStorage implements RevisionedStorageAdapter {
       request.onblocked = () =>
         rejectOnce(
           new Error(
-            "IndexedDB v2 upgrade is blocked by another open Freed connection",
+            "IndexedDB v3 upgrade is blocked by another open Freed connection",
           ),
         );
       request.onsuccess = () => {
@@ -131,7 +188,7 @@ export class IndexedDBStorage implements RevisionedStorageAdapter {
         const transaction = request.transaction;
         if (!transaction) {
           upgradeFailure = new Error(
-            "IndexedDB v2 upgrade has no versionchange transaction",
+            "IndexedDB v3 upgrade has no versionchange transaction",
           );
           return;
         }
@@ -147,34 +204,75 @@ export class IndexedDBStorage implements RevisionedStorageAdapter {
           if (oldVersion === 0) {
             store.put(0, DOCUMENT_GENERATION_KEY);
             store.put(0, SAVE_REVISION_KEY);
+            store.put(0, DOCUMENT_CHUNK_COUNT_KEY);
+            store.put(0, DOCUMENT_BYTE_LENGTH_KEY);
             return;
           }
 
-          // Version 1 stored the exact feed bytes and, in later builds, an
-          // optional reset generation. Preserve both and begin revision
-          // fencing at revision zero.
-          const generationRequest = store.get(DOCUMENT_GENERATION_KEY);
-          generationRequest.onsuccess = () => {
+          if (oldVersion === 1) {
+            // Version 1 stored the exact feed bytes and, in later builds, an
+            // optional reset generation. Preserve both and begin revision
+            // fencing at revision zero.
+            const generationRequest = store.get(DOCUMENT_GENERATION_KEY);
+            generationRequest.onsuccess = () => {
+              try {
+                if (generationRequest.result === undefined) {
+                  store.put(0, DOCUMENT_GENERATION_KEY);
+                } else {
+                  assertRevisionPart(
+                    generationRequest.result,
+                    "document generation",
+                  );
+                }
+                store.put(0, SAVE_REVISION_KEY);
+              } catch (error) {
+                upgradeFailure =
+                  error instanceof Error ? error : new Error(String(error));
+                transaction.abort();
+              }
+            };
+            generationRequest.onerror = () => {
+              upgradeFailure =
+                generationRequest.error ??
+                new Error("IndexedDB v1 generation migration failed");
+            };
+          }
+
+          // Versions 1 and 2 stored one source-sized value. Split it once
+          // inside the upgrade transaction. Every later migration read can
+          // then retrieve one bounded chunk without materializing the corpus.
+          const documentRequest = store.get(DOC_KEY);
+          documentRequest.onsuccess = () => {
             try {
-              if (generationRequest.result === undefined) {
-                store.put(0, DOCUMENT_GENERATION_KEY);
-              } else {
-                assertRevisionPart(
-                  generationRequest.result,
-                  "document generation",
+              const value = documentRequest.result;
+              if (value === undefined) {
+                store.put(0, DOCUMENT_CHUNK_COUNT_KEY);
+                store.put(0, DOCUMENT_BYTE_LENGTH_KEY);
+                return;
+              }
+              const bytes =
+                value instanceof ArrayBuffer
+                  ? new Uint8Array(value)
+                  : value instanceof Uint8Array
+                    ? value
+                    : null;
+              if (!bytes) {
+                throw new Error(
+                  "Stored Automerge data is corrupt during IndexedDB v3 upgrade",
                 );
               }
-              store.put(0, SAVE_REVISION_KEY);
+              writeDocumentChunks(store, bytes);
+              store.delete(DOC_KEY);
             } catch (error) {
               upgradeFailure =
                 error instanceof Error ? error : new Error(String(error));
               transaction.abort();
             }
           };
-          generationRequest.onerror = () => {
+          documentRequest.onerror = () => {
             upgradeFailure =
-              generationRequest.error ??
-              new Error("IndexedDB v1 generation migration failed");
+              documentRequest.error ??
+              new Error("IndexedDB document chunk migration failed");
           };
         } catch (error) {
           upgradeFailure =
@@ -193,35 +291,81 @@ export class IndexedDBStorage implements RevisionedStorageAdapter {
     }
   }
 
-  private async loadSnapshot(
-    copyDocumentBytes: boolean,
-  ): Promise<RevisionedStorageValue> {
+  private async loadSnapshot(): Promise<RevisionedStorageValue> {
     const db = await this.getDB();
 
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(STORE_NAME, "readonly");
       const store = transaction.objectStore(STORE_NAME);
-      const documentRequest = store.get(DOC_KEY);
-      const documentCountRequest = store.count(DOC_KEY);
       const generationRequest = store.get(DOCUMENT_GENERATION_KEY);
       const revisionRequest = store.get(SAVE_REVISION_KEY);
+      const chunkCountRequest = store.get(DOCUMENT_CHUNK_COUNT_KEY);
+      const byteLengthRequest = store.get(DOCUMENT_BYTE_LENGTH_KEY);
+      const legacyDocumentCountRequest = store.count(DOC_KEY);
+      const metadataRequests = [
+        generationRequest,
+        revisionRequest,
+        chunkCountRequest,
+        byteLengthRequest,
+        legacyDocumentCountRequest,
+      ];
+      const chunkRequests: IDBRequest<unknown>[] = [];
+      let completedMetadataReads = 0;
+      let failure: Error | null = null;
+      let chunkCount = 0;
+      let byteLength = 0;
+
+      const readChunks = (): void => {
+        completedMetadataReads += 1;
+        if (completedMetadataReads !== metadataRequests.length || failure) {
+          return;
+        }
+        try {
+          if (legacyDocumentCountRequest.result !== 0) {
+            throw new Error(
+              "Stored Automerge data is corrupt: legacy document survived IndexedDB v3 migration",
+            );
+          }
+          chunkCount = assertChunkCount(chunkCountRequest.result);
+          byteLength = assertByteLength(byteLengthRequest.result);
+          if (chunkCount !== expectedChunkCount(byteLength)) {
+            throw new Error(
+              "Stored Automerge data is corrupt: chunk count does not match byte length",
+            );
+          }
+          for (let index = 0; index < chunkCount; index += 1) {
+            chunkRequests.push(store.get(chunkKey(index)));
+          }
+        } catch (error) {
+          failure =
+            error instanceof Error ? error : new Error(String(error));
+          transaction.abort();
+        }
+      };
+      for (const request of metadataRequests) {
+        request.onsuccess = readChunks;
+      }
 
       transaction.onerror = () =>
         reject(
-          transaction.error ??
-            documentRequest.error ??
-            documentCountRequest.error ??
+          failure ??
+            transaction.error ??
             generationRequest.error ??
             revisionRequest.error ??
+            chunkCountRequest.error ??
+            byteLengthRequest.error ??
+            legacyDocumentCountRequest.error ??
             new Error("IndexedDB load failed without an error"),
         );
       transaction.onabort = () =>
         reject(
-          transaction.error ??
-            documentRequest.error ??
-            documentCountRequest.error ??
+          failure ??
+            transaction.error ??
             generationRequest.error ??
             revisionRequest.error ??
+            chunkCountRequest.error ??
+            byteLengthRequest.error ??
+            legacyDocumentCountRequest.error ??
             new Error("IndexedDB load aborted"),
         );
       transaction.oncomplete = () => {
@@ -237,7 +381,7 @@ export class IndexedDBStorage implements RevisionedStorageAdapter {
             ),
           };
 
-          if (documentCountRequest.result === 0) {
+          if (byteLength === 0) {
             if (revision.saveRevision > 0) {
               throw new Error(
                 "Stored Automerge data is corrupt: save revision exists without document bytes",
@@ -247,33 +391,27 @@ export class IndexedDBStorage implements RevisionedStorageAdapter {
             return;
           }
 
-          const result = documentRequest.result;
-          if (result instanceof ArrayBuffer) {
-            resolve({
-              data: copyDocumentBytes
-                ? Uint8Array.from(new Uint8Array(result))
-                : new Uint8Array(result),
-              revision,
-            });
-            return;
+          const data = new Uint8Array(byteLength);
+          for (let index = 0; index < chunkRequests.length; index += 1) {
+            const result = chunkRequests[index]!.result;
+            const chunk =
+              result instanceof ArrayBuffer
+                ? new Uint8Array(result)
+                : result instanceof Uint8Array
+                  ? result
+                  : null;
+            const expectedLength = Math.min(
+              INDEXEDDB_AUTOMERGE_CHUNK_BYTES,
+              byteLength - index * INDEXEDDB_AUTOMERGE_CHUNK_BYTES,
+            );
+            if (!chunk || chunk.byteLength !== expectedLength) {
+              throw new Error(
+                "Stored Automerge data is corrupt: document chunk is missing or malformed",
+              );
+            }
+            data.set(chunk, index * INDEXEDDB_AUTOMERGE_CHUNK_BYTES);
           }
-          if (result instanceof Uint8Array) {
-            resolve({
-              data: copyDocumentBytes ? Uint8Array.from(result) : result,
-              revision,
-            });
-            return;
-          }
-
-          const storedType =
-            result === null
-              ? "null"
-              : result === undefined
-                ? "undefined"
-                : (result.constructor?.name ?? typeof result);
-          throw new Error(
-            `Stored Automerge data is corrupt: expected binary data, found ${storedType}`,
-          );
+          resolve({ data, revision });
         } catch (error) {
           reject(error instanceof Error ? error : new Error(String(error)));
         }
@@ -282,20 +420,151 @@ export class IndexedDBStorage implements RevisionedStorageAdapter {
   }
 
   async load(): Promise<RevisionedStorageValue> {
-    return this.loadSnapshot(true);
+    return this.loadSnapshot();
   }
 
   /**
-   * Loads one exact revision for bounded external migration without making a
-   * second full-document copy inside the storage adapter.
-   *
-   * IndexedDB still materializes one structured-clone result. The caller must
-   * treat these bytes as immutable, export bounded copied chunks, and release
-   * the snapshot. This API does not decode Automerge or change the active
-   * persistence contract.
+   * Pins only the revision and source length for external migration. It never
+   * reads an Automerge chunk.
    */
-  async loadRawSnapshotForExternalMigration(): Promise<RevisionedStorageValue> {
-    return this.loadSnapshot(false);
+  async beginExternalMigrationSnapshot(): Promise<IndexedDBExternalMigrationSnapshot> {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, "readonly");
+      const store = transaction.objectStore(STORE_NAME);
+      const generationRequest = store.get(DOCUMENT_GENERATION_KEY);
+      const revisionRequest = store.get(SAVE_REVISION_KEY);
+      const chunkCountRequest = store.get(DOCUMENT_CHUNK_COUNT_KEY);
+      const byteLengthRequest = store.get(DOCUMENT_BYTE_LENGTH_KEY);
+
+      transaction.onerror = () =>
+        reject(
+          transaction.error ??
+            generationRequest.error ??
+            revisionRequest.error ??
+            chunkCountRequest.error ??
+            byteLengthRequest.error ??
+            new Error("IndexedDB migration snapshot admission failed"),
+        );
+      transaction.onabort = transaction.onerror;
+      transaction.oncomplete = () => {
+        try {
+          const revision = {
+            generation: assertRevisionPart(
+              generationRequest.result,
+              "document generation",
+            ),
+            saveRevision: assertRevisionPart(
+              revisionRequest.result,
+              "save revision",
+            ),
+          };
+          const byteLength = assertByteLength(byteLengthRequest.result);
+          const chunkCount = assertChunkCount(chunkCountRequest.result);
+          if (chunkCount !== expectedChunkCount(byteLength)) {
+            throw new Error(
+              "Stored Automerge migration source has inconsistent chunk metadata",
+            );
+          }
+          if (byteLength === 0 && revision.saveRevision > 0) {
+            throw new Error(
+              "Stored Automerge migration source has a revision without bytes",
+            );
+          }
+          resolve({
+            revision,
+            byteLength,
+            maximumChunkBytes: INDEXEDDB_AUTOMERGE_CHUNK_BYTES,
+          });
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
+      };
+    });
+  }
+
+  /**
+   * Reads one exact aligned chunk while rechecking the admitted revision in the
+   * same transaction. A stale save can never splice bytes into the snapshot.
+   */
+  async readExternalMigrationChunk(
+    expectedRevision: StorageRevision,
+    offset: number,
+  ): Promise<Uint8Array> {
+    const expected = validateExpectedRevision(expectedRevision);
+    if (
+      !Number.isSafeInteger(offset)
+      || offset < 0
+      || offset % INDEXEDDB_AUTOMERGE_CHUNK_BYTES !== 0
+    ) {
+      throw new Error("IndexedDB migration chunk offset is invalid");
+    }
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, "readonly");
+      const store = transaction.objectStore(STORE_NAME);
+      const generationRequest = store.get(DOCUMENT_GENERATION_KEY);
+      const revisionRequest = store.get(SAVE_REVISION_KEY);
+      const byteLengthRequest = store.get(DOCUMENT_BYTE_LENGTH_KEY);
+      const chunkCountRequest = store.get(DOCUMENT_CHUNK_COUNT_KEY);
+      const index = offset / INDEXEDDB_AUTOMERGE_CHUNK_BYTES;
+      const chunkRequest = store.get(chunkKey(index));
+
+      transaction.onerror = () =>
+        reject(
+          transaction.error ??
+            generationRequest.error ??
+            revisionRequest.error ??
+            byteLengthRequest.error ??
+            chunkCountRequest.error ??
+            chunkRequest.error ??
+            new Error("IndexedDB migration chunk read failed"),
+        );
+      transaction.onabort = transaction.onerror;
+      transaction.oncomplete = () => {
+        try {
+          const actual = {
+            generation: assertRevisionPart(
+              generationRequest.result,
+              "document generation",
+            ),
+            saveRevision: assertRevisionPart(
+              revisionRequest.result,
+              "save revision",
+            ),
+          };
+          if (!sameRevision(expected, actual)) {
+            throw new StaleStorageRevisionError(expected, actual);
+          }
+          const byteLength = assertByteLength(byteLengthRequest.result);
+          const chunkCount = assertChunkCount(chunkCountRequest.result);
+          if (
+            chunkCount !== expectedChunkCount(byteLength)
+            || offset >= byteLength
+            || index >= chunkCount
+          ) {
+            throw new Error("IndexedDB migration chunk is outside its source");
+          }
+          const result = chunkRequest.result;
+          const chunk =
+            result instanceof ArrayBuffer
+              ? new Uint8Array(result)
+              : result instanceof Uint8Array
+                ? result
+                : null;
+          const expectedLength = Math.min(
+            INDEXEDDB_AUTOMERGE_CHUNK_BYTES,
+            byteLength - offset,
+          );
+          if (!chunk || chunk.byteLength !== expectedLength) {
+            throw new Error("IndexedDB migration chunk is missing or malformed");
+          }
+          resolve(chunk);
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
+      };
+    });
   }
 
   /** Reads only the revision fence, never the document bytes. */
@@ -346,7 +615,6 @@ export class IndexedDBStorage implements RevisionedStorageAdapter {
     expectedRevision: StorageRevision,
   ): Promise<StorageRevision> {
     const expected = validateExpectedRevision(expectedRevision);
-    const buffer = exactBuffer(data);
     const db = await this.getDB();
 
     return new Promise((resolve, reject) => {
@@ -354,13 +622,15 @@ export class IndexedDBStorage implements RevisionedStorageAdapter {
       const store = transaction.objectStore(STORE_NAME);
       const generationRequest = store.get(DOCUMENT_GENERATION_KEY);
       const revisionRequest = store.get(SAVE_REVISION_KEY);
+      const chunkCountRequest = store.get(DOCUMENT_CHUNK_COUNT_KEY);
+      const byteLengthRequest = store.get(DOCUMENT_BYTE_LENGTH_KEY);
       let completedReads = 0;
       let result: StorageRevision | null = null;
       let failure: Error | null = null;
 
       const compareAndWrite = (): void => {
         completedReads += 1;
-        if (completedReads !== 2 || failure) return;
+        if (completedReads !== 4 || failure) return;
         try {
           const actual = {
             generation: assertRevisionPart(
@@ -380,12 +650,24 @@ export class IndexedDBStorage implements RevisionedStorageAdapter {
           if (actual.saveRevision >= Number.MAX_SAFE_INTEGER) {
             throw new Error("IndexedDB save revision cannot advance safely");
           }
+          const priorChunkCount = assertChunkCount(chunkCountRequest.result);
+          const priorByteLength = assertByteLength(byteLengthRequest.result);
+          if (priorChunkCount !== expectedChunkCount(priorByteLength)) {
+            throw new Error(
+              "Stored Automerge data is corrupt: chunk metadata changed before save",
+            );
+          }
 
           result = {
             generation: actual.generation,
             saveRevision: actual.saveRevision + 1,
           };
-          store.put(buffer, DOC_KEY);
+          deleteDocumentChunks(
+            store,
+            priorChunkCount,
+          );
+          writeDocumentChunks(store, data);
+          store.delete(DOC_KEY);
           store.put(result.saveRevision, SAVE_REVISION_KEY);
         } catch (error) {
           failure =
@@ -396,6 +678,8 @@ export class IndexedDBStorage implements RevisionedStorageAdapter {
 
       generationRequest.onsuccess = compareAndWrite;
       revisionRequest.onsuccess = compareAndWrite;
+      chunkCountRequest.onsuccess = compareAndWrite;
+      byteLengthRequest.onsuccess = compareAndWrite;
       transaction.oncomplete = () => {
         if (failure) {
           reject(failure);
@@ -412,6 +696,8 @@ export class IndexedDBStorage implements RevisionedStorageAdapter {
           transaction.error ??
             generationRequest.error ??
             revisionRequest.error ??
+            chunkCountRequest.error ??
+            byteLengthRequest.error ??
             new Error("IndexedDB save failed without an error"),
         );
       transaction.onabort = () =>
@@ -420,6 +706,8 @@ export class IndexedDBStorage implements RevisionedStorageAdapter {
             transaction.error ??
             generationRequest.error ??
             revisionRequest.error ??
+            chunkCountRequest.error ??
+            byteLengthRequest.error ??
             new Error("IndexedDB save aborted"),
         );
     });
@@ -469,9 +757,11 @@ export class IndexedDBStorage implements RevisionedStorageAdapter {
             generation: actual.generation + 1,
             saveRevision: 0,
           };
+          store.clear();
           store.put(result.generation, DOCUMENT_GENERATION_KEY);
           store.put(result.saveRevision, SAVE_REVISION_KEY);
-          store.delete(DOC_KEY);
+          store.put(0, DOCUMENT_CHUNK_COUNT_KEY);
+          store.put(0, DOCUMENT_BYTE_LENGTH_KEY);
         } catch (error) {
           failure =
             error instanceof Error ? error : new Error(String(error));
