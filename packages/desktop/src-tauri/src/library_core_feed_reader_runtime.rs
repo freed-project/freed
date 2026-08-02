@@ -47,7 +47,6 @@ const ITEM_SCAN_CURSOR_VERSION: u8 = 1;
 const ITEM_SCAN_CURSOR_FIXED_BYTES: usize = 51;
 const FACET_SUMMARY_QUERY_ID: &str = "library_facet_summary_v1";
 const SURFACE_ITEMS_QUERY_ID: &str = "library_surface_items_v1";
-const MAXIMUM_MAP_ITEMS: u32 = 1_000;
 
 #[derive(Debug)]
 enum FeedReaderError {
@@ -268,19 +267,19 @@ pub(super) struct FacetSummaryResponseV1 {
 #[serde(rename_all = "snake_case")]
 enum SurfaceKindV1 {
     Map,
+    StoryWall,
 }
 
 impl SurfaceKindV1 {
     fn store_surface(self) -> LibrarySurface {
         match self {
             Self::Map => LibrarySurface::Map,
+            Self::StoryWall => LibrarySurface::StoryWall,
         }
     }
 
     fn maximum(self) -> u32 {
-        match self {
-            Self::Map => MAXIMUM_MAP_ITEMS,
-        }
+        self.store_surface().maximum()
     }
 }
 
@@ -1541,23 +1540,27 @@ mod tests {
         let mut map = row(0);
         map.saved = Some(1);
         map.tags = Some("[\"places\",\"travel\"]".to_string());
-        map.rest = "{\"location\":{\"name\":\"London\"}}".to_string();
+        map.rest = "{\"location\":{\"name\":\"London\"},\"sampleDataFingerprint\":{\"marker\":\"freed.sample-data.v1\"}}".to_string();
         let mut archived = row(1);
         archived.archived = Some(1);
         archived.tags = Some("[\"travel\"]".to_string());
         archived.rest = "{\"location\":{\"name\":\"Paris\"}}".to_string();
-        fixture.publish(&[map.clone(), archived.clone(), row(2)]);
+        let mut near_sample = row(2);
+        near_sample.rest =
+            "{\"sampleDataFingerprint\":{\"marker\":\"freed.sample-data.v2\"}}".to_string();
+        fixture.publish(&[map.clone(), archived.clone(), near_sample]);
 
         let facets =
             read_facet_summary_at_root(&fixture.base, facet_request()).expect("facet summary");
         assert_eq!(facets.summary.total_count, 3);
         assert_eq!(facets.summary.saved_count, 1);
         assert_eq!(facets.summary.archived_count, 1);
+        assert_eq!(facets.summary.sample_item_count, 1);
         assert_eq!(facets.summary.tags, vec!["places", "travel"]);
 
         let map_response = read_surface_items_at_root(
             &fixture.base,
-            surface_request(SurfaceKindV1::Map, MAXIMUM_MAP_ITEMS),
+            surface_request(SurfaceKindV1::Map, SurfaceKindV1::Map.maximum()),
         )
         .expect("map candidates");
         assert_eq!(map_response.rows, vec![map, archived]);
@@ -1577,13 +1580,13 @@ mod tests {
         assert!(matches!(
             read_surface_items_at_root(
                 &fixture.base,
-                surface_request(SurfaceKindV1::Map, MAXIMUM_MAP_ITEMS + 1),
+                surface_request(SurfaceKindV1::Map, SurfaceKindV1::Map.maximum() + 1),
             ),
             Err(FeedReaderError::InvalidRequest("surface items"))
         ));
 
         let overflow_fixture = Fixture::new("surface-overflow");
-        let overflow_rows = (0..=MAXIMUM_MAP_ITEMS as usize)
+        let overflow_rows = (0..=SurfaceKindV1::Map.maximum() as usize)
             .map(|index| {
                 let mut candidate = row(index);
                 candidate.rest = "{\"location\":{\"name\":\"London\"}}".to_string();
@@ -1594,13 +1597,95 @@ mod tests {
         assert!(matches!(
             read_surface_items_at_root(
                 &overflow_fixture.base,
-                surface_request(SurfaceKindV1::Map, MAXIMUM_MAP_ITEMS),
+                surface_request(SurfaceKindV1::Map, SurfaceKindV1::Map.maximum()),
             ),
             Err(FeedReaderError::Coordinator(
                 ProjectionCoordinatorError::Reader(ProjectionGenerationReaderError::Store(
                     ShadowStoreError::SurfaceItemsExceedLimit {
                         requested: 1_001,
                         maximum: 1_000,
+                    },
+                ),),
+            ))
+        ));
+
+        let story_fixture = Fixture::new("story-wall-surface");
+        let mut story_a = row(10);
+        story_a.global_id = "x:story-a".to_string();
+        story_a.published_at = Some(200);
+        story_a.hidden = None;
+        story_a.archived = None;
+        story_a.content_blob = Some("{\"mediaUrls\":[\"https://media.test/a\"]}".to_string());
+        let mut story_b = row(11);
+        story_b.global_id = "x:story-b".to_string();
+        story_b.published_at = Some(200);
+        story_b.content_blob = Some("{\"mediaUrls\":[\"https://media.test/b\"]}".to_string());
+        let mut story_older = row(12);
+        story_older.global_id = "x:story-older".to_string();
+        story_older.published_at = Some(100);
+        story_older.content_blob =
+            Some("{\"mediaUrls\":[\"https://media.test/older\"]}".to_string());
+        let mut hidden_story = row(13);
+        hidden_story.hidden = Some(1);
+        hidden_story.content_blob =
+            Some("{\"mediaUrls\":[\"https://media.test/hidden\"]}".to_string());
+        let mut archived_story = row(14);
+        archived_story.archived = Some(1);
+        archived_story.content_blob =
+            Some("{\"mediaUrls\":[\"https://media.test/archived\"]}".to_string());
+        let mut empty_media = row(15);
+        empty_media.content_blob = Some("{\"mediaUrls\":[]}".to_string());
+        let missing_media = row(16);
+        let mut non_array_media = row(17);
+        non_array_media.content_blob = Some("{\"mediaUrls\":\"not-an-array\"}".to_string());
+        story_fixture.publish(&[
+            story_older.clone(),
+            hidden_story,
+            story_b.clone(),
+            archived_story,
+            empty_media,
+            missing_media,
+            non_array_media,
+            story_a.clone(),
+        ]);
+        let story_response = read_surface_items_at_root(
+            &story_fixture.base,
+            surface_request(SurfaceKindV1::StoryWall, SurfaceKindV1::StoryWall.maximum()),
+        )
+        .expect("Story Wall candidates");
+        assert_eq!(story_response.rows, vec![story_a, story_b, story_older]);
+        assert!(matches!(
+            read_surface_items_at_root(
+                &story_fixture.base,
+                surface_request(
+                    SurfaceKindV1::StoryWall,
+                    SurfaceKindV1::StoryWall.maximum() + 1,
+                ),
+            ),
+            Err(FeedReaderError::InvalidRequest("surface items"))
+        ));
+
+        let story_overflow_fixture = Fixture::new("story-wall-surface-overflow");
+        let story_overflow_rows = (0..=SurfaceKindV1::StoryWall.maximum() as usize)
+            .map(|index| {
+                let mut candidate = row(index);
+                candidate.content_blob = Some(format!(
+                    "{{\"mediaUrls\":[\"https://media.test/{index}\"]}}"
+                ));
+                candidate
+            })
+            .collect::<Vec<_>>();
+        story_overflow_fixture.publish(&story_overflow_rows);
+        assert!(matches!(
+            read_surface_items_at_root(
+                &story_overflow_fixture.base,
+                surface_request(SurfaceKindV1::StoryWall, SurfaceKindV1::StoryWall.maximum(),),
+            ),
+            Err(FeedReaderError::Coordinator(
+                ProjectionCoordinatorError::Reader(ProjectionGenerationReaderError::Store(
+                    ShadowStoreError::SurfaceItemsExceedLimit {
+                        requested: 251,
+                        maximum: 250,
                     },
                 ),),
             ))

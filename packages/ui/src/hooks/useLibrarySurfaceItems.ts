@@ -5,6 +5,7 @@ import {
   type LibrarySurface,
   type PlatformConfig,
 } from "../context/PlatformContext.js";
+import { useLegacyLibraryItems } from "./useLegacyLibraryItems.js";
 
 type SurfaceReader = NonNullable<PlatformConfig["readLibrarySurfaceItems"]>;
 
@@ -67,6 +68,7 @@ export function useLibrarySurfaceItems(
   const [failedVersion, setFailedVersion] = useState<number | null>(null);
   const shouldFallback =
     !readLibrarySurfaceItems || failedVersion === sourceVersion;
+  useLegacyLibraryItems(shouldFallback);
   const fallbackItems = useMemo(
     () => (shouldFallback ? readFallbackItems() : null),
     [readFallbackItems, shouldFallback],

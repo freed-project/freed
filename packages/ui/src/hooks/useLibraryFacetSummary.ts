@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import type { FeedItem } from "@freed/shared";
+import { hasSampleDataFingerprint, type FeedItem } from "@freed/shared";
 import {
   usePlatform,
   type LibraryFacetSummary,
   type PlatformConfig,
 } from "../context/PlatformContext.js";
+import { useLegacyLibraryItems } from "./useLegacyLibraryItems.js";
 
 export type { LibraryFacetSummary } from "../context/PlatformContext.js";
 
@@ -28,6 +29,7 @@ const EMPTY_FACET_SUMMARY: LibraryFacetSummary = Object.freeze({
   savedArchivedCount: 0,
   savedCount: 0,
   savedPlatformCount: 0,
+  sampleItemCount: 0,
   tags: Object.freeze([]) as readonly string[],
   totalCount: 0,
 });
@@ -37,11 +39,13 @@ function summarizeItems(items: readonly FeedItem[]): LibraryFacetSummary {
   let savedArchivedCount = 0;
   let savedCount = 0;
   let savedPlatformCount = 0;
+  let sampleItemCount = 0;
   const tags = new Set<string>();
   for (const item of items) {
     if (item.userState.archived) archivedCount += 1;
     if (item.userState.saved) savedCount += 1;
     if (item.platform === "saved") savedPlatformCount += 1;
+    if (hasSampleDataFingerprint(item)) sampleItemCount += 1;
     if (item.userState.saved && item.userState.archived) {
       savedArchivedCount += 1;
     }
@@ -52,6 +56,7 @@ function summarizeItems(items: readonly FeedItem[]): LibraryFacetSummary {
     savedArchivedCount,
     savedCount,
     savedPlatformCount,
+    sampleItemCount,
     tags: Array.from(tags).sort(),
     totalCount: items.length,
   };
@@ -95,6 +100,7 @@ export function useLibraryFacetSummary(
   const [failedVersion, setFailedVersion] = useState<number | null>(null);
   const shouldFallback =
     !readLibraryFacetSummary || failedVersion === sourceVersion;
+  useLegacyLibraryItems(shouldFallback);
   const fallback = useMemo(
     () => (shouldFallback ? summarizeItems(fallbackItems) : null),
     [fallbackItems, shouldFallback],

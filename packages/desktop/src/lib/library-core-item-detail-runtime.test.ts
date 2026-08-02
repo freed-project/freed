@@ -155,19 +155,21 @@ describe("Desktop Library Core item detail runtime", () => {
 
   it("reads exact native facets without retaining item identities", async () => {
     const detail = response();
-    const readNative = vi.fn().mockResolvedValue({
+    const validSummaryResponse = {
       queryId: "library_facet_summary_v1",
       schemaVersion: 1,
       source: detail.source,
       summary: {
         archivedCount: 2,
+        sampleItemCount: 5,
         savedArchivedCount: 1,
         savedCount: 3,
         savedPlatformCount: 4,
         tags: ["alpha", "beta"],
         totalCount: 10,
       },
-    });
+    };
+    const readNative = vi.fn().mockResolvedValue(validSummaryResponse);
 
     await expect(
       readLibraryCoreFacetSummary(
@@ -176,6 +178,7 @@ describe("Desktop Library Core item detail runtime", () => {
       ),
     ).resolves.toEqual({
       archivedCount: 2,
+      sampleItemCount: 5,
       savedArchivedCount: 1,
       savedCount: 3,
       savedPlatformCount: 4,
@@ -186,30 +189,46 @@ describe("Desktop Library Core item detail runtime", () => {
       queryId: "library_facet_summary_v1",
       schemaVersion: 1,
     });
+
+    await expect(
+      readLibraryCoreFacetSummary(
+        vi.fn().mockResolvedValue(source),
+        vi.fn().mockResolvedValue({
+          ...validSummaryResponse,
+          summary: {
+            ...validSummaryResponse.summary,
+            sampleItemCount: 11,
+          },
+        }),
+      ),
+    ).rejects.toThrow("response is inconsistent");
   });
 
-  it("reads only the bounded native candidates for a secondary surface", async () => {
+  it.each([
+    ["map", 1_000],
+    ["story_wall", 250],
+  ] as const)("reads only the bounded native candidates for %s", async (surface, limit) => {
     const detail = response();
     const readNative = vi.fn().mockResolvedValue({
       queryId: "library_surface_items_v1",
       rows: [row],
       schemaVersion: 1,
       source: detail.source,
-      surface: "map",
+      surface,
     });
 
     const items = await readLibraryCoreSurfaceItems(
-      "map",
+      surface,
       vi.fn().mockResolvedValue(source),
       readNative,
     );
 
     expect(items.map((item) => item.globalId)).toEqual([row.globalId]);
     expect(readNative).toHaveBeenCalledWith({
-      limit: 1_000,
+      limit,
       queryId: "library_surface_items_v1",
       schemaVersion: 1,
-      surface: "map",
+      surface,
     });
   });
 
