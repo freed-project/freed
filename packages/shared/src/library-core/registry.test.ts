@@ -37,6 +37,13 @@ import {
   LIBRARY_CORE_PERSONS_GRAPH_SOURCE_IDENTITY,
 } from "./persons-graph-contracts.js";
 import {
+  LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS,
+  LIBRARY_CORE_ITEM_DETAIL_PROJECTION,
+  LIBRARY_CORE_ITEM_DETAIL_REQUEST_SCHEMA,
+  LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA,
+  LIBRARY_CORE_ITEM_DETAIL_SOURCE_IDENTITY,
+} from "./item-detail-contracts.js";
+import {
   LIBRARY_CORE_FIELD_REGISTRY,
 } from "./field-registry.js";
 import {
@@ -288,6 +295,7 @@ describe("Library Core query registry", () => {
       expect(definition.blockers.length).toBeGreaterThan(0);
       if (
         definition === LIBRARY_CORE_QUERY_REGISTRY.feed_page_v1 ||
+        definition === LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v2 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.feed_browse_page_v3 ||
         definition === LIBRARY_CORE_QUERY_REGISTRY.person_timeline_v1 ||
@@ -448,6 +456,41 @@ describe("Library Core query registry", () => {
     expect(
       BASE_APP_STORE_SURFACE_REGISTRY.items.successorQueryIds,
     ).toContain("feed_browse_page_v2");
+  });
+
+  it("closes the item-detail contract and records that it carries full content", () => {
+    expect(LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1).toMatchObject({
+      status: "planned_blocked",
+      requestSchema: LIBRARY_CORE_ITEM_DETAIL_REQUEST_SCHEMA,
+      responseSchema: LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA,
+      projection: LIBRARY_CORE_ITEM_DETAIL_PROJECTION,
+      sourceIdentity: LIBRARY_CORE_ITEM_DETAIL_SOURCE_IDENTITY,
+      nestedBounds: LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS,
+      tieBreakKey: "globalId",
+    });
+    for (const blocker of [
+      "request_schema_unresolved",
+      "response_schema_unresolved",
+      "projection_unresolved",
+      "source_identity_unresolved",
+      "nested_bounds_unresolved",
+      "sort_contract_unresolved",
+    ]) {
+      expect(
+        LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1.blockers,
+      ).not.toContain(blocker);
+    }
+    // The lookup selects contentBlob and preservedBlob, so it really does carry
+    // full reader content and its ceiling is 8 MiB rather than the ordinary
+    // 2 MiB this entry previously defaulted to.
+    expect(LIBRARY_CORE_ITEM_DETAIL_PROJECTION.fullContentAllowed).toBe(true);
+    // Assert the registry entry itself, not just the contract constant.
+    expect(LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1.fullContentAllowed).toBe(
+      true,
+    );
+    expect(LIBRARY_CORE_QUERY_REGISTRY.item_detail_v1.maximumResponseBytes).toBe(
+      8 * 1_048_576,
+    );
   });
 
   it("closes five persons-graph contract fields and keeps the sort blocked", () => {

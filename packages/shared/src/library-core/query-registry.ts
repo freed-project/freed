@@ -50,6 +50,14 @@ import {
   LIBRARY_CORE_PERSONS_GRAPH_RESPONSE_SCHEMA,
   LIBRARY_CORE_PERSONS_GRAPH_SOURCE_IDENTITY,
 } from "./persons-graph-contracts.js";
+import {
+  LIBRARY_CORE_ITEM_DETAIL_MAXIMUM_RESPONSE_BYTES,
+  LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS,
+  LIBRARY_CORE_ITEM_DETAIL_PROJECTION,
+  LIBRARY_CORE_ITEM_DETAIL_REQUEST_SCHEMA,
+  LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA,
+  LIBRARY_CORE_ITEM_DETAIL_SOURCE_IDENTITY,
+} from "./item-detail-contracts.js";
 
 export const LIBRARY_CORE_QUERY_IDS = [
   "account_detail_v1",
@@ -229,6 +237,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PERSON_TIMELINE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PERSONS_GRAPH_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_ITEM_DETAIL_REQUEST_SCHEMA
     | null;
   readonly responseSchema:
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
@@ -239,6 +248,7 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PERSON_TIMELINE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PERSONS_GRAPH_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA
     | null;
   readonly projection:
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
@@ -247,16 +257,19 @@ export interface PlannedBlockedLibraryCoreQueryDefinition {
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_PROJECTION
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_PROJECTION
     | typeof LIBRARY_CORE_PERSONS_GRAPH_PROJECTION
+    | typeof LIBRARY_CORE_ITEM_DETAIL_PROJECTION
     | null;
   readonly sourceIdentity:
     | typeof LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_PERSONS_GRAPH_SOURCE_IDENTITY
+    | typeof LIBRARY_CORE_ITEM_DETAIL_SOURCE_IDENTITY
     | null;
   readonly nestedBounds:
     | typeof LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_NESTED_BOUNDS
     | typeof LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS
     | null;
   readonly stableSort: ResolvedQuerySortContract | null;
   readonly tieBreakKey: string | null;
@@ -355,7 +368,8 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_REQUEST_SCHEMA
     | typeof LIBRARY_CORE_PERSON_TIMELINE_REQUEST_SCHEMA
-    | typeof LIBRARY_CORE_PERSONS_GRAPH_REQUEST_SCHEMA;
+    | typeof LIBRARY_CORE_PERSONS_GRAPH_REQUEST_SCHEMA
+    | typeof LIBRARY_CORE_ITEM_DETAIL_REQUEST_SCHEMA;
   readonly responseSchema?:
     | typeof LIBRARY_CORE_FEED_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_RESPONSE_SCHEMA
@@ -364,22 +378,26 @@ interface PlannedQueryInput {
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_RESPONSE_SCHEMA
     | typeof LIBRARY_CORE_PERSON_TIMELINE_RESPONSE_SCHEMA
-    | typeof LIBRARY_CORE_PERSONS_GRAPH_RESPONSE_SCHEMA;
+    | typeof LIBRARY_CORE_PERSONS_GRAPH_RESPONSE_SCHEMA
+    | typeof LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA;
   readonly projection?:
     | typeof LIBRARY_CORE_FEED_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_PROJECTION
     | typeof LIBRARY_CORE_FEED_BROWSE_PAGE_V2_PROJECTION
     | typeof LIBRARY_CORE_SAVED_FEED_PAGE_PROJECTION
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_PROJECTION
-    | typeof LIBRARY_CORE_PERSONS_GRAPH_PROJECTION;
+    | typeof LIBRARY_CORE_PERSONS_GRAPH_PROJECTION
+    | typeof LIBRARY_CORE_ITEM_DETAIL_PROJECTION;
   readonly sourceIdentity?:
     | typeof LIBRARY_CORE_FEED_PAGE_SOURCE_IDENTITY
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_SOURCE_IDENTITY
-    | typeof LIBRARY_CORE_PERSONS_GRAPH_SOURCE_IDENTITY;
+    | typeof LIBRARY_CORE_PERSONS_GRAPH_SOURCE_IDENTITY
+    | typeof LIBRARY_CORE_ITEM_DETAIL_SOURCE_IDENTITY;
   readonly nestedBounds?:
     | typeof LIBRARY_CORE_FEED_PAGE_NESTED_BOUNDS
     | typeof LIBRARY_CORE_SAVED_ANALYTICS_NESTED_BOUNDS
-    | typeof LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS;
+    | typeof LIBRARY_CORE_PERSONS_GRAPH_NESTED_BOUNDS
+    | typeof LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS;
   /**
    * Supplying both clears `sort_contract_unresolved` for this query. They move
    * together on purpose: an ordering without a tie-break is not stable, and a
@@ -706,10 +724,34 @@ export const LIBRARY_CORE_QUERY_REGISTRY = {
     defaultLimit: 1,
     maximumLimit: 1,
     maximumRows: 1,
+    // Traced from the native reader. This lookup selects contentBlob and
+    // preservedBlob, so it carries full reader content and its real ceiling is
+    // 8 MiB, not the 2 MiB default this entry previously fell back to.
+    maximumResponseBytes: LIBRARY_CORE_ITEM_DETAIL_MAXIMUM_RESPONSE_BYTES,
+    fullContentAllowed: true,
     cursor: interactiveCursor("single_page"),
     totalCountIntent: "none",
     rendererCache: true,
     invalidationKeyIntent: ["item:{global_id}"],
+    currentKinds: [
+      "ProjectionReadSession::item_detail",
+      "read_library_core_item_detail",
+    ],
+    requestSchema: LIBRARY_CORE_ITEM_DETAIL_REQUEST_SCHEMA,
+    responseSchema: LIBRARY_CORE_ITEM_DETAIL_RESPONSE_SCHEMA,
+    projection: LIBRARY_CORE_ITEM_DETAIL_PROJECTION,
+    sourceIdentity: LIBRARY_CORE_ITEM_DETAIL_SOURCE_IDENTITY,
+    nestedBounds: LIBRARY_CORE_ITEM_DETAIL_NESTED_BOUNDS,
+    // A point lookup on the unique globalId primary key. The result is at most
+    // one row, so this order is total and globalId is genuinely the tie-break
+    // rather than a placeholder.
+    stableSort: {
+      columns: [{ column: "globalId", direction: "asc" }],
+      textCollation: "binary",
+      nullOrdering: "all_sort_columns_not_null",
+    },
+    tieBreakKey: "globalId",
+    resolvedImplementationBlockers: ["runtime_adapter_unimplemented"],
   }),
   item_reader_body_v1: plannedQuery({
     defaultLimit: 1,
