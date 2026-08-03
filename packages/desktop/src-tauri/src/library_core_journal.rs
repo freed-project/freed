@@ -2127,6 +2127,107 @@ mod tests {
         }
     }
 
+    /// The read-state upsert carries two rules, not one.
+    ///
+    /// `minimum_present_nonnegative_safe_integer_v1` decides which read time
+    /// wins. It says nothing about which of two *equal* read times wins, and
+    /// that second question decides the provenance columns. The SQL answers it
+    /// by preferring the lower source operation id.
+    ///
+    /// This is executed rather than string-matched. The locator test in
+    /// `native-materializer-binding.test.ts` can see that the column is
+    /// consulted; only running the SQL can show which way the comparison goes.
+    #[test]
+    fn equal_read_times_are_broken_by_the_lower_source_operation_id() {
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_actor_authority(&mut journal);
+        let enrollment = actor();
+        journal.enroll_actor(&enrollment).expect("enroll actor");
+
+        let entity = "rss:item:1";
+        let read_at = 900;
+
+        let provenance = |journal: &LibraryCoreJournal| -> (i64, String) {
+            journal
+                .connection
+                .query_row(
+                    "SELECT readAtMs, sourceOperationId
+                     FROM library_core_feed_item_read_state WHERE entityId = ?1;",
+                    params![entity],
+                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+                )
+                .expect("read state row")
+        };
+
+        let first = transaction(
+            "tx:mmm",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[(entity, read_at)],
+        );
+        journal
+            .commit_read_transaction(&first, 1_000)
+            .expect("commit first");
+        assert_eq!(
+            provenance(&journal),
+            (read_at, "tx:mmm:member:0".to_string())
+        );
+
+        // Equal read time, HIGHER operation id. The value is already correct,
+        // so provenance must not move.
+        let higher = transaction(
+            "tx:zzz",
+            2,
+            Some("tx:mmm:member:0"),
+            &format!("{:064x}", 101),
+            &[(entity, read_at)],
+        );
+        journal
+            .commit_read_transaction(&higher, 2_000)
+            .expect("commit higher");
+        assert_eq!(
+            provenance(&journal),
+            (read_at, "tx:mmm:member:0".to_string()),
+            "a higher operation id must not claim provenance at equal read time"
+        );
+
+        // Equal read time, LOWER operation id. Provenance moves, value does not.
+        let lower = transaction(
+            "tx:aaa",
+            3,
+            Some("tx:zzz:member:0"),
+            &format!("{:064x}", 102),
+            &[(entity, read_at)],
+        );
+        journal
+            .commit_read_transaction(&lower, 3_000)
+            .expect("commit lower");
+        assert_eq!(
+            provenance(&journal),
+            (read_at, "tx:aaa:member:0".to_string()),
+            "a lower operation id must take provenance at equal read time"
+        );
+
+        // Positive control for the algebra itself, kept separate on purpose: a
+        // strictly earlier read time wins regardless of operation id ordering.
+        let earlier = transaction(
+            "tx:zzy",
+            4,
+            Some("tx:aaa:member:0"),
+            &format!("{:064x}", 103),
+            &[(entity, read_at - 1)],
+        );
+        journal
+            .commit_read_transaction(&earlier, 4_000)
+            .expect("commit earlier");
+        assert_eq!(
+            provenance(&journal),
+            (read_at - 1, "tx:zzy:member:0".to_string()),
+            "the minimum rule decides the value independently of the tie-break"
+        );
+    }
+
     #[test]
     fn enrollment_and_response_loss_retry_are_idempotent() {
         let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");

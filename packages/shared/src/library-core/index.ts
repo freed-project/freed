@@ -37,4 +37,3 @@ export * from "./store-surface-registry.js";
 export * from "./wire-frame.js";
 export * from "./user-state-merge-algebra.js";
 export * from "./feed-item-merge-idempotency.js";
-export * from "./operation-materializer-contracts.js";

@@ -27,14 +27,22 @@ export interface LibraryCoreOperationMaterializerContract {
   /** The column the upsert conflicts on. */
   readonly conflictColumn: string;
   /**
-   * The field algebra this upsert implements.
+   * The field algebra this upsert implements for the value itself.
    *
    * The materializer and the algebra must agree or a replayed operation would
-   * converge differently from a merged one. Naming the algebra here lets a
-   * test assert they are the same rule rather than two rules that happen to
-   * match today.
+   * converge differently from a merged one.
    */
   readonly mergeAlgebraId: string;
+  /**
+   * How the upsert breaks a tie when the algebra leaves two writes equal.
+   *
+   * This is a second rule, not part of the algebra. `minimum_present_...`
+   * says which value wins; it says nothing about which of two equal values
+   * wins, and the answer decides provenance columns. Conflating them was the
+   * original error here: the declaration named only the algebra while the SQL
+   * also ordered on the source operation id.
+   */
+  readonly equalValueTieBreak: string;
   /**
    * The module that owns the implementation, relative to the repository root.
    *
@@ -47,9 +55,11 @@ export interface LibraryCoreOperationMaterializerContract {
 /**
  * Traced from `commit_read_transaction` in the desktop journal.
  *
- * The upsert keeps the earliest read time, breaking ties on the lower source
- * operation id, which is the same rule
- * `minimum_present_nonnegative_safe_integer_v1` states for the `readAt` leaf.
+ * The upsert keeps the earliest read time, which is
+ * `minimum_present_nonnegative_safe_integer_v1` for the `readAt` leaf. At equal
+ * read times it prefers the lower source operation id, which the algebra does
+ * not describe and which decides the provenance columns, so it is declared
+ * separately and has its own native test.
  * It runs inside the same transaction as the operation row, the causal tip and
  * the replication outbox entry, so a crash cannot leave the journal ahead of
  * the table.
@@ -61,5 +71,6 @@ export const FEED_ITEM_READ_ASSIGNMENT_MATERIALIZER = Object.freeze({
   targetTable: "library_core_feed_item_read_state",
   conflictColumn: "entityId",
   mergeAlgebraId: "minimum_present_nonnegative_safe_integer_v1",
+  equalValueTieBreak: "lower_source_operation_id_v1",
   nativeModulePath: "packages/desktop/src-tauri/src/library_core_journal.rs",
 }) satisfies LibraryCoreOperationMaterializerContract;

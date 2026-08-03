@@ -7,16 +7,19 @@ import { FEED_ITEM_READ_ASSIGNMENT_MATERIALIZER } from "./operation-materializer
 import { LIBRARY_CORE_OPERATION_REGISTRY } from "./operation-registry.js";
 
 /**
- * Holds each declared materializer to the native code that implements it.
+ * A LOCATOR smoke test, not a semantic binding. Read this before trusting it.
  *
- * A materializer contract is a description. The implementation is Rust, inside
- * the journal commit, and TypeScript exhaustiveness cannot cross that boundary.
- * Without this test the registry could claim an operation is materialized while
- * the table it names does not exist, or exists and is written by nobody.
+ * It searches the named Rust module for the table, the conflict target, and
+ * the operation type. That catches a declaration pointing at a table nobody
+ * writes, a renamed module, or a retargeted upsert.
  *
- * Same shape as the query census binding: read the source, assert the claim,
- * and guard the extraction so a broken read fails loudly rather than passing
- * vacuously.
+ * It does NOT prove the SQL implements the declared algebra. A string search
+ * cannot see a flipped comparison, a dropped tie-break, or an inverted WHERE
+ * clause. Those need executable tests against the native code, and the ones
+ * that exist live beside the implementation in `library_core_journal.rs`.
+ *
+ * Calling this a cross-language binding would overstate it, and an overstated
+ * guard is worse than none because it stops people looking for the real one.
  */
 
 const repositoryRoot = join(import.meta.dirname, "..", "..", "..", "..");
@@ -33,7 +36,7 @@ const DECLARED_MATERIALIZERS = Object.values(LIBRARY_CORE_OPERATION_REGISTRY)
   .map((definition) => definition.materializer)
   .filter((materializer) => materializer !== null);
 
-describe("declared materializers are bound to native implementations", () => {
+describe("declared materializers locate their native implementations", () => {
   it("has at least one materializer to check", () => {
     // Otherwise every assertion below is vacuous.
     expect(DECLARED_MATERIALIZERS.length).toBeGreaterThan(0);
@@ -51,6 +54,9 @@ describe("declared materializers are bound to native implementations", () => {
       expect(source).toContain(`ON CONFLICT(${materializer.conflictColumn})`);
       // And the operation type must be the one the native commit records.
       expect(source).toContain(materializer.operationType);
+      // The tie-break column must at least appear in the ordering. Still a
+      // locator: it proves the column is consulted, not how.
+      expect(source).toContain("sourceOperationId");
     },
   );
 
@@ -93,6 +99,7 @@ describe("declared materializers are bound to native implementations", () => {
       targetTable: "library_core_feed_item_read_state",
       conflictColumn: "entityId",
       mergeAlgebraId: "minimum_present_nonnegative_safe_integer_v1",
+      equalValueTieBreak: "lower_source_operation_id_v1",
       nativeModulePath:
         "packages/desktop/src-tauri/src/library_core_journal.rs",
     });
