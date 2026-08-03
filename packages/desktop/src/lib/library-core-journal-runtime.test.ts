@@ -33,6 +33,8 @@ const AUTHORITY = {
   epoch: 1,
   epochId: "c".repeat(64),
   authorityKeyId: "d".repeat(64),
+  actorId: "e".repeat(64),
+  nextSequence: 1,
 } as const;
 
 describe("Library Core journal runtime client", () => {

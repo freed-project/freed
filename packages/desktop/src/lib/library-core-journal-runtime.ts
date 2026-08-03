@@ -45,17 +45,28 @@ export function libraryCoreJournalStatus(): Promise<LibraryCoreJournalStatusV1 |
   );
 }
 
-/** What this installation established as its own authority origin. */
+/** What this installation established as its own Library Core identity. */
 export interface LibraryCoreGenesisAuthorityV1 {
   readonly libraryId: string;
   readonly epoch: number;
   readonly epochId: string;
   readonly authorityKeyId: string;
+  readonly actorId: string;
+  /**
+   * The sequence this actor's next operation would take. 1 means it has
+   * written nothing, which is the only value this path can produce.
+   */
+  readonly nextSequence: number;
 }
 
 /**
- * Establishes the genesis authority epoch for one exact durable Automerge
- * revision, minting this installation's authority key if it has none.
+ * Establishes this installation's Library Core identity: the genesis authority
+ * epoch for one exact durable Automerge revision, then its own enrolled actor.
+ * Mints the authority and actor signing keys if it has none.
+ *
+ * One call, because an epoch with no actor can write nothing and an actor
+ * cannot exist without an epoch. Both halves are idempotent, so a call that
+ * fails after the epoch lands completes the actor on the next attempt.
  *
  * Requires the journal to be open. Everything the epoch is derived from is a
  * pure function of the library, the key and the revision, so replaying the same
@@ -88,12 +99,13 @@ export function establishLibraryCoreGenesisAuthority(
  * is surfaced to the console as evidence rather than raised, because the only
  * consumer of that evidence today is us.
  *
- * Once the journal is open, the installation establishes its own genesis
- * authority epoch against the document's current durable revision. Until that
- * exists there is no active epoch, and Library Core fences every actor
- * enrollment and every operation commit against one, so nothing can be written
- * at all. This is dormant either way: no operations are written here, Automerge
- * stays authoritative, and no provider traffic is emitted.
+ * Once the journal is open, the installation establishes its own identity
+ * against the document's current durable revision: a genesis authority epoch
+ * and an actor enrolled under it. Until both exist nothing can be written at
+ * all, because Library Core fences every operation commit against an active
+ * epoch and an enrolled actor. This is dormant either way: no operations are
+ * written here, Automerge stays authoritative, and no provider traffic is
+ * emitted.
  *
  * The document may not be readable yet at startup, which is why establishment
  * is attempted and not required. The next start tries again against whatever
@@ -115,11 +127,11 @@ export async function openLibraryCoreJournalForStartup(): Promise<LibraryCoreJou
     const source = await getLibraryCoreProjectionSource();
     const authority = await establishLibraryCoreGenesisAuthority(source);
     console.info(
-      `[library-core] authority epoch ${authority.epoch} for library ${authority.libraryId}`,
+      `[library-core] authority epoch ${authority.epoch} for library ${authority.libraryId}, actor ${authority.actorId} at sequence ${authority.nextSequence}`,
     );
   } catch (error) {
     console.warn(
-      "[library-core] genesis authority not established; retrying next start",
+      "[library-core] identity not established; retrying next start",
       error,
     );
   }

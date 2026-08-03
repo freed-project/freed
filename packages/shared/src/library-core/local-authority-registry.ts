@@ -893,15 +893,15 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
   },
   {
     registryKey: "library-core-actor-private-key",
-    soleOwner: "unprovisioned Library Core installation actor adapter",
+    soleOwner: "packages/desktop/src-tauri/src/library_core_actor_enrollment.rs",
     locality: "secret",
     role: "secret",
     authoritative: false,
     physicalStores: [{
-      kind: "unprovisioned",
-      platforms: ["desktop", "pwa"],
-      locator: "none:Gate A does not provision a Library Core actor private key",
-      keys: [],
+      kind: "platform-credential",
+      platforms: ["desktop-macos", "desktop-windows"],
+      locator: "platform-credential:wtf.freed.library-core/actor-current",
+      keys: ["actor-current"],
     }],
     retention: { kind: "until-reset" },
     backup: "exclude-secret",
@@ -909,12 +909,16 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
     redaction: "drop-entire-value",
     resetSemantics: "A reset or restore creates a new installation actor key and incarnation; active private material is never imported.",
     snapshot: "excluded",
-    migration: "generate-after-gate-a",
+    migration: "retire-with-legacy-epoch",
     cutover: {
       blocksCutover: true,
-      reason: "A writable installation cannot cut over until its platform-protected actor key is generated, enrolled, and proven.",
+      reason: "Desktop macOS and Windows now generate this key in the platform vault and enroll it under the genesis epoch, so a writable installation exists there. Cutover stays blocked because the enrolled actor has still written no operation, and neither Linux nor the PWA has a proven noninteractive vault to hold this key at all.",
     },
-    sourceReferences: ["docs/LIBRARY-CORE-CONTRACT.md"],
+    sourceReferences: [
+      "docs/LIBRARY-CORE-CONTRACT.md",
+      "packages/desktop/src-tauri/src/library_core_actor_enrollment.rs",
+      "packages/desktop/src-tauri/src/library_core_platform_key.rs",
+    ],
   },
   {
     registryKey: "library-core-authority-private-key",
@@ -2555,6 +2559,15 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
       'envelope_format: "freed_library_core_migration_key_v1"',
     ],
     registeredKeys: ["migration-source-current"],
+  },
+  {
+    registryKey: "library-core-actor-private-key",
+    sourcePath: "packages/desktop/src-tauri/src/library_core_actor_enrollment.rs",
+    sourceTokens: [
+      'account: "actor-current"',
+      'envelope_format: "freed_library_core_actor_key_v1"',
+    ],
+    registeredKeys: ["actor-current"],
   },
   {
     registryKey: "library-core-authority-private-key",
