@@ -133,6 +133,48 @@ export const RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS =
   synchronizedLeavesUnder("library-core-v1:rssFeeds.");
 
 /**
+ * Traced from `addPerson` and `updatePerson`, plus the friend and connection
+ * surfaces that funnel into them.
+ *
+ * Both store a whole sanitized person, and `updatePerson` accepts an arbitrary
+ * partial through the same sanitizer, so between them any synchronized person
+ * leaf can be written. The four graph leaves are device-local and excluded.
+ *
+ * Checked against reality: all twenty-two `persons` registry leaves agree with
+ * what lands through the add and update paths, no exceptions.
+ */
+export const PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS =
+  synchronizedLeavesUnder("library-core-v1:persons.");
+
+/**
+ * Traced from `addAccount` and `updateAccount`.
+ *
+ * Same shape as the person upsert, and checked the same way: all twenty-nine
+ * `accounts` registry leaves agree with what lands.
+ */
+export const ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS =
+  synchronizedLeavesUnder("library-core-v1:accounts.");
+
+/**
+ * Traced from `logReachOut`, which is far narrower than the person upsert.
+ *
+ * It appends one entry to `reachOutLog` and writes nothing else on the person.
+ * The entry is sanitized through `sanitizeReachOutLogWrite`, so exactly three
+ * leaves can be written. Verified directly: an entry carrying an unmodelled
+ * field stores `{loggedAt, channel, notes}` and drops the rest.
+ *
+ * Derived by filtering the registry rather than transcribed. A first draft
+ * spelled the key placeholder `{id}` when the registry uses `{personId}`, and
+ * hand-written keys invite exactly that. Filtering cannot misspell them.
+ */
+export const PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS =
+  Object.freeze(
+    PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS.filter((key) =>
+      key.includes(".reachOutLog[]."),
+    ),
+  );
+
+/**
  * Why saved and archived still carry `field_algebra_unresolved`.
  *
  * `toggleSaved` and `toggleArchived` jointly maintain the invariant that an

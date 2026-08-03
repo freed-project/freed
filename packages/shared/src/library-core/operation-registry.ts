@@ -12,6 +12,9 @@ import {
   FEED_ITEM_ARCHIVE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
   FEED_ITEM_SAVED_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
   PREFERENCES_LEAF_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
+  PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS,
+  PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
   RSS_FEED_TITLE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
   RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
 } from "./operation-touched-fields.js";
@@ -270,6 +273,7 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   account_upsert: localUserOperation({
     entityType: "Account",
+    touchedFieldRegistryKeys: ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
     candidateStoreSurfaces: [
       "addAccount",
       "addAccounts",
@@ -421,6 +425,8 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   person_reach_out_append: localUserOperation({
     entityType: "Person",
+    touchedFieldRegistryKeys:
+      PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS,
     candidateStoreSurfaces: ["logReachOut"],
     legacyWorkerRequests: ["LOG_REACH_OUT"],
   }),
@@ -442,6 +448,7 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   person_upsert: localUserOperation({
     entityType: "Person",
+    touchedFieldRegistryKeys: PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
     candidateStoreSurfaces: [
       "addFriend",
       "addFriends",

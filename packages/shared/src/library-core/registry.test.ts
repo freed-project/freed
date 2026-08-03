@@ -91,6 +91,9 @@ import {
   FEED_ITEM_SAVED_ARCHIVED_EXCLUSION_INVARIANT,
   FEED_ITEM_SAVED_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
   PREFERENCES_LEAF_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
+  PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS,
+  PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
   RSS_FEED_TITLE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
   RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
   LIBRARY_CORE_RSS_FEED_TITLE_FIELD_REGISTRY_KEY,
@@ -183,6 +186,21 @@ const CLOSED_OPERATION_CONTRACTS: Partial<
   // Traced from `addRssFeed`, `updateRssFeed`, and the batch refresh path.
   rss_feed_upsert: {
     touchedFieldRegistryKeys: RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
+  },
+  // Traced from `addPerson` / `updatePerson` and the friend and connection
+  // surfaces that funnel into them.
+  person_upsert: {
+    touchedFieldRegistryKeys: PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
+  },
+  // Traced from `addAccount` / `updateAccount`.
+  account_upsert: {
+    touchedFieldRegistryKeys: ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
+  },
+  // Traced from `logReachOut`, which appends one sanitized entry and writes
+  // nothing else on the person.
+  person_reach_out_append: {
+    touchedFieldRegistryKeys:
+      PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS,
   },
 };
 
@@ -326,6 +344,49 @@ describe("Library Core operation registry", () => {
       expect(nonSynchronized.has(excluded)).toBe(true);
       expect(keys).not.toContain(excluded);
     }
+  });
+
+  it("keeps the identity written sets faithful to their mutators", () => {
+    // The four graph leaves are device-local. They are one screen's layout, so
+    // replicating them would rearrange every other device's graph.
+    for (const root of ["persons", "accounts"] as const) {
+      for (const leaf of ["graphX", "graphY", "graphPinned", "graphUpdatedAt"]) {
+        const key = `library-core-v1:${root}.{${root === "persons" ? "personId" : "accountId"}}.${leaf}`;
+        expect(
+          LIBRARY_CORE_FIELD_REGISTRY.some((entry) => entry.registryKey === key),
+        ).toBe(true);
+        expect(PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).not.toContain(key);
+        expect(ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).not.toContain(key);
+      }
+    }
+
+    // `logReachOut` appends one entry and touches nothing else, so its set must
+    // stay the three log leaves rather than widening to the person surface.
+    expect([...PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS])
+      .toStrictEqual([
+        "library-core-v1:persons.{personId}.reachOutLog[].channel",
+        "library-core-v1:persons.{personId}.reachOutLog[].loggedAt",
+        "library-core-v1:persons.{personId}.reachOutLog[].notes",
+      ]);
+    for (const key of PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS) {
+      expect(PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).toContain(key);
+    }
+    expect(
+      PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS.length,
+    ).toBeGreaterThan(PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS.length);
+
+    // `person_restore` has no store surface and no worker request, so there is
+    // nothing to trace and its blocker stays. Asserted so a later declaration
+    // has to explain where it came from.
+    expect(
+      LIBRARY_CORE_OPERATION_REGISTRY.person_restore.candidateStoreSurfaces,
+    ).toStrictEqual([]);
+    expect(
+      LIBRARY_CORE_OPERATION_REGISTRY.person_restore.legacyWorkerRequests,
+    ).toStrictEqual([]);
+    expect(
+      LIBRARY_CORE_OPERATION_REGISTRY.person_restore.touchedFieldRegistryKeys,
+    ).toBeNull();
   });
 
   it("keeps the rss feed written sets faithful to their mutators", () => {
