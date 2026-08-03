@@ -1,7 +1,6 @@
 import type { BaseAppState } from "../store-types.js";
 import {
   FEED_ITEM_READ_AT_FIELD_ALGEBRA,
-  LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
   type LibraryCoreOperationFieldAlgebraContract,
 } from "./operation-field-algebra-contracts.js";
 import {
@@ -21,6 +20,10 @@ import {
   FEED_ITEM_LIKE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
   FEED_ITEM_LIKE_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
   FEED_ITEM_SEEN_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
+  FEED_ITEM_READ_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  FEED_ITEMS_ARCHIVE_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
+  FEED_ITEMS_READ_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
+  RSS_FEEDS_HEAL_UNTITLED_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
 } from "./operation-touched-fields.js";
 import {
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
@@ -344,9 +347,8 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
     entityType: "FeedItem",
     payloadSchema: FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
     entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
-    touchedFieldRegistryKeys: [
-      LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
-    ],
+    touchedFieldRegistryKeys:
+      FEED_ITEM_READ_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
     fieldAlgebra: FEED_ITEM_READ_AT_FIELD_ALGEBRA,
     transactionMemberSchema:
       FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
@@ -384,12 +386,18 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   feed_items_archive_frozen: localUserOperation({
     entityType: "FeedItem",
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEMS_ARCHIVE_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
     candidateStoreSurfaces: ["archiveItems"],
     legacyWorkerRequests: ["ARCHIVE_ITEMS"],
     additionalBlockers: frozenBulkBlocker,
   }),
   feed_items_archive_read_unsaved_frozen: localUserOperation({
     entityType: "FeedItem",
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEMS_ARCHIVE_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
     candidateStoreSurfaces: ["archiveAllReadUnsaved"],
     legacyWorkerRequests: ["ARCHIVE_ALL_READ_UNSAVED"],
     additionalBlockers: frozenBulkBlocker,
@@ -425,6 +433,9 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   feed_items_read_frozen: localUserOperation({
     entityType: "FeedItem",
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEMS_READ_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
     candidateStoreSurfaces: ["markAllAsRead", "markItemsAsRead"],
     legacyWorkerRequests: ["MARK_ALL_AS_READ", "MARK_ITEMS_AS_READ"],
     additionalBlockers: [
@@ -434,6 +445,9 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   feed_items_unarchive_saved_frozen: plannedOperation({
     entityType: "FeedItem",
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEMS_ARCHIVE_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
     candidateStoreSurfaces: ["unarchiveSavedItems"],
     legacyWorkerRequests: ["UNARCHIVE_SAVED_ITEMS"],
     intendedAuthority: "system_repair",
@@ -554,6 +568,8 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   rss_feeds_heal_untitled_frozen: plannedOperation({
     entityType: "RssFeed",
+    touchedFieldRegistryKeys:
+      RSS_FEEDS_HEAL_UNTITLED_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
     legacyWorkerRequests: ["HEAL_UNTITLED_FEEDS"],
     intendedAuthority: "system_repair",
     additionalBlockers: frozenBulkBlocker,

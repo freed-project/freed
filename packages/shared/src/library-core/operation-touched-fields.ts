@@ -1,4 +1,5 @@
 import { LIBRARY_CORE_FIELD_REGISTRY } from "./field-registry.js";
+import { LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY } from "./operation-field-algebra-contracts.js";
 
 /**
  * Written-leaf inventories for candidate successor operations.
@@ -231,6 +232,47 @@ export const FEED_ITEM_LIKE_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS =
       key.endsWith(".userState.likedSyncedAt"),
     ),
   );
+
+/**
+ * Traced from `markAsRead`, which writes one leaf and reads none.
+ *
+ * Named rather than spelled inline at the registry entry so the bulk read
+ * repair can reuse the same array by reference. Two declarations that must
+ * always agree should be one object, not two literals that happen to match.
+ */
+export const FEED_ITEM_READ_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS =
+  Object.freeze([LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY]);
+
+/**
+ * Bulk repairs write exactly what their single-item counterparts write.
+ *
+ * Each is verified by calling the mutator and diffing the item's user state
+ * before and after:
+ *
+ * - `markItemsAsRead` and `markAllVisibleAsRead` change `readAt` only.
+ * - `archiveItemsById` and `archiveAllReadUnsaved` change `archived` and
+ *   `archivedAt`.
+ * - `unarchiveSavedItems` changes the same two, clearing rather than setting.
+ *
+ * They are declared by reference to the assignment sets rather than copied, so
+ * the two cannot drift apart. The registry test asserts identity, not equality.
+ */
+export const FEED_ITEMS_READ_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS =
+  FEED_ITEM_READ_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS;
+
+export const FEED_ITEMS_ARCHIVE_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS =
+  FEED_ITEM_ARCHIVE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS;
+
+/**
+ * `healUntitledFeedTitles` assigns `feed.title` and nothing else.
+ *
+ * Traced by reading rather than probed: it lives in the desktop worker and is
+ * not exported from this package, so there is no shared entry point to call.
+ * Saying which evidence backs a declaration matters more than pretending every
+ * one came from the same kind.
+ */
+export const RSS_FEEDS_HEAL_UNTITLED_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS =
+  RSS_FEED_TITLE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS;
 
 /**
  * Why saved and archived still carry `field_algebra_unresolved`.

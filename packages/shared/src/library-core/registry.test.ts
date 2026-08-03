@@ -100,6 +100,10 @@ import {
   FEED_ITEM_LIKE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
   FEED_ITEM_LIKE_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
   FEED_ITEM_SEEN_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
+  FEED_ITEM_READ_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  FEED_ITEMS_ARCHIVE_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
+  FEED_ITEMS_READ_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
+  RSS_FEEDS_HEAL_UNTITLED_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
   LIBRARY_CORE_RSS_FEED_TITLE_FIELD_REGISTRY_KEY,
   LIBRARY_CORE_FEED_ITEM_ARCHIVED_AT_FIELD_REGISTRY_KEY,
   LIBRARY_CORE_FEED_ITEM_ARCHIVED_FIELD_REGISTRY_KEY,
@@ -155,7 +159,8 @@ const CLOSED_OPERATION_CONTRACTS: Partial<
     entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
     fieldAlgebra: FEED_ITEM_READ_AT_FIELD_ALGEBRA,
     payloadSchema: FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
-    touchedFieldRegistryKeys: [LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY],
+    touchedFieldRegistryKeys:
+      FEED_ITEM_READ_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
     transactionMemberSchema: FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   },
   // Traced from `toggleArchived`. Algebra stays open: archive and save are
@@ -231,6 +236,32 @@ const CLOSED_OPERATION_CONTRACTS: Partial<
     entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
     touchedFieldRegistryKeys:
       FEED_ITEM_LIKE_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
+  },
+  // Bulk repairs, declared by reference to their single-item counterparts.
+  feed_items_read_frozen: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEMS_READ_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
+  },
+  feed_items_archive_frozen: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEMS_ARCHIVE_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
+  },
+  feed_items_archive_read_unsaved_frozen: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEMS_ARCHIVE_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
+  },
+  feed_items_unarchive_saved_frozen: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEMS_ARCHIVE_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
+  },
+  // No entityIdCodec: feeds are keyed by url.
+  rss_feeds_heal_untitled_frozen: {
+    touchedFieldRegistryKeys:
+      RSS_FEEDS_HEAL_UNTITLED_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
   },
 };
 
@@ -374,6 +405,49 @@ describe("Library Core operation registry", () => {
       expect(nonSynchronized.has(excluded)).toBe(true);
       expect(keys).not.toContain(excluded);
     }
+  });
+
+  it("declares bulk repairs by reference to their single-item counterparts", () => {
+    // Identity, not equality. Two arrays that merely match today would drift
+    // the first time one side is edited; the same object cannot.
+    expect(FEED_ITEMS_READ_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS).toBe(
+      FEED_ITEM_READ_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+    );
+    expect(FEED_ITEMS_ARCHIVE_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS).toBe(
+      FEED_ITEM_ARCHIVE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+    );
+    expect(RSS_FEEDS_HEAL_UNTITLED_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS).toBe(
+      RSS_FEED_TITLE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+    );
+
+    // The registry must hold those exact objects too, so the reuse survives
+    // the trip through `plannedOperation`.
+    expect(
+      LIBRARY_CORE_OPERATION_REGISTRY.feed_items_read_frozen
+        .touchedFieldRegistryKeys,
+    ).toBe(
+      LIBRARY_CORE_OPERATION_REGISTRY.feed_item_read_assignment
+        .touchedFieldRegistryKeys,
+    );
+    for (const bulk of [
+      "feed_items_archive_frozen",
+      "feed_items_archive_read_unsaved_frozen",
+      "feed_items_unarchive_saved_frozen",
+    ] as const) {
+      expect(
+        LIBRARY_CORE_OPERATION_REGISTRY[bulk].touchedFieldRegistryKeys,
+      ).toBe(
+        LIBRARY_CORE_OPERATION_REGISTRY.feed_item_archive_assignment
+          .touchedFieldRegistryKeys,
+      );
+    }
+
+    // The archive repair set is the archive pair, not the wider saved set.
+    // `unarchiveSavedItems` reads `saved` as a precondition and never writes it.
+    expect(FEED_ITEMS_ARCHIVE_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS).not.toContain(
+      LIBRARY_CORE_FEED_ITEM_SAVED_FIELD_REGISTRY_KEY,
+    );
+    expect(FEED_ITEMS_ARCHIVE_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS).toHaveLength(2);
   });
 
   it("keeps the feed item written sets faithful to their mutators", () => {
