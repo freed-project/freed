@@ -15,6 +15,25 @@ import { LIBRARY_CORE_FIELD_REGISTRY } from "./field-registry.js";
  * or write authority.
  */
 
+/**
+ * Every synchronized leaf beneath a registry prefix, sorted.
+ *
+ * Derived rather than transcribed so a leaf added to the registry later is
+ * included without anyone remembering. Only `legacy-synchronized` qualifies;
+ * `legacy-device-local` and `legacy-compatibility` leaves are excluded because
+ * the sanitizers strip them before any write reaches the document.
+ */
+const synchronizedLeavesUnder = (prefix: string): readonly string[] =>
+  Object.freeze(
+    LIBRARY_CORE_FIELD_REGISTRY.filter(
+      (entry) =>
+        entry.registryKey.startsWith(prefix) &&
+        entry.currentLocality === "legacy-synchronized",
+    )
+      .map((entry) => entry.registryKey)
+      .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0)),
+  );
+
 export const LIBRARY_CORE_FEED_ITEM_ARCHIVED_FIELD_REGISTRY_KEY =
   "library-core-v1:feedItems.{globalId}.userState.archived";
 
@@ -80,15 +99,38 @@ export const FEED_ITEM_SAVED_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS =
  * omitting them would understate what the operation writes.
  */
 export const PREFERENCES_LEAF_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS =
-  Object.freeze(
-    LIBRARY_CORE_FIELD_REGISTRY.filter(
-      (entry) =>
-        entry.registryKey.startsWith("library-core-v1:preferences.") &&
-        entry.currentLocality === "legacy-synchronized",
-    )
-      .map((entry) => entry.registryKey)
-      .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0)),
-  );
+  synchronizedLeavesUnder("library-core-v1:preferences.");
+
+export const LIBRARY_CORE_RSS_FEED_TITLE_FIELD_REGISTRY_KEY =
+  "library-core-v1:rssFeeds.{url}.title";
+
+/**
+ * Traced from `renameFeed`, which is narrower than the worker request it uses.
+ *
+ * `renameFeed(url, title)` sends `{ title }` and nothing else, so this
+ * operation writes one leaf. `UPDATE_RSS_FEED` can carry an arbitrary partial,
+ * but the operation is a title assignment and the store surface it succeeds
+ * only ever sets the title. Declaring the whole feed surface here would
+ * overstate it.
+ */
+export const RSS_FEED_TITLE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS =
+  Object.freeze([LIBRARY_CORE_RSS_FEED_TITLE_FIELD_REGISTRY_KEY]);
+
+/**
+ * Traced from `addRssFeed`, `updateRssFeed`, and the batch refresh path.
+ *
+ * `addRssFeed` stores a whole sanitized feed, and `UPDATE_RSS_FEED` carries an
+ * arbitrary partial through the same sanitizer, so between them any
+ * synchronized feed leaf can be written. `BATCH_REFRESH_FEEDS` is narrower
+ * still, writing only `lastFetched`, `title`, and `siteUrl`, all of which are
+ * already in this union.
+ *
+ * Derived from the field registry rather than transcribed. Checked against
+ * reality: all nineteen `rssFeeds` registry leaves agree with what actually
+ * lands through the add and update paths, with no exceptions.
+ */
+export const RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS =
+  synchronizedLeavesUnder("library-core-v1:rssFeeds.");
 
 /**
  * Why saved and archived still carry `field_algebra_unresolved`.

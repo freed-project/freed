@@ -91,6 +91,9 @@ import {
   FEED_ITEM_SAVED_ARCHIVED_EXCLUSION_INVARIANT,
   FEED_ITEM_SAVED_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
   PREFERENCES_LEAF_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  RSS_FEED_TITLE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
+  LIBRARY_CORE_RSS_FEED_TITLE_FIELD_REGISTRY_KEY,
   LIBRARY_CORE_FEED_ITEM_ARCHIVED_AT_FIELD_REGISTRY_KEY,
   LIBRARY_CORE_FEED_ITEM_ARCHIVED_FIELD_REGISTRY_KEY,
   LIBRARY_CORE_FEED_ITEM_SAVED_AT_FIELD_REGISTRY_KEY,
@@ -169,6 +172,17 @@ const CLOSED_OPERATION_CONTRACTS: Partial<
   preferences_leaf_assignment: {
     touchedFieldRegistryKeys:
       PREFERENCES_LEAF_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  },
+  // Traced from `renameFeed`, which sends only `{ title }`. No entityIdCodec:
+  // feeds are keyed by url, not by the globalId space the codec was justified
+  // against.
+  rss_feed_title_assignment: {
+    touchedFieldRegistryKeys:
+      RSS_FEED_TITLE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  },
+  // Traced from `addRssFeed`, `updateRssFeed`, and the batch refresh path.
+  rss_feed_upsert: {
+    touchedFieldRegistryKeys: RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
   },
 };
 
@@ -311,6 +325,44 @@ describe("Library Core operation registry", () => {
     ]) {
       expect(nonSynchronized.has(excluded)).toBe(true);
       expect(keys).not.toContain(excluded);
+    }
+  });
+
+  it("keeps the rss feed written sets faithful to their mutators", () => {
+    // `renameFeed` sends only `{ title }`. The operation is a title
+    // assignment, so declaring the whole feed surface would overstate it.
+    expect([...RSS_FEED_TITLE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS])
+      .toStrictEqual([LIBRARY_CORE_RSS_FEED_TITLE_FIELD_REGISTRY_KEY]);
+
+    // The upsert union is broader and must contain the title, since
+    // `updateRssFeed` and the batch refresh both write it.
+    expect(RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).toContain(
+      LIBRARY_CORE_RSS_FEED_TITLE_FIELD_REGISTRY_KEY,
+    );
+    expect(RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS.length).toBeGreaterThan(
+      RSS_FEED_TITLE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS.length,
+    );
+
+    // Neither set may contain a device-local or compatibility feed leaf. These
+    // four are a feed's local fetch state; replicating them would turn one
+    // machine's network trouble into every device's.
+    for (const excluded of [
+      "library-core-v1:rssFeeds.{url}.consecutiveFailures",
+      "library-core-v1:rssFeeds.{url}.lastFetchError",
+      "library-core-v1:rssFeeds.{url}.lastFetchAttemptedAt",
+      "library-core-v1:rssFeeds.{url}.nextFetchAfter",
+      "library-core-v1:rssFeeds.{url}.etag",
+      "library-core-v1:rssFeeds.{url}.lastModified",
+    ]) {
+      expect(
+        LIBRARY_CORE_FIELD_REGISTRY.some(
+          (entry) => entry.registryKey === excluded,
+        ),
+      ).toBe(true);
+      expect(RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).not.toContain(excluded);
+      expect(RSS_FEED_TITLE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS).not.toContain(
+        excluded,
+      );
     }
   });
 
