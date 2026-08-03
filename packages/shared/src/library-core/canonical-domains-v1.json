@@ -1,0 +1,36 @@
+{
+  "format": "freed_library_core_canonical_domains_v1",
+  "digest": [
+    "authority-key",
+    "actor-public-key",
+    "actor-id",
+    "actor-enrollment-body",
+    "actor-enrollment-certificate",
+    "epoch-transition-certificate",
+    "operation-payload",
+    "operation-signing-body",
+    "transaction-member",
+    "transaction",
+    "actor-chain-genesis",
+    "actor-chain",
+    "operation-envelope",
+    "operation-segment-body",
+    "intent-segment-body",
+    "causal-frontier",
+    "legacy-source-admission-key",
+    "legacy-source-admission-claim",
+    "automerge-heads",
+    "legacy-epoch-bootstrap-record",
+    "legacy-library-control",
+    "legacy-epoch-bootstrap-prepared",
+    "legacy-epoch-bootstrap-receipt"
+  ],
+  "signature": [
+    "operation-envelope",
+    "actor-enrollment-proof",
+    "actor-enrollment-authority",
+    "epoch-transition-certificate",
+    "authority-key-possession",
+    "legacy-source-admission-claim-key"
+  ]
+}

@@ -182,6 +182,36 @@ describe("Library Core canonical codec", () => {
     ).toThrowError();
   });
 
+  it("digests every legacy epoch bootstrap domain, domain-separated", () => {
+    // All five threw "unregistered Library Core digest domain" before the
+    // domain lists were unified onto canonical-domains-v1.json, which made the
+    // bootstrap contract's digest dependency impossible to satisfy and left no
+    // production path to establish an authority epoch at all.
+    for (const domain of [
+      "automerge-heads",
+      "legacy-epoch-bootstrap-record",
+      "legacy-library-control",
+      "legacy-epoch-bootstrap-prepared",
+      "legacy-epoch-bootstrap-receipt",
+    ] as const) {
+      const encoded = decoder.decode(
+        encodeLibraryCoreDigestInput(domain, { probe: 1 }),
+      );
+      expect(encoded).toBe(
+        `freed.library-core.v1/digest/${domain}\u0000{"probe":1}`,
+      );
+    }
+
+    // Positive control: a codec that accepted every string would pass the loop
+    // above while providing no domain separation at all.
+    expect(() =>
+      encodeLibraryCoreDigestInput(
+        "not-a-registered-domain" as never,
+        { probe: 1 },
+      ),
+    ).toThrow(/unregistered/i);
+  });
+
   it("rejects sparse arrays, extra array properties, symbols, accessors, and cycles", () => {
     const sparse = new Array(2);
     sparse[1] = "present";
