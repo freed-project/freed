@@ -73,6 +73,7 @@ import {
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
 } from "./operation-envelope-contracts.js";
 import { FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA } from "./operation-payload-contracts.js";
+import { FEED_ITEM_READ_ASSIGNMENT_MATERIALIZER } from "./operation-materializer-contracts.js";
 import {
   FEED_ITEM_READ_AT_FIELD_ALGEBRA,
   LIBRARY_CORE_FEED_ITEM_READ_AT_FIELD_REGISTRY_KEY,
@@ -129,6 +130,7 @@ type ClosedOperationContract = Partial<
     LibraryCoreOperationDefinition,
     | "entityIdCodec"
     | "fieldAlgebra"
+    | "materializer"
     | "payloadSchema"
     | "touchedFieldRegistryKeys"
     | "transactionMemberSchema"
@@ -137,6 +139,7 @@ type ClosedOperationContract = Partial<
 
 const OPERATION_CONTRACT_BLOCKERS = [
   ["entityIdCodec", "entity_id_schema_unresolved"],
+  ["materializer", "materializer_unimplemented"],
   ["fieldAlgebra", "field_algebra_unresolved"],
   ["payloadSchema", "payload_schema_unresolved"],
   ["touchedFieldRegistryKeys", "touched_fields_unresolved"],
@@ -159,6 +162,7 @@ const CLOSED_OPERATION_CONTRACTS: Partial<
   // Traced from `markAsRead`, which writes exactly one leaf and reads none.
   feed_item_read_assignment: {
     entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    materializer: FEED_ITEM_READ_ASSIGNMENT_MATERIALIZER,
     fieldAlgebra: FEED_ITEM_READ_AT_FIELD_ALGEBRA,
     payloadSchema: FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
     touchedFieldRegistryKeys:
@@ -319,7 +323,6 @@ describe("Library Core operation registry", () => {
         }
       }
 
-      expect(definition.materializer).toBeNull();
       expect(definition.frozenBulkContract).toBeNull();
       expect(definition.blockers.length).toBeGreaterThan(0);
       expect(definition.blockers).toContain("runtime_authority_inactive");
