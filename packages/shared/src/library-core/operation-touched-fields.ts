@@ -275,6 +275,49 @@ export const RSS_FEEDS_HEAL_UNTITLED_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS =
   RSS_FEED_TITLE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS;
 
 /**
+ * Traced from `linkAccountToPerson` and the `UPSERT_CONNECTION_PERSONS`
+ * handler, which write the same two leaves.
+ *
+ * Both set `personId` and stamp `updatedAt`, and nothing else on the account.
+ * Verified by diffing the stored account before and after.
+ *
+ * `updateAccount` also appears among this operation's candidate surfaces
+ * because it is the generic mechanism the assignment goes through, the same
+ * way `UPDATE_RSS_FEED` appears under the feed title assignment. The operation
+ * is an assignment, so it gets the assignment's leaves rather than the whole
+ * account surface.
+ */
+export const ACCOUNT_PERSON_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS =
+  Object.freeze(
+    ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS.filter((key) =>
+      /\.(personId|updatedAt)$/.test(key),
+    ),
+  );
+
+/**
+ * Traced from `backfillContentSignals`, which calls
+ * `applySemanticEnrichmentToItem` on items missing current signals.
+ *
+ * That call is `applyContentSignalsToItem` followed by
+ * `applyEventCandidateToItem`, so the written set is the union of both
+ * subtrees.
+ *
+ * Evidence differs between the two halves and that is worth stating. The
+ * `contentSignals` leaves were probed: running the backfill over an item with
+ * its signals stripped changes those and nothing else. The `eventCandidate`
+ * leaves are read-traced from the same enrichment call, because whether a
+ * given item yields an event candidate depends on heuristic inference that a
+ * fixture cannot reliably force.
+ */
+export const FEED_ITEMS_CONTENT_SIGNALS_BACKFILL_TOUCHED_FIELD_REGISTRY_KEYS =
+  Object.freeze(
+    FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS.filter(
+      (key) =>
+        key.includes(".contentSignals.") || key.includes(".eventCandidate."),
+    ),
+  );
+
+/**
  * Why saved and archived still carry `field_algebra_unresolved`.
  *
  * `toggleSaved` and `toggleArchived` jointly maintain the invariant that an

@@ -24,6 +24,8 @@ import {
   FEED_ITEMS_ARCHIVE_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
   FEED_ITEMS_READ_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
   RSS_FEEDS_HEAL_UNTITLED_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
+  ACCOUNT_PERSON_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  FEED_ITEMS_CONTENT_SIGNALS_BACKFILL_TOUCHED_FIELD_REGISTRY_KEYS,
 } from "./operation-touched-fields.js";
 import {
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
@@ -261,6 +263,8 @@ const frozenBulkBlocker = [
 export const LIBRARY_CORE_OPERATION_REGISTRY = {
   account_person_assignment: localUserOperation({
     entityType: "Account",
+    touchedFieldRegistryKeys:
+      ACCOUNT_PERSON_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
     candidateStoreSurfaces: [
       "createConnectionPersonFromAccounts",
       "createConnectionPersonsFromCandidates",
@@ -404,6 +408,9 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   feed_items_content_signals_backfill_frozen: plannedOperation({
     entityType: "FeedItem",
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEMS_CONTENT_SIGNALS_BACKFILL_TOUCHED_FIELD_REGISTRY_KEYS,
     legacyWorkerRequests: ["BACKFILL_CONTENT_SIGNALS"],
     intendedAuthority: "system_repair",
     additionalBlockers: frozenBulkBlocker,
