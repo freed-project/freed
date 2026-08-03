@@ -96,6 +96,10 @@ import {
   PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
   RSS_FEED_TITLE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
   RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
+  FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
+  FEED_ITEM_LIKE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  FEED_ITEM_LIKE_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
+  FEED_ITEM_SEEN_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
   LIBRARY_CORE_RSS_FEED_TITLE_FIELD_REGISTRY_KEY,
   LIBRARY_CORE_FEED_ITEM_ARCHIVED_AT_FIELD_REGISTRY_KEY,
   LIBRARY_CORE_FEED_ITEM_ARCHIVED_FIELD_REGISTRY_KEY,
@@ -201,6 +205,32 @@ const CLOSED_OPERATION_CONTRACTS: Partial<
   person_reach_out_append: {
     touchedFieldRegistryKeys:
       PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS,
+  },
+  // Traced from `addFeedItem` / `updateFeedItem`. Feed items are keyed by
+  // globalId, the same key space the read assignment codec was justified
+  // against, so the codec is a reuse rather than a new claim.
+  feed_item_capture_upsert: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
+  },
+  // Traced from `toggleLiked`, which writes the three like leaves together.
+  feed_item_like_assignment: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEM_LIKE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  },
+  // Traced from `confirmSeenSynced`, one leaf.
+  feed_item_seen_sync_receipt: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEM_SEEN_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
+  },
+  // Traced from `confirmLikedSynced`, one leaf.
+  feed_item_like_sync_receipt: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEM_LIKE_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
   },
 };
 
@@ -343,6 +373,56 @@ describe("Library Core operation registry", () => {
     ]) {
       expect(nonSynchronized.has(excluded)).toBe(true);
       expect(keys).not.toContain(excluded);
+    }
+  });
+
+  it("keeps the feed item written sets faithful to their mutators", () => {
+    // The capture surface is the widest set in the registry, and it must still
+    // exclude the three leaves the sanitized paths never write.
+    expect(
+      FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS.length,
+    ).toBeGreaterThan(60);
+    for (const excluded of [
+      "library-core-v1:feedItems.{globalId}.priority",
+      "library-core-v1:feedItems.{globalId}.priorityComputedAt",
+      "library-core-v1:feedItems.{globalId}.preservedContent.html",
+    ]) {
+      expect(
+        LIBRARY_CORE_FIELD_REGISTRY.some(
+          (entry) => entry.registryKey === excluded,
+        ),
+      ).toBe(true);
+      expect(FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).not.toContain(
+        excluded,
+      );
+    }
+
+    // The like assignment writes all three like leaves together, including the
+    // receipt leaf it clears.
+    expect([...FEED_ITEM_LIKE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS])
+      .toStrictEqual([
+        "library-core-v1:feedItems.{globalId}.userState.liked",
+        "library-core-v1:feedItems.{globalId}.userState.likedAt",
+        "library-core-v1:feedItems.{globalId}.userState.likedSyncedAt",
+      ]);
+
+    // Each receipt writes exactly one leaf, and they are different leaves.
+    expect([...FEED_ITEM_SEEN_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS])
+      .toStrictEqual(["library-core-v1:feedItems.{globalId}.userState.seenSyncedAt"]);
+    expect([...FEED_ITEM_LIKE_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS])
+      .toStrictEqual(["library-core-v1:feedItems.{globalId}.userState.likedSyncedAt"]);
+
+    // Every narrow feed item set is a subset of the capture surface, which is
+    // what makes the widths a hierarchy rather than four independent guesses.
+    for (const narrow of [
+      FEED_ITEM_LIKE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+      FEED_ITEM_SEEN_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
+      FEED_ITEM_LIKE_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
+    ]) {
+      expect(narrow.length).toBeGreaterThan(0);
+      for (const key of narrow) {
+        expect(FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).toContain(key);
+      }
     }
   });
 
