@@ -90,6 +90,7 @@ import {
   FEED_ITEM_ARCHIVE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
   FEED_ITEM_SAVED_ARCHIVED_EXCLUSION_INVARIANT,
   FEED_ITEM_SAVED_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  PREFERENCES_LEAF_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
   LIBRARY_CORE_FEED_ITEM_ARCHIVED_AT_FIELD_REGISTRY_KEY,
   LIBRARY_CORE_FEED_ITEM_ARCHIVED_FIELD_REGISTRY_KEY,
   LIBRARY_CORE_FEED_ITEM_SAVED_AT_FIELD_REGISTRY_KEY,
@@ -161,6 +162,13 @@ const CLOSED_OPERATION_CONTRACTS: Partial<
     entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
     touchedFieldRegistryKeys:
       FEED_ITEM_SAVED_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  },
+  // Traced from `updatePreferences`, which deep-merges an arbitrary partial
+  // and so may write any synchronized preference leaf. No entityIdCodec:
+  // preferences are a singleton root with no per-entity key.
+  preferences_leaf_assignment: {
+    touchedFieldRegistryKeys:
+      PREFERENCES_LEAF_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
   },
 };
 
@@ -262,6 +270,48 @@ describe("Library Core operation registry", () => {
         (contract) => contract.touchedFieldRegistryKeys !== undefined,
       ).length,
     );
+  });
+
+  it("derives the preference written set from the registry, not by hand", () => {
+    const keys = PREFERENCES_LEAF_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS;
+
+    // `updatePreferences` deep-merges an arbitrary partial, so the written set
+    // is every synchronized preference leaf. Both halves are asserted: nothing
+    // synchronized is missing, and nothing device-local sneaks in.
+    const synchronized = LIBRARY_CORE_FIELD_REGISTRY.filter(
+      (entry) =>
+        entry.registryKey.startsWith("library-core-v1:preferences.") &&
+        entry.currentLocality === "legacy-synchronized",
+    ).map((entry) => entry.registryKey);
+    expect([...keys].sort(compareCodeUnits)).toStrictEqual(
+      synchronized.sort(compareCodeUnits),
+    );
+
+    // Guard the guard. A filter that matched nothing would satisfy the equality
+    // above against an equally empty expectation.
+    expect(keys.length).toBeGreaterThan(30);
+
+    const nonSynchronized = new Set(
+      LIBRARY_CORE_FIELD_REGISTRY.filter(
+        (entry) =>
+          entry.registryKey.startsWith("library-core-v1:preferences.") &&
+          entry.currentLocality !== "legacy-synchronized",
+      ).map((entry) => entry.registryKey),
+    );
+    expect(nonSynchronized.size).toBeGreaterThan(10);
+    for (const key of keys) {
+      expect(nonSynchronized.has(key)).toBe(false);
+    }
+
+    // The device-local leaves whose leaking would be most visible, named so the
+    // exclusion is not merely a count.
+    for (const excluded of [
+      "library-core-v1:preferences.ai.ollamaUrl",
+      "library-core-v1:preferences.display.themeId",
+    ]) {
+      expect(nonSynchronized.has(excluded)).toBe(true);
+      expect(keys).not.toContain(excluded);
+    }
   });
 
   it("keeps saved and archived written-leaf sets faithful to the legacy mutators", () => {

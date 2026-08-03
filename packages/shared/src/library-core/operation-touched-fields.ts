@@ -1,3 +1,5 @@
+import { LIBRARY_CORE_FIELD_REGISTRY } from "./field-registry.js";
+
 /**
  * Written-leaf inventories for candidate successor operations.
  *
@@ -55,6 +57,38 @@ export const FEED_ITEM_SAVED_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS =
     LIBRARY_CORE_FEED_ITEM_SAVED_FIELD_REGISTRY_KEY,
     LIBRARY_CORE_FEED_ITEM_SAVED_AT_FIELD_REGISTRY_KEY,
   ]);
+
+/**
+ * Traced from `updatePreferences` in `packages/shared/src/schema.ts`.
+ *
+ * That function accepts an arbitrary `Partial<UserPreferences>`, strips it
+ * through `sanitizeUserPreferenceWrite`, and deep-merges whatever survives. It
+ * therefore may write any synchronized preference leaf and no others, so the
+ * written set is exactly the synchronized preference leaves rather than a
+ * shorter list of the ones some caller happens to use today.
+ *
+ * Derived from the field registry rather than transcribed, so a leaf added
+ * later is included without anyone remembering. The derivation was checked
+ * against reality: every addressable leaf the registry marks
+ * `legacy-synchronized` does land in the document through `updatePreferences`,
+ * and every leaf it marks `legacy-device-local` or `legacy-compatibility` does
+ * not. `packages/shared/src/preference-locality-boundary.test.ts` holds the
+ * second half of that statement.
+ *
+ * Array-element and record patterns such as `...[]` and `...{groupId}` are
+ * included. They are real registry keys naming real synchronized leaves, and
+ * omitting them would understate what the operation writes.
+ */
+export const PREFERENCES_LEAF_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS =
+  Object.freeze(
+    LIBRARY_CORE_FIELD_REGISTRY.filter(
+      (entry) =>
+        entry.registryKey.startsWith("library-core-v1:preferences.") &&
+        entry.currentLocality === "legacy-synchronized",
+    )
+      .map((entry) => entry.registryKey)
+      .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0)),
+  );
 
 /**
  * Why saved and archived still carry `field_algebra_unresolved`.
