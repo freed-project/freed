@@ -35,3 +35,4 @@ export * from "./facet-summary-contracts.js";
 export * from "./sha256.js";
 export * from "./store-surface-registry.js";
 export * from "./wire-frame.js";
+export * from "./user-state-merge-algebra.js";
