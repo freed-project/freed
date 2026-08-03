@@ -12,6 +12,8 @@ import {
   FEED_ITEM_ARCHIVE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
   FEED_ITEM_SAVED_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
   PREFERENCES_LEAF_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  RSS_FEED_TITLE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
 } from "./operation-touched-fields.js";
 import {
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
@@ -513,11 +515,17 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   rss_feed_title_assignment: localUserOperation({
     entityType: "RssFeed",
+    // `entityIdCodec` stays null. RSS feeds are keyed by url, a different key
+    // space from the globalId one the existing codec declaration was justified
+    // against, so reusing it here would be a new claim rather than a reuse.
+    touchedFieldRegistryKeys:
+      RSS_FEED_TITLE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
     candidateStoreSurfaces: ["renameFeed"],
     legacyWorkerRequests: ["UPDATE_RSS_FEED"],
   }),
   rss_feed_upsert: localUserOperation({
     entityType: "RssFeed",
+    touchedFieldRegistryKeys: RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
     candidateStoreSurfaces: ["addFeed"],
     legacyWorkerRequests: ["ADD_RSS_FEED", "BATCH_REFRESH_FEEDS", "UPDATE_RSS_FEED"],
   }),
