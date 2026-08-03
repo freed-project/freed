@@ -24,7 +24,9 @@
     "legacy-library-control",
     "legacy-epoch-bootstrap-prepared",
     "legacy-epoch-bootstrap-receipt",
-    "legacy-library-identity"
+    "legacy-library-identity",
+    "installation-incarnation",
+    "actor-incarnation-nonce"
   ],
   "signature": [
     "operation-envelope",

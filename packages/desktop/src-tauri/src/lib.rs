@@ -37,6 +37,7 @@ mod automerge_external_token_run;
 mod automerge_external_value;
 #[cfg_attr(not(test), allow(dead_code))]
 mod automerge_external_value_run;
+mod library_core_actor_enrollment;
 mod library_core_authority_genesis;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_canonical;

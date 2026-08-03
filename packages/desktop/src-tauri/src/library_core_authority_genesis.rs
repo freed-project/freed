@@ -312,6 +312,35 @@ fn load_or_create_authority_key_pair(
         .map_err(|_| "Library Core authority signing key readback is corrupt".to_string())
 }
 
+/// Establish a genesis epoch with a caller-supplied key.
+///
+/// Test-only entry point for sibling modules that need a real installed epoch
+/// without touching the platform credential vault.
+#[cfg(test)]
+pub(crate) fn establish_with_key_pair_for_test(
+    journal: &mut LibraryCoreJournal,
+    revision: &LegacySourceRevision,
+    key_pair: &Ed25519KeyPair,
+    accepted_at_ms: i64,
+) -> Result<AcceptedAuthorityState, String> {
+    establish_with_key_pair(journal, revision, key_pair, accepted_at_ms)
+}
+
+/// Load the authority key this installation already minted.
+///
+/// Deliberately never mints one. An authority key that did not sign the active
+/// epoch cannot countersign anything the journal will accept, so a caller that
+/// needs the key for enrollment must fail rather than quietly create a second
+/// identity.
+pub(crate) fn load_established_authority_key_pair(
+    library_id: &str,
+) -> Result<Ed25519KeyPair, String> {
+    let bytes = load_platform_key(&AUTHORITY_VAULT, library_id)?
+        .ok_or_else(|| "Library Core has no established authority signing key".to_string())?;
+    Ed25519KeyPair::from_pkcs8(&bytes)
+        .map_err(|_| "Library Core authority signing key is corrupt".to_string())
+}
+
 fn establish_with_key_pair(
     journal: &mut LibraryCoreJournal,
     revision: &LegacySourceRevision,

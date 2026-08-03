@@ -204,19 +204,19 @@ impl std::error::Error for JournalError {}
 type JournalResult<T> = std::result::Result<T, JournalError>;
 
 #[derive(Debug, Clone, PartialEq)]
-struct ActorState {
-    library_id: String,
-    epoch: i64,
-    epoch_id: String,
-    actor_id: String,
-    actor_public_key: String,
-    enrollment_operation_id: String,
-    enrollment_certificate_digest: String,
-    canonical_enrollment_certificate_json: String,
-    actor_chain_genesis: String,
-    next_sequence: i64,
-    previous_operation_id: Option<String>,
-    previous_chain_digest: String,
+pub(crate) struct ActorState {
+    pub(crate) library_id: String,
+    pub(crate) epoch: i64,
+    pub(crate) epoch_id: String,
+    pub(crate) actor_id: String,
+    pub(crate) actor_public_key: String,
+    pub(crate) enrollment_operation_id: String,
+    pub(crate) enrollment_certificate_digest: String,
+    pub(crate) canonical_enrollment_certificate_json: String,
+    pub(crate) actor_chain_genesis: String,
+    pub(crate) next_sequence: i64,
+    pub(crate) previous_operation_id: Option<String>,
+    pub(crate) previous_chain_digest: String,
 }
 
 #[derive(Debug, Clone)]
@@ -933,7 +933,14 @@ impl LibraryCoreJournal {
             .optional()
     }
 
-    fn actor_state(
+    /// The stored actor, if this library, epoch and actor are already
+    /// enrolled.
+    ///
+    /// A caller that mints enrollment certificates must check this first. The
+    /// signed enrollment body carries `created_at_ms`, so rebuilding one for
+    /// an actor that is already enrolled would produce a different certificate
+    /// digest and be refused as a conflict rather than seen as a replay.
+    pub(crate) fn actor_state(
         &self,
         library_id: &str,
         epoch_id: &str,
@@ -1118,7 +1125,12 @@ impl LibraryCoreJournal {
         enrollment_verifier::verify_actor_enrollment(canonical_certificate, authority)
     }
 
-    fn verify_and_enroll_actor(
+    /// Verify a canonical enrollment certificate against the active authority
+    /// and enroll the actor it names.
+    ///
+    /// Replaying the exact same certificate returns the stored actor; a
+    /// different certificate for the same actor is a conflict, not an update.
+    pub(crate) fn verify_and_enroll_actor(
         &mut self,
         canonical_certificate: &[u8],
         library_id: &str,

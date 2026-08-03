@@ -53,6 +53,8 @@ export const LIBRARY_CORE_DIGEST_DOMAINS = [
   "legacy-epoch-bootstrap-prepared",
   "legacy-epoch-bootstrap-receipt",
   "legacy-library-identity",
+  "installation-incarnation",
+  "actor-incarnation-nonce",
 ] as const;
 
 export type LibraryCoreDigestDomain =

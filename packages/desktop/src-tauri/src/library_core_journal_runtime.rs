@@ -17,7 +17,12 @@ use std::sync::Mutex;
 
 use tauri::Manager;
 
-use super::library_core_authority_genesis::{establish_genesis_epoch, LegacySourceRevision};
+use super::library_core_actor_enrollment::{
+    enroll_desktop_actor, EnrollmentAuthority, PlatformActorKeyStore,
+};
+use super::library_core_authority_genesis::{
+    establish_genesis_epoch, load_established_authority_key_pair, LegacySourceRevision,
+};
 use super::library_core_journal::{JournalRuntimeStatus, LibraryCoreJournal};
 
 /// Directory holding the authoritative database, under the app data root.
@@ -162,7 +167,7 @@ pub(super) struct GenesisSourceRequest {
 }
 
 /// What was established, for the caller to log. No key material, and no
-/// certificate: the certificate stays in the journal.
+/// certificates: those stay in the journal.
 #[derive(Debug, Eq, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct GenesisAuthorityStatus {
@@ -170,13 +175,23 @@ pub(super) struct GenesisAuthorityStatus {
     pub(super) epoch: i64,
     pub(super) epoch_id: String,
     pub(super) authority_key_id: String,
+    pub(super) actor_id: String,
+    /// The sequence this actor's next operation would take. 1 means it has
+    /// written nothing, which is the only value this path can produce.
+    pub(super) next_sequence: i64,
 }
 
-/// Establishes the genesis authority epoch against the held journal.
+/// Establishes this installation's Library Core identity against the held
+/// journal: the genesis authority epoch, then its own enrolled actor.
+///
+/// One step, because an epoch with no actor can write nothing and an actor
+/// cannot exist without an epoch. Both halves are idempotent, so a call that
+/// fails after the epoch lands completes the actor on the next attempt.
 ///
 /// Requires the journal to be open already, so a caller cannot establish
 /// authority against a database that was never validated on open. Replaying
-/// the same revision returns the same epoch rather than writing again.
+/// the same revision returns the same epoch and the same actor rather than
+/// writing again.
 pub(super) fn establish_genesis_at(
     state: &LibraryCoreJournalRuntimeState,
     request: &GenesisSourceRequest,
@@ -203,11 +218,33 @@ pub(super) fn establish_genesis_at(
     )
     .map_err(JournalRuntimeError::Journal)?;
 
+    let enrollment_authority = EnrollmentAuthority {
+        library_id: authority.library_id.clone(),
+        epoch: authority.epoch,
+        epoch_id: authority.epoch_id.clone(),
+        authority_key_id: authority.authority_key_id.clone(),
+    };
+    // Loaded, never minted: the epoch above was signed by this exact key, and
+    // a second authority identity could not countersign an enrollment the
+    // journal would accept.
+    let authority_key_pair = load_established_authority_key_pair(&authority.library_id)
+        .map_err(JournalRuntimeError::Journal)?;
+    let actor = enroll_desktop_actor(
+        journal,
+        &enrollment_authority,
+        &PlatformActorKeyStore,
+        &authority_key_pair,
+        accepted_at_ms,
+    )
+    .map_err(JournalRuntimeError::Journal)?;
+
     Ok(GenesisAuthorityStatus {
         library_id: authority.library_id,
         epoch: authority.epoch,
         epoch_id: authority.epoch_id,
         authority_key_id: authority.authority_key_id,
+        actor_id: actor.actor_id,
+        next_sequence: actor.next_sequence,
     })
 }
 
