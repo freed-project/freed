@@ -5420,6 +5420,81 @@ mod tests {
         assert_eq!(undated, total / 8, "undated items survived as undated");
     }
 
+    /// `sortAt` is `COALESCE(publishedAt, 0)` and the order is `sortAt DESC`,
+    /// so a row that loses `publishedAt` moves toward the tail. `publishedAt`
+    /// merges as `min` in `mergeFeedItemInto`, which deduplication and all
+    /// three provider capture reconcilers reach, so that move happens on real
+    /// data. A forward pager holding a cursor above the old position would
+    /// then serve the row a second time.
+    ///
+    /// The revision check is what prevents it. Nothing tested that until now,
+    /// which left a load-bearing guard free to regress silently.
+    #[test]
+    fn a_cursor_is_rejected_once_a_merge_lowers_a_sort_key() {
+        let mut store = seeded(64);
+
+        let first = store.feed_page(None, 16).expect("first page");
+        let cursor = first.next_cursor.expect("a second page exists");
+        let served = first.rows[0].global_id.clone();
+        let served_sort = first.rows[0].sort_key();
+
+        // Re-project one already-served row with an earlier `publishedAt`,
+        // exactly as a min-merge against a duplicate would.
+        let lowered = served
+            .strip_prefix("x:")
+            .and_then(|value| value.parse::<usize>().ok())
+            .expect("seeded ids are x:NNNNNN");
+        let mut demoted = row(lowered, Some(1_000_000_000_000));
+        demoted.global_id = served.clone();
+        assert!(
+            demoted.published_at.expect("dated") < served_sort,
+            "the re-projection must actually move the row"
+        );
+        store
+            .apply_projection_batch("merge-lowered-sort", &digest(999), 1, &[demoted], &[])
+            .expect("reproject");
+
+        match store.feed_page(Some(&cursor), 16) {
+            Err(ShadowStoreError::StaleRevision { expected, actual }) => {
+                assert_eq!(expected, cursor.revision);
+                assert_ne!(actual, cursor.revision, "the revision must have moved");
+            }
+            other => panic!("a cursor older than the merge must be refused, got {other:?}"),
+        }
+    }
+
+    /// The recovery path has to be correct too. Refusing the stale cursor is
+    /// only safe if restarting the walk still covers the corpus exactly once.
+    #[test]
+    fn restarting_after_a_lowered_sort_key_still_serves_every_row_once() {
+        let total = 64usize;
+        let mut store = seeded(total);
+
+        let mut demoted = row(0, Some(1_000_000_000_000));
+        demoted.global_id = "x:000000".to_string();
+        store
+            .apply_projection_batch("merge-lowered-sort", &digest(999), 1, &[demoted], &[])
+            .expect("reproject");
+
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut cursor: Option<PageCursor> = None;
+        loop {
+            let page = store.feed_page(cursor.as_ref(), 16).expect("page");
+            if page.rows.is_empty() {
+                break;
+            }
+            for item in &page.rows {
+                assert!(seen.insert(item.global_id.clone()), "row served twice");
+            }
+            match page.next_cursor {
+                Some(next) => cursor = Some(next),
+                None => break,
+            }
+        }
+
+        assert_eq!(seen.len(), total, "every row exactly once after the merge");
+    }
+
     #[test]
     fn feed_pages_expose_only_bounded_card_fields() {
         let mut store = ShadowStore::open_in_memory().expect("open");
