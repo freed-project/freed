@@ -4,6 +4,10 @@ import {
   type LibraryCoreOperationFieldAlgebraContract,
 } from "./operation-field-algebra-contracts.js";
 import {
+  FEED_ITEM_READ_ASSIGNMENT_MATERIALIZER,
+  type LibraryCoreOperationMaterializerContract,
+} from "./operation-materializer-contracts.js";
+import {
   FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
   type LibraryCoreOperationPayloadSchema,
 } from "./operation-payload-contracts.js";
@@ -154,7 +158,13 @@ export interface LibraryCoreOperationDefinition {
   readonly transactionMemberSchema:
     | LibraryCoreTransactionMemberSchemaDescriptor
     | null;
-  readonly materializer: null;
+  /**
+   * How this operation lands in the authoritative tables.
+   *
+   * Null means the operation cannot yet be the source of truth for anything,
+   * whatever else about it is closed.
+   */
+  readonly materializer: LibraryCoreOperationMaterializerContract | null;
   readonly frozenBulkContract: null;
   readonly transactionLimits: {
     readonly maximumMembers: 1_000;
@@ -189,18 +199,20 @@ interface PlannedOperationInput {
   readonly touchedFieldRegistryKeys?: readonly string[];
   readonly fieldAlgebra?: LibraryCoreOperationFieldAlgebraContract<unknown>;
   readonly transactionMemberSchema?: LibraryCoreTransactionMemberSchemaDescriptor;
+  readonly materializer?: LibraryCoreOperationMaterializerContract;
 }
-
-const BASE_OPERATION_BLOCKERS = [
-  "materializer_unimplemented",
-  "runtime_authority_inactive",
-] as const satisfies NonEmptyBlockers;
 
 function plannedOperation(
   input: PlannedOperationInput,
 ): LibraryCoreOperationDefinition {
+  // `runtime_authority_inactive` leads because it is the one blocker no
+  // declaration can drop. Nothing in this registry grants write authority, so
+  // every entry keeps it and the list is provably non-empty.
   const blockers: NonEmptyBlockers = [
-    "materializer_unimplemented",
+    "runtime_authority_inactive",
+    ...(input.materializer === undefined
+      ? (["materializer_unimplemented"] as const)
+      : []),
     ...(input.fieldAlgebra === undefined
       ? (["field_algebra_unresolved"] as const)
       : []),
@@ -216,7 +228,6 @@ function plannedOperation(
     ...(input.transactionMemberSchema === undefined
       ? (["transaction_member_schema_unresolved"] as const)
       : []),
-    ...BASE_OPERATION_BLOCKERS.slice(1),
     ...(input.additionalBlockers ?? []),
   ];
 
@@ -229,7 +240,7 @@ function plannedOperation(
     touchedFieldRegistryKeys: input.touchedFieldRegistryKeys ?? null,
     fieldAlgebra: input.fieldAlgebra ?? null,
     transactionMemberSchema: input.transactionMemberSchema ?? null,
-    materializer: null,
+    materializer: input.materializer ?? null,
     frozenBulkContract: null,
     transactionLimits: {
       maximumMembers: LIBRARY_CORE_MAX_TRANSACTION_MEMBERS,
@@ -349,6 +360,7 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   feed_item_read_assignment: localUserOperation({
     entityType: "FeedItem",
+    materializer: FEED_ITEM_READ_ASSIGNMENT_MATERIALIZER,
     payloadSchema: FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
     entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
     touchedFieldRegistryKeys:
