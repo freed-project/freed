@@ -17,6 +17,10 @@ import {
   PERSON_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
   RSS_FEED_TITLE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
   RSS_FEED_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
+  FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
+  FEED_ITEM_LIKE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  FEED_ITEM_LIKE_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
+  FEED_ITEM_SEEN_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
 } from "./operation-touched-fields.js";
 import {
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
@@ -300,6 +304,9 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   feed_item_capture_upsert: plannedOperation({
     entityType: "FeedItem",
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS,
     candidateStoreSurfaces: ["addItems", "updateItem"],
     legacyWorkerRequests: [
       "ADD_FEED_ITEM",
@@ -314,12 +321,18 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   feed_item_like_assignment: localUserOperation({
     entityType: "FeedItem",
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEM_LIKE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
     candidateStoreSurfaces: ["toggleLiked"],
     legacyWorkerRequests: ["TOGGLE_LIKED"],
     additionalBlockers: ["provider_intent_separation_unresolved"],
   }),
   feed_item_like_sync_receipt: plannedOperation({
     entityType: "FeedItem",
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEM_LIKE_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
     legacyWorkerRequests: ["CONFIRM_LIKED_SYNCED"],
     intendedAuthority: "provider_action_executor_receipt",
     additionalBlockers: [
@@ -359,6 +372,9 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   feed_item_seen_sync_receipt: plannedOperation({
     entityType: "FeedItem",
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEM_SEEN_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS,
     legacyWorkerRequests: ["CONFIRM_SEEN_SYNCED"],
     intendedAuthority: "provider_action_executor_receipt",
     additionalBlockers: [

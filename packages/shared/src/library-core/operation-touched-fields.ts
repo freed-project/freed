@@ -175,6 +175,64 @@ export const PERSON_REACH_OUT_APPEND_TOUCHED_FIELD_REGISTRY_KEYS =
   );
 
 /**
+ * Traced from `addFeedItem` and `updateFeedItem`, which every capture request
+ * funnels into.
+ *
+ * Both write a whole sanitized item, and `updateFeedItem` accepts an arbitrary
+ * partial through the same sanitizer, so between them any synchronized item
+ * leaf can be written. `BATCH_REFRESH_FEEDS` and `BATCH_IMPORT_ITEMS` add
+ * nothing beyond that union.
+ *
+ * Three leaves are excluded and each for its own reason. `priority` and
+ * `priorityComputedAt` are `legacy-derived` and written only by merge, never
+ * by these paths, which is the subject of issue 1339. `preservedContent.html`
+ * is `legacy-compatibility` and stripped unless a caller opts into legacy
+ * HTML.
+ *
+ * Checked against reality: all seventy-eight `feedItems` registry leaves agree
+ * with what lands, no exceptions.
+ */
+export const FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS =
+  synchronizedLeavesUnder("library-core-v1:feedItems.");
+
+/**
+ * Traced from `toggleLiked`, which writes the three like leaves together.
+ *
+ * Liking sets `liked` and `likedAt` and clears `likedSyncedAt`; unliking
+ * clears all three. The receipt leaf belongs here because this operation
+ * really does write it, not merely observe it.
+ */
+export const FEED_ITEM_LIKE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS =
+  Object.freeze(
+    FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS.filter((key) =>
+      /\.userState\.(liked|likedAt|likedSyncedAt)$/.test(key),
+    ),
+  );
+
+/**
+ * Traced from `confirmSeenSynced`, which writes exactly one leaf.
+ *
+ * Verified directly: after the call the item's user state gains `seenSyncedAt`
+ * and nothing else.
+ */
+export const FEED_ITEM_SEEN_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS =
+  Object.freeze(
+    FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS.filter((key) =>
+      key.endsWith(".userState.seenSyncedAt"),
+    ),
+  );
+
+/**
+ * Traced from `confirmLikedSynced`, the mirror of the seen receipt.
+ */
+export const FEED_ITEM_LIKE_SYNC_RECEIPT_TOUCHED_FIELD_REGISTRY_KEYS =
+  Object.freeze(
+    FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS.filter((key) =>
+      key.endsWith(".userState.likedSyncedAt"),
+    ),
+  );
+
+/**
  * Why saved and archived still carry `field_algebra_unresolved`.
  *
  * `toggleSaved` and `toggleArchived` jointly maintain the invariant that an
