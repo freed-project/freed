@@ -6434,7 +6434,6 @@ mod tests {
         std::fs::remove_dir(directory).expect("remove publication directory");
     }
 
-    #[test]
     /// A rebuild may only begin on an empty projection.
     ///
     /// The guard reads three things, and a test that only emptied one would
