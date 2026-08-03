@@ -11,6 +11,23 @@ export const LIBRARY_CORE_MAX_DIRECT_CANONICAL_BYTES = 4_194_304;
 export const LIBRARY_CORE_MAX_CANONICAL_NESTING_DEPTH = 128;
 export const LIBRARY_CORE_MAX_CANONICAL_NODES = 65_536;
 
+import CANONICAL_DOMAINS_V1 from "./canonical-domains-v1.json" with { type: "json" };
+
+/**
+ * The domain lists live once, in `canonical-domains-v1.json`.
+ *
+ * Rust embeds that same file with `include_str!`, the way the SQL schemas are
+ * shared. Both sides reject an unregistered domain, so a list that existed
+ * twice could drift and make a digest computed on one side unverifiable on the
+ * other. It had drifted: `operation-segment-body` and `intent-segment-body`
+ * were registered here and absent from Rust.
+ *
+ * The tuples below still exist because TypeScript cannot derive a literal
+ * union from a JSON import, and losing `LibraryCoreDigestDomain` would remove
+ * compile-time domain checking from every caller. They are bound to the file at
+ * module load instead: a mismatch throws on import rather than waiting for a
+ * test to be run, so a drifted build cannot start at all.
+ */
 export const LIBRARY_CORE_DIGEST_DOMAINS = [
   "authority-key",
   "actor-public-key",
@@ -30,10 +47,38 @@ export const LIBRARY_CORE_DIGEST_DOMAINS = [
   "causal-frontier",
   "legacy-source-admission-key",
   "legacy-source-admission-claim",
+  "automerge-heads",
+  "legacy-epoch-bootstrap-record",
+  "legacy-library-control",
+  "legacy-epoch-bootstrap-prepared",
+  "legacy-epoch-bootstrap-receipt",
 ] as const;
 
 export type LibraryCoreDigestDomain =
   (typeof LIBRARY_CORE_DIGEST_DOMAINS)[number];
+
+function assertMatchesSharedSource(
+  list: readonly string[],
+  source: readonly string[],
+  which: string,
+): void {
+  const mismatch =
+    list.length !== source.length ||
+    list.some((domain, index) => domain !== source[index]);
+  if (mismatch) {
+    throw new Error(
+      `Library Core ${which} domains disagree with canonical-domains-v1.json. ` +
+        `Edit the JSON, which Rust also embeds, then mirror it here. ` +
+        `TypeScript: ${JSON.stringify(list)}. File: ${JSON.stringify(source)}.`,
+    );
+  }
+}
+
+assertMatchesSharedSource(
+  LIBRARY_CORE_DIGEST_DOMAINS,
+  CANONICAL_DOMAINS_V1.digest,
+  "digest",
+);
 
 export const LIBRARY_CORE_SIGNATURE_DOMAINS = [
   "operation-envelope",
@@ -43,6 +88,12 @@ export const LIBRARY_CORE_SIGNATURE_DOMAINS = [
   "authority-key-possession",
   "legacy-source-admission-claim-key",
 ] as const;
+
+assertMatchesSharedSource(
+  LIBRARY_CORE_SIGNATURE_DOMAINS,
+  CANONICAL_DOMAINS_V1.signature,
+  "signature",
+);
 
 export type LibraryCoreSignatureDomain =
   (typeof LIBRARY_CORE_SIGNATURE_DOMAINS)[number];

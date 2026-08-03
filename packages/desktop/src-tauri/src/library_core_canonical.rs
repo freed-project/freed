@@ -1,35 +1,71 @@
 use serde_json::Value;
 use std::collections::HashSet;
+use std::sync::OnceLock;
 
 const MAX_DIRECT_CANONICAL_BYTES: usize = 4_194_304;
 const MAX_CANONICAL_NESTING_DEPTH: usize = 128;
 const MAX_CANONICAL_NODES: usize = 65_536;
-const DIGEST_DOMAINS: [&str; 16] = [
-    "authority-key",
-    "actor-public-key",
-    "actor-id",
-    "actor-enrollment-body",
-    "actor-enrollment-certificate",
-    "epoch-transition-certificate",
-    "operation-payload",
-    "operation-signing-body",
-    "transaction-member",
-    "transaction",
-    "actor-chain-genesis",
-    "actor-chain",
-    "operation-envelope",
-    "causal-frontier",
-    "legacy-source-admission-key",
-    "legacy-source-admission-claim",
-];
-const SIGNATURE_DOMAINS: [&str; 6] = [
-    "operation-envelope",
-    "actor-enrollment-proof",
-    "actor-enrollment-authority",
-    "epoch-transition-certificate",
-    "authority-key-possession",
-    "legacy-source-admission-claim-key",
-];
+/// The canonical domain lists, embedded from the one file that defines them.
+///
+/// `canonical-domains-v1.json` is the single source. TypeScript binds its
+/// literal tuples to the same file at module load, and this side embeds it at
+/// compile time the way the SQL schemas are shared. Neither side keeps its own
+/// copy, so the two cannot drift.
+///
+/// They had drifted before this: `operation-segment-body` and
+/// `intent-segment-body` were registered in TypeScript and missing here, which
+/// would have made a digest computed there unverifiable on this side.
+const CANONICAL_DOMAINS_JSON: &str =
+    include_str!("../../../shared/src/library-core/canonical-domains-v1.json");
+
+fn canonical_domains(field: &str) -> &'static HashSet<String> {
+    static DIGEST: OnceLock<HashSet<String>> = OnceLock::new();
+    static SIGNATURE: OnceLock<HashSet<String>> = OnceLock::new();
+
+    let cell = match field {
+        "digest" => &DIGEST,
+        "signature" => &SIGNATURE,
+        other => unreachable!("unknown canonical domain field: {other}"),
+    };
+    cell.get_or_init(|| {
+        // The embedded file is checked in beside its consumers, so a parse
+        // failure is a build-time authoring error, not a runtime condition.
+        let parsed: Value = serde_json::from_str(CANONICAL_DOMAINS_JSON)
+            .expect("canonical-domains-v1.json must be valid JSON");
+        let list = parsed
+            .get(field)
+            .and_then(Value::as_array)
+            .unwrap_or_else(|| panic!("canonical-domains-v1.json must contain {field}"));
+        let domains: HashSet<String> = list
+            .iter()
+            .map(|entry| {
+                entry
+                    .as_str()
+                    .expect("canonical domain entries must be strings")
+                    .to_owned()
+            })
+            .collect();
+        assert_eq!(
+            domains.len(),
+            list.len(),
+            "canonical-domains-v1.json {field} must not repeat a domain"
+        );
+        assert!(
+            !domains.is_empty(),
+            "canonical-domains-v1.json {field} must not be empty"
+        );
+        domains
+    })
+}
+
+fn is_digest_domain(domain: &str) -> bool {
+    canonical_domains("digest").contains(domain)
+}
+
+fn is_signature_domain(domain: &str) -> bool {
+    canonical_domains("signature").contains(domain)
+}
+
 const SAFE_INTEGER_MAX: u64 = 9_007_199_254_740_991;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -163,7 +199,7 @@ pub(crate) fn encode_operation_digest_input(
     value: &Value,
     maximum_bytes: usize,
 ) -> Result<Vec<u8>, CanonicalEncodingError> {
-    if !DIGEST_DOMAINS.contains(&domain) {
+    if !is_digest_domain(domain) {
         return Err(CanonicalEncodingError::UnregisteredDomain);
     }
     let prefix = format!("freed.library-core.v1/digest/{domain}\0");
@@ -182,7 +218,7 @@ pub(crate) fn encode_signature_input(
     value: &Value,
     maximum_bytes: usize,
 ) -> Result<Vec<u8>, CanonicalEncodingError> {
-    if !SIGNATURE_DOMAINS.contains(&domain) {
+    if !is_signature_domain(domain) {
         return Err(CanonicalEncodingError::UnregisteredDomain);
     }
     let prefix = format!("freed.library-core.v1/signature/{domain}\0");
@@ -544,6 +580,46 @@ mod tests {
     }
 
     #[test]
+    /// Every legacy epoch bootstrap domain must be digestible.
+    ///
+    /// All five threw `UnregisteredDomain` before the lists were unified,
+    /// which made the bootstrap contract's `digest` dependency impossible to
+    /// satisfy and blocked establishing authority at all.
+    #[test]
+    fn digests_every_legacy_epoch_bootstrap_domain() {
+        let body = serde_json::json!({ "probe": 1 });
+        for domain in [
+            "automerge-heads",
+            "legacy-epoch-bootstrap-record",
+            "legacy-library-control",
+            "legacy-epoch-bootstrap-prepared",
+            "legacy-epoch-bootstrap-receipt",
+        ] {
+            assert!(
+                is_digest_domain(domain),
+                "{domain} must be registered in the embedded list"
+            );
+            let encoded = encode_operation_digest_input(domain, &body, 4096)
+                .unwrap_or_else(|error| panic!("{domain} must encode: {error:?}"));
+            // Encoding must actually separate by domain, not merely accept it.
+            let expected = format!("freed.library-core.v1/digest/{domain}\0");
+            assert!(
+                encoded.starts_with(expected.as_bytes()),
+                "{domain} must be domain separated"
+            );
+        }
+
+        // The two that had drifted out of this side entirely.
+        for domain in ["operation-segment-body", "intent-segment-body"] {
+            assert!(is_digest_domain(domain), "{domain} must be registered here");
+        }
+
+        // Positive control: a codec that accepted everything would satisfy the
+        // assertions above while providing no domain separation.
+        assert!(!is_digest_domain("not-a-registered-domain"));
+        assert!(!is_signature_domain("not-a-registered-domain"));
+    }
+
     fn builds_exact_domain_separated_inputs() {
         let value = serde_json::json!({
             "schema_version": 1,
