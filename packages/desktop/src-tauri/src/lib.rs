@@ -37,6 +37,7 @@ mod automerge_external_token_run;
 mod automerge_external_value;
 #[cfg_attr(not(test), allow(dead_code))]
 mod automerge_external_value_run;
+mod library_core_authority_genesis;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_canonical;
 #[cfg_attr(not(test), allow(dead_code))]
@@ -56,6 +57,7 @@ mod library_core_feed_reader_runtime;
 mod library_core_journal;
 mod library_core_journal_runtime;
 mod library_core_migration_claim;
+mod library_core_platform_key;
 mod library_core_saved_feed_runtime;
 mod library_core_shadow_runtime;
 #[cfg_attr(not(test), allow(dead_code))]
@@ -14805,6 +14807,7 @@ pub fn run() {
             prepare_social_scrape_memory,
             library_core_journal_runtime::open_library_core_journal,
             library_core_journal_runtime::library_core_journal_status,
+            library_core_journal_runtime::establish_library_core_genesis_authority,
             library_core_feed_browse_runtime::begin_library_core_feed_browse_generation,
             library_core_feed_browse_runtime::append_library_core_feed_browse_generation_page,
             library_core_feed_browse_runtime::finalize_library_core_feed_browse_generation,

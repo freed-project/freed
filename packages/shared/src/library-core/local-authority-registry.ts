@@ -918,15 +918,15 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
   },
   {
     registryKey: "library-core-authority-private-key",
-    soleOwner: "unprovisioned Library Core native authority adapter",
+    soleOwner: "packages/desktop/src-tauri/src/library_core_authority_genesis.rs",
     locality: "secret",
     role: "secret",
     authoritative: false,
     physicalStores: [{
-      kind: "unprovisioned",
-      platforms: ["desktop", "pwa"],
-      locator: "none:Gate A does not provision a Library Core authority private key",
-      keys: [],
+      kind: "platform-credential",
+      platforms: ["desktop-macos", "desktop-windows"],
+      locator: "platform-credential:wtf.freed.library-core/authority-current",
+      keys: ["authority-current"],
     }],
     retention: { kind: "until-reset" },
     backup: "exclude-secret",
@@ -934,12 +934,16 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
     redaction: "drop-entire-value",
     resetSemantics: "Factory reset removes local protected authority material. Restore may install a newly rotated authority key only through an accepted recovery transition; private bytes are never exported or imported.",
     snapshot: "excluded",
-    migration: "generate-after-gate-a",
+    migration: "retire-with-legacy-epoch",
     cutover: {
       blocksCutover: true,
-      reason: "An active Library Core epoch cannot exist until a platform secret store and authority-key lifecycle are implemented and proven.",
+      reason: "Desktop macOS and Windows now mint this key in the platform vault and sign one genesis epoch bound to one exact legacy Automerge revision, so an active Library Core epoch can exist there. Cutover stays blocked because Library Core cannot be authoritative on a platform that cannot hold this key, and neither Linux nor the PWA has a proven noninteractive vault.",
     },
-    sourceReferences: ["docs/LIBRARY-CORE-CONTRACT.md"],
+    sourceReferences: [
+      "docs/LIBRARY-CORE-CONTRACT.md",
+      "packages/desktop/src-tauri/src/library_core_authority_genesis.rs",
+      "packages/desktop/src-tauri/src/library_core_platform_key.rs",
+    ],
   },
   {
     registryKey: "library-core-bootstrap-operation-journal",
@@ -1179,6 +1183,7 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
     },
     sourceReferences: [
       "packages/desktop/src-tauri/src/library_core_migration_claim.rs",
+      "packages/desktop/src-tauri/src/library_core_platform_key.rs",
     ],
   },
   {
@@ -2546,10 +2551,19 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_SOURCE_OWNERS = [
     registryKey: "library-core-legacy-source-admission-key",
     sourcePath: "packages/desktop/src-tauri/src/library_core_migration_claim.rs",
     sourceTokens: [
-      'const KEYRING_SERVICE: &str = "wtf.freed.library-core"',
-      'const KEYRING_ACCOUNT: &str = "migration-source-current"',
+      'account: "migration-source-current"',
+      'envelope_format: "freed_library_core_migration_key_v1"',
     ],
     registeredKeys: ["migration-source-current"],
+  },
+  {
+    registryKey: "library-core-authority-private-key",
+    sourcePath: "packages/desktop/src-tauri/src/library_core_authority_genesis.rs",
+    sourceTokens: [
+      'account: "authority-current"',
+      'envelope_format: "freed_library_core_authority_key_v1"',
+    ],
+    registeredKeys: ["authority-current"],
   },
   {
     registryKey: "library-core-derived-runtime",

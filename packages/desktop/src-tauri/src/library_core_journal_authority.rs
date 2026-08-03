@@ -1,16 +1,16 @@
 //! Stored authority-epoch state for the dormant authoritative journal.
 //!
-//! Authority transition verification is intentionally not implemented here.
-//! Tests may install a sealed verified epoch so enrollment and operation
-//! commits can prove their same-transaction active-epoch fences.
+//! Transition certificates are verified by the caller, not here. This module
+//! stores an already-verified decision and answers what the active epoch is,
+//! so enrollment and operation commits can prove their same-transaction
+//! active-epoch fences. `library_core_authority_genesis` builds and verifies
+//! the one certificate a fresh installation can mint for itself.
 
 use super::{
     is_lower_hex, is_operation_id, AcceptedAuthorityState, JournalError, JournalResult,
     VerifiedCausalTip, MAX_CAUSAL_TIPS_PER_OPERATION, MAX_SAFE_INTEGER,
 };
-#[cfg(test)]
 use super::{LibraryCoreJournal, VerifiedAuthorityEpoch, MAX_TRANSACTION_ENVELOPE_BYTES};
-#[cfg(test)]
 use rusqlite::TransactionBehavior;
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -66,7 +66,6 @@ fn validate_authority_state(authority: &AcceptedAuthorityState) -> JournalResult
     Ok(())
 }
 
-#[cfg(test)]
 fn validate_verified_epoch(epoch: &VerifiedAuthorityEpoch) -> JournalResult<()> {
     validate_authority_state(&epoch.authority)?;
     if !is_lower_hex(&epoch.transition_certificate_digest, 32) {
@@ -203,9 +202,15 @@ pub(super) fn require_active_epoch(
     Ok(())
 }
 
-#[cfg(test)]
 impl LibraryCoreJournal {
-    pub(super) fn install_authority_epoch(
+    /// Install one verified authority epoch and make it active.
+    ///
+    /// The caller is responsible for verifying the transition certificate;
+    /// this stores an already-verified decision. Replaying the exact same
+    /// epoch returns the stored authority without writing again, so a caller
+    /// that crashes after committing and retries converges instead of
+    /// forking. Any other epoch must be exactly one past the current one.
+    pub(crate) fn install_authority_epoch(
         &mut self,
         epoch: &VerifiedAuthorityEpoch,
     ) -> JournalResult<AcceptedAuthorityState> {
