@@ -6435,6 +6435,167 @@ mod tests {
     }
 
     #[test]
+    /// A rebuild may only begin on an empty projection.
+    ///
+    /// The guard reads three things, and a test that only emptied one would
+    /// pass while the other two rotted, so all three are exercised.
+    #[test]
+    fn a_rebuild_refuses_to_begin_over_an_existing_projection() {
+        let mut store = seeded(4);
+        let source = projection_source(201);
+
+        assert!(matches!(
+            store
+                .begin_projection_rebuild("rebuild-201", &source, 4)
+                .expect_err("a populated projection must refuse a rebuild"),
+            ShadowStoreError::ProjectionRebuildNotEmpty
+        ));
+
+        // Positive control. On a fresh store the same call succeeds, so the
+        // refusal above is the guard and not a broken argument list.
+        let mut empty = ShadowStore::open_in_memory().expect("open");
+        let started = empty
+            .begin_projection_rebuild("rebuild-201", &source, 4)
+            .expect("an empty projection accepts a rebuild");
+        assert_eq!(started.projected_rows, 0);
+        assert_eq!(started.projection_revision, 0);
+        assert!(!started.complete);
+    }
+
+    /// Each batch must account for exactly the rows it carries.
+    #[test]
+    fn a_batch_that_miscounts_its_rows_is_refused() {
+        let mut store = ShadowStore::open_in_memory().expect("open");
+        let source = projection_source(202);
+        let rows = corpus(4);
+        store
+            .begin_projection_rebuild("rebuild-202", &source, rows.len())
+            .expect("begin rebuild");
+
+        // Claims three cumulative rows while carrying two.
+        assert!(matches!(
+            store
+                .apply_projection_rebuild_batch(
+                    "rebuild-202",
+                    &source,
+                    rows.len(),
+                    0,
+                    "rebuild-202-batch-0",
+                    &digest(203),
+                    3,
+                    false,
+                    &rows[..2],
+                )
+                .expect_err("an overstated batch must fail"),
+            ShadowStoreError::ProjectionRebuildRowCountMismatch {
+                expected: 2,
+                actual: 3
+            }
+        ));
+
+        // Claims more than the rebuild promised in total.
+        assert!(matches!(
+            store
+                .apply_projection_rebuild_batch(
+                    "rebuild-202",
+                    &source,
+                    rows.len(),
+                    0,
+                    "rebuild-202-batch-0",
+                    &digest(203),
+                    5,
+                    false,
+                    &rows[..5.min(rows.len())],
+                )
+                .expect_err("a batch beyond the promised total must fail"),
+            ShadowStoreError::ProjectionRebuildRowCountMismatch { .. }
+        ));
+
+        // Positive control: the honest count is accepted.
+        store
+            .apply_projection_rebuild_batch(
+                "rebuild-202",
+                &source,
+                rows.len(),
+                0,
+                "rebuild-202-batch-0",
+                &digest(203),
+                2,
+                false,
+                &rows[..2],
+            )
+            .expect("an accurate batch commits");
+    }
+
+    /// The completion flag must agree with the arithmetic.
+    #[test]
+    fn a_batch_cannot_claim_completion_early() {
+        let mut store = ShadowStore::open_in_memory().expect("open");
+        let source = projection_source(204);
+        let rows = corpus(4);
+        store
+            .begin_projection_rebuild("rebuild-204", &source, rows.len())
+            .expect("begin rebuild");
+
+        assert!(matches!(
+            store
+                .apply_projection_rebuild_batch(
+                    "rebuild-204",
+                    &source,
+                    rows.len(),
+                    0,
+                    "rebuild-204-batch-0",
+                    &digest(205),
+                    2,
+                    true,
+                    &rows[..2],
+                )
+                .expect_err("completion with rows outstanding must fail"),
+            ShadowStoreError::InvalidProjectionRebuild { field: "complete" }
+        ));
+    }
+
+    /// The last line of defence: a rebuild that claims completion while the
+    /// projection actually holds fewer rows than promised.
+    ///
+    /// Reached with duplicate identifiers, which is the realistic shape. The
+    /// batch honestly reports the number of rows it carried, and every count
+    /// along the way agrees, but the upsert collapses the duplicates so the
+    /// stored total falls short. Without this check the generation would be
+    /// published as complete while silently missing rows.
+    #[test]
+    fn completion_is_refused_when_stored_rows_fall_short() {
+        let mut store = ShadowStore::open_in_memory().expect("open");
+        let source = projection_source(206);
+
+        let mut rows = corpus(3);
+        rows[2] = rows[1].clone();
+
+        store
+            .begin_projection_rebuild("rebuild-206", &source, rows.len())
+            .expect("begin rebuild");
+
+        assert!(matches!(
+            store
+                .apply_projection_rebuild_batch(
+                    "rebuild-206",
+                    &source,
+                    rows.len(),
+                    0,
+                    "rebuild-206-batch-0",
+                    &digest(207),
+                    rows.len(),
+                    true,
+                    &rows,
+                )
+                .expect_err("a short projection must not complete"),
+            ShadowStoreError::ProjectionRebuildRowCountMismatch {
+                expected: 3,
+                actual: 2
+            }
+        ));
+    }
+
     fn incomplete_rebuild_cannot_publish_and_remains_resumable() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
