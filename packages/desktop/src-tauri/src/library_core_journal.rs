@@ -85,7 +85,7 @@ const ENROLLMENT_OUTBOX_PAGE_SQL: &str = "
     LIMIT ?3;";
 
 #[derive(Debug)]
-enum JournalError {
+pub(super) enum JournalError {
     Io(std::io::Error),
     Sql(rusqlite::Error),
     UnsupportedSchemaVersion { expected: i64, actual: i64 },
@@ -102,6 +102,19 @@ enum JournalError {
     UnknownCausalTip { operation_id: String },
     OperationVerification { index: usize, field: &'static str },
     EnrollmentVerification { field: &'static str },
+}
+
+/// What the runtime can say about an opened journal.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct JournalRuntimeStatus {
+    pub(super) schema_version: i64,
+    /// How far materialization has consumed the operation log.
+    pub(super) materializer_ingest_sequence: i64,
+    pub(super) actors: i64,
+    pub(super) operations: i64,
+    pub(super) read_state: i64,
+    pub(super) unacknowledged_outbox: i64,
 }
 
 impl From<rusqlite::Error> for JournalError {
@@ -347,7 +360,7 @@ struct SchemaCatalogEntry {
     sql: String,
 }
 
-struct LibraryCoreJournal {
+pub(super) struct LibraryCoreJournal {
     connection: Connection,
 }
 
@@ -546,7 +559,7 @@ fn validate_transaction(transaction: &VerifiedReadTransaction) -> JournalResult<
 }
 
 impl LibraryCoreJournal {
-    fn open(path: &Path) -> JournalResult<Self> {
+    pub(super) fn open(path: &Path) -> JournalResult<Self> {
         let file_name = path.file_name().ok_or(JournalError::InvalidVerifiedInput {
             field: "database_path",
         })?;
@@ -560,6 +573,51 @@ impl LibraryCoreJournal {
         let resolved_path = parent.canonicalize()?.join(file_name);
         let existing_file = Self::preflight_existing_file(&resolved_path)?;
         Self::open_after_preflight(&resolved_path, existing_file)
+    }
+
+    /// Counts the runtime can report after opening.
+    ///
+    /// Deliberately cheap and read-only. This is the first observable evidence
+    /// that a production call reached the journal, so it must not mutate.
+    pub(super) fn runtime_status(&self) -> JournalResult<JournalRuntimeStatus> {
+        let schema_version: i64 =
+            self.connection
+                .pragma_query_value(None, "user_version", |row| row.get(0))?;
+        let materializer_ingest_sequence: i64 = self.connection.query_row(
+            "SELECT integerValue FROM library_core_meta
+             WHERE key = 'materializerIngestSequence';",
+            [],
+            |row| row.get(0),
+        )?;
+        let actors: i64 =
+            self.connection
+                .query_row("SELECT COUNT(*) FROM library_core_actors;", [], |row| {
+                    row.get(0)
+                })?;
+        let operations: i64 = self.connection.query_row(
+            "SELECT COUNT(*) FROM library_core_operations;",
+            [],
+            |row| row.get(0),
+        )?;
+        let read_state: i64 = self.connection.query_row(
+            "SELECT COUNT(*) FROM library_core_feed_item_read_state;",
+            [],
+            |row| row.get(0),
+        )?;
+        let unacknowledged_outbox: i64 = self.connection.query_row(
+            "SELECT COUNT(*) FROM library_core_replication_outbox
+             WHERE acknowledgedAtMs IS NULL;",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(JournalRuntimeStatus {
+            schema_version,
+            materializer_ingest_sequence,
+            actors,
+            operations,
+            read_state,
+            unacknowledged_outbox,
+        })
     }
 
     fn open_after_preflight(resolved_path: &Path, existing_file: bool) -> JournalResult<Self> {

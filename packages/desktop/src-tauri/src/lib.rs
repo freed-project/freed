@@ -54,6 +54,7 @@ mod library_core_feed_browse_store;
 mod library_core_feed_reader_runtime;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_journal;
+mod library_core_journal_runtime;
 mod library_core_migration_claim;
 mod library_core_saved_feed_runtime;
 mod library_core_shadow_runtime;
@@ -13595,6 +13596,7 @@ pub fn run() {
         .manage(LocalAIModelDownloadState::default())
         .manage(CaptureState::new())
         .manage(library_core_feed_browse_runtime::LibraryCoreFeedBrowseRuntimeState::default())
+        .manage(library_core_journal_runtime::LibraryCoreJournalRuntimeState::default())
         .manage(
             library_core_feed_browse_reader_runtime::LibraryCoreFeedBrowseReaderRuntimeState::default(),
         )
@@ -14801,6 +14803,8 @@ pub fn run() {
             get_desktop_session_state,
             get_social_provider_cookie_state,
             prepare_social_scrape_memory,
+            library_core_journal_runtime::open_library_core_journal,
+            library_core_journal_runtime::library_core_journal_status,
             library_core_feed_browse_runtime::begin_library_core_feed_browse_generation,
             library_core_feed_browse_runtime::append_library_core_feed_browse_generation_page,
             library_core_feed_browse_runtime::finalize_library_core_feed_browse_generation,

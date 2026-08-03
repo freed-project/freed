@@ -179,6 +179,7 @@ import {
   forgetRssFeedHealth,
   initProviderHealth,
 } from "./lib/provider-health";
+import { openLibraryCoreJournalForStartup } from "./lib/library-core-journal-runtime";
 import { getDesktopSourceStatus } from "./lib/source-status";
 import { setContactSyncError } from "./lib/contact-sync-storage";
 import { clearSnapshots, startSnapshotManager, stopSnapshotManager } from "./lib/snapshots";
@@ -589,6 +590,9 @@ function App() {
         noteMemoryPressure(snapshot);
       },
     });
+    // Shadow only. Nothing reads the journal yet, and a machine that cannot
+    // open it starts normally on Automerge alone.
+    void openLibraryCoreJournalForStartup();
     void initProviderHealth();
     startRssPoller();
     startAuthenticatedEssayPoller();
