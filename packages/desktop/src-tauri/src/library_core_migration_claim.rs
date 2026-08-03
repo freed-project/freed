@@ -10,9 +10,9 @@ use crate::library_core_canonical::{
     encode_signature_input,
 };
 use crate::library_core_ed25519::verify_library_core_ed25519;
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-use keyring::Entry;
+use crate::library_core_platform_key::{
+    clear_platform_key, load_platform_key, store_platform_key, PlatformKeyVault,
+};
 use ring::rand::{SecureRandom, SystemRandom};
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use serde::{Deserialize, Serialize};
@@ -21,16 +21,12 @@ use sha2::{Digest, Sha256};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-#[cfg(target_os = "macos")]
-use std::sync::{LazyLock, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const CLAIM_FORMAT: &str = "freed_local_automerge_migration_claim_v1";
 const CLAIM_MODE: &str = "local";
 const SOURCE_KIND: &str = "automerge_indexeddb_v3";
 const SIGNATURE_ALGORITHM: &str = "ed25519";
-const KEYRING_SERVICE: &str = "wtf.freed.library-core";
-const KEYRING_ACCOUNT: &str = "migration-source-current";
 const CLAIM_DIRECTORY: &str = "claims";
 const MAXIMUM_CLAIM_BYTES: usize = 16 * 1_024;
 const MAXIMUM_INSTALLATION_ID_BYTES: usize = 128;
@@ -61,14 +57,6 @@ pub(super) struct LocalMigrationClaimV1 {
     source_key_signature: String,
 }
 
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct PlatformMigrationKeyEnvelopeV1 {
-    format: String,
-    installation_id: String,
-    pkcs8_base64: String,
-}
-
 pub(super) trait MigrationClaimKeyStore {
     fn load(&self, installation_id: &str) -> Result<Option<Vec<u8>>, String>;
     fn store(&self, installation_id: &str, bytes: &[u8]) -> Result<(), String>;
@@ -76,139 +64,32 @@ pub(super) trait MigrationClaimKeyStore {
 
 pub(super) struct PlatformMigrationClaimKeyStore;
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-fn keyring_entry() -> Result<Entry, String> {
-    Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
-        .map_err(|_| "Library Core could not open the platform credential vault".to_string())
-}
-
-#[cfg(target_os = "macos")]
-static KEYRING_INTERACTION_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-
-#[cfg(any(test, target_os = "macos"))]
-fn with_user_interaction_policy<T, Guard>(
-    interaction_allowed: impl FnOnce() -> Result<bool, String>,
-    disable_interaction: impl FnOnce() -> Result<Guard, String>,
-    operation: impl FnOnce() -> Result<T, String>,
-) -> Result<T, String> {
-    let interaction_was_allowed = interaction_allowed()?;
-    let _interaction_guard = if interaction_was_allowed {
-        Some(disable_interaction()?)
-    } else {
-        None
-    };
-    operation()
-}
-
-#[cfg(target_os = "macos")]
-fn with_keyring_user_interaction_disabled<T>(
-    operation: impl FnOnce() -> Result<T, String>,
-) -> Result<T, String> {
-    use security_framework::os::macos::keychain::SecKeychain;
-
-    let _operation_guard = KEYRING_INTERACTION_LOCK
-        .lock()
-        .map_err(|_| "Library Core credential-vault access is unavailable".to_string())?;
-    with_user_interaction_policy(
-        || {
-            SecKeychain::user_interaction_allowed().map_err(|_| {
-                "Library Core could not inspect Keychain interaction policy".to_string()
-            })
-        },
-        || {
-            SecKeychain::disable_user_interaction()
-                .map_err(|_| "Library Core could not disable Keychain user interaction".to_string())
-        },
-        operation,
-    )
-}
-
-#[cfg(target_os = "windows")]
-fn with_keyring_user_interaction_disabled<T>(
-    operation: impl FnOnce() -> Result<T, String>,
-) -> Result<T, String> {
-    operation()
-}
-
-fn encode_platform_key_envelope(installation_id: &str, bytes: &[u8]) -> Result<Vec<u8>, String> {
-    validate_installation_id(installation_id)?;
-    let envelope = PlatformMigrationKeyEnvelopeV1 {
-        format: "freed_library_core_migration_key_v1".to_string(),
-        installation_id: installation_id.to_string(),
-        pkcs8_base64: BASE64_STANDARD.encode(bytes),
-    };
-    serde_json::to_vec(&envelope)
-        .map_err(|_| "Library Core migration signing key envelope is invalid".to_string())
-}
-
-fn decode_platform_key_envelope(
-    installation_id: &str,
-    bytes: &[u8],
-) -> Result<Option<Vec<u8>>, String> {
-    validate_installation_id(installation_id)?;
-    let envelope: PlatformMigrationKeyEnvelopeV1 = serde_json::from_slice(bytes)
-        .map_err(|_| "Library Core migration signing key envelope is corrupt".to_string())?;
-    if envelope.format != "freed_library_core_migration_key_v1" {
-        return Err("Library Core migration signing key format is unsupported".to_string());
-    }
-    validate_installation_id(&envelope.installation_id)?;
-    if envelope.installation_id != installation_id {
-        return Ok(None);
-    }
-    BASE64_STANDARD
-        .decode(envelope.pkcs8_base64)
-        .map(Some)
-        .map_err(|_| "Library Core migration signing key is corrupt".to_string())
-}
+/// The vault account holding this installation's migration signing key.
+///
+/// The account and envelope format are the same strings this module used
+/// before the vault plumbing moved to `library_core_platform_key`, so an
+/// already-stored key still reads back.
+const MIGRATION_CLAIM_VAULT: PlatformKeyVault = PlatformKeyVault {
+    account: "migration-source-current",
+    envelope_format: "freed_library_core_migration_key_v1",
+    description: "migration signing",
+};
 
 impl MigrationClaimKeyStore for PlatformMigrationClaimKeyStore {
     fn load(&self, installation_id: &str) -> Result<Option<Vec<u8>>, String> {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        {
-            with_keyring_user_interaction_disabled(|| match keyring_entry()?.get_secret() {
-                Ok(bytes) => decode_platform_key_envelope(installation_id, &bytes),
-                Err(keyring::Error::NoEntry) => Ok(None),
-                Err(_) => Err("Library Core could not read its migration signing key".to_string()),
-            })
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            let _ = installation_id;
-            Err("Library Core has no noninteractive platform credential vault on this operating system".to_string())
-        }
+        validate_installation_id(installation_id)?;
+        load_platform_key(&MIGRATION_CLAIM_VAULT, installation_id)
     }
 
     fn store(&self, installation_id: &str, bytes: &[u8]) -> Result<(), String> {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        {
-            let encoded = encode_platform_key_envelope(installation_id, bytes)?;
-            with_keyring_user_interaction_disabled(|| {
-                keyring_entry()?.set_secret(&encoded).map_err(|_| {
-                    "Library Core could not protect its migration signing key".to_string()
-                })
-            })
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            let _ = (installation_id, bytes);
-            Err("Library Core has no noninteractive platform credential vault on this operating system".to_string())
-        }
+        validate_installation_id(installation_id)?;
+        store_platform_key(&MIGRATION_CLAIM_VAULT, installation_id, bytes)
     }
 }
 
 #[cfg_attr(test, allow(dead_code))]
 pub(super) fn clear_platform_migration_claim_key() -> Result<(), String> {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        with_keyring_user_interaction_disabled(|| match keyring_entry()?.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(_) => Err("Library Core could not remove its migration signing key".to_string()),
-        })
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        Ok(())
-    }
+    clear_platform_key(&MIGRATION_CLAIM_VAULT)
 }
 
 fn validate_installation_id(value: &str) -> Result<(), String> {
@@ -524,7 +405,6 @@ pub(super) fn authenticate_migration_source_with_store(
 mod tests {
     use super::*;
     use std::cell::RefCell;
-    use std::rc::Rc;
     use tempfile::tempdir;
 
     #[derive(Default)]
@@ -549,57 +429,6 @@ mod tests {
             byte_length: 1_024,
             source_installation_id: "desktop-installation-1".to_string(),
         }
-    }
-
-    #[test]
-    fn platform_envelope_is_bound_to_one_installation() {
-        let encoded = encode_platform_key_envelope("desktop-installation-1", b"private-key")
-            .expect("encode envelope");
-        assert_eq!(
-            decode_platform_key_envelope("desktop-installation-1", &encoded).unwrap(),
-            Some(b"private-key".to_vec())
-        );
-        assert_eq!(
-            decode_platform_key_envelope("desktop-installation-2", &encoded).unwrap(),
-            None
-        );
-        assert!(decode_platform_key_envelope("desktop-installation-1", b"{}").is_err());
-    }
-
-    #[test]
-    fn credential_operation_runs_only_while_interaction_is_disabled() {
-        struct FakeInteractionGuard(Rc<RefCell<Vec<&'static str>>>);
-
-        impl Drop for FakeInteractionGuard {
-            fn drop(&mut self) {
-                self.0.borrow_mut().push("restore");
-            }
-        }
-
-        let events = Rc::new(RefCell::new(Vec::new()));
-        let inspect_events = events.clone();
-        let disable_events = events.clone();
-        let operation_events = events.clone();
-        with_user_interaction_policy(
-            move || {
-                inspect_events.borrow_mut().push("inspect");
-                Ok(true)
-            },
-            move || {
-                disable_events.borrow_mut().push("disable");
-                Ok(FakeInteractionGuard(disable_events.clone()))
-            },
-            move || {
-                operation_events.borrow_mut().push("credential-operation");
-                Ok(())
-            },
-        )
-        .unwrap();
-
-        assert_eq!(
-            *events.borrow(),
-            ["inspect", "disable", "credential-operation", "restore"]
-        );
     }
 
     #[test]

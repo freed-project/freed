@@ -234,7 +234,7 @@ struct VerifiedActorEnrollment {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct VerifiedCausalTip {
+pub(crate) struct VerifiedCausalTip {
     actor_id: String,
     sequence: i64,
     operation_id: String,
@@ -242,21 +242,21 @@ struct VerifiedCausalTip {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct AcceptedAuthorityState {
-    library_id: String,
-    epoch: i64,
-    epoch_id: String,
-    authority_key_id: String,
-    authority_public_key: String,
-    observed_frontier: Vec<VerifiedCausalTip>,
+pub(crate) struct AcceptedAuthorityState {
+    pub(crate) library_id: String,
+    pub(crate) epoch: i64,
+    pub(crate) epoch_id: String,
+    pub(crate) authority_key_id: String,
+    pub(crate) authority_public_key: String,
+    pub(crate) observed_frontier: Vec<VerifiedCausalTip>,
 }
 
 #[derive(Debug, Clone)]
-struct VerifiedAuthorityEpoch {
-    authority: AcceptedAuthorityState,
-    transition_certificate_digest: String,
-    canonical_transition_certificate_json: String,
-    accepted_at_ms: i64,
+pub(crate) struct VerifiedAuthorityEpoch {
+    pub(crate) authority: AcceptedAuthorityState,
+    pub(crate) transition_certificate_digest: String,
+    pub(crate) canonical_transition_certificate_json: String,
+    pub(crate) accepted_at_ms: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -559,7 +559,14 @@ fn validate_transaction(transaction: &VerifiedReadTransaction) -> JournalResult<
 }
 
 impl LibraryCoreJournal {
-    pub(super) fn open(path: &Path) -> JournalResult<Self> {
+    /// Read access for tests in sibling modules that assert what a
+    /// production write actually put in the authoritative tables.
+    #[cfg(test)]
+    pub(crate) fn connection_for_test(&self) -> &Connection {
+        &self.connection
+    }
+
+    pub(crate) fn open(path: &Path) -> JournalResult<Self> {
         let file_name = path.file_name().ok_or(JournalError::InvalidVerifiedInput {
             field: "database_path",
         })?;

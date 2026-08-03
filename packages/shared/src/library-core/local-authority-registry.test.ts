@@ -270,7 +270,10 @@ describe("Library Core local authority registry", () => {
         entry.registryKey === "library-core-authority-private-key"
       ),
     ).toMatchObject({
-      soleOwner: "unprovisioned Library Core native authority adapter",
+      // Provisioned on desktop macOS and Windows now that the genesis epoch
+      // mints and signs with it. It stays a secret with the same disposition:
+      // never backed up, exported, snapshotted, or synchronized.
+      soleOwner: "packages/desktop/src-tauri/src/library_core_authority_genesis.rs",
       resetSemantics: "Factory reset removes local protected authority material. Restore may install a newly rotated authority key only through an accepted recovery transition; private bytes are never exported or imported.",
     });
   });

@@ -23,7 +23,8 @@
     "legacy-epoch-bootstrap-record",
     "legacy-library-control",
     "legacy-epoch-bootstrap-prepared",
-    "legacy-epoch-bootstrap-receipt"
+    "legacy-epoch-bootstrap-receipt",
+    "legacy-library-identity"
   ],
   "signature": [
     "operation-envelope",

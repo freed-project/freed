@@ -17,6 +17,7 @@ use std::sync::Mutex;
 
 use tauri::Manager;
 
+use super::library_core_authority_genesis::{establish_genesis_epoch, LegacySourceRevision};
 use super::library_core_journal::{JournalRuntimeStatus, LibraryCoreJournal};
 
 /// Directory holding the authoritative database, under the app data root.
@@ -144,6 +145,87 @@ pub(super) fn library_core_journal_status(
     status_of(&state).map_err(|error| error.to_string())
 }
 
+/// What the caller reports about the exact durable Automerge revision the
+/// genesis epoch should be bound to.
+///
+/// These are the fields of the renderer's `LibraryCoreProjectionSourceV1`,
+/// which the Automerge worker only produces when the in-memory document's
+/// heads equal the durable snapshot's heads.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct GenesisSourceRequest {
+    document_id: String,
+    heads_digest: String,
+    head_count: u64,
+    storage_generation: u64,
+    storage_save_revision: u64,
+}
+
+/// What was established, for the caller to log. No key material, and no
+/// certificate: the certificate stays in the journal.
+#[derive(Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct GenesisAuthorityStatus {
+    pub(super) library_id: String,
+    pub(super) epoch: i64,
+    pub(super) epoch_id: String,
+    pub(super) authority_key_id: String,
+}
+
+/// Establishes the genesis authority epoch against the held journal.
+///
+/// Requires the journal to be open already, so a caller cannot establish
+/// authority against a database that was never validated on open. Replaying
+/// the same revision returns the same epoch rather than writing again.
+pub(super) fn establish_genesis_at(
+    state: &LibraryCoreJournalRuntimeState,
+    request: &GenesisSourceRequest,
+    accepted_at_ms: i64,
+) -> RuntimeResult<GenesisAuthorityStatus> {
+    let mut held = state
+        .0
+        .lock()
+        .map_err(|_| JournalRuntimeError::StatePoisoned)?;
+    let journal = held
+        .as_mut()
+        .ok_or_else(|| JournalRuntimeError::Journal("journal is not open".to_string()))?;
+
+    let authority = establish_genesis_epoch(
+        journal,
+        &LegacySourceRevision {
+            document_id: request.document_id.clone(),
+            heads_digest: request.heads_digest.clone(),
+            head_count: request.head_count,
+            storage_generation: request.storage_generation,
+            storage_save_revision: request.storage_save_revision,
+        },
+        accepted_at_ms,
+    )
+    .map_err(JournalRuntimeError::Journal)?;
+
+    Ok(GenesisAuthorityStatus {
+        library_id: authority.library_id,
+        epoch: authority.epoch,
+        epoch_id: authority.epoch_id,
+        authority_key_id: authority.authority_key_id,
+    })
+}
+
+#[tauri::command]
+pub(super) fn establish_library_core_genesis_authority(
+    state: tauri::State<'_, LibraryCoreJournalRuntimeState>,
+    source: GenesisSourceRequest,
+) -> Result<GenesisAuthorityStatus, String> {
+    let accepted_at_ms = i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|_| "system clock is before the Unix epoch".to_string())?
+            .as_millis(),
+    )
+    .map_err(|_| "system clock exceeds the supported range".to_string())?;
+    establish_genesis_at(&state, &source, accepted_at_ms).map_err(|error| error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,6 +263,25 @@ mod tests {
                 & 0o777;
             assert_eq!(mode, 0o700, "journal directory must not be world readable");
         }
+    }
+
+    /// Establishing authority against a database that never validated on open
+    /// would be writing an authority chain into an unknown store.
+    #[test]
+    fn genesis_authority_is_refused_before_the_journal_is_open() {
+        let state = LibraryCoreJournalRuntimeState::default();
+        let request = GenesisSourceRequest {
+            document_id: "freed-library-document-1".to_string(),
+            heads_digest: "a".repeat(64),
+            head_count: 2,
+            storage_generation: 7,
+            storage_save_revision: 11,
+        };
+
+        let error = establish_genesis_at(&state, &request, 1_700)
+            .expect_err("authority must require an open journal");
+
+        assert!(error.to_string().contains("journal is not open"), "{error}");
     }
 
     #[test]
