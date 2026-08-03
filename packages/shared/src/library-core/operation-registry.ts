@@ -11,6 +11,7 @@ import {
 import {
   FEED_ITEM_ARCHIVE_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
   FEED_ITEM_SAVED_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  PREFERENCES_LEAF_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
 } from "./operation-touched-fields.js";
 import {
   FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
@@ -459,6 +460,11 @@ export const LIBRARY_CORE_OPERATION_REGISTRY = {
   }),
   preferences_leaf_assignment: localUserOperation({
     entityType: "UserPreferences",
+    // `entityIdCodec` stays null on purpose. Preferences are a singleton root,
+    // not an entity map, so there is no per-entity key for a codec to validate.
+    // Declaring one would claim a key space this operation does not have.
+    touchedFieldRegistryKeys:
+      PREFERENCES_LEAF_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
     candidateStoreSurfaces: ["updatePreferences"],
     legacyWorkerRequests: ["UPDATE_PREFERENCES"],
   }),
