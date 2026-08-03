@@ -104,6 +104,8 @@ import {
   FEED_ITEMS_ARCHIVE_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
   FEED_ITEMS_READ_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
   RSS_FEEDS_HEAL_UNTITLED_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
+  ACCOUNT_PERSON_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  FEED_ITEMS_CONTENT_SIGNALS_BACKFILL_TOUCHED_FIELD_REGISTRY_KEYS,
   LIBRARY_CORE_RSS_FEED_TITLE_FIELD_REGISTRY_KEY,
   LIBRARY_CORE_FEED_ITEM_ARCHIVED_AT_FIELD_REGISTRY_KEY,
   LIBRARY_CORE_FEED_ITEM_ARCHIVED_FIELD_REGISTRY_KEY,
@@ -263,6 +265,19 @@ const CLOSED_OPERATION_CONTRACTS: Partial<
     touchedFieldRegistryKeys:
       RSS_FEEDS_HEAL_UNTITLED_FROZEN_TOUCHED_FIELD_REGISTRY_KEYS,
   },
+  // Traced from `linkAccountToPerson` and the connection-person handler, both
+  // of which set personId and stamp updatedAt. No codec: accounts are keyed by
+  // accountId, not the feed item globalId space.
+  account_person_assignment: {
+    touchedFieldRegistryKeys:
+      ACCOUNT_PERSON_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS,
+  },
+  // Traced from `backfillContentSignals`, which re-runs semantic enrichment.
+  feed_items_content_signals_backfill_frozen: {
+    entityIdCodec: LIBRARY_CORE_ENTITY_ID_CODEC_V1,
+    touchedFieldRegistryKeys:
+      FEED_ITEMS_CONTENT_SIGNALS_BACKFILL_TOUCHED_FIELD_REGISTRY_KEYS,
+  },
 };
 
 describe("Library Core operation registry", () => {
@@ -405,6 +420,41 @@ describe("Library Core operation registry", () => {
       expect(nonSynchronized.has(excluded)).toBe(true);
       expect(keys).not.toContain(excluded);
     }
+  });
+
+  it("keeps the narrow assignment and backfill sets narrow", () => {
+    // The account assignment sets personId and stamps updatedAt. Declaring the
+    // whole account surface would overstate it, exactly as it would for the
+    // feed title assignment.
+    expect([...ACCOUNT_PERSON_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS])
+      .toStrictEqual([
+        "library-core-v1:accounts.{accountId}.personId",
+        "library-core-v1:accounts.{accountId}.updatedAt",
+      ]);
+    expect(
+      ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS.length,
+    ).toBeGreaterThan(ACCOUNT_PERSON_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS.length);
+    for (const key of ACCOUNT_PERSON_ASSIGNMENT_TOUCHED_FIELD_REGISTRY_KEYS) {
+      expect(ACCOUNT_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).toContain(key);
+    }
+
+    // The backfill re-runs semantic enrichment, so it writes both enrichment
+    // subtrees and nothing outside them.
+    const backfill = FEED_ITEMS_CONTENT_SIGNALS_BACKFILL_TOUCHED_FIELD_REGISTRY_KEYS;
+    expect(backfill.length).toBeGreaterThan(3);
+    for (const key of backfill) {
+      expect(
+        key.includes(".contentSignals.") || key.includes(".eventCandidate."),
+      ).toBe(true);
+      expect(FEED_ITEM_CAPTURE_UPSERT_TOUCHED_FIELD_REGISTRY_KEYS).toContain(key);
+    }
+    // Both halves are present. A filter that matched only one subtree would
+    // understate the enrichment call.
+    expect(backfill.some((key) => key.includes(".contentSignals."))).toBe(true);
+    expect(backfill.some((key) => key.includes(".eventCandidate."))).toBe(true);
+
+    // It must not claim the item body it never touches.
+    expect(backfill).not.toContain("library-core-v1:feedItems.{globalId}.content.text");
   });
 
   it("declares bulk repairs by reference to their single-item counterparts", () => {
