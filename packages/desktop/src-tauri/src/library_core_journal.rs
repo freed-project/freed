@@ -23,11 +23,42 @@ mod enrollment_verifier;
 #[path = "library_core_journal_operation_verifier.rs"]
 mod operation_verifier;
 
-const AUTHORITATIVE_SCHEMA_VERSION: i64 = 1;
+const AUTHORITATIVE_SCHEMA_VERSION: i64 = 2;
 // ASCII "FREE" in SQLite's 32-bit application_id header field.
 const AUTHORITATIVE_APPLICATION_ID: i64 = 0x4652_4545;
 const AUTHORITATIVE_SCHEMA_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/authoritative-schema-v1.sql");
+
+/// Every migration past the genesis schema, in order, paired with the version
+/// it produces.
+///
+/// A database is brought up to date by applying the genesis schema if it is
+/// empty and then every entry here above its current version. The reference
+/// catalogue used to verify a database is built the same way, so a migrated
+/// database and a freshly created one are required to be identical rather than
+/// merely similar.
+const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 1] = [(
+    2,
+    include_str!("../../../shared/src/library-core/authoritative-migration-002.sql"),
+)];
+
+/// Apply the genesis schema when needed, then every migration in `(prior,
+/// through]`.
+fn apply_schema_range(
+    transaction: &Transaction<'_>,
+    prior: i64,
+    through: i64,
+) -> JournalResult<()> {
+    if prior == 0 {
+        transaction.execute_batch(AUTHORITATIVE_SCHEMA_V1_SQL)?;
+    }
+    for (version, sql) in AUTHORITATIVE_SCHEMA_MIGRATIONS {
+        if version > prior && version <= through {
+            transaction.execute_batch(sql)?;
+        }
+    }
+    Ok(())
+}
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const BASE_CACHE_KIB: i64 = -32 * 1024;
 const MAX_TRANSACTION_MEMBERS: usize = 1_000;
@@ -251,6 +282,28 @@ pub(crate) struct AcceptedAuthorityState {
     pub(crate) observed_frontier: Vec<VerifiedCausalTip>,
 }
 
+/// One durable bridge attempt: the exact bytes and the tip they were
+/// built against, plus whether the SQLite commit was confirmed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ReadBridgeAttempt {
+    pub(crate) attempt_id: String,
+    pub(crate) library_id: String,
+    pub(crate) epoch_id: String,
+    pub(crate) actor_id: String,
+    pub(crate) source_storage_generation: i64,
+    pub(crate) source_save_revision: i64,
+    pub(crate) source_heads_digest: String,
+    pub(crate) actor_sequence: i64,
+    pub(crate) previous_operation_id: Option<String>,
+    pub(crate) previous_chain_digest: String,
+    pub(crate) created_at_ms: i64,
+    pub(crate) transaction_id: String,
+    pub(crate) transaction_digest: String,
+    pub(crate) canonical_envelopes: Vec<Vec<u8>>,
+    pub(crate) committed: bool,
+    pub(crate) committed_ingest_sequence: Option<i64>,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct VerifiedAuthorityEpoch {
     pub(crate) authority: AcceptedAuthorityState,
@@ -287,18 +340,20 @@ struct VerifiedReadTransaction {
     members: Vec<VerifiedReadAssignment>,
 }
 
+/// What a committed read transaction produced. Returned to the bridge so a
+/// retry can hand back the same completion instead of a second commit.
 #[derive(Debug, Clone, PartialEq)]
-struct TransactionReceipt {
-    transaction_id: String,
-    transaction_digest: String,
+pub(crate) struct TransactionReceipt {
+    pub(crate) transaction_id: String,
+    pub(crate) transaction_digest: String,
     actor_id: String,
-    member_count: usize,
-    first_sequence: i64,
+    pub(crate) member_count: usize,
+    pub(crate) first_sequence: i64,
     last_sequence: i64,
     committed_operation_id: String,
     committed_chain_digest: String,
     first_ingest_sequence: i64,
-    last_ingest_sequence: i64,
+    pub(crate) last_ingest_sequence: i64,
     previous_revision: i64,
     committed_revision: i64,
     committed_at_ms: i64,
@@ -702,7 +757,7 @@ impl LibraryCoreJournal {
                 Ok(())
             };
         }
-        Self::verify_schema_contract(connection)?;
+        Self::verify_schema_contract_at(connection, version)?;
         Ok(())
     }
 
@@ -803,9 +858,7 @@ impl LibraryCoreJournal {
         if prior == 0 && has_unversioned_tables {
             return Err(JournalError::UnversionedSchemaPresent);
         }
-        if prior == 0 {
-            transaction.execute_batch(AUTHORITATIVE_SCHEMA_V1_SQL)?;
-        }
+        apply_schema_range(&transaction, prior, AUTHORITATIVE_SCHEMA_VERSION)?;
         let actual =
             transaction.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
         let actual_application_id =
@@ -822,7 +875,7 @@ impl LibraryCoreJournal {
                 actual: actual_application_id,
             });
         }
-        Self::verify_schema_contract(&transaction)?;
+        Self::verify_schema_contract_at(&transaction, AUTHORITATIVE_SCHEMA_VERSION)?;
         transaction.commit()?;
         Ok(())
     }
@@ -887,9 +940,20 @@ impl LibraryCoreJournal {
         Ok(entries)
     }
 
-    fn verify_schema_contract(connection: &Connection) -> JournalResult<()> {
-        let reference = Connection::open_in_memory()?;
-        reference.execute_batch(AUTHORITATIVE_SCHEMA_V1_SQL)?;
+    /// Hold a database to the exact catalogue of the schema version it claims.
+    ///
+    /// Not the newest version. A database written by an older release is
+    /// legitimately missing later tables, and checking it against the current
+    /// reference would reject it before it could ever be migrated. Checking it
+    /// against its own version still rejects a tampered or foreign file, which
+    /// is the point of the check.
+    fn verify_schema_contract_at(connection: &Connection, version: i64) -> JournalResult<()> {
+        let mut reference = Connection::open_in_memory()?;
+        {
+            let transaction = reference.transaction()?;
+            apply_schema_range(&transaction, 0, version)?;
+            transaction.commit()?;
+        }
         let expected = Self::schema_catalog(&reference)?;
         let actual = Self::schema_catalog(connection)?;
         if actual != expected {
@@ -931,6 +995,138 @@ impl LibraryCoreJournal {
                 },
             )
             .optional()
+    }
+
+    /// The durable attempt for this mutation, if one was ever prepared.
+    pub(crate) fn read_bridge_attempt(
+        &self,
+        attempt_id: &str,
+    ) -> JournalResult<Option<ReadBridgeAttempt>> {
+        let row = self
+            .connection
+            .query_row(
+                "SELECT attemptId, libraryId, epochId, actorId,
+                        sourceStorageGeneration, sourceSaveRevision, sourceHeadsDigest,
+                        actorSequence, previousOperationId, previousChainDigest,
+                        createdAtMs, transactionId, transactionDigest,
+                        canonicalEnvelopesJson, state, committedIngestSequence
+                 FROM library_core_read_bridge_attempts WHERE attemptId = ?1;",
+                [attempt_id],
+                |row| {
+                    Ok((
+                        ReadBridgeAttempt {
+                            attempt_id: row.get(0)?,
+                            library_id: row.get(1)?,
+                            epoch_id: row.get(2)?,
+                            actor_id: row.get(3)?,
+                            source_storage_generation: row.get(4)?,
+                            source_save_revision: row.get(5)?,
+                            source_heads_digest: row.get(6)?,
+                            actor_sequence: row.get(7)?,
+                            previous_operation_id: row.get(8)?,
+                            previous_chain_digest: row.get(9)?,
+                            created_at_ms: row.get(10)?,
+                            transaction_id: row.get(11)?,
+                            transaction_digest: row.get(12)?,
+                            canonical_envelopes: Vec::new(),
+                            committed: row.get::<_, String>(14)? == "committed",
+                            committed_ingest_sequence: row.get(15)?,
+                        },
+                        row.get::<_, String>(13)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some((mut attempt, envelopes_json)) = row else {
+            return Ok(None);
+        };
+        let encoded: Vec<String> = serde_json::from_str(&envelopes_json).map_err(|_| {
+            JournalError::InvalidVerifiedInput {
+                field: "canonical_envelopes",
+            }
+        })?;
+        attempt.canonical_envelopes = encoded
+            .into_iter()
+            .map(|member| member.into_bytes())
+            .collect();
+        Ok(Some(attempt))
+    }
+
+    /// Record one attempt durably before its SQLite commit is tried.
+    ///
+    /// Refuses to overwrite an existing attempt. A caller retrying a mutation
+    /// must replay the stored bytes, and a caller reusing an attempt id for
+    /// different work is naming two different facts the same thing.
+    pub(crate) fn prepare_read_bridge_attempt(
+        &mut self,
+        attempt: &ReadBridgeAttempt,
+        prepared_at_ms: i64,
+    ) -> JournalResult<()> {
+        let encoded: Vec<String> = attempt
+            .canonical_envelopes
+            .iter()
+            .map(|member| {
+                String::from_utf8(member.clone()).map_err(|_| JournalError::InvalidVerifiedInput {
+                    field: "canonical_envelopes",
+                })
+            })
+            .collect::<JournalResult<Vec<String>>>()?;
+        let envelopes_json =
+            serde_json::to_string(&encoded).map_err(|_| JournalError::InvalidVerifiedInput {
+                field: "canonical_envelopes",
+            })?;
+        self.connection.execute(
+            "INSERT INTO library_core_read_bridge_attempts (
+               attemptId, libraryId, epochId, actorId,
+               sourceStorageGeneration, sourceSaveRevision, sourceHeadsDigest,
+               actorSequence, previousOperationId, previousChainDigest,
+               createdAtMs, transactionId, transactionDigest,
+               canonicalEnvelopesJson, memberCount, state, preparedAtMs
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
+                       'prepared', ?16);",
+            params![
+                attempt.attempt_id,
+                attempt.library_id,
+                attempt.epoch_id,
+                attempt.actor_id,
+                attempt.source_storage_generation,
+                attempt.source_save_revision,
+                attempt.source_heads_digest,
+                attempt.actor_sequence,
+                attempt.previous_operation_id,
+                attempt.previous_chain_digest,
+                attempt.created_at_ms,
+                attempt.transaction_id,
+                attempt.transaction_digest,
+                envelopes_json,
+                attempt.canonical_envelopes.len() as i64,
+                prepared_at_ms,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Mark an attempt complete, only after its receipt was read back.
+    pub(crate) fn complete_read_bridge_attempt(
+        &mut self,
+        attempt_id: &str,
+        committed_ingest_sequence: i64,
+        committed_at_ms: i64,
+    ) -> JournalResult<()> {
+        let updated = self.connection.execute(
+            "UPDATE library_core_read_bridge_attempts
+             SET state = 'committed',
+                 committedAtMs = ?2,
+                 committedIngestSequence = ?3
+             WHERE attemptId = ?1 AND state = 'prepared';",
+            params![attempt_id, committed_at_ms, committed_ingest_sequence],
+        )?;
+        if updated != 1 {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "read_bridge_attempt_state",
+            });
+        }
+        Ok(())
     }
 
     /// The stored actor, if this library, epoch and actor are already
@@ -988,7 +1184,7 @@ impl LibraryCoreJournal {
         })
     }
 
-    fn verify_and_commit_read_transaction(
+    pub(crate) fn verify_and_commit_read_transaction(
         &mut self,
         canonical_envelopes: &[Vec<u8>],
         committed_at_ms: i64,
@@ -1935,6 +2131,58 @@ mod tests {
             canonical_envelope_bytes,
             members,
         }
+    }
+
+    /// A database created before the bridge existed must reach exactly the
+    /// same schema as a fresh one, not merely a working one.
+    ///
+    /// `verify_schema_contract` compares the whole catalogue, so a migration
+    /// that produced a subtly different table would fail every later open.
+    /// Installations already hold schema 1 databases, created by the startup
+    /// opener, so this path is real rather than hypothetical.
+    #[test]
+    fn a_schema_one_database_migrates_to_exactly_a_fresh_schema_two() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("library-core.sqlite");
+
+        // Build a database the way the previous release did: genesis schema
+        // only, no migrations.
+        {
+            let legacy = Connection::open(&path).expect("create legacy database");
+            legacy
+                .execute_batch(AUTHORITATIVE_SCHEMA_V1_SQL)
+                .expect("apply schema 1");
+            let version: i64 = legacy
+                .pragma_query_value(None, "user_version", |row| row.get(0))
+                .expect("legacy version");
+            assert_eq!(version, 1, "the fixture must really be schema 1");
+        }
+
+        let migrated = LibraryCoreJournal::open(&path).expect("migrate and open");
+        let version: i64 = migrated
+            .connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("migrated version");
+        assert_eq!(version, 2);
+
+        let fresh_directory = tempfile::tempdir().expect("temporary directory");
+        let fresh = LibraryCoreJournal::open(&fresh_directory.path().join("library-core.sqlite"))
+            .expect("open fresh journal");
+
+        assert_eq!(
+            LibraryCoreJournal::schema_catalog(&migrated.connection).expect("migrated catalog"),
+            LibraryCoreJournal::schema_catalog(&fresh.connection).expect("fresh catalog"),
+        );
+
+        // Reopening a migrated database must be a no-op, not a second attempt
+        // to apply the migration.
+        drop(migrated);
+        let reopened = LibraryCoreJournal::open(&path).expect("reopen migrated database");
+        let version: i64 = reopened
+            .connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("reopened version");
+        assert_eq!(version, 2);
     }
 
     #[test]

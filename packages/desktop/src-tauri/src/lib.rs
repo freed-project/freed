@@ -59,6 +59,8 @@ mod library_core_journal;
 mod library_core_journal_runtime;
 mod library_core_migration_claim;
 mod library_core_platform_key;
+mod library_core_read_bridge;
+mod library_core_read_transactions;
 mod library_core_saved_feed_runtime;
 mod library_core_shadow_runtime;
 #[cfg_attr(not(test), allow(dead_code))]
