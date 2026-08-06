@@ -1,4 +1,5 @@
 import Link from "next/link";
+import FooterLink from "@/components/FooterLink";
 import ThemeSelector from "@/components/ThemeSelector";
 
 export default function Footer() {
@@ -30,7 +31,7 @@ export default function Footer() {
               </span>
             </Link>
             <div className="max-w-[18rem] sm:mt-6">
-              <ThemeSelector compact />
+              <ThemeSelector />
             </div>
           </div>
 
@@ -40,36 +41,19 @@ export default function Footer() {
               <h4 className="text-text-primary font-semibold mb-4">Product</h4>
               <ul className="space-y-2">
                 <li>
-                  <Link
-                    href="/"
-                    className="text-text-secondary text-sm hover:text-text-primary transition-colors"
-                  >
-                    Home
-                  </Link>
+                  <FooterLink href="/">Home</FooterLink>
                 </li>
                 <li>
-                  <Link
-                    href="/manifesto"
-                    className="text-text-secondary text-sm hover:text-text-primary transition-colors"
-                  >
-                    Manifesto
-                  </Link>
+                  <FooterLink href="/manifesto">Manifesto</FooterLink>
                 </li>
                 <li>
-                  <Link
-                    href="/roadmap"
-                    className="text-text-secondary text-sm hover:text-text-primary transition-colors"
-                  >
-                    Roadmap
-                  </Link>
+                  <FooterLink href="/vision">Vision</FooterLink>
                 </li>
                 <li>
-                  <Link
-                    href="/updates"
-                    className="text-text-secondary text-sm hover:text-text-primary transition-colors"
-                  >
-                    Updates
-                  </Link>
+                  <FooterLink href="/roadmap">Roadmap</FooterLink>
+                </li>
+                <li>
+                  <FooterLink href="/changelog">Updates</FooterLink>
                 </li>
               </ul>
             </div>
@@ -79,36 +63,16 @@ export default function Footer() {
               <h4 className="text-text-primary font-semibold mb-4">Resources</h4>
               <ul className="space-y-2">
                 <li>
-                  <Link
-                    href="/terms"
-                    className="text-text-secondary text-sm hover:text-text-primary transition-colors"
-                  >
-                    Terms of Use
-                  </Link>
+                  <FooterLink href="/terms">Terms of Use</FooterLink>
                 </li>
                 <li>
-                  <Link
-                    href="/privacy"
-                    className="text-text-secondary text-sm hover:text-text-primary transition-colors"
-                  >
-                    Privacy Policy
-                  </Link>
+                  <FooterLink href="/privacy">Privacy Policy</FooterLink>
                 </li>
                 <li>
-                  <Link
-                    href="/eula"
-                    className="text-text-secondary text-sm hover:text-text-primary transition-colors"
-                  >
-                    Desktop EULA
-                  </Link>
+                  <FooterLink href="/eula">Desktop EULA</FooterLink>
                 </li>
                 <li>
-                  <Link
-                    href="/qr"
-                    className="text-text-secondary text-sm hover:text-text-primary transition-colors"
-                  >
-                    Sharing QR
-                  </Link>
+                  <FooterLink href="/qr">Sharing QR</FooterLink>
                 </li>
               </ul>
             </div>

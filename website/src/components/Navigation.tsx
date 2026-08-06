@@ -41,8 +41,8 @@ const WTF_CAPTIONS = [
 const NAV_ITEMS = [
   { path: "/", label: "Home" },
   { path: "/manifesto", label: "Manifesto" },
-  { path: "/roadmap", label: "Roadmap" },
-  { path: "/changelog", label: "Changelog" },
+  { path: "/vision", label: "Vision" },
+  { path: "/changelog", label: "Updates" },
 ];
 
 function isActive(itemPath: string, pathname: string): boolean {
@@ -187,15 +187,6 @@ export default function Navigation() {
           transition={{ type: "spring", stiffness: 500, damping: 30 }}
         />
       )}
-
-      <a
-        href="https://github.com/freed-project/freed"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
-      >
-        GitHub
-      </a>
 
       <button onClick={() => openModal()} className="btn-primary text-sm !py-2">
         Get Freed
@@ -366,21 +357,10 @@ export default function Navigation() {
                   </motion.div>
                 ))}
 
-                <motion.a
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2, duration: 0.15 }}
-                  href="https://github.com/freed-project/freed"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[1.238rem] font-medium text-text-secondary"
-                >
-                  GitHub
-                </motion.a>
                 <motion.button
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.22, duration: 0.15 }}
+                  transition={{ delay: 0.2, duration: 0.15 }}
                   onClick={() => {
                     openModal();
                     setMobileMenuOpen(false);

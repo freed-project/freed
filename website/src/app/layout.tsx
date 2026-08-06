@@ -1,5 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Manrope, Space_Grotesk } from "next/font/google";
+import {
+  Barlow,
+  Barlow_Condensed,
+  Manrope,
+  Space_Grotesk,
+} from "next/font/google";
 import Script from "next/script";
 import {
   THEME_DEFINITIONS,
@@ -20,6 +25,20 @@ const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-space-grotesk",
+});
+
+const barlow = Barlow({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-barlow",
+  weight: ["400", "500", "600", "700", "900"],
+});
+
+const barlowCondensed = Barlow_Condensed({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-barlow-condensed",
+  weight: ["400", "500", "600", "700", "900"],
 });
 
 const THEME_BOOTSTRAP_VARS = Object.fromEntries(
@@ -99,7 +118,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${manrope.variable} ${spaceGrotesk.variable}`}>
+    <html
+      lang="en"
+      className={`${manrope.variable} ${spaceGrotesk.variable} ${barlow.variable} ${barlowCondensed.variable}`}
+    >
       <body className={manrope.className}>
         <Script id="freed-theme-bootstrap" strategy="beforeInteractive">{`
           (function() {
@@ -108,7 +130,7 @@ export default function RootLayout({
               var root = document.documentElement;
               var themeVars = ${JSON.stringify(THEME_BOOTSTRAP_VARS)};
               root.dataset.theme = theme;
-              root.style.colorScheme = theme === "scriptorium" ? "light" : "dark";
+              root.style.colorScheme = theme === "scriptorium" || theme === "starship" ? "light" : "dark";
               var vars = themeVars[theme] || themeVars.ember;
               Object.keys(vars).forEach(function(name) {
                 root.style.setProperty(name, vars[name]);

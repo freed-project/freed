@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { motion } from "framer-motion";
 
 const steps = [
@@ -102,6 +103,12 @@ export default function HowItWorks() {
                 )}
               </motion.div>
             ))}
+          </div>
+
+          <div className="mt-8 flex justify-center sm:mt-12">
+            <Link href="/roadmap" className="btn-secondary px-6 py-3 text-sm">
+              See the roadmap
+            </Link>
           </div>
         </div>
       </div>

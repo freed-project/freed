@@ -97,7 +97,7 @@ export default function ManifestoContent() {
                   The code is public. The roadmap is public. Fork it. Audit it.
                   Share it.
                   <br />
-                  Resonate? Join the movement.
+                  Resonate? Share the vision.
                 </li>
               </ul>
             </section>
@@ -207,7 +207,7 @@ export default function ManifestoContent() {
               onClick={() => openModal()}
               className="btn-primary text-base px-8 py-3"
             >
-              Join the Movement
+              Share the Vision
             </motion.button>
           </motion.div>
         </motion.article>

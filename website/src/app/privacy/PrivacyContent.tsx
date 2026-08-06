@@ -36,7 +36,7 @@ export default function PrivacyContent() {
             <p className="text-text-secondary text-sm sm:text-base leading-relaxed mb-0">
               Freed does not collect your data or spy on you. Everything lives on
               your device. We have no database of users, no analytics pipeline,
-              no ad network, and no investors to appease with engagement metrics.
+              no ad network, and no incentive to inflate engagement metrics.
             </p>
           </motion.div>
 
