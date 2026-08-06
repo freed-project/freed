@@ -912,7 +912,7 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
     migration: "retire-with-legacy-epoch",
     cutover: {
       blocksCutover: true,
-      reason: "Desktop macOS and Windows now generate this key in the platform vault and enroll it under the genesis epoch, so a writable installation exists there. Cutover stays blocked because the enrolled actor has still written no operation, and neither Linux nor the PWA has a proven noninteractive vault to hold this key at all.",
+      reason: "The code to generate and enroll this key exists on desktop macOS and Windows but has no production caller, because the epoch it would enroll under is disposable local shadow state rather than authority. The enrolled actor has written no operation, and neither Linux nor the PWA has a proven noninteractive vault to hold this key at all.",
     },
     sourceReferences: [
       "docs/LIBRARY-CORE-CONTRACT.md",
@@ -941,7 +941,7 @@ export const LIBRARY_CORE_LOCAL_AUTHORITY_REGISTRY = [
     migration: "retire-with-legacy-epoch",
     cutover: {
       blocksCutover: true,
-      reason: "Desktop macOS and Windows now mint this key in the platform vault and sign one genesis epoch bound to one exact legacy Automerge revision, so an active Library Core epoch can exist there. Cutover stays blocked because Library Core cannot be authoritative on a platform that cannot hold this key, and neither Linux nor the PWA has a proven noninteractive vault.",
+      reason: "The code to mint this key exists on desktop macOS and Windows but has no production caller: startup was minting it automatically, which the contract forbids because a key the app creates and signs proves only that the app possesses the key it just created. Any key or epoch produced by that path is disposable local shadow state and can never be canonical authority. The real authority key stays unprovisioned until a user-present or authenticated authority-holder protocol exists.",
     },
     sourceReferences: [
       "docs/LIBRARY-CORE-CONTRACT.md",

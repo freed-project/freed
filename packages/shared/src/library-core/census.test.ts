@@ -7,7 +7,10 @@ describe("Library Core dormant census", () => {
     expect(LIBRARY_CORE_CENSUS).toMatchObject({
       status: "dormant_incomplete",
       activationAllowed: false,
-      runtimeBehaviorChanged: false,
+      // Desktop startup opens a local shadow database. It still establishes
+      // no authority, so this cannot be read as writer or activation power.
+      runtimeBehaviorChanged: true,
+      runtimeBehaviorChange: "desktop_startup_opens_local_shadow_journal_database",
       activeEngine: "automerge_legacy",
       replicationProtocol: "automerge_blob_v1",
       legacyEpochBootstrapContract: "closed_dormant_v1",
