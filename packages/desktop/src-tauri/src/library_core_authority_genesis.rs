@@ -1,21 +1,29 @@
-//! The one authority epoch a fresh installation can mint for itself.
+//! A disposable local epoch so the shadow journal will accept shadow writes.
 //!
-//! Library Core operations are fenced against an active authority epoch, and
-//! until now nothing outside tests could install one, so nothing outside tests
-//! could enroll an actor or commit an operation. This mints the genesis epoch
-//! for a library whose only existing authority is the legacy Automerge
-//! document, under trust on first use.
+//! NOT canonical authority, and it can never become canonical authority. The
+//! contract is explicit: the legacy bootstrap record deliberately carries no
+//! authority key, signature, or proof of owner consent, because a key created
+//! and signed by the same app process proves only that the app possesses the
+//! key it just created. It authenticates neither the owner nor another
+//! installation. The real Library Core authority key stays unprovisioned until
+//! a user-present or authenticated authority-holder protocol exists.
 //!
-//! Automerge stays authoritative. The epoch installed here grants no cloud
-//! authority, retires nothing, changes no active engine, and emits no provider
-//! traffic. It is local evidence that this installation considers itself the
-//! origin of a Library Core authority chain for one exact legacy revision.
+//! What this is for: `library_core_authority_epochs` requires an epoch row
+//! before the journal will accept an actor or an operation, and the shadow
+//! slice needs to write shadow operations. This fills that slot with a local,
+//! never-replicated value that is thrown away at the real bootstrap.
 //!
-//! Everything the certificate contains is a pure function of the library, the
-//! authority public key, and that revision, and Ed25519 signatures are
-//! deterministic, so minting is a pure function too. A caller that crashes
-//! anywhere in `establish_genesis_epoch` and retries produces byte-identical
-//! output and converges on the stored epoch instead of forking a second one.
+//! Three rules follow, and each is load-bearing:
+//!
+//! 1. Nothing may call this from startup. Startup absence never chooses a
+//!    creator. An earlier revision did exactly that and had to be reverted.
+//! 2. Nothing may treat the key or the epoch id as cloud authority, as a
+//!    writer epoch, or as input to a future authenticated transition.
+//! 3. Installation identity never comes from this key. It comes from the
+//!    Desktop installation witness, which is derived from the machine and the
+//!    user rather than from something the app just minted.
+//!
+//! Automerge stays authoritative throughout.
 
 use crate::automerge_external_common::{is_lower_sha256, lower_hex};
 use crate::library_core_canonical::{
@@ -332,6 +340,7 @@ pub(crate) fn establish_with_key_pair_for_test(
 /// epoch cannot countersign anything the journal will accept, so a caller that
 /// needs the key for enrollment must fail rather than quietly create a second
 /// identity.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn load_established_authority_key_pair(
     library_id: &str,
 ) -> Result<Ed25519KeyPair, String> {
@@ -381,8 +390,12 @@ fn establish_with_key_pair(
         .map_err(|error| format!("Library Core could not install the genesis epoch: {error}"))
 }
 
-/// Establish this installation's genesis authority epoch for one exact legacy
-/// Automerge revision, minting and storing the authority key if needed.
+/// Establish the disposable local epoch for one exact legacy Automerge
+/// revision, minting and storing the local key if needed.
+///
+/// Has no production caller and must not acquire one from startup. The real
+/// creator choice is an explicit owner action in the legacy epoch bootstrap.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn establish_genesis_epoch(
     journal: &mut LibraryCoreJournal,
     revision: &LegacySourceRevision,

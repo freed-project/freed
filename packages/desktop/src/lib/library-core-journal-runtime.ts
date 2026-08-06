@@ -1,8 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import { getLibraryCoreProjectionSource } from "./automerge";
-import type { LibraryCoreProjectionSourceV1 } from "./automerge-types";
-
 /**
  * Desktop client for the Library Core journal.
  *
@@ -45,52 +42,6 @@ export function libraryCoreJournalStatus(): Promise<LibraryCoreJournalStatusV1 |
   );
 }
 
-/** What this installation established as its own Library Core identity. */
-export interface LibraryCoreGenesisAuthorityV1 {
-  readonly libraryId: string;
-  readonly epoch: number;
-  readonly epochId: string;
-  readonly authorityKeyId: string;
-  readonly actorId: string;
-  /**
-   * The sequence this actor's next operation would take. 1 means it has
-   * written nothing, which is the only value this path can produce.
-   */
-  readonly nextSequence: number;
-}
-
-/**
- * Establishes this installation's Library Core identity: the genesis authority
- * epoch for one exact durable Automerge revision, then its own enrolled actor.
- * Mints the authority and actor signing keys if it has none.
- *
- * One call, because an epoch with no actor can write nothing and an actor
- * cannot exist without an epoch. Both halves are idempotent, so a call that
- * fails after the epoch lands completes the actor on the next attempt.
- *
- * Requires the journal to be open. Everything the epoch is derived from is a
- * pure function of the library, the key and the revision, so replaying the same
- * revision returns the same epoch instead of writing a second one. A revision
- * that differs from the one already established is refused rather than
- * silently re-pointing the library.
- */
-export function establishLibraryCoreGenesisAuthority(
-  source: LibraryCoreProjectionSourceV1,
-): Promise<LibraryCoreGenesisAuthorityV1> {
-  return invoke<LibraryCoreGenesisAuthorityV1>(
-    "establish_library_core_genesis_authority",
-    {
-      source: {
-        documentId: source.documentId,
-        headsDigest: source.headsDigest,
-        headCount: source.headCount,
-        storageGeneration: source.storageRevision.generation,
-        storageSaveRevision: source.storageRevision.saveRevision,
-      },
-    },
-  );
-}
-
 /**
  * Opens the journal during startup without letting a failure reach the user.
  *
@@ -99,22 +50,18 @@ export function establishLibraryCoreGenesisAuthority(
  * is surfaced to the console as evidence rather than raised, because the only
  * consumer of that evidence today is us.
  *
- * Once the journal is open, the installation establishes its own identity
- * against the document's current durable revision: a genesis authority epoch
- * and an actor enrolled under it. Until both exist nothing can be written at
- * all, because Library Core fences every operation commit against an active
- * epoch and an enrolled actor. This is dormant either way: no operations are
- * written here, Automerge stays authoritative, and no provider traffic is
- * emitted.
- *
- * The document may not be readable yet at startup, which is why establishment
- * is attempted and not required. The next start tries again against whatever
- * revision is durable then, and the first one to succeed pins the library.
+ * Opening is all that happens here. An earlier revision also minted a local
+ * authority key, created an epoch, minted an actor key and enrolled an actor,
+ * all as a side effect of launching the app. The contract forbids it: startup
+ * absence never chooses a creator, and a key the app creates and signs proves
+ * only that the app possesses the key it just created, authenticating neither
+ * the owner nor another installation. Two Desktops holding the same Library
+ * would each have silently declared themselves its origin. Choosing a creator
+ * is an explicit owner action and belongs to the legacy epoch bootstrap.
  */
 export async function openLibraryCoreJournalForStartup(): Promise<LibraryCoreJournalStatusV1 | null> {
-  let status: LibraryCoreJournalStatusV1;
   try {
-    status = await openLibraryCoreJournal();
+    return await openLibraryCoreJournal();
   } catch (error) {
     console.warn(
       "[library-core] journal unavailable; continuing on Automerge only",
@@ -122,19 +69,4 @@ export async function openLibraryCoreJournalForStartup(): Promise<LibraryCoreJou
     );
     return null;
   }
-
-  try {
-    const source = await getLibraryCoreProjectionSource();
-    const authority = await establishLibraryCoreGenesisAuthority(source);
-    console.info(
-      `[library-core] authority epoch ${authority.epoch} for library ${authority.libraryId}, actor ${authority.actorId} at sequence ${authority.nextSequence}`,
-    );
-  } catch (error) {
-    console.warn(
-      "[library-core] identity not established; retrying next start",
-      error,
-    );
-  }
-
-  return status;
 }

@@ -14808,7 +14808,6 @@ pub fn run() {
             prepare_social_scrape_memory,
             library_core_journal_runtime::open_library_core_journal,
             library_core_journal_runtime::library_core_journal_status,
-            library_core_journal_runtime::establish_library_core_genesis_authority,
             library_core_feed_browse_runtime::begin_library_core_feed_browse_generation,
             library_core_feed_browse_runtime::append_library_core_feed_browse_generation_page,
             library_core_feed_browse_runtime::finalize_library_core_feed_browse_generation,

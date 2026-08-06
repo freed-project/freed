@@ -21,7 +21,7 @@
 //! recognized as a replay. An already-enrolled actor is therefore returned
 //! from storage without rebuilding anything.
 
-use crate::automerge_external_common::lower_hex;
+use crate::automerge_external_common::{is_lower_sha256, lower_hex};
 use crate::library_core_canonical::{
     encode_canonical_value, encode_operation_digest_input, encode_signature_input,
 };
@@ -54,6 +54,16 @@ pub(crate) struct EnrollmentAuthority {
     pub(crate) epoch: i64,
     pub(crate) epoch_id: String,
     pub(crate) authority_key_id: String,
+    /// The Desktop installation witness: a digest of the machine identifier
+    /// and the user, produced by `get_desktop_installation_witness`.
+    ///
+    /// Installation identity is bound to this rather than to the local epoch
+    /// key. Two Desktops holding the same Automerge Library mint different
+    /// local keys, so deriving identity from the key would make one machine
+    /// look like several installations and would survive nothing, while the
+    /// witness is stable for the machine and does not depend on anything the
+    /// app minted for itself.
+    pub(crate) installation_witness: String,
 }
 
 fn digest_value(domain: &str, value: &Value) -> Result<String, String> {
@@ -64,15 +74,19 @@ fn digest_value(domain: &str, value: &Value) -> Result<String, String> {
 
 /// Which installation of this library the actor belongs to.
 ///
-/// Derived from the authority key, which every installation mints for itself,
-/// so the value is stable across restarts and differs between installations
-/// without anything having to be stored for it.
+/// Bound to the Desktop installation witness, not to any key this process
+/// minted. A witness is derived from the machine and the user, so it survives
+/// a discarded local epoch and it distinguishes two real Desktops holding the
+/// same Library, which is what installation identity has to mean.
 fn installation_incarnation(authority: &EnrollmentAuthority) -> Result<String, String> {
+    if !is_lower_sha256(&authority.installation_witness) {
+        return Err("Library Core installation witness is invalid".to_string());
+    }
     digest_value(
         "installation-incarnation",
         &json!({
             "library_id": authority.library_id,
-            "authority_key_id": authority.authority_key_id,
+            "installation_witness": authority.installation_witness,
             "signature_algorithm": SIGNATURE_ALGORITHM,
         }),
     )
@@ -398,6 +412,7 @@ mod tests {
             epoch: accepted.epoch,
             epoch_id: accepted.epoch_id,
             authority_key_id: accepted.authority_key_id,
+            installation_witness: "c".repeat(64),
         };
         (directory, journal, authority)
     }
@@ -607,12 +622,26 @@ mod tests {
             actor_public_key_fingerprint(&identity.actor_public_key).unwrap()
         );
 
-        // A different authority key means a different installation, so the
-        // same actor key must not resolve to the same actor.
+        // A different machine means a different installation, so the same
+        // actor key must not resolve to the same actor.
         let other_installation = EnrollmentAuthority {
+            installation_witness: "d".repeat(64),
+            ..authority.clone()
+        };
+
+        // A different local epoch key on the SAME machine must NOT change
+        // installation identity. That was the defect: the local key is
+        // disposable, so identity derived from it could not survive one.
+        let same_machine_new_key = EnrollmentAuthority {
             authority_key_id: "e".repeat(64),
             ..authority.clone()
         };
+        assert_eq!(
+            identity.installation_incarnation,
+            actor_identity(&same_machine_new_key, &actor_key_pair())
+                .unwrap()
+                .installation_incarnation
+        );
         let other = actor_identity(&other_installation, &actor_key_pair()).unwrap();
         assert_ne!(
             identity.installation_incarnation,

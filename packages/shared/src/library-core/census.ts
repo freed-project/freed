@@ -26,7 +26,18 @@ export const LIBRARY_CORE_CENSUS = Object.freeze({
   schemaVersion: 1,
   status: "dormant_incomplete",
   activationAllowed: false,
-  runtimeBehaviorChanged: false,
+  /**
+   * True since the journal gained a production owner: Desktop startup creates
+   * and opens `library-core/library-core.sqlite`. That is a real side effect
+   * and this flag said `false` through two releases of it, so it is recorded
+   * here rather than left to the reader to discover.
+   *
+   * It grants no authority. Startup establishes no epoch, mints no key,
+   * enrolls no actor, and writes no operation. A revision that did all four
+   * was reverted: startup absence never chooses a creator.
+   */
+  runtimeBehaviorChanged: true,
+  runtimeBehaviorChange: "desktop_startup_opens_local_shadow_journal_database",
   activeEngine: "automerge_legacy",
   replicationProtocol: "automerge_blob_v1",
   legacyEpochBootstrapContract: "closed_dormant_v1",
