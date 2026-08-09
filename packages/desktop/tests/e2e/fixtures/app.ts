@@ -207,13 +207,29 @@ export class AppFixture {
       { count, feedUrl },
     );
 
-    // Wait for the store to hydrate the new items into the UI.
+    // SQLite keeps the corpus out of Zustand. Wait for either the SQLite mock
+    // row store or the legacy fallback store, depending on the active engine.
     await this.page.waitForFunction(
       (expectedCount: number) => {
         const w = window as Record<string, unknown>;
-        const store = w.__FREED_STORE__ as
-          | { getState: () => { items: unknown[] } }
+        const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as
+          | { active?: boolean; items?: Record<string, { __deleted?: boolean }> }
           | undefined;
+        const store = w.__FREED_STORE__ as
+          | {
+              getState: () => {
+                itemCountByPlatform: Record<string, number>;
+                items: unknown[];
+              };
+            }
+          | undefined;
+        if (sqlite?.active) {
+          return (
+            Object.values(sqlite.items ?? {}).filter((item) => !item.__deleted)
+              .length >= expectedCount &&
+            (store?.getState().itemCountByPlatform.rss ?? 0) >= expectedCount
+          );
+        }
         return (store?.getState().items.length ?? 0) >= expectedCount;
       },
       count,

@@ -167,6 +167,7 @@ async function proxyNativeHttpRequest(args: Record<string, unknown>): Promise<{
 
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
+  ...(((window as unknown as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ ?? {}) as Record<string, Handler>),
   broadcast_doc: timedHandler("broadcast_doc", () => null),
   fetch_url: (args: Record<string, unknown>) => proxyFetch({ url: args.url, method: "GET" }),
   google_api_request: (args: Record<string, unknown>) => proxyNativeHttpRequest({

@@ -383,20 +383,26 @@ test("Friends WebGL2 compatibility view handles 1,600 visible people while zoomi
           items: Array<{ globalId: string }>;
         };
       };
+      const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as {
+        active?: boolean;
+        items?: Record<string, { globalId?: string; __deleted?: boolean }>;
+      } | undefined;
       const state = store.getState();
       return {
         persons: Object.keys(state.persons)
           .filter((id) => id.startsWith("scale-person-")).length,
         accounts: Object.keys(state.accounts)
           .filter((id) => id.startsWith("scale-account-")).length,
-        items: state.items
-          .filter((item) => item.globalId.startsWith("scale-item-")).length,
+        sqliteItems: Object.values(sqlite?.items ?? {})
+          .filter((item) => !item.__deleted && item.globalId?.startsWith("scale-item-")).length,
+        residentItems: state.items.length,
       };
     }), { timeout: 60_000 })
     .toEqual({
       persons: PERSON_COUNT,
       accounts: ACCOUNT_COUNT,
-      items: ITEM_COUNT,
+      sqliteItems: ITEM_COUNT,
+      residentItems: 0,
     });
 
   const mountStartedAt = COLLECT_PERF_TELEMETRY ? Date.now() : null;

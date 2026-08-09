@@ -294,12 +294,17 @@ test("authenticated YouTube login captures followed channels and recent videos",
         };
       };
       const state = store.getState();
+      const sqlite = (window as unknown as Record<string, unknown>)
+        .__TAURI_MOCK_SQLITE_LIBRARY__ as {
+        items: Record<string, { __deleted?: boolean }>;
+      };
       return {
         hasChannel: Boolean(
           state.accounts[`social:youtube:${expectedChannelId}`],
         ),
-        hasVideo: state.items.some(
-          (item) => item.globalId === "youtube:yt:video:dQw4w9WgXcQ",
+        hasVideo: Boolean(
+          sqlite.items["youtube:yt:video:dQw4w9WgXcQ"] &&
+          !sqlite.items["youtube:yt:video:dQw4w9WgXcQ"].__deleted,
         ),
       };
     },
@@ -547,7 +552,7 @@ test("manually saved YouTube URLs sync through the rendered Freed Offline action
   });
   const calls = await ipc.invocations();
   const itemScanCalls = calls.filter(
-    (call) => call.cmd === "read_library_core_item_scan_page",
+    (call) => call.cmd === "query_sqlite_library_items",
   );
   expect(itemScanCalls.length).toBeGreaterThan(0);
   expect(itemScanCalls).toEqual(
@@ -555,10 +560,8 @@ test("manually saved YouTube URLs sync through the rendered Freed Offline action
       expect.objectContaining({
         args: {
           request: expect.objectContaining({
-            cursor: null,
-            limit: 64,
-            queryId: "background_item_page_v1",
-            schemaVersion: 1,
+            offset: 0,
+            limit: expect.any(Number),
           }),
         },
       }),

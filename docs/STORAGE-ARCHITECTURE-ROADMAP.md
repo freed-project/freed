@@ -8,6 +8,17 @@ the work exists, what evidence is real, and the safest delivery order.
 
 ## Current implementation boundary
 
+Freed Desktop now has a direct local SQLite cutover candidate. It imports the
+retained legacy Automerge library once into schema v2, verifies the complete
+item count and database integrity, and then uses SQLite for ordinary startup,
+queries, mutations, search, export, diagnostics, sample management, and daily
+backup and restore. Normal Desktop execution does not start the Automerge
+worker, the legacy LAN relay, or the Automerge cloud loops, and no ordinary UI
+surface may request a full renderer item corpus. The old Automerge bytes remain
+only as a pre-import rollback source. This does not activate replacement cloud
+authority. Immutable-object sync and the PWA IndexedDB adapter remain the next
+two stages.
+
 Gate A is a dormant census. A1 adds the package-internal closed legacy
 bootstrap record, journal, control, receipt, bounded current and historical
 reserved-root scan, and state classifier. Together they make the current

@@ -23,6 +23,125 @@ export function tauriInitScript(): string {
     }
     window.__TAURI_MOCK_IPC_TIMINGS__ = [];
     window.__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
+    window.__TAURI_MOCK_SQLITE_LIBRARY__ = {
+      active: false,
+      revision: 0,
+      sourceGeneration: 0,
+      sourceRevision: 0,
+      sourceDigest: '',
+      expectedItemCount: 0,
+      shell: null,
+      items: {},
+    };
+    function sqliteState() {
+      return window.__TAURI_MOCK_SQLITE_LIBRARY__;
+    }
+    function sqliteItemState(item) {
+      return item && item.userState ? item.userState : {};
+    }
+    function sqliteShellResult() {
+      var state = sqliteState();
+      var items = Object.values(state.items).filter(function(item) { return !item.__deleted; });
+      var countsByPlatform = {};
+      var unreadByPlatform = {};
+      items.forEach(function(item) {
+        countsByPlatform[item.platform] = (countsByPlatform[item.platform] || 0) + 1;
+        if (sqliteItemState(item).readAt == null) {
+          unreadByPlatform[item.platform] = (unreadByPlatform[item.platform] || 0) + 1;
+        }
+      });
+      return {
+        shellJson: JSON.stringify(state.shell || {}),
+        revision: state.revision,
+        itemCount: items.length,
+        unreadCount: items.filter(function(item) { return sqliteItemState(item).readAt == null; }).length,
+        archivableCount: items.filter(function(item) {
+          var user = sqliteItemState(item);
+          return user.readAt != null && !user.saved && !user.archived && !user.hidden;
+        }).length,
+        countsByPlatform: countsByPlatform,
+        unreadByPlatform: unreadByPlatform,
+      };
+    }
+    function sqliteUpsertItems(args) {
+      var state = sqliteState();
+      var request = args && args.request ? args.request : {};
+      (request.itemsJson || []).forEach(function(encoded) {
+        var item = JSON.parse(encoded);
+        state.items[item.globalId] = item;
+      });
+      state.revision += 1;
+      return null;
+    }
+    function sqliteMutateItems(args) {
+      var state = sqliteState();
+      var request = args && args.request ? args.request : {};
+      var ids = request.ids || [];
+      var candidates = ids.length > 0
+        ? ids.map(function(id) { return state.items[id]; }).filter(Boolean)
+        : Object.values(state.items);
+      var affected = 0;
+      candidates.forEach(function(item) {
+        if (!item || item.__deleted) return;
+        if (request.platform && item.platform !== request.platform) return;
+        if (request.feedUrl && (!item.rssSource || item.rssSource.feedUrl !== request.feedUrl)) return;
+        var user = item.userState || (item.userState = {});
+        switch (request.mutation) {
+          case 'mark_read':
+          case 'mark_all_read':
+            if (user.readAt == null) user.readAt = request.timestampMs;
+            break;
+          case 'toggle_saved':
+            user.saved = !user.saved;
+            if (user.saved) { user.savedAt = request.timestampMs; user.archived = false; delete user.archivedAt; }
+            else delete user.savedAt;
+            break;
+          case 'toggle_archived':
+            if (user.saved) return;
+            user.archived = !user.archived;
+            if (user.archived) user.archivedAt = request.timestampMs;
+            else delete user.archivedAt;
+            break;
+          case 'archive':
+          case 'archive_all_read_unsaved':
+            if (user.saved || user.hidden || user.readAt == null) return;
+            user.archived = true; user.archivedAt = user.archivedAt || request.timestampMs;
+            break;
+          case 'toggle_liked':
+            user.liked = !user.liked;
+            if (user.liked) user.likedAt = request.timestampMs;
+            else { delete user.likedAt; delete user.likedSyncedAt; }
+            break;
+          case 'confirm_liked': user.likedSyncedAt = request.timestampMs; break;
+          case 'confirm_seen': user.seenSyncedAt = request.timestampMs; break;
+          case 'unarchive_saved':
+            if (!user.saved || !user.archived) return;
+            user.archived = false; delete user.archivedAt;
+            break;
+          case 'delete_all_archived':
+            if (!user.archived || user.saved) return;
+            item.__deleted = true;
+            break;
+          case 'prune_archived':
+            if (!user.archived || user.saved || user.archivedAt == null || user.archivedAt > request.timestampMs - (request.maxAgeMs || 0)) return;
+            item.__deleted = true;
+            break;
+          case 'delete_rss':
+            if (item.platform !== 'rss') return;
+            item.__deleted = true;
+            break;
+          case 'delete': item.__deleted = true; break;
+          case 'clear_sample':
+            if (!item.sampleData) return;
+            item.__deleted = true;
+            break;
+          default: return;
+        }
+        affected += 1;
+      });
+      state.revision += 1;
+      return affected;
+    }
     function timedHandler(cmd, fn) {
       return function(args) {
         var start = performance.now();
@@ -32,6 +151,73 @@ export function tauriInitScript(): string {
       };
     }
     window.__TAURI_MOCK_HANDLERS__ = {
+      sqlite_library_status: () => {
+        var state = sqliteState();
+        return state.active ? {
+          active: true,
+          revision: state.revision,
+          expectedItemCount: state.expectedItemCount,
+          importedItemCount: Object.keys(state.items).length,
+          sourceGeneration: state.sourceGeneration,
+          sourceRevision: state.sourceRevision,
+          sourceDigest: state.sourceDigest,
+        } : null;
+      },
+      begin_sqlite_library_import: (args) => {
+        var request = args.request;
+        window.__TAURI_MOCK_SQLITE_LIBRARY__ = {
+          active: false,
+          revision: 0,
+          sourceGeneration: request.sourceGeneration,
+          sourceRevision: request.sourceRevision,
+          sourceDigest: request.sourceDigest,
+          expectedItemCount: request.expectedItemCount,
+          shell: JSON.parse(request.shellJson),
+          items: {},
+        };
+        return null;
+      },
+      append_sqlite_library_import: sqliteUpsertItems,
+      finalize_sqlite_library_import: () => { sqliteState().active = true; return null; },
+      read_sqlite_library_shell: sqliteShellResult,
+      replace_sqlite_library_shell: (args) => {
+        sqliteState().shell = JSON.parse(args.request.shellJson);
+        sqliteState().revision += 1;
+        return null;
+      },
+      upsert_sqlite_library_items: sqliteUpsertItems,
+      mutate_sqlite_library_items: sqliteMutateItems,
+      read_sqlite_library_items: (args) => (args.request.ids || []).map(function(id) {
+        var item = sqliteState().items[id];
+        return item && !item.__deleted ? JSON.stringify(item) : null;
+      }).filter(Boolean),
+      query_sqlite_library_items: (args) => {
+        var request = args.request || {};
+        var query = (request.query || '').toLowerCase();
+        var items = Object.values(sqliteState().items).filter(function(item) {
+          var user = sqliteItemState(item);
+          return !item.__deleted
+            && (!request.platform || item.platform === request.platform)
+            && (request.saved == null || !!user.saved === request.saved)
+            && (request.archived == null || !!user.archived === request.archived)
+            && (request.showHidden || !user.hidden)
+            && (!request.authorId || (item.author && item.author.id === request.authorId))
+            && (!request.feedUrl || (item.rssSource && item.rssSource.feedUrl === request.feedUrl))
+            && (!query || JSON.stringify(item).toLowerCase().includes(query));
+        }).sort(function(left, right) {
+          return (right.publishedAt || 0) - (left.publishedAt || 0)
+            || (right.capturedAt || 0) - (left.capturedAt || 0)
+            || String(left.globalId).localeCompare(String(right.globalId));
+        });
+        var offset = request.offset || 0;
+        var limit = Math.max(1, Math.min(request.limit || 64, 128));
+        var page = items.slice(offset, offset + limit);
+        return {
+          itemsJson: page.map(JSON.stringify),
+          nextOffset: offset + page.length < items.length ? offset + page.length : null,
+          totalCount: items.length,
+        };
+      },
       broadcast_doc: timedHandler('broadcast_doc', function() { return null; }),
       fetch_url: () => '',
       google_api_request: () => ({ status: 200, headers: [['content-type', 'application/json']], body: Array.from(new TextEncoder().encode('{"connections":[],"nextSyncToken":"test-sync-token"}')) }),

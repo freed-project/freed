@@ -1069,7 +1069,7 @@ describe("command palette", () => {
     expect(release).not.toHaveBeenCalled();
   });
 
-  it("uses canonical RSS membership and hydrates only while executing its bulk action", async () => {
+  it("uses canonical RSS membership and bounded pages for its bulk action", async () => {
     const release = vi.fn();
     const archiveItems = vi.fn(async () => {});
     const visibleReadPost = createItem({
@@ -1141,39 +1141,17 @@ describe("command palette", () => {
     click(archiveAction!);
     await flush();
 
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledOnce();
+    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
     expect(archiveItems).toHaveBeenCalledWith(["instagram:visible-read-post"]);
-    expect(release).toHaveBeenCalledOnce();
+    expect(release).not.toHaveBeenCalled();
 
     archiveItems.mockRejectedValueOnce(new Error("mutation unavailable"));
     click(archiveAction!);
     await flush();
     await flush();
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledTimes(2);
     expect(archiveItems).toHaveBeenCalledTimes(2);
-    expect(release).toHaveBeenCalledTimes(2);
-
-    let resolveAcquire!: (nextRelease: typeof release) => void;
-    const deferredAcquire = new Promise<typeof release>((resolve) => {
-      resolveAcquire = resolve;
-    });
-    acquireLegacyLibraryItems.mockImplementationOnce(() => deferredAcquire);
-    click(archiveAction!);
-    await flush();
-    expect(acquireLegacyLibraryItems).toHaveBeenCalledTimes(3);
-
-    act(() => store.setState({
-      activeFilter: { platform: "instagram" },
-      libraryItemVersion: 1,
-    }));
-    await flush();
-    await act(async () => {
-      resolveAcquire(release);
-      await deferredAcquire;
-      await Promise.resolve();
-    });
-    expect(archiveItems).toHaveBeenCalledTimes(2);
-    expect(release).toHaveBeenCalledTimes(3);
+    expect(acquireLegacyLibraryItems).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
   });
 
   it("keeps one compatibility lease across persistent native reader retries", async () => {

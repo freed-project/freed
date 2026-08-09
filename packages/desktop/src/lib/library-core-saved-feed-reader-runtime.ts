@@ -34,7 +34,11 @@ import {
   type LibraryCoreFeedBrowseGenerationStatusV1,
   type LibraryCoreFeedBrowseNativeClient,
 } from "./library-core-feed-browse-materializer-runtime";
-import { feedCardToItem } from "./library-core-feed-browse-reader-runtime";
+import {
+  feedCardToItem,
+  openBoundedDesktopFeedReader,
+} from "./library-core-feed-browse-reader-runtime";
+import { isSqliteLibraryActive } from "./sqlite-library";
 import {
   openLibraryCoreItemScanSession,
   type LibraryCoreItemScanSession,
@@ -331,6 +335,17 @@ export async function openBoundedDesktopSavedFeedReader(
   readNext(): Promise<readonly FeedItem[]>;
   close(): Promise<void>;
 }> {
+  if (isSqliteLibraryActive()) {
+    const reader = await openBoundedDesktopFeedReader(
+      { ...filter, savedOnly: true },
+      rankingClockMs,
+    );
+    return {
+      totalCount: reader.totalCount,
+      readNext: reader.readNext,
+      close: reader.close,
+    };
+  }
   if (
     typeof localStorage !== "undefined" &&
     localStorage.getItem(LIBRARY_CORE_SAVED_FEED_READER_DISABLED_KEY) === "1"

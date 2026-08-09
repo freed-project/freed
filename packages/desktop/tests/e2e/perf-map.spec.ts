@@ -147,21 +147,33 @@ test("Map view handles 1,600 visible location authors within frame budget", asyn
   await app.goto();
   await app.waitForReady();
   await seedLargeMapWorkspace(page);
-  await page.waitForFunction(
+  const sqliteActive = await page.waitForFunction(
     (expectedCount: number) => {
       const w = window as Record<string, unknown>;
+      const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as
+        | { active?: boolean; items?: Record<string, { __deleted?: boolean }> }
+        | undefined;
       const store = w.__FREED_STORE__ as
         | { getState: () => { items: unknown[] } }
         | undefined;
-      return (store?.getState().items.length ?? 0) >= expectedCount;
+      if (sqlite?.active) {
+        const sqliteItemCount = Object.values(sqlite.items ?? {})
+          .filter((item) => !item.__deleted).length;
+        return sqliteItemCount >= expectedCount && (store?.getState().items.length ?? 0) === 0
+          ? true
+          : undefined;
+      }
+      return (store?.getState().items.length ?? 0) >= expectedCount ? false : undefined;
     },
     MAP_ITEM_COUNT,
     { timeout: 30_000 },
-  );
+  ).then((handle) => handle.jsonValue());
   await page.waitForTimeout(600);
-  await page.reload();
-  await app.waitForReady();
-  await page.waitForTimeout(1_000);
+  if (!sqliteActive) {
+    await page.reload();
+    await app.waitForReady();
+    await page.waitForTimeout(1_000);
+  }
 
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;

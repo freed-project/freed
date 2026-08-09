@@ -13,9 +13,17 @@ import {
 import {
   getCommittedDoc,
   getDocState,
+  reloadSqliteLibraryState,
   replaceLocalDoc,
   subscribe,
 } from "./automerge";
+import {
+  clearSqliteLibraryBackups,
+  createSqliteLibraryBackup,
+  isSqliteLibraryActive,
+  listSqliteLibraryBackups,
+  restoreSqliteLibraryBackup,
+} from "./sqlite-library";
 import { log } from "./logger.js";
 import { readContactSyncState, readContactSyncStateJson, writeContactSyncStateJson } from "./contact-sync-storage.js";
 import {
@@ -243,6 +251,18 @@ async function pruneSnapshots(
 }
 
 export async function listSnapshots(): Promise<SnapshotSummary[]> {
+  if (isSqliteLibraryActive()) {
+    return (await listSqliteLibraryBackups()).map((backup) => ({
+      id: backup.backupId,
+      createdAt: backup.createdAtMs,
+      byteSize: backup.byteLength,
+      itemCount: backup.itemCount,
+      friendCount: Object.keys(getDocState()?.friends ?? {}).length,
+      contactCount: readContactSyncState().cachedContacts.length,
+      pendingMatchCount: readContactSyncState().pendingSuggestions.length,
+      reason: backup.reason,
+    }));
+  }
   if (!canUseNativeSnapshotStorage()) {
     return normalizeSnapshotList(
       readBrowserSnapshotState().snapshots.map((entry) => entry.summary),
@@ -281,6 +301,24 @@ async function createSnapshotInternal(
   }
 
   const createdAt = Date.now();
+  if (isSqliteLibraryActive()) {
+    const backup = await createSqliteLibraryBackup(reason);
+    const contactSyncState = readContactSyncState();
+    const summary: SnapshotSummary = {
+      id: backup.backupId,
+      createdAt: backup.createdAtMs,
+      byteSize: backup.byteLength,
+      itemCount: backup.itemCount,
+      friendCount: Object.keys(state.friends ?? {}).length,
+      contactCount: contactSyncState.cachedContacts.length,
+      pendingMatchCount: contactSyncState.pendingSuggestions.length,
+      reason,
+    };
+    lastSnapshotAt = createdAt;
+    notifySnapshotListeners();
+    log.info(`[snapshots] saved ${reason} SQLite backup ...${summary.id.slice(-8)}`);
+    return summary;
+  }
   const id = String(createdAt);
   const committed = await getCommittedDoc();
   const binary = committed.binary;
@@ -371,6 +409,16 @@ function scheduleAutoSnapshot(): void {
 }
 
 async function restoreSnapshotInternal(snapshotId: string): Promise<SnapshotSummary> {
+  if (isSqliteLibraryActive()) {
+    const snapshots = await listSnapshots();
+    const snapshot = snapshots.find((entry) => entry.id === snapshotId);
+    if (!snapshot) throw new Error(`Snapshot ...${snapshotId.slice(-8)} not found`);
+    await restoreSqliteLibraryBackup(snapshotId);
+    await reloadSqliteLibraryState();
+    notifySnapshotListeners();
+    log.info(`[snapshots] restored SQLite backup ...${snapshotId.slice(-8)}`);
+    return snapshot;
+  }
   const expectedRevision = (await getCommittedDoc()).revision;
   if (!canUseNativeSnapshotStorage()) {
     const snapshot = readBrowserSnapshotState().snapshots.find((entry) => entry.summary.id === snapshotId);
@@ -421,7 +469,9 @@ export async function clearSnapshots(): Promise<void> {
       "Snapshot operations",
       FACTORY_RESET_DRAIN_TIMEOUT_MS,
     );
-    if (!canUseNativeSnapshotStorage()) {
+    if (isSqliteLibraryActive()) {
+      await clearSqliteLibraryBackups();
+    } else if (!canUseNativeSnapshotStorage()) {
       window.localStorage.removeItem(SNAPSHOT_FALLBACK_STORAGE_KEY);
     } else {
       const root = await ensureSnapshotDir();

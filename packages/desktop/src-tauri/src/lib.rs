@@ -41,6 +41,7 @@ mod library_core_actor_enrollment;
 mod library_core_authority_genesis;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_canonical;
+mod library_core_desktop_runtime;
 #[cfg_attr(not(test), allow(dead_code))]
 mod library_core_ed25519;
 mod library_core_external_migration_runtime;
@@ -14712,17 +14713,8 @@ pub fn run() {
                 }
             });
 
-            // Start mDNS advertisement and keep the daemon alive.
-            let mdns_daemon = advertise_mdns(relay_state_clone.port);
-            app.manage(MdnsState(mdns_daemon));
-
-            // Start the relay — token is already set, so new connections are
-            // immediately subject to authentication.
-            let state = relay_state_clone.clone();
-            let app_handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                start_sync_relay(state, app_handle).await;
-            });
+            info!("[library-core] SQLite Desktop build; legacy LAN relay disabled");
+            app.manage(MdnsState(None));
 
             // Dev-only: auto-trigger a Facebook scrape on startup so we can
             // iterate without manual clicking. Set FB_AUTO_SCRAPE=1 env var.
@@ -14808,6 +14800,21 @@ pub fn run() {
             prepare_social_scrape_memory,
             library_core_journal_runtime::open_library_core_journal,
             library_core_journal_runtime::library_core_journal_status,
+            library_core_desktop_runtime::sqlite_library_status,
+            library_core_desktop_runtime::begin_sqlite_library_import,
+            library_core_desktop_runtime::append_sqlite_library_import,
+            library_core_desktop_runtime::finalize_sqlite_library_import,
+            library_core_desktop_runtime::read_sqlite_library_shell,
+            library_core_desktop_runtime::replace_sqlite_library_shell,
+            library_core_desktop_runtime::upsert_sqlite_library_items,
+            library_core_desktop_runtime::mutate_sqlite_library_items,
+            library_core_desktop_runtime::read_sqlite_library_items,
+            library_core_desktop_runtime::query_sqlite_library_items,
+            library_core_desktop_runtime::create_sqlite_library_backup,
+            library_core_desktop_runtime::list_sqlite_library_backups,
+            library_core_desktop_runtime::restore_sqlite_library_backup,
+            library_core_desktop_runtime::clear_sqlite_library_backups,
+            library_core_desktop_runtime::clear_sqlite_library,
             library_core_feed_browse_runtime::begin_library_core_feed_browse_generation,
             library_core_feed_browse_runtime::append_library_core_feed_browse_generation_page,
             library_core_feed_browse_runtime::finalize_library_core_feed_browse_generation,

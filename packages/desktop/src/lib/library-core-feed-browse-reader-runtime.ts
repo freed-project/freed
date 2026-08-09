@@ -7,6 +7,9 @@ import {
   LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
   LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
   LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
+  matchesLibraryCoreFeedBrowseFilterV1,
+  normalizeLibraryCoreFeedBrowseFilterV1,
+  parseLibraryCoreFeedBrowseFilterV1,
   isLibraryCoreOperationInstanceId,
   parseLibraryCoreFeedBrowsePageResponseV2,
   parseLibraryCoreFeedBrowsePageResponseV3,
@@ -29,11 +32,14 @@ import type {
   MediaType,
   Platform,
 } from "@freed/shared";
+import { compileFriendAuthorIndex } from "@freed/shared";
 
 import {
+  getDocState,
   getLibraryCoreProjectionSource,
   materializeLibraryCoreFeedBrowseGeneration,
 } from "./automerge";
+import { isSqliteLibraryActive, querySqliteItems } from "./sqlite-library";
 import type {
   LibraryCoreFeedBrowseGenerationBindingV1,
   LibraryCoreProjectionSourceV1,
@@ -433,6 +439,80 @@ export interface BoundedDesktopFeedPage {
   readonly previousCursor: string | null;
 }
 
+async function openSqliteFeedReader(
+  filterInput: LibraryCoreFeedBrowseFilterInputV1,
+  include: (item: FeedItem) => boolean = () => true,
+): Promise<{
+  readonly totalCount: number;
+  readNext(): Promise<readonly FeedItem[]>;
+  readPage(
+    cursor: string | null,
+    direction: LibraryCoreFeedBrowseDirectionV3,
+  ): Promise<BoundedDesktopFeedPage>;
+  close(): Promise<void>;
+}> {
+  const parsed = parseLibraryCoreFeedBrowseFilterV1(
+    normalizeLibraryCoreFeedBrowseFilterV1(filterInput),
+  );
+  if (!parsed.ok) throw new Error(parsed.error);
+  const filter = parsed.value;
+  const readFiltered = async (startOffset: number) => {
+    const items: FeedItem[] = [];
+    let offset: number | null = startOffset;
+    let totalCount = 0;
+    while (offset !== null && items.length < LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT) {
+      const page = await querySqliteItems({
+        platform: filter.platform ?? undefined,
+        authorId: filter.authorId ?? undefined,
+        feedUrl: filter.feedUrl ?? undefined,
+        saved: filter.savedOnly ? true : undefined,
+        archived: filter.archivedOnly ? true : false,
+        showHidden: filter.showHidden,
+        offset,
+        limit: 128,
+      });
+      totalCount = page.totalCount;
+      items.push(
+        ...page.items.filter(
+          (item) => matchesLibraryCoreFeedBrowseFilterV1(item, filter) && include(item),
+        ),
+      );
+      offset = page.nextOffset;
+    }
+    return {
+      items: items.slice(0, LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT),
+      nextOffset: offset,
+      totalCount,
+    };
+  };
+
+  const initial = await readFiltered(0);
+  let nextOffset: number | null = 0;
+  return {
+    totalCount: initial.totalCount,
+    async readNext() {
+      if (nextOffset === null) return [];
+      const page = nextOffset === 0 ? initial : await readFiltered(nextOffset);
+      nextOffset = page.nextOffset;
+      return page.items;
+    },
+    async readPage(cursor, direction) {
+      const requested = cursor?.startsWith("sqlite:")
+        ? Number.parseInt(cursor.slice("sqlite:".length), 10)
+        : 0;
+      const safeOffset = Number.isSafeInteger(requested) && requested >= 0 ? requested : 0;
+      const start = direction === "previous" ? Math.max(0, safeOffset - 128) : safeOffset;
+      const page = start === 0 ? initial : await readFiltered(start);
+      return {
+        items: page.items,
+        nextCursor: page.nextOffset === null ? null : `sqlite:${page.nextOffset}`,
+        previousCursor: start === 0 ? null : `sqlite:${start}`,
+      };
+    },
+    async close() {},
+  };
+}
+
 export async function openBoundedDesktopFeedReader(
   filter: LibraryCoreFeedBrowseFilterInputV1,
   rankingClockMs: number,
@@ -445,6 +525,7 @@ export async function openBoundedDesktopFeedReader(
   ): Promise<BoundedDesktopFeedPage>;
   close(): Promise<void>;
 }> {
+  if (isSqliteLibraryActive()) return openSqliteFeedReader(filter);
   if (
     typeof localStorage !== "undefined" &&
     (localStorage.getItem(LIBRARY_CORE_FEED_BROWSE_READER_DISABLED_KEY) ===
@@ -488,6 +569,23 @@ export async function openBoundedDesktopFriendsFeedReader(
   readNext(): Promise<readonly FeedItem[]>;
   close(): Promise<void>;
 }> {
+  if (isSqliteLibraryActive()) {
+    const state = getDocState();
+    const friends = compileFriendAuthorIndex(
+      state?.persons ?? {},
+      state?.accounts ?? {},
+      state?.friends ?? {},
+    );
+    const reader = await openSqliteFeedReader(
+      filter,
+      (item) => friends.has(item.platform, item.author.id),
+    );
+    return {
+      totalCount: reader.totalCount,
+      readNext: reader.readNext,
+      close: reader.close,
+    };
+  }
   if (
     typeof localStorage !== "undefined" &&
     localStorage.getItem(LIBRARY_CORE_FRIENDS_FEED_READER_DISABLED_KEY) === "1"

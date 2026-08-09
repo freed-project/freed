@@ -22,6 +22,11 @@ import {
 import { getLibraryCoreProjectionSource } from "./automerge";
 import type { LibraryCoreProjectionSourceV1 } from "./automerge-types";
 import { feedCardToItem } from "./library-core-feed-browse-reader-runtime";
+import {
+  isSqliteLibraryActive,
+  querySqliteItems,
+  readSqliteItems,
+} from "./sqlite-library";
 
 const ITEM_DETAIL_QUERY_ID = "item_detail_v1";
 const ITEM_SCAN_QUERY_ID = "background_item_page_v1";
@@ -353,7 +358,10 @@ export type LibraryCoreSurface = "map" | "story_wall";
 
 const LIBRARY_CORE_SURFACE_LIMITS: Readonly<Record<LibraryCoreSurface, number>> =
   Object.freeze({
-    map: 1_000,
+    // The Map time slider needs multiple historical locations per author. Keep
+    // the active-surface working set bounded without truncating the shipping
+    // 1,600-author / 6,400-location stress corpus.
+    map: 10_000,
     story_wall: 250,
   });
 
@@ -1466,6 +1474,31 @@ function sourceMatches(
   );
 }
 
+async function scanSqlitePages(
+  options: Parameters<typeof querySqliteItems>[0],
+  consume: (item: FeedItem) => void,
+): Promise<number> {
+  let offset: number | null = 0;
+  let totalCount = 0;
+  while (offset !== null) {
+    const page = await querySqliteItems({ ...options, offset, limit: 128 });
+    totalCount = page.totalCount;
+    for (const item of page.items) consume(item);
+    offset = page.nextOffset;
+  }
+  return totalCount;
+}
+
+function incrementCount(counts: Map<string, number>, label: string): void {
+  counts.set(label, (counts.get(label) ?? 0) + 1);
+}
+
+function sortedCounts(counts: Map<string, number>): LibraryCoreSavedAnalyticsLabeledCount[] {
+  return [...counts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+}
+
 /**
  * Read one lossless item from the authenticated immutable SQLite generation.
  * Source checks on both sides of the native read prevent a stale projection
@@ -1481,6 +1514,9 @@ export async function readLibraryCoreItemDetail(
   }) => Promise<unknown> = (request) =>
     invoke("read_library_core_item_detail", { request }),
 ): Promise<FeedItem | null> {
+  if (isSqliteLibraryActive()) {
+    return (await readSqliteItems([globalId]))[0] ?? null;
+  }
   if (
     typeof localStorage !== "undefined" &&
     localStorage.getItem(LIBRARY_CORE_ITEM_DETAIL_READER_DISABLED_KEY) === "1"
@@ -1519,6 +1555,33 @@ export async function readLibraryCoreFacetSummary(
   }) => Promise<unknown> = (request) =>
     invoke("read_library_core_facet_summary", { request }),
 ): Promise<LibraryCoreFacetSummary> {
+  if (isSqliteLibraryActive()) {
+    let archivedCount = 0;
+    let sampleItemCount = 0;
+    let savedArchivedCount = 0;
+    let savedCount = 0;
+    const savedPlatforms = new Set<string>();
+    const tags = new Set<string>();
+    const totalCount = await scanSqlitePages({ showHidden: true }, (item) => {
+      if (item.userState.archived) archivedCount += 1;
+      if (item.sampleDataFingerprint) sampleItemCount += 1;
+      if (item.userState.saved) {
+        savedCount += 1;
+        savedPlatforms.add(item.platform);
+        if (item.userState.archived) savedArchivedCount += 1;
+      }
+      for (const tag of item.userState.tags ?? []) tags.add(tag);
+    });
+    return {
+      archivedCount,
+      sampleItemCount,
+      savedArchivedCount,
+      savedCount,
+      savedPlatformCount: savedPlatforms.size,
+      tags: [...tags].sort((left, right) => left.localeCompare(right)),
+      totalCount,
+    };
+  }
   const before = await getSource();
   const response = parseFacetSummaryResponse(
     await readNative({
@@ -1564,6 +1627,110 @@ export async function readLibraryCoreFriendsGraph(
     sources.length + rssFeedUrls.length > MAXIMUM_FRIEND_GRAPH_KEYS
   ) {
     throw new Error("Library Core Friends graph request is invalid");
+  }
+  if (isSqliteLibraryActive()) {
+    const social: LibraryFriendsGraphSocialActivity[] = [];
+    for (const source of sources) {
+      let itemCount = 0;
+      let latestActivityAt = 0;
+      let recentCount = 0;
+      let avatarUrl: string | null = null;
+      let avatarGlobalId: string | null = null;
+      let avatarPublishedAt: number | null = null;
+      const sampleItems: LibraryFriendsGraphSampleItem[] = [];
+      const locationCandidates: LibraryFriendsGraphLocationCandidate[] = [];
+      const signalCounts = new Map<ContentSignal, number>();
+      await scanSqlitePages(
+        { platform: source.platform, authorId: source.authorId, showHidden: true },
+        (item) => {
+          if (item.userState.hidden) return;
+          itemCount += 1;
+          latestActivityAt = Math.max(latestActivityAt, item.publishedAt);
+          if (item.publishedAt >= recentWindow.startMs && item.publishedAt < recentWindow.endMs) {
+            recentCount += 1;
+          }
+          if (sampleItems.length < MAXIMUM_FRIEND_SAMPLE_ITEMS) {
+            sampleItems.push({ globalId: item.globalId, publishedAt: item.publishedAt });
+          }
+          if (item.author.avatarUrl && (avatarPublishedAt === null || item.publishedAt > avatarPublishedAt)) {
+            avatarUrl = item.author.avatarUrl;
+            avatarGlobalId = item.globalId;
+            avatarPublishedAt = item.publishedAt;
+          }
+          if (extractLocationFromItem(item) && locationCandidates.length < MAXIMUM_FRIEND_LOCATION_CANDIDATES) {
+            locationCandidates.push({
+              effectiveAt: item.timeRange?.startsAt ?? item.publishedAt,
+              globalId: item.globalId,
+              publishedAt: item.publishedAt,
+            });
+          }
+          for (const signal of item.contentSignals?.tags ?? []) {
+            signalCounts.set(signal, (signalCounts.get(signal) ?? 0) + 1);
+          }
+        },
+      );
+      social.push({
+        ...source,
+        itemCount,
+        latestActivityAt,
+        hasLocation: locationCandidates.length > 0,
+        locationCandidateCount: locationCandidates.length,
+        locationCandidates,
+        avatarGlobalId,
+        avatarPublishedAt,
+        avatarUrl,
+        sampleItems,
+        recentCount,
+        signalCounts: CONTENT_SIGNAL_KEYS.map((label) => ({
+          label,
+          count: signalCounts.get(label) ?? 0,
+        })),
+      });
+    }
+    const rss: LibraryFriendsGraphRssActivity[] = [];
+    for (const feedUrl of rssFeedUrls) {
+      let itemCount = 0;
+      let latestActivityAt = 0;
+      let avatarUrl: string | null = null;
+      let avatarGlobalId: string | null = null;
+      let avatarPublishedAt: number | null = null;
+      const sampleItems: LibraryFriendsGraphSampleItem[] = [];
+      const locationCandidates: LibraryFriendsGraphLocationCandidate[] = [];
+      await scanSqlitePages({ platform: "rss", feedUrl, showHidden: true }, (item) => {
+        if (item.userState.hidden) return;
+        itemCount += 1;
+        latestActivityAt = Math.max(latestActivityAt, item.publishedAt);
+        if (sampleItems.length < MAXIMUM_FRIEND_SAMPLE_ITEMS) {
+          sampleItems.push({ globalId: item.globalId, publishedAt: item.publishedAt });
+        }
+        if (item.author.avatarUrl && (avatarPublishedAt === null || item.publishedAt > avatarPublishedAt)) {
+          avatarUrl = item.author.avatarUrl;
+          avatarGlobalId = item.globalId;
+          avatarPublishedAt = item.publishedAt;
+        }
+        if (extractLocationFromItem(item) && locationCandidates.length < MAXIMUM_FRIEND_LOCATION_CANDIDATES) {
+          locationCandidates.push({
+            effectiveAt: item.timeRange?.startsAt ?? item.publishedAt,
+            globalId: item.globalId,
+            publishedAt: item.publishedAt,
+          });
+        }
+      });
+      rss.push({
+        feedUrl,
+        itemCount,
+        latestActivityAt,
+        hasLocation: locationCandidates.length > 0,
+        locationCandidateCount: locationCandidates.length,
+        locationCandidates,
+        avatarGlobalId,
+        avatarPublishedAt,
+        avatarUrl,
+        sampleItems,
+      });
+    }
+    const totalItemCount = (await querySqliteItems({ showHidden: true, limit: 1 })).totalCount;
+    return { sourceToken: "sqlite", totalItemCount, social, rss };
   }
   const nativeRequest = {
     queryId: FRIENDS_GRAPH_QUERY_ID,
@@ -1617,6 +1784,23 @@ export async function readLibraryCoreFriendsLocationItem(
     invoke("read_library_core_item_detail", { request }),
 ): Promise<FeedItem | null> {
   assertFriendsReaderEnabled();
+  if (isSqliteLibraryActive()) {
+    const item = (await readSqliteItems([request.globalId]))[0] ?? null;
+    if (!item) return null;
+    const ownerMatches = request.owner.kind === "social"
+      ? item.platform === request.owner.platform && item.author.id === request.owner.authorId
+      : item.platform === "rss" && item.rssSource?.feedUrl === request.owner.feedUrl;
+    const effectiveAt = item.timeRange?.startsAt ?? item.publishedAt;
+    if (
+      request.sourceToken !== "sqlite" || !ownerMatches ||
+      item.publishedAt !== request.publishedAt || effectiveAt !== request.effectiveAt ||
+      item.userState.hidden || !isLocationItemVisibleInTimeMode(item, "current", request.referenceTimeMs) ||
+      extractLocationFromItem(item) === null
+    ) {
+      throw new Error("SQLite Friends location item is inconsistent");
+    }
+    return item;
+  }
   const rawRequest = closedRecord(request, FRIEND_LOCATION_ITEM_REQUEST_KEYS);
   const rawOwner =
     rawRequest?.owner && typeof rawRequest.owner === "object"
@@ -1731,6 +1915,33 @@ export async function readLibraryCorePersonTimeline(
   ) {
     throw new Error("Library Core person timeline request is invalid");
   }
+  if (isSqliteLibraryActive()) {
+    const start = cursor?.startsWith("sqlite:")
+      ? Number.parseInt(cursor.slice("sqlite:".length), 10)
+      : 0;
+    const offset = Number.isSafeInteger(start) && start >= 0 ? start : 0;
+    const rows: FeedItem[] = [];
+    let totalCount = 0;
+    for (const source of sources) {
+      const page = await querySqliteItems({
+        platform: source.platform,
+        authorId: source.authorId,
+        showHidden: false,
+        offset: 0,
+        limit: 128,
+      });
+      totalCount += page.totalCount;
+      rows.push(...page.items);
+    }
+    rows.sort((left, right) => right.publishedAt - left.publishedAt || left.globalId.localeCompare(right.globalId));
+    const items = rows.slice(offset, offset + limit);
+    const next = offset + items.length;
+    return {
+      items,
+      totalCount,
+      nextCursor: next < Math.min(totalCount, rows.length) ? `sqlite:${next}` : null,
+    };
+  }
   const nativeRequest = {
     queryId: PERSON_TIMELINE_QUERY_ID,
     schemaVersion: ITEM_DETAIL_SCHEMA_VERSION,
@@ -1797,6 +2008,37 @@ export async function readLibraryCoreSavedAnalytics(
   if (!dailyWindows || !hourlyWindows) {
     throw new Error("Library Core saved analytics windows are invalid");
   }
+  if (isSqliteLibraryActive()) {
+    const sourceCounts = new Map<string, number>();
+    const contentMix = new Map<string, number>();
+    const dailyCounts = dailyWindows.map(() => 0);
+    const hourlyCounts = hourlyWindows.map(() => 0);
+    let latestSavedAt: number | null = null;
+    let totalCount = 0;
+    await scanSqlitePages({ saved: true, showHidden: true }, (item) => {
+      totalCount += 1;
+      incrementCount(sourceCounts, item.platform);
+      incrementCount(contentMix, item.contentType);
+      const savedAt = item.userState.savedAt ?? item.userState.readAt ?? item.capturedAt;
+      latestSavedAt = Math.max(latestSavedAt ?? 0, savedAt);
+      for (let index = 0; index < dailyWindows.length; index += 1) {
+        const window = dailyWindows[index]!;
+        if (savedAt >= window.startMs && savedAt < window.endMs) dailyCounts[index]! += 1;
+      }
+      for (let index = 0; index < hourlyWindows.length; index += 1) {
+        const window = hourlyWindows[index]!;
+        if (savedAt >= window.startMs && savedAt < window.endMs) hourlyCounts[index]! += 1;
+      }
+    });
+    return {
+      contentMix: sortedCounts(contentMix),
+      dailyCounts,
+      hourlyCounts,
+      latestSavedAt,
+      sourceCounts: sortedCounts(sourceCounts),
+      totalCount,
+    };
+  }
   const before = await getSource();
   const response = parseSavedAnalyticsResponse(
     await readNative({
@@ -1836,6 +2078,17 @@ export async function readLibraryCoreSurfaceItems(
     invoke("read_library_core_surface_items", { request }),
 ): Promise<readonly FeedItem[]> {
   const limit = LIBRARY_CORE_SURFACE_LIMITS[surface];
+  if (isSqliteLibraryActive()) {
+    const rows: FeedItem[] = [];
+    await scanSqlitePages({ showHidden: false }, (item) => {
+      if (rows.length >= limit) return;
+      const matches = surface === "map"
+        ? extractLocationFromItem(item) !== null
+        : !item.userState.archived && (item.content.mediaUrls?.length ?? 0) > 0;
+      if (matches) rows.push(item);
+    });
+    return rows;
+  }
   const before = await getSource();
   const response = parseSurfaceItemsResponse(
     await readNative({
@@ -1884,6 +2137,26 @@ export async function openLibraryCoreItemScanSession(
       cancellationId,
     }),
 ): Promise<LibraryCoreItemScanSession> {
+  if (isSqliteLibraryActive()) {
+    let offset: number | null = 0;
+    let closed = false;
+    return {
+      async nextPage(): Promise<LibraryCoreItemScanPage> {
+        if (closed) throw new Error("Library Core item scan session is closed");
+        if (offset === null) return { items: [], done: true };
+        const page = await querySqliteItems({
+          offset,
+          limit: ITEM_SCAN_PAGE_LIMIT,
+          showHidden: true,
+        });
+        offset = page.nextOffset;
+        return { items: page.items, done: offset === null };
+      },
+      async close(): Promise<void> {
+        closed = true;
+      },
+    };
+  }
   if (
     typeof localStorage !== "undefined" &&
     localStorage.getItem(LIBRARY_CORE_ITEM_DETAIL_READER_DISABLED_KEY) === "1"

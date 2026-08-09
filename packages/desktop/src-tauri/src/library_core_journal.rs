@@ -23,11 +23,31 @@ mod enrollment_verifier;
 #[path = "library_core_journal_operation_verifier.rs"]
 mod operation_verifier;
 
-const AUTHORITATIVE_SCHEMA_VERSION: i64 = 1;
+const AUTHORITATIVE_SCHEMA_VERSION: i64 = 2;
 // ASCII "FREE" in SQLite's 32-bit application_id header field.
 const AUTHORITATIVE_APPLICATION_ID: i64 = 0x4652_4545;
 const AUTHORITATIVE_SCHEMA_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/authoritative-schema-v1.sql");
+const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 1] = [(
+    2,
+    include_str!("../../../shared/src/library-core/authoritative-migration-002.sql"),
+)];
+
+fn apply_schema_range(
+    transaction: &Transaction<'_>,
+    prior: i64,
+    through: i64,
+) -> JournalResult<()> {
+    if prior == 0 {
+        transaction.execute_batch(AUTHORITATIVE_SCHEMA_V1_SQL)?;
+    }
+    for (version, sql) in AUTHORITATIVE_SCHEMA_MIGRATIONS {
+        if version > prior && version <= through {
+            transaction.execute_batch(sql)?;
+        }
+    }
+    Ok(())
+}
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const BASE_CACHE_KIB: i64 = -32 * 1024;
 const MAX_TRANSACTION_MEMBERS: usize = 1_000;
@@ -702,7 +722,7 @@ impl LibraryCoreJournal {
                 Ok(())
             };
         }
-        Self::verify_schema_contract(connection)?;
+        Self::verify_schema_contract_at(connection, version)?;
         Ok(())
     }
 
@@ -803,9 +823,7 @@ impl LibraryCoreJournal {
         if prior == 0 && has_unversioned_tables {
             return Err(JournalError::UnversionedSchemaPresent);
         }
-        if prior == 0 {
-            transaction.execute_batch(AUTHORITATIVE_SCHEMA_V1_SQL)?;
-        }
+        apply_schema_range(&transaction, prior, AUTHORITATIVE_SCHEMA_VERSION)?;
         let actual =
             transaction.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
         let actual_application_id =
@@ -822,7 +840,7 @@ impl LibraryCoreJournal {
                 actual: actual_application_id,
             });
         }
-        Self::verify_schema_contract(&transaction)?;
+        Self::verify_schema_contract_at(&transaction, AUTHORITATIVE_SCHEMA_VERSION)?;
         transaction.commit()?;
         Ok(())
     }
@@ -887,9 +905,13 @@ impl LibraryCoreJournal {
         Ok(entries)
     }
 
-    fn verify_schema_contract(connection: &Connection) -> JournalResult<()> {
-        let reference = Connection::open_in_memory()?;
-        reference.execute_batch(AUTHORITATIVE_SCHEMA_V1_SQL)?;
+    fn verify_schema_contract_at(connection: &Connection, version: i64) -> JournalResult<()> {
+        let mut reference = Connection::open_in_memory()?;
+        {
+            let transaction = reference.transaction()?;
+            apply_schema_range(&transaction, 0, version)?;
+            transaction.commit()?;
+        }
         let expected = Self::schema_catalog(&reference)?;
         let actual = Self::schema_catalog(connection)?;
         if actual != expected {

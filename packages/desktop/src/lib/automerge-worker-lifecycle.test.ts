@@ -662,6 +662,7 @@ describe("automerge worker lifecycle", () => {
     expect(firstWorker.onmessageerror).toBeNull();
 
     const replacementInit = automerge.initDoc();
+    await Promise.resolve();
     const replacementWorker = MockWorker.instances[1];
     replacementWorker.emitMessage({ type: "READY" });
     const replacementState = makeState([makeItem()]);
