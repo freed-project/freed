@@ -17,6 +17,7 @@ import {
 } from "@freed/shared";
 import { mergeFeedItemInto } from "@freed/shared/schema";
 import { decodeJson, encodeJson } from "@freed/shared/projection";
+import type { LibraryCoreAcceptedAuthorityStateV1 } from "@freed/shared/library-core";
 import type {
   CommittedDocSnapshot,
   DocChangeEvent,
@@ -46,6 +47,37 @@ export interface SqliteLibrarySyncPage {
   revision: number;
   itemsJson: string[];
   nextOffset: number | null;
+}
+
+export type SqliteLibraryAcceptedAuthority =
+  LibraryCoreAcceptedAuthorityStateV1;
+
+export interface SqliteLibraryAuthorityBootstrap {
+  readonly authority: SqliteLibraryAcceptedAuthority;
+  readonly actor: Readonly<{
+    readonly actor_id: string;
+    readonly actor_public_key: string;
+    readonly enrollment_operation_id: string;
+    readonly enrollment_certificate_digest: string;
+    readonly canonical_enrollment_certificate_json: string;
+    readonly actor_chain_genesis: string;
+  }>;
+}
+
+export interface SqliteLibraryWriterEpochReassignment
+  extends SqliteLibraryAuthorityBootstrap {
+  readonly canonicalEpochCertificateJson: string;
+}
+
+export interface SqliteLibraryActorCheckpointState {
+  readonly actor_id: string;
+  readonly accepted_sequence: number;
+  readonly accepted_operation_id: string | null;
+  readonly accepted_chain_digest: string;
+  readonly enrollment_certificate_digest: string;
+  readonly retired: false;
+  readonly retirement_certificate_digest: null;
+  readonly canonical_enrollment_certificate_json: string;
 }
 
 export interface PortableSqliteLibraryImportRequest {
@@ -156,6 +188,89 @@ export async function sqliteLibraryStatus(): Promise<SqliteStatus | null> {
 
 export async function readSqliteLibrarySyncDescriptor(): Promise<SqliteLibrarySyncDescriptor> {
   return invoke<SqliteLibrarySyncDescriptor>("read_sqlite_library_sync_descriptor");
+}
+
+/** Establish and read the active SQLite Library's signed authority and Desktop actor. */
+export async function bootstrapSqliteLibraryAuthority(): Promise<SqliteLibraryAuthorityBootstrap> {
+  const installationWitness = await invoke<string>("get_desktop_installation_witness");
+  if (!/^[a-f0-9]{64}$/.test(installationWitness)) {
+    throw new TypeError("Freed Desktop returned an invalid installation witness");
+  }
+  return invoke<SqliteLibraryAuthorityBootstrap>(
+    "bootstrap_sqlite_library_authority",
+    {
+      request: {
+        installationWitness,
+        acceptedAtMs: Date.now(),
+      },
+    },
+  );
+}
+
+/** Create or replay the signed native epoch used by one exact writer CAS. */
+export async function reassignSqliteLibraryWriterEpoch(input: {
+  readonly canonicalSourceControlJson: string;
+  readonly libraryId: string;
+  readonly targetWriterId: string;
+}): Promise<SqliteLibraryWriterEpochReassignment> {
+  const installationWitness = await invoke<string>("get_desktop_installation_witness");
+  if (!/^[a-f0-9]{64}$/.test(installationWitness)) {
+    throw new TypeError("Freed Desktop returned an invalid installation witness");
+  }
+  return invoke<SqliteLibraryWriterEpochReassignment>(
+    "reassign_sqlite_library_writer_epoch",
+    {
+      request: {
+        ...input,
+        installationWitness,
+        acceptedAtMs: Date.now(),
+      },
+    },
+  );
+}
+
+/** Countersign and enroll one proof-only PWA actor request in native SQLite. */
+export async function acceptPwaActorEnrollmentRequest(
+  canonicalRequestBytes: Uint8Array,
+): Promise<SqliteLibraryAuthorityBootstrap["actor"]> {
+  if (canonicalRequestBytes.byteLength === 0 || canonicalRequestBytes.byteLength > 65_536) {
+    throw new RangeError("PWA actor enrollment request has an invalid size");
+  }
+  return invoke<SqliteLibraryAuthorityBootstrap["actor"]>(
+    "accept_pwa_actor_enrollment_request",
+    {
+      request: {
+        canonicalRequestJson: new TextDecoder("utf-8", { fatal: true }).decode(
+          canonicalRequestBytes,
+        ),
+      },
+    },
+  );
+}
+
+/** Admit one complete signed PWA read-intent transaction into SQLite. */
+export async function acceptPwaReadIntentTransaction(
+  canonicalEnvelopeJson: readonly string[],
+): Promise<void> {
+  if (canonicalEnvelopeJson.length === 0 || canonicalEnvelopeJson.length > 1_000) {
+    throw new RangeError("PWA read intent transaction has an invalid member count");
+  }
+  return invoke("accept_pwa_read_intent_transaction", {
+    request: {
+      canonicalEnvelopeJson: [...canonicalEnvelopeJson],
+      committedAtMs: Date.now(),
+    },
+  });
+}
+
+export async function listSqliteLibraryActorEnrollments(input: {
+  readonly libraryId: string;
+  readonly epochId: string;
+}): Promise<readonly SqliteLibraryActorCheckpointState[]> {
+  return invoke<SqliteLibraryActorCheckpointState[]>(
+    "list_sqlite_library_actor_enrollments",
+    { request: input },
+  );
 }
 
 export async function readSqliteLibrarySyncPage(input: {

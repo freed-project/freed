@@ -1,5 +1,8 @@
 import {
+  assembleLibraryCoreTransactionV1,
   decodeLibraryCoreFeedPageCursorV1,
+  constructLibraryCoreActorEnrollmentBodyV1,
+  constructLibraryCoreActorEnrollmentRequestV1,
   encodeLibraryCoreFeedPageCursorV1,
   LIBRARY_CORE_PORTABLE_CHECKPOINT_COLLECTIONS,
   createLibraryCoreImmutableObjectKey,
@@ -7,6 +10,8 @@ import {
   encodeLibraryCoreCanonicalValue,
   encodeLibraryCoreDigestInput,
   FEED_ITEM_READ_AT_FIELD_ALGEBRA,
+  FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
+  finalizeLibraryCoreTransactionV1,
   intentSegmentBodyFromRecordsV1,
   isLibraryCoreFinalizedTransactionV1,
   isLibraryCoreVisibleFeedItemV1,
@@ -33,6 +38,8 @@ import {
   type LibraryCoreCanonicalValue,
   type LibraryCoreAcceptedActorStateV1,
   type LibraryCoreAcceptedAuthorityStateV1,
+  type LibraryCoreActorEnrollmentRequestV1,
+  type LibraryCoreEd25519SignatureHex,
   type LibraryCoreCheckpointManifestV1,
   type LibraryCoreEd25519PublicKeyHex,
   type LibraryCoreFeedCardV1,
@@ -41,6 +48,7 @@ import {
   type LibraryCoreFeedPageResponseV1,
   type LibraryCoreFeedPageSourceV1,
   type LibraryCoreFinalizedTransactionV1,
+  type FeedItemReadAssignmentTransactionMemberInputV1,
   type LibraryCoreImmutableObjectReferenceV1,
   type LibraryCoreIntentHeadV1,
   type LibraryCoreIntentSegmentBodyV1,
@@ -61,6 +69,7 @@ import type {
   LibraryCoreOperationSegmentImportWriterV1,
   LibraryCorePortableCheckpointImportWriterV1,
   LibraryCorePortableCheckpointStagingReceiptV1,
+  LibraryCorePreparedImmutableObjectV1,
 } from "@freed/sync/cloud";
 
 import {
@@ -69,7 +78,7 @@ import {
   transactionDone,
 } from "./library-core-indexeddb";
 
-const DATABASE_VERSION = 5;
+const DATABASE_VERSION = 6;
 const GENERATIONS_STORE = "portable_generations";
 const RECORDS_STORE = "portable_records";
 const PAGES_STORE = "portable_pages";
@@ -87,6 +96,9 @@ const INTENT_ACTORS_STORE = "portable_intent_actors";
 const INTENT_OPERATIONS_STORE = "portable_intent_operations";
 const INTENT_TRANSACTIONS_STORE = "portable_intent_transactions";
 const INTENT_PUBLICATIONS_STORE = "portable_intent_publications";
+const PWA_ACTOR_IDENTITIES_STORE = "portable_pwa_actor_identities";
+const PWA_ACTOR_ENROLLMENT_REQUESTS_STORE =
+  "portable_pwa_actor_enrollment_requests";
 const SELECTED_GENERATION_KEY = "selected_portable_generation";
 const MAXIMUM_RETAINED_GENERATIONS = 2;
 const MAXIMUM_COLLECTION_PAGE_ROWS = 128;
@@ -288,12 +300,43 @@ interface PortableIntentPublicationRecord {
   readonly storedContentDigest: LibraryCoreLowercaseHex64;
 }
 
+interface PortablePwaActorIdentityRecord {
+  readonly actorId: LibraryCoreLowercaseHex64;
+  readonly actorIncarnationNonce: LibraryCoreLowercaseHex64;
+  readonly actorPrivateKey: CryptoKey;
+  readonly actorPublicKey: LibraryCoreEd25519PublicKeyHex;
+  readonly installationIncarnation: LibraryCoreLowercaseHex64;
+  readonly libraryId: LibraryCoreOperationInstanceId;
+  readonly schemaVersion: 1;
+}
+
+interface PortablePwaActorEnrollmentRequestRecord {
+  readonly actorId: LibraryCoreLowercaseHex64;
+  readonly authorityStateDigest: LibraryCoreLowercaseHex64;
+  readonly canonicalBytes: Uint8Array;
+  readonly epochId: LibraryCoreOperationInstanceId;
+  readonly libraryId: LibraryCoreOperationInstanceId;
+  readonly publishedReference: LibraryCoreImmutableObjectReferenceV1 | null;
+  readonly request: LibraryCoreActorEnrollmentRequestV1;
+  readonly schemaVersion: 1;
+}
+
 export interface PwaLibraryCorePortableCheckpointStoreOptions {
   readonly databaseName: string;
   readonly indexedDb: IDBFactory;
   readonly keyRange: typeof IDBKeyRange;
   readonly subtle: SubtleCrypto;
   readonly now?: () => number;
+  readonly randomBytes?: (byteLength: number) => Uint8Array;
+}
+
+export interface PwaLibraryCoreActorEnrollmentRequestCandidateV1 {
+  readonly acceptedAuthorityState: LibraryCoreAcceptedAuthorityStateV1;
+  readonly actorId: LibraryCoreLowercaseHex64;
+  readonly authorityStateDigest: LibraryCoreLowercaseHex64;
+  readonly immutableObject: LibraryCorePreparedImmutableObjectV1<Uint8Array>;
+  readonly publishedReference: LibraryCoreImmutableObjectReferenceV1 | null;
+  readonly request: LibraryCoreActorEnrollmentRequestV1;
 }
 
 export interface PwaLibraryCoreIntentEnqueueReceiptV1 {
@@ -815,6 +858,7 @@ class PwaLibraryCorePortableCheckpointStore
   readonly #keyRange: typeof IDBKeyRange;
   readonly #subtle: SubtleCrypto;
   readonly #now: () => number;
+  readonly #randomBytes: (byteLength: number) => Uint8Array;
   readonly #feedSessions = new Map<string, PortableFeedReaderSession>();
   #databasePromise: Promise<IDBDatabase> | null = null;
   #activeGenerationId: LibraryCoreLowercaseHex64 | null = null;
@@ -829,6 +873,317 @@ class PwaLibraryCorePortableCheckpointStore
     this.#keyRange = options.keyRange;
     this.#subtle = options.subtle;
     this.#now = options.now ?? Date.now;
+    this.#randomBytes =
+      options.randomBytes ??
+      ((byteLength) => {
+        const bytes = new Uint8Array(byteLength);
+        globalThis.crypto.getRandomValues(bytes);
+        return bytes;
+      });
+  }
+
+  async readSelectedAcceptedAuthorityState(): Promise<LibraryCoreAcceptedAuthorityStateV1 | null> {
+    this.#requireAvailable();
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [GENERATIONS_STORE, CONTROL_STORE],
+      "readonly",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const generation = selected
+      ? ((await requestResult(
+          transaction
+            .objectStore(GENERATIONS_STORE)
+            .get(selected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    await transactionDone(transaction);
+    if (
+      !selected ||
+      !generation ||
+      generation.status !== "complete" ||
+      generation.selectionSequence !== selected.selectionSequence ||
+      generation.header?.anchor_kind !== "accepted_authority"
+    ) {
+      return null;
+    }
+    return generation.header.accepted_authority;
+  }
+
+  /**
+   * Prepare one stable, proof-only enrollment request for the active cloud
+   * authority. The Ed25519 private key remains nonextractable in IndexedDB.
+   */
+  async preparePwaActorEnrollmentRequest(): Promise<PwaLibraryCoreActorEnrollmentRequestCandidateV1 | null> {
+    this.#requireAvailable();
+    const database = await this.#database();
+    const readTransaction = database.transaction(
+      [
+        GENERATIONS_STORE,
+        CONTROL_STORE,
+        ACTOR_TIPS_STORE,
+        PWA_ACTOR_IDENTITIES_STORE,
+      ],
+      "readonly",
+    );
+    const selected = (await requestResult(
+      readTransaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const generation = selected
+      ? ((await requestResult(
+          readTransaction
+            .objectStore(GENERATIONS_STORE)
+            .get(selected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    const existingIdentity = generation
+      ? ((await requestResult(
+          readTransaction
+            .objectStore(PWA_ACTOR_IDENTITIES_STORE)
+            .get(generation.libraryId),
+        )) as PortablePwaActorIdentityRecord | undefined)
+      : undefined;
+    const acceptedActor = generation && existingIdentity
+      ? ((await requestResult(
+          readTransaction
+            .objectStore(ACTOR_TIPS_STORE)
+            .get([generation.generationId, existingIdentity.actorId]),
+        )) as PortableActorTipRecord | undefined)
+      : undefined;
+    await transactionDone(readTransaction);
+    if (
+      !selected ||
+      !generation ||
+      generation.status !== "complete" ||
+      generation.selectionSequence !== selected.selectionSequence ||
+      generation.header?.anchor_kind !== "accepted_authority" ||
+      generation.header.accepted_authority === null
+    ) {
+      throw new Error(
+        "PWA actor enrollment requires a selected accepted-authority checkpoint",
+      );
+    }
+
+    const authority = generation.header.accepted_authority;
+    if (acceptedActor && !acceptedActor.retired) return null;
+    const authorityStateDigest = await this.#canonicalDigest(
+      authority as unknown as LibraryCoreCanonicalValue,
+    );
+    const existingRequestTransaction = database.transaction(
+      PWA_ACTOR_ENROLLMENT_REQUESTS_STORE,
+      "readonly",
+    );
+    const existingRequest = (await requestResult(
+      existingRequestTransaction
+        .objectStore(PWA_ACTOR_ENROLLMENT_REQUESTS_STORE)
+        .get([generation.libraryId, authorityStateDigest]),
+    )) as PortablePwaActorEnrollmentRequestRecord | undefined;
+    await transactionDone(existingRequestTransaction);
+    if (existingRequest && existingIdentity) {
+      return this.#actorEnrollmentCandidate(
+        authority,
+        authorityStateDigest,
+        existingRequest.actorId,
+        existingRequest.request,
+        existingRequest.canonicalBytes,
+        existingRequest.publishedReference,
+      );
+    }
+
+    const identity =
+      existingIdentity ??
+      (await this.#createPwaActorIdentity(generation.libraryId));
+    const operationId =
+      `pwa-enroll:${identity.actorId}:${authorityStateDigest.slice(0, 32)}` as LibraryCoreOperationInstanceId;
+    const body = constructLibraryCoreActorEnrollmentBodyV1(
+      {
+        operation_id: operationId,
+        library_id: authority.library_id,
+        epoch: authority.epoch,
+        epoch_id: authority.epoch_id,
+        authority_key_id: authority.authority_key_id,
+        installation_incarnation: identity.installationIncarnation,
+        actor_incarnation_nonce: identity.actorIncarnationNonce,
+        actor_public_key: identity.actorPublicKey,
+        observed_frontier: authority.observed_frontier,
+        created_at_ms: this.#now(),
+      },
+      { digest: libraryCoreDigest },
+    );
+    if (body.body.actor_id !== identity.actorId) {
+      throw new Error("stored PWA actor identity does not match its public key");
+    }
+    const request = await constructLibraryCoreActorEnrollmentRequestV1(body, {
+      digest: libraryCoreDigest,
+      signActorProof: async (message) =>
+        lowerHex(
+          await this.#subtle.sign(
+            { name: "Ed25519" },
+            identity.actorPrivateKey,
+            exactArrayBuffer(message),
+          ),
+        ) as LibraryCoreEd25519SignatureHex,
+    });
+    const canonicalBytes = encodeLibraryCoreCanonicalValue(
+      request as unknown as LibraryCoreCanonicalValue,
+    );
+    const requestRecord = Object.freeze({
+      actorId: identity.actorId,
+      authorityStateDigest,
+      canonicalBytes,
+      epochId: authority.epoch_id as unknown as LibraryCoreOperationInstanceId,
+      libraryId: generation.libraryId,
+      publishedReference: null,
+      request,
+      schemaVersion: 1,
+    }) satisfies PortablePwaActorEnrollmentRequestRecord;
+    const writeTransaction = database.transaction(
+      [PWA_ACTOR_IDENTITIES_STORE, PWA_ACTOR_ENROLLMENT_REQUESTS_STORE],
+      "readwrite",
+    );
+    if (!existingIdentity) {
+      writeTransaction.objectStore(PWA_ACTOR_IDENTITIES_STORE).add(identity);
+    }
+    writeTransaction
+      .objectStore(PWA_ACTOR_ENROLLMENT_REQUESTS_STORE)
+      .add(requestRecord);
+    await transactionDone(writeTransaction);
+    return this.#actorEnrollmentCandidate(
+      authority,
+      authorityStateDigest,
+      identity.actorId,
+      request,
+      canonicalBytes,
+      null,
+    );
+  }
+
+  async recordPwaActorEnrollmentRequestPublication(input: {
+    readonly actorId: LibraryCoreLowercaseHex64;
+    readonly authorityStateDigest: LibraryCoreLowercaseHex64;
+    readonly libraryId: LibraryCoreOperationInstanceId;
+    readonly reference: LibraryCoreImmutableObjectReferenceV1;
+  }): Promise<"already_recorded" | "recorded"> {
+    this.#requireAvailable();
+    const reference = snapshotReference(
+      parseLibraryCoreImmutableObjectReferenceV1(input.reference),
+    );
+    const database = await this.#database();
+    const transaction = database.transaction(
+      PWA_ACTOR_ENROLLMENT_REQUESTS_STORE,
+      "readwrite",
+    );
+    const store = transaction.objectStore(PWA_ACTOR_ENROLLMENT_REQUESTS_STORE);
+    const record = (await requestResult(
+      store.get([input.libraryId, input.authorityStateDigest]),
+    )) as PortablePwaActorEnrollmentRequestRecord | undefined;
+    if (
+      !record ||
+      record.actorId !== input.actorId ||
+      record.authorityStateDigest !== input.authorityStateDigest ||
+      record.canonicalBytes.byteLength !== reference.descriptor.byteLength ||
+      sha256LowerHex(record.canonicalBytes) !== reference.descriptor.contentDigest
+    ) {
+      transaction.abort();
+      throw new Error("PWA actor enrollment publication does not match its request");
+    }
+    if (record.publishedReference) {
+      if (
+        record.publishedReference.transportObjectId !== reference.transportObjectId ||
+        record.publishedReference.descriptor.objectKey !== reference.descriptor.objectKey ||
+        record.publishedReference.descriptor.contentDigest !==
+          reference.descriptor.contentDigest
+      ) {
+        transaction.abort();
+        throw new Error("PWA actor enrollment request was published under another identity");
+      }
+      await transactionDone(transaction);
+      return "already_recorded";
+    }
+    store.put({ ...record, publishedReference: reference } satisfies PortablePwaActorEnrollmentRequestRecord);
+    await transactionDone(transaction);
+    return "recorded";
+  }
+
+  async #createPwaActorIdentity(
+    libraryId: LibraryCoreOperationInstanceId,
+  ): Promise<PortablePwaActorIdentityRecord> {
+    const generated = (await this.#subtle.generateKey(
+      { name: "Ed25519" },
+      false,
+      ["sign", "verify"],
+    )) as CryptoKeyPair;
+    if (
+      generated.privateKey.extractable ||
+      generated.privateKey.type !== "private" ||
+      !generated.privateKey.usages.includes("sign")
+    ) {
+      throw new Error("PWA actor private key is not nonextractable signing key");
+    }
+    const actorPublicKey = lowerHex(
+      await this.#subtle.exportKey("raw", generated.publicKey),
+    ) as LibraryCoreEd25519PublicKeyHex;
+    const installationIncarnation = this.#randomHex64();
+    const actorIncarnationNonce = this.#randomHex64();
+    const actorId = libraryCoreDigest("actor-id", {
+      library_id: libraryId,
+      installation_incarnation: installationIncarnation,
+      signature_algorithm: "ed25519",
+      actor_public_key: actorPublicKey,
+      actor_incarnation_nonce: actorIncarnationNonce,
+    });
+    return Object.freeze({
+      actorId,
+      actorIncarnationNonce,
+      actorPrivateKey: generated.privateKey,
+      actorPublicKey,
+      installationIncarnation,
+      libraryId,
+      schemaVersion: 1,
+    });
+  }
+
+  #randomHex64(): LibraryCoreLowercaseHex64 {
+    const bytes = this.#randomBytes(32);
+    if (!(bytes instanceof Uint8Array) || bytes.byteLength !== 32) {
+      throw new Error("PWA actor randomness must return exactly 32 bytes");
+    }
+    return lowerHex(exactArrayBuffer(bytes)) as LibraryCoreLowercaseHex64;
+  }
+
+  #actorEnrollmentCandidate(
+    authority: LibraryCoreAcceptedAuthorityStateV1,
+    authorityStateDigest: LibraryCoreLowercaseHex64,
+    actorId: LibraryCoreLowercaseHex64,
+    request: LibraryCoreActorEnrollmentRequestV1,
+    canonicalBytesInput: Uint8Array,
+    publishedReference: LibraryCoreImmutableObjectReferenceV1 | null,
+  ): PwaLibraryCoreActorEnrollmentRequestCandidateV1 {
+    const canonicalBytes = new Uint8Array(canonicalBytesInput);
+    const contentDigest = sha256LowerHex(canonicalBytes);
+    return Object.freeze({
+      acceptedAuthorityState: authority,
+      actorId,
+      authorityStateDigest,
+      immutableObject: Object.freeze({
+        descriptor: Object.freeze({
+          byteLength: canonicalBytes.byteLength,
+          contentDigest,
+          objectKey: createLibraryCoreImmutableObjectKey({
+            actorId,
+            digest: contentDigest,
+            epochId: authority.epoch_id,
+            kind: "actor_enrollment_request",
+            libraryId: authority.library_id,
+          }),
+        }),
+        source: canonicalBytes,
+      }),
+      publishedReference,
+      request,
+    });
   }
 
   async beginImport(input: {
@@ -2192,6 +2547,143 @@ class PwaLibraryCorePortableCheckpointStore
     });
   }
 
+  /**
+   * Sign and durably enqueue a bounded read-state intent under this PWA's
+   * enrolled actor identity. The actor's nonextractable private key never
+   * leaves IndexedDB.
+   */
+  async enqueueReadAssignments(input: {
+    readonly entityIds: readonly string[];
+    readonly readAtMs: number;
+  }): Promise<PwaLibraryCoreIntentEnqueueReceiptV1 | null> {
+    this.#requireAvailable();
+    if (input.entityIds.length === 0) return null;
+    if (input.entityIds.length > LIBRARY_CORE_INTENT_SEGMENT_ENTRY_LIMIT) {
+      throw new RangeError("read assignment intent exceeds the segment bound");
+    }
+    if (!Number.isSafeInteger(input.readAtMs) || input.readAtMs < 0) {
+      throw new TypeError("read assignment time must be a nonnegative integer");
+    }
+    const entityIds = Object.freeze([...new Set(input.entityIds)]);
+    if (entityIds.length === 0) return null;
+
+    const database = await this.#database();
+    const transaction = database.transaction(
+      [
+        GENERATIONS_STORE,
+        CONTROL_STORE,
+        ACTOR_TIPS_STORE,
+        ACTOR_ENROLLMENTS_STORE,
+        INTENT_ACTORS_STORE,
+        PWA_ACTOR_IDENTITIES_STORE,
+      ],
+      "readonly",
+    );
+    const selected = (await requestResult(
+      transaction.objectStore(CONTROL_STORE).get(SELECTED_GENERATION_KEY),
+    )) as SelectedPortableGenerationRecord | undefined;
+    const generation = selected
+      ? ((await requestResult(
+          transaction.objectStore(GENERATIONS_STORE).get(selected.generationId),
+        )) as PortableGenerationRecord | undefined)
+      : undefined;
+    const identity = generation
+      ? ((await requestResult(
+          transaction
+            .objectStore(PWA_ACTOR_IDENTITIES_STORE)
+            .get(generation.libraryId),
+        )) as PortablePwaActorIdentityRecord | undefined)
+      : undefined;
+    const actorTip = selected && identity
+      ? ((await requestResult(
+          transaction
+            .objectStore(ACTOR_TIPS_STORE)
+            .get([selected.generationId, identity.actorId]),
+        )) as PortableActorTipRecord | undefined)
+      : undefined;
+    const enrollment = selected && identity
+      ? ((await requestResult(
+          transaction
+            .objectStore(ACTOR_ENROLLMENTS_STORE)
+            .get([selected.generationId, identity.actorId]),
+        )) as PortableActorEnrollmentRecord | undefined)
+      : undefined;
+    const intentActor = generation && identity
+      ? ((await requestResult(
+          transaction
+            .objectStore(INTENT_ACTORS_STORE)
+            .get([generation.libraryId, identity.actorId]),
+        )) as PortableIntentActorRecord | undefined)
+      : undefined;
+    await transactionDone(transaction);
+
+    if (
+      !selected ||
+      !generation ||
+      generation.status !== "complete" ||
+      generation.selectionSequence !== selected.selectionSequence ||
+      generation.header?.anchor_kind !== "accepted_authority" ||
+      generation.header.accepted_authority === null ||
+      !identity ||
+      !actorTip ||
+      actorTip.retired ||
+      !enrollment ||
+      enrollment.certificateDigest !== actorTip.enrollmentCertificateDigest
+    ) {
+      throw new Error("PWA read intent requires an active enrolled actor");
+    }
+
+    const authority = generation.header.accepted_authority;
+    const firstSequence = intentActor?.nextIntentSequence ??
+      actorTip.acceptedSequence + 1;
+    const previousOperationId = intentActor?.latestOperationId ??
+      actorTip.acceptedOperationId;
+    const previousChainDigest = intentActor?.latestActorChainDigest ??
+      actorTip.acceptedChainDigest;
+    const transactionId = `pwa-read:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const members = entityIds.map((entityId, index) =>
+      FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA.construct(
+        {
+          operation_id: `${transactionId}:${index}`,
+          library_id: authority.library_id,
+          epoch: authority.epoch,
+          epoch_id: authority.epoch_id,
+          actor_id: identity.actorId,
+          actor_sequence: firstSequence + index,
+          previous_actor_operation_id:
+            index === 0 ? previousOperationId : `${transactionId}:${index - 1}`,
+          causal_frontier: authority.observed_frontier,
+          hlc_wall_ms: input.readAtMs,
+          hlc_counter: index,
+          transaction_id: transactionId,
+          transaction_member_index: index,
+          transaction_member_count: entityIds.length,
+          entity_id: entityId,
+          payload: { read_at_ms: input.readAtMs },
+          created_at_ms: input.readAtMs,
+        } satisfies FeedItemReadAssignmentTransactionMemberInputV1,
+        { digest: libraryCoreDigest },
+      ),
+    );
+    const assembled = assembleLibraryCoreTransactionV1(
+      members,
+      previousChainDigest,
+      { digest: libraryCoreDigest },
+    );
+    const finalized = await finalizeLibraryCoreTransactionV1(assembled, {
+      digest: libraryCoreDigest,
+      signOperation: async (message) =>
+        lowerHex(
+          await this.#subtle.sign(
+            { name: "Ed25519" },
+            identity.actorPrivateKey,
+            exactArrayBuffer(message),
+          ),
+        ) as LibraryCoreEd25519SignatureHex,
+    });
+    return this.enqueueIntentTransaction(finalized);
+  }
+
   async readUnpublishedIntentSegmentCandidate(
     input: ReadPwaLibraryCoreIntentCandidateInput,
   ): Promise<PwaLibraryCoreIntentSegmentCandidateV1 | null> {
@@ -3338,6 +3830,20 @@ class PwaLibraryCorePortableCheckpointStore
           if (!database.objectStoreNames.contains(INTENT_PUBLICATIONS_STORE)) {
             database.createObjectStore(INTENT_PUBLICATIONS_STORE, {
               keyPath: ["libraryId", "actorId", "firstIntentSequence"],
+            });
+          }
+          if (!database.objectStoreNames.contains(PWA_ACTOR_IDENTITIES_STORE)) {
+            database.createObjectStore(PWA_ACTOR_IDENTITIES_STORE, {
+              keyPath: "libraryId",
+            });
+          }
+          if (
+            !database.objectStoreNames.contains(
+              PWA_ACTOR_ENROLLMENT_REQUESTS_STORE,
+            )
+          ) {
+            database.createObjectStore(PWA_ACTOR_ENROLLMENT_REQUESTS_STORE, {
+              keyPath: ["libraryId", "authorityStateDigest"],
             });
           }
           const hydrateFeedRows = (transaction: IDBTransaction): void => {

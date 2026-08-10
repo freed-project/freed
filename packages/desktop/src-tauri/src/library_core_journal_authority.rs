@@ -203,6 +203,43 @@ pub(super) fn require_active_epoch(
 }
 
 impl LibraryCoreJournal {
+    /// Return the complete active authority record, including the canonical
+    /// transition certificate required for response-loss recovery.
+    pub(crate) fn active_authority_epoch(
+        &self,
+        library_id: &str,
+    ) -> JournalResult<Option<VerifiedAuthorityEpoch>> {
+        let Some(authority) = active_authority(&self.connection, library_id)? else {
+            return Ok(None);
+        };
+        let stored = self.connection.query_row(
+            "SELECT epochs.transitionCertificateDigest,
+                    epochs.canonicalTransitionCertificateJson,
+                    epochs.acceptedAtMs
+             FROM library_core_active_authority AS active
+             JOIN library_core_authority_epochs AS epochs
+               ON epochs.libraryId = active.libraryId
+              AND epochs.epoch = active.epoch
+              AND epochs.epochId = active.epochId
+              AND epochs.transitionCertificateDigest = active.transitionCertificateDigest
+             WHERE active.libraryId = ?1;",
+            [library_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            },
+        )?;
+        Ok(Some(VerifiedAuthorityEpoch {
+            authority,
+            transition_certificate_digest: stored.0,
+            canonical_transition_certificate_json: stored.1,
+            accepted_at_ms: stored.2,
+        }))
+    }
+
     /// Install one verified authority epoch and make it active.
     ///
     /// The caller is responsible for verifying the transition certificate;

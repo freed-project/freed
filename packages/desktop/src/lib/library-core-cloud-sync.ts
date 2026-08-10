@@ -12,6 +12,11 @@ import {
 } from "@freed/shared/library-core";
 import {
   createGoogleDriveLibraryCoreAdapterV1,
+  createGoogleDriveLibraryCoreIntentAdapterV1,
+  discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1,
+  discoverGoogleDriveLibraryCoreIntentHeadV1,
+  discoverGoogleDriveLibraryCoreIntentSegmentsV1,
+  importLibraryCoreIntentSegmentV1,
   importLibraryCorePortableCheckpointV1,
   provisionGoogleDriveLibraryCoreControlV1,
   publishLibraryCorePortableCheckpointV1,
@@ -23,23 +28,30 @@ import {
 } from "@freed/sync/cloud";
 import { decodeJson } from "@freed/shared/projection";
 import type { FeedItem } from "@freed/shared";
-import { getOrCreateDesktopClientRegistration } from "./desktop-client-registration";
 import {
   appendPortableSqliteLibraryItems,
+  acceptPwaActorEnrollmentRequest,
+  acceptPwaReadIntentTransaction,
   beginPortableSqliteLibraryImport,
+  bootstrapSqliteLibraryAuthority,
   createSqliteLibraryBackup,
   finalizePortableSqliteLibraryImport,
+  listSqliteLibraryActorEnrollments,
   readSqliteLibrarySyncDescriptor,
   readSqliteLibrarySyncPage,
+  reassignSqliteLibraryWriterEpoch,
   restoreSqliteLibraryBackup,
   sqliteLibraryStatus,
   type SqliteLibrarySyncDescriptor,
+  type SqliteLibraryAuthorityBootstrap,
+  type SqliteLibraryActorCheckpointState,
 } from "./sqlite-library";
 import { readNativeJsonValue, writeNativeJsonValue } from "./native-json-store";
 
 const STATE_FILE = "library-core-cloud.json";
 const STATE_KEY = "state";
 const LOCAL_REVISION_POLL_MS = 15_000;
+const INBOUND_ACTOR_POLL_MS = 60_000;
 const ACTIVATION_KEY = "freed.libraryCore.immutableGoogleDriveV1.enabled";
 
 interface LocalLibraryCoreCloudStateV1 {
@@ -50,6 +62,7 @@ interface LocalLibraryCoreCloudStateV1 {
   readonly writerId: string;
   readonly controlFileId: string | null;
   readonly lastPublishedRevision: number | null;
+  readonly lastPublishedActorDigest: string | null;
 }
 
 export type LibraryCoreCloudPublishResult =
@@ -91,7 +104,10 @@ function isCloudState(value: unknown): value is LocalLibraryCoreCloudStateV1 {
     && (candidate.lastPublishedRevision === null
       || (typeof candidate.lastPublishedRevision === "number"
         && Number.isSafeInteger(candidate.lastPublishedRevision)
-        && candidate.lastPublishedRevision >= 0));
+        && candidate.lastPublishedRevision >= 0))
+    && (candidate.lastPublishedActorDigest === undefined
+      || candidate.lastPublishedActorDigest === null
+      || /^[a-f0-9]{64}$/.test(candidate.lastPublishedActorDigest));
 }
 
 async function loadOrCreateCloudState(
@@ -99,27 +115,36 @@ async function loadOrCreateCloudState(
 ): Promise<{
   readonly state: LocalLibraryCoreCloudStateV1;
   readonly currentWriterId: string;
+  readonly bootstrap: SqliteLibraryAuthorityBootstrap;
 }> {
-  const registration = await getOrCreateDesktopClientRegistration();
-  const currentWriterId = `desktop-${registration.id}`;
+  const bootstrap = await bootstrapSqliteLibraryAuthority();
+  const currentWriterId = bootstrap.actor.actor_id;
   const stored = await readNativeJsonValue(STATE_FILE, STATE_KEY);
   if (isCloudState(stored)) {
     if (stored.sourceDigest !== descriptor.sourceDigest) {
       throw new Error("The saved Library Core cloud identity belongs to another Library");
     }
-    return { state: stored, currentWriterId };
+    return {
+      state: Object.freeze({
+        ...stored,
+        lastPublishedActorDigest: stored.lastPublishedActorDigest ?? null,
+      }),
+      currentWriterId,
+      bootstrap,
+    };
   }
   const state: LocalLibraryCoreCloudStateV1 = Object.freeze({
     version: 1,
-    libraryId: `library-${descriptor.sourceDigest.slice(0, 40)}`,
+    libraryId: bootstrap.authority.library_id,
     sourceDigest: descriptor.sourceDigest,
-    storageEpoch: `epoch-${crypto.randomUUID()}`,
+    storageEpoch: bootstrap.authority.epoch_id,
     writerId: currentWriterId,
     controlFileId: null,
     lastPublishedRevision: null,
+    lastPublishedActorDigest: null,
   });
   await persistCloudState(state);
-  return { state, currentWriterId };
+  return { state, currentWriterId, bootstrap };
 }
 
 async function persistCloudState(state: LocalLibraryCoreCloudStateV1): Promise<void> {
@@ -176,6 +201,7 @@ function canonicalValue(value: unknown): LibraryCoreCanonicalValue {
 
 async function* checkpointEntries(
   descriptor: SqliteLibrarySyncDescriptor,
+  actors: readonly SqliteLibraryActorCheckpointState[],
 ): AsyncIterable<LibraryCorePortableCheckpointEntryV1> {
   let ordinal = 0;
   yield {
@@ -216,11 +242,30 @@ async function* checkpointEntries(
   if (ordinal !== descriptor.itemCount + 1) {
     throw new Error("SQLite Library changed during checkpoint export");
   }
+  for (let actorOrdinal = 0; actorOrdinal < actors.length; actorOrdinal += 1) {
+    const actor = actors[actorOrdinal]!;
+    yield {
+      kind: "logical_checkpoint_entry",
+      collection: "actor_states",
+      ordinal: actorOrdinal,
+      value: {
+        accepted_chain_digest: actor.accepted_chain_digest,
+        accepted_operation_id: actor.accepted_operation_id,
+        accepted_sequence: actor.accepted_sequence,
+        actor_id: actor.actor_id,
+        enrollment_certificate_digest: actor.enrollment_certificate_digest,
+        retired: actor.retired,
+        retirement_certificate_digest: actor.retirement_certificate_digest,
+      },
+    };
+  }
 }
 
 async function checkpointHeader(
   state: LocalLibraryCoreCloudStateV1,
   descriptor: SqliteLibrarySyncDescriptor,
+  bootstrap: SqliteLibraryAuthorityBootstrap,
+  actorCount: number,
   preservedFrontierDigest?: string,
 ): Promise<LibraryCorePortableCheckpointHeaderV1> {
   const frontierDigest = preservedFrontierDigest ?? await sha256Text([
@@ -239,6 +284,7 @@ async function checkpointHeader(
     field_registry_version: 1,
     canonical_codec_version: 1,
     anchor_kind: "accepted_authority",
+    accepted_authority: bootstrap.authority,
     source_transition_digest: null,
     source_manifest_digest: null,
     transition_candidate_anchor: null,
@@ -255,7 +301,7 @@ async function checkpointHeader(
       field_clocks: 0,
       relationships: 0,
       tombstones: 0,
-      actor_states: 0,
+      actor_states: actorCount,
       receipt_records: 0,
       blob_roots: 0,
       excluded_registry_keys: 0,
@@ -265,21 +311,10 @@ async function checkpointHeader(
 
 async function prepareWriterEpochCertificate(input: {
   readonly libraryId: string;
-  readonly source: LibraryCoreControlPointerV1;
   readonly targetStorageEpoch: string;
-  readonly targetWriterId: string;
+  readonly canonicalCertificateJson: string;
 }): Promise<LibraryCorePreparedImmutableObjectV1<Uint8Array>> {
-  const source = encodeLibraryCoreCanonicalValue({
-    kind: "writer_epoch_reassignment_v1",
-    library_id: input.libraryId,
-    protocol_version: 1,
-    source_frontier_digest: input.source.causalFrontierDigest,
-    source_generation: input.source.generation,
-    source_storage_epoch: input.source.storageEpoch,
-    source_writer_id: input.source.writerId,
-    target_storage_epoch: input.targetStorageEpoch,
-    target_writer_id: input.targetWriterId,
-  });
+  const source = new TextEncoder().encode(input.canonicalCertificateJson);
   const contentDigest = await sha256Bytes(source);
   return Object.freeze({
     descriptor: parseLibraryCoreImmutableObjectDescriptorV1({
@@ -294,6 +329,212 @@ async function prepareWriterEpochCertificate(input: {
     }),
     source,
   });
+}
+
+async function actorStateDigest(
+  actors: readonly SqliteLibraryActorCheckpointState[],
+): Promise<string> {
+  return sha256Bytes(
+    encodeLibraryCoreCanonicalValue(
+      actors.map((actor) => ({
+        accepted_chain_digest: actor.accepted_chain_digest,
+        accepted_operation_id: actor.accepted_operation_id,
+        accepted_sequence: actor.accepted_sequence,
+        actor_id: actor.actor_id,
+        enrollment_certificate_digest: actor.enrollment_certificate_digest,
+      })),
+    ),
+  );
+}
+
+async function publishActorEnrollmentCertificates(input: {
+  readonly actors: readonly SqliteLibraryActorCheckpointState[];
+  readonly adapter: ReturnType<typeof createGoogleDriveLibraryCoreAdapterV1>;
+  readonly epochId: string;
+  readonly libraryId: string;
+}): Promise<void> {
+  for (const actor of input.actors) {
+    const source = new TextEncoder().encode(
+      actor.canonical_enrollment_certificate_json,
+    );
+    const contentDigest = await sha256Bytes(source);
+    const descriptor = parseLibraryCoreImmutableObjectDescriptorV1({
+      byteLength: source.byteLength,
+      contentDigest,
+      objectKey: createLibraryCoreImmutableObjectKey({
+        actorId: actor.actor_id,
+        digest: contentDigest,
+        epochId: input.epochId,
+        kind: "actor_enrollment",
+        libraryId: input.libraryId,
+      }),
+    });
+    const uploaded = await input.adapter.putImmutable({ descriptor, source });
+    await input.adapter.verifyImmutable({
+      descriptor,
+      transportObjectId: uploaded.transportObjectId,
+    });
+  }
+}
+
+async function acceptPendingPwaActorEnrollments(input: {
+  readonly accessToken: string;
+  readonly epochId: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly libraryId: string;
+  readonly signal?: AbortSignal;
+}): Promise<void> {
+  const requests =
+    await discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1(input);
+  for (const request of requests) {
+    await acceptPwaActorEnrollmentRequest(request.bytes);
+  }
+}
+
+function canonicalIntentTransactions(
+  entries: readonly Readonly<{
+    readonly canonical_envelope: Readonly<Record<string, LibraryCoreCanonicalValue>>;
+  }>[],
+): readonly (readonly string[])[] {
+  const transactions: string[][] = [];
+  for (let index = 0; index < entries.length;) {
+    const first = entries[index]!.canonical_envelope;
+    const transactionId = first.transaction_id;
+    const memberCount = first.transaction_member_count;
+    if (
+      typeof transactionId !== "string"
+      || !Number.isSafeInteger(memberCount)
+      || typeof memberCount !== "number"
+      || memberCount < 1
+      || index + memberCount > entries.length
+      || first.transaction_member_index !== 0
+    ) {
+      throw new Error("PWA intent segment splits a canonical transaction");
+    }
+    const members = entries.slice(index, index + memberCount);
+    for (let memberIndex = 0; memberIndex < members.length; memberIndex += 1) {
+      const envelope = members[memberIndex]!.canonical_envelope;
+      if (
+        envelope.transaction_id !== transactionId
+        || envelope.transaction_member_count !== memberCount
+        || envelope.transaction_member_index !== memberIndex
+      ) {
+        throw new Error("PWA intent transaction members are reordered");
+      }
+    }
+    transactions.push(members.map((member) =>
+      new TextDecoder("utf-8", { fatal: true }).decode(
+        encodeLibraryCoreCanonicalValue(
+          member.canonical_envelope as LibraryCoreCanonicalValue,
+        ),
+      )
+    ));
+    index += memberCount;
+  }
+  return Object.freeze(transactions.map((transaction) => Object.freeze(transaction)));
+}
+
+async function acceptPendingPwaReadIntents(input: {
+  readonly accessToken: string;
+  readonly actors: readonly SqliteLibraryActorCheckpointState[];
+  readonly controlFileId: string;
+  readonly desktopActorId: string;
+  readonly epochId: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly libraryId: string;
+  readonly signal?: AbortSignal;
+}): Promise<void> {
+  for (const actor of input.actors) {
+    if (actor.actor_id === input.desktopActorId || actor.retired) continue;
+    const locator = await discoverGoogleDriveLibraryCoreIntentHeadV1({
+      accessToken: input.accessToken,
+      actorId: actor.actor_id,
+      googleFetch: input.googleFetch,
+      libraryId: input.libraryId,
+      signal: input.signal,
+    });
+    if (locator === null) continue;
+    const adapter = createGoogleDriveLibraryCoreIntentAdapterV1({
+      accessToken: input.accessToken,
+      actorId: actor.actor_id,
+      controlFileId: input.controlFileId,
+      googleFetch: input.googleFetch,
+      intentHeadFileId: locator.intentHeadFileId,
+      libraryId: input.libraryId,
+      signal: input.signal,
+    });
+    const head = await adapter.readIntentHead();
+    if (head.head.epoch_id !== input.epochId) {
+      throw new Error("PWA intent head belongs to a retired writer epoch");
+    }
+    const publishedThrough = head.head.next_intent_sequence - 1;
+    if (publishedThrough <= actor.accepted_sequence) continue;
+    const segments = await discoverGoogleDriveLibraryCoreIntentSegmentsV1({
+      accessToken: input.accessToken,
+      actorId: actor.actor_id,
+      googleFetch: input.googleFetch,
+      libraryId: input.libraryId,
+      signal: input.signal,
+    });
+    if (segments.length === 0 || head.head.latest_segment === null) {
+      throw new Error("PWA intent head references a missing immutable segment");
+    }
+    for (let index = 0; index < segments.length; index += 1) {
+      const segment = segments[index]!;
+      const previous = segments[index - 1];
+      if (
+        segment.firstIntentSequence !== (previous?.lastIntentSequence ?? 0) + 1
+        || segment.lastIntentSequence >= head.head.next_intent_sequence
+      ) {
+        throw new Error("PWA intent segment chain has a gap or overlap");
+      }
+    }
+    const latest = segments.at(-1)!;
+    if (
+      latest.lastIntentSequence !== publishedThrough
+      || latest.reference.descriptor.contentDigest !==
+        head.head.latest_segment.descriptor.contentDigest
+      || latest.reference.descriptor.objectKey !==
+        head.head.latest_segment.descriptor.objectKey
+      || latest.reference.transportObjectId !==
+        head.head.latest_segment.transportObjectId
+    ) {
+      throw new Error("PWA intent segments do not match the actor head");
+    }
+    const firstPendingIndex = segments.findIndex(
+      (segment) => segment.lastIntentSequence > actor.accepted_sequence,
+    );
+    if (firstPendingIndex < 0) continue;
+    for (let index = firstPendingIndex; index < segments.length; index += 1) {
+      const segment = segments[index]!;
+      const previous = segments[index - 1];
+      await importLibraryCoreIntentSegmentV1({
+        actorId: actor.actor_id,
+        adapter,
+        expectedFirstIntentSequence: segment.firstIntentSequence,
+        expectedPreviousSegmentDigest:
+          previous?.reference.descriptor.contentDigest ?? null,
+        libraryId: input.libraryId,
+        reference: segment.reference,
+        storageEpoch: input.epochId,
+        subtle: crypto.subtle,
+        writer: {
+          async appendIntentSegment({ entries, header }) {
+            for (const transaction of canonicalIntentTransactions(entries)) {
+              await acceptPwaReadIntentTransaction(transaction);
+            }
+            return Object.freeze({
+              actorId: header.actor_id,
+              firstIntentSequence: header.first_intent_sequence,
+              importedOperationCount: header.operation_count,
+              lastIntentSequence: header.last_intent_sequence,
+              segmentDigest: header.segment_digest,
+            });
+          },
+        },
+      });
+    }
+  }
 }
 
 function materializedRow(record: LibraryCorePortableCheckpointRecordV1): {
@@ -450,6 +691,19 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
     throw new Error("The cloud Library has no writer to transfer");
   }
   if (pointer.writerId === loaded.currentWriterId) {
+    if (
+      state.writerId !== pointer.writerId
+      || state.storageEpoch !== pointer.storageEpoch
+      || state.lastPublishedRevision !== descriptor.revision
+    ) {
+      state = Object.freeze({
+        ...state,
+        lastPublishedRevision: descriptor.revision,
+        storageEpoch: pointer.storageEpoch,
+        writerId: pointer.writerId,
+      });
+      await persistCloudState(state);
+    }
     return { status: "current", revision: descriptor.revision };
   }
   if (
@@ -471,28 +725,41 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
     await persistCloudState(state);
   }
 
-  const targetStorageEpoch = `epoch-${crypto.randomUUID()}`;
+  const canonicalSourceControlJson = new TextDecoder("utf-8", { fatal: true }).decode(
+    encodeLibraryCoreCanonicalValue(pointer as unknown as LibraryCoreCanonicalValue),
+  );
+  const reassigned = await reassignSqliteLibraryWriterEpoch({
+    canonicalSourceControlJson,
+    libraryId: state.libraryId,
+    targetWriterId: loaded.currentWriterId,
+  });
+  const targetStorageEpoch = reassigned.authority.epoch_id;
   const targetState: LocalLibraryCoreCloudStateV1 = Object.freeze({
     ...state,
     lastPublishedRevision: null,
     storageEpoch: targetStorageEpoch,
     writerId: loaded.currentWriterId,
   });
+  const actors = await listSqliteLibraryActorEnrollments({
+    epochId: reassigned.authority.epoch_id,
+    libraryId: reassigned.authority.library_id,
+  });
   const result = await reassignLibraryCorePortableCheckpointV1({
     activeTransport: "google_drive_app_data_v1",
     adapter,
-    entries: checkpointEntries(descriptor),
+    entries: checkpointEntries(descriptor, actors),
     epochCertificate: await prepareWriterEpochCertificate({
+      canonicalCertificateJson: reassigned.canonicalEpochCertificateJson,
       libraryId: state.libraryId,
-      source: pointer,
       targetStorageEpoch,
-      targetWriterId: loaded.currentWriterId,
     }),
     expectedControl: { pointer, revision: controlRead.revision },
     generation: 0,
     header: await checkpointHeader(
       targetState,
       descriptor,
+      reassigned,
+      actors.length,
       pointer.causalFrontierDigest,
     ),
     subtle: crypto.subtle,
@@ -507,6 +774,7 @@ export async function makeThisSqliteLibraryDesktopWriter(input: {
   }
   await persistCloudState(Object.freeze({
     ...targetState,
+    lastPublishedActorDigest: await actorStateDigest(actors),
     lastPublishedRevision: descriptor.revision,
   }));
   return { status: "writer_transferred", revision: descriptor.revision };
@@ -527,10 +795,6 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
       localWriterId: loaded.currentWriterId,
     };
   }
-  if (state.lastPublishedRevision === descriptor.revision) {
-    return { status: "current", revision: descriptor.revision };
-  }
-
   const provisioned = await provisionGoogleDriveLibraryCoreControlV1({
     accessToken: input.accessToken,
     libraryId: state.libraryId,
@@ -557,14 +821,58 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
       localWriterId: state.writerId,
     };
   }
+  await acceptPendingPwaActorEnrollments({
+    accessToken: input.accessToken,
+    epochId: loaded.bootstrap.authority.epoch_id,
+    googleFetch: input.googleFetch,
+    libraryId: state.libraryId,
+    signal: input.signal,
+  });
+  const actors = await listSqliteLibraryActorEnrollments({
+    epochId: loaded.bootstrap.authority.epoch_id,
+    libraryId: loaded.bootstrap.authority.library_id,
+  });
+  await acceptPendingPwaReadIntents({
+    accessToken: input.accessToken,
+    actors,
+    controlFileId: provisioned.controlFileId,
+    desktopActorId: loaded.currentWriterId,
+    epochId: loaded.bootstrap.authority.epoch_id,
+    googleFetch: input.googleFetch,
+    libraryId: state.libraryId,
+    signal: input.signal,
+  });
+  const updatedActors = await listSqliteLibraryActorEnrollments({
+    epochId: loaded.bootstrap.authority.epoch_id,
+    libraryId: loaded.bootstrap.authority.library_id,
+  });
+  const updatedDescriptor = await readSqliteLibrarySyncDescriptor();
+  const publishedActorDigest = await actorStateDigest(updatedActors);
+  if (
+    state.lastPublishedRevision === updatedDescriptor.revision &&
+    state.lastPublishedActorDigest === publishedActorDigest
+  ) {
+    return { status: "current", revision: updatedDescriptor.revision };
+  }
+  await publishActorEnrollmentCertificates({
+    actors: updatedActors,
+    adapter,
+    epochId: state.storageEpoch,
+    libraryId: state.libraryId,
+  });
   const generation = pointer === null ? 0 : pointer.generation + 1;
   const result = await publishLibraryCorePortableCheckpointV1({
     activeTransport: "google_drive_app_data_v1",
     adapter,
-    entries: checkpointEntries(descriptor),
+    entries: checkpointEntries(updatedDescriptor, updatedActors),
     expectedControl: { revision: controlRead.revision, pointer },
     generation,
-    header: await checkpointHeader(state, descriptor),
+    header: await checkpointHeader(
+      state,
+      updatedDescriptor,
+      loaded.bootstrap,
+      updatedActors.length,
+    ),
     subtle: crypto.subtle,
     writerId: state.writerId,
   });
@@ -573,10 +881,11 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
   }
   state = Object.freeze({
     ...state,
-    lastPublishedRevision: descriptor.revision,
+    lastPublishedActorDigest: publishedActorDigest,
+    lastPublishedRevision: updatedDescriptor.revision,
   });
   await persistCloudState(state);
-  return { status: "published", revision: descriptor.revision };
+  return { status: "published", revision: updatedDescriptor.revision };
 }
 
 let publicationChain: Promise<void> = Promise.resolve();
@@ -615,17 +924,21 @@ export async function startSqliteLibraryGoogleDriveSync(input: {
     stopSqliteLibraryCloudSync();
     return initial;
   }
+  let lastInboundActorPollAt = Date.now();
 
   const poll = async (): Promise<void> => {
     if (running?.abortController !== abortController || abortController.signal.aborted) return;
     try {
       const status = await sqliteLibraryStatus();
       const state = await readNativeJsonValue(STATE_FILE, STATE_KEY);
+      const now = Date.now();
       if (
         status?.active === true
         && isCloudState(state)
-        && state.lastPublishedRevision !== status.revision
+        && (state.lastPublishedRevision !== status.revision
+          || now - lastInboundActorPollAt >= INBOUND_ACTOR_POLL_MS)
       ) {
+        lastInboundActorPollAt = now;
         const result = await publish(await input.resolveAccessToken());
         if (result.status === "ownership_required") {
           stopSqliteLibraryCloudSync();

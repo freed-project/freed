@@ -22,6 +22,7 @@
 //! from storage without rebuilding anything.
 
 use crate::automerge_external_common::{is_lower_sha256, lower_hex};
+use crate::library_core_authority_genesis::load_established_authority_key_pair;
 use crate::library_core_canonical::{
     encode_canonical_value, encode_operation_digest_input, encode_signature_input,
 };
@@ -340,6 +341,76 @@ pub(crate) fn enroll_desktop_actor(
         authority_key_pair,
         created_at_ms,
     )
+}
+
+/// Verify and countersign one canonical proof-only PWA enrollment request.
+///
+/// The request supplies only the PWA actor proof. The designated Desktop loads
+/// its platform authority key, adds the authority signature, and asks the
+/// journal to reverify the complete certificate against the current epoch in
+/// the same transaction that enrolls the actor.
+pub(crate) fn countersign_pwa_actor_enrollment_request(
+    journal: &mut LibraryCoreJournal,
+    canonical_request: &[u8],
+) -> Result<ActorState, String> {
+    if canonical_request.is_empty() || canonical_request.len() > MAX_CERTIFICATE_BYTES {
+        return Err("Library Core actor enrollment request size is invalid".to_string());
+    }
+    let request: Value = serde_json::from_slice(canonical_request)
+        .map_err(|_| "Library Core actor enrollment request is invalid JSON".to_string())?;
+    let request_object = request
+        .as_object()
+        .ok_or_else(|| "Library Core actor enrollment request must be an object".to_string())?;
+    if request_object.len() != 2
+        || !request_object.contains_key("certificate_body")
+        || !request_object.contains_key("certificate_digest")
+    {
+        return Err("Library Core actor enrollment request has an invalid field set".to_string());
+    }
+    let canonical = encode_canonical_value(&request, MAX_CERTIFICATE_BYTES).map_err(|_| {
+        "Library Core actor enrollment request is not canonically encodable".to_string()
+    })?;
+    if canonical != canonical_request {
+        return Err("Library Core actor enrollment request is not canonical".to_string());
+    }
+    let library_id = request
+        .get("certificate_body")
+        .and_then(Value::as_object)
+        .and_then(|body| body.get("actor_enrollment_body"))
+        .and_then(Value::as_object)
+        .and_then(|body| body.get("library_id"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            "Library Core actor enrollment request has no Library identity".to_string()
+        })?;
+    let certificate_digest = request
+        .get("certificate_digest")
+        .and_then(Value::as_str)
+        .filter(|digest| is_lower_sha256(digest))
+        .ok_or_else(|| "Library Core actor enrollment request digest is invalid".to_string())?;
+    let authority_key_pair = load_established_authority_key_pair(library_id)?;
+    let authority_signature_input = encode_signature_input(
+        "actor-enrollment-authority",
+        &json!({ "certificate_digest": certificate_digest }),
+        MAX_CERTIFICATE_BYTES,
+    )
+    .map_err(|_| "Library Core enrollment authority signature input is invalid".to_string())?;
+    let certificate = json!({
+        "certificate_body": request
+            .get("certificate_body")
+            .ok_or_else(|| "Library Core actor enrollment request body is missing".to_string())?,
+        "certificate_digest": certificate_digest,
+        "authority_signature": lower_hex(
+            authority_key_pair.sign(&authority_signature_input).as_ref(),
+        ),
+    });
+    let canonical_certificate = encode_canonical_value(&certificate, MAX_CERTIFICATE_BYTES)
+        .map_err(|_| {
+            "Library Core actor enrollment certificate is not canonically encodable".to_string()
+        })?;
+    journal
+        .verify_and_enroll_actor(&canonical_certificate, library_id)
+        .map_err(|error| format!("Library Core could not enroll PWA actor: {error}"))
 }
 
 #[cfg(test)]
