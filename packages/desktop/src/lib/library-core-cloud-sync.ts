@@ -58,6 +58,10 @@ import {
   type SqliteLibraryIntentResultOutboxEntry,
 } from "./sqlite-library";
 import { readNativeJsonValue, writeNativeJsonValue } from "./native-json-store";
+import {
+  mirrorSqliteLibraryBackupsToGoogleDrive,
+  resetSqliteLibraryDriveBackupMirror,
+} from "./library-core-drive-backups";
 
 const STATE_FILE = "library-core-cloud.json";
 const STATE_KEY = "state";
@@ -170,6 +174,31 @@ async function persistCloudState(state: LocalLibraryCoreCloudStateV1): Promise<v
     state,
     "library-core-cloud-sync",
   );
+}
+
+let backupMirrorChain: Promise<void> = Promise.resolve();
+
+function scheduleClosedSqliteBackupMirror(input: {
+  readonly accessToken: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly libraryId: string;
+  readonly signal?: AbortSignal;
+}): void {
+  backupMirrorChain = backupMirrorChain.then(async () => {
+    try {
+      const result = await mirrorSqliteLibraryBackupsToGoogleDrive({
+        ...input,
+        googleFetch: input.googleFetch ?? fetch,
+      });
+      if (result.uploaded > 0 || result.removed > 0) {
+        console.info(
+          `[library-core-backups] mirrored ${result.uploaded.toLocaleString()} and removed ${result.removed.toLocaleString()} old Drive generations`,
+        );
+      }
+    } catch (error) {
+      console.error("[library-core-backups] Drive mirror failed", error);
+    }
+  });
 }
 
 function exactBytes(bytes: Uint8Array): Uint8Array {
@@ -1069,6 +1098,12 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     state.lastPublishedRevision === updatedDescriptor.revision &&
     state.lastPublishedActorDigest === publishedActorDigest
   ) {
+    scheduleClosedSqliteBackupMirror({
+      accessToken: input.accessToken,
+      googleFetch: input.googleFetch,
+      libraryId: state.libraryId,
+      signal: input.signal,
+    });
     return { status: "current", revision: updatedDescriptor.revision };
   }
   await publishActorEnrollmentCertificates({
@@ -1102,6 +1137,12 @@ async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {
     lastPublishedRevision: updatedDescriptor.revision,
   });
   await persistCloudState(state);
+  scheduleClosedSqliteBackupMirror({
+    accessToken: input.accessToken,
+    googleFetch: input.googleFetch,
+    libraryId: state.libraryId,
+    signal: input.signal,
+  });
   return { status: "published", revision: updatedDescriptor.revision };
 }
 
@@ -1128,6 +1169,7 @@ export async function startSqliteLibraryGoogleDriveSync(input: {
   readonly resolveAccessToken: () => Promise<string>;
 }): Promise<LibraryCoreCloudPublishResult> {
   stopSqliteLibraryCloudSync();
+  resetSqliteLibraryDriveBackupMirror();
   const abortController = new AbortController();
   running = { abortController, timer: null };
   const publish = async (accessToken: string): Promise<LibraryCoreCloudPublishResult> =>

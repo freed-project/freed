@@ -1266,7 +1266,7 @@ async function initiateDesktopOAuthInternal(
       client_id: GDRIVE_CLIENT_ID,
       redirect_uri: redirectUri,
       response_type: "code",
-      scope: "https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/contacts.readonly",
+      scope: "https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/contacts.readonly",
       include_granted_scopes: "true",
       code_challenge: challenge,
       code_challenge_method: "S256",
