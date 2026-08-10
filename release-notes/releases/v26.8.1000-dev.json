@@ -7,14 +7,14 @@
   "editorialNotes": [
     "Lead with the working SQLite Desktop outcome and restored maps. Omit internal census and contract churn."
   ],
-  "generatedAt": "2026-08-10T07:45:09.731Z",
+  "generatedAt": "2026-08-10T08:31:57.365Z",
   "model": "heuristic",
   "source": {
     "channel": "dev",
     "previousPublishedTag": "v26.7.3100-dev",
     "previousPublishedDayTag": "v26.7.3100-dev",
     "compareRef": "HEAD",
-    "productCommitSha": "9474543b8896324791d6e811efef460e8a5c801a",
+    "productCommitSha": "53161854164235a81520f03c6baf6c421d1e3a60",
     "promotedDevCommitSha": null,
     "libraryCoreActivation": {
       "schemaVersion": 1,
@@ -23,7 +23,7 @@
         "previousPublishedTag": "v26.7.3100-dev",
         "startMode": "previous_product_commit",
         "fromExclusiveCommitSha": "49c867a733c8e05e5f1eb3ac00894149aa5ace5f",
-        "toInclusiveProductCommitSha": "9474543b8896324791d6e811efef460e8a5c801a"
+        "toInclusiveProductCommitSha": "53161854164235a81520f03c6baf6c421d1e3a60"
       },
       "manifest": {
         "path": "docs/library-core-activation-manifest.json",
@@ -143,12 +143,12 @@
           ]
         }
       ],
-      "inspectionDigest": "sha256:0f8d2ab7e1b99049cf7d692b4a40d07d5b8295aabb2e68dac6be26236cfc9f9e",
+      "inspectionDigest": "sha256:cbe76a3a2332e29c89a74e5f289806dbd5e90f05027931dd91cff0dae07d7a26",
       "decision": {
         "state": "owner_approved",
-        "ownerApprovalReference": "current-task:release-26-8-1000-dev#sha256:231eeb35112c77d13761bcec98cc9b0ffc527f750feda6d6b7538c72cd36f39b",
-        "approvedInspectionDigest": "sha256:0f8d2ab7e1b99049cf7d692b4a40d07d5b8295aabb2e68dac6be26236cfc9f9e",
-        "approvedReleaseArtifactDigest": "sha256:e3a676ef74360550b4531acf7150519b94f191c6e25af8d6e21b1590c5933674"
+        "ownerApprovalReference": "current-task:release-26-8-1000-dev#sha256:5c46b15e31868194175f314f2a0e2811f938c2d71b83bdd8bf7119c7746299ee",
+        "approvedInspectionDigest": "sha256:cbe76a3a2332e29c89a74e5f289806dbd5e90f05027931dd91cff0dae07d7a26",
+        "approvedReleaseArtifactDigest": "sha256:6105d8887ea62ff7453b0c2408ba3f3befaa6203307702e55ecf71c9fbafe4b7"
       }
     },
     "isLatestOfDay": true,
@@ -213,9 +213,12 @@
       1363,
       1364,
       1365,
-      1367
+      1367,
+      1368
     ],
     "commitSubjects": [
+      "test: preserve SQLite renderer performance boundary (#1369)",
+      "chore: prepare v26.8.1000-dev (#1368)",
       "fix: repair SQLite browser regression boundary (#1367)",
       "chore: prepare v26.8.900-dev (#1365)",
       "fix: restore map backgrounds in both clients (#1364)",
