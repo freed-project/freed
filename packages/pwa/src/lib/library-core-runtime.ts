@@ -14,7 +14,7 @@ import {
   type LibraryCoreOperationInstanceId,
 } from "@freed/shared/library-core";
 import type { FilterOptions } from "@freed/shared";
-import type { BoundedFeedReader } from "@freed/ui/context";
+import type { BoundedFeedReader, ScanLibraryItems } from "@freed/ui/context";
 import {
   createGoogleDriveLibraryCoreAdapterV1,
   createGoogleDriveLibraryCoreIntentAdapterV1,
@@ -34,6 +34,7 @@ export const PWA_LIBRARY_CORE_ENABLED_KEY =
 const DATABASE_NAME = "freed-library-core-portable-v1";
 const MAXIMUM_INITIAL_FEED_ITEMS = 512;
 const COLLECTION_PAGE_LIMIT = 128;
+const LIBRARY_SCAN_PAGE_LIMIT = 32;
 const MAXIMUM_INTENT_SEGMENTS_PER_SYNC = 128;
 
 type LibraryCoreStateListener = (state: DocState) => void;
@@ -182,6 +183,52 @@ export async function enqueuePwaLibraryCoreReadAssignments(
     entityIds: globalIds,
     readAtMs: Date.now(),
   });
+}
+
+/**
+ * Visit the complete selected PWA Library one bounded IndexedDB page at a time.
+ *
+ * Shared search, facet, and command surfaces already consume this contract
+ * without retaining the scanned corpus. Keeping the adapter here means an
+ * active Library Core PWA never has to restart Automerge merely to search
+ * beyond its initial renderer window.
+ */
+export const scanPwaLibraryCoreItems: ScanLibraryItems = async (visit) => {
+  const store = getPortableStore();
+  let afterOrdinal: number | null = null;
+  do {
+    const page = await store.readSelectedCollectionPage({
+      afterOrdinal,
+      collection: "materialized_rows",
+      limit: LIBRARY_SCAN_PAGE_LIMIT,
+    });
+    const items: FeedItem[] = [];
+    for (const entry of page.entries) {
+      const materialized = materializedEntry(entry.value);
+      if (materialized?.registryKey === "10_feed_items") {
+        items.push(materialized.row as FeedItem);
+      }
+    }
+    if (items.length > 0 && (await visit(Object.freeze(items))) === "stop") {
+      return;
+    }
+    afterOrdinal = page.nextOrdinal;
+  } while (afterOrdinal !== null);
+};
+
+/** Read one complete FeedItem from the selected IndexedDB generation. */
+export async function readPwaLibraryCoreItemDetail(
+  globalId: string,
+): Promise<FeedItem | null> {
+  const row = await getPortableStore().readSelectedMaterializedRow(
+    "10_feed_items",
+    globalId,
+  );
+  if (row === null) return null;
+  if (row.globalId !== globalId) {
+    throw new Error("Selected PWA Library item identity is inconsistent");
+  }
+  return row as unknown as FeedItem;
 }
 
 function supportsPortableFeedFilter(filter: FilterOptions): boolean {

@@ -84,6 +84,8 @@ import { hydrateReaderItemInPwa, pinReaderItemInPwa } from "./lib/reader-cache";
 import {
   isPwaLibraryCoreEnabled,
   openPwaLibraryCoreFeedReader,
+  readPwaLibraryCoreItemDetail,
+  scanPwaLibraryCoreItems,
 } from "./lib/library-core-runtime";
 import {
   refreshSampleLibraryData,
@@ -443,19 +445,25 @@ function App() {
         try {
           const cached = await getCachedArticleHtml(globalId);
           if (cached) return cached;
-          const legacyHtml = await getItemLegacyHtml(globalId);
-          if (!legacyHtml) return null;
-          const item = useAppStore
-            .getState()
-            .items.find((candidate) => candidate.globalId === globalId);
+          const libraryCoreEnabled = isPwaLibraryCoreEnabled();
+          const item = libraryCoreEnabled
+            ? await readPwaLibraryCoreItemDetail(globalId)
+            : useAppStore
+                .getState()
+                .items.find((candidate) => candidate.globalId === globalId) ??
+              null;
+          const html = libraryCoreEnabled
+            ? item?.preservedContent?.html ?? null
+            : await getItemLegacyHtml(globalId);
+          if (!html) return null;
           const articleUrl =
             item?.content.linkPreview?.url ??
             item?.sourceUrl ??
             `/reader-item/${encodeURIComponent(globalId)}`;
-          await cacheArticleHtml(articleUrl, globalId, legacyHtml, {
+          await cacheArticleHtml(articleUrl, globalId, html, {
             pinned: item?.userState.saved ?? false,
           }).catch(() => {});
-          return legacyHtml;
+          return html;
         } catch {
           return null;
         }
@@ -468,6 +476,12 @@ function App() {
       openUrl: openPwaUrl,
       openBoundedFeedReader: isPwaLibraryCoreEnabled()
         ? openPwaLibraryCoreFeedReader
+        : undefined,
+      scanLibraryItems: isPwaLibraryCoreEnabled()
+        ? scanPwaLibraryCoreItems
+        : undefined,
+      readLibraryItemDetail: isPwaLibraryCoreEnabled()
+        ? readPwaLibraryCoreItemDetail
         : undefined,
       bugReporting: pwaBugReporting,
     }),
