@@ -1599,7 +1599,7 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
   if (isSqliteLibraryActive()) {
     stopCloudSync(provider);
     if (!isSqliteLibraryGoogleDriveSyncEnabled()) {
-      throw new Error("SQLite Library cloud sync is awaiting its Drive activation review.");
+      throw new Error("SQLite Library cloud sync is disabled on this Freed Desktop.");
     }
     if (provider !== "gdrive") {
       throw new Error("SQLite Library sync currently requires Google Drive.");
@@ -2380,7 +2380,7 @@ export function scheduleCloudUpload(
 export async function syncCloudProviderNow(provider: CloudProvider): Promise<void> {
   if (isSqliteLibraryActive()) {
     if (!isSqliteLibraryGoogleDriveSyncEnabled()) {
-      throw new Error("SQLite Library cloud sync is awaiting its Drive activation review.");
+      throw new Error("SQLite Library cloud sync is disabled on this Freed Desktop.");
     }
     if (provider !== "gdrive") {
       throw new Error("SQLite Library sync currently requires Google Drive.");
@@ -2489,7 +2489,7 @@ export async function transferSqliteLibraryWriterToThisDesktop(): Promise<void> 
     throw new Error("SQLite Library is not active.");
   }
   if (!isSqliteLibraryGoogleDriveSyncEnabled()) {
-    throw new Error("SQLite Library cloud sync is awaiting its Drive activation review.");
+    throw new Error("SQLite Library cloud sync is disabled on this Freed Desktop.");
   }
   const provider: CloudProvider = "gdrive";
   const generation = currentCloudGeneration(provider);

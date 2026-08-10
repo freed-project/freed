@@ -130,6 +130,16 @@
         "read_cutover_parity",
         "same_frontier_rollback_receipt"
       ]
+    },
+    {
+      "activationId": "sqlite-library-google-drive-replication-v1",
+      "gate": "E",
+      "kind": "replication_protocol_activation",
+      "rollbackTrigger": "Set freed.libraryCore.immutableGoogleDriveV1.enabled and freed.libraryCore.pwaIndexedDbV1.enabled to 0 on the affected devices if immutable checkpoint convergence, epoch-scoped intent publication, result reconciliation, or bounded memory diverges from the retained local SQLite state.",
+      "receiptExpectations": [
+        "replication_convergence",
+        "same_frontier_rollback_receipt"
+      ]
     }
   ]
 }

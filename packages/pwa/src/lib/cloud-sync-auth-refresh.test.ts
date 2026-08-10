@@ -56,6 +56,7 @@ describe("PWA cloud sync auth refresh", () => {
     compareDocMock.mockReset();
     compareDocMock.mockResolvedValue("equal");
     localStorage.clear();
+    localStorage.setItem("freed.libraryCore.pwaIndexedDbV1.enabled", "0");
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       access_token: "refreshed-access-token",
       expires_in: 3600,

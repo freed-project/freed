@@ -113,6 +113,7 @@ describe("PWA store factory reset write boundary", () => {
     vi.resetModules();
     vi.clearAllMocks();
     localStorage.clear();
+    localStorage.setItem("freed.libraryCore.pwaIndexedDbV1.enabled", "0");
   });
 
   it("rejects graph and preference writes after local writers quiesce", async () => {

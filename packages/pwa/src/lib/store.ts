@@ -188,10 +188,12 @@ function optimisticMutationTestFailure(source: string): Error | null {
   return message ? new Error(message) : null;
 }
 
-function assertPwaStoreWritable(): void {
+function assertPwaStoreWritable(options: {
+  readonly allowLibraryCoreIntent?: boolean;
+} = {}): void {
   if (storeQuiesced) throw new Error("PWA store is quiesced for factory reset");
   assertPwaRuntimeCurrent();
-  if (isPwaLibraryCoreEnabled()) {
+  if (isPwaLibraryCoreEnabled() && options.allowLibraryCoreIntent !== true) {
     throw new Error(
       "This SQLite Library is read-only until its PWA intent outbox is active",
     );
@@ -204,9 +206,15 @@ async function runOptimisticMutation(
   source: string,
   project: (state: AppState) => OptimisticPatch | null,
   task: () => Promise<void>,
-  options: { recordFailure?: boolean; waitForPersistence?: boolean } = {},
+  options: {
+    allowLibraryCoreIntent?: boolean;
+    recordFailure?: boolean;
+    waitForPersistence?: boolean;
+  } = {},
 ): Promise<void> {
-  assertPwaStoreWritable();
+  assertPwaStoreWritable({
+    allowLibraryCoreIntent: options.allowLibraryCoreIntent,
+  });
   const projected = project(getState());
   if (!projected) {
     if (options.waitForPersistence === false) {
@@ -530,7 +538,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       "pwa:readState",
       (state) => projectMarkItemsAsRead(state, [id]),
       () => docMarkAsRead(id),
-      { recordFailure: false },
+      { allowLibraryCoreIntent: true, recordFailure: false },
     );
   },
 
@@ -556,7 +564,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         "pwa:readState",
         (state) => projectMarkItemsAsRead(state, nextIds),
         () => docMarkItemsAsRead(nextIds),
-        { recordFailure: false },
+        { allowLibraryCoreIntent: true, recordFailure: false },
       );
       recordReadStateInfo(
         `Flushed ${nextIds.length.toLocaleString()} read mark${nextIds.length === 1 ? "" : "s"}`,

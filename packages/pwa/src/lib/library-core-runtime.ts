@@ -160,9 +160,9 @@ function publishState(state: DocState): void {
 
 export function isPwaLibraryCoreEnabled(): boolean {
   try {
-    return localStorage.getItem(PWA_LIBRARY_CORE_ENABLED_KEY) === "1";
+    return localStorage.getItem(PWA_LIBRARY_CORE_ENABLED_KEY) !== "0";
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -305,7 +305,8 @@ export async function openPwaLibraryCoreFeedReader(
 
 /**
  * Import the sole published immutable Desktop checkpoint into IndexedDB.
- * This path is dormant unless the explicit local activation key is set.
+ * This is the production PWA Library path. Setting the activation key to
+ * `"0"` is the local emergency rollback switch.
  */
 export async function syncPwaLibraryCoreFromGoogleDrive(input: {
   readonly accessToken: string;
