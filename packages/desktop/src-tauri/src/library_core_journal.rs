@@ -1,9 +1,8 @@
-//! Dormant authoritative Library Core SQLite journal.
+//! Authoritative Library Core SQLite journal.
 //!
-//! The module is deliberately unreachable from production entry points. It
-//! defines the crash-safe commit boundary that a later native canonical and
-//! signature verifier may call. The verified input types are private to this
-//! module so renderer IPC cannot manufacture authority by matching a Rust
+//! Production entry points reach this module only through the native runtime,
+//! canonical verifier, and enrolled actor. The verified input types remain
+//! private so renderer IPC cannot manufacture authority by matching a Rust
 //! struct's shape.
 
 use rusqlite::config::DbConfig;
@@ -12,6 +11,7 @@ use rusqlite::{
     params, Connection, OpenFlags, OptionalExtension, Result as SqlResult, Transaction,
     TransactionBehavior,
 };
+use sha2::{Digest, Sha256};
 use std::fmt;
 use std::path::Path;
 use std::time::Duration;
@@ -23,15 +23,21 @@ mod enrollment_verifier;
 #[path = "library_core_journal_operation_verifier.rs"]
 mod operation_verifier;
 
-const AUTHORITATIVE_SCHEMA_VERSION: i64 = 2;
+const AUTHORITATIVE_SCHEMA_VERSION: i64 = 3;
 // ASCII "FREE" in SQLite's 32-bit application_id header field.
 const AUTHORITATIVE_APPLICATION_ID: i64 = 0x4652_4545;
 const AUTHORITATIVE_SCHEMA_V1_SQL: &str =
     include_str!("../../../shared/src/library-core/authoritative-schema-v1.sql");
-const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 1] = [(
-    2,
-    include_str!("../../../shared/src/library-core/authoritative-migration-002.sql"),
-)];
+const AUTHORITATIVE_SCHEMA_MIGRATIONS: [(i64, &str); 2] = [
+    (
+        2,
+        include_str!("../../../shared/src/library-core/authoritative-migration-002.sql"),
+    ),
+    (
+        3,
+        include_str!("../../../shared/src/library-core/authoritative-migration-003.sql"),
+    ),
+];
 
 fn apply_schema_range(
     transaction: &Transaction<'_>,
@@ -103,6 +109,17 @@ const ENROLLMENT_OUTBOX_PAGE_SQL: &str = "
        )
     ORDER BY outbox.enqueuedAtMs, outbox.enrollmentOperationId COLLATE BINARY
     LIMIT ?3;";
+const RESULT_OUTBOX_PAGE_SQL: &str = "
+    SELECT resultOperationId, actorId, resultSequence, intentOperationId,
+           intentSequence, status, providerReceiptDigest, enqueuedAtMs
+    FROM library_core_intent_result_outbox
+    WHERE libraryId = ?1 AND epochId = ?2 AND acknowledgedAtMs IS NULL
+      AND (
+        actorId > ?3 COLLATE BINARY
+        OR (actorId = ?3 AND resultSequence > ?4)
+      )
+    ORDER BY actorId COLLATE BINARY, resultSequence
+    LIMIT ?5;";
 
 #[derive(Debug)]
 pub(super) enum JournalError {
@@ -370,6 +387,19 @@ struct EnrollmentOutboxPage {
     entries: Vec<EnrollmentOutboxEntry>,
     next_cursor: Option<EnrollmentOutboxCursor>,
     has_more: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct IntentResultOutboxEntry {
+    pub(crate) result_operation_id: String,
+    pub(crate) actor_id: String,
+    pub(crate) result_sequence: i64,
+    pub(crate) intent_operation_id: String,
+    pub(crate) intent_sequence: i64,
+    pub(crate) status: String,
+    pub(crate) provider_receipt_digest: Option<String>,
+    pub(crate) enqueued_at_ms: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1067,9 +1097,11 @@ impl LibraryCoreJournal {
         &mut self,
         canonical_envelopes: &[Vec<u8>],
         committed_at_ms: i64,
-    ) -> JournalResult<()> {
-        self.verify_and_commit_read_transaction(canonical_envelopes, committed_at_ms)
-            .map(|_| ())
+    ) -> JournalResult<Vec<IntentResultOutboxEntry>> {
+        let verified = self.verify_read_transaction(canonical_envelopes)?;
+        let transaction_id = verified.transaction_id.clone();
+        self.commit_read_transaction(&verified, committed_at_ms)?;
+        self.intent_results_for_transaction(&transaction_id)
     }
 
     fn enroll_actor_in(
@@ -1547,6 +1579,39 @@ impl LibraryCoreJournal {
                     committed_at_ms
                 ],
             )?;
+            let result_digest = Sha256::digest(member.operation_id.as_bytes());
+            let result_digest = Sha256::digest(
+                [
+                    verified.epoch_id.as_bytes(),
+                    b"\0",
+                    result_digest.as_slice(),
+                ]
+                .concat(),
+            );
+            let result_operation_id = format!(
+                "result:accepted:{}",
+                result_digest
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>()
+            );
+            transaction.execute(
+                "INSERT INTO library_core_intent_result_outbox (
+                   resultOperationId, libraryId, epochId, actorId, resultSequence,
+                   intentOperationId, intentSequence, status,
+                   providerReceiptDigest, enqueuedAtMs, acknowledgedAtMs
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'accepted', NULL, ?8, NULL);",
+                params![
+                    result_operation_id,
+                    verified.library_id,
+                    verified.epoch_id,
+                    verified.actor_id,
+                    member.actor_sequence,
+                    member.operation_id,
+                    member.actor_sequence,
+                    committed_at_ms,
+                ],
+            )?;
             product_rows_updated += transaction.execute(
                 "UPDATE library_core_feed_items
                  SET readAt = ?1,
@@ -1649,6 +1714,124 @@ impl LibraryCoreJournal {
         };
         transaction.commit()?;
         Ok(receipt)
+    }
+
+    fn intent_results_for_transaction(
+        &self,
+        transaction_id: &str,
+    ) -> JournalResult<Vec<IntentResultOutboxEntry>> {
+        if !is_operation_id(transaction_id) {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "transaction_id",
+            });
+        }
+        let mut statement = self.connection.prepare(
+            "SELECT result.resultOperationId, result.actorId,
+                    result.resultSequence, result.intentOperationId,
+                    result.intentSequence, result.status,
+                    result.providerReceiptDigest, result.enqueuedAtMs
+             FROM library_core_intent_result_outbox AS result
+             JOIN library_core_operations AS operation
+               ON operation.operationId = result.intentOperationId
+             WHERE operation.transactionId = ?1
+             ORDER BY operation.transactionMemberIndex;",
+        )?;
+        let rows = statement.query_map(params![transaction_id], |row| {
+            Ok(IntentResultOutboxEntry {
+                result_operation_id: row.get(0)?,
+                actor_id: row.get(1)?,
+                result_sequence: row.get(2)?,
+                intent_operation_id: row.get(3)?,
+                intent_sequence: row.get(4)?,
+                status: row.get(5)?,
+                provider_receipt_digest: row.get(6)?,
+                enqueued_at_ms: row.get(7)?,
+            })
+        })?;
+        Ok(rows.collect::<SqlResult<Vec<_>>>()?)
+    }
+
+    pub(crate) fn pending_intent_results(
+        &self,
+        library_id: &str,
+        epoch_id: &str,
+        maximum_entries: usize,
+    ) -> JournalResult<Vec<IntentResultOutboxEntry>> {
+        if !is_lower_hex(library_id, 32)
+            || !is_operation_id(epoch_id)
+            || maximum_entries == 0
+            || maximum_entries > MAX_OUTBOX_PAGE_ENTRIES
+        {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "result_outbox_maximum_entries",
+            });
+        }
+        let mut statement = self.connection.prepare(RESULT_OUTBOX_PAGE_SQL)?;
+        let rows = statement.query_map(
+            params![library_id, epoch_id, "", 0_i64, maximum_entries as i64],
+            |row| {
+                Ok(IntentResultOutboxEntry {
+                    result_operation_id: row.get(0)?,
+                    actor_id: row.get(1)?,
+                    result_sequence: row.get(2)?,
+                    intent_operation_id: row.get(3)?,
+                    intent_sequence: row.get(4)?,
+                    status: row.get(5)?,
+                    provider_receipt_digest: row.get(6)?,
+                    enqueued_at_ms: row.get(7)?,
+                })
+            },
+        )?;
+        Ok(rows.collect::<SqlResult<Vec<_>>>()?)
+    }
+
+    pub(crate) fn acknowledge_intent_results(
+        &mut self,
+        result_operation_ids: &[String],
+        acknowledged_at_ms: i64,
+    ) -> JournalResult<()> {
+        if result_operation_ids.is_empty()
+            || result_operation_ids.len() > MAX_OUTBOX_PAGE_ENTRIES
+            || !(0..=MAX_SAFE_INTEGER).contains(&acknowledged_at_ms)
+            || result_operation_ids
+                .iter()
+                .any(|value| !is_operation_id(value))
+        {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "result_acknowledgement",
+            });
+        }
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        for result_operation_id in result_operation_ids {
+            let existing: Option<i64> = transaction
+                .query_row(
+                    "SELECT enqueuedAtMs FROM library_core_intent_result_outbox
+                     WHERE resultOperationId = ?1;",
+                    params![result_operation_id],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            let Some(enqueued_at_ms) = existing else {
+                return Err(JournalError::InvalidVerifiedInput {
+                    field: "result_acknowledgement",
+                });
+            };
+            if acknowledged_at_ms < enqueued_at_ms {
+                return Err(JournalError::InvalidVerifiedInput {
+                    field: "result_acknowledgement_time",
+                });
+            }
+            transaction.execute(
+                "UPDATE library_core_intent_result_outbox
+                 SET acknowledgedAtMs = COALESCE(acknowledgedAtMs, ?1)
+                 WHERE resultOperationId = ?2;",
+                params![acknowledged_at_ms, result_operation_id],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
     }
 
     fn read_state(&self, entity_id: &str) -> JournalResult<Option<ReadState>> {
@@ -2148,6 +2331,37 @@ mod tests {
             journal.connection.limit(Limit::SQLITE_LIMIT_WORKER_THREADS),
             SQLITE_MAX_WORKER_THREADS
         );
+    }
+
+    #[test]
+    fn upgrades_the_installed_v2_schema_to_v3_without_resetting_the_database() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("library-core.sqlite");
+        let mut connection = Connection::open(&path).expect("create v2 database");
+        {
+            let transaction = connection.transaction().expect("begin v2 schema");
+            apply_schema_range(&transaction, 0, 2).expect("apply v2 schema");
+            transaction.commit().expect("commit v2 schema");
+        }
+        drop(connection);
+
+        let journal = LibraryCoreJournal::open(&path).expect("upgrade v2 journal");
+        let version: i64 = journal
+            .connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read upgraded version");
+        let result_outbox_exists: bool = journal
+            .connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_schema
+                 WHERE type = 'table'
+                   AND name = 'library_core_intent_result_outbox');",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read result outbox catalog entry");
+        assert_eq!(version, AUTHORITATIVE_SCHEMA_VERSION);
+        assert!(result_outbox_exists);
     }
 
     #[test]
@@ -2760,18 +2974,86 @@ mod tests {
         assert_eq!(retry, receipt);
         assert_eq!(retry.first_ingest_sequence, 1);
         assert_eq!(retry.last_ingest_sequence, 1);
-        let counts: (i64, i64, i64) = reopened
+        let results = reopened
+            .intent_results_for_transaction(&verified.transaction_id)
+            .expect("read durable acceptance result");
+        assert_eq!(results.len(), 1);
+        assert_eq!(
+            results[0].intent_operation_id,
+            verified.members[0].operation_id
+        );
+        assert_eq!(results[0].result_sequence, 1);
+        assert_eq!(results[0].status, "accepted");
+        assert_eq!(results[0].provider_receipt_digest, None);
+        let pending = reopened
+            .pending_intent_results(&verified.library_id, &verified.epoch_id, 256)
+            .expect("read pending results after reopen");
+        assert_eq!(pending, results);
+        reopened
+            .acknowledge_intent_results(
+                &[results[0].result_operation_id.clone()],
+                results[0].enqueued_at_ms,
+            )
+            .expect("acknowledge published result");
+        assert!(reopened
+            .pending_intent_results(&verified.library_id, &verified.epoch_id, 256)
+            .expect("read results after acknowledgement")
+            .is_empty());
+        let counts: (i64, i64, i64, i64) = reopened
             .connection
             .query_row(
                 "SELECT
                    (SELECT COUNT(*) FROM library_core_transactions),
                    (SELECT COUNT(*) FROM library_core_operations),
-                   (SELECT COUNT(*) FROM library_core_replication_outbox);",
+                   (SELECT COUNT(*) FROM library_core_replication_outbox),
+                   (SELECT COUNT(*) FROM library_core_intent_result_outbox);",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .expect("row counts");
-        assert_eq!(counts, (1, 1, 1));
+        assert_eq!(counts, (1, 1, 1, 1));
+    }
+
+    #[test]
+    fn result_outbox_failure_rolls_back_the_canonical_intent() {
+        let mut journal = LibraryCoreJournal::open_in_memory().expect("open journal");
+        install_actor_authority(&mut journal);
+        let enrollment = actor();
+        journal.enroll_actor(&enrollment).expect("enroll actor");
+        journal
+            .connection
+            .execute_batch(
+                "CREATE TEMP TRIGGER reject_intent_result
+                 BEFORE INSERT ON library_core_intent_result_outbox
+                 BEGIN
+                   SELECT RAISE(ABORT, 'injected intent result failure');
+                 END;",
+            )
+            .expect("install result failpoint");
+        let verified = transaction(
+            "tx:read:result-failure",
+            1,
+            None,
+            &enrollment.actor_chain_genesis,
+            &[("rss:item:result-failure", 900)],
+        );
+        assert!(matches!(
+            journal.commit_read_transaction(&verified, 1_100),
+            Err(JournalError::Sql(_))
+        ));
+        let counts: (i64, i64, i64, i64) = journal
+            .connection
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM library_core_transactions),
+                   (SELECT COUNT(*) FROM library_core_operations),
+                   (SELECT COUNT(*) FROM library_core_replication_outbox),
+                   (SELECT COUNT(*) FROM library_core_intent_result_outbox);",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .expect("atomic row counts");
+        assert_eq!(counts, (0, 0, 0, 0));
     }
 
     #[test]

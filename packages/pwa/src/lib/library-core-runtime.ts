@@ -12,15 +12,20 @@ import {
   parseLibraryCoreControlPointerV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreOperationInstanceId,
+  type LibraryCoreLowercaseHex64,
 } from "@freed/shared/library-core";
 import type { FilterOptions } from "@freed/shared";
 import type { BoundedFeedReader, ScanLibraryItems } from "@freed/ui/context";
 import {
   createGoogleDriveLibraryCoreAdapterV1,
   createGoogleDriveLibraryCoreIntentAdapterV1,
+  createGoogleDriveLibraryCoreResultAdapterV1,
   discoverGoogleDriveLibraryCoreActorEnrollmentsV1,
+  discoverGoogleDriveLibraryCoreResultHeadV1,
+  discoverGoogleDriveLibraryCoreResultSegmentsV1,
   discoverPublishedGoogleDriveLibraryCoreControlV1,
   importLibraryCorePortableCheckpointV1,
+  importLibraryCoreResultSegmentV1,
   provisionGoogleDriveLibraryCoreIntentHeadV1,
   publishLibraryCoreIntentCandidateV1,
 } from "@freed/sync/cloud";
@@ -36,6 +41,7 @@ const MAXIMUM_INITIAL_FEED_ITEMS = 512;
 const COLLECTION_PAGE_LIMIT = 128;
 const LIBRARY_SCAN_PAGE_LIMIT = 32;
 const MAXIMUM_INTENT_SEGMENTS_PER_SYNC = 128;
+const MAXIMUM_RESULT_SEGMENTS_PER_SYNC = 128;
 
 type LibraryCoreStateListener = (state: DocState) => void;
 
@@ -404,6 +410,70 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
       await store.recordIntentSegmentPublication(published);
       publishedSegmentCount += 1;
       candidate = await store.readUnpublishedIntentSegmentCandidate(actor);
+    }
+  }
+  const resultActors = await store.readIntentActors({
+    epochId: pointer.storageEpoch,
+    libraryId: pointer.libraryId,
+  });
+  for (const actor of resultActors) {
+    const locator = await discoverGoogleDriveLibraryCoreResultHeadV1({
+      accessToken: input.accessToken,
+      actorId: actor.actorId,
+      epochId: pointer.storageEpoch,
+      libraryId: pointer.libraryId,
+      signal: input.signal,
+    });
+    if (locator === null) continue;
+    const resultAdapter = createGoogleDriveLibraryCoreResultAdapterV1({
+      accessToken: input.accessToken,
+      actorId: actor.actorId,
+      controlFileId: discovered.controlFileId,
+      epochId: pointer.storageEpoch,
+      libraryId: pointer.libraryId,
+      resultHeadFileId: locator.resultHeadFileId,
+      signal: input.signal,
+    });
+    const resultHead = (await resultAdapter.readResultHead()).head;
+    if (resultHead.epoch_id !== pointer.storageEpoch) {
+      throw new Error("PWA result head belongs to a retired writer epoch");
+    }
+    const segments = await discoverGoogleDriveLibraryCoreResultSegmentsV1({
+      accessToken: input.accessToken,
+      actorId: actor.actorId,
+      epochId: pointer.storageEpoch,
+      libraryId: pointer.libraryId,
+      signal: input.signal,
+    });
+    if (segments.length > MAXIMUM_RESULT_SEGMENTS_PER_SYNC) {
+      throw new Error("PWA result import exceeded its sync bound");
+    }
+    let nextResultSequence = 1;
+    let previousSegmentDigest: LibraryCoreLowercaseHex64 | null = null;
+    for (const segment of segments) {
+      if (segment.firstResultSequence !== nextResultSequence) {
+        throw new Error("PWA result segment chain has a gap or overlap");
+      }
+      await importLibraryCoreResultSegmentV1({
+        actorId: actor.actorId,
+        adapter: resultAdapter,
+        expectedFirstResultSequence: nextResultSequence,
+        expectedPreviousSegmentDigest: previousSegmentDigest,
+        libraryId: pointer.libraryId,
+        reference: segment.reference,
+        storageEpoch: pointer.storageEpoch,
+        subtle: crypto.subtle,
+        writer: store,
+      });
+      nextResultSequence = segment.lastResultSequence + 1;
+      previousSegmentDigest = segment.reference.descriptor.contentDigest;
+      if (nextResultSequence >= resultHead.next_result_sequence) break;
+    }
+    if (
+      nextResultSequence !== resultHead.next_result_sequence
+      || previousSegmentDigest !== resultHead.latest_segment_digest
+    ) {
+      throw new Error("PWA result objects do not match the actor result head");
     }
   }
   const state = await readSelectedState();

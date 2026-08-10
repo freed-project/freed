@@ -394,4 +394,19 @@ describe("snapshots", () => {
     expect(snapshots).toHaveLength(1);
     expect(snapshots[0]?.reason).toBe("auto");
   });
+
+  it("keeps one self-rearming daily backup chain while Freed remains open", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-01T15:00:00Z"));
+
+    await startSnapshotManager();
+    await vi.advanceTimersByTimeAsync(23 * 60 * 60 * 1000);
+    expect(await listSnapshots()).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+    expect(await listSnapshots()).toHaveLength(2);
+
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
+    expect(await listSnapshots()).toHaveLength(3);
+  });
 });

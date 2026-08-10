@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => ({
   restoreBackup: vi.fn(async () => ({})),
   clearSqliteLibrary: vi.fn(async () => {}),
   acceptActorEnrollment: vi.fn(async () => ({})),
+  acknowledgeIntentResults: vi.fn(async () => {}),
+  readIntentResults: vi.fn(async () => []),
   reassignNative: vi.fn(async () => ({
     authority: {
       library_id: "ab".repeat(32),
@@ -75,6 +77,7 @@ vi.mock("./native-json-store", () => ({
 }));
 
 vi.mock("./sqlite-library", () => ({
+  acknowledgePwaIntentResultOutbox: mocks.acknowledgeIntentResults,
   acceptPwaActorEnrollmentRequest: mocks.acceptActorEnrollment,
   appendPortableSqliteLibraryItems: mocks.appendPortableItems,
   beginPortableSqliteLibraryImport: mocks.beginPortableImport,
@@ -95,6 +98,7 @@ vi.mock("./sqlite-library", () => ({
   }]),
   readSqliteLibrarySyncDescriptor: mocks.readDescriptor,
   readSqliteLibrarySyncPage: mocks.readPage,
+  readPwaIntentResultOutbox: mocks.readIntentResults,
   reassignSqliteLibraryWriterEpoch: mocks.reassignNative,
   restoreSqliteLibraryBackup: mocks.restoreBackup,
   sqliteLibraryStatus: vi.fn(async () => ({ active: true, revision: 7 })),
@@ -375,6 +379,7 @@ describe("SQLite Library Google Drive production wiring", () => {
       generation: 0,
       writerId: mocks.bootstrapAuthority.actor.actor_id,
       header: {
+        epoch: 2,
         epoch_id: "89".repeat(32),
         materializer_position: { frontier_digest: "ef".repeat(32) },
       },

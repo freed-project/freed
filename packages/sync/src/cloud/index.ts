@@ -95,6 +95,16 @@ export {
   type LibraryCoreIntentPublicationResultV1,
 } from "./library-core-intent-publication.js";
 export {
+  importLibraryCoreResultSegmentV1,
+  prepareLibraryCoreResultSegmentV1,
+  type LibraryCoreResultOutboxEntryV1,
+} from "./library-core-result-segments.js";
+export {
+  publishLibraryCoreResultEntriesV1,
+  type LibraryCoreResultHeadReadV1,
+  type LibraryCoreResultPublicationAdapterV1,
+} from "./library-core-result-publication.js";
+export {
   importLibraryCoreOperationSegmentV1,
   prepareLibraryCoreOperationSegmentV1,
   type ImportLibraryCoreOperationSegmentRequestV1,
@@ -108,14 +118,18 @@ export {
   LIBRARY_CORE_GOOGLE_DRIVE_SIMPLE_UPLOAD_LIMIT,
   createGoogleDriveLibraryCoreAdapterV1,
   createGoogleDriveLibraryCoreIntentAdapterV1,
+  createGoogleDriveLibraryCoreResultAdapterV1,
   discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1,
   discoverGoogleDriveLibraryCoreActorEnrollmentsV1,
   discoverGoogleDriveLibraryCoreControlV1,
   discoverGoogleDriveLibraryCoreIntentHeadV1,
   discoverGoogleDriveLibraryCoreIntentSegmentsV1,
+  discoverGoogleDriveLibraryCoreResultHeadV1,
+  discoverGoogleDriveLibraryCoreResultSegmentsV1,
   discoverPublishedGoogleDriveLibraryCoreControlV1,
   provisionGoogleDriveLibraryCoreControlV1,
   provisionGoogleDriveLibraryCoreIntentHeadV1,
+  provisionGoogleDriveLibraryCoreResultHeadV1,
   type GoogleDriveLibraryCoreAdapterOptionsV1,
   type GoogleDriveLibraryCoreControlLocatorV1,
   type GoogleDriveLibraryCoreIntentAdapterOptionsV1,
@@ -123,9 +137,13 @@ export {
   type DiscoveredGoogleDriveLibraryCoreActorEnrollmentRequestV1,
   type DiscoveredGoogleDriveLibraryCoreActorEnrollmentV1,
   type DiscoveredGoogleDriveLibraryCoreIntentSegmentV1,
+  type DiscoveredGoogleDriveLibraryCoreResultSegmentV1,
+  type GoogleDriveLibraryCoreResultAdapterOptionsV1,
+  type GoogleDriveLibraryCoreResultHeadLocatorV1,
   type PublishedGoogleDriveLibraryCoreControlV1,
   type ProvisionedGoogleDriveLibraryCoreControlV1,
   type ProvisionedGoogleDriveLibraryCoreIntentHeadV1,
+  type ProvisionedGoogleDriveLibraryCoreResultHeadV1,
 } from "./library-core-google-drive-adapter.js";
 export {
   LIBRARY_CORE_STORED_WIRE_OBJECT_BYTE_CEILING,
