@@ -114,11 +114,30 @@ describe("PWA store startup maintenance", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    localStorage.setItem("freed.libraryCore.pwaIndexedDbV1.enabled", "0");
     resetDeviceDisplayPreferencesForTests();
     resetDeviceGraphLayoutForTests();
     useAppStore.setState(useAppStore.getInitialState(), true);
     automerge.initDoc.mockResolvedValue(makeDocState());
     automerge.docBackfillContentSignals.mockResolvedValue(makeBackfillSummary(0, 0));
+  });
+
+  it("admits SQLite read intents while unsupported mutations remain read-only", async () => {
+    localStorage.removeItem("freed.libraryCore.pwaIndexedDbV1.enabled");
+
+    await useAppStore.getState().markAsRead("item-read-intent");
+    await useAppStore
+      .getState()
+      .markItemsAsRead(["item-read-intent-2", "item-read-intent-3"]);
+
+    expect(automerge.docMarkAsRead).toHaveBeenCalledWith("item-read-intent");
+    expect(automerge.docMarkItemsAsRead).toHaveBeenCalledWith([
+      "item-read-intent-2",
+      "item-read-intent-3",
+    ]);
+    await expect(
+      useAppStore.getState().toggleSaved("unsupported-item"),
+    ).rejects.toThrow("read-only until its PWA intent outbox is active");
   });
 
   it("keeps graph placement local to this PWA", async () => {

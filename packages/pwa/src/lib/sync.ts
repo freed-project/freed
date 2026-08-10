@@ -255,6 +255,7 @@ const UPLOAD_DEBOUNCE_MS = 2_000;
 const TOKEN_REFRESH_SKEW_MS = 60_000;
 const GOOGLE_TOKEN_REFRESH_FALLBACK_TTL_MS = 55 * 60 * 1000;
 const AUTH_FAILURE_REFRESH_COOLDOWN_MS = 5 * 60 * 1000;
+const LIBRARY_CORE_REFRESH_INTERVAL_MS = 60_000;
 
 let cloudAbort: AbortController | null = null;
 let uploadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -317,6 +318,60 @@ function trackCloudUpload(upload: Promise<void>): Promise<void> {
   cloudInFlightUploads.add(upload);
   void upload.finally(() => cloudInFlightUploads.delete(upload)).catch(() => {});
   return upload;
+}
+
+function waitForLibraryCoreRefresh(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(resolve, LIBRARY_CORE_REFRESH_INTERVAL_MS);
+    signal.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+}
+
+async function runPwaLibraryCoreRefreshLoop(input: {
+  readonly generation: number;
+  readonly provider: CloudProvider;
+  readonly resolveToken: () => Promise<string>;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  while (isCloudGenerationCurrent(input.generation, input.signal)) {
+    await waitForLibraryCoreRefresh(input.signal);
+    if (!isCloudGenerationCurrent(input.generation, input.signal)) return;
+    try {
+      markCloudAttempt(
+        input.provider,
+        "poll",
+        "Checking for a newer immutable SQLite Library generation.",
+      );
+      const token = await input.resolveToken();
+      await syncPwaLibraryCoreFromGoogleDrive({
+        accessToken: token,
+        signal: input.signal,
+      });
+      if (!isCloudGenerationCurrent(input.generation, input.signal)) return;
+      markCloudSuccess(input.provider, {
+        stage: "idle",
+        lastDownloadAt: Date.now(),
+        lastMergeAt: Date.now(),
+        statusMessage: "SQLite Library is current.",
+        pendingReason: "Waiting for the next immutable Library generation.",
+        eventMessage: "Checked the immutable SQLite Library generation.",
+      });
+    } catch (error) {
+      if (!isCloudGenerationCurrent(input.generation, input.signal)) return;
+      markCloudError(input.provider, "poll", error);
+    }
+  }
 }
 
 async function waitForCloudSettlement(): Promise<void> {
@@ -803,6 +858,17 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
         statusMessage: "SQLite Library checkpoint loaded.",
         pendingReason: "Waiting for the next immutable Library generation.",
         eventMessage: "Imported the latest immutable SQLite Library checkpoint.",
+      });
+      void trackCloudOperation(
+        runPwaLibraryCoreRefreshLoop({
+          generation,
+          provider,
+          resolveToken,
+          signal,
+        }),
+      ).catch((error) => {
+        if (!isCloudGenerationCurrent(generation, signal)) return;
+        markCloudError(provider, "poll", error);
       });
     } catch (error) {
       if (isCloudGenerationCurrent(generation, signal)) {

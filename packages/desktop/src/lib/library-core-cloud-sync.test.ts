@@ -236,12 +236,14 @@ vi.mock("@freed/sync/cloud", async (importOriginal) => {
 });
 
 import {
+  isSqliteLibraryGoogleDriveSyncEnabled,
   makeThisSqliteLibraryDesktopWriter,
   publishCurrentSqliteLibraryToGoogleDrive,
 } from "./library-core-cloud-sync";
 
 describe("SQLite Library Google Drive production wiring", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     mocks.nativeState = null;
     mocks.controlRead = {
       revision: '"etag-1"',
@@ -274,6 +276,15 @@ describe("SQLite Library Google Drive production wiring", () => {
       ],
       nextOffset: null,
     });
+  });
+
+  it("enables immutable Drive sync by default with an explicit local rollback", () => {
+    expect(isSqliteLibraryGoogleDriveSyncEnabled()).toBe(true);
+    window.localStorage.setItem(
+      "freed.libraryCore.immutableGoogleDriveV1.enabled",
+      "0",
+    );
+    expect(isSqliteLibraryGoogleDriveSyncEnabled()).toBe(false);
   });
 
   it("streams the exact SQLite revision into one immutable checkpoint publication", async () => {

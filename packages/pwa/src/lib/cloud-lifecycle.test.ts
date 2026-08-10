@@ -92,6 +92,7 @@ describe("PWA cloud lifecycle", () => {
     gdriveStartPollLoopMock.mockResolvedValue(undefined);
     dropboxStartLongpollLoopMock.mockResolvedValue(undefined);
     localStorage.clear();
+    localStorage.setItem("freed.libraryCore.pwaIndexedDbV1.enabled", "0");
   });
 
   afterEach(async () => {

@@ -17,6 +17,8 @@ vi.mock("./factory-reset-coordinator", () => ({
 }));
 
 import {
+  PWA_LIBRARY_CORE_ENABLED_KEY,
+  isPwaLibraryCoreEnabled,
   readPwaLibraryCoreItemDetail,
   scanPwaLibraryCoreItems,
 } from "./library-core-runtime";
@@ -32,8 +34,15 @@ function entry(registryKey: string, globalId: string) {
 
 describe("PWA Library Core bounded scanner", () => {
   beforeEach(() => {
+    localStorage.clear();
     mocks.readSelectedCollectionPage.mockReset();
     mocks.readSelectedMaterializedRow.mockReset();
+  });
+
+  it("uses IndexedDB Library Core by default with an explicit local rollback", () => {
+    expect(isPwaLibraryCoreEnabled()).toBe(true);
+    localStorage.setItem(PWA_LIBRARY_CORE_ENABLED_KEY, "0");
+    expect(isPwaLibraryCoreEnabled()).toBe(false);
   });
 
   it("pages the selected IndexedDB generation and stops without reading another page", async () => {

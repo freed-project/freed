@@ -94,12 +94,17 @@ interface RunningLibraryCoreCloudSync {
 
 let running: RunningLibraryCoreCloudSync | null = null;
 
-/** Remain provider-silent until the reviewed Drive activation gate is set. */
+/**
+ * Immutable Drive sync is the production SQLite Library transport.
+ *
+ * The legacy `"1"` opt-in remains valid. Setting this key to `"0"` is the
+ * local emergency rollback switch and is the only value that disables it.
+ */
 export function isSqliteLibraryGoogleDriveSyncEnabled(): boolean {
   try {
-    return window.localStorage.getItem(ACTIVATION_KEY) === "1";
+    return window.localStorage.getItem(ACTIVATION_KEY) !== "0";
   } catch {
-    return false;
+    return true;
   }
 }
 
