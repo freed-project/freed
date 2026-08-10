@@ -40,6 +40,10 @@ import {
   capturePwaRuntimeLifecycle,
   registerPwaFactoryResetQuiesceHandler,
 } from "./factory-reset-coordinator";
+import {
+  isPwaLibraryCoreEnabled,
+  syncPwaLibraryCoreFromGoogleDrive,
+} from "./library-core-runtime";
 
 const syncRuntimeLifecycle = capturePwaRuntimeLifecycle();
 
@@ -771,6 +775,45 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
   const { signal } = cloudAbort;
   const resolveToken = () =>
     requireCloudTokenForGeneration(provider, token, generation, signal);
+  if (isPwaLibraryCoreEnabled()) {
+    if (provider !== "gdrive") {
+      throw new Error("The SQLite Library PWA currently requires Google Drive");
+    }
+    isCloudConnectedState = true;
+    notifyStatus();
+    updateCloudProvider(provider, {
+      status: "connecting",
+      stage: "download",
+      lastAttemptAt: Date.now(),
+      statusMessage: "Loading the SQLite Library checkpoint.",
+      pendingReason: undefined,
+      error: undefined,
+    });
+    try {
+      const resolvedToken = await resolveToken();
+      await syncPwaLibraryCoreFromGoogleDrive({
+        accessToken: resolvedToken,
+        signal,
+      });
+      if (!isCloudGenerationCurrent(generation, signal)) return;
+      markCloudSuccess(provider, {
+        stage: "idle",
+        lastDownloadAt: Date.now(),
+        lastMergeAt: Date.now(),
+        statusMessage: "SQLite Library checkpoint loaded.",
+        pendingReason: "Waiting for the next immutable Library generation.",
+        eventMessage: "Imported the latest immutable SQLite Library checkpoint.",
+      });
+    } catch (error) {
+      if (isCloudGenerationCurrent(generation, signal)) {
+        isCloudConnectedState = false;
+        notifyStatus();
+        markCloudError(provider, "download", error);
+      }
+      throw error;
+    }
+    return;
+  }
   await ensureDocumentReady();
   if (!isCloudGenerationCurrent(generation, signal)) return;
 
@@ -1250,6 +1293,38 @@ async function runInitialCloudDownload(
 /** Run an immediate cloud sync pass without waiting for the debounce timer. */
 export async function syncCloudProviderNow(provider: CloudProvider): Promise<void> {
   const generation = cloudGeneration;
+  if (isPwaLibraryCoreEnabled()) {
+    if (provider !== "gdrive") {
+      throw new Error("The SQLite Library PWA currently requires Google Drive");
+    }
+    const token = await resolveCloudTokenForGeneration(
+      provider,
+      undefined,
+      generation,
+    );
+    if (!token) throw new Error("Cloud token missing. Reconnect the provider.");
+    const controller = cloudAbort ? null : new AbortController();
+    if (controller) cloudTransientAborts.add(controller);
+    const signal = cloudAbort?.signal ?? controller!.signal;
+    markCloudAttempt(provider, "download", "Refreshing the SQLite Library checkpoint.");
+    try {
+      await trackCloudOperation(
+        syncPwaLibraryCoreFromGoogleDrive({ accessToken: token, signal }),
+      );
+      if (!isCloudGenerationCurrent(generation, signal)) return;
+      markCloudSuccess(provider, {
+        stage: "idle",
+        lastDownloadAt: Date.now(),
+        lastMergeAt: Date.now(),
+        statusMessage: "SQLite Library checkpoint refreshed.",
+        pendingReason: "Waiting for the next immutable Library generation.",
+        eventMessage: "Refreshed the immutable SQLite Library checkpoint.",
+      });
+    } finally {
+      if (controller) cloudTransientAborts.delete(controller);
+    }
+    return;
+  }
   await ensureDocumentReady();
   if (!isCloudGenerationCurrent(generation)) return;
   const token = await resolveCloudTokenForGeneration(provider, undefined, generation);

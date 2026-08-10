@@ -102,7 +102,7 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
         ordinal,
         value: {
           primary_key: `item-${ordinal}`,
-          registry_key: "feedItems",
+          registry_key: "10_feed_items",
           row: { globalId: `item-${ordinal}`, saved: ordinal === 0 },
         },
       }) as const;
@@ -285,7 +285,7 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
     await reopened.quiesce();
 
     const generationCount = await new Promise<number>((resolve, reject) => {
-      const request = indexedDB.open(databaseName, 4);
+      const request = indexedDB.open(databaseName);
       request.onsuccess = () => {
         const database = request.result;
         const transaction = database.transaction(

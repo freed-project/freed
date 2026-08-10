@@ -290,7 +290,7 @@ test("PWA admits only enrolled signed operations and atomically materializes rea
       ordinal: 0,
       value: {
         primary_key: "item-1",
-        registry_key: "feedItems",
+        registry_key: "10_feed_items",
         row: {
           globalId: "item-1",
           publishedAt: 200,
@@ -304,7 +304,7 @@ test("PWA admits only enrolled signed operations and atomically materializes rea
       ordinal: 1,
       value: {
         primary_key: "item-2",
-        registry_key: "feedItems",
+        registry_key: "10_feed_items",
         row: {
           globalId: "item-2",
           publishedAt: 100,
@@ -435,7 +435,7 @@ test("PWA admits only enrolled signed operations and atomically materializes rea
     });
     const readState = await store.readSelectedReadState("item-1");
     const row = await store.readSelectedMaterializedRow(
-      "feedItems",
+      "10_feed_items",
       "item-1",
     );
     const feedStale =

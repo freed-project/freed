@@ -9,6 +9,7 @@ import {
 import {
   createGoogleDriveLibraryCoreAdapterV1,
   discoverGoogleDriveLibraryCoreControlV1,
+  discoverPublishedGoogleDriveLibraryCoreControlV1,
   provisionGoogleDriveLibraryCoreControlV1,
 } from "./library-core-google-drive-adapter.js";
 
@@ -279,6 +280,55 @@ describe("Google Drive Library Core immutable adapter", () => {
     expect(query).toContain("freedObjectKind");
     expect(query).toContain("freedLibraryDigest");
     expect(query).not.toContain("name =");
+  });
+
+  it("discovers a fresh PWA library identity from the sole published control", async () => {
+    const fake = new FakeGoogleDrive();
+    const manifestDigest = "22".repeat(32);
+    fake.addControl(
+      "control-1",
+      bytes(
+        JSON.stringify({
+          activeTransport: "google_drive_app_data_v1",
+          causalFrontierDigest: "11".repeat(32),
+          generation: 1,
+          libraryId: "library-1",
+          manifest: {
+            descriptor: {
+              byteLength: 10,
+              contentDigest: manifestDigest,
+              objectKey: createLibraryCoreImmutableObjectKey({
+                kind: "checkpoint_manifest",
+                libraryId: "library-1",
+                epochId: "epoch-1",
+                generation: 1,
+                digest: manifestDigest,
+              }),
+            },
+            transportObjectId: "manifest-1",
+          },
+          protocolVersion: 1,
+          schemaVersion: 1,
+          storageEpoch: "epoch-1",
+          writerId: "desktop-1",
+        }),
+      ),
+    );
+
+    const discovered = await discoverPublishedGoogleDriveLibraryCoreControlV1({
+      accessToken: "test-token",
+      googleFetch: fake.fetch,
+    });
+
+    expect(discovered).toMatchObject({
+      controlFileId: "control-1",
+      libraryId: "library-1",
+      control: { revision: '"control-revision-1"' },
+    });
+    expect(discovered?.control.bytes.byteLength).toBeGreaterThan(0);
+    const query = new URL(fake.requests[0]?.url ?? "").searchParams.get("q");
+    expect(query).toContain("freedObjectKind");
+    expect(query).not.toContain("freedLibraryDigest");
   });
 
   it("fails closed when private properties identify duplicate controls", async () => {

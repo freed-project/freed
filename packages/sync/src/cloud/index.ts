@@ -100,9 +100,11 @@ export {
   LIBRARY_CORE_GOOGLE_DRIVE_SIMPLE_UPLOAD_LIMIT,
   createGoogleDriveLibraryCoreAdapterV1,
   discoverGoogleDriveLibraryCoreControlV1,
+  discoverPublishedGoogleDriveLibraryCoreControlV1,
   provisionGoogleDriveLibraryCoreControlV1,
   type GoogleDriveLibraryCoreAdapterOptionsV1,
   type GoogleDriveLibraryCoreControlLocatorV1,
+  type PublishedGoogleDriveLibraryCoreControlV1,
   type ProvisionedGoogleDriveLibraryCoreControlV1,
 } from "./library-core-google-drive-adapter.js";
 export {
