@@ -21,6 +21,7 @@ import {
   isToolingSmokeRunnerPath,
   parseArgs,
   releaseArtifactExistsAtRef,
+  releaseTagExists,
   releaseIdentityValidationArgsForArtifact,
   REPO_ROOT,
 } from "./validate-worktree.mjs";
@@ -77,9 +78,7 @@ test("feature plan for shared changes covers both desktop and pwa surfaces", () 
 
 test("feature plan for sync changes runs the sync package tests", () => {
   const labels = describePlan(
-    buildValidationPlan("feature", [
-      "packages/sync/src/storage/indexeddb.ts",
-    ]),
+    buildValidationPlan("feature", ["packages/sync/src/storage/indexeddb.ts"]),
   );
 
   assert.deepEqual(labels, [
@@ -825,22 +824,14 @@ test("collectReleaseArtifactsToValidate resolves markdown artifacts to their jso
 });
 
 test("daily release metadata does not replay the historical release archive", () => {
-  const dailyArtifact = [
-    "release-notes",
-    "daily",
-    "dev",
-    "26.7.27.json",
-  ].join("/");
-  const releaseArtifact = [
-    "release-notes",
-    "releases",
-    "v26.7.2701-dev",
-  ].join("/");
-
-  assert.deepEqual(
-    collectReleaseArtifactsToValidate([dailyArtifact]),
-    [],
+  const dailyArtifact = ["release-notes", "daily", "dev", "26.7.27.json"].join(
+    "/",
   );
+  const releaseArtifact = ["release-notes", "releases", "v26.7.2701-dev"].join(
+    "/",
+  );
+
+  assert.deepEqual(collectReleaseArtifactsToValidate([dailyArtifact]), []);
 
   assert.deepEqual(
     collectReleaseArtifactsToValidate([
@@ -853,17 +844,12 @@ test("daily release metadata does not replay the historical release archive", ()
 });
 
 test("feature release prep validates only the changed release artifact", () => {
-  const dailyArtifact = [
-    "release-notes",
-    "daily",
-    "dev",
-    "26.7.27.json",
-  ].join("/");
-  const releaseArtifact = [
-    "release-notes",
-    "releases",
-    "v26.7.2701-dev",
-  ].join("/");
+  const dailyArtifact = ["release-notes", "daily", "dev", "26.7.27.json"].join(
+    "/",
+  );
+  const releaseArtifact = ["release-notes", "releases", "v26.7.2701-dev"].join(
+    "/",
+  );
   const releaseValidation = buildValidationPlan("feature", [
     dailyArtifact,
     `${releaseArtifact}.json`,
@@ -940,6 +926,34 @@ test("release artifact base inspection distinguishes absence from Git failure", 
   );
 });
 
+test("release tag inspection distinguishes unpublished releases from Git failure", () => {
+  assert.equal(
+    releaseTagExists("v26.8.1003-dev", () => ({
+      status: 0,
+      stdout: "a\n",
+      stderr: "",
+    })),
+    true,
+  );
+  assert.equal(
+    releaseTagExists("v26.8.1003-dev", () => ({
+      status: 1,
+      stdout: "",
+      stderr: "",
+    })),
+    false,
+  );
+  assert.throws(
+    () =>
+      releaseTagExists("v26.8.1003-dev", () => ({
+        status: 128,
+        stdout: "",
+        stderr: "repository unavailable",
+      })),
+    /repository unavailable/,
+  );
+});
+
 test("feature and production plans validate changed release identity directly", () => {
   for (const [mode, artifactPath, dailyPath] of [
     [
@@ -1007,6 +1021,7 @@ test("release identity execution separates modern releases, historical correctio
         execution = { label, command, args, cwd };
       },
       () => false,
+      () => false,
     ),
     true,
   );
@@ -1033,6 +1048,7 @@ test("release identity execution separates modern releases, historical correctio
         historicalExecution = { label, command, args, cwd };
       },
       () => false,
+      () => false,
     ),
     true,
   );
@@ -1056,6 +1072,7 @@ test("release identity execution separates modern releases, historical correctio
       (label, command, args, cwd) => {
         historicalCorrectionExecution = { label, command, args, cwd };
       },
+      () => true,
       () => true,
     ),
     true,
