@@ -9,6 +9,15 @@ var __assign = (this && this.__assign) || function () {
     };
     return __assign.apply(this, arguments);
 };
+var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
+    if (pack || arguments.length === 2) for (var i = 0, l = from.length, ar; i < l; i++) {
+        if (ar || !(i in from)) {
+            if (!ar) ar = Array.prototype.slice.call(from, 0, i);
+            ar[i] = from[i];
+        }
+    }
+    return to.concat(ar || Array.prototype.slice.call(from));
+};
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import wasm from "vite-plugin-wasm";
@@ -84,7 +93,9 @@ export default defineConfig({
     },
     plugins: [wasm(), topLevelAwait(), react()],
     optimizeDeps: {
-        exclude: tauriMockExclude,
+        exclude: __spreadArray(__spreadArray([], tauriMockExclude, true), [
+            "maplibre-gl/dist/maplibre-gl-worker.mjs",
+        ], false),
     },
     // Tauri development server.
     // strictPort is only enforced when running with the real Tauri binary (tauri:dev),
