@@ -33,6 +33,12 @@ export type LibraryCoreImmutableObjectKeyRequest =
       readonly digest: string;
     })
   | (LibraryScopedObjectRequest & {
+      readonly kind: "actor_enrollment_request";
+      readonly epochId: string;
+      readonly actorId: string;
+      readonly digest: string;
+    })
+  | (LibraryScopedObjectRequest & {
       readonly kind: "operation_segment";
       readonly epochId: string;
       readonly firstSequence: number;
@@ -197,6 +203,11 @@ export function createLibraryCoreImmutableObjectKey(
       assertIdentifier(request.actorId, "actorId");
       assertDigest(request.digest, "digest");
       return `freed-v2-enrollment~${request.libraryId}~${request.epochId}~${request.actorId}~${request.digest}.json`;
+    case "actor_enrollment_request":
+      assertIdentifier(request.epochId, "epochId");
+      assertIdentifier(request.actorId, "actorId");
+      assertDigest(request.digest, "digest");
+      return `freed-v2-enrollment-request~${request.libraryId}~${request.epochId}~${request.actorId}~${request.digest}.json`;
     case "operation_segment":
       assertIdentifier(request.epochId, "epochId");
       assertSequenceRange(request.firstSequence, request.lastSequence);
@@ -435,6 +446,11 @@ const IMMUTABLE_OBJECT_KEY_PATTERNS: readonly ObjectKeyPattern[] = [
   {
     pattern: new RegExp(
       `^freed-v2-enrollment~${ID}~${ID}~${ID}~${DIGEST}\\.json$`,
+    ),
+  },
+  {
+    pattern: new RegExp(
+      `^freed-v2-enrollment-request~${ID}~${ID}~${ID}~${DIGEST}\\.json$`,
     ),
   },
   {

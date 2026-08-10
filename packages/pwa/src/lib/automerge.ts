@@ -47,6 +47,10 @@ import {
   registerPwaFactoryResetQuiesceHandler,
   type PwaRuntimeLifecycle,
 } from "./factory-reset-coordinator";
+import {
+  enqueuePwaLibraryCoreReadAssignments,
+  isPwaLibraryCoreEnabled,
+} from "./library-core-runtime";
 export type { DocState } from "./automerge-types";
 
 // ---------------------------------------------------------------------------
@@ -1230,12 +1234,18 @@ export async function docBackfillContentSignals(
 }
 
 export async function docMarkAsRead(globalId: string): Promise<void> {
+  if (isPwaLibraryCoreEnabled()) {
+    return enqueuePwaLibraryCoreReadAssignments([globalId]);
+  }
   const reqId = nextReqId++;
   return request({ reqId, type: "MARK_AS_READ", globalId });
 }
 
 export async function docMarkItemsAsRead(globalIds: string[]): Promise<void> {
   if (globalIds.length === 0) return;
+  if (isPwaLibraryCoreEnabled()) {
+    return enqueuePwaLibraryCoreReadAssignments(globalIds);
+  }
   const reqId = nextReqId++;
   return request({ reqId, type: "MARK_ITEMS_AS_READ", globalIds });
 }

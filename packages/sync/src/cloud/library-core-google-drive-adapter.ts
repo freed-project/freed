@@ -1,4 +1,5 @@
 import {
+  createLibraryCoreImmutableObjectKey,
   createLibraryCoreIntentHeadObjectKey,
   decodeLibraryCoreCanonicalValue,
   encodeLibraryCoreCanonicalValue,
@@ -8,6 +9,7 @@ import {
   parseLibraryCoreIntentHeadV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreImmutableObjectDescriptorV1,
+  type LibraryCoreImmutableObjectReferenceV1,
   type LibraryCoreIntentHeadV1,
 } from "@freed/shared/library-core";
 import type {
@@ -31,6 +33,8 @@ const MAX_ACCESS_TOKEN_BYTES = 16_384;
 const MAX_DRIVE_FILE_ID_BYTES = 1_024;
 const MAX_LIST_PAGES = 16;
 const MAX_DUPLICATE_IMMUTABLE_OBJECTS = 8;
+const MAX_ACTOR_ENROLLMENT_REQUESTS = 256;
+const MAX_INTENT_SEGMENTS = 1_500;
 const MAX_CONTROL_BYTES = 65_536;
 const MAX_INTENT_HEAD_BYTES = 65_536;
 const MAX_DRIVE_JSON_BYTES = 262_144;
@@ -73,6 +77,20 @@ export interface PublishedGoogleDriveLibraryCoreControlV1
     readonly revision: string;
   };
   readonly libraryId: string;
+}
+
+export interface DiscoveredGoogleDriveLibraryCoreActorEnrollmentRequestV1 {
+  readonly bytes: Uint8Array;
+  readonly reference: LibraryCorePublishedImmutableObjectReceiptV1;
+}
+
+export type DiscoveredGoogleDriveLibraryCoreActorEnrollmentV1 =
+  DiscoveredGoogleDriveLibraryCoreActorEnrollmentRequestV1;
+
+export interface DiscoveredGoogleDriveLibraryCoreIntentSegmentV1 {
+  readonly firstIntentSequence: number;
+  readonly lastIntentSequence: number;
+  readonly reference: LibraryCoreImmutableObjectReferenceV1;
 }
 
 export interface GoogleDriveLibraryCoreAdapterOptionsV1 {
@@ -287,6 +305,7 @@ async function actorIdentityDigest(actorId: string): Promise<string> {
 type LibraryCoreDriveObjectKind =
   | "epoch"
   | "enrollment"
+  | "enrollment_request"
   | "operations"
   | "manifest"
   | "checkpoint"
@@ -300,6 +319,9 @@ type LibraryCoreDriveObjectKind =
 
 function driveObjectKind(objectKey: string): LibraryCoreDriveObjectKind {
   if (objectKey.startsWith("freed-v2-epoch~")) return "epoch";
+  if (objectKey.startsWith("freed-v2-enrollment-request~")) {
+    return "enrollment_request";
+  }
   if (objectKey.startsWith("freed-v2-enrollment~")) return "enrollment";
   if (objectKey.startsWith("freed-v2-ops~")) return "operations";
   if (objectKey.startsWith("freed-v2-manifest~")) return "manifest";
@@ -613,6 +635,230 @@ export async function discoverPublishedGoogleDriveLibraryCoreControlV1(input: {
     control: Object.freeze(control),
     libraryId: pointer.libraryId,
   });
+}
+
+/**
+ * Discover bounded proof-only PWA enrollment requests for one Library.
+ * File names are checked against authenticated app properties and exact bytes;
+ * they are locators, never authority.
+ */
+async function discoverGoogleDriveLibraryCoreActorObjectsV1(input: {
+  readonly accessToken: string;
+  readonly epochId: string;
+  readonly libraryId: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+}, kind: "enrollment" | "enrollment_request"): Promise<readonly DiscoveredGoogleDriveLibraryCoreActorEnrollmentRequestV1[]> {
+  assertBoundedText(
+    input.accessToken,
+    "Google Drive access token",
+    MAX_ACCESS_TOKEN_BYTES,
+  );
+  assertLibraryId(input.libraryId);
+  if (!isLibraryCoreOperationInstanceId(input.epochId)) {
+    throw new TypeError("epochId must be a bounded Library Core identifier");
+  }
+  const googleFetch = input.googleFetch ?? fetch;
+  const libraryDigest = await libraryIdentityDigest(input.libraryId);
+  const files = await listDriveFilesByProperties({
+    accessToken: input.accessToken,
+    properties: Object.freeze({
+      freedProtocol: PROTOCOL_PROPERTY,
+      freedLibraryDigest: libraryDigest,
+      freedObjectKind: kind,
+    }),
+    googleFetch,
+    signal: input.signal,
+    maxFiles: MAX_ACTOR_ENROLLMENT_REQUESTS,
+  });
+  const discovered: DiscoveredGoogleDriveLibraryCoreActorEnrollmentRequestV1[] = [];
+  const epochPrefix = kind === "enrollment_request"
+    ? `freed-v2-enrollment-request~${input.libraryId}~${input.epochId}~`
+    : `freed-v2-enrollment~${input.libraryId}~${input.epochId}~`;
+  for (const file of [...files].filter((candidate) =>
+    candidate.name.startsWith(epochPrefix)
+  ).sort((left, right) =>
+    left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
+  )) {
+    const descriptor = parseLibraryCoreImmutableObjectDescriptorV1({
+      byteLength: file.size,
+      contentDigest: file.appProperties.freedContentDigest,
+      objectKey: file.name,
+    });
+    if (!objectKeyBelongsToLibrary(descriptor.objectKey, input.libraryId)) {
+      throw new Error(`actor ${kind} belongs to another Library`);
+    }
+    const expectedProperties = immutableAppProperties(
+      libraryDigest,
+      descriptor,
+      await objectKeyDigest(descriptor.objectKey),
+    );
+    assertExpectedProperties(
+      file.appProperties,
+      expectedProperties,
+      `actor ${kind} ${descriptor.objectKey}`,
+    );
+    const stored = await readDriveFile({
+      accessToken: input.accessToken,
+      fileId: file.id,
+      googleFetch,
+      signal: input.signal,
+      maxBytes: descriptor.byteLength,
+      label: `actor ${kind} ${descriptor.objectKey}`,
+    });
+    if (
+      stored.bytes.byteLength !== descriptor.byteLength ||
+      (await sha256Hex(stored.bytes)) !== descriptor.contentDigest
+    ) {
+      throw new Error(`actor ${kind} bytes are corrupt`);
+    }
+    discovered.push(
+      Object.freeze({
+        bytes: stored.bytes,
+        reference: Object.freeze({
+          descriptor,
+          transportObjectId: file.id,
+        }),
+      }),
+    );
+  }
+  return Object.freeze(discovered);
+}
+
+export function discoverGoogleDriveLibraryCoreActorEnrollmentRequestsV1(input: {
+  readonly accessToken: string;
+  readonly epochId: string;
+  readonly libraryId: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+}): Promise<readonly DiscoveredGoogleDriveLibraryCoreActorEnrollmentRequestV1[]> {
+  return discoverGoogleDriveLibraryCoreActorObjectsV1(input, "enrollment_request");
+}
+
+export function discoverGoogleDriveLibraryCoreActorEnrollmentsV1(input: {
+  readonly accessToken: string;
+  readonly epochId: string;
+  readonly libraryId: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+}): Promise<readonly DiscoveredGoogleDriveLibraryCoreActorEnrollmentV1[]> {
+  return discoverGoogleDriveLibraryCoreActorObjectsV1(input, "enrollment");
+}
+
+/**
+ * Discover one actor's immutable intent segments in canonical sequence order.
+ *
+ * The actor head remains the publication authority. This bounded listing only
+ * locates referenced immutable bytes so Desktop can verify and import the
+ * exact contiguous chain named by that head.
+ */
+export async function discoverGoogleDriveLibraryCoreIntentSegmentsV1(input: {
+  readonly accessToken: string;
+  readonly actorId: string;
+  readonly libraryId: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+}): Promise<readonly DiscoveredGoogleDriveLibraryCoreIntentSegmentV1[]> {
+  assertBoundedText(
+    input.accessToken,
+    "Google Drive access token",
+    MAX_ACCESS_TOKEN_BYTES,
+  );
+  assertLibraryId(input.libraryId);
+  assertLibraryId(input.actorId);
+  const googleFetch = input.googleFetch ?? fetch;
+  const libraryDigest = await libraryIdentityDigest(input.libraryId);
+  const files = await listDriveFilesByProperties({
+    accessToken: input.accessToken,
+    properties: Object.freeze({
+      freedProtocol: PROTOCOL_PROPERTY,
+      freedLibraryDigest: libraryDigest,
+      freedObjectKind: "intents",
+    }),
+    googleFetch,
+    signal: input.signal,
+    maxFiles: MAX_INTENT_SEGMENTS,
+  });
+  const prefix = `freed-v2-intents~${input.libraryId}~${input.actorId}~s`;
+  const grouped = new Map<string, DriveFileMetadataV1[]>();
+  for (const file of files) {
+    if (!file.name.startsWith(prefix)) continue;
+    const group = grouped.get(file.name) ?? [];
+    group.push(file);
+    if (group.length > MAX_DUPLICATE_IMMUTABLE_OBJECTS) {
+      throw new Error("intent segment has too many duplicate Drive objects");
+    }
+    grouped.set(file.name, group);
+  }
+
+  const discovered: DiscoveredGoogleDriveLibraryCoreIntentSegmentV1[] = [];
+  for (const [objectKey, duplicates] of grouped) {
+    const suffix = objectKey.slice(prefix.length);
+    const match = /^(0|[1-9][0-9]*)-(0|[1-9][0-9]*)~([0-9a-f]{64})\.fseg\.gz$/u.exec(
+      suffix,
+    );
+    if (match === null) throw new Error("intent segment object key is invalid");
+    const firstIntentSequence = Number(match[1]);
+    const lastIntentSequence = Number(match[2]);
+    if (
+      !Number.isSafeInteger(firstIntentSequence)
+      || !Number.isSafeInteger(lastIntentSequence)
+      || firstIntentSequence < 1
+      || lastIntentSequence < firstIntentSequence
+    ) {
+      throw new Error("intent segment sequence range is invalid");
+    }
+    const expectedKey = createLibraryCoreImmutableObjectKey({
+      actorId: input.actorId,
+      digest: match[3]!,
+      firstSequence: firstIntentSequence,
+      kind: "intent_segment",
+      lastSequence: lastIntentSequence,
+      libraryId: input.libraryId,
+    });
+    if (expectedKey !== objectKey) {
+      throw new Error("intent segment object key is not canonical");
+    }
+    const ordered = [...duplicates].sort((left, right) =>
+      left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
+    );
+    for (const file of ordered) {
+      const descriptor = parseLibraryCoreImmutableObjectDescriptorV1({
+        byteLength: file.size,
+        contentDigest: file.appProperties.freedContentDigest,
+        objectKey,
+      });
+      const expectedProperties = immutableAppProperties(
+        libraryDigest,
+        descriptor,
+        await objectKeyDigest(objectKey),
+      );
+      assertExpectedProperties(
+        file.appProperties,
+        expectedProperties,
+        `intent segment ${objectKey}`,
+      );
+    }
+    const selected = ordered[0];
+    if (selected === undefined) continue;
+    discovered.push(Object.freeze({
+      firstIntentSequence,
+      lastIntentSequence,
+      reference: Object.freeze({
+        descriptor: parseLibraryCoreImmutableObjectDescriptorV1({
+          byteLength: selected.size,
+          contentDigest: selected.appProperties.freedContentDigest,
+          objectKey,
+        }),
+        transportObjectId: selected.id,
+      }),
+    }));
+  }
+  discovered.sort((left, right) =>
+    left.firstIntentSequence - right.firstIntentSequence
+      || left.lastIntentSequence - right.lastIntentSequence,
+  );
+  return Object.freeze(discovered);
 }
 
 /**

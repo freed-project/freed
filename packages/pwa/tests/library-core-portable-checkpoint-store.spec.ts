@@ -16,10 +16,12 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
     const frontierDigest = hex("11");
     const materializedDigest = hex("22");
     const generationDigest = hex("aa");
+    const libraryId = hex("01");
+    const epochId = hex("02");
     const descriptor = {
       byteLength: 1,
       contentDigest: generationDigest,
-      objectKey: `freed-v2-manifest~library-1~eepoch-1~g1~${generationDigest}.json`,
+      objectKey: `freed-v2-manifest~${libraryId}~e${epochId}~g1~${generationDigest}.json`,
     };
     const manifestReference = {
       descriptor,
@@ -31,7 +33,7 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
         descriptor: {
           byteLength: 1,
           contentDigest,
-          objectKey: `freed-v2-checkpoint~library-1~eepoch-1~g${generation}~p${pageIndex}~${contentDigest}.fpage.gz`,
+          objectKey: `freed-v2-checkpoint~${libraryId}~e${epochId}~g${generation}~p${pageIndex}~${contentDigest}.fpage.gz`,
         },
         transportObjectId: `drive-page-${generation}-${pageIndex}`,
       };
@@ -41,7 +43,7 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
       datasetSchemaId: "library_core_logical_checkpoint_v1",
       generation: 1,
       kind: "checkpoint_manifest",
-      libraryId: "library-1",
+      libraryId,
       pages: [
         {
           firstRecordIdentity: "00:header",
@@ -60,11 +62,19 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
       ],
       protocolVersion: 1,
       schemaVersion: 1,
-      storageEpoch: "epoch-1",
+      storageEpoch: epochId,
       totalRecordCount: 3,
     } as const;
     const header = {
       anchor_kind: "accepted_authority",
+      accepted_authority: {
+        authority_key_id: hex("03"),
+        authority_public_key: hex("04"),
+        epoch: 1,
+        epoch_id: epochId,
+        library_id: libraryId,
+        observed_frontier: [],
+      },
       canonical_codec_version: 1,
       collection_counts: {
         accepted_frontier: 0,
@@ -79,11 +89,11 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
         tombstones: 0,
       },
       epoch: 1,
-      epoch_id: "epoch-1",
+      epoch_id: epochId,
       field_registry_version: 1,
       format: "freed_logical_checkpoint_v1",
       kind: "logical_checkpoint_header",
-      library_id: "library-1",
+      library_id: libraryId,
       materializer_position: {
         frontier_digest: frontierDigest,
         ingest_sequence: 0,
@@ -173,6 +183,7 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
       manifest,
       manifestReference,
     });
+    const firstEnrollment = await store.preparePwaActorEnrollmentRequest();
     const firstPage = await store.readSelectedCollectionPage({
       afterOrdinal: null,
       collection: "materialized_rows",
@@ -197,6 +208,8 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
       now: () => nowMs,
       subtle: crypto.subtle,
     });
+    const reopenedEnrollment =
+      await reopened.preparePwaActorEnrollmentRequest();
     const reopenedPage = await reopened.readSelectedCollectionPage({
       afterOrdinal: null,
       collection: "materialized_rows",
@@ -254,7 +267,7 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
       descriptor: {
         byteLength: 1,
         contentDigest: abortedDigest,
-        objectKey: `freed-v2-manifest~library-1~eepoch-1~g2~${abortedDigest}.json`,
+        objectKey: `freed-v2-manifest~${libraryId}~e${epochId}~g2~${abortedDigest}.json`,
       },
       transportObjectId: "drive-manifest-2",
     };
@@ -284,18 +297,33 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
     });
     await reopened.quiesce();
 
-    const generationCount = await new Promise<number>((resolve, reject) => {
+    const databaseEvidence = await new Promise<{
+      generationCount: number;
+      privateKeyExtractable: boolean;
+      privateKeyType: string;
+    }>((resolve, reject) => {
       const request = indexedDB.open(databaseName);
       request.onsuccess = () => {
         const database = request.result;
         const transaction = database.transaction(
-          "portable_generations",
+          ["portable_generations", "portable_pwa_actor_identities"],
           "readonly",
         );
         const count = transaction.objectStore("portable_generations").count();
-        count.onsuccess = () => resolve(count.result);
+        const identity = transaction
+          .objectStore("portable_pwa_actor_identities")
+          .get(libraryId);
+        transaction.oncomplete = () => {
+          const privateKey = identity.result.actorPrivateKey as CryptoKey;
+          database.close();
+          resolve({
+            generationCount: count.result,
+            privateKeyExtractable: privateKey.extractable,
+            privateKeyType: privateKey.type,
+          });
+        };
         count.onerror = () => reject(count.error);
-        transaction.oncomplete = () => database.close();
+        identity.onerror = () => reject(identity.error);
       };
       request.onerror = () => reject(request.error);
     });
@@ -318,7 +346,18 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
       expiredFeedResume,
       firstBegin,
       firstPage,
-      generationCount,
+      databaseEvidence,
+      enrollment: firstEnrollment
+        ? {
+            actorId: firstEnrollment.actorId,
+            byteLength: firstEnrollment.immutableObject.source.byteLength,
+            objectKey: firstEnrollment.immutableObject.descriptor.objectKey,
+            request: firstEnrollment.request,
+            stableAfterReopen:
+              reopenedEnrollment?.immutableObject.descriptor.contentDigest ===
+              firstEnrollment.immutableObject.descriptor.contentDigest,
+          }
+        : null,
       incompleteFinalizeRejected,
       receipt,
       reopenedPage,
@@ -364,15 +403,31 @@ test("dormant IndexedDB store atomically stages and pages a complete portable ch
       entries: [{ ordinal: 0, value: { row: { globalId: "item-0" } } }],
       nextOrdinal: 0,
     },
-    generationCount: 1,
+    databaseEvidence: {
+      generationCount: 1,
+      privateKeyExtractable: false,
+      privateKeyType: "private",
+    },
+    enrollment: {
+      byteLength: expect.any(Number),
+      objectKey: expect.stringContaining("freed-v2-enrollment-request"),
+      request: {
+        certificate_body: {
+          actor_enrollment_body: {
+            operation_type: "actor_enrolled",
+          },
+        },
+      },
+      stableAfterReopen: true,
+    },
     incompleteFinalizeRejected: true,
     receipt: {
       frontierDigest: "11".repeat(32),
       ingestSequence: 0,
-      libraryId: "library-1",
+      libraryId: "01".repeat(32),
       materializedDigest: "22".repeat(32),
       recordCount: 3,
-      storageEpoch: "epoch-1",
+      storageEpoch: "02".repeat(32),
     },
     reopenedPage: {
       entries: [{ ordinal: 0 }, { ordinal: 1 }],

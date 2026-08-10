@@ -4,12 +4,17 @@ import {
   type LibraryCoreCanonicalValue,
 } from "./canonical-codec.js";
 import {
+  isLibraryCoreEd25519PublicKeyHex,
   isLibraryCoreLowercaseHex64,
   isLibraryCoreNonnegativeSafeInteger,
   isLibraryCoreOperationInstanceId,
   type LibraryCoreLowercaseHex64,
   type LibraryCoreOperationInstanceId,
 } from "./protocol-scalars.js";
+import {
+  snapshotLibraryCoreCausalFrontier,
+} from "./operation-envelope-contracts.js";
+import type { LibraryCoreAcceptedAuthorityStateV1 } from "./actor-enrollment-verification.js";
 
 export const LIBRARY_CORE_PORTABLE_CHECKPOINT_FORMAT =
   "freed_logical_checkpoint_v1" as const;
@@ -53,6 +58,7 @@ export interface LibraryCorePortableCheckpointHeaderV1 {
   readonly field_registry_version: number;
   readonly canonical_codec_version: number;
   readonly anchor_kind: "accepted_authority" | "transition_candidate";
+  readonly accepted_authority: LibraryCoreAcceptedAuthorityStateV1 | null;
   readonly source_transition_digest: LibraryCoreLowercaseHex64 | null;
   readonly source_manifest_digest: LibraryCoreLowercaseHex64 | null;
   readonly transition_candidate_anchor: Readonly<
@@ -78,6 +84,7 @@ export type LibraryCorePortableCheckpointRecordV1 =
   LibraryCorePortableCheckpointHeaderV1 | LibraryCorePortableCheckpointEntryV1;
 
 const HEADER_KEYS = [
+  "accepted_authority",
   "anchor_kind",
   "canonical_codec_version",
   "collection_counts",
@@ -93,6 +100,14 @@ const HEADER_KEYS = [
   "source_manifest_digest",
   "source_transition_digest",
   "transition_candidate_anchor",
+] as const;
+const ACCEPTED_AUTHORITY_KEYS = [
+  "library_id",
+  "epoch",
+  "epoch_id",
+  "authority_key_id",
+  "authority_public_key",
+  "observed_frontier",
 ] as const;
 const ENTRY_KEYS = ["collection", "kind", "ordinal", "value"] as const;
 const MATERIALIZED_ROW_KEYS = ["primary_key", "registry_key", "row"] as const;
@@ -402,7 +417,8 @@ function parseHeader(value: unknown): LibraryCorePortableCheckpointHeaderV1 {
         transitionCandidateAnchor !== null
       : sourceTransitionDigest !== null ||
         sourceManifestDigest !== null ||
-        transitionCandidateAnchor === null
+        transitionCandidateAnchor === null ||
+        record.accepted_authority !== null
   ) {
     throw new TypeError(
       "portable checkpoint anchor fields do not match anchor_kind",
@@ -439,25 +455,42 @@ function parseHeader(value: unknown): LibraryCorePortableCheckpointHeaderV1 {
     MATERIALIZER_KEYS,
     "portable checkpoint materializer_position",
   );
+  const acceptedAuthority = record.accepted_authority === null
+    ? null
+    : parseAcceptedAuthority(record.accepted_authority);
+  const libraryId = operationId(
+    record.library_id,
+    "portable checkpoint library_id",
+  );
+  const epoch = safeInteger(record.epoch, "portable checkpoint epoch");
+  const epochId = operationId(record.epoch_id, "portable checkpoint epoch_id");
+  if (
+    acceptedAuthority !== null &&
+    (String(acceptedAuthority.library_id) !== String(libraryId) ||
+      acceptedAuthority.epoch !== epoch ||
+      String(acceptedAuthority.epoch_id) !== String(epochId))
+  ) {
+    throw new TypeError(
+      "portable checkpoint accepted authority does not match its header",
+    );
+  }
   return Object.freeze({
+    accepted_authority: acceptedAuthority,
     anchor_kind: record.anchor_kind,
     canonical_codec_version: safeInteger(
       record.canonical_codec_version,
       "portable checkpoint canonical_codec_version",
     ),
     collection_counts: parseCounts(record.collection_counts),
-    epoch: safeInteger(record.epoch, "portable checkpoint epoch"),
-    epoch_id: operationId(record.epoch_id, "portable checkpoint epoch_id"),
+    epoch,
+    epoch_id: epochId,
     field_registry_version: safeInteger(
       record.field_registry_version,
       "portable checkpoint field_registry_version",
     ),
     format: LIBRARY_CORE_PORTABLE_CHECKPOINT_FORMAT,
     kind: "logical_checkpoint_header",
-    library_id: operationId(
-      record.library_id,
-      "portable checkpoint library_id",
-    ),
+    library_id: libraryId,
     materializer_position: Object.freeze({
       frontier_digest: digest(
         materializer.frontier_digest,
@@ -480,6 +513,34 @@ function parseHeader(value: unknown): LibraryCorePortableCheckpointHeaderV1 {
     source_manifest_digest: sourceManifestDigest,
     source_transition_digest: sourceTransitionDigest,
     transition_candidate_anchor: transitionCandidateAnchor,
+  });
+}
+
+function parseAcceptedAuthority(
+  value: unknown,
+): LibraryCoreAcceptedAuthorityStateV1 {
+  const label = "portable checkpoint accepted authority";
+  const record = closedRecord(value, ACCEPTED_AUTHORITY_KEYS, label);
+  if (
+    !isLibraryCoreEd25519PublicKeyHex(record.authority_public_key) ||
+    !isLibraryCoreNonnegativeSafeInteger(record.epoch) ||
+    record.epoch === 0
+  ) {
+    throw new TypeError(`${label} is invalid`);
+  }
+  return Object.freeze({
+    library_id: digest(record.library_id, `${label}.library_id`),
+    epoch: record.epoch,
+    epoch_id: digest(record.epoch_id, `${label}.epoch_id`),
+    authority_key_id: digest(
+      record.authority_key_id,
+      `${label}.authority_key_id`,
+    ),
+    authority_public_key: record.authority_public_key,
+    observed_frontier: snapshotLibraryCoreCausalFrontier(
+      record.observed_frontier,
+      `${label}.observed_frontier`,
+    ),
   });
 }
 

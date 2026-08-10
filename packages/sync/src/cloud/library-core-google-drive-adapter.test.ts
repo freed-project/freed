@@ -15,6 +15,7 @@ import {
   createGoogleDriveLibraryCoreIntentAdapterV1,
   discoverGoogleDriveLibraryCoreControlV1,
   discoverGoogleDriveLibraryCoreIntentHeadV1,
+  discoverGoogleDriveLibraryCoreIntentSegmentsV1,
   discoverPublishedGoogleDriveLibraryCoreControlV1,
   provisionGoogleDriveLibraryCoreControlV1,
   provisionGoogleDriveLibraryCoreIntentHeadV1,
@@ -635,6 +636,47 @@ describe("Google Drive Library Core immutable adapter", () => {
       status: "conflict",
       current: { head },
     });
+  });
+
+  it("discovers one actor's immutable intent segments in sequence order", async () => {
+    const fake = new FakeGoogleDrive();
+    for (const [first, last, id] of [[3, 4, "segment-2"], [1, 2, "segment-1"]] as const) {
+      const source = bytes(`intent-${first.toLocaleString("en-US", { useGrouping: false })}`);
+      const contentDigest = digest(source);
+      const objectKey = createLibraryCoreImmutableObjectKey({
+        actorId: "actor-1",
+        digest: contentDigest,
+        firstSequence: first,
+        kind: "intent_segment",
+        lastSequence: last,
+        libraryId: "library-1",
+      });
+      fake.files.set(id, {
+        appProperties: {
+          freedContentDigest: contentDigest,
+          freedLibraryDigest: libraryDigest("library-1"),
+          freedObjectKeyDigest: keyDigest(objectKey),
+          freedObjectKind: "intents",
+          freedProtocol: "library-core-v1",
+        },
+        bytes: source,
+        etag: `"${id}"`,
+        id,
+        name: objectKey,
+      });
+    }
+
+    await expect(
+      discoverGoogleDriveLibraryCoreIntentSegmentsV1({
+        accessToken: "test-token",
+        actorId: "actor-1",
+        googleFetch: fake.fetch,
+        libraryId: "library-1",
+      }),
+    ).resolves.toMatchObject([
+      { firstIntentSequence: 1, lastIntentSequence: 2 },
+      { firstIntentSequence: 3, lastIntentSequence: 4 },
+    ]);
   });
 
   it("rejects an oversized control response before reading its body", async () => {

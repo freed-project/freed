@@ -14,6 +14,14 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
+use super::library_core_actor_enrollment::{
+    countersign_pwa_actor_enrollment_request, enroll_desktop_actor, EnrollmentAuthority,
+    PlatformActorKeyStore,
+};
+use super::library_core_authority_genesis::{
+    establish_genesis_epoch, legacy_library_id, load_established_authority_key_pair,
+    reassign_writer_epoch, LegacySourceRevision,
+};
 use super::library_core_journal::LibraryCoreJournal;
 use super::library_core_journal_runtime::journal_path;
 
@@ -71,6 +79,101 @@ pub(super) struct DesktopLibrarySyncPage {
     revision: i64,
     items_json: Vec<String>,
     next_offset: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct BootstrapAuthorityRequest {
+    installation_witness: String,
+    accepted_at_ms: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct AcceptPwaActorEnrollmentRequest {
+    canonical_request_json: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct AcceptPwaReadIntentRequest {
+    canonical_envelope_json: Vec<String>,
+    committed_at_ms: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ReassignWriterEpochRequest {
+    canonical_source_control_json: String,
+    library_id: String,
+    target_writer_id: String,
+    installation_witness: String,
+    accepted_at_ms: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ListActorEnrollmentsRequest {
+    library_id: String,
+    epoch_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) struct DesktopLibraryCausalTip {
+    actor_id: String,
+    sequence: i64,
+    operation_id: String,
+    chain_digest: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) struct DesktopLibraryAcceptedAuthority {
+    library_id: String,
+    epoch: i64,
+    epoch_id: String,
+    authority_key_id: String,
+    authority_public_key: String,
+    observed_frontier: Vec<DesktopLibraryCausalTip>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) struct DesktopLibraryActorEnrollment {
+    actor_id: String,
+    actor_public_key: String,
+    enrollment_operation_id: String,
+    enrollment_certificate_digest: String,
+    canonical_enrollment_certificate_json: String,
+    actor_chain_genesis: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) struct DesktopLibraryActorCheckpointState {
+    actor_id: String,
+    accepted_sequence: i64,
+    accepted_operation_id: Option<String>,
+    accepted_chain_digest: String,
+    enrollment_certificate_digest: String,
+    retired: bool,
+    retirement_certificate_digest: Option<String>,
+    canonical_enrollment_certificate_json: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(super) struct DesktopLibraryAuthorityBootstrap {
+    authority: DesktopLibraryAcceptedAuthority,
+    actor: DesktopLibraryActorEnrollment,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopLibraryWriterEpochReassignment {
+    authority: DesktopLibraryAcceptedAuthority,
+    actor: DesktopLibraryActorEnrollment,
+    canonical_epoch_certificate_json: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -599,6 +702,268 @@ pub(super) fn read_sqlite_library_sync_descriptor(
         shell_json,
         materialized_digest,
     })
+}
+
+/// Establish the active SQLite Library's first signed authority and Desktop actor.
+///
+/// This is an explicit product action invoked only after the SQLite Library is
+/// active. It is idempotent across response loss and restart. It never derives
+/// authority from cloud file order, a timeout, or a renderer-generated key.
+#[tauri::command]
+pub(super) fn bootstrap_sqlite_library_authority(
+    app: tauri::AppHandle,
+    request: BootstrapAuthorityRequest,
+) -> Result<DesktopLibraryAuthorityBootstrap, String> {
+    if !validate_hex_digest(&request.installation_witness) || request.accepted_at_ms < 0 {
+        return Err("SQLite Library authority bootstrap request is invalid".into());
+    }
+    let root = app_root(&app)?;
+    let path = journal_path(&root);
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    let (source_generation, source_revision, source_digest): (i64, i64, String) = connection
+        .query_row(
+            "SELECT sourceGeneration, sourceRevision, sourceDigest
+             FROM library_core_desktop_state WHERE singletonId = 1 AND active = 1;",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(|error| error.to_string())?;
+    drop(connection);
+    let source_generation = u64::try_from(source_generation)
+        .map_err(|_| "SQLite Library source generation is invalid")?;
+    let source_revision =
+        u64::try_from(source_revision).map_err(|_| "SQLite Library source revision is invalid")?;
+    if !validate_hex_digest(&source_digest) {
+        return Err("SQLite Library source digest is invalid".into());
+    }
+
+    let mut journal = LibraryCoreJournal::open(&path).map_err(|error| error.to_string())?;
+    let revision = LegacySourceRevision {
+        document_id: format!("freed-sqlite-{source_digest}"),
+        heads_digest: source_digest,
+        head_count: 1,
+        storage_generation: source_generation,
+        storage_save_revision: source_revision,
+    };
+    let library_id = legacy_library_id(&revision.document_id)?;
+    let authority = match journal
+        .active_authority_epoch(&library_id)
+        .map_err(|error| error.to_string())?
+    {
+        Some(active) => active.authority,
+        None => establish_genesis_epoch(&mut journal, &revision, request.accepted_at_ms)?,
+    };
+    let authority_key_pair = load_established_authority_key_pair(&authority.library_id)?;
+    let actor = enroll_desktop_actor(
+        &mut journal,
+        &EnrollmentAuthority {
+            library_id: authority.library_id.clone(),
+            epoch: authority.epoch,
+            epoch_id: authority.epoch_id.clone(),
+            authority_key_id: authority.authority_key_id.clone(),
+            installation_witness: request.installation_witness,
+        },
+        &PlatformActorKeyStore,
+        &authority_key_pair,
+        request.accepted_at_ms,
+    )?;
+
+    Ok(DesktopLibraryAuthorityBootstrap {
+        authority: DesktopLibraryAcceptedAuthority {
+            library_id: authority.library_id,
+            epoch: authority.epoch,
+            epoch_id: authority.epoch_id,
+            authority_key_id: authority.authority_key_id,
+            authority_public_key: authority.authority_public_key,
+            observed_frontier: authority
+                .observed_frontier
+                .into_iter()
+                .map(|tip| DesktopLibraryCausalTip {
+                    actor_id: tip.actor_id,
+                    sequence: tip.sequence,
+                    operation_id: tip.operation_id,
+                    chain_digest: tip.chain_digest,
+                })
+                .collect(),
+        },
+        actor: DesktopLibraryActorEnrollment {
+            actor_id: actor.actor_id,
+            actor_public_key: actor.actor_public_key,
+            enrollment_operation_id: actor.enrollment_operation_id,
+            enrollment_certificate_digest: actor.enrollment_certificate_digest,
+            canonical_enrollment_certificate_json: actor.canonical_enrollment_certificate_json,
+            actor_chain_genesis: actor.actor_chain_genesis,
+        },
+    })
+}
+
+/// Reassign cloud writer ownership to this Desktop under one signed epoch.
+/// The exact source control bytes are embedded in the certificate that the
+/// renderer publishes with an exact compare-and-swap.
+#[tauri::command]
+pub(super) fn reassign_sqlite_library_writer_epoch(
+    app: tauri::AppHandle,
+    request: ReassignWriterEpochRequest,
+) -> Result<DesktopLibraryWriterEpochReassignment, String> {
+    if !validate_hex_digest(&request.library_id)
+        || !validate_hex_digest(&request.target_writer_id)
+        || !validate_hex_digest(&request.installation_witness)
+        || request.accepted_at_ms < 0
+    {
+        return Err("SQLite Library writer reassignment request is invalid".into());
+    }
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let mut journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let reassigned = reassign_writer_epoch(
+        &mut journal,
+        &request.library_id,
+        &request.canonical_source_control_json,
+        &request.target_writer_id,
+        request.accepted_at_ms,
+    )?;
+    let authority_key_pair = load_established_authority_key_pair(&request.library_id)?;
+    let actor = enroll_desktop_actor(
+        &mut journal,
+        &EnrollmentAuthority {
+            library_id: reassigned.authority.library_id.clone(),
+            epoch: reassigned.authority.epoch,
+            epoch_id: reassigned.authority.epoch_id.clone(),
+            authority_key_id: reassigned.authority.authority_key_id.clone(),
+            installation_witness: request.installation_witness,
+        },
+        &PlatformActorKeyStore,
+        &authority_key_pair,
+        request.accepted_at_ms,
+    )?;
+    if actor.actor_id != request.target_writer_id {
+        return Err("SQLite Library target writer does not match this installation".into());
+    }
+    Ok(DesktopLibraryWriterEpochReassignment {
+        authority: DesktopLibraryAcceptedAuthority {
+            library_id: reassigned.authority.library_id,
+            epoch: reassigned.authority.epoch,
+            epoch_id: reassigned.authority.epoch_id,
+            authority_key_id: reassigned.authority.authority_key_id,
+            authority_public_key: reassigned.authority.authority_public_key,
+            observed_frontier: reassigned
+                .authority
+                .observed_frontier
+                .into_iter()
+                .map(|tip| DesktopLibraryCausalTip {
+                    actor_id: tip.actor_id,
+                    sequence: tip.sequence,
+                    operation_id: tip.operation_id,
+                    chain_digest: tip.chain_digest,
+                })
+                .collect(),
+        },
+        actor: DesktopLibraryActorEnrollment {
+            actor_id: actor.actor_id,
+            actor_public_key: actor.actor_public_key,
+            enrollment_operation_id: actor.enrollment_operation_id,
+            enrollment_certificate_digest: actor.enrollment_certificate_digest,
+            canonical_enrollment_certificate_json: actor.canonical_enrollment_certificate_json,
+            actor_chain_genesis: actor.actor_chain_genesis,
+        },
+        canonical_epoch_certificate_json: reassigned.canonical_certificate_json,
+    })
+}
+
+/// Countersign and atomically enroll one PWA actor under the active epoch.
+#[tauri::command]
+pub(super) fn accept_pwa_actor_enrollment_request(
+    app: tauri::AppHandle,
+    request: AcceptPwaActorEnrollmentRequest,
+) -> Result<DesktopLibraryActorEnrollment, String> {
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let mut journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    let actor = countersign_pwa_actor_enrollment_request(
+        &mut journal,
+        request.canonical_request_json.as_bytes(),
+    )?;
+    Ok(DesktopLibraryActorEnrollment {
+        actor_id: actor.actor_id,
+        actor_public_key: actor.actor_public_key,
+        enrollment_operation_id: actor.enrollment_operation_id,
+        enrollment_certificate_digest: actor.enrollment_certificate_digest,
+        canonical_enrollment_certificate_json: actor.canonical_enrollment_certificate_json,
+        actor_chain_genesis: actor.actor_chain_genesis,
+    })
+}
+
+/// Verify and commit one complete signed PWA read-intent transaction.
+#[tauri::command]
+pub(super) fn accept_pwa_read_intent_transaction(
+    app: tauri::AppHandle,
+    request: AcceptPwaReadIntentRequest,
+) -> Result<(), String> {
+    if request.canonical_envelope_json.is_empty()
+        || request.canonical_envelope_json.len() > 1_000
+        || request.committed_at_ms < 0
+    {
+        return Err("SQLite Library PWA read intent request is invalid".into());
+    }
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let canonical_envelopes = request
+        .canonical_envelope_json
+        .iter()
+        .map(|value| value.as_bytes().to_vec())
+        .collect::<Vec<_>>();
+    let mut journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    journal
+        .accept_read_transaction(&canonical_envelopes, request.committed_at_ms)
+        .map_err(|error| error.to_string())
+}
+
+/// Read the deterministic actor set used by the next portable checkpoint.
+#[tauri::command]
+pub(super) fn list_sqlite_library_actor_enrollments(
+    app: tauri::AppHandle,
+    request: ListActorEnrollmentsRequest,
+) -> Result<Vec<DesktopLibraryActorCheckpointState>, String> {
+    if !validate_hex_digest(&request.library_id) || !validate_hex_digest(&request.epoch_id) {
+        return Err("SQLite Library actor checkpoint request is invalid".into());
+    }
+    let root = app_root(&app)?;
+    let connection = open_database_at(&root)?;
+    require_active(&connection)?;
+    drop(connection);
+    let journal =
+        LibraryCoreJournal::open(&journal_path(&root)).map_err(|error| error.to_string())?;
+    journal
+        .actor_states(&request.library_id, &request.epoch_id)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|actor| {
+            let accepted_sequence = actor
+                .next_sequence
+                .checked_sub(1)
+                .ok_or_else(|| "SQLite Library actor sequence is invalid".to_string())?;
+            Ok(DesktopLibraryActorCheckpointState {
+                actor_id: actor.actor_id,
+                accepted_sequence,
+                accepted_operation_id: actor.previous_operation_id,
+                accepted_chain_digest: actor.previous_chain_digest,
+                enrollment_certificate_digest: actor.enrollment_certificate_digest,
+                retired: false,
+                retirement_certificate_digest: None,
+                canonical_enrollment_certificate_json: actor.canonical_enrollment_certificate_json,
+            })
+        })
+        .collect()
 }
 
 /// Stream one bounded, revision-pinned page for immutable checkpoint export.

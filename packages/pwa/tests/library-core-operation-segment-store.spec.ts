@@ -56,6 +56,7 @@ test("PWA IndexedDB durably imports an exact operation tail after its checkpoint
     } as const;
     const header = {
       anchor_kind: "accepted_authority",
+      accepted_authority: null,
       canonical_codec_version: 1,
       collection_counts: {
         accepted_frontier: 0,

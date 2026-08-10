@@ -255,10 +255,10 @@ struct VerifiedActorEnrollment {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct VerifiedCausalTip {
-    actor_id: String,
-    sequence: i64,
-    operation_id: String,
-    chain_digest: String,
+    pub(crate) actor_id: String,
+    pub(crate) sequence: i64,
+    pub(crate) operation_id: String,
+    pub(crate) chain_digest: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -998,6 +998,48 @@ impl LibraryCoreJournal {
             .optional()?)
     }
 
+    /// Return the bounded actor set for one exact authority epoch in binary
+    /// actor-id order so checkpoint construction is deterministic.
+    pub(crate) fn actor_states(
+        &self,
+        library_id: &str,
+        epoch_id: &str,
+    ) -> JournalResult<Vec<ActorState>> {
+        let mut statement = self.connection.prepare(
+            "SELECT libraryId, epoch, epochId, actorId, actorPublicKey,
+                    enrollmentOperationId, enrollmentCertificateDigest,
+                    canonicalEnrollmentCertificateJson, actorChainGenesis,
+                    nextSequence, previousOperationId, previousChainDigest
+             FROM library_core_actors
+             WHERE libraryId = ?1 AND epochId = ?2
+             ORDER BY actorId COLLATE BINARY
+             LIMIT 1001;",
+        )?;
+        let rows = statement.query_map(params![library_id, epoch_id], |row| {
+            Ok(ActorState {
+                library_id: row.get(0)?,
+                epoch: row.get(1)?,
+                epoch_id: row.get(2)?,
+                actor_id: row.get(3)?,
+                actor_public_key: row.get(4)?,
+                enrollment_operation_id: row.get(5)?,
+                enrollment_certificate_digest: row.get(6)?,
+                canonical_enrollment_certificate_json: row.get(7)?,
+                actor_chain_genesis: row.get(8)?,
+                next_sequence: row.get(9)?,
+                previous_operation_id: row.get(10)?,
+                previous_chain_digest: row.get(11)?,
+            })
+        })?;
+        let actors = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+        if actors.len() > 1_000 {
+            return Err(JournalError::InvalidVerifiedInput {
+                field: "actor_state_count",
+            });
+        }
+        Ok(actors)
+    }
+
     fn verify_read_transaction(
         &self,
         canonical_envelopes: &[Vec<u8>],
@@ -1017,6 +1059,17 @@ impl LibraryCoreJournal {
     ) -> JournalResult<TransactionReceipt> {
         let verified = self.verify_read_transaction(canonical_envelopes)?;
         self.commit_read_transaction(&verified, committed_at_ms)
+    }
+
+    /// Admit one renderer-independent signed read transaction through the
+    /// native verifier and authoritative commit boundary.
+    pub(crate) fn accept_read_transaction(
+        &mut self,
+        canonical_envelopes: &[Vec<u8>],
+        committed_at_ms: i64,
+    ) -> JournalResult<()> {
+        self.verify_and_commit_read_transaction(canonical_envelopes, committed_at_ms)
+            .map(|_| ())
     }
 
     fn enroll_actor_in(
@@ -1403,6 +1456,7 @@ impl LibraryCoreJournal {
             ],
         )?;
 
+        let mut product_rows_updated = 0_usize;
         for (index, member) in verified.members.iter().enumerate() {
             transaction.execute(
                 "INSERT INTO library_core_operations (
@@ -1493,6 +1547,29 @@ impl LibraryCoreJournal {
                     committed_at_ms
                 ],
             )?;
+            product_rows_updated += transaction.execute(
+                "UPDATE library_core_feed_items
+                 SET readAt = ?1,
+                     payloadJson = json_set(payloadJson, '$.userState.readAt', ?1),
+                     updatedAtMs = ?2
+                 WHERE globalId = ?3 AND deletedAt IS NULL
+                   AND (readAt IS NULL OR ?1 < readAt);",
+                params![member.read_at_ms, committed_at_ms, member.entity_id],
+            )?;
+        }
+        if product_rows_updated > 0 {
+            let updated = transaction.execute(
+                "UPDATE library_core_desktop_state
+                 SET revision = revision + 1
+                 WHERE singletonId = 1 AND active = 1
+                   AND revision < 9007199254740991;",
+                [],
+            )?;
+            if updated != 1 {
+                return Err(JournalError::InvalidVerifiedInput {
+                    field: "desktop_library_revision",
+                });
+            }
         }
         let updated = transaction.execute(
             "UPDATE library_core_actors
@@ -2336,6 +2413,32 @@ mod tests {
         let retry = journal.enroll_actor(&enrollment).expect("retry enrollment");
         assert_eq!(first, retry);
 
+        journal
+            .connection
+            .execute(
+                "INSERT INTO library_core_desktop_state (
+                   singletonId, active, revision, sourceGeneration,
+                   sourceRevision, sourceDigest, expectedItemCount,
+                   importedItemCount, shellJson, startedAtMs, activatedAtMs
+                 ) VALUES (1, 1, 7, 1, 1, ?1, 2, 2, '{}', 1, 1);",
+                params![digest("a")],
+            )
+            .expect("install active product state");
+        for entity_id in ["rss:item:1", "rss:item:2"] {
+            journal
+                .connection
+                .execute(
+                    "INSERT INTO library_core_feed_items (
+                       globalId, readAt, payloadJson, updatedAtMs
+                     ) VALUES (?1, NULL, ?2, 1);",
+                    params![
+                        entity_id,
+                        format!("{{\"globalId\":\"{entity_id}\",\"userState\":{{}}}}")
+                    ],
+                )
+                .expect("install product feed item");
+        }
+
         let verified = transaction(
             "tx:read:one",
             1,
@@ -2351,6 +2454,37 @@ mod tests {
             .expect("response-loss retry");
         assert_eq!(receipt, replay);
         assert_eq!(receipt.first_ingest_sequence, 1);
+        let product_rows = journal
+            .connection
+            .prepare(
+                "SELECT readAt, json_extract(payloadJson, '$.userState.readAt'),
+                        updatedAtMs
+                 FROM library_core_feed_items ORDER BY globalId COLLATE BINARY;",
+            )
+            .expect("prepare product read-state query")
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            })
+            .expect("query product read state")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("collect product read state");
+        assert_eq!(product_rows, vec![(900, 900, 1_100), (901, 901, 1_100)]);
+        assert_eq!(
+            journal
+                .connection
+                .query_row(
+                    "SELECT revision FROM library_core_desktop_state WHERE singletonId = 1;",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("read product revision"),
+            8,
+            "one accepted transaction advances the product revision exactly once",
+        );
         assert_eq!(receipt.last_ingest_sequence, 2);
         assert_eq!(receipt.previous_revision, 0);
         assert_eq!(receipt.committed_revision, 1);

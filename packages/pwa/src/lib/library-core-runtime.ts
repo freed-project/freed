@@ -11,12 +11,14 @@ import {
   normalizeLibraryCoreFeedBrowseFilterV1,
   parseLibraryCoreControlPointerV1,
   type LibraryCoreCanonicalValue,
+  type LibraryCoreOperationInstanceId,
 } from "@freed/shared/library-core";
 import type { FilterOptions } from "@freed/shared";
 import type { BoundedFeedReader } from "@freed/ui/context";
 import {
   createGoogleDriveLibraryCoreAdapterV1,
   createGoogleDriveLibraryCoreIntentAdapterV1,
+  discoverGoogleDriveLibraryCoreActorEnrollmentsV1,
   discoverPublishedGoogleDriveLibraryCoreControlV1,
   importLibraryCorePortableCheckpointV1,
   provisionGoogleDriveLibraryCoreIntentHeadV1,
@@ -171,6 +173,17 @@ export async function initializePwaLibraryCoreState(): Promise<DocState> {
   return state;
 }
 
+/** Queue a signed, durable PWA read-state intent without touching Automerge. */
+export async function enqueuePwaLibraryCoreReadAssignments(
+  globalIds: readonly string[],
+): Promise<void> {
+  if (globalIds.length === 0) return;
+  await getPortableStore().enqueueReadAssignments({
+    entityIds: globalIds,
+    readAtMs: Date.now(),
+  });
+}
+
 function supportsPortableFeedFilter(filter: FilterOptions): boolean {
   const normalized = normalizeLibraryCoreFeedBrowseFilterV1(filter);
   return !normalized.archivedOnly && normalized.authorId === null &&
@@ -275,6 +288,37 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
     writer: getPortableStore(),
   });
   const store = getPortableStore();
+  const acceptedAuthority = await store.readSelectedAcceptedAuthorityState();
+  if (acceptedAuthority === null) {
+    throw new Error("Imported SQLite Library checkpoint has no accepted authority");
+  }
+  const enrollments = await discoverGoogleDriveLibraryCoreActorEnrollmentsV1({
+    accessToken: input.accessToken,
+    epochId: acceptedAuthority.epoch_id,
+    libraryId: acceptedAuthority.library_id,
+    signal: input.signal,
+  });
+  for (const enrollment of enrollments) {
+    await store.installActorEnrollment({
+      acceptedAuthorityState: acceptedAuthority,
+      certificateBytes: enrollment.bytes,
+    });
+  }
+  const enrollment = await store.preparePwaActorEnrollmentRequest();
+  if (enrollment && enrollment.publishedReference === null) {
+    const uploaded = await adapter.putImmutable(enrollment.immutableObject);
+    const reference = Object.freeze({
+      descriptor: enrollment.immutableObject.descriptor,
+      transportObjectId: uploaded.transportObjectId,
+    });
+    await adapter.verifyImmutable(reference);
+    await store.recordPwaActorEnrollmentRequestPublication({
+      actorId: enrollment.actorId,
+      authorityStateDigest: enrollment.authorityStateDigest,
+      libraryId: enrollment.acceptedAuthorityState.library_id as unknown as LibraryCoreOperationInstanceId,
+      reference,
+    });
+  }
   const pendingActors = await store.readPendingIntentActors({
     epochId: pointer.storageEpoch,
     libraryId: pointer.libraryId,
