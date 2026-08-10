@@ -1,0 +1,298 @@
+{
+  "tag": "v26.8.1001-dev",
+  "version": "26.8.1001-dev",
+  "channel": "dev",
+  "dayKey": "26.8.10",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-08-10T08:56:41.036Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.7.3100-dev",
+    "previousPublishedDayTag": "v26.7.3100-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "53161854164235a81520f03c6baf6c421d1e3a60",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.7.3100-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "49c867a733c8e05e5f1eb3ac00894149aa5ace5f",
+        "toInclusiveProductCommitSha": "53161854164235a81520f03c6baf6c421d1e3a60"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:f38e2c15dbdcbe7ef0b1e27a9967cf1a179c167b1acd6874a3ca857c6f3a5aa5",
+        "currentDigest": "sha256:6168c3eaaf9ba583e9f0f345664ac7dcdbb7ed7e3983c4cbf600ad18ecf9ffc4"
+      },
+      "transitions": [
+        {
+          "activationId": "desktop-friend-editor-author-sql-read-v1",
+          "gate": "D",
+          "kind": "sql_read_cutover",
+          "rollbackTrigger": "Set freed.libraryCore.friendEditorReaderV1.disabled to 1 on the affected device if Friend editor author candidates, ordering, search, provenance, or memory diverge from the Automerge fallback.",
+          "receiptExpectations": [
+            "read_cutover_parity",
+            "same_frontier_rollback_receipt"
+          ]
+        },
+        {
+          "activationId": "desktop-friends-feed-sql-read-v1",
+          "gate": "D",
+          "kind": "sql_read_cutover",
+          "rollbackTrigger": "Set freed.libraryCore.friendsFeedReaderV1.disabled to 1 on the affected device if Friends-only membership, ordering, paging, selection handoff, or memory diverges from the Freed Desktop Automerge compatibility fallback.",
+          "receiptExpectations": [
+            "read_cutover_parity",
+            "same_frontier_rollback_receipt"
+          ]
+        },
+        {
+          "activationId": "desktop-friends-sql-read-v1",
+          "gate": "D",
+          "kind": "sql_read_cutover",
+          "rollbackTrigger": "Set freed.libraryCore.friendsReaderV1.disabled to 1 on the affected device if Friends activity, suggestions, timelines, counts, ordering, or memory diverge from the Automerge fallback.",
+          "receiptExpectations": [
+            "read_cutover_parity",
+            "same_frontier_rollback_receipt"
+          ]
+        },
+        {
+          "activationId": "desktop-legacy-worker-eviction-v1",
+          "gate": "D",
+          "kind": "legacy_worker_eviction",
+          "rollbackTrigger": "Reject the SQLite candidate and reopen the retained Automerge source before accepting post-import mutations if Freed Desktop cannot initialize, query, or mutate the imported SQLite library without starting the Automerge worker.",
+          "receiptExpectations": [
+            "read_cutover_parity",
+            "same_frontier_rollback_receipt"
+          ]
+        },
+        {
+          "activationId": "desktop-local-sqlite-import-v2",
+          "gate": "C",
+          "kind": "migration_candidate_execution",
+          "rollbackTrigger": "Restore the retained pre-import Automerge source before accepting any post-import Desktop mutation if the SQLite item count, source digest, integrity check, or required shell state does not match the imported legacy library.",
+          "receiptExpectations": [
+            "migration_receipt",
+            "same_frontier_rollback_receipt"
+          ]
+        },
+        {
+          "activationId": "desktop-ordinary-feed-bidirectional-sql-read-v1",
+          "gate": "D",
+          "kind": "sql_read_cutover",
+          "rollbackTrigger": "Set freed.libraryCore.feedBrowseBidirectionalReaderV1.disabled to 1 on the affected device if ordinary all-content ordering, forward or backward paging, scroll anchoring, selection handoff, or memory diverges from the Freed Desktop Automerge compatibility fallback.",
+          "receiptExpectations": [
+            "read_cutover_parity",
+            "same_frontier_rollback_receipt"
+          ]
+        },
+        {
+          "activationId": "desktop-provider-settings-sql-read-v1",
+          "gate": "D",
+          "kind": "sql_read_cutover",
+          "rollbackTrigger": "Set freed.libraryCore.providerSettingsReaderV1.disabled to 1 on the affected device if provider settings counts, eligibility, ordering, media backup, saved-video synchronization, or memory diverge from the Automerge fallback.",
+          "receiptExpectations": [
+            "read_cutover_parity",
+            "same_frontier_rollback_receipt"
+          ]
+        },
+        {
+          "activationId": "desktop-renderer-corpus-final-eviction-v2",
+          "gate": "D",
+          "kind": "renderer_corpus_eviction",
+          "rollbackTrigger": "Reject the SQLite candidate before accepting post-import mutations if any ordinary Freed Desktop surface requires the complete item corpus in React or renderer state to preserve its user-visible behavior.",
+          "receiptExpectations": [
+            "read_cutover_parity",
+            "same_frontier_rollback_receipt"
+          ]
+        },
+        {
+          "activationId": "desktop-saved-analytics-sql-read-v1",
+          "gate": "D",
+          "kind": "sql_read_cutover",
+          "rollbackTrigger": "Set freed.libraryCore.savedAnalyticsReaderV1.disabled to 1 on the affected device if the bounded Saved overview diverges, stalls, or increases memory relative to the Automerge fallback.",
+          "receiptExpectations": [
+            "read_cutover_parity",
+            "same_frontier_rollback_receipt"
+          ]
+        },
+        {
+          "activationId": "desktop-saved-feed-sql-read-v1",
+          "gate": "D",
+          "kind": "sql_read_cutover",
+          "rollbackTrigger": "Set freed.libraryCore.savedFeedReaderV1.disabled to 1 on the affected device if the versioned Saved order, forward traversal, selection handoff, or memory diverges from the Freed Desktop compatibility fallback.",
+          "receiptExpectations": [
+            "read_cutover_parity",
+            "same_frontier_rollback_receipt"
+          ]
+        },
+        {
+          "activationId": "desktop-search-jump-sql-read-v1",
+          "gate": "D",
+          "kind": "sql_read_cutover",
+          "rollbackTrigger": "Set freed.libraryCore.searchJumpReaderV1.disabled to 1 on the affected device if SearchJump tags, counts, selected-item actions, cancellation, or memory diverge from the Automerge fallback.",
+          "receiptExpectations": [
+            "read_cutover_parity",
+            "same_frontier_rollback_receipt"
+          ]
+        }
+      ],
+      "inspectionDigest": "sha256:cbe76a3a2332e29c89a74e5f289806dbd5e90f05027931dd91cff0dae07d7a26",
+      "decision": {
+        "state": "review_required",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.8.1001-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.8.1001-dev"
+    ],
+    "prNumbers": [
+      1297,
+      1298,
+      1299,
+      1300,
+      1301,
+      1302,
+      1303,
+      1304,
+      1305,
+      1306,
+      1307,
+      1308,
+      1309,
+      1310,
+      1311,
+      1312,
+      1313,
+      1314,
+      1315,
+      1316,
+      1317,
+      1318,
+      1319,
+      1320,
+      1321,
+      1322,
+      1324,
+      1325,
+      1328,
+      1329,
+      1330,
+      1332,
+      1333,
+      1335,
+      1336,
+      1338,
+      1340,
+      1341,
+      1342,
+      1343,
+      1344,
+      1345,
+      1346,
+      1347,
+      1348,
+      1349,
+      1350,
+      1353,
+      1354,
+      1355,
+      1358,
+      1363,
+      1364,
+      1365,
+      1367,
+      1368
+    ],
+    "commitSubjects": [
+      "test: preserve SQLite renderer performance boundary (#1369)",
+      "chore: prepare v26.8.1000-dev (#1368)",
+      "fix: repair SQLite browser regression boundary (#1367)",
+      "chore: prepare v26.8.900-dev (#1365)",
+      "fix: restore map backgrounds in both clients (#1364)",
+      "feat: run Freed Desktop on SQLite (#1363)",
+      "fix: stop choosing a Library Core creator at desktop startup (#1358)",
+      "feat: enroll this desktop installation's own Library Core actor (#1355)",
+      "feat: let a desktop installation establish its own authority epoch (#1354)",
+      "fix: make one file the only source of Library Core canonical domains (#1353)",
+      "feat: give the Library Core journal a production owner (#1350)",
+      "feat: open the materializer gate and bind the first one to its native code (#1349)",
+      "chore: prove the identity graph roots guard on legacy documents (#1348)",
+      "chore: prove the projection rebuild guards fire (#1347)",
+      "feat: close the account assignment and signal backfill inventories (#1346)",
+      "feat: declare bulk repair inventories by reference to their counterparts (#1345)",
+      "feat: close the feed item capture and sync receipt inventories (#1344)",
+      "feat: close the person and account written-leaf inventories (#1343)",
+      "feat: close the rss feed written-leaf inventories (#1342)",
+      "feat: close the preferences written-leaf inventory (#1341)",
+      "chore: pin the derived priority locality contradiction (#1340)",
+      "chore: pin what the entity writers do with dangerous map keys (#1338)",
+      "chore: generate the entity locality matrix from the write policies (#1336)",
+      "chore: pin the destructive merge guard policy and its blind spots (#1335)",
+      "chore: prove the device-local preference boundary through the write path (#1333)",
+      "chore: pin feed item merge idempotency and its one clock exception (#1332)",
+      "chore: cover the cursor guard that the merge algebra makes load bearing (#1330)",
+      "chore: characterize the shipping user state merge algebra (#1329)",
+      "feat: close written-leaf inventories for saved and archived operations (#1328)",
+      "feat: close five facet summary contract fields and pin the tag collation (#1325)",
+      "feat: close five surface items contract fields and pin the Map sort defect (#1324)",
+      "feat: close the bounded item scan query contract (#1322)",
+      "chore: enforce Tauri command parity across the language boundary (#1321)",
+      "fix: register the shipping queries the census was missing (#1320)",
+      "feat: close the item detail query contract (#1319)",
+      "feat: close five persons graph contract fields (#1318)",
+      "feat: close the person timeline query contract (#1317)",
+      "feat: close the saved analytics query contract (#1316)",
+      "fix: count feed signal chips from bounded pages (#1315)",
+      "perf: page the ordinary feed through bidirectional SQLite reads (#1314)",
+      "perf: move Friends feed reads onto bounded SQLite pages (#1313)",
+      "perf: page saved feed from native SQLite (#1312)",
+      "perf: bound SearchJump Library reads (#1311)",
+      "perf: bound Friend editor author discovery (#1310)",
+      "perf: move provider settings onto bounded SQLite reads (#1309)",
+      "perf: move Friends activity into bounded SQLite readers (#1308)",
+      "perf: move Saved analytics to SQLite (#1307)",
+      "perf: bound secondary Library reads (#1306)",
+      "perf: source compatibility views from SQLite (#1305)",
+      "feat: authenticate legacy Library Core migration source (#1304)",
+      "perf: bound legacy migration source reads (#1303)",
+      "perf: evict default renderer Library corpus (#1302)",
+      "perf: move library facets and map candidates to SQLite (#1301)",
+      "fix: restore Library Core startup migration (#1300)",
+      "perf: stream Library search from SQLite (#1299)",
+      "perf: stream feed projection from SQLite (#1298)",
+      "perf: stream background library scans from SQLite (#1297)"
+    ]
+  },
+  "release": {
+    "deck": "Freed Desktop now runs its local Library on native SQLite with a bounded renderer",
+    "features": [
+      "Enroll this desktop installation's own Library Core actor",
+      "Let a desktop installation establish its own authority epoch",
+      "Close the feed item capture and sync receipt inventories"
+    ],
+    "fixes": [
+      "Repair SQLite browser regression boundary",
+      "Map backgrounds in both clients restored",
+      "Stop choosing a Library Core creator at desktop startup",
+      "Make one file the only source of Library Core canonical domains",
+      "Register the shipping queries the census was missing",
+      "Count feed signal chips from bounded pages"
+    ],
+    "followUps": [
+      "Reader, sidebar, and settings UX work",
+      "Pin the destructive merge guard policy and its blind spots"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1001-dev\n\nFreed Desktop now runs its local Library on native SQLite with a bounded renderer\n\n### Features\n\n- Enroll this desktop installation's own Library Core actor\n- Let a desktop installation establish its own authority epoch\n- Close the feed item capture and sync receipt inventories\n\n### Fixes\n\n- Repair SQLite browser regression boundary\n- Map backgrounds in both clients restored\n- Stop choosing a Library Core creator at desktop startup\n- Make one file the only source of Library Core canonical domains\n- Register the shipping queries the census was missing\n- Count feed signal chips from bounded pages\n\n### Follow-ups\n\n- Reader, sidebar, and settings UX work\n- Pin the destructive merge guard policy and its blind spots\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
