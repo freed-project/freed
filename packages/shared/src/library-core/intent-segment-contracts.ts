@@ -493,6 +493,7 @@ export function parseLibraryCoreIntentHeadV1(
     const expectedKey = createLibraryCoreImmutableObjectKey({
       actorId,
       digest: latestReference.descriptor.contentDigest,
+      epochId,
       firstSequence,
       kind: "intent_segment",
       lastSequence,

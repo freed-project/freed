@@ -388,6 +388,7 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
       accessToken: input.accessToken,
       actorId: actor.actorId,
       controlFileId: discovered.controlFileId,
+      epochId: actor.epochId,
       intentHeadFileId: provisioned.intentHeadFileId,
       libraryId: pointer.libraryId,
       signal: input.signal,

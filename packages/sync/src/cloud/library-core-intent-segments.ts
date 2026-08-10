@@ -226,6 +226,7 @@ export async function prepareLibraryCoreIntentSegmentV1(
         objectKey: createLibraryCoreImmutableObjectKey({
           actorId: header.actor_id,
           digest: storedDigest,
+          epochId: header.epoch_id,
           firstSequence: header.first_intent_sequence,
           kind: "intent_segment",
           lastSequence: header.last_intent_sequence,
@@ -289,6 +290,7 @@ export async function importLibraryCoreIntentSegmentV1(
   const expectedKey = createLibraryCoreImmutableObjectKey({
     actorId: header.actor_id,
     digest: reference.descriptor.contentDigest,
+    epochId: header.epoch_id,
     firstSequence: header.first_intent_sequence,
     kind: "intent_segment",
     lastSequence: header.last_intent_sequence,

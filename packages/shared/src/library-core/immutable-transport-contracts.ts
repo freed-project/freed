@@ -80,6 +80,7 @@ export type LibraryCoreImmutableObjectKeyRequest =
     })
   | (LibraryScopedObjectRequest & {
       readonly kind: "intent_segment";
+      readonly epochId: string;
       readonly actorId: string;
       readonly firstSequence: number;
       readonly lastSequence: number;
@@ -168,11 +169,13 @@ export function createLibraryCoreControlObjectKey(libraryId: string): string {
 
 export function createLibraryCoreIntentHeadObjectKey(
   libraryId: string,
+  epochId: string,
   actorId: string,
 ): string {
   assertIdentifier(libraryId, "libraryId");
+  assertIdentifier(epochId, "epochId");
   assertIdentifier(actorId, "actorId");
-  return `freed-v2-intent-head~${libraryId}~${actorId}.json`;
+  return `freed-v2-intent-head~${libraryId}~e${epochId}~${actorId}.json`;
 }
 
 export function createLibraryCoreResultHeadObjectKey(
@@ -244,10 +247,11 @@ export function createLibraryCoreImmutableObjectKey(
       assertDigest(request.digest, "digest");
       return `freed-v2-search-delta~${request.libraryId}~e${request.epochId}~s${request.firstSequence}-${request.lastSequence}~${request.digest}.fidx.gz`;
     case "intent_segment":
+      assertIdentifier(request.epochId, "epochId");
       assertIdentifier(request.actorId, "actorId");
       assertSequenceRange(request.firstSequence, request.lastSequence);
       assertDigest(request.digest, "digest");
-      return `freed-v2-intents~${request.libraryId}~${request.actorId}~s${request.firstSequence}-${request.lastSequence}~${request.digest}.fseg.gz`;
+      return `freed-v2-intents~${request.libraryId}~e${request.epochId}~${request.actorId}~s${request.firstSequence}-${request.lastSequence}~${request.digest}.fseg.gz`;
     case "result_segment":
       assertIdentifier(request.epochId, "epochId");
       assertIdentifier(request.actorId, "actorId");
@@ -497,7 +501,7 @@ const IMMUTABLE_OBJECT_KEY_PATTERNS: readonly ObjectKeyPattern[] = [
   },
   {
     pattern: new RegExp(
-      `^freed-v2-intents~${ID}~${ID}~s(${INDEX})-(${INDEX})~${DIGEST}\\.fseg\\.gz$`,
+      `^freed-v2-intents~${ID}~e${ID}~${ID}~s(${INDEX})-(${INDEX})~${DIGEST}\\.fseg\\.gz$`,
     ),
     numericCaptures: [1, 2],
     rangeCaptures: [1, 2],

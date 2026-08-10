@@ -95,7 +95,7 @@ describe("Library Core PWA intent wire segments", () => {
         .update(prepared.object.source)
         .digest("hex"),
       objectKey: expect.stringContaining(
-        "freed-v2-intents~library-1~pwa-1~s1-2~",
+        "freed-v2-intents~library-1~eepoch-1~pwa-1~s1-2~",
       ),
     });
   });

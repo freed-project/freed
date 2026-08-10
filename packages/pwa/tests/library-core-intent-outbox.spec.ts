@@ -63,6 +63,7 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
       previousChainDigest,
       previousOperationId,
       readAtOffset = 0,
+      transactionEpochId = epochId,
       transactionId,
     }: {
       count: number;
@@ -70,6 +71,7 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
       previousChainDigest: string;
       previousOperationId: string | null;
       readAtOffset?: number;
+      transactionEpochId?: string;
       transactionId: string;
     }) => {
       const members = Array.from({ length: count }, (_, index) => {
@@ -84,7 +86,7 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
               useGrouping: false,
             })}`,
             epoch: 1,
-            epoch_id: epochId,
+            epoch_id: transactionEpochId,
             hlc_counter: index,
             hlc_wall_ms: 1_783_000_000_000 + sequence,
             library_id: libraryId,
@@ -290,6 +292,25 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
       intentOperationId: boundedCandidate.body.entries[0]!.operation_id,
       libraryId,
     });
+    const replacementEpochId = hex("66");
+    const replacementEpochReceipt = await store.enqueueIntentTransaction(
+      await finalize({
+        count: 1,
+        firstSequence: 1,
+        previousChainDigest: actorChainGenesis,
+        previousOperationId: null,
+        transactionEpochId: replacementEpochId,
+        transactionId: "tx-replacement-epoch-1",
+      }),
+    );
+    const originalEpochActors = await store.readIntentActors({
+      epochId,
+      libraryId,
+    });
+    const replacementEpochActors = await store.readIntentActors({
+      epochId: replacementEpochId,
+      libraryId,
+    });
     await store.quiesce();
     const reopened = createPwaLibraryCorePortableCheckpointStore({
       databaseName,
@@ -329,10 +350,13 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
       fullBody: fullCandidate?.body,
       publication,
       publicationReplay,
+      originalEpochActors,
       pendingActorsAfterPublication,
       pendingActorsBeforePublication,
       remainingBody: remaining?.body,
       replayReceipt,
+      replacementEpochActors,
+      replacementEpochReceipt,
       secondReceipt,
       staleReadbackError,
     };
@@ -398,4 +422,23 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
     previous_segment_digest: result.publication.storedContentDigest,
   });
   expect(result.afterRestart).toEqual(result.remainingBody);
+  expect(result.replacementEpochReceipt).toMatchObject({
+    firstIntentSequence: 1,
+    lastIntentSequence: 1,
+    status: "enqueued",
+  });
+  expect(result.originalEpochActors).toEqual([
+    {
+      actorId: "33".repeat(32),
+      epochId: "22".repeat(32),
+      libraryId: "11".repeat(32),
+    },
+  ]);
+  expect(result.replacementEpochActors).toEqual([
+    {
+      actorId: "33".repeat(32),
+      epochId: "66".repeat(32),
+      libraryId: "11".repeat(32),
+    },
+  ]);
 });

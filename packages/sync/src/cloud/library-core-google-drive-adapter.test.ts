@@ -146,6 +146,7 @@ class FakeGoogleDrive {
       id,
       name: createLibraryCoreIntentHeadObjectKey(
         head.library_id,
+        head.epoch_id,
         head.actor_id,
       ),
       bytes: encodeLibraryCoreCanonicalValue(
@@ -155,6 +156,7 @@ class FakeGoogleDrive {
         freedProtocol: "library-core-v1",
         freedLibraryDigest: libraryDigest(head.library_id),
         freedObjectKind: "intent_head",
+        freedEpochDigest: libraryDigest(head.epoch_id),
         freedActorDigest: libraryDigest(head.actor_id),
       },
       etag,
@@ -603,6 +605,7 @@ describe("Google Drive Library Core immutable adapter", () => {
       discoverGoogleDriveLibraryCoreIntentHeadV1({
         accessToken: "test-token",
         actorId: head.actor_id,
+        epochId: head.epoch_id,
         googleFetch: fake.fetch,
         libraryId: head.library_id,
       }),
@@ -612,6 +615,7 @@ describe("Google Drive Library Core immutable adapter", () => {
       accessToken: "test-token",
       actorId: head.actor_id,
       controlFileId: "control-1",
+      epochId: head.epoch_id,
       googleFetch: fake.fetch,
       intentHeadFileId: "intent-head-1",
       libraryId: head.library_id,
@@ -646,6 +650,7 @@ describe("Google Drive Library Core immutable adapter", () => {
       const objectKey = createLibraryCoreImmutableObjectKey({
         actorId: "actor-1",
         digest: contentDigest,
+        epochId: "epoch-1",
         firstSequence: first,
         kind: "intent_segment",
         lastSequence: last,
@@ -670,6 +675,7 @@ describe("Google Drive Library Core immutable adapter", () => {
       discoverGoogleDriveLibraryCoreIntentSegmentsV1({
         accessToken: "test-token",
         actorId: "actor-1",
+        epochId: "epoch-1",
         googleFetch: fake.fetch,
         libraryId: "library-1",
       }),

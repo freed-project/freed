@@ -460,6 +460,7 @@ async function acceptPendingPwaReadIntents(input: {
     const locator = await discoverGoogleDriveLibraryCoreIntentHeadV1({
       accessToken: input.accessToken,
       actorId: actor.actor_id,
+      epochId: input.epochId,
       googleFetch: input.googleFetch,
       libraryId: input.libraryId,
       signal: input.signal,
@@ -469,6 +470,7 @@ async function acceptPendingPwaReadIntents(input: {
       accessToken: input.accessToken,
       actorId: actor.actor_id,
       controlFileId: input.controlFileId,
+      epochId: input.epochId,
       googleFetch: input.googleFetch,
       intentHeadFileId: locator.intentHeadFileId,
       libraryId: input.libraryId,
@@ -483,6 +485,7 @@ async function acceptPendingPwaReadIntents(input: {
     const segments = await discoverGoogleDriveLibraryCoreIntentSegmentsV1({
       accessToken: input.accessToken,
       actorId: actor.actor_id,
+      epochId: input.epochId,
       googleFetch: input.googleFetch,
       libraryId: input.libraryId,
       signal: input.signal,
