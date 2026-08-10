@@ -77,8 +77,6 @@ import {
   type LibraryCoreProjectionWorkerClient,
 } from "./library-core-shadow-runtime";
 import {
-  migrateLibraryCoreExternalSnapshot,
-  tauriLibraryCoreExternalMigrationNativeClient,
   type LibraryCoreExternalExportChunkV1,
   type LibraryCoreExternalExportConfirmedV1,
   type LibraryCoreExternalExportStartedV1,
@@ -635,6 +633,7 @@ let lastDocStats: DocStats | null = null;
 let lastItemIndexById: ItemIndex = new Map();
 let rendererItemHydrationLeaseCount = 0;
 let rendererItemHydrationTransition: Promise<void> = Promise.resolve();
+let sqliteMigrationInProgress = false;
 
 // ---------------------------------------------------------------------------
 // Subscriber model
@@ -1511,19 +1510,8 @@ const libraryCoreExternalExportWorkerClient: LibraryCoreExternalExportWorkerClie
   cancel: cancelLibraryCoreExternalExport,
 };
 
-const LIBRARY_CORE_EXTERNAL_MIGRATION_DISABLED_KEY =
-  "freed.libraryCore.externalMigrationV1.disabled";
 export const LIBRARY_CORE_RENDERER_ITEM_EVICTION_DISABLED_KEY =
   "freed.libraryCore.rendererItemEvictionV1.disabled";
-
-function shouldRunLibraryCoreExternalMigration(): boolean {
-  if (import.meta.env.VITE_TEST_TAURI === "1" || !isTauri()) return false;
-  try {
-    return localStorage.getItem(LIBRARY_CORE_EXTERNAL_MIGRATION_DISABLED_KEY) !== "1";
-  } catch {
-    return true;
-  }
-}
 
 function shouldEvictRendererItems(): boolean {
   // The browser-only Desktop harness has no native SQLite commands. It keeps
@@ -1540,37 +1528,32 @@ function shouldEvictRendererItems(): boolean {
   }
 }
 
-async function migrateLibraryCoreBeforeAutomergeLoad(): Promise<void> {
-  if (!shouldRunLibraryCoreExternalMigration()) return;
-  const registration = desktopClientRegistration;
-  if (!registration) {
-    throw new Error("Library Core migration requires a Desktop installation identity");
-  }
-  const startedAt = performance.now();
+async function migrateInitializedLegacyStateToSqlite(
+  state: DocState,
+): Promise<DocState> {
+  sqliteMigrationInProgress = true;
+  let release: (() => void) | null = null;
+  let released = false;
   try {
-    const result = await migrateLibraryCoreExternalSnapshot(
-      libraryCoreExternalExportWorkerClient,
-      tauriLibraryCoreExternalMigrationNativeClient,
-      newLibraryCoreProjectionSessionId(),
-      registration.id,
-    );
+    release = await acquireLegacyRendererItems();
+    const hydrated = getDocState() ?? state;
+    const source = await getCommittedDoc();
+    release();
+    released = true;
+    const migrated = await importLegacyLibraryIntoSqlite(hydrated, source);
     recordRuntimeHealthEvent({
-      event: "library_core_external_migration",
-      outcome: result.migrated ? "selected" : "empty_source",
-      totalRows: result.projection?.totalRows ?? 0,
-      durationMs: Math.round(performance.now() - startedAt),
+      event: "sqlite_library_migration_completed",
+      itemCount: migrated.totalItemCount,
+      sourceGeneration: source.revision.generation,
+      sourceRevision: source.revision.saveRevision,
     });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    log.warn(
-      `[library-core-external] migration failed; using Automerge read rollback: ${message}`,
-    );
-    recordRuntimeHealthEvent({
-      event: "library_core_external_migration",
-      outcome: "rollback",
-      message: message.slice(0, 512),
-      durationMs: Math.round(performance.now() - startedAt),
-    });
+    scheduleIdleWorkerStop();
+    lastDocState = migrated;
+    lastItemIndexById = new Map();
+    return migrated;
+  } finally {
+    sqliteMigrationInProgress = false;
+    if (release && !released) release();
   }
 }
 
@@ -1602,7 +1585,6 @@ export function initDoc(
     }
     await ensureWorkerReady();
     try {
-      await migrateLibraryCoreBeforeAutomergeLoad();
       const state = await initializeWorkerDocumentWithDataRecovery();
       appDocumentInitialized = true;
       workerDocumentInitialized = true;
@@ -1610,31 +1592,10 @@ export function initDoc(
         scheduleLibraryCoreShadowProjection();
         return state;
       }
-      const release = await acquireLegacyRendererItems();
-      let released = false;
-      try {
-        const hydrated = getDocState() ?? state;
-        const source = await getCommittedDoc();
-        release();
-        released = true;
-        const migrated = await importLegacyLibraryIntoSqlite(hydrated, source);
-        recordRuntimeHealthEvent({
-          event: "sqlite_library_migration_completed",
-          itemCount: migrated.totalItemCount,
-          sourceGeneration: source.revision.generation,
-          sourceRevision: source.revision.saveRevision,
-        });
-        scheduleIdleWorkerStop();
-        lastDocState = migrated;
-        lastItemIndexById = new Map();
-        return migrated;
-      } finally {
-        if (!released) release();
-      }
+      return migrateInitializedLegacyStateToSqlite(state);
     } catch (error) {
       if (error instanceof WorkerLifecycleError) {
         await ensureWorkerReady();
-        await migrateLibraryCoreBeforeAutomergeLoad();
         const state = await initializeWorkerDocumentWithDataRecovery();
         appDocumentInitialized = true;
         workerDocumentInitialized = true;
@@ -1642,27 +1603,7 @@ export function initDoc(
           scheduleLibraryCoreShadowProjection();
           return state;
         }
-        const release = await acquireLegacyRendererItems();
-        let released = false;
-        try {
-          const hydrated = getDocState() ?? state;
-          const source = await getCommittedDoc();
-          release();
-          released = true;
-        const migrated = await importLegacyLibraryIntoSqlite(hydrated, source);
-        recordRuntimeHealthEvent({
-          event: "sqlite_library_migration_completed",
-          itemCount: migrated.totalItemCount,
-          sourceGeneration: source.revision.generation,
-          sourceRevision: source.revision.saveRevision,
-        });
-          scheduleIdleWorkerStop();
-          lastDocState = migrated;
-          lastItemIndexById = new Map();
-          return migrated;
-        } finally {
-          if (!released) release();
-        }
+        return migrateInitializedLegacyStateToSqlite(state);
       }
       throw error;
     }
@@ -2200,6 +2141,7 @@ function scheduleLibraryCoreShadowProjection(): void {
     import.meta.env.VITE_TEST_TAURI === "1"
     || !isTauri()
     || automergeQuiesced
+    || sqliteMigrationInProgress
     || isSqliteLibraryActive()
   ) return;
   if (libraryCoreShadowRun) {

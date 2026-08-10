@@ -24,6 +24,7 @@ import type {
   DocState,
   WorkerRequest,
 } from "./automerge-types";
+import { recordRuntimeHealthEvent } from "./runtime-health-events";
 
 export interface SqliteStatus {
   active: boolean;
@@ -136,6 +137,78 @@ export interface SqliteLibraryBackupChunk {
 }
 
 let sqliteActive = false;
+
+const LEGACY_IMPORT_MAX_BATCH_ITEMS = 128;
+const LEGACY_IMPORT_MAX_BATCH_BYTES = 512 * 1_024;
+
+interface EncodedImportItem {
+  readonly globalId: string;
+  readonly json: string;
+  readonly sourceIndex: number;
+  readonly utf8Bytes: number;
+}
+
+function* legacyImportBatches(
+  items: readonly FeedItem[],
+): Generator<EncodedImportItem[]> {
+  let batch: EncodedImportItem[] = [];
+  let batchBytes = 0;
+  const encoder = new TextEncoder();
+
+  for (let sourceIndex = 0; sourceIndex < items.length; sourceIndex += 1) {
+    const item = items[sourceIndex];
+    if (!item) continue;
+    const json = encodeJson(item);
+    const encoded: EncodedImportItem = {
+      globalId: item.globalId,
+      json,
+      sourceIndex,
+      utf8Bytes: encoder.encode(json).byteLength,
+    };
+    if (
+      batch.length > 0 &&
+      (batch.length >= LEGACY_IMPORT_MAX_BATCH_ITEMS ||
+        batchBytes + encoded.utf8Bytes > LEGACY_IMPORT_MAX_BATCH_BYTES)
+    ) {
+      yield batch;
+      batch = [];
+      batchBytes = 0;
+    }
+    batch.push(encoded);
+    batchBytes += encoded.utf8Bytes;
+  }
+  if (batch.length > 0) yield batch;
+}
+
+async function appendLegacyImportBatch(
+  batch: readonly EncodedImportItem[],
+  updatedAtMs: number,
+): Promise<void> {
+  try {
+    await invoke("append_sqlite_library_import", {
+      request: {
+        itemsJson: batch.map((item) => item.json),
+        updatedAtMs,
+      },
+    });
+  } catch (error) {
+    // Tauri transports one JSON request through WebKit. If a platform rejects
+    // a multi-record request despite the byte bound, split it without losing
+    // import progress. A single-record failure reports the exact source item.
+    if (batch.length > 1) {
+      const midpoint = Math.ceil(batch.length / 2);
+      await appendLegacyImportBatch(batch.slice(0, midpoint), updatedAtMs);
+      await appendLegacyImportBatch(batch.slice(midpoint), updatedAtMs);
+      return;
+    }
+    const item = batch[0];
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `SQLite Library import rejected item ${item?.globalId ?? "unknown"} at source index ${item?.sourceIndex.toLocaleString() ?? "unknown"} (${item?.utf8Bytes.toLocaleString() ?? "unknown"} bytes): ${message}`,
+      { cause: error },
+    );
+  }
+}
 
 export function isSqliteLibraryActive(): boolean {
   return sqliteActive;
@@ -410,15 +483,20 @@ export async function importLegacyLibraryIntoSqlite(
     },
   });
 
-  const batchSize = 500;
-  for (let start = 0; start < state.items.length; start += batchSize) {
-    const batch = state.items.slice(start, start + batchSize);
-    await invoke("append_sqlite_library_import", {
-      request: {
-        itemsJson: batch.map((item) => encodeJson(item)),
-        updatedAtMs: Date.now(),
-      },
+  try {
+    for (const batch of legacyImportBatches(state.items)) {
+      await appendLegacyImportBatch(batch, Date.now());
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    recordRuntimeHealthEvent({
+      event: "sqlite_library_migration_failed",
+      itemCount: state.items.length,
+      message: message.slice(0, 1_024),
+      sourceGeneration: source.revision.generation,
+      sourceRevision: source.revision.saveRevision,
     });
+    throw error;
   }
   await invoke("finalize_sqlite_library_import", { activatedAtMs: Date.now() });
   sqliteActive = true;
