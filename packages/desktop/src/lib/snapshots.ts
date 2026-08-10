@@ -69,7 +69,7 @@ const SNAPSHOT_INDEX_FILE = "index.json";
 const SNAPSHOT_FALLBACK_STORAGE_KEY = "freed.snapshots";
 const MAX_SNAPSHOTS = 24;
 const AUTO_SNAPSHOT_DEBOUNCE_MS = 30_000;
-const AUTO_SNAPSHOT_MIN_INTERVAL_MS = 60 * 60 * 1000;
+const AUTO_SNAPSHOT_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const FACTORY_RESET_DRAIN_TIMEOUT_MS = 180_000;
 
 let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
@@ -382,10 +382,16 @@ function scheduleAutoSnapshot(): void {
     clearTimeout(snapshotTimer);
   }
 
+  const elapsed = Math.max(0, Date.now() - lastSnapshotAt);
+  const delay = lastSnapshotAt === 0
+    ? AUTO_SNAPSHOT_DEBOUNCE_MS
+    : Math.max(AUTO_SNAPSHOT_DEBOUNCE_MS, AUTO_SNAPSHOT_INTERVAL_MS - elapsed);
+
   snapshotTimer = setTimeout(() => {
     snapshotTimer = null;
     const now = Date.now();
-    if (now - lastSnapshotAt < AUTO_SNAPSHOT_MIN_INTERVAL_MS) {
+    if (now - lastSnapshotAt < AUTO_SNAPSHOT_INTERVAL_MS) {
+      scheduleAutoSnapshot();
       return;
     }
 
@@ -394,18 +400,24 @@ function scheduleAutoSnapshot(): void {
       source: "auto-snapshot",
       timeoutMs: 180_000,
       run: () => createSnapshot("auto"),
-    }).catch((error) => {
-      if (isBackgroundRuntimeDeferredError(error)) {
-        log.info(`[snapshots] auto snapshot deferred: ${error.reason}`);
-        return;
-      }
-      log.error(
-        `[snapshots] auto snapshot failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    });
-  }, AUTO_SNAPSHOT_DEBOUNCE_MS);
+    })
+      .catch((error) => {
+        if (isBackgroundRuntimeDeferredError(error)) {
+          log.info(`[snapshots] auto snapshot deferred: ${error.reason}`);
+          return;
+        }
+        log.error(
+          `[snapshots] auto snapshot failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      })
+      .finally(() => {
+        if (snapshotManagerStarted && !snapshotResetInProgress) {
+          scheduleAutoSnapshot();
+        }
+      });
+  }, delay);
 }
 
 async function restoreSnapshotInternal(snapshotId: string): Promise<SnapshotSummary> {
@@ -515,6 +527,7 @@ export async function startSnapshotManager(): Promise<void> {
     scheduleAutoSnapshot();
   });
   snapshotManagerStarted = true;
+  scheduleAutoSnapshot();
 }
 
 export function stopSnapshotManager(): void {
