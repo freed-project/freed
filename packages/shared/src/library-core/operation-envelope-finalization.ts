@@ -12,6 +12,8 @@ import {
 import {
   isLibraryCoreAssembledTransactionV1,
   type FeedItemReadAssignmentSigningBodyV1,
+  type FeedItemUserStateToggleSigningBodyV1,
+  type LibraryCoreOperationSigningBodyV1,
   type LibraryCoreAssembledTransactionV1,
   type LibraryCoreTransactionBodyV1,
 } from "./operation-transaction-contracts.js";
@@ -25,8 +27,16 @@ export interface FeedItemReadAssignmentEnvelopeV1 extends FeedItemReadAssignment
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
 
+export interface FeedItemUserStateToggleEnvelopeV1 extends FeedItemUserStateToggleSigningBodyV1 {
+  readonly signature: LibraryCoreEd25519SignatureHex;
+}
+
+export type LibraryCoreOperationEnvelopeV1 =
+  | FeedItemReadAssignmentEnvelopeV1
+  | FeedItemUserStateToggleEnvelopeV1;
+
 export interface LibraryCoreFinalizedEnvelopeV1 {
-  readonly envelope: FeedItemReadAssignmentEnvelopeV1;
+  readonly envelope: LibraryCoreOperationEnvelopeV1;
   readonly envelope_digest: LibraryCoreLowercaseHex64;
 }
 
@@ -52,7 +62,7 @@ export function isLibraryCoreFinalizedTransactionV1(
 }
 
 function canonicalEnvelopeBytes(
-  signingBody: FeedItemReadAssignmentSigningBodyV1,
+  signingBody: LibraryCoreOperationSigningBodyV1,
   signature: string,
 ): number {
   return encodeLibraryCoreCanonicalValue({
@@ -124,7 +134,7 @@ export async function finalizeLibraryCoreTransactionV1(
     const envelope = Object.freeze({
       ...assembled.members[index].signing_body,
       signature: signatures[index],
-    }) satisfies FeedItemReadAssignmentEnvelopeV1;
+    }) as LibraryCoreOperationEnvelopeV1;
     if (
       canonicalEnvelopeBytes(envelope, envelope.signature) !==
       memberByteLengths[index]

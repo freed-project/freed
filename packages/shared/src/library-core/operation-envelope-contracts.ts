@@ -1,4 +1,11 @@
-import { FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA } from "./operation-payload-contracts.js";
+import {
+  FEED_ITEM_ARCHIVE_ASSIGNMENT_PAYLOAD_SCHEMA,
+  FEED_ITEM_LIKE_ASSIGNMENT_PAYLOAD_SCHEMA,
+  FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA,
+  FEED_ITEM_SAVED_ASSIGNMENT_PAYLOAD_SCHEMA,
+  type FeedItemUserStateToggleKindV1,
+  type FeedItemUserStateToggleOperationTypeV1,
+} from "./operation-payload-contracts.js";
 import {
   isLibraryCoreEntityId,
   isLibraryCoreLowercaseHex64,
@@ -37,6 +44,9 @@ export interface FeedItemReadAssignmentTransactionMemberInputV1 {
   readonly created_at_ms: unknown;
 }
 
+export type FeedItemUserStateToggleTransactionMemberInputV1 =
+  FeedItemReadAssignmentTransactionMemberInputV1;
+
 export interface FeedItemReadAssignmentTransactionMemberBodyV1 {
   readonly operation_id: LibraryCoreOperationInstanceId;
   readonly library_id: LibraryCoreLowercaseHex64;
@@ -62,8 +72,40 @@ export interface FeedItemReadAssignmentTransactionMemberBodyV1 {
   readonly signature_algorithm: "ed25519";
 }
 
+export interface FeedItemUserStateToggleTransactionMemberBodyV1 {
+  readonly operation_id: LibraryCoreOperationInstanceId;
+  readonly library_id: LibraryCoreLowercaseHex64;
+  readonly epoch: number;
+  readonly epoch_id: LibraryCoreLowercaseHex64;
+  readonly schema_version: 1;
+  readonly actor_id: LibraryCoreLowercaseHex64;
+  readonly actor_sequence: number;
+  readonly previous_actor_operation_id: LibraryCoreOperationInstanceId | null;
+  readonly causal_frontier: readonly LibraryCoreCausalTipV1[];
+  readonly hlc_wall_ms: number;
+  readonly hlc_counter: number;
+  readonly transaction_id: LibraryCoreOperationInstanceId;
+  readonly transaction_member_index: number;
+  readonly transaction_member_count: number;
+  readonly operation_type: FeedItemUserStateToggleOperationTypeV1;
+  readonly entity_type: "FeedItem";
+  readonly entity_id: LibraryCoreEntityId;
+  readonly payload: Readonly<{
+    toggled_at_ms: number;
+    toggle: FeedItemUserStateToggleKindV1;
+  }>;
+  readonly payload_digest: LibraryCoreLowercaseHex64;
+  readonly blob_references: readonly [];
+  readonly created_at_ms: number;
+  readonly signature_algorithm: "ed25519";
+}
+
+export type LibraryCoreTransactionMemberBodyV1 =
+  | FeedItemReadAssignmentTransactionMemberBodyV1
+  | FeedItemUserStateToggleTransactionMemberBodyV1;
+
 export interface LibraryCoreTransactionMemberConstruction<
-  Body = FeedItemReadAssignmentTransactionMemberBodyV1,
+  Body = LibraryCoreTransactionMemberBodyV1,
 > {
   readonly body: Body;
   readonly member_digest: LibraryCoreLowercaseHex64;
@@ -345,9 +387,18 @@ export function snapshotLibraryCoreCausalFrontier(
   return Object.freeze(snapshot);
 }
 
-function constructFeedItemReadAssignmentTransactionMember(
+function constructFeedItemTransactionMember(
   input: FeedItemReadAssignmentTransactionMemberInputV1,
   dependencies: LibraryCoreOperationDigestDependencies,
+  spec:
+    | {
+        readonly operationType: "feed_item_read_assignment";
+        readonly validatePayload: typeof FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA.validate;
+      }
+    | {
+        readonly operationType: FeedItemUserStateToggleOperationTypeV1;
+        readonly validatePayload: typeof FEED_ITEM_SAVED_ASSIGNMENT_PAYLOAD_SCHEMA.validate;
+      },
 ): LibraryCoreTransactionMemberConstruction {
   const digestValue = dependencies.digest;
   if (typeof digestValue !== "function") {
@@ -421,7 +472,7 @@ function constructFeedItemReadAssignmentTransactionMember(
   if (!isLibraryCoreEntityId(entityCandidate)) {
     throw new TypeError("entity_id must use the bounded v1 entity-ID codec");
   }
-  const payloadResult = FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA.validate(
+  const payloadResult = spec.validatePayload(
     readDataProperty(record, "payload", "transaction member input"),
   );
   if (!payloadResult.ok) {
@@ -429,7 +480,7 @@ function constructFeedItemReadAssignmentTransactionMember(
   }
   const payloadDigest = digestValue("operation-payload", {
     schema_version: 1,
-    operation_type: "feed_item_read_assignment",
+    operation_type: spec.operationType,
     payload: payloadResult.value,
   });
   if (!isLibraryCoreLowercaseHex64(payloadDigest)) {
@@ -474,7 +525,7 @@ function constructFeedItemReadAssignmentTransactionMember(
     ),
     transaction_member_index: memberIndex,
     transaction_member_count: memberCount,
-    operation_type: "feed_item_read_assignment",
+    operation_type: spec.operationType,
     entity_type: "FeedItem",
     entity_id: entityCandidate,
     payload: payloadResult.value,
@@ -485,7 +536,7 @@ function constructFeedItemReadAssignmentTransactionMember(
       "created_at_ms",
     ),
     signature_algorithm: "ed25519",
-  }) satisfies FeedItemReadAssignmentTransactionMemberBodyV1;
+  }) as LibraryCoreTransactionMemberBodyV1;
   const memberDigest = digestValue("transaction-member", body);
   if (!isLibraryCoreLowercaseHex64(memberDigest)) {
     throw new TypeError("digest dependency returned an invalid member digest");
@@ -496,6 +547,32 @@ function constructFeedItemReadAssignmentTransactionMember(
   });
   CLOSED_TRANSACTION_MEMBERS.add(construction);
   return construction;
+}
+
+function constructFeedItemReadAssignmentTransactionMember(
+  input: FeedItemReadAssignmentTransactionMemberInputV1,
+  dependencies: LibraryCoreOperationDigestDependencies,
+): LibraryCoreTransactionMemberConstruction<FeedItemReadAssignmentTransactionMemberBodyV1> {
+  return constructFeedItemTransactionMember(input, dependencies, {
+    operationType: "feed_item_read_assignment",
+    validatePayload: FEED_ITEM_READ_ASSIGNMENT_PAYLOAD_SCHEMA.validate,
+  }) as LibraryCoreTransactionMemberConstruction<FeedItemReadAssignmentTransactionMemberBodyV1>;
+}
+
+function constructFeedItemUserStateToggleTransactionMember(
+  input: FeedItemUserStateToggleTransactionMemberInputV1,
+  dependencies: LibraryCoreOperationDigestDependencies,
+  operationType: FeedItemUserStateToggleOperationTypeV1,
+): LibraryCoreTransactionMemberConstruction<FeedItemUserStateToggleTransactionMemberBodyV1> {
+  return constructFeedItemTransactionMember(input, dependencies, {
+    operationType,
+    validatePayload:
+      operationType === "feed_item_saved_assignment"
+        ? FEED_ITEM_SAVED_ASSIGNMENT_PAYLOAD_SCHEMA.validate
+        : operationType === "feed_item_archive_assignment"
+          ? FEED_ITEM_ARCHIVE_ASSIGNMENT_PAYLOAD_SCHEMA.validate
+          : FEED_ITEM_LIKE_ASSIGNMENT_PAYLOAD_SCHEMA.validate,
+  }) as LibraryCoreTransactionMemberConstruction<FeedItemUserStateToggleTransactionMemberBodyV1>;
 }
 
 /**
@@ -517,3 +594,31 @@ export const FEED_ITEM_READ_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA =
     FeedItemReadAssignmentTransactionMemberInputV1,
     FeedItemReadAssignmentTransactionMemberBodyV1
   >;
+
+function userStateToggleTransactionMemberSchema(
+  operationType: FeedItemUserStateToggleOperationTypeV1,
+) {
+  return Object.freeze({
+    schemaId: `${operationType}_transaction_member_v1`,
+    schemaVersion: 1 as const,
+    operationType,
+    entityType: "FeedItem" as const,
+    maximumCausalFrontierTips: LIBRARY_CORE_MAX_CAUSAL_FRONTIER_TIPS,
+    construct: (
+      input: FeedItemUserStateToggleTransactionMemberInputV1,
+      dependencies: LibraryCoreOperationDigestDependencies,
+    ) =>
+      constructFeedItemUserStateToggleTransactionMember(
+        input,
+        dependencies,
+        operationType,
+      ),
+  });
+}
+
+export const FEED_ITEM_SAVED_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA =
+  userStateToggleTransactionMemberSchema("feed_item_saved_assignment");
+export const FEED_ITEM_ARCHIVE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA =
+  userStateToggleTransactionMemberSchema("feed_item_archive_assignment");
+export const FEED_ITEM_LIKE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA =
+  userStateToggleTransactionMemberSchema("feed_item_like_assignment");

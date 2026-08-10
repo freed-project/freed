@@ -49,6 +49,7 @@ import {
 } from "./factory-reset-coordinator";
 import {
   enqueuePwaLibraryCoreReadAssignments,
+  enqueuePwaLibraryCoreUserStateToggle,
   isPwaLibraryCoreEnabled,
 } from "./library-core-runtime";
 export type { DocState } from "./automerge-types";
@@ -1256,11 +1257,17 @@ export async function docMarkAllAsRead(platform?: string): Promise<void> {
 }
 
 export async function docToggleSaved(globalId: string): Promise<void> {
+  if (isPwaLibraryCoreEnabled()) {
+    return enqueuePwaLibraryCoreUserStateToggle(globalId, "saved");
+  }
   const reqId = nextReqId++;
   return request({ reqId, type: "TOGGLE_SAVED", globalId });
 }
 
 export async function docToggleArchived(globalId: string): Promise<void> {
+  if (isPwaLibraryCoreEnabled()) {
+    return enqueuePwaLibraryCoreUserStateToggle(globalId, "archived");
+  }
   const reqId = nextReqId++;
   return request({ reqId, type: "TOGGLE_ARCHIVED", globalId });
 }
@@ -1272,6 +1279,9 @@ export async function docArchiveItems(globalIds: string[]): Promise<void> {
 }
 
 export async function docToggleLiked(globalId: string): Promise<void> {
+  if (isPwaLibraryCoreEnabled()) {
+    return enqueuePwaLibraryCoreUserStateToggle(globalId, "liked");
+  }
   const reqId = nextReqId++;
   return request({ reqId, type: "TOGGLE_LIKED", globalId });
 }

@@ -6,8 +6,8 @@
 //! enter the authoritative log by merely matching a Rust struct's shape.
 
 use super::{
-    ActorState, JournalError, JournalResult, VerifiedCausalTip, VerifiedReadAssignment,
-    VerifiedReadTransaction, MAX_CAUSAL_TIPS_PER_OPERATION, MAX_ENTITY_ID_BYTES,
+    ActorState, JournalError, JournalResult, VerifiedCausalTip, VerifiedOperation,
+    VerifiedOperationTransaction, MAX_CAUSAL_TIPS_PER_OPERATION, MAX_ENTITY_ID_BYTES,
     MAX_OPERATION_ID_BYTES, MAX_SAFE_INTEGER, MAX_TRANSACTION_ENVELOPE_BYTES,
     MAX_TRANSACTION_MEMBERS,
 };
@@ -48,7 +48,8 @@ const ENVELOPE_KEYS: [&str; 26] = [
     "signature",
 ];
 const CAUSAL_TIP_KEYS: [&str; 4] = ["actor_id", "sequence", "operation_id", "chain_digest"];
-const PAYLOAD_KEYS: [&str; 1] = ["read_at_ms"];
+const READ_PAYLOAD_KEYS: [&str; 1] = ["read_at_ms"];
+const TOGGLE_PAYLOAD_KEYS: [&str; 2] = ["toggle", "toggled_at_ms"];
 
 #[derive(Debug, Clone)]
 pub(super) struct OperationIdentity {
@@ -72,7 +73,10 @@ struct ParsedEnvelope {
     transaction_member_index: i64,
     transaction_member_count: i64,
     entity_id: String,
-    read_at_ms: i64,
+    operation_type: String,
+    read_at_ms: Option<i64>,
+    toggle: Option<String>,
+    toggled_at_ms: Option<i64>,
     previous_actor_chain_digest: String,
     actor_chain_digest: String,
     transaction_digest: String,
@@ -242,7 +246,16 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
     let object = exact_object(&value, &ENVELOPE_KEYS, index, "field_set")?;
 
     require_integer_literal(object, "schema_version", 1, index)?;
-    require_literal(object, "operation_type", "feed_item_read_assignment", index)?;
+    let operation_type = required_string(object, "operation_type", index)?;
+    if !matches!(
+        operation_type.as_str(),
+        "feed_item_read_assignment"
+            | "feed_item_saved_assignment"
+            | "feed_item_archive_assignment"
+            | "feed_item_like_assignment"
+    ) {
+        return Err(invalid(index, "operation_type"));
+    }
     require_literal(object, "entity_type", "FeedItem", index)?;
     require_literal(object, "signature_algorithm", "ed25519", index)?;
     if object
@@ -294,14 +307,43 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
     let payload = object
         .get("payload")
         .ok_or_else(|| invalid(index, "payload"))?;
-    let payload_object = exact_object(payload, &PAYLOAD_KEYS, index, "payload")?;
-    let read_at_ms = safe_integer(payload_object, "read_at_ms", index)?;
+    let (read_at_ms, toggle, toggled_at_ms) = match operation_type.as_str() {
+        "feed_item_read_assignment" => {
+            let payload_object = exact_object(payload, &READ_PAYLOAD_KEYS, index, "payload")?;
+            (
+                Some(safe_integer(payload_object, "read_at_ms", index)?),
+                None,
+                None,
+            )
+        }
+        "feed_item_saved_assignment"
+        | "feed_item_archive_assignment"
+        | "feed_item_like_assignment" => {
+            let payload_object = exact_object(payload, &TOGGLE_PAYLOAD_KEYS, index, "payload")?;
+            let toggle = required_string(payload_object, "toggle", index)?;
+            let expected_toggle = match operation_type.as_str() {
+                "feed_item_saved_assignment" => "saved",
+                "feed_item_archive_assignment" => "archived",
+                "feed_item_like_assignment" => "liked",
+                _ => unreachable!("validated toggle operation type"),
+            };
+            if toggle != expected_toggle {
+                return Err(invalid(index, "toggle"));
+            }
+            (
+                None,
+                Some(toggle),
+                Some(safe_integer(payload_object, "toggled_at_ms", index)?),
+            )
+        }
+        _ => unreachable!("validated operation type"),
+    };
     let payload_digest = required_string(object, "payload_digest", index)?;
     let expected_payload_digest = digest_hex(
         "operation-payload",
         &json!({
             "schema_version": 1,
-            "operation_type": "feed_item_read_assignment",
+            "operation_type": operation_type,
             "payload": payload,
         }),
         index,
@@ -358,7 +400,10 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
         transaction_member_index,
         transaction_member_count,
         entity_id,
+        operation_type,
         read_at_ms,
+        toggle,
+        toggled_at_ms,
         previous_actor_chain_digest,
         actor_chain_digest,
         transaction_digest,
@@ -370,10 +415,10 @@ fn parse_envelope(bytes: &[u8], index: usize) -> JournalResult<ParsedEnvelope> {
     })
 }
 
-pub(super) fn verify_read_transaction<F>(
+pub(super) fn verify_operation_transaction<F>(
     canonical_envelopes: &[Vec<u8>],
     actor_lookup: F,
-) -> JournalResult<VerifiedReadTransaction>
+) -> JournalResult<VerifiedOperationTransaction>
 where
     F: FnOnce(&OperationIdentity) -> JournalResult<ActorState>,
 {
@@ -496,7 +541,7 @@ where
             return Err(invalid(index, "signature"));
         }
         let envelope_digest = digest_hex("operation-envelope", &member.value, index)?;
-        verified_members.push(VerifiedReadAssignment {
+        verified_members.push(VerifiedOperation {
             operation_id: member.operation_id.clone(),
             actor_sequence: member.actor_sequence,
             previous_actor_operation_id: member.previous_actor_operation_id.clone(),
@@ -506,14 +551,17 @@ where
             signing_body_digest,
             envelope_digest,
             entity_id: member.entity_id.clone(),
+            operation_type: member.operation_type.clone(),
             read_at_ms: member.read_at_ms,
+            toggle: member.toggle.clone(),
+            toggled_at_ms: member.toggled_at_ms,
             canonical_envelope_json: member.canonical_json.clone(),
             causal_tips: member.causal_tips.clone(),
         });
         previous_chain_digest = actor_chain_digest;
     }
 
-    Ok(VerifiedReadTransaction {
+    Ok(VerifiedOperationTransaction {
         transaction_id: first.transaction_id.clone(),
         transaction_digest,
         library_id: first.library_id.clone(),
@@ -844,14 +892,14 @@ mod tests {
         journal.enroll_actor(&enrollment).expect("enroll actor");
 
         assert!(matches!(
-            journal.verify_read_transaction(&envelopes[..1]),
+            journal.verify_operation_transaction(&envelopes[..1]),
             Err(JournalError::OperationVerification {
                 index: 0,
                 field: "transaction_identity"
             })
         ));
         assert!(matches!(
-            journal.verify_read_transaction(&[
+            journal.verify_operation_transaction(&[
                 br#"{"operation_id":"first","operation_id":"second"}"#.to_vec()
             ]),
             Err(JournalError::OperationVerification {
