@@ -2,7 +2,7 @@
   "channel": "dev",
   "dayKey": "26.8.10",
   "date": "2026-08-10",
-  "preferredDeck": "The PWA now reads and searches the SQLite Library while Freed Desktop accepts signed mobile intents.",
+  "preferredDeck": "Freed now runs its Library on SQLite in Freed Desktop and IndexedDB in the PWA, with immutable Drive sync and signed mobile actions.",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -14,5 +14,5 @@
   "editorialNotes": [
     "Lead with the working SQLite Desktop outcome and restored maps. Omit internal census and contract churn."
   ],
-  "updatedAt": "2026-08-10T18:21:17.424Z"
+  "updatedAt": "2026-08-10T19:11:35.207Z"
 }
