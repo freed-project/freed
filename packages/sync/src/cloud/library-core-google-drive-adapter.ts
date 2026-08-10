@@ -1,8 +1,14 @@
 import {
+  createLibraryCoreIntentHeadObjectKey,
+  decodeLibraryCoreCanonicalValue,
+  encodeLibraryCoreCanonicalValue,
   isLibraryCoreOperationInstanceId,
   parseLibraryCoreControlPointerV1,
   parseLibraryCoreImmutableObjectDescriptorV1,
+  parseLibraryCoreIntentHeadV1,
+  type LibraryCoreCanonicalValue,
   type LibraryCoreImmutableObjectDescriptorV1,
+  type LibraryCoreIntentHeadV1,
 } from "@freed/shared/library-core";
 import type {
   LibraryCoreControlCompareAndSwapResultV1,
@@ -13,6 +19,10 @@ import type {
   LibraryCorePublishedImmutableObjectReceiptV1,
 } from "./library-core-immutable-publication.js";
 import type { GoogleDriveFetch } from "./gdrive.js";
+import type {
+  LibraryCoreIntentHeadReadV1,
+  LibraryCoreIntentPublicationAdapterV1,
+} from "./library-core-intent-publication.js";
 
 const DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
 const DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files";
@@ -22,6 +32,7 @@ const MAX_DRIVE_FILE_ID_BYTES = 1_024;
 const MAX_LIST_PAGES = 16;
 const MAX_DUPLICATE_IMMUTABLE_OBJECTS = 8;
 const MAX_CONTROL_BYTES = 65_536;
+const MAX_INTENT_HEAD_BYTES = 65_536;
 const MAX_DRIVE_JSON_BYTES = 262_144;
 const MAX_DRIVE_ERROR_BYTES = 4_096;
 
@@ -70,6 +81,21 @@ export interface GoogleDriveLibraryCoreAdapterOptionsV1 {
   readonly controlFileId: string;
   readonly googleFetch?: GoogleDriveFetch;
   readonly signal?: AbortSignal;
+}
+
+export interface GoogleDriveLibraryCoreIntentHeadLocatorV1 {
+  readonly intentHeadFileId: string;
+}
+
+export interface ProvisionedGoogleDriveLibraryCoreIntentHeadV1
+  extends GoogleDriveLibraryCoreIntentHeadLocatorV1 {
+  readonly created: boolean;
+}
+
+export interface GoogleDriveLibraryCoreIntentAdapterOptionsV1
+  extends GoogleDriveLibraryCoreAdapterOptionsV1,
+    GoogleDriveLibraryCoreIntentHeadLocatorV1 {
+  readonly actorId: string;
 }
 
 function assertBoundedText(
@@ -254,6 +280,10 @@ async function libraryIdentityDigest(libraryId: string): Promise<string> {
   return sha256Hex(textEncoder.encode(libraryId));
 }
 
+async function actorIdentityDigest(actorId: string): Promise<string> {
+  return sha256Hex(textEncoder.encode(actorId));
+}
+
 type LibraryCoreDriveObjectKind =
   | "epoch"
   | "enrollment"
@@ -316,6 +346,32 @@ function controlAppProperties(
     freedLibraryDigest: libraryDigest,
     freedObjectKind: "control",
   });
+}
+
+function intentHeadAppProperties(
+  libraryDigest: string,
+  actorDigest: string,
+): Readonly<Record<string, string>> {
+  return Object.freeze({
+    freedProtocol: PROTOCOL_PROPERTY,
+    freedLibraryDigest: libraryDigest,
+    freedObjectKind: "intent_head",
+    freedActorDigest: actorDigest,
+  });
+}
+
+function encodeIntentHead(head: LibraryCoreIntentHeadV1): Uint8Array {
+  return encodeLibraryCoreCanonicalValue(
+    head as unknown as LibraryCoreCanonicalValue,
+  );
+}
+
+function decodeIntentHead(bytes: Uint8Array): LibraryCoreIntentHeadV1 {
+  return parseLibraryCoreIntentHeadV1(
+    decodeLibraryCoreCanonicalValue(bytes, {
+      maximumBytes: MAX_INTENT_HEAD_BYTES,
+    }),
+  );
 }
 
 function assertExpectedProperties(
@@ -620,6 +676,241 @@ export async function provisionGoogleDriveLibraryCoreControlV1(input: {
     throw new Error("Library Core Drive control bootstrap was not discoverable");
   }
   return Object.freeze({ ...provisioned, created: true });
+}
+
+/** Discover one actor-scoped mutable intent head by private identity properties. */
+export async function discoverGoogleDriveLibraryCoreIntentHeadV1(input: {
+  readonly accessToken: string;
+  readonly actorId: string;
+  readonly libraryId: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+}): Promise<GoogleDriveLibraryCoreIntentHeadLocatorV1 | null> {
+  assertBoundedText(
+    input.accessToken,
+    "Google Drive access token",
+    MAX_ACCESS_TOKEN_BYTES,
+  );
+  assertLibraryId(input.libraryId);
+  assertLibraryId(input.actorId);
+  const googleFetch = input.googleFetch ?? fetch;
+  const expectedProperties = intentHeadAppProperties(
+    await libraryIdentityDigest(input.libraryId),
+    await actorIdentityDigest(input.actorId),
+  );
+  const files = await listDriveFilesByProperties({
+    accessToken: input.accessToken,
+    properties: expectedProperties,
+    googleFetch,
+    signal: input.signal,
+    maxFiles: 1,
+  });
+  const file = files[0];
+  if (file === undefined) return null;
+  assertExpectedProperties(
+    file.appProperties,
+    expectedProperties,
+    "Library Core Drive intent head",
+  );
+  return Object.freeze({ intentHeadFileId: file.id });
+}
+
+/**
+ * Provision an actor's empty intent head before its first publication.
+ *
+ * The actor enrollment remains the authority record. This mutable head only
+ * names the latest immutable segment accepted for that exact actor.
+ */
+export async function provisionGoogleDriveLibraryCoreIntentHeadV1(input: {
+  readonly accessToken: string;
+  readonly head: LibraryCoreIntentHeadV1;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+}): Promise<ProvisionedGoogleDriveLibraryCoreIntentHeadV1> {
+  assertBoundedText(
+    input.accessToken,
+    "Google Drive access token",
+    MAX_ACCESS_TOKEN_BYTES,
+  );
+  const head = parseLibraryCoreIntentHeadV1(input.head);
+  const discovery = {
+    accessToken: input.accessToken,
+    actorId: head.actor_id,
+    libraryId: head.library_id,
+    googleFetch: input.googleFetch,
+    signal: input.signal,
+  };
+  const existing = await discoverGoogleDriveLibraryCoreIntentHeadV1(discovery);
+  if (existing !== null) {
+    return Object.freeze({ ...existing, created: false });
+  }
+
+  const googleFetch = input.googleFetch ?? fetch;
+  const bytes = encodeIntentHead(head);
+  const actorDigest = await actorIdentityDigest(head.actor_id);
+  const boundary = `freed-intent-head-${actorDigest.slice(0, 32)}`;
+  const response = await googleFetch(
+    `${DRIVE_UPLOAD_URL}?uploadType=multipart&fields=id,name,size,appProperties`,
+    {
+      method: "POST",
+      headers: {
+        ...authorizationHeaders(input.accessToken),
+        "Content-Type": `multipart/related; boundary=${boundary}`,
+      },
+      body: multipartUploadBody(
+        boundary,
+        {
+          name: createLibraryCoreIntentHeadObjectKey(
+            head.library_id,
+            head.actor_id,
+          ),
+          parents: ["appDataFolder"],
+          appProperties: intentHeadAppProperties(
+            await libraryIdentityDigest(head.library_id),
+            actorDigest,
+          ),
+        },
+        bytes,
+      ),
+      signal: input.signal,
+    },
+  );
+  if (!response.ok) {
+    throw await responseError(
+      "Library Core Drive intent-head bootstrap failed",
+      response,
+    );
+  }
+  await readBoundedResponseBytes(
+    response,
+    MAX_DRIVE_JSON_BYTES,
+    "Library Core Drive intent-head bootstrap response",
+  );
+  const provisioned = await discoverGoogleDriveLibraryCoreIntentHeadV1(
+    discovery,
+  );
+  if (provisioned === null) {
+    throw new Error(
+      "Library Core Drive intent-head bootstrap was not discoverable",
+    );
+  }
+  return Object.freeze({ ...provisioned, created: true });
+}
+
+/** Create an exact actor-head CAS adapter atop the immutable Drive adapter. */
+export function createGoogleDriveLibraryCoreIntentAdapterV1(
+  options: GoogleDriveLibraryCoreIntentAdapterOptionsV1,
+): LibraryCoreIntentPublicationAdapterV1 {
+  assertLibraryId(options.libraryId);
+  assertLibraryId(options.actorId);
+  assertBoundedText(
+    options.intentHeadFileId,
+    "Google Drive intent-head file id",
+    MAX_DRIVE_FILE_ID_BYTES,
+  );
+  const googleFetch = options.googleFetch ?? fetch;
+  const immutableAdapter = createGoogleDriveLibraryCoreAdapterV1(options);
+  const expectedPropertiesPromise = Promise.all([
+    libraryIdentityDigest(options.libraryId),
+    actorIdentityDigest(options.actorId),
+  ]).then(([libraryDigest, actorDigest]) =>
+    intentHeadAppProperties(libraryDigest, actorDigest),
+  );
+
+  const readIntentHead = async (): Promise<LibraryCoreIntentHeadReadV1> => {
+    const metadata = await readDriveFileMetadata({
+      accessToken: options.accessToken,
+      fileId: options.intentHeadFileId,
+      googleFetch,
+      signal: options.signal,
+    });
+    assertExpectedProperties(
+      metadata.appProperties,
+      await expectedPropertiesPromise,
+      "Library Core Drive intent head",
+    );
+    const stored = await readDriveFile({
+      accessToken: options.accessToken,
+      fileId: options.intentHeadFileId,
+      googleFetch,
+      signal: options.signal,
+      maxBytes: MAX_INTENT_HEAD_BYTES,
+      label: "Library Core Drive intent-head read failed",
+    });
+    const head = decodeIntentHead(stored.bytes);
+    if (
+      head.library_id !== options.libraryId ||
+      head.actor_id !== options.actorId
+    ) {
+      throw new Error("Library Core Drive intent-head identity is incorrect");
+    }
+    return Object.freeze({ ...stored, head });
+  };
+
+  return Object.freeze({
+    ...immutableAdapter,
+    readIntentHead,
+    async compareAndSwapIntentHead(input: {
+      readonly bytes: Uint8Array;
+      readonly expectedRevision: string;
+    }) {
+      assertBoundedText(
+        input.expectedRevision,
+        "expected Drive intent-head revision",
+        MAX_DRIVE_FILE_ID_BYTES,
+      );
+      if (
+        !(input.bytes instanceof Uint8Array) ||
+        input.bytes.byteLength === 0 ||
+        input.bytes.byteLength > MAX_INTENT_HEAD_BYTES
+      ) {
+        throw new RangeError(
+          `intent-head bytes must contain 1 to ${MAX_INTENT_HEAD_BYTES.toLocaleString()} bytes`,
+        );
+      }
+      const proposed = decodeIntentHead(input.bytes);
+      if (
+        proposed.library_id !== options.libraryId ||
+        proposed.actor_id !== options.actorId
+      ) {
+        throw new TypeError("proposed intent head has the wrong identity");
+      }
+      const response = await googleFetch(
+        `${DRIVE_UPLOAD_URL}/${encodeURIComponent(
+          options.intentHeadFileId,
+        )}?uploadType=media`,
+        {
+          method: "PATCH",
+          headers: {
+            ...authorizationHeaders(options.accessToken),
+            "Content-Type": "application/json; charset=UTF-8",
+            "If-Match": input.expectedRevision,
+          },
+          body: exactArrayBuffer(input.bytes),
+          signal: options.signal,
+        },
+      );
+      if (response.status === 412) {
+        return Object.freeze({
+          status: "conflict" as const,
+          current: await readIntentHead(),
+        });
+      }
+      if (!response.ok) {
+        throw await responseError(
+          "Library Core Drive intent-head update failed",
+          response,
+        );
+      }
+      const readBack = await readIntentHead();
+      if (!bytesEqual(readBack.bytes, input.bytes)) {
+        throw new Error(
+          "Library Core Drive intent-head readback did not match committed bytes",
+        );
+      }
+      return Object.freeze({ status: "committed" as const });
+    },
+  });
 }
 
 /**

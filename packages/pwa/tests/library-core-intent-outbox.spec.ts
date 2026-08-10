@@ -9,10 +9,15 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
     process.cwd(),
     "../shared/src/library-core/index.ts",
   )}`;
+  const syncModuleUrl = `/@fs${path.resolve(
+    process.cwd(),
+    "../sync/src/cloud/index.ts",
+  )}`;
 
   await page.goto("/favicon.svg");
-  const result = await page.evaluate(async (sharedModuleUrl) => {
+  const result = await page.evaluate(async ({ sharedModuleUrl, syncModuleUrl }) => {
     const shared = await import(sharedModuleUrl);
+    const sync = await import(syncModuleUrl);
     const { createPwaLibraryCorePortableCheckpointStore } =
       await import("/src/lib/library-core-portable-checkpoint-store.ts");
     const hex = (pair: string) => pair.repeat(32);
@@ -149,6 +154,10 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
       transactionId: "tx-read-3",
     });
     const secondReceipt = await store.enqueueIntentTransaction(second);
+    const pendingActorsBeforePublication = await store.readPendingIntentActors({
+      epochId,
+      libraryId,
+    });
     const fullCandidate = await store.readUnpublishedIntentSegmentCandidate({
       actorId,
       epochId,
@@ -161,73 +170,80 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
       maximumOperations: 2,
     });
     if (!boundedCandidate) throw new Error("bounded candidate missing");
-    const bodyDigest = digest("intent-segment-body", boundedCandidate.body);
-    const header = shared.intentSegmentHeaderFromBodyV1(
-      boundedCandidate.body,
-      bodyDigest,
-    );
-    const storedContentDigest = hex("aa");
-    const segmentReference = {
-      descriptor: {
-        byteLength: 1_024,
-        contentDigest: storedContentDigest,
-        objectKey: shared.createLibraryCoreImmutableObjectKey({
-          actorId,
-          digest: storedContentDigest,
-          firstSequence: boundedCandidate.body.first_intent_sequence,
-          kind: "intent_segment",
-          lastSequence: boundedCandidate.body.last_intent_sequence,
-          libraryId,
-        }),
+    let remoteHead = boundedCandidate.expectedHead;
+    let remoteHeadBytes = shared.encodeLibraryCoreCanonicalValue(remoteHead);
+    let remoteRevision = '"intent-head-r1"';
+    const publicationEvidence = await sync.publishLibraryCoreIntentCandidateV1({
+      adapter: {
+        async compareAndSwapControl() {
+          throw new Error("control CAS is not part of intent publication");
+        },
+        async compareAndSwapIntentHead({ bytes, expectedRevision }) {
+          if (expectedRevision !== remoteRevision) {
+            return {
+              current: {
+                bytes: remoteHeadBytes,
+                head: remoteHead,
+                revision: remoteRevision,
+              },
+              status: "conflict",
+            };
+          }
+          remoteHeadBytes = bytes;
+          remoteHead = shared.parseLibraryCoreIntentHeadV1(
+            shared.decodeLibraryCoreCanonicalValue(bytes),
+          );
+          remoteRevision = '"intent-head-r2"';
+          return { status: "committed" };
+        },
+        async putImmutable(object) {
+          return { transportObjectId: `drive-${object.descriptor.contentDigest}` };
+        },
+        async readControl() {
+          throw new Error("control read is not part of intent publication");
+        },
+        async readImmutable() {
+          throw new Error("immutable read is not part of intent publication");
+        },
+        async readIntentHead() {
+          return {
+            bytes: remoteHeadBytes,
+            head: remoteHead,
+            revision: remoteRevision,
+          };
+        },
+        async verifyImmutable(receipt) {
+          return receipt.descriptor;
+        },
       },
-      transportObjectId: "drive-intent-segment-1",
-    };
-    const publishedHead = shared.parseLibraryCoreIntentHeadV1({
-      actor_id: actorId,
-      epoch_id: epochId,
-      latest_segment: segmentReference,
-      latest_segment_digest: storedContentDigest,
-      library_id: libraryId,
-      next_intent_sequence: boundedCandidate.body.last_intent_sequence + 1,
-      protocol: "intent_head_v1",
-      protocol_version: 1,
-      schema_version: 1,
+      candidate: boundedCandidate,
+      subtle: crypto.subtle,
     });
-    const publishedHeadDigest = shared.sha256LowerHex(
-      shared.encodeLibraryCoreCanonicalValue(publishedHead),
-    );
+    if (publicationEvidence.status === "conflict") {
+      throw new Error("unexpected intent-head conflict");
+    }
     let staleReadbackError = "";
     try {
       await store.recordIntentSegmentPublication({
-        entries: boundedCandidate.body.entries,
-        expectedHeadDigest: boundedCandidate.expectedHeadDigest,
-        header,
-        publishedHead,
+        ...publicationEvidence,
         readBackHeadDigest: hex("bb"),
-        segmentReference,
       });
     } catch (error) {
       staleReadbackError =
         error instanceof Error ? error.message : String(error);
     }
-    const publication = await store.recordIntentSegmentPublication({
-      entries: boundedCandidate.body.entries,
-      expectedHeadDigest: boundedCandidate.expectedHeadDigest,
-      header,
-      publishedHead,
-      readBackHeadDigest: publishedHeadDigest,
-      segmentReference,
-    });
-    const publicationReplay = await store.recordIntentSegmentPublication({
-      entries: boundedCandidate.body.entries,
-      expectedHeadDigest: boundedCandidate.expectedHeadDigest,
-      header,
-      publishedHead,
-      readBackHeadDigest: publishedHeadDigest,
-      segmentReference,
-    });
+    const publication = await store.recordIntentSegmentPublication(
+      publicationEvidence,
+    );
+    const publicationReplay = await store.recordIntentSegmentPublication(
+      publicationEvidence,
+    );
     const remaining = await store.readUnpublishedIntentSegmentCandidate({
       actorId,
+      epochId,
+      libraryId,
+    });
+    const pendingActorsAfterPublication = await store.readPendingIntentActors({
       epochId,
       libraryId,
     });
@@ -262,12 +278,14 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
       fullBody: fullCandidate?.body,
       publication,
       publicationReplay,
+      pendingActorsAfterPublication,
+      pendingActorsBeforePublication,
       remainingBody: remaining?.body,
       replayReceipt,
       secondReceipt,
       staleReadbackError,
     };
-  }, sharedModuleUrl);
+  }, { sharedModuleUrl, syncModuleUrl });
 
   expect(result.firstReceipt).toMatchObject({
     firstIntentSequence: 1,
@@ -281,6 +299,20 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
     lastIntentSequence: 3,
     status: "enqueued",
   });
+  expect(result.pendingActorsBeforePublication).toEqual([
+    {
+      actorId: "33".repeat(32),
+      epochId: "22".repeat(32),
+      libraryId: "11".repeat(32),
+    },
+  ]);
+  expect(result.pendingActorsAfterPublication).toEqual([
+    {
+      actorId: "33".repeat(32),
+      epochId: "22".repeat(32),
+      libraryId: "11".repeat(32),
+    },
+  ]);
   expect(result.changedRetryError).toMatch(/different bytes/);
   expect(result.fullBody).toMatchObject({
     first_intent_sequence: 1,
@@ -304,7 +336,7 @@ test("PWA intent outbox commits whole signed transactions and advances only on e
     first_intent_sequence: 3,
     last_intent_sequence: 3,
     operation_count: 1,
-    previous_segment_digest: "aa".repeat(32),
+    previous_segment_digest: result.publication.storedContentDigest,
   });
   expect(result.afterRestart).toEqual(result.remainingBody);
 });
