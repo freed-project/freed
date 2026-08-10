@@ -11,6 +11,7 @@ import {
   normalizeLibraryCoreFeedBrowseFilterV1,
   parseLibraryCoreFeedBrowseFilterV1,
   isLibraryCoreOperationInstanceId,
+  libraryCoreFeedCardToItemV1,
   parseLibraryCoreFeedBrowsePageResponseV2,
   parseLibraryCoreFeedBrowsePageResponseV3,
   type LibraryCoreFeedBrowseDirectionV3,
@@ -22,16 +23,9 @@ import {
   type LibraryCoreFeedBrowsePageRequestV3,
   type LibraryCoreFeedBrowsePageResponseV2,
   type LibraryCoreFeedBrowsePageResponseV3,
-  type LibraryCoreFeedCardV1,
   type LibraryCoreOperationInstanceId,
 } from "@freed/shared/library-core";
-import type {
-  ContentType,
-  ContentSignal,
-  FeedItem,
-  MediaType,
-  Platform,
-} from "@freed/shared";
+import type { FeedItem } from "@freed/shared";
 import { compileFriendAuthorIndex } from "@freed/shared";
 
 import {
@@ -301,28 +295,6 @@ export async function openLibraryCoreFeedBrowseReader(
   );
 }
 
-const PLATFORMS = new Set<Platform>([
-  "x",
-  "rss",
-  "youtube",
-  "reddit",
-  "mastodon",
-  "github",
-  "facebook",
-  "instagram",
-  "linkedin",
-  "substack",
-  "medium",
-  "saved",
-]);
-const CONTENT_TYPES = new Set<ContentType>([
-  "post",
-  "story",
-  "article",
-  "video",
-  "podcast",
-]);
-const MEDIA_TYPES = new Set<MediaType>(["image", "video", "link"]);
 export const LIBRARY_CORE_FEED_BROWSE_READER_DISABLED_KEY =
   "freed.libraryCore.feedBrowseReaderV1.disabled";
 export const LIBRARY_CORE_FRIENDS_FEED_READER_DISABLED_KEY =
@@ -336,102 +308,6 @@ export const LIBRARY_CORE_FRIENDS_FEED_READER_DISABLED_KEY =
  */
 export const LIBRARY_CORE_FEED_BROWSE_BIDIRECTIONAL_READER_DISABLED_KEY =
   "freed.libraryCore.feedBrowseBidirectionalReaderV1.disabled";
-
-export function feedCardToItem(card: LibraryCoreFeedCardV1): FeedItem {
-  const platform = PLATFORMS.has(card.platform as Platform)
-    ? (card.platform as Platform)
-    : "saved";
-  const contentType = CONTENT_TYPES.has(card.contentType as ContentType)
-    ? (card.contentType as ContentType)
-    : "post";
-  const publishedAt = card.publishedAt ?? 0;
-  const capturedAt = card.capturedAt ?? publishedAt;
-  return {
-    globalId: card.globalId,
-    platform,
-    contentType,
-    capturedAt,
-    publishedAt,
-    author: {
-      id: card.authorId ?? "",
-      handle: card.authorHandle ?? "",
-      displayName: card.authorDisplayName ?? card.authorHandle ?? "",
-      ...(card.authorAvatarUrl ? { avatarUrl: card.authorAvatarUrl } : {}),
-    },
-    content: {
-      ...(card.contentText ? { text: card.contentText } : {}),
-      mediaUrls: [...card.mediaUrls],
-      mediaTypes: card.mediaTypes.filter(
-        (value): value is MediaType => MEDIA_TYPES.has(value as MediaType),
-      ),
-      ...(card.linkPreviewTitle && card.sourceUrl
-        ? {
-            linkPreview: {
-              url: card.sourceUrl,
-              title: card.linkPreviewTitle,
-            },
-          }
-        : {}),
-    },
-    ...(card.engagementLikes !== null || card.engagementComments !== null
-      ? {
-          engagement: {
-            ...(card.engagementLikes !== null
-              ? { likes: card.engagementLikes }
-              : {}),
-            ...(card.engagementComments !== null
-              ? { comments: card.engagementComments }
-              : {}),
-          },
-        }
-      : {}),
-    ...(card.locationName
-      ? {
-          location: {
-            name: card.locationName,
-            source: "text_extraction" as const,
-          },
-        }
-      : {}),
-    userState: {
-      hidden: false,
-      ...(card.readAt !== null ? { readAt: card.readAt } : {}),
-      saved: card.saved === true,
-      archived: card.archived === true,
-      tags: [...card.tags],
-      ...(card.liked !== null ? { liked: card.liked } : {}),
-      ...(card.likedAt !== null ? { likedAt: card.likedAt } : {}),
-      ...(card.likedSyncedAt !== null
-        ? { likedSyncedAt: card.likedSyncedAt }
-        : {}),
-    },
-    topics: [],
-    ...(card.contentSignalTags.length > 0
-      ? {
-          contentSignals: {
-            version: 1,
-            method: "rules" as const,
-            inferredAt: capturedAt,
-            scores: {},
-            tags: [...card.contentSignalTags] as ContentSignal[],
-          },
-        }
-      : {}),
-    ...(card.eventStartsAt !== null
-      ? {
-          eventCandidate: {
-            version: 1,
-            method: "rules" as const,
-            detectedAt: capturedAt,
-            confidence: (card.eventConfidenceBasisPoints ?? 0) / 10_000,
-            startsAt: card.eventStartsAt,
-            ...(card.locationName ? { locationName: card.locationName } : {}),
-          },
-        }
-      : {}),
-    ...(card.sourceUrl ? { sourceUrl: card.sourceUrl } : {}),
-  };
-}
 
 export interface BoundedDesktopFeedPage {
   readonly items: readonly FeedItem[];
@@ -545,12 +421,12 @@ export async function openBoundedDesktopFeedReader(
     totalCount: session.totalCount,
     async readNext() {
       const page = await session.readNext();
-      return page.rows.map(feedCardToItem);
+      return page.rows.map(libraryCoreFeedCardToItemV1);
     },
     async readPage(cursor, direction) {
       const page = await readPage(cursor, direction);
       return {
-        items: page.rows.map(feedCardToItem),
+        items: page.rows.map(libraryCoreFeedCardToItemV1),
         nextCursor: page.nextCursor,
         previousCursor: page.previousCursor,
       };
@@ -602,7 +478,7 @@ export async function openBoundedDesktopFriendsFeedReader(
     totalCount: session.totalCount,
     async readNext() {
       const page = await session.readNext();
-      return page.rows.map(feedCardToItem);
+      return page.rows.map(libraryCoreFeedCardToItemV1);
     },
     close() {
       return session.close();

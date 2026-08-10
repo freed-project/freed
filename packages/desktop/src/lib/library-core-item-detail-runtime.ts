@@ -8,6 +8,7 @@ import {
 } from "@freed/shared";
 import {
   isLibraryCoreEntityId,
+  libraryCoreFeedCardToItemV1,
   parseLibraryCoreFeedCardV1,
   type LibraryCoreFeedCardV1,
   LIBRARY_CORE_SAVED_ANALYTICS_DAILY_WINDOW_COUNT,
@@ -21,7 +22,6 @@ import {
 
 import { getLibraryCoreProjectionSource } from "./automerge";
 import type { LibraryCoreProjectionSourceV1 } from "./automerge-types";
-import { feedCardToItem } from "./library-core-feed-browse-reader-runtime";
 import {
   isSqliteLibraryActive,
   querySqliteItems,
@@ -1971,7 +1971,7 @@ export async function readLibraryCorePersonTimeline(
     throw new Error("Library Core person timeline source changed during read");
   }
   return {
-    items: response.rows.map(feedCardToItem),
+    items: response.rows.map(libraryCoreFeedCardToItemV1),
     totalCount: response.totalCount,
     nextCursor: response.nextCursor,
   };

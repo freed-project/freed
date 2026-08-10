@@ -6,9 +6,14 @@ import {
   type Person,
 } from "@freed/shared";
 import {
+  LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
+  libraryCoreFeedCardToItemV1,
+  normalizeLibraryCoreFeedBrowseFilterV1,
   parseLibraryCoreControlPointerV1,
   type LibraryCoreCanonicalValue,
 } from "@freed/shared/library-core";
+import type { FilterOptions } from "@freed/shared";
+import type { BoundedFeedReader } from "@freed/ui/context";
 import {
   createGoogleDriveLibraryCoreAdapterV1,
   discoverPublishedGoogleDriveLibraryCoreControlV1,
@@ -160,6 +165,72 @@ export async function initializePwaLibraryCoreState(): Promise<DocState> {
   const state = (await readSelectedState()) ?? emptyState();
   publishState(state);
   return state;
+}
+
+function supportsPortableFeedFilter(filter: FilterOptions): boolean {
+  const normalized = normalizeLibraryCoreFeedBrowseFilterV1(filter);
+  return !normalized.archivedOnly && normalized.authorId === null &&
+    normalized.feedUrl === null && normalized.platform === null &&
+    !normalized.savedOnly && !normalized.showHidden &&
+    normalized.signals.length === 0 && normalized.socialContentFilter === "all" &&
+    normalized.tags.length === 0;
+}
+
+/** Open the complete ordinary feed directly from the selected IndexedDB generation. */
+export async function openPwaLibraryCoreFeedReader(
+  filter: FilterOptions,
+): Promise<BoundedFeedReader> {
+  if (!supportsPortableFeedFilter(filter)) {
+    throw new Error("This SQLite Library filter does not have a bounded PWA reader yet");
+  }
+  const store = getPortableStore();
+  const readerSessionId = crypto.randomUUID();
+  let cursor: string | null = null;
+  let closed = false;
+  let lastCancellationId = crypto.randomUUID();
+  let firstPage: Awaited<ReturnType<typeof store.readSelectedFeedPage>> | null =
+    await store.readSelectedFeedPage({
+      cancellationId: lastCancellationId,
+      cursor: null,
+      limit: LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
+      queryId: "feed_page_v1",
+      readerSessionId,
+      schemaVersion: 1,
+    });
+  if (!firstPage.ok) throw new Error(firstPage.message);
+  cursor = firstPage.value.nextCursor;
+  const totalCount = firstPage.value.totalCount;
+  return Object.freeze({
+    totalCount,
+    async readNext() {
+      if (closed) return Object.freeze([]);
+      if (firstPage) {
+        const page = firstPage;
+        firstPage = null;
+        if (!page.ok) throw new Error(page.message);
+        return Object.freeze(page.value.rows.map(libraryCoreFeedCardToItemV1));
+      }
+      if (cursor === null) return Object.freeze([]);
+      lastCancellationId = crypto.randomUUID();
+      const page = await store.readSelectedFeedPage({
+        cancellationId: lastCancellationId,
+        cursor,
+        limit: LIBRARY_CORE_FEED_PAGE_DEFAULT_LIMIT,
+        queryId: "feed_page_v1",
+        readerSessionId,
+        schemaVersion: 1,
+      });
+      if (!page.ok) throw new Error(page.message);
+      cursor = page.value.nextCursor;
+      return Object.freeze(page.value.rows.map(libraryCoreFeedCardToItemV1));
+    },
+    async close() {
+      store.cancelSelectedFeedReader(readerSessionId, lastCancellationId);
+      closed = true;
+      firstPage = null;
+      cursor = null;
+    },
+  });
 }
 
 /**
