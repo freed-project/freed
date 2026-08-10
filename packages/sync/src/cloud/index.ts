@@ -96,8 +96,10 @@ export {
   LIBRARY_CORE_GOOGLE_DRIVE_SIMPLE_UPLOAD_LIMIT,
   createGoogleDriveLibraryCoreAdapterV1,
   discoverGoogleDriveLibraryCoreControlV1,
+  provisionGoogleDriveLibraryCoreControlV1,
   type GoogleDriveLibraryCoreAdapterOptionsV1,
   type GoogleDriveLibraryCoreControlLocatorV1,
+  type ProvisionedGoogleDriveLibraryCoreControlV1,
 } from "./library-core-google-drive-adapter.js";
 export {
   LIBRARY_CORE_STORED_WIRE_OBJECT_BYTE_CEILING,

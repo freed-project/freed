@@ -49,6 +49,11 @@ export interface GoogleDriveLibraryCoreControlLocatorV1 {
   readonly controlFileId: string;
 }
 
+export interface ProvisionedGoogleDriveLibraryCoreControlV1
+  extends GoogleDriveLibraryCoreControlLocatorV1 {
+  readonly created: boolean;
+}
+
 export interface GoogleDriveLibraryCoreAdapterOptionsV1 {
   readonly accessToken: string;
   readonly libraryId: string;
@@ -495,6 +500,69 @@ export async function discoverGoogleDriveLibraryCoreControlV1(input: {
     "Library Core Drive control",
   );
   return Object.freeze({ controlFileId: file.id });
+}
+
+/**
+ * Provision the one empty CAS control file for a Library Core library.
+ *
+ * The empty object is not authority. The first immutable checkpoint
+ * publication replaces it with a validated control pointer using the exact
+ * ETag returned by Drive. A concurrent duplicate bootstrap fails closed when
+ * discovery observes more than one matching control object.
+ */
+export async function provisionGoogleDriveLibraryCoreControlV1(input: {
+  readonly accessToken: string;
+  readonly libraryId: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+}): Promise<ProvisionedGoogleDriveLibraryCoreControlV1> {
+  const existing = await discoverGoogleDriveLibraryCoreControlV1(input);
+  if (existing !== null) {
+    return Object.freeze({ ...existing, created: false });
+  }
+
+  const googleFetch = input.googleFetch ?? fetch;
+  const bytes = textEncoder.encode("{}");
+  const boundary = `freed-control-${await libraryIdentityDigest(input.libraryId)}`;
+  const response = await googleFetch(
+    `${DRIVE_UPLOAD_URL}?uploadType=multipart&fields=id,name,size,appProperties`,
+    {
+      method: "POST",
+      headers: {
+        ...authorizationHeaders(input.accessToken),
+        "Content-Type": `multipart/related; boundary=${boundary}`,
+      },
+      body: multipartUploadBody(
+        boundary,
+        {
+          name: `freed-v2-control~${input.libraryId}.json`,
+          parents: ["appDataFolder"],
+          appProperties: controlAppProperties(
+            await libraryIdentityDigest(input.libraryId),
+          ),
+        },
+        bytes,
+      ),
+      signal: input.signal,
+    },
+  );
+  if (!response.ok) {
+    throw await responseError(
+      "Library Core Drive control bootstrap failed",
+      response,
+    );
+  }
+  await readBoundedResponseBytes(
+    response,
+    MAX_DRIVE_JSON_BYTES,
+    "Library Core Drive control bootstrap response",
+  );
+
+  const provisioned = await discoverGoogleDriveLibraryCoreControlV1(input);
+  if (provisioned === null) {
+    throw new Error("Library Core Drive control bootstrap was not discoverable");
+  }
+  return Object.freeze({ ...provisioned, created: true });
 }
 
 /**

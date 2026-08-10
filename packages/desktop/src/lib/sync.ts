@@ -64,6 +64,12 @@ import {
   type BackgroundJobKind,
 } from "./background-runtime-coordinator";
 import { isSqliteLibraryActive } from "./sqlite-library";
+import {
+  isSqliteLibraryGoogleDriveSyncEnabled,
+  publishCurrentSqliteLibraryToGoogleDrive,
+  startSqliteLibraryGoogleDriveSync,
+  stopSqliteLibraryCloudSync,
+} from "./library-core-cloud-sync";
 
 let googleDriveFetch: GoogleDriveFetch | undefined;
 
@@ -1591,7 +1597,55 @@ function nextUploadRetryMs(provider: CloudProvider, reason: string): number {
 export async function startCloudSync(provider: CloudProvider, token: string): Promise<void> {
   if (isSqliteLibraryActive()) {
     stopCloudSync(provider);
-    throw new Error("Library cloud sync is unavailable until the SQLite transport ships.");
+    if (!isSqliteLibraryGoogleDriveSyncEnabled()) {
+      throw new Error("SQLite Library cloud sync is awaiting its Drive activation review.");
+    }
+    if (provider !== "gdrive") {
+      throw new Error("SQLite Library sync currently requires Google Drive.");
+    }
+    if (hasFactoryResetCloudCleanupBarrier() || cloudDeletesInProgress.has(provider)) return;
+    const generation = currentCloudGeneration(provider);
+    const controller = new AbortController();
+    cloudAborts.set(provider, controller);
+    updateCloudProvider(provider, {
+      status: "connecting",
+      stage: "upload",
+      statusMessage: "Publishing the SQLite Library checkpoint.",
+      pendingReason: "Building bounded immutable checkpoint pages.",
+    });
+    const result = await startSqliteLibraryGoogleDriveSync({
+      accessToken: token,
+      googleFetch: googleDriveFetch,
+      resolveAccessToken: () =>
+        requireCloudTokenForGeneration(provider, token, generation, controller.signal),
+    });
+    if (!isCloudGenerationCurrent(provider, generation, controller.signal)) return;
+    if (result.status === "ownership_required") {
+      updateCloudProvider(provider, {
+        status: "error",
+        stage: "idle",
+        error: "Another Freed Desktop currently owns writes for this Library.",
+        statusMessage: "This Freed Desktop is read-only until ownership is transferred.",
+        pendingReason: "Use Make This Freed Desktop the Writer to transfer ownership.",
+      });
+      return;
+    }
+    updateCloudProvider(provider, {
+      status: "connected",
+      stage: "idle",
+      statusMessage: "SQLite Library sync is connected.",
+      pendingReason: "Local revisions publish as immutable checkpoint pages.",
+      lastUploadAt: result.status === "published" ? Date.now() : undefined,
+    });
+    recordCloudStep(
+      provider,
+      "success",
+      "idle",
+      result.status === "published"
+        ? "Published the current SQLite Library revision."
+        : "The SQLite Library checkpoint is current.",
+    );
+    return;
   }
   stopCloudSync(provider);
   if (hasFactoryResetCloudCleanupBarrier()) return;
@@ -1783,6 +1837,7 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
 
 /** Stop the cloud sync loop for a provider. */
 export function stopCloudSync(provider: CloudProvider): void {
+  if (provider === "gdrive") stopSqliteLibraryCloudSync();
   invalidateCloudGeneration(provider);
   cloudAborts.get(provider)?.abort();
   cloudAborts.delete(provider);
@@ -2323,8 +2378,36 @@ export function scheduleCloudUpload(
 /** Run an immediate cloud sync pass without waiting for the debounce timer. */
 export async function syncCloudProviderNow(provider: CloudProvider): Promise<void> {
   if (isSqliteLibraryActive()) {
-    stopCloudSync(provider);
-    throw new Error("Library cloud sync is unavailable until the SQLite transport ships.");
+    if (!isSqliteLibraryGoogleDriveSyncEnabled()) {
+      throw new Error("SQLite Library cloud sync is awaiting its Drive activation review.");
+    }
+    if (provider !== "gdrive") {
+      throw new Error("SQLite Library sync currently requires Google Drive.");
+    }
+    const generation = currentCloudGeneration(provider);
+    const token = await resolveCloudTokenForGeneration(provider, undefined, generation);
+    if (!token || !isCloudGenerationCurrent(provider, generation)) {
+      throw new Error("Cloud token missing. Reconnect Google Drive.");
+    }
+    recordCloudStep(provider, "queued", "idle", "Manual SQLite Library sync requested.");
+    const result = await publishCurrentSqliteLibraryToGoogleDrive({
+      accessToken: token,
+      googleFetch: googleDriveFetch,
+      signal: cloudAborts.get(provider)?.signal,
+    });
+    if (result.status === "ownership_required") {
+      throw new Error("Another Freed Desktop currently owns writes for this Library.");
+    }
+    updateCloudProvider(provider, {
+      status: "connected",
+      stage: "idle",
+      statusMessage: "SQLite Library sync is current.",
+      pendingReason: "Local revisions publish as immutable checkpoint pages.",
+      lastUploadAt: result.status === "published" ? Date.now() : undefined,
+      error: undefined,
+    });
+    recordCloudStep(provider, "success", "idle", "Manual SQLite Library sync completed.");
+    return;
   }
   if (preserveDestructiveMergeBlock(provider)) {
     throw new Error("Choose which copy should win before cloud sync retries.");
@@ -2404,11 +2487,8 @@ export async function syncCloudProviderNow(provider: CloudProvider): Promise<voi
  * Call this on app startup to resume any previously connected providers.
  */
 export async function restartCloudSync(provider: CloudProvider): Promise<void> {
-  if (isSqliteLibraryActive()) {
-    stopCloudSync(provider);
-    return;
-  }
   stopCloudSync(provider);
+  if (isSqliteLibraryActive() && !isSqliteLibraryGoogleDriveSyncEnabled()) return;
   if (hasFactoryResetCloudCleanupBarrier()) return;
   if (cloudDeletesInProgress.has(provider)) return;
   const generation = currentCloudGeneration(provider);
@@ -2443,10 +2523,6 @@ export async function restartCloudSync(provider: CloudProvider): Promise<void> {
 }
 
 export async function startAllCloudSyncs(): Promise<void> {
-  if (isSqliteLibraryActive()) {
-    stopAllCloudSyncs();
-    return;
-  }
   if (hasFactoryResetCloudCleanupBarrier()) return;
   await Promise.all(getActiveProviders().map(async (provider) => {
     await restartCloudSync(provider).catch((err) => {

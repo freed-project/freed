@@ -24,7 +24,7 @@ import type {
   WorkerRequest,
 } from "./automerge-types";
 
-interface SqliteStatus {
+export interface SqliteStatus {
   active: boolean;
   revision: number;
   expectedItemCount: number;
@@ -32,6 +32,20 @@ interface SqliteStatus {
   sourceGeneration: number;
   sourceRevision: number;
   sourceDigest: string;
+}
+
+export interface SqliteLibrarySyncDescriptor {
+  revision: number;
+  itemCount: number;
+  sourceDigest: string;
+  shellJson: string;
+  materializedDigest: string;
+}
+
+export interface SqliteLibrarySyncPage {
+  revision: number;
+  itemsJson: string[];
+  nextOffset: number | null;
 }
 
 interface SqliteShell {
@@ -130,6 +144,24 @@ export async function sqliteLibraryStatus(): Promise<SqliteStatus | null> {
   const status = await invoke<SqliteStatus | null>("sqlite_library_status");
   sqliteActive = status?.active === true;
   return status;
+}
+
+export async function readSqliteLibrarySyncDescriptor(): Promise<SqliteLibrarySyncDescriptor> {
+  return invoke<SqliteLibrarySyncDescriptor>("read_sqlite_library_sync_descriptor");
+}
+
+export async function readSqliteLibrarySyncPage(input: {
+  revision: number;
+  offset: number;
+  limit?: number;
+}): Promise<SqliteLibrarySyncPage> {
+  return invoke<SqliteLibrarySyncPage>("read_sqlite_library_sync_page", {
+    request: {
+      revision: input.revision,
+      offset: input.offset,
+      limit: input.limit ?? 128,
+    },
+  });
 }
 
 export async function loadSqliteLibraryState(): Promise<DocState> {

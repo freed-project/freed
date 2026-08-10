@@ -9,6 +9,7 @@ import {
 import {
   createGoogleDriveLibraryCoreAdapterV1,
   discoverGoogleDriveLibraryCoreControlV1,
+  provisionGoogleDriveLibraryCoreControlV1,
 } from "./library-core-google-drive-adapter.js";
 
 const encoder = new TextEncoder();
@@ -152,15 +153,24 @@ class FakeGoogleDrive {
     );
     if (uploadMatch !== null && method === "POST") {
       this.uploadCount += 1;
-      const fixture = this.uploadFixture;
-      if (fixture === null) {
-        return new Response("missing fake upload fixture", { status: 500 });
-      }
       const body = init.body;
       if (!(body instanceof Blob)) {
         return new Response("expected multipart Blob", { status: 400 });
       }
       const bodyText = new TextDecoder().decode(await body.arrayBuffer());
+      if (bodyText.includes('"freedObjectKind":"control"')) {
+        const file = this.addControl(
+          `control-${this.nextId}`,
+          bytes("{}"),
+          `"control-revision-${this.nextId}"`,
+        );
+        this.nextId += 1;
+        return Response.json(this.metadata(file));
+      }
+      const fixture = this.uploadFixture;
+      if (fixture === null) {
+        return new Response("missing fake upload fixture", { status: 500 });
+      }
       if (
         !bodyText.includes(fixture.descriptor.objectKey) ||
         !bodyText.includes('"parents":["appDataFolder"]') ||
@@ -232,6 +242,26 @@ function adapter(fake: FakeGoogleDrive) {
 }
 
 describe("Google Drive Library Core immutable adapter", () => {
+  it("provisions one empty control and then reuses its exact file ID", async () => {
+    const fake = new FakeGoogleDrive();
+
+    await expect(
+      provisionGoogleDriveLibraryCoreControlV1({
+        accessToken: "test-token",
+        libraryId: "library-1",
+        googleFetch: fake.fetch,
+      }),
+    ).resolves.toEqual({ controlFileId: "control-1", created: true });
+    await expect(
+      provisionGoogleDriveLibraryCoreControlV1({
+        accessToken: "test-token",
+        libraryId: "library-1",
+        googleFetch: fake.fetch,
+      }),
+    ).resolves.toEqual({ controlFileId: "control-1", created: false });
+    expect(fake.uploadCount).toBe(1);
+  });
+
   it("discovers one control by private properties rather than filename query", async () => {
     const fake = new FakeGoogleDrive();
     const control = fake.addControl();
