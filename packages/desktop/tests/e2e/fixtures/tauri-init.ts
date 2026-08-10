@@ -201,7 +201,15 @@ export function tauriInitScript(): string {
         persistSqliteState();
         return null;
       },
-      read_sqlite_library_shell: sqliteShellResult,
+      read_sqlite_library_shell: () => {
+        // Scale benchmarks keep the corpus in mock SQLite while forcing the
+        // shell projection to match production's empty renderer item array.
+        // Direct bounded scans still read the complete mock corpus below.
+        if (window.__FREED_E2E_SQLITE_SHELL_ONLY__ === true) {
+          window.__FREED_E2E_SQLITE_SHELL_QUERY_PENDING__ = true;
+        }
+        return sqliteShellResult();
+      },
       replace_sqlite_library_shell: (args) => {
         sqliteState().shell = JSON.parse(args.request.shellJson);
         sqliteState().revision += 1;
@@ -215,6 +223,14 @@ export function tauriInitScript(): string {
         return item && !item.__deleted ? JSON.stringify(item) : null;
       }).filter(Boolean),
       query_sqlite_library_items: (args) => {
+        if (window.__FREED_E2E_SQLITE_SHELL_QUERY_PENDING__ === true) {
+          window.__FREED_E2E_SQLITE_SHELL_QUERY_PENDING__ = false;
+          return {
+            itemsJson: [],
+            nextOffset: null,
+            totalCount: 0,
+          };
+        }
         var request = args.request || {};
         var query = (request.query || '').toLowerCase();
         var items = Object.values(sqliteState().items).filter(function(item) {

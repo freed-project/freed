@@ -366,10 +366,11 @@ test("Friends WebGL2 compatibility view handles 1,600 visible people while zoomi
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "freed.libraryCore.rendererItemEvictionV1.disabled",
-      "1",
-    );
+    (
+      window as Window & {
+        __FREED_E2E_SQLITE_SHELL_ONLY__?: boolean;
+      }
+    ).__FREED_E2E_SQLITE_SHELL_ONLY__ = true;
   });
   await app.goto();
   await app.waitForReady();
