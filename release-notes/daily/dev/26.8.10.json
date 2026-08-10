@@ -2,7 +2,7 @@
   "channel": "dev",
   "dayKey": "26.8.10",
   "date": "2026-08-10",
-  "preferredDeck": "Freed Desktop now runs its local Library on native SQLite with a bounded renderer.",
+  "preferredDeck": "The PWA now reads and searches the SQLite Library while Freed Desktop accepts signed mobile intents.",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -12,5 +12,5 @@
   "editorialNotes": [
     "Lead with the working SQLite Desktop outcome and restored maps. Omit internal census and contract churn."
   ],
-  "updatedAt": "2026-08-10T08:56:41.037Z"
+  "updatedAt": "2026-08-10T14:02:18.321Z"
 }
