@@ -268,6 +268,7 @@ pub(super) struct DesktopBackupSummary {
     backup_id: String,
     file_name: String,
     created_at_ms: i64,
+    revision: i64,
     item_count: i64,
     reason: String,
     byte_length: u64,
@@ -1509,11 +1510,13 @@ fn create_sqlite_library_backup_at(
             "SQLite Library backup integrity failed: {integrity}"
         ));
     }
-    let item_count: i64 = check
+    let (revision, item_count): (i64, i64) = check
         .query_row(
-            "SELECT COUNT(*) FROM library_core_feed_items WHERE deletedAt IS NULL;",
+            "SELECT
+               (SELECT revision FROM library_core_desktop_state WHERE singletonId = 1),
+               (SELECT COUNT(*) FROM library_core_feed_items WHERE deletedAt IS NULL);",
             [],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .map_err(|error| error.to_string())?;
     let byte_length = fs::metadata(&destination)
@@ -1570,6 +1573,7 @@ fn create_sqlite_library_backup_at(
         backup_id,
         file_name,
         created_at_ms,
+        revision,
         item_count,
         reason: reason.to_string(),
         byte_length,
@@ -1587,7 +1591,7 @@ pub(super) fn list_sqlite_library_backups(
     require_active(&connection)?;
     let mut statement = connection
         .prepare(
-            "SELECT backupId, fileName, createdAtMs, itemCount, reason, byteLength, sha256
+            "SELECT backupId, fileName, createdAtMs, revision, itemCount, reason, byteLength, sha256
              FROM library_core_desktop_backups
              ORDER BY createdAtMs DESC, backupId DESC;",
         )
@@ -1598,10 +1602,11 @@ pub(super) fn list_sqlite_library_backups(
                 backup_id: row.get(0)?,
                 file_name: row.get(1)?,
                 created_at_ms: row.get(2)?,
-                item_count: row.get(3)?,
-                reason: row.get(4)?,
-                byte_length: row.get::<_, i64>(5)? as u64,
-                sha256: row.get(6)?,
+                revision: row.get(3)?,
+                item_count: row.get(4)?,
+                reason: row.get(5)?,
+                byte_length: row.get::<_, i64>(6)? as u64,
+                sha256: row.get(7)?,
             })
         })
         .map_err(|error| error.to_string())?;
@@ -1638,7 +1643,7 @@ fn read_sqlite_library_backup_chunk_at(
     require_active(&connection)?;
     let summary = connection
         .query_row(
-            "SELECT backupId, fileName, createdAtMs, itemCount, reason, byteLength, sha256
+            "SELECT backupId, fileName, createdAtMs, revision, itemCount, reason, byteLength, sha256
              FROM library_core_desktop_backups WHERE backupId = ?1;",
             [&request.backup_id],
             |row| {
@@ -1646,10 +1651,11 @@ fn read_sqlite_library_backup_chunk_at(
                     backup_id: row.get(0)?,
                     file_name: row.get(1)?,
                     created_at_ms: row.get(2)?,
-                    item_count: row.get(3)?,
-                    reason: row.get(4)?,
-                    byte_length: row.get::<_, i64>(5)? as u64,
-                    sha256: row.get(6)?,
+                    revision: row.get(3)?,
+                    item_count: row.get(4)?,
+                    reason: row.get(5)?,
+                    byte_length: row.get::<_, i64>(6)? as u64,
+                    sha256: row.get(7)?,
                 })
             },
         )
@@ -1709,7 +1715,7 @@ fn restore_sqlite_library_backup_at(
     let retained_summaries = {
         let mut statement = connection
             .prepare(
-                "SELECT backupId, fileName, createdAtMs, itemCount, reason, byteLength, sha256
+                "SELECT backupId, fileName, createdAtMs, revision, itemCount, reason, byteLength, sha256
                  FROM library_core_desktop_backups;",
             )
             .map_err(|error| error.to_string())?;
@@ -1719,10 +1725,11 @@ fn restore_sqlite_library_backup_at(
                     backup_id: row.get(0)?,
                     file_name: row.get(1)?,
                     created_at_ms: row.get(2)?,
-                    item_count: row.get(3)?,
-                    reason: row.get(4)?,
-                    byte_length: row.get::<_, i64>(5)? as u64,
-                    sha256: row.get(6)?,
+                    revision: row.get(3)?,
+                    item_count: row.get(4)?,
+                    reason: row.get(5)?,
+                    byte_length: row.get::<_, i64>(6)? as u64,
+                    sha256: row.get(7)?,
                 })
             })
             .map_err(|error| error.to_string())?
@@ -1732,7 +1739,7 @@ fn restore_sqlite_library_backup_at(
     };
     let summary = connection
         .query_row(
-            "SELECT backupId, fileName, createdAtMs, itemCount, reason, byteLength, sha256
+            "SELECT backupId, fileName, createdAtMs, revision, itemCount, reason, byteLength, sha256
              FROM library_core_desktop_backups WHERE backupId = ?1;",
             [backup_id],
             |row| {
@@ -1740,10 +1747,11 @@ fn restore_sqlite_library_backup_at(
                     backup_id: row.get(0)?,
                     file_name: row.get(1)?,
                     created_at_ms: row.get(2)?,
-                    item_count: row.get(3)?,
-                    reason: row.get(4)?,
-                    byte_length: row.get::<_, i64>(5)? as u64,
-                    sha256: row.get(6)?,
+                    revision: row.get(3)?,
+                    item_count: row.get(4)?,
+                    reason: row.get(5)?,
+                    byte_length: row.get::<_, i64>(6)? as u64,
+                    sha256: row.get(7)?,
                 })
             },
         )
@@ -1801,11 +1809,11 @@ fn restore_sqlite_library_backup_at(
             .execute(
                 "INSERT OR REPLACE INTO library_core_desktop_backups (
                    backupId, createdAtMs, revision, itemCount, reason, fileName, byteLength, sha256
-                 ) SELECT ?1, ?2, revision, ?3, ?4, ?5, ?6, ?7
-                   FROM library_core_desktop_state WHERE singletonId = 1;",
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8);",
                 params![
                     retained.backup_id,
                     retained.created_at_ms,
+                    retained.revision,
                     retained.item_count,
                     retained.reason,
                     retained.file_name,
@@ -1912,6 +1920,7 @@ mod tests {
         let backup =
             create_sqlite_library_backup_at(&root, 400, "manual").expect("create SQLite backup");
         assert_eq!(backup.item_count, 1);
+        assert_eq!(backup.revision, 7);
         assert!(root
             .join(BACKUP_DIRECTORY)
             .join(&backup.file_name)
@@ -1951,7 +1960,17 @@ mod tests {
                 [],
             )
             .expect("mutate live Library after backup");
+        connection
+            .execute(
+                "UPDATE library_core_desktop_state SET revision = 8 WHERE singletonId = 1;",
+                [],
+            )
+            .expect("advance live Library revision");
         drop(connection);
+
+        let later_backup =
+            create_sqlite_library_backup_at(&root, 500, "auto").expect("create later backup");
+        assert_eq!(later_backup.revision, 8);
 
         restore_sqlite_library_backup_at(&root, &backup.backup_id).expect("restore SQLite backup");
         let restored = open_database_at(&root).expect("open restored Library database");
@@ -1971,6 +1990,14 @@ mod tests {
             )
             .expect("read retained backup registry");
         assert_eq!(retained_backups, 1);
+        let retained_later_revision: i64 = restored
+            .query_row(
+                "SELECT revision FROM library_core_desktop_backups WHERE backupId = ?1;",
+                [&later_backup.backup_id],
+                |row| row.get(0),
+            )
+            .expect("read retained later backup revision");
+        assert_eq!(retained_later_revision, 8);
         drop(restored);
         fs::remove_dir_all(root).expect("remove temporary root");
     }

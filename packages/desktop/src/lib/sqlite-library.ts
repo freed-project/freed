@@ -119,6 +119,7 @@ export interface SqliteLibraryBackupSummary {
   backupId: string;
   fileName: string;
   createdAtMs: number;
+  revision: number;
   itemCount: number;
   reason: "auto" | "manual";
   byteLength: number;
