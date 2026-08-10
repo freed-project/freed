@@ -8,8 +8,9 @@
 //! This module is the first production owner. It resolves the database path,
 //! opens the journal into Tauri managed state, and reports what it found.
 //!
-//! Automerge remains authoritative. Opening a database and counting rows
-//! grants no write authority.
+//! The Desktop SQLite runtime now owns the product rows in this database.
+//! Opening and inspecting the journal still grants no signed replication
+//! authority, which remains a later activation boundary.
 //!
 //! This module deliberately establishes nothing. An earlier revision minted a
 //! local authority key and enrolled an actor here at startup, which the
@@ -167,7 +168,7 @@ mod tests {
         assert!(status_of(&state).expect("status before open").is_none());
 
         let status = open_at_root(&state, root.path()).expect("open journal");
-        assert_eq!(status.schema_version, 1);
+        assert_eq!(status.schema_version, 2);
         assert_eq!(status.materializer_ingest_sequence, 0);
         assert_eq!(status.actors, 0);
         assert_eq!(status.operations, 0);

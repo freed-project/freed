@@ -42,9 +42,7 @@ import {
 import { exit, relaunch } from "@tauri-apps/plugin-process";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import {
-  startSync,
   stopSync,
-  startAllCloudSyncs,
   restartCloudSync,
   stopAllCloudSyncs,
   getActiveProviders,
@@ -65,8 +63,6 @@ import {
   clearLocalDoc,
   acquireLegacyRendererItems,
   getCachedDocStats,
-  getItemLegacyHtml,
-  getItemPreservedText,
 } from "./lib/automerge";
 import {
   openBoundedDesktopFeedReader,
@@ -179,10 +175,10 @@ import {
   forgetRssFeedHealth,
   initProviderHealth,
 } from "./lib/provider-health";
-import { openLibraryCoreJournalForStartup } from "./lib/library-core-journal-runtime";
 import { getDesktopSourceStatus } from "./lib/source-status";
 import { setContactSyncError } from "./lib/contact-sync-storage";
 import { clearSnapshots, startSnapshotManager, stopSnapshotManager } from "./lib/snapshots";
+import { isSqliteLibraryActive } from "./lib/sqlite-library";
 import { useDesktopNavigationHistory } from "./lib/navigation-history";
 import { desktopBugReporting } from "./lib/bug-report";
 import { importMetaExportFiles } from "./lib/meta-export-import";
@@ -590,18 +586,19 @@ function App() {
         noteMemoryPressure(snapshot);
       },
     });
-    // Shadow only. Nothing reads the journal yet, and a machine that cannot
-    // open it starts normally on Automerge alone.
-    void openLibraryCoreJournalForStartup();
     void initProviderHealth();
     startRssPoller();
     startAuthenticatedEssayPoller();
-    // Wire the LAN relay change subscription and client-count polling.
-    startSync();
-    // Resume cloud sync loops for any previously authenticated providers.
-    void startAllCloudSyncs();
+    // Replacement sync follows the SQLite Desktop revamp. The legacy
+    // Automerge relay and cloud loops stay off in this build.
     if (isTauri()) {
-      void startSnapshotManager();
+      void startSnapshotManager().catch((error) => {
+        log.error(
+          `[snapshots] failed to start SQLite snapshot manager: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
     }
     // Start background content fetcher, which processes the article HTML queue.
     void contentCache.pruneOversized();
@@ -1111,6 +1108,9 @@ function App() {
   }, []);
 
   const retryCloudProvider = useCallback(async (provider: CloudProvider) => {
+    if (isSqliteLibraryActive()) {
+      throw new Error("Library cloud sync is unavailable until the SQLite transport ships.");
+    }
     await restartCloudSync(provider);
   }, []);
 
@@ -1122,6 +1122,9 @@ function App() {
   }, []);
 
   const reconnectCloudProvider = useCallback(async (provider: CloudProvider) => {
+    if (isSqliteLibraryActive()) {
+      throw new Error("Library cloud sync is unavailable until the SQLite transport ships.");
+    }
     clearCloudProvider(provider);
     const lifecycle = captureCloudLifecycle(provider);
     try {
@@ -1258,30 +1261,21 @@ function App() {
     if (!IS_FEATURE_PREVIEW && sessionStorage.getItem(guardKey)) return;
 
     void (async () => {
-      const releaseItems = await acquireLegacyRendererItems();
-      try {
-        const state = useAppStore.getState();
-        const sampleSummary = summarizeSampleData(state);
-        const hasTimeWindowMapSamples = state.items.some(
-          (item) =>
-            item.globalId.includes("sample-location-window:") &&
-            item.location?.coordinates &&
-            item.timeRange,
-        );
-        if (sampleSummary.total > 0 && hasTimeWindowMapSamples) return;
+      const state = useAppStore.getState();
+      const facets = isSqliteLibraryActive()
+        ? await readLibraryCoreFacetSummary()
+        : null;
+      const sampleSummary = summarizeSampleData(
+        state,
+        facets?.sampleItemCount,
+      );
+      if (sampleSummary.total > 0) return;
 
-        if (IS_FEATURE_PREVIEW && sampleSummary.total > 0) {
-          await state.clearSampleData();
-        }
-
-        await refreshSampleLibraryData({
-          ...useAppStore.getState(),
-          seedSocialConnections,
-        });
-        sessionStorage.setItem(guardKey, "1");
-      } finally {
-        releaseItems();
-      }
+      await refreshSampleLibraryData({
+        ...useAppStore.getState(),
+        seedSocialConnections,
+      });
+      sessionStorage.setItem(guardKey, "1");
     })().catch((error) => {
       log.error(
         `[sample-data] failed to seed local preview data: ${
@@ -1349,8 +1343,8 @@ function App() {
         });
         return exportLibrary(items);
       },
-      retryCloudProvider,
-      reconnectCloudProvider,
+      retryCloudProvider: isSqliteLibraryActive() ? undefined : retryCloudProvider,
+      reconnectCloudProvider: isSqliteLibraryActive() ? undefined : reconnectCloudProvider,
       forgetRssFeedHealth,
       syncRssNow: refreshRssFeeds,
       syncSourceNow: async (sourceId) => {
@@ -1435,31 +1429,17 @@ function App() {
       getLocalContent: async (globalId) => {
         const cached = await contentCache.get(globalId);
         if (cached) return cached;
-        try {
-          const item = await readLibraryCoreItemDetail(globalId);
-          const sqliteHtml = item?.preservedContent?.html;
-          if (sqliteHtml) {
-            await contentCache.set(globalId, sqliteHtml).catch(() => {});
-            return sqliteHtml;
-          }
-        } catch {
-          // The selected SQLite generation may be stale or unavailable. The
-          // Automerge worker remains the rollback reader until Gate D closes.
+        const item = await readLibraryCoreItemDetail(globalId);
+        const sqliteHtml = item?.preservedContent?.html;
+        if (sqliteHtml) {
+          await contentCache.set(globalId, sqliteHtml).catch(() => {});
+          return sqliteHtml;
         }
-        const legacyHtml = await getItemLegacyHtml(globalId);
-        if (!legacyHtml) return null;
-        await contentCache.set(globalId, legacyHtml).catch(() => {});
-        return legacyHtml;
+        return null;
       },
       getLocalPreservedText: async (globalId) => {
-        try {
-          const item = await readLibraryCoreItemDetail(globalId);
-          const sqliteText = item?.preservedContent?.text;
-          if (sqliteText) return sqliteText;
-        } catch {
-          // Fail back to the active Automerge reader while it remains authority.
-        }
-        return getItemPreservedText(globalId);
+        const item = await readLibraryCoreItemDetail(globalId);
+        return item?.preservedContent?.text ?? null;
       },
       hydrateReaderItem: hydrateReaderItemForDesktop,
       pinReaderItem,
@@ -1500,7 +1480,7 @@ function App() {
         ? scanLibraryCoreItemsForDesktop
         : undefined,
       acquireLegacyLibraryItems:
-        tauriRuntimeAvailable && isInitialized
+        tauriRuntimeAvailable && isInitialized && !isSqliteLibraryActive()
           ? acquireLegacyRendererItems
           : undefined,
       readLibraryFacetSummary:

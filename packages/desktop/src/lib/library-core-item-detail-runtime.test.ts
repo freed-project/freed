@@ -951,7 +951,7 @@ describe("Desktop Library Core item detail runtime", () => {
   });
 
   it.each([
-    ["map", 1_000],
+    ["map", 10_000],
     ["story_wall", 250],
   ] as const)("reads only the bounded native candidates for %s", async (surface, limit) => {
     const detail = response();

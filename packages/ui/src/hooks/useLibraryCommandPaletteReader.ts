@@ -203,9 +203,9 @@ function collectScopeActionIds(
 /**
  * Supply command-palette Library facts without mounting the Desktop corpus.
  *
- * The only compatibility hydration left here is deliberate bulk execution.
- * It lasts for the existing atomic Automerge mutation and is released in the
- * same promise turn. PWA and the explicit rollback key retain the old path.
+ * Desktop bulk execution scans bounded row-store pages and retains only the
+ * matching entity IDs needed for the mutation. PWA and non-row-store clients
+ * may still use the in-memory fallback.
  */
 export function useLibraryCommandPaletteReader({
   activeFilter,
@@ -221,7 +221,6 @@ export function useLibraryCommandPaletteReader({
 }: UseLibraryCommandPaletteReaderOptions): LibraryCommandPaletteReaderResult {
   const platform = usePlatform();
   const {
-    acquireLegacyLibraryItems,
     readLibraryItemDetail,
     scanLibraryItems,
     store,
@@ -262,9 +261,7 @@ export function useLibraryCommandPaletteReader({
     [activeFilter, compactInputs, identityMode],
   );
   const nativeReaderAvailable = Boolean(
-    acquireLegacyLibraryItems &&
-      scanLibraryItems &&
-      !nativeReaderDisabled,
+    scanLibraryItems && !nativeReaderDisabled,
   );
   const inputHasQuery = inputValue.trim().length > 0;
   const committedSearchHasQuery = searchQuery.trim().length > 0;
@@ -519,7 +516,7 @@ export function useLibraryCommandPaletteReader({
           normalizedFilterSignature;
       const currentState = store.getState();
       if (!matchesCurrentScope(currentState)) return;
-      if (!nativeReaderAvailable || inputHasQuery || !acquireLegacyLibraryItems) {
+      if (!nativeReaderAvailable || inputHasQuery || !scanLibraryItems) {
         const ids =
           kind === "read"
             ? collectUnreadFeedActionIds(commandScopeItems)
@@ -529,25 +526,28 @@ export function useLibraryCommandPaletteReader({
         return;
       }
 
-      const release = await acquireLegacyLibraryItems();
-      try {
-        if (latestQueryFenceKey.current !== queryFenceKey) return;
+      const ids: string[] = [];
+      await scanLibraryItems((page) => {
+        if (latestQueryFenceKey.current !== queryFenceKey) return "stop";
         const state = store.getState();
-        if (!matchesCurrentScope(state)) return;
-        const ids = collectScopeActionIds(
-          state,
-          normalizedFilter,
-          identityMode,
-          kind,
+        if (!matchesCurrentScope(state)) return "stop";
+        ids.push(
+          ...collectScopeActionIds(
+            { ...state, items: [...page] },
+            normalizedFilter,
+            identityMode,
+            kind,
+          ),
         );
-        if (kind === "read") await state.markItemsAsRead(ids);
-        else await state.archiveItems(ids);
-      } finally {
-        release();
-      }
+        return "continue";
+      });
+      if (latestQueryFenceKey.current !== queryFenceKey) return;
+      const state = store.getState();
+      if (!matchesCurrentScope(state)) return;
+      if (kind === "read") await state.markItemsAsRead(ids);
+      else await state.archiveItems(ids);
     },
     [
-      acquireLegacyLibraryItems,
       activeView,
       commandScopeItems,
       identityMode,
@@ -557,6 +557,7 @@ export function useLibraryCommandPaletteReader({
       normalizedFilterSignature,
       queryFenceKey,
       queryIsCommitted,
+      scanLibraryItems,
       sourceVersion,
       store,
     ],

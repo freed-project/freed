@@ -23,6 +23,7 @@ import { hashSavedUrl } from "@freed/capture-save/normalize";
 import { addDebugEvent, setDocSnapshot, registerDocAccessors } from "@freed/ui/lib/debug-store";
 import type {
   Account,
+  ContentSignal,
   ContentSignalBackfillSummary,
   FeedItem,
   Person,
@@ -33,6 +34,9 @@ import type {
   DesktopClientRegistration,
 } from "@freed/shared";
 import {
+  CONTENT_SIGNAL_KEYS,
+  CONTENT_SIGNAL_VERSION,
+  collectSavedYouTubeVideoUrls,
   compileFriendAuthorIndex,
   rankFeedItemsInRecommendedOrder,
 } from "@freed/shared";
@@ -91,6 +95,16 @@ import {
   type LibraryCoreScannedFeedBrowseProjectionStrategy,
 } from "./library-core-feed-browse-hydrated-client";
 import { recordRuntimeHealthEvent, recordWorkerInit } from "./runtime-health-events";
+import {
+  clearSqliteLibrary,
+  dispatchSqliteMutation,
+  importLegacyLibraryIntoSqlite,
+  isSqliteLibraryActive,
+  loadSqliteLibraryState,
+  querySqliteItems,
+  readSqliteItems,
+  sqliteLibraryStatus,
+} from "./sqlite-library";
 export type { DocChangeEvent, DocState } from "./automerge-types";
 
 /**
@@ -102,6 +116,10 @@ export type { DocChangeEvent, DocState } from "./automerge-types";
 const WORKER_REQUEST_TIMEOUT_MS = 180_000;
 const WORKER_START_TIMEOUT_MS = 15_000;
 const IDLE_WORKER_STOP_RETRY_MS = 1_000;
+const IS_AUTOMERGE_UNIT_TEST =
+  import.meta.env.MODE === "test" && import.meta.env.VITE_TEST_TAURI !== "1";
+let sqliteMutationQueue: Promise<void> = Promise.resolve();
+let queuedSqliteMutationCount = 0;
 
 // ---------------------------------------------------------------------------
 // Worker lifecycle
@@ -418,7 +436,10 @@ async function ensureWorkerDocumentReadyFor(type: WorkerRequest["type"]): Promis
   await initializeWorkerDocument();
 }
 
-startWorker();
+// Keep lifecycle fault tests deterministic without restoring production's
+// eager full-document worker. Normal builds start this compatibility worker
+// only when the one-time SQLite import actually needs it.
+if (IS_AUTOMERGE_UNIT_TEST) startWorker();
 
 // ---------------------------------------------------------------------------
 // Request/response plumbing
@@ -508,6 +529,24 @@ function postToWorkerGeneration(
   }
 }
 async function request(msg: WorkerRequest): Promise<void> {
+  if (isSqliteLibraryActive()) {
+    const queuedBehindAnotherMutation = queuedSqliteMutationCount > 0;
+    queuedSqliteMutationCount += 1;
+    const mutation = sqliteMutationQueue.then(async () => {
+      if (queuedBehindAnotherMutation) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
+      const current = lastDocState;
+      if (!current) throw new Error("SQLite Library state is not initialized");
+      const result = await dispatchSqliteMutation(msg, current);
+      publishState(result.state, result.event);
+    });
+    const completion = mutation.finally(() => {
+      queuedSqliteMutationCount -= 1;
+    });
+    sqliteMutationQueue = completion.catch(() => undefined);
+    return completion;
+  }
   assertAutomergeRequestAccepted(msg.type);
   await ensureWorkerDocumentReadyFor(msg.type);
   const activeWorker = getWorker();
@@ -615,7 +654,9 @@ function publishState(state: DocState, event: DocChangeEvent): void {
     lastItemIndexById = createItemIndex(state.items);
   }
   for (const sub of subscribers) sub(state, event);
-  if (appDocumentInitialized) scheduleLibraryCoreShadowProjection();
+  if (appDocumentInitialized && !isSqliteLibraryActive()) {
+    scheduleLibraryCoreShadowProjection();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -624,6 +665,7 @@ function publishState(state: DocState, event: DocChangeEvent): void {
 
 export function setRelayClientCount(n: number): void {
   latestRelayClientCount = n;
+  if (isSqliteLibraryActive()) return;
   if (automergeQuiesced || !worker) return;
   const activeWorker = worker;
   const generationId = activeWorkerGenerationId;
@@ -1469,7 +1511,6 @@ const libraryCoreExternalExportWorkerClient: LibraryCoreExternalExportWorkerClie
   cancel: cancelLibraryCoreExternalExport,
 };
 
-let libraryCoreExternalProjectionSelected = false;
 const LIBRARY_CORE_EXTERNAL_MIGRATION_DISABLED_KEY =
   "freed.libraryCore.externalMigrationV1.disabled";
 export const LIBRARY_CORE_RENDERER_ITEM_EVICTION_DISABLED_KEY =
@@ -1513,7 +1554,6 @@ async function migrateLibraryCoreBeforeAutomergeLoad(): Promise<void> {
       newLibraryCoreProjectionSessionId(),
       registration.id,
     );
-    libraryCoreExternalProjectionSelected = result.migrated;
     recordRuntimeHealthEvent({
       event: "library_core_external_migration",
       outcome: result.migrated ? "selected" : "empty_source",
@@ -1521,7 +1561,6 @@ async function migrateLibraryCoreBeforeAutomergeLoad(): Promise<void> {
       durationMs: Math.round(performance.now() - startedAt),
     });
   } catch (error) {
-    libraryCoreExternalProjectionSelected = false;
     const message = error instanceof Error ? error.message : String(error);
     log.warn(
       `[library-core-external] migration failed; using Automerge read rollback: ${message}`,
@@ -1545,6 +1584,19 @@ export function initDoc(
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
+    const sqliteStatus = await sqliteLibraryStatus();
+    if (sqliteStatus?.active) {
+      const state = await loadSqliteLibraryState();
+      lastDocState = state;
+      lastItemIndexById = new Map();
+      appDocumentInitialized = true;
+      recordRuntimeHealthEvent({
+        event: "sqlite_library_startup",
+        itemCount: state.totalItemCount,
+        revision: sqliteStatus.revision,
+      });
+      return state;
+    }
     if (!shouldEvictRendererItems() && rendererItemHydrationLeaseCount === 0) {
       rendererItemHydrationLeaseCount = 1;
     }
@@ -1554,10 +1606,31 @@ export function initDoc(
       const state = await initializeWorkerDocumentWithDataRecovery();
       appDocumentInitialized = true;
       workerDocumentInitialized = true;
-      if (!libraryCoreExternalProjectionSelected) {
+      if (IS_AUTOMERGE_UNIT_TEST) {
         scheduleLibraryCoreShadowProjection();
+        return state;
       }
-      return state;
+      const release = await acquireLegacyRendererItems();
+      let released = false;
+      try {
+        const hydrated = getDocState() ?? state;
+        const source = await getCommittedDoc();
+        release();
+        released = true;
+        const migrated = await importLegacyLibraryIntoSqlite(hydrated, source);
+        recordRuntimeHealthEvent({
+          event: "sqlite_library_migration_completed",
+          itemCount: migrated.totalItemCount,
+          sourceGeneration: source.revision.generation,
+          sourceRevision: source.revision.saveRevision,
+        });
+        scheduleIdleWorkerStop();
+        lastDocState = migrated;
+        lastItemIndexById = new Map();
+        return migrated;
+      } finally {
+        if (!released) release();
+      }
     } catch (error) {
       if (error instanceof WorkerLifecycleError) {
         await ensureWorkerReady();
@@ -1565,10 +1638,31 @@ export function initDoc(
         const state = await initializeWorkerDocumentWithDataRecovery();
         appDocumentInitialized = true;
         workerDocumentInitialized = true;
-        if (!libraryCoreExternalProjectionSelected) {
+        if (IS_AUTOMERGE_UNIT_TEST) {
           scheduleLibraryCoreShadowProjection();
+          return state;
         }
-        return state;
+        const release = await acquireLegacyRendererItems();
+        let released = false;
+        try {
+          const hydrated = getDocState() ?? state;
+          const source = await getCommittedDoc();
+          release();
+          released = true;
+        const migrated = await importLegacyLibraryIntoSqlite(hydrated, source);
+        recordRuntimeHealthEvent({
+          event: "sqlite_library_migration_completed",
+          itemCount: migrated.totalItemCount,
+          sourceGeneration: source.revision.generation,
+          sourceRevision: source.revision.saveRevision,
+        });
+          scheduleIdleWorkerStop();
+          lastDocState = migrated;
+          lastItemIndexById = new Map();
+          return migrated;
+        } finally {
+          if (!released) release();
+        }
       }
       throw error;
     }
@@ -1582,6 +1676,20 @@ export function initDoc(
 /** Latest hydrated state from the worker. Returns null before first INIT. */
 export function getDocState(): DocState | null {
   return lastDocState;
+}
+
+/** Reload the authoritative SQLite shell after an in-place backup restore. */
+export async function reloadSqliteLibraryState(): Promise<DocState> {
+  if (!isSqliteLibraryActive()) {
+    throw new Error("SQLite Library is not active");
+  }
+  const state = await loadSqliteLibraryState();
+  publishState(state, {
+    source: "state_update",
+    changedItemIds: null,
+    requiresFullScan: true,
+  });
+  return state;
 }
 
 function setRendererItemHydration(enabled: boolean): Promise<void> {
@@ -1688,6 +1796,25 @@ function publishRendererItemHydrationState(state: DocState): void {
  * unmounts.
  */
 export async function acquireLegacyRendererItems(): Promise<() => void> {
+  if (isSqliteLibraryActive()) {
+    let offset: number | null = 0;
+    const items: FeedItem[] = [];
+    while (offset !== null) {
+      const page = await querySqliteItems({ offset, limit: 128 });
+      items.push(...page.items);
+      offset = page.nextOffset;
+    }
+    const current = lastDocState;
+    if (!current) throw new Error("SQLite Library state is not initialized");
+    publishRendererItemHydrationState({ ...current, items });
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const state = lastDocState;
+      if (state) publishRendererItemHydrationState({ ...state, items: [] });
+    };
+  }
   const wasEmpty = rendererItemHydrationLeaseCount === 0;
   rendererItemHydrationLeaseCount += 1;
   try {
@@ -1722,6 +1849,9 @@ export async function acquireLegacyRendererItems(): Promise<() => void> {
 }
 
 export async function getDocBinary(): Promise<Uint8Array> {
+  if (isSqliteLibraryActive()) {
+    throw new Error("Automerge document export is unavailable after SQLite activation");
+  }
   await ensureWorkerDocumentReadyFor("GET_DOC_BINARY");
   const activeWorker = getWorker();
   return requestResultOnWorker(
@@ -1733,6 +1863,9 @@ export async function getDocBinary(): Promise<Uint8Array> {
 
 /** Exact durable bytes, heads, revision, and summary from one worker turn. */
 export async function getCommittedDoc(): Promise<CommittedDocSnapshot> {
+  if (isSqliteLibraryActive()) {
+    throw new Error("Automerge committed document is unavailable after SQLite activation");
+  }
   await ensureWorkerDocumentReadyFor("GET_COMMITTED_DOC");
   const activeWorker = getWorker();
   return requestResultOnWorker(
@@ -1748,6 +1881,7 @@ export async function getCommittedDoc(): Promise<CommittedDocSnapshot> {
  * with the heads at last save, and a fresh worker answers null.
  */
 export async function getDocHeads(): Promise<string[] | null> {
+  if (isSqliteLibraryActive()) return null;
   assertAutomergeRequestAccepted("GET_HEADS");
   await ensureWorkerReady();
   const activeWorker = getWorker();
@@ -1763,6 +1897,9 @@ export async function getDocHeads(): Promise<string[] | null> {
  * This request never returns or hydrates the document corpus.
  */
 export async function getLibraryCoreProjectionSource(): Promise<LibraryCoreProjectionSourceV1> {
+  if (isSqliteLibraryActive()) {
+    throw new Error("Legacy projection source is unavailable after SQLite activation");
+  }
   await ensureWorkerDocumentReadyFor("GET_LIBRARY_CORE_PROJECTION_SOURCE");
   return requestResultOnWorker(
     getWorker(),
@@ -1778,6 +1915,9 @@ export async function getLibraryCoreProjectionSource(): Promise<LibraryCoreProje
 export async function compareDoc(
   incoming: Uint8Array,
 ): Promise<DocumentHistoryRelation> {
+  if (isSqliteLibraryActive()) {
+    throw new Error("Automerge history comparison is unavailable after SQLite activation");
+  }
   await ensureWorkerDocumentReadyFor("COMPARE_DOC");
   const activeWorker = getWorker();
   return requestResultOnWorker(
@@ -1789,6 +1929,16 @@ export async function compareDoc(
 
 /** Canonical URLs for every saved YouTube item in the complete document. */
 export async function getSavedYouTubeVideoUrls(): Promise<string[]> {
+  if (isSqliteLibraryActive()) {
+    const items: FeedItem[] = [];
+    let offset: number | null = 0;
+    while (offset !== null) {
+      const page = await querySqliteItems({ saved: true, offset, limit: 128 });
+      items.push(...page.items);
+      offset = page.nextOffset;
+    }
+    return collectSavedYouTubeVideoUrls(items);
+  }
   await ensureWorkerDocumentReadyFor("GET_SAVED_YOUTUBE_URLS");
   const activeWorker = getWorker();
   return requestResultOnWorker(
@@ -1803,6 +1953,16 @@ export function getCachedDocStats(): DocStats | null {
 }
 
 export async function getAllItemIds(): Promise<string[]> {
+  if (isSqliteLibraryActive()) {
+    const ids: string[] = [];
+    let offset: number | null = 0;
+    while (offset !== null) {
+      const page = await querySqliteItems({ offset, limit: 128 });
+      ids.push(...page.items.map((item) => item.globalId));
+      offset = page.nextOffset;
+    }
+    return ids;
+  }
   await ensureWorkerDocumentReadyFor("GET_ALL_ITEM_IDS");
   const activeWorker = getWorker();
   return requestResultOnWorker(
@@ -1813,6 +1973,10 @@ export async function getAllItemIds(): Promise<string[]> {
 }
 
 export async function getItemPreservedText(globalId: string): Promise<string | null> {
+  if (isSqliteLibraryActive()) {
+    const [item] = await readSqliteItems([globalId]);
+    return item?.preservedContent?.text ?? null;
+  }
   await ensureWorkerDocumentReadyFor("GET_ITEM_PRESERVED_TEXT");
   const activeWorker = getWorker();
   return requestResultOnWorker(
@@ -1823,6 +1987,10 @@ export async function getItemPreservedText(globalId: string): Promise<string | n
 }
 
 export async function getItemLegacyHtml(globalId: string): Promise<string | null> {
+  if (isSqliteLibraryActive()) {
+    const [item] = await readSqliteItems([globalId]);
+    return item?.preservedContent?.html ?? null;
+  }
   await ensureWorkerDocumentReadyFor("GET_ITEM_LEGACY_HTML");
   const activeWorker = getWorker();
   return requestResultOnWorker(
@@ -2028,7 +2196,12 @@ async function runLibraryCoreShadowProjection(): Promise<void> {
 }
 
 function scheduleLibraryCoreShadowProjection(): void {
-  if (import.meta.env.VITE_TEST_TAURI === "1" || !isTauri() || automergeQuiesced) return;
+  if (
+    import.meta.env.VITE_TEST_TAURI === "1"
+    || !isTauri()
+    || automergeQuiesced
+    || isSqliteLibraryActive()
+  ) return;
   if (libraryCoreShadowRun) {
     libraryCoreShadowRerunRequested = true;
     return;
@@ -2047,11 +2220,20 @@ function scheduleLibraryCoreShadowProjection(): void {
 }
 
 export async function mergeDoc(incoming: Uint8Array): Promise<void> {
+  if (isSqliteLibraryActive()) {
+    throw new Error("Legacy Automerge merge is disabled after SQLite activation");
+  }
   const reqId = nextReqId++;
   return request({ reqId, type: "MERGE_DOC", binary: incoming });
 }
 
 export async function clearLocalDoc(): Promise<void> {
+  if (isSqliteLibraryActive()) {
+    await clearSqliteLibrary();
+    lastDocState = null;
+    lastItemIndexById = new Map();
+    return;
+  }
   const reqId = nextReqId++;
   return request({ reqId, type: "CLEAR_LOCAL" });
 }
@@ -2064,6 +2246,10 @@ export function quiesceDesktopAutomergeForFactoryReset(): Promise<void> {
   if (libraryCoreShadowTimer) {
     clearTimeout(libraryCoreShadowTimer);
     libraryCoreShadowTimer = null;
+  }
+  if (isSqliteLibraryActive()) {
+    automergeQuiescePromise = Promise.resolve();
+    return automergeQuiescePromise;
   }
   automergeQuiescePromise = (async () => {
     await libraryCoreShadowRun;
@@ -2159,6 +2345,16 @@ export async function docRemoveFeedItem(globalId: string): Promise<void> {
 }
 
 export async function docClearSampleData(): Promise<SampleDataClearSummary> {
+  if (isSqliteLibraryActive()) {
+    const current = lastDocState;
+    if (!current) throw new Error("SQLite Library state is not initialized");
+    const dispatched = await dispatchSqliteMutation(
+      { reqId: nextReqId++, type: "CLEAR_SAMPLE_DATA" },
+      current,
+    );
+    publishState(dispatched.state, dispatched.event);
+    return dispatched.result as SampleDataClearSummary;
+  }
   await ensureWorkerDocumentReadyFor("CLEAR_SAMPLE_DATA");
   const activeWorker = getWorker();
   return requestResultOnWorker(
@@ -2392,6 +2588,21 @@ export async function docDeduplicateFeedItems(): Promise<void> {
 export async function docBackfillContentSignals(
   batchSize: number = 200,
 ): Promise<ContentSignalBackfillSummary> {
+  if (isSqliteLibraryActive()) {
+    return {
+      version: CONTENT_SIGNAL_VERSION,
+      total: getDocState()?.totalItemCount ?? 0,
+      scanned: 0,
+      updated: 0,
+      remaining: 0,
+      counts: Object.fromEntries(
+        CONTENT_SIGNAL_KEYS.map((signal) => [signal, 0]),
+      ) as Record<ContentSignal, number>,
+      multiSignalCount: 0,
+      untaggedCount: 0,
+      samples: {},
+    };
+  }
   await ensureWorkerDocumentReadyFor("BACKFILL_CONTENT_SIGNALS");
   const activeWorker = getWorker();
   return requestResultOnWorker(

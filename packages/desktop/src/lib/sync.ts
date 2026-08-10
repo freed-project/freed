@@ -63,6 +63,7 @@ import {
   runBackgroundJob,
   type BackgroundJobKind,
 } from "./background-runtime-coordinator";
+import { isSqliteLibraryActive } from "./sqlite-library";
 
 let googleDriveFetch: GoogleDriveFetch | undefined;
 
@@ -286,6 +287,7 @@ function stopPolling(): void {
  * This function sets up the document change subscription to broadcast updates.
  */
 export async function startSync(): Promise<void> {
+  if (isSqliteLibraryActive()) return;
   if (isServerRunning) return;
 
   isServerRunning = true;
@@ -1587,6 +1589,10 @@ function nextUploadRetryMs(provider: CloudProvider, reason: string): number {
  * so every mutation is uploaded back to the cloud (debounced).
  */
 export async function startCloudSync(provider: CloudProvider, token: string): Promise<void> {
+  if (isSqliteLibraryActive()) {
+    stopCloudSync(provider);
+    throw new Error("Library cloud sync is unavailable until the SQLite transport ships.");
+  }
   stopCloudSync(provider);
   if (hasFactoryResetCloudCleanupBarrier()) return;
   if (cloudDeletesInProgress.has(provider)) return;
@@ -2316,6 +2322,10 @@ export function scheduleCloudUpload(
 
 /** Run an immediate cloud sync pass without waiting for the debounce timer. */
 export async function syncCloudProviderNow(provider: CloudProvider): Promise<void> {
+  if (isSqliteLibraryActive()) {
+    stopCloudSync(provider);
+    throw new Error("Library cloud sync is unavailable until the SQLite transport ships.");
+  }
   if (preserveDestructiveMergeBlock(provider)) {
     throw new Error("Choose which copy should win before cloud sync retries.");
   }
@@ -2394,6 +2404,10 @@ export async function syncCloudProviderNow(provider: CloudProvider): Promise<voi
  * Call this on app startup to resume any previously connected providers.
  */
 export async function restartCloudSync(provider: CloudProvider): Promise<void> {
+  if (isSqliteLibraryActive()) {
+    stopCloudSync(provider);
+    return;
+  }
   stopCloudSync(provider);
   if (hasFactoryResetCloudCleanupBarrier()) return;
   if (cloudDeletesInProgress.has(provider)) return;
@@ -2429,6 +2443,10 @@ export async function restartCloudSync(provider: CloudProvider): Promise<void> {
 }
 
 export async function startAllCloudSyncs(): Promise<void> {
+  if (isSqliteLibraryActive()) {
+    stopAllCloudSyncs();
+    return;
+  }
   if (hasFactoryResetCloudCleanupBarrier()) return;
   await Promise.all(getActiveProviders().map(async (provider) => {
     await restartCloudSync(provider).catch((err) => {

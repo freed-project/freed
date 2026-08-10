@@ -405,12 +405,24 @@ test("health tab surfaces provider charts and can unsubscribe a failing feed", a
       | {
           getState: () => {
             feeds: Record<string, unknown>;
-            items: Array<{ globalId: string }>;
           };
         }
       | undefined;
+    const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as
+      | {
+          items: Record<
+            string,
+            { __deleted?: boolean; rssSource?: { feedUrl?: string } }
+          >;
+        }
+      | undefined;
     const state = store?.getState();
-    return !!state?.feeds[feedUrl] && (state?.items.length ?? 0) > 0;
+    return (
+      !!state?.feeds[feedUrl] &&
+      Object.values(sqlite?.items ?? {}).some(
+        (item) => !item.__deleted && item.rssSource?.feedUrl === feedUrl,
+      )
+    );
   }, FEED_URL);
 
   await page.keyboard.press("Control+Shift+D");
@@ -440,14 +452,22 @@ test("health tab surfaces provider charts and can unsubscribe a failing feed", a
       | {
           getState: () => {
             feeds: Record<string, unknown>;
-            items: Array<{ rssSource?: { feedUrl?: string } }>;
           };
+        }
+      | undefined;
+    const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as
+      | {
+          items: Record<
+            string,
+            { __deleted?: boolean; rssSource?: { feedUrl?: string } }
+          >;
         }
       | undefined;
     const state = store?.getState();
     const feedGone = !state?.feeds[feedUrl];
-    const matchingItems =
-      state?.items.filter((item) => item.rssSource?.feedUrl === feedUrl) ?? [];
+    const matchingItems = Object.values(sqlite?.items ?? {}).filter(
+      (item) => !item.__deleted && item.rssSource?.feedUrl === feedUrl,
+    );
     return feedGone && matchingItems.length === 0;
   }, FEED_URL);
 

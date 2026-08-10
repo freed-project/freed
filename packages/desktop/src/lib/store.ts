@@ -120,6 +120,7 @@ import {
   readLibraryCoreItemDetail,
   scanLibraryCoreItems,
 } from "./library-core-item-detail-runtime";
+import { isSqliteLibraryActive } from "./sqlite-library";
 import { loadStoredCookies, type XAuthState } from "./x-auth";
 import { recordBugReportEvent, recordRuntimeError } from "@freed/ui/lib/bug-report";
 import { getDeviceDisplayPreferences } from "@freed/ui/lib/device-display-preferences";
@@ -611,20 +612,24 @@ async function pruneConnectionPersonIfNeeded(
  */
 async function runStartupMigrations(archivePruneDays: number): Promise<void> {
   if (!storeAcceptingResetSensitiveWork) return;
-  try {
-    await docHealUntitledFeedTitles();
-  } catch { /* non-fatal */ }
-  if (!storeAcceptingResetSensitiveWork) return;
-  try {
-    await docDeduplicateFeedItems();
-  } catch { /* non-fatal */ }
+  if (!isSqliteLibraryActive()) {
+    try {
+      await docHealUntitledFeedTitles();
+    } catch { /* non-fatal */ }
+    if (!storeAcceptingResetSensitiveWork) return;
+    try {
+      await docDeduplicateFeedItems();
+    } catch { /* non-fatal */ }
+  }
   if (!storeAcceptingResetSensitiveWork) return;
   try {
     if (archivePruneDays > 0) {
       await docPruneArchivedItems(archivePruneDays * 24 * 60 * 60 * 1000);
     }
   } catch { /* non-fatal */ }
-  scheduleStartupContentSignalBackfill(STARTUP_CONTENT_SIGNAL_INITIAL_DELAY_MS);
+  if (!isSqliteLibraryActive()) {
+    scheduleStartupContentSignalBackfill(STARTUP_CONTENT_SIGNAL_INITIAL_DELAY_MS);
+  }
 }
 
 function hasStoredCloudSyncCredentials(): boolean {
@@ -1020,7 +1025,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         // instead, so pruning still happens, just after the remote copy has been
         // merged in.
         const archivePruneDays = docState.preferences.display.archivePruneDays ?? 30;
-        if (hasStoredCloudSyncCredentials()) {
+        if (hasStoredCloudSyncCredentials() && !isSqliteLibraryActive()) {
           cancelPendingCloudReconcileMaintenance?.();
           cancelPendingCloudReconcileMaintenance = onCloudReconciled(() => {
             cancelPendingCloudReconcileMaintenance = null;
