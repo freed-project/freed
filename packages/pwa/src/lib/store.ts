@@ -111,6 +111,11 @@ import {
 import type { DocState } from "./automerge";
 import { pinReaderItemInPwa } from "./reader-cache";
 import {
+  initializePwaLibraryCoreState,
+  isPwaLibraryCoreEnabled,
+  subscribePwaLibraryCoreState,
+} from "./library-core-runtime";
+import {
   assertPwaRuntimeCurrent,
   capturePwaRuntimeLifecycle,
   registerPwaFactoryResetQuiesceHandler,
@@ -186,6 +191,11 @@ function optimisticMutationTestFailure(source: string): Error | null {
 function assertPwaStoreWritable(): void {
   if (storeQuiesced) throw new Error("PWA store is quiesced for factory reset");
   assertPwaRuntimeCurrent();
+  if (isPwaLibraryCoreEnabled()) {
+    throw new Error(
+      "This SQLite Library is read-only until its PWA intent outbox is active",
+    );
+  }
 }
 
 async function runOptimisticMutation(
@@ -390,6 +400,31 @@ export const useAppStore = create<AppState>((set, get) => ({
       const runtimeLifecycle = capturePwaRuntimeLifecycle();
       try {
         set({ isLoading: true });
+        if (isPwaLibraryCoreEnabled()) {
+          const state = await initializePwaLibraryCoreState();
+          runtimeLifecycle.assertCurrent();
+          migrateLegacyDeviceDisplayPreferences(state.preferences.display);
+          migrateLegacyThemePreference(state.preferences.display.themeId);
+          migrateLegacyDeviceAIPreferences(state.preferences.ai);
+          migrateLegacyDeviceGraphLayout(state.persons, state.accounts);
+          documentSubscriptionTeardown?.();
+          documentSubscriptionTeardown = subscribePwaLibraryCoreState(
+            (next) => {
+              if (storeQuiesced || !runtimeLifecycle.isCurrent()) return;
+              set(next);
+            },
+          );
+          set({
+            ...state,
+            activeFilter: applyFeedSignalModesToFilter(
+              get().activeFilter,
+              getDeviceDisplayPreferences().feedSignalModes,
+            ),
+            isInitialized: true,
+            isLoading: false,
+          });
+          return;
+        }
         const state = await initDoc();
         runtimeLifecycle.assertCurrent();
         if (storeQuiesced)

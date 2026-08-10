@@ -1,5 +1,6 @@
 import {
   isLibraryCoreOperationInstanceId,
+  parseLibraryCoreControlPointerV1,
   parseLibraryCoreImmutableObjectDescriptorV1,
   type LibraryCoreImmutableObjectDescriptorV1,
 } from "@freed/shared/library-core";
@@ -52,6 +53,15 @@ export interface GoogleDriveLibraryCoreControlLocatorV1 {
 export interface ProvisionedGoogleDriveLibraryCoreControlV1
   extends GoogleDriveLibraryCoreControlLocatorV1 {
   readonly created: boolean;
+}
+
+export interface PublishedGoogleDriveLibraryCoreControlV1
+  extends GoogleDriveLibraryCoreControlLocatorV1 {
+  readonly control: {
+    readonly bytes: Uint8Array;
+    readonly revision: string;
+  };
+  readonly libraryId: string;
 }
 
 export interface GoogleDriveLibraryCoreAdapterOptionsV1 {
@@ -500,6 +510,53 @@ export async function discoverGoogleDriveLibraryCoreControlV1(input: {
     "Library Core Drive control",
   );
   return Object.freeze({ controlFileId: file.id });
+}
+
+/**
+ * Discover the sole published Library Core control available to a fresh PWA.
+ * The control body supplies the library identity. App properties only narrow
+ * discovery to the protocol and object kind, and never establish authority.
+ */
+export async function discoverPublishedGoogleDriveLibraryCoreControlV1(input: {
+  readonly accessToken: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+}): Promise<PublishedGoogleDriveLibraryCoreControlV1 | null> {
+  assertBoundedText(
+    input.accessToken,
+    "Google Drive access token",
+    MAX_ACCESS_TOKEN_BYTES,
+  );
+  const googleFetch = input.googleFetch ?? fetch;
+  const files = await listDriveFilesByProperties({
+    accessToken: input.accessToken,
+    properties: Object.freeze({
+      freedProtocol: PROTOCOL_PROPERTY,
+      freedObjectKind: "control",
+    }),
+    googleFetch,
+    signal: input.signal,
+    maxFiles: 1,
+  });
+  const file = files[0];
+  if (file === undefined) return null;
+  const control = await readDriveFile({
+    accessToken: input.accessToken,
+    fileId: file.id,
+    googleFetch,
+    signal: input.signal,
+    maxBytes: MAX_CONTROL_BYTES,
+    label: "Library Core Drive control discovery",
+  });
+  const decoded = JSON.parse(
+    new TextDecoder("utf-8", { fatal: true }).decode(control.bytes),
+  );
+  const pointer = parseLibraryCoreControlPointerV1(decoded);
+  return Object.freeze({
+    controlFileId: file.id,
+    control: Object.freeze(control),
+    libraryId: pointer.libraryId,
+  });
 }
 
 /**

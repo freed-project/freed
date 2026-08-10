@@ -496,11 +496,20 @@ function portableFeedRowOrderKey(row: LibraryCoreFeedCardV1): string {
   )}`;
 }
 
+const PORTABLE_FEED_REGISTRY_KEYS = Object.freeze([
+  "10_feed_items",
+  "feedItems",
+] as const);
+
+function isPortableFeedRegistryKey(registryKey: string): boolean {
+  return PORTABLE_FEED_REGISTRY_KEYS.some((candidate) => candidate === registryKey);
+}
+
 function projectPortableFeedRow(
   generationId: LibraryCoreLowercaseHex64,
   materialized: PortableMaterializedRowRecord,
 ): PortableFeedRowRecord | null {
-  if (materialized.registryKey !== "feedItems") return null;
+  if (!isPortableFeedRegistryKey(materialized.registryKey)) return null;
   const globalId = materialized.row.globalId;
   if (
     typeof globalId !== "string" ||
@@ -1875,14 +1884,18 @@ class PwaLibraryCorePortableCheckpointStore
             operationId: member.envelope.operation_id,
             readAtMs: merged.value,
           } satisfies PortableReadStateRecord);
-          const rowKey = [
-            generation.generationId,
-            "feedItems",
-            canonicalStringKey(entityId),
-          ];
-          const storedRow = (await requestResult(
-            materializedRows.get(rowKey),
-          )) as PortableMaterializedRowRecord | undefined;
+          const primaryKey = canonicalStringKey(entityId);
+          let storedRow: PortableMaterializedRowRecord | undefined;
+          for (const registryKey of PORTABLE_FEED_REGISTRY_KEYS) {
+            storedRow = (await requestResult(
+              materializedRows.get([
+                generation.generationId,
+                registryKey,
+                primaryKey,
+              ]),
+            )) as PortableMaterializedRowRecord | undefined;
+            if (storedRow) break;
+          }
           if (storedRow) {
             const currentUserState =
               typeof storedRow.row.userState === "object" &&

@@ -1,0 +1,232 @@
+import {
+  createDefaultPreferences,
+  friendFromPerson,
+  type Account,
+  type FeedItem,
+  type Person,
+} from "@freed/shared";
+import {
+  parseLibraryCoreControlPointerV1,
+  type LibraryCoreCanonicalValue,
+} from "@freed/shared/library-core";
+import {
+  createGoogleDriveLibraryCoreAdapterV1,
+  discoverPublishedGoogleDriveLibraryCoreControlV1,
+  importLibraryCorePortableCheckpointV1,
+} from "@freed/sync/cloud";
+import type { DocState } from "./automerge-types";
+import { registerPwaFactoryResetQuiesceHandler } from "./factory-reset-coordinator";
+import { createPwaLibraryCorePortableCheckpointStore } from "./library-core-portable-checkpoint-store";
+
+export const PWA_LIBRARY_CORE_ENABLED_KEY =
+  "freed.libraryCore.pwaIndexedDbV1.enabled";
+
+const DATABASE_NAME = "freed-library-core-portable-v1";
+const MAXIMUM_INITIAL_FEED_ITEMS = 512;
+const COLLECTION_PAGE_LIMIT = 128;
+
+type LibraryCoreStateListener = (state: DocState) => void;
+
+const listeners = new Set<LibraryCoreStateListener>();
+let lastState: DocState | null = null;
+
+let portableStore: ReturnType<
+  typeof createPwaLibraryCorePortableCheckpointStore
+> | null = null;
+
+function getPortableStore(): ReturnType<
+  typeof createPwaLibraryCorePortableCheckpointStore
+> {
+  portableStore ??= createPwaLibraryCorePortableCheckpointStore({
+    databaseName: DATABASE_NAME,
+    indexedDb: globalThis.indexedDB,
+    keyRange: globalThis.IDBKeyRange,
+    subtle: globalThis.crypto.subtle,
+  });
+  return portableStore;
+}
+
+function emptyState(): DocState {
+  return {
+    items: [],
+    searchCorpusVersion: 0,
+    feeds: {},
+    persons: {},
+    accounts: {},
+    friends: {},
+    preferences: createDefaultPreferences(),
+    feedUnreadCounts: {},
+    feedTotalCounts: {},
+    totalUnreadCount: 0,
+    unreadCountByPlatform: {},
+    totalItemCount: 0,
+    itemCountByPlatform: {},
+    totalArchivableCount: 0,
+    archivableCountByPlatform: {},
+    archivableFeedCounts: {},
+    mapFriendLocationCount: 0,
+    mapAllContentLocationCount: 0,
+  };
+}
+
+function stateFromShell(
+  shell: Readonly<Record<string, LibraryCoreCanonicalValue>>,
+  items: FeedItem[],
+): DocState {
+  const base = { ...emptyState(), ...shell } as DocState;
+  const persons = base.persons as Record<string, Person>;
+  const accounts = base.accounts as Record<string, Account>;
+  return {
+    ...base,
+    items,
+    friends: Object.fromEntries(
+      Object.values(persons).map((person) => [
+        person.id,
+        friendFromPerson(person, accounts),
+      ]),
+    ),
+  };
+}
+
+function materializedEntry(
+  value: LibraryCoreCanonicalValue,
+): { readonly registryKey: string; readonly row: unknown } | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Readonly<Record<string, LibraryCoreCanonicalValue>>;
+  if (
+    typeof record.registry_key !== "string" ||
+    typeof record.row !== "object" ||
+    record.row === null ||
+    Array.isArray(record.row)
+  ) {
+    return null;
+  }
+  return { registryKey: record.registry_key, row: record.row };
+}
+
+async function readSelectedState(): Promise<DocState | null> {
+  const store = getPortableStore();
+  const shell = await store.readSelectedMaterializedRow(
+    "00_library_shell",
+    "shell",
+  );
+  if (!shell) return null;
+
+  const items: FeedItem[] = [];
+  let afterOrdinal: number | null = null;
+  do {
+    const page = await store.readSelectedCollectionPage({
+      afterOrdinal,
+      collection: "materialized_rows",
+      limit: COLLECTION_PAGE_LIMIT,
+    });
+    for (const entry of page.entries) {
+      const materialized = materializedEntry(entry.value);
+      if (materialized?.registryKey === "10_feed_items") {
+        items.push(materialized.row as FeedItem);
+        if (items.length >= MAXIMUM_INITIAL_FEED_ITEMS) break;
+      }
+    }
+    afterOrdinal = page.nextOrdinal;
+  } while (afterOrdinal !== null && items.length < MAXIMUM_INITIAL_FEED_ITEMS);
+
+  return stateFromShell(shell, items);
+}
+
+function publishState(state: DocState): void {
+  lastState = state;
+  for (const listener of listeners) listener(state);
+}
+
+export function isPwaLibraryCoreEnabled(): boolean {
+  try {
+    return localStorage.getItem(PWA_LIBRARY_CORE_ENABLED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function subscribePwaLibraryCoreState(
+  listener: LibraryCoreStateListener,
+): () => void {
+  listeners.add(listener);
+  if (lastState) listener(lastState);
+  return () => listeners.delete(listener);
+}
+
+export async function initializePwaLibraryCoreState(): Promise<DocState> {
+  const state = (await readSelectedState()) ?? emptyState();
+  publishState(state);
+  return state;
+}
+
+/**
+ * Import the sole published immutable Desktop checkpoint into IndexedDB.
+ * This path is dormant unless the explicit local activation key is set.
+ */
+export async function syncPwaLibraryCoreFromGoogleDrive(input: {
+  readonly accessToken: string;
+  readonly signal?: AbortSignal;
+}): Promise<DocState> {
+  const discovered = await discoverPublishedGoogleDriveLibraryCoreControlV1({
+    accessToken: input.accessToken,
+    signal: input.signal,
+  });
+  if (!discovered) {
+    throw new Error("No published SQLite Library was found in Google Drive");
+  }
+  const decoded = JSON.parse(
+    new TextDecoder("utf-8", { fatal: true }).decode(discovered.control.bytes),
+  );
+  const pointer = parseLibraryCoreControlPointerV1(decoded);
+  if (pointer.libraryId !== discovered.libraryId) {
+    throw new Error("Discovered Library identity changed during control read");
+  }
+  const adapter = createGoogleDriveLibraryCoreAdapterV1({
+    accessToken: input.accessToken,
+    controlFileId: discovered.controlFileId,
+    libraryId: pointer.libraryId,
+    signal: input.signal,
+  });
+  await importLibraryCorePortableCheckpointV1({
+    adapter,
+    generation: pointer.generation,
+    libraryId: pointer.libraryId,
+    manifest: pointer.manifest,
+    storageEpoch: pointer.storageEpoch,
+    subtle: crypto.subtle,
+    writer: getPortableStore(),
+  });
+  const state = await readSelectedState();
+  if (!state) {
+    throw new Error("Imported SQLite Library checkpoint has no readable shell");
+  }
+  publishState(state);
+  return state;
+}
+
+registerPwaFactoryResetQuiesceHandler(
+  "library-core-indexeddb",
+  async () => {
+    await portableStore?.quiesce();
+    portableStore = null;
+    lastState = null;
+    await new Promise<void>((resolve, reject) => {
+      const request = globalThis.indexedDB.deleteDatabase(DATABASE_NAME);
+      request.addEventListener("success", () => resolve(), { once: true });
+      request.addEventListener(
+        "error",
+        () => reject(request.error ?? new Error("SQLite Library reset failed")),
+        { once: true },
+      );
+      request.addEventListener(
+        "blocked",
+        () => reject(new Error("SQLite Library reset was blocked by another tab")),
+        { once: true },
+      );
+    });
+  },
+  25,
+);
