@@ -150,9 +150,7 @@ const PULL_REQUEST_PUBLISHER_TOOLING_PATHS = new Set([
   "scripts/worktree-publish.test.mjs",
 ]);
 
-const PULL_REQUEST_PUBLISHER_TEST_FILES = [
-  "scripts/worktree-publish.test.mjs",
-];
+const PULL_REQUEST_PUBLISHER_TEST_FILES = ["scripts/worktree-publish.test.mjs"];
 
 const TOOLING_SMOKE_RUNNER_PATHS = new Set([
   ".github/workflows/ci.yml",
@@ -744,8 +742,7 @@ function releaseBaseRefForTag(tag) {
 export function releaseArtifactExistsAtRef(
   filePath,
   ref,
-  execute = (command, args, options) =>
-    spawnSync(command, args, options),
+  execute = (command, args, options) => spawnSync(command, args, options),
 ) {
   const result = execute(
     "git",
@@ -757,9 +754,10 @@ export function releaseArtifactExistsAtRef(
   }
   if (result.status !== 0) {
     throw new Error(
-      `Could not inspect ${filePath} at ${ref}: ${String(
-        result.stderr ?? "",
-      ).trim() || `git exited ${String(result.status)}`}.`,
+      `Could not inspect ${filePath} at ${ref}: ${
+        String(result.stderr ?? "").trim() ||
+        `git exited ${String(result.status)}`
+      }.`,
     );
   }
   const entries = String(result.stdout ?? "")
@@ -772,13 +770,33 @@ export function releaseArtifactExistsAtRef(
   );
 }
 
+export function releaseTagExists(
+  tag,
+  execute = (command, args, options) => spawnSync(command, args, options),
+) {
+  const result = execute(
+    "git",
+    ["rev-parse", "--verify", "--quiet", `refs/tags/${tag}^{commit}`],
+    { cwd: REPO_ROOT, encoding: "utf8" },
+  );
+  if (result.error) throw result.error;
+  if (result.status === 0) return true;
+  if (result.status === 1) return false;
+  throw new Error(
+    `Could not inspect release tag ${tag}: ${
+      String(result.stderr ?? "").trim() ||
+      `git exited ${String(result.status)}`
+    }.`,
+  );
+}
+
 export function releaseIdentityValidationArgsForArtifact(
   filePath,
   artifact,
-  { baseArtifactExists = false } = {},
+  { baseArtifactExists = false, publishedTagExists = false } = {},
 ) {
   const tag = releaseTagForArtifactPath(filePath);
-  if (baseArtifactExists) {
+  if (baseArtifactExists && publishedTagExists) {
     return [
       path.join("scripts", "validate-release-identity.mjs"),
       `--tag=${tag}`,
@@ -1314,11 +1332,13 @@ export function executeReleaseIdentityValidation(
   artifact,
   execute = runProcess,
   artifactExistsAtRef = releaseArtifactExistsAtRef,
+  tagExists = releaseTagExists,
 ) {
   const tag = releaseTagForArtifactPath(filePath);
   const baseRef = releaseBaseRefForTag(tag);
   const args = releaseIdentityValidationArgsForArtifact(filePath, artifact, {
     baseArtifactExists: artifactExistsAtRef(filePath, baseRef),
+    publishedTagExists: tagExists(tag),
   });
   execute(`validate identity ${filePath}`, NODE_BIN, args, REPO_ROOT);
   return true;

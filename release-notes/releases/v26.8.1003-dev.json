@@ -5,14 +5,14 @@
   "dayKey": "26.8.10",
   "approved": true,
   "editorialNotes": [],
-  "generatedAt": "2026-08-10T17:46:49.041Z",
+  "generatedAt": "2026-08-10T18:21:17.422Z",
   "model": "heuristic",
   "source": {
     "channel": "dev",
     "previousPublishedTag": "v26.8.1002-dev",
     "previousPublishedDayTag": "v26.7.3100-dev",
     "compareRef": "HEAD",
-    "productCommitSha": "ca3d92cb7404a7382651a31a0bee806a3f392876",
+    "productCommitSha": "19a11be9807537e3b60f4421e7144607c99374ee",
     "promotedDevCommitSha": null,
     "libraryCoreActivation": {
       "schemaVersion": 1,
@@ -21,7 +21,7 @@
         "previousPublishedTag": "v26.8.1002-dev",
         "startMode": "previous_product_commit",
         "fromExclusiveCommitSha": "3f0acc2c1364786de3dd46312bc9567e2ceb1e3b",
-        "toInclusiveProductCommitSha": "ca3d92cb7404a7382651a31a0bee806a3f392876"
+        "toInclusiveProductCommitSha": "19a11be9807537e3b60f4421e7144607c99374ee"
       },
       "manifest": {
         "path": "docs/library-core-activation-manifest.json",
@@ -41,12 +41,12 @@
           ]
         }
       ],
-      "inspectionDigest": "sha256:8dc2da6be328a69c507c9a502de5f5853a86517ea7af3c6b25493fbcbd7e6d56",
+      "inspectionDigest": "sha256:86789320d6dbc67742791f31a98b568b1213f3ba6f29d8496172d474cd7ac7b6",
       "decision": {
         "state": "owner_approved",
-        "ownerApprovalReference": "current-task:release-26-8-1003-dev#sha256:1051bb315593ac830fbf9fdd81a76eb2e3b4da00528bf2bdd7571ea6aa393bfe",
-        "approvedInspectionDigest": "sha256:8dc2da6be328a69c507c9a502de5f5853a86517ea7af3c6b25493fbcbd7e6d56",
-        "approvedReleaseArtifactDigest": "sha256:9056acded9c8a6bda725dbe74fa11c624895915b3f0116b6f6b7169ac6108aeb"
+        "ownerApprovalReference": "current-task:release-26-8-1003-dev#sha256:59117388902c37870327b3297aef34a2f55a86b47f16634c99a5630aa0a58f94",
+        "approvedInspectionDigest": "sha256:86789320d6dbc67742791f31a98b568b1213f3ba6f29d8496172d474cd7ac7b6",
+        "approvedReleaseArtifactDigest": "sha256:47936f7486d73b8a957de56ec7d34afdcb70b6e7364fbd0a3a29429a80dd7216"
       }
     },
     "isLatestOfDay": true,
@@ -128,11 +128,13 @@
       1379,
       1380,
       1383,
-      1384
+      1384,
+      1385
     ],
     "commitSubjects": [
-      "chore: prepare v26.8.1003-dev",
-      "release: v26.8.1003-dev",
+      "fix: admit unpublished release ancestry repair",
+      "fix: repair v26.8.1003-dev product ancestry",
+      "chore: prepare v26.8.1003-dev (#1385)",
       "feat: activate SQLite Library sync (#1384)",
       "fix: scope PWA intents to writer epochs (#1383)",
       "feat: reconcile Library intent results and daily backups (#1380)",
