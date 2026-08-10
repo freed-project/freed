@@ -5,14 +5,14 @@
   "dayKey": "26.8.10",
   "approved": true,
   "editorialNotes": [],
-  "generatedAt": "2026-08-10T18:21:17.422Z",
+  "generatedAt": "2026-08-10T19:11:35.205Z",
   "model": "heuristic",
   "source": {
     "channel": "dev",
     "previousPublishedTag": "v26.8.1002-dev",
     "previousPublishedDayTag": "v26.7.3100-dev",
     "compareRef": "HEAD",
-    "productCommitSha": "19a11be9807537e3b60f4421e7144607c99374ee",
+    "productCommitSha": "62c8ddeb327c18ba07c24419d8ff05b0b07a59c6",
     "promotedDevCommitSha": null,
     "libraryCoreActivation": {
       "schemaVersion": 1,
@@ -21,7 +21,7 @@
         "previousPublishedTag": "v26.8.1002-dev",
         "startMode": "previous_product_commit",
         "fromExclusiveCommitSha": "3f0acc2c1364786de3dd46312bc9567e2ceb1e3b",
-        "toInclusiveProductCommitSha": "19a11be9807537e3b60f4421e7144607c99374ee"
+        "toInclusiveProductCommitSha": "62c8ddeb327c18ba07c24419d8ff05b0b07a59c6"
       },
       "manifest": {
         "path": "docs/library-core-activation-manifest.json",
@@ -41,12 +41,12 @@
           ]
         }
       ],
-      "inspectionDigest": "sha256:86789320d6dbc67742791f31a98b568b1213f3ba6f29d8496172d474cd7ac7b6",
+      "inspectionDigest": "sha256:9652f773296202e4a48069871c7adb9f0971ea6cbd2b28a91d68f25c356c6836",
       "decision": {
         "state": "owner_approved",
-        "ownerApprovalReference": "current-task:release-26-8-1003-dev#sha256:59117388902c37870327b3297aef34a2f55a86b47f16634c99a5630aa0a58f94",
-        "approvedInspectionDigest": "sha256:86789320d6dbc67742791f31a98b568b1213f3ba6f29d8496172d474cd7ac7b6",
-        "approvedReleaseArtifactDigest": "sha256:47936f7486d73b8a957de56ec7d34afdcb70b6e7364fbd0a3a29429a80dd7216"
+        "ownerApprovalReference": "current-task:release-26-8-1003-dev#sha256:e19041a77ffdceb12ae06149c5255e4a457fb0a5be1bfe02da8ca8ec5872ad41",
+        "approvedInspectionDigest": "sha256:9652f773296202e4a48069871c7adb9f0971ea6cbd2b28a91d68f25c356c6836",
+        "approvedReleaseArtifactDigest": "sha256:1f1ef6bd4fe4cc63862781cf34b7e5d801c8a798f9eb0e151a530e57c7b22328"
       }
     },
     "isLatestOfDay": true,
@@ -129,11 +129,13 @@
       1380,
       1383,
       1384,
-      1385
+      1385,
+      1386,
+      1387
     ],
     "commitSubjects": [
-      "fix: admit unpublished release ancestry repair",
-      "fix: repair v26.8.1003-dev product ancestry",
+      "feat: mirror SQLite Library backups to Drive (#1387)",
+      "fix: repair v26.8.1003-dev product ancestry (#1386)",
       "chore: prepare v26.8.1003-dev (#1385)",
       "feat: activate SQLite Library sync (#1384)",
       "fix: scope PWA intents to writer epochs (#1383)",
@@ -221,13 +223,13 @@
       "Scope PWA intents and result heads to the active writer epoch so ownership transfer can safely restart actor sequences",
       "Publish explicit PWA acceptance and provider-result receipts",
       "Keep twenty-four scrubbed local SQLite backups on a self-rearming daily schedule",
-      "Enable immutable SQLite Library sync by default with an immediate PWA refresh and one bounded refresh per connected minute"
+      "Enable immutable SQLite Library sync by default with an immediate PWA refresh and one bounded refresh per connected minute",
+      "The user-visible 24-generation cloud backup mirror"
     ],
     "followUps": [
-      "The user-visible 24-generation cloud backup mirror",
-      "Finish the reviewed replacement-sync activation and retire Automerge",
-      "Expand PWA intent support beyond read state"
+      "Expand PWA intent support beyond read state",
+      "Finish the reviewed replacement-sync activation and retire Automerge"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1003-dev\n\nFreed now runs its Library on SQLite in Freed Desktop and IndexedDB in the PWA, with immutable Drive sync and signed mobile actions\n\n### Features\n\n- Move Freed Desktop Library startup, reads, writes, resets, and daily backups to native SQLite after a verified one-time import\n- Keep the renderer corpus bounded and stop the legacy Automerge worker after SQLite takes over\n- Give the PWA a complete IndexedDB Library reader and search path, signed read-state intents, and exact single-writer ownership transfer\n\n### Fixes\n\n- Restore geographic map backgrounds in Freed Desktop and PWA\n- Restore SQLite-backed Desktop previews and durable Friends state across reloads\n- Refresh the authenticated immutable checkpoint after accepting PWA intents\n- Keep full-library PWA search and reader content off the legacy Automerge worker\n- Scope PWA intents and result heads to the active writer epoch so ownership transfer can safely restart actor sequences\n- Publish explicit PWA acceptance and provider-result receipts\n- Keep twenty-four scrubbed local SQLite backups on a self-rearming daily schedule\n- Enable immutable SQLite Library sync by default with an immediate PWA refresh and one bounded refresh per connected minute\n\n### Follow-ups\n\n- The user-visible 24-generation cloud backup mirror\n- Finish the reviewed replacement-sync activation and retire Automerge\n- Expand PWA intent support beyond read state\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.8.1003-dev\n\nFreed now runs its Library on SQLite in Freed Desktop and IndexedDB in the PWA, with immutable Drive sync and signed mobile actions\n\n### Features\n\n- Move Freed Desktop Library startup, reads, writes, resets, and daily backups to native SQLite after a verified one-time import\n- Keep the renderer corpus bounded and stop the legacy Automerge worker after SQLite takes over\n- Give the PWA a complete IndexedDB Library reader and search path, signed read-state intents, and exact single-writer ownership transfer\n\n### Fixes\n\n- Restore geographic map backgrounds in Freed Desktop and PWA\n- Restore SQLite-backed Desktop previews and durable Friends state across reloads\n- Refresh the authenticated immutable checkpoint after accepting PWA intents\n- Keep full-library PWA search and reader content off the legacy Automerge worker\n- Scope PWA intents and result heads to the active writer epoch so ownership transfer can safely restart actor sequences\n- Publish explicit PWA acceptance and provider-result receipts\n- Keep twenty-four scrubbed local SQLite backups on a self-rearming daily schedule\n- Enable immutable SQLite Library sync by default with an immediate PWA refresh and one bounded refresh per connected minute\n- The user-visible 24-generation cloud backup mirror\n\n### Follow-ups\n\n- Expand PWA intent support beyond read state\n- Finish the reviewed replacement-sync activation and retire Automerge\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
