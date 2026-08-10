@@ -16,8 +16,11 @@ import type { FilterOptions } from "@freed/shared";
 import type { BoundedFeedReader } from "@freed/ui/context";
 import {
   createGoogleDriveLibraryCoreAdapterV1,
+  createGoogleDriveLibraryCoreIntentAdapterV1,
   discoverPublishedGoogleDriveLibraryCoreControlV1,
   importLibraryCorePortableCheckpointV1,
+  provisionGoogleDriveLibraryCoreIntentHeadV1,
+  publishLibraryCoreIntentCandidateV1,
 } from "@freed/sync/cloud";
 import type { DocState } from "./automerge-types";
 import { registerPwaFactoryResetQuiesceHandler } from "./factory-reset-coordinator";
@@ -29,6 +32,7 @@ export const PWA_LIBRARY_CORE_ENABLED_KEY =
 const DATABASE_NAME = "freed-library-core-portable-v1";
 const MAXIMUM_INITIAL_FEED_ITEMS = 512;
 const COLLECTION_PAGE_LIMIT = 128;
+const MAXIMUM_INTENT_SEGMENTS_PER_SYNC = 128;
 
 type LibraryCoreStateListener = (state: DocState) => void;
 
@@ -270,6 +274,47 @@ export async function syncPwaLibraryCoreFromGoogleDrive(input: {
     subtle: crypto.subtle,
     writer: getPortableStore(),
   });
+  const store = getPortableStore();
+  const pendingActors = await store.readPendingIntentActors({
+    epochId: pointer.storageEpoch,
+    libraryId: pointer.libraryId,
+  });
+  for (const actor of pendingActors) {
+    let candidate = await store.readUnpublishedIntentSegmentCandidate(actor);
+    if (candidate === null) continue;
+    const provisioned = await provisionGoogleDriveLibraryCoreIntentHeadV1({
+      accessToken: input.accessToken,
+      head: candidate.expectedHead,
+      signal: input.signal,
+    });
+    const intentAdapter = createGoogleDriveLibraryCoreIntentAdapterV1({
+      accessToken: input.accessToken,
+      actorId: actor.actorId,
+      controlFileId: discovered.controlFileId,
+      intentHeadFileId: provisioned.intentHeadFileId,
+      libraryId: pointer.libraryId,
+      signal: input.signal,
+    });
+    let publishedSegmentCount = 0;
+    while (candidate !== null) {
+      if (publishedSegmentCount >= MAXIMUM_INTENT_SEGMENTS_PER_SYNC) {
+        throw new Error("PWA intent publication exceeded its sync bound");
+      }
+      const published = await publishLibraryCoreIntentCandidateV1({
+        adapter: intentAdapter,
+        candidate,
+        subtle: crypto.subtle,
+      });
+      if (published.status === "conflict") {
+        throw new Error(
+          `PWA intent head changed for actor ...${actor.actorId.slice(-8)}`,
+        );
+      }
+      await store.recordIntentSegmentPublication(published);
+      publishedSegmentCount += 1;
+      candidate = await store.readUnpublishedIntentSegmentCandidate(actor);
+    }
+  }
   const state = await readSelectedState();
   if (!state) {
     throw new Error("Imported SQLite Library checkpoint has no readable shell");

@@ -87,6 +87,14 @@ export {
   type PrepareLibraryCoreIntentSegmentRequestV1,
 } from "./library-core-intent-segments.js";
 export {
+  publishLibraryCoreIntentCandidateV1,
+  type LibraryCoreIntentHeadCompareAndSwapResultV1,
+  type LibraryCoreIntentHeadReadV1,
+  type LibraryCoreIntentPublicationAdapterV1,
+  type LibraryCoreIntentPublicationCandidateV1,
+  type LibraryCoreIntentPublicationResultV1,
+} from "./library-core-intent-publication.js";
+export {
   importLibraryCoreOperationSegmentV1,
   prepareLibraryCoreOperationSegmentV1,
   type ImportLibraryCoreOperationSegmentRequestV1,
@@ -99,13 +107,19 @@ export {
 export {
   LIBRARY_CORE_GOOGLE_DRIVE_SIMPLE_UPLOAD_LIMIT,
   createGoogleDriveLibraryCoreAdapterV1,
+  createGoogleDriveLibraryCoreIntentAdapterV1,
   discoverGoogleDriveLibraryCoreControlV1,
+  discoverGoogleDriveLibraryCoreIntentHeadV1,
   discoverPublishedGoogleDriveLibraryCoreControlV1,
   provisionGoogleDriveLibraryCoreControlV1,
+  provisionGoogleDriveLibraryCoreIntentHeadV1,
   type GoogleDriveLibraryCoreAdapterOptionsV1,
   type GoogleDriveLibraryCoreControlLocatorV1,
+  type GoogleDriveLibraryCoreIntentAdapterOptionsV1,
+  type GoogleDriveLibraryCoreIntentHeadLocatorV1,
   type PublishedGoogleDriveLibraryCoreControlV1,
   type ProvisionedGoogleDriveLibraryCoreControlV1,
+  type ProvisionedGoogleDriveLibraryCoreIntentHeadV1,
 } from "./library-core-google-drive-adapter.js";
 export {
   LIBRARY_CORE_STORED_WIRE_OBJECT_BYTE_CEILING,

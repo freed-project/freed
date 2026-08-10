@@ -319,6 +319,12 @@ export interface PwaLibraryCoreIntentSegmentCandidateV1 {
   readonly transactionCount: number;
 }
 
+export interface PwaLibraryCorePendingIntentActorV1 {
+  readonly actorId: LibraryCoreOperationInstanceId;
+  readonly epochId: LibraryCoreOperationInstanceId;
+  readonly libraryId: LibraryCoreOperationInstanceId;
+}
+
 export interface RecordPwaLibraryCoreIntentPublicationInput {
   readonly entries: readonly LibraryCoreIntentSegmentEntryV1[];
   readonly expectedHeadDigest: LibraryCoreLowercaseHex64;
@@ -2320,6 +2326,50 @@ class PwaLibraryCorePortableCheckpointStore
       expectedHeadDigest: intentHeadDigest(expectedHead),
       transactionCount: queuedTransactions.length,
     });
+  }
+
+  async readPendingIntentActors(input: {
+    readonly epochId: LibraryCoreOperationInstanceId;
+    readonly libraryId: LibraryCoreOperationInstanceId;
+    readonly limit?: number;
+  }): Promise<readonly PwaLibraryCorePendingIntentActorV1[]> {
+    this.#requireAvailable();
+    const limit = input.limit ?? 16;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 64) {
+      throw new TypeError("pending intent actor limit must be between 1 and 64");
+    }
+    const database = await this.#database();
+    const transaction = database.transaction(INTENT_ACTORS_STORE, "readonly");
+    const records = (await requestResult(
+      transaction
+        .objectStore(INTENT_ACTORS_STORE)
+        .getAll(
+          this.#keyRange.bound([input.libraryId], [input.libraryId, []]),
+          limit + 1,
+        ),
+    )) as PortableIntentActorRecord[];
+    await transactionDone(transaction);
+    const pending = records
+      .filter(
+        (actor) =>
+          actor.epochId === input.epochId &&
+          actor.publishedThroughIntentSequence < actor.nextIntentSequence - 1,
+      )
+      .sort((left, right) =>
+        left.actorId < right.actorId ? -1 : left.actorId > right.actorId ? 1 : 0,
+      );
+    if (records.length > limit || pending.length > limit) {
+      throw new Error("pending intent actor count exceeds the runtime bound");
+    }
+    return Object.freeze(
+      pending.map((actor) =>
+        Object.freeze({
+          actorId: actor.actorId,
+          epochId: actor.epochId,
+          libraryId: actor.libraryId,
+        }),
+      ),
+    );
   }
 
   async recordIntentSegmentPublication(
