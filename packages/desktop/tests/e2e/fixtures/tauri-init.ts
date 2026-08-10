@@ -23,7 +23,14 @@ export function tauriInitScript(): string {
     }
     window.__TAURI_MOCK_IPC_TIMINGS__ = [];
     window.__TAURI_MOCK_YOUTUBE_WINDOW_VISIBLE__ = false;
-    window.__TAURI_MOCK_SQLITE_LIBRARY__ = {
+    var SQLITE_LIBRARY_WINDOW_PREFIX = '__freed_e2e_sqlite_library_v1__';
+    var persistedSqliteLibrary = null;
+    try {
+      persistedSqliteLibrary = window.name.indexOf(SQLITE_LIBRARY_WINDOW_PREFIX) === 0
+        ? JSON.parse(window.name.slice(SQLITE_LIBRARY_WINDOW_PREFIX.length))
+        : null;
+    } catch (_) {}
+    window.__TAURI_MOCK_SQLITE_LIBRARY__ = persistedSqliteLibrary || {
       active: false,
       revision: 0,
       sourceGeneration: 0,
@@ -33,6 +40,15 @@ export function tauriInitScript(): string {
       shell: null,
       items: {},
     };
+    function persistSqliteState() {
+      try {
+        window.name = SQLITE_LIBRARY_WINDOW_PREFIX + JSON.stringify(sqliteState());
+      } catch (error) {
+        window.__TAURI_MOCK_SQLITE_PERSIST_ERROR__ = String(error);
+        // Large performance fixtures may exceed browser storage. They do not
+        // rely on reload persistence, so keep their authoritative mock in RAM.
+      }
+    }
     function sqliteState() {
       return window.__TAURI_MOCK_SQLITE_LIBRARY__;
     }
@@ -71,6 +87,7 @@ export function tauriInitScript(): string {
         state.items[item.globalId] = item;
       });
       state.revision += 1;
+      persistSqliteState();
       return null;
     }
     function sqliteMutateItems(args) {
@@ -140,6 +157,7 @@ export function tauriInitScript(): string {
         affected += 1;
       });
       state.revision += 1;
+      persistSqliteState();
       return affected;
     }
     function timedHandler(cmd, fn) {
@@ -178,11 +196,16 @@ export function tauriInitScript(): string {
         return null;
       },
       append_sqlite_library_import: sqliteUpsertItems,
-      finalize_sqlite_library_import: () => { sqliteState().active = true; return null; },
+      finalize_sqlite_library_import: () => {
+        sqliteState().active = true;
+        persistSqliteState();
+        return null;
+      },
       read_sqlite_library_shell: sqliteShellResult,
       replace_sqlite_library_shell: (args) => {
         sqliteState().shell = JSON.parse(args.request.shellJson);
         sqliteState().revision += 1;
+        persistSqliteState();
         return null;
       },
       upsert_sqlite_library_items: sqliteUpsertItems,

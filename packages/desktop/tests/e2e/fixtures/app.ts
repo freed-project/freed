@@ -322,7 +322,17 @@ export class AppFixture {
           }
           if (Date.now() - startedAt > 5_000) {
             clearInterval(interval);
-            reject(new Error("seed timeout"));
+            const sqlite = w.__TAURI_MOCK_SQLITE_LIBRARY__ as
+              | { active?: boolean; items?: Record<string, unknown>; shell?: Record<string, unknown> }
+              | undefined;
+            reject(new Error(`seed timeout ${JSON.stringify({
+              storeItems: state.items.length,
+              friends: Object.keys(state.friends),
+              accounts: Object.keys(state.accounts),
+              sqliteActive: sqlite?.active,
+              sqliteItems: Object.keys(sqlite?.items ?? {}),
+              sqliteShellKeys: Object.keys(sqlite?.shell ?? {}),
+            })}`));
           }
         }, 50);
       });

@@ -244,7 +244,6 @@ function sqliteUpsertItems(args: Record<string, unknown>): null {
 
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
-  ...(((window as unknown as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ ?? {}) as Record<string, Handler>),
   broadcast_doc: timedHandler("broadcast_doc", () => null),
   sqlite_library_status: () => {
     const state = sqliteLibrary();
@@ -610,6 +609,10 @@ const handlers: Record<string, Handler> = {
   yt_capture: () => setMockYouTubeWindowVisible(false),
   yt_add_to_offline_playlist: () => setMockYouTubeWindowVisible(false),
   yt_disconnect: () => setMockYouTubeWindowVisible(false),
+  // The init script runs before the Vite module graph and owns persistent or
+  // test-specific handlers. Keep those overrides last so this module's
+  // convenient defaults cannot silently replace them.
+  ...(((window as unknown as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ ?? {}) as Record<string, Handler>),
 };
 
 // Expose handler map so tests and tauri-init.ts can override defaults.

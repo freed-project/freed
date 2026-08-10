@@ -9,6 +9,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
   createDefaultPreferences,
+  friendFromPerson,
   hasSampleDataFingerprint,
   type FeedItem,
   type ReachOutLog,
@@ -94,12 +95,19 @@ function shellFromState(state: DocState): Omit<DocState, "items"> {
   return shell;
 }
 
-function stateFromShell(result: SqliteShell): DocState {
+function stateFromShell(result: SqliteShell, items: FeedItem[] = []): DocState {
   const decoded = decodeJson(result.shellJson) as Partial<DocState>;
   const base = { ...emptyShell(), ...decoded };
+  const friends = Object.fromEntries(
+    Object.values(base.persons).map((person) => [
+      person.id,
+      friendFromPerson(person, base.accounts),
+    ]),
+  );
   return {
     ...base,
-    items: [],
+    items,
+    friends,
     searchCorpusVersion: result.revision,
     feedUnreadCounts: {},
     feedTotalCounts: {},
@@ -127,6 +135,20 @@ export async function sqliteLibraryStatus(): Promise<SqliteStatus | null> {
 export async function loadSqliteLibraryState(): Promise<DocState> {
   const result = await invoke<SqliteShell>("read_sqlite_library_shell");
   sqliteActive = true;
+  // Browser E2E tests deliberately keep the legacy renderer projection so
+  // their UI assertions can exercise cards, maps, and mutations without a
+  // native process. Production Freed Desktop never takes this branch and
+  // continues to hold only bounded SQLite pages in renderer memory.
+  if (import.meta.env.VITE_TEST_TAURI === "1") {
+    const items: FeedItem[] = [];
+    let offset: number | null = 0;
+    while (offset !== null) {
+      const page = await querySqliteItems({ offset, limit: 128, showHidden: true });
+      items.push(...page.items);
+      offset = page.nextOffset;
+    }
+    return stateFromShell(result, items);
+  }
   return stateFromShell(result);
 }
 
