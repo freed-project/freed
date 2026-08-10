@@ -1,12 +1,30 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createLibraryCoreImmutableObjectKey,
+  encodeLibraryCoreCanonicalValue,
+  type LibraryCoreLowercaseHex64,
+} from "@freed/shared/library-core";
 
 const mocks = vi.hoisted(() => ({
   nativeState: null as unknown,
+  controlRead: {
+    revision: '"etag-1"',
+    bytes: new TextEncoder().encode("{}"),
+  },
   publishRequest: null as Record<string, unknown> | null,
+  reassignRequest: null as Record<string, unknown> | null,
   readDescriptor: vi.fn(),
   readPage: vi.fn(),
+  beginPortableImport: vi.fn(async () => {}),
+  appendPortableItems: vi.fn(async () => {}),
+  finalizePortableImport: vi.fn(async () => ({ active: true })),
+  createBackup: vi.fn(async () => ({ backupId: "backup-before-cloud-import" })),
+  restoreBackup: vi.fn(async () => ({})),
+  clearSqliteLibrary: vi.fn(async () => {}),
   writeNative: vi.fn(),
   publish: vi.fn(),
+  reassign: vi.fn(),
+  importCheckpoint: vi.fn(),
   desktopRegistrationId: "desktop-registration-1",
 }));
 
@@ -27,8 +45,14 @@ vi.mock("./native-json-store", () => ({
 }));
 
 vi.mock("./sqlite-library", () => ({
+  appendPortableSqliteLibraryItems: mocks.appendPortableItems,
+  beginPortableSqliteLibraryImport: mocks.beginPortableImport,
+  clearSqliteLibrary: mocks.clearSqliteLibrary,
+  createSqliteLibraryBackup: mocks.createBackup,
+  finalizePortableSqliteLibraryImport: mocks.finalizePortableImport,
   readSqliteLibrarySyncDescriptor: mocks.readDescriptor,
   readSqliteLibrarySyncPage: mocks.readPage,
+  restoreSqliteLibraryBackup: mocks.restoreBackup,
   sqliteLibraryStatus: vi.fn(async () => ({ active: true, revision: 7 })),
 }));
 
@@ -41,10 +65,7 @@ vi.mock("@freed/sync/cloud", async (importOriginal) => {
       created: true,
     })),
     createGoogleDriveLibraryCoreAdapterV1: vi.fn(() => ({
-      readControl: vi.fn(async () => ({
-        revision: '"etag-1"',
-        bytes: new TextEncoder().encode("{}"),
-      })),
+      readControl: vi.fn(async () => mocks.controlRead),
     })),
     publishLibraryCorePortableCheckpointV1: mocks.publish.mockImplementation(
       async (request: Record<string, unknown>) => {
@@ -63,17 +84,126 @@ vi.mock("@freed/sync/cloud", async (importOriginal) => {
         };
       },
     ),
+    importLibraryCorePortableCheckpointV1: mocks.importCheckpoint.mockImplementation(
+      async (request: Record<string, unknown>) => {
+        const writer = request.writer as {
+          beginImport(input: unknown): Promise<unknown>;
+          appendPage(pageIndex: number, records: readonly unknown[]): Promise<void>;
+          finalizeImport(input: unknown): Promise<unknown>;
+        };
+        const header = {
+          kind: "logical_checkpoint_header",
+          format: "freed_logical_checkpoint_v1",
+          library_id: String(request.libraryId),
+          epoch: 2,
+          epoch_id: String(request.storageEpoch),
+          schema_version: 2,
+          field_registry_version: 1,
+          canonical_codec_version: 1,
+          anchor_kind: "accepted_authority",
+          source_transition_digest: null,
+          source_manifest_digest: null,
+          transition_candidate_anchor: null,
+          promoted_receipt_digests: [],
+          materializer_position: {
+            frontier_digest: "ef".repeat(32),
+            ingest_sequence: 9,
+            materialized_digest: "34".repeat(32),
+          },
+          collection_counts: {
+            accepted_frontier: 0,
+            quarantined_frontier: 0,
+            materialized_rows: 3,
+            field_clocks: 0,
+            relationships: 0,
+            tombstones: 0,
+            actor_states: 0,
+            receipt_records: 0,
+            blob_roots: 0,
+            excluded_registry_keys: 0,
+          },
+        };
+        await writer.beginImport({ manifest: {}, manifestReference: {} });
+        await writer.appendPage(0, [
+          header,
+          {
+            kind: "logical_checkpoint_entry",
+            collection: "materialized_rows",
+            ordinal: 0,
+            value: {
+              primary_key: "shell",
+              registry_key: "00_library_shell",
+              row: { accounts: {}, feeds: {}, persons: {} },
+            },
+          },
+          {
+            kind: "logical_checkpoint_entry",
+            collection: "materialized_rows",
+            ordinal: 1,
+            value: {
+              primary_key: "item-1",
+              registry_key: "10_feed_items",
+              row: { globalId: "item-1", platform: "rss" },
+            },
+          },
+          {
+            kind: "logical_checkpoint_entry",
+            collection: "materialized_rows",
+            ordinal: 2,
+            value: {
+              primary_key: "item-2",
+              registry_key: "10_feed_items",
+              row: { globalId: "item-2", platform: "youtube" },
+            },
+          },
+        ]);
+        await writer.finalizeImport({ header, manifest: { totalRecordCount: 4 } });
+        return { status: "imported", importedPageCount: 1, importedRecordCount: 4 };
+      },
+    ),
+    reassignLibraryCorePortableCheckpointV1: mocks.reassign.mockImplementation(
+      async (request: Record<string, unknown>) => {
+        mocks.reassignRequest = request;
+        const entries: unknown[] = [];
+        for await (const entry of request.entries as AsyncIterable<unknown>) {
+          entries.push(entry);
+        }
+        return {
+          status: "committed",
+          revision: '"etag-2"',
+          dependencies: [],
+          manifest: {},
+          controlPointer: {},
+          entries,
+        };
+      },
+    ),
   };
 });
 
-import { publishCurrentSqliteLibraryToGoogleDrive } from "./library-core-cloud-sync";
+import {
+  makeThisSqliteLibraryDesktopWriter,
+  publishCurrentSqliteLibraryToGoogleDrive,
+} from "./library-core-cloud-sync";
 
 describe("SQLite Library Google Drive production wiring", () => {
   beforeEach(() => {
     mocks.nativeState = null;
     mocks.desktopRegistrationId = "desktop-registration-1";
+    mocks.controlRead = {
+      revision: '"etag-1"',
+      bytes: new TextEncoder().encode("{}"),
+    };
     mocks.publishRequest = null;
+    mocks.reassignRequest = null;
     mocks.publish.mockClear();
+    mocks.reassign.mockClear();
+    mocks.importCheckpoint.mockClear();
+    mocks.beginPortableImport.mockClear();
+    mocks.appendPortableItems.mockClear();
+    mocks.createBackup.mockClear();
+    mocks.restoreBackup.mockClear();
+    mocks.clearSqliteLibrary.mockClear();
     mocks.writeNative.mockClear();
     mocks.readDescriptor.mockReset().mockResolvedValue({
       revision: 7,
@@ -142,5 +272,138 @@ describe("SQLite Library Google Drive production wiring", () => {
 
     expect(mocks.publish).not.toHaveBeenCalled();
     expect(mocks.writeNative).not.toHaveBeenCalled();
+  });
+
+  it("moves a current restored SQLite copy to a fresh writer epoch with one control CAS", async () => {
+    const libraryId = `library-${"ab".repeat(20)}`;
+    mocks.nativeState = {
+      version: 1,
+      libraryId,
+      sourceDigest: "ab".repeat(32),
+      storageEpoch: "epoch-original",
+      writerId: "desktop-original-installation",
+      controlFileId: "control-1",
+      lastPublishedRevision: 7,
+    };
+    mocks.desktopRegistrationId = "restored-installation";
+    mocks.controlRead = {
+      revision: '"etag-current"',
+      bytes: new Uint8Array(encodeLibraryCoreCanonicalValue({
+        activeTransport: "google_drive_app_data_v1",
+        causalFrontierDigest: "ef".repeat(32),
+        generation: 4,
+        libraryId,
+        manifest: {
+          descriptor: {
+            byteLength: 123,
+            contentDigest: "12".repeat(32),
+            objectKey: createLibraryCoreImmutableObjectKey({
+              digest: "12".repeat(32) as LibraryCoreLowercaseHex64,
+              epochId: "epoch-original",
+              generation: 4,
+              kind: "checkpoint_manifest",
+              libraryId,
+            }),
+          },
+          transportObjectId: "manifest-4",
+        },
+        protocolVersion: 1,
+        schemaVersion: 1,
+        storageEpoch: "epoch-original",
+        writerId: "desktop-original-installation",
+      })),
+    };
+
+    await expect(
+      makeThisSqliteLibraryDesktopWriter({ accessToken: "token" }),
+    ).resolves.toEqual({ status: "writer_transferred", revision: 7 });
+
+    expect(mocks.reassign).toHaveBeenCalledTimes(1);
+    expect(mocks.reassignRequest).toMatchObject({
+      expectedControl: { revision: '"etag-current"' },
+      generation: 0,
+      writerId: "desktop-restored-installation",
+      header: {
+        materializer_position: { frontier_digest: "ef".repeat(32) },
+      },
+    });
+    expect(mocks.nativeState).toMatchObject({
+      lastPublishedRevision: 7,
+      writerId: "desktop-restored-installation",
+    });
+  });
+
+  it("backs up and imports the active cloud checkpoint before taking over from a newer epoch", async () => {
+    const libraryId = `library-${"ab".repeat(20)}`;
+    mocks.nativeState = {
+      version: 1,
+      libraryId,
+      sourceDigest: "ab".repeat(32),
+      storageEpoch: "epoch-original",
+      writerId: "desktop-original-installation",
+      controlFileId: "control-1",
+      lastPublishedRevision: 7,
+    };
+    mocks.desktopRegistrationId = "restored-installation";
+    mocks.readDescriptor.mockReset()
+      .mockResolvedValueOnce({
+        revision: 8,
+        itemCount: 2,
+        sourceDigest: "ab".repeat(32),
+        shellJson: '{"accounts":{},"feeds":{},"persons":{}}',
+        materializedDigest: "cd".repeat(32),
+      })
+      .mockResolvedValue({
+        revision: 1,
+        itemCount: 2,
+        sourceDigest: "ab".repeat(32),
+        shellJson: '{"accounts":{},"feeds":{},"persons":{}}',
+        materializedDigest: "34".repeat(32),
+      });
+    mocks.controlRead = {
+      revision: '"etag-current"',
+      bytes: new Uint8Array(encodeLibraryCoreCanonicalValue({
+        activeTransport: "google_drive_app_data_v1",
+        causalFrontierDigest: "ef".repeat(32),
+        generation: 9,
+        libraryId,
+        manifest: {
+          descriptor: {
+            byteLength: 123,
+            contentDigest: "56".repeat(32),
+            objectKey: createLibraryCoreImmutableObjectKey({
+              digest: "56".repeat(32) as LibraryCoreLowercaseHex64,
+              epochId: "epoch-cloud-newer",
+              generation: 9,
+              kind: "checkpoint_manifest",
+              libraryId,
+            }),
+          },
+          transportObjectId: "manifest-9",
+        },
+        protocolVersion: 1,
+        schemaVersion: 1,
+        storageEpoch: "epoch-cloud-newer",
+        writerId: "desktop-cloud-writer",
+      })),
+    };
+
+    await expect(
+      makeThisSqliteLibraryDesktopWriter({ accessToken: "token" }),
+    ).resolves.toEqual({ status: "writer_transferred", revision: 1 });
+
+    expect(mocks.createBackup).toHaveBeenCalledWith("manual");
+    expect(mocks.importCheckpoint).toHaveBeenCalledTimes(1);
+    expect(mocks.beginPortableImport).toHaveBeenCalledWith(expect.objectContaining({
+      expectedItemCount: 2,
+      sourceDigest: "ab".repeat(32),
+      sourceRevision: 9,
+    }));
+    expect(mocks.appendPortableItems).toHaveBeenCalledWith([
+      { globalId: "item-1", platform: "rss" },
+      { globalId: "item-2", platform: "youtube" },
+    ]);
+    expect(mocks.reassign).toHaveBeenCalledTimes(1);
+    expect(mocks.restoreBackup).not.toHaveBeenCalled();
   });
 });

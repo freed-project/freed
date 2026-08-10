@@ -66,6 +66,7 @@ import {
 import { isSqliteLibraryActive } from "./sqlite-library";
 import {
   isSqliteLibraryGoogleDriveSyncEnabled,
+  makeThisSqliteLibraryDesktopWriter,
   publishCurrentSqliteLibraryToGoogleDrive,
   startSqliteLibraryGoogleDriveSync,
   stopSqliteLibraryCloudSync,
@@ -2480,6 +2481,38 @@ export async function syncCloudProviderNow(provider: CloudProvider): Promise<voi
   } finally {
     removeTransientAbort();
   }
+}
+
+/** Transfer the active SQLite Library writer epoch to this Freed Desktop. */
+export async function transferSqliteLibraryWriterToThisDesktop(): Promise<void> {
+  if (!isSqliteLibraryActive()) {
+    throw new Error("SQLite Library is not active.");
+  }
+  if (!isSqliteLibraryGoogleDriveSyncEnabled()) {
+    throw new Error("SQLite Library cloud sync is awaiting its Drive activation review.");
+  }
+  const provider: CloudProvider = "gdrive";
+  const generation = currentCloudGeneration(provider);
+  const token = await resolveCloudTokenForGeneration(provider, undefined, generation);
+  if (!token || !isCloudGenerationCurrent(provider, generation)) {
+    throw new Error("Cloud token missing. Reconnect Google Drive.");
+  }
+  const result = await makeThisSqliteLibraryDesktopWriter({
+    accessToken: token,
+    googleFetch: googleDriveFetch,
+    signal: cloudAborts.get(provider)?.signal,
+  });
+  if (result.status === "bootstrap_required") {
+    throw new Error(
+      "This Freed Desktop must download the current cloud Library before it can take ownership.",
+    );
+  }
+  if (result.status === "ownership_required") {
+    throw new Error(
+      "Library ownership changed during transfer. Review the current owner and try again.",
+    );
+  }
+  await startCloudSync(provider, token);
 }
 
 /**

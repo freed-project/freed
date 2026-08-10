@@ -24,6 +24,7 @@ import {
   resetPairingToken,
   onStatusChange,
   syncCloudProviderNow,
+  transferSqliteLibraryWriterToThisDesktop,
   resolveCloudSyncConflict,
   type CloudConflictWinner,
   type SyncStatus,
@@ -110,6 +111,10 @@ function isDestructiveMergeWarning(message?: string | null): boolean {
   return message?.includes("blocked a sync merge") ?? false;
 }
 
+function isSqliteWriterOwnershipWarning(message?: string | null): boolean {
+  return message?.includes("Another Freed Desktop currently owns writes") ?? false;
+}
+
 type Tab = "cloud" | "qr" | "manual";
 
 export function MobileSyncTab() {
@@ -130,6 +135,7 @@ export function MobileSyncTab() {
   const { providers, connect, cancelConnect, disconnect } = useCloudProviders();
   const [cancelProvider, setCancelProvider] = useState<CloudProvider | null>(null);
   const [manualSyncingProvider, setManualSyncingProvider] = useState<CloudProvider | null>(null);
+  const [transferringSqliteWriter, setTransferringSqliteWriter] = useState(false);
   const [resolvingConflictWinner, setResolvingConflictWinner] = useState<CloudConflictWinner | null>(null);
   const [manualSyncError, setManualSyncError] = useState<string | null>(null);
   const [allIPs, setAllIPs] = useState<NetworkInterface[]>([]);
@@ -216,6 +222,9 @@ export function MobileSyncTab() {
   const uploadExplanation = describeUploadGap(activeCloudState ?? null);
   const diagnosticError = activeCloudState?.error ?? manualSyncError;
   const showConflictRecovery = activeProvider !== null && (isResolvingConflict || isDestructiveMergeWarning(diagnosticError));
+  const showSqliteWriterTransfer =
+    activeProvider === "gdrive"
+    && (transferringSqliteWriter || isSqliteWriterOwnershipWarning(diagnosticError));
 
   const handleManualCloudSync = useCallback(async () => {
     if (!activeProvider) return;
@@ -245,6 +254,25 @@ export function MobileSyncTab() {
       setResolvingConflictWinner(null);
     }
   }, [activeProvider, resolvingConflictWinner]);
+
+  const handleTransferSqliteWriter = useCallback(async () => {
+    if (transferringSqliteWriter) return;
+    const confirmed = window.confirm(
+      "Make this Freed Desktop the writer? Only one Freed Desktop can own Library writes at a time. The previous installation will become read-only when it next checks cloud authority.",
+    );
+    if (!confirmed) return;
+    setTransferringSqliteWriter(true);
+    setManualSyncError(null);
+    try {
+      await transferSqliteLibraryWriterToThisDesktop();
+    } catch (error) {
+      setManualSyncError(
+        error instanceof Error ? error.message : "Library ownership transfer failed.",
+      );
+    } finally {
+      setTransferringSqliteWriter(false);
+    }
+  }, [transferringSqliteWriter]);
 
   return (
     <>
@@ -340,6 +368,30 @@ export function MobileSyncTab() {
             </div>
             {diagnosticError && (
               <p className="theme-feedback-text-danger mb-3 break-words text-xs">{diagnosticError}</p>
+            )}
+            {showSqliteWriterTransfer && (
+              <div
+                data-testid="sqlite-writer-transfer"
+                className="mb-3 rounded-lg border border-[rgb(var(--theme-feedback-warning-rgb)/0.35)] bg-[rgb(var(--theme-feedback-warning-rgb)/0.08)] px-3 py-3"
+              >
+                <p className="text-xs font-medium text-[var(--theme-text-primary)]">
+                  This Freed Desktop is read-only.
+                </p>
+                <p className="mt-1 text-xs text-[var(--theme-text-secondary)]">
+                  Transfer ownership here to write from this installation. The previous installation will become read-only when it next checks Google Drive.
+                </p>
+                <button
+                  type="button"
+                  data-testid="sqlite-writer-transfer-button"
+                  onClick={() => void handleTransferSqliteWriter()}
+                  disabled={transferringSqliteWriter}
+                  className="btn-primary mt-3 rounded-lg px-3 py-1.5 text-xs disabled:opacity-50"
+                >
+                  {transferringSqliteWriter
+                    ? "Transferring..."
+                    : "Make This Freed Desktop the Writer"}
+                </button>
+              </div>
             )}
             {showConflictRecovery && (
               <div

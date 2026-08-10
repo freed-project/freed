@@ -1,24 +1,37 @@
 import {
+  createLibraryCoreImmutableObjectKey,
   decodeLibraryCoreCanonicalValue,
+  encodeLibraryCoreCanonicalValue,
+  parseLibraryCoreImmutableObjectDescriptorV1,
   parseLibraryCoreControlPointerV1,
   type LibraryCoreCanonicalValue,
   type LibraryCoreControlPointerV1,
   type LibraryCorePortableCheckpointEntryV1,
   type LibraryCorePortableCheckpointHeaderV1,
+  type LibraryCorePortableCheckpointRecordV1,
 } from "@freed/shared/library-core";
 import {
   createGoogleDriveLibraryCoreAdapterV1,
+  importLibraryCorePortableCheckpointV1,
   provisionGoogleDriveLibraryCoreControlV1,
   publishLibraryCorePortableCheckpointV1,
+  reassignLibraryCorePortableCheckpointV1,
   type GoogleDriveFetch,
   type LibraryCoreControlReadV1,
+  type LibraryCoreImmutableReadAdapterV1,
+  type LibraryCorePreparedImmutableObjectV1,
 } from "@freed/sync/cloud";
 import { decodeJson } from "@freed/shared/projection";
 import type { FeedItem } from "@freed/shared";
 import { getOrCreateDesktopClientRegistration } from "./desktop-client-registration";
 import {
+  appendPortableSqliteLibraryItems,
+  beginPortableSqliteLibraryImport,
+  createSqliteLibraryBackup,
+  finalizePortableSqliteLibraryImport,
   readSqliteLibrarySyncDescriptor,
   readSqliteLibrarySyncPage,
+  restoreSqliteLibraryBackup,
   sqliteLibraryStatus,
   type SqliteLibrarySyncDescriptor,
 } from "./sqlite-library";
@@ -42,6 +55,8 @@ interface LocalLibraryCoreCloudStateV1 {
 export type LibraryCoreCloudPublishResult =
   | { readonly status: "published"; readonly revision: number }
   | { readonly status: "current"; readonly revision: number }
+  | { readonly status: "writer_transferred"; readonly revision: number }
+  | { readonly status: "bootstrap_required" }
   | {
       readonly status: "ownership_required";
       readonly currentWriterId: string;
@@ -146,6 +161,15 @@ async function sha256Text(value: string): Promise<string> {
   ).join("");
 }
 
+async function sha256Bytes(bytes: Uint8Array): Promise<string> {
+  const input = new Uint8Array(bytes.byteLength);
+  input.set(bytes);
+  const digest = await crypto.subtle.digest("SHA-256", input);
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
 function canonicalValue(value: unknown): LibraryCoreCanonicalValue {
   return value as LibraryCoreCanonicalValue;
 }
@@ -197,13 +221,14 @@ async function* checkpointEntries(
 async function checkpointHeader(
   state: LocalLibraryCoreCloudStateV1,
   descriptor: SqliteLibrarySyncDescriptor,
+  preservedFrontierDigest?: string,
 ): Promise<LibraryCorePortableCheckpointHeaderV1> {
-  const frontierDigest = await sha256Text([
-    state.libraryId,
-    state.storageEpoch,
-    String(descriptor.revision),
-    descriptor.materializedDigest,
-  ].join("\n"));
+  const frontierDigest = preservedFrontierDigest ?? await sha256Text([
+      state.libraryId,
+      state.storageEpoch,
+      String(descriptor.revision),
+      descriptor.materializedDigest,
+    ].join("\n"));
   return {
     kind: "logical_checkpoint_header",
     format: "freed_logical_checkpoint_v1",
@@ -236,6 +261,255 @@ async function checkpointHeader(
       excluded_registry_keys: 0,
     },
   };
+}
+
+async function prepareWriterEpochCertificate(input: {
+  readonly libraryId: string;
+  readonly source: LibraryCoreControlPointerV1;
+  readonly targetStorageEpoch: string;
+  readonly targetWriterId: string;
+}): Promise<LibraryCorePreparedImmutableObjectV1<Uint8Array>> {
+  const source = encodeLibraryCoreCanonicalValue({
+    kind: "writer_epoch_reassignment_v1",
+    library_id: input.libraryId,
+    protocol_version: 1,
+    source_frontier_digest: input.source.causalFrontierDigest,
+    source_generation: input.source.generation,
+    source_storage_epoch: input.source.storageEpoch,
+    source_writer_id: input.source.writerId,
+    target_storage_epoch: input.targetStorageEpoch,
+    target_writer_id: input.targetWriterId,
+  });
+  const contentDigest = await sha256Bytes(source);
+  return Object.freeze({
+    descriptor: parseLibraryCoreImmutableObjectDescriptorV1({
+      byteLength: source.byteLength,
+      contentDigest,
+      objectKey: createLibraryCoreImmutableObjectKey({
+        digest: contentDigest,
+        epochId: input.targetStorageEpoch,
+        kind: "epoch_certificate",
+        libraryId: input.libraryId,
+      }),
+    }),
+    source,
+  });
+}
+
+function materializedRow(record: LibraryCorePortableCheckpointRecordV1): {
+  readonly registryKey: string;
+  readonly row: unknown;
+} | null {
+  if (record.kind === "logical_checkpoint_header") return null;
+  if (record.collection !== "materialized_rows") {
+    throw new Error(
+      `SQLite cloud import does not support ${record.collection} checkpoint rows yet`,
+    );
+  }
+  const value = record.value;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("SQLite cloud import materialized row is invalid");
+  }
+  const row = value as Readonly<Record<string, LibraryCoreCanonicalValue>>;
+  if (typeof row.registry_key !== "string" || !("row" in row)) {
+    throw new Error("SQLite cloud import materialized row is invalid");
+  }
+  return { registryKey: row.registry_key, row: row.row };
+}
+
+async function bootstrapCloudCheckpointIntoSqlite(input: {
+  readonly adapter: LibraryCoreImmutableReadAdapterV1;
+  readonly pointer: LibraryCoreControlPointerV1;
+  readonly sourceDigest: string;
+}): Promise<SqliteLibrarySyncDescriptor> {
+  const previousStatus = await sqliteLibraryStatus();
+  const backup = previousStatus?.active === true
+    ? await createSqliteLibraryBackup("manual")
+    : null;
+  let nativeImportStarted = false;
+  let importedHeader: LibraryCorePortableCheckpointHeaderV1 | null = null;
+  try {
+    await importLibraryCorePortableCheckpointV1({
+      adapter: input.adapter,
+      generation: input.pointer.generation,
+      libraryId: input.pointer.libraryId,
+      manifest: input.pointer.manifest,
+      storageEpoch: input.pointer.storageEpoch,
+      subtle: crypto.subtle,
+      writer: {
+        async beginImport() {
+          return "import";
+        },
+        async appendPage(pageIndex, records) {
+          const feedItems: unknown[] = [];
+          if (!nativeImportStarted) {
+            if (pageIndex !== 0 || records[0]?.kind !== "logical_checkpoint_header") {
+              throw new Error("SQLite cloud import did not begin with its logical header");
+            }
+            const header = records[0];
+            const unsupportedCount = Object.entries(header.collection_counts)
+              .some(([collection, count]) =>
+                collection !== "materialized_rows" && count !== 0,
+              );
+            if (unsupportedCount) {
+              throw new Error("SQLite cloud import contains unsupported Library collections");
+            }
+            const rows = records.slice(1).map(materializedRow).filter((row) => row !== null);
+            const shell = rows.find((row) => row.registryKey === "00_library_shell");
+            if (shell === undefined) {
+              throw new Error("SQLite cloud import is missing the Library shell");
+            }
+            await beginPortableSqliteLibraryImport({
+              expectedItemCount: header.collection_counts.materialized_rows - 1,
+              shell: shell.row,
+              sourceDigest: input.sourceDigest,
+              sourceGeneration: header.epoch,
+              sourceRevision: header.materializer_position.ingest_sequence,
+            });
+            nativeImportStarted = true;
+            importedHeader = header;
+            for (const row of rows) {
+              if (row.registryKey === "10_feed_items") feedItems.push(row.row);
+              else if (row.registryKey !== "00_library_shell") {
+                throw new Error(`SQLite cloud import does not support ${row.registryKey}`);
+              }
+            }
+          } else {
+            for (const record of records) {
+              const row = materializedRow(record);
+              if (row === null) {
+                throw new Error("SQLite cloud import repeats its logical header");
+              }
+              if (row.registryKey !== "10_feed_items") {
+                throw new Error(`SQLite cloud import does not support ${row.registryKey}`);
+              }
+              feedItems.push(row.row);
+            }
+          }
+          await appendPortableSqliteLibraryItems(feedItems);
+        },
+        async finalizeImport({ header, manifest }) {
+          if (!nativeImportStarted || importedHeader === null) {
+            throw new Error("SQLite cloud import never initialized native staging");
+          }
+          await finalizePortableSqliteLibraryImport();
+          const descriptor = await readSqliteLibrarySyncDescriptor();
+          return {
+            frontierDigest: header.materializer_position.frontier_digest,
+            ingestSequence: header.materializer_position.ingest_sequence,
+            libraryId: header.library_id,
+            materializedDigest: descriptor.materializedDigest as LibraryCorePortableCheckpointHeaderV1["materializer_position"]["materialized_digest"],
+            recordCount: manifest.totalRecordCount,
+            storageEpoch: header.epoch_id,
+          };
+        },
+      },
+    });
+    return await readSqliteLibrarySyncDescriptor();
+  } catch (error) {
+    if (backup !== null) await restoreSqliteLibraryBackup(backup.backupId);
+    throw error;
+  }
+}
+
+/**
+ * Transfer one current remote Library to this restored Desktop installation.
+ *
+ * The local SQLite revision must be the exact last revision published by the
+ * copied cloud state. A stale or independently advanced copy must bootstrap
+ * from the active immutable checkpoint before it may replace authority.
+ */
+export async function makeThisSqliteLibraryDesktopWriter(input: {
+  readonly accessToken: string;
+  readonly googleFetch?: GoogleDriveFetch;
+  readonly signal?: AbortSignal;
+}): Promise<LibraryCoreCloudPublishResult> {
+  let descriptor = await readSqliteLibrarySyncDescriptor();
+  const loaded = await loadOrCreateCloudState(descriptor);
+  let state = loaded.state;
+  const provisioned = await provisionGoogleDriveLibraryCoreControlV1({
+    accessToken: input.accessToken,
+    googleFetch: input.googleFetch,
+    libraryId: state.libraryId,
+    signal: input.signal,
+  });
+  if (state.controlFileId !== provisioned.controlFileId) {
+    state = Object.freeze({ ...state, controlFileId: provisioned.controlFileId });
+    await persistCloudState(state);
+  }
+  const adapter = createGoogleDriveLibraryCoreAdapterV1({
+    accessToken: input.accessToken,
+    controlFileId: provisioned.controlFileId,
+    googleFetch: input.googleFetch,
+    libraryId: state.libraryId,
+    signal: input.signal,
+  });
+  const controlRead = await adapter.readControl();
+  const pointer = parseControl(controlRead);
+  if (pointer === null || controlRead.revision === null) {
+    throw new Error("The cloud Library has no writer to transfer");
+  }
+  if (pointer.writerId === loaded.currentWriterId) {
+    return { status: "current", revision: descriptor.revision };
+  }
+  if (
+    state.lastPublishedRevision !== descriptor.revision
+    || pointer.storageEpoch !== state.storageEpoch
+    || pointer.writerId !== state.writerId
+  ) {
+    descriptor = await bootstrapCloudCheckpointIntoSqlite({
+      adapter,
+      pointer,
+      sourceDigest: state.sourceDigest,
+    });
+    state = Object.freeze({
+      ...state,
+      lastPublishedRevision: descriptor.revision,
+      storageEpoch: pointer.storageEpoch,
+      writerId: pointer.writerId,
+    });
+    await persistCloudState(state);
+  }
+
+  const targetStorageEpoch = `epoch-${crypto.randomUUID()}`;
+  const targetState: LocalLibraryCoreCloudStateV1 = Object.freeze({
+    ...state,
+    lastPublishedRevision: null,
+    storageEpoch: targetStorageEpoch,
+    writerId: loaded.currentWriterId,
+  });
+  const result = await reassignLibraryCorePortableCheckpointV1({
+    activeTransport: "google_drive_app_data_v1",
+    adapter,
+    entries: checkpointEntries(descriptor),
+    epochCertificate: await prepareWriterEpochCertificate({
+      libraryId: state.libraryId,
+      source: pointer,
+      targetStorageEpoch,
+      targetWriterId: loaded.currentWriterId,
+    }),
+    expectedControl: { pointer, revision: controlRead.revision },
+    generation: 0,
+    header: await checkpointHeader(
+      targetState,
+      descriptor,
+      pointer.causalFrontierDigest,
+    ),
+    subtle: crypto.subtle,
+    writerId: loaded.currentWriterId,
+  });
+  if (result.status === "conflict") {
+    return {
+      status: "ownership_required",
+      currentWriterId: result.currentControlPointer?.writerId ?? pointer.writerId,
+      localWriterId: loaded.currentWriterId,
+    };
+  }
+  await persistCloudState(Object.freeze({
+    ...targetState,
+    lastPublishedRevision: descriptor.revision,
+  }));
+  return { status: "writer_transferred", revision: descriptor.revision };
 }
 
 async function publishCurrentSqliteLibraryToGoogleDriveInternal(input: {

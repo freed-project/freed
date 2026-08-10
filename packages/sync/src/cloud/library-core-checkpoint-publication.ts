@@ -17,9 +17,11 @@ import {
 } from "@freed/shared/library-core";
 import {
   publishLibraryCoreImmutableGenerationV1,
+  reassignLibraryCoreWriterV1,
   type LibraryCoreImmutablePublicationAdapterV1,
   type LibraryCoreImmutablePublicationResultV1,
   type LibraryCorePreparedImmutableObjectV1,
+  type LibraryCorePublishedImmutableObjectReceiptV1,
 } from "./library-core-immutable-publication.js";
 import {
   LIBRARY_CORE_CHECKPOINT_MANIFEST_BYTE_LIMIT,
@@ -57,6 +59,15 @@ export interface PublishLibraryCoreCheckpointGenerationRequestV1<RecordValue> {
   readonly storageEpoch: string;
   readonly subtle: SubtleCrypto;
   readonly writerId: string;
+}
+
+export interface ReassignLibraryCoreCheckpointGenerationRequestV1<RecordValue>
+  extends PublishLibraryCoreCheckpointGenerationRequestV1<RecordValue> {
+  readonly expectedControl: {
+    readonly revision: string;
+    readonly pointer: LibraryCoreControlPointerV1;
+  };
+  readonly epochCertificate: LibraryCorePreparedImmutableObjectV1<Uint8Array>;
 }
 
 function exactArrayBuffer(bytes: Uint8Array): ArrayBuffer {
@@ -164,6 +175,53 @@ function assertWriterPreflight<RecordValue>(
   ) {
     throw new TypeError(
       "checkpoint publication must preserve library, writer epoch, and active transport while advancing generation",
+    );
+  }
+}
+
+function assertReassignmentPreflight<RecordValue>(
+  request: ReassignLibraryCoreCheckpointGenerationRequestV1<RecordValue>,
+): void {
+  parseLibraryCoreCheckpointManifestV1({
+    causalFrontierDigest: request.causalFrontierDigest,
+    datasetSchemaId: request.datasetSchemaId,
+    generation: request.generation,
+    kind: "checkpoint_manifest",
+    libraryId: request.libraryId,
+    pages: [],
+    protocolVersion: 1,
+    schemaVersion: 1,
+    storageEpoch: request.storageEpoch,
+    totalRecordCount: 0,
+  });
+  const previous = parseLibraryCoreControlPointerV1(
+    request.expectedControl.pointer,
+  );
+  if (
+    !isLibraryCoreOperationInstanceId(request.writerId) ||
+    request.generation !== 0 ||
+    request.libraryId !== previous.libraryId ||
+    request.activeTransport !== previous.activeTransport ||
+    request.causalFrontierDigest !== previous.causalFrontierDigest ||
+    request.storageEpoch === previous.storageEpoch ||
+    request.writerId === previous.writerId
+  ) {
+    throw new TypeError(
+      "checkpoint writer reassignment must preserve the library, transport, and frontier while creating generation zero for a new epoch and writer",
+    );
+  }
+  if (!LIBRARY_CORE_CLOUD_TRANSPORT_IDS.includes(request.activeTransport)) {
+    throw new TypeError(
+      "checkpoint publication activeTransport is unsupported",
+    );
+  }
+  if (
+    request.subtle === null ||
+    typeof request.subtle !== "object" ||
+    typeof request.subtle.digest !== "function"
+  ) {
+    throw new TypeError(
+      "checkpoint publication subtle must provide SHA-256 digest support",
     );
   }
 }
@@ -344,13 +402,34 @@ export async function publishLibraryCoreCheckpointGenerationV1<RecordValue>(
   request: PublishLibraryCoreCheckpointGenerationRequestV1<RecordValue>,
 ): Promise<LibraryCoreImmutablePublicationResultV1> {
   assertWriterPreflight(request);
-  const pages: PreparedPageMetadataV1[] = [];
+  return publishPreparedCheckpointGenerationV1(request, null);
+}
 
-  return await publishLibraryCoreImmutableGenerationV1({
+/** Publish generation zero while atomically assigning a fresh writer epoch. */
+export async function reassignLibraryCoreCheckpointGenerationV1<RecordValue>(
+  request: ReassignLibraryCoreCheckpointGenerationRequestV1<RecordValue>,
+): Promise<LibraryCoreImmutablePublicationResultV1> {
+  assertReassignmentPreflight(request);
+  return publishPreparedCheckpointGenerationV1(
+    request,
+    request.epochCertificate,
+  );
+}
+
+async function publishPreparedCheckpointGenerationV1<RecordValue>(
+  request: PublishLibraryCoreCheckpointGenerationRequestV1<RecordValue>,
+  epochCertificate: LibraryCorePreparedImmutableObjectV1<Uint8Array> | null,
+): Promise<LibraryCoreImmutablePublicationResultV1> {
+  const pages: PreparedPageMetadataV1[] = [];
+  const publication = {
     adapter: request.adapter,
     expectedControl: request.expectedControl,
     dependencies: checkpointDependencies(request, pages),
-    async prepareManifest(receipts) {
+    async prepareManifest(
+      receipts: readonly LibraryCorePublishedImmutableObjectReceiptV1[],
+    ) {
+      const pageReceipts =
+        epochCertificate === null ? receipts : receipts.slice(1);
       const manifest = parseLibraryCoreCheckpointManifestV1({
         causalFrontierDigest: request.causalFrontierDigest,
         datasetSchemaId: request.datasetSchemaId,
@@ -360,8 +439,8 @@ export async function publishLibraryCoreCheckpointGenerationV1<RecordValue>(
         pages: pages.map((page, pageIndex) => ({
           ...page,
           object: {
-            descriptor: receipts[pageIndex]?.descriptor,
-            transportObjectId: receipts[pageIndex]?.transportObjectId,
+            descriptor: pageReceipts[pageIndex]?.descriptor,
+            transportObjectId: pageReceipts[pageIndex]?.transportObjectId,
           },
         })),
         protocolVersion: 1,
@@ -391,7 +470,9 @@ export async function publishLibraryCoreCheckpointGenerationV1<RecordValue>(
 
       return {
         manifest: Object.freeze({ descriptor, source }),
-        prepareControlPointer(manifestReceipt) {
+        prepareControlPointer(
+          manifestReceipt: LibraryCorePublishedImmutableObjectReceiptV1,
+        ) {
           return parseLibraryCoreControlPointerV1({
             activeTransport: request.activeTransport,
             causalFrontierDigest: request.causalFrontierDigest,
@@ -409,5 +490,16 @@ export async function publishLibraryCoreCheckpointGenerationV1<RecordValue>(
         },
       };
     },
+  };
+  if (epochCertificate === null) {
+    return publishLibraryCoreImmutableGenerationV1(publication);
+  }
+  const reassignment = request as ReassignLibraryCoreCheckpointGenerationRequestV1<RecordValue>;
+  return reassignLibraryCoreWriterV1({
+    ...publication,
+    expectedControl: reassignment.expectedControl,
+    epochCertificate,
+    targetStorageEpoch: reassignment.storageEpoch,
+    targetWriterId: reassignment.writerId,
   });
 }

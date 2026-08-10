@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   resetPairingToken: vi.fn(),
   resolveCloudSyncConflict: vi.fn(async () => {}),
   syncCloudProviderNow: vi.fn(async () => {}),
+  transferSqliteLibraryWriterToThisDesktop: vi.fn(async () => {}),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -45,6 +46,8 @@ vi.mock("../lib/sync", () => ({
   resetPairingToken: mocks.resetPairingToken,
   resolveCloudSyncConflict: mocks.resolveCloudSyncConflict,
   syncCloudProviderNow: mocks.syncCloudProviderNow,
+  transferSqliteLibraryWriterToThisDesktop:
+    mocks.transferSqliteLibraryWriterToThisDesktop,
 }));
 
 vi.mock("./DesktopSnapshotsSection", () => ({
@@ -155,6 +158,40 @@ describe("MobileSyncTab cloud diagnostics", () => {
       dismiss?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(container.querySelector("[data-testid='multiple-desktop-client-warning']")).toBeNull();
+  });
+
+  it("offers one confirmed action when another Freed Desktop owns SQLite writes", async () => {
+    useDebugStore.setState({
+      cloudProviders: {
+        dropbox: { status: "idle" },
+        gdrive: {
+          status: "connected",
+          stage: "idle",
+          error: "Another Freed Desktop currently owns writes for this Library.",
+          statusMessage: "This Freed Desktop is read-only until ownership is transferred.",
+        },
+      },
+    });
+    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    await act(async () => {
+      root.render(<MobileSyncTab />);
+    });
+
+    const transfer = container.querySelector<HTMLButtonElement>(
+      "[data-testid='sqlite-writer-transfer-button']",
+    );
+    expect(transfer?.textContent).toBe("Make This Freed Desktop the Writer");
+    expect(container.textContent).toContain("The previous installation will become read-only");
+
+    await act(async () => {
+      transfer?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(confirmMock).toHaveBeenCalledTimes(1);
+    expect(mocks.transferSqliteLibraryWriterToThisDesktop).toHaveBeenCalledTimes(1);
+    confirmMock.mockRestore();
   });
 
   it("lets the user choose a winner when a destructive cloud merge is blocked", async () => {

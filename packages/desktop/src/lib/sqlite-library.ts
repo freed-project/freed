@@ -48,6 +48,14 @@ export interface SqliteLibrarySyncPage {
   nextOffset: number | null;
 }
 
+export interface PortableSqliteLibraryImportRequest {
+  expectedItemCount: number;
+  shell: unknown;
+  sourceDigest: string;
+  sourceGeneration: number;
+  sourceRevision: number;
+}
+
 interface SqliteShell {
   shellJson: string;
   revision: number;
@@ -162,6 +170,44 @@ export async function readSqliteLibrarySyncPage(input: {
       limit: input.limit ?? 128,
     },
   });
+}
+
+export async function beginPortableSqliteLibraryImport(
+  request: PortableSqliteLibraryImportRequest,
+): Promise<void> {
+  await invoke("begin_sqlite_library_import", {
+    request: {
+      expectedItemCount: request.expectedItemCount,
+      shellJson: encodeJson(request.shell),
+      sourceDigest: request.sourceDigest,
+      sourceGeneration: request.sourceGeneration,
+      sourceRevision: request.sourceRevision,
+      startedAtMs: Date.now(),
+    },
+  });
+  sqliteActive = false;
+}
+
+export async function appendPortableSqliteLibraryItems(
+  items: readonly unknown[],
+): Promise<void> {
+  if (items.length === 0) return;
+  for (let start = 0; start < items.length; start += 1_000) {
+    await invoke("append_sqlite_library_import", {
+      request: {
+        itemsJson: items.slice(start, start + 1_000).map((item) => encodeJson(item)),
+        updatedAtMs: Date.now(),
+      },
+    });
+  }
+}
+
+export async function finalizePortableSqliteLibraryImport(): Promise<SqliteStatus> {
+  const status = await invoke<SqliteStatus>("finalize_sqlite_library_import", {
+    activatedAtMs: Date.now(),
+  });
+  sqliteActive = status.active;
+  return status;
 }
 
 export async function loadSqliteLibraryState(): Promise<DocState> {
