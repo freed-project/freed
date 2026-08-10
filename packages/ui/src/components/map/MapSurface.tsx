@@ -11,6 +11,7 @@ import { formatDistanceToNow } from "date-fns";
 import type { LocationMarkerSummary } from "@freed/shared";
 import { DEFAULT_THEME_ID, getThemeDefinition, type ThemeId } from "@freed/shared/themes";
 import type { Map as MapLibreMap, Marker as MapLibreMarker, Popup as MapLibrePopup } from "maplibre-gl";
+import mapLibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { createMarkerElement } from "./MarkerElement.js";
 import { createFriendAvatarPalette } from "../../lib/friend-avatar-style.js";
 import { buildThemedMapStyle } from "../../lib/map-style.js";
@@ -121,7 +122,10 @@ function loadMapLibre(): Promise<MapLibreModule> {
   mapLibreLoader = Promise.all([
     import("maplibre-gl"),
     import("maplibre-gl/dist/maplibre-gl.css"),
-  ]).then(([module]) => module).catch((error) => {
+  ]).then(([module]) => {
+    module.setWorkerUrl(mapLibreWorkerUrl);
+    return module;
+  }).catch((error) => {
     mapLibreLoader = null;
     throw error;
   });

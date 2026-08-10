@@ -165,10 +165,274 @@ async function proxyNativeHttpRequest(args: Record<string, unknown>): Promise<{
   };
 }
 
+type MockSqliteItem = Record<string, unknown> & {
+  globalId: string;
+  platform?: string;
+  author?: { id?: string };
+  rssSource?: { feedUrl?: string };
+  userState?: Record<string, unknown>;
+  __deleted?: boolean;
+};
+
+type MockSqliteLibrary = {
+  active: boolean;
+  revision: number;
+  sourceGeneration: number;
+  sourceRevision: number;
+  sourceDigest: string;
+  expectedItemCount: number;
+  shell: Record<string, unknown>;
+  items: Record<string, MockSqliteItem>;
+};
+
+function sqliteLibrary(): MockSqliteLibrary {
+  const w = window as unknown as { __TAURI_MOCK_SQLITE_LIBRARY__?: MockSqliteLibrary };
+  w.__TAURI_MOCK_SQLITE_LIBRARY__ ??= {
+    active: false,
+    revision: 0,
+    sourceGeneration: 0,
+    sourceRevision: 0,
+    sourceDigest: "",
+    expectedItemCount: 0,
+    shell: {},
+    items: {},
+  };
+  return w.__TAURI_MOCK_SQLITE_LIBRARY__;
+}
+
+function sqliteItemUserState(item: MockSqliteItem): Record<string, unknown> {
+  item.userState ??= {};
+  return item.userState;
+}
+
+function sqliteShellResult() {
+  const state = sqliteLibrary();
+  const items = Object.values(state.items).filter((item) => !item.__deleted);
+  const countsByPlatform: Record<string, number> = {};
+  const unreadByPlatform: Record<string, number> = {};
+  for (const item of items) {
+    const platform = item.platform ?? "unknown";
+    countsByPlatform[platform] = (countsByPlatform[platform] ?? 0) + 1;
+    if (sqliteItemUserState(item).readAt == null) {
+      unreadByPlatform[platform] = (unreadByPlatform[platform] ?? 0) + 1;
+    }
+  }
+  return {
+    shellJson: JSON.stringify(state.shell),
+    revision: state.revision,
+    itemCount: items.length,
+    unreadCount: items.filter((item) => sqliteItemUserState(item).readAt == null).length,
+    archivableCount: items.filter((item) => {
+      const user = sqliteItemUserState(item);
+      return user.readAt != null && !user.saved && !user.archived && !user.hidden;
+    }).length,
+    countsByPlatform,
+    unreadByPlatform,
+  };
+}
+
+function sqliteUpsertItems(args: Record<string, unknown>): null {
+  const state = sqliteLibrary();
+  const request = (args.request ?? {}) as { itemsJson?: string[] };
+  for (const encoded of request.itemsJson ?? []) {
+    const item = JSON.parse(encoded) as MockSqliteItem;
+    state.items[item.globalId] = item;
+  }
+  state.revision += 1;
+  return null;
+}
+
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
   ...(((window as unknown as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ ?? {}) as Record<string, Handler>),
   broadcast_doc: timedHandler("broadcast_doc", () => null),
+  sqlite_library_status: () => {
+    const state = sqliteLibrary();
+    return state.active ? {
+      active: true,
+      revision: state.revision,
+      expectedItemCount: state.expectedItemCount,
+      importedItemCount: Object.keys(state.items).length,
+      sourceGeneration: state.sourceGeneration,
+      sourceRevision: state.sourceRevision,
+      sourceDigest: state.sourceDigest,
+    } : null;
+  },
+  begin_sqlite_library_import: (args: Record<string, unknown>) => {
+    const request = args.request as {
+      sourceGeneration: number;
+      sourceRevision: number;
+      sourceDigest: string;
+      expectedItemCount: number;
+      shellJson: string;
+    };
+    const state = sqliteLibrary();
+    Object.assign(state, {
+      active: false,
+      revision: 0,
+      sourceGeneration: request.sourceGeneration,
+      sourceRevision: request.sourceRevision,
+      sourceDigest: request.sourceDigest,
+      expectedItemCount: request.expectedItemCount,
+      shell: JSON.parse(request.shellJson) as Record<string, unknown>,
+      items: {},
+    });
+    return null;
+  },
+  append_sqlite_library_import: sqliteUpsertItems,
+  finalize_sqlite_library_import: () => {
+    sqliteLibrary().active = true;
+    return null;
+  },
+  read_sqlite_library_shell: sqliteShellResult,
+  replace_sqlite_library_shell: (args: Record<string, unknown>) => {
+    const state = sqliteLibrary();
+    const request = args.request as { shellJson: string };
+    state.shell = JSON.parse(request.shellJson) as Record<string, unknown>;
+    state.revision += 1;
+    return null;
+  },
+  upsert_sqlite_library_items: sqliteUpsertItems,
+  read_sqlite_library_items: (args: Record<string, unknown>) => {
+    const request = args.request as { ids?: string[] };
+    return (request.ids ?? []).flatMap((id) => {
+      const item = sqliteLibrary().items[id];
+      return item && !item.__deleted ? [JSON.stringify(item)] : [];
+    });
+  },
+  query_sqlite_library_items: (args: Record<string, unknown>) => {
+    const request = (args.request ?? {}) as {
+      query?: string | null;
+      platform?: string | null;
+      authorId?: string | null;
+      feedUrl?: string | null;
+      saved?: boolean | null;
+      archived?: boolean | null;
+      showHidden?: boolean;
+      offset?: number;
+      limit?: number;
+    };
+    const query = request.query?.toLowerCase() ?? "";
+    const items = Object.values(sqliteLibrary().items)
+      .filter((item) => {
+        const user = sqliteItemUserState(item);
+        return !item.__deleted
+          && (!request.platform || item.platform === request.platform)
+          && (request.saved == null || Boolean(user.saved) === request.saved)
+          && (request.archived == null || Boolean(user.archived) === request.archived)
+          && (request.showHidden || !user.hidden)
+          && (!request.authorId || item.author?.id === request.authorId)
+          && (!request.feedUrl || item.rssSource?.feedUrl === request.feedUrl)
+          && (!query || JSON.stringify(item).toLowerCase().includes(query));
+      })
+      .sort((left, right) => {
+        const published = Number(right.publishedAt ?? 0) - Number(left.publishedAt ?? 0);
+        if (published !== 0) return published;
+        const captured = Number(right.capturedAt ?? 0) - Number(left.capturedAt ?? 0);
+        return captured !== 0 ? captured : left.globalId.localeCompare(right.globalId);
+      });
+    const offset = request.offset ?? 0;
+    const limit = Math.max(1, Math.min(request.limit ?? 64, 128));
+    const page = items.slice(offset, offset + limit);
+    return {
+      itemsJson: page.map((item) => JSON.stringify(item)),
+      nextOffset: offset + page.length < items.length ? offset + page.length : null,
+      totalCount: items.length,
+    };
+  },
+  mutate_sqlite_library_items: (args: Record<string, unknown>) => {
+    const request = (args.request ?? {}) as {
+      mutation?: string;
+      ids?: string[];
+      platform?: string | null;
+      feedUrl?: string | null;
+      timestampMs?: number;
+      maxAgeMs?: number;
+    };
+    const state = sqliteLibrary();
+    const candidates = request.ids?.length
+      ? request.ids.flatMap((id) => state.items[id] ? [state.items[id]] : [])
+      : Object.values(state.items);
+    let affected = 0;
+    for (const item of candidates) {
+      if (item.__deleted || (request.platform && item.platform !== request.platform)) continue;
+      if (request.feedUrl && item.rssSource?.feedUrl !== request.feedUrl) continue;
+      const user = sqliteItemUserState(item);
+      const timestampMs = request.timestampMs ?? Date.now();
+      switch (request.mutation) {
+        case "mark_read":
+        case "mark_all_read":
+          user.readAt ??= timestampMs;
+          break;
+        case "toggle_saved":
+          user.saved = !user.saved;
+          if (user.saved) {
+            user.savedAt = timestampMs;
+            user.archived = false;
+            delete user.archivedAt;
+          } else {
+            delete user.savedAt;
+          }
+          break;
+        case "toggle_archived":
+          if (user.saved) continue;
+          user.archived = !user.archived;
+          if (user.archived) user.archivedAt = timestampMs;
+          else delete user.archivedAt;
+          break;
+        case "archive":
+        case "archive_all_read_unsaved":
+          if (user.saved || user.hidden || user.readAt == null) continue;
+          user.archived = true;
+          user.archivedAt ??= timestampMs;
+          break;
+        case "toggle_liked":
+          user.liked = !user.liked;
+          if (user.liked) user.likedAt = timestampMs;
+          else {
+            delete user.likedAt;
+            delete user.likedSyncedAt;
+          }
+          break;
+        case "confirm_liked":
+          user.likedSyncedAt = timestampMs;
+          break;
+        case "confirm_seen":
+          user.seenSyncedAt = timestampMs;
+          break;
+        case "unarchive_saved":
+          if (!user.saved || !user.archived) continue;
+          user.archived = false;
+          delete user.archivedAt;
+          break;
+        case "delete_all_archived":
+          if (!user.archived || user.saved) continue;
+          item.__deleted = true;
+          break;
+        case "prune_archived":
+          if (!user.archived || user.saved || user.archivedAt == null
+            || Number(user.archivedAt) > timestampMs - (request.maxAgeMs ?? 0)) continue;
+          item.__deleted = true;
+          break;
+        case "delete_rss":
+          if (item.platform !== "rss") continue;
+          item.__deleted = true;
+          break;
+        case "delete":
+          item.__deleted = true;
+          break;
+        case "clear_sample":
+          if (!item.sampleData) continue;
+          item.__deleted = true;
+          break;
+        default:
+          continue;
+      }
+      affected += 1;
+    }
+    state.revision += 1;
+    return affected;
+  },
   fetch_url: (args: Record<string, unknown>) => proxyFetch({ url: args.url, method: "GET" }),
   google_api_request: (args: Record<string, unknown>) => proxyNativeHttpRequest({
     url: args.url,

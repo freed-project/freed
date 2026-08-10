@@ -88,7 +88,10 @@ export default defineConfig({
   },
   plugins: [wasm(), topLevelAwait(), react()],
   optimizeDeps: {
-    exclude: tauriMockExclude,
+    exclude: [
+      ...tauriMockExclude,
+      "maplibre-gl/dist/maplibre-gl-worker.mjs",
+    ],
   },
 
   // Tauri development server.
