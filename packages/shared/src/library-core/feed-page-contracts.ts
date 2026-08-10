@@ -7,7 +7,13 @@ import {
   type LibraryCoreLowercaseHex64,
   type LibraryCoreOperationInstanceId,
 } from "./protocol-scalars.js";
-import type { FeedItem } from "../types.js";
+import type {
+  ContentSignal,
+  ContentType,
+  FeedItem,
+  MediaType,
+  Platform,
+} from "../types.js";
 
 export const LIBRARY_CORE_FEED_PAGE_QUERY_ID = "feed_page_v1";
 export const LIBRARY_CORE_FEED_PAGE_SCHEMA_VERSION = 1;
@@ -229,6 +235,88 @@ export interface LibraryCoreFeedPageResponseV1 {
   readonly schemaVersion: typeof LIBRARY_CORE_FEED_PAGE_SCHEMA_VERSION;
   readonly source: LibraryCoreFeedPageSourceV1;
   readonly totalCount: number;
+}
+
+const FEED_CARD_PLATFORMS = new Set<Platform>([
+  "x", "rss", "youtube", "reddit", "mastodon", "github", "facebook",
+  "instagram", "linkedin", "substack", "medium", "saved",
+]);
+const FEED_CARD_CONTENT_TYPES = new Set<ContentType>([
+  "post", "story", "article", "video", "podcast",
+]);
+const FEED_CARD_MEDIA_TYPES = new Set<MediaType>(["image", "video", "link"]);
+
+/** Reconstruct the bounded product card represented by one portable feed row. */
+export function libraryCoreFeedCardToItemV1(card: LibraryCoreFeedCardV1): FeedItem {
+  const platform = FEED_CARD_PLATFORMS.has(card.platform as Platform)
+    ? (card.platform as Platform) : "saved";
+  const contentType = FEED_CARD_CONTENT_TYPES.has(card.contentType as ContentType)
+    ? (card.contentType as ContentType) : "post";
+  const publishedAt = card.publishedAt ?? 0;
+  const capturedAt = card.capturedAt ?? publishedAt;
+  return {
+    globalId: card.globalId,
+    platform,
+    contentType,
+    capturedAt,
+    publishedAt,
+    author: {
+      id: card.authorId ?? "",
+      handle: card.authorHandle ?? "",
+      displayName: card.authorDisplayName ?? card.authorHandle ?? "",
+      ...(card.authorAvatarUrl ? { avatarUrl: card.authorAvatarUrl } : {}),
+    },
+    content: {
+      ...(card.contentText ? { text: card.contentText } : {}),
+      mediaUrls: [...card.mediaUrls],
+      mediaTypes: card.mediaTypes.filter(
+        (value): value is MediaType => FEED_CARD_MEDIA_TYPES.has(value as MediaType),
+      ),
+      ...(card.linkPreviewTitle && card.sourceUrl
+        ? { linkPreview: { url: card.sourceUrl, title: card.linkPreviewTitle } }
+        : {}),
+    },
+    ...(card.engagementLikes !== null || card.engagementComments !== null
+      ? { engagement: {
+          ...(card.engagementLikes !== null ? { likes: card.engagementLikes } : {}),
+          ...(card.engagementComments !== null ? { comments: card.engagementComments } : {}),
+        } }
+      : {}),
+    ...(card.locationName
+      ? { location: { name: card.locationName, source: "text_extraction" as const } }
+      : {}),
+    userState: {
+      hidden: false,
+      ...(card.readAt !== null ? { readAt: card.readAt } : {}),
+      saved: card.saved === true,
+      archived: card.archived === true,
+      tags: [...card.tags],
+      ...(card.liked !== null ? { liked: card.liked } : {}),
+      ...(card.likedAt !== null ? { likedAt: card.likedAt } : {}),
+      ...(card.likedSyncedAt !== null ? { likedSyncedAt: card.likedSyncedAt } : {}),
+    },
+    topics: [],
+    ...(card.contentSignalTags.length > 0
+      ? { contentSignals: {
+          version: 1,
+          method: "rules" as const,
+          inferredAt: capturedAt,
+          scores: {},
+          tags: [...card.contentSignalTags] as ContentSignal[],
+        } }
+      : {}),
+    ...(card.eventStartsAt !== null
+      ? { eventCandidate: {
+          version: 1,
+          method: "rules" as const,
+          detectedAt: capturedAt,
+          confidence: (card.eventConfidenceBasisPoints ?? 0) / 10_000,
+          startsAt: card.eventStartsAt,
+          ...(card.locationName ? { locationName: card.locationName } : {}),
+        } }
+      : {}),
+    ...(card.sourceUrl ? { sourceUrl: card.sourceUrl } : {}),
+  };
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {

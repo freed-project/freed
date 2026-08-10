@@ -11,6 +11,7 @@ import {
   LIBRARY_CORE_SAVED_FEED_SORT_ORDER_SCHEMA_VERSION,
   LIBRARY_CORE_SAVED_FEED_SORT_ORDER_V1,
   isLibraryCoreOperationInstanceId,
+  libraryCoreFeedCardToItemV1,
   libraryCoreSavedFeedSortKeyV1,
   parseLibraryCoreSavedFeedPageResponseV1,
   projectLibraryCoreSavedFeedCardV1,
@@ -35,7 +36,6 @@ import {
   type LibraryCoreFeedBrowseNativeClient,
 } from "./library-core-feed-browse-materializer-runtime";
 import {
-  feedCardToItem,
   openBoundedDesktopFeedReader,
 } from "./library-core-feed-browse-reader-runtime";
 import { isSqliteLibraryActive } from "./sqlite-library";
@@ -218,7 +218,7 @@ function savedStrategy(
 function savedCardToItem(
   card: LibraryCoreSavedFeedPageResponseV1["rows"][number],
 ): FeedItem {
-  const item = feedCardToItem(card);
+  const item = libraryCoreFeedCardToItemV1(card);
   return {
     ...item,
     ...(card.readingTimeMinutes === null

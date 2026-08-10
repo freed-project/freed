@@ -82,6 +82,10 @@ import {
 import { resetThemePreference } from "@freed/ui/lib/theme";
 import { hydrateReaderItemInPwa, pinReaderItemInPwa } from "./lib/reader-cache";
 import {
+  isPwaLibraryCoreEnabled,
+  openPwaLibraryCoreFeedReader,
+} from "./lib/library-core-runtime";
+import {
   refreshSampleLibraryData,
   summarizeSampleData,
 } from "@freed/ui/lib/sample-library-seed";
@@ -462,6 +466,9 @@ function App() {
       // FriendEditor falls back to manual entry when this is undefined at runtime.
       pickContact: pickContactViaWebApi,
       openUrl: openPwaUrl,
+      openBoundedFeedReader: isPwaLibraryCoreEnabled()
+        ? openPwaLibraryCoreFeedReader
+        : undefined,
       bugReporting: pwaBugReporting,
     }),
     [checkForUpdates, handleFactoryReset, releaseChannel, setReleaseChannel],

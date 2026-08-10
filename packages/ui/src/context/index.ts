@@ -6,6 +6,7 @@ export {
   type ContactSyncActions,
   type BugReportingConfig,
   type AvailableUpdateInfo,
+  type BoundedFeedReader,
   type ChangelogPreviewRelease,
   type LocalAIModelDownloadProgress,
   type LocalAIModelViewState,
