@@ -133,10 +133,12 @@ async function collectLongTasksDuring<T>(
 test("Map view handles 1,600 visible location authors within frame budget", async ({ app, page }) => {
   test.setTimeout(90_000);
   await page.addInitScript(() => {
-    localStorage.setItem(
-      "freed.libraryCore.rendererItemEvictionV1.disabled",
-      "1",
-    );
+    (
+      window as Window & {
+        __FREED_E2E_SQLITE_SHELL_ONLY__?: boolean;
+        __FREED_E2E_MAP_TIME_REFRESH_MS__?: number;
+      }
+    ).__FREED_E2E_SQLITE_SHELL_ONLY__ = true;
     (
       window as Window & {
         __FREED_E2E_MAP_TIME_REFRESH_MS__?: number;
