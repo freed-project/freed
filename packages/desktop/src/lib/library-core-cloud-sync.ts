@@ -289,7 +289,7 @@ async function checkpointHeader(
     kind: "logical_checkpoint_header",
     format: "freed_logical_checkpoint_v1",
     library_id: state.libraryId as LibraryCorePortableCheckpointHeaderV1["library_id"],
-    epoch: 1,
+    epoch: bootstrap.authority.epoch,
     epoch_id: state.storageEpoch as LibraryCorePortableCheckpointHeaderV1["epoch_id"],
     schema_version: 2,
     field_registry_version: 1,

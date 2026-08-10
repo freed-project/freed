@@ -379,6 +379,7 @@ describe("SQLite Library Google Drive production wiring", () => {
       generation: 0,
       writerId: mocks.bootstrapAuthority.actor.actor_id,
       header: {
+        epoch: 2,
         epoch_id: "89".repeat(32),
         materializer_position: { frontier_digest: "ef".repeat(32) },
       },
