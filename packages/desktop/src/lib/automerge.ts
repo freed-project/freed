@@ -80,7 +80,6 @@ import {
   type LibraryCoreExternalExportChunkV1,
   type LibraryCoreExternalExportConfirmedV1,
   type LibraryCoreExternalExportStartedV1,
-  type LibraryCoreExternalExportWorkerClient,
 } from "./library-core-external-migration-runtime";
 import {
   materializeDesktopLibraryCoreFeedBrowseGeneration,
@@ -1444,71 +1443,6 @@ async function initializeWorkerDocumentWithDataRecovery(): Promise<DocState> {
     return initializeWorkerDocument();
   }
 }
-
-async function beginLibraryCoreExternalExport(
-  sessionId: string,
-): Promise<LibraryCoreExternalExportStartedV1> {
-  assertAutomergeRequestAccepted("BEGIN_LIBRARY_CORE_EXTERNAL_EXPORT");
-  await ensureWorkerReady();
-  return requestResultOnWorker(
-    getWorker(),
-    pendingLibraryCoreExternalExportStarted,
-    {
-      reqId: nextReqId++,
-      type: "BEGIN_LIBRARY_CORE_EXTERNAL_EXPORT",
-      sessionId,
-    } satisfies WorkerRequest,
-  );
-}
-
-async function readLibraryCoreExternalExport(
-  sessionId: string,
-  offset: number,
-): Promise<LibraryCoreExternalExportChunkV1> {
-  assertAutomergeRequestAccepted("READ_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK");
-  await ensureWorkerReady();
-  return requestResultOnWorker(
-    getWorker(),
-    pendingLibraryCoreExternalExportChunk,
-    {
-      reqId: nextReqId++,
-      type: "READ_LIBRARY_CORE_EXTERNAL_EXPORT_CHUNK",
-      sessionId,
-      offset,
-    } satisfies WorkerRequest,
-  );
-}
-
-async function confirmLibraryCoreExternalExport(
-  sessionId: string,
-): Promise<LibraryCoreExternalExportConfirmedV1> {
-  assertAutomergeRequestAccepted("CONFIRM_LIBRARY_CORE_EXTERNAL_EXPORT");
-  await ensureWorkerReady();
-  return requestResultOnWorker(
-    getWorker(),
-    pendingLibraryCoreExternalExportConfirmed,
-    {
-      reqId: nextReqId++,
-      type: "CONFIRM_LIBRARY_CORE_EXTERNAL_EXPORT",
-      sessionId,
-    } satisfies WorkerRequest,
-  );
-}
-
-function cancelLibraryCoreExternalExport(sessionId: string): Promise<void> {
-  return request({
-    reqId: nextReqId++,
-    type: "CANCEL_LIBRARY_CORE_EXTERNAL_EXPORT",
-    sessionId,
-  });
-}
-
-const libraryCoreExternalExportWorkerClient: LibraryCoreExternalExportWorkerClient = {
-  begin: beginLibraryCoreExternalExport,
-  read: readLibraryCoreExternalExport,
-  confirm: confirmLibraryCoreExternalExport,
-  cancel: cancelLibraryCoreExternalExport,
-};
 
 export const LIBRARY_CORE_RENDERER_ITEM_EVICTION_DISABLED_KEY =
   "freed.libraryCore.rendererItemEvictionV1.disabled";
